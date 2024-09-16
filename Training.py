@@ -44,8 +44,8 @@ save_every = 1  # determines frequency of saving model weights
 print_every = 200  # determines window for printing average loss
 
 models_dir = os.makedirs("models", exist_ok=True)
-encoder_file = f"encoder_{num_epochs}_nEpochs.pkl"
-decoder_file = f"decoder_{num_epochs}_nEpochs.pkl"
+encoder_fname = f"encoder_{num_epochs}_nEpochs.pkl"
+decoder_fname = f"decoder_{num_epochs}_nEpochs.pkl"
 
 folders = [folder for folder in os.listdir(cocoapi_dir)]
 print(folders)
@@ -141,10 +141,10 @@ for epoch in range(1, num_epochs + 1):
 	# Save the weights.
 	if epoch % save_every == 0:
 		torch.save(
-			decoder.state_dict(), os.path.join("models", "decoder-%d.pkl" % epoch)
+			decoder.state_dict(), os.path.join(models_dir, decoder_fname)
 		)
 		torch.save(
-			encoder.state_dict(), os.path.join("models", "encoder-%d.pkl" % epoch)
+			encoder.state_dict(), os.path.join(models_dir, encoder_fname)
 		)
 
 # Close the training log file.
@@ -178,8 +178,8 @@ def validate_model():
 	decoder.to(device)
 
 	# Loading the trained weights
-	encoder.load_state_dict(torch.load(os.path.join("models", encoder_file)))
-	decoder.load_state_dict(torch.load(os.path.join("models", decoder_file)))
+	encoder.load_state_dict(torch.load(os.path.join(models_dir, encoder_fname)))
+	decoder.load_state_dict(torch.load(os.path.join(models_dir, decoder_fname)))
 
 	encoder.eval()
 	decoder.eval()
