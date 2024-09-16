@@ -1,3 +1,9 @@
+import math
+import json
+import os
+import sys
+import numpy as np
+
 from data_loader import get_loader
 from data_loader_val import get_loader as val_get_loader
 from model import *
@@ -14,12 +20,6 @@ from tqdm.notebook import tqdm
 from collections import defaultdict
 from nlp_utils import clean_sentence, bleu_score
 
-import math
-import json
-import os
-import sys
-import numpy as np
-
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 print(HOME, USER)
@@ -33,7 +33,7 @@ vocab_threshold = 5  # minimum word count threshold
 vocab_from_file = True  # if True, load existing vocab file
 embed_size = 256  # dimensionality of image and word embeddings
 hidden_size = 512  # number of features in hidden state of the RNN decoder
-num_epochs = 1  # training epochs
+num_epochs = 5  # training epochs
 save_every = 1  # determines frequency of saving model weights
 print_every = 20  # determines window for printing average loss
 log_file = "training_log.txt"  # name of file with saved training loss and perplexity

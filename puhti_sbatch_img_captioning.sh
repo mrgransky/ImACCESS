@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2004072
-#SBATCH --job-name=img_captioning
+#SBATCH --job-name=img_captioning_pytorch
 #SBATCH --output=/scratch/project_2004072/IMG_Captioning/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -11,9 +11,7 @@
 #SBATCH --mem=188G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
-####SBATCH --array=101-499
 #SBATCH --gres=gpu:v100:1
-##### x303: 0-150,580-731
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
