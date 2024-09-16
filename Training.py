@@ -24,9 +24,15 @@ HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 print(HOME, USER)
 
-cocoapi_dir = os.path.join("/scratch/project_2004072/IMG_Captioning", "MS_COCO") if USER=="alijanif" else os.path.join(HOME, "datasets/MS_COCO")
-folders = [folder for folder in os.listdir(cocoapi_dir)]
-print(folders)
+if USER=="alijanif":
+	cocoapi_dir = os.path.join("/scratch/project_2004072/IMG_Captioning", "MS_COCO")
+	log_file = os.path.join("/scratch/project_2004072/IMG_Captioning", "trash", "training_log.txt") # name of file with saved training loss and perplexity
+else:
+	cocoapi_dir = os.path.join(HOME, "datasets/MS_COCO")
+	log_file = os.path.join(HOME, "datasets", "trash", "training_log.txt") # name of file with saved training loss and perplexity
+
+print(f"COCO DIR: {cocoapi_dir}")
+print(f"training_log file: {log_file}")
 
 batch_size = 128  # batch size
 vocab_threshold = 5  # minimum word count threshold
@@ -35,39 +41,41 @@ embed_size = 256  # dimensionality of image and word embeddings
 hidden_size = 512  # number of features in hidden state of the RNN decoder
 num_epochs = 5  # training epochs
 save_every = 1  # determines frequency of saving model weights
-print_every = 20  # determines window for printing average loss
-log_file = "training_log.txt"  # name of file with saved training loss and perplexity
+print_every = 200  # determines window for printing average loss
 
+models_dir = os.makedirs("models", exist_ok=True)
+encoder_file = f"encoder_{num_epochs}_nEpochs.pkl"
+decoder_file = f"decoder_{num_epochs}_nEpochs.pkl"
+
+folders = [folder for folder in os.listdir(cocoapi_dir)]
+print(folders)
 
 transform_train = transforms.Compose(
-    [
-        # smaller edge of image resized to 256
-        transforms.Resize(256),
-        # get 224x224 crop from random location
-        transforms.RandomCrop(224),
-        # horizontally flip image with probability=0.5
-        transforms.RandomHorizontalFlip(),
-        # convert the PIL Image to a tensor
-        transforms.ToTensor(),
-        transforms.Normalize(
-            (0.485, 0.456, 0.406),  # normalize image for pre-trained model
-            (0.229, 0.224, 0.225),
-        ),
-    ]
+	[
+		transforms.Resize(256), # image resized to 256
+		transforms.RandomCrop(224), # 224x224 crop from random location
+		transforms.RandomHorizontalFlip(),
+		transforms.ToTensor(),
+		transforms.Normalize(
+			(0.485, 0.456, 0.406),
+			(0.229, 0.224, 0.225),
+		),
+	]
 )
+
 # Build data loader.
 data_loader = get_loader(
-    transform=transform_train,
-    mode="train",
-    batch_size=batch_size,
-    vocab_threshold=vocab_threshold,
-    vocab_from_file=vocab_from_file,
-    cocoapi_loc=cocoapi_dir,
+	transform=transform_train,
+	mode="train",
+	batch_size=batch_size,
+	vocab_threshold=vocab_threshold,
+	vocab_from_file=vocab_from_file,
+	cocoapi_loc=cocoapi_dir,
 )
 
 # The size of the vocabulary.
 vocab_size = len(data_loader.dataset.vocab)
-print("vocab size is : ",vocab_size)
+print(f"vb size: {vocab_size}")
 
 # Initializing the encoder and decoder
 encoder = EncoderCNN(embed_size)
@@ -80,7 +88,7 @@ decoder.to(device)
 
 # Defining the loss function
 criterion = (
-    nn.CrossEntropyLoss().cuda() if torch.cuda.is_available() else nn.CrossEntropyLoss()
+	nn.CrossEntropyLoss().cuda() if torch.cuda.is_available() else nn.CrossEntropyLoss()
 )
 
 # Specifying the learnable parameters of the mode
@@ -92,131 +100,118 @@ optimizer = torch.optim.Adam(params, lr=0.001)
 # Set the total number of training steps per epoc
 total_step = math.ceil(len(data_loader.dataset) / data_loader.batch_sampler.batch_size)
 
-print(total_step)
+print(f"total_step: {total_step}")
 
 f = open(log_file, "w")
 for epoch in range(1, num_epochs + 1):
-    for i_step in range(1, total_step + 1):
-
-        # Randomly sample a caption length, and sample indices with that length.
-        indices = data_loader.dataset.get_train_indices()
-        # Create and assign a batch sampler to retrieve a batch with the sampled indices.
-        new_sampler = data.sampler.SubsetRandomSampler(indices=indices)
-        data_loader.batch_sampler.sampler = new_sampler
-
-        # Obtain the batch.
-        images, captions = next(iter(data_loader))
-
-        # Move batch of images and captions to GPU if CUDA is available.
-        images = images.to(device)
-        captions = captions.to(device)
-
-        # Zero the gradients.
-        decoder.zero_grad()
-        encoder.zero_grad()
-
-        # Passing the inputs through the CNN-RNN model
-        features = encoder(images)
-        outputs = decoder(features, captions)
-
-        # Calculating the batch loss.
-        loss = criterion(outputs.view(-1, vocab_size), captions.view(-1))
-
-        # Backwarding pass
-        loss.backward()
-
-        # Updating the parameters in the optimizer
-        optimizer.step()
-
-        # Getting training statistics
-        stats = (
-            f"Epoch [{epoch}/{num_epochs}], Step [{i_step}/{total_step}], "
-            f"Loss: {loss.item():.4f}, Perplexity: {np.exp(loss.item()):.4f}"
-        )
-
-        # Print training statistics to file.
-        f.write(stats + "\n")
-        f.flush()
-
-        # Print training statistics (on different line).
-        if i_step % print_every == 0:
-            print("\r" + stats)
-
-    # Save the weights.
-    if epoch % save_every == 0:
-        torch.save(
-            decoder.state_dict(), os.path.join("./models", "decoder-%d.pkl" % epoch)
-        )
-        torch.save(
-            encoder.state_dict(), os.path.join("./models", "encoder-%d.pkl" % epoch)
-        )
+	for i_step in range(1, total_step + 1):
+		# Randomly sample a caption length, and sample indices with that length.
+		indices = data_loader.dataset.get_train_indices()
+		# Create and assign a batch sampler to retrieve a batch with the sampled indices.
+		new_sampler = data.sampler.SubsetRandomSampler(indices=indices)
+		data_loader.batch_sampler.sampler = new_sampler
+		# Obtain the batch.
+		images, captions = next(iter(data_loader))
+		# Move batch of images and captions to GPU if CUDA is available.
+		images = images.to(device)
+		captions = captions.to(device)
+		# Zero the gradients.
+		decoder.zero_grad()
+		encoder.zero_grad()
+		# Passing the inputs through the CNN-RNN model
+		features = encoder(images)
+		outputs = decoder(features, captions)
+		# Calculating the batch loss.
+		loss = criterion(outputs.view(-1, vocab_size), captions.view(-1))
+		# Backwarding pass
+		loss.backward()
+		# Updating the parameters in the optimizer
+		optimizer.step()
+		# Getting training statistics
+		stats = (
+			f"Epoch [{epoch}/{num_epochs}], Step [{i_step}/{total_step}], "
+			f"Loss: {loss.item():.4f}, Perplexity: {np.exp(loss.item()):.4f}"
+		)
+		# Print training statistics to file.
+		f.write(stats + "\n")
+		f.flush()
+		# Print training statistics (on different line).
+		if i_step % print_every == 0:
+			print("\r" + stats)
+	# Save the weights.
+	if epoch % save_every == 0:
+		torch.save(
+			decoder.state_dict(), os.path.join("models", "decoder-%d.pkl" % epoch)
+		)
+		torch.save(
+			encoder.state_dict(), os.path.join("models", "encoder-%d.pkl" % epoch)
+		)
 
 # Close the training log file.
 f.close()
 
-transform_test = transforms.Compose(
-    [
-        transforms.Resize(224),
-        transforms.ToTensor(),
-        transforms.Normalize(
-            (0.485, 0.456, 0.406),  # normalize image for pre-trained model
-            (0.229, 0.224, 0.225),
-        ),
-    ]
-)
+def validate_model():
+	transform_test = transforms.Compose(
+		[
+			transforms.Resize(224),
+			transforms.ToTensor(),
+			transforms.Normalize(
+				(0.485, 0.456, 0.406),
+				(0.229, 0.224, 0.225),
+			),
+		]
+	)
 
-#Create the data loader.
-val_data_loader = val_get_loader(
-    transform=transform_test, 
-    mode="valid", 
-    cocoapi_loc=cocoapi_dir,
-)
+	val_data_loader = val_get_loader(
+		transform=transform_test, 
+		mode="valid", 
+		cocoapi_loc=cocoapi_dir,
+	)
 
-encoder_file = f"encoder_{num_epochs}_nEpochs.pkl"
-decoder_file = f"decoder_{num_epochs}_nEpochs.pkl"
+	# Initialize the encoder and decoder.
+	encoder = EncoderCNN(embed_size)
+	decoder = DecoderRNN(embed_size, hidden_size, vocab_size)
 
-# Initialize the encoder and decoder.
-encoder = EncoderCNN(embed_size)
-decoder = DecoderRNN(embed_size, hidden_size, vocab_size)
+	# Moving models to GPU if CUDA is available.
+	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	encoder.to(device)
+	decoder.to(device)
 
-# Moving models to GPU if CUDA is available.
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-encoder.to(device)
-decoder.to(device)
+	# Loading the trained weights
+	encoder.load_state_dict(torch.load(os.path.join("models", encoder_file)))
+	decoder.load_state_dict(torch.load(os.path.join("models", decoder_file)))
 
-# Loading the trained weights
-encoder.load_state_dict(torch.load(os.path.join("./models", encoder_file)))
-decoder.load_state_dict(torch.load(os.path.join("./models", decoder_file)))
+	encoder.eval()
+	decoder.eval()
 
-encoder.eval()
-decoder.eval()
+	# infer captions for all images
+	pred_result = defaultdict(list)
+	for img_id, img in tqdm(val_data_loader):
+		img = img.to(device)
+		with torch.no_grad():
+			features = encoder(img).unsqueeze(1)
+			output = decoder.sample(features)
+		sentence = clean_sentence(output, val_data_loader.dataset.vocab.idx2word)
+		pred_result[img_id.item()].append(sentence)
 
-# infer captions for all images
-pred_result = defaultdict(list)
-for img_id, img in tqdm(val_data_loader):
-    img = img.to(device)
-    with torch.no_grad():
-        features = encoder(img).unsqueeze(1)
-        output = decoder.sample(features)
-    sentence = clean_sentence(output, val_data_loader.dataset.vocab.idx2word)
-    pred_result[img_id.item()].append(sentence)
+	with open(
+		#os.path.join(cocoapi_dir, "cocoapi", "annotations/captions_val2014.json"), "r"
+		os.path.join(cocoapi_dir, "annotations/captions_val2017.json"), "r"
+	) as f:
+		caption = json.load(f)
 
-with open(
-    #os.path.join(cocoapi_dir, "cocoapi", "annotations/captions_val2014.json"), "r"
-    os.path.join(cocoapi_dir, "annotations/captions_val2017.json"), "r"
-) as f:
-    caption = json.load(f)
+	valid_annot = caption["annotations"]
+	valid_result = defaultdict(list)
+	for i in valid_annot:
+		valid_result[i["image_id"]].append(i["caption"].lower())
 
-valid_annot = caption["annotations"]
-valid_result = defaultdict(list)
-for i in valid_annot:
-    valid_result[i["image_id"]].append(i["caption"].lower())
+	print(list(valid_result.values())[:3])
+	print(list(pred_result.values())[:3])
 
-print(list(valid_result.values())[:3])
-print(list(pred_result.values())[:3])
+	bscore = bleu_score(
+		true_sentences=valid_result, 
+		predicted_sentences=pred_result,
+	)
+	print(f"BLEU score: {bscore}")
 
-bscore = bleu_score(
-    true_sentences=valid_result, 
-    predicted_sentences=pred_result,
-)
-print(f"BLEU score: {bscore}")
+validate_model()
