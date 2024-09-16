@@ -101,7 +101,7 @@ optimizer = torch.optim.Adam(params, lr=0.001)
 total_step = math.ceil(len(data_loader.dataset) / data_loader.batch_sampler.batch_size)
 
 print(f"total_step: {total_step}")
-
+print(f"TRAINING".center(150, "-"))
 f = open(log_file, "w")
 for epoch in range(1, num_epochs + 1):
 	for i_step in range(1, total_step + 1):
@@ -140,17 +140,14 @@ for epoch in range(1, num_epochs + 1):
 			print("\r" + stats)
 	# Save the weights.
 	if epoch % save_every == 0:
-		torch.save(
-			decoder.state_dict(), os.path.join(models_dir, decoder_fname)
-		)
-		torch.save(
-			encoder.state_dict(), os.path.join(models_dir, encoder_fname)
-		)
+		torch.save(decoder.state_dict(), os.path.join(models_dir, decoder_fname))
+		torch.save(encoder.state_dict(), os.path.join(models_dir, encoder_fname))
 
 # Close the training log file.
 f.close()
 
 def validate_model():
+	print(f"VALIDATION".center(150, "-"))
 	transform_test = transforms.Compose(
 		[
 			transforms.Resize(224),
