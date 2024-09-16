@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 
-
 # ----------- Encoder ------------
 class EncoderCNN(nn.Module):
     def __init__(self, embed_size):
@@ -21,7 +20,6 @@ class EncoderCNN(nn.Module):
         features = features.view(features.size(0), -1)
         features = self.embed(features)
         return features
-
 
 # --------- Decoder ----------
 class DecoderRNN(nn.Module):
