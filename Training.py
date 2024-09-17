@@ -22,17 +22,22 @@ from nlp_utils import clean_sentence, bleu_score
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
-print(HOME, USER)
 
 if USER=="alijanif":
-	cocoapi_dir = os.path.join("/scratch/project_2004072/IMG_Captioning", "MS_COCO")
-	log_file = os.path.join("/scratch/project_2004072/IMG_Captioning", "trash", "training_log.txt") # name of file with saved training loss and perplexity
+	WDIR = "/scratch/project_2004072/IMG_Captioning"
+	cocoapi_dir = os.path.join(WDIR, "MS_COCO")
+	log_file = os.path.join(WDIR, "trash", "logs", "training_log.txt") # name of file with saved training loss and perplexity
+	models_dir = os.path.join(WDIR, "models")
 else:
-	cocoapi_dir = os.path.join(HOME, "datasets/MS_COCO")
-	log_file = os.path.join(HOME, "datasets", "trash", "training_log.txt") # name of file with saved training loss and perplexity
+	WDIR = "datasets"
+	cocoapi_dir = os.path.join(HOME, WDIR, "MS_COCO")
+	log_file = os.path.join(HOME, WDIR, "trash", "logs", "training_log.txt") # name of file with saved training loss and perplexity
+	models_dir = os.path.join(HOME, WDIR, "trash", "models")
 
-print(f"COCO DIR: {cocoapi_dir}")
+print(f"USR: {USER} | WDIR: {WDIR} | HOME: {HOME}".center(150, " "))
+print(f"DATASET DIR: {cocoapi_dir}")
 print(f"training_log file: {log_file}")
+print(f"models_dir: {models_dir}")
 
 batch_size = 128  # batch size
 vocab_threshold = 5  # minimum word count threshold
@@ -41,11 +46,14 @@ embed_size = 256  # dimensionality of image and word embeddings
 hidden_size = 512  # number of features in hidden state of the RNN decoder
 num_epochs = 3  # training epochs
 save_every = 1  # determines frequency of saving model weights
-print_every = 200  # determines window for printing average loss
+print_every = 5  # determines window for printing average loss
+os.makedirs(models_dir, exist_ok=True)
 
-models_dir = os.makedirs("models", exist_ok=True)
 encoder_fname = f"encoder_{num_epochs}_nEpochs.pkl"
 decoder_fname = f"decoder_{num_epochs}_nEpochs.pkl"
+
+print(f"Encoder fpath: {os.path.join(models_dir, encoder_fname)}")
+print(f"Decoder fpath: {os.path.join(models_dir, decoder_fname)}")
 
 folders = [folder for folder in os.listdir(cocoapi_dir)]
 print(folders)
