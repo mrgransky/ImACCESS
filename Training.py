@@ -27,7 +27,7 @@ if USER=="alijanif":
 	WDIR = "/scratch/project_2004072/IMG_Captioning"
 	cocoapi_dir = os.path.join(WDIR, "MS_COCO")
 	log_file = os.path.join(WDIR, "trash", "logs", "training_log.txt") # name of file with saved training loss and perplexity
-	models_dir = os.path.join(WDIR, "models")
+	models_dir = os.path.join(WDIR, "trash", "models")
 else:
 	WDIR = "datasets"
 	cocoapi_dir = os.path.join(HOME, WDIR, "MS_COCO")
