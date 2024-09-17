@@ -46,7 +46,7 @@ embed_size = 256  # dimensionality of image and word embeddings
 hidden_size = 512  # number of features in hidden state of the RNN decoder
 num_epochs = 3  # training epochs
 save_every = 1  # determines frequency of saving model weights
-print_every = 5  # determines window for printing average loss
+print_every = 200  # determines window for printing average loss
 os.makedirs(models_dir, exist_ok=True)
 
 encoder_fname = f"encoder_{num_epochs}_nEpochs.pkl"
