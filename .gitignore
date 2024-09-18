@@ -1,5 +1,10 @@
 # Project
 models
+TEST_IMGs
+*.JPG
+*.jpeg
+*.png
+*.jpg
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

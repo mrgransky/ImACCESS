@@ -2,6 +2,7 @@ import math
 import json
 import os
 import sys
+import time
 import numpy as np
 
 from data_loader import get_loader
@@ -34,7 +35,7 @@ else:
 	log_file = os.path.join(HOME, WDIR, "trash", "logs", "training_log.txt") # name of file with saved training loss and perplexity
 	models_dir = os.path.join(HOME, WDIR, "trash", "models")
 
-print(f"USR: {USER} | WDIR: {WDIR} | HOME: {HOME}".center(150, " "))
+print(f"USR: {USER} | WDIR: {WDIR} | HOME: {HOME}".center(100, " "))
 print(f"DATASET DIR: {cocoapi_dir}")
 print(f"training_log file: {log_file}")
 print(f"models_dir: {models_dir}")
@@ -44,9 +45,9 @@ vocab_threshold = 5  # minimum word count threshold
 vocab_from_file = True  # if True, load existing vocab file
 embed_size = 256  # dimensionality of image and word embeddings
 hidden_size = 512  # number of features in hidden state of the RNN decoder
-num_epochs = 3  # training epochs
+num_epochs = 30 # training epochs
 save_every = 1  # determines frequency of saving model weights
-print_every = 200  # determines window for printing average loss
+print_every = 500  # determines window for printing average loss
 os.makedirs(models_dir, exist_ok=True)
 
 encoder_fname = f"encoder_{num_epochs}_nEpochs.pkl"
@@ -57,6 +58,32 @@ print(f"Decoder fpath: {os.path.join(models_dir, decoder_fname)}")
 
 folders = [folder for folder in os.listdir(cocoapi_dir)]
 print(folders)
+
+def count_jpg_files(directory_path):
+	"""
+	Counts the number of files ending with the suffix "jpg" in a given directory.
+
+	Args:
+			directory_path (str): The path to the directory.
+
+	Returns:
+			int: The number of JPG files found.
+	"""
+
+	# Get a list of all files in the directory
+	files = os.listdir(directory_path)
+
+	# Count files with the ".jpg" extension
+	jpg_count = 0
+	for file in files:
+		if file.endswith(".jpg"):
+			jpg_count += 1
+
+	return jpg_count
+
+nTrainIMGs = count_jpg_files(directory_path=os.path.join(cocoapi_dir, "images", "train2017"))
+nValIMGs = count_jpg_files(directory_path=os.path.join(cocoapi_dir, "images", "val2017"))
+print(f"Training IMGs: {nTrainIMGs} | Validation IMGs: {nValIMGs}")
 
 transform_train = transforms.Compose(
 	[
@@ -71,7 +98,8 @@ transform_train = transforms.Compose(
 	]
 )
 
-# Build data loader.
+print(f"Creating Train DataLoader for total of {nTrainIMGs} train images".center(150, "-"))
+train_dloader_st = time.time()
 data_loader = get_loader(
 	transform=transform_train,
 	mode="train",
@@ -80,6 +108,7 @@ data_loader = get_loader(
 	vocab_from_file=vocab_from_file,
 	cocoapi_loc=cocoapi_dir,
 )
+print(f"Elapsed_t: {time.time()-train_dloader_st:.1f} sec".center(150, "-"))
 
 # The size of the vocabulary.
 vocab_size = len(data_loader.dataset.vocab)
@@ -148,8 +177,10 @@ for epoch in range(1, num_epochs + 1):
 			print("\r" + stats)
 	# Save the weights.
 	if epoch % save_every == 0:
+		print(f"Saving checkpoint @ epoch: {epoch} ...")
 		torch.save(decoder.state_dict(), os.path.join(models_dir, decoder_fname))
 		torch.save(encoder.state_dict(), os.path.join(models_dir, encoder_fname))
+		print(f"DONE!")
 
 # Close the training log file.
 f.close()
@@ -190,6 +221,7 @@ def validate_model():
 	decoder.eval()
 
 	# infer captions for all images
+	print(f">> Collecting all captions for all images in Validation Set...")
 	pred_result = defaultdict(list)
 	for img_id, img in tqdm(val_data_loader):
 		img = img.to(device)
@@ -199,22 +231,19 @@ def validate_model():
 		sentence = clean_sentence(output, val_data_loader.dataset.vocab.idx2word)
 		pred_result[img_id.item()].append(sentence)
 
-	with open(
-		#os.path.join(cocoapi_dir, "cocoapi", "annotations/captions_val2014.json"), "r"
-		os.path.join(cocoapi_dir, "annotations/captions_val2017.json"), "r"
-	) as f:
+	with open(os.path.join(cocoapi_dir, "annotations/captions_val2017.json"), "r") as f:
 		caption = json.load(f)
 
 	valid_annot = caption["annotations"]
 	valid_result = defaultdict(list)
 	for i in valid_annot:
 		valid_result[i["image_id"]].append(i["caption"].lower())
-
-	print(list(valid_result.values())[:3])
-	print(list(pred_result.values())[:3])
+	
+	print(f"Validation Results:\n{list(valid_result.values())[:3]}")
+	print(f"Prediction Results:\n{list(pred_result.values())[:3]}")
 
 	bscore = bleu_score(
-		true_sentences=valid_result, 
+		true_sentences=valid_result,
 		predicted_sentences=pred_result,
 	)
 	print(f"BLEU score: {bscore}")
