@@ -19,6 +19,7 @@ __pycache__/
 .Python
 build/
 openpose/build/
+openpose/output/
 develop-eggs/
 dist/
 downloads/
