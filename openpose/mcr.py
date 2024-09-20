@@ -193,7 +193,14 @@ def main():
 
 	if len(sys.argv) == 3:
 		outputImageFolder = sys.argv[2]
-	file_list = [f for f in os.listdir(base_folder) if os.path.isfile(os.path.join(base_folder, f))]
+	
+	file_list = [
+		f 
+		for f in os.listdir(base_folder) 
+		if os.path.isfile(os.path.join(base_folder, f)) and f.lower().endswith(('.jpg', '.jpeg', '.png'))
+	]
+
+	print(file_list)
 
 	datum = op.Datum()
 	os.makedirs('outputs', exist_ok=True)
