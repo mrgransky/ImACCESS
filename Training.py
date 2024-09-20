@@ -45,7 +45,7 @@ vocab_threshold = 5  # minimum word count threshold
 vocab_from_file = True  # if True, load existing vocab file
 embed_size = 256  # dimensionality of image and word embeddings
 hidden_size = 512  # number of features in hidden state of the RNN decoder
-num_epochs = 30 # training epochs
+num_epochs = 20 # training epochs
 save_every = 1  # determines frequency of saving model weights
 print_every = 500  # determines window for printing average loss
 os.makedirs(models_dir, exist_ok=True)
@@ -139,7 +139,6 @@ total_step = math.ceil(len(data_loader.dataset) / data_loader.batch_sampler.batc
 
 print(f"total_step: {total_step}")
 print(f"TRAINING".center(150, "-"))
-f = open(log_file, "w")
 for epoch in range(1, num_epochs + 1):
 	for i_step in range(1, total_step + 1):
 		# Randomly sample a caption length, and sample indices with that length.
@@ -169,10 +168,6 @@ for epoch in range(1, num_epochs + 1):
 			f"Epoch [{epoch}/{num_epochs}], Step [{i_step}/{total_step}], "
 			f"Loss: {loss.item():.4f}, Perplexity: {np.exp(loss.item()):.4f}"
 		)
-		# Print training statistics to file.
-		f.write(stats + "\n")
-		f.flush()
-		# Print training statistics (on different line).
 		if i_step % print_every == 0:
 			print("\r" + stats)
 	# Save the weights.
@@ -181,9 +176,6 @@ for epoch in range(1, num_epochs + 1):
 		torch.save(decoder.state_dict(), os.path.join(models_dir, decoder_fname))
 		torch.save(encoder.state_dict(), os.path.join(models_dir, encoder_fname))
 		print(f"DONE!")
-
-# Close the training log file.
-f.close()
 
 def validate_model():
 	print(f"VALIDATION".center(150, "-"))
