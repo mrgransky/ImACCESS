@@ -44,9 +44,9 @@ vocab_threshold = 5  # minimum word count threshold
 vocab_from_file = True  # if True, load existing vocab file
 embed_size = 256  # dimensionality of image and word embeddings
 hidden_size = 512  # number of features in hidden state of the RNN decoder
-num_epochs = 20 # training epochs
+num_epochs = 24 # training epochs
 save_every = 1  # determines frequency of saving model weights
-print_every = 500  # determines window for printing average loss
+print_every = 1000  # determines window for printing average loss
 os.makedirs(models_dir, exist_ok=True)
 
 encoder_fname = f"encoder_{num_epochs}_nEpochs.pkl"
