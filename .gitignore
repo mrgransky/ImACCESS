@@ -1,5 +1,4 @@
 # Project
-models
 TEST_IMGs
 *.JPG
 *.jpeg
@@ -18,8 +17,6 @@ __pycache__/
 .Python
 build/
 openpose/build/
-openpose/models/
-openpose/examples/media/
 develop-eggs/
 dist/
 downloads/
