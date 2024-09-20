@@ -211,6 +211,7 @@ def main():
 		file_counter = 0
 		for filename in file_list:
 			fpth: str = (os.path.join(base_folder, filename))
+			print(f"IMG path: {fpth}")
 			imageToProcess = cv2.imread(fpth)
 			print(fpth, type(imageToProcess), imageToProcess.shape)
 			if imageToProcess is None:
