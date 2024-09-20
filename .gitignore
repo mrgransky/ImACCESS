@@ -1,9 +1,5 @@
 # Project
 TEST_IMGs
-*.JPG
-*.jpeg
-*.png
-*.jpg
 *.caffemodel
 *.csv
 
