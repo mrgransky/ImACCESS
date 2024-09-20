@@ -14,7 +14,6 @@ import torch.utils.data as data
 import torch
 import torch.nn as nn
 import torchvision.models as models
-
 from pycocotools.coco import COCO
 from torchvision import transforms
 from tqdm.notebook import tqdm

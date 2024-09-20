@@ -193,7 +193,6 @@ def main():
 
 	if len(sys.argv) == 3:
 		outputImageFolder = sys.argv[2]
-
 	file_list = [f for f in os.listdir(base_folder) if os.path.isfile(os.path.join(base_folder, f))]
 
 	datum = op.Datum()

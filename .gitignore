@@ -5,6 +5,7 @@ TEST_IMGs
 *.png
 *.jpg
 *.caffemodel
+*.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
