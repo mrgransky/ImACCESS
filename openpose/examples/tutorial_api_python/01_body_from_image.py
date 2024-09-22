@@ -7,7 +7,11 @@ from sys import platform
 import argparse
 
 # projDIR = os.path.dirname(os.path.realpath(__file__))
-projDIR = f"/home/farid/WS_Farid/ImACCESS/openpose"
+HOME: str = os.getenv('HOME') # echo $HOME
+USER: str = os.getenv('USER') # echo $USER
+print(f"USR: {USER} | HOME: {HOME}".center(100, " "))
+
+projDIR = f"{HOME}/WS_Farid/ImACCESS/openpose"
 print(projDIR)
 
 try:
