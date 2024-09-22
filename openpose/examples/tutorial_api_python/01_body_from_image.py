@@ -44,9 +44,12 @@ try:
 
 		# Flags
 		parser = argparse.ArgumentParser()
-		parser.add_argument("--image_path", default="../../examples/media/COCO_val2014_000000000192.jpg", help="Process an image. Read all standard formats (jpg, png, bmp, etc.).")
+		parser.add_argument("--image_path", default="../../examples/media/COCO_val2014_000000000192.jpg", help="Input image. standard formats (jpg, png, bmp, etc.).")
 		args = parser.parse_known_args()
-
+		print(args)
+		print(args[0])
+		print(args[1])
+		
 		# Custom Params (refer to include/openpose/flags.hpp for more parameters)
 		params = dict()
 		params["model_folder"] = "../../models/"
@@ -62,6 +65,8 @@ try:
 				elif "--" in curr_item and "--" not in next_item:
 						key = curr_item.replace('-','')
 						if key not in params: params[key] = next_item
+
+		print(params)
 
 		# Construct it from system arguments
 		# op.init_argv(args[1])

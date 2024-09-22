@@ -167,7 +167,7 @@ def main():
 	output_filename = os.path.join("outputs", f"{output_filename}.csv")
 	print(output_filename)
 
-	print(f">> Starting OpenPose Python Wrapper...")
+	print(f">> Starting OpenPose Python Wrapper with parameters: {params}")
 	opWrapper = op.WrapperPython()
 	opWrapper.configure(params)
 	opWrapper.start()
