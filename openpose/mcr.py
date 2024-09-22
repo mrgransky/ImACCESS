@@ -209,164 +209,275 @@ def main():
 	output_filename = 'outputs/' + output_filename + '.csv'
 	print(output_filename)
 	print(output_filename)
-
 	with open(output_filename, 'w', newline='') as file:
-		writer = csv.writer(file)
-		writer.writerow(["Filename", "Main Character Face Bounding Box"])
-		printProgressBar(0, len(file_list), prefix='Progress:', suffix='Complete', length=50)
-		file_counter = 0
-		for filename in file_list:
-			fpth: str = (os.path.join(base_folder, filename))
-			print(f"IMG path: {fpth}")
-			imageToProcess = cv2.imread(fpth)
-			print(fpth, type(imageToProcess), imageToProcess.shape)
-			if imageToProcess is None:
-				continue
-			scale_percent = 50 if imageToProcess.shape[1] > 300 else 100
-			width = int(imageToProcess.shape[1] * scale_percent / 100)
-			height = int(imageToProcess.shape[0] * scale_percent / 100)
-			print(f"IMG (w, h): ({width}, {height})")
-			dim = (width, height)
-			imageToProcess = cv2.resize(imageToProcess, dim, cv2.INTER_AREA)
-			print(f"Resized IMG: {type(imageToProcess)} | {imageToProcess.shape}")
-			image_width = imageToProcess.shape[1]
-			image_height = imageToProcess.shape[0]
-			image_center_x = (image_width / 2)
-			image_center_y = (image_height / 2)
-			diagonal_over_2 = math.sqrt(image_width**2 + image_height**2) / 2
-			print(f">> datum.cvInputData")
-			datum.cvInputData = imageToProcess
-			print(f">> opWrapper.emplaceAndPop")
-			opWrapper.emplaceAndPop(op.VectorDatum([datum]))
-			print(f">> datum.poseKeypoints")
-			keypoints = datum.poseKeypoints
-			print(f"keypoints: {keypoints}")
-			if keypoints is not None:
-				facial_rectangles, gazes, associated_keypoints = face_rectangles(keypoints, image_width, image_height)
-				if len(facial_rectangles) == 0:
-					continue
-				image_to_write = imageToProcess
-				blur_values = []
-				areas = []
-				positionValues = []
-				for rect in facial_rectangles:
-					rect_center_x = (rect[0][0] + rect[1][0])/2
-					rect_center_y = (rect[0][1] + rect[1][1])/2
-					distance_to_center_x = abs(rect_center_x-image_center_x)
-					distance_to_center_y = abs(rect_center_y-image_center_y)
-					distance_to_center = math.sqrt(distance_to_center_x**2 + distance_to_center_y**2)
-					positionValue = diagonal_over_2-distance_to_center
-					positionValues.append(positionValue)
-					crop_img = image_to_write[int(rect[0][1]):int(rect[1][1]), int(rect[0][0]):int(rect[1][0])]
-					blur = 0 if crop_img.shape[0] == 0 or crop_img.shape[1] == 0 else getBlurValue(crop_img)				
-					blur_values.append(blur)
-					area = int(abs(rect[0][0]-rect[1][0]) * abs(rect[0][1]-rect[1][1]))
-					areas.append(area)
-				normGazeValues = []
-				for gaze_direction in gazes:
-					if gaze_direction == 'direct':
-						normGazeValues.append(1)
-					if gaze_direction == 'right' or gaze_direction == 'left':
-						normGazeValues.append(1)
-					if gaze_direction == 'undefined' or gaze_direction == 'away':
-						normGazeValues.append(0)
-				blurImportance = 3
-				areaImportance = 3.5
-				positionImportance = 1.2
-				blur_values = [a * b for a, b in zip(blur_values, normGazeValues)]
-				areas = [a * b for a, b in zip(areas, normGazeValues)]
-				positionValues = [a * b for a, b in zip(positionValues, normGazeValues)]
-				if len(blur_values) == 1:
-					blur_values[0] = 1
-					areas[0] = 1
-					positionValues[0] = 1
-				normBlurs = [blurImportance * (blr / max(blur_values)) for blr in blur_values]
-				for i in range(len(normBlurs)):
-					if math.isnan(normBlurs[i]):
-						normBlurs[i] = 0
-				normAreas = [areaImportance*(i / max(areas))  for i in areas]
-				normPositionValues = [positionImportance * (i / max(positionValues)) for i in positionValues]
-				normFocusValues = list(map(add, normBlurs, normAreas))
-				normFocusValues = list(map(add, normFocusValues, normPositionValues))
-				normFocusValues = [a * b for a, b in zip(normFocusValues, normGazeValues)]
-				if len(normFocusValues) == 1:
-					normFocusValues[0] = 1
-				normFocusValues = [i / max(normFocusValues) for i in normFocusValues]
-				predictedMainCharacters = []
-				for normFocusValue in normFocusValues:
-					if len(normFocusValues) == 2:
-						if normFocusValue > 0.86:
-							predictedMainCharacters.append(True)
-						else:
-							predictedMainCharacters.append(False)
-					else:
-						if normFocusValue > 0.92:
-							predictedMainCharacters.append(True)
-						else:
-							predictedMainCharacters.append(False)
-				gaze_index = 0
-				rect_index = 0
-				for rect in facial_rectangles:
-					if not predictedMainCharacters[rect_index]:
-						cv2.rectangle(image_to_write, (int(rect[0][0]), int(rect[0][1])), (int(rect[1][0]), int(rect[1][1])), (0, 0, 255), 4)
-					else:
-						cv2.rectangle(image_to_write, (int(rect[0][0]), int(rect[0][1])), (int(rect[1][0]), int(rect[1][1])), (0, 255, 0), 4)
-					rect_index += 1
-					gaze_index += 1
-				if len(sys.argv) == 3:
-					cv2.imwrite(outputImageFolder + filename, image_to_write)
-			else:
-				if len(sys.argv) == 3:
-					cv2.imwrite(outputImageFolder + filename, imageToProcess)
-			if facial_rectangles is not None and predictedMainCharacters is not None:
-				rect_index = 0
-				for rect in facial_rectangles:
-					if predictedMainCharacters[rect_index]:
-						writer.writerow([filename, '[' + str(100/scale_percent * rect[0][0]) + ',' + str(100/scale_percent * rect[0][1]) + ',' + str(100/scale_percent * rect[1][0]) + ',' + str(100/scale_percent * rect[1][1]) + ']'])
-					rect_index += 1
-			# Update Progress Bar
-			printProgressBar(file_counter + 1, len(file_list), prefix='Progress:', suffix='Complete', length=50)
-			file_counter += 1
+
+					writer = csv.writer(file)
+					writer.writerow(["Filename", "Main Character Face Bounding Box"])
+
+					printProgressBar(0, len(file_list), prefix='Progress:', suffix='Complete', length=50)
+
+					file_counter = 0
+					for filename in file_list:
+							 # Read image and face rectangle locations
+							 imageToProcess = cv2.imread(base_folder + filename)
+							 if imageToProcess is None:
+										continue
+
+							 if imageToProcess.shape[1] > 3000:
+										scale_percent = 50
+							 else:
+										scale_percent = 100
+							 width = int(imageToProcess.shape[1] * scale_percent / 100)
+							 height = int(imageToProcess.shape[0] * scale_percent / 100)
+							 dim = (width, height)
+							 imageToProcess = cv2.resize(imageToProcess, dim, cv2.INTER_AREA)
+							 image_width = imageToProcess.shape[1]
+							 image_height = imageToProcess.shape[0]
+
+							 image_center_x = (image_width / 2)
+							 image_center_y = (image_height / 2)
+
+							 diagonal_over_2 = math.sqrt(image_width**2 + image_height**2) / 2
+
+							 # Create new datum
+							 datum.cvInputData = imageToProcess
+
+							 # Process and display image
+							 opWrapper.emplaceAndPop(op.VectorDatum([datum]))
+
+							 keypoints = datum.poseKeypoints
+							 if keypoints is not None:
+										facial_rectangles, gazes, associated_keypoints = face_rectangles(keypoints, image_width, image_height)
+										if len(facial_rectangles) == 0:
+												 continue
+
+										image_to_write = imageToProcess
+
+										blur_values = []
+										areas = []
+										positionValues = []
+
+										for rect in facial_rectangles:
+												 rect_center_x = (rect[0][0] + rect[1][0])/2
+												 rect_center_y = (rect[0][1] + rect[1][1])/2
+
+												 distance_to_center_x = abs(rect_center_x-image_center_x)
+												 distance_to_center_y = abs(rect_center_y-image_center_y)
+												 distance_to_center = math.sqrt(distance_to_center_x**2 + distance_to_center_y**2)
+
+												 positionValue = diagonal_over_2-distance_to_center
+												 positionValues.append(positionValue)
+
+
+												 crop_img = image_to_write[int(rect[0][1]):int(rect[1][1]), int(rect[0][0]):int(rect[1][0])]
+
+												 if crop_img.shape[0] == 0 or crop_img.shape[1] == 0:
+															blur = 0
+												 else:
+															blur = getBlurValue(crop_img)
+												 blur_values.append(blur)
+												 area = int(abs(rect[0][0]-rect[1][0]) * abs(rect[0][1]-rect[1][1]))
+												 areas.append(area)
+
+										normGazeValues = []
+										for gaze_direction in gazes:
+												 if gaze_direction == 'direct':
+															normGazeValues.append(1)
+												 if gaze_direction == 'right' or gaze_direction == 'left':
+															normGazeValues.append(1)
+												 if gaze_direction == 'undefined' or gaze_direction == 'away':
+															normGazeValues.append(0)
+
+										blurImportance = 3
+										areaImportance = 3.5
+										positionImportance = 1.2
+
+										blur_values = [a * b for a, b in zip(blur_values, normGazeValues)]
+										areas = [a * b for a, b in zip(areas, normGazeValues)]
+										positionValues = [a * b for a, b in zip(positionValues, normGazeValues)]
+
+										if len(blur_values) == 1:
+												 blur_values[0] = 1
+												 areas[0] = 1
+												 positionValues[0] = 1
+
+										normBlurs = [blurImportance * (blr / max(blur_values)) for blr in blur_values]
+
+										for i in range(len(normBlurs)):
+												 if math.isnan(normBlurs[i]):
+															normBlurs[i] = 0
+
+										normAreas = [areaImportance*(i / max(areas))  for i in areas]
+
+										normPositionValues = [positionImportance * (i / max(positionValues)) for i in positionValues]
+
+										normFocusValues = list(map(add, normBlurs, normAreas))
+										normFocusValues = list(map(add, normFocusValues, normPositionValues))
+										normFocusValues = [a * b for a, b in zip(normFocusValues, normGazeValues)]
+
+										if len(normFocusValues) == 1:
+												 normFocusValues[0] = 1
+
+										normFocusValues = [i / max(normFocusValues) for i in normFocusValues]
+
+										predictedMainCharacters = []
+										for normFocusValue in normFocusValues:
+												 if len(normFocusValues) == 2:
+															if normFocusValue > 0.86:
+																	 predictedMainCharacters.append(True)
+															else:
+																	 predictedMainCharacters.append(False)
+												 else:
+															if normFocusValue > 0.92:
+																	 predictedMainCharacters.append(True)
+															else:
+																	 predictedMainCharacters.append(False)
+
+										gaze_index = 0
+
+										rect_index = 0
+										for rect in facial_rectangles:
+												 if not predictedMainCharacters[rect_index]:
+															cv2.rectangle(image_to_write, (int(rect[0][0]), int(rect[0][1])), (int(rect[1][0]), int(rect[1][1])), (0, 0, 255), 4)
+												 else:
+															cv2.rectangle(image_to_write, (int(rect[0][0]), int(rect[0][1])),
+																						(int(rect[1][0]), int(rect[1][1])), (0, 255, 0), 4)
+												 rect_index += 1
+												 gaze_index += 1
+
+										if len(sys.argv) == 3:
+												 cv2.imwrite(outputImageFolder + filename, image_to_write)
+
+							 else:
+										if len(sys.argv) == 3:
+												 cv2.imwrite(outputImageFolder + filename, imageToProcess)
+
+							 if facial_rectangles is not None and predictedMainCharacters is not None:
+										 rect_index = 0
+										 for rect in facial_rectangles:
+													if predictedMainCharacters[rect_index]:
+															 writer.writerow([filename, '[' + str(100/scale_percent * rect[0][0]) + ',' + str(100/scale_percent * rect[0][1]) + ',' + str(100/scale_percent * rect[1][0]) + ',' + str(100/scale_percent * rect[1][1]) + ']'])
+													rect_index += 1
+							 # Update Progress Bar
+							 printProgressBar(file_counter + 1, len(file_list), prefix='Progress:', suffix='Complete', length=50)
+							 file_counter += 1
+	# with open(output_filename, 'w', newline='') as file:
+	# 	writer = csv.writer(file)
+	# 	writer.writerow(["Filename", "Main Character Face Bounding Box"])
+	# 	printProgressBar(0, len(file_list), prefix='Progress:', suffix='Complete', length=50)
+	# 	file_counter = 0
+	# 	for filename in file_list:
+	# 		fpth: str = (os.path.join(base_folder, filename))
+	# 		print(f"IMG path: {fpth}")
+	# 		imageToProcess = cv2.imread(fpth)
+	# 		print(fpth, type(imageToProcess), imageToProcess.shape)
+	# 		if imageToProcess is None:
+	# 			continue
+	# 		scale_percent = 50 if imageToProcess.shape[1] > 300 else 100
+	# 		width = int(imageToProcess.shape[1] * scale_percent / 100)
+	# 		height = int(imageToProcess.shape[0] * scale_percent / 100)
+	# 		print(f"IMG (w, h): ({width}, {height})")
+	# 		dim = (width, height)
+	# 		imageToProcess = cv2.resize(imageToProcess, dim, cv2.INTER_AREA)
+	# 		print(f"Resized IMG: {type(imageToProcess)} | {imageToProcess.shape}")
+	# 		image_width = imageToProcess.shape[1]
+	# 		image_height = imageToProcess.shape[0]
+	# 		image_center_x = (image_width / 2)
+	# 		image_center_y = (image_height / 2)
+	# 		diagonal_over_2 = math.sqrt(image_width**2 + image_height**2) / 2
+	# 		print(f">> datum.cvInputData")
+	# 		datum.cvInputData = imageToProcess
+	# 		print(f">> opWrapper.emplaceAndPop")
+	# 		opWrapper.emplaceAndPop(op.VectorDatum([datum]))
+	# 		print(f">> datum.poseKeypoints")
+	# 		keypoints = datum.poseKeypoints
+	# 		print(f"keypoints: {keypoints}")
+	# 		if keypoints is not None:
+	# 			facial_rectangles, gazes, associated_keypoints = face_rectangles(keypoints, image_width, image_height)
+	# 			if len(facial_rectangles) == 0:
+	# 				continue
+	# 			image_to_write = imageToProcess
+	# 			blur_values = []
+	# 			areas = []
+	# 			positionValues = []
+	# 			for rect in facial_rectangles:
+	# 				rect_center_x = (rect[0][0] + rect[1][0])/2
+	# 				rect_center_y = (rect[0][1] + rect[1][1])/2
+	# 				distance_to_center_x = abs(rect_center_x-image_center_x)
+	# 				distance_to_center_y = abs(rect_center_y-image_center_y)
+	# 				distance_to_center = math.sqrt(distance_to_center_x**2 + distance_to_center_y**2)
+	# 				positionValue = diagonal_over_2-distance_to_center
+	# 				positionValues.append(positionValue)
+	# 				crop_img = image_to_write[int(rect[0][1]):int(rect[1][1]), int(rect[0][0]):int(rect[1][0])]
+	# 				blur = 0 if crop_img.shape[0] == 0 or crop_img.shape[1] == 0 else getBlurValue(crop_img)				
+	# 				blur_values.append(blur)
+	# 				area = int(abs(rect[0][0]-rect[1][0]) * abs(rect[0][1]-rect[1][1]))
+	# 				areas.append(area)
+	# 			normGazeValues = []
+	# 			for gaze_direction in gazes:
+	# 				if gaze_direction == 'direct':
+	# 					normGazeValues.append(1)
+	# 				if gaze_direction == 'right' or gaze_direction == 'left':
+	# 					normGazeValues.append(1)
+	# 				if gaze_direction == 'undefined' or gaze_direction == 'away':
+	# 					normGazeValues.append(0)
+	# 			blurImportance = 3
+	# 			areaImportance = 3.5
+	# 			positionImportance = 1.2
+	# 			blur_values = [a * b for a, b in zip(blur_values, normGazeValues)]
+	# 			areas = [a * b for a, b in zip(areas, normGazeValues)]
+	# 			positionValues = [a * b for a, b in zip(positionValues, normGazeValues)]
+	# 			if len(blur_values) == 1:
+	# 				blur_values[0] = 1
+	# 				areas[0] = 1
+	# 				positionValues[0] = 1
+	# 			normBlurs = [blurImportance * (blr / max(blur_values)) for blr in blur_values]
+	# 			for i in range(len(normBlurs)):
+	# 				if math.isnan(normBlurs[i]):
+	# 					normBlurs[i] = 0
+	# 			normAreas = [areaImportance*(i / max(areas))  for i in areas]
+	# 			normPositionValues = [positionImportance * (i / max(positionValues)) for i in positionValues]
+	# 			normFocusValues = list(map(add, normBlurs, normAreas))
+	# 			normFocusValues = list(map(add, normFocusValues, normPositionValues))
+	# 			normFocusValues = [a * b for a, b in zip(normFocusValues, normGazeValues)]
+	# 			if len(normFocusValues) == 1:
+	# 				normFocusValues[0] = 1
+	# 			normFocusValues = [i / max(normFocusValues) for i in normFocusValues]
+	# 			predictedMainCharacters = []
+	# 			for normFocusValue in normFocusValues:
+	# 				if len(normFocusValues) == 2:
+	# 					if normFocusValue > 0.86:
+	# 						predictedMainCharacters.append(True)
+	# 					else:
+	# 						predictedMainCharacters.append(False)
+	# 				else:
+	# 					if normFocusValue > 0.92:
+	# 						predictedMainCharacters.append(True)
+	# 					else:
+	# 						predictedMainCharacters.append(False)
+	# 			gaze_index = 0
+	# 			rect_index = 0
+	# 			for rect in facial_rectangles:
+	# 				if not predictedMainCharacters[rect_index]:
+	# 					cv2.rectangle(image_to_write, (int(rect[0][0]), int(rect[0][1])), (int(rect[1][0]), int(rect[1][1])), (0, 0, 255), 4)
+	# 				else:
+	# 					cv2.rectangle(image_to_write, (int(rect[0][0]), int(rect[0][1])), (int(rect[1][0]), int(rect[1][1])), (0, 255, 0), 4)
+	# 				rect_index += 1
+	# 				gaze_index += 1
+	# 			if len(sys.argv) == 3:
+	# 				cv2.imwrite(outputImageFolder + filename, image_to_write)
+	# 		else:
+	# 			if len(sys.argv) == 3:
+	# 				cv2.imwrite(outputImageFolder + filename, imageToProcess)
+	# 		if facial_rectangles is not None and predictedMainCharacters is not None:
+	# 			rect_index = 0
+	# 			for rect in facial_rectangles:
+	# 				if predictedMainCharacters[rect_index]:
+	# 					writer.writerow([filename, '[' + str(100/scale_percent * rect[0][0]) + ',' + str(100/scale_percent * rect[0][1]) + ',' + str(100/scale_percent * rect[1][0]) + ',' + str(100/scale_percent * rect[1][1]) + ']'])
+	# 				rect_index += 1
+	# 		# Update Progress Bar
+	# 		printProgressBar(file_counter + 1, len(file_list), prefix='Progress:', suffix='Complete', length=50)
+	# 		file_counter += 1
 
 if __name__ == "__main__":
 	main()
-
-# # Flags
-# parser = argparse.ArgumentParser()
-# parser.add_argument("--image_path", default="examples/media/COCO_val2014_000000000192.jpg", help="Process an image. Read all standard formats (jpg, png, bmp, etc.).")
-# args = parser.parse_known_args()
-
-# # Custom Params (refer to include/openpose/flags.hpp for more parameters)
-# params = dict()
-# params["model_folder"] = "models"
-
-# # Add others in path?
-# for i in range(0, len(args[1])):
-# 			curr_item = args[1][i]
-# 			if i != len(args[1])-1: next_item = args[1][i+1]
-# 			else: next_item = "1"
-# 			if "--" in curr_item and "--" in next_item:
-# 					key = curr_item.replace('-','')
-# 					if key not in params:  params[key] = "1"
-# 			elif "--" in curr_item and "--" not in next_item:
-# 					key = curr_item.replace('-','')
-# 					if key not in params: params[key] = next_item
-
-# print(f"Staring OpenPose")
-# # Starting OpenPose
-# opWrapper = op.WrapperPython()
-# opWrapper.configure(params)
-# opWrapper.start()
-
-# print(f"Process Images..")
-# # Process Image
-# datum = op.Datum()
-# imageToProcess = cv2.imread(args[0].image_path)
-# datum.cvInputData = imageToProcess
-# opWrapper.emplaceAndPop(op.VectorDatum([datum]))
-
-# print(f"Display image")
-# # Display Image
-# print("Body keypoints: \n" + str(datum.poseKeypoints))
-# cv2.imshow("OpenPose 1.7.0 - Tutorial Python API", datum.cvOutputData)
-# cv2.waitKey(0)
