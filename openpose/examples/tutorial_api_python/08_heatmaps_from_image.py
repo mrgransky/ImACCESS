@@ -76,12 +76,14 @@
 # 				heatmap = heatmaps[counter, :, :].copy()
 # 				heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
 # 				combined = cv2.addWeighted(outputImageF, 0.5, heatmap, 0.5, 0)
+
 # 				cv2.imshow("OpenPose 1.7.0 - Tutorial Python API", combined)
 # 				key = cv2.waitKey(-1)
 # 				if key == 27:
 # 						break
 # 				counter += 1
 # 				counter = counter % num_maps
+
 # except Exception as e:
 # 		print(e)
 # 		sys.exit(-1)
@@ -160,6 +162,7 @@ try:
 		# Save images instead of displaying them
 		counter = 0
 		while True:
+				print(f"heatmaps: {heatmaps.shape}")
 				num_maps = heatmaps.shape[0]
 				heatmap = heatmaps[counter, :, :].copy()
 				heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
