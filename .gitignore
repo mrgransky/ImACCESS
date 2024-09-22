@@ -1,19 +1,21 @@
 # Project
 TEST_IMGs
-*.caffemodel
 *.csv
+*.caffemodel
+
+# C extensions
+*.so
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 
-# C extensions
-*.so
-
 # Distribution / packaging
 .Python
 build/
+openpose/models/*/*.caffemodel
+openpose/models/*/*/*.caffemodel
 openpose/build/
 openpose/output/
 develop-eggs/
