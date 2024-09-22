@@ -150,6 +150,9 @@ def main():
 	params = dict()
 	params["model_folder"] = "models/"
 	params["body"] = 1
+	
+	facial_rectangles = None  # Initialize facial_rectangles to None
+	predictedMainCharacters = None  # Initialize predictedMainCharacters to None
 
 	opWrapper = op.WrapperPython()
 	opWrapper.configure(params)
@@ -180,8 +183,6 @@ def main():
 		writer.writerow(["Filename", "Main Character Face Bounding Box"])
 		printProgressBar(0, len(file_list), prefix='Progress:', suffix='Complete', length=50)
 		file_counter = 0
-		facial_rectangles = None
-		predictedMainCharacters = None
 		for filename in file_list:
 			fpth: str = (os.path.join(base_folder, filename))
 			print(f"IMG path: {fpth}")
@@ -295,7 +296,6 @@ def main():
 							writer.writerow([filename, '[' + str(100/scale_percent * rect[0][0]) + ',' + str(100/scale_percent * rect[0][1]) + ',' + str(100/scale_percent * rect[1][0]) + ',' + str(100/scale_percent * rect[1][1]) + ']'])
 						rect_index += 1
 			###############################################################################
-			# Update Progress Bar
 			printProgressBar(file_counter + 1, len(file_list), prefix='Progress:', suffix='Complete', length=50)
 			file_counter += 1
 
