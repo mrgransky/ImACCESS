@@ -1,24 +1,4 @@
-# import sys
-# import cv2
-# import os
-# from sys import platform
-# import argparse
-
-
-# HOME: str = os.getenv('HOME') # echo $HOME
-# USER: str = os.getenv('USER') # echo $USER
-# print(f"USR: {USER} | HOME: {HOME}".center(100, " "))
-
-# projDIR = f"{HOME}/WS_Farid/ImACCESS/openpose"
-# print(projDIR)
-
-# try:
-# 	sys.path.append(f'{projDIR}/build/python')
-# 	os.environ['LD_LIBRARY_PATH'] = f'{projDIR}/build/src/openpose:$LD_LIBRARY_PATH'
-# 	from openpose import pyopenpose as op
-# except Exception as e:
-# 	print(f"ERROR: {e}")
-# 	sys.exit()
+from utils import *
 
 # try:
 # 		parser = argparse.ArgumentParser()
@@ -88,37 +68,13 @@
 # 		print(e)
 # 		sys.exit(-1)
 
-import sys
-import cv2
-import os
-from sys import platform
-import argparse
-
-def extract_filename_without_suffix(file_path):
-	# Get the basename of the file path (removes directory)
-	basename = os.path.basename(file_path)
-	# Split the basename into filename and extension
-	filename, extension = os.path.splitext(basename)
-	return filename
-
-HOME: str = os.getenv('HOME') # echo $HOME
-USER: str = os.getenv('USER') # echo $USER
-print(f"USR: {USER} | HOME: {HOME}".center(100, " "))
-projDIR = f"{HOME}/WS_Farid/ImACCESS/openpose"
-print(projDIR)
-
-try:
-		sys.path.append(f'{projDIR}/build/python')
-		os.environ['LD_LIBRARY_PATH'] = f'{projDIR}/build/src/openpose:$LD_LIBRARY_PATH'
-		from openpose import pyopenpose as op
-except Exception as e:
-		print(f"ERROR: {e}")
-		sys.exit()
-
 try:
 		parser = argparse.ArgumentParser()
-		parser.add_argument("--image_path", default="../../examples/media/COCO_val2014_000000000192.jpg",
-												help="Process an image. Read all standard formats (jpg, png, bmp, etc.).")
+		parser.add_argument(
+			"--image_path", 
+			default="../../examples/media/COCO_val2014_000000000192.jpg",
+			help="Process an image. Read all standard formats (jpg, png, bmp, etc.)."
+		)
 		parser.add_argument("--output_dir", default="outputs")
 		args = parser.parse_known_args()
 		print(args)

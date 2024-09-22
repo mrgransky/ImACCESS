@@ -1,47 +1,7 @@
-# From Python
-# It requires OpenCV installed for Python
-import sys
-import cv2
-import os
-from sys import platform
-import argparse
+from utils import *
 
-# projDIR = os.path.dirname(os.path.realpath(__file__))
-HOME: str = os.getenv('HOME') # echo $HOME
-USER: str = os.getenv('USER') # echo $USER
-print(f"USR: {USER} | HOME: {HOME}".center(100, " "))
-
-projDIR = f"{HOME}/WS_Farid/ImACCESS/openpose"
-print(projDIR)
-
+		
 try:
-	sys.path.append(f'{projDIR}/build/python')
-	os.environ['LD_LIBRARY_PATH'] = f'{projDIR}/build/src/openpose:$LD_LIBRARY_PATH'
-	from openpose import pyopenpose as op
-except Exception as e:
-	print(f"ERROR: {e}")
-	sys.exit()
-
-try:
-# 		# Import Openpose (Windows/Ubuntu/OSX)
-# 		dir_path = os.path.dirname(os.path.realpath(__file__))
-# 		try:
-# 				# Windows Import
-# 				if platform == "win32":
-# 						# Change these variables to point to the correct folder (Release/x64 etc.)
-# 						sys.path.append(dir_path + '/../../python/openpose/Release');
-# 						os.environ['PATH']  = os.environ['PATH'] + ';' + dir_path + '/../../x64/Release;' +  dir_path + '/../../bin;'
-# 						import pyopenpose as op
-# 				else:
-# 						# Change these variables to point to the correct folder (Release/x64 etc.)
-# 						sys.path.append('../../python');
-# 						# If you run `make install` (default path is `/usr/local/python` for Ubuntu), you can also access the OpenPose/python module from there. This will install OpenPose and the python library at your desired installation path. Ensure that this is in your python path in order to use it.
-# 						# sys.path.append('/usr/local/python')
-# 						from openpose import pyopenpose as op
-# 		except ImportError as e:
-# 				print('Error: OpenPose library could not be found. Did you enable `BUILD_PYTHON` in CMake and have this Python script in the right folder?')
-# 				raise e
-
 		# Flags
 		parser = argparse.ArgumentParser()
 		parser.add_argument("--image_path", default="../../examples/media/COCO_val2014_000000000192.jpg", help="Input image. standard formats (jpg, png, bmp, etc.).")
@@ -50,6 +10,10 @@ try:
 		print(args[0])
 		print(args[1])
 		
+		img_name = extract_filename_without_suffix(file_path=args[0].image_path)
+		output_path = os.path.join(args[0].output_dir, f"result_{img_name}.png")
+		print(f">> Saving Output image in {output_path}")
+
 		# Custom Params (refer to include/openpose/flags.hpp for more parameters)
 		params = dict()
 		params["model_folder"] = "../../models/"
@@ -85,8 +49,9 @@ try:
 
 		# Display Image
 		print("Body keypoints: \n" + str(datum.poseKeypoints))
-		cv2.imshow("OpenPose 1.7.0 - Tutorial Python API", datum.cvOutputData)
-		cv2.waitKey(0)
+		cv2.imwrite(output_path, datum.cvOutputData)
+		# cv2.imshow("OpenPose 1.7.0 - Tutorial Python API", datum.cvOutputData)
+		# cv2.waitKey(0)
 except Exception as e:
 		print(e)
 		sys.exit(-1)
