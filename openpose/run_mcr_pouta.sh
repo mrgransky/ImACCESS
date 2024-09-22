@@ -1,8 +1,8 @@
 #!/bin/bash
 
 ## How to run:
-## $ nohup bash mcr_pouta.sh > /dev/null 2>&1 &
-## $ nohup bash mcr_pouta.sh > /media/volume/trash/IMG/mcr.out 2>&1 & # with output saved in logs.out
+## $ nohup bash run_mcr_pouta.sh > /dev/null 2>&1 &
+## $ nohup bash run_mcr_pouta.sh > /media/volume/trash/IMGs/results.out 2>&1 & # with output saved in logs.out
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
@@ -14,4 +14,6 @@ echo "${stars// /*}"
 HOME_DIR=$(echo $HOME)
 echo "HOME DIR $HOME_DIR"
 source $HOME_DIR/miniconda3/bin/activate py39
-python -u mcr_new.py
+
+python -u mcr.py examples/media/
+# python -u mcr_new.py

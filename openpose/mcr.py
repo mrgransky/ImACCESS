@@ -146,7 +146,7 @@ def main():
 	except Exception as e:
 		print(f"ERROR: {e}")
 		return
-	print(f"OpenPose successfully imported for Platform: {sys.platform} | project directory: {projDIR}")
+	print(f"OpenPose successfully imported for Platform: {sys.platform} | project DIR: {projDIR}")
 	params = dict()
 	params["model_folder"] = "models/"
 	params["body"] = 1
@@ -167,8 +167,8 @@ def main():
 	datum = op.Datum()
 	os.makedirs('outputs', exist_ok=True)
 	output_filename = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-	output_filename = 'outputs/' + output_filename + '.csv'
-	print(output_filename)
+	# output_filename = 'outputs/' + output_filename + '.csv'
+	output_filename = os.path.join("outputs", f"{output_filename}.csv")
 	print(output_filename)
 	with open(output_filename, 'w', newline='') as file:
 		writer = csv.writer(file)
