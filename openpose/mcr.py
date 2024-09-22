@@ -150,30 +150,22 @@ def main():
 	params = dict()
 	params["model_folder"] = "models/"
 	params["body"] = 1
-	
 	facial_rectangles = None  # Initialize facial_rectangles to None
 	predictedMainCharacters = None  # Initialize predictedMainCharacters to None
-
 	opWrapper = op.WrapperPython()
 	opWrapper.configure(params)
 	opWrapper.start()
-
 	base_folder = sys.argv[1]
-
 	if len(sys.argv) == 3:
 		outputImageFolder = sys.argv[2]
-	
 	file_list = [
 		f 
 		for f in os.listdir(base_folder) 
 		if os.path.isfile(os.path.join(base_folder, f)) and f.lower().endswith(('.jpg', '.jpeg', '.png'))
 	]
-
 	print(file_list)
-
 	datum = op.Datum()
 	os.makedirs('outputs', exist_ok=True)
-
 	output_filename = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 	output_filename = 'outputs/' + output_filename + '.csv'
 	print(output_filename)
