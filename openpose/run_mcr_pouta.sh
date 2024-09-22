@@ -1,6 +1,6 @@
 #!/bin/bash
 
-## run using command:
+## How to run:
 ## $ nohup bash mcr_pouta.sh > /dev/null 2>&1 &
 ## $ nohup bash mcr_pouta.sh > /media/volume/trash/IMG/mcr.out 2>&1 & # with output saved in logs.out
 
