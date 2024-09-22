@@ -9,11 +9,7 @@ try:
 		print(args)
 		print(args[0])
 		print(args[1])
-		
-		img_name = extract_filename_without_suffix(file_path=args[0].image_path)
-		output_path = os.path.join(args[0].output_dir, f"result_{img_name}.png")
-		print(f">> Saving Output image in {output_path}")
-
+		os.makedirs(args[0].output_dir, exist_ok=True)
 		# Custom Params (refer to include/openpose/flags.hpp for more parameters)
 		params = dict()
 		params["model_folder"] = "../../models/"
@@ -47,7 +43,10 @@ try:
 		datum.cvInputData = imageToProcess
 		opWrapper.emplaceAndPop(op.VectorDatum([datum]))
 
-		# Display Image
+		img_name = extract_filename_without_suffix(file_path=args[0].image_path)
+		output_path = os.path.join(args[0].output_dir, f"result_{img_name}.png")
+		print(f">> Saving Output image in {output_path}")
+
 		print("Body keypoints: \n" + str(datum.poseKeypoints))
 		cv2.imwrite(output_path, datum.cvOutputData)
 		# cv2.imshow("OpenPose 1.7.0 - Tutorial Python API", datum.cvOutputData)

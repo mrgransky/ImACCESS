@@ -29,6 +29,7 @@ try:
 		parser.add_argument("--image_path", default="../../examples/media/COCO_val2014_000000000294.jpg", help="Process an image. Read all standard formats (jpg, png, bmp, etc.).")
 		parser.add_argument("--output_dir", default="outputs")
 		args = parser.parse_known_args()
+		os.makedirs(args[0].output_dir, exist_ok=True)
 
 		img_name = extract_filename_without_suffix(file_path=args[0].image_path)
 		output_path = os.path.join(args[0].output_dir, f"result_{img_name}.png")
