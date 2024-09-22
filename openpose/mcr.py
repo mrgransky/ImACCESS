@@ -146,9 +146,7 @@ def main():
 	except Exception as e:
 		print(f"ERROR: {e}")
 		return
-
 	print(f"OpenPose successfully imported for Platform: {sys.platform} | project directory: {projDIR}")
-
 	params = dict()
 	params["model_folder"] = "models/"
 	params["body"] = 1
@@ -182,6 +180,8 @@ def main():
 		writer.writerow(["Filename", "Main Character Face Bounding Box"])
 		printProgressBar(0, len(file_list), prefix='Progress:', suffix='Complete', length=50)
 		file_counter = 0
+		facial_rectangles = None
+		predictedMainCharacters = None
 		for filename in file_list:
 			fpth: str = (os.path.join(base_folder, filename))
 			print(f"IMG path: {fpth}")
@@ -210,6 +210,8 @@ def main():
 			print(f"keypoints: {keypoints}")
 			if keypoints is not None:
 				facial_rectangles, gazes, associated_keypoints = face_rectangles(keypoints, image_width, image_height)
+				print(type(facial_rectangles))
+				print(facial_rectangles)
 				if len(facial_rectangles) == 0:
 					continue
 				image_to_write = imageToProcess
