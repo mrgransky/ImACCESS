@@ -9,25 +9,11 @@ import math
 import itertools
 import datetime
 
-# Print iterations progress
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
-	"""
-	Call in a loop to create terminal progress bar
-	@params:
-			iteration   - Required  : current iteration (Int)
-			total       - Required  : total iterations (Int)
-			prefix      - Optional  : prefix string (Str)
-			suffix      - Optional  : suffix string (Str)
-			decimals    - Optional  : positive number of decimals in percent complete (Int)
-			length      - Optional  : character length of bar (Int)
-			fill        - Optional  : bar fill character (Str)
-			printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
-	"""
 	percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
 	filledLength = int(length * iteration // total)
 	bar = fill * filledLength + '-' * (length - filledLength)
 	print(f'\r{prefix} |{bar}| {percent}% {suffix}', end = printEnd)
-	# Print New Line on Complete
 	if iteration == total:
 		print()
 
@@ -154,12 +140,8 @@ def slope(x1, y1, x2, y2):
 def main():
 	projDIR = os.path.dirname(os.path.realpath(__file__))
 	try:
-		# Adjust this path based on where OpenPose is built
 		sys.path.append(f'{projDIR}/build/python')
-
-		# Ensure the library path is included in LD_LIBRARY_PATH
 		os.environ['LD_LIBRARY_PATH'] = f'{projDIR}/build/src/openpose:$LD_LIBRARY_PATH'
-
 		from openpose import pyopenpose as op
 	except Exception as e:
 		print(f"ERROR: {e}")
@@ -171,12 +153,10 @@ def main():
 	params["model_folder"] = "models/"
 	params["body"] = 1
 
-	# Starting OpenPose
 	opWrapper = op.WrapperPython()
 	opWrapper.configure(params)
 	opWrapper.start()
 
-	# user input parameters
 	base_folder = sys.argv[1]
 
 	if len(sys.argv) == 3:
@@ -306,7 +286,7 @@ def main():
 				if len(sys.argv) == 3:
 					cv2.imwrite(outputImageFolder + filename, imageToProcess)
 			###############################################################################
-				if facial_rectangles is not None and predictedMainCharacters is not None:
+			if facial_rectangles is not None and predictedMainCharacters is not None:
 					rect_index = 0
 					for rect in facial_rectangles:
 						if predictedMainCharacters[rect_index]:
