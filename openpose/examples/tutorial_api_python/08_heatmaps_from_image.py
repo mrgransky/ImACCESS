@@ -95,22 +95,10 @@ from sys import platform
 import argparse
 
 def extract_filename_without_suffix(file_path):
-	"""
-	Extracts the filename without the extension from a given file path.
-
-	Args:
-			file_path (str): The file path.
-
-	Returns:
-			str: The filename without the extension.
-	"""
-
 	# Get the basename of the file path (removes directory)
 	basename = os.path.basename(file_path)
-
 	# Split the basename into filename and extension
 	filename, extension = os.path.splitext(basename)
-
 	return filename
 
 HOME: str = os.getenv('HOME') # echo $HOME
@@ -194,7 +182,7 @@ try:
 			counter += 1
 			if counter >= num_maps:
 				break
-			print(f"counter: {counter}")
+			# print(f"counter: {counter}")
 except Exception as e:
 	print(e)
 	sys.exit(-1)
