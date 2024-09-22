@@ -92,6 +92,7 @@ def process_image(image_path, op_wrapper, writer, output_dir=None):
 	
 	scale_percent = 50 if imageToProcess.shape[1] > 300 else 100
 	image_resized = cv2.resize(imageToProcess, (int(imageToProcess.shape[1] * scale_percent / 100), int(imageToProcess.shape[0] * scale_percent / 100)))
+
 	datum = op.Datum()
 	datum.cvInputData = image_resized
 	op_wrapper.emplaceAndPop(op.VectorDatum([datum]))

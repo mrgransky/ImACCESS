@@ -2,11 +2,11 @@
 
 ## How to run:
 ## $ nohup bash run_mcr_pouta.sh > /dev/null 2>&1 &
-## $ nohup bash run_mcr_pouta.sh > /media/volume/trash/IMGs/results.out 2>&1 & # with output saved in logs.out
+## $ nohup bash run_mcr_pouta.sh >> /media/volume/trash/IMGs/results.out 2>&1 & # with output saved in logs.out
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
-txt="$user began Slurm job: `date`"
+txt="$user began job: `date`"
 ch="#"
 echo -e "${txt//?/$ch}\n${txt}\n${txt//?/$ch}"
 echo "${stars// /*}"

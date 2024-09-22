@@ -93,6 +93,7 @@ def gaze(face_keypoints, full_body_keypoints):
 	return direction
 
 def face_rectangles(keypoints, image_width, image_height):
+	print(f"Face Rectangle".center(100, "-"))
 	rectangles = []
 	gazes = []
 	associated_keypoints = []
@@ -152,9 +153,6 @@ def main():
 	params["body"] = 1
 	facial_rectangles = None  # Initialize facial_rectangles to None
 	predictedMainCharacters = None  # Initialize predictedMainCharacters to None
-	opWrapper = op.WrapperPython()
-	opWrapper.configure(params)
-	opWrapper.start()
 	base_folder = sys.argv[1]
 	if len(sys.argv) == 3:
 		outputImageFolder = sys.argv[2]
@@ -164,12 +162,16 @@ def main():
 		if os.path.isfile(os.path.join(base_folder, f)) and f.lower().endswith(('.jpg', '.jpeg', '.png'))
 	]
 	print(file_list)
-	datum = op.Datum()
 	os.makedirs('outputs', exist_ok=True)
 	output_filename = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-	# output_filename = 'outputs/' + output_filename + '.csv'
 	output_filename = os.path.join("outputs", f"{output_filename}.csv")
 	print(output_filename)
+
+	print(f">> Starting OpenPose Python Wrapper...")
+	opWrapper = op.WrapperPython()
+	opWrapper.configure(params)
+	opWrapper.start()
+	datum = op.Datum()
 	with open(output_filename, 'w', newline='') as file:
 		writer = csv.writer(file)
 		writer.writerow(["Filename", "Main Character Face Bounding Box"])
