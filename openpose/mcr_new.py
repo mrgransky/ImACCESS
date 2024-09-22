@@ -129,6 +129,7 @@ def main():
 		print_progress_bar(0, len(images), prefix='Progress:', suffix='Complete', length=50)
 		
 		for i, image_path in enumerate(images):
+			print(i, image_path)
 			process_image(image_path, opWrapper, writer, output_dir=args.output_dir)
 			print_progress_bar(i + 1, len(images), prefix='Progress:', suffix='Complete', length=50)
 
