@@ -184,7 +184,8 @@ try:
 			counter += 1
 			if counter >= num_maps:
 				break
-			# print(f"counter: {counter}")
+			print(f"counter: {counter} | counter % num_maps: {counter % num_maps}")
+		print(f"DONE!")
 except Exception as e:
 	print(e)
 	sys.exit(-1)
