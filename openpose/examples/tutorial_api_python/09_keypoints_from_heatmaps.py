@@ -32,7 +32,7 @@ try:
 		os.makedirs(args[0].output_dir, exist_ok=True)
 
 		img_name = extract_filename_without_suffix(file_path=args[0].image_path)
-		output_path = os.path.join(args[0].output_dir, f"result_{img_name}.png")
+		output_path = os.path.join(args[0].output_dir, f"result_keypoints_from_heatmap_{img_name}.png")
 		print(f">> Saving Output image in {output_path}")
 
 		# Load image

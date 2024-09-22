@@ -44,7 +44,7 @@ try:
 		opWrapper.emplaceAndPop(op.VectorDatum([datum]))
 
 		img_name = extract_filename_without_suffix(file_path=args[0].image_path)
-		output_path = os.path.join(args[0].output_dir, f"result_{img_name}.png")
+		output_path = os.path.join(args[0].output_dir, f"result_body_from_img_{img_name}.png")
 		print(f">> Saving Output image in {output_path}")
 
 		print("Body keypoints: \n" + str(datum.poseKeypoints))
