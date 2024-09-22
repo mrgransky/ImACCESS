@@ -27,6 +27,7 @@ try:
 		# Flags
 		parser = argparse.ArgumentParser()
 		parser.add_argument("--image_path", default="../../examples/media/COCO_val2014_000000000294.jpg", help="Process an image. Read all standard formats (jpg, png, bmp, etc.).")
+		parser.add_argument("--output_dir", default="outputs")
 		args = parser.parse_known_args()
 
 		img_name = extract_filename_without_suffix(file_path=args[0].image_path)

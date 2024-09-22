@@ -1,10 +1,10 @@
 from utils import *
 
-		
 try:
 		# Flags
 		parser = argparse.ArgumentParser()
 		parser.add_argument("--image_path", default="../../examples/media/COCO_val2014_000000000192.jpg", help="Input image. standard formats (jpg, png, bmp, etc.).")
+		parser.add_argument("--output_dir", default="outputs")
 		args = parser.parse_known_args()
 		print(args)
 		print(args[0])
