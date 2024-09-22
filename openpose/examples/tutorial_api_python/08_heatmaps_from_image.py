@@ -94,6 +94,25 @@ import os
 from sys import platform
 import argparse
 
+def extract_filename_without_suffix(file_path):
+	"""
+	Extracts the filename without the extension from a given file path.
+
+	Args:
+			file_path (str): The file path.
+
+	Returns:
+			str: The filename without the extension.
+	"""
+
+	# Get the basename of the file path (removes directory)
+	basename = os.path.basename(file_path)
+
+	# Split the basename into filename and extension
+	filename, extension = os.path.splitext(basename)
+
+	return filename
+
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 print(f"USR: {USER} | HOME: {HOME}".center(100, " "))
@@ -161,21 +180,21 @@ try:
 
 		# Save images instead of displaying them
 		counter = 0
+		print(f"heatmaps: {heatmaps.shape}")
+		img_name = extract_filename_without_suffix(file_path=args[0].image_path)
 		while True:
-				print(f"heatmaps: {heatmaps.shape}")
-				num_maps = heatmaps.shape[0]
-				heatmap = heatmaps[counter, :, :].copy()
-				heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
-				combined = cv2.addWeighted(outputImageF, 0.5, heatmap, 0.5, 0)
-				
-				# Save the image to the output directory
-				output_path = os.path.join(args[0].output_dir, f"output_{counter}.png")
-				cv2.imwrite(output_path, combined)
-				print(f"Saved image to {output_path}")
-				
-				counter += 1
-				if counter >= num_maps:
-						break
+			num_maps = heatmaps.shape[0]
+			heatmap = heatmaps[counter, :, :].copy()
+			heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+			combined = cv2.addWeighted(outputImageF, 0.5, heatmap, 0.5, 0)				
+			# Save the image to the output directory
+			output_path = os.path.join(args[0].output_dir, f"{img_name}_{counter}.png")
+			cv2.imwrite(output_path, combined)
+			print(f"Saved image to {output_path}")
+			counter += 1
+			if counter >= num_maps:
+				break
+			print(f"counter: {counter}")
 except Exception as e:
-		print(e)
-		sys.exit(-1)
+	print(e)
+	sys.exit(-1)
