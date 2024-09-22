@@ -11,7 +11,7 @@ import datetime
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image_folder", default="examples/media/")
-parser.add_argument("--output_image_folder", default="output_images")
+parser.add_argument("--output_dir", default="outputs")
 parser.add_argument("--output_csv", default="results.csv")
 args = parser.parse_args()
 
@@ -84,7 +84,7 @@ def face_rectangles(keypoints, image_width, image_height):
 		gazes.append(gaze(facial_keypoints))
 	return rectangles, gazes, associated_keypoints
 
-def process_image(image_path, op_wrapper, writer, output_image_folder=None):
+def process_image(image_path, op_wrapper, writer, output_dir=None):
 	imageToProcess = cv2.imread(image_path)
 	if imageToProcess is None:
 		print(f"Warning: Could not read image {image_path}")
@@ -102,11 +102,11 @@ def process_image(image_path, op_wrapper, writer, output_image_folder=None):
 		rectangles, gazes, _ = face_rectangles(keypoints, image_width, image_height)
 		
 		# Write output images with bounding boxes
-		if output_image_folder:
+		if output_dir:
 			for rect, gaze in zip(rectangles, gazes):
 				color = (0, 255, 0) if gaze == 'direct' else (0, 0, 255)
 				cv2.rectangle(image_resized, tuple(map(int, rect[0])), tuple(map(int, rect[1])), color, 2)
-			cv2.imwrite(os.path.join(output_image_folder, os.path.basename(image_path)), image_resized)
+			cv2.imwrite(os.path.join(output_dir, os.path.basename(image_path)), image_resized)
 
 def main():
 	params = {"model_folder": "models/", "body": 1}
@@ -114,10 +114,10 @@ def main():
 	opWrapper.configure(params)
 	opWrapper.start()
 	
-	if not os.path.exists(args.output_image_folder):
-		os.makedirs(args.output_image_folder)
+	if not os.path.exists(args.output_dir):
+		os.makedirs(args.output_dir)
 	
-	with open(args.output_csv, 'w', newline='') as csvfile:
+	with open(os.path.join(args.output_dir, "reults.csv"), 'w', newline='') as csvfile:
 		writer = csv.writer(csvfile)
 		writer.writerow(['Image Name', 'Distance Between Points', 'Blur Score', 'Focus Value'])
 		
@@ -125,7 +125,7 @@ def main():
 		print_progress_bar(0, len(images), prefix='Progress:', suffix='Complete', length=50)
 		
 		for i, image_path in enumerate(images):
-			process_image(image_path, opWrapper, writer, output_image_folder=args.output_image_folder)
+			process_image(image_path, opWrapper, writer, output_dir=args.output_dir)
 			print_progress_bar(i + 1, len(images), prefix='Progress:', suffix='Complete', length=50)
 
 if __name__ == '__main__':
