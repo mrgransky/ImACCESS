@@ -121,7 +121,11 @@ def main():
 		writer = csv.writer(csvfile)
 		writer.writerow(['Image Name', 'Distance Between Points', 'Blur Score', 'Focus Value'])
 		
-		images = [os.path.join(args.image_folder, f) for f in os.listdir(args.image_folder)]
+		images = [
+			os.path.join(args.image_folder, f) 
+			for f in os.listdir(args.image_folder)
+			if f.lower().endswith(('.jpg', '.jpeg', '.png'))
+		]
 		print_progress_bar(0, len(images), prefix='Progress:', suffix='Complete', length=50)
 		
 		for i, image_path in enumerate(images):
