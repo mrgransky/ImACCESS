@@ -171,15 +171,16 @@ try:
 		num_maps = heatmaps.shape[0]
 		print(f"heatmaps: {heatmaps.shape} | num_maps: {num_maps}")
 		img_name = extract_filename_without_suffix(file_path=args[0].image_path)
+		output_path = os.path.join(args[0].output_dir, f"Heatmap_{img_name}.png")
+		print(f">> Saving heatmap into {output_path}")
 		while True:
 			heatmap = heatmaps[counter, :, :].copy()
 			heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
 			combined = cv2.addWeighted(outputImageF, 0.5, heatmap, 0.5, 0)
 			# Save the image to the output directory
 			# output_path = os.path.join(args[0].output_dir, f"Heatmap_{img_name}_{counter}.png")
-			output_path = os.path.join(args[0].output_dir, f"Heatmap_{img_name}.png")
 			cv2.imwrite(output_path, combined)
-			print(f"Saved image to {output_path}")
+			# print(f"Saved image to {output_path}")
 			counter += 1
 			if counter >= num_maps:
 				break
