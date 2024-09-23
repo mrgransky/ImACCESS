@@ -173,7 +173,9 @@ def main():
 	opWrapper.start()
 	datum = op.Datum()
 	with open(output_filename, 'w', newline='') as file:
+		print(f"creating a csv file: {output_filename}")
 		writer = csv.writer(file)
+		print(f"\t\t >> Adding title to csv file...")
 		writer.writerow(
 			[
 				"Filename",
