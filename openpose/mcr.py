@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 import cv2
 import argparse
 import numpy as np
@@ -94,6 +95,7 @@ def gaze(face_keypoints, full_body_keypoints):
 
 def face_rectangles(keypoints, image_width, image_height):
 	print(f"Face Rectangle".center(100, "-"))
+	fr_st = time.time()
 	rectangles = []
 	gazes = []
 	associated_keypoints = []
@@ -132,6 +134,7 @@ def face_rectangles(keypoints, image_width, image_height):
 			gazes.append(gaze_direction)
 		else:
 			continue
+	print(f"Elapsed_t: {time.time()-fr_st:.2f} sec".center(100, "-"))
 	return rectangles, gazes, associated_keypoints
 
 def slope(x1, y1, x2, y2):
@@ -175,7 +178,7 @@ def main():
 	with open(output_filename, 'w', newline='') as file:
 		print(f"creating a csv file: {output_filename}")
 		writer = csv.writer(file)
-		print(f"\t\t >> Adding title to csv file...")
+		print(f"\t >> Adding title to csv file...")
 		writer.writerow(
 			[
 				"Filename",
