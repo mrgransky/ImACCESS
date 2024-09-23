@@ -10,6 +10,14 @@ import math
 import itertools
 import datetime
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--imgs_dir", default="examples/media/")
+parser.add_argument("--models_dir", default="models/")
+parser.add_argument("--output_dir", default="outputs")
+parser.add_argument("--output_bbs", default="output_bbs.csv")
+args = parser.parse_args()
+print(args)
+
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
 	percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
 	filledLength = int(length * iteration // total)
@@ -152,25 +160,24 @@ def main():
 		return
 	print(f"OpenPose successfully imported for Platform: {sys.platform} | project DIR: {projDIR}")
 	params = dict()
-	params["model_folder"] = "models/"
+	# params["model_folder"] = "models/"
+	params["model_folder"] = args.models_dir
 	params["body"] = 1
 	facial_rectangles = None  # Initialize facial_rectangles to None
 	predictedMainCharacters = None  # Initialize predictedMainCharacters to None
-	base_folder = sys.argv[1]
+	# base_folder = sys.argv[1]
 
-	# if len(sys.argv) == 3:
-	# 	outputImageFolder = sys.argv[2]
-
-	file_list = [
+	imgs_list = [
 		f 
-		for f in os.listdir(base_folder) 
-		if os.path.isfile(os.path.join(base_folder, f)) and f.lower().endswith(('.jpg', '.jpeg', '.png'))
+		for f in os.listdir(args.imgs_dir) 
+		if os.path.isfile(os.path.join(args.imgs_dir, f)) and f.lower().endswith(('.jpg', '.jpeg', '.png'))
 	]
-	print(file_list)
-	os.makedirs('outputs', exist_ok=True)
-	outputImageFolder = "outputs"
-	output_filename = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-	output_filename = os.path.join("outputs", f"{output_filename}.csv")
+	print(imgs_list)
+	os.makedirs(args.output_dir, exist_ok=True)
+	output_filename = os.path.join(
+		args.output_dir, 
+		f"Bounding_Boxes_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}.csv",
+	)
 	print(output_filename)
 
 	print(f">> Starting OpenPose Python Wrapper with parameters: {params}")
@@ -188,10 +195,10 @@ def main():
 				"Main_Character Face Bounding_Box",
 			],
 		)
-		printProgressBar(0, len(file_list), prefix='Progress:', suffix='Complete', length=50)
+		printProgressBar(0, len(imgs_list), prefix='Progress:', suffix='Complete', length=50)
 		file_counter = 0
-		for filename in file_list:
-			fpth: str = (os.path.join(base_folder, filename))
+		for filename in imgs_list:
+			fpth: str = (os.path.join(args.imgs_dir, filename))
 			print(f"IMG path: {fpth}")
 			imageToProcess = cv2.imread(fpth)
 			print(fpth, type(imageToProcess), imageToProcess.shape)
@@ -303,11 +310,11 @@ def main():
 						)
 					rect_index += 1
 					gaze_index += 1
-				img_with_main_characters_fpth = os.path.join(outputImageFolder, f"mcr_{filename}")
+				img_with_main_characters_fpth = os.path.join(args.output_dir, f"mcr_{filename}")
 				print(f">> Saving image_to_write into {img_with_main_characters_fpth}")
 				cv2.imwrite(img_with_main_characters_fpth, image_to_write)
 			else:
-				orig_img_fpth = os.path.join(outputImageFolder, f"orig_{filename}")
+				orig_img_fpth = os.path.join(args.output_dir, f"orig_{filename}")
 				print(f">> No Keypoints Found! => Saving Raw original imageToProcess: {orig_img_fpth}")
 				cv2.imwrite(orig_img_fpth, imageToProcess)
 			###############################################################################
@@ -323,7 +330,7 @@ def main():
 							)
 						rect_index += 1
 			###############################################################################
-			printProgressBar(file_counter + 1, len(file_list), prefix='Progress:', suffix='Complete', length=50)
+			printProgressBar(file_counter + 1, len(imgs_list), prefix='Progress:', suffix='Complete', length=50)
 			file_counter += 1
 
 if __name__ == "__main__":
