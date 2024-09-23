@@ -168,7 +168,7 @@ def main():
 	]
 	print(file_list)
 	os.makedirs('outputs', exist_ok=True)
-	outputImageFolder = "output"
+	outputImageFolder = "outputs"
 	output_filename = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 	output_filename = os.path.join("outputs", f"{output_filename}.csv")
 	print(output_filename)
