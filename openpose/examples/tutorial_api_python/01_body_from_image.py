@@ -40,14 +40,15 @@ try:
 		# Process Image
 		datum = op.Datum()
 		imageToProcess = cv2.imread(args[0].image_path)
+		print(f"IMG pth: {args[0].image_path} : {imageToProcess.shape}")
 		datum.cvInputData = imageToProcess
 		opWrapper.emplaceAndPop(op.VectorDatum([datum]))
 
 		img_name = extract_filename_without_suffix(file_path=args[0].image_path)
-		output_path = os.path.join(args[0].output_dir, f"result_body_from_img_{img_name}.png")
 		kp = datum.poseKeypoints
+		print(f"Body keypoints {type(kp)} {kp.shape}:\n{kp}")
 
-		print(f"Body keypoints {type(kp)}:\n{str(kp)}")
+		output_path = os.path.join(args[0].output_dir, f"result_body_from_img_{img_name}.png")
 		print(f">> Saving Output image in {output_path}")
 		cv2.imwrite(output_path, datum.cvOutputData)
 		# cv2.imshow("OpenPose 1.7.0 - Tutorial Python API", datum.cvOutputData)
