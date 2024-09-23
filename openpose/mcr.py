@@ -157,8 +157,10 @@ def main():
 	facial_rectangles = None  # Initialize facial_rectangles to None
 	predictedMainCharacters = None  # Initialize predictedMainCharacters to None
 	base_folder = sys.argv[1]
-	if len(sys.argv) == 3:
-		outputImageFolder = sys.argv[2]
+
+	# if len(sys.argv) == 3:
+	# 	outputImageFolder = sys.argv[2]
+
 	file_list = [
 		f 
 		for f in os.listdir(base_folder) 
@@ -166,6 +168,7 @@ def main():
 	]
 	print(file_list)
 	os.makedirs('outputs', exist_ok=True)
+	outputImageFolder = "output"
 	output_filename = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 	output_filename = os.path.join("outputs", f"{output_filename}.csv")
 	print(output_filename)
@@ -288,11 +291,15 @@ def main():
 						cv2.rectangle(image_to_write, (int(rect[0][0]), int(rect[0][1])), (int(rect[1][0]), int(rect[1][1])), (0, 255, 0), 4)
 					rect_index += 1
 					gaze_index += 1
-				if len(sys.argv) == 3:
-					cv2.imwrite(outputImageFolder + filename, image_to_write)
+				# if len(sys.argv) == 3:
+				# 	cv2.imwrite(outputImageFolder + filename, image_to_write)
+				print(f">> Saving image_to_write into {os.path.join(outputImageFolder, filename)}")
+				cv2.imwrite(os.path.join(outputImageFolder, filename), image_to_write)
 			else:
-				if len(sys.argv) == 3:
-					cv2.imwrite(outputImageFolder + filename, imageToProcess)
+				print(f">> Saving imageToProcess into {os.path.join(outputImageFolder, filename)}")
+				cv2.imwrite(os.path.join(outputImageFolder, filename), imageToProcess)
+				# if len(sys.argv) == 3:
+				# 	cv2.imwrite(outputImageFolder + filename, imageToProcess)
 			###############################################################################
 			if facial_rectangles is not None and predictedMainCharacters is not None:
 					rect_index = 0
