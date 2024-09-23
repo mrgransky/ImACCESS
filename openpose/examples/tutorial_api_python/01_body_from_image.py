@@ -45,9 +45,10 @@ try:
 
 		img_name = extract_filename_without_suffix(file_path=args[0].image_path)
 		output_path = os.path.join(args[0].output_dir, f"result_body_from_img_{img_name}.png")
-		print(f">> Saving Output image in {output_path}")
+		kp = datum.poseKeypoints
 
-		print("Body keypoints: \n" + str(datum.poseKeypoints))
+		print(f"Body keypoints {type(kp)}:\n{str(kp)}")
+		print(f">> Saving Output image in {output_path}")
 		cv2.imwrite(output_path, datum.cvOutputData)
 		# cv2.imshow("OpenPose 1.7.0 - Tutorial Python API", datum.cvOutputData)
 		# cv2.waitKey(0)
