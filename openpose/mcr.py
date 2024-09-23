@@ -174,7 +174,12 @@ def main():
 	datum = op.Datum()
 	with open(output_filename, 'w', newline='') as file:
 		writer = csv.writer(file)
-		writer.writerow(["Filename", "Main Character Face Bounding Box"])
+		writer.writerow(
+			[
+				"Filename",
+				"Main_Character Face Bounding_Box",
+			],
+		)
 		printProgressBar(0, len(file_list), prefix='Progress:', suffix='Complete', length=50)
 		file_counter = 0
 		for filename in file_list:
@@ -202,8 +207,9 @@ def main():
 			opWrapper.emplaceAndPop(op.VectorDatum([datum]))
 			print(f">> datum.poseKeypoints")
 			keypoints = datum.poseKeypoints
-			print(f"keypoints: {keypoints}")
+			print(f"keypoints:\n{keypoints}")
 			if keypoints is not None:
+				print(f"Keypoints found => face rectangle...")
 				facial_rectangles, gazes, associated_keypoints = face_rectangles(keypoints, image_width, image_height)
 				print(type(facial_rectangles))
 				print(facial_rectangles)
@@ -287,7 +293,12 @@ def main():
 					rect_index = 0
 					for rect in facial_rectangles:
 						if predictedMainCharacters[rect_index]:
-							writer.writerow([filename, '[' + str(100/scale_percent * rect[0][0]) + ',' + str(100/scale_percent * rect[0][1]) + ',' + str(100/scale_percent * rect[1][0]) + ',' + str(100/scale_percent * rect[1][1]) + ']'])
+							writer.writerow(
+								[
+									filename, 
+									'[' + str(100/scale_percent * rect[0][0]) + ',' + str(100/scale_percent * rect[0][1]) + ',' + str(100/scale_percent * rect[1][0]) + ',' + str(100/scale_percent * rect[1][1]) + ']'
+								]
+							)
 						rect_index += 1
 			###############################################################################
 			printProgressBar(file_counter + 1, len(file_list), prefix='Progress:', suffix='Complete', length=50)
