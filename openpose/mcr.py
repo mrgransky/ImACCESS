@@ -285,10 +285,22 @@ def main():
 				gaze_index = 0
 				rect_index = 0
 				for rect in facial_rectangles:
-					if not predictedMainCharacters[rect_index]:
-						cv2.rectangle(image_to_write, (int(rect[0][0]), int(rect[0][1])), (int(rect[1][0]), int(rect[1][1])), (0, 0, 255), 4)
-					else:
-						cv2.rectangle(image_to_write, (int(rect[0][0]), int(rect[0][1])), (int(rect[1][0]), int(rect[1][1])), (0, 255, 0), 4)
+					if not predictedMainCharacters[rect_index]: # minor character(s) in Red
+						cv2.rectangle(
+							image=image_to_write, 
+							start_point=(int(rect[0][0]), int(rect[0][1])), 
+							end_point=(int(rect[1][0]), int(rect[1][1])), 
+							color=(0, 0, 255), #BGR
+							thickness=2
+						)
+					else: # main character(s) in Green
+						cv2.rectangle(
+							image=image_to_write, 
+							start_point=(int(rect[0][0]), int(rect[0][1])), 
+							end_point=(int(rect[1][0]), int(rect[1][1])), 
+							color=(0, 255, 0), #BGR
+							thickness=3
+						)
 					rect_index += 1
 					gaze_index += 1
 				img_with_main_characters_fpth = os.path.join(outputImageFolder, f"mcr_{filename}")
