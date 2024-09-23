@@ -291,15 +291,13 @@ def main():
 						cv2.rectangle(image_to_write, (int(rect[0][0]), int(rect[0][1])), (int(rect[1][0]), int(rect[1][1])), (0, 255, 0), 4)
 					rect_index += 1
 					gaze_index += 1
-				# if len(sys.argv) == 3:
-				# 	cv2.imwrite(outputImageFolder + filename, image_to_write)
-				print(f">> Saving image_to_write into {os.path.join(outputImageFolder, filename)}")
-				cv2.imwrite(os.path.join(outputImageFolder, filename), image_to_write)
+				img_with_main_characters_fpth = os.path.join(outputImageFolder, f"mcr_{filename}")
+				print(f">> Saving image_to_write into {img_with_main_characters_fpth}")
+				cv2.imwrite(img_with_main_characters_fpth, image_to_write)
 			else:
-				print(f">> Saving imageToProcess into {os.path.join(outputImageFolder, filename)}")
-				cv2.imwrite(os.path.join(outputImageFolder, filename), imageToProcess)
-				# if len(sys.argv) == 3:
-				# 	cv2.imwrite(outputImageFolder + filename, imageToProcess)
+				orig_img_fpth = os.path.join(outputImageFolder, f"orig_{filename}")
+				print(f">> No Keypoints Found! => Saving Raw original imageToProcess: {orig_img_fpth}")
+				cv2.imwrite(orig_img_fpth, imageToProcess)
 			###############################################################################
 			if facial_rectangles is not None and predictedMainCharacters is not None:
 					rect_index = 0
