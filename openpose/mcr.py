@@ -199,9 +199,8 @@ def main():
 		file_counter = 0
 		for filename in imgs_list:
 			fpth: str = (os.path.join(args.imgs_dir, filename))
-			print(f"IMG path: {fpth}")
 			imageToProcess = cv2.imread(fpth)
-			print(fpth, type(imageToProcess), imageToProcess.shape)
+			print(f"\nIMG path: {fpth} | {type(imageToProcess)} | {imageToProcess.shape}")
 			if imageToProcess is None:
 				continue
 			scale_percent = 50 if imageToProcess.shape[1] > 300 else 100
@@ -311,8 +310,9 @@ def main():
 					rect_index += 1
 					gaze_index += 1
 				img_with_main_characters_fpth = os.path.join(args.output_dir, f"mcr_{filename}")
-				print(f">> Saving image_to_write into {img_with_main_characters_fpth}")
+				print(f">> Saving « {img_with_main_characters_fpth} »")
 				cv2.imwrite(img_with_main_characters_fpth, image_to_write)
+				print(f"DONE!")
 			else:
 				orig_img_fpth = os.path.join(args.output_dir, f"orig_{filename}")
 				print(f">> No Keypoints Found! => Saving Raw original imageToProcess: {orig_img_fpth}")
