@@ -134,7 +134,7 @@ def face_rectangles(keypoints, image_width, image_height):
 			gazes.append(gaze_direction)
 		else:
 			continue
-	print(f"Elapsed_t: {time.time()-fr_st:.2f} sec".center(100, "-"))
+	print(f"Elapsed_t: {time.time()-fr_st:.4f} sec".center(100, "-"))
 	return rectangles, gazes, associated_keypoints
 
 def slope(x1, y1, x2, y2):
@@ -212,7 +212,7 @@ def main():
 			opWrapper.emplaceAndPop(op.VectorDatum([datum]))
 			print(f">> datum.poseKeypoints")
 			keypoints = datum.poseKeypoints
-			print(f"keypoints:\n{keypoints}")
+			print(f"keypoints {type(keypoints)} {keypoints.shape}:\n{keypoints}")
 			if keypoints is not None:
 				print(f"Keypoints found => face rectangle...")
 				facial_rectangles, gazes, associated_keypoints = face_rectangles(keypoints, image_width, image_height)
