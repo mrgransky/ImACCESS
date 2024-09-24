@@ -9,22 +9,17 @@ from operator import add
 import math
 import itertools
 import datetime
+import requests
+from io import BytesIO
+import urllib.parse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--imgs_dir", default="examples/media/")
+parser.add_argument("--image_path", required=True, help="path to local img.jpg or URL!") # works fine with only one image at a time!
 parser.add_argument("--models_dir", default="models/")
 parser.add_argument("--output_dir", default="outputs")
 parser.add_argument("--output_bbs", default="output_bbs.csv")
 args = parser.parse_args()
 print(args)
-
-def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
-	percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
-	filledLength = int(length * iteration // total)
-	bar = fill * filledLength + '-' * (length - filledLength)
-	print(f'\r{prefix} |{bar}| {percent}% {suffix}', end = printEnd)
-	if iteration == total:
-		print()
 
 def getBlurValue(image):
 	canny = cv2.Canny(image, 50, 250)
@@ -165,14 +160,7 @@ def main():
 	params["body"] = 1
 	facial_rectangles = None  # Initialize facial_rectangles to None
 	predictedMainCharacters = None  # Initialize predictedMainCharacters to None
-	# base_folder = sys.argv[1]
-
-	imgs_list = [
-		f 
-		for f in os.listdir(args.imgs_dir) 
-		if os.path.isfile(os.path.join(args.imgs_dir, f)) and f.lower().endswith(('.jpg', '.jpeg', '.png'))
-	]
-	print(imgs_list)
+	
 	os.makedirs(args.output_dir, exist_ok=True)
 	output_filename = os.path.join(
 		args.output_dir, 
@@ -195,143 +183,151 @@ def main():
 				"Main_Character Face Bounding_Box",
 			],
 		)
-		printProgressBar(0, len(imgs_list), prefix='Progress:', suffix='Complete', length=50)
-		file_counter = 0
-		for filename in imgs_list:
-			fpth: str = (os.path.join(args.imgs_dir, filename))
-			imageToProcess = cv2.imread(fpth)
-			print(f"\nIMG path: {fpth} | {type(imageToProcess)} | {imageToProcess.shape}")
-			if imageToProcess is None:
-				continue
-			scale_percent = 50 if imageToProcess.shape[1] > 300 else 100
-			width = int(imageToProcess.shape[1] * scale_percent / 100)
-			height = int(imageToProcess.shape[0] * scale_percent / 100)
-			print(f"IMG (w, h): ({width}, {height})")
-			dim = (width, height)
-			imageToProcess = cv2.resize(imageToProcess, dim, cv2.INTER_AREA)
-			print(f"Resized IMG: {type(imageToProcess)} | {imageToProcess.shape}")
-			image_width = imageToProcess.shape[1]
-			image_height = imageToProcess.shape[0]
-			image_center_x = (image_width / 2)
-			image_center_y = (image_height / 2)
-			diagonal_over_2 = math.sqrt(image_width**2 + image_height**2) / 2
-			print(f">> datum.cvInputData")
-			datum.cvInputData = imageToProcess
-			print(f">> opWrapper.emplaceAndPop")
-			opWrapper.emplaceAndPop(op.VectorDatum([datum]))
-			print(f">> datum.poseKeypoints")
-			keypoints = datum.poseKeypoints
-			print(f"keypoints {type(keypoints)} {keypoints.shape}:\n{keypoints}")
-			if keypoints is not None:
-				print(f"Keypoints found => face rectangle...")
-				facial_rectangles, gazes, associated_keypoints = face_rectangles(keypoints, image_width, image_height)
-				print(type(facial_rectangles))
-				print(facial_rectangles)
-				if len(facial_rectangles) == 0:
-					continue
-				image_to_write = imageToProcess
-				blur_values = []
-				areas = []
-				positionValues = []
-				for rect in facial_rectangles:
-					rect_center_x = (rect[0][0] + rect[1][0])/2
-					rect_center_y = (rect[0][1] + rect[1][1])/2
-					distance_to_center_x = abs(rect_center_x-image_center_x)
-					distance_to_center_y = abs(rect_center_y-image_center_y)
-					distance_to_center = math.sqrt(distance_to_center_x**2 + distance_to_center_y**2)
-					positionValue = diagonal_over_2-distance_to_center
-					positionValues.append(positionValue)
-					crop_img = image_to_write[int(rect[0][1]):int(rect[1][1]), int(rect[0][0]):int(rect[1][0])]
-					blur = 0 if crop_img.shape[0] == 0 or crop_img.shape[1] == 0 else getBlurValue(crop_img)				
-					blur_values.append(blur)
-					area = int(abs(rect[0][0]-rect[1][0]) * abs(rect[0][1]-rect[1][1]))
-					areas.append(area)
-				normGazeValues = []
-				for gaze_direction in gazes:
-					if gaze_direction == 'direct':
-						normGazeValues.append(1)
-					if gaze_direction == 'right' or gaze_direction == 'left':
-						normGazeValues.append(1)
-					if gaze_direction == 'undefined' or gaze_direction == 'away':
-						normGazeValues.append(0)
-				blurImportance = 3
-				areaImportance = 3.5
-				positionImportance = 1.2
-				blur_values = [a * b for a, b in zip(blur_values, normGazeValues)]
-				areas = [a * b for a, b in zip(areas, normGazeValues)]
-				positionValues = [a * b for a, b in zip(positionValues, normGazeValues)]
-				if len(blur_values) == 1:
-					blur_values[0] = 1
-					areas[0] = 1
-					positionValues[0] = 1
-				normBlurs = [blurImportance * (blr / max(blur_values)) for blr in blur_values]
-				for i in range(len(normBlurs)):
-					if math.isnan(normBlurs[i]):
-						normBlurs[i] = 0
-				normAreas = [areaImportance*(i / max(areas))  for i in areas]
-				normPositionValues = [positionImportance * (i / max(positionValues)) for i in positionValues]
-				normFocusValues = list(map(add, normBlurs, normAreas))
-				normFocusValues = list(map(add, normFocusValues, normPositionValues))
-				normFocusValues = [a * b for a, b in zip(normFocusValues, normGazeValues)]
-				if len(normFocusValues) == 1:
-					normFocusValues[0] = 1
-				normFocusValues = [i / max(normFocusValues) for i in normFocusValues]
-				predictedMainCharacters = []
-				for normFocusValue in normFocusValues:
-					if len(normFocusValues) == 2:
-						if normFocusValue > 0.86:
-							predictedMainCharacters.append(True)
-						else:
-							predictedMainCharacters.append(False)
+		is_url = urllib.parse.urlparse(args.image_path).scheme != ""
+
+		if is_url:
+			# If it's a URL, download the image
+			response = requests.get(args.image_path)
+			imageToProcess = cv2.imread(BytesIO(response.content))
+		else:
+			# If it's a local path, open the image directly
+			imageToProcess = cv2.imread(args.image_path)
+
+		# imageToProcess = cv2.imread(args.image_path)
+
+		print(f"\nIMG path: {args.image_path} | URL? {is_url} | {type(imageToProcess)} | {imageToProcess.shape}")
+		if imageToProcess is None:
+			print(f"No IMG to process! or Broken => RETURN!")
+			return
+
+		scale_percent = 50 if imageToProcess.shape[1] > 300 else 100
+		width = int(imageToProcess.shape[1] * scale_percent / 100)
+		height = int(imageToProcess.shape[0] * scale_percent / 100)
+		print(f"IMG (w, h): ({width}, {height})")
+		dim = (width, height)
+		imageToProcess = cv2.resize(imageToProcess, dim, cv2.INTER_AREA)
+		print(f"Resized IMG: {type(imageToProcess)} | {imageToProcess.shape}")
+		image_width = imageToProcess.shape[1]
+		image_height = imageToProcess.shape[0]
+		image_center_x = (image_width / 2)
+		image_center_y = (image_height / 2)
+		diagonal_over_2 = math.sqrt(image_width**2 + image_height**2) / 2
+		print(f">> datum.cvInputData")
+		datum.cvInputData = imageToProcess
+		print(f">> opWrapper.emplaceAndPop")
+		opWrapper.emplaceAndPop(op.VectorDatum([datum]))
+		print(f">> datum.poseKeypoints")
+		keypoints = datum.poseKeypoints
+		print(f"keypoints {type(keypoints)} {keypoints.shape}:\n{keypoints}")
+		if keypoints is not None:
+			print(f"Keypoints found => face rectangle...")
+			facial_rectangles, gazes, associated_keypoints = face_rectangles(keypoints, image_width, image_height)
+			print(type(facial_rectangles), len(facial_rectangles))
+			print(facial_rectangles)
+			if len(facial_rectangles) == 0:
+				print(f"facial_rectangles not found! len(facial_rectangles) = {len(facial_rectangles)} => RETURN!!!")
+				return
+			image_to_write = imageToProcess
+			blur_values = []
+			areas = []
+			positionValues = []
+			for rect in facial_rectangles:
+				rect_center_x = (rect[0][0] + rect[1][0])/2
+				rect_center_y = (rect[0][1] + rect[1][1])/2
+				distance_to_center_x = abs(rect_center_x-image_center_x)
+				distance_to_center_y = abs(rect_center_y-image_center_y)
+				distance_to_center = math.sqrt(distance_to_center_x**2 + distance_to_center_y**2)
+				positionValue = diagonal_over_2-distance_to_center
+				positionValues.append(positionValue)
+				crop_img = image_to_write[int(rect[0][1]):int(rect[1][1]), int(rect[0][0]):int(rect[1][0])]
+				blur = 0 if crop_img.shape[0] == 0 or crop_img.shape[1] == 0 else getBlurValue(crop_img)				
+				blur_values.append(blur)
+				area = int(abs(rect[0][0]-rect[1][0]) * abs(rect[0][1]-rect[1][1]))
+				areas.append(area)
+			normGazeValues = []
+			for gaze_direction in gazes:
+				if gaze_direction == 'direct':
+					normGazeValues.append(1)
+				if gaze_direction == 'right' or gaze_direction == 'left':
+					normGazeValues.append(1)
+				if gaze_direction == 'undefined' or gaze_direction == 'away':
+					normGazeValues.append(0)
+			blurImportance = 3
+			areaImportance = 3.5
+			positionImportance = 1.2
+			blur_values = [a * b for a, b in zip(blur_values, normGazeValues)]
+			areas = [a * b for a, b in zip(areas, normGazeValues)]
+			positionValues = [a * b for a, b in zip(positionValues, normGazeValues)]
+			if len(blur_values) == 1:
+				blur_values[0] = 1
+				areas[0] = 1
+				positionValues[0] = 1
+			normBlurs = [blurImportance * (blr / max(blur_values)) for blr in blur_values]
+			for i in range(len(normBlurs)):
+				if math.isnan(normBlurs[i]):
+					normBlurs[i] = 0
+			normAreas = [areaImportance*(i / max(areas))  for i in areas]
+			normPositionValues = [positionImportance * (i / max(positionValues)) for i in positionValues]
+			normFocusValues = list(map(add, normBlurs, normAreas))
+			normFocusValues = list(map(add, normFocusValues, normPositionValues))
+			normFocusValues = [a * b for a, b in zip(normFocusValues, normGazeValues)]
+			if len(normFocusValues) == 1:
+				normFocusValues[0] = 1
+			normFocusValues = [i / max(normFocusValues) for i in normFocusValues]
+			predictedMainCharacters = []
+			for normFocusValue in normFocusValues:
+				if len(normFocusValues) == 2:
+					if normFocusValue > 0.86:
+						predictedMainCharacters.append(True)
 					else:
-						if normFocusValue > 0.92:
-							predictedMainCharacters.append(True)
-						else:
-							predictedMainCharacters.append(False)
-				gaze_index = 0
+						predictedMainCharacters.append(False)
+				else:
+					if normFocusValue > 0.92:
+						predictedMainCharacters.append(True)
+					else:
+						predictedMainCharacters.append(False)
+			gaze_index = 0
+			rect_index = 0
+			for rect in facial_rectangles:
+				if not predictedMainCharacters[rect_index]: # minor character(s) in Red
+					cv2.rectangle(
+						img=image_to_write, 
+						pt1=(int(rect[0][0]), int(rect[0][1])), # start_point
+						pt2=(int(rect[1][0]), int(rect[1][1])), # end_point
+						color=(0, 0, 255), #BGR
+						thickness=2
+					)
+				else: # main character(s) in Green
+					cv2.rectangle(
+						img=image_to_write, 
+						pt1=(int(rect[0][0]), int(rect[0][1])), 
+						pt2=(int(rect[1][0]), int(rect[1][1])), 
+						color=(0, 255, 0), #BGR
+						thickness=3
+					)
+				rect_index += 1
+				gaze_index += 1
+			img_with_main_characters_fpth = os.path.join(args.output_dir, f"mcr_{args.image_path}")
+			print(f">> Saving « {img_with_main_characters_fpth} »")
+			cv2.imwrite(img_with_main_characters_fpth, image_to_write)
+			print(f"DONE!")
+		else:
+			orig_img_fpth = os.path.join(args.output_dir, f"orig_{args.image_path}")
+			print(f">> No Keypoints Found! => Saving Raw original imageToProcess: {orig_img_fpth}")
+			cv2.imwrite(orig_img_fpth, imageToProcess)
+		###############################################################################
+		if facial_rectangles is not None and predictedMainCharacters is not None:
 				rect_index = 0
 				for rect in facial_rectangles:
-					if not predictedMainCharacters[rect_index]: # minor character(s) in Red
-						cv2.rectangle(
-							img=image_to_write, 
-							pt1=(int(rect[0][0]), int(rect[0][1])), # start_point
-							pt2=(int(rect[1][0]), int(rect[1][1])), # end_point
-							color=(0, 0, 255), #BGR
-							thickness=2
-						)
-					else: # main character(s) in Green
-						cv2.rectangle(
-							img=image_to_write, 
-							pt1=(int(rect[0][0]), int(rect[0][1])), 
-							pt2=(int(rect[1][0]), int(rect[1][1])), 
-							color=(0, 255, 0), #BGR
-							thickness=3
+					if predictedMainCharacters[rect_index]:
+						writer.writerow(
+							[
+								args.image_path, 
+								'[' + str(100/scale_percent * rect[0][0]) + ',' + str(100/scale_percent * rect[0][1]) + ',' + str(100/scale_percent * rect[1][0]) + ',' + str(100/scale_percent * rect[1][1]) + ']'
+							]
 						)
 					rect_index += 1
-					gaze_index += 1
-				img_with_main_characters_fpth = os.path.join(args.output_dir, f"mcr_{filename}")
-				print(f">> Saving « {img_with_main_characters_fpth} »")
-				cv2.imwrite(img_with_main_characters_fpth, image_to_write)
-				print(f"DONE!")
-			else:
-				orig_img_fpth = os.path.join(args.output_dir, f"orig_{filename}")
-				print(f">> No Keypoints Found! => Saving Raw original imageToProcess: {orig_img_fpth}")
-				cv2.imwrite(orig_img_fpth, imageToProcess)
-			###############################################################################
-			if facial_rectangles is not None and predictedMainCharacters is not None:
-					rect_index = 0
-					for rect in facial_rectangles:
-						if predictedMainCharacters[rect_index]:
-							writer.writerow(
-								[
-									filename, 
-									'[' + str(100/scale_percent * rect[0][0]) + ',' + str(100/scale_percent * rect[0][1]) + ',' + str(100/scale_percent * rect[1][0]) + ',' + str(100/scale_percent * rect[1][1]) + ']'
-								]
-							)
-						rect_index += 1
-			###############################################################################
-			printProgressBar(file_counter + 1, len(imgs_list), prefix='Progress:', suffix='Complete', length=50)
-			file_counter += 1
+		###############################################################################
 
 if __name__ == "__main__":
 	main()

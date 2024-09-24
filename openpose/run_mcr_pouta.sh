@@ -15,5 +15,7 @@ HOME_DIR=$(echo $HOME)
 echo "HOME DIR $HOME_DIR"
 source $HOME_DIR/miniconda3/bin/activate py39
 
-python -u mcr.py examples/media/
-# python -u mcr_new.py
+# it's supposed to work for seveal images in a directory,
+# but it get's stuck due to insufficient GPU. 
+# therefore, media_x1 contains only 1 image in a directory 
+python -u mcr_orig.py --imgs_dir examples/media_x1

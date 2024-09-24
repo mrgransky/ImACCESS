@@ -1,0 +1,36 @@
+body {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	max-width: 1200px; /* Ensure max-width for consistency on all screens */
+	margin: 0 auto; /* centered layout */
+	padding: 0;
+	box-sizing: border-box;
+}
+
+
+.main-page-container {
+	text-align: center;
+	transition: transform 0.5s ease;
+}
+
+.logos-container {
+	display: flex;
+	justify-content: center;
+}
+
+.logos-container img {
+	width: 100%; /* Full width, will scale naturally */
+	max-width: 200px; /* Prevents images from growing too large */
+	height: auto; /* Maintain aspect ratio */
+	margin: 10px;
+	filter: grayscale(100%);
+}
+
+/* Responsive scaling based on screen size using media queries */
+@media screen and (max-width: 1200px) {
+	.body {
+		max-width: 100%;
+		padding: 0 15px; /* Add padding for smaller screens */
+	}
+}
