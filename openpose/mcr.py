@@ -173,6 +173,23 @@ def main():
 	opWrapper.configure(params)
 	opWrapper.start()
 	datum = op.Datum()
+	is_url = urllib.parse.urlparse(args.image_path).scheme != ""
+
+	if is_url:
+		# If it's a URL, download the image
+		response = requests.get(args.image_path)
+		imageToProcess = cv2.imread(BytesIO(response.content))
+		img_fname = args.image_path
+	else:
+		# If it's a local path, open the image directly
+		imageToProcess = cv2.imread(args.image_path)
+		img_fname = os.path.basename(args.image_path)
+	
+	print(f"\nIMG_pth: {args.image_path} IMG_fname: {img_fname} | URL? {is_url} | {type(imageToProcess)} | {imageToProcess.shape}")
+	if imageToProcess is None:
+		print(f"No IMG to process or Broken!!! => RETURN!")
+		return
+
 	with open(output_filename, 'w', newline='') as file:
 		print(f"creating a csv file: {output_filename}")
 		writer = csv.writer(file)
@@ -183,22 +200,7 @@ def main():
 				"Main_Character Face Bounding_Box",
 			],
 		)
-		is_url = urllib.parse.urlparse(args.image_path).scheme != ""
-
-		if is_url:
-			# If it's a URL, download the image
-			response = requests.get(args.image_path)
-			imageToProcess = cv2.imread(BytesIO(response.content))
-		else:
-			# If it's a local path, open the image directly
-			imageToProcess = cv2.imread(args.image_path)
-
-		# imageToProcess = cv2.imread(args.image_path)
-
-		print(f"\nIMG path: {args.image_path} | URL? {is_url} | {type(imageToProcess)} | {imageToProcess.shape}")
-		if imageToProcess is None:
-			print(f"No IMG to process! or Broken => RETURN!")
-			return
+		
 
 		scale_percent = 50 if imageToProcess.shape[1] > 300 else 100
 		width = int(imageToProcess.shape[1] * scale_percent / 100)
@@ -307,12 +309,12 @@ def main():
 					)
 				rect_index += 1
 				gaze_index += 1
-			img_with_main_characters_fpth = os.path.join(args.output_dir, f"mcr_{args.image_path}")
+			img_with_main_characters_fpth = os.path.join(args.output_dir, f"mcr_{img_fname}")
 			print(f">> Saving « {img_with_main_characters_fpth} »")
 			cv2.imwrite(img_with_main_characters_fpth, image_to_write)
 			print(f"DONE!")
 		else:
-			orig_img_fpth = os.path.join(args.output_dir, f"orig_{args.image_path}")
+			orig_img_fpth = os.path.join(args.output_dir, f"orig_{img_fname}")
 			print(f">> No Keypoints Found! => Saving Raw original imageToProcess: {orig_img_fpth}")
 			cv2.imwrite(orig_img_fpth, imageToProcess)
 		###############################################################################

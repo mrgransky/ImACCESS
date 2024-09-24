@@ -24,7 +24,8 @@ build/
 openpose/models/*/*.caffemodel
 openpose/models/*/*/*.caffemodel
 openpose/build/
-openpose/output/
+openpose/outputs/
+captions/outputs/
 develop-eggs/
 dist/
 downloads/

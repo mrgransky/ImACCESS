@@ -7,7 +7,7 @@ import subprocess
 def get_processed_img(fpth:str = "path/2/raw_img.png"):
 	# Construct the command to run the OpenPose processing in the openpose directory
 	openpose_dir = "/home/farid/WS_Farid/ImACCESS/openpose"
-	output_image_path = os.path.join(openpose_dir, "output", os.path.basename(fpth))
+	output_image_path = os.path.join(openpose_dir, "outputs", os.path.basename(fpth))
 		
 	# Assuming you have a command-line interface for the openpose backend
 	command = f"cd {openpose_dir} && bash run_mcr.sh --image {fpth} --output {output_image_path}"
