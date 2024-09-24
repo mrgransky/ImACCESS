@@ -14,6 +14,11 @@ from io import BytesIO
 import urllib.parse
 import skimage as ski
 
+# How to run:
+# $ python mcr.py --image_path https://www.thenexttrip.xyz/wp-content/uploads/2022/08/San-Diego-Instagram-Spots-2-820x1025.jpg
+# $ python mcr.py --image_path examples/media_x1/5919_115414.jpg
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--image_path", required=True, help="path to local img.jpg or URL!") # works fine with only one image at a time!
 parser.add_argument("--models_dir", default="models/")
@@ -201,8 +206,6 @@ def main():
 				"Main_Character Face Bounding_Box",
 			],
 		)
-		
-
 		scale_percent = 50 if imageToProcess.shape[1] > 300 else 100
 		width = int(imageToProcess.shape[1] * scale_percent / 100)
 		height = int(imageToProcess.shape[0] * scale_percent / 100)
@@ -221,8 +224,8 @@ def main():
 		opWrapper.emplaceAndPop(op.VectorDatum([datum]))
 		print(f">> datum.poseKeypoints")
 		keypoints = datum.poseKeypoints
-		print(f"keypoints {type(keypoints)} {keypoints.shape}:\n{keypoints}")
 		if keypoints is not None:
+			print(f"keypoints {type(keypoints)} {keypoints.shape}:\n{keypoints}")
 			print(f"Keypoints found => face rectangle...")
 			facial_rectangles, gazes, associated_keypoints = face_rectangles(keypoints, image_width, image_height)
 			print(type(facial_rectangles), len(facial_rectangles))
