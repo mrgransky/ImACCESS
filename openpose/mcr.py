@@ -12,6 +12,7 @@ import datetime
 import requests
 from io import BytesIO
 import urllib.parse
+import skimage as ski
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image_path", required=True, help="path to local img.jpg or URL!") # works fine with only one image at a time!
@@ -178,7 +179,7 @@ def main():
 	if is_url:
 		# If it's a URL, download the image
 		response = requests.get(args.image_path)
-		imageToProcess = cv2.imread(BytesIO(response.content))
+		imageToProcess = ski.io.imread(BytesIO(response.content))		
 		img_fname = args.image_path
 	else:
 		# If it's a local path, open the image directly
