@@ -9,6 +9,10 @@ TEST_IMGs
 # C extensions
 *.so
 
+# Django
+db.sqlite3
+staticfiles/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
