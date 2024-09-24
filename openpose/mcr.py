@@ -2,6 +2,7 @@ import sys
 import os
 import time
 import cv2
+import re
 import argparse
 import numpy as np
 import csv
@@ -185,7 +186,7 @@ def main():
 		# If it's a URL, download the image
 		response = requests.get(args.image_path)
 		imageToProcess = ski.io.imread(BytesIO(response.content))		
-		img_fname = args.image_path
+		img_fname = re.sub("/", "_", args.image_path)
 	else:
 		# If it's a local path, open the image directly
 		imageToProcess = cv2.imread(args.image_path)
