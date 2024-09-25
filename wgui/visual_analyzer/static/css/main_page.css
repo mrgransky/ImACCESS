@@ -1,22 +1,39 @@
+/* Base styles */
+* {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
 body {
 	display: flex;
 	flex-direction: column;
+	justify-content: center; /* Center the content vertically */
 	height: 100vh;
-	max-width: 1200px; /* Ensure max-width for consistency on all screens */
-	margin: 0 auto; /* centered layout */
+	max-width: 1200px; /* Ensure max-width for consistency */
+	margin: 0 auto; /* Centered layout */
 	padding: 0;
-	box-sizing: border-box;
+	font-family: 'Arial', sans-serif; /* Cleaner font */
+	background-color: #f4f4f9; /* Soft background color */
+	color: #333; /* Improve text contrast */
 }
-
 
 .main-page-container {
 	text-align: center;
+	background: white; /* White background for contrast */
+	padding: 20px; /* More padding for better spacing */
+	box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
+	border-radius: 8px; /* Rounded corners for a modern look */
 	transition: transform 0.5s ease;
+	max-width: 800px;
+	margin: auto; /* Centered on the page */
 }
 
+/* Logos styling */
 .logos-container {
 	display: flex;
 	justify-content: center;
+	margin-bottom: 20px; /* Spacing between logo and input area */
 }
 
 .logos-container img {
@@ -25,12 +42,129 @@ body {
 	height: auto; /* Maintain aspect ratio */
 	margin: 10px;
 	filter: grayscale(100%);
+	transition: filter 0.3s ease-in-out;
+}
+
+/* Add hover effect on logos */
+.logos-container img:hover {
+	filter: grayscale(0%); /* Remove grayscale on hover */
+}
+
+/* User input area */
+.user-input-container {
+	margin-top: 15px;
+	padding: 20px;
+	background-color: #ffffff;
+	border-radius: 8px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.user-input-container h2 {
+	color: #6200ff;
+	margin-top: 10px;
+	margin-bottom: 10px;
+}
+
+.user-input-container h3 {
+	font-size: 1.05rem;
+	margin-bottom: 20px;
+	color: #666;
+}
+
+.input-option {
+	display: flex;
+	justify-content: center;
+	gap: 20px; /* Space between radio options */
+	margin-top: 20px; /* Spacing below options */
+	margin-bottom: 20px; /* Spacing below options */
+}
+
+.input-option label {
+	font-size: 1.1rem;
+	color: #555;
+	cursor: pointer; /* Cursor pointer for better UX */
+}
+
+.input-field {
+	margin-bottom: 20px;
+}
+
+.input-field input[type="text"],
+.input-field input[type="file"] {
+	width: 80%; /* Improved width for readability */
+	padding: 10px;
+	border: 1px solid #ccc;
+	border-radius: 4px;
+	font-size: 1rem;
+	box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.1); /* Inner shadow for depth */
+}
+
+input[type="radio"] {
+	margin-right: 8px;
+}
+
+button[type="submit"],
+button[type="button"] {
+	background-color: #6200ff;
+	color: white;
+	padding: 10px 20px;
+	border: none;
+	border-radius: 5px;
+	font-size: 1.1rem;
+	cursor: pointer;
+	transition: background-color 0.3s ease;
+	margin: 10px;
+}
+
+/* Button hover effects */
+button[type="submit"]:hover {
+	background-color: #189100;
+}
+
+button[type="button"]:hover {
+	background-color: #dd0000;
+}
+
+/* Result image styling */
+.resulted-img-container {
+	margin-top: 30px;
+}
+
+.result-image {
+	padding: 20px;
+	background-color: #f9f9f9;
+	border: 1px solid #e1e1e1;
+	border-radius: 8px;
+	box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.result-image h3 {
+	margin-bottom: 12px;
+	font-size: 1.35rem;
+}
+
+.result-image img {
+	width: 100%;
+	max-width: 600px; /* Limit the size of the generated image */
+	height: auto;
+	border-radius: 8px;
+	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); /* Shadow for better visibility */
 }
 
 /* Responsive scaling based on screen size using media queries */
 @media screen and (max-width: 1200px) {
-	.body {
+	body {
 		max-width: 100%;
 		padding: 0 15px; /* Add padding for smaller screens */
+	}
+
+	.input-field input[type="text"],
+	.input-field input[type="file"] {
+		width: 100%;
+	}
+
+	button[type="submit"],
+	button[type="button"] {
+		width: 100%;
 	}
 }

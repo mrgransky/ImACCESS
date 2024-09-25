@@ -7,8 +7,6 @@ out_pth=$2  # path to save output caption
 echo "$img_pth"
 echo "$out_pth"
 
-# Run captioning model (for example, using a Python script)
-# This assumes you have a Python script in the captions directory that generates the caption
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
 txt="$user began Bash job: `date`"

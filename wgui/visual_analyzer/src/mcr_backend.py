@@ -7,6 +7,28 @@ from django.conf import settings
 
 OPENPOSE_DIRECTORY = os.path.join(settings.PROJECT_DIR, "openpose")
 
+def image_resize(image, width = None, height = None, inter = cv2.INTER_AREA):
+	# initialize the dimensions of the image to be resized and grab the image size
+	dim = None
+	(h, w) = image.shape[:2]
+	# if both the width and height are None, then return the original image
+	if width is None and height is None:
+		return image
+	# check to see if the width is None
+	if width is None:
+		# calculate the ratio of the height and construct the dimensions
+		r = height / float(h)
+		dim = (int(w * r), height)
+	# otherwise, the height is None
+	else:
+		# calculate the ratio of the width and construct the dimensions
+		r = width / float(w)
+		dim = (width, int(h * r))
+	# resize the image
+	resized = cv2.resize(image, dim, interpolation = inter)
+	# return the resized image
+	return resized
+
 def get_sample_img():
 	# Create a black image
 	sample_image = np.zeros(shape=(480, 640, 3), dtype=np.uint8)
@@ -51,7 +73,8 @@ def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11
 		mcr_image = get_sample_img()
 
 
-	mcr_image = cv2.resize(mcr_image, (640, 480), cv2.INTER_AREA) # cv2.resize(image, (width, height))
+	# mcr_image = cv2.resize(mcr_image, (640, 480), cv2.INTER_AREA) # cv2.resize(image, (width, height))
+	mcr_image = image_resize(mcr_image, width = 640, height = 480, inter = cv2.INTER_AREA)
 
 	# Convert the image to PNG format
 	_, buffer = cv2.imencode('.png', mcr_image)

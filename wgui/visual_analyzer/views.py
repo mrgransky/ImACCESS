@@ -1,35 +1,3 @@
-# from django.shortcuts import render
-# from django.http import HttpResponse
-
-# def main_page(request):
-# 	if request.method == 'POST':
-# 		# Check which input type was selected (URL or file)
-# 		input_type = request.POST.get('input_type')
-# 		# Handle URL input
-# 		if input_type == 'url':
-# 			image_url = request.POST.get('image_url')  # Get the URL from the form
-# 			print(f"Image URL: {image_url}")  # Print to console for debugging purposes
-# 			context = {
-# 				'welcome_text': f"URL submitted: {image_url}",
-# 			}
-# 		# Handle file upload
-# 		elif input_type == 'file':
-# 			if 'image_file' in request.FILES:
-# 				image_file = request.FILES['image_file']  # Get the uploaded file
-# 				print(f"Uploaded File Path: {image_file.name}")  # Print the file name for debugging purposes
-# 				context = {
-# 					'welcome_text': f"File uploaded: {image_file.name}",
-# 				}
-# 			else:
-# 				context = {
-# 					'welcome_text': "No file uploaded.",
-# 				}
-# 	else:
-# 		context = {
-# 			'welcome_text': "Welcome to My System!",
-# 		}
-# 	return render(request, 'visual_analyzer/main_page.html', context)
-
 import os
 import random
 
@@ -41,7 +9,11 @@ from visual_analyzer.src.mcr_backend import generate_mcr
 import urllib.request
 
 def main_page(request):
-	context = {'welcome_text': "Welcome to My System!"}
+	# context = {'welcome_text': "Welcome to ImACCESS"}
+	context = {
+		'project_title': "ImACCESS",
+		'greeting_text': "Hi there Researcher",
+	}
 	if request.method == 'POST' and (request.FILES.get('image_file') or request.POST.get('image_url')):
 		print(f"Handling uploaded image...")
 		# Handle file upload

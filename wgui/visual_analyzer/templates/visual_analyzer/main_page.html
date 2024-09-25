@@ -7,7 +7,7 @@
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title>ImACCESS</title>
-		<link rel="website icon" type="png" href="https://i.pinimg.com/564x/fe/b7/01/feb70145fc9cab28c61c5868305b8600.jpg">
+		<link rel="website icon" type="png" href="https://seekicon.com/free-icon-download/image-search-outline_1.svg">
 		<link rel="stylesheet" href="{% static 'css/main_page.css' %}">
 		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
 	</head>
@@ -19,17 +19,16 @@
 				<img src="https://pbs.twimg.com/profile_images/1075012520837029889/jSALzNPb_400x400.jpg" alt="Right Image">
 			</div>
 			<div class="user-input-container">
-				<h2>Hi there username, &#128521;</h2>
-				<h3>{{ welcome_text|safe }}</h3>
-				<!-- Form for URL input or image upload -->
-				<!-- <form action="{% url 'main_page' %}" method="post" enctype="multipart/form-data" onsubmit="previewImage(event)"> -->
+				<h2>Welcome to  {{ project_title|safe }}</h2>
+				<h3>How would you like to upload your image to proceed?</h3>
 				<form action="{% url 'main_page' %}" method="post" enctype="multipart/form-data">
 					{% csrf_token %}
+
 					<!-- Radio buttons to choose between URL and file upload -->
 					<div class="input-option">
 							<label>
 									<input type="radio" name="input_type" value="url" checked onclick="toggleInput('url')">
-									Enter URL
+									Paste URL
 							</label>
 							<label>
 									<input type="radio" name="input_type" value="file" onclick="toggleInput('file')">
@@ -49,7 +48,6 @@
 							<input type="file" id="file" name="image_file" accept="image/*">
 					</div>
 
-					<!-- Submit button -->
 					<button type="submit">Go</button>
 					<button type="button" onclick="clearForm()">Clear</button>
 				</form>
