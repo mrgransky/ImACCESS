@@ -75,6 +75,7 @@ def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11
 
 	# mcr_image = cv2.resize(mcr_image, (640, 480), cv2.INTER_AREA) # cv2.resize(image, (width, height))
 	mcr_image = image_resize(mcr_image, width = 640, height = 480, inter = cv2.INTER_AREA)
+	print(f"Final mcr_IMG: {type(mcr_image)} {mcr_image.shape}")
 
 	# Convert the image to PNG format
 	_, buffer = cv2.imencode('.png', mcr_image)
