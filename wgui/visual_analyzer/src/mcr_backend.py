@@ -52,7 +52,7 @@ def get_sample_img(h:int = 600, w:int = 800):
 	cv2.putText(sample_image, text_line2, (text_x, text_y_line2), font, font_scale, color, thickness)
 	return sample_image
 
-def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11, WIDTH:int = 800, HEIGHT:int = 600):
+def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11, WIDTH:int = 640, HEIGHT:int = 480):
 	print(f"Received {img_source} for MCR backend")
 
 	output_image_path = os.path.join(OPENPOSE_DIRECTORY, "outputs", f"mcr_img_x{rnd}.png")

@@ -340,7 +340,7 @@ def main():
 						pt1=(int(rect[0][0]), int(rect[0][1])), # start_point
 						pt2=(int(rect[1][0]), int(rect[1][1])), # end_point
 						color=(0, 0, 255), #BGR
-						thickness=2
+						thickness=1
 					)
 				else: # main character(s) in Green
 					cv2.rectangle(
@@ -348,7 +348,7 @@ def main():
 						pt1=(int(rect[0][0]), int(rect[0][1])), 
 						pt2=(int(rect[1][0]), int(rect[1][1])), 
 						color=(0, 255, 0), #BGR
-						thickness=3
+						thickness=2
 					)
 				rect_index += 1
 				gaze_index += 1
