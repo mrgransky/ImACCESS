@@ -173,9 +173,9 @@ button[type="button"]:hover {
 
 .result-image img {
 	width: 100%;
-	max-width: 600px; /* Limit the size of the generated image */
+	/* max-width: 600px; Limit the size of the generated image */
 	height: auto;
-	border-radius: 8px;
+	border-radius: 5px;
 	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15); /* Shadow for better visibility */
 }
 
