@@ -22,6 +22,7 @@ import skimage as ski
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image_path", required=True, help="path to local img.jpg or URL!") # works fine with only one image at a time!
+parser.add_argument("--processed_image_path", required=True, help="path to local img.jpg or URL!") # works fine with only one image at a time!
 parser.add_argument("--models_dir", default="models/")
 parser.add_argument("--output_dir", default="outputs")
 parser.add_argument("--output_bbs", default="output_bbs.csv")
@@ -190,7 +191,7 @@ def main():
 	else:
 		# If it's a local path, open the image directly
 		imageToProcess = cv2.imread(args.image_path)
-		img_fname = os.path.basename(args.image_path)
+		img_fname = os.path.basename(args.image_path) # "../../examples/media/COCO_v0192.jpg" => # "COCO_v0192.jpg" 
 	
 	print(f"\nIMG_pth: {args.image_path} IMG_fname: {img_fname} | URL? {is_url} | {type(imageToProcess)} | {imageToProcess.shape}")
 	if imageToProcess is None:
@@ -226,7 +227,7 @@ def main():
 		print(f">> datum.poseKeypoints")
 		keypoints = datum.poseKeypoints
 		if keypoints is not None:
-			print(f"keypoints {type(keypoints)} {keypoints.shape}:\n{keypoints}")
+			print(f"keypoints {type(keypoints)} {keypoints.shape}")
 			print(f"Keypoints found => face rectangle...")
 			facial_rectangles, gazes, associated_keypoints = face_rectangles(keypoints, image_width, image_height)
 			print(type(facial_rectangles), len(facial_rectangles))
@@ -314,12 +315,14 @@ def main():
 					)
 				rect_index += 1
 				gaze_index += 1
-			img_with_main_characters_fpth = os.path.join(args.output_dir, f"mcr_{img_fname}")
+			# img_with_main_characters_fpth = os.path.join(args.output_dir, f"mcr_{img_fname}")
+			img_with_main_characters_fpth = args.processed_image_path
 			print(f">> Saving « {img_with_main_characters_fpth} »")
 			cv2.imwrite(img_with_main_characters_fpth, image_to_write)
 			print(f"DONE!")
 		else:
-			orig_img_fpth = os.path.join(args.output_dir, f"orig_{img_fname}")
+			# orig_img_fpth = os.path.join(args.output_dir, f"orig_{img_fname}")
+			orig_img_fpth = args.processed_image_path
 			print(f">> No Keypoints Found! => Saving Raw original imageToProcess: {orig_img_fpth}")
 			cv2.imwrite(orig_img_fpth, imageToProcess)
 		###############################################################################

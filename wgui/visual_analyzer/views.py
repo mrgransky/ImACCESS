@@ -31,6 +31,8 @@
 # 	return render(request, 'visual_analyzer/main_page.html', context)
 
 import os
+import random
+
 from django.shortcuts import render
 from django.core.files.storage import FileSystemStorage
 from visual_analyzer.src.img_cap_backend import generate_caption
@@ -53,8 +55,10 @@ def main_page(request):
 			full_image_path = request.POST.get('image_url')  # Implement this function
 		print(f">> input full_image_path: {full_image_path} | {type(full_image_path)}")
 		if full_image_path:
-			caption = generate_caption(img_source=full_image_path)
-			mcr_img_base64 = generate_mcr(img_source=full_image_path)
+			rand_extension = random.randint(0, 9999)
+
+			caption = generate_caption(img_source=full_image_path, rnd=rand_extension)
+			mcr_img_base64 = generate_mcr(img_source=full_image_path, rnd=rand_extension)
 			context['caption'] = caption
 			context['result_image'] = mcr_img_base64
 	return render(request, 'visual_analyzer/main_page.html', context)
