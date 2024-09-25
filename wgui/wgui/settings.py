@@ -10,8 +10,6 @@ PROJECT_DIR = os.path.abspath(
   )
 ) # /home/farid/WS_Farid/ImACCESS
 
-# sys.path.append(PROJECT_DIR)
-
 print(f">> settings.py BASE_DIR: {BASE_DIR}")
 print(f">> settings.py PROJECT_DIR: {PROJECT_DIR}")
 
@@ -116,14 +114,11 @@ USE_I18N = True
 USE_L10N = True
 USE_TZ = True
 
-# STATIC_URL = '/static/'
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')] # Extra places for collectstatic to find static files
 
-# MEDIA settings
-# MEDIA_URL = '/media/'
 MEDIA_URL = 'media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 

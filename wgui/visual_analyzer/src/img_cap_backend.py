@@ -7,9 +7,6 @@ CAPTION_DIRECTORY = os.path.join(settings.PROJECT_DIR, "captions")
 def generate_caption(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11):
 	print(f"Received {img_source} for image captioning backend")
 
-	# Define the captions directory
-	CAPTION_DIRECTORY = "/home/farid/WS_Farid/ImACCESS/captions"
-	
 	# Output caption file
 	output_caption_fpth = os.path.join(CAPTION_DIRECTORY, "outputs", f"captioned_img_x{rnd}.txt")
 	print(f">> output fpth: {output_caption_fpth}")

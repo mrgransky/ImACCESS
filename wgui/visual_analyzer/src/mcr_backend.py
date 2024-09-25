@@ -50,7 +50,8 @@ def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11
 		print(f">> could not obtain resulted image => generating a sample img!")
 		mcr_image = get_sample_img()
 
-	# mcr_image = get_sample_img()
+
+	mcr_image = cv2.resize(mcr_image, (640, 480), cv2.INTER_AREA) # cv2.resize(image, (width, height))
 
 	# Convert the image to PNG format
 	_, buffer = cv2.imencode('.png', mcr_image)
