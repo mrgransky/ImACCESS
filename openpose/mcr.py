@@ -217,7 +217,7 @@ def main():
 		img_fname = re.sub("/", "_", args.image_path)
 	else:
 		# If it's a local path, open the image directly
-		imageToProcess = cv2.imread(args.image_path)
+		imageToProcess = cv2.imread(args.image_path) # R, C, CH => H, W, C
 		img_fname = os.path.basename(args.image_path) # "../../examples/media/COCO_v0192.jpg" => # "COCO_v0192.jpg" 
 	
 	if imageToProcess is None:
@@ -229,8 +229,9 @@ def main():
 		f"IMG_fname: {img_fname}\n"
 		f"URL? {is_url} {type(imageToProcess)} {imageToProcess.shape}"
 	)
+	MIN_WIDTH = 1200
 
-	scale_percent = 50 if imageToProcess.shape[1] > 300 else 100
+	scale_percent = 50 if imageToProcess.shape[1] > MIN_WIDTH else 100 # R, C, CH => H, W, C if W > MIN_WIDTH
 	width = int(imageToProcess.shape[1] * scale_percent / 100)
 	height = int(imageToProcess.shape[0] * scale_percent / 100)
 	# print(f"IMG (w, h): ({width}, {height})")
