@@ -26,37 +26,46 @@
 
 					<!-- Radio buttons to choose between URL and file upload -->
 					<div class="input-option">
-							<label>
-									<input type="radio" name="input_type" value="url" checked onclick="toggleInput('url')">
-									Paste URL
-							</label>
-							<label>
-									<input type="radio" name="input_type" value="file" onclick="toggleInput('file')">
-									Upload Image
-							</label>
+						<label>
+							<input type="radio" name="input_type" value="url" checked onclick="toggleInput('url')">
+							Paste URL
+						</label>
+						<label>
+							<input type="radio" name="input_type" value="file" onclick="toggleInput('file')">
+							Upload Image
+						</label>
 					</div>
 
 					<!-- URL input field (initially visible) -->
 					<div id="url-input" class="input-field">
-							<label for="url"></label>
-							<input type="text" id="url" name="image_url" placeholder="Enter image URL">
+						<label for="url"></label>
+						<input type="text" id="url" name="image_url" placeholder="Enter image URL">
 					</div>
 
 					<!-- File upload input field (initially hidden) -->
 					<div id="file-input" class="input-field" style="display: none;">
-							<label for="file"></label>
-							<input type="file" id="file" name="image_file" accept="image/*">
+						<label for="file"></label>
+						<input type="file" id="file" name="image_file" accept="image/*">
 					</div>
-
-					<button type="submit">Go</button>
+	
+					<button type="submit" onclick="triggerSpinner()">Go</button>
 					<button type="button" onclick="clearForm()">Clear</button>
+
 				</form>
+				<div class="loading-container">
+					<div id="loadingSpinner" class="loading-spinner">
+						<p id="loadingText" class="spinner-text">Please Wait (~10s)</p>
+					</div>
+				</div>
 			</div>
 			<div class="resulted-img-container">
 				{% if result_image and caption %}
+					<script>
+						hideLoadingSpinner();
+					</script>
 					<div class="result-image">
-							<h3>{{ caption }}</h3>
-							<img src="data:image/png;base64,{{ result_image }}" alt="Generated Image">
+						<h3>{{ caption }}</h3>
+						<img src="data:image/png;base64,{{ result_image }}" alt="Generated Image">
 					</div>
 				{% endif %}
 			</div>
