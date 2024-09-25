@@ -3,6 +3,9 @@ import cv2
 import numpy as np
 import base64
 import subprocess
+from django.conf import settings
+
+OPENPOSE_DIRECTORY = os.path.join(settings.PROJECT_DIR, "openpose")
 
 def get_sample_img():
 	# Create a black image
@@ -27,23 +30,15 @@ def get_sample_img():
 	cv2.putText(sample_image, text_line2, (text_x, text_y_line2), font, font_scale, color, thickness)
 	return sample_image
 
-# def get_sample_img():
-# 	sample_image = np.zeros(shape=(512,512,3), dtype=np.int16)
-# 	cv2.rectangle(sample_image, pt1=(100,100), pt2=(400,400), color=(0,255,0), thickness=10)
-# 	cv2.circle(sample_image, center=(250,250), radius=220, color=(255,0,0), thickness=8)
-# 	return sample_image
-
 def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11):
 	print(f"Received {img_source} for MCR backend")
 
-	# Construct the command to run the OpenPose processing in the openpose directory
-	openpose_dir = "/home/farid/WS_Farid/ImACCESS/openpose"
-	output_image_path = os.path.join(openpose_dir, "outputs", f"mcr_img_x{rnd}.png")
+	output_image_path = os.path.join(OPENPOSE_DIRECTORY, "outputs", f"mcr_img_x{rnd}.png")
 
 	print(f">> output fpth: {output_image_path}")
 
 	# Assuming you have a command-line interface for the openpose backend
-	command = f"cd {openpose_dir} && bash run_mcr.sh {img_source} {output_image_path}"
+	command = f"cd {OPENPOSE_DIRECTORY} && bash run_mcr.sh {img_source} {output_image_path}"
 		
 	# Run the OpenPose command (assumed to be a script that processes the image)
 	subprocess.run(command, shell=True)

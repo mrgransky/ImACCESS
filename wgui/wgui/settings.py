@@ -3,9 +3,14 @@ import sys
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # /home/farid/WS_Farid/ImACCESS/wgui
 
-# Add the path to the 'captions' directory to the Python path
-PROJECT_DIR = os.path.join(BASE_DIR, '../')
-sys.path.append(PROJECT_DIR)
+PROJECT_DIR = os.path.abspath(
+  os.path.join(
+    os.path.dirname(__file__), 
+    os.pardir, os.pardir,
+  )
+) # /home/farid/WS_Farid/ImACCESS
+
+# sys.path.append(PROJECT_DIR)
 
 print(f">> settings.py BASE_DIR: {BASE_DIR}")
 print(f">> settings.py PROJECT_DIR: {PROJECT_DIR}")

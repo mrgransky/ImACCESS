@@ -4,7 +4,6 @@ from utils import *
 def check_gpu_memory():
 		# Check available GPU memory (requires nvidia-smi)
 		import subprocess
-		
 		try:
 				output = subprocess.check_output("nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits", shell=True)
 				free_memory = int(output.strip().split()[0])
