@@ -35,8 +35,8 @@ if USER=="farid":
 	WDIR = os.path.join(HOME, "datasets")
 	models_dir = os.path.join(WDIR, "trash", "models")
 else:
-	WDIR = "/media/volume/datasets"
-	models_dir = os.path.join(HOME, WDIR, "trash", "models")
+	WDIR = "/media/volume/ImACCESS"
+	models_dir = os.path.join(HOME, WDIR, "models")
 
 # Define the device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
