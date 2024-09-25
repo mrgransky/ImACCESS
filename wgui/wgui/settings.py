@@ -10,8 +10,8 @@ PROJECT_DIR = os.path.abspath(
   )
 ) # /home/farid/WS_Farid/ImACCESS
 
-print(f">> settings.py BASE_DIR: {BASE_DIR}")
-print(f">> settings.py PROJECT_DIR: {PROJECT_DIR}")
+# print(f">> settings.py BASE_DIR: {BASE_DIR}")
+# print(f">> settings.py PROJECT_DIR: {PROJECT_DIR}")
 
 SECRET_KEY = os.getenv(
 	'DJANGO_SECRET_KEY',
