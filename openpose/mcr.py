@@ -193,10 +193,10 @@ def main():
 		imageToProcess = cv2.imread(args.image_path)
 		img_fname = os.path.basename(args.image_path) # "../../examples/media/COCO_v0192.jpg" => # "COCO_v0192.jpg" 
 	
-	print(f"\nIMG_pth: {args.image_path} IMG_fname: {img_fname} | URL? {is_url} | {type(imageToProcess)} | {imageToProcess.shape}")
 	if imageToProcess is None:
 		print(f"No IMG to process or Broken!!! => RETURN!")
 		return
+	print(f"\nIMG_pth: {args.image_path} IMG_fname: {img_fname} | URL? {is_url} | {type(imageToProcess)} | {imageToProcess.shape}")
 
 	with open(output_filename, 'w', newline='') as file:
 		print(f"creating a csv file: {output_filename}")
