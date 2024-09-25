@@ -2,6 +2,7 @@ import sys
 import os
 import time
 import cv2
+import torch
 import re
 import argparse
 import numpy as np
@@ -14,11 +15,12 @@ import requests
 from io import BytesIO
 import urllib.parse
 import skimage as ski
+import multiprocessing
+import subprocess
 
 # How to run:
 # $ python mcr.py --image_path https://www.thenexttrip.xyz/wp-content/uploads/2022/08/San-Diego-Instagram-Spots-2-820x1025.jpg
 # $ python mcr.py --image_path examples/media_x1/5919_115414.jpg
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image_path", required=True, help="path to local img.jpg or URL!") # works fine with only one image at a time!
@@ -27,7 +29,22 @@ parser.add_argument("--models_dir", default="models/")
 parser.add_argument("--output_dir", default="outputs")
 parser.add_argument("--output_bbs", default="output_bbs.csv")
 args = parser.parse_args()
-print(args)
+# print(args)
+
+HOME: str = os.getenv('HOME') # echo $HOME
+USER: str = os.getenv('USER') # echo $USER
+MIN_GPU_MB = 6000
+os.makedirs(args.output_dir, exist_ok=True)
+
+def check_gpu_memory():
+	try:
+		output = subprocess.check_output("nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits", shell=True)
+		free_memory = int(output.strip().split()[0])
+		print(f"Available GPU memory: {free_memory} MB")
+		return free_memory
+	except Exception as e:
+		print(f"Could not check GPU memory: {e}")
+		return None
 
 def getBlurValue(image):
 	canny = cv2.Canny(image, 50, 250)
@@ -151,8 +168,19 @@ def face_rectangles(keypoints, image_width, image_height):
 def slope(x1, y1, x2, y2):
 	m = (y2-y1)/(x2-x1)
 	return m
-
+	
 def main():
+	available_memory = check_gpu_memory()
+	print(
+		f"Running {__file__} | {torch.cuda.device_count()} GPU(s)"
+		f"[Memory]: {available_memory} MB"
+		f" | {multiprocessing.cpu_count()} CPU core(s)"
+		.center(150, "-")
+	)
+	if available_memory is not None and available_memory < MIN_GPU_MB:  # Example threshold in MB
+		print("Not enough GPU memory available. Exiting...")
+		return
+
 	projDIR = os.path.dirname(os.path.realpath(__file__))
 	try:
 		sys.path.append(f'{projDIR}/build/python')
@@ -161,7 +189,7 @@ def main():
 	except Exception as e:
 		print(f"ERROR: {e}")
 		return
-	print(f"OpenPose successfully imported for Platform: {sys.platform} | project DIR: {projDIR}")
+	print(f"OpenPose imported for {sys.platform} OS within: {projDIR}")
 	params = dict()
 	# params["model_folder"] = "models/"
 	params["model_folder"] = args.models_dir
@@ -169,15 +197,14 @@ def main():
 	facial_rectangles = None  # Initialize facial_rectangles to None
 	predictedMainCharacters = None  # Initialize predictedMainCharacters to None
 	
-	os.makedirs(args.output_dir, exist_ok=True)
 	output_filename = os.path.join(
 		args.output_dir, 
 		f"Bounding_Boxes_{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}.csv",
 	)
-	print(output_filename)
+	# print(output_filename)
 
-	print(f">> Starting OpenPose Python Wrapper with parameters: {params}")
 	opWrapper = op.WrapperPython()
+	print(f"\tConfiguring parameters: {params} ...")
 	opWrapper.configure(params)
 	opWrapper.start()
 	datum = op.Datum()
@@ -194,36 +221,46 @@ def main():
 		img_fname = os.path.basename(args.image_path) # "../../examples/media/COCO_v0192.jpg" => # "COCO_v0192.jpg" 
 	
 	if imageToProcess is None:
-		print(f"No IMG to process or Broken!!! => RETURN!")
+		print(f">>> « ERROR » No Image Found to process or Broken!!! => RETURN!")
 		return
-	print(f"\nIMG_pth: {args.image_path} IMG_fname: {img_fname} | URL? {is_url} | {type(imageToProcess)} | {imageToProcess.shape}")
+	print(f"#"*130)
+	print(
+		f"IMG_fpth: {args.image_path}\n"
+		f"IMG_fname: {img_fname}\n"
+		f"URL? {is_url} {type(imageToProcess)} {imageToProcess.shape}"
+	)
+
+	scale_percent = 50 if imageToProcess.shape[1] > 300 else 100
+	width = int(imageToProcess.shape[1] * scale_percent / 100)
+	height = int(imageToProcess.shape[0] * scale_percent / 100)
+	# print(f"IMG (w, h): ({width}, {height})")
+	dim = (width, height)
+	imageToProcess = cv2.resize(imageToProcess, dim, cv2.INTER_AREA)
+	print(f"\tResized IMG: {type(imageToProcess)} {imageToProcess.shape}")
+	print(f"#"*130)
+	image_width = imageToProcess.shape[1]
+	image_height = imageToProcess.shape[0]
+	image_center_x = (image_width / 2)
+	image_center_y = (image_height / 2)
+	diagonal_over_2 = math.sqrt(image_width**2 + image_height**2) / 2
 
 	with open(output_filename, 'w', newline='') as file:
-		print(f"creating a csv file: {output_filename}")
+		# print(f"creating a csv file: {output_filename}")
 		writer = csv.writer(file)
-		print(f"\t >> Adding title to csv file...")
+		# print(f"\t >> Adding title to csv file...")
 		writer.writerow(
 			[
 				"Filename",
 				"Main_Character Face Bounding_Box",
 			],
 		)
-		scale_percent = 50 if imageToProcess.shape[1] > 300 else 100
-		width = int(imageToProcess.shape[1] * scale_percent / 100)
-		height = int(imageToProcess.shape[0] * scale_percent / 100)
-		print(f"IMG (w, h): ({width}, {height})")
-		dim = (width, height)
-		imageToProcess = cv2.resize(imageToProcess, dim, cv2.INTER_AREA)
-		print(f"Resized IMG: {type(imageToProcess)} | {imageToProcess.shape}")
-		image_width = imageToProcess.shape[1]
-		image_height = imageToProcess.shape[0]
-		image_center_x = (image_width / 2)
-		image_center_y = (image_height / 2)
-		diagonal_over_2 = math.sqrt(image_width**2 + image_height**2) / 2
+		
 		print(f">> datum.cvInputData")
 		datum.cvInputData = imageToProcess
-		print(f">> opWrapper.emplaceAndPop")
+
+		print(f">> opWrapper.emplaceAndPop => GPU memory intensive...")
 		opWrapper.emplaceAndPop(op.VectorDatum([datum]))
+
 		print(f">> datum.poseKeypoints")
 		keypoints = datum.poseKeypoints
 		if keypoints is not None:
