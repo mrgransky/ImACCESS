@@ -29,7 +29,7 @@ def image_resize(image, width = None, height = None, inter = cv2.INTER_AREA):
 	# return the resized image
 	return resized
 
-def get_sample_img():
+def get_sample_img(h:int = 600, w:int = 800):
 	# Create a black image
 	sample_image = np.zeros(shape=(480, 640, 3), dtype=np.uint8)
 	# Define the text and its properties
@@ -52,7 +52,7 @@ def get_sample_img():
 	cv2.putText(sample_image, text_line2, (text_x, text_y_line2), font, font_scale, color, thickness)
 	return sample_image
 
-def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11):
+def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11, WIDTH:int = 800, HEIGHT:int = 600):
 	print(f"Received {img_source} for MCR backend")
 
 	output_image_path = os.path.join(OPENPOSE_DIRECTORY, "outputs", f"mcr_img_x{rnd}.png")
@@ -70,11 +70,16 @@ def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11
 		mcr_image = cv2.imread(output_image_path)
 	else:
 		print(f">> could not obtain resulted image => generating a sample img!")
-		mcr_image = get_sample_img()
+		mcr_image = get_sample_img(h=HEIGHT, w=WIDTH)
 
 
 	# mcr_image = cv2.resize(mcr_image, (640, 480), cv2.INTER_AREA) # cv2.resize(image, (width, height))
-	mcr_image = image_resize(mcr_image, width = 640, height = 480, inter = cv2.INTER_AREA)
+	mcr_image = image_resize(
+		image=mcr_image, 
+		width=WIDTH, 
+		height=HEIGHT, 
+		inter=cv2.INTER_AREA,
+	)
 	print(f"Final mcr_IMG: {type(mcr_image)} {mcr_image.shape}")
 
 	# Convert the image to PNG format
