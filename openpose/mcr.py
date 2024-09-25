@@ -40,7 +40,7 @@ def check_gpu_memory():
 	try:
 		output = subprocess.check_output("nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits", shell=True)
 		free_memory = int(output.strip().split()[0])
-		print(f"Available GPU memory: {free_memory} MB")
+		# print(f"Available GPU memory: {free_memory} MB")
 		return free_memory
 	except Exception as e:
 		print(f"Could not check GPU memory: {e}")
@@ -172,7 +172,7 @@ def slope(x1, y1, x2, y2):
 def main():
 	available_memory = check_gpu_memory()
 	print(
-		f"Running {__file__} | {torch.cuda.device_count()} GPU(s)"
+		f"Running {__file__} | {torch.cuda.device_count()} GPU(s) "
 		f"[Memory]: {available_memory} MB"
 		f" | {multiprocessing.cpu_count()} CPU core(s)"
 		.center(150, "-")
