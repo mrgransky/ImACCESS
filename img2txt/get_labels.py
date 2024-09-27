@@ -9,6 +9,7 @@ import urllib.parse
 import argparse
 import requests
 from io import BytesIO
+import time
 
 # how to run in local:
 # $ python get_labels.py --image_path TEST_IMGs/baseball.jpeg --output_path outputs/lblsXXXX.pkl
@@ -47,8 +48,6 @@ else: # Pouta
 	WDIR = "/media/volume/ImACCESS"
 	models_dir = os.path.join(HOME, WDIR, "models")
 	model_fpth = pretrained_models[2]
-
-print(f"HOME: {HOME} | USER: {USER} | Device: {device} | model: {model_fpth}")
 
 # Load the CLIP model and processor
 model = CLIPModel.from_pretrained(model_fpth, cache_dir=models_dir)
@@ -103,10 +102,11 @@ all_labels = list(
 	)
 )
 
-print(f"all_lbls: {len(all_labels)}")
-# print(all_labels)
-
 def generate_labels(img_source: str="path/2/img.jpg"):
+	print(f"IMG Labeling using {len(all_labels)} predefined label(s)".center(150, "-"))
+	print(f"HOME: {HOME} | USER: {USER} | Device: {device} | model: {model_fpth}")
+	
+	lbl_st = time.time()
 	# Check if the input is a URL or local path
 	is_url = urllib.parse.urlparse(img_source).scheme != ""
 	if is_url:
@@ -135,6 +135,7 @@ def generate_labels(img_source: str="path/2/img.jpg"):
 	# Get the top-5 most relevant labels
 	top5_indices = similarities.topk(5).indices[0].tolist()
 	top5_labels = [list(all_labels)[i] for i in top5_indices]
+	print(f"Elapsed_t: {time.time()-lbl_st:.2f} sec".center(150, "-"))
 
 	print(f"Saving image labels for img: {img_source} in: {args.output_path}")
 	with open(args.output_path, 'wb') as f:
