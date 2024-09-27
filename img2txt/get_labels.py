@@ -132,12 +132,11 @@ def generate_labels(img_source: str="path/2/img.jpg"):
 	# Get the top-5 most relevant labels
 	top5_indices = similarities.topk(5).indices[0].tolist()
 	top5_labels = [list(all_labels)[i] for i in top5_indices]
-	print(f"Elapsed_t: {time.time()-lbl_st:.2f} sec".center(150, "-"))
 
 	print(f"Saving image labels for img: {img_source} in: {args.output_path}")
 	with open(args.output_path, 'wb') as f:
 		pickle.dump(top5_labels, f)
-
+	print(f"Elapsed_t: {time.time()-lbl_st:.2f} sec".center(150, "-"))
 	return top5_labels
 	# return label
 
