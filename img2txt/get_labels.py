@@ -56,7 +56,7 @@ cifar100_dataset = CIFAR100(
 	train=False,
 )
 
-def get_labels_from_file(fpth):
+def get_dataset_classes(fpth):
 	with open(fpth, 'r') as file_:
 		labels=[line.strip().lower() for line in file_]
 	return labels
@@ -65,44 +65,57 @@ def get_labels_from_file(fpth):
 own_lbls = [
 	"Seashell",
 	"rubiks cube",
-	"Smile","Sad", "Cry", "Surprise", "Anger",
+	"Smile",
+	"Sad", 
+	"Cry", 
+	"Surprise", 
+	"Anger",
+	"reindeer",
+	"Social media",
 ]
 war_time_lbls = [
-		"Soldiers in combat", 
-		"Military vehicles", 
-		"Aerial bombings", 
-		"War-torn cities",
-		"Refugees",
-		"Civilians", 
-		"Military parades", 
-		"War memorials", 
-		"Historical leaders",
-		"Naval battles", 
-		"Air force operations", 
-		"Medical aid and field hospitals",
-		"Prisoners of war", 
-		"Propaganda posters", 
-		"Trench warfare", 
-		"Armistice celebrations",
-		"Famous Landmark",
+		"Infantry", 
+		"Military_vehicle",
+		"Aerial_bombings", 
+		"War-torn_city",
+		"Refugee",
+		"Civilian", 
+		"Military_parade", 
+		"War memorial",
+		"Historical_leader",
+		"Naval_battle", 
+		"Airforce_operation",
+		"Medical_aid",
+		"Field_hospital",
+		"War_prisoner", 
+		"Propaganda_poster", 
+		"Trench_warfare",
+		"Warfare_combat",
+		"Armistice_celebration",
+		"Landmark",
 		"Explosion",
+		"Peace",
+		"Negotiation",
 ]
 all_labels = list(
 	set(
 		list(map(str.lower,own_lbls)) # to ensure lowercase
 		+ list(map(str.lower,war_time_lbls)) # to ensure lowercase
-		+ cifar100_dataset.classes
-		+ get_labels_from_file(fpth=(os.path.join("data", 'imagenet_classes.txt')))
-		+ get_labels_from_file(fpth=(os.path.join("data", 'coco_labels.txt')))
-		+ get_labels_from_file(fpth=(os.path.join("data", 'open_images_labels.txt')))
-		+ get_labels_from_file(fpth=(os.path.join("data", 'categories_places365.txt')))
+		# + cifar100_dataset.classes
+		# + get_dataset_classes(fpth=(os.path.join("data", 'imagenet_classes.txt')))
+		+ get_dataset_classes(fpth=(os.path.join("data", 'coco_labels.txt')))
+		# + get_dataset_classes(fpth=(os.path.join("data", 'open_images_labels.txt')))
+		+ get_dataset_classes(fpth=(os.path.join("data", 'categories_places365.txt')))
 	)
 )
 
 def generate_labels(img_source: str="path/2/img.jpg"):
 	print(f"IMG Labeling using {len(all_labels)} predefined label(s)".center(150, "-"))
 	print(f"HOME: {HOME} | USER: {USER} ({device}) | model: {model_fpth}")
-	
+	# debugging:
+	# print(all_labels)
+	# return
+
 	lbl_st = time.time()
 	# Check if the input is a URL or local path
 	is_url = urllib.parse.urlparse(img_source).scheme != ""
@@ -155,6 +168,7 @@ def main():
 	# img_url="https://company.finnair.com/resource/image/435616/landscape_ratio16x9/1000/563/3e62f054fbb5bb807693d7148286533c/CC6DAD5A4CD3B4D8B3DE10FBEC25073F/history-hero-image.jpg"
 	# img_url="https://company.finnair.com/resource/image/2213582/landscape_ratio16x9/1000/563/35eb282d3ffb3ebde319d072918c7a1a/717BA40152C49614C8073D1F28A0F1A5/history-1983.jpg"
 	# img_url="https://i.ebayimg.com/00/s/MTM5NlgxNTAw/z/i5IAAOSwgyxWVOIQ/$_57.JPG" # rubiks cube
+	# img_url="https://images.fineartamerica.com/images/artworkimages/mediumlarge/2/reindeers-in-snow-wu-swee-ong.jpg"
 
 	img_lbls = generate_labels(img_source=args.image_path)
 	print(f"IMG Labels: {img_lbls}")
