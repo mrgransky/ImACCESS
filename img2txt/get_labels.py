@@ -24,9 +24,6 @@ os.makedirs("outputs", exist_ok=True)
 if "outputs/" not in args.output_path:
 	args.output_path = os.path("outputs", args.output_path)
 
-# print(args.output_path)
-# print(args)
-
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -43,11 +40,11 @@ if USER=="farid": # local laptop
 elif USER=="alijanif": # Puhti
 	WDIR = "/scratch/project_2004072/ImACCESS"
 	models_dir = os.path.join(WDIR, "trash", "models")
-	model_fpth = pretrained_models[2]
+	model_fpth = pretrained_models[1]
 else: # Pouta
 	WDIR = "/media/volume/ImACCESS"
 	models_dir = os.path.join(HOME, WDIR, "models")
-	model_fpth = pretrained_models[2]
+	model_fpth = pretrained_models[1]
 
 # Load the CLIP model and processor
 model = CLIPModel.from_pretrained(model_fpth, cache_dir=models_dir)
@@ -104,7 +101,7 @@ all_labels = list(
 
 def generate_labels(img_source: str="path/2/img.jpg"):
 	print(f"IMG Labeling using {len(all_labels)} predefined label(s)".center(150, "-"))
-	print(f"HOME: {HOME} | USER: {USER} | Device: {device} | model: {model_fpth}")
+	print(f"HOME: {HOME} | USER: {USER} ({device}) | model: {model_fpth}")
 	
 	lbl_st = time.time()
 	# Check if the input is a URL or local path
