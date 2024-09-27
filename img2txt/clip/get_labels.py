@@ -72,6 +72,11 @@ own_lbls = [
 	"Anger",
 	"reindeer",
 	"Social_media",
+	"Pool",
+	"sunglasses",
+	"sunny",
+	"snowy",
+	"drink",
 ]
 war_time_lbls = [
 		"Infantry", 
@@ -123,7 +128,7 @@ all_labels = list(
 def generate_labels(img_source: str="path/2/img.jpg"):
 	print(f"IMG Labeling using {len(all_labels)} predefined label(s)".center(150, "-"))
 	print(f"HOME: {HOME} | USER: {USER} ({device}) | model: {model_fpth}")
-	# debugging:
+	# # debugging:
 	# print(all_labels)
 	# return
 

@@ -10,7 +10,7 @@ TEST_IMGs
 *.so
 
 # Django
-db.sqlite3
+wgui/db.sqlite3
 wgui/staticfiles/
 
 # Byte-compiled / optimized / DLL files

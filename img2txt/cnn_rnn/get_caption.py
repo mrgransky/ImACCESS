@@ -9,6 +9,7 @@ import requests
 from io import BytesIO
 import urllib.parse
 import argparse
+import time
 
 # how to run in local:
 # $ python get_caption.py --image_path TEST_IMGs/baseball.jpeg --output_path outputs/capXXXX.txt
@@ -22,9 +23,6 @@ args = parser.parse_args()
 os.makedirs("outputs", exist_ok=True)
 if "outputs/" not in args.output_path:
 	args.output_path = os.path("outputs", args.output_path)
-
-# print(args.output_path)
-# print(args)
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
@@ -75,7 +73,10 @@ encoder.eval()
 decoder.eval()
 
 def generate_caption(img_source: str = "/path/2/img.jpeg"):
-	# Check if the input is a URL or local path
+	print(f"IMG Captioning using MODEL_NAME".center(100, "-"))
+	print(f"HOME: {HOME} | USER: {USER} ({device}) | model_dir: {models_dir}")
+	cap_st = time.time()
+	# Check if the input is a URL or local path	
 	is_url = urllib.parse.urlparse(img_source).scheme != ""
 	if is_url:
 		# If it's a URL, download the image
@@ -103,17 +104,14 @@ def generate_caption(img_source: str = "/path/2/img.jpeg"):
 	# Generate captions with the decoder
 	with torch.no_grad():
 		output = decoder.sample(features)
-	# Convert the output into a clean sentence
-	caption = clean_sentence(output, vocab.idx2word)
-	# caption_fpth = os.path.join(args.output_dir, f"output_caption.txt") # TODO: caption for image name!
-	# print(f"Saving a caption for img: {img_source} in: {caption_fpth}")
-	# with open(caption_fpth, 'w') as f:
-	# 	f.write(caption)
+	
+	caption = clean_sentence(output, vocab.idx2word) # Convert the output into a clean sentence
 
 	print(f"Saving a caption for img: {img_source} in: {args.output_path}")
 	with open(args.output_path, 'w') as f:
 		f.write(caption)
-	
+
+	print(f"Elapsed_t: {time.time()-cap_st:.1f} sec".center(100, "-"))
 	return caption
 
 def main():
