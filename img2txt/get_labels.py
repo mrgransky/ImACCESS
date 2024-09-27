@@ -28,36 +28,34 @@ if "outputs/" not in args.output_path:
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
+pretrained_models = [
+	"openai/clip-vit-base-patch32", # original
+	"openai/clip-vit-large-patch14",
+	"laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+]
 
 print(f"HOME: {HOME} | USER: {USER}")
 
 if USER=="farid": # local laptop
 	WDIR = os.path.join(HOME, "datasets")
 	models_dir = os.path.join(WDIR, "trash", "models")
-elif USER=="alijanif": # puhti
+	model_fpth = pretrained_models[0]
+elif USER=="alijanif": # Puhti
 	WDIR = "/scratch/project_2004072/ImACCESS"
 	models_dir = os.path.join(WDIR, "trash", "models")
-else:
+	model_fpth = pretrained_models[1]
+else: # Pouta
 	WDIR = "/media/volume/ImACCESS"
 	models_dir = os.path.join(HOME, WDIR, "models")
+	model_fpth = pretrained_models[1]
 
 # Define the device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using Device: {device}")
 
-pretrained_models = [
-	"openai/clip-vit-large-patch14",
-	"laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
-]
-
 # Load the CLIP model and processor
-model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32", cache_dir=models_dir)
-processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32", cache_dir=models_dir)
-
-# # Load the CLIP-ViT-H-14-laion2B-s32B-b79K model and processor
-# model = CLIPModel.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
-# processor = CLIPProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
-
+model = CLIPModel.from_pretrained(model_fpth, cache_dir=models_dir)
+processor = CLIPProcessor.from_pretrained(model_fpth, cache_dir=models_dir)
 
 cifar100_dataset = CIFAR100(
 	root=models_dir, 
