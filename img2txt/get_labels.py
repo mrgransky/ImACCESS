@@ -71,19 +71,23 @@ own_lbls = [
 	"Surprise", 
 	"Anger",
 	"reindeer",
-	"Social media",
+	"Social_media",
 ]
 war_time_lbls = [
 		"Infantry", 
+		"Military_base",
 		"Military_vehicle",
+		"armored_vehicle"
 		"Aerial_bombings", 
-		"War-torn_city",
+		"War_torn_city",
 		"Refugee",
 		"Civilian", 
 		"Military_parade", 
-		"War memorial",
+		"Memorial",
+		"Commemorate",
 		"Historical_leader",
-		"Naval_battle", 
+		"Battle",
+		"Marine"
 		"Airforce_operation",
 		"Medical_aid",
 		"Field_hospital",
@@ -94,8 +98,15 @@ war_time_lbls = [
 		"Armistice_celebration",
 		"Landmark",
 		"Explosion",
+		"bombardment",
 		"Peace",
 		"Negotiation",
+		"ambassador",
+		"alliance",
+		"infrastructure",
+		"hamlet",
+		"Gun",
+		"projectile",
 ]
 all_labels = list(
 	set(
