@@ -59,12 +59,13 @@
 				</div>
 			</div>
 			<div class="resulted-img-container">
-				{% if result_image and caption %}
+				{% if result_image and caption and lbls%}
 					<script>
 						hideLoadingSpinner();
 					</script>
 					<div class="result-image">
-						<h3>{{ caption }}</h3>
+						<h3>Caption: {{ caption }}</h3>
+						<h3>Labels: {{ lbls }}</h3>
 						<img src="data:image/png;base64,{{ result_image }}" alt="Generated Image">
 					</div>
 				{% endif %}
