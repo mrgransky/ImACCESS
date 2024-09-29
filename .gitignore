@@ -27,6 +27,7 @@ openpose/build/
 openpose/outputs/
 img2txt/*/outputs/
 txt2img/*zip
+txt2img/mscoco-it
 txt2img/myntradataset
 develop-eggs/
 dist/
