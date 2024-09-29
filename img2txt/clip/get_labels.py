@@ -10,10 +10,12 @@ import argparse
 import requests
 from io import BytesIO
 import time
+import warnings
+warnings.filterwarnings('ignore')
 
 # how to run in local:
 # $ python get_labels.py --image_path TEST_IMGs/baseball.jpeg --output_path outputs/lblsXXXX.pkl
-# $ python get_labels.py --image_path https://hips.hearstapps.com/hmg-prod/images/beach-summer-instagram-captions-1621880365.jpg --output_path outputs/lblsXXXX.pkl
+# $ python get_labels.py --image_path https://www.archives.gov/files/research/military/ww2/photos/images/ww2-111.jpg --output_path outputs/lblsXXXX.pkl
 
 parser = argparse.ArgumentParser(description="Generate Caption for Image")
 parser.add_argument('--image_path', type=str, required=True, help='img path [or URL]')
@@ -64,54 +66,54 @@ def get_dataset_classes(fpth):
 # Define the set of labels
 own_lbls = [
 	"Seashell",
-	"rubiks cube",
-	"Smile",
-	"Sad", 
-	"Cry", 
+	"rubiks_cube",
 	"Surprise", 
-	"Anger",
+	"Unhappy",
+	"Happy",
 	"reindeer",
-	"Social_media",
-	"Pool",
+	# "Social_media",
 	"sunglasses",
 	"sunny",
 	"snowy",
+	"coffee_beans",
+	"coffee",
 	"drink",
 ]
 war_time_lbls = [
-		"Infantry", 
-		"Military_base",
-		"Military_vehicle",
-		"armored_vehicle"
-		"Aerial_bombings", 
-		"War_torn_city",
-		"Refugee",
-		"Civilian", 
-		"Military_parade", 
-		"Memorial",
-		"Commemorate",
-		"Historical_leader",
-		"Battle",
-		"Marine"
-		"Airforce_operation",
-		"Medical_aid",
-		"Field_hospital",
-		"War_prisoner", 
-		"Propaganda_poster", 
-		"Trench_warfare",
-		"Warfare_combat",
-		"Armistice_celebration",
-		"Landmark",
-		"Explosion",
-		"bombardment",
-		"Peace",
-		"Negotiation",
-		"ambassador",
-		"alliance",
-		"infrastructure",
-		"hamlet",
-		"Gun",
-		"projectile",
+	"Infantry",
+	"soldier",
+	"Tunnel",
+	"Military_base",
+	"Military_vehicle",
+	"armored_vehicle",
+	"Aerial_bombings", 
+	"War_torn_city",
+	"Refugee",
+	"Civilian", 
+	"Military_parade", 
+	"Memorial",
+	"Commemorate",
+	"Battle",
+	"Marine"
+	"Airforce_operation",
+	"Medical_aid",
+	"Field_hospital",
+	"Prisoner", 
+	"Propaganda_poster", 
+	"Trench_warfare",
+	"Warfare_combat",
+	"Armistice_celebration",
+	"Landmark",
+	"Explosion",
+	"bombardment",
+	"Peace",
+	"Negotiation",
+	"ambassador",
+	"alliance",
+	"infrastructure",
+	"hamlet",
+	"Gun",
+	"projectile",
 ]
 all_labels = list(
 	set(
@@ -119,7 +121,7 @@ all_labels = list(
 		+ list(map(str.lower,war_time_lbls)) # to ensure lowercase
 		# + cifar100_dataset.classes
 		# + get_dataset_classes(fpth=(os.path.join("data", 'imagenet_classes.txt')))
-		+ get_dataset_classes(fpth=(os.path.join("data", 'coco_labels.txt')))
+		# + get_dataset_classes(fpth=(os.path.join("data", 'coco_labels.txt')))
 		# + get_dataset_classes(fpth=(os.path.join("data", 'open_images_labels.txt')))
 		+ get_dataset_classes(fpth=(os.path.join("data", 'categories_places365.txt')))
 	)

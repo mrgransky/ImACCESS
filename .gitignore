@@ -25,7 +25,9 @@ openpose/models/*/*.caffemodel
 openpose/models/*/*/*.caffemodel
 openpose/build/
 openpose/outputs/
-captions/outputs/
+img2txt/*/outputs/
+txt2img/*zip
+txt2img/myntradataset
 develop-eggs/
 dist/
 downloads/

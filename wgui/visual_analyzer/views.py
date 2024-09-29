@@ -29,8 +29,8 @@ def main_page(request):
 		print(f">> input full_image_path: {full_image_path} | {type(full_image_path)}")
 		if full_image_path:
 			rand_extension = random.randint(0, 9999)
-			labels = generate_labels(img_source=full_image_path, rnd=rand_extension)
-			caption = generate_caption(img_source=full_image_path, rnd=rand_extension)
+			labels = generate_labels(img_source=full_image_path, rnd=rand_extension, backend_method="clip")
+			caption = generate_caption(img_source=full_image_path, rnd=rand_extension, backend_method="blip")
 			mcr_img_base64 = generate_mcr(img_source=full_image_path, rnd=rand_extension)
 			context['lbls'] = labels
 			context['caption'] = caption
