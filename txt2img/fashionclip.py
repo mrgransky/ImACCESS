@@ -695,27 +695,25 @@ print(styles_df.head(60))
 # )
 # df['subCategory'] = df['subCategory'].replace(replacement_dict)
 # print(f"Style {type(df)} {df.shape}")
-df = styles_df
-print(df.head(60))
+
+df = styles_df.copy()
+# print(df.head(60))
 # print(df.tail(60))
 
 # text_category: str = "articleType"
-text_category: str = "subCategory"
-# text_category: str = "customized_caption"
+# text_category: str = "subCategory"
+text_category: str = "customized_caption"
 
-unique, counts = np.unique(df[text_category].tolist(), return_counts=True)
-print(f"Classes:\n{unique}\n{counts}")
+# unique, counts = np.unique(df[text_category].tolist(), return_counts=True)
+# print(f"Classes:\n{unique}\n{counts}")
 
 # Split the dataset into training and validation sets
 train_df, val_df = train_test_split(df, shuffle=True, test_size=0.05, random_state=42)
 
 # Print the sizes of the datasets
 print(f"Train: {len(train_df)} | Validation: {len(val_df)}")
-# class_names = df[text_category].unique()
-class_names = df[text_category].unique()
-print()
-class_names = [str(name).lower() for name in class_names]
 
+class_names = list(df[text_category].unique())
 captions = {idx: class_name for idx, class_name in enumerate(class_names)}
 print(f"{len(list(captions.keys()))} Captions:\n{json.dumps(captions, indent=2, ensure_ascii=False)}")
 # sys.exit()
@@ -786,6 +784,7 @@ def fine_tune():
 	training_st = time.time()
 
 	for epoch in range(args.num_epochs):
+		print(f"Epoch [{epoch+1}/{args.num_epochs}]")
 		epoch_loss = 0.0  # To accumulate the loss over the epoch
 		# print(f"Epoch [{epoch + 1}/{args.num_epochs}]")  # Print the current epoch
 		for batch_idx, data in enumerate(train_loader):
@@ -803,19 +802,19 @@ def fine_tune():
 			optimizer.step()
 			# print(f"\tBatch [{batch_idx + 1}/{len(train_loader)}] Loss: {loss.item():.4f}")
 			if batch_idx % 100 == 0:
-				print(f"\tBatch [{batch_idx + 1}/{len(train_loader)}] Loss: {loss.item():.4f}")
+				print(f"\tBatch [{batch_idx + 1}/{len(train_loader)}] Loss: {loss.item():.5f}")
 			
 			# Update the progress bar with the current loss
 			epoch_loss += loss.item()
 
 		avg_loss = epoch_loss / len(train_loader)
-		print(f"Epoch [{epoch+1}/{args.num_epochs}], Average Loss: {avg_loss:.3f}")
+		print(f"Average Loss: {avg_loss:.5f} @ Epoch: {epoch+1}")
 		
 		# Save model if it performed better than the previous best
 		if avg_loss <= best_loss:
 			best_loss = avg_loss
 			torch.save(model.state_dict(), mdl_fpth)
-			print(f"Model Saved in {mdl_fpth} for best loss: {best_loss}")
+			print(f"Model Saved in {mdl_fpth} for best avg loss: {best_loss:.5f}")
 
 	print(f"Elapsed_t: {time.time()-training_st:.5f} sec")
 
