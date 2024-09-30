@@ -682,7 +682,7 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 		ax.axis('off')
 		ax.imshow(img)
 	plt.tight_layout()
-	plt.savefig(os.path.join(outputs_dir, f"Top_{TOP_K}_imgs_Q_{re.sub(" ", "-", query)}.png"))
+	plt.savefig(os.path.join(outputs_dir, f"Top_{TOP_K}_imgs_Q_{re.sub(' ', '-', query)}.png"))
 	# plt.show()
 
 styles_fpth = os.path.join(args.dataset_dir, "styles.csv")
