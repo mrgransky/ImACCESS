@@ -738,7 +738,7 @@ train_df, val_df = train_test_split(df, shuffle=True, test_size=0.05, random_sta
 print(f"Train: {len(train_df)} | Validation: {len(val_df)}")
 
 captions = get_product_description(df=df, col=args.product_description_col)
-sys.exit()
+# sys.exit()
 
 def fine_tune():
 	# download data
