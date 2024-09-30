@@ -49,7 +49,7 @@ elif USER=="alijanif": # Puhti
 	models_dir = os.path.join(WDIR, "trash", "models")
 else: # Pouta
 	WDIR = "/media/volume/ImACCESS"
-	models_dir = os.path.join(HOME, WDIR, "models")
+	models_dir = os.path.join(WDIR, "models")
 
 os.makedirs(os.path.join(args.dataset_dir, "models"), exist_ok=True)
 # Vision
