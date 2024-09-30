@@ -31,7 +31,7 @@ warnings.filterwarnings('ignore')
 # $ nohup python -u fashionclip.py --num_epochs 100 > $HOME/datasets/trash/logs/fashionclip.out & 
 
 # how to run [Pouta]:
-# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 120 --query wristbands --product_description_col customized_caption --validate True
+# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 20 --query wristbands --product_description_col subCategory --validate True
 # $ nohup python -u --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 3 --query "topwear" > /media/volume/ImACCESS/trash/logs/fashionclip.out & 
 
 parser = argparse.ArgumentParser(description="Generate Caption for Image")
@@ -40,6 +40,7 @@ parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--num_epochs', type=int, default=1, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.20, help='share of Validation set')
+parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
 parser.add_argument('--validate', type=bool, default=False, help='Model Validation upon request')
 parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
 args = parser.parse_args()
@@ -78,7 +79,6 @@ text_d_model = 64 #  -->  text_heads * text_layers = text_d_model
 max_seq_length = 128
 text_heads = 8
 text_layers = 8
-lr = 1e-4
 wd = 1e-5
 batch_size = 128
 # nw = 8
@@ -86,7 +86,7 @@ nw:int = multiprocessing.cpu_count()
 mdl_fpth:str = os.path.join(
 	args.dataset_dir, 
 	"models", 
-	f"fashionclip_{args.num_epochs}_nEpochs.pt",
+	f"fashionclip_nEpochs_{args.num_epochs}_lr_{args.learning_rate}.pt",
 )
 outputs_dir:str = os.path.join(
 	args.dataset_dir, 
@@ -94,22 +94,10 @@ outputs_dir:str = os.path.join(
 )
 
 def get_img_name_without_suffix(fpth):
-	"""
-	Extracts the filename without the extension from a given file path.
-
-	Args:
-			fpth (str): The file path.
-
-	Returns:
-			str: The filename without the extension.
-	"""
-
 	# Get the basename of the file path (removes directory)
 	basename = os.path.basename(fpth)
-
 	# Split the basename into filename and extension
 	filename, extension = os.path.splitext(basename)
-
 	return int(filename)
 
 def plot_loss(losses, num_epochs, save_path):
@@ -831,7 +819,7 @@ def fine_tune():
 		retrieval=False,
 	).to(device)
 	
-	optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=wd) # weight decay (L2 regularization)
+	optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=wd) # weight decay (L2 regularization)
 	scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
 	total_params = 0
 	total_params = sum([param.numel() for param in model.parameters() if param.requires_grad])
