@@ -31,7 +31,7 @@ warnings.filterwarnings('ignore')
 # $ nohup python -u fashionclip.py --num_epochs 100 > $HOME/datasets/trash/logs/fashionclip.out & 
 
 # how to run [Pouta]:
-# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 27 --learning_rate 1e-2 --product_description_col subCategory --query wristbands --validate True
+# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 27 --learning_rate 5e-3 --product_description_col subCategory --query wristbands --validate True
 # $ nohup python -u --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 3 --query "topwear" > /media/volume/ImACCESS/trash/logs/fashionclip.out & 
 
 parser = argparse.ArgumentParser(description="Generate Caption for Image")
@@ -39,7 +39,7 @@ parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR'
 parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--num_epochs', type=int, default=1, help='Number of epochs')
-parser.add_argument('--validation_dataset_share', type=float, default=0.20, help='share of Validation set')
+parser.add_argument('--validation_dataset_share', type=float, default=0.10, help='share of Validation set')
 parser.add_argument('--learning_rate', type=float, default=5e-3, help='Learning Rate')
 parser.add_argument('--validate', type=bool, default=False, help='Model Validation upon request')
 parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
@@ -132,7 +132,7 @@ def set_seeds():
 		torch.backends.cudnn.deterministic = True
 		torch.backends.cudnn.benchmark = True
 
-def tokenizer(text, encode=True, mask=None, max_seq_length=64):
+def tokenizer(text, encode=True, mask=None, max_seq_length=32):
 	if encode:
 		# Adding SOT and EOT tokens
 		out = chr(2) + text + chr(3)
