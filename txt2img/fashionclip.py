@@ -737,24 +737,8 @@ train_df, val_df = train_test_split(df, shuffle=True, test_size=0.05, random_sta
 # Print the sizes of the datasets
 print(f"Train: {len(train_df)} | Validation: {len(val_df)}")
 
-get_product_description(df=df, col=args.product_description_col)
-# sys.exit()
-
-# print(f"Creating Test Dataloader", end="\t")
-# tstdl_st = time.time()
-# test_dataset = MyntraDataset(
-# 	data_frame=val_df, 
-# 	captions=captions,
-# 	img_sz=224,
-# 	dataset_directory=os.path.join(args.dataset_dir, "images")
-# )
-# test_loader  = DataLoader(
-# 	dataset=test_dataset, 
-# 	shuffle=False, 
-# 	batch_size=batch_size, 
-# 	num_workers=nw,
-# )
-# print(f"Elapsed_t: {time.time()-tstdl_st:.5f} sec")
+captions = get_product_description(df=df, col=args.product_description_col)
+sys.exit()
 
 def fine_tune():
 	# download data
