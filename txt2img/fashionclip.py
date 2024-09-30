@@ -12,6 +12,7 @@ import torch.optim as optim
 import torchvision
 import torchvision.transforms as T
 from torch.utils.data import Dataset, DataLoader
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Subset
 import multiprocessing
@@ -23,16 +24,22 @@ from PIL import Image, ImageDraw, ImageOps
 from typing import List, Set, Dict, Tuple, Union
 warnings.filterwarnings('ignore')
 
-# how to run:
+# how to run [Local]:
 # $ python fashionclip.py --query tie
 # $ python fashionclip.py --query tie --dataset_dir myntradataset --num_epochs 7
 # $ nohup python -u fashionclip.py --num_epochs 100 > $HOME/datasets/trash/logs/fashionclip.out & 
+
+# how to run [Pouta]:
+# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 3 --query "topwear"
+# | nohup python -u --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 3 --query "topwear" > /media/volume/ImACCESS/trash/logs/fashionclip.out & 
 
 parser = argparse.ArgumentParser(description="Generate Caption for Image")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--num_epochs', type=int, default=1, help='Number of epochs')
+parser.add_argument('--validate', type=bool, default=False, help='Model Validation upon request')
+parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
 args = parser.parse_args()
 
 HOME: str = os.getenv('HOME') # echo $HOME
@@ -52,6 +59,8 @@ else: # Pouta
 	models_dir = os.path.join(WDIR, "models")
 
 os.makedirs(os.path.join(args.dataset_dir, "models"), exist_ok=True)
+os.makedirs(os.path.join(args.dataset_dir, "outputs"), exist_ok=True)
+
 # Vision
 emb_dim = 128
 vit_d_model = 32 # vit_heads * vit_layers = vit_d_model
@@ -67,7 +76,8 @@ text_d_model = 64 #  -->  text_heads * text_layers = text_d_model
 max_seq_length = 128
 text_heads = 8
 text_layers = 8
-lr = 1e-3
+lr = 1e-4
+wd = 1e-5
 batch_size = 128
 # nw = 8
 nw:int = multiprocessing.cpu_count()
@@ -76,26 +86,30 @@ mdl_fpth:str = os.path.join(
 	"models", 
 	f"fashionclip_{args.num_epochs}_nEpochs.pt",
 )
+outputs_dir:str = os.path.join(
+	args.dataset_dir, 
+	"outputs",
+)
 
-# visualize a batch of images with their class names
-def visualize_samples(dataset, tokenizer, num_samples=5):
-	# Get a batch of samples
-	for i in range(num_samples):
-		sample = dataset[i]  # Access the ith sample in the dataset
-		image = sample['image']
-		tokenized_caption = sample['caption']
-		mask = sample['mask'][0]
-		# Decode the tokenized caption to get the original class name
-		original_caption = tokenizer(tokenized_caption, encode=False, mask=mask)[0]
-		# Convert the tensor image back to a PIL image for visualization
-		image = T.ToPILImage()(image)			
-		# Display the image
-		plt.figure(figsize=(4, 4))
-		plt.imshow(image,cmap="gray")
-		plt.title(f"Class: {original_caption}")  # Display the non-tokenized class name as title
-		plt.axis('off')
+def plot_loss(losses, num_epochs, save_path):
+	"""
+	Plots the loss with respect to epoch and saves the plot.
+	Parameters:
+	losses (list): List of loss values for each epoch.
+	num_epochs (int): Number of epochs.
+	save_path (str): Path to save the plot.
+	"""
+	epochs = range(1, num_epochs + 1)		
+	plt.figure(figsize=(10, 5))
+	plt.plot(epochs, losses, marker='o', linestyle='-', color='b')
+	plt.xlabel('Epoch')
+	plt.ylabel('Loss')
+	plt.title('Loss vs. Epoch')
+	plt.grid(True)
+	plt.savefig(save_path)
+	if visualize:
 		plt.show()
-
+	
 def set_seeds():
 	# fix random seeds
 	SEED_VALUE = 42
@@ -133,7 +147,7 @@ def tokenizer(text, encode=True, mask=None, max_seq_length=64):
 		mask = None
 	return out, mask
 
-def print_dataloader_info(dataloader):
+def get_info(dataloader):
 	# Print the basic information about the DataLoader
 	print(f"Number of batches: {len(dataloader)}")
 	print(f"Batch size: {dataloader.batch_size}")
@@ -144,7 +158,6 @@ def print_dataloader_info(dataloader):
 	# Print a sample from the DataLoader
 	# #Sanity check of dataloader initialization
 	print(len(next(iter(dataloader))))  #(img_tensor,label_tensor)
-
 	for i, data in enumerate(dataloader):
 		if i == 0:  # Just show the first batch as an example
 			print(f"Sample batch {i}:")
@@ -473,108 +486,13 @@ class MyntraDataset(Dataset):
 				image = ImageOps.expand(image, padding, fill=(0, 0, 0))
 				return image
 
-def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
-	print(f"Top-{TOP_K} Image Retrieval for Query: {query}".center(100, "-"))
-	# Text to Image Retrieval with CLIP - E-commerce
-	# Loading Best Model
-	model = CLIP(
-		emb_dim,
-		vit_layers, 
-		vit_d_model, 
-		img_size,
-		patch_size,
-		n_channels,
-		vit_heads,
-		vocab_size,
-		max_seq_length,
-		text_heads,
-		text_layers,
-		text_d_model,
-		retrieval=False,
-	).to(device)
+def get_product_description(df, col:str="colmun_name"):
+	class_names = list(df[col].unique())
+	captions = {idx: class_name for idx, class_name in enumerate(class_names)}
+	print(f"{len(list(captions.keys()))} Captions:\n{json.dumps(captions, indent=2, ensure_ascii=False)}")
+	return captions
 
-	retrieval_model = CLIP(
-		emb_dim, 
-		vit_layers, 
-		vit_d_model, 
-		img_size,patch_size,
-		n_channels,
-		vit_heads,
-		vocab_size,
-		max_seq_length,
-		text_heads,
-		text_layers,
-		text_d_model,
-		retrieval=True
-	).to(device)
-	
-	retrieval_model.load_state_dict(torch.load(model_fpth, map_location=device))
-
-	# Step 1: Encode the text query using your tokenizer and TextEncoder
-	query_text, query_mask = tokenizer(query)
-	query_text = query_text.unsqueeze(0).to(device)  # Add batch dimension
-	query_mask = query_mask.unsqueeze(0).to(device)
-
-	with torch.no_grad():
-		query_features = retrieval_model.text_encoder(query_text, mask=query_mask)
-		query_features /= query_features.norm(dim=-1, keepdim=True)
-
-	# Step 2: Encode all images in the dataset and store features
-	image_features_list = []
-	image_paths = []
-
-	print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
-	vdl_st = time.time()
-	val_dataset = MyntraDataset(
-		data_frame=val_df,
-		captions=captions,
-		img_sz=80,
-		dataset_directory=os.path.join(args.dataset_dir, "images")
-	)
-	val_loader = DataLoader(
-		dataset=val_dataset, 
-		shuffle=False,
-		batch_size=batch_size, 
-		num_workers=nw,
-	)
-	print(f"Elapsed_t: {time.time()-vdl_st:.5f} sec")
-
-	with torch.no_grad():
-		for batch in val_loader:
-			# print(batch)
-			images = batch["image"].to(device)
-			features = retrieval_model.vision_encoder(images)
-			features /= features.norm(dim=-1, keepdim=True)			
-			image_features_list.append(features)
-			image_paths.extend(batch["image_filepath"])  # Assuming batch contains image paths or IDs
-
-	# Concatenate all image features
-	image_features = torch.cat(image_features_list, dim=0)
-
-	# Step 3: Compute similarity using the CLIP model's logic
-	# In your CLIP model, this is done using logits and temperature scaling
-	similarities = (query_features @ image_features.T) * torch.exp(model.temperature)
-
-	# Apply softmax to the similarities if needed
-	similarities = similarities.softmax(dim=-1)
-
-	# Retrieve topK matches
-	top_values, top_indices = similarities.topk(TOP_K)
-
-	# Step 4: Retrieve and display top N images
-	print(f"Top-{TOP_K} images for query '{query}':\n")
-	for value, index in zip(top_values[0], top_indices[0]):
-		print(f"Similarity: {100 * value.item():.3f}%")
-		if visualize:
-			img_path = image_paths[index]
-			# Display the image
-			img = Image.open(img_path).convert("RGB")
-			plt.imshow(img)
-			plt.title(f"Similarity: {100 * value.item():.3f}%")
-			plt.axis('off')
-			plt.show()
-
-def validate(model_fpth: str=f"path/to/models/clip.pt", class_names: List=["shirt", "hat"]):
+def validate(model_fpth: str=f"path/to/models/clip.pt", class_names: List=["shirt", "hat"], TOP_K: int=10):
 	print(f"Validation {model_fpth} using {device}".center(100, "-"))
 	vdl_st = time.time()
 	print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
@@ -591,7 +509,9 @@ def validate(model_fpth: str=f"path/to/models/clip.pt", class_names: List=["shir
 		batch_size=batch_size, 
 		num_workers=nw,
 	)
-	print(f"Elapsed_t: {time.time()-vdl_st:.5f} sec")
+	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
+	get_info(dataloader=val_loader)
+
 	# Loading Best Model
 	model = CLIP(
 		emb_dim, 
@@ -637,7 +557,8 @@ def validate(model_fpth: str=f"path/to/models/clip.pt", class_names: List=["shir
 	mask = torch.stack([tokenizer(x)[1] for x in class_names])
 	mask = mask.repeat(1,len(mask[0])).reshape(len(mask),len(mask[0]),len(mask[0])).to(device)
 	# idx = 904
-	idx = random.randint(0, len(val_df))
+	idx = 44
+	# idx = random.randint(0, len(val_df))
 	img = val_dataset[idx]["image"][None,:]
 	print(f'IMG: {idx}: {tokenizer(val_dataset[idx]["caption"], encode=False, mask=val_dataset[idx]["mask"][0])}')
 
@@ -654,13 +575,118 @@ def validate(model_fpth: str=f"path/to/models/clip.pt", class_names: List=["shir
 	image_features /= image_features.norm(dim=-1, keepdim=True)
 	text_features /= text_features.norm(dim=-1, keepdim=True)
 	similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
-	values, indices = similarity[0].topk(5)
+	values, indices = similarity[0].topk(TOP_K)
 
 	# Print the result
-	print("\nTop predictions:\n")
+	print(f'\nTop-{TOP_K} Prediction(s) for IMG: {idx} {tokenizer(val_dataset[idx]["caption"], encode=False, mask=val_dataset[idx]["mask"][0])}:\n')
 	for value, index in zip(values, indices):
-		print(f"{class_names[int(index)]:>16s}: {100 * value.item():.3f}%")
+		print(f"index: {index}: {class_names[int(index)]:>30s}: {100 * value.item():.3f}%")
 	print(f"Elapsed_t: {time.time()-vdl_st:.2f} sec")
+
+def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
+	print(f"Top-{TOP_K} Image Retrieval for Query: {query}".center(100, "-"))
+	# Text to Image Retrieval with CLIP - E-commerce
+	# Loading Best Model
+	model = CLIP(
+		emb_dim,
+		vit_layers, 
+		vit_d_model, 
+		img_size,
+		patch_size,
+		n_channels,
+		vit_heads,
+		vocab_size,
+		max_seq_length,
+		text_heads,
+		text_layers,
+		text_d_model,
+		retrieval=False,
+	).to(device)
+
+	retrieval_model = CLIP(
+		emb_dim, 
+		vit_layers, 
+		vit_d_model, 
+		img_size,patch_size,
+		n_channels,
+		vit_heads,
+		vocab_size,
+		max_seq_length,
+		text_heads,
+		text_layers,
+		text_d_model,
+		retrieval=True
+	).to(device)
+	
+	retrieval_model.load_state_dict(torch.load(model_fpth, map_location=device))
+
+	# Step 1: Encode the text query using your tokenizer and TextEncoder
+	query_text, query_mask = tokenizer(query)
+	query_text = query_text.unsqueeze(0).to(device) # Add batch dimension
+	query_mask = query_mask.unsqueeze(0).to(device)
+
+	with torch.no_grad():
+		query_features = retrieval_model.text_encoder(query_text, mask=query_mask)
+		query_features /= query_features.norm(dim=-1, keepdim=True)
+
+	# Step 2: Encode all images in the dataset and store features
+	image_features_list = []
+	image_paths = []
+
+	print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
+	vdl_st = time.time()
+	val_dataset = MyntraDataset(
+		data_frame=val_df,
+		captions=captions,
+		img_sz=80,
+		dataset_directory=os.path.join(args.dataset_dir, "images")
+	)
+	val_loader = DataLoader(
+		dataset=val_dataset, 
+		shuffle=False,
+		batch_size=batch_size, 
+		num_workers=nw,
+	)
+	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
+	get_info(dataloader=val_loader)
+
+
+	with torch.no_grad():
+		for batch in val_loader:
+			# print(batch)
+			images = batch["image"].to(device)
+			features = retrieval_model.vision_encoder(images)
+			features /= features.norm(dim=-1, keepdim=True)			
+			image_features_list.append(features)
+			image_paths.extend(batch["image_filepath"])  # Assuming batch contains image paths or IDs
+
+	# Concatenate all image features
+	image_features = torch.cat(image_features_list, dim=0)
+
+	# Step 3: Compute similarity using the CLIP model's logic
+	# In your CLIP model, this is done using logits and temperature scaling
+	similarities = (query_features @ image_features.T) * torch.exp(model.temperature)
+
+	# Apply softmax to the similarities if needed
+	similarities = similarities.softmax(dim=-1)
+
+	# Retrieve topK matches
+	top_values, top_indices = similarities.topk(TOP_K)
+
+	# # Step 4: Retrieve and display (or save) top N images:
+	print(f"Top-{TOP_K} images From Validation Loader ({len(val_loader.dataset)}) | Query: '{query}':\n")
+	fig, axes = plt.subplots(1, TOP_K, figsize=(18, 4))  # Adjust figsize as needed
+	for ax, value, index in zip(axes, top_values[0], top_indices[0]):
+		print(f"idx: {index} | Similarity: {100 * value.item():.3f}%")
+		img_path = image_paths[index]
+		img = Image.open(img_path).convert("RGB")
+		img_title = f"vidx_{index}_sim_{100 * value.item():.3f}%"
+		ax.set_title(img_title, fontsize=9)
+		ax.axis('off')
+		ax.imshow(img)
+	plt.tight_layout()
+	plt.savefig(os.path.join(outputs_dir, f"Top_{TOP_K}_imgs_Q_{query}.png"))
+	# plt.show()
 
 styles_fpth = os.path.join(args.dataset_dir, "styles.csv")
 print(f"Laoding style: {styles_fpth}")
@@ -675,16 +701,18 @@ styles_df = pd.read_csv(
 	usecols=["id","gender","masterCategory","subCategory","articleType","baseColour","season","year","usage","productDisplayName"], 
 	on_bad_lines='skip',
 )
+
 # Convert all text columns to lowercase
 styles_df[styles_df.select_dtypes(include=['object']).columns] = styles_df.select_dtypes(include=['object']).apply(lambda x: x.str.lower())
-
 styles_df['subCategory'] = styles_df['subCategory'].replace(replacement_dict)
+
 # Create a new column 'customized_caption'
 styles_df['customized_caption'] = styles_df.apply(
 	# lambda row: f"{row['subCategory']} {row['articleType']}" if row['subCategory'] != row['articleType'] else row['subCategory'],
 	lambda row: row['articleType'] if row['subCategory'] in row['articleType'] else f"{row['subCategory']} {row['articleType']}",
 	axis=1,
 )
+
 print(styles_df.shape)
 print(styles_df.head(60))
 # print(styles_df.tail(60))
@@ -700,11 +728,7 @@ df = styles_df.copy()
 # print(df.head(60))
 # print(df.tail(60))
 
-# text_category: str = "articleType"
-# text_category: str = "subCategory"
-text_category: str = "customized_caption"
-
-# unique, counts = np.unique(df[text_category].tolist(), return_counts=True)
+# unique, counts = np.unique(df[product_description_col].tolist(), return_counts=True)
 # print(f"Classes:\n{unique}\n{counts}")
 
 # Split the dataset into training and validation sets
@@ -713,9 +737,7 @@ train_df, val_df = train_test_split(df, shuffle=True, test_size=0.05, random_sta
 # Print the sizes of the datasets
 print(f"Train: {len(train_df)} | Validation: {len(val_df)}")
 
-class_names = list(df[text_category].unique())
-captions = {idx: class_name for idx, class_name in enumerate(class_names)}
-print(f"{len(list(captions.keys()))} Captions:\n{json.dumps(captions, indent=2, ensure_ascii=False)}")
+get_product_description(df=df, col=args.product_description_col)
 # sys.exit()
 
 # print(f"Creating Test Dataloader", end="\t")
@@ -753,7 +775,8 @@ def fine_tune():
 		batch_size=batch_size,
 		num_workers=nw,
 	)
-	print(f"nBatches: {len(train_loader)} Elapsed_t: {time.time()-tdl_st:.5f} sec")
+	print(f"num_samples[Total]: {len(train_loader.dataset)} Elapsed_t: {time.time()-tdl_st:.5f} sec")
+	get_info(dataloader=train_loader)
 	#Sanity check of dataloader initialization
 	
 	model = CLIP(
@@ -772,17 +795,17 @@ def fine_tune():
 		retrieval=False,
 	).to(device)
 	
-	optimizer = optim.AdamW(model.parameters(), lr=lr)
+	optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=wd) # weight decay (L2 regularization)
+	scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
 	total_params = 0
 	total_params = sum([param.numel() for param in model.parameters() if param.requires_grad])
-
 	print(f"Total trainable parameters: {total_params} ~ {total_params/int(1e+6):.2f} M")
-	print_dataloader_info(dataloader=train_loader)
+
 	best_loss = np.inf
 
 	print(f"Training {args.num_epochs} Epoch(s) in {device}".center(100, "-"))
 	training_st = time.time()
-
+	average_losses = list()
 	for epoch in range(args.num_epochs):
 		print(f"Epoch [{epoch+1}/{args.num_epochs}]")
 		epoch_loss = 0.0  # To accumulate the loss over the epoch
@@ -799,6 +822,7 @@ def fine_tune():
 			optimizer.zero_grad()
 			loss = model(img, cap, mask)
 			loss.backward()
+			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			optimizer.step()
 			# print(f"\tBatch [{batch_idx + 1}/{len(train_loader)}] Loss: {loss.item():.4f}")
 			if batch_idx % 100 == 0:
@@ -808,21 +832,28 @@ def fine_tune():
 			epoch_loss += loss.item()
 
 		avg_loss = epoch_loss / len(train_loader)
+		scheduler.step(avg_loss)
 		print(f"Average Loss: {avg_loss:.5f} @ Epoch: {epoch+1}")
-		
+		average_losses.append(avg_loss)
 		# Save model if it performed better than the previous best
 		if avg_loss <= best_loss:
 			best_loss = avg_loss
 			torch.save(model.state_dict(), mdl_fpth)
-			print(f"Model Saved in {mdl_fpth} for best avg loss: {best_loss:.5f}")
+			print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.5f}")
 
 	print(f"Elapsed_t: {time.time()-training_st:.5f} sec")
+	plot_loss(
+		losses=average_losses, 
+		num_epochs=args.num_epochs, 
+		save_path=os.path.join(outputs_dir, f'loss_{args.num_epochs}_nEpochs.png'),
+	)
 
 def main():
 	set_seeds()
 	if not os.path.exists(mdl_fpth):
 		fine_tune()
-	validate(model_fpth=mdl_fpth, class_names=class_names)
+	if args.validate:
+		validate(model_fpth=mdl_fpth, class_names=class_names)
 	img_retrieval(query=args.query, model_fpth=mdl_fpth, TOP_K=args.topk)
 
 if __name__ == "__main__":
