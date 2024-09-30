@@ -671,7 +671,7 @@ replacement_dict = {
 	"nails": "nail polish"
 }
 styles_df = pd.read_csv(
-	filepath_or_buffer='myntradataset/styles.csv',
+	filepath_or_buffer=styles_fpth,
 	usecols=["id","gender","masterCategory","subCategory","articleType","baseColour","season","year","usage","productDisplayName"], 
 	on_bad_lines='skip',
 )
