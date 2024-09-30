@@ -674,10 +674,10 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 	print(f"Top-{TOP_K} images From Validation Loader ({len(val_loader.dataset)}) | Query: '{query}':\n")
 	fig, axes = plt.subplots(1, TOP_K, figsize=(18, 4))  # Adjust figsize as needed
 	for ax, value, index in zip(axes, top_values[0], top_indices[0]):
-		print(f"idx: {index} | Similarity: {100 * value.item():.3f}%")
+		print(f"idx: {index} | Similarity: {100 * value.item():.6f}%")
 		img_path = image_paths[index]
 		img = Image.open(img_path).convert("RGB")
-		img_title = f"vidx_{index}_sim_{100 * value.item():.3f}%"
+		img_title = f"vidx_{index}_sim_{100 * value.item():.6f}%"
 		ax.set_title(img_title, fontsize=9)
 		ax.axis('off')
 		ax.imshow(img)
