@@ -4,6 +4,7 @@ from tqdm import tqdm
 import random
 import json
 import warnings
+import random
 import time
 import torch
 import torch.nn as nn
@@ -24,21 +25,20 @@ warnings.filterwarnings('ignore')
 
 # how to run:
 # $ python fashionclip.py --query tie
-# $ python fashionclip.py --query tie
+# $ python fashionclip.py --query tie --dataset_dir myntradataset --num_epochs 7
 # $ nohup python -u fashionclip.py --num_epochs 100 > $HOME/datasets/trash/logs/fashionclip.out & 
 
 parser = argparse.ArgumentParser(description="Generate Caption for Image")
-parser.add_argument('--dataset_dir', type=str, default="myntradataset/images", help='img directory')
+parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
-parser.add_argument('--num_epochs', type=int, default=50, help='Number of epochs')
+parser.add_argument('--num_epochs', type=int, default=1, help='Number of epochs')
 args = parser.parse_args()
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 device: str = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 visualize: bool = False
-os.makedirs("myntradataset/models", exist_ok=True)
 
 if USER=="farid": # local laptop
 	WDIR = os.path.join(HOME, "datasets")
@@ -51,8 +51,9 @@ else: # Pouta
 	WDIR = "/media/volume/ImACCESS"
 	models_dir = os.path.join(HOME, WDIR, "models")
 
+os.makedirs(os.path.join(args.dataset_dir, "models"), exist_ok=True)
 # Vision
-emb_dim = 128 
+emb_dim = 128
 vit_d_model = 32 # vit_heads * vit_layers = vit_d_model
 img_size = (80,80)
 patch_size = (5,5) 
@@ -67,11 +68,14 @@ max_seq_length = 128
 text_heads = 8
 text_layers = 8
 lr = 1e-3
-num_epochs = args.num_epochs
 batch_size = 128
 # nw = 8
 nw:int = multiprocessing.cpu_count()
-mdl_fpth:str = f"myntradataset/models/fashionclip_{num_epochs}_nEpochs.pt"
+mdl_fpth:str = os.path.join(
+	args.dataset_dir, 
+	"models", 
+	f"fashionclip_{args.num_epochs}_nEpochs.pt",
+)
 
 # visualize a batch of images with their class names
 def visualize_samples(dataset, tokenizer, num_samples=5):
@@ -326,7 +330,7 @@ class CLIP(nn.Module):
 		return loss
 
 # class MyntraDataset(Dataset):
-# 	def __init__(self, data_frame, captions, img_sz=28, txt_category="subCategory", dataset_directory="myntradataset/images"):
+# 	def __init__(self, data_frame, captions, img_sz=28, txt_category="subCategory", dataset_directory="path/2/images"):
 # 		# self.data_frame = data_frame[data_frame[txt_category].str.lower()!='innerwear']
 # 		self.data_frame = data_frame
 # 		self.img_sz = img_sz  # Desired size for the square image
@@ -390,7 +394,7 @@ class CLIP(nn.Module):
 # 		return image
 
 class MyntraDataset(Dataset):
-		def __init__(self, data_frame, captions, img_sz=28, txt_category="subCategory", dataset_directory="myntradataset/images"):
+		def __init__(self, data_frame, captions, img_sz=28, txt_category="subCategory", dataset_directory="path/2/images"):
 				self.data_frame = data_frame
 				self.img_sz = img_sz  # Desired size for the square image
 				self.transform = T.Compose([
@@ -519,13 +523,13 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 	image_features_list = []
 	image_paths = []
 
-	print(f"Creating Validation Dataloader", end="\t")
+	print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
 	vdl_st = time.time()
 	val_dataset = MyntraDataset(
 		data_frame=val_df,
 		captions=captions,
 		img_sz=80,
-		dataset_directory=args.dataset_dir
+		dataset_directory=os.path.join(args.dataset_dir, "images")
 	)
 	val_loader = DataLoader(
 		dataset=val_dataset, 
@@ -561,24 +565,25 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 	print(f"Top-{TOP_K} images for query '{query}':\n")
 	for value, index in zip(top_values[0], top_indices[0]):
 		print(f"Similarity: {100 * value.item():.3f}%")
-		img_path = image_paths[index]
-		# Display the image
-		img = Image.open(img_path).convert("RGB")
-		plt.imshow(img)
-		plt.title(f"Similarity: {100 * value.item():.3f}%")
-		plt.axis('off')
-		plt.show()
+		if visualize:
+			img_path = image_paths[index]
+			# Display the image
+			img = Image.open(img_path).convert("RGB")
+			plt.imshow(img)
+			plt.title(f"Similarity: {100 * value.item():.3f}%")
+			plt.axis('off')
+			plt.show()
 
 def validate(model_fpth: str=f"path/to/models/clip.pt", class_names: List=["shirt", "hat"]):
 	print(f"Validation {model_fpth} using {device}".center(100, "-"))
 	vdl_st = time.time()
-	print(f"Creating Validation Dataloader", end="\t")
+	print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
 	vdl_st = time.time()
 	val_dataset = MyntraDataset(
 		data_frame=val_df,
 		captions=captions,
 		img_sz=80,
-		dataset_directory=args.dataset_dir
+		dataset_directory=os.path.join(args.dataset_dir, "images")
 	)
 	val_loader = DataLoader(
 		dataset=val_dataset, 
@@ -631,7 +636,8 @@ def validate(model_fpth: str=f"path/to/models/clip.pt", class_names: List=["shir
 	text = torch.stack([tokenizer(x)[0] for x in class_names]).to(device)
 	mask = torch.stack([tokenizer(x)[1] for x in class_names])
 	mask = mask.repeat(1,len(mask[0])).reshape(len(mask),len(mask[0]),len(mask[0])).to(device)
-	idx = 904
+	# idx = 904
+	idx = random.randint(0, len(val_df))
 	img = val_dataset[idx]["image"][None,:]
 	print(f'IMG: {idx}: {tokenizer(val_dataset[idx]["caption"], encode=False, mask=val_dataset[idx]["mask"][0])}')
 
@@ -656,7 +662,8 @@ def validate(model_fpth: str=f"path/to/models/clip.pt", class_names: List=["shir
 		print(f"{class_names[int(index)]:>16s}: {100 * value.item():.3f}%")
 	print(f"Elapsed_t: {time.time()-vdl_st:.2f} sec")
 
-print(f"Laoding style: myntradataset/styles.csv")
+styles_fpth = os.path.join(args.dataset_dir, "styles.csv")
+print(f"Laoding style: {styles_fpth}")
 # Define the mapping of words to replace
 replacement_dict = {
 	"lips": "lipstick",
@@ -719,7 +726,7 @@ print(f"{len(list(captions.keys()))} Captions:\n{json.dumps(captions, indent=2, 
 # 	data_frame=val_df, 
 # 	captions=captions,
 # 	img_sz=224,
-# 	dataset_directory=args.dataset_dir
+# 	dataset_directory=os.path.join(args.dataset_dir, "images")
 # )
 # test_loader  = DataLoader(
 # 	dataset=test_dataset, 
@@ -740,7 +747,7 @@ def fine_tune():
 		data_frame=train_df,
 		captions=captions, 
 		img_sz=80,
-		dataset_directory=args.dataset_dir
+		dataset_directory=os.path.join(args.dataset_dir, "images")
 	)
 	train_loader = DataLoader(
 		dataset=train_dataset,
@@ -775,12 +782,12 @@ def fine_tune():
 	print_dataloader_info(dataloader=train_loader)
 	best_loss = np.inf
 
-	print(f"Training {num_epochs} Epoch(s) in {device}".center(100, "-"))
+	print(f"Training {args.num_epochs} Epoch(s) in {device}".center(100, "-"))
 	training_st = time.time()
 
-	for epoch in range(num_epochs):
+	for epoch in range(args.num_epochs):
 		epoch_loss = 0.0  # To accumulate the loss over the epoch
-		# print(f"Epoch [{epoch + 1}/{num_epochs}]")  # Print the current epoch
+		# print(f"Epoch [{epoch + 1}/{args.num_epochs}]")  # Print the current epoch
 		for batch_idx, data in enumerate(train_loader):
 			# print(i)
 			# print(f"data:\n{json.dumps(data, indent=2, ensure_ascii=False)}")
@@ -802,7 +809,7 @@ def fine_tune():
 			epoch_loss += loss.item()
 
 		avg_loss = epoch_loss / len(train_loader)
-		print(f"Epoch [{epoch+1}/{num_epochs}], Average Loss: {avg_loss:.3f}")
+		print(f"Epoch [{epoch+1}/{args.num_epochs}], Average Loss: {avg_loss:.3f}")
 		
 		# Save model if it performed better than the previous best
 		if avg_loss <= best_loss:
@@ -814,7 +821,8 @@ def fine_tune():
 
 def main():
 	set_seeds()
-	fine_tune()
+	if not os.path.exists(mdl_fpth):
+		fine_tune()
 	validate(model_fpth=mdl_fpth, class_names=class_names)
 	img_retrieval(query=args.query, model_fpth=mdl_fpth, TOP_K=args.topk)
 
