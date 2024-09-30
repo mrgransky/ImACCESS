@@ -490,9 +490,9 @@ def get_product_description(df, col:str="colmun_name"):
 	class_names = list(df[col].unique())
 	captions = {idx: class_name for idx, class_name in enumerate(class_names)}
 	print(f"{len(list(captions.keys()))} Captions:\n{json.dumps(captions, indent=2, ensure_ascii=False)}")
-	return captions
+	return captions, class_names
 
-def validate(model_fpth: str=f"path/to/models/clip.pt", class_names: List=["shirt", "hat"], TOP_K: int=10):
+def validate(model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
 	print(f"Validation {model_fpth} using {device}".center(100, "-"))
 	vdl_st = time.time()
 	print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
@@ -549,10 +549,6 @@ def validate(model_fpth: str=f"path/to/models/clip.pt", class_names: List=["shir
 			total += len(labels)
 
 	print(f'\nModel Accuracy: {100 * correct // total} %')
-
-	# class_names = df['subCategory'].unique()
-	# class_names = [str(name) for name in class_names]
-
 	text = torch.stack([tokenizer(x)[0] for x in class_names]).to(device)
 	mask = torch.stack([tokenizer(x)[1] for x in class_names])
 	mask = mask.repeat(1,len(mask[0])).reshape(len(mask),len(mask[0]),len(mask[0])).to(device)
@@ -737,7 +733,7 @@ train_df, val_df = train_test_split(df, shuffle=True, test_size=0.05, random_sta
 # Print the sizes of the datasets
 print(f"Train: {len(train_df)} | Validation: {len(val_df)}")
 
-captions = get_product_description(df=df, col=args.product_description_col)
+captions, class_names = get_product_description(df=df, col=args.product_description_col)
 # sys.exit()
 
 def fine_tune():
@@ -837,8 +833,15 @@ def main():
 	if not os.path.exists(mdl_fpth):
 		fine_tune()
 	if args.validate:
-		validate(model_fpth=mdl_fpth, class_names=class_names)
-	img_retrieval(query=args.query, model_fpth=mdl_fpth, TOP_K=args.topk)
+		validate(
+			model_fpth=mdl_fpth,
+			TOP_K=args.topk,
+		)
+	img_retrieval(
+		query=args.query, 
+		model_fpth=mdl_fpth, 
+		TOP_K=args.topk,
+	)
 
 if __name__ == "__main__":
 	main()
