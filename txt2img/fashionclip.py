@@ -30,8 +30,8 @@ warnings.filterwarnings('ignore')
 # $ nohup python -u fashionclip.py --num_epochs 100 > $HOME/datasets/trash/logs/fashionclip.out & 
 
 # how to run [Pouta]:
-# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 3 --query "topwear"
-# | nohup python -u --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 3 --query "topwear" > /media/volume/ImACCESS/trash/logs/fashionclip.out & 
+# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 120 --query wristbands --product_description_col customized_caption --validate True
+# $ nohup python -u --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 3 --query "topwear" > /media/volume/ImACCESS/trash/logs/fashionclip.out & 
 
 parser = argparse.ArgumentParser(description="Generate Caption for Image")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
@@ -160,13 +160,13 @@ def get_info(dataloader):
 	print(len(next(iter(dataloader))))  #(img_tensor,label_tensor)
 	for i, data in enumerate(dataloader):
 		if i == 0:  # Just show the first batch as an example
-			print(f"Sample batch {i}:")
+			print(f"For Sample batch {i}:")
 			# for key in data.keys():
 			# 	print(f"{key}")  # Print shape of each item in the batch
 			# 	# print(data["caption"])
 			print(f'caption: {data["caption"].shape} {type(data["caption"])}')
 			print(f'image: {data["image"].shape} {type(data["image"])}')
-			print(f'image_filepath: {len(data["image_filepath"])} {data["image_filepath"]} {type(data["image_filepath"])}')
+			print(f'image_filepath: {len(data["image_filepath"])} {data["image_filepath"][:5]} {type(data["image_filepath"])}')
 			break  # Exit after printing the first batch
 
 class TransformerEncoder(nn.Module):
