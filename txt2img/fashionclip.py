@@ -39,6 +39,7 @@ parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR'
 parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--num_epochs', type=int, default=1, help='Number of epochs')
+parser.add_argument('--validation_dataset_share', type=float, default=0.20, help='share of Validation set')
 parser.add_argument('--validate', type=bool, default=False, help='Model Validation upon request')
 parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
 args = parser.parse_args()
@@ -91,6 +92,25 @@ outputs_dir:str = os.path.join(
 	args.dataset_dir, 
 	"outputs",
 )
+
+def get_img_name_without_suffix(fpth):
+	"""
+	Extracts the filename without the extension from a given file path.
+
+	Args:
+			fpth (str): The file path.
+
+	Returns:
+			str: The filename without the extension.
+	"""
+
+	# Get the basename of the file path (removes directory)
+	basename = os.path.basename(fpth)
+
+	# Split the basename into filename and extension
+	filename, extension = os.path.splitext(basename)
+
+	return int(filename)
 
 def plot_loss(losses, num_epochs, save_path):
 	"""
@@ -496,7 +516,7 @@ def get_product_description(df, col:str="colmun_name"):
 def validate(model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
 	print(f"Validation {model_fpth} using {device}".center(100, "-"))
 	vdl_st = time.time()
-	print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
+	print(f"Creating Validation Dataloader for {len(val_df)} samples", end="\t")
 	vdl_st = time.time()
 	val_dataset = MyntraDataset(
 		data_frame=val_df,
@@ -554,10 +574,9 @@ def validate(model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
 	mask = torch.stack([tokenizer(x)[1] for x in class_names])
 	mask = mask.repeat(1,len(mask[0])).reshape(len(mask),len(mask[0]),len(mask[0])).to(device)
 	# idx = 904
-	idx = 44
+	idx = 1999
 	# idx = random.randint(0, len(val_df))
 	img = val_dataset[idx]["image"][None,:]
-	print(f'IMG: {idx}: {tokenizer(val_dataset[idx]["caption"], encode=False, mask=val_dataset[idx]["mask"][0])}')
 
 	if visualize:
 		plt.imshow(img[0].permute(1, 2, 0)  ,cmap="gray")
@@ -584,6 +603,13 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 	print(f"Top-{TOP_K} Image Retrieval for Query: {query}".center(100, "-"))
 	# Text to Image Retrieval with CLIP - E-commerce
 	# Loading Best Model
+	print(f"val_df: {val_df.shape} | {val_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
+	print(val_df['subCategory'].value_counts())
+
+	if query not in val_df['subCategory'].value_counts():
+		print(f"Query: {query} Not Found! Search something else!")
+		return
+
 	model = CLIP(
 		emb_dim,
 		vit_layers, 
@@ -628,7 +654,8 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 
 	# Step 2: Encode all images in the dataset and store features
 	image_features_list = []
-	image_paths = []
+	val_images_paths = []
+	val_images_descriptions = []
 
 	print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
 	vdl_st = time.time()
@@ -647,7 +674,6 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
 	# get_info(dataloader=val_loader)
 
-
 	with torch.no_grad():
 		for batch in val_loader:
 			# print(batch)
@@ -655,8 +681,14 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 			features = retrieval_model.vision_encoder(images)
 			features /= features.norm(dim=-1, keepdim=True)			
 			image_features_list.append(features)
-			image_paths.extend(batch["image_filepath"])  # Assuming batch contains image paths or IDs
-
+			# print(type(batch["image_filepath"]), type(batch.get("caption")))
+			val_images_paths.extend(batch["image_filepath"])  # Assuming batch contains image paths or IDs
+			val_images_descriptions.extend(batch.get("caption"))
+	
+	print(f"val_images_paths [collected form Validation Set]: {len(val_images_paths)}")
+	# print(val_images_paths)
+	print(f"val_images_paths [collected form Validation Set]: {len(val_images_descriptions)}")
+	# print(val_images_descriptions)
 	# Concatenate all image features
 	image_features = torch.cat(image_features_list, dim=0)
 
@@ -666,18 +698,26 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 
 	# Apply softmax to the similarities if needed
 	similarities = similarities.softmax(dim=-1)
+	print(type(similarities), similarities.shape)
+	print(similarities)
 
 	# Retrieve topK matches
 	top_values, top_indices = similarities.topk(TOP_K)
+	print(type(top_values), type(top_indices))
+	print(top_values.shape, top_indices.shape, TOP_K)
+	print(top_values)
+	print(top_indices)
 
 	# # Step 4: Retrieve and display (or save) top N images:
-	print(f"Top-{TOP_K} images From Validation Loader ({len(val_loader.dataset)}) | Query: '{query}':\n")
+	print(f"Top-{TOP_K} images from Validation: ({len(val_loader.dataset)}) | Query: '{query}':\n")
 	fig, axes = plt.subplots(1, TOP_K, figsize=(18, 4))  # Adjust figsize as needed
 	for ax, value, index in zip(axes, top_values[0], top_indices[0]):
-		print(f"idx: {index} | Similarity: {100 * value.item():.6f}%")
-		img_path = image_paths[index]
+		img_path = val_images_paths[index]
+		img_fname = get_img_name_without_suffix(fpth=img_path)
+		img_GT = df.loc[df['id'] == img_fname, 'subCategory'].values
+		print(f"vidx: {index} | Similarity: {100 * value.item():.6f}% | {img_path} | GT: {img_GT}")
 		img = Image.open(img_path).convert("RGB")
-		img_title = f"vidx_{index}_sim_{100 * value.item():.6f}%"
+		img_title = f"vidx_{index}_sim_{100 * value.item():.2f}%\nGT: {img_GT}"
 		ax.set_title(img_title, fontsize=9)
 		ax.axis('off')
 		ax.imshow(img)
@@ -685,51 +725,66 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 	plt.savefig(os.path.join(outputs_dir, f"Top_{TOP_K}_imgs_Q_{re.sub(' ', '-', query)}.png"))
 	# plt.show()
 
+def get_dframe(fpth: str="path/2/file.csv"):
+	print(f"Laoding style (csv): {fpth}")
+	# Define the mapping of words to replace
+	replacement_dict = {
+		"lips": "lipstick",
+		"eyes": "eyelash",
+		"nails": "nail polish"
+	}
+	styles_df = pd.read_csv(
+		filepath_or_buffer=fpth,
+		usecols=["id","gender","masterCategory","subCategory","articleType","baseColour","season","year","usage","productDisplayName"], 
+		on_bad_lines='skip',
+	)
+
+	# Convert all text columns to lowercase
+	styles_df[styles_df.select_dtypes(include=['object']).columns] = styles_df.select_dtypes(include=['object']).apply(lambda x: x.str.lower())
+	styles_df['subCategory'] = styles_df['subCategory'].replace(replacement_dict)
+
+	# Create a new column 'customized_caption'
+	styles_df['customized_caption'] = styles_df.apply(
+		# lambda row: f"{row['subCategory']} {row['articleType']}" if row['subCategory'] != row['articleType'] else row['subCategory'],
+		lambda row: row['articleType'] if row['subCategory'] in row['articleType'] else f"{row['subCategory']} {row['articleType']}",
+		axis=1,
+	)
+
+	# print(styles_df.shape)
+	# print(styles_df.head(60))
+	# print(styles_df.tail(60))
+
+	# df = pd.read_csv(
+	# 	filepath_or_buffer='myntradataset/styles.csv', 
+	# 	usecols=['id',  'subCategory', 'articleType'],
+	# )
+	# df['subCategory'] = df['subCategory'].replace(replacement_dict)
+	# print(f"Style {type(df)} {df.shape}")
+
+	df = styles_df.copy()
+	print(f"df: {df.shape}")
+	print(df.head(10))
+	print(df['subCategory'].value_counts())
+	print("#"*100)
+
+	return df
+
 styles_fpth = os.path.join(args.dataset_dir, "styles.csv")
-print(f"Laoding style: {styles_fpth}")
-# Define the mapping of words to replace
-replacement_dict = {
-	"lips": "lipstick",
-	"eyes": "eyelash",
-	"nails": "nail polish"
-}
-styles_df = pd.read_csv(
-	filepath_or_buffer=styles_fpth,
-	usecols=["id","gender","masterCategory","subCategory","articleType","baseColour","season","year","usage","productDisplayName"], 
-	on_bad_lines='skip',
-)
-
-# Convert all text columns to lowercase
-styles_df[styles_df.select_dtypes(include=['object']).columns] = styles_df.select_dtypes(include=['object']).apply(lambda x: x.str.lower())
-styles_df['subCategory'] = styles_df['subCategory'].replace(replacement_dict)
-
-# Create a new column 'customized_caption'
-styles_df['customized_caption'] = styles_df.apply(
-	# lambda row: f"{row['subCategory']} {row['articleType']}" if row['subCategory'] != row['articleType'] else row['subCategory'],
-	lambda row: row['articleType'] if row['subCategory'] in row['articleType'] else f"{row['subCategory']} {row['articleType']}",
-	axis=1,
-)
-
-print(styles_df.shape)
-print(styles_df.head(60))
-# print(styles_df.tail(60))
-
-# df = pd.read_csv(
-# 	filepath_or_buffer='myntradataset/styles.csv', 
-# 	usecols=['id',  'subCategory', 'articleType'],
-# )
-# df['subCategory'] = df['subCategory'].replace(replacement_dict)
-# print(f"Style {type(df)} {df.shape}")
-
-df = styles_df.copy()
-# print(df.head(60))
-# print(df.tail(60))
-
-# unique, counts = np.unique(df[product_description_col].tolist(), return_counts=True)
-# print(f"Classes:\n{unique}\n{counts}")
+df = get_dframe(fpth=styles_fpth)
 
 # Split the dataset into training and validation sets
-train_df, val_df = train_test_split(df, shuffle=True, test_size=0.05, random_state=42)
+train_df, val_df = train_test_split(
+	df, 
+	shuffle=True, 
+	test_size=args.validation_dataset_share, 
+	random_state=42,
+)
+
+print(f"train_df: {train_df.shape} | {train_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
+print(train_df['subCategory'].value_counts())
+print("#"*100)
+print(f"val_df: {val_df.shape} | {val_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
+print(val_df['subCategory'].value_counts())
 
 # Print the sizes of the datasets
 print(f"Train: {len(train_df)} | Validation: {len(val_df)}")
