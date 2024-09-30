@@ -40,10 +40,11 @@ parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--num_epochs', type=int, default=1, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.20, help='share of Validation set')
-parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
+parser.add_argument('--learning_rate', type=float, default=5e-3, help='Learning Rate')
 parser.add_argument('--validate', type=bool, default=False, help='Model Validation upon request')
 parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
 args = parser.parse_args()
+print(args)
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
