@@ -220,12 +220,11 @@ def get_info(dataloader):
 	# #Sanity check of dataloader initialization
 	print(len(next(iter(dataloader))))  #(img_tensor,label_tensor)
 	for i, data in enumerate(dataloader):
-		print(i)
-		print(f'image_filepath: {len(data["image_filepath"])} {type(data["image_filepath"])}')
+		print(f'[{i}/{len(next(iter(dataloader)))}] image_filepath: {len(data["image_filepath"])} {type(data["image_filepath"])}')
 		c = Counter(data["image_filepath"])
 		print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
 		print("#"*100)
-		print()
+		# print()
 		# if i == 0:  # Just show the first batch as an example
 		# 	print(f"For Sample batch {i}:")
 		# 	# for key in data.keys():
