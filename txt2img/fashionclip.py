@@ -27,11 +27,11 @@ warnings.filterwarnings('ignore')
 
 # how to run [Local]:
 # $ python fashionclip.py --query tie
-# $ python fashionclip.py --query tie --dataset_dir myntradataset --num_epochs 7
+# $ python fashionclip.py --query tie --dataset_dir myntradataset --num_epochs 7 # original functioning!
 # $ nohup python -u fashionclip.py --num_epochs 100 > $HOME/datasets/trash/logs/fashionclip.out & 
 
 # how to run [Pouta]:
-# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 27 --learning_rate 5e-3 --product_description_col subCategory --query wristbands --validate True
+# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 27 --learning_rate 5e-4 --product_description_col subCategory --query wristbands --validate True
 # $ nohup python -u --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 3 --query "topwear" > /media/volume/ImACCESS/trash/logs/fashionclip.out & 
 
 parser = argparse.ArgumentParser(description="Generate Caption for Image")
@@ -80,19 +80,21 @@ text_d_model = 64 #  -->  text_heads * text_layers = text_d_model
 max_seq_length = 128
 text_heads = 8
 text_layers = 8
-wd = 1e-5
+wd = 1e-4 # L2 Regularization
 batch_size = 128
 # nw = 8
 nw:int = multiprocessing.cpu_count()
 mdl_fpth:str = os.path.join(
 	args.dataset_dir, 
-	"models", 
+	"models",
 	f"fashionclip_nEpochs_{args.num_epochs}_lr_{args.learning_rate}.pt",
+	# f"fashionclip_{args.num_epochs}_nEpochs.pt",
 )
 outputs_dir:str = os.path.join(
 	args.dataset_dir, 
 	"outputs",
 )
+styles_fpth = os.path.join(args.dataset_dir, "styles.csv")
 
 def get_img_name_without_suffix(fpth):
 	# Get the basename of the file path (removes directory)
@@ -114,11 +116,9 @@ def plot_loss(losses, num_epochs, save_path):
 	plt.plot(epochs, losses, marker='o', linestyle='-', color='b')
 	plt.xlabel('Epoch')
 	plt.ylabel('Loss')
-	plt.title('Loss vs. Epoch')
+	plt.title(f'Loss vs. Epoch (LR: {args.learning_rate})')
 	plt.grid(True)
 	plt.savefig(save_path)
-	if visualize:
-		plt.show()
 	
 def set_seeds():
 	# fix random seeds
@@ -758,7 +758,6 @@ def get_dframe(fpth: str="path/2/file.csv"):
 
 	return df
 
-styles_fpth = os.path.join(args.dataset_dir, "styles.csv")
 df = get_dframe(fpth=styles_fpth)
 
 # Split the dataset into training and validation sets
@@ -782,10 +781,7 @@ captions, class_names = get_product_description(df=df, col=args.product_descript
 # sys.exit()
 
 def fine_tune():
-	# download data
-	# !kaggle datasets download -d paramaggarwal/fashion-product-images-small -q
 	print(f"Fine-tuning in {torch.cuda.get_device_name(device)} using {nw} CPU(s)".center(150, "-"))
-
 	print(f"Creating Train Dataloader", end="\t")
 	tdl_st = time.time()
 	train_dataset = MyntraDataset(
@@ -802,8 +798,6 @@ def fine_tune():
 	)
 	print(f"num_samples[Total]: {len(train_loader.dataset)} Elapsed_t: {time.time()-tdl_st:.5f} sec")
 	get_info(dataloader=train_loader)
-	#Sanity check of dataloader initialization
-	
 	model = CLIP(
 		emb_dim, 
 		vit_layers,
@@ -819,53 +813,45 @@ def fine_tune():
 		text_d_model,
 		retrieval=False,
 	).to(device)
-	
-	optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=wd) # weight decay (L2 regularization)
-	scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
+	# optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=wd) # weight decay (L2 regularization)
+	optimizer = optim.AdamW(
+		params=model.parameters(), 
+		lr=args.learning_rate, 
+		# weight_decay=wd, # weight decay (L2 regularization)
+	)
+	# scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
+	# scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.num_epochs)
+
 	total_params = 0
 	total_params = sum([param.numel() for param in model.parameters() if param.requires_grad])
 	print(f"Total trainable parameters: {total_params} ~ {total_params/int(1e+6):.2f} M")
-
 	best_loss = np.inf
-
 	print(f"Training {args.num_epochs} Epoch(s) in {device}".center(100, "-"))
 	training_st = time.time()
 	average_losses = list()
 	for epoch in range(args.num_epochs):
 		print(f"Epoch [{epoch+1}/{args.num_epochs}]")
 		epoch_loss = 0.0  # To accumulate the loss over the epoch
-		# print(f"Epoch [{epoch + 1}/{args.num_epochs}]")  # Print the current epoch
 		for batch_idx, data in enumerate(train_loader):
-			# print(i)
-			# print(f"data:\n{json.dumps(data, indent=2, ensure_ascii=False)}")
 			img = data["image"].to(device) 
 			cap = data["caption"].to(device)
 			mask = data["mask"].to(device)
-			# print(type(img), type(cap), type(mask))
-			# print(img.shape, cap.shape, mask.shape)
-
 			optimizer.zero_grad()
 			loss = model(img, cap, mask)
 			loss.backward()
-			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			# torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			optimizer.step()
-			# print(f"\tBatch [{batch_idx + 1}/{len(train_loader)}] Loss: {loss.item():.4f}")
 			if batch_idx % 100 == 0:
 				print(f"\tBatch [{batch_idx + 1}/{len(train_loader)}] Loss: {loss.item():.5f}")
-			
-			# Update the progress bar with the current loss
 			epoch_loss += loss.item()
-
 		avg_loss = epoch_loss / len(train_loader)
-		scheduler.step(avg_loss)
+		# scheduler.step(avg_loss)
 		print(f"Average Loss: {avg_loss:.5f} @ Epoch: {epoch+1}")
 		average_losses.append(avg_loss)
-		# Save model if it performed better than the previous best
 		if avg_loss <= best_loss:
 			best_loss = avg_loss
 			torch.save(model.state_dict(), mdl_fpth)
 			print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.5f}")
-
 	print(f"Elapsed_t: {time.time()-training_st:.5f} sec")
 	plot_loss(
 		losses=average_losses, 
