@@ -727,8 +727,8 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 			val_images_paths.extend(batch["image_filepath"])  # Assuming batch contains image paths or IDs
 			val_images_descriptions.extend(batch.get("caption"))
 	
-	print(f"val_images_paths: {len(val_images_paths)}")
-	print(val_images_paths)
+	print(f"val_images_paths {type(val_images_paths)} {len(val_images_paths)}")
+	# print(val_images_paths)
 	c = Counter(val_images_paths)
 	print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
 	print("#"*100)
