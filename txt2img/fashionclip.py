@@ -211,18 +211,11 @@ def tokenizer(text, encode=True, mask=None, max_seq_length=32):
 def get_info(dataloader):
 
 	# Print the basic information about the DataLoader
-	print(f"Number of batches: {len(dataloader)}")
-	print(f"Batch size: {dataloader.batch_size}")
-	print(f"Number of workers: {dataloader.num_workers}")
-	# Optionally, print the dataset length
-	if hasattr(dataloader.dataset, '__len__'):
-		tot_samples = len(dataloader.dataset)
-		n_chunks = int(tot_samples / dataloader.batch_size)
-		print(f"Total samples:: {tot_samples} divided into {n_chunks} chunk(s)")
-	# Print a sample from the DataLoader
-	# #Sanity check of dataloader initialization
+	tot_samples = len(dataloader.dataset)
+	n_chunks = len(dataloader) # ceil(tot_samples / dataloader.batch_size)
+	print(f"Total samples:: {tot_samples} divided into {n_chunks} chunk(s) when using batch_size: {dataloader.batch_size}")
+	print(f"Number of workers: {dataloader.num_workers}")	
 	print(len(next(iter(dataloader))))  #(img_tensor,label_tensor)
-	print()
 	for i, data in enumerate(dataloader):
 		print(f'[{i}/{n_chunks}] image_filepath: {len(data["image_filepath"])} {type(data["image_filepath"])}')
 		c = Counter(data["image_filepath"])
