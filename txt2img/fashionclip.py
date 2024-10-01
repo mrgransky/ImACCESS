@@ -220,15 +220,21 @@ def get_info(dataloader):
 	# #Sanity check of dataloader initialization
 	print(len(next(iter(dataloader))))  #(img_tensor,label_tensor)
 	for i, data in enumerate(dataloader):
-		if i == 0:  # Just show the first batch as an example
-			print(f"For Sample batch {i}:")
-			# for key in data.keys():
-			# 	print(f"{key}")  # Print shape of each item in the batch
-			# 	# print(data["caption"])
-			print(f'caption: {data["caption"].shape} {type(data["caption"])}')
-			print(f'image: {data["image"].shape} {type(data["image"])}')
-			print(f'image_filepath: {len(data["image_filepath"])} {data["image_filepath"][:5]} {type(data["image_filepath"])}')
-			break  # Exit after printing the first batch
+		print(i)
+		print(f'image_filepath: {len(data["image_filepath"])} {type(data["image_filepath"])}')
+		c = Counter(data["image_filepath"])
+		print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
+		print("#"*100)
+		print()
+		# if i == 0:  # Just show the first batch as an example
+		# 	print(f"For Sample batch {i}:")
+		# 	# for key in data.keys():
+		# 	# 	print(f"{key}")  # Print shape of each item in the batch
+		# 	# 	# print(data["caption"])
+		# 	print(f'caption: {data["caption"].shape} {type(data["caption"])}')
+		# 	print(f'image: {data["image"].shape} {type(data["image"])}')
+		# 	print(f'image_filepath: {len(data["image_filepath"])} {data["image_filepath"][:5]} {type(data["image_filepath"])}')
+		# 	break  # Exit after printing the first batch
 
 class TransformerEncoder(nn.Module):
 	def __init__(self, d_model, n_heads, mlp_ratio =4):
@@ -572,7 +578,8 @@ def validate(model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
 		num_workers=nw,
 	)
 	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
-	# get_info(dataloader=val_loader)
+	get_info(dataloader=val_loader)
+	return
 
 	# Loading Best Model
 	model = CLIP(
@@ -715,6 +722,7 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 	)
 	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
 	get_info(dataloader=val_loader)
+	return
 
 	with torch.no_grad():
 		for batch in val_loader:
