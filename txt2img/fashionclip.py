@@ -221,8 +221,8 @@ def get_info(dataloader):
 	for i, data in enumerate(dataloader):
 		print(f'[{i+1}/{n_chunks}] {len(data["image_filepath"])} image_filepath {type(data["image_filepath"])}')
 		c = Counter(data["image_filepath"])
-		# print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
-		# print("#"*100)
+		print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
+		print("#"*100)
 		# print()
 		# if i == 0:  # Just show the first batch as an example
 		# 	print(f"For Sample batch {i}:")
@@ -409,7 +409,6 @@ class CLIP(nn.Module):
 
 class MyntraDataset(Dataset):
 	def __init__(self, data_frame, captions, img_sz=28, txt_category="subCategory", dataset_directory="path/2/images"):
-		# self.data_frame = data_frame[data_frame[txt_category].str.lower()!='innerwear']
 		self.data_frame = data_frame
 		self.img_sz = img_sz  # Desired size for the square image
 		self.transform = T.Compose([
@@ -439,15 +438,9 @@ class MyntraDataset(Dataset):
 
 			# Retrieve the subCategory label and its corresponding caption
 			label = sample[self.txt_category].lower()
-			# print(label)
-			# label = {"lips": "lipstick", "eyes": "eyelash", "nails": "nail polish"}.get(label, label)
-			# print(label)
-
 			label_idx = next(idx for idx, class_name in self.captions.items() if class_name == label)
-			# print(label_idx)
-			# print()
-			# print(label, label_idx)
-			# # Tokenize the caption using the tokenizer function
+
+			# Tokenize the caption using the tokenizer function
 			cap, mask = tokenizer(self.captions[label_idx])
 			# Make sure the mask is a tensor
 			mask = torch.tensor(mask)
@@ -455,7 +448,6 @@ class MyntraDataset(Dataset):
 			if len(mask.size()) == 1:
 				mask = mask.unsqueeze(0)
 			return {"image": image, "caption": cap, "mask": mask, "image_filepath": img_path}
-			# return {"image": image, "caption": cap, "mask": mask, "id": img_path}
 	def resize_and_pad(self, image, img_sz):
 		original_width, original_height = image.size
 		aspect_ratio = original_width / original_height
@@ -785,7 +777,7 @@ df = get_dframe(fpth=styles_fpth)
 train_df, val_df = train_test_split(
 	df, 
 	shuffle=True, 
-	test_size=args.validation_dataset_share, 
+	test_size=args.validation_dataset_share, # 0.05
 	random_state=42,
 )
 
