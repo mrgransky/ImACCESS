@@ -14,6 +14,7 @@ import torch.optim as optim
 import torchvision
 import torchvision.transforms as T
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.dataloader import default_collate
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Subset
@@ -212,16 +213,20 @@ def get_info(dataloader):
 	tot_samples = len(dataloader.dataset)
 	n_chunks = len(dataloader) # ceil(tot_samples / dataloader.batch_size)
 	print(
-		f"dataloader organization has main {len(next(iter(dataloader)))} element(s)\n"
+		# f"dataloader organization has main {len(next(iter(dataloader)))} element(s)\n"
 		f"Total samples:: {tot_samples} "
 		f"divided into {n_chunks} chunk(s) "
 		f"using batch_size: {dataloader.batch_size} "
 		f"in {dataloader.num_workers} CPU(s)"
 	)
 	for i, data in enumerate(dataloader):
-		print(f'[{i+1}/{n_chunks}] {len(data["image_filepath"])} image_filepath {type(data["image_filepath"])}')
+		print(
+			f'[{i+1}/{n_chunks}] '
+			f'{len(data["image_filepath"])} image_filepath {type(data["image_filepath"])} '
+			f'{data["caption"].shape} caption {type(data["image_filepath"])}')
+		print(f"Batch {i+1}: {len([img for img in data['image_filepath']])} {[img for img in data['image_filepath']]}")
 		c = Counter(data["image_filepath"])
-		print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
+		# print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
 		print("#"*100)
 		# print()
 		# if i == 0:  # Just show the first batch as an example
@@ -407,142 +412,147 @@ class CLIP(nn.Module):
 		loss = self.CLIPLoss(logits, self.device)
 		return loss
 
-class MyntraDataset(Dataset):
-	def __init__(self, data_frame, captions, img_sz=28, txt_category="subCategory", dataset_directory="path/2/images"):
-		self.data_frame = data_frame
-		self.img_sz = img_sz  # Desired size for the square image
-		self.transform = T.Compose([
-			T.ToTensor()  # Convert image to tensor
-		])
-		self.captions = captions
-		self.txt_category = txt_category
-		self.dataset_directory = dataset_directory
-	def __len__(self):
-		return len(self.data_frame)
-	def __getitem__(self, idx):
-		while True:
-			sample = self.data_frame.iloc[idx] # df
-			# print(sample)
-			img_path = os.path.join(self.dataset_directory, f"{sample['id']}.jpg")
-			try:
-				image = Image.open(img_path).convert('RGB')
-			except (FileNotFoundError, IOError) as e:
-				# print(e)
-				# If the image is not found, skip this sample by incrementing the index
-				idx = (idx + 1) % len(self.data_frame)  # Loop back to the start if we reach the end
-				continue  # Retry with the next index
-			# Resize the image to maintain aspect ratio
-			image = self.resize_and_pad(image, self.img_sz)
-			# Apply transformations (convert to tensor)
-			image = self.transform(image)
-
-			# Retrieve the subCategory label and its corresponding caption
-			label = sample[self.txt_category].lower()
-			label_idx = next(idx for idx, class_name in self.captions.items() if class_name == label)
-
-			# Tokenize the caption using the tokenizer function
-			cap, mask = tokenizer(self.captions[label_idx])
-			# Make sure the mask is a tensor
-			mask = torch.tensor(mask)
-			# If the mask is a single dimension, make sure it is expanded correctly
-			if len(mask.size()) == 1:
-				mask = mask.unsqueeze(0)
-			return {"image": image, "caption": cap, "mask": mask, "image_filepath": img_path}
-	def resize_and_pad(self, image, img_sz):
-		original_width, original_height = image.size
-		aspect_ratio = original_width / original_height
-		if aspect_ratio > 1:
-			new_width = img_sz
-			new_height = int(img_sz / aspect_ratio)
-		else:
-			new_height = img_sz
-			new_width = int(img_sz * aspect_ratio)
-		image = image.resize((new_width, new_height))
-		pad_width = (img_sz - new_width) // 2
-		pad_height = (img_sz - new_height) // 2
-		padding = (pad_width, pad_height, img_sz - new_width - pad_width, img_sz - new_height - pad_height)
-		image = ImageOps.expand(image, padding, fill=(0, 0, 0))
-		return image
-
 # class MyntraDataset(Dataset):
-# 		def __init__(self, data_frame, captions, img_sz=28, txt_category="subCategory", dataset_directory="path/2/images"):
-# 				self.data_frame = data_frame
-# 				self.img_sz = img_sz  # Desired size for the square image
-# 				self.transform = T.Compose([
-# 						T.ToTensor()  # Convert image to tensor
-# 				])
-# 				self.captions = captions
-# 				self.txt_category = txt_category
-# 				self.dataset_directory = dataset_directory
-# 				# print(self.captions)
+# 	def __init__(self, data_frame, captions, img_sz=28, txt_category="subCategory", dataset_directory="path/2/images"):
+# 		self.data_frame = data_frame
+# 		self.img_sz = img_sz  # Desired size for the square image
+# 		self.transform = T.Compose([
+# 			T.ToTensor()  # Convert image to tensor
+# 		])
+# 		self.captions = captions
+# 		self.txt_category = txt_category
+# 		self.dataset_directory = dataset_directory
+# 	def __len__(self):
+# 		return len(self.data_frame)
+# 	def __getitem__(self, idx):
+# 		while True:
+# 			sample = self.data_frame.iloc[idx] # df
+# 			# print(sample)
+# 			img_path = os.path.join(self.dataset_directory, f"{sample['id']}.jpg")
+# 			try:
+# 				image = Image.open(img_path).convert('RGB')
+# 			except (FileNotFoundError, IOError) as e:
+# 				# print(e)
+# 				# If the image is not found, skip this sample by incrementing the index
+# 				idx = (idx + 1) % len(self.data_frame)  # Loop back to the start if we reach the end
+# 				continue  # Retry with the next index
+# 			# Resize the image to maintain aspect ratio
+# 			image = self.resize_and_pad(image, self.img_sz)
+# 			# Apply transformations (convert to tensor)
+# 			image = self.transform(image)
 
-# 		def __len__(self):
-# 				return len(self.data_frame)
-		
-# 		def __repr__(self):
-# 			tmpstr = '\n' + self.__class__.__name__ + '\n'
-# 			return tmpstr
+# 			# Retrieve the subCategory label and its corresponding caption
+# 			label = sample[self.txt_category].lower()
+# 			label_idx = next(idx for idx, class_name in self.captions.items() if class_name == label)
 
-# 		def __getitem__(self, idx):
-# 				while True:
-# 						# print(idx)
-# 						sample = self.data_frame.iloc[idx]  # df
-# 						img_path = os.path.join(self.dataset_directory, f"{sample['id']}.jpg")
-# 						try:
-# 								image = Image.open(img_path).convert('RGB')
-# 						except (FileNotFoundError, IOError) as e:
-# 								idx = (idx + 1) % len(self.data_frame)  # Loop back to the start if we reach the end
-# 								continue  # Retry with the next index
+# 			# Tokenize the caption using the tokenizer function
+# 			cap, mask = tokenizer(self.captions[label_idx])
+# 			# Make sure the mask is a tensor
+# 			mask = torch.tensor(mask)
+# 			# If the mask is a single dimension, make sure it is expanded correctly
+# 			if len(mask.size()) == 1:
+# 				mask = mask.unsqueeze(0)
+# 			return {"image": image, "caption": cap, "mask": mask, "image_filepath": img_path}
+# 	def resize_and_pad(self, image, img_sz):
+# 		original_width, original_height = image.size
+# 		aspect_ratio = original_width / original_height
+# 		if aspect_ratio > 1:
+# 			new_width = img_sz
+# 			new_height = int(img_sz / aspect_ratio)
+# 		else:
+# 			new_height = img_sz
+# 			new_width = int(img_sz * aspect_ratio)
+# 		image = image.resize((new_width, new_height))
+# 		pad_width = (img_sz - new_width) // 2
+# 		pad_height = (img_sz - new_height) // 2
+# 		padding = (pad_width, pad_height, img_sz - new_width - pad_width, img_sz - new_height - pad_height)
+# 		image = ImageOps.expand(image, padding, fill=(0, 0, 0))
+# 		return image
 
-# 						# Resize the image to maintain aspect ratio
-# 						image = self.resize_and_pad(image, self.img_sz)
-# 						# Apply transformations (convert to tensor)
-# 						image = self.transform(image)
+class MyntraDataset(Dataset):
+		def __init__(self, data_frame, captions, img_sz=28, txt_category="subCategory", dataset_directory="path/2/images"):
+				self.data_frame = data_frame
+				self.img_sz = img_sz  # Desired size for the square image
+				self.transform = T.Compose([
+						T.ToTensor()  # Convert image to tensor
+				])
+				self.captions = captions
+				self.txt_category = txt_category
+				self.dataset_directory = dataset_directory
 
-# 						# Retrieve the subCategory label and its corresponding caption
-# 						label = sample[self.txt_category].lower()
-# 						# label = {"lips": "lipstick", "eyes": "eyelash", "nails": "nail polish"}.get(label, label)
+		def __len__(self):
+				return len(self.data_frame)
 
-# 						# Check if the label exists in captions
-# 						if label not in self.captions.values():
-# 								# print(f"Warning: Label '{label}' not found in captions.")
-# 								# print(self.captions.values())
-# 								idx = (idx + 1) % len(self.data_frame)  # Skip this sample by incrementing index
-# 								continue
+		def __getitem__(self, idx):
+				# Retrieve the sample from the DataFrame
+				sample = self.data_frame.iloc[idx]
 
-# 						# Get label index safely
-# 						label_idx = next((idx for idx, class_name in self.captions.items() if class_name == label), None)
-						
-# 						if label_idx is None:
-# 								print(f"Warning: No index found for label '{label}'.")
-# 								idx = (idx + 1) % len(self.data_frame)  # Skip this sample by incrementing index
-# 								continue
+				# Construct the image path
+				img_path = os.path.join(self.dataset_directory, f"{sample['id']}.jpg")
 
-# 						# Tokenize the caption using the tokenizer function
-# 						cap, mask = tokenizer(self.captions[label_idx])
-# 						mask = torch.tensor(mask)
+				# Try to load the image and handle errors gracefully
+				if not os.path.exists(img_path):
+					# raise FileNotFoundError(f"Image not found at path: {img_path}") debugging purpose
+					return None
 
-# 						if len(mask.size()) == 1:
-# 								mask = mask.unsqueeze(0)
+				try:
+					image = Image.open(img_path).convert('RGB')
+				except (FileNotFoundError, IOError) as e:
+					# raise IOError(f"Could not load image: {img_path}, Error: {str(e)}") # debugging
+					return None
 
-# 						# return {"image": image, "caption": cap, "mask": mask, "id": img_path}
-# 						return {"image": image, "caption": cap, "mask": mask, "image_filepath": img_path}
+				# Resize the image to maintain aspect ratio and apply transformations
+				image = self.resize_and_pad(image, self.img_sz)
+				image = self.transform(image)
 
-# 		def resize_and_pad(self, image, img_sz):
-# 				original_width, original_height = image.size
-# 				aspect_ratio = original_width / original_height
-# 				if aspect_ratio > 1:
-# 						new_width = img_sz
-# 						new_height = int(img_sz / aspect_ratio)
-# 				else:
-# 						new_height = img_sz
-# 						new_width = int(img_sz * aspect_ratio)
-# 				image = image.resize((new_width, new_height))
-# 				pad_width = (img_sz - new_width) // 2
-# 				pad_height = (img_sz - new_height) // 2
-# 				padding = (pad_width, pad_height, img_sz - new_width - pad_width, img_sz - new_height - pad_height)
-# 				image = ImageOps.expand(image, padding, fill=(0, 0, 0))
-# 				return image
+				# Retrieve the subCategory label and its corresponding caption
+				label = sample[self.txt_category].lower()
+
+				# Check if label exists in captions dictionary
+				if label not in self.captions.values():
+					# raise KeyError(f"Label '{label}' not found in captions dictionary")
+					return None
+
+				label_idx = next(idx for idx, class_name in self.captions.items() if class_name == label)
+
+				# Tokenize the caption using the tokenizer function
+				cap, mask = tokenizer(self.captions[label_idx])
+
+				# Ensure the mask is a tensor and correct the shape if necessary
+				mask = torch.tensor(mask)
+				if len(mask.size()) == 1:
+						mask = mask.unsqueeze(0)
+
+				return {
+						"image": image,
+						"caption": cap,
+						"mask": mask,
+						"image_filepath": img_path
+				}
+
+		def resize_and_pad(self, image, img_sz):
+				"""Resize the image to maintain aspect ratio and pad it to the target size."""
+				original_width, original_height = image.size
+				aspect_ratio = original_width / original_height
+
+				if aspect_ratio > 1:
+						new_width = img_sz
+						new_height = int(img_sz / aspect_ratio)
+				else:
+						new_height = img_sz
+						new_width = int(img_sz * aspect_ratio)
+
+				image = image.resize((new_width, new_height))
+
+				# Compute padding to center the image
+				pad_width = (img_sz - new_width) // 2
+				pad_height = (img_sz - new_height) // 2
+
+				# Apply padding to ensure the image is square
+				padding = (pad_width, pad_height, img_sz - new_width - pad_width, img_sz - new_height - pad_height)
+				image = ImageOps.expand(image, padding, fill=(0, 0, 0))
+
+				return image
 
 def get_product_description(df, col:str="colmun_name"):
 	class_names = list(df[col].unique())
@@ -566,10 +576,11 @@ def validate(model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
 		shuffle=False,
 		batch_size=batch_size, 
 		num_workers=nw,
+		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)
 	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
-	get_info(dataloader=val_loader)
-	return
+	# get_info(dataloader=val_loader)
+	# return
 
 	# Loading Best Model
 	model = CLIP(
@@ -709,10 +720,11 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 		shuffle=False,
 		batch_size=32, # double check!!!! 
 		num_workers=nw,
+		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)
 	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
-	get_info(dataloader=val_loader)
-	return
+	# get_info(dataloader=val_loader)
+	# return
 
 	with torch.no_grad():
 		for batch in val_loader:
@@ -781,17 +793,34 @@ train_df, val_df = train_test_split(
 	random_state=42,
 )
 
-print(f"train_df: {train_df.shape} | {train_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
-print(train_df['subCategory'].value_counts())
-print("#"*100)
-print(f"val_df: {val_df.shape} | {val_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
-print(val_df['subCategory'].value_counts())
+# print(f"train_df: {train_df.shape} | {train_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
+# print(train_df['subCategory'].value_counts())
+# print(f"any duplicates in Validation set:")
+# print(train_df[train_df.duplicated()])
+# print("#"*100)
+
+# print(f"val_df: {val_df.shape} | {val_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
+# print(val_df['subCategory'].value_counts())
+# print(f"any duplicates in Validation set:")
+# print(val_df[val_df.duplicated()])
+# print("#"*100)
+
+# for idx, sample in val_df.iterrows():
+# 	img_path = os.path.join(args.dataset_dir, "images", f"{sample['id']}.jpg")
+# 	if not os.path.exists(img_path):
+# 		print(f"Missing image: {img_path}")
 
 # Print the sizes of the datasets
 print(f"Train: {len(train_df)} | Validation: {len(val_df)}")
 
 captions, class_names = get_product_description(df=df, col=args.product_description_col)
 # sys.exit()
+
+def custom_collate_fn(batch):
+	# Filter out the None values from the batch
+	batch = [item for item in batch if item is not None]
+	# Use default collate function on the filtered batch
+	return default_collate(batch)
 
 def fine_tune():
 	print(f"Fine-tuning in {torch.cuda.get_device_name(device)} using {nw} CPU(s)".center(150, "-"))
@@ -808,9 +837,10 @@ def fine_tune():
 		shuffle=True,
 		batch_size=batch_size,
 		num_workers=nw,
+		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)
 	print(f"num_samples[Total]: {len(train_loader.dataset)} Elapsed_t: {time.time()-tdl_st:.5f} sec")
-	get_info(dataloader=train_loader)
+	# get_info(dataloader=train_loader)
 	model = CLIP(
 		emb_dim, 
 		vit_layers,
