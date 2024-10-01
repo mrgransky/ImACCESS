@@ -738,9 +738,9 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 	
 	print(f"val_images_paths {type(val_images_paths)} {len(val_images_paths)}")
 	# print(val_images_paths)
-	c = Counter(val_images_paths)
-	print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
-	print("#"*100)
+	# c = Counter(val_images_paths)
+	# print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
+	# print("#"*100)
 
 	print(f"val_images_descriptions: {type(val_images_descriptions)} {len(val_images_descriptions)}")
 	# print(val_images_descriptions) # Tensor [0. 10. 11. 19, 2727. ...]
