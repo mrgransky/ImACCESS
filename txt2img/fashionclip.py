@@ -31,7 +31,7 @@ warnings.filterwarnings('ignore')
 # $ nohup python -u fashionclip.py --num_epochs 100 > $HOME/datasets/trash/logs/fashionclip.out & 
 
 # how to run [Pouta]:
-# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 27 --learning_rate 5e-4 --product_description_col subCategory --query wristbands --validate True
+# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 10
 # $ nohup python -u --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 3 --query "topwear" > /media/volume/ImACCESS/trash/logs/fashionclip.out & 
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
@@ -97,6 +97,54 @@ outputs_dir:str = os.path.join(
 	"outputs",
 )
 styles_fpth = os.path.join(args.dataset_dir, "styles.csv")
+
+def get_dframe(fpth: str="path/2/file.csv"):
+	print(f"Laoding style (csv): {fpth}")
+	replacement_dict = {
+		"lips": "lipstick",
+		"eyes": "eyelash",
+		"nails": "nail polish"
+	}
+	styles_df = pd.read_csv(
+		filepath_or_buffer=fpth,
+		usecols=[
+			"id",
+			"gender",
+			"masterCategory",
+			"subCategory",
+			"articleType",
+			"baseColour",
+			"season",
+			"year",
+			"usage",
+			"productDisplayName",
+		], 
+		on_bad_lines='skip',
+	)
+	# Convert all text columns to lowercase
+	styles_df[styles_df.select_dtypes(include=['object']).columns] = styles_df.select_dtypes(include=['object']).apply(lambda x: x.str.lower())
+	styles_df['subCategory'] = styles_df['subCategory'].replace(replacement_dict)
+	# Create a new column 'customized_caption'
+	styles_df['customized_caption'] = styles_df.apply(
+		# lambda row: f"{row['subCategory']} {row['articleType']}" if row['subCategory'] != row['articleType'] else row['subCategory'],
+		lambda row: row['articleType'] if row['subCategory'] in row['articleType'] else f"{row['subCategory']} {row['articleType']}",
+		axis=1,
+	)
+	# print(styles_df.shape)
+	# print(styles_df.head(60))
+	# print(styles_df.tail(60))
+	# df = pd.read_csv(
+	# 	filepath_or_buffer='myntradataset/styles.csv', 
+	# 	usecols=['id',  'subCategory', 'articleType'],
+	# )
+	# df['subCategory'] = df['subCategory'].replace(replacement_dict)
+	# print(f"Style {type(df)} {df.shape}")
+	df = styles_df.copy()
+	print(f"df: {df.shape}")
+	print(df.head(10))
+	print(df['subCategory'].value_counts())
+	print("#"*100)
+	return df
 
 def get_img_name_without_suffix(fpth):
 	# Get the basename of the file path (removes directory)
@@ -354,149 +402,149 @@ class CLIP(nn.Module):
 		loss = self.CLIPLoss(logits, self.device)
 		return loss
 
-# class MyntraDataset(Dataset):
-# 	def __init__(self, data_frame, captions, img_sz=28, txt_category="subCategory", dataset_directory="path/2/images"):
-# 		# self.data_frame = data_frame[data_frame[txt_category].str.lower()!='innerwear']
-# 		self.data_frame = data_frame
-# 		self.img_sz = img_sz  # Desired size for the square image
-# 		self.transform = T.Compose([
-# 			T.ToTensor()  # Convert image to tensor
-# 		])
-# 		self.captions = captions
-# 		self.txt_category = txt_category
-# 		self.dataset_directory = dataset_directory
-# 	def __len__(self):
-# 		return len(self.data_frame)
-# 	def __getitem__(self, idx):
-# 		while True:
-# 			sample = self.data_frame.iloc[idx] # df
-# 			# print(sample)
-# 			img_path = os.path.join(self.dataset_directory, f"{sample['id']}.jpg")
-# 			try:
-# 				image = Image.open(img_path).convert('RGB')
-# 			except (FileNotFoundError, IOError) as e:
-# 				# print(e)
-# 				# If the image is not found, skip this sample by incrementing the index
-# 				idx = (idx + 1) % len(self.data_frame)  # Loop back to the start if we reach the end
-# 				continue  # Retry with the next index
-# 			# Resize the image to maintain aspect ratio
-# 			image = self.resize_and_pad(image, self.img_sz)
-# 			# Apply transformations (convert to tensor)
-# 			image = self.transform(image)
-
-# 			# Retrieve the subCategory label and its corresponding caption
-# 			label = sample[self.txt_category].lower()
-# 			print(label)
-# 			label = {"lips": "lipstick", "eyes": "eyelash", "nails": "nail polish"}.get(label, label)
-# 			print(label)
-
-# 			label_idx = next(idx for idx, class_name in self.captions.items() if class_name == label)
-# 			print(label_idx)
-# 			print()
-# 			# print(label, label_idx)
-# 			# # Tokenize the caption using the tokenizer function
-# 			cap, mask = tokenizer(self.captions[label_idx])
-# 			# Make sure the mask is a tensor
-# 			mask = torch.tensor(mask)
-# 			# If the mask is a single dimension, make sure it is expanded correctly
-# 			if len(mask.size()) == 1:
-# 				mask = mask.unsqueeze(0)
-# 			return {"image": image, "caption": cap, "mask": mask,"id": img_path}
-# 	def resize_and_pad(self, image, img_sz):
-# 		original_width, original_height = image.size
-# 		aspect_ratio = original_width / original_height
-# 		if aspect_ratio > 1:
-# 			new_width = img_sz
-# 			new_height = int(img_sz / aspect_ratio)
-# 		else:
-# 			new_height = img_sz
-# 			new_width = int(img_sz * aspect_ratio)
-# 		image = image.resize((new_width, new_height))
-# 		pad_width = (img_sz - new_width) // 2
-# 		pad_height = (img_sz - new_height) // 2
-# 		padding = (pad_width, pad_height, img_sz - new_width - pad_width, img_sz - new_height - pad_height)
-# 		image = ImageOps.expand(image, padding, fill=(0, 0, 0))
-# 		return image
-
 class MyntraDataset(Dataset):
-		def __init__(self, data_frame, captions, img_sz=28, txt_category="subCategory", dataset_directory="path/2/images"):
-				self.data_frame = data_frame
-				self.img_sz = img_sz  # Desired size for the square image
-				self.transform = T.Compose([
-						T.ToTensor()  # Convert image to tensor
-				])
-				self.captions = captions
-				self.txt_category = txt_category
-				self.dataset_directory = dataset_directory
-				# print(self.captions)
+	def __init__(self, data_frame, captions, img_sz=28, txt_category="subCategory", dataset_directory="path/2/images"):
+		# self.data_frame = data_frame[data_frame[txt_category].str.lower()!='innerwear']
+		self.data_frame = data_frame
+		self.img_sz = img_sz  # Desired size for the square image
+		self.transform = T.Compose([
+			T.ToTensor()  # Convert image to tensor
+		])
+		self.captions = captions
+		self.txt_category = txt_category
+		self.dataset_directory = dataset_directory
+	def __len__(self):
+		return len(self.data_frame)
+	def __getitem__(self, idx):
+		while True:
+			sample = self.data_frame.iloc[idx] # df
+			# print(sample)
+			img_path = os.path.join(self.dataset_directory, f"{sample['id']}.jpg")
+			try:
+				image = Image.open(img_path).convert('RGB')
+			except (FileNotFoundError, IOError) as e:
+				# print(e)
+				# If the image is not found, skip this sample by incrementing the index
+				idx = (idx + 1) % len(self.data_frame)  # Loop back to the start if we reach the end
+				continue  # Retry with the next index
+			# Resize the image to maintain aspect ratio
+			image = self.resize_and_pad(image, self.img_sz)
+			# Apply transformations (convert to tensor)
+			image = self.transform(image)
 
-		def __len__(self):
-				return len(self.data_frame)
+			# Retrieve the subCategory label and its corresponding caption
+			label = sample[self.txt_category].lower()
+			print(label)
+			label = {"lips": "lipstick", "eyes": "eyelash", "nails": "nail polish"}.get(label, label)
+			print(label)
+
+			label_idx = next(idx for idx, class_name in self.captions.items() if class_name == label)
+			print(label_idx)
+			print()
+			# print(label, label_idx)
+			# # Tokenize the caption using the tokenizer function
+			cap, mask = tokenizer(self.captions[label_idx])
+			# Make sure the mask is a tensor
+			mask = torch.tensor(mask)
+			# If the mask is a single dimension, make sure it is expanded correctly
+			if len(mask.size()) == 1:
+				mask = mask.unsqueeze(0)
+			return {"image": image, "caption": cap, "mask": mask,"id": img_path}
+	def resize_and_pad(self, image, img_sz):
+		original_width, original_height = image.size
+		aspect_ratio = original_width / original_height
+		if aspect_ratio > 1:
+			new_width = img_sz
+			new_height = int(img_sz / aspect_ratio)
+		else:
+			new_height = img_sz
+			new_width = int(img_sz * aspect_ratio)
+		image = image.resize((new_width, new_height))
+		pad_width = (img_sz - new_width) // 2
+		pad_height = (img_sz - new_height) // 2
+		padding = (pad_width, pad_height, img_sz - new_width - pad_width, img_sz - new_height - pad_height)
+		image = ImageOps.expand(image, padding, fill=(0, 0, 0))
+		return image
+
+# class MyntraDataset(Dataset):
+# 		def __init__(self, data_frame, captions, img_sz=28, txt_category="subCategory", dataset_directory="path/2/images"):
+# 				self.data_frame = data_frame
+# 				self.img_sz = img_sz  # Desired size for the square image
+# 				self.transform = T.Compose([
+# 						T.ToTensor()  # Convert image to tensor
+# 				])
+# 				self.captions = captions
+# 				self.txt_category = txt_category
+# 				self.dataset_directory = dataset_directory
+# 				# print(self.captions)
+
+# 		def __len__(self):
+# 				return len(self.data_frame)
 		
-		def __repr__(self):
-			tmpstr = '\n' + self.__class__.__name__ + '\n'
-			return tmpstr
+# 		def __repr__(self):
+# 			tmpstr = '\n' + self.__class__.__name__ + '\n'
+# 			return tmpstr
 
-		def __getitem__(self, idx):
-				while True:
-						# print(idx)
-						sample = self.data_frame.iloc[idx]  # df
-						img_path = os.path.join(self.dataset_directory, f"{sample['id']}.jpg")
-						try:
-								image = Image.open(img_path).convert('RGB')
-						except (FileNotFoundError, IOError) as e:
-								idx = (idx + 1) % len(self.data_frame)  # Loop back to the start if we reach the end
-								continue  # Retry with the next index
+# 		def __getitem__(self, idx):
+# 				while True:
+# 						# print(idx)
+# 						sample = self.data_frame.iloc[idx]  # df
+# 						img_path = os.path.join(self.dataset_directory, f"{sample['id']}.jpg")
+# 						try:
+# 								image = Image.open(img_path).convert('RGB')
+# 						except (FileNotFoundError, IOError) as e:
+# 								idx = (idx + 1) % len(self.data_frame)  # Loop back to the start if we reach the end
+# 								continue  # Retry with the next index
 
-						# Resize the image to maintain aspect ratio
-						image = self.resize_and_pad(image, self.img_sz)
-						# Apply transformations (convert to tensor)
-						image = self.transform(image)
+# 						# Resize the image to maintain aspect ratio
+# 						image = self.resize_and_pad(image, self.img_sz)
+# 						# Apply transformations (convert to tensor)
+# 						image = self.transform(image)
 
-						# Retrieve the subCategory label and its corresponding caption
-						label = sample[self.txt_category].lower()
-						# label = {"lips": "lipstick", "eyes": "eyelash", "nails": "nail polish"}.get(label, label)
+# 						# Retrieve the subCategory label and its corresponding caption
+# 						label = sample[self.txt_category].lower()
+# 						# label = {"lips": "lipstick", "eyes": "eyelash", "nails": "nail polish"}.get(label, label)
 
-						# Check if the label exists in captions
-						if label not in self.captions.values():
-								# print(f"Warning: Label '{label}' not found in captions.")
-								# print(self.captions.values())
-								idx = (idx + 1) % len(self.data_frame)  # Skip this sample by incrementing index
-								continue
+# 						# Check if the label exists in captions
+# 						if label not in self.captions.values():
+# 								# print(f"Warning: Label '{label}' not found in captions.")
+# 								# print(self.captions.values())
+# 								idx = (idx + 1) % len(self.data_frame)  # Skip this sample by incrementing index
+# 								continue
 
-						# Get label index safely
-						label_idx = next((idx for idx, class_name in self.captions.items() if class_name == label), None)
+# 						# Get label index safely
+# 						label_idx = next((idx for idx, class_name in self.captions.items() if class_name == label), None)
 						
-						if label_idx is None:
-								print(f"Warning: No index found for label '{label}'.")
-								idx = (idx + 1) % len(self.data_frame)  # Skip this sample by incrementing index
-								continue
+# 						if label_idx is None:
+# 								print(f"Warning: No index found for label '{label}'.")
+# 								idx = (idx + 1) % len(self.data_frame)  # Skip this sample by incrementing index
+# 								continue
 
-						# Tokenize the caption using the tokenizer function
-						cap, mask = tokenizer(self.captions[label_idx])
-						mask = torch.tensor(mask)
+# 						# Tokenize the caption using the tokenizer function
+# 						cap, mask = tokenizer(self.captions[label_idx])
+# 						mask = torch.tensor(mask)
 
-						if len(mask.size()) == 1:
-								mask = mask.unsqueeze(0)
+# 						if len(mask.size()) == 1:
+# 								mask = mask.unsqueeze(0)
 
-						# return {"image": image, "caption": cap, "mask": mask, "id": img_path}
-						return {"image": image, "caption": cap, "mask": mask, "image_filepath": img_path}
+# 						# return {"image": image, "caption": cap, "mask": mask, "id": img_path}
+# 						return {"image": image, "caption": cap, "mask": mask, "image_filepath": img_path}
 
-		def resize_and_pad(self, image, img_sz):
-				original_width, original_height = image.size
-				aspect_ratio = original_width / original_height
-				if aspect_ratio > 1:
-						new_width = img_sz
-						new_height = int(img_sz / aspect_ratio)
-				else:
-						new_height = img_sz
-						new_width = int(img_sz * aspect_ratio)
-				image = image.resize((new_width, new_height))
-				pad_width = (img_sz - new_width) // 2
-				pad_height = (img_sz - new_height) // 2
-				padding = (pad_width, pad_height, img_sz - new_width - pad_width, img_sz - new_height - pad_height)
-				image = ImageOps.expand(image, padding, fill=(0, 0, 0))
-				return image
+# 		def resize_and_pad(self, image, img_sz):
+# 				original_width, original_height = image.size
+# 				aspect_ratio = original_width / original_height
+# 				if aspect_ratio > 1:
+# 						new_width = img_sz
+# 						new_height = int(img_sz / aspect_ratio)
+# 				else:
+# 						new_height = img_sz
+# 						new_width = int(img_sz * aspect_ratio)
+# 				image = image.resize((new_width, new_height))
+# 				pad_width = (img_sz - new_width) // 2
+# 				pad_height = (img_sz - new_height) // 2
+# 				padding = (pad_width, pad_height, img_sz - new_width - pad_width, img_sz - new_height - pad_height)
+# 				image = ImageOps.expand(image, padding, fill=(0, 0, 0))
+# 				return image
 
 def get_product_description(df, col:str="colmun_name"):
 	class_names = list(df[col].unique())
@@ -715,61 +763,6 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 	plt.tight_layout()
 	plt.savefig(os.path.join(outputs_dir, f"Top_{TOP_K}_imgs_Q_{re.sub(' ', '-', query)}.png"))
 	# plt.show()
-
-def get_dframe(fpth: str="path/2/file.csv"):
-	print(f"Laoding style (csv): {fpth}")
-	# Define the mapping of words to replace
-	replacement_dict = {
-		"lips": "lipstick",
-		"eyes": "eyelash",
-		"nails": "nail polish"
-	}
-	styles_df = pd.read_csv(
-		filepath_or_buffer=fpth,
-		usecols=[
-			"id",
-			"gender",
-			"masterCategory",
-			"subCategory",
-			"articleType",
-			"baseColour",
-			"season",
-			"year",
-			"usage",
-			"productDisplayName",
-		], 
-		on_bad_lines='skip',
-	)
-
-	# Convert all text columns to lowercase
-	styles_df[styles_df.select_dtypes(include=['object']).columns] = styles_df.select_dtypes(include=['object']).apply(lambda x: x.str.lower())
-	styles_df['subCategory'] = styles_df['subCategory'].replace(replacement_dict)
-
-	# Create a new column 'customized_caption'
-	styles_df['customized_caption'] = styles_df.apply(
-		# lambda row: f"{row['subCategory']} {row['articleType']}" if row['subCategory'] != row['articleType'] else row['subCategory'],
-		lambda row: row['articleType'] if row['subCategory'] in row['articleType'] else f"{row['subCategory']} {row['articleType']}",
-		axis=1,
-	)
-
-	# print(styles_df.shape)
-	# print(styles_df.head(60))
-	# print(styles_df.tail(60))
-
-	# df = pd.read_csv(
-	# 	filepath_or_buffer='myntradataset/styles.csv', 
-	# 	usecols=['id',  'subCategory', 'articleType'],
-	# )
-	# df['subCategory'] = df['subCategory'].replace(replacement_dict)
-	# print(f"Style {type(df)} {df.shape}")
-
-	df = styles_df.copy()
-	print(f"df: {df.shape}")
-	print(df.head(10))
-	print(df['subCategory'].value_counts())
-	print("#"*100)
-
-	return df
 
 df = get_dframe(fpth=styles_fpth)
 # sys.exit()
