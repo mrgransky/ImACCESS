@@ -100,12 +100,6 @@ outputs_dir:str = os.path.join(
 
 def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):
 	print(f"Laoding style (csv): {fpth}")
-	replacement_dict = {
-		"lips": "lipstick",
-		"eyes": "eyelash",
-		"nails": "nail polish",
-		"perfumes" : "fragrance",
-	}
 	styles_df = pd.read_csv(
 		filepath_or_buffer=fpth,
 		usecols=[
@@ -124,14 +118,21 @@ def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):
 	)
 	# Convert all text columns to lowercase
 	styles_df[styles_df.select_dtypes(include=['object']).columns] = styles_df.select_dtypes(include=['object']).apply(lambda x: x.str.lower())
+
+	replacement_dict = {
+		"lips": "lipstick",
+		"eyes": "eyelash",
+		"nails": "nail polish",
+		"perfumes" : "fragrance",
+		"mufflers" : "scarves",
+	}
 	styles_df['subCategory'] = styles_df['subCategory'].replace(replacement_dict)
+
 	# Create a new column 'customized_caption'
 	styles_df['customized_caption'] = styles_df.apply(
-		# lambda row: f"{row['subCategory']} {row['articleType']}" if row['subCategory'] != row['articleType'] else row['subCategory'],
 		lambda row: row['articleType'] if row['subCategory'] in row['articleType'] else f"{row['subCategory']} {row['articleType']}",
 		axis=1,
 	)
-
 
 	# Check for existence of images and filter DataFrame
 	styles_df['image_exists'] = styles_df['id'].apply(lambda x: os.path.exists(os.path.join(img_dir, f"{x}.jpg")))
