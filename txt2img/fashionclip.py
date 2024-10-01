@@ -3,6 +3,7 @@ import sys
 import re
 from tqdm import tqdm
 import random
+from collections import Counter
 import json
 import warnings
 import random
@@ -685,6 +686,7 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 
 	# Step 1: Encode the text query using your tokenizer and TextEncoder
 	query_text, query_mask = tokenizer(query)
+	print(type(query_text), type(query_mask))
 	query_text = query_text.unsqueeze(0).to(device) # Add batch dimension
 	query_mask = query_mask.unsqueeze(0).to(device)
 
@@ -725,10 +727,18 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 			val_images_paths.extend(batch["image_filepath"])  # Assuming batch contains image paths or IDs
 			val_images_descriptions.extend(batch.get("caption"))
 	
-	print(f"val_images_paths [collected form Validation Set]: {len(val_images_paths)}")
-	# print(val_images_paths)
-	print(f"val_images_paths [collected form Validation Set]: {len(val_images_descriptions)}")
-	# print(val_images_descriptions)
+	print(f"val_images_paths: {len(val_images_paths)}")
+	print(val_images_paths)
+	c = Counter(val_images_paths)
+	print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
+	print("#"*100)
+
+	print(f"val_images_descriptions: {len(val_images_descriptions)}")
+	print(val_images_descriptions)
+	c = Counter(val_images_descriptions)
+	print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
+	print("#"*100)
+
 	# Concatenate all image features
 	image_features = torch.cat(image_features_list, dim=0)
 
@@ -762,7 +772,7 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 		ax.axis('off')
 		ax.imshow(img)
 	plt.tight_layout()
-	plt.savefig(os.path.join(outputs_dir, f"Top_{TOP_K}_imgs_Q_{re.sub(' ', '-', query)}.png"))
+	plt.savefig(os.path.join(outputs_dir, f"Top_{TOP_K}_imgs_Q_{re.sub(' ', '-', query)}_{args.num_epochs}_epochs.png"))
 	# plt.show()
 
 df = get_dframe(fpth=styles_fpth)
