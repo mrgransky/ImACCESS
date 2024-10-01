@@ -33,7 +33,7 @@ warnings.filterwarnings('ignore')
 # $ nohup python -u fashionclip.py --num_epochs 100 > $HOME/datasets/trash/logs/fashionclip.out & 
 
 # how to run [Pouta]:
-# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 10
+# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 13
 # $ nohup python -u --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 3 --query "topwear" > /media/volume/ImACCESS/trash/logs/fashionclip.out & 
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
@@ -41,7 +41,8 @@ parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR'
 parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
-parser.add_argument('--validation_dataset_share', type=float, default=0.05, help='share of Validation set')
+parser.add_argument('--batch_size', type=int, default=64, help='Batch Size')
+parser.add_argument('--validation_dataset_share', type=float, default=0.20, help='share of Validation set')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
 parser.add_argument('--validate', type=bool, default=True, help='Model Validation upon request')
 parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
@@ -83,12 +84,12 @@ max_seq_length = 128
 text_heads = 8
 text_layers = 8
 wd = 1e-4 # L2 Regularization
-batch_size = 128
 nw:int = multiprocessing.cpu_count() # def: 8
 mdl_fpth:str = os.path.join(
 	args.dataset_dir, 
 	"models",
 	f"fashionclip_nEpochs_{args.num_epochs}_"
+	f"batchSZ_{args.batch_size}_"
 	f"lr_{args.learning_rate}_"
 	f"val_{args.validation_dataset_share}_"
 	f"descriptions_{args.product_description_col}.pt",
@@ -138,12 +139,12 @@ def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):
 	filtered_df = styles_df[styles_df['image_exists']].drop(columns=['image_exists'])
 
 	# df = styles_df.copy() # without checking image dir
-
 	df = filtered_df.copy()
-	print(f"df: {df.shape}")
-	print(df.head(10))
-	print(df['subCategory'].value_counts())
-	print("#"*100)
+
+	# print(f"df: {df.shape}")
+	# print(df.head(10))
+	# print(df['subCategory'].value_counts())
+	# print("#"*100)
 
 	return df
 
@@ -215,7 +216,7 @@ def get_info(dataloader):
 		# f"dataloader organization has main {len(next(iter(dataloader)))} element(s)\n"
 		f"Total samples:: {tot_samples} "
 		f"divided into {n_chunks} chunk(s) "
-		f"using batch_size: {dataloader.batch_size} "
+		f"using batch size: {dataloader.batch_size} "
 		f"in {dataloader.num_workers} CPU(s)"
 	)
 	for i, data in enumerate(dataloader):
@@ -516,7 +517,7 @@ def validate(model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
 	val_loader = DataLoader(
 		dataset=val_dataset, 
 		shuffle=False,
-		batch_size=batch_size, 
+		batch_size=args.batch_size, 
 		num_workers=nw,
 		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)
@@ -563,9 +564,8 @@ def validate(model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
 	text = torch.stack([tokenizer(x)[0] for x in class_names]).to(device)
 	mask = torch.stack([tokenizer(x)[1] for x in class_names])
 	mask = mask.repeat(1,len(mask[0])).reshape(len(mask),len(mask[0]),len(mask[0])).to(device)
-	# idx = 904
-	idx = 19
-	# idx = random.randint(0, len(val_df))
+	# idx = 19
+	idx = random.randint(0, len(val_df))
 	img = val_dataset[idx]["image"][None,:]
 
 	if visualize:
@@ -656,7 +656,7 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 	val_loader = DataLoader(
 		dataset=val_dataset, 
 		shuffle=False,
-		batch_size=32, # double check!!!! 
+		batch_size=args.batch_size, #32, # double check!!!! 
 		num_workers=nw,
 		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)
@@ -753,7 +753,7 @@ def fine_tune():
 	train_loader = DataLoader(
 		dataset=train_dataset,
 		shuffle=True,
-		batch_size=batch_size,
+		batch_size=args.batch_size,
 		num_workers=nw,
 		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)
@@ -774,13 +774,12 @@ def fine_tune():
 		text_d_model,
 		retrieval=False,
 	).to(device)
-	# optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=wd) # weight decay (L2 regularization)
 	optimizer = optim.AdamW(
 		params=model.parameters(), 
 		lr=args.learning_rate, 
-		# weight_decay=wd, # weight decay (L2 regularization)
+		weight_decay=wd, # weight decay (L2 regularization)
 	)
-	# scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
+	scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
 	# scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.num_epochs)
 
 	total_params = 0
@@ -800,13 +799,13 @@ def fine_tune():
 			optimizer.zero_grad()
 			loss = model(img, cap, mask)
 			loss.backward()
-			# torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			optimizer.step()
 			if batch_idx % 100 == 0:
 				print(f"\tBatch [{batch_idx + 1}/{len(train_loader)}] Loss: {loss.item():.5f}")
 			epoch_loss += loss.item()
 		avg_loss = epoch_loss / len(train_loader)
-		# scheduler.step(avg_loss)
+		scheduler.step(avg_loss)
 		print(f"Average Loss: {avg_loss:.5f} @ Epoch: {epoch+1}")
 		average_losses.append(avg_loss)
 		if avg_loss <= best_loss:
