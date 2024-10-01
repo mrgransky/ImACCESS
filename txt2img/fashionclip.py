@@ -97,9 +97,8 @@ outputs_dir:str = os.path.join(
 	args.dataset_dir, 
 	"outputs",
 )
-styles_fpth = os.path.join(args.dataset_dir, "styles.csv")
 
-def get_dframe(fpth: str="path/2/file.csv"):
+def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):
 	print(f"Laoding style (csv): {fpth}")
 	replacement_dict = {
 		"lips": "lipstick",
@@ -131,20 +130,21 @@ def get_dframe(fpth: str="path/2/file.csv"):
 		lambda row: row['articleType'] if row['subCategory'] in row['articleType'] else f"{row['subCategory']} {row['articleType']}",
 		axis=1,
 	)
-	# print(styles_df.shape)
-	# print(styles_df.head(60))
-	# print(styles_df.tail(60))
-	# df = pd.read_csv(
-	# 	filepath_or_buffer='myntradataset/styles.csv', 
-	# 	usecols=['id',  'subCategory', 'articleType'],
-	# )
-	# df['subCategory'] = df['subCategory'].replace(replacement_dict)
-	# print(f"Style {type(df)} {df.shape}")
-	df = styles_df.copy()
+
+
+	# Check for existence of images and filter DataFrame
+	styles_df['image_exists'] = styles_df['id'].apply(lambda x: os.path.exists(os.path.join(img_dir, f"{x}.jpg")))
+	# Drop rows where the image does not exist
+	filtered_df = styles_df[styles_df['image_exists']].drop(columns=['image_exists'])
+
+	# df = styles_df.copy() # without checking image dir
+
+	df = filtered_df.copy()
 	print(f"df: {df.shape}")
 	print(df.head(10))
 	print(df['subCategory'].value_counts())
 	print("#"*100)
+
 	return df
 
 def get_img_name_without_suffix(fpth):
@@ -411,63 +411,6 @@ class CLIP(nn.Module):
 		loss = self.CLIPLoss(logits, self.device)
 		return loss
 
-# class MyntraDataset(Dataset):
-# 	def __init__(self, data_frame, captions, img_sz=28, txt_category="subCategory", dataset_directory="path/2/images"):
-# 		self.data_frame = data_frame
-# 		self.img_sz = img_sz  # Desired size for the square image
-# 		self.transform = T.Compose([
-# 			T.ToTensor()  # Convert image to tensor
-# 		])
-# 		self.captions = captions
-# 		self.txt_category = txt_category
-# 		self.dataset_directory = dataset_directory
-# 	def __len__(self):
-# 		return len(self.data_frame)
-# 	def __getitem__(self, idx):
-# 		while True:
-# 			sample = self.data_frame.iloc[idx] # df
-# 			# print(sample)
-# 			img_path = os.path.join(self.dataset_directory, f"{sample['id']}.jpg")
-# 			try:
-# 				image = Image.open(img_path).convert('RGB')
-# 			except (FileNotFoundError, IOError) as e:
-# 				# print(e)
-# 				# If the image is not found, skip this sample by incrementing the index
-# 				idx = (idx + 1) % len(self.data_frame)  # Loop back to the start if we reach the end
-# 				continue  # Retry with the next index
-# 			# Resize the image to maintain aspect ratio
-# 			image = self.resize_and_pad(image, self.img_sz)
-# 			# Apply transformations (convert to tensor)
-# 			image = self.transform(image)
-
-# 			# Retrieve the subCategory label and its corresponding caption
-# 			label = sample[self.txt_category].lower()
-# 			label_idx = next(idx for idx, class_name in self.captions.items() if class_name == label)
-
-# 			# Tokenize the caption using the tokenizer function
-# 			cap, mask = tokenizer(self.captions[label_idx])
-# 			# Make sure the mask is a tensor
-# 			mask = torch.tensor(mask)
-# 			# If the mask is a single dimension, make sure it is expanded correctly
-# 			if len(mask.size()) == 1:
-# 				mask = mask.unsqueeze(0)
-# 			return {"image": image, "caption": cap, "mask": mask, "image_filepath": img_path}
-# 	def resize_and_pad(self, image, img_sz):
-# 		original_width, original_height = image.size
-# 		aspect_ratio = original_width / original_height
-# 		if aspect_ratio > 1:
-# 			new_width = img_sz
-# 			new_height = int(img_sz / aspect_ratio)
-# 		else:
-# 			new_height = img_sz
-# 			new_width = int(img_sz * aspect_ratio)
-# 		image = image.resize((new_width, new_height))
-# 		pad_width = (img_sz - new_width) // 2
-# 		pad_height = (img_sz - new_height) // 2
-# 		padding = (pad_width, pad_height, img_sz - new_width - pad_width, img_sz - new_height - pad_height)
-# 		image = ImageOps.expand(image, padding, fill=(0, 0, 0))
-# 		return image
-
 class MyntraDataset(Dataset):
 		def __init__(self, data_frame, captions, img_sz=28, txt_category="subCategory", dataset_directory="path/2/images"):
 				self.data_frame = data_frame
@@ -579,7 +522,6 @@ def validate(model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
 	)
 	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
 	# get_info(dataloader=val_loader)
-	# return
 
 	# Loading Best Model
 	model = CLIP(
@@ -649,13 +591,10 @@ def validate(model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
 
 def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
 	print(f"Top-{TOP_K} Image Retrieval for Query: {query}".center(100, "-"))
-	# Text to Image Retrieval with CLIP - E-commerce
-	# Loading Best Model
 	print(f"val_df: {val_df.shape} | {val_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
-	print(val_df['subCategory'].value_counts())
-
 	if query not in val_df['subCategory'].value_counts():
-		print(f"Query: {query} Not Found! Search something else!")
+		print(f"Query: {query} Not Found! Search something else! from the list:")
+		print(val_df['subCategory'].value_counts())
 		return
 
 	model = CLIP(
@@ -737,11 +676,6 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 			val_images_descriptions.extend(batch.get("caption"))
 	
 	print(f"val_images_paths {type(val_images_paths)} {len(val_images_paths)}")
-	# print(val_images_paths)
-	# c = Counter(val_images_paths)
-	# print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
-	# print("#"*100)
-
 	print(f"val_images_descriptions: {type(val_images_descriptions)} {len(val_images_descriptions)}")
 	# print(val_images_descriptions) # Tensor [0. 10. 11. 19, 2727. ...]
 
@@ -764,7 +698,7 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 	print(top_values)
 	print(top_indices)
 
-	# # Step 4: Retrieve and display (or save) top N images:
+	# Step 4: Retrieve and display (or save) top N images:
 	print(f"Top-{TOP_K} images from Validation: ({len(val_loader.dataset)}) | Query: '{query}':\n")
 	fig, axes = plt.subplots(1, TOP_K, figsize=(18, 4))  # Adjust figsize as needed
 	for ax, value, index in zip(axes, top_values[0], top_indices[0]):
@@ -779,9 +713,11 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 		ax.imshow(img)
 	plt.tight_layout()
 	plt.savefig(os.path.join(outputs_dir, f"Top_{TOP_K}_imgs_Q_{re.sub(' ', '-', query)}_{args.num_epochs}_epochs.png"))
-	# plt.show()
 
-df = get_dframe(fpth=styles_fpth)
+df = get_dframe(
+	fpth=os.path.join(args.dataset_dir, "styles.csv"), 
+	img_dir=os.path.join(args.dataset_dir, "images"), 
+)
 # sys.exit()
 
 # Split the dataset into training and validation sets
@@ -791,23 +727,6 @@ train_df, val_df = train_test_split(
 	test_size=args.validation_dataset_share, # 0.05
 	random_state=42,
 )
-
-# print(f"train_df: {train_df.shape} | {train_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
-# print(train_df['subCategory'].value_counts())
-# print(f"any duplicates in Validation set:")
-# print(train_df[train_df.duplicated()])
-# print("#"*100)
-
-# print(f"val_df: {val_df.shape} | {val_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
-# print(val_df['subCategory'].value_counts())
-# print(f"any duplicates in Validation set:")
-# print(val_df[val_df.duplicated()])
-# print("#"*100)
-
-# for idx, sample in val_df.iterrows():
-# 	img_path = os.path.join(args.dataset_dir, "images", f"{sample['id']}.jpg")
-# 	if not os.path.exists(img_path):
-# 		print(f"Missing image: {img_path}")
 
 # Print the sizes of the datasets
 print(f"Train: {len(train_df)} | Validation: {len(val_df)}")
