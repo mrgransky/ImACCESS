@@ -213,11 +213,15 @@ def get_info(dataloader):
 	# Print the basic information about the DataLoader
 	tot_samples = len(dataloader.dataset)
 	n_chunks = len(dataloader) # ceil(tot_samples / dataloader.batch_size)
-	print(f"Total samples:: {tot_samples} divided into {n_chunks} chunk(s) when using batch_size: {dataloader.batch_size}")
-	print(f"Number of workers: {dataloader.num_workers}")	
-	print(len(next(iter(dataloader))))  #(img_tensor,label_tensor)
+	print(
+		f"dataloader organization has {len(next(iter(dataloader)))} element(s) "
+		f"Total samples:: {tot_samples} "
+		f"divided into {n_chunks} chunk(s) "
+		f"using batch_size: {dataloader.batch_size}"
+		f"in {dataloader.num_workers} CPU(s)"
+	)
 	for i, data in enumerate(dataloader):
-		print(f'[{i}/{n_chunks}] image_filepath: {len(data["image_filepath"])} {type(data["image_filepath"])}')
+		print(f'[{i+1}/{n_chunks}] image_filepath: {len(data["image_filepath"])} {type(data["image_filepath"])}')
 		c = Counter(data["image_filepath"])
 		# print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
 		# print("#"*100)
