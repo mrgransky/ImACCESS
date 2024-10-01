@@ -733,11 +733,8 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 	print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
 	print("#"*100)
 
-	print(f"val_images_descriptions: {len(val_images_descriptions)}")
-	print(val_images_descriptions)
-	c = Counter(val_images_descriptions)
-	print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
-	print("#"*100)
+	print(f"val_images_descriptions: {type(val_images_descriptions)} {len(val_images_descriptions)}")
+	# print(val_images_descriptions) # Tensor [0. 10. 11. 19, 2727. ...]
 
 	# Concatenate all image features
 	image_features = torch.cat(image_features_list, dim=0)
