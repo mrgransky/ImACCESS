@@ -434,13 +434,13 @@ class MyntraDataset(Dataset):
 
 			# Retrieve the subCategory label and its corresponding caption
 			label = sample[self.txt_category].lower()
-			print(label)
+			# print(label)
 			label = {"lips": "lipstick", "eyes": "eyelash", "nails": "nail polish"}.get(label, label)
-			print(label)
+			# print(label)
 
 			label_idx = next(idx for idx, class_name in self.captions.items() if class_name == label)
-			print(label_idx)
-			print()
+			# print(label_idx)
+			# print()
 			# print(label, label_idx)
 			# # Tokenize the caption using the tokenizer function
 			cap, mask = tokenizer(self.captions[label_idx])
