@@ -710,11 +710,11 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 	val_loader = DataLoader(
 		dataset=val_dataset, 
 		shuffle=False,
-		batch_size=batch_size, 
+		batch_size=32, # double check!!!! 
 		num_workers=nw,
 	)
 	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
-	# get_info(dataloader=val_loader)
+	get_info(dataloader=val_loader)
 
 	with torch.no_grad():
 		for batch in val_loader:
