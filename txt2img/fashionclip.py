@@ -435,7 +435,7 @@ class MyntraDataset(Dataset):
 			# Retrieve the subCategory label and its corresponding caption
 			label = sample[self.txt_category].lower()
 			# print(label)
-			label = {"lips": "lipstick", "eyes": "eyelash", "nails": "nail polish"}.get(label, label)
+			# label = {"lips": "lipstick", "eyes": "eyelash", "nails": "nail polish"}.get(label, label)
 			# print(label)
 
 			label_idx = next(idx for idx, class_name in self.captions.items() if class_name == label)
@@ -449,7 +449,8 @@ class MyntraDataset(Dataset):
 			# If the mask is a single dimension, make sure it is expanded correctly
 			if len(mask.size()) == 1:
 				mask = mask.unsqueeze(0)
-			return {"image": image, "caption": cap, "mask": mask,"id": img_path}
+			return {"image": image, "caption": cap, "mask": mask, "image_filepath": img_path}
+			# return {"image": image, "caption": cap, "mask": mask, "id": img_path}
 	def resize_and_pad(self, image, img_sz):
 		original_width, original_height = image.size
 		aspect_ratio = original_width / original_height
