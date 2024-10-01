@@ -84,8 +84,7 @@ text_heads = 8
 text_layers = 8
 wd = 1e-4 # L2 Regularization
 batch_size = 128
-# nw = 8
-nw:int = multiprocessing.cpu_count()
+nw:int = multiprocessing.cpu_count() # def: 8
 mdl_fpth:str = os.path.join(
 	args.dataset_dir, 
 	"models",
@@ -623,7 +622,7 @@ def validate(model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
 	mask = torch.stack([tokenizer(x)[1] for x in class_names])
 	mask = mask.repeat(1,len(mask[0])).reshape(len(mask),len(mask[0]),len(mask[0])).to(device)
 	# idx = 904
-	idx = 1999
+	idx = 19
 	# idx = random.randint(0, len(val_df))
 	img = val_dataset[idx]["image"][None,:]
 
