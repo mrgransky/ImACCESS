@@ -34,14 +34,14 @@ warnings.filterwarnings('ignore')
 # $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 27 --learning_rate 5e-4 --product_description_col subCategory --query wristbands --validate True
 # $ nohup python -u --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 3 --query "topwear" > /media/volume/ImACCESS/trash/logs/fashionclip.out & 
 
-parser = argparse.ArgumentParser(description="Generate Caption for Image")
+parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
-parser.add_argument('--num_epochs', type=int, default=1, help='Number of epochs')
-parser.add_argument('--validation_dataset_share', type=float, default=0.10, help='share of Validation set')
-parser.add_argument('--learning_rate', type=float, default=5e-3, help='Learning Rate')
-parser.add_argument('--validate', type=bool, default=False, help='Model Validation upon request')
+parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
+parser.add_argument('--validation_dataset_share', type=float, default=0.05, help='share of Validation set')
+parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
+parser.add_argument('--validate', type=bool, default=True, help='Model Validation upon request')
 parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
 args = parser.parse_args()
 print(args)
@@ -87,8 +87,10 @@ nw:int = multiprocessing.cpu_count()
 mdl_fpth:str = os.path.join(
 	args.dataset_dir, 
 	"models",
-	f"fashionclip_nEpochs_{args.num_epochs}_lr_{args.learning_rate}.pt",
-	# f"fashionclip_{args.num_epochs}_nEpochs.pt",
+	f"fashionclip_nEpochs_{args.num_epochs}_"
+	f"lr_{args.learning_rate}_"
+	f"val_{args.validation_dataset_share}_"
+	f"descriptions_{args.product_description_col}.pt",
 )
 outputs_dir:str = os.path.join(
 	args.dataset_dir, 
@@ -499,7 +501,7 @@ class MyntraDataset(Dataset):
 def get_product_description(df, col:str="colmun_name"):
 	class_names = list(df[col].unique())
 	captions = {idx: class_name for idx, class_name in enumerate(class_names)}
-	print(f"{len(list(captions.keys()))} Captions:\n{json.dumps(captions, indent=2, ensure_ascii=False)}")
+	# print(f"{len(list(captions.keys()))} Captions:\n{json.dumps(captions, indent=2, ensure_ascii=False)}")
 	return captions, class_names
 
 def validate(model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
@@ -724,7 +726,18 @@ def get_dframe(fpth: str="path/2/file.csv"):
 	}
 	styles_df = pd.read_csv(
 		filepath_or_buffer=fpth,
-		usecols=["id","gender","masterCategory","subCategory","articleType","baseColour","season","year","usage","productDisplayName"], 
+		usecols=[
+			"id",
+			"gender",
+			"masterCategory",
+			"subCategory",
+			"articleType",
+			"baseColour",
+			"season",
+			"year",
+			"usage",
+			"productDisplayName",
+		], 
 		on_bad_lines='skip',
 	)
 
@@ -759,6 +772,7 @@ def get_dframe(fpth: str="path/2/file.csv"):
 	return df
 
 df = get_dframe(fpth=styles_fpth)
+# sys.exit()
 
 # Split the dataset into training and validation sets
 train_df, val_df = train_test_split(
