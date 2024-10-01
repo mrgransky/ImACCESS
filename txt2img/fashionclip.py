@@ -209,19 +209,17 @@ def tokenizer(text, encode=True, mask=None, max_seq_length=32):
 	return out, mask
 
 def get_info(dataloader):
-
-	# Print the basic information about the DataLoader
 	tot_samples = len(dataloader.dataset)
 	n_chunks = len(dataloader) # ceil(tot_samples / dataloader.batch_size)
 	print(
-		f"dataloader organization has {len(next(iter(dataloader)))} element(s) "
+		f"dataloader organization has main {len(next(iter(dataloader)))} element(s)\n"
 		f"Total samples:: {tot_samples} "
 		f"divided into {n_chunks} chunk(s) "
-		f"using batch_size: {dataloader.batch_size}"
+		f"using batch_size: {dataloader.batch_size} "
 		f"in {dataloader.num_workers} CPU(s)"
 	)
 	for i, data in enumerate(dataloader):
-		print(f'[{i+1}/{n_chunks}] image_filepath: {len(data["image_filepath"])} {type(data["image_filepath"])}')
+		print(f'[{i+1}/{n_chunks}] {len(data["image_filepath"])} image_filepath {type(data["image_filepath"])}')
 		c = Counter(data["image_filepath"])
 		# print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
 		# print("#"*100)
