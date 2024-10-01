@@ -15,7 +15,6 @@ import torchvision
 import torchvision.transforms as T
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.dataloader import default_collate
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Subset
 import multiprocessing
@@ -33,7 +32,7 @@ warnings.filterwarnings('ignore')
 # $ nohup python -u fashionclip.py --num_epochs 100 > $HOME/datasets/trash/logs/fashionclip.out & 
 
 # how to run [Pouta]:
-# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 13
+# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 20
 # $ nohup python -u --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 3 --query "topwear" > /media/volume/ImACCESS/trash/logs/fashionclip.out & 
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
@@ -42,7 +41,7 @@ parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
 parser.add_argument('--batch_size', type=int, default=64, help='Batch Size')
-parser.add_argument('--validation_dataset_share', type=float, default=0.20, help='share of Validation set')
+parser.add_argument('--validation_dataset_share', type=float, default=0.23, help='share of Validation set')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
 parser.add_argument('--validate', type=bool, default=True, help='Model Validation upon request')
 parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
@@ -104,7 +103,8 @@ def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):
 	replacement_dict = {
 		"lips": "lipstick",
 		"eyes": "eyelash",
-		"nails": "nail polish"
+		"nails": "nail polish",
+		"perfumes" : "fragrance",
 	}
 	styles_df = pd.read_csv(
 		filepath_or_buffer=fpth,
@@ -141,10 +141,10 @@ def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):
 	# df = styles_df.copy() # without checking image dir
 	df = filtered_df.copy()
 
-	# print(f"df: {df.shape}")
-	# print(df.head(10))
-	# print(df['subCategory'].value_counts())
-	# print("#"*100)
+	print(f"df: {df.shape}")
+	print(df.head(10))
+	print(df['subCategory'].value_counts())
+	print("#"*100)
 
 	return df
 
@@ -779,7 +779,7 @@ def fine_tune():
 		lr=args.learning_rate, 
 		weight_decay=wd, # weight decay (L2 regularization)
 	)
-	scheduler = ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
+	scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
 	# scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.num_epochs)
 
 	total_params = 0
@@ -801,7 +801,7 @@ def fine_tune():
 			loss.backward()
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			optimizer.step()
-			if batch_idx % 100 == 0:
+			if batch_idx % 150 == 0:
 				print(f"\tBatch [{batch_idx + 1}/{len(train_loader)}] Loss: {loss.item():.5f}")
 			epoch_loss += loss.item()
 		avg_loss = epoch_loss / len(train_loader)
