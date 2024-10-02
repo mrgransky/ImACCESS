@@ -44,14 +44,14 @@ outputs_dir:str = os.path.join(
 	"outputs",
 )
 
-def validate(val_df, class_names, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
+def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
 	print(f"Validation {model_fpth} using {device}".center(100, "-"))
 	vdl_st = time.time()
 	print(f"Creating Validation Dataloader for {len(val_df)} samples", end="\t")
 	vdl_st = time.time()
 	val_dataset = MyntraDataset(
 		data_frame=val_df,
-		captions=captions,
+		captions=CAPTIONSs,
 		img_sz=80,
 		dataset_directory=os.path.join(args.dataset_dir, "images")
 	)
@@ -105,8 +105,8 @@ def validate(val_df, class_names, model_fpth: str=f"path/to/models/clip.pt", TOP
 	text = torch.stack([tokenizer(x)[0] for x in class_names]).to(device)
 	mask = torch.stack([tokenizer(x)[1] for x in class_names])
 	mask = mask.repeat(1,len(mask[0])).reshape(len(mask),len(mask[0]),len(mask[0])).to(device)
-	# idx = 19
-	idx = random.randint(0, len(val_df))
+	idx = 19
+	# idx = random.randint(0, len(val_df))
 	img = val_dataset[idx]["image"][None,:]
 
 	if visualize:
@@ -261,14 +261,15 @@ def main():
 		validate(
 			val_df=val_df,
 			class_names=class_names,
+			CAPTIONSs=captions,
 			model_fpth=mdl_fpth,
 			TOP_K=args.topk,
 		)
 
 	img_retrieval(
 		val_loader=val_loader,
-		query=args.query, 
-		model_fpth=mdl_fpth, 
+		query=args.query,
+		model_fpth=mdl_fpth,
 		TOP_K=args.topk,
 		resulted_IMGname=os.path.join(outputs_dir, f"Top_{args.topk}_imgs_Q_{re.sub(' ', '-', args.query)}_{args.num_epochs}_epochs.png"),
 	)
