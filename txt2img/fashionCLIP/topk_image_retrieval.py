@@ -14,7 +14,7 @@ parser.add_argument('--validation_dataset_share', type=float, default=0.23, help
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
 parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
 args, unknown = parser.parse_known_args()
-# print(args)
+print(args)
 
 if USER == "ubuntu":
 	args.dataset_dir = ddir

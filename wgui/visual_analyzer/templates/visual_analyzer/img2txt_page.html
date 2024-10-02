@@ -6,7 +6,7 @@
 	<head>
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-		<title>ImACCESS</title>
+		<title>ImACCESS | Image-to-Text Retrieval</title>
 		<link rel="website icon" type="png" href="https://seekicon.com/free-icon-download/image-search-outline_1.svg">
 		<link rel="stylesheet" href="{% static 'css/img2txt_page.css' %}">
 		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
@@ -19,7 +19,7 @@
 				<img src="https://pbs.twimg.com/profile_images/1075012520837029889/jSALzNPb_400x400.jpg" alt="Right Image">
 			</div>
 			<div class="user-input-container">
-				<h2>Welcome to  {{ project_title|safe }}</h2>
+				<h2>{{ project_title|safe }} « <b>{{ subject }}</b> »</h2>
 				<h3>How would you like to upload your image to proceed?</h3>
 				<form action="{% url 'img2txt' %}" method="post" enctype="multipart/form-data">
 					{% csrf_token %}
@@ -52,12 +52,15 @@
 					<button type="button" onclick="clearForm()">Clear</button>
 
 				</form>
+
 				<div class="loading-container">
 					<div id="loadingSpinner" class="loading-spinner">
 						<p id="loadingText" class="spinner-text">Processing...</p>
 					</div>
 				</div>
+
 			</div>
+
 			<div class="resulted-img-container">
 				{% if result_image and caption and lbls%}
 					<script>
@@ -66,7 +69,7 @@
 					<div class="result-image">
 						<h3>Caption: {{ caption }}</h3>
 						<h3>Labels: {{ lbls }}</h3>
-						<img src="data:image/png;base64,{{ result_image }}" alt="Generated Image">
+						<img src="data:image/png;base64,{{ result_image }}" alt="Generated_Image">
 					</div>
 				{% endif %}
 			</div>

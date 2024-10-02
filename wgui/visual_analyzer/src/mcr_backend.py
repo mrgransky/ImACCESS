@@ -4,7 +4,10 @@ import numpy as np
 import base64
 import subprocess
 from django.conf import settings
-
+from functools import cache, lru_cache
+import warnings
+warnings.filterwarnings('ignore')
+# https://paliskunnat.fi/reindeer/wp-content/uploads/2014/08/porot_lumisateessa_kolarissa_2009.jpg
 OPENPOSE_DIRECTORY = os.path.join(settings.PROJECT_DIR, "openpose")
 
 def image_resize(image, width = None, height = None, inter = cv2.INTER_AREA):
@@ -34,7 +37,7 @@ def get_sample_img(h:int = 600, w:int = 800):
 	sample_image = np.zeros(shape=(480, 640, 3), dtype=np.uint8)
 	# Define the text and its properties
 	text_line1 = "OpenPose required at least 6000 MB GPU memory!"
-	text_line2 = "Not Enough memory in your device!"
+	text_line2 = "Not Enough memory on your device!"
 	font = cv2.FONT_HERSHEY_SIMPLEX
 	font_scale = 0.7
 	color = (0, 0, 255)  # Red color in BGR
@@ -52,6 +55,7 @@ def get_sample_img(h:int = 600, w:int = 800):
 	cv2.putText(sample_image, text_line2, (text_x, text_y_line2), font, font_scale, color, thickness)
 	return sample_image
 
+@cache
 def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11, WIDTH:int = 640, HEIGHT:int = 480):
 	print(f"Received {img_source} for MCR backend")
 
@@ -71,7 +75,6 @@ def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11
 		print(f">> could not obtain resulted image => generating a sample img!")
 		mcr_image = get_sample_img(h=HEIGHT, w=WIDTH)
 
-
 	# mcr_image = cv2.resize(mcr_image, (640, 480), cv2.INTER_AREA) # cv2.resize(image, (width, height))
 	mcr_image = image_resize(
 		image=mcr_image, 
@@ -86,4 +89,6 @@ def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11
 	
 	# Encode the PNG buffer as Base64
 	image_base64 = base64.b64encode(buffer).decode('utf-8')
+	rm_cmd = f"rm -rfv {output_image_path}"
+	subprocess.run(rm_cmd, shell=True)
 	return image_base64

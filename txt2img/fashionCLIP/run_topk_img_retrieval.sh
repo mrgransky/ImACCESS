@@ -11,4 +11,9 @@ echo -e "${txt//?/$ch}\n${txt}\n${txt//?/$ch}"
 echo "${stars// /*}"
 HOME_DIR=$(echo $HOME)
 echo "HOME_DIR: $HOME_DIR | Query: $query_prompt | output: $out_pth"
-python topk_image_retrieval.py --query "$query_prompt" --processed_image_path "$out_pth"
+python -u topk_image_retrieval.py \
+	--query "$query_prompt" \
+	--processed_image_path "$out_pth" \
+	--num_epochs 3 \
+
+echo "Done!"

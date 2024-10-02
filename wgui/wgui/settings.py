@@ -22,8 +22,8 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 
-# DEBUG = False # To observe that css style layout changes have already taken place! => must be when executed in Pouta!
-DEBUG = True # causes "Broken pipe from ('94.72.62.225', 53959)" error! # just for debugging purposes!
+DEBUG = False # To observe that css style layout changes have already taken place! => must be when executed in Pouta!
+# DEBUG = True # causes "Broken pipe from ('94.72.62.225', 53959)" error! # just for debugging purposes!
 SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
 SECURE_SSL_REDIRECT = False
@@ -115,8 +115,5 @@ STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')] # Extra places for collectstatic to find static files
-
-MEDIA_URL = 'media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 INTERNAL_IPS = ['127.0.0.1']

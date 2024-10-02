@@ -4,6 +4,9 @@ import numpy as np
 import base64
 import subprocess
 from django.conf import settings
+from functools import cache, lru_cache
+import warnings
+warnings.filterwarnings('ignore')
 
 TXT_2_IMG_DIRECTORY = os.path.join(settings.PROJECT_DIR, "txt2img")
 
@@ -52,6 +55,7 @@ def get_sample_img(h:int = 600, w:int = 800):
 	cv2.putText(sample_image, text_line2, (text_x, text_y_line2), font, font_scale, color, thickness)
 	return sample_image
 
+@cache
 def get_topkIMGs(query: str = "Winter War", rnd: int=11, backend_method: str="fashionCLIP", WIDTH:int = 640, HEIGHT:int = 480):
 	print(f"Received {query} for topK image Retrieval << {backend_method} >> backend")
 	BACKEND_DIRECTORY = os.path.join(TXT_2_IMG_DIRECTORY, backend_method)
