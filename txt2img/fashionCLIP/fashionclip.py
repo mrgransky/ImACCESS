@@ -236,6 +236,25 @@ def main():
 	if not os.path.exists(mdl_fpth):
 		fine_tune(train_df=train_df, captions=captions)
 
+	print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
+	vdl_st = time.time()
+	val_dataset = MyntraDataset(
+		data_frame=val_df,
+		captions=captions,
+		img_sz=80,
+		dataset_directory=os.path.join(args.dataset_dir, "images")
+	)
+	val_loader = DataLoader(
+		dataset=val_dataset, 
+		shuffle=False,
+		batch_size=args.batch_size, #32, # double check!!!! 
+		num_workers=nw,
+		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
+	)
+	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
+	# get_info(dataloader=val_loader)
+	# return
+
 	if args.validate:
 		validate(
 			val_df=val_df,
@@ -245,9 +264,7 @@ def main():
 		)
 
 	img_retrieval(
-		df=df,
-		val_df=val_df,
-		captions=captions,
+		val_loader=val_loader,
 		query=args.query, 
 		model_fpth=mdl_fpth, 
 		TOP_K=args.topk,

@@ -9,15 +9,15 @@ parser.add_argument('--processed_image_path', type=str, default="topkIMG.png", h
 args = parser.parse_args()
 print(args)
 
-def img_retrieval(df, val_df, captions, query:str="bags", model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, resulted_IMGname: str="topk_img.png"):
+def img_retrieval(val_loader, query:str="bags", model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, resulted_IMGname: str="topk_img.png"):
 	print(f"Top-{TOP_K} Image Retrieval for Query: {query}".center(100, "-"))
 	args.processed_image_path = resulted_IMGname
 	print(f"Saving topK resulted image in: {args.processed_image_path}")
-	print(f"val_df: {val_df.shape} | {val_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
-	if query not in val_df['subCategory'].value_counts():
-		print(f"Query: {query} Not Found! Search something else! from the list:")
-		print(val_df['subCategory'].value_counts())
-		return
+	# print(f"val_df: {val_df.shape} | {val_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
+	# if query not in val_df['subCategory'].value_counts():
+	# 	print(f"Query: {query} Not Found! Search something else! from the list:")
+	# 	print(val_df['subCategory'].value_counts())
+	# 	return
 
 	model = CLIP(
 		emb_dim,
@@ -66,25 +66,6 @@ def img_retrieval(df, val_df, captions, query:str="bags", model_fpth: str=f"path
 	image_features_list = []
 	val_images_paths = []
 	val_images_descriptions = []
-
-	print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
-	vdl_st = time.time()
-	val_dataset = MyntraDataset(
-		data_frame=val_df,
-		captions=captions,
-		img_sz=80,
-		dataset_directory=os.path.join(args.dataset_dir, "images")
-	)
-	val_loader = DataLoader(
-		dataset=val_dataset, 
-		shuffle=False,
-		batch_size=args.batch_size, #32, # double check!!!! 
-		num_workers=nw,
-		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
-	)
-	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
-	# get_info(dataloader=val_loader)
-	# return
 
 	with torch.no_grad():
 		for batch in val_loader:
