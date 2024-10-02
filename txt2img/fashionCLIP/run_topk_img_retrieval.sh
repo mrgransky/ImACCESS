@@ -3,7 +3,6 @@
 # Input argument(s):
 query_prompt=$1  # input Query Prompt
 out_pth=$2  # path to save output TOP-K images (concatinated in one!)
-
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
 txt="$user began Bash job: `date`"
