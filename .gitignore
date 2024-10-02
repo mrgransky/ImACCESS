@@ -4,7 +4,7 @@ TEST_IMGs
 *.caffemodel
 *.jpg
 *.png
-*jpeg
+# *jpeg
 *.JPG
 # C extensions
 *.so
@@ -30,6 +30,7 @@ txt2img/*zip
 txt2img/*pt
 txt2img/mscoco-it
 txt2img/fashionCLIP/myntradataset/
+txt2img/fashionCLIP/outputs/
 develop-eggs/
 dist/
 downloads/
