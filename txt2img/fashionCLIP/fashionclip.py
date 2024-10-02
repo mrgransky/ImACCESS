@@ -40,7 +40,7 @@ outputs_dir:str = os.path.join(
 	"outputs",
 )
 
-def validate(class_names, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
+def validate(val_df, class_names, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
 	print(f"Validation {model_fpth} using {device}".center(100, "-"))
 	vdl_st = time.time()
 	print(f"Creating Validation Dataloader for {len(val_df)} samples", end="\t")
