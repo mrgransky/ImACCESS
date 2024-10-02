@@ -1,6 +1,8 @@
 from utils import *
 from models import *
 from dataset_loader import MyntraDataset
+from topk_image_retrieval import img_retrieval
+
 # how to run [Local]:
 # $ python fashionclip.py --query tie
 # $ python fashionclip.py --query tie --dataset_dir myntradataset --num_epochs 7 # original functioning!
@@ -236,6 +238,7 @@ def main():
 
 	if args.validate:
 		validate(
+			val_df=val_df,
 			class_names=class_names,
 			model_fpth=mdl_fpth,
 			TOP_K=args.topk,
