@@ -7,7 +7,9 @@ TEST_IMGs
 # Django
 wgui/db.sqlite3
 wgui/staticfiles/
-wgui/media/
+wgui/media/*jpg
+wgui/media/*png
+wgui/media/*jpeg
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
