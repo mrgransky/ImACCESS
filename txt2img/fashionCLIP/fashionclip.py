@@ -5,7 +5,7 @@ from topk_image_retrieval import img_retrieval
 
 # how to run [Local]:
 # $ python fashionclip.py --query tie
-# $ python fashionclip.py --query tie --dataset_dir myntradataset --num_epochs 7 # original functioning!
+# $ python fashionclip.py --query tie --dataset_dir myntradataset --num_epochs 1
 # $ nohup python -u fashionclip.py --num_epochs 100 > $HOME/datasets/trash/logs/fashionclip.out & 
 
 # how to run [Pouta]:
@@ -22,7 +22,9 @@ parser.add_argument('--validation_dataset_share', type=float, default=0.23, help
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
 parser.add_argument('--validate', type=bool, default=True, help='Model Validation upon request')
 parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
-args = parser.parse_args()
+
+# args = parser.parse_args()
+args, unknown = parser.parse_known_args()
 print(args)
 
 os.makedirs(os.path.join(args.dataset_dir, "models"), exist_ok=True)

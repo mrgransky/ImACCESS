@@ -6,13 +6,14 @@ from dataset_loader import MyntraDataset
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--processed_image_path', type=str, default="topkIMG.png", help='Path to resulted image with topk images')
-args = parser.parse_args()
-print(args)
+# args_IMG_retrieval = parser.parse_args()
+args_IMG_retrieval, unknown = parser.parse_known_args()
+print(args_IMG_retrieval)
 
 def img_retrieval(val_loader, query:str="bags", model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, resulted_IMGname: str="topk_img.png"):
 	print(f"Top-{TOP_K} Image Retrieval for Query: {query}".center(100, "-"))
-	args.processed_image_path = resulted_IMGname
-	print(f"Saving topK resulted image in: {args.processed_image_path}")
+	args_IMG_retrieval.processed_image_path = resulted_IMGname
+	print(f"Saving topK resulted image in: {args_IMG_retrieval.processed_image_path}")
 	# print(f"val_df: {val_df.shape} | {val_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
 	# if query not in val_df['subCategory'].value_counts():
 	# 	print(f"Query: {query} Not Found! Search something else! from the list:")
@@ -116,3 +117,9 @@ def img_retrieval(val_loader, query:str="bags", model_fpth: str=f"path/to/models
 		ax.imshow(img)
 	plt.tight_layout()
 	plt.savefig(resulted_IMGname)
+	
+def main():
+	img_retrieval()
+
+if __name__ == "__main__":
+	main()
