@@ -10,28 +10,53 @@ warnings.filterwarnings('ignore')
 # https://paliskunnat.fi/reindeer/wp-content/uploads/2014/08/porot_lumisateessa_kolarissa_2009.jpg
 OPENPOSE_DIRECTORY = os.path.join(settings.PROJECT_DIR, "openpose")
 
-def image_resize(image, width = None, height = None, inter = cv2.INTER_AREA):
-	# initialize the dimensions of the image to be resized and grab the image size
-	dim = None
-	(h, w) = image.shape[:2]
-	# if both the width and height are None, then return the original image
-	if width is None and height is None:
-		return image
-	print(f"resizing orig img: {type(image)} {image.shape} => (w,h): ({width},{height})")
-	# check to see if the width is None
-	if width is None:
-		# calculate the ratio of the height and construct the dimensions
-		r = height / float(h)
-		dim = (int(w * r), height)
-	# otherwise, the height is None
-	else:
-		# calculate the ratio of the width and construct the dimensions
-		r = width / float(w)
-		dim = (width, int(h * r))
-	# resize the image
-	resized = cv2.resize(image, dim, interpolation = inter)
-	# return the resized image
-	return resized
+
+def image_resize(image, max_width=640, max_height=480, inter=cv2.INTER_AREA):
+		# Get the current dimensions of the image
+		(h, w) = image.shape[:2]
+		
+		# If the image is already within the maximum dimensions, return it as is
+		if w <= max_width and h <= max_height:
+				return image
+		
+		# Determine if we should resize based on width or height
+		if w > h:
+				# Resize based on width (if the image is wider than tall)
+				scale = max_width / float(w)
+				new_dim = (max_width, int(h * scale))
+		else:
+				# Resize based on height (if the image is taller than wide)
+				scale = max_height / float(h)
+				new_dim = (int(w * scale), max_height)
+		
+		# Resize the image while maintaining aspect ratio
+		resized_image = cv2.resize(image, new_dim, interpolation=inter)
+		
+		# Return the resized image
+		return resized_image
+
+# def image_resize(image, width = None, height = None, inter = cv2.INTER_AREA):
+# 	# initialize the dimensions of the image to be resized and grab the image size
+# 	dim = None
+# 	(h, w) = image.shape[:2]
+# 	# if both the width and height are None, then return the original image
+# 	if width is None and height is None:
+# 		return image
+# 	print(f"resizing orig img: {type(image)} {image.shape} => (w,h): ({width},{height})")
+# 	# check to see if the width is None
+# 	if width is None:
+# 		# calculate the ratio of the height and construct the dimensions
+# 		r = height / float(h)
+# 		dim = (int(w * r), height)
+# 	# otherwise, the height is None
+# 	else:
+# 		# calculate the ratio of the width and construct the dimensions
+# 		r = width / float(w)
+# 		dim = (width, int(h * r))
+# 	# resize the image
+# 	resized = cv2.resize(image, dim, interpolation = inter)
+# 	# return the resized image
+# 	return resized
 
 def get_sample_img(h:int = 600, w:int = 800):
 	# Create a black image
