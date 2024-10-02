@@ -22,8 +22,8 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 
-DEBUG = False # To observe that css style layout changes have already taken place! => must be when executed in Pouta!
-# DEBUG = True # causes "Broken pipe from ('94.72.62.225', 53959)" error! # just for debugging purposes!
+# DEBUG = False # To observe that css style layout changes have already taken place! => must be when executed in Pouta!
+DEBUG = True # causes "Broken pipe from ('94.72.62.225', 53959)" error! # just for debugging purposes!
 SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
 SECURE_SSL_REDIRECT = False
