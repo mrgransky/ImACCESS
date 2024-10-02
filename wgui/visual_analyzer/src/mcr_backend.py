@@ -93,12 +93,20 @@ def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11
 	else:
 		print(f"Couldn't get resulted image => generating a sample img!")
 		mcr_image = get_sample_img(h=HEIGHT, w=WIDTH)
+	# mcr_image = image_resize(
+	# 	image=mcr_image, 
+	# 	width=WIDTH, 
+	# 	height=HEIGHT, 
+	# 	inter=cv2.INTER_AREA,
+	# )
+
 	mcr_image = image_resize(
-		image=mcr_image, 
-		width=WIDTH, 
-		height=HEIGHT, 
+		image=mcr_image,
+		max_width=640,
+		max_height=480,
 		inter=cv2.INTER_AREA,
 	)
+
 	print(f"Final mcr_IMG: {type(mcr_image)} {mcr_image.shape}")
 	_, buffer = cv2.imencode('.png', mcr_image) # Convert the image to PNG format
 	image_base64 = base64.b64encode(buffer).decode('utf-8') # Encode the PNG buffer as Base64
