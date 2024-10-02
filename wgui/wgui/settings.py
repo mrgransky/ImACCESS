@@ -1,7 +1,7 @@
 import os
 import sys
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # /home/farid/WS_Farid/ImACCESS/wgui
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) #  $HOME/WS_Farid/ImACCESS/wgui
 
 PROJECT_DIR = os.path.abspath(
   os.path.join(
@@ -22,8 +22,8 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 
-# DEBUG = False # To observe that css style layout changes have already taken place! => must be when executed in Pouta!
-DEBUG = True # causes "Broken pipe from ('94.72.62.225', 53959)" error! # just for debugging purposes!
+DEBUG = False # To observe that css style layout changes have already taken place! => must be when executed in Pouta!
+# DEBUG = True # causes "Broken pipe from ('94.72.62.225', 53959)" error! # just for debugging purposes!
 SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
 SECURE_SSL_REDIRECT = False
@@ -110,6 +110,11 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_L10N = True
 USE_TZ = True
+
+
+# Add these lines at the end of the file
+MEDIA_URL = 'media/'  # The URL that will serve the media files
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # The absolute path where media files will be stored
 
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')

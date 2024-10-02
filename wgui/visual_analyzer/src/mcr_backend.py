@@ -17,6 +17,7 @@ def image_resize(image, width = None, height = None, inter = cv2.INTER_AREA):
 	# if both the width and height are None, then return the original image
 	if width is None and height is None:
 		return image
+	print(f"resizing orig img: {type(image)} {image.shape} => (w,h): ({width},{height})")
 	# check to see if the width is None
 	if width is None:
 		# calculate the ratio of the height and construct the dimensions
@@ -58,24 +59,15 @@ def get_sample_img(h:int = 600, w:int = 800):
 @cache
 def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11, WIDTH:int = 640, HEIGHT:int = 480):
 	print(f"Received {img_source} for MCR backend")
-
 	output_image_path = os.path.join(OPENPOSE_DIRECTORY, "outputs", f"mcr_img_x{rnd}.png")
-	# print(f">> output fpth: {output_image_path}")
-
-	# Assuming you have a command-line interface for the openpose backend
 	command = f"cd {OPENPOSE_DIRECTORY} && bash run_mcr.sh {img_source} {output_image_path}"
-		
-	# Run the OpenPose command (assumed to be a script that processes the image)
 	subprocess.run(command, shell=True)
-
 	if os.path.exists(output_image_path):
 		print(f"Reading IMG: {output_image_path}...")
 		mcr_image = cv2.imread(output_image_path)
 	else:
-		print(f">> could not obtain resulted image => generating a sample img!")
+		print(f"Couldn't get resulted image => generating a sample img!")
 		mcr_image = get_sample_img(h=HEIGHT, w=WIDTH)
-
-	# mcr_image = cv2.resize(mcr_image, (640, 480), cv2.INTER_AREA) # cv2.resize(image, (width, height))
 	mcr_image = image_resize(
 		image=mcr_image, 
 		width=WIDTH, 
@@ -83,12 +75,8 @@ def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11
 		inter=cv2.INTER_AREA,
 	)
 	print(f"Final mcr_IMG: {type(mcr_image)} {mcr_image.shape}")
-
-	# Convert the image to PNG format
-	_, buffer = cv2.imencode('.png', mcr_image)
-	
-	# Encode the PNG buffer as Base64
-	image_base64 = base64.b64encode(buffer).decode('utf-8')
+	_, buffer = cv2.imencode('.png', mcr_image) # Convert the image to PNG format
+	image_base64 = base64.b64encode(buffer).decode('utf-8') # Encode the PNG buffer as Base64
 	rm_cmd = f"rm -rfv {output_image_path}"
 	subprocess.run(rm_cmd, shell=True)
 	return image_base64

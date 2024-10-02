@@ -56,8 +56,8 @@ def img2txt_page(request):
 				img_source=full_image_path, 
 				# rnd=rand_extension,
 			)
-			context['lbls'] = labels
 			context['caption'] = caption
+			context['lbls'] = labels
 			context['result_image'] = mcr_img_base64
 	return render(request, 'visual_analyzer/img2txt_page.html', context)
 
