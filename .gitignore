@@ -29,7 +29,8 @@ img2txt/*/outputs/
 txt2img/*zip
 txt2img/*pt
 txt2img/mscoco-it
-txt2img/fashionclip/myntradataset
+txt2img/fashionclip/myntradataset/*
+txt2img/fashionclip/myntradataset/*
 develop-eggs/
 dist/
 downloads/
