@@ -245,9 +245,13 @@ def main():
 		)
 
 	img_retrieval(
+		df=df,
+		val_df=val_df,
+		captions=captions,
 		query=args.query, 
 		model_fpth=mdl_fpth, 
 		TOP_K=args.topk,
+		resulted_IMGname=os.path.join(outputs_dir, f"Top_{args.topk}_imgs_Q_{re.sub(' ', '-', args.query)}_{args.num_epochs}_epochs.png"),
 	)
 
 if __name__ == "__main__":

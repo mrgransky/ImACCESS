@@ -1,22 +1,18 @@
 from utils import *
 
+from models import *
+from dataset_loader import MyntraDataset
+
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--query', type=str, default="bags", help='Query')
-parser.add_argument('--processed_image_path', type=str, required=True, help='Path to resulted image with topk images')
-
-# parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
-# parser.add_argument('--topk', type=int, default=5, help='Top-K images')
-# parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
-# parser.add_argument('--batch_size', type=int, default=64, help='Batch Size')
-# parser.add_argument('--validation_dataset_share', type=float, default=0.23, help='share of Validation set')
-# parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
-# parser.add_argument('--validate', type=bool, default=True, help='Model Validation upon request')
-# parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
+parser.add_argument('--processed_image_path', type=str, default="topkIMG.png", help='Path to resulted image with topk images')
 args = parser.parse_args()
 print(args)
 
-def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
+def img_retrieval(df, val_df, captions, query:str="bags", model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, resulted_IMGname: str="topk_img.png"):
 	print(f"Top-{TOP_K} Image Retrieval for Query: {query}".center(100, "-"))
+	args.processed_image_path = resulted_IMGname
+	print(f"Saving topK resulted image in: {args.processed_image_path}")
 	print(f"val_df: {val_df.shape} | {val_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
 	if query not in val_df['subCategory'].value_counts():
 		print(f"Query: {query} Not Found! Search something else! from the list:")
@@ -138,4 +134,4 @@ def img_retrieval(query:str="bags", model_fpth: str=f"path/to/models/clip.pt", T
 		ax.axis('off')
 		ax.imshow(img)
 	plt.tight_layout()
-	plt.savefig(os.path.join(outputs_dir, f"Top_{TOP_K}_imgs_Q_{re.sub(' ', '-', query)}_{args.num_epochs}_epochs.png"))
+	plt.savefig(resulted_IMGname)
