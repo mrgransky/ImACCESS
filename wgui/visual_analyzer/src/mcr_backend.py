@@ -11,29 +11,71 @@ warnings.filterwarnings('ignore')
 OPENPOSE_DIRECTORY = os.path.join(settings.PROJECT_DIR, "openpose")
 
 
-def image_resize(image, max_width=640, max_height=480, inter=cv2.INTER_AREA):
-		# Get the current dimensions of the image
+def image_resize(image, max_width=640, max_height=480, scale_percent=50, inter=cv2.INTER_AREA):
+		"""
+		Resizes the image based on max width and height while maintaining aspect ratio.
+		Optionally shrinks the image further based on a scaling factor.
+		
+		Parameters:
+		- image: The input image (numpy.ndarray).
+		- max_width: The maximum width for the resized image.
+		- max_height: The maximum height for the resized image.
+		- scale_percent: Percentage to shrink the image further after resizing (default is 50%).
+		- inter: Interpolation method for resizing.
+		
+		Returns:
+		- Resized image (numpy.ndarray).
+		"""
+		
+		# Get the original image dimensions
 		(h, w) = image.shape[:2]
 		
-		# If the image is already within the maximum dimensions, return it as is
-		if w <= max_width and h <= max_height:
-				return image
-		
-		# Determine if we should resize based on width or height
+		# Step 1: Resize based on max_width and max_height
 		if w > h:
-				# Resize based on width (if the image is wider than tall)
 				scale = max_width / float(w)
 				new_dim = (max_width, int(h * scale))
 		else:
-				# Resize based on height (if the image is taller than wide)
 				scale = max_height / float(h)
 				new_dim = (int(w * scale), max_height)
 		
-		# Resize the image while maintaining aspect ratio
+		# Resize to fit within max_width and max_height
 		resized_image = cv2.resize(image, new_dim, interpolation=inter)
 		
-		# Return the resized image
+		# Step 2: Further shrink the image based on the scale_percent
+		# Calculate new dimensions based on percentage scale
+		width = int(resized_image.shape[1] * scale_percent / 100)
+		height = int(resized_image.shape[0] * scale_percent / 100)
+		final_dim = (width, height)
+		
+		# Apply resizing based on scale_percent
+		resized_image = cv2.resize(resized_image, final_dim, interpolation=inter)
+		
+		# Return the further resized image
 		return resized_image
+
+# def image_resize(image, max_width=640, max_height=480, inter=cv2.INTER_AREA):
+# 		# Get the current dimensions of the image
+# 		(h, w) = image.shape[:2]
+		
+# 		# If the image is already within the maximum dimensions, return it as is
+# 		if w <= max_width and h <= max_height:
+# 				return image
+		
+# 		# Determine if we should resize based on width or height
+# 		if w > h:
+# 				# Resize based on width (if the image is wider than tall)
+# 				scale = max_width / float(w)
+# 				new_dim = (max_width, int(h * scale))
+# 		else:
+# 				# Resize based on height (if the image is taller than wide)
+# 				scale = max_height / float(h)
+# 				new_dim = (int(w * scale), max_height)
+		
+# 		# Resize the image while maintaining aspect ratio
+# 		resized_image = cv2.resize(image, new_dim, interpolation=inter)
+		
+# 		# Return the resized image
+# 		return resized_image
 
 # def image_resize(image, width = None, height = None, inter = cv2.INTER_AREA):
 # 	# initialize the dimensions of the image to be resized and grab the image size
