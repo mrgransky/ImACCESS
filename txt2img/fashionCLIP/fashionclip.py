@@ -236,6 +236,7 @@ def main():
 
 	if args.validate:
 		validate(
+			class_names=class_names,
 			model_fpth=mdl_fpth,
 			TOP_K=args.topk,
 		)

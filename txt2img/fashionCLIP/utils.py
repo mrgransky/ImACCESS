@@ -126,6 +126,7 @@ def plot_loss(losses, num_epochs, save_path):
 	num_epochs (int): Number of epochs.
 	save_path (str): Path to save the plot.
 	"""
+	print(f"Saving Loss in {save_path}")
 	epochs = range(1, num_epochs + 1)		
 	plt.figure(figsize=(10, 5))
 	plt.plot(epochs, losses, marker='o', linestyle='-', color='b')
