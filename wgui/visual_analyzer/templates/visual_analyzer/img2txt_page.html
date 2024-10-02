@@ -8,7 +8,7 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title>ImACCESS</title>
 		<link rel="website icon" type="png" href="https://seekicon.com/free-icon-download/image-search-outline_1.svg">
-		<link rel="stylesheet" href="{% static 'css/main_page.css' %}">
+		<link rel="stylesheet" href="{% static 'css/img2txt_page.css' %}">
 		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
 	</head>
 
@@ -21,7 +21,7 @@
 			<div class="user-input-container">
 				<h2>Welcome to  {{ project_title|safe }}</h2>
 				<h3>How would you like to upload your image to proceed?</h3>
-				<form action="{% url 'main_page' %}" method="post" enctype="multipart/form-data">
+				<form action="{% url 'img2txt' %}" method="post" enctype="multipart/form-data">
 					{% csrf_token %}
 
 					<!-- Radio buttons to choose between URL and file upload -->
@@ -72,6 +72,6 @@
 			</div>
 
 		</div>
-		<script src="{% static 'js/main_page.js' %}"></script>
+		<script src="{% static 'js/img2txt_page.js' %}"></script>
 	</body>
 </html>

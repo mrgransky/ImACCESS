@@ -6,11 +6,24 @@ from django.core.files.storage import FileSystemStorage
 from visual_analyzer.src.img_cap_backend import generate_caption
 from visual_analyzer.src.mcr_backend import generate_mcr
 from visual_analyzer.src.img_lbls_backend import generate_labels
+from visual_analyzer.src.txt_2_topk_imgs_backend import get_topkIMGs
 
 import urllib.request
 
-def main_page(request):
-	# context = {'welcome_text': "Welcome to ImACCESS"}
+def intro_page(request):
+	context = {
+		'project_title': "ImACCESS",
+		'greeting_text': "Hi there Researcher",
+	}
+	return render(request, 'visual_analyzer/intro_page.html', context)
+
+def instruction_page(request):
+	return render(request, 'visual_analyzer/instruction_page.html')
+
+def about_page(request):
+	return render(request, 'visual_analyzer/about_page.html')
+
+def img2txt_page(request):
 	context = {
 		'project_title': "ImACCESS",
 		'greeting_text': "Hi there Researcher",
@@ -35,5 +48,18 @@ def main_page(request):
 			context['lbls'] = labels
 			context['caption'] = caption
 			context['result_image'] = mcr_img_base64
+	return render(request, 'visual_analyzer/img2txt_page.html', context)
 
-	return render(request, 'visual_analyzer/main_page.html', context)
+def txt2img_page(request):
+	context = {
+		'project_title': "ImACCESS",
+		'greeting_text': "Hi there Researcher",
+	}
+	return render(request, 'visual_analyzer/txt2img_page.html', context)
+
+def img2img_page(request):
+	context = {
+		'project_title': "ImACCESS",
+		'greeting_text': "Hi there Researcher",
+	}
+	return render(request, 'visual_analyzer/img2img_page.html', context)

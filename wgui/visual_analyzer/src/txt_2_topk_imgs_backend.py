@@ -5,7 +5,7 @@ import base64
 import subprocess
 from django.conf import settings
 
-OPENPOSE_DIRECTORY = os.path.join(settings.PROJECT_DIR, "openpose")
+TXT_2_IMG_DIRECTORY = os.path.join(settings.PROJECT_DIR, "txt2img")
 
 def image_resize(image, width = None, height = None, inter = cv2.INTER_AREA):
 	# initialize the dimensions of the image to be resized and grab the image size
@@ -52,37 +52,40 @@ def get_sample_img(h:int = 600, w:int = 800):
 	cv2.putText(sample_image, text_line2, (text_x, text_y_line2), font, font_scale, color, thickness)
 	return sample_image
 
-def generate_mcr(img_source: str = "/path/2/test_img/baseball.jpeg", rnd: int=11, WIDTH:int = 640, HEIGHT:int = 480):
-	print(f"Received {img_source} for MCR backend")
+def get_topkIMGs(query: str = "Winter War", rnd: int=11, backend_method: str="fashionCLIP", WIDTH:int = 640, HEIGHT:int = 480):
+	print(f"Received {query} for topK image Retrieval << {backend_method} >> backend")
+	BACKEND_DIRECTORY = os.path.join(TXT_2_IMG_DIRECTORY, backend_method)
+	# print(f"backend dir: {BACKEND_DIRECTORY}")
 
-	output_image_path = os.path.join(OPENPOSE_DIRECTORY, "outputs", f"mcr_img_x{rnd}.png")
-	# print(f">> output fpth: {output_image_path}")
-
-	# Assuming you have a command-line interface for the openpose backend
-	command = f"cd {OPENPOSE_DIRECTORY} && bash run_mcr.sh {img_source} {output_image_path}"
+	output_image_path = os.path.join(BACKEND_DIRECTORY, "outputs", f"topK_imgs_x{rnd}.png")
+	# print(f">> output fpth: {output_labels_fpth}")
+	
+	# Construct the command to run the caption generation script
+	# For example, this could call a shell script or Python script that processes the image and outputs a caption.
+	command = f"cd {BACKEND_DIRECTORY} && bash run_topk_img_retrieval.sh {query} {output_image_path}"
 		
-	# Run the OpenPose command (assumed to be a script that processes the image)
+	# Run the caption generation command
 	subprocess.run(command, shell=True)
 
 	if os.path.exists(output_image_path):
 		print(f"Reading IMG: {output_image_path}...")
-		mcr_image = cv2.imread(output_image_path)
+		topk_images = cv2.imread(output_image_path)
 	else:
 		print(f">> could not obtain resulted image => generating a sample img!")
-		mcr_image = get_sample_img(h=HEIGHT, w=WIDTH)
+		topk_images = get_sample_img(h=HEIGHT, w=WIDTH)
 
 
-	# mcr_image = cv2.resize(mcr_image, (640, 480), cv2.INTER_AREA) # cv2.resize(image, (width, height))
-	mcr_image = image_resize(
-		image=mcr_image, 
+	# topk_images = cv2.resize(topk_images, (640, 480), cv2.INTER_AREA) # cv2.resize(image, (width, height))
+	topk_images = image_resize(
+		image=topk_images, 
 		width=WIDTH, 
 		height=HEIGHT, 
 		inter=cv2.INTER_AREA,
 	)
-	print(f"Final mcr_IMG: {type(mcr_image)} {mcr_image.shape}")
+	print(f"Final TopK IMG: {type(topk_images)} {topk_images.shape}")
 
 	# Convert the image to PNG format
-	_, buffer = cv2.imencode('.png', mcr_image)
+	_, buffer = cv2.imencode('.png', topk_images)
 	
 	# Encode the PNG buffer as Base64
 	image_base64 = base64.b64encode(buffer).decode('utf-8')

@@ -1,0 +1,48 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Instruction</title>
+		<link rel="website icon" type="png" href="https://i.pinimg.com/564x/e2/04/2c/e2042c1c6e29a24afe1662c49783ff67.jpg">
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+		<link rel="stylesheet" href="{% static 'css/instruction_page_style.css' %}">
+</head>
+
+<body>
+		<div class="navbar">
+				<a href="{% url 'main_page' %}" class="home"><i class="fa fa-home"></i> HOME</a>
+				<a href="{% url 'instruction' %}" class="instruction"><i class="fa fa-info-circle"></i> INSTRUCTION</a>
+				<a href="{% url 'about_us' %}" class="about"><i class="fa fa-envelope"></i> ABOUT</a>
+		</div>
+
+		<div class="help-instruction">
+			<h1><i class="fa fa-question-circle"></i> How To Use Recommendation System</h1>
+			<dl>
+				<dt>Change browser window to maximized mode for better visibility.</dt>
+					<dd>Side by side windows <b>MUST</b> be avoided</dd>
+				<dt>Search query prompts can be either in &#x1F1EB;&#x1F1EE; or in &#x1F1F8;&#x1F1EA;</dt>
+					<dd>Sosialistivallankumouksellinen puolue</dd>
+					<dd>Jakobstads svenska församling</dd>
+				<dt>Avoid using punctuations in search query prompts</dt>
+					<dd>Example: *~/.!# NOT required</dd>
+				<dt>Choose search query prompts with >= 5 characters</dt>
+					<dd>Example 1: Suomen sosialistinen tasavalta</dd>
+					<dd>Example 2: Ålands kulturhistoriska museum</dd>
+					<dd>Example 3: Helsingin pörssi ja suomen pankki</dd>
+				<dt>Avoid using numbers, digits, or years in query prompts.</dt>
+					<dd>Example 1: Helmikuu 1932 NOT required</dd>
+					<dd>Example 2: 12 kk helmikuu 1966 NOT required</dd>
+			</dl>
+			<div class="video-container">
+				<h2>Instructional Video</h2>
+				<iframe src="https://drive.google.com/file/d/1RSbF-ToCBVfpCGoptN-Z0adMotFEMeOz/preview" width="640" height="480" allow="autoplay"></iframe>
+			</div>
+		</div>
+
+</body>
+
+</html>
