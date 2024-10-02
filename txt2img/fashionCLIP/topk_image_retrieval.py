@@ -4,7 +4,7 @@ from models import *
 from dataset_loader import MyntraDataset
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
-parser.add_argument('--query', type=str, required=True, help='Query')
+parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--processed_image_path', type=str, default="my_img.png", help='Path to resulted image with topk images')
 parser.add_argument('--dataset_dir', type=str, default="myntradataset", help='Dataset DIR')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
