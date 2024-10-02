@@ -267,6 +267,8 @@ def main():
 		)
 
 	img_retrieval(
+		df=df,
+		val_df=val_df,
 		val_loader=val_loader,
 		query=args.query,
 		model_fpth=mdl_fpth,

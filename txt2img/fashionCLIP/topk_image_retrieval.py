@@ -10,15 +10,15 @@ parser.add_argument('--processed_image_path', type=str, default="topkIMG.png", h
 args_IMG_retrieval, unknown = parser.parse_known_args()
 print(args_IMG_retrieval)
 
-def img_retrieval(val_loader, query:str="bags", model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, resulted_IMGname: str="topk_img.png"):
+def img_retrieval(df, val_df, val_loader, query:str="bags", model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, resulted_IMGname: str="topk_img.png"):
 	print(f"Top-{TOP_K} Image Retrieval for Query: {query}".center(100, "-"))
 	args_IMG_retrieval.processed_image_path = resulted_IMGname
 	print(f"Saving topK resulted image in: {args_IMG_retrieval.processed_image_path}")
-	# print(f"val_df: {val_df.shape} | {val_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
-	# if query not in val_df['subCategory'].value_counts():
-	# 	print(f"Query: {query} Not Found! Search something else! from the list:")
-	# 	print(val_df['subCategory'].value_counts())
-	# 	return
+	print(f"val_df: {val_df.shape} | {val_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
+	if query not in val_df['subCategory'].value_counts():
+		print(f"Query: {query} Not Found! Search something else! from the list:")
+		print(val_df['subCategory'].value_counts())
+		return
 
 	model = CLIP(
 		emb_dim,
