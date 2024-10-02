@@ -198,17 +198,16 @@ def fine_tune(train_df,captions):
 			torch.save(model.state_dict(), mdl_fpth)
 			print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.5f}")
 	print(f"Elapsed_t: {time.time()-training_st:.5f} sec")
+	loss_fname = (
+		f'loss'
+		+ f'epochs_{args.num_epochs}_'
+		+ f'lr_{args.learning_rate}'
+		+ f'.png'
+	)
 	plot_loss(
 		losses=average_losses, 
 		num_epochs=args.num_epochs, 
-		save_path=os.path.join(
-			outputs_dir,
-			f'loss_'
-			f'epochs_{args.num_epochs}_'
-			f'lr_{args.learning_rate}'
-			f'.png',
-		),
-	)
+		save_path=os.path.join(outputs_dir, loss_fname),)
 
 def main():
 	set_seeds()
