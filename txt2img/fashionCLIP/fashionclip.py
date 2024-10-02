@@ -7,7 +7,7 @@ from dataset_loader import MyntraDataset
 # $ nohup python -u fashionclip.py --num_epochs 100 > $HOME/datasets/trash/logs/fashionclip.out & 
 
 # how to run [Pouta]:
-# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 20
+# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 1
 # $ nohup python -u --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 3 --query "topwear" > /media/volume/ImACCESS/trash/logs/fashionclip.out & 
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
@@ -201,7 +201,13 @@ def fine_tune(train_df,captions):
 	plot_loss(
 		losses=average_losses, 
 		num_epochs=args.num_epochs, 
-		save_path=os.path.join(outputs_dir, f'loss_{args.num_epochs}_nEpochs.png'),
+		save_path=os.path.join(
+			outputs_dir,
+			f'loss_'
+			f'epochs_{args.num_epochs}_'
+			f'lr_{args.learning_rate}'
+			f'.png',
+		),
 	)
 
 def main():

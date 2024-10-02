@@ -131,7 +131,7 @@ def plot_loss(losses, num_epochs, save_path):
 	plt.plot(epochs, losses, marker='o', linestyle='-', color='b')
 	plt.xlabel('Epoch')
 	plt.ylabel('Loss')
-	plt.title(f'Loss vs. Epoch (LR: {args.learning_rate})')
+	plt.title(f'Loss vs. Epoch')
 	plt.grid(True)
 	plt.savefig(save_path)
 	
