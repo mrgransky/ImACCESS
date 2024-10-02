@@ -8,7 +8,7 @@ from dataset_loader import MyntraDataset
 # $ nohup python -u fashionclip.py --num_epochs 100 > $HOME/datasets/trash/logs/fashionclip.out & 
 
 # how to run [Pouta]:
-# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 1
+# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 50
 # $ nohup python -u --dataset_dir /media/volume/ImACCESS/myntradataset --num_epochs 3 --query "topwear" > /media/volume/ImACCESS/trash/logs/fashionclip.out & 
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
@@ -21,81 +21,32 @@ parser.add_argument('--validation_dataset_share', type=float, default=0.23, help
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
 parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
 parser.add_argument('--validate', type=bool, default=True, help='Model Validation upon request')
+parser.add_argument('--visualize', type=bool, default=False, help='Model Validation upon request')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 print(args)
 
-os.makedirs(os.path.join(args.dataset_dir, "models"), exist_ok=True)
 os.makedirs(os.path.join(args.dataset_dir, "outputs"), exist_ok=True)
-
-mdl_fpth:str = os.path.join(
-	args.dataset_dir, 
-	"models",
-	f"fashionclip_nEpochs_{args.num_epochs}_"
-	f"batchSZ_{args.batch_size}_"
-	f"lr_{args.learning_rate}_"
-	f"val_{args.validation_dataset_share}_"
-	f"descriptions_{args.product_description_col}.pt",
+outputs_dir:str = os.path.join(args.dataset_dir, "outputs",)
+models_dir_name = (
+	f"models_"
+	+ f"nEpochs_{args.num_epochs}_"
+	+ f"batchSZ_{args.batch_size}_"
+	+ f"lr_{args.learning_rate}_"
+	+ f"val_{args.validation_dataset_share}_"
+	+ f"descriptions_{args.product_description_col}"
 )
-
-df_fpth = os.path.join(
-	args.dataset_dir, 
-	"models",
-	f"df_fashionclip_nEpochs_{args.num_epochs}_"
-	f"batchSZ_{args.batch_size}_"
-	f"lr_{args.learning_rate}_"
-	f"val_{args.validation_dataset_share}_"
-	f"descriptions_{args.product_description_col}.pkl",
-)
-
-train_df_fpth = os.path.join(
-	args.dataset_dir, 
-	"models",
-	f"train_df_fashionclip_nEpochs_{args.num_epochs}_"
-	f"batchSZ_{args.batch_size}_"
-	f"lr_{args.learning_rate}_"
-	f"val_{args.validation_dataset_share}_"
-	f"descriptions_{args.product_description_col}.pkl",
-)
-
-val_df_fpth = os.path.join(
-	args.dataset_dir, 
-	"models",
-	f"val_df_fashionclip_nEpochs_{args.num_epochs}_"
-	f"batchSZ_{args.batch_size}_"
-	f"lr_{args.learning_rate}_"
-	f"val_{args.validation_dataset_share}_"
-	f"descriptions_{args.product_description_col}.pkl",
-)
-
-img_lbls_dict_fpth = os.path.join(
-	args.dataset_dir, 
-	"models",
-	f"image_lbels_dict_fashionclip_nEpochs_{args.num_epochs}_"
-	f"batchSZ_{args.batch_size}_"
-	f"lr_{args.learning_rate}_"
-	f"val_{args.validation_dataset_share}_"
-	f"descriptions_{args.product_description_col}.pkl",
-)
-
-img_lbls_list_fpth = os.path.join(
-	args.dataset_dir, 
-	"models",
-	f"img_lbls_list_fashionclip_nEpochs_{args.num_epochs}_"
-	f"batchSZ_{args.batch_size}_"
-	f"lr_{args.learning_rate}_"
-	f"val_{args.validation_dataset_share}_"
-	f"descriptions_{args.product_description_col}.pkl",
-)
-
-outputs_dir:str = os.path.join(
-	args.dataset_dir, 
-	"outputs",
-)
+os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
+mdl_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "model.pt")
+df_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "df.pkl")
+train_df_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "train_df.pkl")
+val_df_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "val_df.pkl")
+img_lbls_dict_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "image_labels_dict.pkl")
+img_lbls_list_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "img_labels_list.pkl")
 
 def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
-	print(f"Validation {model_fpth} using {device}".center(100, "-"))
+	print(f"Validating {model_fpth} in {device}".center(160, "-"))
 	vdl_st = time.time()
 	print(f"Creating Validation Dataloader for {len(val_df)} samples", end="\t")
 	vdl_st = time.time()
@@ -159,7 +110,7 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 	# idx = random.randint(0, len(val_df))
 	img = val_dataset[idx]["image"][None,:]
 
-	if visualize:
+	if args.visualize:
 		plt.imshow(img[0].permute(1, 2, 0)  ,cmap="gray")
 		plt.title(tokenizer(val_dataset[idx]["caption"], encode=False, mask=val_dataset[idx]["mask"][0])[0])
 		plt.show()

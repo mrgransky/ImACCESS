@@ -36,13 +36,14 @@ visualize: bool = False
 if USER=="farid": # local laptop
 	WDIR = os.path.join(HOME, "datasets")
 	models_dir = os.path.join(WDIR, "trash", "models")
-	visualize = True
+	# visualize = True
 elif USER=="alijanif": # Puhti
 	WDIR = "/scratch/project_2004072/ImACCESS"
 	models_dir = os.path.join(WDIR, "trash", "models")
 else: # Pouta
 	WDIR = "/media/volume/ImACCESS"
 	models_dir = os.path.join(WDIR, "models")
+	ddir: str = os.path.join(WDIR, "myntradataset")
 
 # Vision
 emb_dim = 128
@@ -90,7 +91,7 @@ def load_pickle(fpath:str="unknown",):
 		pkl = pd.read_pickle(fpath)
 	elpt = time.time()-st_t
 	fsize = os.stat( fpath ).st_size / 1e6
-	print(f"Loaded in: {elpt:.2f} s | {type(pkl)} | {fsize:.3f} MB".center(130, " "))
+	print(f"Loaded in: {elpt:.5f} s | {type(pkl)} | {fsize:.3f} MB".center(130, " "))
 	return pkl
 
 def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):

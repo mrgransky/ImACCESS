@@ -4,9 +4,9 @@ from models import *
 from dataset_loader import MyntraDataset
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
-parser.add_argument('--query', type=str, default="bags", help='Query')
-parser.add_argument('--processed_image_path', type=str, default="topkIMG.png", help='Path to resulted image with topk images')
-parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
+parser.add_argument('--query', type=str, required=True, help='Query')
+parser.add_argument('--processed_image_path', type=str, default="my_img.png", help='Path to resulted image with topk images')
+parser.add_argument('--dataset_dir', type=str, default="myntradataset", help='Dataset DIR')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--batch_size', type=int, default=64, help='Batch Size')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
@@ -16,55 +16,24 @@ parser.add_argument('--product_description_col', type=str, default="subCategory"
 args, unknown = parser.parse_known_args()
 # print(args)
 
-mdl_fpth:str = os.path.join(
-	args.dataset_dir, 
-	"models",
-	f"fashionclip_nEpochs_{args.num_epochs}_"
-	f"batchSZ_{args.batch_size}_"
-	f"lr_{args.learning_rate}_"
-	f"val_{args.validation_dataset_share}_"
-	f"descriptions_{args.product_description_col}.pt",
+if USER == "ubuntu":
+	args.dataset_dir = ddir
+# models_dir_name = f""
+
+models_dir_name = (
+	f"models_"
+	+ f"nEpochs_{args.num_epochs}_"
+	+ f"batchSZ_{args.batch_size}_"
+	+ f"lr_{args.learning_rate}_"
+	+ f"val_{args.validation_dataset_share}_"
+	+ f"descriptions_{args.product_description_col}"
 )
 
-df_fpth = os.path.join(
-	args.dataset_dir, 
-	"models",
-	f"df_fashionclip_nEpochs_{args.num_epochs}_"
-	f"batchSZ_{args.batch_size}_"
-	f"lr_{args.learning_rate}_"
-	f"val_{args.validation_dataset_share}_"
-	f"descriptions_{args.product_description_col}.pkl",
-)
-
-val_df_fpth = os.path.join(
-	args.dataset_dir, 
-	"models",
-	f"val_df_fashionclip_nEpochs_{args.num_epochs}_"
-	f"batchSZ_{args.batch_size}_"
-	f"lr_{args.learning_rate}_"
-	f"val_{args.validation_dataset_share}_"
-	f"descriptions_{args.product_description_col}.pkl",
-)
-
-img_lbls_dict_fpth = os.path.join(
-	args.dataset_dir, 
-	"models",
-	f"image_lbels_dict_fashionclip_nEpochs_{args.num_epochs}_"
-	f"batchSZ_{args.batch_size}_"
-	f"lr_{args.learning_rate}_"
-	f"val_{args.validation_dataset_share}_"
-	f"descriptions_{args.product_description_col}.pkl",
-)
-
-img_lbls_list_fpth = os.path.join(
-	args.dataset_dir, 
-	"models",
-	f"img_lbls_list_fashionclip_nEpochs_{args.num_epochs}_"
-	f"batchSZ_{args.batch_size}_"
-	f"lr_{args.learning_rate}_"
-	f"val_{args.validation_dataset_share}_"
-	f"descriptions_{args.product_description_col}.pkl",
-)
+os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
+mdl_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "model.pt")
+df_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "df.pkl")
+val_df_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "val_df.pkl")
+img_lbls_dict_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "image_labels_dict.pkl")
 
 df = load_pickle(fpath=df_fpth)
 val_df = load_pickle(fpath=val_df_fpth)
@@ -124,7 +93,7 @@ retrieval_model.load_state_dict(torch.load(mdl_fpth, map_location=device))
 print(f"Elapsed_t: {time.time()-rm_st:.5f} sec")
 
 def img_retrieval(query:str="bags", model_fpth: str=mdl_fpth, TOP_K: int=args.topk, resulted_IMGname: str="topk_img.png"):
-	print(f"Top-{TOP_K} Image Retrieval for Query: {query}".center(100, "-"))
+	print(f"Top-{TOP_K} Image Retrieval | Query: {query} | user: {USER}".center(100, "-"))
 	args.processed_image_path = resulted_IMGname
 	print(f"val_df: {val_df.shape} | {val_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
 	if query not in val_df['subCategory'].value_counts():
@@ -182,8 +151,7 @@ def img_retrieval(query:str="bags", model_fpth: str=mdl_fpth, TOP_K: int=args.to
 	print(top_indices)
 
 	# Step 4: Retrieve and display (or save) top N images:
-	print(f"Top-{TOP_K} IMGs from Validation: {len(val_loader.dataset)} Query: {query} | {args.processed_image_path}")
-	print(f"Saving Top-{TOP_K} resulted image in: ")
+	print(f"Saving Top-{TOP_K} / {len(val_loader.dataset)} [val] | Query: {query} in {args.processed_image_path}")
 	fig, axes = plt.subplots(1, TOP_K, figsize=(18, 4))  # Adjust figsize as needed
 	for ax, value, index in zip(axes, top_values[0], top_indices[0]):
 		img_path = val_images_paths[index]
@@ -199,7 +167,7 @@ def img_retrieval(query:str="bags", model_fpth: str=mdl_fpth, TOP_K: int=args.to
 	plt.savefig(resulted_IMGname)
 	
 def main():
-	img_retrieval()
+	img_retrieval(query=args.query, resulted_IMGname=args.processed_image_path)
 
 if __name__ == "__main__":
 	main()
