@@ -1,11 +1,6 @@
 # Project
 TEST_IMGs
-*.csv
 *.caffemodel
-*.jpg
-*.png
-# *jpeg
-*.JPG
 # C extensions
 *.so
 
