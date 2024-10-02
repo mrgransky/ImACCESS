@@ -9,6 +9,8 @@ import warnings
 import random
 import time
 import torch
+import dill
+import gzip
 import torch.nn as nn
 import torch.optim as optim
 import torchvision
@@ -59,6 +61,37 @@ text_heads = 8
 text_layers = 8
 wd = 1e-4 # L2 Regularization
 nw:int = multiprocessing.cpu_count() # def: 8
+
+def save_pickle(pkl, fname:str=""):
+	print(f"\nSaving {type(pkl)}\n{fname}")
+	st_t = time.time()
+	if isinstance(pkl, ( pd.DataFrame, pd.Series ) ):
+		pkl.to_pickle(path=fname)
+	else:
+		# with open(fname , mode="wb") as f:
+		with gzip.open(fname , mode="wb") as f:
+			dill.dump(pkl, f)
+	elpt = time.time()-st_t
+	fsize_dump = os.stat( fname ).st_size / 1e6
+	print(f"Elapsed_t: {elpt:.3f} s | {fsize_dump:.2f} MB".center(120, " "))
+
+def load_pickle(fpath:str="unknown",):
+	print(f"Checking for existence? {fpath}")
+	st_t = time.time()
+	try:
+		with gzip.open(fpath, mode='rb') as f:
+			pkl=dill.load(f)
+	except gzip.BadGzipFile as ee:
+		print(f"<!> {ee} gzip.open() NOT functional => traditional openning...")
+		with open(fpath, mode='rb') as f:
+			pkl=dill.load(f)
+	except Exception as e:
+		print(f"<<!>> {e} pandas read_pkl...")
+		pkl = pd.read_pickle(fpath)
+	elpt = time.time()-st_t
+	fsize = os.stat( fpath ).st_size / 1e6
+	print(f"Loaded in: {elpt:.2f} s | {type(pkl)} | {fsize:.3f} MB".center(130, " "))
+	return pkl
 
 def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):
 	print(f"Laoding style (csv): {fpth}")
@@ -126,6 +159,8 @@ def plot_loss(losses, num_epochs, save_path):
 	num_epochs (int): Number of epochs.
 	save_path (str): Path to save the plot.
 	"""
+	if num_epochs == 1:
+		return
 	print(f"Saving Loss in {save_path}")
 	epochs = range(1, num_epochs + 1)		
 	plt.figure(figsize=(10, 5))

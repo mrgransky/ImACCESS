@@ -1,7 +1,6 @@
 from utils import *
 from models import *
 from dataset_loader import MyntraDataset
-from topk_image_retrieval import img_retrieval
 
 # how to run [Local]:
 # $ python fashionclip.py --query tie
@@ -14,14 +13,14 @@ from topk_image_retrieval import img_retrieval
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
-parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
-parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
 parser.add_argument('--batch_size', type=int, default=64, help='Batch Size')
+parser.add_argument('--query', type=str, default="bags", help='Query')
+parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.23, help='share of Validation set')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
-parser.add_argument('--validate', type=bool, default=True, help='Model Validation upon request')
 parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
+parser.add_argument('--validate', type=bool, default=True, help='Model Validation upon request')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
@@ -39,6 +38,57 @@ mdl_fpth:str = os.path.join(
 	f"val_{args.validation_dataset_share}_"
 	f"descriptions_{args.product_description_col}.pt",
 )
+
+df_fpth = os.path.join(
+	args.dataset_dir, 
+	"models",
+	f"df_fashionclip_nEpochs_{args.num_epochs}_"
+	f"batchSZ_{args.batch_size}_"
+	f"lr_{args.learning_rate}_"
+	f"val_{args.validation_dataset_share}_"
+	f"descriptions_{args.product_description_col}.pkl",
+)
+
+train_df_fpth = os.path.join(
+	args.dataset_dir, 
+	"models",
+	f"train_df_fashionclip_nEpochs_{args.num_epochs}_"
+	f"batchSZ_{args.batch_size}_"
+	f"lr_{args.learning_rate}_"
+	f"val_{args.validation_dataset_share}_"
+	f"descriptions_{args.product_description_col}.pkl",
+)
+
+val_df_fpth = os.path.join(
+	args.dataset_dir, 
+	"models",
+	f"val_df_fashionclip_nEpochs_{args.num_epochs}_"
+	f"batchSZ_{args.batch_size}_"
+	f"lr_{args.learning_rate}_"
+	f"val_{args.validation_dataset_share}_"
+	f"descriptions_{args.product_description_col}.pkl",
+)
+
+img_lbls_dict_fpth = os.path.join(
+	args.dataset_dir, 
+	"models",
+	f"image_lbels_dict_fashionclip_nEpochs_{args.num_epochs}_"
+	f"batchSZ_{args.batch_size}_"
+	f"lr_{args.learning_rate}_"
+	f"val_{args.validation_dataset_share}_"
+	f"descriptions_{args.product_description_col}.pkl",
+)
+
+img_lbls_list_fpth = os.path.join(
+	args.dataset_dir, 
+	"models",
+	f"img_lbls_list_fashionclip_nEpochs_{args.num_epochs}_"
+	f"batchSZ_{args.batch_size}_"
+	f"lr_{args.learning_rate}_"
+	f"val_{args.validation_dataset_share}_"
+	f"descriptions_{args.product_description_col}.pkl",
+)
+
 outputs_dir:str = os.path.join(
 	args.dataset_dir, 
 	"outputs",
@@ -215,34 +265,47 @@ def fine_tune(train_df,captions):
 
 def main():
 	set_seeds()
-	df = get_dframe(
-		fpth=os.path.join(args.dataset_dir, "styles.csv"), 
-		img_dir=os.path.join(args.dataset_dir, "images"), 
-	)
-	# sys.exit()
-
-	# Split the dataset into training and validation sets
-	train_df, val_df = train_test_split(
-		df, 
-		shuffle=True, 
-		test_size=args.validation_dataset_share, # 0.05
-		random_state=42,
-	)
-
+	
+	try:
+		# load
+		df = load_pickle(fpath=df_fpth)
+		train_df = load_pickle(fpath=train_df_fpth)
+		val_df = load_pickle(fpath=val_df_fpth)
+		img_lbls_dict = load_pickle(fpath=img_lbls_dict_fpth)
+		img_lbls_list = load_pickle(fpath=img_lbls_list_fpth)
+	except Exception as e:
+		print(f"{e}")
+		df = get_dframe(
+			fpth=os.path.join(args.dataset_dir, "styles.csv"), 
+			img_dir=os.path.join(args.dataset_dir, "images"), 
+		)
+		# Split the dataset into training and validation sets
+		train_df, val_df = train_test_split(
+			df, 
+			shuffle=True, 
+			test_size=args.validation_dataset_share, # 0.05
+			random_state=42,
+		)
+		img_lbls_dict, img_lbls_list = get_product_description(df=df, col=args.product_description_col)
+		save_pickle(pkl=df, fname=df_fpth,)
+		save_pickle(pkl=train_df, fname=train_df_fpth,)
+		save_pickle(pkl=val_df, fname=val_df_fpth,)
+		save_pickle(pkl=img_lbls_dict, fname=img_lbls_dict_fpth,)
+		save_pickle(pkl=img_lbls_list, fname=img_lbls_list_fpth,)
+	
 	# Print the sizes of the datasets
-	print(f"Train: {len(train_df)} | Validation: {len(val_df)}")
-
-	captions, class_names = get_product_description(df=df, col=args.product_description_col)
-	# sys.exit()
+	print(f"df: {df.shape} train_df: {train_df.shape} val_df: {val_df.shape}")
+	print(type(img_lbls_dict), type(img_lbls_list))
+	print(len(img_lbls_dict), len(img_lbls_list))
 
 	if not os.path.exists(mdl_fpth):
-		fine_tune(train_df=train_df, captions=captions)
+		fine_tune(train_df=train_df, captions=img_lbls_dict)
 
 	print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
 	vdl_st = time.time()
 	val_dataset = MyntraDataset(
 		data_frame=val_df,
-		captions=captions,
+		captions=img_lbls_dict,
 		img_sz=80,
 		dataset_directory=os.path.join(args.dataset_dir, "images")
 	)
@@ -260,16 +323,13 @@ def main():
 	if args.validate:
 		validate(
 			val_df=val_df,
-			class_names=class_names,
-			CAPTIONSs=captions,
+			class_names=img_lbls_list,
+			CAPTIONSs=img_lbls_dict,
 			model_fpth=mdl_fpth,
 			TOP_K=args.topk,
 		)
-
+	from topk_image_retrieval import img_retrieval # must be here!
 	img_retrieval(
-		df=df,
-		val_df=val_df,
-		val_loader=val_loader,
 		query=args.query,
 		model_fpth=mdl_fpth,
 		TOP_K=args.topk,

@@ -6,53 +6,132 @@ from dataset_loader import MyntraDataset
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--processed_image_path', type=str, default="topkIMG.png", help='Path to resulted image with topk images')
-# args_IMG_retrieval = parser.parse_args()
-args_IMG_retrieval, unknown = parser.parse_known_args()
-print(args_IMG_retrieval)
+parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
+parser.add_argument('--topk', type=int, default=5, help='Top-K images')
+parser.add_argument('--batch_size', type=int, default=64, help='Batch Size')
+parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
+parser.add_argument('--validation_dataset_share', type=float, default=0.23, help='share of Validation set')
+parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
+parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
+args, unknown = parser.parse_known_args()
+# print(args)
 
-def img_retrieval(df, val_df, val_loader, query:str="bags", model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, resulted_IMGname: str="topk_img.png"):
+mdl_fpth:str = os.path.join(
+	args.dataset_dir, 
+	"models",
+	f"fashionclip_nEpochs_{args.num_epochs}_"
+	f"batchSZ_{args.batch_size}_"
+	f"lr_{args.learning_rate}_"
+	f"val_{args.validation_dataset_share}_"
+	f"descriptions_{args.product_description_col}.pt",
+)
+
+df_fpth = os.path.join(
+	args.dataset_dir, 
+	"models",
+	f"df_fashionclip_nEpochs_{args.num_epochs}_"
+	f"batchSZ_{args.batch_size}_"
+	f"lr_{args.learning_rate}_"
+	f"val_{args.validation_dataset_share}_"
+	f"descriptions_{args.product_description_col}.pkl",
+)
+
+val_df_fpth = os.path.join(
+	args.dataset_dir, 
+	"models",
+	f"val_df_fashionclip_nEpochs_{args.num_epochs}_"
+	f"batchSZ_{args.batch_size}_"
+	f"lr_{args.learning_rate}_"
+	f"val_{args.validation_dataset_share}_"
+	f"descriptions_{args.product_description_col}.pkl",
+)
+
+img_lbls_dict_fpth = os.path.join(
+	args.dataset_dir, 
+	"models",
+	f"image_lbels_dict_fashionclip_nEpochs_{args.num_epochs}_"
+	f"batchSZ_{args.batch_size}_"
+	f"lr_{args.learning_rate}_"
+	f"val_{args.validation_dataset_share}_"
+	f"descriptions_{args.product_description_col}.pkl",
+)
+
+img_lbls_list_fpth = os.path.join(
+	args.dataset_dir, 
+	"models",
+	f"img_lbls_list_fashionclip_nEpochs_{args.num_epochs}_"
+	f"batchSZ_{args.batch_size}_"
+	f"lr_{args.learning_rate}_"
+	f"val_{args.validation_dataset_share}_"
+	f"descriptions_{args.product_description_col}.pkl",
+)
+
+df = load_pickle(fpath=df_fpth)
+val_df = load_pickle(fpath=val_df_fpth)
+img_lbls_dict = load_pickle(fpath=img_lbls_dict_fpth)
+
+print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
+vdl_st = time.time()
+val_dataset = MyntraDataset(
+	data_frame=val_df,
+	captions=img_lbls_dict,
+	img_sz=80,
+	dataset_directory=os.path.join(args.dataset_dir, "images")
+)
+val_loader = DataLoader(
+	dataset=val_dataset, 
+	shuffle=False,
+	batch_size=args.batch_size, #32, # double check!!!! 
+	num_workers=nw,
+	collate_fn=custom_collate_fn  # Use custom collate function to handle None values
+)
+print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
+# get_info(dataloader=val_loader)
+
+model = CLIP(
+	emb_dim,
+	vit_layers, 
+	vit_d_model, 
+	img_size,
+	patch_size,
+	n_channels,
+	vit_heads,
+	vocab_size,
+	max_seq_length,
+	text_heads,
+	text_layers,
+	text_d_model,
+	retrieval=False,
+).to(device)
+
+retrieval_model = CLIP(
+	emb_dim, 
+	vit_layers, 
+	vit_d_model, 
+	img_size,patch_size,
+	n_channels,
+	vit_heads,
+	vocab_size,
+	max_seq_length,
+	text_heads,
+	text_layers,
+	text_d_model,
+	retrieval=True
+).to(device)
+print(f"Loading retrieval model...", end="\t")
+rm_st = time.time()
+retrieval_model.load_state_dict(torch.load(mdl_fpth, map_location=device))
+print(f"Elapsed_t: {time.time()-rm_st:.5f} sec")
+
+def img_retrieval(query:str="bags", model_fpth: str=mdl_fpth, TOP_K: int=args.topk, resulted_IMGname: str="topk_img.png"):
 	print(f"Top-{TOP_K} Image Retrieval for Query: {query}".center(100, "-"))
-	args_IMG_retrieval.processed_image_path = resulted_IMGname
-	print(f"Saving topK resulted image in: {args_IMG_retrieval.processed_image_path}")
+	args.processed_image_path = resulted_IMGname
 	print(f"val_df: {val_df.shape} | {val_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
 	if query not in val_df['subCategory'].value_counts():
 		print(f"Query: {query} Not Found! Search something else! from the list:")
 		print(val_df['subCategory'].value_counts())
 		return
-
-	model = CLIP(
-		emb_dim,
-		vit_layers, 
-		vit_d_model, 
-		img_size,
-		patch_size,
-		n_channels,
-		vit_heads,
-		vocab_size,
-		max_seq_length,
-		text_heads,
-		text_layers,
-		text_d_model,
-		retrieval=False,
-	).to(device)
-
-	retrieval_model = CLIP(
-		emb_dim, 
-		vit_layers, 
-		vit_d_model, 
-		img_size,patch_size,
-		n_channels,
-		vit_heads,
-		vocab_size,
-		max_seq_length,
-		text_heads,
-		text_layers,
-		text_d_model,
-		retrieval=True
-	).to(device)
 	
-	retrieval_model.load_state_dict(torch.load(model_fpth, map_location=device))
-
 	# Step 1: Encode the text query using your tokenizer and TextEncoder
 	query_text, query_mask = tokenizer(query)
 	print(type(query_text), type(query_mask))
@@ -103,7 +182,8 @@ def img_retrieval(df, val_df, val_loader, query:str="bags", model_fpth: str=f"pa
 	print(top_indices)
 
 	# Step 4: Retrieve and display (or save) top N images:
-	print(f"Top-{TOP_K} images from Validation: ({len(val_loader.dataset)}) | Query: '{query}':\n")
+	print(f"Top-{TOP_K} IMGs from Validation: {len(val_loader.dataset)} Query: {query} | {args.processed_image_path}")
+	print(f"Saving Top-{TOP_K} resulted image in: ")
 	fig, axes = plt.subplots(1, TOP_K, figsize=(18, 4))  # Adjust figsize as needed
 	for ax, value, index in zip(axes, top_values[0], top_indices[0]):
 		img_path = val_images_paths[index]
