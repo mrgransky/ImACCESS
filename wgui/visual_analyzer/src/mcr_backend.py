@@ -10,7 +10,6 @@ warnings.filterwarnings('ignore')
 # https://paliskunnat.fi/reindeer/wp-content/uploads/2014/08/porot_lumisateessa_kolarissa_2009.jpg
 OPENPOSE_DIRECTORY = os.path.join(settings.PROJECT_DIR, "openpose")
 
-
 def image_resize(image, max_width=640, max_height=480, scale_percent=50, inter=cv2.INTER_AREA):
 		"""
 		Resizes the image based on max width and height while maintaining aspect ratio.

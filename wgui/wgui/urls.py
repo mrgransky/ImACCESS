@@ -2,14 +2,16 @@ from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
 from django.conf.urls.static import static
-from visual_analyzer.views import intro_page, txt2img_page, img2txt_page, img2img_page
+from visual_analyzer.views import intro_page, txt2img_page, img2txt_page, img2img_page, about_page, instruction_page
 
 urlpatterns = [
 	path('admin/', admin.site.urls),
+	path('', intro_page),  # Map root URL to intro page
 	path('img2txt/', img2txt_page, name='img2txt'),
 	path('txt2img/', txt2img_page, name='txt2img'),
 	path('img2img/', img2img_page, name='img2img'),
-	path('', intro_page),  # Map root URL to intro page
+	path('about/', about_page, name='about'),
+	path('instruction/', instruction_page, name='instruction'),
 ]
 
 if settings.DEBUG:

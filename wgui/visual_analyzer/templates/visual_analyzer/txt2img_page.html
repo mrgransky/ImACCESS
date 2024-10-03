@@ -11,10 +11,18 @@
 </head>
 
 <body>
-	<div class="main-page-container">
+	<div class="navbar">
+		<a href="{% url 'txt2img' %}" class="txt2img"><i class="fa fa-home"></i> TEXT-2-IMAGE</a>
+		<a href="{% url 'img2txt' %}" class="img2txt"><i class="fa fa-info-circle"></i> IMAGE-2-TEXT</a>
+		<a href="{% url 'img2img' %}" class="img2img"><i class="fa fa-envelope"></i> IMAGE-2-IMAGE</a>
+		<a href="{% url 'instruction' %}" class="insturction"><i class="fa fa-info-circle"></i> INSTRUCTION</a>
+		<a href="{% url 'about' %}" class="about"><i class="fa fa-envelope"></i> ABOUT</a>
+	</div>
+
+	<div class="user-container">
 		<div class="logos-container">
-			<img src="https://dpt3vly6oaqnt.cloudfront.net/media/universities/university/MDCs3L29TEOvIDJYiWSqMg.jpg" alt="Left Image">
-			<img src="https://pbs.twimg.com/profile_images/1075012520837029889/jSALzNPb_400x400.jpg" alt="Right Image">
+			<img src="https://dpt3vly6oaqnt.cloudfront.net/media/universities/university/MDCs3L29TEOvIDJYiWSqMg.jpg" alt="Left_Image">
+			<img src="https://pbs.twimg.com/profile_images/1075012520837029889/jSALzNPb_400x400.jpg" alt="Right_Image">
 		</div>
 		<div class="user-input-container">
 			<h2>{{ project_title|safe }} « <b>{{ subject }}</b> »</h2>
@@ -24,17 +32,15 @@
 				<input type="text" name="user_text" placeholder="Enter your text here">
 				<input type="submit" value="Send" onclick="triggerSpinner()">
 			</form>
-
-			<div class="loading-container">
-				<div id="loadingSpinner" class="loading-spinner">
-					<p id="loadingText" class="spinner-text">Processing...</p>
-				</div>
-			</div>
-
 		</div>
-
-		<div class="resulted-img-container">
-			{% if topK_imgs%}
+	</div>
+	<div class="loading-container">
+		<div id="loadingSpinner" class="loading-spinner">
+			<p id="loadingText" class="spinner-text">Processing...</p>
+		</div>
+	</div>
+	{% if topK_imgs%}
+		<div class="result-container">
 				<script>
 					hideLoadingSpinner();
 				</script>
@@ -42,10 +48,9 @@
 					<h3>Top-{{ topk }} Images for Query: {{ user_query_prompt }}</h3>
 					<img src="data:image/png;base64,{{ topK_imgs }}" alt="TopK_IMGs">
 				</div>
-			{% endif %}
 		</div>
+	{% endif %}
 
-	</div>
 	<script src="{% static 'js/txt2img_page.js' %}"></script>
 </body>
 </html>
