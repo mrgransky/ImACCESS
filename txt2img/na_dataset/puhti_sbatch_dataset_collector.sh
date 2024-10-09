@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=16G
+#SBATCH --mem=8G
 #SBATCH --partition=longrun
 #SBATCH --time=14-00:00:00
 
@@ -29,11 +29,14 @@ echo "THREADS/CORE: $SLURM_THREADS_PER_CORE"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 ddir="/scratch/project_2004072/ImACCESS/NA_DATASET"
+st_dt="1890-01-01"
+end_dt="1960-01-01"
 
 python -u data_collector.py \
 	--dataset_dir $ddir \
-	--start_date "1890-01-01" \
-	--end_date "1960-01-01" \
+	--start_date  $st_dt \
+	--end_date  $end_dt \
+	--num_worker 38 \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

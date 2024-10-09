@@ -152,17 +152,23 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 		# print(pDate)
 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
 		if first_digital_object_url and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png')):
-			# print(f"Checking: {first_digital_object_url}", end="\t\t")
-			# st_t = time.time()
-			# # status code must be 200:
-			# if check_url_status(first_digital_object_url):
-			# 	first_digital_object_url = first_digital_object_url
-			# else:
-			# 	first_digital_object_url = None
-			first_digital_object_url = first_digital_object_url
+			#################################################################
+			# # without checking status_code [faster but broken URL]
+			# first_digital_object_url = first_digital_object_url
+			#################################################################
+			#################################################################
+			# # with checking status_code [slower but healty URL]
+			print(f"{first_digital_object_url:<130}", end=" ")
+			st_t = time.time()
+			# status code must be 200:
+			if check_url_status(first_digital_object_url):
+				first_digital_object_url = first_digital_object_url
+			else:
+				first_digital_object_url = None
+			print(f"Elapsed_t: {time.time()-st_t:.1f} sec")
+			#################################################################
 		else:
 			first_digital_object_url = None
-		# print(f"Elapsed_t: {time.time()-st_t:.1f} sec")
 		row = {
 			'naId': record.get('naId'),
 			'query': query,
@@ -179,8 +185,9 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 	return df
 
 # Function to download images with retry mechanism and resuming feature
-def download_image(row, session, image_dir, index, total_rows, retries=5, backoff_factor=0.5):
+def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5):
 	t0 = time.time()
+	rIdx = row.name
 	url = row['firstDigitalObjectUrl']
 	image_name = str(row['naId']) + os.path.splitext(url)[1]
 	image_path = os.path.join(image_dir, image_name)
@@ -198,13 +205,13 @@ def download_image(row, session, image_dir, index, total_rows, retries=5, backof
 			# Save the image to the directory
 			with open(image_path, 'wb') as f:
 				f.write(response.content)
-			print(f"[{index+1}/{total_rows}] Saved {image_name}\t\t\tin:\t{time.time()-t0:.1f} sec")
+			print(f"[{rIdx}/{total_rows}] Saved {image_name}\t\t\tin:\t{time.time()-t0:.1f} sec")
 			return image_name
 		except (RequestException, IOError) as e:
 			attempt += 1
-			print(f"[{index+1}/{total_rows}] Downloading {image_name} Failed! {e}, Retrying ({attempt}/{retries})...")
+			print(f"[{rIdx}/{total_rows}] Downloading {image_name} Failed! {e}, Retrying ({attempt}/{retries})...")
 			time.sleep(backoff_factor * (2 ** attempt))  # Exponential backoff
-	print(f"[{index+1}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
+	print(f"[{rIdx}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
 	return None
 
 # Main function to download all images
@@ -217,14 +224,14 @@ def get_images(df):
 	with requests.Session() as session:
 		# Use ThreadPoolExecutor for parallel downloads
 		with ThreadPoolExecutor(max_workers=nw) as executor:
-			futures = [executor.submit(download_image, row, session, IMAGE_DIR, index, df.shape[0]) for index, row in df.iterrows()]
+			futures = [executor.submit(download_image, row, session, IMAGE_DIR, df.shape[0]) for _, row in df.iterrows()]
 			# Process results as they complete
 			for future in as_completed(futures):
 				try:
 					future.result()
 				except Exception as e:
 					print(f"An unexpected error occurred: {e}")
-	print("All available images downloaded.")
+	print(f"Total number of images downloaded: {len(os.listdir(IMAGE_DIR))}")
 
 def main():
 	national_archive_us_URL: str = "https://catalog.archives.gov/proxy/records/search"
@@ -543,7 +550,7 @@ def main():
 		na_df_merged.to_excel(os.path.join(RESULT_DIRECTORY, "na.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
-		
+
 	get_images(df=na_df_merged)
 
 if __name__ == '__main__':
