@@ -208,7 +208,7 @@ def download_image(row, session, image_dir, index, total_rows, retries=5, backof
 
 # Main function to download all images
 def get_images(df):
-	print(f"Saving images of {df.shape[0]} records...")
+	print(f"Saving images of {df.shape[0]} records using {nw} CPUs...")
 	# Create the directory if it doesn't exist
 	os.makedirs(os.path.join(RESULT_DIRECTORY, "images"), exist_ok=True)
 	IMAGE_DIR = os.path.join(RESULT_DIRECTORY, "images")
