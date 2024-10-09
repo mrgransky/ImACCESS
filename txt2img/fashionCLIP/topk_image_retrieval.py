@@ -9,7 +9,7 @@ parser.add_argument('--processed_image_path', type=str, default="my_img.png", he
 parser.add_argument('--dataset_dir', type=str, default="myntradataset", help='Dataset DIR')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--batch_size', type=int, default=64, help='Batch Size')
-parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
+parser.add_argument('--num_epochs', type=int, default=3, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.23, help='share of Validation set')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
 parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
@@ -101,6 +101,16 @@ def img_retrieval(query:str="bags", model_fpth: str=mdl_fpth, TOP_K: int=args.to
 		print(val_df['subCategory'].value_counts())
 		return
 	
+	query_counts = val_df['subCategory'].value_counts()
+	print(query_counts.tail(25))
+	plt.figure(figsize=(18, 12))
+	query_counts.plot(kind='bar', fontsize=8)
+	plt.title(f'Query Frequency (total: {query_counts.shape})')
+	plt.xlabel('Query')
+	plt.ylabel('Frequency')
+	plt.tight_layout()
+	plt.savefig("query_freq.png")
+
 	# Step 1: Encode the text query using your tokenizer and TextEncoder
 	query_text, query_mask = tokenizer(query)
 	print(type(query_text), type(query_mask))

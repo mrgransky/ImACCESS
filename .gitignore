@@ -3,6 +3,7 @@ TEST_IMGs
 *.caffemodel
 # C extensions
 *.so
+*.gz
 
 # Django
 wgui/db.sqlite3
@@ -10,6 +11,7 @@ wgui/staticfiles/
 wgui/media/*jpg
 wgui/media/*png
 wgui/media/*jpeg
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -24,6 +26,7 @@ openpose/models/*/*/*.caffemodel
 openpose/build/
 openpose/outputs/
 img2txt/*/outputs/
+txt2img/na_dataset/NA_*
 txt2img/*zip
 txt2img/*pt
 txt2img/mscoco-it

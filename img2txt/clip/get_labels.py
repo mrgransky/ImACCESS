@@ -80,8 +80,8 @@ own_lbls = [
 	"drink",
 ]
 war_time_lbls = [
-	"Infantry",
 	"soldier",
+	"Infantry",
 	"Tunnel",
 	"Military_base",
 	"Military_vehicle",
@@ -95,7 +95,7 @@ war_time_lbls = [
 	"Commemorate",
 	"Battle",
 	"Marine"
-	"Airforce_operation",
+	"Air force operation",
 	"Medical_aid",
 	"Field_hospital",
 	"Prisoner", 

@@ -25,7 +25,8 @@
 			<img src="https://pbs.twimg.com/profile_images/1075012520837029889/jSALzNPb_400x400.jpg" alt="Right_Image">
 		</div>
 		<div class="user-input-container">
-			<h2>{{ project_title|safe }} « <b>{{ subject }}</b> »</h2>
+			<h2>{{ project_title|safe }}</h2>
+			<h2>{{ subject }}</h2>
 			<h3>What are you looking after?</h3>
 			<form method="post">
 				{% csrf_token %}
