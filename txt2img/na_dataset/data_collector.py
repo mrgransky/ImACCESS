@@ -27,7 +27,8 @@ parser.add_argument('--num_worker', type=int, default=15, help='Number of CPUs')
 args, unknown = parser.parse_known_args()
 print(args)
 # run in local laptop:
-# $ 
+# $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
+
 START_DATE = args.start_date
 END_DATE = args.end_date
 nw:int = min(args.num_worker, multiprocessing.cpu_count()) # def: 8
