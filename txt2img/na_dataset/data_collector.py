@@ -21,13 +21,14 @@ parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', type=str, default="1890-01-01", help='Dataset DIR')
 parser.add_argument('--end_date', type=str, default="1960-01-01", help='Dataset DIR')
-parser.add_argument('--num_worker', type=int, default=15, help='Number of CPUs')
+parser.add_argument('--num_worker', type=int, default=8, help='Number of CPUs')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 print(args)
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
+# $ nohup python data_collector.py -u --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> na_image_download.out &
 
 START_DATE = args.start_date
 END_DATE = args.end_date
@@ -538,8 +539,11 @@ def main():
 	na_df_merged.to_csv(os.path.join(RESULT_DIRECTORY, "na.csv"), index=False)
 
 	# Save as Excel
-	na_df_merged.to_excel(os.path.join(RESULT_DIRECTORY, "na.xlsx"), index=False)
-
+	try:
+		na_df_merged.to_excel(os.path.join(RESULT_DIRECTORY, "na.xlsx"), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
+		
 	get_images(df=na_df_merged)
 
 if __name__ == '__main__':
