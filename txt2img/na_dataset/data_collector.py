@@ -422,7 +422,6 @@ def main():
 	]
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi}]: {qv}")
-		qv_processed = re.sub(" ", "_", qv.lower())
 		query_all_hits = get_data(
 			url=national_archive_us_URL,
 			st_date=START_DATE,
@@ -430,6 +429,7 @@ def main():
 			query=qv.lower()
 		)
 		if query_all_hits:
+			qv_processed = re.sub(" ", "_", qv.lower())
 			df_fpth = os.path.join(RESULT_DIRECTORY, f"result_df_{START_DATE}_{END_DATE}_query_{qv_processed}.gz")
 			try:
 				df = load_pickle(fpath=df_fpth)
