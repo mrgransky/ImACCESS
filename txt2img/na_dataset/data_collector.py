@@ -125,21 +125,22 @@ def get_data(url: str="url.com", st_date: str="1914-01-01", end_date: str="1914-
 		if len(query_all_hits) == 0:
 			return
 		save_pickle(pkl=query_all_hits, fname=query_all_hits_fpth)
-	print(f"Total docs: {len(query_all_hits)} {type(query_all_hits)} found in {time.time()-t0:.2f} sec")
+	print(f"Total hit(s): {len(query_all_hits)} {type(query_all_hits)} for query: « {query} » found in {time.time()-t0:.2f} sec")
 	return query_all_hits
 
 # Function to check if the URL is valid by making a HEAD request
 def check_url_status(url: str) -> bool:
 	try:
-		response = requests.head(url, timeout=20)
+		response = requests.head(url, timeout=50)
 		# Return True only if the status code is 200 (OK)
 		return response.status_code == 200
-	except requests.RequestException as e:
+	except (requests.RequestException, Exception) as e:
 		print(f"Error accessing URL {url}: {e}")
 		return False
 
 def get_dframe(query: str="query", docs: List=[Dict]):
-	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} »...")
+	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
+	df_st_time = time.time()
 	data = []
 	for doc in docs:
 		record = doc.get('_source', {}).get('record', {})
@@ -158,14 +159,13 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 			#################################################################
 			#################################################################
 			# # with checking status_code [slower but healty URL]
-			print(f"{first_digital_object_url:<130}", end=" ")
-			st_t = time.time()
-			# status code must be 200:
-			if check_url_status(first_digital_object_url):
+			# print(f"{first_digital_object_url:<140}", end=" ")
+			# st_t = time.time()
+			if check_url_status(first_digital_object_url): # status code must be 200!
 				first_digital_object_url = first_digital_object_url
 			else:
 				first_digital_object_url = None
-			print(f"Elapsed_t: {time.time()-st_t:.1f} sec")
+			# print(f"{time.time()-st_t:.2f} s")
 			#################################################################
 		else:
 			first_digital_object_url = None
@@ -174,14 +174,14 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 			'query': query,
 			'title': record.get('title'),
 			'scopeandContentNote': record.get('scopeandContentNote'),
-			'totalDigitalObjects': fields.get('totalDigitalObjects', [0])[0],
 			'firstDigitalObjectUrl': first_digital_object_url,
 			'productionDates': pDate,
+			'totalDigitalObjects': fields.get('totalDigitalObjects', [0])[0],
 			# 'firstDigitalObjectType': fields.get('firstDigitalObject', [{}])[0].get('objectType'),
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
-	print(df.shape, type(df))
+	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
 	return df
 
 # Function to download images with retry mechanism and resuming feature
@@ -237,33 +237,25 @@ def main():
 	national_archive_us_URL: str = "https://catalog.archives.gov/proxy/records/search"
 	dfs = []
 	all_query_tags = [
-		"Power Plant",
+		"Ballistic missile",
+		"flame thrower",
+		"flamethrower",
+		"refugee",
 		"shovel",
-		"Winter camp",
 		"Wreck",
-		# "Infantry camp",
-		# "swimming camp",
-		# "fishing camp",
-		# "construction camp",
-		# "Trailer camp",
+		"Power Plant",
+		"Winter camp",
 		"road construction",
 		"rail construction",
 		"dam construction",
-		# "tunnel construction",
 		"Helicopter",
 		"Manufacturing Plant",
 		"naval aircraft factory",
 		"naval air station",
 		"naval air base",
-		"refugee",
 		"terminal",
 		"holocaust",
-		# "Defence",
-		# "Accident",
 		"trench warfare",
-		"air force base",
-		"air force station",
-		"air force personnel",
 		"explosion",
 		"soldier",
 		"Submarine",
@@ -274,103 +266,116 @@ def main():
 		"graveyard",
 		"bayonet",
 		"war bond",
-		"conspiracy theory",
-		"Manhattan Project",
-		"Eastern Front",
-		"Animal",
-		"Rifle",
-		"barrel",
-		"Air bomb",
+		"air force base",
+		"air force personnel",
+		"air force station",
+		# "conspiracy theory",
+		# "Manhattan Project",
+		# "Eastern Front",
+		# "Animal",
+		# "Rifle",
+		# "barrel",
+		# "Air bomb",
+		# "Machine Gun",
+		# "Mortar Gun",
+		# "air raid",
+		# "Artillery",
+		# "surge tank",
+		# "Water Tank",
+		# "Anti tank",
+		# "Anti Aircraft",
+		# "plane",
+		# "aeroplane",
+		# "airplane",
+		# "soviet union",
+		# "rationing",
+		# "Grenade",
+		# "cannon",
+		# "Navy Officer",
+		# "Rocket",
+		# "prisoner",
+		# "weapon",
+		# "Aviator",
+		# "Parade",
+		# "flag",
+		# "Aerial warfare",
+		# "military truck",
+		# "army truck",
+		# "army vehicle",
+		# "military vehicle",
+		# "Storehouse",
+		# "Aerial View",
+		# "Ambulance",
+		# "Destruction",
+		# "Army Base",
+		# "Army hospital",
+		# "Military Base",
+		# "Border",
+		# "Army Recruiting",
+		# "Game",
+		# "military leader",
+		# "museum",
+		# "board meeting",
+		# "nato",
+		# "commander",
+		# "Sergeant",
+		# "Admiral",
+		# "Bombing Attack",
+		# "Battle Monument",
+		# "clash",
+		# "strike",
+		# "damage",
+		# "leisure",
+		# "airport",
+		# "Battle of the Bulge",
+		# "Barn",
+		# "Anniversary",
+		# "Delegate",
+		# "exile",
+		# "evacuation",
+		# "Military Aviation",
+		# "Coast Guard",
+		# "Naval Vessel",
+		# "warship",
+		# "Infantry",
+		# "Tunnel",
+		# "Civilian",
+		# "Medical aid",
+		# "bombardment",
+		# "ambassador",
+		# "projectile",
+		# "helmet",
+		# "Alliance",
+		# "Treaty of Versailles",
+		# "enemy territory",
+		# "reconnaissance",
+		# "nurse",
+		# "doctor",
+		# "military hospital",
+		# "Atomic Bomb",
+		# "embassy",
+		# "ship deck",
+		# "Red cross worker",
+		# "#######################################",
+		# "Infantry camp",
+		# "swimming camp",
+		# "fishing camp",
+		# "construction camp",
+		# "Trailer camp",
+		# "tunnel construction",
+		# "Defence",
+		# "Accident",
 		# "Ballon Gun",
-		"Machine Gun",
-		"Mortar Gun",
-		"air raid",
-		"Artillery",
-		"Water Tank",
-		"Anti tank",
-		"Anti Aircraft",
-		"plane",
-		"aeroplane",
-		"airplane",
-		"soviet union",
-		"rationing",
-		"Grenade",
-		"cannon",
-		"Navy Officer",
-		"Rocket",
-		"prisoner",
-		"weapon",
-		"Aviator",
-		"Parade",
-		"flag",
-		"Flamethrower",
-		"Aerial warfare",
-		"military truck",
-		"army truck",
-		"army vehicle",
-		"military vehicle",
-		"Storehouse",
-		# "Truck Accident",
-		"Aerial View",
-		"Ambulance",
 		# "Construction",
-		"Destruction",
-		"Army Base",
-		"Army hospital",
-		"Military Base",
-		"Border",
-		"Army Recruiting",
+		# "Truck Accident",
 		# "Recruitment",
-		"Game",
-		"military leader",
-		"museum",
-		"board meeting",
-		"nato",
-		"commander",
-		"Sergeant",
-		"Admiral",
-		"Bombing Attack",
-		"Battle Monument",
-		"clash",
-		"strike",
-		"damage",
-		"leisure",
 		# "gun",
 		# "diplomacy",
 		# "reservoir",
 		# "infrastructure",
-		"airport",
-		"Battle of the Bulge",
-		"Barn",
-		"Anniversary",
-		"Delegate",
 		# "war strategy",
 		# "public relation",
 		# "Association Convention",
-		"exile",
-		"evacuation",
-		"Military Aviation",
-		"Coast Guard",
-		"Naval Vessel",
-		"warship",
-		"Infantry",
-		"Tunnel",
-		"Civilian",
-		"Medical aid",
-		"bombardment",
-		"ambassador",
-		"projectile",
-		"helmet",
-		"Alliance",
-		"Treaty of Versailles",
-		"enemy territory",
-		"reconnaissance",
-		"nurse",
-		"doctor",
-		"military hospital",
-		"Atomic Bomb",
-		"embassy",
-		"ship deck",
 		# "ship",
 		# "naval hospital",
 		# "hospital base",
@@ -416,7 +421,7 @@ def main():
 		# "WWII",
 	]
 	for qi, qv in enumerate(all_query_tags):
-		print(qi, qv)
+		print(f"\nQ[{qi}]: {qv}")
 		query_all_hits = get_data(
 			url=national_archive_us_URL,
 			st_date=START_DATE,
@@ -424,7 +429,12 @@ def main():
 			query=qv.lower()
 		)
 		if query_all_hits:
-			df = get_dframe(query=qv.lower(), docs=query_all_hits)
+			df_fpth = os.path.join(RESULT_DIRECTORY, f"result_df_{START_DATE}_{END_DATE}_query_{qv}.gz")
+			try:
+				df = load_pickle(fpath=df_fpth)
+			except Exception as e:
+				df = get_dframe(query=qv.lower(), docs=query_all_hits)
+				save_pickle(pkl=df, fname=df_fpth)
 			# print(df)
 			# print(df.head())
 			dfs.append(df)
@@ -444,6 +454,7 @@ def main():
 		"military base": "army base",
 		"military vehicle": "army base",
 		"military hospital": "army hospital",
+		"flame thrower": "flamethrower",
 	}
 
 	# replacement_dict = {
@@ -534,14 +545,16 @@ def main():
 
 	query_counts = na_df_merged['query'].value_counts()
 	print(query_counts.tail(25))
-	plt.figure(figsize=(18, 12))
-	query_counts.plot(kind='bar', fontsize=8)
+	plt.figure(figsize=(20, 13))
+	query_counts.plot(kind='bar', fontsize=11)
 	plt.title(f'Query Frequency (total: {query_counts.shape}) {START_DATE} - {END_DATE}')
 	plt.xlabel('Query')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
 	plt.savefig(os.path.join(RESULT_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
 
+	total_obj_counts = na_df_merged['totalDigitalObjects'].value_counts()
+	print(total_obj_counts)
 	# Save as CSV
 	na_df_merged.to_csv(os.path.join(RESULT_DIRECTORY, "na.csv"), index=False)
 
