@@ -28,7 +28,8 @@ openpose/models/*/*/*.caffemodel
 openpose/build/
 openpose/outputs/
 img2txt/*/outputs/
-txt2img/na_dataset/NA_*
+txt2img/historical_datasets/*/NA_*
+txt2img/historical_datasets/*/europeana_*
 txt2img/*zip
 txt2img/*pt
 txt2img/mscoco-it

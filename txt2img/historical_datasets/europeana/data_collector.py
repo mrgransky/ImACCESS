@@ -28,14 +28,22 @@ args, unknown = parser.parse_known_args()
 print(args)
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
-# $ nohup python data_collector.py -u --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> na_image_download.out &
+# $ nohup python data_collector.py -u --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> europeana_image_download.out &
 
 START_DATE = args.start_date
 END_DATE = args.end_date
 nw:int = min(args.num_worker, multiprocessing.cpu_count()) # def: 8
+base_api_url: str = "https://api.europeana.eu/record/v2/search.json"
+headers = {
+	'Content-type': 'application/json',
+	'Accept': 'application/json; text/plain; */*',
+	'Cache-Control': 'no-cache',
+	'Connection': 'keep-alive',
+	'Pragma': 'no-cache',
+}
 
-os.makedirs(os.path.join(args.dataset_dir, f"NA_{START_DATE}_{END_DATE}"), exist_ok=True)
-RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"NA_{START_DATE}_{END_DATE}")
+os.makedirs(os.path.join(args.dataset_dir, f"europeana_{START_DATE}_{END_DATE}"), exist_ok=True)
+RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"europeana_{START_DATE}_{END_DATE}")
 # sys.exit()
 
 def save_pickle(pkl, fname:str=""):
@@ -69,7 +77,7 @@ def load_pickle(fpath:str="unknown",):
 	print(f"Loaded in: {elpt:.3f} s | {type(pkl)} | {fsize:.3f} MB".center(130, " "))
 	return pkl
 
-def get_data(url: str="url.com", st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
+def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
 	t0 = time.time()
 	query_processed = re.sub(" ", "_", query.lower())
 	query_all_hits_fpth = os.path.join(RESULT_DIRECTORY, f"results_{st_date}_{end_date}_query_{query_processed}.gz")
@@ -78,49 +86,44 @@ def get_data(url: str="url.com", st_date: str="1914-01-01", end_date: str="1914-
 	except Exception as e:
 		print(f"{e}")
 		print(f"Collecting all docs of National Archive for Query: « {query} » ... it might take a while..")
-		headers = {
-			'Content-type': 'application/json',
-			'Accept': 'application/json; text/plain; */*',
-			'Cache-Control': 'no-cache',
-			'Connection': 'keep-alive',
-			'Pragma': 'no-cache',
-		}
 		params = {
-			"limit": 100,
-			"availableOnline": "true",
-			"dataSource": "description",
-			"endDate": end_date,
-			"levelOfDescription": "item",
-			"objectType": "jpg,png",
-			"q": query,
-			"startDate": st_date,
-			"typeOfMaterials": "Photographs and other Graphic Materials",
-			"abbreviated": "true",
-			"debug": "true",
-			"datesAgg": "TRUE"
+			'wskey': 'plaction', #'nLbaXYaiH',  # Your API key
+			'qf': [
+				'collection:photography', 
+				'TYPE:"IMAGE"', 
+				# 'contentTier:"4"', # high quality images
+				'MIME_TYPE:image/jpeg',
+				# 'LANGUAGE:en',
+			],
+			'rows': 100,
+			'query': query,
+			'reusability': 'open'
 		}
 		query_all_hits = []
-		page = 1
+		start = 1
 		while True:
 			loop_st = time.time()
-			params["page"] = page
+			params["start"] = start
 			response = requests.get(
-				url,
+				base_api_url,
 				params=params,
 				headers=headers,
 			)
 			if response.status_code == 200:
 				data = response.json()
-				hits = data.get('body').get('hits').get('hits')
-				query_all_hits.extend(hits)
-				total_hits = data.get('body').get("hits").get('total').get('value')
-				# print(json.dumps(query_all_hits, indent=2, ensure_ascii=False))
-				print(f"Page: {page}:\tFound: {len(hits)} {type(hits)}\t{len(query_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
+				if 'items' in data:
+					# Extract the 'items' field
+					hits = data['items']
+					total_hits = data['totalResults']
+					print(total_hits, len(hits))
+					query_all_hits.extend(hits)
+					# print(json.dumps(query_all_hits, indent=2, ensure_ascii=False))
+					print(f"start: {start}:\tFound: {len(hits)} {type(hits)}\t{len(query_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
 				if len(query_all_hits) >= total_hits:
 					break
-				page += 1
+				start += params.get("rows")
 			else:
-				print("Failed to retrieve data")
+				print(f"Failed to retrieve data: status_code: {response.status_code}")
 				break
 		if len(query_all_hits) == 0:
 			return
@@ -141,54 +144,82 @@ def check_url_status(url: str) -> bool:
 def get_dframe(query: str="query", docs: List=[Dict]):
 	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
 	df_st_time = time.time()
+	# Output the extracted items (metadata and descriptions of the images)
+	# for item_idx, item in enumerate(items):
+	# 	print(f"item: {item_idx}")
+	# 	# print(list(item.keys()))
+	# 	print(item.get("id"))
+	# 	print(item.get("title"))
+	# 	print(item.get("edmIsShownAt"))
+	# 	print(item.get("edmIsShownBy"))
+	# 	print(item.get("edmTimespanLabel"))
+	# 	print(item.get("language"))
+	# 	print(item.get("dataProvider"))
+	# 	print(item.get("provider"))
+	# 	print("#"*100)
+	# print(json.dumps(item, indent=2))  # Pretty-print the JSON data for each item
+	# You can process or save the 'items' data as needed
+
 	data = []
-	for doc in docs:
-		record = doc.get('_source', {}).get('record', {})
-		fields = doc.get('fields', {})
-		# print(fields.get("firstDigitalObject"))
-		# print(record.get('productionDates'))
+	# print(type(docs), len(docs))
+	for doc_idx, doc in enumerate(docs):
+		# print(doc_idx, type(doc), len(doc))
+		# print(list(doc.keys()))
+		# print(doc.get("id"))
+		# print(doc.get("title"))
+		# print(doc.get("edmIsShownAt"))
+		# print(doc.get("edmIsShownBy"))
+		# print(doc.get("edmTimespanLabel"))
+		# print(doc.get("language"))
+		# print(doc.get("dataProvider"))
+		# print(doc.get("provider"))
+		# if doc.get("dcDescription"):
+		# 	print(len(doc.get("dcDescription")), doc.get("dcDescription"))
+		# print("#"*100)
+
 		pDate = None
-		if record.get('productionDates'):
-			pDate = record.get('productionDates')[0].get("logicalDate")
-		# print(pDate)
-		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
-		if first_digital_object_url and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png')):
-			#################################################################
-			# # without checking status_code [faster but broken URL]
-			# first_digital_object_url = first_digital_object_url
-			#################################################################
-			#################################################################
-			# # with checking status_code [slower but healty URL]
-			# print(f"{first_digital_object_url:<140}", end=" ")
-			# st_t = time.time()
-			if check_url_status(first_digital_object_url): # status code must be 200!
-				first_digital_object_url = first_digital_object_url
-			else:
-				first_digital_object_url = None
-			# print(f"{time.time()-st_t:.2f} s")
-			#################################################################
-		else:
-			first_digital_object_url = None
+		if doc.get("edmTimespanLabel") and doc.get("edmTimespanLabel")[0].get("def"):
+			pDate = doc.get("edmTimespanLabel")[0].get("def")
+		# print(pDate, doc.get("year"))
+		# first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
+		# if first_digital_object_url and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png')):
+		# 	#################################################################
+		# 	# # without checking status_code [faster but broken URL]
+		# 	# first_digital_object_url = first_digital_object_url
+		# 	#################################################################
+		# 	#################################################################
+		# 	# # with checking status_code [slower but healty URL]
+		# 	# print(f"{first_digital_object_url:<140}", end=" ")
+		# 	# st_t = time.time()
+		# 	if check_url_status(first_digital_object_url): # status code must be 200!
+		# 		first_digital_object_url = first_digital_object_url
+		# 	else:
+		# 		first_digital_object_url = None
+		# 	# print(f"{time.time()-st_t:.2f} s")
+		# 	#################################################################
+		# else:
+		# 	first_digital_object_url = None
 		row = {
-			'naId': record.get('naId'),
+			'id': doc.get("id"),
 			'query': query,
-			'title': record.get('title'),
-			'scopeandContentNote': record.get('scopeandContentNote'),
-			'firstDigitalObjectUrl': first_digital_object_url,
-			'productionDates': pDate,
-			'totalDigitalObjects': fields.get('totalDigitalObjects', [0])[0],
+			'title': doc.get("title"),
+			'description': doc.get("dcDescription"),
+			'img_url': doc.get("edmIsShownBy")[0],
+			'date': pDate,
+			# 'totalDigitalObjects': fields.get('totalDigitalObjects', [0])[0],
 			# 'firstDigitalObjectType': fields.get('firstDigitalObject', [{}])[0].get('objectType'),
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
 	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
+	print(df.head(10))
 	return df
 
 # Function to download images with retry mechanism and resuming feature
 def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5):
 	t0 = time.time()
 	rIdx = row.name
-	url = row['firstDigitalObjectUrl']
+	url = row['img_url']
 	image_name = str(row['naId']) + os.path.splitext(url)[1]
 	image_path = os.path.join(image_dir, image_name)
 	# Check if the image already exists to avoid redownloading
@@ -234,7 +265,6 @@ def get_images(df):
 	print(f"Total number of images downloaded: {len(os.listdir(IMAGE_DIR))}")
 
 def main():
-	national_archive_us_URL: str = "https://catalog.archives.gov/proxy/records/search"
 	dfs = []
 	all_query_tags = [
 		"Ballistic missile",
@@ -348,7 +378,7 @@ def main():
 		"enemy territory",
 		"reconnaissance",
 		"nurse",
-		"doctor",
+		"navy doctor",
 		"military hospital",
 		"Atomic Bomb",
 		"embassy",
@@ -420,10 +450,11 @@ def main():
 		# "WWI",
 		# "WWII",
 	]
+	# all_query_tags = list(set(all_query_tags))
+	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi}]: {qv}")
 		query_all_hits = get_data(
-			url=national_archive_us_URL,
 			st_date=START_DATE,
 			end_date=END_DATE,
 			query=qv.lower()
@@ -442,7 +473,7 @@ def main():
 
 	print(f"Concatinating {len(dfs)} dfs...")
 	# print(dfs[0])
-	na_df_merged = pd.concat(dfs, ignore_index=True)
+	europeana_df_merged = pd.concat(dfs, ignore_index=True)
 	replacement_dict = {
 		"plane": "aircraft",
 		"airplane": "aircraft",
@@ -537,14 +568,14 @@ def main():
 	# 	"defence": "strategy",
 	# }
 
-	na_df_merged['query'] = na_df_merged['query'].replace(replacement_dict)
-	na_df_merged = na_df_merged.dropna(subset=['firstDigitalObjectUrl']) # drop None firstDigitalObjectUrl
-	na_df_merged = na_df_merged.drop_duplicates(subset=['firstDigitalObjectUrl']) # drop duplicate firstDigitalObjectUrl
+	europeana_df_merged['query'] = europeana_df_merged['query'].replace(replacement_dict)
+	europeana_df_merged = europeana_df_merged.dropna(subset=['img_url']) # drop None firstDigitalObjectUrl
+	europeana_df_merged = europeana_df_merged.drop_duplicates(subset=['img_url']) # drop duplicate firstDigitalObjectUrl
 
-	print(f"na_df_merged: {na_df_merged.shape}")
-	print(na_df_merged.head(20))
+	print(f"europeana_df_merged: {europeana_df_merged.shape}")
+	print(europeana_df_merged.head(20))
 
-	query_counts = na_df_merged['query'].value_counts()
+	query_counts = europeana_df_merged['query'].value_counts()
 	print(query_counts.tail(25))
 	plt.figure(figsize=(20, 13))
 	query_counts.plot(kind='bar', fontsize=11)
@@ -554,18 +585,65 @@ def main():
 	plt.tight_layout()
 	plt.savefig(os.path.join(RESULT_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
 
-	total_obj_counts = na_df_merged['totalDigitalObjects'].value_counts()
-	print(total_obj_counts)
+	# total_obj_counts = europeana_df_merged['totalDigitalObjects'].value_counts()
+	# print(total_obj_counts)
+
 	# Save as CSV
-	na_df_merged.to_csv(os.path.join(RESULT_DIRECTORY, "na.csv"), index=False)
+	europeana_df_merged.to_csv(os.path.join(RESULT_DIRECTORY, "europeana.csv"), index=False)
 
 	# Save as Excel
 	try:
-		na_df_merged.to_excel(os.path.join(RESULT_DIRECTORY, "na.xlsx"), index=False)
+		europeana_df_merged.to_excel(os.path.join(RESULT_DIRECTORY, "europeana.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	get_images(df=na_df_merged)
+	# get_images(df=europeana_df_merged)
+
+def test():
+	query = "bombing"
+	params = {
+		'wskey': 'nLbaXYaiH',  # Your API key
+		'qf': [
+			'collection:photography', 
+			'TYPE:"IMAGE"', 
+			# 'contentTier:"4"', # high quality images
+			'MIME_TYPE:image/jpeg',
+		],
+		'rows': 100,
+		'query': query,
+		'reusability': 'open'
+	}
+	# Send a GET request to the API
+	response = requests.get(base_api_url, params=params)
+	# Check if the request was successful
+	if response.status_code == 200:
+		# Parse the JSON response
+		data = response.json()	
+		# Check if the 'items' field exists
+		if 'items' in data:
+			# Extract the 'items' field
+			items = data['items']
+			tot_results = data['totalResults']
+			print(tot_results, len(items))
+			# Output the extracted items (metadata and descriptions of the images)
+			# for item_idx, item in enumerate(items):
+			# 	print(f"item: {item_idx}")
+			# 	# print(list(item.keys()))
+			# 	print(item.get("id"))
+			# 	print(item.get("title"))
+			# 	print(item.get("edmIsShownAt"))
+			# 	print(item.get("edmIsShownBy"))
+			# 	print(item.get("edmTimespanLabel"))
+			# 	print(item.get("language"))
+			# 	print(item.get("dataProvider"))
+			# 	print(item.get("provider"))
+			# 	print("#"*100)
+				# print(json.dumps(item, indent=2))  # Pretty-print the JSON data for each item
+			# You can process or save the 'items' data as needed
+		else:
+			print("No 'items' found in the response.")
+	else:
+		print(f"Request failed with status code {response.status_code}")
 
 if __name__ == '__main__':
 	print(
@@ -574,6 +652,7 @@ if __name__ == '__main__':
 	)
 	START_EXECUTION_TIME = time.time()
 	main()
+	# test()
 	END_EXECUTION_TIME = time.time()
 	print(
 		f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
