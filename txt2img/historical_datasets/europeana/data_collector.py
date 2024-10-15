@@ -32,6 +32,7 @@ print(args)
 
 START_DATE = args.start_date
 END_DATE = args.end_date
+dataset_name = "europeana"
 nw:int = min(args.num_worker, multiprocessing.cpu_count()) # def: 8
 base_api_url: str = "https://api.europeana.eu/record/v2/search.json"
 headers = {
@@ -579,7 +580,7 @@ def main():
 	print(query_counts.tail(25))
 	plt.figure(figsize=(20, 13))
 	query_counts.plot(kind='bar', fontsize=11)
-	plt.title(f'Query Frequency (total: {query_counts.shape}) {START_DATE} - {END_DATE}')
+	plt.title(f'{dataset_name}: Query Frequency (total: {query_counts.shape}) {START_DATE} - {END_DATE}')
 	plt.xlabel('Query')
 	plt.ylabel('Frequency')
 	plt.tight_layout()

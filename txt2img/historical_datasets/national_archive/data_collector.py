@@ -33,7 +33,7 @@ print(args)
 START_DATE = args.start_date
 END_DATE = args.end_date
 nw:int = min(args.num_worker, multiprocessing.cpu_count()) # def: 8
-
+dataset_name = "NATIONAL_ARCHIVE"
 os.makedirs(os.path.join(args.dataset_dir, f"NA_{START_DATE}_{END_DATE}"), exist_ok=True)
 RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"NA_{START_DATE}_{END_DATE}")
 # sys.exit()
@@ -550,7 +550,7 @@ def main():
 	print(query_counts.tail(25))
 	plt.figure(figsize=(20, 13))
 	query_counts.plot(kind='bar', fontsize=11)
-	plt.title(f'Query Frequency (total: {query_counts.shape}) {START_DATE} - {END_DATE}')
+	plt.title(f'{dataset_name}: Query Frequency (total: {query_counts.shape}) {START_DATE} - {END_DATE}')
 	plt.xlabel('Query')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
