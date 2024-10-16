@@ -39,7 +39,8 @@ useless_collection_terms = [
 	"Cartoon Collection", 
 	"Posters", 
 	"Tools and Machinery",
-	"Public Roads of the Past",	
+	"Public Roads of the Past",
+	"Government Reports",
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
@@ -101,9 +102,9 @@ def get_data(url: str="url.com", st_date: str="1914-01-01", end_date: str="1914-
 			"q": query,
 			"startDate": st_date,
 			"typeOfMaterials": "Photographs and other Graphic Materials",
-			# "abbreviated": "true",
-			# "debug": "true",
-			# "datesAgg": "TRUE"
+			"abbreviated": "true",
+			"debug": "true",
+			"datesAgg": "TRUE"
 		}
 		query_all_hits = []
 		page = 1
@@ -118,9 +119,11 @@ def get_data(url: str="url.com", st_date: str="1914-01-01", end_date: str="1914-
 			if response.status_code == 200:
 				data = response.json()
 				hits = data.get('body').get('hits').get('hits')
+				# print(len(hits), type(hits))
+				# print(hits[0].keys())
+				# print(json.dumps(hits[0], indent=2, ensure_ascii=False))
 				query_all_hits.extend(hits)
 				total_hits = data.get('body').get("hits").get('total').get('value')
-				# print(json.dumps(query_all_hits, indent=2, ensure_ascii=False))
 				print(f"Page: {page}:\tFound: {len(hits)} {type(hits)}\t{len(query_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
 				if len(query_all_hits) >= total_hits:
 					break
@@ -157,14 +160,20 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 	df_st_time = time.time()
 	data = []
 	for doc in docs:
+		# print(list(doc.keys()))
+		# print(json.dumps(doc, indent=2, ensure_ascii=False))
 		record = doc.get('_source', {}).get('record', {})
 		fields = doc.get('fields', {})
 		title = record.get('title') if record.get('title') != "Untitled" else None
+		na_identifier = record.get('naId')
 		# print(title, "Map of" in title, "Drawing of" in title)
 		pDate = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
+		# print(doc.get('fields'))
+		# print(fields.get('firstDigitalObject'))
 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
 		ancesstor_collections = [f"{itm.get('title')}" for itm in record.get('ancestors')] # record.get('ancestors'): list of dict
 		# print(ancesstor_collections)
+		# print(na_identifier, title, first_digital_object_url, is_desired(ancesstor_collections, useless_collection_terms), pDate)
 		if first_digital_object_url and is_desired(ancesstor_collections, useless_collection_terms) and ("Map of" not in title or "Drawing of" not in title) and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png')):
 			#################################################################
 			# # without checking status_code [faster but broken URL]
@@ -183,7 +192,7 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 		else:
 			first_digital_object_url = None
 		row = {
-			'id': record.get('naId'),
+			'id': na_identifier,
 			'query': query,
 			'title': title,
 			'description': record.get('scopeandContentNote'),
@@ -251,7 +260,6 @@ def main():
 		"Ballistic missile",
 		"flame thrower",
 		"flamethrower",
-		"refugee",
 		"shovel",
 		"Wreck",
 		"Power Plant",
@@ -381,9 +389,7 @@ def main():
 		"Trailer camp",
 		"tunnel construction",
 		"Defence",
-		"Accident",
 		"Ballon Gun",
-		"Construction",
 		"Recruitment",
 		"gun",
 		"diplomacy",
@@ -412,17 +418,20 @@ def main():
 		"Diesel truck",
 		"Maintenance Truck",
 		"Clinic Truck",
-		"Truck",
 		"Truck Accident",
 		"military truck",
 		"army truck",
 		"vice president",
-		"president",
 		"Atomic Bombing",
 		"Battle of the Marne",
 		"Anti Aircraft Gun",
 		"Anti aircraft warfare",
 		"Battle of the Marne",
+		"Accident",
+		"Truck",
+		"Construction",
+		"refugee",
+		"president",
 		# "#######################################",
 		# "vehicular",
 		# "Firearm",
@@ -440,7 +449,8 @@ def main():
 		# "WWI",
 		# "WWII",
 	]
-	all_query_tags = natsorted(list(set(all_query_tags)))
+	# all_query_tags = natsorted(list(set(all_query_tags)))
+	all_query_tags = list(set(all_query_tags))
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi}]: {qv}")
@@ -458,8 +468,7 @@ def main():
 			except Exception as e:
 				df = get_dframe(query=qv.lower(), docs=query_all_hits)
 				save_pickle(pkl=df, fname=df_fpth)
-			# print(df)
-			# print(df.head())
+			print(df.head(10))
 			dfs.append(df)
 
 	print(f"Concatinating {len(dfs)} dfs...")
