@@ -36,10 +36,10 @@ END_DATE = args.end_date
 nw:int = min(args.num_worker, multiprocessing.cpu_count()) # def: 8
 dataset_name = "NATIONAL_ARCHIVE"
 useless_collection_terms = [
-	"Cartoon Collection", 
+	"Cartoon", 
 	"Posters", 
 	"Tools and Machinery",
-	"Public Roads of the Past",
+	"Roads of the Past",
 	"Government Reports",
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
