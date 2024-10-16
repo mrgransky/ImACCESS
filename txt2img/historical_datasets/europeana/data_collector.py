@@ -10,6 +10,7 @@ import sys
 import datetime
 import re
 from typing import List, Dict
+from natsort import natsorted
 import matplotlib.pyplot as plt
 import seaborn as sns
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -88,7 +89,8 @@ def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="
 		print(f"{e}")
 		print(f"Collecting all docs of National Archive for Query: « {query} » ... it might take a while..")
 		params = {
-			'wskey': 'plaction', #'nLbaXYaiH',  # Your API key
+			# 'wskey': 'plaction', #'nLbaXYaiH',  # Your API key
+			'wskey': 'nLbaXYaiH',  # original API key
 			'qf': [
 				'collection:photography', 
 				'TYPE:"IMAGE"', 
@@ -213,7 +215,7 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 		data.append(row)
 	df = pd.DataFrame(data)
 	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
-	print(df.head(10))
+	# print(df.head(10))
 	return df
 
 # Function to download images with retry mechanism and resuming feature
@@ -221,7 +223,7 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 	t0 = time.time()
 	rIdx = row.name
 	url = row['img_url']
-	image_name = str(row['naId']) + os.path.splitext(url)[1]
+	image_name = re.sub("/", "LBL", row['id']) # str(row['id']) + os.path.splitext(url)[1]
 	image_path = os.path.join(image_dir, image_name)
 	# Check if the image already exists to avoid redownloading
 	if os.path.exists(image_path):
@@ -237,7 +239,7 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 			# Save the image to the directory
 			with open(image_path, 'wb') as f:
 				f.write(response.content)
-			print(f"[{rIdx}/{total_rows}] Saved {image_name}\t\t\tin:\t{time.time()-t0:.1f} sec")
+			print(f"[{rIdx}/{total_rows}] Saved {image_name:<85}in: {time.time()-t0:.1f} S")
 			return image_name
 		except (RequestException, IOError) as e:
 			attempt += 1
@@ -451,7 +453,7 @@ def main():
 		# "WWI",
 		# "WWII",
 	]
-	# all_query_tags = list(set(all_query_tags))
+	all_query_tags = natsorted(list(set(all_query_tags)))
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi}]: {qv}")
@@ -586,9 +588,6 @@ def main():
 	plt.tight_layout()
 	plt.savefig(os.path.join(RESULT_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
 
-	# total_obj_counts = europeana_df_merged['totalDigitalObjects'].value_counts()
-	# print(total_obj_counts)
-
 	# Save as CSV
 	europeana_df_merged.to_csv(os.path.join(RESULT_DIRECTORY, "europeana.csv"), index=False)
 
@@ -598,7 +597,7 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	# get_images(df=europeana_df_merged)
+	get_images(df=europeana_df_merged)
 
 def test():
 	query = "bombing"

@@ -10,6 +10,7 @@ import sys
 import datetime
 import re
 from typing import List, Dict
+from natsort import natsorted
 import matplotlib.pyplot as plt
 import seaborn as sns
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,8 +20,8 @@ import argparse
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
-parser.add_argument('--start_date', type=str, default="1890-01-01", help='Dataset DIR')
-parser.add_argument('--end_date', type=str, default="1890-01-02", help='Dataset DIR')
+parser.add_argument('--start_date', type=str, default="1933-01-01", help='Dataset DIR')
+parser.add_argument('--end_date', type=str, default="1933-01-02", help='Dataset DIR')
 parser.add_argument('--num_worker', type=int, default=8, help='Number of CPUs')
 
 # args = parser.parse_args()
@@ -34,9 +35,14 @@ START_DATE = args.start_date
 END_DATE = args.end_date
 nw:int = min(args.num_worker, multiprocessing.cpu_count()) # def: 8
 dataset_name = "NATIONAL_ARCHIVE"
-os.makedirs(os.path.join(args.dataset_dir, f"NA_{START_DATE}_{END_DATE}"), exist_ok=True)
-RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"NA_{START_DATE}_{END_DATE}")
-# sys.exit()
+useless_collection_terms = [
+	"Cartoon Collection", 
+	"Posters", 
+	"Tools and Machinery",
+	"Public Roads of the Past",	
+]
+os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
+RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
 
 def save_pickle(pkl, fname:str=""):
 	print(f"\nSaving {type(pkl)}\n{fname}")
@@ -95,9 +101,9 @@ def get_data(url: str="url.com", st_date: str="1914-01-01", end_date: str="1914-
 			"q": query,
 			"startDate": st_date,
 			"typeOfMaterials": "Photographs and other Graphic Materials",
-			"abbreviated": "true",
-			"debug": "true",
-			"datesAgg": "TRUE"
+			# "abbreviated": "true",
+			# "debug": "true",
+			# "datesAgg": "TRUE"
 		}
 		query_all_hits = []
 		page = 1
@@ -128,7 +134,6 @@ def get_data(url: str="url.com", st_date: str="1914-01-01", end_date: str="1914-
 	print(f"Total hit(s): {len(query_all_hits)} {type(query_all_hits)} for query: « {query} » found in {time.time()-t0:.2f} sec")
 	return query_all_hits
 
-# Function to check if the URL is valid by making a HEAD request
 def check_url_status(url: str) -> bool:
 	try:
 		response = requests.head(url, timeout=50)
@@ -138,6 +143,15 @@ def check_url_status(url: str) -> bool:
 		print(f"Error accessing URL {url}: {e}")
 		return False
 
+def is_desired(collections, useless_terms):
+	for term in useless_terms:
+		for collection in collections:
+			if term in collection:
+				print(f"\t> XXXX found '{term}', => skipping! XXXX <")
+				return False
+	# print(f"clean collections: {collections}")
+	return True
+
 def get_dframe(query: str="query", docs: List=[Dict]):
 	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
 	df_st_time = time.time()
@@ -145,14 +159,13 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 	for doc in docs:
 		record = doc.get('_source', {}).get('record', {})
 		fields = doc.get('fields', {})
-		# print(fields.get("firstDigitalObject"))
-		# print(record.get('productionDates'))
-		pDate = None
-		if record.get('productionDates'):
-			pDate = record.get('productionDates')[0].get("logicalDate")
-		# print(pDate)
+		title = record.get('title') if record.get('title') != "Untitled" else None
+		# print(title, "Map of" in title, "Drawing of" in title)
+		pDate = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
-		if first_digital_object_url and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png')):
+		ancesstor_collections = [f"{itm.get('title')}" for itm in record.get('ancestors')] # record.get('ancestors'): list of dict
+		# print(ancesstor_collections)
+		if first_digital_object_url and is_desired(ancesstor_collections, useless_collection_terms) and ("Map of" not in title or "Drawing of" not in title) and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png')):
 			#################################################################
 			# # without checking status_code [faster but broken URL]
 			# first_digital_object_url = first_digital_object_url
@@ -172,7 +185,7 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 		row = {
 			'id': record.get('naId'),
 			'query': query,
-			'title': record.get('title'),
+			'title': title,
 			'description': record.get('scopeandContentNote'),
 			'img_url': first_digital_object_url,
 			'date': pDate,
@@ -184,7 +197,6 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
 	return df
 
-# Function to download images with retry mechanism and resuming feature
 def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5):
 	t0 = time.time()
 	rIdx = row.name
@@ -214,7 +226,6 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 	print(f"[{rIdx}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
 	return None
 
-# Main function to download all images
 def get_images(df):
 	print(f"Saving images of {df.shape[0]} records using {nw} CPUs...")
 	# Create the directory if it doesn't exist
@@ -276,6 +287,16 @@ def main():
 		"Machine Gun",
 		"Mortar Gun",
 		"air raid",
+		"flag",
+		"Massacre",
+		"Military Aviation",
+		"evacuation",
+		"Naval Vessel",
+		"warship",
+		"Infantry",
+		"Tunnel",
+		"Roadbuilding",
+		# "Coast Guard",
 		# "conspiracy theory",
 		# "Manhattan Project",
 		# "Eastern Front",
@@ -297,7 +318,6 @@ def main():
 		# "weapon",
 		# "Aviator",
 		# "Parade",
-		# "flag",
 		# "Aerial warfare",
 		# "army vehicle",
 		# "military vehicle",
@@ -330,8 +350,8 @@ def main():
 		# "Anniversary",
 		# "Delegate",
 		# "exile",
-		# "evacuation",
 		# "Military Aviation",
+		# "evacuation",
 		# "Coast Guard",
 		# "Naval Vessel",
 		# "warship",
@@ -420,7 +440,7 @@ def main():
 		# "WWI",
 		# "WWII",
 	]
-	all_query_tags = list(set(all_query_tags))
+	all_query_tags = natsorted(list(set(all_query_tags)))
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi}]: {qv}")
@@ -453,11 +473,13 @@ def main():
 		"soldier": "infantry",
 		"clash": "wreck",
 		"game": "leisure",
+		"sport": "leisure",
 		"military truck": "army truck",
 		"military base": "army base",
 		"military vehicle": "army base",
 		"military hospital": "army hospital",
 		"flame thrower": "flamethrower",
+		"roadbuilding": "road construction",
 	}
 
 	# replacement_dict = {
@@ -539,11 +561,12 @@ def main():
 	# 	"defence": "strategy",
 	# }
 
+	print(f"pre-processing merged {type(na_df_merged)} {na_df_merged.shape}")
 	na_df_merged['query'] = na_df_merged['query'].replace(replacement_dict)
 	na_df_merged = na_df_merged.dropna(subset=['img_url']) # drop None img_url
 	na_df_merged = na_df_merged.drop_duplicates(subset=['img_url']) # drop duplicate img_url
 
-	print(f"na_df_merged: {na_df_merged.shape}")
+	print(f"Processed na_df_merged: {na_df_merged.shape}")
 	print(na_df_merged.head(20))
 
 	query_counts = na_df_merged['query'].value_counts()
