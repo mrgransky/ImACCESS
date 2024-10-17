@@ -30,6 +30,8 @@ print(args)
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
 # $ nohup python data_collector.py -u --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> na_image_download.out &
+HOME: str = os.getenv('HOME') # echo $HOME
+USER: str = os.getenv('USER') # echo $USER
 
 na_api_base_url: str = "https://catalog.archives.gov/proxy/records/search"
 START_DATE = args.start_date
@@ -43,6 +45,7 @@ useless_collection_terms = [
 	"Tools and Machinery",
 	"Roads of the Past",
 	"Government Reports",
+	"Art by",
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
@@ -247,6 +250,8 @@ def get_synchronized_df_img(df):
 def main():	
 	dfs = []
 	all_query_tags = [
+		"Sailboat",
+		"regatta",
 		"ballistic missile",
 		"flame thrower",
 		"flamethrower",
@@ -282,7 +287,6 @@ def main():
 		"air raid",
 		"Flag Raising",
 		"Massacre",
-		"Military Aviation",
 		"evacuation",
 		"warship",
 		"Infantry",
@@ -308,7 +312,6 @@ def main():
 		"Aviator",
 		"Parade",
 		"army vehicle",
-		"military vehicle",
 		"Storehouse",
 		"Aerial View",
 		"Aerial warfare",
@@ -317,6 +320,8 @@ def main():
 		"Army hospital",
 		"Military Base",
 		"military leader",
+		"military vehicle",
+		"Military Aviation",
 		"museum",
 		"board meeting",
 		"commander",
@@ -333,7 +338,6 @@ def main():
 		"Anniversary",
 		"Delegate",
 		"exile",
-		"Military Aviation",
 		"evacuation",
 		"Coast Guard",
 		"Naval Vessel",
@@ -395,7 +399,7 @@ def main():
 		"Atomic Bomb",
 		"Air bomb",
 		"fighter bomber",
-		"Battle of the Marne",
+		"Pearl Harbor attack",
 		"anti tank",
 		"anti aircraft",
 		"Battle of the Marne",
@@ -414,7 +418,6 @@ def main():
 		"Truck",
 		"hospital",
 		"Tunnel",
-		"Pearl Harbor attack",
 		"pasture",
 		"farm",
 		"allied invasion",
@@ -424,35 +427,11 @@ def main():
 		"Minesweeper",
 		"Ceremony",
 		"Memorial day",
-		# "#######################################",
-		# "summit",
-		# "construction",
-		# "Destruction",
-		# "Nazi victim", # very few results
-		# "Alliance",
-		# "nato", # established 4.4.1949
-		# "diplomacy",
-		# "veteran",
-		# "Association Convention",
-		# "propaganda",
-		# "war strategy",
-		# "vehicular",
-		# "Firearm",
-		# "exodus",
-		# "information warfare",
-		# "negotiation",
-		# "Blitzkrieg",
-		# "Combined arm",
-		# "Combat arm",
-		# "surrender", # meaningless images
-		# "army",
-		# "world war",
-		# "WWI",
-		# "WWII",
 	]
 	# all_query_tags = natsorted(list(set(all_query_tags)))
 	# all_query_tags = list(set(all_query_tags))[:5]
-	all_query_tags = all_query_tags#[:10]
+	if USER=="farid": # local laptop
+		all_query_tags = all_query_tags[:10]
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")
@@ -476,6 +455,7 @@ def main():
 	# print(dfs[0])
 	na_df_merged_raw = pd.concat(dfs, ignore_index=True)
 	replacement_dict = {
+		"regatta": "sailboat",
 		"normandy invasion": "allied invasion",
 		"plane": "aircraft",
 		"airplane": "aircraft",
