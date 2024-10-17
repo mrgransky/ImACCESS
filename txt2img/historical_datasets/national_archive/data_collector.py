@@ -206,23 +206,18 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 		try:
 			response = session.get(url, timeout=20)
 			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
-			
-			# Save the image to the directory
-			with open(image_path, 'wb') as f:
+			with open(image_path, 'wb') as f: # Save the image to the directory
 				f.write(response.content)
-			
-			print(f"[{rIdx}/{total_rows}] Saved {image_name} in {time.time() - t0:.1f} sec")
+			print(f"[{rIdx}/{total_rows}] Saved {image_name:>30} in {time.time() - t0:.1f} s")
 			return True  # Image downloaded successfully
 		except (RequestException, IOError) as e:
 			attempt += 1
 			print(f"[{rIdx}/{total_rows}] Downloading {image_name} failed! {e}, retrying ({attempt}/{retries})...")
 			time.sleep(backoff_factor * (2 ** attempt))  # Exponential backoff
-
-	# After retries, the download failed
 	print(f"[{rIdx}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
-	return False  # Indicate that the download failed
+	return False  # Indicate failed download
 
-def get_images(df):
+def get_synchronized_df_img(df):
 	print(f"Saving images of {df.shape[0]} records using {nw} CPUs...")
 	os.makedirs(os.path.join(RESULT_DIRECTORY, "images"), exist_ok=True)
 	IMAGE_DIR = os.path.join(RESULT_DIRECTORY, "images")
@@ -242,7 +237,7 @@ def get_images(df):
 					print(f"Unexpected error: {e}")
 
 	# Filter the DataFrame to keep only the successfully downloaded rows
-	print(f"cleaning {type(df)} {df.shape} with {successful_rows} succeded downloaded images [functional URL]...")
+	print(f"cleaning {type(df)} {df.shape} with {len(successful_rows)} succeded downloaded images [functional URL]...")
 	df_cleaned = df.loc[successful_rows]
 	print(f"Total images downloaded successfully: {len(successful_rows)} out of {df.shape[0]}")
 	# Return the cleaned DataFrame
@@ -339,15 +334,14 @@ def main():
 		"soldier",
 		"Submarine",
 		"Manufacturing Plant",
-		# "naval aircraft factory",
-		# "road construction",
-		# "rail construction",
-		# "dam construction",
-		# "tunnel construction",
-		# "allied force",
-		# "propaganda",
-		# "cemetery",
-		# "graveyard",
+		"naval aircraft factory",
+		"road construction",
+		"rail construction",
+		"dam construction",
+		"tunnel construction",
+		"allied force",
+		"cemetery",
+		"graveyard",
 		# "bayonet",
 		# "war bond",
 		# "air force base",
@@ -501,6 +495,7 @@ def main():
 		# "hospital",
 		# "Tunnel",
 		# "#######################################",
+		# "propaganda",
 		# "war strategy",
 		# "vehicular",
 		# "Firearm",
@@ -541,7 +536,7 @@ def main():
 
 	print(f"Concatinating {len(dfs)} dfs...")
 	# print(dfs[0])
-	na_df_merged = pd.concat(dfs, ignore_index=True)
+	na_df_merged_raw = pd.concat(dfs, ignore_index=True)
 	replacement_dict = {
 		"plane": "aircraft",
 		"airplane": "aircraft",
@@ -639,15 +634,23 @@ def main():
 	# 	"defence": "strategy",
 	# }
 
-	print(f"pre-processing merged {type(na_df_merged)} {na_df_merged.shape}")
-	na_df_merged['query'] = na_df_merged['query'].replace(replacement_dict)
-	na_df_merged = na_df_merged.dropna(subset=['img_url']) # drop None img_url
-	na_df_merged = na_df_merged.drop_duplicates(subset=['img_url']) # drop duplicate img_url
+	print(f"pre-processing merged {type(na_df_merged_raw)} {na_df_merged_raw.shape}")
+	na_df_merged_raw['query'] = na_df_merged_raw['query'].replace(replacement_dict)
+	na_df_merged_raw = na_df_merged_raw.dropna(subset=['img_url']) # drop None img_url
+	na_df_merged_raw = na_df_merged_raw.drop_duplicates(subset=['img_url']) # drop duplicate img_url
 
-	print(f"Processed na_df_merged: {na_df_merged.shape}")
-	print(na_df_merged.head(20))
+	print(f"Processed na_df_merged_raw: {na_df_merged_raw.shape}")
+	print(na_df_merged_raw.head(20))
 
-	query_counts = na_df_merged['query'].value_counts()
+	na_df_merged_raw.to_csv(os.path.join(RESULT_DIRECTORY, "na_raw.csv"), index=False)
+	try:
+		na_df_merged_raw.to_excel(os.path.join(RESULT_DIRECTORY, "na_raw.xlsx"), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
+
+	na_df = get_synchronized_df_img(df=na_df_merged_raw)
+
+	query_counts = na_df['query'].value_counts()
 	print(query_counts.tail(25))
 	plt.figure(figsize=(20, 13))
 	query_counts.plot(kind='bar', fontsize=11)
@@ -657,18 +660,11 @@ def main():
 	plt.tight_layout()
 	plt.savefig(os.path.join(RESULT_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
 
-	# total_obj_counts = na_df_merged['totalDigitalObjects'].value_counts()
-	# print(total_obj_counts)
-	# Save as CSV
-	na_df_merged.to_csv(os.path.join(RESULT_DIRECTORY, "na.csv"), index=False)
-
-	# Save as Excel
+	na_df.to_csv(os.path.join(RESULT_DIRECTORY, "na.csv"), index=False)
 	try:
-		na_df_merged.to_excel(os.path.join(RESULT_DIRECTORY, "na.xlsx"), index=False)
+		na_df.to_excel(os.path.join(RESULT_DIRECTORY, "na.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
-
-	get_images(df=na_df_merged)
 
 if __name__ == '__main__':
 	print(
