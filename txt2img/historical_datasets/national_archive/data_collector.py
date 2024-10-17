@@ -242,9 +242,11 @@ def get_images(df):
 					print(f"Unexpected error: {e}")
 
 	# Filter the DataFrame to keep only the successfully downloaded rows
+	print(f"cleaning {type(df)} {df.shape} with {successful_rows} succeded downloaded images [functional URL]...")
 	df_cleaned = df.loc[successful_rows]
 	print(f"Total images downloaded successfully: {len(successful_rows)} out of {df.shape[0]}")
 	# Return the cleaned DataFrame
+	print(f"df_cleaned: {df_cleaned.shape}")
 	return df_cleaned
 	
 # def get_dframe(query: str="query", docs: List=[Dict]):
@@ -328,20 +330,20 @@ def main():
 		'Nazi crime',
 		"Nazi victim",
 		"Constitution",
-		"road construction",
-		"rail construction",
-		"dam construction",
-		"tunnel construction",
 		"Helicopter",
-		# "Manufacturing Plant",
+		"naval air station",
+		"naval air base",
+		"terminal",
+		"trench warfare",
+		"explosion",
+		"soldier",
+		"Submarine",
+		"Manufacturing Plant",
 		# "naval aircraft factory",
-		# "naval air station",
-		# "naval air base",
-		# "terminal",
-		# "trench warfare",
-		# "explosion",
-		# "soldier",
-		# "Submarine",
+		# "road construction",
+		# "rail construction",
+		# "dam construction",
+		# "tunnel construction",
 		# "allied force",
 		# "propaganda",
 		# "cemetery",
