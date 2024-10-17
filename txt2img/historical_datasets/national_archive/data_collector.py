@@ -48,6 +48,10 @@ useless_collection_terms = [
 	"Art by",
 	"Selected Passport Applications",
 	"Flynn, Errol",
+	"Herbert Hoover Papers",
+	"Roads and Trails",
+	"Approved Pension",
+	"Maps of",
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
@@ -168,14 +172,14 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 	for doc in docs:
 		record = doc.get('_source', {}).get('record', {})
 		fields = doc.get('fields', {})
-		title = record.get('title') if record.get('title') != "Untitled" else None
+		title = record.get('title').lower() if record.get('title') != "Untitled" else None
 		na_identifier = record.get('naId')
 		pDate = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
 		ancesstor_collections = [f"{itm.get('title')}" for itm in record.get('ancestors')] # record.get('ancestors'): list of dict
 		
 		# Only filter URLs based on their extensions, but no need to check their status
-		if first_digital_object_url and is_desired(ancesstor_collections, useless_collection_terms) and ("Map of" not in title or "Drawing of" not in title) and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png')):
+		if first_digital_object_url and is_desired(ancesstor_collections, useless_collection_terms) and ("map of" not in title or "drawing of" not in title or "postcard" not in title) and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png')):
 			# We skip the check_url_status here for better performance
 			pass
 		else:
@@ -433,7 +437,7 @@ def main():
 	# all_query_tags = natsorted(list(set(all_query_tags)))
 	# all_query_tags = list(set(all_query_tags))[:5]
 	if USER=="farid": # local laptop
-		all_query_tags = all_query_tags[:15]
+		all_query_tags = all_query_tags[:20]
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")
