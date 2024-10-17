@@ -31,12 +31,14 @@ print(args)
 # $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
 # $ nohup python data_collector.py -u --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> na_image_download.out &
 
+na_api_base_url: str = "https://catalog.archives.gov/proxy/records/search"
 START_DATE = args.start_date
 END_DATE = args.end_date
 nw:int = min(args.num_worker, multiprocessing.cpu_count()) # def: 8
 dataset_name = "NATIONAL_ARCHIVE"
 useless_collection_terms = [
 	"Cartoon", 
+	"Newsmap",
 	"Posters", 
 	"Tools and Machinery",
 	"Roads of the Past",
@@ -76,7 +78,7 @@ def load_pickle(fpath:str="unknown",):
 	print(f"Loaded in: {elpt:.3f} s | {type(pkl)} | {fsize:.3f} MB".center(130, " "))
 	return pkl
 
-def get_data(url: str="url.com", st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
+def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
 	t0 = time.time()
 	query_processed = re.sub(" ", "_", query.lower())
 	query_all_hits_fpth = os.path.join(RESULT_DIRECTORY, f"results_{st_date}_{end_date}_query_{query_processed}.gz")
@@ -112,7 +114,7 @@ def get_data(url: str="url.com", st_date: str="1914-01-01", end_date: str="1914-
 			loop_st = time.time()
 			params["page"] = page
 			response = requests.get(
-				url,
+				na_api_base_url,
 				params=params,
 				headers=headers,
 			)
@@ -152,7 +154,6 @@ def is_desired(collections, useless_terms):
 			if term in collection:
 				print(f"\t> XXXX found '{term}', => skipping! XXXX <")
 				return False
-	# print(f"clean collections: {collections}")
 	return True
 
 def get_dframe(query: str="query", docs: List=[Dict]):
@@ -160,37 +161,21 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 	df_st_time = time.time()
 	data = []
 	for doc in docs:
-		# print(list(doc.keys()))
-		# print(json.dumps(doc, indent=2, ensure_ascii=False))
 		record = doc.get('_source', {}).get('record', {})
 		fields = doc.get('fields', {})
 		title = record.get('title') if record.get('title') != "Untitled" else None
 		na_identifier = record.get('naId')
-		# print(title, "Map of" in title, "Drawing of" in title)
 		pDate = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
-		# print(doc.get('fields'))
-		# print(fields.get('firstDigitalObject'))
 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
 		ancesstor_collections = [f"{itm.get('title')}" for itm in record.get('ancestors')] # record.get('ancestors'): list of dict
-		# print(ancesstor_collections)
-		# print(na_identifier, title, first_digital_object_url, is_desired(ancesstor_collections, useless_collection_terms), pDate)
+		
+		# Only filter URLs based on their extensions, but no need to check their status
 		if first_digital_object_url and is_desired(ancesstor_collections, useless_collection_terms) and ("Map of" not in title or "Drawing of" not in title) and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png')):
-			#################################################################
-			# # without checking status_code [faster but broken URL]
-			# first_digital_object_url = first_digital_object_url
-			#################################################################
-			#################################################################
-			# # with checking status_code [slower but healty URL]
-			# print(f"{first_digital_object_url:<140}", end=" ")
-			# st_t = time.time()
-			if check_url_status(first_digital_object_url): # status code must be 200!
-				first_digital_object_url = first_digital_object_url
-			else:
-				first_digital_object_url = None
-			# print(f"{time.time()-st_t:.2f} s")
-			#################################################################
+			# We skip the check_url_status here for better performance
+			pass
 		else:
 			first_digital_object_url = None
+
 		row = {
 			'id': na_identifier,
 			'query': query,
@@ -198,12 +183,11 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 			'description': record.get('scopeandContentNote'),
 			'img_url': first_digital_object_url,
 			'date': pDate,
-			# 'totalDigitalObjects': fields.get('totalDigitalObjects', [0])[0],
-			# 'firstDigitalObjectType': fields.get('firstDigitalObject', [{}])[0].get('objectType'),
 		}
 		data.append(row)
+
 	df = pd.DataFrame(data)
-	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
+	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
 	return df
 
 def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5):
@@ -212,227 +196,310 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 	url = row['img_url']
 	image_name = str(row['id']) + os.path.splitext(url)[1]
 	image_path = os.path.join(image_dir, image_name)
-	# Check if the image already exists to avoid redownloading
+	
 	if os.path.exists(image_path):
-		# print(f"File {image_name} already exists, skipping download.")
-		return image_name
-	# Retry mechanism
-	attempt = 0
+		# Image already exists, consider it a successful download
+		return True
+
+	attempt = 0  # Retry mechanism
 	while attempt < retries:
 		try:
-			# Attempt to download the image
 			response = session.get(url, timeout=20)
 			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
+			
 			# Save the image to the directory
 			with open(image_path, 'wb') as f:
 				f.write(response.content)
-			print(f"[{rIdx}/{total_rows}] Saved {image_name}\t\t\tin:\t{time.time()-t0:.1f} sec")
-			return image_name
+			
+			print(f"[{rIdx}/{total_rows}] Saved {image_name} in {time.time() - t0:.1f} sec")
+			return True  # Image downloaded successfully
 		except (RequestException, IOError) as e:
 			attempt += 1
-			print(f"[{rIdx}/{total_rows}] Downloading {image_name} Failed! {e}, Retrying ({attempt}/{retries})...")
+			print(f"[{rIdx}/{total_rows}] Downloading {image_name} failed! {e}, retrying ({attempt}/{retries})...")
 			time.sleep(backoff_factor * (2 ** attempt))  # Exponential backoff
+
+	# After retries, the download failed
 	print(f"[{rIdx}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
-	return None
+	return False  # Indicate that the download failed
 
 def get_images(df):
 	print(f"Saving images of {df.shape[0]} records using {nw} CPUs...")
-	# Create the directory if it doesn't exist
 	os.makedirs(os.path.join(RESULT_DIRECTORY, "images"), exist_ok=True)
 	IMAGE_DIR = os.path.join(RESULT_DIRECTORY, "images")
-	# Start a session for connection reuse
+	
+	successful_rows = []  # List to keep track of successful downloads
+
 	with requests.Session() as session:
-		# Use ThreadPoolExecutor for parallel downloads
 		with ThreadPoolExecutor(max_workers=nw) as executor:
-			futures = [executor.submit(download_image, row, session, IMAGE_DIR, df.shape[0]) for _, row in df.iterrows()]
-			# Process results as they complete
+			# Submit download tasks
+			futures = {executor.submit(download_image, row, session, IMAGE_DIR, df.shape[0]): idx for idx, row in df.iterrows()}
 			for future in as_completed(futures):
 				try:
-					future.result()
+					success = future.result()  # Get the result (True or False) from download_image
+					if success:
+						successful_rows.append(futures[future])  # Keep track of successfully downloaded rows
 				except Exception as e:
-					print(f"An unexpected error occurred: {e}")
-	print(f"Total number of images downloaded: {len(os.listdir(IMAGE_DIR))}")
+					print(f"Unexpected error: {e}")
 
-def main():
-	national_archive_us_URL: str = "https://catalog.archives.gov/proxy/records/search"
+	# Filter the DataFrame to keep only the successfully downloaded rows
+	df_cleaned = df.loc[successful_rows]
+	print(f"Total images downloaded successfully: {len(successful_rows)} out of {df.shape[0]}")
+	# Return the cleaned DataFrame
+	return df_cleaned
+	
+# def get_dframe(query: str="query", docs: List=[Dict]):
+# 	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
+# 	df_st_time = time.time()
+# 	data = []
+# 	for doc in docs:
+# 		record = doc.get('_source', {}).get('record', {})
+# 		fields = doc.get('fields', {})
+# 		title = record.get('title') if record.get('title') != "Untitled" else None
+# 		na_identifier = record.get('naId')
+# 		pDate = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
+# 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
+# 		ancesstor_collections = [f"{itm.get('title')}" for itm in record.get('ancestors')] # record.get('ancestors'): list of dict
+# 		if first_digital_object_url and is_desired(ancesstor_collections, useless_collection_terms) and ("Map of" not in title or "Drawing of" not in title) and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png')):
+# 			if check_url_status(first_digital_object_url): # status code must be 200!
+# 				first_digital_object_url = first_digital_object_url
+# 			else:
+# 				first_digital_object_url = None
+# 		else:
+# 			first_digital_object_url = None
+# 		row = {
+# 			'id': na_identifier,
+# 			'query': query,
+# 			'title': title,
+# 			'description': record.get('scopeandContentNote'),
+# 			'img_url': first_digital_object_url,
+# 			'date': pDate,
+# 		}
+# 		data.append(row)
+# 	df = pd.DataFrame(data)
+# 	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
+# 	return df
+
+# def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5):
+# 	t0 = time.time()
+# 	rIdx = row.name
+# 	url = row['img_url']
+# 	image_name = str(row['id']) + os.path.splitext(url)[1]
+# 	image_path = os.path.join(image_dir, image_name)
+# 	if os.path.exists(image_path):
+# 		# print(f"File {image_name} already exists, skipping download.")
+# 		return image_name
+# 	attempt = 0 # Retry mechanism
+# 	while attempt < retries:
+# 		try:
+# 			response = session.get(url, timeout=20)
+# 			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
+# 			with open(image_path, 'wb') as f: # Save the image to the directory
+# 				f.write(response.content)
+# 			print(f"[{rIdx}/{total_rows}] Saved {image_name}\t\t\tin:\t{time.time()-t0:.1f} sec")
+# 			return image_name
+# 		except (RequestException, IOError) as e:
+# 			attempt += 1
+# 			print(f"[{rIdx}/{total_rows}] Downloading {image_name} Failed! {e}, Retrying ({attempt}/{retries})...")
+# 			time.sleep(backoff_factor * (2 ** attempt))  # Exponential backoff
+# 	print(f"[{rIdx}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
+# 	return None
+
+# def get_images(df):
+# 	print(f"Saving images of {df.shape[0]} records using {nw} CPUs...")
+# 	os.makedirs(os.path.join(RESULT_DIRECTORY, "images"), exist_ok=True)
+# 	IMAGE_DIR = os.path.join(RESULT_DIRECTORY, "images")
+# 	with requests.Session() as session:
+# 		with ThreadPoolExecutor(max_workers=nw) as executor:
+# 			futures = [executor.submit(download_image, row, session, IMAGE_DIR, df.shape[0]) for _, row in df.iterrows()]
+# 			for future in as_completed(futures):
+# 				try:
+# 					future.result()
+# 				except Exception as e:
+# 					print(f"Unexpected ERR: {e}")
+# 	print(f"Total number of images downloaded: {len(os.listdir(IMAGE_DIR))}")
+
+def main():	
 	dfs = []
 	all_query_tags = [
-		"Ballistic missile",
+		"ballistic missile",
 		"flame thrower",
 		"flamethrower",
-		"shovel",
-		"Wreck",
 		"Power Plant",
-		"Winter camp",
+		'Nazi crime',
+		"Nazi victim",
+		"Constitution",
 		"road construction",
 		"rail construction",
 		"dam construction",
-		"Helicopter",
-		"Manufacturing Plant",
-		"naval aircraft factory",
-		"naval air station",
-		"naval air base",
-		"terminal",
-		"holocaust",
-		"trench warfare",
-		"explosion",
-		"soldier",
-		"Submarine",
-		"allied force",
-		"Nuremberg Trials",
-		"propaganda",
-		"cemetery",
-		"graveyard",
-		"bayonet",
-		"war bond",
-		"air force base",
-		"air force personnel",
-		"air force station",
-		"Artillery",
-		"Rifle",
-		"barrel",
-		"Air bomb",
-		"Machine Gun",
-		"Mortar Gun",
-		"air raid",
-		"flag",
-		"Massacre",
-		"Military Aviation",
-		"evacuation",
-		"Naval Vessel",
-		"warship",
-		"Infantry",
-		"Tunnel",
-		"Roadbuilding",
-		"Coast Guard",
-		"conspiracy theory",
-		"Manhattan Project",
-		"Eastern Front",
-		"Animal",
-		"surge tank",
-		"Water Tank",
-		"Anti tank",
-		"Anti Aircraft",
-		"plane",
-		"aeroplane",
-		"airplane",
-		"soviet union",
-		"rationing",
-		"Grenade",
-		"cannon",
-		"Navy Officer",
-		"Rocket",
-		"prisoner",
-		"weapon",
-		"Aviator",
-		"Parade",
-		"Aerial warfare",
-		"army vehicle",
-		"military vehicle",
-		"Storehouse",
-		"Aerial View",
-		"Ambulance",
-		"Destruction",
-		"Army Base",
-		"Army hospital",
-		"Military Base",
-		"Border",
-		"Army Recruiting",
-		"Game",
-		"military leader",
-		"museum",
-		"board meeting",
-		"nato",
-		"commander",
-		"Sergeant",
-		"Admiral",
-		"Bombing Attack",
-		"Battle Monument",
-		"clash",
-		"strike",
-		"damage",
-		"leisure",
-		"airport",
-		"Battle of the Bulge",
-		"Barn",
-		"Anniversary",
-		"Delegate",
-		"exile",
-		"Military Aviation",
-		"evacuation",
-		"Coast Guard",
-		"Naval Vessel",
-		"warship",
-		"Infantry",
-		"Tunnel",
-		"Civilian",
-		"Medical aid",
-		"bombardment",
-		"ambassador",
-		"projectile",
-		"helmet",
-		"Alliance",
-		"Treaty of Versailles",
-		"enemy territory",
-		"reconnaissance",
-		"nurse",
-		"navy doctor",
-		"military hospital",
-		"Atomic Bomb",
-		"embassy",
-		"ship deck",
-		"Red cross worker",
-		"Infantry camp",
-		"swimming camp",
-		"fishing camp",
-		"construction camp",
-		"Trailer camp",
 		"tunnel construction",
-		"Defence",
-		"Ballon Gun",
-		"Recruitment",
-		"gun",
-		"diplomacy",
-		"reservoir",
-		"infrastructure",
-		"war strategy",
-		"public relation",
-		"Association Convention",
-		"ship",
-		"naval hospital",
-		"hospital base",
-		"hospital ship",
-		"hospital train",
-		"hospital",
-		"migration",
-		"captain",
-		"summit",
-		"sport",
-		"Kitchen Truck",
-		"Railroad Truck",
-		"fire truck",
-		"Line Truck",
-		"gas truck",
-		"Freight Truck",
-		"Dump Truck",
-		"Diesel truck",
-		"Maintenance Truck",
-		"Clinic Truck",
-		"Truck Accident",
-		"military truck",
-		"army truck",
-		"vice president",
-		"Atomic Bombing",
-		"Battle of the Marne",
-		"Anti Aircraft Gun",
-		"Anti aircraft warfare",
-		"Battle of the Marne",
-		"Accident",
-		"Truck",
-		"Construction",
-		"refugee",
-		"president",
+		"Helicopter",
+		# "Manufacturing Plant",
+		# "naval aircraft factory",
+		# "naval air station",
+		# "naval air base",
+		# "terminal",
+		# "trench warfare",
+		# "explosion",
+		# "soldier",
+		# "Submarine",
+		# "allied force",
+		# "propaganda",
+		# "cemetery",
+		# "graveyard",
+		# "bayonet",
+		# "war bond",
+		# "air force base",
+		# "air force personnel",
+		# "air force station",
+		# "Artillery",
+		# "Rifle",
+		# "barrel",
+		# "Air bomb",
+		# "air raid",
+		# "flag",
+		# "Massacre",
+		# "Military Aviation",
+		# "evacuation",
+		# "Naval Vessel",
+		# "warship",
+		# "Infantry",
+		# "Roadbuilding",
+		# "Coast Guard",
+		# "conspiracy theory",
+		# "Manhattan Project",
+		# "Eastern Front",
+		# "Animal",
+		# "surge tank",
+		# "Water Tank",
+		# "plane",
+		# "aeroplane",
+		# "airplane",
+		# "soviet union",
+		# "rationing",
+		# "Grenade",
+		# "cannon",
+		# "Navy Officer",
+		# "Rocket",
+		# "prisoner",
+		# "weapon",
+		# "Aviator",
+		# "Parade",
+		# "Aerial warfare",
+		# "army vehicle",
+		# "military vehicle",
+		# "Storehouse",
+		# "Aerial View",
+		# "Ambulance",
+		# "Destruction",
+		# "Army Base",
+		# "Army hospital",
+		# "Military Base",
+		# "Border",
+		# "Army Recruiting",
+		# "Game",
+		# "military leader",
+		# "museum",
+		# "board meeting",
+		# "nato",
+		# "commander",
+		# "Sergeant",
+		# "Admiral",
+		# "Bombing Attack",
+		# "Battle Monument",
+		# "clash",
+		# "strike",
+		# "damage",
+		# "leisure",
+		# "airport",
+		# "Battle of the Bulge",
+		# "Barn",
+		# "Anniversary",
+		# "Delegate",
+		# "exile",
+		# "Military Aviation",
+		# "evacuation",
+		# "Coast Guard",
+		# "Naval Vessel",
+		# "warship",
+		# "Infantry",
+		# "Civilian",
+		# "Medical aid",
+		# "bombardment",
+		# "ambassador",
+		# "projectile",
+		# "helmet",
+		# "Alliance",
+		# "Treaty of Versailles",
+		# "enemy territory",
+		# "reconnaissance",
+		# "nurse",
+		# "navy doctor",
+		# "military hospital",
+		# "Atomic Bomb",
+		# "embassy",
+		# "ship deck",
+		# "Red cross worker",
+		# "Infantry camp",
+		# "swimming camp",
+		# "fishing camp",
+		# "construction camp",
+		# "Trailer camp",
+		# "Nazi camp",
+		# "Winter camp",
+		# "Defence",
+		# "Recruitment",
+		# "diplomacy",
+		# "reservoir",
+		# "infrastructure",
+		# "public relation",
+		# "Association Convention",
+		# "ship",
+		# "naval hospital",
+		# "hospital base",
+		# "hospital ship",
+		# "hospital train",
+		# "migration",
+		# "captain",
+		# "summit",
+		# "sport",
+		# "Kitchen Truck",
+		# "Railroad Truck",
+		# "fire truck",
+		# "Line Truck",
+		# "gas truck",
+		# "Freight Truck",
+		# "Dump Truck",
+		# "Diesel truck",
+		# "Maintenance Truck",
+		# "Clinic Truck",
+		# "Truck Accident",
+		# "military truck",
+		# "army truck",
+		# "vice president",
+		# "Atomic Bombing",
+		# "Battle of the Marne",
+		# "anti tank",
+		# "anti aircraft",
+		# "Battle of the Marne",
+		# "refugee",
+		# "president",
+		# "Nuremberg Trials",
+		# "holocaust",
+		# "fighter bomber",
+		# "Ballon gun",
+		# "Machine gun",
+		# "Mortar gun",
+		# "field gun",
+		# "gun",
+		# "shovel",
+		# "Accident",
+		# "Wreck",
+		# "Truck",
+		# "construction",
+		# "hospital",
+		# "Tunnel",
 		# "#######################################",
+		# "war strategy",
 		# "vehicular",
 		# "Firearm",
 		# "exodus",
@@ -453,9 +520,8 @@ def main():
 	all_query_tags = list(set(all_query_tags))
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
 	for qi, qv in enumerate(all_query_tags):
-		print(f"\nQ[{qi}]: {qv}")
+		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")
 		query_all_hits = get_data(
-			url=national_archive_us_URL,
 			st_date=START_DATE,
 			end_date=END_DATE,
 			query=qv.lower()
@@ -492,6 +558,7 @@ def main():
 	}
 
 	# replacement_dict = {
+	# "boeing": "aircraft",
 	# 	"plane": "military aviation",
 	# 	"airplane": "military aviation",
 	# 	"aeroplane": "military aviation",
