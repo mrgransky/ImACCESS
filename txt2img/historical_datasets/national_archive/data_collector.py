@@ -46,6 +46,8 @@ useless_collection_terms = [
 	"Roads of the Past",
 	"Government Reports",
 	"Art by",
+	"Selected Passport Applications",
+	"Flynn, Errol",
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
@@ -259,8 +261,7 @@ def main():
 		"naval air base",
 		"Power Plant",
 		'Nazi crime',
-		"victim",
-		"Constitution",
+		"Nazi victim",
 		"Helicopter",
 		"terminal",
 		"trench warfare",
@@ -427,11 +428,12 @@ def main():
 		"Minesweeper",
 		"Ceremony",
 		"Memorial day",
+		# "Constitution",
 	]
 	# all_query_tags = natsorted(list(set(all_query_tags)))
 	# all_query_tags = list(set(all_query_tags))[:5]
 	if USER=="farid": # local laptop
-		all_query_tags = all_query_tags[:10]
+		all_query_tags = all_query_tags[:15]
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")
@@ -573,7 +575,8 @@ def main():
 	na_df = get_synchronized_df_img(df=na_df_merged_raw)
 
 	query_counts = na_df['query'].value_counts()
-	print(query_counts.tail(25))
+	# print(query_counts.tail(25))
+
 	plt.figure(figsize=(20, 13))
 	query_counts.plot(kind='bar', fontsize=9)
 	plt.title(f'{dataset_name}: Query Frequency (total: {query_counts.shape}) {START_DATE} - {END_DATE}')
