@@ -208,7 +208,7 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
 			with open(image_path, 'wb') as f: # Save the image to the directory
 				f.write(response.content)
-			print(f"[{rIdx:<7}/ {total_rows}]{image_name:>20}{time.time() - t0:>10.1f} s")
+			print(f"[{rIdx:<10}/ {total_rows}]{image_name:>20}{time.time() - t0:>10.1f} s")
 			return True  # Image downloaded successfully
 		except (RequestException, IOError) as e:
 			attempt += 1
@@ -243,77 +243,6 @@ def get_synchronized_df_img(df):
 	# Return the cleaned DataFrame
 	print(f"df_cleaned: {df_cleaned.shape}")
 	return df_cleaned
-	
-# def get_dframe(query: str="query", docs: List=[Dict]):
-# 	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
-# 	df_st_time = time.time()
-# 	data = []
-# 	for doc in docs:
-# 		record = doc.get('_source', {}).get('record', {})
-# 		fields = doc.get('fields', {})
-# 		title = record.get('title') if record.get('title') != "Untitled" else None
-# 		na_identifier = record.get('naId')
-# 		pDate = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
-# 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
-# 		ancesstor_collections = [f"{itm.get('title')}" for itm in record.get('ancestors')] # record.get('ancestors'): list of dict
-# 		if first_digital_object_url and is_desired(ancesstor_collections, useless_collection_terms) and ("Map of" not in title or "Drawing of" not in title) and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png')):
-# 			if check_url_status(first_digital_object_url): # status code must be 200!
-# 				first_digital_object_url = first_digital_object_url
-# 			else:
-# 				first_digital_object_url = None
-# 		else:
-# 			first_digital_object_url = None
-# 		row = {
-# 			'id': na_identifier,
-# 			'query': query,
-# 			'title': title,
-# 			'description': record.get('scopeandContentNote'),
-# 			'img_url': first_digital_object_url,
-# 			'date': pDate,
-# 		}
-# 		data.append(row)
-# 	df = pd.DataFrame(data)
-# 	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
-# 	return df
-
-# def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5):
-# 	t0 = time.time()
-# 	rIdx = row.name
-# 	url = row['img_url']
-# 	image_name = str(row['id']) + os.path.splitext(url)[1]
-# 	image_path = os.path.join(image_dir, image_name)
-# 	if os.path.exists(image_path):
-# 		# print(f"File {image_name} already exists, skipping download.")
-# 		return image_name
-# 	attempt = 0 # Retry mechanism
-# 	while attempt < retries:
-# 		try:
-# 			response = session.get(url, timeout=20)
-# 			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
-# 			with open(image_path, 'wb') as f: # Save the image to the directory
-# 				f.write(response.content)
-# 			print(f"[{rIdx}/{total_rows}] Saved {image_name}\t\t\tin:\t{time.time()-t0:.1f} sec")
-# 			return image_name
-# 		except (RequestException, IOError) as e:
-# 			attempt += 1
-# 			print(f"[{rIdx}/{total_rows}] Downloading {image_name} Failed! {e}, Retrying ({attempt}/{retries})...")
-# 			time.sleep(backoff_factor * (2 ** attempt))  # Exponential backoff
-# 	print(f"[{rIdx}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
-# 	return None
-
-# def get_images(df):
-# 	print(f"Saving images of {df.shape[0]} records using {nw} CPUs...")
-# 	os.makedirs(os.path.join(RESULT_DIRECTORY, "images"), exist_ok=True)
-# 	IMAGE_DIR = os.path.join(RESULT_DIRECTORY, "images")
-# 	with requests.Session() as session:
-# 		with ThreadPoolExecutor(max_workers=nw) as executor:
-# 			futures = [executor.submit(download_image, row, session, IMAGE_DIR, df.shape[0]) for _, row in df.iterrows()]
-# 			for future in as_completed(futures):
-# 				try:
-# 					future.result()
-# 				except Exception as e:
-# 					print(f"Unexpected ERR: {e}")
-# 	print(f"Total number of images downloaded: {len(os.listdir(IMAGE_DIR))}")
 
 def main():	
 	dfs = []
@@ -321,13 +250,13 @@ def main():
 		"ballistic missile",
 		"flame thrower",
 		"flamethrower",
-		"Power Plant",
-		'Nazi crime',
-		"Nazi victim",
-		"Constitution",
-		"Helicopter",
 		"naval air station",
 		"naval air base",
+		"Power Plant",
+		'Nazi crime',
+		"victim",
+		"Constitution",
+		"Helicopter",
 		"terminal",
 		"trench warfare",
 		"explosion",
@@ -350,13 +279,11 @@ def main():
 		"Artillery",
 		"Rifle",
 		"barrel",
-		"Air bomb",
 		"air raid",
-		"flag",
+		"Flag Raising",
 		"Massacre",
 		"Military Aviation",
 		"evacuation",
-		"Naval Vessel",
 		"warship",
 		"Infantry",
 		"Roadbuilding",
@@ -374,33 +301,27 @@ def main():
 		"rationing",
 		"Grenade",
 		"cannon",
-		"Navy Officer",
+		"Naval Officer",
 		"Rocket",
 		"prisoner",
 		"weapon",
 		"Aviator",
 		"Parade",
-		"Aerial warfare",
 		"army vehicle",
 		"military vehicle",
 		"Storehouse",
 		"Aerial View",
+		"Aerial warfare",
 		"Ambulance",
-		"Destruction",
 		"Army Base",
 		"Army hospital",
 		"Military Base",
-		"Border",
-		"Army Recruiting",
-		"Game",
 		"military leader",
 		"museum",
 		"board meeting",
-		"nato",
 		"commander",
 		"Sergeant",
 		"Admiral",
-		"Bombing Attack",
 		"Battle Monument",
 		"clash",
 		"strike",
@@ -420,18 +341,14 @@ def main():
 		"Infantry",
 		"Civilian",
 		"Medical aid",
-		"bombardment",
 		"ambassador",
 		"projectile",
 		"helmet",
-		"Alliance",
 		"Treaty of Versailles",
 		"enemy territory",
 		"reconnaissance",
 		"nurse",
-		"navy doctor",
-		"military hospital",
-		"Atomic Bomb",
+		"doctor",
 		"embassy",
 		"ship deck",
 		"Red cross worker",
@@ -442,21 +359,22 @@ def main():
 		"Trailer camp",
 		"Nazi camp",
 		"Winter camp",
+		"Game",
 		"Defence",
+		"Border",
+		"Army Recruiting",
 		"Recruitment",
-		"diplomacy",
 		"reservoir",
 		"infrastructure",
 		"public relation",
-		"Association Convention",
 		"ship",
+		"military hospital",
 		"naval hospital",
 		"hospital base",
 		"hospital ship",
 		"hospital train",
 		"migration",
 		"captain",
-		"summit",
 		"sport",
 		"Kitchen Truck",
 		"Railroad Truck",
@@ -472,7 +390,11 @@ def main():
 		"military truck",
 		"army truck",
 		"vice president",
-		"Atomic Bombing",
+		"bombardment",
+		"Bombing Attack",
+		"Atomic Bomb",
+		"Air bomb",
+		"fighter bomber",
 		"Battle of the Marne",
 		"anti tank",
 		"anti aircraft",
@@ -481,7 +403,6 @@ def main():
 		"president",
 		"Nuremberg Trials",
 		"holocaust",
-		"fighter bomber",
 		"Ballon gun",
 		"Machine gun",
 		"Mortar gun",
@@ -491,11 +412,28 @@ def main():
 		"Accident",
 		"Wreck",
 		"Truck",
-		"construction",
 		"hospital",
 		"Tunnel",
 		"Pearl Harbor attack",
+		"pasture",
+		"farm",
+		"allied invasion",
+		"normandy invasion",
+		"Railroad",
+		"Flying Fortress",
+		"Minesweeper",
+		"Ceremony",
+		"Memorial day",
 		# "#######################################",
+		# "summit",
+		# "construction",
+		# "Destruction",
+		# "Nazi victim", # very few results
+		# "Alliance",
+		# "nato", # established 4.4.1949
+		# "diplomacy",
+		# "veteran",
+		# "Association Convention",
 		# "propaganda",
 		# "war strategy",
 		# "vehicular",
@@ -509,13 +447,12 @@ def main():
 		# "surrender", # meaningless images
 		# "army",
 		# "world war",
-		# "Bomb",
 		# "WWI",
 		# "WWII",
 	]
 	# all_query_tags = natsorted(list(set(all_query_tags)))
 	# all_query_tags = list(set(all_query_tags))[:5]
-	all_query_tags = all_query_tags#[:5]
+	all_query_tags = all_query_tags[:10]
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")
@@ -539,6 +476,7 @@ def main():
 	# print(dfs[0])
 	na_df_merged_raw = pd.concat(dfs, ignore_index=True)
 	replacement_dict = {
+		"normandy invasion": "allied invasion",
 		"plane": "aircraft",
 		"airplane": "aircraft",
 		"aeroplane": "aircraft",
@@ -553,6 +491,9 @@ def main():
 		"military hospital": "army hospital",
 		"flame thrower": "flamethrower",
 		"roadbuilding": "road construction",
+		"recruitment": "army recruiting",
+		"farm": "pasture",
+		"minesweeper": "naval vessel",
 	}
 
 	# replacement_dict = {
@@ -638,7 +579,7 @@ def main():
 	print(f"pre-processing merged {type(na_df_merged_raw)} {na_df_merged_raw.shape}")
 	na_df_merged_raw['query'] = na_df_merged_raw['query'].replace(replacement_dict)
 	na_df_merged_raw = na_df_merged_raw.dropna(subset=['img_url']) # drop None img_url
-	na_df_merged_raw = na_df_merged_raw.drop_duplicates(subset=['img_url']) # drop duplicate img_url
+	na_df_merged_raw = na_df_merged_raw.drop_duplicates(subset=['img_url'], keep="first", ignore_index=True) # drop duplicate img_url
 
 	print(f"Processed na_df_merged_raw: {na_df_merged_raw.shape}")
 	print(na_df_merged_raw.head(20))
@@ -654,7 +595,7 @@ def main():
 	query_counts = na_df['query'].value_counts()
 	print(query_counts.tail(25))
 	plt.figure(figsize=(20, 13))
-	query_counts.plot(kind='bar', fontsize=11)
+	query_counts.plot(kind='bar', fontsize=9)
 	plt.title(f'{dataset_name}: Query Frequency (total: {query_counts.shape}) {START_DATE} - {END_DATE}')
 	plt.xlabel('Query')
 	plt.ylabel('Frequency')
