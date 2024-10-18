@@ -51,7 +51,11 @@ useless_collection_terms = [
 	"Herbert Hoover Papers",
 	"Roads and Trails",
 	"Approved Pension",
-	"Maps of",
+	"Maps",
+	"Camp McDowell",
+	"Landing Fields",
+	"Appian Way",
+	"Indexes to Aerial Photography",
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
@@ -172,19 +176,37 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 	for doc in docs:
 		record = doc.get('_source', {}).get('record', {})
 		fields = doc.get('fields', {})
-		title = record.get('title').lower() if record.get('title') != "Untitled" else None
+		title = record.get('title').lower()# if record.get('title') != "Untitled" else None
 		na_identifier = record.get('naId')
 		pDate = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
 		ancesstor_collections = [f"{itm.get('title')}" for itm in record.get('ancestors')] # record.get('ancestors'): list of dict
-		
-		# Only filter URLs based on their extensions, but no need to check their status
-		if first_digital_object_url and is_desired(ancesstor_collections, useless_collection_terms) and ("map of" not in title or "drawing of" not in title or "postcard" not in title) and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png')):
-			# We skip the check_url_status here for better performance
+		useless_title_terms = [
+			"wildflowers" not in title, 
+			"-sc-" not in title,
+			"notes" not in title,
+			"page" not in title,
+			"exhibit:" not in title,
+			"ad:" not in title,
+			"sheets" not in title,
+			"report" not in title,
+			"map of" not in title,
+			"drawing" not in title,
+			"sketch of" not in title,
+			"layout" not in title,
+			"postcard" not in title,
+			"table:" not in title,
+			"traffic statistics:" not in title,
+		]
+		if (
+			first_digital_object_url 
+			and is_desired(ancesstor_collections, useless_collection_terms) 
+			and all(useless_title_terms)
+			and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png'))
+		):
 			pass
 		else:
 			first_digital_object_url = None
-
 		row = {
 			'id': na_identifier,
 			'query': query,
@@ -194,7 +216,6 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 			'date': pDate,
 		}
 		data.append(row)
-
 	df = pd.DataFrame(data)
 	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
 	return df
@@ -261,9 +282,30 @@ def main():
 		"ballistic missile",
 		"flame thrower",
 		"flamethrower",
+		"Red cross worker",
+		"cemetery",
+		"graveyard",
+		"bayonet",
+		"war bond",
+		"Infantry camp",
+		"swimming camp",
+		"fishing camp",
+		"construction camp",
+		"Trailer camp",
+		"Nazi camp",
+		"Winter camp",
+		"Game",
 		"naval air station",
+		"allied invasion",
+		"normandy invasion",
 		"naval air base",
 		"Power Plant",
+		"Air bomb",
+		"fighter bomber",
+		"Pearl Harbor attack",
+		"anti tank",
+		"anti aircraft",
+		"Battle of the Marne",
 		'Nazi crime',
 		"Nazi victim",
 		"Helicopter",
@@ -274,15 +316,10 @@ def main():
 		"Submarine",
 		"Manufacturing Plant",
 		"naval aircraft factory",
-		"road construction",
 		"rail construction",
 		"dam construction",
 		"tunnel construction",
 		"allied force",
-		"cemetery",
-		"graveyard",
-		"bayonet",
-		"war bond",
 		"air force base",
 		"air force personnel",
 		"air force station",
@@ -295,7 +332,6 @@ def main():
 		"evacuation",
 		"warship",
 		"Infantry",
-		"Roadbuilding",
 		"Coast Guard",
 		"conspiracy theory",
 		"Manhattan Project",
@@ -360,15 +396,6 @@ def main():
 		"doctor",
 		"embassy",
 		"ship deck",
-		"Red cross worker",
-		"Infantry camp",
-		"swimming camp",
-		"fishing camp",
-		"construction camp",
-		"Trailer camp",
-		"Nazi camp",
-		"Winter camp",
-		"Game",
 		"Defence",
 		"Border",
 		"Army Recruiting",
@@ -402,12 +429,6 @@ def main():
 		"bombardment",
 		"Bombing Attack",
 		"Atomic Bomb",
-		"Air bomb",
-		"fighter bomber",
-		"Pearl Harbor attack",
-		"anti tank",
-		"anti aircraft",
-		"Battle of the Marne",
 		"refugee",
 		"president",
 		"Nuremberg Trials",
@@ -422,22 +443,19 @@ def main():
 		"Wreck",
 		"Truck",
 		"hospital",
-		"Tunnel",
-		"pasture",
-		"farm",
-		"allied invasion",
-		"normandy invasion",
 		"Railroad",
 		"Flying Fortress",
 		"Minesweeper",
 		"Ceremony",
 		"Memorial day",
-		# "Constitution",
+		"Tunnel",
+		"pasture",
+		"farm",
 	]
 	# all_query_tags = natsorted(list(set(all_query_tags)))
 	# all_query_tags = list(set(all_query_tags))[:5]
 	if USER=="farid": # local laptop
-		all_query_tags = all_query_tags[:20]
+		all_query_tags = all_query_tags[:22]
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")

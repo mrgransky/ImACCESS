@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --account=project_2004072
+#SBATCH --account=project_2009043
 #SBATCH --job-name=NA_dataset_collection_ww1_ww2_threshold_plus_minus_1_year
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=5G
+#SBATCH --mem=4G
 #SBATCH --partition=small
 #SBATCH --time=03-00:00:00
 
