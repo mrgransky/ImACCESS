@@ -57,6 +57,7 @@ useless_collection_terms = [
 	"Appian Way",
 	"Indexes to Aerial Photography",
 	"Illustrative Material Published By The Government Printing Office and other Government Agencies",
+	"Field Artillery Units and Revolutionary War Artillerymen",
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
@@ -310,7 +311,6 @@ def main():
 		'Nazi crime',
 		"Nazi victim",
 		"Helicopter",
-		"terminal",
 		"trench warfare",
 		"explosion",
 		"soldier",
@@ -456,7 +456,7 @@ def main():
 	# all_query_tags = natsorted(list(set(all_query_tags)))
 	# all_query_tags = list(set(all_query_tags))[:5]
 	if USER=="farid": # local laptop
-		all_query_tags = all_query_tags[:22]
+		all_query_tags = all_query_tags[:35]
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")
