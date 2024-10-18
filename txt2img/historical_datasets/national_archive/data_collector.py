@@ -56,6 +56,7 @@ useless_collection_terms = [
 	"Landing Fields",
 	"Appian Way",
 	"Indexes to Aerial Photography",
+	"Illustrative Material Published By The Government Printing Office and other Government Agencies",
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
@@ -165,11 +166,11 @@ def is_desired(collections, useless_terms):
 	for term in useless_terms:
 		for collection in collections:
 			if term in collection:
-				print(f"\t> XXXX found '{term}', => skipping! XXXX <")
+				print(f"\t> XXXX found '{term}' => skipping! XXXX <")
 				return False
 	return True
 
-def get_dframe(query: str="query", docs: List=[Dict]):
+def get_dframe(query: str="query", docs: List=[Dict]) -> pd.DataFrame:
 	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
 	df_st_time = time.time()
 	data = []
@@ -204,7 +205,7 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 			and all(useless_title_terms)
 			and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png'))
 		):
-			pass
+			pass # Valid entry; no action needed here
 		else:
 			first_digital_object_url = None
 		row = {
