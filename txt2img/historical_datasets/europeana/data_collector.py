@@ -30,15 +30,16 @@ print(args)
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
 # $ nohup python data_collector.py -u --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> europeana_image_download.out &
-
+HOME: str = os.getenv('HOME') # echo $HOME
+USER: str = os.getenv('USER') # echo $USER
 START_DATE = args.start_date
 END_DATE = args.end_date
 dataset_name = "europeana"
 nw:int = min(args.num_worker, multiprocessing.cpu_count()) # def: 8
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
-europeana_api_key: str = "plaction"
+# europeana_api_key: str = "plaction"
 # europeana_api_key: str = "api2demo"
-# europeana_api_key: str = "nLbaXYaiH"
+europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
@@ -118,7 +119,7 @@ def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="
 					# Extract the 'items' field
 					hits = data['items']
 					total_hits = data['totalResults']
-					print(total_hits, len(hits))
+					# print(total_hits, len(hits))
 					query_all_hits.extend(hits)
 					# print(json.dumps(query_all_hits, indent=2, ensure_ascii=False))
 					print(f"start: {start}:\tFound: {len(hits)} {type(hits)}\t{len(query_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
@@ -146,62 +147,23 @@ def check_url_status(url: str) -> bool:
 def get_dframe(query: str="query", docs: List=[Dict]):
 	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
 	df_st_time = time.time()
-	# Output the extracted items (metadata and descriptions of the images)
-	# for item_idx, item in enumerate(items):
-	# 	print(f"item: {item_idx}")
-	# 	# print(list(item.keys()))
-	# 	print(item.get("id"))
-	# 	print(item.get("title"))
-	# 	print(item.get("edmIsShownAt"))
-	# 	print(item.get("edmIsShownBy"))
-	# 	print(item.get("edmTimespanLabel"))
-	# 	print(item.get("language"))
-	# 	print(item.get("dataProvider"))
-	# 	print(item.get("provider"))
-	# 	print("#"*100)
-	# print(json.dumps(item, indent=2))  # Pretty-print the JSON data for each item
-	# You can process or save the 'items' data as needed
-
 	data = []
-	# print(type(docs), len(docs))
 	for doc_idx, doc in enumerate(docs):
-		# print(doc_idx, type(doc), len(doc))
-		# print(list(doc.keys()))
-		# print(doc.get("id"))
-		# print(doc.get("title"))
-		# print(doc.get("edmIsShownAt"))
-		# print(doc.get("edmIsShownBy"))
-		# print(doc.get("edmTimespanLabel"))
-		# print(doc.get("language"))
-		# print(doc.get("dataProvider"))
-		# print(doc.get("provider"))
-		# if doc.get("dcDescription"):
-		# 	print(len(doc.get("dcDescription")), doc.get("dcDescription"))
-		# print("#"*100)
-
+		# print(type(doc.get("title")), doc.get("title"))
+		title = doc.get("title")#.lower()
 		pDate = doc.get("edmTimespanLabel")[0].get("def") if doc.get("edmTimespanLabel") and doc.get("edmTimespanLabel")[0].get("def") else None
 		image_url = doc.get("edmIsShownBy")[0]
-		if image_url and (image_url.endswith('.jpg') or image_url.endswith('.png')):
-			#################################################################
-			# # without checking status_code [faster but broken URL]
-			# first_digital_object_url = first_digital_object_url
-			#################################################################
-			#################################################################
-			# # with checking status_code [slower but healty URL]
-			# print(f"{first_digital_object_url:<140}", end=" ")
-			# st_t = time.time()
-			if check_url_status(image_url): # status code must be 200!
-				image_url = image_url
-			else:
-				image_url = None
-			# print(f"{time.time()-st_t:.2f} s")
-			#################################################################
+		if (
+			image_url 
+			and (image_url.endswith('.jpg') or image_url.endswith('.png'))
+		):
+			pass # Valid entry; no action needed here
 		else:
 			image_url = None
 		row = {
 			'id': doc.get("id"),
 			'query': query,
-			'title': doc.get("title"),
+			'title': title,
 			'description': doc.get("dcDescription"),
 			'img_url': image_url,
 			'date': pDate,
@@ -209,7 +171,6 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 		data.append(row)
 	df = pd.DataFrame(data)
 	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
-	# print(df.head(10))
 	return df
 
 def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5):
@@ -217,172 +178,104 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 	rIdx = row.name
 	url = row['img_url']
 	image_name = re.sub("/", "LBL", row['id']) # str(row['id']) + os.path.splitext(url)[1]
-	image_path = os.path.join(image_dir, image_name)
-	if os.path.exists(image_path): # avoid redownloading
-		# print(f"File {image_name} already exists, skipping download.")
-		return image_name
-	attempt = 0
-	while attempt < retries: # Retry mechanism
+	image_path = os.path.join(image_dir, f"{image_name}.png")
+	if os.path.exists(image_path):
+		return True # Image already exists, => skipping
+	attempt = 0  # Retry mechanism
+	while attempt < retries:
 		try:
 			response = session.get(url, timeout=20)
 			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
-			with open(image_path, 'wb') as f:
+			with open(image_path, 'wb') as f: # Save the image to the directory
 				f.write(response.content)
-			print(f"{rIdx}/{total_rows:<20} Saved {image_name:<80}in {time.time()-t0:.1f} s")
-			return image_name
-		except (RequestException, IOError, Exception) as e:
+			print(f"[{rIdx:<10}/ {total_rows}]{image_name:>20}{time.time() - t0:>10.1f} s")
+			return True  # Image downloaded successfully
+		except (RequestException, IOError) as e:
 			attempt += 1
-			print(f"{rIdx}/{total_rows:<20} Downloading {image_name}\t{e}\tRetrying ({attempt}/{retries})...")
-			time.sleep(backoff_factor * (3 ** attempt))  # Exponential backoff
+			print(f"[{rIdx}/{total_rows}] Downloading « {url} » failed: {e}, retrying ({attempt}/{retries})")
+			time.sleep(backoff_factor * (2 ** attempt))  # Exponential backoff
 	print(f"[{rIdx}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
-	return None
+	return False  # Indicate failed download
 
-def get_images(df):
-	print(f"Saving images of {df.shape[0]} records using {nw} CPUs...")
+def get_synchronized_df_img(df):
+	print(f"Synchronizing merged_df(raw) & images of {df.shape[0]} records using {nw} CPUs...")
 	os.makedirs(os.path.join(RESULT_DIRECTORY, "images"), exist_ok=True)
 	IMAGE_DIR = os.path.join(RESULT_DIRECTORY, "images")
-	with requests.Session() as session: # Start a session for connection reuse
-		with ThreadPoolExecutor(max_workers=nw) as executor: # Use ThreadPoolExecutor for parallel downloads
-			futures = [executor.submit(download_image, row, session, IMAGE_DIR, df.shape[0]) for _, row in df.iterrows()]
-			for future in as_completed(futures): # Process results as they complete
+	successful_rows = []  # List to keep track of successful downloads
+	with requests.Session() as session:
+		with ThreadPoolExecutor(max_workers=nw) as executor:
+			futures = {executor.submit(download_image, row, session, IMAGE_DIR, df.shape[0]): idx for idx, row in df.iterrows()}
+			for future in as_completed(futures):
 				try:
-					future.result()
+					success = future.result()  # Get the result (True or False) from download_image
+					if success:
+						successful_rows.append(futures[future])  # Keep track of successfully downloaded rows
 				except Exception as e:
-					print(f"Unexpected ERR: {e}")
-	print(f"Total number of images downloaded: {len(os.listdir(IMAGE_DIR))}")
-
-# def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5):
-# 		t0 = time.time()
-# 		rIdx = row.name
-# 		url = row['img_url']
-# 		image_name = re.sub("/", "LBL", row['id']) # str(row['id']) + os.path.splitext(url)[1]
-# 		image_path = os.path.join(image_dir, image_name)
-# 		if os.path.exists(image_path): # avoid redownloading
-# 				# print(f"File {image_name} already exists, skipping download.")
-# 				return image_name
-# 		attempt = 0
-# 		while attempt < retries: # Retry mechanism
-# 				try:
-# 						response = session.get(url, timeout=20)
-# 						response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
-# 						with open(image_path, 'wb') as f:
-# 								f.write(response.content)
-# 						print(f"{rIdx}/{total_rows:<20} Saved {image_name:<80} in {time.time()-t0:.1f} s")
-# 						return image_name
-# 				except HTTPError as http_err:
-# 						if http_err.response.status_code == 404:
-# 								print(f"{rIdx}/{total_rows:<20} 404 Not Found for {image_name}, skipping...")
-# 								return None
-# 						else:
-# 								attempt += 1
-# 								print(f"{rIdx}/{total_rows:<20} Downloading {image_name}\t{http_err}\tRetrying ({attempt}/{retries})...")
-# 								time.sleep(backoff_factor * (3 ** attempt))  # Exponential backoff
-# 				except (RequestException, IOError, Exception) as e:
-# 						attempt += 1
-# 						print(f"{rIdx}/{total_rows:<20} Downloading {image_name}\t{e}\tRetrying ({attempt}/{retries})...")
-# 						time.sleep(backoff_factor * (3 ** attempt))  # Exponential backoff
-# 		print(f"[{rIdx}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
-# 		return None
-
-# def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5):
-# 		t0 = time.time()
-# 		rIdx = row.name
-# 		url = row['img_url']
-# 		image_name = re.sub("/", "LBL", row['id']) # str(row['id']) + os.path.splitext(url)[1]
-# 		image_path = os.path.join(image_dir, image_name)
-# 		if os.path.exists(image_path): # avoid redownloading
-# 				# print(f"File {image_name} already exists, skipping download.")
-# 				return image_name
-# 		attempt = 0
-# 		while attempt < retries: # Retry mechanism
-# 				try:
-# 						response = session.get(url, timeout=20)
-# 						response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
-# 						with open(image_path, 'wb') as f:
-# 								f.write(response.content)
-# 						print(f"{rIdx}/{total_rows:<20} Saved {image_name:<80} in {time.time()-t0:.1f} s")
-# 						return image_name
-# 				except HTTPError as http_err:
-# 						if http_err.response.status_code == 404:
-# 								print(f"{rIdx}/{total_rows:<20} 404 Not Found for {image_name}, skipping...")
-# 								return None
-# 						elif http_err.response.status_code == 403:
-# 								print(f"{rIdx}/{total_rows:<20} 403 Forbidden for {image_name}, skipping...")
-# 								return None
-# 						else:
-# 								attempt += 1
-# 								print(f"{rIdx}/{total_rows:<20} Downloading {image_name}\t{http_err}\tRetrying ({attempt}/{retries})...")
-# 								time.sleep(backoff_factor * (3 ** attempt))  # Exponential backoff
-# 				except SSLError as ssl_err:
-# 						print(f"{rIdx}/{total_rows:<20} SSL Error for {image_name}, skipping...")
-# 						return None
-# 				except (RequestException, IOError, Exception) as e:
-# 						attempt += 1
-# 						print(f"{rIdx}/{total_rows:<20} Downloading {image_name}\t{e}\tRetrying ({attempt}/{retries})...")
-# 						time.sleep(backoff_factor * (3 ** attempt))  # Exponential backoff
-# 		print(f"[{rIdx}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
-# 		return None
-
-# def get_images(df):
-# 		print(f"Saving images of {df.shape[0]} records using {nw} CPUs...")
-# 		os.makedirs(os.path.join(RESULT_DIRECTORY, "images"), exist_ok=True)
-# 		IMAGE_DIR = os.path.join(RESULT_DIRECTORY, "images")
-# 		with requests.Session() as session: # Start a session for connection reuse
-# 				with ThreadPoolExecutor(max_workers=nw) as executor: # Use ThreadPoolExecutor for parallel downloads
-# 						futures = [executor.submit(download_image, row, session, IMAGE_DIR, df.shape[0]) for _, row in df.iterrows()]
-# 						for future in as_completed(futures): # Process results as they complete
-# 								try:
-# 										future.result()
-# 								except Exception as e:
-# 										print(f"Unexpected ERR: {e}")
-# 		print(f"Total number of images downloaded: {len(os.listdir(IMAGE_DIR))}")
+					print(f"Unexpected error: {e}")
+	print(f"cleaning {type(df)} {df.shape} with {len(successful_rows)} succeded downloaded images [functional URL]...")
+	df_cleaned = df.loc[successful_rows] # keep only the successfully downloaded rows
+	print(f"Total images downloaded successfully: {len(successful_rows)} out of {df.shape[0]}")
+	print(f"df_cleaned: {df_cleaned.shape}")
+	return df_cleaned
 
 def main():
 	dfs = []
 	all_query_tags = [
-		"Ballistic missile",
+		"motor cycle",
+		"hunting",
+		"Sailboat",
+		"regatta",
+		"ballistic missile",
 		"flame thrower",
 		"flamethrower",
-		"Power Plant",
-		'Nazi crime',
-		"Nazi victim",
-		"Constitution",
-		"road construction",
-		"rail construction",
-		"dam construction",
-		"tunnel construction",
-		"Helicopter",
-		"Manufacturing Plant",
-		"naval aircraft factory",
-		"naval air station",
-		"naval air base",
-		"terminal",
-		"trench warfare",
-		"explosion",
-		"soldier",
-		"Submarine",
-		"allied force",
-		"propaganda",
+		"Red cross worker",
 		"cemetery",
 		"graveyard",
 		"bayonet",
 		"war bond",
+		"Infantry camp",
+		"swimming camp",
+		"fishing camp",
+		"construction camp",
+		"Trailer camp",
+		"Nazi camp",
+		"Winter camp",
+		"naval air station",
+		"allied invasion",
+		"normandy invasion",
+		"naval air base",
+		"Power Plant",
+		"Air bomb",
+		"fighter bomber",
+		"Pearl Harbor attack",
+		"anti tank",
+		"anti aircraft",
+		"Battle of the Marne",
+		'Nazi crime',
+		"Nazi victim",
+		"Helicopter",
+		"trench warfare",
+		"explosion",
+		"soldier",
+		"Submarine",
+		"Manufacturing Plant",
+		"naval aircraft factory",
+		"rail construction",
+		"dam construction",
+		"tunnel construction",
+		"allied force",
 		"air force base",
 		"air force personnel",
 		"air force station",
 		"Artillery",
 		"Rifle",
 		"barrel",
-		"Air bomb",
 		"air raid",
-		"flag",
+		"Flag Raising",
 		"Massacre",
-		"Military Aviation",
 		"evacuation",
-		"Naval Vessel",
 		"warship",
 		"Infantry",
-		"Roadbuilding",
 		"Coast Guard",
 		"conspiracy theory",
 		"Manhattan Project",
@@ -390,8 +283,6 @@ def main():
 		"Animal",
 		"surge tank",
 		"Water Tank",
-		"Anti tank",
-		"Anti Aircraft",
 		"plane",
 		"aeroplane",
 		"airplane",
@@ -399,33 +290,28 @@ def main():
 		"rationing",
 		"Grenade",
 		"cannon",
-		"Navy Officer",
+		"Naval Officer",
 		"Rocket",
 		"prisoner",
 		"weapon",
 		"Aviator",
 		"Parade",
-		"Aerial warfare",
 		"army vehicle",
-		"military vehicle",
 		"Storehouse",
 		"Aerial View",
+		"Aerial warfare",
 		"Ambulance",
-		"Destruction",
 		"Army Base",
 		"Army hospital",
 		"Military Base",
-		"Border",
-		"Army Recruiting",
-		"Game",
 		"military leader",
+		"military vehicle",
+		"Military Aviation",
 		"museum",
 		"board meeting",
-		"nato",
 		"commander",
 		"Sergeant",
 		"Admiral",
-		"Bombing Attack",
 		"Battle Monument",
 		"clash",
 		"strike",
@@ -437,7 +323,6 @@ def main():
 		"Anniversary",
 		"Delegate",
 		"exile",
-		"Military Aviation",
 		"evacuation",
 		"Coast Guard",
 		"Naval Vessel",
@@ -445,43 +330,30 @@ def main():
 		"Infantry",
 		"Civilian",
 		"Medical aid",
-		"bombardment",
 		"ambassador",
 		"projectile",
 		"helmet",
-		"Alliance",
 		"Treaty of Versailles",
 		"enemy territory",
 		"reconnaissance",
 		"nurse",
-		"navy doctor",
-		"military hospital",
-		"Atomic Bomb",
+		"doctor",
 		"embassy",
 		"ship deck",
-		"Red cross worker",
-		"Infantry camp",
-		"swimming camp",
-		"fishing camp",
-		"construction camp",
-		"Trailer camp",
-		"Nazi camp",
-		"Winter camp",
 		"Defence",
+		"Border",
+		"Army Recruiting",
 		"Recruitment",
-		"diplomacy",
 		"reservoir",
 		"infrastructure",
-		"public relation",
-		"Association Convention",
 		"ship",
+		"military hospital",
 		"naval hospital",
 		"hospital base",
 		"hospital ship",
 		"hospital train",
 		"migration",
 		"captain",
-		"summit",
 		"sport",
 		"Kitchen Truck",
 		"Railroad Truck",
@@ -497,16 +369,13 @@ def main():
 		"military truck",
 		"army truck",
 		"vice president",
-		"Atomic Bombing",
-		"Battle of the Marne",
-		"anti aircraft gun",
-		"anti aircraft warfare",
-		"Battle of the Marne",
+		"bombardment",
+		"Bombing Attack",
+		"Atomic Bomb",
 		"refugee",
 		"president",
 		"Nuremberg Trials",
 		"holocaust",
-		"fighter bomber",
 		"Ballon gun",
 		"Machine gun",
 		"Mortar gun",
@@ -516,29 +385,21 @@ def main():
 		"Accident",
 		"Wreck",
 		"Truck",
-		"construction",
 		"hospital",
+		"Railroad",
+		"Flying Fortress",
+		"Minesweeper",
+		"Ceremony",
+		"Memorial day",
 		"Tunnel",
-		# "#######################################",
-		# "war strategy",
-		# "vehicular",
-		# "Firearm",
-		# "exodus",
-		# "information warfare",
-		# "negotiation",
-		# "Blitzkrieg",
-		# "Combined arm",
-		# "Pearl Harbor attack",
-		# "Combat arm",
-		# "surrender", # meaningless images
-		# "army",
-		# "world war",
-		# "Bomb",
-		# "WWI",
-		# "WWII",
+		"pasture",
+		"farm",
 	]
 	# all_query_tags = natsorted(list(set(all_query_tags)))
-	all_query_tags = list(set(all_query_tags))
+	# all_query_tags = list(set(all_query_tags))[:5]
+	if USER=="farid": # local laptop
+		all_query_tags = all_query_tags#[:5]
+
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be patient...")
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")
@@ -561,7 +422,7 @@ def main():
 
 	print(f"Concatinating {len(dfs)} dfs...")
 	# print(dfs[0])
-	europeana_df_merged = pd.concat(dfs, ignore_index=True)
+	europeana_df_merged_raw = pd.concat(dfs, ignore_index=True)
 	replacement_dict = {
 		"plane": "aircraft",
 		"airplane": "aircraft",
@@ -655,34 +516,36 @@ def main():
 	# 	"reservoir": "infrastructure",
 	# 	"defence": "strategy",
 	# }
+	print(f"pre-processing merged {type(europeana_df_merged_raw)} {europeana_df_merged_raw.shape}")
+	europeana_df_merged_raw['query'] = europeana_df_merged_raw['query'].replace(replacement_dict)
+	europeana_df_merged_raw = europeana_df_merged_raw.dropna(subset=['img_url']) # drop None firstDigitalObjectUrl
+	europeana_df_merged_raw = europeana_df_merged_raw.drop_duplicates(subset=['img_url']) # drop duplicate firstDigitalObjectUrl
 
-	europeana_df_merged['query'] = europeana_df_merged['query'].replace(replacement_dict)
-	europeana_df_merged = europeana_df_merged.dropna(subset=['img_url']) # drop None firstDigitalObjectUrl
-	europeana_df_merged = europeana_df_merged.drop_duplicates(subset=['img_url']) # drop duplicate firstDigitalObjectUrl
+	print(f"Processed europeana_df_merged_raw: {europeana_df_merged_raw.shape}")
+	print(europeana_df_merged_raw.head(20))
 
-	print(f"europeana_df_merged: {europeana_df_merged.shape}")
-	print(europeana_df_merged.head(20))
+	europeana_df_merged_raw.to_csv(os.path.join(RESULT_DIRECTORY, "europeana_raw.csv"), index=False)
+	try:
+		europeana_df_merged_raw.to_excel(os.path.join(RESULT_DIRECTORY, "europeana_raw.xlsx"), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
 
-	query_counts = europeana_df_merged['query'].value_counts()
-	print(query_counts.tail(25))
+	europeana_df = get_synchronized_df_img(df=europeana_df_merged_raw)
+	query_counts = europeana_df['query'].value_counts()
+
 	plt.figure(figsize=(20, 13))
-	query_counts.plot(kind='bar', fontsize=11)
+	query_counts.plot(kind='bar', fontsize=9)
 	plt.title(f'{dataset_name}: Query Frequency (total: {query_counts.shape}) {START_DATE} - {END_DATE}')
 	plt.xlabel('Query')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
 	plt.savefig(os.path.join(RESULT_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
 
-	# Save as CSV
-	europeana_df_merged.to_csv(os.path.join(RESULT_DIRECTORY, "europeana.csv"), index=False)
-
-	# Save as Excel
+	europeana_df.to_csv(os.path.join(RESULT_DIRECTORY, "europeana.csv"), index=False)
 	try:
-		europeana_df_merged.to_excel(os.path.join(RESULT_DIRECTORY, "europeana.xlsx"), index=False)
+		europeana_df.to_excel(os.path.join(RESULT_DIRECTORY, "europeana.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
-
-	get_images(df=europeana_df_merged)
 
 def test():
 	query = "bombing"

@@ -32,7 +32,6 @@ print(args)
 # $ nohup python data_collector.py -u --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> na_image_download.out &
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
-
 na_api_base_url: str = "https://catalog.archives.gov/proxy/records/search"
 START_DATE = args.start_date
 END_DATE = args.end_date
@@ -188,11 +187,13 @@ def get_dframe(query: str="query", docs: List=[Dict]) -> pd.DataFrame:
 			"-sc-" not in title,
 			"notes" not in title,
 			"page" not in title,
-			"exhibit:" not in title,
+			"exhibit" not in title,
 			"ad:" not in title,
 			"sheets" not in title,
 			"report" not in title,
-			"map of" not in title,
+			"map" not in title,
+			"portrait of" not in title,
+			"poster" not in title,
 			"drawing" not in title,
 			"sketch of" not in title,
 			"layout" not in title,
@@ -228,11 +229,8 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 	url = row['img_url']
 	image_name = str(row['id']) + os.path.splitext(url)[1]
 	image_path = os.path.join(image_dir, image_name)
-	
 	if os.path.exists(image_path):
-		# Image already exists, consider it a successful download
-		return True
-
+		return True # Image already exists, => skipping
 	attempt = 0  # Retry mechanism
 	while attempt < retries:
 		try:
@@ -253,12 +251,9 @@ def get_synchronized_df_img(df):
 	print(f"Synchronizing merged_df(raw) & images of {df.shape[0]} records using {nw} CPUs...")
 	os.makedirs(os.path.join(RESULT_DIRECTORY, "images"), exist_ok=True)
 	IMAGE_DIR = os.path.join(RESULT_DIRECTORY, "images")
-	
 	successful_rows = []  # List to keep track of successful downloads
-
 	with requests.Session() as session:
 		with ThreadPoolExecutor(max_workers=nw) as executor:
-			# Submit download tasks
 			futures = {executor.submit(download_image, row, session, IMAGE_DIR, df.shape[0]): idx for idx, row in df.iterrows()}
 			for future in as_completed(futures):
 				try:
@@ -267,18 +262,17 @@ def get_synchronized_df_img(df):
 						successful_rows.append(futures[future])  # Keep track of successfully downloaded rows
 				except Exception as e:
 					print(f"Unexpected error: {e}")
-
-	# Filter the DataFrame to keep only the successfully downloaded rows
 	print(f"cleaning {type(df)} {df.shape} with {len(successful_rows)} succeded downloaded images [functional URL]...")
-	df_cleaned = df.loc[successful_rows]
+	df_cleaned = df.loc[successful_rows] # keep only the successfully downloaded rows
 	print(f"Total images downloaded successfully: {len(successful_rows)} out of {df.shape[0]}")
-	# Return the cleaned DataFrame
 	print(f"df_cleaned: {df_cleaned.shape}")
 	return df_cleaned
 
 def main():	
 	dfs = []
 	all_query_tags = [
+		"motor cycle",
+		"hunting",
 		"Sailboat",
 		"regatta",
 		"ballistic missile",
@@ -296,7 +290,6 @@ def main():
 		"Trailer camp",
 		"Nazi camp",
 		"Winter camp",
-		"Game",
 		"naval air station",
 		"allied invasion",
 		"normandy invasion",
@@ -403,7 +396,6 @@ def main():
 		"Recruitment",
 		"reservoir",
 		"infrastructure",
-		"public relation",
 		"ship",
 		"military hospital",
 		"naval hospital",
@@ -456,7 +448,7 @@ def main():
 	# all_query_tags = natsorted(list(set(all_query_tags)))
 	# all_query_tags = list(set(all_query_tags))[:5]
 	if USER=="farid": # local laptop
-		all_query_tags = all_query_tags[:35]
+		all_query_tags = all_query_tags[:47]
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")
@@ -488,7 +480,6 @@ def main():
 		"graveyard": "cemetery",
 		"soldier": "infantry",
 		"clash": "wreck",
-		"game": "leisure",
 		"sport": "leisure",
 		"military truck": "army truck",
 		"military base": "army base",
@@ -531,7 +522,6 @@ def main():
 	# 	"versailles": "international relations & treaties",
 	# 	"treaty of versailles": "international relations & treaties",
 	# 	"nuremberg trials": "international relations & treaties",
-	# 	"game": "leisure",
 	# 	"anniversary": "leisure",
 	# 	"rail": "infrastructure",
 	# 	"sport": "leisure",
