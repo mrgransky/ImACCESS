@@ -61,7 +61,6 @@ max_seq_length = 128
 text_heads = 8
 text_layers = 8
 wd = 1e-4 # L2 Regularization
-nw:int = multiprocessing.cpu_count() # def: 8
 
 def save_pickle(pkl, fname:str=""):
 	print(f"\nSaving {type(pkl)}\n{fname}")

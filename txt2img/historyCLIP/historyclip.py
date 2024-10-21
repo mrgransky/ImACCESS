@@ -17,7 +17,7 @@ parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR'
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--batch_size', type=int, default=64, help='Batch Size')
 parser.add_argument('--image_size', type=int, default=80, help='Image size')
-parser.add_argument('--query', type=str, default="bags", help='Query')
+parser.add_argument('--query', type=str, default="aircraft", help='Query')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.23, help='share of Validation set')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
@@ -31,6 +31,8 @@ print(args)
 
 os.makedirs(os.path.join(args.dataset_dir, "outputs"), exist_ok=True)
 outputs_dir:str = os.path.join(args.dataset_dir, "outputs",)
+nw:int = multiprocessing.cpu_count() # def: 8
+
 models_dir_name = (
 	f"models_"
 	+ f"nEpochs_{args.num_epochs}_"
