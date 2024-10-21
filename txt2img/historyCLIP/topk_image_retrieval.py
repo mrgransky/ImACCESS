@@ -104,14 +104,14 @@ def img_retrieval(query:str="bags", model_fpth: str=mdl_fpth, TOP_K: int=args.to
 		return
 	
 	query_counts = val_df['query'].value_counts()
-	print(query_counts.tail(25))
+	# print(query_counts.tail(25))
 	plt.figure(figsize=(18, 12))
 	query_counts.plot(kind='bar', fontsize=8)
-	plt.title(f'Query Frequency (total: {query_counts.shape})')
+	plt.title(f'Validation Query Frequency (total: {query_counts.shape})')
 	plt.xlabel('Query')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
-	plt.savefig("query_freq.png")
+	plt.savefig(os.path.join(args.dataset_dir, "outputs", f"query_freq_{query_counts.shape[0]}_val.png"))
 
 	# Step 1: Encode the text query using your tokenizer and TextEncoder
 	query_text, query_mask = tokenizer(query)
