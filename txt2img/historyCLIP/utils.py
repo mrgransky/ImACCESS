@@ -28,6 +28,11 @@ from PIL import Image, ImageDraw, ImageOps
 from typing import List, Set, Dict, Tuple, Union
 warnings.filterwarnings('ignore')
 
+# Set a new limit for decompression bomb
+Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely
+# or set a higher limit
+# Image.MAX_IMAGE_PIXELS = 300000000  # Example of setting a higher limit
+
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 device: str = torch.device("cuda" if torch.cuda.is_available() else "cpu")

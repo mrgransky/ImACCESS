@@ -24,9 +24,12 @@ class HistoricalDataset(Dataset):
 			# raise FileNotFoundError(f"Image not found at path: {img_path}") debugging purpose
 			return None
 		try:
-			image = Image.open(img_path)#.convert('RGB')
+			# print(img_path)
+			image = Image.open(img_path).convert('RGB')
+			# image = Image.open(img_path).convert('L')
 		except (FileNotFoundError, IOError, Exception) as e:
 			# raise IOError(f"Could not load image: {img_path}, Error: {str(e)}") # debugging
+			print(f"{img_path} ERROR: {e}")
 			return None
 		# Resize the image to maintain aspect ratio and apply transformations
 		image = self.resize_and_pad(image, self.img_sz)
