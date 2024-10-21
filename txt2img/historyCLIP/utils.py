@@ -32,6 +32,7 @@ warnings.filterwarnings('ignore')
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely
 # or set a higher limit
 # Image.MAX_IMAGE_PIXELS = 300000000  # Example of setting a higher limit
+nw:int = multiprocessing.cpu_count() # def: 8
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER

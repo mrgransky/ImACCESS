@@ -31,7 +31,6 @@ print(args)
 
 os.makedirs(os.path.join(args.dataset_dir, "outputs"), exist_ok=True)
 outputs_dir:str = os.path.join(args.dataset_dir, "outputs",)
-nw:int = multiprocessing.cpu_count() # def: 8
 
 models_dir_name = (
 	f"models_"
@@ -196,7 +195,7 @@ def fine_tune(train_df, captions):
 			loss.backward()
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			optimizer.step()
-			if batch_idx % 20 == 0:
+			if batch_idx % 250 == 0:
 				print(f"\tBatch [{batch_idx + 1}/{len(train_data_loader)}] Loss: {loss.item():.5f}")
 			epoch_loss += loss.item()
 		avg_loss = epoch_loss / len(train_data_loader)
