@@ -1,9 +1,11 @@
 from utils import *
 from models import *
-from dataset_loader import NationalArchiveDataset
+from dataset_loader import HistoricalDataset
 
 # how to run [Local]:
 # $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1
+# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
+
 # $ nohup python -u historyclip.py --num_epochs 100 > $HOME/datasets/trash/logs/historyclip.out & 
 
 # how to run [Pouta]:
@@ -51,7 +53,7 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 	vdl_st = time.time()
 	print(f"Creating Validation Dataloader for {len(val_df)} samples", end="\t")
 	vdl_st = time.time()
-	val_dataset = NationalArchiveDataset(
+	val_dataset = HistoricalDataset(
 		data_frame=val_df,
 		captions=CAPTIONSs,
 		img_sz=args.image_size,
@@ -136,7 +138,7 @@ def fine_tune(train_df, captions):
 	print(f"Fine-tuning in {torch.cuda.get_device_name(device)} using {nw} CPU(s)".center(150, "-"))
 	print(f"Creating Train Dataloader", end="\t")
 	tdl_st = time.time()
-	train_dataset = NationalArchiveDataset(
+	train_dataset = HistoricalDataset(
 		data_frame=train_df,
 		captions=captions, 
 		img_sz=args.image_size,
@@ -228,7 +230,7 @@ def main():
 	except Exception as e:
 		print(f"{e}")
 		df = get_dframe(
-			fpth=os.path.join(args.dataset_dir, "na.csv"), 
+			fpth=os.path.join(args.dataset_dir, "metadata.csv"), 
 			img_dir=os.path.join(args.dataset_dir, "images"), 
 		)
 		# Split the dataset: training and validation sets
@@ -256,7 +258,7 @@ def main():
 
 	print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
 	vdl_st = time.time()
-	val_dataset = NationalArchiveDataset(
+	val_dataset = HistoricalDataset(
 		data_frame=val_df,
 		captions=img_lbls_dict,
 		img_sz=args.image_size,

@@ -1,7 +1,7 @@
 from utils import *
 
 from models import *
-from dataset_loader import NationalArchiveDataset
+from dataset_loader import HistoricalDataset
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--query', type=str, default="bags", help='Query')
@@ -43,7 +43,7 @@ img_lbls_dict = load_pickle(fpath=img_lbls_dict_fpth)
 
 print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
 vdl_st = time.time()
-val_dataset = NationalArchiveDataset(
+val_dataset = HistoricalDataset(
 	data_frame=val_df,
 	captions=img_lbls_dict,
 	img_sz=args.image_size,

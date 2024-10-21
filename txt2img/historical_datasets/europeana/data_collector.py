@@ -524,9 +524,9 @@ def main():
 	print(f"Processed europeana_df_merged_raw: {europeana_df_merged_raw.shape}")
 	print(europeana_df_merged_raw.head(20))
 
-	europeana_df_merged_raw.to_csv(os.path.join(RESULT_DIRECTORY, "europeana_raw.csv"), index=False)
+	europeana_df_merged_raw.to_csv(os.path.join(RESULT_DIRECTORY, "metadata_raw.csv"), index=False)
 	try:
-		europeana_df_merged_raw.to_excel(os.path.join(RESULT_DIRECTORY, "europeana_raw.xlsx"), index=False)
+		europeana_df_merged_raw.to_excel(os.path.join(RESULT_DIRECTORY, "metadata_raw.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
@@ -541,9 +541,9 @@ def main():
 	plt.tight_layout()
 	plt.savefig(os.path.join(RESULT_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
 
-	europeana_df.to_csv(os.path.join(RESULT_DIRECTORY, "europeana.csv"), index=False)
+	europeana_df.to_csv(os.path.join(RESULT_DIRECTORY, "metadata.csv"), index=False)
 	try:
-		europeana_df.to_excel(os.path.join(RESULT_DIRECTORY, "europeana.xlsx"), index=False)
+		europeana_df.to_excel(os.path.join(RESULT_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 

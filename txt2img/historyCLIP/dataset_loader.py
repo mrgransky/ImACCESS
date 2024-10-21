@@ -1,6 +1,6 @@
 from utils import *
 
-class NationalArchiveDataset(Dataset):
+class HistoricalDataset(Dataset):
 	def __init__(self, data_frame, captions, img_sz=28, txt_category="query", dataset_directory="path/2/images"):
 		self.data_frame = data_frame
 		self.img_sz = img_sz  # Desired size for the square image
