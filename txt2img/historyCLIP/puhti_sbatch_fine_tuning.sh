@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=64G
+#SBATCH --mem=36G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --time=03-00:00:00
@@ -35,7 +35,7 @@ qu="aircraft"
 python -u historyclip.py \
 	--dataset_dir $ddir \
 	--query  $qu \
-	--num_epochs 50 \
+	--num_epochs 15 \
 	--batch_size 64 \
 	--image_size 80 \
 
