@@ -3,23 +3,23 @@ from models import *
 from dataset_loader import NationalArchiveDataset
 
 # how to run [Local]:
-# $ python fashionclip.py --query tie
-# $ python fashionclip.py --query tie --dataset_dir national_archive --num_epochs 1
-# $ nohup python -u fashionclip.py --num_epochs 100 > $HOME/datasets/trash/logs/fashionclip.out & 
+# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1
+# $ nohup python -u historyclip.py --num_epochs 100 > $HOME/datasets/trash/logs/historyclip.out & 
 
 # how to run [Pouta]:
-# $ python fashionclip.py --dataset_dir /media/volume/ImACCESS/national_archive --num_epochs 1
-# $ nohup python -u --dataset_dir /media/volume/ImACCESS/national_archive --num_epochs 3 --query "topwear" > /media/volume/ImACCESS/trash/logs/fashionclip.out & 
+# $ python historyclip.py --dataset_dir /media/volume/ImACCESS/national_archive --num_epochs 1
+# $ nohup python -u --dataset_dir /media/volume/ImACCESS/national_archive --num_epochs 3 --query "topwear" > /media/volume/ImACCESS/trash/logs/historyclip.out & 
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--batch_size', type=int, default=64, help='Batch Size')
+parser.add_argument('--image_size', type=int, default=80, help='Image size')
 parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.23, help='share of Validation set')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
-parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
+parser.add_argument('--document_description_col', type=str, default="query", help='labels')
 parser.add_argument('--validate', type=bool, default=True, help='Model Validation upon request')
 parser.add_argument('--visualize', type=bool, default=False, help='Model Validation upon request')
 
@@ -35,7 +35,8 @@ models_dir_name = (
 	+ f"batchSZ_{args.batch_size}_"
 	+ f"lr_{args.learning_rate}_"
 	+ f"val_{args.validation_dataset_share}_"
-	+ f"descriptions_{args.product_description_col}"
+	+ f"descriptions_{args.document_description_col}_"
+	+ f"image_size_{args.image_size}"
 )
 os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
 mdl_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "model.pt")
@@ -53,7 +54,7 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 	val_dataset = NationalArchiveDataset(
 		data_frame=val_df,
 		captions=CAPTIONSs,
-		img_sz=80,
+		img_sz=args.image_size,
 		dataset_directory=os.path.join(args.dataset_dir, "images")
 	)
 	val_loader = DataLoader(
@@ -131,25 +132,25 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 		print(f"index: {index}: {class_names[int(index)]:>30s}: {100 * value.item():.3f}%")
 	print(f"Elapsed_t: {time.time()-vdl_st:.2f} sec")
 
-def fine_tune(train_df,captions):
+def fine_tune(train_df, captions):
 	print(f"Fine-tuning in {torch.cuda.get_device_name(device)} using {nw} CPU(s)".center(150, "-"))
 	print(f"Creating Train Dataloader", end="\t")
 	tdl_st = time.time()
 	train_dataset = NationalArchiveDataset(
 		data_frame=train_df,
 		captions=captions, 
-		img_sz=80,
+		img_sz=args.image_size,
 		dataset_directory=os.path.join(args.dataset_dir, "images")
 	)
-	train_loader = DataLoader(
+	train_data_loader = DataLoader(
 		dataset=train_dataset,
 		shuffle=True,
 		batch_size=args.batch_size,
 		num_workers=nw,
 		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)
-	print(f"num_samples[Total]: {len(train_loader.dataset)} Elapsed_t: {time.time()-tdl_st:.5f} sec")
-	# get_info(dataloader=train_loader)
+	print(f"num_samples[Total]: {len(train_data_loader.dataset)} Elapsed_t: {time.time()-tdl_st:.5f} sec")
+	get_info(dataloader=train_data_loader)
 	model = CLIP(
 		emb_dim, 
 		vit_layers,
@@ -182,7 +183,7 @@ def fine_tune(train_df,captions):
 	for epoch in range(args.num_epochs):
 		print(f"Epoch [{epoch+1}/{args.num_epochs}]")
 		epoch_loss = 0.0  # To accumulate the loss over the epoch
-		for batch_idx, data in enumerate(train_loader):
+		for batch_idx, data in enumerate(train_data_loader):
 			img = data["image"].to(device) 
 			cap = data["caption"].to(device)
 			mask = data["mask"].to(device)
@@ -191,10 +192,10 @@ def fine_tune(train_df,captions):
 			loss.backward()
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			optimizer.step()
-			if batch_idx % 200 == 0:
-				print(f"\tBatch [{batch_idx + 1}/{len(train_loader)}] Loss: {loss.item():.5f}")
+			if batch_idx % 20 == 0:
+				print(f"\tBatch [{batch_idx + 1}/{len(train_data_loader)}] Loss: {loss.item():.5f}")
 			epoch_loss += loss.item()
-		avg_loss = epoch_loss / len(train_loader)
+		avg_loss = epoch_loss / len(train_data_loader)
 		scheduler.step(avg_loss)
 		print(f"Average Loss: {avg_loss:.5f} @ Epoch: {epoch+1}")
 		average_losses.append(avg_loss)
@@ -227,17 +228,18 @@ def main():
 	except Exception as e:
 		print(f"{e}")
 		df = get_dframe(
-			fpth=os.path.join(args.dataset_dir, "styles.csv"), 
+			fpth=os.path.join(args.dataset_dir, "na.csv"), 
 			img_dir=os.path.join(args.dataset_dir, "images"), 
 		)
-		# Split the dataset into training and validation sets
+		# Split the dataset: training and validation sets
+		# TODO: Train: National Archive, Validation: Europeana
 		train_df, val_df = train_test_split(
 			df, 
 			shuffle=True, 
 			test_size=args.validation_dataset_share, # 0.05
 			random_state=42,
 		)
-		img_lbls_dict, img_lbls_list = get_product_description(df=df, col=args.product_description_col)
+		img_lbls_dict, img_lbls_list = get_doc_description(df=df, col=args.document_description_col)
 		save_pickle(pkl=df, fname=df_fpth,)
 		save_pickle(pkl=train_df, fname=train_df_fpth,)
 		save_pickle(pkl=val_df, fname=val_df_fpth,)
@@ -246,9 +248,9 @@ def main():
 	
 	# Print the sizes of the datasets
 	print(f"df: {df.shape} train_df: {train_df.shape} val_df: {val_df.shape}")
-	print(type(img_lbls_dict), type(img_lbls_list))
-	print(len(img_lbls_dict), len(img_lbls_list))
-
+	print(f"img_lbls_dict {type(img_lbls_dict)} {len(img_lbls_dict)}")
+	print(f"img_lbls_list {type(img_lbls_list)} {len(img_lbls_list)}")
+	# return
 	if not os.path.exists(mdl_fpth):
 		fine_tune(train_df=train_df, captions=img_lbls_dict)
 
@@ -257,7 +259,7 @@ def main():
 	val_dataset = NationalArchiveDataset(
 		data_frame=val_df,
 		captions=img_lbls_dict,
-		img_sz=80,
+		img_sz=args.image_size,
 		dataset_directory=os.path.join(args.dataset_dir, "images")
 	)
 	val_loader = DataLoader(
@@ -268,7 +270,7 @@ def main():
 		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)
 	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
-	# get_info(dataloader=val_loader)
+	get_info(dataloader=val_loader)
 	# return
 
 	if args.validate:

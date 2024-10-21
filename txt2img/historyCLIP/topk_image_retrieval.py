@@ -1,18 +1,19 @@
 from utils import *
 
 from models import *
-from dataset_loader import MyntraDataset
+from dataset_loader import NationalArchiveDataset
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--processed_image_path', type=str, default="my_img.png", help='Path to resulted image with topk images')
 parser.add_argument('--dataset_dir', type=str, default="myntradataset", help='Dataset DIR')
+parser.add_argument('--image_size', type=int, default=80, help='Image size')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--batch_size', type=int, default=64, help='Batch Size')
 parser.add_argument('--num_epochs', type=int, default=3, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.23, help='share of Validation set')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
-parser.add_argument('--product_description_col', type=str, default="subCategory", help='caption col ["articleType", "subCategory", "customized_caption"]')
+parser.add_argument('--document_description_col', type=str, default="query", help='caption col')
 args, unknown = parser.parse_known_args()
 print(args)
 
@@ -26,7 +27,8 @@ models_dir_name = (
 	+ f"batchSZ_{args.batch_size}_"
 	+ f"lr_{args.learning_rate}_"
 	+ f"val_{args.validation_dataset_share}_"
-	+ f"descriptions_{args.product_description_col}"
+	+ f"descriptions_{args.document_description_col}_"
+	+ f"image_size_{args.image_size}"
 )
 
 os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
@@ -41,10 +43,10 @@ img_lbls_dict = load_pickle(fpath=img_lbls_dict_fpth)
 
 print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
 vdl_st = time.time()
-val_dataset = MyntraDataset(
+val_dataset = NationalArchiveDataset(
 	data_frame=val_df,
 	captions=img_lbls_dict,
-	img_sz=80,
+	img_sz=args.image_size,
 	dataset_directory=os.path.join(args.dataset_dir, "images")
 )
 val_loader = DataLoader(
@@ -95,13 +97,13 @@ print(f"Elapsed_t: {time.time()-rm_st:.5f} sec")
 def img_retrieval(query:str="bags", model_fpth: str=mdl_fpth, TOP_K: int=args.topk, resulted_IMGname: str="topk_img.png"):
 	print(f"Top-{TOP_K} Image Retrieval | Query: {query} | user: {USER}".center(100, "-"))
 	args.processed_image_path = resulted_IMGname
-	print(f"val_df: {val_df.shape} | {val_df['subCategory'].value_counts().shape} / {df['subCategory'].value_counts().shape}")
-	if query not in val_df['subCategory'].value_counts():
+	print(f"val_df: {val_df.shape} | {val_df['query'].value_counts().shape} / {df['query'].value_counts().shape}")
+	if query not in val_df['query'].value_counts():
 		print(f"Query: {query} Not Found! Search something else! from the list:")
-		print(val_df['subCategory'].value_counts())
+		print(val_df['query'].value_counts())
 		return
 	
-	query_counts = val_df['subCategory'].value_counts()
+	query_counts = val_df['query'].value_counts()
 	print(query_counts.tail(25))
 	plt.figure(figsize=(18, 12))
 	query_counts.plot(kind='bar', fontsize=8)
@@ -166,7 +168,7 @@ def img_retrieval(query:str="bags", model_fpth: str=mdl_fpth, TOP_K: int=args.to
 	for ax, value, index in zip(axes, top_values[0], top_indices[0]):
 		img_path = val_images_paths[index]
 		img_fname = get_img_name_without_suffix(fpth=img_path)
-		img_GT = df.loc[df['id'] == img_fname, 'subCategory'].values
+		img_GT = df.loc[df['id'] == img_fname, 'query'].values
 		print(f"vidx: {index} | Similarity: {100 * value.item():.6f}% | {img_path} | GT: {img_GT}")
 		img = Image.open(img_path).convert("RGB")
 		img_title = f"vidx_{index}_sim_{100 * value.item():.2f}%\nGT: {img_GT}"

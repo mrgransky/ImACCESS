@@ -95,54 +95,23 @@ def load_pickle(fpath:str="unknown",):
 	return pkl
 
 def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):
-	print(f"Laoding style (csv): {fpth}")
-	styles_df = pd.read_csv(
+	print(f"Laoding  {fpth}")
+	history_df = pd.read_csv(
 		filepath_or_buffer=fpth,
-		usecols=[
-			"id",
-			"gender",
-			"masterCategory",
-			"subCategory",
-			"articleType",
-			"baseColour",
-			"season",
-			"year",
-			"usage",
-			"productDisplayName",
-		], 
 		on_bad_lines='skip',
 	)
-	# Convert all text columns to lowercase
-	styles_df[styles_df.select_dtypes(include=['object']).columns] = styles_df.select_dtypes(include=['object']).apply(lambda x: x.str.lower())
-
-	replacement_dict = {
-		"lips": "lipstick",
-		"eyes": "eyelash",
-		"nails": "nail polish",
-		"perfumes" : "fragrance",
-		"mufflers" : "scarves",
-	}
-	styles_df['subCategory'] = styles_df['subCategory'].replace(replacement_dict)
-
-	# Create a new column 'customized_caption'
-	styles_df['customized_caption'] = styles_df.apply(
-		lambda row: row['articleType'] if row['subCategory'] in row['articleType'] else f"{row['subCategory']} {row['articleType']}",
-		axis=1,
-	)
-
+	# Convert all text columns to lowercase (if any!)
+	history_df[history_df.select_dtypes(include=['object']).columns] = history_df.select_dtypes(include=['object']).apply(lambda x: x.str.lower())
 	# Check for existence of images and filter DataFrame
-	styles_df['image_exists'] = styles_df['id'].apply(lambda x: os.path.exists(os.path.join(img_dir, f"{x}.jpg")))
+	history_df['image_exists'] = history_df['id'].apply(lambda x: os.path.exists(os.path.join(img_dir, f"{x}.jpg")))
 	# Drop rows where the image does not exist
-	filtered_df = styles_df[styles_df['image_exists']].drop(columns=['image_exists'])
-
-	# df = styles_df.copy() # without checking image dir
+	filtered_df = history_df[history_df['image_exists']].drop(columns=['image_exists'])
+	# df = history_df.copy() # without checking image dir
 	df = filtered_df.copy()
-
 	print(f"df: {df.shape}")
 	print(df.head(10))
-	print(df['subCategory'].value_counts())
+	print(df['query'].value_counts())
 	print("#"*100)
-
 	return df
 
 def get_img_name_without_suffix(fpth):
@@ -219,15 +188,15 @@ def get_info(dataloader):
 		f"using batch size: {dataloader.batch_size} "
 		f"in {dataloader.num_workers} CPU(s)"
 	)
-	for i, data in enumerate(dataloader):
-		print(
-			f'[{i+1}/{n_chunks}] '
-			f'{len(data["image_filepath"])} image_filepath {type(data["image_filepath"])} '
-			f'{data["caption"].shape} caption {type(data["image_filepath"])}')
-		print(f"Batch {i+1}: {len([img for img in data['image_filepath']])} {[img for img in data['image_filepath']]}")
-		c = Counter(data["image_filepath"])
-		# print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
-		print("#"*100)
+	# for i, data in enumerate(dataloader):
+	# 	print(
+	# 		f'[{i+1}/{n_chunks}] '
+	# 		f'{len(data["image_filepath"])} image_filepath {type(data["image_filepath"])} '
+	# 		f'{data["caption"].shape} caption {type(data["image_filepath"])}')
+	# 	print(f"Batch {i+1}: {len([img for img in data['image_filepath']])} {[img for img in data['image_filepath']]}")
+	# 	c = Counter(data["image_filepath"])
+	# 	# print(f"{json.dumps(c, indent=2, ensure_ascii=False)}")
+	# 	print("#"*100)
 		# print()
 		# if i == 0:  # Just show the first batch as an example
 		# 	print(f"For Sample batch {i}:")
@@ -239,7 +208,7 @@ def get_info(dataloader):
 		# 	print(f'image_filepath: {len(data["image_filepath"])} {data["image_filepath"][:5]} {type(data["image_filepath"])}')
 		# 	break  # Exit after printing the first batch
 
-def get_product_description(df, col:str="colmun_name"):
+def get_doc_description(df, col:str="colmun_name"):
 	class_names = list(df[col].unique())
 	captions = {idx: class_name for idx, class_name in enumerate(class_names)}
 	# print(f"{len(list(captions.keys()))} Captions:\n{json.dumps(captions, indent=2, ensure_ascii=False)}")

@@ -533,9 +533,9 @@ def main():
 	europeana_df = get_synchronized_df_img(df=europeana_df_merged_raw)
 	query_counts = europeana_df['query'].value_counts()
 
-	plt.figure(figsize=(20, 13))
+	plt.figure(figsize=(21, 14))
 	query_counts.plot(kind='bar', fontsize=9)
-	plt.title(f'{dataset_name}: Query Frequency (total: {query_counts.shape}) {START_DATE} - {END_DATE}')
+	plt.title(f'{dataset_name} Query Frequency (total: {query_counts.shape})')
 	plt.xlabel('Query')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
