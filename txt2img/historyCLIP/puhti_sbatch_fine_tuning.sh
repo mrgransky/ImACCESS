@@ -39,7 +39,7 @@ python -u historyclip.py \
 	--print_every 250 \
 	--batch_size 128 \
 	--patch_size 3 \
-	--image_size 180 \
+	--image_size 210 \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
