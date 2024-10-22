@@ -3,10 +3,10 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run [Local]:
-# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1
+# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 5
 # $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
 
-# $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 5 >> $PWD/historyclip.out & 
+# $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 15 >> $PWD/historyclip.out & 
 
 # how to run [Pouta]:
 # $ python historyclip.py --dataset_dir /media/volume/ImACCESS/national_archive --num_epochs 1
@@ -25,17 +25,11 @@ parser.add_argument('--learning_rate', type=float, default=1e-3, help='small lea
 parser.add_argument('--document_description_col', type=str, default="query", help='labels')
 parser.add_argument('--validate', type=bool, default=True, help='Model Validation upon request')
 parser.add_argument('--visualize', type=bool, default=False, help='Model Validation upon request')
-
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
-print(args)
-
 os.makedirs(os.path.join(args.dataset_dir, "outputs"), exist_ok=True)
 outputs_dir:str = os.path.join(args.dataset_dir, "outputs",)
-
-# Regularization
-wd = 1e-4  # Stronger regularization to prevent overfitting
-
+wd = 5e-4  # Stronger regularization to prevent overfitting
 models_dir_name = (
 	f"models"
 	+ f"_nEpochs_{args.num_epochs}"
@@ -45,6 +39,7 @@ models_dir_name = (
 	+ f"_batch_size_{args.batch_size}"
 	+ f"_image_size_{args.image_size}"
 	+ f"_patch_size_{args.patch_size}"
+	+ f"_wd_{wd}"
 )
 os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
 mdl_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "model.pt")
@@ -281,7 +276,6 @@ def main():
 	)
 	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
 	get_info(dataloader=val_loader)
-	# return
 
 	if args.validate:
 		validate(
@@ -291,13 +285,40 @@ def main():
 			model_fpth=mdl_fpth,
 			TOP_K=args.topk,
 		)
-	from topk_image_retrieval import img_retrieval # must be here!
-	img_retrieval(
-		query=args.query,
-		model_fpth=mdl_fpth,
-		TOP_K=args.topk,
-		resulted_IMGname=os.path.join(outputs_dir, f"Top_{args.topk}_imgs_Q_{re.sub(' ', '-', args.query)}_{args.num_epochs}_epochs.png"),
-	)
+	
+	# from topk_image_retrieval import img_retrieval # must be here!
+	# img_retrieval(
+	# 	query=args.query,
+	# 	model_fpth=mdl_fpth,
+	# 	TOP_K=args.topk,
+	# 	resulted_IMGname=os.path.join(outputs_dir, f"Top_{args.topk}_imgs_Q_{re.sub(' ', '-', args.query)}_{args.num_epochs}_epochs.png"),
+	# )
+	
+	# Construct the command as a list of arguments
+	command = [
+		'python', 'topk_image_retrieval.py',
+		'--query', args.query,
+		'--processed_image_path', os.path.join(outputs_dir, f"Top_{args.topk}_imgs_Q_{re.sub(' ', '-', args.query)}_{args.num_epochs}_epochs.png"),
+		'--topk', str(args.topk),
+		'--dataset_dir', args.dataset_dir,
+		'--image_size', str(args.image_size),
+		'--patch_size', str(args.patch_size),
+		'--batch_size', str(args.batch_size),
+		'--num_epochs', str(args.num_epochs),
+		'--validation_dataset_share', str(args.validation_dataset_share),
+		'--learning_rate', str(args.learning_rate),
+		'--document_description_col', args.document_description_col,
+	]
+
+	# Print the command for debugging purposes
+	print("Running command:", ' '.join(command))
+
+	# Execute the command
+	result = subprocess.run(command, capture_output=True, text=True)
+
+	# Print the output and error (if any)
+	print("Output:", result.stdout)
+	print("Error:", result.stderr)
 
 if __name__ == "__main__":
 	main()

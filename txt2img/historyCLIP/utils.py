@@ -26,6 +26,8 @@ import pandas as pd
 import argparse
 from PIL import Image, ImageDraw, ImageOps
 from typing import List, Set, Dict, Tuple, Union
+import subprocess
+
 warnings.filterwarnings('ignore')
 
 # Set a new limit for decompression bomb

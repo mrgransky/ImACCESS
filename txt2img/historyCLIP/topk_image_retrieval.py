@@ -1,15 +1,14 @@
 from utils import *
-
 from models import *
 from dataset_loader import HistoricalDataset
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--processed_image_path', type=str, default="my_img.png", help='Path to resulted image with topk images')
+parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--dataset_dir', type=str, default="myntradataset", help='Dataset DIR')
 parser.add_argument('--image_size', type=int, default=120, help='Image size')
-parser.add_argument('--patch_size', type=int, default=3, help='Patch size')
-parser.add_argument('--topk', type=int, default=5, help='Top-K images')
+parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch Size')
 parser.add_argument('--num_epochs', type=int, default=1, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set')
@@ -181,7 +180,7 @@ def img_retrieval(query:str="bags", model_fpth: str=mdl_fpth, TOP_K: int=args.to
 		ax.imshow(img)
 	plt.tight_layout()
 	plt.savefig(resulted_IMGname)
-	
+
 def main():
 	img_retrieval(query=args.query, resulted_IMGname=args.processed_image_path)
 
