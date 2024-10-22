@@ -74,9 +74,9 @@ class PositionalEmbedding(nn.Module):
 		return x + self.pe[:, :seq_len]
 
 class VisionEncoder(nn.Module):
-	def __init__(self, d_model,img_size,patch_size, n_channels, n_heads,n_layers, emb_dim):
+	def __init__(self, d_model, img_size, patch_size, n_channels, n_heads,n_layers, emb_dim):
 		super().__init__()
-		assert img_size[0] % patch_size[0] == 0 and img_size[1] % patch_size[1] ==0, "image dimensions should be divisible by patch dim"
+		assert img_size[0] % patch_size[0] == 0 and img_size[1] % patch_size[1] == 0, f"image dimensions: {img_size} are not divisible by patch dim: {patch_size}"
 		assert d_model % n_heads == 0, "d_model should be divisible by n_heads"
 		self.num_patches = (img_size[0] * img_size[1] ) // (patch_size[0] * patch_size[1]) # max_seq_length
 		self.max_seq_length = self.num_patches +1

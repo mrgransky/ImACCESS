@@ -5,7 +5,10 @@ class HistoricalDataset(Dataset):
 		self.data_frame = data_frame
 		self.img_sz = img_sz  # Desired size for the square image
 		self.transform = T.Compose([
-			T.ToTensor()  # Convert image to tensor
+			T.RandomResizedCrop(img_sz),
+			T.RandomHorizontalFlip(p=0.5),
+			T.ColorJitter(brightness=0.3, contrast=0.3),  # Adjust brightness/contrast
+			T.ToTensor(),  # Convert image to tensor
 		])
 		self.captions = captions
 		self.txt_category = txt_category
@@ -21,6 +24,7 @@ class HistoricalDataset(Dataset):
 		img_path = os.path.join(self.dataset_directory, f"{sample['id']}.jpg")
 		# Try to load the image and handle errors gracefully
 		if not os.path.exists(img_path):
+			print(f"{img_path} Not found!")
 			# raise FileNotFoundError(f"Image not found at path: {img_path}") debugging purpose
 			return None
 		try:
@@ -64,11 +68,17 @@ class HistoricalDataset(Dataset):
 		else:
 			new_height = img_sz
 			new_width = int(img_sz * aspect_ratio)
-		image = image.resize((new_width, new_height))
+		image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 		# Compute padding to center the image
 		pad_width = (img_sz - new_width) // 2
 		pad_height = (img_sz - new_height) // 2
 		# Apply padding to ensure the image is square
-		padding = (pad_width, pad_height, img_sz - new_width - pad_width, img_sz - new_height - pad_height)
+		padding = (
+			pad_width, 
+			pad_height, 
+			img_sz - new_width - pad_width, 
+			img_sz - new_height - pad_height
+		)
 		image = ImageOps.expand(image, padding, fill=(0, 0, 0))
+		# print(image.size) # must be square => e.g., (250 x 250)
 		return image

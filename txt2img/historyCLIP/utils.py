@@ -52,10 +52,8 @@ else: # Pouta
 	ddir: str = os.path.join(WDIR, "myntradataset")
 
 # Vision
-emb_dim = 128
+emb_dim = 128 
 vit_d_model = 32 # vit_heads * vit_layers = vit_d_model
-img_size = (80,80)
-patch_size = (5,5) 
 n_channels = 3
 vit_layers = 8
 vit_heads = 4 
@@ -66,7 +64,23 @@ text_d_model = 64 #  -->  text_heads * text_layers = text_d_model
 max_seq_length = 128
 text_heads = 8
 text_layers = 8
-wd = 1e-4 # L2 Regularization
+
+################################################################################
+# # Vision [requires better GPU]
+# emb_dim = 256  # Increased for richer embedding
+# vit_d_model = 64  # Larger dimension to handle more complex features
+# n_channels = 3
+# vit_layers = 12  # Increased depth for more detailed image representation
+# vit_heads = 8  # More attention heads for diverse feature extraction
+
+# # Text
+# vocab_size = 512  # Increased to accommodate more complex vocabularies
+# text_d_model = 128  # Increased for better text representation
+# max_seq_length = 256  # Longer sequence length for detailed queries
+# text_heads = 10  # More heads for better multi-aspect attention
+# text_layers = 12  # Increased depth to handle complex queries
+
+################################################################################
 
 def save_pickle(pkl, fname:str=""):
 	print(f"\nSaving {type(pkl)}\n{fname}")

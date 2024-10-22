@@ -7,11 +7,12 @@ parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--query', type=str, default="bags", help='Query')
 parser.add_argument('--processed_image_path', type=str, default="my_img.png", help='Path to resulted image with topk images')
 parser.add_argument('--dataset_dir', type=str, default="myntradataset", help='Dataset DIR')
-parser.add_argument('--image_size', type=int, default=80, help='Image size')
+parser.add_argument('--image_size', type=int, default=120, help='Image size')
+parser.add_argument('--patch_size', type=int, default=3, help='Patch size')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
-parser.add_argument('--batch_size', type=int, default=64, help='Batch Size')
-parser.add_argument('--num_epochs', type=int, default=3, help='Number of epochs')
-parser.add_argument('--validation_dataset_share', type=float, default=0.23, help='share of Validation set')
+parser.add_argument('--batch_size', type=int, default=32, help='Batch Size')
+parser.add_argument('--num_epochs', type=int, default=1, help='Number of epochs')
+parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
 parser.add_argument('--document_description_col', type=str, default="query", help='caption col')
 args, unknown = parser.parse_known_args()
@@ -19,16 +20,16 @@ print(args)
 
 if USER == "ubuntu":
 	args.dataset_dir = ddir
-# models_dir_name = f""
 
 models_dir_name = (
-	f"models_"
-	+ f"nEpochs_{args.num_epochs}_"
-	+ f"batchSZ_{args.batch_size}_"
-	+ f"lr_{args.learning_rate}_"
-	+ f"val_{args.validation_dataset_share}_"
-	+ f"descriptions_{args.document_description_col}_"
-	+ f"image_size_{args.image_size}"
+	f"models"
+	+ f"_nEpochs_{args.num_epochs}"
+	+ f"_lr_{args.learning_rate}"
+	+ f"_val_{args.validation_dataset_share}"
+	+ f"_descriptions_{args.document_description_col}"
+	+ f"_batch_size_{args.batch_size}"
+	+ f"_image_size_{args.image_size}"
+	+ f"_patch_size_{args.patch_size}"
 )
 
 os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
@@ -63,8 +64,9 @@ model = CLIP(
 	emb_dim,
 	vit_layers, 
 	vit_d_model, 
-	img_size,
-	patch_size,
+	# img_size,
+	(args.image_size, args.image_size),
+	(args.patch_size, args.patch_size),	
 	n_channels,
 	vit_heads,
 	vocab_size,
@@ -79,7 +81,9 @@ retrieval_model = CLIP(
 	emb_dim, 
 	vit_layers, 
 	vit_d_model, 
-	img_size,patch_size,
+	# img_size,
+	(args.image_size, args.image_size),
+	(args.patch_size, args.patch_size),
 	n_channels,
 	vit_heads,
 	vocab_size,

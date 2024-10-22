@@ -6,7 +6,7 @@ from dataset_loader import HistoricalDataset
 # $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1
 # $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
 
-# $ nohup python -u historyclip.py --num_epochs 100 > $HOME/datasets/trash/logs/historyclip.out & 
+# $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 5 >> $PWD/historyclip.out & 
 
 # how to run [Pouta]:
 # $ python historyclip.py --dataset_dir /media/volume/ImACCESS/national_archive --num_epochs 1
@@ -15,12 +15,13 @@ from dataset_loader import HistoricalDataset
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
-parser.add_argument('--batch_size', type=int, default=64, help='Batch Size')
-parser.add_argument('--image_size', type=int, default=80, help='Image size')
+parser.add_argument('--batch_size', type=int, default=32, help='Batch Size')
+parser.add_argument('--image_size', type=int, default=120, help='Image size')
+parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
 parser.add_argument('--query', type=str, default="aircraft", help='Query')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set [def: 0.23]')
-parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
+parser.add_argument('--learning_rate', type=float, default=1e-3, help='small learning rate for better convergence [def: 1e-3]')
 parser.add_argument('--document_description_col', type=str, default="query", help='labels')
 parser.add_argument('--validate', type=bool, default=True, help='Model Validation upon request')
 parser.add_argument('--visualize', type=bool, default=False, help='Model Validation upon request')
@@ -32,14 +33,18 @@ print(args)
 os.makedirs(os.path.join(args.dataset_dir, "outputs"), exist_ok=True)
 outputs_dir:str = os.path.join(args.dataset_dir, "outputs",)
 
+# Regularization
+wd = 1e-4  # Stronger regularization to prevent overfitting
+
 models_dir_name = (
-	f"models_"
-	+ f"nEpochs_{args.num_epochs}_"
-	+ f"batchSZ_{args.batch_size}_"
-	+ f"lr_{args.learning_rate}_"
-	+ f"val_{args.validation_dataset_share}_"
-	+ f"descriptions_{args.document_description_col}_"
-	+ f"image_size_{args.image_size}"
+	f"models"
+	+ f"_nEpochs_{args.num_epochs}"
+	+ f"_lr_{args.learning_rate}"
+	+ f"_val_{args.validation_dataset_share}"
+	+ f"_descriptions_{args.document_description_col}"
+	+ f"_batch_size_{args.batch_size}"
+	+ f"_image_size_{args.image_size}"
+	+ f"_patch_size_{args.patch_size}"
 )
 os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
 mdl_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "model.pt")
@@ -75,8 +80,8 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 		emb_dim, 
 		vit_layers, 
 		vit_d_model,
-		img_size,
-		patch_size,
+		(args.image_size, args.image_size),
+		(args.patch_size, args.patch_size),
 		n_channels,
 		vit_heads,
 		vocab_size,
@@ -160,8 +165,8 @@ def fine_tune(train_df, captions):
 		emb_dim, 
 		vit_layers,
 		vit_d_model,
-		img_size,
-		patch_size,
+		(args.image_size, args.image_size),
+		(args.patch_size, args.patch_size),
 		n_channels,
 		vit_heads,
 		vocab_size,
@@ -197,7 +202,7 @@ def fine_tune(train_df, captions):
 			loss.backward()
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			optimizer.step()
-			if batch_idx % 250 == 0:
+			if batch_idx % 50 == 0:
 				print(f"\tBatch [{batch_idx + 1}/{len(train_data_loader)}] Loss: {loss.item():.5f}")
 			epoch_loss += loss.item()
 		avg_loss = epoch_loss / len(train_data_loader)
@@ -252,7 +257,7 @@ def main():
 		save_pickle(pkl=img_lbls_list, fname=img_lbls_list_fpth,)
 	
 	# Print the sizes of the datasets
-	print(f"df: {df.shape} train_df: {train_df.shape} val_df: {val_df.shape}")
+	print(f"df: {df.shape} train_df: {train_df.shape} val_df({args.validation_dataset_share}): {val_df.shape}")
 	print(f"img_lbls_dict {type(img_lbls_dict)} {len(img_lbls_dict)}")
 	print(f"img_lbls_list {type(img_lbls_list)} {len(img_lbls_list)}")
 	# return
