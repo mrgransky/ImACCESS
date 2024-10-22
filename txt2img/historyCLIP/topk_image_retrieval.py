@@ -13,6 +13,7 @@ parser.add_argument('--batch_size', type=int, default=32, help='Batch Size')
 parser.add_argument('--num_epochs', type=int, default=1, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
+parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay [def: 1e-4]')
 parser.add_argument('--document_description_col', type=str, default="query", help='caption col')
 args, unknown = parser.parse_known_args()
 print(args)
@@ -29,6 +30,7 @@ models_dir_name = (
 	+ f"_batch_size_{args.batch_size}"
 	+ f"_image_size_{args.image_size}"
 	+ f"_patch_size_{args.patch_size}"
+	+ f"_wd_{args.weight_decay}"
 )
 
 os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
@@ -166,7 +168,7 @@ def img_retrieval(query:str="bags", model_fpth: str=mdl_fpth, TOP_K: int=args.to
 	print(top_indices)
 
 	# Step 4: Retrieve and display (or save) top N images:
-	print(f"Saving Top-{TOP_K} / {len(val_loader.dataset)} [val] | Query: {query} in {args.processed_image_path}")
+	print(f"Saving Top-{TOP_K} out of {len(val_loader.dataset)} [val] for Query: « {query} » in:\n{args.processed_image_path}")
 	fig, axes = plt.subplots(1, TOP_K, figsize=(18, 4))  # Adjust figsize as needed
 	for ax, value, index in zip(axes, top_values[0], top_indices[0]):
 		img_path = val_images_paths[index]

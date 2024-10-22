@@ -3,7 +3,7 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run [Local]:
-# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 5
+# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 15
 # $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
 
 # $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 15 >> $PWD/historyclip.out & 
@@ -17,14 +17,17 @@ parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR'
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch Size')
 parser.add_argument('--image_size', type=int, default=120, help='Image size')
+parser.add_argument('--print_every', type=int, default=500, help='Print loss')
 parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
 parser.add_argument('--query', type=str, default="aircraft", help='Query')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set [def: 0.23]')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='small learning rate for better convergence [def: 1e-3]')
+parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay [def: 1e-4]')
 parser.add_argument('--document_description_col', type=str, default="query", help='labels')
 parser.add_argument('--validate', type=bool, default=True, help='Model Validation upon request')
 parser.add_argument('--visualize', type=bool, default=False, help='Model Validation upon request')
+
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 os.makedirs(os.path.join(args.dataset_dir, "outputs"), exist_ok=True)
@@ -39,7 +42,7 @@ models_dir_name = (
 	+ f"_batch_size_{args.batch_size}"
 	+ f"_image_size_{args.image_size}"
 	+ f"_patch_size_{args.patch_size}"
-	+ f"_wd_{wd}"
+	+ f"_wd_{args.weight_decay}"
 )
 os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
 mdl_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "model.pt")
@@ -110,7 +113,7 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 	text = torch.stack([tokenizer(x)[0] for x in class_names]).to(device)
 	mask = torch.stack([tokenizer(x)[1] for x in class_names])
 	mask = mask.repeat(1,len(mask[0])).reshape(len(mask),len(mask[0]),len(mask[0])).to(device)
-	idx = 19
+	idx = 1101
 	# idx = random.randint(0, len(val_df))
 	img = val_dataset[idx]["image"][None,:]
 
@@ -197,7 +200,7 @@ def fine_tune(train_df, captions):
 			loss.backward()
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			optimizer.step()
-			if batch_idx % 50 == 0:
+			if batch_idx % args.print_every == 0:
 				print(f"\tBatch [{batch_idx + 1}/{len(train_data_loader)}] Loss: {loss.item():.5f}")
 			epoch_loss += loss.item()
 		avg_loss = epoch_loss / len(train_data_loader)
@@ -285,20 +288,12 @@ def main():
 			model_fpth=mdl_fpth,
 			TOP_K=args.topk,
 		)
-	
-	# from topk_image_retrieval import img_retrieval # must be here!
-	# img_retrieval(
-	# 	query=args.query,
-	# 	model_fpth=mdl_fpth,
-	# 	TOP_K=args.topk,
-	# 	resulted_IMGname=os.path.join(outputs_dir, f"Top_{args.topk}_imgs_Q_{re.sub(' ', '-', args.query)}_{args.num_epochs}_epochs.png"),
-	# )
-	
+		
 	# Construct the command as a list of arguments
 	command = [
 		'python', 'topk_image_retrieval.py',
 		'--query', args.query,
-		'--processed_image_path', os.path.join(outputs_dir, f"Top_{args.topk}_imgs_Q_{re.sub(' ', '-', args.query)}_{args.num_epochs}_epochs.png"),
+		'--processed_image_path', os.path.join(outputs_dir, f"Top{args.topk}_Q_{re.sub(' ', '-', args.query)}_{args.num_epochs}_epochs.png"),
 		'--topk', str(args.topk),
 		'--dataset_dir', args.dataset_dir,
 		'--image_size', str(args.image_size),
@@ -307,6 +302,7 @@ def main():
 		'--num_epochs', str(args.num_epochs),
 		'--validation_dataset_share', str(args.validation_dataset_share),
 		'--learning_rate', str(args.learning_rate),
+		'--weight_decay', str(args.weight_decay),
 		'--document_description_col', args.document_description_col,
 	]
 
@@ -318,7 +314,7 @@ def main():
 
 	# Print the output and error (if any)
 	print("Output:", result.stdout)
-	print("Error:", result.stderr)
+	# print("Error:", result.stderr)
 
 if __name__ == "__main__":
 	main()
