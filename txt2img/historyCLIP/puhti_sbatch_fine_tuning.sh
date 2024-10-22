@@ -36,8 +36,9 @@ python -u historyclip.py \
 	--dataset_dir $ddir \
 	--query  $qu \
 	--num_epochs 5 \
-	--batch_size 128 \
-	--image_size 80 \
+	--batch_size 32 \
+	--patch_size 3 \
+	--image_size 336 \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
