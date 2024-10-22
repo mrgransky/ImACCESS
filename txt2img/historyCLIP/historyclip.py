@@ -19,7 +19,7 @@ parser.add_argument('--batch_size', type=int, default=64, help='Batch Size')
 parser.add_argument('--image_size', type=int, default=80, help='Image size')
 parser.add_argument('--query', type=str, default="aircraft", help='Query')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
-parser.add_argument('--validation_dataset_share', type=float, default=0.23, help='share of Validation set')
+parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set [def: 0.23]')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
 parser.add_argument('--document_description_col', type=str, default="query", help='labels')
 parser.add_argument('--validate', type=bool, default=True, help='Model Validation upon request')
@@ -150,6 +150,8 @@ def fine_tune(train_df, captions):
 		shuffle=True,
 		batch_size=args.batch_size,
 		num_workers=nw,
+		pin_memory=True,  # Move data to GPU faster if using CUDA
+    persistent_workers=True if nw > 1 else False,  # Keep workers alive if memory allows
 		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)
 	print(f"num_samples[Total]: {len(train_data_loader.dataset)} Elapsed_t: {time.time()-tdl_st:.5f} sec")

@@ -34,8 +34,8 @@ txt2img/historical_datasets/*/europeana*
 txt2img/*zip
 txt2img/*pt
 txt2img/mscoco-it
-txt2img/fashionCLIP/myntradataset/
-txt2img/fashionCLIP/outputs/
+txt2img/fashionCLIP/outputs
+txt2img/fashionCLIP/myntradataset
 develop-eggs/
 dist/
 downloads/

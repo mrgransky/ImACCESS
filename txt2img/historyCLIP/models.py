@@ -172,4 +172,3 @@ class CLIP(nn.Module):
 		logits = (V_e @ T_e.transpose(-2, -1)) * torch.exp(self.temperature)
 		loss = self.CLIPLoss(logits, self.device)
 		return loss
-
