@@ -31,6 +31,9 @@ print(args)
 # $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
 # $ nohup python data_collector.py -u --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> na_image_download.out &
 
+# run in Pouta:
+# $ python data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1933-01-01 --end_date 1946-12-31
+
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 na_api_base_url: str = "https://catalog.archives.gov/proxy/records/search"
@@ -60,7 +63,7 @@ useless_collection_terms = [
 	"Field Artillery Units and Revolutionary War Artillerymen",
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
-RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
+DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
 
 def save_pickle(pkl, fname:str=""):
 	print(f"\nSaving {type(pkl)}\n{fname}")
@@ -96,7 +99,7 @@ def load_pickle(fpath:str="unknown",):
 def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
 	t0 = time.time()
 	query_processed = re.sub(" ", "_", query.lower())
-	query_all_hits_fpth = os.path.join(RESULT_DIRECTORY, f"results_{st_date}_{end_date}_query_{query_processed}.gz")
+	query_all_hits_fpth = os.path.join(DATASET_DIRECTORY, f"results_{st_date}_{end_date}_query_{query_processed}.gz")
 	try:
 		query_all_hits = load_pickle(fpath=query_all_hits_fpth)
 	except Exception as e:
@@ -250,8 +253,8 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 
 def get_synchronized_df_img(df):
 	print(f"Synchronizing merged_df(raw) & images of {df.shape[0]} records using {nw} CPUs...")
-	os.makedirs(os.path.join(RESULT_DIRECTORY, "images"), exist_ok=True)
-	IMAGE_DIR = os.path.join(RESULT_DIRECTORY, "images")
+	os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
+	IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
 	successful_rows = []  # List to keep track of successful downloads
 	with requests.Session() as session:
 		with ThreadPoolExecutor(max_workers=nw) as executor:
@@ -464,7 +467,7 @@ def main():
 		)
 		if query_all_hits:
 			qv_processed = re.sub(" ", "_", qv.lower())
-			df_fpth = os.path.join(RESULT_DIRECTORY, f"result_df_{START_DATE}_{END_DATE}_query_{qv_processed}.gz")
+			df_fpth = os.path.join(DATASET_DIRECTORY, f"result_df_{START_DATE}_{END_DATE}_query_{qv_processed}.gz")
 			try:
 				df = load_pickle(fpath=df_fpth)
 			except Exception as e:
@@ -584,9 +587,9 @@ def main():
 	print(f"Processed na_df_merged_raw: {na_df_merged_raw.shape}")
 	print(na_df_merged_raw.head(20))
 
-	na_df_merged_raw.to_csv(os.path.join(RESULT_DIRECTORY, "metadata_raw.csv"), index=False)
+	na_df_merged_raw.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
 	try:
-		na_df_merged_raw.to_excel(os.path.join(RESULT_DIRECTORY, "metadata_raw.xlsx"), index=False)
+		na_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
@@ -601,11 +604,11 @@ def main():
 	plt.xlabel('Query')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
-	plt.savefig(os.path.join(RESULT_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
+	plt.savefig(os.path.join(DATASET_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
 
-	na_df.to_csv(os.path.join(RESULT_DIRECTORY, "metadata.csv"), index=False)
+	na_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 	try:
-		na_df.to_excel(os.path.join(RESULT_DIRECTORY, "metadata.xlsx"), index=False)
+		na_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
