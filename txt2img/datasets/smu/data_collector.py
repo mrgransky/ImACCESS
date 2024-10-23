@@ -15,13 +15,13 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import multiprocessing
-from requests.exceptions import RequestException
+from requests.exceptions import RequestException, HTTPError, SSLError
 import argparse
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
-parser.add_argument('--start_date', type=str, default="1933-01-01", help='Dataset DIR')
-parser.add_argument('--end_date', type=str, default="1933-01-02", help='Dataset DIR')
+parser.add_argument('--start_date', type=str, default="1890-01-01", help='Dataset DIR')
+parser.add_argument('--end_date', type=str, default="1960-01-01", help='Dataset DIR')
 parser.add_argument('--num_worker', type=int, default=8, help='Number of CPUs')
 
 # args = parser.parse_args()
@@ -29,42 +29,28 @@ args, unknown = parser.parse_known_args()
 print(args)
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> na_image_download.out &
-
-# run in Pouta:
-# $ python data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 # WW1 & WW2
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 >> /media/volume/trash/ImACCESS/na_img_dl.out &
-
+# $ nohup python data_collector.py -u --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> europeana_image_download.out &
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
-na_api_base_url: str = "https://catalog.archives.gov/proxy/records/search"
-START_DATE = args.start_date
-END_DATE = args.end_date
+START_DATE = re.sub("-", "", args.start_date)
+END_DATE = re.sub("-", "", args.end_date)
+dataset_name = "smu"
 nw:int = min(args.num_worker, multiprocessing.cpu_count()) # def: 8
-dataset_name = "NATIONAL_ARCHIVE"
-useless_collection_terms = [
-	"Cartoon", 
-	"Newsmap",
-	"Posters", 
-	"Tools and Machinery",
-	"Roads of the Past",
-	"Government Reports",
-	"Art by",
-	"Selected Passport Applications",
-	"Flynn, Errol",
-	"Herbert Hoover Papers",
-	"Roads and Trails",
-	"Approved Pension",
-	"Maps",
-	"Camp McDowell",
-	"Landing Fields",
-	"Appian Way",
-	"Indexes to Aerial Photography",
-	"Illustrative Material Published By The Government Printing Office and other Government Agencies",
-	"Field Artillery Units and Revolutionary War Artillerymen",
-]
+europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
+api_base_url = f"https://digitalcollections.smu.edu/digital/api/search/searchterm/image!parade!19130101-19461231/field/type!all!date/mode/exact!all!exact/conn/and!and!and/maxRecords/200"
+
+# europeana_api_key: str = "plaction"
+# europeana_api_key: str = "api2demo"
+europeana_api_key: str = "nLbaXYaiH"
+headers = {
+	'Content-type': 'application/json',
+	'Accept': 'application/json; text/plain; */*',
+	'Cache-Control': 'no-cache',
+	'Connection': 'keep-alive',
+	'Pragma': 'no-cache',
+}
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
-DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
+RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
 
 def save_pickle(pkl, fname:str=""):
 	print(f"\nSaving {type(pkl)}\n{fname}")
@@ -100,57 +86,50 @@ def load_pickle(fpath:str="unknown",):
 def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
 	t0 = time.time()
 	query_processed = re.sub(" ", "_", query.lower())
-	query_all_hits_fpth = os.path.join(DATASET_DIRECTORY, f"results_{st_date}_{end_date}_query_{query_processed}.gz")
+	query_all_hits_fpth = os.path.join(RESULT_DIRECTORY, f"results_{st_date}_{end_date}_query_{query_processed}.gz")
 	try:
 		query_all_hits = load_pickle(fpath=query_all_hits_fpth)
 	except Exception as e:
 		print(f"{e}")
 		print(f"Collecting all docs of National Archive for Query: « {query} » ... it might take a while..")
-		headers = {
-			'Content-type': 'application/json',
-			'Accept': 'application/json; text/plain; */*',
-			'Cache-Control': 'no-cache',
-			'Connection': 'keep-alive',
-			'Pragma': 'no-cache',
-		}
 		params = {
-			"limit": 100,
-			"availableOnline": "true",
-			"dataSource": "description",
-			"endDate": end_date,
-			"levelOfDescription": "item",
-			"objectType": "jpg,png",
-			"q": query,
-			"startDate": st_date,
-			"typeOfMaterials": "Photographs and other Graphic Materials",
-			"abbreviated": "true",
-			"debug": "true",
-			"datesAgg": "TRUE"
+			'wskey': europeana_api_key,
+			'qf': [
+				'collection:photography', 
+				'TYPE:"IMAGE"', 
+				# 'contentTier:"4"', # high quality images
+				'MIME_TYPE:image/jpeg',
+				# 'LANGUAGE:en',
+			],
+			'rows': 100,
+			'query': query,
+			'reusability': 'open'
 		}
 		query_all_hits = []
-		page = 1
+		start = 1
 		while True:
 			loop_st = time.time()
-			params["page"] = page
+			params["start"] = start
 			response = requests.get(
-				na_api_base_url,
+				europeana_api_base_url,
 				params=params,
 				headers=headers,
 			)
 			if response.status_code == 200:
 				data = response.json()
-				hits = data.get('body').get('hits').get('hits')
-				# print(len(hits), type(hits))
-				# print(hits[0].keys())
-				# print(json.dumps(hits[0], indent=2, ensure_ascii=False))
-				query_all_hits.extend(hits)
-				total_hits = data.get('body').get("hits").get('total').get('value')
-				print(f"Page: {page}:\tFound: {len(hits)} {type(hits)}\t{len(query_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
+				if 'items' in data:
+					# Extract the 'items' field
+					hits = data['items']
+					total_hits = data['totalResults']
+					# print(total_hits, len(hits))
+					query_all_hits.extend(hits)
+					# print(json.dumps(query_all_hits, indent=2, ensure_ascii=False))
+					print(f"start: {start}:\tFound: {len(hits)} {type(hits)}\t{len(query_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
 				if len(query_all_hits) >= total_hits:
 					break
-				page += 1
+				start += params.get("rows")
 			else:
-				print("Failed to retrieve data")
+				print(f"Failed to retrieve data: status_code: {response.status_code}")
 				break
 		if len(query_all_hits) == 0:
 			return
@@ -167,73 +146,41 @@ def check_url_status(url: str) -> bool:
 		print(f"Error accessing URL {url}: {e}")
 		return False
 
-def is_desired(collections, useless_terms):
-	for term in useless_terms:
-		for collection in collections:
-			if term in collection:
-				print(f"\t> XXXX found '{term}' => skipping! XXXX <")
-				return False
-	return True
-
-def get_dframe(query: str="query", docs: List=[Dict]) -> pd.DataFrame:
+def get_dframe(query: str="query", docs: List=[Dict]):
 	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
 	df_st_time = time.time()
 	data = []
-	for doc in docs:
-		record = doc.get('_source', {}).get('record', {})
-		fields = doc.get('fields', {})
-		title = record.get('title').lower()# if record.get('title') != "Untitled" else None
-		na_identifier = record.get('naId')
-		pDate = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
-		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
-		ancesstor_collections = [f"{itm.get('title')}" for itm in record.get('ancestors')] # record.get('ancestors'): list of dict
-		useless_title_terms = [
-			"wildflowers" not in title, 
-			"-sc-" not in title,
-			"notes" not in title,
-			"page" not in title,
-			"exhibit" not in title,
-			"ad:" not in title,
-			"sheets" not in title,
-			"report" not in title,
-			"map" not in title,
-			"portrait of" not in title,
-			"poster" not in title,
-			"drawing" not in title,
-			"sketch of" not in title,
-			"layout" not in title,
-			"postcard" not in title,
-			"table:" not in title,
-			"traffic statistics:" not in title,
-		]
+	for doc_idx, doc in enumerate(docs):
+		# print(type(doc.get("title")), doc.get("title"))
+		title = doc.get("title")#.lower()
+		pDate = doc.get("edmTimespanLabel")[0].get("def") if doc.get("edmTimespanLabel") and doc.get("edmTimespanLabel")[0].get("def") else None
+		image_url = doc.get("edmIsShownBy")[0]
 		if (
-			first_digital_object_url 
-			and is_desired(ancesstor_collections, useless_collection_terms) 
-			and all(useless_title_terms)
-			and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png'))
+			image_url 
+			and (image_url.endswith('.jpg') or image_url.endswith('.png'))
 		):
 			pass # Valid entry; no action needed here
 		else:
-			first_digital_object_url = None
+			image_url = None
 		row = {
-			'id': na_identifier,
+			'id': doc.get("id"),
 			'query': query,
 			'title': title,
-			'description': record.get('scopeandContentNote'),
-			'img_url': first_digital_object_url,
+			'description': doc.get("dcDescription"),
+			'img_url': image_url,
 			'date': pDate,
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
-	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
+	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
 	return df
 
 def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5):
 	t0 = time.time()
 	rIdx = row.name
 	url = row['img_url']
-	image_name = str(row['id']) + os.path.splitext(url)[1]
-	image_path = os.path.join(image_dir, image_name)
+	image_name = re.sub("/", "LBL", row['id']) # str(row['id']) + os.path.splitext(url)[1]
+	image_path = os.path.join(image_dir, f"{image_name}.png")
 	if os.path.exists(image_path):
 		return True # Image already exists, => skipping
 	attempt = 0  # Retry mechanism
@@ -247,15 +194,15 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 			return True  # Image downloaded successfully
 		except (RequestException, IOError) as e:
 			attempt += 1
-			print(f"[{rIdx}/{total_rows}] Downloading {image_name} failed! {e}, retrying ({attempt}/{retries})...")
+			print(f"[{rIdx}/{total_rows}] Downloading « {url} » failed: {e}, retrying ({attempt}/{retries})")
 			time.sleep(backoff_factor * (2 ** attempt))  # Exponential backoff
 	print(f"[{rIdx}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
 	return False  # Indicate failed download
 
 def get_synchronized_df_img(df):
 	print(f"Synchronizing merged_df(raw) & images of {df.shape[0]} records using {nw} CPUs...")
-	os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
-	IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
+	os.makedirs(os.path.join(RESULT_DIRECTORY, "images"), exist_ok=True)
+	IMAGE_DIR = os.path.join(RESULT_DIRECTORY, "images")
 	successful_rows = []  # List to keep track of successful downloads
 	with requests.Session() as session:
 		with ThreadPoolExecutor(max_workers=nw) as executor:
@@ -273,12 +220,11 @@ def get_synchronized_df_img(df):
 	print(f"df_cleaned: {df_cleaned.shape}")
 	return df_cleaned
 
-def main():	
+def main():
 	dfs = []
 	all_query_tags = [
 		"motor cycle",
 		"hunting",
-		"aircraft",
 		"Sailboat",
 		"regatta",
 		"ballistic missile",
@@ -383,6 +329,7 @@ def main():
 		"Coast Guard",
 		"Naval Vessel",
 		"warship",
+		"Infantry",
 		"Civilian",
 		"Medical aid",
 		"ambassador",
@@ -395,12 +342,6 @@ def main():
 		"doctor",
 		"embassy",
 		"ship deck",
-		"Infantry",
-		"naval hospital",
-		"hospital base",
-		"hospital ship",
-		"hospital train",
-		"migration",
 		"Defence",
 		"Border",
 		"Army Recruiting",
@@ -409,6 +350,11 @@ def main():
 		"infrastructure",
 		"ship",
 		"military hospital",
+		"naval hospital",
+		"hospital base",
+		"hospital ship",
+		"hospital train",
+		"migration",
 		"captain",
 		"sport",
 		"Kitchen Truck",
@@ -454,11 +400,9 @@ def main():
 	# all_query_tags = natsorted(list(set(all_query_tags)))
 	# all_query_tags = list(set(all_query_tags))[:5]
 	if USER=="farid": # local laptop
-		all_query_tags = all_query_tags[:56]
-	elif USER=="ubuntu":
-		all_query_tags = all_query_tags[:125]
+		all_query_tags = all_query_tags#[:5]
 
-	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
+	print(f"{len(all_query_tags)} Query phrases are being processed, please be patient...")
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")
 		query_all_hits = get_data(
@@ -468,41 +412,35 @@ def main():
 		)
 		if query_all_hits:
 			qv_processed = re.sub(" ", "_", qv.lower())
-			df_fpth = os.path.join(DATASET_DIRECTORY, f"result_df_{START_DATE}_{END_DATE}_query_{qv_processed}.gz")
+			df_fpth = os.path.join(RESULT_DIRECTORY, f"result_df_{START_DATE}_{END_DATE}_query_{qv_processed}.gz")
 			try:
 				df = load_pickle(fpath=df_fpth)
 			except Exception as e:
 				df = get_dframe(query=qv.lower(), docs=query_all_hits)
 				save_pickle(pkl=df, fname=df_fpth)
-			print(df.head(10))
+			# print(df)
+			# print(df.head())
 			dfs.append(df)
 
 	print(f"Concatinating {len(dfs)} dfs...")
 	# print(dfs[0])
-	na_df_merged_raw = pd.concat(dfs, ignore_index=True)
+	europeana_df_merged_raw = pd.concat(dfs, ignore_index=True)
 	replacement_dict = {
-		"regatta": "sailboat",
-		"normandy invasion": "allied invasion",
 		"plane": "aircraft",
 		"airplane": "aircraft",
 		"aeroplane": "aircraft",
 		"graveyard": "cemetery",
 		"soldier": "infantry",
 		"clash": "wreck",
-		"sport": "leisure",
+		"game": "leisure",
 		"military truck": "army truck",
 		"military base": "army base",
 		"military vehicle": "army base",
 		"military hospital": "army hospital",
 		"flame thrower": "flamethrower",
-		"roadbuilding": "road construction",
-		"recruitment": "army recruiting",
-		"farm": "pasture",
-		"minesweeper": "naval vessel",
 	}
 
 	# replacement_dict = {
-	# "boeing": "aircraft",
 	# 	"plane": "military aviation",
 	# 	"airplane": "military aviation",
 	# 	"aeroplane": "military aviation",
@@ -531,6 +469,7 @@ def main():
 	# 	"versailles": "international relations & treaties",
 	# 	"treaty of versailles": "international relations & treaties",
 	# 	"nuremberg trials": "international relations & treaties",
+	# 	"game": "leisure",
 	# 	"anniversary": "leisure",
 	# 	"rail": "infrastructure",
 	# 	"sport": "leisure",
@@ -579,39 +518,94 @@ def main():
 	# 	"reservoir": "infrastructure",
 	# 	"defence": "strategy",
 	# }
+	print(f"pre-processing merged {type(europeana_df_merged_raw)} {europeana_df_merged_raw.shape}")
+	europeana_df_merged_raw['query'] = europeana_df_merged_raw['query'].replace(replacement_dict)
+	europeana_df_merged_raw = europeana_df_merged_raw.dropna(subset=['img_url']) # drop None firstDigitalObjectUrl
+	europeana_df_merged_raw = europeana_df_merged_raw.drop_duplicates(subset=['img_url']) # drop duplicate firstDigitalObjectUrl
 
-	print(f"pre-processing merged {type(na_df_merged_raw)} {na_df_merged_raw.shape}")
-	na_df_merged_raw['query'] = na_df_merged_raw['query'].replace(replacement_dict)
-	na_df_merged_raw = na_df_merged_raw.dropna(subset=['img_url']) # drop None img_url
-	na_df_merged_raw = na_df_merged_raw.drop_duplicates(subset=['img_url'], keep="first", ignore_index=True) # drop duplicate img_url
+	print(f"Processed europeana_df_merged_raw: {europeana_df_merged_raw.shape}")
+	print(europeana_df_merged_raw.head(20))
 
-	print(f"Processed na_df_merged_raw: {na_df_merged_raw.shape}")
-	print(na_df_merged_raw.head(20))
-
-	na_df_merged_raw.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
+	europeana_df_merged_raw.to_csv(os.path.join(RESULT_DIRECTORY, "metadata_raw.csv"), index=False)
 	try:
-		na_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
+		europeana_df_merged_raw.to_excel(os.path.join(RESULT_DIRECTORY, "metadata_raw.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	na_df = get_synchronized_df_img(df=na_df_merged_raw)
+	europeana_df = get_synchronized_df_img(df=europeana_df_merged_raw)
+	query_counts = europeana_df['query'].value_counts()
 
-	query_counts = na_df['query'].value_counts()
-	# print(query_counts.tail(25))
-
-	plt.figure(figsize=(20, 13))
+	plt.figure(figsize=(21, 14))
 	query_counts.plot(kind='bar', fontsize=9)
-	plt.title(f'{dataset_name}: Query Frequency (total: {query_counts.shape}) {START_DATE} - {END_DATE}')
+	plt.title(f'{dataset_name} Query Frequency (total: {query_counts.shape})')
 	plt.xlabel('Query')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
-	plt.savefig(os.path.join(DATASET_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
+	plt.savefig(os.path.join(RESULT_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
 
-	na_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
+	europeana_df.to_csv(os.path.join(RESULT_DIRECTORY, "metadata.csv"), index=False)
 	try:
-		na_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
+		europeana_df.to_excel(os.path.join(RESULT_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
+
+def test():
+	query = "parade"
+	query_url = str(f"https://digitalcollections.smu.edu/digital/api/search/searchterm/image!{query}!{START_DATE}-{END_DATE}/field/type!all!date/mode/exact!all!exact/conn/and!and!and/maxRecords/200")
+	# Send a GET request to the API
+	response = requests.get(query_url)
+	print(response.status_code)
+	print(type(response), response)
+	print(response.headers['Content-Type'])
+	# # print(response.content)
+	# data = response.json()
+	# print(list(data.keys()))
+	# print(data.get("totalResults"))
+	# items = data.get("items")
+	# print(len(items))
+	# # print(data)
+	# # print(json.dumps(data, indent=2))
+
+	# Check if the request was successful
+	if response.status_code == 200:
+		# Parse the JSON response
+		data = response.json()	
+		# Check if the 'items' field exists
+		if 'items' in data:
+			# Extract the 'items' field
+			items = data['items']
+			tot_results = data['totalResults']
+			print(tot_results, len(items))
+			for item_idx, item in enumerate(items):
+				print(f"item: {item_idx} {type(item)} {item.get('filetype')}")
+				# print(list(item.keys()))
+				if item.get('filetype') == "jp2":
+					itm_collection = item.get("collectionAlias")
+					itm_identifier = item.get("itemId")
+					itm_link = item.get("itemLink")
+					itm_img_link = f"https://digitalcollections.smu.edu/digital/api/singleitem/image/{itm_collection}/{itm_identifier}/default.jpg"
+					itm_title = item.get("title")
+					print(itm_title)
+					print(itm_img_link)
+					print("#"*100)
+				else:
+					pass
+				# print()
+				# print(item.get("id"))
+				# print(item.get("title"))
+				# print(item.get("edmIsShownAt"))
+				# print(item.get("edmIsShownBy"))
+				# print(item.get("edmTimespanLabel"))
+				# print(item.get("language"))
+				# print(item.get("dataProvider"))
+				# print(item.get("provider"))
+				# print("#"*100)
+				# print(json.dumps(item, indent=2))  # Pretty-print the JSON data for each item
+				# You can process or save the 'items' data as needed
+		else:
+			print("No 'items' found in the response.")
+	else:
+		print(f"Request failed with status code {response.status_code}")
 
 if __name__ == '__main__':
 	print(
@@ -619,7 +613,8 @@ if __name__ == '__main__':
 		.center(160, " ")
 	)
 	START_EXECUTION_TIME = time.time()
-	main()
+	# main()
+	test()
 	END_EXECUTION_TIME = time.time()
 	print(
 		f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
