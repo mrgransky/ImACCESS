@@ -32,7 +32,8 @@ print(args)
 # $ nohup python data_collector.py -u --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> na_image_download.out &
 
 # run in Pouta:
-# $ python data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1933-01-01 --end_date 1946-12-31
+# $ python data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 # WW1 & WW2
+# $ nohup python data_collector.py -u --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 >> /media/volume/trash/ImACCESS/na_img_dl.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
@@ -275,9 +276,9 @@ def get_synchronized_df_img(df):
 def main():	
 	dfs = []
 	all_query_tags = [
-		"aircraft",
 		"motor cycle",
 		"hunting",
+		"aircraft",
 		"Sailboat",
 		"regatta",
 		"ballistic missile",
