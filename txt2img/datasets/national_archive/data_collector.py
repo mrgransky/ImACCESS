@@ -492,7 +492,7 @@ def main():
 		"sport": "leisure",
 		"military truck": "army truck",
 		"military base": "army base",
-		"military vehicle": "army base",
+		"military vehicle": "army vehicle",
 		"military hospital": "army hospital",
 		"flame thrower": "flamethrower",
 		"roadbuilding": "road construction",

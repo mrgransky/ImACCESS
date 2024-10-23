@@ -30,14 +30,13 @@ print(args)
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
 # $ nohup python data_collector.py -u --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> europeana_image_download.out &
+
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 START_DATE = re.sub("-", "", args.start_date)
 END_DATE = re.sub("-", "", args.end_date)
 dataset_name = "smu"
 nw:int = min(args.num_worker, multiprocessing.cpu_count()) # def: 8
-europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
-api_base_url = f"https://digitalcollections.smu.edu/digital/api/search/searchterm/image!parade!19130101-19461231/field/type!all!date/mode/exact!all!exact/conn/and!and!and/maxRecords/200"
 
 # europeana_api_key: str = "plaction"
 # europeana_api_key: str = "api2demo"
@@ -50,7 +49,7 @@ headers = {
 	'Pragma': 'no-cache',
 }
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
-RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
+DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
 
 def save_pickle(pkl, fname:str=""):
 	print(f"\nSaving {type(pkl)}\n{fname}")
@@ -86,35 +85,21 @@ def load_pickle(fpath:str="unknown",):
 def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
 	t0 = time.time()
 	query_processed = re.sub(" ", "_", query.lower())
-	query_all_hits_fpth = os.path.join(RESULT_DIRECTORY, f"results_{st_date}_{end_date}_query_{query_processed}.gz")
+	query_all_hits_fpth = os.path.join(DATASET_DIRECTORY, f"results_{st_date}_{end_date}_query_{query_processed}.gz")
 	try:
 		query_all_hits = load_pickle(fpath=query_all_hits_fpth)
 	except Exception as e:
 		print(f"{e}")
-		print(f"Collecting all docs of National Archive for Query: « {query} » ... it might take a while..")
-		params = {
-			'wskey': europeana_api_key,
-			'qf': [
-				'collection:photography', 
-				'TYPE:"IMAGE"', 
-				# 'contentTier:"4"', # high quality images
-				'MIME_TYPE:image/jpeg',
-				# 'LANGUAGE:en',
-			],
-			'rows': 100,
-			'query': query,
-			'reusability': 'open'
-		}
+		print(f"Collecting all hits for Query: « {query} » ... might take a while..")
 		query_all_hits = []
-		start = 1
+		pg = 1
+		MAX_HITS_IN_ONE_PAGE = 200
 		while True:
+			query_url = f"https://digitalcollections.smu.edu/digital/api/search/collection/apnd!aaf!outler!ald!alv!han!wsw!lav!bml!other!civ!cooke!pwl!mbc!eaa!wlrd!fjd!gcp!gcd!white!wlg!kil!jcc!jhv!mcs!UKMeth!mex!ngc!nam!ptr!rwy!stn!ryr!rdoh!tex!bridhist!haws!wes!wrl/searchterm/image!{query}!{query}!{START_DATE}-{END_DATE}/field/type!title!descri!date/mode/exact!exact!all!exact/conn/and!and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}/page/{pg}"
+			# query_url = f"https://digitalcollections.smu.edu/digital/api/search/searchterm/image!{query}!{st_date}-{end_date}/field/type!all!date/mode/exact!all!exact/conn/and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}/page/{pg}"
+			# query_url = f"https://digitalcollections.smu.edu/digital/api/search/collection/apnd!aaf!outler!ald!alv!han!wsw!lav!bml!other!civ!cooke!pwl!mbc!eaa!wlrd!fjd!gcp!gcd!white!wlg!kil!jcc!jhv!mcs!UKMeth!mex!ngc!nam!ptr!rwy!stn!ryr!rdoh!tex!bridhist!haws!wes!wrl/searchterm/{query}!{query}!{START_DATE}-{END_DATE}/field/title!descri!date/mode/any!all!exact/conn/and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}/page/{pg}"
 			loop_st = time.time()
-			params["start"] = start
-			response = requests.get(
-				europeana_api_base_url,
-				params=params,
-				headers=headers,
-			)
+			response = requests.get(query_url)
 			if response.status_code == 200:
 				data = response.json()
 				if 'items' in data:
@@ -124,10 +109,10 @@ def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="
 					# print(total_hits, len(hits))
 					query_all_hits.extend(hits)
 					# print(json.dumps(query_all_hits, indent=2, ensure_ascii=False))
-					print(f"start: {start}:\tFound: {len(hits)} {type(hits)}\t{len(query_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
+					print(f"Page: {pg}:\tFound: {len(hits)} {type(hits)}\t{len(query_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
 				if len(query_all_hits) >= total_hits:
 					break
-				start += params.get("rows")
+				pg += 1
 			else:
 				print(f"Failed to retrieve data: status_code: {response.status_code}")
 				break
@@ -152,23 +137,30 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 	data = []
 	for doc_idx, doc in enumerate(docs):
 		# print(type(doc.get("title")), doc.get("title"))
-		title = doc.get("title")#.lower()
-		pDate = doc.get("edmTimespanLabel")[0].get("def") if doc.get("edmTimespanLabel") and doc.get("edmTimespanLabel")[0].get("def") else None
-		image_url = doc.get("edmIsShownBy")[0]
+		doc_date = doc.get("metadataFields")[3].get("value")
+		doc_type = doc.get('filetype')
+		doc_collection = doc.get("collectionAlias")
+		doc_id = doc.get("itemId")
+		doc_combined_identifier = f'{doc_collection}_{doc_id}' # agr_19
+		doc_link = doc.get("itemLink")
+		doc_img_link = f"https://digitalcollections.smu.edu/digital/api/singleitem/image/{doc_collection}/{doc_id}/default.jpg"
+		doc_title = doc.get("title").lower()
 		if (
-			image_url 
-			and (image_url.endswith('.jpg') or image_url.endswith('.png'))
+			doc_type == "jp2"
+			and "cover]" not in doc_title
+			and doc_img_link 
+			and (doc_img_link.endswith('.jpg') or doc_img_link.endswith('.png'))
 		):
 			pass # Valid entry; no action needed here
 		else:
-			image_url = None
+			doc_img_link = None
 		row = {
-			'id': doc.get("id"),
+			'id': doc_combined_identifier,
 			'query': query,
-			'title': title,
-			'description': doc.get("dcDescription"),
-			'img_url': image_url,
-			'date': pDate,
+			'title': doc_title,
+			# 'description': doc.get("dcDescription"),
+			'img_url': doc_img_link,
+			'date': doc_date,
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
@@ -179,8 +171,8 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 	t0 = time.time()
 	rIdx = row.name
 	url = row['img_url']
-	image_name = re.sub("/", "LBL", row['id']) # str(row['id']) + os.path.splitext(url)[1]
-	image_path = os.path.join(image_dir, f"{image_name}.png")
+	image_name = row["id"] # agr_19
+	image_path = os.path.join(image_dir, f"{image_name}.jpg")
 	if os.path.exists(image_path):
 		return True # Image already exists, => skipping
 	attempt = 0  # Retry mechanism
@@ -201,8 +193,8 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 
 def get_synchronized_df_img(df):
 	print(f"Synchronizing merged_df(raw) & images of {df.shape[0]} records using {nw} CPUs...")
-	os.makedirs(os.path.join(RESULT_DIRECTORY, "images"), exist_ok=True)
-	IMAGE_DIR = os.path.join(RESULT_DIRECTORY, "images")
+	os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
+	IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
 	successful_rows = []  # List to keep track of successful downloads
 	with requests.Session() as session:
 		with ThreadPoolExecutor(max_workers=nw) as executor:
@@ -221,8 +213,8 @@ def get_synchronized_df_img(df):
 	return df_cleaned
 
 def main():
-	dfs = []
 	all_query_tags = [
+		"Artillery",
 		"motor cycle",
 		"hunting",
 		"Sailboat",
@@ -269,7 +261,6 @@ def main():
 		"air force base",
 		"air force personnel",
 		"air force station",
-		"Artillery",
 		"Rifle",
 		"barrel",
 		"air raid",
@@ -403,6 +394,7 @@ def main():
 		all_query_tags = all_query_tags#[:5]
 
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be patient...")
+	dfs = []
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")
 		query_all_hits = get_data(
@@ -412,7 +404,7 @@ def main():
 		)
 		if query_all_hits:
 			qv_processed = re.sub(" ", "_", qv.lower())
-			df_fpth = os.path.join(RESULT_DIRECTORY, f"result_df_{START_DATE}_{END_DATE}_query_{qv_processed}.gz")
+			df_fpth = os.path.join(DATASET_DIRECTORY, f"result_df_{START_DATE}_{END_DATE}_query_{qv_processed}.gz")
 			try:
 				df = load_pickle(fpath=df_fpth)
 			except Exception as e:
@@ -426,18 +418,24 @@ def main():
 	# print(dfs[0])
 	europeana_df_merged_raw = pd.concat(dfs, ignore_index=True)
 	replacement_dict = {
+		"regatta": "sailboat",
+		"normandy invasion": "allied invasion",
 		"plane": "aircraft",
 		"airplane": "aircraft",
 		"aeroplane": "aircraft",
 		"graveyard": "cemetery",
 		"soldier": "infantry",
 		"clash": "wreck",
-		"game": "leisure",
+		"sport": "leisure",
 		"military truck": "army truck",
 		"military base": "army base",
-		"military vehicle": "army base",
+		"military vehicle": "army vehicle",
 		"military hospital": "army hospital",
 		"flame thrower": "flamethrower",
+		"roadbuilding": "road construction",
+		"recruitment": "army recruiting",
+		"farm": "pasture",
+		"minesweeper": "naval vessel",
 	}
 
 	# replacement_dict = {
@@ -526,9 +524,9 @@ def main():
 	print(f"Processed europeana_df_merged_raw: {europeana_df_merged_raw.shape}")
 	print(europeana_df_merged_raw.head(20))
 
-	europeana_df_merged_raw.to_csv(os.path.join(RESULT_DIRECTORY, "metadata_raw.csv"), index=False)
+	europeana_df_merged_raw.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
 	try:
-		europeana_df_merged_raw.to_excel(os.path.join(RESULT_DIRECTORY, "metadata_raw.xlsx"), index=False)
+		europeana_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
@@ -541,32 +539,24 @@ def main():
 	plt.xlabel('Query')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
-	plt.savefig(os.path.join(RESULT_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
+	plt.savefig(os.path.join(DATASET_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
 
-	europeana_df.to_csv(os.path.join(RESULT_DIRECTORY, "metadata.csv"), index=False)
+	europeana_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 	try:
-		europeana_df.to_excel(os.path.join(RESULT_DIRECTORY, "metadata.xlsx"), index=False)
+		europeana_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
 def test():
-	query = "parade"
-	query_url = str(f"https://digitalcollections.smu.edu/digital/api/search/searchterm/image!{query}!{START_DATE}-{END_DATE}/field/type!all!date/mode/exact!all!exact/conn/and!and!and/maxRecords/200")
+	query = "museum"
+	# "https://digitalcollections.smu.edu/digital/api/search/collection/apnd!aaf!outler!ald!alv!han!wsw!lav!bml!other!civ!cooke!pwl!mbc!eaa!wlrd!fjd!gcp!gcd!white!wlg!kil!jcc!jhv!mcs!UKMeth!mex!ngc!nam!ptr!rwy!stn!ryr!rdoh!tex!bridhist!haws!wes!wrl/searchterm/president!president!18900101-19601231/field/title!descri!date/mode/any!all!exact/conn/and!and!and/maxRecords/200"
+	# query_url = str(f"https://digitalcollections.smu.edu/digital/api/search/searchterm/image!{query}!{START_DATE}-{END_DATE}/field/type!all!date/mode/exact!all!exact/conn/and!and!and/maxRecords/200/page/7")
+	query_url = f"https://digitalcollections.smu.edu/digital/api/search/collection/apnd!aaf!outler!ald!alv!han!wsw!lav!bml!other!civ!cooke!pwl!mbc!eaa!wlrd!fjd!gcp!gcd!white!wlg!kil!jcc!jhv!mcs!UKMeth!mex!ngc!nam!ptr!rwy!stn!ryr!rdoh!tex!bridhist!haws!wes!wrl/searchterm/{query}!{query}!{START_DATE}-{END_DATE}/field/title!descri!date/mode/any!all!exact/conn/and!and!and"
 	# Send a GET request to the API
 	response = requests.get(query_url)
 	print(response.status_code)
 	print(type(response), response)
-	print(response.headers['Content-Type'])
-	# # print(response.content)
-	# data = response.json()
-	# print(list(data.keys()))
-	# print(data.get("totalResults"))
-	# items = data.get("items")
-	# print(len(items))
-	# # print(data)
-	# # print(json.dumps(data, indent=2))
-
-	# Check if the request was successful
+	print(response.headers['Content-Type']) # must be 'application/json'
 	if response.status_code == 200:
 		# Parse the JSON response
 		data = response.json()	
@@ -577,16 +567,21 @@ def test():
 			tot_results = data['totalResults']
 			print(tot_results, len(items))
 			for item_idx, item in enumerate(items):
-				print(f"item: {item_idx} {type(item)} {item.get('filetype')}")
+				# print(f"item: {item_idx} {type(item)} {item.get('filetype')}")
 				# print(list(item.keys()))
 				if item.get('filetype') == "jp2":
 					itm_collection = item.get("collectionAlias")
 					itm_identifier = item.get("itemId")
-					itm_link = item.get("itemLink")
+					itm_link = f"https://digitalcollections.smu.edu/digital/collection/{itm_collection}/id/{itm_identifier}" #item.get("itemLink")
+					itm_api_link = f"https://digitalcollections.smu.edu/digital/api/collections/{itm_collection}/items/{itm_identifier}/false"
 					itm_img_link = f"https://digitalcollections.smu.edu/digital/api/singleitem/image/{itm_collection}/{itm_identifier}/default.jpg"
 					itm_title = item.get("title")
+					# itm_description = 
+					itm_date = item.get("metadataFields")[3].get("value")
 					print(itm_title)
+					print(itm_link)
 					print(itm_img_link)
+					print(itm_date)
 					print("#"*100)
 				else:
 					pass
@@ -613,8 +608,8 @@ if __name__ == '__main__':
 		.center(160, " ")
 	)
 	START_EXECUTION_TIME = time.time()
-	# main()
-	test()
+	main()
+	# test()
 	END_EXECUTION_TIME = time.time()
 	print(
 		f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "

@@ -29,6 +29,7 @@ openpose/build/
 openpose/outputs/
 img2txt/*/outputs/
 txt2img/datasets/*/NA*
+txt2img/datasets/*/smu*
 txt2img/datasets/*/temp
 txt2img/datasets/*/europeana*
 txt2img/*zip
