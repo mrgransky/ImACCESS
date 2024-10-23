@@ -6,7 +6,7 @@ from dataset_loader import HistoricalDataset
 # $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 15
 # $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
 
-# $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 15 >> $PWD/historyclip.out & 
+# $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 20 --patch_size 5 --image_size 150 --batch_size 32 >> $PWD/historyclip.out & 
 
 # how to run [Pouta]:
 # $ python historyclip.py --dataset_dir /media/volume/ImACCESS/national_archive --num_epochs 1
@@ -15,11 +15,11 @@ from dataset_loader import HistoricalDataset
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
-parser.add_argument('--batch_size', type=int, default=64, help='Batch Size')
-parser.add_argument('--image_size', type=int, default=120, help='Image size')
-parser.add_argument('--print_every', type=int, default=20, help='Print loss')
+parser.add_argument('--batch_size', type=int, default=32, help='Batch Size')
+parser.add_argument('--image_size', type=int, default=150, help='Image size')
 parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
 parser.add_argument('--query', type=str, default="aircraft", help='Query')
+parser.add_argument('--print_every', type=int, default=100, help='Print loss')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set [def: 0.23]')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='small learning rate for better convergence [def: 1e-3]')
@@ -211,17 +211,19 @@ def fine_tune(train_df, captions):
 			best_loss = avg_loss
 			torch.save(model.state_dict(), mdl_fpth)
 			print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.5f}")
-	print(f"Elapsed_t: {time.time()-training_st:.5f} sec")
+	print(f"Elapsed_t: {time.time()-training_st:.5f} sec".center(150, "-"))
 	loss_fname = (
 		f'loss'
-		+ f'epochs_{args.num_epochs}_'
-		+ f'lr_{args.learning_rate}'
+		+ f'_epochs_{args.num_epochs}'
+		+ f'_lr_{args.learning_rate}'
+		+ f'_wd_{args.weight_decay}'
 		+ f'.png'
 	)
 	plot_loss(
 		losses=average_losses, 
 		num_epochs=args.num_epochs, 
-		save_path=os.path.join(outputs_dir, loss_fname),)
+		save_path=os.path.join(outputs_dir, loss_fname),
+	)
 
 def main():
 	set_seeds()
