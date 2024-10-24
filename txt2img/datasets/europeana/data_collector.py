@@ -29,7 +29,8 @@ args, unknown = parser.parse_known_args()
 print(args)
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
-# $ nohup python data_collector.py -u --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> europeana_image_download.out &
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> europeana_image_download.out &
+
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 START_DATE = args.start_date
@@ -48,7 +49,10 @@ headers = {
 	'Pragma': 'no-cache',
 }
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
-RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
+DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
+
+os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
+IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
 
 def save_pickle(pkl, fname:str=""):
 	print(f"\nSaving {type(pkl)}\n{fname}")
@@ -84,7 +88,7 @@ def load_pickle(fpath:str="unknown",):
 def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
 	t0 = time.time()
 	query_processed = re.sub(" ", "_", query.lower())
-	query_all_hits_fpth = os.path.join(RESULT_DIRECTORY, f"results_{st_date}_{end_date}_query_{query_processed}.gz")
+	query_all_hits_fpth = os.path.join(DATASET_DIRECTORY, f"results_{st_date}_{end_date}_query_{query_processed}.gz")
 	try:
 		query_all_hits = load_pickle(fpath=query_all_hits_fpth)
 	except Exception as e:
@@ -199,8 +203,6 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 
 def get_synchronized_df_img(df):
 	print(f"Synchronizing merged_df(raw) & images of {df.shape[0]} records using {nw} CPUs...")
-	os.makedirs(os.path.join(RESULT_DIRECTORY, "images"), exist_ok=True)
-	IMAGE_DIR = os.path.join(RESULT_DIRECTORY, "images")
 	successful_rows = []  # List to keep track of successful downloads
 	with requests.Session() as session:
 		with ThreadPoolExecutor(max_workers=nw) as executor:
@@ -216,22 +218,18 @@ def get_synchronized_df_img(df):
 	df_cleaned = df.loc[successful_rows] # keep only the successfully downloaded rows
 	print(f"Total images downloaded successfully: {len(successful_rows)} out of {df.shape[0]}")
 	print(f"df_cleaned: {df_cleaned.shape}")
+
+	img_dir_size = sum(os.path.getsize(f) for f in os.listdir(IMAGE_DIR) if os.path.isfile(f)) * 1e-9 # GB
+	print(f"{IMAGE_DIR} contains {len(os.listdir(IMAGE_DIR))} file(s) with total size: {img_dir_size:.2f} GB")
+
 	return df_cleaned
 
 def main():
-	dfs = []
 	all_query_tags = [
 		"motor cycle",
-		"hunting",
-		"Sailboat",
-		"regatta",
 		"ballistic missile",
 		"flame thrower",
-		"flamethrower",
 		"Red cross worker",
-		"cemetery",
-		"graveyard",
-		"bayonet",
 		"war bond",
 		"Infantry camp",
 		"swimming camp",
@@ -255,9 +253,6 @@ def main():
 		"Nazi victim",
 		"Helicopter",
 		"trench warfare",
-		"explosion",
-		"soldier",
-		"Submarine",
 		"Manufacturing Plant",
 		"naval aircraft factory",
 		"rail construction",
@@ -267,99 +262,50 @@ def main():
 		"air force base",
 		"air force personnel",
 		"air force station",
-		"Artillery",
-		"Rifle",
-		"barrel",
 		"air raid",
 		"Flag Raising",
-		"Massacre",
-		"evacuation",
-		"warship",
-		"Infantry",
-		"Coast Guard",
 		"conspiracy theory",
 		"Manhattan Project",
 		"Eastern Front",
-		"Animal",
 		"surge tank",
 		"Water Tank",
-		"plane",
-		"aeroplane",
-		"airplane",
 		"soviet union",
-		"rationing",
-		"Grenade",
-		"cannon",
 		"Naval Officer",
-		"Rocket",
-		"prisoner",
-		"weapon",
-		"Aviator",
-		"Parade",
 		"army vehicle",
 		"Storehouse",
 		"Aerial View",
 		"Aerial warfare",
-		"Ambulance",
 		"Army Base",
 		"Army hospital",
 		"Military Base",
 		"military leader",
 		"military vehicle",
 		"Military Aviation",
-		"museum",
 		"board meeting",
-		"commander",
-		"Sergeant",
-		"Admiral",
 		"Battle Monument",
-		"clash",
-		"strike",
-		"damage",
-		"leisure",
-		"airport",
 		"Battle of the Bulge",
-		"Barn",
-		"Anniversary",
-		"Delegate",
-		"exile",
-		"evacuation",
-		"Coast Guard",
 		"Naval Vessel",
-		"warship",
-		"Infantry",
-		"Civilian",
 		"Medical aid",
-		"ambassador",
-		"projectile",
-		"helmet",
+		"Coast Guard",
 		"Treaty of Versailles",
 		"enemy territory",
 		"reconnaissance",
-		"nurse",
-		"doctor",
-		"embassy",
 		"ship deck",
-		"Defence",
-		"Border",
-		"Army Recruiting",
-		"Recruitment",
-		"reservoir",
-		"infrastructure",
-		"ship",
-		"military hospital",
 		"naval hospital",
 		"hospital base",
 		"hospital ship",
 		"hospital train",
-		"migration",
-		"captain",
-		"sport",
+		"Army Recruiting",
+		"Recruitment",
+		"infrastructure",
+		"military hospital",
 		"Kitchen Truck",
 		"Railroad Truck",
 		"fire truck",
 		"Line Truck",
+		"Coast Guard",
 		"gas truck",
+		"Flying Fortress",
 		"Freight Truck",
 		"Dump Truck",
 		"Diesel truck",
@@ -372,14 +318,73 @@ def main():
 		"bombardment",
 		"Bombing Attack",
 		"Atomic Bomb",
-		"refugee",
-		"president",
 		"Nuremberg Trials",
-		"holocaust",
 		"Ballon gun",
 		"Machine gun",
 		"Mortar gun",
 		"field gun",
+		"Memorial day",
+		"flamethrower",
+		"hunting",
+		"Sailboat",
+		"regatta",
+		"cemetery",
+		"graveyard",
+		"bayonet",
+		"explosion",
+		"Submarine",
+		"Artillery",
+		"Rifle",
+		"barrel",
+		"Massacre",
+		"evacuation",
+		"aircraft",
+		"soldier",
+		"Infantry",
+		"Animal",
+		"plane", # must be before airplane, aeroplane.
+		"aeroplane",
+		"airplane",
+		"rationing",
+		"Grenade",
+		"Rocket",
+		"prisoner",
+		"weapon",
+		"Aviator",
+		"Parade",
+		"commander",
+		"museum",
+		"Sergeant",
+		"Admiral",
+		"Ambulance",
+		"cannon",
+		"ambassador",
+		"projectile",
+		"helmet",
+		"warship",
+		"clash",
+		"strike",
+		"damage",
+		"leisure",
+		"airport",
+		"Barn",
+		"Anniversary",
+		"Delegate",
+		"exile",
+		"evacuation",
+		"Civilian",
+		"nurse",
+		"doctor",
+		"embassy",
+		"Infantry",
+		"reservoir",
+		"refugee",
+		"president",
+		"holocaust",
+		"migration",
+		"Defence",
+		"Border",
+		"ship",
 		"gun",
 		"shovel",
 		"Accident",
@@ -387,10 +392,10 @@ def main():
 		"Truck",
 		"hospital",
 		"Railroad",
-		"Flying Fortress",
+		"captain",
+		"sport",
 		"Minesweeper",
 		"Ceremony",
-		"Memorial day",
 		"Tunnel",
 		"pasture",
 		"farm",
@@ -401,6 +406,7 @@ def main():
 		all_query_tags = all_query_tags#[:5]
 
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be patient...")
+	dfs = []
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")
 		query_all_hits = get_data(
@@ -410,7 +416,7 @@ def main():
 		)
 		if query_all_hits:
 			qv_processed = re.sub(" ", "_", qv.lower())
-			df_fpth = os.path.join(RESULT_DIRECTORY, f"result_df_{START_DATE}_{END_DATE}_query_{qv_processed}.gz")
+			df_fpth = os.path.join(DATASET_DIRECTORY, f"result_df_{START_DATE}_{END_DATE}_query_{qv_processed}.gz")
 			try:
 				df = load_pickle(fpath=df_fpth)
 			except Exception as e:
@@ -433,7 +439,7 @@ def main():
 		"game": "leisure",
 		"military truck": "army truck",
 		"military base": "army base",
-		"military vehicle": "army base",
+		"military vehicle": "army vehicle",
 		"military hospital": "army hospital",
 		"flame thrower": "flamethrower",
 	}
@@ -524,26 +530,25 @@ def main():
 	print(f"Processed europeana_df_merged_raw: {europeana_df_merged_raw.shape}")
 	print(europeana_df_merged_raw.head(20))
 
-	europeana_df_merged_raw.to_csv(os.path.join(RESULT_DIRECTORY, "metadata_raw.csv"), index=False)
+	europeana_df_merged_raw.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
 	try:
-		europeana_df_merged_raw.to_excel(os.path.join(RESULT_DIRECTORY, "metadata_raw.xlsx"), index=False)
+		europeana_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
 	europeana_df = get_synchronized_df_img(df=europeana_df_merged_raw)
 	query_counts = europeana_df['query'].value_counts()
-
 	plt.figure(figsize=(21, 14))
 	query_counts.plot(kind='bar', fontsize=9)
 	plt.title(f'{dataset_name} Query Frequency (total: {query_counts.shape})')
 	plt.xlabel('Query')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
-	plt.savefig(os.path.join(RESULT_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
+	plt.savefig(os.path.join(DATASET_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
 
-	europeana_df.to_csv(os.path.join(RESULT_DIRECTORY, "metadata.csv"), index=False)
+	europeana_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 	try:
-		europeana_df.to_excel(os.path.join(RESULT_DIRECTORY, "metadata.xlsx"), index=False)
+		europeana_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 

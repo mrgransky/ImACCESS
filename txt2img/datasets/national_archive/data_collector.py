@@ -29,7 +29,7 @@ args, unknown = parser.parse_known_args()
 print(args)
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> na_image_download.out &
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02 >> na_image_download.out &
 
 # run in Pouta:
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 # WW1 & WW2
@@ -65,6 +65,8 @@ useless_collection_terms = [
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
+os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
+IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
 
 def save_pickle(pkl, fname:str=""):
 	print(f"\nSaving {type(pkl)}\n{fname}")
@@ -254,8 +256,6 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 
 def get_synchronized_df_img(df):
 	print(f"Synchronizing merged_df(raw) & images of {df.shape[0]} records using {nw} CPUs...")
-	os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
-	IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
 	successful_rows = []  # List to keep track of successful downloads
 	with requests.Session() as session:
 		with ThreadPoolExecutor(max_workers=nw) as executor:
@@ -271,10 +271,13 @@ def get_synchronized_df_img(df):
 	df_cleaned = df.loc[successful_rows] # keep only the successfully downloaded rows
 	print(f"Total images downloaded successfully: {len(successful_rows)} out of {df.shape[0]}")
 	print(f"df_cleaned: {df_cleaned.shape}")
+
+	img_dir_size = sum(os.path.getsize(f) for f in os.listdir(IMAGE_DIR) if os.path.isfile(f)) * 1e-9 # GB
+	print(f"{IMAGE_DIR} contains {len(os.listdir(IMAGE_DIR))} file(s) with total size: {img_dir_size:.2f} GB")
+
 	return df_cleaned
 
-def main():	
-	dfs = []
+def main():
 	all_query_tags = [
 		"motor cycle",
 		"ballistic missile",
@@ -458,6 +461,7 @@ def main():
 		all_query_tags = all_query_tags[:125]
 
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
+	dfs = []
 	for qi, qv in enumerate(all_query_tags):
 		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")
 		query_all_hits = get_data(

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=historyCLIP_x_b128
+#SBATCH --job-name=historyCLIP_x_b32_6epochs
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -37,9 +37,9 @@ python -u historyclip.py \
 	--query  $qu \
 	--num_epochs 6 \
 	--print_every 250 \
-	--batch_size 128 \
+	--batch_size 32 \
 	--patch_size 3 \
-	--image_size 210 \
+	--image_size 180 \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
