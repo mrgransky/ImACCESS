@@ -3,10 +3,10 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run [Local]:
-# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 15
-# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
+# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1
+# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
 
-# $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/historical_datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 20 --patch_size 5 --image_size 150 --batch_size 32 >> $PWD/historyclip.out & 
+# $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 20 --patch_size 5 --image_size 150 --batch_size 32 >> $PWD/logs/historyclip.out & 
 
 # how to run [Pouta]:
 # $ python historyclip.py --dataset_dir /media/volume/ImACCESS/national_archive --num_epochs 1

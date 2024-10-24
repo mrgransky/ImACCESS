@@ -272,8 +272,9 @@ def get_synchronized_df_img(df):
 	print(f"Total images downloaded successfully: {len(successful_rows)} out of {df.shape[0]}")
 	print(f"df_cleaned: {df_cleaned.shape}")
 
-	img_dir_size = sum(os.path.getsize(f) for f in os.listdir(IMAGE_DIR) if os.path.isfile(f))# * 1e-9 # GB
-	print(f"{IMAGE_DIR} contains {len(os.listdir(IMAGE_DIR))} file(s) with total size: {img_dir_size:.2f} GB")
+	# img_dir_size = sum(os.path.getsize(f) for f in os.listdir(IMAGE_DIR) if os.path.isfile(f))# * 1e-9 # GB
+	img_dir_size = sum(os.path.getsize(f) for f in os.listdir(IMAGE_DIR))# * 1e-9 # GB
+	print(f"{IMAGE_DIR} contains {len(os.listdir(IMAGE_DIR))} file(s) with total size: {img_dir_size} GB")
 
 	return df_cleaned
 
@@ -456,7 +457,7 @@ def main():
 	# all_query_tags = natsorted(list(set(all_query_tags)))
 	# all_query_tags = list(set(all_query_tags))[:5]
 	if USER=="farid": # local laptop
-		all_query_tags = all_query_tags[:67]
+		all_query_tags = all_query_tags[:71]
 	elif USER=="ubuntu":
 		all_query_tags = all_query_tags[:125]
 
