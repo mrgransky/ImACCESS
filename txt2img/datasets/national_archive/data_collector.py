@@ -459,7 +459,7 @@ def main():
 	if USER=="farid": # local laptop
 		all_query_tags = all_query_tags[:71]
 	elif USER=="ubuntu":
-		all_query_tags = all_query_tags[:125]
+		all_query_tags = all_query_tags[:100]
 
 	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
 	dfs = []
