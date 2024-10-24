@@ -10,13 +10,13 @@ from dataset_loader import HistoricalDataset
 
 # how to run [Pouta]:
 # $ python historyclip.py --dataset_dir /media/volume/ImACCESS/national_archive --num_epochs 1
-# $ nohup python -u --dataset_dir /media/volume/ImACCESS/national_archive --num_epochs 3 --query "topwear" > /media/volume/ImACCESS/trash/logs/historyclip.out & 
+# $ nohup python -u --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 20 >> /media/volume/ImACCESS/trash/logs/historyclip.out & 
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch Size')
-parser.add_argument('--image_size', type=int, default=150, help='Image size')
+parser.add_argument('--image_size', type=int, default=210, help='Image size')
 parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
 parser.add_argument('--query', type=str, default="aircraft", help='Query')
 parser.add_argument('--print_every', type=int, default=100, help='Print loss')
