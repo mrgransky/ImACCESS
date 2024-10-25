@@ -87,6 +87,7 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 		text_heads,
 		text_layers,
 		text_d_model,
+		device=device,
 		retrieval=False,
 	).to(device)
 	
