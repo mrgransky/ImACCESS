@@ -38,7 +38,11 @@ nw:int = multiprocessing.cpu_count() # def: 8
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
-device: str = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if USER == "ubuntu":
+	device = torch.device('cuda:1')
+else:
+	device: str = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 visualize: bool = False
 
 if USER=="farid": # local laptop
