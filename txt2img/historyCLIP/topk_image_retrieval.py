@@ -21,8 +21,9 @@ parser.add_argument('--document_description_col', type=str, default="query", hel
 args, unknown = parser.parse_known_args()
 # print(args)
 
-if USER == "ubuntu":
-	args.dataset_dir = ddir
+# TODO: investigation required!
+# if USER == "ubuntu":
+# 	args.dataset_dir = ddir
 
 models_dir_name = (
 	f"models"
@@ -78,6 +79,7 @@ model = CLIP(
 	text_heads,
 	text_layers,
 	text_d_model,
+	device=device,
 	retrieval=False,
 ).to(device)
 
@@ -95,6 +97,7 @@ retrieval_model = CLIP(
 	text_heads,
 	text_layers,
 	text_d_model,
+	device=device,
 	retrieval=True
 ).to(device)
 
@@ -181,7 +184,7 @@ def img_retrieval(query:str="bags", model_fpth: str=mdl_fpth, TOP_K: int=5, resu
 		img_fname = get_img_name_without_suffix(fpth=img_path)
 		img_GT = df.loc[df['id'] == img_fname, 'query'].values
 		print(f"vidx: {index} | Similarity: {100 * value.item():.6f}% | {img_path} | GT: {img_GT}")
-		img = Image.open(img_path)#.convert("RGB")
+		img = Image.open(img_path).convert("RGB")
 		img_title = f"vidx_{index}_sim_{100 * value.item():.2f}%\nGT: {img_GT}"
 		ax.set_title(img_title, fontsize=9)
 		ax.axis('off')

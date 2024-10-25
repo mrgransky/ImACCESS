@@ -463,7 +463,7 @@ def main():
 	# all_query_tags = natsorted(list(set(all_query_tags)))
 	# all_query_tags = list(set(all_query_tags))[:5]
 	if USER=="farid": # local laptop
-		all_query_tags = all_query_tags[:71]
+		all_query_tags = all_query_tags[:73]
 	elif USER=="ubuntu":
 		all_query_tags = all_query_tags[:100]
 

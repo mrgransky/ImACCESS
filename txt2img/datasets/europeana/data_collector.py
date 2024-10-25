@@ -27,6 +27,7 @@ parser.add_argument('--num_worker', type=int, default=8, help='Number of CPUs')
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 print(args)
+
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
 # $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> europeana_image_download.out &
@@ -38,9 +39,9 @@ END_DATE = args.end_date
 dataset_name = "europeana"
 nw:int = min(args.num_worker, multiprocessing.cpu_count()) # def: 8
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
-# europeana_api_key: str = "plaction"
+europeana_api_key: str = "plaction"
 # europeana_api_key: str = "api2demo"
-europeana_api_key: str = "nLbaXYaiH"
+# europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
@@ -226,10 +227,17 @@ def get_synchronized_df_img(df):
 
 def main():
 	all_query_tags = [
+		"Pearl Harbor attack",
+		"naval aircraft factory",
+		"naval air station",
+		"naval air base",
+		"Red cross worker",
+		"air force personnel",
+		"air force base",
+		"air force station",
 		"motor cycle",
 		"ballistic missile",
 		"flame thrower",
-		"Red cross worker",
 		"war bond",
 		"Infantry camp",
 		"swimming camp",
@@ -238,14 +246,11 @@ def main():
 		"Trailer camp",
 		"Nazi camp",
 		"Winter camp",
-		"naval air station",
 		"allied invasion",
 		"normandy invasion",
-		"naval air base",
 		"Power Plant",
 		"Air bomb",
 		"fighter bomber",
-		"Pearl Harbor attack",
 		"anti tank",
 		"anti aircraft",
 		"Battle of the Marne",
@@ -254,14 +259,15 @@ def main():
 		"Helicopter",
 		"trench warfare",
 		"Manufacturing Plant",
-		"naval aircraft factory",
 		"rail construction",
 		"dam construction",
 		"tunnel construction",
 		"allied force",
-		"air force base",
-		"air force personnel",
-		"air force station",
+		"air base",
+		"military airbase",
+		"military airfield",
+		"military airport",
+		"air station",
 		"air raid",
 		"Flag Raising",
 		"conspiracy theory",
@@ -272,6 +278,7 @@ def main():
 		"soviet union",
 		"Naval Officer",
 		"army vehicle",
+		"airbase",
 		"Storehouse",
 		"Aerial View",
 		"Aerial warfare",
@@ -385,7 +392,7 @@ def main():
 		"Defence",
 		"Border",
 		"ship",
-		"gun",
+		# "gun", # misleading! Gun och Nils Forsgård
 		"shovel",
 		"Accident",
 		"Wreck",
@@ -430,18 +437,33 @@ def main():
 	# print(dfs[0])
 	europeana_df_merged_raw = pd.concat(dfs, ignore_index=True)
 	replacement_dict = {
+		"airbase": "air base",
+		"military airbase": "air base",
+		"military airfield": "air base",
+		"military airport": "air base",
+		"air station": "air base",
+		"naval air station": "air base",
+		"naval air base": "air base",
+		"air force station": "air base",
+		"air force base": "air base",
+		"regatta": "sailboat",
+		"normandy invasion": "allied invasion",
 		"plane": "aircraft",
 		"airplane": "aircraft",
 		"aeroplane": "aircraft",
 		"graveyard": "cemetery",
 		"soldier": "infantry",
 		"clash": "wreck",
-		"game": "leisure",
+		"sport": "leisure",
 		"military truck": "army truck",
 		"military base": "army base",
 		"military vehicle": "army vehicle",
 		"military hospital": "army hospital",
 		"flame thrower": "flamethrower",
+		"roadbuilding": "road construction",
+		"recruitment": "army recruiting",
+		"farm": "pasture",
+		"minesweeper": "naval vessel",
 	}
 
 	# replacement_dict = {
