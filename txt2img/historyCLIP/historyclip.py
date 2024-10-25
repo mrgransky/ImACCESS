@@ -3,20 +3,20 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run [Local]:
-# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1
-# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
+# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 20
+# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 20
 
-# $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 20 --patch_size 5 --image_size 150 --batch_size 32 >> $PWD/logs/historyclip.out & 
+# $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 20 --patch_size 5 --image_size 150 >> $PWD/logs/historyclip.out & 
 
 # how to run [Pouta]:
 # $ python historyclip.py --dataset_dir /media/volume/ImACCESS/national_archive --num_epochs 1
-# $ nohup python -u --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 20 >> /media/volume/ImACCESS/trash/logs/historyclip.out & 
+# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 20 >> /media/volume/trash/ImACCESS/historyclip.out &
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch Size')
-parser.add_argument('--image_size', type=int, default=210, help='Image size')
+parser.add_argument('--image_size', type=int, default=150, help='Image size')
 parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
 parser.add_argument('--query', type=str, default="aircraft", help='Query')
 parser.add_argument('--print_every', type=int, default=100, help='Print loss')
@@ -137,6 +137,16 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 	for value, index in zip(values, indices):
 		print(f"index: {index}: {class_names[int(index)]:>30s}: {100 * value.item():.3f}%")
 	print(f"Elapsed_t: {time.time()-vdl_st:.2f} sec")
+
+	query_counts = val_df['query'].value_counts()
+	# print(query_counts.tail(25))
+	plt.figure(figsize=(23, 15))
+	query_counts.plot(kind='bar', fontsize=8)
+	plt.title(f'Validation Query Frequency (total: {query_counts.shape})')
+	plt.xlabel('Query')
+	plt.ylabel('Frequency')
+	plt.tight_layout()
+	plt.savefig(os.path.join(args.dataset_dir, "outputs", f"query_freq_{query_counts.shape[0]}_val.png"))
 
 def fine_tune(train_df, captions):
 	print(f"Fine-tuning in {torch.cuda.get_device_name(device)} using {nw} CPU(s)".center(150, "-"))
@@ -309,13 +319,13 @@ def main():
 	]
 
 	# Print the command for debugging purposes
-	print("Running command:", ' '.join(command))
+	# print("Running command:", ' '.join(command))
 
 	# Execute the command
 	result = subprocess.run(command, capture_output=True, text=True)
 
 	# Print the output and error (if any)
-	print("Output:", result.stdout)
+	print(f"Output:\n{result.stdout}")
 	# print("Error:", result.stderr)
 
 if __name__ == "__main__":
