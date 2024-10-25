@@ -280,6 +280,7 @@ def get_synchronized_df_img(df):
 
 def main():
 	all_query_tags = [
+		"Pearl Harbor attack",
 		"naval aircraft factory",
 		"naval air station",
 		"naval air base",
@@ -303,7 +304,6 @@ def main():
 		"Power Plant",
 		"Air bomb",
 		"fighter bomber",
-		"Pearl Harbor attack",
 		"anti tank",
 		"anti aircraft",
 		"Battle of the Marne",
