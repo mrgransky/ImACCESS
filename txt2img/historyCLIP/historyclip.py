@@ -149,7 +149,7 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 	plt.savefig(os.path.join(args.dataset_dir, "outputs", f"query_freq_{query_counts.shape[0]}_val.png"))
 
 def fine_tune(train_df, captions):
-	print(f"Fine-tuning in {torch.cuda.get_device_name(device)} using {nw} CPU(s)".center(150, "-"))
+	print(f"Fine-tuning using {device} in {torch.cuda.get_device_name(device)} using {nw} CPU(s)".center(150, "-"))
 	print(f"Creating Train Dataloader", end="\t")
 	tdl_st = time.time()
 	train_dataset = HistoricalDataset(
@@ -182,6 +182,7 @@ def fine_tune(train_df, captions):
 		text_heads,
 		text_layers,
 		text_d_model,
+		device=device,
 		retrieval=False,
 	).to(device)
 	optimizer = optim.AdamW(
