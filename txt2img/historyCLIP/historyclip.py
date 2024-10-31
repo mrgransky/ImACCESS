@@ -272,7 +272,7 @@ def main():
 		img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
 	except Exception as e:
 		print(f"{e}")
-		img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(dir=os.path.join(args.dataset_dir, "images"), num_workers=nw if USER=="ubuntu" else 2)
+		img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(dir=os.path.join(args.dataset_dir, "images"), num_workers=35 if USER=="ubuntu" else 2)
 		save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 		save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
 	print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
