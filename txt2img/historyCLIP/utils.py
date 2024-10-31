@@ -242,8 +242,8 @@ def get_info(dataloader):
 		# f"dataloader organization has main {len(next(iter(dataloader)))} element(s)\n"
 		f"Total samples:: {tot_samples} "
 		f"divided into {n_chunks} chunk(s) "
-		f"using batch size: {dataloader.batch_size} "
-		f"in {dataloader.num_workers} CPU(s)"
+		f"| batch size: {dataloader.batch_size} "
+		f"and {dataloader.num_workers} CPU(s)"
 	)
 	# for i, data in enumerate(dataloader):
 	# 	print(
