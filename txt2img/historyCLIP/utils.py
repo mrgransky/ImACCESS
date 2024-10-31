@@ -38,8 +38,6 @@ Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely
 # or set a higher limit
 # Image.MAX_IMAGE_PIXELS = 300000000  # Example of setting a higher limit
 
-nw:int = min(16, multiprocessing.cpu_count()) # def: 8
-
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 if USER == "ubuntu":
@@ -48,6 +46,8 @@ else:
 	device: str = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 visualize: bool = False
+# nw = 40 if USER=="ubuntu" else min(20, multiprocessing.cpu_count()) # def: 8
+nw = min(55, multiprocessing.cpu_count()) # def: 8
 
 if USER=="farid": # local laptop
 	WDIR = os.path.join(HOME, "datasets")
