@@ -27,8 +27,7 @@ import argparse
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
 from typing import List, Set, Dict, Tuple, Union
 import subprocess
-import cv2
-
+import traceback
 from multiprocessing import Pool
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
@@ -383,6 +382,7 @@ def process_rgb_image(args):
 				return tensor_image.sum(dim=[1, 2]), (tensor_image ** 2).sum(dim=[1, 2]), tensor_image.numel() / 3
 		except Exception as e:
 				print(f"Error processing {image_path}: {e}")
+				traceback.print_exc()  # Print detailed traceback
 				return torch.zeros(3), torch.zeros(3), 0
 
 def get_mean_std_rgb_img_multiprocessing(dir: str="path/2/images", num_workers: int=nw):
@@ -407,6 +407,7 @@ def get_mean_std_rgb_img_multiprocessing(dir: str="path/2/images", num_workers: 
 						count += partial_count
 					except Exception as e:
 						print(f"Error in future result: {e}")
+						traceback.print_exc()  # Print detailed traceback
 		mean = sum_ / count
 		std = torch.sqrt((sum_of_squares / count) - (mean ** 2))
 		print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(100, " "))

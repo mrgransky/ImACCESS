@@ -119,8 +119,8 @@ class HistoricalDataset(Dataset):
 			txt_category:str="query", 
 			dataset_directory:str="path/2/images",
 			max_seq_length:int=128,
-			mean:List[float]=[0.562433123588562, 0.5573693513870239, 0.5052375793457031],
-			std:List[float]=[0.2783442437648773, 0.2729624807834625, 0.27927276492118835],
+			mean:List[float]=[0.5644510984420776, 0.5516530275344849, 0.5138059854507446],
+			std:List[float]=[0.2334197610616684, 0.22689250111579895, 0.2246231734752655],
 		):
 		self.data_frame = data_frame
 		self.img_sz = img_sz  # Desired size for the square image
