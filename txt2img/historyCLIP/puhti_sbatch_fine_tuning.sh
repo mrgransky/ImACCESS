@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=historyCLIP_x_b32_6epochs
+#SBATCH --job-name=historyCLIP_x_b64_6epochs
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -35,9 +35,9 @@ qu="aircraft"
 python -u historyclip.py \
 	--dataset_dir $ddir \
 	--query  $qu \
-	--num_epochs 6 \
+	--num_epochs 50 \
 	--print_every 250 \
-	--batch_size 32 \
+	--batch_size 64 \
 	--patch_size 3 \
 	--image_size 150 \
 
