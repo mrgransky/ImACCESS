@@ -53,50 +53,49 @@ val_dataset = HistoricalDataset(
 	data_frame=val_df,
 	captions=img_lbls_dict,
 	img_sz=args.image_size,
-	dataset_directory=os.path.join(args.dataset_dir, "images")
+	dataset_directory=os.path.join(args.dataset_dir, "images"),
+	max_seq_length=max_seq_length,
 )
 val_loader = DataLoader(
 	dataset=val_dataset, 
 	shuffle=False,
 	batch_size=args.batch_size,
 	num_workers=nw,
-	collate_fn=custom_collate_fn  # Use custom collate function to handle None values
+	collate_fn=custom_collate_fn,  # Use custom collate function to handle None values
 )
 print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
 # get_info(dataloader=val_loader)
 
 model = CLIP(
-	emb_dim,
-	vit_layers, 
-	vit_d_model, 
-	# img_size,
-	(args.image_size, args.image_size),
-	(args.patch_size, args.patch_size),	
-	n_channels,
-	vit_heads,
-	vocab_size,
-	max_seq_length,
-	text_heads,
-	text_layers,
-	text_d_model,
+	emb_dim=emb_dim,
+	vit_layers=vit_layers,
+	vit_d_model=vit_d_model,
+	img_size=(args.image_size, args.image_size),
+	patch_size=(args.patch_size, args.patch_size),
+	n_channels=n_channels,
+	vit_heads=vit_heads,
+	vocab_size=vocab_size,
+	max_seq_length=max_seq_length,
+	text_heads=text_heads,
+	text_layers=text_layers,
+	text_d_model=text_d_model,
 	device=device,
 	retrieval=False,
 ).to(device)
 
 retrieval_model = CLIP(
-	emb_dim, 
-	vit_layers, 
-	vit_d_model, 
-	# img_size,
-	(args.image_size, args.image_size),
-	(args.patch_size, args.patch_size),
-	n_channels,
-	vit_heads,
-	vocab_size,
-	max_seq_length,
-	text_heads,
-	text_layers,
-	text_d_model,
+	emb_dim=emb_dim,
+	vit_layers=vit_layers,
+	vit_d_model=vit_d_model,
+	img_size=(args.image_size, args.image_size),
+	patch_size=(args.patch_size, args.patch_size),
+	n_channels=n_channels,
+	vit_heads=vit_heads,
+	vocab_size=vocab_size,
+	max_seq_length=max_seq_length,
+	text_heads=text_heads,
+	text_layers=text_layers,
+	text_d_model=text_d_model,
 	device=device,
 	retrieval=True
 ).to(device)

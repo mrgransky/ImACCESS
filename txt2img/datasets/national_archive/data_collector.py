@@ -445,7 +445,7 @@ def main():
 		"Defence",
 		"Border",
 		"ship",
-		"gun",
+		"gun", # cause missunderstanding with
 		"shovel",
 		"Accident",
 		"Wreck",

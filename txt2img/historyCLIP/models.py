@@ -80,12 +80,18 @@ class VisionEncoder(nn.Module):
 		assert d_model % n_heads == 0, "d_model should be divisible by n_heads"
 		self.num_patches = (img_size[0] * img_size[1] ) // (patch_size[0] * patch_size[1]) # max_seq_length
 		self.max_seq_length = self.num_patches +1
-		self.linear_proj = nn.Conv2d(in_channels = n_channels,out_channels = d_model, kernel_size = patch_size[0], stride = patch_size[0])
+		self.linear_proj = nn.Conv2d(
+			in_channels=n_channels,
+			out_channels=d_model,
+			kernel_size=patch_size[0],
+			stride = patch_size[0],
+		)
 		self.cls_token = nn.Parameter(torch.randn(1,1,d_model), requires_grad = True)
 		self.positional_embedding =  PositionalEmbedding(d_model, self.max_seq_length)
 		self.transformer_encoder = nn.ModuleList([TransformerEncoder(d_model, n_heads) for _ in range(n_layers)])
 		self.projection = nn.Parameter(torch.randn(d_model, emb_dim))
-	def forward(self,x, mask = None):			 
+	
+	def forward(self,x, mask = None):
 		x  = self.linear_proj(x)  # (B, C, H, W) -> (B, d_model, Patch_col_d_model, Patch_row_height)  
 		x = x.flatten(2).transpose(-2, -1)   # (B, d_model, Patch_col_d_model, Patch_row_height) --> Flatten (B, d_model, Patch) --> .transpose(-2,-1) (B, Patch, d_model)
 		# The input to the transformer we need to pass a sequence of patches or tokens so we need num_patches to be before hidden dim
@@ -130,7 +136,7 @@ class TextEncoder_Retrieval(nn.Module):
 		self.positional_embedding = PositionalEmbedding(d_model, max_seq_length)
 		self.transformer_encoder = nn.ModuleList([TransformerEncoder(d_model, n_heads) for _ in range(n_layers)])
 		self.projection = nn.Parameter(torch.randn(d_model, emb_dim))
-	# # For image retrieval
+	
 	def forward(self, text, mask=None):
 		x = self.embed(text)
 		x = self.positional_embedding(x)
@@ -148,7 +154,23 @@ class TextEncoder_Retrieval(nn.Module):
 		return x
 
 class CLIP(nn.Module):
-	def __init__(self, emb_dim, vit_layers, vit_d_model, img_size, patch_size, n_channels, vit_heads, vocab_size, max_seq_length, text_heads, text_layers, text_d_model, device, retrieval=False):
+	def __init__(
+			self,
+			emb_dim: int,
+			vit_layers,
+			vit_d_model,
+			img_size,
+			patch_size,
+			n_channels,
+			vit_heads,
+			vocab_size: int,
+			max_seq_length: int,
+			text_heads,
+			text_layers,
+			text_d_model,
+			device: str,
+			retrieval: bool=False,
+		):
 		super().__init__()
 		self.vision_encoder = VisionEncoder(vit_d_model, img_size, patch_size, n_channels, vit_heads, vit_layers, emb_dim)
 		if retrieval:
@@ -156,7 +178,8 @@ class CLIP(nn.Module):
 		else:
 			self.text_encoder = TextEncoder(vocab_size, text_d_model, max_seq_length, text_layers, text_heads, emb_dim)
 		self.temperature = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
-		self.device = device#torch.device("cuda" if torch.cuda.is_available() else "cpu")
+		self.device = device
+	
 	def CLIPLoss(self, logits, device):
 		#Symmetric or Contrastive loss
 		# arange generates a list between 0 and n-1
@@ -165,10 +188,10 @@ class CLIP(nn.Module):
 		loss_t = nn.functional.cross_entropy(logits, labels)
 		loss = (loss_v + loss_t) / 2
 		return loss
+	
 	def forward(self, image, text, mask=None):
 		V_e = self.vision_encoder(image)  # Vision encoder output [B, emb_dim]
 		T_e = self.text_encoder(text, mask)  # Text encoder output [B, emb_dim]
-		# print(f"V_e shape: {V_e.shape}, T_e shape: {T_e.shape}")
 		logits = (V_e @ T_e.transpose(-2, -1)) * torch.exp(self.temperature)
 		loss = self.CLIPLoss(logits, self.device)
 		return loss

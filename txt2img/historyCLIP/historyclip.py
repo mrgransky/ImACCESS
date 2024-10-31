@@ -3,20 +3,20 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run [Local]:
-# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 20
-# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 20
+# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1
+# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
 
 # $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 20 --patch_size 5 --image_size 170 >> $PWD/logs/historyclip.out & 
 
 # how to run [Pouta]:
 # $ python historyclip.py --dataset_dir /media/volume/ImACCESS/national_archive --num_epochs 1
-# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 20 --patch_size 5 --image_size 170 --query "dam construction" >> /media/volume/trash/ImACCESS/historyclip.out &
+# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 100 --patch_size 5 --image_size 210 --query "dam construction" >> /media/volume/trash/ImACCESS/historyclip.out &
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch Size')
-parser.add_argument('--image_size', type=int, default=150, help='Image size')
+parser.add_argument('--image_size', type=int, default=160, help='Image size')
 parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
 parser.add_argument('--query', type=str, default="aircraft", help='Query')
 parser.add_argument('--print_every', type=int, default=100, help='Print loss')
@@ -52,8 +52,15 @@ val_df_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "val_df.pkl")
 img_lbls_dict_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "image_labels_dict.pkl")
 img_lbls_list_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "img_labels_list.pkl")
 
-def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10):
-	print(f"Validating {model_fpth} in {device}".center(160, "-"))
+img_bw_mean_fpth:str = os.path.join(args.dataset_dir, "img_bw_mean.pkl")
+img_bw_std_fpth:str = os.path.join(args.dataset_dir, "img_bw_std.pkl")
+
+img_rgb_mean_fpth:str = os.path.join(args.dataset_dir, "img_rgb_mean.pkl")
+img_rgb_std_fpth:str = os.path.join(args.dataset_dir, "img_rgb_std.pkl")
+
+def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, mean=0.5, std=0.5):
+	print(f"Validation".center(160, "-"))
+	print(f"Validating {model_fpth} in {device}")
 	vdl_st = time.time()
 	print(f"Creating Validation Dataloader for {len(val_df)} samples", end="\t")
 	vdl_st = time.time()
@@ -61,7 +68,10 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 		data_frame=val_df,
 		captions=CAPTIONSs,
 		img_sz=args.image_size,
-		dataset_directory=os.path.join(args.dataset_dir, "images")
+		dataset_directory=os.path.join(args.dataset_dir, "images"),
+		max_seq_length=max_seq_length,
+		mean=mean, # from compute_dataset_stats
+		std=std, # from compute_dataset_stats
 	)
 	val_loader = DataLoader(
 		dataset=val_dataset, 
@@ -73,30 +83,34 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
 	# get_info(dataloader=val_loader)
 
-	# Loading Best Model
 	model = CLIP(
-		emb_dim, 
-		vit_layers, 
-		vit_d_model,
-		(args.image_size, args.image_size),
-		(args.patch_size, args.patch_size),
-		n_channels,
-		vit_heads,
-		vocab_size,
-		max_seq_length,
-		text_heads,
-		text_layers,
-		text_d_model,
+		emb_dim=emb_dim,
+		vit_layers=vit_layers,
+		vit_d_model=vit_d_model,
+		img_size=(args.image_size, args.image_size),
+		patch_size=(args.patch_size, args.patch_size),
+		n_channels=n_channels,
+		vit_heads=vit_heads,
+		vocab_size=vocab_size,
+		max_seq_length=max_seq_length,
+		text_heads=text_heads,
+		text_layers=text_layers,
+		text_d_model=text_d_model,
 		device=device,
 		retrieval=False,
 	).to(device)
 	
 	model.load_state_dict(torch.load(model_fpth, map_location=device))
-	text = torch.stack([tokenizer(x)[0] for x in val_dataset.captions.values()]).to(device)
-	mask = torch.stack([tokenizer(x)[1] for x in val_dataset.captions.values()])
-	mask = mask.repeat(1,len(mask[0])).reshape(len(mask),len(mask[0]),len(mask[0])).to(device)
-	correct, total = 0,0
 
+	text = torch.stack(
+		[tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[0] for txt in val_dataset.captions.values()]
+	).to(device)
+	mask = torch.stack(
+		[tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[1] for txt in val_dataset.captions.values()]
+	)
+	mask = mask.repeat(1, len(mask[0])).reshape(len(mask), len(mask[0]), len(mask[0])).to(device)
+
+	correct, total = 0,0
 	with torch.no_grad():
 		for data in val_loader:				
 			images, labels = data["image"].to(device), data["caption"].to(device)
@@ -105,22 +119,26 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 			image_features /= image_features.norm(dim=-1, keepdim=True)
 			text_features /= text_features.norm(dim=-1, keepdim=True)
 			similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
-			_, indices = torch.max(similarity,1)
-			pred = torch.stack([tokenizer(val_dataset.captions[int(i)])[0] for i in indices]).to(device)
-			correct += int(sum(torch.sum((pred==labels),dim=1)//len(pred[0])))
+			_, predicted_label_idx = torch.max(similarity,1)
+			predicted_label = torch.stack(
+				[tokenizer(val_dataset.captions[int(i)], encode=True, max_seq_length=max_seq_length)[0] for i in predicted_label_idx]
+			).to(device)
+			correct += int(sum(torch.sum((predicted_label==labels),dim=1)//len(predicted_label[0])))
 			total += len(labels)
 
 	print(f'\nModel Accuracy: {100 * correct // total} %')
-	text = torch.stack([tokenizer(x)[0] for x in class_names]).to(device)
-	mask = torch.stack([tokenizer(x)[1] for x in class_names])
-	mask = mask.repeat(1,len(mask[0])).reshape(len(mask),len(mask[0]),len(mask[0])).to(device)
-	idx = 1101
+	# not required! already calculated!
+	# text = torch.stack([tokenizer(x)[0] for x in class_names]).to(device)
+	# mask = torch.stack([tokenizer(x)[1] for x in class_names])
+	# mask = mask.repeat(1, len(mask[0])).reshape(len(mask), len(mask[0]), len(mask[0])).to(device)
+
+	idx = 110
 	# idx = random.randint(0, len(val_df))
 	img = val_dataset[idx]["image"][None,:]
 
 	if args.visualize:
 		plt.imshow(img[0].permute(1, 2, 0)  ,cmap="gray")
-		plt.title(tokenizer(val_dataset[idx]["caption"], encode=False, mask=val_dataset[idx]["mask"][0])[0])
+		plt.title(tokenizer(val_dataset[idx]["caption"], encode=False, mask=val_dataset[idx]["mask"][0], max_seq_length=max_seq_length)[0])
 		plt.show()
 
 	img = img.to(device)
@@ -134,22 +152,14 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 	values, indices = similarity[0].topk(TOP_K)
 
 	# Print the result
-	print(f'\nTop-{TOP_K} Prediction(s) for IMG: {idx} {tokenizer(val_dataset[idx]["caption"], encode=False, mask=val_dataset[idx]["mask"][0])}:\n')
+	print(
+		f'\nTop-{TOP_K} Prediction(s) for IMG: {idx}: '
+		f'Decoded text: {tokenizer(val_dataset[idx]["caption"], encode=False, mask=val_dataset[idx]["mask"][0], max_seq_length=max_seq_length)}:\n')
 	for value, index in zip(values, indices):
 		print(f"index: {index}: {class_names[int(index)]:>30s}: {100 * value.item():.3f}%")
 	print(f"Elapsed_t: {time.time()-vdl_st:.2f} sec")
 
-	query_counts = val_df['query'].value_counts()
-	# print(query_counts.tail(25))
-	plt.figure(figsize=(23, 15))
-	query_counts.plot(kind='bar', fontsize=8)
-	plt.title(f'Validation Query Frequency (total: {query_counts.shape})')
-	plt.xlabel('Query')
-	plt.ylabel('Frequency')
-	plt.tight_layout()
-	plt.savefig(os.path.join(args.dataset_dir, "outputs", f"query_freq_{query_counts.shape[0]}_val.png"))
-
-def fine_tune(train_df, captions):
+def fine_tuner(train_df, captions, mean=0.5, std=0.5):
 	print(f"Fine-tuning using {device} in {torch.cuda.get_device_name(device)} using {nw} CPU(s)".center(150, "-"))
 	print(f"Creating Train Dataloader", end="\t")
 	tdl_st = time.time()
@@ -157,7 +167,10 @@ def fine_tune(train_df, captions):
 		data_frame=train_df,
 		captions=captions, 
 		img_sz=args.image_size,
-		dataset_directory=os.path.join(args.dataset_dir, "images")
+		dataset_directory=os.path.join(args.dataset_dir, "images"),
+		max_seq_length=max_seq_length,
+		mean=mean, # from compute_dataset_stats
+		std=std, # from compute_dataset_stats
 	)
 	train_data_loader = DataLoader(
 		dataset=train_dataset,
@@ -170,19 +183,22 @@ def fine_tune(train_df, captions):
 	)
 	print(f"num_samples[Total]: {len(train_data_loader.dataset)} Elapsed_t: {time.time()-tdl_st:.5f} sec")
 	get_info(dataloader=train_data_loader)
+	# visualize_samples(train_data_loader, num_samples=5)
+	# sys.exit(-1)
+
 	model = CLIP(
-		emb_dim, 
-		vit_layers,
-		vit_d_model,
-		(args.image_size, args.image_size),
-		(args.patch_size, args.patch_size),
-		n_channels,
-		vit_heads,
-		vocab_size,
-		max_seq_length,
-		text_heads,
-		text_layers,
-		text_d_model,
+		emb_dim=emb_dim,
+		vit_layers=vit_layers,
+		vit_d_model=vit_d_model,
+		img_size=(args.image_size, args.image_size),
+		patch_size=(args.patch_size, args.patch_size),
+		n_channels=n_channels,
+		vit_heads=vit_heads,
+		vocab_size=vocab_size,
+		max_seq_length=max_seq_length,
+		text_heads=text_heads,
+		text_layers=text_layers,
+		text_d_model=text_d_model,
 		device=device,
 		retrieval=False,
 	).to(device)
@@ -223,7 +239,6 @@ def fine_tune(train_df, captions):
 			best_loss = avg_loss
 			torch.save(model.state_dict(), mdl_fpth)
 			print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.5f}")
-	print(f"Elapsed_t: {time.time()-training_st:.5f} sec".center(150, "-"))
 	loss_fname = (
 		f'loss'
 		+ f'_epochs_{args.num_epochs}'
@@ -236,12 +251,31 @@ def fine_tune(train_df, captions):
 		num_epochs=args.num_epochs, 
 		save_path=os.path.join(outputs_dir, loss_fname),
 	)
+	print(f"Elapsed_t: {time.time()-training_st:.5f} sec".center(150, "-"))
 
 def main():
 	set_seeds()
-	
+	###################################################### BW images ######################################################
+	# try:
+	# 	img_bw_mean, img_bw_std = load_pickle(fpath=img_bw_mean_fpth), load_pickle(fpath=img_bw_std_fpth)
+	# except Exception as e:
+	# 	print(f"{e}")
+	# 	img_bw_mean, img_bw_std = get_mean_std_grayscale_img_multiprocessing(dir=os.path.join(args.dataset_dir, "images"))
+	# 	save_pickle(pkl=img_bw_mean, fname=img_bw_mean_fpth)
+	# 	save_pickle(pkl=img_bw_std, fname=img_bw_std_fpth)
+	# print(f"Grayscale: Mean: {img_bw_mean} | Std: {img_bw_std}")
+	###################################################### BW images ######################################################
+
 	try:
-		# load
+		img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
+	except Exception as e:
+		print(f"{e}")
+		img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(dir=os.path.join(args.dataset_dir, "images"), num_workers=nw)
+		save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
+		save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
+	print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
+	return
+	try:
 		df = load_pickle(fpath=df_fpth)
 		train_df = load_pickle(fpath=train_df_fpth)
 		val_df = load_pickle(fpath=val_df_fpth)
@@ -267,6 +301,16 @@ def main():
 		save_pickle(pkl=val_df, fname=val_df_fpth,)
 		save_pickle(pkl=img_lbls_dict, fname=img_lbls_dict_fpth,)
 		save_pickle(pkl=img_lbls_list, fname=img_lbls_list_fpth,)
+		query_counts_val = val_df['query'].value_counts()
+		# print(query_counts_val.tail(25))
+		plt.figure(figsize=(23, 15))
+		query_counts_val.plot(kind='bar', fontsize=8)
+		plt.title(f'Validation Query Frequency (total: {query_counts_val.shape})')
+		plt.xlabel('Query')
+		plt.ylabel('Frequency')
+		plt.tight_layout()
+		plt.savefig(os.path.join(args.dataset_dir, "outputs", f"query_freq_{query_counts_val.shape[0]}_val.png"))
+
 	
 	# Print the sizes of the datasets
 	print(f"df: {df.shape} train_df: {train_df.shape} val_df({args.validation_dataset_share}): {val_df.shape}")
@@ -274,25 +318,30 @@ def main():
 	print(f"img_lbls_list {type(img_lbls_list)} {len(img_lbls_list)}")
 	# return
 	if not os.path.exists(mdl_fpth):
-		fine_tune(train_df=train_df, captions=img_lbls_dict)
+		fine_tuner(
+			train_df=train_df, 
+			captions=img_lbls_dict,
+			mean=img_mean,
+			std=img_std,
+		)
 
-	print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
-	vdl_st = time.time()
-	val_dataset = HistoricalDataset(
-		data_frame=val_df,
-		captions=img_lbls_dict,
-		img_sz=args.image_size,
-		dataset_directory=os.path.join(args.dataset_dir, "images")
-	)
-	val_loader = DataLoader(
-		dataset=val_dataset, 
-		shuffle=False,
-		batch_size=args.batch_size, #32, # double check!!!! 
-		num_workers=nw,
-		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
-	)
-	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
-	get_info(dataloader=val_loader)
+	# print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
+	# vdl_st = time.time()
+	# val_dataset = HistoricalDataset(
+	# 	data_frame=val_df,
+	# 	captions=img_lbls_dict,
+	# 	img_sz=args.image_size,
+	# 	dataset_directory=os.path.join(args.dataset_dir, "images")
+	# )
+	# val_loader = DataLoader(
+	# 	dataset=val_dataset, 
+	# 	shuffle=False,
+	# 	batch_size=args.batch_size, #32, # double check!!!! 
+	# 	num_workers=nw,
+	# 	collate_fn=custom_collate_fn  # Use custom collate function to handle None values
+	# )
+	# print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
+	# get_info(dataloader=val_loader)
 
 	if args.validate:
 		validate(
@@ -301,6 +350,8 @@ def main():
 			CAPTIONSs=img_lbls_dict,
 			model_fpth=mdl_fpth,
 			TOP_K=args.topk,
+			mean=img_mean, # from compute_dataset_stats
+			std=img_std, # from compute_dataset_stats
 		)
 		
 	# Construct the command as a list of arguments

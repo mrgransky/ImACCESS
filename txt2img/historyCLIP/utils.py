@@ -24,9 +24,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import argparse
-from PIL import Image, ImageDraw, ImageOps
+from PIL import Image, ImageDraw, ImageOps, ImageFilter
 from typing import List, Set, Dict, Tuple, Union
 import subprocess
+import cv2
+
+from multiprocessing import Pool
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 warnings.filterwarnings('ignore')
 
@@ -60,14 +64,14 @@ else: # Pouta
 # Vision
 emb_dim = 128 
 vit_d_model = 32 # vit_heads * vit_layers = vit_d_model
-n_channels = 3
+n_channels = 3 # must be 3 for CLIP model
 vit_layers = 8
 vit_heads = 4 
 
 # Text
-vocab_size = 256
+vocab_size = 512
 text_d_model = 64 #  -->  text_heads * text_layers = text_d_model
-max_seq_length = 128
+max_seq_length = 256
 text_heads = 8
 text_layers = 8
 
@@ -87,6 +91,40 @@ text_layers = 8
 # text_layers = 12  # Increased depth to handle complex queries
 
 ################################################################################
+
+def visualize_samples(dataloader, num_samples=5):
+		"""
+		Visualize a few samples from the dataloader for debugging purposes.
+		
+		Args:
+				dataloader (DataLoader): The dataloader to visualize samples from.
+				num_samples (int): Number of samples to visualize.
+		"""
+		for i, batch in enumerate(dataloader):
+				if i >= num_samples:
+						break
+				
+				images = batch['image']
+				captions = batch['caption']
+				masks = batch['mask']
+				image_filepaths = batch['image_filepath']
+				
+				for j in range(len(images)):
+						image = images[j].permute(1, 2, 0).numpy()  # Convert tensor to numpy array and permute dimensions
+						caption = captions[j]
+						mask = masks[j]
+						filepath = image_filepaths[j]
+						
+						# Denormalize the image
+						image = image * np.array([0.2268645167350769]) + np.array([0.6929051876068115])
+						image = np.clip(image, 0, 1)  # Ensure pixel values are in [0, 1] range
+						
+						plt.figure(figsize=(8, 8))
+						plt.imshow(image, cmap='gray')
+						# plt.title(f"Caption: {caption}\nMask: {mask}\nFilepath: {filepath}")
+						# plt.title(f"Caption: {caption.shape}\nFilepath: {filepath}")
+						plt.axis('off')
+						plt.show()
 
 def save_pickle(pkl, fname:str=""):
 	print(f"\nSaving {type(pkl)}\n{fname}")
@@ -178,29 +216,23 @@ def set_seeds():
 		torch.backends.cudnn.deterministic = True
 		torch.backends.cudnn.benchmark = True
 
-def tokenizer(text, encode=True, mask=None, max_seq_length=32):
+def tokenizer(text, encode=True, mask=None, max_seq_length=128):
 	if encode:
-		# Adding SOT and EOT tokens
-		out = chr(2) + text + chr(3)
-		# Truncate if length exceeds max_seq_length
+		out = chr(2) + text + chr(3) # Adding SOT and EOT tokens
 		if len(out) > max_seq_length:
-			out = out[:max_seq_length]
-		# Add padding if needed
-		out = out + "".join([chr(0) for _ in range(max_seq_length - len(out))])
-		# Encode the text
-		out = torch.IntTensor(list(out.encode("utf-8")))
-		# Create the mask
+			out = out[:max_seq_length]  # Truncate if length exceeds max_seq_length
+		out = out + "".join([chr(0) for _ in range(max_seq_length - len(out))]) # Add padding if needed
+		out = torch.IntTensor(list(out.encode("utf-8"))) # Encode the text
 		mask = torch.ones(len(out.nonzero()))
-		# Pad the mask to max_seq_length
-		if len(mask) < max_seq_length:
+		if len(mask) < max_seq_length:  # Pad the mask to max_seq_length
 			mask = torch.cat((mask, torch.zeros(max_seq_length - len(mask)))).type(torch.IntTensor)
 		else:
 			mask = mask.type(torch.IntTensor)
-	else:
-		# Decode the text
+	else: # Decode the text
 		out = [chr(x) for x in text[1:len(mask.nonzero()) - 1]]
 		out = "".join(out)
 		mask = None
+	# print(f"tk: {out.shape} {mask.shape}")
 	return out, mask
 
 def get_info(dataloader):
@@ -238,6 +270,147 @@ def get_doc_description(df, col:str="colmun_name"):
 	captions = {idx: class_name for idx, class_name in enumerate(class_names)}
 	# print(f"{len(list(captions.keys()))} Captions:\n{json.dumps(captions, indent=2, ensure_ascii=False)}")
 	return captions, class_names
+
+def get_mean_std_grayscale_img(dir: str="path/2/images"):
+	print(f"Calculating Mean-Std for {len(os.listdir(dir))} Grayscale images (sequential approach => slow)")
+	t0 = time.time()
+	# Initialize variables to accumulate the sum and sum of squares
+	sum_ = torch.tensor([0.0])
+	sum_of_squares = torch.tensor([0.0])
+	count = 0
+	# Define the transform to convert images to tensors
+	transform = T.Compose([
+		T.Grayscale(num_output_channels=1),  # Convert to grayscale
+		T.ToTensor(),  # Convert to tensor
+	])
+	# Iterate over all images in the dataset directory
+	for filename in tqdm(os.listdir(dir)):
+		if filename.endswith('.jpg') or filename.endswith('.png'):
+			image_path = os.path.join(dir, filename)
+			try:
+				image = Image.open(image_path)
+				tensor_image = transform(image)
+				sum_ += tensor_image.sum()
+				sum_of_squares += (tensor_image ** 2).sum()
+				count += tensor_image.numel()
+			except Exception as e:
+				print(f"Error processing {image_path}: {e}")
+	# Calculate the mean and std
+	mean = sum_ / count
+	std = torch.sqrt((sum_of_squares / count) - (mean ** 2))
+	print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(100, " "))
+	return mean.item(), std.item()
+
+def get_mean_std_rgb_img(dir: str="path/2/images"):
+		print(f"Calculating Mean-Std for {len(os.listdir(dir))} RGB images (sequential approach => slow)")
+		t0 = time.time()
+		
+		# Initialize variables to accumulate the sum and sum of squares for each channel
+		sum_ = torch.zeros(3)
+		sum_of_squares = torch.zeros(3)
+		count = 0
+		
+		# Define the transform to convert images to tensors
+		transform = T.Compose([
+				T.ToTensor(),  # Convert to tensor (automatically converts to RGB if not already)
+		])
+		
+		# Iterate over all images in the dataset directory
+		for filename in tqdm(os.listdir(dir)):
+				if filename.endswith('.jpg') or filename.endswith('.png'):
+						image_path = os.path.join(dir, filename)
+						try:
+								image = Image.open(image_path).convert('RGB')  # Ensure the image is in RGB mode
+								tensor_image = transform(image)
+								sum_ += tensor_image.sum(dim=[1, 2])  # Sum over height and width dimensions
+								sum_of_squares += (tensor_image ** 2).sum(dim=[1, 2])  # Sum of squares over height and width dimensions
+								count += tensor_image.numel() / 3  # Total number of pixels per channel
+						except Exception as e:
+								print(f"Error processing {image_path}: {e}")
+		
+		# Calculate the mean and std for each channel
+		mean = sum_ / count
+		std = torch.sqrt((sum_of_squares / count) - (mean ** 2))
+		
+		print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(100, " "))
+		return mean.tolist(), std.tolist() # return lists of length 3, corresponding to RGB channels
+
+def process_grayscale_image(args):
+		filename, dir, transform = args
+		image_path = os.path.join(dir, filename)
+		try:
+				image = Image.open(image_path)
+				tensor_image = transform(image)
+				return tensor_image.sum(), (tensor_image ** 2).sum(), tensor_image.numel()
+		except Exception as e:
+				print(f"Error processing {image_path}: {e}")
+				return 0, 0, 0
+
+def get_mean_std_grayscale_img_multiprocessing(dir: str="path/2/images", num_workers: int=nw):
+		print(f"Calculating Mean-Std for {len(os.listdir(dir))} Grayscale images (multiprocessing: nw: {num_workers} CPUs)")
+		t0 = time.time()
+
+		# Initialize variables to accumulate the sum and sum of squares
+		sum_ = torch.tensor([0.0])
+		sum_of_squares = torch.tensor([0.0])
+		count = 0
+
+		# Define the transform to convert images to tensors
+		transform = T.Compose([
+				T.Grayscale(num_output_channels=1),
+				T.ToTensor(),
+		])
+
+		with ProcessPoolExecutor(max_workers=num_workers) as executor:
+				futures = [executor.submit(process_grayscale_image, (filename, dir, transform)) for filename in os.listdir(dir)]
+				for future in as_completed(futures):
+						partial_sum, partial_sum_of_squares, partial_count = future.result()
+						sum_ += partial_sum
+						sum_of_squares += partial_sum_of_squares
+						count += partial_count
+
+		mean = sum_ / count
+		std = torch.sqrt((sum_of_squares / count) - (mean ** 2))
+		print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(100, " "))
+		return mean.item(), std.item()
+
+def process_rgb_image(args):
+		filename, dir, transform = args
+		image_path = os.path.join(dir, filename)
+		try:
+				image = Image.open(image_path).convert('RGB')  # Ensure the image is in RGB mode
+				tensor_image = transform(image)
+				return tensor_image.sum(dim=[1, 2]), (tensor_image ** 2).sum(dim=[1, 2]), tensor_image.numel() / 3
+		except Exception as e:
+				print(f"Error processing {image_path}: {e}")
+				return torch.zeros(3), torch.zeros(3), 0
+
+def get_mean_std_rgb_img_multiprocessing(dir: str="path/2/images", num_workers: int=nw):
+		print(f"Calculating Mean-Std for {len(os.listdir(dir))} RGB images (multiprocessing: nw: {num_workers} CPUs)")
+		t0 = time.time()
+		# Initialize variables to accumulate the sum and sum of squares for each channel
+		sum_ = torch.zeros(3)
+		sum_of_squares = torch.zeros(3)
+		count = 0
+		# Define the transform to convert images to tensors
+		transform = T.Compose([
+				T.ToTensor(),  # Convert to tensor (automatically converts to RGB if not already)
+		])
+		with ProcessPoolExecutor(max_workers=num_workers) as executor:
+				futures = [executor.submit(process_rgb_image, (filename, dir, transform)) for filename in os.listdir(dir)]
+				# for future in tqdm(as_completed(futures), total=len(futures)):
+				for future in as_completed(futures):
+					try:
+						partial_sum, partial_sum_of_squares, partial_count = future.result()
+						sum_ += partial_sum
+						sum_of_squares += partial_sum_of_squares
+						count += partial_count
+					except Exception as e:
+						print(f"Error in future result: {e}")
+		mean = sum_ / count
+		std = torch.sqrt((sum_of_squares / count) - (mean ** 2))
+		print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(100, " "))
+		return mean.tolist(), std.tolist()
 
 def custom_collate_fn(batch):
 	# Filter out the None values from the batch
