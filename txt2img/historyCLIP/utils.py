@@ -37,7 +37,8 @@ warnings.filterwarnings('ignore')
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely
 # or set a higher limit
 # Image.MAX_IMAGE_PIXELS = 300000000  # Example of setting a higher limit
-nw:int = multiprocessing.cpu_count() # def: 8
+
+nw:int = min(16, multiprocessing.cpu_count()) # def: 8
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
@@ -387,7 +388,7 @@ def process_rgb_image(args):
 			return torch.zeros(3), torch.zeros(3), 0
 
 def get_mean_std_rgb_img_multiprocessing(dir: str="path/2/images", num_workers: int=nw):
-		print(f"Calculating Mean-Std for {len(os.listdir(dir))} RGB images (multiprocessing: nw: {num_workers} CPUs)")
+		print(f"Calculating Mean-Std for {len(os.listdir(dir))} RGB images (multiprocessing: {num_workers} CPUs)")
 		t0 = time.time()
 		# Initialize variables to accumulate the sum and sum of squares for each channel
 		sum_ = torch.zeros(3)

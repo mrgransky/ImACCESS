@@ -1,114 +1,54 @@
 from utils import *
 
-# class AddFilmGrain(object):
-# 	def __init__(self, grain_intensity: float = 0.1, blend_factor: float = 0.2):
-# 		self.grain_intensity = grain_intensity
-# 		self.blend_factor = blend_factor
-# 	def __call__(self, image: Image.Image) -> Image.Image:
-# 				# Convert image to numpy array
-# 				img_np = np.array(image).astype(np.float32)
+class AddFilmGrain(object):
+	def __init__(self, grain_intensity: float = 0.1, blend_factor: float = 0.2):
+		self.grain_intensity = grain_intensity
+		self.blend_factor = blend_factor
+	def __call__(self, image: Image.Image) -> Image.Image:
+				# Convert image to numpy array
+				img_np = np.array(image).astype(np.float32)
 				
-# 				# Generate subtle random noise
-# 				noise = np.random.normal(0, 1, img_np.shape) * self.grain_intensity * 255
+				# Generate subtle random noise
+				noise = np.random.normal(0, 1, img_np.shape) * self.grain_intensity * 255
 				
-# 				# Blend noise with original image
-# 				img_with_grain = img_np * (1 - self.blend_factor) + noise * self.blend_factor
+				# Blend noise with original image
+				img_with_grain = img_np * (1 - self.blend_factor) + noise * self.blend_factor
 				
-# 				# Ensure values stay in valid range
-# 				img_with_grain = np.clip(img_with_grain, 0, 255).astype(np.uint8)
+				# Ensure values stay in valid range
+				img_with_grain = np.clip(img_with_grain, 0, 255).astype(np.uint8)
 				
-# 				# Convert back to PIL Image
-# 				return Image.fromarray(img_with_grain)
-
-# class ResizeWithPad:
-# 		def __init__(self, target_size):
-# 			self.target_size = target_size
-# 		def __call__(self, img):
-# 			img_np = np.array(img)
-# 			# Calculate scaling factor
-# 			scale = min(self.target_size[0] / img_np.shape[0], self.target_size[1] / img_np.shape[1])
-# 			new_size = tuple(int(dim * scale) for dim in img_np.shape[:2])
-# 			resized = Image.fromarray(img_np).resize(new_size[::-1], Image.LANCZOS)
-# 			new_img = Image.new("L", self.target_size, color=0) # Create new image with padding
-# 			# Paste resized image onto padded image
-# 			new_img.paste(
-# 				resized, 
-# 				((self.target_size[1] - new_size[1]) // 2, (self.target_size[0] - new_size[0]) // 2)
-# 			)
-# 			return new_img
-
-# class ContrastEnhanceAndDenoise:
-# 	def __init__(self, contrast_cutoff=2, blur_radius=0.1):
-# 		self.contrast_cutoff = contrast_cutoff
-# 		self.blur_radius = blur_radius
-
-# 	def __call__(self, img):
-# 		img = ImageOps.autocontrast(img, cutoff=self.contrast_cutoff)
-# 		img = img.filter(ImageFilter.GaussianBlur(radius=self.blur_radius))				
-# 		return img
-
-# 	def __repr__(self):
-# 		return self.__class__.__name__ + f'(contrast_cutoff={self.contrast_cutoff}, blur_radius={self.blur_radius})'
+				# Convert back to PIL Image
+				return Image.fromarray(img_with_grain)
 
 class ResizeWithPad:
 		def __init__(self, target_size):
-				self.target_size = target_size
-
+			self.target_size = target_size
 		def __call__(self, img):
-				# First, remove black borders
-				img_np = np.array(img)
-				if img_np.ndim == 3:
-						img_np = img_np.mean(axis=2)  # Convert to grayscale if needed
-				
-				# Find the actual content boundaries (remove black borders)
-				rows = np.where(img_np.mean(axis=1) > 5)[0]
-				cols = np.where(img_np.mean(axis=0) > 5)[0]
-				if len(rows) > 0 and len(cols) > 0:
-						img_np = img_np[rows[0]:rows[-1], cols[0]:cols[-1]]
-				
-				# Calculate scaling factor
-				scale = min(self.target_size[0] / img_np.shape[0], self.target_size[1] / img_np.shape[1])
-				new_size = tuple(int(dim * scale) for dim in img_np.shape[:2])
-				
-				# Resize with high-quality interpolation
-				resized = Image.fromarray(img_np).resize(new_size[::-1], Image.LANCZOS)
-				
-				# Create new image with padding
-				new_img = Image.new("L", self.target_size, color=0)
-				
-				# Center the image
-				new_img.paste(
-						resized, 
-						((self.target_size[1] - new_size[1]) // 2, (self.target_size[0] - new_size[0]) // 2)
-				)
-				return new_img
+			img_np = np.array(img)
+			# Calculate scaling factor
+			scale = min(self.target_size[0] / img_np.shape[0], self.target_size[1] / img_np.shape[1])
+			new_size = tuple(int(dim * scale) for dim in img_np.shape[:2])
+			resized = Image.fromarray(img_np).resize(new_size[::-1], Image.LANCZOS)
+			new_img = Image.new("RGB", self.target_size, color=0) # Create new image with padding
+			# Paste resized image onto padded image
+			new_img.paste(
+				resized, 
+				((self.target_size[1] - new_size[1]) // 2, (self.target_size[0] - new_size[0]) // 2)
+			)
+			return new_img
 
 class ContrastEnhanceAndDenoise:
-		def __init__(self, contrast_cutoff=2, blur_radius=0.1):
-				self.contrast_cutoff = contrast_cutoff
-				self.blur_radius = blur_radius
+	def __init__(self, contrast_cutoff=2, blur_radius=0.1):
+		self.contrast_cutoff = contrast_cutoff
+		self.blur_radius = blur_radius
 
-		def __call__(self, img):
-				# Convert to numpy array for advanced processing
-				img_np = np.array(img)
-				
-				# Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
-				if img_np.ndim == 3:
-						img_np = img_np.mean(axis=2).astype(np.uint8)
-				
-				# Normalize to 0-255 range
-				img_np = ((img_np - img_np.min()) * (255.0 / (img_np.max() - img_np.min()))).astype(np.uint8)
-				
-				# Convert back to PIL
-				img = Image.fromarray(img_np)
-				
-				# Apply mild contrast enhancement
-				img = ImageOps.autocontrast(img, cutoff=self.contrast_cutoff)
-				
-				# Very mild denoising
-				img = img.filter(ImageFilter.GaussianBlur(radius=self.blur_radius))
-				
-				return img
+	def __call__(self, img):
+		img = ImageOps.autocontrast(img, cutoff=self.contrast_cutoff)
+		img = img.filter(ImageFilter.GaussianBlur(radius=self.blur_radius))				
+		return img
+
+	def __repr__(self):
+		return self.__class__.__name__ + f'(contrast_cutoff={self.contrast_cutoff}, blur_radius={self.blur_radius})'
 
 class HistoricalDataset(Dataset):
 	def __init__(
@@ -172,7 +112,7 @@ class HistoricalDataset(Dataset):
 					p=0.1,
 				),
 				T.ToTensor(),
-				T.Normalize(mean=[mean], std=[std]),
+				T.Normalize(mean=mean, std=std),
 			]
 		)
 		self.captions = captions
@@ -191,13 +131,15 @@ class HistoricalDataset(Dataset):
 			# raise FileNotFoundError(f"Image not found at path: {img_path}") debugging purpose
 			return None
 		try:
-			image = Image.open(img_path)
+			Image.open(img_path).verify() # # Validate the image
+			image = Image.open(img_path).convert("RGB")
 		except (FileNotFoundError, IOError, Exception) as e:
 			# raise IOError(f"Could not load image: {img_path}, Error: {str(e)}") # debugging
 			print(f"{img_path} ERROR: {e}")
 			return None
 		# image = self.contrast_enhance_denoise(image)
 		# image = self.resize_and_pad(image, self.img_sz)
+		# print(type(image), image.size, image.mode)
 		image = self.transform(image)
 		label = sample[self.txt_category].lower()
 		if label not in self.captions.values():

@@ -6,19 +6,19 @@ from dataset_loader import HistoricalDataset
 # $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1
 # $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
 
-# $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1 --patch_size 5 --image_size 170 >> $PWD/logs/mean_std.out & 
+# $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 10 --patch_size 5 --image_size 160 >> $PWD/logs/historyCLIP.out & 
 
 # how to run [Pouta]:
 # Ensure Conda:
 # $ conda activate py39
 # $ python historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 1
-# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 3 --patch_size 5 --image_size 210 --query "dam construction" >> /media/volume/trash/ImACCESS/mean_std.out &
+# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 3 --patch_size 5 --image_size 210 --query "dam construction" >> /media/volume/trash/ImACCESS/historyCLIP.out &
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch Size')
-parser.add_argument('--image_size', type=int, default=160, help='Image size')
+parser.add_argument('--image_size', type=int, default=160, help='Image size [def: max 160 local]')
 parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
 parser.add_argument('--query', type=str, default="aircraft", help='Query')
 parser.add_argument('--print_every', type=int, default=100, help='Print loss')
@@ -276,7 +276,6 @@ def main():
 		save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 		save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
 	print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
-	return
 	try:
 		df = load_pickle(fpath=df_fpth)
 		train_df = load_pickle(fpath=train_df_fpth)
@@ -323,8 +322,8 @@ def main():
 		fine_tuner(
 			train_df=train_df, 
 			captions=img_lbls_dict,
-			mean=img_mean,
-			std=img_std,
+			mean=img_rgb_mean,
+			std=img_rgb_std,
 		)
 
 	# print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
@@ -352,8 +351,8 @@ def main():
 			CAPTIONSs=img_lbls_dict,
 			model_fpth=mdl_fpth,
 			TOP_K=args.topk,
-			mean=img_mean, # from compute_dataset_stats
-			std=img_std, # from compute_dataset_stats
+			mean=img_rgb_mean, # from compute_dataset_stats
+			std=img_rgb_std, # from compute_dataset_stats
 		)
 		
 	# Construct the command as a list of arguments
