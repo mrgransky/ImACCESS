@@ -1,23 +1,28 @@
 from utils import *
 
+# for details, please visit:
+# https://learnopencv.com/clip-model/
+
 class TransformerEncoder(nn.Module):
 	def __init__(self, d_model, n_heads, mlp_ratio =4):
 		super().__init__()
 		self.d_model = d_model
 		self.n_heads = n_heads
+		# first sub-layer performs multi-head attention:
 		self.ln1 = nn.LayerNorm(d_model)
 		self.mha = MultiheadAttention(d_model, n_heads)
+		# second sub-layer contains a multi-layer perceptron:
 		self.ln2 = nn.LayerNorm(d_model)
 		self.mlp = nn.Sequential(
 			nn.Linear(d_model, d_model*mlp_ratio),
-			nn.GELU(),
+			nn.GELU(), # GELU is used instead of RELU because it doesn’t have RELU’s limitation of being non-differentiable @ GELU is used instead of RELU because it doesn’t have RELU’s limitation of being non-differentiable at 0
 			nn.Linear(d_model * mlp_ratio, d_model)
 		)
 	#For clip even though its a encoder model it requires mask ->to account for padded for max seq_length
 	def forward(self, x, mask = None):
-		x_n = self.mha(self.ln1(x), mask = mask)
-		x = x + self.mlp(self.ln2(x_n))
-		return x  # x.shape -->  [B,max_seq_len,d_model]
+		x_n = self.mha(self.ln1(x), mask = mask) # Residual Connection After Sub-Layer 1
+		x = x + self.mlp(self.ln2(x_n))  # Residual Connection After Sub-Layer 2
+		return x  # x.shape -->  [batch_size, max_seq_len, d_model]
 
 class MultiheadAttention(nn.Module):
 	def __init__(self, d_model, n_heads):
@@ -47,6 +52,7 @@ class AttentionHead(nn.Module):
 		Q = self.query(x) #[B,max_seq_len,vit_heads]
 		K = self.key(x)
 		V = self.value(x)
+		# Dot Product of Queries and Keys
 		attention = Q @ K.transpose(-2,-1) #eg: -2 -second last dim and -1 last dim -->  [B,max_seq_len,max_seq_len]
 		#Scaling
 		attention = attention / self.qkv_dim ** 0.5  #  [B,max_seq_len,max_seq_len]
@@ -76,21 +82,23 @@ class PositionalEmbedding(nn.Module):
 class VisionEncoder(nn.Module):
 	def __init__(self, d_model, img_size, patch_size, n_channels, n_heads,n_layers, emb_dim):
 		super().__init__()
+		# ensure input images can be split evenly into patches of size patch_size
 		assert img_size[0] % patch_size[0] == 0 and img_size[1] % patch_size[1] == 0, f"image dimensions: {img_size} are not divisible by patch dim: {patch_size}"
+		# ensure dimensionality of the model is divisible by the number of attention heads
 		assert d_model % n_heads == 0, "d_model should be divisible by n_heads"
 		self.num_patches = (img_size[0] * img_size[1] ) // (patch_size[0] * patch_size[1]) # max_seq_length
 		self.max_seq_length = self.num_patches +1
+		self_n_channels = n_channels
 		self.linear_proj = nn.Conv2d(
 			in_channels=n_channels,
 			out_channels=d_model,
-			kernel_size=patch_size[0],
-			stride = patch_size[0],
+			kernel_size=patch_size,#[0],
+			stride = patch_size,#[0],
 		)
 		self.cls_token = nn.Parameter(torch.randn(1,1,d_model), requires_grad = True)
 		self.positional_embedding =  PositionalEmbedding(d_model, self.max_seq_length)
 		self.transformer_encoder = nn.ModuleList([TransformerEncoder(d_model, n_heads) for _ in range(n_layers)])
 		self.projection = nn.Parameter(torch.randn(d_model, emb_dim))
-	
 	def forward(self,x, mask = None):
 		x  = self.linear_proj(x)  # (B, C, H, W) -> (B, d_model, Patch_col_d_model, Patch_row_height)  
 		x = x.flatten(2).transpose(-2, -1)   # (B, d_model, Patch_col_d_model, Patch_row_height) --> Flatten (B, d_model, Patch) --> .transpose(-2,-1) (B, Patch, d_model)
@@ -115,14 +123,20 @@ class TextEncoder(nn.Module):
 		self.positional_embedding = PositionalEmbedding(d_model, max_seq_length)
 		self.transformer_encoder = nn.ModuleList([TransformerEncoder(d_model, n_heads) for _ in range(n_layers)])
 		self.projection = nn.Parameter(torch.randn(d_model, emb_dim))
-	# For training
+	
 	def forward(self, text, mask = None):
 		x = self.embed(text)
 		x = self.positional_embedding(x)
 		for encoder_layer in self.transformer_encoder:
 			x = encoder_layer(x, mask=mask)
-		#The output of the encoder layers is the text features. We are going to be using the features from the EOT embedding.
-		x = x[torch.arange(text.shape[0]), torch.sub(torch.sum(mask[:,0],dim=1),1)]
+		# encoder layers output: text features. 
+		# take features from the EOT embedding.
+		# x = x[torch.arange(text.shape[0]), torch.sub(torch.sum(mask[:,0],dim=1),1)]
+		if mask is not None and mask.dim() > 1:
+				x = x[torch.arange(text.shape[0]), torch.sub(torch.sum(mask[:,0],dim=1),1)]
+		else:
+				x = x[:, -1]  # If no valid mask, take the last token
+		# joint multimodal embedding
 		if self.projection is not None:
 			x = x @ self.projection
 		x = x / torch.norm(x, dim=-1, keepdim = True)
@@ -190,8 +204,12 @@ class CLIP(nn.Module):
 		return loss
 	
 	def forward(self, image, text, mask=None):
-		V_e = self.vision_encoder(image)  # Vision encoder output [B, emb_dim]
-		T_e = self.text_encoder(text, mask)  # Text encoder output [B, emb_dim]
+		V_e = self.vision_encoder(image) # shape: [B, emb_dim]
+		T_e = self.text_encoder(text, mask=mask) # shape: [B, emb_dim]
+		# print(type(V_e), V_e.shape)
+		# print(type(T_e), T_e.shape)
+		# print("#"*100)
+		# scaled pairwise cosine similarities [n, n]
 		logits = (V_e @ T_e.transpose(-2, -1)) * torch.exp(self.temperature)
 		loss = self.CLIPLoss(logits, self.device)
 		return loss

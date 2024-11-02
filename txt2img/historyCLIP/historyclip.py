@@ -3,7 +3,7 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run [Local]:
-# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1
+# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1 --patch_size 1
 # $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
 
 # $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 10 --patch_size 5 --image_size 160 >> $PWD/logs/historyCLIP.out & 
@@ -20,13 +20,14 @@ parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch Size')
 parser.add_argument('--image_size', type=int, default=160, help='Image size [def: max 160 local]')
 parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
-parser.add_argument('--query', type=str, default="aircraft", help='Query')
+parser.add_argument('--embedding_size', type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
+parser.add_argument('--query', type=str, default="air base", help='Query')
 parser.add_argument('--print_every', type=int, default=100, help='Print loss')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set [def: 0.23]')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='small learning rate for better convergence [def: 1e-3]')
 parser.add_argument('--weight_decay', type=float, default=1e-4, help='Weight decay [def: 1e-4]')
-parser.add_argument('--validate', type=bool, default=True, help='Model Validation upon request')
+parser.add_argument('--validate', type=bool, default=False, help='Model Validation upon request')
 parser.add_argument('--visualize', type=bool, default=False, help='Model Validation upon request')
 parser.add_argument('--document_description_col', type=str, default="query", help='labels')
 
@@ -34,7 +35,6 @@ parser.add_argument('--document_description_col', type=str, default="query", hel
 args, unknown = parser.parse_known_args()
 os.makedirs(os.path.join(args.dataset_dir, "outputs"), exist_ok=True)
 outputs_dir:str = os.path.join(args.dataset_dir, "outputs",)
-wd = 5e-4  # Stronger regularization to prevent overfitting
 models_dir_name = (
 	f"models"
 	+ f"_nEpochs_{args.num_epochs}"
@@ -44,6 +44,7 @@ models_dir_name = (
 	+ f"_batch_size_{args.batch_size}"
 	+ f"_image_size_{args.image_size}"
 	+ f"_patch_size_{args.patch_size}"
+	+ f"_embedding_size_{args.embedding_size}"
 	+ f"_wd_{args.weight_decay}"
 )
 os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
@@ -60,15 +61,14 @@ img_bw_std_fpth:str = os.path.join(args.dataset_dir, "img_bw_std.pkl")
 img_rgb_mean_fpth:str = os.path.join(args.dataset_dir, "img_rgb_mean.pkl")
 img_rgb_std_fpth:str = os.path.join(args.dataset_dir, "img_rgb_std.pkl")
 
-def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, mean=0.5, std=0.5):
+def validate(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, mean=0.5, std=0.5):
 	print(f"Validation".center(160, "-"))
 	print(f"Validating {model_fpth} in {device}")
 	vdl_st = time.time()
-	print(f"Creating Validation Dataloader for {len(val_df)} samples", end="\t")
+	print(f"Creating Validation Dataloader for {len(val_df)} samples", end="\t\t")
 	vdl_st = time.time()
 	val_dataset = HistoricalDataset(
 		data_frame=val_df,
-		captions=CAPTIONSs,
 		img_sz=args.image_size,
 		dataset_directory=os.path.join(args.dataset_dir, "images"),
 		max_seq_length=max_seq_length,
@@ -76,17 +76,18 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 		std=std, # from compute_dataset_stats
 	)
 	val_loader = DataLoader(
-		dataset=val_dataset, 
+		dataset=val_dataset,
 		shuffle=False,
 		batch_size=args.batch_size, 
 		num_workers=nw,
+		pin_memory=True, # when using CUDA
 		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)
 	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
-	# get_info(dataloader=val_loader)
+	get_info(dataloader=val_loader)
 
 	model = CLIP(
-		emb_dim=emb_dim,
+		emb_dim=args.embedding_size,
 		vit_layers=vit_layers,
 		vit_d_model=vit_d_model,
 		img_size=(args.image_size, args.image_size),
@@ -103,15 +104,22 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 	).to(device)
 	
 	model.load_state_dict(torch.load(model_fpth, map_location=device))
-
-	text = torch.stack(
-		[tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[0] for txt in val_dataset.captions.values()]
-	).to(device)
-	mask = torch.stack(
-		[tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[1] for txt in val_dataset.captions.values()]
+	# Call the function to get model details
+	get_model_details(
+		model, 
+		img_size=(3, args.image_size, args.image_size),
+		text_size=(max_seq_length,),
 	)
+	text = torch.stack(
+		[tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[0] for txt in img_lbls_dict.values()]
+	).to(device) # <class 'torch.Tensor'> torch.Size([55, 256]) 
+	mask = torch.stack(
+		[tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[1] for txt in img_lbls_dict.values()]
+	) # <class 'torch.Tensor'> torch.Size([55, 256, 256])
 	mask = mask.repeat(1, len(mask[0])).reshape(len(mask), len(mask[0]), len(mask[0])).to(device)
-
+	print(f"text: {type(text)} {text.shape} ")
+	print(f"mask: {type(mask)} {mask.shape} ") # 1D tensor of size max_seq_length
+	print("#"*100)
 	correct, total = 0,0
 	with torch.no_grad():
 		for data in val_loader:				
@@ -120,15 +128,17 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 			text_features = model.text_encoder(text, mask=mask)
 			image_features /= image_features.norm(dim=-1, keepdim=True)
 			text_features /= text_features.norm(dim=-1, keepdim=True)
-			similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
-			_, predicted_label_idx = torch.max(similarity,1)
+			similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1) # (batch_size, num_captions)
+			# print(type(similarity), similarity.shape, similarity)
+			# Compare Predictions with Ground Truth:
+			_, predicted_label_idx = torch.max(input=similarity, dim=1) 
 			predicted_label = torch.stack(
-				[tokenizer(val_dataset.captions[int(i)], encode=True, max_seq_length=max_seq_length)[0] for i in predicted_label_idx]
-			).to(device)
+				[tokenizer(img_lbls_dict[int(i)], encode=True, max_seq_length=max_seq_length)[0] for i in predicted_label_idx]
+			).to(device) # <class 'torch.Tensor'> torch.Size([32, 256])
+			# print(type(predicted_label), predicted_label.shape, )
 			correct += int(sum(torch.sum((predicted_label==labels),dim=1)//len(predicted_label[0])))
 			total += len(labels)
-
-	print(f'\nModel Accuracy: {100 * correct // total} %')
+	print(f'\nModel Accuracy (Top1): {100 * correct // total} %')
 	# not required! already calculated!
 	# text = torch.stack([tokenizer(x)[0] for x in class_names]).to(device)
 	# mask = torch.stack([tokenizer(x)[1] for x in class_names])
@@ -161,13 +171,13 @@ def validate(val_df, class_names, CAPTIONSs, model_fpth: str=f"path/to/models/cl
 		print(f"index: {index}: {class_names[int(index)]:>30s}: {100 * value.item():.3f}%")
 	print(f"Elapsed_t: {time.time()-vdl_st:.2f} sec")
 
-def fine_tuner(train_df, captions, mean=0.5, std=0.5):
+def train(df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0.5, 0.5, 0.5]):
 	print(f"Fine-tuning using {device} in {torch.cuda.get_device_name(device)} using {nw} CPU(s)".center(150, "-"))
 	print(f"Creating Train Dataloader", end="\t")
 	tdl_st = time.time()
 	train_dataset = HistoricalDataset(
-		data_frame=train_df,
-		captions=captions, 
+		data_frame=df,
+		# captions=captions,
 		img_sz=args.image_size,
 		dataset_directory=os.path.join(args.dataset_dir, "images"),
 		max_seq_length=max_seq_length,
@@ -180,7 +190,7 @@ def fine_tuner(train_df, captions, mean=0.5, std=0.5):
 		batch_size=args.batch_size,
 		num_workers=nw,
 		pin_memory=True,  # Move data to GPU faster if using CUDA
-    persistent_workers=True if nw > 1 else False,  # Keep workers alive if memory allows
+		persistent_workers=True if nw > 1 else False,  # Keep workers alive if memory allows
 		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)
 	print(f"num_samples[Total]: {len(train_data_loader.dataset)} Elapsed_t: {time.time()-tdl_st:.5f} sec")
@@ -189,7 +199,7 @@ def fine_tuner(train_df, captions, mean=0.5, std=0.5):
 	# sys.exit(-1)
 
 	model = CLIP(
-		emb_dim=emb_dim,
+		emb_dim=args.embedding_size,
 		vit_layers=vit_layers,
 		vit_d_model=vit_d_model,
 		img_size=(args.image_size, args.image_size),
@@ -207,13 +217,13 @@ def fine_tuner(train_df, captions, mean=0.5, std=0.5):
 	optimizer = optim.AdamW(
 		params=model.parameters(), 
 		lr=args.learning_rate, 
-		weight_decay=wd, # weight decay (L2 regularization)
+		weight_decay=args.weight_decay, # weight decay (L2 regularization)
 	)
 	scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
 	# scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.num_epochs)
 	total_params = 0
 	total_params = sum([param.numel() for param in model.parameters() if param.requires_grad])
-	print(f"Total trainable parameters: {total_params} ~ {total_params/int(1e+6):.2f} M")
+	print(f"Total trainable parameters (Vision + Text) Encoder: {total_params} ~ {total_params/int(1e+6):.2f} M")
 	best_loss = np.inf
 	print(f"Training {args.num_epochs} Epoch(s) in {device}".center(100, "-"))
 	training_st = time.time()
@@ -290,13 +300,13 @@ def main():
 		)
 		# Split the dataset: training and validation sets
 		# TODO: Train: National Archive, Validation: Europeana
+		img_lbls_dict, img_lbls_list = get_doc_description(df=df, col=args.document_description_col)
 		train_df, val_df = train_test_split(
 			df, 
 			shuffle=True, 
 			test_size=args.validation_dataset_share, # 0.05
 			random_state=42,
 		)
-		img_lbls_dict, img_lbls_list = get_doc_description(df=df, col=args.document_description_col)
 		save_pickle(pkl=df, fname=df_fpth,)
 		save_pickle(pkl=train_df, fname=train_df_fpth,)
 		save_pickle(pkl=val_df, fname=val_df_fpth,)
@@ -319,9 +329,8 @@ def main():
 	print(f"img_lbls_list {type(img_lbls_list)} {len(img_lbls_list)}")
 	# return
 	if not os.path.exists(mdl_fpth):
-		fine_tuner(
-			train_df=train_df, 
-			captions=img_lbls_dict,
+		train(
+			df=train_df,
 			mean=img_rgb_mean,
 			std=img_rgb_std,
 		)
@@ -348,7 +357,7 @@ def main():
 		validate(
 			val_df=val_df,
 			class_names=img_lbls_list,
-			CAPTIONSs=img_lbls_dict,
+			img_lbls_dict=img_lbls_dict,
 			model_fpth=mdl_fpth,
 			TOP_K=args.topk,
 			mean=img_rgb_mean, # from compute_dataset_stats
@@ -365,6 +374,7 @@ def main():
 		'--image_size', str(args.image_size),
 		'--patch_size', str(args.patch_size),
 		'--batch_size', str(args.batch_size),
+		'--embedding_size', str(args.embedding_size),
 		'--num_epochs', str(args.num_epochs),
 		'--validation_dataset_share', str(args.validation_dataset_share),
 		'--learning_rate', str(args.learning_rate),

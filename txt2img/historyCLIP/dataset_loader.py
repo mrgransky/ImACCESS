@@ -54,7 +54,7 @@ class HistoricalDataset(Dataset):
 	def __init__(
 			self, 
 			data_frame, 
-			captions,
+			# captions,
 			img_sz:int=28, 
 			txt_category:str="query", 
 			dataset_directory:str="path/2/images",
@@ -115,7 +115,6 @@ class HistoricalDataset(Dataset):
 				T.Normalize(mean=mean, std=std),
 			]
 		)
-		self.captions = captions
 		self.txt_category = txt_category
 		self.dataset_directory = dataset_directory
 		self.max_seq_length = max_seq_length
@@ -124,7 +123,7 @@ class HistoricalDataset(Dataset):
 		return len(self.data_frame)
 
 	def __getitem__(self, idx):
-		sample = self.data_frame.iloc[idx] # Retrieve the sample from the DataFrame
+		sample = self.data_frame.iloc[idx] # Retrieve the sample from the DataFrame (row)
 		img_path = os.path.join(self.dataset_directory, f"{sample['id']}.jpg")
 		if not os.path.exists(img_path): # Try to load the image and handle errors gracefully
 			print(f"{img_path} Not found!")
@@ -142,23 +141,23 @@ class HistoricalDataset(Dataset):
 		# print(type(image), image.size, image.mode)
 		image = self.transform(image)
 		label = sample[self.txt_category].lower()
-		if label not in self.captions.values():
-			# raise KeyError(f"Label '{label}' not found in captions dictionary")
-			return None
-		label_idx = next(idx for idx, class_name in self.captions.items() if class_name == label)
 		cap, mask = tokenizer(
-			text=self.captions[label_idx], 
+			text=label,
 			encode=True, 
 			max_seq_length=self.max_seq_length,
 		)
-		mask = torch.tensor(mask)
-		if len(mask.size()) == 1:
-			mask = mask.unsqueeze(0)
+		# mask = torch.tensor(mask)
+		# if len(mask.size()) == 1:
+		# 	mask = mask.unsqueeze(0)
+		mask = mask.repeat(len(mask), 1) # 1D tensor => (max_seq_length x max_seq_length)
+		# print(f"cap: {type(cap)} {cap.shape} ")
+		# print(f"mask: {type(mask)} {mask.shape} ") # 1D tensor of size max_seq_length
+		# print("#"*100)
 		return {
 			"image": image,
-			"caption": cap,
-			"mask": mask,
-			"image_filepath": img_path
+			"caption": cap, # <class 'torch.Tensor'> torch.Size([max_seq_length])
+			"mask": mask, # <class 'torch.Tensor'> torch.Size([max_seq_length, max_seq_length])
+			"image_filepath": img_path,
 		}
 
 	def contrast_enhance_denoise(self, image, contrast_cutoff=2, blur_radius=0.1):

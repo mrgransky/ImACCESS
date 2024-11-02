@@ -14,6 +14,7 @@ import gzip
 import torch.nn as nn
 import torch.optim as optim
 import torchvision
+from torchinfo import summary as tinfo
 import torchvision.transforms as T
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.dataloader import default_collate
@@ -62,7 +63,6 @@ else: # Pouta
 	ddir: str = os.path.join(WDIR, "myntradataset")
 
 # Vision
-emb_dim = 128 
 vit_d_model = 32 # vit_heads * vit_layers = vit_d_model
 n_channels = 3 # must be 3 for CLIP model
 vit_layers = 8
@@ -71,7 +71,7 @@ vit_heads = 4
 # Text
 vocab_size = 512
 text_d_model = 64 #  -->  text_heads * text_layers = text_d_model
-max_seq_length = 256
+max_seq_length = 256 # Longer sequence length for detailed queries
 text_heads = 8
 text_layers = 8
 
@@ -110,7 +110,7 @@ def visualize_samples(dataloader, num_samples=5):
 				image_filepaths = batch['image_filepath']
 				
 				for j in range(len(images)):
-						image = images[j].permute(1, 2, 0).numpy()  # Convert tensor to numpy array and permute dimensions
+						image = images[j].permute(1, 2, 0).numpy() # Convert tensor to numpy array and permute dimensions
 						caption = captions[j]
 						mask = masks[j]
 						filepath = image_filepaths[j]
@@ -123,6 +123,7 @@ def visualize_samples(dataloader, num_samples=5):
 						plt.imshow(image, cmap='gray')
 						# plt.title(f"Caption: {caption}\nMask: {mask}\nFilepath: {filepath}")
 						# plt.title(f"Caption: {caption.shape}\nFilepath: {filepath}")
+						plt.title(f"Caption: {type(caption)} {caption.shape}\nMask: {type(mask)} {mask.shape}\nFilepath: {filepath}")
 						plt.axis('off')
 						plt.show()
 
@@ -216,7 +217,52 @@ def set_seeds():
 		torch.backends.cudnn.deterministic = True
 		torch.backends.cudnn.benchmark = True
 
+def clean_text(text):
+	text = text.lower()
+	text = re.sub(r'[^\w\s]', '', text) # Remove punctuation
+	text = re.sub(r'[^a-zA-Z0-9\s]', '', text) # Remove special characters
+	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
+	return text
+
+def get_model_details(model, img_size=(3, 224, 224), text_size=(77,), batch_size=1):
+	print(f"Model Information Detail".center(150, "-"))
+	print("Model Architecture:")
+	print(model)
+	print("\n" + "="*50 + "\n")
+	print("Detailed Model Summary (torchinfo):")
+	# Create dummy inputs
+	device = next(model.parameters()).device
+	dummy_image = torch.zeros((batch_size, *img_size), device=device)
+	dummy_text = torch.zeros((batch_size, *text_size), dtype=torch.long, device=device)		
+	# Create a dummy mask with the correct shape
+	dummy_mask = torch.ones((batch_size, text_size[0]), dtype=torch.bool, device=device)
+	try:
+			tinfo(model, 
+						input_data={
+								"image": dummy_image,
+								"text": dummy_text,
+								"mask": dummy_mask
+						},
+						depth=5, 
+						col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"])
+	except Exception as e:
+			print(f"Error in torchinfo: {str(e)}")
+			print("Falling back to basic model information...")
+	print("\n" + "="*50 + "\n")
+	print("Model Parameters:")
+	total_params = sum(p.numel() for p in model.parameters())
+	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	print(f"Total parameters: {total_params:,}")
+	print(f"Trainable parameters: {trainable_params:,}")
+	print(f"Non-trainable parameters: {total_params - trainable_params:,}")
+	print("\nParameter Details:")
+	for name, param in model.named_parameters():
+			if param.requires_grad:
+					print(f"{name}: {param.numel():,} parameters")
+	print("-"*150)
+
 def tokenizer(text, encode=True, mask=None, max_seq_length=128):
+	# text = clean_text(text)
 	if encode:
 		out = chr(2) + text + chr(3) # Adding SOT and EOT tokens
 		if len(out) > max_seq_length:
@@ -232,8 +278,7 @@ def tokenizer(text, encode=True, mask=None, max_seq_length=128):
 		out = [chr(x) for x in text[1:len(mask.nonzero()) - 1]]
 		out = "".join(out)
 		mask = None
-	# print(f"tk: {out.shape} {mask.shape}")
-	return out, mask
+	return out, mask # <class 'torch.Tensor'> torch.Size([max_seq_length]), <class 'torch.Tensor'> torch.Size([max_seq_length])
 
 def get_info(dataloader):
 	tot_samples = len(dataloader.dataset)
@@ -414,7 +459,6 @@ def get_mean_std_rgb_img_multiprocessing(dir: str="path/2/images", num_workers: 
 		std = torch.sqrt((sum_of_squares / count) - (mean ** 2))
 		print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(100, " "))
 		return mean.tolist(), std.tolist()
-
 
 def custom_collate_fn(batch):
 	# Filter out the None values from the batch
