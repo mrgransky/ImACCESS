@@ -20,6 +20,26 @@ from requests.exceptions import RequestException
 import argparse
 import torch
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
+import nltk
+
+nltk_modules = [
+		'punkt',
+		'wordnet',
+		'averaged_perceptron_tagger', 
+		'omw-1.4',
+		'stopwords',
+]
+
+nltk.download(
+		# 'all',
+		# nltk_modules,
+		'stopwords',
+		quiet=True,
+		# raise_on_error=True,
+)
+
+# Get the list of English stopwords
+STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids()))
 
 def process_rgb_image(args):
 		filename, dir, transform = args
@@ -102,15 +122,36 @@ def load_pickle(fpath:str="unknown",):
 	print(f"Loaded in: {elpt:.3f} s | {type(pkl)} | {fsize:.3f} MB".center(130, " "))
 	return pkl
 
-def clean_(text: str="sample text"):
-	# print(f"raw: {text}")
-	text = text.lower()
-	text = re.sub(r'original caption', '', text)
-	text = re.sub(r'[^a-zA-Z\s]', '', text) # Remove special characters and digits
-	text = re.sub(r'[";=&#<>_\-\+\^\.\$\[\]]', '', text)
-	text = re.sub(r'[^\w\s]', '', text) # Remove punctuation
-	text = re.sub(r'[^a-zA-Z0-9\s]', '', text) # Remove special characters
-	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
-	# print(f"cleaned: {text}")
-	# print("#"*100)
-	return text
+def clean_(text: str = "sample text"):
+		"""
+		Clean the input text by removing special characters, digits, punctuation, words with fewer than 3 characters, and stopwords.
+		
+		Args:
+				text (str): The input text to be cleaned. Defaults to "sample text".
+		
+		Returns:
+				str: The cleaned text.
+		"""
+		# Convert to lowercase
+		text = text.lower()
+		text = re.sub(r'original caption', '', text)
+		
+		# Remove special characters and digits
+		text = re.sub(r'[^a-zA-Z\s]', '', text)
+		
+		# Tokenize the text into words
+		words = word_tokenize(text)
+		
+		# Get the list of English stopwords
+		stop_words = set(stopwords.words('english'))
+		
+		# Filter out stopwords and words with fewer than 3 characters
+		words = [word for word in words if len(word) >= 3 and word not in STOPWORDS]
+		
+		# Join the words back into a string
+		text = ' '.join(words)
+		
+		# Normalize whitespace
+		text = re.sub(r'\s+', ' ', text).strip()
+		
+		return text
