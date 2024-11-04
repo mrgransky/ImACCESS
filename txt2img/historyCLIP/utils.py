@@ -2,6 +2,7 @@ import os
 import sys
 import re
 from tqdm import tqdm
+import argparse
 import random
 from collections import Counter
 import json
@@ -24,7 +25,6 @@ import multiprocessing
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import argparse
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
 from typing import List, Set, Dict, Tuple, Union
 import subprocess

@@ -22,7 +22,7 @@ USER: str = os.getenv('USER') # echo $USER
 na_api_base_url: str = "https://catalog.archives.gov/proxy/records/search"
 START_DATE = args.start_date
 END_DATE = args.end_date
-nw:int = min(args.num_worker, multiprocessing.cpu_count()) # def: 8
+
 dataset_name = "NATIONAL_ARCHIVE"
 useless_collection_terms = [
 	"Cartoon", 
@@ -49,6 +49,8 @@ os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DA
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
 os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
 IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
+img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.pkl")
+img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.pkl")
 
 def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
 	t0 = time.time()
@@ -583,6 +585,16 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
+	# # TODO: calculate image mean and std:
+	# try:
+	# 	img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
+	# except Exception as e:
+	# 	print(f"{e}")
+	# 	img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(dir=os.path.join(args.dataset_dir, "images"), num_workers=args.num_workers)
+	# 	save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
+	# 	save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
+	# print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
+	
 if __name__ == '__main__':
 	print(
 		f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
