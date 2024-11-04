@@ -4,7 +4,7 @@ parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', type=str, default="1933-01-01", help='Dataset DIR')
 parser.add_argument('--end_date', type=str, default="1933-01-02", help='Dataset DIR')
-parser.add_argument('--num_worker', type=int, default=8, help='Number of CPUs')
+parser.add_argument('--num_workers', type=int, default=8, help='Number of CPUs')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
@@ -207,7 +207,7 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 	print(f"[{rIdx}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
 	return False  # Indicate failed download
 
-def get_synchronized_df_img(df):
+def get_synchronized_df_img(df, nw: int=8):
 	print(f"Synchronizing merged_df(raw) & images of {df.shape[0]} records using {nw} CPUs...")
 	successful_rows = []  # List to keep track of successful downloads
 	with requests.Session() as session:
@@ -566,7 +566,7 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	na_df = get_synchronized_df_img(df=na_df_merged_raw)
+	na_df = get_synchronized_df_img(df=na_df_merged_raw, nw=args.num_workers)
 
 	query_counts = na_df['query'].value_counts()
 	# print(query_counts.tail(25))
@@ -585,15 +585,15 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	# # TODO: calculate image mean and std:
-	# try:
-	# 	img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
-	# except Exception as e:
-	# 	print(f"{e}")
-	# 	img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(dir=os.path.join(args.dataset_dir, "images"), num_workers=args.num_workers)
-	# 	save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
-	# 	save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
-	# print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
+	# TODO: calculate image mean and std:
+	try:
+		img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
+	except Exception as e:
+		print(f"{e}")
+		img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(dir=os.path.join(args.dataset_dir, "images"), num_workers=args.num_workers)
+		save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
+		save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
+	print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
 	
 if __name__ == '__main__':
 	print(
