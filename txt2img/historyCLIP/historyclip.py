@@ -63,6 +63,7 @@ img_rgb_mean_fpth:str = os.path.join(args.dataset_dir, "img_rgb_mean.pkl")
 img_rgb_std_fpth:str = os.path.join(args.dataset_dir, "img_rgb_std.pkl")
 
 def validate(val_df, model, mean, std):
+	print(f"Validating val_dataset: {val_df.shape}", end="\t")
 	model.eval()
 	val_dataset = HistoricalDataset(
 		data_frame=val_df,
