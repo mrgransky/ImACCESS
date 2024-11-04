@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import multiprocessing
 from multiprocessing import Pool
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from requests.exceptions import RequestException
 import argparse
 import torch

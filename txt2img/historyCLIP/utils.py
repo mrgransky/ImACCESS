@@ -30,7 +30,7 @@ from typing import List, Set, Dict, Tuple, Union
 import subprocess
 import traceback
 from multiprocessing import Pool
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from torch.utils.tensorboard import SummaryWriter
 warnings.filterwarnings('ignore')
 
