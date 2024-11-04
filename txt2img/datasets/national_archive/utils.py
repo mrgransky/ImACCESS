@@ -21,7 +21,7 @@ import argparse
 import torch
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
 import nltk
-from nltk.tokenize import word_tokenize
+
 nltk_modules = [
 		'punkt',
 		'wordnet',
@@ -29,7 +29,6 @@ nltk_modules = [
 		'omw-1.4',
 		'stopwords',
 ]
-
 nltk.download(
 		# 'all',
 		nltk_modules,
@@ -123,32 +122,18 @@ def load_pickle(fpath:str="unknown",):
 	return pkl
 
 def clean_(text: str = "sample text"):
-    """
-    Clean the input text by removing special characters, digits, punctuation, words with fewer than 3 characters, and stopwords.
-    
-    Args:
-        text (str): The input text to be cleaned. Defaults to "sample text".
-    
-    Returns:
-        str: The cleaned text.
-    """
-    # Convert to lowercase
-    text = text.lower()
-    text = re.sub(r'original caption', '', text)
-    
-    # Remove special characters and digits
-    text = re.sub(r'[^a-zA-Z\s]', '', text)
-    
-    # Tokenize the text into words
-    words = nltk.tokenize.word_tokenize(text)
-        
-    # Filter out stopwords and words with fewer than 3 characters
-    words = [word for word in words if len(word) >= 3 and word not in STOPWORDS]
-    
-    # Join the words back into a string
-    text = ' '.join(words)
-    
-    # Normalize whitespace
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    return text
+	# Convert to lowercase
+	text = text.lower()
+	text = re.sub(r'original caption', '', text)
+	# Remove special characters and digits
+	text = re.sub(r'[^a-zA-Z\s]', '', text)
+	# Tokenize the text into words
+	words = nltk.tokenize.word_tokenize(text)
+	# Filter out stopwords and words with fewer than 3 characters
+	words = [word for word in words if len(word) >= 3 and word not in STOPWORDS]
+	# Join the words back into a string
+	text = ' '.join(words)
+	# Normalize whitespace
+	text = re.sub(r'\s+', ' ', text).strip()
+	# TODO: some enchant cleaning for language check!
+	return text

@@ -32,6 +32,26 @@ import traceback
 from multiprocessing import Pool
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from torch.utils.tensorboard import SummaryWriter
+import nltk
+
+nltk_modules = [
+	'punkt',
+	'wordnet',
+	'averaged_perceptron_tagger', 
+	'omw-1.4',
+	'stopwords',
+]
+nltk.download(
+	# 'all',
+	nltk_modules,
+	# 'stopwords',
+	quiet=True,
+	# raise_on_error=True,
+)
+
+# Get the list of English stopwords
+STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids()))
+
 warnings.filterwarnings('ignore')
 
 # Set a new limit for decompression bomb
@@ -217,17 +237,21 @@ def set_seeds():
 		torch.backends.cudnn.deterministic = True
 		torch.backends.cudnn.benchmark = True
 
-def clean_(text: str="sample text"):
-	print(f"raw: {text}")
+def clean_(text: str = "sample text"):
+	# Convert to lowercase
 	text = text.lower()
 	text = re.sub(r'original caption', '', text)
-	text = re.sub(r'[^a-zA-Z\s]', '', text) # Remove special characters and digits
-	text = re.sub(r'[";=&#<>_\-\+\^\.\$\[\]]', '', text)
-	text = re.sub(r'[^\w\s]', '', text) # Remove punctuation
-	text = re.sub(r'[^a-zA-Z0-9\s]', '', text) # Remove special characters
-	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
-	print(f"cleaned: {text}")
-	print("#"*100)
+	# Remove special characters and digits
+	text = re.sub(r'[^a-zA-Z\s]', '', text)
+	# Tokenize the text into words
+	words = nltk.tokenize.word_tokenize(text)
+	# Filter out stopwords and words with fewer than 3 characters
+	words = [word for word in words if len(word) >= 3 and word not in STOPWORDS]
+	# Join the words back into a string
+	text = ' '.join(words)
+	# Normalize whitespace
+	text = re.sub(r'\s+', ' ', text).strip()
+	# TODO: some enchant cleaning for language check!
 	return text
 
 def get_model_details(model, img_size=(3, 224, 224), text_size=(77,), batch_size=1):
