@@ -19,6 +19,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExec
 from requests.exceptions import RequestException
 import argparse
 import torch
+import torchvision.transforms as T
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
 import nltk
 
