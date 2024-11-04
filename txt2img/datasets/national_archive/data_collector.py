@@ -5,6 +5,7 @@ parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR'
 parser.add_argument('--start_date', type=str, default="1933-01-01", help='Dataset DIR')
 parser.add_argument('--end_date', type=str, default="1933-01-02", help='Dataset DIR')
 parser.add_argument('--num_workers', type=int, default=8, help='Number of CPUs')
+parser.add_argument('--img_mean_std', type=bool, default=False, help='Image mean & std')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
@@ -15,7 +16,7 @@ print(args)
 
 # run in Pouta:
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 # WW1 & WW2
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 >> /media/volume/trash/ImACCESS/na_img_dl.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 --num_workers 55 --img_mean_std True >> /media/volume/trash/ImACCESS/na_img_dl.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
@@ -586,14 +587,15 @@ def main():
 		print(f"Failed to write Excel file: {e}")
 
 	# TODO: calculate image mean and std:
-	try:
-		img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
-	except Exception as e:
-		print(f"{e}")
-		img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(dir=os.path.join(args.dataset_dir, "images"), num_workers=args.num_workers)
-		save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
-		save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
-	print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
+	if args.img_mean_std:
+		try:
+			img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
+		except Exception as e:
+			print(f"{e}")
+			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(dir=os.path.join(args.dataset_dir, "images"), num_workers=args.num_workers)
+			save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
+			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
+		print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
 	
 if __name__ == '__main__':
 	print(
