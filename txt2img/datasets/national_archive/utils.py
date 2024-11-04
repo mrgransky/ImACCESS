@@ -32,8 +32,8 @@ nltk_modules = [
 
 nltk.download(
 		# 'all',
-		# nltk_modules,
-		'stopwords',
+		nltk_modules,
+		# 'stopwords',
 		quiet=True,
 		# raise_on_error=True,
 )
