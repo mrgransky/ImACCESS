@@ -30,13 +30,13 @@ models_dir_name = (
 	f"models"
 	+ f"_nEpochs_{args.num_epochs}"
 	+ f"_lr_{args.learning_rate}"
+	+ f"_wd_{args.weight_decay}"
 	+ f"_val_{args.validation_dataset_share}"
 	+ f"_descriptions_{args.document_description_col}"
 	+ f"_batch_size_{args.batch_size}"
 	+ f"_image_size_{args.image_size}"
 	+ f"_patch_size_{args.patch_size}"
 	+ f"_embedding_size_{args.embedding_size}"
-	+ f"_wd_{args.weight_decay}"
 )
 
 os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)

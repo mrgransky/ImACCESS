@@ -31,7 +31,7 @@ import subprocess
 import traceback
 from multiprocessing import Pool
 from concurrent.futures import ProcessPoolExecutor, as_completed
-
+from torch.utils.tensorboard import SummaryWriter
 warnings.filterwarnings('ignore')
 
 # Set a new limit for decompression bomb
@@ -217,8 +217,8 @@ def set_seeds():
 		torch.backends.cudnn.deterministic = True
 		torch.backends.cudnn.benchmark = True
 
-def clean_text(text):
-	text = text.lower()
+def clean_(text: str="sample text"):
+	text = re.sub(r'[";=&#<>_\-\+\^\.\$\[\]]', '', text.lower())
 	text = re.sub(r'[^\w\s]', '', text) # Remove punctuation
 	text = re.sub(r'[^a-zA-Z0-9\s]', '', text) # Remove special characters
 	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
@@ -261,8 +261,9 @@ def get_model_details(model, img_size=(3, 224, 224), text_size=(77,), batch_size
 					print(f"{name}: {param.numel():,} parameters")
 	print("-"*150)
 
-def tokenizer(text, encode=True, mask=None, max_seq_length=128):
-	# text = clean_text(text)
+def tokenizer(text:str="sample label", encode:bool=True, mask=None, max_seq_length:int=128):
+	# print(type(text), len(text), text)
+	text = clean_(text)
 	if encode:
 		out = chr(2) + text + chr(3) # Adding SOT and EOT tokens
 		if len(out) > max_seq_length:

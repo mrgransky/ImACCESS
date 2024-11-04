@@ -1,22 +1,4 @@
-import requests
-import json
-import time
-import dill
-import gzip
-import pandas as pd
-import numpy as np
-import os
-import sys
-import datetime
-import re
-from typing import List, Dict
-from natsort import natsorted
-import matplotlib.pyplot as plt
-import seaborn as sns
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import multiprocessing
-from requests.exceptions import RequestException
-import argparse
+from utils import *
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
@@ -28,8 +10,8 @@ parser.add_argument('--num_worker', type=int, default=8, help='Number of CPUs')
 args, unknown = parser.parse_known_args()
 print(args)
 # run in local laptop:
-# $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02 >> na_image_download.out &
+# $ python data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02 >> logs/na_image_download.out &
 
 # run in Pouta:
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 # WW1 & WW2
@@ -67,37 +49,6 @@ os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DA
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
 os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
 IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
-
-def save_pickle(pkl, fname:str=""):
-	print(f"\nSaving {type(pkl)}\n{fname}")
-	st_t = time.time()
-	if isinstance(pkl, ( pd.DataFrame, pd.Series ) ):
-		pkl.to_pickle(path=fname)
-	else:
-		# with open(fname , mode="wb") as f:
-		with gzip.open(fname , mode="wb") as f:
-			dill.dump(pkl, f)
-	elpt = time.time()-st_t
-	fsize_dump = os.stat( fname ).st_size / 1e6
-	print(f"Elapsed_t: {elpt:.3f} s | {fsize_dump:.2f} MB".center(120, " "))
-
-def load_pickle(fpath:str="unknown",):
-	print(f"Checking for existence? {fpath}")
-	st_t = time.time()
-	try:
-		with gzip.open(fpath, mode='rb') as f:
-			pkl=dill.load(f)
-	except gzip.BadGzipFile as ee:
-		print(f"<!> {ee} gzip.open() NOT functional => traditional openning...")
-		with open(fpath, mode='rb') as f:
-			pkl=dill.load(f)
-	except Exception as e:
-		print(f"<<!>> {e} pandas read_pkl...")
-		pkl = pd.read_pickle(fpath)
-	elpt = time.time()-st_t
-	fsize = os.stat( fpath ).st_size / 1e6
-	print(f"Loaded in: {elpt:.3f} s | {type(pkl)} | {fsize:.3f} MB".center(130, " "))
-	return pkl
 
 def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
 	t0 = time.time()
@@ -160,15 +111,6 @@ def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="
 	print(f"Total hit(s): {len(query_all_hits)} {type(query_all_hits)} for query: « {query} » found in {time.time()-t0:.2f} sec")
 	return query_all_hits
 
-def check_url_status(url: str) -> bool:
-	try:
-		response = requests.head(url, timeout=50)
-		# Return True only if the status code is 200 (OK)
-		return response.status_code == 200
-	except (requests.RequestException, Exception) as e:
-		print(f"Error accessing URL {url}: {e}")
-		return False
-
 def is_desired(collections, useless_terms):
 	for term in useless_terms:
 		for collection in collections:
@@ -184,7 +126,8 @@ def get_dframe(query: str="query", docs: List=[Dict]) -> pd.DataFrame:
 	for doc in docs:
 		record = doc.get('_source', {}).get('record', {})
 		fields = doc.get('fields', {})
-		title = record.get('title').lower()# if record.get('title') != "Untitled" else None
+		title = clean_(text=record.get('title'))#.lower()# if record.get('title') != "Untitled" else None
+		doc_description = clean_(text=record.get('scopeAndContentNote')) if record.get('scopeAndContentNote') else None
 		na_identifier = record.get('naId')
 		pDate = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
@@ -208,10 +151,18 @@ def get_dframe(query: str="query", docs: List=[Dict]) -> pd.DataFrame:
 			"table:" not in title,
 			"traffic statistics:" not in title,
 		]
+		useless_description_terms = [
+			"certificate" not in doc_description,
+			"drawing" not in doc_description,
+			"sketch of" not in doc_description,
+			"newspaper" not in doc_description,
+		] if doc_description is not None else []
+
 		if (
 			first_digital_object_url 
 			and is_desired(ancesstor_collections, useless_collection_terms) 
 			and all(useless_title_terms)
+			and all(useless_description_terms)
 			and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png'))
 		):
 			pass # Valid entry; no action needed here
@@ -221,7 +172,7 @@ def get_dframe(query: str="query", docs: List=[Dict]) -> pd.DataFrame:
 			'id': na_identifier,
 			'query': query,
 			'title': title,
-			'description': record.get('scopeandContentNote'),
+			'description': doc_description,
 			'img_url': first_digital_object_url,
 			'date': pDate,
 		}

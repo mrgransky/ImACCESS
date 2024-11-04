@@ -3,8 +3,8 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run [Local]:
-# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1 --patch_size 1
-# $ python historyclip.py --query sailboat --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
+# $ python historyclip.py --query "air base" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1
+# $ python historyclip.py --query "airbae" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
 
 # $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 10 --patch_size 5 --image_size 160 >> $PWD/logs/historyCLIP.out & 
 
@@ -26,7 +26,7 @@ parser.add_argument('--print_every', type=int, default=100, help='Print loss')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set [def: 0.23]')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='small learning rate for better convergence [def: 1e-3]')
-parser.add_argument('--weight_decay', type=float, default=1e-4, help='Weight decay [def: 1e-4]')
+parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay [def: 1e-4]')
 parser.add_argument('--validate', type=bool, default=False, help='Model Validation upon request')
 parser.add_argument('--visualize', type=bool, default=False, help='Model Validation upon request')
 parser.add_argument('--document_description_col', type=str, default="query", help='labels')
@@ -39,13 +39,13 @@ models_dir_name = (
 	f"models"
 	+ f"_nEpochs_{args.num_epochs}"
 	+ f"_lr_{args.learning_rate}"
+	+ f"_wd_{args.weight_decay}"
 	+ f"_val_{args.validation_dataset_share}"
 	+ f"_descriptions_{args.document_description_col}"
 	+ f"_batch_size_{args.batch_size}"
 	+ f"_image_size_{args.image_size}"
 	+ f"_patch_size_{args.patch_size}"
 	+ f"_embedding_size_{args.embedding_size}"
-	+ f"_wd_{args.weight_decay}"
 )
 os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
 mdl_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "model.pt")
@@ -61,7 +61,37 @@ img_bw_std_fpth:str = os.path.join(args.dataset_dir, "img_bw_std.pkl")
 img_rgb_mean_fpth:str = os.path.join(args.dataset_dir, "img_rgb_mean.pkl")
 img_rgb_std_fpth:str = os.path.join(args.dataset_dir, "img_rgb_std.pkl")
 
-def validate(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, mean=0.5, std=0.5):
+def validate(val_df, model, mean, std):
+	model.eval()
+	val_dataset = HistoricalDataset(
+		data_frame=val_df,
+		img_sz=args.image_size,
+		dataset_directory=os.path.join(args.dataset_dir, "images"),
+		max_seq_length=max_seq_length,
+		mean=mean,
+		std=std,
+	)
+	val_loader = DataLoader(
+		dataset=val_dataset,
+		shuffle=False,
+		batch_size=args.batch_size,
+		num_workers=nw,
+		pin_memory=True,  # Move data to GPU faster if using CUDA
+		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
+	)		
+	val_loss = 0.0
+	with torch.no_grad():
+		for data in val_loader:
+			img = data["image"].to(device)
+			cap = data["caption"].to(device)
+			mask = data["mask"].to(device)
+			loss = model(img, cap, mask)
+			val_loss += loss.item()
+	avg_val_loss = val_loss / len(val_loader)
+	print(f"Validation Loss: {avg_val_loss:.5f}")
+	return avg_val_loss
+		
+def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, mean=0.5, std=0.5):
 	print(f"Validation".center(160, "-"))
 	print(f"Validating {model_fpth} in {device}")
 	vdl_st = time.time()
@@ -171,18 +201,21 @@ def validate(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/model
 		print(f"index: {index}: {class_names[int(index)]:>30s}: {100 * value.item():.3f}%")
 	print(f"Elapsed_t: {time.time()-vdl_st:.2f} sec")
 
-def train(df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0.5, 0.5, 0.5]):
+def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0.5, 0.5, 0.5]):
 	print(f"Fine-tuning using {device} in {torch.cuda.get_device_name(device)} using {nw} CPU(s)".center(150, "-"))
+	# Initialize TensorBoard writer
+	writer = SummaryWriter(log_dir=os.path.join(outputs_dir, "logs"))
+	
 	print(f"Creating Train Dataloader", end="\t")
 	tdl_st = time.time()
 	train_dataset = HistoricalDataset(
-		data_frame=df,
+		data_frame=train_df,
 		# captions=captions,
 		img_sz=args.image_size,
 		dataset_directory=os.path.join(args.dataset_dir, "images"),
 		max_seq_length=max_seq_length,
-		mean=mean, # from compute_dataset_stats
-		std=std, # from compute_dataset_stats
+		mean=mean,
+		std=std,
 	)
 	train_data_loader = DataLoader(
 		dataset=train_dataset,
@@ -219,8 +252,16 @@ def train(df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0.5, 0.5, 0.5])
 		lr=args.learning_rate, 
 		weight_decay=args.weight_decay, # weight decay (L2 regularization)
 	)
-	scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
+	# scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
 	# scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.num_epochs)
+	scheduler = torch.optim.lr_scheduler.OneCycleLR( # Learning rate scheduler with warmup
+		optimizer, 
+		max_lr=args.learning_rate, 
+		steps_per_epoch=len(train_data_loader), 
+		epochs=args.num_epochs,
+		pct_start=0.1,  # Warmup for 10% of the total steps
+		anneal_strategy='cos',  # Cosine annealing
+	)
 	total_params = 0
 	total_params = sum([param.numel() for param in model.parameters() if param.requires_grad])
 	print(f"Total trainable parameters (Vision + Text) Encoder: {total_params} ~ {total_params/int(1e+6):.2f} M")
@@ -235,22 +276,44 @@ def train(df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0.5, 0.5, 0.5])
 			img = data["image"].to(device) 
 			cap = data["caption"].to(device)
 			mask = data["mask"].to(device)
+
 			optimizer.zero_grad()
 			loss = model(img, cap, mask)
 			loss.backward()
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			optimizer.step()
+			scheduler.step()
+
 			if batch_idx % args.print_every == 0:
 				print(f"\tBatch [{batch_idx + 1}/{len(train_data_loader)}] Loss: {loss.item():.5f}")
+
 			epoch_loss += loss.item()
+			writer.add_scalar('Loss/train', loss.item(), epoch * len(train_data_loader) + batch_idx)
+
 		avg_loss = epoch_loss / len(train_data_loader)
-		scheduler.step(avg_loss)
 		print(f"Average Loss: {avg_loss:.5f} @ Epoch: {epoch+1}")
 		average_losses.append(avg_loss)
-		if avg_loss <= best_loss:
-			best_loss = avg_loss
+		############################## traditional model saving ##############################
+		# if avg_loss <= best_loss:
+		# 	best_loss = avg_loss
+		# 	torch.save(model.state_dict(), mdl_fpth)
+		# 	print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.5f}")
+		############################## traditional model saving ##############################
+		############################## Early stopping ##############################
+		val_loss = validate(val_df, model, mean, std)
+		writer.add_scalar('Loss/validation', val_loss, epoch)		
+		if val_loss < best_loss:
+			best_loss = val_loss
 			torch.save(model.state_dict(), mdl_fpth)
 			print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.5f}")
+			no_improvement_count = 0
+		else:
+			no_improvement_count += 1
+			if no_improvement_count >= patience:
+				print(f"Early stopping triggered after {epoch+1} epochs.")
+				break
+		############################## Early stopping ##############################
+		writer.add_scalar('Average Loss/train', avg_loss, epoch)
 	loss_fname = (
 		f'loss'
 		+ f'_epochs_{args.num_epochs}'
@@ -264,6 +327,7 @@ def train(df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0.5, 0.5, 0.5])
 		save_path=os.path.join(outputs_dir, loss_fname),
 	)
 	print(f"Elapsed_t: {time.time()-training_st:.5f} sec".center(150, "-"))
+	writer.close()
 
 def main():
 	set_seeds()
@@ -322,7 +386,6 @@ def main():
 		plt.tight_layout()
 		plt.savefig(os.path.join(args.dataset_dir, "outputs", f"query_freq_{query_counts_val.shape[0]}_val.png"))
 
-	
 	# Print the sizes of the datasets
 	print(f"df: {df.shape} train_df: {train_df.shape} val_df({args.validation_dataset_share}): {val_df.shape}")
 	print(f"img_lbls_dict {type(img_lbls_dict)} {len(img_lbls_dict)}")
@@ -330,7 +393,8 @@ def main():
 	# return
 	if not os.path.exists(mdl_fpth):
 		train(
-			df=train_df,
+			train_df=train_df,
+			val_df=val_df,
 			mean=img_rgb_mean,
 			std=img_rgb_std,
 		)
@@ -354,7 +418,7 @@ def main():
 	# get_info(dataloader=val_loader)
 
 	if args.validate:
-		validate(
+		examine_model(
 			val_df=val_df,
 			class_names=img_lbls_list,
 			img_lbls_dict=img_lbls_dict,
