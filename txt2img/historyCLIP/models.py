@@ -133,9 +133,9 @@ class TextEncoder(nn.Module):
 		# take features from the EOT embedding.
 		# x = x[torch.arange(text.shape[0]), torch.sub(torch.sum(mask[:,0],dim=1),1)]
 		if mask is not None and mask.dim() > 1:
-				x = x[torch.arange(text.shape[0]), torch.sub(torch.sum(mask[:,0],dim=1),1)]
+			x = x[torch.arange(text.shape[0]), torch.sub(torch.sum(mask[:,0],dim=1),1)]
 		else:
-				x = x[:, -1]  # If no valid mask, take the last token
+			x = x[:, -1]  # If no valid mask, take the last token
 		# joint multimodal embedding
 		if self.projection is not None:
 			x = x @ self.projection

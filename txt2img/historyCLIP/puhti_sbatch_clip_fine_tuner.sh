@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=historyCLIP_x_b64_6epochs
+#SBATCH --job-name=historyCLIP_mean_std
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -9,9 +9,9 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=64G
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:v100:1
-#SBATCH --time=03-00:00:00
+#SBATCH --partition=longrun
+####SBATCH --gres=gpu:v100:1
+#SBATCH --time=14-00:00:00
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
