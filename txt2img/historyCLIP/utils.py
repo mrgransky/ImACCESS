@@ -225,7 +225,7 @@ def set_seeds():
 # 	return text
 
 def clean_(text: str="sample text"):
-	text = re.sub(r'[^a-zA-Z\s]', '', text.lower())
+	text = re.sub(r'[^a-zA-Z\s]', '  ', text.lower())
 	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
 	return text
 
