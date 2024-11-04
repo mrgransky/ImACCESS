@@ -217,15 +217,13 @@ def set_seeds():
 		torch.backends.cudnn.deterministic = True
 		torch.backends.cudnn.benchmark = True
 
-# def clean_(text: str="sample text"):
-# 	text = re.sub(r'[";=&#<>_\-\+\^\.\$\[\]]', '', text.lower())
-# 	text = re.sub(r'[^\w\s]', '', text) # Remove punctuation
-# 	text = re.sub(r'[^a-zA-Z0-9\s]', '', text) # Remove special characters
-# 	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
-# 	return text
-
 def clean_(text: str="sample text"):
-	text = re.sub(r'[^a-zA-Z\s]', '  ', text.lower())
+	text = text.lower()
+	text = re.sub(r'original caption', '', text)
+	text = re.sub(r'[^a-zA-Z\s]', '', text) # Remove special characters and digits
+	text = re.sub(r'[";=&#<>_\-\+\^\.\$\[\]]', '', text)
+	text = re.sub(r'[^\w\s]', '', text) # Remove punctuation
+	text = re.sub(r'[^a-zA-Z0-9\s]', '', text) # Remove special characters
 	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
 	return text
 
