@@ -48,7 +48,7 @@ else:
 
 visualize: bool = False
 # nw = 40 if USER=="ubuntu" else min(20, multiprocessing.cpu_count()) # def: 8
-nw = min(55, multiprocessing.cpu_count()) # def: 8
+# nw =  min(55, multiprocessing.cpu_count()) # def: 8
 
 if USER=="farid": # local laptop
 	WDIR = os.path.join(HOME, "datasets")
@@ -392,8 +392,8 @@ def process_grayscale_image(args):
 				print(f"Error processing {image_path}: {e}")
 				return 0, 0, 0
 
-def get_mean_std_grayscale_img_multiprocessing(dir: str="path/2/images", num_workers: int=nw):
-		print(f"Calculating Mean-Std for {len(os.listdir(dir))} Grayscale images (multiprocessing: nw: {num_workers} CPUs)")
+def get_mean_std_grayscale_img_multiprocessing(dir: str="path/2/images", num_workers: int=8):
+		print(f"Calculating Mean-Std for {len(os.listdir(dir))} Grayscale images (multiprocessing: {num_workers} CPUs)")
 		t0 = time.time()
 
 		# Initialize variables to accumulate the sum and sum of squares
@@ -433,7 +433,7 @@ def process_rgb_image(args):
 			# traceback.print_exc()  # Print detailed traceback
 			return torch.zeros(3), torch.zeros(3), 0
 
-def get_mean_std_rgb_img_multiprocessing(dir: str="path/2/images", num_workers: int=nw):
+def get_mean_std_rgb_img_multiprocessing(dir: str="path/2/images", num_workers: int=8):
 		print(f"Calculating Mean-Std for {len(os.listdir(dir))} RGB images (multiprocessing: {num_workers} CPUs)")
 		t0 = time.time()
 		# Initialize variables to accumulate the sum and sum of squares for each channel

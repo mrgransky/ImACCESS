@@ -24,6 +24,7 @@ parser.add_argument('--embedding_size', type=int, default=1024, help='Embedding 
 parser.add_argument('--query', type=str, default="air base", help='Query')
 parser.add_argument('--print_every', type=int, default=100, help='Print loss')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
+parser.add_argument('--num_workers', type=int, default=multiprocessing.cpu_count(), help='Number of CPUs [def: max cpus]')
 parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set [def: 0.23]')
 parser.add_argument('--learning_rate', type=float, default=1e-3, help='small learning rate for better convergence [def: 1e-3]')
 parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay [def: 1e-4]')
@@ -75,7 +76,7 @@ def validate(val_df, model, mean, std):
 		dataset=val_dataset,
 		shuffle=False,
 		batch_size=args.batch_size,
-		num_workers=nw,
+		num_workers=args.num_workers,
 		pin_memory=True,  # Move data to GPU faster if using CUDA
 		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)		
@@ -109,7 +110,7 @@ def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/
 		dataset=val_dataset,
 		shuffle=False,
 		batch_size=args.batch_size, 
-		num_workers=nw,
+		num_workers=args.num_workers,
 		pin_memory=True, # when using CUDA
 		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)
@@ -202,7 +203,7 @@ def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/
 	print(f"Elapsed_t: {time.time()-vdl_st:.2f} sec")
 
 def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0.5, 0.5, 0.5]):
-	print(f"Fine-tuning using {device} in {torch.cuda.get_device_name(device)} using {nw} CPU(s)".center(150, "-"))
+	print(f"Fine-tuning using {device} in {torch.cuda.get_device_name(device)} using {args.num_workers} CPU(s)".center(150, "-"))
 	# Initialize TensorBoard writer
 	writer = SummaryWriter(log_dir=os.path.join(outputs_dir, "logs"))
 	
@@ -221,9 +222,9 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 		dataset=train_dataset,
 		shuffle=True,
 		batch_size=args.batch_size,
-		num_workers=nw,
+		num_workers=args.num_workers,
 		pin_memory=True,  # Move data to GPU faster if using CUDA
-		persistent_workers=True if nw > 1 else False,  # Keep workers alive if memory allows
+		persistent_workers=True if args.num_workers > 1 else False,  # Keep workers alive if memory allows
 		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)
 	print(f"num_samples[Total]: {len(train_data_loader.dataset)} Elapsed_t: {time.time()-tdl_st:.5f} sec")
@@ -346,7 +347,7 @@ def main():
 		img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
 	except Exception as e:
 		print(f"{e}")
-		img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(dir=os.path.join(args.dataset_dir, "images"), num_workers=nw)
+		img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(dir=os.path.join(args.dataset_dir, "images"), num_workers=args.num_workers)
 		save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 		save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
 	print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
@@ -411,7 +412,7 @@ def main():
 	# 	dataset=val_dataset, 
 	# 	shuffle=False,
 	# 	batch_size=args.batch_size, #32, # double check!!!! 
-	# 	num_workers=nw,
+	# 	num_workers=args.num_workers,
 	# 	collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	# )
 	# print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
