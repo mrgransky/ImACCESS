@@ -218,6 +218,7 @@ def set_seeds():
 		torch.backends.cudnn.benchmark = True
 
 def clean_(text: str="sample text"):
+	print(f"raw: {text}")
 	text = text.lower()
 	text = re.sub(r'original caption', '', text)
 	text = re.sub(r'[^a-zA-Z\s]', '', text) # Remove special characters and digits
@@ -225,6 +226,8 @@ def clean_(text: str="sample text"):
 	text = re.sub(r'[^\w\s]', '', text) # Remove punctuation
 	text = re.sub(r'[^a-zA-Z0-9\s]', '', text) # Remove special characters
 	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
+	print(f"cleaned: {text}")
+	print("#"*100)
 	return text
 
 def get_model_details(model, img_size=(3, 224, 224), text_size=(77,), batch_size=1):
