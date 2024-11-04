@@ -103,8 +103,14 @@ def load_pickle(fpath:str="unknown",):
 	return pkl
 
 def clean_(text: str="sample text"):
-	text = re.sub(r'[";=&#<>_\-\+\^\.\$\[\]]', '', text.lower())
+	# print(f"raw: {text}")
+	text = text.lower()
+	text = re.sub(r'original caption', '', text)
+	text = re.sub(r'[^a-zA-Z\s]', '', text) # Remove special characters and digits
+	text = re.sub(r'[";=&#<>_\-\+\^\.\$\[\]]', '', text)
 	text = re.sub(r'[^\w\s]', '', text) # Remove punctuation
 	text = re.sub(r'[^a-zA-Z0-9\s]', '', text) # Remove special characters
 	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
+	# print(f"cleaned: {text}")
+	# print("#"*100)
 	return text
