@@ -19,23 +19,24 @@ class AddFilmGrain(object):
 				
 				# Convert back to PIL Image
 				return Image.fromarray(img_with_grain)
-
+		
 class ResizeWithPad:
-		def __init__(self, target_size):
-			self.target_size = target_size
-		def __call__(self, img):
-			img_np = np.array(img)
-			# Calculate scaling factor
-			scale = min(self.target_size[0] / img_np.shape[0], self.target_size[1] / img_np.shape[1])
-			new_size = tuple(int(dim * scale) for dim in img_np.shape[:2])
-			resized = Image.fromarray(img_np).resize(new_size[::-1], Image.LANCZOS)
-			new_img = Image.new("RGB", self.target_size, color=0) # Create new image with padding
-			# Paste resized image onto padded image
-			new_img.paste(
-				resized, 
-				((self.target_size[1] - new_size[1]) // 2, (self.target_size[0] - new_size[0]) // 2)
-			)
-			return new_img
+	def __init__(self, target_size):
+		self.target_size = target_size	
+
+	def __call__(self, img):
+		img_np = np.array(img)
+		# Calculate scaling factor
+		scale = min(self.target_size[0] / img_np.shape[0], self.target_size[1] / img_np.shape[1])
+		new_size = tuple(int(dim * scale) for dim in img_np.shape[:2])
+		resized = Image.fromarray(img_np).resize(new_size[::-1], Image.LANCZOS)
+		new_img = Image.new("RGB", self.target_size, color=0) # Create new image with padding
+		# Paste resized image onto padded image
+		new_img.paste(
+			resized, 
+			((self.target_size[1] - new_size[1]) // 2, (self.target_size[0] - new_size[0]) // 2)
+		)
+		return new_img
 
 class ContrastEnhanceAndDenoise:
 	def __init__(self, contrast_cutoff=2, blur_radius=0.1):
@@ -111,6 +112,26 @@ class HistoricalDataset(Dataset):
 					],
 					p=0.1,
 				),
+				# #############################################################################
+				T.RandomApply(
+					[
+						T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2)
+					],
+					p=0.3,
+				),
+				T.RandomApply(
+					[
+						T.RandomRotation(degrees=15)
+					],
+					p=0.3,
+				),
+				# T.RandomApply(
+				# 	[
+				# 		T.RandomCrop(size=128, padding=4)
+				# 	],
+				# 	p=0.3,
+				# ),
+				# #############################################################################
 				T.ToTensor(),
 				T.Normalize(mean=mean, std=std),
 			]

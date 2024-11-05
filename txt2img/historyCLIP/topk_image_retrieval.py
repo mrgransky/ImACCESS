@@ -12,6 +12,7 @@ parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--dataset_dir', type=str, default="myntradataset", help='Dataset DIR')
 parser.add_argument('--image_size', type=int, default=150, help='Image size')
 parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
+parser.add_argument('--num_workers', type=int, default=multiprocessing.cpu_count(), help='Number of CPUs [def: max cpus]')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch Size')
 parser.add_argument('--embedding_size', type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
 parser.add_argument('--num_epochs', type=int, default=1, help='Number of epochs')
@@ -61,11 +62,11 @@ val_loader = DataLoader(
 	dataset=val_dataset, 
 	shuffle=False,
 	batch_size=args.batch_size,
-	num_workers=nw,
+	num_workers=args.num_workers,
 	collate_fn=custom_collate_fn,  # Use custom collate function to handle None values
 )
 print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
-# get_info(dataloader=val_loader)
+get_info(dataloader=val_loader)
 
 model = CLIP(
 	emb_dim=args.embedding_size,

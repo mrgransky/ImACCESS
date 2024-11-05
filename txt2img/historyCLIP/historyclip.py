@@ -3,7 +3,7 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run [Local]:
-# $ python historyclip.py --query "air base" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1 --num_workers 12
+# $ python historyclip.py --query "air base" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1 --num_workers 15
 # $ python historyclip.py --query "airbae" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
 
 # $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 10 --patch_size 5 --image_size 160 --num_workers 12 >> $PWD/logs/historyCLIP.out & 
@@ -12,7 +12,7 @@ from dataset_loader import HistoricalDataset
 # Ensure Conda:
 # $ conda activate py39
 # $ python historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 1
-# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 50 --patch_size 5 --image_size 160 --batch_size 96 --query "dam construction" >> /media/volume/trash/ImACCESS/historyCLIP.out &
+# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 50 --patch_size 5 --image_size 160 --batch_size 80 --query "dam construction" > /media/volume/trash/ImACCESS/historyCLIP.out &
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
@@ -26,9 +26,9 @@ parser.add_argument('--print_every', type=int, default=100, help='Print loss')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
 parser.add_argument('--num_workers', type=int, default=multiprocessing.cpu_count(), help='Number of CPUs [def: max cpus]')
 parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set [def: 0.23]')
-parser.add_argument('--learning_rate', type=float, default=1e-3, help='small learning rate for better convergence [def: 1e-3]')
-parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay [def: 1e-4]')
-parser.add_argument('--validate', type=bool, default=False, help='Model Validation upon request')
+parser.add_argument('--learning_rate', type=float, default=1e-2, help='small learning rate for better convergence [def: 1e-3]')
+parser.add_argument('--weight_decay', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
+parser.add_argument('--examine_model', type=bool, default=True, help='Model Validation upon request')
 parser.add_argument('--visualize', type=bool, default=False, help='Model Validation upon request')
 parser.add_argument('--document_description_col', type=str, default="query", help='labels')
 
@@ -62,7 +62,7 @@ img_bw_std_fpth:str = os.path.join(args.dataset_dir, "img_bw_std.pkl")
 img_rgb_mean_fpth:str = os.path.join(args.dataset_dir, "img_rgb_mean.pkl")
 img_rgb_std_fpth:str = os.path.join(args.dataset_dir, "img_rgb_std.pkl")
 
-def validate(val_df, model, mean, std):
+def get_val_loss(val_df, model, mean, std):
 	print(f"Validating val_dataset: {val_df.shape}", end="\t")
 	model.eval()
 	val_dataset = HistoricalDataset(
@@ -94,7 +94,7 @@ def validate(val_df, model, mean, std):
 	return avg_val_loss
 
 def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, mean=0.5, std=0.5):
-	print(f"Validation".center(160, "-"))
+	print(f"Model Examination & Accuracy".center(160, "-"))
 	print(f"Validating {model_fpth} in {device}")
 	vdl_st = time.time()
 	print(f"Creating Validation Dataloader for {len(val_df)} samples", end="\t\t")
@@ -136,25 +136,31 @@ def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/
 	).to(device)
 	
 	model.load_state_dict(torch.load(model_fpth, map_location=device))
-	# Call the function to get model details
-	get_model_details(
-		model, 
-		img_size=(3, args.image_size, args.image_size),
-		text_size=(max_seq_length,),
-	)
+
+	# get_model_details(
+	# 	model, 
+	# 	img_size=(3, args.image_size, args.image_size),
+	# 	text_size=(max_seq_length,),
+	# )
+
 	text = torch.stack(
-		[tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[0] for txt in img_lbls_dict.values()]
+		[
+			tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[0] for txt in img_lbls_dict.values()
+		]
 	).to(device) # <class 'torch.Tensor'> torch.Size([55, 256]) 
 	mask = torch.stack(
-		[tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[1] for txt in img_lbls_dict.values()]
+		[
+			tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[1] for txt in img_lbls_dict.values()
+		]
 	) # <class 'torch.Tensor'> torch.Size([55, 256, 256])
 	mask = mask.repeat(1, len(mask[0])).reshape(len(mask), len(mask[0]), len(mask[0])).to(device)
 	print(f"text: {type(text)} {text.shape} ")
 	print(f"mask: {type(mask)} {mask.shape} ") # 1D tensor of size max_seq_length
 	print("#"*100)
+
 	correct, total = 0,0
 	with torch.no_grad():
-		for data in val_loader:				
+		for data in val_loader:
 			images, labels = data["image"].to(device), data["caption"].to(device)
 			
 			image_features = model.vision_encoder(images)
@@ -168,7 +174,9 @@ def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/
 			# Compare Predictions with Ground Truth:
 			_, predicted_label_idx = torch.max(input=similarity, dim=1) 
 			predicted_label = torch.stack(
-				[tokenizer(img_lbls_dict[int(i)], encode=True, max_seq_length=max_seq_length)[0] for i in predicted_label_idx]
+				[
+					tokenizer(img_lbls_dict[int(i)], encode=True, max_seq_length=max_seq_length)[0] for i in predicted_label_idx
+				]
 			).to(device) # <class 'torch.Tensor'> torch.Size([32, 256])
 			# print(type(predicted_label), predicted_label.shape, )
 			correct += int(sum(torch.sum((predicted_label==labels),dim=1)//len(predicted_label[0])))
@@ -197,8 +205,6 @@ def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/
 	text_features /= text_features.norm(dim=-1, keepdim=True)
 	similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
 	values, indices = similarity[0].topk(TOP_K)
-
-	# Print the result
 	print(
 		f'\nTop-{TOP_K} Prediction(s) for IMG: {idx}: '
 		f'Decoded text: {tokenizer(val_dataset[idx]["caption"], encode=False, mask=val_dataset[idx]["mask"][0], max_seq_length=max_seq_length)}:\n')
@@ -251,21 +257,45 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 		device=device,
 		retrieval=False,
 	).to(device)
+
 	optimizer = optim.AdamW(
-		params=model.parameters(), 
-		lr=args.learning_rate, 
+		params=model.parameters(),
+		betas=(0.9, 0.999), 
+		eps=1e-18,
+		lr=args.learning_rate,
 		weight_decay=args.weight_decay, # weight decay (L2 regularization)
 	)
-	# scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=5)
-	# scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.num_epochs)
-	scheduler = torch.optim.lr_scheduler.OneCycleLR( # Learning rate scheduler with warmup
-		optimizer, 
+	steps = []
+	lrs = []
+	# optimizer = optim.Adam(
+	# 	params=model.parameters(), 
+	# 	lr=args.learning_rate, 
+	# 	weight_decay=args.weight_decay, # weight decay (L2 regularization)
+	# 	betas=(0.9, 0.999), 
+	# 	eps=1e-18, # added to the denominator of the Adam update rule to prevent division by zero
+	# )
+
+	# ReduceLROnPlateau
+	# scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=model_optimizer, mode='min', factor=0.1, patience=5, verbose=True)
+
+	# StepLR
+	# scheduler = optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=10, gamma=0.1)
+
+	# MultiStepLR
+	# scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[10, 20, 30], gamma=0.1)
+
+	# CosineAnnealingLR
+	# scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=10, eta_min=0.001)
+
+	scheduler = torch.optim.lr_scheduler.OneCycleLR(
+		optimizer=optimizer, 
 		max_lr=args.learning_rate, 
 		steps_per_epoch=len(train_data_loader), 
 		epochs=args.num_epochs,
-		pct_start=0.1,  # Warmup for 10% of the total steps
-		anneal_strategy='cos',  # Cosine annealing
+		pct_start=0.3, # percentage of the cycle (in number of steps) spent increasing the learning rate
+		anneal_strategy='cos', # Cosine annealing
 	)
+
 	total_params = 0
 	total_params = sum([param.numel() for param in model.parameters() if param.requires_grad])
 	print(f"Total trainable parameters (Vision + Text) Encoder: {total_params} ~ {total_params/int(1e+6):.2f} M")
@@ -309,6 +339,8 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			optimizer.step()
 			scheduler.step()
+			# print(scheduler.get_last_lr())
+			lrs.append(scheduler.get_last_lr()[0])
 
 			if batch_idx % args.print_every == 0:
 				print(f"\tBatch [{batch_idx + 1}/{len(train_data_loader)}] Loss: {loss.item():.5f}")
@@ -327,7 +359,7 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 		############################## traditional model saving ##############################
 		
 		############################## Early stopping ##############################
-		avg_val_loss = validate(val_df, model, mean, std)
+		avg_val_loss = get_val_loss(val_df, model, mean, std)
 		writer.add_scalar('Loss/validation', avg_val_loss, epoch)
 		average_val_losses.append(avg_val_loss)
 
@@ -355,6 +387,8 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 			}
 			torch.save(checkpoint, checkpoint_path)
 			print(f"Checkpoint saved at epoch {epoch+1} : {checkpoint_path}")
+
+	print(f"LRs[{len(lrs)}]:\n{lrs}")
 
 	loss_fname = (
 		f'loss'
@@ -444,8 +478,10 @@ def main():
 
 	# Print the sizes of the datasets
 	print(f"df: {df.shape} train_df: {train_df.shape} val_df({args.validation_dataset_share}): {val_df.shape}")
-	print(f"img_lbls_dict {type(img_lbls_dict)} {len(img_lbls_dict)}")
-	print(f"img_lbls_list {type(img_lbls_list)} {len(img_lbls_list)}")
+	print(
+		f"img_lbls_dict {type(img_lbls_dict)} {len(img_lbls_dict)} "
+		f"img_lbls_list {type(img_lbls_list)} {len(img_lbls_list)}"
+	)
 	# return
 	if not os.path.exists(mdl_fpth):
 		train(
@@ -453,6 +489,7 @@ def main():
 			val_df=val_df,
 			mean=img_rgb_mean,
 			std=img_rgb_std,
+			checkpoint_interval=2,
 		)
 
 	# print(f"Creating Validation Dataloader for {len(val_df)} images", end="\t")
@@ -473,7 +510,7 @@ def main():
 	# print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
 	# get_info(dataloader=val_loader)
 
-	if args.validate:
+	if args.examine_model:
 		examine_model(
 			val_df=val_df,
 			class_names=img_lbls_list,
@@ -496,6 +533,7 @@ def main():
 		'--batch_size', str(args.batch_size),
 		'--embedding_size', str(args.embedding_size),
 		'--num_epochs', str(args.num_epochs),
+		'--num_workers', str(args.num_workers),
 		'--validation_dataset_share', str(args.validation_dataset_share),
 		'--learning_rate', str(args.learning_rate),
 		'--weight_decay', str(args.weight_decay),
