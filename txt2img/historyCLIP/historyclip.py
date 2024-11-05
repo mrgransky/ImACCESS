@@ -3,7 +3,7 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run [Local]:
-# $ python historyclip.py --query "air base" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1
+# $ python historyclip.py --query "air base" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1 --num_workers 12
 # $ python historyclip.py --query "airbae" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
 
 # $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 10 --patch_size 5 --image_size 160 --num_workers 12 >> $PWD/logs/historyCLIP.out & 
@@ -12,7 +12,7 @@ from dataset_loader import HistoricalDataset
 # Ensure Conda:
 # $ conda activate py39
 # $ python historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 1
-# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 100 --patch_size 5 --image_size 160 --batch_size 64 --query "dam construction" >> /media/volume/trash/ImACCESS/historyCLIP.out &
+# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 50 --patch_size 5 --image_size 160 --batch_size 96 --query "dam construction" >> /media/volume/trash/ImACCESS/historyCLIP.out &
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
@@ -92,7 +92,7 @@ def validate(val_df, model, mean, std):
 	avg_val_loss = val_loss / len(val_loader)
 	print(f"Validation Loss: {avg_val_loss:.5f}")
 	return avg_val_loss
-		
+
 def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, mean=0.5, std=0.5):
 	print(f"Validation".center(160, "-"))
 	print(f"Validating {model_fpth} in {device}")
@@ -156,10 +156,13 @@ def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/
 	with torch.no_grad():
 		for data in val_loader:				
 			images, labels = data["image"].to(device), data["caption"].to(device)
+			
 			image_features = model.vision_encoder(images)
 			text_features = model.text_encoder(text, mask=mask)
+			
 			image_features /= image_features.norm(dim=-1, keepdim=True)
 			text_features /= text_features.norm(dim=-1, keepdim=True)
+
 			similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1) # (batch_size, num_captions)
 			# print(type(similarity), similarity.shape, similarity)
 			# Compare Predictions with Ground Truth:
@@ -203,10 +206,9 @@ def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/
 		print(f"index: {index}: {class_names[int(index)]:>30s}: {100 * value.item():.3f}%")
 	print(f"Elapsed_t: {time.time()-vdl_st:.2f} sec")
 
-def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0.5, 0.5, 0.5]):
-	print(f"Fine-tuning using {device} in {torch.cuda.get_device_name(device)} using {args.num_workers} CPU(s)".center(150, "-"))
-	# Initialize TensorBoard writer
-	writer = SummaryWriter(log_dir=os.path.join(outputs_dir, "logs"))
+def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0.5, 0.5, 0.5], checkpoint_interval:int=5):
+	print(f"Training CLIP model using {device}[{torch.cuda.get_device_name(device)}] & {args.num_workers} CPU(s)".center(150, "-"))
+	writer = SummaryWriter(log_dir=os.path.join(outputs_dir, "logs")) # Initialize TensorBoard writer
 	
 	print(f"Creating Train Dataloader", end="\t")
 	tdl_st = time.time()
@@ -254,7 +256,7 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 		lr=args.learning_rate, 
 		weight_decay=args.weight_decay, # weight decay (L2 regularization)
 	)
-	# scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=10)
+	# scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.1, patience=5)
 	# scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.num_epochs)
 	scheduler = torch.optim.lr_scheduler.OneCycleLR( # Learning rate scheduler with warmup
 		optimizer, 
@@ -268,12 +270,34 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 	total_params = sum([param.numel() for param in model.parameters() if param.requires_grad])
 	print(f"Total trainable parameters (Vision + Text) Encoder: {total_params} ~ {total_params/int(1e+6):.2f} M")
 	best_loss = np.inf
+	patience = 5  # Number of epochs to wait for improvement before stopping
+	no_improvement_count = 0
+
+	# Check if there is a checkpoint to load
+	start_epoch = 0
+	checkpoint_dir = os.path.join(args.dataset_dir, models_dir_name, "checkpoints")
+	os.makedirs(checkpoint_dir, exist_ok=True)
+	checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.pt")
+	if os.path.exists(checkpoint_path):
+		checkpoint = torch.load(checkpoint_path)
+		model.load_state_dict(checkpoint['model_state_dict'])
+		optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+		scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+		start_epoch = checkpoint['epoch'] + 1
+		best_loss = checkpoint['best_loss']
+		no_improvement_count = checkpoint['no_improvement_count']
+		print(f"Resuming training from epoch {start_epoch}...")
+				
 	print(f"Training {args.num_epochs} Epoch(s) in {device}".center(100, "-"))
 	training_st = time.time()
-	average_losses = list()
+	
+	average_train_losses = list()
+	average_val_losses = list()
+
 	for epoch in range(args.num_epochs):
 		print(f"Epoch [{epoch+1}/{args.num_epochs}]")
 		epoch_loss = 0.0  # To accumulate the loss over the epoch
+		model.train()
 		for batch_idx, data in enumerate(train_data_loader):
 			img = data["image"].to(device) 
 			cap = data["caption"].to(device)
@@ -292,20 +316,23 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 			epoch_loss += loss.item()
 			writer.add_scalar('Loss/train', loss.item(), epoch * len(train_data_loader) + batch_idx)
 
-		avg_loss = epoch_loss / len(train_data_loader)
-		print(f"Average Loss: {avg_loss:.5f} @ Epoch: {epoch+1}")
-		average_losses.append(avg_loss)
+		avg_train_loss = epoch_loss / len(train_data_loader)
+		print(f"Average Training Loss: {avg_train_loss:.5f} @ Epoch: {epoch+1}")
+		average_train_losses.append(avg_train_loss)
 		############################## traditional model saving ##############################
-		# if avg_loss <= best_loss:
-		# 	best_loss = avg_loss
+		# if avg_train_loss <= best_loss:
+		# 	best_loss = avg_train_loss
 		# 	torch.save(model.state_dict(), mdl_fpth)
 		# 	print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.5f}")
 		############################## traditional model saving ##############################
+		
 		############################## Early stopping ##############################
-		val_loss = validate(val_df, model, mean, std)
-		writer.add_scalar('Loss/validation', val_loss, epoch)		
-		if val_loss < best_loss:
-			best_loss = val_loss
+		avg_val_loss = validate(val_df, model, mean, std)
+		writer.add_scalar('Loss/validation', avg_val_loss, epoch)
+		average_val_losses.append(avg_val_loss)
+
+		if avg_val_loss < best_loss:
+			best_loss = avg_val_loss
 			torch.save(model.state_dict(), mdl_fpth)
 			print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.5f}")
 			no_improvement_count = 0
@@ -315,7 +342,20 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 				print(f"Early stopping triggered after {epoch+1} epochs.")
 				break
 		############################## Early stopping ##############################
-		writer.add_scalar('Average Loss/train', avg_loss, epoch)
+		writer.add_scalar('Average Loss/train', avg_train_loss, epoch)
+		# Save checkpoint
+		if (epoch + 1) % checkpoint_interval == 0:
+			checkpoint = {
+				'epoch': epoch,
+				'model_state_dict': model.state_dict(),
+				'optimizer_state_dict': optimizer.state_dict(),
+				'scheduler_state_dict': scheduler.state_dict(),
+				'best_loss': best_loss,
+				'no_improvement_count': no_improvement_count
+			}
+			torch.save(checkpoint, checkpoint_path)
+			print(f"Checkpoint saved at epoch {epoch+1} : {checkpoint_path}")
+
 	loss_fname = (
 		f'loss'
 		+ f'_epochs_{args.num_epochs}'
@@ -324,9 +364,22 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 		+ f'.png'
 	)
 	plot_loss(
-		losses=average_losses, 
+		losses=average_train_losses, 
 		num_epochs=args.num_epochs, 
 		save_path=os.path.join(outputs_dir, loss_fname),
+	)
+	losses_fname = (
+		f'losses_train_val'
+		+ f'_epochs_{args.num_epochs}'
+		+ f'_lr_{args.learning_rate}'
+		+ f'_wd_{args.weight_decay}'
+		+ f'.png'
+	)
+	plot_(
+		train_losses=average_train_losses, 
+		val_losses=average_val_losses, 
+		num_epochs=args.num_epochs, 
+		save_path=os.path.join(outputs_dir, losses_fname),
 	)
 	print(f"Elapsed_t: {time.time()-training_st:.5f} sec".center(150, "-"))
 	writer.close()

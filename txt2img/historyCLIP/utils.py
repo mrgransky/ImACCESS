@@ -205,6 +205,31 @@ def get_img_name_without_suffix(fpth):
 	filename, extension = os.path.splitext(basename)
 	return int(filename)
 
+def plot_(train_losses, val_losses, num_epochs, save_path):
+		"""
+		Plots the training and validation losses with respect to epoch and saves the plot.
+		Parameters:
+		train_losses (list): List of training loss values for each epoch.
+		val_losses (list): List of validation loss values for each epoch.
+		num_epochs (int): Number of epochs.
+		save_path (str): Path to save the plot.
+		"""
+		if num_epochs == 1:
+				return
+		print(f"Saving Loss in {save_path}")
+		epochs = range(1, num_epochs + 1)
+		
+		plt.figure(figsize=(10, 5))
+		plt.plot(epochs, train_losses, marker='o', linestyle='-', color='b', label='Training Loss')
+		plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation Loss')
+		plt.xlabel('Epoch')
+		plt.ylabel('Loss')
+		plt.title('Training and Validation Loss vs. Epoch')
+		plt.grid(True)
+		plt.legend()
+		plt.savefig(save_path)
+		plt.close()  # Close the figure to free up memory
+
 def plot_loss(losses, num_epochs, save_path):
 	"""
 	Plots the loss with respect to epoch and saves the plot.
