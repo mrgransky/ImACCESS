@@ -36,6 +36,7 @@ models_dir_name = (
 	+ f"_image_size_{args.image_size}"
 	+ f"_patch_size_{args.patch_size}"
 	+ f"_embedding_size_{args.embedding_size}"
+	+ f"_device_{re.sub(r':', '', str(args.device))}"
 )
 
 os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
@@ -81,19 +82,19 @@ model = CLIP(
 	text_heads=text_heads,
 	text_layers=text_layers,
 	text_d_model=text_d_model,
-	device=device,
+	device=args.device,
 	retrieval=False,
-).to(device)
+).to(args.device)
 
 def zero_shot_clasification(vidx:int=110, model_fpth:str=f"path/to/models/clip.pt", topk_labels:int=5):
 	# vidx = random.randint(0, len(val_df))
 	print(f"Zero-shot Classification for vidx: {vidx}")
-	model.load_state_dict(torch.load(mdl_fpth, map_location=device))
+	model.load_state_dict(torch.load(mdl_fpth, map_location=args.device))
 	class_names:List[str] = img_lbls_list
 
-	text = torch.stack([tokenizer(x)[0] for x in class_names]).to(device)
+	text = torch.stack([tokenizer(x)[0] for x in class_names]).to(args.device)
 	mask = torch.stack([tokenizer(x)[1] for x in class_names])
-	mask = mask.repeat(1, len(mask[0])).reshape(len(mask), len(mask[0]), len(mask[0])).to(device)
+	mask = mask.repeat(1, len(mask[0])).reshape(len(mask), len(mask[0]), len(mask[0])).to(args.device)
 
 	img = val_dataset[vidx]["image"][None,:]
 
@@ -102,7 +103,7 @@ def zero_shot_clasification(vidx:int=110, model_fpth:str=f"path/to/models/clip.p
 		plt.title(tokenizer(val_dataset[vidx]["caption"], encode=False, mask=val_dataset[vidx]["mask"][0], max_seq_length=max_seq_length)[0])
 		plt.show()
 
-	img = img.to(device)
+	img = img.to(args.device)
 	with torch.no_grad():
 		image_features = model.vision_encoder(img)
 		text_features = model.text_encoder(text, mask=mask)

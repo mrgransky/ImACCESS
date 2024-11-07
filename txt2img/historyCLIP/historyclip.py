@@ -11,8 +11,8 @@ from dataset_loader import HistoricalDataset
 # how to run [Pouta]:
 # Ensure Conda:
 # $ conda activate py39
-# $ python historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs --device "cuda:2"
-# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 50 --patch_size 5 --image_size 160 --batch_size 80 --query "dam construction" > /media/volume/trash/ImACCESS/historyCLIP.out &
+# $ python historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --device "cuda:2" --num_epochs 1 --batch_size 128
+# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 50 --device "cuda:2" --patch_size 5 --image_size 160 --batch_size 128 > /media/volume/trash/ImACCESS/historyCLIP_cuda3.out &
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
@@ -64,8 +64,6 @@ img_bw_std_fpth:str = os.path.join(args.dataset_dir, "img_bw_std.pkl")
 img_rgb_mean_fpth:str = os.path.join(args.dataset_dir, "img_rgb_mean.pkl")
 img_rgb_std_fpth:str = os.path.join(args.dataset_dir, "img_rgb_std.pkl")
 
-device = args.device
-
 model = CLIP(
 	emb_dim=args.embedding_size,
 	vit_layers=vit_layers,
@@ -79,9 +77,9 @@ model = CLIP(
 	text_heads=text_heads,
 	text_layers=text_layers,
 	text_d_model=text_d_model,
-	device=device,
+	device=args.device,
 	retrieval=False,
-).to(device)
+).to(args.device)
 
 def get_val_loss(val_df, model, mean, std):
 	print(f"Validating val_dataset: {val_df.shape}", end="\t")
@@ -105,9 +103,9 @@ def get_val_loss(val_df, model, mean, std):
 	val_loss = 0.0
 	with torch.no_grad():
 		for data in val_loader:
-			img = data["image"].to(device)
-			cap = data["caption"].to(device)
-			mask = data["mask"].to(device)
+			img = data["image"].to(args.device)
+			cap = data["caption"].to(args.device)
+			mask = data["mask"].to(args.device)
 			loss = model(img, cap, mask)
 			val_loss += loss.item()
 	avg_val_loss = val_loss / len(val_loader)
@@ -116,7 +114,7 @@ def get_val_loss(val_df, model, mean, std):
 
 def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0.5, 0.5, 0.5]):
 	print(f"Model Examination & Accuracy".center(160, "-"))
-	print(f"Validating {model_fpth} in {device}")
+	print(f"Validating {model_fpth} in {args.device}")
 	vdl_st = time.time()
 	print(f"Creating Validation Dataloader for {len(val_df)} samples", end="\t\t")
 	vdl_st = time.time()
@@ -138,7 +136,7 @@ def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/
 	)
 	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
 	get_info(dataloader=val_loader)	
-	model.load_state_dict(torch.load(model_fpth, map_location=device))
+	model.load_state_dict(torch.load(model_fpth, map_location=args.device))
 
 	# get_model_details(
 	# 	model, 
@@ -150,21 +148,20 @@ def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/
 		[
 			tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[0] for txt in img_lbls_dict.values()
 		]
-	).to(device) # <class 'torch.Tensor'> torch.Size([55, 256]) 
+	).to(args.device) # <class 'torch.Tensor'> torch.Size([55, 256]) 
 	mask = torch.stack(
 		[
 			tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[1] for txt in img_lbls_dict.values()
 		]
 	) # <class 'torch.Tensor'> torch.Size([55, 256, 256])
-	mask = mask.repeat(1, len(mask[0])).reshape(len(mask), len(mask[0]), len(mask[0])).to(device)
+	mask = mask.repeat(1, len(mask[0])).reshape(len(mask), len(mask[0]), len(mask[0])).to(args.device)
 	print(f"text: {type(text)} {text.shape} ")
 	print(f"mask: {type(mask)} {mask.shape} ") # 1D tensor of size max_seq_length
-	print("#"*100)
 
 	correct, total = 0,0
 	with torch.no_grad():
 		for data in val_loader:
-			images, labels = data["image"].to(device), data["caption"].to(device)
+			images, labels = data["image"].to(args.device), data["caption"].to(args.device)
 			
 			image_features = model.vision_encoder(images)
 			text_features = model.text_encoder(text, mask=mask)
@@ -180,14 +177,14 @@ def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/
 				[
 					tokenizer(img_lbls_dict[int(i)], encode=True, max_seq_length=max_seq_length)[0] for i in predicted_label_idx
 				]
-			).to(device) # <class 'torch.Tensor'> torch.Size([32, 256])
+			).to(args.device) # <class 'torch.Tensor'> torch.Size([32, 256])
 			# print(type(predicted_label), predicted_label.shape, )
 			correct += int(sum(torch.sum((predicted_label==labels),dim=1)//len(predicted_label[0])))
 			total += len(labels)
-	print(f'\nModel Accuracy (Top1): {100 * correct // total} %')
+	print(f'Model Accuracy (Top1): {100 * correct // total} %'.center(160, "-"))
 
 def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0.5, 0.5, 0.5], checkpoint_interval:int=5):
-	print(f"Training CLIP model using {device}[{torch.cuda.get_device_name(device)}] & {args.num_workers} CPU(s)".center(150, "-"))
+	print(f"Training CLIP model using {args.device}[{torch.cuda.get_device_name(args.device)}] & {args.num_workers} CPU(s)".center(150, "-"))
 	writer = SummaryWriter(log_dir=os.path.join(outputs_dir, "logs")) # Initialize TensorBoard writer
 	
 	print(f"Creating Train Dataloader", end="\t")
@@ -256,7 +253,7 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 		no_improvement_count = checkpoint['no_improvement_count']
 		print(f"Resuming training from epoch {start_epoch}...")
 				
-	print(f"Training {args.num_epochs} Epoch(s) in {device}".center(100, "-"))
+	print(f"Training {args.num_epochs} Epoch(s) in {args.device}".center(100, "-"))
 	training_st = time.time()
 	
 	average_train_losses = list()
@@ -264,7 +261,7 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 
 	# Add loss scaling for better numerical stability
 	scaler = torch.amp.GradScaler(
-		device=device,
+		device=args.device,
 		init_scale=2**16,
 		growth_factor=2.0,
 		backoff_factor=0.5,
@@ -276,9 +273,9 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 		epoch_loss = 0.0  # To accumulate the loss over the epoch
 		model.train()
 		for batch_idx, data in enumerate(train_data_loader):
-			img = data["image"].to(device) 
-			cap = data["caption"].to(device)
-			mask = data["mask"].to(device)
+			img = data["image"].to(args.device) 
+			cap = data["caption"].to(args.device)
+			mask = data["mask"].to(args.device)
 
 			optimizer.zero_grad()
 
@@ -289,7 +286,7 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 			# optimizer.step()
 
 			# Automatic mixed precision training
-			with torch.amp.autocast(device_type=device.type):
+			with torch.amp.autocast(device_type=args.device.type):
 				loss = model(img, cap, mask)
 			scaler.scale(loss).backward()
 			scaler.unscale_(optimizer)

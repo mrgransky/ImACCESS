@@ -37,6 +37,7 @@ models_dir_name = (
 	+ f"_image_size_{args.image_size}"
 	+ f"_patch_size_{args.patch_size}"
 	+ f"_embedding_size_{args.embedding_size}"
+	+ f"_device_{re.sub(r':', '', str(args.device))}"
 )
 
 os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
@@ -80,9 +81,9 @@ model = CLIP(
 	text_heads=text_heads,
 	text_layers=text_layers,
 	text_d_model=text_d_model,
-	device=device,
+	device=args.device,
 	retrieval=False,
-).to(device)
+).to(args.device)
 
 print(f"Loading retrieval model...", end="\t")
 rm_st = time.time()
@@ -99,10 +100,10 @@ retrieval_model = CLIP(
 	text_heads=text_heads,
 	text_layers=text_layers,
 	text_d_model=text_d_model,
-	device=device,
+	device=args.device,
 	retrieval=True
-).to(device)
-retrieval_model.load_state_dict(torch.load(mdl_fpth, map_location=device))
+).to(args.device)
+retrieval_model.load_state_dict(torch.load(mdl_fpth, map_location=args.device))
 print(f"Elapsed_t: {time.time()-rm_st:.5f} sec")
 
 # get_model_details(
@@ -124,8 +125,8 @@ def img_retrieval(query:str="air base", model_fpth: str=mdl_fpth, TOP_K: int=5, 
 	st_st1 = time.time()
 	query_text, query_mask = tokenizer(query)
 	print(type(query_text), type(query_mask))
-	query_text = query_text.unsqueeze(0).to(device) # Add batch dimension
-	query_mask = query_mask.unsqueeze(0).to(device)
+	query_text = query_text.unsqueeze(0).to(args.device) # Add batch dimension
+	query_mask = query_mask.unsqueeze(0).to(args.device)
 	with torch.no_grad():
 		query_features = retrieval_model.text_encoder(query_text, mask=query_mask)
 		query_features /= query_features.norm(dim=-1, keepdim=True)
@@ -139,7 +140,7 @@ def img_retrieval(query:str="air base", model_fpth: str=mdl_fpth, TOP_K: int=5, 
 	with torch.no_grad():
 		for batch in val_loader:
 			# print(batch)
-			images = batch["image"].to(device)
+			images = batch["image"].to(args.device)
 			features = retrieval_model.vision_encoder(images)
 			features /= features.norm(dim=-1, keepdim=True)			
 			image_features_list.append(features)
