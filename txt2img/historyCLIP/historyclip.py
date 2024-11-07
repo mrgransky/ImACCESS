@@ -12,7 +12,7 @@ from dataset_loader import HistoricalDataset
 # Ensure Conda:
 # $ conda activate py39
 # $ python historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --device "cuda:2" --num_epochs 1 --batch_size 128
-# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 50 --device "cuda:2" --patch_size 5 --image_size 160 --batch_size 128 > /media/volume/trash/ImACCESS/historyCLIP_cuda3.out &
+# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 30 --device "cuda:2" --patch_size 5 --image_size 160 --batch_size 128 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
