@@ -36,6 +36,9 @@ parser.add_argument('--device', default=torch.device("cuda:0" if torch.cuda.is_a
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
+
+print(args)
+print(type(args.device), args.device.type)
 os.makedirs(os.path.join(args.dataset_dir, "outputs"), exist_ok=True)
 outputs_dir:str = os.path.join(args.dataset_dir, "outputs",)
 models_dir_name = (

@@ -109,6 +109,10 @@ text_layers = 8
 
 ################################################################################
 
+def log_gpu_memory(device):
+	print(f'GPU Memory Allocated: {torch.cuda.memory_allocated(device=device) / (1024 ** 2):.2f} MB')
+	print(f'GPU Max Memory Allocated: {torch.cuda.max_memory_allocated(device=device) / (1024 ** 2):.2f} MB')
+
 def visualize_samples(dataloader, num_samples=5):
 		"""
 		Visualize a few samples from the dataloader for debugging purposes.
