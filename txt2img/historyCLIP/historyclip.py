@@ -12,7 +12,7 @@ from dataset_loader import HistoricalDataset
 # Ensure Conda:
 # $ conda activate py39
 # $ python historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --device "cuda:2" --num_epochs 1 --batch_size 128
-# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 30 --device "cuda:2" --learning_rate 1e-4 --weight_decay 1e-1 --patch_size 5 --image_size 160 --batch_size 81 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
+# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 30 --device "cuda:2" --learning_rate 1e-4 --weight_decay 1e-1 --patch_size 5 --image_size 160 --batch_size 80 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
@@ -26,8 +26,8 @@ parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
 parser.add_argument('--num_workers', type=int, default=multiprocessing.cpu_count(), help='Number of CPUs [def: max cpus]')
 parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set [def: 0.23]')
-parser.add_argument('--learning_rate', type=float, default=1e-2, help='small learning rate for better convergence [def: 1e-3]')
-parser.add_argument('--weight_decay', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
+parser.add_argument('--learning_rate', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-3]')
+parser.add_argument('--weight_decay', type=float, default=1e-1, help='Weight decay [def: 5e-4]')
 parser.add_argument('--examine_model', type=bool, default=True, help='Model Validation upon request')
 parser.add_argument('--visualize', type=bool, default=False, help='Model Validation upon request')
 parser.add_argument('--document_description_col', type=str, default="query", help='labels')
