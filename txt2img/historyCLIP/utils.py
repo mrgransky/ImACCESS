@@ -109,10 +109,23 @@ text_layers = 8
 
 ################################################################################
 
+
 def log_gpu_memory(device):
-	gpu_mem_allocated = torch.cuda.memory_allocated(device=device) / (1024 ** 2)
-	gpu_max_mem_allocated = torch.cuda.max_memory_allocated(device=device) / (1024 ** 2)
-	print(f'[GPU Memory]: Allocated: {gpu_mem_allocated:.2f} MB | Max Allocated: {gpu_max_mem_allocated:.2f} MB')
+	gpu_mem_allocated = torch.cuda.memory_allocated(device) / (1024 ** 2)
+	gpu_max_mem_allocated = torch.cuda.max_memory_allocated(device) / (1024 ** 2)
+	gpu_mem_reserved = torch.cuda.memory_reserved(device) / (1024 ** 2)
+	gpu_mem_free = torch.cuda.memory_allocated(device) / (1024 ** 2)
+	gpu_mem_total = torch.cuda.get_device_properties(device).total_memory / (1024 ** 2)
+	gpu_mem_utilization = (gpu_mem_allocated / gpu_mem_total) * 100
+	print(
+		f'[GPU Memory] '
+		f'Allocated: {gpu_mem_allocated:.2f} MB '
+		f'Max Allocated: {gpu_max_mem_allocated:.2f} MB '
+		f'Reserved: {gpu_mem_reserved:.2f} MB '
+		f'Free: {gpu_mem_free:.2f} MB '
+		f'Total: {gpu_mem_total:.2f} MB '
+		f'Utilization: {gpu_mem_utilization:.2f} %'
+	)
 
 def visualize_samples(dataloader, num_samples=5):
 		"""
