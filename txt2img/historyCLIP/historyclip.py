@@ -6,7 +6,7 @@ from dataset_loader import HistoricalDataset
 # $ python historyclip.py --query "air base" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1 
 # # $ python historyclip.py --query "airbae" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
 
-# $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 16 --learning_rate 1e-4 --weight_decay 1e-1 --patch_size 5 --image_size 160 --num_workers 11 --batch_size 22 > $PWD/logs/historyCLIP.out &
+# $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 20 --learning_rate 5e-4 --weight_decay 5e-2 --patch_size 5 --image_size 160 --batch_size 22 > $PWD/logs/historyCLIP.out &
 
 # how to run [Pouta]:
 # Ensure Conda:
