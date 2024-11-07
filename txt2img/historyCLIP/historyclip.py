@@ -31,13 +31,16 @@ parser.add_argument('--weight_decay', type=float, default=1e-3, help='Weight dec
 parser.add_argument('--examine_model', type=bool, default=True, help='Model Validation upon request')
 parser.add_argument('--visualize', type=bool, default=False, help='Model Validation upon request')
 parser.add_argument('--document_description_col', type=str, default="query", help='labels')
-# parser.add_argument('--device', default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
-parser.add_argument('--device', default=torch.device("cuda:0" if torch.cuda.is_available() else "cpu"), help='Device (cuda or cpu)')
+parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
+# parser.add_argument('--device', default=torch.device("cuda:0" if torch.cuda.is_available() else "cpu"), help='Device (cuda or cpu)')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 
 print(args)
+print(type(args.device), args.device)
+
+args.device = torch.device(args.device)
 print(type(args.device), args.device)
 print(args.device.type)
 os.makedirs(os.path.join(args.dataset_dir, "outputs"), exist_ok=True)
