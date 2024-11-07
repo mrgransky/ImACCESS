@@ -1,24 +1,4 @@
 from utils import *
-
-class AddFilmGrain(object):
-	def __init__(self, grain_intensity: float = 0.1, blend_factor: float = 0.2):
-		self.grain_intensity = grain_intensity
-		self.blend_factor = blend_factor
-	def __call__(self, image: Image.Image) -> Image.Image:
-				# Convert image to numpy array
-				img_np = np.array(image).astype(np.float32)
-				
-				# Generate subtle random noise
-				noise = np.random.normal(0, 1, img_np.shape) * self.grain_intensity * 255
-				
-				# Blend noise with original image
-				img_with_grain = img_np * (1 - self.blend_factor) + noise * self.blend_factor
-				
-				# Ensure values stay in valid range
-				img_with_grain = np.clip(img_with_grain, 0, 255).astype(np.uint8)
-				
-				# Convert back to PIL Image
-				return Image.fromarray(img_with_grain)
 		
 class ResizeWithPad:
 	def __init__(self, target_size):
@@ -65,28 +45,11 @@ class HistoricalDataset(Dataset):
 		):
 		self.data_frame = data_frame
 		self.img_sz = img_sz  # Desired size for the square image
-		# self.transform = T.Compose([
-		# 	ContrastEnhanceAndDenoise(contrast_cutoff=1, blur_radius=0.1),  # Mild enhancement
-		# 	# T.Lambda(lambda img: ImageOps.equalize(img)),  # Adaptive Histogram Equalization
-		# 	ResizeWithPad((img_sz, img_sz)),  # Custom resize and pad
-		# 	# AddFilmGrain(grain_intensity=0.1, blend_factor=0.2),
-		# 	T.RandomHorizontalFlip(p=0.5),
-		# 	T.RandomAffine(
-		# 		degrees=10, 
-		# 		translate=(0.05, 0.05), 
-		# 		scale=(0.95, 1.05),
-		# 		shear=5,
-		# 		fill=0,
-		# 	),
-		# 	T.RandomApply([T.ColorJitter(brightness=0.05, contrast=0.05)], p=0.2),
-		# 	# T.RandomApply([T.Lambda(lambda img: ImageOps.invert(img))], p=0.05),  # Occasional invert
-		# 	T.ToTensor(),  # Convert image to tensor
-		# 	T.Normalize(mean=[mean], std=[std]),  # Normalize using calculated mean and std
-		# ])
 		self.transform = T.Compose(
 			[
 				ContrastEnhanceAndDenoise(contrast_cutoff=1, blur_radius=0.1),  # Mild enhancement
 				ResizeWithPad((img_sz, img_sz)),
+				# T.RandomResizedCrop(img_sz, scale=(0.8, 1.0), ratio=(1.0, 1.0)),  # Randomly crop the image
 				T.RandomApply(
 					[
 						T.RandomAffine(
@@ -171,11 +134,12 @@ class HistoricalDataset(Dataset):
 		# if len(mask.size()) == 1:
 		# 	mask = mask.unsqueeze(0)
 		mask = mask.repeat(len(mask), 1) # 1D tensor => (max_seq_length x max_seq_length)
+		# print(f"img: {type(image)} {image.shape} ")
 		# print(f"cap: {type(cap)} {cap.shape} ")
 		# print(f"mask: {type(mask)} {mask.shape} ") # 1D tensor of size max_seq_length
 		# print("#"*100)
 		return {
-			"image": image,
+			"image": image, #  <class 'torch.Tensor'> torch.Size([C, img_sz, img_sz])
 			"caption": cap, # <class 'torch.Tensor'> torch.Size([max_seq_length])
 			"mask": mask, # <class 'torch.Tensor'> torch.Size([max_seq_length, max_seq_length])
 			"image_filepath": img_path,

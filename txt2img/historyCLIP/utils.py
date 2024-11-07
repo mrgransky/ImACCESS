@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import math
 from tqdm import tqdm
 import argparse
 import random
@@ -21,7 +22,6 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.dataloader import default_collate
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Subset
-import multiprocessing
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -29,7 +29,8 @@ from PIL import Image, ImageDraw, ImageOps, ImageFilter
 from typing import List, Set, Dict, Tuple, Union
 import subprocess
 import traceback
-from multiprocessing import Pool
+import multiprocessing
+# from multiprocessing import Pool
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from torch.utils.tensorboard import SummaryWriter
 import nltk
@@ -61,10 +62,11 @@ Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
-if USER == "ubuntu":
-	device = torch.device('cuda:1')
-else:
-	device: str = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# if USER == "ubuntu":
+# 	device = torch.device('cuda:1')
+# else:
+# 	device: str = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 visualize: bool = False
 # nw = 40 if USER=="ubuntu" else min(20, multiprocessing.cpu_count()) # def: 8
@@ -179,7 +181,7 @@ def load_pickle(fpath:str="unknown",):
 	return pkl
 
 def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):
-	print(f"Laoding  {fpth}")
+	print(f"Creating History_df from: {fpth}", end="\t")
 	history_df = pd.read_csv(
 		filepath_or_buffer=fpth,
 		on_bad_lines='skip',
@@ -192,10 +194,10 @@ def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):
 	filtered_df = history_df[history_df['image_exists']].drop(columns=['image_exists'])
 	# df = history_df.copy() # without checking image dir
 	df = filtered_df.copy()
-	print(f"df: {df.shape}")
-	print(df.head(10))
-	print(df['query'].value_counts())
-	print("#"*100)
+	print(f"=> {df.shape}")
+	# print(df.head(10))
+	# print(df['query'].value_counts())
+	# print("#"*100)
 	return df
 
 def get_img_name_without_suffix(fpth):
@@ -205,6 +207,19 @@ def get_img_name_without_suffix(fpth):
 	filename, extension = os.path.splitext(basename)
 	return int(filename)
 
+def plot_lrs_vs_steps(lrs, steps, fpath):
+	print(f"LRs[{len(lrs)}]") # num_epochs * chuncks 10 * 348 = 3480  # len(train_data_loader) * args.num_epochs
+	print(f"Steps[{len(steps)}]") # num_epochs * chuncks 10 * 348 = 3480 
+
+	print(f"Saving learning rates vs steps in {fpath}")
+	plt.figure(figsize=(10, 5))
+	plt.plot(steps, lrs , color='b')
+	plt.xlabel('Steps (Epochs x Chunks)')
+	plt.ylabel('Learning Rates')
+	plt.title(f'Learning Rate vs. Step')
+	plt.grid(True)
+	plt.savefig(fpath)
+	
 def plot_(train_losses, val_losses, num_epochs, save_path):
 		"""
 		Plots the training and validation losses with respect to epoch and saves the plot.
@@ -326,10 +341,11 @@ def tokenizer(text:str="sample label", encode:bool=True, mask=None, max_seq_leng
 		else:
 			mask = mask.type(torch.IntTensor)
 	else: # Decode <class 'torch.Tensor'> => text
-		print(type(text), text.shape, text)
+		print(f"Decoding {type(text)} {text.shape}", end="\t")
 		out = [chr(x) for x in text[1:len(mask.nonzero()) - 1]]
 		out = "".join(out)
 		mask = None
+		print(f"=>> {out} & mask: {mask}")
 	return out, mask # <class 'torch.Tensor'> torch.Size([max_seq_length]), <class 'torch.Tensor'> torch.Size([max_seq_length])
 
 def get_info(dataloader):

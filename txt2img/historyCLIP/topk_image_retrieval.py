@@ -33,7 +33,6 @@ models_dir_name = (
 	+ f"_lr_{args.learning_rate}"
 	+ f"_wd_{args.weight_decay}"
 	+ f"_val_{args.validation_dataset_share}"
-	+ f"_descriptions_{args.document_description_col}"
 	+ f"_batch_size_{args.batch_size}"
 	+ f"_image_size_{args.image_size}"
 	+ f"_patch_size_{args.patch_size}"
@@ -105,11 +104,12 @@ retrieval_model = CLIP(
 ).to(device)
 retrieval_model.load_state_dict(torch.load(mdl_fpth, map_location=device))
 print(f"Elapsed_t: {time.time()-rm_st:.5f} sec")
-get_model_details(
-	model,
-	img_size=(3, args.image_size, args.image_size),
-	text_size=(max_seq_length,),
-)
+
+# get_model_details(
+# 	model,
+# 	img_size=(3, args.image_size, args.image_size),
+# 	text_size=(max_seq_length,),
+# )
 
 def img_retrieval(query:str="air base", model_fpth: str=mdl_fpth, TOP_K: int=5, resulted_IMGname: str="topk_img.png"):
 	print(f"Top-{TOP_K} Image Retrieval | Query: {query} | user: {USER}".center(100, "-"))
@@ -120,7 +120,7 @@ def img_retrieval(query:str="air base", model_fpth: str=mdl_fpth, TOP_K: int=5, 
 		print(val_df['query'].value_counts())
 		return
 	
-	print(f"Step 1: Encode the text query using tokenizer and TextEncoder")
+	print(f"Step 1: Encode text query: {query} using tokenizer and TextEncoder")
 	st_st1 = time.time()
 	query_text, query_mask = tokenizer(query)
 	print(type(query_text), type(query_mask))

@@ -99,6 +99,7 @@ class VisionEncoder(nn.Module):
 		self.positional_embedding =  PositionalEmbedding(d_model, self.max_seq_length)
 		self.transformer_encoder = nn.ModuleList([TransformerEncoder(d_model, n_heads) for _ in range(n_layers)])
 		self.projection = nn.Parameter(torch.randn(d_model, emb_dim))
+	
 	def forward(self,x, mask = None):
 		x  = self.linear_proj(x)  # (B, C, H, W) -> (B, d_model, Patch_col_d_model, Patch_row_height)  
 		x = x.flatten(2).transpose(-2, -1)   # (B, d_model, Patch_col_d_model, Patch_row_height) --> Flatten (B, d_model, Patch) --> .transpose(-2,-1) (B, Patch, d_model)

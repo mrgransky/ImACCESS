@@ -6,12 +6,12 @@ from dataset_loader import HistoricalDataset
 # $ python historyclip.py --query "air base" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1 --num_workers 15
 # $ python historyclip.py --query "airbae" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
 
-# $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 10 --patch_size 5 --image_size 160 --num_workers 12 >> $PWD/logs/historyCLIP.out & 
+# $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 16 --learning_rate 1e-4 --weight_decay 1e-1 --patch_size 5 --image_size 160 --num_workers 11 --batch_size 22 > $PWD/logs/historyCLIP.out &
 
 # how to run [Pouta]:
 # Ensure Conda:
 # $ conda activate py39
-# $ python historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 1
+# $ python historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs --device "cuda:2"
 # $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 50 --patch_size 5 --image_size 160 --batch_size 80 --query "dam construction" > /media/volume/trash/ImACCESS/historyCLIP.out &
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
@@ -31,6 +31,7 @@ parser.add_argument('--weight_decay', type=float, default=1e-3, help='Weight dec
 parser.add_argument('--examine_model', type=bool, default=True, help='Model Validation upon request')
 parser.add_argument('--visualize', type=bool, default=False, help='Model Validation upon request')
 parser.add_argument('--document_description_col', type=str, default="query", help='labels')
+parser.add_argument('--device', type=str, default=torch.device("cuda:0" if torch.cuda.is_available() else "cpu"), help='GPU cuda')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
@@ -42,25 +43,45 @@ models_dir_name = (
 	+ f"_lr_{args.learning_rate}"
 	+ f"_wd_{args.weight_decay}"
 	+ f"_val_{args.validation_dataset_share}"
-	+ f"_descriptions_{args.document_description_col}"
 	+ f"_batch_size_{args.batch_size}"
 	+ f"_image_size_{args.image_size}"
 	+ f"_patch_size_{args.patch_size}"
 	+ f"_embedding_size_{args.embedding_size}"
+	+ f"_device_{re.sub(r':', '', str(args.device))}"
 )
+
 os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
 mdl_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "model.pt")
 df_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "df.pkl")
 train_df_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "train_df.pkl")
 val_df_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "val_df.pkl")
 img_lbls_dict_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "image_labels_dict.pkl")
-img_lbls_list_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "img_labels_list.pkl")
+img_lbls_list_fpth:str = os.path.join(args.dataset_dir, models_dir_name, "image_labels_list.pkl")
 
 img_bw_mean_fpth:str = os.path.join(args.dataset_dir, "img_bw_mean.pkl")
 img_bw_std_fpth:str = os.path.join(args.dataset_dir, "img_bw_std.pkl")
 
 img_rgb_mean_fpth:str = os.path.join(args.dataset_dir, "img_rgb_mean.pkl")
 img_rgb_std_fpth:str = os.path.join(args.dataset_dir, "img_rgb_std.pkl")
+
+device = args.device
+
+model = CLIP(
+	emb_dim=args.embedding_size,
+	vit_layers=vit_layers,
+	vit_d_model=vit_d_model,
+	img_size=(args.image_size, args.image_size),
+	patch_size=(args.patch_size, args.patch_size),
+	n_channels=n_channels,
+	vit_heads=vit_heads,
+	vocab_size=vocab_size,
+	max_seq_length=max_seq_length,
+	text_heads=text_heads,
+	text_layers=text_layers,
+	text_d_model=text_d_model,
+	device=device,
+	retrieval=False,
+).to(device)
 
 def get_val_loss(val_df, model, mean, std):
 	print(f"Validating val_dataset: {val_df.shape}", end="\t")
@@ -93,7 +114,7 @@ def get_val_loss(val_df, model, mean, std):
 	print(f"Validation Loss: {avg_val_loss:.5f}")
 	return avg_val_loss
 
-def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, mean=0.5, std=0.5):
+def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/models/clip.pt", TOP_K: int=10, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0.5, 0.5, 0.5]):
 	print(f"Model Examination & Accuracy".center(160, "-"))
 	print(f"Validating {model_fpth} in {device}")
 	vdl_st = time.time()
@@ -104,8 +125,8 @@ def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/
 		img_sz=args.image_size,
 		dataset_directory=os.path.join(args.dataset_dir, "images"),
 		max_seq_length=max_seq_length,
-		mean=mean, # from compute_dataset_stats
-		std=std, # from compute_dataset_stats
+		mean=mean,
+		std=std,
 	)
 	val_loader = DataLoader(
 		dataset=val_dataset,
@@ -116,25 +137,7 @@ def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/
 		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)
 	print(f"num_samples[Total]: {len(val_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
-	get_info(dataloader=val_loader)
-
-	model = CLIP(
-		emb_dim=args.embedding_size,
-		vit_layers=vit_layers,
-		vit_d_model=vit_d_model,
-		img_size=(args.image_size, args.image_size),
-		patch_size=(args.patch_size, args.patch_size),
-		n_channels=n_channels,
-		vit_heads=vit_heads,
-		vocab_size=vocab_size,
-		max_seq_length=max_seq_length,
-		text_heads=text_heads,
-		text_layers=text_layers,
-		text_d_model=text_d_model,
-		device=device,
-		retrieval=False,
-	).to(device)
-	
+	get_info(dataloader=val_loader)	
 	model.load_state_dict(torch.load(model_fpth, map_location=device))
 
 	# get_model_details(
@@ -182,35 +185,6 @@ def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/
 			correct += int(sum(torch.sum((predicted_label==labels),dim=1)//len(predicted_label[0])))
 			total += len(labels)
 	print(f'\nModel Accuracy (Top1): {100 * correct // total} %')
-	# not required! already calculated!
-	# text = torch.stack([tokenizer(x)[0] for x in class_names]).to(device)
-	# mask = torch.stack([tokenizer(x)[1] for x in class_names])
-	# mask = mask.repeat(1, len(mask[0])).reshape(len(mask), len(mask[0]), len(mask[0])).to(device)
-
-	idx = 110
-	# idx = random.randint(0, len(val_df))
-	img = val_dataset[idx]["image"][None,:]
-
-	if args.visualize:
-		plt.imshow(img[0].permute(1, 2, 0)  ,cmap="gray")
-		plt.title(tokenizer(val_dataset[idx]["caption"], encode=False, mask=val_dataset[idx]["mask"][0], max_seq_length=max_seq_length)[0])
-		plt.show()
-
-	img = img.to(device)
-	with torch.no_grad():
-		image_features = model.vision_encoder(img)
-		text_features = model.text_encoder(text, mask=mask)
-
-	image_features /= image_features.norm(dim=-1, keepdim=True)
-	text_features /= text_features.norm(dim=-1, keepdim=True)
-	similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1)
-	values, indices = similarity[0].topk(TOP_K)
-	print(
-		f'\nTop-{TOP_K} Prediction(s) for IMG: {idx}: '
-		f'Decoded text: {tokenizer(val_dataset[idx]["caption"], encode=False, mask=val_dataset[idx]["mask"][0], max_seq_length=max_seq_length)}:\n')
-	for value, index in zip(values, indices):
-		print(f"index: {index}: {class_names[int(index)]:>30s}: {100 * value.item():.3f}%")
-	print(f"Elapsed_t: {time.time()-vdl_st:.2f} sec")
 
 def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0.5, 0.5, 0.5], checkpoint_interval:int=5):
 	print(f"Training CLIP model using {device}[{torch.cuda.get_device_name(device)}] & {args.num_workers} CPU(s)".center(150, "-"))
@@ -241,59 +215,23 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 	# visualize_samples(train_data_loader, num_samples=5)
 	# sys.exit(-1)
 
-	model = CLIP(
-		emb_dim=args.embedding_size,
-		vit_layers=vit_layers,
-		vit_d_model=vit_d_model,
-		img_size=(args.image_size, args.image_size),
-		patch_size=(args.patch_size, args.patch_size),
-		n_channels=n_channels,
-		vit_heads=vit_heads,
-		vocab_size=vocab_size,
-		max_seq_length=max_seq_length,
-		text_heads=text_heads,
-		text_layers=text_layers,
-		text_d_model=text_d_model,
-		device=device,
-		retrieval=False,
-	).to(device)
-
 	optimizer = optim.AdamW(
 		params=model.parameters(),
-		betas=(0.9, 0.999), 
-		eps=1e-18,
+		betas=(0.9, 0.98), # Based on original CLIP paper
+		eps=1e-6,
 		lr=args.learning_rate,
 		weight_decay=args.weight_decay, # weight decay (L2 regularization)
 	)
 	steps = []
 	lrs = []
-	# optimizer = optim.Adam(
-	# 	params=model.parameters(), 
-	# 	lr=args.learning_rate, 
-	# 	weight_decay=args.weight_decay, # weight decay (L2 regularization)
-	# 	betas=(0.9, 0.999), 
-	# 	eps=1e-18, # added to the denominator of the Adam update rule to prevent division by zero
-	# )
-
-	# ReduceLROnPlateau
-	# scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer=model_optimizer, mode='min', factor=0.1, patience=5, verbose=True)
-
-	# StepLR
-	# scheduler = optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=10, gamma=0.1)
-
-	# MultiStepLR
-	# scheduler = optim.lr_scheduler.MultiStepLR(optimizer=optimizer, milestones=[10, 20, 30], gamma=0.1)
-
-	# CosineAnnealingLR
-	# scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=10, eta_min=0.001)
 
 	scheduler = torch.optim.lr_scheduler.OneCycleLR(
 		optimizer=optimizer, 
 		max_lr=args.learning_rate, 
 		steps_per_epoch=len(train_data_loader), 
 		epochs=args.num_epochs,
-		pct_start=0.3, # percentage of the cycle (in number of steps) spent increasing the learning rate
-		anneal_strategy='cos', # Cosine annealing
+		pct_start=0.1, # percentage of the cycle (in number of steps) spent increasing the learning rate
+		anneal_strategy='cos', # cos/linear annealing
 	)
 
 	total_params = 0
@@ -324,6 +262,15 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 	average_train_losses = list()
 	average_val_losses = list()
 
+	# Add loss scaling for better numerical stability
+	scaler = torch.amp.GradScaler(
+		device=device,
+		init_scale=2**16,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
+	)
+
 	for epoch in range(args.num_epochs):
 		print(f"Epoch [{epoch+1}/{args.num_epochs}]")
 		epoch_loss = 0.0  # To accumulate the loss over the epoch
@@ -334,13 +281,26 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 			mask = data["mask"].to(device)
 
 			optimizer.zero_grad()
-			loss = model(img, cap, mask)
-			loss.backward()
+
+			# # Convential backpropagation
+			# loss = model(img, cap, mask)
+			# loss.backward()
+			# torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			# optimizer.step()
+
+			# Automatic mixed precision training
+			with torch.amp.autocast(device_type=device.type):
+				loss = model(img, cap, mask)
+			scaler.scale(loss).backward()
+			scaler.unscale_(optimizer)
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-			optimizer.step()
+			scaler.step(optimizer)
+			scaler.update()
+
 			scheduler.step()
 			# print(scheduler.get_last_lr())
 			lrs.append(scheduler.get_last_lr()[0])
+			steps.append(batch_idx)
 
 			if batch_idx % args.print_every == 0:
 				print(f"\tBatch [{batch_idx + 1}/{len(train_data_loader)}] Loss: {loss.item():.5f}")
@@ -388,7 +348,19 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 			torch.save(checkpoint, checkpoint_path)
 			print(f"Checkpoint saved at epoch {epoch+1} : {checkpoint_path}")
 
-	print(f"LRs[{len(lrs)}]:\n{lrs}")
+	lrs_vs_steps_fname = (
+		f'lrs_vs_steps'
+		+ f'_epochs_{args.num_epochs}'
+		+ f'_lr_{args.learning_rate}'
+		+ f'_wd_{args.weight_decay}'
+		+ f'.png'
+	)
+
+	plot_lrs_vs_steps(
+		lrs=lrs, 
+		steps=steps, 
+		fpath=os.path.join(outputs_dir, lrs_vs_steps_fname),
+	)
 
 	loss_fname = (
 		f'loss'
@@ -461,12 +433,25 @@ def main():
 			test_size=args.validation_dataset_share, # 0.05
 			random_state=42,
 		)
+
+		train_df.to_csv(os.path.join(args.dataset_dir, models_dir_name, "metadata_train.csv"), index=False)
+		try:
+			train_df.to_excel(os.path.join(args.dataset_dir, models_dir_name, "metadata_train.xlsx"), index=False)
+		except Exception as e:
+			print(f"Failed to write Excel file: {e}")
+
+		val_df.to_csv(os.path.join(args.dataset_dir, models_dir_name, "metadata_val.csv"), index=False)
+		try:
+			val_df.to_excel(os.path.join(args.dataset_dir, models_dir_name, "metadata_val.xlsx"), index=False)
+		except Exception as e:
+			print(f"Failed to write Excel file: {e}")
+
 		save_pickle(pkl=df, fname=df_fpth,)
 		save_pickle(pkl=train_df, fname=train_df_fpth,)
 		save_pickle(pkl=val_df, fname=val_df_fpth,)
 		save_pickle(pkl=img_lbls_dict, fname=img_lbls_dict_fpth,)
 		save_pickle(pkl=img_lbls_list, fname=img_lbls_list_fpth,)
-		query_counts_val = val_df['query'].value_counts()
+		query_counts_val = val_df[args.document_description_col].value_counts()
 		# print(query_counts_val.tail(25))
 		plt.figure(figsize=(23, 15))
 		query_counts_val.plot(kind='bar', fontsize=8)
@@ -517,10 +502,10 @@ def main():
 			img_lbls_dict=img_lbls_dict,
 			model_fpth=mdl_fpth,
 			TOP_K=args.topk,
-			mean=img_rgb_mean, # from compute_dataset_stats
-			std=img_rgb_std, # from compute_dataset_stats
+			mean=img_rgb_mean,
+			std=img_rgb_std,
 		)
-		
+				
 	# Construct the command as a list of arguments
 	command = [
 		'python', 'topk_image_retrieval.py',
