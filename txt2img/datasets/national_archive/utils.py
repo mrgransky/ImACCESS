@@ -123,18 +123,14 @@ def load_pickle(fpath:str="unknown",):
 	return pkl
 
 def clean_(text: str = "sample text"):
-	# Convert to lowercase
 	text = text.lower()
-	text = re.sub(r'original caption', '', text)
-	# Remove special characters and digits
-	text = re.sub(r'[^a-zA-Z\s]', '', text)
-	# Tokenize the text into words
-	words = nltk.tokenize.word_tokenize(text)
+	text = re.sub(r'\boriginal caption\b', ' ', text)
+	text = re.sub(r'\bphotograph\b', ' ', text)
+	text = re.sub(r'[^a-zA-Z\s]', ' ', text) # Remove special characters and digits
+	words = nltk.tokenize.word_tokenize(text) # Tokenize the text into words
 	# Filter out stopwords and words with fewer than 3 characters
 	words = [word for word in words if len(word) >= 3 and word not in STOPWORDS]
-	# Join the words back into a string
-	text = ' '.join(words)
-	# Normalize whitespace
-	text = re.sub(r'\s+', ' ', text).strip()
+	text = ' '.join(words) # Join the words back into a string
+	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
 	# TODO: some enchant cleaning for language check!
 	return text

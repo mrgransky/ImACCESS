@@ -3,25 +3,29 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run:
-# $ python topk_image_retrieval.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1 --query "dam construction"
+# $ python topk_image_retrieval.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_workers 12 --query "dam construction"
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--query', type=str, default="air base", help='Query')
 parser.add_argument('--processed_image_path', type=str, default="my_img.png", help='Path to resulted image with topk images')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--dataset_dir', type=str, default="myntradataset", help='Dataset DIR')
-parser.add_argument('--image_size', type=int, default=150, help='Image size')
+parser.add_argument('--image_size', type=int, default=160, help='Image size')
 parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
 parser.add_argument('--num_workers', type=int, default=multiprocessing.cpu_count(), help='Number of CPUs [def: max cpus]')
-parser.add_argument('--batch_size', type=int, default=32, help='Batch Size')
+parser.add_argument('--batch_size', type=int, default=22, help='Batch Size')
 parser.add_argument('--embedding_size', type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
-parser.add_argument('--num_epochs', type=int, default=1, help='Number of epochs')
+parser.add_argument('--num_epochs', type=int, default=16, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set')
-parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning Rate')
-parser.add_argument('--weight_decay', type=float, default=1e-4, help='Weight decay [def: 1e-4]')
+parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning Rate')
+parser.add_argument('--weight_decay', type=float, default=1e-1, help='Weight decay [def: 1e-4]')
 parser.add_argument('--document_description_col', type=str, default="query", help='caption col')
+parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
+
 args, unknown = parser.parse_known_args()
-# print(args)
+print(args)
+args.device = torch.device(args.device)
+print(type(args.device), args.device, args.device.type)
 
 # TODO: investigation required!
 # if USER == "ubuntu":

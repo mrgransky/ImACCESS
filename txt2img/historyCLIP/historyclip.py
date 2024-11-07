@@ -3,8 +3,8 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run [Local]:
-# $ python historyclip.py --query "air base" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1 --num_workers 15
-# $ python historyclip.py --query "airbae" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
+# $ python historyclip.py --query "air base" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1 
+# # $ python historyclip.py --query "airbae" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
 
 # $ nohup python -u historyclip.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 16 --learning_rate 1e-4 --weight_decay 1e-1 --patch_size 5 --image_size 160 --num_workers 11 --batch_size 22 > $PWD/logs/historyCLIP.out &
 
@@ -12,7 +12,7 @@ from dataset_loader import HistoricalDataset
 # Ensure Conda:
 # $ conda activate py39
 # $ python historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --device "cuda:2" --num_epochs 1 --batch_size 128
-# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 30 --device "cuda:2" --learning_rate 1e-4 --weight_decay 1e-1 --patch_size 5 --image_size 160 --batch_size 128 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
+# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 30 --device "cuda:2" --learning_rate 1e-4 --weight_decay 1e-1 --patch_size 5 --image_size 160 --batch_size 82 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
@@ -32,17 +32,12 @@ parser.add_argument('--examine_model', type=bool, default=True, help='Model Vali
 parser.add_argument('--visualize', type=bool, default=False, help='Model Validation upon request')
 parser.add_argument('--document_description_col', type=str, default="query", help='labels')
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
-# parser.add_argument('--device', default=torch.device("cuda:0" if torch.cuda.is_available() else "cpu"), help='Device (cuda or cpu)')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
-
 print(args)
-print(type(args.device), args.device)
-
 args.device = torch.device(args.device)
-print(type(args.device), args.device)
-print(args.device.type)
+print(type(args.device), args.device, args.device.type)
 os.makedirs(os.path.join(args.dataset_dir, "outputs"), exist_ok=True)
 outputs_dir:str = os.path.join(args.dataset_dir, "outputs",)
 models_dir_name = (
@@ -193,6 +188,7 @@ def examine_model(val_df, class_names, img_lbls_dict, model_fpth: str=f"path/to/
 
 def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0.5, 0.5, 0.5], checkpoint_interval:int=5):
 	print(f"Training CLIP model using {args.device}[{torch.cuda.get_device_name(args.device)}] & {args.num_workers} CPU(s)".center(150, "-"))
+	log_gpu_memory(device=args.device)
 	writer = SummaryWriter(log_dir=os.path.join(outputs_dir, "logs")) # Initialize TensorBoard writer
 	
 	print(f"Creating Train Dataloader", end="\t")
@@ -217,8 +213,10 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 	)
 	print(f"num_samples[Total]: {len(train_data_loader.dataset)} Elapsed_t: {time.time()-tdl_st:.5f} sec")
 	get_info(dataloader=train_data_loader)
+	# ###################### Visualize Samples ######################
 	# visualize_samples(train_data_loader, num_samples=5)
 	# sys.exit(-1)
+	# ###################### Visualize Samples ######################
 
 	optimizer = optim.AdamW(
 		params=model.parameters(),
@@ -278,6 +276,7 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 
 	for epoch in range(args.num_epochs):
 		print(f"Epoch [{epoch+1}/{args.num_epochs}]")
+		log_gpu_memory(device=args.device)
 		epoch_loss = 0.0  # To accumulate the loss over the epoch
 		model.train()
 		for batch_idx, data in enumerate(train_data_loader):
@@ -301,6 +300,7 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			scaler.step(optimizer)
 			scaler.update()
+			log_gpu_memory(device=args.device)
 
 			scheduler.step()
 			# print(scheduler.get_last_lr())
@@ -350,8 +350,10 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 				'best_loss': best_loss,
 				'no_improvement_count': no_improvement_count
 			}
+			log_gpu_memory(device=args.device)
 			torch.save(checkpoint, checkpoint_path)
 			print(f"Checkpoint saved at epoch {epoch+1} : {checkpoint_path}")
+			log_gpu_memory(device=args.device)
 
 	lrs_vs_steps_fname = (
 		f'lrs_vs_steps'

@@ -110,8 +110,9 @@ text_layers = 8
 ################################################################################
 
 def log_gpu_memory(device):
-	print(f'GPU Memory Allocated: {torch.cuda.memory_allocated(device=device) / (1024 ** 2):.2f} MB')
-	print(f'GPU Max Memory Allocated: {torch.cuda.max_memory_allocated(device=device) / (1024 ** 2):.2f} MB')
+	gpu_mem_allocated = torch.cuda.memory_allocated(device=device) / (1024 ** 2)
+	gpu_max_mem_allocated = torch.cuda.max_memory_allocated(device=device) / (1024 ** 2)
+	print(f'GPU: Memory Allocated: {gpu_mem_allocated:.2f} MB | Max Memory Allocated: {gpu_max_mem_allocated:.2f} MB')
 
 def visualize_samples(dataloader, num_samples=5):
 		"""
@@ -278,8 +279,9 @@ def set_seeds():
 
 def clean_(text: str = "sample text"):
 	text = text.lower()
-	text = re.sub(r'original caption', '', text)
-	text = re.sub(r'[^a-zA-Z\s]', '', text) # Remove special characters and digits
+	text = re.sub(r'\boriginal caption\b', ' ', text)
+	text = re.sub(r'\bphotograph\b', ' ', text)
+	text = re.sub(r'[^a-zA-Z\s]', ' ', text) # Remove special characters and digits
 	words = nltk.tokenize.word_tokenize(text) # Tokenize the text into words
 	# Filter out stopwords and words with fewer than 3 characters
 	words = [word for word in words if len(word) >= 3 and word not in STOPWORDS]

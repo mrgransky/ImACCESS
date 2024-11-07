@@ -47,54 +47,54 @@ class HistoricalDataset(Dataset):
 		self.img_sz = img_sz  # Desired size for the square image
 		self.transform = T.Compose(
 			[
-				ContrastEnhanceAndDenoise(contrast_cutoff=1, blur_radius=0.1),  # Mild enhancement
+				# ContrastEnhanceAndDenoise(contrast_cutoff=1, blur_radius=0.1),  # Mild enhancement
 				ResizeWithPad((img_sz, img_sz)),
-				# T.RandomResizedCrop(img_sz, scale=(0.8, 1.0), ratio=(1.0, 1.0)),  # Randomly crop the image
-				T.RandomApply(
-					[
-						T.RandomAffine(
-								degrees=15,
-								translate=(0.1, 0.1),
-								scale=(0.9, 1.1),
-								shear=5,
-								fill=0
-						)
-					], 
-					p=0.5,
-				),
-				T.RandomHorizontalFlip(p=0.5),
-				T.RandomApply(
-					[
-						T.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))
-					],
-					p=0.3,
-				),
-				T.RandomApply(
-					[
-						T.RandomPosterize(bits=3)
-					],
-					p=0.1,
-				),
-				# #############################################################################
-				T.RandomApply(
-					[
-						T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2)
-					],
-					p=0.3,
-				),
-				T.RandomApply(
-					[
-						T.RandomRotation(degrees=15)
-					],
-					p=0.3,
-				),
+				# # T.RandomResizedCrop(img_sz, scale=(0.8, 1.0), ratio=(1.0, 1.0)),  # Randomly crop the image
 				# T.RandomApply(
 				# 	[
-				# 		T.RandomCrop(size=128, padding=4)
+				# 		T.RandomAffine(
+				# 				degrees=15,
+				# 				translate=(0.1, 0.1),
+				# 				scale=(0.9, 1.1),
+				# 				shear=5,
+				# 				fill=0
+				# 		)
+				# 	], 
+				# 	p=0.5,
+				# ),
+				# T.RandomHorizontalFlip(p=0.5),
+				# T.RandomApply(
+				# 	[
+				# 		T.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5))
 				# 	],
 				# 	p=0.3,
 				# ),
-				# #############################################################################
+				# T.RandomApply(
+				# 	[
+				# 		T.RandomPosterize(bits=3)
+				# 	],
+				# 	p=0.1,
+				# ),
+				# # #############################################################################
+				# T.RandomApply(
+				# 	[
+				# 		T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2)
+				# 	],
+				# 	p=0.3,
+				# ),
+				# T.RandomApply(
+				# 	[
+				# 		T.RandomRotation(degrees=15)
+				# 	],
+				# 	p=0.3,
+				# ),
+				# # T.RandomApply(
+				# # 	[
+				# # 		T.RandomCrop(size=img_sz, padding=4)
+				# # 	],
+				# # 	p=0.3,
+				# # ),
+				# # #############################################################################
 				T.ToTensor(),
 				T.Normalize(mean=mean, std=std),
 			]

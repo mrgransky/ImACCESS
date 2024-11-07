@@ -15,8 +15,9 @@ class TransformerEncoder(nn.Module):
 		self.ln2 = nn.LayerNorm(d_model)
 		self.mlp = nn.Sequential(
 			nn.Linear(d_model, d_model*mlp_ratio),
-			nn.GELU(), # GELU is used instead of RELU because it doesn’t have RELU’s limitation of being non-differentiable @ GELU is used instead of RELU because it doesn’t have RELU’s limitation of being non-differentiable at 0
+			nn.GELU(), # GELU instead of RELU due to RELU’s limitation of being non-differentiable
 			nn.Linear(d_model * mlp_ratio, d_model)
+			# nn.Dropout(0.1)  # Dropout layer
 		)
 	#For clip even though its a encoder model it requires mask ->to account for padded for max seq_length
 	def forward(self, x, mask = None):

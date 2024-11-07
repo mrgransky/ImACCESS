@@ -18,9 +18,12 @@ parser.add_argument('--validation_dataset_share', type=float, default=0.3, help=
 parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning Rate')
 parser.add_argument('--weight_decay', type=float, default=1e-1, help='Weight decay [def: 1e-4]')
 parser.add_argument('--visualize', type=bool, default=False, help='Model Validation upon request')
+parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 
 args, unknown = parser.parse_known_args()
-# print(args)
+print(args)
+args.device = torch.device(args.device)
+print(type(args.device), args.device, args.device.type)
 
 # TODO: investigation required!
 # if USER == "ubuntu":
