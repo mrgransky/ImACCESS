@@ -12,7 +12,7 @@ from dataset_loader import HistoricalDataset
 # Ensure Conda:
 # $ conda activate py39
 # $ python historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --device "cuda:2" --num_epochs 1 --batch_size 128
-# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 30 --device "cuda:2" --learning_rate 1e-4 --weight_decay 1e-1 --patch_size 5 --image_size 160 --batch_size 82 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
+# $ nohup python -u historyclip.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 30 --device "cuda:2" --learning_rate 1e-4 --weight_decay 1e-1 --patch_size 5 --image_size 160 --batch_size 81 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
@@ -22,7 +22,7 @@ parser.add_argument('--image_size', type=int, default=160, help='Image size [def
 parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
 parser.add_argument('--embedding_size', type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
 parser.add_argument('--query', type=str, default="air base", help='Query')
-parser.add_argument('--print_every', type=int, default=100, help='Print loss')
+parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
 parser.add_argument('--num_workers', type=int, default=multiprocessing.cpu_count(), help='Number of CPUs [def: max cpus]')
 parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set [def: 0.23]')
@@ -275,8 +275,9 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 	)
 
 	for epoch in range(args.num_epochs):
-		print(f"Epoch [{epoch+1}/{args.num_epochs}]")
+		print(f"Epoch [{epoch+1}/{args.num_epochs}]", end="\t")
 		log_gpu_memory(device=args.device)
+		
 		epoch_loss = 0.0  # To accumulate the loss over the epoch
 		model.train()
 		for batch_idx, data in enumerate(train_data_loader):
@@ -300,7 +301,6 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			scaler.step(optimizer)
 			scaler.update()
-			log_gpu_memory(device=args.device)
 
 			scheduler.step()
 			# print(scheduler.get_last_lr())
@@ -308,8 +308,9 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 			steps.append(batch_idx)
 
 			if batch_idx % args.print_every == 0:
-				print(f"\tBatch [{batch_idx + 1}/{len(train_data_loader)}] Loss: {loss.item():.5f}")
-
+				print(f"\tBatch [{batch_idx + 1}/{len(train_data_loader)}] Loss: {loss.item():.5f}", end="\t")
+				log_gpu_memory(device=args.device)
+				
 			epoch_loss += loss.item()
 			writer.add_scalar('Loss/train', loss.item(), epoch * len(train_data_loader) + batch_idx)
 
@@ -350,7 +351,7 @@ def train(train_df, val_df, mean:List[float]=[0.5, 0.5, 0.5], std:List[float]=[0
 				'best_loss': best_loss,
 				'no_improvement_count': no_improvement_count
 			}
-			log_gpu_memory(device=args.device)
+			# log_gpu_memory(device=args.device)
 			torch.save(checkpoint, checkpoint_path)
 			print(f"Checkpoint saved at epoch {epoch+1} : {checkpoint_path}")
 			log_gpu_memory(device=args.device)
