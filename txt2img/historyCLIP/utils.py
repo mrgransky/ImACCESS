@@ -109,7 +109,6 @@ text_layers = 8
 
 ################################################################################
 
-
 def log_gpu_memory(device):
 	gpu_mem_allocated = torch.cuda.memory_allocated(device) / (1024 ** 2)
 	gpu_max_mem_allocated = torch.cuda.max_memory_allocated(device) / (1024 ** 2)
