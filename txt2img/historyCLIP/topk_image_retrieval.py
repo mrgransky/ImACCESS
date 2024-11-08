@@ -3,7 +3,7 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run:
-# $ python topk_image_retrieval.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_workers 12 --query "dam construction"
+# $ python topk_image_retrieval.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_workers 15 --query "dam construction"
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--query', type=str, default="air base", help='Query')
@@ -15,10 +15,10 @@ parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
 parser.add_argument('--num_workers', type=int, default=multiprocessing.cpu_count(), help='Number of CPUs [def: max cpus]')
 parser.add_argument('--batch_size', type=int, default=22, help='Batch Size')
 parser.add_argument('--embedding_size', type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
-parser.add_argument('--num_epochs', type=int, default=16, help='Number of epochs')
+parser.add_argument('--num_epochs', type=int, default=20, help='Number of epochs')
 parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set')
-parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning Rate')
-parser.add_argument('--weight_decay', type=float, default=1e-1, help='Weight decay [def: 1e-4]')
+parser.add_argument('--learning_rate', type=float, default=5e-4, help='Learning Rate')
+parser.add_argument('--weight_decay', type=float, default=5e-2, help='Weight decay [def: 1e-4]')
 parser.add_argument('--document_description_col', type=str, default="query", help='caption col')
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 
@@ -179,6 +179,7 @@ def img_retrieval(query:str="air base", model_fpth: str=mdl_fpth, TOP_K: int=5, 
 	st_st4 = time.time()
 	print(f"Saving Top-{TOP_K} out of {len(val_loader.dataset)} [val] for Query: « {query} » in:\n{resulted_IMGname}")
 	fig, axes = plt.subplots(1, TOP_K, figsize=(19, 6))  # Adjust figsize as needed
+	fig.suptitle(f"Top-{TOP_K} images for query: « {query} »", fontsize=12)
 	for ax, value, index in zip(axes, top_values[0], top_indices[0]):
 		img_path = val_images_paths[index]
 		img_fname = get_img_name_without_suffix(fpth=img_path)

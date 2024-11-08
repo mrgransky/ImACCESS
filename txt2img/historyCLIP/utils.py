@@ -34,7 +34,7 @@ import multiprocessing
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from torch.utils.tensorboard import SummaryWriter
 import nltk
-
+import inspect
 nltk_modules = [
 	'punkt',
 	'wordnet',
@@ -288,6 +288,20 @@ def set_seeds():
 		torch.cuda.manual_seed_all(SEED_VALUE)
 		torch.backends.cudnn.deterministic = True
 		torch.backends.cudnn.benchmark = True
+
+def get_args(obj):
+	sig = inspect.signature(obj.__class__.__init__)
+	important_args = []
+	for param_name, param in sig.parameters.items():
+		if param_name not in ['self', 'params', 'optimizer', 'verbose']:
+			value = getattr(obj, param_name, param.default)
+			print(param_name, value, param.default)
+			if value != param.default:  # Only include if value is different from default
+				important_args.append(f"{param_name}={value}")
+	args = ",".join(important_args)
+	args = re.sub(r'[^\w\-_\.]', '_', args)
+	args = re.sub(r"_+", "_", args)
+	return args
 
 def clean_(text: str = "sample text"):
 	text = text.lower()

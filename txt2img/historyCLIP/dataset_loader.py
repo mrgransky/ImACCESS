@@ -35,13 +35,13 @@ class HistoricalDataset(Dataset):
 	def __init__(
 			self, 
 			data_frame, 
-			# captions,
 			img_sz:int=28, 
 			txt_category:str="query", 
 			dataset_directory:str="path/2/images",
 			max_seq_length:int=128,
 			mean:List[float]=[0.5644510984420776, 0.5516530275344849, 0.5138059854507446],
 			std:List[float]=[0.2334197610616684, 0.22689250111579895, 0.2246231734752655],
+			augment_data:bool=False,
 		):
 		self.data_frame = data_frame
 		self.img_sz = img_sz  # Desired size for the square image
