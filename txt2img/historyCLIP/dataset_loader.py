@@ -48,8 +48,8 @@ class HistoricalDataset(Dataset):
 		self.transform = T.Compose(
 			[
 				# ContrastEnhanceAndDenoise(contrast_cutoff=1, blur_radius=0.1),  # Mild enhancement
-				ResizeWithPad((img_sz, img_sz)),
-				# # T.RandomResizedCrop(img_sz, scale=(0.8, 1.0), ratio=(1.0, 1.0)),  # Randomly crop the image
+				# ResizeWithPad((img_sz, img_sz)),
+				T.RandomResizedCrop(img_sz, scale=(0.8, 1.0), ratio=(1.0, 1.0)),  # Randomly crop the image
 				# T.RandomApply(
 				# 	[
 				# 		T.RandomAffine(

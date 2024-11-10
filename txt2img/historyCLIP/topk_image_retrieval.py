@@ -25,23 +25,29 @@ parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_avai
 args, unknown = parser.parse_known_args()
 print(args)
 args.device = torch.device(args.device)
-print(type(args.device), args.device, args.device.type)
+# print(type(args.device), args.device, args.device.type)
 
 # TODO: investigation required!
 # if USER == "ubuntu":
 # 	args.dataset_dir = ddir
 
 models_dir_name = (
-	f"models"
-	+ f"_nEpochs_{args.num_epochs}"
+	f"model"
+	+ f"_augmentation_{args.data_augmentation}"
+	+ f"_ep_{args.num_epochs}"
+	+ f"_train_{len(train_data_loader.dataset)}"
+	+ f"_val_{len(val_data_loader.dataset)}"
+	+ f"_batch_{args.batch_size}"
+	+ f"_img_{args.image_size}"
+	+ f"_patch_{args.patch_size}"
+	+ f"_emb_{args.embedding_size}"
+	+ f"_{re.sub(r':', '', str(args.device))}"
+	+ f"_{optimizer.__class__.__name__}"
 	+ f"_lr_{args.learning_rate}"
 	+ f"_wd_{args.weight_decay}"
-	+ f"_val_{args.validation_dataset_share}"
-	+ f"_batch_size_{args.batch_size}"
-	+ f"_image_size_{args.image_size}"
-	+ f"_patch_size_{args.patch_size}"
-	+ f"_embedding_size_{args.embedding_size}"
-	+ f"_device_{re.sub(r':', '', str(args.device))}"
+	# + f"_{get_args(optimizer)}"
+	+ f"_{scheduler.__class__.__name__}"
+	# + f"_{get_args(scheduler)}"
 )
 
 os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
