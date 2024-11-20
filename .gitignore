@@ -33,6 +33,7 @@ txt2img/datasets/*/NA*
 txt2img/datasets/*/smu*
 txt2img/datasets/*/temp
 txt2img/datasets/*/europeana*
+txt2img/datasets/*/WWII*
 txt2img/*zip
 txt2img/*pt
 txt2img/mscoco-it

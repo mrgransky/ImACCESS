@@ -1,9 +1,14 @@
-from utils import *
+import os
+import sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
+from misc.utils import *
 
-parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
+parser = argparse.ArgumentParser(description="GNational Archive Dataset")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
-parser.add_argument('--start_date', type=str, default="1933-01-01", help='Dataset DIR')
-parser.add_argument('--end_date', type=str, default="1933-01-02", help='Dataset DIR')
+parser.add_argument('--start_date', type=str, default="1933-01-01", help='Start Date')
+parser.add_argument('--end_date', type=str, default="1933-01-02", help='End Date')
 parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs')
 parser.add_argument('--img_mean_std', type=bool, default=False, help='Image mean & std')
 
@@ -12,7 +17,12 @@ args, unknown = parser.parse_known_args()
 print(args)
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02 >> logs/na_image_download.out &
+
+########################## --start_date 1933-01-01 --end_date 1933-01-02 ##########################
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02 > logs/na_image_download.out &
+
+########################## --start_date 1914-01-01 --end_date 1946-12-31 ##########################
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1914-01-01 --end_date 1946-12-31 > logs/na_image_download.out &
 
 # run in Pouta:
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 # WW1 & WW2
@@ -23,6 +33,15 @@ USER: str = os.getenv('USER') # echo $USER
 na_api_base_url: str = "https://catalog.archives.gov/proxy/records/search"
 START_DATE = args.start_date
 END_DATE = args.end_date
+
+meaningless_words_fpth = os.path.join(parent_dir, 'misc', 'meaningless_words.txt')
+# STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
+STOPWORDS = list()
+with open(meaningless_words_fpth, 'r') as file_:
+	customized_meaningless_words=[line.strip().lower() for line in file_]
+STOPWORDS.extend(customized_meaningless_words)
+STOPWORDS = set(STOPWORDS)
+print(STOPWORDS, type(STOPWORDS))
 
 dataset_name = "NATIONAL_ARCHIVE"
 useless_collection_terms = [
@@ -51,18 +70,24 @@ DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}
 os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
 IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
 
+os.makedirs(os.path.join(DATASET_DIRECTORY, "hits"), exist_ok=True)
+HITs_DIR = os.path.join(DATASET_DIRECTORY, "hits")
+
+os.makedirs(os.path.join(DATASET_DIRECTORY, "outputs"), exist_ok=True)
+OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
+
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.pkl")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.pkl")
 
-def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
+def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", label: str="world war"):
 	t0 = time.time()
-	query_processed = re.sub(" ", "_", query.lower())
-	query_all_hits_fpth = os.path.join(DATASET_DIRECTORY, f"results_{st_date}_{end_date}_query_{query_processed}.gz")
+	label_processed = re.sub(" ", "_", label)
+	label_all_hits_fpth = os.path.join(HITs_DIR, f"results_query_{label_processed}_{st_date}_{end_date}.gz")
 	try:
-		query_all_hits = load_pickle(fpath=query_all_hits_fpth)
+		label_all_hits = load_pickle(fpath=label_all_hits_fpth)
 	except Exception as e:
 		print(f"{e}")
-		print(f"Collecting all docs of National Archive for Query: « {query} » ... it might take a while..")
+		print(f"Collecting all docs of National Archive for label: « {label} » ... it might take a while..")
 		headers = {
 			'Content-type': 'application/json',
 			'Accept': 'application/json; text/plain; */*',
@@ -77,14 +102,14 @@ def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="
 			"endDate": end_date,
 			"levelOfDescription": "item",
 			"objectType": "jpg,png",
-			"q": query,
+			"q": label,
 			"startDate": st_date,
 			"typeOfMaterials": "Photographs and other Graphic Materials",
 			"abbreviated": "true",
 			"debug": "true",
 			"datesAgg": "TRUE"
 		}
-		query_all_hits = []
+		label_all_hits = []
 		page = 1
 		while True:
 			loop_st = time.time()
@@ -100,20 +125,20 @@ def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="
 				# print(len(hits), type(hits))
 				# print(hits[0].keys())
 				# print(json.dumps(hits[0], indent=2, ensure_ascii=False))
-				query_all_hits.extend(hits)
+				label_all_hits.extend(hits)
 				total_hits = data.get('body').get("hits").get('total').get('value')
-				print(f"Page: {page}:\tFound: {len(hits)} {type(hits)}\t{len(query_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
-				if len(query_all_hits) >= total_hits:
+				print(f"Page: {page}:\tFound: {len(hits)} {type(hits)}\t{len(label_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
+				if len(label_all_hits) >= total_hits:
 					break
 				page += 1
 			else:
 				print("Failed to retrieve data")
 				break
-		if len(query_all_hits) == 0:
+		if len(label_all_hits) == 0:
 			return
-		save_pickle(pkl=query_all_hits, fname=query_all_hits_fpth)
-	print(f"Total hit(s): {len(query_all_hits)} {type(query_all_hits)} for query: « {query} » found in {time.time()-t0:.2f} sec")
-	return query_all_hits
+		save_pickle(pkl=label_all_hits, fname=label_all_hits_fpth)
+	print(f"Total hit(s): {len(label_all_hits)} {type(label_all_hits)} for label: « {label} » found in {time.time()-t0:.2f} sec")
+	return label_all_hits
 
 def is_desired(collections, useless_terms):
 	for term in useless_terms:
@@ -123,43 +148,45 @@ def is_desired(collections, useless_terms):
 				return False
 	return True
 
-def get_dframe(query: str="query", docs: List=[Dict]) -> pd.DataFrame:
-	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
+def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
+	print(f"Analyzing {len(docs)} {type(docs)} document(s) for label: « {label} » might take a while...")
 	df_st_time = time.time()
 	data = []
 	for doc in docs:
 		record = doc.get('_source', {}).get('record', {})
 		fields = doc.get('fields', {})
-		title = clean_(text=record.get('title'))#.lower()# if record.get('title') != "Untitled" else None
-		doc_description = clean_(text=record.get('scopeAndContentNote')) if record.get('scopeAndContentNote') else None
+		doc_title = clean_(text=record.get('title'), sw=STOPWORDS)
+		doc_description = clean_(text=record.get('scopeAndContentNote'), sw=STOPWORDS) if record.get('scopeAndContentNote') else None
 		na_identifier = record.get('naId')
 		pDate = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
 		ancesstor_collections = [f"{itm.get('title')}" for itm in record.get('ancestors')] # record.get('ancestors'): list of dict
 		useless_title_terms = [
-			"wildflowers" not in title, 
-			"-sc-" not in title,
-			"notes" not in title,
-			"page" not in title,
-			"exhibit" not in title,
-			"ad:" not in title,
-			"sheets" not in title,
-			"report" not in title,
-			"map" not in title,
-			"portrait of" not in title,
-			"poster" not in title,
-			"drawing" not in title,
-			"sketch of" not in title,
-			"layout" not in title,
-			"postcard" not in title,
-			"table:" not in title,
-			"traffic statistics:" not in title,
-		]
+			"wildflowers" not in doc_title, 
+			"-sc-" not in doc_title,
+			"notes" not in doc_title,
+			"page" not in doc_title,
+			"exhibit" not in doc_title,
+			"ad:" not in doc_title,
+			"sheets" not in doc_title,
+			"report" not in doc_title,
+			"map" not in doc_title,
+			"portrait of" not in doc_title,
+			"poster" not in doc_title,
+			"drawing" not in doc_title,
+			"sketch of" not in doc_title,
+			"layout" not in doc_title,
+			"postcard" not in doc_title,
+			"table:" not in doc_title,
+			"traffic statistics:" not in doc_title,
+			"sketch" not in doc_title,
+		] if doc_title is not None else []
 		useless_description_terms = [
 			"certificate" not in doc_description,
 			"drawing" not in doc_description,
 			"sketch of" not in doc_description,
 			"newspaper" not in doc_description,
+			"sketch" not in doc_description,
 		] if doc_description is not None else []
 
 		if (
@@ -174,11 +201,13 @@ def get_dframe(query: str="query", docs: List=[Dict]) -> pd.DataFrame:
 			first_digital_object_url = None
 		row = {
 			'id': na_identifier,
-			'query': query,
-			'title': title,
+			'label': label,
+			'title': doc_title,
 			'description': doc_description,
 			'img_url': first_digital_object_url,
+			'label_title_description': label + " " + (doc_title or '') + " " + (doc_description or ''),
 			'date': pDate,
+			'doc_url': f"https://catalog.archives.gov/id/{na_identifier}",
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
@@ -234,210 +263,40 @@ def get_synchronized_df_img(df, nw: int=8):
 	return df_cleaned
 
 def main():
-	all_query_tags = [
-		"Pearl Harbor attack",
-		"naval aircraft factory",
-		"naval air station",
-		"naval air base",
-		"Red cross worker",
-		"air force personnel",
-		"air force base",
-		"air force station",
-		"motor cycle",
-		"ballistic missile",
-		"flame thrower",
-		"war bond",
-		"Infantry camp",
-		"swimming camp",
-		"fishing camp",
-		"construction camp",
-		"Trailer camp",
-		"Nazi camp",
-		"Winter camp",
-		"allied invasion",
-		"normandy invasion",
-		"Power Plant",
-		"Air bomb",
-		"fighter bomber",
-		"anti tank",
-		"anti aircraft",
-		"Battle of the Marne",
-		'Nazi crime',
-		"Nazi victim",
-		"Helicopter",
-		"trench warfare",
-		"Manufacturing Plant",
-		"rail construction",
-		"dam construction",
-		"tunnel construction",
-		"allied force",
-		"air base",
-		"military airbase",
-		"military airfield",
-		"military airport",
-		"air station",
-		"air raid",
-		"Flag Raising",
-		"conspiracy theory",
-		"Manhattan Project",
-		"Eastern Front",
-		"surge tank",
-		"Water Tank",
-		"soviet union",
-		"Naval Officer",
-		"army vehicle",
-		"airbase",
-		"Storehouse",
-		"Aerial View",
-		"Aerial warfare",
-		"Army Base",
-		"Army hospital",
-		"Military Base",
-		"military leader",
-		"military vehicle",
-		"Military Aviation",
-		"board meeting",
-		"Battle Monument",
-		"Battle of the Bulge",
-		"Naval Vessel",
-		"Medical aid",
-		"Coast Guard",
-		"Treaty of Versailles",
-		"enemy territory",
-		"reconnaissance",
-		"ship deck",
-		"naval hospital",
-		"hospital base",
-		"hospital ship",
-		"hospital train",
-		"Army Recruiting",
-		"Recruitment",
-		"infrastructure",
-		"military hospital",
-		"Kitchen Truck",
-		"Railroad Truck",
-		"fire truck",
-		"Line Truck",
-		"Coast Guard",
-		"gas truck",
-		"Flying Fortress",
-		"Freight Truck",
-		"Dump Truck",
-		"Diesel truck",
-		"Maintenance Truck",
-		"Clinic Truck",
-		"Truck Accident",
-		"military truck",
-		"army truck",
-		"vice president",
-		"bombardment",
-		"Bombing Attack",
-		"Atomic Bomb",
-		"Nuremberg Trials",
-		"Ballon gun",
-		"Machine gun",
-		"Mortar gun",
-		"field gun",
-		"Memorial day",
-		"flamethrower",
-		"hunting",
-		"Sailboat",
-		"regatta",
-		"cemetery",
-		"graveyard",
-		"bayonet",
-		"explosion",
-		"Submarine",
-		"Artillery",
-		"Rifle",
-		"barrel",
-		"Massacre",
-		"evacuation",
-		"aircraft",
-		"soldier",
-		"Infantry",
-		"Animal",
-		"plane", # must be before airplane, aeroplane.
-		"aeroplane",
-		"airplane",
-		"rationing",
-		"Grenade",
-		"Rocket",
-		"prisoner",
-		"weapon",
-		"Aviator",
-		"Parade",
-		"commander",
-		"museum",
-		"Sergeant",
-		"Admiral",
-		"Ambulance",
-		"cannon",
-		"ambassador",
-		"projectile",
-		"helmet",
-		"warship",
-		"clash",
-		"strike",
-		"damage",
-		"leisure",
-		"airport",
-		"Barn",
-		"Anniversary",
-		"Delegate",
-		"exile",
-		"evacuation",
-		"Civilian",
-		"nurse",
-		"doctor",
-		"embassy",
-		"Infantry",
-		"reservoir",
-		"refugee",
-		"president",
-		"holocaust",
-		"migration",
-		"Defence",
-		"Border",
-		"ship",
-		"gun", # cause missunderstanding with
-		"shovel",
-		"Accident",
-		"Wreck",
-		"Truck",
-		"hospital",
-		"Railroad",
-		"captain",
-		"sport",
-		"Minesweeper",
-		"Ceremony",
-		"Tunnel",
-		"pasture",
-		"farm",
-	]
-	# all_query_tags = natsorted(list(set(all_query_tags)))
-	# all_query_tags = list(set(all_query_tags))[:5]
-	if USER=="farid": # local laptop
-		all_query_tags = all_query_tags[:73]
-	elif USER=="ubuntu":
-		all_query_tags = all_query_tags[:100]
+	with open(os.path.join(parent_dir, 'misc', 'query_labels.txt'), 'r') as file_:
+		all_label_tags = [line.strip().lower() for line in file_]
+	print(type(all_label_tags), len(all_label_tags))
 
-	print(f"{len(all_query_tags)} Query phrases are being processed, please be paitient...")
+	# # return
+	# if USER=="farid": # local laptop
+	# 	all_label_tags = all_label_tags[:101]
+	# elif USER=="ubuntu":
+	# 	all_label_tags = all_label_tags[:100]
+
+	print(f"{len(all_label_tags)} lables are being processed for user: {USER}, please be paitient...")
 	dfs = []
-	for qi, qv in enumerate(all_query_tags):
-		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")
-		query_all_hits = get_data(
+	for qi, qv in enumerate(all_label_tags):
+		print(f"\nQ[{qi+1}/{len(all_label_tags)}]: {qv}")
+		qv = clean_(text=qv, sw=STOPWORDS)
+		label_all_hits = get_data(
 			st_date=START_DATE,
 			end_date=END_DATE,
-			query=qv.lower()
+			label=qv,
 		)
-		if query_all_hits:
-			qv_processed = re.sub(" ", "_", qv.lower())
-			df_fpth = os.path.join(DATASET_DIRECTORY, f"result_df_{START_DATE}_{END_DATE}_query_{qv_processed}.gz")
+		if label_all_hits:
+			qv_processed = re.sub(
+				pattern=" ", 
+				repl="_", 
+				string=qv,
+			)
+			df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_{START_DATE}_{END_DATE}.gz")
 			try:
 				df = load_pickle(fpath=df_fpth)
 			except Exception as e:
-				df = get_dframe(query=qv.lower(), docs=query_all_hits)
+				df = get_dframe(
+					label=qv,
+					docs=label_all_hits,
+				)
 				save_pickle(pkl=df, fname=df_fpth)
 			print(df.head(10))
 			dfs.append(df)
@@ -446,6 +305,22 @@ def main():
 	# print(dfs[0])
 	na_df_merged_raw = pd.concat(dfs, ignore_index=True)
 	replacement_dict = {
+		"air raid": "air strike",
+		"air bomb": "air strike",
+		"aerial bomb": "air strike",
+		"aerial warfare": "air strike",
+		"airstrike": "air strike",
+		"anniversary": "ceremony",
+		"rocket": "artillery",
+		"cannon": "artillery",
+		"projectile": "artillery",
+		"machine gun fire": "artillery",
+		"ballon gun": "artillery",
+		"volley gun": "artillery",
+		"mortar gun": "artillery",
+		"machine gun": "artillery",
+		"field gun": "artillery",
+		"rifle": "artillery",
 		"airbase": "air base",
 		"military airbase": "air base",
 		"military airfield": "air base",
@@ -456,106 +331,112 @@ def main():
 		"air force station": "air base",
 		"air force base": "air base",
 		"regatta": "sailboat",
-		"normandy invasion": "allied invasion",
+		"victory bond": "war bond",
+		"allied invasion" : "normandy invasion",
 		"plane": "aircraft",
 		"airplane": "aircraft",
 		"aeroplane": "aircraft",
+		"light bomber": "aircraft",
+		"military aircraft": "aircraft",
+		"flying fortress":  "aircraft",
+		"attack aircraft": "aircraft",
+		"fighter aircraft": "aircraft",
+		"fighter bomber": "aircraft",
+		"strike fighter": "aircraft",
+		"reconnaissance aircraft": "aircraft", 
+		"surveillance aircraft": "aircraft",
 		"graveyard": "cemetery",
-		"soldier": "infantry",
 		"clash": "wreck",
-		"sport": "leisure",
-		"military truck": "army truck",
+		"damage": "wreck",
+		"accident": "wreck",
+		"truck accident": "wreck",
+		"military ambulance": "military vehicle", 
+		"ambulance": "military vehicle", 
+		"military truck": "military vehicle", 
+		"line truck": "military vehicle",
+		"kitchen truck": "military vehicle",
+		"maintenance truck": "military vehicle",
+		"gas truck": "military vehicle",
+		"army truck": "military vehicle",
+		"trailer truck": "military vehicle",
+		"freight truck": "military vehicle",
+		"dump truck": "military vehicle",
+		"railroad truck": "military vehicle",
+		"fire truck": "military vehicle",
+		"diesel truck": "military vehicle",
+		"army vehicle": "military vehicle",
 		"military base": "army base",
-		"military vehicle": "army vehicle",
-		"military hospital": "army hospital",
+		"antitank": "anti tank",
+		"hospital base": "hospital", # TODO: check!
+		"hospital ship": "hospital", # TODO: check!
+		"hospital train": "hospital", # TODO: check!
+		"military hospital": "hospital",
+		"clinic truck": "hospital",
+		"army hospital": "hospital",
+		"naval hospital": "hospital",
 		"flame thrower": "flamethrower",
 		"roadbuilding": "road construction",
 		"recruitment": "army recruiting",
-		"farm": "pasture",
-		"minesweeper": "naval vessel",
+		"tank": "armored fighting vehicle",
+		"halftrack": "armored fighting vehicle",
+		"half track": "armored fighting vehicle",
+		"infantry fighting vehicle": "armored fighting vehicle",
+		"armored personnel carrier": "armored fighting vehicle",
+		"self propelled artillery": "armored fighting vehicle",
+		"self propelled gun": "armored fighting vehicle",
+		"assault gun": "armored fighting vehicle",
+		"waffen" : "military unit",
+		"afrika korps" : "military unit",
+		"grossdeutschland" : "military unit",
+		"submarine": "navy",
+		"minesweeper": "navy",
+		"kriegsmarine": "navy",
+		"naval warship": "navy",
+		"naval vessel": "navy",
+		"ship": "navy",
+		"naval ship": "navy",
+		"naval boat": "navy",
+		"military boat": "navy",		
+		"military ship": "navy",		
+		"construction camp": "camp",
+		"infantry camp": "camp",
+		"swimming camp": "camp",
+		"fishing camp": "camp",
+		"trailer camp": "camp",
+		"light station": "lighthouse",
+		"light house": "lighthouse",
+		"ground forces":  "military personnel",
+		"naval forces":  "military personnel",
+		"soldier": "military personnel",
+		"troop": "military personnel",
+		"infantry": "military personnel",
+		"red cross worker": "military personnel",
+		"nurse": "military personnel",
+		"air force personnel": "military personnel",
+		"naval officer": "military personnel",
+		"captain": "military personnel",
+		"admiral": "military personnel",
+		"sergeant": "military personnel",
+		"military leadership": "military personnel",
+		"military leader": "military personnel",
+		"commander": "military personnel",
+		"ambassador": "political figure",
+		"president": "political figure",
+		"vice president": "political figure",
+		"seaplane": "water based aircraft",
+		"flying boat": "water based aircraft",
+		"floatplane": "water based aircraft",
+		"rail construction": "infrastructure construction",
+		"dam construction":"infrastructure construction",
+		"tunnel construction":"infrastructure construction",
+		"bombardment": "bombing",
+		"bombing attack": "bombing",
+		"atomic bomb": "bombing",
+		"ussr": "soviet union",
 	}
 
-	# replacement_dict = {
-	# "boeing": "aircraft",
-	# 	"plane": "military aviation",
-	# 	"airplane": "military aviation",
-	# 	"aeroplane": "military aviation",
-	# 	"aircraft": "military aviation",
-	# 	"helicopter": "military aviation",
-	# 	"air force": "military aviation",
-	# 	"naval warship": "navy",
-	# 	"submarine": "navy",
-	# 	"manufacturing plant": "infrastructure",
-	# 	"barn": "infrastructure",
-	# 	"construction": "infrastructure",
-	# 	"road": "infrastructure",
-	# 	"army base": "infrastructure",
-	# 	"border": "infrastructure",
-	# 	"refugee": "migration",
-	# 	"evacuation": "migration",
-	# 	"exodus": "migration",
-	# 	"exile": "migration",
-	# 	"aerial warfare": "strategy",
-	# 	"air raid": "strategy",
-	# 	"trench warfare": "strategy",
-	# 	"battle of the bulge": "strategy",
-	# 	"battle of the marne": "strategy",
-	# 	"winter war": "strategy",
-	# 	"blitzkrieg": "strategy",
-	# 	"versailles": "international relations & treaties",
-	# 	"treaty of versailles": "international relations & treaties",
-	# 	"nuremberg trials": "international relations & treaties",
-	# 	"anniversary": "leisure",
-	# 	"rail": "infrastructure",
-	# 	"sport": "leisure",
-	# 	"meeting": "diplomacy",
-	# 	"negotiation": "diplomacy",
-	# 	"conference": "diplomacy",
-	# 	"summit": "diplomacy",
-	# 	"attack": "conflict",
-	# 	"clash": "conflict",
-	# 	"war": "conflict",
-	# 	"military strike": "conflict",
-	# 	"battle": "conflict",
-	# 	"propaganda": "propaganda & communication",
-	# 	"public relation": "propaganda & communication",
-	# 	"information warfare": "propaganda & communication",
-	# 	"air bomb": "weapon",
-	# 	"rifle": "weapon",
-	# 	"barrel": "weapon",
-	# 	"machine gun": "weapon",
-	# 	"artillery": "weapon",
-	# 	"tank": "weapon",
-	# 	"grenade": "weapon",
-	# 	"gun": "weapon",
-	# 	"cannon": "weapon",
-	# 	"rocket": "weapon",
-	# 	"mortar": "weapon",
-	# 	"firearm": "weapon",
-	# 	"flamethrower": "weapon",
-	# 	"bayonet": "weapon",
-	# 	"tent": "camp",
-	# 	"recruiting": "recruitment",
-	# 	"captain": "military leader",
-	# 	"army leader": "military leader",
-	# 	"commander": "military leader",
-	# 	"sergeant": "military leader",
-	# 	"admiral": "military leader",
-	# 	"explosion": "destruction",
-	# 	"accident": "destruction",
-	# 	"damage": "destruction",
-	# 	"wreck": "destruction",
-	# 	"truck":"vehicular",
-	# 	"vehicle":"vehicular",
-	# 	"ambulance":"vehicular",
-	# 	"airport": "infrastructure",
-	# 	"dam": "infrastructure",
-	# 	"reservoir": "infrastructure",
-	# 	"defence": "strategy",
-	# }
-
 	print(f"pre-processing merged {type(na_df_merged_raw)} {na_df_merged_raw.shape}")
-	na_df_merged_raw['query'] = na_df_merged_raw['query'].replace(replacement_dict)
+	na_df_merged_raw['label'] = na_df_merged_raw['label'].replace(replacement_dict)
 	na_df_merged_raw = na_df_merged_raw.dropna(subset=['img_url']) # drop None img_url
 	na_df_merged_raw = na_df_merged_raw.drop_duplicates(subset=['img_url'], keep="first", ignore_index=True) # drop duplicate img_url
 
@@ -570,16 +451,16 @@ def main():
 
 	na_df = get_synchronized_df_img(df=na_df_merged_raw, nw=args.num_workers)
 
-	query_counts = na_df['query'].value_counts()
-	# print(query_counts.tail(25))
+	label_counts = na_df['label'].value_counts()
+	print(label_counts.tail(25))
 
 	plt.figure(figsize=(20, 13))
-	query_counts.plot(kind='bar', fontsize=9)
-	plt.title(f'{dataset_name}: Query Frequency (total: {query_counts.shape}) {START_DATE} - {END_DATE}')
+	label_counts.plot(kind='bar', fontsize=9)
+	plt.title(f'{dataset_name}: Query Frequency (total: {label_counts.shape}) {START_DATE} - {END_DATE}')
 	plt.xlabel('Query')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
-	plt.savefig(os.path.join(DATASET_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
+	plt.savefig(os.path.join(OUTPUTs_DIR, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"))
 
 	na_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 	try:
@@ -587,7 +468,6 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	# TODO: calculate image mean and std:
 	if args.img_mean_std:
 		try:
 			img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images

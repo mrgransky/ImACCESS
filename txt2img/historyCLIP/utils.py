@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
 from typing import List, Set, Dict, Tuple, Union
+from functools import cache
 import subprocess
 import traceback
 import multiprocessing
@@ -50,22 +51,12 @@ nltk.download(
 	# raise_on_error=True,
 )
 
-# Get the list of English stopwords
-STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids()))
-
 warnings.filterwarnings('ignore')
 
-# Set a new limit for decompression bomb
-Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely
-# or set a higher limit
-# Image.MAX_IMAGE_PIXELS = 300000000  # Example of setting a higher limit
+Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
-
-visualize: bool = False
-# nw = 40 if USER=="ubuntu" else min(20, multiprocessing.cpu_count()) # def: 8
-# nw =  min(55, multiprocessing.cpu_count()) # def: 8
 
 if USER=="farid": # local laptop
 	WDIR = os.path.join(HOME, "datasets")
@@ -78,6 +69,36 @@ else: # Pouta
 	WDIR = "/media/volume/ImACCESS"
 	models_dir = os.path.join(WDIR, "models")
 	ddir: str = os.path.join(WDIR, "myntradataset")
+
+if USER!="alijanif":
+	import enchant
+	import libvoikko
+	fi_dict = libvoikko.Voikko(language="fi")	
+	fii_dict = enchant.Dict("fi")
+	sv_dict = enchant.Dict("sv_SE")
+	sv_fi_dict = enchant.Dict("sv_FI")
+	en_dict = enchant.Dict("en")
+	de_dict = enchant.Dict("de")
+	no_dict = enchant.Dict("no")
+	da_dict = enchant.Dict("da")
+	es_dict = enchant.Dict("es")
+	et_dict = enchant.Dict("et")
+	
+	cs_dict = enchant.Dict("cs")
+	cy_dict = enchant.Dict("cy")
+	fo_dict = enchant.Dict("fo")
+	fr_dict = enchant.Dict("fr")
+	ga_dict = enchant.Dict("ga")
+	hr_dict = enchant.Dict("hr")
+	hu_dict = enchant.Dict("hu")
+	is_dict = enchant.Dict("is")
+	it_dict = enchant.Dict("it")
+	lt_dict = enchant.Dict("lt")
+	lv_dict = enchant.Dict("lv")
+	nl_dict = enchant.Dict("nl")
+	pl_dict = enchant.Dict("pl")
+	sl_dict = enchant.Dict("sl")
+	sk_dict = enchant.Dict("sk")
 
 # Vision
 vit_d_model = 32 # vit_heads * vit_layers = vit_d_model
@@ -108,6 +129,75 @@ text_layers = 8
 # text_layers = 12  # Increased depth to handle complex queries
 
 ################################################################################
+
+# STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
+STOPWORDS = list()
+with open('meaningless_words.txt', 'r') as file_:
+	customized_meaningless_lemmas=[line.strip().lower() for line in file_]
+STOPWORDS.extend(customized_meaningless_lemmas)
+STOPWORDS = set(STOPWORDS)
+
+@cache
+def clean_(text: str = "sample text"):
+	text = re.sub(r'[^a-zA-Z\s]', ' ', text) # Remove special characters and digits
+	text = remove_misspelled_(documents=text)
+	words = nltk.tokenize.word_tokenize(text) # Tokenize the text into words
+	# Filter out stopwords and words with fewer than 3 characters
+	words = [word.lower() for word in words if len(word) >= 3 and word.lower() not in STOPWORDS]
+	text = ' '.join(words) # Join the words back into a string
+	text = re.sub(r'\boriginal caption\b', ' ', text)
+	text = re.sub(r'\bdate taken\b', ' ', text)
+	text = re.sub(r'\bcaption\b', ' ', text)
+	text = re.sub(r'\bunidentified\b', ' ', text)
+	text = re.sub(r'\bunnumbered\b', ' ', text)
+	text = re.sub(r'\buntitled\b', ' ', text)
+	text = re.sub(r'\bphotograph\b', ' ', text)
+	text = re.sub(r'\bphoto\b', ' ', text)
+	text = re.sub(r'\bdate\b', ' ', text)
+	text = re.sub(r'\bdistrict\b', ' ', text)
+	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
+	if len(text) == 0:
+		return None
+	return text
+
+@cache
+def remove_misspelled_(documents: str="This is a sample sentence."):
+	# print(f"Removing misspelled word(s)".center(100, " "))	
+	# Split the documents into words
+	documents = documents.title()
+	if not isinstance(documents, list):
+		# print(f"Convert to a list of words using split() command |", end=" ")
+		words = documents.split()
+	else:
+		words = documents	
+	# print(f"Document conatins {len(words)} word(s)")
+	# Remove misspelled words
+	cleaned_words = []
+	for word in words:
+		if not (
+			fi_dict.spell(word)
+			or fii_dict.check(word)
+			or sv_dict.check(word)
+			or sv_fi_dict.check(word)
+			or en_dict.check(word)
+			or de_dict.check(word)
+			or da_dict.check(word)
+			or es_dict.check(word)
+			or et_dict.check(word)
+			or cs_dict.check(word)
+			or fr_dict.check(word)
+			# or ga_dict.check(word)
+			# or hr_dict.check(word)
+			# or hu_dict.check(word)
+		):
+			# print(f"\t\t{word} does not exist")
+			pass
+		else:
+			cleaned_words.append(word)
+	# Join the cleaned words back into a string
+	cleaned_text = " ".join(cleaned_words)
+	# print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(100, " "))
+	return cleaned_text
 
 def log_gpu_memory(device):
 	gpu_mem_allocated = torch.cuda.memory_allocated(device) / (1024 ** 2)
@@ -198,18 +288,12 @@ def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):
 		filepath_or_buffer=fpth,
 		on_bad_lines='skip',
 	)
-	# Convert all text columns to lowercase (if any!)
-	history_df[history_df.select_dtypes(include=['object']).columns] = history_df.select_dtypes(include=['object']).apply(lambda x: x.str.lower())
-	# Check for existence of images and filter DataFrame
-	history_df['image_exists'] = history_df['id'].apply(lambda x: os.path.exists(os.path.join(img_dir, f"{x}.jpg")))
-	# Drop rows where the image does not exist
-	filtered_df = history_df[history_df['image_exists']].drop(columns=['image_exists'])
+	history_df[history_df.select_dtypes(include=['object']).columns] = history_df.select_dtypes(include=['object']).apply(lambda x: x.str.lower()) # lowercase all cols
+	history_df['image_exists'] = history_df['id'].apply(lambda x: os.path.exists(os.path.join(img_dir, f"{x}.jpg"))) # Check for existence of images and filter DataFrame
+	filtered_df = history_df[history_df['image_exists']].drop(columns=['image_exists']) # Drop rows where the image does not exist
 	# df = history_df.copy() # without checking image dir
 	df = filtered_df.copy()
 	print(f"=> {df.shape}")
-	# print(df.head(10))
-	# print(df['query'].value_counts())
-	# print("#"*100)
 	return df
 
 def get_img_name_without_suffix(fpth):
@@ -231,8 +315,92 @@ def plot_lrs_vs_steps(lrs, steps, fpath):
 	plt.title(f'Learning Rate vs. Step')
 	plt.grid(True)
 	plt.savefig(fpath)
-	
-def plot_(train_losses, val_losses, save_path):
+
+def get_metadata_df(ddir:str="path/2/directory", doc_desc:str="label"):
+	metadata_df_fpth:str = os.path.join(ddir, "metadata_df.gz")
+	img_lbls_dict_fpth:str = os.path.join(ddir, "image_labels_dict.gz")
+	img_lbls_list_fpth:str = os.path.join(ddir, "image_labels_list.gz")
+	try:
+		metadata_df = load_pickle(fpath=metadata_df_fpth)
+		img_lbls_dict = load_pickle(fpath=img_lbls_dict_fpth)
+		img_lbls_list = load_pickle(fpath=img_lbls_list_fpth)
+	except Exception as e:
+		print(f"{e}")
+		metadata_df = get_dframe(
+			fpth=os.path.join(ddir, "metadata.csv"),
+			img_dir=os.path.join(ddir, "images"),
+		)
+		img_lbls_dict, img_lbls_list = get_doc_description(df=metadata_df, col=doc_desc)
+	print(f"metadata_df: {metadata_df.shape}")
+	print(
+		f"img_lbls_dict {type(img_lbls_dict)} {len(img_lbls_dict)} "
+		f"img_lbls_list {type(img_lbls_list)} {len(img_lbls_list)}"
+	)
+	return metadata_df
+
+def get_splited_train_val_df(ddir:str="path/2/dir", split_pct:float=0.3, doc_desc:str="label", seed:bool=True):
+	if seed:
+		set_seeds()
+	metadata_df_fpth:str = os.path.join(ddir, "metadata_df.gz")
+	img_lbls_dict_fpth:str = os.path.join(ddir, "image_labels_dict.gz")
+	img_lbls_list_fpth:str = os.path.join(ddir, "image_labels_list.gz")
+	try:
+		metadata_df = load_pickle(fpath=metadata_df_fpth)
+		img_lbls_dict = load_pickle(fpath=img_lbls_dict_fpth)
+		img_lbls_list = load_pickle(fpath=img_lbls_list_fpth)
+	except Exception as e:
+		print(f"{e}")
+		metadata_df = get_dframe(
+			fpth=os.path.join(ddir, "metadata.csv"), 
+			img_dir=os.path.join(ddir, "images"), 
+		)
+		img_lbls_dict, img_lbls_list = get_doc_description(df=metadata_df, col=doc_desc)
+		save_pickle(pkl=metadata_df, fname=metadata_df_fpth,)
+		save_pickle(pkl=img_lbls_dict, fname=img_lbls_dict_fpth,)
+		save_pickle(pkl=img_lbls_list, fname=img_lbls_list_fpth,)
+	print(f"metadata_df: {metadata_df.shape}")
+	print(
+		f"img_lbls_dict {type(img_lbls_dict)} {len(img_lbls_dict)} "
+		f"img_lbls_list {type(img_lbls_list)} {len(img_lbls_list)}"
+	)
+	train_metadata_df_fpth:str = os.path.join(ddir, "metadata_train_df.gz")
+	val_metadata_df_fpth:str = os.path.join(ddir, "metadata_val_df.gz")
+	try:
+		train_metadata_df = load_pickle(fpath=train_metadata_df_fpth)
+		val_metadata_df = load_pickle(fpath=val_metadata_df_fpth)
+	except Exception as e:
+		print(f"{e}")
+		train_metadata_df, val_metadata_df = train_test_split(
+			metadata_df, 
+			shuffle=True, 
+			test_size=split_pct, # 0.05
+			random_state=42,
+		)
+		save_pickle(pkl=train_metadata_df, fname=train_metadata_df_fpth,)
+		save_pickle(pkl=val_metadata_df, fname=val_metadata_df_fpth,)
+		query_counts_val = val_metadata_df[doc_desc].value_counts()
+		# print(query_counts_val.tail(25))
+		plt.figure(figsize=(23, 15))
+		query_counts_val.plot(kind='bar', fontsize=8)
+		plt.title(f'Validation Query Frequency (total: {query_counts_val.shape})')
+		plt.xlabel('Query')
+		plt.ylabel('Frequency')
+		plt.tight_layout()
+		plt.savefig(os.path.join(ddir, "outputs", f"val_qlabel_freq_{query_counts_val.shape[0]}.png"))
+
+		train_metadata_df.to_csv(os.path.join(ddir, "metadata_train.csv"), index=False)
+		try:
+			train_metadata_df.to_excel(os.path.join(ddir, "metadata_train.xlsx"), index=False)
+		except Exception as e:
+			print(f"Failed to write Excel file: {e}")
+		val_metadata_df.to_csv(os.path.join(ddir, "metadata_val.csv"), index=False)
+		try:
+			val_metadata_df.to_excel(os.path.join(ddir, "metadata_val.xlsx"), index=False)
+		except Exception as e:
+			print(f"Failed to write Excel file: {e}")
+	return train_metadata_df, val_metadata_df
+
+def plot_(train_losses, val_losses, save_path, lr, wd):
 	num_epochs = len(train_losses)
 	if num_epochs == 1:
 		return
@@ -243,25 +411,11 @@ def plot_(train_losses, val_losses, save_path):
 	plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation Loss')
 	plt.xlabel('Epoch')
 	plt.ylabel('Loss')
-	plt.title('Training and Validation Loss vs. Epoch')
+	plt.title(f'Training & Validation Loss vs. Epoch\nLR: {lr} wd: {wd}')
 	plt.grid(True)
 	plt.legend()
 	plt.savefig(save_path)
 	plt.close()  # Close the figure to free up memory
-
-def plot_loss(losses, save_path):
-	num_epochs = len(losses)
-	if num_epochs == 1:
-		return
-	print(f"Saving Loss in {save_path}")
-	epochs = range(1, num_epochs + 1)		
-	plt.figure(figsize=(10, 5))
-	plt.plot(epochs, losses, marker='o', linestyle='-', color='b')
-	plt.xlabel('Epoch')
-	plt.ylabel('Loss')
-	plt.title(f'Loss vs. Epoch')
-	plt.grid(True)
-	plt.savefig(save_path)
 	
 def set_seeds():
 	# fix random seeds
@@ -288,19 +442,6 @@ def get_args(obj):
 	args = re.sub(r'[^\w\-_\.]', '_', args)
 	args = re.sub(r"_+", "_", args)
 	return args
-
-def clean_(text: str = "sample text"):
-	text = text.lower()
-	text = re.sub(r'\boriginal caption\b', ' ', text)
-	text = re.sub(r'\bphotograph\b', ' ', text)
-	text = re.sub(r'[^a-zA-Z\s]', ' ', text) # Remove special characters and digits
-	words = nltk.tokenize.word_tokenize(text) # Tokenize the text into words
-	# Filter out stopwords and words with fewer than 3 characters
-	words = [word for word in words if len(word) >= 3 and word not in STOPWORDS]
-	text = ' '.join(words) # Join the words back into a string
-	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
-	# TODO: some enchant cleaning for language check!
-	return text
 
 def get_model_details(model, img_size=(3, 224, 224), text_size=(77,), batch_size=1):
 	print(f"Model Information Detail".center(150, "-"))

@@ -1,16 +1,21 @@
 from utils import *
 		
 class ResizeWithPad:
-	def __init__(self, target_size):
-		self.target_size = target_size	
+	def __init__(self, target_size, pad_color=(128, 128, 128)):
+		self.target_size = target_size
+		self.pad_color = pad_color
 
 	def __call__(self, img):
 		img_np = np.array(img)
-		# Calculate scaling factor
 		scale = min(self.target_size[0] / img_np.shape[0], self.target_size[1] / img_np.shape[1])
 		new_size = tuple(int(dim * scale) for dim in img_np.shape[:2])
 		resized = Image.fromarray(img_np).resize(new_size[::-1], Image.LANCZOS)
-		new_img = Image.new("RGB", self.target_size, color=0) # Create new image with padding
+		avg_colors = tuple(np.mean(img_np, axis=(0, 1)).astype(int))
+		new_img = Image.new(
+			mode="RGB", 
+			size=self.target_size, 
+			color=tuple(avg_colors), # self.pad_color
+		) 
 		# Paste resized image onto padded image
 		new_img.paste(
 			resized, 
@@ -36,7 +41,7 @@ class HistoricalDataset(Dataset):
 			self, 
 			data_frame, 
 			img_sz:int=28, 
-			txt_category:str="query", 
+			txt_category:str="label", 
 			dataset_directory:str="path/2/images",
 			max_seq_length:int=128,
 			mean:List[float]=[0.5644510984420776, 0.5516530275344849, 0.5138059854507446],
@@ -49,7 +54,7 @@ class HistoricalDataset(Dataset):
 			[
 				# ContrastEnhanceAndDenoise(contrast_cutoff=1, blur_radius=0.1),  # Mild enhancement
 				# ResizeWithPad((img_sz, img_sz)),
-				T.RandomResizedCrop(img_sz, scale=(0.8, 1.0), ratio=(1.0, 1.0)),  # Randomly crop the image
+				T.RandomResizedCrop(size=img_sz, scale=(0.85, 1.0), ratio=(1.0, 1.0)),
 				# T.RandomApply(
 				# 	[
 				# 		T.RandomAffine(
@@ -130,9 +135,6 @@ class HistoricalDataset(Dataset):
 			encode=True, 
 			max_seq_length=self.max_seq_length,
 		)
-		# mask = torch.tensor(mask)
-		# if len(mask.size()) == 1:
-		# 	mask = mask.unsqueeze(0)
 		mask = mask.repeat(len(mask), 1) # 1D tensor => (max_seq_length x max_seq_length)
 		# print(f"img: {type(image)} {image.shape} ")
 		# print(f"cap: {type(cap)} {cap.shape} ")

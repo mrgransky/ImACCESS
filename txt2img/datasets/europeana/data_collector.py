@@ -1,22 +1,9 @@
-import requests
-import json
-import time
-import dill
-import gzip
-import pandas as pd
-import numpy as np
 import os
 import sys
-import datetime
-import re
-from typing import List, Dict
-from natsort import natsorted
-import matplotlib.pyplot as plt
-import seaborn as sns
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import multiprocessing
-from requests.exceptions import RequestException, HTTPError, SSLError
-import argparse
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
+from misc.utils import *
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
@@ -30,18 +17,27 @@ print(args)
 
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> europeana_image_download.out &
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 > logs/europeana_image_download.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 START_DATE = args.start_date
 END_DATE = args.end_date
+
+meaningless_words_fpth = os.path.join(parent_dir, 'misc', 'meaningless_words.txt')
+# STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
+STOPWORDS = list()
+with open(meaningless_words_fpth, 'r') as file_:
+	customized_meaningless_words=[line.strip().lower() for line in file_]
+STOPWORDS.extend(customized_meaningless_words)
+STOPWORDS = set(STOPWORDS)
+print(STOPWORDS, type(STOPWORDS))
 dataset_name = "europeana"
 nw:int = min(args.num_worker, multiprocessing.cpu_count()) # def: 8
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
-europeana_api_key: str = "plaction"
+# europeana_api_key: str = "plaction"
 # europeana_api_key: str = "api2demo"
-# europeana_api_key: str = "nLbaXYaiH"
+europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
@@ -55,46 +51,21 @@ DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}
 os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
 IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
 
-def save_pickle(pkl, fname:str=""):
-	print(f"\nSaving {type(pkl)}\n{fname}")
-	st_t = time.time()
-	if isinstance(pkl, ( pd.DataFrame, pd.Series ) ):
-		pkl.to_pickle(path=fname)
-	else:
-		# with open(fname , mode="wb") as f:
-		with gzip.open(fname , mode="wb") as f:
-			dill.dump(pkl, f)
-	elpt = time.time()-st_t
-	fsize_dump = os.stat( fname ).st_size / 1e6
-	print(f"Elapsed_t: {elpt:.3f} s | {fsize_dump:.2f} MB".center(120, " "))
+os.makedirs(os.path.join(DATASET_DIRECTORY, "hits"), exist_ok=True)
+HITs_DIR = os.path.join(DATASET_DIRECTORY, "hits")
 
-def load_pickle(fpath:str="unknown",):
-	print(f"Checking for existence? {fpath}")
-	st_t = time.time()
-	try:
-		with gzip.open(fpath, mode='rb') as f:
-			pkl=dill.load(f)
-	except gzip.BadGzipFile as ee:
-		print(f"<!> {ee} gzip.open() NOT functional => traditional openning...")
-		with open(fpath, mode='rb') as f:
-			pkl=dill.load(f)
-	except Exception as e:
-		print(f"<<!>> {e} pandas read_pkl...")
-		pkl = pd.read_pickle(fpath)
-	elpt = time.time()-st_t
-	fsize = os.stat( fpath ).st_size / 1e6
-	print(f"Loaded in: {elpt:.3f} s | {type(pkl)} | {fsize:.3f} MB".center(130, " "))
-	return pkl
+os.makedirs(os.path.join(DATASET_DIRECTORY, "outputs"), exist_ok=True)
+OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
 
-def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
+def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", label: str="world war"):
 	t0 = time.time()
-	query_processed = re.sub(" ", "_", query.lower())
-	query_all_hits_fpth = os.path.join(DATASET_DIRECTORY, f"results_{st_date}_{end_date}_query_{query_processed}.gz")
+	label_processed = re.sub(" ", "_", label)
+	label_all_hits_fpth = os.path.join(HITs_DIR, f"results_query_{label_processed}_{st_date}_{end_date}.gz")
 	try:
-		query_all_hits = load_pickle(fpath=query_all_hits_fpth)
+		label_all_hits = load_pickle(fpath=label_all_hits_fpth)
 	except Exception as e:
 		print(f"{e}")
-		print(f"Collecting all docs of National Archive for Query: « {query} » ... it might take a while..")
+		print(f"Collecting all docs of National Archive for label: « {label} » ... it might take a while..")
 		params = {
 			'wskey': europeana_api_key,
 			'qf': [
@@ -105,10 +76,10 @@ def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="
 				# 'LANGUAGE:en',
 			],
 			'rows': 100,
-			'query': query,
+			'query': label,
 			'reusability': 'open'
 		}
-		query_all_hits = []
+		label_all_hits = []
 		start = 1
 		while True:
 			loop_st = time.time()
@@ -125,37 +96,34 @@ def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="
 					hits = data['items']
 					total_hits = data['totalResults']
 					# print(total_hits, len(hits))
-					query_all_hits.extend(hits)
-					# print(json.dumps(query_all_hits, indent=2, ensure_ascii=False))
-					print(f"start: {start}:\tFound: {len(hits)} {type(hits)}\t{len(query_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
-				if len(query_all_hits) >= total_hits:
+					label_all_hits.extend(hits)
+					# print(json.dumps(label_all_hits, indent=2, ensure_ascii=False))
+					print(f"start: {start}:\tFound: {len(hits)} {type(hits)}\t{len(label_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
+				if len(label_all_hits) >= total_hits:
 					break
 				start += params.get("rows")
 			else:
 				print(f"Failed to retrieve data: status_code: {response.status_code}")
 				break
-		if len(query_all_hits) == 0:
+		if len(label_all_hits) == 0:
 			return
-		save_pickle(pkl=query_all_hits, fname=query_all_hits_fpth)
-	print(f"Total hit(s): {len(query_all_hits)} {type(query_all_hits)} for query: « {query} » found in {time.time()-t0:.2f} sec")
-	return query_all_hits
+		save_pickle(pkl=label_all_hits, fname=label_all_hits_fpth)
+	print(f"Total hit(s): {len(label_all_hits)} {type(label_all_hits)} for query: « {label} » found in {time.time()-t0:.2f} sec")
+	return label_all_hits
 
-def check_url_status(url: str) -> bool:
-	try:
-		response = requests.head(url, timeout=50)
-		# Return True only if the status code is 200 (OK)
-		return response.status_code == 200
-	except (requests.RequestException, Exception) as e:
-		print(f"Error accessing URL {url}: {e}")
-		return False
-
-def get_dframe(query: str="query", docs: List=[Dict]):
-	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
+def get_dframe(label: str="query", docs: List=[Dict]):
+	print(f"Analyzing {len(docs)} {type(docs)} document(s) for label: « {label} » might take a while...")
 	df_st_time = time.time()
 	data = []
 	for doc_idx, doc in enumerate(docs):
 		# print(type(doc.get("title")), doc.get("title"))
-		title = doc.get("title")#.lower()
+		# title = doc.get("title")
+		europeana_id = doc.get("id")
+		# print(type(doc.get("title")), len(doc.get("title")))
+		doc_title_list = doc.get("title") # ["title1", "title2", "title3", ...]
+		doc_description_list = doc.get("dcDescription" )# ["desc1", "desc2", "desc3", ...]
+		doc_title = clean_(text=' '.join(doc_title_list), sw=STOPWORDS) if doc_title_list else None
+		doc_description = clean_(text=" ".join(doc_description_list), sw=STOPWORDS) if doc_description_list else None
 		pDate = doc.get("edmTimespanLabel")[0].get("def") if doc.get("edmTimespanLabel") and doc.get("edmTimespanLabel")[0].get("def") else None
 		image_url = doc.get("edmIsShownBy")[0]
 		if (
@@ -166,11 +134,12 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 		else:
 			image_url = None
 		row = {
-			'id': doc.get("id"),
-			'query': query,
-			'title': title,
-			'description': doc.get("dcDescription"),
+			'id': europeana_id,
+			'label': label,
+			'title': doc_title,
+			'description': doc_description,
 			'img_url': image_url,
+			'label_title_description': label + " " + (doc_title or '') + " " + (doc_description or ''),
 			'date': pDate,
 		}
 		data.append(row)
@@ -226,215 +195,44 @@ def get_synchronized_df_img(df):
 	return df_cleaned
 
 def main():
-	all_query_tags = [
-		"Pearl Harbor attack",
-		"naval aircraft factory",
-		"naval air station",
-		"naval air base",
-		"Red cross worker",
-		"air force personnel",
-		"air force base",
-		"air force station",
-		"motor cycle",
-		"ballistic missile",
-		"flame thrower",
-		"war bond",
-		"Infantry camp",
-		"swimming camp",
-		"fishing camp",
-		"construction camp",
-		"Trailer camp",
-		"Nazi camp",
-		"Winter camp",
-		"allied invasion",
-		"normandy invasion",
-		"Power Plant",
-		"Air bomb",
-		"fighter bomber",
-		"anti tank",
-		"anti aircraft",
-		"Battle of the Marne",
-		'Nazi crime',
-		"Nazi victim",
-		"Helicopter",
-		"trench warfare",
-		"Manufacturing Plant",
-		"rail construction",
-		"dam construction",
-		"tunnel construction",
-		"allied force",
-		"air base",
-		"military airbase",
-		"military airfield",
-		"military airport",
-		"air station",
-		"air raid",
-		"Flag Raising",
-		"conspiracy theory",
-		"Manhattan Project",
-		"Eastern Front",
-		"surge tank",
-		"Water Tank",
-		"soviet union",
-		"Naval Officer",
-		"army vehicle",
-		"airbase",
-		"Storehouse",
-		"Aerial View",
-		"Aerial warfare",
-		"Army Base",
-		"Army hospital",
-		"Military Base",
-		"military leader",
-		"military vehicle",
-		"Military Aviation",
-		"board meeting",
-		"Battle Monument",
-		"Battle of the Bulge",
-		"Naval Vessel",
-		"Medical aid",
-		"Coast Guard",
-		"Treaty of Versailles",
-		"enemy territory",
-		"reconnaissance",
-		"ship deck",
-		"naval hospital",
-		"hospital base",
-		"hospital ship",
-		"hospital train",
-		"Army Recruiting",
-		"Recruitment",
-		"infrastructure",
-		"military hospital",
-		"Kitchen Truck",
-		"Railroad Truck",
-		"fire truck",
-		"Line Truck",
-		"Coast Guard",
-		"gas truck",
-		"Flying Fortress",
-		"Freight Truck",
-		"Dump Truck",
-		"Diesel truck",
-		"Maintenance Truck",
-		"Clinic Truck",
-		"Truck Accident",
-		"military truck",
-		"army truck",
-		"vice president",
-		"bombardment",
-		"Bombing Attack",
-		"Atomic Bomb",
-		"Nuremberg Trials",
-		"Ballon gun",
-		"Machine gun",
-		"Mortar gun",
-		"field gun",
-		"Memorial day",
-		"flamethrower",
-		"hunting",
-		"Sailboat",
-		"regatta",
-		"cemetery",
-		"graveyard",
-		"bayonet",
-		"explosion",
-		"Submarine",
-		"Artillery",
-		"Rifle",
-		"barrel",
-		"Massacre",
-		"evacuation",
-		"aircraft",
-		"soldier",
-		"Infantry",
-		"Animal",
-		"plane", # must be before airplane, aeroplane.
-		"aeroplane",
-		"airplane",
-		"rationing",
-		"Grenade",
-		"Rocket",
-		"prisoner",
-		"weapon",
-		"Aviator",
-		"Parade",
-		"commander",
-		"museum",
-		"Sergeant",
-		"Admiral",
-		"Ambulance",
-		"cannon",
-		"ambassador",
-		"projectile",
-		"helmet",
-		"warship",
-		"clash",
-		"strike",
-		"damage",
-		"leisure",
-		"airport",
-		"Barn",
-		"Anniversary",
-		"Delegate",
-		"exile",
-		"evacuation",
-		"Civilian",
-		"nurse",
-		"doctor",
-		"embassy",
-		"Infantry",
-		"reservoir",
-		"refugee",
-		"president",
-		"holocaust",
-		"migration",
-		"Defence",
-		"Border",
-		"ship",
-		# "gun", # misleading! Gun och Nils Forsgård
-		"shovel",
-		"Accident",
-		"Wreck",
-		"Truck",
-		"hospital",
-		"Railroad",
-		"captain",
-		"sport",
-		"Minesweeper",
-		"Ceremony",
-		"Tunnel",
-		"pasture",
-		"farm",
-	]
-	# all_query_tags = natsorted(list(set(all_query_tags)))
-	# all_query_tags = list(set(all_query_tags))[:5]
-	if USER=="farid": # local laptop
-		all_query_tags = all_query_tags#[:5]
+	with open(os.path.join(parent_dir, 'misc', 'query_labels.txt'), 'r') as file_:
+		all_label_tags = [line.strip().lower() for line in file_]
+	print(type(all_label_tags), len(all_label_tags))
 
-	print(f"{len(all_query_tags)} Query phrases are being processed, please be patient...")
+	# all_label_tags = natsorted(list(set(all_label_tags)))
+	# all_label_tags = list(set(all_label_tags))[:5]
+	# if USER=="farid": # local laptop
+	# 	all_label_tags = all_label_tags#[:5]
+
+	print(f"{len(all_label_tags)} lables are being processed for user: {USER}, please be paitient...")
 	dfs = []
-	for qi, qv in enumerate(all_query_tags):
-		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")
-		query_all_hits = get_data(
+	for qi, qv in enumerate(all_label_tags):
+		print(f"\nQ[{qi+1}/{len(all_label_tags)}]: {qv}")
+		qv = clean_(text=qv, sw=STOPWORDS)
+		label_all_hits = get_data(
 			st_date=START_DATE,
 			end_date=END_DATE,
-			query=qv.lower()
+			label=qv,
 		)
-		if query_all_hits:
-			qv_processed = re.sub(" ", "_", qv.lower())
-			df_fpth = os.path.join(DATASET_DIRECTORY, f"result_df_{START_DATE}_{END_DATE}_query_{qv_processed}.gz")
+		if label_all_hits:
+			qv_processed = re.sub(
+				pattern=" ", 
+				repl="_", 
+				string=qv,
+			)
+			df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_{START_DATE}_{END_DATE}.gz")
 			try:
 				df = load_pickle(fpath=df_fpth)
 			except Exception as e:
-				df = get_dframe(query=qv.lower(), docs=query_all_hits)
+				df = get_dframe(
+					label=qv,
+					docs=label_all_hits,
+				)
 				save_pickle(pkl=df, fname=df_fpth)
 			# print(df)
 			# print(df.head())
 			dfs.append(df)
 
-	print(f"Concatinating {len(dfs)} dfs...")
-	# print(dfs[0])
 	europeana_df_merged_raw = pd.concat(dfs, ignore_index=True)
 	replacement_dict = {
 		"airbase": "air base",
@@ -545,7 +343,7 @@ def main():
 	# 	"defence": "strategy",
 	# }
 	print(f"pre-processing merged {type(europeana_df_merged_raw)} {europeana_df_merged_raw.shape}")
-	europeana_df_merged_raw['query'] = europeana_df_merged_raw['query'].replace(replacement_dict)
+	europeana_df_merged_raw['label'] = europeana_df_merged_raw['label'].replace(replacement_dict)
 	europeana_df_merged_raw = europeana_df_merged_raw.dropna(subset=['img_url']) # drop None firstDigitalObjectUrl
 	europeana_df_merged_raw = europeana_df_merged_raw.drop_duplicates(subset=['img_url']) # drop duplicate firstDigitalObjectUrl
 
@@ -559,14 +357,14 @@ def main():
 		print(f"Failed to write Excel file: {e}")
 
 	europeana_df = get_synchronized_df_img(df=europeana_df_merged_raw)
-	query_counts = europeana_df['query'].value_counts()
+	label_counts = europeana_df['label'].value_counts()
 	plt.figure(figsize=(21, 14))
-	query_counts.plot(kind='bar', fontsize=9)
-	plt.title(f'{dataset_name} Query Frequency (total: {query_counts.shape})')
-	plt.xlabel('Query')
+	label_counts.plot(kind='bar', fontsize=9)
+	plt.title(f'{dataset_name} Query Frequency (total: {label_counts.shape})')
+	plt.xlabel('label')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
-	plt.savefig(os.path.join(DATASET_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
+	plt.savefig(os.path.join(OUTPUTs_DIR, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"))
 
 	europeana_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 	try:

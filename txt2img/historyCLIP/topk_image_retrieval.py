@@ -27,10 +27,6 @@ print(args)
 args.device = torch.device(args.device)
 # print(type(args.device), args.device, args.device.type)
 
-# TODO: investigation required!
-# if USER == "ubuntu":
-# 	args.dataset_dir = ddir
-
 models_dir_name = (
 	f"model"
 	+ f"_augmentation_{args.data_augmentation}"
