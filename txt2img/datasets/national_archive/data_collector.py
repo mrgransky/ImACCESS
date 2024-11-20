@@ -268,10 +268,10 @@ def main():
 	print(type(all_label_tags), len(all_label_tags))
 
 	# # return
-	if USER=="farid": # local laptop
-		all_label_tags = all_label_tags[:101]
-	elif USER=="ubuntu":
+	if USER=="ubuntu":
 		all_label_tags = all_label_tags[:111]
+	# elif USER=="farid": # local laptop
+	# 	all_label_tags = all_label_tags[:101]
 	else:
 		print(f"considering all {len(all_label_tags)} labels...")
 
@@ -306,136 +306,14 @@ def main():
 	print(f"Concatinating {len(dfs)} dfs...")
 	# print(dfs[0])
 	na_df_merged_raw = pd.concat(dfs, ignore_index=True)
-	replacement_dict = {
-		"air raid": "air strike",
-		"air bomb": "air strike",
-		"aerial bomb": "air strike",
-		"aerial warfare": "air strike",
-		"airstrike": "air strike",
-		"anniversary": "ceremony",
-		"rocket": "artillery",
-		"cannon": "artillery",
-		"projectile": "artillery",
-		"machine gun fire": "artillery",
-		"ballon gun": "artillery",
-		"volley gun": "artillery",
-		"mortar gun": "artillery",
-		"machine gun": "artillery",
-		"field gun": "artillery",
-		"rifle": "artillery",
-		"airbase": "air base",
-		"military airbase": "air base",
-		"military airfield": "air base",
-		"military airport": "air base",
-		"air station": "air base",
-		"naval air station": "air base",
-		"naval air base": "air base",
-		"air force station": "air base",
-		"air force base": "air base",
-		"regatta": "sailboat",
-		"victory bond": "war bond",
-		"allied invasion" : "normandy invasion",
-		"plane": "aircraft",
-		"airplane": "aircraft",
-		"aeroplane": "aircraft",
-		"light bomber": "aircraft",
-		"military aircraft": "aircraft",
-		"flying fortress":  "aircraft",
-		"attack aircraft": "aircraft",
-		"fighter aircraft": "aircraft",
-		"fighter bomber": "aircraft",
-		"strike fighter": "aircraft",
-		"reconnaissance aircraft": "aircraft", 
-		"surveillance aircraft": "aircraft",
-		"graveyard": "cemetery",
-		"clash": "wreck",
-		"damage": "wreck",
-		"accident": "wreck",
-		"truck accident": "wreck",
-		"military ambulance": "military vehicle", 
-		"ambulance": "military vehicle", 
-		"military truck": "military vehicle", 
-		"line truck": "military vehicle",
-		"kitchen truck": "military vehicle",
-		"maintenance truck": "military vehicle",
-		"gas truck": "military vehicle",
-		"army truck": "military vehicle",
-		"trailer truck": "military vehicle",
-		"freight truck": "military vehicle",
-		"dump truck": "military vehicle",
-		"railroad truck": "military vehicle",
-		"fire truck": "military vehicle",
-		"diesel truck": "military vehicle",
-		"army vehicle": "military vehicle",
-		"military base": "army base",
-		"antitank": "anti tank",
-		"hospital base": "hospital", # TODO: check!
-		"hospital ship": "hospital", # TODO: check!
-		"hospital train": "hospital", # TODO: check!
-		"military hospital": "hospital",
-		"clinic truck": "hospital",
-		"army hospital": "hospital",
-		"naval hospital": "hospital",
-		"flame thrower": "flamethrower",
-		"roadbuilding": "road construction",
-		"recruitment": "army recruiting",
-		"tank": "armored fighting vehicle",
-		"halftrack": "armored fighting vehicle",
-		"half track": "armored fighting vehicle",
-		"infantry fighting vehicle": "armored fighting vehicle",
-		"armored personnel carrier": "armored fighting vehicle",
-		"self propelled artillery": "armored fighting vehicle",
-		"self propelled gun": "armored fighting vehicle",
-		"assault gun": "armored fighting vehicle",
-		"waffen" : "military unit",
-		"afrika korps" : "military unit",
-		"grossdeutschland" : "military unit",
-		"submarine": "navy",
-		"minesweeper": "navy",
-		"kriegsmarine": "navy",
-		"naval warship": "navy",
-		"naval vessel": "navy",
-		"ship": "navy",
-		"naval ship": "navy",
-		"naval boat": "navy",
-		"military boat": "navy",		
-		"military ship": "navy",		
-		"construction camp": "camp",
-		"infantry camp": "camp",
-		"swimming camp": "camp",
-		"fishing camp": "camp",
-		"trailer camp": "camp",
-		"light station": "lighthouse",
-		"light house": "lighthouse",
-		"ground forces":  "military personnel",
-		"naval forces":  "military personnel",
-		"soldier": "military personnel",
-		"troop": "military personnel",
-		"infantry": "military personnel",
-		"red cross worker": "military personnel",
-		"nurse": "military personnel",
-		"air force personnel": "military personnel",
-		"naval officer": "military personnel",
-		"captain": "military personnel",
-		"admiral": "military personnel",
-		"sergeant": "military personnel",
-		"military leadership": "military personnel",
-		"military leader": "military personnel",
-		"commander": "military personnel",
-		"ambassador": "political figure",
-		"president": "political figure",
-		"vice president": "political figure",
-		"seaplane": "water based aircraft",
-		"flying boat": "water based aircraft",
-		"floatplane": "water based aircraft",
-		"rail construction": "infrastructure construction",
-		"dam construction":"infrastructure construction",
-		"tunnel construction":"infrastructure construction",
-		"bombardment": "bombing",
-		"bombing attack": "bombing",
-		"atomic bomb": "bombing",
-		"ussr": "soviet union",
-	}
+
+	json_file_path = os.path.join(parent_dir, 'misc', 'generalized_labels.json')
+
+	if os.path.exists(json_file_path):
+		with open(json_file_path, 'r') as file_:
+			replacement_dict = json.load(file_)
+	else:
+		print(f"Error: {json_file_path} does not exist.")
 
 	print(f"pre-processing merged {type(na_df_merged_raw)} {na_df_merged_raw.shape}")
 	na_df_merged_raw['label'] = na_df_merged_raw['label'].replace(replacement_dict)

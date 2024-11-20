@@ -39,6 +39,10 @@ fighter aircraft
 fighter bomber
 strike fighter
 anti tank
+american tank
+german tank
+french tank
+english tank
 anti aircraft
 Battle of the Marne
 Nazi crime
@@ -107,8 +111,8 @@ Dump Truck
 Diesel truck
 Maintenance Truck
 Clinic Truck
-Truck Accident
 military truck
+Truck Accident
 afrika korps
 army truck
 flying fortress
