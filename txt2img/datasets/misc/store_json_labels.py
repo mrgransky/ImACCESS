@@ -68,7 +68,8 @@ replacement_dict =  {
 	"diesel truck": "military vehicle",
 	"army vehicle": "military vehicle",
 	"military base": "army base",
-	"antitank": "anti tank",
+	"antitank gun": "anti tank weapon",
+	"antitank weapon": "anti tank weapon",
 	"hospital base": "hospital", # TODO: check!
 	"hospital ship": "hospital", # TODO: check!
 	"hospital train": "hospital", # TODO: check!
@@ -84,6 +85,7 @@ replacement_dict =  {
 	"english tank": "armored fighting vehicle",
 	"german tank": "armored fighting vehicle",
 	"halftrack": "armored fighting vehicle",
+	"tank destroyer": "armored fighting vehicle",
 	"half track": "armored fighting vehicle",
 	"infantry fighting vehicle": "armored fighting vehicle",
 	"armored personnel carrier": "armored fighting vehicle",

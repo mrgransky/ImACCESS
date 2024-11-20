@@ -26,7 +26,7 @@ print(args)
 
 # run in Pouta:
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 # WW1 & WW2
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 --num_workers 55 --img_mean_std True >> /media/volume/trash/ImACCESS/na_img_dl.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 --num_workers 55 --img_mean_std True > /media/volume/trash/ImACCESS/na_img_dl.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
@@ -267,13 +267,13 @@ def main():
 		all_label_tags = [line.strip().lower() for line in file_]
 	print(type(all_label_tags), len(all_label_tags))
 
-	# # return
-	if USER=="ubuntu":
-		all_label_tags = all_label_tags[:111]
-	# elif USER=="farid": # local laptop
-	# 	all_label_tags = all_label_tags[:101]
-	else:
-		print(f"considering all {len(all_label_tags)} labels...")
+	# # # return
+	# if USER=="ubuntu":
+	# 	all_label_tags = all_label_tags[:111]
+	# # elif USER=="farid": # local laptop
+	# # 	all_label_tags = all_label_tags[:101]
+	# else:
+	# 	print(f"considering all {len(all_label_tags)} labels...")
 
 	print(f"{len(all_label_tags)} lables are being processed for user: {USER}, please be paitient...")
 	dfs = []

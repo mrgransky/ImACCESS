@@ -1,6 +1,8 @@
 Pearl Harbor attack
 armored personnel carrier
 infantry fighting vehicle
+anti tank gun
+anti tank weapon
 self propelled gun
 self propelled artillery
 armored fighting vehicle
@@ -38,7 +40,6 @@ light bomber
 fighter aircraft
 fighter bomber
 strike fighter
-anti tank
 american tank
 german tank
 french tank
@@ -53,7 +54,8 @@ infrastructure construction
 rail construction
 dam construction
 tunnel construction
-allied force
+allied powers
+axis powers
 air base
 reconnaissance aircraft
 surveillance aircraft
@@ -85,7 +87,6 @@ military vehicle
 military aviation
 military unit
 military personnel
-military ambulance
 military ship
 military boat
 Battle Monument
@@ -108,17 +109,14 @@ Line Truck
 gas truck
 Freight Truck
 Dump Truck
-Diesel truck
 Maintenance Truck
 Clinic Truck
-military truck
-Truck Accident
-afrika korps
 army truck
+military truck
+afrika korps
 flying fortress
 vice president
 Airstrike
-antitank
 Waffen
 bombardment
 bombing attack
@@ -130,6 +128,9 @@ Machine gun
 Mortar gun
 volley gun
 field gun
+anti tank mine
+antitank gun
+antitank weapon
 Memorial day
 light station
 light house
