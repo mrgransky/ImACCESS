@@ -268,10 +268,12 @@ def main():
 	print(type(all_label_tags), len(all_label_tags))
 
 	# # return
-	# if USER=="farid": # local laptop
-	# 	all_label_tags = all_label_tags[:101]
-	# elif USER=="ubuntu":
-	# 	all_label_tags = all_label_tags[:100]
+	if USER=="farid": # local laptop
+		all_label_tags = all_label_tags[:101]
+	elif USER=="ubuntu":
+		all_label_tags = all_label_tags[:111]
+	else:
+		print(f"considering all {len(all_label_tags)} labels...")
 
 	print(f"{len(all_label_tags)} lables are being processed for user: {USER}, please be paitient...")
 	dfs = []
