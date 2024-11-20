@@ -1,6 +1,7 @@
 Pearl Harbor attack
 armored personnel carrier
 infantry fighting vehicle
+allied air attack
 anti tank gun
 anti tank weapon
 self propelled gun
@@ -55,6 +56,7 @@ rail construction
 dam construction
 tunnel construction
 allied powers
+allied forces
 axis powers
 air base
 reconnaissance aircraft
@@ -67,6 +69,7 @@ air station
 Air bomb
 air raid
 air strike
+air attack
 Flag Raising
 Manhattan Project
 Eastern Front
@@ -216,3 +219,4 @@ Halftrack
 Kriegsmarine
 ship
 ussr
+blitz
