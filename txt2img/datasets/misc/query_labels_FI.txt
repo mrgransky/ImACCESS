@@ -1,2 +1,7 @@
 lentokone
 tykki
+sotilas
+laivasto
+ase
+kypärä
+säiliö

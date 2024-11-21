@@ -100,34 +100,26 @@ def get_ip_info():
 		print(f"Error: {e}")
 
 def extract_url_info(url):
-		# Parse the URL
-		parsed_url = urlparse(url)
-		
-		# Extract the base URL
-		base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/gallery"
-		
-		# Split the path into components
-		path_components = parsed_url.path.strip('/').split('/')
-		
-		# Extract country, main_label, and type
-		country = path_components[1] if len(path_components) > 1 else None
-		main_label = path_components[2] if len(path_components) > 2 else None
-		type_ = path_components[3] if len(path_components) > 3 else None
-		
-		# Decode URL-encoded characters (if any)
-		if main_label:
-				main_label = unquote(main_label)
-				main_label = re.sub(r'[^a-zA-Z\s]', ' ', main_label) # Remove special characters and digits
-				main_label = re.sub(r'\s+', ' ', main_label)  # Remove extra whitespace
-		if type_:
-				type_ = unquote(type_)
-		
-		return {
-				"base_url": base_url,
-				"country": country,
-				"main_label": main_label,
-				"type": type_
-		}
+	parsed_url = urlparse(url)
+	base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/gallery" # Extract the base URL
+	path_components = parsed_url.path.strip('/').split('/') # Split the path into components		
+	# Extract country, main_label, and type
+	country = path_components[1] if len(path_components) > 1 else None
+	main_label = path_components[2] if len(path_components) > 2 else None
+	type_ = path_components[3] if len(path_components) > 3 else None
+	# Decode URL-encoded characters (if any)
+	if main_label:
+		main_label = unquote(main_label)
+		main_label = re.sub(r'[^a-zA-Z\s]', ' ', main_label) # Remove special characters and digits
+		main_label = re.sub(r'\s+', ' ', main_label)  # Remove extra whitespace
+	if type_:
+		type_ = unquote(type_)
+	return {
+		"base_url": base_url,
+		"country": country,
+		"main_label": main_label,
+		"type": type_
+	}
 
 def clean_(text, sw, check_language:bool=False):
 	# print(text)
@@ -148,7 +140,9 @@ def clean_(text, sw, check_language:bool=False):
 	text = ' '.join(words) # Join the words back into a string
 	text = re.sub(r'\boriginal caption\b', ' ', text)
 	text = re.sub(r'\boriginal field number\b', ' ', text)
-	text = re.sub(r'\bdate taken\b', ' ', text)
+	# text = re.sub(r'\bdate taken\b', ' ', text)
+	# text = re.sub(r'\bdate\b', ' ', text)
+	# text = re.sub(r'\bdistrict\b', ' ', text)
 	text = re.sub(r'\bobtained\b', ' ', text)
 	text = re.sub(r'\bfile record\b', ' ', text)
 	text = re.sub(r'\bcaption\b', ' ', text)
@@ -165,8 +159,6 @@ def clean_(text, sw, check_language:bool=False):
 	text = re.sub(r'\bgallery\b', ' ', text)
 	text = re.sub(r"\bpart \d+\b|\bpart\b", " ", text)
 	text = re.sub(r'\bfoto\b', ' ', text)
-	text = re.sub(r'\bdate\b', ' ', text)
-	text = re.sub(r'\bdistrict\b', ' ', text)
 	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
 	if len(text) == 0:
 		return None

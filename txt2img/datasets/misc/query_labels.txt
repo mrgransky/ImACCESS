@@ -1,3 +1,4 @@
+concentration camp
 Pearl Harbor attack
 armored personnel carrier
 infantry fighting vehicle
@@ -26,12 +27,12 @@ Flying Boat
 flame thrower
 victory bond
 war bond
+concentration camp
 Infantry camp
 swimming camp
 fishing camp
 construction camp
 Trailer camp
-Nazi camp
 Winter camp
 allied invasion
 normandy invasion
@@ -45,10 +46,10 @@ american tank
 german tank
 french tank
 english tank
+british tank
 anti aircraft
 Battle of the Marne
-Nazi crime
-Nazi victim
+war crimes
 trench warfare
 Manufacturing Plant
 infrastructure construction
@@ -57,7 +58,6 @@ dam construction
 tunnel construction
 allied powers
 allied forces
-axis powers
 air base
 reconnaissance aircraft
 surveillance aircraft
@@ -142,7 +142,11 @@ light house
 half track
 naval forces
 ground forces
+massacre
+victims
+atrocities
 D-Day
+U-boat
 troop
 holocaust
 kriegsmarine
@@ -166,7 +170,6 @@ Submarine
 Artillery
 Rifle
 barrel
-Massacre
 evacuation
 aircraft
 soldier
