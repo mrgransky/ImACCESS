@@ -5,7 +5,7 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 from misc.utils import *
 
-parser = argparse.ArgumentParser(description="U.S. National Archive Dataset")
+parser = argparse.ArgumentParser(description="SA-kuva-arkisto")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', type=str, default="1933-01-01", help='Start Date')
 parser.add_argument('--end_date', type=str, default="1933-01-02", help='End Date')
@@ -15,27 +15,18 @@ parser.add_argument('--img_mean_std', type=bool, default=False, help='Image mean
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 print(args)
+
 # run in local laptop:
-# $ python data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02
-
-########################## --start_date 1933-01-01 --end_date 1933-01-02 ##########################
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02 > logs/na_image_download.out &
-
-########################## --start_date 1914-01-01 --end_date 1946-12-31 ##########################
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1914-01-01 --end_date 1946-12-31 > logs/na_image_download.out &
+# $ python data_collector.py --dataset_dir $PWD --start_date 1939-09-01 --end_date 1945-09-02
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1939-09-01 --end_date 1945-09-02 > logs/SA_KUVA_WW2_img_dl.out &
 
 # run in Pouta:
-# WWI + WWII:
-# $ python data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 # WW1 & WW2
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 --num_workers 55 --img_mean_std True > /media/volume/trash/ImACCESS/na_img_dl.out &
-
-# WWII
-# $ python data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1939-01-01 --end_date 1945-12-31 # WW2 (with threshold)
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1939-01-01 --end_date 1945-12-31 --num_workers 55 --img_mean_std True > /media/volume/trash/ImACCESS/NA_WW2_img_dl.out &
+# $ python data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date --start_date 1939-09-01 --end_date 1945-09-02 # WW2 (with threshold)
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date --start_date 1939-09-01 --end_date 1945-09-02 --num_workers 55 --img_mean_std True > /media/volume/trash/ImACCESS/SA_KUVA_WW2_img_dl.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
-na_api_base_url: str = "https://catalog.archives.gov/proxy/records/search"
+finna_api_base_url: str = "https://api.finna.fi/v1/search"
 START_DATE = args.start_date
 END_DATE = args.end_date
 
@@ -48,7 +39,7 @@ STOPWORDS.extend(customized_meaningless_words)
 STOPWORDS = set(STOPWORDS)
 print(STOPWORDS, type(STOPWORDS))
 
-dataset_name = "NATIONAL_ARCHIVE"
+dataset_name = "SA_KUVA_WWII"
 useless_collection_terms = [
 	"Cartoon", 
 	"Newsmap",
@@ -84,7 +75,7 @@ OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.pkl")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.pkl")
 
-def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", label: str="world war"):
+def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", label: str="lentokone"):
 	t0 = time.time()
 	label_processed = re.sub(" ", "_", label)
 	label_all_hits_fpth = os.path.join(HITs_DIR, f"results_query_{label_processed}_{st_date}_{end_date}.gz")
@@ -101,18 +92,14 @@ def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", label: str="
 			'Pragma': 'no-cache',
 		}
 		params = {
-			"limit": 100,
-			"availableOnline": "true",
-			"dataSource": "description",
-			"endDate": end_date,
-			"levelOfDescription": "item",
-			"objectType": "jpg,png",
-			"q": label,
-			"startDate": st_date,
-			"typeOfMaterials": "Photographs and other Graphic Materials",
-			"abbreviated": "true",
-			"debug": "true",
-			"datesAgg": "TRUE"
+			'filter[]': [
+				'~format_ext_str_mv:"0/Image/"',
+				'~building:"1/SA-kuva/SA-kuva/"',
+				'free_online_boolean:"1"',
+			],
+			'lookfor': label,
+			'type': 'AllFields',
+			'limit': 100,
 		}
 		label_all_hits = []
 		page = 1
@@ -120,18 +107,18 @@ def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", label: str="
 			loop_st = time.time()
 			params["page"] = page
 			response = requests.get(
-				na_api_base_url,
+				finna_api_base_url,
 				params=params,
 				headers=headers,
 			)
 			if response.status_code == 200:
 				data = response.json()
-				hits = data.get('body').get('hits').get('hits')
+				hits = data.get('records')
 				# print(len(hits), type(hits))
 				# print(hits[0].keys())
 				# print(json.dumps(hits[0], indent=2, ensure_ascii=False))
 				label_all_hits.extend(hits)
-				total_hits = data.get('body').get("hits").get('total').get('value')
+				total_hits = data.get('resultCount')
 				print(f"Page: {page}:\tFound: {len(hits)} {type(hits)}\t{len(label_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
 				if len(label_all_hits) >= total_hits:
 					break
@@ -158,61 +145,28 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 	df_st_time = time.time()
 	data = []
 	for doc in docs:
-		record = doc.get('_source', {}).get('record', {})
-		fields = doc.get('fields', {})
-		doc_title = clean_(text=record.get('title'), sw=STOPWORDS)
-		doc_description = clean_(text=record.get('scopeAndContentNote'), sw=STOPWORDS) if record.get('scopeAndContentNote') else None
-		na_identifier = record.get('naId')
-		pDate = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
-		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
-		ancesstor_collections = [f"{itm.get('title')}" for itm in record.get('ancestors')] # record.get('ancestors'): list of dict
-		useless_title_terms = [
-			"wildflowers" not in doc_title, 
-			"-sc-" not in doc_title,
-			"notes" not in doc_title,
-			"page" not in doc_title,
-			"exhibit" not in doc_title,
-			"ad:" not in doc_title,
-			"sheets" not in doc_title,
-			"report" not in doc_title,
-			"map" not in doc_title,
-			"portrait of" not in doc_title,
-			"poster" not in doc_title,
-			"drawing" not in doc_title,
-			"sketch of" not in doc_title,
-			"layout" not in doc_title,
-			"postcard" not in doc_title,
-			"table:" not in doc_title,
-			"traffic statistics:" not in doc_title,
-			"sketch" not in doc_title,
-		] if doc_title is not None else []
-		useless_description_terms = [
-			"certificate" not in doc_description,
-			"drawing" not in doc_description,
-			"sketch of" not in doc_description,
-			"newspaper" not in doc_description,
-			"sketch" not in doc_description,
-		] if doc_description is not None else []
-
+		# print(type(doc), list(doc.keys()))
+		doc_title = doc.get("title") #clean_(text=record.get('title'), sw=STOPWORDS)
+		doc_description = None
+		sa_kuva_identifier = doc.get("id")
+		pDate = doc.get("year")
+		img_url = f"https://finna.fi/Cover/Show?source=Solr&id={sa_kuva_identifier}"
 		if (
-			first_digital_object_url 
-			and is_desired(ancesstor_collections, useless_collection_terms) 
-			and all(useless_title_terms)
-			and all(useless_description_terms)
-			and (first_digital_object_url.endswith('.jpg') or first_digital_object_url.endswith('.png'))
+			img_url 
 		):
 			pass # Valid entry; no action needed here
 		else:
-			first_digital_object_url = None
+			img_url = None
 		row = {
-			'id': na_identifier,
+			'id': re.search(r'\d+', sa_kuva_identifier).group(), # 82080
+			# 'id': sa_kuva_identifier, # sa-kuva.sa-kuva-82080
 			'label': label,
 			'title': doc_title,
 			'description': doc_description,
-			'img_url': first_digital_object_url,
+			'img_url': img_url,
 			'label_title_description': label + " " + (doc_title or '') + " " + (doc_description or ''),
 			'date': pDate,
-			'doc_url': f"https://catalog.archives.gov/id/{na_identifier}",
+			'doc_url': f"https://www.finna.fi/Record/{sa_kuva_identifier}",
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
@@ -223,7 +177,9 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 	t0 = time.time()
 	rIdx = row.name
 	url = row['img_url']
-	image_name = str(row['id']) + os.path.splitext(url)[1]
+	img_num_id = int(re.search(r'\d+', row['id']).group())
+	# image_name = f"{str(row['id'])}.jpg" # sa-kuva.sa-kuva-82080
+	image_name = f"{img_num_id}.jpg" # 82080.jpg
 	image_path = os.path.join(image_dir, image_name)
 	if os.path.exists(image_path):
 		return True # Image already exists, => skipping
@@ -234,7 +190,7 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
 			with open(image_path, 'wb') as f: # Save the image to the directory
 				f.write(response.content)
-			print(f"[{rIdx:<10}/ {total_rows}]{image_name:>20}{time.time() - t0:>10.1f} s")
+			print(f"{rIdx:<7}/ {total_rows:<15}{image_name:<40}{time.time() - t0:.1f} s")
 			return True  # Image downloaded successfully
 		except (RequestException, IOError) as e:
 			attempt += 1
@@ -268,18 +224,9 @@ def get_synchronized_df_img(df, nw: int=8):
 	return df_cleaned
 
 def main():
-	with open(os.path.join(parent_dir, 'misc', 'query_labels.txt'), 'r') as file_:
+	with open(os.path.join(parent_dir, 'misc', 'query_labels_FI.txt'), 'r') as file_:
 		all_label_tags = [line.strip().lower() for line in file_]
 	print(type(all_label_tags), len(all_label_tags))
-
-	# # # return
-	# if USER=="ubuntu":
-	# 	all_label_tags = all_label_tags[:111]
-	# # elif USER=="farid": # local laptop
-	# # 	all_label_tags = all_label_tags[:101]
-	# else:
-	# 	print(f"considering all {len(all_label_tags)} labels...")
-
 	print(f"{len(all_label_tags)} lables are being processed for user: {USER}, please be paitient...")
 	dfs = []
 	for qi, qv in enumerate(all_label_tags):
@@ -362,7 +309,35 @@ def main():
 			save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
 		print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
-	
+
+def test():
+	finna_api_base_url: str = "https://api.finna.fi/v1/search"
+	query = "lentokone"
+	# params taken from payload of JSON URL
+	params = {
+		'filter[]': [
+			'~format_ext_str_mv:"0/Image/"',
+			'~building:"1/SA-kuva/SA-kuva/"',
+			'free_online_boolean:"1"',
+		],
+		'lookfor': query,
+		'type': 'AllFields',
+		'limit': 100,
+	}
+	response = requests.get(finna_api_base_url, params=params)
+	if response.status_code == 200: # status check: 200
+		data = response.json() # Parse the JSON response
+		if 'records' in data:
+			hits = data['records']
+			tot_hits = data['resultCount']
+			hits_status = data['status']
+			print(tot_hits, len(hits), hits_status)
+			print(json.dumps(hits[48], indent=2))
+		else:
+			print("No 'records' found in the response.")
+	else:
+		print(f"Request failed with status code {response.status_code}")
+
 if __name__ == '__main__':
 	print(
 		f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -371,6 +346,7 @@ if __name__ == '__main__':
 	START_EXECUTION_TIME = time.time()
 	get_ip_info()
 	main()
+	# test()
 	END_EXECUTION_TIME = time.time()
 	print(
 		f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
