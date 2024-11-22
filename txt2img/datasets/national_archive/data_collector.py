@@ -15,6 +15,7 @@ parser.add_argument('--img_mean_std', type=bool, default=False, help='Image mean
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 print(args)
+
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02
 
@@ -219,7 +220,7 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
 	return df
 
-def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5):
+def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5, TIMEOUT: int=50):
 	t0 = time.time()
 	rIdx = row.name
 	url = row['img_url']
@@ -230,7 +231,7 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 	attempt = 0  # Retry mechanism
 	while attempt < retries:
 		try:
-			response = session.get(url, timeout=20)
+			response = session.get(url, timeout=TIMEOUT)
 			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
 			with open(image_path, 'wb') as f: # Save the image to the directory
 				f.write(response.content)

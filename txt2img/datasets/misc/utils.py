@@ -244,9 +244,9 @@ def get_mean_std_rgb_img_multiprocessing(dir: str="path/2/images", num_workers: 
 		print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(100, " "))
 		return mean.tolist(), std.tolist()
 
-def check_url_status(url: str) -> bool:
+def check_url_status(url: str, TIMEOUT:int=50) -> bool:
 	try:
-		response = requests.head(url, timeout=50)
+		response = requests.head(url, timeout=TIMEOUT)
 		# Return True only if the status code is 200 (OK)
 		return response.status_code == 200
 	except (requests.RequestException, Exception) as e:
