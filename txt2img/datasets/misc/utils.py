@@ -204,17 +204,18 @@ def remove_misspelled_(documents: str="This is a sample sentence."):
 	return cleaned_text
 
 def process_rgb_image(args):
-		filename, dir, transform = args
-		image_path = os.path.join(dir, filename)
-		try:
-			Image.open(image_path).verify() # # Validate the image
-			image = Image.open(image_path).convert('RGB')  # Ensure the image is in RGB mode
-			tensor_image = transform(image)
-			return tensor_image.sum(dim=[1, 2]), (tensor_image ** 2).sum(dim=[1, 2]), tensor_image.numel() / 3
-		except Exception as e:
-			print(f"Error processing {image_path}: {e}")
-			# traceback.print_exc()  # Print detailed traceback
-			return torch.zeros(3), torch.zeros(3), 0
+	filename, dir, transform = args
+	image_path = os.path.join(dir, filename)
+	print(f"processing: {image_path}")
+	try:
+		Image.open(image_path).verify() # # Validate the image
+		image = Image.open(image_path).convert('RGB')  # Ensure the image is in RGB mode
+		tensor_image = transform(image)
+		return tensor_image.sum(dim=[1, 2]), (tensor_image ** 2).sum(dim=[1, 2]), tensor_image.numel() / 3
+	except Exception as e:
+		print(f"Error processing {image_path}: {e}")
+		# traceback.print_exc()  # Print detailed traceback
+		return torch.zeros(3), torch.zeros(3), 0
 
 def get_mean_std_rgb_img_multiprocessing(dir: str="path/2/images", num_workers: int=8):
 		print(f"Calculating Mean-Std for {len(os.listdir(dir))} RGB images (multiprocessing: {num_workers} CPUs)")
@@ -223,22 +224,21 @@ def get_mean_std_rgb_img_multiprocessing(dir: str="path/2/images", num_workers: 
 		sum_ = torch.zeros(3)
 		sum_of_squares = torch.zeros(3)
 		count = 0
-		# Define the transform to convert images to tensors
 		transform = T.Compose([
-				T.ToTensor(),  # Convert to tensor (automatically converts to RGB if not already)
+			T.ToTensor(),  # Convert to tensor (automatically converts to RGB if not already)
 		])
 		with ProcessPoolExecutor(max_workers=num_workers) as executor:
-				futures = [executor.submit(process_rgb_image, (filename, dir, transform)) for filename in os.listdir(dir)]
-				# for future in tqdm(as_completed(futures), total=len(futures)):
-				for future in as_completed(futures):
-					try:
-						partial_sum, partial_sum_of_squares, partial_count = future.result()
-						sum_ += partial_sum
-						sum_of_squares += partial_sum_of_squares
-						count += partial_count
-					except Exception as e:
-						print(f"Error in future result: {e}")
-						# traceback.print_exc()  # Print detailed traceback
+			futures = [executor.submit(process_rgb_image, (filename, dir, transform)) for filename in os.listdir(dir)]
+			# for future in tqdm(as_completed(futures), total=len(futures)):
+			for future in as_completed(futures):
+				try:
+					partial_sum, partial_sum_of_squares, partial_count = future.result()
+					sum_ += partial_sum
+					sum_of_squares += partial_sum_of_squares
+					count += partial_count
+				except Exception as e:
+					print(f"Error in future result: {e}")
+					# traceback.print_exc()  # Print detailed traceback
 		mean = sum_ / count
 		std = torch.sqrt((sum_of_squares / count) - (mean ** 2))
 		print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(100, " "))
