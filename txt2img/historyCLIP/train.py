@@ -221,8 +221,8 @@ def train(model, train_data_loader, val_data_loader, optimizer, scheduler, check
 
 def main():
 	###################################################### BW images ######################################################
-	# img_bw_mean_fpth:str = os.path.join(args.dataset_dir, "img_bw_mean.pkl")
-	# img_bw_std_fpth:str = os.path.join(args.dataset_dir, "img_bw_std.pkl")
+	# img_bw_mean_fpth:str = os.path.join(args.dataset_dir, "img_bw_mean.gz")
+	# img_bw_std_fpth:str = os.path.join(args.dataset_dir, "img_bw_std.gz")
 	# try:
 	# 	img_bw_mean, img_bw_std = load_pickle(fpath=img_bw_mean_fpth), load_pickle(fpath=img_bw_std_fpth)
 	# except Exception as e:
@@ -233,8 +233,8 @@ def main():
 	# print(f"Grayscale: Mean: {img_bw_mean} | Std: {img_bw_std}")
 	###################################################### BW images ######################################################
 
-	img_rgb_mean_fpth:str = os.path.join(args.dataset_dir, "img_rgb_mean.pkl")
-	img_rgb_std_fpth:str = os.path.join(args.dataset_dir, "img_rgb_std.pkl")
+	img_rgb_mean_fpth:str = os.path.join(args.dataset_dir, "img_rgb_mean.gz")
+	img_rgb_std_fpth:str = os.path.join(args.dataset_dir, "img_rgb_std.gz")
 	try:
 		img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
 	except Exception as e:
