@@ -36,7 +36,7 @@ python -u train.py \
 	--dataset_dir $ddir \
 	--query $qu \
 	--num_epochs 50 \
-	--num_workers 20 \
+	--num_workers 9 \
 	--print_every 250 \
 	--batch_size 64 \
 	--patch_size 3 \
