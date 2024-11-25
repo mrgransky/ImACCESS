@@ -20,10 +20,10 @@ print(args)
 # $ python data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02
 
 ########################## --start_date 1933-01-01 --end_date 1933-01-02 ##########################
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02 > logs/na_image_download.out &
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 2 --img_mean_std True > logs/na_image_download.out &
 
 ########################## --start_date 1914-01-01 --end_date 1946-12-31 ##########################
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1914-01-01 --end_date 1946-12-31 > logs/na_image_download.out &
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1914-01-01 --end_date 1946-12-31 --num_workers 2 --img_mean_std True > logs/na_image_download.out &
 
 # run in Pouta:
 # WWI + WWII:
