@@ -701,7 +701,7 @@ def process_rgb_image(args):
 		return torch.zeros(3), torch.zeros(3), 0
 
 def get_mean_std_rgb_img_multiprocessing(dir: str="path/2/images", num_workers: int=8):
-	print(f"Calculating Mean-Std «{len(os.listdir(dir))} RGB images » (multiprocessing with {num_workers} CPUs)")
+	print(f"Calculating Mean-Std « {len(os.listdir(dir))} RGB images » (multiprocessing with {num_workers} CPUs)")
 	t0 = time.time()
 	# Initialize variables to accumulate the sum and sum of squares for each channel
 	sum_ = torch.zeros(3)
