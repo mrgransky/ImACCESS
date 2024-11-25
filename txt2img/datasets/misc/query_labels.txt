@@ -81,6 +81,7 @@ soviet union
 Naval Officer
 army vehicle
 Aerial bomb
+flying bomb
 Aerial warfare
 Aerial View
 Army Base
@@ -192,9 +193,7 @@ Ambulance
 cannon
 ambassador
 projectile
-helmet
 clash
-damage
 airport
 Barn
 Anniversary

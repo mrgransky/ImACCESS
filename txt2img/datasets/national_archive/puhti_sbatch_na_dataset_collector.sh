@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=NA_dataset_collection_ww1_ww2_threshold_plus_minus_1_year
+#SBATCH --job-name=NA_dataset_collection_ww1_2_plus_minus_1_year
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
