@@ -15,7 +15,7 @@ from dataset_loader import HistoricalDataset
 # $ nohup python -u train.py --dataset_dir /media/volume/ImACCESS/WW_DATASETss/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 50 --device "cuda:2" --learning_rate 5e-4 --weight_decay 5e-2 --patch_size 5 --image_size 170 --batch_size 60 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
 
 # Puhti:
-# $ python train.py --dataset_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1913-01-01_1946-12-31 --num_workers 15
+# $ python train.py --dataset_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1913-01-01_1946-12-31 --num_workers 4
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
@@ -28,7 +28,7 @@ parser.add_argument('--embedding_size', type=int, default=1024, help='Embedding 
 parser.add_argument('--query', type=str, default="air base", help='Query')
 parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
-parser.add_argument('--num_workers', type=int, default=multiprocessing.cpu_count(), help='Number of CPUs [def: max cpus]')
+parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs [def: max cpus]')
 parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set [def: 0.23]')
 parser.add_argument('--learning_rate', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-3]')
 parser.add_argument('--weight_decay', type=float, default=1e-1, help='Weight decay [def: 5e-4]')

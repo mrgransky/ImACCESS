@@ -34,8 +34,9 @@ qu="aircraft"
 
 python -u historyclip.py \
 	--dataset_dir $ddir \
-	--query  $qu \
+	--query $qu \
 	--num_epochs 50 \
+	--num_workers 10 \
 	--print_every 250 \
 	--batch_size 64 \
 	--patch_size 3 \
