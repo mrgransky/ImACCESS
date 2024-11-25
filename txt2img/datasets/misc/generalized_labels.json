@@ -125,7 +125,6 @@
 	"troop": "military personnel",
 	"infantry": "military personnel",
 	"red cross worker": "military personnel",
-	"nurse": "military personnel",
 	"air force personnel": "military personnel",
 	"naval officer": "military personnel",
 	"captain": "military personnel",
@@ -146,5 +145,9 @@
 	"bombardment": "bombing",
 	"bombing attack": "bombing",
 	"atomic bomb": "bombing",
-	"ussr": "soviet union"
+	"ussr": "soviet union",
+	"surgeon": "health professional",
+	"dentist": "health professional",
+	"nurse": "health professional",
+	"doctor": "health professional"
 }
