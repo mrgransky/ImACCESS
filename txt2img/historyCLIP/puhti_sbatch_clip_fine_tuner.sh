@@ -29,7 +29,7 @@ echo "nTASKS/CORE: $SLURM_NTASKS_PER_CORE, nTASKS/NODE: $SLURM_NTASKS_PER_NODE"
 echo "THREADS/CORE: $SLURM_THREADS_PER_CORE"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
-ddir="/scratch/project_2004072/ImACCESS/NA_DATASET/NATIONAL_ARCHIVE_1913-01-01_1946-12-31"
+ddir="/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1913-01-01_1946-12-31"
 qu="aircraft"
 
 python -u train.py \
