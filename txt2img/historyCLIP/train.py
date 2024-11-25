@@ -11,11 +11,11 @@ from dataset_loader import HistoricalDataset
 # how to run [Pouta]:
 # Ensure Conda:
 # $ conda activate py39
-# $ python train.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --device "cuda:2" --num_epochs 1 --batch_size 128
-# $ nohup python -u train.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 50 --device "cuda:2" --learning_rate 5e-4 --weight_decay 5e-2 --patch_size 5 --image_size 170 --batch_size 60 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
+# $ python train.py --dataset_dir /media/volume/ImACCESS/WW_DATASETss/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --device "cuda:2" --num_epochs 1 --batch_size 128
+# $ nohup python -u train.py --dataset_dir /media/volume/ImACCESS/WW_DATASETss/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 50 --device "cuda:2" --learning_rate 5e-4 --weight_decay 5e-2 --patch_size 5 --image_size 170 --batch_size 60 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
 
 # Puhti:
-# $ python train.py --dataset_dir /scratch/project_2004072/ImACCESS/NA_DATASET/NATIONAL_ARCHIVE_1913-01-01_1946-12-31
+# $ python train.py --dataset_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1913-01-01_1946-12-31 --num_workers 15
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
