@@ -8,7 +8,6 @@ anti tank weapon
 self propelled gun
 self propelled artillery
 armored fighting vehicle
-machine gun fire
 naval aircraft factory
 naval air station
 naval air base
@@ -52,6 +51,7 @@ Battle of the Marne
 war crimes
 trench warfare
 Manufacturing Plant
+construction equipment
 infrastructure construction
 rail construction
 dam construction
@@ -132,6 +132,7 @@ Machine gun
 Mortar gun
 volley gun
 field gun
+mountain gun
 anti tank mine
 antitank gun
 antitank weapon
@@ -141,6 +142,8 @@ light house
 half track
 naval forces
 ground forces
+infantry weapon
+howitzer
 Airstrike
 Waffen
 bombardment
@@ -161,17 +164,18 @@ seaplane
 airbase
 Storehouse
 lighthouse
-flamethrower
 Sailboat
 regatta
 cemetery
 graveyard
-bayonet
 explosion
 Submarine
 Artillery
+Grenade
 Rifle
-barrel
+knives
+bayonet
+flamethrower
 evacuation
 aircraft
 soldier
@@ -181,7 +185,6 @@ plane
 aeroplane
 airplane
 rationing
-Grenade
 Rocket
 prisoner
 Aviator
@@ -205,7 +208,6 @@ doctor
 dentist
 surgeon
 embassy
-Infantry
 reservoir
 refugee
 president
