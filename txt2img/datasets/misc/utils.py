@@ -14,6 +14,7 @@ import torch
 import nltk
 import multiprocessing
 import shutil
+import logging
 from typing import List, Dict, Set
 from natsort import natsorted
 import matplotlib.pyplot as plt
@@ -26,6 +27,8 @@ import torchvision.transforms as T
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
 from functools import cache
 from urllib.parse import urlparse, unquote, quote_plus
+
+logging.basicConfig(level=logging.INFO)
 
 nltk_modules = [
 		'punkt',
@@ -206,14 +209,16 @@ def remove_misspelled_(documents: str="This is a sample sentence."):
 def process_rgb_image(args):
 	filename, dir, transform = args
 	image_path = os.path.join(dir, filename)
-	print(f"processing: {image_path}")
+	# print(f"processing: {image_path}", end="\t")
+	logging.info(f"Processing: {image_path}")
 	try:
 		Image.open(image_path).verify() # # Validate the image
 		image = Image.open(image_path).convert('RGB')  # Ensure the image is in RGB mode
 		tensor_image = transform(image)
 		return tensor_image.sum(dim=[1, 2]), (tensor_image ** 2).sum(dim=[1, 2]), tensor_image.numel() / 3
 	except Exception as e:
-		print(f"Error processing {image_path}: {e}")
+		# print(f"Error processing {image_path}: {e}")
+		logging.error(f"Error processing {image_path}: {e}")
 		# traceback.print_exc()  # Print detailed traceback
 		return torch.zeros(3), torch.zeros(3), 0
 
@@ -232,16 +237,20 @@ def get_mean_std_rgb_img_multiprocessing(dir: str="path/2/images", num_workers: 
 			# for future in tqdm(as_completed(futures), total=len(futures)):
 			for future in as_completed(futures):
 				try:
-					partial_sum, partial_sum_of_squares, partial_count = future.result()
-					sum_ += partial_sum
-					sum_of_squares += partial_sum_of_squares
-					count += partial_count
+					result = future.result()
+					if result is not None:
+						partial_sum, partial_sum_of_squares, partial_count = result
+						sum_ += partial_sum
+						sum_of_squares += partial_sum_of_squares
+						count += partial_count
 				except Exception as e:
-					print(f"Error in future result: {e}")
+					# print(f"Error in future result: {e}")
+					logging.error(f"Error in future result: {e}")
 					# traceback.print_exc()  # Print detailed traceback
 		mean = sum_ / count
 		std = torch.sqrt((sum_of_squares / count) - (mean ** 2))
-		print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(100, " "))
+		# print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(100, " "))
+		logging.info(f"Elapsed_t: {time.time()-t0:.2f} sec")
 		return mean.tolist(), std.tolist()
 
 def check_url_status(url: str, TIMEOUT:int=50) -> bool:

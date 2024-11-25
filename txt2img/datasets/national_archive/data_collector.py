@@ -32,7 +32,7 @@ print(args)
 
 # WWII
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1939-01-01 --end_date 1945-12-31 # WW2 (with threshold)
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1939-01-01 --end_date 1945-12-31 --num_workers 55 --img_mean_std True > /media/volume/trash/ImACCESS/NA_WW2_img_dl.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/NA_DATASETs --start_date 1939-01-01 --end_date 1945-12-31 --num_workers 20 --img_mean_std True > /media/volume/trash/ImACCESS/NA_WW2_img_dl.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
