@@ -32,7 +32,7 @@ echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 ddir="/scratch/project_2004072/ImACCESS/NA_DATASET/NATIONAL_ARCHIVE_1913-01-01_1946-12-31"
 qu="aircraft"
 
-python -u historyclip.py \
+python -u train.py \
 	--dataset_dir $ddir \
 	--query $qu \
 	--num_epochs 50 \
