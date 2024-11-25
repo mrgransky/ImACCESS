@@ -571,38 +571,33 @@ def get_mean_std_grayscale_img(dir: str="path/2/images"):
 	return mean.item(), std.item()
 
 def get_mean_std_rgb_img(dir: str="path/2/images"):
-		print(f"Calculating Mean-Std for {len(os.listdir(dir))} RGB images (sequential approach => slow)")
-		t0 = time.time()
-		
-		# Initialize variables to accumulate the sum and sum of squares for each channel
-		sum_ = torch.zeros(3)
-		sum_of_squares = torch.zeros(3)
-		count = 0
-		
-		# Define the transform to convert images to tensors
-		transform = T.Compose([
-				T.ToTensor(),  # Convert to tensor (automatically converts to RGB if not already)
-		])
-		
-		# Iterate over all images in the dataset directory
-		for filename in tqdm(os.listdir(dir)):
-				if filename.endswith('.jpg') or filename.endswith('.png'):
-						image_path = os.path.join(dir, filename)
-						try:
-								image = Image.open(image_path).convert('RGB')  # Ensure the image is in RGB mode
-								tensor_image = transform(image)
-								sum_ += tensor_image.sum(dim=[1, 2])  # Sum over height and width dimensions
-								sum_of_squares += (tensor_image ** 2).sum(dim=[1, 2])  # Sum of squares over height and width dimensions
-								count += tensor_image.numel() / 3  # Total number of pixels per channel
-						except Exception as e:
-								print(f"Error processing {image_path}: {e}")
-		
-		# Calculate the mean and std for each channel
-		mean = sum_ / count
-		std = torch.sqrt((sum_of_squares / count) - (mean ** 2))
-		
-		print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(100, " "))
-		return mean.tolist(), std.tolist() # return lists of length 3, corresponding to RGB channels
+	print(f"Calculating Mean-Std for {len(os.listdir(dir))} RGB images (sequential approach => slow)")
+	t0 = time.time()
+	# Initialize variables to accumulate the sum and sum of squares for each channel
+	sum_ = torch.zeros(3)
+	sum_of_squares = torch.zeros(3)
+	count = 0
+	# Define the transform to convert images to tensors
+	transform = T.Compose([
+		T.ToTensor(),  # Convert to tensor (automatically converts to RGB if not already)
+	])
+	# Iterate over all images in the dataset directory
+	for filename in tqdm(os.listdir(dir)):
+		if filename.endswith('.jpg') or filename.endswith('.png'):
+			image_path = os.path.join(dir, filename)
+			try:
+				image = Image.open(image_path).convert('RGB')  # Ensure the image is in RGB mode
+				tensor_image = transform(image)
+				sum_ += tensor_image.sum(dim=[1, 2])  # Sum over height and width dimensions
+				sum_of_squares += (tensor_image ** 2).sum(dim=[1, 2])  # Sum of squares over height and width dimensions
+				count += tensor_image.numel() / 3  # Total number of pixels per channel
+			except Exception as e:
+				print(f"Error processing {image_path}: {e}")
+	# Calculate the mean and std for each channel
+	mean = sum_ / count
+	std = torch.sqrt((sum_of_squares / count) - (mean ** 2))
+	print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(100, " "))
+	return mean.tolist(), std.tolist() # return lists of length 3, corresponding to RGB channels
 
 def process_grayscale_image(args):
 		filename, dir, transform = args
