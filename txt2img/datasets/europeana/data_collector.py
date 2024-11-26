@@ -259,7 +259,7 @@ def main():
 	label_counts = europeana_df['label'].value_counts()
 	plt.figure(figsize=(21, 14))
 	label_counts.plot(kind='bar', fontsize=9)
-	plt.title(f'{dataset_name} Query Frequency (total: {label_counts.shape})')
+	plt.title(f'{dataset_name} Label Frequency (total: {label_counts.shape})')
 	plt.xlabel('label')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
