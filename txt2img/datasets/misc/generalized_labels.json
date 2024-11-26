@@ -1,7 +1,9 @@
 {
-	"massacre": "war crimes",
-	"atrocities": "war crimes",
-	"victims": "war crimes",
+	"massacre": "mass atrocities",
+	"atrocities": "mass atrocities",
+	"victims": "mass atrocities",
+	"holocaust": "mass atrocities",
+	"war crimes": "mass atrocities",
 	"air raid": "air strike",
 	"air bomb": "air strike",
 	"aerial bomb": "air strike",
