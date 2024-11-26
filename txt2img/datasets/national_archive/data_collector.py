@@ -342,8 +342,8 @@ def main():
 
 	plt.figure(figsize=(20, 13))
 	label_counts.plot(kind='bar', fontsize=9)
-	plt.title(f'{dataset_name}: Query Frequency (total: {label_counts.shape}) {START_DATE} - {END_DATE}')
-	plt.xlabel('Query')
+	plt.title(f'{dataset_name}: Label Frequency (total: {label_counts.shape}) {START_DATE} - {END_DATE}')
+	plt.xlabel('Label')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
 	plt.savefig(os.path.join(OUTPUTs_DIR, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"))

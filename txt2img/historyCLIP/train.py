@@ -15,7 +15,7 @@ from dataset_loader import HistoricalDataset
 # $ nohup python -u train.py --dataset_dir /media/volume/ImACCESS/WW_DATASETss/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 50 --device "cuda:2" --learning_rate 5e-4 --weight_decay 5e-2 --patch_size 5 --image_size 170 --batch_size 60 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
 
 # Puhti:
-# $ python train.py --dataset_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1913-01-01_1946-12-31 --num_workers 4
+# $ python train.py --dataset_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1913-01-01_1946-12-31
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
@@ -239,15 +239,21 @@ def main():
 		img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
 	except Exception as e:
 		print(f"{e}")
+		##################################### Mean - Std Multiprocessing ####################################
 		# img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
 		# 	dir=os.path.join(args.dataset_dir, "images"), 
 		# 	num_workers=args.num_workers,
 		# )
+		##################################### Mean - Std Multiprocessing ####################################
+
+		######################################## Mean - Std for loop ########################################
 		img_rgb_mean, img_rgb_std = get_mean_std_rgb_img(dir=os.path.join(args.dataset_dir, "images"))
+		######################################## Mean - Std for loop ########################################
+
 		save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 		save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
-	print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
-	
+	print(f"Mean: {img_rgb_mean} Std: {img_rgb_std}".center(160, " "))
+
 	if args.validation_dataset_dir:
 		print(f"Separate Train and Validation datasets")
 		train_metadata_df = get_metadata_df(
@@ -265,7 +271,8 @@ def main():
 			split_pct=args.validation_dataset_share,
 			doc_desc=args.document_description_col,
 		)
-	print(f"train_df: {train_metadata_df.shape} val_df: {val_metadata_df.shape}")
+	print(f"<<< DF >>> [train] {train_metadata_df.shape} [val] {val_metadata_df.shape}")
+
 	print(f"Creating Train Dataloader for {len(train_metadata_df)} samples", end="\t")
 	tdl_st = time.time()
 	train_dataset = HistoricalDataset(

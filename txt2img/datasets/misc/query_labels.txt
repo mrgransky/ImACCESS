@@ -1,4 +1,3 @@
-concentration camp
 Pearl Harbor attack
 armored personnel carrier
 infantry fighting vehicle
@@ -87,7 +86,6 @@ Aerial View
 Army Base
 Army hospital
 military base
-military leadership
 military leader
 military vehicle
 military aviation
@@ -102,7 +100,6 @@ Naval Vessel
 Medical aid
 Coast Guard
 Treaty of Versailles
-enemy territory
 ship deck
 hospital base
 hospital ship
@@ -143,6 +140,7 @@ half track
 naval forces
 ground forces
 infantry weapon
+panzer
 howitzer
 Airstrike
 Waffen
@@ -186,7 +184,7 @@ aeroplane
 airplane
 rationing
 Rocket
-prisoner
+prisoners
 Aviator
 Parade
 commander
@@ -226,3 +224,4 @@ Kriegsmarine
 ship
 ussr
 blitz
+banishment

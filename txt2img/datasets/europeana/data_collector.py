@@ -9,7 +9,7 @@ parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', type=str, default="1890-01-01", help='Dataset DIR')
 parser.add_argument('--end_date', type=str, default="1960-01-01", help='Dataset DIR')
-parser.add_argument('--num_worker', type=int, default=8, help='Number of CPUs')
+parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
@@ -32,12 +32,11 @@ with open(meaningless_words_fpth, 'r') as file_:
 STOPWORDS.extend(customized_meaningless_words)
 STOPWORDS = set(STOPWORDS)
 print(STOPWORDS, type(STOPWORDS))
-dataset_name = "europeana"
-nw:int = min(args.num_worker, multiprocessing.cpu_count()) # def: 8
+dataset_name: str = "europeana".upper()
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
-# europeana_api_key: str = "plaction"
+europeana_api_key: str = "plaction"
 # europeana_api_key: str = "api2demo"
-europeana_api_key: str = "nLbaXYaiH"
+# europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
@@ -162,16 +161,16 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
 			with open(image_path, 'wb') as f: # Save the image to the directory
 				f.write(response.content)
-			print(f"[{rIdx:<10}/ {total_rows}]{image_name:>20}{time.time() - t0:>10.1f} s")
+			print(f"[{rIdx:<10}/ {total_rows}]{image_name:>40}{time.time()-t0:>20.1f} s")
 			return True  # Image downloaded successfully
 		except (RequestException, IOError) as e:
 			attempt += 1
-			print(f"[{rIdx}/{total_rows}] Downloading « {url} » failed: {e}, retrying ({attempt}/{retries})")
+			print(f"[{rIdx}/{total_rows}] Failed Downloading {url} : {e}, retrying ({attempt}/{retries})")
 			time.sleep(backoff_factor * (2 ** attempt))  # Exponential backoff
 	print(f"[{rIdx}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
 	return False  # Indicate failed download
 
-def get_synchronized_df_img(df):
+def get_synchronized_df_img(df, nw: int=8):
 	print(f"Synchronizing merged_df(raw) & images of {df.shape[0]} records using {nw} CPUs...")
 	successful_rows = []  # List to keep track of successful downloads
 	with requests.Session() as session:
@@ -233,115 +232,15 @@ def main():
 			# print(df.head())
 			dfs.append(df)
 
+	print(f"Concatinating {len(dfs)} dfs...")
 	europeana_df_merged_raw = pd.concat(dfs, ignore_index=True)
-	replacement_dict = {
-		"airbase": "air base",
-		"military airbase": "air base",
-		"military airfield": "air base",
-		"military airport": "air base",
-		"air station": "air base",
-		"naval air station": "air base",
-		"naval air base": "air base",
-		"air force station": "air base",
-		"air force base": "air base",
-		"regatta": "sailboat",
-		"normandy invasion": "allied invasion",
-		"plane": "aircraft",
-		"airplane": "aircraft",
-		"aeroplane": "aircraft",
-		"graveyard": "cemetery",
-		"soldier": "infantry",
-		"clash": "wreck",
-		"sport": "leisure",
-		"military truck": "army truck",
-		"military base": "army base",
-		"military vehicle": "army vehicle",
-		"military hospital": "army hospital",
-		"flame thrower": "flamethrower",
-		"roadbuilding": "road construction",
-		"recruitment": "army recruiting",
-		"farm": "pasture",
-		"minesweeper": "naval vessel",
-	}
+	json_file_path = os.path.join(parent_dir, 'misc', 'generalized_labels.json')
+	if os.path.exists(json_file_path):
+		with open(json_file_path, 'r') as file_:
+			replacement_dict = json.load(file_)
+	else:
+		print(f"Error: {json_file_path} does not exist.")
 
-	# replacement_dict = {
-	# 	"plane": "military aviation",
-	# 	"airplane": "military aviation",
-	# 	"aeroplane": "military aviation",
-	# 	"aircraft": "military aviation",
-	# 	"helicopter": "military aviation",
-	# 	"air force": "military aviation",
-	# 	"naval warship": "navy",
-	# 	"submarine": "navy",
-	# 	"manufacturing plant": "infrastructure",
-	# 	"barn": "infrastructure",
-	# 	"construction": "infrastructure",
-	# 	"road": "infrastructure",
-	# 	"army base": "infrastructure",
-	# 	"border": "infrastructure",
-	# 	"refugee": "migration",
-	# 	"evacuation": "migration",
-	# 	"exodus": "migration",
-	# 	"exile": "migration",
-	# 	"aerial warfare": "strategy",
-	# 	"air raid": "strategy",
-	# 	"trench warfare": "strategy",
-	# 	"battle of the bulge": "strategy",
-	# 	"battle of the marne": "strategy",
-	# 	"winter war": "strategy",
-	# 	"blitzkrieg": "strategy",
-	# 	"versailles": "international relations & treaties",
-	# 	"treaty of versailles": "international relations & treaties",
-	# 	"nuremberg trials": "international relations & treaties",
-	# 	"game": "leisure",
-	# 	"anniversary": "leisure",
-	# 	"rail": "infrastructure",
-	# 	"sport": "leisure",
-	# 	"meeting": "diplomacy",
-	# 	"negotiation": "diplomacy",
-	# 	"conference": "diplomacy",
-	# 	"summit": "diplomacy",
-	# 	"attack": "conflict",
-	# 	"clash": "conflict",
-	# 	"war": "conflict",
-	# 	"military strike": "conflict",
-	# 	"battle": "conflict",
-	# 	"propaganda": "propaganda & communication",
-	# 	"public relation": "propaganda & communication",
-	# 	"information warfare": "propaganda & communication",
-	# 	"air bomb": "weapon",
-	# 	"rifle": "weapon",
-	# 	"barrel": "weapon",
-	# 	"machine gun": "weapon",
-	# 	"artillery": "weapon",
-	# 	"tank": "weapon",
-	# 	"grenade": "weapon",
-	# 	"gun": "weapon",
-	# 	"cannon": "weapon",
-	# 	"rocket": "weapon",
-	# 	"mortar": "weapon",
-	# 	"firearm": "weapon",
-	# 	"flamethrower": "weapon",
-	# 	"bayonet": "weapon",
-	# 	"tent": "camp",
-	# 	"recruiting": "recruitment",
-	# 	"captain": "military leader",
-	# 	"army leader": "military leader",
-	# 	"commander": "military leader",
-	# 	"sergeant": "military leader",
-	# 	"admiral": "military leader",
-	# 	"explosion": "destruction",
-	# 	"accident": "destruction",
-	# 	"damage": "destruction",
-	# 	"wreck": "destruction",
-	# 	"truck":"vehicular",
-	# 	"vehicle":"vehicular",
-	# 	"ambulance":"vehicular",
-	# 	"airport": "infrastructure",
-	# 	"dam": "infrastructure",
-	# 	"reservoir": "infrastructure",
-	# 	"defence": "strategy",
-	# }
 	print(f"pre-processing merged {type(europeana_df_merged_raw)} {europeana_df_merged_raw.shape}")
 	europeana_df_merged_raw['label'] = europeana_df_merged_raw['label'].replace(replacement_dict)
 	europeana_df_merged_raw = europeana_df_merged_raw.dropna(subset=['img_url']) # drop None firstDigitalObjectUrl
@@ -356,7 +255,7 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	europeana_df = get_synchronized_df_img(df=europeana_df_merged_raw)
+	europeana_df = get_synchronized_df_img(df=europeana_df_merged_raw, nw=args.num_workers)
 	label_counts = europeana_df['label'].value_counts()
 	plt.figure(figsize=(21, 14))
 	label_counts.plot(kind='bar', fontsize=9)
