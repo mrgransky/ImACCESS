@@ -140,6 +140,8 @@ half track
 naval forces
 ground forces
 infantry weapon
+V-E Day
+V-J Day
 panzer
 howitzer
 Airstrike
