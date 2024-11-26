@@ -150,7 +150,7 @@ def is_desired(collections, useless_terms):
 	for term in useless_terms:
 		for collection in collections:
 			if term in collection:
-				print(f"\t> XXXX found '{term}' => skipping! XXXX <")
+				# print(f"\t> XXXX found '{term}' => skipping! XXXX <")
 				return False
 	return True
 
