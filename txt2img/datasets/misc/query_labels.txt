@@ -10,7 +10,6 @@ armored fighting vehicle
 naval aircraft factory
 naval air station
 naval air base
-Red cross worker
 water based aircraft
 air force personnel
 air force base
@@ -19,8 +18,8 @@ artillery tractor
 naval warship
 naval hospital
 guided missile
-cruise missile
 ballistic missile
+red cross
 Flying Boat
 flame thrower
 victory bond
