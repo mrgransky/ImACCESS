@@ -11,6 +11,8 @@
 	"allied air attack": "air strike",
 	"air attack": "air strike",
 	"blitz": "air strike",
+	"medical aid": "medical service",
+	"first aid": "medical service",
 	"migration": "forced displacement",
 	"exile": "forced displacement",
 	"refugee": "forced displacement",

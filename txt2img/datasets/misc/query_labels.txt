@@ -98,6 +98,8 @@ Battle of the Bulge
 Naval ship
 Naval Vessel
 Medical aid
+Medical service
+first aid
 Coast Guard
 Treaty of Versailles
 ship deck

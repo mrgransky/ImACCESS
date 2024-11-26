@@ -25,14 +25,16 @@ print(args)
 ########################## --start_date 1914-01-01 --end_date 1946-12-31 ##########################
 # $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1914-01-01 --end_date 1946-12-31 --num_workers 2 --img_mean_std True > logs/na_image_download.out &
 
+##################################################################################################################
 # run in Pouta:
+
 # WWI + WWII:
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 # WW1 & WW2
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 --num_workers 55 --img_mean_std True > /media/volume/trash/ImACCESS/na_img_dl.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1914-07-28 --end_date 1945-09-02 --num_workers 55 --img_mean_std True > /media/volume/trash/ImACCESS/NA_WW2_img_dl.out &
 
 # WWII
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1939-01-01 --end_date 1945-12-31 # WW2 (with threshold)
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1939-01-01 --end_date 1945-12-31 --num_workers 10 --img_mean_std True > /media/volume/trash/ImACCESS/NA_WW2_img_dl.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1939-01-01 --end_date 1945-12-31 --img_mean_std False > /media/volume/trash/ImACCESS/NA_WW2_img_dl.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
@@ -342,7 +344,7 @@ def main():
 
 	plt.figure(figsize=(20, 13))
 	label_counts.plot(kind='bar', fontsize=9)
-	plt.title(f'{dataset_name}: Label Frequency (total: {label_counts.shape}) {START_DATE} - {END_DATE}')
+	plt.title(f'{dataset_name} Label Frequency (total: {label_counts.shape}) {START_DATE} - {END_DATE}')
 	plt.xlabel('Label')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
