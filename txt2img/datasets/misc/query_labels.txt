@@ -219,6 +219,7 @@ Railroad
 captain
 Minesweeper
 Ceremony
+Celebration
 Halftrack
 Kriegsmarine
 ship
