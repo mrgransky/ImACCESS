@@ -9,7 +9,8 @@ parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', type=str, default="1890-01-01", help='Dataset DIR')
 parser.add_argument('--end_date', type=str, default="1960-01-01", help='Dataset DIR')
-parser.add_argument('--num_workers', type=int, default=2, help='Number of CPUs')
+parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs')
+parser.add_argument('--img_mean_std', type=bool, default=False, help='Image mean & std')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
@@ -55,6 +56,9 @@ HITs_DIR = os.path.join(DATASET_DIRECTORY, "hits")
 
 os.makedirs(os.path.join(DATASET_DIRECTORY, "outputs"), exist_ok=True)
 OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
+
+img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
+img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
 def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", label: str="world war"):
 	t0 = time.time()
@@ -270,6 +274,19 @@ def main():
 		europeana_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
+
+	if args.img_mean_std:
+		try:
+			img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
+		except Exception as e:
+			print(f"{e}")
+			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
+				dir=os.path.join(DATASET_DIRECTORY, "images"), 
+				num_workers=args.num_workers,
+			)
+			save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
+			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
+		print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
 
 def test():
 	query = "bombing"
