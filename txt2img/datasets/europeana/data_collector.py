@@ -36,8 +36,8 @@ print(STOPWORDS, type(STOPWORDS))
 dataset_name: str = "europeana".upper()
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
 # europeana_api_key: str = "plaction"
-# europeana_api_key: str = "api2demo"
-europeana_api_key: str = "nLbaXYaiH"
+europeana_api_key: str = "api2demo"
+# europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
@@ -165,7 +165,7 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
 			with open(image_path, 'wb') as f: # Save the image to the directory
 				f.write(response.content)
-			print(f"[{rIdx:<10}/ {total_rows}]{image_name:>40}{time.time()-t0:>20.1f} s")
+			print(f"[{rIdx:<10}/ {total_rows}]{image_name:<50}{time.time()-t0:>50.1f} s")
 			return True  # Image downloaded successfully
 		except (RequestException, IOError) as e:
 			attempt += 1
@@ -182,7 +182,7 @@ def get_synchronized_df_img(df, nw: int=8):
 			futures = {executor.submit(download_image, row, session, IMAGE_DIR, df.shape[0]): idx for idx, row in df.iterrows()}
 			for future in as_completed(futures):
 				try:
-					success = future.result()  # Get the result (True or False) from download_image
+					success = future.result() # Get result (True or False) from download_image
 					if success:
 						successful_rows.append(futures[future])  # Keep track of successfully downloaded rows
 				except Exception as e:

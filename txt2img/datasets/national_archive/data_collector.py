@@ -254,7 +254,7 @@ def get_synchronized_df_img(df, nw: int=8):
 			futures = {executor.submit(download_image, row, session, IMAGE_DIR, df.shape[0]): idx for idx, row in df.iterrows()}
 			for future in as_completed(futures):
 				try:
-					success = future.result()  # Get the result (True or False) from download_image
+					success = future.result() # Get the result (True or False) from download_image
 					if success:
 						successful_rows.append(futures[future])  # Keep track of successfully downloaded rows
 				except Exception as e:
