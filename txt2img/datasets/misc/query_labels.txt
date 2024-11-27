@@ -35,8 +35,11 @@ allied invasion
 normandy invasion
 Power Plant
 attack aircraft
-light bomber
 fighter aircraft
+bomber aircraft
+trainer aircraft
+transport aircraft
+light bomber
 fighter bomber
 strike fighter
 american tank
@@ -87,7 +90,6 @@ Army hospital
 military base
 military leader
 military vehicle
-military aviation
 military unit
 military personnel
 military ship

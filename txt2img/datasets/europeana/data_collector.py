@@ -288,7 +288,7 @@ def main():
 			)
 			save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
-		print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
+		print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
 
 def test():
 	query = "bombing"

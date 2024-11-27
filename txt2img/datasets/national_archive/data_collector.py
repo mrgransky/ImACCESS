@@ -30,7 +30,7 @@ print(args)
 
 # WWII
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1939-01-01 --end_date 1945-12-31 # WW2 (with threshold)
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1938-01-01 --end_date 1946-12-31 --num_workers 8 --img_mean_std True > /media/volume/trash/ImACCESS/NA_WW2_img_dl.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1938-01-01 --end_date 1946-12-31 --num_workers 8 --img_mean_std True > /media/volume/trash/ImACCESS/NA_WW2.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
@@ -363,7 +363,7 @@ def main():
 			)
 			save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
-		print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
+		print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
 	
 if __name__ == '__main__':
 	print(
