@@ -67,7 +67,9 @@ def train(model, train_data_loader, val_data_loader, optimizer, scheduler, check
 	os.makedirs(os.path.join(args.dataset_dir, model_dir, "checkpoints"), exist_ok=True)
 	checkpoint_dir = os.path.join(args.dataset_dir, model_dir, "checkpoints")
 	
-	print(f"Training CLIP model for {args.num_epochs} Epoch(s) using {args.device}[{torch.cuda.get_device_name(args.device)}] & {args.num_workers} CPU(s)".center(150, "-"))
+	print(f"Training CLIP model {args.num_epochs} Epoch(s) Device: {args.device} & {args.num_workers} CPU(s)".center(150, "-"))
+	if torch.cuda.is_available():
+		print(f"GPU: {torch.cuda.get_device_name(args.device)}")
 	log_gpu_memory(device=args.device)
 	writer = SummaryWriter(log_dir=os.path.join(outputs_dir, "logs")) # Initialize TensorBoard writer
 	

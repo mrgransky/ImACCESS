@@ -45,7 +45,6 @@ french tank
 english tank
 british tank
 anti aircraft
-Battle of the Marne
 war crimes
 mass atrocities
 trench warfare
@@ -93,7 +92,6 @@ military unit
 military personnel
 military ship
 military boat
-Battle Monument
 Battle of the Bulge
 Naval ship
 Naval Vessel

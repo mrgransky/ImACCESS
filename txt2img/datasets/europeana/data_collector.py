@@ -9,7 +9,7 @@ parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', type=str, default="1890-01-01", help='Dataset DIR')
 parser.add_argument('--end_date', type=str, default="1960-01-01", help='Dataset DIR')
-parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs')
+parser.add_argument('--num_workers', type=int, default=2, help='Number of CPUs')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
