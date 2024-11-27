@@ -144,6 +144,8 @@ ground forces
 infantry weapon
 V-E Day
 V-J Day
+accident
+Wreck
 panzer
 howitzer
 Airstrike
@@ -189,7 +191,6 @@ airplane
 rationing
 Rocket
 prisoners
-Aviator
 Parade
 commander
 museum
@@ -215,8 +216,6 @@ president
 migration
 Border
 shovel
-Accident
-Wreck
 hospital
 Railroad
 captain
@@ -229,3 +228,5 @@ ship
 ussr
 blitz
 banishment
+aviator
+pilot
