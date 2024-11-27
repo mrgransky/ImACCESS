@@ -20,7 +20,7 @@ print(args)
 # $ python data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02
 
 ########################## --start_date 1933-01-01 --end_date 1933-01-02 ##########################
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 2 --img_mean_std True > logs/na_image_download.out &
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 8 --img_mean_std False > logs/na_image_download.out &
 
 ########################## --start_date 1914-01-01 --end_date 1946-12-31 ##########################
 # $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1914-01-01 --end_date 1946-12-31 --num_workers 2 --img_mean_std True > logs/na_image_download.out &
@@ -30,7 +30,7 @@ print(args)
 
 # WWII
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1939-01-01 --end_date 1945-12-31 # WW2 (with threshold)
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1938-01-01 --end_date 1946-12-31 --num_workers 12 --img_mean_std True > /media/volume/trash/ImACCESS/NA_WW2.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1938-01-01 --end_date 1946-12-31 --num_workers 10 --img_mean_std True > /media/volume/trash/ImACCESS/NA_WW2.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER

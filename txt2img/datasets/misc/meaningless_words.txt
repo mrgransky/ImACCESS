@@ -195,7 +195,6 @@ each
 few
 more
 most
-other
 some
 such
 no
@@ -221,3 +220,5 @@ might
 several
 already
 bldg
+other
+another

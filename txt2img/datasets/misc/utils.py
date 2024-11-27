@@ -141,6 +141,8 @@ def clean_(text, sw, check_language:bool=False):
 	]
 	text = ' '.join(words) # Join the words back into a string
 	text = re.sub(r'\boriginal caption\b', ' ', text)
+	text = re.sub(r'\bphoto shows\b', ' ', text)
+	text = re.sub(r'\bfile record\b', ' ', text)
 	text = re.sub(r'\boriginal field number\b', ' ', text)
 	# text = re.sub(r'\bdate taken\b', ' ', text)
 	# text = re.sub(r'\bdate\b', ' ', text)

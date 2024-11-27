@@ -37,8 +37,8 @@ STOPWORDS = set(STOPWORDS)
 print(STOPWORDS, type(STOPWORDS))
 dataset_name: str = "europeana".upper()
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
-europeana_api_key: str = "plaction"
-# europeana_api_key: str = "api2demo"
+# europeana_api_key: str = "plaction"
+europeana_api_key: str = "api2demo"
 # europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
@@ -127,10 +127,10 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 		# print(type(doc.get("title")), len(doc.get("title")))
 		doc_title_list = doc.get("title") # ["title1", "title2", "title3", ...]
 		doc_description_list = doc.get("dcDescription" )# ["desc1", "desc2", "desc3", ...]
-		# doc_title = clean_(text=' '.join(doc_title_list), sw=STOPWORDS) if doc_title_list else None
-		# doc_description = clean_(text=" ".join(doc_description_list), sw=STOPWORDS) if doc_description_list else None
-		doc_title = ' '.join(doc_title_list) if doc_title_list else None
-		doc_description = " ".join(doc_description_list) if doc_description_list else None
+		doc_title = clean_(text=' '.join(doc_title_list), sw=STOPWORDS) if doc_title_list else None
+		doc_description = clean_(text=" ".join(doc_description_list), sw=STOPWORDS) if doc_description_list else None
+		# doc_title = ' '.join(doc_title_list) if doc_title_list else None
+		# doc_description = " ".join(doc_description_list) if doc_description_list else None
 		pDate = doc.get("edmTimespanLabel")[0].get("def") if doc.get("edmTimespanLabel") and doc.get("edmTimespanLabel")[0].get("def") else None
 		image_url = doc.get("edmIsShownBy")[0]
 		doc_url = doc.get("guid")
