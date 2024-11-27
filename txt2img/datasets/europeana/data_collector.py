@@ -16,7 +16,7 @@ parser.add_argument('--img_mean_std', type=bool, default=False, help='Image mean
 args, unknown = parser.parse_known_args()
 print(args)
 
-sys.exit()
+# sys.exit()
 
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
