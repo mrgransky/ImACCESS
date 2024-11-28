@@ -78,6 +78,90 @@ if USER!="alijanif":
 	sl_dict = enchant.Dict("sl")
 	sk_dict = enchant.Dict("sk")
 
+def plot_year_distribution(df, start_date, end_date, dname, fpth, BINs:int=50,):
+	# Extract the year from the 'doc_date' column
+	df['year'] = df['doc_date'].apply(lambda x: x[:4] if x is not None else None)
+	# Filter out None values
+	year_series = df['year'].dropna().astype(int)
+
+	# Find the years with the highest and lowest frequencies
+	max_year = year_series.value_counts().idxmax()
+	max_freq = year_series.value_counts().max()
+	min_year = year_series.value_counts().idxmin()
+	min_freq = year_series.value_counts().min()
+
+	# Get the overall shape of the distribution
+	distribution_skew = year_series.skew()
+	distribution_kurtosis = year_series.kurtosis()
+
+	print(type(year_series), year_series.shape, min(year_series), max(year_series))
+	plt.figure(figsize=(17, 9))
+
+	# Overlay important historical events only if they are within the start_date and end_date range
+	start_year = datetime.datetime.strptime(start_date, '%Y-%m-%d').year
+	end_year = datetime.datetime.strptime(end_date, '%Y-%m-%d').year
+
+	print(f"start_year: {start_year} | end_year: {end_year}")
+	world_war_1 = [1914, 1918]
+	world_war_2 = [1939, 1945]
+	
+	if start_year <= 1914 and 1918 <= end_year:
+		for year in world_war_1:
+			plt.axvline(x=year, color='g', linestyle='--', lw=1.8)
+	if start_year <= 1939 and 1945 <= end_year:
+		for year in world_war_2:
+			plt.axvline(x=year, color='r', linestyle='--', lw=1.8)
+	plt.legend(['World War I', 'World War II'], loc='best')
+
+	sns.histplot(year_series, bins=BINs, fill=False, color="k", kde=True, line_kws={'color': 'red'})
+	plt.title(f'{dname} Year Distribution {start_date} - {end_date} Total IMGs: {df.shape[0]}')
+	plt.xlabel('Year')
+	plt.ylabel('Frequency')
+	# Add annotations for key statistics
+	plt.text(0.01, 0.98, f'Most frequent year: {max_year} ({max_freq} images)', transform=plt.gca().transAxes, va='top')
+	plt.text(0.01, 0.94, f'Least frequent year: {min_year} ({min_freq} images)', transform=plt.gca().transAxes, va='top')
+	plt.text(0.01, 0.90, f'Distribution skewness: {distribution_skew:.2f}', transform=plt.gca().transAxes, va='top')
+	plt.text(0.01, 0.86, f'Distribution kurtosis: {distribution_kurtosis:.2f}', transform=plt.gca().transAxes, va='top')
+	# plt.grid(True)
+	plt.tight_layout()
+	plt.savefig(fpth)
+
+def is_valid_date(date:str="1939-12-30", start_date: str="1900-01-01", end_date:str="1950-12-31"):
+	# Define the start and end dates
+	start_date = pd.to_datetime(start_date)
+	end_date = pd.to_datetime(end_date)
+	if pd.isnull(date):
+		return True  # Keep rows with None values
+	try:
+		date_obj = pd.to_datetime(date)
+		return start_date <= date_obj <= end_date
+	except ValueError:
+		return False
+
+def extract_date_or_year(doc_date, doc_year):
+		# print(type(doc_year), doc_year)
+		if doc_year is not None:
+				# print(type(doc_year), doc_year)
+				return doc_year
+		
+		if doc_date is None:
+				return None
+		
+		# Regular expression patterns for exact date and year
+		date_pattern = re.compile(r'\d{4}-\d{2}-\d{2}')
+		year_pattern = re.compile(r'\b\d{4}\b')
+		
+		for item in doc_date:
+				if 'def' in item:
+						date_match = date_pattern.search(item['def'])
+						if date_match:
+								return date_match.group(0)
+						year_match = year_pattern.search(item['def'])
+						if year_match:
+								return year_match.group(0)
+		
+		return None
+
 def get_ip_info():
 	"""
 	Fetch and print current IP address, location, and ISP.

@@ -20,17 +20,17 @@ print(args)
 # $ python data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02
 
 ########################## --start_date 1933-01-01 --end_date 1933-01-02 ##########################
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 8 --img_mean_std False > logs/na_image_download.out &
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 8 --img_mean_std > logs/na_image_download.out &
 
 ########################## --start_date 1914-01-01 --end_date 1946-12-31 ##########################
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1914-01-01 --end_date 1946-12-31 --num_workers 2 --img_mean_std True > logs/na_image_download.out &
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1914-01-01 --end_date 1946-12-31 --num_workers 2 --img_mean_std > logs/na_image_download.out &
 
 ##################################################################################################################
 # run in Pouta:
 
 # WWII
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1939-01-01 --end_date 1945-12-31 # WW2 (with threshold)
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1938-01-01 --end_date 1946-12-31 --num_workers 10 --img_mean_std True > /media/volume/trash/ImACCESS/NA_WW2.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1938-01-01 --end_date 1946-12-31 --num_workers 10 --img_mean_std > /media/volume/trash/ImACCESS/NA_WW2.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
@@ -83,10 +83,10 @@ OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
-def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", label: str="world war"):
+def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", label: str="world war"):
 	t0 = time.time()
 	label_processed = re.sub(" ", "_", label)
-	label_all_hits_fpth = os.path.join(HITs_DIR, f"results_query_{label_processed}_{st_date}_{end_date}.gz")
+	label_all_hits_fpth = os.path.join(HITs_DIR, f"results_query_{label_processed}_{start_date}_{end_date}.gz")
 	try:
 		label_all_hits = load_pickle(fpath=label_all_hits_fpth)
 	except Exception as e:
@@ -107,7 +107,7 @@ def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", label: str="
 			"levelOfDescription": "item",
 			"objectType": "jpg,png",
 			"q": label,
-			"startDate": st_date,
+			"startDate": start_date,
 			"typeOfMaterials": "Photographs and other Graphic Materials",
 			"abbreviated": "true",
 			"debug": "true",
@@ -162,7 +162,7 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 		doc_title = clean_(text=record.get('title'), sw=STOPWORDS)
 		doc_description = clean_(text=record.get('scopeAndContentNote'), sw=STOPWORDS) if record.get('scopeAndContentNote') else None
 		na_identifier = record.get('naId')
-		pDate = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
+		doc_date = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
 		ancesstor_collections = [f"{itm.get('title')}" for itm in record.get('ancestors')] # record.get('ancestors'): list of dict
 		useless_title_terms = [
@@ -210,11 +210,14 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 			'description': doc_description,
 			'img_url': first_digital_object_url,
 			'label_title_description': label + " " + (doc_title or '') + " " + (doc_description or ''),
-			'date': pDate,
+			'doc_date': doc_date,
 			'doc_url': f"https://catalog.archives.gov/id/{na_identifier}",
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
+	# Filter the DataFrame based on the validity check
+	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=START_DATE, end_date=END_DATE))]
+
 	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
 	return df
 
@@ -285,7 +288,7 @@ def main():
 		print(f"\nQ[{qi+1}/{len(all_label_tags)}]: {qv}")
 		qv = clean_(text=qv, sw=STOPWORDS)
 		label_all_hits = get_data(
-			st_date=START_DATE,
+			start_date=START_DATE,
 			end_date=END_DATE,
 			label=qv,
 		)
@@ -307,23 +310,21 @@ def main():
 			print(df.head(10))
 			dfs.append(df)
 
-	print(f"Concatinating {len(dfs)} dfs...")
+	print(f"<!> Concatinating {len(dfs)} dfs")
+	concat_st = time.time()
 	# print(dfs[0])
 	na_df_merged_raw = pd.concat(dfs, ignore_index=True)
-
+	print(f"<!> Replacing labels with broad umbrella terms")
 	json_file_path = os.path.join(parent_dir, 'misc', 'generalized_labels.json')
-
 	if os.path.exists(json_file_path):
 		with open(json_file_path, 'r') as file_:
 			replacement_dict = json.load(file_)
 	else:
 		print(f"Error: {json_file_path} does not exist.")
-
 	print(f"pre-processing merged {type(na_df_merged_raw)} {na_df_merged_raw.shape}")
 	na_df_merged_raw['label'] = na_df_merged_raw['label'].replace(replacement_dict)
 	na_df_merged_raw = na_df_merged_raw.dropna(subset=['img_url']) # drop None img_url
 	na_df_merged_raw = na_df_merged_raw.drop_duplicates(subset=['img_url'], keep="first", ignore_index=True) # drop duplicate img_url
-
 	print(f"Processed na_df_merged_raw: {na_df_merged_raw.shape}")
 	print(na_df_merged_raw.head(20))
 
@@ -332,6 +333,7 @@ def main():
 		na_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
+	print(f"Elapsed_t: {time.time()-concat_st:.1f} sec".center(100, "-"))
 
 	na_df = get_synchronized_df_img(df=na_df_merged_raw, nw=args.num_workers)
 
@@ -351,6 +353,16 @@ def main():
 		na_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
+
+	yr_distro_fpth = os.path.join(OUTPUTs_DIR, f"year_distribution_{dataset_name}_{START_DATE}_{END_DATE}_nIMGs_{na_df.shape[0]}.png")
+	plot_year_distribution(
+		df=na_df,
+		start_date=START_DATE,
+		end_date=END_DATE,
+		dname=dataset_name,
+		fpth=yr_distro_fpth,
+		BINs=100,
+	)
 
 	if args.img_mean_std:
 		try:

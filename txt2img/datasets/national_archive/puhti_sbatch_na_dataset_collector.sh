@@ -29,8 +29,8 @@ echo "THREADS/CORE: $SLURM_THREADS_PER_CORE"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 ddir="/scratch/project_2004072/ImACCESS/WW_DATASETs"
-st_dt="1913-01-01"
-end_dt="1946-12-31"
+st_dt="1900-01-01"
+end_dt="1970-12-31"
 
 python -u data_collector.py \
 	--dataset_dir $ddir \

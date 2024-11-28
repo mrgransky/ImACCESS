@@ -8,9 +8,9 @@ from misc.utils import *
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', type=str, default="1890-01-01", help='Dataset DIR')
-parser.add_argument('--end_date', type=str, default="1960-01-01", help='Dataset DIR')
+parser.add_argument('--end_date', type=str, default="1960-12-31", help='Dataset DIR')
 parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs')
-parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
+parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std') # if given => True (ex. --img_mean_std)
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
@@ -19,8 +19,11 @@ print(args)
 # sys.exit()
 
 # run in local laptop:
-# $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 > logs/europeana_image_download.out &
+# $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-12-31
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1970-12-31 > logs/europeana_img_dl.out &
+
+# WWII: (1 year threshold)
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1938-01-01 --end_date 1946-12-31 > logs/europeana_ww2_img_dl.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
@@ -37,8 +40,8 @@ STOPWORDS = set(STOPWORDS)
 print(STOPWORDS, type(STOPWORDS))
 dataset_name: str = "europeana".upper()
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
-# europeana_api_key: str = "plaction"
-europeana_api_key: str = "api2demo"
+europeana_api_key: str = "plaction"
+# europeana_api_key: str = "api2demo"
 # europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
@@ -62,10 +65,10 @@ OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
-def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", label: str="world war"):
+def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", label: str="world war"):
 	t0 = time.time()
 	label_processed = re.sub(" ", "_", label)
-	label_all_hits_fpth = os.path.join(HITs_DIR, f"results_query_{label_processed}_{st_date}_{end_date}.gz")
+	label_all_hits_fpth = os.path.join(HITs_DIR, f"results_query_{label_processed}_{start_date}_{end_date}.gz")
 	try:
 		label_all_hits = load_pickle(fpath=label_all_hits_fpth)
 	except Exception as e:
@@ -82,7 +85,7 @@ def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", label: str="
 			],
 			'rows': 100,
 			'query': label,
-			'reusability': 'open'
+			# 'reusability': 'open'
 		}
 		label_all_hits = []
 		start = 1
@@ -131,9 +134,15 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 		doc_description = clean_(text=" ".join(doc_description_list), sw=STOPWORDS) if doc_description_list else None
 		# doc_title = ' '.join(doc_title_list) if doc_title_list else None
 		# doc_description = " ".join(doc_description_list) if doc_description_list else None
-		pDate = doc.get("edmTimespanLabel")[0].get("def") if doc.get("edmTimespanLabel") and doc.get("edmTimespanLabel")[0].get("def") else None
 		image_url = doc.get("edmIsShownBy")[0]
-		doc_url = doc.get("guid")
+		# print(doc.get("edmTimespanLabel"), doc.get("year"), europeana_id, image_url, doc.get("link"))
+		# print(int(doc.get("year")[0]) < 1946)
+
+		pDate = doc.get("edmTimespanLabel")[0].get("def") if (doc.get("edmTimespanLabel") and doc.get("edmTimespanLabel")[0].get("def")) else None
+		raw_doc_date = doc.get("edmTimespanLabel")
+		doc_year = doc.get("year")[0] if (doc.get("year") and doc.get("year")[0]) else None
+		doc_url = f"https://www.europeana.eu/en/item{europeana_id}" # doc.get("guid")
+		
 		if (
 			image_url 
 			and (image_url.endswith('.jpg') or image_url.endswith('.png'))
@@ -148,15 +157,25 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 			'description': doc_description,
 			'img_url': image_url,
 			'label_title_description': label + " " + (doc_title or '') + " " + (doc_description or ''),
-			'date': pDate,
+			'raw_doc_date': raw_doc_date,
+			'doc_year': doc_year,
+			# 'my_date': pDate,
 			"doc_url": doc_url,
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
+
+	# Apply the function to the 'raw_doc_date' and 'doc_year' columns
+	df['doc_date'] = df.apply(lambda row: extract_date_or_year(row['raw_doc_date'], row['doc_year']), axis=1)
+
+	# Filter the DataFrame based on the validity check
+	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=START_DATE, end_date=END_DATE))]
+
+	# df = df.drop(['raw_doc_date', 'doc_year'], axis=1)
 	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
 	return df
 
-def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5):
+def download_image(row, session, image_dir, total_rows, retries=1, backoff_factor=0.5):
 	t0 = time.time()
 	rIdx = row.name
 	url = row['img_url']
@@ -171,7 +190,7 @@ def download_image(row, session, image_dir, total_rows, retries=5, backoff_facto
 			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
 			with open(image_path, 'wb') as f: # Save the image to the directory
 				f.write(response.content)
-			print(f"[{rIdx:<10}/ {total_rows}]{image_name:<50}{time.time()-t0:>50.1f} s")
+			print(f"{rIdx:<8}/ {total_rows:<8}{image_name:<150}{time.time()-t0:.1f} s")
 			return True  # Image downloaded successfully
 		except (RequestException, IOError) as e:
 			attempt += 1
@@ -219,7 +238,7 @@ def main():
 		print(f"\nQ[{qi+1}/{len(all_label_tags)}]: {qv}")
 		qv = clean_(text=qv, sw=STOPWORDS)
 		label_all_hits = get_data(
-			st_date=START_DATE,
+			start_date=START_DATE,
 			end_date=END_DATE,
 			label=qv,
 		)
@@ -269,7 +288,7 @@ def main():
 	label_counts = europeana_df['label'].value_counts()
 	plt.figure(figsize=(21, 14))
 	label_counts.plot(kind='bar', fontsize=9)
-	plt.title(f'{dataset_name} Label Frequency (total: {label_counts.shape})')
+	plt.title(f'{dataset_name} Label Frequency (total: {label_counts.shape}) {START_DATE} - {END_DATE}')
 	plt.xlabel('label')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
@@ -281,6 +300,16 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
+	yr_distro_fpth = os.path.join(OUTPUTs_DIR, f"year_distribution_{dataset_name}_{START_DATE}_{END_DATE}_nIMGs_{europeana_df.shape[0]}.png")
+	plot_year_distribution(
+		df=europeana_df,
+		start_date=START_DATE,
+		end_date=END_DATE,
+		dname=dataset_name,
+		fpth=yr_distro_fpth,
+		BINs=100,
+	)
+	
 	if args.img_mean_std:
 		try:
 			img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images

@@ -15,8 +15,11 @@ air force personnel
 air force base
 air force station
 artillery tractor
-naval warship
 naval hospital
+naval training
+naval ship
+naval vessel
+naval warship
 guided missile
 ballistic missile
 red cross
@@ -91,18 +94,16 @@ military base
 military leader
 military vehicle
 military unit
+military museum
 military personnel
 military ship
 military boat
 Battle of the Bulge
-Naval ship
-Naval Vessel
 Medical aid
 Medical service
 first aid
 Coast Guard
 Treaty of Versailles
-ship deck
 hospital base
 hospital ship
 hospital train
@@ -117,6 +118,7 @@ Dump Truck
 Maintenance Truck
 Clinic Truck
 army truck
+army museum
 military truck
 afrika korps
 flying fortress
@@ -139,7 +141,6 @@ Memorial day
 light station
 light house
 half track
-naval forces
 ground forces
 infantry weapon
 V-E Day
@@ -193,7 +194,6 @@ Rocket
 prisoners
 Parade
 commander
-museum
 Sergeant
 Admiral
 Ambulance
@@ -224,9 +224,9 @@ Ceremony
 Celebration
 Halftrack
 Kriegsmarine
-ship
 ussr
 blitz
 banishment
 aviator
 pilot
+marines
