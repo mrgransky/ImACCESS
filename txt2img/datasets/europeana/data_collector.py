@@ -65,6 +65,30 @@ OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
+def get_europeana_date_or_year(doc_date, doc_year):
+		# print(type(doc_year), doc_year)
+		if doc_year is not None:
+				# print(type(doc_year), doc_year)
+				return doc_year
+		
+		if doc_date is None:
+				return None
+		
+		# Regular expression patterns for exact date and year
+		date_pattern = re.compile(r'\d{4}-\d{2}-\d{2}')
+		year_pattern = re.compile(r'\b\d{4}\b')
+		
+		for item in doc_date:
+				if 'def' in item:
+						date_match = date_pattern.search(item['def'])
+						if date_match:
+								return date_match.group(0)
+						year_match = year_pattern.search(item['def'])
+						if year_match:
+								return year_match.group(0)
+		
+		return None
+
 def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", label: str="world war"):
 	t0 = time.time()
 	label_processed = re.sub(" ", "_", label)
@@ -166,7 +190,7 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 	df = pd.DataFrame(data)
 
 	# Apply the function to the 'raw_doc_date' and 'doc_year' columns
-	df['doc_date'] = df.apply(lambda row: extract_date_or_year(row['raw_doc_date'], row['doc_year']), axis=1)
+	df['doc_date'] = df.apply(lambda row: get_europeana_date_or_year(row['raw_doc_date'], row['doc_year']), axis=1)
 
 	# Filter the DataFrame based on the validity check
 	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=START_DATE, end_date=END_DATE))]
@@ -307,7 +331,7 @@ def main():
 		end_date=END_DATE,
 		dname=dataset_name,
 		fpth=yr_distro_fpth,
-		BINs=100,
+		BINs=50,
 	)
 	
 	if args.img_mean_std:

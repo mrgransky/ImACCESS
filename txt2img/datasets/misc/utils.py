@@ -107,13 +107,13 @@ def plot_year_distribution(df, start_date, end_date, dname, fpth, BINs:int=50,):
 	
 	if start_year <= 1914 and 1918 <= end_year:
 		for year in world_war_1:
-			plt.axvline(x=year, color='g', linestyle='--', lw=1.8)
+			plt.axvline(x=year, color='r', linestyle='--', lw=1.8)
 	if start_year <= 1939 and 1945 <= end_year:
 		for year in world_war_2:
-			plt.axvline(x=year, color='r', linestyle='--', lw=1.8)
-	plt.legend(['World War I', 'World War II'], loc='best')
+			plt.axvline(x=year, color='g', linestyle='--', lw=1.8)
 
-	sns.histplot(year_series, bins=BINs, fill=False, color="k", kde=True, line_kws={'color': 'red'})
+	sns.histplot(year_series, bins=BINs, color="blue", kde=True, line_kws={'color': 'red'})
+	# plt.legend(loc='best')
 	plt.title(f'{dname} Year Distribution {start_date} - {end_date} Total IMGs: {df.shape[0]}')
 	plt.xlabel('Year')
 	plt.ylabel('Frequency')
@@ -137,30 +137,6 @@ def is_valid_date(date:str="1939-12-30", start_date: str="1900-01-01", end_date:
 		return start_date <= date_obj <= end_date
 	except ValueError:
 		return False
-
-def extract_date_or_year(doc_date, doc_year):
-		# print(type(doc_year), doc_year)
-		if doc_year is not None:
-				# print(type(doc_year), doc_year)
-				return doc_year
-		
-		if doc_date is None:
-				return None
-		
-		# Regular expression patterns for exact date and year
-		date_pattern = re.compile(r'\d{4}-\d{2}-\d{2}')
-		year_pattern = re.compile(r'\b\d{4}\b')
-		
-		for item in doc_date:
-				if 'def' in item:
-						date_match = date_pattern.search(item['def'])
-						if date_match:
-								return date_match.group(0)
-						year_match = year_pattern.search(item['def'])
-						if year_match:
-								return year_match.group(0)
-		
-		return None
 
 def get_ip_info():
 	"""

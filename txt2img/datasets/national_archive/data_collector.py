@@ -49,6 +49,7 @@ print(STOPWORDS, type(STOPWORDS))
 
 dataset_name = "NATIONAL_ARCHIVE"
 useless_collection_terms = [
+	"History of Langley Field",
 	"Cartoon", 
 	"Newsmap",
 	"Posters", 
@@ -82,6 +83,25 @@ OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
 
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
+
+def get_na_year(description, raw_doc_date):
+		# print(description is None,not pd.isna(raw_doc_date))
+
+		if not pd.isna(raw_doc_date):  # Check if raw_doc_date is missing (None or NaN)
+				return raw_doc_date
+
+		if description is None:  # Check if description is None
+				return None
+
+		# print(f"neither... check description: {description}")
+		# year_pattern = r'\b\d{4}\b'
+		year_pattern = re.compile(r'\b\d{4}\b')
+		match = re.search(year_pattern, description)
+		print(match)
+		if match:
+				return match.group()
+		else:
+				return None
 
 def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", label: str="world war"):
 	t0 = time.time()
@@ -136,7 +156,7 @@ def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", label: st
 					break
 				page += 1
 			else:
-				print("Failed to retrieve data")
+				print(f"Failed to retrieve data: status_code: {response.status_code}")
 				break
 		if len(label_all_hits) == 0:
 			return
@@ -162,7 +182,7 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 		doc_title = clean_(text=record.get('title'), sw=STOPWORDS)
 		doc_description = clean_(text=record.get('scopeAndContentNote'), sw=STOPWORDS) if record.get('scopeAndContentNote') else None
 		na_identifier = record.get('naId')
-		doc_date = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
+		raw_doc_date = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
 		ancesstor_collections = [f"{itm.get('title')}" for itm in record.get('ancestors')] # record.get('ancestors'): list of dict
 		useless_title_terms = [
@@ -210,18 +230,22 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 			'description': doc_description,
 			'img_url': first_digital_object_url,
 			'label_title_description': label + " " + (doc_title or '') + " " + (doc_description or ''),
-			'doc_date': doc_date,
+			'raw_doc_date': raw_doc_date,
 			'doc_url': f"https://catalog.archives.gov/id/{na_identifier}",
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
+
+	# extract doc_date from description:
+	df['doc_date'] = df.apply(lambda row: get_na_year(row['description'], row['raw_doc_date']), axis=1)
+
 	# Filter the DataFrame based on the validity check
 	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=START_DATE, end_date=END_DATE))]
 
 	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
 	return df
 
-def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5, TIMEOUT: int=50):
+def download_image(row, session, image_dir, total_rows, retries=1, backoff_factor=0.5, TIMEOUT: int=50):
 	t0 = time.time()
 	rIdx = row.name
 	url = row['img_url']
