@@ -20,7 +20,7 @@ print(args)
 
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-12-31
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1970-12-31 > logs/europeana_img_dl.out &
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1900-01-01 --end_date 1970-12-31 --num_workers 8 --img_mean_std > logs/europeana_img_dl.out &
 
 # WWII: (1 year threshold)
 # $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1938-01-01 --end_date 1946-12-31 > logs/europeana_ww2_img_dl.out &
