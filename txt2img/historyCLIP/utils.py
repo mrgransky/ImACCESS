@@ -285,15 +285,21 @@ def load_pickle(fpath:str="unknown",):
 	return pkl
 
 def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):
-	print(f"Creating History_df from: {fpth}", end="\t")
+	print(f"Creating History_df from: {fpth} and checking existence with: {img_dir}", end="\t")
 	history_df = pd.read_csv(
 		filepath_or_buffer=fpth,
 		on_bad_lines='skip',
 	)
-	print(f"Raw df: {history_df.shape}")
-	history_df[history_df.select_dtypes(include=['object']).columns] = history_df.select_dtypes(include=['object']).apply(lambda x: x.str.lower()) # lowercase all cols
+	# print(f"Raw df: {history_df.shape}")
+	# history_df[history_df.select_dtypes(include=['object']).columns] = history_df.select_dtypes(include=['object']).apply(lambda x: x.str.lower()) # lowercase all cols
+	# print(f"Raw df [after lower case]: {history_df.shape}")
 	history_df['image_exists'] = history_df['id'].apply(lambda x: os.path.exists(os.path.join(img_dir, f"{x}.jpg"))) # Check for existence of images and filter DataFrame
+	# print(f"Raw df [after image_exists]: {history_df.shape}")
 	filtered_df = history_df[history_df['image_exists']].drop(columns=['image_exists']) # Drop rows where the image does not exist
+	# print(f"Raw df [after droping]: {history_df.shape}")
+	# print(history_df.head(20))
+	# print("#"*100)
+	# print(history_df.tail(20))
 	# df = history_df.copy() # without checking image dir
 	df = filtered_df.copy()
 	print(f"=> {df.shape}")

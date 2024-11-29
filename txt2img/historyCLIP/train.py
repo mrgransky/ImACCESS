@@ -278,8 +278,8 @@ def main():
 			split_pct=args.validation_dataset_share,
 			doc_desc=args.document_description_col,
 		)
-	print(f"<<< DF >>> [train] {train_metadata_df.shape} [val] {val_metadata_df.shape}")
-	return
+	print(f"<<< DF >>> [train] {train_metadata_df.shape} [val] {val_metadata_df.shape}".center(150, "-"))
+	# return
 	print(f"Creating Train Dataloader for {len(train_metadata_df)} samples", end="\t")
 	tdl_st = time.time()
 	train_dataset = HistoricalDataset(
