@@ -122,8 +122,8 @@ class HistoricalDataset(Dataset):
 			Image.open(img_path).verify() # # Validate the image
 			image = Image.open(img_path).convert("RGB")
 		except (FileNotFoundError, IOError, Exception) as e:
-			# raise IOError(f"Could not load image: {img_path}, Error: {str(e)}") # debugging
-			print(f"{img_path} ERROR: {e}")
+			# raise IOError(f"Error: Could not load image: {img_path} {e}") # debugging
+			print(f"ERROR: {img_path}\t{e}")
 			return None
 		# image = self.contrast_enhance_denoise(image)
 		# image = self.resize_and_pad(image, self.img_sz)
