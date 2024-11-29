@@ -7,7 +7,7 @@ from misc.utils import *
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
-parser.add_argument('--start_date', type=str, default="1890-01-01", help='Dataset DIR')
+parser.add_argument('--start_date', type=str, default="1900-01-01", help='Dataset DIR')
 parser.add_argument('--end_date', type=str, default="1960-12-31", help='Dataset DIR')
 parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std') # if given => True (ex. --img_mean_std)
@@ -19,11 +19,15 @@ print(args)
 # sys.exit()
 
 # run in local laptop:
-# $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-12-31
+# $ python data_collector.py --dataset_dir $PWD --start_date 1900-01-01 --end_date 1960-12-31
 # $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1900-01-01 --end_date 1970-12-31 --num_workers 8 --img_mean_std > logs/europeana_img_dl.out &
 
 # WWII: (1 year threshold)
 # $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1938-01-01 --end_date 1946-12-31 > logs/europeana_ww2_img_dl.out &
+
+# run in Pouta:
+# $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1900-01-01 --end_date 1960-12-31
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1900-01-01 --end_date 1970-12-31 --num_workers 8 --img_mean_std > /media/volume/trash/ImACCESS/europeana_thresholded_WW2.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
@@ -40,9 +44,9 @@ STOPWORDS = set(STOPWORDS)
 print(STOPWORDS, type(STOPWORDS))
 dataset_name: str = "europeana".upper()
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
-europeana_api_key: str = "plaction"
+# europeana_api_key: str = "plaction"
 # europeana_api_key: str = "api2demo"
-# europeana_api_key: str = "nLbaXYaiH"
+europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
@@ -199,7 +203,7 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
 	return df
 
-def download_image(row, session, image_dir, total_rows, retries=1, backoff_factor=0.5):
+def download_image(row, session, image_dir, total_rows, retries=2, backoff_factor=0.5):
 	t0 = time.time()
 	rIdx = row.name
 	url = row['img_url']
