@@ -97,7 +97,7 @@ def get_na_year(description, raw_doc_date):
 		# year_pattern = r'\b\d{4}\b'
 		year_pattern = re.compile(r'\b\d{4}\b')
 		match = re.search(year_pattern, description)
-		print(match)
+		# print(match)
 		if match:
 				return match.group()
 		else:
