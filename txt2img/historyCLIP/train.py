@@ -3,19 +3,19 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run [Local]:
-# $ python train.py --query "air base" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 -vddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/EUROPEANA_1900-01-01_1970-12-31 -nep 1 -lr 5e-4 -wd 5e-2
-# $ python train.py --query "airbae" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
+# $ python train.py --query "air base" -ddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 -vddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/EUROPEANA_1900-01-01_1970-12-31 -nep 1 -lr 5e-4 -wd 5e-2
+# $ python train.py --query "airbae" -ddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 -nep 1
 
-# $ nohup python -u train.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 12 --learning_rate 5e-4 --weight_decay 2e-2 --patch_size 5 --image_size 160 > $PWD/logs/historyCLIP.out &
+# $ nohup python -u train.py -ddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 -nep 12 -lr 5e-4 -wd 2e-2 -ps 5 -is 160 > $PWD/logs/historyCLIP.out &
 
 # how to run [Pouta]:
 # Ensure Conda:
 # $ conda activate py39
-# $ python train.py --dataset_dir /media/volume/ImACCESS/WW_DATASETss/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --device "cuda:2" --num_epochs 1 --batch_size 128
-# $ nohup python -u train.py --dataset_dir /media/volume/ImACCESS/WW_DATASETss/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --num_epochs 50 --device "cuda:2" --learning_rate 5e-4 --weight_decay 5e-2 --patch_size 5 --image_size 170 --batch_size 60 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
+# $ python train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --device "cuda:2" -nep 1 -bs 128
+# $ nohup python -u train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 -vddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/ -nep 50 --device "cuda:2" -lr 5e-4 -wd 5e-2 -ps 5 -is 170 -bs 60 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
 
 # Puhti:
-# $ python train.py --dataset_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1913-01-01_1946-12-31
+# $ python train.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1913-01-01_1946-12-31
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
