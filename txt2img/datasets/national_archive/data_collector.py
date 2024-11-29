@@ -96,7 +96,7 @@ def get_na_year(description, raw_doc_date):
 		# print(f"neither... check description: {description}")
 		# year_pattern = r'\b\d{4}\b'
 		year_pattern = re.compile(r'\b\d{4}\b')
-		match = re.search(year_pattern, description)
+		match = re.search(year_pattern, description) # <re.Match object; span=(54, 58), match='1946'>
 		# print(match)
 		if match:
 				return match.group()
@@ -245,7 +245,7 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
 	return df
 
-def download_image(row, session, image_dir, total_rows, retries=1, backoff_factor=0.5, TIMEOUT: int=50):
+def download_image(row, session, image_dir, total_rows, retries=3, backoff_factor=0.5, TIMEOUT: int=50):
 	t0 = time.time()
 	rIdx = row.name
 	url = row['img_url']
@@ -385,7 +385,7 @@ def main():
 		end_date=END_DATE,
 		dname=dataset_name,
 		fpth=yr_distro_fpth,
-		BINs=100,
+		BINs=50,
 	)
 
 	if args.img_mean_std:
