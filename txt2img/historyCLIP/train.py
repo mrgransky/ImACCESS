@@ -11,8 +11,8 @@ from dataset_loader import HistoricalDataset
 # how to run [Pouta]:
 # Ensure Conda:
 # $ conda activate py39
-# $ python train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 --device "cuda:2" -nep 1 -bs 128
-# $ nohup python -u train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1914-07-28_1945-09-02 -vddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/ -nep 50 --device "cuda:2" -lr 5e-4 -wd 5e-2 -ps 5 -is 170 -bs 60 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
+# $ python train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 --device "cuda:2" -nep 1 -bs 128
+# $ nohup python -u train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -vddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -nep 50 --device "cuda:2" -lr 5e-4 -wd 5e-2 -ps 5 -is 160 -bs 60 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
 
 # Puhti:
 # $ python train.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1913-01-01_1946-12-31
@@ -241,6 +241,7 @@ def main():
 
 	img_rgb_mean_fpth:str = os.path.join(args.dataset_dir, "img_rgb_mean.gz")
 	img_rgb_std_fpth:str = os.path.join(args.dataset_dir, "img_rgb_std.gz")
+
 	try:
 		img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
 	except Exception as e:
@@ -258,11 +259,31 @@ def main():
 
 		save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 		save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
-	print(f"Mean: {img_rgb_mean} Std: {img_rgb_std}".center(160, " "))
 
 	if args.validation_dataset_dir:
 		print(f"Separate Train and Validation datasets")
 		print(f"Validation Dataset: {args.validation_dataset_dir}")
+		val_img_rgb_mean_fpth:str = os.path.join(args.validation_dataset_dir, "img_rgb_mean.gz")
+		val_img_rgb_std_fpth:str = os.path.join(args.validation_dataset_dir, "img_rgb_std.gz")
+
+		try:
+			val_img_rgb_mean, val_img_rgb_std = load_pickle(fpath=val_img_rgb_mean_fpth), load_pickle(fpath=val_img_rgb_std_fpth) # RGB images
+		except Exception as e:
+			print(f"{e}")
+			##################################### Mean - Std Multiprocessing ####################################
+			# img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
+			# 	dir=os.path.join(args.dataset_dir, "images"), 
+			# 	num_workers=args.num_workers,
+			# )
+			##################################### Mean - Std Multiprocessing ####################################
+
+			######################################## Mean - Std for loop ########################################
+			val_img_rgb_mean, val_img_rgb_std = get_mean_std_rgb_img(dir=os.path.join(args.dataset_dir, "images"))
+			######################################## Mean - Std for loop ########################################
+
+			save_pickle(pkl=val_img_rgb_mean, fname=val_img_rgb_mean_fpth)
+			save_pickle(pkl=val_img_rgb_std, fname=val_img_rgb_std_fpth)
+
 		train_metadata_df = get_metadata_df(
 			ddir=args.dataset_dir,  # all dataset goes to train
 			doc_desc=args.document_description_col,
@@ -278,7 +299,12 @@ def main():
 			split_pct=args.validation_dataset_share,
 			doc_desc=args.document_description_col,
 		)
-	print(f"<<< DF >>> [train] {train_metadata_df.shape} [val] {val_metadata_df.shape}".center(150, "-"))
+		val_img_rgb_mean = img_rgb_mean
+		val_img_rgb_std = img_rgb_std
+
+	print(f"[Train] Mean: {img_rgb_mean} Std: {img_rgb_std}".center(180, " "))
+	print(f"[Validation] Mean: {val_img_rgb_mean} Std: {val_img_rgb_std}".center(180, " "))
+	print(f"<<< DF >>> [train] {train_metadata_df.shape} [val] {val_metadata_df.shape}".center(180, "-"))
 	# return
 	print(f"Creating Train Dataloader for {len(train_metadata_df)} samples", end="\t")
 	tdl_st = time.time()
@@ -314,10 +340,10 @@ def main():
 	val_dataset = HistoricalDataset(
 		data_frame=val_metadata_df,
 		img_sz=args.image_size,
-		dataset_directory=os.path.join(args.dataset_dir, "images"),
+		dataset_directory=os.path.join(args.validation_dataset_dir, "images"),
 		max_seq_length=max_seq_length,
-		mean=img_rgb_mean,
-		std=img_rgb_std,
+		mean=val_img_rgb_mean,
+		std=val_img_rgb_std,
 		txt_category=args.document_description_col,
 		augment_data=False,
 	)
