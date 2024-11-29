@@ -290,6 +290,7 @@ def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):
 		filepath_or_buffer=fpth,
 		on_bad_lines='skip',
 	)
+	print(f"Raw df: {history_df.shape}")
 	history_df[history_df.select_dtypes(include=['object']).columns] = history_df.select_dtypes(include=['object']).apply(lambda x: x.str.lower()) # lowercase all cols
 	history_df['image_exists'] = history_df['id'].apply(lambda x: os.path.exists(os.path.join(img_dir, f"{x}.jpg"))) # Check for existence of images and filter DataFrame
 	filtered_df = history_df[history_df['image_exists']].drop(columns=['image_exists']) # Drop rows where the image does not exist
@@ -327,7 +328,7 @@ def get_metadata_df(ddir:str="path/2/directory", doc_desc:str="label"):
 		img_lbls_dict = load_pickle(fpath=img_lbls_dict_fpth)
 		img_lbls_list = load_pickle(fpath=img_lbls_list_fpth)
 	except Exception as e:
-		print(f"{e}")
+		# print(f"{e}")
 		metadata_df = get_dframe(
 			fpth=os.path.join(ddir, "metadata.csv"),
 			img_dir=os.path.join(ddir, "images"),

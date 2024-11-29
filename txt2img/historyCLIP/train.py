@@ -3,7 +3,7 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run [Local]:
-# $ python train.py --query "air base" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 1 --learning_rate 5e-4 --weight_decay 5e-2 --num_workers 2
+# $ python train.py --query "air base" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 -vddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/EUROPEANA_1900-01-01_1970-12-31 -nep 1 -lr 5e-4 -wd 5e-2
 # $ python train.py --query "airbae" --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 --num_epochs 1
 
 # $ nohup python -u train.py --dataset_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 --num_epochs 12 --learning_rate 5e-4 --weight_decay 2e-2 --patch_size 5 --image_size 160 > $PWD/logs/historyCLIP.out &
@@ -18,20 +18,20 @@ from dataset_loader import HistoricalDataset
 # $ python train.py --dataset_dir /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1913-01-01_1946-12-31
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
-parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
-parser.add_argument('--validation_dataset_dir', default=None, help='Dataset DIR')
+parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
+parser.add_argument('--validation_dataset_dir', '-vddir', default=None, help='Dataset DIR')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
-parser.add_argument('--batch_size', type=int, default=22, help='Batch Size')
-parser.add_argument('--image_size', type=int, default=160, help='Image size [def: max 160 local]')
-parser.add_argument('--patch_size', type=int, default=5, help='Patch size')
-parser.add_argument('--embedding_size', type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
-parser.add_argument('--query', type=str, default="air base", help='Query')
+parser.add_argument('--batch_size', '-bs', type=int, default=22, help='Batch Size')
+parser.add_argument('--image_size', '-is', type=int, default=160, help='Image size [def: max 160 local]')
+parser.add_argument('--patch_size', '-ps', type=int, default=5, help='Patch size')
+parser.add_argument('--embedding_size', '-es',type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
+parser.add_argument('--query', '-q', type=str, default="air base", help='Query')
 parser.add_argument('--print_every', type=int, default=150, help='Print loss')
-parser.add_argument('--num_epochs', type=int, default=10, help='Number of epochs')
-parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs [def: max cpus]')
+parser.add_argument('--num_epochs', '-nep', type=int, default=10, help='Number of epochs')
+parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs [def: max cpus]')
 parser.add_argument('--validation_dataset_share', type=float, default=0.3, help='share of Validation set [def: 0.23]')
-parser.add_argument('--learning_rate', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-3]')
-parser.add_argument('--weight_decay', type=float, default=1e-1, help='Weight decay [def: 5e-4]')
+parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-3]')
+parser.add_argument('--weight_decay', '-wd', type=float, default=1e-1, help='Weight decay [def: 5e-4]')
 parser.add_argument('--data_augmentation', type=bool, default=False, help='Data Augmentation')
 parser.add_argument('--document_description_col', type=str, default="label", help='labels')
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
@@ -39,9 +39,13 @@ parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_avai
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 print(args)
+
 args.device = torch.device(args.device)
+
 os.makedirs(os.path.join(args.dataset_dir, "outputs"), exist_ok=True)
 outputs_dir:str = os.path.join(args.dataset_dir, "outputs",)
+
+# sys.exit()
 
 def get_val_loss(model, val_loader, ):
 	print(f"Validating val_loader {type(val_loader)} with {len(val_loader.dataset)} sample(s)", end="\t")
@@ -258,6 +262,7 @@ def main():
 
 	if args.validation_dataset_dir:
 		print(f"Separate Train and Validation datasets")
+		print(f"Validation Dataset: {args.validation_dataset_dir}")
 		train_metadata_df = get_metadata_df(
 			ddir=args.dataset_dir,  # all dataset goes to train
 			doc_desc=args.document_description_col,
@@ -274,7 +279,7 @@ def main():
 			doc_desc=args.document_description_col,
 		)
 	print(f"<<< DF >>> [train] {train_metadata_df.shape} [val] {val_metadata_df.shape}")
-
+	return
 	print(f"Creating Train Dataloader for {len(train_metadata_df)} samples", end="\t")
 	tdl_st = time.time()
 	train_dataset = HistoricalDataset(
