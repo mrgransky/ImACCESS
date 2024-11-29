@@ -29,15 +29,15 @@ echo "THREADS/CORE: $SLURM_THREADS_PER_CORE"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 ddir="/scratch/project_2004072/ImACCESS/WW_DATASETs"
-st_dt="1913-01-01"
-end_dt="1946-12-31"
+st_dt="1900-01-01"
+end_dt="1970-12-31"
 
 python -u data_collector.py \
 	--dataset_dir $ddir \
 	--start_date  $st_dt \
 	--end_date  $end_dt \
-	--num_worker 10 \
-	# --img_mean_std
+	--num_worker 8 \
+	--img_mean_std
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
