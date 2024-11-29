@@ -78,6 +78,13 @@ if USER!="alijanif":
 	sl_dict = enchant.Dict("sl")
 	sk_dict = enchant.Dict("sk")
 
+def get_extension(url: str="www.example.com/some_/path/to/file.jpg"):
+	parsed_url = urlparse(url)
+	path = parsed_url.path
+	_, extension = os.path.splitext(path)
+	# return extension[1:].lower() # Remove the leading dot from the extension ['jpg', 'png', 'jpeg', 'txt', 'mov']
+	return extension.lstrip('.').lower() # Remove the leading dot from the extension ['jpg', 'png', 'jpeg', 'txt', 'mov']
+
 def plot_year_distribution(df, start_date, end_date, dname, fpth, BINs:int=50,):
 	# Extract the year from the 'doc_date' column
 	df['year'] = df['doc_date'].apply(lambda x: x[:4] if x is not None else None)
