@@ -12,7 +12,7 @@ from dataset_loader import HistoricalDataset
 # Ensure Conda:
 # $ conda activate py39
 # $ python train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 --device "cuda:2" -nep 1 -bs 128
-# $ nohup python -u train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -vddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -nep 50 --device "cuda:2" -lr 5e-4 -wd 5e-2 -ps 5 -is 160 -bs 60 > /media/volume/trash/ImACCESS/historyCLIP_cuda2.out &
+# $ nohup python -u train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -vddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -nep 50 --device "cuda:0" -lr 1e-3 -wd 5e-2 -ps 5 -is 160 -bs 62 > /media/volume/trash/ImACCESS/historyCLIP_cuda0.out &
 
 # Puhti:
 # $ python train.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1913-01-01_1946-12-31
@@ -21,8 +21,8 @@ parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--validation_dataset_dir', '-vddir', default=None, help='Dataset DIR')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
-parser.add_argument('--batch_size', '-bs', type=int, default=22, help='Batch Size')
-parser.add_argument('--image_size', '-is', type=int, default=160, help='Image size [def: max 160 local]')
+parser.add_argument('--batch_size', '-bs', type=int, default=27, help='Batch Size')
+parser.add_argument('--image_size', '-is', type=int, default=150, help='Image size [def: max 160 local]')
 parser.add_argument('--patch_size', '-ps', type=int, default=5, help='Patch size')
 parser.add_argument('--embedding_size', '-es',type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
 parser.add_argument('--query', '-q', type=str, default="air base", help='Query')
@@ -44,6 +44,9 @@ args.device = torch.device(args.device)
 
 os.makedirs(os.path.join(args.dataset_dir, "outputs"), exist_ok=True)
 outputs_dir:str = os.path.join(args.dataset_dir, "outputs",)
+
+os.makedirs(os.path.join(args.dataset_dir, "models"), exist_ok=True)
+models_dir:str = os.path.join(args.dataset_dir, "models",)
 
 # sys.exit()
 
@@ -395,7 +398,7 @@ def main():
 		anneal_strategy='cos', # cos/linear annealing
 	)
 
-	models_dir_name = (
+	model_fname = (
 		f"model"
 		+ f"_augmentation_{args.data_augmentation}"
 		+ f"_ep_{args.num_epochs}"
@@ -413,8 +416,9 @@ def main():
 		+ f"_{scheduler.__class__.__name__}"
 		# + f"_{get_args(scheduler)}"
 	)
-	print(len(models_dir_name), models_dir_name)
-	os.makedirs(os.path.join(args.dataset_dir, models_dir_name),exist_ok=True)
+	print(len(model_fname), model_fname)
+	os.makedirs(os.path.join(args.dataset_dir, models_dir, model_fname),exist_ok=True)
+	model_fpth = os.path.join(args.dataset_dir, models_dir, model_fname)
 
 	train(
 		model=model,
@@ -423,7 +427,7 @@ def main():
 		optimizer=optimizer,
 		scheduler=scheduler,
 		checkpoint_interval=2,
-		model_dir=models_dir_name,
+		model_dir=model_fpth,
 	)
 
 	# Construct the command as a list of arguments
