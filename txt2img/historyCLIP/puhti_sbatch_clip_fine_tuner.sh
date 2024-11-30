@@ -30,10 +30,12 @@ echo "THREADS/CORE: $SLURM_THREADS_PER_CORE"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 ddir="/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1913-01-01_1946-12-31"
+vddir="/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31"
 qu="aircraft"
 
 python -u train.py \
 	--dataset_dir $ddir \
+	--validation_dataset_dir $vddir \
 	--query $qu \
 	--num_epochs 50 \
 	--num_workers 9 \
