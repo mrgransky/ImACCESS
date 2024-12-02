@@ -38,11 +38,11 @@ python -u train.py \
 	--validation_dataset_dir $vddir \
 	--query $qu \
 	--num_epochs 50 \
-	--num_workers 10 \
+	--num_workers 30 \
 	--print_every 50 \
 	--batch_size 256 \
 	--patch_size 5 \
-	--image_size 200 \
+	--image_size 150 \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
