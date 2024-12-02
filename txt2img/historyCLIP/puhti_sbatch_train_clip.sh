@@ -1,14 +1,14 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=historyCLIP_bsz_128
-#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j.out
+#SBATCH --job-name=historyCLIP_bsz_256
+#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=64G
+#SBATCH --mem=128G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --time=03-00:00:00
@@ -38,11 +38,11 @@ python -u train.py \
 	--validation_dataset_dir $vddir \
 	--query $qu \
 	--num_epochs 50 \
-	--num_workers 20 \
+	--num_workers 10 \
 	--print_every 50 \
-	--batch_size 128 \
+	--batch_size 256 \
 	--patch_size 5 \
-	--image_size 210 \
+	--image_size 200 \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

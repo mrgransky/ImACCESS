@@ -333,7 +333,7 @@ def load_pickle(fpath:str="unknown",):
 	return pkl
 
 def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):
-	print(f"Creating History_df from: {fpth} and checking existence with: {img_dir}", end="\t")
+	print(f"Creating History_df from: {fpth}", end="\t")
 	history_df = pd.read_csv(
 		filepath_or_buffer=fpth,
 		on_bad_lines='skip',
