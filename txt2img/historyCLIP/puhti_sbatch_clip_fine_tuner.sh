@@ -42,7 +42,7 @@ python -u train.py \
 	--print_every 250 \
 	--batch_size 64 \
 	--patch_size 3 \
-	--image_size 150 \
+	--image_size 180 \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
