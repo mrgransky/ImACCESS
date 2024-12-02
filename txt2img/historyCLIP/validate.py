@@ -126,7 +126,7 @@ def main():
 		print(f"{e}")
 		return
 
-	print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
+	print(f"IMAGE Mean: {img_rgb_mean} | Std: {img_rgb_std}")
 	
 	img_lbls_dict_fpth:str = os.path.join(DATASET_DIR, "image_labels_dict.gz")
 	img_lbls_list_fpth:str = os.path.join(DATASET_DIR, "image_labels_list.gz")

@@ -407,6 +407,7 @@ def get_splited_train_val_df(ddir:str="path/2/dir", split_pct:float=0.3, doc_des
 			val_metadata_df.to_excel(os.path.join(ddir, "metadata_val.xlsx"), index=False)
 		except Exception as e:
 			print(f"Failed to write Excel file: {e}")
+
 	return train_metadata_df, val_metadata_df
 
 def plot_(train_losses, val_losses, save_path, lr, wd):

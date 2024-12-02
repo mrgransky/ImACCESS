@@ -30,8 +30,9 @@ openpose/build/
 openpose/outputs/
 img2txt/*/outputs/
 txt2img/datasets/*/logs
+txt2img/datasets/models
 txt2img/datasets/*/NA*
-txt2img/datasets/*/smu*
+txt2img/datasets/*/SMU*
 txt2img/datasets/*/temp
 txt2img/datasets/*/EUROPEANA*
 txt2img/datasets/*/WWII*

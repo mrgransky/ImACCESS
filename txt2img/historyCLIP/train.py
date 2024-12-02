@@ -65,7 +65,7 @@ def get_val_loss(model, val_loader, ):
 	print(f"Validation Loss: {avg_val_loss:.5f}")
 	return avg_val_loss
 
-def train(model, train_data_loader, val_data_loader, optimizer, scheduler, checkpoint_interval:int=5, model_dir:str="path/2/model_dir"):
+def train(model, train_data_loader, val_data_loader, optimizer, scheduler, checkpoint_interval:int=5, model_dir:str="path/2/model_dir", early_stopping_patience:int=10):
 	mdl_fpth:str = os.path.join(args.dataset_dir, model_dir, "model.pt")
 	
 	os.makedirs(os.path.join(args.dataset_dir, model_dir, "results"), exist_ok=True)
@@ -76,7 +76,7 @@ def train(model, train_data_loader, val_data_loader, optimizer, scheduler, check
 	
 	print(f"Training CLIP model {args.num_epochs} Epoch(s) Device: {args.device} & {args.num_workers} CPU(s)".center(150, "-"))
 	if torch.cuda.is_available():
-		print(f"GPU: {torch.cuda.get_device_name(args.device)}")
+		print(f"GPU: {torch.cuda.get_device_name(args.device)}".center(150, "-"))
 	log_gpu_memory(device=args.device)
 	writer = SummaryWriter(log_dir=os.path.join(outputs_dir, "logs")) # Initialize TensorBoard writer
 	
@@ -86,7 +86,6 @@ def train(model, train_data_loader, val_data_loader, optimizer, scheduler, check
 	total_params = sum([param.numel() for param in model.parameters() if param.requires_grad])
 	print(f"Total trainable parameters (Vision + Text) Encoder: {total_params} ~ {total_params/int(1e+6):.2f} M")
 	best_loss = np.inf
-	patience = 5  # Number of epochs to wait for improvement before stopping
 	no_improvement_count = 0
 
 	start_epoch = 0
@@ -177,7 +176,7 @@ def train(model, train_data_loader, val_data_loader, optimizer, scheduler, check
 			no_improvement_count = 0
 		else:
 			no_improvement_count += 1
-			if no_improvement_count >= patience:
+			if no_improvement_count >= early_stopping_patience:
 				print(f"Early stopping triggered after {epoch+1} epochs.")
 				break
 		############################## Early stopping ##############################
@@ -263,6 +262,7 @@ def main():
 		save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 		save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
 
+	# Checking for existence of validation dataset:
 	if args.validation_dataset_dir:
 		print(f"Separate Train and Validation datasets")
 		print(f"Validation Dataset: {args.validation_dataset_dir}")
@@ -426,7 +426,7 @@ def main():
 		val_data_loader=val_data_loader,
 		optimizer=optimizer,
 		scheduler=scheduler,
-		checkpoint_interval=2,
+		checkpoint_interval=5,
 		model_dir=model_fpth,
 	)
 

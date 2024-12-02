@@ -78,6 +78,68 @@ if USER!="alijanif":
 	sl_dict = enchant.Dict("sl")
 	sk_dict = enchant.Dict("sk")
 
+def download_image(row, session, image_dir, total_rows, retries=2, backoff_factor=0.5):
+	t0 = time.time()
+	rIdx = row.name
+	url = row['img_url']
+	img_extension = get_extension(url=url)
+	image_name = row['id']
+	# image_path = os.path.join(image_dir, f"{image_name}.jpg")
+	image_path = os.path.join(image_dir, f"{image_name}.{img_extension}")
+	if os.path.exists(image_path):
+		try:
+			# Verify if the existing image can be opened
+			with Image.open(image_path) as img:
+				img.verify()
+			return True  # Image already exists and is valid, => skipping
+		except (IOError, SyntaxError) as e:
+			print(f"Existing image {image_path} is invalid: {e}, re-downloading...")
+	attempt = 0  # Retry mechanism
+	while attempt < retries:
+		try:
+			response = session.get(url, timeout=20)
+			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
+			with open(image_path, 'wb') as f:  # Save the image to the directory
+				f.write(response.content)
+			# Verify if the downloaded image can be opened
+			with Image.open(image_path) as img:
+				img.verify()
+			print(f"{rIdx:<8}/ {total_rows:<8}{image_name:<30}{time.time()-t0:.1f} s")
+			return True  # Image downloaded and verified successfully
+		except (RequestException, IOError) as e:
+			attempt += 1
+			print(f"[{rIdx}/{total_rows}] Failed Downloading {url} : {e}, retrying ({attempt}/{retries})")
+			time.sleep(backoff_factor * (2 ** attempt))  # Exponential backoff
+		except (SyntaxError, Image.DecompressionBombError) as e:
+			print(f"[{rIdx}/{total_rows}] Downloaded image {image_name} is invalid: {e}")
+			break  # No need to retry if the image is invalid
+	if os.path.exists(image_path):
+		print(f"removing broken img: {image_path}")
+		os.remove(image_path)  # Remove invalid image file
+	print(f"[{rIdx}/{total_rows}] Failed downloading {image_name} after {retries} attempts.")
+	return False  # Indicate failed download
+
+def get_synchronized_df_img(df, image_dir:str="path/2/img_dir", nw: int=8):
+	print(f"Synchronizing merged_df(raw) & images of {df.shape[0]} records using {nw} CPUs...")
+	successful_rows = [] # List to keep track of successful downloads
+	with requests.Session() as session:
+		with ThreadPoolExecutor(max_workers=nw) as executor:
+			futures = {executor.submit(download_image, row, session, image_dir, df.shape[0]): idx for idx, row in df.iterrows()}
+			for future in as_completed(futures):
+				try:
+					success = future.result() # Get result (True or False) from download_image
+					if success:
+						successful_rows.append(futures[future]) # Keep track of successfully downloaded rows
+				except Exception as e:
+					print(f"Unexpected error: {e}")
+	print(f"cleaning {type(df)} {df.shape} with {len(successful_rows)} succeeded downloaded images [functional URL]...")
+	df_cleaned = df.loc[successful_rows] # keep only the successfully downloaded rows
+	print(f"Total images downloaded successfully: {len(successful_rows)} out of {df.shape[0]}")
+	print(f"df_cleaned: {df_cleaned.shape}")
+	img_dir_size = sum(os.path.getsize(os.path.join(image_dir, f)) for f in os.listdir(image_dir) if os.path.isfile(os.path.join(image_dir, f))) * 1e-9  # GB
+	print(f"{image_dir} contains {len(os.listdir(image_dir))} file(s) with total size: {img_dir_size:.2f} GB")
+	return df_cleaned
+
 def get_extension(url: str="www.example.com/some_/path/to/file.jpg"):
 	parsed_url = urlparse(url)
 	path = parsed_url.path
@@ -191,6 +253,8 @@ def extract_url_info(url):
 	}
 
 def clean_(text, sw, check_language:bool=False):
+	if not text:
+		return
 	# print(text)
 	# text = re.sub(r'[^a-zA-Z\s]', ' ', text) # Remove special characters and digits
 	# text = re.sub(r'[";=&#<>_\-\+\^\.\$\[\]]', " ", text)

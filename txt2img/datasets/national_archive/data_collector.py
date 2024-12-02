@@ -84,19 +84,14 @@ OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
-def get_na_year(description, raw_doc_date):
-		# print(description is None,not pd.isna(raw_doc_date))
-
+def get_doc_year(text, raw_doc_date):
 		if not pd.isna(raw_doc_date):  # Check if raw_doc_date is missing (None or NaN)
 				return raw_doc_date
-
-		if description is None:  # Check if description is None
+		if text is None:  # Check if text is None
 				return None
-
-		# print(f"neither... check description: {description}")
 		# year_pattern = r'\b\d{4}\b'
 		year_pattern = re.compile(r'\b\d{4}\b')
-		match = re.search(year_pattern, description) # <re.Match object; span=(54, 58), match='1946'>
+		match = re.search(year_pattern, text) # <re.Match object; span=(54, 58), match='1946'>
 		# print(match)
 		if match:
 				return match.group()
@@ -237,7 +232,7 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 	df = pd.DataFrame(data)
 
 	# extract doc_date from description:
-	df['doc_date'] = df.apply(lambda row: get_na_year(row['description'], row['raw_doc_date']), axis=1)
+	df['doc_date'] = df.apply(lambda row: get_doc_year(row['description'], row['raw_doc_date']), axis=1)
 
 	# Filter the DataFrame based on the validity check
 	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=START_DATE, end_date=END_DATE))]
@@ -245,53 +240,69 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
 	return df
 
-def download_image(row, session, image_dir, total_rows, retries=3, backoff_factor=0.5, TIMEOUT: int=50):
-	t0 = time.time()
-	rIdx = row.name
-	url = row['img_url']
-	image_name = str(row['id']) + os.path.splitext(url)[1]
-	image_path = os.path.join(image_dir, image_name)
-	if os.path.exists(image_path):
-		return True # Image already exists, => skipping
-	attempt = 0  # Retry mechanism
-	while attempt < retries:
-		try:
-			response = session.get(url, timeout=TIMEOUT)
-			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
-			with open(image_path, 'wb') as f: # Save the image to the directory
-				f.write(response.content)
-			print(f"[{rIdx:<10}/ {total_rows}]{image_name:>20}{time.time() - t0:>10.1f} s")
-			return True  # Image downloaded successfully
-		except (RequestException, IOError) as e:
-			attempt += 1
-			print(f"[{rIdx}/{total_rows}] Downloading {image_name} failed! {e}, retrying ({attempt}/{retries})...")
-			time.sleep(backoff_factor * (2 ** attempt))  # Exponential backoff
-	print(f"[{rIdx}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
-	return False  # Indicate failed download
+# def download_image(row, session, image_dir, total_rows, retries=2, backoff_factor=0.5):
+# 	t0 = time.time()
+# 	rIdx = row.name
+# 	url = row['img_url']
+# 	img_extension = get_extension(url=url)
+# 	image_name = re.sub("/", "SLASH", row['id'])  # str(row['id']) + os.path.splitext(url)[1]
+# 	# image_path = os.path.join(image_dir, f"{image_name}.jpg")
+# 	image_path = os.path.join(image_dir, f"{image_name}.{img_extension}")
+# 	if os.path.exists(image_path):
+# 		try:
+# 			# Verify if the existing image can be opened
+# 			with Image.open(image_path) as img:
+# 				img.verify()
+# 			return True  # Image already exists and is valid, => skipping
+# 		except (IOError, SyntaxError) as e:
+# 			print(f"Existing image {image_path} is invalid: {e}, re-downloading...")
+# 	attempt = 0  # Retry mechanism
+# 	while attempt < retries:
+# 		try:
+# 			response = session.get(url, timeout=20)
+# 			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
+# 			with open(image_path, 'wb') as f:  # Save the image to the directory
+# 				f.write(response.content)
+# 			# Verify if the downloaded image can be opened
+# 			with Image.open(image_path) as img:
+# 				img.verify()
+# 			print(f"{rIdx:<8}/ {total_rows:<8}{image_name:<150}{time.time()-t0:.1f} s")
+# 			return True  # Image downloaded and verified successfully
+# 		except (RequestException, IOError) as e:
+# 			attempt += 1
+# 			print(f"[{rIdx}/{total_rows}] Failed Downloading {url} : {e}, retrying ({attempt}/{retries})")
+# 			time.sleep(backoff_factor * (2 ** attempt))  # Exponential backoff
+# 		except (SyntaxError, Image.DecompressionBombError) as e:
+# 			print(f"[{rIdx}/{total_rows}] Downloaded image {image_name} is invalid: {e}")
+# 			break  # No need to retry if the image is invalid
+# 	if os.path.exists(image_path):
+# 		print(f"removing broken img: {image_path}")
+# 		os.remove(image_path)  # Remove invalid image file
+# 	print(f"[{rIdx}/{total_rows}] Failed downloading {image_name} after {retries} attempts.")
+# 	return False  # Indicate failed download
 
-def get_synchronized_df_img(df, nw: int=8):
-	print(f"Synchronizing merged_df(raw) & images of {df.shape[0]} records using {nw} CPUs...")
-	successful_rows = []  # List to keep track of successful downloads
-	with requests.Session() as session:
-		with ThreadPoolExecutor(max_workers=nw) as executor:
-			futures = {executor.submit(download_image, row, session, IMAGE_DIR, df.shape[0]): idx for idx, row in df.iterrows()}
-			for future in as_completed(futures):
-				try:
-					success = future.result() # Get the result (True or False) from download_image
-					if success:
-						successful_rows.append(futures[future])  # Keep track of successfully downloaded rows
-				except Exception as e:
-					print(f"Unexpected error: {e}")
-	print(f"cleaning {type(df)} {df.shape} with {len(successful_rows)} succeded downloaded images [functional URL]...")
-	df_cleaned = df.loc[successful_rows] # keep only the successfully downloaded rows
-	print(f"Total images downloaded successfully: {len(successful_rows)} out of {df.shape[0]}")
-	print(f"df_cleaned: {df_cleaned.shape}")
+# def get_synchronized_df_img(df, nw: int=8):
+# 		print(f"Synchronizing merged_df(raw) & images of {df.shape[0]} records using {nw} CPUs...")
+# 		successful_rows = []  # List to keep track of successful downloads
+# 		with requests.Session() as session:
+# 				with ThreadPoolExecutor(max_workers=nw) as executor:
+# 						futures = {executor.submit(download_image, row, session, IMAGE_DIR, df.shape[0]): idx for idx, row in df.iterrows()}
+# 						for future in as_completed(futures):
+# 								try:
+# 										success = future.result()  # Get result (True or False) from download_image
+# 										if success:
+# 												successful_rows.append(futures[future])  # Keep track of successfully downloaded rows
+# 								except Exception as e:
+# 										print(f"Unexpected error: {e}")
+# 		print(f"cleaning {type(df)} {df.shape} with {len(successful_rows)} succeeded downloaded images [functional URL]...")
+# 		df_cleaned = df.loc[successful_rows]  # keep only the successfully downloaded rows
+# 		print(f"Total images downloaded successfully: {len(successful_rows)} out of {df.shape[0]}")
+# 		print(f"df_cleaned: {df_cleaned.shape}")
 
-	img_dir_size = sum(os.path.getsize(f) for f in os.listdir(IMAGE_DIR) if os.path.isfile(f))# * 1e-9 # GB
-	# img_dir_size = sum(os.path.getsize(f) for f in os.listdir(IMAGE_DIR))# * 1e-9 # GB
-	print(f"{IMAGE_DIR} contains {len(os.listdir(IMAGE_DIR))} file(s) with total size: {img_dir_size} GB")
+# 		img_dir_size = sum(os.path.getsize(os.path.join(IMAGE_DIR, f)) for f in os.listdir(IMAGE_DIR) if os.path.isfile(os.path.join(IMAGE_DIR, f))) * 1e-9  # GB
+# 		print(f"{IMAGE_DIR} contains {len(os.listdir(IMAGE_DIR))} file(s) with total size: {img_dir_size:.2f} GB")
 
-	return df_cleaned
+# 		return df_cleaned
 
 def main():
 	with open(os.path.join(parent_dir, 'misc', 'query_labels.txt'), 'r') as file_:
@@ -338,6 +349,7 @@ def main():
 	concat_st = time.time()
 	# print(dfs[0])
 	na_df_merged_raw = pd.concat(dfs, ignore_index=True)
+
 	print(f"<!> Replacing labels with broad umbrella terms")
 	json_file_path = os.path.join(parent_dir, 'misc', 'generalized_labels.json')
 	if os.path.exists(json_file_path):
@@ -345,6 +357,7 @@ def main():
 			replacement_dict = json.load(file_)
 	else:
 		print(f"Error: {json_file_path} does not exist.")
+
 	print(f"pre-processing merged {type(na_df_merged_raw)} {na_df_merged_raw.shape}")
 	na_df_merged_raw['label'] = na_df_merged_raw['label'].replace(replacement_dict)
 	na_df_merged_raw = na_df_merged_raw.dropna(subset=['img_url']) # drop None img_url
@@ -359,7 +372,7 @@ def main():
 		print(f"Failed to write Excel file: {e}")
 	print(f"Elapsed_t: {time.time()-concat_st:.1f} sec".center(100, "-"))
 
-	na_df = get_synchronized_df_img(df=na_df_merged_raw, nw=args.num_workers)
+	na_df = get_synchronized_df_img(df=na_df_merged_raw, image_dir=IMAGE_DIR, nw=args.num_workers)
 
 	label_counts = na_df['label'].value_counts()
 	print(label_counts.tail(25))

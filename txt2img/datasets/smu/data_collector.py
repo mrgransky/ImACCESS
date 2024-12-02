@@ -1,46 +1,39 @@
-import requests
-import json
-import time
-import dill
-import gzip
-import pandas as pd
-import numpy as np
 import os
 import sys
-import datetime
-import re
-from typing import List, Dict
-from natsort import natsorted
-import matplotlib.pyplot as plt
-import seaborn as sns
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import multiprocessing
-from requests.exceptions import RequestException, HTTPError, SSLError
-import argparse
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
+from misc.utils import *
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', type=str, default="1890-01-01", help='Dataset DIR')
 parser.add_argument('--end_date', type=str, default="1960-01-01", help='Dataset DIR')
-parser.add_argument('--num_worker', type=int, default=8, help='Number of CPUs')
+parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs')
+parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 print(args)
 # run in local laptop:
-# $ python data_collector.py --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01
-# $ nohup python data_collector.py -u --dataset_dir $PWD --start_date 1890-01-01 --end_date 1960-01-01 >> europeana_image_download.out &
+# $ python data_collector.py --dataset_dir $PWD --start_date 1900-01-01 --end_date 1970-12-31
+# $ nohup python data_collector.py -u --dataset_dir $PWD --start_date 1900-01-01 --end_date 1970-12-31 > smu_image_download.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
-START_DATE = re.sub("-", "", args.start_date)
-END_DATE = re.sub("-", "", args.end_date)
-dataset_name = "smu"
-nw:int = min(args.num_worker, multiprocessing.cpu_count()) # def: 8
+START_DATE = args.start_date
+END_DATE = args.end_date
 
-# europeana_api_key: str = "plaction"
-# europeana_api_key: str = "api2demo"
-europeana_api_key: str = "nLbaXYaiH"
+dataset_name = "SMU"
+meaningless_words_fpth = os.path.join(parent_dir, 'misc', 'meaningless_words.txt')
+# STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
+STOPWORDS = list()
+with open(meaningless_words_fpth, 'r') as file_:
+	customized_meaningless_words=[line.strip().lower() for line in file_]
+STOPWORDS.extend(customized_meaningless_words)
+STOPWORDS = set(STOPWORDS)
+print(STOPWORDS, type(STOPWORDS))
+
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
@@ -48,44 +41,42 @@ headers = {
 	'Connection': 'keep-alive',
 	'Pragma': 'no-cache',
 }
+
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
 
-def save_pickle(pkl, fname:str=""):
-	print(f"\nSaving {type(pkl)}\n{fname}")
-	st_t = time.time()
-	if isinstance(pkl, ( pd.DataFrame, pd.Series ) ):
-		pkl.to_pickle(path=fname)
-	else:
-		# with open(fname , mode="wb") as f:
-		with gzip.open(fname , mode="wb") as f:
-			dill.dump(pkl, f)
-	elpt = time.time()-st_t
-	fsize_dump = os.stat( fname ).st_size / 1e6
-	print(f"Elapsed_t: {elpt:.3f} s | {fsize_dump:.2f} MB".center(120, " "))
+os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
+DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
+os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
+IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
 
-def load_pickle(fpath:str="unknown",):
-	print(f"Checking for existence? {fpath}")
-	st_t = time.time()
-	try:
-		with gzip.open(fpath, mode='rb') as f:
-			pkl=dill.load(f)
-	except gzip.BadGzipFile as ee:
-		print(f"<!> {ee} gzip.open() NOT functional => traditional openning...")
-		with open(fpath, mode='rb') as f:
-			pkl=dill.load(f)
-	except Exception as e:
-		print(f"<<!>> {e} pandas read_pkl...")
-		pkl = pd.read_pickle(fpath)
-	elpt = time.time()-st_t
-	fsize = os.stat( fpath ).st_size / 1e6
-	print(f"Loaded in: {elpt:.3f} s | {type(pkl)} | {fsize:.3f} MB".center(130, " "))
-	return pkl
+os.makedirs(os.path.join(DATASET_DIRECTORY, "hits"), exist_ok=True)
+HITs_DIR = os.path.join(DATASET_DIRECTORY, "hits")
+
+os.makedirs(os.path.join(DATASET_DIRECTORY, "outputs"), exist_ok=True)
+OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
+
+img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
+img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
+
+def get_doc_year(raw_doc_date):
+	# if not pd.isna(raw_doc_date): # Check if raw_doc_date is missing (None or NaN)
+	# 	return raw_doc_date
+	# year_pattern = r'\b\d{4}\b'
+	year_pattern = re.compile(r'\b\d{4}\b')
+	match = re.search(year_pattern, raw_doc_date) # <re.Match object; span=(54, 58), match='1946'>
+	print(match)
+	if match:
+		return match.group()
+	else:
+		return None
 
 def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
 	t0 = time.time()
+	START_DATE = re.sub("-", "", args.start_date)
+	END_DATE = re.sub("-", "", args.end_date)
 	query_processed = re.sub(" ", "_", query.lower())
-	query_all_hits_fpth = os.path.join(DATASET_DIRECTORY, f"results_{st_date}_{end_date}_query_{query_processed}.gz")
+	query_all_hits_fpth = os.path.join(HITs_DIR, f"results_{st_date}_{end_date}_query_{query_processed}.gz")
 	try:
 		query_all_hits = load_pickle(fpath=query_all_hits_fpth)
 	except Exception as e:
@@ -142,9 +133,11 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 		doc_collection = doc.get("collectionAlias")
 		doc_id = doc.get("itemId")
 		doc_combined_identifier = f'{doc_collection}_{doc_id}' # agr_19
-		doc_link = doc.get("itemLink")
+		doc_link = doc.get("itemLink") # /singleitem/collection/ryr/id/2479
+		doc_url = f"https://digitalcollections.smu.edu/digital/collection/{doc.get('collectionAlias')}/id/{doc.get('itemId')}"
 		doc_img_link = f"https://digitalcollections.smu.edu/digital/api/singleitem/image/{doc_collection}/{doc_id}/default.jpg"
-		doc_title = doc.get("title").lower()
+		doc_title = clean_(text=doc.get("title"), sw=STOPWORDS)# doc.get("title")
+		doc_description = doc.get("dcDescription")
 		if (
 			doc_type == "jp2"
 			and "cover]" not in doc_title
@@ -156,247 +149,35 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 			doc_img_link = None
 		row = {
 			'id': doc_combined_identifier,
-			'query': query,
+			'label': query,
 			'title': doc_title,
-			# 'description': doc.get("dcDescription"),
+			'description': doc.get("dcDescription"),
 			'img_url': doc_img_link,
-			'date': doc_date,
+			'doc_url': doc_url,
+			'label_title_description': query + " " + (doc_title or '') + " " + (doc_description or ''),
+			'raw_doc_date': doc_date,
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
+	print(df.head(10))
+	# Apply the function to the 'raw_doc_date' and 'doc_year' columns
+	df['doc_date'] = df.apply(lambda row: get_doc_year(row['raw_doc_date']), axis=1)
+
+	# Filter the DataFrame based on the validity check
+	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=START_DATE, end_date=END_DATE))]
+
 	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
 	return df
 
-def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5):
-	t0 = time.time()
-	rIdx = row.name
-	url = row['img_url']
-	image_name = row["id"] # agr_19
-	image_path = os.path.join(image_dir, f"{image_name}.jpg")
-	if os.path.exists(image_path):
-		return True # Image already exists, => skipping
-	attempt = 0  # Retry mechanism
-	while attempt < retries:
-		try:
-			response = session.get(url, timeout=20)
-			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
-			with open(image_path, 'wb') as f: # Save the image to the directory
-				f.write(response.content)
-			print(f"[{rIdx:<10}/ {total_rows}]{image_name:>20}{time.time() - t0:>10.1f} s")
-			return True  # Image downloaded successfully
-		except (RequestException, IOError) as e:
-			attempt += 1
-			print(f"[{rIdx}/{total_rows}] Downloading « {url} » failed: {e}, retrying ({attempt}/{retries})")
-			time.sleep(backoff_factor * (2 ** attempt))  # Exponential backoff
-	print(f"[{rIdx}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
-	return False  # Indicate failed download
-
-def get_synchronized_df_img(df):
-	print(f"Synchronizing merged_df(raw) & images of {df.shape[0]} records using {nw} CPUs...")
-	os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
-	IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
-	successful_rows = []  # List to keep track of successful downloads
-	with requests.Session() as session:
-		with ThreadPoolExecutor(max_workers=nw) as executor:
-			futures = {executor.submit(download_image, row, session, IMAGE_DIR, df.shape[0]): idx for idx, row in df.iterrows()}
-			for future in as_completed(futures):
-				try:
-					success = future.result()  # Get the result (True or False) from download_image
-					if success:
-						successful_rows.append(futures[future])  # Keep track of successfully downloaded rows
-				except Exception as e:
-					print(f"Unexpected error: {e}")
-	print(f"cleaning {type(df)} {df.shape} with {len(successful_rows)} succeded downloaded images [functional URL]...")
-	df_cleaned = df.loc[successful_rows] # keep only the successfully downloaded rows
-	print(f"Total images downloaded successfully: {len(successful_rows)} out of {df.shape[0]}")
-	print(f"df_cleaned: {df_cleaned.shape}")
-	return df_cleaned
-
 def main():
-	all_query_tags = [
-		"Artillery",
-		"motor cycle",
-		"hunting",
-		"Sailboat",
-		"regatta",
-		"ballistic missile",
-		"flame thrower",
-		"flamethrower",
-		"Red cross worker",
-		"cemetery",
-		"graveyard",
-		"bayonet",
-		"war bond",
-		"Infantry camp",
-		"swimming camp",
-		"fishing camp",
-		"construction camp",
-		"Trailer camp",
-		"Nazi camp",
-		"Winter camp",
-		"naval air station",
-		"allied invasion",
-		"normandy invasion",
-		"naval air base",
-		"Power Plant",
-		"Air bomb",
-		"fighter bomber",
-		"Pearl Harbor attack",
-		"anti tank",
-		"anti aircraft",
-		"Battle of the Marne",
-		'Nazi crime',
-		"Nazi victim",
-		"Helicopter",
-		"trench warfare",
-		"explosion",
-		"soldier",
-		"Submarine",
-		"Manufacturing Plant",
-		"naval aircraft factory",
-		"rail construction",
-		"dam construction",
-		"tunnel construction",
-		"allied force",
-		"air force base",
-		"air force personnel",
-		"air force station",
-		"Rifle",
-		"barrel",
-		"air raid",
-		"Flag Raising",
-		"Massacre",
-		"evacuation",
-		"warship",
-		"Infantry",
-		"Coast Guard",
-		"conspiracy theory",
-		"Manhattan Project",
-		"Eastern Front",
-		"Animal",
-		"surge tank",
-		"Water Tank",
-		"plane",
-		"aeroplane",
-		"airplane",
-		"soviet union",
-		"rationing",
-		"Grenade",
-		"cannon",
-		"Naval Officer",
-		"Rocket",
-		"prisoner",
-		"weapon",
-		"Aviator",
-		"Parade",
-		"army vehicle",
-		"Storehouse",
-		"Aerial View",
-		"Aerial warfare",
-		"Ambulance",
-		"Army Base",
-		"Army hospital",
-		"Military Base",
-		"military leader",
-		"military vehicle",
-		"Military Aviation",
-		"museum",
-		"board meeting",
-		"commander",
-		"Sergeant",
-		"Admiral",
-		"Battle Monument",
-		"clash",
-		"strike",
-		"damage",
-		"leisure",
-		"airport",
-		"Battle of the Bulge",
-		"Barn",
-		"Anniversary",
-		"Delegate",
-		"exile",
-		"evacuation",
-		"Coast Guard",
-		"Naval Vessel",
-		"warship",
-		"Infantry",
-		"Civilian",
-		"Medical aid",
-		"ambassador",
-		"projectile",
-		"helmet",
-		"Treaty of Versailles",
-		"enemy territory",
-		"reconnaissance",
-		"nurse",
-		"doctor",
-		"embassy",
-		"ship deck",
-		"Defence",
-		"Border",
-		"Army Recruiting",
-		"Recruitment",
-		"reservoir",
-		"infrastructure",
-		"ship",
-		"military hospital",
-		"naval hospital",
-		"hospital base",
-		"hospital ship",
-		"hospital train",
-		"migration",
-		"captain",
-		"sport",
-		"Kitchen Truck",
-		"Railroad Truck",
-		"fire truck",
-		"Line Truck",
-		"gas truck",
-		"Freight Truck",
-		"Dump Truck",
-		"Diesel truck",
-		"Maintenance Truck",
-		"Clinic Truck",
-		"Truck Accident",
-		"military truck",
-		"army truck",
-		"vice president",
-		"bombardment",
-		"Bombing Attack",
-		"Atomic Bomb",
-		"refugee",
-		"president",
-		"Nuremberg Trials",
-		"holocaust",
-		"Ballon gun",
-		"Machine gun",
-		"Mortar gun",
-		"field gun",
-		"gun",
-		"shovel",
-		"Accident",
-		"Wreck",
-		"Truck",
-		"hospital",
-		"Railroad",
-		"Flying Fortress",
-		"Minesweeper",
-		"Ceremony",
-		"Memorial day",
-		"Tunnel",
-		"pasture",
-		"farm",
-	]
-	# all_query_tags = natsorted(list(set(all_query_tags)))
-	# all_query_tags = list(set(all_query_tags))[:5]
-	if USER=="farid": # local laptop
-		all_query_tags = all_query_tags#[:5]
+	with open(os.path.join(parent_dir, 'misc', 'query_labels.txt'), 'r') as file_:
+		all_label_tags = [line.strip().lower() for line in file_]
+	print(type(all_label_tags), len(all_label_tags))
 
-	print(f"{len(all_query_tags)} Query phrases are being processed, please be patient...")
+	print(f"{len(all_label_tags)} Query phrases are being processed, please be patient...")
 	dfs = []
-	for qi, qv in enumerate(all_query_tags):
-		print(f"\nQ[{qi+1}/{len(all_query_tags)}]: {qv}")
+	for qi, qv in enumerate(all_label_tags):
+		print(f"\nQ[{qi+1}/{len(all_label_tags)}]: {qv}")
 		query_all_hits = get_data(
 			st_date=START_DATE,
 			end_date=END_DATE,
@@ -404,7 +185,7 @@ def main():
 		)
 		if query_all_hits:
 			qv_processed = re.sub(" ", "_", qv.lower())
-			df_fpth = os.path.join(DATASET_DIRECTORY, f"result_df_{START_DATE}_{END_DATE}_query_{qv_processed}.gz")
+			df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_{START_DATE}_{END_DATE}.gz")
 			try:
 				df = load_pickle(fpath=df_fpth)
 			except Exception as e:
@@ -416,136 +197,68 @@ def main():
 
 	print(f"Concatinating {len(dfs)} dfs...")
 	# print(dfs[0])
-	europeana_df_merged_raw = pd.concat(dfs, ignore_index=True)
-	replacement_dict = {
-		"regatta": "sailboat",
-		"normandy invasion": "allied invasion",
-		"plane": "aircraft",
-		"airplane": "aircraft",
-		"aeroplane": "aircraft",
-		"graveyard": "cemetery",
-		"soldier": "infantry",
-		"clash": "wreck",
-		"sport": "leisure",
-		"military truck": "army truck",
-		"military base": "army base",
-		"military vehicle": "army vehicle",
-		"military hospital": "army hospital",
-		"flame thrower": "flamethrower",
-		"roadbuilding": "road construction",
-		"recruitment": "army recruiting",
-		"farm": "pasture",
-		"minesweeper": "naval vessel",
-	}
+	smu_df_merged_raw = pd.concat(dfs, ignore_index=True)
+	print(f"<!> Replacing labels with broad umbrella terms")
+	json_file_path = os.path.join(parent_dir, 'misc', 'generalized_labels.json')
+	if os.path.exists(json_file_path):
+		with open(json_file_path, 'r') as file_:
+			replacement_dict = json.load(file_)
+	else:
+		print(f"Error: {json_file_path} does not exist.")
 
-	# replacement_dict = {
-	# 	"plane": "military aviation",
-	# 	"airplane": "military aviation",
-	# 	"aeroplane": "military aviation",
-	# 	"aircraft": "military aviation",
-	# 	"helicopter": "military aviation",
-	# 	"air force": "military aviation",
-	# 	"naval warship": "navy",
-	# 	"submarine": "navy",
-	# 	"manufacturing plant": "infrastructure",
-	# 	"barn": "infrastructure",
-	# 	"construction": "infrastructure",
-	# 	"road": "infrastructure",
-	# 	"army base": "infrastructure",
-	# 	"border": "infrastructure",
-	# 	"refugee": "migration",
-	# 	"evacuation": "migration",
-	# 	"exodus": "migration",
-	# 	"exile": "migration",
-	# 	"aerial warfare": "strategy",
-	# 	"air raid": "strategy",
-	# 	"trench warfare": "strategy",
-	# 	"battle of the bulge": "strategy",
-	# 	"battle of the marne": "strategy",
-	# 	"winter war": "strategy",
-	# 	"blitzkrieg": "strategy",
-	# 	"versailles": "international relations & treaties",
-	# 	"treaty of versailles": "international relations & treaties",
-	# 	"nuremberg trials": "international relations & treaties",
-	# 	"game": "leisure",
-	# 	"anniversary": "leisure",
-	# 	"rail": "infrastructure",
-	# 	"sport": "leisure",
-	# 	"meeting": "diplomacy",
-	# 	"negotiation": "diplomacy",
-	# 	"conference": "diplomacy",
-	# 	"summit": "diplomacy",
-	# 	"attack": "conflict",
-	# 	"clash": "conflict",
-	# 	"war": "conflict",
-	# 	"military strike": "conflict",
-	# 	"battle": "conflict",
-	# 	"propaganda": "propaganda & communication",
-	# 	"public relation": "propaganda & communication",
-	# 	"information warfare": "propaganda & communication",
-	# 	"air bomb": "weapon",
-	# 	"rifle": "weapon",
-	# 	"barrel": "weapon",
-	# 	"machine gun": "weapon",
-	# 	"artillery": "weapon",
-	# 	"tank": "weapon",
-	# 	"grenade": "weapon",
-	# 	"gun": "weapon",
-	# 	"cannon": "weapon",
-	# 	"rocket": "weapon",
-	# 	"mortar": "weapon",
-	# 	"firearm": "weapon",
-	# 	"flamethrower": "weapon",
-	# 	"bayonet": "weapon",
-	# 	"tent": "camp",
-	# 	"recruiting": "recruitment",
-	# 	"captain": "military leader",
-	# 	"army leader": "military leader",
-	# 	"commander": "military leader",
-	# 	"sergeant": "military leader",
-	# 	"admiral": "military leader",
-	# 	"explosion": "destruction",
-	# 	"accident": "destruction",
-	# 	"damage": "destruction",
-	# 	"wreck": "destruction",
-	# 	"truck":"vehicular",
-	# 	"vehicle":"vehicular",
-	# 	"ambulance":"vehicular",
-	# 	"airport": "infrastructure",
-	# 	"dam": "infrastructure",
-	# 	"reservoir": "infrastructure",
-	# 	"defence": "strategy",
-	# }
-	print(f"pre-processing merged {type(europeana_df_merged_raw)} {europeana_df_merged_raw.shape}")
-	europeana_df_merged_raw['query'] = europeana_df_merged_raw['query'].replace(replacement_dict)
-	europeana_df_merged_raw = europeana_df_merged_raw.dropna(subset=['img_url']) # drop None firstDigitalObjectUrl
-	europeana_df_merged_raw = europeana_df_merged_raw.drop_duplicates(subset=['img_url']) # drop duplicate firstDigitalObjectUrl
+	print(f"pre-processing merged {type(smu_df_merged_raw)} {smu_df_merged_raw.shape}")
+	smu_df_merged_raw['label'] = smu_df_merged_raw['label'].replace(replacement_dict)
+	smu_df_merged_raw = smu_df_merged_raw.dropna(subset=['img_url']) # drop None firstDigitalObjectUrl
+	smu_df_merged_raw = smu_df_merged_raw.drop_duplicates(subset=['img_url']) # drop duplicate firstDigitalObjectUrl
 
-	print(f"Processed europeana_df_merged_raw: {europeana_df_merged_raw.shape}")
-	print(europeana_df_merged_raw.head(20))
+	print(f"Processed smu_df_merged_raw: {smu_df_merged_raw.shape}")
+	print(smu_df_merged_raw.head(20))
 
-	europeana_df_merged_raw.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
+	smu_df_merged_raw.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
 	try:
-		europeana_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
+		smu_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	europeana_df = get_synchronized_df_img(df=europeana_df_merged_raw)
-	query_counts = europeana_df['query'].value_counts()
+	smu_df = get_synchronized_df_img(df=smu_df_merged_raw, image_dir=IMAGE_DIR, nw=args.num_workers)
+	query_counts = smu_df['label'].value_counts()
 
 	plt.figure(figsize=(21, 14))
 	query_counts.plot(kind='bar', fontsize=9)
 	plt.title(f'{dataset_name} Query Frequency (total: {query_counts.shape})')
-	plt.xlabel('Query')
+	plt.xlabel('label')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
-	plt.savefig(os.path.join(DATASET_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
+	plt.savefig(os.path.join(OUTPUTs_DIR, f"query_x_{query_counts.shape[0]}_freq.png"))
 
-	europeana_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
+	smu_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 	try:
-		europeana_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
+		smu_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
+
+	yr_distro_fpth = os.path.join(OUTPUTs_DIR, f"year_distribution_{dataset_name}_{START_DATE}_{END_DATE}_nIMGs_{smu_df.shape[0]}.png")
+	plot_year_distribution(
+		df=smu_df,
+		start_date=START_DATE,
+		end_date=END_DATE,
+		dname=dataset_name,
+		fpth=yr_distro_fpth,
+		BINs=50,
+	)
+
+	if args.img_mean_std:
+		try:
+			img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
+		except Exception as e:
+			print(f"{e}")
+			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
+				dir=os.path.join(DATASET_DIRECTORY, "images"), 
+				num_workers=args.num_workers,
+			)
+			save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
+			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
+		print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
 
 def test():
 	query = "museum"
