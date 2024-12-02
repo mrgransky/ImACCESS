@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=historyCLIP_bsz_256
+#SBATCH --job-name=historyCLIP_bsz_96
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -40,9 +40,9 @@ python -u train.py \
 	--num_epochs 50 \
 	--num_workers 30 \
 	--print_every 50 \
-	--batch_size 256 \
+	--batch_size 96 \
 	--patch_size 5 \
-	--image_size 150 \
+	--image_size 200 \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
