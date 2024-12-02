@@ -3,7 +3,7 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run:
-# $ python validate.py --model_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02/model_augmentation_False_ep_1_train_11123_val_4767_batch_22_img_160_patch_5_emb_1024_cuda0_AdamW_lr_0.0005_wd_0.05_OneCycleLR
+# $ python validate.py --model_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02/models/model_augmentation_False_ep_1_train_11123_val_4767_batch_22_img_160_patch_5_emb_1024_cuda0_AdamW_lr_0.0005_wd_0.05_OneCycleLR
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--model_dir', type=str, required=True, help='Directory containing the model')
@@ -51,27 +51,10 @@ print(f"DATASET_DIR = {DATASET_DIR}")
 model_info = extract_model_info(model_dir=args.model_dir)
 print(model_info)
 
-model = CLIP(
-	emb_dim=model_info["embedding_size"],
-	vit_layers=vit_layers,
-	vit_d_model=vit_d_model,
-	img_size=(model_info["image_size"], model_info["image_size"]),
-	patch_size=(model_info["patch_size"], model_info["patch_size"]),
-	n_channels=n_channels,
-	vit_heads=vit_heads,
-	vocab_size=vocab_size,
-	max_seq_length=max_seq_length,
-	text_heads=text_heads,
-	text_layers=text_layers,
-	text_d_model=text_d_model,
-	device=args.device,
-	retrieval=False,
-).to(args.device)
-
-def validate(val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/historyCLIP.pt",TOP_K:int=5):
+def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/historyCLIP.pt", device:str="cpu"):
 	print(f"Model examination & accuracy Validation: {type(val_loader)} {len(val_loader.dataset)} sample(s)".center(160, "-"))
 	validate_start_time = time.time()
-	model.load_state_dict(torch.load(model_fpth, map_location=args.device))
+	model.load_state_dict(torch.load(model_fpth, map_location=device))
 	# get_model_details(
 	# 	model, 
 	# 	img_size=(3, args.image_size, args.image_size),
@@ -81,20 +64,20 @@ def validate(val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/history
 		[
 			tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[0] for txt in img_lbls_dict.values()
 		]
-	).to(args.device) # <class 'torch.Tensor'> torch.Size([55, 256]) 
+	).to(device) # <class 'torch.Tensor'> torch.Size([55, 256]) 
 	mask = torch.stack(
 		[
 			tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[1] for txt in img_lbls_dict.values()
 		]
 	) # <class 'torch.Tensor'> torch.Size([55, 256, 256])
-	mask = mask.repeat(1, len(mask[0])).reshape(len(mask), len(mask[0]), len(mask[0])).to(args.device)
+	mask = mask.repeat(1, len(mask[0])).reshape(len(mask), len(mask[0]), len(mask[0])).to(device)
 	print(f"text: {type(text)} {text.shape} ")
 	print(f"mask: {type(mask)} {mask.shape} ") # 1D tensor of size max_seq_length
 
 	correct, total = 0,0
 	with torch.no_grad():
 		for data in val_loader:
-			images, labels = data["image"].to(args.device), data["caption"].to(args.device)
+			images, labels = data["image"].to(device), data["caption"].to(device)
 			
 			image_features = model.vision_encoder(images)
 			text_features = model.text_encoder(text, mask=mask)
@@ -110,7 +93,7 @@ def validate(val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/history
 				[
 					tokenizer(img_lbls_dict[int(i)], encode=True, max_seq_length=max_seq_length)[0] for i in predicted_label_idx
 				]
-			).to(args.device) # <class 'torch.Tensor'> torch.Size([32, 256])
+			).to(device) # <class 'torch.Tensor'> torch.Size([32, 256])
 			# print(type(predicted_label), predicted_label.shape, )
 			correct += int(sum(torch.sum((predicted_label==labels),dim=1)//len(predicted_label[0])))
 			total += len(labels)
@@ -170,12 +153,30 @@ def main():
 	)
 	print(f"num_samples[Total]: {len(val_data_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
 	get_info(dataloader=val_data_loader)
+	model = CLIP(
+		emb_dim=model_info["embedding_size"],
+		vit_layers=vit_layers,
+		vit_d_model=vit_d_model,
+		img_size=(model_info["image_size"], model_info["image_size"]),
+		patch_size=(model_info["patch_size"], model_info["patch_size"]),
+		n_channels=n_channels,
+		vit_heads=vit_heads,
+		vocab_size=vocab_size,
+		max_seq_length=max_seq_length,
+		text_heads=text_heads,
+		text_layers=text_layers,
+		text_d_model=text_d_model,
+		device=args.device,
+		retrieval=False,
+	).to(args.device)
 
-	validate(
+
+	evaluate(
+		model=model,
 		val_loader=val_data_loader,
 		img_lbls_dict=img_lbls_dict,
 		model_fpth=os.path.join(args.model_dir, "model.pt"),
-		TOP_K=args.topk,
+		device=args.device,
 	)
 
 if __name__ == "__main__":
