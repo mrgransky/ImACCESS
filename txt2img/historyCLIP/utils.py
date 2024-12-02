@@ -60,47 +60,47 @@ Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bom
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 
-if USER=="farid": # local laptop
-	WDIR = os.path.join(HOME, "datasets")
-	models_dir = os.path.join(WDIR, "trash", "models")
-	# visualize = True
-elif USER=="alijanif": # Puhti
-	WDIR = "/scratch/project_2004072/ImACCESS"
-	models_dir = os.path.join(WDIR, "trash", "models")
-else: # Pouta
-	WDIR = "/media/volume/ImACCESS"
-	models_dir = os.path.join(WDIR, "models")
-	ddir: str = os.path.join(WDIR, "myntradataset")
+# if USER=="farid": # local laptop
+# 	WDIR = os.path.join(HOME, "datasets")
+# 	models_dir = os.path.join(WDIR, "trash", "models")
+# 	# visualize = True
+# elif USER=="alijanif": # Puhti
+# 	WDIR = "/scratch/project_2004072/ImACCESS"
+# 	models_dir = os.path.join(WDIR, "trash", "models")
+# else: # Pouta
+# 	WDIR = "/media/volume/ImACCESS"
+# 	models_dir = os.path.join(WDIR, "models")
+# 	ddir: str = os.path.join(WDIR, "myntradataset")
 
-if USER!="alijanif":
-	import enchant
-	import libvoikko
-	fi_dict = libvoikko.Voikko(language="fi")	
-	fii_dict = enchant.Dict("fi")
-	sv_dict = enchant.Dict("sv_SE")
-	sv_fi_dict = enchant.Dict("sv_FI")
-	en_dict = enchant.Dict("en")
-	de_dict = enchant.Dict("de")
-	no_dict = enchant.Dict("no")
-	da_dict = enchant.Dict("da")
-	es_dict = enchant.Dict("es")
-	et_dict = enchant.Dict("et")
+# if USER!="alijanif":
+# 	import enchant
+# 	import libvoikko
+# 	fi_dict = libvoikko.Voikko(language="fi")	
+# 	fii_dict = enchant.Dict("fi")
+# 	sv_dict = enchant.Dict("sv_SE")
+# 	sv_fi_dict = enchant.Dict("sv_FI")
+# 	en_dict = enchant.Dict("en")
+# 	de_dict = enchant.Dict("de")
+# 	no_dict = enchant.Dict("no")
+# 	da_dict = enchant.Dict("da")
+# 	es_dict = enchant.Dict("es")
+# 	et_dict = enchant.Dict("et")
 	
-	cs_dict = enchant.Dict("cs")
-	cy_dict = enchant.Dict("cy")
-	fo_dict = enchant.Dict("fo")
-	fr_dict = enchant.Dict("fr")
-	ga_dict = enchant.Dict("ga")
-	hr_dict = enchant.Dict("hr")
-	hu_dict = enchant.Dict("hu")
-	is_dict = enchant.Dict("is")
-	it_dict = enchant.Dict("it")
-	lt_dict = enchant.Dict("lt")
-	lv_dict = enchant.Dict("lv")
-	nl_dict = enchant.Dict("nl")
-	pl_dict = enchant.Dict("pl")
-	sl_dict = enchant.Dict("sl")
-	sk_dict = enchant.Dict("sk")
+# 	cs_dict = enchant.Dict("cs")
+# 	cy_dict = enchant.Dict("cy")
+# 	fo_dict = enchant.Dict("fo")
+# 	fr_dict = enchant.Dict("fr")
+# 	ga_dict = enchant.Dict("ga")
+# 	hr_dict = enchant.Dict("hr")
+# 	hu_dict = enchant.Dict("hu")
+# 	is_dict = enchant.Dict("is")
+# 	it_dict = enchant.Dict("it")
+# 	lt_dict = enchant.Dict("lt")
+# 	lv_dict = enchant.Dict("lv")
+# 	nl_dict = enchant.Dict("nl")
+# 	pl_dict = enchant.Dict("pl")
+# 	sl_dict = enchant.Dict("sl")
+# 	sk_dict = enchant.Dict("sk")
 
 # Vision
 vit_d_model = 32 # vit_heads * vit_layers = vit_d_model
@@ -139,24 +139,72 @@ with open('meaningless_words.txt', 'r') as file_:
 STOPWORDS.extend(customized_meaningless_lemmas)
 STOPWORDS = set(STOPWORDS)
 
-@cache
-def clean_(text: str = "sample text"):
-	text = re.sub(r'[^a-zA-Z\s]', ' ', text) # Remove special characters and digits
-	text = remove_misspelled_(documents=text)
+# @cache
+# def clean_(text: str = "sample text", check_language:bool=False):
+# 	text = re.sub(r'[^a-zA-Z\s]', ' ', text) # Remove special characters and digits
+# 	if check_language:
+# 		text = remove_misspelled_(documents=text)
+# 	words = nltk.tokenize.word_tokenize(text) # Tokenize the text into words
+# 	# Filter out stopwords and words with fewer than 3 characters
+# 	words = [word.lower() for word in words if len(word) >= 3 and word.lower() not in STOPWORDS]
+# 	text = ' '.join(words) # Join the words back into a string
+# 	text = re.sub(r'\boriginal caption\b', ' ', text)
+# 	text = re.sub(r'\bdate taken\b', ' ', text)
+# 	text = re.sub(r'\bcaption\b', ' ', text)
+# 	text = re.sub(r'\bunidentified\b', ' ', text)
+# 	text = re.sub(r'\bunnumbered\b', ' ', text)
+# 	text = re.sub(r'\buntitled\b', ' ', text)
+# 	text = re.sub(r'\bphotograph\b', ' ', text)
+# 	text = re.sub(r'\bphoto\b', ' ', text)
+# 	text = re.sub(r'\bdate\b', ' ', text)
+# 	text = re.sub(r'\bdistrict\b', ' ', text)
+# 	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
+# 	if len(text) == 0:
+# 		return None
+# 	return text
+
+def clean_(text:str="this is a sample text!", sw:List=list(), check_language:bool=False):
+	if not text:
+		return
+	# print(text)
+	# text = re.sub(r'[^a-zA-Z\s]', ' ', text) # Remove special characters and digits
+	# text = re.sub(r'[";=&#<>_\-\+\^\.\$\[\]]', " ", text)
+	# text = re.sub(r'[!"#$%&\'()*+,-./:;<=>?@\[\]^_`{|}~]', ' ', text) # remove all punctuation marks except periods and commas,
+	text = re.sub(r"[^\w\s'-]", " ", text) # remove all punctuation marks, including periods and commas,
+	if check_language:
+		text = remove_misspelled_(documents=text)
 	words = nltk.tokenize.word_tokenize(text) # Tokenize the text into words
 	# Filter out stopwords and words with fewer than 3 characters
-	words = [word.lower() for word in words if len(word) >= 3 and word.lower() not in STOPWORDS]
+	words = [
+		word.lower() 
+		for word in words 
+		if word.lower() not in sw
+		and len(word) >= 2
+	]
 	text = ' '.join(words) # Join the words back into a string
 	text = re.sub(r'\boriginal caption\b', ' ', text)
-	text = re.sub(r'\bdate taken\b', ' ', text)
+	text = re.sub(r'\bphoto shows\b', ' ', text)
+	text = re.sub(r'\bfile record\b', ' ', text)
+	text = re.sub(r'\boriginal field number\b', ' ', text)
+	# text = re.sub(r'\bdate taken\b', ' ', text)
+	# text = re.sub(r'\bdate\b', ' ', text)
+	# text = re.sub(r'\bdistrict\b', ' ', text)
+	text = re.sub(r'\bobtained\b', ' ', text)
+	text = re.sub(r'\bfile record\b', ' ', text)
 	text = re.sub(r'\bcaption\b', ' ', text)
 	text = re.sub(r'\bunidentified\b', ' ', text)
 	text = re.sub(r'\bunnumbered\b', ' ', text)
 	text = re.sub(r'\buntitled\b', ' ', text)
+	text = re.sub(r'\bfotografie\b', ' ', text)
+	text = re.sub(r'\bfotografen\b', ' ', text)
 	text = re.sub(r'\bphotograph\b', ' ', text)
+	text = re.sub(r'\bphotographer\b', ' ', text)
+	text = re.sub(r'\bphotography\b', ' ', text)
+	text = re.sub(r'\bfotoalbum\b', ' ', text)
 	text = re.sub(r'\bphoto\b', ' ', text)
-	text = re.sub(r'\bdate\b', ' ', text)
-	text = re.sub(r'\bdistrict\b', ' ', text)
+	text = re.sub(r'\bgallery\b', ' ', text)
+	text = re.sub(r"\bpart \d+\b|\bpart\b", " ", text)
+	text = re.sub(r'\bfoto\b', ' ', text)
 	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
 	if len(text) == 0:
 		return None
@@ -325,89 +373,35 @@ def plot_lrs_vs_steps(lrs, steps, fpath):
 	plt.grid(True)
 	plt.savefig(fpath)
 
-def get_metadata_df(ddir:str="path/2/directory", doc_desc:str="label"):
-	metadata_df_fpth:str = os.path.join(ddir, "metadata_df.gz")
-	img_lbls_dict_fpth:str = os.path.join(ddir, "image_labels_dict.gz")
-	img_lbls_list_fpth:str = os.path.join(ddir, "image_labels_list.gz")
-	try:
-		metadata_df = load_pickle(fpath=metadata_df_fpth)
-		img_lbls_dict = load_pickle(fpath=img_lbls_dict_fpth)
-		img_lbls_list = load_pickle(fpath=img_lbls_list_fpth)
-	except Exception as e:
-		# print(f"{e}")
-		metadata_df = get_dframe(
-			fpth=os.path.join(ddir, "metadata.csv"),
-			img_dir=os.path.join(ddir, "images"),
-		)
-		img_lbls_dict, img_lbls_list = get_doc_description(df=metadata_df, col=doc_desc)
-	print(f"metadata_df: {metadata_df.shape}")
-	print(
-		f"img_lbls_dict {type(img_lbls_dict)} {len(img_lbls_dict)} "
-		f"img_lbls_list {type(img_lbls_list)} {len(img_lbls_list)}"
+def get_train_val_metadata_df(tddir:str="path/2/train_dataset", vddir=None, split_pct=None, doc_desc:str="label", seed:bool=True):
+	metadata_df = get_dframe(
+		fpth=os.path.join(tddir, "metadata.csv"),
+		img_dir=os.path.join(tddir, "images"),
 	)
-	return metadata_df
-
-def get_splited_train_val_df(ddir:str="path/2/dir", split_pct:float=0.3, doc_desc:str="label", seed:bool=True):
-	if seed:
-		set_seeds()
-	metadata_df_fpth:str = os.path.join(ddir, "metadata_df.gz")
-	img_lbls_dict_fpth:str = os.path.join(ddir, "image_labels_dict.gz")
-	img_lbls_list_fpth:str = os.path.join(ddir, "image_labels_list.gz")
-	try:
-		metadata_df = load_pickle(fpath=metadata_df_fpth)
-		img_lbls_dict = load_pickle(fpath=img_lbls_dict_fpth)
-		img_lbls_list = load_pickle(fpath=img_lbls_list_fpth)
-	except Exception as e:
-		print(f"{e}")
-		metadata_df = get_dframe(
-			fpth=os.path.join(ddir, "metadata.csv"), 
-			img_dir=os.path.join(ddir, "images"), 
+	if vddir:
+		print(f"Available validation dataset: {vddir}")
+		train_metadata_df_fpth:str = os.path.join(tddir, f"metadata_train_df.gz")
+		val_metadata_df_fpth:str = os.path.join(vddir, f"metadata_val_df.gz")
+		val_metadata_df = get_dframe(
+			fpth=os.path.join(vddir, "metadata.csv"),
+			img_dir=os.path.join(vddir, "images"),
 		)
-		img_lbls_dict, img_lbls_list = get_doc_description(df=metadata_df, col=doc_desc)
-		save_pickle(pkl=metadata_df, fname=metadata_df_fpth,)
-		save_pickle(pkl=img_lbls_dict, fname=img_lbls_dict_fpth,)
-		save_pickle(pkl=img_lbls_list, fname=img_lbls_list_fpth,)
-	print(f"metadata_df: {metadata_df.shape}")
-	print(
-		f"img_lbls_dict {type(img_lbls_dict)} {len(img_lbls_dict)} "
-		f"img_lbls_list {type(img_lbls_list)} {len(img_lbls_list)}"
-	)
-	train_metadata_df_fpth:str = os.path.join(ddir, "metadata_train_df.gz")
-	val_metadata_df_fpth:str = os.path.join(ddir, "metadata_val_df.gz")
-	try:
-		train_metadata_df = load_pickle(fpath=train_metadata_df_fpth)
-		val_metadata_df = load_pickle(fpath=val_metadata_df_fpth)
-	except Exception as e:
-		# print(f"{e}")
+		train_metadata_df = metadata_df
+	elif split_pct:
+		print(f"spliting training dataset: {tddir} into {split_pct} validation...")
+		if seed:
+			set_seeds()
+		train_metadata_df_fpth:str = os.path.join(tddir, f"metadata_{1-split_pct}_train_df.gz")
+		val_metadata_df_fpth:str = os.path.join(tddir, f"metadata_{split_pct}_val_df.gz")
 		train_metadata_df, val_metadata_df = train_test_split(
 			metadata_df, 
 			shuffle=True, 
 			test_size=split_pct, # 0.05
 			random_state=42,
 		)
-		save_pickle(pkl=train_metadata_df, fname=train_metadata_df_fpth,)
-		save_pickle(pkl=val_metadata_df, fname=val_metadata_df_fpth,)
-		query_counts_val = val_metadata_df[doc_desc].value_counts()
-		# print(query_counts_val.tail(25))
-		plt.figure(figsize=(23, 15))
-		query_counts_val.plot(kind='bar', fontsize=8)
-		plt.title(f'Validation Query Frequency (total: {query_counts_val.shape})')
-		plt.xlabel('Query')
-		plt.ylabel('Frequency')
-		plt.tight_layout()
-		plt.savefig(os.path.join(ddir, "outputs", f"val_qlabel_freq_{query_counts_val.shape[0]}.png"))
-
-		train_metadata_df.to_csv(os.path.join(ddir, "metadata_train.csv"), index=False)
-		try:
-			train_metadata_df.to_excel(os.path.join(ddir, "metadata_train.xlsx"), index=False)
-		except Exception as e:
-			print(f"Failed to write Excel file: {e}")
-		val_metadata_df.to_csv(os.path.join(ddir, "metadata_val.csv"), index=False)
-		try:
-			val_metadata_df.to_excel(os.path.join(ddir, "metadata_val.xlsx"), index=False)
-		except Exception as e:
-			print(f"Failed to write Excel file: {e}")
-
+	else:
+		print(f"No such a case!!!")
+		return None, None
 	return train_metadata_df, val_metadata_df
 
 def plot_(train_losses, val_losses, save_path, lr, wd):
@@ -493,7 +487,7 @@ def get_model_details(model, img_size=(3, 224, 224), text_size=(77,), batch_size
 def tokenizer(text:str="sample label", encode:bool=True, mask=None, max_seq_length:int=128):
 	if encode: # Encode text => <class 'torch.Tensor'>
 		# print(type(text), len(text), text)
-		text = clean_(text)
+		text = clean_(text=text, sw=STOPWORDS,)
 		out = chr(2) + text + chr(3) # Adding SOT and EOT tokens
 		if len(out) > max_seq_length:
 			out = out[:max_seq_length]  # Truncate if length exceeds max_seq_length

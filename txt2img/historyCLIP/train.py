@@ -17,7 +17,7 @@ from dataset_loader import HistoricalDataset
 # $ nohup python -u train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -vddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -nep 50 --device "cuda:0" -lr 1e-3 -wd 5e-2 -ps 5 -is 160 -bs 62 > /media/volume/trash/ImACCESS/historyCLIP_train_NA_val_EUROPEANA_cuda0.out &
 
 # with splited dataset of NA:
-# $ nohup python -u train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -nep 25 --device "cuda:2" -lr 1e-4 -wd 5e-2 -ps 5 -is 160 -bs 63 -nw 8 > /media/volume/trash/ImACCESS/historyCLIP_train_NA_val_NA_cuda2.out &
+# $ nohup python -u train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -nep 25 --device "cuda:2" -lr 1e-4 -wd 5e-2 -ps 5 -is 160 -bs 63 -nw 8 -vds 0.25 > /media/volume/trash/ImACCESS/historyCLIP_train_NA_val_NA_cuda2.out &
 
 # Puhti:
 # $ python train.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1913-01-01_1946-12-31
@@ -34,7 +34,6 @@ parser.add_argument('--query', '-q', type=str, default="air base", help='Query')
 parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 parser.add_argument('--num_epochs', '-nep', type=int, default=10, help='Number of epochs')
 parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs [def: max cpus]')
-parser.add_argument('--validation_dataset_share', '-vds', type=float, default=0.3, help='share of Validation set [def: 0.23]')
 parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-3]')
 parser.add_argument('--weight_decay', '-wd', type=float, default=1e-1, help='Weight decay [def: 5e-4]')
 parser.add_argument('--data_augmentation', type=bool, default=False, help='Data Augmentation')
@@ -259,21 +258,18 @@ def main():
 		# 	num_workers=args.num_workers,
 		# )
 		##################################### Mean - Std Multiprocessing ####################################
-
 		######################################## Mean - Std for loop ########################################
 		img_rgb_mean, img_rgb_std = get_mean_std_rgb_img(dir=os.path.join(args.dataset_dir, "images"))
 		######################################## Mean - Std for loop ########################################
-
 		save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 		save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
 
-	# Checking for existence of validation dataset:
 	if args.validation_dataset_dir:
+		validation_dataset_share = None
 		print(f"Separate Train and Validation datasets")
 		print(f"Validation Dataset: {args.validation_dataset_dir}")
 		val_img_rgb_mean_fpth:str = os.path.join(args.validation_dataset_dir, "img_rgb_mean.gz")
 		val_img_rgb_std_fpth:str = os.path.join(args.validation_dataset_dir, "img_rgb_std.gz")
-
 		try:
 			val_img_rgb_mean, val_img_rgb_std = load_pickle(fpath=val_img_rgb_mean_fpth), load_pickle(fpath=val_img_rgb_std_fpth) # RGB images
 		except Exception as e:
@@ -291,27 +287,24 @@ def main():
 
 			save_pickle(pkl=val_img_rgb_mean, fname=val_img_rgb_mean_fpth)
 			save_pickle(pkl=val_img_rgb_std, fname=val_img_rgb_std_fpth)
-
-		train_metadata_df = get_metadata_df(
-			ddir=args.dataset_dir,  # all dataset goes to train
-			doc_desc=args.document_description_col,
-		)
-		val_metadata_df = get_metadata_df(
-			ddir=args.validation_dataset_dir, # only validation dataset
-			doc_desc=args.document_description_col,
-		)
 	else:
-		print(f"Spliting dataset into ({args.validation_dataset_share}) validation...")
-		train_metadata_df, val_metadata_df = get_splited_train_val_df(
-			ddir=args.dataset_dir,
-			split_pct=args.validation_dataset_share,
-			doc_desc=args.document_description_col,
-		)
-		val_img_rgb_mean = img_rgb_mean
-		val_img_rgb_std = img_rgb_std
+			# val = train
+			validation_dataset_share = 0.3
+			val_img_rgb_mean = img_rgb_mean
+			val_img_rgb_std = img_rgb_std
 
 	print(f"[Train] Mean: {img_rgb_mean} Std: {img_rgb_std}".center(180, " "))
 	print(f"[Validation] Mean: {val_img_rgb_mean} Std: {val_img_rgb_std}".center(180, " "))
+
+	print(f"Train & Validation metadata df".center(180, "-"))
+	train_metadata_df, val_metadata_df = get_train_val_metadata_df(
+		tddir=args.dataset_dir, 
+		vddir=args.validation_dataset_dir, 
+		split_pct=validation_dataset_share, 
+		doc_desc="label", 
+		seed=True,
+	)
+
 	print(f"<<< DF >>> [train] {train_metadata_df.shape} [val] {val_metadata_df.shape}".center(180, "-"))
 	# return
 	print(f"Creating Train Dataloader for {len(train_metadata_df)} samples", end="\t")
