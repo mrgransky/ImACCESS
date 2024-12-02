@@ -374,6 +374,7 @@ def plot_lrs_vs_steps(lrs, steps, fpath):
 	plt.savefig(fpath)
 
 def get_train_val_metadata_df(tddir:str="path/2/train_dataset", vddir=None, split_pct=None, doc_desc:str="label", seed:bool=True):
+	metadata_st = time.time()
 	metadata_df = get_dframe(
 		fpth=os.path.join(tddir, "metadata.csv"),
 		img_dir=os.path.join(tddir, "images"),
@@ -402,6 +403,7 @@ def get_train_val_metadata_df(tddir:str="path/2/train_dataset", vddir=None, spli
 	else:
 		print(f"No such a case!!!")
 		return None, None
+	print(f"<<< DF >>> [train] {train_metadata_df.shape} [val] {val_metadata_df.shape} Elapsed_t: {time.time()-metadata_st:.1f} sec".center(180, "-"))
 	return train_metadata_df, val_metadata_df
 
 def plot_(train_losses, val_losses, save_path, lr, wd):

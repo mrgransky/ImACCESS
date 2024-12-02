@@ -304,8 +304,6 @@ def main():
 		doc_desc="label", 
 		seed=True,
 	)
-
-	print(f"<<< DF >>> [train] {train_metadata_df.shape} [val] {val_metadata_df.shape}".center(180, "-"))
 	# return
 	print(f"Creating Train Dataloader for {len(train_metadata_df)} samples", end="\t")
 	tdl_st = time.time()
