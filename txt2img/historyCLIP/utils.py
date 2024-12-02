@@ -374,8 +374,6 @@ def plot_lrs_vs_steps(lrs, steps, fpath):
 	plt.savefig(fpath)
 
 def get_train_val_metadata_df(tddir:str="path/2/train_dataset", vddir=None, split_pct=None, doc_desc:str="label", seed:bool=True):
-	train_metadata_df_fpth:str = os.path.join(tddir, f"metadata_train_df.gz")
-	val_metadata_df_fpth:str = os.path.join(tddir, f"metadata_val_df.gz")
 	metadata_st = time.time()
 	metadata_df = get_dframe(
 		fpth=os.path.join(tddir, "metadata.csv"),
@@ -383,6 +381,8 @@ def get_train_val_metadata_df(tddir:str="path/2/train_dataset", vddir=None, spli
 	)
 	if vddir:
 		print(f"Available validation dataset: {vddir}")
+		train_metadata_df_fpth:str = os.path.join(tddir, f"metadata_train_df.gz")
+		val_metadata_df_fpth:str = os.path.join(vddir, f"metadata_val_df.gz")
 		val_metadata_df = get_dframe(
 			fpth=os.path.join(vddir, "metadata.csv"),
 			img_dir=os.path.join(vddir, "images"),
