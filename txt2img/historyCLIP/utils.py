@@ -378,7 +378,7 @@ def get_splited_train_val_df(ddir:str="path/2/dir", split_pct:float=0.3, doc_des
 		train_metadata_df = load_pickle(fpath=train_metadata_df_fpth)
 		val_metadata_df = load_pickle(fpath=val_metadata_df_fpth)
 	except Exception as e:
-		print(f"{e}")
+		# print(f"{e}")
 		train_metadata_df, val_metadata_df = train_test_split(
 			metadata_df, 
 			shuffle=True, 
