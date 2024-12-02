@@ -17,7 +17,7 @@ from dataset_loader import HistoricalDataset
 # $ nohup python -u train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -vddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -nep 50 --device "cuda:0" -lr 1e-3 -wd 5e-2 -ps 5 -is 160 -bs 62 > /media/volume/trash/ImACCESS/historyCLIP_train_NA_val_EUROPEANA_cuda0.out &
 
 # with splited dataset of NA:
-# $ nohup python -u train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -nep 25 --device "cuda:2" -lr 1e-4 -wd 5e-2 -ps 5 -is 160 -bs 63 -nw 8 -vds 0.25 > /media/volume/trash/ImACCESS/historyCLIP_train_NA_val_NA_cuda2.out &
+# $ nohup python -u train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -nep 30 --device "cuda:2" -lr 1e-3 -wd 5e-2 -ps 5 -is 160 -bs 63 -nw 20 -vds 0.25 > /media/volume/trash/ImACCESS/historyCLIP_train_NA_val_NA_cuda2.out &
 
 # Puhti:
 # $ python train.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1913-01-01_1946-12-31
@@ -80,7 +80,7 @@ def train(model, train_data_loader, val_data_loader, optimizer, scheduler, check
 	
 	print(f"Training CLIP model {args.num_epochs} Epoch(s) Device: {args.device} & {args.num_workers} CPU(s)".center(150, "-"))
 	if torch.cuda.is_available():
-		print(f"GPU: {torch.cuda.get_device_name(args.device)}".center(150, "-"))
+		print(f"GPU: {torch.cuda.get_device_name(args.device)}".center(150, " "))
 	log_gpu_memory(device=args.device)
 	writer = SummaryWriter(log_dir=os.path.join(outputs_dir, "logs")) # Initialize TensorBoard writer
 	

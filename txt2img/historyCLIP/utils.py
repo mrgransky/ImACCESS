@@ -403,9 +403,9 @@ def get_train_val_metadata_df(tddir:str="path/2/train_dataset", vddir=None, spli
 	else:
 		print(f"No such a case!!!")
 		return None, None
-	print(f"<<< DF >>> [train] {train_metadata_df.shape} [val] {val_metadata_df.shape} Elapsed_t: {time.time()-metadata_st:.1f} sec".center(180, "-"))
 	save_pickle(pkl=train_metadata_df, fname=train_metadata_df_fpth)
 	save_pickle(pkl=val_metadata_df, fname=val_metadata_df_fpth)
+	print(f"<<< DF >>> [train] {train_metadata_df.shape} [val] {val_metadata_df.shape} Elapsed_t: {time.time()-metadata_st:.1f} sec".center(180, "-"))
 	return train_metadata_df, val_metadata_df
 
 def plot_(train_losses, val_losses, save_path, lr, wd):
