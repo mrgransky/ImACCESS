@@ -3,8 +3,8 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run [Local]:
-# $ python train.py --query "air base" -ddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 -vddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/EUROPEANA_1900-01-01_1970-12-31 -nep 1 -lr 5e-4 -wd 5e-2
-# $ python train.py --query "airbae" -ddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 -nep 1
+# $ python train.py -ddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 -vddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/EUROPEANA_1900-01-01_1970-12-31 -nep 1 -lr 5e-4 -wd 5e-2
+# $ python train.py -ddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 -nep 1
 
 # $ nohup python -u train.py -ddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 -nep 12 -lr 5e-4 -wd 2e-2 -ps 5 -is 160 > $PWD/logs/historyCLIP.out &
 
@@ -27,7 +27,6 @@ parser.add_argument('--batch_size', '-bs', type=int, default=27, help='Batch Siz
 parser.add_argument('--image_size', '-is', type=int, default=150, help='Image size [def: max 160 local]')
 parser.add_argument('--patch_size', '-ps', type=int, default=5, help='Patch size')
 parser.add_argument('--embedding_size', '-es',type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
-parser.add_argument('--query', '-q', type=str, default="air base", help='Query')
 parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 parser.add_argument('--num_epochs', '-nep', type=int, default=10, help='Number of epochs')
 parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs [def: max cpus]')
