@@ -3,11 +3,11 @@ from models import *
 from dataset_loader import HistoricalDataset
 
 # how to run:
-# $ python validate.py --model_dir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02/models/model_augmentation_False_ep_1_train_11123_val_4767_batch_22_img_160_patch_5_emb_1024_cuda0_AdamW_lr_0.0005_wd_0.05_OneCycleLR
+# $ python evaluate.py -mdir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02/models/model_augmentation_False_ep_1_train_11123_val_4767_batch_22_img_160_patch_5_emb_1024_cuda0_AdamW_lr_0.0005_wd_0.05_OneCycleLR
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
-parser.add_argument('--model_dir', type=str, required=True, help='Directory containing the model')
-parser.add_argument('--num_workers', type=int, default=multiprocessing.cpu_count(), help='Number of CPUs [def: max cpus]')
+parser.add_argument('--model_dir', '-mdir', type=str, required=True, help='Directory containing the model')
+parser.add_argument('--num_workers', '-nw', type=int, default=multiprocessing.cpu_count(), help='Number of CPUs [def: max cpus]')
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 
 # args = parser.parse_args()
