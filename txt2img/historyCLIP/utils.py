@@ -140,30 +140,6 @@ with open('meaningless_words.txt', 'r') as file_:
 STOPWORDS.extend(customized_meaningless_lemmas)
 STOPWORDS = set(STOPWORDS)
 
-# @cache
-# def clean_(text: str = "sample text", check_language:bool=False):
-# 	text = re.sub(r'[^a-zA-Z\s]', ' ', text) # Remove special characters and digits
-# 	if check_language:
-# 		text = remove_misspelled_(documents=text)
-# 	words = nltk.tokenize.word_tokenize(text) # Tokenize the text into words
-# 	# Filter out stopwords and words with fewer than 3 characters
-# 	words = [word.lower() for word in words if len(word) >= 3 and word.lower() not in STOPWORDS]
-# 	text = ' '.join(words) # Join the words back into a string
-# 	text = re.sub(r'\boriginal caption\b', ' ', text)
-# 	text = re.sub(r'\bdate taken\b', ' ', text)
-# 	text = re.sub(r'\bcaption\b', ' ', text)
-# 	text = re.sub(r'\bunidentified\b', ' ', text)
-# 	text = re.sub(r'\bunnumbered\b', ' ', text)
-# 	text = re.sub(r'\buntitled\b', ' ', text)
-# 	text = re.sub(r'\bphotograph\b', ' ', text)
-# 	text = re.sub(r'\bphoto\b', ' ', text)
-# 	text = re.sub(r'\bdate\b', ' ', text)
-# 	text = re.sub(r'\bdistrict\b', ' ', text)
-# 	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
-# 	if len(text) == 0:
-# 		return None
-# 	return text
-
 def clean_(text:str="this is a sample text!", sw:List=list(), check_language:bool=False):
 	if not text:
 		return
@@ -307,7 +283,7 @@ def save_pickle(pkl, fname:str=""):
 	st_t = time.time()
 	if isinstance(pkl, dict):
 		with open(fname, mode="w") as f:
-			json.dump(pkl, f, indent=4)
+			json.dump(pkl, f)
 	elif isinstance(pkl, ( pd.DataFrame, pd.Series ) ):
 		pkl.to_pickle(path=fname)
 	else:
