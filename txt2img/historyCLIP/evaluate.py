@@ -65,6 +65,15 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 			print(img_lbls_dict)
 			# print(f"{json.dumps(img_lbls_dict, indent=2, ensure_ascii=False)}")
 			print("#"*200)
+			for i in predicted_label_idx:
+				print(f"{i} {type(i)}")
+				print(
+					tokenizer(
+						text=img_lbls_dict[int(i)],
+						encode=True,
+						max_seq_length=max_seq_length
+					)[0]
+				)
 			predicted_label = torch.stack(
 				[
 					tokenizer(
