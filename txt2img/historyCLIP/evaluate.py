@@ -101,8 +101,8 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 	print(f'Model Accuracy (Top-1 label): {acc:.3f} ({100 * correct // total} %) Elapsed_t: {time.time()-validate_start_time:.1f} sec'.center(160, "-"))
 
 def main():
-	img_rgb_mean_fpth:str = os.path.join(DATASET_DIR, "img_rgb_mean.pkl")
-	img_rgb_std_fpth:str = os.path.join(DATASET_DIR, "img_rgb_std.pkl")
+	img_rgb_mean_fpth:str = os.path.join(DATASET_DIR, "img_rgb_mean.gz")
+	img_rgb_std_fpth:str = os.path.join(DATASET_DIR, "img_rgb_std.gz")
 	try:
 		img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
 	except Exception as e:
