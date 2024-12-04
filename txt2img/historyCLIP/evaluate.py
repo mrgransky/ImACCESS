@@ -74,13 +74,9 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 			print("#"*180)
 			print(img_lbls_dict)
 
-			# Get the type of keys
 			key_type = type(next(iter(img_lbls_dict.keys())))
-			print(f"Type of keys: {key_type}")
-
-			# Get the type of values
 			value_type = type(next(iter(img_lbls_dict.values())))
-			print(f"Type of values: {value_type}")
+			print(f"keys: {key_type} | values: {value_type}")
 
 			# print(f"{json.dumps(img_lbls_dict, indent=2, ensure_ascii=False)}")
 			print("#"*200)
@@ -138,6 +134,7 @@ def main():
 		f"LABELs_list {type(LABELs_list)} {len(LABELs_list)}"
 	)
 	print(f"{json.dumps(LABELs_dict, indent=2, ensure_ascii=False)}")
+
 	val_metadata_df_fpth:str = natsorted( glob.glob( args.validation_dataset_dir+'/'+'*_val_df.gz' ) )[0]
 	try:
 		val_metadata_df = load_pickle(fpath=val_metadata_df_fpth)
