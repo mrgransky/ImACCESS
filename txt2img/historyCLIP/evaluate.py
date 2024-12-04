@@ -111,8 +111,8 @@ def main():
 
 	print(f"IMAGE Mean: {img_rgb_mean} | Std: {img_rgb_std}")
 	
-	LABELs_dict_fpth:str = os.path.join(args.dataset_dir, "LABELs_dict.gz")
-	LABELs_list_fpth:str = os.path.join(args.dataset_dir, "LABELs_list.gz")
+	LABELs_dict_fpth:str = os.path.join(DATASET_DIR, "LABELs_dict.gz")
+	LABELs_list_fpth:str = os.path.join(DATASET_DIR, "LABELs_list.gz")
 	try:
 		LABELs_dict = load_pickle(fpath=LABELs_dict_fpth)
 		LABELs_list = load_pickle(fpath=LABELs_list_fpth)
