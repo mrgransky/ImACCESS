@@ -1,6 +1,8 @@
 from utils import *
 from models import *
 from dataset_loader import HistoricalDataset
+from natsort import natsorted
+import glob
 
 # how to run [Pouta]:
 # With Europeana as validation set:
@@ -95,7 +97,7 @@ def main():
 	)
 
 	# val_metadata_df_fpth:str = os.path.join(args.validation_dataset_dir, "metadata_validation_df.gz")
-	val_metadata_df_fpth:str = args.validation_dataset_dir+'/'+'*_val_df.gz'
+	val_metadata_df_fpth:str = natsorted( glob.glob( args.validation_dataset_dir+'/'+'*_val_df.gz' ) ) 
 
 
 
