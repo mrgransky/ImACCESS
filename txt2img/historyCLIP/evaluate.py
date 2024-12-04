@@ -111,19 +111,23 @@ def main():
 
 	print(f"IMAGE Mean: {img_rgb_mean} | Std: {img_rgb_std}")
 	
-	img_lbls_dict_fpth:str = os.path.join(DATASET_DIR, "LABELs_dict.gz")
-	# img_lbls_list_fpth:str = os.path.join(DATASET_DIR, "LABELs_list.gz")
+	LABELs_dict_fpth:str = os.path.join(args.dataset_dir, "LABELs_dict.gz")
+	LABELs_list_fpth:str = os.path.join(args.dataset_dir, "LABELs_list.gz")
 	try:
-		img_lbls_dict = load_pickle(fpath=img_lbls_dict_fpth)
-		# img_lbls_list = load_pickle(fpath=img_lbls_list_fpth)
+		LABELs_dict = load_pickle(fpath=LABELs_dict_fpth)
+		LABELs_list = load_pickle(fpath=LABELs_list_fpth)
 	except Exception as e:
 		print(f"{e}")
 		return
+		# LABELs_dict, LABELs_list = get_doc_description(df=train_metadata_df, col='label') # must be "label", regardless of captions
+		# save_pickle(pkl=LABELs_dict, fname=LABELs_dict_fpth)
+		# save_pickle(pkl=LABELs_list, fname=LABELs_list_fpth)
 
 	print(
-		f"img_lbls_dict {type(img_lbls_dict)} {len(img_lbls_dict)} "
-		# f"img_lbls_list {type(img_lbls_list)} {len(img_lbls_list)}"
+		f"LABELs_dict {type(LABELs_dict)} {len(LABELs_dict)} "
+		f"LABELs_list {type(LABELs_list)} {len(LABELs_list)}"
 	)
+
 
 	val_metadata_df_fpth:str = os.path.join(DATASET_DIR, "val_metadata_df.gz")
 	try:
