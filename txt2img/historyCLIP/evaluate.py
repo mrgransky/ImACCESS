@@ -60,7 +60,7 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 			# print(type(similarity), similarity.shape, similarity)
 			# Compare Predictions with Ground Truth:
 			_, predicted_label_idx = torch.max(input=similarity, dim=1)
-			print(type(predicted_label_idx), predicted_label_idx)
+			print(type(predicted_label_idx), predicted_label_idx.shape, predicted_label_idx)
 			print("#"*180)
 			predicted_label = torch.stack(
 				[
