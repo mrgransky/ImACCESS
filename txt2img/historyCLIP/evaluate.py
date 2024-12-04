@@ -66,7 +66,7 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 			# print(f"{json.dumps(img_lbls_dict, indent=2, ensure_ascii=False)}")
 			print("#"*200)
 			for i in predicted_label_idx:
-				print(f"{i} {type(i)}")
+				print(f"{i} {type(i)} int: {int(i)}")
 				print(img_lbls_dict.get(int(i)))
 				print(
 					tokenizer(
