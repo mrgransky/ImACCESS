@@ -85,7 +85,7 @@ def main():
 		print(f"{e}")
 		return
 
-	print(f"IMAGE Mean: {img_rgb_mean} | Std: {img_rgb_std}".center(180, ""))
+	print(f"IMAGE Mean: {img_rgb_mean} | Std: {img_rgb_std}".center(180, " "))
 	
 	LABELs_dict_fpth:str = os.path.join(args.validation_dataset_dir, "LABELs_dict.gz")
 	LABELs_list_fpth:str = os.path.join(args.validation_dataset_dir, "LABELs_list.gz")
