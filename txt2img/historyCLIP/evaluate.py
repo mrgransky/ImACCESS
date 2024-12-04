@@ -70,7 +70,8 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 				print(img_lbls_dict.get(int(i)))
 				print(
 					tokenizer(
-						text=img_lbls_dict[int(i)],
+						# text=img_lbls_dict[int(i)],
+						text=img_lbls_dict.get(int(i)),
 						encode=True,
 						max_seq_length=max_seq_length
 					)[0]
