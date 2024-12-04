@@ -46,7 +46,7 @@ def get_dataset_dir(model_dir:str="path/2/model_dir"):
 	return dataset_dir
 
 # Use the function
-DATASET_DIR = get_dataset_dir()
+DATASET_DIR = get_dataset_dir(model_dir=args.model_dir)
 print(f"DATASET_DIR = {DATASET_DIR}")
 model_info = extract_model_info(model_dir=args.model_dir)
 print(model_info)
