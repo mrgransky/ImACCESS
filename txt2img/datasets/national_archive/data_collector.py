@@ -168,6 +168,15 @@ def is_desired(collections, useless_terms):
 	return True
 
 def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
+	qv_processed = re.sub(
+		pattern=" ", 
+		repl="_", 
+		string=label,
+	)
+	df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_{START_DATE}_{END_DATE}.gz")
+	if os.path.exists(df_fpth):
+		df = load_pickle(fpath=df_fpth)
+		return df	
 	print(f"Analyzing {len(docs)} {type(docs)} document(s) for label: « {label} » might take a while...")
 	df_st_time = time.time()
 	data = []
@@ -238,6 +247,9 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=START_DATE, end_date=END_DATE))]
 
 	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
+	if df.shape[0] == 0:
+		return
+	save_pickle(pkl=df, fname=df_fpth)
 	return df
 
 def main():
@@ -265,22 +277,12 @@ def main():
 			label=qv,
 		)
 		if label_all_hits:
-			qv_processed = re.sub(
-				pattern=" ", 
-				repl="_", 
-				string=qv,
-			)
-			df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_{START_DATE}_{END_DATE}.gz")
-			try:
-				df = load_pickle(fpath=df_fpth)
-			except Exception as e:
-				df = get_dframe(
+			df = get_dframe(
 					label=qv,
 					docs=label_all_hits,
-				)
-				save_pickle(pkl=df, fname=df_fpth)
-			print(df.head(10))
-			dfs.append(df)
+			)
+			if df is not None and df.shape[0]>1:
+				dfs.append(df)
 		else:
 			labels_with_ZERO_result.append(qv)
 

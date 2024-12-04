@@ -534,19 +534,13 @@ def get_info(dataloader):
 
 def get_doc_description(df, col:str="label"):
 	unique_labels_list = list(df[col].unique())
-
-	# unique_labels_dict = {idx: lbl for idx, lbl in enumerate(unique_labels_list)} # in dictionary comprehension, keys are automatically converted to strings
-	# unique_labels_dict = {int(key): value for key, value in unique_labels_dict.items()} # Convert keys back to integers
-
 	unique_labels_dict = {}
 	for idx, lbl in enumerate(unique_labels_list):
 		unique_labels_dict[idx] = lbl
-
 	print(f"{len(list(unique_labels_dict.keys()))} unique_labels_dict:\n{json.dumps(unique_labels_dict, indent=2, ensure_ascii=False)}")
 	key_type = type(next(iter(unique_labels_dict.keys())))
 	value_type = type(next(iter(unique_labels_dict.values())))
-	print(f"keys: {key_type} | values: {value_type}")
-
+	print(f"{len(list(unique_labels_dict.keys()))} unique_labels_dict:\n{unique_labels_dict}\nkeys: {key_type} | values: {value_type}")
 	return unique_labels_dict, unique_labels_list
 
 def get_mean_std_grayscale_img(dir: str="path/2/images"):

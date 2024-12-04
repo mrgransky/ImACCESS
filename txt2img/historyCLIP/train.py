@@ -318,14 +318,11 @@ def main():
 	)
 	# copy to validation dataset dir if not none:
 	if args.validation_dataset_dir:
-		print(f">> Copying into {args.validation_dataset_dir}")
+		print(f">> Copying (LABELs) into {args.validation_dataset_dir}")
 		# copy
 		shutil.copy(LABELs_dict_fpth, args.validation_dataset_dir)
 		shutil.copy(LABELs_list_fpth, args.validation_dataset_dir)
-
-
-
-	return
+	# return
 	
 	print(f"Creating Train Dataloader for {len(train_metadata_df)} samples", end="\t")
 	tdl_st = time.time()
@@ -448,6 +445,21 @@ def main():
 		model_dir=model_fpth,
 	)
 
+	command = [
+		'python', 'evalaute.py',
+		'--model_path', os.path.join(args.dataset_dir, models_dir, model_fname, "model.pt"),
+		'--validation_dataset_dir', args.validation_dataset_dir if args.validation_dataset_dir else args.dataset_dir,
+		'--image_size', str(args.image_size),
+		'--patch_size', str(args.patch_size),
+		'--batch_size', str(args.batch_size),
+		'--embedding_size', str(args.embedding_size),
+		'--num_workers', str(args.num_workers),
+		'--device', str(args.device),
+	]
+	# print("Running command:", ' '.join(command))
+	result = subprocess.run(command, capture_output=True, text=True)
+	print(f"Output:\n{result.stdout}")
+	print(f"Error:\nresult.stderr")
 
 
 	# # Construct the command as a list of arguments

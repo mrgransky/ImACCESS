@@ -399,7 +399,7 @@ def save_pickle(pkl, fname:str=""):
 	st_t = time.time()
 	if isinstance(pkl, dict):
 		with open(fname, mode="w") as f:
-			json.dump(pkl, f, indent=4)
+			json.dump(pkl, f)
 	elif isinstance(pkl, ( pd.DataFrame, pd.Series ) ):
 		pkl.to_pickle(path=fname)
 	else:
@@ -407,113 +407,34 @@ def save_pickle(pkl, fname:str=""):
 		with gzip.open(fname , mode="wb") as f:
 			dill.dump(pkl, f)
 	elpt = time.time()-st_t
-	# fsize_dump = os.stat( fname ).st_size / 1e6
 	fsize_dump = os.path.getsize(fname) / 1e6
 	print(f"Elapsed_t: {elpt:.3f} s | {fsize_dump:.2f} MB".center(120, " "))
 
-# def load_pickle(fpath:str="unknown",):
-# 	print(f"Checking for existence? {fpath}")
-# 	st_t = time.time()
-# 	try:
-# 		with gzip.open(fpath, mode='rb') as f:
-# 			pkl=dill.load(f)
-# 	except gzip.BadGzipFile as ee:
-# 		print(f"<!> {ee} gzip.open() NOT functional => traditional openning...")
-# 		with open(fpath, mode='rb') as f:
-# 			pkl=dill.load(f)
-# 	except Exception as e:
-# 		print(f"<<!>> {e} pandas read_pkl...")
-# 		pkl = pd.read_pickle(fpath)
-# 	elpt = time.time()-st_t
-# 	fsize = os.stat( fpath ).st_size / 1e6
-# 	print(f"Loaded in: {elpt:.3f} s | {type(pkl)} | {fsize:.3f} MB".center(130, " "))
-# 	return pkl
-
-# def load_pickle(fpath: str) -> object:
-# 		"""
-# 		Load a pickle file using gzip and dill.
-
-# 		Args:
-# 				fpath (str): Path to the pickle file.
-
-# 		Returns:
-# 				object: The loaded pickle object.
-
-# 		Raises:
-# 				FileNotFoundError: If the file does not exist.
-# 				Exception: If an error occurs during loading.
-# 		"""
-# 		logging.info(f"Loading pickle file from {fpath}")
-
-# 		if not os.path.exists(fpath):
-# 			raise FileNotFoundError(f"File not found: {fpath}")
-
-# 		start_time = time.time()
-# 		try:
-# 				with gzip.open(fpath, mode='rb') as f:
-# 						pickle_obj = dill.load(f)
-# 		except gzip.BadGzipFile as e:
-# 				logging.warning(f"Error reading gzip file: {e}")
-# 				with open(fpath, mode='rb') as f:
-# 						pickle_obj = dill.load(f)
-# 		except Exception as e:
-# 				logging.error(f"Error loading pickle file: {e}")
-# 				try:
-# 						pickle_obj = pd.read_pickle(fpath)
-# 				except Exception as e:
-# 						logging.error(f"Error loading pickle file using pandas: {e}")
-# 						raise
-
-# 		elapsed_time = time.time() - start_time
-# 		file_size_mb = os.stat(fpath).st_size / 1e6
-# 		logging.info(f"Loaded in: {elapsed_time:.3f} s | {type(pickle_obj)} | {file_size_mb:.3f} MB")
-
-# 		return pickle_obj
-
 def load_pickle(fpath: str) -> object:
-		"""
-		Load a pickle file, including JSON dictionaries.
-
-		Args:
-				fpath (str): Path to the pickle file.
-
-		Returns:
-				object: The loaded pickle object.
-
-		Raises:
-				FileNotFoundError: If the file does not exist.
-				Exception: If an error occurs during loading.
-		"""
-		logging.info(f"Loading pickle file from {fpath}")
-
-		if not os.path.exists(fpath):
-				raise FileNotFoundError(f"File not found: {fpath}")
-
-		start_time = time.time()
+	print(f"Loading {fpath}")
+	if not os.path.exists(fpath):
+		raise FileNotFoundError(f"File not found: {fpath}")
+	start_time = time.time()
+	try:
+		with open(fpath, mode='r') as f:
+			pickle_obj = json.load(f)
+	except Exception as exerror:
+		# print(f"not a JSON file: {exerror}")
 		try:
-				with open(fpath, mode='r') as f:
-						pickle_obj = json.load(f)
-		except json.JSONDecodeError:
-				try:
-						with gzip.open(fpath, mode='rb') as f:
-								pickle_obj = dill.load(f)
-				except gzip.BadGzipFile as e:
-						logging.warning(f"Error reading gzip file: {e}")
-						with open(fpath, mode='rb') as f:
-								pickle_obj = dill.load(f)
-				except Exception as e:
-						logging.error(f"Error loading pickle file: {e}")
-						try:
-								pickle_obj = pd.read_pickle(fpath)
-						except Exception as e:
-								logging.error(f"Error loading pickle file using pandas: {e}")
-								raise
-		except Exception as e:
-				logging.error(f"Error loading pickle file: {e}")
+			with gzip.open(fpath, mode='rb') as f:
+				pickle_obj = dill.load(f)
+		except gzip.BadGzipFile as ee:
+			print(f"Error BadGzipFile: {ee}")
+			with open(fpath, mode='rb') as f:
+				pickle_obj = dill.load(f)
+		except Exception as eee:
+			print(f"Error dill: {eee}")
+			try:
+				pickle_obj = pd.read_pickle(fpath)
+			except Exception as err:
+				print(f"Error pandas pkl: {err}")
 				raise
-
-		elapsed_time = time.time() - start_time
-		file_size_mb = os.path.getsize(fpath) / 1e6
-		logging.info(f"Loaded in: {elapsed_time:.3f} s | {type(pickle_obj)} | {file_size_mb:.3f} MB")
-
-		return pickle_obj
+	elapsed_time = time.time() - start_time
+	file_size_mb = os.path.getsize(fpath) / 1e6
+	print(f"Elapsed_t: {elapsed_time:.3f} s | {type(pickle_obj)} | {file_size_mb:.3f} MB".center(150, " "))
+	return pickle_obj

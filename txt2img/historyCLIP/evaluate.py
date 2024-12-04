@@ -117,7 +117,7 @@ def main():
 		f"LABELs_dict {type(LABELs_dict)} {len(LABELs_dict)} "
 		f"LABELs_list {type(LABELs_list)} {len(LABELs_list)}"
 	)
-	print(f"{json.dumps(LABELs_dict, indent=2, ensure_ascii=False)}")
+	# print(f"{json.dumps(LABELs_dict, indent=2, ensure_ascii=False)}")
 
 	val_metadata_df_fpth:str = natsorted( glob.glob( args.validation_dataset_dir+'/'+'*_val_df.gz' ) )[0]
 	try:
