@@ -49,7 +49,7 @@ def get_dataset_dir(model_dir:str="path/2/model_dir"):
 DATASET_DIR = get_dataset_dir(model_dir=args.model_dir)
 print(f"DATASET_DIR = {DATASET_DIR}")
 model_info = extract_model_info(model_dir=args.model_dir)
-print(model_info)
+print(json.dumps(model_info, sort_keys=True, indent=2))
 
 def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/historyCLIP.pt", device:str="cpu"):
 	print(f"Model examination & accuracy Validation: {type(val_loader)} {len(val_loader.dataset)} sample(s)".center(160, "-"))
