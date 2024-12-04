@@ -62,6 +62,9 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 			_, predicted_label_idx = torch.max(input=similarity, dim=1)
 			print(type(predicted_label_idx), predicted_label_idx.shape, predicted_label_idx)
 			print("#"*180)
+			print(img_lbls_dict)
+			# print(f"{json.dumps(img_lbls_dict, indent=2, ensure_ascii=False)}")
+			print("#"*200)
 			predicted_label = torch.stack(
 				[
 					tokenizer(
