@@ -74,6 +74,7 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 						max_seq_length=max_seq_length
 					)[0]
 				)
+			print("-"*180)
 			predicted_label = torch.stack(
 				[
 					tokenizer(
