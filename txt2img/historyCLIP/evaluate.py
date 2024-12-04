@@ -30,6 +30,7 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 	print(f"Model examination & accuracy Validation: {type(val_loader)} {len(val_loader.dataset)} sample(s)".center(160, "-"))
 	validate_start_time = time.time()
 	model.load_state_dict(torch.load(model_fpth, map_location=device))
+	img_lbls_dict = {int(key): value for key, value in img_lbls_dict.items()} # Convert keys back to integers
 
 	text = torch.stack(
 		[

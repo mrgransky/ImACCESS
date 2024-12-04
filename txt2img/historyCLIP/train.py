@@ -318,6 +318,7 @@ def main():
 	)
 	# copy to validation dataset dir if not none:
 	if args.validation_dataset_dir:
+		print(f">> Copying into {args.validation_dataset_dir}")
 		# copy
 		shutil.copy(LABELs_dict_fpth, args.validation_dataset_dir)
 		shutil.copy(LABELs_list_fpth, args.validation_dataset_dir)
