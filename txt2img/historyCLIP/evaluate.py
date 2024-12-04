@@ -31,7 +31,6 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 	validate_start_time = time.time()
 	model.load_state_dict(torch.load(model_fpth, map_location=device))
 	img_lbls_dict = {int(key): value for key, value in img_lbls_dict.items()} # Convert keys back to integers
-
 	text = torch.stack(
 		[
 			tokenizer(
@@ -71,29 +70,14 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 			# print(type(similarity), similarity.shape, similarity)
 			# Compare Predictions with Ground Truth:
 			_, predicted_label_idx = torch.max(input=similarity, dim=1)
-			print(type(predicted_label_idx), predicted_label_idx.shape, predicted_label_idx)
-			print("#"*180)
-
-			print(img_lbls_dict)
-			key_type = type(next(iter(img_lbls_dict.keys())))
-			value_type = type(next(iter(img_lbls_dict.values())))
-			print(f"keys: {key_type} | values: {value_type}")
-			# print(f"{json.dumps(img_lbls_dict, indent=2, ensure_ascii=False)}")
-			print("#"*200)
-			# for i in predicted_label_idx:
-			# 	print(f"{i} {type(i)} int: {int(i)}")
-			# 	print(img_lbls_dict.get(int(i)))
-			# 	print(img_lbls_dict[int(i)])
-				
-			# 	print(
-			# 		tokenizer(
-			# 			# text=img_lbls_dict[int(i)],
-			# 			text=img_lbls_dict.get(int(i)),
-			# 			encode=True,
-			# 			max_seq_length=max_seq_length
-			# 		)[0]
-			# 	)
-			# print("-"*180)
+			# print(type(predicted_label_idx), predicted_label_idx.shape, predicted_label_idx)
+			# print("#"*180)
+			# print(img_lbls_dict)
+			# key_type = type(next(iter(img_lbls_dict.keys())))
+			# value_type = type(next(iter(img_lbls_dict.values())))
+			# print(f"keys: {key_type} | values: {value_type}")
+			# # print(f"{json.dumps(img_lbls_dict, indent=2, ensure_ascii=False)}")
+			# print("#"*200)
 			predicted_label = torch.stack(
 				[
 					tokenizer(
