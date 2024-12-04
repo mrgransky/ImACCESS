@@ -73,6 +73,14 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 			print(type(predicted_label_idx), predicted_label_idx.shape, predicted_label_idx)
 			print("#"*180)
 			print(img_lbls_dict)
+			# Get the type of keys
+			key_type = type(next(iter(img_lbls_dict.keys())))
+			print(f"Type of keys: {key_type}")
+
+			# Get the type of values
+			value_type = type(next(iter(img_lbls_dict.values())))
+			print(f"Type of values: {value_type}")
+
 			# print(f"{json.dumps(img_lbls_dict, indent=2, ensure_ascii=False)}")
 			print("#"*200)
 			for i in predicted_label_idx:
