@@ -28,9 +28,9 @@ print(args)
 ##################################################################################################################
 # run in Pouta:
 
-# WWII
-# $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1935-01-01 --end_date 1950-12-31 # WW2 (with threshold)
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1935-01-01 --end_date 1950-12-31 --num_workers 8 --img_mean_std > /media/volume/trash/ImACCESS/NA_thresholded_WW2.out &
+# WWII (with threshold)
+# $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1935-01-01 --end_date 1950-12-31
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1935-01-01 --end_date 1950-12-31 --num_workers 40 --img_mean_std > /media/volume/trash/ImACCESS/NA_thresholded_WW2.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
@@ -105,7 +105,7 @@ def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", label: st
 	try:
 		label_all_hits = load_pickle(fpath=label_all_hits_fpth)
 	except Exception as e:
-		print(f"{e}")
+		# print(f"{e}")
 		print(f"Collecting all docs of National Archive for label: « {label} » ... it might take a while..")
 		headers = {
 			'Content-type': 'application/json',
@@ -322,7 +322,7 @@ def main():
 
 	plt.figure(figsize=(20, 13))
 	label_counts.plot(kind='bar', fontsize=9)
-	plt.title(f'{dataset_name} Label Frequency (total: {label_counts.shape}) {START_DATE} - {END_DATE}')
+	plt.title(f'{dataset_name} Label Frequency (total: {label_counts.shape}) {START_DATE} - {END_DATE} total IMGs: {na_df.shape[0]}')
 	plt.xlabel('Label')
 	plt.ylabel('Frequency')
 	plt.tight_layout()

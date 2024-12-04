@@ -29,6 +29,7 @@ from functools import cache
 from urllib.parse import urlparse, unquote, quote_plus
 
 logging.basicConfig(level=logging.INFO)
+Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
 
 nltk_modules = [
 		'punkt',

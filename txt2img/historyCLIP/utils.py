@@ -57,7 +57,6 @@ warnings.filterwarnings('ignore')
 logging.basicConfig(level=logging.INFO)
 
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
-
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 
