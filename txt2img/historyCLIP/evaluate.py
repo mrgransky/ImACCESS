@@ -34,12 +34,13 @@ def extract_model_info(model_dir):
 	info['scheduler'] = re.search(r'(OneCycleLR|StepLR|CosineAnnealingLR)', model_info).group(1)
 	return info
 
-def get_dataset_dir():
-	parser = argparse.ArgumentParser(description="Extract dataset directory")
-	parser.add_argument('--model_dir', type=str, required=True, help='Dataset directory')
-	args = parser.parse_args()
+def get_dataset_dir(model_dir:str="path/2/model_dir"):
+	# parser = argparse.ArgumentParser(description="Extract dataset directory")
+	# parser.add_argument('--model_dir', type=str, required=True, help='Dataset directory')
+	# args = parser.parse_args()
 	# Split the path at the first occurrence of 'model_'
-	dataset_dir = args.model_dir.split('model_')[0].rstrip('/')
+	# dataset_dir = model_dir.split('model_')[0].rstrip('/')
+	dataset_dir = model_dir.split('models/')[0].rstrip('/')
 	# Expand the $HOME variable if present
 	dataset_dir = os.path.expanduser(dataset_dir)
 	return dataset_dir
