@@ -62,7 +62,12 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 			_, predicted_label_idx = torch.max(input=similarity, dim=1) 
 			predicted_label = torch.stack(
 				[
-					tokenizer(img_lbls_dict[int(i)], encode=True, max_seq_length=max_seq_length)[0] for i in predicted_label_idx
+					tokenizer(
+						text=img_lbls_dict[int(i)],
+						encode=True,
+						max_seq_length=max_seq_length
+					)[0]
+					for i in predicted_label_idx
 				]
 			).to(device) # <class 'torch.Tensor'> torch.Size([32, 256])
 			# print(type(predicted_label), predicted_label.shape, )
@@ -80,7 +85,7 @@ def main():
 		print(f"{e}")
 		return
 
-	print(f"IMAGE Mean: {img_rgb_mean} | Std: {img_rgb_std}")
+	print(f"IMAGE Mean: {img_rgb_mean} | Std: {img_rgb_std}".center(180, ""))
 	
 	LABELs_dict_fpth:str = os.path.join(args.validation_dataset_dir, "LABELs_dict.gz")
 	LABELs_list_fpth:str = os.path.join(args.validation_dataset_dir, "LABELs_list.gz")
@@ -90,17 +95,11 @@ def main():
 	except Exception as e:
 		print(f"{e}")
 		return
-
 	print(
 		f"LABELs_dict {type(LABELs_dict)} {len(LABELs_dict)} "
 		f"LABELs_list {type(LABELs_list)} {len(LABELs_list)}"
 	)
-
-	# val_metadata_df_fpth:str = os.path.join(args.validation_dataset_dir, "metadata_validation_df.gz")
 	val_metadata_df_fpth:str = natsorted( glob.glob( args.validation_dataset_dir+'/'+'*_val_df.gz' ) )[0]
-
-
-
 	try:
 		val_metadata_df = load_pickle(fpath=val_metadata_df_fpth)
 	except Exception as e:

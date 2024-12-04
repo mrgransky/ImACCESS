@@ -35,6 +35,7 @@ import logging
 # from multiprocessing import Pool
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from torch.utils.tensorboard import SummaryWriter
+import shutil
 import nltk
 import inspect
 nltk_modules = [
@@ -438,7 +439,7 @@ def plot_(train_losses, val_losses, save_path, lr, wd):
 	plt.legend()
 	plt.savefig(save_path)
 	plt.close()  # Close the figure to free up memory
-	
+
 def set_seeds():
 	# fix random seeds
 	SEED_VALUE = 42
@@ -503,6 +504,7 @@ def get_model_details(model, img_size=(3, 224, 224), text_size=(77,), batch_size
 	print("-"*150)
 
 def tokenizer(text:str="sample label", encode:bool=True, mask=None, max_seq_length:int=128):
+	print(type(text), text)
 	if encode: # Encode text => <class 'torch.Tensor'>
 		# print(type(text), len(text), text)
 		text = clean_(text=text, sw=STOPWORDS,)

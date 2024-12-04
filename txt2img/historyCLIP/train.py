@@ -316,9 +316,15 @@ def main():
 		f"LABELs_dict {type(LABELs_dict)} {len(LABELs_dict)} "
 		f"LABELs_list {type(LABELs_list)} {len(LABELs_list)}"
 	)
+	# copy to validation dataset dir if not none:
+	if args.validation_dataset_dir:
+		# copy
+		shutil.copy(LABELs_dict_fpth, args.validation_dataset_dir)
+		shutil.copy(LABELs_list_fpth, args.validation_dataset_dir)
 
 
-	# return
+
+	return
 	
 	print(f"Creating Train Dataloader for {len(train_metadata_df)} samples", end="\t")
 	tdl_st = time.time()
@@ -441,7 +447,7 @@ def main():
 		model_dir=model_fpth,
 	)
 
-	
+
 
 	# # Construct the command as a list of arguments
 	# command = [
