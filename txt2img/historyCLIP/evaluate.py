@@ -33,12 +33,22 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 
 	text = torch.stack(
 		[
-			tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[0] for txt in img_lbls_dict.values()
+			tokenizer(
+				text=txt,
+				encode=True,
+				max_seq_length=max_seq_length,
+			)[0] 
+			for txt in img_lbls_dict.values()
 		]
 	).to(device) # <class 'torch.Tensor'> torch.Size([55, 256]) 
 	mask = torch.stack(
 		[
-			tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[1] for txt in img_lbls_dict.values()
+			tokenizer(
+				text=txt,
+				encode=True,
+				max_seq_length=max_seq_length
+				)[1]
+				for txt in img_lbls_dict.values()
 		]
 	) # <class 'torch.Tensor'> torch.Size([55, 256, 256])
 	mask = mask.repeat(1, len(mask[0])).reshape(len(mask), len(mask[0]), len(mask[0])).to(device)
@@ -68,6 +78,8 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 			for i in predicted_label_idx:
 				print(f"{i} {type(i)} int: {int(i)}")
 				print(img_lbls_dict.get(int(i)))
+				print(img_lbls_dict[i])
+				
 				print(
 					tokenizer(
 						# text=img_lbls_dict[int(i)],
