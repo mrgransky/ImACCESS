@@ -504,7 +504,7 @@ def get_model_details(model, img_size=(3, 224, 224), text_size=(77,), batch_size
 	print("-"*150)
 
 def tokenizer(text:str="sample label", encode:bool=True, mask=None, max_seq_length:int=128):
-	print(type(text), text)
+	# print(type(text), text)
 	if encode: # Encode text => <class 'torch.Tensor'>
 		# print(type(text), len(text), text)
 		text = clean_(text=text, sw=STOPWORDS,)
