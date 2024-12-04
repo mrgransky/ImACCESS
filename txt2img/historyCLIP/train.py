@@ -318,7 +318,7 @@ def main():
 	)
 
 
-	return
+	# return
 	
 	print(f"Creating Train Dataloader for {len(train_metadata_df)} samples", end="\t")
 	tdl_st = time.time()
@@ -440,6 +440,8 @@ def main():
 		checkpoint_interval=5,
 		model_dir=model_fpth,
 	)
+
+	
 
 	# # Construct the command as a list of arguments
 	# command = [

@@ -2,64 +2,33 @@ from utils import *
 from models import *
 from dataset_loader import HistoricalDataset
 
-# how to run:
-# $ python evaluate.py -mdir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02/models/model_augmentation_False_ep_1_train_11123_val_4767_batch_22_img_160_patch_5_emb_1024_cuda0_AdamW_lr_0.0005_wd_0.05_OneCycleLR
+# how to run [Pouta]:
+# With Europeana as validation set:
+# $ python evaluate.py -mpth /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31/models/model_augmentation_False_ep_30_train_58361_val_25013_batch_64_img_160_patch_5_emb_1024_cuda3_AdamW_lr_0.001_wd_0.05_OneCycleLR/model.pt -vddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -ps 5 -is 160 -bs 64
+
+# with splited dataset of NA:
+# $ python evaluate.py -mpth /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31/models/model_augmentation_False_ep_30_train_58361_val_25013_batch_64_img_160_patch_5_emb_1024_cuda3_AdamW_lr_0.001_wd_0.05_OneCycleLR/model.pt -vddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -ps 5 -is 160 -bs 64
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
-parser.add_argument('--model_dir', '-mdir', type=str, required=True, help='Directory containing the model')
+parser.add_argument('--model_path', '-mpth', type=str, required=True, help='CLIP model path')
+parser.add_argument('--validation_dataset_dir', '-vddir', type=str, required=True, help='Vaidation Dataset Directory')
 parser.add_argument('--num_workers', '-nw', type=int, default=multiprocessing.cpu_count(), help='Number of CPUs [def: max cpus]')
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
+parser.add_argument('--batch_size', '-bs', type=int, default=27, help='Batch Size')
+parser.add_argument('--image_size', '-is', type=int, default=150, help='Image size [def: max 160 local]')
+parser.add_argument('--patch_size', '-ps', type=int, default=5, help='Patch size')
+parser.add_argument('--embedding_size', '-es',type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 print(args)
 args.device = torch.device(args.device)
 
-def extract_model_info(model_dir):
-	# Extract the last part of the path (the model directory name)
-	model_info = os.path.basename(model_dir)
-	info = {}
-	info['augmentation'] = re.search(r'augmentation_(\w+)', model_info).group(1) == 'True'
-	info['epochs'] = int(re.search(r'ep_(\d+)', model_info).group(1))
-	info['num_training_samples'] = int(re.search(r'train_(\d+)', model_info).group(1))
-	info['num_val_samples'] = int(re.search(r'val_(\d+)', model_info).group(1))
-	info['batch_size'] = int(re.search(r'batch_(\d+)', model_info).group(1))
-	info['image_size'] = int(re.search(r'img_(\d+)', model_info).group(1))
-	info['patch_size'] = int(re.search(r'patch_(\d+)', model_info).group(1))
-	info['embedding_size'] = int(re.search(r'emb_(\d+)', model_info).group(1))
-	info['device'] = re.search(r'(cuda\d+|cpu)', model_info).group(1)
-	info['optimizer'] = re.search(r'(AdamW|SGD|Adam)', model_info).group(1)
-	info['learning_rate'] = float(re.search(r'lr_(\d+\.\d+)', model_info).group(1))
-	info['weight_decay'] = float(re.search(r'wd_(\d+\.\d+)', model_info).group(1))
-	info['scheduler'] = re.search(r'(OneCycleLR|StepLR|CosineAnnealingLR)', model_info).group(1)
-	return info
-
-def get_dataset_dir(model_dir:str="path/2/model_dir"):
-	# parser = argparse.ArgumentParser(description="Extract dataset directory")
-	# parser.add_argument('--model_dir', type=str, required=True, help='Dataset directory')
-	# args = parser.parse_args()
-	# Split the path at the first occurrence of 'model_'
-	# dataset_dir = model_dir.split('model_')[0].rstrip('/')
-	dataset_dir = model_dir.split('models/')[0].rstrip('/')
-	# Expand the $HOME variable if present
-	dataset_dir = os.path.expanduser(dataset_dir)
-	return dataset_dir
-
-# Use the function
-DATASET_DIR = get_dataset_dir(model_dir=args.model_dir)
-print(f"DATASET_DIR = {DATASET_DIR}")
-model_info = extract_model_info(model_dir=args.model_dir)
-print(json.dumps(model_info, sort_keys=True, ensure_ascii=False, indent=2))
-
 def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/historyCLIP.pt", device:str="cpu"):
 	print(f"Model examination & accuracy Validation: {type(val_loader)} {len(val_loader.dataset)} sample(s)".center(160, "-"))
 	validate_start_time = time.time()
 	model.load_state_dict(torch.load(model_fpth, map_location=device))
-	# get_model_details(
-	# 	model, 
-	# 	img_size=(3, args.image_size, args.image_size),
-	# 	text_size=(max_seq_length,),
-	# )
+
 	text = torch.stack(
 		[
 			tokenizer(text=txt, encode=True, max_seq_length=max_seq_length)[0] for txt in img_lbls_dict.values()
@@ -101,8 +70,8 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 	print(f'Model Accuracy (Top-1 label): {acc:.3f} ({100 * correct // total} %) Elapsed_t: {time.time()-validate_start_time:.1f} sec'.center(160, "-"))
 
 def main():
-	img_rgb_mean_fpth:str = os.path.join(DATASET_DIR, "img_rgb_mean.gz")
-	img_rgb_std_fpth:str = os.path.join(DATASET_DIR, "img_rgb_std.gz")
+	img_rgb_mean_fpth:str = os.path.join(args.validation_dataset_dir, "img_rgb_mean.gz")
+	img_rgb_std_fpth:str = os.path.join(args.validation_dataset_dir, "img_rgb_std.gz")
 	try:
 		img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
 	except Exception as e:
@@ -111,25 +80,25 @@ def main():
 
 	print(f"IMAGE Mean: {img_rgb_mean} | Std: {img_rgb_std}")
 	
-	LABELs_dict_fpth:str = os.path.join(DATASET_DIR, "LABELs_dict.gz")
-	LABELs_list_fpth:str = os.path.join(DATASET_DIR, "LABELs_list.gz")
+	LABELs_dict_fpth:str = os.path.join(args.validation_dataset_dir, "LABELs_dict.gz")
+	LABELs_list_fpth:str = os.path.join(args.validation_dataset_dir, "LABELs_list.gz")
 	try:
 		LABELs_dict = load_pickle(fpath=LABELs_dict_fpth)
 		LABELs_list = load_pickle(fpath=LABELs_list_fpth)
 	except Exception as e:
 		print(f"{e}")
 		return
-		# LABELs_dict, LABELs_list = get_doc_description(df=train_metadata_df, col='label') # must be "label", regardless of captions
-		# save_pickle(pkl=LABELs_dict, fname=LABELs_dict_fpth)
-		# save_pickle(pkl=LABELs_list, fname=LABELs_list_fpth)
 
 	print(
 		f"LABELs_dict {type(LABELs_dict)} {len(LABELs_dict)} "
 		f"LABELs_list {type(LABELs_list)} {len(LABELs_list)}"
 	)
 
+	# val_metadata_df_fpth:str = os.path.join(args.validation_dataset_dir, "metadata_validation_df.gz")
+	val_metadata_df_fpth:str = args.validation_dataset_dir+'/'+'*_val_df.gz'
 
-	val_metadata_df_fpth:str = os.path.join(DATASET_DIR, "val_metadata_df.gz")
+
+
 	try:
 		val_metadata_df = load_pickle(fpath=val_metadata_df_fpth)
 	except Exception as e:
@@ -140,8 +109,8 @@ def main():
 	vdl_st = time.time()
 	val_dataset = HistoricalDataset(
 		data_frame=val_metadata_df,
-		img_sz=model_info["image_size"],
-		dataset_directory=os.path.join(DATASET_DIR, "images"),
+		img_sz=args.image_size,
+		dataset_directory=os.path.join(args.validation_dataset_dir, "images"),
 		max_seq_length=max_seq_length,
 		mean=img_rgb_mean,
 		std=img_rgb_std,
@@ -150,7 +119,7 @@ def main():
 	val_data_loader = DataLoader(
 		dataset=val_dataset,
 		shuffle=False,
-		batch_size=model_info["batch_size"], 
+		batch_size=args.batch_size, 
 		num_workers=args.num_workers,
 		pin_memory=True, # when using CUDA
 		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
@@ -158,11 +127,11 @@ def main():
 	print(f"num_samples[Total]: {len(val_data_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
 	get_info(dataloader=val_data_loader)
 	model = CLIP(
-		emb_dim=model_info["embedding_size"],
+		emb_dim=args.embedding_size,
 		vit_layers=vit_layers,
 		vit_d_model=vit_d_model,
-		img_size=(model_info["image_size"], model_info["image_size"]),
-		patch_size=(model_info["patch_size"], model_info["patch_size"]),
+		img_size=(args.image_size, args.image_size),
+		patch_size=(args.patch_size, args.patch_size),
 		n_channels=n_channels,
 		vit_heads=vit_heads,
 		vocab_size=vocab_size,
@@ -177,8 +146,8 @@ def main():
 	evaluate(
 		model=model,
 		val_loader=val_data_loader,
-		img_lbls_dict=img_lbls_dict,
-		model_fpth=os.path.join(args.model_dir, "model.pt"),
+		img_lbls_dict=LABELs_dict,
+		model_fpth=args.model_path,
 		device=args.device,
 	)
 
