@@ -14,10 +14,10 @@ from dataset_loader import HistoricalDataset
 # $ python train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 --device "cuda:2" -nep 1 -bs 128
 
 # With Europeana as validation set:
-# $ nohup python -u train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -vddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -nep 30 --device "cuda:1" -lr 1e-3 -wd 5e-2 -ps 5 -is 160 -bs 64 > /media/volume/trash/ImACCESS/historyCLIP_train_NA_val_EUROPEANA_cuda1.out &
+# $ nohup python -u train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -vddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -nep 13 --device "cuda:2" -lr 5e-4 -wd 5e-2 -ps 5 -is 160 -bs 64 > /media/volume/trash/ImACCESS/historyCLIP_train_NA_val_EUROPEANA_cuda2.out &
 
 # with splited dataset of NA:
-# $ nohup python -u train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -nep 30 --device "cuda:3" -lr 1e-4 -wd 5e-2 -ps 5 -is 180 -bs 64 -nw 40 > /media/volume/trash/ImACCESS/historyCLIP_train_NA_val_NA_cuda3.out &
+# $ nohup python -u train.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -nep 40 --device "cuda:1" -lr 1e-4 -wd 5e-2 -ps 5 -is 160 -bs 64 -nw 40 > /media/volume/trash/ImACCESS/historyCLIP_train_NA_val_NA_cuda1.out &
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
