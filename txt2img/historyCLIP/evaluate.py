@@ -97,7 +97,7 @@ def main():
 	)
 
 	# val_metadata_df_fpth:str = os.path.join(args.validation_dataset_dir, "metadata_validation_df.gz")
-	val_metadata_df_fpth:str = natsorted( glob.glob( args.validation_dataset_dir+'/'+'*_val_df.gz' ) ) 
+	val_metadata_df_fpth:str = natsorted( glob.glob( args.validation_dataset_dir+'/'+'*_val_df.gz' ) )[0]
 
 
 
