@@ -300,7 +300,26 @@ def main():
 		doc_desc="label", 
 		seed=True,
 	)
-	# return
+
+	LABELs_dict_fpth:str = os.path.join(args.dataset_dir, "LABELs_dict.gz")
+	LABELs_list_fpth:str = os.path.join(args.dataset_dir, "LABELs_list.gz")
+	try:
+		LABELs_dict = load_pickle(fpath=LABELs_dict_fpth)
+		LABELs_list = load_pickle(fpath=LABELs_list_fpth)
+	except Exception as e:
+		print(f"{e}")
+		LABELs_dict, LABELs_list = get_doc_description(df=train_metadata_df, col='label') # must be "label", regardless of captions
+		save_pickle(pkl=LABELs_dict, fname=LABELs_dict_fpth)
+		save_pickle(pkl=LABELs_list, fname=LABELs_list_fpth)
+
+	print(
+		f"LABELs_dict {type(LABELs_dict)} {len(LABELs_dict)} "
+		f"LABELs_list {type(LABELs_list)} {len(LABELs_list)}"
+	)
+
+
+	return
+	
 	print(f"Creating Train Dataloader for {len(train_metadata_df)} samples", end="\t")
 	tdl_st = time.time()
 	train_dataset = HistoricalDataset(

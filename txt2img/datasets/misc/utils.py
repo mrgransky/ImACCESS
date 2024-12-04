@@ -397,14 +397,18 @@ def check_url_status(url: str, TIMEOUT:int=50) -> bool:
 def save_pickle(pkl, fname:str=""):
 	print(f"\nSaving {type(pkl)}\n{fname}")
 	st_t = time.time()
-	if isinstance(pkl, ( pd.DataFrame, pd.Series ) ):
+	if isinstance(pkl, dict):
+		with open(fname, mode="w") as f:
+			json.dump(pkl, f, indent=4)
+	elif isinstance(pkl, ( pd.DataFrame, pd.Series ) ):
 		pkl.to_pickle(path=fname)
 	else:
 		# with open(fname , mode="wb") as f:
 		with gzip.open(fname , mode="wb") as f:
 			dill.dump(pkl, f)
 	elpt = time.time()-st_t
-	fsize_dump = os.stat( fname ).st_size / 1e6
+	# fsize_dump = os.stat( fname ).st_size / 1e6
+	fsize_dump = os.path.getsize(fname) / 1e6
 	print(f"Elapsed_t: {elpt:.3f} s | {fsize_dump:.2f} MB".center(120, " "))
 
 # def load_pickle(fpath:str="unknown",):
@@ -425,9 +429,50 @@ def save_pickle(pkl, fname:str=""):
 # 	print(f"Loaded in: {elpt:.3f} s | {type(pkl)} | {fsize:.3f} MB".center(130, " "))
 # 	return pkl
 
+# def load_pickle(fpath: str) -> object:
+# 		"""
+# 		Load a pickle file using gzip and dill.
+
+# 		Args:
+# 				fpath (str): Path to the pickle file.
+
+# 		Returns:
+# 				object: The loaded pickle object.
+
+# 		Raises:
+# 				FileNotFoundError: If the file does not exist.
+# 				Exception: If an error occurs during loading.
+# 		"""
+# 		logging.info(f"Loading pickle file from {fpath}")
+
+# 		if not os.path.exists(fpath):
+# 			raise FileNotFoundError(f"File not found: {fpath}")
+
+# 		start_time = time.time()
+# 		try:
+# 				with gzip.open(fpath, mode='rb') as f:
+# 						pickle_obj = dill.load(f)
+# 		except gzip.BadGzipFile as e:
+# 				logging.warning(f"Error reading gzip file: {e}")
+# 				with open(fpath, mode='rb') as f:
+# 						pickle_obj = dill.load(f)
+# 		except Exception as e:
+# 				logging.error(f"Error loading pickle file: {e}")
+# 				try:
+# 						pickle_obj = pd.read_pickle(fpath)
+# 				except Exception as e:
+# 						logging.error(f"Error loading pickle file using pandas: {e}")
+# 						raise
+
+# 		elapsed_time = time.time() - start_time
+# 		file_size_mb = os.stat(fpath).st_size / 1e6
+# 		logging.info(f"Loaded in: {elapsed_time:.3f} s | {type(pickle_obj)} | {file_size_mb:.3f} MB")
+
+# 		return pickle_obj
+
 def load_pickle(fpath: str) -> object:
 		"""
-		Load a pickle file using gzip and dill.
+		Load a pickle file, including JSON dictionaries.
 
 		Args:
 				fpath (str): Path to the pickle file.
@@ -442,27 +487,33 @@ def load_pickle(fpath: str) -> object:
 		logging.info(f"Loading pickle file from {fpath}")
 
 		if not os.path.exists(fpath):
-			raise FileNotFoundError(f"File not found: {fpath}")
-			# return
+				raise FileNotFoundError(f"File not found: {fpath}")
 
 		start_time = time.time()
 		try:
-				with gzip.open(fpath, mode='rb') as f:
-						pickle_obj = dill.load(f)
-		except gzip.BadGzipFile as e:
-				logging.warning(f"Error reading gzip file: {e}")
-				with open(fpath, mode='rb') as f:
-						pickle_obj = dill.load(f)
+				with open(fpath, mode='r') as f:
+						pickle_obj = json.load(f)
+		except json.JSONDecodeError:
+				try:
+						with gzip.open(fpath, mode='rb') as f:
+								pickle_obj = dill.load(f)
+				except gzip.BadGzipFile as e:
+						logging.warning(f"Error reading gzip file: {e}")
+						with open(fpath, mode='rb') as f:
+								pickle_obj = dill.load(f)
+				except Exception as e:
+						logging.error(f"Error loading pickle file: {e}")
+						try:
+								pickle_obj = pd.read_pickle(fpath)
+						except Exception as e:
+								logging.error(f"Error loading pickle file using pandas: {e}")
+								raise
 		except Exception as e:
 				logging.error(f"Error loading pickle file: {e}")
-				try:
-						pickle_obj = pd.read_pickle(fpath)
-				except Exception as e:
-						logging.error(f"Error loading pickle file using pandas: {e}")
-						raise
+				raise
 
 		elapsed_time = time.time() - start_time
-		file_size_mb = os.stat(fpath).st_size / 1e6
+		file_size_mb = os.path.getsize(fpath) / 1e6
 		logging.info(f"Loaded in: {elapsed_time:.3f} s | {type(pickle_obj)} | {file_size_mb:.3f} MB")
 
 		return pickle_obj

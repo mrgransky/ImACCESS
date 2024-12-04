@@ -304,33 +304,47 @@ def visualize_samples(dataloader, num_samples=5):
 def save_pickle(pkl, fname:str=""):
 	print(f"\nSaving {type(pkl)}\n{fname}")
 	st_t = time.time()
-	if isinstance(pkl, ( pd.DataFrame, pd.Series ) ):
+	if isinstance(pkl, dict):
+		with open(fname, mode="w") as f:
+			json.dump(pkl, f, indent=4)
+	elif isinstance(pkl, ( pd.DataFrame, pd.Series ) ):
 		pkl.to_pickle(path=fname)
 	else:
 		# with open(fname , mode="wb") as f:
 		with gzip.open(fname , mode="wb") as f:
 			dill.dump(pkl, f)
 	elpt = time.time()-st_t
-	fsize_dump = os.stat( fname ).st_size / 1e6
+	fsize_dump = os.path.getsize(fname) / 1e6
 	print(f"Elapsed_t: {elpt:.3f} s | {fsize_dump:.2f} MB".center(120, " "))
 
-def load_pickle(fpath:str="unknown",):
-	print(f"Checking for existence? {fpath}")
-	st_t = time.time()
+def load_pickle(fpath: str) -> object:
+	print(f"Loading {fpath}")
+	if not os.path.exists(fpath):
+		raise FileNotFoundError(f"File not found: {fpath}")
+	start_time = time.time()
 	try:
-		with gzip.open(fpath, mode='rb') as f:
-			pkl=dill.load(f)
-	except gzip.BadGzipFile as ee:
-		print(f"<!> {ee} gzip.open() NOT functional => traditional openning...")
-		with open(fpath, mode='rb') as f:
-			pkl=dill.load(f)
-	except Exception as e:
-		print(f"<<!>> {e} pandas read_pkl...")
-		pkl = pd.read_pickle(fpath)
-	elpt = time.time()-st_t
-	fsize = os.stat( fpath ).st_size / 1e6
-	print(f"Loaded in: {elpt:.5f} s | {type(pkl)} | {fsize:.3f} MB".center(130, " "))
-	return pkl
+		with open(fpath, mode='r') as f:
+			pickle_obj = json.load(f)
+	except Exception as exerror:
+		# print(f"not a JSON file: {exerror}")
+		try:
+			with gzip.open(fpath, mode='rb') as f:
+				pickle_obj = dill.load(f)
+		except gzip.BadGzipFile as ee:
+			print(f"Error BadGzipFile: {ee}")
+			with open(fpath, mode='rb') as f:
+				pickle_obj = dill.load(f)
+		except Exception as eee:
+			print(f"Error dill: {eee}")
+			try:
+				pickle_obj = pd.read_pickle(fpath)
+			except Exception as err:
+				print(f"Error pandas pkl: {err}")
+				raise
+	elapsed_time = time.time() - start_time
+	file_size_mb = os.path.getsize(fpath) / 1e6
+	print(f"Elapsed_t: {elapsed_time:.3f} s | {type(pickle_obj)} | {file_size_mb:.3f} MB".center(150, " "))
+	return pickle_obj
 
 def get_dframe(fpth: str="path/2/file.csv", img_dir: str="path/2/images"):
 	print(f"Creating History_df from: {fpth}", end="\t")
@@ -540,11 +554,11 @@ def get_info(dataloader):
 		# 	print(f'image_filepath: {len(data["image_filepath"])} {data["image_filepath"][:5]} {type(data["image_filepath"])}')
 		# 	break  # Exit after printing the first batch
 
-def get_doc_description(df, col:str="colmun_name"):
-	class_names = list(df[col].unique())
-	captions = {idx: class_name for idx, class_name in enumerate(class_names)}
-	# print(f"{len(list(captions.keys()))} Captions:\n{json.dumps(captions, indent=2, ensure_ascii=False)}")
-	return captions, class_names
+def get_doc_description(df, col:str="label"):
+	unique_labels_list = list(df[col].unique())
+	unique_labels_dict = {idx: lbl for idx, lbl in enumerate(unique_labels_list)}
+	print(f"{len(list(unique_labels_dict.keys()))} unique_labels_dict:\n{json.dumps(unique_labels_dict, indent=2, ensure_ascii=False)}")
+	return unique_labels_dict, unique_labels_list
 
 def get_mean_std_grayscale_img(dir: str="path/2/images"):
 	print(f"Calculating Mean-Std for {len(os.listdir(dir))} Grayscale images (sequential approach => slow)")
