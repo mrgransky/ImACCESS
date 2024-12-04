@@ -558,7 +558,7 @@ def get_info(dataloader):
 
 def get_doc_description(df, col:str="label"):
 	unique_labels_list = list(df[col].unique())
-	unique_labels_dict = {idx: lbl for idx, lbl in enumerate(unique_labels_list)}
+	unique_labels_dict = {int(idx): lbl for idx, lbl in enumerate(unique_labels_list)}
 	print(f"{len(list(unique_labels_dict.keys()))} unique_labels_dict:\n{json.dumps(unique_labels_dict, indent=2, ensure_ascii=False)}")
 	return unique_labels_dict, unique_labels_list
 
