@@ -9,7 +9,7 @@ import glob
 # $ python evaluate.py -mpth /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31/models/model_augmentation_False_ep_30_train_58361_val_25013_batch_64_img_160_patch_5_emb_1024_cuda3_AdamW_lr_0.001_wd_0.05_OneCycleLR/model.pt -vddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -ps 5 -is 160 -bs 64
 
 # with splited dataset of NA:
-# $ python evaluate.py -mpth /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31/models/model_augmentation_False_ep_30_train_58361_val_25013_batch_64_img_160_patch_5_emb_1024_cuda3_AdamW_lr_0.001_wd_0.05_OneCycleLR/model.pt -vddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -ps 5 -is 160 -bs 64
+# $ nohup python -u evaluate.py -mpth /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31/models/model_augmentation_False_ep_30_train_58361_val_25013_batch_64_img_160_patch_5_emb_1024_cuda3_AdamW_lr_0.001_wd_0.05_OneCycleLR/model.pt -vddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -ps 5 -is 160 -bs 64 > /media/volume/trash/ImACCESS/evak.out &
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--model_path', '-mpth', type=str, required=True, help='CLIP model path')
@@ -59,7 +59,9 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 			similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1) # (batch_size, num_captions)
 			# print(type(similarity), similarity.shape, similarity)
 			# Compare Predictions with Ground Truth:
-			_, predicted_label_idx = torch.max(input=similarity, dim=1) 
+			_, predicted_label_idx = torch.max(input=similarity, dim=1)
+			print(type(predicted_label_idx), predicted_label_idx)
+			print("#"*180)
 			predicted_label = torch.stack(
 				[
 					tokenizer(
@@ -99,6 +101,7 @@ def main():
 		f"LABELs_dict {type(LABELs_dict)} {len(LABELs_dict)} "
 		f"LABELs_list {type(LABELs_list)} {len(LABELs_list)}"
 	)
+	print(f"{json.dumps(LABELs_dict, indent=2, ensure_ascii=False)}")
 	val_metadata_df_fpth:str = natsorted( glob.glob( args.validation_dataset_dir+'/'+'*_val_df.gz' ) )[0]
 	try:
 		val_metadata_df = load_pickle(fpath=val_metadata_df_fpth)
