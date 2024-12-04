@@ -7,8 +7,8 @@ from misc.utils import *
 
 parser = argparse.ArgumentParser(description="SA-kuva-arkisto")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
-parser.add_argument('--start_date', type=str, default="1933-01-01", help='Start Date')
-parser.add_argument('--end_date', type=str, default="1933-01-02", help='End Date')
+parser.add_argument('--start_date', type=str, default="1939-09-01", help='Start Date')
+parser.add_argument('--end_date', type=str, default="1945-09-02", help='End Date')
 parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs')
 parser.add_argument('--img_mean_std', type=bool, default=False, help='Image mean & std')
 
@@ -113,18 +113,23 @@ def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", label: str="
 			)
 			if response.status_code == 200:
 				data = response.json()
-				hits = data.get('records')
-				# print(len(hits), type(hits))
-				# print(hits[0].keys())
-				# print(json.dumps(hits[0], indent=2, ensure_ascii=False))
-				label_all_hits.extend(hits)
-				total_hits = data.get('resultCount')
-				print(f"Page: {page}:\tFound: {len(hits)} {type(hits)}\t{len(label_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
-				if len(label_all_hits) >= total_hits:
+				if "records" in data:
+					hits = data.get('records')
+					# print(hits)
+					# print(len(hits), type(hits))
+					# print(hits[0].keys())
+					# print(json.dumps(hits[0], indent=2, ensure_ascii=False))
+					label_all_hits.extend(hits)
+					total_hits = data.get('resultCount')
+					print(f"Page: {page}:\tFound: {len(hits)} {type(hits)}\t{len(label_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
+					if len(label_all_hits) >= total_hits:
+						break
+					page += 1
+				else:
+					print(f"no hits found, out!")
 					break
-				page += 1
 			else:
-				print("Failed to retrieve data")
+				print(f"Failed to retrieve data: status_code: {response.status_code}")
 				break
 		if len(label_all_hits) == 0:
 			return
@@ -149,8 +154,8 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 		doc_title = doc.get("title") #clean_(text=record.get('title'), sw=STOPWORDS)
 		doc_description = None
 		sa_kuva_identifier = doc.get("id")
-		pDate = doc.get("year")
-		img_url = f"https://finna.fi/Cover/Show?source=Solr&id={sa_kuva_identifier}"
+		doc_year = doc.get("year")
+		img_url = f"https://www.finna.fi/Cover/Show?source=Solr&id={sa_kuva_identifier}"
 		if (
 			img_url 
 		):
@@ -165,7 +170,7 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 			'description': doc_description,
 			'img_url': img_url,
 			'label_title_description': label + " " + (doc_title or '') + " " + (doc_description or ''),
-			'date': pDate,
+			'doc_date': doc_year,
 			'doc_url': f"https://www.finna.fi/Record/{sa_kuva_identifier}",
 		}
 		data.append(row)
@@ -173,60 +178,11 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
 	return df
 
-def download_image(row, session, image_dir, total_rows, retries=5, backoff_factor=0.5):
-	t0 = time.time()
-	rIdx = row.name
-	url = row['img_url']
-	img_num_id = int(re.search(r'\d+', row['id']).group())
-	# image_name = f"{str(row['id'])}.jpg" # sa-kuva.sa-kuva-82080
-	image_name = f"{img_num_id}.jpg" # 82080.jpg
-	image_path = os.path.join(image_dir, image_name)
-	if os.path.exists(image_path):
-		return True # Image already exists, => skipping
-	attempt = 0  # Retry mechanism
-	while attempt < retries:
-		try:
-			response = session.get(url, timeout=20)
-			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
-			with open(image_path, 'wb') as f: # Save the image to the directory
-				f.write(response.content)
-			print(f"{rIdx:<7}/ {total_rows:<15}{image_name:<40}{time.time() - t0:.1f} s")
-			return True  # Image downloaded successfully
-		except (RequestException, IOError) as e:
-			attempt += 1
-			print(f"[{rIdx}/{total_rows}] Downloading {image_name} failed! {e}, retrying ({attempt}/{retries})...")
-			time.sleep(backoff_factor * (2 ** attempt))  # Exponential backoff
-	print(f"[{rIdx}/{total_rows}] Failed to download {image_name} after {retries} attempts.")
-	return False  # Indicate failed download
-
-def get_synchronized_df_img(df, nw: int=8):
-	print(f"Synchronizing merged_df(raw) & images of {df.shape[0]} records using {nw} CPUs...")
-	successful_rows = []  # List to keep track of successful downloads
-	with requests.Session() as session:
-		with ThreadPoolExecutor(max_workers=nw) as executor:
-			futures = {executor.submit(download_image, row, session, IMAGE_DIR, df.shape[0]): idx for idx, row in df.iterrows()}
-			for future in as_completed(futures):
-				try:
-					success = future.result()  # Get the result (True or False) from download_image
-					if success:
-						successful_rows.append(futures[future])  # Keep track of successfully downloaded rows
-				except Exception as e:
-					print(f"Unexpected error: {e}")
-	print(f"cleaning {type(df)} {df.shape} with {len(successful_rows)} succeded downloaded images [functional URL]...")
-	df_cleaned = df.loc[successful_rows] # keep only the successfully downloaded rows
-	print(f"Total images downloaded successfully: {len(successful_rows)} out of {df.shape[0]}")
-	print(f"df_cleaned: {df_cleaned.shape}")
-
-	img_dir_size = sum(os.path.getsize(f) for f in os.listdir(IMAGE_DIR) if os.path.isfile(f))# * 1e-9 # GB
-	# img_dir_size = sum(os.path.getsize(f) for f in os.listdir(IMAGE_DIR))# * 1e-9 # GB
-	print(f"{IMAGE_DIR} contains {len(os.listdir(IMAGE_DIR))} file(s) with total size: {img_dir_size} GB")
-
-	return df_cleaned
-
 def main():
 	with open(os.path.join(parent_dir, 'misc', 'query_labels_FI.txt'), 'r') as file_:
 		all_label_tags = [line.strip().lower() for line in file_]
 	print(type(all_label_tags), len(all_label_tags))
+	all_label_tags = all_label_tags[:136]
 	print(f"{len(all_label_tags)} lables are being processed for user: {USER}, please be paitient...")
 	dfs = []
 	for qi, qv in enumerate(all_label_tags):
@@ -257,7 +213,7 @@ def main():
 
 	print(f"Concatinating {len(dfs)} dfs...")
 	# print(dfs[0])
-	na_df_merged_raw = pd.concat(dfs, ignore_index=True)
+	sa_kuva_df_merged_raw = pd.concat(dfs, ignore_index=True)
 
 	json_file_path = os.path.join(parent_dir, 'misc', 'generalized_labels.json')
 
@@ -267,23 +223,23 @@ def main():
 	else:
 		print(f"Error: {json_file_path} does not exist.")
 
-	print(f"pre-processing merged {type(na_df_merged_raw)} {na_df_merged_raw.shape}")
-	na_df_merged_raw['label'] = na_df_merged_raw['label'].replace(replacement_dict)
-	na_df_merged_raw = na_df_merged_raw.dropna(subset=['img_url']) # drop None img_url
-	na_df_merged_raw = na_df_merged_raw.drop_duplicates(subset=['img_url'], keep="first", ignore_index=True) # drop duplicate img_url
+	print(f"pre-processing merged {type(sa_kuva_df_merged_raw)} {sa_kuva_df_merged_raw.shape}")
+	# sa_kuva_df_merged_raw['label'] = sa_kuva_df_merged_raw['label'].replace(replacement_dict) # TODO: Finnish adjustment required!
+	sa_kuva_df_merged_raw = sa_kuva_df_merged_raw.dropna(subset=['img_url']) # drop None img_url
+	sa_kuva_df_merged_raw = sa_kuva_df_merged_raw.drop_duplicates(subset=['img_url'], keep="first", ignore_index=True) # drop duplicate img_url
 
-	print(f"Processed na_df_merged_raw: {na_df_merged_raw.shape}")
-	print(na_df_merged_raw.head(20))
+	print(f"Processed sa_kuva_df_merged_raw: {sa_kuva_df_merged_raw.shape}")
+	print(sa_kuva_df_merged_raw.head(20))
 
-	na_df_merged_raw.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
+	sa_kuva_df_merged_raw.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
 	try:
-		na_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
+		sa_kuva_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	na_df = get_synchronized_df_img(df=na_df_merged_raw, nw=args.num_workers)
+	sa_kuva_df = get_synchronized_df_img(df=sa_kuva_df_merged_raw, image_dir=IMAGE_DIR, nw=args.num_workers)
 
-	label_counts = na_df['label'].value_counts()
+	label_counts = sa_kuva_df['label'].value_counts()
 	print(label_counts.tail(25))
 
 	plt.figure(figsize=(20, 13))
@@ -294,11 +250,22 @@ def main():
 	plt.tight_layout()
 	plt.savefig(os.path.join(OUTPUTs_DIR, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"))
 
-	na_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
+	sa_kuva_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 	try:
-		na_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
+		sa_kuva_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
+
+	yr_distro_fpth = os.path.join(OUTPUTs_DIR, f"year_distribution_{dataset_name}_{START_DATE}_{END_DATE}_nIMGs_{sa_kuva_df.shape[0]}.png")
+	plot_year_distribution(
+		df=sa_kuva_df,
+		start_date=START_DATE,
+		end_date=END_DATE,
+		dname=dataset_name,
+		fpth=yr_distro_fpth,
+		BINs=50,
+	)
+	
 
 	if args.img_mean_std:
 		try:

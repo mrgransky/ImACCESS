@@ -27,7 +27,7 @@ parser.add_argument('--batch_size', '-bs', type=int, default=27, help='Batch Siz
 parser.add_argument('--image_size', '-is', type=int, default=150, help='Image size [def: max 160 local]')
 parser.add_argument('--patch_size', '-ps', type=int, default=5, help='Patch size')
 parser.add_argument('--embedding_size', '-es',type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
-parser.add_argument('--print_every', type=int, default=150, help='Print loss')
+parser.add_argument('--print_every', type=int, default=200, help='Print loss')
 parser.add_argument('--num_epochs', '-nep', type=int, default=10, help='Number of epochs')
 parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs [def: max cpus]')
 parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-3]')
@@ -74,7 +74,7 @@ def train(model, train_data_loader, val_data_loader, optimizer, scheduler, check
 	os.makedirs(os.path.join(args.dataset_dir, model_dir, "checkpoints"), exist_ok=True)
 	checkpoint_dir = os.path.join(args.dataset_dir, model_dir, "checkpoints")
 	
-	print(f"Training CLIP model {args.num_epochs} Epoch(s) Device: {args.device} & {args.num_workers} CPU(s)".center(150, "-"))
+	print(f"Training CLIP model {args.num_epochs} Epoch(s) device: {args.device} & {args.num_workers} CPU(s)".center(150, "-"))
 	if torch.cuda.is_available():
 		print(f"GPU: {torch.cuda.get_device_name(args.device)}".center(150, " "))
 	log_gpu_memory(device=args.device)
@@ -422,28 +422,28 @@ def main():
 		model_dir=model_fpth,
 	)
 
-	# Construct the command as a list of arguments
-	command = [
-		'python', 'topk_image_retrieval.py',
-		'--query', args.query,
-		'--processed_image_path', os.path.join(outputs_dir, f"Top{args.topk}_Q_{re.sub(' ', '-', args.query)}_{args.num_epochs}_epochs.png"),
-		'--topk', str(args.topk),
-		'--dataset_dir', args.dataset_dir,
-		'--image_size', str(args.image_size),
-		'--patch_size', str(args.patch_size),
-		'--batch_size', str(args.batch_size),
-		'--embedding_size', str(args.embedding_size),
-		'--num_epochs', str(args.num_epochs),
-		'--num_workers', str(args.num_workers),
-		'--validation_dataset_share', str(args.validation_dataset_share),
-		'--learning_rate', str(args.learning_rate),
-		'--weight_decay', str(args.weight_decay),
-		'--document_description_col', args.document_description_col,
-	]
-	# print("Running command:", ' '.join(command))
-	result = subprocess.run(command, capture_output=True, text=True)
-	print(f"Output:\n{result.stdout}")
-	print(f"Error:\nresult.stderr")
+	# # Construct the command as a list of arguments
+	# command = [
+	# 	'python', 'topk_image_retrieval.py',
+	# 	'--query', args.query,
+	# 	'--processed_image_path', os.path.join(outputs_dir, f"Top{args.topk}_Q_{re.sub(' ', '-', args.query)}_{args.num_epochs}_epochs.png"),
+	# 	'--topk', str(args.topk),
+	# 	'--dataset_dir', args.dataset_dir,
+	# 	'--image_size', str(args.image_size),
+	# 	'--patch_size', str(args.patch_size),
+	# 	'--batch_size', str(args.batch_size),
+	# 	'--embedding_size', str(args.embedding_size),
+	# 	'--num_epochs', str(args.num_epochs),
+	# 	'--num_workers', str(args.num_workers),
+	# 	'--validation_dataset_share', str(validation_dataset_share),
+	# 	'--learning_rate', str(args.learning_rate),
+	# 	'--weight_decay', str(args.weight_decay),
+	# 	'--document_description_col', args.document_description_col,
+	# ]
+	# # print("Running command:", ' '.join(command))
+	# result = subprocess.run(command, capture_output=True, text=True)
+	# print(f"Output:\n{result.stdout}")
+	# print(f"Error:\nresult.stderr")
 
 if __name__ == "__main__":
 	main()

@@ -8,7 +8,6 @@ from dataset_loader import HistoricalDataset
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--model_dir', type=str, required=True, help='Directory containing the model')
 parser.add_argument('--num_workers', type=int, default=multiprocessing.cpu_count(), help='Number of CPUs [def: max cpus]')
-parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 
 # args = parser.parse_args()
@@ -112,17 +111,17 @@ def main():
 	print(f"IMAGE Mean: {img_rgb_mean} | Std: {img_rgb_std}")
 	
 	img_lbls_dict_fpth:str = os.path.join(DATASET_DIR, "image_labels_dict.gz")
-	img_lbls_list_fpth:str = os.path.join(DATASET_DIR, "image_labels_list.gz")
+	# img_lbls_list_fpth:str = os.path.join(DATASET_DIR, "image_labels_list.gz")
 	try:
 		img_lbls_dict = load_pickle(fpath=img_lbls_dict_fpth)
-		img_lbls_list = load_pickle(fpath=img_lbls_list_fpth)
+		# img_lbls_list = load_pickle(fpath=img_lbls_list_fpth)
 	except Exception as e:
 		print(f"{e}")
 		return
 
 	print(
 		f"img_lbls_dict {type(img_lbls_dict)} {len(img_lbls_dict)} "
-		f"img_lbls_list {type(img_lbls_list)} {len(img_lbls_list)}"
+		# f"img_lbls_list {type(img_lbls_list)} {len(img_lbls_list)}"
 	)
 
 	val_metadata_df_fpth:str = os.path.join(DATASET_DIR, "val_metadata_df.gz")
