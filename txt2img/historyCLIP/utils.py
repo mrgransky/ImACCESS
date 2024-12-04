@@ -537,6 +537,13 @@ def get_doc_description(df, col:str="label"):
 	unique_labels_dict = {idx: lbl for idx, lbl in enumerate(unique_labels_list)} # in dictionary comprehension, keys are automatically converted to strings
 	unique_labels_dict = {int(key): value for key, value in unique_labels_dict.items()} # Convert keys back to integers
 	print(f"{len(list(unique_labels_dict.keys()))} unique_labels_dict:\n{json.dumps(unique_labels_dict, indent=2, ensure_ascii=False)}")
+	# Get the type of keys
+	key_type = type(next(iter(unique_labels_dict.keys())))
+	print(f"Type of keys: {key_type}")
+	# Get the type of values
+	value_type = type(next(iter(unique_labels_dict.values())))
+	print(f"Type of values: {value_type}")
+
 	return unique_labels_dict, unique_labels_list
 
 def get_mean_std_grayscale_img(dir: str="path/2/images"):
