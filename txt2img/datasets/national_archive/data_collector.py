@@ -21,9 +21,10 @@ print(args)
 
 ########################## --start_date 1933-01-01 --end_date 1933-01-02 ##########################
 # $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 8 --img_mean_std > logs/na_image_download.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 8 --img_mean_std > logs/na_image_download.out &
 
 ########################## --start_date 1914-01-01 --end_date 1946-12-31 ##########################
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1914-01-01 --end_date 1946-12-31 --num_workers 2 --img_mean_std > logs/na_image_download.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1914-01-01 --end_date 1946-12-31 --num_workers 20 > logs/na_image_download.out &
 
 ##################################################################################################################
 # run in Pouta:
@@ -299,7 +300,10 @@ def main():
 		with open(json_file_path, 'r') as file_:
 			replacement_dict = json.load(file_)
 	else:
-		print(f"Error: {json_file_path} does not exist.")
+		print(f"{json_file_path} not found! Using empty replacement dictionary")
+		replacement_dict = {}
+	unq_labels = set(replacement_dict.values())
+	print(f">> {len(unq_labels)} Unique Label(s):\n{unq_labels}")
 
 	print(f"pre-processing merged {type(na_df_merged_raw)} {na_df_merged_raw.shape}")
 	na_df_merged_raw['label'] = na_df_merged_raw['label'].replace(replacement_dict)

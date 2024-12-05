@@ -376,7 +376,7 @@ def main():
 	print(f"num_samples[Total]: {len(val_data_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
 	get_info(dataloader=val_data_loader)
 
-	print(f"Defining CLIP model...")
+	# print(f"Defining CLIP model...")
 	model = CLIP(
 		emb_dim=args.embedding_size,
 		vit_layers=vit_layers,
@@ -394,7 +394,7 @@ def main():
 		retrieval=False,
 	).to(args.device)
 
-	print(f"Defining Optimizer...")
+	# print(f"Defining Optimizer...")
 	optimizer = optim.AdamW(
 		params=model.parameters(),
 		betas=(0.9, 0.98), # Based on original CLIP paper
@@ -403,7 +403,7 @@ def main():
 		weight_decay=args.weight_decay, # weight decay (L2 regularization)
 	)
 
-	print(f"Defining Scheduler...")
+	# print(f"Defining Scheduler...")
 	scheduler = torch.optim.lr_scheduler.OneCycleLR(
 		optimizer=optimizer, 
 		max_lr=args.learning_rate, 
@@ -431,7 +431,7 @@ def main():
 		+ f"_{scheduler.__class__.__name__}"
 		# + f"_{get_args(scheduler)}"
 	)
-	print(len(model_fname), model_fname)
+	# print(len(model_fname), model_fname)
 	os.makedirs(os.path.join(args.dataset_dir, models_dir, model_fname),exist_ok=True)
 	model_fpth = os.path.join(args.dataset_dir, models_dir, model_fname)
 

@@ -58,7 +58,7 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 	correct, total = 0,0
 	with torch.no_grad():
 		for data in val_loader:
-			images, labels = data["image"].to(device), data["caption"].to(device)
+			images, gt_lbls = data["image"].to(device), data["caption"].to(device)
 			
 			image_features = model.vision_encoder(images)
 			text_features = model.text_encoder(text, mask=mask)
@@ -67,17 +67,9 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 			text_features /= text_features.norm(dim=-1, keepdim=True)
 
 			similarity = (100.0 * image_features @ text_features.T).softmax(dim=-1) # (batch_size, num_captions)
-			# print(type(similarity), similarity.shape, similarity)
+
 			# Compare Predictions with Ground Truth:
 			_, predicted_label_idx = torch.max(input=similarity, dim=1)
-			# print(type(predicted_label_idx), predicted_label_idx.shape, predicted_label_idx)
-			# print("#"*180)
-			# print(img_lbls_dict)
-			# key_type = type(next(iter(img_lbls_dict.keys())))
-			# value_type = type(next(iter(img_lbls_dict.values())))
-			# print(f"keys: {key_type} | values: {value_type}")
-			# # print(f"{json.dumps(img_lbls_dict, indent=2, ensure_ascii=False)}")
-			# print("#"*200)
 			predicted_label = torch.stack(
 				[
 					tokenizer(
@@ -87,12 +79,12 @@ def evaluate(model, val_loader, img_lbls_dict, model_fpth: str=f"path/to/models/
 					)[0]
 					for i in predicted_label_idx
 				]
-			).to(device) # <class 'torch.Tensor'> torch.Size([32, 256])
-			# print(type(predicted_label), predicted_label.shape, )
-			correct += int(sum(torch.sum((predicted_label==labels),dim=1)//len(predicted_label[0])))
-			total += len(labels)
+			).to(device) # <class 'torch.Tensor'> torch.Size([batch_size, 256])
+			correct += int(sum(torch.sum((predicted_label==gt_lbls),dim=1)//len(predicted_label[0])))
+			total += len(gt_lbls)
 	acc = correct / total
-	print(f'Model Accuracy (Top-1 label): {acc:.3f} ({100 * correct // total} %) Elapsed_t: {time.time()-validate_start_time:.1f} sec'.center(160, "-"))
+	acc_pct = 100 * acc
+	print(f'Model Accuracy (Top-1 label): {acc:.3f} ({acc_pct:.2f} %) Elapsed_t: {time.time()-validate_start_time:.1f} sec'.center(160, "-"))
 
 def main():
 	img_rgb_mean_fpth:str = os.path.join(args.validation_dataset_dir, "img_rgb_mean.gz")
