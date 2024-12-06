@@ -43,7 +43,7 @@ txt2img/mscoco-it
 txt2img/fashionCLIP/outputs
 txt2img/historyCLIP/*.png
 txt2img/fashionCLIP/myntradataset
-txt2img/fashion_clip/HandM
+txt2img/fashion_clip/HandM*
 develop-eggs/
 dist/
 downloads/
