@@ -36,10 +36,10 @@ qu="aircraft"
 python -u train.py \
 	--dataset_dir $ddir \
 	--validation_dataset_dir $vddir \
-	--num_epochs 15 \
+	--num_epochs 10 \
 	--num_workers 30 \
 	--print_every 500 \
-	--batch_size 128 \
+	--batch_size 146 \
 	--patch_size 5 \
 	--learning_rate 1e-4 \
 	--weight_decay 5e-2 \
