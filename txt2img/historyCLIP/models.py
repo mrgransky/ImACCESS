@@ -208,9 +208,6 @@ class CLIP(nn.Module):
 	def forward(self, image, text, mask=None):
 		V_e = self.vision_encoder(image) # shape: [B, emb_dim]
 		T_e = self.text_encoder(text, mask=mask) # shape: [B, emb_dim]
-		# print(type(V_e), V_e.shape)
-		# print(type(T_e), T_e.shape)
-		# print("#"*100)
 		# scaled pairwise cosine similarities [n, n]
 		logits = (V_e @ T_e.transpose(-2, -1)) * torch.exp(self.temperature)
 		loss = self.CLIPLoss(logits, self.device)

@@ -17,7 +17,7 @@ args, unknown = parser.parse_known_args()
 print(args)
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1900-01-01 --end_date 1970-12-31
-# $ nohup python data_collector.py -u --dataset_dir $PWD --start_date 1900-01-01 --end_date 1970-12-31 > smu_image_download.out &
+# $ nohup python -u data_collector.py -u --dataset_dir $PWD --start_date 1900-01-01 --end_date 1970-12-31 > logs/smu_image_download.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
