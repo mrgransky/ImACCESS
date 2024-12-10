@@ -15,13 +15,10 @@ wgui/media/*jpg
 wgui/media/*png
 wgui/media/*jpeg
 
-
-# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Distribution / packaging
 .Python
 build/
 openpose/models/*/*.caffemodel
@@ -39,9 +36,9 @@ txt2img/datasets/*/WWII*
 txt2img/datasets/*/SA*
 txt2img/*zip
 txt2img/*pt
-txt2img/mscoco-it
 txt2img/fashionCLIP/outputs
-txt2img/historyCLIP/*.png
+txt2img/fashion_clip/*pth
+txt2img/historyCLIP/*png
 txt2img/fashionCLIP/myntradataset
 txt2img/fashion_clip/HandM*
 develop-eggs/

@@ -4,7 +4,7 @@ from dataset_loader import HistoricalDataset
 
 # how to run [Local]:
 # $ python train.py -ddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 -vddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/EUROPEANA_1900-01-01_1970-12-31 -nep 1 -lr 5e-4 -wd 5e-2
-# $ python train.py -ddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/europeana_1890-01-01_1960-01-01 -nep 1
+# $ python train.py -ddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/EUROPEANA_1900-01-01_1970-12-31 -nep 1
 
 # $ nohup python -u train.py -ddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 -nep 12 -lr 5e-4 -wd 2e-2 -ps 5 -is 160 > $PWD/logs/historyCLIP.out &
 
@@ -27,7 +27,7 @@ parser.add_argument('--batch_size', '-bs', type=int, default=27, help='Batch Siz
 parser.add_argument('--image_size', '-is', type=int, default=150, help='Image size [def: max 160 local]')
 parser.add_argument('--patch_size', '-ps', type=int, default=5, help='Patch size')
 parser.add_argument('--embedding_size', '-es',type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
-parser.add_argument('--print_every', type=int, default=200, help='Print loss')
+parser.add_argument('--print_every', type=int, default=250, help='Print loss')
 parser.add_argument('--num_epochs', '-nep', type=int, default=10, help='Number of epochs')
 parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs [def: max cpus]')
 parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-3]')
@@ -147,8 +147,8 @@ def train(model, train_data_loader, val_data_loader, optimizer, scheduler, check
 			lrs.append(scheduler.get_last_lr()[0])
 			steps.append(batch_idx)
 
-			if batch_idx % args.print_every == 0:
-				print(f"\tBatch [{batch_idx + 1}/{len(train_data_loader)}] Loss: {loss.item():.5f}", end="\t")
+			if batch_idx%args.print_every==0 or batch_idx==len(train_data_loader):
+				print(f"\tBatch [{batch_idx+1}/{len(train_data_loader)}] Loss: {loss.item():.5f}", end="\t")
 				log_gpu_memory(device=args.device)
 				
 			epoch_loss += loss.item()
@@ -383,14 +383,12 @@ def main():
 		vit_d_model=vit_d_model,
 		img_size=(args.image_size, args.image_size),
 		patch_size=(args.patch_size, args.patch_size),
-		n_channels=n_channels,
 		vit_heads=vit_heads,
 		vocab_size=vocab_size,
 		max_seq_length=max_seq_length,
 		text_heads=text_heads,
 		text_layers=text_layers,
 		text_d_model=text_d_model,
-		device=args.device,
 		retrieval=False,
 	).to(args.device)
 
@@ -446,7 +444,7 @@ def main():
 	)
 
 	command = [
-		'python', 'evalaute.py',
+		'python', 'evaluate.py',
 		'--model_path', os.path.join(args.dataset_dir, models_dir, model_fname, "model.pt"),
 		'--validation_dataset_dir', args.validation_dataset_dir if args.validation_dataset_dir else args.dataset_dir,
 		'--image_size', str(args.image_size),

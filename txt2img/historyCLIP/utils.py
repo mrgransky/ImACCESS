@@ -1,5 +1,12 @@
 import os
 import sys
+HOME, USER = os.getenv('HOME'), os.getenv('USER')
+IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
+########################################################################
+CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
+sys.path.insert(0, CLIP_DIR)
+import clip
+########################################################################
 import re
 import math
 from tqdm import tqdm
@@ -57,50 +64,6 @@ warnings.filterwarnings('ignore')
 logging.basicConfig(level=logging.INFO)
 
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
-HOME: str = os.getenv('HOME') # echo $HOME
-USER: str = os.getenv('USER') # echo $USER
-
-# if USER=="farid": # local laptop
-# 	WDIR = os.path.join(HOME, "datasets")
-# 	models_dir = os.path.join(WDIR, "trash", "models")
-# 	# visualize = True
-# elif USER=="alijanif": # Puhti
-# 	WDIR = "/scratch/project_2004072/ImACCESS"
-# 	models_dir = os.path.join(WDIR, "trash", "models")
-# else: # Pouta
-# 	WDIR = "/media/volume/ImACCESS"
-# 	models_dir = os.path.join(WDIR, "models")
-# 	ddir: str = os.path.join(WDIR, "myntradataset")
-
-# if USER!="alijanif":
-# 	import enchant
-# 	import libvoikko
-# 	fi_dict = libvoikko.Voikko(language="fi")	
-# 	fii_dict = enchant.Dict("fi")
-# 	sv_dict = enchant.Dict("sv_SE")
-# 	sv_fi_dict = enchant.Dict("sv_FI")
-# 	en_dict = enchant.Dict("en")
-# 	de_dict = enchant.Dict("de")
-# 	no_dict = enchant.Dict("no")
-# 	da_dict = enchant.Dict("da")
-# 	es_dict = enchant.Dict("es")
-# 	et_dict = enchant.Dict("et")
-	
-# 	cs_dict = enchant.Dict("cs")
-# 	cy_dict = enchant.Dict("cy")
-# 	fo_dict = enchant.Dict("fo")
-# 	fr_dict = enchant.Dict("fr")
-# 	ga_dict = enchant.Dict("ga")
-# 	hr_dict = enchant.Dict("hr")
-# 	hu_dict = enchant.Dict("hu")
-# 	is_dict = enchant.Dict("is")
-# 	it_dict = enchant.Dict("it")
-# 	lt_dict = enchant.Dict("lt")
-# 	lv_dict = enchant.Dict("lv")
-# 	nl_dict = enchant.Dict("nl")
-# 	pl_dict = enchant.Dict("pl")
-# 	sl_dict = enchant.Dict("sl")
-# 	sk_dict = enchant.Dict("sk")
 
 # Vision
 vit_d_model = 32 # vit_heads * vit_layers = vit_d_model

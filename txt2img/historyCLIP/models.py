@@ -81,7 +81,7 @@ class PositionalEmbedding(nn.Module):
 		return x + self.pe[:, :seq_len]
 
 class VisionEncoder(nn.Module):
-	def __init__(self, d_model, img_size, patch_size, n_channels, n_heads,n_layers, emb_dim):
+	def __init__(self, d_model, img_size, patch_size, n_heads,n_layers, emb_dim):
 		super().__init__()
 		# ensure input images can be split evenly into patches of size patch_size
 		assert img_size[0] % patch_size[0] == 0 and img_size[1] % patch_size[1] == 0, f"image dimensions: {img_size} are not divisible by patch dim: {patch_size}"
@@ -89,12 +89,12 @@ class VisionEncoder(nn.Module):
 		assert d_model % n_heads == 0, "d_model should be divisible by n_heads"
 		self.num_patches = (img_size[0] * img_size[1] ) // (patch_size[0] * patch_size[1]) # max_seq_length
 		self.max_seq_length = self.num_patches +1
-		self_n_channels = n_channels
 		self.linear_proj = nn.Conv2d(
-			in_channels=n_channels,
+			in_channels=3,
 			out_channels=d_model,
-			kernel_size=patch_size,#[0],
-			stride = patch_size,#[0],
+			kernel_size=patch_size,
+			stride = patch_size,
+			# bias=False, # If True, adds learnable bias to output. Def: True
 		)
 		self.cls_token = nn.Parameter(torch.randn(1,1,d_model), requires_grad = True)
 		self.positional_embedding =  PositionalEmbedding(d_model, self.max_seq_length)
@@ -105,7 +105,7 @@ class VisionEncoder(nn.Module):
 		x  = self.linear_proj(x)  # (B, C, H, W) -> (B, d_model, Patch_col_d_model, Patch_row_height)  
 		x = x.flatten(2).transpose(-2, -1)   # (B, d_model, Patch_col_d_model, Patch_row_height) --> Flatten (B, d_model, Patch) --> .transpose(-2,-1) (B, Patch, d_model)
 		# The input to the transformer we need to pass a sequence of patches or tokens so we need num_patches to be before hidden dim
-		x = torch.cat((self.cls_token.expand(x.shape[0], -1,-1), x), dim = 1) #add cls token at the beginning of patch_sequence   -->  [B,max_seq_len,d_model]
+		x = torch.cat((self.cls_token.expand(x.shape[0], -1,-1), x), dim=1) #add cls token at the beginning of patch_sequence   -->  [B,max_seq_len,d_model]
 		x =  self.positional_embedding(x)  #  [B,max_seq_len,d_model]
 		for encoder_layer in self.transformer_encoder:
 			x = encoder_layer(x, mask)  #  [B, d_model]
@@ -177,29 +177,47 @@ class CLIP(nn.Module):
 			vit_d_model,
 			img_size,
 			patch_size,
-			n_channels,
 			vit_heads,
 			vocab_size: int,
 			max_seq_length: int,
 			text_heads,
 			text_layers,
 			text_d_model,
-			device: str,
 			retrieval: bool=False,
 		):
 		super().__init__()
-		self.vision_encoder = VisionEncoder(vit_d_model, img_size, patch_size, n_channels, vit_heads, vit_layers, emb_dim)
+		self.vision_encoder = VisionEncoder(
+			vit_d_model, 
+			img_size, 
+			patch_size,
+			vit_heads, 
+			vit_layers, 
+			emb_dim,
+		)
 		if retrieval:
-			self.text_encoder = TextEncoder_Retrieval(vocab_size, text_d_model, max_seq_length, text_layers, text_heads, emb_dim)
+			self.text_encoder = TextEncoder_Retrieval(
+				vocab_size,
+				text_d_model,
+				max_seq_length,
+				text_layers,
+				text_heads,
+				emb_dim,
+			)
 		else:
-			self.text_encoder = TextEncoder(vocab_size, text_d_model, max_seq_length, text_layers, text_heads, emb_dim)
+			self.text_encoder = TextEncoder(
+				vocab_size,
+				text_d_model,
+				max_seq_length,
+				text_layers,
+				text_heads,
+				emb_dim,
+			)
 		self.temperature = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
-		self.device = device
 	
-	def CLIPLoss(self, logits, device):
+	def CLIPLoss(self, logits):
 		#Symmetric or Contrastive loss
 		# arange generates a list between 0 and n-1
-		labels = torch.arange(logits.shape[0]).to(device)  # For row 1 we want 1,1 to be max, and row n-1 we want (n-1,n-1) text pairs to be max --> time 15.43 umar
+		labels = torch.arange(logits.shape[0]).to(device=logits.device) # For row 1 we want 1,1 to be max, and row n-1 we want (n-1,n-1) text pairs to be max --> time 15.43 umar
 		loss_v = nn.functional.cross_entropy(logits.transpose(-2,-1), labels)
 		loss_t = nn.functional.cross_entropy(logits, labels)
 		loss = (loss_v + loss_t) / 2
@@ -208,10 +226,18 @@ class CLIP(nn.Module):
 	def forward(self, image, text, mask=None):
 		V_e = self.vision_encoder(image) # shape: [B, emb_dim]
 		T_e = self.text_encoder(text, mask=mask) # shape: [B, emb_dim]
-		# print(type(V_e), V_e.shape)
-		# print(type(T_e), T_e.shape)
-		# print("#"*100)
 		# scaled pairwise cosine similarities [n, n]
 		logits = (V_e @ T_e.transpose(-2, -1)) * torch.exp(self.temperature)
-		loss = self.CLIPLoss(logits, self.device)
+		loss = self.CLIPLoss(logits)
 		return loss
+
+class CLIPFineTuner(nn.Module):
+	def __init__(self, model, num_classes):
+		super(CLIPFineTuner, self).__init__()
+		self.model = model
+		self.classifier = nn.Linear(model.visual.output_dim, num_classes)
+	
+	def forward(self, x):
+		with torch.no_grad():
+			features = self.model.encode_image(x).float()  # Convert to float32
+		return self.classifier(features)

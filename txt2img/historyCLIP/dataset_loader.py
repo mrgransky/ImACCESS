@@ -1,5 +1,59 @@
 from utils import *
+
+# Define a custom dataset class
+class HistoryDataset(Dataset):
+	def __init__(
+			self,
+			data_frame,
+			dataset_directory:str="path/2/images",
+			mean:List[float]=[0.52, 0.50, 0.48],
+			std:List[float]=[0.27, 0.27, 0.26],
+			transformer=None,
+		):
+		self.data_frame = data_frame
+		self.dataset_directory = dataset_directory
+		self.tokenized_doc_descriptions = clip.tokenize(texts=self.data_frame["label"])
+		if transformer:
+			self.transform = transformer
+		else:
+			self.transform = T.Compose(
+				[
+					T.Resize((224, 224)),
+					T.ToTensor(),
+					T.Normalize(mean=mean, std=std),
+					# T.Normalize(
+					# 	(0.48145466, 0.4578275, 0.40821073), 
+					# 	(0.26862954, 0.26130258, 0.27577711)
+					# )
+				]
+			)
+
+	def __len__(self):
+		return len(self.data_frame)
+
+	def __getitem__(self, idx):
+		sample = self.data_frame.iloc[idx] # Retrieve sample DataFrame row
+
+		doc_image_path = os.path.join(self.dataset_directory, f"{sample['id']}.jpg")
+
+		if not os.path.exists(doc_image_path): # Try to load the image and handle errors gracefully
+			print(f"{doc_image_path} Not found!")
+			# raise FileNotFoundError(f"Image not found at path: {img_path}") debugging purpose
+			return None
+
+		try:
+			Image.open(doc_image_path).verify() # # Validate the image
+			image = Image.open(doc_image_path).convert("RGB")
+		except (FileNotFoundError, IOError, Exception) as e:
+			# raise IOError(f"Error: Could not load image: {img_path} {e}") # debugging
+			print(f"ERROR: {doc_image_path}\t{e}")
+			return None
+
+		image_tensor = self.transform(image) # <class 'torch.Tensor'> torch.Size([3, 224, 224])
+		tokenized_description_tensor = self.tokenized_doc_descriptions[idx] # torch.Size([num_lbls, context_length]) [10 x 77]
 		
+		return image_tensor, tokenized_description_tensor 
+
 class ResizeWithPad:
 	def __init__(self, target_size, pad_color=(128, 128, 128)):
 		self.target_size = target_size
@@ -112,7 +166,7 @@ class HistoricalDataset(Dataset):
 		return len(self.data_frame)
 
 	def __getitem__(self, idx):
-		sample = self.data_frame.iloc[idx] # Retrieve the sample from the DataFrame (row)
+		sample = self.data_frame.iloc[idx] # Retrieve sample from DataFrame (row)
 		img_path = os.path.join(self.dataset_directory, f"{sample['id']}.jpg")
 		if not os.path.exists(img_path): # Try to load the image and handle errors gracefully
 			print(f"{img_path} Not found!")

@@ -145,14 +145,12 @@ def main():
 		vit_d_model=vit_d_model,
 		img_size=(args.image_size, args.image_size),
 		patch_size=(args.patch_size, args.patch_size),
-		n_channels=n_channels,
 		vit_heads=vit_heads,
 		vocab_size=vocab_size,
 		max_seq_length=max_seq_length,
 		text_heads=text_heads,
 		text_layers=text_layers,
 		text_d_model=text_d_model,
-		device=args.device,
 		retrieval=False,
 	).to(args.device)
 

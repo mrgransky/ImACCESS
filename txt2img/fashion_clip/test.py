@@ -1,1 +1,0 @@
-from fashion_clip import FashionCLIP
