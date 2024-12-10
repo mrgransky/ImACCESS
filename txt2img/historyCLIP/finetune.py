@@ -116,24 +116,25 @@ def finetune(model, finetune_data_loader, val_data_loader, model_dir:str="path/2
 		eps=1e-6,
 		weight_decay=args.weight_decay,
 	)
+	
 	for epoch in range(args.num_epochs):
 		print(f"Epoch [{epoch+1}/{args.num_epochs}]", end="\t")
 		log_gpu_memory(device=args.device)
 		for batch_idx, (images, texts) in enumerate(finetune_data_loader) :
-			# optimizer.zero_grad()
-			print(batch_idx, type(images), images.shape, type(texts), texts.shape)
-			# # print()
-			# images = images.to(args.device)
-			# texts = texts.to(args.device)
+			optimizer.zero_grad()
+			# print(batch_idx, type(images), images.shape, type(texts), texts.shape)
+			# print()
+			images = images.to(args.device)
+			texts = texts.to(args.device)
 		
-			# logits_per_image, logits_per_text = model(images, texts)
-			# ground_truth = torch.arange(len(images), dtype=torch.long,device=args.device)
-			# total_loss = (loss_img(logits_per_image,ground_truth) + loss_txt(logits_per_text,ground_truth))/2
-			# total_loss.backward()
-			# torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
-			# optimizer.step()
+			logits_per_image, logits_per_text = model(images, texts)
+			ground_truth = torch.arange(len(images), dtype=torch.long,device=args.device)
+			total_loss = (loss_img(logits_per_image,ground_truth) + loss_txt(logits_per_text,ground_truth))/2
+			total_loss.backward()
+			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+			optimizer.step()
 			
-			if batch_idx%args.print_every==0 or batch_idx==len(finetune_data_loader):
+			if batch_idx%args.print_every==0 or batch_idx+1==len(finetune_data_loader):
 				print(
 					f"\tBatch [{batch_idx+1}/{len(finetune_data_loader)}]",
 					# f"Loss: {total_loss.item():.5f}", 
