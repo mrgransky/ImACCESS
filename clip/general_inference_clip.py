@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image
 from torchvision.datasets import CIFAR10, CIFAR100
 from sklearn.metrics import precision_score, recall_score
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 def load_model():
