@@ -50,8 +50,8 @@ def zero_shot():
 	dataset = load_dataset(preprocess) # cifar10 or cifar 100
 	tokenized_labels = tokenize_labels(dataset).to(device)
 	
-	# Compute the similarities
 	topk = 5
+	# Compute the similarities
 	similarities = compute_similarities(model, image, tokenized_labels)
 	topk_probs, topk_labels_idx = similarities.topk(topk, dim=-1)
 	print(topk_probs)

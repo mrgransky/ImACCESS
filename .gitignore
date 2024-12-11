@@ -3,7 +3,6 @@ TEST_IMGs
 *.caffemodel
 # C extensions
 *.so
-*.gz
 *.csv
 *.out
 *.pkl
