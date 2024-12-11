@@ -33,7 +33,7 @@ def load_dataset():
 		root=os.path.expanduser("~/.cache"), 
 		transform=None,
 		download=True,
-		# train=False,
+		train=False, # split Test
 	)
 	# dataset = CIFAR100(os.path.expanduser("~/.cache"), transform=transform, download=True)
 	print(dataset)
