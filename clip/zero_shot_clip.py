@@ -162,7 +162,8 @@ def image_retrieval(query:str="dog", topk:int=5):
 		axes[i].axis('off')
 		axes[i].set_title(f"Top-{i+1}")
 		
-	plt.savefig(os.path.join("/media/volume/ImACCESS/results/", "topk.png"))
+	# plt.savefig(os.path.join("/media/volume/ImACCESS/results/", "topk.png"))
+	plt.savefig("topk.png")
 
 	# return topk_images, topk_probs.squeeze().cpu().numpy()
 
