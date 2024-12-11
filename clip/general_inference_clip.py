@@ -60,7 +60,7 @@ def zero_shot():
 	print(f"Top-{topk} predicted labels: {[dataset.classes[i] for i in topk_labels_idx.cpu().numpy().flatten()]}")
 
 def get_prec_at_k():
-	batch_size = 16
+	batch_size = 32
 	model, preprocess = load_model()
 	dataset = load_dataset() # <class 'torchvision.datasets.cifar.CIFAR10'>
 	labels = dataset.classes # <class 'list'> ['airplane', 'automobile', ...]
