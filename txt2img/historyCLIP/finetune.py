@@ -23,11 +23,11 @@ parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--validation_dataset_dir', '-vddir', default=None, help='Dataset DIR')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
-parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch Size')
+parser.add_argument('--batch_size', '-bs', type=int, default=80, help='Batch Size')
 parser.add_argument('--image_size', '-is', type=int, default=150, help='Image size [def: max 160 local]')
 parser.add_argument('--patch_size', '-ps', type=int, default=5, help='Patch size')
 parser.add_argument('--embedding_size', '-es',type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
-parser.add_argument('--print_every', type=int, default=250, help='Print loss')
+parser.add_argument('--print_every', type=int, default=100, help='Print loss')
 parser.add_argument('--num_epochs', '-nep', type=int, default=10, help='Number of epochs')
 parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs [def: max cpus]')
 parser.add_argument('--learning_rate', '-lr', type=float, default=5e-4, help='small learning rate for better convergence [def: 1e-3]')
@@ -62,14 +62,15 @@ def visualize_(dataloader, num_samples=5, ):
 		image = batch_imgs[batch_idx].permute(1, 2, 0).numpy() # Convert tensor to numpy array and permute dimensions
 		caption_idx = batch_lbls[batch_idx]
 		print(image.shape, caption_idx)
+		print()
 			
 		# # Denormalize the image
 		image = image * np.array([0.2268645167350769]) + np.array([0.6929051876068115])
 		image = np.clip(image, 0, 1)  # Ensure pixel values are in [0, 1] range
 		
-		plt.figure(figsize=(12, 12))
+		plt.figure(figsize=(13, 7))
 		plt.imshow(image)
-		plt.title(f"Caption {caption_idx.shape}\n{caption_idx}")
+		plt.title(f"Caption {caption_idx.shape}\n{caption_idx}", fontsize=5)
 		plt.axis('off')
 		plt.show()
 
@@ -116,7 +117,7 @@ def finetune(model, finetune_data_loader, val_data_loader, model_dir:str="path/2
 		eps=1e-6,
 		weight_decay=args.weight_decay,
 	)
-	
+
 	for epoch in range(args.num_epochs):
 		print(f"Epoch [{epoch+1}/{args.num_epochs}]", end="\t")
 		log_gpu_memory(device=args.device)
@@ -128,20 +129,19 @@ def finetune(model, finetune_data_loader, val_data_loader, model_dir:str="path/2
 			texts = texts.to(args.device)
 		
 			logits_per_image, logits_per_text = model(images, texts)
-			ground_truth = torch.arange(len(images), dtype=torch.long,device=args.device)
-			total_loss = (loss_img(logits_per_image,ground_truth) + loss_txt(logits_per_text,ground_truth))/2
+			ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=args.device)
+			total_loss = 0.5 * (loss_img(logits_per_image, ground_truth) + loss_txt(logits_per_text, ground_truth))
 			total_loss.backward()
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
 			optimizer.step()
 			
 			if batch_idx%args.print_every==0 or batch_idx+1==len(finetune_data_loader):
 				print(
-					f"\tBatch [{batch_idx+1}/{len(finetune_data_loader)}]",
-					# f"Loss: {total_loss.item():.5f}", 
+					f"\tBatch [{batch_idx+1}/{len(finetune_data_loader)}] "
+					f"Loss: {total_loss.item():.5f}",
 					end="\t",
 				)
 				log_gpu_memory(device=args.device)
-
 
 def main():
 	img_rgb_mean_fpth:str = os.path.join(args.dataset_dir, "img_rgb_mean.gz")
@@ -253,13 +253,13 @@ def main():
 	print(f"num_samples[Total]: {len(finetune_data_loader.dataset)} Elapsed_t: {time.time()-tdl_st:.5f} sec")
 	get_info(dataloader=finetune_data_loader)
 
-	# ###################### Visualize Samples ######################
-	# visualize_(
-	# 	dataloader=finetune_data_loader, 
-	# 	num_samples=5,
-	# )
-	# sys.exit(-1)
-	# ###################### Visualize Samples ######################
+	###################### Visualize Samples ######################
+	visualize_(
+		dataloader=finetune_data_loader, 
+		num_samples=5,
+	)
+	sys.exit(-1)
+	###################### Visualize Samples ######################
 
 	print(f"Creating Validation Dataloader for {len(val_metadata_df)} samples", end="\t")
 	vdl_st = time.time()

@@ -24,7 +24,7 @@ print(args)
 # $ nohup python -u data_collector.py --dataset_dir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 8 --img_mean_std > logs/na_image_download.out &
 
 ########################## --start_date 1914-01-01 --end_date 1946-12-31 ##########################
-# $ nohup python -u data_collector.py --dataset_dir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1914-01-01 --end_date 1946-12-31 --num_workers 10 > logs/na_image_download.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1914-01-01 --end_date 1946-12-31 --num_workers 2 > logs/na_image_download.out &
 
 ##################################################################################################################
 # run in Pouta:
