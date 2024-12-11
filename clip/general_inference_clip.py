@@ -8,6 +8,8 @@ from sklearn.metrics import precision_score, recall_score
 from typing import List
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
+# $ nohup python -u data_collector.py > /media/volume/trash/ImACCESS/prec_at_K.out &
+
 def load_model():
 	model, preprocess = clip.load("ViT-B/32", device=device)
 	input_resolution = model.visual.input_resolution
@@ -62,11 +64,11 @@ def zero_shot(img_path:str="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg"):
 def get_prec_at_(K:int=5):
 	# Precision at K measures how many items with the top K positions are relevant. 
 	model, preprocess = clip.load("ViT-B/32", device=device)
-	dataset = CIFAR10(
+	dataset = CIFAR100(
 		root=os.path.expanduser("~/.cache"), 
 		transform=None,
 		download=True,
-		# train=False,
+		train=False,
 	) # <class 'torchvision.datasets.cifar.CIFAR10'>
 	print(dataset)
 	labels = dataset.classes # <class 'list'> ['airplane', 'automobile', ...]
