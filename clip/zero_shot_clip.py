@@ -1,6 +1,7 @@
 import os
 import torch
 import clip
+import time
 import numpy as np
 from PIL import Image
 from torchvision.datasets import CIFAR10, CIFAR100
@@ -8,7 +9,7 @@ from sklearn.metrics import precision_score, recall_score
 from typing import List
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# $ nohup python -u general_inference_clip.py > /media/volume/trash/ImACCESS/prec_at_K.out &
+# $ nohup python -u zero_shot_clip.py > /media/volume/trash/ImACCESS/prec_at_K.out &
 
 def load_model():
 	model, preprocess = clip.load("ViT-B/32", device=device)
@@ -64,7 +65,7 @@ def zero_shot(img_path:str="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg"):
 def get_prec_at_(K:int=5):
 	# Precision at K measures how many items with the top K positions are relevant. 
 	model, preprocess = clip.load("ViT-B/32", device=device)
-	dataset = CIFAR100(
+	dataset = CIFAR10(
 		root=os.path.expanduser("~/.cache"), 
 		transform=None,
 		download=True,
@@ -86,19 +87,25 @@ def get_prec_at_(K:int=5):
 		_, topk_labels_idx = similarities.topk(K, dim=-1)
 		predicted_labels.append(topk_labels_idx.cpu().numpy().flatten())
 		true_labels.append(gt_lbl)
+
 	print(len(predicted_labels), len(true_labels))
 	print(type(predicted_labels[0]), predicted_labels[0].shape,)
 	print("#"*100)
 	print(predicted_labels[:10])
 	print(true_labels[:10])
+
+	##################################################################################################
+	pred_st = time.time()
 	prec_at_k = 0
 	for i, v in enumerate(true_labels):
 		preds = predicted_labels[i] # <class 'numpy.ndarray'>
 		if v in preds:
 			prec_at_k += 1
 	avg_prec_at_k = prec_at_k/len(true_labels)
-	print(f"[OWN] top-{K}: {prec_at_k} | {avg_prec_at_k}")
+	print(f"[OWN] top-{K}: {prec_at_k} | {avg_prec_at_k} Elapsed_t: {time.time()-pred_st:.2f} sec")
+	##################################################################################################
 
+	pred_st = time.time()
 	# Calculate Precision at K
 	prec_at_k = sum(1 for i, v in enumerate(true_labels) if v in predicted_labels[i])
 	avg_prec_at_k = prec_at_k / len(true_labels)
@@ -107,8 +114,11 @@ def get_prec_at_(K:int=5):
 	recall_at_k = sum(1 / K for i, v in enumerate(true_labels) if v in predicted_labels[i])
 	avg_recall_at_k = recall_at_k / len(true_labels)
 	
-	print(f"top-{K} Precision: {prec_at_k} | {avg_prec_at_k}")
-	print(f"top-{K} Recall: {recall_at_k} | {avg_recall_at_k}")
+	print(
+		f"top-{K} Precision: {prec_at_k} | {avg_prec_at_k}"
+		f"Recall: {recall_at_k} | {avg_recall_at_k}"
+		f"Elapsed_t: {time.time()-pred_st:.2f} sec"
+	)
 
 def main():
 	print(clip.available_models())
@@ -116,4 +126,4 @@ def main():
 	get_prec_at_(K=5)
 
 if __name__ == "__main__":
-		main()
+	main()
