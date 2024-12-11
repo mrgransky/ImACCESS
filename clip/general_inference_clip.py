@@ -93,7 +93,7 @@ def get_prec_at_(K:int=5):
 	print(true_labels[:10])
 	prec_at_k = 0
 	for i, v in enumerate(true_labels):
-		preds = predicted_labels[i].cpu().numpy()
+		preds = predicted_labels[i] # <class 'numpy.ndarray'>
 		if v in preds:
 			prec_at_k += 1
 	avg_prec_at_k = prec_at_k/len(true_labels)
@@ -110,87 +110,10 @@ def get_prec_at_(K:int=5):
 	print(f"top-{K} Precision: {prec_at_k} | {avg_prec_at_k}")
 	print(f"top-{K} Recall: {recall_at_k} | {avg_recall_at_k}")
 
-def calculate_prec_at_K(true_labels, predicted_labels, K):
-		"""
-		Calculate precision at K.
-		
-		Args:
-				true_labels: The true labels.
-				predicted_labels: The predicted labels.
-				K: The number of top results to consider.
-		
-		Returns:
-				prec_at_K: The precision at K.
-		"""
-		true_labels = true_labels.tolist()
-		predicted_labels = predicted_labels[:, :K].tolist()
-		prec_at_K = []
-		for i in range(len(true_labels)):
-				predicted = predicted_labels[i]
-				true = true_labels[i]
-				prec_at_K.append(precision_score([true], [1 if x==true else 0 for x in predicted], zero_division=0, average='binary'))
-		return sum(prec_at_K) / len(prec_at_K)
-
-def calculate_r_at_K(true_labels, predicted_labels, K):
-		"""
-		Calculate recall at K.
-		
-		Args:
-				true_labels: The true labels.
-				predicted_labels: The predicted labels.
-				K: The number of top results to consider.
-		
-		Returns:
-				r_at_K: The recall at K.
-		"""
-		true_labels = true_labels.tolist()
-		predicted_labels = predicted_labels[:, :K].tolist()
-		r_at_K = []
-		for i in range(len(true_labels)):
-				predicted = predicted_labels[i]
-				true = true_labels[i]
-				r_at_K.append(recall_score([true], [1 if x==true else 0 for x in predicted], zero_division=0, average='binary'))
-		return sum(r_at_K) / len(r_at_K)
-
-def evaluate_retrieval(model, dataset, metadata_df, K):
-		"""
-		Evaluate the retrieval performance of the model on a given dataset.
-		
-		Args:
-				model: The CLIP model.
-				dataset: The dataset to evaluate on.
-				metadata_df: The metadata dataframe containing the image and text pairs.
-				K: The number of top results to consider.
-		
-		Returns:
-				prec_at_K: The precision at K.
-				r_at_K: The recall at K.
-		"""
-		device = "cuda" if torch.cuda.is_available() else "cpu"
-		preprocess = clip.load("ViT-B/32", device=device)[1]
-		tokenized_labels = tokenize_labels(dataset).to(device)
-		
-		predicted_labels = []
-		true_labels = []
-		for index, row in metadata_df.iterrows():
-				img_path = row['image_path']
-				img = Image.open(img_path)
-				image = preprocess(img).unsqueeze(0).to(device)
-				similarities = compute_similarities(model, image, tokenized_labels)
-				_, topk_labels_idx = similarities.topk(K, dim=-1)
-				predicted_labels.append(topk_labels_idx.cpu().numpy().flatten())
-				true_labels.append(dataset.classes.index(row['label']))
-		
-		prec_at_K = calculate_prec_at_K(torch.tensor(true_labels), torch.tensor(predicted_labels), K)
-		r_at_K = calculate_r_at_K(torch.tensor(true_labels), torch.tensor(predicted_labels), K)
-		return prec_at_K, r_at_K
-
 def main():
 	print(clip.available_models())
 	# zero_shot() # only for a given image
 	get_prec_at_(K=5)
-
-	
 
 if __name__ == "__main__":
 		main()
