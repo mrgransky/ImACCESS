@@ -94,9 +94,8 @@ def get_prec_at_(K:int=5):
 		if v in preds:
 			prec_at_k += 1
 	avg_prec_at_k = prec_at_k/len(true_labels)
-	print(prec_at_k, avg_prec_at_k)
+	print(f"top-{K}: {prec_at_k} | {avg_prec_at_k}")
 	
-
 def calculate_prec_at_K(true_labels, predicted_labels, K):
 		"""
 		Calculate precision at K.
