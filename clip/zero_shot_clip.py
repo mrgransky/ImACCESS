@@ -7,8 +7,14 @@ from PIL import Image
 from torchvision.datasets import CIFAR10, CIFAR100
 from sklearn.metrics import precision_score, recall_score
 from typing import List
-device = "cuda" if torch.cuda.is_available() else "cpu"
+import matplotlib.pyplot as plt
 
+USER = os.getenv('USER')
+if USER=="xxxxfarid":
+	device = "cpu"
+else:
+	device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"USER: {USER} device: {device}")
 # $ nohup python -u zero_shot_clip.py > /media/volume/trash/ImACCESS/prec_at_K.out &
 
 def load_model():
@@ -27,7 +33,7 @@ def load_dataset(transform=None):
 		root=os.path.expanduser("~/.cache"), 
 		transform=transform, 
 		download=True,
-		# train=False,
+		train=False,
 	)
 	# dataset = CIFAR100(os.path.expanduser("~/.cache"), transform=transform, download=True)
 	return dataset
@@ -45,7 +51,7 @@ def compute_similarities(model, image, tokenized_labels):
 def zero_shot(img_path:str="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg"):
 	model, preprocess = load_model()
 	
-	dataset = load_dataset(preprocess) # cifar10 or cifar 100
+	dataset = load_dataset() # cifar10 or cifar 100
 	labels = dataset.classes
 
 	tokenized_labels_tensor = tokenize_(labels=labels).to(device) # <class 'torch.Tensor'> torch.Size([10, 77])
@@ -65,29 +71,29 @@ def zero_shot(img_path:str="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg"):
 def get_prec_at_(K:int=5):
 	# Precision at K measures how many items with the top K positions are relevant. 
 	model, preprocess = clip.load("ViT-B/32", device=device)
-	dataset = CIFAR10(
+	dataset = CIFAR100(
 		root=os.path.expanduser("~/.cache"), 
 		transform=None,
 		download=True,
-		train=False,
+		# train=False,
 	) # <class 'torchvision.datasets.cifar.CIFAR10'>
 	print(dataset)
 
 	labels = dataset.classes # <class 'list'> ['airplane', 'automobile', ...]
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
-
+	labels_features = model.encode_text(tokenized_labels_tensor)
+	
 	predicted_labels = []
 	true_labels = []
-
+	floop_st = time.time()
 	for i, (img_raw, gt_lbl) in enumerate(dataset): #img: <class 'PIL.Image.Image'>
 		img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
 		image_features = model.encode_image(img_tensor)
-		labels_features = model.encode_text(tokenized_labels_tensor)
 		similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
 		_, topk_labels_idx = similarities.topk(K, dim=-1)
 		predicted_labels.append(topk_labels_idx.cpu().numpy().flatten())
 		true_labels.append(gt_lbl)
-
+	print(f"Total (for loop): {time.time()-floop_st:.3f} sec")
 	print(len(predicted_labels), len(true_labels))
 	print(type(predicted_labels[0]), predicted_labels[0].shape,)
 	print("#"*100)
@@ -115,15 +121,56 @@ def get_prec_at_(K:int=5):
 	avg_recall_at_k = recall_at_k / len(true_labels)
 	
 	print(
-		f"top-{K} Precision: {prec_at_k} | {avg_prec_at_k}"
-		f"Recall: {recall_at_k} | {avg_recall_at_k}"
+		f"top-{K} Precision: {prec_at_k} | {avg_prec_at_k} "
+		f"Recall: {recall_at_k} | {avg_recall_at_k} "
 		f"Elapsed_t: {time.time()-pred_st:.2f} sec"
 	)
+
+def image_retrieval(query:str="dog", topk:int=5):
+	model, preprocess = load_model()
+	dataset = load_dataset()
+	labels = dataset.classes
+	tokenized_query = clip.tokenize([query]).to(device)
+	
+	# Encode the query
+	query_features = model.encode_text(tokenized_query)
+	
+	# Encode all the images
+	all_image_features = []
+	for i, (img_raw, gt_lbl) in enumerate(dataset):
+		img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
+		image_features = model.encode_image(img_tensor)
+		all_image_features.append(image_features)
+	all_image_features = torch.cat(all_image_features, dim=0)
+	
+	# Compute similarities between query and all images
+	similarities = (100.0 * query_features @ all_image_features.T).softmax(dim=-1)
+	
+	# Get the top-k most similar images
+	topk_probs, topk_indices = similarities.topk(topk, dim=-1)
+	
+	# Retrieve the top-k images
+	topk_images = [dataset[idx][0] for idx in topk_indices.squeeze().cpu().numpy()]
+	print(topk_images)
+
+	# Save the top-k images in a single file
+	fig, axes = plt.subplots(1, topk, figsize=(15, 5))
+		
+	for i, img in enumerate(topk_images):
+		axes[i].imshow(img)
+		axes[i].axis('off')
+		axes[i].set_title(f"Top-{i+1}")
+		
+	plt.savefig("topk.png")
+
+	# return topk_images, topk_probs.squeeze().cpu().numpy()
 
 def main():
 	print(clip.available_models())
 	# zero_shot() # only for a given image
-	get_prec_at_(K=5)
+	# get_prec_at_(K=5)
+	image_retrieval(query="dog")
+
 
 if __name__ == "__main__":
 	main()
