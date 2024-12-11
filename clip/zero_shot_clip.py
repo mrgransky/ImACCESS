@@ -10,10 +10,13 @@ from typing import List
 import matplotlib.pyplot as plt
 
 USER = os.getenv('USER')
-if USER=="xxxxfarid":
-	device = "cpu"
-else:
-	device = "cuda" if torch.cuda.is_available() else "cpu"
+# if USER=="xxxxfarid":
+# 	device = "cpu"
+# else:
+# 	device = "cuda" if torch.cuda.is_available() else "cpu"
+
+device = "cpu"
+
 print(f"USER: {USER} device: {device}")
 # $ nohup python -u zero_shot_clip.py > /media/volume/trash/ImACCESS/prec_at_K.out &
 
