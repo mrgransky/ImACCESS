@@ -28,7 +28,7 @@ def load_model():
 	print("Vocab size:", vocab_size)
 	return model, preprocess
 
-def load_dataset(t):
+def load_dataset():
 	dataset = CIFAR10(
 		root=os.path.expanduser("~/.cache"), 
 		transform=None,
