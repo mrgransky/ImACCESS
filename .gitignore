@@ -1,11 +1,12 @@
 # Project
 TEST_IMGs
 *.caffemodel
-# C extensions
 *.so
 *.csv
 *.out
 *.pkl
+*.png
+*.pth
 
 # Django
 wgui/db.sqlite3

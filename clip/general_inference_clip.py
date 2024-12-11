@@ -70,7 +70,7 @@ def get_prec_at_k():
 
 	# we create image embeddings and text embeddings
 	with torch.no_grad():
-		image_embeddings = model.encode_images(images, batch_size=batch_size)
+		image_embeddings = model.encode_image(images, batch_size=batch_size)
 		text_embeddings = model.encode_text(labels, batch_size=batch_size)
 
 	# we normalize the embeddings to unit norm (so that we can use dot product instead of cosine similarity to do comparisons)
