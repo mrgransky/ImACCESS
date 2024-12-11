@@ -8,7 +8,7 @@ from sklearn.metrics import precision_score, recall_score
 from typing import List
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# $ nohup python -u data_collector.py > /media/volume/trash/ImACCESS/prec_at_K.out &
+# $ nohup python -u general_inference_clip.py > /media/volume/trash/ImACCESS/prec_at_K.out &
 
 def load_model():
 	model, preprocess = clip.load("ViT-B/32", device=device)
