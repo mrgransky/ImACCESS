@@ -64,17 +64,20 @@ def zero_shot(img_path:str="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg"):
 def get_prec_at_(K:int=5):
 	# Precision at K measures how many items with the top K positions are relevant. 
 	model, preprocess = clip.load("ViT-B/32", device=device)
-	dataset = CIFAR100(
+	dataset = CIFAR10(
 		root=os.path.expanduser("~/.cache"), 
 		transform=None,
 		download=True,
 		train=False,
 	) # <class 'torchvision.datasets.cifar.CIFAR10'>
 	print(dataset)
+
 	labels = dataset.classes # <class 'list'> ['airplane', 'automobile', ...]
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
+
 	predicted_labels = []
 	true_labels = []
+
 	for i, (img_raw, gt_lbl) in enumerate(dataset): #img: <class 'PIL.Image.Image'>
 		img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
 		image_features = model.encode_image(img_tensor)
@@ -90,12 +93,23 @@ def get_prec_at_(K:int=5):
 	print(true_labels[:10])
 	prec_at_k = 0
 	for i, v in enumerate(true_labels):
-		preds = predicted_labels[i]
+		preds = predicted_labels[i].cpu().numpy()
 		if v in preds:
 			prec_at_k += 1
 	avg_prec_at_k = prec_at_k/len(true_labels)
-	print(f"top-{K}: {prec_at_k} | {avg_prec_at_k}")
+	print(f"[OWN] top-{K}: {prec_at_k} | {avg_prec_at_k}")
+
+	# Calculate Precision at K
+	prec_at_k = sum(1 for i, v in enumerate(true_labels) if v in predicted_labels[i])
+	avg_prec_at_k = prec_at_k / len(true_labels)
 	
+	# Calculate Recall at K
+	recall_at_k = sum(1 / K for i, v in enumerate(true_labels) if v in predicted_labels[i])
+	avg_recall_at_k = recall_at_k / len(true_labels)
+	
+	print(f"top-{K} Precision: {prec_at_k} | {avg_prec_at_k}")
+	print(f"top-{K} Recall: {recall_at_k} | {avg_recall_at_k}")
+
 def calculate_prec_at_K(true_labels, predicted_labels, K):
 		"""
 		Calculate precision at K.
