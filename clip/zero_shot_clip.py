@@ -28,14 +28,15 @@ def load_model():
 	print("Vocab size:", vocab_size)
 	return model, preprocess
 
-def load_dataset(transform=None):
+def load_dataset(t):
 	dataset = CIFAR10(
 		root=os.path.expanduser("~/.cache"), 
-		transform=transform, 
+		transform=None,
 		download=True,
-		train=False,
+		# train=False,
 	)
 	# dataset = CIFAR100(os.path.expanduser("~/.cache"), transform=transform, download=True)
+	print(dataset)
 	return dataset
 
 def tokenize_(labels:List[str]=["dog", "cat"]):
@@ -170,7 +171,6 @@ def main():
 	# zero_shot() # only for a given image
 	# get_prec_at_(K=5)
 	image_retrieval(query="dog")
-
 
 if __name__ == "__main__":
 	main()
