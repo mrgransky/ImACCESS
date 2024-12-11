@@ -64,7 +64,7 @@ def zero_shot(img_path:str="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg"):
 def get_prec_at_(K:int=5):
 	# Precision at K measures how many items with the top K positions are relevant. 
 	model, preprocess = clip.load("ViT-B/32", device=device)
-	dataset = CIFAR10(
+	dataset = CIFAR100(
 		root=os.path.expanduser("~/.cache"), 
 		transform=None,
 		download=True,
