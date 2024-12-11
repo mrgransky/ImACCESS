@@ -60,7 +60,6 @@ def zero_shot():
 	print(f"Top-{topk} predicted labels: {[dataset.classes[i] for i in topk_labels_idx.cpu().numpy().flatten()]}")
 
 def get_prec_at_k():
-	batch_size = 32
 	model, preprocess = load_model()
 	dataset = load_dataset() # <class 'torchvision.datasets.cifar.CIFAR10'>
 	labels = dataset.classes # <class 'list'> ['airplane', 'automobile', ...]
@@ -70,8 +69,8 @@ def get_prec_at_k():
 
 	# we create image embeddings and text embeddings
 	with torch.no_grad():
-		image_embeddings = model.encode_image(images, batch_size=batch_size)
-		text_embeddings = model.encode_text(labels, batch_size=batch_size)
+		image_embeddings = model.encode_image(images)
+		text_embeddings = model.encode_text(labels)
 
 	# we normalize the embeddings to unit norm (so that we can use dot product instead of cosine similarity to do comparisons)
 	image_embeddings = image_embeddings/np.linalg.norm(image_embeddings, ord=2, axis=-1, keepdims=True)
