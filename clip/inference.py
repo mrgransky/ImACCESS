@@ -214,7 +214,7 @@ def get_image_retrieval_precision_recall_at_(K:int=5, batch_size:int=1024):
 		relevant_images = [idx for idx, (_, label) in enumerate(dataset) if label == i]
 		print(len(relevant_images))
 		relevant_images_in_topk = [label for label in topk_pred_labels if label == i]
-		print(len(relevant_images_in_topk))
+		print(len(relevant_images_in_topk), relevant_images_in_topk)
 		precision_at_k += len(relevant_images_in_topk) / K
 		recall_at_k_values.append(len(relevant_images_in_topk) / len(relevant_images))
 	avg_precision_at_k = precision_at_k / len(tokenized_labels_features)
