@@ -144,12 +144,12 @@ def image_retrieval(query:str="dog", topk:int=5):
 	# 	image_features = model.encode_image(img_tensor)
 	# 	all_image_features.append(image_features)
 	batch = []
-	batch_size:int=32
+	batch_size:int=16
 	for i, (img_raw, gt_lbl) in enumerate(dataset):
 		img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
 		batch.append(img_tensor)
-		print(len(batch))
 		if len(batch) == batch_size or i == len(dataset) - 1:
+			print(i, len(batch))
 			batch_features = model.encode_image(torch.cat(batch, dim=0))
 			all_image_features.append(batch_features)
 			batch = []
