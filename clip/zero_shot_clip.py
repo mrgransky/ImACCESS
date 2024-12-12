@@ -10,15 +10,13 @@ from typing import List
 import matplotlib.pyplot as plt
 
 USER = os.getenv('USER')
-# if USER=="xxxxfarid":
-# 	device = "cpu"
-# else:
-# 	device = "cuda" if torch.cuda.is_available() else "cpu"
-
-device = "cpu"
+if USER=="xxxxfarid":
+	device = "cpu"
+else:
+	device = "cuda" if torch.cuda.is_available() else "cpu"
 
 print(f"USER: {USER} device: {device}")
-# $ nohup python -u zero_shot_clip.py > /media/volume/trash/ImACCESS/prec_at_K.out &
+# $ nohup python -u zero_shot_clip.py > /media/volume/ImACCESS/trash/prec_at_K.out &
 
 def load_model():
 	model, preprocess = clip.load("ViT-B/32", device=device)
@@ -131,42 +129,48 @@ def get_prec_at_(K:int=5):
 	)
 
 def image_retrieval(query:str="dog", topk:int=5):
+	print(f"Image Retrieval {device} CLIP".center(100, "-"))
+	print(f"Top-{topk} image(s) for Query: « {query} »".center(100, " "))
 	model, preprocess = load_model()
 	dataset = load_dataset()
 	labels = dataset.classes
-	tokenized_query = clip.tokenize([query]).to(device)
-	
-	# Encode the query
-	query_features = model.encode_text(tokenized_query)
+	tokenized_query_tensor = clip.tokenize(texts=query).to(device)#<class 'torch.Tensor'> torch.Size([1, 77])
+	query_features = model.encode_text(tokenized_query_tensor) # <class 'torch.Tensor'> torch.Size([1, 512])
 	
 	# Encode all the images
 	all_image_features = []
+	image_tensors = []
 	for i, (img_raw, gt_lbl) in enumerate(dataset):
-		img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
-		image_features = model.encode_image(img_tensor)
-		all_image_features.append(image_features)
-	all_image_features = torch.cat(all_image_features, dim=0)
-	
+		image_tensors.append(preprocess(img_raw).unsqueeze(0).to(device))
+	# 	img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
+	# 	image_features = model.encode_image(img_tensor)
+	# 	all_image_features.append(image_features)
+	# all_image_features = torch.cat(all_image_features, dim=0)
 	# Compute similarities between query and all images
-	similarities = (100.0 * query_features @ all_image_features.T).softmax(dim=-1)
-	
+	# similarities = (100.0 * query_features @ all_image_features.T).softmax(dim=-1)
+
+	image_tensors = torch.cat(image_tensors)
+	image_features = model.encode_image(image_tensors)
+	similarities = (100.0 * image_features @ query_features.T).softmax(dim=-1)
 	# Get the top-k most similar images
 	topk_probs, topk_indices = similarities.topk(topk, dim=-1)
 	
 	# Retrieve the top-k images
 	topk_images = [dataset[idx][0] for idx in topk_indices.squeeze().cpu().numpy()]
 	print(topk_images)
+	print(topk_images[0].size)
+	print(topk_probs)
 
 	# Save the top-k images in a single file
 	fig, axes = plt.subplots(1, topk, figsize=(15, 5))
-		
+	
 	for i, img in enumerate(topk_images):
 		axes[i].imshow(img)
 		axes[i].axis('off')
 		axes[i].set_title(f"Top-{i+1}")
 		
-	# plt.savefig(os.path.join("/media/volume/ImACCESS/results/", "topk.png"))
-	plt.savefig("topk.png")
+	plt.savefig(os.path.join("/media/volume/ImACCESS/results/", f"top{topk}_IMGs_query_{query}.png"))
+	# plt.savefig("topk.png")
 
 	# return topk_images, topk_probs.squeeze().cpu().numpy()
 
