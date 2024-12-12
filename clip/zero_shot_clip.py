@@ -5,7 +5,6 @@ import time
 import numpy as np
 from PIL import Image
 from torchvision.datasets import CIFAR10, CIFAR100
-from sklearn.metrics import precision_score, recall_score
 from typing import List
 import matplotlib.pyplot as plt
 
@@ -139,19 +138,26 @@ def image_retrieval(query:str="dog", topk:int=5):
 	
 	# Encode all the images
 	all_image_features = []
-	image_tensors = []
-	for i, (img_raw, gt_lbl) in enumerate(dataset):
-		image_tensors.append(preprocess(img_raw).unsqueeze(0).to(device))
+
+	# for i, (img_raw, gt_lbl) in enumerate(dataset):
 	# 	img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
 	# 	image_features = model.encode_image(img_tensor)
 	# 	all_image_features.append(image_features)
-	# all_image_features = torch.cat(all_image_features, dim=0)
-	# Compute similarities between query and all images
-	# similarities = (100.0 * query_features @ all_image_features.T).softmax(dim=-1)
+	batch = []
+	batch_size:int=32
+	for i, (img_raw, gt_lbl) in enumerate(dataset):
+		img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
+		batch.append(img_tensor)
+		print(len(batch))
+		if len(batch) == batch_size or i == len(dataset) - 1:
+			batch_features = model.encode_image(torch.cat(batch, dim=0))
+			all_image_features.append(batch_features)
+			batch = []
+	all_image_features = torch.cat(all_image_features, dim=0)
 
-	image_tensors = torch.cat(image_tensors)
-	image_features = model.encode_image(image_tensors)
-	similarities = (100.0 * image_features @ query_features.T).softmax(dim=-1)
+	# Compute similarities between query and all images
+	similarities = (100.0 * query_features @ all_image_features.T).softmax(dim=-1)
+
 	# Get the top-k most similar images
 	topk_probs, topk_indices = similarities.topk(topk, dim=-1)
 	
@@ -170,9 +176,6 @@ def image_retrieval(query:str="dog", topk:int=5):
 		axes[i].set_title(f"Top-{i+1}")
 		
 	plt.savefig(os.path.join("/media/volume/ImACCESS/results/", f"top{topk}_IMGs_query_{query}.png"))
-	# plt.savefig("topk.png")
-
-	# return topk_images, topk_probs.squeeze().cpu().numpy()
 
 def main():
 	print(clip.available_models())
