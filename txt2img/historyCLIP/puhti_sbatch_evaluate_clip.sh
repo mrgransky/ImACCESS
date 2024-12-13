@@ -35,11 +35,9 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
 )
 
-echo "Dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$SLURM_ARRAY_TASK_ID]}"
-
 for prec in 1 5 10 15 20
 	do
-		echo "Precision@$prec for ${DATASETS[$SLURM_ARRAY_TASK_ID]}"
+		echo "Precision@$prec for Dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$SLURM_ARRAY_TASK_ID]}"
 		python -u evaluate_clip.py \
 						--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
 						--topK $prec \

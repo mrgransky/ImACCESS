@@ -1,14 +1,14 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=NA_dataset_collection_ww1_ww2_threshold_plus_minus_1_year
+#SBATCH --job-name=smu_dataset_collection
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --mem=8G
 #SBATCH --partition=small
 #SBATCH --time=03-00:00:00
 
@@ -28,15 +28,16 @@ echo "nTASKS/CORE: $SLURM_NTASKS_PER_CORE, nTASKS/NODE: $SLURM_NTASKS_PER_NODE"
 echo "THREADS/CORE: $SLURM_THREADS_PER_CORE"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
-ddir="/scratch/project_2004072/ImACCESS/NA_DATASET"
-st_dt="1913-01-01"
-end_dt="1946-12-31"
+ddir="/scratch/project_2004072/ImACCESS/WW_DATASETs"
+st_dt="1900-01-01"
+end_dt="1970-12-31"
 
 python -u data_collector.py \
 	--dataset_dir $ddir \
 	--start_date  $st_dt \
 	--end_date  $end_dt \
-	--num_worker 39 \
+	--num_worker 10 \
+	--img_mean_std \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

@@ -11,17 +11,11 @@ parser.add_argument('--start_date', type=str, default="1890-01-01", help='Datase
 parser.add_argument('--end_date', type=str, default="1960-01-01", help='Dataset DIR')
 parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
+# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1900-01-01 --end_date 1970-12-31 --num_workers 8 > logs/smu_dataset_collection.out &
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 print(args)
-# run in local laptop:
-# $ python data_collector.py --dataset_dir $PWD --start_date 1900-01-01 --end_date 1970-12-31
-<<<<<<< HEAD
-# $ nohup python -u data_collector.py -u --dataset_dir $PWD --start_date 1900-01-01 --end_date 1970-12-31 --img_mean_std > logs/smu_image_download.out &
-=======
-# $ nohup python -u data_collector.py -u --dataset_dir $PWD --start_date 1900-01-01 --end_date 1970-12-31 > logs/smu_image_download.out &
->>>>>>> 1b1e7c00e258b0ce2ec46074854d315cd045bd3d
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
@@ -202,7 +196,7 @@ def main():
 	print(f"Concatinating {len(dfs)} dfs...")
 	# print(dfs[0])
 	smu_df_merged_raw = pd.concat(dfs, ignore_index=True)
-	print(f"<!> Replacing labels with broad umbrella terms")
+	print(f"<!> Replacing labels with super classes")
 	json_file_path = os.path.join(parent_dir, 'misc', 'generalized_labels.json')
 	if os.path.exists(json_file_path):
 		with open(json_file_path, 'r') as file_:
@@ -227,7 +221,7 @@ def main():
 	smu_df = get_synchronized_df_img(df=smu_df_merged_raw, image_dir=IMAGE_DIR, nw=args.num_workers)
 	query_counts = smu_df['label'].value_counts()
 
-	plt.figure(figsize=(21, 14))
+	plt.figure(figsize=(15, 10))
 	query_counts.plot(kind='bar', fontsize=9)
 	plt.title(f'{dataset_name} Query Frequency (total: {query_counts.shape})')
 	plt.xlabel('label')
