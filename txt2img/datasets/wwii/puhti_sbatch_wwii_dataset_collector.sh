@@ -1,18 +1,16 @@
 #!/bin/bash
 
-#SBATCH --account=project_2004072
-#SBATCH --job-name=prec_at_k
-#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
+#SBATCH --account=project_2009043
+#SBATCH --job-name=NA_dataset_collection_1900_1970
+#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=96G
-#SBATCH --partition=gpu
+#SBATCH --mem=10G
+#SBATCH --partition=small
 #SBATCH --time=03-00:00:00
-#SBATCH --array=0-1
-#SBATCH --gres=gpu:v100:1
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
@@ -30,20 +28,14 @@ echo "nTASKS/CORE: $SLURM_NTASKS_PER_CORE, nTASKS/NODE: $SLURM_NTASKS_PER_NODE"
 echo "THREADS/CORE: $SLURM_THREADS_PER_CORE"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
-DATASETS=(
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
-)
+ddir="/scratch/project_2004072/ImACCESS/WW_DATASETs"
+st_dt="1939-09-01"
+end_dt="1945-09-02"
 
-for prec in 1 5 10 15 20
-	do
-		echo "Precision@$prec for Dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$SLURM_ARRAY_TASK_ID]}"
-		python -u evaluate_clip.py \
-						--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
-						--topK $prec \
-
-done
+python -u data_collector.py \
+	--dataset_dir $ddir \
+	--num_worker 10 \
+	--img_mean_std \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

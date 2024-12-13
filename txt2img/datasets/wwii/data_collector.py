@@ -10,14 +10,14 @@ parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR'
 parser.add_argument('--start_date', type=str, default="1939-09-01", help='Start Date')
 parser.add_argument('--end_date', type=str, default="1945-09-02", help='End Date')
 parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs')
-parser.add_argument('--img_mean_std', type=bool, default=False, help='Image mean & std')
+parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 print(args)
 
 # how to run in local:
-# $ nohup python -u data_collector.py --dataset_dir $PWD > logs/ww_image_download.out &
+# $ nohup python -u data_collector.py --dataset_dir $PWD --img_mean_std > logs/ww_image_download.out &
 
 meaningless_words_fpth = os.path.join(parent_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
@@ -592,7 +592,7 @@ def main():
 	label_counts = merged_df['label'].value_counts()
 	# print(label_counts.tail(25))
 
-	plt.figure(figsize=(20, 13))
+	plt.figure(figsize=(16, 10))
 	label_counts.plot(kind='bar', fontsize=9)
 	plt.title(f'{dataset_name}: Query Frequency (total: {label_counts.shape}) {START_DATE} - {END_DATE}')
 	plt.xlabel('Query')
@@ -615,7 +615,6 @@ def main():
 			save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
 		print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
-
 
 if __name__ == "__main__":
 	main()
