@@ -7,6 +7,7 @@ TEST_IMGs
 *.pkl
 *.png
 *.pth
+models/
 
 # Django
 wgui/db.sqlite3

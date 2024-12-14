@@ -26,7 +26,7 @@ parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
 print(args)
-# $ nohup python -u finetune.py --batch_size 128 > /media/volume/ImACCESS/trash/finetune_cifar.out &
+# $ nohup python -u finetune.py -bs 256 -ne 10 > /media/volume/ImACCESS/trash/finetune_cifar.out &
 
 class CIFARDATASET(torch.utils.data.Dataset):
 		def __init__(self, dataset, transformer=None,):
@@ -53,6 +53,35 @@ class CIFARDATASET(torch.utils.data.Dataset):
 
 		def __len__(self):
 				return len(self.dataset)
+
+def evaluate(model, test_loader, criterion, args):
+	model.eval()
+	total_loss = 0
+	total_correct_text_description_for_each_image = 0
+	total_correct_image_for_each_text_description = 0
+	with torch.no_grad():
+		for batch_idx, batch in enumerate(test_loader):
+			images, labels = batch
+			images = images.to(args.device)
+			labels = labels.to(args.device)
+			logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
+			_, predicted_idxs_imgs = torch.max(input=logits_per_image, dim=1, keepdim=True)
+			_, predicted_idxs_txts = torch.max(input=logits_per_text, dim=1, keepdim=True)
+			# Get the indices of the correct text descriptions for each image
+			correct_text_description_idxs = torch.argmax(labels, dim=1)
+			# Compare the predicted indexes with the correct indexes
+			total_correct_text_description_for_each_image += (predicted_idxs_imgs == correct_text_description_idxs.unsqueeze(1)).sum().item()
+			total_correct_image_for_each_text_description += (predicted_idxs_txts == correct_text_description_idxs.unsqueeze(1)).sum().item()
+			# Compute validation loss
+			ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=args.device)
+			loss_img = criterion(logits_per_image, ground_truth) 
+			loss_txt = criterion(logits_per_text, ground_truth)
+			valid_loss = 0.5 * (loss_img + loss_txt)
+			total_loss += valid_loss.item()
+	avg_loss = total_loss / len(test_loader)
+	accuracy_text_description_for_each_image = total_correct_text_description_for_each_image / len(test_loader.dataset)
+	accuracy_text_image_for_each_text_description = total_correct_image_for_each_text_description / len(test_loader.dataset)
+	return avg_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description
 
 def get_dataloaders(train_dataset, test_dataset, preprocess, batch_size=32, num_workers=10):
 		train_dataset = CIFARDATASET(train_dataset, transformer=preprocess)
@@ -104,6 +133,21 @@ def get_dataset(large_dataset:bool=False):
 		print(test_dataset)
 		return train_dataset, test_dataset
 
+def plot_(train_losses, val_losses, validation_accuracy_text_description_for_each_image_list, validation_accuracy_text_image_for_each_text_description_list):
+	plt.plot(train_losses, label='Training Loss')
+	plt.plot(val_losses, label='Validation Loss')
+	plt.xlabel('Epoch')
+	plt.ylabel('Loss')
+	plt.legend()
+	plt.savefig(f"train_vs_validation_loss_ep_{len(train_losses)}")
+
+	plt.plot(validation_accuracy_text_description_for_each_image_list, label='Validation Accuracy [text description for each image]')
+	plt.plot(validation_accuracy_text_image_for_each_text_description_list, label='Validation Accuracy [image for each text description]')
+	plt.xlabel('Epoch')
+	plt.ylabel('Accuracy')
+	plt.legend()
+	plt.savefig(f"train_vs_validation_accuracy_ep_{len(train_losses)}")
+
 def finetune(model, train_loader, test_loader, num_epochs=5):
 	print(f"Fine-Tuning CLIP model {num_epochs} Epoch(s) device: {args.device} & {args.num_workers} CPU(s)".center(160, "-"))
 	if torch.cuda.is_available():
@@ -121,6 +165,12 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 	)
 
 	criterion = nn.CrossEntropyLoss()
+	training_losses, validation_losses = [], []
+	# training_accuracy_text_description_for_each_image_list = []
+	# training_accuracy_text_image_for_each_text_description_list = []
+	validation_accuracy_text_description_for_each_image_list = []
+	validation_accuracy_text_image_for_each_text_description_list = []
+
 	for epoch in range(num_epochs):
 		print(f"Epoch [{epoch+1}/{num_epochs}]")
 		model.train()
@@ -145,36 +195,62 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 					f"\tBatch [{batch_idx+1}/{len(train_loader)}] "
 					f"Loss: {total_loss.item():.7f}",
 				)
-		print(f'Epoch {epoch+1}, Loss: {total_loss / len(train_loader):.7f}')
-		
-		# Evaluate the model on the test set
-		model.eval()
-		total_correct_text_description_for_each_image = 0
-		total_correct_image_for_each_text_description = 0
-		with torch.no_grad():
-			for batch_idx, batch in enumerate(test_loader):
-				images, labels = batch
-				images = images.to(args.device)
-				labels = labels.to(args.device)
-				logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size]) = model(images, labels)
-				_, predicted_idxs_imgs = torch.max(input=logits_per_image, dim=1, keepdim=True)
-				_, predicted_idxs_txts = torch.max(input=logits_per_text, dim=1, keepdim=True)
-				# print(predicted_idxs_txts)
-	
-				# Get the indices of the correct text descriptions for each image
-				correct_text_description_idxs = torch.argmax(labels, dim=1)
-				print(predicted_idxs_imgs.shape, predicted_idxs_txts.shape, correct_text_description_idxs.shape, labels.shape) # torch.Size([64, 1]) torch.Size([64, 1]) torch.Size([64]) torch.Size([64, 77])
-				
-				# Compare the predicted indexes with the correct indexes
-				total_correct_text_description_for_each_image += (predicted_idxs_imgs == correct_text_description_idxs.unsqueeze(1)).sum().item()
-				total_correct_image_for_each_text_description += (predicted_idxs_txts == correct_text_description_idxs.unsqueeze(1)).sum().item()
-				
-		accuracy_text_description_for_each_image = total_correct_text_description_for_each_image / len(test_loader.dataset)
-		accuracy_text_image_for_each_text_description = total_correct_image_for_each_text_description / len(test_loader.dataset)
+		avg_training_loss = total_loss / len(train_loader)
+		training_losses.append(avg_training_loss)
+		print(f'Epoch {epoch+1}, Loss: {avg_training_loss:.5f}')
+
+		avg_valid_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description = evaluate(model, test_loader, criterion, args)
+		validation_losses.append(avg_valid_loss)
+		validation_accuracy_text_description_for_each_image_list.append(accuracy_text_description_for_each_image)
+		validation_accuracy_text_image_for_each_text_description_list.append(accuracy_text_image_for_each_text_description)
+
 		print(
-			f'Test Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.4f} '
+			f'Training Loss: {avg_training_loss:.4f} '
+			f'Validation Loss: {avg_valid_loss:.4f} '
+			f'Validation Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.4f} '
 			f'[image for each text description]: {accuracy_text_image_for_each_text_description:.4f}'
 		)
+
+	plot_(
+		train_losses=training_losses,
+		val_losses=validation_losses,
+		validation_accuracy_text_description_for_each_image_list=validation_accuracy_text_description_for_each_image_list,
+		validation_accuracy_text_image_for_each_text_description_list=validation_accuracy_text_image_for_each_text_description_list,
+	)
+		
+		# # Evaluate the model on the test set
+		# model.eval()
+		# total_correct_text_description_for_each_image = 0
+		# total_correct_image_for_each_text_description = 0
+		# with torch.no_grad():
+		# 	for batch_idx, batch in enumerate(test_loader):
+		# 		images, labels = batch
+		# 		images = images.to(args.device)
+		# 		labels = labels.to(args.device) # torch.Size([64, 77])
+		# 		logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
+		# 		_, predicted_idxs_imgs = torch.max(input=logits_per_image, dim=1, keepdim=True) # torch.Size([64, 1])
+		# 		_, predicted_idxs_txts = torch.max(input=logits_per_text, dim=1, keepdim=True) # torch.Size([64, 1])
+	
+		# 		# Get the indices of the correct text descriptions for each image
+		# 		correct_text_description_idxs = torch.argmax(labels, dim=1) # torch.Size([64])
+				
+		# 		# Compare the predicted indexes with the correct indexes
+		# 		total_correct_text_description_for_each_image += (predicted_idxs_imgs == correct_text_description_idxs.unsqueeze(1)).sum().item()
+		# 		total_correct_image_for_each_text_description += (predicted_idxs_txts == correct_text_description_idxs.unsqueeze(1)).sum().item()
+
+		# 		# Compute validation loss
+		# 		ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=args.device)
+		# 		loss_img = criterion(logits_per_image, ground_truth) 
+		# 		loss_txt = criterion(logits_per_text, ground_truth)
+		# 		valid_loss = 0.5 * (loss_img + loss_txt)
+		# 		total_valid_loss += valid_loss.item()
+				
+		# accuracy_text_description_for_each_image = total_correct_text_description_for_each_image / len(test_loader.dataset)
+		# accuracy_text_image_for_each_text_description = total_correct_image_for_each_text_description / len(test_loader.dataset)
+		# print(
+		# 	f'Test Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.4f} '
+		# 	f'[image for each text description]: {accuracy_text_image_for_each_text_description:.4f}'
+		# )
 
 def main():
 	print(clip.available_models())
