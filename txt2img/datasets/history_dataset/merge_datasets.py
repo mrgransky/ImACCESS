@@ -1,5 +1,7 @@
 import os
 import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 DATASETS = [
 	"/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31",
@@ -37,3 +39,14 @@ print(merged_df.head(20))
 print(merged_df.describe())
 # Save the merged DataFrame to a new CSV file in the current directory
 merged_df.to_csv('metadata.csv', index=False)
+
+# Plotting
+plt.figure(figsize=(18, 10))
+sns.countplot(x="label", hue="dataset", data=merged_df, palette="bright")
+plt.title("Distribution of Labels by Dataset")
+plt.xlabel("Label")
+plt.ylabel("Count")
+plt.legend(title="Dataset")
+plt.tight_layout()
+plt.savefig("label_freq.png")
+plt.show()
