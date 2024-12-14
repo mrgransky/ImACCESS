@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 DATASETS = [
 	"/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31",
@@ -41,10 +42,15 @@ print(merged_df.describe())
 merged_df.to_csv('metadata.csv', index=False)
 
 # Plotting
-plt.figure(figsize=(18, 10))
+plt.figure(figsize=(21, 8))
 sns.countplot(x="label", hue="dataset", data=merged_df, palette="bright")
-plt.title("Distribution of Labels by Dataset")
-plt.xlabel("Label")
+# Adjust x-axis ticks
+ax = plt.gca()
+ax.xaxis.set_major_locator(ticker.MaxNLocator(10))  # Adjust the number of ticks
+ax.tick_params(axis='x', rotation=90)  # Rotate the x-axis tick labels
+
+plt.title('Grouped Bar Chart of Labels by Dataset')
+plt.xlabel('Label')
 plt.ylabel("Count")
 plt.legend(title="Dataset")
 plt.tight_layout()
