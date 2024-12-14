@@ -197,7 +197,7 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 				)
 		avg_training_loss = total_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
-		print(f'Epoch {epoch+1}, Loss: {avg_training_loss:.5f}')
+		print(f'Epoch {epoch+1} Loss: {avg_training_loss:.5f}')
 
 		avg_valid_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description = evaluate(model, test_loader, criterion, args)
 		validation_losses.append(avg_valid_loss)
