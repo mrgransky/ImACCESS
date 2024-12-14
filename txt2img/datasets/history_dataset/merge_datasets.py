@@ -42,12 +42,13 @@ print(merged_df.describe())
 merged_df.to_csv('metadata.csv', index=False)
 
 # Plotting
-plt.figure(figsize=(21, 8))
+plt.figure(figsize=(24, 15))
 sns.countplot(x="label", hue="dataset", data=merged_df, palette="bright")
 # Adjust x-axis ticks
 ax = plt.gca()
-ax.xaxis.set_major_locator(ticker.MaxNLocator(10))  # Adjust the number of ticks
+# ax.xaxis.set_major_locator(ticker.MaxNLocator(10))  # Adjust the number of ticks
 ax.tick_params(axis='x', rotation=90)  # Rotate the x-axis tick labels
+ax.tick_params(axis='y', rotation=90)  # Rotate the x-axis tick labels
 
 plt.title('Grouped Bar Chart of Labels by Dataset')
 plt.xlabel('Label')
