@@ -22,12 +22,12 @@ parser.add_argument('--num_epochs', '-ne', type=int, default=5, help='Number of 
 parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
 parser.add_argument('--learning_rate', '-lr', type=float, default=2e-4, help='small learning rate for better convergence [def: 1e-3]')
 parser.add_argument('--weight_decay', '-wd', type=float, default=1e-1, help='Weight decay [def: 5e-4]')
-parser.add_argument('--print_every', type=int, default=200, help='Print loss')
+parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 
 args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
-
-# $ nohup python -u finetune.py > /media/volume/ImACCESS/trash/prec_at_K.out &
+print(args)
+# $ nohup python -u finetune.py --batch_size 128 > /media/volume/ImACCESS/trash/finetune_cifar.out &
 
 class CIFARDATASET(torch.utils.data.Dataset):
 		def __init__(self, dataset, transformer=None,):
@@ -161,7 +161,7 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 				_, predicted_idxs_imgs = torch.max(input=logits_per_image, dim=1, keepdim=True)
 				_, predicted_idxs_txts = torch.max(input=logits_per_text, dim=1, keepdim=True)
 				print(predicted_idxs_imgs.shape, predicted_idxs_txts.shape, labels.shape)
-				print(predicted_idxs_txts)
+				# print(predicted_idxs_txts)
 	
 				# Get the indices of the correct text descriptions for each image
 				correct_text_description_idxs = torch.argmax(labels, dim=1)
