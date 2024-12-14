@@ -108,8 +108,8 @@ def finetune(model, finetune_data_loader, val_data_loader, model_dir:str="path/2
 	total_params = sum([param.numel() for param in model.parameters() if param.requires_grad])
 	print(f"Total finetuneable parameters (Vision + Text) Encoder: {total_params} ~ {total_params/int(1e+6):.2f} M")
 
-	loss_img = nn.CrossEntropyLoss()
-	loss_txt = nn.CrossEntropyLoss()
+	criterion_img = nn.CrossEntropyLoss()
+	criterion_txt = nn.CrossEntropyLoss()
 	optimizer = optim.Adam(
 		params=model.parameters(),
 		lr=args.learning_rate,
@@ -127,10 +127,12 @@ def finetune(model, finetune_data_loader, val_data_loader, model_dir:str="path/2
 			# print()
 			images = images.to(args.device)
 			texts = texts.to(args.device)
-		
+
 			logits_per_image, logits_per_text = model(images, texts)
 			ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=args.device)
-			total_loss = 0.5 * (loss_img(logits_per_image, ground_truth) + loss_txt(logits_per_text, ground_truth))
+			loss_img = criterion_img(logits_per_image, ground_truth)
+			loss_txt = criterion_txt(logits_per_text, ground_truth)
+			total_loss = 0.5 * (loss_img + loss_txt)
 			total_loss.backward()
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
 			optimizer.step()

@@ -6,10 +6,10 @@ sys.path.insert(0, parent_dir)
 from misc.utils import *
 
 parser = argparse.ArgumentParser(description="WWII Dataset")
-parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
-parser.add_argument('--start_date', type=str, default="1939-09-01", help='Start Date')
-parser.add_argument('--end_date', type=str, default="1945-09-02", help='End Date')
-parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs')
+parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
+parser.add_argument('--start_date', '-sdt', type=str, default="1939-09-01", help='Start Date')
+parser.add_argument('--end_date', '-edt', type=str, default="1945-09-02", help='End Date')
+parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 
 # args = parser.parse_args()
