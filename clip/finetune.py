@@ -7,7 +7,6 @@ import argparse
 import numpy as np
 from PIL import Image
 from torchvision.datasets import CIFAR10, CIFAR100
-from torchvision import transforms
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.optim as optim
@@ -160,11 +159,11 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 				logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size]) = model(images, labels)
 				_, predicted_idxs_imgs = torch.max(input=logits_per_image, dim=1, keepdim=True)
 				_, predicted_idxs_txts = torch.max(input=logits_per_text, dim=1, keepdim=True)
-				print(predicted_idxs_imgs.shape, predicted_idxs_txts.shape, labels.shape)
 				# print(predicted_idxs_txts)
 	
 				# Get the indices of the correct text descriptions for each image
 				correct_text_description_idxs = torch.argmax(labels, dim=1)
+				print(predicted_idxs_imgs.shape, predicted_idxs_txts.shape, correct_text_description_idxs.shape, labels.shape) # torch.Size([64, 1]) torch.Size([64, 1]) torch.Size([64]) torch.Size([64, 77])
 				
 				# Compare the predicted indexes with the correct indexes
 				total_correct_text_description_for_each_image += (predicted_idxs_imgs == correct_text_description_idxs.unsqueeze(1)).sum().item()
@@ -172,8 +171,10 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 				
 		accuracy_text_description_for_each_image = total_correct_text_description_for_each_image / len(test_loader.dataset)
 		accuracy_text_image_for_each_text_description = total_correct_image_for_each_text_description / len(test_loader.dataset)
-		print(f'Test Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.4f}')
-		print(f'Test Accuracy [image for each text description]: {accuracy_text_image_for_each_text_description:.4f}')
+		print(
+			f'Test Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.4f} '
+			f'[image for each text description]: {accuracy_text_image_for_each_text_description:.4f}'
+		)
 
 def main():
 	print(clip.available_models())
