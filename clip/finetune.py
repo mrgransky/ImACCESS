@@ -19,14 +19,16 @@ parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_avai
 parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs [def: max cpus]')
 parser.add_argument('--num_epochs', '-ne', type=int, default=5, help='Number of epochs')
 parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
-parser.add_argument('--learning_rate', '-lr', type=float, default=2e-4, help='small learning rate for better convergence [def: 1e-3]')
+parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-3]')
 parser.add_argument('--weight_decay', '-wd', type=float, default=1e-1, help='Weight decay [def: 5e-4]')
 parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 
 args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
 print(args)
-# $ nohup python -u finetune.py -bs 256 -ne 10 > /media/volume/ImACCESS/trash/finetune_cifar.out &
+
+# run in pouta:
+# $ nohup python -u finetune.py -bs 256 -ne 25 -lr 1e-4 > /media/volume/ImACCESS/trash/finetune_cifar.out &
 
 class CIFARDATASET(torch.utils.data.Dataset):
 		def __init__(self, dataset, transformer=None,):

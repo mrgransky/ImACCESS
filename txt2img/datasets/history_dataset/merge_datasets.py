@@ -4,9 +4,10 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
+
 DATASETS = [
-	"/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31",
 	"/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31",
+	"/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31",
 	"/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31",
 	"/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02",
 ]
