@@ -32,6 +32,7 @@ for dataset_path in DATASETS:
 
 # Concatenate all DataFrames into one
 merged_df = pd.concat(dfs, ignore_index=True)
-
+print(merged_df.shape)
+print(merged_df.head(20))
 # Save the merged DataFrame to a new CSV file in the current directory
 merged_df.to_csv('metadata.csv', index=False)
