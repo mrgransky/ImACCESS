@@ -9,7 +9,7 @@ parser = argparse.ArgumentParser(description="WWII Dataset")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', '-sdt', type=str, default="1939-09-01", help='Start Date')
 parser.add_argument('--end_date', '-edt', type=str, default="1945-09-02", help='End Date')
-parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
+parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 
 # args = parser.parse_args()
@@ -210,7 +210,7 @@ def main():
 		f"{base_url}/japan/aircrafts/d4y/": "aircraft", #
 		f"{base_url}/japan/aircrafts/yokosuka_mxy7_ohka/": "aircraft", #
 		f"{base_url}/japan/aircrafts/p1y/": "aircraft", #
-		f"{base_url}/japan/ijn/midget/": "navy", # japanese navy
+		f"{base_url}/japan/ijn/midget/": "naval forces", # japanese navy
 		f"{base_url}/japan/japanese-tanks/": "armored fighting vehicle",
 		f"{base_url}/uk/british-tanks/cruiser-mk-iii-a13-mk-i-cruiser-mk-iv-a13-mk-ii/": "armored fighting vehicle",
 		f"{base_url}/uk/british-tanks/challenger/": "armored fighting vehicle",
@@ -439,7 +439,7 @@ def main():
 		f"{base_url}/usa/tanks/sherman-tank/": "armored fighting vehicle",
 		f"{base_url}/usa/tanks/m6-tank/": "armored fighting vehicle",
 		f"{base_url}/usa/tanks/m8/": "armored fighting vehicle",
-		f"{base_url}/usa/us-navy/": "navy",
+		f"{base_url}/usa/us-navy/": "naval forces",
 		f"{base_url}/usa/vehicles/g506/": "military vehicle",
 		f"{base_url}/usa/vehicles/m29/": "military vehicle",
 		f"{base_url}/ussr/vvs/ar-2/": "aircraft",
@@ -489,7 +489,7 @@ def main():
 		f"{base_url}/germany/armored_vehicles/sdkfz_231_232_233/": "armored fighting vehicle",
 		f"{base_url}/germany/armored_vehicles/sdkfz_247/": "armored fighting vehicle",
 		f"{base_url}/germany/armored_vehicles/sdkfz_263/": "armored fighting vehicle",
-		f"{base_url}/germany/kriegsmarine/": "navy",
+		f"{base_url}/germany/kriegsmarine/": "naval forces",
 		f"{base_url}/germany/german_army_soldiers/": "military personnel",
 		f"{base_url}/germany/wehrmacht_trucks/bussing-nag/": "military vehicle",
 		f"{base_url}/germany/wehrmacht_trucks/einheitsdiesel/": "military vehicle",

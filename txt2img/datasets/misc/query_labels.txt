@@ -137,7 +137,9 @@ mountain gun
 anti tank mine
 antitank gun
 antitank weapon
-Memorial day
+memorial day
+Decoration Day
+National Day
 light station
 light house
 half track
