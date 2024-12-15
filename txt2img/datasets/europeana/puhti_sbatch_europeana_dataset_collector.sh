@@ -36,7 +36,7 @@ python -u data_collector.py \
 	--dataset_dir $ddir \
 	--start_date  $st_dt \
 	--end_date  $end_dt \
-	--num_worker 10 \
+	--num_worker 20 \
 	# --img_mean_std
 
 done_txt="$user finished Slurm job: `date`"
