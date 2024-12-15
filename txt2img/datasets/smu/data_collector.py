@@ -154,6 +154,7 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 			'doc_url': doc_url,
 			'label_title_description': query + " " + (doc_title or '') + " " + (doc_description or ''),
 			'raw_doc_date': doc_date,
+			'img_path': f"{os.path.join(args.dataset_dir, 'images', doc_combined_identifier + '.jpg')}"
 		}
 		data.append(row)
 	df = pd.DataFrame(data)

@@ -151,6 +151,7 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 		# print(type(doc.get("title")), doc.get("title"))
 		# title = doc.get("title")
 		europeana_id = doc.get("id")
+		doc_id = re.sub("/", "SLASH", europeana_id)
 		# print(type(doc.get("title")), len(doc.get("title")))
 		doc_title_list = doc.get("title") # ["title1", "title2", "title3", ...]
 		doc_description_list = doc.get("dcDescription" )# ["desc1", "desc2", "desc3", ...]
@@ -176,7 +177,7 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 			image_url = None
 		row = {
 			'doc_id': europeana_id,
-			'id': re.sub("/", "SLASH", europeana_id),
+			'id': doc_id,
 			'label': label,
 			'title': doc_title,
 			'description': doc_description,
@@ -186,6 +187,7 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 			'doc_year': doc_year,
 			# 'my_date': pDate,
 			"doc_url": doc_url,
+			'img_path': f"{os.path.join(args.dataset_dir, 'images', doc_id + '.jpg')}"
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
