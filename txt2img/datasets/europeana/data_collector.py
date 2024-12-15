@@ -187,7 +187,7 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 			'doc_year': doc_year,
 			# 'my_date': pDate,
 			"doc_url": doc_url,
-			'img_path': f"{os.path.join(args.dataset_dir, 'images', doc_id + '.jpg')}"
+			'img_path': f"{os.path.join(args.dataset_dir, 'images', str(doc_id) + '.jpg')}"
 		}
 		data.append(row)
 	df = pd.DataFrame(data)

@@ -237,7 +237,7 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 			'label_title_description': label + " " + (doc_title or '') + " " + (doc_description or ''),
 			'raw_doc_date': raw_doc_date,
 			'doc_url': f"https://catalog.archives.gov/id/{na_identifier}",
-			'img_path': f"{os.path.join(args.dataset_dir, 'images', na_identifier + '.jpg')}"
+			'img_path': f"{os.path.join(args.dataset_dir, 'images', str(na_identifier) + '.jpg')}"
 		}
 		data.append(row)
 	df = pd.DataFrame(data)

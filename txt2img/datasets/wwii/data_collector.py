@@ -153,7 +153,7 @@ def get_dframe(doc_idx:int=1000, doc_url:str="www.example.com", doc_label: str="
 			'label_title_description': doc_label + " " + (doc_title or '') + " " + (doc_description or ''),
 			'date': None,
 			'doc_url': doc_url,
-			'img_path': f"{os.path.join(args.dataset_dir, 'images', wwii_identifier + '.jpg')}"
+			'img_path': f"{os.path.join(args.dataset_dir, 'images', str(wwii_identifier) + '.jpg')}"
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
