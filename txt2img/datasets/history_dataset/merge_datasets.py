@@ -43,7 +43,7 @@ print(merged_df.describe())
 merged_df.to_csv('metadata.csv', index=False)
 label_counts = merged_df['label'].value_counts()
 print(label_counts.tail(25))
-plt.figure(figsize=(20, 13))
+plt.figure(figsize=(18, 10))
 label_counts.plot(kind='bar', fontsize=9)
 plt.title(f'Label Frequency (total: {label_counts.shape})total IMGs: {merged_df.shape[0]}')
 plt.xlabel('Label')
@@ -52,7 +52,7 @@ plt.tight_layout()
 plt.savefig(f"all_query_labels_x_{label_counts.shape[0]}_freq.png")
 
 # Plotting
-plt.figure(figsize=(25, 10))
+plt.figure(figsize=(20, 10))
 sns.countplot(x="label", hue="dataset", data=merged_df, palette="bright")
 # Adjust x-axis ticks
 ax = plt.gca()
