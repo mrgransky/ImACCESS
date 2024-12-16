@@ -175,11 +175,11 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 
 	# Print the names of all modules
 	for name, module in model.named_modules():
-			print(name)
-
+		print(name)
+	print("#"*100)
 	# Print the names of all parameters
 	for name, param in model.named_parameters():
-			print(name)
+		print(name)
 
 	# Freeze the early layers in the vision encoder
 	for name, param in model.visual.named_parameters():
