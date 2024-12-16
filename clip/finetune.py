@@ -140,18 +140,14 @@ def plot_(train_losses, val_losses, validation_accuracy_text_description_for_eac
 		return
 	epochs = range(1, num_epochs + 1)
 
-	# # Move tensors to CPU and convert to NumPy arrays
-	# train_losses = [loss.cpu().item() for loss in train_losses]
-	# validation_accuracy_text_description_for_each_image_list = [acc.cpu().item() for acc in validation_accuracy_text_description_for_each_image_list]
-	# validation_accuracy_text_image_for_each_text_description_list = [acc.cpu().item() for acc in validation_accuracy_text_image_for_each_text_description_list]
-
 	plt.figure()
 	plt.plot(epochs, train_losses, marker='o', linestyle='-', color='b', label='Training Loss')
 	plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation Loss')
 	plt.xlabel('Epoch')
 	plt.ylabel('Loss')
+	plt.tight_layout()
 	plt.legend()
-	plt.savefig(f"train_vs_validation_loss_ep_{len(train_losses)}.png")
+	plt.savefig(f"train_vs_val_loss_ep_{len(train_losses)}_lr_{args.learning_rate}_wd_{args.weight_decay}.png")
 	plt.close()
 
 	plt.figure()
@@ -159,6 +155,7 @@ def plot_(train_losses, val_losses, validation_accuracy_text_description_for_eac
 	plt.plot(epochs, validation_accuracy_text_image_for_each_text_description_list, marker='o', linestyle='-', color='r', label='Validation Accuracy [image for each text description]')
 	plt.xlabel('Epoch')
 	plt.ylabel('Accuracy')
+	plt.tight_layout()
 	plt.legend()
 	plt.savefig(f"validation_accuracy_ep_{len(train_losses)}_txt_img.png")
 	plt.close()
@@ -181,25 +178,28 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 	# for name, param in model.named_parameters():
 	# 	print(name)
 
-	# Freeze the early layers in the vision encoder
-	for name, param in model.visual.named_parameters():
+	# Freeze the early layers in the vision encoder:
+	# Unfreeze all layers except for the first 5 layers:
+	# for name, param in model.visual.named_parameters(): # decreasing loss
+	# both the vision encoder layers (except for the first few layers) and the transformer layers will be unfrozen, allowing them to be updated during fine-tuning.
+	for name, param in model.named_parameters():
 		if 'visual.conv1' in name or 'visual.ln_pre' in name:
 			# print(f"[VISUAL] {name} found! => Freezing...")
 			param.requires_grad = False
 		else:
 			param.requires_grad = True
 
-	print("#"*100)
-	for name, param in model.named_parameters():
-		if 'transformer.resblocks.0' in name or 'transformer.resblocks.1' in name:
-			# print(f"{name} found! => Freezing...")
-			param.requires_grad = False
+	# # print("#"*100)
+	# for name, param in model.named_parameters():
+	# 	if 'transformer.resblocks.0' in name or 'transformer.resblocks.1' in name:
+	# 		# print(f"{name} found! => Freezing...")
+	# 		param.requires_grad = False
 
-	# Update the remaining layers
-	for param in model.parameters():
-		if param.requires_grad == False:
-			continue
-		param.requires_grad = True
+	# # Update the remaining layers
+	# for param in model.parameters():
+	# 	if param.requires_grad == False:
+	# 		continue
+	# 	param.requires_grad = True
 
 	optimizer = optim.AdamW(
 		params=model.parameters(),
