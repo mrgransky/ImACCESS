@@ -5,15 +5,19 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 from misc.utils import *
 
-parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
-parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
-parser.add_argument('--start_date', type=str, default="1890-01-01", help='Dataset DIR')
-parser.add_argument('--end_date', type=str, default="1960-01-01", help='Dataset DIR')
-parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs')
-parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 # $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1900-01-01 --end_date 1970-12-31 --num_workers 8 > logs/smu_dataset_collection.out &
 
-# args = parser.parse_args()
+# run in Pouta:
+# $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > /media/volume/ImACCESS/trash/europeana_thresholded_WW2.out &
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > /media/volume/ImACCESS/trash/smu_1900-1970.out &
+
+parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
+parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
+parser.add_argument('--start_date', '-sdt', type=str, default="1890-01-01", help='Dataset DIR')
+parser.add_argument('--end_date', '-edt', type=str, default="1960-01-01", help='Dataset DIR')
+parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
+parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 args, unknown = parser.parse_known_args()
 print(args)
 
