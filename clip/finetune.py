@@ -174,9 +174,10 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 	# 	param.requires_grad = True
 
 	# Print the names of all modules
+	print("Modules".center(100, "-"))
 	for name, module in model.named_modules():
 		print(name)
-	print("#"*100)
+	print("Parameters".center(100, "-"))
 	# Print the names of all parameters
 	for name, param in model.named_parameters():
 		print(name)
