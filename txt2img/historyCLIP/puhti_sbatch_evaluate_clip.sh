@@ -1,17 +1,17 @@
 #!/bin/bash
 
 #SBATCH --account=project_2004072
-#SBATCH --job-name=prec_at_k
+#SBATCH --job-name=prec_at_k_4_dataset
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=96G
+#SBATCH --mem=8G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
-#SBATCH --array=0-1
+#SBATCH --array=0-3
 #SBATCH --gres=gpu:v100:1
 
 user="`whoami`"
@@ -32,11 +32,12 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
 )
 
-for prec in 1 5 10 15 20
+for prec in 20 15 10 5 1
 	do
 		echo "Precision@$prec for Dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$SLURM_ARRAY_TASK_ID]}"
 		python -u evaluate_clip.py \
