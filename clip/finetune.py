@@ -172,20 +172,23 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 	# for param in model.parameters():
 	# 	param.requires_grad = True
 
-	# Print the names of all modules
-	print("Modules".center(100, "-"))
-	for name, module in model.named_modules():
-		print(name)
-	print("Parameters".center(100, "-"))
-	# Print the names of all parameters
-	for name, param in model.named_parameters():
-		print(name)
+	# # Print the names of all modules
+	# print("Modules".center(100, "-"))
+	# for name, module in model.named_modules():
+	# 	print(name)
+	# print("Parameters".center(100, "-"))
+	# # Print the names of all parameters
+	# for name, param in model.named_parameters():
+	# 	print(name)
 
 	# Freeze the early layers in the vision encoder
 	for name, param in model.visual.named_parameters():
 		if 'visual.conv1' in name or 'visual.ln_pre' in name:
 			print(f"{name} found! => Freezing...")
 			param.requires_grad = False
+		else:
+			param.requires_grad = True
+
 	print("#"*100)
 	for name, param in model.named_parameters():
 		if 'transformer.resblocks.0' in name or 'transformer.resblocks.1' in name:
@@ -227,7 +230,7 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 			total_loss = 0.5 * (loss_img + loss_txt)
 			# print(loss_img.item(), loss_txt.item(), total_loss.item())
 			total_loss.backward()
-			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+			# torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
 			optimizer.step() # Update weights
 			if batch_idx%args.print_every==0 or batch_idx+1==len(train_loader):
 				print(
