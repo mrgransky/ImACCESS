@@ -49,7 +49,7 @@ plt.savefig(f"all_query_labels_x_{label_counts.shape[0]}_freq.png")
 dataset_unique_label_counts = merged_df.groupby('dataset')['label'].nunique()
 print(dataset_unique_label_counts)
 
-plt.figure(figsize=(20, 10))
+plt.figure(figsize=(22, 8))
 sns.countplot(x="label", hue="dataset", data=merged_df, palette="bright")
 ax = plt.gca()
 ax.tick_params(axis='x', rotation=90, labelsize=9)  # Rotate the x-axis tick labels
@@ -59,9 +59,6 @@ ax.tick_params(axis='y', rotation=90, labelsize=9)
 handles, labels = ax.get_legend_handles_labels()
 new_labels = [f"{label} | ({dataset_unique_label_counts[label]})" for label in labels]
 ax.legend(handles, new_labels, title="Dataset | (Unique Label Count)")
-
-
 plt.title('Grouped Bar Chart of Labels by Dataset')
-# plt.legend()
 plt.tight_layout()
 plt.savefig("label_freq.png")
