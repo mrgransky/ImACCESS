@@ -23,11 +23,14 @@ def get_dataset_name(path):
 dfs = []
 for i, dataset_path in enumerate(DATASETS):
 	print(f"Reading Dataset[{i}]: {dataset_path}")
-	dataset_name = get_dataset_name(dataset_path)
-	metadata_file = os.path.join(dataset_path, 'metadata.csv')
-	df = pd.read_csv(metadata_file)	
-	df['dataset'] = dataset_name	
-	dfs.append(df)
+	try:
+		dataset_name = get_dataset_name(dataset_path)
+		metadata_file = os.path.join(dataset_path, 'metadata.csv')
+		df = pd.read_csv(metadata_file)	
+		df['dataset'] = dataset_name	
+		dfs.append(df)
+	except Exception as e:
+		print(f"{e}")
 
 merged_df = pd.concat(dfs, ignore_index=True)
 print(merged_df.shape)
