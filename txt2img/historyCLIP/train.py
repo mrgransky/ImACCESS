@@ -24,7 +24,7 @@ parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dat
 parser.add_argument('--validation_dataset_dir', '-vddir', default=None, help='Dataset DIR')
 parser.add_argument('--topk', type=int, default=5, help='Top-K images')
 parser.add_argument('--batch_size', '-bs', type=int, default=27, help='Batch Size')
-parser.add_argument('--image_size', '-is', type=int, default=150, help='Image size [def: max 160 local]')
+parser.add_argument('--image_size', '-is', type=int, default=200, help='Image size [def: max 160 local]')
 parser.add_argument('--patch_size', '-ps', type=int, default=5, help='Patch size')
 parser.add_argument('--embedding_size', '-es',type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
 parser.add_argument('--print_every', type=int, default=250, help='Print loss')
@@ -117,14 +117,14 @@ def train(model, train_data_loader, val_data_loader, optimizer, scheduler, check
 		print(f"Epoch [{epoch+1}/{args.num_epochs}]", end="\t")
 		log_gpu_memory(device=args.device)
 		
-		epoch_loss = 0.0  # To accumulate the loss over the epoch
+		epoch_loss = 0.0 # To accumulate the loss over the epoch
 		model.train()
 		for batch_idx, data in enumerate(train_data_loader):
+			optimizer.zero_grad() # Clear gradients from previous batch
 			img = data["image"].to(args.device) 
 			cap = data["caption"].to(args.device)
 			mask = data["mask"].to(args.device)
 
-			optimizer.zero_grad()
 
 			# # Conventional backpropagation:
 			# loss = model(img, cap, mask)
