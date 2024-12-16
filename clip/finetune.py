@@ -136,19 +136,23 @@ def get_dataset(large_dataset:bool=False):
 		return train_dataset, test_dataset
 
 def plot_(train_losses, val_losses, validation_accuracy_text_description_for_each_image_list, validation_accuracy_text_image_for_each_text_description_list):
-	plt.plot(train_losses, label='Training Loss')
-	plt.plot(val_losses, label='Validation Loss')
+	num_epochs = len(train_losses)
+	if num_epochs == 1:
+		return
+	epochs = range(1, num_epochs + 1)
+	plt.plot(epochs, train_losses, marker='o', linestyle='-', color='b', label='Training Loss')
+	plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation Loss')
 	plt.xlabel('Epoch')
 	plt.ylabel('Loss')
 	plt.legend()
-	plt.savefig(f"train_vs_validation_loss_ep_{len(train_losses)}")
+	plt.savefig(f"train_vs_validation_loss_ep_{len(train_losses)}.png")
 
-	plt.plot(validation_accuracy_text_description_for_each_image_list, label='Validation Accuracy [text description for each image]')
-	plt.plot(validation_accuracy_text_image_for_each_text_description_list, label='Validation Accuracy [image for each text description]')
+	plt.plot(epochs, validation_accuracy_text_description_for_each_image_list, marker='o', linestyle='-', color='b', label='Validation Accuracy [text description for each image]')
+	plt.plot(epochs, validation_accuracy_text_image_for_each_text_description_list, marker='o', linestyle='-', color='r', label='Validation Accuracy [image for each text description]')
 	plt.xlabel('Epoch')
 	plt.ylabel('Accuracy')
 	plt.legend()
-	plt.savefig(f"train_vs_validation_accuracy_ep_{len(train_losses)}")
+	plt.savefig(f"train_vs_validation_accuracy_ep_{len(train_losses)}.png")
 
 def finetune(model, train_loader, test_loader, num_epochs=5):
 	print(f"Fine-Tuning CLIP model {num_epochs} Epoch(s) device: {args.device} & {args.num_workers} CPU(s)".center(160, "-"))
