@@ -6,10 +6,10 @@ sys.path.insert(0, parent_dir)
 from misc.utils import *
 
 parser = argparse.ArgumentParser(description="U.S. National Archive Dataset")
-parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
-parser.add_argument('--start_date', type=str, default="1933-01-01", help='Start Date')
-parser.add_argument('--end_date', type=str, default="1933-01-02", help='End Date')
-parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs')
+parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
+parser.add_argument('--start_date', '-sdt', type=str, default="1933-01-01", help='Start Date')
+parser.add_argument('--end_date', '-edt', type=str, default="1933-01-02", help='End Date')
+parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 
 # args = parser.parse_args()
@@ -31,7 +31,7 @@ print(args)
 
 # WWII (with threshold)
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1935-01-01 --end_date 1950-12-31
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1935-01-01 --end_date 1950-12-31 --num_workers 40 --img_mean_std > /media/volume/trash/ImACCESS/NA_thresholded_WW2.out &
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1935-01-01 -edt 1950-12-31 > /media/volume/ImACCESS/trash/NA_thresholded_WW2.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER

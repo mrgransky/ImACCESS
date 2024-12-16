@@ -23,13 +23,10 @@ print(args)
 # $ nohup python -u data_collector.py --dataset_dir $PWD -sdt 1900-01-01 -edt 1970-12-31 ---nw 8 --img_mean_std > logs/europeana_img_dl.out &
 # $ nohup python -u data_collector.py -ddir $PWD -sdt 1900-01-01 -edt 1970-12-31 > logs/europeana_img_dl.out &
 
-# WWII: (1 year threshold)
-# $ nohup python -u data_collector.py --dataset_dir $PWD -sdt 1938-01-01 -edt 1946-12-31 > logs/europeana_ww2_img_dl.out &
-
 # run in Pouta:
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > /media/volume/trash/ImACCESS/europeana_thresholded_WW2.out &
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > /media/volume/trash/ImACCESS/europeana_1900-1970.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > /media/volume/ImACCESS/trash/europeana_thresholded_WW2.out &
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > /media/volume/ImACCESS/trash/europeana_1900-1970.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
