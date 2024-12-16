@@ -240,7 +240,7 @@ def main():
 
 	print(f"Concatinating {len(dfs)} dfs...")
 	europeana_df_merged_raw = pd.concat(dfs, ignore_index=True)
-	json_file_path = os.path.join(parent_dir, 'misc', 'generalized_labels.json')
+	json_file_path = os.path.join(parent_dir, 'misc', 'super_labels.json')
 	if os.path.exists(json_file_path):
 		with open(json_file_path, 'r') as file_:
 			replacement_dict = json.load(file_)

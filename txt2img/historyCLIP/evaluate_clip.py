@@ -82,6 +82,7 @@ def get_zero_shot_precision_at_(dataset, model, preprocess, K:int=5):
 	print(len(labels), type(labels))
 	
 	dataset_images_id = dataset["id"].tolist()
+	dataset_images_path = dataset["img_path"].tolist()
 	dataset_labels = dataset["label"].tolist() # ['naval training', 'medical service', 'medical service', 'naval forces', 'naval forces', ...]
 	dataset_labels_int = dataset["label_int"].tolist() # [3, 17, 4, 9, ...]
 	print(len(dataset_images_id), len(dataset_labels))
@@ -95,8 +96,10 @@ def get_zero_shot_precision_at_(dataset, model, preprocess, K:int=5):
 	floop_st = time.time()
 
 	with torch.no_grad():
-		for i, (img_id, gt_lbl) in enumerate(zip(dataset_images_id, dataset_labels_int)): #img: <class 'PIL.Image.Image'>
-			img_raw = Image.open(os.path.join(args.dataset_dir, "images", f"{img_id}.jpg"))
+		# for i, (img_id, gt_lbl) in enumerate(zip(dataset_images_id, dataset_labels_int)): #img: <class 'PIL.Image.Image'>
+		for i, (img_id, gt_lbl) in enumerate(zip(dataset_images_path, dataset_labels_int)): #img: <class 'PIL.Image.Image'>
+			# img_raw = Image.open(os.path.join(args.dataset_dir, "images", f"{img_id}.jpg"))
+			img_raw = Image.open()
 			img_tensor = preprocess(img_raw).unsqueeze(0).to(args.device)
 			image_features = model.encode_image(img_tensor)
 			image_features /= image_features.norm(dim=-1, keepdim=True)
@@ -144,6 +147,7 @@ def get_image_retrieval(dataset, model, preprocess, query:str="cat", topk:int=5,
 	print(len(labels), type(labels))
 
 	dataset_images_id = dataset["id"].tolist()
+	dataset_images_path = dataset["img_path"].tolist()
 	dataset_labels = dataset["label"].tolist() # ['naval training', 'medical service', 'medical service', 'naval forces', 'naval forces', ...]
 	dataset_labels_int = dataset["label_int"].tolist() # [3, 17, 4, 9, ...]
 	print(len(dataset_images_id), len(dataset_labels))
@@ -154,9 +158,11 @@ def get_image_retrieval(dataset, model, preprocess, query:str="cat", topk:int=5,
 	
 	# Encode all the images
 	all_image_features = []
-	for i in range(0, len(dataset_images_id), batch_size):
-		batch_images_id = [dataset_images_id[j] for j in range(i, min(i + batch_size, len(dataset_images_id)))]
-		batch_tensors = torch.stack([preprocess(Image.open(os.path.join(args.dataset_dir, "images", f"{img_id}.jpg"))).to(args.device) for img_id in batch_images_id])
+	# for i in range(0, len(dataset_images_id), batch_size):
+	# 	batch_images_id = [dataset_images_id[j] for j in range(i, min(i + batch_size, len(dataset_images_id)))]
+	for i in range(0, len(dataset_images_path), batch_size):
+		batch_images_path = [dataset_images_path[j] for j in range(i, min(i + batch_size, len(dataset_images_path)))]
+		batch_tensors = torch.stack([preprocess(Image.open(img_path)).to(args.device) for img_path in batch_images_path])
 		with torch.no_grad(): # prevent PyTorch from computing gradients, can consume significant memory
 			image_features = model.encode_image(batch_tensors)
 			image_features /= image_features.norm(dim=-1, keepdim=True)

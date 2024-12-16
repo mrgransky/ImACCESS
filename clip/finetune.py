@@ -27,7 +27,7 @@ args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
 print(args)
 # run in pouta:
-# $ nohup python -u finetune.py -bs 256 -ne 25 -lr 1e-4 > /media/volume/ImACCESS/trash/finetune_cifar.out &
+# $ nohup python -u finetune.py -bs 330 -ne 25 -lr 1e-5 -wd 1e-3 --print_every 40 --device "cuda:2" > /media/volume/ImACCESS/trash/finetune_cifar.out &
 
 class CIFARDATASET(torch.utils.data.Dataset):
 		def __init__(self, dataset, transformer=None,):

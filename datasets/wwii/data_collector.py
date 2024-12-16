@@ -6,7 +6,7 @@ sys.path.insert(0, parent_dir)
 from misc.utils import *
 
 # how to run in local:
-# $ nohup python -u data_collector.py -ddir $PWD --img_mean_std > logs/wwii_image_download.out &
+# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs > logs/wwii_image_download.out &
 
 # run in Pouta:
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
@@ -17,7 +17,7 @@ parser = argparse.ArgumentParser(description="WWII Dataset")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', '-sdt', type=str, default="1939-09-01", help='Start Date')
 parser.add_argument('--end_date', '-edt', type=str, default="1945-09-02", help='End Date')
-parser.add_argument('--num_workers', '-nw', type=int, default=2, help='Number of CPUs')
+parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 
 args, unknown = parser.parse_known_args()

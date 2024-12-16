@@ -85,8 +85,8 @@ def download_image(row, session, image_dir, total_rows, retries=2, backoff_facto
 	url = row['img_url']
 	img_extension = get_extension(url=url)
 	image_name = row['id']
-	# image_path = os.path.join(image_dir, f"{image_name}.jpg")
-	image_path = os.path.join(image_dir, f"{image_name}.{img_extension}")
+	image_path = os.path.join(image_dir, f"{image_name}.jpg")
+	# image_path = os.path.join(image_dir, f"{image_name}.{img_extension}")
 	if os.path.exists(image_path):
 		try:
 			# Verify if the existing image can be opened
