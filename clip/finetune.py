@@ -184,7 +184,12 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 
 	# Freeze the early layers in the vision encoder
 	for name, param in model.visual.named_parameters():
-		if name in ['conv1.weight', 'conv1.bias', 'layer1.weight', 'layer1.bias', 'layer2.weight', 'layer2.bias', 'layer3.weight', 'layer3.bias']:
+		if 'visual.conv1' in name or 'visual.ln_pre' in name:
+			print(f"{name} found! => Freezing...")
+			param.requires_grad = False
+	print("#"*100)
+	for name, param in model.named_parameters():
+		if 'transformer.resblocks.0' in name or 'transformer.resblocks.1' in name:
 			print(f"{name} found! => Freezing...")
 			param.requires_grad = False
 
