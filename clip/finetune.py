@@ -26,7 +26,6 @@ parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
 print(args)
-
 # run in pouta:
 # $ nohup python -u finetune.py -bs 256 -ne 25 -lr 1e-4 > /media/volume/ImACCESS/trash/finetune_cifar.out &
 
