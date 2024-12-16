@@ -1,5 +1,4 @@
 # Project
-TEST_IMGs
 *.caffemodel
 *.so
 *.csv
@@ -21,6 +20,7 @@ __pycache__/
 *$py.class
 
 .Python
+TEST_IMGs
 build/
 openpose/models/*/*.caffemodel
 openpose/models/*/*/*.caffemodel
@@ -42,6 +42,7 @@ txt2img/fashion_clip/*pth
 txt2img/historyCLIP/*png
 txt2img/fashionCLIP/myntradataset
 txt2img/fashion_clip/HandM*
+datasets/WW_DATASETs
 develop-eggs/
 dist/
 downloads/

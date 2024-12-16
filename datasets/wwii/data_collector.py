@@ -17,7 +17,7 @@ args, unknown = parser.parse_known_args()
 print(args)
 
 # how to run in local:
-# $ nohup python -u data_collector.py -ddir $PWD --img_mean_std > logs/ww_image_download.out &
+# $ nohup python -u data_collector.py -ddir $PWD --img_mean_std > logs/wwii_image_download.out &
 
 meaningless_words_fpth = os.path.join(parent_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
