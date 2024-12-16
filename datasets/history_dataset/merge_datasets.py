@@ -58,7 +58,7 @@ ax.tick_params(axis='y', rotation=90, labelsize=9)
 # Add dataset label counts to the legend
 handles, labels = ax.get_legend_handles_labels()
 new_labels = [f"{label} | ({dataset_unique_label_counts[label]})" for label in labels]
-ax.legend(handles, new_labels, title="Dataset | (Unique Label Count)")
+ax.legend(handles, new_labels, loc="best", fontsize=10, title="Dataset | (Unique Label Count)")
 plt.title('Grouped Bar Chart of Labels by Dataset')
 plt.tight_layout()
 plt.savefig("label_freq.png")
