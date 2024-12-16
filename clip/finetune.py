@@ -173,6 +173,14 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 	# for param in model.parameters():
 	# 	param.requires_grad = True
 
+	# Print the names of all modules
+	for name, module in model.named_modules():
+			print(name)
+
+	# Print the names of all parameters
+	for name, param in model.named_parameters():
+			print(name)
+
 	# Freeze the early layers in the vision encoder
 	for name, param in model.visual.named_parameters():
 		if name in ['conv1.weight', 'conv1.bias', 'layer1.weight', 'layer1.bias', 'layer2.weight', 'layer2.bias', 'layer3.weight', 'layer3.bias']:
@@ -180,8 +188,8 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 
 	# Freeze the early layers in the text encoder
 	for name, param in model.text.named_parameters():
-			if name in ['embedding.weight', 'encoder.layers[0].weight', 'encoder.layers[0].bias', 'encoder.layers[1].weight', 'encoder.layers[1].bias', 'encoder.layers[2].weight', 'encoder.layers[2].bias', 'encoder.layers[3].weight', 'encoder.layers[3].bias']:
-					param.requires_grad = False
+		if name in ['embedding.weight', 'encoder.layers[0].weight', 'encoder.layers[0].bias', 'encoder.layers[1].weight', 'encoder.layers[1].bias', 'encoder.layers[2].weight', 'encoder.layers[2].bias', 'encoder.layers[3].weight', 'encoder.layers[3].bias']:
+			param.requires_grad = False
 
 	# Update the remaining layers
 	for param in model.parameters():
