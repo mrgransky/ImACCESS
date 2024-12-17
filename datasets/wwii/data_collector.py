@@ -30,7 +30,7 @@ with open(meaningless_words_fpth, 'r') as file_:
 	customized_meaningless_words=[line.strip().lower() for line in file_]
 STOPWORDS.extend(customized_meaningless_words)
 STOPWORDS = set(STOPWORDS)
-print(STOPWORDS, type(STOPWORDS))
+# print(STOPWORDS, type(STOPWORDS))
 
 START_DATE = args.start_date
 END_DATE = args.end_date

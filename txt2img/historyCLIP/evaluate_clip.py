@@ -227,7 +227,6 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 	dataset_labels_int = dataset["label_int"].tolist() # [3, 17, 4, 9, ...]
 	
 	print(len(dataset_images_id), len(dataset_labels))
-	# print(dataset_labels[:50])
 
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(args.device) # <class 'torch.Tensor'> torch.Size([num_lbls, 77])
 	tokenized_labels_features = model.encode_text(tokenized_labels_tensor) # <class 'torch.Tensor'> torch.Size([num_lbls, 512])
