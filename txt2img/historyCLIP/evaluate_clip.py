@@ -128,7 +128,7 @@ def get_zero_shot_precision_at_(dataset, model, preprocess, K:int=5):
 		if vlbl in preds:
 			prec_at_k += 1
 	avg_prec_at_k = prec_at_k/len(true_labels)
-	print(f"[OWN] Precision@{K}: {prec_at_k} | {avg_prec_at_k} Elapsed_t: {time.time()-pred_st:.5f} sec")
+	print(f"[OWN] Precision@{K}: {prec_at_k} | {avg_prec_at_k:.3f} Elapsed_t: {time.time()-pred_st:.4f} sec")
 	##################################################################################################
 
 	# pred_st = time.time()
@@ -284,7 +284,7 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 
 	avg_prec_at_k = sum(prec_at_k)/len(labels)
 	avg_recall_at_k = sum(recall_at_k) / len(labels)
-	print(f"Precision@{K}: {avg_prec_at_k} {np.mean(prec_at_k)}")
+	print(f"Precision@{K}: {avg_prec_at_k:.3f} {np.mean(prec_at_k)}")
 	print(f"Recall@{K}: {avg_recall_at_k} {np.mean(recall_at_k)}")
 	print(labels)
 
