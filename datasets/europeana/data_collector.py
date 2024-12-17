@@ -44,8 +44,8 @@ print(STOPWORDS, type(STOPWORDS))
 dataset_name: str = "europeana".upper()
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
 # europeana_api_key: str = "plaction"
-# europeana_api_key: str = "api2demo"
-europeana_api_key: str = "nLbaXYaiH"
+europeana_api_key: str = "api2demo"
+# europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
@@ -184,7 +184,7 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 			'doc_year': doc_year,
 			# 'my_date': pDate,
 			"doc_url": doc_url,
-			'img_path': f"{os.path.join(args.dataset_dir, 'images', str(doc_id) + '.jpg')}"
+			'img_path': f"{os.path.join(IMAGE_DIR, str(doc_id) + '.jpg')}"
 		}
 		data.append(row)
 	df = pd.DataFrame(data)

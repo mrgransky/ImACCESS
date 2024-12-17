@@ -1,5 +1,8 @@
 from utils import *
 
+# local:
+# $ python evaluate_clip.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31
+
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
@@ -14,8 +17,6 @@ args, unknown = parser.parse_known_args()
 print(args)
 
 args.device = torch.device(args.device)
-
-# $ nohup python -u evaluate_clip.py > /media/volume/ImACCESS/trash/prec_at_K.out &
 
 USER = os.getenv('USER')
 print(f"USER: {USER} device: {args.device}")
@@ -98,9 +99,8 @@ def get_zero_shot_precision_at_(dataset, model, preprocess, K:int=5):
 	floop_st = time.time()
 
 	with torch.no_grad():
-		# for i, (img_id, gt_lbl) in enumerate(zip(dataset_images_id, dataset_labels_int)): #img: <class 'PIL.Image.Image'>
 		for i, (img_pth, gt_lbl) in enumerate(zip(dataset_images_path, dataset_labels_int)): #img: <class 'PIL.Image.Image'>
-			# img_raw = Image.open(os.path.join(args.dataset_dir, "images", f"{img_id}.jpg"))
+			# print(i, img_pth, gt_lbl)
 			img_raw = Image.open(img_pth)
 			img_tensor = preprocess(img_raw).unsqueeze(0).to(args.device)
 			image_features = model.encode_image(img_tensor)
@@ -123,7 +123,7 @@ def get_zero_shot_precision_at_(dataset, model, preprocess, K:int=5):
 		if vlbl in preds:
 			prec_at_k += 1
 	avg_prec_at_k = prec_at_k/len(true_labels)
-	print(f"[OWN] Precision@{K}: {prec_at_k} | {avg_prec_at_k} Elapsed_t: {time.time()-pred_st:.2f} sec")
+	print(f"[OWN] Precision@{K}: {prec_at_k} | {avg_prec_at_k} Elapsed_t: {time.time()-pred_st:.5f} sec")
 	##################################################################################################
 
 	# pred_st = time.time()
@@ -325,14 +325,14 @@ def main():
 	)
 	print(dataset.head(20))
 
-	# if USER == "farid":
-	# 	get_zero_shot(
-	# 		dataset=dataset,
-	# 		model=model,
-	# 		preprocess=preprocess,
-	# 		img_path=args.query_image,
-	# 		topk=args.topK,
-	# 	)
+	if USER == "farid":
+		get_zero_shot(
+			dataset=dataset,
+			model=model,
+			preprocess=preprocess,
+			img_path=args.query_image,
+			topk=args.topK,
+		)
 
 	get_zero_shot_precision_at_(
 		dataset=dataset,

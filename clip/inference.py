@@ -85,7 +85,6 @@ def get_zero_shot_precision_at_(dataset, model, preprocess, K:int=5):
 	print(f"Zero-Shot Image Classification {args.device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
 	
 	labels = dataset.classes # <class 'list'> ['airplane', 'automobile', ...]
-
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(args.device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
 	labels_features = model.encode_text(tokenized_labels_tensor)
 	labels_features /= labels_features.norm(dim=-1, keepdim=True)

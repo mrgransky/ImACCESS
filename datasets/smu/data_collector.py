@@ -7,7 +7,7 @@ from misc.utils import *
 
 # local:
 # $ python data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 --img_mean_std
-# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 > logs/smu_dataset_collection.out &
+# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > logs/smu_dataset_collection.out &
 
 # run in Pouta:
 # $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > /media/volume/ImACCESS/trash/smu_data_collection_with_std_mean.out &
@@ -159,7 +159,7 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 			'doc_url': doc_url,
 			'label_title_description': query + " " + (doc_title or '') + " " + (doc_description or ''),
 			'raw_doc_date': doc_date,
-			'img_path': f"{os.path.join(args.dataset_dir, 'images', str(doc_combined_identifier) + '.jpg')}"
+			'img_path': f"{os.path.join(IMAGE_DIR, str(doc_combined_identifier) + '.jpg')}"
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
