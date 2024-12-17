@@ -147,7 +147,8 @@ def get_dframe(doc_idx:int=1000, doc_url:str="www.example.com", doc_label: str="
 				print(f"Failed to download {img_url}: {e}")
 		# else:
 		# 	print(f"Skipping {img_fpath}, already exists")
-		wwii_identifier = re.sub(".jpg", "", filename)
+		# wwii_identifier = re.sub(".jpg", "", filename)
+		wwii_identifier = filename
 		row = {
 			'id': wwii_identifier, #wwii_identifier,
 			'label': doc_label,
@@ -157,7 +158,8 @@ def get_dframe(doc_idx:int=1000, doc_url:str="www.example.com", doc_label: str="
 			'label_title_description': doc_label + " " + (doc_title or '') + " " + (doc_description or ''),
 			'date': None,
 			'doc_url': doc_url,
-			'img_path': f"{os.path.join(IMAGE_DIR, str(wwii_identifier) + '.jpg')}"
+			# 'img_path': f"{os.path.join(IMAGE_DIR, str(wwii_identifier) + '.jpg')}"
+			'img_path': f"{os.path.join(IMAGE_DIR, str(wwii_identifier))}"
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
