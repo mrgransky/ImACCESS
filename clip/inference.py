@@ -280,7 +280,7 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 
 	fig.legend(bbox_to_anchor=(0.5, 0.99), fontsize=7, ncol=len(labels), frameon=False)
 	# fig.tight_layout()
-	plt.savefig(f"{args.dataset}_PR_ROC_x{len(labels)}_labels_prec_at_{K}.png")
+	plt.savefig(f"{args.dataset}_PR_ROC_x{len(labels)}_labels.png")
 
 	print("-"*160)
 
