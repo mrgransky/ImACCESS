@@ -63,6 +63,9 @@ def get_dataset(dname:str="CIFAR10"):
 def get_zero_shot(dataset, model, preprocess, img_path, topk:int=5):
 	print(f"Zero-Shot Image Classification: {img_path}".center(160, " "))
 	labels = dataset.classes
+	if topk > len(labels):
+		print(f"ERROR: requested Top-{topk} labeling is greater than number of labels({len(labels)}) => EXIT...")
+		return
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(args.device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
 	img = Image.open(img_path)
 	image_tensor = preprocess(img).unsqueeze(0).to(args.device) # <class 'torch.Tensor'> torch.Size([1, 3, 224, 224])
@@ -83,8 +86,10 @@ def get_zero_shot(dataset, model, preprocess, img_path, topk:int=5):
 
 def get_zero_shot_precision_at_(dataset, model, preprocess, K:int=5):
 	print(f"Zero-Shot Image Classification {args.device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
-	
 	labels = dataset.classes # <class 'list'> ['airplane', 'automobile', ...]
+	if K > len(labels):
+		print(f"ERROR: requested Top-{K} labeling is greater than number of labels({len(labels)}) => EXIT...")
+		return
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(args.device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
 	labels_features = model.encode_text(tokenized_labels_tensor)
 	labels_features /= labels_features.norm(dim=-1, keepdim=True)
