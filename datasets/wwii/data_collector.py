@@ -150,8 +150,7 @@ def get_dframe(doc_idx:int=1000, doc_url:str="www.example.com", doc_label: str="
 		# wwii_identifier = re.sub(".jpg", "", filename)
 		wwii_identifier = filename
 		img_path = os.path.join(IMAGE_DIR, wwii_identifier)
-		print(f"wwii_identifier: {wwii_identifier}")
-		print(f"img_path: {img_path}")
+		print(f"wwii_identifier: {wwii_identifier} ==>> img_path: {img_path}")
 		row = {
 			'id': wwii_identifier, #wwii_identifier,
 			'label': doc_label,
