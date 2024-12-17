@@ -306,24 +306,24 @@ def main():
 			preprocess=preprocess,
 			img_path=args.query_image,
 			topk=args.topK,
-		) # only for a given image
+		)
 
-	# get_zero_shot_precision_at_(
-	# 	dataset=dataset,
-	# 	model=model,
-	# 	preprocess=preprocess,
-	# 	K=5,
-	# )
+	get_zero_shot_precision_at_(
+		dataset=dataset,
+		model=model,
+		preprocess=preprocess,
+		K=5,
+	)
 
-	# if USER == "farid":
-	# 	get_image_retrieval(
-	# 		dataset=dataset,
-	# 		model=model,
-	# 		preprocess=preprocess,
-	# 		query=args.query_label,
-	# 		topk=args.topK,
-	# 		batch_size=args.batch_size,
-	# 	)
+	if USER == "farid":
+		get_image_retrieval(
+			dataset=dataset,
+			model=model,
+			preprocess=preprocess,
+			query=args.query_label,
+			topk=args.topK,
+			batch_size=args.batch_size,
+		)
 
 	if USER == "farid":
 		for q in ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']:
@@ -336,13 +336,13 @@ def main():
 				batch_size=args.batch_size,
 			)
 
-	# get_image_retrieval_precision_recall_at_(
-	# 	dataset=dataset,
-	# 	model=model,
-	# 	preprocess=preprocess,
-	# 	K=args.topK,
-	# 	batch_size=args.batch_size,
-	# )
+	get_image_retrieval_precision_recall_at_(
+		dataset=dataset,
+		model=model,
+		preprocess=preprocess,
+		K=args.topK,
+		batch_size=args.batch_size,
+	)
 
 if __name__ == "__main__":
 	main()
