@@ -11,13 +11,14 @@ from typing import List
 import matplotlib.pyplot as plt
 from sklearn.metrics import precision_recall_curve, roc_curve, auc
 
-parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
+parser = argparse.ArgumentParser(description="Evaluate CLIP for CIFAR10x")
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 parser.add_argument('--qimg', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg", help='image path for zero shot classification')
 parser.add_argument('--qlbl', type=str, default="dog", help='image path for zero shot classification')
 parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
+parser.add_argument('--batch_size', '-ba', type=int, default=1024, help='TopK results')
+parser.add_argument('--dataset', '-d', type=str, choices=['CIFAR10', 'CIFAR100'], default='CIFAR10', help='Choose dataset (CIFAR10/CIFAR100)')
 
-# args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 print(args)
 
@@ -39,33 +40,30 @@ def load_model():
 	print("Vocab size:", vocab_size)
 	return model, preprocess
 
-def get_dataset(large_dataset:bool=False):
-	if large_dataset: # cifar100 with 50K samples
-		dataset = CIFAR100(
-			root=os.path.expanduser("~/.cache"), 
-			transform=None,
-			download=True,
-			# train=False, # split Test
-		)
-	else: # cifar10 with 10K samples
-		dataset = CIFAR10(
-			root=os.path.expanduser("~/.cache"), 
-			transform=None,
-			download=True,
-			train=False, # split Test
-		)
+def get_dataset(dname:str="CIFAR10"):
+	if dname == 'CIFAR10':
+			dataset = CIFAR10(
+					root=os.path.expanduser("~/.cache"), 
+					transform=None,
+					download=True,
+					train=False,  # split Test
+			)
+	elif dname == 'CIFAR100':
+			dataset = CIFAR100(
+					root=os.path.expanduser("~/.cache"), 
+					transform=None,
+					download=True,
+					train=False,  # split Test
+			)
+	else:
+			raise ValueError(f"Invalid dataset name: {dname}. Supported datasets are 'CIFAR10' and 'CIFAR100'.")
 	print(dataset)
 	return dataset
 
 def get_zero_shot(dataset, model, preprocess, img_path, topk:int=5):
 	print(f"Zero-Shot Image Classification: {img_path}".center(160, " "))
-	# model, preprocess = load_model()
-
-	# dataset = get_dataset() # cifar10 or cifar 100
 	labels = dataset.classes
-
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(args.device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
-	
 	img = Image.open(img_path)
 	image_tensor = preprocess(img).unsqueeze(0).to(args.device) # <class 'torch.Tensor'> torch.Size([1, 3, 224, 224])
 
@@ -236,8 +234,10 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 
 	avg_prec_at_k = sum(prec_at_k)/len(labels)
 	avg_recall_at_k = sum(recall_at_k) / len(labels)
-	print(f"Precision@{K}: {prec_at_k} {avg_prec_at_k} {np.mean(prec_at_k)}")
-	print(f"Recall@{K}: {recall_at_k} {avg_recall_at_k} {np.mean(recall_at_k)}")
+	# print(f"Precision@{K}: {prec_at_k} {avg_prec_at_k} {np.mean(prec_at_k)}")
+	# print(f"Recall@{K}: {recall_at_k} {avg_recall_at_k} {np.mean(recall_at_k)}")
+	print(f"Precision@{K}: {avg_prec_at_k} {np.mean(prec_at_k)}")
+	print(f"Recall@{K}: {avg_recall_at_k} {np.mean(recall_at_k)}")
 	print(labels)
 
 	fpr_values = []
@@ -256,58 +256,52 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 		fpr_values.append(fpr)
 		tpr_values.append(tpr)
 
-	plt.figure(figsize=(18, 10))
+	fig, ax = plt.subplots(1, 2, figsize=(22,11))
 	for i in range(len(tokenized_labels_features)):
-		plt.subplot(1, 2, 1)
-		plt.plot(recall_values[i], precision_values[i], label=f'Label {i}')
-		plt.xlabel('Recall')
-		plt.ylabel('Precision')
-		plt.title('Precision-Recall Curve')
+		ax[0].plot(recall_values[i], precision_values[i], label=f'{labels[i]}')
+		ax[0].set_xlabel('Recall')
+		ax[0].set_ylabel('Precision')
+		ax[0].set_title('Precision-Recall')
+		ax[1].plot(fpr_values[i], tpr_values[i])
+		ax[1].set_xlabel('False Positive')
+		ax[1].set_ylabel('True Positive')
+		ax[1].set_title('ROC')
 
-		plt.subplot(1, 2, 2)
-		plt.plot(fpr_values[i], tpr_values[i], label=f'Label {i}')
-		plt.xlabel('False Positive Rate')
-		plt.ylabel('True Positive Rate')
-		plt.title('ROC Curve')
+	fig.legend(bbox_to_anchor=(0.5, 0.99), fontsize=7, ncol=len(labels), frameon=False)
+	# fig.tight_layout()
+	plt.savefig(f"{args.dataset}_PR_ROC_x{len(labels)}_labels.png")
 
-	plt.legend()
-	plt.tight_layout()
-	plt.savefig(f"PR_ROC_x{len(labels)}_labels.png")
 	print("-"*160)
-
-	get_image_retrieval_precision_recall_at_(
-		dataset=dataset,
-		model=model,
-		preprocess=preprocess,
-		K=args.topK,
-	)
 
 def main():
 	print(clip.available_models())
 	model, preprocess = load_model()
-	dataset = get_dataset() # cifar10 or cifar 100
+	dataset = get_dataset(dname=args.dataset)
 
-	# get_zero_shot(
-	# 	dataset=dataset,
-	# 	model=model,
-	# 	preprocess=preprocess,
-	# 	img_path=args.qimg,
-	# 	topk=args.topK,
-	# ) # only for a given image
+	if USER == "farid":
+		get_zero_shot(
+			dataset=dataset,
+			model=model,
+			preprocess=preprocess,
+			img_path=args.qimg,
+			topk=args.topK,
+		) # only for a given image
 
-	# get_zero_shot_precision_at_(
-	# 	dataset=dataset,
-	# 	model=model,
-	# 	preprocess=preprocess,
-	# 	K=5,
-	# )
+	get_zero_shot_precision_at_(
+		dataset=dataset,
+		model=model,
+		preprocess=preprocess,
+		K=5,
+	)
 
-	# get_image_retrieval(
-	# 	dataset=dataset,
-	# 	model=model,
-	# 	preprocess=preprocess,
-	# 	query=args.qlbl,
-	# )
+	if USER == "farid":
+		get_image_retrieval(
+			dataset=dataset,
+			model=model,
+			preprocess=preprocess,
+			query=args.qlbl,
+			batch_size=args.batch_size,
+		)
 
 	# for q in ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']:
 	# 	get_image_retrieval(
@@ -316,6 +310,14 @@ def main():
 	# 		preprocess=preprocess,
 	# 		query=q,
 	# 	)
+
+	get_image_retrieval_precision_recall_at_(
+		dataset=dataset,
+		model=model,
+		preprocess=preprocess,
+		K=args.topK,
+		batch_size=args.batch_size,
+	)
 
 if __name__ == "__main__":
 	main()
