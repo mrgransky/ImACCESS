@@ -35,7 +35,7 @@ end_dt="1945-09-02"
 python -u data_collector.py \
 	--dataset_dir $ddir \
 	--num_worker 4 \
-	--img_mean_std \
+	# --img_mean_std \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
