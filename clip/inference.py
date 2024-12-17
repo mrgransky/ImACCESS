@@ -13,8 +13,8 @@ from sklearn.metrics import precision_recall_curve, roc_curve, auc
 
 parser = argparse.ArgumentParser(description="Evaluate CLIP for CIFAR10x")
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
-parser.add_argument('--qimg', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg", help='image path for zero shot classification')
-parser.add_argument('--qlbl', type=str, default="dog", help='image path for zero shot classification')
+parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg", help='image path for zero shot classification')
+parser.add_argument('--query_label', '-ql', type=str, default="airplane", help='image path for zero shot classification')
 parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
 parser.add_argument('--batch_size', '-ba', type=int, default=1024, help='TopK results')
 parser.add_argument('--dataset', '-d', type=str, choices=['CIFAR10', 'CIFAR100'], default='CIFAR10', help='Choose dataset (CIFAR10/CIFAR100)')
@@ -162,22 +162,41 @@ def get_image_retrieval(dataset, model, preprocess, query:str="cat", topk:int=5,
 	topk_probs, topk_indices = similarities.topk(topk, dim=-1)
 	
 	# Retrieve the top-k images
-	topk_pred_images = [dataset[idx][0] for idx in topk_indices.squeeze().cpu().numpy()] # [<PIL.Image.Image image mode=RGB size=32x32 at 0x7C16A47D8F40>, ...]
-	topk_pred_labels = [dataset[idx][1] for idx in topk_indices.squeeze().cpu().numpy()] # [3, 3, 8, 8, 3]
+	topk_pred_images = [dataset[topk_indices.squeeze().item()][0]] if topk==1 else [dataset[idx][0] for idx in topk_indices.squeeze().cpu().numpy()] # [<PIL.Image.Image image mode=RGB size=32x32 at 0x7C16A47D8F40>, ...]
+	topk_pred_labels = [dataset[topk_indices.squeeze().item()][1]] if topk==1 else [dataset[idx][1] for idx in topk_indices.squeeze().cpu().numpy()] # [3, 3, 8, 8, 3]
+
 	topk_probs = topk_probs.squeeze().cpu().detach().numpy()
 	print(topk_pred_images)
 	print(topk_pred_labels, labels)
 	print(topk_probs)
 
+	# # Save the top-k images in a single file
+	# fig, axes = plt.subplots(1, topk, figsize=(12, 5))
+	# fig.suptitle(f"Top-{topk} Query: {query}", fontsize=11)
+	# for i, img in enumerate(topk_pred_images):
+	# 	print(i, type(img))
+	# 	axes[i].imshow(img)
+	# 	axes[i].axis('off')
+	# 	axes[i].set_title(f"Top-{i+1}\nprob: {topk_probs[i]:.8f}\nGT: {labels[topk_pred_labels[i]]}", fontsize=9)		
+	# # plt.savefig(os.path.join("/media/volume/ImACCESS/results/", f"top{topk}_IMGs_query_{query}.png"))
+	# plt.tight_layout()
+	# plt.savefig(f"top{topk}_IMGs_query_{re.sub(' ', '_', query)}.png")
+	# print("-"*160)
+
 	# Save the top-k images in a single file
-	fig, axes = plt.subplots(1, topk, figsize=(12, 5))
+	fig, axes = plt.subplots(1, topk, figsize=(16, 8))
+	if topk == 1:
+		axes = [axes]  # Convert to list of axes
 	fig.suptitle(f"Top-{topk} Query: {query}", fontsize=11)
-	for i, img in enumerate(topk_pred_images):
-		axes[i].imshow(img)
-		axes[i].axis('off')
-		axes[i].set_title(f"Top-{i+1}\nprob: {topk_probs[i]:.8f}\nGT: {labels[topk_pred_labels[i]]}", fontsize=9)
-		
-	# plt.savefig(os.path.join("/media/volume/ImACCESS/results/", f"top{topk}_IMGs_query_{query}.png"))
+	for i, (img, ax) in enumerate(zip(topk_pred_images, axes)):
+		ax.imshow(img)
+		ax.axis('off')
+		# ax.set_title(f"Top-{i+1}\nprob: {topk_probs[i]:.8f}\nGT: {labels[topk_pred_labels[i]]}", fontsize=9)
+		if topk == 1:
+			ax.set_title(f"Top-1\nprob: {topk_probs:.8f}\nGT: {labels[topk_pred_labels[0]]}", fontsize=9)
+		else:
+			ax.set_title(f"Top-{i+1}\nprob: {topk_probs[i]:.8f}\nGT: {labels[topk_pred_labels[i]]}", fontsize=9)
+				
 	plt.tight_layout()
 	plt.savefig(f"top{topk}_IMGs_query_{re.sub(' ', '_', query)}.png")
 	print("-"*160)
@@ -225,7 +244,9 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 	for i, label_features in enumerate(tokenized_labels_features):
 		sim = (100.0 * label_features @ all_image_features.T).softmax(dim=-1) # similarities between query and all images
 		topk_probs, topk_indices = sim.topk(K, dim=-1)
-		topk_pred_labels = [dataset[idx][1] for idx in topk_indices.squeeze().cpu().numpy()] # [3, 3, 8, 8, 3]
+		# print(i, topk_indices, topk_indices.squeeze(), topk_indices.squeeze().item(), topk_indices.squeeze().cpu().numpy(), type(topk_indices.squeeze().cpu().numpy()))
+		# topk_pred_labels = [dataset[idx][1] for idx in topk_indices.squeeze().cpu().numpy()] # [3, 3, 8, 8, 3]
+		topk_pred_labels = [dataset[topk_indices.squeeze().item()][1]] if K == 1 else [dataset[idx][1] for idx in topk_indices.squeeze().cpu().numpy()]
 		relevant_retrieved_images_for_label_i = topk_pred_labels.count(i)  # counting relevant images in top-K retrieved images
 		prec_at_k.append(relevant_retrieved_images_for_label_i/K)
 		all_images_with_label_i = [idx for idx, (img, lbl) in enumerate(dataset) if lbl == i]
@@ -269,7 +290,7 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 
 	fig.legend(bbox_to_anchor=(0.5, 0.99), fontsize=7, ncol=len(labels), frameon=False)
 	# fig.tight_layout()
-	plt.savefig(f"{args.dataset}_PR_ROC_x{len(labels)}_labels.png")
+	plt.savefig(f"{args.dataset}_PR_ROC_x{len(labels)}_labels_prec_at_{K}.png")
 
 	print("-"*160)
 
@@ -283,41 +304,45 @@ def main():
 			dataset=dataset,
 			model=model,
 			preprocess=preprocess,
-			img_path=args.qimg,
+			img_path=args.query_image,
 			topk=args.topK,
 		) # only for a given image
 
-	get_zero_shot_precision_at_(
-		dataset=dataset,
-		model=model,
-		preprocess=preprocess,
-		K=5,
-	)
+	# get_zero_shot_precision_at_(
+	# 	dataset=dataset,
+	# 	model=model,
+	# 	preprocess=preprocess,
+	# 	K=5,
+	# )
 
-	if USER == "farid":
-		get_image_retrieval(
-			dataset=dataset,
-			model=model,
-			preprocess=preprocess,
-			query=args.qlbl,
-			batch_size=args.batch_size,
-		)
-
-	# for q in ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']:
+	# if USER == "farid":
 	# 	get_image_retrieval(
 	# 		dataset=dataset,
 	# 		model=model,
 	# 		preprocess=preprocess,
-	# 		query=q,
+	# 		query=args.query_label,
+	# 		topk=args.topK,
+	# 		batch_size=args.batch_size,
 	# 	)
 
-	get_image_retrieval_precision_recall_at_(
-		dataset=dataset,
-		model=model,
-		preprocess=preprocess,
-		K=args.topK,
-		batch_size=args.batch_size,
-	)
+	if USER == "farid":
+		for q in ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']:
+			get_image_retrieval(
+				dataset=dataset,
+				model=model,
+				preprocess=preprocess,
+				query=q,
+				topk=args.topK,
+				batch_size=args.batch_size,
+			)
+
+	# get_image_retrieval_precision_recall_at_(
+	# 	dataset=dataset,
+	# 	model=model,
+	# 	preprocess=preprocess,
+	# 	K=args.topK,
+	# 	batch_size=args.batch_size,
+	# )
 
 if __name__ == "__main__":
 	main()

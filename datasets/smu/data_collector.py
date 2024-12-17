@@ -5,10 +5,11 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 from misc.utils import *
 
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1900-01-01 --end_date 1970-12-31 --num_workers 8 > logs/smu_dataset_collection.out &
+# local:
+# $ python data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 --img_mean_std
+# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 > logs/smu_dataset_collection.out &
 
 # run in Pouta:
-# $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
 # $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > /media/volume/ImACCESS/trash/smu_data_collection_with_std_mean.out &
 # $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > /media/volume/ImACCESS/trash/smu_1900-1970.out &
 
@@ -202,7 +203,7 @@ def main():
 	# print(dfs[0])
 	smu_df_merged_raw = pd.concat(dfs, ignore_index=True)
 	print(f"<!> Replacing labels with super classes")
-	json_file_path = os.path.join(parent_dir, 'misc', 'generalized_labels.json')
+	json_file_path = os.path.join(parent_dir, 'misc', 'super_labels.json')
 	if os.path.exists(json_file_path):
 		with open(json_file_path, 'r') as file_:
 			replacement_dict = json.load(file_)

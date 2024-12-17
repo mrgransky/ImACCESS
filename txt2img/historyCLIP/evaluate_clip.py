@@ -6,6 +6,8 @@ parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_avai
 parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/5968_115463.jpg", help='image path for zero shot classification')
 parser.add_argument('--query_label', '-ql', type=str, default="naval forces", help='image path for zero shot classification')
 parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
+parser.add_argument('--batch_size', '-ba', type=int, default=1024, help='TopK results')
+parser.add_argument('--dataset', '-d', type=str, choices=['CIFAR10', 'CIFAR100'], default='CIFAR10', help='Choose dataset (CIFAR10/CIFAR100)')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
@@ -97,9 +99,9 @@ def get_zero_shot_precision_at_(dataset, model, preprocess, K:int=5):
 
 	with torch.no_grad():
 		# for i, (img_id, gt_lbl) in enumerate(zip(dataset_images_id, dataset_labels_int)): #img: <class 'PIL.Image.Image'>
-		for i, (img_id, gt_lbl) in enumerate(zip(dataset_images_path, dataset_labels_int)): #img: <class 'PIL.Image.Image'>
+		for i, (img_pth, gt_lbl) in enumerate(zip(dataset_images_path, dataset_labels_int)): #img: <class 'PIL.Image.Image'>
 			# img_raw = Image.open(os.path.join(args.dataset_dir, "images", f"{img_id}.jpg"))
-			img_raw = Image.open()
+			img_raw = Image.open(img_pth)
 			img_tensor = preprocess(img_raw).unsqueeze(0).to(args.device)
 			image_features = model.encode_image(img_tensor)
 			image_features /= image_features.norm(dim=-1, keepdim=True)
@@ -323,14 +325,14 @@ def main():
 	)
 	print(dataset.head(20))
 
-	if USER == "farid":
-		get_zero_shot(
-			dataset=dataset,
-			model=model,
-			preprocess=preprocess,
-			img_path=args.query_image,
-			topk=args.topK,
-		) # only for a given image
+	# if USER == "farid":
+	# 	get_zero_shot(
+	# 		dataset=dataset,
+	# 		model=model,
+	# 		preprocess=preprocess,
+	# 		img_path=args.query_image,
+	# 		topk=args.topK,
+	# 	)
 
 	get_zero_shot_precision_at_(
 		dataset=dataset,
@@ -339,20 +341,22 @@ def main():
 		K=args.topK,
 	)
 
-	if USER == "farid":
-		get_image_retrieval(
-			dataset=dataset,
-			model=model,
-			preprocess=preprocess,
-			query=args.query_label,
-		)
+	# if USER == "farid":
+	# 	get_image_retrieval(
+	# 		dataset=dataset,
+	# 		model=model,
+	# 		preprocess=preprocess,
+	# 		query=args.query_label,
+	# 		batch_size=args.batch_size,
+	# 	)
 
-	get_image_retrieval_precision_recall_at_(
-		dataset=dataset,
-		model=model,
-		preprocess=preprocess,		
-		K=args.topK,
-	)
+	# get_image_retrieval_precision_recall_at_(
+	# 	dataset=dataset,
+	# 	model=model,
+	# 	preprocess=preprocess,		
+	# 	K=args.topK,
+	# 	batch_size=args.batch_size,
+	# )
 
 if __name__ == "__main__":
 	main()

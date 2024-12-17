@@ -19,9 +19,9 @@ print(args)
 # sys.exit()
 
 # run in local laptop:
-# $ python data_collector.py --dataset_dir $PWD -sdt 1900-01-01 -edt 1970-12-31
-# $ nohup python -u data_collector.py --dataset_dir $PWD -sdt 1900-01-01 -edt 1970-12-31 ---nw 8 --img_mean_std > logs/europeana_img_dl.out &
-# $ nohup python -u data_collector.py -ddir $PWD -sdt 1900-01-01 -edt 1970-12-31 > logs/europeana_img_dl.out &
+# $ python data_collector.py --dataset_dir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31
+# $ nohup python -u data_collector.py --dataset_dir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 ---nw 8 --img_mean_std > logs/europeana_img_dl.out &
+# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > logs/europeana_img_dl.out &
 
 # run in Pouta:
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
