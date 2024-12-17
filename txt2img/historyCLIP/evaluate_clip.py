@@ -239,7 +239,7 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 	# 	batch_images_id = [dataset_images_id[j] for j in range(i, min(i + batch_size, len(dataset_images_id)))]
 	for i in range(0, len(dataset_images_path), batch_size):
 		batch_images_paths = [dataset_images_path[j] for j in range(i, min(i + batch_size, len(dataset_images_path)))]
-		batch_tensors = torch.stack([preprocess(Image.open(img_path)).to(args.device) if os.path.isfile(img_path) for img_path in batch_images_paths])
+		batch_tensors = torch.stack([preprocess(Image.open(img_path)).to(args.device) for img_path in batch_images_paths])
 		with torch.no_grad(): # prevent PyTorch from computing gradients, can consume significant memory
 			image_features = model.encode_image(batch_tensors)
 			image_features /= image_features.norm(dim=-1, keepdim=True)
