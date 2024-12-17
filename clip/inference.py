@@ -169,19 +169,6 @@ def get_image_retrieval(dataset, model, preprocess, query:str="cat", topk:int=5,
 	print(topk_pred_labels, labels)
 	print(topk_probs)
 
-	# # Save the top-k images in a single file
-	# fig, axes = plt.subplots(1, topk, figsize=(12, 5))
-	# fig.suptitle(f"Top-{topk} Query: {query}", fontsize=11)
-	# for i, img in enumerate(topk_pred_images):
-	# 	print(i, type(img))
-	# 	axes[i].imshow(img)
-	# 	axes[i].axis('off')
-	# 	axes[i].set_title(f"Top-{i+1}\nprob: {topk_probs[i]:.8f}\nGT: {labels[topk_pred_labels[i]]}", fontsize=9)		
-	# # plt.savefig(os.path.join("/media/volume/ImACCESS/results/", f"top{topk}_IMGs_query_{query}.png"))
-	# plt.tight_layout()
-	# plt.savefig(f"top{topk}_IMGs_query_{re.sub(' ', '_', query)}.png")
-	# print("-"*160)
-
 	# Save the top-k images in a single file
 	fig, axes = plt.subplots(1, topk, figsize=(16, 8))
 	if topk == 1:
@@ -243,9 +230,8 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 	for i, label_features in enumerate(tokenized_labels_features):
 		sim = (100.0 * label_features @ all_image_features.T).softmax(dim=-1) # similarities between query and all images
 		topk_probs, topk_indices = sim.topk(K, dim=-1)
-		# print(i, topk_indices, topk_indices.squeeze(), topk_indices.squeeze().item(), topk_indices.squeeze().cpu().numpy(), type(topk_indices.squeeze().cpu().numpy()))
-		# topk_pred_labels = [dataset[idx][1] for idx in topk_indices.squeeze().cpu().numpy()] # [3, 3, 8, 8, 3]
-		topk_pred_labels = [dataset[topk_indices.squeeze().item()][1]] if K == 1 else [dataset[idx][1] for idx in topk_indices.squeeze().cpu().numpy()]
+		# topk_pred_labels = [dataset[idx][1] for idx in topk_indices.squeeze().cpu().numpy()] # [3, 3, 8, 8, 3] # only K@(>1)
+		topk_pred_labels = [dataset[topk_indices.squeeze().item()][1]] if K==1 else [dataset[idx][1] for idx in topk_indices.squeeze().cpu().numpy()]# K@1, 5, ...
 		relevant_retrieved_images_for_label_i = topk_pred_labels.count(i)  # counting relevant images in top-K retrieved images
 		prec_at_k.append(relevant_retrieved_images_for_label_i/K)
 		all_images_with_label_i = [idx for idx, (img, lbl) in enumerate(dataset) if lbl == i]
@@ -311,7 +297,7 @@ def main():
 		dataset=dataset,
 		model=model,
 		preprocess=preprocess,
-		K=5,
+		K=args.topK,
 	)
 
 	if USER == "farid":

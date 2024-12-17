@@ -55,7 +55,7 @@ def get_dataset(ddir:str="path/2/dataset_dir", sliced:bool=False):
 	return df
 
 def get_zero_shot(dataset, model, preprocess, img_path, topk:int=5):
-	print(f"Zero-Shot Image Classification: {img_path}".center(160, " "))
+	print(f"Zero-Shot Image Classification of image: {img_path}".center(160, " "))
 	labels = list(set(dataset["label"].tolist()))
 	print(len(labels), type(labels))
 
@@ -181,31 +181,32 @@ def get_image_retrieval(dataset, model, preprocess, query:str="cat", topk:int=5,
 	print(topk_probs)
 	print(topk_indices)
 
-	topk_pred_images, topk_pred_labels_idxs = list(), list()
-	topk_pred_image_paths = list()
-	for idx in topk_indices.squeeze().cpu().numpy():
-		topk_pred_images.append(Image.open(os.path.join(args.dataset_dir, "images", f"{dataset_images_id[idx]}.jpg"))) #[<PIL.Image.Image image mode=RGB size=32x32 at 0x7C16A47D8F40>, ...]
-		topk_pred_labels_idxs.append(dataset_labels_int[idx]) # [7, 13, 17, 4, 11]
-		topk_pred_image_paths.append(os.path.join(args.dataset_dir, "images", f"{dataset_images_id[idx]}.jpg"))
+	# Retrieve the top-k images
+	topk_pred_image_paths = [dataset_images_path[topk_indices.squeeze().item()]] if topk==1 else [dataset_images_path[idx] for idx in topk_indices.squeeze().cpu().numpy()] # [<PIL.Image.Image image mode=RGB size=32x32 at 0x7C16A47D8F40>, ...]
+	topk_pred_images = [Image.open(dataset_images_path[topk_indices.squeeze().item()])] if topk==1 else [Image.open(dataset_images_path[idx]) for idx in topk_indices.squeeze().cpu().numpy()] # [<PIL.Image.Image image mode=RGB size=32x32 at 0x7C16A47D8F40>, ...]
+	topk_pred_labels_idxs = [dataset_labels_int[topk_indices.squeeze().item()]] if topk==1 else [dataset_labels_int[idx] for idx in topk_indices.squeeze().cpu().numpy()] # [3, 3, 8, 8, 3]
 
 	topk_probs = topk_probs.squeeze().cpu().detach().numpy()
 	print(topk_pred_image_paths)
 	# print(topk_pred_images)
-	print(topk_pred_labels_idxs)
-	print(labels)
-	print(topk_probs)
+	print(topk_probs, topk_pred_labels_idxs)
+	print(len(labels), labels)
 
 	# Save the top-k images in a single file
-	fig, axes = plt.subplots(1, topk, figsize=(18, 8))
+	fig, axes = plt.subplots(1, topk, figsize=(16, 8))
+	if topk == 1:
+		axes = [axes]  # Convert to list of axes
 	fig.suptitle(f"Top-{topk} Query: {query}", fontsize=11)
-	for i, img in enumerate(topk_pred_images):
-		axes[i].imshow(img)
-		axes[i].axis('off')
-		axes[i].set_title(f"Top-{i+1}\nprob: {topk_probs[i]:.8f}\nGT: {labels[topk_pred_labels_idxs[i]]}", fontsize=9)
-		
-	# plt.savefig(os.path.join("/media/volume/ImACCESS/results/", f"top{topk}_IMGs_query_{query}.png"))
+	for i, (img, ax) in enumerate(zip(topk_pred_images, axes)):
+		ax.imshow(img)
+		ax.axis('off')
+		if topk == 1:
+			ax.set_title(f"Top-1\nprob: {topk_probs:.8f}\nGT: {labels[topk_pred_labels_idxs[0]]}", fontsize=9)
+		else:
+			ax.set_title(f"Top-{i+1}\nprob: {topk_probs[i]:.8f}\nGT: {labels[topk_pred_labels_idxs[i]]}", fontsize=9)
+				
 	plt.tight_layout()
-	plt.savefig(f"top{topk}_IMGs{re.sub('/', '_', args.dataset_dir)}_query_{re.sub(' ', '_', query)}.png")
+	plt.savefig(f"top{topk}_IMGs_query_{re.sub(' ', '_', query)}.png")
 	print("-"*160)
 
 def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5, batch_size:int=1024):
@@ -217,6 +218,7 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 	# print(labels)
 
 	dataset_images_id = dataset["id"].tolist()
+	dataset_images_path = dataset["img_path"].tolist()
 	dataset_labels = dataset["label"].tolist() # ['naval training', 'medical service', 'medical service', 'naval forces', 'naval forces', ...]
 	dataset_labels_int = dataset["label_int"].tolist() # [3, 17, 4, 9, ...]
 	
@@ -229,9 +231,11 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 
 	# Encode all the images
 	all_image_features = []
-	for i in range(0, len(dataset_images_id), batch_size):
-		batch_images_id = [dataset_images_id[j] for j in range(i, min(i + batch_size, len(dataset_images_id)))]
-		batch_tensors = torch.stack([preprocess(Image.open(os.path.join(args.dataset_dir, "images", f"{img_id}.jpg"))).to(args.device) for img_id in batch_images_id])
+	# for i in range(0, len(dataset_images_id), batch_size):
+	# 	batch_images_id = [dataset_images_id[j] for j in range(i, min(i + batch_size, len(dataset_images_id)))]
+	for i in range(0, len(dataset_images_path), batch_size):
+		batch_images_paths = [dataset_images_path[j] for j in range(i, min(i + batch_size, len(dataset_images_path)))]
+		batch_tensors = torch.stack([preprocess(Image.open(img_path)).to(args.device) for img_path in batch_images_paths])
 		with torch.no_grad(): # prevent PyTorch from computing gradients, can consume significant memory
 			image_features = model.encode_image(batch_tensors)
 			image_features /= image_features.norm(dim=-1, keepdim=True)
@@ -264,7 +268,8 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 		# print(i, label_features.shape)
 		sim = (100.0 * label_features @ all_image_features.T).softmax(dim=-1) # similarities between query and all images
 		topk_probs, topk_indices = sim.topk(K, dim=-1)
-		topk_pred_labels_idxs = [dataset_labels_int[idx] for idx in topk_indices.squeeze().cpu().numpy()] # [3, 3, 8, 8, 3]
+		# topk_pred_labels_idxs = [dataset_labels_int[idx] for idx in topk_indices.squeeze().cpu().numpy()] # [3, 3, 8, 8, 3] # only K@(>1)
+		topk_pred_labels_idxs = [dataset_labels_int[topk_indices.squeeze().item()]] if K==1 else [dataset_labels_int[idx] for idx in topk_indices.squeeze().cpu().numpy()] # K@1, 5, ...
 		# print(topk_pred_labels_idxs)
 		relevant_retrieved_images_for_label_i = topk_pred_labels_idxs.count(i)  # counting relevant images in top-K retrieved images
 		prec_at_k.append(relevant_retrieved_images_for_label_i/K)
@@ -323,23 +328,23 @@ def main():
 		ddir=args.dataset_dir,
 		sliced=False,
 	)
-	print(dataset.head(20))
+	# print(dataset.head(20))
 
-	if USER == "farid":
-		get_zero_shot(
-			dataset=dataset,
-			model=model,
-			preprocess=preprocess,
-			img_path=args.query_image,
-			topk=args.topK,
-		)
+	# if USER == "farid":
+	# 	get_zero_shot(
+	# 		dataset=dataset,
+	# 		model=model,
+	# 		preprocess=preprocess,
+	# 		img_path=args.query_image,
+	# 		topk=args.topK,
+	# 	)
 
-	get_zero_shot_precision_at_(
-		dataset=dataset,
-		model=model,
-		preprocess=preprocess,
-		K=args.topK,
-	)
+	# get_zero_shot_precision_at_(
+	# 	dataset=dataset,
+	# 	model=model,
+	# 	preprocess=preprocess,
+	# 	K=args.topK,
+	# )
 
 	# if USER == "farid":
 	# 	get_image_retrieval(
@@ -347,16 +352,17 @@ def main():
 	# 		model=model,
 	# 		preprocess=preprocess,
 	# 		query=args.query_label,
+	# 		topk=args.topK,
 	# 		batch_size=args.batch_size,
 	# 	)
 
-	# get_image_retrieval_precision_recall_at_(
-	# 	dataset=dataset,
-	# 	model=model,
-	# 	preprocess=preprocess,		
-	# 	K=args.topK,
-	# 	batch_size=args.batch_size,
-	# )
+	get_image_retrieval_precision_recall_at_(
+		dataset=dataset,
+		model=model,
+		preprocess=preprocess,		
+		K=args.topK,
+		batch_size=args.batch_size,
+	)
 
 if __name__ == "__main__":
 	main()
