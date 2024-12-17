@@ -10,7 +10,6 @@ from torchvision.datasets import CIFAR10, CIFAR100
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.optim as optim
-from typing import List
 import matplotlib.pyplot as plt
 import torchvision.transforms as T
 
@@ -181,7 +180,8 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 	# Freeze the early layers in the vision encoder:
 	# Unfreeze all layers except for the first 5 layers:
 	# for name, param in model.visual.named_parameters(): # decreasing loss
-	# both the vision encoder layers (except for the first few layers) and the transformer layers will be unfrozen, allowing them to be updated during fine-tuning.
+	# both the vision encoder layers (except for the first few layers) and the transformer layers will be unfrozen, 
+	# allowing them to be updated during fine-tuning.
 	for name, param in model.named_parameters():
 		if 'visual.conv1' in name or 'visual.ln_pre' in name:
 			# print(f"[VISUAL] {name} found! => Freezing...")
