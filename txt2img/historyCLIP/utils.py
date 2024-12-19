@@ -45,6 +45,9 @@ from torch.utils.tensorboard import SummaryWriter
 import shutil
 import nltk
 import inspect
+import hashlib
+import requests
+from io import BytesIO
 nltk_modules = [
 	'punkt',
 	'wordnet',

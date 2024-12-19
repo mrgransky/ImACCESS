@@ -17,7 +17,7 @@ parser = argparse.ArgumentParser(description="WWII Dataset")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', '-sdt', type=str, default="1939-09-01", help='Start Date')
 parser.add_argument('--end_date', '-edt', type=str, default="1945-09-02", help='End Date')
-parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs')
+parser.add_argument('--num_workers', '-nw', type=int, default=8, help='Number of CPUs')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 
 args, unknown = parser.parse_known_args()
@@ -150,7 +150,7 @@ def get_dframe(doc_idx:int=1000, doc_url:str="www.example.com", doc_label: str="
 		# wwii_identifier = re.sub(".jpg", "", filename)
 		wwii_identifier = filename
 		img_path = os.path.join(IMAGE_DIR, wwii_identifier)
-		print(f"wwii_identifier: {wwii_identifier} ==>> img_path: {img_path}")
+		# print(f"wwii_identifier: {wwii_identifier} ==>> img_path: {img_path}")
 		row = {
 			'id': wwii_identifier, #wwii_identifier,
 			'label': doc_label,

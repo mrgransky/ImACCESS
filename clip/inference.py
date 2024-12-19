@@ -60,7 +60,7 @@ def get_dataset(dname:str="CIFAR10"):
 	print(dataset)
 	return dataset
 
-def get_zero_shot(dataset, model, preprocess, img_path, topk:int=5):
+def get_image_to_texts(dataset, model, preprocess, img_path, topk:int=5):
 	print(f"Zero-Shot Image Classification: {img_path}".center(160, " "))
 	labels = dataset.classes
 	if topk > len(labels):
@@ -84,7 +84,7 @@ def get_zero_shot(dataset, model, preprocess, img_path, topk:int=5):
 	print(f"Top-{topk} predicted labels: {[labels[i] for i in topk_pred_labels_idx.cpu().numpy().flatten()]}")
 	print("-"*160)
 
-def get_zero_shot_precision_at_(dataset, model, preprocess, K:int=5):
+def get_image_to_texts_precision_at_(dataset, model, preprocess, K:int=5):
 	print(f"Zero-Shot Image Classification {args.device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
 	labels = dataset.classes # <class 'list'> ['airplane', 'automobile', ...]
 	if K > len(labels):
@@ -140,7 +140,7 @@ def get_zero_shot_precision_at_(dataset, model, preprocess, K:int=5):
 	# )
 	print("-"*160)
 
-def get_image_retrieval(dataset, model, preprocess, query:str="cat", topk:int=5, batch_size:int=1024):
+def get_text_to_images(dataset, model, preprocess, query:str="cat", topk:int=5, batch_size:int=1024):
 	print(f"Top-{topk} Image Retrieval {args.device} CLIP Query: « {query} »".center(160, " "))
 	labels = dataset.classes
 	tokenized_query_tensor = clip.tokenize(texts=query).to(args.device) #<class 'torch.Tensor'> torch.Size([1, 77])
@@ -192,7 +192,7 @@ def get_image_retrieval(dataset, model, preprocess, query:str="cat", topk:int=5,
 	plt.savefig(f"top{topk}_IMGs_query_{re.sub(' ', '_', query)}.png")
 	print("-"*160)
 
-def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5, batch_size:int=1024):
+def get_text_to_images_precision_recall_at_(dataset, model, preprocess, K:int=5, batch_size:int=1024):
 	torch.cuda.empty_cache()  # Clear CUDA cache
 	print(f"Image Retrieval {args.device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
 	labels = dataset.classes
@@ -284,13 +284,16 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 
 	print("-"*160)
 
+def get_image_to_images(dataset, model, preprocess, img_path:str="path/2/img.jpg", topk:int=5, batch_size:int=1024):
+	print(f"Image-to-Image(s) Retrieval: {img_path}".center(160, " "))
+
 def main():
 	print(clip.available_models())
 	model, preprocess = load_model()
 	dataset = get_dataset(dname=args.dataset)
 
 	if USER == "farid":
-		get_zero_shot(
+		get_image_to_texts(
 			dataset=dataset,
 			model=model,
 			preprocess=preprocess,
@@ -298,7 +301,7 @@ def main():
 			topk=args.topK,
 		)
 
-	get_zero_shot_precision_at_(
+	get_image_to_texts_precision_at_(
 		dataset=dataset,
 		model=model,
 		preprocess=preprocess,
@@ -306,7 +309,7 @@ def main():
 	)
 
 	if USER == "farid":
-		get_image_retrieval(
+		get_text_to_images(
 			dataset=dataset,
 			model=model,
 			preprocess=preprocess,
@@ -317,7 +320,7 @@ def main():
 
 	if USER == "farid":
 		for q in ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']:
-			get_image_retrieval(
+			get_text_to_images(
 				dataset=dataset,
 				model=model,
 				preprocess=preprocess,
@@ -326,7 +329,7 @@ def main():
 				batch_size=args.batch_size,
 			)
 
-	get_image_retrieval_precision_recall_at_(
+	get_text_to_images_precision_recall_at_(
 		dataset=dataset,
 		model=model,
 		preprocess=preprocess,

@@ -10,7 +10,6 @@ parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Fa
 parser.add_argument('--query_label', '-ql', type=str, default="naval forces", help='image path for zero shot classification')
 parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
 parser.add_argument('--batch_size', '-ba', type=int, default=1024, help='TopK results')
-parser.add_argument('--dataset', '-d', type=str, choices=['CIFAR10', 'CIFAR100'], default='CIFAR10', help='Choose dataset (CIFAR10/CIFAR100)')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
@@ -54,8 +53,9 @@ def get_dataset(ddir:str="path/2/dataset_dir", sliced:bool=False):
 
 	return df
 
-def get_zero_shot(dataset, model, preprocess, img_path, topk:int=5):
+def get_image_to_texts(dataset, model, preprocess, img_path, topk:int=5):
 	print(f"Zero-Shot Image Classification of image: {img_path}".center(160, " "))
+	t0 = time.time()
 	labels = list(set(dataset["label"].tolist()))
 	print(len(labels), type(labels))
 	if topk > len(labels):
@@ -64,7 +64,19 @@ def get_zero_shot(dataset, model, preprocess, img_path, topk:int=5):
 	
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(args.device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
 	
-	img = Image.open(img_path)
+	# img = Image.open(img_path) # only from path like strings: /home/farid/WS_Farid/ImACCESS/TEST_IMGs/5968_115463.jpg
+
+	try:
+		img = Image.open(img_path)
+	except FileNotFoundError:
+		try:
+			response = requests.get(img_path)
+			response.raise_for_status()
+			img = Image.open(BytesIO(response.content))
+		except requests.exceptions.RequestException as e:
+			print(f"ERROR: failed to load image from {img_path} => {e}")
+			return
+
 	image_tensor = preprocess(img).unsqueeze(0).to(args.device) # <class 'torch.Tensor'> torch.Size([1, 3, 224, 224])
 
 	with torch.no_grad():
@@ -79,16 +91,25 @@ def get_zero_shot(dataset, model, preprocess, img_path, topk:int=5):
 	print(topk_pred_probs)
 	print(topk_pred_labels_idx)
 	print(f"Top-{topk} predicted labels: {[labels[i] for i in topk_pred_labels_idx.cpu().numpy().flatten()]}")
-	print("-"*160)
+	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
+	img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
+	plt.figure(figsize=(15, 10))
+	plt.imshow(img)
+	plt.axis('off')
+	plt.title(f'Top-{topk} predicted labels: {[labels[i] for i in topk_pred_labels_idx.cpu().numpy().flatten()]}', fontsize=10)
+	plt.tight_layout()
+	plt.savefig(f'Img2Txt_Top{topk}_LBLs_IMG_{img_hash}_dataset_{os.path.basename(args.dataset_dir)}.png')
+	plt.close()
 
-def get_zero_shot_precision_at_(dataset, model, preprocess, K:int=5):
+def get_image_to_texts_precision_at_(dataset, model, preprocess, K:int=5):
 	print(f"Zero-Shot Image Classification {args.device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
+	t0 = time.time()
 	labels = list(set(dataset["label"].tolist()))
 	print(len(labels), type(labels))
 	if K > len(labels):
 		print(f"ERROR: requested Top-{K} labeling is greater than number of labels({len(labels)}) => EXIT...")
 		return
-		
+
 	dataset_images_id = dataset["id"].tolist()
 	dataset_images_path = dataset["img_path"].tolist()
 	dataset_labels = dataset["label"].tolist() # ['naval training', 'medical service', 'medical service', 'naval forces', 'naval forces', ...]
@@ -145,11 +166,11 @@ def get_zero_shot_precision_at_(dataset, model, preprocess, K:int=5):
 	# 	f"Recall: {recall_at_k} | {avg_recall_at_k} "
 	# 	f"Elapsed_t: {time.time()-pred_st:.2f} sec"
 	# )
-	print("-"*160)
+	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 
-def get_image_retrieval(dataset, model, preprocess, query:str="cat", topk:int=5, batch_size:int=1500):
+def get_text_to_images(dataset, model, preprocess, query:str="cat", topk:int=5, batch_size:int=1500):
 	print(f"Top-{topk} Image Retrieval {args.device} CLIP Query: « {query} »".center(160, " "))
-
+	t0 = time.time()
 	labels = list(set(dataset["label"].tolist()))
 	print(len(labels), type(labels))
 
@@ -163,22 +184,22 @@ def get_image_retrieval(dataset, model, preprocess, query:str="cat", topk:int=5,
 	query_features = model.encode_text(tokenized_query_tensor) # <class 'torch.Tensor'> torch.Size([1, 512])
 	query_features /= query_features.norm(dim=-1, keepdim=True)
 	
-	# Encode all the images
-	all_image_features = []
-	# for i in range(0, len(dataset_images_id), batch_size):
-	# 	batch_images_id = [dataset_images_id[j] for j in range(i, min(i + batch_size, len(dataset_images_id)))]
-	for i in range(0, len(dataset_images_path), batch_size):
-		batch_images_path = [dataset_images_path[j] for j in range(i, min(i + batch_size, len(dataset_images_path)))]
-		batch_tensors = torch.stack([preprocess(Image.open(img_path)).to(args.device) for img_path in batch_images_path])
-		with torch.no_grad(): # prevent PyTorch from computing gradients, can consume significant memory
-			image_features = model.encode_image(batch_tensors)
-			image_features /= image_features.norm(dim=-1, keepdim=True)
-		all_image_features.append(image_features)
-		torch.cuda.empty_cache()  # Clear CUDA cache
+	image_features_file = os.path.join(args.dataset_dir, 'outputs', 'image_features.gz')
+	if not os.path.exists(image_features_file):
+		all_image_features = []
+		for i in range(0, len(dataset_images_path), batch_size):
+			batch_images_path = [dataset_images_path[j] for j in range(i, min(i + batch_size, len(dataset_images_path)))]
+			batch_tensors = torch.stack([preprocess(Image.open(img_path)).to(args.device) for img_path in batch_images_path])
+			with torch.no_grad(): # prevent PyTorch from computing gradients, can consume significant memory
+				image_features = model.encode_image(batch_tensors)
+				image_features /= image_features.norm(dim=-1, keepdim=True)
+			all_image_features.append(image_features)
+			torch.cuda.empty_cache()  # Clear CUDA cache
+		all_image_features = torch.cat(all_image_features, dim=0)
+		save_pickle(pkl=all_image_features, fname=image_features_file)
+	else:
+		all_image_features = load_pickle(fpath=image_features_file)
 
-	all_image_features = torch.cat(all_image_features, dim=0)
-
-	# Compute similarities between query and all images
 	similarities = (100.0 * query_features @ all_image_features.T).softmax(dim=-1)
 
 	# Get the top-k most similar images
@@ -201,22 +222,23 @@ def get_image_retrieval(dataset, model, preprocess, query:str="cat", topk:int=5,
 	fig, axes = plt.subplots(1, topk, figsize=(16, 8))
 	if topk == 1:
 		axes = [axes]  # Convert to list of axes
-	fig.suptitle(f"Top-{topk} Query: {query}", fontsize=11)
+	fig.suptitle(f"Top-{topk} Image(s) Query: {query}\nSource Dataset: {os.path.basename(args.dataset_dir)}", fontsize=11)
 	for i, (img, ax) in enumerate(zip(topk_pred_images, axes)):
 		ax.imshow(img)
 		ax.axis('off')
 		if topk == 1:
-			ax.set_title(f"Top-1\nprob: {topk_probs:.8f}\nGT: {labels[topk_pred_labels_idxs[0]]}", fontsize=9)
+			ax.set_title(f"Top-1\nprob: {topk_probs:.4f}\nGT: {labels[topk_pred_labels_idxs[0]]}", fontsize=9)
 		else:
-			ax.set_title(f"Top-{i+1}\nprob: {topk_probs[i]:.8f}\nGT: {labels[topk_pred_labels_idxs[i]]}", fontsize=9)
+			ax.set_title(f"Top-{i+1}\nprob: {topk_probs[i]:.4f}\nGT: {labels[topk_pred_labels_idxs[i]]}", fontsize=9)
 				
 	plt.tight_layout()
-	plt.savefig(f"top{topk}_IMGs_query_{re.sub(' ', '_', query)}.png")
-	print("-"*160)
+	plt.savefig(f"Txt2Img_Top{topk}_IMGs_dataset_{os.path.basename(args.dataset_dir)}_query_{re.sub(' ', '_', query)}.png")
+	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 
-def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5, batch_size:int=1024):
+def get_text_to_images_precision_recall_at_(dataset, model, preprocess, K:int=5, batch_size:int=1024):
 	# torch.cuda.empty_cache()  # Clear CUDA cache
 	print(f"Image Retrieval {args.device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
+	t0 = time.time()
 	labels = list(set(dataset["label"].tolist()))
 	print(len(labels), type(labels))
 	# print(labels)
@@ -232,10 +254,7 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 	tokenized_labels_features = model.encode_text(tokenized_labels_tensor) # <class 'torch.Tensor'> torch.Size([num_lbls, 512])
 	tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)
 
-	# Encode all the images
 	all_image_features = []
-	# for i in range(0, len(dataset_images_id), batch_size):
-	# 	batch_images_id = [dataset_images_id[j] for j in range(i, min(i + batch_size, len(dataset_images_id)))]
 	for i in range(0, len(dataset_images_path), batch_size):
 		batch_images_paths = [dataset_images_path[j] for j in range(i, min(i + batch_size, len(dataset_images_path)))]
 		batch_tensors = torch.stack([preprocess(Image.open(img_path)).to(args.device) for img_path in batch_images_paths])
@@ -244,7 +263,6 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 			image_features /= image_features.norm(dim=-1, keepdim=True)
 		all_image_features.append(image_features)
 		torch.cuda.empty_cache()  # Clear CUDA cache
-
 	all_image_features = torch.cat(all_image_features, dim=0)
 
 	###################################### Wrong approach for P@K and R@K ######################################
@@ -321,7 +339,7 @@ def get_image_retrieval_precision_recall_at_(dataset, model, preprocess, K:int=5
 	# plt.legend()
 	# plt.tight_layout()
 	# plt.savefig(f"PR_ROC_x{len(labels)}_labels.png")
-	# print("-"*160)
+	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 
 def main():
 	print(clip.available_models())
@@ -334,7 +352,7 @@ def main():
 	# print(dataset.head(20))
 
 	if USER == "farid":
-		get_zero_shot(
+		get_image_to_texts(
 			dataset=dataset,
 			model=model,
 			preprocess=preprocess,
@@ -342,15 +360,15 @@ def main():
 			topk=args.topK,
 		)
 
-	get_zero_shot_precision_at_(
-		dataset=dataset,
-		model=model,
-		preprocess=preprocess,
-		K=args.topK,
-	)
+	# get_image_to_texts_precision_at_(
+	# 	dataset=dataset,
+	# 	model=model,
+	# 	preprocess=preprocess,
+	# 	K=args.topK,
+	# )
 
 	if USER == "farid":
-		get_image_retrieval(
+		get_text_to_images(
 			dataset=dataset,
 			model=model,
 			preprocess=preprocess,
@@ -359,13 +377,13 @@ def main():
 			batch_size=args.batch_size,
 		)
 
-	get_image_retrieval_precision_recall_at_(
-		dataset=dataset,
-		model=model,
-		preprocess=preprocess,		
-		K=args.topK,
-		batch_size=args.batch_size,
-	)
+	# get_text_to_images_precision_recall_at_(
+	# 	dataset=dataset,
+	# 	model=model,
+	# 	preprocess=preprocess,		
+	# 	K=args.topK,
+	# 	batch_size=args.batch_size,
+	# )
 
 if __name__ == "__main__":
 	main()
