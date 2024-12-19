@@ -254,16 +254,21 @@ def get_text_to_images_precision_recall_at_(dataset, model, preprocess, K:int=5,
 	tokenized_labels_features = model.encode_text(tokenized_labels_tensor) # <class 'torch.Tensor'> torch.Size([num_lbls, 512])
 	tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)
 
-	all_image_features = []
-	for i in range(0, len(dataset_images_path), batch_size):
-		batch_images_paths = [dataset_images_path[j] for j in range(i, min(i + batch_size, len(dataset_images_path)))]
-		batch_tensors = torch.stack([preprocess(Image.open(img_path)).to(args.device) for img_path in batch_images_paths])
-		with torch.no_grad(): # prevent PyTorch from computing gradients, can consume significant memory
-			image_features = model.encode_image(batch_tensors)
-			image_features /= image_features.norm(dim=-1, keepdim=True)
-		all_image_features.append(image_features)
-		torch.cuda.empty_cache()  # Clear CUDA cache
-	all_image_features = torch.cat(all_image_features, dim=0)
+	image_features_file = os.path.join(args.dataset_dir, 'outputs', 'image_features.gz')
+	if not os.path.exists(image_features_file):
+		all_image_features = []
+		for i in range(0, len(dataset_images_path), batch_size):
+			batch_images_path = [dataset_images_path[j] for j in range(i, min(i + batch_size, len(dataset_images_path)))]
+			batch_tensors = torch.stack([preprocess(Image.open(img_path)).to(args.device) for img_path in batch_images_path])
+			with torch.no_grad(): # prevent PyTorch from computing gradients, can consume significant memory
+				image_features = model.encode_image(batch_tensors)
+				image_features /= image_features.norm(dim=-1, keepdim=True)
+			all_image_features.append(image_features)
+			torch.cuda.empty_cache()  # Clear CUDA cache
+		all_image_features = torch.cat(all_image_features, dim=0)
+		save_pickle(pkl=all_image_features, fname=image_features_file)
+	else:
+		all_image_features = load_pickle(fpath=image_features_file)
 
 	###################################### Wrong approach for P@K and R@K ######################################
 	# it is rather accuracy or hit rate!
@@ -286,19 +291,14 @@ def get_text_to_images_precision_recall_at_(dataset, model, preprocess, K:int=5,
 	prec_at_k = []
 	recall_at_k = []
 	for i, label_features in enumerate(tokenized_labels_features):
-		# print(i, label_features.shape)
 		sim = (100.0 * label_features @ all_image_features.T).softmax(dim=-1) # similarities between query and all images
 		topk_probs, topk_indices = sim.topk(K, dim=-1)
-		# topk_pred_labels_idxs = [dataset_labels_int[idx] for idx in topk_indices.squeeze().cpu().numpy()] # [3, 3, 8, 8, 3] # only K@(>1)
 		topk_pred_labels_idxs = [dataset_labels_int[topk_indices.squeeze().item()]] if K==1 else [dataset_labels_int[idx] for idx in topk_indices.squeeze().cpu().numpy()] # K@1, 5, ...
-		# print(topk_pred_labels_idxs)
-		relevant_retrieved_images_for_label_i = topk_pred_labels_idxs.count(i)  # counting relevant images in top-K retrieved images
+		relevant_retrieved_images_for_label_i = topk_pred_labels_idxs.count(i)# count number of relevant images (i.e., images with the same label) in top-K retrieved images.
 		prec_at_k.append(relevant_retrieved_images_for_label_i/K)
 		all_images_with_label_i = [idx for idx, (img, lbl) in enumerate(zip(dataset_images_id, dataset_labels_int)) if lbl == i]
-		# print(len(all_images_with_label_i), all_images_with_label_i)
 		num_all_images_with_label_i = len(all_images_with_label_i)
 		recall_at_k.append(relevant_retrieved_images_for_label_i/num_all_images_with_label_i)
-		# print()
 
 	avg_prec_at_k = sum(prec_at_k)/len(labels)
 	avg_recall_at_k = sum(recall_at_k) / len(labels)
