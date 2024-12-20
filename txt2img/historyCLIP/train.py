@@ -125,7 +125,6 @@ def train(model, train_data_loader, val_data_loader, optimizer, scheduler, check
 			cap = data["caption"].to(args.device)
 			mask = data["mask"].to(args.device)
 
-
 			# # Conventional backpropagation:
 			# loss = model(img, cap, mask)
 			# loss.backward()
@@ -137,10 +136,10 @@ def train(model, train_data_loader, val_data_loader, optimizer, scheduler, check
 				loss = model(img, cap, mask)
 			
 			scaler.scale(loss).backward()
-			scaler.unscale_(optimizer)
+			scaler.unscale_(optimizer) # Unscales the gradients of optimizer's assigned params in-place
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			scaler.step(optimizer)
-			scaler.update()
+			scaler.update() # Updates the scale for next iteration
 
 			scheduler.step()
 			# print(scheduler.get_last_lr())
@@ -396,7 +395,7 @@ def main():
 	optimizer = optim.AdamW(
 		params=model.parameters(),
 		betas=(0.9, 0.98), # Based on original CLIP paper
-		eps=1e-8,
+		eps=1e-6, # Based on original CLIP paper
 		lr=args.learning_rate,
 		weight_decay=args.weight_decay, # weight decay (L2 regularization)
 	)
