@@ -21,12 +21,13 @@ parser.add_argument('--batch_size', '-bs', type=int, default=103, help='Batch si
 parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
 parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
 parser.add_argument('--print_every', type=int, default=150, help='Print loss')
+parser.add_argument('--dataset', '-d', type=str, choices=['CIFAR10', 'CIFAR100'], default='CIFAR10', help='Choose dataset (CIFAR10/CIFAR100)')
 
 args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
 print(args)
 # run in pouta:
-# $ nohup python -u finetune.py -bs 335 -ne 25 -lr 1e-5 -wd 1e-3 --print_every 40 --device "cuda:2" > /media/volume/ImACCESS/trash/finetune_cifar.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 335 -ne 25 -lr 1e-5 -wd 1e-3 --print_every 50 --device "cuda:2" > /media/volume/ImACCESS/trash/finetune_cifar100.out &
 
 class CIFARDATASET(torch.utils.data.Dataset):
 		def __init__(self, dataset, transformer=None,):
@@ -102,36 +103,38 @@ def load_model():
 	print("Vocab size:", vocab_size)
 	return model, preprocess
 
-def get_dataset(large_dataset:bool=False):
-		if large_dataset:
-				train_dataset = CIFAR100(
-						root=os.path.expanduser("~/.cache"), 
-						train=True,
-						download=True,
-						transform=None
-				)
-				test_dataset = CIFAR100(
-						root=os.path.expanduser("~/.cache"), 
-						train=False,
-						download=True,
-						transform=None
-				)
-		else: # cifar10 with 10K samples
-				train_dataset = CIFAR10(
-						root=os.path.expanduser("~/.cache"), 
-						train=True,
-						download=True,
-						transform=None
-				)
-				test_dataset = CIFAR10(
-						root=os.path.expanduser("~/.cache"), 
-						train=False,
-						download=True,
-						transform=None
-				)
-		print(train_dataset)
-		print(test_dataset)
-		return train_dataset, test_dataset
+def get_dataset(dname:str="CIFAR10"):
+	if dname == 'CIFAR100':
+		train_dataset = CIFAR100(
+			root=os.path.expanduser("~/.cache"), 
+			train=True,
+			download=True,
+			transform=None
+		)
+		test_dataset = CIFAR100(
+			root=os.path.expanduser("~/.cache"), 
+			train=False,
+			download=True,
+			transform=None
+		)
+	elif dname == 'CIFAR10':
+		train_dataset = CIFAR10(
+			root=os.path.expanduser("~/.cache"), 
+			train=True,
+			download=True,
+			transform=None
+		)
+		test_dataset = CIFAR10(
+			root=os.path.expanduser("~/.cache"), 
+			train=False,
+			download=True,
+			transform=None
+		)
+	else:
+		raise ValueError(f"Invalid dataset name: {dname}. Choose from CIFAR10 or CIFAR100")
+	print(train_dataset)
+	print(test_dataset)
+	return train_dataset, test_dataset
 
 def plot_(train_losses, val_losses, validation_accuracy_text_description_for_each_image_list, validation_accuracy_text_image_for_each_text_description_list):
 	num_epochs = len(train_losses)
@@ -264,8 +267,14 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 def main():
 	print(clip.available_models())
 	model, preprocess = load_model()
-	train_dataset, test_dataset = get_dataset() # cifar10 or cifar 100
-	train_loader, test_loader = get_dataloaders(train_dataset, test_dataset, preprocess=preprocess, batch_size=args.batch_size, num_workers=args.num_workers)
+	train_dataset, test_dataset = get_dataset(dname=args.dataset)
+	train_loader, test_loader = get_dataloaders(
+		train_dataset=train_dataset, 
+		test_dataset=test_dataset, 
+		preprocess=preprocess,
+		batch_size=args.batch_size,
+		num_workers=args.num_workers,
+	)
 	finetune(model, train_loader, test_loader, num_epochs=args.num_epochs)
 
 if __name__ == "__main__":
