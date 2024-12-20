@@ -286,33 +286,32 @@ def main():
 		ddir=args.dataset_dir,
 		sliced=False,
 	)
-	# print(dataset.head(20))
 
-	# if USER == "farid":
-	# 	get_image_to_texts(
-	# 		dataset=dataset,
-	# 		model=model,
-	# 		preprocess=preprocess,
-	# 		img_path=args.query_image,
-	# 		topk=args.topK,
-	# 	)
+	if USER == "farid":
+		get_image_to_texts(
+			dataset=dataset,
+			model=model,
+			preprocess=preprocess,
+			img_path=args.query_image,
+			topk=args.topK,
+		)
 
-	# get_image_to_texts_precision_at_(
-	# 	dataset=dataset,
-	# 	model=model,
-	# 	preprocess=preprocess,
-	# 	K=args.topK,
-	# )
+	get_image_to_texts_precision_at_(
+		dataset=dataset,
+		model=model,
+		preprocess=preprocess,
+		K=args.topK,
+	)
 
-	# if USER == "farid":
-	# 	get_text_to_images(
-	# 		dataset=dataset,
-	# 		model=model,
-	# 		preprocess=preprocess,
-	# 		query=args.query_label,
-	# 		topk=args.topK,
-	# 		batch_size=args.batch_size,
-	# 	)
+	if USER == "farid":
+		get_text_to_images(
+			dataset=dataset,
+			model=model,
+			preprocess=preprocess,
+			query=args.query_label,
+			topk=args.topK,
+			batch_size=args.batch_size,
+		)
 
 	get_text_to_images_precision_recall_at_(
 		dataset=dataset,
