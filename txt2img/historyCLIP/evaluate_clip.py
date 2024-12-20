@@ -268,10 +268,10 @@ def get_text_to_images_precision_recall_at_(dataset, model, preprocess, K: int =
 	for i, label_features in enumerate(tokenized_labels_features):
 		sim = label_features @ all_image_features.T # compute similarity between the label and all images
 		_, indices = sim.topk(len(all_image_features), dim=-1) # retrieve all images for each label
-		relevant_images = [idx for idx, lbl in enumerate(dataset_labels_int) if lbl == i] # retrieve all images with same label
-		retrieved_topK_relevant_images = [idx for idx in indices.squeeze().cpu().numpy()[:K] if idx in relevant_images] # retrieve topK relevant images in the top-K retrieved images
+		relevant_images_for_lbl_i = [idx for idx, lbl in enumerate(dataset_labels_int) if lbl == i] # retrieve all images with same label
+		retrieved_topK_relevant_images = [idx for idx in indices.squeeze().cpu().numpy()[:K] if idx in relevant_images_for_lbl_i] # retrieve topK relevant images in the top-K retrieved images
 		prec_at_k.append(len(retrieved_topK_relevant_images) / K)
-		recall_at_k.append(len(retrieved_topK_relevant_images) / len(relevant_images))
+		recall_at_k.append(len(retrieved_topK_relevant_images) / len(relevant_images_for_lbl_i))
 	avg_prec_at_k = sum(prec_at_k) / len(labels)
 	avg_recall_at_k = sum(recall_at_k) / len(labels)
 	print(f"Precision@{K}: {avg_prec_at_k:.3f} {np.mean(prec_at_k)}")
