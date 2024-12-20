@@ -66,7 +66,7 @@ plt.tight_layout()
 plt.savefig(f"labels_x_{label_counts.shape[0]}_freq_x_{len(dfs)}.png")
 
 # Perform stratified splitting
-VAL_SPLIT_PCT = 0.3
+VAL_SPLIT_PCT = 0.35
 train_df, val_df = train_test_split(
 	merged_df,
 	test_size=VAL_SPLIT_PCT,
