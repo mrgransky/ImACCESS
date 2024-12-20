@@ -235,111 +235,48 @@ def get_text_to_images(dataset, model, preprocess, query:str="cat", topk:int=5, 
 	plt.savefig(f"Txt2Img_Top{topk}_IMGs_dataset_{os.path.basename(args.dataset_dir)}_query_{re.sub(' ', '_', query)}.png")
 	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 
-def get_text_to_images_precision_recall_at_(dataset, model, preprocess, K:int=5, batch_size:int=1024):
-	# torch.cuda.empty_cache()  # Clear CUDA cache
+def get_text_to_images_precision_recall_at_(dataset, model, preprocess, K: int = 5, batch_size: int = 1024):
 	print(f"Image Retrieval {args.device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
 	t0 = time.time()
 	labels = list(set(dataset["label"].tolist()))
 	print(len(labels), type(labels))
-	# print(labels)
-
 	dataset_images_id = dataset["id"].tolist()
 	dataset_images_path = dataset["img_path"].tolist()
-	dataset_labels = dataset["label"].tolist() # ['naval training', 'medical service', 'medical service', 'naval forces', 'naval forces', ...]
-	dataset_labels_int = dataset["label_int"].tolist() # [3, 17, 4, 9, ...]
-	
+	dataset_labels = dataset["label"].tolist()
+	dataset_labels_int = dataset["label_int"].tolist()
 	print(len(dataset_images_id), len(dataset_labels))
-
-	tokenized_labels_tensor = clip.tokenize(texts=labels).to(args.device) # <class 'torch.Tensor'> torch.Size([num_lbls, 77])
-	tokenized_labels_features = model.encode_text(tokenized_labels_tensor) # <class 'torch.Tensor'> torch.Size([num_lbls, 512])
+	tokenized_labels_tensor = clip.tokenize(texts=labels).to(args.device)
+	tokenized_labels_features = model.encode_text(tokenized_labels_tensor)
 	tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)
-
 	image_features_file = os.path.join(args.dataset_dir, 'outputs', 'image_features.gz')
 	if not os.path.exists(image_features_file):
 		all_image_features = []
 		for i in range(0, len(dataset_images_path), batch_size):
 			batch_images_path = [dataset_images_path[j] for j in range(i, min(i + batch_size, len(dataset_images_path)))]
 			batch_tensors = torch.stack([preprocess(Image.open(img_path)).to(args.device) for img_path in batch_images_path])
-			with torch.no_grad(): # prevent PyTorch from computing gradients, can consume significant memory
+			with torch.no_grad():
 				image_features = model.encode_image(batch_tensors)
 				image_features /= image_features.norm(dim=-1, keepdim=True)
 			all_image_features.append(image_features)
-			torch.cuda.empty_cache()  # Clear CUDA cache
+			torch.cuda.empty_cache()
 		all_image_features = torch.cat(all_image_features, dim=0)
 		save_pickle(pkl=all_image_features, fname=image_features_file)
 	else:
 		all_image_features = load_pickle(fpath=image_features_file)
-
-	###################################### Wrong approach for P@K and R@K ######################################
-	# it is rather accuracy or hit rate!
-	# prec_at_k = 0
-	# recall_at_k = []
-	# for i, label_features in enumerate(tokenized_labels_features):
-	# 	sim = (100.0 * label_features @ all_image_features.T).softmax(dim=-1) # similarities between query and all images
-	# 	topk_probs, topk_indices = sim.topk(K, dim=-1)
-	# 	topk_pred_labels_idxs = [dataset[idx][1] for idx in topk_indices.squeeze().cpu().numpy()] # [3, 3, 8, 8, 3]
-	# 	recall_at_k.append(topk_pred_labels_idxs.count(i)/K)
-	# 	if i in topk_pred_labels_idxs: # just checking if the label is present
-	# 		prec_at_k += 1
-	# avg_prec_at_k = prec_at_k / len(tokenized_labels_features)
-	# avg_recall_at_k = sum(recall_at_k) / len(labels)
-	# print(f"Precision@{K}: {prec_at_k} {avg_prec_at_k}")
-	# print(f"Recall@{K}: {recall_at_k} {avg_recall_at_k} {np.mean(recall_at_k)}")
-	# print(labels)
-	###################################### Wrong approach for P@K and R@K ######################################
-
 	prec_at_k = []
 	recall_at_k = []
 	for i, label_features in enumerate(tokenized_labels_features):
-		sim = (100.0 * label_features @ all_image_features.T).softmax(dim=-1) # similarities between query and all images
-		topk_probs, topk_indices = sim.topk(K, dim=-1)
-		topk_pred_labels_idxs = [dataset_labels_int[topk_indices.squeeze().item()]] if K==1 else [dataset_labels_int[idx] for idx in topk_indices.squeeze().cpu().numpy()] # K@1, 5, ...
-		relevant_retrieved_images_for_label_i = topk_pred_labels_idxs.count(i)# count number of relevant images (i.e., images with the same label) in top-K retrieved images.
-		prec_at_k.append(relevant_retrieved_images_for_label_i/K)
-		all_images_with_label_i = [idx for idx, (img, lbl) in enumerate(zip(dataset_images_id, dataset_labels_int)) if lbl == i]
-		num_all_images_with_label_i = len(all_images_with_label_i)
-		recall_at_k.append(relevant_retrieved_images_for_label_i/num_all_images_with_label_i)
-
-	avg_prec_at_k = sum(prec_at_k)/len(labels)
+		sim = label_features @ all_image_features.T # compute similarity between the label and all images
+		_, indices = sim.topk(len(all_image_features), dim=-1) # retrieve all images for each label
+		relevant_images = [idx for idx, lbl in enumerate(dataset_labels_int) if lbl == i] # retrieve all images with same label
+		retrieved_topK_relevant_images = [idx for idx in indices.squeeze().cpu().numpy()[:K] if idx in relevant_images] # retrieve topK relevant images in the top-K retrieved images
+		prec_at_k.append(len(retrieved_topK_relevant_images) / K)
+		recall_at_k.append(len(retrieved_topK_relevant_images) / len(relevant_images))
+	avg_prec_at_k = sum(prec_at_k) / len(labels)
 	avg_recall_at_k = sum(recall_at_k) / len(labels)
 	print(f"Precision@{K}: {avg_prec_at_k:.3f} {np.mean(prec_at_k)}")
-	print(f"Recall@{K}: {avg_recall_at_k} {np.mean(recall_at_k)}")
-	print(labels)
-
-	# fpr_values = []
-	# tpr_values = []
-	# precision_values = []
-	# recall_values = []
-	# for i, label_features in enumerate(tokenized_labels_features):
-	# 	sim = (100.0 * label_features @ all_image_features.T).softmax(dim=-1)
-	# 	sim = sim.squeeze().cpu().detach().numpy()
-	# 	predicted_labels = np.argsort(-sim)
-	# 	true_labels = [1 if dataset[j][1] == i else 0 for j in range(len(dataset))]
-	# 	prec, rec, thresh = precision_recall_curve(true_labels, sim)
-	# 	fpr, tpr, _ = roc_curve(true_labels, sim)
-	# 	precision_values.append(prec)
-	# 	recall_values.append(rec)
-	# 	fpr_values.append(fpr)
-	# 	tpr_values.append(tpr)
-
-	# plt.figure(figsize=(18, 10))
-	# for i in range(len(tokenized_labels_features)):
-	# 	plt.subplot(1, 2, 1)
-	# 	plt.plot(recall_values[i], precision_values[i], label=f'Label {i}')
-	# 	plt.xlabel('Recall')
-	# 	plt.ylabel('Precision')
-	# 	plt.title('Precision-Recall Curve')
-
-	# 	plt.subplot(1, 2, 2)
-	# 	plt.plot(fpr_values[i], tpr_values[i], label=f'Label {i}')
-	# 	plt.xlabel('False Positive Rate')
-	# 	plt.ylabel('True Positive Rate')
-	# 	plt.title('ROC Curve')
-
-	# plt.legend()
-	# plt.tight_layout()
-	# plt.savefig(f"PR_ROC_x{len(labels)}_labels.png")
-	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
+	print(f"Recall@{K}: {avg_recall_at_k:.3f} {np.mean(recall_at_k)}")
+	print(f"Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
 
 def main():
 	print(clip.available_models())
@@ -351,14 +288,14 @@ def main():
 	)
 	# print(dataset.head(20))
 
-	if USER == "farid":
-		get_image_to_texts(
-			dataset=dataset,
-			model=model,
-			preprocess=preprocess,
-			img_path=args.query_image,
-			topk=args.topK,
-		)
+	# if USER == "farid":
+	# 	get_image_to_texts(
+	# 		dataset=dataset,
+	# 		model=model,
+	# 		preprocess=preprocess,
+	# 		img_path=args.query_image,
+	# 		topk=args.topK,
+	# 	)
 
 	# get_image_to_texts_precision_at_(
 	# 	dataset=dataset,
@@ -367,23 +304,23 @@ def main():
 	# 	K=args.topK,
 	# )
 
-	if USER == "farid":
-		get_text_to_images(
-			dataset=dataset,
-			model=model,
-			preprocess=preprocess,
-			query=args.query_label,
-			topk=args.topK,
-			batch_size=args.batch_size,
-		)
+	# if USER == "farid":
+	# 	get_text_to_images(
+	# 		dataset=dataset,
+	# 		model=model,
+	# 		preprocess=preprocess,
+	# 		query=args.query_label,
+	# 		topk=args.topK,
+	# 		batch_size=args.batch_size,
+	# 	)
 
-	# get_text_to_images_precision_recall_at_(
-	# 	dataset=dataset,
-	# 	model=model,
-	# 	preprocess=preprocess,		
-	# 	K=args.topK,
-	# 	batch_size=args.batch_size,
-	# )
+	get_text_to_images_precision_recall_at_(
+		dataset=dataset,
+		model=model,
+		preprocess=preprocess,		
+		K=args.topK,
+		batch_size=args.batch_size,
+	)
 
 if __name__ == "__main__":
 	main()

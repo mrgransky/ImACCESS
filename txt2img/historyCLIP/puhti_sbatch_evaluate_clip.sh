@@ -8,10 +8,10 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=8G
+#SBATCH --mem=4G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
-#SBATCH --array=3
+#SBATCH --array=0-3
 #SBATCH --gres=gpu:v100:1
 
 user="`whoami`"
@@ -37,7 +37,7 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
 )
 
-for prec in 20 15 10 5 1
+for prec in 1 5 10 15 20
 	do
 		echo "Precision@$prec for Dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$SLURM_ARRAY_TASK_ID]}"
 		python -u evaluate_clip.py \
