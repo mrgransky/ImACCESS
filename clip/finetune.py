@@ -23,13 +23,14 @@ parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch siz
 parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
 parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
 parser.add_argument('--print_every', type=int, default=150, help='Print loss')
+parser.add_argument('--model_name', '-m', type=str, default="ViT-B/32", help='CLIP model name')
 parser.add_argument('--dataset', '-d', type=str, choices=['CIFAR10', 'CIFAR100'], default='CIFAR10', help='Choose dataset (CIFAR10/CIFAR100)')
 
 args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
 print(args)
 # run in pouta:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 128 -ne 30 -lr 1e-5 -wd 5e-3 --print_every 50 -nw 50 --device "cuda:2" > /media/volume/ImACCESS/trash/finetune_cifar100.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 128 -ne 30 -lr 1e-5 -wd 1e-2 --print_every 50 -nw 50 --device "cuda:3" -m "ViT-L/14" > /media/volume/ImACCESS/trash/finetune_cifar100_cuda3.out &
 
 class CIFARDATASET(torch.utils.data.Dataset):
 		def __init__(self, dataset, transformer=None,):
@@ -94,8 +95,8 @@ def get_dataloaders(train_dataset, test_dataset, preprocess, batch_size=32, num_
 		test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 		return train_loader, test_loader
 
-def load_model():
-	model, preprocess = clip.load("ViT-B/32", device=args.device, jit=False) # training or finetuning => jit=False
+def load_model(model_name:str="ViT-B/32"):
+	model, preprocess = clip.load(model_name, device=args.device, jit=False) # training or finetuning => jit=False
 	input_resolution = model.visual.input_resolution
 	context_length = model.context_length
 	vocab_size = model.vocab_size
@@ -282,7 +283,7 @@ def finetune(model, train_loader, test_loader, early_stopping_patience:int=5):
 def main():
 
 	print(clip.available_models())
-	model, preprocess = load_model()
+	model, preprocess = load_model(model_name=args.model_name)
 	train_dataset, test_dataset = get_dataset(dname=args.dataset)
 	train_loader, test_loader = get_dataloaders(
 		train_dataset=train_dataset, 
