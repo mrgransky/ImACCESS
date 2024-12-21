@@ -12,6 +12,8 @@ import torch.nn as nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
 import torchvision.transforms as T
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_scheduler')
 
 parser = argparse.ArgumentParser(description="FineTune CLIP for CIFAR10x Dataset")
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
@@ -27,7 +29,7 @@ args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
 print(args)
 # run in pouta:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 128 -ne 25 -lr 1e-5 -wd 1e-3 --print_every 50 -nw 50 --device "cuda:2" > /media/volume/ImACCESS/trash/finetune_cifar100.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 128 -ne 30 -lr 1e-5 -wd 5e-3 --print_every 50 -nw 50 --device "cuda:2" > /media/volume/ImACCESS/trash/finetune_cifar100.out &
 
 class CIFARDATASET(torch.utils.data.Dataset):
 		def __init__(self, dataset, transformer=None,):
@@ -149,7 +151,7 @@ def plot_(train_losses, val_losses, validation_accuracy_text_description_for_eac
 	plt.ylabel('Loss')
 	plt.tight_layout()
 	plt.legend()
-	plt.savefig(f"{args.dataset}_train_vs_val_loss_ep_{len(train_losses)}_lr_{args.learning_rate}_wd_{args.weight_decay}.png")
+	plt.savefig(f"{args.dataset}_train_val_loss_ep_{len(train_losses)}_lr_{args.learning_rate}_wd_{args.weight_decay}_{args.batch_size}_batch_size.png")
 	plt.close()
 
 	plt.figure()
@@ -162,8 +164,8 @@ def plot_(train_losses, val_losses, validation_accuracy_text_description_for_eac
 	plt.savefig(f"{args.dataset}_validation_accuracy_ep_{len(train_losses)}_txt_img.png")
 	plt.close()
 
-def finetune(model, train_loader, test_loader, num_epochs=5):
-	print(f"Fine-Tuning CLIP model {num_epochs} Epoch(s) device: {args.device} & {args.num_workers} CPU(s)".center(160, "-"))
+def finetune(model, train_loader, test_loader, early_stopping_patience:int=5):
+	print(f"Fine-Tuning CLIP model {args.num_epochs} Epoch(s) device: {args.device} & {args.num_workers} CPU(s)".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(args.device)}".center(160, " "))
 	model = model.float()  # Convert model parameters to FP32
@@ -172,10 +174,10 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 			param.requires_grad = False
 		else:
 			param.requires_grad = True
-
+	best_loss = np.inf
+	no_improvement_count = 0
 	optimizer = optim.AdamW(
-		# params=model.parameters(),
-		params=[p for p in model.parameters() if p.requires_grad],
+		params=model.parameters(),
 		lr=args.learning_rate,
 		betas=(0.9,0.98),
 		eps=1e-6,
@@ -203,9 +205,9 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 	validation_accuracy_text_description_for_each_image_list = []
 	validation_accuracy_text_image_for_each_text_description_list = []
 	ft_st = time.time()
-	for epoch in range(num_epochs):
-		print(f"Epoch [{epoch+1}/{num_epochs}]")
-		epoch_loss = 0.0  # To accumulate the loss over the epoch
+	for epoch in range(args.num_epochs):
+		print(f"Epoch [{epoch+1}/{args.num_epochs}]")
+		epoch_loss = 0.0
 		for batch_idx, batch in enumerate(train_loader):
 			optimizer.zero_grad() # Clear gradients from previous batch
 			images, labels = batch # torch.Size([b, 3, 224, 224]), torch.Size([b, 77])
@@ -254,6 +256,21 @@ def finetune(model, train_loader, test_loader, num_epochs=5):
 			f'Validation Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.4f} '
 			f'[image for each text description]: {accuracy_text_image_for_each_text_description:.4f}'
 		)
+
+		############################## Early stopping ##############################
+		mdl_fpth = f"{args.dataset}_clip_finetuned.pth"
+		if avg_valid_loss < best_loss:
+			best_loss = avg_valid_loss
+			torch.save(model.state_dict(), mdl_fpth)
+			print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.5f}")
+			no_improvement_count = 0
+		else:
+			no_improvement_count += 1
+			if no_improvement_count >= early_stopping_patience:
+				print(f"Early stopping triggered after {epoch+1} epochs.")
+				break
+		############################## Early stopping ##############################
+
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
 	plot_(
 		train_losses=training_losses,
@@ -274,7 +291,7 @@ def main():
 		batch_size=args.batch_size,
 		num_workers=args.num_workers,
 	)
-	finetune(model, train_loader, test_loader, num_epochs=args.num_epochs)
+	finetune(model, train_loader, test_loader)
 
 if __name__ == "__main__":
 	main()
