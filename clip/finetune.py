@@ -31,7 +31,7 @@ args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
 print(args)
 # run in pouta:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 64 -ne 30 -lr 1e-5 -wd 1e-2 --print_every 500 -nw 50 --device "cuda:3" -m "ViT-L/14" > /media/volume/ImACCESS/trash/finetune_cifar100_cuda3.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 16 -ne 30 -lr 1e-5 -wd 5e-3 --print_every 500 -nw 50 --device "cuda:3" -m "ViT-L/14" > /media/volume/ImACCESS/trash/finetune_cifar100_cuda3.out &
 
 class CIFARDATASET(torch.utils.data.Dataset):
 	def __init__(self, dataset, transformer=None,):
@@ -180,15 +180,16 @@ def plot_(train_losses, val_losses, validation_accuracy_text_description_for_eac
 	plt.close()
 
 def finetune(model, train_loader, test_loader, early_stopping_patience:int=5):
-	print(f"Fine-Tuning CLIP model[{args.model_name}] {args.num_epochs} Epoch(s) {args.device} & {args.num_workers} CPU(s)".center(160, "-"))
+	print(f"Fine-Tuning CLIP {args.model_name} {args.num_epochs} Epoch(s) {args.device} with {args.num_workers} cpu cores".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(args.device)}".center(160, " "))
-	model = model.float()  # Convert model parameters to FP32
 	for name, param in model.named_parameters():
+		print(f"{name} dtype: {param.dtype}")
 		if 'visual.conv1' in name or 'visual.ln_pre' in name:
 			param.requires_grad = False
 		else:
 			param.requires_grad = True
+	model = model.float() # Convert model parameters to FP32
 	best_loss = np.inf
 	no_improvement_count = 0
 	optimizer = optim.AdamW(

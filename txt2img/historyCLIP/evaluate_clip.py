@@ -278,6 +278,70 @@ def get_text_to_images_precision_recall_at_(dataset, model, preprocess, K: int =
 	print(f"Recall@{K}: {avg_recall_at_k:.3f} {np.mean(recall_at_k)}")
 	print(f"Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
 
+def calculate_map_at_k(dataset, model, preprocess, K: int, batch_size: int, device):
+	"""
+	Calculate mean average precision@K (mAP@K) for image-to-texts and text-to-images retrieval.
+	:param dataset: Dataset containing images and their corresponding labels.
+	:param model: CLIP model instance.
+	:param preprocess: Preprocessing function for images.
+	:param K: Top-K value for precision and recall calculation.
+	:param batch_size: Batch size for processing images.
+	:param device: Device (GPU or CPU) for computations.
+	:return: mAP@K values for image-to-texts and text-to-images retrieval tasks.
+	"""
+	print(f"Calculating mAP@{K} for Image-to-Texts and Text-to-Images Retrieval".center(160, " "))
+	t0 = time.time()
+	image_features_file = os.path.join(args.dataset_dir, 'outputs', 'image_features.gz')
+	if not os.path.exists(image_features_file):
+		all_image_features = []
+		for i in range(0, len(dataset["img_path"]), batch_size):
+			batch_images_path = [dataset["img_path"][j] for j in range(i, min(i + batch_size, len(dataset["img_path"])))]
+			batch_tensors = torch.stack([preprocess(Image.open(img_path)).to(device) for img_path in batch_images_path])
+			with torch.no_grad():
+				image_features = model.encode_image(batch_tensors)
+				image_features /= image_features.norm(dim=-1, keepdim=True)
+			all_image_features.append(image_features)
+			torch.cuda.empty_cache()
+		all_image_features = torch.cat(all_image_features, dim=0)
+		save_pickle(pkl=all_image_features, fname=image_features_file)
+	else:
+		all_image_features = load_pickle(fpath=image_features_file)
+
+	# Image-to-Texts Retrieval
+	img_to_txt_precisions = []
+	tokenized_labels_tensor = clip.tokenize(texts=list(set(dataset["label"]))).to(device)
+	labels_features = model.encode_text(tokenized_labels_tensor)
+	labels_features /= labels_features.norm(dim=-1, keepdim=True)
+	for i, (img_path, gt_lbl) in enumerate(zip(dataset["img_path"], dataset["label_int"])):
+		img_raw = Image.open(img_path)
+		img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
+		image_features = model.encode_image(img_tensor)
+		image_features /= image_features.norm(dim=-1, keepdim=True)
+		similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
+		_, topk_labels_idx = similarities.topk(K, dim=-1)
+		if gt_lbl in topk_labels_idx.cpu().numpy().flatten():
+			img_to_txt_precisions.append(1)
+		else:
+			img_to_txt_precisions.append(0)
+	img_to_txt_map_at_k = np.mean(img_to_txt_precisions)
+
+	# Text-to-Images Retrieval
+	txt_to_img_precisions = []
+	tokenized_labels_tensor = clip.tokenize(texts=list(set(dataset["label"]))).to(device)
+	tokenized_labels_features = model.encode_text(tokenized_labels_tensor)
+	tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)
+	for i, label_features in enumerate(tokenized_labels_features):
+		sim = label_features @ all_image_features.T
+		_, indices = sim.topk(len(all_image_features), dim=-1)
+		relevant_images_for_lbl_i = [idx for idx, lbl in enumerate(dataset["label_int"]) if lbl == i]
+		retrieved_topK_relevant_images = [idx for idx in indices.squeeze().cpu().numpy()[:K] if idx in relevant_images_for_lbl_i]
+		txt_to_img_precisions.append(len(retrieved_topK_relevant_images) / K)
+	txt_to_img_map_at_k = np.mean(txt_to_img_precisions)
+	print(f"Image-to-Texts mAP@{K}: {img_to_txt_map_at_k:.3f}")
+	print(f"Text-to-Images mAP@{K}: {txt_to_img_map_at_k:.3f}")
+	print(f"Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
+	return img_to_txt_map_at_k, txt_to_img_map_at_k
+
 def main():
 	print(clip.available_models())
 	model, preprocess = load_model()
@@ -285,6 +349,15 @@ def main():
 	dataset = get_dataset(
 		ddir=args.dataset_dir,
 		sliced=False,
+	)
+
+	img_to_txt_map_at_k, txt_to_img_map_at_k = calculate_map_at_k(
+		dataset=dataset,
+		model=model,
+		preprocess=preprocess,
+		K=args.topK,
+		batch_size=args.batch_size,
+		device=args.device
 	)
 
 	if USER == "farid":
