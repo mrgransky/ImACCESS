@@ -13,6 +13,7 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 import torchvision.transforms as T
 import warnings
+import datetime
 warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_scheduler')
 
 parser = argparse.ArgumentParser(description="FineTune CLIP for CIFAR10x Dataset")
@@ -30,70 +31,54 @@ args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
 print(args)
 # run in pouta:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 128 -ne 30 -lr 1e-5 -wd 1e-2 --print_every 50 -nw 50 --device "cuda:3" -m "ViT-L/14" > /media/volume/ImACCESS/trash/finetune_cifar100_cuda3.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 64 -ne 30 -lr 1e-5 -wd 1e-2 --print_every 500 -nw 50 --device "cuda:3" -m "ViT-L/14" > /media/volume/ImACCESS/trash/finetune_cifar100_cuda3.out &
 
 class CIFARDATASET(torch.utils.data.Dataset):
-		def __init__(self, dataset, transformer=None,):
-				self.dataset = dataset
-				self.images = [img for idx, (img,lbl) in enumerate(dataset)]
-				self.labels = clip.tokenize(texts=[dataset.classes[lbl_idx] for i, (img, lbl_idx) in enumerate(dataset)])
-				if transformer:
-					self.transform = transformer
-				else:
-					self.transform = T.Compose(
-					[
-						T.ToTensor(),
-						T.Normalize(
-							(0.48145466, 0.4578275, 0.40821073), 
-							(0.26862954, 0.26130258, 0.27577711)
-						)
-					]
+	def __init__(self, dataset, transformer=None,):
+		self.dataset = dataset
+		self.images = [img for idx, (img,lbl) in enumerate(dataset)]
+		self.labels = clip.tokenize(texts=[dataset.classes[lbl_idx] for i, (img, lbl_idx) in enumerate(dataset)])
+		if transformer:
+			self.transform = transformer
+		else:
+			self.transform = T.Compose(
+			[
+				T.ToTensor(),
+				T.Normalize(
+					(0.48145466, 0.4578275, 0.40821073), 
+					(0.26862954, 0.26130258, 0.27577711)
 				)
-
-		def __getitem__(self, index):
-				image = self.images[index]
-				text = self.labels[index]
-				return self.transform(image), text
-
-		def __len__(self):
-				return len(self.dataset)
-
-def evaluate(model, test_loader, criterion, args):
-	model.eval()
-	total_loss = 0
-	total_correct_text_description_for_each_image = 0
-	total_correct_image_for_each_text_description = 0
-	with torch.no_grad():
-		for batch_idx, batch in enumerate(test_loader):
-			images, labels = batch
-			images = images.to(args.device)
-			labels = labels.to(args.device)
-			logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
-			_, predicted_idxs_imgs = torch.max(input=logits_per_image, dim=1, keepdim=True)
-			_, predicted_idxs_txts = torch.max(input=logits_per_text, dim=1, keepdim=True)
-			# Get the indices of the correct text descriptions for each image
-			correct_text_description_idxs = torch.argmax(labels, dim=1)
-			# Compare the predicted indexes with the correct indexes
-			total_correct_text_description_for_each_image += (predicted_idxs_imgs == correct_text_description_idxs.unsqueeze(1)).sum().item()
-			total_correct_image_for_each_text_description += (predicted_idxs_txts == correct_text_description_idxs.unsqueeze(1)).sum().item()
-			# Compute validation loss
-			ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=args.device)
-			loss_img = criterion(logits_per_image, ground_truth) 
-			loss_txt = criterion(logits_per_text, ground_truth)
-			valid_loss = 0.5 * (loss_img + loss_txt)
-			total_loss += valid_loss.item()
-	avg_loss = total_loss / len(test_loader)
-	accuracy_text_description_for_each_image = total_correct_text_description_for_each_image / len(test_loader.dataset)
-	accuracy_text_image_for_each_text_description = total_correct_image_for_each_text_description / len(test_loader.dataset)
-	return avg_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description
+			]
+		)
+	def __getitem__(self, index):
+		image = self.images[index]
+		text = self.labels[index]
+		return self.transform(image), text
+	def __len__(self):
+		return len(self.dataset)
 
 def get_dataloaders(train_dataset, test_dataset, preprocess, batch_size=32, num_workers=10):
-		train_dataset = CIFARDATASET(train_dataset, transformer=preprocess)
-		test_dataset = CIFARDATASET(test_dataset, transformer=preprocess)
-
-		train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-		test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-		return train_loader, test_loader
+	train_dataset = CIFARDATASET(
+		dataset=train_dataset, 
+		transformer=preprocess,
+	)
+	test_dataset = CIFARDATASET(
+		dataset=test_dataset, 
+		transformer=preprocess,
+	)
+	train_loader = DataLoader(
+		dataset=train_dataset,
+		batch_size=batch_size,
+		shuffle=True,
+		num_workers=num_workers,
+	)
+	test_loader = DataLoader(
+		dataset=test_dataset,
+		batch_size=batch_size,
+		shuffle=False,
+		num_workers=num_workers,
+	)
+	return train_loader, test_loader
 
 def load_model(model_name:str="ViT-B/32"):
 	model, preprocess = clip.load(model_name, device=args.device, jit=False) # training or finetuning => jit=False
@@ -139,6 +124,35 @@ def get_dataset(dname:str="CIFAR10"):
 	print(test_dataset)
 	return train_dataset, test_dataset
 
+def evaluate(model, test_loader, criterion, args):
+	model.eval()
+	total_loss = 0
+	total_correct_text_description_for_each_image = 0
+	total_correct_image_for_each_text_description = 0
+	with torch.no_grad():
+		for batch_idx, batch in enumerate(test_loader):
+			images, labels = batch
+			images = images.to(args.device)
+			labels = labels.to(args.device)
+			logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
+			_, predicted_idxs_imgs = torch.max(input=logits_per_image, dim=1, keepdim=True)
+			_, predicted_idxs_txts = torch.max(input=logits_per_text, dim=1, keepdim=True)
+			# Get the indices of the correct text descriptions for each image
+			correct_text_description_idxs = torch.argmax(labels, dim=1)
+			# Compare the predicted indexes with the correct indexes
+			total_correct_text_description_for_each_image += (predicted_idxs_imgs == correct_text_description_idxs.unsqueeze(1)).sum().item()
+			total_correct_image_for_each_text_description += (predicted_idxs_txts == correct_text_description_idxs.unsqueeze(1)).sum().item()
+			# Compute validation loss
+			ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=args.device)
+			loss_img = criterion(logits_per_image, ground_truth) 
+			loss_txt = criterion(logits_per_text, ground_truth)
+			valid_loss = 0.5 * (loss_img + loss_txt)
+			total_loss += valid_loss.item()
+	avg_loss = total_loss / len(test_loader)
+	accuracy_text_description_for_each_image = total_correct_text_description_for_each_image / len(test_loader.dataset)
+	accuracy_text_image_for_each_text_description = total_correct_image_for_each_text_description / len(test_loader.dataset)
+	return avg_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description
+
 def plot_(train_losses, val_losses, validation_accuracy_text_description_for_each_image_list, validation_accuracy_text_image_for_each_text_description_list):
 	num_epochs = len(train_losses)
 	if num_epochs == 1:
@@ -166,7 +180,7 @@ def plot_(train_losses, val_losses, validation_accuracy_text_description_for_eac
 	plt.close()
 
 def finetune(model, train_loader, test_loader, early_stopping_patience:int=5):
-	print(f"Fine-Tuning CLIP model {args.num_epochs} Epoch(s) device: {args.device} & {args.num_workers} CPU(s)".center(160, "-"))
+	print(f"Fine-Tuning CLIP model[{args.model_name}] {args.num_epochs} Epoch(s) {args.device} & {args.num_workers} CPU(s)".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(args.device)}".center(160, " "))
 	model = model.float()  # Convert model parameters to FP32
@@ -184,7 +198,6 @@ def finetune(model, train_loader, test_loader, early_stopping_patience:int=5):
 		eps=1e-6,
 		weight_decay=args.weight_decay,
 	)
-	
 	scheduler = torch.optim.lr_scheduler.OneCycleLR(
 		optimizer=optimizer, 
 		max_lr=args.learning_rate, 
@@ -193,7 +206,6 @@ def finetune(model, train_loader, test_loader, early_stopping_patience:int=5):
 		pct_start=0.1, # percentage of the cycle (in number of steps) spent increasing the learning rate
 		anneal_strategy='cos', # cos/linear annealing
 	)
-	
 	criterion = nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(
 		device=args.device,
@@ -226,8 +238,7 @@ def finetune(model, train_loader, test_loader, early_stopping_patience:int=5):
 			# torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			# optimizer.step() # Update weights
 
-			# # Automatic Mixed Precision (AMP) backpropagation:
-			with torch.amp.autocast(device_type=args.device.type):
+			with torch.amp.autocast(device_type=args.device.type): # # Automatic Mixed Precision (AMP) backpropagation:
 				logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
 				ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=args.device)
 				loss_img = criterion(logits_per_image, ground_truth)
@@ -281,7 +292,6 @@ def finetune(model, train_loader, test_loader, early_stopping_patience:int=5):
 	)
 
 def main():
-
 	print(clip.available_models())
 	model, preprocess = load_model(model_name=args.model_name)
 	train_dataset, test_dataset = get_dataset(dname=args.dataset)
@@ -295,4 +305,12 @@ def main():
 	finetune(model, train_loader, test_loader)
 
 if __name__ == "__main__":
+	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
+	START_EXECUTION_TIME = time.time()
 	main()
+	END_EXECUTION_TIME = time.time()
+	print(
+		f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
+		f"TOTAL_ELAPSED_TIME: {END_EXECUTION_TIME-START_EXECUTION_TIME:.1f} sec"
+		.center(160, " ")
+	)

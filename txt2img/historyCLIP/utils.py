@@ -47,6 +47,7 @@ import nltk
 import inspect
 import hashlib
 import requests
+import datetime
 from io import BytesIO
 nltk_modules = [
 	'punkt',
