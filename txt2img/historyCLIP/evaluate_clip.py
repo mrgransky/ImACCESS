@@ -9,7 +9,7 @@ parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_avai
 parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/5968_115463.jpg", help='image path for zero shot classification')
 parser.add_argument('--query_label', '-ql', type=str, default="naval forces", help='image path for zero shot classification')
 parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
-parser.add_argument('--batch_size', '-ba', type=int, default=1024, help='TopK results')
+parser.add_argument('--batch_size', '-bs', type=int, default=1024, help='TopK results')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
