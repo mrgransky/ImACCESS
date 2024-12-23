@@ -66,17 +66,21 @@ def get_dataloaders(train_dataset, test_dataset, preprocess, batch_size=32, num_
 		dataset=test_dataset, 
 		transformer=preprocess,
 	)
+	
 	train_loader = DataLoader(
 		dataset=train_dataset,
 		batch_size=batch_size,
 		shuffle=True,
 		num_workers=num_workers,
+		pin_memory=True, # Move data to GPU faster if using CUDA
+		persistent_workers=True if args.num_workers > 1 else False,  # Keep workers alive if memory allows
 	)
 	test_loader = DataLoader(
 		dataset=test_dataset,
 		batch_size=batch_size,
 		shuffle=False,
 		num_workers=num_workers,
+		pin_memory=True, # when using CUDA
 	)
 	return train_loader, test_loader
 
@@ -186,9 +190,9 @@ def finetune(model, train_loader, test_loader, early_stopping_patience:int=5):
 	for name, param in model.named_parameters():
 		print(f"{name} dtype: {param.dtype}")
 		if 'visual.conv1' in name or 'visual.ln_pre' in name:
-			param.requires_grad = False
+			param.requires_grad = False # freeze the weights of the first layer of the model
 		else:
-			param.requires_grad = True
+			param.requires_grad = True # backpropagation calculate and update gradients for these parameters, thereby fine-tuning these model layers.
 	model = model.float() # Convert model parameters to FP32
 	best_loss = np.inf
 	no_improvement_count = 0

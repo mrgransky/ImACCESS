@@ -48,8 +48,8 @@ HITs_DIR = os.path.join(DATASET_DIRECTORY, "hits")
 os.makedirs(os.path.join(DATASET_DIRECTORY, "outputs"), exist_ok=True)
 OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
 
-img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.pkl")
-img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.pkl")
+img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
+img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
 def get_dframe(doc_idx:int=1000, doc_url:str="www.example.com", doc_label: str="label"):
 	print(f"Extracting DF for label[{doc_idx}]: {doc_label}".center(150, "-"))
@@ -626,4 +626,12 @@ def main():
 		print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
 
 if __name__ == "__main__":
+	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
+	START_EXECUTION_TIME = time.time()
 	main()
+	END_EXECUTION_TIME = time.time()
+	print(
+		f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
+		f"TOTAL_ELAPSED_TIME: {END_EXECUTION_TIME-START_EXECUTION_TIME:.1f} sec"
+		.center(160, " ")
+	)

@@ -1,380 +1,268 @@
 from utils import *
-from models import *
-from dataset_loader import HistoryDataset
 
-# how to run [Local]:
-# $ python finetune.py -ddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 -vddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/EUROPEANA_1900-01-01_1970-12-31 -nep 1 -lr 5e-4 -wd 5e-2
-# $ python finetune.py -ddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/europeana/EUROPEANA_1900-01-01_1970-12-31 -nep 1
-
-# $ nohup python -u finetune.py -ddir $HOME/WS_Farid/ImACCESS/txt2img/datasets/national_archive/NATIONAL_ARCHIVE_1933-01-01_1933-01-02 -nep 12 -lr 5e-4 -wd 2e-2 -ps 5 -is 160 > $PWD/logs/historyCLIP.out &
-
-# how to run [Pouta]:
-# Ensure Conda:
-# $ conda activate py39
-# $ python finetune.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 --device "cuda:2" -nep 1 -bs 128
-
-# With Europeana as validation set:
-# $ nohup python -u finetune.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -vddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -nep 13 --device "cuda:2" -lr 5e-4 -wd 5e-2 -ps 5 -is 160 -bs 64 > /media/volume/trash/ImACCESS/historyCLIP_finetune_NA_val_EUROPEANA_cuda2.out &
-
-# with splited dataset of NA:
-# $ nohup python -u finetune.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1935-01-01_1950-12-31 -nep 40 --device "cuda:1" -lr 1e-4 -wd 5e-2 -ps 5 -is 160 -bs 64 -nw 40 > /media/volume/trash/ImACCESS/historyCLIP_finetune_NA_val_NA_cuda1.out &
-
-parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
-parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
-parser.add_argument('--validation_dataset_dir', '-vddir', default=None, help='Dataset DIR')
-parser.add_argument('--topk', type=int, default=5, help='Top-K images')
-parser.add_argument('--batch_size', '-bs', type=int, default=80, help='Batch Size')
-parser.add_argument('--image_size', '-is', type=int, default=150, help='Image size [def: max 160 local]')
-parser.add_argument('--patch_size', '-ps', type=int, default=5, help='Patch size')
-parser.add_argument('--embedding_size', '-es',type=int, default=1024, help='Embedding size of Vision & Text encoder [the larger the better]')
-parser.add_argument('--print_every', type=int, default=100, help='Print loss')
-parser.add_argument('--num_epochs', '-nep', type=int, default=10, help='Number of epochs')
-parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs [def: max cpus]')
-parser.add_argument('--learning_rate', '-lr', type=float, default=5e-4, help='small learning rate for better convergence [def: 1e-3]')
-parser.add_argument('--weight_decay', '-wd', type=float, default=5e-2, help='Weight decay [def: 5e-4]')
-parser.add_argument('--data_augmentation', type=bool, default=False, help='Data Augmentation')
-parser.add_argument('--document_description_col', type=str, default="label", help='labels')
+parser = argparse.ArgumentParser(description="FineTune CLIP for CIFAR10x Dataset")
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
+parser.add_argument('--num_workers', '-nw', type=int, default=18, help='Number of CPUs [def: max cpus]')
+parser.add_argument('--num_epochs', '-ne', type=int, default=5, help='Number of epochs')
+parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
+parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
+parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
+parser.add_argument('--print_every', type=int, default=150, help='Print loss')
+parser.add_argument('--model_name', '-m', type=str, default="ViT-B/32", help='CLIP model name')
+parser.add_argument('--dataset', '-d', type=str, choices=['CIFAR10', 'CIFAR100'], default='CIFAR10', help='Choose dataset (CIFAR10/CIFAR100)')
 
-# args = parser.parse_args()
 args, unknown = parser.parse_known_args()
-print(args)
-
 args.device = torch.device(args.device)
+print(args)
+# run in pouta:
+# $ nohup python -u finetune.py -d CIFAR100 -bs 16 -ne 30 -lr 1e-5 -wd 5e-3 --print_every 500 -nw 50 --device "cuda:3" -m "ViT-L/14" > /media/volume/ImACCESS/trash/finetune_cifar100_cuda3.out &
 
-os.makedirs(os.path.join(args.dataset_dir, "outputs"), exist_ok=True)
-outputs_dir:str = os.path.join(args.dataset_dir, "outputs",)
+def get_dataloaders(train_dataset, test_dataset, preprocess, batch_size=32, num_workers=10):
+	train_dataset = CIFARDATASET(
+		dataset=train_dataset, 
+		transformer=preprocess,
+	)
+	test_dataset = CIFARDATASET(
+		dataset=test_dataset, 
+		transformer=preprocess,
+	)
+	train_loader = DataLoader(
+		dataset=train_dataset,
+		batch_size=batch_size,
+		shuffle=True,
+		num_workers=num_workers,
+	)
+	test_loader = DataLoader(
+		dataset=test_dataset,
+		batch_size=batch_size,
+		shuffle=False,
+		num_workers=num_workers,
+	)
+	return train_loader, test_loader
 
-os.makedirs(os.path.join(args.dataset_dir, "models"), exist_ok=True)
-models_dir:str = os.path.join(args.dataset_dir, "models",)
+def get_dataset(dname:str="CIFAR10"):
+	if dname == 'CIFAR100':
+		train_dataset = CIFAR100(
+			root=os.path.expanduser("~/.cache"), 
+			train=True,
+			download=True,
+			transform=None
+		)
+		test_dataset = CIFAR100(
+			root=os.path.expanduser("~/.cache"), 
+			train=False,
+			download=True,
+			transform=None
+		)
+	elif dname == 'CIFAR10':
+		train_dataset = CIFAR10(
+			root=os.path.expanduser("~/.cache"), 
+			train=True,
+			download=True,
+			transform=None
+		)
+		test_dataset = CIFAR10(
+			root=os.path.expanduser("~/.cache"), 
+			train=False,
+			download=True,
+			transform=None
+		)
+	else:
+		raise ValueError(f"Invalid dataset name: {dname}. Choose from CIFAR10 or CIFAR100")
+	print(train_dataset)
+	print(test_dataset)
+	return train_dataset, test_dataset
 
-def convert_models_to_fp32(model): 
-	for p in model.parameters(): 
-		p.data = p.data.float()
-		p.grad.data = p.grad.data.float()
-				
-def visualize_(dataloader, num_samples=5, ):
-	for batch_idx, (batch_imgs, batch_lbls) in enumerate(dataloader):
-		print(batch_idx, batch_imgs.shape, batch_lbls.shape, len(batch_imgs), len(batch_lbls)) # torch.Size([32, 3, 224, 224]) torch.Size([32])
-		if batch_idx >= num_samples:
-			break
-		
-		image = batch_imgs[batch_idx].permute(1, 2, 0).numpy() # Convert tensor to numpy array and permute dimensions
-		caption_idx = batch_lbls[batch_idx]
-		print(image.shape, caption_idx)
-		print()
-			
-		# # Denormalize the image
-		image = image * np.array([0.2268645167350769]) + np.array([0.6929051876068115])
-		image = np.clip(image, 0, 1)  # Ensure pixel values are in [0, 1] range
-		
-		plt.figure(figsize=(13, 7))
-		plt.imshow(image)
-		plt.title(f"Caption {caption_idx.shape}\n{caption_idx}", fontsize=5)
-		plt.axis('off')
-		plt.show()
-
-def get_val_loss(model, val_loader, ):
-	print(f"Validating val_loader {type(val_loader)} with {len(val_loader.dataset)} sample(s)", end="\t")
+def evaluate(model, test_loader, criterion, args):
 	model.eval()
-	val_loss = 0.0
+	total_loss = 0
+	total_correct_text_description_for_each_image = 0
+	total_correct_image_for_each_text_description = 0
 	with torch.no_grad():
-		for data in val_loader:
-			img = data["image"].to(args.device)
-			cap = data["caption"].to(args.device)
-			mask = data["mask"].to(args.device)
-			loss = model(img, cap, mask)
-			val_loss += loss.item()
-	avg_val_loss = val_loss / len(val_loader)
-	print(f"Validation Loss: {avg_val_loss:.5f}")
-	return avg_val_loss
+		for batch_idx, batch in enumerate(test_loader):
+			images, labels = batch
+			images = images.to(args.device)
+			labels = labels.to(args.device)
+			logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
+			_, predicted_idxs_imgs = torch.max(input=logits_per_image, dim=1, keepdim=True)
+			_, predicted_idxs_txts = torch.max(input=logits_per_text, dim=1, keepdim=True)
+			# Get the indices of the correct text descriptions for each image
+			correct_text_description_idxs = torch.argmax(labels, dim=1)
+			# Compare the predicted indexes with the correct indexes
+			total_correct_text_description_for_each_image += (predicted_idxs_imgs == correct_text_description_idxs.unsqueeze(1)).sum().item()
+			total_correct_image_for_each_text_description += (predicted_idxs_txts == correct_text_description_idxs.unsqueeze(1)).sum().item()
+			# Compute validation loss
+			ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=args.device)
+			loss_img = criterion(logits_per_image, ground_truth) 
+			loss_txt = criterion(logits_per_text, ground_truth)
+			valid_loss = 0.5 * (loss_img + loss_txt)
+			total_loss += valid_loss.item()
+	avg_loss = total_loss / len(test_loader)
+	accuracy_text_description_for_each_image = total_correct_text_description_for_each_image / len(test_loader.dataset)
+	accuracy_text_image_for_each_text_description = total_correct_image_for_each_text_description / len(test_loader.dataset)
+	return avg_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description
 
-# def finetune(model, finetune_data_loader, val_data_loader, optimizer, scheduler, checkpoint_interval:int=5, model_dir:str="path/2/model_dir", early_stopping_patience:int=10)
-def finetune(model, finetune_data_loader, val_data_loader, model_dir:str="path/2/model_dir"):
-	mdl_fpth:str = os.path.join(args.dataset_dir, model_dir, "model.pt")
-	
-	os.makedirs(os.path.join(args.dataset_dir, model_dir, "results"), exist_ok=True)
-	results_dir:str = os.path.join(args.dataset_dir, model_dir, "results")
+def plot_(train_losses, val_losses, validation_accuracy_text_description_for_each_image_list, validation_accuracy_text_image_for_each_text_description_list):
+	num_epochs = len(train_losses)
+	if num_epochs == 1:
+		return
+	epochs = range(1, num_epochs + 1)
 
-	os.makedirs(os.path.join(args.dataset_dir, model_dir, "checkpoints"), exist_ok=True)
-	checkpoint_dir = os.path.join(args.dataset_dir, model_dir, "checkpoints")
-	
-	print(f"Fine-Tuning CLIP model {args.num_epochs} Epoch(s) device: {args.device} & {args.num_workers} CPU(s)".center(160, "-"))
+	plt.figure()
+	plt.plot(epochs, train_losses, marker='o', linestyle='-', color='b', label='Training Loss')
+	plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation Loss')
+	plt.xlabel('Epoch')
+	plt.ylabel('Loss')
+	plt.tight_layout()
+	plt.legend()
+	plt.savefig(f"{args.dataset}_train_val_loss_ep_{len(train_losses)}_lr_{args.learning_rate}_wd_{args.weight_decay}_{args.batch_size}_batch_size.png")
+	plt.close()
+
+	plt.figure()
+	plt.plot(epochs, validation_accuracy_text_description_for_each_image_list, marker='o', linestyle='-', color='b', label='Validation Accuracy [text description for each image]')
+	plt.plot(epochs, validation_accuracy_text_image_for_each_text_description_list, marker='o', linestyle='-', color='r', label='Validation Accuracy [image for each text description]')
+	plt.xlabel('Epoch')
+	plt.ylabel('Accuracy')
+	plt.tight_layout()
+	plt.legend()
+	plt.savefig(f"{args.dataset}_validation_accuracy_ep_{len(train_losses)}_txt_img.png")
+	plt.close()
+
+def finetune(model, train_loader, test_loader, early_stopping_patience:int=5):
+	print(f"Fine-Tuning CLIP {args.model_name} {args.num_epochs} Epoch(s) {args.device} with {args.num_workers} cpu cores".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(args.device)}".center(160, " "))
-	log_gpu_memory(device=args.device)
-
-	total_params = 0
-	total_params = sum([param.numel() for param in model.parameters() if param.requires_grad])
-	print(f"Total finetuneable parameters (Vision + Text) Encoder: {total_params} ~ {total_params/int(1e+6):.2f} M")
-
-	criterion_img = nn.CrossEntropyLoss()
-	criterion_txt = nn.CrossEntropyLoss()
-	optimizer = optim.Adam(
+	for name, param in model.named_parameters():
+		print(f"{name} dtype: {param.dtype}")
+		if 'visual.conv1' in name or 'visual.ln_pre' in name:
+			param.requires_grad = False # freeze the weights of the first layer of the model
+		else:
+			param.requires_grad = True # backpropagation calculate and update gradients for these parameters, thereby fine-tuning these model layers.
+	model = model.float() # Convert model parameters to FP32
+	best_loss = np.inf
+	no_improvement_count = 0
+	optimizer = optim.AdamW(
 		params=model.parameters(),
 		lr=args.learning_rate,
 		betas=(0.9,0.98),
 		eps=1e-6,
 		weight_decay=args.weight_decay,
 	)
-
+	scheduler = torch.optim.lr_scheduler.OneCycleLR(
+		optimizer=optimizer, 
+		max_lr=args.learning_rate, 
+		steps_per_epoch=len(train_loader), 
+		epochs=args.num_epochs,
+		pct_start=0.1, # percentage of the cycle (in number of steps) spent increasing the learning rate
+		anneal_strategy='cos', # cos/linear annealing
+	)
+	criterion = nn.CrossEntropyLoss()
+	scaler = torch.amp.GradScaler(
+		device=args.device,
+		init_scale=2**16,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
+	)
+	training_losses, validation_losses = [], []
+	validation_accuracy_text_description_for_each_image_list = []
+	validation_accuracy_text_image_for_each_text_description_list = []
+	ft_st = time.time()
 	for epoch in range(args.num_epochs):
-		print(f"Epoch [{epoch+1}/{args.num_epochs}]", end="\t")
-		log_gpu_memory(device=args.device)
-		for batch_idx, (images, texts) in enumerate(finetune_data_loader) :
-			optimizer.zero_grad()
-			# print(batch_idx, type(images), images.shape, type(texts), texts.shape)
-			# print()
-			images = images.to(args.device)
-			texts = texts.to(args.device)
+		print(f"Epoch [{epoch+1}/{args.num_epochs}]")
+		epoch_loss = 0.0
+		for batch_idx, batch in enumerate(train_loader):
+			optimizer.zero_grad() # Clear gradients from previous batch
+			images, labels = batch # torch.Size([b, 3, 224, 224]), torch.Size([b, 77])
+			images, labels = images.to(args.device), labels.to(args.device)
+			# logits_per_image: similarity between image embeddings and all text embeddings in batch
+			# logits_per_text: similarity between text embeddings and all image embeddings in batch
 
-			logits_per_image, logits_per_text = model(images, texts)
-			ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=args.device)
-			loss_img = criterion_img(logits_per_image, ground_truth)
-			loss_txt = criterion_txt(logits_per_text, ground_truth)
-			total_loss = 0.5 * (loss_img + loss_txt)
-			total_loss.backward()
-			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
-			optimizer.step()
-			
-			if batch_idx%args.print_every==0 or batch_idx+1==len(finetune_data_loader):
+			# # Conventional backpropagation:
+			# logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
+			# ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=args.device)
+			# loss_img = criterion(logits_per_image, ground_truth) 
+			# loss_txt = criterion(logits_per_text, ground_truth)
+			# total_loss = 0.5 * (loss_img + loss_txt)
+			# total_loss.backward()
+			# torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			# optimizer.step() # Update weights
+
+			with torch.amp.autocast(device_type=args.device.type): # # Automatic Mixed Precision (AMP) backpropagation:
+				logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
+				ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=args.device)
+				loss_img = criterion(logits_per_image, ground_truth)
+				loss_txt = criterion(logits_per_text, ground_truth)
+				total_loss = 0.5 * (loss_img + loss_txt)
+			scaler.scale(total_loss).backward()
+			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			scaler.step(optimizer)
+			scaler.update()
+			scheduler.step() # Update learning rate
+			if batch_idx%args.print_every==0 or batch_idx+1==len(train_loader):
 				print(
-					f"\tBatch [{batch_idx+1}/{len(finetune_data_loader)}] "
-					f"Loss: {total_loss.item():.5f}",
-					end="\t",
+					f"\tBatch [{batch_idx+1}/{len(train_loader)}] "
+					f"Loss: {total_loss.item():.7f}",
 				)
-				log_gpu_memory(device=args.device)
+			epoch_loss += total_loss.item()
+		avg_training_loss = epoch_loss / len(train_loader)
+		print(f"Average Training Loss: {avg_training_loss:.5f} @ Epoch: {epoch+1}")
+		training_losses.append(avg_training_loss)
+		avg_valid_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description = evaluate(model, test_loader, criterion, args)
+		validation_losses.append(avg_valid_loss)
+		validation_accuracy_text_description_for_each_image_list.append(accuracy_text_description_for_each_image)
+		validation_accuracy_text_image_for_each_text_description_list.append(accuracy_text_image_for_each_text_description)
+		print(
+			f'Training Loss: {avg_training_loss:.4f} '
+			f'Validation Loss: {avg_valid_loss:.4f} '
+			f'Validation Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.4f} '
+			f'[image for each text description]: {accuracy_text_image_for_each_text_description:.4f}'
+		)
+
+		############################## Early stopping ##############################
+		mdl_fpth = f"{args.dataset}_clip_finetuned.pth"
+		if avg_valid_loss < best_loss:
+			best_loss = avg_valid_loss
+			torch.save(model.state_dict(), mdl_fpth)
+			print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.5f}")
+			no_improvement_count = 0
+		else:
+			no_improvement_count += 1
+			if no_improvement_count >= early_stopping_patience:
+				print(f"Early stopping triggered after {epoch+1} epochs.")
+				break
+		############################## Early stopping ##############################
+
+	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
+	plot_(
+		train_losses=training_losses,
+		val_losses=validation_losses,
+		validation_accuracy_text_description_for_each_image_list=validation_accuracy_text_description_for_each_image_list,
+		validation_accuracy_text_image_for_each_text_description_list=validation_accuracy_text_image_for_each_text_description_list,
+	)
 
 def main():
-	img_rgb_mean_fpth:str = os.path.join(args.dataset_dir, "img_rgb_mean.gz")
-	img_rgb_std_fpth:str = os.path.join(args.dataset_dir, "img_rgb_std.gz")
-
-	try:
-		img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
-	except Exception as e:
-		# print(f"{e}")
-		##################################### Mean - Std Multiprocessing ####################################
-		# img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
-		# 	dir=os.path.join(args.dataset_dir, "images"), 
-		# 	num_workers=args.num_workers,
-		# )
-		##################################### Mean - Std Multiprocessing ####################################
-		######################################## Mean - Std for loop ########################################
-		img_rgb_mean, img_rgb_std = get_mean_std_rgb_img(dir=os.path.join(args.dataset_dir, "images"))
-		######################################## Mean - Std for loop ########################################
-		save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
-		save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
-
-	if args.validation_dataset_dir:
-		validation_dataset_share = None
-		print(f"Separate Train and Validation datasets")
-		print(f"Validation Dataset: {args.validation_dataset_dir}")
-		val_img_rgb_mean_fpth:str = os.path.join(args.validation_dataset_dir, "img_rgb_mean.gz")
-		val_img_rgb_std_fpth:str = os.path.join(args.validation_dataset_dir, "img_rgb_std.gz")
-		try:
-			val_img_rgb_mean, val_img_rgb_std = load_pickle(fpath=val_img_rgb_mean_fpth), load_pickle(fpath=val_img_rgb_std_fpth) # RGB images
-		except Exception as e:
-			print(f"{e}")
-			##################################### Mean - Std Multiprocessing ####################################
-			# img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
-			# 	dir=os.path.join(args.dataset_dir, "images"), 
-			# 	num_workers=args.num_workers,
-			# )
-			##################################### Mean - Std Multiprocessing ####################################
-
-			######################################## Mean - Std for loop ########################################
-			val_img_rgb_mean, val_img_rgb_std = get_mean_std_rgb_img(dir=os.path.join(args.dataset_dir, "images"))
-			######################################## Mean - Std for loop ########################################
-
-			save_pickle(pkl=val_img_rgb_mean, fname=val_img_rgb_mean_fpth)
-			save_pickle(pkl=val_img_rgb_std, fname=val_img_rgb_std_fpth)
-	else:
-			validation_dataset_share = 0.03
-			val_img_rgb_mean = img_rgb_mean
-			val_img_rgb_std = img_rgb_std
-
-	print(f"[Train] Mean: {img_rgb_mean} Std: {img_rgb_std}".center(180, " "))
-	print(f"[Validation] Mean: {val_img_rgb_mean} Std: {val_img_rgb_std}".center(180, " "))
-
-	print(f"Train & Validation metadata df".center(180, "-"))
-	finetune_metadata_df, val_metadata_df = get_train_val_metadata_df(
-		tddir=args.dataset_dir, 
-		vddir=args.validation_dataset_dir, 
-		split_pct=validation_dataset_share, 
-		doc_desc="label", 
-		seed=True,
-	)
-
-	LABELs_dict_fpth:str = os.path.join(args.dataset_dir, "LABELs_dict.gz")
-	LABELs_list_fpth:str = os.path.join(args.dataset_dir, "LABELs_list.gz")
-	try:
-		LABELs_dict = load_pickle(fpath=LABELs_dict_fpth)
-		LABELs_list = load_pickle(fpath=LABELs_list_fpth)
-	except Exception as e:
-		print(f"{e}")
-		LABELs_dict, LABELs_list = get_doc_description(df=finetune_metadata_df, col='label') # must be "label", regardless of captions
-		save_pickle(pkl=LABELs_dict, fname=LABELs_dict_fpth)
-		save_pickle(pkl=LABELs_list, fname=LABELs_list_fpth)
-
-	print(
-		f"LABELs_dict {type(LABELs_dict)} {len(LABELs_dict)} "
-		f"LABELs_list {type(LABELs_list)} {len(LABELs_list)}"
-	)
-	# copy to validation dataset dir if not none:
-	if args.validation_dataset_dir:
-		print(f">> Copying (LABELs) into {args.validation_dataset_dir}")
-		# copy
-		shutil.copy(LABELs_dict_fpth, args.validation_dataset_dir)
-		shutil.copy(LABELs_list_fpth, args.validation_dataset_dir)
-	# return
-	print(f">> OpenAI original CLIP model + preprocessing...")
-	mst = time.time()
-	# OpenAI CLIP model and preprocessing
-	clip_model, clip_preprocessor = clip.load("ViT-B/32", jit=False)
-	clip_model.to(args.device)
-	print(f"Elaped_t: {time.time()-mst:.2f}")
-
-	print(f"Creating Train Dataloader for {len(finetune_metadata_df)} samples", end="\t")
-	tdl_st = time.time()
-	finetune_dataset = HistoryDataset(
-		data_frame=finetune_metadata_df,
-		dataset_directory=os.path.join(args.dataset_dir, "images"),
-		mean=img_rgb_mean,
-		std=img_rgb_std,
-		transformer=clip_preprocessor,
-	)
-	finetune_data_loader = DataLoader(
-		dataset=finetune_dataset,
-		shuffle=True,
+	print(clip.available_models())
+	model, preprocess = load_model(model_name=args.model_name)
+	
+	train_dataset, test_dataset = get_dataset(dname=args.dataset)
+	
+	train_loader, test_loader = get_dataloaders(
+		train_dataset=train_dataset, 
+		test_dataset=test_dataset, 
+		preprocess=preprocess,
 		batch_size=args.batch_size,
 		num_workers=args.num_workers,
-		pin_memory=True,  # Move data to GPU faster if using CUDA
-		persistent_workers=True if args.num_workers > 1 else False,  # Keep workers alive if memory allows
-		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
 	)
-	print(f"num_samples[Total]: {len(finetune_data_loader.dataset)} Elapsed_t: {time.time()-tdl_st:.5f} sec")
-	get_info(dataloader=finetune_data_loader)
-
-	###################### Visualize Samples ######################
-	visualize_(
-		dataloader=finetune_data_loader, 
-		num_samples=5,
-	)
-	sys.exit(-1)
-	###################### Visualize Samples ######################
-
-	print(f"Creating Validation Dataloader for {len(val_metadata_df)} samples", end="\t")
-	vdl_st = time.time()
-	val_dataset = HistoryDataset(
-		data_frame=val_metadata_df,
-		dataset_directory=os.path.join(args.validation_dataset_dir, "images") if args.validation_dataset_dir else os.path.join(args.dataset_dir, "images"),
-		mean=val_img_rgb_mean,
-		std=val_img_rgb_std,
-		transformer=clip_preprocessor,
-	)
-	val_data_loader = DataLoader(
-		dataset=val_dataset,
-		shuffle=False,
-		batch_size=args.batch_size, 
-		num_workers=args.num_workers,
-		pin_memory=True, # when using CUDA
-		collate_fn=custom_collate_fn  # Use custom collate function to handle None values
-	)
-	print(f"num_samples[Total]: {len(val_data_loader.dataset)} Elapsed_t: {time.time()-vdl_st:.5f} sec")
-	get_info(dataloader=val_data_loader)
-
-	# model_ft = CLIPFineTuner(model, num_classes).to(device)
-	# print(f"Defining Optimizer...")
-
-	# optimizer = optim.AdamW(
-	# 	params=model.parameters(),
-	# 	betas=(0.9, 0.98), # Based on original CLIP paper
-	# 	eps=1e-8,
-	# 	lr=args.learning_rate,
-	# 	weight_decay=args.weight_decay, # weight decay (L2 regularization)
-	# )
-
-	# # print(f"Defining Scheduler...")
-	# scheduler = torch.optim.lr_scheduler.OneCycleLR(
-	# 	optimizer=optimizer, 
-	# 	max_lr=args.learning_rate, 
-	# 	steps_per_epoch=len(finetune_data_loader), 
-	# 	epochs=args.num_epochs,
-	# 	pct_start=0.1, # percentage of the cycle (in number of steps) spent increasing the learning rate
-	# 	anneal_strategy='cos', # cos/linear annealing
-	# )
-
-	model_fname = (
-		f"finetuned_model"
-		# + f"_augmentation_{args.data_augmentation}"
-		+ f"_ep_{args.num_epochs}"
-		+ f"_finetune_{len(finetune_data_loader.dataset)}"
-		+ f"_val_{len(val_data_loader.dataset)}"
-		+ f"_batch_{args.batch_size}"
-		# + f"_img_{args.image_size}"
-		# + f"_patch_{args.patch_size}"
-		# + f"_emb_{args.embedding_size}"
-		+ f"_{re.sub(r':', '', str(args.device))}"
-		# + f"_{optimizer.__class__.__name__}"
-		+ f"_lr_{args.learning_rate}"
-		+ f"_wd_{args.weight_decay}"
-		# + f"_{get_args(optimizer)}"
-		# + f"_{scheduler.__class__.__name__}"
-		# + f"_{get_args(scheduler)}"
-	)
-	# print(len(model_fname), model_fname)
-	os.makedirs(os.path.join(args.dataset_dir, models_dir, model_fname),exist_ok=True)
-	model_fpth = os.path.join(args.dataset_dir, models_dir, model_fname)
-
-	finetune(
-		model=clip_model,
-		finetune_data_loader=finetune_data_loader,
-		val_data_loader=val_data_loader,
-		# # optimizer=optimizer,
-		# # scheduler=scheduler,
-		# checkpoint_interval=5,
-		model_dir=model_fpth,
-	)
-
-	# command = [
-	# 	'python', 'evaluate.py',
-	# 	'--model_path', os.path.join(args.dataset_dir, models_dir, model_fname, "model.pt"),
-	# 	'--validation_dataset_dir', args.validation_dataset_dir if args.validation_dataset_dir else args.dataset_dir,
-	# 	'--image_size', str(args.image_size),
-	# 	'--patch_size', str(args.patch_size),
-	# 	'--batch_size', str(args.batch_size),
-	# 	'--embedding_size', str(args.embedding_size),
-	# 	'--num_workers', str(args.num_workers),
-	# 	'--device', str(args.device),
-	# ]
-	# # print("Running command:", ' '.join(command))
-	# result = subprocess.run(command, capture_output=True, text=True)
-	# print(f"Output:\n{result.stdout}")
-	# print(f"Error:\nresult.stderr")
-
-
-	# # Construct the command as a list of arguments
-	# command = [
-	# 	'python', 'topk_image_retrieval.py',
-	# 	'--query', args.query,
-	# 	'--processed_image_path', os.path.join(outputs_dir, f"Top{args.topk}_Q_{re.sub(' ', '-', args.query)}_{args.num_epochs}_epochs.png"),
-	# 	'--topk', str(args.topk),
-	# 	'--dataset_dir', args.dataset_dir,
-	# 	'--image_size', str(args.image_size),
-	# 	'--patch_size', str(args.patch_size),
-	# 	'--batch_size', str(args.batch_size),
-	# 	'--embedding_size', str(args.embedding_size),
-	# 	'--num_epochs', str(args.num_epochs),
-	# 	'--num_workers', str(args.num_workers),
-	# 	'--validation_dataset_share', str(validation_dataset_share),
-	# 	'--learning_rate', str(args.learning_rate),
-	# 	'--weight_decay', str(args.weight_decay),
-	# 	'--document_description_col', args.document_description_col,
-	# ]
-	# # print("Running command:", ' '.join(command))
-	# result = subprocess.run(command, capture_output=True, text=True)
-	# print(f"Output:\n{result.stdout}")
-	# print(f"Error:\nresult.stderr")
+	finetune(model, train_loader, test_loader)
 
 if __name__ == "__main__":
+	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
+	START_EXECUTION_TIME = time.time()
 	main()
+	END_EXECUTION_TIME = time.time()
+	print(
+		f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
+		f"TOTAL_ELAPSED_TIME: {END_EXECUTION_TIME-START_EXECUTION_TIME:.1f} sec"
+		.center(160, " ")
+	)

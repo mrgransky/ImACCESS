@@ -28,6 +28,7 @@ import torchvision.transforms as T
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.dataloader import default_collate
 from sklearn.model_selection import train_test_split
+from sklearn.metrics.pairwise import cosine_similarity
 from torch.utils.data import Subset
 import matplotlib.pyplot as plt
 import numpy as np
@@ -39,7 +40,6 @@ import subprocess
 import traceback
 import multiprocessing
 import logging
-# from multiprocessing import Pool
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from torch.utils.tensorboard import SummaryWriter
 import shutil
@@ -152,6 +152,17 @@ def clean_(text:str="this is a sample text!", sw:List=list(), check_language:boo
 	if len(text) == 0:
 		return None
 	return text
+
+def load_model(model_name:str="ViT-B/32"):
+	model, preprocess = clip.load(model_name, device=args.device, jit=False) # training or finetuning => jit=False
+	input_resolution = model.visual.input_resolution
+	context_length = model.context_length
+	vocab_size = model.vocab_size
+	print("Model parameters:", f"{np.sum([int(np.prod(p.shape)) for p in model.parameters()]):,}")
+	print("Input resolution:", input_resolution)
+	print("Context length:", context_length)
+	print("Vocab size:", vocab_size)
+	return model, preprocess
 
 @cache
 def remove_misspelled_(documents: str="This is a sample sentence."):
