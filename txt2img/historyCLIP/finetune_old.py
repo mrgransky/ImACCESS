@@ -52,7 +52,7 @@ def convert_models_to_fp32(model):
 	for p in model.parameters(): 
 		p.data = p.data.float()
 		p.grad.data = p.grad.data.float()
-				
+
 def visualize_(dataloader, num_samples=5, ):
 	for batch_idx, (batch_imgs, batch_lbls) in enumerate(dataloader):
 		print(batch_idx, batch_imgs.shape, batch_lbls.shape, len(batch_imgs), len(batch_lbls)) # torch.Size([32, 3, 224, 224]) torch.Size([32])

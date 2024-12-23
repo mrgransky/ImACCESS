@@ -153,8 +153,8 @@ def clean_(text:str="this is a sample text!", sw:List=list(), check_language:boo
 		return None
 	return text
 
-def load_model(model_name:str="ViT-B/32"):
-	model, preprocess = clip.load(model_name, device=args.device, jit=False) # training or finetuning => jit=False
+def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
+	model, preprocess = clip.load(model_name, device=device, jit=jit) # training or finetuning => jit=False
 	input_resolution = model.visual.input_resolution
 	context_length = model.context_length
 	vocab_size = model.vocab_size
@@ -163,6 +163,27 @@ def load_model(model_name:str="ViT-B/32"):
 	print("Context length:", context_length)
 	print("Vocab size:", vocab_size)
 	return model, preprocess
+
+def visualize_(dataloader, num_samples=5, ):
+	for batch_idx, (batch_imgs, batch_lbls) in enumerate(dataloader):
+		print(batch_idx, batch_imgs.shape, batch_lbls.shape, len(batch_imgs), len(batch_lbls)) # torch.Size([32, 3, 224, 224]) torch.Size([32])
+		if batch_idx >= num_samples:
+			break
+		
+		image = batch_imgs[batch_idx].permute(1, 2, 0).numpy() # Convert tensor to numpy array and permute dimensions
+		caption_idx = batch_lbls[batch_idx]
+		print(image.shape, caption_idx)
+		print()
+			
+		# # Denormalize the image
+		image = image * np.array([0.2268645167350769]) + np.array([0.6929051876068115])
+		image = np.clip(image, 0, 1)  # Ensure pixel values are in [0, 1] range
+		
+		plt.figure(figsize=(10, 10))
+		plt.imshow(image)
+		plt.title(f"Caption {caption_idx.shape}\n{caption_idx}", fontsize=5)
+		plt.axis('off')
+		plt.show()
 
 @cache
 def remove_misspelled_(documents: str="This is a sample sentence."):

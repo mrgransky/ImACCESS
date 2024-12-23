@@ -1,6 +1,75 @@
 from utils import *
 
-# Define a custom dataset class
+def get_dataloaders(train_dataset, val_dataset, preprocess, batch_size=32, num_workers=10):
+	train_dataset = HistoricalArchivesDataset(data_frame=train_dataset, transformer=preprocess)
+	validation_dataset = HistoricalArchivesDataset(data_frame=val_dataset, transformer=preprocess)
+	train_loader = DataLoader(
+		dataset=train_dataset,
+		batch_size=batch_size,
+		shuffle=True,
+		pin_memory=True, # Move data to GPU faster if using CUDA
+		persistent_workers=True if num_workers > 1 else False,  # Keep workers alive if memory allows
+		num_workers=num_workers,
+	)
+	val_loader = DataLoader(
+		dataset=validation_dataset,
+		batch_size=batch_size,
+		shuffle=False,
+		pin_memory=True, # Move data to GPU faster if using CUDA
+		num_workers=num_workers,
+	)
+	return train_loader, val_loader
+
+class HistoricalArchivesDataset(Dataset):
+	def __init__(
+			self,
+			data_frame,
+			mean:List[float]=[0.52, 0.50, 0.48],
+			std:List[float]=[0.27, 0.27, 0.26],
+			transformer=None,
+		):
+		self.data_frame = data_frame
+		self.images = self.data_frame["img_path"].values
+		self.descriptions = clip.tokenize(texts=self.data_frame["label"])
+		if transformer:
+			self.transform = transformer
+		else:
+			self.transform = T.Compose(
+				[
+					T.Resize((224, 224)),
+					T.ToTensor(),
+					T.Normalize(mean=mean, std=std),
+					# T.Normalize(
+					# 	(0.48145466, 0.4578275, 0.40821073), 
+					# 	(0.26862954, 0.26130258, 0.27577711)
+					# )
+				]
+			)
+
+	def __len__(self):
+		return len(self.data_frame)
+
+	def __getitem__(self, idx):
+		doc_image_path = self.images[idx]
+
+		if not os.path.exists(doc_image_path): # Try to load the image and handle errors gracefully
+			print(f"{doc_image_path} Not found!")
+			# raise FileNotFoundError(f"Image not found at path: {img_path}") debugging purpose
+			return None
+
+		try:
+			Image.open(doc_image_path).verify() # # Validate the image
+			image = Image.open(doc_image_path).convert("RGB")
+		except (FileNotFoundError, IOError, Exception) as e:
+			# raise IOError(f"Error: Could not load image: {img_path} {e}") # debugging
+			print(f"ERROR: {doc_image_path}\t{e}")
+			return None
+
+		image_tensor = self.transform(image) # <class 'torch.Tensor'> torch.Size([3, 224, 224])
+		description_tensor = self.descriptions[idx] # torch.Size([num_lbls, context_length]) [10 x 77]
+		
+		return image_tensor, description_tensor 
+
 class HistoryDataset(Dataset):
 	def __init__(
 			self,
