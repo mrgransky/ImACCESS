@@ -103,12 +103,18 @@ def finetune(
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
 
-	for name, param in model.named_parameters():
-		print(f"{name} dtype: {param.dtype}")
-		if 'visual.conv1' in name or 'visual.ln_pre' in name:
-			param.requires_grad = False # freeze the weights of the first layer of the model
-		else:
-			param.requires_grad = True # backpropagation calculate and update gradients for these parameters, thereby fine-tuning these model layers.
+	# for name, param in model.named_parameters():
+	# 	print(f"{name} dtype: {param.dtype}")
+	# 	# if 'visual.conv1' in name or 'visual.ln_pre' in name:
+	# 		param.requires_grad = False # freeze the weights of the first layer of the model
+	# 	else:
+	# 		param.requires_grad = True # backpropagation calculate and update gradients for these parameters, thereby fine-tuning these model layers.
+
+	for name, param in model.named_parameters():  
+		if name.startswith(("visual.conv1", "visual.ln_pre", "visual.positional_embedding", "visual.class_embedding")):  
+			param.requires_grad = False  # freeze the weights of the visual embedding layer  
+		else:  
+			param.requires_grad = True  # backpropagation calculate and update gradients for these parameters, thereby fine-tuning these model layers.
 
 	best_loss = np.inf
 	no_improvement_count = 0
