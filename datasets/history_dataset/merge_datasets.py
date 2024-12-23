@@ -22,10 +22,10 @@ DATASET_DIRECTORY = {
 
 # Patterns to match dataset directories
 DATASET_PATTERNS = [
-		"NATIONAL_ARCHIVE*",
-		"EUROPEANA*",
-		"SMU*",
-		"WWII*",
+	"NATIONAL_ARCHIVE*",
+	"EUROPEANA*",
+	"SMU*",
+	"WWII*",
 ]
 
 # Find all matching dataset directories
@@ -51,10 +51,10 @@ for i, dataset_path in enumerate(DATASETS):
 
 merged_df = pd.concat(dfs, ignore_index=True)
 print(merged_df.shape)
-print(merged_df.head(20))
+# print(merged_df.head(20))
 merged_df.to_csv(os.path.join(RESULT_DIR, 'metadata.csv'), index=False)
 label_counts = merged_df['label'].value_counts()
-print(label_counts.tail(25))
+# print(label_counts.tail(25))
 
 plt.figure(figsize=(18, 10))
 label_counts.plot(kind='bar', fontsize=9)
