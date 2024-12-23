@@ -16,8 +16,9 @@ parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DAT
 args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
 print(args)
+
 # run in pouta:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 16 -ne 30 -lr 1e-5 -wd 5e-3 --print_every 500 -nw 50 --device "cuda:3" -m "ViT-L/14" > /media/volume/ImACCESS/trash/finetune_cifar100_cuda3.out &
+# $ nohup python -u history_clip.py -ddir -bs 16 -ne 30 -lr 1e-5 -wd 5e-3 --print_every 500 -nw 50 --device "cuda:2" > /media/volume/ImACCESS/trash/finetune_cifar100_cuda3.out &
 
 def get_dataset(dataset_dir:str="/path/to/dataset"):
 	train_dataset = pd.read_csv(os.path.join(dataset_dir, f"train_metadata.csv"))

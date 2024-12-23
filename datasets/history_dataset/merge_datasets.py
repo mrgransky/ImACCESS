@@ -3,29 +3,44 @@ import pandas as pd
 import seaborn as sns
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
+import glob
 
 USER = os.getenv("USER")
 
 DATASET_DIRECTORY = {
 	"farid": "/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs",
-	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs/",
+	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs",
+	"ubuntu": "/media/volume/ImACCESS/datasets/WW_DATASETs",
 }
 
-DATASETS = [
-	os.path.join(DATASET_DIRECTORY.get(USER), "NATIONAL_ARCHIVE_1900-01-01_1970-12-31"),
-	os.path.join(DATASET_DIRECTORY.get(USER), "EUROPEANA_1900-01-01_1970-12-31"),
-	os.path.join(DATASET_DIRECTORY.get(USER), "SMU_1900-01-01_1970-12-31"),
-	os.path.join(DATASET_DIRECTORY.get(USER), "WWII_1939-09-01_1945-09-02"),
+# DATASETS = [
+# 	os.path.join(DATASET_DIRECTORY.get(USER), "NATIONAL_ARCHIVE_1900-01-01_1970-12-31"),
+# 	os.path.join(DATASET_DIRECTORY.get(USER), "EUROPEANA_1900-01-01_1970-12-31"),
+# 	os.path.join(DATASET_DIRECTORY.get(USER), "SMU_1900-01-01_1970-12-31"),
+# 	os.path.join(DATASET_DIRECTORY.get(USER), "WWII_1939-09-01_1945-09-02"),
+# ]
+
+# Patterns to match dataset directories
+DATASET_PATTERNS = [
+    "NATIONAL_ARCHIVE*",
+    "EUROPEANA*",
+    "SMU*",
+    "WWII*",
 ]
 
-def get_dataset_name(path):
-	return os.path.basename(path)
+# Find all matching dataset directories
+DATASETS = []
+for pattern in DATASET_PATTERNS:
+    DATASETS.extend(glob.glob(os.path.join(DATASET_DIRECTORY.get(USER), pattern)))
+
+RESULT_DIR = os.path.join(DATASET_DIRECTORY.get(USER), "HISTORICAL_ARCHIVES_DATASET")
+os.makedirs(RESULT_DIR, exist_ok=True)
 
 dfs = []
 for i, dataset_path in enumerate(DATASETS):
 	print(f"Reading Dataset[{i}]: {dataset_path}")
 	try:
-		dataset_name = get_dataset_name(dataset_path)
+		dataset_name = os.path.basename(dataset_path)
 		metadata_file = os.path.join(dataset_path, 'metadata.csv')
 		df = pd.read_csv(metadata_file)	
 		df['dataset'] = dataset_name	
@@ -36,7 +51,7 @@ for i, dataset_path in enumerate(DATASETS):
 merged_df = pd.concat(dfs, ignore_index=True)
 print(merged_df.shape)
 print(merged_df.head(20))
-merged_df.to_csv('metadata.csv', index=False)
+merged_df.to_csv(os.path.join(RESULT_DIR, 'metadata.csv'), index=False)
 label_counts = merged_df['label'].value_counts()
 print(label_counts.tail(25))
 
@@ -46,7 +61,7 @@ plt.title(f'Label Frequency (total: {label_counts.shape[0]}) total IMGs: {merged
 plt.xlabel('Label')
 plt.ylabel('Frequency')
 plt.tight_layout()
-plt.savefig(f"all_query_labels_x_{label_counts.shape[0]}_freq.png")
+plt.savefig(os.path.join(RESULT_DIR, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"))
 
 dataset_unique_label_counts = merged_df.groupby('dataset')['label'].nunique()
 print(dataset_unique_label_counts)
@@ -63,7 +78,7 @@ new_labels = [f"{label} | ({dataset_unique_label_counts[label]})" for label in l
 ax.legend(handles, new_labels, loc="best", fontsize=10, title="Dataset | (Unique Label Count)")
 plt.title(f'Grouped Bar Chart for total of {label_counts.shape[0]} Labels Frequency for {len(dfs)} Datasets')
 plt.tight_layout()
-plt.savefig(f"labels_x_{label_counts.shape[0]}_freq_x_{len(dfs)}.png")
+plt.savefig(os.path.join(RESULT_DIR, f"labels_x_{label_counts.shape[0]}_freq_x_{len(dfs)}.png"))
 
 # Perform stratified splitting
 VAL_SPLIT_PCT = 0.35
@@ -83,10 +98,10 @@ print("Validation Set Label Distribution:")
 print(val_df['label'].value_counts(normalize=True))
 
 # Save the training set
-train_df.to_csv('train_metadata.csv', index=False)
+train_df.to_csv(os.path.join(RESULT_DIR, 'train_metadata.csv'), index=False)
 
 # Save the validation set
-val_df.to_csv('val_metadata.csv', index=False)
+val_df.to_csv(os.path.join(RESULT_DIR, 'val_metadata.csv'), index=False)
 
 # Visualize label distribution in training and validation sets
 plt.figure(figsize=(18, 6))
@@ -97,4 +112,4 @@ plt.xlabel('Label')
 plt.ylabel('Frequency')
 plt.legend(loc='best', ncol=2, frameon=False, fontsize=10)
 plt.tight_layout()
-plt.savefig('stratified_label_distribution_train_val.png')
+plt.savefig(os.path.join(RESULT_DIR, 'stratified_label_distribution_train_val.png'))
