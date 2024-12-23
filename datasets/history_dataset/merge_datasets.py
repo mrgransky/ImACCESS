@@ -10,7 +10,7 @@ USER = os.getenv("USER")
 DATASET_DIRECTORY = {
 	"farid": "/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs",
 	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs",
-	"ubuntu": "/media/volume/ImACCESS/datasets/WW_DATASETs",
+	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs",
 }
 
 # DATASETS = [
@@ -22,16 +22,17 @@ DATASET_DIRECTORY = {
 
 # Patterns to match dataset directories
 DATASET_PATTERNS = [
-    "NATIONAL_ARCHIVE*",
-    "EUROPEANA*",
-    "SMU*",
-    "WWII*",
+		"NATIONAL_ARCHIVE*",
+		"EUROPEANA*",
+		"SMU*",
+		"WWII*",
 ]
 
 # Find all matching dataset directories
 DATASETS = []
 for pattern in DATASET_PATTERNS:
-    DATASETS.extend(glob.glob(os.path.join(DATASET_DIRECTORY.get(USER), pattern)))
+	DATASETS.extend(glob.glob(os.path.join(DATASET_DIRECTORY.get(USER), pattern)))
+print(len(DATASETS), DATASETS)
 
 RESULT_DIR = os.path.join(DATASET_DIRECTORY.get(USER), "HISTORICAL_ARCHIVES_DATASET")
 os.makedirs(RESULT_DIR, exist_ok=True)
