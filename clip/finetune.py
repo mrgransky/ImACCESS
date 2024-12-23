@@ -86,9 +86,9 @@ def evaluate(model, test_loader, criterion, device:str="cuda"):
 	return avg_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description
 
 def finetune(
-		model,
-		train_loader,
-		test_loader,
+		model:nn.Module,
+		train_loader:DataLoader,
+		test_loader:DataLoader,
 		num_epochs:int=5,
 		num_workers:int=10,
 		print_every:int=150,
@@ -102,13 +102,14 @@ def finetune(
 	print(f"Fine-Tuning CLIP {model_name} {dataset_name} {num_epochs} Epoch(s) {device} [x{num_workers} cores]".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
+
 	for name, param in model.named_parameters():
-		# print(f"{name} dtype: {param.dtype}")
+		print(f"{name} dtype: {param.dtype}")
 		if 'visual.conv1' in name or 'visual.ln_pre' in name:
 			param.requires_grad = False # freeze the weights of the first layer of the model
 		else:
 			param.requires_grad = True # backpropagation calculate and update gradients for these parameters, thereby fine-tuning these model layers.
-	model = model.float() # Convert model parameters to FP32
+
 	best_loss = np.inf
 	no_improvement_count = 0
 	optimizer = optim.AdamW(

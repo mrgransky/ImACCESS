@@ -155,6 +155,7 @@ def clean_(text:str="this is a sample text!", sw:List=list(), check_language:boo
 
 def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
 	model, preprocess = clip.load(model_name, device=device, jit=jit) # training or finetuning => jit=False
+	model = model.float() # Convert model parameters to FP32
 	input_resolution = model.visual.input_resolution
 	context_length = model.context_length
 	vocab_size = model.vocab_size
