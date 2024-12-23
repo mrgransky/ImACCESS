@@ -34,7 +34,7 @@ for pattern in DATASET_PATTERNS:
 	DATASETS.extend(glob.glob(os.path.join(DATASET_DIRECTORY.get(USER), pattern)))
 print(len(DATASETS), DATASETS)
 
-RESULT_DIR = os.path.join(DATASET_DIRECTORY.get(USER), "HISTORICAL_ARCHIVES_DATASET")
+RESULT_DIR = os.path.join(DATASET_DIRECTORY.get(USER), "HISTORICAL_ARCHIVES")
 os.makedirs(RESULT_DIR, exist_ok=True)
 
 dfs = []
@@ -81,7 +81,7 @@ plt.title(f'Grouped Bar Chart for total of {label_counts.shape[0]} Labels Freque
 plt.tight_layout()
 plt.savefig(os.path.join(RESULT_DIR, f"labels_x_{label_counts.shape[0]}_freq_x_{len(dfs)}.png"))
 
-# Perform stratified splitting
+# stratified splitting
 VAL_SPLIT_PCT = 0.35
 train_df, val_df = train_test_split(
 	merged_df,
@@ -90,18 +90,15 @@ train_df, val_df = train_test_split(
 	random_state=42
 )
 
-# Verify label distribution in training set
-print("Training Set Label Distribution:")
-print(train_df['label'].value_counts(normalize=True))
+# # Verify label distribution in training set
+# print("Training Set Label Distribution:")
+# print(train_df['label'].value_counts(normalize=True))
 
-# Verify label distribution in validation set
-print("Validation Set Label Distribution:")
-print(val_df['label'].value_counts(normalize=True))
+# # Verify label distribution in validation set
+# print("Validation Set Label Distribution:")
+# print(val_df['label'].value_counts(normalize=True))
 
-# Save the training set
 train_df.to_csv(os.path.join(RESULT_DIR, 'train_metadata.csv'), index=False)
-
-# Save the validation set
 val_df.to_csv(os.path.join(RESULT_DIR, 'val_metadata.csv'), index=False)
 
 # Visualize label distribution in training and validation sets
