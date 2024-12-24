@@ -199,7 +199,7 @@ def finetune(
 		)
 
 		############################## Early stopping ##############################
-		mdl_fpth = f"{dataset_name}_clip_finetuned.pth"
+		mdl_fpth = f"{dataset_name}_mode_{mode}_clip.pth"
 		if avg_valid_loss < best_loss:
 			best_loss = avg_valid_loss
 			torch.save(model.state_dict(), mdl_fpth)
@@ -213,8 +213,8 @@ def finetune(
 		############################## Early stopping ##############################
 
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
-	losses_fpth = f"{dataset_name}_train_vs_val_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
-	accuracy_fpth = f"{dataset_name}_val_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_txt_img.png"
+	losses_fpth = f"{dataset_name}_mode_{mode}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
+	accuracy_fpth = f"{dataset_name}_mode_{mode}_accuracy_img_txt_img_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
 	plot_loss_accuracy(
 		train_losses=training_losses,
 		val_losses=validation_losses,
@@ -240,7 +240,7 @@ def main():
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
 	print(args)
-
+	set_seeds()
 	print(clip.available_models())
 	model, preprocess = load_model(
 		model_name=args.model_name,

@@ -4,6 +4,7 @@ import clip
 import time
 import re
 import argparse
+import random
 import numpy as np
 from PIL import Image
 from torchvision.datasets import CIFAR10, CIFAR100
@@ -15,6 +16,18 @@ import torchvision.transforms as T
 import warnings
 import datetime
 warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_scheduler')
+
+def set_seeds():
+	# fix random seeds
+	SEED_VALUE = 42
+	random.seed(SEED_VALUE)
+	np.random.seed(SEED_VALUE)
+	torch.manual_seed(SEED_VALUE)
+	if torch.cuda.is_available():
+		torch.cuda.manual_seed(SEED_VALUE)
+		torch.cuda.manual_seed_all(SEED_VALUE)
+		torch.backends.cudnn.deterministic = True
+		torch.backends.cudnn.benchmark = True
 
 def plot_loss_accuracy(
 		train_losses,
