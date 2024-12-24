@@ -1,7 +1,7 @@
 from utils import *
 
 # run in pouta:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 64 -ne 30 -lr 1e-5 -wd 1e-3 --print_every 1000 -nw 50 --device "cuda:3" -m "fine-tune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/finetune_cifar100_cuda3.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 64 -ne 3 -lr 1e-5 -wd 1e-3 --print_every 1000 -nw 50 --device "cuda:3" -m "fine-tune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/finetune_cifar100_cuda3.out &
 
 class CIFARDATASET(torch.utils.data.Dataset):
 	def __init__(self, dataset, transformer=None,):
@@ -220,10 +220,6 @@ def finetune(
 		val_losses=validation_losses,
 		validation_accuracy_text_description_for_each_image_list=validation_accuracy_text_description_for_each_image_list,
 		validation_accuracy_text_image_for_each_text_description_list=validation_accuracy_text_image_for_each_text_description_list,
-		dataset_name=dataset_name,
-		learning_rate=learning_rate,
-		weight_decay=weight_decay,
-		batch_size=train_loader.batch_size,
 		losses_file_path=losses_fpth,
 		accuracy_file_path=accuracy_fpth,
 	)
