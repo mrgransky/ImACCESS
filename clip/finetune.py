@@ -1,7 +1,7 @@
 from utils import *
 
 # run in pouta:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 64 -ne 3 -lr 1e-5 -wd 1e-3 --print_every 1000 -nw 50 --device "cuda:3" -m "fine-tune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/finetune_cifar100_cuda3.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 64 -ne 30 -lr 1e-5 -wd 1e-3 --print_every 1000 -nw 50 --device "cuda:3" -m "fine-tune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/finetune_cifar100_cuda3.out &
 
 class CIFARDATASET(torch.utils.data.Dataset):
 	def __init__(self, dataset, transformer=None,):
@@ -115,8 +115,6 @@ def finetune(
 		else:
 			print(f"Unrecognized mode: {mode}")
 			return
-
-	print("#"*100)
 
 	best_loss = np.inf
 	no_improvement_count = 0
