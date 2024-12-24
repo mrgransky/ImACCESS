@@ -415,17 +415,16 @@ def plot_(train_losses, val_losses, save_path, lr, wd):
 	plt.savefig(save_path)
 	plt.close()  # Close the figure to free up memory
 
-def set_seeds():
-	# fix random seeds
-	SEED_VALUE = 42
-	random.seed(SEED_VALUE)
-	np.random.seed(SEED_VALUE)
-	torch.manual_seed(SEED_VALUE)
+def set_seeds(seed:int=42, debug:bool=False):
+	random.seed(seed)
+	np.random.seed(seed)
+	torch.manual_seed(seed)
 	if torch.cuda.is_available():
-		torch.cuda.manual_seed(SEED_VALUE)
-		torch.cuda.manual_seed_all(SEED_VALUE)
-		torch.backends.cudnn.deterministic = True
-		torch.backends.cudnn.benchmark = True
+		torch.cuda.manual_seed(seed)
+		torch.cuda.manual_seed_all(seed)
+		if debug: # slows down training but ensures reproducibility
+			torch.backends.cudnn.deterministic = True
+			torch.backends.cudnn.benchmark = False
 
 def get_args(obj):
 	sig = inspect.signature(obj.__class__.__init__)

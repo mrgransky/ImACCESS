@@ -17,17 +17,16 @@ import warnings
 import datetime
 warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_scheduler')
 
-def set_seeds():
-	# fix random seeds
-	SEED_VALUE = 42
-	random.seed(SEED_VALUE)
-	np.random.seed(SEED_VALUE)
-	torch.manual_seed(SEED_VALUE)
+def set_seeds(seed:int=42, debug:bool=False):
+	random.seed(seed)
+	np.random.seed(seed)
+	torch.manual_seed(seed)
 	if torch.cuda.is_available():
-		torch.cuda.manual_seed(SEED_VALUE)
-		torch.cuda.manual_seed_all(SEED_VALUE)
-		torch.backends.cudnn.deterministic = True
-		torch.backends.cudnn.benchmark = True
+		torch.cuda.manual_seed(seed)
+		torch.cuda.manual_seed_all(seed)
+		if debug: # slows down training but ensures reproducibility
+			torch.backends.cudnn.deterministic = True
+			torch.backends.cudnn.benchmark = False
 
 def plot_loss_accuracy(
 		train_losses,
@@ -42,21 +41,23 @@ def plot_loss_accuracy(
 		return
 	epochs = range(1, num_epochs + 1)
 
-	plt.figure()
+	plt.figure(figsize=(12, 12))
 	plt.plot(epochs, train_losses, marker='o', linestyle='-', color='b', label='Training Loss')
 	plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation Loss')
 	plt.xlabel('Epoch')
 	plt.ylabel('Loss')
 	plt.tight_layout()
 	plt.legend()
+	plt.title(os.path.basename(losses_file_path), fontsize=8)
 	plt.savefig(losses_file_path)
 	plt.close()
 
-	plt.figure()
+	plt.figure(figsize=(12, 12))
 	plt.plot(epochs, validation_accuracy_text_description_for_each_image_list, marker='o', linestyle='-', color='b', label='Validation Accuracy [text description for each image]')
 	plt.plot(epochs, validation_accuracy_text_image_for_each_text_description_list, marker='o', linestyle='-', color='r', label='Validation Accuracy [image for each text description]')
 	plt.xlabel('Epoch')
 	plt.ylabel('Accuracy')
+	plt.title(os.path.basename(accuracy_file_path), fontsize=8)
 	plt.tight_layout()
 	plt.legend()
 	plt.savefig(accuracy_file_path)

@@ -1,7 +1,7 @@
 from utils import *
 
 # run in pouta:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 64 -ne 30 -lr 1e-5 -wd 1e-3 --print_every 1000 -nw 50 --device "cuda:3" -m "fine-tune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/finetune_cifar100_cuda3.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 256 -ne 32 -lr 1e-5 -wd 2e-3 --print_every 500 -nw 30 --device "cuda:3" -m "fine-tune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_finetune_cuda3.out &
 
 class CIFARDATASET(torch.utils.data.Dataset):
 	def __init__(self, dataset, transformer=None,):
@@ -197,7 +197,7 @@ def finetune(
 		)
 
 		############################## Early stopping ##############################
-		mdl_fpth = f"{dataset_name}_mode_{mode}_clip.pth"
+		mdl_fpth = f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_clip.pth"
 		if avg_valid_loss < best_loss:
 			best_loss = avg_valid_loss
 			torch.save(model.state_dict(), mdl_fpth)
@@ -211,8 +211,8 @@ def finetune(
 		############################## Early stopping ##############################
 
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
-	losses_fpth = f"{dataset_name}_mode_{mode}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
-	accuracy_fpth = f"{dataset_name}_mode_{mode}_accuracy_img_txt_img_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
+	losses_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
+	accuracy_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
 	plot_loss_accuracy(
 		train_losses=training_losses,
 		val_losses=validation_losses,
