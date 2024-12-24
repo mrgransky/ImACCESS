@@ -1,6 +1,5 @@
 from collections import OrderedDict
 from typing import Tuple, Union
-
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -164,7 +163,7 @@ class QuickGELU(nn.Module):
 class ResidualAttentionBlock(nn.Module):
 	def __init__(self, d_model: int, n_head: int, attn_mask: torch.Tensor = None):
 		super().__init__()
-		self.attn = nn.MultiheadAttention(d_model, n_head)
+		self.attn = nn.MultiheadAttention(d_model, n_head) # self-attention
 		self.ln_1 = LayerNorm(d_model)
 		self.mlp = nn.Sequential(
 			OrderedDict(
@@ -210,12 +209,12 @@ class VisionTransformer(nn.Module):
 			bias=False,
 		)
 		scale = width ** -0.5
-		self.class_embedding = nn.Parameter(scale * torch.randn(width))
+		self.class_embedding = nn.Parameter(scale * torch.randn(width)) 
 		self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
-		self.ln_pre = LayerNorm(width)
-		self.transformer = Transformer(width, layers, heads)
-		self.ln_post = LayerNorm(width)
-		self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
+		self.ln_pre = LayerNorm(width) # to be applied before transformer
+		self.transformer = Transformer(width, layers, heads) 
+		self.ln_post = LayerNorm(width) # to be applied after transformer
+		self.proj = nn.Parameter(scale * torch.randn(width, output_dim)) # to be applied to the output of the transformer
 	
 	def forward(self, x: torch.Tensor):
 		x = self.conv1(x)  # shape = [*, width, grid, grid]
@@ -250,8 +249,8 @@ class CLIP(nn.Module):
 		):
 			super().__init__()
 			self.context_length = context_length
-
-			if isinstance(vision_layers, (tuple, list)): # use modified ResNet
+			################################ vision encoder ################################
+			if isinstance(vision_layers, (tuple, list)): # modified ResNet
 				vision_heads = vision_width * 32 // 64
 				self.visual = ModifiedResNet(
 					layers=vision_layers,
@@ -260,7 +259,7 @@ class CLIP(nn.Module):
 					input_resolution=image_resolution,
 					width=vision_width
 				)
-			else: # use vison transformer
+			else: # vison transformer (ViT)
 				vision_heads = vision_width // 64
 				self.visual = VisionTransformer(
 					input_resolution=image_resolution,
@@ -270,20 +269,24 @@ class CLIP(nn.Module):
 					heads=vision_heads,
 					output_dim=embed_dim
 				)
-
+			################################ vision encoder ################################
+			################################ text encoder ################################
 			self.transformer = Transformer(
 				width=transformer_width,
 				layers=transformer_layers,
 				heads=transformer_heads,
 				attn_mask=self.build_attention_mask()
 			)
-
+			################################ text encoder ################################
 			self.vocab_size = vocab_size
+			# token and positional embeddings
 			self.token_embedding = nn.Embedding(vocab_size, transformer_width)
 			self.positional_embedding = nn.Parameter(torch.empty(self.context_length, transformer_width))
+			# layernorm before transformer
 			self.ln_final = LayerNorm(transformer_width)
-
+			# projection for the vision transformer output
 			self.text_projection = nn.Parameter(torch.empty(transformer_width, embed_dim))
+			# scale for cosine similarity
 			self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
 			self.initialize_parameters()
@@ -292,16 +295,16 @@ class CLIP(nn.Module):
 		nn.init.normal_(self.token_embedding.weight, std=0.02)
 		nn.init.normal_(self.positional_embedding, std=0.01)
 		if isinstance(self.visual, ModifiedResNet):
-				if self.visual.attnpool is not None:
-						std = self.visual.attnpool.c_proj.in_features ** -0.5
-						nn.init.normal_(self.visual.attnpool.q_proj.weight, std=std)
-						nn.init.normal_(self.visual.attnpool.k_proj.weight, std=std)
-						nn.init.normal_(self.visual.attnpool.v_proj.weight, std=std)
-						nn.init.normal_(self.visual.attnpool.c_proj.weight, std=std)
-				for resnet_block in [self.visual.layer1, self.visual.layer2, self.visual.layer3, self.visual.layer4]:
-						for name, param in resnet_block.named_parameters():
-								if name.endswith("bn3.weight"):
-										nn.init.zeros_(param)
+			if self.visual.attnpool is not None:
+				std = self.visual.attnpool.c_proj.in_features ** -0.5
+				nn.init.normal_(self.visual.attnpool.q_proj.weight, std=std)
+				nn.init.normal_(self.visual.attnpool.k_proj.weight, std=std)
+				nn.init.normal_(self.visual.attnpool.v_proj.weight, std=std)
+				nn.init.normal_(self.visual.attnpool.c_proj.weight, std=std)
+			for resnet_block in [self.visual.layer1, self.visual.layer2, self.visual.layer3, self.visual.layer4]:
+				for name, param in resnet_block.named_parameters():
+					if name.endswith("bn3.weight"):
+						nn.init.zeros_(param)
 		proj_std = (self.transformer.width ** -0.5) * ((2 * self.transformer.layers) ** -0.5)
 		attn_std = self.transformer.width ** -0.5
 		fc_std = (2 * self.transformer.width) ** -0.5
@@ -356,27 +359,23 @@ class CLIP(nn.Module):
 		return logits_per_image, logits_per_text
 
 def convert_weights(model: nn.Module):
-		"""Convert applicable model parameters to fp16"""
-
-		def _convert_weights_to_fp16(l):
-				if isinstance(l, (nn.Conv1d, nn.Conv2d, nn.Linear)):
-						l.weight.data = l.weight.data.half()
-						if l.bias is not None:
-								l.bias.data = l.bias.data.half()
-
-				if isinstance(l, nn.MultiheadAttention):
-						for attr in [*[f"{s}_proj_weight" for s in ["in", "q", "k", "v"]], "in_proj_bias", "bias_k", "bias_v"]:
-								tensor = getattr(l, attr)
-								if tensor is not None:
-										tensor.data = tensor.data.half()
-
-				for name in ["text_projection", "proj"]:
-						if hasattr(l, name):
-								attr = getattr(l, name)
-								if attr is not None:
-										attr.data = attr.data.half()
-
-		model.apply(_convert_weights_to_fp16)
+	"""Convert applicable model parameters to fp16"""
+	def _convert_weights_to_fp16(l):
+		if isinstance(l, (nn.Conv1d, nn.Conv2d, nn.Linear)):
+			l.weight.data = l.weight.data.half()
+			if l.bias is not None:
+				l.bias.data = l.bias.data.half()
+		if isinstance(l, nn.MultiheadAttention):
+			for attr in [*[f"{s}_proj_weight" for s in ["in", "q", "k", "v"]], "in_proj_bias", "bias_k", "bias_v"]:
+				tensor = getattr(l, attr)
+				if tensor is not None:
+					tensor.data = tensor.data.half()
+		for name in ["text_projection", "proj"]:
+			if hasattr(l, name):
+				attr = getattr(l, name)
+				if attr is not None:
+					attr.data = attr.data.half()
+	model.apply(_convert_weights_to_fp16)
 
 def build_model(state_dict: dict):
 	vit = "visual.proj" in state_dict

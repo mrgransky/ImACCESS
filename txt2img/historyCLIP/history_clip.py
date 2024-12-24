@@ -18,7 +18,7 @@ args.device = torch.device(args.device)
 print(args)
 
 # run in pouta:
-# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 128 -ne 30 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" > /media/volume/ImACCESS/trash/finetune_historyCLIP_cuda2.out &
+# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 260 -ne 30 -lr 1e-5 -wd 3e-3 --print_every 100 -nw 20 --device "cuda:1" > /media/volume/ImACCESS/trash/finetune_historyCLIP_frozen_4layers_cuda1.out &
 
 def get_dataset(dataset_dir:str="/path/to/dataset"):
 	train_dataset = pd.read_csv(os.path.join(dataset_dir, f"train_metadata.csv"))

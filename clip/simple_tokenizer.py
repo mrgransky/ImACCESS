@@ -63,7 +63,7 @@ class SimpleTokenizer(object):
 		vocab = list(bytes_to_unicode().values())
 		vocab = vocab + [v+'</w>' for v in vocab]
 		for merge in merges:
-				vocab.append(''.join(merge))
+			vocab.append(''.join(merge))
 		vocab.extend(['<|startoftext|>', '<|endoftext|>'])
 		self.encoder = dict(zip(vocab, range(len(vocab))))
 		self.decoder = {v: k for k, v in self.encoder.items()}
@@ -113,8 +113,8 @@ class SimpleTokenizer(object):
 		bpe_tokens = []
 		text = whitespace_clean(basic_clean(text)).lower()
 		for token in re.findall(self.pat, text):
-				token = ''.join(self.byte_encoder[b] for b in token.encode('utf-8'))
-				bpe_tokens.extend(self.encoder[bpe_token] for bpe_token in self.bpe(token).split(' '))
+			token = ''.join(self.byte_encoder[b] for b in token.encode('utf-8'))
+			bpe_tokens.extend(self.encoder[bpe_token] for bpe_token in self.bpe(token).split(' '))
 		return bpe_tokens
 
 	def decode(self, tokens):

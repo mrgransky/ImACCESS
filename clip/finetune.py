@@ -1,7 +1,7 @@
 from utils import *
 
 # run in pouta:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 16 -ne 30 -lr 1e-5 -wd 1e-3 --print_every 1000 -nw 50 --device "cuda:3" -m "ViT-L/14" > /media/volume/ImACCESS/trash/finetune_cifar100_cuda3.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 64 -ne 30 -lr 1e-5 -wd 1e-3 --print_every 1000 -nw 50 --device "cuda:3" -m "fine-tune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/finetune_cifar100_cuda3.out &
 
 class CIFARDATASET(torch.utils.data.Dataset):
 	def __init__(self, dataset, transformer=None,):
@@ -98,23 +98,25 @@ def finetune(
 		weight_decay:float=1e-3,
 		dataset_name:str="CIFAR10",
 		device:str="cuda",
+		mode:str="train", # train/fine-tune
 	):
-	print(f"Fine-Tuning CLIP {model_name} {dataset_name} {num_epochs} Epoch(s) {device} [x{num_workers} cores]".center(160, "-"))
+	print(f"{mode} CLIP {model_name} {dataset_name} {num_epochs} Epoch(s) {device} [x{num_workers} cores]".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
 
-	# for name, param in model.named_parameters():
-	# 	print(f"{name} dtype: {param.dtype}")
-	# 	# if 'visual.conv1' in name or 'visual.ln_pre' in name:
-	# 		param.requires_grad = False # freeze the weights of the first layer of the model
-	# 	else:
-	# 		param.requires_grad = True # backpropagation calculate and update gradients for these parameters, thereby fine-tuning these model layers.
+	for name, param in model.named_parameters():
+		# print(f"{name} requires_grad: {param.requires_grad}")
+		if mode == "train":
+			param.requires_grad = True
+		elif mode == "fine-tune": 
+			if name.startswith(("visual.conv1", "visual.ln_pre", "visual.positional_embedding", "visual.class_embedding")):
+				param.requires_grad = False # freeze the weights of the visual embedding layer
+				print(f"{name} requires_grad: {param.requires_grad} => frozen")
+		else:
+			print(f"Unrecognized mode: {mode}")
+			return
 
-	for name, param in model.named_parameters():  
-		if name.startswith(("visual.conv1", "visual.ln_pre", "visual.positional_embedding", "visual.class_embedding")):  
-			param.requires_grad = False  # freeze the weights of the visual embedding layer  
-		else:  
-			param.requires_grad = True  # backpropagation calculate and update gradients for these parameters, thereby fine-tuning these model layers.
+	print("#"*100)
 
 	best_loss = np.inf
 	no_improvement_count = 0
@@ -211,6 +213,7 @@ def finetune(
 		############################## Early stopping ##############################
 
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
+
 	plot_loss_accuracy(
 		train_losses=training_losses,
 		val_losses=validation_losses,
@@ -231,8 +234,9 @@ def main():
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--print_every', type=int, default=150, help='Print loss')
-	parser.add_argument('--model_name', '-m', type=str, default="ViT-B/32", help='CLIP model name')
+	parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--dataset', '-d', type=str, choices=['CIFAR10', 'CIFAR100'], default='CIFAR10', help='Choose dataset (CIFAR10/CIFAR100)')
+	parser.add_argument('--mode', '-m', type=str, choices=['train', 'fine-tune'], default='fine-tune', help='Choose mode (train/fine-tune)')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
@@ -263,6 +267,10 @@ def main():
 		model_name=args.model_name,
 		device=args.device,
 		early_stopping_patience=5,
+		learning_rate=args.learning_rate,
+		weight_decay=args.weight_decay,
+		dataset_name=args.dataset,
+		mode=args.mode,
 	)
 
 if __name__ == "__main__":
