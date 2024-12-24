@@ -100,7 +100,7 @@ def finetune(
 		device:str="cuda",
 		mode:str="train", # train/fine-tune
 	):
-	print(f"{mode} CLIP {model_name} {dataset_name} {num_epochs} Epoch(s) {device} [x{num_workers} cores]".center(160, "-"))
+	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{num_workers} cores]".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
 

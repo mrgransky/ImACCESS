@@ -10,8 +10,9 @@ parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch siz
 parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
 parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
 parser.add_argument('--print_every', type=int, default=150, help='Print loss')
-parser.add_argument('--model_name', '-m', type=str, default="ViT-B/32", help='CLIP model name')
+parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
+parser.add_argument('--mode', '-m', type=str, choices=['train', 'fine-tune'], default='fine-tune', help='Choose mode (train/fine-tune)')
 
 args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
@@ -47,13 +48,16 @@ def main():
 		model=model,
 		train_loader=train_loader,
 		test_loader=test_loader,
-		device=args.device,
 		num_epochs=args.num_epochs,
+		num_workers=args.num_workers,
+		print_every=args.print_every,
+		model_name=args.model_name,
+		early_stopping_patience=5,
 		learning_rate=args.learning_rate,
 		weight_decay=args.weight_decay,
-		print_every=args.print_every,
-		num_workers=args.num_workers,
 		dataset_name=os.path.basename(args.dataset_dir),
+		device=args.device,
+		mode=args.mode,
 	)
 
 if __name__ == "__main__":
