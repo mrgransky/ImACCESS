@@ -21,10 +21,8 @@ def plot_loss_accuracy(
 		val_losses,
 		validation_accuracy_text_description_for_each_image_list,
 		validation_accuracy_text_image_for_each_text_description_list,
-		dataset_name:str="CIFAR10",
-		learning_rate:float=1e-5,
-		weight_decay:float=1e-3,
-		batch_size:int=64,
+		losses_file_path: str="losses.png",
+		accuracy_file_path: str="accuracy.png",
 	):
 	num_epochs = len(train_losses)
 	if num_epochs == 1:
@@ -38,7 +36,7 @@ def plot_loss_accuracy(
 	plt.ylabel('Loss')
 	plt.tight_layout()
 	plt.legend()
-	plt.savefig(f"{dataset_name}_train_val_loss_ep_{len(train_losses)}_lr_{learning_rate}_wd_{weight_decay}_{batch_size}_batch_size.png")
+	plt.savefig(losses_file_path)
 	plt.close()
 
 	plt.figure()
@@ -48,7 +46,7 @@ def plot_loss_accuracy(
 	plt.ylabel('Accuracy')
 	plt.tight_layout()
 	plt.legend()
-	plt.savefig(f"{dataset_name}_validation_accuracy_ep_{len(train_losses)}_txt_img.png")
+	plt.savefig(accuracy_file_path)
 	plt.close()
 
 

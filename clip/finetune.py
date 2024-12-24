@@ -213,7 +213,8 @@ def finetune(
 		############################## Early stopping ##############################
 
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
-
+	losses_fpth = f"{dataset_name}_train_vs_val_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
+	accuracy_fpth = f"{dataset_name}_val_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_txt_img.png"
 	plot_loss_accuracy(
 		train_losses=training_losses,
 		val_losses=validation_losses,
@@ -223,6 +224,8 @@ def finetune(
 		learning_rate=learning_rate,
 		weight_decay=weight_decay,
 		batch_size=train_loader.batch_size,
+		losses_file_path=losses_fpth,
+		accuracy_file_path=accuracy_fpth,
 	)
 
 def main():
