@@ -209,12 +209,14 @@ class VisionTransformer(nn.Module):
 			bias=False,
 		)
 		scale = width ** -0.5
-		self.class_embedding = nn.Parameter(scale * torch.randn(width)) 
+		self.class_embedding = nn.Parameter(data=scale * torch.randn(width)) 
 		self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
+
 		self.ln_pre = LayerNorm(width) # to be applied before transformer
 		self.transformer = Transformer(width, layers, heads) 
 		self.ln_post = LayerNorm(width) # to be applied after transformer
-		self.proj = nn.Parameter(scale * torch.randn(width, output_dim)) # to be applied to the output of the transformer
+		
+		self.proj = nn.Parameter(data=scale * torch.randn(width, output_dim)) # to be applied to the output of the transformer
 	
 	def forward(self, x: torch.Tensor):
 		x = self.conv1(x)  # shape = [*, width, grid, grid]
@@ -222,6 +224,7 @@ class VisionTransformer(nn.Module):
 		x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
 		x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
 		x = x + self.positional_embedding.to(x.dtype)
+		# x = x + self.positional_embedding
 		x = self.ln_pre(x)
 		x = x.permute(1, 0, 2)  # NLD -> LND
 		x = self.transformer(x)

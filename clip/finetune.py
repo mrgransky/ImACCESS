@@ -98,7 +98,7 @@ def plot_loss_accuracy(
 		return
 	epochs = range(1, num_epochs + 1)
 
-	plt.figure(figsize=(12, 12))
+	plt.figure(figsize=(8, 8))
 	plt.plot(epochs, train_losses, marker='o', linestyle='-', color='b', label='Training Loss')
 	plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation Loss')
 	plt.xlabel('Epoch')
@@ -109,7 +109,7 @@ def plot_loss_accuracy(
 	plt.savefig(losses_file_path)
 	plt.close()
 
-	plt.figure(figsize=(12, 12))
+	plt.figure(figsize=(8, 8))
 	plt.plot(epochs, validation_accuracy_text_description_for_each_image_list, marker='o', linestyle='-', color='b', label='Validation Accuracy [text description for each image]')
 	plt.plot(epochs, validation_accuracy_text_image_for_each_text_description_list, marker='o', linestyle='-', color='r', label='Validation Accuracy [image for each text description]')
 	plt.xlabel('Epoch')
