@@ -191,10 +191,10 @@ def finetune(
 		elif mode == "fine-tune": 
 			if name.startswith(
 				(
-					"visual.conv1", 
-					"visual.ln_pre", 
-					# "visual.positional_embedding", 
-					# "visual.class_embedding",
+					"visual.conv1", # fine-tune the first layer of the visual embedding
+					"visual.ln_pre", # fine-tune the layer normalization of the visual embedding
+					# "visual.positional_embedding", # fine-tune the positional embedding of the visual embedding
+					# "visual.class_embedding", # fine-tune the class embedding of the visual embedding
 				)
 			):
 				param.requires_grad = False # freeze the weights of the visual embedding layer
