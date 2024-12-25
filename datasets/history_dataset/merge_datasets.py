@@ -36,6 +36,7 @@ print(len(DATASETS), DATASETS)
 
 RESULT_DIR = os.path.join(DATASET_DIRECTORY.get(USER), "HISTORICAL_ARCHIVES")
 os.makedirs(RESULT_DIR, exist_ok=True)
+VAL_SPLIT_PCT = 0.35
 
 dfs = []
 for i, dataset_path in enumerate(DATASETS):
@@ -82,21 +83,12 @@ plt.tight_layout()
 plt.savefig(os.path.join(RESULT_DIR, f"labels_x_{label_counts.shape[0]}_freq_x_{len(dfs)}.png"))
 
 # stratified splitting
-VAL_SPLIT_PCT = 0.35
 train_df, val_df = train_test_split(
 	merged_df,
 	test_size=VAL_SPLIT_PCT,
 	stratify=merged_df['label'], 
 	random_state=42
 )
-
-# # Verify label distribution in training set
-# print("Training Set Label Distribution:")
-# print(train_df['label'].value_counts(normalize=True))
-
-# # Verify label distribution in validation set
-# print("Validation Set Label Distribution:")
-# print(val_df['label'].value_counts(normalize=True))
 
 train_df.to_csv(os.path.join(RESULT_DIR, 'train_metadata.csv'), index=False)
 val_df.to_csv(os.path.join(RESULT_DIR, 'val_metadata.csv'), index=False)
