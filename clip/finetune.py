@@ -1,7 +1,12 @@
 from utils import *
 
 # run in pouta:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 256 -ne 32 -lr 1e-5 -wd 2e-3 --print_every 500 -nw 30 --device "cuda:3" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_finetune_cuda3.out &
+# finetune CIFAR10x dataset with given frozen layers:
+# $ nohup python -u finetune.py -d CIFAR100 -bs 512 -ne 3 -lr 1e-5 -wd 1e-4 --print_every 100 -nw 30 --device "cuda:3" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cifar100_finetune_cuda3.out &
+
+# train CIFAR100 from scratch:
+# $ nohup python -u finetune.py -d CIFAR100 -bs 512 -ne 3 -lr 1e-5 -wd 1e-4 --print_every 100 -nw 30 --device "cuda:0" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train_cuda0.out &
+
 
 class CIFARDATASET(torch.utils.data.Dataset):
 	def __init__(self, dataset, transformer=None,):
@@ -105,7 +110,8 @@ def plot_loss_accuracy(
 	plt.ylabel('Loss')
 	plt.tight_layout()
 	plt.legend()
-	plt.title(os.path.basename(losses_file_path), fontsize=8)
+	# plt.title(os.path.basename(losses_file_path), fontsize=8)
+	plt.title(os.path.splitext(os.path.basename(losses_file_path))[0], fontsize=10)
 	plt.savefig(losses_file_path)
 	plt.close()
 
@@ -114,7 +120,8 @@ def plot_loss_accuracy(
 	plt.plot(epochs, validation_accuracy_text_image_for_each_text_description_list, marker='o', linestyle='-', color='r', label='Validation Accuracy [image for each text description]')
 	plt.xlabel('Epoch')
 	plt.ylabel('Accuracy')
-	plt.title(os.path.basename(accuracy_file_path), fontsize=8)
+	# plt.title(os.path.basename(accuracy_file_path), fontsize=8)
+	plt.title(os.path.splitext(os.path.basename(accuracy_file_path))[0], fontsize=10)
 	plt.tight_layout()
 	plt.legend()
 	plt.savefig(accuracy_file_path)
@@ -178,30 +185,40 @@ def finetune(
 		weight_decay:float=1e-3,
 		dataset_name:str="CIFAR10",
 		device:str="cuda",
-		mode:str="train", # train/finetune
+		# mode:str="train", # train/finetune
+		freeze_layers: list = None,
 	):
+	mode = "finetune" if freeze_layers else "train"
+	freeze_layers = freeze_layers or []
 	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{num_workers} cores]".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
 
+	# for name, param in model.named_parameters():
+	# 	# print(f"{name} requires_grad: {param.requires_grad}")
+	# 	if mode == "train":
+	# 		param.requires_grad = True
+	# 	elif mode == "finetune": 
+	# 		if name.startswith(
+	# 			(
+	# 				"visual.conv1", # finetune the first layer of the visual embedding
+	# 				"visual.ln_pre", # finetune the layer normalization of the visual embedding
+	# 				# "visual.positional_embedding", # finetune the positional embedding of the visual embedding
+	# 				# "visual.class_embedding", # finetune the class embedding of the visual embedding
+	# 			)
+	# 		):
+	# 			param.requires_grad = False # freeze the weights of the visual embedding layer
+	# 			print(f"{name} requires_grad: {param.requires_grad} => frozen")
+	# 	else:
+	# 		print(f"Unrecognized mode: {mode}")
+	# 		return
+
 	for name, param in model.named_parameters():
-		# print(f"{name} requires_grad: {param.requires_grad}")
-		if mode == "train":
-			param.requires_grad = True
-		elif mode == "finetune": 
-			if name.startswith(
-				(
-					"visual.conv1", # finetune the first layer of the visual embedding
-					"visual.ln_pre", # finetune the layer normalization of the visual embedding
-					# "visual.positional_embedding", # finetune the positional embedding of the visual embedding
-					# "visual.class_embedding", # finetune the class embedding of the visual embedding
-				)
-			):
-				param.requires_grad = False # freeze the weights of the visual embedding layer
-				print(f"{name} requires_grad: {param.requires_grad} => frozen")
+		if name.startswith(tuple(freeze_layers)):
+			param.requires_grad = False
+			print(f"{name} requires_grad: {param.requires_grad} => frozen")
 		else:
-			print(f"Unrecognized mode: {mode}")
-			return
+			param.requires_grad = True
 
 	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)	
@@ -310,8 +327,18 @@ def finetune(
 		############################## Early stopping ##############################
 
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
-	losses_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
-	accuracy_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
+
+	# losses_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
+	# accuracy_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
+
+	if mode == "finetune" and freeze_layers:
+		freeze_layers_str = '_'.join(freeze_layers)
+		losses_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png"
+		accuracy_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png"
+	else:
+		losses_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
+		accuracy_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
+
 	plot_loss_accuracy(
 		train_losses=training_losses,
 		val_losses=validation_losses,
@@ -332,7 +359,7 @@ def main():
 	parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 	parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--dataset', '-d', type=str, choices=['CIFAR10', 'CIFAR100'], default='CIFAR10', help='Choose dataset (CIFAR10/CIFAR100)')
-	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='finetune', help='Choose mode (train/finetune)')
+	parser.add_argument('--freeze_layers', '-fl', nargs='+', default=[], help='Layers to freeze, no "" needed')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
@@ -365,7 +392,8 @@ def main():
 		learning_rate=args.learning_rate,
 		weight_decay=args.weight_decay,
 		dataset_name=args.dataset,
-		mode=args.mode,
+		# mode=args.mode,
+		freeze_layers=args.freeze_layers,
 	)
 
 if __name__ == "__main__":
