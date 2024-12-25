@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=historyCLIP_finetune
+#SBATCH --job-name=historyCLIP_train
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -35,12 +35,12 @@ python -u history_clip.py \
 	--dataset_dir $ddir \
 	--num_epochs 32 \
 	--num_workers 30 \
-	--print_every 100 \
+	--print_every 10 \
 	--batch_size 512 \
 	--learning_rate 1e-4 \
 	--weight_decay 1e-3 \
 	--model_name "ViT-B/32" \
-	--mode "finetune" \
+	--mode "train" \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
