@@ -189,7 +189,14 @@ def finetune(
 		if mode == "train":
 			param.requires_grad = True
 		elif mode == "fine-tune": 
-			if name.startswith(("visual.conv1", "visual.ln_pre", "visual.positional_embedding", "visual.class_embedding")):
+			if name.startswith(
+				(
+					"visual.conv1", 
+					"visual.ln_pre", 
+					# "visual.positional_embedding", 
+					# "visual.class_embedding",
+				)
+			):
 				param.requires_grad = False # freeze the weights of the visual embedding layer
 				print(f"{name} requires_grad: {param.requires_grad} => frozen")
 		else:
@@ -264,7 +271,7 @@ def finetune(
 				loss_txt = criterion(logits_per_text, ground_truth)
 				total_loss = 0.5 * (loss_img + loss_txt)
 			scaler.scale(total_loss).backward()
-			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # stabilize training if exploding gradients
 			scaler.step(optimizer)
 			scaler.update()
 			scheduler.step() # Update learning rate
