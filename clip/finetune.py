@@ -1,7 +1,7 @@
 from utils import *
 
 # run in pouta:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 256 -ne 32 -lr 1e-5 -wd 2e-3 --print_every 500 -nw 30 --device "cuda:3" -m "fine-tune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_finetune_cuda3.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 256 -ne 32 -lr 1e-5 -wd 2e-3 --print_every 500 -nw 30 --device "cuda:3" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_finetune_cuda3.out &
 
 class CIFARDATASET(torch.utils.data.Dataset):
 	def __init__(self, dataset, transformer=None,):
@@ -178,7 +178,7 @@ def finetune(
 		weight_decay:float=1e-3,
 		dataset_name:str="CIFAR10",
 		device:str="cuda",
-		mode:str="train", # train/fine-tune
+		mode:str="train", # train/finetune
 	):
 	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{num_workers} cores]".center(160, "-"))
 	if torch.cuda.is_available():
@@ -188,13 +188,13 @@ def finetune(
 		# print(f"{name} requires_grad: {param.requires_grad}")
 		if mode == "train":
 			param.requires_grad = True
-		elif mode == "fine-tune": 
+		elif mode == "finetune": 
 			if name.startswith(
 				(
-					"visual.conv1", # fine-tune the first layer of the visual embedding
-					"visual.ln_pre", # fine-tune the layer normalization of the visual embedding
-					# "visual.positional_embedding", # fine-tune the positional embedding of the visual embedding
-					# "visual.class_embedding", # fine-tune the class embedding of the visual embedding
+					"visual.conv1", # finetune the first layer of the visual embedding
+					"visual.ln_pre", # finetune the layer normalization of the visual embedding
+					# "visual.positional_embedding", # finetune the positional embedding of the visual embedding
+					# "visual.class_embedding", # finetune the class embedding of the visual embedding
 				)
 			):
 				param.requires_grad = False # freeze the weights of the visual embedding layer
@@ -332,7 +332,7 @@ def main():
 	parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 	parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--dataset', '-d', type=str, choices=['CIFAR10', 'CIFAR100'], default='CIFAR10', help='Choose dataset (CIFAR10/CIFAR100)')
-	parser.add_argument('--mode', '-m', type=str, choices=['train', 'fine-tune'], default='fine-tune', help='Choose mode (train/fine-tune)')
+	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='finetune', help='Choose mode (train/finetune)')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)

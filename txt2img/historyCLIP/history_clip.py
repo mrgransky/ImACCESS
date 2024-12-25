@@ -12,14 +12,14 @@ parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Wei
 parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
-parser.add_argument('--mode', '-m', type=str, choices=['train', 'fine-tune'], default='fine-tune', help='Choose mode (train/fine-tune)')
+parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='finetune', help='Choose mode (train/finetune)')
 
 args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
 print(args)
 
 # run in pouta:
-# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 260 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "fine-tune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_finetune_cuda2.out &
+# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 260 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_finetune_cuda2.out &
 
 def get_dataset(dataset_dir:str="/path/to/dataset"):
 	train_dataset = pd.read_csv(os.path.join(dataset_dir, f"train_metadata.csv"))
