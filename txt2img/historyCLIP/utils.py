@@ -5,6 +5,7 @@ IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
 ########################################################################
 CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
 sys.path.insert(0, CLIP_DIR)
+# print(sys.path)
 import clip
 ########################################################################
 import re

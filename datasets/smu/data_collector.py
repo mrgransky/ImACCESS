@@ -213,6 +213,21 @@ def main():
 	print(f"pre-processing merged {type(smu_df_merged_raw)} {smu_df_merged_raw.shape}")
 	smu_df_merged_raw['label'] = smu_df_merged_raw['label'].replace(replacement_dict)
 	smu_df_merged_raw = smu_df_merged_raw.dropna(subset=['img_url']) # drop None firstDigitalObjectUrl
+	num_duplicates = smu_df_merged_raw.duplicated(subset='img_url', keep=False).sum()
+	print(f"num_duplicates ['img_url']: {num_duplicates}") #
+
+	print(list(smu_df_merged_raw.columns))
+
+	# Identify duplicates based on img_url
+	duplicates_mask = smu_df_merged_raw['img_url'].duplicated(keep=False)
+
+	# Filter the DataFrame to keep only the duplicates
+	duplicate_rows = smu_df_merged_raw[duplicates_mask]
+
+	# You can now select the required columns and print the result
+	result = duplicate_rows[['id', 'label', 'title']]
+	print(result)
+
 	smu_df_merged_raw = smu_df_merged_raw.drop_duplicates(subset=['img_url']) # drop duplicate firstDigitalObjectUrl
 
 	print(f"Processed smu_df_merged_raw: {smu_df_merged_raw.shape}")

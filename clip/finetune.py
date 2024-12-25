@@ -85,6 +85,86 @@ def evaluate(model, test_loader, criterion, device:str="cuda"):
 	accuracy_text_image_for_each_text_description = total_correct_image_for_each_text_description / len(test_loader.dataset)
 	return avg_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description
 
+def plot_loss_accuracy(
+		train_losses,
+		val_losses,
+		validation_accuracy_text_description_for_each_image_list,
+		validation_accuracy_text_image_for_each_text_description_list,
+		losses_file_path: str="losses.png",
+		accuracy_file_path: str="accuracy.png",
+	):
+	num_epochs = len(train_losses)
+	if num_epochs == 1:
+		return
+	epochs = range(1, num_epochs + 1)
+
+	plt.figure(figsize=(12, 12))
+	plt.plot(epochs, train_losses, marker='o', linestyle='-', color='b', label='Training Loss')
+	plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation Loss')
+	plt.xlabel('Epoch')
+	plt.ylabel('Loss')
+	plt.tight_layout()
+	plt.legend()
+	plt.title(os.path.basename(losses_file_path), fontsize=8)
+	plt.savefig(losses_file_path)
+	plt.close()
+
+	plt.figure(figsize=(12, 12))
+	plt.plot(epochs, validation_accuracy_text_description_for_each_image_list, marker='o', linestyle='-', color='b', label='Validation Accuracy [text description for each image]')
+	plt.plot(epochs, validation_accuracy_text_image_for_each_text_description_list, marker='o', linestyle='-', color='r', label='Validation Accuracy [image for each text description]')
+	plt.xlabel('Epoch')
+	plt.ylabel('Accuracy')
+	plt.title(os.path.basename(accuracy_file_path), fontsize=8)
+	plt.tight_layout()
+	plt.legend()
+	plt.savefig(accuracy_file_path)
+	plt.close()
+
+def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
+	model, preprocess = clip.load(model_name, device=device, jit=jit) # training or finetuning => jit=False
+	model = model.float() # Convert model parameters to FP32
+	input_resolution = model.visual.input_resolution
+	context_length = model.context_length
+	vocab_size = model.vocab_size
+	print("Model parameters:", f"{np.sum([int(np.prod(p.shape)) for p in model.parameters()]):,}")
+	print("Input resolution:", input_resolution)
+	print("Context length:", context_length)
+	print("Vocab size:", vocab_size)
+	return model, preprocess
+
+def get_dataset(dname:str="CIFAR10"):
+	if dname == 'CIFAR100':
+		train_dataset = CIFAR100(
+			root=os.path.expanduser("~/.cache"), 
+			train=True,
+			download=True,
+			transform=None
+		)
+		test_dataset = CIFAR100(
+			root=os.path.expanduser("~/.cache"), 
+			train=False,
+			download=True,
+			transform=None
+		)
+	elif dname == 'CIFAR10':
+		train_dataset = CIFAR10(
+			root=os.path.expanduser("~/.cache"), 
+			train=True,
+			download=True,
+			transform=None
+		)
+		test_dataset = CIFAR10(
+			root=os.path.expanduser("~/.cache"), 
+			train=False,
+			download=True,
+			transform=None
+		)
+	else:
+		raise ValueError(f"Invalid dataset name: {dname}. Choose from CIFAR10 or CIFAR100")
+	print(train_dataset)
+	print(test_dataset)
+	return train_dataset, test_dataset
+
 def finetune(
 		model:nn.Module,
 		train_loader:DataLoader,
@@ -115,6 +195,18 @@ def finetune(
 		else:
 			print(f"Unrecognized mode: {mode}")
 			return
+
+	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)	
+	total_params = sum(p.numel() for p in model.parameters())
+	trainable_percent = (trainable_params / total_params) * 100
+	frozen_percent = (frozen_params / total_params) * 100
+	print(
+		f"[Model Parameters Statictics] Total: {total_params:,} "
+		f"Trainable: {trainable_params:,} ({trainable_percent:.2f}%) "
+		f"Frozen Parameters: {frozen_params:,} ({frozen_percent:.2f}%)"
+		.center(160, "-")
+	)
 
 	best_loss = np.inf
 	no_improvement_count = 0
@@ -253,7 +345,6 @@ def main():
 		batch_size=args.batch_size,
 		num_workers=args.num_workers,
 	)
-
 	finetune(
 		model=model,
 		train_loader=train_loader,
