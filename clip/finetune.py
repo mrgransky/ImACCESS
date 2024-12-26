@@ -2,10 +2,10 @@ from utils import *
 
 # run in pouta:
 # finetune CIFAR10x dataset with given frozen layers:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 260 -ne 32 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 30 --device "cuda:3" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cifar100_finetune_cuda3.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 260 -ne 32 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 20 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cifar100_finetune_cuda0.out &
 
 # train CIFAR100 from scratch:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 260 -ne 32 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 30 --device "cuda:0" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train_cuda0.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 260 -ne 32 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 20 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train_cuda1.out &
 
 def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
 	model, preprocess = clip.load(model_name, device=device, jit=jit) # training or finetuning => jit=False
@@ -483,11 +483,11 @@ def main():
 		num_workers=args.num_workers,
 		print_every=args.print_every,
 		model_name=args.model_name,
-		device=args.device,
 		early_stopping_patience=5,
 		learning_rate=args.learning_rate,
 		weight_decay=args.weight_decay,
 		dataset_name=args.dataset,
+		device=args.device,
 		freeze_layers=args.freeze_layers,
 		results_dir=os.path.join(args.dataset, "results")
 	)
