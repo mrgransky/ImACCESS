@@ -2,11 +2,55 @@ from utils import *
 
 # run in pouta:
 # finetune CIFAR10x dataset with given frozen layers:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 64 -ne 32 -lr 1e-5 -wd 1e-4 --print_every 100 -nw 30 --device "cuda:3" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cifar100_finetune_cuda3.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 256 -ne 32 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 30 --device "cuda:3" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cifar100_finetune_cuda3.out &
 
 # train CIFAR100 from scratch:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 64 -ne 32 -lr 1e-5 -wd 1e-4 --print_every 100 -nw 30 --device "cuda:0" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train_cuda0.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 256 -ne 32 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 30 --device "cuda:0" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train_cuda0.out &
 
+def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
+	model, preprocess = clip.load(model_name, device=device, jit=jit) # training or finetuning => jit=False
+	model = model.float() # Convert model parameters to FP32
+	input_resolution = model.visual.input_resolution
+	context_length = model.context_length
+	vocab_size = model.vocab_size
+	print("Model parameters:", f"{np.sum([int(np.prod(p.shape)) for p in model.parameters()]):,}")
+	print("Input resolution:", input_resolution)
+	print("Context length:", context_length)
+	print("Vocab size:", vocab_size)
+	return model, preprocess
+
+def get_dataset(dname:str="CIFAR10"):
+	if dname == 'CIFAR100':
+		train_dataset = CIFAR100(
+			root=os.path.expanduser("~/.cache"), 
+			train=True,
+			download=True,
+			transform=None
+		)
+		test_dataset = CIFAR100(
+			root=os.path.expanduser("~/.cache"), 
+			train=False,
+			download=True,
+			transform=None
+		)
+	elif dname == 'CIFAR10':
+		train_dataset = CIFAR10(
+			root=os.path.expanduser("~/.cache"), 
+			train=True,
+			download=True,
+			transform=None,
+		)
+		test_dataset = CIFAR10(
+			root=os.path.expanduser("~/.cache"), 
+			train=False,
+			download=True,
+			transform=None,
+		)
+	else:
+		raise ValueError(f"Invalid dataset name: {dname}. Choose from CIFAR10 or CIFAR100")
+	print(train_dataset)
+	print(test_dataset)
+	return train_dataset, test_dataset
 
 class CIFARDATASET(torch.utils.data.Dataset):
 	def __init__(self, dataset, transformer=None,):
@@ -20,8 +64,8 @@ class CIFARDATASET(torch.utils.data.Dataset):
 				[
 					T.ToTensor(),
 					T.Normalize(
-						(0.48145466, 0.4578275, 0.40821073), 
-						(0.26862954, 0.26130258, 0.27577711)
+						(0.491, 0.482, 0.446), 
+						(0.247, 0.243, 0.261)
 					)
 				]
 			)
@@ -61,116 +105,224 @@ def get_dataloaders(train_dataset, test_dataset, preprocess, batch_size=32, num_
 	)
 	return train_loader, test_loader
 
-def evaluate(model, test_loader, criterion, device:str="cuda"):
-	model.eval()
-	total_loss = 0
-	total_correct_text_description_for_each_image = 0
-	total_correct_image_for_each_text_description = 0
-	with torch.no_grad():
-		for batch_idx, batch in enumerate(test_loader):
-			images, labels = batch
-			images = images.to(device)
-			labels = labels.to(device)
-			logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
-			_, predicted_idxs_imgs = torch.max(input=logits_per_image, dim=1, keepdim=True)
-			_, predicted_idxs_txts = torch.max(input=logits_per_text, dim=1, keepdim=True)
-			# Get the indices of the correct text descriptions for each image
-			correct_text_description_idxs = torch.argmax(labels, dim=1)
-			# Compare the predicted indexes with the correct indexes
-			total_correct_text_description_for_each_image += (predicted_idxs_imgs == correct_text_description_idxs.unsqueeze(1)).sum().item()
-			total_correct_image_for_each_text_description += (predicted_idxs_txts == correct_text_description_idxs.unsqueeze(1)).sum().item()
-			# Compute validation loss
-			ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
-			loss_img = criterion(logits_per_image, ground_truth) 
-			loss_txt = criterion(logits_per_text, ground_truth)
-			valid_loss = 0.5 * (loss_img + loss_txt)
-			total_loss += valid_loss.item()
-	avg_loss = total_loss / len(test_loader)
-	accuracy_text_description_for_each_image = total_correct_text_description_for_each_image / len(test_loader.dataset)
-	accuracy_text_image_for_each_text_description = total_correct_image_for_each_text_description / len(test_loader.dataset)
-	return avg_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description
+# def evaluate(model, test_loader, criterion, device="cuda"):
+# 	model.eval()
+# 	total_loss = 0
+# 	correct_text_description = 0
+# 	correct_image_for_text = 0
+# 	total_samples = 0
+# 	with torch.no_grad():
+# 		for bidx, (images, labels) in enumerate(test_loader):
+# 			images, labels = images.to(device), labels.to(device)
+# 			batch_size = images.size(0)
+# 			total_samples += batch_size
+# 			logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
+# 			# Predictions
+# 			predicted_text_idxs = torch.argmax(input=logits_per_image, dim=1) # indices of maximum value of all elements in input tensor. torch.Size([batch_size])
+# 			predicted_image_idxs = torch.argmax(input=logits_per_text, dim=1)
+# 			correct_labels = torch.arange(start=0, end=batch_size, dtype=torch.long, device=device) # ground truth labels for each batch item torch.Size([batch_size])
+# 			# Metrics
+# 			correct_text_description += (predicted_text_idxs == correct_labels).sum().item()
+# 			correct_image_for_text += (predicted_image_idxs == correct_labels).sum().item()
+# 			# Validation loss
+# 			loss_img = criterion(logits_per_image, correct_labels)
+# 			loss_txt = criterion(logits_per_text, correct_labels)
+# 			total_loss += 0.5 * (loss_img.item() + loss_txt.item())
+# 	# Compute average loss and accuracies
+# 	avg_loss = total_loss / len(test_loader)
+# 	accuracy_text_description = correct_text_description / total_samples
+# 	accuracy_image_for_text = correct_image_for_text / total_samples
+# 	return avg_loss, accuracy_text_description, accuracy_image_for_text
+
+# def plot_loss_accuracy(
+# 		train_losses,
+# 		val_losses,
+# 		validation_accuracy_text_description_for_each_image_list,
+# 		validation_accuracy_text_image_for_each_text_description_list,
+# 		losses_file_path: str="losses.png",
+# 		accuracy_file_path: str="accuracy.png",
+# 	):
+# 	num_epochs = len(train_losses)
+# 	if num_epochs == 1:
+# 		return
+# 	epochs = range(1, num_epochs + 1)
+
+# 	plt.figure(figsize=(12, 6))
+# 	plt.plot(epochs, train_losses, marker='o', linestyle='-', color='b', label='Training Loss')
+# 	plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation Loss')
+# 	plt.xlabel('Epoch')
+# 	plt.ylabel('Loss')
+# 	plt.tight_layout()
+# 	plt.legend()
+# 	plt.title(os.path.splitext(os.path.basename(losses_file_path))[0], fontsize=10)
+# 	plt.savefig(losses_file_path)
+# 	plt.close()
+
+# 	plt.figure(figsize=(12, 6))
+# 	plt.plot(epochs, validation_accuracy_text_description_for_each_image_list, marker='o', linestyle='-', color='b', label='Validation Accuracy [text description for each image]')
+# 	plt.plot(epochs, validation_accuracy_text_image_for_each_text_description_list, marker='o', linestyle='-', color='r', label='Validation Accuracy [image for each text description]')
+# 	plt.xlabel('Epoch')
+# 	plt.ylabel('Accuracy')
+# 	plt.title(os.path.splitext(os.path.basename(accuracy_file_path))[0], fontsize=10)
+# 	plt.tight_layout()
+# 	plt.legend()
+# 	plt.savefig(accuracy_file_path)
+# 	plt.close()
+
+def evaluate(model, test_loader, criterion, device="cuda", top_k=(1, 3, 5)):
+		model.eval()
+		total_loss = 0
+		correct_text_description = 0
+		correct_image_for_text = 0
+		total_samples = 0
+		top_k_accuracy = {k: 0 for k in top_k}
+		reciprocal_ranks = []
+		cosine_similarities = []
+		precision_list, recall_list, f1_list = [], [], []
+
+		with torch.no_grad():
+				for bidx, (images, labels) in enumerate(test_loader):
+						images, labels = images.to(device), labels.to(device)
+						batch_size = images.size(0)
+						total_samples += batch_size
+
+						logits_per_image, logits_per_text = model(images, labels)  # Output sizes: [batch_size, batch_size]
+
+						# Predictions and Ground Truth
+						predicted_text_idxs = torch.argmax(input=logits_per_image, dim=1)
+						predicted_image_idxs = torch.argmax(input=logits_per_text, dim=1)
+						correct_labels = torch.arange(start=0, end=batch_size, dtype=torch.long, device=device)
+
+						# Metrics
+						correct_text_description += (predicted_text_idxs == correct_labels).sum().item()
+						correct_image_for_text += (predicted_image_idxs == correct_labels).sum().item()
+
+						# Top-k Accuracy
+						for k in top_k:
+								top_k_preds = torch.topk(logits_per_image, k=k, dim=1).indices
+								top_k_accuracy[k] += (top_k_preds == correct_labels.unsqueeze(1)).any(dim=1).sum().item()
+
+						# Reciprocal Rank
+						for i in range(batch_size):
+								ranks = torch.argsort(logits_per_image[i], descending=True)
+								rank_of_true_label = (ranks == correct_labels[i]).nonzero(as_tuple=True)[0].item() + 1
+								reciprocal_ranks.append(1 / rank_of_true_label)
+
+						# Cosine Similarity
+						cos_sim = torch.nn.functional.cosine_similarity(
+								logits_per_image, logits_per_text, dim=1
+						).cpu().numpy()
+						cosine_similarities.extend(cos_sim)
+
+						# Precision, Recall, F1
+						precision = (predicted_text_idxs == correct_labels).sum().item() / predicted_text_idxs.size(0)
+						recall = (predicted_image_idxs == correct_labels).sum().item() / correct_labels.size(0)
+						f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+						precision_list.append(precision)
+						recall_list.append(recall)
+						f1_list.append(f1)
+
+						# Validation Loss
+						loss_img = criterion(logits_per_image, correct_labels)
+						loss_txt = criterion(logits_per_text, correct_labels)
+						total_loss += 0.5 * (loss_img.item() + loss_txt.item())
+
+		# Compute average metrics
+		avg_loss = total_loss / len(test_loader)
+		accuracy_text_description = correct_text_description / total_samples
+		accuracy_image_for_text = correct_image_for_text / total_samples
+		top_k_accuracy = {k: v / total_samples for k, v in top_k_accuracy.items()}
+		mean_reciprocal_rank = sum(reciprocal_ranks) / len(reciprocal_ranks)
+		cosine_sim_mean = np.mean(cosine_similarities)
+		avg_precision = np.mean(precision_list)
+		avg_recall = np.mean(recall_list)
+		avg_f1 = np.mean(f1_list)
+
+		return (
+				avg_loss,
+				accuracy_text_description,
+				accuracy_image_for_text,
+				top_k_accuracy,
+				mean_reciprocal_rank,
+				cosine_sim_mean,
+				avg_precision,
+				avg_recall,
+				avg_f1,
+		)
 
 def plot_loss_accuracy(
-		train_losses,
-		val_losses,
-		validation_accuracy_text_description_for_each_image_list,
-		validation_accuracy_text_image_for_each_text_description_list,
-		losses_file_path: str="losses.png",
-		accuracy_file_path: str="accuracy.png",
-	):
-	num_epochs = len(train_losses)
-	if num_epochs == 1:
-		return
-	epochs = range(1, num_epochs + 1)
+				train_losses,
+				val_losses,
+				validation_accuracy_text_description_for_each_image_list,
+				validation_accuracy_text_image_for_each_text_description_list,
+				top_k_accuracy_list,
+				mean_reciprocal_rank_list,
+				cosine_similarity_list,
+				precision_list,
+				recall_list,
+				f1_list,
+				losses_file_path="losses.png",
+				accuracy_file_path="accuracy.png",
+		):
+		num_epochs = len(train_losses)
+		if num_epochs == 1:
+				return
+		epochs = range(1, num_epochs + 1)
 
-	plt.figure(figsize=(13, 6))
-	plt.plot(epochs, train_losses, marker='o', linestyle='-', color='b', label='Training Loss')
-	plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation Loss')
-	plt.xlabel('Epoch')
-	plt.ylabel('Loss')
-	# plt.tight_layout()
-	plt.legend()
-	# plt.title(os.path.basename(losses_file_path), fontsize=8)
-	plt.title(os.path.splitext(os.path.basename(losses_file_path))[0], fontsize=10)
-	plt.savefig(losses_file_path)
-	plt.close()
+		plt.figure(figsize=(12, 6))
+		plt.plot(epochs, train_losses, marker='o', linestyle='-', color='b', label='Training Loss')
+		plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation Loss')
+		plt.xlabel('Epoch')
+		plt.ylabel('Loss')
+		plt.title("Loss Curves")
+		plt.legend()
+		plt.tight_layout()
+		plt.savefig(losses_file_path)
+		plt.close()
 
-	plt.figure(figsize=(13, 6))
-	plt.plot(epochs, validation_accuracy_text_description_for_each_image_list, marker='o', linestyle='-', color='b', label='Validation Accuracy [text description for each image]')
-	plt.plot(epochs, validation_accuracy_text_image_for_each_text_description_list, marker='o', linestyle='-', color='r', label='Validation Accuracy [image for each text description]')
-	plt.xlabel('Epoch')
-	plt.ylabel('Accuracy')
-	# plt.title(os.path.basename(accuracy_file_path), fontsize=8)
-	plt.title(os.path.splitext(os.path.basename(accuracy_file_path))[0], fontsize=10)
-	# plt.tight_layout()
-	plt.legend()
-	plt.savefig(accuracy_file_path)
-	plt.close()
+		plt.figure(figsize=(12, 6))
+		plt.plot(epochs, validation_accuracy_text_description_for_each_image_list, marker='o', label='Validation Accuracy [text description for each image]')
+		plt.plot(epochs, validation_accuracy_text_image_for_each_text_description_list, marker='o', label='Validation Accuracy [image for each text description]')
+		plt.xlabel('Epoch')
+		plt.ylabel('Accuracy')
+		plt.title("Validation Accuracy")
+		plt.legend()
+		plt.tight_layout()
+		plt.savefig(accuracy_file_path)
+		plt.close()
 
-def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
-	model, preprocess = clip.load(model_name, device=device, jit=jit) # training or finetuning => jit=False
-	model = model.float() # Convert model parameters to FP32
-	input_resolution = model.visual.input_resolution
-	context_length = model.context_length
-	vocab_size = model.vocab_size
-	print("Model parameters:", f"{np.sum([int(np.prod(p.shape)) for p in model.parameters()]):,}")
-	print("Input resolution:", input_resolution)
-	print("Context length:", context_length)
-	print("Vocab size:", vocab_size)
-	return model, preprocess
+		plt.figure(figsize=(12, 6))
+		for k, acc in zip([1, 3, 5], zip(*top_k_accuracy_list)):
+				plt.plot(epochs, acc, marker='o', label=f'Top-{k} Accuracy')
+		plt.xlabel('Epoch')
+		plt.ylabel('Accuracy')
+		plt.title("Top-k Accuracy")
+		plt.legend()
+		plt.tight_layout()
+		plt.savefig("top_k_accuracy.png")
+		plt.close()
 
-def get_dataset(dname:str="CIFAR10"):
-	if dname == 'CIFAR100':
-		train_dataset = CIFAR100(
-			root=os.path.expanduser("~/.cache"), 
-			train=True,
-			download=True,
-			transform=None
-		)
-		test_dataset = CIFAR100(
-			root=os.path.expanduser("~/.cache"), 
-			train=False,
-			download=True,
-			transform=None
-		)
-	elif dname == 'CIFAR10':
-		train_dataset = CIFAR10(
-			root=os.path.expanduser("~/.cache"), 
-			train=True,
-			download=True,
-			transform=None
-		)
-		test_dataset = CIFAR10(
-			root=os.path.expanduser("~/.cache"), 
-			train=False,
-			download=True,
-			transform=None
-		)
-	else:
-		raise ValueError(f"Invalid dataset name: {dname}. Choose from CIFAR10 or CIFAR100")
-	print(train_dataset)
-	print(test_dataset)
-	return train_dataset, test_dataset
+		plt.figure(figsize=(12, 6))
+		plt.plot(epochs, mean_reciprocal_rank_list, marker='o', label='Mean Reciprocal Rank')
+		plt.xlabel('Epoch')
+		plt.ylabel('MRR')
+		plt.title("Mean Reciprocal Rank")
+		plt.legend()
+		plt.tight_layout()
+		plt.savefig("mean_reciprocal_rank.png")
+		plt.close()
+
+		plt.figure(figsize=(12, 6))
+		plt.plot(epochs, precision_list, marker='o', label='Precision')
+		plt.plot(epochs, recall_list, marker='o', label='Recall')
+		plt.plot(epochs, f1_list, marker='o', label='F1 Score')
+		plt.xlabel('Epoch')
+		plt.ylabel('Score')
+		plt.title("Precision, Recall, and F1 Score")
+		plt.legend()
+		plt.tight_layout()
+		plt.savefig("precision_recall_f1.png")
+		plt.close()
 
 def finetune(
 		model:nn.Module,
@@ -185,7 +337,6 @@ def finetune(
 		weight_decay:float=1e-3,
 		dataset_name:str="CIFAR10",
 		device:str="cuda",
-		# mode:str="train", # train/finetune
 		freeze_layers: list = None,
 	):
 	mode = "finetune" if freeze_layers else "train"
@@ -241,27 +392,17 @@ def finetune(
 	training_losses, validation_losses = [], []
 	validation_accuracy_text_description_for_each_image_list = []
 	validation_accuracy_text_image_for_each_text_description_list = []
+	top_k_accuracy_list = []
+	mean_reciprocal_rank_list = []
+	cosine_similarity_list = []
+	precision_list, recall_list, f1_list = [], [], []
 	ft_st = time.time()
 	for epoch in range(num_epochs):
 		print(f"Epoch [{epoch+1}/{num_epochs}]")
 		epoch_loss = 0.0
-		for batch_idx, batch in enumerate(train_loader):
+		for bidx, (images, labels) in enumerate(train_loader):
 			optimizer.zero_grad() # Clear gradients from previous batch
-			images, labels = batch # torch.Size([b, 3, 224, 224]), torch.Size([b, 77])
-			images, labels = images.to(device), labels.to(device)
-			# logits_per_image: similarity between image embeddings and all text embeddings in batch
-			# logits_per_text: similarity between text embeddings and all image embeddings in batch
-
-			# # Conventional backpropagation:
-			# logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
-			# ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
-			# loss_img = criterion(logits_per_image, ground_truth) 
-			# loss_txt = criterion(logits_per_text, ground_truth)
-			# total_loss = 0.5 * (loss_img + loss_txt)
-			# total_loss.backward()
-			# torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-			# optimizer.step() # Update weights
-
+			images, labels = images.to(device), labels.to(device) # torch.Size([b, 3, 224, 224]), torch.Size([b, 77])
 			with torch.amp.autocast(device_type=device.type): # # Automatic Mixed Precision (AMP) backpropagation:
 				logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
 				ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
@@ -273,19 +414,26 @@ def finetune(
 			scaler.step(optimizer)
 			scaler.update()
 			scheduler.step() # Update learning rate
-			if batch_idx%print_every==0 or batch_idx+1==len(train_loader):
+			if bidx%print_every==0 or bidx+1==len(train_loader):
 				print(
-					f"\tBatch [{batch_idx+1}/{len(train_loader)}] "
+					f"\tBatch [{bidx+1}/{len(train_loader)}] "
 					f"Loss: {total_loss.item():.7f}",
 				)
 			epoch_loss += total_loss.item()
 		avg_training_loss = epoch_loss / len(train_loader)
 		print(f"Average {mode.capitalize()} Loss: {avg_training_loss:.5f} @ Epoch: {epoch+1}")
 		training_losses.append(avg_training_loss)
-		avg_valid_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description = evaluate(model, test_loader, criterion, device=device)
+		# avg_valid_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description = evaluate(model, test_loader, criterion, device=device)
+		avg_valid_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description, top_k_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, test_loader, criterion, device=device)
 		validation_losses.append(avg_valid_loss)
 		validation_accuracy_text_description_for_each_image_list.append(accuracy_text_description_for_each_image)
 		validation_accuracy_text_image_for_each_text_description_list.append(accuracy_text_image_for_each_text_description)
+		top_k_accuracy_list.append([top_k_accuracy[k] for k in [1, 3, 5]])
+		mean_reciprocal_rank_list.append(mean_reciprocal_rank)
+		cosine_similarity_list.append(cosine_sim_mean)
+		precision_list.append(avg_precision)
+		recall_list.append(avg_recall)
+		f1_list.append(avg_f1)
 		print(
 			f'{mode.capitalize()} Loss: {avg_training_loss:.4f} '
 			f'Validation Loss: {avg_valid_loss:.4f} '
@@ -309,9 +457,6 @@ def finetune(
 
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
 
-	# losses_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
-	# accuracy_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
-
 	if mode == "finetune" and freeze_layers:
 		freeze_layers_str = '_'.join(freeze_layers)
 		losses_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png"
@@ -320,13 +465,25 @@ def finetune(
 		losses_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
 		accuracy_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
 
+	# plot_loss_accuracy(
+	# 	train_losses=training_losses,
+	# 	val_losses=validation_losses,
+	# 	validation_accuracy_text_description_for_each_image_list=validation_accuracy_text_description_for_each_image_list,
+	# 	validation_accuracy_text_image_for_each_text_description_list=validation_accuracy_text_image_for_each_text_description_list,
+	# 	losses_file_path=losses_fpth,
+	# 	accuracy_file_path=accuracy_fpth,
+	# )
 	plot_loss_accuracy(
 		train_losses=training_losses,
 		val_losses=validation_losses,
 		validation_accuracy_text_description_for_each_image_list=validation_accuracy_text_description_for_each_image_list,
 		validation_accuracy_text_image_for_each_text_description_list=validation_accuracy_text_image_for_each_text_description_list,
-		losses_file_path=losses_fpth,
-		accuracy_file_path=accuracy_fpth,
+		top_k_accuracy_list=top_k_accuracy_list,
+		mean_reciprocal_rank_list=mean_reciprocal_rank_list,
+		cosine_similarity_list=cosine_similarity_list,
+		precision_list=precision_list,
+		recall_list=recall_list,
+		f1_list=f1_list,
 	)
 
 def main():
@@ -337,7 +494,7 @@ def main():
 	parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
-	parser.add_argument('--print_every', type=int, default=150, help='Print loss')
+	parser.add_argument('--print_every', type=int, default=250, help='Print loss')
 	parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--dataset', '-d', type=str, choices=['CIFAR10', 'CIFAR100'], default='CIFAR10', help='Choose dataset (CIFAR10/CIFAR100)')
 	parser.add_argument('--freeze_layers', '-fl', nargs='+', default=[], help='Layers to freeze, no "" needed')

@@ -28,7 +28,7 @@ def get_dataset(dataset_dir:str="/path/to/dataset"):
 
 def main():
 	set_seeds()
-	print(clip.available_models())
+	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 	model, preprocess = load_model(
 		model_name=args.model_name,
 		device=args.device,
