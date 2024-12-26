@@ -2,7 +2,7 @@ from utils import *
 
 # run in pouta:
 # finetune CIFAR10x dataset with given frozen layers:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 256 -ne 32 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 30 --device "cuda:3" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cifar100_finetune_cuda3.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 256 -ne 5 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 30 --device "cuda:3" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cifar100_finetune_cuda3.out &
 
 # train CIFAR100 from scratch:
 # $ nohup python -u finetune.py -d CIFAR100 -bs 256 -ne 32 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 30 --device "cuda:0" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train_cuda0.out &
@@ -251,78 +251,92 @@ def evaluate(model, test_loader, criterion, device="cuda", top_k=(1, 3, 5)):
 		)
 
 def plot_loss_accuracy(
-				train_losses,
-				val_losses,
-				validation_accuracy_text_description_for_each_image_list,
-				validation_accuracy_text_image_for_each_text_description_list,
-				top_k_accuracy_list,
-				mean_reciprocal_rank_list,
-				cosine_similarity_list,
-				precision_list,
-				recall_list,
-				f1_list,
-				losses_file_path="losses.png",
-				accuracy_file_path="accuracy.png",
-		):
-		num_epochs = len(train_losses)
-		if num_epochs == 1:
-				return
-		epochs = range(1, num_epochs + 1)
+		train_losses,
+		val_losses,
+		validation_accuracy_text_description_for_each_image_list,
+		validation_accuracy_text_image_for_each_text_description_list,
+		top_k_accuracy_list,
+		mean_reciprocal_rank_list,
+		cosine_similarity_list,
+		precision_list,
+		recall_list,
+		f1_list,
+		losses_file_path="losses.png",
+		accuracy_file_path="accuracy.png",
+		topk_accuracy_file_path="top_k_accuracy.png",
+		mean_reciprocal_rank_file_path="mean_reciprocal_rank.png",
+		cosine_similarity_file_path="cosine_similarity.png",
+		precision_recall_f1_file_path="precision_recall_f1.png",
+	):
+	num_epochs = len(train_losses)
+	if num_epochs == 1:
+		return
+	epochs = range(1, num_epochs + 1)
+	
+	plt.figure(figsize=(12, 6))
+	plt.plot(epochs, train_losses, marker='o', linestyle='-', color='b', label='Training Loss')
+	plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation Loss')
+	plt.xlabel('Epoch')
+	plt.ylabel('Loss')
+	plt.title(os.path.splitext(os.path.basename(losses_file_path))[0], fontsize=10)
+	plt.legend()
+	plt.tight_layout()
+	plt.savefig(losses_file_path)
+	plt.close()
 
-		plt.figure(figsize=(12, 6))
-		plt.plot(epochs, train_losses, marker='o', linestyle='-', color='b', label='Training Loss')
-		plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation Loss')
-		plt.xlabel('Epoch')
-		plt.ylabel('Loss')
-		plt.title("Loss Curves")
-		plt.legend()
-		plt.tight_layout()
-		plt.savefig(losses_file_path)
-		plt.close()
-
-		plt.figure(figsize=(12, 6))
-		plt.plot(epochs, validation_accuracy_text_description_for_each_image_list, marker='o', label='Validation Accuracy [text description for each image]')
-		plt.plot(epochs, validation_accuracy_text_image_for_each_text_description_list, marker='o', label='Validation Accuracy [image for each text description]')
-		plt.xlabel('Epoch')
-		plt.ylabel('Accuracy')
-		plt.title("Validation Accuracy")
-		plt.legend()
-		plt.tight_layout()
-		plt.savefig(accuracy_file_path)
-		plt.close()
-
-		plt.figure(figsize=(12, 6))
-		for k, acc in zip([1, 3, 5], zip(*top_k_accuracy_list)):
-				plt.plot(epochs, acc, marker='o', label=f'Top-{k} Accuracy')
-		plt.xlabel('Epoch')
-		plt.ylabel('Accuracy')
-		plt.title("Top-k Accuracy")
-		plt.legend()
-		plt.tight_layout()
-		plt.savefig("top_k_accuracy.png")
-		plt.close()
-
-		plt.figure(figsize=(12, 6))
-		plt.plot(epochs, mean_reciprocal_rank_list, marker='o', label='Mean Reciprocal Rank')
-		plt.xlabel('Epoch')
-		plt.ylabel('MRR')
-		plt.title("Mean Reciprocal Rank")
-		plt.legend()
-		plt.tight_layout()
-		plt.savefig("mean_reciprocal_rank.png")
-		plt.close()
-
-		plt.figure(figsize=(12, 6))
-		plt.plot(epochs, precision_list, marker='o', label='Precision')
-		plt.plot(epochs, recall_list, marker='o', label='Recall')
-		plt.plot(epochs, f1_list, marker='o', label='F1 Score')
-		plt.xlabel('Epoch')
-		plt.ylabel('Score')
-		plt.title("Precision, Recall, and F1 Score")
-		plt.legend()
-		plt.tight_layout()
-		plt.savefig("precision_recall_f1.png")
-		plt.close()
+	plt.figure(figsize=(12, 6))
+	plt.plot(epochs, validation_accuracy_text_description_for_each_image_list, marker='o', label='text retrieval per image')
+	plt.plot(epochs, validation_accuracy_text_image_for_each_text_description_list, marker='o', label='image retrieval per text')
+	plt.xlabel('Epoch')
+	plt.ylabel('Accuracy')
+	plt.title(os.path.splitext(os.path.basename(accuracy_file_path))[0], fontsize=10)
+	plt.legend(title='Validation Accuracy', fontsize=9, title_fontsize=10, loc='best')
+	plt.tight_layout()
+	plt.savefig(accuracy_file_path)
+	plt.close()
+	
+	plt.figure(figsize=(12, 6))
+	for k, acc in zip([1, 3, 5], zip(*top_k_accuracy_list)):
+		plt.plot(epochs, acc, marker='o', label=f'Top-{k} Accuracy')
+	plt.xlabel('Epoch')
+	plt.ylabel('Accuracy')
+	plt.title("Top-k Accuracy")
+	plt.legend()
+	plt.tight_layout()
+	plt.savefig(topk_accuracy_file_path)
+	plt.close()
+	
+	plt.figure(figsize=(12, 6))
+	plt.plot(epochs, mean_reciprocal_rank_list, marker='o', label='Mean Reciprocal Rank')
+	plt.xlabel('Epoch')
+	plt.ylabel('MRR')
+	plt.title("Mean Reciprocal Rank")
+	plt.legend()
+	plt.tight_layout()
+	plt.savefig(mean_reciprocal_rank_file_path)
+	plt.close()
+	
+	plt.figure(figsize=(12, 6))
+	plt.plot(epochs, precision_list, marker='o', label='Precision')
+	plt.plot(epochs, recall_list, marker='o', label='Recall')
+	plt.plot(epochs, f1_list, marker='o', label='F1 Score')
+	plt.xlabel('Epoch')
+	plt.ylabel('Score')
+	plt.title("Precision, Recall, and F1 Score")
+	plt.legend()
+	plt.tight_layout()
+	plt.savefig(precision_recall_f1_file_path)
+	plt.close()
+	
+	plt.figure(figsize=(12, 6))
+	plt.plot(epochs, cosine_similarity_list, marker='o', linestyle='-', color='g', label='Cosine Similarity')
+	plt.xlabel('Epoch')
+	plt.ylabel('Cosine Similarity')
+	plt.title("Cosine Similarity Over Epochs", fontsize=10)
+	plt.tight_layout()
+	plt.legend()
+	plt.savefig(cosine_similarity_file_path)
+	plt.close()
 
 def finetune(
 		model:nn.Module,
@@ -442,7 +456,7 @@ def finetune(
 		)
 
 		############################## Early stopping ##############################
-		mdl_fpth = f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_clip.pth"
+		mdl_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
 		if avg_valid_loss < best_loss:
 			best_loss = avg_valid_loss
 			torch.save(model.state_dict(), mdl_fpth)
@@ -460,10 +474,18 @@ def finetune(
 	if mode == "finetune" and freeze_layers:
 		freeze_layers_str = '_'.join(freeze_layers)
 		losses_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png"
-		accuracy_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png"
+		val_acc_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png"
+		topk_acc_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png"
+		mrr_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mean_reciprocal_rank_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png"
+		cs_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cosine_similarity_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png"
+		pr_f1_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_precision_recall_f1_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png"
 	else:
 		losses_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
-		accuracy_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
+		val_acc_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
+		topk_acc_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
+		mrr_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mean_reciprocal_rank_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
+		cs_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cosine_similarity_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
+		pr_f1_fpth = f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_precision_recall_f1_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png"
 
 	# plot_loss_accuracy(
 	# 	train_losses=training_losses,
@@ -471,7 +493,7 @@ def finetune(
 	# 	validation_accuracy_text_description_for_each_image_list=validation_accuracy_text_description_for_each_image_list,
 	# 	validation_accuracy_text_image_for_each_text_description_list=validation_accuracy_text_image_for_each_text_description_list,
 	# 	losses_file_path=losses_fpth,
-	# 	accuracy_file_path=accuracy_fpth,
+	# 	accuracy_file_path=val_acc_fpth,
 	# )
 	plot_loss_accuracy(
 		train_losses=training_losses,
@@ -484,6 +506,12 @@ def finetune(
 		precision_list=precision_list,
 		recall_list=recall_list,
 		f1_list=f1_list,
+		losses_file_path=losses_fpth,
+		accuracy_file_path=val_acc_fpth,
+		topk_accuracy_file_path=topk_acc_fpth,
+		mean_reciprocal_rank_file_path=mrr_fpth,
+		cosine_similarity_file_path=cs_fpth,
+		precision_recall_f1_file_path=pr_f1_fpth,
 	)
 
 def main():
