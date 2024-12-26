@@ -2,10 +2,10 @@ from utils import *
 
 # run in pouta:
 # finetune CIFAR10x dataset with given frozen layers:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 512 -ne 3 -lr 1e-5 -wd 1e-4 --print_every 100 -nw 30 --device "cuda:3" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cifar100_finetune_cuda3.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 64 -ne 32 -lr 1e-5 -wd 1e-4 --print_every 100 -nw 30 --device "cuda:3" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cifar100_finetune_cuda3.out &
 
 # train CIFAR100 from scratch:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 512 -ne 3 -lr 1e-5 -wd 1e-4 --print_every 100 -nw 30 --device "cuda:0" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train_cuda0.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 64 -ne 32 -lr 1e-5 -wd 1e-4 --print_every 100 -nw 30 --device "cuda:0" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train_cuda0.out &
 
 
 class CIFARDATASET(torch.utils.data.Dataset):
@@ -103,26 +103,26 @@ def plot_loss_accuracy(
 		return
 	epochs = range(1, num_epochs + 1)
 
-	plt.figure(figsize=(8, 8))
+	plt.figure(figsize=(13, 6))
 	plt.plot(epochs, train_losses, marker='o', linestyle='-', color='b', label='Training Loss')
 	plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation Loss')
 	plt.xlabel('Epoch')
 	plt.ylabel('Loss')
-	plt.tight_layout()
+	# plt.tight_layout()
 	plt.legend()
 	# plt.title(os.path.basename(losses_file_path), fontsize=8)
 	plt.title(os.path.splitext(os.path.basename(losses_file_path))[0], fontsize=10)
 	plt.savefig(losses_file_path)
 	plt.close()
 
-	plt.figure(figsize=(8, 8))
+	plt.figure(figsize=(13, 6))
 	plt.plot(epochs, validation_accuracy_text_description_for_each_image_list, marker='o', linestyle='-', color='b', label='Validation Accuracy [text description for each image]')
 	plt.plot(epochs, validation_accuracy_text_image_for_each_text_description_list, marker='o', linestyle='-', color='r', label='Validation Accuracy [image for each text description]')
 	plt.xlabel('Epoch')
 	plt.ylabel('Accuracy')
 	# plt.title(os.path.basename(accuracy_file_path), fontsize=8)
 	plt.title(os.path.splitext(os.path.basename(accuracy_file_path))[0], fontsize=10)
-	plt.tight_layout()
+	# plt.tight_layout()
 	plt.legend()
 	plt.savefig(accuracy_file_path)
 	plt.close()
@@ -193,25 +193,6 @@ def finetune(
 	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{num_workers} cores]".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
-
-	# for name, param in model.named_parameters():
-	# 	# print(f"{name} requires_grad: {param.requires_grad}")
-	# 	if mode == "train":
-	# 		param.requires_grad = True
-	# 	elif mode == "finetune": 
-	# 		if name.startswith(
-	# 			(
-	# 				"visual.conv1", # finetune the first layer of the visual embedding
-	# 				"visual.ln_pre", # finetune the layer normalization of the visual embedding
-	# 				# "visual.positional_embedding", # finetune the positional embedding of the visual embedding
-	# 				# "visual.class_embedding", # finetune the class embedding of the visual embedding
-	# 			)
-	# 		):
-	# 			param.requires_grad = False # freeze the weights of the visual embedding layer
-	# 			print(f"{name} requires_grad: {param.requires_grad} => frozen")
-	# 	else:
-	# 		print(f"Unrecognized mode: {mode}")
-	# 		return
 
 	for name, param in model.named_parameters():
 		if name.startswith(tuple(freeze_layers)):
@@ -299,14 +280,14 @@ def finetune(
 				)
 			epoch_loss += total_loss.item()
 		avg_training_loss = epoch_loss / len(train_loader)
-		print(f"Average Training Loss: {avg_training_loss:.5f} @ Epoch: {epoch+1}")
+		print(f"Average {mode.capitalize()} Loss: {avg_training_loss:.5f} @ Epoch: {epoch+1}")
 		training_losses.append(avg_training_loss)
 		avg_valid_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description = evaluate(model, test_loader, criterion, device=device)
 		validation_losses.append(avg_valid_loss)
 		validation_accuracy_text_description_for_each_image_list.append(accuracy_text_description_for_each_image)
 		validation_accuracy_text_image_for_each_text_description_list.append(accuracy_text_image_for_each_text_description)
 		print(
-			f'Training Loss: {avg_training_loss:.4f} '
+			f'{mode.capitalize()} Loss: {avg_training_loss:.4f} '
 			f'Validation Loss: {avg_valid_loss:.4f} '
 			f'Validation Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.4f} '
 			f'[image for each text description]: {accuracy_text_image_for_each_text_description:.4f}'

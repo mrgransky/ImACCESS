@@ -225,7 +225,7 @@ def main():
 	duplicate_rows = smu_df_merged_raw[duplicates_mask]
 
 	# You can now select the required columns and print the result
-	result = duplicate_rows[['id', 'label', 'title']]
+	result = duplicate_rows#[['id', 'label', 'title']]
 	print(result)
 
 	smu_df_merged_raw = smu_df_merged_raw.drop_duplicates(subset=['img_url']) # drop duplicate firstDigitalObjectUrl
