@@ -2,10 +2,10 @@ from utils import *
 
 # run in pouta:
 # finetune CIFAR10x dataset with given frozen layers:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 260 -ne 32 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 20 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cifar100_finetune_cuda0.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cifar100_finetune.out &
 
 # train CIFAR100 from scratch:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 260 -ne 32 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 20 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train_cuda1.out &
+# $ nohup python -u finetune.py -d CIFAR100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
 	model, preprocess = clip.load(model_name, device=device, jit=jit) # training or finetuning => jit=False
@@ -122,7 +122,7 @@ def evaluate(model, test_loader, criterion, device="cuda", top_k=(1, 3, 5)):
 						batch_size = images.size(0)
 						total_samples += batch_size
 
-						logits_per_image, logits_per_text = model(images, labels)  # Output sizes: [batch_size, batch_size]
+						logits_per_image, logits_per_text = model(images, labels) # Output sizes: [batch_size, batch_size]
 
 						# Predictions and Ground Truth
 						predicted_text_idxs = torch.argmax(input=logits_per_image, dim=1)
@@ -145,9 +145,7 @@ def evaluate(model, test_loader, criterion, device="cuda", top_k=(1, 3, 5)):
 								reciprocal_ranks.append(1 / rank_of_true_label)
 
 						# Cosine Similarity
-						cos_sim = torch.nn.functional.cosine_similarity(
-								logits_per_image, logits_per_text, dim=1
-						).cpu().numpy()
+						cos_sim = torch.nn.functional.cosine_similarity(logits_per_image, logits_per_text, dim=1).cpu().numpy()
 						cosine_similarities.extend(cos_sim)
 
 						# Precision, Recall, F1

@@ -20,10 +20,10 @@ print(args)
 
 # run in pouta:
 # train from scratch:
-# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 260 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_train.out &
+# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 260 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 40 --device "cuda:2" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_train.out &
 
 # finetune:
-# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 260 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:3" -m "finetune" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/historyCLIP_finetune.out &
+# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 260 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 40 --device "cuda:3" -m "finetune" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/historyCLIP_finetune.out &
 
 def get_dataset(dataset_dir:str="/path/to/dataset"):
 	train_dataset = pd.read_csv(os.path.join(dataset_dir, f"train_metadata.csv"))
