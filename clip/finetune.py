@@ -108,9 +108,9 @@ def get_dataset(dname:str="CIFAR10"):
 		)
 	elif dname == 'CINIC10':
 		ddir = {
-			"farid": '/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/CINIC-10',
-			"ubuntu": '/media/volume/ImACCESS/WW_DATASETs/CINIC-10',
-			"alijanif": '/scratch/project_2004072/ImACCESS/WW_DATASETs/CINIC-10',
+			"farid": '/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/CINIC10',
+			"ubuntu": '/media/volume/ImACCESS/WW_DATASETs/CINIC10',
+			"alijanif": '/scratch/project_2004072/ImACCESS/WW_DATASETs/CINIC10',
 		}
 		train_dataset = CINIC10(
 			root=ddir.get(USER),
