@@ -12,6 +12,18 @@ from utils import *
 
 USER = os.environ.get('USER')
 
+def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
+	model, preprocess = clip.load(model_name, device=device, jit=jit) # training or finetuning => jit=False
+	model = model.float() # Convert model parameters to FP32
+	input_resolution = model.visual.input_resolution
+	context_length = model.context_length
+	vocab_size = model.vocab_size
+	print("Model parameters:", f"{np.sum([int(np.prod(p.shape)) for p in model.parameters()]):,}")
+	print("Input resolution:", input_resolution)
+	print("Context length:", context_length)
+	print("Vocab size:", vocab_size)
+	return model, preprocess
+
 class CINIC10(Dataset):
 	classes = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
 	def __init__(self, root, train=True, download=False, transform=None):
@@ -53,18 +65,6 @@ class CINIC10(Dataset):
 			f'    Root location: {self.root}\n' \
 			f'    Split: {split}'
 		)
-
-def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
-	model, preprocess = clip.load(model_name, device=device, jit=jit) # training or finetuning => jit=False
-	model = model.float() # Convert model parameters to FP32
-	input_resolution = model.visual.input_resolution
-	context_length = model.context_length
-	vocab_size = model.vocab_size
-	print("Model parameters:", f"{np.sum([int(np.prod(p.shape)) for p in model.parameters()]):,}")
-	print("Input resolution:", input_resolution)
-	print("Context length:", context_length)
-	print("Vocab size:", vocab_size)
-	return model, preprocess
 
 def get_dataset(dname:str="CIFAR10"):
 	if dname == 'CIFAR100':
@@ -133,8 +133,8 @@ def get_dataset(dname:str="CIFAR10"):
 class CUSTOMIZEDDATASET(torch.utils.data.Dataset):
 	def __init__(self, dataset, transformer=None,):
 		self.dataset = dataset
-		self.images = [img for idx, (img,lbl) in enumerate(dataset)]
-		self.labels = clip.tokenize(texts=[dataset.classes[lbl_idx] for i, (img, lbl_idx) in enumerate(dataset)])
+		# self.images = [img for idx, (img,lbl) in enumerate(self.dataset)]
+		self.labels = clip.tokenize(texts=[dataset.classes[lbl_idx] for i, (img, lbl_idx) in enumerate(self.dataset)])
 		if transformer:
 			self.transform = transformer
 		else:
@@ -149,7 +149,8 @@ class CUSTOMIZEDDATASET(torch.utils.data.Dataset):
 			)
 
 	def __getitem__(self, index):
-		image = self.images[index]
+		# image = self.images[index]
+		image = self.dataset[index][0]
 		text = self.labels[index]
 		return self.transform(image), text
 
