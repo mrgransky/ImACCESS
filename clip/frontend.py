@@ -6,19 +6,19 @@ from torch.utils.data import DataLoader, Dataset
 from PIL import Image
 import random
 
-# from torchvision.datasets import ImageNet
-# train_dataset = ImageNet(
-# 	root=os.path.expanduser("~/.cache"),
-# 	split='train',
-# 	download=True,
-# 	transform=None
-# )
-# test_dataset = ImageNet(
-# 	root=os.path.expanduser("~/.cache"),
-# 	split='val',
-# 	download=True,
-# 	transform=None
-# )
+from torchvision.datasets import ImageNet
+train_dataset = ImageNet(
+	root=os.path.expanduser("~/.cache"),
+	split='train',
+	download=True,
+	transform=None
+)
+test_dataset = ImageNet(
+	root=os.path.expanduser("~/.cache"),
+	split='val',
+	download=True,
+	transform=None
+)
 
 class CINIC10(Dataset):
 	classes = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']

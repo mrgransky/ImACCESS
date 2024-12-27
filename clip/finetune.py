@@ -150,9 +150,9 @@ class CUSTOMIZEDDATASET(torch.utils.data.Dataset):
 
 	def __getitem__(self, index):
 		# image = self.images[index]
-		image = self.dataset[index][0]
-		text = self.labels[index]
-		return self.transform(image), text
+		img = self.dataset[index][0]
+		lbl = self.labels[index]
+		return self.transform(img), lbl
 
 	def __len__(self):
 		return len(self.dataset)
@@ -542,8 +542,8 @@ def main():
 		num_workers=args.num_workers,
 	)
 	print(f"Train Loader: {len(train_loader)} batches, Validation Loader: {len(validation_loader)} batches")
-	# visualize_(dataloader=train_loader, num_samples=5)
-	# return
+	visualize_(dataloader=train_loader, num_samples=5)
+	return
 	finetune(
 		model=model,
 		train_loader=train_loader,
