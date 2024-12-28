@@ -543,7 +543,7 @@ def main():
 	)
 	print(f"Train Loader: {len(train_loader)} batches, Validation Loader: {len(validation_loader)} batches")
 	visualize_(dataloader=train_loader, num_samples=5)
-	return
+	# return
 	finetune(
 		model=model,
 		train_loader=train_loader,
