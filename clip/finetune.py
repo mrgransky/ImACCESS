@@ -8,7 +8,7 @@ from utils import *
 # $ nohup python -u finetune.py -d CIFAR100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune CINIC10 dataset with given frozen layers:
-# $ nohup python -u finetune.py -d CINIC10 -bs 128 -ne 32 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cinic10_finetune.out &
+# $ nohup python -u finetune.py -d CINIC10 -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cinic10_finetune.out &
 
 USER = os.environ.get('USER')
 
@@ -542,8 +542,8 @@ def main():
 		num_workers=args.num_workers,
 	)
 	print(f"Train Loader: {len(train_loader)} batches, Validation Loader: {len(validation_loader)} batches")
-	visualize_(dataloader=train_loader, num_samples=5)
-	return
+	# visualize_(dataloader=train_loader, num_samples=5)
+	# return
 	finetune(
 		model=model,
 		train_loader=train_loader,

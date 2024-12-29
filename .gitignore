@@ -6,6 +6,18 @@
 *.pkl
 *.png
 *.pth
+*.npz
+*.npy
+*.jpg
+*.jpeg
+*.log
+*.txt
+*.zip
+*.tar
+*.tar.gz
+*.tar.xz
+*.tar.bz2
+*.tgz
 models/
 
 # Django

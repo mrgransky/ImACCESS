@@ -1,29 +1,37 @@
 import torch
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
-from transformers import ViTFeatureExtractor, ViTModel, ViTImageProcessor
+from transformers import ViTFeatureExtractor, ViTModel, ViTImageProcessor, ViTForImageClassification
 import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 import os
 
+RESULTS_DIR = "results"
+os.makedirs(RESULTS_DIR, exist_ok=True)
 # Load a sample from CIFAR-10 dataset
 transform = transforms.Compose([
-		transforms.ToTensor(),
-		transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+	transforms.Resize((224, 224)),
+	transforms.ToTensor(),
+	transforms.Normalize(
+		(0.49139968, 0.48215827 ,0.44653124), 
+		(0.24703233, 0.24348505, 0.26158768)
+	),
 ])
 
 cifar10_dataset = datasets.CIFAR10(root=os.path.expanduser("~/.cache"), train=True, download=True, transform=transform)
 loader = DataLoader(cifar10_dataset, batch_size=1, shuffle=True)
 
 # Load pre-trained ViT model and image processor
-image_processor = ViTImageProcessor.from_pretrained("google/vit-base-patch16-224-in21k")
-model = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k", output_attentions=True)
+model_name = 'google/vit-large-patch32-384'
+# model_name = 'google/vit-base-patch16-224-in21k'
+image_processor = ViTImageProcessor.from_pretrained(model_name)
+model = ViTForImageClassification.from_pretrained(model_name, output_attentions=True)
 model.eval()  # Set the model to evaluation mode
 
 # Process one image
 sample = next(iter(loader))
-image_tensor = sample[0].squeeze(0)  # shape should now be [3, 32, 32]
+image_tensor = sample[0].squeeze(0) # shape should now be [3, 32, 32]
 
 # Convert normalized tensor back to image for visualization
 image_for_display = image_tensor.cpu().numpy().transpose(1, 2, 0)  # Convert to HWC format
@@ -36,19 +44,19 @@ pil_image = transforms.ToPILImage()(image_tensor).convert("RGB")
 inputs = image_processor(images=pil_image, return_tensors="pt")
 
 with torch.no_grad():
-		outputs = model(**inputs)
+	outputs = model(**inputs)
 
 # Check if attentions are available
 if outputs.attentions is not None:
-		attention = outputs.attentions[-1][0].mean(dim=1)  # Average across heads
+	attention = outputs.attentions[-1][0].mean(dim=1)  # Average across heads
 else:
-		print("Attention weights are not available. Make sure 'output_attentions' is set to True.")
-		exit()
+	print("Attention weights are not available. Make sure 'output_attentions' is set to True.")
+	exit()
 
 # Resize attention map to match the input image dimensions
 attention_map = attention[0, 1:].view(14, 14).cpu().numpy()  # Removing CLS token
 attention_map = np.interp(attention_map, (attention_map.min(), attention_map.max()), (0, 1))
-resized_attention_map = np.array(Image.fromarray(attention_map).resize((32, 32), Image.BICUBIC))
+resized_attention_map = np.array(Image.fromarray(attention_map).resize((224, 224), Image.BICUBIC))
 
 # Create heatmap
 heatmap = plt.cm.jet(resized_attention_map)[:, :, :3]  # Exclude alpha channel
@@ -73,4 +81,4 @@ ax3.set_title('Attention Heatmap')
 ax3.axis('off')
 
 plt.tight_layout()
-plt.savefig("attention_map.png")
+plt.savefig(os.path.join(RESULTS_DIR, "attention_map.png"))
