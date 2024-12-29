@@ -542,11 +542,7 @@ def main():
 		num_workers=args.num_workers,
 	)
 	print(f"Train Loader: {len(train_loader)} batches, Validation Loader: {len(validation_loader)} batches")
-<<<<<<< HEAD
 	# visualize_(dataloader=train_loader, num_samples=5)
-=======
-	visualize_(dataloader=train_loader, num_samples=5)
->>>>>>> 080b5bc13b74df05adbaa3c6671e02354f74fad2
 	# return
 	finetune(
 		model=model,
