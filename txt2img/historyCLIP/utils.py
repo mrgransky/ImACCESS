@@ -417,6 +417,7 @@ def plot_(train_losses, val_losses, save_path, lr, wd):
 	plt.close()  # Close the figure to free up memory
 
 def set_seeds(seed:int=42, debug:bool=False):
+	print(f"Setting seeds for reproducibility")
 	random.seed(seed)
 	np.random.seed(seed)
 	torch.manual_seed(seed)

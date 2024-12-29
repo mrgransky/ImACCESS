@@ -30,6 +30,10 @@ def get_dataset(dataset_dir:str="/path/to/dataset"):
 	val_dataset = pd.read_csv(os.path.join(dataset_dir, f"val_metadata.csv"))
 	return train_dataset, val_dataset
 
+
+
+
+
 def main():
 	set_seeds()
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
@@ -64,6 +68,8 @@ def main():
 		freeze_layers=args.freeze_layers,
 		results_dir=os.path.join(args.dataset_dir, "results")
 	)
+
+
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
