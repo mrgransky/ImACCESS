@@ -30,7 +30,7 @@ wget https://storage.googleapis.com/vit_models/imagenet21k+imagenet2012/{MODEL_N
 
 ### 2. Train Model
 ```
-python3 train.py --name cifar10-100_500 --dataset cifar10 --model_type ViT-B_16 --pretrained_dir checkpoint/ViT-B_16.npz
+python train.py --name cifar10-100_500 --dataset cifar10 --model_type ViT-B_16 --pretrained_dir checkpoint/ViT-B_16.npz
 ```
 CIFAR-10 and CIFAR-100 are automatically download and train. In order to use a different dataset you need to customize [data_utils.py](./utils/data_utils.py).
 
@@ -38,7 +38,7 @@ The default batch size is 512. When GPU memory is insufficient, you can proceed 
 
 Also can use [Automatic Mixed Precision(Amp)](https://nvidia.github.io/apex/amp.html) to reduce memory usage and train faster
 ```
-python3 train.py --name cifar10-100_500 --dataset cifar10 --model_type ViT-B_16 --pretrained_dir checkpoint/ViT-B_16.npz --fp16 --fp16_opt_level O2
+python train.py --name cifar10-100_500 --dataset cifar10 --model_type ViT-B_16 --pretrained_dir checkpoint/ViT-B_16.npz --fp16 --fp16_opt_level O2
 ```
 
 
@@ -91,23 +91,4 @@ To verify that the converted model weight is correct, we simply compare it with 
 The ViT consists of a Standard Transformer Encoder, and the encoder consists of Self-Attention and MLP module.
 The attention map for the input image can be visualized through the attention score of self-attention.
 
-Visualization code can be found at [visualize_attention_map](./visualize_attention_map.ipynb).
-
-![fig3](./img/figure3.png)
-
-
-## Reference
-* [Google ViT](https://github.com/google-research/vision_transformer)
-* [Pytorch Image Models(timm)](https://github.com/rwightman/pytorch-image-models)
-
-
-## Citations
-
-```bibtex
-@article{dosovitskiy2020,
-  title={An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale},
-  author={Dosovitskiy, Alexey and Beyer, Lucas and Kolesnikov, Alexander and Weissenborn, Dirk and Zhai, Xiaohua and Unterthiner, Thomas and  Dehghani, Mostafa and Minderer, Matthias and Heigold, Georg and Gelly, Sylvain and Uszkoreit, Jakob and Houlsby, Neil},
-  journal={arXiv preprint arXiv:2010.11929},
-  year={2020}
-}
-```
+Visualization code can be found at `visualize_attention_map.ipynb`.
