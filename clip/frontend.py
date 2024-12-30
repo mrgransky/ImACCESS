@@ -2,86 +2,68 @@ from backend import run_backend
 import datetime
 import time
 import os
-from torch.utils.data import DataLoader, Dataset
-from PIL import Image
+import json
 import random
-
-from torchvision.datasets import ImageNet
-train_dataset = ImageNet(
-	root=os.path.expanduser("~/.cache"),
-	split='train',
-	download=True,
-	transform=None
-)
-test_dataset = ImageNet(
-	root=os.path.expanduser("~/.cache"),
-	split='val',
-	download=True,
-	transform=None
-)
-
-class CINIC10(Dataset):
-	classes = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
-	def __init__(self, root, train=True, download=False, transform=None):
-		self.root = root
-		self.train = train
-		self.transform = transform
-		if train:
-			self.data = self._load_data(os.path.join(root, 'train'))
-		else:
-			self.data = self._load_data(os.path.join(root, 'valid'))
-
-	def _load_data(self, directory):
-		data = []
-		labels = []
-		for idx, class_name in enumerate(self.classes):
-			# print(f"Loading {idx} {class_name} images...")
-			class_dir = os.path.join(directory, class_name)
-			for file_name in os.listdir(class_dir):
-				file_path = os.path.join(class_dir, file_name)
-				data.append(file_path)
-				labels.append(idx)
-		return list(zip(data, labels))
-
-	def __len__(self):
-		return len(self.data)
-
-	def __getitem__(self, index):
-		file_path, label = self.data[index]
-		image = Image.open(file_path)
-		if self.transform is not None:
-			image = self.transform(image)
-		return image, label
-
-	def __repr__(self):
-		split = 'Train' if self.train else 'Test'
-		return (
-			f'Dataset CINIC10\n' \
-			f'    Number of datapoints: {len(self)}\n' \
-			f'    Root location: {self.root}\n' \
-			f'    Split: {split}'
-		)
-
 import matplotlib.pyplot as plt
+from datasets import CINIC10, ImageNet
 
-cinic10_dataset_train = CINIC10(root='/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/CINIC-10', train=True)
-random_indices = random.sample(range(len(cinic10_dataset_train)), 10)
+# from torchvision.datasets import ImageNet
+# train_dataset = ImageNet(
+# 	root=os.path.expanduser("~/.cache"),
+# 	split='train',
+# 	download=True,
+# 	transform=None
+# )
+# test_dataset = ImageNet(
+# 	root=os.path.expanduser("~/.cache"),
+# 	split='val',
+# 	download=True,
+# 	transform=None
+# )
+
+# cinic10_dataset_train = CINIC10(root='/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/CINIC10', train=True)
+# random_indices = random.sample(range(len(cinic10_dataset_train)), 10)
+# print(len(random_indices), type(random_indices), random_indices)
+# for i in random_indices:
+# 	image, label = cinic10_dataset_train[i]
+# 	print(f"Image path: {cinic10_dataset_train.data[i][0]}")
+# 	print(f"Label: {label} ({cinic10_dataset_train.classes[label]})")
+# 	print("-" * 50)
+# fig, axs = plt.subplots(2, 5, figsize=(20, 8))
+# for i, idx in enumerate(random_indices):
+# 	image, label = cinic10_dataset_train[idx]
+# 	axs[i // 5, i % 5].imshow(image)
+# 	axs[i // 5, i % 5].set_title(cinic10_dataset_train.classes[label])
+# 	axs[i // 5, i % 5].axis('off')
+# plt.title(f"CINIC10 Dataset {len(random_indices)} Random Images")
+# plt.tight_layout()
+# plt.show()
+
+imgnet = ImageNet(
+	root='/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/IMAGENET', 
+	train=True,
+)
+print(imgnet)
+random_indices = random.sample(range(len(imgnet)), 10)
 print(random_indices)
+print(len(random_indices), type(random_indices), random_indices)
 for i in random_indices:
-		image, label = cinic10_dataset_train[i]
-		print(f"Image path: {cinic10_dataset_train.data[i][0]}")
-		print(f"Label: {label} ({cinic10_dataset_train.classes[label]})")
-		print("-" * 50)
+	image, label_idx = imgnet[i]
+	# print(f"Image path: {imgnet.data[i][0]}")
+	print(f"Image path: {imgnet.data[i]}")
+	print(f"[Label] index: {label_idx} SynsetID: {imgnet.synset_ids[label_idx]} ({imgnet.classes[label_idx]})")
+	print("-" * 50)
+fig, axs = plt.subplots(2, 5, figsize=(22, 8))
 
-# Visualize some images and their corresponding labels
-fig, axs = plt.subplots(2, 5, figsize=(20, 8))
 for i, idx in enumerate(random_indices):
-		image, label = cinic10_dataset_train[idx]
-		axs[i // 5, i % 5].imshow(image)
-		axs[i // 5, i % 5].set_title(cinic10_dataset_train.classes[label])
-		axs[i // 5, i % 5].axis('off')
+	image, label_idx = imgnet[idx]
+	axs[i // 5, i % 5].imshow(image)
+	axs[i // 5, i % 5].set_title(f"{imgnet.synset_ids[label_idx]} {imgnet.classes[label_idx]}", fontsize=8)
+	axs[i // 5, i % 5].axis('off')
+plt.suptitle(f"IMAGENET {len(random_indices)} Random Images")
 plt.tight_layout()
 plt.show()
+
 # def main():
 #   run_backend()
 #   return

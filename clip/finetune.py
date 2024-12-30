@@ -1,4 +1,5 @@
 from utils import *
+from datasets import *
 
 # run in pouta:
 # finetune CIFAR10x dataset with given frozen layers:
@@ -24,49 +25,13 @@ def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
 	print("Vocab size:", vocab_size)
 	return model, preprocess
 
-class CINIC10(Dataset):
-	classes = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
-	def __init__(self, root, train=True, download=False, transform=None):
-		self.root = root
-		self.train = train
-		self.transform = transform
-		if train:
-			self.data = self._load_data(os.path.join(root, 'train'))
-		else:
-			self.data = self._load_data(os.path.join(root, 'valid'))
-
-	def _load_data(self, directory):
-		data = []
-		labels = []
-		for idx, class_name in enumerate(self.classes):
-			# print(f"Loading {idx} {class_name} images...")
-			class_dir = os.path.join(directory, class_name)
-			for file_name in os.listdir(class_dir):
-				file_path = os.path.join(class_dir, file_name)
-				data.append(file_path)
-				labels.append(idx)
-		return list(zip(data, labels))
-
-	def __len__(self):
-		return len(self.data)
-
-	def __getitem__(self, index):
-		file_path, label = self.data[index]
-		image = Image.open(file_path)
-		if self.transform is not None:
-			image = self.transform(image)
-		return image, label
-
-	def __repr__(self):
-		split = 'Train' if self.train else 'Test'
-		return (
-			f'Dataset CINIC10\n' \
-			f'    Number of datapoints: {len(self)}\n' \
-			f'    Root location: {self.root}\n' \
-			f'    Split: {split}'
-		)
-
 def get_dataset(dname:str="CIFAR10"):
+	dname = dname.upper()
+	ddir = {
+		"farid": f'/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/{dname}',
+		"ubuntu": f'/media/volume/ImACCESS/WW_DATASETs/{dname}',
+		"alijanif": f'/scratch/project_2004072/ImACCESS/WW_DATASETs/{dname}',
+	}
 	if dname == 'CIFAR100':
 		train_dataset = CIFAR100(
 			root=os.path.expanduser("~/.cache"), 
@@ -93,25 +58,18 @@ def get_dataset(dname:str="CIFAR10"):
 			download=True,
 			transform=None,
 		)
-	elif dname == 'ImageNet':
+	elif dname == 'IMAGENET':
 		train_dataset = ImageNet(
-			root=os.path.expanduser("~/.cache"),
-			split='train',
-			download=True,
+			root=ddir.get(USER),
+			train=True,
 			transform=None
 		)
 		validation_dataset = ImageNet(
-			root=os.path.expanduser("~/.cache"),
-			split='val',
-			download=True,
+			root=ddir.get(USER),
+			train=False,
 			transform=None
-		)
+	)	
 	elif dname == 'CINIC10':
-		ddir = {
-			"farid": '/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/CINIC10',
-			"ubuntu": '/media/volume/ImACCESS/WW_DATASETs/CINIC10',
-			"alijanif": '/scratch/project_2004072/ImACCESS/WW_DATASETs/CINIC10',
-		}
 		train_dataset = CINIC10(
 			root=ddir.get(USER),
 			train=True,
@@ -125,37 +83,10 @@ def get_dataset(dname:str="CIFAR10"):
 			transform=None
 		)
 	else:
-		raise ValueError(f"Invalid dataset name: {dname}. Available: [CIFAR10, CIFAR100]")
+		raise ValueError(f"Invalid dataset name: {dname}. Available: [CIFAR10, CIFAR100, IMAGENET, CINIC10]")
 	print(train_dataset)
 	print(validation_dataset)
 	return train_dataset, validation_dataset
-
-class CUSTOMIZEDDATASET(torch.utils.data.Dataset):
-	def __init__(self, dataset, transformer=None,):
-		self.dataset = dataset
-		# self.images = [img for idx, (img,lbl) in enumerate(self.dataset)]
-		self.labels = clip.tokenize(texts=[dataset.classes[lbl_idx] for i, (img, lbl_idx) in enumerate(self.dataset)])
-		if transformer:
-			self.transform = transformer
-		else:
-			self.transform = T.Compose(
-				[
-					T.ToTensor(),
-					T.Normalize(
-						(0.491, 0.482, 0.446), 
-						(0.247, 0.243, 0.261)
-					)
-				]
-			)
-
-	def __getitem__(self, index):
-		# image = self.images[index]
-		img = self.dataset[index][0]
-		lbl = self.labels[index]
-		return self.transform(img), lbl
-
-	def __len__(self):
-		return len(self.dataset)
 
 def get_dataloaders(train_dataset, valid_dataset, preprocess, batch_size=32, num_workers=10):
 	trainset = CUSTOMIZEDDATASET(
@@ -520,7 +451,7 @@ def main():
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--print_every', type=int, default=250, help='Print loss')
 	parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
-	parser.add_argument('--dataset', '-d', type=str, choices=['CIFAR10', 'CIFAR100', 'CINIC10', 'ImageNet'], default='CIFAR10', help='Choose dataset (CIFAR10/CIFAR100)')
+	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='CIFAR10', help='Choose dataset (CIFAR10/CIFAR100)')
 	parser.add_argument('--freeze_layers', '-fl', nargs='+', default=[], help='Layers to freeze, no "" needed')
 
 	args, unknown = parser.parse_known_args()
