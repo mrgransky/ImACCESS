@@ -9,7 +9,7 @@ from datasets import *
 # $ nohup python -u finetune.py -d cifar100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # strategic finetune cifar100:
-# $ nohup python -u finetune.py -d cifar100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_sft.out &
+# $ nohup python -u finetune.py -d cifar100 -bs 512 -ne 32 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_sft.out &
 
 # finetune CINIC10 dataset with given frozen layers:
 # $ nohup python -u finetune.py -d cinic10 -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cinic10_finetune.out &
@@ -277,6 +277,13 @@ def plot_loss_accuracy(
 	plt.savefig(cosine_similarity_file_path)
 	plt.close()
 
+def get_num_vit_blocks(model):
+	if not hasattr(model, 'visual') or not hasattr(model.visual, 'transformer'):
+		raise ValueError("Provided model does not have a 'visual.transformer' attribute.")
+	vis_transformer = model.visual.transformer
+	txt_transformer = model.transformer
+	return len(vis_transformer.resblocks), len(txt_transformer.resblocks)
+
 def print_model_stat(model, epoch):
 	"""Print statistics about trainable vs frozen parameters"""
 	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -497,13 +504,6 @@ def finetune(
 		cosine_similarity_file_path=cs_fpth,
 		precision_recall_f1_file_path=pr_f1_fpth,
 	)
-
-def get_num_vit_blocks(model):
-	if not hasattr(model, 'visual') or not hasattr(model.visual, 'transformer'):
-		raise ValueError("Provided model does not have a 'visual.transformer' attribute.")
-	vis_transformer = model.visual.transformer
-	txt_transformer = model.transformer
-	return len(vis_transformer.resblocks), len(txt_transformer.resblocks)
 
 def strategic_finetune(
 		model:nn.Module,
