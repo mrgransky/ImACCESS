@@ -277,13 +277,27 @@ def plot_loss_accuracy(
 	plt.savefig(cosine_similarity_file_path)
 	plt.close()
 
-def get_progressive_freeze_schedule(num_epochs:int=5):
+def print_model_stat(model, epoch):
+	"""Print statistics about trainable vs frozen parameters"""
+	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)	
+	total_params = sum(p.numel() for p in model.parameters())
+	trainable_percent = (trainable_params / total_params) * 100
+	frozen_percent = (frozen_params / total_params) * 100
+	print(
+		f"[Model Parameters Statictics Epoch: {epoch}] Total: {total_params:,} "
+		f"Trainable: {trainable_params:,} ({trainable_percent:.2f}%) "
+		f"Frozen: {frozen_params:,} ({frozen_percent:.2f}%)"
+		.center(160, "-")
+	)
+
+def get_progressive_freeze_schedule(num_epochs:int=5, num_visual_transformer_blocks:int=12, num_text_transformer_blocks:int=12):
 	"""Define which layers to freeze at each epoch"""
 	layer_groups = {
 		'visual_frontend': ['visual.conv1', 'visual.class_embedding', 'visual.positional_embedding'],
-		'visual_transformer': [f'visual.transformer.resblocks.{i}' for i in range(12)],
+		'visual_transformer': [f'visual.transformer.resblocks.{i}' for i in range(num_visual_transformer_blocks)],
 		'text_frontend': ['token_embedding', 'positional_embedding'],
-		'text_transformer': [f'transformer.resblocks.{i}' for i in range(12)],
+		'text_transformer': [f'transformer.resblocks.{i}' for i in range(num_text_transformer_blocks)],
 		'final_layers': ['visual.ln_post', 'text_projection', 'logit_scale']
 	}
 	schedule = {
@@ -307,27 +321,11 @@ def get_progressive_freeze_schedule(num_epochs:int=5):
 	}
 	return schedule
 
-def print_model_stat(model, epoch):
-	"""Print statistics about trainable vs frozen parameters"""
-	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)	
-	total_params = sum(p.numel() for p in model.parameters())
-	trainable_percent = (trainable_params / total_params) * 100
-	frozen_percent = (frozen_params / total_params) * 100
-	print(
-		f"[Model Parameters Statictics «Epcoh: {epoch}»] Total: {total_params:,} "
-		f"Trainable: {trainable_params:,} ({trainable_percent:.2f}%) "
-		f"Frozen: {frozen_params:,} ({frozen_percent:.2f}%)"
-		.center(160, "-")
-	)
-
 def set_layer_freeze_status(model, layers_to_freeze):
-	"""Freeze or unfreeze specified layers"""
 	for name, param in model.named_parameters():
 		param.requires_grad = True  # First unfreeze everything
 		if any(layer in name for layer in layers_to_freeze):
 			param.requires_grad = False
-			print(f"Freezing: {name}")
 
 def finetune(
 		model:nn.Module,
@@ -500,6 +498,13 @@ def finetune(
 		precision_recall_f1_file_path=pr_f1_fpth,
 	)
 
+def get_num_vit_blocks(model):
+	if not hasattr(model, 'visual') or not hasattr(model.visual, 'transformer'):
+		raise ValueError("Provided model does not have a 'visual.transformer' attribute.")
+	vis_transformer = model.visual.transformer
+	txt_transformer = model.transformer
+	return len(vis_transformer.resblocks), len(txt_transformer.resblocks)
+
 def strategic_finetune(
 		model:nn.Module,
 		train_loader:DataLoader,
@@ -521,7 +526,13 @@ def strategic_finetune(
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
 
-	freeze_schedule = get_progressive_freeze_schedule(num_epochs=num_epochs)
+	vis_nblocks, txt_nblocks = get_num_vit_blocks(model)
+	print(f"[Transformer Blocks] Vision: {vis_nblocks} | Text: {txt_nblocks}")
+	freeze_schedule = get_progressive_freeze_schedule(
+		num_epochs=num_epochs,
+		num_visual_transformer_blocks=vis_nblocks,
+		num_text_transformer_blocks=txt_nblocks,
+	)
 	print(f"Freeze Schedule:\n{json.dumps(freeze_schedule, indent=2)}")
 	best_loss = np.inf
 	no_improvement_count = 0
