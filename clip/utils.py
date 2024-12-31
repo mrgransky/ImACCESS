@@ -1,7 +1,9 @@
 import os
 import torch
 import clip
+import datetime
 import time
+import json
 import re
 import argparse
 import random
@@ -10,11 +12,10 @@ from PIL import Image
 from torchvision.datasets import CIFAR10, CIFAR100, ImageNet, ImageFolder
 from torch.utils.data import DataLoader, Dataset
 import torch.nn as nn
-import torch.optim as optim
+from torch.optim import AdamW, SGD, Adam, lr_scheduler
 import matplotlib.pyplot as plt
 import torchvision.transforms as T
 import warnings
-import datetime
 warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_scheduler')
 
 def visualize_(dataloader, num_samples=5, ):

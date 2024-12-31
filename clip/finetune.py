@@ -11,6 +11,9 @@ from datasets import *
 # finetune CINIC10 dataset with given frozen layers:
 # $ nohup python -u finetune.py -d CINIC10 -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cinic10_finetune.out &
 
+# finetune imagenet dataset with given frozen layers:
+# $ nohup python -u finetune.py -d imagenet -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:3" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/imagenet_finetune.out &
+
 USER = os.environ.get('USER')
 
 def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
@@ -88,7 +91,7 @@ def get_dataset(dname:str="CIFAR10"):
 	print(validation_dataset)
 	return train_dataset, validation_dataset
 
-def get_dataloaders(train_dataset, valid_dataset, preprocess, batch_size=32, num_workers=10):
+def get_dataloaders(train_dataset, valid_dataset, preprocess, batch_size=32, nw=10):
 	trainset = CUSTOMIZEDDATASET(
 		dataset=train_dataset, 
 		transformer=preprocess,
@@ -102,15 +105,15 @@ def get_dataloaders(train_dataset, valid_dataset, preprocess, batch_size=32, num
 		dataset=trainset,
 		batch_size=batch_size,
 		shuffle=True,
-		num_workers=num_workers,
+		num_workers=nw,
 		pin_memory=True, # Move data to GPU faster if using CUDA
-		persistent_workers=True if num_workers > 1 else False,  # Keep workers alive if memory allows
+		persistent_workers=True if nw > 1 else False,  # Keep workers alive if memory allows
 	)
 	validation_loader = DataLoader(
 		dataset=validset,
 		batch_size=batch_size,
 		shuffle=False,
-		num_workers=num_workers,
+		num_workers=nw,
 		pin_memory=True, # when using CUDA
 	)
 	return train_loader, validation_loader
@@ -271,12 +274,64 @@ def plot_loss_accuracy(
 	plt.savefig(cosine_similarity_file_path)
 	plt.close()
 
+def get_progressive_freeze_schedule(num_epochs:int=5):
+	"""Define which layers to freeze at each epoch"""
+	layer_groups = {
+		'visual_frontend': ['visual.conv1', 'visual.class_embedding', 'visual.positional_embedding'],
+		'visual_transformer': [f'visual.transformer.resblocks.{i}' for i in range(12)],
+		'text_frontend': ['token_embedding', 'positional_embedding'],
+		'text_transformer': [f'transformer.resblocks.{i}' for i in range(12)],
+		'final_layers': ['visual.ln_post', 'text_projection', 'logit_scale']
+	}
+	schedule = {
+		# Phase 1: Epoch 0
+		0: (
+			layer_groups['visual_frontend'] +							# Freeze visual frontend
+			layer_groups['visual_transformer'][:-2] +			# Freeze first 10 transformer blocks, train last 2
+			layer_groups['text_frontend'] +								# Freeze text frontend
+			layer_groups['text_transformer'][:-2]					# Freeze first 10 text blocks, train last 2
+		),
+
+		# Phase 2: Middle of training (num_epochs // 2)
+		num_epochs // 2: (
+			layer_groups['visual_frontend'] +							# Keep visual frontend frozen
+			layer_groups['visual_transformer'][:-4] +			# Freeze first 8 blocks, train last 4
+			layer_groups['text_frontend']									# Keep text frontend frozen
+		),
+
+		# Phase 3: Final epochs (num_epochs - 2)
+		num_epochs - 2: []																# Train all layers
+	}
+	return schedule
+
+def print_model_stat(model, epoch):
+	"""Print statistics about trainable vs frozen parameters"""
+	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)	
+	total_params = sum(p.numel() for p in model.parameters())
+	trainable_percent = (trainable_params / total_params) * 100
+	frozen_percent = (frozen_params / total_params) * 100
+	print(
+		f"[Model Parameters Statictics «Epcoh: {epoch}»] Total: {total_params:,} "
+		f"Trainable: {trainable_params:,} ({trainable_percent:.2f}%) "
+		f"Frozen: {frozen_params:,} ({frozen_percent:.2f}%)"
+		.center(160, "-")
+	)
+
+def set_layer_freeze_status(model, layers_to_freeze):
+	"""Freeze or unfreeze specified layers"""
+	for name, param in model.named_parameters():
+		param.requires_grad = True  # First unfreeze everything
+		if any(layer in name for layer in layers_to_freeze):
+			param.requires_grad = False
+			print(f"Freezing: {name}")
+
 def finetune(
 		model:nn.Module,
 		train_loader:DataLoader,
 		validation_loader:DataLoader,
 		num_epochs:int=5,
-		num_workers:int=10,
+		nw:int=10,
 		print_every:int=150,
 		model_name:str="ViT-B/32",
 		early_stopping_patience:int=5,
@@ -291,11 +346,12 @@ def finetune(
 	freeze_layers = freeze_layers or []
 	os.makedirs(results_dir, exist_ok=True)
 
-	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{num_workers} cores]".center(160, "-"))
+	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
 
 	for name, param in model.named_parameters():
+		# print(f"{name} requires_grad: {param.requires_grad}")
 		if name.startswith(tuple(freeze_layers)):
 			param.requires_grad = False
 			print(f"{name} requires_grad: {param.requires_grad} => frozen")
@@ -310,20 +366,19 @@ def finetune(
 	print(
 		f"[Model Parameters Statictics] Total: {total_params:,} "
 		f"Trainable: {trainable_params:,} ({trainable_percent:.2f}%) "
-		f"Frozen Parameters: {frozen_params:,} ({frozen_percent:.2f}%)"
+		f"Frozen: {frozen_params:,} ({frozen_percent:.2f}%)"
 		.center(160, "-")
 	)
-
 	best_loss = np.inf
 	no_improvement_count = 0
-	optimizer = optim.AdamW(
-		params=model.parameters(),
+	optimizer = AdamW(
+		params=[p for p in model.parameters() if p.requires_grad],# Only optimizes parameters that require gradients
 		lr=learning_rate,
 		betas=(0.9,0.98),
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
-	scheduler = torch.optim.lr_scheduler.OneCycleLR(
+	scheduler = lr_scheduler.OneCycleLR(
 		optimizer=optimizer, 
 		max_lr=learning_rate, 
 		steps_per_epoch=len(train_loader), 
@@ -441,6 +496,155 @@ def finetune(
 		precision_recall_f1_file_path=pr_f1_fpth,
 	)
 
+def strategic_finetune(
+		model:nn.Module,
+		train_loader:DataLoader,
+		validation_loader:DataLoader,
+		num_epochs:int=5,
+		nw:int=10,
+		print_every:int=150,
+		model_name:str="ViT-B/32",
+		early_stopping_patience:int=5,
+		learning_rate:float=1e-5,
+		weight_decay:float=1e-3,
+		dataset_name:str="CIFAR10",
+		device:str="cuda",
+		results_dir:str="results",
+	):
+	os.makedirs(results_dir, exist_ok=True)
+	mode = "strategic_finetune"
+	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
+	if torch.cuda.is_available():
+		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
+
+	freeze_schedule = get_progressive_freeze_schedule(num_epochs=num_epochs)
+	print(f"Freeze Schedule:\n{json.dumps(freeze_schedule, indent=2)}")
+	best_loss = np.inf
+	no_improvement_count = 0
+	criterion = nn.CrossEntropyLoss()
+	scaler = torch.amp.GradScaler(
+		device=device,
+		init_scale=2**16,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
+	)
+	training_losses, validation_losses = [], []
+	validation_accuracy_text_description_for_each_image_list = []
+	validation_accuracy_text_image_for_each_text_description_list = []
+	top_k_accuracy_list = []
+	mean_reciprocal_rank_list = []
+	cosine_similarity_list = []
+	precision_list, recall_list, f1_list = [], [], []
+	ft_st = time.time()
+	for epoch in range(num_epochs):
+		print(f"Epoch [{epoch+1}/{num_epochs}]")
+		layers_to_freeze = freeze_schedule.get(epoch)
+		if layers_to_freeze:
+			set_layer_freeze_status(model, layers_to_freeze)
+			# Print parameter status after schedule update
+			print(f"\nTrainable parameters after epoch {epoch} schedule update:")
+			print_model_stat(model)
+		# Update optimizer for newly trainable parameters
+		optimizer = AdamW(
+			params=[p for p in model.parameters() if p.requires_grad],
+			lr=learning_rate,
+			betas=(0.9, 0.98),
+			eps=1e-6,
+			weight_decay=weight_decay,
+		)
+		# Update scheduler for new optimizer
+		scheduler = lr_scheduler.OneCycleLR(
+			optimizer=optimizer,
+			max_lr=learning_rate,
+			steps_per_epoch=len(train_loader),
+			epochs=num_epochs - epoch,  # Adjust for remaining epochs
+			pct_start=0.1,
+			anneal_strategy='cos',
+		)
+		epoch_loss = 0.0
+		for bidx, (images, labels) in enumerate(train_loader):
+			optimizer.zero_grad() # Clear gradients from previous batch
+			images, labels = images.to(device), labels.to(device) # torch.Size([b, 3, 224, 224]), torch.Size([b, 77])
+			with torch.amp.autocast(device_type=device.type): # # Automatic Mixed Precision (AMP) backpropagation:
+				logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
+				ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
+				loss_img = criterion(logits_per_image, ground_truth)
+				loss_txt = criterion(logits_per_text, ground_truth)
+				total_loss = 0.5 * (loss_img + loss_txt)
+			scaler.scale(total_loss).backward()
+			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # stabilize training if exploding gradients
+			scaler.step(optimizer)
+			scaler.update()
+			scheduler.step() # Update learning rate
+			if bidx%print_every==0 or bidx+1==len(train_loader):
+				print(
+					f"\tBatch [{bidx+1}/{len(train_loader)}] "
+					f"Loss: {total_loss.item():.7f}",
+				)
+			epoch_loss += total_loss.item()
+		avg_training_loss = epoch_loss / len(train_loader)
+		print(f"Average {mode.capitalize()} Loss: {avg_training_loss:.5f} @ Epoch: {epoch+1}")
+		training_losses.append(avg_training_loss)
+		avg_valid_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description, top_k_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
+		validation_losses.append(avg_valid_loss)
+		validation_accuracy_text_description_for_each_image_list.append(accuracy_text_description_for_each_image)
+		validation_accuracy_text_image_for_each_text_description_list.append(accuracy_text_image_for_each_text_description)
+		top_k_accuracy_list.append([top_k_accuracy[k] for k in [1, 3, 5]])
+		mean_reciprocal_rank_list.append(mean_reciprocal_rank)
+		cosine_similarity_list.append(cosine_sim_mean)
+		precision_list.append(avg_precision)
+		recall_list.append(avg_recall)
+		f1_list.append(avg_f1)
+		print(
+			f'{mode.capitalize()} Loss: {avg_training_loss:.4f} '
+			f'Validation Loss: {avg_valid_loss:.4f} '
+			f'Validation Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.4f} '
+			f'[image for each text description]: {accuracy_text_image_for_each_text_description:.4f}'
+		)
+
+		############################## Early stopping ##############################
+		mdl_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth")
+		if avg_valid_loss < best_loss:
+			best_loss = avg_valid_loss
+			torch.save(model.state_dict(), mdl_fpth)
+			print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.5f}")
+			no_improvement_count = 0
+		else:
+			no_improvement_count += 1
+			if no_improvement_count >= early_stopping_patience:
+				print(f"Early stopping triggered after {epoch+1} epochs.")
+				break
+		############################## Early stopping ##############################
+
+	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
+
+	losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mean_reciprocal_rank_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cosine_similarity_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_precision_recall_f1_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+
+	plot_loss_accuracy(
+		train_losses=training_losses,
+		val_losses=validation_losses,
+		validation_accuracy_text_description_for_each_image_list=validation_accuracy_text_description_for_each_image_list,
+		validation_accuracy_text_image_for_each_text_description_list=validation_accuracy_text_image_for_each_text_description_list,
+		top_k_accuracy_list=top_k_accuracy_list,
+		mean_reciprocal_rank_list=mean_reciprocal_rank_list,
+		cosine_similarity_list=cosine_similarity_list,
+		precision_list=precision_list,
+		recall_list=recall_list,
+		f1_list=f1_list,
+		losses_file_path=losses_fpth,
+		accuracy_file_path=val_acc_fpth,
+		topk_accuracy_file_path=topk_acc_fpth,
+		mean_reciprocal_rank_file_path=mrr_fpth,
+		cosine_similarity_file_path=cs_fpth,
+		precision_recall_f1_file_path=pr_f1_fpth,
+	)
+
 def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for CIFAR10x Dataset")
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
@@ -470,17 +674,34 @@ def main():
 		valid_dataset=validation_dataset, 
 		preprocess=preprocess,
 		batch_size=args.batch_size,
-		num_workers=args.num_workers,
+		nw=args.num_workers,
 	)
 	print(f"Train Loader: {len(train_loader)} batches, Validation Loader: {len(validation_loader)} batches")
 	# visualize_(dataloader=train_loader, num_samples=5)
 	# return
-	finetune(
+	# finetune(
+	# 	model=model,
+	# 	train_loader=train_loader,
+	# 	validation_loader=validation_loader,
+	# 	num_epochs=args.num_epochs,
+	# 	nw=args.num_workers,
+	# 	print_every=args.print_every,
+	# 	model_name=args.model_name,
+	# 	early_stopping_patience=5,
+	# 	learning_rate=args.learning_rate,
+	# 	weight_decay=args.weight_decay,
+	# 	dataset_name=args.dataset,
+	# 	device=args.device,
+	# 	freeze_layers=args.freeze_layers,
+	# 	results_dir=os.path.join(args.dataset, "results")
+	# )
+
+	strategic_finetune(
 		model=model,
 		train_loader=train_loader,
 		validation_loader=validation_loader,
 		num_epochs=args.num_epochs,
-		num_workers=args.num_workers,
+		nw=args.num_workers,
 		print_every=args.print_every,
 		model_name=args.model_name,
 		early_stopping_patience=5,
@@ -488,7 +709,6 @@ def main():
 		weight_decay=args.weight_decay,
 		dataset_name=args.dataset,
 		device=args.device,
-		freeze_layers=args.freeze_layers,
 		results_dir=os.path.join(args.dataset, "results")
 	)
 
