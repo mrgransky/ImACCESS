@@ -343,6 +343,7 @@ def finetune(
 		results_dir:str="results",
 	):
 	mode = "finetune" if freeze_layers else "train"
+	mode = mode.upper()
 	freeze_layers = freeze_layers or []
 	os.makedirs(results_dir, exist_ok=True)
 
@@ -426,7 +427,7 @@ def finetune(
 				)
 			epoch_loss += total_loss.item()
 		avg_training_loss = epoch_loss / len(train_loader)
-		print(f"Average {mode.capitalize()} Loss: {avg_training_loss:.5f} @ Epoch: {epoch+1}")
+		print(f"Average {mode} Loss: {avg_training_loss:.5f} @ Epoch: {epoch+1}")
 		training_losses.append(avg_training_loss)
 		avg_valid_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description, top_k_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
 		validation_losses.append(avg_valid_loss)
@@ -439,7 +440,7 @@ def finetune(
 		recall_list.append(avg_recall)
 		f1_list.append(avg_f1)
 		print(
-			f'{mode.capitalize()} Loss: {avg_training_loss:.4f} '
+			f'{mode} Loss: {avg_training_loss:.4f} '
 			f'Validation Loss: {avg_valid_loss:.4f} '
 			f'Validation Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.4f} '
 			f'[image for each text description]: {accuracy_text_image_for_each_text_description:.4f}'
@@ -512,7 +513,7 @@ def strategic_finetune(
 		results_dir:str="results",
 	):
 	os.makedirs(results_dir, exist_ok=True)
-	mode = "strategic_finetune"
+	mode = "strategic_finetune".upper()
 	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
@@ -584,7 +585,7 @@ def strategic_finetune(
 				)
 			epoch_loss += total_loss.item()
 		avg_training_loss = epoch_loss / len(train_loader)
-		print(f"Average {mode.capitalize()} Loss: {avg_training_loss:.5f} @ Epoch: {epoch+1}")
+		print(f"Average {mode} Loss: {avg_training_loss:.5f} @ Epoch: {epoch+1}")
 		training_losses.append(avg_training_loss)
 		avg_valid_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description, top_k_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
 		validation_losses.append(avg_valid_loss)
@@ -597,7 +598,7 @@ def strategic_finetune(
 		recall_list.append(avg_recall)
 		f1_list.append(avg_f1)
 		print(
-			f'{mode.capitalize()} Loss: {avg_training_loss:.4f} '
+			f'{mode} Loss: {avg_training_loss:.4f} '
 			f'Validation Loss: {avg_valid_loss:.4f} '
 			f'Validation Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.4f} '
 			f'[image for each text description]: {accuracy_text_image_for_each_text_description:.4f}'
