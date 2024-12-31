@@ -9,14 +9,6 @@ import argparse
 import random
 import numpy as np
 from PIL import Image
-from torchvision.datasets import CIFAR10, CIFAR100, ImageNet, ImageFolder
-from torch.utils.data import DataLoader, Dataset
-import torch.nn as nn
-from torch.optim import AdamW, SGD, Adam, lr_scheduler
-import matplotlib.pyplot as plt
-import torchvision.transforms as T
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_scheduler')
 
 def visualize_(dataloader, num_samples=5, ):
 	for batch_idx, (batch_imgs, batch_lbls) in enumerate(dataloader):

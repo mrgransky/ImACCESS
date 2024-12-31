@@ -65,7 +65,9 @@ nltk.download(
 	# raise_on_error=True,
 )
 
-warnings.filterwarnings('ignore')
+# warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_scheduler')
+
 logging.basicConfig(level=logging.INFO)
 
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
