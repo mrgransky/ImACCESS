@@ -3,13 +3,13 @@ from datasets import *
 
 # run in pouta:
 # finetune CIFAR10x dataset with given frozen layers:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cifar100_finetune.out &
+# $ nohup python -u finetune.py -d cifar100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cifar100_finetune.out &
 
-# train CIFAR100 from scratch:
-# $ nohup python -u finetune.py -d CIFAR100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
+# train cifar100 from scratch:
+# $ nohup python -u finetune.py -d cifar100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune CINIC10 dataset with given frozen layers:
-# $ nohup python -u finetune.py -d CINIC10 -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cinic10_finetune.out &
+# $ nohup python -u finetune.py -d cinic10 -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cinic10_finetune.out &
 
 # finetune imagenet dataset with given frozen layers:
 # $ nohup python -u finetune.py -d imagenet -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:3" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/imagenet_finetune.out &
@@ -86,7 +86,7 @@ def get_dataset(dname:str="CIFAR10"):
 			transform=None
 		)
 	else:
-		raise ValueError(f"Invalid dataset name: {dname}. Available: [CIFAR10, CIFAR100, IMAGENET, CINIC10]")
+		raise ValueError(f"Invalid dataset name: {dname}. Available: [CIFAR10, cifar100, IMAGENET, CINIC10]")
 	print(train_dataset)
 	print(validation_dataset)
 	return train_dataset, validation_dataset
@@ -656,7 +656,7 @@ def main():
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--print_every', type=int, default=250, help='Print loss')
 	parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
-	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='CIFAR10', help='Choose dataset (CIFAR10/CIFAR100)')
+	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar10', help='Choose dataset (CIFAR10/cifar100)')
 	parser.add_argument('--freeze_layers', '-fl', nargs='+', default=[], help='Layers to freeze, no "" needed')
 
 	args, unknown = parser.parse_known_args()
