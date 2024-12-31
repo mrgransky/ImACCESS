@@ -8,6 +8,9 @@ from datasets import *
 # train cifar100 from scratch:
 # $ nohup python -u finetune.py -d cifar100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
+# strategic finetune cifar100:
+# $ nohup python -u finetune.py -d cifar100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_sft.out &
+
 # finetune CINIC10 dataset with given frozen layers:
 # $ nohup python -u finetune.py -d cinic10 -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cinic10_finetune.out &
 
@@ -543,9 +546,7 @@ def strategic_finetune(
 		layers_to_freeze = freeze_schedule.get(epoch)
 		if layers_to_freeze:
 			set_layer_freeze_status(model, layers_to_freeze)
-			# Print parameter status after schedule update
-			print(f"\nTrainable parameters after epoch {epoch} schedule update:")
-			print_model_stat(model)
+			print_model_stat(model, epoch=epoch)
 		# Update optimizer for newly trainable parameters
 		optimizer = AdamW(
 			params=[p for p in model.parameters() if p.requires_grad],
