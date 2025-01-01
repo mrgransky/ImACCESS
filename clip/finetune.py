@@ -285,13 +285,6 @@ def plot_loss_accuracy(
 	plt.savefig(cosine_similarity_file_path)
 	plt.close()
 
-def get_num_vit_blocks(model):
-	if not hasattr(model, 'visual') or not hasattr(model.visual, 'transformer'):
-		raise ValueError("Provided model does not have a 'visual.transformer' attribute.")
-	vis_transformer = model.visual.transformer
-	txt_transformer = model.transformer
-	return len(vis_transformer.resblocks), len(txt_transformer.resblocks)
-
 def print_model_stat(model, epoch):
 	"""Print statistics about trainable vs frozen parameters"""
 	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -305,6 +298,13 @@ def print_model_stat(model, epoch):
 		f"Frozen: {frozen_params:,} ({frozen_percent:.2f}%)"
 		.center(160, "-")
 	)
+
+def get_num_vit_blocks(model):
+	if not hasattr(model, 'visual') or not hasattr(model.visual, 'transformer'):
+		raise ValueError("Provided model does not have a 'visual.transformer' attribute.")
+	vis_transformer = model.visual.transformer
+	txt_transformer = model.transformer
+	return len(vis_transformer.resblocks), len(txt_transformer.resblocks)
 
 def get_progressive_freeze_schedule(num_epochs:int=5, num_visual_transformer_blocks:int=12, num_text_transformer_blocks:int=12):
 	"""Define which layers to freeze at each epoch"""

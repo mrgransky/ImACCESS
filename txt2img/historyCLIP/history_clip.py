@@ -22,6 +22,10 @@ print(args)
 # train from scratch:
 # $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 260 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 40 --device "cuda:2" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_train.out &
 
+# strategic finetune:
+# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 192 -ne 64 -lr 1e-3 -wd 1e-3 --print_every 150 -nw 40 --device "cuda:2" -md "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_sft.out &
+# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 32 -ne 32 -lr 1e-4 -wd 1e-3 --print_every 150 -nw 40 --device "cuda:0" -md "ViT-L/14" > /media/volume/ImACCESS/trash/historyCLIP_sft_large_vit.out &
+
 # run finetune in pouta:
 # $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 260 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 40 --device "cuda:3" -m "finetune" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/historyCLIP_finetune.out &
 
