@@ -300,46 +300,88 @@ def print_model_stat(model, epoch):
 	)
 
 def get_num_vit_blocks(model):
+	"""Get number of transformer blocks in visual and text encoders"""
 	if not hasattr(model, 'visual') or not hasattr(model.visual, 'transformer'):
-		raise ValueError("Provided model does not have a 'visual.transformer' attribute.")
+		raise ValueError("Model structure not compatible - missing visual transformer")
 	vis_transformer = model.visual.transformer
 	txt_transformer = model.transformer
 	return len(vis_transformer.resblocks), len(txt_transformer.resblocks)
 
 def get_progressive_freeze_schedule(num_epochs:int=5, num_visual_transformer_blocks:int=12, num_text_transformer_blocks:int=12):
-	"""Define which layers to freeze at each epoch"""
+	"""Creates a sophisticated progressive fine-tuning schedule with 5 phases"""	
+	# Define all layer groups
 	layer_groups = {
-		'visual_frontend': ['visual.conv1', 'visual.class_embedding', 'visual.positional_embedding'],
-		'visual_transformer': [f'visual.transformer.resblocks.{i}' for i in range(num_visual_transformer_blocks)],
-		'text_frontend': ['token_embedding', 'positional_embedding'],
-		'text_transformer': [f'transformer.resblocks.{i}' for i in range(num_text_transformer_blocks)],
-		'final_layers': ['visual.ln_post', 'text_projection', 'logit_scale']
+		'visual_frontend': [
+			'visual.conv1', 
+			'visual.class_embedding',
+			'visual.positional_embedding'
+		],
+		'visual_transformer': [
+			f'visual.transformer.resblocks.{i}' 
+			for i in range(num_visual_transformer_blocks)
+		],
+		'text_frontend': [
+			'token_embedding',
+			'positional_embedding'
+		],
+		'text_transformer': [
+			f'transformer.resblocks.{i}' 
+			for i in range(num_text_transformer_blocks)
+		],
+		'projections': [
+			'visual.ln_post',
+			'text_projection',
+			'logit_scale'
+		]
 	}
+	# Calculate phase boundaries
+	phase1 = num_epochs // 5  # First 20% epochs
+	phase2 = num_epochs * 2 // 5  # Next 20% epochs
+	phase3 = num_epochs * 3 // 5  # Middle 20% epochs
+	phase4 = num_epochs * 4 // 5  # Next-to-last 20% epochs
 	schedule = {
-		# Phase 1: Epoch 0
+		# Phase 0: Train only projection layers
 		0: (
-			layer_groups['visual_frontend'] +							# Freeze visual frontend
-			layer_groups['visual_transformer'][:-2] +			# Freeze first 10 transformer blocks, train last 2
-			layer_groups['text_frontend'] +								# Freeze text frontend
-			layer_groups['text_transformer'][:-2]					# Freeze first 10 text blocks, train last 2
+			layer_groups['visual_frontend'] +
+			layer_groups['visual_transformer'] +
+			layer_groups['text_frontend'] + 
+			layer_groups['text_transformer']
 		),
-
-		# Phase 2: Middle of training (num_epochs // 2)
-		num_epochs // 2: (
-			layer_groups['visual_frontend'] +							# Keep visual frontend frozen
-			layer_groups['visual_transformer'][:-4] +			# Freeze first 8 blocks, train last 4
-			layer_groups['text_frontend']									# Keep text frontend frozen
+		# Phase 1: Unfreeze last few transformer blocks
+		phase1: (
+			layer_groups['visual_frontend'] +
+			layer_groups['visual_transformer'][:-2] +
+			layer_groups['text_frontend'] +
+			layer_groups['text_transformer'][:-2]
 		),
-
-		# Phase 3: Final epochs (num_epochs - 2)
-		num_epochs - 2: []																# Train all layers
+		# Phase 2: Unfreeze more transformer blocks
+		phase2: (
+			layer_groups['visual_frontend'] +
+			layer_groups['visual_transformer'][:-4] +
+			layer_groups['text_frontend'] +
+			layer_groups['text_transformer'][:-4]
+		),
+		# Phase 3: Unfreeze most transformer blocks, keep frontends frozen
+		phase3: (
+			layer_groups['visual_frontend'] +
+			layer_groups['visual_transformer'][:-6] +
+			layer_groups['text_frontend'] +
+			layer_groups['text_transformer'][:-6]
+		),
+		# Phase 4: Unfreeze everything except frontends
+		phase4: (
+			layer_groups['visual_frontend'] +
+			layer_groups['text_frontend']
+		),
 	}
+
 	return schedule
 
 def set_layer_freeze_status(model, layers_to_freeze):
+	"""Freeze/unfreeze layers based on schedule"""
 	for name, param in model.named_parameters():
-		param.requires_grad = True  # First unfreeze everything
-		if any(layer in name for layer in layers_to_freeze):
+		param.requires_grad = True # Unfreeze all layers first
+		if any(layer in name for layer in layers_to_freeze): # Freeze layers in the list
 			param.requires_grad = False
 
 def finetune(
@@ -470,7 +512,7 @@ def finetune(
 		if avg_valid_loss < best_loss:
 			best_loss = avg_valid_loss
 			torch.save(model.state_dict(), mdl_fpth)
-			print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.5f}")
+			print(f"Saving model in « {mdl_fpth} » | best avg loss: {best_loss:.5f}")
 			no_improvement_count = 0
 		else:
 			no_improvement_count += 1
