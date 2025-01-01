@@ -463,7 +463,10 @@ def finetune(
 		)
 
 		############################## Early stopping ##############################
-		mdl_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth")
+		mdl_fpth = os.path.join(
+			results_dir,
+			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_lr_{learning_rate}_wd_{weight_decay}_clip.pth"
+		)
 		if avg_valid_loss < best_loss:
 			best_loss = avg_valid_loss
 			torch.save(model.state_dict(), mdl_fpth)
@@ -625,7 +628,10 @@ def strategic_finetune(
 		)
 
 		############################## Early stopping ##############################
-		mdl_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth")
+		mdl_fpth = os.path.join(
+			results_dir,
+			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_lr_{learning_rate}_wd_{weight_decay}_clip.pth"
+		)
 		if avg_valid_loss < best_loss:
 			best_loss = avg_valid_loss
 			torch.save(model.state_dict(), mdl_fpth)
