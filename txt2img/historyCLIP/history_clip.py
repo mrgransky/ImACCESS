@@ -5,7 +5,7 @@ from finetune import finetune, strategic_finetune
 parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 parser.add_argument('--num_workers', '-nw', type=int, default=18, help='Number of CPUs [def: max cpus]')
-parser.add_argument('--num_epochs', '-ne', type=int, default=5, help='Number of epochs')
+parser.add_argument('--num_epochs', '-ne', type=int, default=7, help='Number of epochs')
 parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
 parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
 parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
@@ -52,40 +52,40 @@ def main():
 	)
 	print(f"Train Loader: {len(train_loader)} batches, Validation Loader: {len(validation_loader)} batches")
 	# visualize_(dataloader=train_loader, num_samples=5)
-	# finetune(
-	# 	model=model,
-	# 	train_loader=train_loader,
-	# 	validation_loader=validation_loader,
-	# 	num_epochs=args.num_epochs,
-	# 	nw=args.num_workers,
-	# 	print_every=args.print_every,
-	# 	model_name=args.model_name,
-	# 	early_stopping_patience=5,
-	# 	learning_rate=args.learning_rate,
-	# 	weight_decay=args.weight_decay,
-	# 	dataset_name=os.path.basename(args.dataset_dir),
-	# 	device=args.device,
-	# 	freeze_layers=args.freeze_layers,
-	# 	results_dir=os.path.join(args.dataset_dir, "results")
-	# )
-
-	strategic_finetune(
-		model=model,
-		train_loader=train_loader,
-		validation_loader=validation_loader,
-		num_epochs=args.num_epochs,
-		nw=args.num_workers,
-		print_every=args.print_every,
-		model_name=args.model_name,
-		early_stopping_patience=5,
-		learning_rate=args.learning_rate,
-		weight_decay=args.weight_decay,
-		dataset_name=os.path.basename(args.dataset_dir),
-		device=args.device,
-		results_dir=os.path.join(args.dataset_dir, "results")
-	)
-
-
+	use_strategic_finetune = True
+	if use_strategic_finetune:
+		strategic_finetune(
+			model=model,
+			train_loader=train_loader,
+			validation_loader=validation_loader,
+			num_epochs=args.num_epochs,
+			nw=args.num_workers,
+			print_every=args.print_every,
+			model_name=args.model_name,
+			early_stopping_patience=5,
+			learning_rate=args.learning_rate,
+			weight_decay=args.weight_decay,
+			dataset_name=os.path.basename(args.dataset_dir),
+			device=args.device,
+			results_dir=os.path.join(args.dataset_dir, "results")
+		)
+	else:
+		finetune(
+			model=model,
+			train_loader=train_loader,
+			validation_loader=validation_loader,
+			num_epochs=args.num_epochs,
+			nw=args.num_workers,
+			print_every=args.print_every,
+			model_name=args.model_name,
+			early_stopping_patience=5,
+			learning_rate=args.learning_rate,
+			weight_decay=args.weight_decay,
+			dataset_name=os.path.basename(args.dataset_dir),
+			device=args.device,
+			freeze_layers=args.freeze_layers,
+			results_dir=os.path.join(args.dataset_dir, "results")
+		)
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
