@@ -34,13 +34,12 @@ ddir="/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES"
 python -u history_clip.py \
 	--dataset_dir $ddir \
 	--num_epochs 32 \
-	--num_workers 30 \
-	--print_every 10 \
+	--num_workers 40 \
+	--print_every 50 \
 	--batch_size 512 \
 	--learning_rate 1e-4 \
 	--weight_decay 1e-3 \
 	--model_name "ViT-B/32" \
-	--mode "train" \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

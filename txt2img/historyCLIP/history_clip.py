@@ -3,6 +3,7 @@ from dataset_loader import get_dataloaders
 from finetune import finetune, strategic_finetune
 
 parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
+parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 parser.add_argument('--num_workers', '-nw', type=int, default=18, help='Number of CPUs [def: max cpus]')
 parser.add_argument('--num_epochs', '-ne', type=int, default=7, help='Number of epochs')
@@ -11,7 +12,6 @@ parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='sm
 parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
 parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
-parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
 parser.add_argument('--freeze_layers', '-fl', nargs='+', default=[], help='Layers to freeze, no "" needed')
 
 args, unknown = parser.parse_known_args()
@@ -23,7 +23,7 @@ print(args)
 # $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 260 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 40 --device "cuda:2" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_train.out &
 
 # strategic finetune:
-# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 256 -ne 128 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 40 --device "cuda:2" -md "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_sft.out &
+# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 261 -ne 128  -lr 5e-4 -wd 1e-3 --print_every 150 -nw 40 --device "cuda:2" -md "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_sft.out &
 # $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 32 -ne 32 -lr 1e-4 -wd 1e-3 --print_every 150 -nw 40 --device "cuda:0" -md "ViT-L/14" > /media/volume/ImACCESS/trash/historyCLIP_sft_large_vit.out &
 
 # run finetune in pouta:
