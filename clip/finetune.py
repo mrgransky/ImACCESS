@@ -307,39 +307,46 @@ def get_num_vit_blocks(model):
 	txt_transformer = model.transformer
 	return len(vis_transformer.resblocks), len(txt_transformer.resblocks)
 
-def get_progressive_freeze_schedule(num_epochs:int=5, num_visual_transformer_blocks:int=12, num_text_transformer_blocks:int=12):
-	"""Creates a sophisticated progressive fine-tuning schedule with 5 phases"""
+def get_clip_layer_groups(nv:int=12, nt:int=12):
 	# Define all layer groups
 	layer_groups = {
-		'visual_frontend': [
-			'visual.conv1',
-			'visual.class_embedding',
-			'visual.positional_embedding'
-		],
-		'visual_transformer': [
-			f'visual.transformer.resblocks.{i}'
-			for i in range(num_visual_transformer_blocks)
-		],
-		'text_frontend': [
-			'token_embedding',
-			'positional_embedding'
-		],
-		'text_transformer': [
-			f'transformer.resblocks.{i}'
-			for i in range(num_text_transformer_blocks)
-		],
-		'projections': [
-			'visual.ln_post',
-			'text_projection',
-			'logit_scale'
-		]
+		'visual_frontend': ['visual.conv1','visual.class_embedding','visual.positional_embedding'],
+		'visual_transformer': [f'visual.transformer.resblocks.{i}' for i in range(nv)],
+		'text_frontend': ['token_embedding','positional_embedding'],
+		'text_transformer': [f'transformer.resblocks.{i}' for i in range(nt)],
+		'projections': ['visual.ln_post','text_projection','logit_scale'],
 	}
+	return layer_groups
+
+def get_progressive_freeze_schedule(layer_groups:dict):
+	total_v_layers = len(layer_groups['visual_transformer'])
+	total_t_layers = len(layer_groups['text_transformer'])
+	print(f"Total visual layers: {total_v_layers} | 80%: {int(0.8*total_v_layers)} 60%: {int(0.6*total_v_layers)} 40%: {int(0.4*total_v_layers)}")
+	print(f"Total text layers: {total_t_layers} | 80%: {int(0.8*total_t_layers)} 60%: {int(0.6*total_t_layers)} 40%: {int(0.4*total_t_layers)}")
+	# Define the freeze schedule
+	schedule = [
+		# Phase 0: Train only projection layers @ epoch 0
+		layer_groups['visual_transformer'] + layer_groups['text_transformer'],
+		# Phase 1: Unfreeze 80% of transformer blocks:
+		layer_groups['visual_transformer'][:int(0.8*total_v_layers)] + layer_groups['text_transformer'][:int(0.8*total_t_layers)],
+		# Phase 2: Unfreeze 60% of transformer blocks:
+		layer_groups['visual_transformer'][:int(0.6*total_v_layers)] + layer_groups['text_transformer'][:int(0.6*total_t_layers)],
+		# Phase 3: Unfreeze 40% of transformer blocks:
+		layer_groups['visual_transformer'][:int(0.4*total_v_layers)] + layer_groups['text_transformer'][:int(0.4*total_t_layers)],
+		# Phase 4: Unfreeze everything except frontends
+		layer_groups['visual_frontend'] + layer_groups['text_frontend']
+	]
+	return schedule
+
+def get_progressive_freeze_schedule_fixed(layer_groups:dict, num_epochs:int):
+	"""Creates a simple progressive fine-tuning schedule with 5 fixed phases"""
 	# Calculate phase boundaries
 	phase0 = 0  # epoch 0
 	phase1 = num_epochs // 5  # First 20% epochs
 	phase2 = num_epochs * 2 // 5  # Next 20% epochs
 	phase3 = num_epochs * 3 // 5  # Middle 20% epochs
 	phase4 = num_epochs * 4 // 5  # Next-to-last 20% epochs
+
 	schedule = {
 		# Phase 0: Train only projection layers @ epoch 0
 		phase0: (
@@ -581,14 +588,19 @@ def strategic_finetune(
 
 	vis_nblocks, txt_nblocks = get_num_vit_blocks(model)
 	print(f"[Transformer Blocks] Vision: {vis_nblocks} | Text: {txt_nblocks}")
-	freeze_schedule = get_progressive_freeze_schedule(
-		num_epochs=num_epochs,
-		num_visual_transformer_blocks=vis_nblocks,
-		num_text_transformer_blocks=txt_nblocks,
-	)
+	layer_groups = get_clip_layer_groups(nv=vis_nblocks, nt=txt_nblocks,)
+	total_v_layers = len(layer_groups['visual_transformer'])
+	total_t_layers = len(layer_groups['text_transformer'])
+	print(f"[Layer Groups] Visual: {total_v_layers} | Text: {total_t_layers}")
+	# freeze_schedule = get_progressive_freeze_schedule_fixed(layer_groups, num_epochs) # fixed 5 phases based on epochs
+	freeze_schedule = get_progressive_freeze_schedule(layer_groups) # progressive freezing based on validation loss plateau
 	print(f"Freeze Schedule:\n{json.dumps(freeze_schedule, indent=2)}")
 	best_loss = np.inf
+	current_phase = 0
+	plateau_threshold: float = 1e-4,
+	patience_per_phase: int = 3,
 	no_improvement_count = 0
+	counter = 0
 	criterion = nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -607,11 +619,25 @@ def strategic_finetune(
 	ft_st = time.time()
 	for epoch in range(num_epochs):
 		print(f"Epoch [{epoch+1}/{num_epochs}]")
-		layers_to_freeze = freeze_schedule.get(epoch)
-		if layers_to_freeze:
-			set_layer_freeze_status(model, layers_to_freeze)
-			print_model_stat(model, epoch=epoch)
-		# Update optimizer for newly trainable parameters
+		# naive approach to freeze layers based on the schedule of fixed phases:
+		# layers_to_freeze = freeze_schedule.get(epoch)
+		# if layers_to_freeze:
+		# 	set_layer_freeze_status(model, layers_to_freeze)
+		# 	print_model_stat(model, epoch=epoch)
+		# Check for plateau to adapt phases of progressive freezing
+		if epoch > 0 and len(validation_losses) > 1:
+			val_loss_diff = validation_losses[-2] - validation_losses[-1]
+			if val_loss_diff < plateau_threshold:
+				counter += 1
+			else:
+				counter = 0
+			if counter >= patience_per_phase and current_phase < len(freeze_schedule) - 1:
+				current_phase += 1
+				counter = 0
+				print(f"Plateau detected. Transitioning to Phase {current_phase}")
+		layers_to_freeze = freeze_schedule[current_phase]
+		set_layer_freeze_status(model, layers_to_freeze)
+		print_model_stat(model, epoch=epoch)
 		optimizer = AdamW(
 			params=[p for p in model.parameters() if p.requires_grad],
 			lr=learning_rate,
@@ -619,7 +645,6 @@ def strategic_finetune(
 			eps=1e-6,
 			weight_decay=weight_decay,
 		)
-		# Update scheduler for new optimizer
 		scheduler = lr_scheduler.OneCycleLR(
 			optimizer=optimizer,
 			max_lr=learning_rate,
