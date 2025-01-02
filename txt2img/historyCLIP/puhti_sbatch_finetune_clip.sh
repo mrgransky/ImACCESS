@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=historyCLIP_train
+#SBATCH --job-name=historyCLIP_strategic_finetune
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
