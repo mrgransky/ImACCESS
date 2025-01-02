@@ -333,7 +333,7 @@ def get_progressive_freeze_schedule(layer_groups:dict):
 		layer_groups['visual_transformer'][:int(0.6*total_v_layers)] + layer_groups['text_transformer'][:int(0.6*total_t_layers)],
 		# Phase 3: Unfreeze 40% of transformer blocks:
 		layer_groups['visual_transformer'][:int(0.4*total_v_layers)] + layer_groups['text_transformer'][:int(0.4*total_t_layers)],
-		# Phase 4: Unfreeze everything except frontends
+		# Phase 4: Unfreeze everything except (visual + text) frontends
 		layer_groups['visual_frontend'] + layer_groups['text_frontend']
 	]
 	return schedule
@@ -626,7 +626,9 @@ def strategic_finetune(
 		# 	print_model_stat(model, epoch=epoch)
 		# Check for plateau to adapt phases of progressive freezing
 		if epoch > 0 and len(validation_losses) > 1:
+			print(f"Validation losses: {validation_losses}")
 			val_loss_diff = validation_losses[-2] - validation_losses[-1]
+			print(type(val_loss_diff), val_loss_diff)
 			if val_loss_diff < plateau_threshold:
 				counter += 1
 			else:
