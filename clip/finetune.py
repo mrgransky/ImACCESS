@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_s
 # $ nohup python -u finetune.py -d cifar100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # strategic finetune cifar100:
-# $ nohup python -u finetune.py -d cifar100 -bs 261 -ne 128 -lr 5e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_sft.out &
+# $ nohup python -u finetune.py -d cifar100 -bs 261 -ne 128 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_sft.out &
 
 # finetune CINIC10 dataset with given frozen layers:
 # $ nohup python -u finetune.py -d cinic10 -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cinic10_finetune.out &
@@ -325,15 +325,15 @@ def get_progressive_freeze_schedule(layer_groups:dict):
 	print(f"Total text layers: {total_t_layers} | 80%: {int(0.8*total_t_layers)} 60%: {int(0.6*total_t_layers)} 40%: {int(0.4*total_t_layers)}")
 	# Define the freeze schedule
 	schedule = [
-		# Phase 0: Train only projection layers @ epoch 0
-		layer_groups['visual_transformer'] + layer_groups['text_transformer'],
-		# Phase 1: Unfreeze 80% of transformer blocks:
-		layer_groups['visual_transformer'][:int(0.8*total_v_layers)] + layer_groups['text_transformer'][:int(0.8*total_t_layers)],
-		# Phase 2: Unfreeze 60% of transformer blocks:
-		layer_groups['visual_transformer'][:int(0.6*total_v_layers)] + layer_groups['text_transformer'][:int(0.6*total_t_layers)],
-		# Phase 3: Unfreeze 40% of transformer blocks:
-		layer_groups['visual_transformer'][:int(0.4*total_v_layers)] + layer_groups['text_transformer'][:int(0.4*total_t_layers)],
-		# Phase 4: Unfreeze everything except (visual + text) frontends
+		# Phase 0: Freeze all layers except the projection layers.
+		layer_groups['visual_frontend'] + layer_groups['visual_transformer'] + layer_groups['text_frontend'] + layer_groups['text_transformer'],
+		# Phase 1: Freeze 80% of transformer blocks:
+		layer_groups['visual_frontend'] + layer_groups['visual_transformer'][:int(0.8*total_v_layers)] + layer_groups['text_frontend'] + layer_groups['text_transformer'][:int(0.8*total_t_layers)],
+		# Phase 2: freeze 60% of transformer blocks:
+		layer_groups['visual_frontend'] + layer_groups['visual_transformer'][:int(0.6*total_v_layers)] + layer_groups['text_frontend'] + layer_groups['text_transformer'][:int(0.6*total_t_layers)],
+		# Phase 3: freeze 40% of transformer blocks:
+		layer_groups['visual_frontend'] + layer_groups['visual_transformer'][:int(0.4*total_v_layers)] + layer_groups['text_frontend'] + layer_groups['text_transformer'][:int(0.4*total_t_layers)],
+		# Phase 4: freeze only (visual + text) frontends
 		layer_groups['visual_frontend'] + layer_groups['text_frontend']
 	]
 	return schedule
@@ -384,12 +384,13 @@ def get_progressive_freeze_schedule_fixed(layer_groups:dict, num_epochs:int):
 	}
 	return schedule
 
-def set_layer_freeze_status(model, layers_to_freeze):
+def set_freeze(model, layers_to_freeze):
 	"""Freeze/unfreeze layers based on schedule"""
 	for name, param in model.named_parameters():
 		param.requires_grad = True # Unfreeze all layers first
 		if any(layer in name for layer in layers_to_freeze): # Freeze layers in the list
 			param.requires_grad = False
+			print(f"{name} requires_grad: {param.requires_grad} => frozen")
 
 def finetune(
 		model:nn.Module,
@@ -597,8 +598,8 @@ def strategic_finetune(
 	print(f"Freeze Schedule:\n{json.dumps(freeze_schedule, indent=2)}")
 	best_loss = np.inf
 	current_phase = 0
-	plateau_threshold: float = 1e-4,
-	patience_per_phase: int = 3,
+	plateau_threshold: float = 1e-4
+	patience_per_phase: int = 3
 	no_improvement_count = 0
 	counter = 0
 	criterion = nn.CrossEntropyLoss()
@@ -622,13 +623,13 @@ def strategic_finetune(
 		# naive approach to freeze layers based on the schedule of fixed phases:
 		# layers_to_freeze = freeze_schedule.get(epoch)
 		# if layers_to_freeze:
-		# 	set_layer_freeze_status(model, layers_to_freeze)
+		# 	set_freeze(model, layers_to_freeze)
 		# 	print_model_stat(model, epoch=epoch)
 		# Check for plateau to adapt phases of progressive freezing
 		if epoch > 0 and len(validation_losses) > 1:
 			print(f"Validation losses: {validation_losses}")
 			val_loss_diff = validation_losses[-2] - validation_losses[-1]
-			print(type(val_loss_diff), val_loss_diff)
+			print(type(val_loss_diff), val_loss_diff, type(plateau_threshold), plateau_threshold)
 			if val_loss_diff < plateau_threshold:
 				counter += 1
 			else:
@@ -638,7 +639,7 @@ def strategic_finetune(
 				counter = 0
 				print(f"Plateau detected. Transitioning to Phase {current_phase}")
 		layers_to_freeze = freeze_schedule[current_phase]
-		set_layer_freeze_status(model, layers_to_freeze)
+		set_freeze(model, layers_to_freeze)
 		print_model_stat(model, epoch=epoch)
 		optimizer = AdamW(
 			params=[p for p in model.parameters() if p.requires_grad],
