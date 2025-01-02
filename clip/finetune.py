@@ -325,7 +325,7 @@ def get_progressive_freeze_schedule(layer_groups:dict):
 	print(f"Total text layers: {total_t_layers} | 80%: {int(0.8*total_t_layers)} 60%: {int(0.6*total_t_layers)} 40%: {int(0.4*total_t_layers)}")
 	# Define the freeze schedule
 	schedule = [
-		# Phase 0: Freeze all layers except the projection layers.
+		# Phase 0: Freeze all layers except the projection layers:
 		layer_groups['visual_frontend'] + layer_groups['visual_transformer'] + layer_groups['text_frontend'] + layer_groups['text_transformer'],
 		# Phase 1: Freeze 80% of transformer blocks:
 		layer_groups['visual_frontend'] + layer_groups['visual_transformer'][:int(0.8*total_v_layers)] + layer_groups['text_frontend'] + layer_groups['text_transformer'][:int(0.8*total_t_layers)],
@@ -390,7 +390,7 @@ def set_freeze(model, layers_to_freeze):
 		param.requires_grad = True # Unfreeze all layers first
 		if any(layer in name for layer in layers_to_freeze): # Freeze layers in the list
 			param.requires_grad = False
-			print(f"{name} requires_grad: {param.requires_grad} => frozen")
+			# print(f"{name} requires_grad: {param.requires_grad} => frozen")
 
 def finetune(
 		model:nn.Module,
