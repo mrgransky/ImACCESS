@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_s
 # $ nohup python -u finetune.py -d cifar100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # strategic finetune cifar100:
-# $ nohup python -u finetune.py -d cifar100 -bs 261 -ne 128 -lr 5e-4 -wd 1e-3 --print_every 50 -nw 50 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_sft.out &
+# $ nohup python -u finetune.py -d cifar100 -bs 261 -ne 128 -lr 5e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_sft.out &
 
 # finetune CINIC10 dataset with given frozen layers:
 # $ nohup python -u finetune.py -d cinic10 -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cinic10_finetune.out &
@@ -221,12 +221,12 @@ def plot_loss_accuracy(
 	epochs = range(1, num_epochs + 1)
 	figure_size = (10, 5)
 	plt.figure(figsize=figure_size)
-	plt.plot(epochs, train_losses, marker='o', linestyle='-', color='b', label='Training Loss')
-	plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation Loss')
+	plt.plot(epochs, train_losses, marker='o', linestyle='-', color='b', label='Train', lw=1.5)
+	plt.plot(epochs, val_losses, marker='o', linestyle='-', color='r', label='Validation', lw=1.5)
 	plt.xlabel('Epoch')
 	plt.ylabel('Loss')
 	plt.title(os.path.splitext(os.path.basename(losses_file_path))[0], fontsize=10)
-	plt.legend()
+	plt.legend(title="Loss", fontsize=9, title_fontsize=10, loc='best')
 	plt.tight_layout()
 	plt.savefig(losses_file_path)
 	plt.close()
@@ -244,7 +244,7 @@ def plot_loss_accuracy(
 	
 	plt.figure(figsize=figure_size)
 	for k, acc in zip([1, 3, 5], zip(*top_k_accuracy_list)):
-		plt.plot(epochs, acc, marker='o', label=f'Top-{k} Accuracy')
+		plt.plot(epochs, acc, label=f'Top-{k}')
 	plt.xlabel('Epoch')
 	plt.ylabel('Accuracy')
 	plt.title("Top-k Accuracy")
@@ -308,16 +308,16 @@ def get_num_vit_blocks(model):
 	return len(vis_transformer.resblocks), len(txt_transformer.resblocks)
 
 def get_progressive_freeze_schedule(num_epochs:int=5, num_visual_transformer_blocks:int=12, num_text_transformer_blocks:int=12):
-	"""Creates a sophisticated progressive fine-tuning schedule with 5 phases"""	
+	"""Creates a sophisticated progressive fine-tuning schedule with 5 phases"""
 	# Define all layer groups
 	layer_groups = {
 		'visual_frontend': [
-			'visual.conv1', 
+			'visual.conv1',
 			'visual.class_embedding',
 			'visual.positional_embedding'
 		],
 		'visual_transformer': [
-			f'visual.transformer.resblocks.{i}' 
+			f'visual.transformer.resblocks.{i}'
 			for i in range(num_visual_transformer_blocks)
 		],
 		'text_frontend': [
@@ -325,7 +325,7 @@ def get_progressive_freeze_schedule(num_epochs:int=5, num_visual_transformer_blo
 			'positional_embedding'
 		],
 		'text_transformer': [
-			f'transformer.resblocks.{i}' 
+			f'transformer.resblocks.{i}'
 			for i in range(num_text_transformer_blocks)
 		],
 		'projections': [
@@ -335,16 +335,17 @@ def get_progressive_freeze_schedule(num_epochs:int=5, num_visual_transformer_blo
 		]
 	}
 	# Calculate phase boundaries
+	phase0 = 0  # epoch 0
 	phase1 = num_epochs // 5  # First 20% epochs
 	phase2 = num_epochs * 2 // 5  # Next 20% epochs
 	phase3 = num_epochs * 3 // 5  # Middle 20% epochs
 	phase4 = num_epochs * 4 // 5  # Next-to-last 20% epochs
 	schedule = {
-		# Phase 0: Train only projection layers
-		0: (
+		# Phase 0: Train only projection layers @ epoch 0
+		phase0: (
 			layer_groups['visual_frontend'] +
 			layer_groups['visual_transformer'] +
-			layer_groups['text_frontend'] + 
+			layer_groups['text_frontend'] +
 			layer_groups['text_transformer']
 		),
 		# Phase 1: Unfreeze last few transformer blocks
@@ -374,7 +375,6 @@ def get_progressive_freeze_schedule(num_epochs:int=5, num_visual_transformer_blo
 			layer_groups['text_frontend']
 		),
 	}
-
 	return schedule
 
 def set_layer_freeze_status(model, layers_to_freeze):
