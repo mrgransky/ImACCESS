@@ -226,8 +226,8 @@ def plot_loss_accuracy(
 	plt.xlabel('Epoch')
 	plt.ylabel('Loss')
 	plt.title(os.path.splitext(os.path.basename(losses_file_path))[0], fontsize=10)
-	plt.legend(title="Loss", fontsize=9, title_fontsize=10, loc='best')
-	plt.tight_layout(ncols=2)
+	plt.legend(ncols=2, title="Loss", fontsize=9, title_fontsize=10, loc='best')
+	plt.tight_layout()
 	plt.savefig(losses_file_path)
 	plt.close()
 
