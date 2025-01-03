@@ -12,10 +12,10 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_s
 
 # run in pouta:
 # train cifar100 from scratch:
-# $ nohup python -u trainer.py -d cifar100 -bs 260 -ne 32 -lr 5e-4 -wd 1e-2 --print_every 100 -nw 25 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -ne 128 -lr 5e-4 -wd 1e-2 --print_every 100 -nw 25 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune cifar100:
-# $ nohup python -u trainer.py -d cifar100 -bs 262 -ne 128 -lr 5e-z4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_sft.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -ne 128 -lr 5e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
 
 USER = os.environ.get('USER')
 
@@ -516,7 +516,7 @@ def finetune(
 		############################## Early stopping ##############################
 		mdl_fpth = os.path.join(
 			results_dir,
-			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
+			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_epochs_{len(training_losses)}_wd_{weight_decay}_clip.pth"
 		)
 		if avg_valid_loss < best_loss:
 			best_loss = avg_valid_loss
@@ -674,7 +674,7 @@ def train(
 		############################## Early stopping ##############################
 		mdl_fpth = os.path.join(
 			results_dir,
-			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
+			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_epochs_{len(training_losses)}_wd_{weight_decay}_clip.pth"
 		)
 		if avg_valid_loss < best_loss:
 			best_loss = avg_valid_loss
