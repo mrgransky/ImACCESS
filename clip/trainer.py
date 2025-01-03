@@ -12,10 +12,10 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_s
 
 # run in pouta:
 # train cifar100 from scratch:
-# $ nohup python -u trainer.py -d cifar100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 260 -ne 32 -lr 5e-4 -wd 1e-2 --print_every 100 -nw 25 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune cifar100:
-# $ nohup python -u trainer.py -d cifar100 -bs 262 -ne 128 -lr 6e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_sft.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 262 -ne 128 -lr 5e-z4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_sft.out &
 
 USER = os.environ.get('USER')
 
@@ -211,7 +211,7 @@ def plot_loss_accuracy(
 	if num_epochs == 1:
 		return
 	epochs = range(1, num_epochs + 1)
-	figure_size = (10, 5)
+	figure_size = (9, 4)
 	plt.figure(figsize=figure_size)
 	plt.plot(epochs, train_losses, color='b', label='Train', lw=1.25)
 	plt.plot(epochs, val_losses, color='r', label='Validation', lw=1.25)
@@ -489,7 +489,7 @@ def finetune(
 			scheduler.step() # Update learning rate
 			if bidx%print_every==0 or bidx+1==len(train_loader):
 				print(
-					f"\tBatch [{bidx+1}/{len(train_loader)}] "
+					f"\t\tBatch [{bidx+1}/{len(train_loader)}] "
 					f"Loss: {total_loss.item():.7f}",
 				)
 			epoch_loss += total_loss.item()
@@ -508,9 +508,9 @@ def finetune(
 		f1_list.append(avg_f1)
 		print(
 			f'@ Epoch: {epoch+1}\n'
-			f'[Loss] {mode}: {avg_training_loss:.7f} '
+			f'\t[Loss] {mode}: {avg_training_loss:.7f} '
 			f'Validation: {avg_valid_loss:.9f}\n'
-			f'Validation Accuracy [text retrieval per image]: {accuracy_text_description_for_each_image} '
+			f'\tValidation Accuracy [text retrieval per image]: {accuracy_text_description_for_each_image} '
 			f'[image retrieval per text]: {acc_img_per_txt}'
 		)
 
@@ -725,7 +725,7 @@ def main():
 	parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=5e-4, help='small learning rate for better convergence [def: 1e-3]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
-	parser.add_argument('--print_every', type=int, default=250, help='Print loss')
+	parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 	parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar10', help='Choose dataset (CIFAR10/cifar100)')
 	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='finetune', help='Choose mode (train/finetune)')
