@@ -35,19 +35,22 @@ def early_stopping(
 		model_name: str,
 	) -> tuple:
 		moving_average_loss.append(avg_valid_loss)
+		mdl_fpth = os.path.join(
+			results_dir,
+			f"{dataset_name}_train_{re.sub('/', '', model_name)}_clip.pth"
+		)
 		if len(moving_average_loss) > moving_average_window:
-				moving_average_loss.pop(0)
-
+			moving_average_loss.pop(0)
 		if avg_valid_loss < best_loss:
 				best_loss = avg_valid_loss
 				best_accuracy = accuracy_text_description_for_each_image
-				torch.save(model.state_dict(), os.path.join(results_dir, f"{dataset_name}_train_{re.sub('/', '', model_name)}_clip.pth"))
-				print(f"Saving model in « {os.path.join(results_dir, f'{dataset_name}_train_{re.sub('/', '', model_name)}_clip.pth')} » | best avg loss: {best_loss:.5f}")
+				torch.save(model.state_dict(), mdl_fpth)
+				print(f"Saving model in « {mdl_fpth} » | best avg loss: {best_loss:.5f}")
 				no_improvement_count = 0
 		elif accuracy_text_description_for_each_image > best_accuracy:
 				best_accuracy = accuracy_text_description_for_each_image
-				torch.save(model.state_dict(), os.path.join(results_dir, f"{dataset_name}_train_{re.sub('/', '', model_name)}_clip.pth"))
-				print(f"Saving model in « {os.path.join(results_dir, f'{dataset_name}_train_{re.sub('/', '', model_name)}_clip.pth')} » | best avg accuracy: {best_accuracy:.5f}")
+				torch.save(model.state_dict(), mdl_fpth)
+				print(f"Saving model in « {mdl_fpth} » | best avg accuracy: {best_accuracy:.5f}")
 				no_improvement_count = 0
 		else:
 				no_improvement_count += 1
@@ -57,7 +60,6 @@ def early_stopping(
 								if avg_moving_loss > best_loss * 1.05:
 										print(f"Early stopping triggered after {epoch+1} epochs.")
 										return best_loss, best_accuracy, no_improvement_count, moving_average_loss, True
-
 		return best_loss, best_accuracy, no_improvement_count, moving_average_loss, False
 
 def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
