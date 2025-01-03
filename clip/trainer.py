@@ -596,6 +596,7 @@ def train(
 		.center(160, "-")
 	)
 	best_loss = np.inf
+	best_accuracy = 0.0
 	no_improvement_count = 0
 	moving_average_loss = []
 	moving_average_window = 3
@@ -690,7 +691,7 @@ def train(
 		# 		break
 		moving_average_loss.append(avg_valid_loss)
 		if len(moving_average_loss) > moving_average_window:
-			moving_average_loss.pop(0)
+			moving_average_loss.pop(0) # Remove the oldest loss
 		avg_moving_loss = sum(moving_average_loss) / len(moving_average_loss)
 		if avg_valid_loss < best_loss and accuracy_text_description_for_each_image > best_accuracy:
 			best_loss = avg_valid_loss
