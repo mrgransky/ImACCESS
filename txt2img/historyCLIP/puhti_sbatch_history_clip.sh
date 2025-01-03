@@ -1,14 +1,14 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=historyCLIP_strategic_finetune
+#SBATCH --job-name=historyCLIP_finetune
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=64G
+#SBATCH --mem=128G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --time=03-00:00:00

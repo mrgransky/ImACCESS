@@ -311,7 +311,7 @@ def print_model_stat(model):
 		f"[Model Parameters Statictics] Total: {total_params:,} "
 		f"Trainable: {trainable_params:,} ({trainable_percent:.2f}%) "
 		f"Frozen: {frozen_params:,} ({frozen_percent:.2f}%)"
-		.center(160, "-")
+		.center(170, " ")
 	)
 
 def get_num_vit_blocks(model):
@@ -388,7 +388,7 @@ def finetune(
 		results_dir:str="results",
 	):
 	os.makedirs(results_dir, exist_ok=True)
-	mode = "finetune".upper()
+	mode = "finetune"
 	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
@@ -500,7 +500,7 @@ def finetune(
 				)
 			epoch_loss += total_loss.item()
 		avg_training_loss = epoch_loss / len(train_loader)
-		print(f"Average {mode} Loss: {avg_training_loss:.5f} @ Epoch: {epoch+1}")
+		# print(f"Average {mode} Loss: {avg_training_loss:.7f} @ Epoch: {epoch+1}")
 		training_losses.append(avg_training_loss)
 		avg_valid_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description, top_k_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
 		validation_losses.append(avg_valid_loss)
@@ -513,21 +513,21 @@ def finetune(
 		recall_list.append(avg_recall)
 		f1_list.append(avg_f1)
 		print(
-			f'{mode} Loss: {avg_training_loss:.4f} '
-			f'Validation Loss: {avg_valid_loss:.4f} '
-			f'Validation Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.4f} '
-			f'[image for each text description]: {accuracy_text_image_for_each_text_description:.4f}'
+			f'{mode} Loss: {avg_training_loss:.7f} '
+			f'Validation Loss: {avg_valid_loss:.9f} '
+			f'Validation Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.7f} '
+			f'[image for each text description]: {accuracy_text_image_for_each_text_description:.7f}'
 		)
 
 		############################## Early stopping ##############################
 		mdl_fpth = os.path.join(
 			results_dir,
-			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_lr_{learning_rate}_wd_{weight_decay}_clip.pth"
+			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_clip.pth"
 		)
 		if avg_valid_loss < best_loss:
 			best_loss = avg_valid_loss
 			torch.save(model.state_dict(), mdl_fpth)
-			print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.5f}")
+			print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.9f}")
 			no_improvement_count = 0
 		else:
 			no_improvement_count += 1
@@ -535,6 +535,7 @@ def finetune(
 				print(f"Early stopping triggered after {epoch+1} epochs due to no improvement.")
 				break
 		############################## Early stopping ##############################
+		print("-"*160)
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
 
 	losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
@@ -578,7 +579,7 @@ def train(
 		device:str="cuda",
 		results_dir:str="results",
 	):
-	mode = "train".upper()
+	mode = "train"
 	os.makedirs(results_dir, exist_ok=True)
 
 	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
@@ -695,21 +696,12 @@ def train(
 
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
 
-	if mode == "finetune" and freeze_layers:
-		freeze_layers_str = '_'.join(freeze_layers)
-		losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png")
-		val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png")
-		topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png")
-		mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mean_reciprocal_rank_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png")
-		cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cosine_similarity_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png")
-		pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_precision_recall_f1_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs_freeze_{freeze_layers_str}.png")
-	else:
-		losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-		val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-		topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-		mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mean_reciprocal_rank_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-		cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cosine_similarity_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-		pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_precision_recall_f1_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mean_reciprocal_rank_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cosine_similarity_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_precision_recall_f1_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
 
 	plot_loss_accuracy(
 		train_losses=training_losses,
