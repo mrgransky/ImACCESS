@@ -19,48 +19,6 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_s
 
 USER = os.environ.get('USER')
 
-def early_stopping(
-		avg_valid_loss: float,
-		accuracy_text_description_for_each_image: float,
-		best_loss: float,
-		no_improvement_count: int,
-		moving_average_loss: list,
-		moving_average_window: int,
-		early_stopping_patience: int,
-		epoch: int,
-		model: nn.Module,
-		results_dir: str,
-		dataset_name: str,
-		model_name: str,
-	) -> tuple:
-		moving_average_loss.append(avg_valid_loss)
-		mdl_fpth = os.path.join(
-			results_dir,
-			f"{dataset_name}_train_{re.sub('/', '', model_name)}_clip.pth"
-		)
-		if len(moving_average_loss) > moving_average_window:
-			moving_average_loss.pop(0)
-		if avg_valid_loss < best_loss:
-				best_loss = avg_valid_loss
-				best_accuracy = accuracy_text_description_for_each_image
-				torch.save(model.state_dict(), mdl_fpth)
-				print(f"Saving model in « {mdl_fpth} » | best avg loss: {best_loss:.5f}")
-				no_improvement_count = 0
-		elif accuracy_text_description_for_each_image > best_accuracy:
-				best_accuracy = accuracy_text_description_for_each_image
-				torch.save(model.state_dict(), mdl_fpth)
-				print(f"Saving model in « {mdl_fpth} » | best avg accuracy: {best_accuracy:.5f}")
-				no_improvement_count = 0
-		else:
-				no_improvement_count += 1
-				if no_improvement_count >= early_stopping_patience:
-						if len(moving_average_loss) == moving_average_window:
-								avg_moving_loss = sum(moving_average_loss) / moving_average_window
-								if avg_moving_loss > best_loss * 1.05:
-										print(f"Early stopping triggered after {epoch+1} epochs.")
-										return True
-		return False
-
 def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
 	model, preprocess = clip.load(model_name, device=device, jit=jit) # training or finetuning => jit=False
 	model = model.float() # Convert model parameters to FP32
@@ -741,11 +699,11 @@ def train(
 			print(f"Saving model in « {mdl_fpth} » | best avg loss: {best_loss:.5f} | best accuracy: {best_accuracy:.5f}")
 			no_improvement_count = 0
 		else:
-				no_improvement_count += 1
-				if no_improvement_count >= early_stopping_patience:
-						if avg_moving_loss > best_loss * 1.05:
-								print(f"Early stopping triggered after {epoch + 1} epochs.")
-								break
+			no_improvement_count += 1
+			if no_improvement_count >= early_stopping_patience:
+				if avg_moving_loss > best_loss * 1.05:
+					print(f"Early stopping triggered after {epoch + 1} epochs.")
+					break
 		# ############################## Early stopping ##############################
 
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
