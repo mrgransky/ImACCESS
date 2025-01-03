@@ -693,16 +693,15 @@ def train(
 		if len(moving_average_loss) > moving_average_window:
 			moving_average_loss.pop(0) # Remove the oldest loss
 		avg_moving_loss = sum(moving_average_loss) / len(moving_average_loss)
-		if avg_valid_loss < best_loss and accuracy_text_description_for_each_image > best_accuracy:
+		if avg_valid_loss < best_loss:
 			best_loss = avg_valid_loss
-			best_accuracy = accuracy_text_description_for_each_image
 			torch.save(model.state_dict(), mdl_fpth)
-			print(f"Saving model in « {mdl_fpth} » | best avg loss: {best_loss:.5f} | best accuracy(text per image): {best_accuracy}")
+			print(f"Saving model in « {mdl_fpth} » | best avg loss: {best_loss:.9f}")
 			no_improvement_count = 0
 		else:
 			no_improvement_count += 1
 			if no_improvement_count >= early_stopping_patience:
-				if avg_moving_loss > best_loss * 1.05:
+				if avg_moving_loss > best_loss * 1.05: # 5% of the best lossv
 					print(f"Early stopping triggered after {epoch + 1} epochs.")
 					break
 		# ############################## Early stopping ##############################
