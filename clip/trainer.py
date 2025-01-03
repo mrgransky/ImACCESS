@@ -697,7 +697,7 @@ def train(
 			best_loss = avg_valid_loss
 			best_accuracy = accuracy_text_description_for_each_image
 			torch.save(model.state_dict(), mdl_fpth)
-			print(f"Saving model in « {mdl_fpth} » | best avg loss: {best_loss:.5f} | best accuracy: {best_accuracy:.5f}")
+			print(f"Saving model in « {mdl_fpth} » | best avg loss: {best_loss:.5f} | best accuracy(text per image): {best_accuracy}")
 			no_improvement_count = 0
 		else:
 			no_improvement_count += 1
