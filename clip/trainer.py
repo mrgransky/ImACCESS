@@ -23,7 +23,6 @@ def early_stopping(
 		avg_valid_loss: float,
 		accuracy_text_description_for_each_image: float,
 		best_loss: float,
-		best_accuracy: float,
 		no_improvement_count: int,
 		moving_average_loss: list,
 		moving_average_window: int,
@@ -59,8 +58,8 @@ def early_stopping(
 								avg_moving_loss = sum(moving_average_loss) / moving_average_window
 								if avg_moving_loss > best_loss * 1.05:
 										print(f"Early stopping triggered after {epoch+1} epochs.")
-										return best_loss, best_accuracy, no_improvement_count, moving_average_loss, True
-		return best_loss, best_accuracy, no_improvement_count, moving_average_loss, False
+										return True
+		return False
 
 def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
 	model, preprocess = clip.load(model_name, device=device, jit=jit) # training or finetuning => jit=False
@@ -717,10 +716,10 @@ def train(
 		)
 
 		# ############################## Early stopping ##############################
-		# mdl_fpth = os.path.join(
-		# 	results_dir,
-		# 	f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
-		# )
+		mdl_fpth = os.path.join(
+			results_dir,
+			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
+		)
 		# if avg_valid_loss < best_loss:
 		# 	best_loss = avg_valid_loss
 		# 	torch.save(model.state_dict(), mdl_fpth)
@@ -731,23 +730,22 @@ def train(
 		# 	if no_improvement_count >= early_stopping_patience:
 		# 		print(f"Early stopping triggered after {epoch+1} epochs.")
 		# 		break
-		best_loss, best_accuracy, no_improvement_count, moving_average_loss, stop_training = early_stopping(
-			avg_valid_loss,
-			accuracy_text_description_for_each_image,
-			best_loss,
-			best_accuracy,
-			no_improvement_count,
-			moving_average_loss,
-			moving_average_window,
-			early_stopping_patience,
-			epoch,
-			model,
-			results_dir,
-			dataset_name,
-			model_name,
-		)
-		if stop_training:
-			break
+		moving_average_loss.append(avg_valid_loss)
+		if len(moving_average_loss) > moving_average_window:
+			moving_average_loss.pop(0)
+		avg_moving_loss = sum(moving_average_loss) / len(moving_average_loss)
+		if avg_valid_loss < best_loss and accuracy_text_description_for_each_image > best_accuracy:
+			best_loss = avg_valid_loss
+			best_accuracy = accuracy_text_description_for_each_image
+			torch.save(model.state_dict(), mdl_fpth)
+			print(f"Saving model in « {mdl_fpth} » | best avg loss: {best_loss:.5f} | best accuracy: {best_accuracy:.5f}")
+			no_improvement_count = 0
+		else:
+				no_improvement_count += 1
+				if no_improvement_count >= early_stopping_patience:
+						if avg_moving_loss > best_loss * 1.05:
+								print(f"Early stopping triggered after {epoch + 1} epochs.")
+								break
 		# ############################## Early stopping ##############################
 
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
