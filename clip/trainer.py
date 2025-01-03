@@ -1,6 +1,6 @@
 from utils import *
 from datasets import *
-from torchvision.datasets import CIFAR10, CIFAR100, ImageNet, ImageFolder
+from torchvision.datasets import CIFAR10, CIFAR100
 from torch.utils.data import DataLoader, Dataset
 import torch.nn as nn
 from torch.optim import AdamW, SGD, Adam, lr_scheduler
