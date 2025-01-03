@@ -1,6 +1,6 @@
 from utils import *
 from dataset_loader import get_dataloaders
-from finetune import finetune, strategic_finetune
+from trainer import finetune, train
 
 parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
@@ -12,7 +12,7 @@ parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='sm
 parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
 parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
-parser.add_argument('--freeze_layers', '-fl', nargs='+', default=[], help='Layers to freeze, no "" needed')
+parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='finetune', help='Choose mode (train/finetune)')
 
 args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
@@ -22,12 +22,8 @@ print(args)
 # train from scratch:
 # $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 260 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 40 --device "cuda:2" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_train.out &
 
-# strategic finetune:
-# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 261 -ne 128  -lr 5e-4 -wd 1e-3 --print_every 150 -nw 40 --device "cuda:2" -md "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_sft.out &
-# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 32 -ne 32 -lr 1e-4 -wd 1e-3 --print_every 150 -nw 40 --device "cuda:0" -md "ViT-L/14" > /media/volume/ImACCESS/trash/historyCLIP_sft_large_vit.out &
-
-# run finetune in pouta:
-# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 260 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 40 --device "cuda:3" -m "finetune" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/historyCLIP_finetune.out &
+# finetune:
+# $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 262 -ne 128  -lr 5e-4 -wd 1e-3 --print_every 150 -nw 40 --device "cuda:2" -md "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_ft_vitb32.out &
 
 def get_dataset(dataset_dir:str="/path/to/dataset"):
 	train_dataset = pd.read_csv(os.path.join(dataset_dir, f"train_metadata.csv"))
@@ -52,9 +48,8 @@ def main():
 	)
 	print(f"Train Loader: {len(train_loader)} batches, Validation Loader: {len(validation_loader)} batches")
 	# visualize_(dataloader=train_loader, num_samples=5)
-	use_strategic_finetune = True
-	if use_strategic_finetune:
-		strategic_finetune(
+	if args.mode == "finetune":
+		finetune(
 			model=model,
 			train_loader=train_loader,
 			validation_loader=validation_loader,
@@ -69,8 +64,8 @@ def main():
 			device=args.device,
 			results_dir=os.path.join(args.dataset_dir, "results")
 		)
-	else:
-		finetune(
+	elif args.mode == "train":
+		train(
 			model=model,
 			train_loader=train_loader,
 			validation_loader=validation_loader,
@@ -86,6 +81,8 @@ def main():
 			freeze_layers=args.freeze_layers,
 			results_dir=os.path.join(args.dataset_dir, "results")
 		)
+	else:
+		raise ValueError("Invalid mode. Choose between 'train' or 'finetune'.")
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))

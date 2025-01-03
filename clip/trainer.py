@@ -10,20 +10,17 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_scheduler')
 
 # run in pouta:
-# finetune CIFAR10x dataset with given frozen layers:
-# $ nohup python -u finetune.py -d cifar100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cifar100_finetune.out &
-
 # train cifar100 from scratch:
-# $ nohup python -u finetune.py -d cifar100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:1" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
-# strategic finetune cifar100:
-# $ nohup python -u finetune.py -d cifar100 -bs 261 -ne 256 -lr 6e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:1" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_sft.out &
+# finetune cifar100:
+# $ nohup python -u trainer.py -d cifar100 -bs 261 -ne 128 -lr 6e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:1" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_sft.out &
 
-# finetune CINIC10 dataset with given frozen layers:
-# $ nohup python -u finetune.py -d cinic10 -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:0" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/cinic10_finetune.out &
+# finetune CINIC10 dataset:
+# $ nohup python -u trainer.py -d cinic10 -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cinic10_finetune.out &
 
-# finetune imagenet dataset with given frozen layers:
-# $ nohup python -u finetune.py -d imagenet -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:3" -md "ViT-B/32" -fl visual.conv1 visual.ln_pre > /media/volume/ImACCESS/trash/imagenet_finetune.out &
+# finetune imagenet:
+# $ nohup python -u trainer.py -d imagenet -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:3" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_finetune.out &
 
 USER = os.environ.get('USER')
 
@@ -311,7 +308,7 @@ def get_num_vit_blocks(model):
 	txt_transformer = model.transformer
 	return len(vis_transformer.resblocks), len(txt_transformer.resblocks)
 
-def get_clip_layer_groups(nv:int=12, nt:int=12):
+def get_layer_groups(nv:int=12, nt:int=12):
 	layer_groups = {
 		'visual_frontend': ['visual.conv1','visual.class_embedding','visual.positional_embedding'],
 		'visual_transformer': [f'visual.transformer.resblocks.{i}' for i in range(nv)],
@@ -362,7 +359,7 @@ def handle_phase_transition(current_phase, initial_lr, max_phases):
 	print(f"<!> Plateau detected! Transitioning to Phase {new_phase} with learning rate {new_lr:.2e}")
 	return new_phase, new_lr
 
-def strategic_finetune(
+def finetune(
 		model:nn.Module,
 		train_loader:DataLoader,
 		validation_loader:DataLoader,
@@ -378,14 +375,14 @@ def strategic_finetune(
 		results_dir:str="results",
 	):
 	os.makedirs(results_dir, exist_ok=True)
-	mode = "strategic_finetune".upper()
+	mode = "finetune".upper()
 	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
 
 	vis_nblocks, txt_nblocks = get_num_vit_blocks(model)
 	print(f"[Transformer Blocks] Vision: {vis_nblocks} | Text: {txt_nblocks}")
-	layer_groups = get_clip_layer_groups(nv=vis_nblocks, nt=txt_nblocks,)
+	layer_groups = get_layer_groups(nv=vis_nblocks, nt=txt_nblocks,)
 	total_v_layers = len(layer_groups['visual_transformer'])
 	total_t_layers = len(layer_groups['text_transformer'])
 	print(f"[Layer Groups] Visual: {total_v_layers} | Text: {total_t_layers}")
@@ -393,7 +390,7 @@ def strategic_finetune(
 	print(f"Freeze Schedule:\n{json.dumps(freeze_schedule, indent=2)}")
 	best_loss = np.inf
 	current_phase = 0
-	plateau_threshold: float = 1e-3
+	plateau_threshold: float = 1e-4
 	no_improvement_count = 0
 	# patience_per_phase: int = 3
 	# counter = 0
@@ -435,7 +432,7 @@ def strategic_finetune(
 		# 			learning_rate = initial_learning_rate * (0.1 ** current_phase) # Reduce learning rate by 10x for each new phase
 		# 			print(f"Plateau detected. Transitioning to Phase {current_phase} with updated LR: {learning_rate:.2e}")
 		WINDOWs = 3
-		if epoch > 0 and len(validation_losses) >= WINDOWs:
+		if epoch > 0 and len(validation_losses) > 1:
 			should_transition = should_transition_phase(
 				val_losses=validation_losses,
 				threshold=plateau_threshold,
@@ -527,12 +524,12 @@ def strategic_finetune(
 		############################## Early stopping ##############################
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
 
-	losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mean_reciprocal_rank_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cosine_similarity_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-	pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_precision_recall_f1_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.2e}_wd_{weight_decay:.2e}_{train_loader.batch_size}_bs.png")
+	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_val_acc_ep_{len(training_losses)}_lr_{learning_rate:.2e}_wd_{weight_decay:.2e}_{train_loader.batch_size}_bs.png")
+	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_acc_ep_{len(training_losses)}_lr_{learning_rate:.2e}_wd_{weight_decay:.2e}_{train_loader.batch_size}_bs.png")
+	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.2e}_wd_{weight_decay:.2e}_{train_loader.batch_size}_bs.png")
+	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.2e}_wd_{weight_decay:.2e}_{train_loader.batch_size}_bs.png")
+	pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_pr_f1_ep_{len(training_losses)}_lr_{learning_rate:.2e}_wd_{weight_decay:.2e}_{train_loader.batch_size}_bs.png")
 
 	plot_loss_accuracy(
 		train_losses=training_losses,
@@ -553,7 +550,7 @@ def strategic_finetune(
 		precision_recall_f1_file_path=pr_f1_fpth,
 	)
 
-def finetune(
+def train(
 		model:nn.Module,
 		train_loader:DataLoader,
 		validation_loader:DataLoader,
@@ -566,12 +563,9 @@ def finetune(
 		weight_decay:float=1e-3,
 		dataset_name:str="CIFAR10",
 		device:str="cuda",
-		freeze_layers: list = None,
 		results_dir:str="results",
 	):
-	mode = "finetune" if freeze_layers else "train"
-	mode = mode.upper()
-	freeze_layers = freeze_layers or []
+	mode = "train".upper()
 	os.makedirs(results_dir, exist_ok=True)
 
 	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
@@ -580,11 +574,7 @@ def finetune(
 
 	for name, param in model.named_parameters():
 		# print(f"{name} requires_grad: {param.requires_grad}")
-		if name.startswith(tuple(freeze_layers)):
-			param.requires_grad = False
-			print(f"{name} requires_grad: {param.requires_grad} => frozen")
-		else:
-			param.requires_grad = True
+		param.requires_grad = True # Unfreeze all layers (train from scratch)
 
 	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)	
@@ -738,7 +728,7 @@ def main():
 	parser.add_argument('--print_every', type=int, default=250, help='Print loss')
 	parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar10', help='Choose dataset (CIFAR10/cifar100)')
-	parser.add_argument('--freeze_layers', '-fl', nargs='+', default=[], help='Layers to freeze, no "" needed')
+	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='finetune', help='Choose mode (train/finetune)')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
@@ -760,9 +750,8 @@ def main():
 	)
 	print(f"Train Loader: {len(train_loader)} batches, Validation Loader: {len(validation_loader)} batches")
 	# visualize_(dataloader=train_loader, num_samples=5)
-	use_strategic_finetune = True
-	if use_strategic_finetune:
-		strategic_finetune(
+	if args.mode == 'finetune':
+		finetune(
 			model=model,
 			train_loader=train_loader,
 			validation_loader=validation_loader,
@@ -777,8 +766,8 @@ def main():
 			device=args.device,
 			results_dir=os.path.join(args.dataset, "results")
 		)
-	else:
-		finetune(
+	elif args.mode == 'train':
+		train(
 			model=model,
 			train_loader=train_loader,
 			validation_loader=validation_loader,
@@ -794,6 +783,8 @@ def main():
 			freeze_layers=args.freeze_layers,
 			results_dir=os.path.join(args.dataset, "results")
 		)
+	else:
+		raise ValueError("Invalid mode. Choose either 'finetune' or 'train'.")
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
