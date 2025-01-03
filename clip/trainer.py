@@ -455,7 +455,7 @@ def finetune(
 				print(f"No plateau detected! Continuing with phase: {current_phase} ...")
 		layers_to_freeze = freeze_schedule[current_phase]
 		set_freeze(model, layers_to_freeze)
-		print(f"Phase {current_phase}: Freezing {len(layers_to_freeze)} layers out of {total_v_layers + total_t_layers}")
+		print(f"Phase {current_phase}: Freezing {len(layers_to_freeze)} layers.")
 		print_model_stat(model)
 		optimizer = AdamW(
 			params=[p for p in model.parameters() if p.requires_grad],
