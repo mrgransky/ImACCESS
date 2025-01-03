@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader, Dataset
 import torch.nn as nn
 from torch.optim import AdamW, SGD, Adam, lr_scheduler
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import torchvision.transforms as T
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_scheduler')
@@ -226,6 +227,8 @@ def plot_loss_accuracy(
 	plt.legend(ncols=2, title="Loss", fontsize=9, title_fontsize=10, loc='best')
 	plt.tight_layout()
 	plt.grid(True)
+	# Set xticks to only integer values
+	plt.gca().xaxis.set_major_locator(ticker.MultipleLocator(1))
 	plt.savefig(losses_file_path)
 	plt.close()
 
@@ -238,6 +241,8 @@ def plot_loss_accuracy(
 	plt.legend(title='Validation Accuracy', fontsize=9, title_fontsize=10, loc='best')
 	plt.grid(True)
 	plt.tight_layout()
+	# Set xticks to only integer values
+	plt.gca().xaxis.set_major_locator(ticker.MultipleLocator(1))
 	plt.savefig(accuracy_file_path)
 	plt.close()
 	
@@ -250,6 +255,8 @@ def plot_loss_accuracy(
 	plt.legend(ncols=len([1, 3, 5]), loc='best')
 	plt.grid(True)
 	plt.tight_layout()
+	# Set xticks to only integer values
+	plt.gca().xaxis.set_major_locator(ticker.MultipleLocator(1))
 	plt.savefig(topk_accuracy_file_path)
 	plt.close()
 	
@@ -261,6 +268,8 @@ def plot_loss_accuracy(
 	plt.grid(True)
 	plt.legend()
 	plt.tight_layout()
+	# Set xticks to only integer values
+	plt.gca().xaxis.set_major_locator(ticker.MultipleLocator(1))
 	plt.savefig(mean_reciprocal_rank_file_path)
 	plt.close()
 	
@@ -274,6 +283,8 @@ def plot_loss_accuracy(
 	plt.grid(True)
 	plt.legend(ncols=3, loc='best')
 	plt.tight_layout()
+	# Set xticks to only integer values
+	plt.gca().xaxis.set_major_locator(ticker.MultipleLocator(1))
 	plt.savefig(precision_recall_f1_file_path)
 	plt.close()
 	
@@ -285,6 +296,8 @@ def plot_loss_accuracy(
 	plt.grid(True)
 	plt.tight_layout()
 	plt.legend()
+	# Set xticks to only integer values
+	plt.gca().xaxis.set_major_locator(ticker.MultipleLocator(1))
 	plt.savefig(cosine_similarity_file_path)
 	plt.close()
 
@@ -356,7 +369,7 @@ def handle_phase_transition(current_phase, initial_lr, max_phases):
 		return current_phase, initial_lr * (0.1 ** current_phase)
 	new_phase = current_phase + 1
 	new_lr = initial_lr * (0.1 ** new_phase)  # Reduce learning rate by 10x
-	print(f"<!> Plateau detected! Transitioning to Phase {new_phase} with learning rate {new_lr:.2e}")
+	print(f"<!> Plateau detected! Transitioning to Phase {new_phase} with learning rate {new_lr:.1e}")
 	return new_phase, new_lr
 
 def finetune(
@@ -430,7 +443,7 @@ def finetune(
 		# 			current_phase += 1
 		# 			counter = 0
 		# 			learning_rate = initial_learning_rate * (0.1 ** current_phase) # Reduce learning rate by 10x for each new phase
-		# 			print(f"Plateau detected. Transitioning to Phase {current_phase} with updated LR: {learning_rate:.2e}")
+		# 			print(f"Plateau detected. Transitioning to Phase {current_phase} with updated LR: {learning_rate:.1e}")
 		WINDOWs = 3
 		if epoch > 0 and len(validation_losses) > 1:
 			should_transition = should_transition_phase(
@@ -524,12 +537,12 @@ def finetune(
 		############################## Early stopping ##############################
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
 
-	losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.2e}_wd_{weight_decay:.2e}_{train_loader.batch_size}_bs.png")
-	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_val_acc_ep_{len(training_losses)}_lr_{learning_rate:.2e}_wd_{weight_decay:.2e}_{train_loader.batch_size}_bs.png")
-	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_acc_ep_{len(training_losses)}_lr_{learning_rate:.2e}_wd_{weight_decay:.2e}_{train_loader.batch_size}_bs.png")
-	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.2e}_wd_{weight_decay:.2e}_{train_loader.batch_size}_bs.png")
-	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.2e}_wd_{weight_decay:.2e}_{train_loader.batch_size}_bs.png")
-	pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_pr_f1_ep_{len(training_losses)}_lr_{learning_rate:.2e}_wd_{weight_decay:.2e}_{train_loader.batch_size}_bs.png")
+	losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_val_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_pr_f1_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 
 	plot_loss_accuracy(
 		train_losses=training_losses,
@@ -721,7 +734,7 @@ def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for CIFAR10x Dataset")
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=18, help='Number of CPUs [def: max cpus]')
-	parser.add_argument('--num_epochs', '-ne', type=int, default=5, help='Number of epochs')
+	parser.add_argument('--num_epochs', '-ne', type=int, default=7, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
