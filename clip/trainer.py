@@ -508,16 +508,15 @@ def finetune(
 		f1_list.append(avg_f1)
 		print(
 			f'@ Epoch: {epoch+1}\n'
-			f'\t[Loss] {mode}: {avg_training_loss:.7f} '
-			f'Validation: {avg_valid_loss:.9f}\n'
-			f'\tValidation Accuracy [text retrieval per image]: {accuracy_text_description_for_each_image} '
+			f'\t[Loss] {mode}: {avg_training_loss:.7f} Valid: {avg_valid_loss:.9f}\n'
+			f'\tValid Acc [text retrieval per image]: {accuracy_text_description_for_each_image} '
 			f'[image retrieval per text]: {acc_img_per_txt}'
 		)
 
 		############################## Early stopping ##############################
 		mdl_fpth = os.path.join(
 			results_dir,
-			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_clip.pth"
+			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
 		)
 		if avg_valid_loss < best_loss:
 			best_loss = avg_valid_loss
@@ -675,7 +674,7 @@ def train(
 		############################## Early stopping ##############################
 		mdl_fpth = os.path.join(
 			results_dir,
-			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_lr_{learning_rate}_wd_{weight_decay}_clip.pth"
+			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
 		)
 		if avg_valid_loss < best_loss:
 			best_loss = avg_valid_loss
