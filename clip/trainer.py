@@ -779,7 +779,6 @@ def main():
 			weight_decay=args.weight_decay,
 			dataset_name=args.dataset,
 			device=args.device,
-			freeze_layers=args.freeze_layers,
 			results_dir=os.path.join(args.dataset, "results")
 		)
 	else:
