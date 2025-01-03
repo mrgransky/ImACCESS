@@ -12,16 +12,10 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_s
 
 # run in pouta:
 # train cifar100 from scratch:
-# $ nohup python -u trainer.py -d cifar100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:1" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 260 -ne 32 -lr 5e-6 -wd 1e-3 --print_every 100 -nw 25 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune cifar100:
-# $ nohup python -u trainer.py -d cifar100 -bs 261 -ne 128 -lr 6e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:1" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_sft.out &
-
-# finetune CINIC10 dataset:
-# $ nohup python -u trainer.py -d cinic10 -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cinic10_finetune.out &
-
-# finetune imagenet:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -ne 32 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:3" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_finetune.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 262 -ne 128 -lr 6e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_sft.out &
 
 USER = os.environ.get('USER')
 
@@ -199,7 +193,7 @@ def plot_loss_accuracy(
 		train_losses,
 		val_losses,
 		validation_accuracy_text_description_for_each_image_list,
-		validation_accuracy_text_image_for_each_text_description_list,
+		validation_acc_img_per_txt_list,
 		top_k_accuracy_list,
 		mean_reciprocal_rank_list,
 		cosine_similarity_list,
@@ -234,7 +228,7 @@ def plot_loss_accuracy(
 
 	plt.figure(figsize=figure_size)
 	plt.plot(epochs, validation_accuracy_text_description_for_each_image_list, label='text retrieval per image')
-	plt.plot(epochs, validation_accuracy_text_image_for_each_text_description_list, label='image retrieval per text')
+	plt.plot(epochs, validation_acc_img_per_txt_list, label='image retrieval per text')
 	plt.xlabel('Epoch')
 	plt.ylabel('Accuracy')
 	plt.title(os.path.splitext(os.path.basename(accuracy_file_path))[0], fontsize=10)
@@ -417,7 +411,7 @@ def finetune(
 	)
 	training_losses, validation_losses = [], []
 	validation_accuracy_text_description_for_each_image_list = []
-	validation_accuracy_text_image_for_each_text_description_list = []
+	validation_acc_img_per_txt_list = []
 	top_k_accuracy_list = []
 	mean_reciprocal_rank_list = []
 	cosine_similarity_list = []
@@ -461,7 +455,7 @@ def finetune(
 				print(f"No plateau detected! Continuing with phase: {current_phase} ...")
 		layers_to_freeze = freeze_schedule[current_phase]
 		set_freeze(model, layers_to_freeze)
-		print(f"Phase {current_phase}: Freezing {len(layers_to_freeze)} layers")
+		print(f"Phase {current_phase}: Freezing {len(layers_to_freeze)} layers out of {total_v_layers + total_t_layers}")
 		print_model_stat(model)
 		optimizer = AdamW(
 			params=[p for p in model.parameters() if p.requires_grad],
@@ -500,12 +494,12 @@ def finetune(
 				)
 			epoch_loss += total_loss.item()
 		avg_training_loss = epoch_loss / len(train_loader)
-		# print(f"Average {mode} Loss: {avg_training_loss:.7f} @ Epoch: {epoch+1}")
+		# print(f"Average {mode} Loss: {avg_training_loss:.7f} ")
 		training_losses.append(avg_training_loss)
-		avg_valid_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description, top_k_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
+		avg_valid_loss, accuracy_text_description_for_each_image, acc_img_per_txt, top_k_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
 		validation_losses.append(avg_valid_loss)
 		validation_accuracy_text_description_for_each_image_list.append(accuracy_text_description_for_each_image)
-		validation_accuracy_text_image_for_each_text_description_list.append(accuracy_text_image_for_each_text_description)
+		validation_acc_img_per_txt_list.append(acc_img_per_txt)
 		top_k_accuracy_list.append([top_k_accuracy[k] for k in [1, 3, 5]])
 		mean_reciprocal_rank_list.append(mean_reciprocal_rank)
 		cosine_similarity_list.append(cosine_sim_mean)
@@ -513,10 +507,11 @@ def finetune(
 		recall_list.append(avg_recall)
 		f1_list.append(avg_f1)
 		print(
-			f'{mode} Loss: {avg_training_loss:.7f} '
-			f'Validation Loss: {avg_valid_loss:.9f} '
-			f'Validation Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.7f} '
-			f'[image for each text description]: {accuracy_text_image_for_each_text_description:.7f}'
+			f'@ Epoch: {epoch+1}\n'
+			f'[Loss] {mode}: {avg_training_loss:.7f} '
+			f'Validation: {avg_valid_loss:.9f}\n'
+			f'Validation Accuracy [text retrieval per image]: {accuracy_text_description_for_each_image} '
+			f'[image retrieval per text]: {acc_img_per_txt}'
 		)
 
 		############################## Early stopping ##############################
@@ -535,8 +530,8 @@ def finetune(
 				print(f"Early stopping triggered after {epoch+1} epochs due to no improvement.")
 				break
 		############################## Early stopping ##############################
-		print("-"*160)
-	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
+		print("-"*170)
+	print(f"{mode} Elapsed_t: {time.time()-ft_st:.1f} sec".center(160, " "))
 
 	losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_val_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
@@ -549,7 +544,7 @@ def finetune(
 		train_losses=training_losses,
 		val_losses=validation_losses,
 		validation_accuracy_text_description_for_each_image_list=validation_accuracy_text_description_for_each_image_list,
-		validation_accuracy_text_image_for_each_text_description_list=validation_accuracy_text_image_for_each_text_description_list,
+		validation_acc_img_per_txt_list=validation_acc_img_per_txt_list,
 		top_k_accuracy_list=top_k_accuracy_list,
 		mean_reciprocal_rank_list=mean_reciprocal_rank_list,
 		cosine_similarity_list=cosine_similarity_list,
@@ -628,7 +623,7 @@ def train(
 	)
 	training_losses, validation_losses = [], []
 	validation_accuracy_text_description_for_each_image_list = []
-	validation_accuracy_text_image_for_each_text_description_list = []
+	validation_acc_img_per_txt_list = []
 	top_k_accuracy_list = []
 	mean_reciprocal_rank_list = []
 	cosine_similarity_list = []
@@ -660,10 +655,10 @@ def train(
 		avg_training_loss = epoch_loss / len(train_loader)
 		print(f"Average {mode} Loss: {avg_training_loss:.5f} @ Epoch: {epoch+1}")
 		training_losses.append(avg_training_loss)
-		avg_valid_loss, accuracy_text_description_for_each_image, accuracy_text_image_for_each_text_description, top_k_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
+		avg_valid_loss, accuracy_text_description_for_each_image, acc_img_per_txt, top_k_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
 		validation_losses.append(avg_valid_loss)
 		validation_accuracy_text_description_for_each_image_list.append(accuracy_text_description_for_each_image)
-		validation_accuracy_text_image_for_each_text_description_list.append(accuracy_text_image_for_each_text_description)
+		validation_acc_img_per_txt_list.append(acc_img_per_txt)
 		top_k_accuracy_list.append([top_k_accuracy[k] for k in [1, 3, 5]])
 		mean_reciprocal_rank_list.append(mean_reciprocal_rank)
 		cosine_similarity_list.append(cosine_sim_mean)
@@ -674,7 +669,7 @@ def train(
 			f'{mode} Loss: {avg_training_loss:.4f} '
 			f'Validation Loss: {avg_valid_loss:.4f} '
 			f'Validation Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.4f} '
-			f'[image for each text description]: {accuracy_text_image_for_each_text_description:.4f}'
+			f'[image for each text description]: {acc_img_per_txt:.4f}'
 		)
 
 		############################## Early stopping ##############################
@@ -707,7 +702,7 @@ def train(
 		train_losses=training_losses,
 		val_losses=validation_losses,
 		validation_accuracy_text_description_for_each_image_list=validation_accuracy_text_description_for_each_image_list,
-		validation_accuracy_text_image_for_each_text_description_list=validation_accuracy_text_image_for_each_text_description_list,
+		validation_acc_img_per_txt_list=validation_acc_img_per_txt_list,
 		top_k_accuracy_list=top_k_accuracy_list,
 		mean_reciprocal_rank_list=mean_reciprocal_rank_list,
 		cosine_similarity_list=cosine_similarity_list,
