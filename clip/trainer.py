@@ -12,10 +12,13 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_s
 
 # run in pouta:
 # train cifar100 from scratch:
-# $ nohup python -u trainer.py -d cifar100 -bs 256 -ne 128 -lr 5e-4 -wd 1e-2 --print_every 100 -nw 25 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -ne 128 -lr 5e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune cifar100:
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -ne 128 -lr 5e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
+
+# train imagenet from scratch:
+# $ nohup python -u trainer.py -d imagenet -bs 256 -ne 50 -lr 5e-4 -wd 1e-2 --print_every 5000 -nw 50 --device "cuda:1" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_train.out &
 
 USER = os.environ.get('USER')
 
