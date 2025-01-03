@@ -19,6 +19,47 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_s
 
 USER = os.environ.get('USER')
 
+def early_stopping(
+		avg_valid_loss: float,
+		accuracy_text_description_for_each_image: float,
+		best_loss: float,
+		best_accuracy: float,
+		no_improvement_count: int,
+		moving_average_loss: list,
+		moving_average_window: int,
+		early_stopping_patience: int,
+		epoch: int,
+		model: nn.Module,
+		results_dir: str,
+		dataset_name: str,
+		model_name: str,
+	) -> tuple:
+		moving_average_loss.append(avg_valid_loss)
+		if len(moving_average_loss) > moving_average_window:
+				moving_average_loss.pop(0)
+
+		if avg_valid_loss < best_loss:
+				best_loss = avg_valid_loss
+				best_accuracy = accuracy_text_description_for_each_image
+				torch.save(model.state_dict(), os.path.join(results_dir, f"{dataset_name}_train_{re.sub('/', '', model_name)}_clip.pth"))
+				print(f"Saving model in « {os.path.join(results_dir, f'{dataset_name}_train_{re.sub('/', '', model_name)}_clip.pth')} » | best avg loss: {best_loss:.5f}")
+				no_improvement_count = 0
+		elif accuracy_text_description_for_each_image > best_accuracy:
+				best_accuracy = accuracy_text_description_for_each_image
+				torch.save(model.state_dict(), os.path.join(results_dir, f"{dataset_name}_train_{re.sub('/', '', model_name)}_clip.pth"))
+				print(f"Saving model in « {os.path.join(results_dir, f'{dataset_name}_train_{re.sub('/', '', model_name)}_clip.pth')} » | best avg accuracy: {best_accuracy:.5f}")
+				no_improvement_count = 0
+		else:
+				no_improvement_count += 1
+				if no_improvement_count >= early_stopping_patience:
+						if len(moving_average_loss) == moving_average_window:
+								avg_moving_loss = sum(moving_average_loss) / moving_average_window
+								if avg_moving_loss > best_loss * 1.05:
+										print(f"Early stopping triggered after {epoch+1} epochs.")
+										return best_loss, best_accuracy, no_improvement_count, moving_average_loss, True
+
+		return best_loss, best_accuracy, no_improvement_count, moving_average_loss, False
+
 def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
 	model, preprocess = clip.load(model_name, device=device, jit=jit) # training or finetuning => jit=False
 	model = model.float() # Convert model parameters to FP32
@@ -516,7 +557,7 @@ def finetune(
 		############################## Early stopping ##############################
 		mdl_fpth = os.path.join(
 			results_dir,
-			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_epochs_{len(training_losses)}_wd_{weight_decay}_clip.pth"
+			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
 		)
 		if avg_valid_loss < best_loss:
 			best_loss = avg_valid_loss
@@ -597,6 +638,8 @@ def train(
 	)
 	best_loss = np.inf
 	no_improvement_count = 0
+	moving_average_loss = []
+	moving_average_window = 3
 	optimizer = AdamW(
 		params=[p for p in model.parameters() if p.requires_grad],# Only optimizes parameters that require gradients
 		lr=learning_rate,
@@ -671,22 +714,39 @@ def train(
 			f'[image for each text description]: {acc_img_per_txt:.4f}'
 		)
 
-		############################## Early stopping ##############################
-		mdl_fpth = os.path.join(
+		# ############################## Early stopping ##############################
+		# mdl_fpth = os.path.join(
+		# 	results_dir,
+		# 	f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
+		# )
+		# if avg_valid_loss < best_loss:
+		# 	best_loss = avg_valid_loss
+		# 	torch.save(model.state_dict(), mdl_fpth)
+		# 	print(f"Saving model in « {mdl_fpth} » | best avg loss: {best_loss:.5f}")
+		# 	no_improvement_count = 0
+		# else:
+		# 	no_improvement_count += 1
+		# 	if no_improvement_count >= early_stopping_patience:
+		# 		print(f"Early stopping triggered after {epoch+1} epochs.")
+		# 		break
+		best_loss, best_accuracy, no_improvement_count, moving_average_loss, stop_training = early_stopping(
+			avg_valid_loss,
+			accuracy_text_description_for_each_image,
+			best_loss,
+			best_accuracy,
+			no_improvement_count,
+			moving_average_loss,
+			moving_average_window,
+			early_stopping_patience,
+			epoch,
+			model,
 			results_dir,
-			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_epochs_{len(training_losses)}_wd_{weight_decay}_clip.pth"
+			dataset_name,
+			model_name,
 		)
-		if avg_valid_loss < best_loss:
-			best_loss = avg_valid_loss
-			torch.save(model.state_dict(), mdl_fpth)
-			print(f"Saving model in « {mdl_fpth} » | best avg loss: {best_loss:.5f}")
-			no_improvement_count = 0
-		else:
-			no_improvement_count += 1
-			if no_improvement_count >= early_stopping_patience:
-				print(f"Early stopping triggered after {epoch+1} epochs.")
-				break
-		############################## Early stopping ##############################
+		if stop_training:
+			break
+		# ############################## Early stopping ##############################
 
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
 
@@ -696,7 +756,6 @@ def train(
 	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mean_reciprocal_rank_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
 	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cosine_similarity_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
 	pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_precision_recall_f1_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-
 	plot_loss_accuracy(
 		train_losses=training_losses,
 		val_losses=validation_losses,
