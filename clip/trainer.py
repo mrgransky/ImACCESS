@@ -7,6 +7,7 @@ from torch.optim import AdamW, SGD, Adam, lr_scheduler
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import warnings
+import copy
 warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_scheduler')
 
 # train cifar100 from scratch:
