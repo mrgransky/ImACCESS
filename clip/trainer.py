@@ -23,6 +23,121 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_s
 
 USER = os.environ.get('USER')
 
+class EarlyStopping:
+		"""
+		Enhanced Early Stopping Handler with multiple monitoring strategies
+		"""
+		def __init__(
+						self,
+						patience: int = 10,
+						min_delta: float = 1e-5,
+						cumulative_delta: float = 0.01,
+						window_size: int = 5,
+						mode: str = 'min',
+						min_epochs: int = 20,
+						restore_best_weights: bool = True
+				):
+				"""
+				Args:
+						patience: Number of epochs to wait before early stopping
+						min_delta: Minimum change in monitored value to qualify as an improvement
+						cumulative_delta: Minimum cumulative improvement over window_size epochs
+						window_size: Size of the window for tracking improvement trends
+						mode: 'min' for loss, 'max' for metrics like accuracy
+						min_epochs: Minimum number of epochs before early stopping can trigger
+						restore_best_weights: Whether to restore model to best weights when stopped
+				"""
+				self.patience = patience
+				self.min_delta = min_delta
+				self.cumulative_delta = cumulative_delta
+				self.window_size = window_size
+				self.mode = mode
+				self.min_epochs = min_epochs
+				self.restore_best_weights = restore_best_weights
+				
+				self.best_score = None
+				self.best_weights = None
+				self.counter = 0
+				self.stopped_epoch = 0
+				self.value_history = []
+				self.improvement_history = []
+				
+				self.sign = 1 if mode == 'min' else -1
+		
+		def is_improvement(self, current_value: float) -> bool:
+				"""Check if current value is an improvement"""
+				if self.best_score is None:
+						return True
+				
+				improvement = (self.best_score - current_value) * self.sign
+				return improvement > self.min_delta
+		
+		def calculate_trend(self) -> float:
+				"""Calculate improvement trend over window"""
+				if len(self.value_history) < self.window_size:
+						return float('inf') if self.mode == 'min' else float('-inf')
+				
+				window = self.value_history[-self.window_size:]
+				if self.mode == 'min':
+						return sum(window[i] - window[i+1] for i in range(len(window)-1))
+				return sum(window[i+1] - window[i] for i in range(len(window)-1))
+		
+		def should_stop(self, current_value: float, model: nn.Module, epoch: int) -> bool:
+				"""
+				Enhanced stopping decision based on multiple criteria
+				"""
+				self.value_history.append(current_value)
+				
+				# Don't stop before minimum epochs
+				if epoch < self.min_epochs:
+						if self.best_score is None or current_value * self.sign < self.best_score * self.sign:
+								self.best_score = current_value
+								if self.restore_best_weights:
+										self.best_weights = copy.deepcopy(model.state_dict())
+						return False
+				
+				if self.is_improvement(current_value):
+						self.best_score = current_value
+						if self.restore_best_weights:
+								self.best_weights = copy.deepcopy(model.state_dict())
+						self.counter = 0
+						self.improvement_history.append(True)
+				else:
+						self.counter += 1
+						self.improvement_history.append(False)
+				
+				# Calculate trend over window
+				trend = self.calculate_trend()
+				cumulative_improvement = abs(trend) if len(self.value_history) >= self.window_size else float('inf')
+				
+				# Decision logic combining multiple factors
+				should_stop = False
+				
+				# Check primary patience criterion
+				if self.counter >= self.patience:
+						should_stop = True
+				
+				# Check if stuck in local optimum
+				if len(self.improvement_history) >= self.window_size:
+						recent_improvements = sum(self.improvement_history[-self.window_size:])
+						if recent_improvements == 0 and cumulative_improvement < self.cumulative_delta:
+								should_stop = True
+				
+				# If stopping, restore best weights if configured
+				if should_stop and self.restore_best_weights and self.best_weights is not None:
+						model.load_state_dict(self.best_weights)
+						self.stopped_epoch = epoch
+				
+				return should_stop
+		
+		def get_best_score(self) -> float:
+				"""Return the best score achieved"""
+				return self.best_score
+		
+		def get_stopped_epoch(self) -> int:
+				"""Return the epoch at which training stopped"""
+				return self.stopped_epoch
+		
 def get_dataset(dname:str="CIFAR10"):
 	dname = dname.upper()
 	ddir = {
