@@ -25,9 +25,6 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_s
 USER = os.environ.get('USER')
 
 class EarlyStopping:
-		"""
-		Enhanced Early Stopping Handler with multiple monitoring strategies
-		"""
 		def __init__(
 						self,
 						patience: int = 10,
@@ -566,17 +563,15 @@ def finetune(
 	freeze_schedule = get_progressive_freeze_schedule(layer_groups) # progressive freezing based on validation loss plateau
 	print(f"Freeze Schedule:\n{json.dumps(freeze_schedule, indent=2)}")
 
-	# Initialize early stopping
 	early_stopping = EarlyStopping(
 		patience=10,
 		min_delta=1e-4,
 		cumulative_delta=0.005,
 		window_size=5,
-		mode='min',
-		min_epochs=20,
+		mode='min', # 'min' for loss, 'max' for accuracy
+		min_epochs=3, # Minimum epochs before early stopping can trigger
 		restore_best_weights=True
 	)
-	best_loss = float('inf')
 	current_phase = 0
 	plateau_threshold: float = 1e-4
 	no_improvement_count = 0
@@ -632,8 +627,6 @@ def finetune(
 					initial_lr=initial_learning_rate,
 					max_phases=len(freeze_schedule)
 				)
-			else:
-				print(f"No plateau detected! Continuing with phase: {current_phase} ...")
 		layers_to_freeze = freeze_schedule[current_phase]
 		set_freeze(model, layers_to_freeze)
 		get_status(model, current_phase, layers_to_freeze, total_layers)
