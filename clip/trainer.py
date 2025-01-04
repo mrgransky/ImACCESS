@@ -20,6 +20,9 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_s
 # train imagenet from scratch:
 # $ nohup python -u trainer.py -d imagenet -bs 256 -ne 50 -lr 5e-4 -wd 1e-2 --print_every 5000 -nw 50 --device "cuda:1" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_train.out &
 
+# finetune imagenet:
+# $ nohup python -u trainer.py -d imagenet -bs 256 -ne 50 -lr 5e-4 -wd 1e-2 --print_every 5000 -nw 50 --device "cuda:1" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
+
 USER = os.environ.get('USER')
 
 def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
