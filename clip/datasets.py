@@ -4,6 +4,7 @@ from PIL import Image
 import os
 import torch
 from utils import *
+import torchvision.transforms as T
 
 class CUSTOMIZEDDATASET(Dataset):
 	def __init__(self, dataset, transformer=None,):

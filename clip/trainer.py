@@ -6,36 +6,22 @@ import torch.nn as nn
 from torch.optim import AdamW, SGD, Adam, lr_scheduler
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-import torchvision.transforms as T
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_scheduler')
 
-# run in pouta:
 # train cifar100 from scratch:
-# $ nohup python -u trainer.py -d cifar100 -bs 256 -ne 128 -lr 5e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -ne 256 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune cifar100:
-# $ nohup python -u trainer.py -d cifar100 -bs 256 -ne 128 -lr 5e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -ne 256 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
 
 # train imagenet from scratch:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -ne 50 -lr 5e-4 -wd 1e-2 --print_every 5000 -nw 50 --device "cuda:1" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_train.out &
+# $ nohup python -u trainer.py -d imagenet -bs 256 -ne 50 -lr 1e-4 -wd 1e-2 --print_every 5000 -nw 50 --device "cuda:1" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_train.out &
 
 # finetune imagenet:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -ne 50 -lr 5e-4 -wd 1e-2 --print_every 5000 -nw 50 --device "cuda:1" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
+# $ nohup python -u trainer.py -d imagenet -bs 256 -ne 50 -lr 1e-4 -wd 1e-2 --print_every 5000 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
 
 USER = os.environ.get('USER')
-
-def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
-	model, preprocess = clip.load(model_name, device=device, jit=jit) # training or finetuning => jit=False
-	model = model.float() # Convert model parameters to FP32
-	input_resolution = model.visual.input_resolution
-	context_length = model.context_length
-	vocab_size = model.vocab_size
-	print("Model parameters:", f"{np.sum([int(np.prod(p.shape)) for p in model.parameters()]):,}")
-	print("Input resolution:", input_resolution)
-	print("Context length:", context_length)
-	print("Vocab size:", vocab_size)
-	return model, preprocess
 
 def get_dataset(dname:str="CIFAR10"):
 	dname = dname.upper()
@@ -126,6 +112,18 @@ def get_dataloaders(train_dataset, valid_dataset, preprocess, batch_size=32, nw=
 		pin_memory=True, # when using CUDA
 	)
 	return train_loader, validation_loader
+
+def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
+	model, preprocess = clip.load(model_name, device=device, jit=jit) # training or finetuning => jit=False
+	model = model.float() # Convert model parameters to FP32
+	input_resolution = model.visual.input_resolution
+	context_length = model.context_length
+	vocab_size = model.vocab_size
+	print("Model parameters:", f"{np.sum([int(np.prod(p.shape)) for p in model.parameters()]):,}")
+	print("Input resolution:", input_resolution)
+	print("Context length:", context_length)
+	print("Vocab size:", vocab_size)
+	return model, preprocess
 
 def evaluate(model, validation_loader, criterion, device="cuda", top_k=(1, 3, 5)):
 	model.eval()
@@ -301,18 +299,56 @@ def plot_loss_accuracy(
 	plt.savefig(cosine_similarity_file_path)
 	plt.close()
 
-def print_model_stat(model):
+def count_clip_layers(model):
+		"""
+		Count total number of layers in CLIP model
+		"""
+		total_layers = 0
+		unique_layers = set()
+		
+		# Count each named parameter's layer (get base layer name without .weight/.bias)
+		for name, _ in model.named_parameters():
+				# Split the name and take everything except the last part (weight/bias)
+				layer_name = '.'.join(name.split('.')[:-1])
+				if layer_name:  # Avoid empty strings
+						unique_layers.add(layer_name)
+		
+		total_layers = len(unique_layers)
+		
+		# Detailed breakdown
+		visual_transformer_blocks = len([l for l in unique_layers if 'visual.transformer.resblocks' in l])
+		text_transformer_blocks = len([l for l in unique_layers if 'transformer.resblocks' in l])
+		projection_layers = len([l for l in unique_layers if any(x in l for x in ['visual.proj', 'text_projection', 'visual.ln_post'])])
+		frontend_layers = len([l for l in unique_layers if any(x in l for x in ['visual.conv1', 'visual.class_embedding', 'positional_embedding', 'token_embedding'])])
+		
+		print(f"\nCLIP Layer Statistics:")
+		print(f"Total unique layers: {total_layers}")
+		print(f"Visual transformer blocks: {visual_transformer_blocks}")
+		print(f"Text transformer blocks: {text_transformer_blocks}")
+		print(f"Projection layers: {projection_layers}")
+		print(f"Frontend layers: {frontend_layers}")
+		return total_layers
+
+def get_status(model, current_phase=0, layers_to_freeze=[], total_layers=0):
 	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)	
+	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)    
 	total_params = sum(p.numel() for p in model.parameters())
 	trainable_percent = (trainable_params / total_params) * 100
 	frozen_percent = (frozen_params / total_params) * 100
-	print(
-		f"[Model Parameters Statictics] Total: {total_params:,} "
-		f"Trainable: {trainable_params:,} ({trainable_percent:.2f}%) "
-		f"Frozen: {frozen_params:,} ({frozen_percent:.2f}%)"
-		.center(170, " ")
-	)
+	freeze_percentage = (len(layers_to_freeze) / total_layers) * 100 if total_layers > 0 else 0
+	unfreeze_percentage = 100 - freeze_percentage
+	print("\n" + "="*60)
+	print(f"Model Status - Phase {current_phase}".center(60))
+	print("="*60)
+	print("\nParameter Statistics:")
+	print(f"{'Total:':<25} {total_params:,}")
+	print(f"{'Trainable:':<25} {trainable_params:,} ({trainable_percent:.2f}%)")
+	print(f"{'Frozen:':<25} {frozen_params:,} ({frozen_percent:.2f}%)")
+	print("\nLayer Statistics:")
+	print(f"{'Total:':<25} {total_layers}")
+	print(f"{'Frozen:':<25} {len(layers_to_freeze)} ({freeze_percentage:.1f}%)")
+	print(f"{'Trainable:':<25} {total_layers - len(layers_to_freeze)} ({unfreeze_percentage:.1f}%)")
+	print("\n" + "="*60 + "\n")
 
 def get_num_vit_blocks(model):
 	if not hasattr(model, 'visual') or not hasattr(model.visual, 'transformer'):
@@ -323,11 +359,21 @@ def get_num_vit_blocks(model):
 
 def get_layer_groups(nv:int=12, nt:int=12):
 	layer_groups = {
-		'visual_frontend': ['visual.conv1','visual.class_embedding','visual.positional_embedding'],
+		'visual_frontend': [
+			'visual.conv1', # patch embedding
+			'visual.class_embedding', # CLS token
+			'visual.positional_embedding', # positional embedding
+			# 'visual.ln_pre' # 
+		],
 		'visual_transformer': [f'visual.transformer.resblocks.{i}' for i in range(nv)],
 		'text_frontend': ['token_embedding','positional_embedding'],
 		'text_transformer': [f'transformer.resblocks.{i}' for i in range(nt)],
-		'projections': ['visual.ln_post','text_projection','logit_scale'],
+		'projections': [
+			'visual.proj', # final normalization before projection
+			'visual.ln_post',
+			'text_projection',
+			'logit_scale', # # Temperature parameter
+		],
 	}
 	return layer_groups
 
@@ -352,6 +398,7 @@ def get_progressive_freeze_schedule(layer_groups:dict):
 
 def set_freeze(model, layers_to_freeze):
 	for name, param in model.named_parameters():
+		# print(name)
 		param.requires_grad = True # Unfreeze all layers first
 		if any(layer in name for layer in layers_to_freeze): # Freeze layers in the list
 			param.requires_grad = False
@@ -393,6 +440,7 @@ def finetune(
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
 
+	total_layers = count_clip_layers(model)
 	vis_nblocks, txt_nblocks = get_num_vit_blocks(model)
 	print(f"[Transformer Blocks] Vision: {vis_nblocks} | Text: {txt_nblocks}")
 	layer_groups = get_layer_groups(nv=vis_nblocks, nt=txt_nblocks,)
@@ -401,7 +449,18 @@ def finetune(
 	print(f"[Layer Groups] Visual: {total_v_layers} | Text: {total_t_layers}")
 	freeze_schedule = get_progressive_freeze_schedule(layer_groups) # progressive freezing based on validation loss plateau
 	print(f"Freeze Schedule:\n{json.dumps(freeze_schedule, indent=2)}")
-	best_loss = np.inf
+
+	# Initialize early stopping
+	early_stopping = EarlyStopping(
+		patience=10,
+		min_delta=1e-4,
+		cumulative_delta=0.005,
+		window_size=5,
+		mode='min',
+		min_epochs=20,
+		restore_best_weights=True
+	)
+	best_loss = float('inf')
 	current_phase = 0
 	plateau_threshold: float = 1e-4
 	no_improvement_count = 0
@@ -461,8 +520,7 @@ def finetune(
 				print(f"No plateau detected! Continuing with phase: {current_phase} ...")
 		layers_to_freeze = freeze_schedule[current_phase]
 		set_freeze(model, layers_to_freeze)
-		print(f"Phase {current_phase}: Freezing {len(layers_to_freeze)} layers.")
-		print_model_stat(model)
+		get_status(model, current_phase, layers_to_freeze, total_layers)
 		optimizer = AdamW(
 			params=[p for p in model.parameters() if p.requires_grad],
 			lr=learning_rate, # potentially update learning rate based on phase
@@ -519,22 +577,28 @@ def finetune(
 			f'[image retrieval per text]: {acc_img_per_txt}'
 		)
 
-		############################## Early stopping ##############################
-		mdl_fpth = os.path.join(
-			results_dir,
-			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
-		)
-		if avg_valid_loss < best_loss:
-			best_loss = avg_valid_loss
-			torch.save(model.state_dict(), mdl_fpth)
-			print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.9f}")
-			no_improvement_count = 0
-		else:
-			no_improvement_count += 1
-			if no_improvement_count >= early_stopping_patience:
-				print(f"Early stopping triggered after {epoch+1} epochs due to no improvement.")
+		# ############################## Early stopping ##############################
+		# mdl_fpth = os.path.join(
+		# 	results_dir,
+		# 	f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
+		# )
+		# if avg_valid_loss < best_loss:
+		# 	best_loss = avg_valid_loss
+		# 	torch.save(model.state_dict(), mdl_fpth)
+		# 	print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.9f}")
+		# 	no_improvement_count = 0
+		# else:
+		# 	no_improvement_count += 1
+		# 	if no_improvement_count >= early_stopping_patience:
+		# 		print(f"Early stopping triggered after {epoch+1} epochs due to no improvement.")
+		# 		break
+		# Early stopping check
+		if early_stopping.should_stop(avg_valid_loss, model, epoch):
+				print(f'\nEarly stopping triggered at epoch {epoch+1}')
+				print(f'Best validation loss: {early_stopping.get_best_score():.4f}')
+				print(f'Best epoch: {early_stopping.get_stopped_epoch()}')
 				break
-		############################## Early stopping ##############################
+		# ############################## Early stopping ##############################
 		print("-"*170)
 	print(f"{mode} Elapsed_t: {time.time()-ft_st:.1f} sec".center(160, " "))
 
@@ -745,8 +809,8 @@ def main():
 	parser.add_argument('--num_workers', '-nw', type=int, default=18, help='Number of CPUs [def: max cpus]')
 	parser.add_argument('--num_epochs', '-ne', type=int, default=7, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
-	parser.add_argument('--learning_rate', '-lr', type=float, default=5e-4, help='small learning rate for better convergence [def: 1e-3]')
-	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
+	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-3]')
+	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 1e-4]')
 	parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 	parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar10', help='Choose dataset (CIFAR10/cifar100)')
