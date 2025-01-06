@@ -533,11 +533,11 @@ def finetune(
 		model:nn.Module,
 		train_loader:DataLoader,
 		validation_loader:DataLoader,
+		early_stopping,
 		num_epochs:int=7,
 		nw:int=10,
 		print_every:int=150,
 		model_name:str="ViT-B/32",
-		early_stopping_patience:int=3,
 		learning_rate:float=1e-5,
 		weight_decay:float=1e-3,
 		dataset_name:str="CIFAR10",
@@ -562,15 +562,6 @@ def finetune(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
-	)
-	early_stopping = EarlyStopping(
-		patience=early_stopping_patience,
-		min_delta=1e-4,
-		cumulative_delta=5e-3,
-		window_size=5,
-		mode='min', # 'min' for loss, 'max' for accuracy
-		min_epochs=3, # Minimum epochs before early stopping can trigger
-		restore_best_weights=True,
 	)
 	current_phase = 0
 	plateau_threshold: float = 1e-4
@@ -728,11 +719,11 @@ def train(
 		model:nn.Module,
 		train_loader:DataLoader,
 		validation_loader:DataLoader,
+		early_stopping,
 		num_epochs:int=5,
 		nw:int=10,
 		print_every:int=150,
 		model_name:str="ViT-B/32",
-		early_stopping_patience:int=3,
 		learning_rate:float=1e-5,
 		weight_decay:float=1e-3,
 		dataset_name:str="CIFAR10",
@@ -761,11 +752,10 @@ def train(
 		f"Frozen: {frozen_params:,} ({frozen_percent:.2f}%)"
 		.center(160, "-")
 	)
-	best_loss = np.inf
-	best_accuracy = 0.0
-	no_improvement_count = 0
-	moving_average_loss = []
-	moving_average_window = 3
+	mdl_fpth = os.path.join(
+		results_dir,
+		f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
+	)
 	optimizer = AdamW(
 		params=[p for p in model.parameters() if p.requires_grad],# Only optimizes parameters that require gradients
 		lr=learning_rate,
@@ -841,36 +831,16 @@ def train(
 		)
 
 		# ############################## Early stopping ##############################
-		mdl_fpth = os.path.join(
-			results_dir,
-			f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
-		)
-		# if avg_valid_loss < best_loss:
-		# 	best_loss = avg_valid_loss
-		# 	torch.save(model.state_dict(), mdl_fpth)
-		# 	print(f"Saving model in « {mdl_fpth} » | best avg loss: {best_loss:.5f}")
-		# 	no_improvement_count = 0
-		# else:
-		# 	no_improvement_count += 1
-		# 	if no_improvement_count >= early_stopping_patience:
-		# 		print(f"Early stopping triggered after {epoch+1} epochs.")
-		# 		break
-		moving_average_loss.append(avg_valid_loss)
-		if len(moving_average_loss) > moving_average_window:
-			moving_average_loss.pop(0) # Remove the oldest loss
-		avg_moving_loss = sum(moving_average_loss) / len(moving_average_loss)
-		if avg_valid_loss < best_loss:
-			best_loss = avg_valid_loss
-			torch.save(model.state_dict(), mdl_fpth)
-			print(f"Saving model in « {mdl_fpth} » | best avg loss: {best_loss:.9f}")
-			no_improvement_count = 0
+		if early_stopping.should_stop(avg_valid_loss, model, epoch):
+			print(f'\nEarly stopping triggered at epoch {epoch+1}')
+			print(f'Best validation loss: {early_stopping.get_best_score():.4f}')
+			print(f'Best epoch: {early_stopping.get_stopped_epoch()}')
+			break
 		else:
-			no_improvement_count += 1
-			if no_improvement_count >= early_stopping_patience:
-				if avg_moving_loss > best_loss * 1.05: # 5% of the best lossv
-					print(f"Early stopping triggered after {epoch + 1} epochs.")
-					break
+			print(f"Saving best model in {mdl_fpth} for best validation loss: {early_stopping.get_best_score():.9f}")
+			torch.save(model.state_dict(), mdl_fpth)
 		# ############################## Early stopping ##############################
+		print("-"*170)
 
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
 
@@ -932,6 +902,16 @@ def main():
 	)
 	print(f"Train Loader: {len(train_loader)} batches, Validation Loader: {len(validation_loader)} batches")
 	# visualize_(dataloader=train_loader, num_samples=5)
+	early_stopping = EarlyStopping(
+		patience=5, # 5 epochs without improvement before stopping
+		min_delta=1e-4,
+		cumulative_delta=5e-3,
+		window_size=5, # 
+		mode='min', # 'min' for loss, 'max' for accuracy
+		min_epochs=3, # Minimum epochs before early stopping can be triggered
+		restore_best_weights=True,
+	)
+
 	if args.mode == 'finetune':
 		finetune(
 			model=model,
@@ -941,7 +921,7 @@ def main():
 			nw=args.num_workers,
 			print_every=args.print_every,
 			model_name=args.model_name,
-			early_stopping_patience=3,
+			early_stopping=early_stopping,
 			learning_rate=args.learning_rate,
 			weight_decay=args.weight_decay,
 			dataset_name=args.dataset,
@@ -957,7 +937,7 @@ def main():
 			nw=args.num_workers,
 			print_every=args.print_every,
 			model_name=args.model_name,
-			early_stopping_patience=3,
+			early_stopping=early_stopping,
 			learning_rate=args.learning_rate,
 			weight_decay=args.weight_decay,
 			dataset_name=args.dataset,
