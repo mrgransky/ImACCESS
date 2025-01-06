@@ -324,7 +324,7 @@ def plot_loss_accuracy(
 	if num_epochs == 1:
 		return
 	epochs = range(1, num_epochs + 1)
-	figure_size = (13, 5)
+	figure_size = (14, 6)
 	plt.figure(figsize=figure_size)
 	plt.plot(epochs, train_losses, color='b', label='Train', lw=1.25)
 	plt.plot(epochs, val_losses, color='r', label='Validation', lw=1.25)
