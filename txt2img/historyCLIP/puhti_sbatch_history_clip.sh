@@ -40,7 +40,7 @@ python -u history_clip.py \
 	--num_workers $num_workers \
 	--print_every 50 \
 	--batch_size 512 \
-	--learning_rate 5e-5 \
+	--learning_rate 5e-3 \
 	--weight_decay 1e-3 \
 	--mode ${MODES[$SLURM_ARRAY_TASK_ID]} \
 	--model_name "ViT-B/32" \

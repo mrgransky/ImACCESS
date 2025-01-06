@@ -1,6 +1,7 @@
 from utils import *
 from dataset_loader import get_dataloaders
 from trainer import finetune, train
+import copy
 
 parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
