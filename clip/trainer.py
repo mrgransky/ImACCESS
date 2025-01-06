@@ -824,9 +824,8 @@ def train(
 		f1_list.append(avg_f1)
 		print(
 			f'@Epoch: {epoch+1}:\n'
-			f'[LOSS] {mode}: {avg_training_loss:.5f} '
-			f'Valid: {avg_valid_loss:.8f}\n'
-			f'Valid Acc [text retrieval per image]: {accuracy_text_description_for_each_image} '
+			f'\t[LOSS] {mode}: {avg_training_loss:.5f} Valid: {avg_valid_loss:.8f}\n'
+			f'\tValid Acc [text retrieval per image]: {accuracy_text_description_for_each_image} '
 			f'[image retrieval per text]: {acc_img_per_txt}'
 		)
 

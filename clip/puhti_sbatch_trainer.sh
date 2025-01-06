@@ -43,7 +43,7 @@ for dset in "${datasets[@]}"
 		--num_workers $num_workers \
 		--print_every 100 \
 		--batch_size 256 \
-		--learning_rate 1e-3 \
+		--learning_rate 5e-5 \
 		--mode ${MODES[$SLURM_ARRAY_TASK_ID]} \
 		--weight_decay 1e-2 \
 		--model_name "ViT-B/32" \
