@@ -7,8 +7,8 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=57G
 #SBATCH --partition=gpu
 #SBATCH --array=0
 #SBATCH --gres=gpu:v100:1
@@ -32,14 +32,15 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 MODES=(train finetune)
 datasets=(cifar100 cifar10)
+num_workers=$((SLURM_CPUS_PER_TASK - 1))  # reserve 1 CPU for the main process and other overheads
 
 for dset in "${datasets[@]}" 
 	do
-		echo "Dataset: $dset MODES[$SLURM_ARRAY_TASK_ID]: ${MODES[$SLURM_ARRAY_TASK_ID]}"
+		echo "Dataset: $dset MODES[$SLURM_ARRAY_TASK_ID]: ${MODES[$SLURM_ARRAY_TASK_ID]} with $num_workers workers"
 		python -u trainer.py \
 		--dataset $dset \
 		--num_epochs 256 \
-		--num_workers 20 \
+		--num_workers $num_workers \
 		--print_every 100 \
 		--batch_size 256 \
 		--learning_rate 1e-3 \
