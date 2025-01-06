@@ -324,19 +324,19 @@ def plot_loss_accuracy(
 	if num_epochs == 1:
 		return
 	epochs = range(1, num_epochs + 1)
-	figure_size = (13, 7)
+	figure_size = (13, 5)
 	plt.figure(figsize=figure_size)
 	plt.plot(epochs, train_losses, color='b', label='Train', lw=1.25)
 	plt.plot(epochs, val_losses, color='r', label='Validation', lw=1.25)
 	plt.xlabel('Epoch')
 	plt.ylabel('Loss')
 	plt.title(os.path.splitext(os.path.basename(losses_file_path))[0], fontsize=10)
-	plt.legend(ncols=2, fontsize=8, loc='best')
+	plt.legend(ncols=2, fontsize=10, loc='best')
 	plt.tight_layout()
 	plt.grid(True)
 	# Set xticks to only integer values
 	plt.gca().xaxis.set_major_locator(ticker.MultipleLocator(1))
-	plt.xticks(fontsize=8)
+	plt.xticks(fontsize=7)
 	plt.savefig(losses_file_path)
 	plt.close()
 
