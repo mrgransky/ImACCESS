@@ -811,7 +811,6 @@ def train(
 				)
 			epoch_loss += total_loss.item()
 		avg_training_loss = epoch_loss / len(train_loader)
-		print(f"Average {mode} Loss: {avg_training_loss:.5f} @ Epoch: {epoch+1}")
 		training_losses.append(avg_training_loss)
 		avg_valid_loss, accuracy_text_description_for_each_image, acc_img_per_txt, top_k_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
 		validation_losses.append(avg_valid_loss)
@@ -824,16 +823,17 @@ def train(
 		recall_list.append(avg_recall)
 		f1_list.append(avg_f1)
 		print(
-			f'{mode} Loss: {avg_training_loss:.4f} '
-			f'Validation Loss: {avg_valid_loss:.4f} '
-			f'Validation Accuracy [text description for each image]: {accuracy_text_description_for_each_image:.4f} '
-			f'[image for each text description]: {acc_img_per_txt:.4f}'
+			f'@Epoch: {epoch+1}:\n'
+			f'[LOSS] {mode}: {avg_training_loss:.5f} '
+			f'Valid: {avg_valid_loss:.8f}\n'
+			f'Valid Acc [text retrieval per image]: {accuracy_text_description_for_each_image} '
+			f'[image retrieval per text]: {acc_img_per_txt}'
 		)
 
 		# ############################## Early stopping ##############################
 		if early_stopping.should_stop(avg_valid_loss, model, epoch):
 			print(f'\nEarly stopping triggered at epoch {epoch+1}')
-			print(f'Best validation loss: {early_stopping.get_best_score():.4f}')
+			print(f'Best validation loss: {early_stopping.get_best_score():.7f}')
 			print(f'Best epoch: {early_stopping.get_stopped_epoch()}')
 			break
 		else:
@@ -911,7 +911,6 @@ def main():
 		min_epochs=3, # Minimum epochs before early stopping can be triggered
 		restore_best_weights=True,
 	)
-
 	if args.mode == 'finetune':
 		finetune(
 			model=model,

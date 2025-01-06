@@ -39,10 +39,10 @@ for dset in "${datasets[@]}"
 		python -u trainer.py \
 		--dataset $dset \
 		--num_epochs 256 \
-		--num_workers 39 \
+		--num_workers 20 \
 		--print_every 100 \
 		--batch_size 256 \
-		--learning_rate 1e-4 \
+		--learning_rate 1e-3 \
 		--mode ${MODES[$SLURM_ARRAY_TASK_ID]} \
 		--weight_decay 1e-2 \
 		--model_name "ViT-B/32" \
