@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=historyCLIP_finetune
-#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%N_%j.out
+#SBATCH --job-name=historyCLIP
+#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
@@ -30,6 +30,7 @@ echo "THREADS/CORE: $SLURM_THREADS_PER_CORE"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 ddir="/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES"
+MODES=(train finetune)
 num_workers=$((SLURM_CPUS_PER_TASK - 1))  # reserve 2 CPUs for the main process and other overheads
 
 python -u history_clip.py \
@@ -40,6 +41,7 @@ python -u history_clip.py \
 	--batch_size 512 \
 	--learning_rate 5e-5 \
 	--weight_decay 1e-3 \
+	--mode ${MODES[$SLURM_ARRAY_TASK_ID]} \
 	--model_name "ViT-B/32" \
 
 done_txt="$user finished Slurm job: `date`"
