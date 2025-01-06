@@ -2,13 +2,13 @@
 
 #SBATCH --account=project_2009043
 #SBATCH --job-name=cifar10X
-#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%N_%j_%A.out
+#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=16G
+#SBATCH --mem=64G
 #SBATCH --partition=gpu
 #SBATCH --array=0-1
 #SBATCH --gres=gpu:v100:1
@@ -34,21 +34,20 @@ MODES=(train finetune)
 datasets=(cifar100 cifar10)
 
 for dset in "${datasets[@]}" 
-do
-  echo "Dataset: $dset MODES[$SLURM_ARRAY_TASK_ID]: ${MODES[$SLURM_ARRAY_TASK_ID]}"
-  python -u trainer.py \
-	--dataset $dset \
-	--num_epochs 256 \
-	--num_workers 40 \
-	--print_every 100 \
-	--batch_size 256 \
-	--learning_rate 1e-4 \
-	--mode ${MODES[$SLURM_ARRAY_TASK_ID]} \
-	--weight_decay 1e-3 \
-	--model_name "ViT-B/32" \
+	do
+		echo "Dataset: $dset MODES[$SLURM_ARRAY_TASK_ID]: ${MODES[$SLURM_ARRAY_TASK_ID]}"
+		python -u trainer.py \
+		--dataset $dset \
+		--num_epochs 256 \
+		--num_workers 40 \
+		--print_every 100 \
+		--batch_size 256 \
+		--learning_rate 1e-4 \
+		--mode ${MODES[$SLURM_ARRAY_TASK_ID]} \
+		--weight_decay 1e-3 \
+		--model_name "ViT-B/32" \
 
-done
-
+	done
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
 echo "${stars// /*}"
