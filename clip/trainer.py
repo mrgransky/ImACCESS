@@ -324,7 +324,16 @@ def plot_loss_accuracy(
 	if num_epochs == 1:
 		return
 	epochs = range(1, num_epochs + 1)
+	# Set xticks to be dynamically defined
+	num_xticks = 10
+	# Check if num_xticks is greater than num_epochs + 1
+	if num_xticks > num_epochs + 1:
+		num_xticks = num_epochs + 1
+	xticks = np.linspace(0, num_epochs, num_xticks)
+	xticks = np.round(xticks).astype(int)
 	figure_size = (14, 6)
+
+	# Plot losses:
 	plt.figure(figsize=figure_size)
 	plt.plot(epochs, train_losses, color='b', label='Train', lw=1.25)
 	plt.plot(epochs, val_losses, color='r', label='Validation', lw=1.25)
@@ -332,12 +341,11 @@ def plot_loss_accuracy(
 	plt.ylabel('Loss')
 	plt.title(os.path.splitext(os.path.basename(losses_file_path))[0], fontsize=10)
 	plt.legend(ncols=2, fontsize=10, loc='best')
-	plt.tight_layout()
 	plt.grid(True)
-	# Set xticks to only integer values
-	plt.gca().xaxis.set_major_locator(ticker.MultipleLocator(1))
-	plt.xticks(fontsize=7)
-	plt.savefig(losses_file_path)
+	plt.xlim(0, num_epochs + 1)
+	plt.xticks(xticks, fontsize=7)
+	plt.tight_layout()
+	plt.savefig(losses_file_path, dpi=300, bbox_inches='tight')
 	plt.close()
 
 	plt.figure(figsize=figure_size)
@@ -348,10 +356,10 @@ def plot_loss_accuracy(
 	plt.title(os.path.splitext(os.path.basename(accuracy_file_path))[0], fontsize=10)
 	plt.legend(title='Validation Accuracy', fontsize=9, title_fontsize=10, loc='best')
 	plt.grid(True)
+	plt.xlim(0, num_epochs + 1)
+	plt.xticks(xticks, fontsize=7)
 	plt.tight_layout()
-	# Set xticks to only integer values
-	plt.gca().xaxis.set_major_locator(ticker.MultipleLocator(1))
-	plt.savefig(accuracy_file_path)
+	plt.savefig(accuracy_file_path, dpi=300, bbox_inches='tight')
 	plt.close()
 	
 	plt.figure(figsize=figure_size)
@@ -363,9 +371,9 @@ def plot_loss_accuracy(
 	plt.legend(ncols=len([1, 3, 5]), loc='best')
 	plt.grid(True)
 	plt.tight_layout()
-	# Set xticks to only integer values
-	plt.gca().xaxis.set_major_locator(ticker.MultipleLocator(1))
-	plt.savefig(topk_accuracy_file_path)
+	plt.xlim(0, num_epochs + 1)
+	plt.xticks(xticks, fontsize=7)
+	plt.savefig(topk_accuracy_file_path, dpi=300, bbox_inches='tight')
 	plt.close()
 	
 	plt.figure(figsize=figure_size)
@@ -376,9 +384,9 @@ def plot_loss_accuracy(
 	plt.grid(True)
 	plt.legend()
 	plt.tight_layout()
-	# Set xticks to only integer values
-	plt.gca().xaxis.set_major_locator(ticker.MultipleLocator(1))
-	plt.savefig(mean_reciprocal_rank_file_path)
+	plt.xlim(0, num_epochs + 1)
+	plt.xticks(xticks, fontsize=7)
+	plt.savefig(mean_reciprocal_rank_file_path, dpi=300, bbox_inches='tight')
 	plt.close()
 	
 	plt.figure(figsize=figure_size)
@@ -391,9 +399,9 @@ def plot_loss_accuracy(
 	plt.grid(True)
 	plt.legend(ncols=3, loc='best')
 	plt.tight_layout()
-	# Set xticks to only integer values
-	plt.gca().xaxis.set_major_locator(ticker.MultipleLocator(1))
-	plt.savefig(precision_recall_f1_file_path)
+	plt.xlim(0, num_epochs + 1)
+	plt.xticks(xticks, fontsize=7)
+	plt.savefig(precision_recall_f1_file_path, dpi=300, bbox_inches='tight')
 	plt.close()
 	
 	plt.figure(figsize=figure_size)
@@ -404,9 +412,9 @@ def plot_loss_accuracy(
 	plt.grid(True)
 	plt.tight_layout()
 	plt.legend()
-	# Set xticks to only integer values
-	plt.gca().xaxis.set_major_locator(ticker.MultipleLocator(1))
-	plt.savefig(cosine_similarity_file_path)
+	plt.xlim(0, num_epochs + 1)
+	plt.xticks(xticks, fontsize=7)
+	plt.savefig(cosine_similarity_file_path, dpi=300, bbox_inches='tight')
 	plt.close()
 
 def count_clip_layers(model):
