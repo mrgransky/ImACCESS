@@ -806,8 +806,7 @@ def train(
 			scheduler.step() # Update learning rate
 			if bidx%print_every==0 or bidx+1==len(train_loader):
 				print(
-					f"\tBatch [{bidx+1}/{len(train_loader)}] "
-					f"Loss: {total_loss.item():.7f}",
+					f"\t\tBatch [{bidx+1}/{len(train_loader)}] Loss: {total_loss.item():.7f}",
 				)
 			epoch_loss += total_loss.item()
 		avg_training_loss = epoch_loss / len(train_loader)
@@ -823,7 +822,7 @@ def train(
 		recall_list.append(avg_recall)
 		f1_list.append(avg_f1)
 		print(
-			f'@Epoch: {epoch+1}:\n'
+			f'@Epoch {epoch+1}:\n'
 			f'\t[LOSS] {mode}: {avg_training_loss:.5f} Valid: {avg_valid_loss:.8f}\n'
 			f'\tValid Acc [text retrieval per image]: {accuracy_text_description_for_each_image} '
 			f'[image retrieval per text]: {acc_img_per_txt}'

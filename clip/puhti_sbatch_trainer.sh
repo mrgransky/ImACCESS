@@ -7,7 +7,7 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=40
 #SBATCH --mem=57G
 #SBATCH --partition=gpu
 #SBATCH --array=0
