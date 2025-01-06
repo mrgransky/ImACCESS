@@ -34,11 +34,11 @@ num_workers=$((SLURM_CPUS_PER_TASK - 1))  # reserve 2 CPUs for the main process 
 
 python -u history_clip.py \
 	--dataset_dir $ddir \
-	--num_epochs 32 \
+	--num_epochs 50 \
 	--num_workers $num_workers \
 	--print_every 50 \
 	--batch_size 512 \
-	--learning_rate 1e-4 \
+	--learning_rate 5e-5 \
 	--weight_decay 1e-3 \
 	--model_name "ViT-B/32" \
 
