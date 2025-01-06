@@ -25,117 +25,113 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_s
 USER = os.environ.get('USER')
 
 class EarlyStopping:
-		def __init__(
-						self,
-						patience: int = 10,
-						min_delta: float = 1e-5,
-						cumulative_delta: float = 0.01,
-						window_size: int = 5,
-						mode: str = 'min',
-						min_epochs: int = 20,
-						restore_best_weights: bool = True
-				):
-				"""
-				Args:
-						patience: Number of epochs to wait before early stopping
-						min_delta: Minimum change in monitored value to qualify as an improvement
-						cumulative_delta: Minimum cumulative improvement over window_size epochs
-						window_size: Size of the window for tracking improvement trends
-						mode: 'min' for loss, 'max' for metrics like accuracy
-						min_epochs: Minimum number of epochs before early stopping can trigger
-						restore_best_weights: Whether to restore model to best weights when stopped
-				"""
-				self.patience = patience
-				self.min_delta = min_delta
-				self.cumulative_delta = cumulative_delta
-				self.window_size = window_size
-				self.mode = mode
-				self.min_epochs = min_epochs
-				self.restore_best_weights = restore_best_weights
-				
-				self.best_score = None
-				self.best_weights = None
-				self.counter = 0
-				self.stopped_epoch = 0
-				self.value_history = []
-				self.improvement_history = []
-				
-				self.sign = 1 if mode == 'min' else -1
+	def __init__(
+			self,
+			patience: int = 5, # epochs to wait before stopping the training
+			min_delta: float = 1e-3, # minimum difference between new and old loss to count as improvement
+			cumulative_delta: float = 0.01,
+			window_size: int = 5,
+			mode: str = 'min',
+			min_epochs: int = 5,
+			restore_best_weights: bool = True,
+		):
+		"""
+		Args:
+			patience: Number of epochs to wait before early stopping
+			min_delta: Minimum change in monitored value to qualify as an improvement
+			cumulative_delta: Minimum cumulative improvement over window_size epochs
+			window_size: Size of the window for tracking improvement trends
+			mode: 'min' for loss, 'max' for metrics like accuracy
+			min_epochs: Minimum number of epochs before early stopping can trigger
+			restore_best_weights: Whether to restore model to best weights when stopped
+		"""
+		self.patience = patience
+		self.min_delta = min_delta
+		self.cumulative_delta = cumulative_delta
+		self.window_size = window_size
+		self.mode = mode
+		self.min_epochs = min_epochs
+		self.restore_best_weights = restore_best_weights
 		
-		def is_improvement(self, current_value: float) -> bool:
-				"""Check if current value is an improvement"""
-				if self.best_score is None:
-						return True
-				
-				improvement = (self.best_score - current_value) * self.sign
-				return improvement > self.min_delta
+		self.best_score = None
+		self.best_weights = None
+		self.counter = 0
+		self.stopped_epoch = 0
+		self.value_history = []
+		self.improvement_history = []
 		
-		def calculate_trend(self) -> float:
-				"""Calculate improvement trend over window"""
-				if len(self.value_history) < self.window_size:
-						return float('inf') if self.mode == 'min' else float('-inf')
-				
-				window = self.value_history[-self.window_size:]
-				if self.mode == 'min':
-						return sum(window[i] - window[i+1] for i in range(len(window)-1))
-				return sum(window[i+1] - window[i] for i in range(len(window)-1))
+		self.sign = 1 if mode == 'min' else -1
+	
+	def is_improvement(self, current_value: float) -> bool:
+		if self.best_score is None:
+			return True
+		improvement = (self.best_score - current_value) * self.sign
+		return improvement > self.min_delta
+	
+	def calculate_trend(self) -> float:
+		"""Calculate improvement trend over window"""
+		if len(self.value_history) < self.window_size:
+			return float('inf') if self.mode == 'min' else float('-inf')
+		window = self.value_history[-self.window_size:]
+		if self.mode == 'min':
+			return sum(window[i] - window[i+1] for i in range(len(window)-1))
+		return sum(window[i+1] - window[i] for i in range(len(window)-1))
+	
+	def should_stop(self, current_value: float, model: nn.Module, epoch: int) -> bool:
+		"""
+		Enhanced stopping decision based on multiple criteria
+		"""
+		self.value_history.append(current_value)
+		# Don't stop before minimum epochs
+		if epoch < self.min_epochs:
+			if self.best_score is None or current_value * self.sign < self.best_score * self.sign:
+				self.best_score = current_value
+				self.stopped_epoch = epoch  # Update stopped_epoch when a new best score is achieved
+				if self.restore_best_weights:
+					self.best_weights = copy.deepcopy(model.state_dict())
+			return False
 		
-		def should_stop(self, current_value: float, model: nn.Module, epoch: int) -> bool:
-				"""
-				Enhanced stopping decision based on multiple criteria
-				"""
-				self.value_history.append(current_value)
-				
-				# Don't stop before minimum epochs
-				if epoch < self.min_epochs:
-						if self.best_score is None or current_value * self.sign < self.best_score * self.sign:
-								self.best_score = current_value
-								if self.restore_best_weights:
-										self.best_weights = copy.deepcopy(model.state_dict())
-						return False
-				
-				if self.is_improvement(current_value):
-						self.best_score = current_value
-						if self.restore_best_weights:
-								self.best_weights = copy.deepcopy(model.state_dict())
-						self.counter = 0
-						self.improvement_history.append(True)
-				else:
-						self.counter += 1
-						self.improvement_history.append(False)
-				
-				# Calculate trend over window
-				trend = self.calculate_trend()
-				cumulative_improvement = abs(trend) if len(self.value_history) >= self.window_size else float('inf')
-				
-				# Decision logic combining multiple factors
-				should_stop = False
-				
-				# Check primary patience criterion
-				if self.counter >= self.patience:
-						should_stop = True
-				
-				# Check if stuck in local optimum
-				if len(self.improvement_history) >= self.window_size:
-						recent_improvements = sum(self.improvement_history[-self.window_size:])
-						if recent_improvements == 0 and cumulative_improvement < self.cumulative_delta:
-								should_stop = True
-				
-				# If stopping, restore best weights if configured
-				if should_stop and self.restore_best_weights and self.best_weights is not None:
-						model.load_state_dict(self.best_weights)
-						self.stopped_epoch = epoch
-				
-				return should_stop
+		if self.is_improvement(current_value):
+			self.best_score = current_value
+			self.stopped_epoch = epoch  # Update stopped_epoch when a new best score is achieved
+			if self.restore_best_weights:
+				self.best_weights = copy.deepcopy(model.state_dict())
+			self.counter = 0
+			self.improvement_history.append(True)
+		else:
+			self.counter += 1
+			self.improvement_history.append(False)
 		
-		def get_best_score(self) -> float:
-				"""Return the best score achieved"""
-				return self.best_score
+		# Calculate trend over window
+		trend = self.calculate_trend()
+		cumulative_improvement = abs(trend) if len(self.value_history) >= self.window_size else float('inf')
 		
-		def get_stopped_epoch(self) -> int:
-				"""Return the epoch at which training stopped"""
-				return self.stopped_epoch
+		# Decision logic combining multiple factors
+		should_stop = False
 		
+		# Check primary patience criterion
+		if self.counter >= self.patience:
+			should_stop = True
+		
+		# Check if stuck in local optimum
+		if len(self.improvement_history) >= self.window_size:
+			recent_improvements = sum(self.improvement_history[-self.window_size:])
+			if recent_improvements == 0 and cumulative_improvement < self.cumulative_delta:
+				should_stop = True
+		
+		# If stopping, restore best weights if configured
+		if should_stop and self.restore_best_weights and self.best_weights is not None:
+			model.load_state_dict(self.best_weights)
+			self.stopped_epoch = epoch
+		
+		return should_stop
+	
+	def get_best_score(self) -> float:
+		return self.best_score
+	
+	def get_stopped_epoch(self) -> int:
+		return self.stopped_epoch
+
 def get_dataset(dname:str="CIFAR10"):
 	dname = dname.upper()
 	ddir = {
@@ -328,7 +324,7 @@ def plot_loss_accuracy(
 	if num_epochs == 1:
 		return
 	epochs = range(1, num_epochs + 1)
-	figure_size = (12, 4)
+	figure_size = (13, 7)
 	plt.figure(figsize=figure_size)
 	plt.plot(epochs, train_losses, color='b', label='Train', lw=1.25)
 	plt.plot(epochs, val_losses, color='r', label='Validation', lw=1.25)
@@ -340,6 +336,7 @@ def plot_loss_accuracy(
 	plt.grid(True)
 	# Set xticks to only integer values
 	plt.gca().xaxis.set_major_locator(ticker.MultipleLocator(1))
+	plt.xticks(fontsize=8)
 	plt.savefig(losses_file_path)
 	plt.close()
 
@@ -562,19 +559,21 @@ def finetune(
 	print(f"[Layer Groups] Visual: {total_v_layers} | Text: {total_t_layers}")
 	freeze_schedule = get_progressive_freeze_schedule(layer_groups) # progressive freezing based on validation loss plateau
 	print(f"Freeze Schedule:\n{json.dumps(freeze_schedule, indent=2)}")
-
+	mdl_fpth = os.path.join(
+		results_dir,
+		f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
+	)
 	early_stopping = EarlyStopping(
-		patience=10,
+		patience=early_stopping_patience,
 		min_delta=1e-4,
-		cumulative_delta=0.005,
+		cumulative_delta=5e-3,
 		window_size=5,
 		mode='min', # 'min' for loss, 'max' for accuracy
 		min_epochs=3, # Minimum epochs before early stopping can trigger
-		restore_best_weights=True
+		restore_best_weights=True,
 	)
 	current_phase = 0
 	plateau_threshold: float = 1e-4
-	no_improvement_count = 0
 	# patience_per_phase: int = 3
 	# counter = 0
 	criterion = nn.CrossEntropyLoss()
@@ -687,26 +686,14 @@ def finetune(
 		)
 
 		# ############################## Early stopping ##############################
-		# mdl_fpth = os.path.join(
-		# 	results_dir,
-		# 	f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
-		# )
-		# if avg_valid_loss < best_loss:
-		# 	best_loss = avg_valid_loss
-		# 	torch.save(model.state_dict(), mdl_fpth)
-		# 	print(f"Saving model in {mdl_fpth} for best avg loss: {best_loss:.9f}")
-		# 	no_improvement_count = 0
-		# else:
-		# 	no_improvement_count += 1
-		# 	if no_improvement_count >= early_stopping_patience:
-		# 		print(f"Early stopping triggered after {epoch+1} epochs due to no improvement.")
-		# 		break
-		# Early stopping check
 		if early_stopping.should_stop(avg_valid_loss, model, epoch):
-				print(f'\nEarly stopping triggered at epoch {epoch+1}')
-				print(f'Best validation loss: {early_stopping.get_best_score():.4f}')
-				print(f'Best epoch: {early_stopping.get_stopped_epoch()}')
-				break
+			print(f'\nEarly stopping triggered at epoch {epoch+1}')
+			print(f'Best validation loss: {early_stopping.get_best_score():.4f}')
+			print(f'Best epoch: {early_stopping.get_stopped_epoch()}')
+			break
+		else:
+			print(f"Saving best model in {mdl_fpth} for best validation loss: {early_stopping.get_best_score():.9f}")
+			torch.save(model.state_dict(), mdl_fpth)
 		# ############################## Early stopping ##############################
 		print("-"*170)
 	print(f"{mode} Elapsed_t: {time.time()-ft_st:.1f} sec".center(160, " "))
