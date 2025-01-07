@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=40
-#SBATCH --array=0-1
+#SBATCH --array=0
 #SBATCH --mem=128G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
@@ -37,9 +37,9 @@ num_workers=$((SLURM_CPUS_PER_TASK - 1))  # reserve 2 CPUs for the main process 
 
 python -u history_clip.py \
 	--dataset_dir $ddir \
-	--num_epochs 50 \
+	--num_epochs 32 \
 	--num_workers $num_workers \
-	--print_every 50 \
+	--print_every 150 \
 	--batch_size 512 \
 	--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
 	--weight_decay 1e-3 \

@@ -157,13 +157,13 @@ def main():
 	)
 	print(f"Train Loader: {len(train_loader)} batches, Validation Loader: {len(validation_loader)} batches")
 	early_stopping = EarlyStopping(
-		patience=5, # 5 epochs without improvement before stopping
-		min_delta=1e-4,
-		cumulative_delta=5e-3,
-		window_size=5, # 
-		mode='min', # 'min' for loss, 'max' for accuracy
-		min_epochs=3, # Minimum epochs before early stopping can be triggered
-		restore_best_weights=True,
+		patience=10,								# Wait for 10 epochs without improvement before stopping
+		min_delta=1e-4,							# Consider an improvement only if the change is greater than 0.0001
+		cumulative_delta=5e-3,			# Cumulative improvement over the window should be greater than 0.005
+		window_size=10,							# Consider the last 10 epochs for cumulative trend
+		mode='min',									# Minimize loss
+		min_epochs=20,							# Ensure at least 20 epochs of training
+		restore_best_weights=True		# Restore model weights to the best epoch
 	)
 	# visualize_(dataloader=train_loader, num_samples=5)
 	if args.mode == "finetune":
