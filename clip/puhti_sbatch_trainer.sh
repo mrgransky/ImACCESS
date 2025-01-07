@@ -8,9 +8,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=40
-#SBATCH --mem=57G
+#SBATCH --mem=58G
 #SBATCH --partition=gpu
-#SBATCH --array=0
+#SBATCH --array=0-1
 #SBATCH --gres=gpu:v100:1
 #SBATCH --time=03-00:00:00
 
@@ -45,7 +45,7 @@ for dset in "${datasets[@]}"
 		--batch_size 256 \
 		--learning_rate 1e-5 \
 		--mode ${MODES[$SLURM_ARRAY_TASK_ID]} \
-		--weight_decay 1e-3 \
+		--weight_decay 5e-3 \
 		--model_name "ViT-B/32" \
 
 	done

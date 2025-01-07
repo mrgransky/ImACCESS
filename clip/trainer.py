@@ -324,14 +324,23 @@ def plot_loss_accuracy(
 	if num_epochs == 1:
 		return
 	epochs = range(1, num_epochs + 1)
+
+	# # Set xticks to be dynamically defined
+	# num_xticks = 10
+	# # Check if num_xticks is greater than num_epochs + 1
+	# if num_xticks > num_epochs + 1:
+	# 	num_xticks = num_epochs + 1
+	# xticks = np.linspace(0, num_epochs, num_xticks)
+	# xticks = np.round(xticks).astype(int)
+
 	# Set xticks to be dynamically defined
 	num_xticks = 10
 	# Check if num_xticks is greater than num_epochs + 1
 	if num_xticks > num_epochs + 1:
 		num_xticks = num_epochs + 1
-	xticks = np.linspace(0, num_epochs, num_xticks)
-	xticks = np.round(xticks).astype(int)
-	figure_size = (14, 6)
+	xticks = np.arange(0, num_epochs + 1, (num_epochs + 1) // num_xticks)
+
+	figure_size = (13, 6)
 
 	# Plot losses:
 	plt.figure(figsize=figure_size)
@@ -572,9 +581,7 @@ def finetune(
 		f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
 	)
 	current_phase = 0
-	plateau_threshold: float = 1e-4
-	# patience_per_phase: int = 3
-	# counter = 0
+	plateau_threshold: float = 1e-3
 	criterion = nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(
 		device=device,
