@@ -543,7 +543,6 @@ def finetune(
 		model:nn.Module,
 		train_loader:DataLoader,
 		validation_loader:DataLoader,
-		early_stopping,
 		num_epochs:int=7,
 		nw:int=10,
 		print_every:int=150,
@@ -553,7 +552,21 @@ def finetune(
 		dataset_name:str="CIFAR10",
 		device:str="cuda",
 		results_dir:str="results",
+		window_size:int=10,
+		patience:int=10,
+		min_delta:float=1e-4,
+		cumulative_delta:float=5e-3,
+		minimum_epochs:int=20,
 	):
+	early_stopping = EarlyStopping(
+		patience=patience,									# Wait for 10 epochs without improvement before stopping
+		min_delta=min_delta,								# Consider an improvement only if the change is greater than 0.0001
+		cumulative_delta=cumulative_delta,	# Cumulative improvement over the window should be greater than 0.005
+		window_size=window_size,						# Consider the last 10 epochs for cumulative trend
+		mode='min',													# Minimize loss
+		min_epochs=minimum_epochs,					# Ensure at least 20 epochs of training
+		restore_best_weights=True						# Restore model weights to the best epoch
+	)
 	os.makedirs(results_dir, exist_ok=True)
 	mode = "finetune"
 	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
@@ -589,18 +602,17 @@ def finetune(
 	cosine_similarity_list = []
 	precision_list, recall_list, f1_list = [], [], []
 	current_phase = 0
-	plateau_threshold:float = 1e-4
-	WINDOW_SIZE:int = 5
+	plateau_threshold = min_delta # ensure parameter consistency
 	initial_learning_rate = learning_rate # Store the initial value
 	ft_st = time.time()
 	for epoch in range(num_epochs):
 		print(f"Epoch [{epoch+1}/{num_epochs}]")
-		# Check for plateau to adapt phases of progressive freezing
+		# Adaptive Progressive Layer Freezing Schedule:
 		if len(val_losses) > 1: # 2 epochs needed to compare
 			should_transition = should_transition_phase(
 				losses=val_losses,
 				th=plateau_threshold,
-				window=WINDOW_SIZE,
+				window=window_size,
 			)
 			if should_transition:
 				print(f"Plateau detected @ Epoch: {epoch+1} Transitioning from phase: {current_phase} to next phase.")
@@ -721,10 +733,23 @@ def train(
 		dataset_name:str="CIFAR10",
 		device:str="cuda",
 		results_dir:str="results",
+		window_size:int=10,
+		patience:int=10,
+		min_delta:float=1e-4,
+		cumulative_delta:float=5e-3,
+		minimum_epochs:int=20,
 	):
-	mode = "train"
+	early_stopping = EarlyStopping(
+		patience=patience,												# Wait for 10 epochs without improvement before stopping
+		min_delta=min_delta,											# Consider an improvement only if the change is greater than 0.0001
+		cumulative_delta=cumulative_delta,				# Cumulative improvement over the window should be greater than 0.005
+		window_size=window_size,									# Consider the last 10 epochs for cumulative trend
+		mode='min',																# Minimize loss
+		min_epochs=minimum_epochs,			# Ensure at least 20 epochs of training
+		restore_best_weights=True									# Restore model weights to the best epoch
+	)
 	os.makedirs(results_dir, exist_ok=True)
-
+	mode = "train"
 	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
@@ -865,6 +890,7 @@ def main():
 	parser.add_argument('--num_workers', '-nw', type=int, default=18, help='Number of CPUs [def: max cpus]')
 	parser.add_argument('--num_epochs', '-ne', type=int, default=12, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=256, help='Batch size for training')
+	parser.add_argument('--window_size', '-ws', type=int, default=5, help='Windows size for early stopping and progressive freezing')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-4]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 1e-3]')
 	parser.add_argument('--print_every', type=int, default=150, help='Print loss')
@@ -892,16 +918,6 @@ def main():
 	)
 	print(f"Train Loader: {len(train_loader)} batches, Validation Loader: {len(validation_loader)} batches")
 	# visualize_(dataloader=train_loader, num_samples=5)
-	early_stopping = EarlyStopping(
-		patience=10,								# Wait for 10 epochs without improvement before stopping
-		min_delta=1e-4,							# Consider an improvement only if the change is greater than 0.0001
-		cumulative_delta=5e-3,			# Cumulative improvement over the window should be greater than 0.005
-		window_size=10,							# Consider the last 10 epochs for cumulative trend
-		mode='min',									# Minimize loss
-		min_epochs=20,							# Ensure at least 20 epochs of training
-		restore_best_weights=True		# Restore model weights to the best epoch
-	)
-
 	if args.mode == 'finetune':
 		finetune(
 			model=model,
@@ -911,12 +927,16 @@ def main():
 			nw=args.num_workers,
 			print_every=args.print_every,
 			model_name=args.model_name,
-			early_stopping=early_stopping,
 			learning_rate=args.learning_rate,
 			weight_decay=args.weight_decay,
 			dataset_name=args.dataset,
 			device=args.device,
-			results_dir=os.path.join(args.dataset, "results")
+			results_dir=os.path.join(args.dataset, "results"),
+			window_size=args.window_size, 	# early stopping & progressive unfreezing
+			patience=10, 										# early stopping
+			min_delta=1e-4, 								# early stopping & progressive unfreezing
+			cumulative_delta=5e-3, 					# early stopping
+			minimum_epochs=20, 							# early stopping
 		)
 	elif args.mode == 'train':
 		train(
@@ -927,12 +947,16 @@ def main():
 			nw=args.num_workers,
 			print_every=args.print_every,
 			model_name=args.model_name,
-			early_stopping=early_stopping,
 			learning_rate=args.learning_rate,
 			weight_decay=args.weight_decay,
 			dataset_name=args.dataset,
 			device=args.device,
-			results_dir=os.path.join(args.dataset, "results")
+			results_dir=os.path.join(args.dataset, "results"),
+			window_size=args.window_size, # early stopping
+			patience=10,									# early stopping
+			min_delta=1e-4,								# early stopping
+			cumulative_delta=5e-3,				# early stopping
+			minimum_epochs=20,						# early stopping
 		)
 	else:
 		raise ValueError("Invalid mode. Choose either 'finetune' or 'train'.")
