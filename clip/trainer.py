@@ -11,16 +11,16 @@ import copy
 warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_scheduler')
 
 # train cifar100 from scratch:
-# $ nohup python -u trainer.py -d cifar100 -bs 256 -ne 256 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -ne 256 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune cifar100:
-# $ nohup python -u trainer.py -d cifar100 -bs 256 -ne 256 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -ne 256 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
 
 # train imagenet from scratch:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -ne 50 -lr 1e-4 -wd 1e-2 --print_every 5000 -nw 50 --device "cuda:1" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_train.out &
+# $ nohup python -u trainer.py -d imagenet -bs 256 -ne 50 -lr 1e-4 -wd 1e-3 --print_every 5000 -nw 50 --device "cuda:1" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_train.out &
 
 # finetune imagenet:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -ne 50 -lr 1e-4 -wd 1e-2 --print_every 5000 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
+# $ nohup python -u trainer.py -d imagenet -bs 256 -ne 50 -lr 1e-4 -wd 1e-3 --print_every 5000 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
 
 USER = os.environ.get('USER')
 
@@ -723,7 +723,6 @@ def train(
 		model:nn.Module,
 		train_loader:DataLoader,
 		validation_loader:DataLoader,
-		early_stopping,
 		num_epochs:int=5,
 		nw:int=10,
 		print_every:int=150,
