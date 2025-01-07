@@ -319,6 +319,7 @@ def plot_loss_accuracy(
 		mean_reciprocal_rank_file_path="mean_reciprocal_rank.png",
 		cosine_similarity_file_path="cosine_similarity.png",
 		precision_recall_f1_file_path="precision_recall_f1.png",
+		DPI=250,
 	):
 	num_epochs = len(train_losses)
 	if num_epochs == 1:
@@ -346,7 +347,7 @@ def plot_loss_accuracy(
 	plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=7)
 	plt.tight_layout()
-	plt.savefig(losses_file_path, dpi=300, bbox_inches='tight')
+	plt.savefig(losses_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
 
 	plt.figure(figsize=figure_size)
@@ -360,7 +361,7 @@ def plot_loss_accuracy(
 	plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=7)
 	plt.tight_layout()
-	plt.savefig(accuracy_file_path, dpi=300, bbox_inches='tight')
+	plt.savefig(accuracy_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
 	
 	plt.figure(figsize=figure_size)
@@ -374,7 +375,7 @@ def plot_loss_accuracy(
 	plt.tight_layout()
 	plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=7)
-	plt.savefig(topk_accuracy_file_path, dpi=300, bbox_inches='tight')
+	plt.savefig(topk_accuracy_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
 	
 	plt.figure(figsize=figure_size)
@@ -387,7 +388,7 @@ def plot_loss_accuracy(
 	plt.tight_layout()
 	plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=7)
-	plt.savefig(mean_reciprocal_rank_file_path, dpi=300, bbox_inches='tight')
+	plt.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
 	
 	plt.figure(figsize=figure_size)
@@ -402,7 +403,7 @@ def plot_loss_accuracy(
 	plt.tight_layout()
 	plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=7)
-	plt.savefig(precision_recall_f1_file_path, dpi=300, bbox_inches='tight')
+	plt.savefig(precision_recall_f1_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
 	
 	plt.figure(figsize=figure_size)
@@ -415,7 +416,7 @@ def plot_loss_accuracy(
 	plt.legend()
 	plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=7)
-	plt.savefig(cosine_similarity_file_path, dpi=300, bbox_inches='tight')
+	plt.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
 
 def count_clip_layers(model):
@@ -491,7 +492,7 @@ def get_layer_groups(nv:int=12, nt:int=12):
 			'visual.proj', # final normalization before projection
 			'visual.ln_post',
 			'text_projection',
-			'logit_scale', # # Temperature parameter
+			'logit_scale', # Temperature parameter
 		],
 	}
 	return layer_groups
@@ -517,12 +518,11 @@ def get_progressive_freeze_schedule(layer_groups:dict):
 
 def freeze_(layers, model):
 	for name, param in model.named_parameters():
-		# print(name)
 		param.requires_grad = True # Unfreeze all layers first
 		if any(ly in name for ly in layers): # Freeze layers in the list
 			param.requires_grad = False
 
-def should_transition_phase(losses:List[float], th: float=1e-3, window:int=3) -> bool:
+def should_transition_phase(losses:List[float], th: float=1e-4, window:int=3) -> bool:
 	if len(losses) < window:
 		return False # Not enough data to make a decision
 	last_window_losses = losses[-window:]
@@ -589,8 +589,8 @@ def finetune(
 	cosine_similarity_list = []
 	precision_list, recall_list, f1_list = [], [], []
 	current_phase = 0
-	plateau_threshold:float = 1e-3
-	WINDOW_SIZE:int = 3
+	plateau_threshold:float = 1e-4
+	WINDOW_SIZE:int = 5
 	initial_learning_rate = learning_rate # Store the initial value
 	ft_st = time.time()
 	for epoch in range(num_epochs):
@@ -863,13 +863,13 @@ def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for CIFAR10x Dataset")
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=18, help='Number of CPUs [def: max cpus]')
-	parser.add_argument('--num_epochs', '-ne', type=int, default=7, help='Number of epochs')
-	parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
-	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-3]')
-	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 1e-4]')
+	parser.add_argument('--num_epochs', '-ne', type=int, default=12, help='Number of epochs')
+	parser.add_argument('--batch_size', '-bs', type=int, default=256, help='Batch size for training')
+	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-4]')
+	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 1e-3]')
 	parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 	parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
-	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar10', help='Choose dataset (CIFAR10/cifar100)')
+	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar100', help='Choose dataset (CIFAR10/cifar100)')
 	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='finetune', help='Choose mode (train/finetune)')
 
 	args, unknown = parser.parse_known_args()
