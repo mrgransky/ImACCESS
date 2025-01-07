@@ -8,9 +8,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=40
-#SBATCH --mem=58G
+#SBATCH --mem=51G
 #SBATCH --partition=gpu
-#SBATCH --array=0-1
+#SBATCH --array=0
 #SBATCH --gres=gpu:v100:1
 #SBATCH --time=03-00:00:00
 
@@ -30,8 +30,9 @@ echo "nTASKS/CORE: $SLURM_NTASKS_PER_CORE, nTASKS/NODE: $SLURM_NTASKS_PER_NODE"
 echo "THREADS/CORE: $SLURM_THREADS_PER_CORE"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
-MODES=(train finetune)
 datasets=(cifar100 cifar10)
+MODES=(train finetune)
+INIT_LRS=(1e-5 5e-4)
 num_workers=$((SLURM_CPUS_PER_TASK - 1))  # reserve 1 CPU for the main process and other overheads
 
 for dset in "${datasets[@]}" 
@@ -43,9 +44,9 @@ for dset in "${datasets[@]}"
 		--num_workers $num_workers \
 		--print_every 100 \
 		--batch_size 256 \
-		--learning_rate 1e-5 \
+		--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
+		--weight_decay 1e-3 \
 		--mode ${MODES[$SLURM_ARRAY_TASK_ID]} \
-		--weight_decay 5e-3 \
 		--model_name "ViT-B/32" \
 
 	done

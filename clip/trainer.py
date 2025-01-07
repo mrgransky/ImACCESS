@@ -325,14 +325,6 @@ def plot_loss_accuracy(
 		return
 	epochs = range(1, num_epochs + 1)
 
-	# # Set xticks to be dynamically defined
-	# num_xticks = 10
-	# # Check if num_xticks is greater than num_epochs + 1
-	# if num_xticks > num_epochs + 1:
-	# 	num_xticks = num_epochs + 1
-	# xticks = np.linspace(0, num_epochs, num_xticks)
-	# xticks = np.round(xticks).astype(int)
-
 	# Set xticks to be dynamically defined
 	num_xticks = 10
 	# Check if num_xticks is greater than num_epochs + 1
@@ -340,7 +332,7 @@ def plot_loss_accuracy(
 		num_xticks = num_epochs + 1
 	xticks = np.arange(0, num_epochs + 1, (num_epochs + 1) // num_xticks)
 
-	figure_size = (13, 6)
+	figure_size = (11, 5)
 
 	# Plot losses:
 	plt.figure(figsize=figure_size)
@@ -693,9 +685,10 @@ def finetune(
 
 		# ############################## Early stopping ##############################
 		if early_stopping.should_stop(avg_valid_loss, model, epoch):
-			print(f'\nEarly stopping triggered at epoch {epoch+1}')
-			print(f'Best validation loss: {early_stopping.get_best_score():.4f}')
-			print(f'Best epoch: {early_stopping.get_stopped_epoch()}')
+			print(
+				f'\nEarly stopping triggered at epoch {epoch+1}\t'
+				f'Best validation loss: {early_stopping.get_best_score():.5f}'
+			)
 			break
 		else:
 			print(f"Saving best model in {mdl_fpth} for best validation loss: {early_stopping.get_best_score():.9f}")
@@ -845,12 +838,13 @@ def train(
 
 		# ############################## Early stopping ##############################
 		if early_stopping.should_stop(avg_valid_loss, model, epoch):
-			print(f'\nEarly stopping triggered at epoch {epoch+1}')
-			print(f'Best validation loss: {early_stopping.get_best_score():.7f}')
-			print(f'Best epoch: {early_stopping.get_stopped_epoch()}')
+			print(
+				f'\nEarly stopping triggered at epoch {epoch+1}\t'
+				f'Best validation loss: {early_stopping.get_best_score():.5f} @ Epoch {early_stopping.get_best_epoch()+1}\n'
+			)
 			break
 		else:
-			print(f"Saving best model in {mdl_fpth} for best validation loss: {early_stopping.get_best_score():.9f}")
+			print(f"Saving best model in {mdl_fpth} for best validation loss: {avg_valid_loss:.9f}")
 			torch.save(model.state_dict(), mdl_fpth)
 		# ############################## Early stopping ##############################
 		print("-"*170)
@@ -858,11 +852,11 @@ def train(
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
 
 	losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_acc_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
 	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mean_reciprocal_rank_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cosine_similarity_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-	pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_precision_recall_f1_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_prf1_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
 	plot_loss_accuracy(
 		train_losses=training_losses,
 		val_losses=validation_losses,
@@ -916,14 +910,15 @@ def main():
 	print(f"Train Loader: {len(train_loader)} batches, Validation Loader: {len(validation_loader)} batches")
 	# visualize_(dataloader=train_loader, num_samples=5)
 	early_stopping = EarlyStopping(
-		patience=5, # 5 epochs without improvement before stopping
-		min_delta=1e-4,
-		cumulative_delta=5e-3,
-		window_size=5, # 
-		mode='min', # 'min' for loss, 'max' for accuracy
-		min_epochs=3, # Minimum epochs before early stopping can be triggered
-		restore_best_weights=True,
+		patience=10,								# Wait for 10 epochs without improvement before stopping
+		min_delta=1e-4,							# Consider an improvement only if the change is greater than 0.0001
+		cumulative_delta=5e-3,			# Cumulative improvement over the window should be greater than 0.005
+		window_size=10,							# Consider the last 10 epochs for cumulative trend
+		mode='min',									# Minimize loss
+		min_epochs=20,							# Ensure at least 20 epochs of training
+		restore_best_weights=True		# Restore model weights to the best epoch
 	)
+
 	if args.mode == 'finetune':
 		finetune(
 			model=model,

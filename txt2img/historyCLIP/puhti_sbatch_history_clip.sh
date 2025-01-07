@@ -32,6 +32,7 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 ddir="/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES"
 MODES=(train finetune)
+INIT_LRS=(1e-5 5e-4)
 num_workers=$((SLURM_CPUS_PER_TASK - 1))  # reserve 2 CPUs for the main process and other overheads
 
 python -u history_clip.py \
@@ -40,7 +41,7 @@ python -u history_clip.py \
 	--num_workers $num_workers \
 	--print_every 50 \
 	--batch_size 512 \
-	--learning_rate 5e-3 \
+	--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
 	--weight_decay 1e-3 \
 	--mode ${MODES[$SLURM_ARRAY_TASK_ID]} \
 	--model_name "ViT-B/32" \

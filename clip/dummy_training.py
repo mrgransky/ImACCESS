@@ -62,7 +62,11 @@ class EarlyStopping:
 		Enhanced stopping decision based on multiple criteria
 		"""
 		self.value_history.append(current_value)
-		# Don't stop before minimum epochs
+
+		# Before minimum epochs: [0-min_epochs]:
+		# 1. Check if current_value is better than best_score
+		# 2. If so, update best_score and best_weights
+		# 3. Continue training
 		if epoch < self.min_epochs:
 			if self.best_score is None or current_value * self.sign < self.best_score * self.sign:
 				self.best_score = current_value
@@ -70,7 +74,8 @@ class EarlyStopping:
 				if self.restore_best_weights:
 					self.best_weights = copy.deepcopy(model.state_dict())
 			return False
-		
+
+		# 4. After minimum epochs: [min_epochs-end]:
 		if self.is_improvement(current_value):
 			self.best_score = current_value
 			self.stopped_epoch = epoch  # Update stopped_epoch when a new best score is achieved
@@ -89,7 +94,7 @@ class EarlyStopping:
 		# Decision logic combining multiple factors
 		should_stop = False
 		
-		# Check primary patience criterion
+		# if no improvements by min_delta over counter exceeds paitience:
 		if self.counter >= self.patience:
 			should_stop = True
 		
@@ -128,21 +133,22 @@ optimizer = optim.SGD(model.parameters(), lr=0.01)
 mdl_fpth = os.path.join("results", f"dummy_train.pth")
 
 early_stopping = EarlyStopping(
-	patience=5,
-	min_delta=1e-4,
-	cumulative_delta=0.01,
-	window_size=3,
-	mode='min',
-	min_epochs=10,
-	# best_model_path=mdl_fpth,
+	patience=10,          # Wait for 10 epochs without improvement before stopping
+	min_delta=1e-4,       # Consider an improvement only if the change is greater than 0.0001
+	cumulative_delta=5e-3,# Cumulative improvement over the window should be greater than 0.005
+	window_size=10,       # Consider the last 10 epochs for cumulative trend
+	mode='min',           # Minimize loss
+	min_epochs=20,        # Ensure at least 20 epochs of training
+	restore_best_weights=True  # Restore model weights to the best epoch
 )
 
 # Dummy data
 data = torch.randn(int(1e+3), int(1e+1))
 targets = torch.randn(int(1e+3), 1)
+nEpochs = 100
 
 # Training loop
-for epoch in range(20):
+for epoch in range(nEpochs):
 		model.train()
 		optimizer.zero_grad()
 		outputs = model(data)
@@ -155,10 +161,5 @@ for epoch in range(20):
 		# Early stopping check
 		if early_stopping.should_stop(loss.item(), model, epoch):
 			print(f"Early stopping at epoch {epoch}")
+			print(f"Best: {early_stopping.get_best_score()} @ Epoch: {early_stopping.get_stopped_epoch()}")
 			break
-		else:
-			print(f"Saving model in {mdl_fpth} for best avg loss: {early_stopping.get_best_score():.9f}")
-
-
-# Print best score and stopped epoch
-print(f"Best: {early_stopping.get_best_score()} @ Epoch: {early_stopping.get_stopped_epoch()}")
