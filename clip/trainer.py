@@ -332,7 +332,7 @@ def plot_loss_accuracy(
 		num_xticks = num_epochs + 1
 	xticks = np.arange(0, num_epochs + 1, (num_epochs + 1) // num_xticks)
 
-	figure_size = (11, 5)
+	figure_size = (9, 4)
 
 	# Plot losses:
 	plt.figure(figsize=figure_size)
@@ -515,11 +515,11 @@ def get_progressive_freeze_schedule(layer_groups:dict):
 	]
 	return schedule
 
-def set_freeze(model, layers_to_freeze):
+def freeze_(layers, model):
 	for name, param in model.named_parameters():
 		# print(name)
 		param.requires_grad = True # Unfreeze all layers first
-		if any(layer in name for layer in layers_to_freeze): # Freeze layers in the list
+		if any(ly in name for ly in layers): # Freeze layers in the list
 			param.requires_grad = False
 
 def should_transition_phase(losses:List[float], th: float=1e-3, window:int=3) -> bool:
@@ -603,13 +603,14 @@ def finetune(
 				window=WINDOW_SIZE,
 			)
 			if should_transition:
+				print(f"Plateau detected @ Epoch: {epoch+1} Transitioning from phase: {current_phase} to next phase.")
 				current_phase, learning_rate = handle_phase_transition(
 					current_phase=current_phase,
 					initial_lr=initial_learning_rate,
 					max_phases=len(freeze_schedule)
 				)
 		layers_to_freeze = freeze_schedule[current_phase]
-		set_freeze(model, layers_to_freeze)
+		freeze_(layers=layers_to_freeze, model=model)
 		get_status(model, current_phase, layers_to_freeze, total_layers)
 		optimizer = AdamW(
 			params=[p for p in model.parameters() if p.requires_grad],
