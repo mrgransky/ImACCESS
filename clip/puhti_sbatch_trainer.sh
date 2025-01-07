@@ -40,7 +40,7 @@ for dset in "${datasets[@]}"
 		echo "Dataset: $dset MODES[$SLURM_ARRAY_TASK_ID]: ${MODES[$SLURM_ARRAY_TASK_ID]} with $num_workers workers"
 		python -u trainer.py \
 		--dataset $dset \
-		--num_epochs 256 \
+		--epochs 256 \
 		--num_workers $num_workers \
 		--print_every 100 \
 		--batch_size 256 \

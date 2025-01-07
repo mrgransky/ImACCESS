@@ -683,7 +683,7 @@ def finetune(
 		if early_stopping.should_stop(avg_valid_loss, model, epoch):
 			print(
 				f'\nEarly stopping triggered at epoch {epoch+1}\t'
-				f'Best validation loss: {early_stopping.get_best_score():.5f} @ Epoch {early_stopping.get_best_epoch()+1}\n'
+				f'Best validation loss: {early_stopping.get_best_score():.5f} @ Epoch {early_stopping.get_stopped_epoch()+1}\n'
 			)
 			break
 		else:
@@ -847,7 +847,7 @@ def train(
 		if early_stopping.should_stop(avg_valid_loss, model, epoch):
 			print(
 				f'\nEarly stopping triggered at epoch {epoch+1}\t'
-				f'Best validation loss: {early_stopping.get_best_score():.5f} @ Epoch {early_stopping.get_best_epoch()+1}\n'
+				f'Best validation loss: {early_stopping.get_best_score():.5f} @ Epoch {early_stopping.get_stopped_epoch()+1}\n'
 			)
 			break
 		else:
@@ -887,15 +887,19 @@ def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for CIFAR10x Dataset")
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=18, help='Number of CPUs [def: max cpus]')
-	parser.add_argument('--num_epochs', '-ne', type=int, default=12, help='Number of epochs')
+	parser.add_argument('--epochs', '-e', type=int, default=12, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=256, help='Batch size for training')
-	parser.add_argument('--window_size', '-ws', type=int, default=5, help='Windows size for early stopping and progressive freezing')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-4]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 1e-3]')
 	parser.add_argument('--print_every', type=int, default=150, help='Print loss')
 	parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar100', help='Choose dataset (CIFAR10/cifar100)')
 	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='finetune', help='Choose mode (train/finetune)')
+	parser.add_argument('--window_size', '-ws', type=int, default=5, help='Windows size for early stopping and progressive freezing')
+	parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
+	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
+	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
+	parser.add_argument('--minimum_epochs', type=int, default=20, help='Early stopping minimum epochs')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
@@ -922,7 +926,7 @@ def main():
 			model=model,
 			train_loader=train_loader,
 			validation_loader=validation_loader,
-			num_epochs=args.num_epochs,
+			num_epochs=args.epochs,
 			nw=args.num_workers,
 			print_every=args.print_every,
 			model_name=args.model_name,
@@ -942,7 +946,7 @@ def main():
 			model=model,
 			train_loader=train_loader,
 			validation_loader=validation_loader,
-			num_epochs=args.num_epochs,
+			num_epochs=args.epochs,
 			nw=args.num_workers,
 			print_every=args.print_every,
 			model_name=args.model_name,
