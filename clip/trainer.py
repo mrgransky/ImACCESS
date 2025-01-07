@@ -682,16 +682,15 @@ def finetune(
 			f'\tValid Acc [text retrieval per image]: {accuracy_text_description_for_each_image} '
 			f'[image retrieval per text]: {acc_img_per_txt}'
 		)
-
 		# ############################## Early stopping ##############################
 		if early_stopping.should_stop(avg_valid_loss, model, epoch):
 			print(
 				f'\nEarly stopping triggered at epoch {epoch+1}\t'
-				f'Best validation loss: {early_stopping.get_best_score():.5f}'
+				f'Best validation loss: {early_stopping.get_best_score():.5f} @ Epoch {early_stopping.get_best_epoch()+1}\n'
 			)
 			break
 		else:
-			print(f"Saving best model in {mdl_fpth} for best validation loss: {early_stopping.get_best_score():.9f}")
+			print(f"Saving best model in {mdl_fpth} for best validation loss: {avg_valid_loss:.9f}")
 			torch.save(model.state_dict(), mdl_fpth)
 		# ############################## Early stopping ##############################
 		print("-"*170)
@@ -835,7 +834,6 @@ def train(
 			f'\tValid Acc [text retrieval per image]: {accuracy_text_description_for_each_image} '
 			f'[image retrieval per text]: {acc_img_per_txt}'
 		)
-
 		# ############################## Early stopping ##############################
 		if early_stopping.should_stop(avg_valid_loss, model, epoch):
 			print(
