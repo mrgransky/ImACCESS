@@ -37,7 +37,7 @@ num_workers=$((SLURM_CPUS_PER_TASK - 1))  # reserve 2 CPUs for the main process 
 
 python -u history_clip.py \
 	--dataset_dir $ddir \
-	--num_epochs 32 \
+	--num_epochs 50 \
 	--num_workers $num_workers \
 	--print_every 150 \
 	--batch_size 512 \
