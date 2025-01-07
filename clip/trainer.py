@@ -624,11 +624,12 @@ def finetune(
 		layers_to_freeze = freeze_schedule[current_phase]
 		freeze_(layers=layers_to_freeze, model=model)
 		get_status(model, current_phase, layers_to_freeze, total_layers)
-		optimizer = AdamW(
+		# optimizer = AdamW(
+		optimizer = Adam(
 			params=[p for p in model.parameters() if p.requires_grad],
 			lr=learning_rate, # potentially update learning rate based on phase
 			betas=(0.9, 0.98),
-			eps=1e-6,
+			eps=1e-8,
 			weight_decay=weight_decay,
 		)
 		scheduler = lr_scheduler.OneCycleLR(
@@ -772,11 +773,12 @@ def train(
 		results_dir,
 		f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
 	)
-	optimizer = AdamW(
+	# optimizer = AdamW(
+	optimizer = Adam(
 		params=[p for p in model.parameters() if p.requires_grad],# Only optimizes parameters that require gradients
 		lr=learning_rate,
 		betas=(0.9,0.98),
-		eps=1e-6,
+		eps=1e-8,
 		weight_decay=weight_decay,
 	)
 	scheduler = lr_scheduler.OneCycleLR(
@@ -858,12 +860,12 @@ def train(
 
 	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
 
-	losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_acc_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_accuracy_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
-	pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_prf1_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
+	losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_prf1_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	plot_loss_accuracy(
 		train_losses=training_losses,
 		val_losses=val_losses,
