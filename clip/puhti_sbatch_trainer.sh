@@ -32,7 +32,7 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 datasets=(cifar100 cifar10)
 MODES=(train finetune)
-INIT_LRS=(1e-5 5e-4)
+INIT_LRS=(1e-5 5e-3)
 num_workers=$((SLURM_CPUS_PER_TASK - 1))  # reserve 1 CPU for the main process and other overheads
 
 for dset in "${datasets[@]}" 

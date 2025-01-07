@@ -9,7 +9,7 @@ import argparse
 import random
 import numpy as np
 from PIL import Image
-
+from typing import Tuple, Union, List
 def visualize_(dataloader, num_samples=5, ):
 	for batch_idx, (batch_imgs, batch_lbls) in enumerate(dataloader):
 		print(batch_idx, batch_imgs.shape, batch_lbls.shape, len(batch_imgs), len(batch_lbls)) # torch.Size([32, 3, 224, 224]) torch.Size([32])

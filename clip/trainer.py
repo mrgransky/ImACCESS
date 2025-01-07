@@ -522,19 +522,20 @@ def set_freeze(model, layers_to_freeze):
 		if any(layer in name for layer in layers_to_freeze): # Freeze layers in the list
 			param.requires_grad = False
 
-def should_transition_phase(val_losses, threshold, window=3):
-	if len(val_losses) < window:
+def should_transition_phase(losses:List[float], th: float=1e-3, window:int=3) -> bool:
+	if len(losses) < window:
 		return False # Not enough data to make a decision
-	recent_losses = val_losses[-window:]
-	avg_loss = sum(recent_losses) / window
-	relative_change = abs(recent_losses[-1] - avg_loss) / avg_loss # Relative change in loss
-	return relative_change < threshold
+	last_window_losses = losses[-window:]
+	avg_loss = sum(last_window_losses) / window
+	relative_change = abs(last_window_losses[-1] - avg_loss) / avg_loss # Relative change in loss
+	transition_required: bool = relative_change < th
+	return transition_required
 
 def handle_phase_transition(current_phase, initial_lr, max_phases):
 	if current_phase >= max_phases - 1:
 		return current_phase, initial_lr * (0.1 ** current_phase)
 	new_phase = current_phase + 1
-	new_lr = initial_lr * (0.1 ** new_phase)  # Reduce learning rate by 10x
+	new_lr = initial_lr * (0.1 ** new_phase) # Reduce learning rate by 10x
 	print(f"<!> Plateau detected! Transitioning to Phase {new_phase} with learning rate {new_lr:.1e}")
 	return new_phase, new_lr
 
@@ -567,13 +568,11 @@ def finetune(
 	total_t_layers = len(layer_groups['text_transformer'])
 	print(f"[Layer Groups] Visual: {total_v_layers} | Text: {total_t_layers}")
 	freeze_schedule = get_progressive_freeze_schedule(layer_groups) # progressive freezing based on validation loss plateau
-	print(f"Freeze Schedule:\n{json.dumps(freeze_schedule, indent=2)}")
+	print(f"Freeze Schedule[{len(freeze_schedule)}]:\n{json.dumps(freeze_schedule, indent=2)}")
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
 	)
-	current_phase = 0
-	plateau_threshold: float = 1e-3
 	criterion = nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -582,41 +581,26 @@ def finetune(
 		backoff_factor=0.5,
 		growth_interval=2000,
 	)
-	training_losses, validation_losses = [], []
+	training_losses, val_losses = [], []
 	validation_accuracy_text_description_for_each_image_list = []
 	validation_acc_img_per_txt_list = []
 	top_k_accuracy_list = []
 	mean_reciprocal_rank_list = []
 	cosine_similarity_list = []
 	precision_list, recall_list, f1_list = [], [], []
-	# smoothed_val_losses = []
+	current_phase = 0
+	plateau_threshold:float = 1e-3
+	WINDOW_SIZE:int = 3
 	initial_learning_rate = learning_rate # Store the initial value
 	ft_st = time.time()
 	for epoch in range(num_epochs):
 		print(f"Epoch [{epoch+1}/{num_epochs}]")
 		# Check for plateau to adapt phases of progressive freezing
-		# if epoch > 0 and len(validation_losses) > 1:
-		# 	current_smoothed_loss = smooth_(losses=validation_losses, window=3)
-		# 	smoothed_val_losses.append(current_smoothed_loss)
-		# 	if len(smoothed_val_losses) > 1:
-		# 		loss_diff = smoothed_val_losses[-2] - smoothed_val_losses[-1]
-		# 		if loss_diff < plateau_threshold:
-		# 			counter += 1
-		# 			print(f"Plateau counter: {counter}/{patience_per_phase} (Smoothed loss: {current_smoothed_loss:.6f})")
-		# 		else:
-		# 			counter = 0
-		# 			print(f"No plateau detected. Continuing current phase. (Smoothed loss: {current_smoothed_loss:.6f})")
-		# 		if counter >= patience_per_phase and current_phase < len(freeze_schedule) - 1:
-		# 			current_phase += 1
-		# 			counter = 0
-		# 			learning_rate = initial_learning_rate * (0.1 ** current_phase) # Reduce learning rate by 10x for each new phase
-		# 			print(f"Plateau detected. Transitioning to Phase {current_phase} with updated LR: {learning_rate:.1e}")
-		WINDOWs = 3
-		if epoch > 0 and len(validation_losses) > 1:
+		if len(val_losses) > 1: # 2 epochs needed to compare
 			should_transition = should_transition_phase(
-				val_losses=validation_losses,
-				threshold=plateau_threshold,
-				window=WINDOWs,
+				losses=val_losses,
+				th=plateau_threshold,
+				window=WINDOW_SIZE,
 			)
 			if should_transition:
 				current_phase, learning_rate = handle_phase_transition(
@@ -667,7 +651,7 @@ def finetune(
 		# print(f"Average {mode} Loss: {avg_training_loss:.7f} ")
 		training_losses.append(avg_training_loss)
 		avg_valid_loss, accuracy_text_description_for_each_image, acc_img_per_txt, top_k_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
-		validation_losses.append(avg_valid_loss)
+		val_losses.append(avg_valid_loss)
 		validation_accuracy_text_description_for_each_image_list.append(accuracy_text_description_for_each_image)
 		validation_acc_img_per_txt_list.append(acc_img_per_txt)
 		top_k_accuracy_list.append([top_k_accuracy[k] for k in [1, 3, 5]])
@@ -705,7 +689,7 @@ def finetune(
 
 	plot_loss_accuracy(
 		train_losses=training_losses,
-		val_losses=validation_losses,
+		val_losses=val_losses,
 		validation_accuracy_text_description_for_each_image_list=validation_accuracy_text_description_for_each_image_list,
 		validation_acc_img_per_txt_list=validation_acc_img_per_txt_list,
 		top_k_accuracy_list=top_k_accuracy_list,
@@ -786,7 +770,7 @@ def train(
 		backoff_factor=0.5,
 		growth_interval=2000,
 	)
-	training_losses, validation_losses = [], []
+	training_losses, val_losses = [], []
 	validation_accuracy_text_description_for_each_image_list = []
 	validation_acc_img_per_txt_list = []
 	top_k_accuracy_list = []
@@ -819,7 +803,7 @@ def train(
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
 		avg_valid_loss, accuracy_text_description_for_each_image, acc_img_per_txt, top_k_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
-		validation_losses.append(avg_valid_loss)
+		val_losses.append(avg_valid_loss)
 		validation_accuracy_text_description_for_each_image_list.append(accuracy_text_description_for_each_image)
 		validation_acc_img_per_txt_list.append(acc_img_per_txt)
 		top_k_accuracy_list.append([top_k_accuracy[k] for k in [1, 3, 5]])
@@ -829,7 +813,7 @@ def train(
 		recall_list.append(avg_recall)
 		f1_list.append(avg_f1)
 		print(
-			f'@Epoch {epoch+1}:\n'
+			f'@ Epoch {epoch+1}:\n'
 			f'\t[LOSS] {mode}: {avg_training_loss:.5f} Valid: {avg_valid_loss:.8f}\n'
 			f'\tValid Acc [text retrieval per image]: {accuracy_text_description_for_each_image} '
 			f'[image retrieval per text]: {acc_img_per_txt}'
@@ -857,7 +841,7 @@ def train(
 	pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_prf1_ep_{len(training_losses)}_lr_{learning_rate}_wd_{weight_decay}_{train_loader.batch_size}_bs.png")
 	plot_loss_accuracy(
 		train_losses=training_losses,
-		val_losses=validation_losses,
+		val_losses=val_losses,
 		validation_accuracy_text_description_for_each_image_list=validation_accuracy_text_description_for_each_image_list,
 		validation_acc_img_per_txt_list=validation_acc_img_per_txt_list,
 		top_k_accuracy_list=top_k_accuracy_list,
