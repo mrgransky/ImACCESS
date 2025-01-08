@@ -10,13 +10,13 @@ from misc.utils import *
 # $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > logs/smu_dataset_collection.out &
 
 # run in Pouta:
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > /media/volume/ImACCESS/trash/smu_data_collection_with_std_mean.out &
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > /media/volume/ImACCESS/trash/smu_data_collection_with_std_mean.out &
 # $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > /media/volume/ImACCESS/trash/smu_1900-1970.out &
 
-parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
+parser = argparse.ArgumentParser(description="SMU ARCHIVE data colletion")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
-parser.add_argument('--start_date', '-sdt', type=str, default="1890-01-01", help='Dataset DIR')
-parser.add_argument('--end_date', '-edt', type=str, default="1960-01-01", help='Dataset DIR')
+parser.add_argument('--start_date', '-sdt', type=str, default="1900-01-01", help='Dataset DIR')
+parser.add_argument('--end_date', '-edt', type=str, default="1970-12-31", help='Dataset DIR')
 parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 args, unknown = parser.parse_known_args()
@@ -24,10 +24,15 @@ print(args)
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
-START_DATE = args.start_date
-END_DATE = args.end_date
 
-dataset_name = "SMU"
+SMU_BASE_URL:str = "https://digitalcollections.smu.edu/digital"
+dataset_name = "smu".upper()
+CUSTOMIZED_COLLECTIONS: list = [
+	"apnd", "aaf", "outler", "ald", "alv", "han", "wsw", "lav", "bml", "other", "civ", "cooke", "pwl", "mbc", "eaa", "wlrd", "fjd", "gcp", "gcd", "white", "wlg", "kil", "jcc", "jhv", "mcs", "UKMeth", "mex", "ngc", "nam", "ptr", "rwy", "stn", "ryr", "rdoh", "tex", "bridhist", "haws", "wes", "wrl"
+]
+FORBIDDEN_DOCUMENT_FORMATS ="Letter Watercolors Paintings Copperwork Porcelain enamel Lithographs Tempera paintings Promotional materials Manuscripts Front cover Back cover Forms Documents Bibles Posters Currency Lyric poetry Real photographic postcards Newspapers Periodicals Viewbooks Book covers Postcards Pamphlets Scrapbooks Drawings Pencil works Metalwork Brasswork Correspondence Letters Timetables Ephemera Tickets Cards Maps Sketchbook Badges Slides Reproductions typed document 	Woodcuts Broadsides Relief prints Medals, Memorabilia Advertisements Matchcovers"
+CUSTOMIZED_COLLECTIONS_STR: str = "!".join(CUSTOMIZED_COLLECTIONS)
+
 meaningless_words_fpth = os.path.join(parent_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
 STOPWORDS = list()
@@ -45,19 +50,14 @@ headers = {
 	'Pragma': 'no-cache',
 }
 
-os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
-DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
-
-os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
-DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
-os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
-IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
-
-os.makedirs(os.path.join(DATASET_DIRECTORY, "hits"), exist_ok=True)
-HITs_DIR = os.path.join(DATASET_DIRECTORY, "hits")
-
-os.makedirs(os.path.join(DATASET_DIRECTORY, "outputs"), exist_ok=True)
-OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
+DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{args.start_date}_{args.end_date}")
+HITS_DIRECTORY = os.path.join(DATASET_DIRECTORY, "hits")
+IMAGE_DIRECTORY = os.path.join(DATASET_DIRECTORY, "images")
+OUTPUT_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
+os.makedirs(DATASET_DIRECTORY, exist_ok=True)
+os.makedirs(IMAGE_DIRECTORY, exist_ok=True)
+os.makedirs(HITS_DIRECTORY, exist_ok=True)
+os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
@@ -74,12 +74,12 @@ def get_doc_year(raw_doc_date):
 	else:
 		return None
 
-def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
+def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", query: str="world war"):
 	t0 = time.time()
-	START_DATE = re.sub("-", "", args.start_date)
-	END_DATE = re.sub("-", "", args.end_date)
+	START_DATE = re.sub("-", "", start_date) # modified date: 19140101
+	END_DATE = re.sub("-", "", end_date) # modiifed date: 19140102
 	query_processed = re.sub(" ", "_", query.lower())
-	query_all_hits_fpth = os.path.join(HITs_DIR, f"results_{st_date}_{end_date}_query_{query_processed}.gz")
+	query_all_hits_fpth = os.path.join(HITS_DIRECTORY, f"results_{start_date}_{end_date}_query_{query_processed}.gz")
 	try:
 		query_all_hits = load_pickle(fpath=query_all_hits_fpth)
 	except Exception as e:
@@ -89,9 +89,16 @@ def get_data(st_date: str="1914-01-01", end_date: str="1914-01-02", query: str="
 		pg = 1
 		MAX_HITS_IN_ONE_PAGE = 200
 		while True:
-			query_url = f"https://digitalcollections.smu.edu/digital/api/search/collection/apnd!aaf!outler!ald!alv!han!wsw!lav!bml!other!civ!cooke!pwl!mbc!eaa!wlrd!fjd!gcp!gcd!white!wlg!kil!jcc!jhv!mcs!UKMeth!mex!ngc!nam!ptr!rwy!stn!ryr!rdoh!tex!bridhist!haws!wes!wrl/searchterm/image!{query}!{query}!{START_DATE}-{END_DATE}/field/type!title!descri!date/mode/exact!exact!all!exact/conn/and!and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}/page/{pg}"
-			# query_url = f"https://digitalcollections.smu.edu/digital/api/search/searchterm/image!{query}!{st_date}-{end_date}/field/type!all!date/mode/exact!all!exact/conn/and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}/page/{pg}"
-			# query_url = f"https://digitalcollections.smu.edu/digital/api/search/collection/apnd!aaf!outler!ald!alv!han!wsw!lav!bml!other!civ!cooke!pwl!mbc!eaa!wlrd!fjd!gcp!gcd!white!wlg!kil!jcc!jhv!mcs!UKMeth!mex!ngc!nam!ptr!rwy!stn!ryr!rdoh!tex!bridhist!haws!wes!wrl/searchterm/{query}!{query}!{START_DATE}-{END_DATE}/field/title!descri!date/mode/any!all!exact/conn/and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}/page/{pg}"
+			##############################################
+			# # previous functional but small collection:
+			# query_url = f"{SMU_BASE_URL}/api/search/collection/apnd!aaf!outler!ald!alv!han!wsw!lav!bml!other!civ!cooke!pwl!mbc!eaa!wlrd!fjd!gcp!gcd!white!wlg!kil!jcc!jhv!mcs!UKMeth!mex!ngc!nam!ptr!rwy!stn!ryr!rdoh!tex!bridhist!haws!wes!wrl/searchterm/image!{query}!{query}!{START_DATE}-{END_DATE}/field/type!title!descri!date/mode/exact!exact!all!exact/conn/and!and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}/page/{pg}"
+			##############################################
+			# query_url = f"{SMU_BASE_URL}/api/search/searchterm/image!{query}!{st_date}-{end_date}/field/type!all!date/mode/exact!all!exact/conn/and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}/page/{pg}"
+			# query_url = f"{SMU_BASE_URL}/api/search/collection/apnd!aaf!outler!ald!alv!han!wsw!lav!bml!other!civ!cooke!pwl!mbc!eaa!wlrd!fjd!gcp!gcd!white!wlg!kil!jcc!jhv!mcs!UKMeth!mex!ngc!nam!ptr!rwy!stn!ryr!rdoh!tex!bridhist!haws!wes!wrl/searchterm/{query}!{query}!{START_DATE}-{END_DATE}/field/title!descri!date/mode/any!all!exact/conn/and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}/page/{pg}"
+			# with selected collections and all field containing the query:
+			# query_url = f"{SMU_BASE_URL}/api/search/collection/{CUSTOMIZED_COLLECTIONS_STR}/searchterm/searchterm/image!{query}!{START_DATE}-{END_DATE}/field/type!all!date/mode/exact!exact!exact/conn/and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}/page/{pg}"
+			# with forbiddden document formats:
+			query_url = f"{SMU_BASE_URL}/api/search/searchterm/{FORBIDDEN_DOCUMENT_FORMATS}!{query}!image!{START_DATE}-{END_DATE}/field/all!all!type!date/mode/none!exact!exact!exact/conn/and!and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}/page/{pg}"
 			loop_st = time.time()
 			response = requests.get(query_url)
 			if response.status_code == 200:
@@ -125,7 +132,16 @@ def check_url_status(url: str) -> bool:
 		print(f"Error accessing URL {url}: {e}")
 		return False
 
-def get_dframe(query: str="query", docs: List=[Dict]):
+def get_dframe(query: str="query", start_date:str="1900-01-01", end_date:str="1970-12-31", df_file_path: str="df_file.gz"):
+	# get data firt:
+	query_all_hits = get_data(
+		start_date=args.start_date,
+		end_date=args.end_date,
+		query=query.lower()
+	)
+	if query_all_hits is None:
+		return
+	docs = query_all_hits
 	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
 	df_st_time = time.time()
 	data = []
@@ -137,29 +153,20 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 		doc_id = doc.get("itemId")
 		doc_combined_identifier = f'{doc_collection}_{doc_id}' # agr_19
 		doc_link = doc.get("itemLink") # /singleitem/collection/ryr/id/2479
-		doc_url = f"https://digitalcollections.smu.edu/digital/collection/{doc.get('collectionAlias')}/id/{doc.get('itemId')}"
-		doc_img_link = f"https://digitalcollections.smu.edu/digital/api/singleitem/image/{doc_collection}/{doc_id}/default.jpg"
+		doc_page_url = f"{SMU_BASE_URL}/collection/{doc.get('collectionAlias')}/id/{doc.get('itemId')}"
+		doc_img_link = f"{SMU_BASE_URL}/api/singleitem/image/{doc_collection}/{doc_id}/default.jpg"
 		doc_title = clean_(text=doc.get("title"), sw=STOPWORDS)# doc.get("title")
-		doc_description = doc.get("dcDescription")
-		if (
-			doc_type == "jp2"
-			and "cover]" not in doc_title
-			and doc_img_link 
-			and (doc_img_link.endswith('.jpg') or doc_img_link.endswith('.png'))
-		):
-			pass # Valid entry; no action needed here
-		else:
-			doc_img_link = None
+		doc_description = doc.get("dcDescription") # TODO: must be taken from doc_page_url
 		row = {
 			'id': doc_combined_identifier,
 			'label': query,
 			'title': doc_title,
 			'description': doc.get("dcDescription"),
 			'img_url': doc_img_link,
-			'doc_url': doc_url,
+			'doc_url': doc_page_url,
 			'label_title_description': query + " " + (doc_title or '') + " " + (doc_description or ''),
 			'raw_doc_date': doc_date,
-			'img_path': f"{os.path.join(IMAGE_DIR, str(doc_combined_identifier) + '.jpg')}"
+			'img_path': f"{os.path.join(IMAGE_DIRECTORY, str(doc_combined_identifier) + '.jpg')}"
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
@@ -168,35 +175,34 @@ def get_dframe(query: str="query", docs: List=[Dict]):
 	df['doc_date'] = df.apply(lambda row: get_doc_year(row['raw_doc_date']), axis=1)
 
 	# Filter the DataFrame based on the validity check
-	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=START_DATE, end_date=END_DATE))]
+	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=start_date, end_date=end_date))]
 
 	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
+	save_pickle(pkl=df, fname=df_file_path)
 	return df
 
 def main():
 	with open(os.path.join(parent_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 		all_label_tags = [line.strip().lower() for line in file_]
 	print(type(all_label_tags), len(all_label_tags))
-
 	print(f"{len(all_label_tags)} Query phrases are being processed, please be patient...")
+
 	dfs = []
 	for qi, qv in enumerate(all_label_tags):
 		print(f"\nQ[{qi+1}/{len(all_label_tags)}]: {qv}")
-		query_all_hits = get_data(
-			st_date=START_DATE,
-			end_date=END_DATE,
-			query=qv.lower()
-		)
-		if query_all_hits:
-			qv_processed = re.sub(" ", "_", qv.lower())
-			df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_{START_DATE}_{END_DATE}.gz")
-			try:
-				df = load_pickle(fpath=df_fpth)
-			except Exception as e:
-				df = get_dframe(query=qv.lower(), docs=query_all_hits)
-				save_pickle(pkl=df, fname=df_fpth)
-			# print(df)
-			# print(df.head())
+		qv_processed = re.sub(" ", "_", qv.lower())
+		df_fpth = os.path.join(HITS_DIRECTORY, f"df_query_{qv_processed}_{args.start_date}_{args.end_date}.gz")
+		try:
+			df = load_pickle(fpath=df_fpth)
+		except Exception as e:
+			print(e)
+			df = get_dframe(
+				query=qv.lower(),
+				start_date=args.start_date,
+				end_date=args.end_date,
+				df_file_path=df_fpth,
+			)
+		if df is not None:
 			dfs.append(df)
 
 	print(f"Concatinating {len(dfs)} dfs...")
@@ -239,28 +245,35 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	smu_df = get_synchronized_df_img(df=smu_df_merged_raw, image_dir=IMAGE_DIR, nw=args.num_workers)
+	smu_df = get_synchronized_df_img(df=smu_df_merged_raw, image_dir=IMAGE_DIRECTORY, nw=args.num_workers)
 	query_counts = smu_df['label'].value_counts()
 
-	plt.figure(figsize=(15, 10))
-	query_counts.plot(kind='bar', fontsize=9)
+	plt.figure(figsize=(11, 7))
+	query_counts.plot(kind='bar', fontsize=8)
 	plt.title(f'{dataset_name} Query Frequency (total: {query_counts.shape})')
 	plt.xlabel('label')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
-	plt.savefig(os.path.join(OUTPUTs_DIR, f"query_x_{query_counts.shape[0]}_freq.png"))
+	plt.savefig(os.path.join(OUTPUT_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
 
 	smu_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
+
+	print(smu_df['label'].value_counts())
+	get_stratified_split(
+		df=smu_df,
+		result_dir=DATASET_DIRECTORY,
+		val_split_pct=0.35, # TODO: must be StratifiedKFold
+	)
 	try:
 		smu_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	yr_distro_fpth = os.path.join(OUTPUTs_DIR, f"year_distribution_{dataset_name}_{START_DATE}_{END_DATE}_nIMGs_{smu_df.shape[0]}.png")
+	yr_distro_fpth = os.path.join(OUTPUT_DIRECTORY, f"year_distribution_{dataset_name}_{args.start_date}_{args.end_date}_nIMGs_{smu_df.shape[0]}.png")
 	plot_year_distribution(
 		df=smu_df,
-		start_date=START_DATE,
-		end_date=END_DATE,
+		start_date=args.start_date,
+		end_date=args.end_date,
 		dname=dataset_name,
 		fpth=yr_distro_fpth,
 		BINs=50,
@@ -279,11 +292,37 @@ def main():
 			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
 		print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
 
-def test():
-	query = "museum"
-	# "https://digitalcollections.smu.edu/digital/api/search/collection/apnd!aaf!outler!ald!alv!han!wsw!lav!bml!other!civ!cooke!pwl!mbc!eaa!wlrd!fjd!gcp!gcd!white!wlg!kil!jcc!jhv!mcs!UKMeth!mex!ngc!nam!ptr!rwy!stn!ryr!rdoh!tex!bridhist!haws!wes!wrl/searchterm/president!president!18900101-19601231/field/title!descri!date/mode/any!all!exact/conn/and!and!and/maxRecords/200"
-	# query_url = str(f"https://digitalcollections.smu.edu/digital/api/search/searchterm/image!{query}!{START_DATE}-{END_DATE}/field/type!all!date/mode/exact!all!exact/conn/and!and!and/maxRecords/200/page/7")
-	query_url = f"https://digitalcollections.smu.edu/digital/api/search/collection/apnd!aaf!outler!ald!alv!han!wsw!lav!bml!other!civ!cooke!pwl!mbc!eaa!wlrd!fjd!gcp!gcd!white!wlg!kil!jcc!jhv!mcs!UKMeth!mex!ngc!nam!ptr!rwy!stn!ryr!rdoh!tex!bridhist!haws!wes!wrl/searchterm/{query}!{query}!{START_DATE}-{END_DATE}/field/title!descri!date/mode/any!all!exact/conn/and!and!and"
+def test_on_doc_page_url():
+	doc_page_url = f"{SMU_BASE_URL}/api/collection/mex/id/3845/download"
+	print(f"testing on a document page url: {doc_page_url}")
+	# Send a GET request to the API
+	response = requests.get(doc_page_url)
+	print(response.status_code)
+	print(type(response), response)
+	# print(response.text)
+	print(response.headers['Content-Type']) # must be 'application/json'
+
+def test_on_search_(query="shovel", start_date="1900-01-01", end_date="1970-12-31"):
+	START_DATE = re.sub("-", "", start_date) # modified date: 19140101
+	END_DATE = re.sub("-", "", end_date) # modiifed date: 19140102
+	MAX_HITS_IN_ONE_PAGE = 200
+	# f"{SMU_BASE_URL}/api/search/collection/apnd!aaf!outler!ald!alv!han!wsw!lav!bml!other!civ!cooke!pwl!mbc!eaa!wlrd!fjd!gcp!gcd!white!wlg!kil!jcc!jhv!mcs!UKMeth!mex!ngc!nam!ptr!rwy!stn!ryr!rdoh!tex!bridhist!haws!wes!wrl/searchterm/president!president!18900101-19601231/field/title!descri!date/mode/any!all!exact/conn/and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}"
+
+	# query_url = f"{SMU_BASE_URL}/api/search/collection/{CUSTOMIZED_COLLECTIONS_STR}/searchterm/image!{query}!{query}!{START_DATE}-{END_DATE}/field/type!title!descri!date/mode/exact!exact!all!exact/conn/and!and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}"
+
+	# query_url = str(f"{SMU_BASE_URL}/api/search/searchterm/image!{query}!{START_DATE}-{END_DATE}/field/type!all!date/mode/exact!all!exact/conn/and!and!and/maxRecords/200/page/7")
+	# without certain collections:
+	# query_url = f"{SMU_BASE_URL}/api/search/collection/{CUSTOMIZED_COLLECTIONS_STR}/searchterm/{query}!{query}!{START_DATE}-{END_DATE}/field/title!descri!date/mode/any!all!exact/conn/and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}"
+	# with all collections:
+	# query_url = f"{SMU_BASE_URL}/api/search/searchterm/{query}!{query}!{START_DATE}-{END_DATE}/field/title!descri!date/mode/any!all!exact/conn/and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}"
+	# with all collections and all field containing the query:
+	# query_url = f"{SMU_BASE_URL}/api/search/searchterm/searchterm/image!{query}!{START_DATE}-{END_DATE}/field/type!all!date/mode/exact!exact!exact/conn/and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}"
+	
+	# with selected collections and all field containing the query:
+	# query_url = f"{SMU_BASE_URL}/api/search/collection/{CUSTOMIZED_COLLECTIONS_STR}/searchterm/searchterm/Photographs!image!{query}!{START_DATE}-{END_DATE}/field/formge!type!all!date/mode/exact!exact!exact!exact/conn/and!and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}"
+	# 
+	query_url = f"{SMU_BASE_URL}/api/search/searchterm/{FORBIDDEN_DOCUMENT_FORMATS}!{query}!image!{START_DATE}-{END_DATE}/field/all!all!type!date/mode/none!exact!exact!exact/conn/and!and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}"
+
 	# Send a GET request to the API
 	response = requests.get(query_url)
 	print(response.status_code)
@@ -304,9 +343,9 @@ def test():
 				if item.get('filetype') == "jp2":
 					itm_collection = item.get("collectionAlias")
 					itm_identifier = item.get("itemId")
-					itm_link = f"https://digitalcollections.smu.edu/digital/collection/{itm_collection}/id/{itm_identifier}" #item.get("itemLink")
-					itm_api_link = f"https://digitalcollections.smu.edu/digital/api/collections/{itm_collection}/items/{itm_identifier}/false"
-					itm_img_link = f"https://digitalcollections.smu.edu/digital/api/singleitem/image/{itm_collection}/{itm_identifier}/default.jpg"
+					itm_link = f"{SMU_BASE_URL}/collection/{itm_collection}/id/{itm_identifier}" #item.get("itemLink")
+					itm_api_link = f"{SMU_BASE_URL}/api/collections/{itm_collection}/items/{itm_identifier}/false"
+					itm_img_link = f"{SMU_BASE_URL}/api/singleitem/image/{itm_collection}/{itm_identifier}/default.jpg"
 					itm_title = item.get("title")
 					# itm_description = 
 					itm_date = item.get("metadataFields")[3].get("value")
@@ -314,6 +353,7 @@ def test():
 					print(itm_link)
 					print(itm_img_link)
 					print(itm_date)
+					print(itm_collection)
 					print("#"*100)
 				else:
 					pass
@@ -341,7 +381,8 @@ if __name__ == '__main__':
 	)
 	START_EXECUTION_TIME = time.time()
 	main()
-	# test()
+	# test_on_search_()
+	# test_on_doc_page_url()
 	END_EXECUTION_TIME = time.time()
 	print(
 		f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "

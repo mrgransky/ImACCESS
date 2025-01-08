@@ -19,8 +19,8 @@ print(args)
 # sys.exit()
 
 # run in local laptop:
-# $ python data_collector.py --dataset_dir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31
-# $ nohup python -u data_collector.py --dataset_dir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 ---nw 8 --img_mean_std > logs/europeana_img_dl.out &
+# $ python data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31
+# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > logs/europeana_img_dl.out &
 # $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > logs/europeana_img_dl.out &
 
 # run in Pouta:
@@ -106,7 +106,7 @@ def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", label: st
 			],
 			'rows': 100,
 			'query': label,
-			# 'reusability': 'open'
+			# 'reusability': 'open' # TODO: LICENCE issues(must be resolved later!)
 		}
 		label_all_hits = []
 		start = 1
@@ -263,15 +263,24 @@ def main():
 
 	europeana_df = get_synchronized_df_img(df=europeana_df_merged_raw, image_dir=IMAGE_DIR, nw=args.num_workers)
 	label_counts = europeana_df['label'].value_counts()
-	plt.figure(figsize=(21, 14))
+	plt.figure(figsize=(15, 9))
 	label_counts.plot(kind='bar', fontsize=9)
 	plt.title(f'{dataset_name} Label Frequency (total: {label_counts.shape}) {START_DATE} - {END_DATE}')
 	plt.xlabel('label')
 	plt.ylabel('Frequency')
 	plt.tight_layout()
-	plt.savefig(os.path.join(OUTPUTs_DIR, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"))
+	plt.savefig(
+		fname=os.path.join(OUTPUTs_DIR, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"),
+		dpi=200,
+		bbox_inches='tight',
+	)
 
 	europeana_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
+	get_stratified_split(
+		df=europeana_df,
+		result_dir=DATASET_DIRECTORY,
+		val_split_pct=0.35, # TODO: must be StratifiedKFold
+	)
 	try:
 		europeana_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:

@@ -238,6 +238,11 @@ def main():
 		print(f"Failed to write Excel file: {e}")
 
 	sa_kuva_df = get_synchronized_df_img(df=sa_kuva_df_merged_raw, image_dir=IMAGE_DIR, nw=args.num_workers)
+	get_stratified_split(
+		df=sa_kuva_df,
+		result_dir=DATASET_DIRECTORY,
+		val_split_pct=0.35, # TODO: must be StratifiedKFold
+	)
 
 	label_counts = sa_kuva_df['label'].value_counts()
 	print(label_counts.tail(25))

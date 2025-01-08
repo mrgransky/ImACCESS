@@ -9,8 +9,8 @@ from misc.utils import *
 # $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs > logs/wwii_image_download.out &
 
 # run in Pouta:
-# $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > /media/volume/ImACCESS/trash/wwii_data_collection.out &
+# $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > /media/volume/ImACCESS/trash/wwii_data_collection.out &
 # $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > /media/volume/ImACCESS/trash/wwii_data_collection.out &
 
 parser = argparse.ArgumentParser(description="WWII Dataset")
@@ -590,15 +590,15 @@ def main():
 
 	print(f"Concatinating {len(dfs)} dfs...")
 	# print(dfs[0])
-	merged_df = pd.concat(dfs, ignore_index=True)
-	print(merged_df.shape)
-	print(merged_df.describe())
+	wwii_df = pd.concat(dfs, ignore_index=True)
+	print(wwii_df.shape)
+	print(wwii_df.describe())
 	print("#"*150)
-	print(merged_df.head(50))
+	print(wwii_df.head(50))
 	print("#"*150)
-	print(merged_df.tail(50))
+	print(wwii_df.tail(50))
 
-	label_counts = merged_df['label'].value_counts()
+	label_counts = wwii_df['label'].value_counts()
 	# print(label_counts.tail(25))
 
 	plt.figure(figsize=(16, 10))
@@ -609,9 +609,15 @@ def main():
 	plt.tight_layout()
 	plt.savefig(os.path.join(OUTPUTs_DIR, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"))
 
-	merged_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
+	wwii_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
+	get_stratified_split(
+		df=wwii_df,
+		result_dir=DATASET_DIRECTORY,
+		val_split_pct=0.35, # TODO: must be StratifiedKFold
+	)
+
 	try:
-		merged_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
+		wwii_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 

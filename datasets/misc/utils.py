@@ -27,6 +27,7 @@ import torchvision.transforms as T
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
 from functools import cache
 from urllib.parse import urlparse, unquote, quote_plus
+from sklearn.model_selection import train_test_split
 
 logging.basicConfig(level=logging.INFO)
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
@@ -78,6 +79,43 @@ if USER!="alijanif":
 	pl_dict = enchant.Dict("pl")
 	sl_dict = enchant.Dict("sl")
 	sk_dict = enchant.Dict("sk")
+
+def get_stratified_split(df, result_dir, val_split_pct=0.2, figure_size=(10, 6), dpi=200):
+	# Count the occurrences of each label
+	label_counts = df['label'].value_counts()
+	labels_to_drop = label_counts[label_counts == 1].index
+	# Filter out rows with labels that appear only once
+	df_filtered = df[~df['label'].isin(labels_to_drop)]
+
+	# Check if df_filtered is not empty
+	if df_filtered.empty or df_filtered['label'].nunique() == 0:
+		raise ValueError("No labels with more than one occurrence. Stratified sampling cannot be performed.")
+
+	# stratified splitting
+	train_df, val_df = train_test_split(
+		df_filtered,
+		test_size=val_split_pct,
+		stratify=df_filtered['label'],
+		random_state=42
+	)
+	train_df.to_csv(os.path.join(result_dir, 'train_metadata.csv'), index=False)
+	val_df.to_csv(os.path.join(result_dir, 'val_metadata.csv'), index=False)
+
+	# Visualize label distribution in training and validation sets
+	plt.figure(figsize=figure_size)
+	train_df['label'].value_counts().plot(kind='bar', color='blue', alpha=0.6, label=f'Train {1-val_split_pct}')
+	val_df['label'].value_counts().plot(kind='bar', color='red', alpha=0.9, label=f'Validation {val_split_pct}')
+	plt.title(f'Stratified Label Distribution of {train_df.shape[0]} Training samples {val_df.shape[0]} Validation Samples (Total samples: {df_filtered.shape[0]})', fontsize=9)
+	plt.xlabel('Label')
+	plt.ylabel('Frequency')
+	plt.legend(loc='best', ncol=2, frameon=False, fontsize=8)
+	plt.tight_layout()
+	plt.savefig(
+		fname=os.path.join(result_dir, 'outputs', 'stratified_label_distribution_train_val.png'),
+		dpi=dpi,
+		bbox_inches='tight'
+	)	
+	return train_df, val_df
 
 def download_image(row, session, image_dir, total_rows, retries=2, backoff_factor=0.5):
 	t0 = time.time()

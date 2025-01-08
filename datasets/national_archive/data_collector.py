@@ -325,7 +325,7 @@ def main():
 	label_counts = na_df['label'].value_counts()
 	print(label_counts.tail(25))
 
-	plt.figure(figsize=(20, 13))
+	plt.figure(figsize=(15, 8))
 	label_counts.plot(kind='bar', fontsize=9)
 	plt.title(f'{dataset_name} Label Frequency (total: {label_counts.shape}) {START_DATE} - {END_DATE} total IMGs: {na_df.shape[0]}')
 	plt.xlabel('Label')
@@ -334,6 +334,11 @@ def main():
 	plt.savefig(os.path.join(OUTPUTs_DIR, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"))
 
 	na_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
+	get_stratified_split(
+		df=na_df,
+		result_dir=DATASET_DIRECTORY,
+		val_split_pct=0.35, # TODO: must be StratifiedKFold
+	)
 	try:
 		na_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
