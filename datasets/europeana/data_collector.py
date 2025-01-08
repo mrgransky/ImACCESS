@@ -43,9 +43,9 @@ STOPWORDS = set(STOPWORDS)
 print(STOPWORDS, type(STOPWORDS))
 dataset_name: str = "europeana".upper()
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
-europeana_api_key: str = "plaction"
+# europeana_api_key: str = "plaction"
 # europeana_api_key: str = "api2demo"
-# europeana_api_key: str = "nLbaXYaiH"
+europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
