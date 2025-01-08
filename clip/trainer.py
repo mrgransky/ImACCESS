@@ -625,7 +625,7 @@ def finetune(
 		freeze_(layers=layers_to_freeze, model=model)
 		get_status(model, current_phase, layers_to_freeze, total_layers)
 		# optimizer = AdamW(
-		optimizer = Adam(
+		optimizer = AdamW(
 			params=[p for p in model.parameters() if p.requires_grad],
 			lr=learning_rate, # potentially update learning rate based on phase
 			betas=(0.9, 0.98),
@@ -774,7 +774,7 @@ def train(
 		f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
 	)
 	# optimizer = AdamW(
-	optimizer = Adam(
+	optimizer = AdamW(
 		params=[p for p in model.parameters() if p.requires_grad],# Only optimizes parameters that require gradients
 		lr=learning_rate,
 		betas=(0.9,0.98),
