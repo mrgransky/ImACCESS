@@ -10,7 +10,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
 #SBATCH --partition=small
-#SBATCH --time=03-00:00:00
+#SBATCH --time=01-00:00:00
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
@@ -35,7 +35,7 @@ end_dt="1945-09-02"
 python -u data_collector.py \
 	--dataset_dir $ddir \
 	--num_worker 4 \
-	# --img_mean_std \
+	--img_mean_std \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

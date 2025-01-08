@@ -17,21 +17,21 @@ args, unknown = parser.parse_known_args()
 print(args)
 
 # run in local laptop:
-# $ python data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02
+# $ python data_collector.py -ddir $PWD --start_date 1933-01-01 --end_date 1933-01-02
 
 ########################## --start_date 1933-01-01 --end_date 1933-01-02 ##########################
-# $ nohup python -u data_collector.py --dataset_dir $PWD --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 8 --img_mean_std > logs/na_image_download.out &
-# $ nohup python -u data_collector.py --dataset_dir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 8 --img_mean_std > logs/na_image_download.out &
+# $ nohup python -u data_collector.py -ddir $PWD --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 8 --img_mean_std > logs/na_image_download.out &
+# $ nohup python -u data_collector.py -ddir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 8 --img_mean_std > logs/na_image_download.out &
 
 ########################## --start_date 1914-01-01 --end_date 1946-12-31 ##########################
-# $ nohup python -u data_collector.py --dataset_dir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1914-01-01 --end_date 1946-12-31 --num_workers 2 > logs/na_image_download.out &
+# $ nohup python -u data_collector.py -ddir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1914-01-01 --end_date 1946-12-31 --num_workers 2 > logs/na_image_download.out &
 
 ##################################################################################################################
 # run in Pouta:
 
 # WWII (with threshold)
-# $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs --start_date 1935-01-01 --end_date 1950-12-31
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1935-01-01 -edt 1950-12-31 --img_mean_std > /media/volume/ImACCESS/trash/NA_thresholded_WW2.out &
+# $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs --start_date 1930-01-01 --end_date 1955-12-31
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1930-01-01 -edt 1955-12-31 --img_mean_std > /media/volume/ImACCESS/trash/na_dl.out &
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
