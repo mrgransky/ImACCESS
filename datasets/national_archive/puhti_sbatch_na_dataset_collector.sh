@@ -7,7 +7,7 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=1
 #SBATCH --mem=24G
 #SBATCH --partition=small
 #SBATCH --time=03-00:00:00
@@ -37,7 +37,7 @@ python -u data_collector.py \
 	--dataset_dir $ddir \
 	--start_date  $st_dt \
 	--end_date  $end_dt \
-	--num_worker $num_workers \
+	--num_worker 4 \
 	--img_mean_std \
 
 done_txt="$user finished Slurm job: `date`"
