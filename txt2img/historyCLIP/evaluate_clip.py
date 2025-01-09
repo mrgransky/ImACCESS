@@ -455,14 +455,14 @@ def main():
 		device=args.device,
 	)
 
-	img_to_txt_map_at_k, txt_to_img_map_at_k = get_map_at_k(
-		dataset=dataset,
-		model=model,
-		preprocess=preprocess,
-		K=args.topK,
-		batch_size=args.batch_size,
-		device=args.device
-	)
+	# img_to_txt_map_at_k, txt_to_img_map_at_k = get_map_at_k(
+	# 	dataset=dataset,
+	# 	model=model,
+	# 	preprocess=preprocess,
+	# 	K=args.topK,
+	# 	batch_size=args.batch_size,
+	# 	device=args.device
+	# )
 
 	if USER == "farid":
 		get_image_to_texts(
@@ -473,12 +473,12 @@ def main():
 			topk=args.topK,
 		)
 
-	get_image_to_texts_precision_at_(
-		dataset=dataset,
-		model=model,
-		preprocess=preprocess,
-		K=args.topK,
-	)
+	# get_image_to_texts_precision_at_(
+	# 	dataset=dataset,
+	# 	model=model,
+	# 	preprocess=preprocess,
+	# 	K=args.topK,
+	# )
 
 	if USER == "farid":
 		get_text_to_images(
@@ -490,13 +490,13 @@ def main():
 			batch_size=args.batch_size,
 		)
 
-	get_text_to_images_precision_recall_at_(
-		dataset=dataset,
-		model=model,
-		preprocess=preprocess,		
-		K=args.topK,
-		batch_size=args.batch_size,
-	)
+	# get_text_to_images_precision_recall_at_(
+	# 	dataset=dataset,
+	# 	model=model,
+	# 	preprocess=preprocess,		
+	# 	K=args.topK,
+	# 	batch_size=args.batch_size,
+	# )
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))

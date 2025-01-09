@@ -1,5 +1,5 @@
 from utils import *
-from datasets import *
+from datasets_loader import *
 from torchvision.datasets import CIFAR10, CIFAR100
 from torch.utils.data import DataLoader, Dataset
 import torch.nn as nn

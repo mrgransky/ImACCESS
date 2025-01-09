@@ -1,4 +1,4 @@
-from datasets import *
+from datasets_loader import *
 from utils import *
 
 parser = argparse.ArgumentParser(description="Evaluate CLIP for CIFAR10x")
@@ -135,10 +135,10 @@ def get_features(dataset, model, batch_size:int=1024, device:str="cuda:0", nw:in
 def get_linear_prob_zero_shot_accuracy(train_dataset, validation_dataset, model, preprocess, batch_size:int=1024, device:str="cuda:0"):
 	# Load the dataset
 	root = os.path.expanduser("~/.cache")
-	train = CIFAR10(root, download=True, train=True, transform=preprocess)
-	test = CIFAR10(root, download=True, train=False, transform=preprocess)
-	# train = CIFAR100(root, download=True, train=True, transform=preprocess)
-	# test = CIFAR100(root, download=True, train=False, transform=preprocess)
+	# train = CIFAR10(root, download=True, train=True, transform=preprocess)
+	# test = CIFAR10(root, download=True, train=False, transform=preprocess)
+	train = CIFAR100(root, download=True, train=True, transform=preprocess)
+	test = CIFAR100(root, download=True, train=False, transform=preprocess)
 
 	print(train)
 	print("-"*25)
@@ -170,8 +170,8 @@ def get_linear_prob_zero_shot_accuracy(train_dataset, validation_dataset, model,
 
 	# Evaluate using the logistic regression classifier
 	predictions = classifier.predict(test_features)
-	accuracy = np.mean((test_labels == predictions).astype(float)) * 100.
-	print(f"Linear Probe Accuracy = {accuracy:.1f}")
+	accuracy = np.mean((test_labels == predictions).astype(float))# * 100.
+	print(f"Linear Probe Accuracy = {accuracy:.3f}")
 
 	################################## Zero Shot Classifier ##################################
 	# Get the class names
@@ -197,7 +197,7 @@ def get_linear_prob_zero_shot_accuracy(train_dataset, validation_dataset, model,
 	predicted_class_indices = np.argmax(similarity_scores.cpu().numpy(), axis=1)
 
 	# Calculate the accuracy
-	accuracy = np.mean((test_labels == predicted_class_indices).astype(float)) * 100.
+	accuracy = np.mean((test_labels == predicted_class_indices).astype(float))# * 100.
 	print(f"Zero-shot Accuracy = {accuracy:.3f}")
 	################################## Zero Shot Classifier ##################################
 
@@ -264,7 +264,7 @@ def get_image_to_texts_precision_at_(dataset, model, preprocess, K:int=5):
 		if vlbl in preds:
 			prec_at_k += 1
 	avg_prec_at_k = prec_at_k/len(true_labels)
-	print(f"[OWN] Precision@{K}: {prec_at_k} | {avg_prec_at_k} Elapsed_t: {time.time()-pred_st:.2f} sec")
+	print(f"[OWN] Precision@{K}: {prec_at_k} | {avg_prec_at_k:.3f} Elapsed_t: {time.time()-pred_st:.2f} sec")
 	##################################################################################################
 
 	# pred_st = time.time()

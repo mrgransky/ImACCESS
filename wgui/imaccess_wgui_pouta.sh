@@ -2,7 +2,7 @@
 
 ## run using command:
 ## $ nohup bash imaccess_wgui_pouta.sh > /dev/null 2>&1 &
-## $ nohup bash imaccess_wgui_pouta.sh >> /media/volume/trash/ImACCESS/website_logs.out 2>&1 & # with output saved in logs.out
+## $ nohup bash imaccess_wgui_pouta.sh >> /media/volume/ImACCESS/trash/website_logs.out 2>&1 & # with output saved in logs.out
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
