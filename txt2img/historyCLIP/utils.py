@@ -10,10 +10,8 @@ import clip
 ########################################################################
 import re
 import math
-from tqdm import tqdm
 import argparse
 import random
-from collections import Counter
 import json
 import warnings
 import random
@@ -24,13 +22,16 @@ import gzip
 import torch.nn as nn
 import torch.optim as optim
 import torchvision
-from torchinfo import summary as tinfo
 import torchvision.transforms as T
+
+from torchinfo import summary as tinfo
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.dataloader import default_collate
 from sklearn.model_selection import train_test_split
 from sklearn.metrics.pairwise import cosine_similarity
 from torch.utils.data import Subset
+from collections import Counter
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -50,6 +51,8 @@ import hashlib
 import requests
 import datetime
 from io import BytesIO
+from datetime import timedelta
+
 nltk_modules = [
 	'punkt',
 	'wordnet',
@@ -67,9 +70,7 @@ nltk.download(
 
 # warnings.filterwarnings('ignore')
 warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_scheduler')
-
 logging.basicConfig(level=logging.INFO)
-
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
 
 # Vision
@@ -108,6 +109,33 @@ with open('meaningless_words.txt', 'r') as file_:
 	customized_meaningless_lemmas=[line.strip().lower() for line in file_]
 STOPWORDS.extend(customized_meaningless_lemmas)
 STOPWORDS = set(STOPWORDS)
+
+def format_elapsed_time(seconds):
+	"""
+	Convert elapsed time in seconds to DD-HH-MM-SS format.
+	"""
+	# Create a timedelta object from the elapsed seconds
+	elapsed_time = timedelta(seconds=seconds)
+	# Extract days, hours, minutes, and seconds
+	days = elapsed_time.days
+	hours, remainder = divmod(elapsed_time.seconds, 3600)
+	minutes, seconds = divmod(remainder, 60)
+	# Format the time as DD-HH-MM-SS
+	return f"{days:02d}-{hours:02d}-{minutes:02d}-{seconds:02d}"
+
+def measure_execution_time(func):
+	"""
+	Decorator to measure the execution time of a function.
+	"""
+	def wrapper(*args, **kwargs):
+		start_time = time.time()
+		result = func(*args, **kwargs) # # Execute the function and store the result		
+		end_time = time.time()
+		elapsed_time = end_time - start_time
+		formatted_time = format_elapsed_time(elapsed_time)
+		print(f"Total elapsed time(DD-HH-MM-SS): \033[92m{formatted_time}\033[0m")		
+		return result
+	return wrapper
 
 def clean_(text:str="this is a sample text!", sw:List=list(), check_language:bool=False):
 	if not text:

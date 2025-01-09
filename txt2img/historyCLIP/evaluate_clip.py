@@ -436,6 +436,7 @@ def get_image_to_images(dataset, query_image_path, model, preprocess, topk: int,
 	print(f"Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
 	return topk_image_paths, topk_labels, topk_similarities
 
+@measure_execution_time
 def main():
 	print(clip.available_models())
 	model, preprocess = load_model()
@@ -500,11 +501,5 @@ def main():
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
-	START_EXECUTION_TIME = time.time()
 	main()
-	END_EXECUTION_TIME = time.time()
-	print(
-		f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
-		f"TOTAL_ELAPSED_TIME: {END_EXECUTION_TIME-START_EXECUTION_TIME:.1f} sec"
-		.center(160, " ")
-	)
+	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))

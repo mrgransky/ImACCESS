@@ -5,7 +5,7 @@ parser = argparse.ArgumentParser(description="Evaluate CLIP for CIFAR10x")
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg", help='image path for zero shot classification')
 parser.add_argument('--query_label', '-ql', type=str, default="airplane", help='image path for zero shot classification')
-parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
+parser.add_argument('--topK', '-k', type=int, default=1, help='TopK results')
 parser.add_argument('--batch_size', '-bs', type=int, default=256, help='batch size')
 parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar10', help='Choose dataset (CIFAR10/cifar100)')
 
@@ -430,6 +430,7 @@ def get_text_to_images_precision_recall_at_(dataset, model, preprocess, K:int=5,
 def get_image_to_images(dataset, model, preprocess, img_path:str="path/2/img.jpg", topk:int=5, batch_size:int=1024):
 	print(f"Image-to-Image(s) Retrieval: {img_path}".center(160, " "))
 
+@measure_execution_time
 def main():
 	print(clip.available_models())
 	model, preprocess = load_model()
@@ -491,4 +492,6 @@ def main():
 	# )
 
 if __name__ == "__main__":
+	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
 	main()
+	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
