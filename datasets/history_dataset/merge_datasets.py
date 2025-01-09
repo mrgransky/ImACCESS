@@ -36,8 +36,10 @@ for pattern in DATASET_PATTERNS:
 	DATASETS.extend(glob.glob(os.path.join(DATASET_DIRECTORY.get(USER), pattern)))
 print(len(DATASETS), DATASETS)
 
-RESULT_DIR = os.path.join(DATASET_DIRECTORY.get(USER), "HISTORICAL_ARCHIVES")
-os.makedirs(RESULT_DIR, exist_ok=True)
+SAVING_DIRECTORY = os.path.join(DATASET_DIRECTORY.get(USER), "HISTORICAL_ARCHIVES")
+RESULT_DIRECTORY = os.path.join(SAVING_DIRECTORY, "results")
+os.makedirs(SAVING_DIRECTORY, exist_ok=True)
+os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 
 dfs = []
 for i, dataset_path in enumerate(DATASETS):
@@ -54,7 +56,7 @@ for i, dataset_path in enumerate(DATASETS):
 merged_df = pd.concat(dfs, ignore_index=True)
 print(merged_df.shape)
 # print(merged_df.head(20))
-merged_df.to_csv(os.path.join(RESULT_DIR, 'metadata.csv'), index=False)
+merged_df.to_csv(os.path.join(SAVING_DIRECTORY, 'metadata.csv'), index=False)
 label_counts = merged_df['label'].value_counts()
 # print(label_counts.tail(25))
 
@@ -65,7 +67,7 @@ plt.xlabel('Label')
 plt.ylabel('Frequency')
 plt.tight_layout()
 plt.savefig(
-	fname=os.path.join(RESULT_DIR, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"),
+	fname=os.path.join(RESULT_DIRECTORY, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"),
 	dpi=DPI,
 	bbox_inches='tight'
 )
@@ -86,7 +88,7 @@ ax.legend(handles, new_labels, loc="best", fontsize=8, title="Dataset | (Unique 
 plt.title(f'Grouped Bar Chart for total of {label_counts.shape[0]} Labels Frequency for {len(dfs)} Datasets')
 plt.tight_layout()
 plt.savefig(
-	fname=os.path.join(RESULT_DIR, f"labels_x_{label_counts.shape[0]}_freq_x_{len(dfs)}.png"),
+	fname=os.path.join(RESULT_DIRECTORY, f"labels_x_{label_counts.shape[0]}_freq_x_{len(dfs)}.png"),
 	dpi=DPI,
 	bbox_inches='tight'
 )
@@ -99,8 +101,8 @@ train_df, val_df = train_test_split(
 	random_state=42
 )
 
-train_df.to_csv(os.path.join(RESULT_DIR, 'train_metadata.csv'), index=False)
-val_df.to_csv(os.path.join(RESULT_DIR, 'val_metadata.csv'), index=False)
+train_df.to_csv(os.path.join(SAVING_DIRECTORY, 'train_metadata.csv'), index=False)
+val_df.to_csv(os.path.join(SAVING_DIRECTORY, 'val_metadata.csv'), index=False)
 
 # Visualize label distribution in training and validation sets
 plt.figure(figsize=FIGURE_SIZE)
@@ -112,7 +114,7 @@ plt.ylabel('Frequency')
 plt.legend(loc='best', ncol=2, frameon=False, fontsize=8)
 plt.tight_layout()
 plt.savefig(
-	fname=os.path.join(RESULT_DIR, 'stratified_label_distribution_train_val.png'),
+	fname=os.path.join(RESULT_DIRECTORY, 'stratified_label_distribution_train_val.png'),
 	dpi=DPI,
 	bbox_inches='tight'
 )
