@@ -53,9 +53,10 @@ for i, dataset_path in enumerate(DATASETS):
 	except Exception as e:
 		print(f"{e}")
 
+print(f"merging {len(dfs)} dataframe(s)...")
 merged_df = pd.concat(dfs, ignore_index=True)
 print(merged_df.shape)
-# print(merged_df.head(20))
+print(merged_df.head(10))
 merged_df.to_csv(os.path.join(SAVING_DIRECTORY, 'metadata.csv'), index=False)
 label_counts = merged_df['label'].value_counts()
 # print(label_counts.tail(25))
