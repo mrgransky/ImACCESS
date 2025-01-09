@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=64G
+#SBATCH --mem=24G
 #SBATCH --partition=small
 #SBATCH --time=03-00:00:00
 
@@ -31,7 +31,7 @@ echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 ddir="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 st_dt="1900-01-01"
 end_dt="1970-12-31"
-num_workers=$((SLURM_CPUS_PER_TASK))
+num_workers=$((SLURM_CPUS_PER_TASK - 1))
 
 python -u data_collector.py \
 	--dataset_dir $ddir \
