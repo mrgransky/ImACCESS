@@ -8,8 +8,15 @@ import re
 import argparse
 import random
 import numpy as np
+import matplotlib.pyplot as plt
+
 from PIL import Image
 from typing import Tuple, Union, List
+from torchvision.datasets import CIFAR10, CIFAR100
+from sklearn.metrics import precision_recall_curve, roc_curve, auc
+from sklearn.linear_model import LogisticRegression
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 def visualize_(dataloader, num_samples=5, ):
 	for batch_idx, (batch_imgs, batch_lbls) in enumerate(dataloader):

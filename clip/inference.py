@@ -1,23 +1,13 @@
-import os
-import torch
-import clip
-import time
-import re
-import argparse
-import numpy as np
-from PIL import Image
-from torchvision.datasets import CIFAR10, CIFAR100
-from typing import List
-import matplotlib.pyplot as plt
-from sklearn.metrics import precision_recall_curve, roc_curve, auc
+from datasets import *
+from utils import *
 
 parser = argparse.ArgumentParser(description="Evaluate CLIP for CIFAR10x")
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg", help='image path for zero shot classification')
 parser.add_argument('--query_label', '-ql', type=str, default="airplane", help='image path for zero shot classification')
 parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
-parser.add_argument('--batch_size', '-ba', type=int, default=1024, help='TopK results')
-parser.add_argument('--dataset', '-d', type=str, choices=['CIFAR10', 'CIFAR100'], default='CIFAR10', help='Choose dataset (CIFAR10/CIFAR100)')
+parser.add_argument('--batch_size', '-bs', type=int, default=256, help='batch size')
+parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar10', help='Choose dataset (CIFAR10/cifar100)')
 
 args, unknown = parser.parse_known_args()
 print(args)
@@ -31,6 +21,7 @@ print(f"USER: {USER} device: {args.device}")
 
 def load_model():
 	model, preprocess = clip.load("ViT-B/32", device=args.device)
+	model = model.float()
 	input_resolution = model.visual.input_resolution
 	context_length = model.context_length
 	vocab_size = model.vocab_size
@@ -40,25 +31,177 @@ def load_model():
 	print("Vocab size:", vocab_size)
 	return model, preprocess
 
+# def get_dataset(dname:str="CIFAR10"):
+# 	if dname == 'CIFAR10':
+# 			dataset = CIFAR10(
+# 					root=os.path.expanduser("~/.cache"), 
+# 					transform=None,
+# 					download=True,
+# 					train=False,  # split Test
+# 			)
+# 	elif dname == 'CIFAR100':
+# 			dataset = CIFAR100(
+# 					root=os.path.expanduser("~/.cache"), 
+# 					transform=None,
+# 					download=True,
+# 					train=False,  # split Test
+# 			)
+# 	else:
+# 			raise ValueError(f"Invalid dataset name: {dname}. Supported datasets are 'CIFAR10' and 'CIFAR100'.")
+# 	print(dataset)
+# 	return dataset
+
 def get_dataset(dname:str="CIFAR10"):
-	if dname == 'CIFAR10':
-			dataset = CIFAR10(
-					root=os.path.expanduser("~/.cache"), 
-					transform=None,
-					download=True,
-					train=False,  # split Test
-			)
-	elif dname == 'CIFAR100':
-			dataset = CIFAR100(
-					root=os.path.expanduser("~/.cache"), 
-					transform=None,
-					download=True,
-					train=False,  # split Test
-			)
+	dname = dname.upper()
+	ddir = {
+		"farid": f'/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/{dname}',
+		"ubuntu": f'/media/volume/ImACCESS/WW_DATASETs/{dname}',
+		"alijanif": f'/scratch/project_2004072/ImACCESS/WW_DATASETs/{dname}',
+	}
+	if dname == 'CIFAR100':
+		train_dataset = CIFAR100(
+			root=os.path.expanduser("~/.cache"), 
+			train=True,
+			download=True,
+			transform=None
+		)
+		validation_dataset = CIFAR100(
+			root=os.path.expanduser("~/.cache"), 
+			train=False,
+			download=True,
+			transform=None
+		)
+	elif dname == 'CIFAR10':
+		train_dataset = CIFAR10(
+			root=os.path.expanduser("~/.cache"), 
+			train=True,
+			download=True,
+			transform=None,
+		)
+		validation_dataset = CIFAR10(
+			root=os.path.expanduser("~/.cache"), 
+			train=False,
+			download=True,
+			transform=None,
+		)
+	elif dname == 'IMAGENET':
+		train_dataset = ImageNet(
+			root=ddir.get(USER),
+			train=True,
+			transform=None
+		)
+		validation_dataset = ImageNet(
+			root=ddir.get(USER),
+			train=False,
+			transform=None
+	)	
+	elif dname == 'CINIC10':
+		train_dataset = CINIC10(
+			root=ddir.get(USER),
+			train=True,
+			download=True,
+			transform=None
+		)
+		validation_dataset = CINIC10(
+			root=ddir.get(USER),
+			train=False,
+			download=True,
+			transform=None
+		)
 	else:
-			raise ValueError(f"Invalid dataset name: {dname}. Supported datasets are 'CIFAR10' and 'CIFAR100'.")
-	print(dataset)
-	return dataset
+		raise ValueError(f"Invalid dataset name: {dname}. Available: [CIFAR10, cifar100, IMAGENET, CINIC10]")
+	print(train_dataset)
+	print(validation_dataset)
+	return train_dataset, validation_dataset
+
+def get_features(dataset, model, batch_size:int=1024, device:str="cuda:0", nw:int=8):
+	all_features = []
+	all_labels = []
+	with torch.no_grad():
+		for images, labels in tqdm(
+				DataLoader(
+					dataset=dataset,
+					batch_size=batch_size,
+					num_workers=nw,
+					pin_memory=True, # Move data to GPU faster if using CUDA
+					persistent_workers=True if nw > 1 else False,  # Keep workers alive if memory allows
+				)
+			):
+			features = model.encode_image(images.to(device))
+			all_features.append(features)
+			all_labels.append(labels)
+	return torch.cat(all_features).cpu().numpy(), torch.cat(all_labels).cpu().numpy()
+
+def get_linear_prob_zero_shot_accuracy(train_dataset, validation_dataset, model, preprocess, batch_size:int=1024, device:str="cuda:0"):
+	# Load the dataset
+	root = os.path.expanduser("~/.cache")
+	train = CIFAR10(root, download=True, train=True, transform=preprocess)
+	test = CIFAR10(root, download=True, train=False, transform=preprocess)
+	# train = CIFAR100(root, download=True, train=True, transform=preprocess)
+	# test = CIFAR100(root, download=True, train=False, transform=preprocess)
+
+	print(train)
+	print("-"*25)
+	print(test)
+	# Calculate the image features
+	print(f"Getting training features", end="\t")
+	t0 = time.time()
+	train_features, train_labels = get_features(
+		dataset=train,
+		model=model,
+		batch_size=batch_size,
+		device=device,
+	)
+	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
+
+	print(f"Getting test features", end="\t")
+	t0 = time.time()
+	test_features, test_labels = get_features(
+		dataset=test,
+		model=model,
+		batch_size=batch_size,
+		device=device,
+	)
+	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
+
+	# Perform logistic regression
+	classifier = LogisticRegression(random_state=0, C=0.316, max_iter=1000, verbose=1)
+	classifier.fit(train_features, train_labels)
+
+	# Evaluate using the logistic regression classifier
+	predictions = classifier.predict(test_features)
+	accuracy = np.mean((test_labels == predictions).astype(float)) * 100.
+	print(f"Linear Probe Accuracy = {accuracy:.1f}")
+
+	################################## Zero Shot Classifier ##################################
+	# Get the class names
+	class_names = test.classes
+
+	# Encode the text descriptions of the classes
+	text_descriptions = [f"a photo of a {label}" for label in class_names]
+	text_inputs = torch.cat([clip.tokenize(desc) for desc in text_descriptions]).to(device)
+	with torch.no_grad():
+		text_features = model.encode_text(text_inputs)
+
+	# Normalize the features
+	test_features = test_features / np.linalg.norm(test_features, axis=1, keepdims=True)
+	text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+
+	# Convert test_features to a PyTorch tensor
+	test_features = torch.from_numpy(test_features).to(device)
+
+	# Calculate the similarity scores
+	similarity_scores = (100.0 * test_features @ text_features.T).softmax(dim=-1)
+
+	# Get the predicted class indices
+	predicted_class_indices = np.argmax(similarity_scores.cpu().numpy(), axis=1)
+
+	# Calculate the accuracy
+	accuracy = np.mean((test_labels == predicted_class_indices).astype(float)) * 100.
+	print(f"Zero-shot Accuracy = {accuracy:.3f}")
+	################################## Zero Shot Classifier ##################################
+
+	return accuracy
 
 def get_image_to_texts(dataset, model, preprocess, img_path, topk:int=5):
 	print(f"Zero-Shot Image Classification: {img_path}".center(160, " "))
@@ -290,52 +433,62 @@ def get_image_to_images(dataset, model, preprocess, img_path:str="path/2/img.jpg
 def main():
 	print(clip.available_models())
 	model, preprocess = load_model()
-	dataset = get_dataset(dname=args.dataset)
+	# dataset = get_dataset(dname=args.dataset)
+	train_dataset, valid_dataset = get_dataset(dname=args.dataset)
 
 	if USER == "farid":
 		get_image_to_texts(
-			dataset=dataset,
+			dataset=valid_dataset,
 			model=model,
 			preprocess=preprocess,
 			img_path=args.query_image,
 			topk=args.topK,
 		)
 
-	get_image_to_texts_precision_at_(
-		dataset=dataset,
+	get_linear_prob_zero_shot_accuracy(
+		train_dataset=train_dataset,
+		validation_dataset=valid_dataset,
 		model=model,
 		preprocess=preprocess,
-		K=args.topK,
-	)
-
-	if USER == "farid":
-		get_text_to_images(
-			dataset=dataset,
-			model=model,
-			preprocess=preprocess,
-			query=args.query_label,
-			topk=args.topK,
-			batch_size=args.batch_size,
-		)
-
-	if USER == "farid":
-		for q in ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']:
-			get_text_to_images(
-				dataset=dataset,
-				model=model,
-				preprocess=preprocess,
-				query=q,
-				topk=args.topK,
-				batch_size=args.batch_size,
-			)
-
-	get_text_to_images_precision_recall_at_(
-		dataset=dataset,
-		model=model,
-		preprocess=preprocess,
-		K=args.topK,
 		batch_size=args.batch_size,
+		device=args.device,
 	)
+
+	get_image_to_texts_precision_at_(
+		dataset=valid_dataset,
+		model=model,
+		preprocess=preprocess,
+		K=args.topK,
+	)
+
+	# if USER == "farid":
+	# 	get_text_to_images(
+	# 		dataset=valid_dataset,
+	# 		model=model,
+	# 		preprocess=preprocess,
+	# 		query=args.query_label,
+	# 		topk=args.topK,
+	# 		batch_size=args.batch_size,
+	# 	)
+
+	# if USER == "farid":
+	# 	for q in ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']:
+	# 		get_text_to_images(
+	# 			dataset=valid_dataset,
+	# 			model=model,
+	# 			preprocess=preprocess,
+	# 			query=q,
+	# 			topk=args.topK,
+	# 			batch_size=args.batch_size,
+	# 		)
+
+	# get_text_to_images_precision_recall_at_(
+	# 	dataset=valid_dataset,
+	# 	model=model,
+	# 	preprocess=preprocess,
+	# 	K=args.topK,
+	# 	batch_size=args.batch_size,
+	# )
 
 if __name__ == "__main__":
 	main()

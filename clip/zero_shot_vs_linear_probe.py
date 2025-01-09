@@ -1,7 +1,7 @@
 import os
 import clip
 import torch
-
+import time
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from torch.utils.data import DataLoader
@@ -19,19 +19,26 @@ test = CIFAR100(root, download=True, train=False, transform=preprocess)
 # Get the class names
 class_names = test.classes
 
-def get_features(dataset):
+def get_features(dataset, batch_size:int=1024):
 	all_features = []
 	all_labels = []
 	with torch.no_grad():
-		for images, labels in tqdm(DataLoader(dataset, batch_size=1024)):
+		for images, labels in tqdm(DataLoader(dataset, batch_size=batch_size)):
 			features = model.encode_image(images.to(device))
 			all_features.append(features)
 			all_labels.append(labels)
 	return torch.cat(all_features).cpu().numpy(), torch.cat(all_labels).cpu().numpy()
 
 # Calculate the image features
+print(f"Getting training features", end="\t")
+t0 = time.time()
 train_features, train_labels = get_features(train)
+print(f"Elapsed_t: {time.time()-t0:.2f} sec")
+
+print(f"Getting test features", end="\t")
+t0 = time.time()
 test_features, test_labels = get_features(test)
+print(f"Elapsed_t: {time.time()-t0:.2f} sec")
 
 # Perform logistic regression
 classifier = LogisticRegression(random_state=0, C=0.316, max_iter=1000, verbose=1)
@@ -116,7 +123,7 @@ def evaluate_zero_shot(image_features, image_labels, text_features, model, devic
 
 	Args:
 			image_features: Image features.
-			image_labels: Image labels.
+			image_labels: Image labelsl.
 			text_features: Text features (text descriptions).
 			model: The CLIP model.
 			device: Device for computation.
