@@ -7,7 +7,7 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=40
 #SBATCH --mem=4G
 #SBATCH --partition=small
 #SBATCH --time=03-00:00:00
@@ -31,12 +31,13 @@ echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 ddir="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 st_dt="1900-01-01"
 end_dt="1970-12-31"
+num_workers=$((SLURM_CPUS_PER_TASK - 1))  # reserve 2 CPUs for the main process and other overheads
 
 python -u data_collector.py \
 	--dataset_dir $ddir \
 	--start_date  $st_dt \
 	--end_date  $end_dt \
-	--num_worker 4 \
+	--num_worker $num_workers \
 	--img_mean_std \
 
 done_txt="$user finished Slurm job: `date`"
