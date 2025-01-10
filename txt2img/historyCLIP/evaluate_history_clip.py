@@ -10,6 +10,7 @@ parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Fa
 parser.add_argument('--query_label', '-ql', type=str, default="naval forces", help='image path for zero shot classification')
 parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
 parser.add_argument('--batch_size', '-bs', type=int, default=1024, help='TopK results')
+parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
@@ -23,8 +24,9 @@ print(f"USER: {USER} device: {args.device}")
 os.makedirs(os.path.join(args.dataset_dir, "outputs"), exist_ok=True)
 outputs_dir:str = os.path.join(args.dataset_dir, "outputs",)
 
-def load_model():
-	model, preprocess = clip.load("ViT-B/32", device=args.device)
+def load_model(model_name:str="ViT-B/32", device:str="cuda:0"):
+	model, preprocess = clip.load(model_name, device=device)
+	model = model.float()
 	input_resolution = model.visual.input_resolution
 	context_length = model.context_length
 	vocab_size = model.vocab_size
@@ -44,7 +46,7 @@ def get_dataset(ddir:str="path/2/dataset_dir", sliced:bool=False):
 	)
 
 	if sliced:
-		df = df.iloc[:5000]
+		df = df.iloc[:1500]
 
 	labels = list(set(df["label"].tolist()))
 
@@ -359,20 +361,21 @@ def get_image_to_images(dataset, query_image_path, model, preprocess, topk: int,
 
 	# Image Embedding for the query image
 	try:
-		query_img = Image.open(query_image_path)
+		qimage = Image.open(query_image_path)
 	except FileNotFoundError:
 		try:
 			response = requests.get(query_image_path)
 			response.raise_for_status()
-			query_img = Image.open(BytesIO(response.content))
+			qimage = Image.open(BytesIO(response.content))
 		except requests.exceptions.RequestException as e:
 			print(f"ERROR: failed to load image from {query_image_path} => {e}")
 			return
 
+	print(f"Obtaining image embeddings for dataset of size: {dataset.shape}, please wait...")
 	# Images embeddings for the dataset:
 	image_features_file = os.path.join(args.dataset_dir, 'outputs', 'image_features.gz')  
 	if not os.path.exists(image_features_file):  
-		dataset_images_features = []  
+		dataset_images_features = []
 		for i in range(0, len(dataset["img_path"]), batch_size):  
 			batch_images_path = [dataset["img_path"][j] for j in range(i, min(i + batch_size, len(dataset["img_path"])))]  
 			batch_tensors = torch.stack([preprocess(Image.open(img_path)).to(device) for img_path in batch_images_path])  
@@ -388,8 +391,8 @@ def get_image_to_images(dataset, query_image_path, model, preprocess, topk: int,
 		dataset_images_features = load_pickle(fpath=image_features_file)  
 	print(type(dataset_images_features), len(dataset_images_features), dataset_images_features[0].shape, type(dataset_images_features[0]))
 
-	image = preprocess(query_img).unsqueeze(0).to(device)
-	query_image_feature = model.encode_image(image)
+	query_image = preprocess(qimage).unsqueeze(0).to(device)
+	query_image_feature = model.encode_image(query_image)
 	query_image_feature = query_image_feature / query_image_feature.norm(dim=-1, keepdim=True)
 	query_image_feature = query_image_feature.cpu().detach().numpy()
 	print(query_image_feature.shape, type(query_image_feature))
@@ -409,29 +412,33 @@ def get_image_to_images(dataset, query_image_path, model, preprocess, topk: int,
 	fig, axes = plt.subplots(2, topk, figsize=(5 * topk, 10))
 	# Calculate the middle index for the query image
 	if topk % 2 == 0:  # Even number of columns
-			middle_index = topk // 2 - 1  # Place query image in the middle-left column
+		middle_index = topk // 2 - 1  # Place query image in the middle-left column
 	else:  # Odd number of columns
-			middle_index = topk // 2  # Place query image in the median column
+		middle_index = topk // 2  # Place query image in the median column
 	# Plot the query image in the first row, middle column
-	axes[0, middle_index].imshow(query_img)
+	axes[0, middle_index].imshow(qimage)
 	axes[0, middle_index].axis('off')
-	axes[0, middle_index].set_title("Query Image", fontsize=12)
+	axes[0, middle_index].set_title("Query Image", fontsize=10)
 	# Hide the rest of the first row (only one image in the first row)
 	for j in range(topk):
-			if j != middle_index:
-					axes[0, j].axis('off')
+		if j != middle_index:
+			axes[0, j].axis('off')
 	# Plot the top-k similar images in the second row
 	for i, (path, label, similarity) in enumerate(zip(topk_image_paths, topk_labels, topk_similarities)):
-			img = Image.open(path)
-			axes[1, i].imshow(img)
-			axes[1, i].axis('off')
-			axes[1, i].set_title(f"Top-{i+1}\nSimilarity: {similarity:.3f}", fontsize=12)
+		img = Image.open(path)
+		axes[1, i].imshow(img)
+		axes[1, i].axis('off')
+		axes[1, i].set_title(f"Top-{i+1}\nSimilarity: {similarity:.3f}", fontsize=12)
 
 	# Set the plot title
 	plt.suptitle(f"Image-to-Image Retrieval\nTop-{topk} Image(s) Source Dataset:{os.path.basename(args.dataset_dir)}", fontsize=16)
 	# Save the plot
 	plt.tight_layout()
-	plt.savefig(os.path.join(outputs_dir, f"IMG2IMG_Top{topk}_IMGs_{os.path.basename(args.dataset_dir)}.png"))
+	plt.savefig(
+		fname=os.path.join(outputs_dir, f"IMG2IMG_Top{topk}_IMGs_{os.path.basename(args.dataset_dir)}.png"),
+		dpi=250,
+		bbox_inches='tight',
+	)
 	plt.close()
 	print(f"Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
 	return topk_image_paths, topk_labels, topk_similarities
@@ -439,13 +446,16 @@ def get_image_to_images(dataset, query_image_path, model, preprocess, topk: int,
 @measure_execution_time
 def main():
 	print(clip.available_models())
-	model, preprocess = load_model()
+	model, preprocess = load_model(model_name=args.model_name, device=args.device)
 
 	dataset = get_dataset(
 		ddir=args.dataset_dir,
 		sliced=False,
 	)
-
+	print(type(dataset), dataset.shape)
+	print(list(dataset.columns))
+	print(dataset.head(10))
+	return
 	get_image_to_images(
 		dataset=dataset,
 		query_image_path=args.query_image,

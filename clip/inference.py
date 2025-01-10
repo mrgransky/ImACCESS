@@ -6,8 +6,9 @@ parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_avai
 parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg", help='image path for zero shot classification')
 parser.add_argument('--query_label', '-ql', type=str, default="airplane", help='image path for zero shot classification')
 parser.add_argument('--topK', '-k', type=int, default=1, help='TopK results')
-parser.add_argument('--batch_size', '-bs', type=int, default=256, help='batch size')
+parser.add_argument('--batch_size', '-bs', type=int, default=512, help='batch size')
 parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar10', help='Choose dataset (CIFAR10/cifar100)')
+parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 
 args, unknown = parser.parse_known_args()
 print(args)
@@ -19,8 +20,8 @@ args.device = torch.device(args.device)
 USER = os.getenv('USER')
 print(f"USER: {USER} device: {args.device}")
 
-def load_model():
-	model, preprocess = clip.load("ViT-B/32", device=args.device)
+def load_model(model_name:str="ViT-B/32", device:str="cuda:0"):
+	model, preprocess = clip.load(model_name, device=device)
 	model = model.float()
 	input_resolution = model.visual.input_resolution
 	context_length = model.context_length
@@ -31,27 +32,15 @@ def load_model():
 	print("Vocab size:", vocab_size)
 	return model, preprocess
 
-# def get_dataset(dname:str="CIFAR10"):
-# 	if dname == 'CIFAR10':
-# 			dataset = CIFAR10(
-# 					root=os.path.expanduser("~/.cache"), 
-# 					transform=None,
-# 					download=True,
-# 					train=False,  # split Test
-# 			)
-# 	elif dname == 'CIFAR100':
-# 			dataset = CIFAR100(
-# 					root=os.path.expanduser("~/.cache"), 
-# 					transform=None,
-# 					download=True,
-# 					train=False,  # split Test
-# 			)
-# 	else:
-# 			raise ValueError(f"Invalid dataset name: {dname}. Supported datasets are 'CIFAR10' and 'CIFAR100'.")
-# 	print(dataset)
-# 	return dataset
-
-def get_dataset(dname:str="CIFAR10"):
+def get_dataset(dname:str="CIFAR10", transorm=None):
+	if transorm is None:
+		# cusomized transformation:
+		T.Compose([
+			T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
+			T.CenterCrop(224),
+			T.ToTensor(),
+			T.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
+		])
 	dname = dname.upper()
 	ddir = {
 		"farid": f'/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/{dname}',
@@ -63,50 +52,50 @@ def get_dataset(dname:str="CIFAR10"):
 			root=os.path.expanduser("~/.cache"), 
 			train=True,
 			download=True,
-			transform=None
+			transform=transorm,
 		)
 		validation_dataset = CIFAR100(
 			root=os.path.expanduser("~/.cache"), 
 			train=False,
 			download=True,
-			transform=None
+			transform=transorm
 		)
 	elif dname == 'CIFAR10':
 		train_dataset = CIFAR10(
 			root=os.path.expanduser("~/.cache"), 
 			train=True,
 			download=True,
-			transform=None,
+			transform=transorm,
 		)
 		validation_dataset = CIFAR10(
 			root=os.path.expanduser("~/.cache"), 
 			train=False,
 			download=True,
-			transform=None,
+			transform=transorm,
 		)
 	elif dname == 'IMAGENET':
 		train_dataset = ImageNet(
 			root=ddir.get(USER),
 			train=True,
-			transform=None
+			transform=transorm
 		)
 		validation_dataset = ImageNet(
 			root=ddir.get(USER),
 			train=False,
-			transform=None
+			transform=transorm
 	)	
 	elif dname == 'CINIC10':
 		train_dataset = CINIC10(
 			root=ddir.get(USER),
 			train=True,
 			download=True,
-			transform=None
+			transform=transorm
 		)
 		validation_dataset = CINIC10(
 			root=ddir.get(USER),
 			train=False,
 			download=True,
-			transform=None
+			transform=transorm
 		)
 	else:
 		raise ValueError(f"Invalid dataset name: {dname}. Available: [CIFAR10, cifar100, IMAGENET, CINIC10]")
@@ -132,22 +121,11 @@ def get_features(dataset, model, batch_size:int=1024, device:str="cuda:0", nw:in
 			all_labels.append(labels)
 	return torch.cat(all_features).cpu().numpy(), torch.cat(all_labels).cpu().numpy()
 
-def get_linear_prob_zero_shot_accuracy(train_dataset, validation_dataset, model, preprocess, batch_size:int=1024, device:str="cuda:0"):
-	# Load the dataset
-	root = os.path.expanduser("~/.cache")
-	# train = CIFAR10(root, download=True, train=True, transform=preprocess)
-	# test = CIFAR10(root, download=True, train=False, transform=preprocess)
-	train = CIFAR100(root, download=True, train=True, transform=preprocess)
-	test = CIFAR100(root, download=True, train=False, transform=preprocess)
-
-	print(train)
-	print("-"*25)
-	print(test)
-	# Calculate the image features
+def get_linear_prob_zero_shot_accuracy(train_dataset, validation_dataset, model, batch_size:int=1024, device:str="cuda:0"):
 	print(f"Getting training features", end="\t")
 	t0 = time.time()
 	train_features, train_labels = get_features(
-		dataset=train,
+		dataset=train_dataset,
 		model=model,
 		batch_size=batch_size,
 		device=device,
@@ -157,7 +135,7 @@ def get_linear_prob_zero_shot_accuracy(train_dataset, validation_dataset, model,
 	print(f"Getting test features", end="\t")
 	t0 = time.time()
 	test_features, test_labels = get_features(
-		dataset=test,
+		dataset=validation_dataset,
 		model=model,
 		batch_size=batch_size,
 		device=device,
@@ -175,7 +153,7 @@ def get_linear_prob_zero_shot_accuracy(train_dataset, validation_dataset, model,
 
 	################################## Zero Shot Classifier ##################################
 	# Get the class names
-	class_names = test.classes
+	class_names = validation_dataset.classes
 
 	# Encode the text descriptions of the classes
 	text_descriptions = [f"a photo of a {label}" for label in class_names]
@@ -203,15 +181,15 @@ def get_linear_prob_zero_shot_accuracy(train_dataset, validation_dataset, model,
 
 	return accuracy
 
-def get_image_to_texts(dataset, model, preprocess, img_path, topk:int=5):
+def get_image_to_texts(dataset, model, preprocess, img_path, topk:int=5, device:str="cuda:0"):
 	print(f"Zero-Shot Image Classification: {img_path}".center(160, " "))
 	labels = dataset.classes
 	if topk > len(labels):
 		print(f"ERROR: requested Top-{topk} labeling is greater than number of labels({len(labels)}) => EXIT...")
 		return
-	tokenized_labels_tensor = clip.tokenize(texts=labels).to(args.device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
+	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
 	img = Image.open(img_path)
-	image_tensor = preprocess(img).unsqueeze(0).to(args.device) # <class 'torch.Tensor'> torch.Size([1, 3, 224, 224])
+	image_tensor = preprocess(img).unsqueeze(0).to(device) # <class 'torch.Tensor'> torch.Size([1, 3, 224, 224])
 
 	with torch.no_grad():
 		image_features = model.encode_image(image_tensor)
@@ -227,13 +205,13 @@ def get_image_to_texts(dataset, model, preprocess, img_path, topk:int=5):
 	print(f"Top-{topk} predicted labels: {[labels[i] for i in topk_pred_labels_idx.cpu().numpy().flatten()]}")
 	print("-"*160)
 
-def get_image_to_texts_precision_at_(dataset, model, preprocess, K:int=5):
-	print(f"Zero-Shot Image Classification {args.device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
+def get_image_to_texts_precision_at_(dataset, model, K:int=5, device:str="cuda:0"):
+	print(f"Zero-Shot Image Classification {device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
 	labels = dataset.classes # <class 'list'> ['airplane', 'automobile', ...]
 	if K > len(labels):
 		print(f"ERROR: requested Top-{K} labeling is greater than number of labels({len(labels)}) => EXIT...")
 		return
-	tokenized_labels_tensor = clip.tokenize(texts=labels).to(args.device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
+	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
 	labels_features = model.encode_text(tokenized_labels_tensor)
 	labels_features /= labels_features.norm(dim=-1, keepdim=True)
 
@@ -242,8 +220,9 @@ def get_image_to_texts_precision_at_(dataset, model, preprocess, K:int=5):
 	floop_st = time.time()
 
 	with torch.no_grad():
-		for i, (img_raw, gt_lbl) in enumerate(dataset): #img: <class 'PIL.Image.Image'>
-			img_tensor = preprocess(img_raw).unsqueeze(0).to(args.device)
+		for i, data in enumerate(dataset):
+			img_tensor, gt_lbl = data # <class 'torch.Tensor'> torch.Size([3, 224, 224]) <class 'int'>
+			img_tensor = img_tensor.unsqueeze(0).to(device) # <class 'torch.Tensor'> torch.Size([1, 3, 224, 224])
 			image_features = model.encode_image(img_tensor)
 			image_features /= image_features.norm(dim=-1, keepdim=True)
 			similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
@@ -283,17 +262,16 @@ def get_image_to_texts_precision_at_(dataset, model, preprocess, K:int=5):
 	# )
 	print("-"*160)
 
-def get_text_to_images(dataset, model, preprocess, query:str="cat", topk:int=5, batch_size:int=1024):
-	print(f"Top-{topk} Image Retrieval {args.device} CLIP Query: « {query} »".center(160, " "))
+def get_text_to_images(dataset, model, query:str="cat", topk:int=5, batch_size:int=1024, device:str="cuda:0"):
+	print(f"Top-{topk} Image Retrieval {device} CLIP Query: « {query} »".center(160, " "))
 	labels = dataset.classes
-	tokenized_query_tensor = clip.tokenize(texts=query).to(args.device) #<class 'torch.Tensor'> torch.Size([1, 77])
+	tokenized_query_tensor = clip.tokenize(texts=query).to(device) #<class 'torch.Tensor'> torch.Size([1, 77])
 	query_features = model.encode_text(tokenized_query_tensor) # <class 'torch.Tensor'> torch.Size([1, 512])
 	query_features /= query_features.norm(dim=-1, keepdim=True)
 	# Encode all the images
 	all_image_features = []
 	for i in range(0, len(dataset), batch_size):
-		batch_images = [dataset[j][0] for j in range(i, min(i + batch_size, len(dataset)))]
-		batch_tensors = torch.stack([preprocess(img).to(args.device) for img in batch_images])
+		batch_tensors = torch.stack([dataset[j][0].to(device) for j in range(i, min(i + batch_size, len(dataset)))]) # <class 'torch.Tensor'> torch.Size([b, 3, 224, 224]
 		with torch.no_grad(): # prevent PyTorch from computing gradients, can consume significant memory
 			image_features = model.encode_image(batch_tensors)
 			image_features /= image_features.norm(dim=-1, keepdim=True)
@@ -313,16 +291,29 @@ def get_text_to_images(dataset, model, preprocess, query:str="cat", topk:int=5, 
 	topk_pred_labels = [dataset[topk_indices.squeeze().item()][1]] if topk==1 else [dataset[idx][1] for idx in topk_indices.squeeze().cpu().numpy()] # [3, 3, 8, 8, 3]
 
 	topk_probs = topk_probs.squeeze().cpu().detach().numpy()
-	print(topk_pred_images)
+	print(type(topk_pred_images), len(topk_pred_images), type(topk_pred_images[0]), topk_pred_images[0].size)
 	print(topk_pred_labels, labels)
 	print(topk_probs)
 
 	# Save the top-k images in a single file
-	fig, axes = plt.subplots(1, topk, figsize=(16, 8))
+	fig, axes = plt.subplots(1, topk, figsize=(13, 6))
 	if topk == 1:
 		axes = [axes]  # Convert to list of axes
-	fig.suptitle(f"Top-{topk} Query: {query}", fontsize=11)
+	fig.suptitle(f"Top-{topk} Result(s)\nQuery: « {query} »", fontsize=10)
 	for i, (img, ax) in enumerate(zip(topk_pred_images, axes)):
+		# Check if the image shape needs to be transposed
+		if len(img.shape) == 3 and img.shape[0] == 3:  # If shape is (3, height, width)
+			img = np.transpose(img, (1, 2, 0))  # Transpose to (height, width, 3)
+		elif len(img.shape) == 3 and img.shape[2] == 3:  # If shape is already (height, width, 3)
+			pass  # No need to transpose
+		else:
+			raise ValueError(f"Invalid image shape: {img.shape}. Expected shape is (height, width, 3) or (3, height, width).")
+
+		# Normalize the image data to the range [0, 1]
+		img_min = torch.min(img)
+		img_max = torch.max(img)
+		img = (img - img_min) / (img_max - img_min)
+
 		ax.imshow(img)
 		ax.axis('off')
 		# ax.set_title(f"Top-{i+1}\nprob: {topk_probs[i]:.8f}\nGT: {labels[topk_pred_labels[i]]}", fontsize=9)
@@ -330,23 +321,25 @@ def get_text_to_images(dataset, model, preprocess, query:str="cat", topk:int=5, 
 			ax.set_title(f"Top-1\nprob: {topk_probs:.8f}\nGT: {labels[topk_pred_labels[0]]}", fontsize=9)
 		else:
 			ax.set_title(f"Top-{i+1}\nprob: {topk_probs[i]:.8f}\nGT: {labels[topk_pred_labels[i]]}", fontsize=9)
-				
 	plt.tight_layout()
-	plt.savefig(f"top{topk}_IMGs_query_{re.sub(' ', '_', query)}.png")
+	plt.savefig(
+		fname=f"top{topk}_IMGs_query_{re.sub(' ', '_', query)}.png",
+		dpi=250,
+		bbox_inches='tight',
+	)
 	print("-"*160)
 
-def get_text_to_images_precision_recall_at_(dataset, model, preprocess, K:int=5, batch_size:int=1024):
+def get_text_to_images_precision_recall_at_(dataset, model, K:int=5, batch_size:int=1024, device:str="cuda:0"):
 	torch.cuda.empty_cache()  # Clear CUDA cache
-	print(f"Image Retrieval {args.device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
+	print(f"Image Retrieval {device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
 	labels = dataset.classes
-	tokenized_labels_tensor = clip.tokenize(texts=labels).to(args.device)#<class 'torch.Tensor'> torch.Size([num_lbls, 77])
+	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # <class 'torch.Tensor'> torch.Size([num_lbls, 77])
 	tokenized_labels_features = model.encode_text(tokenized_labels_tensor) # <class 'torch.Tensor'> torch.Size([num_lbls, 512])
 	tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)
 	# Encode all the images
 	all_image_features = []
 	for i in range(0, len(dataset), batch_size):
-		batch_images = [dataset[j][0] for j in range(i, min(i + batch_size, len(dataset)))]
-		batch_tensors = torch.stack([preprocess(img).to(args.device) for img in batch_images])
+		batch_tensors = torch.stack([dataset[j][0].to(device) for j in range(i, min(i + batch_size, len(dataset)))]) # <class 'torch.Tensor'> torch.Size([b, 3, 224, 224]
 		with torch.no_grad(): # prevent PyTorch from computing gradients, can consume significant memory
 			image_features = model.encode_image(batch_tensors)
 			image_features /= image_features.norm(dim=-1, keepdim=True)
@@ -390,7 +383,7 @@ def get_text_to_images_precision_recall_at_(dataset, model, preprocess, K:int=5,
 	avg_recall_at_k = sum(recall_at_k) / len(labels)
 	# print(f"Precision@{K}: {prec_at_k} {avg_prec_at_k} {np.mean(prec_at_k)}")
 	# print(f"Recall@{K}: {recall_at_k} {avg_recall_at_k} {np.mean(recall_at_k)}")
-	print(f"Precision@{K}: {avg_prec_at_k} {np.mean(prec_at_k)}")
+	print(f"Precision@{K}: {avg_prec_at_k:.3f} {np.mean(prec_at_k):.3f}")
 	print(f"Recall@{K}: {avg_recall_at_k} {np.mean(recall_at_k)}")
 	print(labels)
 
@@ -410,7 +403,7 @@ def get_text_to_images_precision_recall_at_(dataset, model, preprocess, K:int=5,
 		fpr_values.append(fpr)
 		tpr_values.append(tpr)
 
-	fig, ax = plt.subplots(1, 2, figsize=(22,11))
+	fig, ax = plt.subplots(1, 2, figsize=(11,7))
 	for i in range(len(tokenized_labels_features)):
 		ax[0].plot(recall_values[i], precision_values[i], label=f'{labels[i]}')
 		ax[0].set_xlabel('Recall')
@@ -421,10 +414,13 @@ def get_text_to_images_precision_recall_at_(dataset, model, preprocess, K:int=5,
 		ax[1].set_ylabel('True Positive')
 		ax[1].set_title('ROC')
 
-	fig.legend(bbox_to_anchor=(0.5, 0.99), fontsize=7, ncol=len(labels), frameon=False)
-	# fig.tight_layout()
-	plt.savefig(f"{args.dataset}_PR_ROC_x{len(labels)}_labels.png")
-
+	# fig.legend(bbox_to_anchor=(0.5, 0.99), fontsize=7, ncol=len(labels), frameon=False)
+	fig.tight_layout()
+	plt.savefig(
+		fname=f"{args.dataset}_PR_ROC_x{len(labels)}_labels.png",
+		dpi=250,
+		bbox_inches='tight',
+	)
 	print("-"*160)
 
 def get_image_to_images(dataset, model, preprocess, img_path:str="path/2/img.jpg", topk:int=5, batch_size:int=1024):
@@ -433,9 +429,8 @@ def get_image_to_images(dataset, model, preprocess, img_path:str="path/2/img.jpg
 @measure_execution_time
 def main():
 	print(clip.available_models())
-	model, preprocess = load_model()
-	# dataset = get_dataset(dname=args.dataset)
-	train_dataset, valid_dataset = get_dataset(dname=args.dataset)
+	model, preprocess = load_model(model_name=args.model_name, device=args.device)
+	train_dataset, valid_dataset = get_dataset(dname=args.dataset, transorm=preprocess)
 
 	if USER == "farid":
 		get_image_to_texts(
@@ -446,21 +441,20 @@ def main():
 			topk=args.topK,
 		)
 
-	get_linear_prob_zero_shot_accuracy(
-		train_dataset=train_dataset,
-		validation_dataset=valid_dataset,
-		model=model,
-		preprocess=preprocess,
-		batch_size=args.batch_size,
-		device=args.device,
-	)
+	# get_linear_prob_zero_shot_accuracy(
+	# 	train_dataset=train_dataset,
+	# 	validation_dataset=valid_dataset,
+	# 	model=model,
+	# 	batch_size=args.batch_size,
+	# 	device=args.device,
+	# )
 
-	get_image_to_texts_precision_at_(
-		dataset=valid_dataset,
-		model=model,
-		preprocess=preprocess,
-		K=args.topK,
-	)
+	# get_image_to_texts_precision_at_(
+	# 	dataset=valid_dataset,
+	# 	model=model,
+	# 	K=args.topK,
+	# 	device=args.device,
+	# )
 
 	# if USER == "farid":
 	# 	get_text_to_images(
@@ -483,13 +477,13 @@ def main():
 	# 			batch_size=args.batch_size,
 	# 		)
 
-	# get_text_to_images_precision_recall_at_(
-	# 	dataset=valid_dataset,
-	# 	model=model,
-	# 	preprocess=preprocess,
-	# 	K=args.topK,
-	# 	batch_size=args.batch_size,
-	# )
+	get_text_to_images_precision_recall_at_(
+		dataset=valid_dataset,
+		model=model,
+		preprocess=preprocess,
+		K=args.topK,
+		batch_size=args.batch_size,
+	)
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))

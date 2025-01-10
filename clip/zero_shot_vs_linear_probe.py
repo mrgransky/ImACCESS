@@ -16,6 +16,10 @@ model = model.float()
 root = os.path.expanduser("~/.cache")
 train = CIFAR100(root, download=True, train=True, transform=preprocess)
 test = CIFAR100(root, download=True, train=False, transform=preprocess)
+print(train)
+print("-"*25)
+print(test)
+
 # Get the class names
 class_names = test.classes
 
@@ -24,6 +28,7 @@ def get_features(dataset, batch_size:int=1024):
 	all_labels = []
 	with torch.no_grad():
 		for images, labels in tqdm(DataLoader(dataset, batch_size=batch_size)):
+			# print(type(images), type(labels)) # <class 'torch.Tensor'> <class 'torch.Tensor'>
 			features = model.encode_image(images.to(device))
 			all_features.append(features)
 			all_labels.append(labels)
