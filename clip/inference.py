@@ -107,7 +107,7 @@ def get_features(dataset, model, batch_size:int=1024, device:str="cuda:0", nw:in
 	all_features = []
 	all_labels = []
 	with torch.no_grad():
-		for images, labels in tqdm(
+		for images, labels in tqdm( # <class 'torch.Tensor'> torch.Size([b, 512]), <class 'torch.Tensor'> torch.Size([b])
 				DataLoader(
 					dataset=dataset,
 					batch_size=batch_size,
@@ -116,12 +116,13 @@ def get_features(dataset, model, batch_size:int=1024, device:str="cuda:0", nw:in
 					persistent_workers=True if nw > 1 else False,  # Keep workers alive if memory allows
 				)
 			):
-			features = model.encode_image(images.to(device))
+			features = model.encode_image(images.to(device)) # <class 'torch.Tensor'> torch.Size([b, 512])
 			all_features.append(features)
 			all_labels.append(labels)
 	return torch.cat(all_features).cpu().numpy(), torch.cat(all_labels).cpu().numpy()
 
 def get_linear_prob_zero_shot_accuracy(train_dataset, validation_dataset, model, batch_size:int=1024, device:str="cuda:0"):
+	# calculates top-1 accuracy for both the linear probe and zero-shot classification tasks
 	print(f"Getting training features", end="\t")
 	t0 = time.time()
 	train_features, train_labels = get_features(
@@ -129,7 +130,7 @@ def get_linear_prob_zero_shot_accuracy(train_dataset, validation_dataset, model,
 		model=model,
 		batch_size=batch_size,
 		device=device,
-	)
+	) # <class 'numpy.ndarray'> (50000, 512), <class 'numpy.ndarray'> (50000,)
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
 
 	print(f"Getting test features", end="\t")
@@ -139,7 +140,7 @@ def get_linear_prob_zero_shot_accuracy(train_dataset, validation_dataset, model,
 		model=model,
 		batch_size=batch_size,
 		device=device,
-	)
+	) # <class 'numpy.ndarray'> (10000, 512), <class 'numpy.ndarray'> (10000,)
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
 
 	# Perform logistic regression
@@ -148,21 +149,24 @@ def get_linear_prob_zero_shot_accuracy(train_dataset, validation_dataset, model,
 
 	# Evaluate using the logistic regression classifier
 	predictions = classifier.predict(test_features)
-	accuracy = np.mean((test_labels == predictions).astype(float))# * 100.
-	print(f"Linear Probe Accuracy = {accuracy:.3f}")
+	accuracy = np.mean((test_labels == predictions).astype(float)) * 100
+	print(f"Linear Probe (Top-1) Accuracy = {accuracy:.3f}")
 
 	################################## Zero Shot Classifier ##################################
 	# Get the class names
 	class_names = validation_dataset.classes
 
 	# Encode the text descriptions of the classes
-	text_descriptions = [f"a photo of a {label}" for label in class_names]
-	text_inputs = torch.cat([clip.tokenize(desc) for desc in text_descriptions]).to(device)
+	# text_descriptions = [f"a photo of a {label}" for label in class_names] # Descriptive Prompts higher acccuracy.
+	text_descriptions = list(class_names)
+	text_inputs = clip.tokenize(texts=text_descriptions).to(device=device)
+
 	with torch.no_grad():
 		text_features = model.encode_text(text_inputs)
 
-	# Normalize the features
+	# Normalize the features of the test (numpy):
 	test_features = test_features / np.linalg.norm(test_features, axis=1, keepdims=True)
+	# Normalize text_features(tensor):
 	text_features = text_features / text_features.norm(dim=-1, keepdim=True)
 
 	# Convert test_features to a PyTorch tensor
@@ -175,8 +179,8 @@ def get_linear_prob_zero_shot_accuracy(train_dataset, validation_dataset, model,
 	predicted_class_indices = np.argmax(similarity_scores.cpu().numpy(), axis=1)
 
 	# Calculate the accuracy
-	accuracy = np.mean((test_labels == predicted_class_indices).astype(float))# * 100.
-	print(f"Zero-shot Accuracy = {accuracy:.3f}")
+	accuracy = np.mean((test_labels == predicted_class_indices).astype(float)) * 100
+	print(f"Zero-shot (Top-1) Accuracy = {accuracy:.3f}")
 	################################## Zero Shot Classifier ##################################
 
 	return accuracy
@@ -441,13 +445,13 @@ def main():
 			topk=args.topK,
 		)
 
-	# get_linear_prob_zero_shot_accuracy(
-	# 	train_dataset=train_dataset,
-	# 	validation_dataset=valid_dataset,
-	# 	model=model,
-	# 	batch_size=args.batch_size,
-	# 	device=args.device,
-	# )
+	get_linear_prob_zero_shot_accuracy(
+		train_dataset=train_dataset,
+		validation_dataset=valid_dataset,
+		model=model,
+		batch_size=args.batch_size,
+		device=args.device,
+	)
 
 	# get_image_to_texts_precision_at_(
 	# 	dataset=valid_dataset,
@@ -480,9 +484,9 @@ def main():
 	get_text_to_images_precision_recall_at_(
 		dataset=valid_dataset,
 		model=model,
-		preprocess=preprocess,
 		K=args.topK,
 		batch_size=args.batch_size,
+		device=args.device,
 	)
 
 if __name__ == "__main__":

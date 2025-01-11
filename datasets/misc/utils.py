@@ -98,8 +98,8 @@ def get_stratified_split(df, result_dir, val_split_pct=0.2, figure_size=(10, 6),
 		stratify=df_filtered['label'],
 		random_state=42
 	)
-	train_df.to_csv(os.path.join(result_dir, 'train_metadata.csv'), index=False)
-	val_df.to_csv(os.path.join(result_dir, 'val_metadata.csv'), index=False)
+	train_df.to_csv(os.path.join(result_dir, 'metadata_train.csv'), index=False)
+	val_df.to_csv(os.path.join(result_dir, 'metadata_val.csv'), index=False)
 
 	# Visualize label distribution in training and validation sets
 	plt.figure(figsize=figure_size)

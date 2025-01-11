@@ -69,6 +69,7 @@ military aircraft
 military airbase
 military airfield
 military airport
+airplane crash
 air station
 Air bomb
 air raid
