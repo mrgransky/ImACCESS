@@ -10,6 +10,7 @@ parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dat
 parser.add_argument('--start_date', '-sdt', type=str, default="1900-01-01", help='Dataset DIR')
 parser.add_argument('--end_date', '-edt', type=str, default="1960-12-31", help='Dataset DIR')
 parser.add_argument('--num_workers', '-nw', type=int, default=16, help='Number of CPUs')
+parser.add_argument('--batch_size', '-bs', type=int, default=32, help='batch_size')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std') # if given => True (ex. --img_mean_std)
 
 # args = parser.parse_args()
@@ -20,7 +21,7 @@ print(args)
 
 # run in local laptop:
 # $ python data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31
-# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > logs/europeana_img_dl.out &
+# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 4 --img_mean_std > logs/europeana_img_dl.out &
 # $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > logs/europeana_img_dl.out &
 
 # run in Pouta:
@@ -43,9 +44,9 @@ STOPWORDS = set(STOPWORDS)
 print(STOPWORDS, type(STOPWORDS))
 dataset_name: str = "europeana".upper()
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
-europeana_api_key: str = "plaction"
+# europeana_api_key: str = "plaction"
 # europeana_api_key: str = "api2demo"
-# europeana_api_key: str = "nLbaXYaiH"
+europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
@@ -305,6 +306,7 @@ def main():
 			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
 				dir=os.path.join(DATASET_DIRECTORY, "images"), 
 				num_workers=args.num_workers,
+				batch_size=args.batch_size,
 			)
 			save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)

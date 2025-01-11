@@ -28,6 +28,7 @@ from PIL import Image, ImageDraw, ImageOps, ImageFilter
 from functools import cache
 from urllib.parse import urlparse, unquote, quote_plus
 from sklearn.model_selection import train_test_split
+from tqdm import tqdm
 
 logging.basicConfig(level=logging.INFO)
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
@@ -378,51 +379,107 @@ def remove_misspelled_(documents: str="This is a sample sentence."):
 	return cleaned_text
 
 def process_rgb_image(args):
-	filename, dir, transform = args
-	image_path = os.path.join(dir, filename)
-	# print(f"processing: {image_path}", end="\t")
-	logging.info(f"Processing: {image_path}")
-	try:
-		Image.open(image_path).verify() # # Validate the image
-		image = Image.open(image_path).convert('RGB')  # Ensure the image is in RGB mode
-		tensor_image = transform(image)
-		return tensor_image.sum(dim=[1, 2]), (tensor_image ** 2).sum(dim=[1, 2]), tensor_image.numel() / 3
-	except Exception as e:
-		# print(f"Error processing {image_path}: {e}")
-		logging.error(f"Error processing {image_path}: {e}")
-		# traceback.print_exc()  # Print detailed traceback
-		return torch.zeros(3), torch.zeros(3), 0
+		filename, dir, transform = args
+		image_path = os.path.join(dir, filename)
+		logging.info(f"Processing: {image_path}")
+		try:
+				Image.open(image_path).verify()  # Validate the image
+				image = Image.open(image_path).convert('RGB')  # Ensure the image is in RGB mode
+				tensor_image = transform(image)
+				return tensor_image.sum(dim=[1, 2]), (tensor_image ** 2).sum(dim=[1, 2]), tensor_image.numel() / 3
+		except Exception as e:
+				logging.error(f"Error processing {image_path}: {e}")
+				return torch.zeros(3), torch.zeros(3), 0
 
-def get_mean_std_rgb_img_multiprocessing(dir: str="path/2/images", num_workers: int=8):
-	print(f"Calculating Mean-Std «{len(os.listdir(dir))} RGB images » (multiprocessing with {num_workers} CPUs)")
-	t0 = time.time()
-	# Initialize variables to accumulate the sum and sum of squares for each channel
-	sum_ = torch.zeros(3)
-	sum_of_squares = torch.zeros(3)
-	count = 0
-	transform = T.Compose([
-		T.ToTensor(),  # Convert to tensor (automatically converts to RGB if not already)
-	])
-	with ProcessPoolExecutor(max_workers=num_workers) as executor:
-		futures = [executor.submit(process_rgb_image, (filename, dir, transform)) for filename in os.listdir(dir)]
-		# for future in tqdm(as_completed(futures), total=len(futures)):
-		for future in as_completed(futures):
-			try:
-				result = future.result()
-				if result is not None:
-					partial_sum, partial_sum_of_squares, partial_count = result
-					sum_ += partial_sum
-					sum_of_squares += partial_sum_of_squares
-					count += partial_count
-			except Exception as e:
-				# print(f"Error in future result: {e}")
-				logging.error(f"Error in future result: {e}")
-				# traceback.print_exc()  # Print detailed traceback
-	mean = sum_ / count
-	std = torch.sqrt((sum_of_squares / count) - (mean ** 2))
-	# print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(100, " "))
-	logging.info(f"Elapsed_t: {time.time()-t0:.2f} sec")
-	return mean.tolist(), std.tolist()
+def get_mean_std_rgb_img_multiprocessing(dir: str = "path/2/images", num_workers: int = 8, batch_size: int = 32):
+		print(f"Calculating Mean-Std «{len(os.listdir(dir))} RGB images » (multiprocessing with {num_workers} workers)")
+		t0 = time.time()
+
+		# Initialize variables to accumulate the sum and sum of squares for each channel
+		sum_ = torch.zeros(3)
+		sum_of_squares = torch.zeros(3)
+		count = 0
+
+		transform = T.Compose([
+				T.ToTensor(),  # Convert to tensor (automatically converts to RGB if not already)
+		])
+
+		# Get list of image filenames
+		filenames = os.listdir(dir)
+
+		# Process images in batches
+		with ThreadPoolExecutor(max_workers=num_workers) as executor:
+				futures = []
+				for i in range(0, len(filenames), batch_size):
+						batch_filenames = filenames[i:i + batch_size]
+						batch_args = [(filename, dir, transform) for filename in batch_filenames]
+						futures.extend(executor.submit(process_rgb_image, args) for args in batch_args)
+
+				# Process results as they complete
+				for future in tqdm(as_completed(futures), total=len(futures), desc="Processing images"):
+						try:
+								result = future.result(timeout=60)  # Add a timeout to prevent hanging
+								if result is not None:
+										partial_sum, partial_sum_of_squares, partial_count = result
+										sum_ += partial_sum
+										sum_of_squares += partial_sum_of_squares
+										count += partial_count
+						except Exception as e:
+								logging.error(f"Error in future result: {e}")
+
+		# Calculate mean and standard deviation
+		mean = sum_ / count
+		std = torch.sqrt((sum_of_squares / count) - (mean ** 2))
+
+		logging.info(f"Elapsed_t: {time.time() - t0:.2f} sec")
+		return mean.tolist(), std.tolist()
+
+# def process_rgb_image(args):
+# 	filename, dir, transform = args
+# 	image_path = os.path.join(dir, filename)
+# 	# print(f"processing: {image_path}", end="\t")
+# 	logging.info(f"Processing: {image_path}")
+# 	try:
+# 		Image.open(image_path).verify() # # Validate the image
+# 		image = Image.open(image_path).convert('RGB')  # Ensure the image is in RGB mode
+# 		tensor_image = transform(image)
+# 		return tensor_image.sum(dim=[1, 2]), (tensor_image ** 2).sum(dim=[1, 2]), tensor_image.numel() / 3
+# 	except Exception as e:
+# 		# print(f"Error processing {image_path}: {e}")
+# 		logging.error(f"Error processing {image_path}: {e}")
+# 		# traceback.print_exc()  # Print detailed traceback
+# 		return torch.zeros(3), torch.zeros(3), 0
+
+# def get_mean_std_rgb_img_multiprocessing(dir: str="path/2/images", num_workers: int=8):
+# 	print(f"Calculating Mean-Std «{len(os.listdir(dir))} RGB images » (multiprocessing with {num_workers} CPUs)")
+# 	t0 = time.time()
+# 	# Initialize variables to accumulate the sum and sum of squares for each channel
+# 	sum_ = torch.zeros(3)
+# 	sum_of_squares = torch.zeros(3)
+# 	count = 0
+# 	transform = T.Compose([
+# 		T.ToTensor(),  # Convert to tensor (automatically converts to RGB if not already)
+# 	])
+# 	with ProcessPoolExecutor(max_workers=num_workers) as executor:
+# 		futures = [executor.submit(process_rgb_image, (filename, dir, transform)) for filename in os.listdir(dir)]
+# 		# for future in tqdm(as_completed(futures), total=len(futures)):
+# 		for future in as_completed(futures):
+# 			try:
+# 				result = future.result()
+# 				if result is not None:
+# 					partial_sum, partial_sum_of_squares, partial_count = result
+# 					sum_ += partial_sum
+# 					sum_of_squares += partial_sum_of_squares
+# 					count += partial_count
+# 			except Exception as e:
+# 				# print(f"Error in future result: {e}")
+# 				logging.error(f"Error in future result: {e}")
+# 				# traceback.print_exc()  # Print detailed traceback
+# 	mean = sum_ / count
+# 	std = torch.sqrt((sum_of_squares / count) - (mean ** 2))
+# 	# print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(100, " "))
+# 	logging.info(f"Elapsed_t: {time.time()-t0:.2f} sec")
+# 	return mean.tolist(), std.tolist()
 
 def check_url_status(url: str, TIMEOUT:int=50) -> bool:
 	try:
