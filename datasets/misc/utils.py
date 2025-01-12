@@ -144,7 +144,7 @@ def download_image(row, session, image_dir, total_rows, retries=2, backoff_facto
 			# Verify if the downloaded image can be opened
 			with Image.open(image_path) as img:
 				img.verify()
-			print(f"{rIdx:<10}/ {total_rows:<10}{image_name:<100}{time.time()-t0:.1f} s")
+			print(f"{rIdx:<10}/ {total_rows:<10}{image_name:<150}{time.time()-t0:.1f} s")
 			return True  # Image downloaded and verified successfully
 		except (RequestException, IOError) as e:
 			attempt += 1
