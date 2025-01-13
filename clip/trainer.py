@@ -17,10 +17,10 @@ warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_s
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 256 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
 
 # train imagenet from scratch:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -e 50 -lr 1e-4 -wd 1e-3 --print_every 5000 -nw 50 --device "cuda:1" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_train.out &
+# $ nohup python -u trainer.py -d imagenet -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 2500 -nw 50 --device "cuda:1" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_train.out &
 
 # finetune imagenet:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -e 50 -lr 1e-4 -wd 1e-3 --print_every 5000 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
+# $ nohup python -u trainer.py -d imagenet -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 2500 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
 
 USER = os.environ.get('USER')
 
