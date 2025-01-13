@@ -6,7 +6,7 @@ sys.path.insert(0, parent_dir)
 from misc.utils import *
 
 # how to run in local:
-# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs > logs/wwii_image_download.out &
+# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs --img_mean_std > logs/wwii_image_download.out &
 
 # run in Pouta:
 # $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
@@ -17,7 +17,8 @@ parser = argparse.ArgumentParser(description="WWII Dataset")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', '-sdt', type=str, default="1939-09-01", help='Start Date')
 parser.add_argument('--end_date', '-edt', type=str, default="1945-09-02", help='End Date')
-parser.add_argument('--num_workers', '-nw', type=int, default=8, help='Number of CPUs')
+parser.add_argument('--num_workers', '-nw', type=int, default=12, help='Number of CPUs')
+parser.add_argument('--batch_size', '-bs', type=int, default=64, help='batch size')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 
 args, unknown = parser.parse_known_args()
@@ -626,7 +627,11 @@ def main():
 			img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
 		except Exception as e:
 			print(f"{e}")
-			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(dir=os.path.join(DATASET_DIRECTORY, "images"), num_workers=args.num_workers)
+			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
+				dir=os.path.join(DATASET_DIRECTORY, "images"), 
+				num_workers=args.num_workers,
+				batch_size=args.batch_size,
+			)
 			save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
 		print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
