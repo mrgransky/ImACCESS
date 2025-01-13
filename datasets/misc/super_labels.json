@@ -166,9 +166,9 @@
 	"hospital ship": "medical service",
 	"hospital train": "medical service",
 	"military hospital": "medical service",
-	"clinic truck": "medical service",
 	"army hospital": "medical service",
 	"naval hospital": "medical service",
+	"clinic truck": "medical service",
 	"red cross": "medical service",
 	"medical aid": "medical service",
 	"first aid": "medical service",
@@ -176,5 +176,7 @@
 	"surgeon": "medical service",
 	"dentist": "medical service",
 	"nurse": "medical service",
-	"doctor": "medical service"
+	"doctor": "medical service",
+	"hospital": "medical service",
+	"health professional": "medical service"
 }
