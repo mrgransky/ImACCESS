@@ -10,8 +10,8 @@ from misc.utils import *
 
 # run in Pouta:
 # $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > /media/volume/ImACCESS/trash/wwii_data_collection.out &
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > /media/volume/ImACCESS/trash/wwii_data_collection.out &
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 40 --img_mean_std > /media/volume/ImACCESS/trash/wwii_data_collection.out &
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs > /media/volume/ImACCESS/trash/wwii_data_collection.out &
 
 parser = argparse.ArgumentParser(description="WWII Dataset")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
