@@ -102,8 +102,8 @@ train_df, val_df = train_test_split(
 	random_state=42
 )
 
-train_df.to_csv(os.path.join(SAVING_DIRECTORY, 'train_metadata.csv'), index=False)
-val_df.to_csv(os.path.join(SAVING_DIRECTORY, 'val_metadata.csv'), index=False)
+train_df.to_csv(os.path.join(SAVING_DIRECTORY, 'metadata_train.csv'), index=False)
+val_df.to_csv(os.path.join(SAVING_DIRECTORY, 'metadata_val.csv'), index=False)
 
 # Visualize label distribution in training and validation sets
 plt.figure(figsize=FIGURE_SIZE)

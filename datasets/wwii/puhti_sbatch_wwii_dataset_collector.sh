@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=40
-#SBATCH --mem=24G
+#SBATCH --mem=12G
 #SBATCH --partition=small
 #SBATCH --time=01-00:00:00
 
