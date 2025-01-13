@@ -34,6 +34,7 @@ USER: str = os.getenv('USER') # echo $USER
 START_DATE = args.start_date
 END_DATE = args.end_date
 
+
 meaningless_words_fpth = os.path.join(parent_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
 STOPWORDS = list()

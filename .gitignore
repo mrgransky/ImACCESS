@@ -6,6 +6,7 @@
 *.pkl
 *.png
 *.pth
+*.pt
 *.npz
 *.npy
 *.jpg
