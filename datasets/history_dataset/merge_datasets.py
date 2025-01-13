@@ -66,6 +66,7 @@ label_counts.plot(kind='bar', fontsize=9)
 plt.title(f'Label Frequency (total: {label_counts.shape[0]}) total IMGs: {merged_df.shape[0]}')
 plt.xlabel('Label')
 plt.ylabel('Frequency')
+plt.yticks(rotation=90, fontsize=9,)
 plt.tight_layout()
 plt.savefig(
 	fname=os.path.join(RESULT_DIRECTORY, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"),
@@ -75,14 +76,11 @@ plt.savefig(
 
 dataset_unique_label_counts = merged_df.groupby('dataset')['label'].nunique()
 print(dataset_unique_label_counts)
-
 plt.figure(figsize=FIGURE_SIZE)
 sns.countplot(x="label", hue="dataset", data=merged_df, palette="bright")
 ax = plt.gca()
 ax.tick_params(axis='x', rotation=90, labelsize=9)  # Rotate the x-axis tick labels
 ax.tick_params(axis='y', rotation=90, labelsize=9)
-
-# Add dataset label counts to the legend
 handles, labels = ax.get_legend_handles_labels()
 new_labels = [f"{label} | ({dataset_unique_label_counts[label]})" for label in labels]
 ax.legend(handles, new_labels, loc="best", fontsize=8, title="Dataset | (Unique Label Count)")
@@ -112,6 +110,7 @@ val_df['label'].value_counts().plot(kind='bar', color='red', alpha=0.9, label=f'
 plt.title(f'Stratified Label Distribution of {train_df.shape[0]} Training samples {val_df.shape[0]} & Validation Samples (Total: {merged_df.shape[0]})', fontsize=9)
 plt.xlabel('Label')
 plt.ylabel('Frequency')
+plt.yticks(rotation=90, fontsize=9,)
 plt.legend(loc='best', ncol=2, frameon=False, fontsize=8)
 plt.tight_layout()
 plt.savefig(

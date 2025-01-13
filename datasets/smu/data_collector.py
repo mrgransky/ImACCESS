@@ -10,7 +10,7 @@ from misc.utils import *
 # $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > logs/smu_dataset_collection.out &
 
 # run in Pouta:
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 16 --img_mean_std > /media/volume/ImACCESS/trash/smu_data_collection.out &
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 50 --img_mean_std > /media/volume/ImACCESS/trash/smu_data_collection.out &
 # $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > /media/volume/ImACCESS/trash/smu_1900-1970.out &
 
 parser = argparse.ArgumentParser(description="SMU ARCHIVE data colletion")
