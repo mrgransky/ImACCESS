@@ -37,9 +37,9 @@ for pattern in DATASET_PATTERNS:
 print(len(DATASETS), DATASETS)
 
 SAVING_DIRECTORY = os.path.join(DATASET_DIRECTORY.get(USER), "HISTORICAL_ARCHIVES")
-RESULT_DIRECTORY = os.path.join(SAVING_DIRECTORY, "results")
+OUTPUT_DIRECTORY = os.path.join(SAVING_DIRECTORY, "outputs")
 os.makedirs(SAVING_DIRECTORY, exist_ok=True)
-os.makedirs(RESULT_DIRECTORY, exist_ok=True)
+os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
 dfs = []
 for i, dataset_path in enumerate(DATASETS):
@@ -69,7 +69,7 @@ plt.ylabel('Frequency')
 plt.yticks(rotation=90, fontsize=9,)
 plt.tight_layout()
 plt.savefig(
-	fname=os.path.join(RESULT_DIRECTORY, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"),
+	fname=os.path.join(OUTPUT_DIRECTORY, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"),
 	dpi=DPI,
 	bbox_inches='tight'
 )
@@ -87,7 +87,7 @@ ax.legend(handles, new_labels, loc="best", fontsize=8, title="Dataset | (Unique 
 plt.title(f'Grouped Bar Chart for total of {label_counts.shape[0]} Labels Frequency for {len(dfs)} Datasets')
 plt.tight_layout()
 plt.savefig(
-	fname=os.path.join(RESULT_DIRECTORY, f"labels_x_{label_counts.shape[0]}_freq_x_{len(dfs)}.png"),
+	fname=os.path.join(OUTPUT_DIRECTORY, f"labels_x_{label_counts.shape[0]}_freq_x_{len(dfs)}.png"),
 	dpi=DPI,
 	bbox_inches='tight'
 )
@@ -114,7 +114,7 @@ plt.yticks(rotation=90, fontsize=9,)
 plt.legend(loc='best', ncol=2, frameon=False, fontsize=8)
 plt.tight_layout()
 plt.savefig(
-	fname=os.path.join(RESULT_DIRECTORY, 'stratified_label_distribution_train_val.png'),
+	fname=os.path.join(OUTPUT_DIRECTORY, 'stratified_label_distribution_train_val.png'),
 	dpi=DPI,
 	bbox_inches='tight'
 )

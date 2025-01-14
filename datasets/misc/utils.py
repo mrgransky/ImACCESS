@@ -29,6 +29,7 @@ from functools import cache
 from urllib.parse import urlparse, unquote, quote_plus
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
+from datetime import timedelta
 
 logging.basicConfig(level=logging.INFO)
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
@@ -81,7 +82,34 @@ if USER!="alijanif":
 	sl_dict = enchant.Dict("sl")
 	sk_dict = enchant.Dict("sk")
 
-def get_stratified_split(df, result_dir, val_split_pct=0.2, figure_size=(10, 6), dpi=200):
+def format_elapsed_time(seconds):
+	"""
+	Convert elapsed time in seconds to DD-HH-MM-SS format.
+	"""
+	# Create a timedelta object from the elapsed seconds
+	elapsed_time = timedelta(seconds=seconds)
+	# Extract days, hours, minutes, and seconds
+	days = elapsed_time.days
+	hours, remainder = divmod(elapsed_time.seconds, 3600)
+	minutes, seconds = divmod(remainder, 60)
+	# Format the time as DD-HH-MM-SS
+	return f"{days:02d}-{hours:02d}-{minutes:02d}-{seconds:02d}"
+
+def measure_execution_time(func):
+	"""
+	Decorator to measure the execution time of a function.
+	"""
+	def wrapper(*args, **kwargs):
+		start_time = time.time()
+		result = func(*args, **kwargs) # # Execute the function and store the result		
+		end_time = time.time()
+		elapsed_time = end_time - start_time
+		formatted_time = format_elapsed_time(elapsed_time)
+		print(f"Total elapsed time(DD-HH-MM-SS): \033[92m{formatted_time}\033[0m")		
+		return result
+	return wrapper
+
+def get_stratified_split(df, result_dir, val_split_pct=0.2, figure_size=(11, 7), dpi=200):
 	# Count the occurrences of each label
 	label_counts = df['label'].value_counts()
 	labels_to_drop = label_counts[label_counts == 1].index
@@ -109,6 +137,7 @@ def get_stratified_split(df, result_dir, val_split_pct=0.2, figure_size=(10, 6),
 	plt.title(f'Stratified Label Distribution of {train_df.shape[0]} Training samples {val_df.shape[0]} Validation Samples (Total samples: {df_filtered.shape[0]})', fontsize=9)
 	plt.xlabel('Label')
 	plt.ylabel('Frequency')
+	plt.yticks(rotation=90, fontsize=9)
 	plt.legend(loc='best', ncol=2, frameon=False, fontsize=8)
 	plt.tight_layout()
 	plt.savefig(
@@ -234,6 +263,24 @@ def plot_year_distribution(df, start_date, end_date, dname, fpth, BINs:int=50,):
 	# plt.grid(True)
 	plt.tight_layout()
 	plt.savefig(fpth)
+
+def plot_label_distribution(df, start_date, end_date, dname, fpth, figure_size=(12, 8)):
+	label_counts = df['label'].value_counts()
+	plt.figure(figsize=figure_size)
+	label_counts.plot(kind='bar', fontsize=9)
+	plt.title(f'{dname} {start_date} - {end_date} Label Distribution (unique: {label_counts.shape[0]}) Total samples: {df.shape[0]}', fontsize=10)
+	plt.xlabel('label')
+	plt.ylabel('Frequency', fontsize=10)
+	plt.xticks(fontsize=9)
+	plt.yticks(rotation=90, fontsize=9)
+	plt.tight_layout()
+	plt.savefig(
+		fname=fpth,
+		dpi=200,
+		bbox_inches='tight',
+	)
+
+
 
 def is_valid_date(date:str="1939-12-30", start_date: str="1900-01-01", end_date:str="1950-12-31"):
 	# Define the start and end dates

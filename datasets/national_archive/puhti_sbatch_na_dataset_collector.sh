@@ -37,6 +37,7 @@ python -u data_collector.py \
 	--dataset_dir $ddir \
 	--start_date  $st_dt \
 	--end_date  $end_dt \
+	--batch_size 512 \
 	--num_worker $num_workers \
 	--img_mean_std \
 

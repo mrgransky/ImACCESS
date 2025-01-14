@@ -99,6 +99,7 @@ military museum
 military personnel
 military ship
 military boat
+military parade
 Battle of the Bulge
 Medical aid
 Medical service
@@ -148,6 +149,9 @@ ground forces
 infantry weapon
 V-E Day
 V-J Day
+watch tower
+watchtower
+fortification
 accident
 Wreck
 panzer
@@ -194,7 +198,6 @@ airplane
 rationing
 Rocket
 prisoners
-Parade
 commander
 Sergeant
 Admiral
@@ -206,7 +209,7 @@ airport
 Anniversary
 exile
 evacuation
-Civilian
+civilians
 nurse
 doctor
 dentist

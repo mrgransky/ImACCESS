@@ -2,15 +2,15 @@ from utils import *
 from sklearn.linear_model import LogisticRegression
 
 # local:
-# $ python evaluate_clip.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31
+# $ python evaluate_history_clip.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/5968_115463.jpg", help='image path for zero shot classification')
 parser.add_argument('--query_label', '-ql', type=str, default="aircraft", help='image path for zero shot classification')
-parser.add_argument('--topK', '-k', type=int, default=10, help='TopK results')
-parser.add_argument('--batch_size', '-bs', type=int, default=1024, help='TopK results')
+parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
+parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch size')
 parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 
 # args = parser.parse_args()
@@ -39,8 +39,8 @@ def load_model(model_name:str="ViT-B/32", device:str="cuda:0"):
 
 def get_dataset(ddir:str="path/2/dataset_dir", sliced:bool=False):
 	metadata_fpth = os.path.join(ddir, "metadata.csv")
-	metadata_train_fpth = os.path.join(ddir, "train_metadata.csv")
-	metadata_val_fpth = os.path.join(ddir, "val_metadata.csv")
+	metadata_train_fpth = os.path.join(ddir, "metadata_train.csv")
+	metadata_val_fpth = os.path.join(ddir, "metadata_val.csv")
 	
 	# img_dir = os.path.join(ddir, "images")
 	# df = pd.read_csv(
@@ -161,7 +161,7 @@ def get_linear_prob_zero_shot_accuracy(dataset_dir, train_dataset, validation_da
 	return linear_probe_accuracy, zero_shot_accuracy
 
 def get_image_to_texts(dataset, model, preprocess, img_path, topk:int=5, device:str="cuda:0"):
-	print(f"[Image-to-text(s)] Zero-Shot Image Classification of image: {img_path}".center(160, " "))
+	print(f"[Image-to-text(s)] Zero-Shot Image Classification of image: {img_path}".center(200, " "))
 	t0 = time.time()
 	labels = list(set(dataset["label"].tolist()))
 	print(len(labels), type(labels))
@@ -326,13 +326,13 @@ def get_text_to_images(dataset, model, preprocess, query:str="cat", topk:int=5, 
 	print(topk_pred_image_paths)
 	# print(topk_pred_images)
 	print(topk_probs, topk_pred_labels_idxs)
-	print(len(labels), labels)
+	# print(len(labels), labels)
 
 	# Save the top-k images in a single file
-	fig, axes = plt.subplots(1, topk, figsize=(16, 8))
+	fig, axes = plt.subplots(1, topk, figsize=(5*topk, 9))
 	if topk == 1:
 		axes = [axes]  # Convert to list of axes
-	fig.suptitle(f"Text-To-Image(s) [Top-{topk}] Rerieval\nQuery: « {query} »\n{os.path.basename(args.dataset_dir)}", fontsize=12)
+	fig.suptitle(f"Text-To-Image(s) [Top-{topk}] Rerieval\nQuery: « {query} »\n{os.path.basename(args.dataset_dir)}", fontsize=11)
 	for i, (img, ax) in enumerate(zip(topk_pred_images, axes)):
 		ax.imshow(img)
 		ax.axis('off')
@@ -470,7 +470,7 @@ def get_map_at_k(dataset, model, preprocess, K: int, batch_size: int, device):
 	return img_to_txt_map_at_k, txt_to_img_map_at_k
 
 def get_image_to_images(dataset, query_image_path, model, preprocess, topk: int, batch_size: int, device):
-	print(f"Image-to-Image(s) Retrieval {query_image_path}".center(160, " "))
+	print(f"Image-to-Image(s) Retrieval {query_image_path}".center(200, " "))
 	t0 = time.time()
 
 	# Image Embedding for the query image
@@ -523,7 +523,7 @@ def get_image_to_images(dataset, query_image_path, model, preprocess, topk: int,
 		print(f"{i+1}. Image Path: {path}, Label: {label}, Similarity: {similarity:.4f}")
 
 	# Create a plot of 2 rows and topK columns
-	fig, axes = plt.subplots(2, topk, figsize=(5 * topk, 10))
+	fig, axes = plt.subplots(2, topk, figsize=(5 * topk, 8))
 	# Calculate the middle index for the query image
 	if topk % 2 == 0:  # Even number of columns
 		middle_index = topk // 2 - 1  # Place query image in the middle-left column
@@ -548,7 +548,7 @@ def get_image_to_images(dataset, query_image_path, model, preprocess, topk: int,
 	plt.suptitle(f"Image-to-Image(s) [Top-{topk}] Retrieval\n{os.path.basename(args.dataset_dir)}", fontsize=12)
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(outputs_dir, f"IMG2IMG_Top{topk}_IMGs_{os.path.basename(args.dataset_dir)}.png"),
+		fname=os.path.join(outputs_dir, f"Img2Img_Top{topk}_IMGs_{os.path.basename(args.dataset_dir)}.png"),
 		dpi=250,
 		bbox_inches='tight',
 	)
@@ -568,17 +568,17 @@ def main():
 		ddir=args.dataset_dir,
 		sliced=False,
 	)
-	print(train_dataset.shape, val_dataset.shape)
+	print(f"Train: {train_dataset.shape}, Validation: {val_dataset.shape}")
 
-	get_linear_prob_zero_shot_accuracy(
-		dataset_dir=args.dataset_dir, 
-		train_dataset=train_dataset, 
-		validation_dataset=val_dataset, 
-		model=model, 
-		preprocess=preprocess, 
-		batch_size=args.batch_size, 
-		device=args.device,
-	)
+	# get_linear_prob_zero_shot_accuracy(
+	# 	dataset_dir=args.dataset_dir, 
+	# 	train_dataset=train_dataset, 
+	# 	validation_dataset=val_dataset, 
+	# 	model=model, 
+	# 	preprocess=preprocess, 
+	# 	batch_size=args.batch_size, 
+	# 	device=args.device,
+	# )
 
 	get_image_to_images(
 		dataset=val_dataset,
@@ -609,13 +609,13 @@ def main():
 			device=args.device,
 		)
 
-	get_image_to_texts_precision_at_(
-		dataset=val_dataset,
-		model=model,
-		preprocess=preprocess,
-		K=args.topK,
-		device=args.device,
-	)
+	# get_image_to_texts_precision_at_(
+	# 	dataset=val_dataset,
+	# 	model=model,
+	# 	preprocess=preprocess,
+	# 	K=args.topK,
+	# 	device=args.device,
+	# )
 
 	if USER == "farid":
 		get_text_to_images(
@@ -628,14 +628,14 @@ def main():
 			device=args.device,
 		)
 
-	get_text_to_images_precision_recall_at_(
-		dataset=val_dataset,
-		model=model,
-		preprocess=preprocess,		
-		K=args.topK,
-		batch_size=args.batch_size,
-		device=args.device,
-	)
+	# get_text_to_images_precision_recall_at_(
+	# 	dataset=val_dataset,
+	# 	model=model,
+	# 	preprocess=preprocess,		
+	# 	K=args.topK,
+	# 	batch_size=args.batch_size,
+	# 	device=args.device,
+	# )
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))

@@ -7,7 +7,7 @@ from misc.utils import *
 
 # local:
 # $ python data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 --img_mean_std
-# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > logs/smu_dataset_collection.out &
+# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 15 --img_mean_std > logs/smu_dataset_collection.out &
 
 # run in Pouta:
 # $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 50 --img_mean_std > /media/volume/ImACCESS/trash/smu_data_collection.out &
@@ -17,8 +17,10 @@ parser = argparse.ArgumentParser(description="SMU ARCHIVE data colletion")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', '-sdt', type=str, default="1900-01-01", help='Dataset DIR')
 parser.add_argument('--end_date', '-edt', type=str, default="1970-12-31", help='Dataset DIR')
-parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
+parser.add_argument('--num_workers', '-nw', type=int, default=16, help='Number of CPUs')
+parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_size')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
+
 args, unknown = parser.parse_known_args()
 print(args)
 
@@ -181,6 +183,7 @@ def get_dframe(query: str="query", start_date:str="1900-01-01", end_date:str="19
 	save_pickle(pkl=df, fname=df_file_path)
 	return df
 
+@measure_execution_time
 def main():
 	with open(os.path.join(parent_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 		all_label_tags = [line.strip().lower() for line in file_]
@@ -246,16 +249,14 @@ def main():
 		print(f"Failed to write Excel file: {e}")
 
 	smu_df = get_synchronized_df_img(df=smu_df_merged_raw, image_dir=IMAGE_DIRECTORY, nw=args.num_workers)
-	query_counts = smu_df['label'].value_counts()
-
-	plt.figure(figsize=(11, 7))
-	query_counts.plot(kind='bar', fontsize=8)
-	plt.title(f'{dataset_name} Query Frequency (total: {query_counts.shape})')
-	plt.xlabel('label')
-	plt.ylabel('Frequency')
-	plt.tight_layout()
-	plt.savefig(os.path.join(OUTPUT_DIRECTORY, f"query_x_{query_counts.shape[0]}_freq.png"))
-
+	label_dirstribution_fname = os.path.join(OUTPUT_DIRECTORY, f"label_distribution_{dataset_name}_{args.start_date}_{args.end_date}_nIMGs_{smu_df.shape[0]}.png")
+	plot_label_distribution(
+		df=smu_df,
+		start_date=args.start_date,
+		end_date=args.end_date,
+		dname=dataset_name,
+		fpth=label_dirstribution_fname,
+	)
 	smu_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 
 	print(smu_df['label'].value_counts())
@@ -287,6 +288,7 @@ def main():
 			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
 				dir=os.path.join(DATASET_DIRECTORY, "images"), 
 				num_workers=args.num_workers,
+				batch_size=args.batch_size,
 			)
 			save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
@@ -375,17 +377,7 @@ def test_on_search_(query="shovel", start_date="1900-01-01", end_date="1970-12-3
 		print(f"Request failed with status code {response.status_code}")
 
 if __name__ == '__main__':
-	print(
-		f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-		.center(160, " ")
-	)
-	START_EXECUTION_TIME = time.time()
+	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
+	get_ip_info()
 	main()
-	# test_on_search_()
-	# test_on_doc_page_url()
-	END_EXECUTION_TIME = time.time()
-	print(
-		f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
-		f"TOTAL_ELAPSED_TIME: {END_EXECUTION_TIME-START_EXECUTION_TIME:.1f} sec"
-		.center(160, " ")
-	)
+	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))

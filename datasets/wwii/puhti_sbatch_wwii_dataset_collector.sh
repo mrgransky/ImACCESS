@@ -35,6 +35,7 @@ num_workers=$((SLURM_CPUS_PER_TASK - 1))  # reserve 2 CPUs for the main process 
 
 python -u data_collector.py \
 	--dataset_dir $ddir \
+	--batch_size 512 \
 	--num_worker $num_workers \
 	--img_mean_std \
 

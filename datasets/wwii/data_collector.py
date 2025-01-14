@@ -18,7 +18,7 @@ parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dat
 parser.add_argument('--start_date', '-sdt', type=str, default="1939-09-01", help='Start Date')
 parser.add_argument('--end_date', '-edt', type=str, default="1945-09-02", help='End Date')
 parser.add_argument('--num_workers', '-nw', type=int, default=12, help='Number of CPUs')
-parser.add_argument('--batch_size', '-bs', type=int, default=64, help='batch size')
+parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_size')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 
 args, unknown = parser.parse_known_args()
@@ -176,6 +176,7 @@ def get_dframe(doc_idx:int=1000, doc_url:str="www.example.com", doc_label: str="
 		shutil.copy(os.path.join(qLBL_DIR, fname), IMAGE_DIR)
 	return df
 
+@measure_execution_time
 def main():
 	base_url = "https://www.worldwarphotos.info/gallery"
 	URLs = { # key: url : val: doc_label
@@ -592,24 +593,15 @@ def main():
 	print(f"Concatinating {len(dfs)} dfs...")
 	# print(dfs[0])
 	wwii_df = pd.concat(dfs, ignore_index=True)
-	print(wwii_df.shape)
-	print(wwii_df.describe())
-	print("#"*150)
-	print(wwii_df.head(50))
-	print("#"*150)
-	print(wwii_df.tail(50))
 
-	label_counts = wwii_df['label'].value_counts()
-	# print(label_counts.tail(25))
-
-	plt.figure(figsize=(16, 10))
-	label_counts.plot(kind='bar', fontsize=9)
-	plt.title(f'{dataset_name}: Query Frequency (total: {label_counts.shape}) {START_DATE} - {END_DATE}')
-	plt.xlabel('Query')
-	plt.ylabel('Frequency')
-	plt.tight_layout()
-	plt.savefig(os.path.join(OUTPUTs_DIR, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"))
-
+	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"label_distribution_{dataset_name}_{args.start_date}_{args.end_date}_nIMGs_{wwii_df.shape[0]}.png")
+	plot_label_distribution(
+		df=wwii_df,
+		start_date=args.start_date,
+		end_date=args.end_date,
+		dname=dataset_name,
+		fpth=label_dirstribution_fname,
+	)
 	wwii_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 	get_stratified_split(
 		df=wwii_df,
@@ -636,13 +628,8 @@ def main():
 			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
 		print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
-	START_EXECUTION_TIME = time.time()
+	get_ip_info()
 	main()
-	END_EXECUTION_TIME = time.time()
-	print(
-		f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
-		f"TOTAL_ELAPSED_TIME: {END_EXECUTION_TIME-START_EXECUTION_TIME:.1f} sec"
-		.center(160, " ")
-	)
+	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))

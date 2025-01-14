@@ -10,7 +10,7 @@ parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dat
 parser.add_argument('--start_date', '-sdt', type=str, default="1900-01-01", help='Dataset DIR')
 parser.add_argument('--end_date', '-edt', type=str, default="1960-12-31", help='Dataset DIR')
 parser.add_argument('--num_workers', '-nw', type=int, default=16, help='Number of CPUs')
-parser.add_argument('--batch_size', '-bs', type=int, default=32, help='batch_size')
+parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_size')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std') # if given => True (ex. --img_mean_std)
 
 # args = parser.parse_args()
@@ -21,7 +21,7 @@ print(args)
 
 # run in local laptop:
 # $ python data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31
-# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 4 --img_mean_std > logs/europeana_img_dl.out &
+# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 12 --img_mean_std > logs/europeana_img_dl.out &
 # $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > logs/europeana_img_dl.out &
 
 # run in Pouta:
@@ -202,16 +202,11 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
 	return df
 
+@measure_execution_time
 def main():
 	with open(os.path.join(parent_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 		all_label_tags = [line.strip().lower() for line in file_]
 	print(type(all_label_tags), len(all_label_tags))
-
-	# all_label_tags = natsorted(list(set(all_label_tags)))
-	# all_label_tags = list(set(all_label_tags))[:5]
-	# if USER=="farid": # local laptop
-	# 	all_label_tags = all_label_tags#[:5]
-
 	print(f"{len(all_label_tags)} lables are being processed for user: {USER}, please be paitient...")
 	dfs = []
 	for qi, qv in enumerate(all_label_tags):
@@ -265,19 +260,14 @@ def main():
 		print(f"Failed to write Excel file: {e}")
 
 	europeana_df = get_synchronized_df_img(df=europeana_df_merged_raw, image_dir=IMAGE_DIR, nw=args.num_workers)
-	label_counts = europeana_df['label'].value_counts()
-	plt.figure(figsize=(15, 9))
-	label_counts.plot(kind='bar', fontsize=9)
-	plt.title(f'{dataset_name} Label Frequency (total: {label_counts.shape}) {START_DATE} - {END_DATE}')
-	plt.xlabel('label')
-	plt.ylabel('Frequency')
-	plt.tight_layout()
-	plt.savefig(
-		fname=os.path.join(OUTPUTs_DIR, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"),
-		dpi=200,
-		bbox_inches='tight',
-	)
-
+	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"label_distribution_{dataset_name}_{START_DATE}_{END_DATE}_nIMGs_{europeana_df.shape[0]}.png")
+	plot_label_distribution(
+		df=europeana_df,
+		start_date=args.start_date,
+		end_date=args.end_date,
+		dname=dataset_name,
+		fpth=label_dirstribution_fname,
+		)
 	europeana_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 	get_stratified_split(
 		df=europeana_df,
@@ -289,7 +279,7 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	yr_distro_fpth = os.path.join(OUTPUTs_DIR, f"year_distribution_{dataset_name}_{START_DATE}_{END_DATE}_nIMGs_{europeana_df.shape[0]}.png")
+	yr_distro_fpth = os.path.join(OUTPUTs_DIR, f"label_year_distribution_{dataset_name}_{START_DATE}_{END_DATE}_nIMGs_{europeana_df.shape[0]}.png")
 	plot_year_distribution(
 		df=europeana_df,
 		start_date=START_DATE,
@@ -359,17 +349,8 @@ def test():
 	else:
 		print(f"Request failed with status code {response.status_code}")
 
-if __name__ == '__main__':
-	print(
-		f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-		.center(160, " ")
-	)
-	START_EXECUTION_TIME = time.time()
+if __name__ == "__main__":
+	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
+	get_ip_info()
 	main()
-	# test()
-	END_EXECUTION_TIME = time.time()
-	print(
-		f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
-		f"TOTAL_ELAPSED_TIME: {END_EXECUTION_TIME-START_EXECUTION_TIME:.1f} sec"
-		.center(160, " ")
-	)
+	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))

@@ -10,6 +10,7 @@ parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dat
 parser.add_argument('--start_date', '-sdt', type=str, default="1933-01-01", help='Start Date')
 parser.add_argument('--end_date', '-edt', type=str, default="1933-01-02", help='End Date')
 parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
+parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_size')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 
 # args = parser.parse_args()
@@ -254,6 +255,7 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 	save_pickle(pkl=df, fname=df_fpth)
 	return df
 
+@measure_execution_time
 def main():
 	with open(os.path.join(parent_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 		all_label_tags = [line.strip().lower() for line in file_]
@@ -321,18 +323,14 @@ def main():
 	print(f"Elapsed_t: {time.time()-concat_st:.1f} sec".center(100, "-"))
 
 	na_df = get_synchronized_df_img(df=na_df_merged_raw, image_dir=IMAGE_DIR, nw=args.num_workers)
-
-	label_counts = na_df['label'].value_counts()
-	print(label_counts.tail(25))
-
-	plt.figure(figsize=(15, 8))
-	label_counts.plot(kind='bar', fontsize=9)
-	plt.title(f'{dataset_name} Label Frequency (total: {label_counts.shape}) {START_DATE} - {END_DATE} total IMGs: {na_df.shape[0]}')
-	plt.xlabel('Label')
-	plt.ylabel('Frequency')
-	plt.tight_layout()
-	plt.savefig(os.path.join(OUTPUTs_DIR, f"all_query_labels_x_{label_counts.shape[0]}_freq.png"))
-
+	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"label_distribution_{dataset_name}_{args.start_date}_{args.end_date}_nIMGs_{na_df.shape[0]}.png")
+	plot_label_distribution(
+		df=na_df,
+		start_date=args.start_date,
+		end_date=args.end_date,
+		dname=dataset_name,
+		fpth=label_dirstribution_fname,
+	)
 	na_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 	get_stratified_split(
 		df=na_df,
@@ -362,22 +360,14 @@ def main():
 			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
 				dir=os.path.join(DATASET_DIRECTORY, "images"), 
 				num_workers=args.num_workers,
+				batch_size=args.batch_size,
 			)
 			save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
 		print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
-	
-if __name__ == '__main__':
-	print(
-		f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-		.center(160, " ")
-	)
-	START_EXECUTION_TIME = time.time()
+
+if __name__ == "__main__":
+	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
 	get_ip_info()
 	main()
-	END_EXECUTION_TIME = time.time()
-	print(
-		f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
-		f"TOTAL_ELAPSED_TIME: {END_EXECUTION_TIME-START_EXECUTION_TIME:.1f} sec"
-		.center(160, " ")
-	)
+	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))
