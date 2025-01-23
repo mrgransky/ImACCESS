@@ -10,7 +10,7 @@ set -o pipefail # If any command in a pipeline fails, the entire pipeline will f
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
-txt="$user began Slurm job: `date`"
+txt="$user began job: `date`"
 ch="#"
 echo -e "${txt//?/$ch}\n${txt}\n${txt//?/$ch}"
 echo "${stars// /*}"
@@ -19,7 +19,22 @@ source $(conda info --base)/bin/activate py39
 
 topk_values=(1 5 10 15 20)
 DATASET="imagenet"
-batch_size=512
+batch_size=2048
+# Function to get GPU with most available memory
+get_max_memory_gpu() {
+  local device=$(nvidia-smi --query-gpu=index,memory.free --format=csv,noheader,nounits |
+                 sort -k2 -n | tail -n 1 | cut -d ',' -f 1)
+  if [[ -z "$device" ]]; then
+      echo "No CUDA devices found. Please check your drivers or hardware."
+      exit 1
+  fi
+  echo "$device"
+}
+
+# Get device with max memory
+device_id_with_max_memory="cuda:$(get_max_memory_gpu)"
+echo "Using GPU ${device_id_with_max_memory} with most available memory"
+
 # # Loop through topK values and run inference.py sequentially:
 # for k in "${topk_values[@]}"
 # do
@@ -35,7 +50,7 @@ batch_size=512
 for k in "${topk_values[@]}"
 do
 	echo "Starting inference.py with topK=${k} and dataset=${DATASET} in the background"
-	python -u inference.py -d "${DATASET}" -bs $batch_size -k "$k" > "inference_topK_${k}.log" 2>&1 &
+	python -u inference.py -d "${DATASET}" -bs $batch_size -k "$k" --device $device_id_with_max_memory > "inference_topK_${k}.log" 2>&1 &
 	echo "Started inference with topK = ${k} with PID $!"
 done
 

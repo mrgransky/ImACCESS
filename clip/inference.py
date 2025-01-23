@@ -8,13 +8,16 @@ parser.add_argument('--topK', '-k', type=int, default=1, help='TopK results')
 parser.add_argument('--batch_size', '-bs', type=int, default=512, help='batch size')
 parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar10', help='dataset (CIFAR10/cifar100)')
 parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
-
+parser.add_argument('--device', '-dv', type=str, default="cuda:0", help='device')
 args, unknown = parser.parse_known_args()
 print(args)
 
 # $ nohup python -u inference.py -d imagenet > /media/volume/ImACCESS/trash/prec_at_K.out &
+device = torch.device(args.device)
 
-def load_model(model_name:str="ViT-B/32", device:str="cuda:0"):
+USER = os.environ.get('USER')
+
+def load_model(model_name:str="ViT-B/32", device:str="cuda:0",):
 	model, preprocess = clip.load(model_name, device=device)
 	model = model.float()
 	input_resolution = model.visual.input_resolution
@@ -432,8 +435,6 @@ def get_image_to_images(dataset, model, preprocess, img_path:str="path/2/img.jpg
 
 @measure_execution_time
 def main():
-	device, _ = get_device_with_most_free_memory()
-	USER = os.environ.get('USER')
 	print(clip.available_models())
 
 	model, preprocess = load_model(
