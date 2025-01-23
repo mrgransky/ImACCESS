@@ -1,13 +1,13 @@
 from datasets_loader import *
 from utils import *
 
-parser = argparse.ArgumentParser(description="Evaluate CLIP for CIFAR10x")
+parser = argparse.ArgumentParser(description="Evaluate CLIP for different datasets")
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg", help='image path for zero shot classification')
 parser.add_argument('--query_label', '-ql', type=str, default="airplane", help='image path for zero shot classification')
 parser.add_argument('--topK', '-k', type=int, default=1, help='TopK results')
 parser.add_argument('--batch_size', '-bs', type=int, default=512, help='batch size')
-parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar10', help='Choose dataset (CIFAR10/cifar100)')
+parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar10', help='dataset (CIFAR10/cifar100)')
 parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 
 args, unknown = parser.parse_known_args()
@@ -83,7 +83,7 @@ def get_dataset(dname:str="CIFAR10", transorm=None):
 			root=ddir.get(USER),
 			train=False,
 			transform=transorm
-	)	
+		)
 	elif dname == 'CINIC10':
 		train_dataset = CINIC10(
 			root=ddir.get(USER),
@@ -334,12 +334,12 @@ def get_text_to_images(dataset, model, query:str="cat", topk:int=5, batch_size:i
 	print("-"*160)
 
 def get_text_to_images_precision_recall_at_(
-	dataset,
-	model,
-	K:int=5,
-	batch_size:int=1024,
-	device:str="cuda:0",
-):
+		dataset,
+		model,
+		K:int=5,
+		batch_size:int=1024,
+		device:str="cuda:0",
+	):
 	torch.cuda.empty_cache()  # Clear CUDA cache
 	print(f"Text-to-Image Retrieval {device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
 	labels = dataset.classes
@@ -450,14 +450,14 @@ def main():
 		transorm=preprocess,
 	)
 
-	# if USER == "farid":
-	# 	get_image_to_texts(
-	# 		dataset=valid_dataset,
-	# 		model=model,
-	# 		preprocess=preprocess,
-	# 		img_path=args.query_image,
-	# 		topk=args.topK,
-	# 	)
+	if USER == "farid":
+		get_image_to_texts(
+			dataset=valid_dataset,
+			model=model,
+			preprocess=preprocess,
+			img_path=args.query_image,
+			topk=args.topK,
+		)
 
 	get_linear_prob_zero_shot_accuracy(
 		train_dataset=train_dataset,
@@ -474,26 +474,26 @@ def main():
 		device=args.device,
 	)
 
-	# if USER == "farid":
-	# 	get_text_to_images(
-	# 		dataset=valid_dataset,
-	# 		model=model,
-	# 		preprocess=preprocess,
-	# 		query=args.query_label,
-	# 		topk=args.topK,
-	# 		batch_size=args.batch_size,
-	# 	)
+	if USER == "farid":
+		get_text_to_images(
+			dataset=valid_dataset,
+			model=model,
+			preprocess=preprocess,
+			query=args.query_label,
+			topk=args.topK,
+			batch_size=args.batch_size,
+		)
 
-	# if USER == "farid":
-	# 	for q in ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']:
-	# 		get_text_to_images(
-	# 			dataset=valid_dataset,
-	# 			model=model,
-	# 			preprocess=preprocess,
-	# 			query=q,
-	# 			topk=args.topK,
-	# 			batch_size=args.batch_size,
-	# 		)
+	if USER == "farid":
+		for q in ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']:
+			get_text_to_images(
+				dataset=valid_dataset,
+				model=model,
+				preprocess=preprocess,
+				query=q,
+				topk=args.topK,
+				batch_size=args.batch_size,
+			)
 
 	get_text_to_images_precision_recall_at_(
 		dataset=valid_dataset,

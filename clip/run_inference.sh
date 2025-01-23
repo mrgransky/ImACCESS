@@ -1,0 +1,33 @@
+#!/bin/bash
+
+## run using command:
+## $ nohup bash run_inference.sh > /dev/null 2>&1 &
+## $ nohup bash run_inference.sh > /media/volume/ImACCESS/trash/run_inference_logs.out &
+
+set -e # Exit immediately if a command exits with a non-zero status.
+set -u # Treat unset variables as an error and exit immediately.
+set -o pipefail # If any command in a pipeline fails, the entire pipeline will fail.
+
+user="`whoami`"
+stars=$(printf '%*s' 100 '')
+txt="$user began Slurm job: `date`"
+ch="#"
+echo -e "${txt//?/$ch}\n${txt}\n${txt//?/$ch}"
+echo "${stars// /*}"
+
+source $(conda info --base)/bin/activate py39
+
+topk_values=(1 5 10 15 20)
+DATASET="imagenet"
+
+# Loop through topK values and run inference.py
+for k in "${topk_values[@]}"
+do
+	echo "Running inference.py with topK=${K} and dataset=${DATASET}"
+	python inference.py -d "${DATASET}" -k $k
+	echo "Finished running inference with topK = $k"
+	echo "----------------------------------------"
+	sleep 1 # Add a short delay between runs
+done
+
+echo "All inference runs completed"
