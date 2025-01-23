@@ -19,7 +19,7 @@ source $(conda info --base)/bin/activate py39
 
 topk_values=(1 5 10 15 20)
 DATASET="imagenet"
-
+batch_size=2048
 # # Loop through topK values and run inference.py sequentially:
 # for k in "${topk_values[@]}"
 # do
@@ -35,7 +35,7 @@ DATASET="imagenet"
 for k in "${topk_values[@]}"
 do
 	echo "Starting inference.py with topK=${k} and dataset=${DATASET} in the background"
-	python -u inference.py -d "${DATASET}" -k "$k" > "inference_topK_${k}.log" 2>&1 &
+	python -u inference.py -d "${DATASET}" -bs $batch_size -k "$k" > "inference_topK_${k}.log" 2>&1 &
 	echo "Started inference with topK = ${k} with PID $!"
 done
 
