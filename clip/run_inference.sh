@@ -46,6 +46,7 @@ get_max_memory_gpu() {
 for k in "${topk_values[@]}"
 do
 	device_id_with_max_memory="cuda:$(get_max_memory_gpu)" # Get device with max memory
+	sleep 2 # Add a short delay between runs
 	echo "Starting inference.py with topK=${k} and dataset=${DATASET} in the background with device ${device_id_with_max_memory}"
 	python -u inference.py -d "${DATASET}" -bs $batch_size -k "$k" --device $device_id_with_max_memory > "inference_topK_${k}.log" 2>&1 &
 	echo "Started inference with topK = ${k} with PID $!"
