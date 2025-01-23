@@ -60,7 +60,7 @@ get_batch_size() {
   # # Note: the 2 below is completely a guesstimate, this needs to be measured
   # batch_size=$((batch_size / 2)) # 2 bytes per image
 
-	local batch_size=$((memory_free / 12)) # Adjust the divisor based on your model's memory requirements
+	local batch_size=$((memory_free / 16)) # Adjust the divisor based on your model's memory requirements
   
 	# Ensure batch size is at least 1.  But maybe 32 or 64 is better.
   if [[ $batch_size -lt 128 ]]; then
