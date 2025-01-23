@@ -2,7 +2,7 @@
 
 ## run using command:
 ## $ nohup bash run_inference.sh > /dev/null 2>&1 &
-## $ nohup bash run_inference.sh > /media/volume/ImACCESS/trash/run_inference_logs.out &
+## $ nohup bash run_inference.sh > /media/volume/ImACCESS/trash/run_inference_logs.out 2>&1 &
 
 set -e # Exit immediately if a command exits with a non-zero status.
 set -u # Treat unset variables as an error and exit immediately.
@@ -20,14 +20,23 @@ source $(conda info --base)/bin/activate py39
 topk_values=(1 5 10 15 20)
 DATASET="imagenet"
 
-# Loop through topK values and run inference.py
+# # Loop through topK values and run inference.py
+# for k in "${topk_values[@]}"
+# do
+# 	echo "Running inference.py with topK=${K} and dataset=${DATASET}"
+# 	python -u inference.py -d "${DATASET}" -k $k
+# 	echo "Finished running inference with topK = $k"
+# 	echo "----------------------------------------"
+# 	sleep 1 # Add a short delay between runs
+# done
+# echo "All inference runs completed"
+
 for k in "${topk_values[@]}"
 do
-	echo "Running inference.py with topK=${K} and dataset=${DATASET}"
-	python inference.py -d "${DATASET}" -k $k
-	echo "Finished running inference with topK = $k"
-	echo "----------------------------------------"
-	sleep 1 # Add a short delay between runs
+	echo "Starting inference.py with topK=${k} and dataset=${DATASET} in the background"
+	python -u inference.py -d "${DATASET}" -k "$k" > "inference_topK_${k}.log" 2>&1 &
+	echo "Started inference with topK = ${k} with PID $!"
 done
 
-echo "All inference runs completed"
+wait # Wait for all background processes to finish
+echo "All inference runs have been initiated in parallel."
