@@ -19,7 +19,7 @@ source $(conda info --base)/bin/activate py39
 
 topk_values=(1 5 10 15 20)
 DATASET="imagenet"
-batch_size=2048
+batch_size=512
 # # Loop through topK values and run inference.py sequentially:
 # for k in "${topk_values[@]}"
 # do
