@@ -2,7 +2,7 @@
 
 ## run using command:
 ## $ nohup bash run_inference.sh > /dev/null 2>&1 &
-## $ nohup bash run_inference.sh > /media/volume/ImACCESS/trash/run_inference_logs.out 2>&1 &
+## $ nohup bash run_inference.sh > /media/volume/ImACCESS/trash/run_inference_prec_at_k.out 2>&1 &
 
 set -e # Exit immediately if a command exits with a non-zero status.
 set -u # Treat unset variables as an error and exit immediately.
@@ -18,8 +18,9 @@ echo "${stars// /*}"
 source $(conda info --base)/bin/activate py39
 
 topk_values=(1 5 10 15 20)
-DATASET="imagenet"
-batch_size=2048
+DATASET="cifar10"
+batch_size=1024
+
 # Function to get GPU with most available memory
 get_max_memory_gpu() {
   local device=$(nvidia-smi --query-gpu=index,memory.free --format=csv,noheader,nounits |
@@ -48,7 +49,7 @@ do
 	device_id_with_max_memory="cuda:$(get_max_memory_gpu)" # Get device with max memory
 	echo "Starting inference.py with topK=${k} and dataset=${DATASET} in the background with device ${device_id_with_max_memory} : $(date)"
 	python -u inference.py -d "${DATASET}" -bs $batch_size -k "$k" --device $device_id_with_max_memory > "inference_topK_${k}.log" 2>&1 &
-	echo "Started inference with topK = ${k} with PID $!"
+	echo "==>> PID $!"
 	sleep 10 # Add a short delay between runs
 done
 
