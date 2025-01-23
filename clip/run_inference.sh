@@ -31,10 +31,6 @@ get_max_memory_gpu() {
   echo "$device"
 }
 
-# Get device with max memory
-device_id_with_max_memory="cuda:$(get_max_memory_gpu)"
-echo "Using GPU ${device_id_with_max_memory} with most available memory"
-
 # # Loop through topK values and run inference.py sequentially:
 # for k in "${topk_values[@]}"
 # do
@@ -49,7 +45,8 @@ echo "Using GPU ${device_id_with_max_memory} with most available memory"
 # Loop through topK values and run inference.py in the background(Parallel):
 for k in "${topk_values[@]}"
 do
-	echo "Starting inference.py with topK=${k} and dataset=${DATASET} in the background"
+	device_id_with_max_memory="cuda:$(get_max_memory_gpu)" # Get device with max memory
+	echo "Starting inference.py with topK=${k} and dataset=${DATASET} in the background with device ${device_id_with_max_memory}"
 	python -u inference.py -d "${DATASET}" -bs $batch_size -k "$k" --device $device_id_with_max_memory > "inference_topK_${k}.log" 2>&1 &
 	echo "Started inference with topK = ${k} with PID $!"
 done
