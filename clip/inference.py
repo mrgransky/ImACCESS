@@ -199,10 +199,10 @@ def get_image_to_texts(dataset, model, preprocess, img_path, topk:int=5, device:
 
 	with torch.no_grad():
 		image_features = model.encode_image(image_tensor)
+		image_features /= image_features.norm(dim=-1, keepdim=True)
+	
 		labels_features = model.encode_text(tokenized_labels_tensor)
-
-	image_features /= image_features.norm(dim=-1, keepdim=True)
-	labels_features /= labels_features.norm(dim=-1, keepdim=True)
+		labels_features /= labels_features.norm(dim=-1, keepdim=True)
 
 	similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
 	topk_pred_probs, topk_pred_labels_idx = similarities.topk(topk, dim=-1)
@@ -352,8 +352,10 @@ def get_text_to_images_precision_recall_at_(
 	print(f"Text-to-Image Retrieval {device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
 	labels = dataset.classes
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # <class 'torch.Tensor'> torch.Size([num_lbls, 77])
-	tokenized_labels_features = model.encode_text(tokenized_labels_tensor) # <class 'torch.Tensor'> torch.Size([num_lbls, 512])
-	tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)
+	with torch.no_grad():
+		tokenized_labels_features = model.encode_text(tokenized_labels_tensor) # <class 'torch.Tensor'> torch.Size([num_lbls, 512])
+		tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)
+
 	# Encode all the images
 	all_image_features = []
 	for i in range(0, len(dataset), batch_size):
@@ -460,31 +462,6 @@ def main():
 	)
 
 	if USER == "farid":
-		get_image_to_texts(
-			dataset=valid_dataset,
-			model=model,
-			preprocess=preprocess,
-			img_path=args.query_image,
-			topk=args.topK,
-		)
-
-	if args.topK == 1: # only Top-1 is used for zero-shot accuracy
-		get_linear_prob_zero_shot_accuracy(
-			train_dataset=train_dataset,
-			validation_dataset=valid_dataset,
-			model=model,
-			batch_size=args.batch_size,
-			device=device,
-		)
-
-	get_image_to_texts_precision_at_(
-		dataset=valid_dataset,
-		model=model,
-		K=args.topK,
-		device=device,
-	)
-
-	if USER == "farid":
 		get_text_to_images(
 			dataset=valid_dataset,
 			model=model,
@@ -510,6 +487,31 @@ def main():
 		model=model,
 		K=args.topK,
 		batch_size=args.batch_size,
+		device=device,
+	)
+
+	if USER == "farid":
+		get_image_to_texts(
+			dataset=valid_dataset,
+			model=model,
+			preprocess=preprocess,
+			img_path=args.query_image,
+			topk=args.topK,
+		)
+
+	if args.topK == 1: # only Top-1 is used for zero-shot accuracy
+		get_linear_prob_zero_shot_accuracy(
+			train_dataset=train_dataset,
+			validation_dataset=valid_dataset,
+			model=model,
+			batch_size=args.batch_size,
+			device=device,
+		)
+
+	get_image_to_texts_precision_at_(
+		dataset=valid_dataset,
+		model=model,
+		K=args.topK,
 		device=device,
 	)
 
