@@ -46,8 +46,8 @@ get_batch_size() {
     exit 1  # Or handle differently (e.g., default batch size, skip run)
   fi
 
-  # Memory is in MiB by default. Convert to bytes (1 MiB = 1024 * 1024 bytes)
-  local memory_free_bytes=$((memory_free * 1024 * 1024))
+  # # Memory is in MiB by default. Convert to bytes (1 MiB = 1024 * 1024 bytes)
+  # local memory_free_bytes=$((memory_free * 1024 * 1024))
 
   # # Model parameter count (replace with actual parameter count in bytes)
   # local model_param_size=100000000 # Example: 100 million parameters * 4 bytes/param
