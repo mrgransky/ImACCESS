@@ -5,7 +5,7 @@
 ## $ nohup bash run_inference.sh > /media/volume/ImACCESS/trash/run_inference_prec_at_k.out 2>&1 &
 
 ## run [local] server:
-## $ nohup bash run_inference.sh > logs/prec_at_k.out 2>&1 &
+## $ nohup bash run_inference.sh > prec_at_k.out 2>&1 &
 
 set -e # Exit immediately if a command exits with a non-zero status.
 set -u # Treat unset variables as an error and exit immediately.
@@ -19,7 +19,8 @@ echo -e "${txt//?/$ch}\n${txt}\n${txt//?/$ch}"
 echo "${stars// /*}"
 
 source $(conda info --base)/bin/activate py39
-
+LOGS_DIRECTORY="logs"
+mkdir -p $LOGS_DIRECTORY
 topk_values=(1 5 10 15 20)
 DATASET="imagenet"
 # batch_size=1024
@@ -87,7 +88,7 @@ do
 	# Calculate batch size dynamically based on the selected GPU's available memory
 	batch_size=$(get_batch_size $device_id)
 	echo "Starting inference.py with topK=${k} and dataset=${DATASET} batch_size=$batch_size in background ${device_id_with_max_memory} : $(date)"
-	python -u inference.py -d "${DATASET}" -bs $batch_size -k "$k" --device $device_id_with_max_memory > "logs/inference_topK_${k}.log" 2>&1 &
+	python -u inference.py -d "${DATASET}" -bs $batch_size -k "$k" --device $device_id_with_max_memory > "${LOGS_DIRECTORY}/inference_topK_${k}.log" 2>&1 &
 	echo "==>> PID $!"
 	sleep 10 # Add a short delay between runs
 done
