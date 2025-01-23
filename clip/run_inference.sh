@@ -1,11 +1,11 @@
 #!/bin/bash
 
+## run [local] server:
+## $ nohup bash run_inference.sh > prec_at_k.out 2>&1 &
+
 ## run [Pouta] server:
 ## $ nohup bash run_inference.sh > /dev/null 2>&1 &
 ## $ nohup bash run_inference.sh > /media/volume/ImACCESS/trash/run_inference_prec_at_k.out 2>&1 &
-
-## run [local] server:
-## $ nohup bash run_inference.sh > prec_at_k.out 2>&1 &
 
 set -e # Exit immediately if a command exits with a non-zero status.
 set -u # Treat unset variables as an error and exit immediately.
@@ -60,7 +60,7 @@ get_batch_size() {
   # # Note: the 2 below is completely a guesstimate, this needs to be measured
   # batch_size=$((batch_size / 2)) # 2 bytes per image
 
-	local batch_size=$((memory_free / 16)) # Adjust the divisor based on your model's memory requirements
+	local batch_size=$((memory_free / 24)) # Adjust the divisor based on your model's memory requirements
   
 	# Ensure batch size is at least 1.  But maybe 32 or 64 is better.
   if [[ $batch_size -lt 128 ]]; then
