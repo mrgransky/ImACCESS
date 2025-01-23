@@ -37,37 +37,39 @@ get_max_memory_gpu() {
 }
 
 get_batch_size() {
-  local device_id=$1
-  local memory_free=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits -i $device_id)
-
-  # Error check nvidia-smi
-  if [[ -z "$memory_free" || ! "$memory_free" =~ ^[0-9]+$ ]]; then
-    echo "Error: Could not retrieve free memory for GPU $device_id"
-    exit 1  # Or handle differently (e.g., default batch size, skip run)
-  fi
-
-  # # Memory is in MiB by default. Convert to bytes (1 MiB = 1024 * 1024 bytes)
-  # local memory_free_bytes=$((memory_free * 1024 * 1024))
-
-  # # Model parameter count (replace with actual parameter count in bytes)
-  # local model_param_size=100000000 # Example: 100 million parameters * 4 bytes/param
-  # # Assuming each weight is 4 bytes
-
-  # # Rough calculation:  (Free memory / (Memory per weight * num weights))
-  # local batch_size=$((memory_free_bytes / (4 * model_param_size) ))
-
-  # # Adjust batch size based on memory requirements per image
-  # # Note: the 2 below is completely a guesstimate, this needs to be measured
-  # batch_size=$((batch_size / 2)) # 2 bytes per image
-
-	local batch_size=$((memory_free / 24)) # Adjust the divisor based on your model's memory requirements
-  
-	# Ensure batch size is at least 1.  But maybe 32 or 64 is better.
-  if [[ $batch_size -lt 128 ]]; then
-    batch_size=128
-  fi
-
-  echo "$batch_size"
+	local device_id=$1
+	local memory_free=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits -i $device_id)
+	local total_memory=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits -i $device_id)
+	# Error checking
+	if [[ -z "$memory_free" || ! "$memory_free" =~ ^[0-9]+$ ]]; then
+		echo "Error: Could not retrieve free memory for GPU $device_id"
+		exit 1
+	fi
+	# Reserve some memory for CUDA runtime and other overhead (e.g., 1GB = 1024)
+	local reserved_memory=1024
+	local usable_memory=$((memory_free - reserved_memory))
+	# Approximate memory per sample (in MB) - adjust these values based on your model
+	local memory_per_sample=16  # Example: 16MB per sample
+	# Calculate maximum possible batch size based on available memory
+	local max_batch_size=$((usable_memory / memory_per_sample))
+	# Define batch size constraints
+	local min_batch_size=64	# Lower limit to prevent excessive overhead
+	local max_allowed_batch_size=2048  # Upper limit to prevent excessive memory usage
+	echo "GPU $device_id: Free Memory: ${memory_free}MB, Usable: ${usable_memory}MB"
+	echo "Max Batch Size: $max_batch_size)"
+	# Apply constraints and round to nearest power of 2
+	if ((max_batch_size < min_batch_size)); then
+		echo "$min_batch_size"
+	elif ((max_batch_size > max_allowed_batch_size)); then
+		echo "$max_allowed_batch_size"
+	else
+		# Round to nearest power of 2
+		local power=1
+		while ((power * 2 <= max_batch_size)); do
+			power=$((power * 2))
+		done
+		echo "$power"
+	fi
 }
 
 # # Loop through topK values and run inference.py sequentially:
