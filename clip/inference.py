@@ -26,7 +26,7 @@ def load_model(model_name:str="ViT-B/32", device:str="cuda:0"):
 	print("Vocab size:", vocab_size)
 	return model, preprocess
 
-def get_dataset(dname:str="CIFAR10", transorm=None):
+def get_dataset(dname:str="CIFAR10", transorm=None, USER:str="farid"):
 	if transorm is None:
 		# cusomized transformation:
 		T.Compose([
@@ -432,9 +432,8 @@ def get_image_to_images(dataset, model, preprocess, img_path:str="path/2/img.jpg
 
 @measure_execution_time
 def main():
-	USER = os.environ.get('USER')
 	device, _ = get_device_with_most_free_memory()
-
+	USER = os.environ.get('USER')
 	print(clip.available_models())
 
 	model, preprocess = load_model(
@@ -445,6 +444,7 @@ def main():
 	train_dataset, valid_dataset = get_dataset(
 		dname=args.dataset,
 		transorm=preprocess,
+		USER=USER,
 	)
 
 	if USER == "farid":
