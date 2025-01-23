@@ -21,7 +21,7 @@ echo "${stars// /*}"
 source $(conda info --base)/bin/activate py39
 
 topk_values=(1 5 10 15 20)
-DATASET="cifar10"
+DATASET="imagenet"
 # batch_size=1024
 
 # Function to get GPU with most available memory
