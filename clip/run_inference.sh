@@ -49,18 +49,20 @@ get_batch_size() {
   # Memory is in MiB by default. Convert to bytes (1 MiB = 1024 * 1024 bytes)
   local memory_free_bytes=$((memory_free * 1024 * 1024))
 
-  # Model parameter count (replace with actual parameter count in bytes)
-  local model_param_size=100000000 # Example: 100 million parameters * 4 bytes/param
-  # Assuming each weight is 4 bytes
+  # # Model parameter count (replace with actual parameter count in bytes)
+  # local model_param_size=100000000 # Example: 100 million parameters * 4 bytes/param
+  # # Assuming each weight is 4 bytes
 
-  # Rough calculation:  (Free memory / (Memory per weight * num weights))
-  local batch_size=$((memory_free_bytes / (4 * model_param_size) ))
+  # # Rough calculation:  (Free memory / (Memory per weight * num weights))
+  # local batch_size=$((memory_free_bytes / (4 * model_param_size) ))
 
-  # Adjust batch size based on memory requirements per image
-  # Note: the 2 below is completely a guesstimate, this needs to be measured
-  batch_size=$((batch_size / 2)) # 2 bytes per image
+  # # Adjust batch size based on memory requirements per image
+  # # Note: the 2 below is completely a guesstimate, this needs to be measured
+  # batch_size=$((batch_size / 2)) # 2 bytes per image
 
-  # Ensure batch size is at least 1.  But maybe 32 or 64 is better.
+	local batch_size=$((memory_free / 4)) # Adjust the divisor based on your model's memory requirements
+  
+	# Ensure batch size is at least 1.  But maybe 32 or 64 is better.
   if [[ $batch_size -lt 64 ]]; then
     batch_size=64
   fi
