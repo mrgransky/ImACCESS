@@ -21,7 +21,7 @@ echo "${stars// /*}"
 source $(conda info --base)/bin/activate py39
 LOGS_DIRECTORY="logs"
 mkdir -p $LOGS_DIRECTORY
-topk_values=(1 5 10 15 20)
+topk_values=(20 15 10 5 1)
 DATASET="imagenet"
 # batch_size=1024
 
