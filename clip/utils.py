@@ -18,6 +18,25 @@ from sklearn.linear_model import LogisticRegression
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+def get_device_with_most_free_memory():
+	if torch.cuda.is_available():
+		# print(f"Available GPU(s)| torch = {torch.cuda.device_count()} | CuPy: {cp.cuda.runtime.getDeviceCount()}")
+		max_free_memory = 0
+		selected_device = 0
+		for i in range(torch.cuda.device_count()):
+			torch.cuda.set_device(i)
+			free_memory = torch.cuda.mem_get_info()[0]
+			if free_memory > max_free_memory:
+				max_free_memory = free_memory
+				selected_device = i
+		device = torch.device(f"cuda:{selected_device}")
+		print(f"Selected GPU: cuda:{selected_device} with {max_free_memory / 1024**3:.2f} GB free memory")
+	else:
+		device = torch.device("cpu")
+		selected_device = None
+		print("No GPU available ==>> using CPU")
+	return device, selected_device
+
 def format_elapsed_time(seconds):
 	"""
 	Convert elapsed time in seconds to DD-HH-MM-SS format.

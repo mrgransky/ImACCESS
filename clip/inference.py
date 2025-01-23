@@ -2,7 +2,6 @@ from datasets_loader import *
 from utils import *
 
 parser = argparse.ArgumentParser(description="Evaluate CLIP for different datasets")
-parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg", help='image path for zero shot classification')
 parser.add_argument('--query_label', '-ql', type=str, default="airplane", help='image path for zero shot classification')
 parser.add_argument('--topK', '-k', type=int, default=1, help='TopK results')
@@ -13,12 +12,7 @@ parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='C
 args, unknown = parser.parse_known_args()
 print(args)
 
-args.device = torch.device(args.device)
-
 # $ nohup python -u inference.py -d imagenet > /media/volume/ImACCESS/trash/prec_at_K.out &
-
-USER = os.getenv('USER')
-print(f"USER: {USER} device: {args.device}")
 
 def load_model(model_name:str="ViT-B/32", device:str="cuda:0"):
 	model, preprocess = clip.load(model_name, device=device)
@@ -438,11 +432,14 @@ def get_image_to_images(dataset, model, preprocess, img_path:str="path/2/img.jpg
 
 @measure_execution_time
 def main():
+	USER = os.environ.get('USER')
+	device, _ = get_device_with_most_free_memory()
+
 	print(clip.available_models())
 
 	model, preprocess = load_model(
 		model_name=args.model_name, 
-		device=args.device,
+		device=device,
 	)
 
 	train_dataset, valid_dataset = get_dataset(
@@ -464,14 +461,14 @@ def main():
 		validation_dataset=valid_dataset,
 		model=model,
 		batch_size=args.batch_size,
-		device=args.device,
+		device=device,
 	)
 
 	get_image_to_texts_precision_at_(
 		dataset=valid_dataset,
 		model=model,
 		K=args.topK,
-		device=args.device,
+		device=device,
 	)
 
 	if USER == "farid":
@@ -500,7 +497,7 @@ def main():
 		model=model,
 		K=args.topK,
 		batch_size=args.batch_size,
-		device=args.device,
+		device=device,
 	)
 
 if __name__ == "__main__":

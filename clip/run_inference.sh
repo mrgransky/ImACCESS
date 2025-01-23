@@ -20,7 +20,7 @@ source $(conda info --base)/bin/activate py39
 topk_values=(1 5 10 15 20)
 DATASET="imagenet"
 
-# # Loop through topK values and run inference.py
+# # Loop through topK values and run inference.py sequentially:
 # for k in "${topk_values[@]}"
 # do
 # 	echo "Running inference.py with topK=${K} and dataset=${DATASET}"
@@ -31,6 +31,7 @@ DATASET="imagenet"
 # done
 # echo "All inference runs completed"
 
+# Loop through topK values and run inference.py in the background(Parallel):
 for k in "${topk_values[@]}"
 do
 	echo "Starting inference.py with topK=${k} and dataset=${DATASET} in the background"
