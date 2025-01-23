@@ -15,7 +15,7 @@ print(args)
 
 args.device = torch.device(args.device)
 
-# $ nohup python -u inference.py > /media/volume/ImACCESS/trash/prec_at_K.out &
+# $ nohup python -u inference.py -d imagenet > /media/volume/ImACCESS/trash/prec_at_K.out &
 
 USER = os.getenv('USER')
 print(f"USER: {USER} device: {args.device}")
@@ -333,9 +333,15 @@ def get_text_to_images(dataset, model, query:str="cat", topk:int=5, batch_size:i
 	)
 	print("-"*160)
 
-def get_text_to_images_precision_recall_at_(dataset, model, K:int=5, batch_size:int=1024, device:str="cuda:0"):
+def get_text_to_images_precision_recall_at_(
+	dataset,
+	model,
+	K:int=5,
+	batch_size:int=1024,
+	device:str="cuda:0",
+):
 	torch.cuda.empty_cache()  # Clear CUDA cache
-	print(f"Image Retrieval {device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
+	print(f"Text-to-Image Retrieval {device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
 	labels = dataset.classes
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # <class 'torch.Tensor'> torch.Size([num_lbls, 77])
 	tokenized_labels_features = model.encode_text(tokenized_labels_tensor) # <class 'torch.Tensor'> torch.Size([num_lbls, 512])
@@ -433,17 +439,25 @@ def get_image_to_images(dataset, model, preprocess, img_path:str="path/2/img.jpg
 @measure_execution_time
 def main():
 	print(clip.available_models())
-	model, preprocess = load_model(model_name=args.model_name, device=args.device)
-	train_dataset, valid_dataset = get_dataset(dname=args.dataset, transorm=preprocess)
 
-	if USER == "farid":
-		get_image_to_texts(
-			dataset=valid_dataset,
-			model=model,
-			preprocess=preprocess,
-			img_path=args.query_image,
-			topk=args.topK,
-		)
+	model, preprocess = load_model(
+		model_name=args.model_name, 
+		device=args.device,
+	)
+
+	train_dataset, valid_dataset = get_dataset(
+		dname=args.dataset,
+		transorm=preprocess,
+	)
+
+	# if USER == "farid":
+	# 	get_image_to_texts(
+	# 		dataset=valid_dataset,
+	# 		model=model,
+	# 		preprocess=preprocess,
+	# 		img_path=args.query_image,
+	# 		topk=args.topK,
+	# 	)
 
 	get_linear_prob_zero_shot_accuracy(
 		train_dataset=train_dataset,
@@ -453,12 +467,12 @@ def main():
 		device=args.device,
 	)
 
-	# get_image_to_texts_precision_at_(
-	# 	dataset=valid_dataset,
-	# 	model=model,
-	# 	K=args.topK,
-	# 	device=args.device,
-	# )
+	get_image_to_texts_precision_at_(
+		dataset=valid_dataset,
+		model=model,
+		K=args.topK,
+		device=args.device,
+	)
 
 	# if USER == "farid":
 	# 	get_text_to_images(

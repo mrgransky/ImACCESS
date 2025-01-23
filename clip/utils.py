@@ -17,14 +17,13 @@ from sklearn.metrics import precision_recall_curve, roc_curve, auc
 from sklearn.linear_model import LogisticRegression
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from datetime import timedelta
 
 def format_elapsed_time(seconds):
 	"""
 	Convert elapsed time in seconds to DD-HH-MM-SS format.
 	"""
 	# Create a timedelta object from the elapsed seconds
-	elapsed_time = timedelta(seconds=seconds)
+	elapsed_time = datetime.timedelta(seconds=seconds)
 	# Extract days, hours, minutes, and seconds
 	days = elapsed_time.days
 	hours, remainder = divmod(elapsed_time.seconds, 3600)
