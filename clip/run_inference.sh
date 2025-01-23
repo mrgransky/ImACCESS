@@ -57,7 +57,7 @@ get_batch_size() {
 		local max_batch_size=$((usable_memory / memory_per_sample))
 
 		# Define batch size constraints
-		local min_batch_size=64
+		local min_batch_size=128
 		local max_allowed_batch_size=2048  # Upper limit to prevent excessive memory usage
 
 		# Apply constraints and round to nearest power of 2

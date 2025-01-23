@@ -4,7 +4,7 @@ from utils import *
 parser = argparse.ArgumentParser(description="Evaluate CLIP for different datasets")
 parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg", help='image path for zero shot classification')
 parser.add_argument('--query_label', '-ql', type=str, default="airplane", help='image path for zero shot classification')
-parser.add_argument('--topK', '-k', type=int, default=1, help='TopK results')
+parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
 parser.add_argument('--batch_size', '-bs', type=int, default=512, help='batch size')
 parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar10', help='dataset (CIFAR10/cifar100)')
 parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
@@ -217,14 +217,20 @@ def get_image_to_texts_precision_at_(dataset, model, K:int=5, device:str="cuda:0
 	if K > len(labels):
 		print(f"ERROR: requested Top-{K} labeling is greater than number of labels({len(labels)}) => EXIT...")
 		return
+
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
-	labels_features = model.encode_text(tokenized_labels_tensor)
-	labels_features /= labels_features.norm(dim=-1, keepdim=True)
+	
+	# Encode text labels without gradient tracking:
+	with torch.no_grad(): # prevent GPU memory issues
+		labels_features = model.encode_text(tokenized_labels_tensor)
+		labels_features /= labels_features.norm(dim=-1, keepdim=True)
+
+	print(f"Labels: {len(labels)} => lable_features: {labels_features.shape}")
 
 	predicted_labels = []
 	true_labels = []
-	floop_st = time.time()
 
+	floop_st = time.time()
 	with torch.no_grad():
 		for i, data in enumerate(dataset):
 			img_tensor, gt_lbl = data # <class 'torch.Tensor'> torch.Size([3, 224, 224]) <class 'int'>
