@@ -8,6 +8,14 @@ import re
 import argparse
 import random
 import numpy as np
+import pandas as pd
+import gzip
+import pickle
+import dill
+import torch.nn.functional as F
+import torchvision.transforms as T
+import torchvision.datasets as datasets
+import torchvision.models as models
 import matplotlib.pyplot as plt
 
 from PIL import Image
@@ -17,6 +25,52 @@ from sklearn.metrics import precision_recall_curve, roc_curve, auc
 from sklearn.linear_model import LogisticRegression
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from collections import defaultdict
+
+def save_pickle(pkl, fname:str=""):
+	print(f"\nSaving {type(pkl)}\n{fname}")
+	st_t = time.time()
+	if isinstance(pkl, dict):
+		with open(fname, mode="w") as f:
+			json.dump(pkl, f)
+	elif isinstance(pkl, ( pd.DataFrame, pd.Series ) ):
+		pkl.to_pickle(path=fname)
+	else:
+		# with open(fname , mode="wb") as f:
+		with gzip.open(fname , mode="wb") as f:
+			dill.dump(pkl, f)
+	elpt = time.time()-st_t
+	fsize_dump = os.path.getsize(fname) / 1e6
+	print(f"Elapsed_t: {elpt:.3f} s | {fsize_dump:.2f} MB".center(120, " "))
+
+def load_pickle(fpath: str) -> object:
+	print(f"Loading {fpath}")
+	if not os.path.exists(fpath):
+		raise FileNotFoundError(f"File not found: {fpath}")
+	start_time = time.time()
+	try:
+		with open(fpath, mode='r') as f:
+			pickle_obj = json.load(f)
+	except Exception as exerror:
+		# print(f"not a JSON file: {exerror}")
+		try:
+			with gzip.open(fpath, mode='rb') as f:
+				pickle_obj = dill.load(f)
+		except gzip.BadGzipFile as ee:
+			print(f"Error BadGzipFile: {ee}")
+			with open(fpath, mode='rb') as f:
+				pickle_obj = dill.load(f)
+		except Exception as eee:
+			print(f"Error dill: {eee}")
+			try:
+				pickle_obj = pd.read_pickle(fpath)
+			except Exception as err:
+				print(f"Error pandas pkl: {err}")
+				raise
+	elapsed_time = time.time() - start_time
+	file_size_mb = os.path.getsize(fpath) / 1e6
+	print(f"Elapsed_t: {elapsed_time:.3f} s | {type(pickle_obj)} | {file_size_mb:.3f} MB".center(150, " "))
+	return pickle_obj
 
 def get_device_with_most_free_memory():
 	if torch.cuda.is_available():

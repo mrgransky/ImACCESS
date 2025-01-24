@@ -5,7 +5,7 @@
 
 ## run [Pouta] server:
 ## $ nohup bash run_inference.sh > /dev/null 2>&1 &
-## $ nohup bash run_inference.sh > /media/volume/ImACCESS/trash/run_inference_prec_at_k.out 2>&1 &
+## $ nohup bash run_inference.sh > /media/volume/ImACCESS/trash/prec_at_k.out 2>&1 &
 
 set -e # Exit immediately if a command exits with a non-zero status.
 set -u # Treat unset variables as an error and exit immediately.
@@ -24,7 +24,7 @@ mkdir -p $LOGS_DIRECTORY
 topk_values=(20 15 10 5 1)
 DATASET="imagenet"
 # batch_size=1024
-
+number_of_workers=40
 # Function to get GPU with most available memory
 get_max_memory_gpu() {
 	local device=$(nvidia-smi --query-gpu=index,memory.free --format=csv,noheader,nounits |
@@ -98,12 +98,12 @@ get_batch_size() {
 for k in "${topk_values[@]}"
 do
 	device_id=$(get_max_memory_gpu) # Get device with max memory
-	device_id_with_max_memory="cuda:${device_id}"
+	device_with_max_mem="cuda:${device_id}"
 	
 	# Calculate batch size dynamically based on the selected GPU's available memory
 	batch_size=$(get_batch_size $device_id)
-	echo "Starting inference.py with topK=${k} and dataset=${DATASET} batch_size=$batch_size in background ${device_id_with_max_memory} : $(date)"
-	python -u inference.py -d "${DATASET}" -bs $batch_size -k "$k" --device $device_id_with_max_memory > "${LOGS_DIRECTORY}/inference_topK_${k}.log" 2>&1 &
+	echo "Starting inference.py with topK=${k} and dataset=${DATASET} batch_size=$batch_size in background ${device_with_max_mem} : $(date)"
+	python -u inference.py -d "${DATASET}" -nw $number_of_workers -bs $batch_size -k "$k" --device $device_with_max_mem > "${LOGS_DIRECTORY}/inference_topK_${k}.log" 2>&1 &
 	echo "==>> PID $!"
 	sleep 10 # Add a short delay between runs
 done

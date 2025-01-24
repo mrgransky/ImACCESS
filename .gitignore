@@ -28,6 +28,10 @@ wgui/media/*jpg
 wgui/media/*png
 wgui/media/*jpeg
 
+clip/cifar10
+clip/cifar100
+clip/imagenet
+
 __pycache__/
 *.py[cod]
 *$py.class

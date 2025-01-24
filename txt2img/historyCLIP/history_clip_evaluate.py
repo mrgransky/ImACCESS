@@ -22,8 +22,8 @@ args.device = torch.device(args.device)
 USER = os.getenv('USER')
 print(f"USER: {USER} device: {args.device}")
 
-outputs_dir = os.path.join(args.dataset_dir, "outputs",)
-os.makedirs(outputs_dir, exist_ok=True)
+OUTPUT_DIRECTORY = os.path.join(args.dataset_dir, "outputs",)
+os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
 def load_model(model_name:str="ViT-B/32", device:str="cuda:0"):
 	model, preprocess = clip.load(model_name, device=device)
@@ -205,7 +205,7 @@ def get_image_to_texts(dataset, model, preprocess, img_path, topk:int=5, device:
 	plt.title(f'Top-{topk} predicted labels: {[labels[i] for i in topk_pred_labels_idx.cpu().numpy().flatten()]}', fontsize=15)
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(outputs_dir, f'Img2Txt_Top{topk}_LBLs_IMG_{img_hash}_dataset_{os.path.basename(args.dataset_dir)}.png'),
+		fname=os.path.join(OUTPUT_DIRECTORY, f'Img2Txt_Top{topk}_LBLs_IMG_{img_hash}_dataset_{os.path.basename(args.dataset_dir)}.png'),
 		dpi=250,
 		bbox_inches='tight',
 	)
@@ -227,8 +227,9 @@ def get_image_to_texts_precision_at_(dataset, model, preprocess, K:int=5, device
 	print(len(dataset_images_id), len(dataset_labels))
 	
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
-	labels_features = model.encode_text(tokenized_labels_tensor)
-	labels_features /= labels_features.norm(dim=-1, keepdim=True)
+	with torch.no_grad():
+		labels_features = model.encode_text(tokenized_labels_tensor)
+		labels_features /= labels_features.norm(dim=-1, keepdim=True)
 
 	predicted_labels = []
 	true_labels = []
@@ -343,15 +344,23 @@ def get_text_to_images(dataset, model, preprocess, query:str="cat", topk:int=5, 
 				
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(outputs_dir, f"Txt2Img_Top{topk}_IMGs_dataset_{os.path.basename(args.dataset_dir)}_query_{re.sub(' ', '_', query)}.png"),
+		fname=os.path.join(OUTPUT_DIRECTORY, f"Txt2Img_Top{topk}_IMGs_dataset_{os.path.basename(args.dataset_dir)}_query_{re.sub(' ', '_', query)}.png"),
 		dpi=250,
 		bbox_inches='tight',
 	)
 	plt.close()
 	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 
-def get_text_to_images_precision_recall_at_(dataset, model, preprocess, K: int = 5, batch_size: int=64, device:str="cuda:0"):
-	print(f"Image Retrieval {device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
+def get_text_to_images_precision_recall_at_(
+	dataset,
+	model,
+	preprocess,
+	K:int=5,
+	batch_size:int=64,
+	device:str="cuda:0",
+	):
+	print(f"Text-to-Image Retrieval {device} CLIP batch_size: {batch_size} [performance metrics: Precision@{K}]".center(160, " "))
+	torch.cuda.empty_cache()  # Clear CUDA cache
 	t0 = time.time()
 	labels = list(set(dataset["label"].tolist()))
 	print(len(labels), type(labels))
@@ -361,10 +370,11 @@ def get_text_to_images_precision_recall_at_(dataset, model, preprocess, K: int =
 	dataset_labels = dataset["label"].tolist()
 	dataset_labels_int = dataset["label_int"].tolist()
 	print(len(dataset_images_id), len(dataset_labels))
-
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
-	tokenized_labels_features = model.encode_text(tokenized_labels_tensor)
-	tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)
+	with torch.no_grad():
+		tokenized_labels_features = model.encode_text(tokenized_labels_tensor)
+		tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)
+
 	image_features_file = os.path.join(args.dataset_dir, 'outputs', 'validation_image_features.gz')
 	if not os.path.exists(image_features_file):
 		dataset_images_features = []
@@ -548,7 +558,7 @@ def get_image_to_images(dataset, query_image_path, model, preprocess, topk: int,
 	plt.suptitle(f"Image-to-Image(s) [Top-{topk}] Retrieval\n{os.path.basename(args.dataset_dir)}", fontsize=12)
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(outputs_dir, f"Img2Img_Top{topk}_IMGs_{os.path.basename(args.dataset_dir)}.png"),
+		fname=os.path.join(OUTPUT_DIRECTORY, f"Img2Img_Top{topk}_IMGs_{os.path.basename(args.dataset_dir)}.png"),
 		dpi=250,
 		bbox_inches='tight',
 	)
