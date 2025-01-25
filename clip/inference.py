@@ -612,6 +612,16 @@ def main():
 				batch_size=args.batch_size,
 			)
 
+	if args.topK == 1: # only Top-1 is used for zero-shot accuracy
+		get_linear_prob_zero_shot_accuracy(
+			train_dataset=train_dataset,
+			validation_dataset=valid_dataset,
+			model=model,
+			batch_size=args.batch_size,
+			device=device,
+			num_workers=args.num_workers,
+		)
+
 	get_text_to_images_precision_recall_at_(
 		dataset=valid_dataset,
 		model=model,
@@ -627,16 +637,6 @@ def main():
 			preprocess=preprocess,
 			img_path=args.query_image,
 			topk=args.topK,
-		)
-
-	if args.topK == 1: # only Top-1 is used for zero-shot accuracy
-		get_linear_prob_zero_shot_accuracy(
-			train_dataset=train_dataset,
-			validation_dataset=valid_dataset,
-			model=model,
-			batch_size=args.batch_size,
-			device=device,
-			num_workers=args.num_workers,
 		)
 
 	get_image_to_texts_precision_at_(
