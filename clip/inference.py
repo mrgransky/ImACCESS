@@ -14,7 +14,7 @@ parser.add_argument('--visualize', '-v', action='store_true', help='visualize th
 args, unknown = parser.parse_known_args()
 print(args)
 
-# $ nohup python -u inference.py -d imagenet -k 1 -bs 256 -nw 40 > /media/volume/ImACCESS/trash/prec_at_k.out &
+# $ nohup python -u inference.py -d imagenet -k 1 -bs 256 -nw 8 > /media/volume/ImACCESS/trash/prec_at_k.out &
 device = torch.device(args.device)
 USER = os.environ.get('USER')
 OUTPUT_DIRECTORY = os.path.join(args.dataset, "outputs")
@@ -124,23 +124,28 @@ def get_features(
 	):
 	all_features = []
 	all_labels = []
-	torch.cuda.empty_cache() # Clear CUDA cache before starting the loop
 	dataloader = DataLoader(
 		dataset=dataset,
 		batch_size=batch_size,
 		num_workers=nw,
 		pin_memory=True, # Move data to GPU faster if using CUDA
 		persistent_workers=True if nw > 1 else False,  # Keep workers alive if memory allows
+		shuffle=False,  # Shuffle is not necessary during feature extraction
 	) # <class 'torch.Tensor'> torch.Size([b, 512]), <class 'torch.Tensor'> torch.Size([b])
+	# torch.cuda.empty_cache() # Clear CUDA cache before starting the loop
 	with torch.no_grad():
 		for i, (images, labels) in enumerate(tqdm(dataloader, desc="Extracting features")):
-			features = model.encode_image(images.to(device)) # <class 'torch.Tensor'> torch.Size([b, 512])
-			all_features.append(features)
+			images = images.to(device, non_blocking=True)  # non_blocking for potential faster async transfers
+			features = model.encode_image(images) # <class 'torch.Tensor'> torch.Size([b, 512])
+			# all_features.append(features)
+			all_features.append(features.cpu())
 			all_labels.append(labels)
-			if (i+1) % 10 == 0:
+			if (i+1) % 5 == 0:
 				torch.cuda.empty_cache() # Clear CUDA cache after each batch
-	all_features = torch.cat(all_features).cpu().numpy()
-	all_labels = torch.cat(all_labels).cpu().numpy()
+	# all_features = torch.cat(all_features).cpu().numpy()
+	# all_labels = torch.cat(all_labels).cpu().numpy()
+	all_features = torch.cat(all_features).numpy()
+	all_labels = torch.cat(all_labels).numpy()
 	return all_features, all_labels
 
 def get_linear_prob_zero_shot_accuracy(
