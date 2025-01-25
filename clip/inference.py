@@ -14,7 +14,7 @@ parser.add_argument('--visualize', '-v', action='store_true', help='visualize th
 args, unknown = parser.parse_known_args()
 print(args)
 
-# $ nohup python -u inference.py -d imagenet > /media/volume/ImACCESS/trash/prec_at_K.out &
+# $ nohup python -u inference.py -d imagenet -k 1 > /media/volume/ImACCESS/trash/prec_at_K.out &
 device = torch.device(args.device)
 USER = os.environ.get('USER')
 OUTPUT_DIRECTORY = os.path.join(args.dataset, "outputs")
