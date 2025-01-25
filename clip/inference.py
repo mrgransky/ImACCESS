@@ -5,7 +5,7 @@ parser = argparse.ArgumentParser(description="Evaluate CLIP for different datase
 parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg", help='image path for zero shot classification')
 parser.add_argument('--query_label', '-ql', type=str, default="airplane", help='image path for zero shot classification')
 parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
-parser.add_argument('--batch_size', '-bs', type=int, default=1024, help='batch size')
+parser.add_argument('--batch_size', '-bs', type=int, default=256, help='batch size')
 parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar10', help='dataset (CIFAR10/cifar100)')
 parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 parser.add_argument('--device', '-dv', type=str, default="cuda:0", help='device')
@@ -125,19 +125,20 @@ def get_features(
 	all_features = []
 	all_labels = []
 	torch.cuda.empty_cache() # Clear CUDA cache before starting the loop
+	dataloader = DataLoader(
+		dataset=dataset,
+		batch_size=batch_size,
+		num_workers=nw,
+		pin_memory=True, # Move data to GPU faster if using CUDA
+		persistent_workers=True if nw > 1 else False,  # Keep workers alive if memory allows
+	) # <class 'torch.Tensor'> torch.Size([b, 512]), <class 'torch.Tensor'> torch.Size([b])
 	with torch.no_grad():
-		dataloader = DataLoader(
-			dataset=dataset,
-			batch_size=batch_size,
-			num_workers=nw,
-			pin_memory=True, # Move data to GPU faster if using CUDA
-			persistent_workers=True if nw > 1 else False,  # Keep workers alive if memory allows
-		) # <class 'torch.Tensor'> torch.Size([b, 512]), <class 'torch.Tensor'> torch.Size([b])
-		for images, labels in tqdm(dataloader):
+		for i, (images, labels) in enumerate(tqdm(dataloader, desc="Extracting features")):
 			features = model.encode_image(images.to(device)) # <class 'torch.Tensor'> torch.Size([b, 512])
 			all_features.append(features)
 			all_labels.append(labels)
-			torch.cuda.empty_cache() # Clear CUDA cache after each batch
+			if (i+1) % 10 == 0:
+				torch.cuda.empty_cache() # Clear CUDA cache after each batch
 	all_features = torch.cat(all_features).cpu().numpy()
 	all_labels = torch.cat(all_labels).cpu().numpy()
 	return all_features, all_labels
