@@ -5,7 +5,7 @@ parser = argparse.ArgumentParser(description="Evaluate CLIP for different datase
 parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/dog.jpeg", help='image path for zero shot classification')
 parser.add_argument('--query_label', '-ql', type=str, default="airplane", help='image path for zero shot classification')
 parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
-parser.add_argument('--batch_size', '-bs', type=int, default=512, help='batch size')
+parser.add_argument('--batch_size', '-bs', type=int, default=1024, help='batch size')
 parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar10', help='dataset (CIFAR10/cifar100)')
 parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 parser.add_argument('--device', '-dv', type=str, default="cuda:0", help='device')
@@ -14,7 +14,7 @@ parser.add_argument('--visualize', '-v', action='store_true', help='visualize th
 args, unknown = parser.parse_known_args()
 print(args)
 
-# $ nohup python -u inference.py -d imagenet -k 1 > /media/volume/ImACCESS/trash/prec_at_K.out &
+# $ nohup python -u inference.py -d imagenet -k 1 -bs 256 -nw 40 > /media/volume/ImACCESS/trash/prec_at_k.out &
 device = torch.device(args.device)
 USER = os.environ.get('USER')
 OUTPUT_DIRECTORY = os.path.join(args.dataset, "outputs")
@@ -124,21 +124,23 @@ def get_features(
 	):
 	all_features = []
 	all_labels = []
-	torch.cuda.empty_cache()  # Clear CUDA cache before starting the loop
+	torch.cuda.empty_cache() # Clear CUDA cache before starting the loop
 	with torch.no_grad():
-		for images, labels in tqdm( # <class 'torch.Tensor'> torch.Size([b, 512]), <class 'torch.Tensor'> torch.Size([b])
-				DataLoader(
-					dataset=dataset,
-					batch_size=batch_size,
-					num_workers=nw,
-					pin_memory=True, # Move data to GPU faster if using CUDA
-					persistent_workers=True if nw > 1 else False,  # Keep workers alive if memory allows
-				)
-			):
+		dataloader = DataLoader(
+			dataset=dataset,
+			batch_size=batch_size,
+			num_workers=nw,
+			pin_memory=True, # Move data to GPU faster if using CUDA
+			persistent_workers=True if nw > 1 else False,  # Keep workers alive if memory allows
+		) # <class 'torch.Tensor'> torch.Size([b, 512]), <class 'torch.Tensor'> torch.Size([b])
+		for images, labels in tqdm(dataloader):
 			features = model.encode_image(images.to(device)) # <class 'torch.Tensor'> torch.Size([b, 512])
 			all_features.append(features)
 			all_labels.append(labels)
-	return torch.cat(all_features).cpu().numpy(), torch.cat(all_labels).cpu().numpy()
+			torch.cuda.empty_cache() # Clear CUDA cache after each batch
+	all_features = torch.cat(all_features).cpu().numpy()
+	all_labels = torch.cat(all_labels).cpu().numpy()
+	return all_features, all_labels
 
 def get_linear_prob_zero_shot_accuracy(
 		train_dataset,
@@ -151,7 +153,7 @@ def get_linear_prob_zero_shot_accuracy(
 	# calculates top-1 accuracy for both the linear probe and zero-shot classification tasks
 	print(f"Getting training features", end="\t")
 	t0 = time.time()
-	torch.cuda.empty_cache()  # Clear CUDA cache
+	torch.cuda.empty_cache() # Clear CUDA cache
 	train_features, train_labels = get_features(
 		dataset=train_dataset,
 		model=model,
