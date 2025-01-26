@@ -14,7 +14,7 @@ parser.add_argument('--visualize', '-v', action='store_true', help='visualize th
 args, unknown = parser.parse_known_args()
 print(args)
 
-# $ nohup python -u inference.py -d imagenet -k 1 -bs 256 -nw 8 > /media/volume/ImACCESS/trash/prec_at_k.out &
+# $ nohup python -u inference.py -d imagenet -k 1 -bs 1024 -nw 8 > /media/volume/ImACCESS/trash/prec_at_k.out &
 device = torch.device(args.device)
 USER = os.environ.get('USER')
 OUTPUT_DIRECTORY = os.path.join(args.dataset, "outputs")
@@ -156,7 +156,6 @@ def get_linear_prob_zero_shot_accuracy(
 		device:str="cuda:0",
 		num_workers:int=8,
 	):
-	# calculates top-1 accuracy for both the linear probe and zero-shot classification tasks
 	print(f"Getting training features", end="\t")
 	t0 = time.time()
 	torch.cuda.empty_cache() # Clear CUDA cache
