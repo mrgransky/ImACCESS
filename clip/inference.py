@@ -440,6 +440,7 @@ def get_text_to_images_precision_recall_at_(
 		save_pickle(pkl=dataset_images_features, fname=image_features_file)
 	else:
 		dataset_images_features = load_pickle(image_features_file)
+		dataset_images_features = dataset_images_features.to(device)  # <--- Fix: Move to current device
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec => dataset_images_features: {dataset_images_features.shape}")
 	###################################### Wrong approach for P@K and R@K ######################################
 	# it is rather accuracy or hit rate!
@@ -502,41 +503,7 @@ def get_text_to_images_precision_recall_at_(
 	print(f"Recall@{K}: {avg_recall_at_k} {np.mean(recall_at_k)}")
 	# print(labels)
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
-
-
-	# print(f"Calculating Precision@{K} and Recall@{K}, might take a while...")
-	# prec_at_k = []
-	# recall_at_k = []
-	# t0 = time.time()
-	# for i, label_features in enumerate(tokenized_labels_features):
-	# 	print(f"{i} label_features.shape: {label_features.shape}")	
-	# 	sim = (100.0 * label_features @ dataset_images_features.T).softmax(dim=-1) # similarities between query and all images
-	# 	topk_probs, topk_indices = sim.topk(K, dim=-1)
-	# 	topk_pred_labels = [dataset[topk_indices.squeeze().item()][1]] if K==1 else [dataset[idx][1] for idx in topk_indices.squeeze().cpu().numpy()]# K@1, 5, ...
-	# 	print(f"Top-{K} predicted labels: {len(topk_pred_labels)}: {topk_pred_labels}")
-	# 	relevant_retrieved_images_for_label_i = topk_pred_labels.count(i)  # counting relevant images in top-K retrieved images
-	# 	prec_at_k.append(relevant_retrieved_images_for_label_i/K)
-	# 	tt0 = time.time()
-	# 	all_images_with_label_i = [idx for idx, (img, lbl) in enumerate(dataset) if lbl == i] # all images with label i (time consuming)
-	# 	print(f"all_images_with_label_i: {len(all_images_with_label_i)} | Elapsed_t: {time.time()-tt0:.2f} sec")
-	# 	num_all_images_with_label_i = len(all_images_with_label_i)
-	# 	recall_at_k.append(relevant_retrieved_images_for_label_i/num_all_images_with_label_i)
-	# 	if i % 100 == 0:  # Clear cache every 100 iterations or similar logic
-	# 		torch.cuda.empty_cache()
-	# avg_prec_at_k = sum(prec_at_k)/len(labels)
-	# avg_recall_at_k = sum(recall_at_k) / len(labels)
-	# print(f"Precision@{K}: {avg_prec_at_k:.3f} {np.mean(prec_at_k):.3f}")
-	# print(f"Recall@{K}: {avg_recall_at_k} {np.mean(recall_at_k)}")
-	# print(labels)
-	# print(f"Elapsed_t: {time.time()-t0:.2f} sec")
-
-	# plot_precision_recall_curve(
-	# 	tokenized_labels_features=tokenized_labels_features,
-	# 	labels=labels,
-	# 	dataset=dataset,
-	# 	dataset_images_features=dataset_images_features,
-	# )
-
+	print("-"*160)
 def plot_precision_recall_curve(
 	tokenized_labels_features: torch.Tensor,
 	labels: list,
