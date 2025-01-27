@@ -14,7 +14,7 @@ parser.add_argument('--visualize', '-v', action='store_true', help='visualize th
 args, unknown = parser.parse_known_args()
 print(args)
 
-# $ nohup python -u inference.py -d imagenet -k 1 -bs 1024 -nw 8 > /media/volume/ImACCESS/trash/prec_at_k.out &
+# $ nohup python -u inference.py -d imagenet -k 1 -bs 512 -nw 4 > /media/volume/ImACCESS/trash/prec_at_k.out &
 device = torch.device(args.device)
 USER = os.environ.get('USER')
 OUTPUT_DIRECTORY = os.path.join(args.dataset, "outputs")
@@ -179,15 +179,6 @@ def get_linear_prob_zero_shot_accuracy(
 	) # <class 'numpy.ndarray'> (10000, 512), <class 'numpy.ndarray'> (10000,)
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
 
-	# Perform logistic regression
-	classifier = LogisticRegression(random_state=0, C=0.316, max_iter=1000, verbose=1)
-	classifier.fit(train_features, train_labels)
-
-	# Evaluate using the logistic regression classifier
-	predictions = classifier.predict(test_features)
-	accuracy = np.mean((test_labels == predictions).astype(float))# * 100
-	print(f"Linear Probe (Top-1) Accuracy = {accuracy:.3f}")
-
 	################################## Zero Shot Classifier ##################################
 	# Get the class names
 	class_names = validation_dataset.classes
@@ -212,12 +203,26 @@ def get_linear_prob_zero_shot_accuracy(
 	similarity_scores = (100.0 * test_features @ text_features.T).softmax(dim=-1)
 
 	# Get the predicted class indices
-	predicted_class_indices = np.argmax(similarity_scores.cpu().numpy(), axis=1)
+	predicted_class_indices = np.argmax(similarity_scores.cpu().numpy(), axis=1) # 
 
 	# Calculate the accuracy
 	accuracy = np.mean((test_labels == predicted_class_indices).astype(float))# * 100
 	print(f"Zero-shot (Top-1) Accuracy = {accuracy:.3f}")
 	################################## Zero Shot Classifier ##################################
+
+	# Perform logistic regression
+	print(f"Training the logistic regression classifier")
+	classifier = LogisticRegression(random_state=0, C=0.316, max_iter=1000, verbose=1)
+
+	print(f"fitting the classifier")
+	classifier.fit(train_features, train_labels)
+
+	print(f"Getting the linear probe accuracy")
+	# Evaluate using the logistic regression classifier
+	predictions = classifier.predict(test_features)
+	accuracy = np.mean((test_labels == predictions).astype(float))# * 100
+	print(f"Linear Probe (Top-1) Accuracy = {accuracy:.3f}")
+
 	print("-"*160)
 
 def get_image_to_texts(
@@ -608,8 +613,13 @@ def main():
 			topk=args.topK,
 			batch_size=args.batch_size,
 		)
-
-	if USER=="farid" and args.visualize:
+		get_image_to_texts(
+			dataset=valid_dataset,
+			model=model,
+			preprocess=preprocess,
+			img_path=args.query_image,
+			topk=args.topK,
+		)
 		for q in ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']:
 			get_text_to_images(
 				dataset=valid_dataset,
@@ -619,16 +629,6 @@ def main():
 				batch_size=args.batch_size,
 			)
 
-	if args.topK == 1: # only Top-1 is used for zero-shot accuracy
-		get_linear_prob_zero_shot_accuracy(
-			train_dataset=train_dataset,
-			validation_dataset=valid_dataset,
-			model=model,
-			batch_size=args.batch_size,
-			device=device,
-			num_workers=args.num_workers,
-		)
-
 	get_text_to_images_precision_recall_at_(
 		dataset=valid_dataset,
 		model=model,
@@ -637,13 +637,14 @@ def main():
 		device=device,
 	)
 
-	if USER=="farid" and args.visualize:
-		get_image_to_texts(
-			dataset=valid_dataset,
+	if args.topK == 1: # only Top-1 is used for zero-shot accuracy
+		get_linear_prob_zero_shot_accuracy(
+			train_dataset=train_dataset,
+			validation_dataset=valid_dataset,
 			model=model,
-			preprocess=preprocess,
-			img_path=args.query_image,
-			topk=args.topK,
+			batch_size=args.batch_size,
+			device=device,
+			num_workers=args.num_workers,
 		)
 
 	get_image_to_texts_precision_at_(
