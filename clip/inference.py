@@ -112,7 +112,7 @@ def get_dataset(
 		f"Train {type(train_dataset)} {len(train_dataset)}\n"
 		f"Validation {type(validation_dataset)} {len(validation_dataset)}"
 	)
-	print("*"*160)
+	print("*"*80)
 	return train_dataset, validation_dataset
 
 def get_features(
@@ -179,7 +179,29 @@ def get_linear_prob_zero_shot_accuracy(
 	) # <class 'numpy.ndarray'> (10000, 512), <class 'numpy.ndarray'> (10000,)
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
 
+	# Perform logistic regression
+	t0 = time.time()
+	print(f"Training the logistic regression classifier")
+	classifier = LogisticRegression(
+		random_state=0,
+		C=0.316,
+		max_iter=1000,
+		verbose=1,
+		solver='sag',
+		n_jobs=-1, # to utilize all cores
+	)
+
+	print(f"fitting the classifier")
+	classifier.fit(train_features, train_labels)
+
+	print(f"Getting the linear probe accuracy")
+	# Evaluate using the logistic regression classifier
+	predictions = classifier.predict(test_features)
+	accuracy = np.mean((test_labels == predictions).astype(float))# * 100
+	print(f"Linear Probe (Top-1) Accuracy = {accuracy:.3f} | Elapsed_t: {time.time()-t0:.2f} sec")
+
 	################################## Zero Shot Classifier ##################################
+	t0 = time.time()
 	# Get the class names
 	class_names = validation_dataset.classes
 
@@ -207,22 +229,8 @@ def get_linear_prob_zero_shot_accuracy(
 
 	# Calculate the accuracy
 	accuracy = np.mean((test_labels == predicted_class_indices).astype(float))# * 100
-	print(f"Zero-shot (Top-1) Accuracy = {accuracy:.3f}")
+	print(f"Zero-shot (Top-1) Accuracy = {accuracy:.3f} | Elapsed_t: {time.time()-t0:.2f} sec")
 	################################## Zero Shot Classifier ##################################
-
-	# Perform logistic regression
-	print(f"Training the logistic regression classifier")
-	classifier = LogisticRegression(random_state=0, C=0.316, max_iter=1000, verbose=1)
-
-	print(f"fitting the classifier")
-	classifier.fit(train_features, train_labels)
-
-	print(f"Getting the linear probe accuracy")
-	# Evaluate using the logistic regression classifier
-	predictions = classifier.predict(test_features)
-	accuracy = np.mean((test_labels == predictions).astype(float))# * 100
-	print(f"Linear Probe (Top-1) Accuracy = {accuracy:.3f}")
-
 	print("-"*160)
 
 def get_image_to_texts(
@@ -273,16 +281,17 @@ def get_image_to_texts_precision_at_(
 	torch.cuda.empty_cache()  # Clear CUDA cache
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
 	
+	print(f"Encoding labels...", end="\t")
+	t0 = time.time()
 	# Encode text labels without gradient tracking:
 	with torch.no_grad(): # prevent GPU memory issues
 		labels_features = model.encode_text(tokenized_labels_tensor)
 		labels_features /= labels_features.norm(dim=-1, keepdim=True)
-
+	print(f"Done! [{time.time()-t0:.2f} sec]")
 	print(f"Labels: {len(labels)} => lable_features: {labels_features.shape}")
 
 	predicted_labels = []
 	true_labels = []
-
 	floop_st = time.time()
 	with torch.no_grad():
 		for i, data in enumerate(dataset):
@@ -483,7 +492,8 @@ def get_text_to_images_precision_recall_at_(
 	recall_at_k = []
 	t0 = time.time()
 	for i, label_features in enumerate(tokenized_labels_features):
-		# print(f"{i} label_features.shape: {label_features.shape}")    
+		# print(f"{i} label_features.shape: {label_features.shape}")
+		label_features = label_features.to(device) # Ensure label_features is on the correct device
 		sim = (100.0 * label_features @ dataset_images_features.T).softmax(dim=-1) # similarities between query and all images
 		topk_probs, topk_indices = sim.topk(K, dim=-1)
 		topk_pred_labels = [dataset[topk_indices.squeeze().item()][1]] if K==1 else [dataset[idx][1] for idx in topk_indices.squeeze().cpu().numpy()]# K@1, 5,...
@@ -504,6 +514,7 @@ def get_text_to_images_precision_recall_at_(
 	# print(labels)
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
 	print("-"*160)
+
 def plot_precision_recall_curve(
 	tokenized_labels_features: torch.Tensor,
 	labels: list,
@@ -596,21 +607,6 @@ def main():
 				batch_size=args.batch_size,
 			)
 
-	get_image_to_texts_precision_at_(
-		dataset=valid_dataset,
-		model=model,
-		K=args.topK,
-		device=device,
-	)
-
-	get_text_to_images_precision_recall_at_(
-		dataset=valid_dataset,
-		model=model,
-		K=args.topK,
-		batch_size=args.batch_size,
-		device=device,
-	)
-
 	if args.topK == 1: # only Top-1 is used for zero-shot accuracy
 		get_linear_prob_zero_shot_accuracy(
 			train_dataset=train_dataset,
@@ -620,6 +616,21 @@ def main():
 			device=device,
 			num_workers=args.num_workers,
 		)
+
+	get_text_to_images_precision_recall_at_(
+		dataset=valid_dataset,
+		model=model,
+		K=args.topK,
+		batch_size=args.batch_size,
+		device=device,
+	)
+
+	get_image_to_texts_precision_at_(
+		dataset=valid_dataset,
+		model=model,
+		K=args.topK,
+		device=device,
+	)
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
