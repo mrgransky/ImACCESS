@@ -155,39 +155,61 @@ def get_linear_prob_zero_shot_accuracy(
 		batch_size:int=1024,
 		device:str="cuda:0",
 		num_workers:int=8,
+		train_features_fname="train_features.gz", # Path to save the training features
+		train_labels_fname="train_labels.gz", # Path to save the training labels
+		validation_features_fname="validation_features.gz", # Path to save the validation features
+		validation_labels_fname="validation_labels.gz", # Path to save the validation labels
 	):
-	print(f"Getting training features", end="\t")
+	print(f"Getting training features and labels")
 	t0 = time.time()
-	torch.cuda.empty_cache() # Clear CUDA cache
-	train_features, train_labels = get_features(
-		dataset=train_dataset,
-		model=model,
-		batch_size=batch_size,
-		device=device,
-		nw=num_workers,
-	) # <class 'numpy.ndarray'> (50000, 512), <class 'numpy.ndarray'> (50000,)
+	try:
+		# load the features from the disk
+		train_features = load_pickle(fpath=train_features_fname)
+		train_labels = load_pickle(fpath=train_labels_fname)
+	except Exception as e:
+		print(f"Error: {e}")
+		torch.cuda.empty_cache() # Clear CUDA cache
+		train_features, train_labels = get_features(
+			dataset=train_dataset,
+			model=model,
+			batch_size=batch_size,
+			device=device,
+			nw=num_workers,
+		) # <class 'numpy.ndarray'> (num_samples, 512), <class 'numpy.ndarray'> (num_samples,)
+		save_pickle(pkl=train_features, fpath=train_features_fname)
+		save_pickle(pkl=train_labels, fpath=train_labels_fname)
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
 
-	print(f"Getting test features", end="\t")
+	print(f"Getting validation features and labels")
 	t0 = time.time()
-	test_features, test_labels = get_features(
-		dataset=validation_dataset,
-		model=model,
-		batch_size=batch_size,
-		device=device,
-		nw=num_workers,
-	) # <class 'numpy.ndarray'> (10000, 512), <class 'numpy.ndarray'> (10000,)
+	try:
+		# load the features from the disk
+		val_features = load_pickle(fpath=validation_features_fname)
+		val_labels = load_pickle(fpath=validation_labels_fname)
+	except Exception as e:
+		print(f"Error: {e}")
+		torch.cuda.empty_cache() # Clear CUDA cache
+		val_features, val_labels = get_features(
+			dataset=validation_dataset,
+			model=model,
+			batch_size=batch_size,
+			device=device,
+			nw=num_workers,
+		) # <class 'numpy.ndarray'> (num_samples, 512), <class 'numpy.ndarray'> (num_samples,)
+		save_pickle(pkl=val_features, fpath=validation_features_fname)
+		save_pickle(pkl=val_labels, fpath=validation_labels_fname)
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
 
 	# Perform logistic regression
 	t0 = time.time()
-	print(f"Training the logistic regression classifier")
+	solver = 'saga' # 'saga' is faster for large datasets
+	print(f"Training the logistic regression classifier with {solver} solver")
 	classifier = LogisticRegression(
 		random_state=0,
 		C=0.316,
 		max_iter=1000,
 		verbose=1,
-		solver='sag',
+		solver=solver, # 'saga' is faster for large datasets
 		n_jobs=-1, # to utilize all cores
 	)
 
@@ -196,13 +218,12 @@ def get_linear_prob_zero_shot_accuracy(
 
 	print(f"Getting the linear probe accuracy")
 	# Evaluate using the logistic regression classifier
-	predictions = classifier.predict(test_features)
-	accuracy = np.mean((test_labels == predictions).astype(float))# * 100
+	predictions = classifier.predict(val_features)
+	accuracy = np.mean((val_labels == predictions).astype(float))# * 100
 	print(f"Linear Probe (Top-1) Accuracy = {accuracy:.3f} | Elapsed_t: {time.time()-t0:.2f} sec")
 
 	################################## Zero Shot Classifier ##################################
 	t0 = time.time()
-	# Get the class names
 	class_names = validation_dataset.classes
 
 	# Encode the text descriptions of the classes
@@ -214,23 +235,22 @@ def get_linear_prob_zero_shot_accuracy(
 		text_features = model.encode_text(text_inputs)
 
 	# Normalize the features of the test (numpy):
-	test_features = test_features / np.linalg.norm(test_features, axis=1, keepdims=True)
+	val_features = val_features / np.linalg.norm(val_features, axis=1, keepdims=True)
 	# Normalize text_features(tensor):
 	text_features = text_features / text_features.norm(dim=-1, keepdim=True)
 
-	# Convert test_features to a PyTorch tensor
-	test_features = torch.from_numpy(test_features).to(device)
+	# Convert val_features to a PyTorch tensor
+	val_features = torch.from_numpy(val_features).to(device)
 
 	# Calculate the similarity scores
-	similarity_scores = (100.0 * test_features @ text_features.T).softmax(dim=-1)
+	similarity_scores = (100.0 * val_features @ text_features.T).softmax(dim=-1)
 
 	# Get the predicted class indices
 	predicted_class_indices = np.argmax(similarity_scores.cpu().numpy(), axis=1) # 
 
 	# Calculate the accuracy
-	accuracy = np.mean((test_labels == predicted_class_indices).astype(float))# * 100
+	accuracy = np.mean((val_labels == predicted_class_indices).astype(float))# * 100
 	print(f"Zero-shot (Top-1) Accuracy = {accuracy:.3f} | Elapsed_t: {time.time()-t0:.2f} sec")
-	################################## Zero Shot Classifier ##################################
 	print("-"*160)
 
 def get_image_to_texts(
@@ -615,6 +635,10 @@ def main():
 			batch_size=args.batch_size,
 			device=device,
 			num_workers=args.num_workers,
+			train_features_fname=os.path.join(OUTPUT_DIRECTORY, "train_features.gz"),
+			train_labels_fname=os.path.join(OUTPUT_DIRECTORY, "train_labels.gz"),
+			validation_features_fname=os.path.join(OUTPUT_DIRECTORY, "validation_features.gz"),
+			validation_labels_fname=os.path.join(OUTPUT_DIRECTORY, "validation_labels.gz"),
 		)
 
 	get_text_to_images_precision_recall_at_(
