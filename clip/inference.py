@@ -20,6 +20,9 @@ USER = os.environ.get('USER')
 OUTPUT_DIRECTORY = os.path.join(args.dataset, "outputs")
 os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
+def _convert_image_to_rgb(image):
+	return image.convert("RGB")
+
 def load_model(
 	model_name:str="ViT-B/32",
 	device:str="cuda:0",
@@ -37,36 +40,24 @@ def load_model(
 
 def get_dataset_transform(dname:str="CIFAR10"):
 	dname = dname.upper()
-	if dname == 'CIFAR10':
+	mean_std_dict = {
+		'CIFAR10': ((0.49139968, 0.48215827, 0.44653124), (0.24703233, 0.24348505, 0.26158768)),
+		'CIFAR100': ((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+		'IMAGENET': ((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
+		'CINIC10': ((0.128, 0.109, 0.075), (0.202, 0.185, 0.167)),
+	}
+	if dname in mean_std_dict.keys():
+		mean = mean_std_dict[dname][0]
+		std = mean_std_dict[dname][1]
 		return T.Compose([
-			T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
+			T.Resize(224, interpolation=BICUBIC),
 			T.CenterCrop(224),
+			_convert_image_to_rgb,
 			T.ToTensor(),
-			T.Normalize((0.49139968, 0.48215827 ,0.44653124), (0.24703233, 0.24348505, 0.26158768)),
-		])
-	elif dname == 'CIFAR100':
-		return T.Compose([
-			T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
-			T.CenterCrop(224),
-			T.ToTensor(),
-			T.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
-		])
-	elif dname == 'IMAGENET':
-		return T.Compose([
-			T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
-			T.CenterCrop(224),
-			T.ToTensor(),
-			T.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-		])
-	elif dname == 'CINIC10':
-		return T.Compose([
-			T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
-			T.CenterCrop(224),
-			T.ToTensor(),
-			T.Normalize((0.49139968, 0.48215827 ,0.44653124), (0.24703233, 0.24348505, 0.26158768)),
+			T.Normalize(mean=mean, std=std),
 		])
 	else:
-		raise ValueError(f"Invalid dataset name: {dname}")
+		raise ValueError(f"Invalid dataset name: {dname}. Available: [CIFAR10, CIFAR100, IMAGENET, CINIC10]")
 
 def get_dataset(
 	dname:str="CIFAR10",
