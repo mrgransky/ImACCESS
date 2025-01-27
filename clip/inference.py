@@ -14,7 +14,7 @@ parser.add_argument('--visualize', '-v', action='store_true', help='visualize th
 args, unknown = parser.parse_known_args()
 print(args)
 
-# $ nohup python -u inference.py -d imagenet -k 1 -bs 256 -nw 4 > /media/volume/ImACCESS/trash/prec_at_k.out &
+# $ nohup python -u inference.py -d imagenet -k 1 -bs 128 -nw 4 -dv "cuda:3" > /media/volume/ImACCESS/trash/prec_at_k.out &
 device = torch.device(args.device)
 USER = os.environ.get('USER')
 OUTPUT_DIRECTORY = os.path.join(args.dataset, "outputs")
@@ -50,7 +50,7 @@ def get_dataset_transform(dname:str="CIFAR10"):
 		mean = mean_std_dict[dname][0]
 		std = mean_std_dict[dname][1]
 		return T.Compose([
-			T.Resize(224, interpolation=BICUBIC),
+			T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
 			T.CenterCrop(224),
 			_convert_image_to_rgb,
 			T.ToTensor(),
