@@ -629,6 +629,13 @@ def main():
 				batch_size=args.batch_size,
 			)
 
+	get_image_to_texts_precision_at_(
+		dataset=valid_dataset,
+		model=model,
+		K=args.topK,
+		device=device,
+	)
+
 	get_text_to_images_precision_recall_at_(
 		dataset=valid_dataset,
 		model=model,
@@ -646,13 +653,6 @@ def main():
 			device=device,
 			num_workers=args.num_workers,
 		)
-
-	get_image_to_texts_precision_at_(
-		dataset=valid_dataset,
-		model=model,
-		K=args.topK,
-		device=device,
-	)
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
