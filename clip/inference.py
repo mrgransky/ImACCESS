@@ -14,7 +14,7 @@ parser.add_argument('--visualize', '-v', action='store_true', help='visualize th
 args, unknown = parser.parse_known_args()
 print(args)
 
-# $ nohup python -u inference.py -d imagenet -k 1 -bs 512 -nw 4 > /media/volume/ImACCESS/trash/prec_at_k.out &
+# $ nohup python -u inference.py -d imagenet -k 1 -bs 256 -nw 4 > /media/volume/ImACCESS/trash/prec_at_k.out &
 device = torch.device(args.device)
 USER = os.environ.get('USER')
 OUTPUT_DIRECTORY = os.path.join(args.dataset, "outputs")
@@ -35,19 +35,46 @@ def load_model(
 	print("Vocab size:", vocab_size)
 	return model, preprocess
 
+def get_dataset_transform(dname:str="CIFAR10"):
+	dname = dname.upper()
+	if dname == 'CIFAR10':
+		return T.Compose([
+			T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
+			T.CenterCrop(224),
+			T.ToTensor(),
+			T.Normalize((0.49139968, 0.48215827 ,0.44653124), (0.24703233, 0.24348505, 0.26158768)),
+		])
+	elif dname == 'CIFAR100':
+		return T.Compose([
+			T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
+			T.CenterCrop(224),
+			T.ToTensor(),
+			T.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
+		])
+	elif dname == 'IMAGENET':
+		return T.Compose([
+			T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
+			T.CenterCrop(224),
+			T.ToTensor(),
+			T.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
+		])
+	elif dname == 'CINIC10':
+		return T.Compose([
+			T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
+			T.CenterCrop(224),
+			T.ToTensor(),
+			T.Normalize((0.49139968, 0.48215827 ,0.44653124), (0.24703233, 0.24348505, 0.26158768)),
+		])
+	else:
+		raise ValueError(f"Invalid dataset name: {dname}")
+
 def get_dataset(
 	dname:str="CIFAR10",
 	transorm=None,
 	USER:str="farid",
 	):
 	if transorm is None:
-		# cusomized transformation:
-		T.Compose([
-			T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
-			T.CenterCrop(224),
-			T.ToTensor(),
-			T.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-		])
+		transorm = get_dataset_transform(dname=dname)
 	dname = dname.upper()
 	ddir = {
 		"farid": f'/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/{dname}',
@@ -176,8 +203,8 @@ def get_linear_prob_zero_shot_accuracy(
 			device=device,
 			nw=num_workers,
 		) # <class 'numpy.ndarray'> (num_samples, 512), <class 'numpy.ndarray'> (num_samples,)
-		save_pickle(pkl=train_features, fpath=train_features_fname)
-		save_pickle(pkl=train_labels, fpath=train_labels_fname)
+		save_pickle(pkl=train_features, fname=train_features_fname)
+		save_pickle(pkl=train_labels, fname=train_labels_fname)
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
 
 	print(f"Getting validation features and labels")
@@ -196,8 +223,8 @@ def get_linear_prob_zero_shot_accuracy(
 			device=device,
 			nw=num_workers,
 		) # <class 'numpy.ndarray'> (num_samples, 512), <class 'numpy.ndarray'> (num_samples,)
-		save_pickle(pkl=val_features, fpath=validation_features_fname)
-		save_pickle(pkl=val_labels, fpath=validation_labels_fname)
+		save_pickle(pkl=val_features, fname=validation_features_fname)
+		save_pickle(pkl=val_labels, fname=validation_labels_fname)
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
 
 	# Perform logistic regression
@@ -599,7 +626,7 @@ def main():
 
 	train_dataset, valid_dataset = get_dataset(
 		dname=args.dataset,
-		transorm=preprocess,
+		# transorm=preprocess,
 		USER=USER,
 	)
 
