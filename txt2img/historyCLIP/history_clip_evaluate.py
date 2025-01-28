@@ -126,7 +126,7 @@ def get_linear_prob_zero_shot_accuracy(
 	train_dataset_images_path = train_dataset["img_path"].tolist()
 	train_dataset_labels = train_dataset["label"].tolist() # ['naval training', 'medical service', 'medical service', 'naval forces', 'naval forces', ...]
 	train_dataset_labels_int = torch.tensor(train_dataset["label_int"].tolist()) # torch[3, 17, 4, 9, ...]
-	
+	torch.cuda.empty_cache() # Clear CUDA cache
 	# train_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, 'train_image_features.gz')
 	t0 = time.time()
 	if not os.path.exists(train_image_features_file):
@@ -694,6 +694,8 @@ def run_evaluation(
 	val_image_features_file,
 	):
 	print(f"Running Evaluation for {os.path.basename(args.dataset_dir)}".center(160, " "))
+	# Dictionary to store the metrics for this fold
+	fold_metrics = {}
 	if args.visualize:
 		get_image_to_texts(
 				dataset=val_dataset,
@@ -783,7 +785,7 @@ def simple_random_sampling(model, preprocess):
 def k_fold_stratified_sampling(model, preprocess, kfolds:int=5):
 	print(f'K(={kfolds})-Fold Stratified Sampling'.center(150, "-"))
 
- # 1. Data Structure to Store Metrics from Each Fold
+	# 1. Data Structure to Store Metrics from Each Fold
 	metrics = {
 		"linear_probe_accuracy": [],
 		"zero_shot_accuracy": [],
