@@ -53,6 +53,8 @@ import datetime
 from io import BytesIO
 from datetime import timedelta
 
+torch.backends.cudnn.benchmark = True
+
 nltk_modules = [
 	'punkt',
 	'wordnet',

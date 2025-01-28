@@ -109,7 +109,14 @@ def measure_execution_time(func):
 		return result
 	return wrapper
 
-def get_stratified_split(df, result_dir, val_split_pct=0.2, figure_size=(11, 7), dpi=200):
+def get_stratified_split(
+	df:pd.DataFrame,
+	val_split_pct:float=0.2,
+	figure_size:tuple=(11, 7),
+	dpi:int=200,
+	result_dir:str="result_directory",
+	dname:str="DATASET_NAME",
+	):
 	# Count the occurrences of each label
 	label_counts = df['label'].value_counts()
 	labels_to_drop = label_counts[label_counts == 1].index
@@ -134,14 +141,14 @@ def get_stratified_split(df, result_dir, val_split_pct=0.2, figure_size=(11, 7),
 	plt.figure(figsize=figure_size)
 	train_df['label'].value_counts().plot(kind='bar', color='blue', alpha=0.6, label=f'Train {1-val_split_pct}')
 	val_df['label'].value_counts().plot(kind='bar', color='red', alpha=0.9, label=f'Validation {val_split_pct}')
-	plt.title(f'Stratified Sampling Label Distribution of {train_df.shape[0]} Training samples {val_df.shape[0]} Validation Samples (Total samples: {df_filtered.shape[0]})', fontsize=9)
+	plt.title(f'{dname} Stratified Sampling Label Distribution of {train_df.shape[0]} Training samples {val_df.shape[0]} Validation Samples (Total samples: {df_filtered.shape[0]})', fontsize=9)
 	plt.xlabel('Label')
 	plt.ylabel('Frequency')
 	plt.yticks(rotation=90, fontsize=9)
 	plt.legend(loc='best', ncol=2, frameon=False, fontsize=8)
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(result_dir, 'outputs', 'stratified_stratified_sampling_label_distribution.png'),
+		fname=os.path.join(result_dir, 'outputs', f'stratified_{dname}_sampling_label_distribution.png'),
 		dpi=dpi,
 		bbox_inches='tight'
 	)	

@@ -240,8 +240,11 @@ def main():
 	sa_kuva_df = get_synchronized_df_img(df=sa_kuva_df_merged_raw, image_dir=IMAGE_DIR, nw=args.num_workers)
 	get_stratified_split(
 		df=sa_kuva_df,
+		val_split_pct=0.35,
+		figure_size=(12, 6),
+		dpi=250,
 		result_dir=DATASET_DIRECTORY,
-		val_split_pct=0.35, # TODO: must be StratifiedKFold
+		dname=dataset_name,
 	)
 
 	label_counts = sa_kuva_df['label'].value_counts()

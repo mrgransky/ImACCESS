@@ -7,8 +7,8 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=4G
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=16G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
 #SBATCH --array=0-3
@@ -40,8 +40,11 @@ DATASETS=(
 for prec in 1 5 10 15 20
 	do
 		echo "Precision@$prec for Dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$SLURM_ARRAY_TASK_ID]}"
-		python -u evaluate_clip.py \
+		python -u history_clip_evaluate.py \
 						--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
+						--batch_size 512 \
+						--model_name "ViT-B/32" \
+						--device "cuda:0" \
 						--topK $prec \
 
 done

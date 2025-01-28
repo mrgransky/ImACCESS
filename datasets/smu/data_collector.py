@@ -55,11 +55,11 @@ headers = {
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{args.start_date}_{args.end_date}")
 HITS_DIRECTORY = os.path.join(DATASET_DIRECTORY, "hits")
 IMAGE_DIRECTORY = os.path.join(DATASET_DIRECTORY, "images")
-OUTPUT_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
+OUTPUTs_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
 os.makedirs(DATASET_DIRECTORY, exist_ok=True)
 os.makedirs(IMAGE_DIRECTORY, exist_ok=True)
 os.makedirs(HITS_DIRECTORY, exist_ok=True)
-os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
+os.makedirs(OUTPUTs_DIRECTORY, exist_ok=True)
 
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
@@ -249,7 +249,7 @@ def main():
 		print(f"Failed to write Excel file: {e}")
 
 	smu_df = get_synchronized_df_img(df=smu_df_merged_raw, image_dir=IMAGE_DIRECTORY, nw=args.num_workers)
-	label_dirstribution_fname = os.path.join(OUTPUT_DIRECTORY, f"label_distribution_{dataset_name}_{args.start_date}_{args.end_date}_nIMGs_{smu_df.shape[0]}.png")
+	label_dirstribution_fname = os.path.join(OUTPUTs_DIRECTORY, f"label_distribution_{dataset_name}_{args.start_date}_{args.end_date}_nIMGs_{smu_df.shape[0]}.png")
 	plot_label_distribution(
 		df=smu_df,
 		start_date=args.start_date,
@@ -262,15 +262,18 @@ def main():
 	print(smu_df['label'].value_counts())
 	get_stratified_split(
 		df=smu_df,
+		val_split_pct=0.35,
+		figure_size=(12, 6),
+		dpi=250,
 		result_dir=DATASET_DIRECTORY,
-		val_split_pct=0.35, # TODO: must be StratifiedKFold
+		dname=dataset_name,
 	)
 	try:
 		smu_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	yr_distro_fpth = os.path.join(OUTPUT_DIRECTORY, f"year_distribution_{dataset_name}_{args.start_date}_{args.end_date}_nIMGs_{smu_df.shape[0]}.png")
+	yr_distro_fpth = os.path.join(OUTPUTs_DIRECTORY, f"year_distribution_{dataset_name}_{args.start_date}_{args.end_date}_nIMGs_{smu_df.shape[0]}.png")
 	plot_year_distribution(
 		df=smu_df,
 		start_date=args.start_date,

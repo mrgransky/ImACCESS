@@ -14,7 +14,7 @@ parser.add_argument('--visualize', '-v', action='store_true', help='visualize th
 args, unknown = parser.parse_known_args()
 print(args)
 
-# $ nohup python -u inference.py -d imagenet -k 1 -bs 64 -nw 4 -dv "cuda:3" > /media/volume/ImACCESS/trash/prec_at_k.out &
+# $ nohup python -u inference.py -d imagenet -k 1 -bs 512 -nw 4 -dv "cuda:3" > /media/volume/ImACCESS/trash/prec_at_k.out &
 device = torch.device(args.device)
 USER = os.environ.get('USER')
 OUTPUT_DIRECTORY = os.path.join(args.dataset, "outputs")
@@ -284,7 +284,7 @@ def get_linear_prob_zero_shot_accuracy(
 	similarity_scores = (100.0 * val_features @ text_features.T).softmax(dim=-1)
 
 	# Get the predicted class indices
-	predicted_class_indices = np.argmax(similarity_scores.cpu().numpy(), axis=1) # 
+	predicted_class_indices = np.argmax(similarity_scores.cpu().numpy(), axis=1) 
 
 	# Calculate the accuracy
 	accuracy = np.mean((val_labels == predicted_class_indices).astype(float))# * 100
@@ -479,7 +479,7 @@ def get_text_to_images_precision_recall_at_(
 	print(f"Text-to-Image Retrieval {device} CLIP batch_size: {batch_size} [performance metrics: Precision@{K}]".center(160, " "))
 	labels = dataset.classes
 	print(f"Labels: {len(labels)}")
-	# Encode all the labels
+
 	print(f"Encoding labels...")
 	t0 = time.time()
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # <class 'torch.Tensor'> torch.Size([num_lbls, 77])
@@ -488,27 +488,28 @@ def get_text_to_images_precision_recall_at_(
 		tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec => tokenized_labels_features: {tokenized_labels_features.shape}")
 
-	print(f"Encoding {len(dataset)} images, might take a while...")
-	t0 = time.time()
 	# Check if the image features file exists
 	image_features_file = os.path.join(OUTPUT_DIRECTORY, 'validation_image_features.gz')
 	if not os.path.exists(image_features_file):
+		print(f"Encoding {len(dataset)} images, might take a while...")
+		t0 = time.time()
 		dataset_images_features = []
 		for i in range(0, len(dataset), batch_size):
 			batch_tensors = torch.stack([dataset[j][0].to(device) for j in range(i, min(i + batch_size, len(dataset)))]) # <class 'torch.Tensor'> torch.Size([b, 3, 224, 224]
-			print(f"Processing batch {i // batch_size + 1}/{len(dataset) // batch_size + 1}")
-			print(f"batch_tensors: {batch_tensors.shape}") # batch_tensors: torch.Size([b, 3, 224, 224])
+			# print(f"Processing batch {i // batch_size + 1}/{len(dataset) // batch_size + 1}")
+			# print(f"batch_tensors: {batch_tensors.shape}") # batch_tensors: torch.Size([b, 3, 224, 224])
 			with torch.no_grad(): # prevent PyTorch from computing gradients, can consume significant memory
 				image_features = model.encode_image(batch_tensors)
 				image_features /= image_features.norm(dim=-1, keepdim=True)
 			dataset_images_features.append(image_features)
-			torch.cuda.empty_cache()  # Clear CUDA cache
+			if i % 50 == 0:
+				torch.cuda.empty_cache()  # Clear CUDA cache
 		dataset_images_features = torch.cat(dataset_images_features, dim=0)
+		print(f"Elapsed_t: {time.time()-t0:.2f} sec => dataset_images_features: {dataset_images_features.shape}")
 		save_pickle(pkl=dataset_images_features, fname=image_features_file)
 	else:
 		dataset_images_features = load_pickle(image_features_file)
 		dataset_images_features = dataset_images_features.to(device)  # <--- Fix: Move to current device
-	print(f"Elapsed_t: {time.time()-t0:.2f} sec => dataset_images_features: {dataset_images_features.shape}")
 	###################################### Wrong approach for P@K and R@K ######################################
 	# it is rather accuracy or hit rate!
 	# prec_at_k = 0
@@ -544,32 +545,26 @@ def get_text_to_images_precision_recall_at_(
 		index[lbl].append(idx)
 	print(f"Index created in {time.time() - t:.2f} sec")
 
-	# The optimized loop
 	print(f"Calculating Precision@{K} and Recall@{K}, might take a while...")
 	prec_at_k = []
 	recall_at_k = []
 	t0 = time.time()
 	for i, label_features in enumerate(tokenized_labels_features):
-		# print(f"{i} label_features.shape: {label_features.shape}")
 		label_features = label_features.to(device) # Ensure label_features is on the correct device
 		sim = (100.0 * label_features @ dataset_images_features.T).softmax(dim=-1) # similarities between query and all images
 		topk_probs, topk_indices = sim.topk(K, dim=-1)
 		topk_pred_labels = [dataset[topk_indices.squeeze().item()][1]] if K==1 else [dataset[idx][1] for idx in topk_indices.squeeze().cpu().numpy()]# K@1, 5,...
-		# print(f"Top-{K} predicted labels: {len(topk_pred_labels)}: {topk_pred_labels}")
 		relevant_retrieved_images_for_label_i = topk_pred_labels.count(i)  # counting relevant images in top-K retrieved images
 		prec_at_k.append(relevant_retrieved_images_for_label_i/K)
-		# Use the precomputed index
 		all_images_with_label_i = index.get(i, [])  # get the list of images with label i
-		# print(f"all_images_with_label_i: {len(all_images_with_label_i)}")
 		num_all_images_with_label_i = len(all_images_with_label_i)
 		recall_at_k.append(relevant_retrieved_images_for_label_i/num_all_images_with_label_i)
-		if i % 100 == 0:  # Clear cache every 100 iterations or similar logic
+		if i % 100 == 0:
 			torch.cuda.empty_cache()  # Clear CUDA cache
 	avg_prec_at_k = sum(prec_at_k)/len(labels)
 	avg_recall_at_k = sum(recall_at_k) / len(labels)
 	print(f"Precision@{K}: {avg_prec_at_k:.3f} {np.mean(prec_at_k):.3f}")
 	print(f"Recall@{K}: {avg_recall_at_k} {np.mean(recall_at_k)}")
-	# print(labels)
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
 	print("-"*160)
 

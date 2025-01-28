@@ -2,7 +2,7 @@ from utils import *
 from sklearn.linear_model import LogisticRegression
 
 # local:
-# $ python evaluate_history_clip.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31
+# $ python history_clip_evaluate.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
@@ -12,16 +12,13 @@ parser.add_argument('--query_label', '-ql', type=str, default="aircraft", help='
 parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
 parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch size')
 parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
+parser.add_argument('--visualize', '-v', action='store_true', help='visualize the dataset')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 print(args)
 
 args.device = torch.device(args.device)
-
-USER = os.getenv('USER')
-print(f"USER: {USER} device: {args.device}")
-
 OUTPUT_DIRECTORY = os.path.join(args.dataset_dir, "outputs",)
 os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
@@ -42,20 +39,6 @@ def get_dataset(ddir:str="path/2/dataset_dir", sliced:bool=False):
 	metadata_train_fpth = os.path.join(ddir, "metadata_train.csv")
 	metadata_val_fpth = os.path.join(ddir, "metadata_val.csv")
 	
-	# img_dir = os.path.join(ddir, "images")
-	# df = pd.read_csv(
-	# 	filepath_or_buffer=metadata_fpth,
-	# 	on_bad_lines='skip',
-	# )
-	# if sliced:
-	# 	df = df.iloc[:1500]
-
-	# labels = list(set(df["label"].tolist()))
-	# # Create a dictionary that maps each label to its index
-	# label_dict = {label: index for index, label in enumerate(labels)}
-	# # Map the labels to their indices
-	# df['label_int'] = df['label'].map(label_dict)
-
 	df_train = pd.read_csv(
 		filepath_or_buffer=metadata_train_fpth,
 		on_bad_lines='skip',
@@ -73,7 +56,15 @@ def get_dataset(ddir:str="path/2/dataset_dir", sliced:bool=False):
 	df_val['label_int'] = df_val['label'].map(label_dict_val) # Map the labels to their indices
 	return df_train, df_val
 
-def get_linear_prob_zero_shot_accuracy(dataset_dir, train_dataset, validation_dataset, model, preprocess, batch_size:int=1024, device:str="cuda:0"):
+def get_linear_prob_zero_shot_accuracy(
+	dataset_dir,
+	train_dataset,
+	validation_dataset,
+	model,
+	preprocess,
+	batch_size:int=1024,
+	device:str="cuda:0",
+	):
 	print(f"Getting training features", end="\t")
 	train_dataset_images_id = train_dataset["id"].tolist()
 	train_dataset_images_path = train_dataset["img_path"].tolist()
@@ -91,7 +82,8 @@ def get_linear_prob_zero_shot_accuracy(dataset_dir, train_dataset, validation_da
 				train_image_features = model.encode_image(batch_train_tensors)
 				train_image_features /= train_image_features.norm(dim=-1, keepdim=True)
 			train_dataset_images_features.append(train_image_features)
-			torch.cuda.empty_cache()  # Clear CUDA cache
+			if i % 50 == 0:
+				torch.cuda.empty_cache()  # Clear CUDA cache
 		train_dataset_images_features = torch.cat(train_dataset_images_features, dim=0)
 		save_pickle(pkl=train_dataset_images_features, fname=train_image_features_file)
 	else:
@@ -131,14 +123,27 @@ def get_linear_prob_zero_shot_accuracy(dataset_dir, train_dataset, validation_da
 	print(type(train_dataset_images_features), train_dataset_images_features.shape)
 	print(type(train_dataset_labels_int), train_dataset_labels_int.shape)
 
-	classifier = LogisticRegression(random_state=0, C=0.316, max_iter=1000, verbose=1)
+	# Perform logistic regression
+	t0 = time.time()
+	solver = 'saga' # 'saga' is faster for large datasets
+	print(f"Training the logistic regression classifier with {solver} solver")
+	classifier = LogisticRegression(
+		random_state=0,
+		C=0.316,
+		max_iter=1000,
+		verbose=1,
+		solver=solver, # 'saga' is faster for large datasets
+		n_jobs=-1, # to utilize all cores
+	)
+
 	classifier.fit(train_dataset_images_features, train_dataset_labels_int)
 
 	# Evaluate using the logistic regression classifier
 	predictions = classifier.predict(val_dataset_images_features)
-	linear_probe_accuracy = np.mean((val_dataset_labels_int == predictions).astype(float)) * 100
-	print(f"Linear Probe Accuracy = {linear_probe_accuracy:.1f} %")
+	linear_probe_accuracy = np.mean((val_dataset_labels_int == predictions).astype(float))# * 100
+	print(f"Linear Probe Accuracy = {linear_probe_accuracy:.3f} | Elapsed_t: {time.time()-t0:.2f} sec")
 	################################## Zero Shot Classifier ##################################
+	t0 = time.time()
 	# Get unique labels for validation dataset:
 	val_labels = list(set(validation_dataset["label"].tolist()))
 	text_inputs = clip.tokenize(texts=val_labels).to(device=device)
@@ -155,8 +160,8 @@ def get_linear_prob_zero_shot_accuracy(dataset_dir, train_dataset, validation_da
 	# Get the predicted class indices
 	predicted_class_indices = np.argmax(similarity_scores.cpu().numpy(), axis=1)
 	print(type(predicted_class_indices), predicted_class_indices.shape)
-	zero_shot_accuracy = np.mean((val_dataset_labels_int == predicted_class_indices).astype(float)) * 100
-	print(f"Zero-shot Accuracy = {zero_shot_accuracy:.1f} %")
+	zero_shot_accuracy = np.mean((val_dataset_labels_int == predicted_class_indices).astype(float))# * 100
+	print(f"Zero-shot Accuracy = {zero_shot_accuracy:.3f} | Elapsed_t: {time.time()-t0:.2f} sec")
 	################################## Zero Shot Classifier ##################################
 	return linear_probe_accuracy, zero_shot_accuracy
 
@@ -211,8 +216,14 @@ def get_image_to_texts(dataset, model, preprocess, img_path, topk:int=5, device:
 	)
 	plt.close()
 
-def get_image_to_texts_precision_at_(dataset, model, preprocess, K:int=5, device:str="cuda:0"):
-	print(f"Zero-Shot Image Classification {device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
+def get_image_to_texts_precision_at_(
+	dataset,
+	model,
+	preprocess,
+	K:int=5,
+	device:str="cuda:0",
+	):
+	print(f"Image-to-Text Retrival [Classification] {device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
 	t0 = time.time()
 	labels = list(set(dataset["label"].tolist()))
 	print(len(labels), type(labels))
@@ -234,7 +245,7 @@ def get_image_to_texts_precision_at_(dataset, model, preprocess, K:int=5, device
 	predicted_labels = []
 	true_labels = []
 	floop_st = time.time()
-
+	torch.cuda.empty_cache() # Clear CUDA cache
 	with torch.no_grad():
 		for i, (img_pth, gt_lbl) in enumerate(zip(dataset_images_path, dataset_labels_int)): #img: <class 'PIL.Image.Image'>
 			# print(i, img_pth, gt_lbl)
@@ -363,7 +374,7 @@ def get_text_to_images_precision_recall_at_(
 	torch.cuda.empty_cache()  # Clear CUDA cache
 	t0 = time.time()
 	labels = list(set(dataset["label"].tolist()))
-	print(len(labels), type(labels))
+	print(f"Labels {type(labels)}: {len(labels)}")
 
 	dataset_images_id = dataset["id"].tolist()
 	dataset_images_path = dataset["img_path"].tolist()
@@ -377,6 +388,7 @@ def get_text_to_images_precision_recall_at_(
 
 	image_features_file = os.path.join(args.dataset_dir, 'outputs', 'validation_image_features.gz')
 	if not os.path.exists(image_features_file):
+		print(f"Encoding {len(dataset_images_path)} images, might take a while...")
 		dataset_images_features = []
 		for i in range(0, len(dataset_images_path), batch_size):
 			batch_images_path = [dataset_images_path[j] for j in range(i, min(i + batch_size, len(dataset_images_path)))]
@@ -394,19 +406,30 @@ def get_text_to_images_precision_recall_at_(
 	prec_at_k = []
 	recall_at_k = []
 	for i, label_features in enumerate(tokenized_labels_features):
+		label_features = label_features.to(device)
 		sim = label_features @ dataset_images_features.T # compute similarity between the label and all images
 		_, indices = sim.topk(len(dataset_images_features), dim=-1) # retrieve all images for each label
 		relevant_images_for_lbl_i = [idx for idx, lbl in enumerate(dataset_labels_int) if lbl == i] # retrieve all images with same label
 		retrieved_topK_relevant_images = [idx for idx in indices.squeeze().cpu().numpy()[:K] if idx in relevant_images_for_lbl_i] # retrieve topK relevant images in the top-K retrieved images
 		prec_at_k.append(len(retrieved_topK_relevant_images) / K)
 		recall_at_k.append(len(retrieved_topK_relevant_images) / len(relevant_images_for_lbl_i))
+		if i % 100 == 0:
+			torch.cuda.empty_cache() # clear CUDA cache
 	avg_prec_at_k = sum(prec_at_k) / len(labels)
 	avg_recall_at_k = sum(recall_at_k) / len(labels)
 	print(f"Precision@{K}: {avg_prec_at_k:.3f} {np.mean(prec_at_k)}")
 	print(f"Recall@{K}: {avg_recall_at_k:.3f} {np.mean(recall_at_k)}")
 	print(f"Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
+	print("-"*160)
 
-def get_map_at_k(dataset, model, preprocess, K: int, batch_size: int, device):
+def get_map_at_k(
+	dataset,
+	model,
+	preprocess,
+	K:int=10,
+	batch_size:int=512,
+	device:str="cuda:0",
+	):
 	"""  
 	Calculate mean average precision@K (mAP@K) for image-to-texts and text-to-images retrieval.  
 	:param dataset: Dataset containing images and their corresponding labels.  
@@ -430,7 +453,8 @@ def get_map_at_k(dataset, model, preprocess, K: int, batch_size: int, device):
 				image_features /= image_features.norm(dim=-1, keepdim=True)  
 			dataset_images_features.append(image_features)  
 			del batch_tensors
-			torch.cuda.empty_cache()  
+			if i % 50 == 0:
+				torch.cuda.empty_cache()  
 		dataset_images_features = torch.cat(dataset_images_features, dim=0)  
 		save_pickle(pkl=dataset_images_features, fname=image_features_file)  
 	else:  
@@ -580,36 +604,7 @@ def main():
 	)
 	print(f"Train: {train_dataset.shape}, Validation: {val_dataset.shape}")
 
-	# get_linear_prob_zero_shot_accuracy(
-	# 	dataset_dir=args.dataset_dir, 
-	# 	train_dataset=train_dataset, 
-	# 	validation_dataset=val_dataset, 
-	# 	model=model, 
-	# 	preprocess=preprocess, 
-	# 	batch_size=args.batch_size, 
-	# 	device=args.device,
-	# )
-
-	get_image_to_images(
-		dataset=val_dataset,
-		query_image_path=args.query_image,
-		model=model,
-		preprocess=preprocess,
-		topk=args.topK,
-		batch_size=args.batch_size,
-		device=args.device,
-	)
-
-	# img_to_txt_map_at_k, txt_to_img_map_at_k = get_map_at_k(
-	# 	dataset=val_dataset,
-	# 	model=model,
-	# 	preprocess=preprocess,
-	# 	K=args.topK,
-	# 	batch_size=args.batch_size,
-	# 	device=args.device
-	# )
-
-	if USER == "farid":
+	if USER=="farid" and args.visualize:
 		get_image_to_texts(
 			dataset=val_dataset,
 			model=model,
@@ -619,15 +614,6 @@ def main():
 			device=args.device,
 		)
 
-	# get_image_to_texts_precision_at_(
-	# 	dataset=val_dataset,
-	# 	model=model,
-	# 	preprocess=preprocess,
-	# 	K=args.topK,
-	# 	device=args.device,
-	# )
-
-	if USER == "farid":
 		get_text_to_images(
 			dataset=val_dataset,
 			model=model,
@@ -638,14 +624,52 @@ def main():
 			device=args.device,
 		)
 
-	# get_text_to_images_precision_recall_at_(
-	# 	dataset=val_dataset,
-	# 	model=model,
-	# 	preprocess=preprocess,		
-	# 	K=args.topK,
-	# 	batch_size=args.batch_size,
-	# 	device=args.device,
-	# )
+		get_image_to_images(
+			dataset=val_dataset,
+			query_image_path=args.query_image,
+			model=model,
+			preprocess=preprocess,
+			topk=args.topK,
+			batch_size=args.batch_size,
+			device=args.device,
+		)
+	
+	if args.topK == 1: # only Top-1 is used for zero-shot accuracy
+		get_linear_prob_zero_shot_accuracy(
+			dataset_dir=args.dataset_dir, 
+			train_dataset=train_dataset, 
+			validation_dataset=val_dataset, 
+			model=model, 
+			preprocess=preprocess, 
+			batch_size=args.batch_size, 
+			device=args.device,
+		)
+
+	get_image_to_texts_precision_at_(
+		dataset=val_dataset,
+		model=model,
+		preprocess=preprocess,
+		K=args.topK,
+		device=args.device,
+	)
+
+	get_text_to_images_precision_recall_at_(
+		dataset=val_dataset,
+		model=model,
+		preprocess=preprocess,		
+		K=args.topK,
+		batch_size=args.batch_size,
+		device=args.device,
+	)
+
+	get_map_at_k(
+		dataset=val_dataset,
+		model=model,
+		preprocess=preprocess,
+		K=args.topK,
+		batch_size=args.batch_size,
+		device=args.device
+	)
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))

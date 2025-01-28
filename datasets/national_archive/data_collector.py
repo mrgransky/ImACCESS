@@ -334,8 +334,11 @@ def main():
 	na_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 	get_stratified_split(
 		df=na_df,
+		val_split_pct=0.35,
+		figure_size=(12, 6),
+		dpi=250,
 		result_dir=DATASET_DIRECTORY,
-		val_split_pct=0.35, # TODO: must be StratifiedKFold
+		dname=dataset_name,
 	)
 	try:
 		na_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
