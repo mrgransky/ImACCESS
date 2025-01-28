@@ -696,6 +696,7 @@ def run_evaluation(
 	print(f"Running Evaluation for {os.path.basename(args.dataset_dir)}".center(160, " "))
 	# Dictionary to store the metrics for this fold
 	fold_metrics = {}
+	
 	if args.visualize:
 		get_image_to_texts(
 				dataset=val_dataset,
