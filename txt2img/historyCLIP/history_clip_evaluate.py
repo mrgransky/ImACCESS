@@ -1,5 +1,6 @@
 from utils import *
 from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import StratifiedKFold
 
 # local:
 # $ python history_clip_evaluate.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31
@@ -10,17 +11,21 @@ parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_avai
 parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/5968_115463.jpg", help='image path for zero shot classification')
 parser.add_argument('--query_label', '-ql', type=str, default="aircraft", help='image path for zero shot classification')
 parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
+parser.add_argument('--kfolds', '-kf', type=int, default=3, help='kfolds for stratified sampling')
 parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch size')
 parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 parser.add_argument('--visualize', '-v', action='store_true', help='visualize the dataset')
+parser.add_argument('--sampling_strategy', '-ss', type=str, default="simple_random_sampling", choices=["simple_random_sampling", "kfold-stratified_sampling"], help='Sampling strategy')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 print(args)
 
 args.device = torch.device(args.device)
-OUTPUT_DIRECTORY = os.path.join(args.dataset_dir, "outputs",)
+OUTPUT_DIRECTORY = os.path.join(args.dataset_dir, "outputs")
 os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
+SAMPLING_STRATREGY_DIRECTORY = os.path.join(args.dataset_dir, args.sampling_strategy)
+os.makedirs(SAMPLING_STRATREGY_DIRECTORY, exist_ok=True)
 
 def load_model(model_name:str="ViT-B/32", device:str="cuda:0"):
 	model, preprocess = clip.load(model_name, device=device)
@@ -34,27 +39,76 @@ def load_model(model_name:str="ViT-B/32", device:str="cuda:0"):
 	print("Vocab size:", vocab_size)
 	return model, preprocess
 
-def get_dataset(ddir:str="path/2/dataset_dir", sliced:bool=False):
-	metadata_fpth = os.path.join(ddir, "metadata.csv")
-	metadata_train_fpth = os.path.join(ddir, "metadata_train.csv")
-	metadata_val_fpth = os.path.join(ddir, "metadata_val.csv")
+# def get_dataset(ddir:str="path/2/dataset_dir"):
+# 	metadata_fpth = os.path.join(ddir, "metadata.csv")
+# 	metadata_train_fpth = os.path.join(ddir, "metadata_train.csv")
+# 	metadata_val_fpth = os.path.join(ddir, "metadata_val.csv")
 	
-	df_train = pd.read_csv(
-		filepath_or_buffer=metadata_train_fpth,
-		on_bad_lines='skip',
-	)
-	labels_train = list(set(df_train["label"].tolist()))
-	label_dict_train = {lbl: idx for idx, lbl in enumerate(labels_train)} # dict that maps each label to its index
-	df_train['label_int'] = df_train['label'].map(label_dict_train) # Map the labels to their indices
+# 	df_train = pd.read_csv(filepath_or_buffer=metadata_train_fpth, on_bad_lines='skip')
+# 	labels_train = list(set(df_train["label"].tolist()))
+# 	label_dict_train = {lbl: idx for idx, lbl in enumerate(labels_train)} # dict that maps each label to its index
+# 	df_train['label_int'] = df_train['label'].map(label_dict_train) # Map the labels to their indices
 
-	df_val = pd.read_csv(
-		filepath_or_buffer=metadata_val_fpth,
-		on_bad_lines='skip',
-	)
-	labels_val = list(set(df_val["label"].tolist()))
-	label_dict_val = {lbl: idx for idx, lbl in enumerate(labels_val)} # dict that maps each label to its index
-	df_val['label_int'] = df_val['label'].map(label_dict_val) # Map the labels to their indices
-	return df_train, df_val
+# 	df_val = pd.read_csv(filepath_or_buffer=metadata_val_fpth, on_bad_lines='skip')
+# 	labels_val = list(set(df_val["label"].tolist()))
+# 	label_dict_val = {lbl: idx for idx, lbl in enumerate(labels_val)} # dict that maps each label to its index
+# 	df_val['label_int'] = df_val['label'].map(label_dict_val) # Map the labels to their indices
+# 	return df_train, df_val
+
+def get_dataset(
+	ddir: str = "path/2/dataset_dir",
+	sampling_strategy: str = "simple_random_sampling", # "simple_random_sampling" or "kfold-stratified_sampling"
+	kfolds:int=5  # Number of folds for K-Fold
+	):
+	print(f"Loading dataset {ddir}")
+	metadata_fpth = os.path.join(ddir, "metadata.csv")
+	df = pd.read_csv(filepath_or_buffer=metadata_fpth, on_bad_lines='skip')
+	if sampling_strategy == "simple_random_sampling":
+		print(f"Simple sampling strategy...")
+		metadata_train_fpth = os.path.join(ddir, "metadata_train.csv")
+		metadata_val_fpth = os.path.join(ddir, "metadata_val.csv")
+		# Load training and validation datasets
+		df_train = pd.read_csv(filepath_or_buffer=metadata_train_fpth, on_bad_lines='skip')
+		df_val = pd.read_csv(filepath_or_buffer=metadata_val_fpth, on_bad_lines='skip')
+		# Generate label mappings for simple sampling
+		labels_train = list(set(df_train["label"].tolist()))
+		label_dict_train = {lbl: idx for idx, lbl in enumerate(labels_train)}
+		df_train['label_int'] = df_train['label'].map(label_dict_train)
+		labels_val = list(set(df_val["label"].tolist()))
+		label_dict_val = {lbl: idx for idx, lbl in enumerate(labels_val)}
+		df_val['label_int'] = df_val['label'].map(label_dict_val)
+		return df_train, df_val
+	elif sampling_strategy == "kfold-stratified_sampling":
+		print(f"K-Fold Stratified sampling strategy with K={kfolds} folds...")
+		if "label" not in df.columns:
+			raise ValueError("The dataset must have a 'label' column for stratified sampling.")
+		# Exclude labels that occur only once
+		label_counts = df["label"].value_counts()
+		labels_to_drop = label_counts[label_counts == 1].index
+		df = df[~df["label"].isin(labels_to_drop)]
+		if df.empty:
+			raise ValueError("No valid labels for stratified sampling (after removing labels with one occurrence).")
+		# Generate label mappings
+		labels = list(set(df["label"].tolist()))
+		label_dict = {lbl: idx for idx, lbl in enumerate(labels)}
+		df["label_int"] = df["label"].map(label_dict)
+		# Create stratified K-Fold splits
+		skf = StratifiedKFold(n_splits=kfolds, shuffle=True, random_state=42)
+		for fold, (train_idx, val_idx) in enumerate(skf.split(df, df["label"])):
+			fold_dir = os.path.join(ddir, sampling_strategy, f"fold_{fold + 1}")
+			os.makedirs(fold_dir, exist_ok=True)
+			train_fpth = os.path.join(fold_dir, "metadata_train.csv")
+			val_fpth = os.path.join(fold_dir, "metadata_val.csv")
+			df_train = df.iloc[train_idx].copy()
+			df_val = df.iloc[val_idx].copy()
+			df_train["label_int"] = df_train["label"].map(label_dict)
+			df_val["label_int"] = df_val["label"].map(label_dict)
+			df_train.to_csv(train_fpth, index=False)
+			df_val.to_csv(val_fpth, index=False)
+		print(f"K-Fold splits saved in {ddir}.")
+		return
+	else:
+		raise ValueError("Invalid sampling_strategy. Use 'simple_random_sampling' or 'kfold-stratified_sampling'.")
 
 def get_linear_prob_zero_shot_accuracy(
 	dataset_dir,
@@ -64,14 +118,16 @@ def get_linear_prob_zero_shot_accuracy(
 	preprocess,
 	batch_size:int=1024,
 	device:str="cuda:0",
+	train_image_features_file:str="train_image_features.gz",
+	val_image_features_file:str="validation_image_features.gz",
 	):
-	print(f"Getting training features", end="\t")
+	print(f"Getting training features")
 	train_dataset_images_id = train_dataset["id"].tolist()
 	train_dataset_images_path = train_dataset["img_path"].tolist()
 	train_dataset_labels = train_dataset["label"].tolist() # ['naval training', 'medical service', 'medical service', 'naval forces', 'naval forces', ...]
 	train_dataset_labels_int = torch.tensor(train_dataset["label_int"].tolist()) # torch[3, 17, 4, 9, ...]
 	
-	train_image_features_file = os.path.join(dataset_dir, 'outputs', 'train_image_features.gz')
+	# train_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, 'train_image_features.gz')
 	t0 = time.time()
 	if not os.path.exists(train_image_features_file):
 		train_dataset_images_features = []
@@ -90,13 +146,13 @@ def get_linear_prob_zero_shot_accuracy(
 		train_dataset_images_features = load_pickle(fpath=train_image_features_file)
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
 
-	print(f"Getting validation features", end="\t")
+	print(f"Getting validation features")
 	val_dataset_images_id = validation_dataset["id"].tolist()
 	val_dataset_images_path = validation_dataset["img_path"].tolist()
 	val_dataset_labels = validation_dataset["label"].tolist() # ['naval training', 'medical service', 'medical service', 'naval forces', 'naval forces', ...]
 	val_dataset_labels_int = torch.tensor(validation_dataset["label_int"].tolist()) # torch[3, 17, 4, 9, ...]
 	t0 = time.time()
-	val_image_features_file = os.path.join(dataset_dir, 'outputs', 'validation_image_features.gz')
+	# val_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, 'validation_image_features.gz')
 	if not os.path.exists(val_image_features_file):
 		val_dataset_images_features = []
 		for i in range(0, len(val_dataset_images_path), batch_size):
@@ -237,14 +293,18 @@ def get_image_to_texts_precision_at_(
 	dataset_labels_int = dataset["label_int"].tolist() # [3, 17, 4, 9, ...]
 	print(len(dataset_images_id), len(dataset_labels))
 	
+	print(f"[1] Encode Labels")
+	t1 = time.time()
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
 	with torch.no_grad():
 		labels_features = model.encode_text(tokenized_labels_tensor)
 		labels_features /= labels_features.norm(dim=-1, keepdim=True)
+	print(f"Elapsed_t: {time.time()-t1:.3f} sec")
 
+	print(f"[2] Encode Images")
 	predicted_labels = []
 	true_labels = []
-	floop_st = time.time()
+	t2 = time.time()
 	torch.cuda.empty_cache() # Clear CUDA cache
 	with torch.no_grad():
 		for i, (img_pth, gt_lbl) in enumerate(zip(dataset_images_path, dataset_labels_int)): #img: <class 'PIL.Image.Image'>
@@ -257,13 +317,15 @@ def get_image_to_texts_precision_at_(
 			_, topk_labels_idx = similarities.topk(K, dim=-1)
 			predicted_labels.append(topk_labels_idx.cpu().numpy().flatten())
 			true_labels.append(gt_lbl)
-	print(f"Total (for loop): {time.time()-floop_st:.3f} sec")
+			if i % 100 == 0:
+				torch.cuda.empty_cache() # Clear CUDA cache
+	print(f"Elapsed_t: {time.time()-t2:.3f} sec")
 	print(len(predicted_labels), len(true_labels))
 	print(type(predicted_labels[0]), predicted_labels[0].shape,)
 	print(predicted_labels[:10])
 	print(true_labels[:10])
 
-	##################################################################################################
+	print(f"[3] Calculate Precision@{K}")
 	pred_st = time.time()
 	prec_at_k = 0
 	for ilbl, vlbl in enumerate(true_labels):
@@ -290,7 +352,15 @@ def get_image_to_texts_precision_at_(
 	# )
 	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 
-def get_text_to_images(dataset, model, preprocess, query:str="cat", topk:int=5, batch_size:int=64, device:str="cuda:0"):
+def get_text_to_images(
+	dataset,
+	model,
+	preprocess,
+	query:str="cat",
+	topk:int=5,
+	batch_size:int=64,
+	device:str="cuda:0",
+	):
 	print(f"Top-{topk} Image Retrieval {device} CLIP Query: « {query} »".center(160, " "))
 	t0 = time.time()
 	labels = list(set(dataset["label"].tolist()))
@@ -369,6 +439,7 @@ def get_text_to_images_precision_recall_at_(
 	K:int=5,
 	batch_size:int=64,
 	device:str="cuda:0",
+	image_features_file = 'validation_image_features.gz',
 	):
 	print(f"Text-to-Image Retrieval {device} CLIP batch_size: {batch_size} [performance metrics: Precision@{K}]".center(160, " "))
 	torch.cuda.empty_cache()  # Clear CUDA cache
@@ -381,12 +452,17 @@ def get_text_to_images_precision_recall_at_(
 	dataset_labels = dataset["label"].tolist()
 	dataset_labels_int = dataset["label_int"].tolist()
 	print(len(dataset_images_id), len(dataset_labels))
+	print(f"[1] Encode Labels")
+	t1 = time.time()
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
 	with torch.no_grad():
 		tokenized_labels_features = model.encode_text(tokenized_labels_tensor)
 		tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)
+	print(f"Elapsed_t: {time.time()-t1:.3f} sec")
 
-	image_features_file = os.path.join(args.dataset_dir, 'outputs', 'validation_image_features.gz')
+	print(f"[2] Encode Images")
+	t2 = time.time()
+	# image_features_file = os.path.join(args.dataset_dir, 'outputs', 'validation_image_features.gz')
 	if not os.path.exists(image_features_file):
 		print(f"Encoding {len(dataset_images_path)} images, might take a while...")
 		dataset_images_features = []
@@ -402,7 +478,10 @@ def get_text_to_images_precision_recall_at_(
 		save_pickle(pkl=dataset_images_features, fname=image_features_file)
 	else:
 		dataset_images_features = load_pickle(fpath=image_features_file)
+	print(f"Elapsed_t: {time.time()-t2:.3f} sec")
 
+	print(f"[3] Calculate Precision@{K}")
+	t3 = time.time()
 	prec_at_k = []
 	recall_at_k = []
 	for i, label_features in enumerate(tokenized_labels_features):
@@ -419,8 +498,8 @@ def get_text_to_images_precision_recall_at_(
 	avg_recall_at_k = sum(recall_at_k) / len(labels)
 	print(f"Precision@{K}: {avg_prec_at_k:.3f} {np.mean(prec_at_k)}")
 	print(f"Recall@{K}: {avg_recall_at_k:.3f} {np.mean(recall_at_k)}")
-	print(f"Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
-	print("-"*160)
+	print(f"Elapsed_t: {time.time()-t3:.3f} sec")
+	print(f"Total Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
 
 def get_map_at_k(
 	dataset,
@@ -429,6 +508,7 @@ def get_map_at_k(
 	K:int=10,
 	batch_size:int=512,
 	device:str="cuda:0",
+	image_features_file = 'validation_image_features.gz',
 	):
 	"""  
 	Calculate mean average precision@K (mAP@K) for image-to-texts and text-to-images retrieval.  
@@ -442,7 +522,7 @@ def get_map_at_k(
 	"""  
 	print(f"Calculating mAP@{K} for Image-to-Texts and Text-to-Images Retrieval {device}".center(160, " "))  
 	t0 = time.time()
-	image_features_file = os.path.join(args.dataset_dir, 'outputs', 'validation_image_features.gz')  
+	# image_features_file = os.path.join(args.dataset_dir, 'outputs', 'validation_image_features.gz')
 	if not os.path.exists(image_features_file):  
 		dataset_images_features = []  
 		for i in range(0, len(dataset["img_path"]), batch_size):  
@@ -461,10 +541,12 @@ def get_map_at_k(
 		dataset_images_features = load_pickle(fpath=image_features_file)  
 
 	# Image-to-Texts Retrieval
-	img_to_txt_precisions = []  
-	tokenized_labels_tensor = clip.tokenize(texts=list(set(dataset["label"]))).to(device)  
-	labels_features = model.encode_text(tokenized_labels_tensor)  
-	labels_features /= labels_features.norm(dim=-1, keepdim=True)  
+	img_to_txt_precisions = []
+	tokenized_labels_tensor = clip.tokenize(texts=list(set(dataset["label"]))).to(device)
+	with torch.no_grad():
+		labels_features = model.encode_text(tokenized_labels_tensor)  
+		labels_features /= labels_features.norm(dim=-1, keepdim=True)  
+
 	for i, (img_path, gt_lbl) in enumerate(zip(dataset["img_path"], dataset["label_int"])):  
 		with torch.no_grad():  
 			img_raw = Image.open(img_path)  
@@ -481,10 +563,10 @@ def get_map_at_k(
 	img_to_txt_map_at_k = np.mean(img_to_txt_precisions)  
 
 	# Text-to-Images Retrieval  
-	txt_to_img_precisions = []  
-	tokenized_labels_tensor = clip.tokenize(texts=list(set(dataset["label"]))).to(device)  
-	tokenized_labels_features = model.encode_text(tokenized_labels_tensor)  
-	tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)  
+	txt_to_img_precisions = []
+	with torch.no_grad():
+		tokenized_labels_features = model.encode_text(tokenized_labels_tensor)  
+		tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)  
 	for i, label_features in enumerate(tokenized_labels_features):
 		sim = label_features @ dataset_images_features.T  
 		_, indices = sim.topk(len(dataset_images_features), dim=-1)  
@@ -503,7 +585,14 @@ def get_map_at_k(
 	print(f"Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))  
 	return img_to_txt_map_at_k, txt_to_img_map_at_k
 
-def get_image_to_images(dataset, query_image_path, model, preprocess, topk: int, batch_size: int, device):
+def get_image_to_images(
+	dataset,
+	query_image_path,
+	model, preprocess,
+	topk:int,
+	batch_size:int,
+	device,
+	):
 	print(f"Image-to-Image(s) Retrieval {query_image_path}".center(200, " "))
 	t0 = time.time()
 
@@ -540,8 +629,12 @@ def get_image_to_images(dataset, query_image_path, model, preprocess, topk: int,
 	print(type(dataset_images_features), len(dataset_images_features), dataset_images_features[0].shape, type(dataset_images_features[0]))
 
 	query_image = preprocess(qimage).unsqueeze(0).to(device)
-	query_image_feature = model.encode_image(query_image)
-	query_image_feature = query_image_feature / query_image_feature.norm(dim=-1, keepdim=True)
+
+	# Encode the query image
+	with torch.no_grad():
+		query_image_feature = model.encode_image(query_image)
+		query_image_feature = query_image_feature / query_image_feature.norm(dim=-1, keepdim=True)
+	
 	query_image_feature = query_image_feature.cpu().detach().numpy()
 	print(query_image_feature.shape, type(query_image_feature))
 
@@ -590,59 +683,54 @@ def get_image_to_images(dataset, query_image_path, model, preprocess, topk: int,
 	print(f"Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
 	return topk_image_paths, topk_labels, topk_similarities
 
-@measure_execution_time
-def main():
-	print(clip.available_models())
-	model, preprocess = load_model(
-		model_name=args.model_name,
-		device=args.device,
-	)
-
-	train_dataset, val_dataset = get_dataset(
-		ddir=args.dataset_dir,
-		sliced=False,
-	)
-	print(f"Train: {train_dataset.shape}, Validation: {val_dataset.shape}")
-
-	if USER=="farid" and args.visualize:
+def run_evaluation(
+	model,
+	preprocess,
+	train_dataset,
+	val_dataset,
+	train_image_features_file,
+	val_image_features_file,
+	):
+	print(f"Running Evaluation for {os.path.basename(args.dataset_dir)}".center(160, " "))
+	if args.visualize:
 		get_image_to_texts(
-			dataset=val_dataset,
-			model=model,
-			preprocess=preprocess,
-			img_path=args.query_image,
-			topk=args.topK,
-			device=args.device,
+				dataset=val_dataset,
+				model=model,
+				preprocess=preprocess,
+				img_path=args.query_image,
+				topk=args.topK,
+				device=args.device,
 		)
-
 		get_text_to_images(
-			dataset=val_dataset,
-			model=model,
-			preprocess=preprocess,
-			query=args.query_label,
-			topk=args.topK,
-			batch_size=args.batch_size,
-			device=args.device,
+				dataset=val_dataset,
+				model=model,
+				preprocess=preprocess,
+				query=args.query_label,
+				topk=args.topK,
+				batch_size=args.batch_size,
+				device=args.device,
 		)
-
 		get_image_to_images(
-			dataset=val_dataset,
-			query_image_path=args.query_image,
-			model=model,
-			preprocess=preprocess,
-			topk=args.topK,
-			batch_size=args.batch_size,
-			device=args.device,
+				dataset=val_dataset,
+				query_image_path=args.query_image,
+				model=model,
+				preprocess=preprocess,
+				topk=args.topK,
+				batch_size=args.batch_size,
+				device=args.device,
 		)
 	
-	if args.topK == 1: # only Top-1 is used for zero-shot accuracy
+	if args.topK == 1:
 		get_linear_prob_zero_shot_accuracy(
-			dataset_dir=args.dataset_dir, 
-			train_dataset=train_dataset, 
-			validation_dataset=val_dataset, 
-			model=model, 
-			preprocess=preprocess, 
-			batch_size=args.batch_size, 
+			dataset_dir=args.dataset_dir,
+			train_dataset=train_dataset,
+			validation_dataset=val_dataset,
+			model=model,
+			preprocess=preprocess,
+			batch_size=args.batch_size,
 			device=args.device,
+			train_image_features_file=train_image_features_file,
+			val_image_features_file=val_image_features_file,
 		)
 
 	get_image_to_texts_precision_at_(
@@ -656,10 +744,11 @@ def main():
 	get_text_to_images_precision_recall_at_(
 		dataset=val_dataset,
 		model=model,
-		preprocess=preprocess,		
+		preprocess=preprocess,
 		K=args.topK,
 		batch_size=args.batch_size,
 		device=args.device,
+		image_features_file=val_image_features_file,
 	)
 
 	get_map_at_k(
@@ -668,8 +757,58 @@ def main():
 		preprocess=preprocess,
 		K=args.topK,
 		batch_size=args.batch_size,
-		device=args.device
+		device=args.device,
+		image_features_file=val_image_features_file,
 	)
+
+def simple_random_sampling(model, preprocess):
+	print(f"{'Simple Random Sampling':^150}")
+	train_dataset, val_dataset = get_dataset(ddir=args.dataset_dir, sampling_strategy="simple_random_sampling")
+	print(f"Train: {train_dataset.shape}, Validation: {val_dataset.shape}")
+	train_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, 'train_image_features.gz')
+	val_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, 'validation_image_features.gz')
+	run_evaluation(model, preprocess, train_dataset, val_dataset, train_image_features_file, val_image_features_file)
+
+def k_fold_stratified_sampling(model, preprocess, kfolds: int = 5):
+	print(f'K(={kfolds})-Fold Stratified Sampling'.center(150, "-"))
+	metrics = {"precision": [], "recall": [], "map": []}
+	# Ensure folds exist by calling get_dataset()
+	print("Checking and preparing dataset folds...")
+	get_dataset(
+		ddir=args.dataset_dir,
+		sampling_strategy="kfold-stratified_sampling",
+		kfolds=kfolds
+	)
+	for fold_idx in range(kfolds):
+		train_fpth = os.path.join(SAMPLING_STRATREGY_DIRECTORY, f"fold_{fold_idx + 1}", "metadata_train.csv")
+		val_fpth = os.path.join(SAMPLING_STRATREGY_DIRECTORY, f"fold_{fold_idx + 1}", "metadata_val.csv")
+		# Check for file existence
+		if not os.path.exists(train_fpth) or not os.path.exists(val_fpth):
+			print(f"Expected files not found for Fold {fold_idx + 1}:")
+			print(f"Train File Path: {train_fpth} -> {'Exists' if os.path.exists(train_fpth) else 'Missing'}")
+			print(f"Validation File Path: {val_fpth} -> {'Exists' if os.path.exists(val_fpth) else 'Missing'}")
+			raise FileNotFoundError(f"Fold {fold_idx + 1}: Missing train or validation CSV files.")
+		# Load datasets
+		train_dataset = pd.read_csv(train_fpth)
+		val_dataset = pd.read_csv(val_fpth)
+		print(f"Fold {fold_idx + 1}/{kfolds}: Train: {train_dataset.shape}, Validation: {val_dataset.shape}")
+		# Run evaluation for the current fold
+		train_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, f"fold_{fold_idx + 1}", 'train_image_features.gz')
+		val_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, f"fold_{fold_idx + 1}", 'validation_image_features.gz')
+		run_evaluation(model, preprocess, train_dataset, val_dataset, train_image_features_file, val_image_features_file)
+		print(f"Fold {fold_idx + 1}/{kfolds} evaluation completed.")
+	print("K-Fold evaluation completed.")
+
+@measure_execution_time
+def main():
+	print(clip.available_models())
+	model, preprocess = load_model(model_name=args.model_name, device=args.device,)
+	if args.sampling_strategy == "simple_random_sampling":
+		simple_random_sampling(model=model, preprocess=preprocess)
+	elif args.sampling_strategy == "kfold-stratified_sampling":
+		k_fold_stratified_sampling(model=model, preprocess=preprocess, kfolds=args.kfolds)
+	else:
+		raise ValueError(f"Unknown sampling strategy: {args.sampling_strategy}")
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))

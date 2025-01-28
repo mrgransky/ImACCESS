@@ -7,7 +7,7 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
@@ -44,21 +44,25 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
 )
 
+sampling_strategies=("simple_random_sampling" "kfold-stratified_sampling")
+
 if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then
 	echo "Error: SLURM_ARRAY_TASK_ID out of bounds"
 	exit 1
 fi
 
-for prec in 1 5 10 15 20
-	do
-		echo "Precision@$prec for Dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$SLURM_ARRAY_TASK_ID]}"
+for strategy in "${sampling_strategies[@]}"; do
+	for prec in 1 5 10 15 20; do
+		echo "Precision@$prec for Dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$SLURM_ARRAY_TASK_ID]} with sampling strategy: $strategy"
 		python -u history_clip_evaluate.py \
-						--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
-						--batch_size 512 \
-						--model_name "ViT-B/32" \
-						--device "cuda:0" \
-						--topK $prec \
-						> "log_dataset_${SLURM_ARRAY_TASK_ID}_prec${prec}.out" 2>&1
+										--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
+										--batch_size 512 \
+										--model_name "ViT-B/32" \
+										--device "cuda:0" \
+										--topK $prec \
+										--sampling_strategy "$strategy" \
+										> "log_dataset_${SLURM_ARRAY_TASK_ID}_prec${prec}_${strategy}.out" 2>&1
+	done
 done
 
 nvidia-smi
