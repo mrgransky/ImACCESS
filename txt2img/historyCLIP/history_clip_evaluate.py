@@ -696,7 +696,7 @@ def run_evaluation(
 	print(f"Running Evaluation for {os.path.basename(args.dataset_dir)}".center(160, " "))
 	# Dictionary to store the metrics for this fold
 	fold_metrics = {}
-	
+
 	if args.visualize:
 		get_image_to_texts(
 				dataset=val_dataset,
@@ -836,7 +836,7 @@ def k_fold_stratified_sampling(model, preprocess, kfolds:int=5):
 	print("-" * 50)
 	for metric_name, metric_values in metrics.items():
 		avg_metric = np.mean(metric_values)
-		print(f"Average {metric_name}: {avg_metric:.4f}")
+		print(f"Average {metric_name}: {avg_metric:.3f}")
 	print("-" * 50)
 
 @measure_execution_time
