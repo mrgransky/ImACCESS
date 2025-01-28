@@ -351,6 +351,7 @@ def get_image_to_texts_precision_at_(
 	# 	f"Elapsed_t: {time.time()-pred_st:.2f} sec"
 	# )
 	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
+	return avg_prec_at_k
 
 def get_text_to_images(
 	dataset,
@@ -500,6 +501,7 @@ def get_text_to_images_precision_recall_at_(
 	print(f"Recall@{K}: {avg_recall_at_k:.3f} {np.mean(recall_at_k)}")
 	print(f"Elapsed_t: {time.time()-t3:.3f} sec")
 	print(f"Total Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
+	return avg_prec_at_k, avg_recall_at_k
 
 def get_map_at_k(
 	dataset,
@@ -721,7 +723,7 @@ def run_evaluation(
 		)
 	
 	if args.topK == 1:
-		get_linear_prob_zero_shot_accuracy(
+		linear_probe_accuracy, zero_shot_accuracy = get_linear_prob_zero_shot_accuracy(
 			dataset_dir=args.dataset_dir,
 			train_dataset=train_dataset,
 			validation_dataset=val_dataset,
@@ -732,26 +734,19 @@ def run_evaluation(
 			train_image_features_file=train_image_features_file,
 			val_image_features_file=val_image_features_file,
 		)
+		fold_metrics["linear_probe_accuracy"] = linear_probe_accuracy
+		fold_metrics["zero_shot_accuracy"] = zero_shot_accuracy
 
-	get_image_to_texts_precision_at_(
+	img_to_txt_precision = get_image_to_texts_precision_at_(
 		dataset=val_dataset,
 		model=model,
 		preprocess=preprocess,
 		K=args.topK,
 		device=args.device,
 	)
+	fold_metrics["img_to_txt_precision"] = img_to_txt_precision
 
-	get_text_to_images_precision_recall_at_(
-		dataset=val_dataset,
-		model=model,
-		preprocess=preprocess,
-		K=args.topK,
-		batch_size=args.batch_size,
-		device=args.device,
-		image_features_file=val_image_features_file,
-	)
-
-	get_map_at_k(
+	txt_to_img_precision, txt_to_img_recall = get_text_to_images_precision_recall_at_(
 		dataset=val_dataset,
 		model=model,
 		preprocess=preprocess,
@@ -760,6 +755,22 @@ def run_evaluation(
 		device=args.device,
 		image_features_file=val_image_features_file,
 	)
+	fold_metrics["txt_to_img_precision"] = txt_to_img_precision
+	fold_metrics["txt_to_img_recall"] = txt_to_img_recall
+
+	img_to_txt_map, txt_to_img_map = get_map_at_k(
+		dataset=val_dataset,
+		model=model,
+		preprocess=preprocess,
+		K=args.topK,
+		batch_size=args.batch_size,
+		device=args.device,
+		image_features_file=val_image_features_file,
+	)
+	fold_metrics["img_to_txt_map"] = img_to_txt_map
+	fold_metrics["txt_to_img_map"] = txt_to_img_map
+
+	return fold_metrics
 
 def simple_random_sampling(model, preprocess):
 	print(f"{'Simple Random Sampling':^150}")
@@ -769,20 +780,29 @@ def simple_random_sampling(model, preprocess):
 	val_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, 'validation_image_features.gz')
 	run_evaluation(model, preprocess, train_dataset, val_dataset, train_image_features_file, val_image_features_file)
 
-def k_fold_stratified_sampling(model, preprocess, kfolds: int = 5):
+def k_fold_stratified_sampling(model, preprocess, kfolds:int=5):
 	print(f'K(={kfolds})-Fold Stratified Sampling'.center(150, "-"))
-	metrics = {"precision": [], "recall": [], "map": []}
+
+ # 1. Data Structure to Store Metrics from Each Fold
+	metrics = {
+		"linear_probe_accuracy": [],
+		"zero_shot_accuracy": [],
+		"img_to_txt_precision": [],
+		"txt_to_img_precision": [],
+		"txt_to_img_recall": [],
+		"img_to_txt_map": [],
+		"txt_to_img_map": [],
+	}
 	# Ensure folds exist by calling get_dataset()
 	print("Checking and preparing dataset folds...")
 	get_dataset(
 		ddir=args.dataset_dir,
 		sampling_strategy="kfold-stratified_sampling",
-		kfolds=kfolds
+		kfolds=kfolds,
 	)
 	for fold_idx in range(kfolds):
 		train_fpth = os.path.join(SAMPLING_STRATREGY_DIRECTORY, f"fold_{fold_idx + 1}", "metadata_train.csv")
 		val_fpth = os.path.join(SAMPLING_STRATREGY_DIRECTORY, f"fold_{fold_idx + 1}", "metadata_val.csv")
-		# Check for file existence
 		if not os.path.exists(train_fpth) or not os.path.exists(val_fpth):
 			print(f"Expected files not found for Fold {fold_idx + 1}:")
 			print(f"Train File Path: {train_fpth} -> {'Exists' if os.path.exists(train_fpth) else 'Missing'}")
@@ -795,9 +815,26 @@ def k_fold_stratified_sampling(model, preprocess, kfolds: int = 5):
 		# Run evaluation for the current fold
 		train_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, f"fold_{fold_idx + 1}", 'train_image_features.gz')
 		val_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, f"fold_{fold_idx + 1}", 'validation_image_features.gz')
-		run_evaluation(model, preprocess, train_dataset, val_dataset, train_image_features_file, val_image_features_file)
+		# 2. Call run_evaluation and Get Results
+		fold_metrics = run_evaluation(
+			model=model,
+			preprocess=preprocess,
+			train_dataset=train_dataset,
+			val_dataset=val_dataset,
+			train_image_features_file=train_image_features_file,
+			val_image_features_file=val_image_features_file,
+		)
+		# 3. Store Metrics for the Current Fold
+		for metric_name, metric_value in fold_metrics.items():
+			metrics[metric_name].append(metric_value)
 		print(f"Fold {fold_idx + 1}/{kfolds} evaluation completed.")
-	print("K-Fold evaluation completed.")
+	# 4. Calculate and Print Average Metrics
+	print("K-Fold evaluation completed. Calculating average metrics...")
+	print("-" * 50)
+	for metric_name, metric_values in metrics.items():
+		avg_metric = np.mean(metric_values)
+		print(f"Average {metric_name}: {avg_metric:.4f}")
+	print("-" * 50)
 
 @measure_execution_time
 def main():
