@@ -279,7 +279,7 @@ def get_image_to_texts(
 	topk:int=5,
 	device:str="cuda:0",
 	):
-	print(f"Zero-Shot Image Classification: {img_path}".center(160, " "))
+	print(f"Image-to-Text Retrieval [Classification]: {img_path}".center(160, " "))
 	labels = dataset.classes
 	if topk > len(labels):
 		print(f"ERROR: requested Top-{topk} labeling is greater than number of labels({len(labels)}) => EXIT...")
@@ -310,7 +310,7 @@ def get_image_to_texts_precision_at_(
 	K:int=5,
 	device:str="cuda:0",
 	):
-	print(f"Zero-Shot Image Classification {device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
+	print(f"Image-to-Text Retrival [Classification] {device} CLIP [performance metrics: Precision@{K}]".center(160, " "))
 	labels = dataset.classes # <class 'list'> ['airplane', 'automobile', ...]
 	if K > len(labels):
 		print(f"ERROR: requested Top-{K} labeling is greater than number of labels({len(labels)}) => EXIT...")
