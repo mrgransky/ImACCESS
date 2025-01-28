@@ -1,18 +1,22 @@
 #!/bin/bash
 
-#SBATCH --account=project_2004072
+#SBATCH --account=project_2009043
 #SBATCH --job-name=preck_dataset_x
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
+#SBATCH --cpus-per-task=10
 #SBATCH --mem=16G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
 #SBATCH --array=0-3
 #SBATCH --gres=gpu:v100:1
+
+set -e
+set -u
+set -o pipefail
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
@@ -30,12 +34,20 @@ echo "nTASKS/CORE: $SLURM_NTASKS_PER_CORE, nTASKS/NODE: $SLURM_NTASKS_PER_NODE"
 echo "THREADS/CORE: $SLURM_THREADS_PER_CORE"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
+
+nvidia-smi
+
 DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
 )
+
+if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then
+	echo "Error: SLURM_ARRAY_TASK_ID out of bounds"
+	exit 1
+fi
 
 for prec in 1 5 10 15 20
 	do
@@ -46,8 +58,10 @@ for prec in 1 5 10 15 20
 						--model_name "ViT-B/32" \
 						--device "cuda:0" \
 						--topK $prec \
-
+						> "log_dataset_${SLURM_ARRAY_TASK_ID}_prec${prec}.out" 2>&1
 done
+
+nvidia-smi
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
