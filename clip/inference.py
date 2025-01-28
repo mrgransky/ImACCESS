@@ -14,7 +14,7 @@ parser.add_argument('--visualize', '-v', action='store_true', help='visualize th
 args, unknown = parser.parse_known_args()
 print(args)
 
-# $ nohup python -u inference.py -d imagenet -k 1 -bs 128 -nw 4 -dv "cuda:3" > /media/volume/ImACCESS/trash/prec_at_k.out &
+# $ nohup python -u inference.py -d imagenet -k 1 -bs 64 -nw 4 -dv "cuda:3" > /media/volume/ImACCESS/trash/prec_at_k.out &
 device = torch.device(args.device)
 USER = os.environ.get('USER')
 OUTPUT_DIRECTORY = os.path.join(args.dataset, "outputs")
@@ -147,23 +147,43 @@ def get_features(
 		batch_size=batch_size,
 		num_workers=nw,
 		pin_memory=True, # Move data to GPU faster if using CUDA
-		persistent_workers=True if nw > 1 else False,  # Keep workers alive if memory allows
+		persistent_workers=(nw > 1),
+		prefetch_factor=2, # Number of batches loaded in advance by each worker
 		shuffle=False,  # Shuffle is not necessary during feature extraction
 	) # <class 'torch.Tensor'> torch.Size([b, 512]), <class 'torch.Tensor'> torch.Size([b])
-	# torch.cuda.empty_cache() # Clear CUDA cache before starting the loop
+	model.eval()
+	torch.cuda.empty_cache() # Clear CUDA cache before starting the loop
 	with torch.no_grad():
 		for i, (images, labels) in enumerate(tqdm(dataloader, desc="Extracting features")):
 			images = images.to(device, non_blocking=True)  # non_blocking for potential faster async transfers
-			features = model.encode_image(images) # <class 'torch.Tensor'> torch.Size([b, 512])
-			# all_features.append(features)
-			all_features.append(features.cpu())
+			features = model.encode_image(images).cpu() # <class 'torch.Tensor'> torch.Size([b, 512])
+			all_features.append(features)
 			all_labels.append(labels)
-			if (i+1) % 5 == 0:
+			if (i+1) % 50 == 0:
 				torch.cuda.empty_cache() # Clear CUDA cache after each batch
-	# all_features = torch.cat(all_features).cpu().numpy()
-	# all_labels = torch.cat(all_labels).cpu().numpy()
+
+	# # Start PyTorch profiler
+	# with profile(
+	# 	activities=[
+	# 		ProfilerActivity.CPU,
+	# 		ProfilerActivity.CUDA  # Profiling both CPU and GPU activities
+	# 	],
+	# 	on_trace_ready=tensorboard_trace_handler(os.path.join(OUTPUT_DIRECTORY, "log")),  # Save traces for TensorBoard
+	# 	record_shapes=True,  # Record tensor shapes
+	# 	with_stack=True       # Record stack traces for debugging
+	# ) as prof:
+	# 	with torch.no_grad():
+	# 		for i, (images, labels) in enumerate(tqdm(dataloader, desc="Extracting features")):
+	# 			images = images.to(device, non_blocking=True)  # non_blocking for potential faster async transfers
+	# 			features = model.encode_image(images).cpu() # <class 'torch.Tensor'> torch.Size([b, 512])
+	# 			all_features.append(features)
+	# 			all_labels.append(labels)
+	# 			if (i+1) % 100 == 0:
+	# 				torch.cuda.empty_cache() # Clear CUDA cache after each batch
 	all_features = torch.cat(all_features).numpy()
 	all_labels = torch.cat(all_labels).numpy()
+	# Print profiler results
+	# print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
 	return all_features, all_labels
 
 def get_linear_prob_zero_shot_accuracy(

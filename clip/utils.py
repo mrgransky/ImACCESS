@@ -26,6 +26,8 @@ from sklearn.linear_model import LogisticRegression
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from collections import defaultdict
+from torch.profiler import profile, ProfilerActivity, tensorboard_trace_handler
+torch.backends.cudnn.benchmark = True
 
 def save_pickle(pkl, fname:str=""):
 	print(f"\nSaving {type(pkl)}\n{fname}")
