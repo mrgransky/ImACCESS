@@ -3,7 +3,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold
 
 # local:
-# $ python history_clip_evaluate.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31
+# $ python history_clip_evaluate.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -ss "kfold-stratified_sampling" -k 1
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
@@ -20,7 +20,6 @@ parser.add_argument('--sampling_strategy', '-ss', type=str, default="simple_rand
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 print(args)
-
 args.device = torch.device(args.device)
 OUTPUT_DIRECTORY = os.path.join(args.dataset_dir, "outputs")
 os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
