@@ -24,8 +24,6 @@ print(args)
 args.device = torch.device(args.device)
 OUTPUT_DIRECTORY = os.path.join(args.dataset_dir, "outputs")
 os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
-SAMPLING_STRATREGY_DIRECTORY = os.path.join(args.dataset_dir, args.sampling_strategy)
-os.makedirs(SAMPLING_STRATREGY_DIRECTORY, exist_ok=True)
 
 def load_model(model_name:str="ViT-B/32", device:str="cuda:0"):
 	model, preprocess = clip.load(model_name, device=device)
@@ -58,13 +56,18 @@ def load_model(model_name:str="ViT-B/32", device:str="cuda:0"):
 def get_dataset(
 	ddir: str = "path/2/dataset_dir",
 	sampling_strategy: str = "simple_random_sampling", # "simple_random_sampling" or "kfold-stratified_sampling"
-	kfolds:int=5  # Number of folds for K-Fold
+	kfolds:int=5,  # Number of folds for K-Fold
+	force_regenerate:bool=False, # Force regenerate K-Fold splits
 	):
-	print(f"Loading dataset {ddir}")
+	if sampling_strategy not in ["simple_random_sampling", "kfold-stratified_sampling"]:
+		raise ValueError("Invalid sampling_strategy. Choose 'simple_random_sampling' or 'kfold-stratified_sampling'.")
+
+	print(f"Loading dataset {ddir} ...")
 	metadata_fpth = os.path.join(ddir, "metadata.csv")
 	df = pd.read_csv(filepath_or_buffer=metadata_fpth, on_bad_lines='skip')
+	print(f"FULL Dataset (df) shape: {df.shape}")
 	if sampling_strategy == "simple_random_sampling":
-		print(f"Simple sampling strategy...")
+		print(f"Simple Random Sampling...")
 		metadata_train_fpth = os.path.join(ddir, "metadata_train.csv")
 		metadata_val_fpth = os.path.join(ddir, "metadata_val.csv")
 		# Load training and validation datasets
@@ -79,7 +82,20 @@ def get_dataset(
 		df_val['label_int'] = df_val['label'].map(label_dict_val)
 		return df_train, df_val
 	elif sampling_strategy == "kfold-stratified_sampling":
-		print(f"K-Fold Stratified sampling strategy with K={kfolds} folds...")
+		if kfolds < 2:
+			raise ValueError("kfolds must be at least 2.")
+		fold_dir = os.path.join(ddir, sampling_strategy)
+		if os.path.exists(fold_dir) and not force_regenerate:
+			print(f"K-Fold splits already exist in {fold_dir}. Loading existing splits...")
+			folds = []
+			for fold in range(1, kfolds + 1):
+				train_fpth = os.path.join(fold_dir, f"fold_{fold}", "metadata_train.csv")
+				val_fpth = os.path.join(fold_dir, f"fold_{fold}", "metadata_val.csv")
+				df_train = pd.read_csv(train_fpth)
+				df_val = pd.read_csv(val_fpth)
+				folds.append((df_train, df_val))
+			return folds
+		print(f"K-Fold Stratified sampling with K={kfolds} folds...")
 		if "label" not in df.columns:
 			raise ValueError("The dataset must have a 'label' column for stratified sampling.")
 		# Exclude labels that occur only once
@@ -94,6 +110,7 @@ def get_dataset(
 		df["label_int"] = df["label"].map(label_dict)
 		# Create stratified K-Fold splits
 		skf = StratifiedKFold(n_splits=kfolds, shuffle=True, random_state=42)
+		folds = []
 		for fold, (train_idx, val_idx) in enumerate(skf.split(df, df["label"])):
 			fold_dir = os.path.join(ddir, sampling_strategy, f"fold_{fold + 1}")
 			os.makedirs(fold_dir, exist_ok=True)
@@ -105,8 +122,9 @@ def get_dataset(
 			df_val["label_int"] = df_val["label"].map(label_dict)
 			df_train.to_csv(train_fpth, index=False)
 			df_val.to_csv(val_fpth, index=False)
-		print(f"K-Fold splits saved in {ddir}.")
-		return
+			folds.append((df_train, df_val))
+		print(f"K(={kfolds})-Fold splits saved in {ddir}")
+		return folds
 	else:
 		raise ValueError("Invalid sampling_strategy. Use 'simple_random_sampling' or 'kfold-stratified_sampling'.")
 
@@ -127,7 +145,6 @@ def get_linear_prob_zero_shot_accuracy(
 	train_dataset_labels = train_dataset["label"].tolist() # ['naval training', 'medical service', 'medical service', 'naval forces', 'naval forces', ...]
 	train_dataset_labels_int = torch.tensor(train_dataset["label_int"].tolist()) # torch[3, 17, 4, 9, ...]
 	torch.cuda.empty_cache() # Clear CUDA cache
-	# train_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, 'train_image_features.gz')
 	t0 = time.time()
 	if not os.path.exists(train_image_features_file):
 		train_dataset_images_features = []
@@ -152,7 +169,6 @@ def get_linear_prob_zero_shot_accuracy(
 	val_dataset_labels = validation_dataset["label"].tolist() # ['naval training', 'medical service', 'medical service', 'naval forces', 'naval forces', ...]
 	val_dataset_labels_int = torch.tensor(validation_dataset["label_int"].tolist()) # torch[3, 17, 4, 9, ...]
 	t0 = time.time()
-	# val_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, 'validation_image_features.gz')
 	if not os.path.exists(val_image_features_file):
 		val_dataset_images_features = []
 		for i in range(0, len(val_dataset_images_path), batch_size):
@@ -777,11 +793,21 @@ def run_evaluation(
 
 def simple_random_sampling(model, preprocess):
 	print(f"{'Simple Random Sampling':^150}")
-	train_dataset, val_dataset = get_dataset(ddir=args.dataset_dir, sampling_strategy="simple_random_sampling")
+	train_dataset, val_dataset = get_dataset(
+		ddir=args.dataset_dir, 
+		sampling_strategy=args.sampling_strategy,
+	)
 	print(f"Train: {train_dataset.shape}, Validation: {val_dataset.shape}")
-	train_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, 'train_image_features.gz')
-	val_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, 'validation_image_features.gz')
-	run_evaluation(model, preprocess, train_dataset, val_dataset, train_image_features_file, val_image_features_file)
+	train_image_features_file = os.path.join(args.dataset_dir, args.sampling_strategy, 'train_image_features.gz')
+	val_image_features_file = os.path.join(args.dataset_dir, args.sampling_strategy, 'validation_image_features.gz')
+	run_evaluation(
+		model=model,
+		preprocess=preprocess,
+		train_dataset=train_dataset,
+		val_dataset=val_dataset,
+		train_image_features_file=train_image_features_file,
+		val_image_features_file=val_image_features_file,
+	)
 
 def k_fold_stratified_sampling(model, preprocess, kfolds:int=5):
 	print(f'K(={kfolds})-Fold Stratified Sampling'.center(150, "-"))
@@ -796,28 +822,20 @@ def k_fold_stratified_sampling(model, preprocess, kfolds:int=5):
 		"img_to_txt_map": [],
 		"txt_to_img_map": [],
 	}
-	# Ensure folds exist by calling get_dataset()
 	print("Checking and preparing dataset folds...")
-	get_dataset(
+	folded_dataset = get_dataset(
 		ddir=args.dataset_dir,
-		sampling_strategy="kfold-stratified_sampling",
+		sampling_strategy=args.sampling_strategy,
 		kfolds=kfolds,
 	)
-	for fold_idx in range(kfolds):
-		train_fpth = os.path.join(SAMPLING_STRATREGY_DIRECTORY, f"fold_{fold_idx + 1}", "metadata_train.csv")
-		val_fpth = os.path.join(SAMPLING_STRATREGY_DIRECTORY, f"fold_{fold_idx + 1}", "metadata_val.csv")
-		if not os.path.exists(train_fpth) or not os.path.exists(val_fpth):
-			print(f"Expected files not found for Fold {fold_idx + 1}:")
-			print(f"Train File Path: {train_fpth} -> {'Exists' if os.path.exists(train_fpth) else 'Missing'}")
-			print(f"Validation File Path: {val_fpth} -> {'Exists' if os.path.exists(val_fpth) else 'Missing'}")
-			raise FileNotFoundError(f"Fold {fold_idx + 1}: Missing train or validation CSV files.")
-		# Load datasets
-		train_dataset = pd.read_csv(train_fpth)
-		val_dataset = pd.read_csv(val_fpth)
-		print(f"Fold {fold_idx + 1}/{kfolds}: Train: {train_dataset.shape}, Validation: {val_dataset.shape}")
-		# Run evaluation for the current fold
-		train_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, f"fold_{fold_idx + 1}", 'train_image_features.gz')
-		val_image_features_file = os.path.join(SAMPLING_STRATREGY_DIRECTORY, f"fold_{fold_idx + 1}", 'validation_image_features.gz')
+	# for fidx in range(kfolds):
+	for fidx, (df_train, df_val) in enumerate(folded_dataset):
+		t3 = time.time()
+		train_dataset = df_train
+		val_dataset = df_val
+		print(f"Fold {fidx + 1}/{kfolds}: Train: {train_dataset.shape}, Validation: {val_dataset.shape}")
+		train_image_features_file = os.path.join(args.dataset_dir, args.sampling_strategy, f"fold_{fidx + 1}", 'train_image_features.gz')
+		val_image_features_file = os.path.join(args.dataset_dir, args.sampling_strategy, f"fold_{fidx + 1}", 'validation_image_features.gz')
 		# 2. Call run_evaluation and Get Results
 		fold_metrics = run_evaluation(
 			model=model,
@@ -830,13 +848,20 @@ def k_fold_stratified_sampling(model, preprocess, kfolds:int=5):
 		# 3. Store Metrics for the Current Fold
 		for metric_name, metric_value in fold_metrics.items():
 			metrics[metric_name].append(metric_value)
-		print(f"Fold {fold_idx + 1}/{kfolds} evaluation completed.")
+		print(f"Fold {fidx + 1}/{kfolds} evaluation completed, Elapsed time: {time.time()-t3:.1f} sec")
 	# 4. Calculate and Print Average Metrics
 	print("K-Fold evaluation completed. Calculating average metrics...")
-	print("-" * 50)
 	for metric_name, metric_values in metrics.items():
+		if len(metric_values) == 0:
+			continue
 		avg_metric = np.mean(metric_values)
-		print(f"Average {metric_name}: {avg_metric:.3f}")
+		print(
+			f"{metric_name} "
+			f"{metric_values} "
+			f"Min: {np.min(metric_values):.3f} "
+			f"Max: {np.max(metric_values):.3f} "
+			f"mean: {avg_metric:.3f}"
+		)
 	print("-" * 50)
 
 @measure_execution_time
