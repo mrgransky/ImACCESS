@@ -36,22 +36,6 @@ def load_model(model_name:str="ViT-B/32", device:str="cuda:0"):
 	print("Vocab size:", vocab_size)
 	return model, preprocess
 
-# def get_dataset(ddir:str="path/2/dataset_dir"):
-# 	metadata_fpth = os.path.join(ddir, "metadata.csv")
-# 	metadata_train_fpth = os.path.join(ddir, "metadata_train.csv")
-# 	metadata_val_fpth = os.path.join(ddir, "metadata_val.csv")
-	
-# 	df_train = pd.read_csv(filepath_or_buffer=metadata_train_fpth, on_bad_lines='skip')
-# 	labels_train = list(set(df_train["label"].tolist()))
-# 	label_dict_train = {lbl: idx for idx, lbl in enumerate(labels_train)} # dict that maps each label to its index
-# 	df_train['label_int'] = df_train['label'].map(label_dict_train) # Map the labels to their indices
-
-# 	df_val = pd.read_csv(filepath_or_buffer=metadata_val_fpth, on_bad_lines='skip')
-# 	labels_val = list(set(df_val["label"].tolist()))
-# 	label_dict_val = {lbl: idx for idx, lbl in enumerate(labels_val)} # dict that maps each label to its index
-# 	df_val['label_int'] = df_val['label'].map(label_dict_val) # Map the labels to their indices
-# 	return df_train, df_val
-
 def get_dataset(
 	ddir: str = "path/2/dataset_dir",
 	sampling_strategy: str = "simple_random_sampling", # "simple_random_sampling" or "kfold-stratified_sampling"
@@ -407,6 +391,7 @@ def get_text_to_images(
 		save_pickle(pkl=dataset_images_features, fname=image_features_file)
 	else:
 		dataset_images_features = load_pickle(fpath=image_features_file)
+		dataset_images_features = dataset_images_features.to(device)
 
 	similarities = (100.0 * query_features @ dataset_images_features.T).softmax(dim=-1)
 
@@ -494,6 +479,7 @@ def get_text_to_images_precision_recall_at_(
 		save_pickle(pkl=dataset_images_features, fname=image_features_file)
 	else:
 		dataset_images_features = load_pickle(fpath=image_features_file)
+		dataset_images_features = dataset_images_features.to(device)
 	print(f"Elapsed_t: {time.time()-t2:.3f} sec")
 
 	print(f"[3] Calculate Precision@{K}")
@@ -555,7 +541,8 @@ def get_map_at_k(
 		dataset_images_features = torch.cat(dataset_images_features, dim=0)  
 		save_pickle(pkl=dataset_images_features, fname=image_features_file)  
 	else:  
-		dataset_images_features = load_pickle(fpath=image_features_file)  
+		dataset_images_features = load_pickle(fpath=image_features_file) 
+		dataset_images_features = dataset_images_features.to(device)
 
 	# Image-to-Texts Retrieval
 	img_to_txt_precisions = []
