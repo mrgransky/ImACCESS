@@ -295,7 +295,7 @@ def get_image_to_texts_precision_at_(
 	dataset_labels_int = dataset["label_int"].tolist() # [3, 17, 4, 9, ...]
 	print(len(dataset_images_id), len(dataset_labels))
 	
-	print(f"[1] Encode Labels")
+	print(f"[1] Encode {len(labels)} Labels")
 	t1 = time.time()
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
 	with torch.no_grad():
@@ -303,7 +303,7 @@ def get_image_to_texts_precision_at_(
 		labels_features /= labels_features.norm(dim=-1, keepdim=True)
 	print(f"Elapsed_t: {time.time()-t1:.3f} sec")
 
-	print(f"[2] Encode Images")
+	print(f"[2] Encode {len(dataset_images_path)} Images")
 	predicted_labels = []
 	true_labels = []
 	t2 = time.time()
@@ -323,9 +323,9 @@ def get_image_to_texts_precision_at_(
 				torch.cuda.empty_cache() # Clear CUDA cache
 	print(f"Elapsed_t: {time.time()-t2:.3f} sec")
 	print(len(predicted_labels), len(true_labels))
-	print(type(predicted_labels[0]), predicted_labels[0].shape,)
-	print(predicted_labels[:10])
-	print(true_labels[:10])
+	# print(type(predicted_labels[0]), predicted_labels[0].shape,)
+	print(f"Predicted labels[only few]: {predicted_labels[:10]}")
+	print(f"True labels[only few]: {true_labels[:10]}")
 
 	print(f"[3] Calculate Precision@{K}")
 	pred_st = time.time()
@@ -793,6 +793,7 @@ def simple_random_sampling(model, preprocess, topk:int=5, seed:int=42):
 	print(f"Train: {train_dataset.shape}, Validation: {val_dataset.shape}")
 	train_image_features_file = os.path.join(args.dataset_dir, args.sampling_strategy, 'train_image_features.gz')
 	val_image_features_file = os.path.join(args.dataset_dir, args.sampling_strategy, 'validation_image_features.gz')
+	os.makedirs(os.path.join(args.dataset_dir, args.sampling_strategy), exist_ok=True)
 	run_evaluation(
 		model=model,
 		preprocess=preprocess,
