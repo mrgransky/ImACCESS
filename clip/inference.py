@@ -243,7 +243,7 @@ def get_linear_prob_zero_shot_accuracy(
 	solver = 'saga' # 'saga' is faster for large datasets
 	print(f"Training the logistic regression classifier with {solver} solver")
 	classifier = LogisticRegression(
-		random_state=0,
+		random_state=42,
 		C=0.316,
 		max_iter=1000,
 		verbose=1,

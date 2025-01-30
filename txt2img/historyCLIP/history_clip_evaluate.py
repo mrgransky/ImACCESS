@@ -41,6 +41,7 @@ def get_dataset(
 	sampling_strategy: str = "simple_random_sampling", # "simple_random_sampling" or "kfold-stratified_sampling"
 	kfolds:int=5,  # Number of folds for K-Fold
 	force_regenerate:bool=False, # Force regenerate K-Fold splits
+	seed:int=42, # Seed for random sampling
 	):
 	if sampling_strategy not in ["simple_random_sampling", "kfold-stratified_sampling"]:
 		raise ValueError("Invalid sampling_strategy. Choose 'simple_random_sampling' or 'kfold-stratified_sampling'.")
@@ -92,7 +93,7 @@ def get_dataset(
 		label_dict = {lbl: idx for idx, lbl in enumerate(labels)}
 		df["label_int"] = df["label"].map(label_dict)
 		# Create stratified K-Fold splits
-		skf = StratifiedKFold(n_splits=kfolds, shuffle=True, random_state=42)
+		skf = StratifiedKFold(n_splits=kfolds, shuffle=True, random_state=seed)
 		folds = []
 		for fold, (train_idx, val_idx) in enumerate(skf.split(df, df["label"])):
 			fold_dir = os.path.join(ddir, sampling_strategy, f"fold_{fold + 1}")
@@ -106,7 +107,8 @@ def get_dataset(
 			df_train.to_csv(train_fpth, index=False)
 			df_val.to_csv(val_fpth, index=False)
 			folds.append((df_train, df_val))
-		print(f"K(={kfolds})-Fold splits saved in {ddir}")
+		print(f"K(={kfolds})-Fold splits saved successfully in {ddir}")
+		print("*"*100)
 		return folds
 	else:
 		raise ValueError("Invalid sampling_strategy. Use 'simple_random_sampling' or 'kfold-stratified_sampling'.")
@@ -121,6 +123,7 @@ def get_linear_prob_zero_shot_accuracy(
 	device:str="cuda:0",
 	train_image_features_file:str="train_image_features.gz",
 	val_image_features_file:str="validation_image_features.gz",
+	seed:int=42,
 	):
 	print(f"Getting training features")
 	train_dataset_images_id = train_dataset["id"].tolist()
@@ -183,8 +186,8 @@ def get_linear_prob_zero_shot_accuracy(
 	solver = 'saga' # 'saga' is faster for large datasets
 	print(f"Training the logistic regression classifier with {solver} solver")
 	classifier = LogisticRegression(
-		random_state=0,
-		C=0.316,
+		random_state=40,
+		C=0.316, # TODO: hyperparameter tuning to find optimal value
 		max_iter=1000,
 		verbose=1,
 		solver=solver, # 'saga' is faster for large datasets
@@ -694,6 +697,8 @@ def run_evaluation(
 	val_dataset,
 	train_image_features_file,
 	val_image_features_file,
+	topk:int=5,
+	seed:int=42,
 	):
 	print(f"Running Evaluation for {os.path.basename(args.dataset_dir)}".center(160, " "))
 	# Dictionary to store the metrics for this fold
@@ -705,7 +710,7 @@ def run_evaluation(
 				model=model,
 				preprocess=preprocess,
 				img_path=args.query_image,
-				topk=args.topK,
+				topk=topk,
 				device=args.device,
 		)
 		get_text_to_images(
@@ -713,7 +718,7 @@ def run_evaluation(
 				model=model,
 				preprocess=preprocess,
 				query=args.query_label,
-				topk=args.topK,
+				topk=topk,
 				batch_size=args.batch_size,
 				device=args.device,
 		)
@@ -722,7 +727,7 @@ def run_evaluation(
 				query_image_path=args.query_image,
 				model=model,
 				preprocess=preprocess,
-				topk=args.topK,
+				topk=topk,
 				batch_size=args.batch_size,
 				device=args.device,
 		)
@@ -738,6 +743,7 @@ def run_evaluation(
 			device=args.device,
 			train_image_features_file=train_image_features_file,
 			val_image_features_file=val_image_features_file,
+			seed=seed,
 		)
 		fold_metrics["linear_probe_accuracy"] = linear_probe_accuracy
 		fold_metrics["zero_shot_accuracy"] = zero_shot_accuracy
@@ -746,7 +752,7 @@ def run_evaluation(
 		dataset=val_dataset,
 		model=model,
 		preprocess=preprocess,
-		K=args.topK,
+		K=topk,
 		device=args.device,
 	)
 	fold_metrics["img_to_txt_precision"] = img_to_txt_precision
@@ -755,7 +761,7 @@ def run_evaluation(
 		dataset=val_dataset,
 		model=model,
 		preprocess=preprocess,
-		K=args.topK,
+		K=topk,
 		batch_size=args.batch_size,
 		device=args.device,
 		image_features_file=val_image_features_file,
@@ -767,7 +773,7 @@ def run_evaluation(
 		dataset=val_dataset,
 		model=model,
 		preprocess=preprocess,
-		K=args.topK,
+		K=topk,
 		batch_size=args.batch_size,
 		device=args.device,
 		image_features_file=val_image_features_file,
@@ -777,11 +783,12 @@ def run_evaluation(
 
 	return fold_metrics
 
-def simple_random_sampling(model, preprocess):
+def simple_random_sampling(model, preprocess, topk:int=5, seed:int=42):
 	print(f"{'Simple Random Sampling':^150}")
 	train_dataset, val_dataset = get_dataset(
 		ddir=args.dataset_dir, 
 		sampling_strategy=args.sampling_strategy,
+		seed=seed,
 	)
 	print(f"Train: {train_dataset.shape}, Validation: {val_dataset.shape}")
 	train_image_features_file = os.path.join(args.dataset_dir, args.sampling_strategy, 'train_image_features.gz')
@@ -793,10 +800,13 @@ def simple_random_sampling(model, preprocess):
 		val_dataset=val_dataset,
 		train_image_features_file=train_image_features_file,
 		val_image_features_file=val_image_features_file,
+		topk=topk,
+		seed=seed,
 	)
 
-def k_fold_stratified_sampling(model, preprocess, kfolds:int=5):
+def k_fold_stratified_sampling(model, preprocess, kfolds:int=3, topk:int=5, seed:int=42):
 	print(f'K(={kfolds})-Fold Stratified Sampling'.center(150, "-"))
+	t_start = time.time()
 
 	# 1. Data Structure to Store Metrics from Each Fold
 	metrics = {
@@ -813,8 +823,8 @@ def k_fold_stratified_sampling(model, preprocess, kfolds:int=5):
 		ddir=args.dataset_dir,
 		sampling_strategy=args.sampling_strategy,
 		kfolds=kfolds,
+		seed=seed,
 	)
-	# for fidx in range(kfolds):
 	for fidx, (df_train, df_val) in enumerate(folded_dataset):
 		t3 = time.time()
 		train_dataset = df_train
@@ -822,7 +832,7 @@ def k_fold_stratified_sampling(model, preprocess, kfolds:int=5):
 		print(f"Fold {fidx + 1}/{kfolds}: Train: {train_dataset.shape}, Validation: {val_dataset.shape}")
 		train_image_features_file = os.path.join(args.dataset_dir, args.sampling_strategy, f"fold_{fidx + 1}", 'train_image_features.gz')
 		val_image_features_file = os.path.join(args.dataset_dir, args.sampling_strategy, f"fold_{fidx + 1}", 'validation_image_features.gz')
-		# 2. Call run_evaluation and Get Results
+		# 2. Get Results
 		fold_metrics = run_evaluation(
 			model=model,
 			preprocess=preprocess,
@@ -830,19 +840,22 @@ def k_fold_stratified_sampling(model, preprocess, kfolds:int=5):
 			val_dataset=val_dataset,
 			train_image_features_file=train_image_features_file,
 			val_image_features_file=val_image_features_file,
+			topk=topk,
+			seed=seed,
 		)
 		# 3. Store Metrics for the Current Fold
 		for metric_name, metric_value in fold_metrics.items():
 			metrics[metric_name].append(metric_value)
 		print(f"Fold {fidx + 1}/{kfolds} evaluation completed, Elapsed time: {time.time()-t3:.1f} sec")
 	# 4. Calculate and Print Average Metrics
-	print("K-Fold evaluation completed. Calculating average metrics...")
+	print(f"K({kfolds})-Fold evaluation completed, Elapsed time: {time.time()-t_start:.1f} sec")
+	print(f"Calculating average metrics for precision@K, Recall@K and mAP@K (K={args.topK})...")
 	for metric_name, metric_values in metrics.items():
 		if len(metric_values) == 0:
 			continue
 		avg_metric = np.mean(metric_values)
 		print(
-			f"{metric_name} "
+			f"{metric_name}: {len(metric_values)} folds | "
 			f"{metric_values} "
 			f"Min: {np.min(metric_values):.3f} "
 			f"Max: {np.max(metric_values):.3f} "
@@ -855,9 +868,20 @@ def main():
 	print(clip.available_models())
 	model, preprocess = load_model(model_name=args.model_name, device=args.device,)
 	if args.sampling_strategy == "simple_random_sampling":
-		simple_random_sampling(model=model, preprocess=preprocess)
+		simple_random_sampling(
+			model=model,
+			preprocess=preprocess,
+			topk=args.topK,
+			seed=42,
+		)
 	elif args.sampling_strategy == "kfold-stratified_sampling":
-		k_fold_stratified_sampling(model=model, preprocess=preprocess, kfolds=args.kfolds)
+		k_fold_stratified_sampling(
+			model=model,
+			preprocess=preprocess,
+			kfolds=args.kfolds,
+			topk=args.topK,
+			seed=42,
+		)
 	else:
 		raise ValueError(f"Unknown sampling strategy: {args.sampling_strategy}")
 

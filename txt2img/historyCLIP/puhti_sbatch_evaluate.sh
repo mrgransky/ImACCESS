@@ -53,14 +53,14 @@ for strategy in "${sampling_strategies[@]}"; do
 	for prec in 1 5 10 15 20; do
 		echo "Precision@$prec for Dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$SLURM_ARRAY_TASK_ID]} with sampling strategy: $strategy"
 		python -u history_clip_evaluate.py \
-										--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
-										--batch_size 512 \
-										--model_name "ViT-B/32" \
-										--device "cuda:0" \
-										--kfold 3 \
-										--topK $prec \
-										--sampling_strategy "$strategy" \
-										> "log_dataset_${SLURM_ARRAY_TASK_ID}_prec${prec}_${strategy}.out" 2>&1
+			--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
+			--batch_size 512 \
+			--model_name "ViT-B/32" \
+			--device "cuda:0" \
+			--kfold 3 \
+			--topK $prec \
+			--sampling_strategy "$strategy" \
+
 	done
 done
 
