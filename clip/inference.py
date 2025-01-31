@@ -245,6 +245,7 @@ def get_linear_prob_zero_shot_accuracy(
 	classifier = LogisticRegression(
 		random_state=42,
 		C=0.316,
+		tol=1e-4, # tolerance for stopping criteria
 		max_iter=1000,
 		verbose=1,
 		solver=solver, # 'saga' is faster for large datasets

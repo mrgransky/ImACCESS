@@ -12,6 +12,7 @@ parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Fa
 parser.add_argument('--query_label', '-ql', type=str, default="aircraft", help='image path for zero shot classification')
 parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
 parser.add_argument('--kfolds', '-kf', type=int, default=3, help='kfolds for stratified sampling')
+parser.add_argument('--seed', '-s', type=int, default=42, help='Reproducibility in KFold Stratified Sampling')
 parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch size')
 parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 parser.add_argument('--visualize', '-v', action='store_true', help='visualize the dataset')
@@ -186,9 +187,10 @@ def get_linear_prob_zero_shot_accuracy(
 	solver = 'saga' # 'saga' is faster for large datasets
 	print(f"Training the logistic regression classifier with {solver} solver")
 	classifier = LogisticRegression(
-		random_state=40,
-		C=0.316, # TODO: hyperparameter tuning to find optimal value
+		random_state=seed,
+		C=0.316, # TODO: hyperparameter tuning to find optimal value: implementing grid search or Bayesian optimization
 		max_iter=1000,
+		tol=1e-4, # tolerance for stopping criteria
 		verbose=1,
 		solver=solver, # 'saga' is faster for large datasets
 		n_jobs=-1, # to utilize all cores
@@ -436,6 +438,79 @@ def get_text_to_images(
 	plt.close()
 	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 
+def get_text_to_images_avg_precision_recall_at_K(
+	dataset,
+	model,
+	preprocess,
+	K=5,
+	batch_size=64,
+	device="cuda:0",
+	image_features_file="validation_image_features.gz"
+	):
+	print(f"Text-to-Image Retrieval {device} CLIP batch_size: {batch_size} [performance metrics: AP@{K}, Recall@{K}]".center(160, " "))
+	torch.cuda.empty_cache()
+	t0 = time.time()
+	
+	labels = list(set(dataset["label"].tolist()))
+	dataset_images_path = dataset["img_path"].tolist()
+	dataset_labels_int = dataset["label_int"].tolist()
+	
+	print(f"[1] Encode Labels")
+	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
+	with torch.no_grad():
+		tokenized_labels_features = model.encode_text(tokenized_labels_tensor)
+		tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)
+	
+	print(f"[2] Encode Images")
+	if not os.path.exists(image_features_file):
+		dataset_images_features = []
+		for i in range(0, len(dataset_images_path), batch_size):
+			batch_images_path = [dataset_images_path[j] for j in range(i, min(i + batch_size, len(dataset_images_path)))]
+			batch_tensors = torch.stack([preprocess(Image.open(img_path)).to(device) for img_path in batch_images_path])
+			with torch.no_grad():
+				image_features = model.encode_image(batch_tensors)
+				image_features /= image_features.norm(dim=-1, keepdim=True)
+			dataset_images_features.append(image_features)
+			torch.cuda.empty_cache()
+		dataset_images_features = torch.cat(dataset_images_features, dim=0)
+		save_pickle(pkl=dataset_images_features, fname=image_features_file)
+	else:
+		dataset_images_features = load_pickle(fpath=image_features_file).to(device)
+	
+	print(f"[3] Calculate AP@{K} and Recall@{K}")
+	avg_ap_at_k, avg_recall_at_k = [], []
+	
+	for i, label_features in enumerate(tokenized_labels_features):
+		label_features = label_features.to(device)
+		sim = label_features @ dataset_images_features.T
+		_, indices = sim.topk(len(dataset_images_features), dim=-1)
+		relevant_images_for_lbl_i = [idx for idx, lbl in enumerate(dataset_labels_int) if lbl == i]
+		retrieved_images = indices.squeeze().cpu().numpy()[:K]
+		
+		# Calculate AP@K
+		rel_count = 0
+		precisions = []
+		for j, img_idx in enumerate(retrieved_images, start=1):
+			if img_idx in relevant_images_for_lbl_i:
+				rel_count += 1
+				precisions.append(rel_count / j)
+		ap_at_k = sum(precisions) / max(1, len(relevant_images_for_lbl_i))
+		avg_ap_at_k.append(ap_at_k)
+
+		# Calculate Recall@K
+		recall_at_k = len(set(retrieved_images) & set(relevant_images_for_lbl_i)) / len(relevant_images_for_lbl_i)
+		avg_recall_at_k.append(recall_at_k)
+		if i % 100 == 0:
+			torch.cuda.empty_cache()
+	
+	avg_ap_at_k = sum(avg_ap_at_k) / len(labels)
+	avg_recall_at_k = sum(avg_recall_at_k) / len(labels)
+	print(f"AP@{K}: {avg_ap_at_k:.3f}")
+	print(f"Recall@{K}: {avg_recall_at_k:.3f}")
+	print(f"Total Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
+	
+	return avg_ap_at_k, avg_recall_at_k
+
 def get_text_to_images_precision_recall_at_(
 	dataset,
 	model,
@@ -516,16 +591,6 @@ def get_map_at_k(
 	device:str="cuda:0",
 	image_features_file = 'validation_image_features.gz',
 	):
-	"""  
-	Calculate mean average precision@K (mAP@K) for image-to-texts and text-to-images retrieval.  
-	:param dataset: Dataset containing images and their corresponding labels.  
-	:param model: CLIP model instance.  
-	:param preprocess: Preprocessing function for images.  
-	:param K: Top-K value for precision and recall calculation.  
-	:param batch_size: Batch size for processing images.  
-	:param device: Device (GPU or CPU) for computations.  
-	:return: mAP@K values for image-to-texts and text-to-images retrieval tasks.  
-	"""  
 	print(f"Calculating mAP@{K} for Image-to-Texts and Text-to-Images Retrieval {device}".center(160, " "))  
 	t0 = time.time()
 	# image_features_file = os.path.join(args.dataset_dir, 'outputs', 'validation_image_features.gz')
@@ -570,11 +635,8 @@ def get_map_at_k(
 	img_to_txt_map_at_k = np.mean(img_to_txt_precisions)  
 
 	# Text-to-Images Retrieval  
-	txt_to_img_precisions = []
-	with torch.no_grad():
-		tokenized_labels_features = model.encode_text(tokenized_labels_tensor)  
-		tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)  
-	for i, label_features in enumerate(tokenized_labels_features):
+	txt_to_img_precisions = []	
+	for i, label_features in enumerate(labels_features):
 		sim = label_features @ dataset_images_features.T  
 		_, indices = sim.topk(len(dataset_images_features), dim=-1)  
 		relevant_images_for_lbl_i = [idx for idx, lbl in enumerate(dataset["label_int"]) if lbl == i]  
@@ -865,7 +927,8 @@ def k_fold_stratified_sampling(model, preprocess, kfolds:int=3, topk:int=5, seed
 	print("-" * 50)
 
 @measure_execution_time
-def main():
+def main():	
+	set_seeds(seed=args.seed)
 	print(clip.available_models())
 	model, preprocess = load_model(model_name=args.model_name, device=args.device,)
 	if args.sampling_strategy == "simple_random_sampling":
@@ -873,7 +936,7 @@ def main():
 			model=model,
 			preprocess=preprocess,
 			topk=args.topK,
-			seed=42,
+			seed=args.seed,
 		)
 	elif args.sampling_strategy == "kfold-stratified_sampling":
 		k_fold_stratified_sampling(
@@ -881,7 +944,7 @@ def main():
 			preprocess=preprocess,
 			kfolds=args.kfolds,
 			topk=args.topK,
-			seed=42,
+			seed=args.seed,
 		)
 	else:
 		raise ValueError(f"Unknown sampling strategy: {args.sampling_strategy}")
