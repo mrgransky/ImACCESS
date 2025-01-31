@@ -505,8 +505,7 @@ def get_text_to_images_avg_precision_recall_at_K(
 	
 	avg_ap_at_k = sum(avg_ap_at_k) / len(labels)
 	avg_recall_at_k = sum(avg_recall_at_k) / len(labels)
-	print(f"AP@{K}: {avg_ap_at_k:.3f}")
-	print(f"Recall@{K}: {avg_recall_at_k:.3f}")
+	print(f"AP@{K}: {avg_ap_at_k:.3f} Recall@{K}: {avg_recall_at_k:.3f}")
 	print(f"Total Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
 	
 	return avg_ap_at_k, avg_recall_at_k
@@ -574,11 +573,9 @@ def get_text_to_images_precision_recall_at_(
 		recall_at_k.append(len(retrieved_topK_relevant_images) / len(relevant_images_for_lbl_i))
 		if i % 100 == 0:
 			torch.cuda.empty_cache() # clear CUDA cache
-	avg_prec_at_k = sum(prec_at_k) / len(labels)
-	avg_recall_at_k = sum(recall_at_k) / len(labels)
-	print(f"Precision@{K}: {avg_prec_at_k:.3f} {np.mean(prec_at_k)}")
-	print(f"Recall@{K}: {avg_recall_at_k:.3f} {np.mean(recall_at_k)}")
-	print(f"Elapsed_t: {time.time()-t3:.3f} sec")
+	avg_prec_at_k = sum(prec_at_k) / len(labels) # np.mean(prec_at_k) 
+	avg_recall_at_k = sum(recall_at_k) / len(labels) # np.mean(recall_at_k)
+	print(f"Precision@{K}: {avg_prec_at_k:.3f} Recall@{K}: {avg_recall_at_k:.3f} Elapsed_t: {time.time()-t3:.3f} sec")
 	print(f"Total Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
 	return avg_prec_at_k, avg_recall_at_k
 
