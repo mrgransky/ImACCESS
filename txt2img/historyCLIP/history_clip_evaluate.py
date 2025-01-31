@@ -764,7 +764,7 @@ def run_evaluation(
 	):
 	print(f"Running Evaluation for {os.path.basename(args.dataset_dir)}".center(160, " "))
 	# Dictionary to store the metrics for this fold
-	fold_metrics = {}
+	metrics = {}
 
 	if args.visualize:
 		get_image_to_texts(
@@ -807,8 +807,8 @@ def run_evaluation(
 			val_image_features_file=val_image_features_file,
 			seed=seed,
 		)
-		fold_metrics["linear_probe_accuracy"] = linear_probe_accuracy
-		fold_metrics["zero_shot_accuracy"] = zero_shot_accuracy
+		metrics["linear_probe_accuracy"] = linear_probe_accuracy
+		metrics["zero_shot_accuracy"] = zero_shot_accuracy
 
 	img_to_txt_precision = get_image_to_texts_precision_at_(
 		dataset=val_dataset,
@@ -817,7 +817,7 @@ def run_evaluation(
 		K=topk,
 		device=args.device,
 	)
-	fold_metrics["img_to_txt_precision"] = img_to_txt_precision
+	metrics["img_to_txt_precision"] = img_to_txt_precision
 
 	txt_to_img_precision, txt_to_img_recall = get_text_to_images_precision_recall_at_(
 		dataset=val_dataset,
@@ -828,8 +828,20 @@ def run_evaluation(
 		device=args.device,
 		image_features_file=val_image_features_file,
 	)
-	fold_metrics["txt_to_img_precision"] = txt_to_img_precision
-	fold_metrics["txt_to_img_recall"] = txt_to_img_recall
+	metrics["txt_to_img_precision"] = txt_to_img_precision
+	metrics["txt_to_img_recall"] = txt_to_img_recall
+
+	txt_to_img_avg_precision, txt_to_img_avg_recall = get_text_to_images_avg_precision_recall_at_K(
+		dataset=val_dataset,
+		model=model,
+		preprocess=preprocess,
+		K=topk,
+		batch_size=args.batch_size,
+		device=args.device,
+		image_features_file=val_image_features_file,
+	)
+	metrics["txt_to_img_avg_precision"] = txt_to_img_avg_precision
+	metrics["txt_to_img_avg_recall"] = txt_to_img_avg_recall
 
 	img_to_txt_map, txt_to_img_map = get_map_at_k(
 		dataset=val_dataset,
@@ -840,10 +852,10 @@ def run_evaluation(
 		device=args.device,
 		image_features_file=val_image_features_file,
 	)
-	fold_metrics["img_to_txt_map"] = img_to_txt_map
-	fold_metrics["txt_to_img_map"] = txt_to_img_map
+	metrics["img_to_txt_map"] = img_to_txt_map
+	metrics["txt_to_img_map"] = txt_to_img_map
 
-	return fold_metrics
+	return metrics
 
 def simple_random_sampling(model, preprocess, topk:int=5, seed:int=42):
 	print(f"{'Simple Random Sampling':^150}")
@@ -896,7 +908,7 @@ def k_fold_stratified_sampling(model, preprocess, kfolds:int=3, topk:int=5, seed
 		train_image_features_file = os.path.join(args.dataset_dir, args.sampling_strategy, f"fold_{fidx + 1}", 'train_image_features.gz')
 		val_image_features_file = os.path.join(args.dataset_dir, args.sampling_strategy, f"fold_{fidx + 1}", 'validation_image_features.gz')
 		# 2. Get Results
-		fold_metrics = run_evaluation(
+		metrics = run_evaluation(
 			model=model,
 			preprocess=preprocess,
 			train_dataset=train_dataset,
@@ -907,7 +919,7 @@ def k_fold_stratified_sampling(model, preprocess, kfolds:int=3, topk:int=5, seed
 			seed=seed,
 		)
 		# 3. Store Metrics for the Current Fold
-		for metric_name, metric_value in fold_metrics.items():
+		for metric_name, metric_value in metrics.items():
 			metrics[metric_name].append(metric_value)
 		print(f"Fold {fidx + 1}/{kfolds} evaluation completed, Elapsed time: {time.time()-t3:.1f} sec")
 	# 4. Calculate and Print Average Metrics
