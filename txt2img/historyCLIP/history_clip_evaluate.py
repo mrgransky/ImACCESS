@@ -357,6 +357,82 @@ def get_image_to_texts_precision_at_(
 	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 	return avg_prec_at_k
 
+def get_image_to_texts_ap_recall_at_k(
+	dataset,
+	model,
+	preprocess,
+	K: int = 5,
+	device: str = "cuda:0",
+	):
+	print(f"Image-to-Text Retrieval [AP@{K} & Recall@{K}]".center(160, " "))
+	t0 = time.time()
+	
+	labels = list(set(dataset["label"].tolist()))
+	print(f"Number of unique labels: {len(labels)}")
+	if K > len(labels):
+		print(f"ERROR: requested Top-{K} is greater than the number of labels ({len(labels)}) => EXIT...")
+		return None, None
+	dataset_images_id = dataset["id"].tolist()
+	dataset_images_path = dataset["img_path"].tolist()
+	dataset_labels_int = dataset["label_int"].tolist()  # Ground-truth label indices
+	print(f"[1] Encode {len(labels)} Labels")
+	t1 = time.time()
+	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
+	
+	with torch.no_grad():
+		labels_features = model.encode_text(tokenized_labels_tensor)
+		labels_features /= labels_features.norm(dim=-1, keepdim=True)
+	
+	print(f"Elapsed_t: {time.time()-t1:.3f} sec")
+	print(f"[2] Encode {len(dataset_images_path)} Images and Compute AP@{K} & Recall@{K}")
+	
+	ap_at_k_list = []  # Store AP@K values
+	recall_at_k_list = []  # Store Recall@K values
+	
+	torch.cuda.empty_cache()
+	
+	with torch.no_grad():
+		for i, (img_pth, gt_lbl) in enumerate(zip(dataset_images_path, dataset_labels_int)):
+			img_raw = Image.open(img_pth)
+			img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
+			
+			# Compute image features
+			image_features = model.encode_image(img_tensor)
+			image_features /= image_features.norm(dim=-1, keepdim=True)
+			
+			# Compute similarity scores
+			similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
+			
+			# Retrieve top-K predictions
+			_, topk_labels_idx = similarities.topk(K, dim=-1)
+			preds = topk_labels_idx.cpu().numpy().flatten()
+			
+			# Compute AP@K
+			relevant_count = 0
+			precision_sum = 0.0
+			
+			for rank, pred in enumerate(preds, start=1):
+				if pred == gt_lbl:  # Relevant prediction
+					relevant_count += 1
+					precision_sum += relevant_count / rank  # Precision at this rank
+			
+			ap_at_k = precision_sum / min(K, 1) if relevant_count > 0 else 0.0  # Avoid division by zero
+			recall_at_k = relevant_count / 1  # Since each image has only 1 correct label
+			
+			ap_at_k_list.append(ap_at_k)
+			recall_at_k_list.append(recall_at_k)
+			
+			if i % 100 == 0:
+				torch.cuda.empty_cache()
+	
+	mean_ap_at_k = sum(ap_at_k_list) / len(ap_at_k_list)  # Compute mean AP@K
+	mean_recall_at_k = sum(recall_at_k_list) / len(recall_at_k_list)  # Compute mean Recall@K
+	
+	print(f"Mean AP@{K}: {mean_ap_at_k:.3f} Mean Recall@{K}: {mean_recall_at_k:.3f}")
+	print(f"Total Elapsed_t: {time.time()-t0:.2f} sec".center(160, "-"))
+	
+	return mean_ap_at_k, mean_recall_at_k
+
 def get_text_to_images(
 	dataset,
 	model,
@@ -479,14 +555,12 @@ def get_text_to_images_avg_precision_recall_at_K(
 	
 	print(f"[3] Calculate AP@{K} and Recall@{K}")
 	avg_ap_at_k, avg_recall_at_k = [], []
-	
 	for i, label_features in enumerate(tokenized_labels_features):
 		label_features = label_features.to(device)
 		sim = label_features @ dataset_images_features.T
 		_, indices = sim.topk(len(dataset_images_features), dim=-1)
 		relevant_images_for_lbl_i = [idx for idx, lbl in enumerate(dataset_labels_int) if lbl == i]
 		retrieved_images = indices.squeeze().cpu().numpy()[:K]
-		
 		# Calculate AP@K
 		rel_count = 0
 		precisions = []
@@ -496,21 +570,19 @@ def get_text_to_images_avg_precision_recall_at_K(
 				precisions.append(rel_count / j)
 		ap_at_k = sum(precisions) / max(1, len(relevant_images_for_lbl_i))
 		avg_ap_at_k.append(ap_at_k)
-
 		# Calculate Recall@K
 		recall_at_k = len(set(retrieved_images) & set(relevant_images_for_lbl_i)) / len(relevant_images_for_lbl_i)
 		avg_recall_at_k.append(recall_at_k)
 		if i % 100 == 0:
 			torch.cuda.empty_cache()
-	
 	avg_ap_at_k = sum(avg_ap_at_k) / len(labels)
 	avg_recall_at_k = sum(avg_recall_at_k) / len(labels)
-	print(f"AP@{K}: {avg_ap_at_k:.3f} Recall@{K}: {avg_recall_at_k:.3f}")
+	print(f"AP@{K}: {avg_ap_at_k:.3f} | Recall@{K}: {avg_recall_at_k:.3f}")
 	print(f"Total Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
 	
 	return avg_ap_at_k, avg_recall_at_k
 
-def get_text_to_images_precision_recall_at_(
+def get_text_to_images_mean_PR_at_K_over_labels(
 	dataset,
 	model,
 	preprocess,
@@ -519,7 +591,8 @@ def get_text_to_images_precision_recall_at_(
 	device:str="cuda:0",
 	image_features_file = 'validation_image_features.gz',
 	):
-	print(f"Text-to-Image Retrieval {device} CLIP batch_size: {batch_size} [performance metrics: Precision@{K}]".center(160, " "))
+	print(f"Text-to-Image Retrieval {device} CLIP batch_size: {batch_size}".center(160, " "))
+	print(f"[performance metrics: mean P@{K} over all labels, mean Recall@{K} over all labels".center(160, " "))
 	torch.cuda.empty_cache()  # Clear CUDA cache
 	t0 = time.time()
 	labels = list(set(dataset["label"].tolist()))
@@ -559,8 +632,7 @@ def get_text_to_images_precision_recall_at_(
 		dataset_images_features = dataset_images_features.to(device)
 	print(f"Elapsed_t: {time.time()-t2:.3f} sec")
 
-	print(f"[3] Calculate Precision@{K}")
-	t3 = time.time()
+	print(f"[3] Calculate mean Precision@{K} and mean Recall@{K} over all labels...")
 	prec_at_k = []
 	recall_at_k = []
 	for i, label_features in enumerate(tokenized_labels_features):
@@ -573,11 +645,14 @@ def get_text_to_images_precision_recall_at_(
 		recall_at_k.append(len(retrieved_topK_relevant_images) / len(relevant_images_for_lbl_i))
 		if i % 100 == 0:
 			torch.cuda.empty_cache() # clear CUDA cache
-	avg_prec_at_k = sum(prec_at_k) / len(labels) # np.mean(prec_at_k) 
-	avg_recall_at_k = sum(recall_at_k) / len(labels) # np.mean(recall_at_k)
-	print(f"Precision@{K}: {avg_prec_at_k:.3f} Recall@{K}: {avg_recall_at_k:.3f} Elapsed_t: {time.time()-t3:.3f} sec")
+	mean_precision_at_k_over_labels = sum(prec_at_k) / len(labels) # np.mean(prec_at_k)
+	mean_recall_at_k_over_labels = sum(recall_at_k) / len(labels) # np.mean(recall_at_k)
+	print(
+		f"mean Precision@{K} over all labels: {mean_precision_at_k_over_labels:.3f} | "
+		f"mean Recall@{K} over all labels: {mean_recall_at_k_over_labels:.3f}"
+	)
 	print(f"Total Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
-	return avg_prec_at_k, avg_recall_at_k
+	return mean_precision_at_k_over_labels, mean_recall_at_k_over_labels
 
 def get_map_at_k(
 	dataset,
@@ -807,6 +882,16 @@ def run_evaluation(
 		metrics["linear_probe_accuracy"] = linear_probe_accuracy
 		metrics["zero_shot_accuracy"] = zero_shot_accuracy
 
+	img2txt_AP_at_K, img2txt_recall_at_K = get_image_to_texts_ap_recall_at_k(
+		dataset=val_dataset,
+		model=model,
+		preprocess=preprocess,
+		K=topk,
+		device=args.device,
+	)
+	metrics["img2txt_AP_at_K"] = img2txt_AP_at_K
+	metrics["img2txt_recall_at_K"] = img2txt_recall_at_K
+
 	img_to_txt_precision = get_image_to_texts_precision_at_(
 		dataset=val_dataset,
 		model=model,
@@ -816,7 +901,7 @@ def run_evaluation(
 	)
 	metrics["img_to_txt_precision"] = img_to_txt_precision
 
-	txt_to_img_precision, txt_to_img_recall = get_text_to_images_precision_recall_at_(
+	txt2img_mean_precision_at_k_over_all_labels, txt2img_mean_recall_at_k_over_all_labels = get_text_to_images_mean_PR_at_K_over_labels(
 		dataset=val_dataset,
 		model=model,
 		preprocess=preprocess,
@@ -825,10 +910,10 @@ def run_evaluation(
 		device=args.device,
 		image_features_file=val_image_features_file,
 	)
-	metrics["txt_to_img_precision"] = txt_to_img_precision
-	metrics["txt_to_img_recall"] = txt_to_img_recall
+	metrics["txt2img_mean_precision_at_k_over_all_labels"] = txt2img_mean_precision_at_k_over_all_labels
+	metrics["txt2img_mean_recall_at_k_over_all_labels"] = txt2img_mean_recall_at_k_over_all_labels
 
-	txt_to_img_avg_precision, txt_to_img_avg_recall = get_text_to_images_avg_precision_recall_at_K(
+	txt2img_AP_at_K, txt2img_avg_recall_at_K = get_text_to_images_avg_precision_recall_at_K(
 		dataset=val_dataset,
 		model=model,
 		preprocess=preprocess,
@@ -837,8 +922,8 @@ def run_evaluation(
 		device=args.device,
 		image_features_file=val_image_features_file,
 	)
-	metrics["txt_to_img_avg_precision"] = txt_to_img_avg_precision
-	metrics["txt_to_img_avg_recall"] = txt_to_img_avg_recall
+	metrics["txt2img_AP_at_K"] = txt2img_AP_at_K
+	metrics["txt2img_avg_recall_at_K"] = txt2img_avg_recall_at_K
 
 	img_to_txt_map, txt_to_img_map = get_map_at_k(
 		dataset=val_dataset,
@@ -884,9 +969,13 @@ def k_fold_stratified_sampling(model, preprocess, kfolds:int=3, topk:int=5, seed
 	metrics = {
 		"linear_probe_accuracy": [],
 		"zero_shot_accuracy": [],
+		"img2txt_AP_at_K": [],
+		"img2txt_recall_at_K": [],
 		"img_to_txt_precision": [],
-		"txt_to_img_precision": [],
-		"txt_to_img_recall": [],
+		"txt2img_mean_precision_at_k_over_all_labels": [],
+		"txt2img_mean_recall_at_k_over_all_labels": [],
+		"txt2img_AP_at_K": [],
+		"txt2img_avg_recall_at_K": [],
 		"img_to_txt_map": [],
 		"txt_to_img_map": [],
 	}
@@ -905,7 +994,7 @@ def k_fold_stratified_sampling(model, preprocess, kfolds:int=3, topk:int=5, seed
 		train_image_features_file = os.path.join(args.dataset_dir, args.sampling_strategy, f"fold_{fidx + 1}", 'train_image_features.gz')
 		val_image_features_file = os.path.join(args.dataset_dir, args.sampling_strategy, f"fold_{fidx + 1}", 'validation_image_features.gz')
 		# 2. Get Results
-		metrics = run_evaluation(
+		folded_results = run_evaluation(
 			model=model,
 			preprocess=preprocess,
 			train_dataset=train_dataset,
@@ -916,12 +1005,12 @@ def k_fold_stratified_sampling(model, preprocess, kfolds:int=3, topk:int=5, seed
 			seed=seed,
 		)
 		# 3. Store Metrics for the Current Fold
-		for metric_name, metric_value in metrics.items():
+		for metric_name, metric_value in folded_results.items():
 			metrics[metric_name].append(metric_value)
 		print(f"Fold {fidx + 1}/{kfolds} evaluation completed, Elapsed time: {time.time()-t3:.1f} sec")
 	# 4. Calculate and Print Average Metrics
 	print(f"K({kfolds})-Fold evaluation completed, Elapsed time: {time.time()-t_start:.1f} sec")
-	print(f"Calculating average metrics for precision@K, Recall@K and mAP@K (K={args.topK})...")
+	print(f"Calculating average metrics for precision@K, Recall@K and mAP@K (K={args.topK})".center(150, "-"))
 	for metric_name, metric_values in metrics.items():
 		if len(metric_values) == 0:
 			continue
@@ -933,7 +1022,7 @@ def k_fold_stratified_sampling(model, preprocess, kfolds:int=3, topk:int=5, seed
 			f"Max: {np.max(metric_values):.3f} "
 			f"mean: {avg_metric:.3f}"
 		)
-	print("-" * 50)
+		print()
 
 @measure_execution_time
 def main():	
