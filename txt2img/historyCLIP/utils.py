@@ -30,7 +30,7 @@ from torch.utils.data.dataloader import default_collate
 from sklearn.model_selection import train_test_split
 from sklearn.metrics.pairwise import cosine_similarity
 from torch.utils.data import Subset
-from collections import Counter
+from collections import Counter, defaultdict
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
@@ -52,6 +52,7 @@ import requests
 import datetime
 from io import BytesIO
 from datetime import timedelta
+from absl import logging as absl_logging
 
 nltk_modules = [
 	'punkt',
@@ -69,9 +70,30 @@ nltk.download(
 )
 
 # warnings.filterwarnings('ignore')
-warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_scheduler')
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
 logging.basicConfig(level=logging.INFO)
+# Configure TensorFlow logging
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN warnings
+
+# Suppress TensorFlow/XLA/cuDNN logs
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+logging.getLogger('xla').setLevel(logging.ERROR)
+logging.getLogger('cuda').setLevel(logging.ERROR)
+
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
+# Configure TensorFlow logging
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN warnings
+
+# Suppress TensorFlow/XLA/cuDNN logs
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+logging.getLogger('xla').setLevel(logging.ERROR)
+logging.getLogger('cuda').setLevel(logging.ERROR)
+
+# Suppress absl logs
+absl_logging.set_verbosity(absl_logging.ERROR)
 
 # Vision
 vit_d_model = 32 # vit_heads * vit_layers = vit_d_model
