@@ -33,8 +33,6 @@ echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 
-nvidia-smi
-
 DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
@@ -42,7 +40,7 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
 )
 
-sampling_strategies=("simple_random_sampling" "kfold-stratified_sampling")
+sampling_strategies=("simple_random" "kfold_stratified")
 
 if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then
 	echo "Error: SLURM_ARRAY_TASK_ID out of bounds"
@@ -51,7 +49,7 @@ fi
 
 for strategy in "${sampling_strategies[@]}"; do
 	for prec in 1 5 10 15 20; do
-		echo "Precision@$prec for Dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$SLURM_ARRAY_TASK_ID]} with sampling strategy: $strategy"
+		echo "Evaluation metrics@K=$prec for Dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$SLURM_ARRAY_TASK_ID]} with sampling strategy: $strategy"
 		python -u history_clip_evaluate.py \
 			--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
 			--batch_size 512 \
@@ -59,12 +57,10 @@ for strategy in "${sampling_strategies[@]}"; do
 			--device "cuda:0" \
 			--kfold 3 \
 			--topK $prec \
-			--sampling_strategy "$strategy" \
+			--sampling "$strategy" \
 
 	done
 done
-
-nvidia-smi
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
