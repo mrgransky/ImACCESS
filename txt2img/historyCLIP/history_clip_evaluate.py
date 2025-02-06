@@ -16,7 +16,7 @@ parser.add_argument('--seed', type=int, default=42, help='Reproducibility in KFo
 parser.add_argument('--batch_size', '-bs', type=int, default=256, help='batch size')
 parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 parser.add_argument('--visualize', '-v', action='store_true', help='visualize the dataset')
-parser.add_argument('--sampling', '-s', type=str, default="simple_random", choices=["simple_random", "kfold_stratified"], help='Sampling method')
+parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
@@ -42,19 +42,19 @@ def load_model(
 
 def get_dataset(
 	ddir: str = "path/2/dataset_dir",
-	sampling: str = "simple_random", # "simple_random" or "kfold_stratified"
+	sampling: str = "stratified_random", # "stratified_random" or "kfold_stratified"
 	kfolds:int=5,  # Number of folds for K-Fold
 	force_regenerate:bool=False, # Force regenerate K-Fold splits
 	seed:int=42, # Seed for random sampling
 	):
-	if sampling not in ["simple_random", "kfold_stratified"]:
-		raise ValueError("Invalid sampling. Choose 'simple_random' or 'kfold_stratified'.")
+	if sampling not in ["stratified_random", "kfold_stratified"]:
+		raise ValueError("Invalid sampling. Choose 'stratified_random' or 'kfold_stratified'.")
 
 	print(f"Loading dataset {ddir} ...")
 	metadata_fpth = os.path.join(ddir, "metadata.csv")
 	df = pd.read_csv(filepath_or_buffer=metadata_fpth, on_bad_lines='skip')
 	print(f"FULL Dataset (df) shape: {df.shape}")
-	if sampling == "simple_random":
+	if sampling == "stratified_random":
 		print(f"Simple Random Sampling...")
 		metadata_train_fpth = os.path.join(ddir, "metadata_train.csv")
 		metadata_val_fpth = os.path.join(ddir, "metadata_val.csv")
@@ -121,7 +121,7 @@ def get_dataset(
 		print("*"*100)
 		return folds
 	else:
-		raise ValueError("Invalid sampling. Use 'simple_random' or 'kfold_stratified'.")
+		raise ValueError("Invalid sampling. Use 'stratified_random' or 'kfold_stratified'.")
 
 def get_linear_prob_zero_shot_accuracy(
 	dataset_dir,
@@ -1072,7 +1072,7 @@ def run_evaluation(
 
 	return metrics
 
-def simple_random_sampling(
+def stratified_random_sampling(
 	model,
 	preprocess,
 	topk:int=5,
@@ -1183,8 +1183,8 @@ def main():
 	set_seeds(seed=args.seed, debug=True)
 	print(clip.available_models())
 	model, preprocess = load_model(model_name=args.model_name, device=args.device,)
-	if args.sampling == "simple_random":
-		simple_random_sampling(
+	if args.sampling == "stratified_random":
+		stratified_random_sampling(
 			model=model,
 			preprocess=preprocess,
 			topk=args.topK,

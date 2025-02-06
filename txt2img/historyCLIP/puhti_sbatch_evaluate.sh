@@ -41,7 +41,7 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
 )
 
-sampling_strategies=("simple_random" "kfold_stratified")
+sampling_strategies=("stratified_random" "kfold_stratified")
 
 if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then
 	echo "Error: SLURM_ARRAY_TASK_ID out of bounds"
