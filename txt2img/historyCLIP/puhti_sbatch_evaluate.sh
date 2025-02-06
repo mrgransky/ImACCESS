@@ -11,7 +11,7 @@
 #SBATCH --mem=12G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
-#SBATCH --array=0-3
+#SBATCH --array=0-4
 #SBATCH --gres=gpu:v100:1
 
 set -e
@@ -38,6 +38,7 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
 )
 
 sampling_strategies=("simple_random" "kfold_stratified")

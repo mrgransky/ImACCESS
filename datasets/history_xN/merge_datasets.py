@@ -53,7 +53,7 @@ for i, dataset_path in enumerate(DATASETS):
 	except Exception as e:
 		print(f"{e}")
 
-print(f"merging {len(dfs)} dataframe(s)...")
+print(f"merging {len(dfs)} dataframe(s) to create {dataset_name} dataset...")
 merged_df = pd.concat(dfs, ignore_index=True)
 print(merged_df.shape)
 print(merged_df.head(10))
