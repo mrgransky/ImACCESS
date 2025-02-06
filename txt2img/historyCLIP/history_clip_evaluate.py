@@ -63,9 +63,11 @@ def get_dataset(
 		df_val = pd.read_csv(filepath_or_buffer=metadata_val_fpth, on_bad_lines='skip')
 		# Generate label mappings for simple sampling
 		labels_train = list(set(df_train["label"].tolist()))
+		labels_train = sorted(labels_train)
 		label_dict_train = {lbl: idx for idx, lbl in enumerate(labels_train)}
 		df_train['label_int'] = df_train['label'].map(label_dict_train)
 		labels_val = list(set(df_val["label"].tolist()))
+		labels_val = sorted(labels_val)
 		label_dict_val = {lbl: idx for idx, lbl in enumerate(labels_val)}
 		df_val['label_int'] = df_val['label'].map(label_dict_val)
 		return df_train, df_val
@@ -92,15 +94,18 @@ def get_dataset(
 		df = df[~df["label"].isin(labels_to_drop)]
 		if df.empty:
 			raise ValueError("No valid labels for stratified sampling (after removing labels with one occurrence).")
-		# Generate label mappings
-		labels = list(set(df["label"].tolist()))
+		labels = list(set(df["label"].tolist())) # Get unique labels
+		labels = sorted(labels) # Get sorted unique labels
 		label_dict = {lbl: idx for idx, lbl in enumerate(labels)}
 		df["label_int"] = df["label"].map(label_dict)
 		# Create stratified K-Fold splits
-		skf = StratifiedKFold(n_splits=kfolds, shuffle=True, random_state=seed)
-		# sss = StratifiedShuffleSplit(n_splits=kfolds, test_size=0.2, random_state=seed)
+		folding_method = StratifiedKFold(
+			n_splits=kfolds,
+			shuffle=True,
+			random_state=seed,
+		)
 		folds = []
-		for fold, (train_idx, val_idx) in enumerate(skf.split(df, df["label"])):
+		for fold, (train_idx, val_idx) in enumerate(folding_method.split(df, df["label"])):
 			fold_dir = os.path.join(ddir, sampling, f"fold_{fold + 1}")
 			os.makedirs(fold_dir, exist_ok=True)
 			train_fpth = os.path.join(fold_dir, "metadata_train.csv")
@@ -211,6 +216,7 @@ def get_linear_prob_zero_shot_accuracy(
 	t0 = time.time()
 	# Get unique labels for validation dataset:
 	val_labels = list(set(validation_dataset["label"].tolist()))
+	val_labels = sorted(val_labels)
 	text_inputs = clip.tokenize(texts=val_labels).to(device=device)
 	with torch.no_grad():
 		text_features = model.encode_text(text_inputs)
@@ -241,7 +247,9 @@ def get_image_to_texts(
 	print(f"[Image-to-text(s)] Zero-Shot Image Classification of image: {img_path}".center(200, " "))
 	t0 = time.time()
 	labels = list(set(dataset["label"].tolist()))
+	labels = sorted(labels) # Get sorted unique labels
 	print(len(labels), type(labels))
+	print(labels)
 	if topk > len(labels):
 		print(f"ERROR: requested Top-{topk} labeling is greater than number of labels({len(labels)}) => EXIT...")
 		return
@@ -288,319 +296,6 @@ def get_image_to_texts(
 	)
 	plt.close()
 
-def get_image_to_texts_get_recall_at_k(dataset, model, preprocess, K: int = 5, device: str = "cuda:0"):
-	"""
-	For each image query:
-		- Compute the image embedding.
-		- Compare it with all label embeddings.
-		- Retrieve the top-K labels.
-		- Recall for this image is 1 if the ground-truth label is among the Top-K, else 0.
-	Return the average (mean) Recall@K over all image queries.
-	"""
-	print(f"Image-to-Texts Recall@{K} Evaluation on {device}")
-	t0 = time.time()
-	# Get sorted unique labels for consistency.
-	labels = sorted(list(set(dataset["label"].tolist())))
-	print(f"Total number of labels: {len(labels)}")
-	
-	# Encode labels using CLIP.
-	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
-	with torch.no_grad():
-			labels_features = model.encode_text(tokenized_labels_tensor)
-			labels_features /= labels_features.norm(dim=-1, keepdim=True)
-	
-	recall_values = []
-	
-	# Iterate over each image.
-	dataset_images_path = dataset["img_path"].tolist()
-	dataset_labels_int = dataset["label_int"].tolist()  # Ground-truth label index for each image.
-	
-	for i, (img_path, gt_lbl_int) in enumerate(zip(dataset_images_path, dataset_labels_int)):
-			# Load and preprocess image.
-			img = Image.open(img_path).convert("RGB")
-			img_tensor = preprocess(img).unsqueeze(0).to(device)
-			with torch.no_grad():
-					image_feature = model.encode_image(img_tensor)
-					image_feature /= image_feature.norm(dim=-1, keepdim=True)
-			
-			# Compute similarity between image and all label embeddings.
-			similarities = (100.0 * image_feature @ labels_features.T).softmax(dim=-1)
-			_, topk_labels_idx = similarities.topk(K, dim=-1)
-			topk_labels_idx = topk_labels_idx.cpu().numpy().flatten()
-			
-			# For single-label setting, recall is 1 if the ground-truth label is among top-K, else 0.
-			recall = 1 if gt_lbl_int in topk_labels_idx else 0
-			recall_values.append(recall)
-	
-	mean_recall = np.mean(recall_values)
-	print(f"Mean Recall@{K} for Image-to-Texts: {mean_recall:.3f}")
-	print(f"Elapsed Time: {time.time()-t0:.2f} sec".center(150, "-"))
-	return mean_recall
-
-def get_text_to_images_get_recall_at_k(
-	dataset, 
-	model, 
-	preprocess, 
-	K: int = 5, 
-	batch_size: int = 64, 
-	device: str = "cuda:0", 
-	image_features_file: str = "validation_image_features.gz"
-	):
-	"""
-	For each text query (i.e. each label):
-		- Compute the text embedding.
-		- Compute similarities with all image embeddings.
-		- Retrieve Top-K images.
-		- Compute recall for that text query as:
-				Recall@K = (# of images with that label in Top-K) / (Total number of images with that label)
-	Return the average (mean) Recall@K over all text queries.
-	"""
-	print(f"Text-to-Images Recall@{K} Evaluation on {device} with batch size {batch_size}")
-	t0 = time.time()
-	# Get sorted unique labels for consistency.
-	labels = sorted(list(set(dataset["label"].tolist())))
-	print(f"Total number of labels: {len(labels)}")
-	
-	# Encode text labels.
-	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
-	with torch.no_grad():
-			labels_features = model.encode_text(tokenized_labels_tensor)
-			labels_features /= labels_features.norm(dim=-1, keepdim=True)
-	
-	# Encode image features.
-	dataset_images_path = dataset["img_path"].tolist()
-	if not os.path.exists(image_features_file):
-			image_features_list = []
-			for i in range(0, len(dataset_images_path), batch_size):
-					batch_paths = dataset_images_path[i: i+batch_size]
-					batch_imgs = [preprocess(Image.open(path).convert("RGB")).to(device) for path in batch_paths]
-					batch_tensor = torch.stack(batch_imgs)
-					with torch.no_grad():
-							batch_features = model.encode_image(batch_tensor)
-							batch_features /= batch_features.norm(dim=-1, keepdim=True)
-					image_features_list.append(batch_features)
-			dataset_images_features = torch.cat(image_features_list, dim=0)
-			save_pickle(pkl=dataset_images_features, fname=image_features_file)
-	else:
-			dataset_images_features = load_pickle(fpath=image_features_file).to(device)
-	
-	recall_values = []
-	# For each text query (each label), compute recall.
-	for label_idx, label_feature in enumerate(labels_features):
-			label_feature = label_feature.to(device)
-			with torch.no_grad():
-					sim = label_feature @ dataset_images_features.T  # Similarity with all images.
-			_, topk_indices = sim.topk(K, dim=-1)
-			topk_indices = topk_indices.cpu().numpy().flatten()
-			
-			# Find all image indices that have the ground-truth label corresponding to this text.
-			# dataset["label_int"] should hold the label index for each image.
-			relevant_images = [idx for idx, lbl in enumerate(dataset["label_int"].tolist()) if lbl == label_idx]
-			
-			if len(relevant_images) == 0:
-					recall = 0
-			else:
-					num_relevant_retrieved = len(set(topk_indices) & set(relevant_images))
-					recall = num_relevant_retrieved / len(relevant_images)
-			recall_values.append(recall)
-	
-	mean_recall = np.mean(recall_values)
-	print(f"Mean Recall@{K} for Text-to-Images: {mean_recall:.3f}")
-	print(f"Elapsed Time: {time.time()-t0:.2f} sec".center(150, "-"))
-	return mean_recall
-
-def get_image_to_texts_mp_at_k(
-	dataset,
-	model,
-	preprocess,
-	K:int=5,
-	device:str="cuda:0",
-	predicted_label_distribution_file:str="img2txt_label_distribution.png"
-	):
-	print(f"Image-to-Text Retrival [Classification] {device} CLIP".center(160, " "))
-	labels = list(set(dataset["label"].tolist()))
-	print(f"[performance metrics (macro-averaging): mP@{K} over all {len(labels)} labels]".center(160, " "))
-	t0 = time.time()
-	print(len(labels), type(labels))
-	if K > len(labels):
-		print(f"ERROR: requested Top-{K} labeling is greater than number of labels({len(labels)}) => EXIT...")
-		return
-
-	dataset_images_id = dataset["id"].tolist()
-	dataset_images_path = dataset["img_path"].tolist()
-	dataset_labels = dataset["label"].tolist() # ['naval training', 'medical service', 'medical service', 'naval forces', 'naval forces', ...]
-	dataset_labels_int = dataset["label_int"].tolist() # [3, 17, 4, 9, ...]
-	print(len(dataset_images_id), len(dataset_labels))
-	
-	print(f"[1] Encode {len(labels)} Labels", end="\t")
-	t1 = time.time()
-	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
-	with torch.no_grad():
-		labels_features = model.encode_text(tokenized_labels_tensor)
-		labels_features /= labels_features.norm(dim=-1, keepdim=True)
-	print(f"Elapsed_t: {time.time()-t1:.3f} sec")
-
-	print(f"[2] Encode {len(dataset_images_path)} Images")
-	predicted_labels = []
-	true_labels = []
-	t2 = time.time()
-	torch.cuda.empty_cache() # Clear CUDA cache
-	with torch.no_grad():
-		for i, (img_pth, gt_lbl) in enumerate(zip(dataset_images_path, dataset_labels_int)): #img: <class 'PIL.Image.Image'>
-			img_raw = Image.open(img_pth)
-			img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
-			image_features = model.encode_image(img_tensor)
-			image_features /= image_features.norm(dim=-1, keepdim=True)
-			similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
-			_, topk_labels_idx = similarities.topk(K, dim=-1)
-			predicted_labels.append(topk_labels_idx.cpu().numpy().flatten())
-			true_labels.append(gt_lbl)
-			if i % 100 == 0:
-				torch.cuda.empty_cache() # Clear CUDA cache
-	print(f"Elapsed_t: {time.time()-t2:.3f} sec")
-	print(len(predicted_labels), len(true_labels))
-	print(f"Predicted labels ({len(predicted_labels)}) [only few]: {predicted_labels[:10]}")
-	print(f"True labels({len(true_labels)}) [only few]: {true_labels[:10]}")
-
-	# [3] Calculate overall mP@K over all image queries
-	# For a single-label case, each query's Precision@K is 1 if the correct label is among the top K, else 0.
-	print(f"[3] Calculate mP@{K} over all {len(true_labels)} labels")
-	p_at_k = 0
-	for ilbl, vlbl in enumerate(true_labels):
-		preds = predicted_labels[ilbl] # <class 'numpy.ndarray'>
-		if vlbl in preds:
-			p_at_k += 1
-	mean_p_at_k_over_all_labels = p_at_k/len(true_labels)
-	print(f"[OWN] mP@{K} over all {len(true_labels)} labels: {p_at_k} | {mean_p_at_k_over_all_labels:.3f}")
-	##################################################################################################
-
-	# [4] Compute per-label Precision@K: 
-	# Group image queries by their true label and average the hit (1/0) per label.
-	unique_labels = {}
-	for lbl, lbl_int in zip(dataset["label"].tolist(), dataset["label_int"].tolist()):
-		unique_labels[lbl_int] = lbl
-
-	per_label_results = defaultdict(list)
-	for gt_lbl, preds in zip(true_labels, predicted_labels):
-		hit = 1 if gt_lbl in preds else 0
-		per_label_results[gt_lbl].append(hit)
-	print(per_label_results)
-	# Create a list of tuples: (label_name, mP@K for that label)
-	label_p_at_k = []
-	# for label_int in sorted(per_label_results.keys()):
-	for label_int in per_label_results.keys():
-		print(f"label_int: {label_int}")
-		print(per_label_results[label_int])
-		avg_hit = np.mean(per_label_results[label_int])
-		label_name = unique_labels.get(label_int, f"Unknown({label_int})")
-		label_p_at_k.append((label_name, avg_hit))
-		print(f"Label '{label_name}' (id {label_int}): P@{K} = {avg_hit:.3f} over {len(per_label_results[label_int])} queries")
-	
-	# [5] Plot Bar Chart of Per-Label P@K values
-	plt.figure(figsize=(11, 6))
-	# Extract label names and their corresponding P@K values
-	label_names, precision_values = zip(*label_p_at_k)
-	plt.bar(label_names, precision_values, color='skyblue', edgecolor='black')
-	plt.xlabel("Labels")
-	plt.ylabel(f"P@{K}")
-	plt.title(
-		f"Image-to-Text Per-label Retrieval\n"
-		f"mP@{K} over {len(labels)} labels: {mean_p_at_k_over_all_labels:.3f}", 
-		fontsize=10,
-	)
-	plt.xticks(rotation=90, fontsize=8)
-	plt.grid(axis='y', alpha=0.6)
-	plt.tight_layout()
-	plt.savefig(predicted_label_distribution_file, dpi=200)
-	
-	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
-	return mean_p_at_k_over_all_labels
-
-def get_image_to_texts_map_recall_at_k(
-	dataset,
-	model,
-	preprocess,
-	K: int = 5,
-	device: str = "cuda:0",
-	):
-	"""
-	1) Encodes the textual labels using CLIP.
-	2) Process images one by one:
-			Extracts image features using CLIP.
-			Computes cosine similarity between image features and label features.
-			Retrieves the Top-K most similar labels.
-			Computes AP@K for each image.
-			Computes Recall@K for each image.
-	3) Aggregates AP@K values over all images to return mAP@K.
-	"""
-	print(f"Image-to-Text Retrieval Top-{K} {device} CLIP".center(160, " "))
-	print(f"[performance metrics: mAP@{K} & mean Recall@{K}]".center(160, " "))
-	t0 = time.time()
-	
-	labels = list(set(dataset["label"].tolist()))
-	print(f"Number of unique labels: {len(labels)}")
-	if K > len(labels):
-		print(f"ERROR: requested Top-{K} is greater than the number of labels ({len(labels)}) => EXIT...")
-		return None, None
-
-	dataset_images_id = dataset["id"].tolist()
-	dataset_images_path = dataset["img_path"].tolist()
-	dataset_labels_int = dataset["label_int"].tolist()  # Ground-truth label indices
-
-	print(f"[1] Encode {len(labels)} Labels", end="\t")
-	t1 = time.time()
-	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
-
-	with torch.no_grad():
-		labels_features = model.encode_text(tokenized_labels_tensor)
-		labels_features /= labels_features.norm(dim=-1, keepdim=True)	
-	print(f"Elapsed_t: {time.time()-t1:.3f} sec")
-
-	print(f"[2] Encode {len(dataset_images_path)} Images & Compute mAP@{K} & Recall@{K}")
-	ap_at_k_list = []  # Store AP@K values
-	recall_at_k_list = []  # Store Recall@K values
-	torch.cuda.empty_cache()
-	with torch.no_grad():
-		for i, (img_pth, gt_lbl) in enumerate(zip(dataset_images_path, dataset_labels_int)):
-			img_raw = Image.open(img_pth)
-			img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
-			
-			# Compute image features
-			image_features = model.encode_image(img_tensor)
-			image_features /= image_features.norm(dim=-1, keepdim=True)
-			
-			# Compute similarity scores
-			similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
-			
-			# Retrieve top-K predictions
-			_, topk_labels_idx = similarities.topk(K, dim=-1)
-			preds = topk_labels_idx.cpu().numpy().flatten()
-			
-			# Compute AP@K
-			relevant_count = 0
-			precision_sum = 0.0			
-			for rank, pred in enumerate(preds, start=1):
-				if pred == gt_lbl:  # Relevant prediction
-					relevant_count += 1
-					precision_sum += relevant_count / rank  # Precision at this rank
-			ap_at_k = precision_sum / relevant_count if relevant_count > 0 else 0.0
-			ap_at_k_list.append(ap_at_k)
-			
-			# Compute Recall@K
-			recall_at_k = 1 if relevant_count > 0 else 0
-			recall_at_k_list.append(recall_at_k)
-			
-			if i % 100 == 0:
-				torch.cuda.empty_cache()
-	
-	mAP_at_k = sum(ap_at_k_list) / len(ap_at_k_list) # Compute mean AP@K
-	mean_recall_at_k = sum(recall_at_k_list) / len(recall_at_k_list)  # Compute mean Recall@K
-	
-	print(f"mAP@{K}: {mAP_at_k:.3f} Mean Recall@{K}: {mean_recall_at_k:.3f}")
-	print(f"Total Elapsed_t: {time.time()-t0:.2f} sec".center(160, "-"))
-	
-	return mAP_at_k, mean_recall_at_k
-
 def get_text_to_images(
 	dataset,
 	model,
@@ -613,6 +308,7 @@ def get_text_to_images(
 	print(f"Top-{topk} Image Retrieval {device} CLIP Query: « {query} »".center(160, " "))
 	t0 = time.time()
 	labels = list(set(dataset["label"].tolist()))
+	labels = sorted(labels) # Get sorted unique labels
 	print(len(labels), type(labels))
 
 	dataset_images_id = dataset["id"].tolist()
@@ -682,7 +378,317 @@ def get_text_to_images(
 	plt.close()
 	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 
-def get_text_to_images_map_recall_at_k(
+def get_image_to_texts_recall_at_k(
+	dataset,
+	model,
+	preprocess,
+	K:int=5,
+	device:str="cuda:0",
+	):
+	"""
+	For each image query:
+		- Compute the image embedding.
+		- Compare it with all label embeddings.
+		- Retrieve the top-K labels.
+		- Recall for this image is 1 if the ground-truth label is among the Top-K, else 0.
+	Return the average (mean) Recall@K over all image queries.
+	"""
+	print(f"Image-to-Texts Recall@{K} Evaluation on {device}".center(150, " "))
+	labels = list(set(dataset["label"].tolist()))
+	labels = sorted(labels) # Get sorted unique labels
+	if K > len(labels):
+		print(f"ERROR: requested Top-{K} labeling is greater than number of labels({len(labels)}) => EXIT...")
+		return
+	t0 = time.time()
+	print(f"Encoding {len(labels)} labels", end="\t")
+	# Encode labels using CLIP.
+	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
+	with torch.no_grad():
+		labels_features = model.encode_text(tokenized_labels_tensor)
+		labels_features /= labels_features.norm(dim=-1, keepdim=True)
+	print(f"Elapsed_t: {time.time()-t0:.3f} sec")
+
+	# Iterate over each image.
+	dataset_images_path = dataset["img_path"].tolist()
+	dataset_labels_int = dataset["label_int"].tolist()  # Ground-truth label index for each image.	
+	recall_values = []
+	for i, (img_path, gt_lbl_int) in enumerate(zip(dataset_images_path, dataset_labels_int)):
+		img = Image.open(img_path).convert("RGB")
+		img_tensor = preprocess(img).unsqueeze(0).to(device)
+		with torch.no_grad():
+			image_feature = model.encode_image(img_tensor)
+			image_feature /= image_feature.norm(dim=-1, keepdim=True)
+		
+		# Compute similarity between image and all label embeddings.
+		similarities = (100.0 * image_feature @ labels_features.T).softmax(dim=-1)
+		_, topk_labels_idx = similarities.topk(K, dim=-1)
+		topk_labels_idx = topk_labels_idx.cpu().numpy().flatten()
+		
+		# Single-label setting:
+		# recall is 1 if the ground-truth label is among top-K, else 0.
+		recall = 1 if gt_lbl_int in topk_labels_idx else 0
+		recall_values.append(recall)
+	
+	mean_recall = np.mean(recall_values)
+	print(f"Mean Recall@{K} for Image-to-Texts: {mean_recall:.3f}")
+	print(f"Elapsed Time: {time.time()-t0:.2f} sec".center(150, "-"))
+	return mean_recall
+
+def get_text_to_images_recall_at_k(
+	dataset, 
+	model, 
+	preprocess, 
+	K: int = 5, 
+	batch_size: int = 64, 
+	device: str = "cuda:0", 
+	image_features_file: str = "validation_image_features.gz"
+	):
+	"""
+	For each text query (i.e. each label):
+		- Compute the text embedding.
+		- Compute similarities with all image embeddings.
+		- Retrieve Top-K images.
+		- Compute recall for that text query as:
+				Recall@K = (# of images with that label in Top-K) / (Total number of images with that label)
+	Return the average (mean) Recall@K over all text queries.
+	"""
+	print(f"Text-to-Images Recall@{K} Evaluation on {device} with batch size {batch_size}")
+	t0 = time.time()
+	labels = list(set(dataset["label"].tolist()))
+	labels = sorted(labels) # Sort labels alphabetically.
+	# Encode text labels.
+	print(f"Encoding {len(labels)} labels", end="\t")
+	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
+	with torch.no_grad():
+		labels_features = model.encode_text(tokenized_labels_tensor)
+		labels_features /= labels_features.norm(dim=-1, keepdim=True)
+	print(f"Elapsed_t: {time.time()-t0:.3f} sec")
+	
+	# Encode image features.
+	dataset_images_path = dataset["img_path"].tolist()
+	if not os.path.exists(image_features_file):
+		image_features_list = []
+		for i in range(0, len(dataset_images_path), batch_size):
+			batch_paths = dataset_images_path[i: i+batch_size]
+			batch_imgs = [preprocess(Image.open(path).convert("RGB")).to(device) for path in batch_paths]
+			batch_tensor = torch.stack(batch_imgs)
+			with torch.no_grad():
+				batch_features = model.encode_image(batch_tensor)
+				batch_features /= batch_features.norm(dim=-1, keepdim=True)
+			image_features_list.append(batch_features)
+		dataset_images_features = torch.cat(image_features_list, dim=0)
+		save_pickle(pkl=dataset_images_features, fname=image_features_file)
+	else:
+		dataset_images_features = load_pickle(fpath=image_features_file).to(device)
+		dataset_images_features = dataset_images_features.to(device)
+	
+	recall_per_label = []
+	# For each text query (each label), compute recall.
+	for label_idx, label_feature in enumerate(labels_features):
+		label_feature = label_feature.to(device)
+		with torch.no_grad():
+			sim = label_feature @ dataset_images_features.T  # Similarity with all images.
+		_, topk_indices = sim.topk(K, dim=-1)
+		topk_indices = topk_indices.cpu().numpy().flatten()
+		
+		# Find all image indices that have the ground-truth label corresponding to this text.
+		# dataset["label_int"] should hold the label index for each image.
+		relevant_images = [idx for idx, lbl in enumerate(dataset["label_int"].tolist()) if lbl == label_idx]
+		
+		if len(relevant_images) == 0:
+			recall = 0
+		else:
+			num_relevant_retrieved = len(set(topk_indices) & set(relevant_images))# intersection of {1, 3, 4, 5} & {1, 2, 3, 6}: {1, 3} => len(intersection) = 2
+			recall = num_relevant_retrieved / len(relevant_images)
+		recall_per_label.append(recall)
+	mean_recall = np.mean(recall_per_label)
+	print(f"Mean Recall@{K} for Text-to-Images: {mean_recall:.3f}")
+	print(f"Elapsed Time: {time.time()-t0:.2f} sec".center(150, "-"))
+	return mean_recall
+
+def get_image_to_texts_mp_at_k(
+	dataset,
+	model,
+	preprocess,
+	K:int=5,
+	device:str="cuda:0",
+	predicted_label_distribution_file:str="img2txt_label_distribution.png"
+	):
+	print(f"Image-to-Text Retrival [Classification] {device} CLIP".center(160, " "))
+	labels = list(set(dataset["label"].tolist()))
+	labels = sorted(labels) # Get sorted unique labels
+	print(f"[performance metrics (macro-averaging): mP@{K} over all {len(labels)} labels]".center(160, " "))
+	t0 = time.time()
+	print(len(labels), type(labels))
+	if K > len(labels):
+		print(f"ERROR: requested Top-{K} labeling is greater than number of labels({len(labels)}) => EXIT...")
+		return
+
+	dataset_images_id = dataset["id"].tolist()
+	dataset_images_path = dataset["img_path"].tolist()
+	dataset_labels = dataset["label"].tolist() # ['naval training', 'medical service', 'medical service', 'naval forces', 'naval forces', ...]
+	dataset_labels_int = dataset["label_int"].tolist() # [3, 17, 4, 9, ...]
+	print(len(dataset_images_id), len(dataset_labels))
+	
+	print(f"[1] Encode {len(labels)} Labels", end="\t")
+	t1 = time.time()
+	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # torch.Size([num_lbls, context_length]) # ex) 10 x 77
+	with torch.no_grad():
+		labels_features = model.encode_text(tokenized_labels_tensor)
+		labels_features /= labels_features.norm(dim=-1, keepdim=True)
+	print(f"Elapsed_t: {time.time()-t1:.3f} sec")
+
+	print(f"[2] Encode {len(dataset_images_path)} Images")
+	predicted_labels = []
+	true_labels = []
+	t2 = time.time()
+	torch.cuda.empty_cache() # Clear CUDA cache
+	with torch.no_grad():
+		for i, (img_pth, gt_lbl) in enumerate(zip(dataset_images_path, dataset_labels_int)): #img: <class 'PIL.Image.Image'>
+			img_raw = Image.open(img_pth)
+			img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
+			image_features = model.encode_image(img_tensor)
+			image_features /= image_features.norm(dim=-1, keepdim=True)
+			similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
+			_, topk_labels_idx = similarities.topk(K, dim=-1)
+			predicted_labels.append(topk_labels_idx.cpu().numpy().flatten())
+			true_labels.append(gt_lbl)
+			if i % 100 == 0:
+				torch.cuda.empty_cache() # Clear CUDA cache
+	print(f"Elapsed_t: {time.time()-t2:.3f} sec")
+	print(len(predicted_labels), len(true_labels))
+	print(f"Predicted labels ({len(predicted_labels)}) [only few]: {predicted_labels[:10]}")
+	print(f"True labels({len(true_labels)}) [only few]: {true_labels[:10]}")
+
+	# [3] Calculate overall mP@K over all image queries
+	# For a single-label case, each query's Precision@K is 1 if the correct label is among the top K, else 0.
+	print(f"[3] Calculate mP@{K} over all {len(true_labels)} labels")
+	p_at_k = 0
+	for ilbl, vlbl in enumerate(true_labels):
+		preds = predicted_labels[ilbl] # <class 'numpy.ndarray'>
+		if vlbl in preds:
+			p_at_k += 1
+	mean_p_at_k_over_all_labels = p_at_k/len(true_labels)
+	print(f"[OWN] mP@{K} over all {len(true_labels)} labels: {p_at_k} | {mean_p_at_k_over_all_labels:.3f}")
+	##################################################################################################
+
+	# [4] Compute per-label Precision@K: 
+	# Group image queries by their true label and average the hit (1/0) per label.
+	unique_labels = {}
+	for lbl, lbl_int in zip(dataset["label"].tolist(), dataset["label_int"].tolist()):
+		unique_labels[lbl_int] = lbl
+
+	per_label_results = defaultdict(list)
+	for gt_lbl, preds in zip(true_labels, predicted_labels):
+		hit = 1 if gt_lbl in preds else 0
+		per_label_results[gt_lbl].append(hit)
+	print(per_label_results)
+	# Create a list of tuples: (label_name, mP@K for that label)
+	label_p_at_k = []
+	for label_int in per_label_results.keys():
+		print(f"label_int: {label_int}")
+		print(per_label_results[label_int])
+		avg_hit = np.mean(per_label_results[label_int])
+		label_name = unique_labels.get(label_int, f"Unknown({label_int})")
+		label_p_at_k.append((label_name, avg_hit))
+		print(f"Label '{label_name}' (id {label_int}): P@{K} = {avg_hit:.3f} over {len(per_label_results[label_int])} queries")
+	
+	# [5] Plot Bar Chart of Per-Label P@K values
+	plt.figure(figsize=(11, 6))
+	# Extract label names and their corresponding P@K values
+	label_names, precision_values = zip(*label_p_at_k)
+	plt.bar(label_names, precision_values, color='skyblue', edgecolor='black')
+	plt.xlabel("Labels")
+	plt.ylabel(f"P@{K}")
+	plt.title(
+		f"Image-to-Text Per-label Retrieval\n"
+		f"mP@{K} over {len(labels)} labels: {mean_p_at_k_over_all_labels:.3f}", 
+		fontsize=10,
+	)
+	plt.xticks(rotation=90, fontsize=8)
+	plt.grid(axis='y', alpha=0.6)
+	plt.tight_layout()
+	plt.savefig(predicted_label_distribution_file, dpi=200)
+	
+	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
+	return mean_p_at_k_over_all_labels
+
+def get_image_to_texts_map_at_k(
+	dataset,
+	model,
+	preprocess,
+	K: int = 5,
+	device: str = "cuda:0",
+	):
+	"""
+	1) Encodes the textual labels using CLIP.
+	2) Process images one by one:
+			Extracts image features using CLIP.
+			Computes cosine similarity between image features and label features.
+			Retrieves the Top-K most similar labels.
+			Computes AP@K for each image.
+			Computes Recall@K for each image.
+	3) Aggregates AP@K values over all images to return mAP@K.
+	"""
+	print(f"Image-to-Text Retrieval Top-{K} {device} CLIP".center(160, " "))
+	print(f"[Evaluation metrics: mean average precision@K (mAP@{K})]".center(160, " "))
+	t0 = time.time()
+	
+	labels = list(set(dataset["label"].tolist()))
+	labels = sorted(labels) # Get sorted unique labels
+	print(f"Number of unique labels: {len(labels)}")
+	if K > len(labels):
+		print(f"ERROR: requested Top-{K} is greater than the number of labels ({len(labels)}) => EXIT...")
+		return
+
+	print(f"[1] Encode {len(labels)} Labels", end="\t")
+	t1 = time.time()
+	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
+	with torch.no_grad():
+		labels_features = model.encode_text(tokenized_labels_tensor)
+		labels_features /= labels_features.norm(dim=-1, keepdim=True)	
+	print(f"Elapsed_t: {time.time()-t1:.3f} sec")
+
+	dataset_images_path = dataset["img_path"].tolist()
+	dataset_labels_int = dataset["label_int"].tolist()  # Ground-truth label indices
+	print(f"[2] Encode {len(dataset_images_path)} Images & Compute mAP@{K} & Recall@{K}")
+	ap_values = []
+	for i, (img_pth, gt_lbl) in enumerate(zip(dataset_images_path, dataset_labels_int)):
+			img_raw = Image.open(img_pth)
+			img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
+			with torch.no_grad():
+				# Compute image features
+				image_features = model.encode_image(img_tensor)
+				image_features /= image_features.norm(dim=-1, keepdim=True)
+			
+			# Compute similarity between the image and all label embeddings.
+			similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
+			
+			# Retrieve top-K predictions
+			_, topk_labels_idx = similarities.topk(K, dim=-1)
+			preds = topk_labels_idx.cpu().numpy().flatten()
+			
+			# Compute AP@K
+			relevant_count = 0
+			precision_sum = 0.0			
+			for rank, pred in enumerate(preds, start=1):
+				if pred == gt_lbl:  # Relevant prediction
+					relevant_count += 1
+					precision_sum += relevant_count / rank  # Precision at this rank
+			ap_at_k = precision_sum / relevant_count if relevant_count > 0 else 0.0
+			ap_values.append(ap_at_k)
+						
+			if i % 100 == 0:
+				torch.cuda.empty_cache()
+	
+	mAP_at_k = np.mean(ap_values)  # Compute mean Average Precision@K
+	
+	print(f"[Image-to-Text Retrival] mAP@{K}: {mAP_at_k:.3f}")
+	print(f"Total Elapsed_t: {time.time()-t0:.2f} sec".center(160, "-"))
+	
+	return mAP_at_k
+
+def get_text_to_images_map_at_k(
 	dataset,
 	model,
 	preprocess,
@@ -691,26 +697,15 @@ def get_text_to_images_map_recall_at_k(
 	device="cuda:0",
 	image_features_file="validation_image_features.gz"
 	):
-	"""
-	1) Encodes all textual labels (queries) using CLIP.
-	2) Encodes all images and precomputes their features (to save computation time).
-	3) For each text query:
-			Computes cosine similarity between the query and all image features.
-			Retrieves the Top-K most similar images.
-			Computes P@K for that text query.
-			Computes Recall@K for that text query.
-
-	4) Aggregates P@K values over all queries to return mP@K.
-	"""
 	print(f"Text-to-Image Retrieval {device} CLIP batch_size: {batch_size}".center(160, " "))
-	print(f"[performance metrics: mAP@{K}, Recall@{K}]".center(160, " "))
+	print(f"[Evaluation Metrics: mean average precision@K (mAP@{K})]".center(160, " "))
 	torch.cuda.empty_cache()
 	t0 = time.time()
-	
 	labels = list(set(dataset["label"].tolist()))
+	labels = sorted(labels) # Sort labels alphabetically
 	dataset_images_path = dataset["img_path"].tolist()
-	dataset_labels_int = dataset["label_int"].tolist()
-	
+	all_labels_int = dataset["label_int"].tolist()
+
 	print(f"[1] Encode Labels", end="\t")
 	t1 = time.time()
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
@@ -734,46 +729,38 @@ def get_text_to_images_map_recall_at_k(
 		save_pickle(pkl=dataset_images_features, fname=image_features_file)
 	else:
 		dataset_images_features = load_pickle(fpath=image_features_file).to(device)
+		dataset_images_features = dataset_images_features.to(device)
 	
-	print(f"[3] Calculate mAP@{K} and Recall@{K}")
-	avg_ap_at_k, avg_recall_at_k = [], []
-	for i, label_features in enumerate(tokenized_labels_features):
-		label_features = label_features.to(device)
-		sim = label_features @ dataset_images_features.T
-		_, indices = sim.topk(len(dataset_images_features), dim=-1)
-		relevant_images_for_lbl_i = [idx for idx, lbl in enumerate(dataset_labels_int) if lbl == i]
-		retrieved_images = indices.squeeze().cpu().numpy()[:K]
-		# Calculate AP@K
-		rel_count = 0
-		precision_at_relevant_ranks = []
-		for j, img_idx in enumerate(retrieved_images, start=1):
-			if img_idx in relevant_images_for_lbl_i:
-				precision_at_relevant_ranks.append((len(precision_at_relevant_ranks) + 1) / j)
-		if len(relevant_images_for_lbl_i) == 0:
-			print(f"Warning: No relevant items found for label {i}. Skipping AP@K calculation.")
-			ap_at_k = 0.0
+	print(f"[3] Calculate mAP@{K}")
+	ap_values = []
+	for label_idx, label_feature in enumerate(tokenized_labels_features):
+		label_feature = label_feature.to(device)
+		with torch.no_grad():
+			sim = label_feature @ dataset_images_features.T # Similarity with all images.
+		_, topk_indices = sim.topk(K, dim=-1)
+		topk_indices = topk_indices.cpu().numpy().flatten()		
+		relevant_images = [idx for idx, lbl in enumerate(all_labels_int) if lbl == label_idx] # Retrieve all relevant images.
+		if len(relevant_images) == 0:
+			print(f">> Warning << No relevant items found for label {label_idx} => Skipping AP@K calculation.")
+			ap = 0.0
 		else:
-			# ap_at_k = sum(precision_at_relevant_ranks) / max(len(relevant_images_for_lbl_i), 1)  # Avoid division by zero
-			ap_at_k = sum(precision_at_relevant_ranks) / min(len(relevant_images_for_lbl_i), K)
-		avg_ap_at_k.append(ap_at_k)
-
-		# Calculate Recall@K
-		if len(relevant_images_for_lbl_i) == 0:
-			recall_at_k = 0.0  # No relevant items exist
-		else:
-			recall_at_k = min(1.0, len(set(retrieved_images) & set(relevant_images_for_lbl_i)) / len(relevant_images_for_lbl_i))
-		avg_recall_at_k.append(recall_at_k)
-
-		if i % 100 == 0:
-			torch.cuda.empty_cache()
-	mAP_at_k = sum(avg_ap_at_k) / len(labels)
-	avg_recall_at_k = sum(avg_recall_at_k) / len(labels)
-	print(f"mAP@{K}: {mAP_at_k:.3f} | Recall@{K}: {avg_recall_at_k:.3f}")
+			num_relevant_so_far = 0
+			precision_sum = 0.0
+			for j, img_idx in enumerate(topk_indices, start=1):
+				if img_idx in relevant_images:
+					num_relevant_so_far += 1
+					precision_at_j = num_relevant_so_far / j
+					precision_sum += precision_at_j
+			# Normalize by min(|R|, K)
+			# if there are more than K relevant images, we cap the maximum AP at 1.
+			ap = precision_sum / min(len(relevant_images), K)
+		ap_values.append(ap)
+	mAP_at_k = np.mean(ap_values)
+	print(f"[Text-to-Image Retrieval] mAP@{K}: {mAP_at_k:.3f}")
 	print(f"Total Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
-	
-	return mAP_at_k, avg_recall_at_k
+	return mAP_at_k
 
-def get_text_to_images_mp_recall_at_k(
+def get_text_to_images_mp_at_k(
 	dataset,
 	model,
 	preprocess,
@@ -788,6 +775,7 @@ def get_text_to_images_mp_recall_at_k(
 	torch.cuda.empty_cache()  # Clear CUDA cache
 	t0 = time.time()
 	labels = list(set(dataset["label"].tolist()))
+	labels = sorted(labels) # Sort labels alphabetically
 	print(f"Labels {type(labels)}: {len(labels)}")
 	print(labels)
 
@@ -847,10 +835,7 @@ def get_text_to_images_mp_recall_at_k(
 	print(p_at_k)
 	mean_p_at_k_over_all_labels = sum(p_at_k) / len(tokenized_labels_features) # np.mean(p_at_k)
 	mean_recall_at_k_over_labels = sum(recall_at_k) / len(tokenized_labels_features) # np.mean(recall_at_k)
-	print(
-		f"mean Precision@{K} over all {len(tokenized_labels_features)} labels: {mean_p_at_k_over_all_labels:.3f} | "
-		f"mean Recall@{K} over all {len(tokenized_labels_features)} labels: {mean_recall_at_k_over_labels:.3f}"
-	)
+	print(f"mP@{K} over all {len(tokenized_labels_features)} labels: {mean_p_at_k_over_all_labels:.3f}")
 	print(f"Total Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))
 	# [4] Plot Bar Chart of Per-Label P@K values
 	plt.figure(figsize=(11, 6))
@@ -868,85 +853,7 @@ def get_text_to_images_mp_recall_at_k(
 	plt.grid(axis='y', alpha=0.6)
 	plt.tight_layout()
 	plt.savefig(predicted_label_distribution_file, dpi=200)
-	return mean_p_at_k_over_all_labels, mean_recall_at_k_over_labels
-
-def get_map_at_k(
-	dataset,
-	model,
-	preprocess,
-	K:int=10,
-	batch_size:int=512,
-	device:str="cuda:0",
-	image_features_file = 'validation_image_features.gz',
-	):
-	print(f"Calculating mAP@{K} for Image-to-Texts and Text-to-Images Retrieval {device}".center(160, " "))  
-	t0 = time.time()
-	# image_features_file = os.path.join(args.dataset_dir, 'outputs', 'validation_image_features.gz')
-	if not os.path.exists(image_features_file):  
-		dataset_images_features = []  
-		for i in range(0, len(dataset["img_path"]), batch_size):  
-			batch_images_path = [dataset["img_path"][j] for j in range(i, min(i + batch_size, len(dataset["img_path"])))]  
-			batch_tensors = torch.stack([preprocess(Image.open(img_path)).to(device) for img_path in batch_images_path])  
-			with torch.no_grad():  
-				image_features = model.encode_image(batch_tensors)  
-				image_features /= image_features.norm(dim=-1, keepdim=True)  
-			dataset_images_features.append(image_features)  
-			del batch_tensors
-			if i % 50 == 0:
-				torch.cuda.empty_cache()  
-		dataset_images_features = torch.cat(dataset_images_features, dim=0)  
-		save_pickle(pkl=dataset_images_features, fname=image_features_file)  
-	else:  
-		dataset_images_features = load_pickle(fpath=image_features_file) 
-		dataset_images_features = dataset_images_features.to(device)
-
-	# Image-to-Texts Retrieval
-	img_to_txt_precisions = []
-	tokenized_labels_tensor = clip.tokenize(texts=list(set(dataset["label"]))).to(device)
-	with torch.no_grad():
-		labels_features = model.encode_text(tokenized_labels_tensor)  
-		labels_features /= labels_features.norm(dim=-1, keepdim=True)  
-
-	for i, (img_path, gt_lbl) in enumerate(zip(dataset["img_path"], dataset["label_int"])):  
-		with torch.no_grad():  
-			img_raw = Image.open(img_path)  
-			img_tensor = preprocess(img_raw).unsqueeze(0).to(device)  
-			image_features = model.encode_image(img_tensor)  
-			image_features /= image_features.norm(dim=-1, keepdim=True)  
-		similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)  
-		_, topk_labels_idx = similarities.topk(len(labels_features), dim=-1)  
-
-		# Find the rank of the ground truth label
-		gt_ranks = torch.where(topk_labels_idx == gt_lbl)[1]
-		if len(gt_ranks) > 0:
-			rank = gt_ranks[0].item() + 1
-		else:
-			rank = len(labels_features) + 1  # Set rank to a value larger than K if not found
-		precision = 1 / rank if rank <= K else 0  
-		img_to_txt_precisions.append(precision)  
-		del img_tensor, image_features
-		torch.cuda.empty_cache()  
-	img2txt_mAP_at_k = np.mean(img_to_txt_precisions)  
-
-	# Text-to-Images Retrieval  
-	txt_to_img_precisions = []	
-	for i, label_features in enumerate(labels_features):
-		sim = label_features @ dataset_images_features.T  
-		_, indices = sim.topk(len(dataset_images_features), dim=-1)  
-		relevant_images_for_lbl_i = [idx for idx, lbl in enumerate(dataset["label_int"]) if lbl == i]  
-		retrieved_topK_relevant_images = [idx for idx in indices.squeeze().cpu().numpy()[:K] if idx in relevant_images_for_lbl_i]  
-		precisions = []  
-		for j, idx in enumerate(indices.squeeze().cpu().numpy()):  
-			if idx in relevant_images_for_lbl_i:  
-				precisions.append(len(retrieved_topK_relevant_images) / (j + 1))  
-		if precisions:  
-			txt_to_img_precisions.append(np.mean(precisions))  
-		else:  
-			txt_to_img_precisions.append(0)  
-	txt2img_map_at_k = np.mean(txt_to_img_precisions)  
-	print(f"mAP@{K}\nImage-to-Texts: {img2txt_mAP_at_k:.3f} | Text-to-Images: {txt2img_map_at_k:.3f}")  
-	print(f"Elapsed_t: {time.time() - t0:.2f} sec".center(160, "-"))  
-	return img2txt_mAP_at_k, txt2img_map_at_k
+	return mean_p_at_k_over_all_labels
 
 def get_image_to_images(
 	dataset,
@@ -1092,7 +999,7 @@ def run_evaluation(
 		)
 	
 	if args.topK == 1:
-		linear_probe_accuracy, zero_shot_accuracy = get_linear_prob_zero_shot_accuracy(
+		metrics["linear_probe_accuracy"], metrics["zero_shot_accuracy"] = get_linear_prob_zero_shot_accuracy(
 			dataset_dir=args.dataset_dir,
 			train_dataset=train_dataset,
 			validation_dataset=val_dataset,
@@ -1104,20 +1011,8 @@ def run_evaluation(
 			val_image_features_file=val_image_features_file,
 			seed=seed,
 		)
-		metrics["linear_probe_accuracy"] = linear_probe_accuracy
-		metrics["zero_shot_accuracy"] = zero_shot_accuracy
 
-	img2txt_AP_at_K, img2txt_recall_at_K = get_image_to_texts_map_recall_at_k(
-		dataset=val_dataset,
-		model=model,
-		preprocess=preprocess,
-		K=topk,
-		device=args.device,
-	)
-	metrics["img_2_txt_mAP_at_K"] = img2txt_AP_at_K
-	metrics["img2txt_recall_at_K"] = img2txt_recall_at_K
-
-	img2txt_mP_at_k_over_all = get_image_to_texts_mp_at_k(
+	metrics["img2txt_mP_at_k"] = get_image_to_texts_mp_at_k(
 		dataset=val_dataset,
 		model=model,
 		preprocess=preprocess,
@@ -1125,9 +1020,24 @@ def run_evaluation(
 		device=args.device,
 		predicted_label_distribution_file=img2txt_val_pred_lbl_p_at_k_file,
 	)
-	metrics["img2txt_mP_at_k_over_all"] = img2txt_mP_at_k_over_all
 
-	txt2img_mP_at_k_over_all_labels, txt2img_mean_recall_at_k_over_all_labels = get_text_to_images_mp_recall_at_k(
+	metrics["img2txt_mAP_at_k"] = get_image_to_texts_map_at_k(
+		dataset=val_dataset,
+		model=model,
+		preprocess=preprocess,
+		K=topk,
+		device=args.device,
+	)
+
+	metrics["img2txt_recall_at_k"] = get_image_to_texts_recall_at_k(
+		dataset=val_dataset,
+		model=model,
+		preprocess=preprocess,
+		K=topk,
+		device=args.device,
+	)
+
+	metrics["txt2img_mP_at_k"] = get_text_to_images_mp_at_k(
 		dataset=val_dataset,
 		model=model,
 		preprocess=preprocess,
@@ -1137,10 +1047,8 @@ def run_evaluation(
 		image_features_file=val_image_features_file,
 		predicted_label_distribution_file=txt2img_val_pred_lbl_p_at_k_file,
 	)
-	metrics["txt2img_mP_at_k_over_all_labels"] = txt2img_mP_at_k_over_all_labels
-	metrics["txt2img_mean_recall_at_k_over_all_labels"] = txt2img_mean_recall_at_k_over_all_labels
 
-	txt2img_AP_at_K, txt2img_avg_recall_at_K = get_text_to_images_map_recall_at_k(
+	metrics["txt2img_mAP_at_k"] = get_text_to_images_map_at_k(
 		dataset=val_dataset,
 		model=model,
 		preprocess=preprocess,
@@ -1149,30 +1057,8 @@ def run_evaluation(
 		device=args.device,
 		image_features_file=val_image_features_file,
 	)
-	metrics["txt_2_img_mAP_at_K"] = txt2img_AP_at_K
-	metrics["txt2img_avg_recall_at_K"] = txt2img_avg_recall_at_K
 
-	img2txt_mAP_at_K, txt2img_mAP_at_K = get_map_at_k(
-		dataset=val_dataset,
-		model=model,
-		preprocess=preprocess,
-		batch_size=args.batch_size,
-		K=topk,
-		device=args.device,
-		image_features_file=val_image_features_file,
-	)
-	metrics["img2txt_mAP_at_K"] = img2txt_mAP_at_K
-	metrics["txt2img_mAP_at_K"] = txt2img_mAP_at_K
-
-	img_2_txt_recall_at_k = get_image_to_texts_get_recall_at_k(
-		dataset=val_dataset,
-		model=model,
-		preprocess=preprocess,
-		K=topk,
-		device=args.device,
-	)
-
-	txt_2_img_recall_at_k = get_text_to_images_get_recall_at_k(
+	metrics["txt2img_recall_at_k"] = get_text_to_images_recall_at_k(
 		dataset=val_dataset,
 		model=model,
 		preprocess=preprocess,
@@ -1181,8 +1067,8 @@ def run_evaluation(
 		device=args.device,
 		image_features_file=val_image_features_file,
 	)
-	metrics["txt_2_img_recall_at_k"] = txt_2_img_recall_at_k
-	metrics["img_2_txt_recall_at_k"] = img_2_txt_recall_at_k
+
+	print(json.dumps(metrics, indent=4, ensure_ascii=False))
 
 	return metrics
 
@@ -1233,26 +1119,23 @@ def k_fold_stratified_sampling(
 		# Classification Metrics
 		"linear_probe_accuracy": [],
 		"zero_shot_accuracy": [],
-		"img_2_txt_mAP_at_K": [],
-		"img2txt_recall_at_K": [],
-		"img_2_txt_recall_at_k": [],
-		"img2txt_mP_at_k_over_all": [],
-		"txt2img_mP_at_k_over_all_labels": [],
-		"txt2img_mean_recall_at_k_over_all_labels": [],
-		"txt_2_img_mAP_at_K": [],
-		"txt2img_avg_recall_at_K": [],
-		"txt_2_img_recall_at_k": [],
-		"img2txt_mAP_at_K": [],
-		"txt2img_mAP_at_K": [],
+		# Retrieval Metrics: Image-to-Texts
+		"img2txt_mP_at_k": [],
+		"img2txt_mAP_at_k": [],
+		"img2txt_recall_at_k": [],
+		# Retrieval Metrics: Text-to-Images
+		"txt2img_mP_at_k": [],
+		"txt2img_mAP_at_k": [],
+		"txt2img_recall_at_k": [],
 	}
 	print("Checking and preparing dataset folds...")
-	folded_dataset = get_dataset(
+	folded_datasets = get_dataset(
 		ddir=args.dataset_dir,
 		sampling=args.sampling,
 		kfolds=kfolds,
 		seed=seed,
 	)
-	for fidx, (df_train, df_val) in enumerate(folded_dataset):
+	for fidx, (df_train, df_val) in enumerate(folded_datasets):
 		t3 = time.time()
 		train_dataset = df_train
 		val_dataset = df_val
@@ -1297,7 +1180,7 @@ def k_fold_stratified_sampling(
 
 @measure_execution_time
 def main():	
-	set_seeds(seed=args.seed)
+	set_seeds(seed=args.seed, debug=True)
 	print(clip.available_models())
 	model, preprocess = load_model(model_name=args.model_name, device=args.device,)
 	if args.sampling == "simple_random":

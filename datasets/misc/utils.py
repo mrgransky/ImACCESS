@@ -3,6 +3,7 @@ import json
 import time
 import dill
 import gzip
+import random
 import pandas as pd
 import numpy as np
 import os
@@ -82,6 +83,17 @@ if USER!="alijanif":
 	sl_dict = enchant.Dict("sl")
 	sk_dict = enchant.Dict("sk")
 
+def set_seeds(seed:int=42, debug:bool=False):
+	random.seed(seed)
+	np.random.seed(seed)
+	torch.manual_seed(seed)
+	if torch.cuda.is_available():
+		torch.cuda.manual_seed(seed)
+		torch.cuda.manual_seed_all(seed)
+		if debug: # slows down training but ensures reproducibility
+			torch.backends.cudnn.deterministic = True
+			torch.backends.cudnn.benchmark = False
+
 def format_elapsed_time(seconds):
 	"""
 	Convert elapsed time in seconds to DD-HH-MM-SS format.
@@ -116,7 +128,9 @@ def get_stratified_split(
 	dpi:int=200,
 	result_dir:str="result_directory",
 	dname:str="DATASET_NAME",
+	seed:int=42,
 	):
+	set_seeds(seed=seed, debug=False)
 	# Count the occurrences of each label
 	label_counts = df['label'].value_counts()
 	labels_to_drop = label_counts[label_counts == 1].index
@@ -131,8 +145,9 @@ def get_stratified_split(
 	train_df, val_df = train_test_split(
 		df_filtered,
 		test_size=val_split_pct,
+		shuffle=True, 
 		stratify=df_filtered['label'],
-		random_state=42
+		random_state=seed,
 	)
 	train_df.to_csv(os.path.join(result_dir, 'metadata_train.csv'), index=False)
 	val_df.to_csv(os.path.join(result_dir, 'metadata_val.csv'), index=False)
