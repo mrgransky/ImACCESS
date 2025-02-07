@@ -11,7 +11,7 @@
 #SBATCH --mem=12G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
-#SBATCH --array=0-4
+#SBATCH --array=3-4
 #SBATCH --gres=gpu:v100:1
 
 set -e
