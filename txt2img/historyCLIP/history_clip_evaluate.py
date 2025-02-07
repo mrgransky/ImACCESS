@@ -52,7 +52,31 @@ def get_dataset(
 
 	print(f"Loading dataset {ddir} ...")
 	metadata_fpth = os.path.join(ddir, "metadata.csv")
-	df = pd.read_csv(filepath_or_buffer=metadata_fpth, on_bad_lines='skip')
+	# df = pd.read_csv(filepath_or_buffer=metadata_fpth, on_bad_lines='skip', low_memory=False)
+	dtypes = {
+		'doc_id': str,
+		'id': str,
+		'label': str,
+		'title': str,
+		'description': str,
+		'img_url': str,
+		'label_title_description': str,
+		'raw_doc_date': str,  # Adjust based on actual data
+		'doc_year': float,      # Adjust based on actual data
+		'doc_url': str,
+		'img_path': str,
+		'doc_date': str,      # Adjust based on actual data
+		'dataset': str,
+		'date': str,          # Adjust based on actual data
+	}
+	df = pd.read_csv(
+		filepath_or_buffer=metadata_fpth, 
+		on_bad_lines='skip', 
+		dtype=dtypes, 
+		low_memory=False,
+	)
+	print(list(df.columns))
+	print(df.head(10))
 	print(f"FULL Dataset (df) shape: {df.shape}")
 	if sampling == "stratified_random":
 		print(f"Simple Random Sampling...")
@@ -1160,13 +1184,18 @@ def k_fold_stratified_sampling(
 		)
 		# 3. Store Metrics for the Current Fold
 		for metric_name, metric_value in folded_results.items():
-			metrics[metric_name].append(metric_value)
+			# metrics[metric_name].append(metric_value)
+			if metric_value is not None:
+				metrics[metric_name].append(metric_value)
 		print(f"Fold {fidx + 1}/{kfolds} evaluation completed, Elapsed time: {time.time()-t3:.1f} sec")
-	# 4. Calculate and Print Average Metrics
+
 	print(f"K({kfolds})-Fold evaluation completed, Elapsed time: {time.time()-t_start:.1f} sec")
-	print(f"Calculating average metrics for precision@K, Recall@K and mAP@K (K={args.topK})".center(150, "-"))
+
+	# 4. Calculate and Print Average Metrics
+	print(f"Calculating average metrics for mP@K, mAP@K and Recall@K (K={args.topK}) over all {kfolds} folds".center(150, "-"))
 	for metric_name, metric_values in metrics.items():
 		if len(metric_values) == 0:
+			print(f"{metric_name}: No valid values to average!")
 			continue
 		avg_metric = np.mean(metric_values)
 		print(
