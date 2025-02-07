@@ -53,7 +53,7 @@ def get_dataset(
 	print(f"Loading dataset {ddir} ...")
 	metadata_fpth = os.path.join(ddir, "metadata.csv")
 	df = pd.read_csv(filepath_or_buffer=metadata_fpth, on_bad_lines='skip')
-	for col in ['doc_id', 'label_title_description', 'doc_url', 'doc_date']:
+	for col in df.columns:
 		print(f"Column: {col}")
 		print(df[col].apply(type).value_counts())
 		print("-" * 50)
