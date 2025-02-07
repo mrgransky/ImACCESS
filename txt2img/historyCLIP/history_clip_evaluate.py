@@ -52,7 +52,11 @@ def get_dataset(
 
 	print(f"Loading dataset {ddir} ...")
 	metadata_fpth = os.path.join(ddir, "metadata.csv")
-	# df = pd.read_csv(filepath_or_buffer=metadata_fpth, on_bad_lines='skip', low_memory=False)
+	df = pd.read_csv(filepath_or_buffer=metadata_fpth, on_bad_lines='skip')
+	for col in ['doc_id', 'label_title_description', 'doc_url', 'doc_date']:
+		print(f"Column: {col}")
+		print(df[col].apply(type).value_counts())
+		print("-" * 50)
 	dtypes = {
 		'doc_id': str,
 		'id': str,
@@ -69,12 +73,12 @@ def get_dataset(
 		'dataset': str,
 		'date': str,          # Adjust based on actual data
 	}
-	df = pd.read_csv(
-		filepath_or_buffer=metadata_fpth, 
-		on_bad_lines='skip', 
-		dtype=dtypes, 
-		low_memory=False,
-	)
+	# df = pd.read_csv(
+	# 	filepath_or_buffer=metadata_fpth, 
+	# 	on_bad_lines='skip', 
+	# 	dtype=dtypes, 
+	# 	low_memory=False, # Set to False to avoid memory issues
+	# )
 	print(list(df.columns))
 	print(df.head(10))
 	print(f"FULL Dataset (df) shape: {df.shape}")
