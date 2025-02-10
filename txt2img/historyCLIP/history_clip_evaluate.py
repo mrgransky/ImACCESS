@@ -154,7 +154,7 @@ def get_dataset(
 	else:
 		raise ValueError("Invalid sampling. Use 'stratified_random' or 'kfold_stratified'.")
 
-def get_linear_prob_zero_shot_accuracy(
+def get_image_to_text_linear_prob_zero_shot_accuracy(
 	dataset_dir,
 	train_dataset,
 	validation_dataset,
@@ -166,8 +166,10 @@ def get_linear_prob_zero_shot_accuracy(
 	val_image_features_file:str="validation_image_features.gz",
 	seed:int=42,
 	):
-	print(f"Linear Probe & Zero Shot Classifier {device} CLIP".center(160, " "))
-	print(f"Getting training features")
+	# Linear Probe typically involves taking features from some input (like image embeddings) and training a linear classifier on top of them. 
+	# For image-to-text, this is done using image features to predict text labels.
+	print(f"[Image-to-Text] Linear Probe & Zero Shot Classifier {device} CLIP".center(160, " "))
+	print(f"Getting {len(train_dataset)} training features")
 	train_dataset_images_id = train_dataset["id"].tolist()
 	train_dataset_images_path = train_dataset["img_path"].tolist()
 	train_dataset_labels = train_dataset["label"].tolist() # ['naval training', 'medical service', 'medical service', 'naval forces', 'naval forces', ...]
@@ -191,7 +193,7 @@ def get_linear_prob_zero_shot_accuracy(
 		train_dataset_images_features = load_pickle(fpath=train_image_features_file)
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
 
-	print(f"Getting validation features")
+	print(f"Getting {len(validation_dataset)} validation features")
 	val_dataset_images_id = validation_dataset["id"].tolist()
 	val_dataset_images_path = validation_dataset["img_path"].tolist()
 	val_dataset_labels = validation_dataset["label"].tolist() # ['naval training', 'medical service', 'medical service', 'naval forces', 'naval forces', ...]
@@ -211,6 +213,7 @@ def get_linear_prob_zero_shot_accuracy(
 		save_pickle(pkl=val_dataset_images_features, fname=val_image_features_file)
 	else:
 		val_dataset_images_features = load_pickle(fpath=val_image_features_file)
+		val_dataset_images_features = val_dataset_images_features.to(device)
 	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
 
 	# Perform logistic regression
@@ -242,7 +245,7 @@ def get_linear_prob_zero_shot_accuracy(
 	# Evaluate using the logistic regression classifier
 	predictions = classifier.predict(val_dataset_images_features)
 	linear_probe_accuracy = np.mean((val_dataset_labels_int == predictions).astype(float))# * 100
-	print(f"Linear Probe Accuracy = {linear_probe_accuracy:.3f} | Elapsed_t: {time.time()-t0:.2f} sec")
+	print(f"[Image-to-Text] Linear Probe Accuracy = {linear_probe_accuracy:.3f} | Elapsed_t: {time.time()-t0:.2f} sec")
 	################################## Zero Shot Classifier ##################################
 	t0 = time.time()
 	# Get unique labels for validation dataset:
@@ -251,21 +254,145 @@ def get_linear_prob_zero_shot_accuracy(
 	text_inputs = clip.tokenize(texts=val_labels).to(device=device)
 	with torch.no_grad():
 		text_features = model.encode_text(text_inputs)
+		text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+	
 	# Normalize the features of the validation dataset (numpy):
 	val_dataset_images_features = val_dataset_images_features / np.linalg.norm(val_dataset_images_features, axis=1, keepdims=True)
-	# Normalize text_features(tensor):
-	text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+	
 	# Convert test_features to a PyTorch tensor
 	val_dataset_images_features = torch.from_numpy(val_dataset_images_features).to(device)
+	print(f"val_dataset_images_features {type(val_dataset_images_features)}: {val_dataset_images_features.shape}")
+	print(f"text_features {type(text_features)}: {text_features.shape}")
 	# Calculate the similarity scores
 	similarity_scores = (100.0 * val_dataset_images_features @ text_features.T).softmax(dim=-1)
+	print(f"similarity_scores {type(similarity_scores)}: {similarity_scores.shape}")
 	# Get the predicted class indices
 	predicted_class_indices = np.argmax(similarity_scores.cpu().numpy(), axis=1)
 	print(type(predicted_class_indices), predicted_class_indices.shape)
 	zero_shot_accuracy = np.mean((val_dataset_labels_int == predicted_class_indices).astype(float))# * 100
-	print(f"Zero-shot Accuracy = {zero_shot_accuracy:.3f} | Elapsed_t: {time.time()-t0:.2f} sec")
+	print(f"[Image-to-Text] Zero-shot [Top-1] Accuracy = {zero_shot_accuracy:.3f} | Elapsed_t: {time.time()-t0:.2f} sec")
 	################################## Zero Shot Classifier ##################################
 	return linear_probe_accuracy, zero_shot_accuracy
+
+def get_text_to_image_linear_probe_accuracy(
+	train_dataset,
+	val_dataset,
+	model,
+	preprocess,
+	device: str = "cuda:0",
+	batch_size: int = 64,
+	seed: int = 42
+	):
+	print(f"Text-to-Image Linear Probe Accuracy".center(160, " "))
+	
+	# Extract text features from labels
+	def get_text_features(dataset):
+		labels = sorted(list(set(dataset["label"].tolist())))
+		text_inputs = clip.tokenize(labels).to(device)
+		with torch.no_grad():
+			text_features = model.encode_text(text_inputs)
+			text_features /= text_features.norm(dim=-1, keepdim=True)
+		return text_features.cpu().numpy(), labels
+	
+	train_features, train_labels = get_text_features(train_dataset)
+	val_features, val_labels = get_text_features(val_dataset)
+	print(f"Training features[{type(train_features)}]: {train_features.shape}")
+	print(f"Validation features[{type(val_features)}]: {val_features.shape}")
+	
+	# Label mappings
+	label_dict = {lbl: idx for idx, lbl in enumerate(train_labels)}
+	train_labels_int = [label_dict[lbl] for lbl in train_dataset["label"].tolist()]
+	val_labels_int = [label_dict[lbl] for lbl in val_dataset["label"].tolist()]
+	print(f"Training labels[{type(train_labels_int)}]: {len(train_labels_int)}")
+	print(f"Validation labels[{type(val_labels_int)}]: {len(val_labels_int)}")
+	
+	# Ensure the number of features matches the number of labels
+	train_features = np.array([train_features[label_dict[lbl]] for lbl in train_dataset["label"].tolist()])
+	val_features = np.array([val_features[label_dict[lbl]] for lbl in val_dataset["label"].tolist()])
+	
+	print(f">> Training features[{type(train_features)}]: {train_features.shape}")
+	print(f">> Validation features[{type(val_features)}]: {val_features.shape}")
+	# Train logistic regression
+	classifier = LogisticRegression(
+		random_state=seed,
+		C=0.316,
+		max_iter=1000,
+		tol=1e-4,
+		verbose=1,
+		solver='saga',
+		n_jobs=-1
+	)
+	classifier.fit(X=train_features, y=train_labels_int)
+	
+	# Evaluate
+	predictions = classifier.predict(val_features)
+	linear_probe_accuracy = np.mean(predictions == val_labels_int)
+	print(f"[Text-to-Image] Linear probe accuracy: {linear_probe_accuracy:.3f}")
+	return linear_probe_accuracy
+
+def get_text_to_image_zero_shot_accuracy(
+	dataset,
+	model,
+	preprocess,
+	K:int=1, # measures whether model's top prediction is correct
+	device:str="cuda:0",
+	batch_size:int=64,
+	image_features_file: str = "txt2img_validation_image_features.gz",
+	val_image_features_file:str="validation_image_features.gz",
+	):
+	print(f"Text-to-Image Zero Shot Accuracy (K={K})".center(160, " "))
+	# Create label-to-integer mapping
+	label_dict = {label: label_int for label, label_int in zip(dataset["label"], dataset["label_int"])}
+
+	t0 = time.time()
+	if not os.path.exists(val_image_features_file):
+		val_dataset_images_features = []
+		for i in range(0, len(val_dataset_images_path), batch_size):
+			batch_val_images_path = [val_dataset_images_path[j] for j in range(i, min(i + batch_size, len(val_dataset_images_path)))]
+			batch_val_tensors = torch.stack([preprocess(Image.open(img_path)).to(device) for img_path in batch_val_images_path])
+			with torch.no_grad(): # prevent PyTorch from computing gradients, can consume significant memory
+				val_image_features = model.encode_image(batch_val_tensors)
+				val_image_features /= val_image_features.norm(dim=-1, keepdim=True)
+			val_dataset_images_features.append(val_image_features)
+			torch.cuda.empty_cache() # Clear CUDA cache
+		val_dataset_images_features = torch.cat(val_dataset_images_features, dim=0)
+		save_pickle(pkl=val_dataset_images_features, fname=val_image_features_file)
+	else:
+		val_dataset_images_features = load_pickle(fpath=val_image_features_file)
+		val_dataset_images_features = val_dataset_images_features.to(device)
+	val_dataset_images_features = val_dataset_images_features.detach().cpu().numpy()
+	print(f"Elapsed_t: {time.time()-t0:.2f} sec")
+	
+	# Get unique labels to use as text queries
+	labels = sorted(list(set(dataset["label"].tolist())))
+	text_inputs = clip.tokenize(labels).to(device)
+	
+	# Compute text features for these labels
+	with torch.no_grad():
+		text_features = model.encode_text(text_inputs)
+		text_features /= text_features.norm(dim=-1, keepdim=True)
+	text_features = text_features.cpu().numpy()
+	print(f"text_features {type(text_features)}: {text_features.shape}")
+	print(f"val_dataset_images_features {type(val_dataset_images_features)}: {val_dataset_images_features.shape}")
+
+	similarities = text_features @ val_dataset_images_features.T # <class 'numpy.ndarray'> (num_labels, num_images)
+	print(f"similarities {type(similarities)}: {similarities.shape}")
+	top_k_indices = np.argsort(-similarities, axis=-1)[:, :K]
+	# print(f"top_k_indices[argsort] {top_k_indices.shape}: {top_k_indices}")
+	# top_indices = np.argmax(similarities, axis=-1)
+	# print(f"top_indices[argmax] {top_indices.shape}: {top_indices}")
+	# print(np.array_equal(top_indices, top_k_indices))
+	# Calculate accuracy: Check if any of the top-K images match the ground-truth label
+	ground_truth = np.array(dataset["label_int"].tolist())
+	accuracies = []
+	for label_idx, label in enumerate(labels):
+		true_indices = np.where(ground_truth == label_dict[label])[0]
+		retrieved_indices = top_k_indices[label_idx]
+		count = len(set(retrieved_indices) & set(true_indices))
+		accuracies.append(count > 0)
+	zero_shot_accuracy = np.mean(accuracies)
+	print(f"[Text-to-Image] Zero-Shot Accuracy: {zero_shot_accuracy:.3f}")
+	return zero_shot_accuracy
 
 def get_image_to_texts(
 	dataset,
@@ -617,8 +744,8 @@ def get_image_to_texts_mp_at_k(
 	# Create a list of tuples: (label_name, mP@K for that label)
 	label_p_at_k = []
 	for label_int in per_label_results.keys():
-		print(f"label_int: {label_int}")
-		print(per_label_results[label_int])
+		# print(f"label_int: {label_int}")
+		# print(per_label_results[label_int])
 		avg_hit = np.mean(per_label_results[label_int])
 		label_name = unique_labels.get(label_int, f"Unknown({label_int})")
 		label_p_at_k.append((label_name, avg_hit))
@@ -652,15 +779,17 @@ def get_image_to_texts_map_at_k(
 	device: str = "cuda:0",
 	):
 	"""
+	Evaluate the model on the given dataset and return the mean average precision@K (mAP@K) over all labels.
 	1) Encodes the textual labels using CLIP.
 	2) Process images one by one:
-			Extracts image features using CLIP.
-			Computes cosine similarity between image features and label features.
-			Retrieves the Top-K most similar labels.
-			Computes AP@K for each image.
-			Computes Recall@K for each image.
+		Extracts image features using CLIP.
+		Computes cosine similarity between image features and label features.
+		Retrieves the Top-K most similar labels.
+		Computes AP@K for each image.
+		Computes Recall@K for each image.
 	3) Aggregates AP@K values over all images to return mAP@K.
 	"""
+
 	print(f"Image-to-Text Retrieval Top-{K} {device} CLIP".center(160, " "))
 	print(f"[Evaluation metrics: mean average precision@K (mAP@{K})]".center(160, " "))
 	t0 = time.time()
@@ -681,42 +810,41 @@ def get_image_to_texts_map_at_k(
 	print(f"Elapsed_t: {time.time()-t1:.3f} sec")
 
 	dataset_images_path = dataset["img_path"].tolist()
-	dataset_labels_int = dataset["label_int"].tolist()  # Ground-truth label indices
-	print(f"[2] Encode {len(dataset_images_path)} Images & Compute mAP@{K} & Recall@{K}")
+	dataset_labels_int = dataset["label_int"].tolist() # Ground-truth label indices
+	print(f"[2] Encode {len(dataset_images_path)} Images & Compute mAP@{K}")
 	ap_values = []
 	for i, (img_pth, gt_lbl) in enumerate(zip(dataset_images_path, dataset_labels_int)):
-			img_raw = Image.open(img_pth)
-			img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
-			with torch.no_grad():
-				# Compute image features
-				image_features = model.encode_image(img_tensor)
-				image_features /= image_features.norm(dim=-1, keepdim=True)
-			
-			# Compute similarity between the image and all label embeddings.
-			similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
-			
-			# Retrieve top-K predictions
-			_, topk_labels_idx = similarities.topk(K, dim=-1)
-			preds = topk_labels_idx.cpu().numpy().flatten()
-			
-			# Compute AP@K
-			relevant_count = 0
-			precision_sum = 0.0			
-			for rank, pred in enumerate(preds, start=1):
-				if pred == gt_lbl:  # Relevant prediction
-					relevant_count += 1
-					precision_sum += relevant_count / rank  # Precision at this rank
-			ap_at_k = precision_sum / relevant_count if relevant_count > 0 else 0.0
-			ap_values.append(ap_at_k)
-						
-			if i % 100 == 0:
-				torch.cuda.empty_cache()
+		img_raw = Image.open(img_pth)
+		img_tensor = preprocess(img_raw).unsqueeze(0).to(device)
+		with torch.no_grad():
+			# Compute image features
+			image_features = model.encode_image(img_tensor)
+			image_features /= image_features.norm(dim=-1, keepdim=True)
+		
+		# Compute similarity between the image and all label embeddings.
+		similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
+		
+		# Retrieve top-K predictions
+		_, topk_labels_idx = similarities.topk(K, dim=-1)
+		preds = topk_labels_idx.cpu().numpy().flatten()
+		
+		# Compute AP@K
+		relevant_count = 0
+		precision_sum = 0.0			
+		for rank, pred in enumerate(preds, start=1):
+			if pred == gt_lbl:  # Relevant prediction
+				relevant_count += 1
+				precision_sum += relevant_count / rank  # Precision at this rank
+		ap_at_k = precision_sum / relevant_count if relevant_count > 0 else 0.0
+		ap_values.append(ap_at_k)
+					
+		if i % 100 == 0:
+			torch.cuda.empty_cache()
 	
 	mAP_at_k = np.mean(ap_values)  # Compute mean Average Precision@K
 	
 	print(f"[Image-to-Text Retrival] mAP@{K}: {mAP_at_k:.3f}")
 	print(f"Total Elapsed_t: {time.time()-t0:.2f} sec".center(160, "-"))
-	
 	return mAP_at_k
 
 def get_text_to_images_map_at_k(
@@ -1030,7 +1158,7 @@ def run_evaluation(
 		)
 	
 	if args.topK == 1:
-		metrics["linear_probe_accuracy"], metrics["zero_shot_accuracy"] = get_linear_prob_zero_shot_accuracy(
+		metrics["img2txt_linear_probe_accuracy"], metrics["img2txt_zero_shot_accuracy"] = get_image_to_text_linear_prob_zero_shot_accuracy(
 			dataset_dir=args.dataset_dir,
 			train_dataset=train_dataset,
 			validation_dataset=val_dataset,
@@ -1041,6 +1169,22 @@ def run_evaluation(
 			train_image_features_file=train_image_features_file,
 			val_image_features_file=val_image_features_file,
 			seed=seed,
+		)
+		metrics["txt2img_zero_shot_accuracy"] = get_text_to_image_zero_shot_accuracy(
+			dataset=val_dataset,
+			model=model,
+			preprocess=preprocess,
+			K=args.topK, # topK=1 must not be even given, zero-shot learning for Top-1 always!
+			device=args.device,
+			val_image_features_file=val_image_features_file,
+		)
+		metrics["txt2img_linear_probe_accuracy"] = get_text_to_image_linear_probe_accuracy(
+			train_dataset=train_dataset,
+			val_dataset=val_dataset,
+			model=model,
+			preprocess=preprocess,
+			device=args.device,
+			seed=args.seed
 		)
 
 	metrics["img2txt_mP_at_k"] = get_image_to_texts_mp_at_k(
@@ -1098,9 +1242,6 @@ def run_evaluation(
 		device=args.device,
 		image_features_file=val_image_features_file,
 	)
-
-	print(json.dumps(metrics, indent=4, ensure_ascii=False))
-
 	return metrics
 
 def stratified_random_sampling(
@@ -1109,7 +1250,8 @@ def stratified_random_sampling(
 	topk:int=5,
 	seed:int=42,
 	):
-	print(f"{'Simple Random Sampling':^150}")
+	print(f"Stratified Random Sampling".center(150, "-"))
+	t0 = time.time()
 	train_dataset, val_dataset = get_dataset(
 		ddir=args.dataset_dir, 
 		sampling=args.sampling,
@@ -1122,7 +1264,7 @@ def stratified_random_sampling(
 	img2txt_val_pred_lbl_p_at_k_file = os.path.join(args.dataset_dir, args.sampling, f'img2txt_val_per_label_prediction_p_at_{topk}.png')
 	
 	os.makedirs(os.path.join(args.dataset_dir, args.sampling), exist_ok=True)
-	run_evaluation(
+	metrics = run_evaluation(
 		model=model,
 		preprocess=preprocess,
 		train_dataset=train_dataset,
@@ -1134,6 +1276,9 @@ def stratified_random_sampling(
 		topk=topk,
 		seed=seed,
 	)
+	print(f'Metrics [Stratified Random Sampling]'.center(150, " "))
+	print(json.dumps(metrics, indent=4, ensure_ascii=False))
+	print(f"Elapsed time: {time.time()-t0:.1f} sec".center(150, "-"))
 
 def k_fold_stratified_sampling(
 	model,
@@ -1148,8 +1293,10 @@ def k_fold_stratified_sampling(
 	# 1. Data Structure to Store Metrics from Each Fold
 	metrics = {
 		# Classification Metrics
-		"linear_probe_accuracy": [],
-		"zero_shot_accuracy": [],
+		"img2txt_linear_probe_accuracy": [],
+		"img2txt_zero_shot_accuracy": [],
+		"txt2img_linear_probe_accuracy": [],
+		"txt2img_zero_shot_accuracy": [],
 		# Retrieval Metrics: Image-to-Texts
 		"img2txt_mP_at_k": [],
 		"img2txt_mAP_at_k": [],
@@ -1189,6 +1336,7 @@ def k_fold_stratified_sampling(
 			topk=topk,
 			seed=seed,
 		)
+		print(json.dumps(folded_results, ensure_ascii=False, indent=4))
 		# 3. Store Metrics for the Current Fold
 		for metric_name, metric_value in folded_results.items():
 			# metrics[metric_name].append(metric_value)
@@ -1215,7 +1363,7 @@ def k_fold_stratified_sampling(
 		print()
 
 @measure_execution_time
-def main():	
+def main():
 	set_seeds(seed=args.seed, debug=True)
 	print(clip.available_models())
 	model, preprocess = load_model(model_name=args.model_name, device=args.device,)

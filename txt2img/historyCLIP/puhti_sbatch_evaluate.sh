@@ -7,11 +7,11 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=12G
+#SBATCH --cpus-per-task=40
+#SBATCH --mem=10G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
-#SBATCH --array=3-4
+#SBATCH --array=0-4
 #SBATCH --gres=gpu:v100:1
 
 set -e
@@ -31,7 +31,8 @@ echo "nNODES: $SLURM_NNODES, NODELIST: $SLURM_JOB_NODELIST, NODE_ID: $SLURM_NODE
 echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_NPROCS"
 echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
 echo "${stars// /*}"
-echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
+echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
+echo "${stars// /*}"
 
 DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
@@ -41,7 +42,7 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
 )
 
-sampling_strategies=("stratified_random" "kfold_stratified")
+sampling_strategies=("kfold_stratified" "stratified_random")
 
 if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then
 	echo "Error: SLURM_ARRAY_TASK_ID out of bounds"
@@ -49,7 +50,7 @@ if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then
 fi
 
 for strategy in "${sampling_strategies[@]}"; do
-	for prec in 1 5 10 15 20; do
+	for prec in 20 15 10 5 1; do
 		echo "Evaluation metrics@K=$prec for Dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$SLURM_ARRAY_TASK_ID]} with sampling strategy: $strategy"
 		python -u history_clip_evaluate.py \
 			--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
@@ -65,4 +66,3 @@ done
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
-echo "${stars// /*}"

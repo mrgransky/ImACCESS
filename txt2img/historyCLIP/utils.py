@@ -13,7 +13,6 @@ import math
 import argparse
 import random
 import json
-import warnings
 import random
 import time
 import torch
@@ -41,6 +40,7 @@ from functools import cache
 import subprocess
 import traceback
 import multiprocessing
+import warnings
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
 from torch.utils.tensorboard import SummaryWriter
@@ -69,31 +69,24 @@ nltk.download(
 	# raise_on_error=True,
 )
 
-# warnings.filterwarnings('ignore')
+# Set environment variables to suppress TensorFlow and oneDNN warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN warnings
+
+# Suppress specific warnings
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
-logging.basicConfig(level=logging.INFO)
-# Configure TensorFlow logging
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN warnings
+warnings.filterwarnings('ignore', category=FutureWarning)
 
-# Suppress TensorFlow/XLA/cuDNN logs
+# Configure logging for TensorFlow and related libraries
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
 logging.getLogger('xla').setLevel(logging.ERROR)
 logging.getLogger('cuda').setLevel(logging.ERROR)
+logging.getLogger('absl').setLevel(logging.ERROR)
 
-Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
-# Configure TensorFlow logging
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN warnings
-
-# Suppress TensorFlow/XLA/cuDNN logs
-logging.getLogger('tensorflow').setLevel(logging.ERROR)
-logging.getLogger('xla').setLevel(logging.ERROR)
-logging.getLogger('cuda').setLevel(logging.ERROR)
-
-# Suppress absl logs
+# Suppress absl logging
 absl_logging.set_verbosity(absl_logging.ERROR)
+absl_logging.set_stderrthreshold(absl_logging.ERROR)
 
 # Vision
 vit_d_model = 32 # vit_heads * vit_layers = vit_d_model
