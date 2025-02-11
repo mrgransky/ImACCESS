@@ -69,6 +69,8 @@ nltk.download(
 	# raise_on_error=True,
 )
 
+Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
+
 # Set environment variables to suppress TensorFlow and oneDNN warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN warnings
