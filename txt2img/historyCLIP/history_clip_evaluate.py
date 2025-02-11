@@ -274,6 +274,70 @@ def get_image_to_text_linear_prob_zero_shot_accuracy(
 	################################## Zero Shot Classifier ##################################
 	return linear_probe_accuracy, zero_shot_accuracy
 
+# def get_text_to_image_linear_probe_accuracy(
+# 	train_dataset,
+# 	val_dataset,
+# 	model,
+# 	preprocess,
+# 	device: str = "cuda:0",
+# 	batch_size: int = 64,
+# 	seed: int = 42
+# 	):
+# 	print(f"Text-to-Image Linear Probe Accuracy".center(160, " "))
+	
+# 	# Extract text features from labels
+# 	def get_text_features(dataset):
+# 		labels = sorted(list(set(dataset["label"].tolist())))
+# 		text_inputs = clip.tokenize(labels).to(device)
+# 		with torch.no_grad():
+# 			text_features = model.encode_text(text_inputs)
+# 			text_features /= text_features.norm(dim=-1, keepdim=True)
+# 		return text_features.cpu().numpy(), labels
+	
+# 	train_features, train_labels = get_text_features(train_dataset)
+# 	val_features, val_labels = get_text_features(val_dataset)
+# 	print(f"Training features {type(train_features)} {train_features.shape}")
+# 	print(f"Validation features {type(val_features)} {val_features.shape}")
+	
+# 	# Label mappings
+# 	label_dict = {lbl: idx for idx, lbl in enumerate(train_labels)}
+# 	train_labels_int = [label_dict[lbl] for lbl in train_dataset["label"].tolist()]
+
+# 	# val_labels_int = [label_dict[lbl] for lbl in val_dataset["label"].tolist()]
+
+# 	# Filter validation dataset to only include labels present in train dataset
+# 	filtered_val_dataset = val_dataset[val_dataset["label"].isin(train_labels)]
+# 	val_labels_int = [label_dict[lbl] for lbl in filtered_val_dataset["label"].tolist()]
+
+# 	print(f"Training labels {type(train_labels_int)}: {len(train_labels_int)}")
+# 	print(f"Validation labels {type(val_labels_int)}: {len(val_labels_int)}")
+	
+# 	# Ensure the number of features matches the number of labels
+# 	train_features = np.array([train_features[label_dict[lbl]] for lbl in train_dataset["label"].tolist()])
+# 	# val_features = np.array([val_features[label_dict[lbl]] for lbl in val_dataset["label"].tolist()])
+# 	val_features = np.array([val_features[label_dict[lbl]] for lbl in filtered_val_dataset["label"].tolist()])
+
+# 	print(f">> Training features {type(train_features)} {train_features.shape}")
+# 	print(f">> Validation features {type(val_features)} {val_features.shape}")
+
+# 	# Train logistic regression
+# 	classifier = LogisticRegression(
+# 		random_state=seed,
+# 		C=0.316,
+# 		max_iter=1000,
+# 		tol=1e-4,
+# 		verbose=1,
+# 		solver='saga',
+# 		n_jobs=-1
+# 	)
+# 	classifier.fit(X=train_features, y=train_labels_int)
+	
+# 	# Evaluate
+# 	predictions = classifier.predict(val_features)
+# 	linear_probe_accuracy = np.mean(predictions == val_labels_int)
+# 	print(f"[Text-to-Image] Linear probe accuracy: {linear_probe_accuracy:.3f}")
+# 	return linear_probe_accuracy
+
 def get_text_to_image_linear_probe_accuracy(
 	train_dataset,
 	val_dataset,
@@ -285,7 +349,7 @@ def get_text_to_image_linear_probe_accuracy(
 	):
 	print(f"Text-to-Image Linear Probe Accuracy".center(160, " "))
 	
-	# Extract text features from labels
+	# Extract text features from labels of the training dataset only
 	def get_text_features(dataset):
 		labels = sorted(list(set(dataset["label"].tolist())))
 		text_inputs = clip.tokenize(labels).to(device)
@@ -293,25 +357,24 @@ def get_text_to_image_linear_probe_accuracy(
 			text_features = model.encode_text(text_inputs)
 			text_features /= text_features.norm(dim=-1, keepdim=True)
 		return text_features.cpu().numpy(), labels
-	
+	t0 = time.time()
 	train_features, train_labels = get_text_features(train_dataset)
-	val_features, val_labels = get_text_features(val_dataset)
-	print(f"Training features[{type(train_features)}]: {train_features.shape}")
-	print(f"Validation features[{type(val_features)}]: {val_features.shape}")
 	
 	# Label mappings
 	label_dict = {lbl: idx for idx, lbl in enumerate(train_labels)}
 	train_labels_int = [label_dict[lbl] for lbl in train_dataset["label"].tolist()]
-	val_labels_int = [label_dict[lbl] for lbl in val_dataset["label"].tolist()]
-	print(f"Training labels[{type(train_labels_int)}]: {len(train_labels_int)}")
-	print(f"Validation labels[{type(val_labels_int)}]: {len(val_labels_int)}")
+
+	# Filter validation dataset to only include labels present in train dataset
+	filtered_val_dataset = val_dataset[val_dataset["label"].isin(train_labels)]
+	val_labels_int = [label_dict[lbl] for lbl in filtered_val_dataset["label"].tolist()]
 	
 	# Ensure the number of features matches the number of labels
-	train_features = np.array([train_features[label_dict[lbl]] for lbl in train_dataset["label"].tolist()])
-	val_features = np.array([val_features[label_dict[lbl]] for lbl in val_dataset["label"].tolist()])
+	train_samples_features = np.array([train_features[label_dict[lbl]] for lbl in train_dataset["label"].tolist()])
+	val_samples_features = np.array([train_features[label_dict[lbl]] for lbl in filtered_val_dataset["label"].tolist()])
 	
-	print(f">> Training features[{type(train_features)}]: {train_features.shape}")
-	print(f">> Validation features[{type(val_features)}]: {val_features.shape}")
+	print(f"[Training] features {type(train_samples_features)} {train_samples_features.shape} labels {type(train_labels_int)}: {len(train_labels_int)}")
+	print(f"[Validation] features {type(val_samples_features)} {val_samples_features.shape} labels {type(val_labels_int)}: {len(val_labels_int)}")
+
 	# Train logistic regression
 	classifier = LogisticRegression(
 		random_state=seed,
@@ -322,12 +385,14 @@ def get_text_to_image_linear_probe_accuracy(
 		solver='saga',
 		n_jobs=-1
 	)
-	classifier.fit(X=train_features, y=train_labels_int)
+	classifier.fit(X=train_samples_features, y=train_labels_int)
 	
 	# Evaluate
-	predictions = classifier.predict(val_features)
+	predictions = classifier.predict(val_samples_features)
+	print(f"Comparing {len(predictions)} predictions to {len(val_labels_int)} labels")
 	linear_probe_accuracy = np.mean(predictions == val_labels_int)
 	print(f"[Text-to-Image] Linear probe accuracy: {linear_probe_accuracy:.3f}")
+	print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(160, "-"))
 	return linear_probe_accuracy
 
 def get_text_to_image_zero_shot_accuracy(
@@ -740,7 +805,7 @@ def get_image_to_texts_mp_at_k(
 	for gt_lbl, preds in zip(true_labels, predicted_labels):
 		hit = 1 if gt_lbl in preds else 0
 		per_label_results[gt_lbl].append(hit)
-	print(per_label_results)
+	# print(per_label_results)
 	# Create a list of tuples: (label_name, mP@K for that label)
 	label_p_at_k = []
 	for label_int in per_label_results.keys():
@@ -1360,7 +1425,6 @@ def k_fold_stratified_sampling(
 			f"Max: {np.max(metric_values):.3f} "
 			f"mean: {avg_metric:.3f}"
 		)
-		print()
 
 @measure_execution_time
 def main():
