@@ -9,7 +9,7 @@ import matplotlib.ticker as ticker
 import copy
 
 # train cifar100 from scratch:
-# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 12 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 12 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune cifar100:
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 256 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
@@ -280,9 +280,12 @@ def evaluate(
 				print(f"logits_per_image: {logits_per_image.shape}")
 				print(f"correct_labels: {correct_labels.shape}")
 				print(f"correct_labels.unsqueeze(1): {correct_labels.unsqueeze(1).shape}")
-				topk_predicted_labels = torch.topk(input=logits_per_image, k=effective_k, dim=1)
-				print(f"topk_predicted_labels: {topk_predicted_labels}")
-				topk_predicted_labels_values, topk_predicted_labels_idxs = torch.topk(input=logits_per_image, k=k, dim=1) # values, indices
+				topk_predicted_labels_values, topk_predicted_labels_idxs = torch.topk(input=logits_per_image, k=effective_k, dim=1) # values, indices
+				print(f"topk_predicted_labels_values: {topk_predicted_labels_values.shape}")
+				print(f"topk_predicted_labels_idxs: {topk_predicted_labels_idxs.shape}")
+				print(f"topk_predicted_labels_idxs == correct_labels.unsqueeze(1): {(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).shape}")
+				print(f"(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1): {(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).shape}")
+				print(f"(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item(): {(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item()}")
 				img2txt_topk_accuracy[k] += (topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item()
 
 			# Reciprocal Rank
