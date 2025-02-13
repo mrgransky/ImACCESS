@@ -243,7 +243,7 @@ def evaluate(
 	total_loss = 0
 	img2txt_correct = 0
 	txt2img_correct = 0
-	total_samples = 0
+	total_samples = len(validation_loader.dataset)
 	img2txt_topk_accuracy = {k: 0 for k in topK_values}
 	reciprocal_ranks = []
 	cosine_similarities = []
@@ -252,7 +252,6 @@ def evaluate(
 		for bidx, (images, labels) in enumerate(validation_loader):
 			images, labels = images.to(device), labels.to(device)
 			batch_size = images.size(0)
-			total_samples += batch_size
 
 			# Forward pass:
 			logits_per_image, logits_per_text = model(images, labels) # [batch_size, batch_size]
@@ -276,16 +275,16 @@ def evaluate(
 			# Top-k Accuracy
 			for k in topK_values:
 				effective_k = min(k, batch_size)
-				print(f"Top-{k} Accuracy => effective_k: {effective_k}")
-				print(f"logits_per_image: {logits_per_image.shape}")
-				print(f"correct_labels: {correct_labels.shape}")
-				print(f"correct_labels.unsqueeze(1): {correct_labels.unsqueeze(1).shape}")
+				# print(f"Top-{k} Accuracy => effective_k: {effective_k}")
+				# print(f"logits_per_image: {logits_per_image.shape}")
+				# print(f"correct_labels: {correct_labels.shape}")
+				# print(f"correct_labels.unsqueeze(1): {correct_labels.unsqueeze(1).shape}")
 				topk_predicted_labels_values, topk_predicted_labels_idxs = torch.topk(input=logits_per_image, k=effective_k, dim=1) # values, indices
-				print(f"topk_predicted_labels_values: {topk_predicted_labels_values.shape}")
-				print(f"topk_predicted_labels_idxs: {topk_predicted_labels_idxs.shape}")
-				print(f"topk_predicted_labels_idxs == correct_labels.unsqueeze(1): {(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).shape}")
-				print(f"(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1): {(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).shape}")
-				print(f"(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item(): {(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item()}")
+				# print(f"topk_predicted_labels_values: {topk_predicted_labels_values.shape}")
+				# print(f"topk_predicted_labels_idxs: {topk_predicted_labels_idxs.shape}")
+				# print(f"topk_predicted_labels_idxs == correct_labels.unsqueeze(1): {(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).shape}")
+				# print(f"(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1): {(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).shape}")
+				# print(f"(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item(): {(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item()}")
 				img2txt_topk_accuracy[k] += (topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item()
 
 			# Reciprocal Rank
@@ -763,6 +762,7 @@ def finetune(
 		mean_reciprocal_rank_file_path=mrr_fpth,
 		cosine_similarity_file_path=cs_fpth,
 		precision_recall_f1_file_path=pr_f1_fpth,
+		TOP_K_VALUES=TOP_K_VALUES,
 	)
 
 def train(
@@ -949,6 +949,7 @@ def train(
 		mean_reciprocal_rank_file_path=mrr_fpth,
 		cosine_similarity_file_path=cs_fpth,
 		precision_recall_f1_file_path=pr_f1_fpth,
+		TOP_K_VALUES=TOP_K_VALUES,
 	)
 
 @measure_execution_time
