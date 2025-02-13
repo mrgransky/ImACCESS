@@ -256,7 +256,8 @@ def evaluate(
 
 			# Forward pass:
 			logits_per_image, logits_per_text = model(images, labels) # [batch_size, batch_size]
-
+			print(f"logits_per_image: {logits_per_image.shape}")
+			print(f"logits_per_text: {logits_per_text.shape}")
 			# Ground Truth:
 			correct_labels = torch.arange(start=0, end=batch_size, dtype=torch.long, device=device)
 
@@ -274,7 +275,13 @@ def evaluate(
 
 			# Top-k Accuracy
 			for k in topK_values:
-				topk_predicted_labels_idxs = torch.topk(input=logits_per_image, k=k, dim=1).indices
+				print(f"Top-{k} Accuracy")
+				print(f"logits_per_image: {logits_per_image.shape}")
+				print(f"correct_labels: {correct_labels.shape}")
+				print(f"correct_labels.unsqueeze(1): {correct_labels.unsqueeze(1).shape}")
+				topk_predicted_labels = torch.topk(input=logits_per_image, k=k, dim=1)
+				print(f"topk_predicted_labels: {topk_predicted_labels}")
+				topk_predicted_labels_values, topk_predicted_labels_idxs = torch.topk(input=logits_per_image, k=k, dim=1) # values, indices
 				img2txt_topk_accuracy[k] += (topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item()
 
 			# Reciprocal Rank
