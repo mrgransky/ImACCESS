@@ -26,7 +26,10 @@ from sklearn.linear_model import LogisticRegression
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from collections import defaultdict
-torch.backends.cudnn.benchmark = True
+import warnings
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
 
 def save_pickle(pkl, fname:str=""):
 	print(f"\nSaving {type(pkl)}\n{fname}")

@@ -7,8 +7,6 @@ from torch.optim import AdamW, SGD, Adam, lr_scheduler
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import copy
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning, module='torch.optim.lr_scheduler')
 
 # train cifar100 from scratch:
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 256 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
@@ -237,10 +235,10 @@ def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
 def evaluate(model, validation_loader, criterion, device="cuda", top_k=(1, 3, 5)):
 	model.eval()
 	total_loss = 0
-	correct_text_description = 0
-	correct_image_for_text = 0
+	img2txt_correct = 0
+	txt2img_correct = 0
 	total_samples = 0
-	top_k_accuracy = {k: 0 for k in top_k}
+	img2txt_topk_accuracy = {k: 0 for k in top_k}
 	reciprocal_ranks = []
 	cosine_similarities = []
 	precision_list, recall_list, f1_list = [], [], []
@@ -249,52 +247,64 @@ def evaluate(model, validation_loader, criterion, device="cuda", top_k=(1, 3, 5)
 			images, labels = images.to(device), labels.to(device)
 			batch_size = images.size(0)
 			total_samples += batch_size
-			logits_per_image, logits_per_text = model(images, labels) # Output sizes: [batch_size, batch_size]
-			# Predictions and Ground Truth
-			predicted_text_idxs = torch.argmax(input=logits_per_image, dim=1)
-			predicted_image_idxs = torch.argmax(input=logits_per_text, dim=1)
+
+			# Forward pass:
+			logits_per_image, logits_per_text = model(images, labels) # [batch_size, batch_size]
+
+			# Ground Truth:
 			correct_labels = torch.arange(start=0, end=batch_size, dtype=torch.long, device=device)
+
+			# Validation Loss: Average of both losses
+			loss_img = criterion(logits_per_image, correct_labels)
+			loss_txt = criterion(logits_per_text, correct_labels)
+			total_loss += 0.5 * (loss_img.item() + loss_txt.item())
+
+			# Predictions:
+			pred_lbl_per_img_idxs = torch.argmax(input=logits_per_image, dim=1) # [batch_size x 1]
+			pred_img_per_lbl_idxs = torch.argmax(input=logits_per_text, dim=1) # [batch_size x 1]
 			# Metrics
-			correct_text_description += (predicted_text_idxs == correct_labels).sum().item()
-			correct_image_for_text += (predicted_image_idxs == correct_labels).sum().item()
+			img2txt_correct += (pred_lbl_per_img_idxs == correct_labels).sum().item()
+			txt2img_correct += (pred_img_per_lbl_idxs == correct_labels).sum().item()
+
 			# Top-k Accuracy
 			for k in top_k:
-				top_k_preds = torch.topk(logits_per_image, k=k, dim=1).indices
-				top_k_accuracy[k] += (top_k_preds == correct_labels.unsqueeze(1)).any(dim=1).sum().item()
+				topk_predicted_labels_idxs = torch.topk(input=logits_per_image, k=k, dim=1).indices
+				img2txt_topk_accuracy[k] += (topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item()
+
 			# Reciprocal Rank
 			for i in range(batch_size):
 				ranks = torch.argsort(logits_per_image[i], descending=True)
 				rank_of_true_label = (ranks == correct_labels[i]).nonzero(as_tuple=True)[0].item() + 1
 				reciprocal_ranks.append(1 / rank_of_true_label)
+
 			# Cosine Similarity
 			cos_sim = torch.nn.functional.cosine_similarity(logits_per_image, logits_per_text, dim=1).cpu().numpy()
 			cosine_similarities.extend(cos_sim)
+
 			# Precision, Recall, F1
-			precision = (predicted_text_idxs == correct_labels).sum().item() / predicted_text_idxs.size(0)
-			recall = (predicted_image_idxs == correct_labels).sum().item() / correct_labels.size(0)
+			precision = (pred_lbl_per_img_idxs == correct_labels).sum().item() / pred_lbl_per_img_idxs.size(0)
+			recall = (pred_img_per_lbl_idxs == correct_labels).sum().item() / correct_labels.size(0)
 			f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
 			precision_list.append(precision)
 			recall_list.append(recall)
 			f1_list.append(f1)
-			# Validation Loss
-			loss_img = criterion(logits_per_image, correct_labels)
-			loss_txt = criterion(logits_per_text, correct_labels)
-			total_loss += 0.5 * (loss_img.item() + loss_txt.item())
+
 	# Compute average metrics
+	print(f"Total Samples: {total_samples} | validation_loader: {len(validation_loader)}")
 	avg_loss = total_loss / len(validation_loader)
-	accuracy_text_description = correct_text_description / total_samples
-	accuracy_image_for_text = correct_image_for_text / total_samples
-	top_k_accuracy = {k: v / total_samples for k, v in top_k_accuracy.items()}
-	mean_reciprocal_rank = sum(reciprocal_ranks) / len(reciprocal_ranks)
+	img2txt_acc = img2txt_correct / total_samples
+	txt2img_acc = txt2img_correct / total_samples
+	img2txt_topk_accuracy = {k: v / total_samples for k, v in img2txt_topk_accuracy.items()}
+	mean_reciprocal_rank = np.mean(reciprocal_ranks) # sum(reciprocal_ranks) / len(reciprocal_ranks)
 	cosine_sim_mean = np.mean(cosine_similarities)
 	avg_precision = np.mean(precision_list)
 	avg_recall = np.mean(recall_list)
 	avg_f1 = np.mean(f1_list)
 	return (
 		avg_loss,
-		accuracy_text_description,
-		accuracy_image_for_text,
-		top_k_accuracy,
+		img2txt_acc,
+		txt2img_acc,
+		img2txt_topk_accuracy,
 		mean_reciprocal_rank,
 		cosine_sim_mean,
 		avg_precision,
@@ -305,9 +315,9 @@ def evaluate(model, validation_loader, criterion, device="cuda", top_k=(1, 3, 5)
 def plot_loss_accuracy(
 		train_losses,
 		val_losses,
-		validation_accuracy_text_description_for_each_image_list,
-		validation_acc_img_per_txt_list,
-		top_k_accuracy_list,
+		val_acc_img2txt_list,
+		val_acc_txt2img_list,
+		img2txt_topk_accuracy_list,
 		mean_reciprocal_rank_list,
 		cosine_similarity_list,
 		precision_list,
@@ -315,7 +325,7 @@ def plot_loss_accuracy(
 		f1_list,
 		losses_file_path="losses.png",
 		accuracy_file_path="accuracy.png",
-		topk_accuracy_file_path="top_k_accuracy.png",
+		topk_accuracy_file_path="img2txt_topk_accuracy.png",
 		mean_reciprocal_rank_file_path="mean_reciprocal_rank.png",
 		cosine_similarity_file_path="cosine_similarity.png",
 		precision_recall_f1_file_path="precision_recall_f1.png",
@@ -351,12 +361,12 @@ def plot_loss_accuracy(
 	plt.close()
 
 	plt.figure(figsize=figure_size)
-	plt.plot(epochs, validation_accuracy_text_description_for_each_image_list, label='text retrieval per image')
-	plt.plot(epochs, validation_acc_img_per_txt_list, label='image retrieval per text')
+	plt.plot(epochs, val_acc_img2txt_list, label='text retrieval per image')
+	plt.plot(epochs, val_acc_txt2img_list, label='image retrieval per text')
 	plt.xlabel('Epoch')
 	plt.ylabel('Accuracy')
 	plt.title(os.path.splitext(os.path.basename(accuracy_file_path))[0], fontsize=10)
-	plt.legend(title='Validation Accuracy', fontsize=9, title_fontsize=10, loc='best')
+	plt.legend(title='Validation [Top-1] Accuracy (Zero-Shot)', fontsize=8, title_fontsize=10, loc='best')
 	plt.grid(True)
 	plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=7)
@@ -365,11 +375,11 @@ def plot_loss_accuracy(
 	plt.close()
 	
 	plt.figure(figsize=figure_size)
-	for k, acc in zip([1, 3, 5], zip(*top_k_accuracy_list)):
+	for k, acc in zip([1, 3, 5], zip(*img2txt_topk_accuracy_list)):
 		plt.plot(epochs, acc, label=f'Top-{k}')
 	plt.xlabel('Epoch')
 	plt.ylabel('Accuracy')
-	plt.title("Top-k Accuracy")
+	plt.title("Image-to-Text Top-k Accuracy")
 	plt.legend(ncols=len([1, 3, 5]), loc='best')
 	plt.grid(True)
 	plt.tight_layout()
@@ -595,9 +605,9 @@ def finetune(
 		growth_interval=2000,
 	)
 	training_losses, val_losses = [], []
-	validation_accuracy_text_description_for_each_image_list = []
-	validation_acc_img_per_txt_list = []
-	top_k_accuracy_list = []
+	val_acc_img2txt_list = []
+	val_acc_txt2img_list = []
+	img2txt_topk_accuracy_list = []
 	mean_reciprocal_rank_list = []
 	cosine_similarity_list = []
 	precision_list, recall_list, f1_list = [], [], []
@@ -664,11 +674,11 @@ def finetune(
 		avg_training_loss = epoch_loss / len(train_loader)
 		# print(f"Average {mode} Loss: {avg_training_loss:.7f} ")
 		training_losses.append(avg_training_loss)
-		avg_valid_loss, accuracy_text_description_for_each_image, acc_img_per_txt, top_k_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
+		avg_valid_loss, accuracy_text_description_for_each_image, acc_img_per_txt, img2txt_topk_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
 		val_losses.append(avg_valid_loss)
-		validation_accuracy_text_description_for_each_image_list.append(accuracy_text_description_for_each_image)
-		validation_acc_img_per_txt_list.append(acc_img_per_txt)
-		top_k_accuracy_list.append([top_k_accuracy[k] for k in [1, 3, 5]])
+		val_acc_img2txt_list.append(accuracy_text_description_for_each_image)
+		val_acc_txt2img_list.append(acc_img_per_txt)
+		img2txt_topk_accuracy_list.append([img2txt_topk_accuracy[k] for k in [1, 3, 5]])
 		mean_reciprocal_rank_list.append(mean_reciprocal_rank)
 		cosine_similarity_list.append(cosine_sim_mean)
 		precision_list.append(avg_precision)
@@ -704,9 +714,9 @@ def finetune(
 	plot_loss_accuracy(
 		train_losses=training_losses,
 		val_losses=val_losses,
-		validation_accuracy_text_description_for_each_image_list=validation_accuracy_text_description_for_each_image_list,
-		validation_acc_img_per_txt_list=validation_acc_img_per_txt_list,
-		top_k_accuracy_list=top_k_accuracy_list,
+		val_acc_img2txt_list=val_acc_img2txt_list,
+		val_acc_txt2img_list=val_acc_txt2img_list,
+		img2txt_topk_accuracy_list=img2txt_topk_accuracy_list,
 		mean_reciprocal_rank_list=mean_reciprocal_rank_list,
 		cosine_similarity_list=cosine_similarity_list,
 		precision_list=precision_list,
@@ -798,14 +808,17 @@ def train(
 		growth_interval=2000,
 	)
 	training_losses, val_losses = [], []
-	validation_accuracy_text_description_for_each_image_list = []
-	validation_acc_img_per_txt_list = []
-	top_k_accuracy_list = []
+	val_acc_img2txt_list = []
+	val_acc_txt2img_list = []
+	img2txt_topk_accuracy_list = []
 	mean_reciprocal_rank_list = []
 	cosine_similarity_list = []
 	precision_list, recall_list, f1_list = [], [], []
 	ft_st = time.time()
+	print(torch.cuda.memory_summary(device=device))
 	for epoch in range(num_epochs):
+		torch.cuda.empty_cache() # Clear GPU memory cache
+		model.train()
 		print(f"Epoch [{epoch+1}/{num_epochs}]")
 		epoch_loss = 0.0
 		for bidx, (images, labels) in enumerate(train_loader):
@@ -829,11 +842,12 @@ def train(
 			epoch_loss += total_loss.item()
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
-		avg_valid_loss, accuracy_text_description_for_each_image, acc_img_per_txt, top_k_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
+		avg_valid_loss, accuracy_text_description_for_each_image, acc_img_per_txt, img2txt_topk_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
+		torch.cuda.empty_cache() # free up GPU memory
 		val_losses.append(avg_valid_loss)
-		validation_accuracy_text_description_for_each_image_list.append(accuracy_text_description_for_each_image)
-		validation_acc_img_per_txt_list.append(acc_img_per_txt)
-		top_k_accuracy_list.append([top_k_accuracy[k] for k in [1, 3, 5]])
+		val_acc_img2txt_list.append(accuracy_text_description_for_each_image)
+		val_acc_txt2img_list.append(acc_img_per_txt)
+		img2txt_topk_accuracy_list.append([img2txt_topk_accuracy[k] for k in [1, 3, 5]])
 		mean_reciprocal_rank_list.append(mean_reciprocal_rank)
 		cosine_similarity_list.append(cosine_sim_mean)
 		precision_list.append(avg_precision)
@@ -869,9 +883,9 @@ def train(
 	plot_loss_accuracy(
 		train_losses=training_losses,
 		val_losses=val_losses,
-		validation_accuracy_text_description_for_each_image_list=validation_accuracy_text_description_for_each_image_list,
-		validation_acc_img_per_txt_list=validation_acc_img_per_txt_list,
-		top_k_accuracy_list=top_k_accuracy_list,
+		val_acc_img2txt_list=val_acc_img2txt_list,
+		val_acc_txt2img_list=val_acc_txt2img_list,
+		img2txt_topk_accuracy_list=img2txt_topk_accuracy_list,
 		mean_reciprocal_rank_list=mean_reciprocal_rank_list,
 		cosine_similarity_list=cosine_similarity_list,
 		precision_list=precision_list,
@@ -885,12 +899,13 @@ def train(
 		precision_recall_f1_file_path=pr_f1_fpth,
 	)
 
+@measure_execution_time
 def main():
-	parser = argparse.ArgumentParser(description="FineTune CLIP for CIFAR10x Dataset")
+	parser = argparse.ArgumentParser(description="FineTune CLIP for Balanced Dataset")
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
-	parser.add_argument('--num_workers', '-nw', type=int, default=18, help='Number of CPUs [def: max cpus]')
+	parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
 	parser.add_argument('--epochs', '-e', type=int, default=12, help='Number of epochs')
-	parser.add_argument('--batch_size', '-bs', type=int, default=256, help='Batch size for training')
+	parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-4]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 1e-3]')
 	parser.add_argument('--print_every', type=int, default=150, help='Print loss')
@@ -968,11 +983,5 @@ def main():
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
-	START_EXECUTION_TIME = time.time()
 	main()
-	END_EXECUTION_TIME = time.time()
-	print(
-		f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
-		f"TOTAL_ELAPSED_TIME: {END_EXECUTION_TIME-START_EXECUTION_TIME:.1f} sec"
-		.center(160, " ")
-	)
+	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))

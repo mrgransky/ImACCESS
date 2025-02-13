@@ -36,6 +36,7 @@ def get_dataset(dataset_dir:str="/path/to/dataset"):
 	val_dataset = pd.read_csv(os.path.join(dataset_dir, f"val_metadata.csv"))
 	return train_dataset, val_dataset
 
+@measure_execution_time
 def main():
 	set_seeds()
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
@@ -99,11 +100,5 @@ def main():
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
-	START_EXECUTION_TIME = time.time()
 	main()
-	END_EXECUTION_TIME = time.time()
-	print(
-		f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} "
-		f"TOTAL_ELAPSED_TIME: {END_EXECUTION_TIME-START_EXECUTION_TIME:.1f} sec"
-		.center(160, " ")
-	)
+	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))
