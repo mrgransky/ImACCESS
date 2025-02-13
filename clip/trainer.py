@@ -275,11 +275,12 @@ def evaluate(
 
 			# Top-k Accuracy
 			for k in topK_values:
-				print(f"Top-{k} Accuracy")
+				effective_k = min(k, batch_size)
+				print(f"Top-{k} Accuracy => effective_k: {effective_k}")
 				print(f"logits_per_image: {logits_per_image.shape}")
 				print(f"correct_labels: {correct_labels.shape}")
 				print(f"correct_labels.unsqueeze(1): {correct_labels.unsqueeze(1).shape}")
-				topk_predicted_labels = torch.topk(input=logits_per_image, k=k, dim=1)
+				topk_predicted_labels = torch.topk(input=logits_per_image, k=effective_k, dim=1)
 				print(f"topk_predicted_labels: {topk_predicted_labels}")
 				topk_predicted_labels_values, topk_predicted_labels_idxs = torch.topk(input=logits_per_image, k=k, dim=1) # values, indices
 				img2txt_topk_accuracy[k] += (topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item()
