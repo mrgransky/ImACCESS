@@ -9,7 +9,7 @@ import matplotlib.ticker as ticker
 import copy
 
 # train cifar100 from scratch:
-# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 256 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 12 -lr 1e-5 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune cifar100:
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 256 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
@@ -232,13 +232,19 @@ def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
 	print("Vocab size:", vocab_size)
 	return model, preprocess
 
-def evaluate(model, validation_loader, criterion, device="cuda", top_k=(1, 3, 5)):
+def evaluate(
+	model,
+	validation_loader,
+	criterion,
+	device="cuda",
+	topK_values=[1, 3, 5],
+	):
 	model.eval()
 	total_loss = 0
 	img2txt_correct = 0
 	txt2img_correct = 0
 	total_samples = 0
-	img2txt_topk_accuracy = {k: 0 for k in top_k}
+	img2txt_topk_accuracy = {k: 0 for k in topK_values}
 	reciprocal_ranks = []
 	cosine_similarities = []
 	precision_list, recall_list, f1_list = [], [], []
@@ -267,7 +273,7 @@ def evaluate(model, validation_loader, criterion, device="cuda", top_k=(1, 3, 5)
 			txt2img_correct += (pred_img_per_lbl_idxs == correct_labels).sum().item()
 
 			# Top-k Accuracy
-			for k in top_k:
+			for k in topK_values:
 				topk_predicted_labels_idxs = torch.topk(input=logits_per_image, k=k, dim=1).indices
 				img2txt_topk_accuracy[k] += (topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item()
 
@@ -290,7 +296,8 @@ def evaluate(model, validation_loader, criterion, device="cuda", top_k=(1, 3, 5)
 			f1_list.append(f1)
 
 	# Compute average metrics
-	print(f"Total Samples: {total_samples} | validation_loader: {len(validation_loader)}")
+	print(f"Total Samples: {total_samples} | validation_loader: {len(validation_loader)} | batch_size: {batch_size} | validation_loader * batch_size: {len(validation_loader) * batch_size}")
+	print(f"val_loader contains {len(validation_loader.dataset)} samples")
 	avg_loss = total_loss / len(validation_loader)
 	img2txt_acc = img2txt_correct / total_samples
 	txt2img_acc = txt2img_correct / total_samples
@@ -330,6 +337,8 @@ def plot_loss_accuracy(
 		cosine_similarity_file_path="cosine_similarity.png",
 		precision_recall_f1_file_path="precision_recall_f1.png",
 		DPI=250,
+		figure_size=(10, 5),
+		TOP_K_VALUES=[1, 3, 5],
 	):
 	num_epochs = len(train_losses)
 	if num_epochs == 1:
@@ -342,8 +351,6 @@ def plot_loss_accuracy(
 	if num_xticks > num_epochs + 1:
 		num_xticks = num_epochs + 1
 	xticks = np.arange(0, num_epochs + 1, (num_epochs + 1) // num_xticks)
-
-	figure_size = (9, 4)
 
 	# Plot losses:
 	plt.figure(figsize=figure_size)
@@ -366,7 +373,7 @@ def plot_loss_accuracy(
 	plt.xlabel('Epoch')
 	plt.ylabel('Accuracy')
 	plt.title(os.path.splitext(os.path.basename(accuracy_file_path))[0], fontsize=10)
-	plt.legend(title='Validation [Top-1] Accuracy (Zero-Shot)', fontsize=8, title_fontsize=10, loc='best')
+	plt.legend(title='[Top-1] Accuracy (Zero-Shot)', fontsize=8, title_fontsize=9, loc='best')
 	plt.grid(True)
 	plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=7)
@@ -375,12 +382,12 @@ def plot_loss_accuracy(
 	plt.close()
 	
 	plt.figure(figsize=figure_size)
-	for k, acc in zip([1, 3, 5], zip(*img2txt_topk_accuracy_list)):
+	for k, acc in zip(TOP_K_VALUES, zip(*img2txt_topk_accuracy_list)):
 		plt.plot(epochs, acc, label=f'Top-{k}')
 	plt.xlabel('Epoch')
 	plt.ylabel('Accuracy')
 	plt.title("Image-to-Text Top-k Accuracy")
-	plt.legend(ncols=len([1, 3, 5]), loc='best')
+	plt.legend(ncols=len(TOP_K_VALUES), loc='best')
 	plt.grid(True)
 	plt.tight_layout()
 	plt.xlim(0, num_epochs + 1)
@@ -567,6 +574,7 @@ def finetune(
 		min_delta:float=1e-4,
 		cumulative_delta:float=5e-3,
 		minimum_epochs:int=20,
+		TOP_K_VALUES=[1, 5, 10, 15, 20],
 	):
 	early_stopping = EarlyStopping(
 		patience=patience,									# Wait for 10 epochs without improvement before stopping
@@ -674,11 +682,27 @@ def finetune(
 		avg_training_loss = epoch_loss / len(train_loader)
 		# print(f"Average {mode} Loss: {avg_training_loss:.7f} ")
 		training_losses.append(avg_training_loss)
-		avg_valid_loss, accuracy_text_description_for_each_image, acc_img_per_txt, img2txt_topk_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
+		(
+			avg_valid_loss,
+			img2txt_val_acc,
+			txt2img_val_acc,
+			img2txt_topk_accuracy,
+			mean_reciprocal_rank, 
+			cosine_sim_mean, 
+			avg_precision, 
+			avg_recall, 
+			avg_f1
+		) = evaluate(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion, 
+			device=device,
+			topK_values=TOP_K_VALUES,
+		)
 		val_losses.append(avg_valid_loss)
-		val_acc_img2txt_list.append(accuracy_text_description_for_each_image)
-		val_acc_txt2img_list.append(acc_img_per_txt)
-		img2txt_topk_accuracy_list.append([img2txt_topk_accuracy[k] for k in [1, 3, 5]])
+		val_acc_img2txt_list.append(img2txt_val_acc)
+		val_acc_txt2img_list.append(txt2img_val_acc)
+		img2txt_topk_accuracy_list.append([img2txt_topk_accuracy[k] for k in TOP_K_VALUES])
 		mean_reciprocal_rank_list.append(mean_reciprocal_rank)
 		cosine_similarity_list.append(cosine_sim_mean)
 		precision_list.append(avg_precision)
@@ -687,8 +711,8 @@ def finetune(
 		print(
 			f'@ Epoch: {epoch+1}\n'
 			f'\t[Loss] {mode}: {avg_training_loss:.7f} Valid: {avg_valid_loss:.9f}\n'
-			f'\tValid Acc [text retrieval per image]: {accuracy_text_description_for_each_image} '
-			f'[image retrieval per text]: {acc_img_per_txt}'
+			f'\tValid Acc [text retrieval per image]: {img2txt_val_acc} '
+			f'[image retrieval per text]: {txt2img_val_acc}'
 		)
 		# ############################## Early stopping ##############################
 		if early_stopping.should_stop(avg_valid_loss, model, epoch):
@@ -748,6 +772,7 @@ def train(
 		min_delta:float=1e-4,
 		cumulative_delta:float=5e-3,
 		minimum_epochs:int=20,
+		TOP_K_VALUES=[1, 5, 10, 15, 20],
 	):
 	early_stopping = EarlyStopping(
 		patience=patience,												# Wait for 10 epochs without improvement before stopping
@@ -842,12 +867,28 @@ def train(
 			epoch_loss += total_loss.item()
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
-		avg_valid_loss, accuracy_text_description_for_each_image, acc_img_per_txt, img2txt_topk_accuracy, mean_reciprocal_rank, cosine_sim_mean, avg_precision, avg_recall, avg_f1 = evaluate(model, validation_loader, criterion, device=device)
+		(
+			avg_valid_loss,
+			img2txt_val_acc,
+			txt2img_val_acc,
+			img2txt_topk_accuracy,
+			mean_reciprocal_rank,
+			cosine_sim_mean,
+			avg_precision,
+			avg_recall,
+			avg_f1
+		) = evaluate(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			device=device,
+			topK_values=TOP_K_VALUES,
+		)
 		torch.cuda.empty_cache() # free up GPU memory
 		val_losses.append(avg_valid_loss)
-		val_acc_img2txt_list.append(accuracy_text_description_for_each_image)
-		val_acc_txt2img_list.append(acc_img_per_txt)
-		img2txt_topk_accuracy_list.append([img2txt_topk_accuracy[k] for k in [1, 3, 5]])
+		val_acc_img2txt_list.append(img2txt_val_acc)
+		val_acc_txt2img_list.append(txt2img_val_acc)
+		img2txt_topk_accuracy_list.append([img2txt_topk_accuracy[k] for k in TOP_K_VALUES])
 		mean_reciprocal_rank_list.append(mean_reciprocal_rank)
 		cosine_similarity_list.append(cosine_sim_mean)
 		precision_list.append(avg_precision)
@@ -856,8 +897,8 @@ def train(
 		print(
 			f'@ Epoch {epoch+1}:\n'
 			f'\t[LOSS] {mode}: {avg_training_loss:.5f} Valid: {avg_valid_loss:.8f}\n'
-			f'\tValid Acc [text retrieval per image]: {accuracy_text_description_for_each_image} '
-			f'[image retrieval per text]: {acc_img_per_txt}'
+			f'\tValid Acc [text retrieval per image]: {img2txt_val_acc} '
+			f'[image retrieval per text]: {txt2img_val_acc}'
 		)
 		# ############################## Early stopping ##############################
 		if early_stopping.should_stop(avg_valid_loss, model, epoch):
