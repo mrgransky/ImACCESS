@@ -1,5 +1,5 @@
 from utils import *
-from dataset_loader import get_dataloaders
+from dataset_loader import HistoricalArchivesDataset
 from trainer import finetune, train
 import copy
 
@@ -31,21 +31,50 @@ print(args)
 # finetune:
 # $ nohup python -u history_clip.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 256 -e 32  -lr 1e-4 -wd 1e-3 --print_every 200 -nw 40 --device "cuda:3" -m finetune -md "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_ft.out &
 
-def get_dataset(dataset_dir:str="/path/to/dataset"):
-	train_dataset = pd.read_csv(os.path.join(dataset_dir, f"train_metadata.csv"))
-	val_dataset = pd.read_csv(os.path.join(dataset_dir, f"val_metadata.csv"))
-	return train_dataset, val_dataset
+def get_dataloaders(
+	train_dataset,
+	val_dataset,
+	preprocess,
+	batch_size: int = 32,
+	num_workers: int = 10,
+	):
+
+	train_dataset = HistoricalArchivesDataset(
+		data_frame=train_dataset,
+		transformer=preprocess,
+	)
+	train_loader = DataLoader(
+		dataset=train_dataset,
+		batch_size=batch_size,
+		shuffle=True,
+		pin_memory=True, # Move data to GPU faster if using CUDA
+		persistent_workers=True if num_workers > 1 else False,  # Keep workers alive if memory allows
+		num_workers=num_workers,
+	)
+
+	validation_dataset = HistoricalArchivesDataset(
+		data_frame=val_dataset,
+		transformer=preprocess,
+	)
+	val_loader = DataLoader(
+		dataset=validation_dataset,
+		batch_size=batch_size,
+		shuffle=False,
+		pin_memory=True, # Move data to GPU faster if using CUDA
+		num_workers=num_workers,
+	)
+	return train_loader, val_loader
 
 @measure_execution_time
 def main():
 	set_seeds()
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
-	model, preprocess = load_model(
-		model_name=args.model_name,
-		device=args.device,
-		jit=False,
-	)
-	train_dataset, validation_dataset = get_dataset(dataset_dir=args.dataset_dir)
+
+	model, preprocess = clip.load(args.model_name, device=args.device, jit=False) # training or finetuning => jit=False
+	model = model.float() # Convert model parameters to FP32
+
+	train_dataset = pd.read_csv(os.path.join(args.dataset_dir, f"train_metadata.csv"))
+	val_dataset = pd.read_csv(os.path.join(args.dataset_dir, f"val_metadata.csv"))
 	train_loader, validation_loader = get_dataloaders(
 		train_dataset=train_dataset, 
 		val_dataset=validation_dataset, 

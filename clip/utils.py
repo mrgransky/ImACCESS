@@ -12,24 +12,121 @@ import pandas as pd
 import gzip
 import pickle
 import dill
-import torch.nn.functional as F
+import copy
+
 import torchvision.transforms as T
-import torchvision.datasets as datasets
-import torchvision.models as models
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+
+import torch.nn as nn
+from torch.optim import AdamW, SGD, Adam, lr_scheduler
+from torch.utils.data import DataLoader, Dataset
+from torchvision.datasets import CIFAR10, CIFAR100
+
+from datasets_loader import *
 
 from PIL import Image
 from typing import Tuple, Union, List
 from torchvision.datasets import CIFAR10, CIFAR100
 from sklearn.metrics import precision_recall_curve, roc_curve, auc
 from sklearn.linear_model import LogisticRegression
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 from collections import defaultdict
 import warnings
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=FutureWarning)
+USER = os.environ.get('USER')
+
+def get_dataset(dname:str="CIFAR10"):
+	dname = dname.upper()
+	ddir = {
+		"farid": f'/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/{dname}',
+		"ubuntu": f'/media/volume/ImACCESS/WW_DATASETs/{dname}',
+		"alijanif": f'/scratch/project_2004072/ImACCESS/WW_DATASETs/{dname}',
+	}
+	if dname == 'CIFAR100':
+		train_dataset = CIFAR100(
+			root=os.path.expanduser("~/.cache"), 
+			train=True,
+			download=True,
+			transform=None
+		)
+		validation_dataset = CIFAR100(
+			root=os.path.expanduser("~/.cache"), 
+			train=False,
+			download=True,
+			transform=None
+		)
+	elif dname == 'CIFAR10':
+		train_dataset = CIFAR10(
+			root=os.path.expanduser("~/.cache"), 
+			train=True,
+			download=True,
+			transform=None,
+		)
+		validation_dataset = CIFAR10(
+			root=os.path.expanduser("~/.cache"), 
+			train=False,
+			download=True,
+			transform=None,
+		)
+	elif dname == 'IMAGENET':
+		train_dataset = ImageNet(
+			root=ddir.get(USER),
+			train=True,
+			transform=None
+		)
+		validation_dataset = ImageNet(
+			root=ddir.get(USER),
+			train=False,
+			transform=None
+	)	
+	elif dname == 'CINIC10':
+		train_dataset = CINIC10(
+			root=ddir.get(USER),
+			train=True,
+			download=True,
+			transform=None
+		)
+		validation_dataset = CINIC10(
+			root=ddir.get(USER),
+			train=False,
+			download=True,
+			transform=None
+		)
+	else:
+		raise ValueError(f"Invalid dataset name: {dname}. Available: [CIFAR10, cifar100, IMAGENET, CINIC10]")
+	print(train_dataset)
+	print(validation_dataset)
+	return train_dataset, validation_dataset
+
+def get_dataloaders(train_dataset, valid_dataset, preprocess, batch_size=32, nw=10):
+	trainset = CUSTOMIZEDDATASET(
+		dataset=train_dataset, 
+		transformer=preprocess,
+	)
+	validset = CUSTOMIZEDDATASET(
+		dataset=valid_dataset, 
+		transformer=preprocess,
+	)
+	
+	train_loader = DataLoader(
+		dataset=trainset,
+		batch_size=batch_size,
+		shuffle=True,
+		num_workers=nw,
+		pin_memory=True, # Move data to GPU faster if using CUDA
+		persistent_workers=True if nw > 1 else False,  # Keep workers alive if memory allows
+	)
+	validation_loader = DataLoader(
+		dataset=validset,
+		batch_size=batch_size,
+		shuffle=False,
+		num_workers=nw,
+		pin_memory=True, # when using CUDA
+	)
+	return train_loader, validation_loader
 
 def save_pickle(pkl, fname:str=""):
 	print(f"\nSaving {type(pkl)}\n{fname}")

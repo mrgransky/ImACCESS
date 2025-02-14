@@ -1,25 +1,5 @@
 from utils import *
 
-def get_dataloaders(train_dataset, val_dataset, preprocess, batch_size=32, num_workers=10):
-	train_dataset = HistoricalArchivesDataset(data_frame=train_dataset, transformer=preprocess)
-	validation_dataset = HistoricalArchivesDataset(data_frame=val_dataset, transformer=preprocess)
-	train_loader = DataLoader(
-		dataset=train_dataset,
-		batch_size=batch_size,
-		shuffle=True,
-		pin_memory=True, # Move data to GPU faster if using CUDA
-		persistent_workers=True if num_workers > 1 else False,  # Keep workers alive if memory allows
-		num_workers=num_workers,
-	)
-	val_loader = DataLoader(
-		dataset=validation_dataset,
-		batch_size=batch_size,
-		shuffle=False,
-		pin_memory=True, # Move data to GPU faster if using CUDA
-		num_workers=num_workers,
-	)
-	return train_loader, val_loader
-
 class HistoricalArchivesDataset(Dataset):
 	def __init__(
 			self,

@@ -1,15 +1,7 @@
 from utils import *
-from datasets_loader import *
-from torchvision.datasets import CIFAR10, CIFAR100
-from torch.utils.data import DataLoader, Dataset
-import torch.nn as nn
-from torch.optim import AdamW, SGD, Adam, lr_scheduler
-import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-import copy
 
 # train cifar100 from scratch:
-# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 12 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 50 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune cifar100:
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 256 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
@@ -19,8 +11,6 @@ import copy
 
 # finetune imagenet:
 # $ nohup python -u trainer.py -d imagenet -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 2500 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
-
-USER = os.environ.get('USER')
 
 class EarlyStopping:
 	def __init__(
@@ -130,108 +120,6 @@ class EarlyStopping:
 	def get_stopped_epoch(self) -> int:
 		return self.stopped_epoch
 
-def get_dataset(dname:str="CIFAR10"):
-	dname = dname.upper()
-	ddir = {
-		"farid": f'/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/{dname}',
-		"ubuntu": f'/media/volume/ImACCESS/WW_DATASETs/{dname}',
-		"alijanif": f'/scratch/project_2004072/ImACCESS/WW_DATASETs/{dname}',
-	}
-	if dname == 'CIFAR100':
-		train_dataset = CIFAR100(
-			root=os.path.expanduser("~/.cache"), 
-			train=True,
-			download=True,
-			transform=None
-		)
-		validation_dataset = CIFAR100(
-			root=os.path.expanduser("~/.cache"), 
-			train=False,
-			download=True,
-			transform=None
-		)
-	elif dname == 'CIFAR10':
-		train_dataset = CIFAR10(
-			root=os.path.expanduser("~/.cache"), 
-			train=True,
-			download=True,
-			transform=None,
-		)
-		validation_dataset = CIFAR10(
-			root=os.path.expanduser("~/.cache"), 
-			train=False,
-			download=True,
-			transform=None,
-		)
-	elif dname == 'IMAGENET':
-		train_dataset = ImageNet(
-			root=ddir.get(USER),
-			train=True,
-			transform=None
-		)
-		validation_dataset = ImageNet(
-			root=ddir.get(USER),
-			train=False,
-			transform=None
-	)	
-	elif dname == 'CINIC10':
-		train_dataset = CINIC10(
-			root=ddir.get(USER),
-			train=True,
-			download=True,
-			transform=None
-		)
-		validation_dataset = CINIC10(
-			root=ddir.get(USER),
-			train=False,
-			download=True,
-			transform=None
-		)
-	else:
-		raise ValueError(f"Invalid dataset name: {dname}. Available: [CIFAR10, cifar100, IMAGENET, CINIC10]")
-	print(train_dataset)
-	print(validation_dataset)
-	return train_dataset, validation_dataset
-
-def get_dataloaders(train_dataset, valid_dataset, preprocess, batch_size=32, nw=10):
-	trainset = CUSTOMIZEDDATASET(
-		dataset=train_dataset, 
-		transformer=preprocess,
-	)
-	validset = CUSTOMIZEDDATASET(
-		dataset=valid_dataset, 
-		transformer=preprocess,
-	)
-	
-	train_loader = DataLoader(
-		dataset=trainset,
-		batch_size=batch_size,
-		shuffle=True,
-		num_workers=nw,
-		pin_memory=True, # Move data to GPU faster if using CUDA
-		persistent_workers=True if nw > 1 else False,  # Keep workers alive if memory allows
-	)
-	validation_loader = DataLoader(
-		dataset=validset,
-		batch_size=batch_size,
-		shuffle=False,
-		num_workers=nw,
-		pin_memory=True, # when using CUDA
-	)
-	return train_loader, validation_loader
-
-def load_model(model_name:str="ViT-B/32", device:str="cuda", jit:bool=False):
-	model, preprocess = clip.load(model_name, device=device, jit=jit) # training or finetuning => jit=False
-	model = model.float() # Convert model parameters to FP32
-	input_resolution = model.visual.input_resolution
-	context_length = model.context_length
-	vocab_size = model.vocab_size
-	print("Model parameters:", f"{np.sum([int(np.prod(p.shape)) for p in model.parameters()]):,}")
-	print("Input resolution:", input_resolution)
-	print("Context length:", context_length)
-	print("Vocab size:", vocab_size)
-	return model, preprocess
-
 def evaluate(
 	model,
 	validation_loader,
@@ -241,8 +129,9 @@ def evaluate(
 	):
 	model.eval()
 	total_loss = 0
-	img2txt_correct = 0
-	txt2img_correct = 0
+	total_img2txt_correct = 0
+	total_txt2img_correct = 0
+	num_batches = len(validation_loader)
 	total_samples = len(validation_loader.dataset)
 	img2txt_topk_accuracy = {k: 0 for k in topK_values}
 	reciprocal_ranks = []
@@ -255,43 +144,37 @@ def evaluate(
 
 			# Forward pass:
 			logits_per_image, logits_per_text = model(images, labels) # [batch_size, batch_size]
-			print(f"logits_per_image: {logits_per_image.shape}")
-			print(f"logits_per_text: {logits_per_text.shape}")
+
 			# Ground Truth:
 			correct_labels = torch.arange(start=0, end=batch_size, dtype=torch.long, device=device)
 
 			# Validation Loss: Average of both losses
 			loss_img = criterion(logits_per_image, correct_labels)
 			loss_txt = criterion(logits_per_text, correct_labels)
-			total_loss += 0.5 * (loss_img.item() + loss_txt.item())
+			batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
+			total_loss += batch_loss
 
 			# Predictions:
 			pred_lbl_per_img_idxs = torch.argmax(input=logits_per_image, dim=1) # [batch_size x 1]
 			pred_img_per_lbl_idxs = torch.argmax(input=logits_per_text, dim=1) # [batch_size x 1]
+
 			# Metrics
-			img2txt_correct += (pred_lbl_per_img_idxs == correct_labels).sum().item()
-			txt2img_correct += (pred_img_per_lbl_idxs == correct_labels).sum().item()
+			img2txt_correct = (pred_lbl_per_img_idxs == correct_labels).sum().item()
+			txt2img_correct = (pred_img_per_lbl_idxs == correct_labels).sum().item()
+
+			total_img2txt_correct += img2txt_correct
+			total_txt2img_correct += txt2img_correct
 
 			# Top-k Accuracy
 			for k in topK_values:
-				effective_k = min(k, batch_size)
-				# print(f"Top-{k} Accuracy => effective_k: {effective_k}")
-				# print(f"logits_per_image: {logits_per_image.shape}")
-				# print(f"correct_labels: {correct_labels.shape}")
-				# print(f"correct_labels.unsqueeze(1): {correct_labels.unsqueeze(1).shape}")
+				effective_k = min(k, batch_size) # Ensure k is not greater than batch_size
 				topk_predicted_labels_values, topk_predicted_labels_idxs = torch.topk(input=logits_per_image, k=effective_k, dim=1) # values, indices
-				# print(f"topk_predicted_labels_values: {topk_predicted_labels_values.shape}")
-				# print(f"topk_predicted_labels_idxs: {topk_predicted_labels_idxs.shape}")
-				# print(f"topk_predicted_labels_idxs == correct_labels.unsqueeze(1): {(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).shape}")
-				# print(f"(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1): {(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).shape}")
-				# print(f"(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item(): {(topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item()}")
 				img2txt_topk_accuracy[k] += (topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item()
 
 			# Reciprocal Rank
-			for i in range(batch_size):
-				ranks = torch.argsort(logits_per_image[i], descending=True)
-				rank_of_true_label = (ranks == correct_labels[i]).nonzero(as_tuple=True)[0].item() + 1
-				reciprocal_ranks.append(1 / rank_of_true_label)
+			ranks = logits_per_image.argsort(dim=1, descending=True)
+			rr_indices = ranks.eq(correct_labels.view(-1, 1)).nonzero(as_tuple=True)[1] + 1  # +1 for rank
+			reciprocal_ranks.extend(1.0 / rr_indices)
 
 			# Cosine Similarity
 			cos_sim = torch.nn.functional.cosine_similarity(logits_per_image, logits_per_text, dim=1).cpu().numpy()
@@ -308,17 +191,19 @@ def evaluate(
 	# Compute average metrics
 	print(f"Total Samples: {total_samples} | validation_loader: {len(validation_loader)} | batch_size: {batch_size} | validation_loader * batch_size: {len(validation_loader) * batch_size}")
 	print(f"val_loader contains {len(validation_loader.dataset)} samples")
-	avg_loss = total_loss / len(validation_loader)
-	img2txt_acc = img2txt_correct / total_samples
-	txt2img_acc = txt2img_correct / total_samples
+	avg_val_loss = total_loss / num_batches
+	img2txt_acc = total_img2txt_correct / total_samples
+	txt2img_acc = total_txt2img_correct / total_samples
 	img2txt_topk_accuracy = {k: v / total_samples for k, v in img2txt_topk_accuracy.items()}
+
 	mean_reciprocal_rank = np.mean(reciprocal_ranks) # sum(reciprocal_ranks) / len(reciprocal_ranks)
 	cosine_sim_mean = np.mean(cosine_similarities)
 	avg_precision = np.mean(precision_list)
 	avg_recall = np.mean(recall_list)
 	avg_f1 = np.mean(f1_list)
+
 	return (
-		avg_loss,
+		avg_val_loss,
 		img2txt_acc,
 		txt2img_acc,
 		img2txt_topk_accuracy,
@@ -476,7 +361,12 @@ def count_clip_layers(model):
 		print(f"Frontend layers: {frontend_layers}")
 		return total_layers
 
-def get_status(model, current_phase=0, layers_to_freeze=[], total_layers=0):
+def get_status(
+	model,
+	current_phase=0,
+	layers_to_freeze=[],
+	total_layers=0,
+	):
 	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)    
 	total_params = sum(p.numel() for p in model.parameters())
@@ -549,7 +439,11 @@ def freeze_(layers, model):
 		if any(ly in name for ly in layers): # Freeze layers in the list
 			param.requires_grad = False
 
-def should_transition_phase(losses:List[float], th: float=1e-4, window:int=3) -> bool:
+def should_transition_phase(
+	losses:List[float],
+	th: float=1e-4,
+	window:int=3,
+	) -> bool:
 	if len(losses) < window:
 		return False # Not enough data to make a decision
 	last_window_losses = losses[-window:]
@@ -976,11 +870,10 @@ def main():
 	print(args)
 	set_seeds()
 	print(clip.available_models())
-	model, preprocess = load_model(
-		model_name=args.model_name,
-		device=args.device,
-		jit=False,
-	)
+	
+	model, preprocess = clip.load(args.model_name, device=args.device, jit=False) # training or finetuning => jit=False
+	model = model.float() # Convert model parameters to FP32
+
 	train_dataset, validation_dataset = get_dataset(dname=args.dataset)
 	train_loader, validation_loader = get_dataloaders(
 		train_dataset=train_dataset, 
