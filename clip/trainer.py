@@ -174,7 +174,7 @@ def evaluate(
 			# Reciprocal Rank
 			ranks = logits_per_image.argsort(dim=1, descending=True)
 			rr_indices = ranks.eq(correct_labels.view(-1, 1)).nonzero(as_tuple=True)[1] + 1  # +1 for rank
-			reciprocal_ranks.extend(1.0 / rr_indices)
+			reciprocal_ranks.extend((1.0 / rr_indices).cpu().numpy())
 
 			# Cosine Similarity
 			cos_sim = torch.nn.functional.cosine_similarity(logits_per_image, logits_per_text, dim=1).cpu().numpy()
