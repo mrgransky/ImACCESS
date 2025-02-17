@@ -34,6 +34,10 @@ class CUSTOMIZEDDATASET(Dataset):
 		return len(self.dataset)
 
 class ImageNet(Dataset):
+	"""
+	ImageNet-1K contains 1,281,167 training images, 50,000 validation images and 100,000 test images.
+	The images are labeled with 1,000 classes.
+	"""
 	def __init__(self, root, train=False, transform=None):
 		self.root = root
 		self.train = train

@@ -11,7 +11,7 @@
 #SBATCH --mem=10G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
-#SBATCH --array=0-4
+#SBATCH --array=0-1
 #SBATCH --gres=gpu:v100:1
 
 set -e
@@ -50,7 +50,7 @@ if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then
 fi
 
 for strategy in "${sampling_strategies[@]}"; do
-	for prec in 20 15 10 5 1; do
+	for prec in 15 10 5 1; do
 		echo "Evaluation metrics@K=$prec for Dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$SLURM_ARRAY_TASK_ID]} with sampling strategy: $strategy"
 		python -u history_clip_evaluate.py \
 			--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \

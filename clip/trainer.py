@@ -1,5 +1,6 @@
 from utils import *
 
+
 # train cifar100 from scratch:
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 50 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
@@ -65,7 +66,7 @@ class EarlyStopping:
 			return sum(window[i] - window[i+1] for i in range(len(window)-1))
 		return sum(window[i+1] - window[i] for i in range(len(window)-1))
 	
-	def should_stop(self, current_value: float, model: nn.Module, epoch: int) -> bool:
+	def should_stop(self, current_value: float, model: torch.nn.Module, epoch: int) -> bool:
 		"""
 		Enhanced stopping decision based on multiple criteria
 		"""
@@ -174,10 +175,11 @@ def evaluate(
 			# Reciprocal Rank
 			ranks = logits_per_image.argsort(dim=1, descending=True)
 			rr_indices = ranks.eq(correct_labels.view(-1, 1)).nonzero(as_tuple=True)[1] + 1  # +1 for rank
-			reciprocal_ranks.extend((1.0 / rr_indices).cpu().numpy())
+			rr_indices_inv = (1.0 / rr_indices).cpu().numpy()
+			reciprocal_ranks.extend(rr_indices_inv)
 
 			# Cosine Similarity
-			cos_sim = torch.nn.functional.cosine_similarity(logits_per_image, logits_per_text, dim=1).cpu().numpy()
+			cos_sim = F.cosine_similarity(logits_per_image, logits_per_text, dim=1).cpu().numpy()
 			cosine_similarities.extend(cos_sim)
 
 			# Precision, Recall, F1
@@ -196,7 +198,7 @@ def evaluate(
 	txt2img_acc = total_txt2img_correct / total_samples
 	img2txt_topk_accuracy = {k: v / total_samples for k, v in img2txt_topk_accuracy.items()}
 
-	mean_reciprocal_rank = np.mean(reciprocal_ranks) # sum(reciprocal_ranks) / len(reciprocal_ranks)
+	mean_reciprocal_rank = np.mean(reciprocal_ranks)
 	cosine_sim_mean = np.mean(cosine_similarities)
 	avg_precision = np.mean(precision_list)
 	avg_recall = np.mean(recall_list)
@@ -461,7 +463,7 @@ def handle_phase_transition(current_phase, initial_lr, max_phases):
 	return new_phase, new_lr
 
 def finetune(
-		model:nn.Module,
+		model:torch.nn.Module,
 		train_loader:DataLoader,
 		validation_loader:DataLoader,
 		num_epochs:int=7,
@@ -508,7 +510,7 @@ def finetune(
 		results_dir,
 		f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
 	)
-	criterion = nn.CrossEntropyLoss()
+	criterion = torch.nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(
 		device=device,
 		init_scale=2**16,
@@ -660,7 +662,7 @@ def finetune(
 	)
 
 def train(
-		model:nn.Module,
+		model:torch.nn.Module,
 		train_loader:DataLoader,
 		validation_loader:DataLoader,
 		num_epochs:int=5,
@@ -729,7 +731,7 @@ def train(
 		pct_start=0.1, # percentage of the cycle (in number of steps) spent increasing the learning rate
 		anneal_strategy='cos', # cos/linear annealing
 	)
-	criterion = nn.CrossEntropyLoss()
+	criterion = torch.nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(
 		device=device,
 		init_scale=2**16,

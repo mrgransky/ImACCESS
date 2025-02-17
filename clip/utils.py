@@ -14,13 +14,13 @@ import pickle
 import dill
 import copy
 
+from torch.optim import AdamW, SGD, Adam, lr_scheduler
+from torch.utils.data import DataLoader, Dataset
 import torchvision.transforms as T
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-import torch.nn as nn
-from torch.optim import AdamW, SGD, Adam, lr_scheduler
-from torch.utils.data import DataLoader, Dataset
 from torchvision.datasets import CIFAR10, CIFAR100
 
 from datasets_loader import *
