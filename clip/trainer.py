@@ -126,7 +126,7 @@ def compute_retrieval_metrics(
 	candidate_labels,
 	topK_values,
 	mode="Image-to-Text"
-):
+	):
 	num_queries, num_candidates = similarity_matrix.shape
 	assert num_queries == len(query_labels), "Number of queries must match labels"
 	
@@ -180,9 +180,9 @@ def evaluate_retrieval_performance(
 	model,
 	validation_loader,
 	criterion,
-	device="cuda",
-	topK_values=[1, 3, 5, 10, 20],
-):
+	device="cuda:0",
+	topK_values=[1, 3, 5],
+	):
 	model.eval()
 	total_loss = 0.0
 	image_embeddings = []
@@ -896,7 +896,9 @@ def train(
 		) = evaluate_retrieval_performance(
 			model=model,
 			validation_loader=validation_loader,
+			criterion=criterion,
 			device=device,
+			topK_values=TOP_K_VALUES,
 		)
 		print(f"Validation loss[retrieval-based]: {avg_loss_new:.9f}")
 		print(f"Image-to-text retrieval metrics:")
