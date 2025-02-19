@@ -234,9 +234,9 @@ def compute_retrieval_metrics(
 							p_at.append(cumulative_correct / (index + 1))
 			ap.append(np.mean(p_at))
 		
-		metrics["precision"][K] = np.mean(precision)
-		metrics["recall"][K] = np.mean(recall)
-		metrics["map"][K] = np.mean(ap)
+		metrics["precision"][str(K)] = np.mean(precision)
+		metrics["recall"][str(K)] = np.mean(recall)
+		metrics["map"][str(K)] = np.mean(ap)
 	
 	return metrics
 
