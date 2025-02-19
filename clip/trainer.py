@@ -123,7 +123,6 @@ class EarlyStopping:
 def evaluate_retrieval_performance(
 	model,
 	validation_loader,
-	criterion,
 	device="cuda:0",
 	topK_values=[1, 3, 5],
 	):
@@ -868,18 +867,12 @@ def train(
 			f'[image retrieval per text]: {txt2img_val_acc}'
 		)
 		# Compute retrieval-based metrics
-		(
-			avg_loss_new,
-			img2txt_metrics,
-			txt2img_metrics
-		) = evaluate_retrieval_performance(
+		img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
 			model=model,
 			validation_loader=validation_loader,
-			criterion=criterion,
 			device=device,
 			topK_values=TOP_K_VALUES,
 		)
-		print(f"Validation loss[retrieval-based]: {avg_loss_new:.9f}")
 		print(f"Image-to-text retrieval metrics:")
 		print(json.dumps(img2txt_metrics, indent=4, ensure_ascii=False))
 		print(f"Text-to-image retrieval metrics:")
