@@ -240,41 +240,39 @@ def compute_retrieval_metrics(
 	
 	return metrics
 
-def plot_retrieval_metrics(image_to_text_metrics, text_to_image_metrics, topK_values, title="Retrieval Performance Metrics"):
-		# Ensure the metrics are in the correct format
-		metrics = ['precision', 'map', 'recall']
-		modes = ['Image-to-Text', 'Text-to-Image']
-		
-		fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-		fig.suptitle(title, fontsize=16)
-		
-		for i, metric in enumerate(metrics):
-				ax = axes[i]
-				
-				# Plotting for Image-to-Text
-				it_values = [image_to_text_metrics[metric][K] for K in topK_values]
-				ax.plot(topK_values, it_values, marker='o', label='Image-to-Text', color='blue')
-				
-				# Plotting for Text-to-Image
-				ti_values = [text_to_image_metrics[metric][K] for K in topK_values]
-				ax.plot(topK_values, ti_values, marker='s', label='Text-to-Image', color='red')
-				
-				ax.set_xlabel('K', fontsize=12)
-				ax.set_ylabel(f'{metric.capitalize()}@K', fontsize=12)
-				ax.set_title(f'Mean {metric.capitalize()}@K', fontsize=14)
-				ax.legend(fontsize=10)
-				ax.grid(True, linestyle='--', alpha=0.7)
-				
-				# Set the x-axis to only show integer values
-				ax.set_xticks(topK_values)
-				
-				# Adjust y-axis to start from 0 for better visualization
-				ax.set_ylim(bottom=0)
-		
-		# plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-		plt.tight_layout()
-		plt.savefig(f"{title.replace(' ', '_')}.png", dpi=300, bbox_inches='tight')
-		plt.close()
+def plot_retrieval_metrics(
+	image_to_text_metrics_list: List[Dict[str, float]],
+	text_to_image_metrics_list: List[Dict[str, float]],
+	topK_values: List[int],
+	fname="Retrieval_Performance_Metrics.png",
+	):
+	num_epochs = len(image_to_text_metrics_list)
+	if num_epochs < 2:
+		return
+	epochs = range(1, num_epochs + 1)
+	metrics = ['precision', 'map', 'recall']
+	colors = ['blue', 'green', 'red', 'purple', 'orange']
+	
+	fig, axs = plt.subplots(2, 3, figsize=(20, 12))
+	fig.suptitle("Retrieval Performance Metrics Over Epochs", fontsize=16)
+	
+	for i, task_metrics_list in enumerate([image_to_text_metrics_list, text_to_image_metrics_list]):
+			for j, metric in enumerate(metrics):
+					ax = axs[i, j]
+					for K, color in zip(topK_values, colors):
+							values = [metrics_dict[f'{metric}@{K}'] for metrics_dict in task_metrics_list]
+							ax.plot(epochs, values, marker='o', label=f'K={K}', color=color)
+					
+					ax.set_xlabel('Epoch', fontsize=12)
+					ax.set_ylabel(f'Mean {metric.capitalize()}@K', fontsize=12)
+					ax.set_title(f'{["Image-to-Text", "Text-to-Image"][i]} - {metric.capitalize()}@K', fontsize=14)
+					ax.legend(fontsize=10)
+					ax.grid(True, linestyle='--', alpha=0.7)
+					ax.set_xticks(epochs)
+					ax.set_ylim(bottom=0)  # Ensure y-axis starts from 0
+	plt.tight_layout()
+	plt.savefig(fname, dpi=300, bbox_inches='tight')
+	plt.close()	
 
 def evaluate_loss_and_accuracy(
 	model,
@@ -859,6 +857,8 @@ def train(
 	mean_reciprocal_rank_list = []
 	cosine_similarity_list = []
 	precision_list, recall_list, f1_list = [], [], []
+	img2txt_metrics_list = []
+	txt2img_metrics_list = []
 	ft_st = time.time()
 	print(torch.cuda.memory_summary(device=device))
 	for epoch in range(num_epochs):
@@ -927,7 +927,8 @@ def train(
 		print(json.dumps(img2txt_metrics, indent=4, ensure_ascii=False))
 		print(f"Text-to-image retrieval metrics:")
 		print(json.dumps(txt2img_metrics, indent=4, ensure_ascii=False))
-		plot_retrieval_metrics(img2txt_metrics, txt2img_metrics, topK_values=TOP_K_VALUES)
+		img2txt_metrics_list.append(img2txt_metrics)
+		txt2img_metrics_list.append(txt2img_metrics)
 		# ############################## Early stopping ##############################
 		if early_stopping.should_stop(avg_valid_loss, model, epoch):
 			print(
@@ -962,6 +963,13 @@ def train(
 		mean_reciprocal_rank_file_path=mrr_fpth,
 		cosine_similarity_file_path=cs_fpth,
 		TOP_K_VALUES=TOP_K_VALUES,
+	)
+	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	plot_retrieval_metrics(
+		img2txt_metrics_list=img2txt_metrics_list,
+		txt2img_metrics_list=txt2img_metrics_list,
+		topK_values=TOP_K_VALUES,
+		fname=retrieval_metrics_fpth,
 	)
 
 @measure_execution_time
