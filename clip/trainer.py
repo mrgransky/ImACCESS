@@ -268,7 +268,13 @@ def evaluate_loss_and_accuracy(
 	with torch.no_grad():
 		for bidx, (images, labels) in enumerate(validation_loader):
 			images, labels = images.to(device), labels.to(device)
+			print(f"Batch {bidx+1}/{num_batches}")
+			print(f"Images shape: {images.shape}")
+			print(f"Labels shape: {labels.shape}")
+			print(f"Labels: {labels}")
 			batch_size = images.size(0)
+			print(f"Batch size: {batch_size}")
+			print()
 
 			# Forward pass:
 			logits_per_image, logits_per_text = model(images, labels) # [batch_size, batch_size]
