@@ -892,9 +892,6 @@ def train(
 			img2txt_topk_accuracy,
 			mean_reciprocal_rank,
 			cosine_sim_mean,
-			avg_precision,
-			avg_recall,
-			avg_f1
 		) = evaluate_loss_and_accuracy(
 			model=model,
 			validation_loader=validation_loader,
