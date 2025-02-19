@@ -234,52 +234,80 @@ def compute_retrieval_metrics(
 							p_at.append(cumulative_correct / (index + 1))
 			ap.append(np.mean(p_at))
 		
-		metrics["precision"][str(K)] = np.mean(precision)
-		metrics["recall"][str(K)] = np.mean(recall)
-		metrics["map"][str(K)] = np.mean(ap)
+		metrics["mP"][str(K)] = np.mean(precision)
+		metrics["mAP"][str(K)] = np.mean(ap)
+		metrics["Recall"][str(K)] = np.mean(recall)
 	
 	return metrics
 
 def plot_retrieval_metrics(
-    image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
-    text_to_image_metrics_list: List[Dict[str, Dict[str, float]]],
-    topK_values: List[int],
-    fname="Retrieval_Performance_Metrics.png",
-):
-    num_epochs = len(image_to_text_metrics_list)
-    if num_epochs < 2:
-        return
-    
-    epochs = range(1, num_epochs + 1)
-    metrics = ['precision', 'map', 'recall']
-    colors = ['blue', 'green', 'red', 'purple', 'orange']
-    
-    fig, axs = plt.subplots(2, 3, figsize=(20, 12))
-    fig.suptitle("Retrieval Performance Metrics Over Epochs", fontsize=16)
-    
-    for i, task_metrics_list in enumerate([image_to_text_metrics_list, text_to_image_metrics_list]):
-        for j, metric in enumerate(metrics):
-            ax = axs[i, j]
-            for K, color in zip(topK_values, colors):
-                values = []
-                for metrics_dict in task_metrics_list:
-                    if metric in metrics_dict and str(K) in metrics_dict[metric]:
-                        values.append(metrics_dict[metric][str(K)])
-                    else:
-                        values.append(0)  # or None if you prefer to show gaps
-                ax.plot(epochs, values, marker='o', label=f'K={K}', color=color)
-            
-            ax.set_xlabel('Epoch', fontsize=12)
-            ax.set_ylabel(f'Mean {metric.capitalize()}@K', fontsize=12)
-            ax.set_title(f'{["Image-to-Text", "Text-to-Image"][i]} - {metric.capitalize()}@K', fontsize=14)
-            ax.legend(fontsize=10)
-            ax.grid(True, linestyle='--', alpha=0.7)
-            ax.set_xticks(epochs)
-            ax.set_ylim(bottom=0)  # Ensure y-axis starts from 0
-
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plt.savefig(fname, dpi=300, bbox_inches='tight')
-    plt.close()
+	image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
+	text_to_image_metrics_list: List[Dict[str, Dict[str, float]]],
+	topK_values: List[int],
+	fname="Retrieval_Performance_Metrics.png",
+	):
+	num_epochs = len(image_to_text_metrics_list)
+	if num_epochs < 2:
+		return
+	epochs = range(1, num_epochs + 1)
+	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
+	cmap = plt.get_cmap("tab10")  # Use a colormap with at least 10 colors
+	colors = [cmap(i) for i in range(cmap.N)]
+	markers = ['o', 's', 'D', 'v', '^', 'P', 'X', 'd', 'H', 'h']  # Different markers for each line
+	line_styles = ['-', '--', '-.', ':', '-']  # Different line styles for each metric
+	fig, axs = plt.subplots(2, 3, figsize=(20, 11), constrained_layout=True)
+	fig.suptitle("Retrieval Performance Metrics: mP@K | mAP@K | Recall@K", fontsize=16)
+	# Store legend handles and labels
+	legend_handles = []
+	legend_labels = []
+	for i, task_metrics_list in enumerate([image_to_text_metrics_list, text_to_image_metrics_list]):
+		for j, metric in enumerate(metrics):
+			ax = axs[i, j]
+			for K, color, marker, linestyle in zip(topK_values, colors, markers, line_styles):
+				values = []
+				for metrics_dict in task_metrics_list:
+					if metric in metrics_dict and str(K) in metrics_dict[metric]:
+						values.append(metrics_dict[metric][str(K)])
+					else:
+						values.append(0)
+				line, = ax.plot(
+					epochs,
+					values,
+					marker=marker,
+					markersize=6,
+					linestyle=linestyle,
+					label=f'K={K}',
+					color=color, 
+					alpha=0.8,
+					linewidth=2.0,
+				)
+				# Collect handles and labels for the legend
+				if f'K={K}' not in legend_labels:
+					legend_handles.append(line)
+					legend_labels.append(f'K={K}')
+			ax.set_xlabel('Epoch', fontsize=12)
+			ax.set_ylabel(f'{metric}@K', fontsize=12)
+			ax.set_title(f'{["Image-to-Text", "Text-to-Image"][i]} - {metric}@K', fontsize=14)
+			# ax.legend(fontsize=10, loc="upper left", bbox_to_anchor=(1, 1))
+			ax.grid(True, linestyle='--', alpha=0.7)
+			ax.set_xticks(epochs)
+			ax.set_ylim(bottom=0.0, top=1.05)
+	fig.legend(
+		legend_handles,
+		legend_labels,
+		fontsize=11,
+		loc='upper center',
+		ncol=len(topK_values),
+		bbox_to_anchor=(0.5, 0.96),
+		bbox_transform=fig.transFigure,
+		frameon=True,
+		edgecolor='black',
+		facecolor='white',
+		shadow=True,
+	)
+	plt.tight_layout(rect=[0, 0.03, 0.9, 0.95])
+	plt.savefig(fname, dpi=300, bbox_inches='tight')
+	plt.close()
 
 def evaluate_loss_and_accuracy(
 	model,
