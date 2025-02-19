@@ -968,8 +968,8 @@ def train(
 	)
 	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	plot_retrieval_metrics(
-		img2txt_metrics_list=img2txt_metrics_list,
-		txt2img_metrics_list=txt2img_metrics_list,
+		image_to_text_metrics_list=img2txt_metrics_list,
+		text_to_image_metrics_list=txt2img_metrics_list,
 		topK_values=TOP_K_VALUES,
 		fname=retrieval_metrics_fpth,
 	)
