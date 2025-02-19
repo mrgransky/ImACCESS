@@ -216,7 +216,7 @@ def compute_retrieval_metrics(
 			else:
 				if class_counts is None:
 					raise ValueError("Class counts must be provided for Text-to-Image retrieval")
-					relevant_count = class_counts[true_label]
+				relevant_count = class_counts[true_label]
 
 			recall.append(correct / relevant_count)
 
