@@ -238,15 +238,15 @@ def evaluate_retrieval_performance(
 		query_labels=image_labels,
 		candidate_labels=text_labels,
 		topK_values=topK_values,
-		mode="Image-to-Text"
+		mode="Image-to-Text",
 	)
 
 	text_to_image_metrics = compute_retrieval_metrics(
 		similarity_matrix=similarity_matrix.T,
 		query_labels=text_labels,
-		condidate_labels=image_labels,
+		candidate_labels=image_labels,
 		topK_values=topK_values,
-		mode="Text-to-Image"
+		mode="Text-to-Image",
 	)
 
 	avg_val_loss = total_loss / len(validation_loader)
