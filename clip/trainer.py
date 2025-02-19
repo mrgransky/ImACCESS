@@ -12,7 +12,6 @@ from datasets_loader import get_dataloaders
 # finetune imagenet:
 # $ nohup python -u trainer.py -d imagenet -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 2500 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
 
-
 class EarlyStopping:
 	def __init__(
 			self,
@@ -121,6 +120,65 @@ class EarlyStopping:
 	def get_stopped_epoch(self) -> int:
 		return self.stopped_epoch
 
+def evaluate_retrieval_performance(
+	model,
+	validation_loader,
+	criterion,
+	device="cuda:0",
+	topK_values=[1, 3, 5],
+	):
+	model.eval()
+	image_embeddings = []
+	image_labels = []
+	class_names = []
+	
+	# Generate text embeddings for all class names once
+	dataset = validation_loader.dataset.dataset
+	class_names = dataset.classes
+	n_classes = len(class_names)
+	
+	with torch.no_grad():
+		# Encode class names to text embeddings
+		text_inputs = clip.tokenize(class_names).to(device)
+		class_text_embeddings = model.encode_text(text_inputs)
+		class_text_embeddings = class_text_embeddings / class_text_embeddings.norm(dim=-1, keepdim=True)
+		
+		# Collect image embeddings and their labels
+		for bidx, (images, _, class_indices) in enumerate(validation_loader):
+			images = images.to(device)
+			class_indices = class_indices.to(device)
+			
+			image_embeds = model.encode_image(images)
+			image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
+			
+			image_embeddings.append(image_embeds.cpu().numpy())
+			image_labels.extend(class_indices.cpu().numpy())
+
+	# Aggregate and normalize embeddings
+	image_embeddings = np.concatenate(image_embeddings, axis=0)
+	image_labels = np.array(image_labels)
+	class_text_embeddings = class_text_embeddings.cpu().numpy()
+	
+	# Compute similarity matrix
+	similarity_matrix = image_embeddings @ class_text_embeddings.T
+
+	# Compute retrieval metrics
+	image_to_text_metrics = compute_retrieval_metrics(
+		similarity_matrix=similarity_matrix,
+		query_labels=image_labels,
+		candidate_labels=np.arange(n_classes),
+		topK_values=topK_values,
+		mode="Image-to-Text",
+	)
+	text_to_image_metrics = compute_retrieval_metrics(
+		similarity_matrix=class_text_embeddings @ image_embeddings.T,
+		query_labels=np.arange(n_classes),
+		candidate_labels=image_labels,
+		topK_values=topK_values,
+		mode="Text-to-Image",
+	)
+	return image_to_text_metrics, text_to_image_metrics
+
 def compute_retrieval_metrics(
 	similarity_matrix,
 	query_labels,
@@ -131,130 +189,43 @@ def compute_retrieval_metrics(
 	num_queries, num_candidates = similarity_matrix.shape
 	assert num_queries == len(query_labels), "Number of queries must match labels"
 	
-	if num_candidates != len(candidate_labels):
-		print(f"Warning: Mismatch in candidate labels count for {mode}. Using indices.")
-		candidate_labels = np.arange(num_candidates)
-	
 	metrics = {
-		"precision": {},
-		"recall": {},
-		"map": {},
+			"precision": {},
+			"recall": {},
+			"map": {},
 	}
 	
 	for K in topK_values:
 		top_k_indices = np.argsort(-similarity_matrix, axis=1)[:, :K]
-		retrieved_labels = candidate_labels[top_k_indices]
 		
-		# Compute precision@K
 		precision = []
 		recall = []
 		ap = []
-
 		for i in range(num_queries):
 			true_label = query_labels[i]
-			relevant_count = np.sum(candidate_labels == true_label)  # Total relevant items
-			if relevant_count == 0:
-				recall.append(0.0)
-				ap.append(0.0)
-				continue
-			retrieve_pos_indices = retrieved_labels[i] == true_label
-			correct = retrieve_pos_indices.sum()
-			precision.append(correct / K)
-			recall.append(correct / relevant_count)
+			retrieved_labels = candidate_labels[top_k_indices[i]]
+			correct = np.sum(retrieved_labels == true_label)
 			
-			# Correctly compute average precision
-			relevant_indices = np.where(retrieve_pos_indices)[0]
+			precision.append(correct / K)
+			recall.append(correct / 1.0)  # Only one relevant class per query
+			# Average Precision @ K
+			if correct == 0:
+					ap.append(0.0)
+					continue
+			relevant_indices = np.where(retrieved_labels == true_label)[0]
 			p_at = []
 			cumulative_correct = 0
 			for j, index in enumerate(relevant_indices):
-				if index < K:
-					cumulative_correct += 1
-					p_at.append(cumulative_correct / (index + 1))
-			if p_at:
-				ap.append(np.mean(p_at))
-			else:
-				ap.append(0.0)
-	
-		# Update metrics
-		metrics["precision"][K] = sum(precision) / num_queries
-		metrics["recall"][K] = sum(recall) / num_queries
-		metrics["map"][K] = sum(ap) / num_queries
+					if index < K:
+							cumulative_correct += 1
+							p_at.append(cumulative_correct / (index + 1))
+			ap.append(np.mean(p_at))
 		
-	return metrics		
-
-def evaluate_retrieval_performance(
-	model: torch.nn.Module,
-	validation_loader: DataLoader,
-	criterion,
-	device: str="cuda:0",
-	topK_values: List=[1, 3, 5],
-	):
-	model.eval()
-	total_loss = 0.0
-	image_embeddings = []
-	text_embeddings = []
-	image_labels = []
-	text_labels = []
+		metrics["precision"][K] = np.mean(precision)
+		metrics["recall"][K] = np.mean(recall)
+		metrics["map"][K] = np.mean(ap)
 	
-	with torch.no_grad():
-		for bidx, (images, labels) in enumerate(validation_loader):
-			images, labels = images.to(device), labels.to(device)
-			batch_size = images.size(0)
-			
-			# Forward pass to get embeddings
-			image_embeds = model.encode_image(images)
-			text_embeds = model.encode_text(labels)
-			
-			image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
-			text_embeds = text_embeds / text_embeds.norm(dim=-1, keepdim=True)
-			
-			image_embeddings.append(image_embeds.cpu().numpy())
-			text_embeddings.append(text_embeds.cpu().numpy())
-			
-			image_labels.extend(labels.cpu().numpy())
-			text_labels.extend(labels.cpu().numpy())
-			
-			# Compute loss (for logging purposes)
-			logits_per_image = 100.0 * image_embeds @ text_embeds.T
-			logits_per_text = 100.0 * text_embeds @ image_embeds.T
-			correct_labels = torch.arange(start=0, end=batch_size, dtype=torch.long, device=device)
-			loss_img = criterion(logits_per_image, correct_labels)
-			loss_txt = criterion(logits_per_text, correct_labels)
-			batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
-			total_loss += batch_loss
-
-	# Aggregate embeddings and labels
-	image_embeddings = np.concatenate(image_embeddings, axis=0)
-	text_embeddings = np.concatenate(text_embeddings, axis=0)
-	image_labels = np.array(image_labels)
-	text_labels = np.array(text_labels)
-
-	# Compute similarity matrix
-	similarity_matrix = image_embeddings @ text_embeddings.T
-
-	# Compute retrieval metrics
-	image_to_text_metrics = compute_retrieval_metrics(
-		similarity_matrix=similarity_matrix,
-		query_labels=image_labels,
-		candidate_labels=text_labels,
-		topK_values=topK_values,
-		mode="Image-to-Text",
-	)
-
-	text_to_image_metrics = compute_retrieval_metrics(
-		similarity_matrix=similarity_matrix.T,
-		query_labels=text_labels,
-		candidate_labels=image_labels,
-		topK_values=topK_values,
-		mode="Text-to-Image",
-	)
-
-	avg_val_loss = total_loss / len(validation_loader)
-	return (
-		avg_val_loss,
-		image_to_text_metrics,
-		text_to_image_metrics,
-	)
+	return metrics
 
 def evaluate_loss_and_accuracy(
 	model,
