@@ -12,6 +12,7 @@ from datasets_loader import get_dataloaders
 # finetune imagenet:
 # $ nohup python -u trainer.py -d imagenet -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 2500 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
 
+
 class EarlyStopping:
 	def __init__(
 			self,
@@ -268,13 +269,7 @@ def evaluate_loss_and_accuracy(
 	with torch.no_grad():
 		for bidx, (images, labels) in enumerate(validation_loader):
 			images, labels = images.to(device), labels.to(device)
-			print(f"Batch {bidx+1}/{num_batches}")
-			print(f"Images shape: {images.shape}")
-			print(f"Labels shape: {labels.shape}")
-			print(f"Labels: {labels}")
 			batch_size = images.size(0)
-			print(f"Batch size: {batch_size}")
-			print()
 
 			# Forward pass:
 			logits_per_image, logits_per_text = model(images, labels) # [batch_size, batch_size]
@@ -316,7 +311,7 @@ def evaluate_loss_and_accuracy(
 			cosine_similarities.extend(cos_sim)
 
 	# Compute average metrics
-	print(f"Total Samples: {total_samples} | validation_loader: {len(validation_loader)} | batch_size: {batch_size} | validation_loader * batch_size: {len(validation_loader) * batch_size}")
+	print(f"Total Samples: {total_samples} | validation_loader: {len(validation_loader)}")
 	print(f"val_loader contains {len(validation_loader.dataset)} samples")
 	avg_val_loss = total_loss / num_batches
 	img2txt_acc = total_img2txt_correct / total_samples
