@@ -125,7 +125,7 @@ def compute_retrieval_metrics(
 	similarity_matrix,
 	query_labels,
 	candidate_labels,
-	topK_values,
+	topK_values: List[int] = [1, 3, 5],
 	mode="Image-to-Text"
 	):
 	num_queries, num_candidates = similarity_matrix.shape
@@ -180,7 +180,7 @@ def compute_retrieval_metrics(
 		metrics["recall"][K] = sum(recall) / num_queries
 		metrics["map"][K] = sum(ap) / num_queries
 		
-		return metrics		
+	return metrics		
 
 def evaluate_retrieval_performance(
 	model,
