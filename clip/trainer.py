@@ -319,9 +319,6 @@ def evaluate_loss_and_accuracy(
 
 	mean_reciprocal_rank = np.mean(reciprocal_ranks)
 	cosine_sim_mean = np.mean(cosine_similarities)
-	avg_precision = np.mean(precision_list)
-	avg_recall = np.mean(recall_list)
-	avg_f1 = np.mean(f1_list)
 
 	return (
 		avg_val_loss,
@@ -330,9 +327,6 @@ def evaluate_loss_and_accuracy(
 		img2txt_topk_accuracy,
 		mean_reciprocal_rank,
 		cosine_sim_mean,
-		avg_precision,
-		avg_recall,
-		avg_f1,
 	)
 
 def plot_loss_accuracy(
@@ -713,10 +707,7 @@ def finetune(
 			txt2img_val_acc,
 			img2txt_topk_accuracy,
 			mean_reciprocal_rank, 
-			cosine_sim_mean, 
-			avg_precision, 
-			avg_recall, 
-			avg_f1
+			cosine_sim_mean,
 		) = evaluate_loss_and_accuracy(
 			model=model,
 			validation_loader=validation_loader,
@@ -989,10 +980,10 @@ def main():
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
 	parser.add_argument('--epochs', '-e', type=int, default=12, help='Number of epochs')
-	parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
+	parser.add_argument('--batch_size', '-bs', type=int, default=512, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-4]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 1e-3]')
-	parser.add_argument('--print_every', type=int, default=150, help='Print loss')
+	parser.add_argument('--print_every', type=int, default=250, help='Print loss')
 	parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar100', help='Choose dataset (CIFAR10/cifar100)')
 	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='finetune', help='Choose mode (train/finetune)')
