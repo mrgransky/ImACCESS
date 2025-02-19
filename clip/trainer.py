@@ -157,7 +157,7 @@ def compute_retrieval_metrics(
 				recall.append(0.0)
 				ap.append(0.0)
 				continue
-			
+			retrieve_pos_indices = retrieved_labels[i] == true_label
 			correct = retrieve_pos_indices.sum()
 			precision.append(correct / K)
 			recall.append(correct / relevant_count)
