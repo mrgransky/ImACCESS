@@ -149,33 +149,38 @@ def compute_retrieval_metrics(
 		precision = []
 		recall = []
 		ap = []
-		
+
 		for i in range(num_queries):
 			true_label = query_labels[i]
-			retrieve_pos_indices = retrieved_labels[i] == true_label
-			correct = retrieve_pos_indices.sum()
-			
-			# Precision@K
-			prec = correct / K
-			precision.append(prec)
-			
-			# Recall@K
-			# Assuming each query has only one ground truth label
-			recall.append(prec)
-			
-			# Average Precision@K
-			if correct == 0:
+			relevant_count = np.sum(candidate_labels == true_label)  # Total relevant items
+			if relevant_count == 0:
+				recall.append(0.0)
 				ap.append(0.0)
 				continue
+			
+			correct = retrieve_pos_indices.sum()
+			precision.append(correct / K)
+			recall.append(correct / relevant_count)
+			
+			# Correctly compute average precision
 			relevant_indices = np.where(retrieve_pos_indices)[0]
-			p_at = np.array([min(j+1, K) / (j+1) for j in relevant_indices])
-			ap.append(p_at.mean())
-		
+			p_at = []
+			cumulative_correct = 0
+			for j, index in enumerate(relevant_indices):
+				if index < K:
+					cumulative_correct += 1
+					p_at.append(cumulative_correct / (index + 1))
+			if p_at:
+				ap.append(np.mean(p_at))
+			else:
+				ap.append(0.0)
+	
+		# Update metrics
 		metrics["precision"][K] = sum(precision) / num_queries
 		metrics["recall"][K] = sum(recall) / num_queries
 		metrics["map"][K] = sum(ap) / num_queries
-	
-	return metrics
+		
+		return metrics		
 
 def evaluate_retrieval_performance(
 	model,
@@ -229,23 +234,24 @@ def evaluate_retrieval_performance(
 
 	# Compute retrieval metrics
 	image_to_text_metrics = compute_retrieval_metrics(
-		similarity_matrix,
-		image_labels,
-		text_labels,
-		topK_values,
+		similarity_matrix=similarity_matrix,
+		query_labels=image_labels,
+		candidate_labels=text_labels,
+		topK_values=topK_values,
 		mode="Image-to-Text"
 	)
 
 	text_to_image_metrics = compute_retrieval_metrics(
-		similarity_matrix.T,
-		text_labels,
-		image_labels,
-		topK_values,
+		similarity_matrix=similarity_matrix.T,
+		query_labels=text_labels,
+		condidate_labels=image_labels,
+		topK_values=topK_values,
 		mode="Text-to-Image"
 	)
 
+	avg_val_loss = total_loss / len(validation_loader)
 	return (
-		total_loss / len(validation_loader),
+		avg_val_loss,
 		image_to_text_metrics,
 		text_to_image_metrics,
 	)
