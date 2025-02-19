@@ -183,11 +183,11 @@ def compute_retrieval_metrics(
 	return metrics		
 
 def evaluate_retrieval_performance(
-	model,
-	validation_loader,
+	model: torch.nn.Module,
+	validation_loader: DataLoader,
 	criterion,
-	device="cuda:0",
-	topK_values=[1, 3, 5],
+	device: str="cuda:0",
+	topK_values: List=[1, 3, 5],
 	):
 	model.eval()
 	total_loss = 0.0
@@ -273,12 +273,12 @@ def evaluate_loss_and_accuracy(
 	reciprocal_ranks = []
 	cosine_similarities = []
 	with torch.no_grad():
-		for bidx, (images, labels) in enumerate(validation_loader):
-			images, labels = images.to(device), labels.to(device)
+		for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
+			images, tokenized_labels = images.to(device), tokenized_labels.to(device) # [batch_size, 3, 224, 224], [batch_size, 77]
 			batch_size = images.size(0)
 
 			# Forward pass:
-			logits_per_image, logits_per_text = model(images, labels) # [batch_size, batch_size]
+			logits_per_image, logits_per_text = model(images, tokenized_labels) # [batch_size, batch_size]
 
 			# Ground Truth:
 			correct_labels = torch.arange(start=0, end=batch_size, dtype=torch.long, device=device)
@@ -846,11 +846,12 @@ def train(
 		model.train()
 		print(f"Epoch [{epoch+1}/{num_epochs}]")
 		epoch_loss = 0.0
-		for bidx, (images, labels) in enumerate(train_loader):
+		for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
+			# torch.Size([64, 3, 224, 224]), torch.Size([64, 77]), torch.Size([64])
 			optimizer.zero_grad() # Clear gradients from previous batch
-			images, labels = images.to(device), labels.to(device) # torch.Size([b, 3, 224, 224]), torch.Size([b, 77])
+			images, tokenized_labels = images.to(device), tokenized_labels.to(device) # torch.Size([b, 3, 224, 224]), torch.Size([b, 77])
 			with torch.amp.autocast(device_type=device.type): # # Automatic Mixed Precision (AMP) backpropagation:
-				logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
+				logits_per_image, logits_per_text = model(images, tokenized_labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
 				ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
 				loss_img = criterion(logits_per_image, ground_truth)
 				loss_txt = criterion(logits_per_text, ground_truth)
@@ -983,7 +984,11 @@ def main():
 		USER=os.environ.get('USER'),
 	)
 	print(f"Train Loader: {len(train_loader)} batches, Validation Loader: {len(validation_loader)} batches")
+	for bi, batch in enumerate(train_loader):
+		print(f"Batch {bi+1}/{len(train_loader)}: contains {len(batch)} element(s): {[elem.shape for elem in batch]}")
+		break
 	# visualize_(dataloader=train_loader, num_samples=5)
+	# return
 	if args.mode == 'finetune':
 		finetune(
 			model=model,

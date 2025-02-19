@@ -109,8 +109,8 @@ def get_dataloaders(
 	trainset = IMAGE_TEXT_DATASET(dataset=train_dataset,)
 	validset = IMAGE_TEXT_DATASET(dataset=validation_dataset,)
 	
-	print(f"{trainset}")
-	print(f"{validset}")
+	# print(f"{trainset}")
+	# print(f"{validset}")
 
 	train_loader = DataLoader(
 		dataset=trainset,
@@ -130,20 +130,34 @@ def get_dataloaders(
 	return train_loader, validation_loader
 
 class IMAGE_TEXT_DATASET(Dataset):
-	def __init__(self, dataset, transformer=None,):
+	def __init__(self, dataset):
 		self.dataset = dataset
-		self.labels = clip.tokenize(texts=[dataset.classes[lbl_idx] for i, (img, lbl_idx) in enumerate(self.dataset)])
-
+		self.label_names = dataset.classes  # Class names like 'airplane', 'automobile', etc.
+	
 	def __getitem__(self, index):
-		img = self.dataset[index][0]
-		lbl = self.labels[index]
-		return img, lbl
-
+		img, lbl_idx = self.dataset[index]
+		label = self.label_names[lbl_idx]  # Use label name as text prompt
+		lbl_tokenized = clip.tokenize(texts=[label]).squeeze(0)  # Tokenize the class name
+		return img, lbl_tokenized, lbl_idx
+	
 	def __len__(self):
 		return len(self.dataset)
-	
-	def __repr__(self):
-		return f"CustomizedDataset\n{self.dataset}\nlabels={self.labels}"
+
+# class IMAGE_TEXT_DATASET(Dataset):
+# 	def __init__(self, dataset):
+# 		self.dataset = dataset
+# 		self.tokenized_labels = clip.tokenize(texts=[dataset.classes[lbl_idx] for i, (img, lbl_idx) in enumerate(self.dataset)])
+
+# 	def __getitem__(self, index):
+# 		img = self.dataset[index][0]
+# 		tokenized_lbl = self.tokenized_labels[index]
+# 		return img, tokenized_lbl
+
+# 	def __len__(self):
+# 		return len(self.dataset)
+
+# 	def __repr__(self):
+# 		return f"IMAGE_TEXT_DATASET\n{self.dataset}\nlabels={self.tokenized_labels.shape}"
 
 class ImageNet_1K_LT(Dataset):
 	"""
