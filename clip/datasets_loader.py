@@ -109,9 +109,6 @@ def get_dataloaders(
 	trainset = IMAGE_TEXT_DATASET(dataset=train_dataset,)
 	validset = IMAGE_TEXT_DATASET(dataset=validation_dataset,)
 	
-	# print(f"{trainset}")
-	# print(f"{validset}")
-
 	train_loader = DataLoader(
 		dataset=trainset,
 		batch_size=batch_size,
@@ -142,22 +139,6 @@ class IMAGE_TEXT_DATASET(Dataset):
 	
 	def __len__(self):
 		return len(self.dataset)
-
-# class IMAGE_TEXT_DATASET(Dataset):
-# 	def __init__(self, dataset):
-# 		self.dataset = dataset
-# 		self.tokenized_labels = clip.tokenize(texts=[dataset.classes[lbl_idx] for i, (img, lbl_idx) in enumerate(self.dataset)])
-
-# 	def __getitem__(self, index):
-# 		img = self.dataset[index][0]
-# 		tokenized_lbl = self.tokenized_labels[index]
-# 		return img, tokenized_lbl
-
-# 	def __len__(self):
-# 		return len(self.dataset)
-
-# 	def __repr__(self):
-# 		return f"IMAGE_TEXT_DATASET\n{self.dataset}\nlabels={self.tokenized_labels.shape}"
 
 class ImageNet_1K_LT(Dataset):
 	"""

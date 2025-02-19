@@ -175,6 +175,7 @@ def evaluate_retrieval_performance(
 		candidate_labels=image_labels,
 		topK_values=topK_values,
 		mode="Text-to-Image",
+		class_counts=np.bincount(image_labels) # Count number of occurrences of each value in array of non-negative ints.
 	)
 	return image_to_text_metrics, text_to_image_metrics
 
@@ -183,7 +184,8 @@ def compute_retrieval_metrics(
 	query_labels,
 	candidate_labels,
 	topK_values: List[int] = [1, 3, 5],
-	mode="Image-to-Text"
+	mode="Image-to-Text",
+	class_counts: np.ndarray = None,
 	):
 	num_queries, num_candidates = similarity_matrix.shape
 	assert num_queries == len(query_labels), "Number of queries must match labels"
@@ -205,8 +207,19 @@ def compute_retrieval_metrics(
 			retrieved_labels = candidate_labels[top_k_indices[i]]
 			correct = np.sum(retrieved_labels == true_label)
 			
+			# Precision @ K
 			precision.append(correct / K)
-			recall.append(correct / 1.0)  # Only one relevant class per query
+			
+			# Recall @ K
+			if mode == "Image-to-Text":
+				relevant_count = 1  # Each image has one correct class
+			else:
+				if class_counts is None:
+					raise ValueError("Class counts must be provided for Text-to-Image retrieval")
+					relevant_count = class_counts[true_label]
+
+			recall.append(correct / relevant_count)
+
 			# Average Precision @ K
 			if correct == 0:
 					ap.append(0.0)
