@@ -23,6 +23,9 @@ args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
 print(args)
 
+# run in local:
+# $ nohup python -u history_clip_trainer.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 128 -e 32 -lr 1e-5 -wd 1e-3 --print_every 200 -nw 12 -m "train" -md "ViT-B/32" > logs/europeana_train.out &
+
 # run in pouta:
 # train from scratch:
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 256 -e 32 -lr 1e-5 -wd 1e-3 --print_every 200 -nw 40 --device "cuda:2" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_train.out &

@@ -20,119 +20,6 @@ USER = os.environ.get('USER')
 OUTPUT_DIRECTORY = os.path.join(args.dataset, "outputs")
 os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
-def _convert_image_to_rgb(image):
-	return image.convert("RGB")
-
-def load_model(
-	model_name:str="ViT-B/32",
-	device:str="cuda:0",
-	):
-	model, preprocess = clip.load(model_name, device=device)
-	model = model.float()
-	input_resolution = model.visual.input_resolution
-	context_length = model.context_length
-	vocab_size = model.vocab_size
-	print("Model parameters:", f"{np.sum([int(np.prod(p.shape)) for p in model.parameters()]):,}")
-	print("Input resolution:", input_resolution)
-	print("Context length:", context_length)
-	print("Vocab size:", vocab_size)
-	return model, preprocess
-
-def get_dataset_transform(dname:str="CIFAR10"):
-	dname = dname.upper()
-	mean_std_dict = {
-		'CIFAR10': ((0.49139968, 0.48215827, 0.44653124), (0.24703233, 0.24348505, 0.26158768)),
-		'CIFAR100': ((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
-		'IMAGENET': ((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-		'CINIC10': ((0.128, 0.109, 0.075), (0.202, 0.185, 0.167)),
-	}
-	if dname in mean_std_dict.keys():
-		mean = mean_std_dict[dname][0]
-		std = mean_std_dict[dname][1]
-		return T.Compose([
-			T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
-			T.CenterCrop(224),
-			_convert_image_to_rgb,
-			T.ToTensor(),
-			T.Normalize(mean=mean, std=std),
-		])
-	else:
-		raise ValueError(f"Invalid dataset name: {dname}. Available: [CIFAR10, CIFAR100, IMAGENET, CINIC10]")
-
-def get_dataset(
-	dname:str="CIFAR10",
-	transorm=None,
-	USER:str="farid",
-	):
-	if transorm is None:
-		transorm = get_dataset_transform(dname=dname)
-	dname = dname.upper()
-	ddir = {
-		"farid": f'/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/{dname}',
-		"ubuntu": f'/media/volume/ImACCESS/WW_DATASETs/{dname}',
-		"alijanif": f'/scratch/project_2004072/ImACCESS/WW_DATASETs/{dname}',
-	}
-	if dname == 'CIFAR100':
-		train_dataset = CIFAR100(
-			root=os.path.expanduser("~/.cache"), 
-			train=True,
-			download=True,
-			transform=transorm,
-		)
-		validation_dataset = CIFAR100(
-			root=os.path.expanduser("~/.cache"), 
-			train=False,
-			download=True,
-			transform=transorm
-		)
-	elif dname == 'CIFAR10':
-		train_dataset = CIFAR10(
-			root=os.path.expanduser("~/.cache"), 
-			train=True,
-			download=True,
-			transform=transorm,
-		)
-		validation_dataset = CIFAR10(
-			root=os.path.expanduser("~/.cache"), 
-			train=False,
-			download=True,
-			transform=transorm,
-		)
-	elif dname == 'IMAGENET':
-		train_dataset = ImageNet(
-			root=ddir.get(USER),
-			train=True,
-			transform=transorm
-		)
-		validation_dataset = ImageNet(
-			root=ddir.get(USER),
-			train=False,
-			transform=transorm
-		)
-	elif dname == 'CINIC10':
-		train_dataset = CINIC10(
-			root=ddir.get(USER),
-			train=True,
-			download=True,
-			transform=transorm
-		)
-		validation_dataset = CINIC10(
-			root=ddir.get(USER),
-			train=False,
-			download=True,
-			transform=transorm
-		)
-	else:
-		raise ValueError(f"Invalid dataset name: {dname}. Available: [CIFAR10, cifar100, IMAGENET, CINIC10]")
-	print(train_dataset)
-	print(validation_dataset)
-	print(
-		f"Train {type(train_dataset)} {len(train_dataset)}\n"
-		f"Validation {type(validation_dataset)} {len(validation_dataset)}"
-	)
-	print("*"*80)
-	return train_dataset, validation_dataset
-
 def get_features(
 	dataset,
 	model,
@@ -162,28 +49,8 @@ def get_features(
 			if (i+1) % 50 == 0:
 				torch.cuda.empty_cache() # Clear CUDA cache after each batch
 
-	# # Start PyTorch profiler
-	# with profile(
-	# 	activities=[
-	# 		ProfilerActivity.CPU,
-	# 		ProfilerActivity.CUDA  # Profiling both CPU and GPU activities
-	# 	],
-	# 	on_trace_ready=tensorboard_trace_handler(os.path.join(OUTPUT_DIRECTORY, "log")),  # Save traces for TensorBoard
-	# 	record_shapes=True,  # Record tensor shapes
-	# 	with_stack=True       # Record stack traces for debugging
-	# ) as prof:
-	# 	with torch.no_grad():
-	# 		for i, (images, labels) in enumerate(tqdm(dataloader, desc="Extracting features")):
-	# 			images = images.to(device, non_blocking=True)  # non_blocking for potential faster async transfers
-	# 			features = model.encode_image(images).cpu() # <class 'torch.Tensor'> torch.Size([b, 512])
-	# 			all_features.append(features)
-	# 			all_labels.append(labels)
-	# 			if (i+1) % 100 == 0:
-	# 				torch.cuda.empty_cache() # Clear CUDA cache after each batch
 	all_features = torch.cat(all_features).numpy()
 	all_labels = torch.cat(all_labels).numpy()
-	# Print profiler results
-	# print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
 	return all_features, all_labels
 
 def get_linear_prob_zero_shot_accuracy(
@@ -481,13 +348,13 @@ def get_text_to_images_precision_recall_at_(
 	labels = dataset.classes
 	print(f"Labels: {len(labels)}")
 
-	print(f"Encoding labels...")
+	print(f"Encoding labels", end="\t")
 	t0 = time.time()
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device) # <class 'torch.Tensor'> torch.Size([num_lbls, 77])
 	with torch.no_grad():
 		tokenized_labels_features = model.encode_text(tokenized_labels_tensor) # <class 'torch.Tensor'> torch.Size([num_lbls, 512])
 		tokenized_labels_features /= tokenized_labels_features.norm(dim=-1, keepdim=True)
-	print(f"Elapsed_t: {time.time()-t0:.2f} sec => tokenized_labels_features: {tokenized_labels_features.shape}")
+	print(f"Elapsed_t: {time.time()-t0:.2f} s | tokenized_labels_features: {tokenized_labels_features.shape}")
 
 	# Check if the image features file exists
 	image_features_file = os.path.join(OUTPUT_DIRECTORY, 'validation_image_features.gz')
@@ -625,15 +492,12 @@ def get_image_to_images(
 @measure_execution_time
 def main():
 	print(clip.available_models())
-
-	model, preprocess = load_model(
-		model_name=args.model_name, 
-		device=device,
-	)
+	model, preprocess = clip.load(args.model_name, device=args.device) # training or finetuning => jit=False
+	model = model.float() # Convert model parameters to FP32
 
 	train_dataset, valid_dataset = get_dataset(
 		dname=args.dataset,
-		# transorm=preprocess,
+		# transorm=preprocess, # from CLIP
 		USER=USER,
 	)
 

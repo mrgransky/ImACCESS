@@ -1,6 +1,5 @@
 from utils import *
-
-
+from datasets_loader import get_dataloaders
 # train cifar100 from scratch:
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 50 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
@@ -121,12 +120,141 @@ class EarlyStopping:
 	def get_stopped_epoch(self) -> int:
 		return self.stopped_epoch
 
-def evaluate(
+def compute_retrieval_metrics(
+	similarity_matrix,
+	query_labels,
+	candidate_labels,
+	topK_values,
+	mode="Image-to-Text"
+):
+	num_queries, num_candidates = similarity_matrix.shape
+	assert num_queries == len(query_labels), "Number of queries must match labels"
+	
+	if num_candidates != len(candidate_labels):
+		print(f"Warning: Mismatch in candidate labels count for {mode}. Using indices.")
+		candidate_labels = np.arange(num_candidates)
+	
+	metrics = {
+		"precision": {},
+		"recall": {},
+		"map": {},
+	}
+	
+	for K in topK_values:
+		top_k_indices = np.argsort(-similarity_matrix, axis=1)[:, :K]
+		retrieved_labels = candidate_labels[top_k_indices]
+		
+		# Compute precision@K
+		precision = []
+		recall = []
+		ap = []
+		
+		for i in range(num_queries):
+			true_label = query_labels[i]
+			retrieve_pos_indices = retrieved_labels[i] == true_label
+			correct = retrieve_pos_indices.sum()
+			
+			# Precision@K
+			prec = correct / K
+			precision.append(prec)
+			
+			# Recall@K
+			# Assuming each query has only one ground truth label
+			recall.append(prec)
+			
+			# Average Precision@K
+			if correct == 0:
+				ap.append(0.0)
+				continue
+			relevant_indices = np.where(retrieve_pos_indices)[0]
+			p_at = np.array([min(j+1, K) / (j+1) for j in relevant_indices])
+			ap.append(p_at.mean())
+		
+		metrics["precision"][K] = sum(precision) / num_queries
+		metrics["recall"][K] = sum(recall) / num_queries
+		metrics["map"][K] = sum(ap) / num_queries
+	
+	return metrics
+
+def evaluate_retrieval_performance(
 	model,
 	validation_loader,
 	criterion,
 	device="cuda",
-	topK_values=[1, 3, 5],
+	topK_values=[1, 3, 5, 10, 20],
+):
+	model.eval()
+	total_loss = 0.0
+	image_embeddings = []
+	text_embeddings = []
+	image_labels = []
+	text_labels = []
+	
+	with torch.no_grad():
+		for bidx, (images, labels) in enumerate(validation_loader):
+			images, labels = images.to(device), labels.to(device)
+			batch_size = images.size(0)
+			
+			# Forward pass to get embeddings
+			image_embeds = model.encode_image(images)
+			text_embeds = model.encode_text(labels)
+			
+			image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
+			text_embeds = text_embeds / text_embeds.norm(dim=-1, keepdim=True)
+			
+			image_embeddings.append(image_embeds.cpu().numpy())
+			text_embeddings.append(text_embeds.cpu().numpy())
+			
+			image_labels.extend(labels.cpu().numpy())
+			text_labels.extend(labels.cpu().numpy())
+			
+			# Compute loss (for logging purposes)
+			logits_per_image = 100.0 * image_embeds @ text_embeds.T
+			logits_per_text = 100.0 * text_embeds @ image_embeds.T
+			correct_labels = torch.arange(start=0, end=batch_size, dtype=torch.long, device=device)
+			loss_img = criterion(logits_per_image, correct_labels)
+			loss_txt = criterion(logits_per_text, correct_labels)
+			batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
+			total_loss += batch_loss
+
+	# Aggregate embeddings and labels
+	image_embeddings = np.concatenate(image_embeddings, axis=0)
+	text_embeddings = np.concatenate(text_embeddings, axis=0)
+	image_labels = np.array(image_labels)
+	text_labels = np.array(text_labels)
+
+	# Compute similarity matrix
+	similarity_matrix = image_embeddings @ text_embeddings.T
+
+	# Compute retrieval metrics
+	image_to_text_metrics = compute_retrieval_metrics(
+		similarity_matrix,
+		image_labels,
+		text_labels,
+		topK_values,
+		mode="Image-to-Text"
+	)
+
+	text_to_image_metrics = compute_retrieval_metrics(
+		similarity_matrix.T,
+		text_labels,
+		image_labels,
+		topK_values,
+		mode="Text-to-Image"
+	)
+
+	return (
+		total_loss / len(validation_loader),
+		image_to_text_metrics,
+		text_to_image_metrics,
+	)
+
+def evaluate_loss_and_accuracy(
+	model,
+	validation_loader: DataLoader,
+	criterion,
+	device: str="cuda",
+	topK_values: List=[1, 3, 5],
 	):
 	model.eval()
 	total_loss = 0
@@ -137,7 +265,6 @@ def evaluate(
 	img2txt_topk_accuracy = {k: 0 for k in topK_values}
 	reciprocal_ranks = []
 	cosine_similarities = []
-	precision_list, recall_list, f1_list = [], [], []
 	with torch.no_grad():
 		for bidx, (images, labels) in enumerate(validation_loader):
 			images, labels = images.to(device), labels.to(device)
@@ -181,14 +308,6 @@ def evaluate(
 			# Cosine Similarity
 			cos_sim = F.cosine_similarity(logits_per_image, logits_per_text, dim=1).cpu().numpy()
 			cosine_similarities.extend(cos_sim)
-
-			# Precision, Recall, F1
-			precision = (pred_lbl_per_img_idxs == correct_labels).sum().item() / pred_lbl_per_img_idxs.size(0)
-			recall = (pred_img_per_lbl_idxs == correct_labels).sum().item() / correct_labels.size(0)
-			f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-			precision_list.append(precision)
-			recall_list.append(recall)
-			f1_list.append(f1)
 
 	# Compute average metrics
 	print(f"Total Samples: {total_samples} | validation_loader: {len(validation_loader)} | batch_size: {batch_size} | validation_loader * batch_size: {len(validation_loader) * batch_size}")
@@ -598,7 +717,7 @@ def finetune(
 			avg_precision, 
 			avg_recall, 
 			avg_f1
-		) = evaluate(
+		) = evaluate_loss_and_accuracy(
 			model=model,
 			validation_loader=validation_loader,
 			criterion=criterion, 
@@ -774,6 +893,7 @@ def train(
 			epoch_loss += total_loss.item()
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
+		# Compute traditional loss/accuracy metrics on validation set
 		(
 			avg_valid_loss,
 			img2txt_val_acc,
@@ -784,7 +904,7 @@ def train(
 			avg_precision,
 			avg_recall,
 			avg_f1
-		) = evaluate(
+		) = evaluate_loss_and_accuracy(
 			model=model,
 			validation_loader=validation_loader,
 			criterion=criterion,
@@ -807,6 +927,21 @@ def train(
 			f'\tValid Acc [text retrieval per image]: {img2txt_val_acc} '
 			f'[image retrieval per text]: {txt2img_val_acc}'
 		)
+		# Compute retrieval-based metrics
+		(
+			avg_loss_new,
+			img2txt_metrics,
+			txt2img_metrics
+		) = evaluate_retrieval_performance(
+			model=model,
+			validation_loader=validation_loader,
+			device=device,
+		)
+		print(f"Validation loss[retrieval-based]: {avg_loss_new:.9f}")
+		print(f"Image-to-text retrieval metrics:")
+		print(json.dumps(img2txt_metrics, indent=4, ensure_ascii=False))
+		print(f"Text-to-image retrieval metrics:")
+		print(json.dumps(txt2img_metrics, indent=4, ensure_ascii=False))
 		# ############################## Early stopping ##############################
 		if early_stopping.should_stop(avg_valid_loss, model, epoch):
 			print(
@@ -872,17 +1007,15 @@ def main():
 	print(args)
 	set_seeds()
 	print(clip.available_models())
-	
+
 	model, preprocess = clip.load(args.model_name, device=args.device, jit=False) # training or finetuning => jit=False
 	model = model.float() # Convert model parameters to FP32
 
-	train_dataset, validation_dataset = get_dataset(dname=args.dataset)
 	train_loader, validation_loader = get_dataloaders(
-		train_dataset=train_dataset, 
-		valid_dataset=validation_dataset, 
-		preprocess=preprocess,
+		dataset_name=args.dataset,
 		batch_size=args.batch_size,
 		nw=args.num_workers,
+		USER=os.environ.get('USER'),
 	)
 	print(f"Train Loader: {len(train_loader)} batches, Validation Loader: {len(validation_loader)} batches")
 	# visualize_(dataloader=train_loader, num_samples=5)

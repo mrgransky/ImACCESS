@@ -19,15 +19,14 @@ class HistoricalArchivesDataset(Dataset):
 					T.Resize((224, 224)),
 					T.ToTensor(),
 					T.Normalize(mean=mean, std=std),
-					# T.Normalize(
-					# 	(0.48145466, 0.4578275, 0.40821073), 
-					# 	(0.26862954, 0.26130258, 0.27577711)
-					# )
 				]
 			)
 
 	def __len__(self):
 		return len(self.data_frame)
+
+	def __repr__(self):
+		return f"HistoricalArchivesDataset\n{self.data_frame}\nlabels={self.descriptions}\ntransform:{self.transform}" # TODO: add more details (mean, std, etc.)
 
 	def __getitem__(self, idx):
 		doc_image_path = self.images[idx]
