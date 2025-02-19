@@ -241,40 +241,45 @@ def compute_retrieval_metrics(
 	return metrics
 
 def plot_retrieval_metrics(
-	image_to_text_metrics_list: List[Dict[str, Dict[str, float]]], # List of metrics for each epoch
-	text_to_image_metrics_list: List[Dict[str, Dict[str, float]]], # List of metrics for each epoch
-	topK_values: List[int],
-	fname="Retrieval_Performance_Metrics.png",
-	):
-	num_epochs = len(image_to_text_metrics_list)
-	if num_epochs < 2:
-		return
-	
-	epochs = range(1, num_epochs + 1)
-	metrics = ['precision', 'map', 'recall']
-	colors = ['blue', 'green', 'red', 'purple', 'orange']
-	
-	fig, axs = plt.subplots(2, 3, figsize=(20, 12))
-	fig.suptitle("Retrieval Performance Metrics Over Epochs", fontsize=16)
-	
-	for i, task_metrics_list in enumerate([image_to_text_metrics_list, text_to_image_metrics_list]):
-		for j, metric in enumerate(metrics):
-			ax = axs[i, j]
-			for K, color in zip(topK_values, colors):
-				values = [metrics_dict[metric][str(K)] for metrics_dict in task_metrics_list]
-				ax.plot(epochs, values, marker='o', label=f'K={K}', color=color)
-			
-			ax.set_xlabel('Epoch', fontsize=12)
-			ax.set_ylabel(f'Mean {metric.capitalize()}@K', fontsize=12)
-			ax.set_title(f'{["Image-to-Text", "Text-to-Image"][i]} - {metric.capitalize()}@K', fontsize=14)
-			ax.legend(fontsize=10)
-			ax.grid(True, linestyle='--', alpha=0.7)
-			ax.set_xticks(epochs)
-			ax.set_ylim(bottom=0)  # Ensure y-axis starts from 0
+    image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
+    text_to_image_metrics_list: List[Dict[str, Dict[str, float]]],
+    topK_values: List[int],
+    fname="Retrieval_Performance_Metrics.png",
+):
+    num_epochs = len(image_to_text_metrics_list)
+    if num_epochs < 2:
+        return
+    
+    epochs = range(1, num_epochs + 1)
+    metrics = ['precision', 'map', 'recall']
+    colors = ['blue', 'green', 'red', 'purple', 'orange']
+    
+    fig, axs = plt.subplots(2, 3, figsize=(20, 12))
+    fig.suptitle("Retrieval Performance Metrics Over Epochs", fontsize=16)
+    
+    for i, task_metrics_list in enumerate([image_to_text_metrics_list, text_to_image_metrics_list]):
+        for j, metric in enumerate(metrics):
+            ax = axs[i, j]
+            for K, color in zip(topK_values, colors):
+                values = []
+                for metrics_dict in task_metrics_list:
+                    if metric in metrics_dict and str(K) in metrics_dict[metric]:
+                        values.append(metrics_dict[metric][str(K)])
+                    else:
+                        values.append(0)  # or None if you prefer to show gaps
+                ax.plot(epochs, values, marker='o', label=f'K={K}', color=color)
+            
+            ax.set_xlabel('Epoch', fontsize=12)
+            ax.set_ylabel(f'Mean {metric.capitalize()}@K', fontsize=12)
+            ax.set_title(f'{["Image-to-Text", "Text-to-Image"][i]} - {metric.capitalize()}@K', fontsize=14)
+            ax.legend(fontsize=10)
+            ax.grid(True, linestyle='--', alpha=0.7)
+            ax.set_xticks(epochs)
+            ax.set_ylim(bottom=0)  # Ensure y-axis starts from 0
 
-	plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-	plt.savefig(fname, dpi=300, bbox_inches='tight')
-	plt.close()
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.savefig(fname, dpi=300, bbox_inches='tight')
+    plt.close()
 
 def evaluate_loss_and_accuracy(
 	model,
