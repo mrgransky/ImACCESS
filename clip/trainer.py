@@ -161,7 +161,6 @@ def evaluate_retrieval_performance(
 	# Compute similarity matrix
 	similarity_matrix = image_embeddings @ class_text_embeddings.T
 
-	# Compute retrieval metrics
 	image_to_text_metrics = compute_retrieval_metrics(
 		similarity_matrix=similarity_matrix,
 		query_labels=image_labels,
@@ -169,6 +168,7 @@ def evaluate_retrieval_performance(
 		topK_values=topK_values,
 		mode="Image-to-Text",
 	)
+	
 	text_to_image_metrics = compute_retrieval_metrics(
 		similarity_matrix=class_text_embeddings @ image_embeddings.T,
 		query_labels=np.arange(n_classes),
@@ -177,6 +177,7 @@ def evaluate_retrieval_performance(
 		mode="Text-to-Image",
 		class_counts=np.bincount(image_labels) # Count number of occurrences of each value in array of non-negative ints.
 	)
+
 	return image_to_text_metrics, text_to_image_metrics
 
 def compute_retrieval_metrics(
@@ -238,6 +239,42 @@ def compute_retrieval_metrics(
 		metrics["map"][K] = np.mean(ap)
 	
 	return metrics
+
+def plot_retrieval_metrics(image_to_text_metrics, text_to_image_metrics, topK_values, title="Retrieval Performance Metrics"):
+		# Ensure the metrics are in the correct format
+		metrics = ['precision', 'map', 'recall']
+		modes = ['Image-to-Text', 'Text-to-Image']
+		
+		fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+		fig.suptitle(title, fontsize=16)
+		
+		for i, metric in enumerate(metrics):
+				ax = axes[i]
+				
+				# Plotting for Image-to-Text
+				it_values = [image_to_text_metrics[metric][K] for K in topK_values]
+				ax.plot(topK_values, it_values, marker='o', label='Image-to-Text', color='blue')
+				
+				# Plotting for Text-to-Image
+				ti_values = [text_to_image_metrics[metric][K] for K in topK_values]
+				ax.plot(topK_values, ti_values, marker='s', label='Text-to-Image', color='red')
+				
+				ax.set_xlabel('K', fontsize=12)
+				ax.set_ylabel(f'{metric.capitalize()}@K', fontsize=12)
+				ax.set_title(f'Mean {metric.capitalize()}@K', fontsize=14)
+				ax.legend(fontsize=10)
+				ax.grid(True, linestyle='--', alpha=0.7)
+				
+				# Set the x-axis to only show integer values
+				ax.set_xticks(topK_values)
+				
+				# Adjust y-axis to start from 0 for better visualization
+				ax.set_ylim(bottom=0)
+		
+		# plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+		plt.tight_layout()
+		plt.savefig(f"{title.replace(' ', '_')}.png", dpi=300, bbox_inches='tight')
+		plt.close()
 
 def evaluate_loss_and_accuracy(
 	model,
@@ -890,6 +927,7 @@ def train(
 		print(json.dumps(img2txt_metrics, indent=4, ensure_ascii=False))
 		print(f"Text-to-image retrieval metrics:")
 		print(json.dumps(txt2img_metrics, indent=4, ensure_ascii=False))
+		plot_retrieval_metrics(img2txt_metrics, txt2img_metrics, topK_values=TOP_K_VALUES)
 		# ############################## Early stopping ##############################
 		if early_stopping.should_stop(avg_valid_loss, model, epoch):
 			print(
