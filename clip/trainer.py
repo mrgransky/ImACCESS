@@ -337,15 +337,11 @@ def plot_loss_accuracy(
 		img2txt_topk_accuracy_list,
 		mean_reciprocal_rank_list,
 		cosine_similarity_list,
-		precision_list,
-		recall_list,
-		f1_list,
 		losses_file_path="losses.png",
 		accuracy_file_path="accuracy.png",
 		topk_accuracy_file_path="img2txt_topk_accuracy.png",
 		mean_reciprocal_rank_file_path="mean_reciprocal_rank.png",
 		cosine_similarity_file_path="cosine_similarity.png",
-		precision_recall_f1_file_path="precision_recall_f1.png",
 		DPI=250,
 		figure_size=(10, 5),
 		TOP_K_VALUES=[1, 3, 5],
@@ -417,22 +413,7 @@ def plot_loss_accuracy(
 	plt.xticks(xticks, fontsize=7)
 	plt.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
-	
-	plt.figure(figsize=figure_size)
-	plt.plot(epochs, precision_list,  label='Precision')
-	plt.plot(epochs, recall_list, label='Recall')
-	plt.plot(epochs, f1_list, label='F1 Score')
-	plt.xlabel('Epoch')
-	plt.ylabel('Score')
-	plt.title("Precision, Recall, and F1 Score")
-	plt.grid(True)
-	plt.legend(ncols=3, loc='best')
-	plt.tight_layout()
-	plt.xlim(0, num_epochs + 1)
-	plt.xticks(xticks, fontsize=7)
-	plt.savefig(precision_recall_f1_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close()
-	
+		
 	plt.figure(figsize=figure_size)
 	plt.plot(epochs, cosine_similarity_list,  linestyle='-', color='g', label='Cosine Similarity')
 	plt.xlabel('Epoch')
@@ -749,7 +730,6 @@ def finetune(
 	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_pr_f1_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 
 	plot_loss_accuracy(
 		train_losses=training_losses,
@@ -759,15 +739,11 @@ def finetune(
 		img2txt_topk_accuracy_list=img2txt_topk_accuracy_list,
 		mean_reciprocal_rank_list=mean_reciprocal_rank_list,
 		cosine_similarity_list=cosine_similarity_list,
-		precision_list=precision_list,
-		recall_list=recall_list,
-		f1_list=f1_list,
 		losses_file_path=losses_fpth,
 		accuracy_file_path=val_acc_fpth,
 		topk_accuracy_file_path=topk_acc_fpth,
 		mean_reciprocal_rank_file_path=mrr_fpth,
 		cosine_similarity_file_path=cs_fpth,
-		precision_recall_f1_file_path=pr_f1_fpth,
 		TOP_K_VALUES=TOP_K_VALUES,
 	)
 
@@ -906,9 +882,6 @@ def train(
 		img2txt_topk_accuracy_list.append([img2txt_topk_accuracy[k] for k in TOP_K_VALUES])
 		mean_reciprocal_rank_list.append(mean_reciprocal_rank)
 		cosine_similarity_list.append(cosine_sim_mean)
-		precision_list.append(avg_precision)
-		recall_list.append(avg_recall)
-		f1_list.append(avg_f1)
 		print(
 			f'@ Epoch {epoch+1}:\n'
 			f'\t[LOSS] {mode}: {avg_training_loss:.5f} Valid: {avg_valid_loss:.8f}\n'
@@ -950,7 +923,6 @@ def train(
 	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	pr_f1_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_prf1_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	plot_loss_accuracy(
 		train_losses=training_losses,
 		val_losses=val_losses,
@@ -959,15 +931,11 @@ def train(
 		img2txt_topk_accuracy_list=img2txt_topk_accuracy_list,
 		mean_reciprocal_rank_list=mean_reciprocal_rank_list,
 		cosine_similarity_list=cosine_similarity_list,
-		precision_list=precision_list,
-		recall_list=recall_list,
-		f1_list=f1_list,
 		losses_file_path=losses_fpth,
 		accuracy_file_path=val_acc_fpth,
 		topk_accuracy_file_path=topk_acc_fpth,
 		mean_reciprocal_rank_file_path=mrr_fpth,
 		cosine_similarity_file_path=cs_fpth,
-		precision_recall_f1_file_path=pr_f1_fpth,
 		TOP_K_VALUES=TOP_K_VALUES,
 	)
 
