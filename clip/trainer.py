@@ -193,8 +193,8 @@ def compute_retrieval_metrics(
 	
 	metrics = {
 		"mP": {},
-		"Recall": {},
 		"mAP": {},
+		"Recall": {},
 	}
 	
 	for K in topK_values:
@@ -269,7 +269,7 @@ def compute_retrieval_metrics(
 			if len(p_at) == 0:
 				ap.append(0.0)
 			else:
-				ap.append(sum(p_at) / min(R, K))  # Normalize by min(R, K)
+				ap.append(sum(p_at) / min(R, K)) # Normalize by min(R, K)
 
 		# Store metrics for this K
 		metrics["mP"][str(K)] = np.mean(precision)
@@ -278,7 +278,74 @@ def compute_retrieval_metrics(
 	
 	return metrics
 
-def plot_retrieval_metrics(
+def plot_retrieval_metrics_best_model(
+	image_to_text_metrics: Dict[str, Dict[str, float]],
+	text_to_image_metrics: Dict[str, Dict[str, float]],
+	topK_values: List[int],
+	fname: str ="Retrieval_Performance_Metrics_best_model.png",
+	):
+	metrics = list(image_to_text_metrics.keys())  # ['mP', 'mAP', 'Recall']
+	suptitle_text = f"Retrieval Performance Metrics [Best Model]: "
+	# suptitle_text = r"Retrieval Performance Metrics [\textcolor{green}{Best Model}]: "
+	for metric in metrics:
+		suptitle_text += f"{metric}@K | " 
+	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
+	modes = ['Image-to-Text', 'Text-to-Image']
+	
+	fig, axes = plt.subplots(1, 3, figsize=(18, 8), constrained_layout=True)
+	fig.suptitle(suptitle_text, fontsize=15, fontweight='bold')
+	
+	# Store legend handles and labels
+	legend_handles = []
+	legend_labels = []
+	
+	for i, metric in enumerate(metrics):
+		ax = axes[i]
+		
+		# Plotting for Image-to-Text
+		it_values = [image_to_text_metrics[metric].get(str(K), 0) for K in topK_values]
+		line, = ax.plot(topK_values, it_values, marker='o', label=modes[0], color='blue')
+		if modes[0] not in legend_labels:
+			legend_handles.append(line)
+			legend_labels.append(modes[0])
+		
+		# Plotting for Text-to-Image
+		ti_values = [text_to_image_metrics[metric].get(str(K), 0) for K in topK_values]
+		line, = ax.plot(topK_values, ti_values, marker='s', label=modes[1], color='red')
+		if modes[1] not in legend_labels:
+			legend_handles.append(line)
+			legend_labels.append(modes[1])
+		
+		ax.set_xlabel('K', fontsize=12)
+		ax.set_ylabel(f'{metric}@K', fontsize=12)
+		ax.set_title(f'{metric}@K', fontsize=14)
+		ax.grid(True, linestyle='--', alpha=0.7)
+		
+		# Set the x-axis to only show integer values
+		ax.set_xticks(topK_values)
+		
+		# Adjust y-axis to start from 0 for better visualization
+		ax.set_ylim(bottom=0.0, top=1.05)
+	
+	plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+	fig.legend(
+		legend_handles,
+		legend_labels,
+		fontsize=12,
+		loc='upper center',
+		ncol=len(modes),
+		bbox_to_anchor=(0.5, 0.96),
+		bbox_transform=fig.transFigure,
+		frameon=True,
+		shadow=True,
+		fancybox=True,
+		edgecolor='black',
+		facecolor='white',
+	)
+	plt.savefig(fname, dpi=300, bbox_inches='tight')
+	plt.close()
+
+def plot_retrieval_metrics_per_epoch(
 	image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
 	text_to_image_metrics_list: List[Dict[str, Dict[str, float]]],
 	topK_values: List[int],
@@ -289,12 +356,17 @@ def plot_retrieval_metrics(
 		return
 	epochs = range(1, num_epochs + 1)
 	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
+	suptitle_text = f"Retrieval Performance Metrics [per epoch]: "
+	for metric in metrics:
+		suptitle_text += f"{metric}@K | " 
+	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
+
 	cmap = plt.get_cmap("tab10")  # Use a colormap with at least 10 colors
 	colors = [cmap(i) for i in range(cmap.N)]
 	markers = ['o', 's', 'D', 'v', '^', 'P', 'X', 'd', 'H', 'h']  # Different markers for each line
 	line_styles = ['-', '--', '-.', ':', '-']  # Different line styles for each metric
 	fig, axs = plt.subplots(2, 3, figsize=(20, 11), constrained_layout=True)
-	fig.suptitle("Retrieval Performance Metrics: mP@K | mAP@K | Recall@K", fontsize=16)
+	fig.suptitle(suptitle_text, fontsize=15, fontweight='bold')
 	# Store legend handles and labels
 	legend_handles = []
 	legend_labels = []
@@ -859,7 +931,7 @@ def finetune(
 	)
 
 	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	plot_retrieval_metrics(
+	plot_retrieval_metrics_per_epoch(
 		image_to_text_metrics_list=img2txt_metrics_list,
 		text_to_image_metrics_list=txt2img_metrics_list,
 		topK_values=TOP_K_VALUES,
@@ -1033,6 +1105,8 @@ def train(
 		else:
 			print(f"Saving best model in {mdl_fpth} for best validation loss: {avg_valid_loss:.9f}")
 			torch.save(model.state_dict(), mdl_fpth)
+			img2txt_metrics_best_model = img2txt_metrics
+			txt2img_metrics_best_model = txt2img_metrics
 		# ############################## Early stopping ##############################
 		print("-"*170)
 
@@ -1060,11 +1134,18 @@ def train(
 	)
 
 	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	plot_retrieval_metrics(
+	plot_retrieval_metrics_per_epoch(
 		image_to_text_metrics_list=img2txt_metrics_list,
 		text_to_image_metrics_list=txt2img_metrics_list,
 		topK_values=TOP_K_VALUES,
 		fname=retrieval_metrics_fpth,
+	)
+
+	plot_retrieval_metrics_best_model(
+		image_to_text_metrics=img2txt_metrics_best_model,
+		text_to_image_metrics=txt2img_metrics_best_model,
+		topK_values=TOP_K_VALUES,
+		fname=retrieval_metrics_best_model_fpth,
 	)
 
 @measure_execution_time

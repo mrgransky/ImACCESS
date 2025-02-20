@@ -3,109 +3,178 @@ from utils import *
 import matplotlib.pyplot as plt
 from typing import List, Dict
 
+def plot_retrieval_metrics_best_model(
+	image_to_text_metrics: Dict[str, Dict[str, float]],
+	text_to_image_metrics: Dict[str, Dict[str, float]],
+	topK_values: List[int],
+	fname: str ="Retrieval_Performance_Metrics_best_model.png",
+	):
+	# Ensure the metrics are in the correct format
+	metrics = list(image_to_text_metrics.keys())  # ['mP', 'mAP', 'Recall']
+	suptitle_text = f"Retrieval Performance Metrics [Best Model]: "
+	# suptitle_text = r"Retrieval Performance Metrics [\textcolor{green}{Best Model}]: "
+	# suptitle_text = "Retrieval Performance Metrics [<span style='color:green'>Best Model</span>]: "
+	for metric in metrics:
+		suptitle_text += f"{metric}@K | " 
+	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
+	modes = ['Image-to-Text', 'Text-to-Image']
+	
+	fig, axes = plt.subplots(1, 3, figsize=(18, 8), constrained_layout=True)
+	fig.suptitle(suptitle_text, fontsize=15, fontweight='bold')
+	
+	# Store legend handles and labels
+	legend_handles = []
+	legend_labels = []
+	
+	for i, metric in enumerate(metrics):
+		ax = axes[i]
+		
+		# Plotting for Image-to-Text
+		it_values = [image_to_text_metrics[metric].get(str(K), 0) for K in topK_values]
+		line, = ax.plot(topK_values, it_values, marker='o', label=modes[0], color='blue')
+		if modes[0] not in legend_labels:
+			legend_handles.append(line)
+			legend_labels.append(modes[0])
+		
+		# Plotting for Text-to-Image
+		ti_values = [text_to_image_metrics[metric].get(str(K), 0) for K in topK_values]
+		line, = ax.plot(topK_values, ti_values, marker='s', label=modes[1], color='red')
+		if modes[1] not in legend_labels:
+			legend_handles.append(line)
+			legend_labels.append(modes[1])
+		
+		ax.set_xlabel('K', fontsize=12)
+		ax.set_ylabel(f'{metric}@K', fontsize=12)
+		ax.set_title(f'{metric}@K', fontsize=14)
+		ax.grid(True, linestyle='--', alpha=0.7)
+		
+		# Set the x-axis to only show integer values
+		ax.set_xticks(topK_values)
+		
+		# Adjust y-axis to start from 0 for better visualization
+		ax.set_ylim(bottom=0.0, top=1.05)
+	
+	plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+	fig.legend(
+		legend_handles,
+		legend_labels,
+		fontsize=12,
+		loc='upper center',
+		ncol=len(modes),
+		bbox_to_anchor=(0.5, 0.96),
+		bbox_transform=fig.transFigure,
+		frameon=True,
+		shadow=True,
+		fancybox=True,
+		edgecolor='black',
+		facecolor='white',
+	)
+	plt.savefig(fname, dpi=300, bbox_inches='tight')
+	plt.close()
+
 def plot_retrieval_metrics_grok3(
-    image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
-    text_to_image_metrics_list: List[Dict[str, Dict[str, float]]],
-    topK_values: List[int],
-    fname: str = "Retrieval_Performance_Metrics_Grok3.png",
+		image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
+		text_to_image_metrics_list: List[Dict[str, Dict[str, float]]],
+		topK_values: List[int],
+		fname: str = "Retrieval_Performance_Metrics_Grok3.png",
 ):
-    num_epochs = len(image_to_text_metrics_list)
-    if num_epochs < 2:
-        return
+		num_epochs = len(image_to_text_metrics_list)
+		if num_epochs < 2:
+				return
 
-    epochs = range(1, num_epochs + 1)
-    metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
-    
-    # Use a colormap with distinct colors
-    cmap = plt.get_cmap("tab10")
-    colors = [cmap(i) for i in range(len(topK_values))]
-    
-    # Define different line styles and markers for better differentiation
-    line_styles = ['-', '--', '-.']
-    markers = ['o', 's', 'D']
-    
-    # Create a larger figure for better visibility
-    fig, axs = plt.subplots(2, 3, figsize=(22, 14), constrained_layout=True)
-    fig.suptitle("Retrieval Performance Metrics: mP@K | mAP@K | Recall@K", fontsize=18)
-    
-    # Store legend handles and labels
-    legend_handles = []
-    legend_labels = []
+		epochs = range(1, num_epochs + 1)
+		metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
+		
+		# Use a colormap with distinct colors
+		cmap = plt.get_cmap("tab10")
+		colors = [cmap(i) for i in range(len(topK_values))]
+		
+		# Define different line styles and markers for better differentiation
+		line_styles = ['-', '--', '-.']
+		markers = ['o', 's', 'D']
+		
+		# Create a larger figure for better visibility
+		fig, axs = plt.subplots(2, 3, figsize=(22, 14), constrained_layout=True)
+		fig.suptitle("Retrieval Performance Metrics: mP@K | mAP@K | Recall@K", fontsize=18)
+		
+		# Store legend handles and labels
+		legend_handles = []
+		legend_labels = []
 
-    for i, task_metrics_list in enumerate([image_to_text_metrics_list, text_to_image_metrics_list]):
-        for j, metric in enumerate(metrics):
-            ax = axs[i, j]
-            for idx, (K, color, linestyle, marker) in enumerate(zip(topK_values, colors, line_styles, markers)):
-                values = []
-                for metrics_dict in task_metrics_list:
-                    if metric in metrics_dict and str(K) in metrics_dict[metric]:
-                        values.append(metrics_dict[metric][str(K)])
-                    else:
-                        values.append(0)
-                
-                # Plot with distinct line styles, markers, and transparency
-                line, = ax.plot(
-                    epochs, values, 
-                    marker=marker, 
-                    linestyle=linestyle, 
-                    label=f'K={K}', 
-                    color=color, 
-                    alpha=0.8, 
-                    markersize=8, 
-                    linewidth=2
-                )
-                
-                # Collect handles and labels for the legend
-                if f'K={K}' not in legend_labels:
-                    legend_handles.append(line)
-                    legend_labels.append(f'K={K}')
-            
-            # Set labels and title with larger fonts
-            ax.set_xlabel('Epoch', fontsize=14)
-            ax.set_ylabel(f'{metric}@K', fontsize=14)
-            ax.set_title(f'{["Image-to-Text", "Text-to-Image"][i]} - {metric}@K', fontsize=16, pad=10)
-            
-            # Add grid for better readability
-            ax.grid(True, linestyle='--', alpha=0.7)
-            
-            # Set x-ticks and ensure they are integers
-            ax.set_xticks(epochs)
-            
-            # Dynamically adjust y-axis limits based on data
-            min_val = min([min([metrics_dict[metric][str(K)] for metrics_dict in task_metrics_list 
-                               if metric in metrics_dict and str(K) in metrics_dict[metric]]) 
-                          for K in topK_values])
-            max_val = max([max([metrics_dict[metric][str(K)] for metrics_dict in task_metrics_list 
-                               if metric in metrics_dict and str(K) in metrics_dict[metric]]) 
-                          for K in topK_values])
-            ax.set_ylim(bottom=max(0, min_val - 0.05), top=min(1, max_val + 0.05))
-            
-            # Increase tick label size
-            ax.tick_params(axis='both', labelsize=12)
+		for i, task_metrics_list in enumerate([image_to_text_metrics_list, text_to_image_metrics_list]):
+				for j, metric in enumerate(metrics):
+						ax = axs[i, j]
+						for idx, (K, color, linestyle, marker) in enumerate(zip(topK_values, colors, line_styles, markers)):
+								values = []
+								for metrics_dict in task_metrics_list:
+										if metric in metrics_dict and str(K) in metrics_dict[metric]:
+												values.append(metrics_dict[metric][str(K)])
+										else:
+												values.append(0)
+								
+								# Plot with distinct line styles, markers, and transparency
+								line, = ax.plot(
+										epochs, values, 
+										marker=marker, 
+										linestyle=linestyle, 
+										label=f'K={K}', 
+										color=color, 
+										alpha=0.8, 
+										markersize=8, 
+										linewidth=2
+								)
+								
+								# Collect handles and labels for the legend
+								if f'K={K}' not in legend_labels:
+										legend_handles.append(line)
+										legend_labels.append(f'K={K}')
+						
+						# Set labels and title with larger fonts
+						ax.set_xlabel('Epoch', fontsize=14)
+						ax.set_ylabel(f'{metric}@K', fontsize=14)
+						ax.set_title(f'{["Image-to-Text", "Text-to-Image"][i]} - {metric}@K', fontsize=16, pad=10)
+						
+						# Add grid for better readability
+						ax.grid(True, linestyle='--', alpha=0.7)
+						
+						# Set x-ticks and ensure they are integers
+						ax.set_xticks(epochs)
+						
+						# Dynamically adjust y-axis limits based on data
+						min_val = min([min([metrics_dict[metric][str(K)] for metrics_dict in task_metrics_list 
+															 if metric in metrics_dict and str(K) in metrics_dict[metric]]) 
+													for K in topK_values])
+						max_val = max([max([metrics_dict[metric][str(K)] for metrics_dict in task_metrics_list 
+															 if metric in metrics_dict and str(K) in metrics_dict[metric]]) 
+													for K in topK_values])
+						ax.set_ylim(bottom=max(0, min_val - 0.05), top=min(1, max_val + 0.05))
+						
+						# Increase tick label size
+						ax.tick_params(axis='both', labelsize=12)
 
-    # Add a shared legend at the top, outside the subplots
-    fig.legend(
-        legend_handles,
-        legend_labels,
-        fontsize=14,
-        loc='upper center',
-        ncol=len(topK_values),
-        bbox_to_anchor=(0.5, 0.98),
-        bbox_transform=fig.transFigure,
-        frameon=True,
-        edgecolor='black',
-        facecolor='white',
-        shadow=True,
-        title="Top-K Values",
-        title_fontsize=14
-    )
+		# Add a shared legend at the top, outside the subplots
+		fig.legend(
+				legend_handles,
+				legend_labels,
+				fontsize=14,
+				loc='upper center',
+				ncol=len(topK_values),
+				bbox_to_anchor=(0.5, 0.98),
+				bbox_transform=fig.transFigure,
+				frameon=True,
+				edgecolor='black',
+				facecolor='white',
+				shadow=True,
+				title="Top-K Values",
+				title_fontsize=14
+		)
 
-    # Adjust layout to prevent overlap
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    
-    # Save the plot with high resolution
-    plt.savefig(fname, dpi=400, bbox_inches='tight')
-    plt.close()
+		# Adjust layout to prevent overlap
+		plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+		
+		# Save the plot with high resolution
+		plt.savefig(fname, dpi=400, bbox_inches='tight')
+		plt.close()
 
 
 def plot_retrieval_metrics(
@@ -239,3 +308,65 @@ topK_values = [1, 5, 10]
 plot_retrieval_metrics(image_to_text_metrics_list, text_to_image_metrics_list, topK_values)
 
 plot_retrieval_metrics_grok3(image_to_text_metrics_list, text_to_image_metrics_list, topK_values)
+
+
+# Test data for Image-to-Text retrieval metrics
+image_to_text_metrics_test = {
+		"mP": {
+				"1": 0.95,
+				"5": 0.85,
+				"10": 0.75,
+				"15": 0.65,
+				"20": 0.55
+		},
+		"Recall": {
+				"1": 0.98,
+				"5": 0.95,
+				"10": 0.90,
+				"15": 0.85,
+				"20": 0.80
+		},
+		"mAP": {
+				"1": 0.97,
+				"5": 0.93,
+				"10": 0.89,
+				"15": 0.87,
+				"20": 0.85
+		}
+}
+
+# Test data for Text-to-Image retrieval metrics
+text_to_image_metrics_test = {
+		"mP": {
+				"1": 0.88,
+				"5": 0.80,
+				"10": 0.70,
+				"15": 0.60,
+				"20": 0.50
+		},
+		"Recall": {
+				"1": 0.92,
+				"5": 0.88,
+				"10": 0.85,
+				"15": 0.80,
+				"20": 0.75
+		},
+		"mAP": {
+				"1": 0.90,
+				"5": 0.85,
+				"10": 0.80,
+				"15": 0.75,
+				"20": 0.70
+		}
+}
+
+# Test topK_values
+topK_values_test = [1, 5, 10, 15, 20]
+
+# Call the function with test data
+plot_retrieval_metrics_best_model(
+		image_to_text_metrics_test,
+		text_to_image_metrics_test,
+		topK_values_test,
+		fname="Test_Retrieval_Performance_Metrics_best_model.png"
+)
