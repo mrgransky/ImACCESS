@@ -574,7 +574,7 @@ def plot_loss_accuracy(
 	plt.grid(True, linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.xticks(xticks, fontsize=7)
-	plt.ylim(buttom=0.0, top=1.05)
+	plt.ylim([0, 1])
 	plt.savefig(topk_accuracy_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
 	
@@ -586,7 +586,7 @@ def plot_loss_accuracy(
 	plt.grid(True)
 	plt.legend()
 	plt.tight_layout()
-	plt.ylim(buttom=0.0, top=1.05)
+	plt.ylim([0, 1])
 	plt.xticks(xticks, fontsize=7)
 	plt.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
