@@ -192,9 +192,9 @@ def compute_retrieval_metrics(
 	assert num_queries == len(query_labels), "Number of queries must match labels"
 	
 	metrics = {
-		"precision": {},
-		"recall": {},
-		"map": {},
+		"mP": {},
+		"Recall": {},
+		"mAP": {},
 	}
 	
 	for K in topK_values:
@@ -208,7 +208,7 @@ def compute_retrieval_metrics(
 			retrieved_labels = candidate_labels[top_k_indices[i]]
 			correct = np.sum(retrieved_labels == true_label)
 			
-			# Precision @ K
+			# 1. Precision @ K
 			precision.append(correct / K)
 			
 			# # Recall @ K
