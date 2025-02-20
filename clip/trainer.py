@@ -278,7 +278,7 @@ def plot_retrieval_metrics_best_model(
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
 	modes = ['Image-to-Text', 'Text-to-Image']
 	
-	fig, axes = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
+	fig, axes = plt.subplots(1, len(metrics), figsize=(15, 5), constrained_layout=True)
 	fig.suptitle(suptitle_text, fontsize=13, fontweight='bold')
 	
 	# Store legend handles and labels
@@ -308,23 +308,20 @@ def plot_retrieval_metrics_best_model(
 		ti_vals = list(data.values())
 		print(f"ti_vals: {ti_vals}")
 
-	# valid_K_values = [K for K in topK_values if (str(K)) in image_to_text_metrics["mP"]]
-	valid_K_values = list(image_to_text_metrics["mP"].keys())
-	print(f"valid_K_values: {valid_K_values}")
+	print(metrics)
+	print(top_Ks)
+	print(it_vals)
+	print(ti_vals)
 	for i, metric in enumerate(metrics):
 		ax = axes[i]
 		
 		# Plotting for Image-to-Text
-		# it_values = [image_to_text_metrics[metric].get(str(K), 0) for K in valid_K_values]
-		# line, = ax.plot(valid_K_values, it_values, marker='o', label=modes[0], color='blue')
 		line, = ax.plot(top_Ks, it_vals, marker='o', label=modes[0], color='blue')
 		if modes[0] not in legend_labels:
 			legend_handles.append(line)
 			legend_labels.append(modes[0])
 		
 		# Plotting for Text-to-Image
-		# ti_values = [text_to_image_metrics[metric].get(str(K), 0) for K in valid_K_values]
-		# line, = ax.plot(valid_K_values, ti_values, marker='s', label=modes[1], color='red')
 		line, = ax.plot(top_Ks, ti_vals, marker='s', label=modes[1], color='red')
 		if modes[1] not in legend_labels:
 			legend_handles.append(line)
@@ -336,7 +333,7 @@ def plot_retrieval_metrics_best_model(
 		ax.grid(True, linestyle='--', alpha=0.7)
 		
 		# Set the x-axis to only show integer values
-		ax.set_xticks(valid_K_values)
+		ax.set_xticks(top_Ks)
 		
 		# Adjust y-axis to start from 0 for better visualization
 		ax.set_ylim(bottom=0.0, top=1.05)
