@@ -363,7 +363,7 @@ def plot_retrieval_metrics_per_epoch(
 
 	cmap = plt.get_cmap("tab10")  # Use a colormap with at least 10 colors
 	colors = [cmap(i) for i in range(cmap.N)]
-	markers = ['o', 's', 'D', 'v', '^', 'P', 'X', 'd', 'H', 'h']  # Different markers for each line
+	markers = ['D', 'v', 'o', 's', '^', 'P', 'X', 'd', 'H', 'h']  # Different markers for each line
 	line_styles = ['-', '--', '-.', ':', '-']  # Different line styles for each metric
 	fig, axs = plt.subplots(2, 3, figsize=(20, 11), constrained_layout=True)
 	fig.suptitle(suptitle_text, fontsize=15, fontweight='bold')
