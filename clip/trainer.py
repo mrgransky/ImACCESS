@@ -292,7 +292,7 @@ def plot_retrieval_metrics_best_model(
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
 	modes = ['Image-to-Text', 'Text-to-Image']
 	
-	fig, axes = plt.subplots(1, 3, figsize=(18, 8), constrained_layout=True)
+	fig, axes = plt.subplots(1, 3, figsize=(16, 6), constrained_layout=True)
 	fig.suptitle(suptitle_text, fontsize=15, fontweight='bold')
 	
 	# Store legend handles and labels
@@ -1134,7 +1134,7 @@ def train(
 		TOP_K_VALUES=TOP_K_VALUES,
 	)
 
-	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_per_epoch_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	plot_retrieval_metrics_per_epoch(
 		image_to_text_metrics_list=img2txt_metrics_list,
 		text_to_image_metrics_list=txt2img_metrics_list,
