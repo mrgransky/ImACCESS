@@ -349,7 +349,7 @@ def plot_retrieval_metrics_per_epoch(
 	image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
 	text_to_image_metrics_list: List[Dict[str, Dict[str, float]]],
 	topK_values: List[int],
-	fname="Retrieval_Performance_Metrics.png",
+	fname: str="Retrieval_Performance_Metrics.png",
 	):
 	num_epochs = len(image_to_text_metrics_list)
 	if num_epochs < 2:
@@ -411,9 +411,10 @@ def plot_retrieval_metrics_per_epoch(
 		bbox_to_anchor=(0.5, 0.96),
 		bbox_transform=fig.transFigure,
 		frameon=True,
+		shadow=True,
+		fancybox=True,
 		edgecolor='black',
 		facecolor='white',
-		shadow=True,
 	)
 	plt.tight_layout(rect=[0, 0.03, 0.9, 0.95])
 	plt.savefig(fname, dpi=300, bbox_inches='tight')
@@ -1140,7 +1141,7 @@ def train(
 		topK_values=TOP_K_VALUES,
 		fname=retrieval_metrics_fpth,
 	)
-
+	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_best_model_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	plot_retrieval_metrics_best_model(
 		image_to_text_metrics=img2txt_metrics_best_model,
 		text_to_image_metrics=txt2img_metrics_best_model,
