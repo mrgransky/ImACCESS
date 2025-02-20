@@ -121,11 +121,12 @@ class EarlyStopping:
 		return self.stopped_epoch
 
 def evaluate_retrieval_performance(
-	model,
-	validation_loader,
-	device="cuda:0",
-	topK_values=[1, 3, 5],
+	model: torch.nn.Module,
+	validation_loader: DataLoader,
+	device: str="cuda:0",
+	topK_values: List=[1, 3, 5],
 	):
+	print(f"Evaluating retrieval performance on {device}".center(60, '='))
 	model.eval()
 	image_embeddings = []
 	image_labels = []
@@ -211,15 +212,6 @@ def compute_retrieval_metrics(
 			# 1. Precision @ K
 			precision.append(correct / K)
 			
-			# # Recall @ K
-			# if mode == "Image-to-Text":
-			# 	relevant_count = 1  # Each image has one correct class
-			# else:
-			# 	if class_counts is None:
-			# 		raise ValueError("Class counts must be provided for Text-to-Image retrieval")
-			# 	relevant_count = class_counts[true_label]
-			# recall.append(correct / relevant_count)
-
 			# 2. Compute Recall@K with division by zero protection
 			if mode == "Image-to-Text":
 				relevant_count = 1  # Single relevant item per query
@@ -230,19 +222,6 @@ def compute_retrieval_metrics(
 				recall.append(0.0)
 			else:
 				recall.append(correct / relevant_count)
-
-			# # Average Precision @ K
-			# if correct == 0:
-			# 		ap.append(0.0)
-			# 		continue
-			# relevant_indices = np.where(retrieved_labels == true_label)[0]
-			# p_at = []
-			# cumulative_correct = 0
-			# for j, index in enumerate(relevant_indices):
-			# 	if index < K:
-			# 		cumulative_correct += 1
-			# 		p_at.append(cumulative_correct / (index + 1))
-			# ap.append(np.mean(p_at))
 
 			# 3. Compute AP@K with proper normalization
 			relevant_positions = np.where(retrieved_labels == true_label)[0]
@@ -283,17 +262,18 @@ def plot_retrieval_metrics_best_model(
 	text_to_image_metrics: Dict[str, Dict[str, float]],
 	topK_values: List[int],
 	fname: str ="Retrieval_Performance_Metrics_best_model.png",
+	best_model_name: str ="Best Model",
 	):
 	metrics = list(image_to_text_metrics.keys())  # ['mP', 'mAP', 'Recall']
-	suptitle_text = f"Retrieval Performance Metrics [Best Model]: "
+	suptitle_text = f"Retrieval Performance Metrics [{best_model_name}]: "
 	# suptitle_text = r"Retrieval Performance Metrics [\textcolor{green}{Best Model}]: "
 	for metric in metrics:
 		suptitle_text += f"{metric}@K | " 
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
 	modes = ['Image-to-Text', 'Text-to-Image']
 	
-	fig, axes = plt.subplots(1, 3, figsize=(16, 6), constrained_layout=True)
-	fig.suptitle(suptitle_text, fontsize=15, fontweight='bold')
+	fig, axes = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
+	fig.suptitle(suptitle_text, fontsize=13, fontweight='bold')
 	
 	# Store legend handles and labels
 	legend_handles = []
@@ -331,10 +311,10 @@ def plot_retrieval_metrics_best_model(
 	fig.legend(
 		legend_handles,
 		legend_labels,
-		fontsize=12,
+		fontsize=10,
 		loc='upper center',
 		ncol=len(modes),
-		bbox_to_anchor=(0.5, 0.96),
+		bbox_to_anchor=(0.5, 0.95),
 		bbox_transform=fig.transFigure,
 		frameon=True,
 		shadow=True,
@@ -1149,24 +1129,57 @@ def train(
 		fname=retrieval_metrics_best_model_fpth,
 	)
 
+def pretrain(
+	model: torch.nn.Module,
+	validation_loader: DataLoader,
+	device: str="cuda:0",
+	TOP_K_VALUES: List=[1, 3, 5],
+	):
+	print("Pretrain Evaluation")
+	model_name = model.__class__.__name__
+	model_arch = model.name.replace("/","_")
+	print(f"Model: {model_name} - {model_arch}") # CLIP - ViT-B/32
+	# 1. evaluate_retrieval_performance
+	img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
+		model=model,
+		validation_loader=validation_loader,
+		device=device,
+		topK_values=TOP_K_VALUES,
+	)
+	print("Image to Text Metrics: ")
+	print(json.dumps(img2txt_metrics, indent=4))
+	print("Text to Image Metrics: ")
+	print(json.dumps(txt2img_metrics, indent=4))
+
+	# 2. plot_retrieval_metrics_best_model
+	retrieval_metrics_best_model_fpth = os.path.join(f"{validation_loader.name}_retrieval_metrics_pretrained_{model_name}_{model_arch}.png")
+	plot_retrieval_metrics_best_model(
+		image_to_text_metrics=img2txt_metrics,
+		text_to_image_metrics=txt2img_metrics,
+		topK_values=TOP_K_VALUES,
+		fname=retrieval_metrics_best_model_fpth,
+		best_model_name=f"Pretrained {model_name} {model_arch}",
+	)
+
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for Balanced Dataset")
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
 	parser.add_argument('--epochs', '-e', type=int, default=12, help='Number of epochs')
-	parser.add_argument('--batch_size', '-bs', type=int, default=512, help='Batch size for training')
+	parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-4]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 1e-3]')
 	parser.add_argument('--print_every', type=int, default=250, help='Print loss')
 	parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar100', help='Choose dataset (CIFAR10/cifar100)')
-	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='finetune', help='Choose mode (train/finetune)')
+	parser.add_argument('--mode', '-m', type=str, choices=['pretrain', 'train', 'finetune'], default='pretrain', help='Choose mode (pretrain/train/finetune)')
 	parser.add_argument('--window_size', '-ws', type=int, default=5, help='Windows size for early stopping and progressive freezing')
 	parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
 	parser.add_argument('--minimum_epochs', type=int, default=20, help='Early stopping minimum epochs')
+	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
@@ -1176,14 +1189,16 @@ def main():
 
 	model, preprocess = clip.load(args.model_name, device=args.device, jit=False) # training or finetuning => jit=False
 	model = model.float() # Convert model parameters to FP32
-
+	model.name = args.model_name  # Custom attribute to store model name
+	# model.config = clip.model_config.MODELS[args.model_name]  # Custom attribute to store model configuration
+	print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture")
 	train_loader, validation_loader = get_dataloaders(
 		dataset_name=args.dataset,
 		batch_size=args.batch_size,
 		nw=args.num_workers,
 		USER=os.environ.get('USER'),
 	)
-	print(f"Train Loader: {len(train_loader)} batches, Validation Loader: {len(validation_loader)} batches")
+	print(f"Train Loader[{train_loader.name}]: {len(train_loader)} batches, Validation Loader[{validation_loader.name}]: {len(validation_loader)} batches")
 	for bi, batch in enumerate(train_loader):
 		print(f"Batch {bi+1}/{len(train_loader)}: contains {len(batch)} element(s): {[elem.shape for elem in batch]}")
 		break
@@ -1208,6 +1223,7 @@ def main():
 			min_delta=1e-4, 								# early stopping & progressive unfreezing
 			cumulative_delta=5e-3, 					# early stopping
 			minimum_epochs=20, 							# early stopping
+			TOP_K_VALUES=args.topK_values,
 		)
 	elif args.mode == 'train':
 		train(
@@ -1228,6 +1244,14 @@ def main():
 			min_delta=1e-4,								# early stopping
 			cumulative_delta=5e-3,				# early stopping
 			minimum_epochs=20,						# early stopping
+			TOP_K_VALUES=args.topK_values,
+		)
+	elif args.mode == "pretrain":
+		pretrain(
+			model=model,
+			validation_loader=validation_loader,
+			device=args.device,
+			TOP_K_VALUES=args.topK_values,			
 		)
 	else:
 		raise ValueError("Invalid mode. Choose either 'finetune' or 'train'.")

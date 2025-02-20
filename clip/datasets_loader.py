@@ -100,7 +100,7 @@ def get_dataloaders(
 	nw: int=10,
 	USER: str="farid",
 	):
-
+	dataset_name = dataset_name.upper()
 	train_dataset, validation_dataset = get_dataset(
 		dname=dataset_name,
 		USER=USER,
@@ -117,6 +117,8 @@ def get_dataloaders(
 		pin_memory=True, # Move data to GPU faster if using CUDA
 		persistent_workers=(nw > 1),  # Keep workers alive if memory allows
 	)
+	train_loader.name = f"{dataset_name}_train".upper()
+
 	validation_loader = DataLoader(
 		dataset=validset,
 		batch_size=batch_size,
@@ -124,6 +126,8 @@ def get_dataloaders(
 		num_workers=nw,
 		pin_memory=True, # when using CUDA
 	)
+	validation_loader.name = f"{dataset_name.lower()}_validation".upper()
+
 	return train_loader, validation_loader
 
 class IMAGE_TEXT_DATASET(Dataset):
