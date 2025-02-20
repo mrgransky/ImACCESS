@@ -284,22 +284,48 @@ def plot_retrieval_metrics_best_model(
 	# Store legend handles and labels
 	legend_handles = []
 	legend_labels = []
-	
-	valid_K_values = [K for K in topK_values if K in image_to_text_metrics["mP"]]
+	metrics = []
+	for metric, data in image_to_text_metrics.items():
+		print(f"metric: {metric}")
+		metrics.append(metric)
+		print(f"data: {data}")
+		print(f"data.keys(): {data.keys()}")
+		print(f"data.values(): {data.values()}")
+		print(f"data.items(): {data.items()}")
+		top_Ks = list(map(int, data.keys()))  # Convert keys to integers
+		print(f"top_Ks: {top_Ks}")
+		it_vals = list(data.values())
+		print(f"it_vals: {it_vals}")
+
+	for metric, data in text_to_image_metrics.items():
+		print(f"metric: {metric}")
+		print(f"data: {data}")
+		print(f"data.keys(): {data.keys()}")
+		print(f"data.values(): {data.values()}")
+		print(f"data.items(): {data.items()}")
+		top_Ks = list(map(int, data.keys()))  # Convert keys to integers
+		print(f"top_Ks: {top_Ks}")
+		ti_vals = list(data.values())
+		print(f"ti_vals: {ti_vals}")
+
+	# valid_K_values = [K for K in topK_values if (str(K)) in image_to_text_metrics["mP"]]
+	valid_K_values = list(image_to_text_metrics["mP"].keys())
 	print(f"valid_K_values: {valid_K_values}")
 	for i, metric in enumerate(metrics):
 		ax = axes[i]
 		
 		# Plotting for Image-to-Text
-		it_values = [image_to_text_metrics[metric].get(str(K), 0) for K in valid_K_values]
-		line, = ax.plot(valid_K_values, it_values, marker='o', label=modes[0], color='blue')
+		# it_values = [image_to_text_metrics[metric].get(str(K), 0) for K in valid_K_values]
+		# line, = ax.plot(valid_K_values, it_values, marker='o', label=modes[0], color='blue')
+		line, = ax.plot(top_Ks, it_vals, marker='o', label=modes[0], color='blue')
 		if modes[0] not in legend_labels:
 			legend_handles.append(line)
 			legend_labels.append(modes[0])
 		
 		# Plotting for Text-to-Image
-		ti_values = [text_to_image_metrics[metric].get(str(K), 0) for K in valid_K_values]
-		line, = ax.plot(valid_K_values, ti_values, marker='s', label=modes[1], color='red')
+		# ti_values = [text_to_image_metrics[metric].get(str(K), 0) for K in valid_K_values]
+		# line, = ax.plot(valid_K_values, ti_values, marker='s', label=modes[1], color='red')
+		line, = ax.plot(top_Ks, ti_vals, marker='s', label=modes[1], color='red')
 		if modes[1] not in legend_labels:
 			legend_handles.append(line)
 			legend_labels.append(modes[1])
