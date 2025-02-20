@@ -192,9 +192,9 @@ def compute_retrieval_metrics(
 	assert num_queries == len(query_labels), "Number of queries must match labels"
 	
 	metrics = {
-			"precision": {},
-			"recall": {},
-			"map": {},
+		"precision": {},
+		"recall": {},
+		"map": {},
 	}
 	
 	for K in topK_values:
@@ -211,29 +211,67 @@ def compute_retrieval_metrics(
 			# Precision @ K
 			precision.append(correct / K)
 			
-			# Recall @ K
+			# # Recall @ K
+			# if mode == "Image-to-Text":
+			# 	relevant_count = 1  # Each image has one correct class
+			# else:
+			# 	if class_counts is None:
+			# 		raise ValueError("Class counts must be provided for Text-to-Image retrieval")
+			# 	relevant_count = class_counts[true_label]
+			# recall.append(correct / relevant_count)
+
+			# 2. Compute Recall@K with division by zero protection
 			if mode == "Image-to-Text":
-				relevant_count = 1  # Each image has one correct class
+				relevant_count = 1  # Single relevant item per query
 			else:
-				if class_counts is None:
-					raise ValueError("Class counts must be provided for Text-to-Image retrieval")
-				relevant_count = class_counts[true_label]
+				relevant_count = class_counts[true_label] if class_counts is not None else 0
+					
+			if relevant_count == 0:
+				recall.append(0.0)
+			else:
+				recall.append(correct / relevant_count)
 
-			recall.append(correct / relevant_count)
+			# # Average Precision @ K
+			# if correct == 0:
+			# 		ap.append(0.0)
+			# 		continue
+			# relevant_indices = np.where(retrieved_labels == true_label)[0]
+			# p_at = []
+			# cumulative_correct = 0
+			# for j, index in enumerate(relevant_indices):
+			# 	if index < K:
+			# 		cumulative_correct += 1
+			# 		p_at.append(cumulative_correct / (index + 1))
+			# ap.append(np.mean(p_at))
 
-			# Average Precision @ K
-			if correct == 0:
-					ap.append(0.0)
-					continue
-			relevant_indices = np.where(retrieved_labels == true_label)[0]
+			# 3. Compute AP@K with proper normalization
+			relevant_positions = np.where(retrieved_labels == true_label)[0]
 			p_at = []
 			cumulative_correct = 0
-			for j, index in enumerate(relevant_indices):
-					if index < K:
-							cumulative_correct += 1
-							p_at.append(cumulative_correct / (index + 1))
-			ap.append(np.mean(p_at))
-		
+
+			for pos in relevant_positions:
+				if pos < K:  # Only consider positions within top-K
+					cumulative_correct += 1
+					precision_at_rank = cumulative_correct / (pos + 1)  # pos is 0-based
+					p_at.append(precision_at_rank)
+
+			# Determine normalization factor
+			if mode == "Image-to-Text":
+				R = 1  # Always 1 relevant item for image-to-text
+			else:
+				R = class_counts[true_label] if class_counts is not None else 0
+					
+			# Handle queries with no relevant items
+			if R == 0:
+				ap.append(0.0)
+				continue
+					
+			if len(p_at) == 0:
+				ap.append(0.0)
+			else:
+				ap.append(sum(p_at) / min(R, K))  # Normalize by min(R, K)
+
+		# Store metrics for this K
 		metrics["mP"][str(K)] = np.mean(precision)
 		metrics["mAP"][str(K)] = np.mean(ap)
 		metrics["Recall"][str(K)] = np.mean(recall)
