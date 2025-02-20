@@ -192,13 +192,20 @@ def compute_retrieval_metrics(
 	num_queries, num_candidates = similarity_matrix.shape
 	assert num_queries == len(query_labels), "Number of queries must match labels"
 	
+	num_classes = len(np.unique(candidate_labels)) # unique values in candidate_labels
+	valid_K_values = [K for K in topK_values if K <= num_classes]
+	print(f"num_classes: {num_classes} | Valid K values: {valid_K_values}")
+	if len(valid_K_values) < len(topK_values):
+		print(f"<!> Warning: K values ({set(topK_values) - set(valid_K_values)}) exceed the number of classes ({num_classes}). They will be ignored.")
+	
 	metrics = {
 		"mP": {},
 		"mAP": {},
 		"Recall": {},
 	}
 	
-	for K in topK_values:
+	# for K in topK_values:
+	for K in valid_K_values:
 		top_k_indices = np.argsort(-similarity_matrix, axis=1)[:, :K]
 		
 		precision = []
@@ -260,13 +267,12 @@ def compute_retrieval_metrics(
 def plot_retrieval_metrics_best_model(
 	image_to_text_metrics: Dict[str, Dict[str, float]],
 	text_to_image_metrics: Dict[str, Dict[str, float]],
-	topK_values: List[int],
+	topK_values: List[int]=[1, 3, 5],
 	fname: str ="Retrieval_Performance_Metrics_best_model.png",
 	best_model_name: str ="Best Model",
 	):
 	metrics = list(image_to_text_metrics.keys())  # ['mP', 'mAP', 'Recall']
 	suptitle_text = f"Retrieval Performance Metrics [{best_model_name}]: "
-	# suptitle_text = r"Retrieval Performance Metrics [\textcolor{green}{Best Model}]: "
 	for metric in metrics:
 		suptitle_text += f"{metric}@K | " 
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
@@ -279,19 +285,21 @@ def plot_retrieval_metrics_best_model(
 	legend_handles = []
 	legend_labels = []
 	
+	valid_K_values = [K for K in topK_values if K in image_to_text_metrics["mP"]]
+	print(f"valid_K_values: {valid_K_values}")
 	for i, metric in enumerate(metrics):
 		ax = axes[i]
 		
 		# Plotting for Image-to-Text
-		it_values = [image_to_text_metrics[metric].get(str(K), 0) for K in topK_values]
-		line, = ax.plot(topK_values, it_values, marker='o', label=modes[0], color='blue')
+		it_values = [image_to_text_metrics[metric].get(str(K), 0) for K in valid_K_values]
+		line, = ax.plot(valid_K_values, it_values, marker='o', label=modes[0], color='blue')
 		if modes[0] not in legend_labels:
 			legend_handles.append(line)
 			legend_labels.append(modes[0])
 		
 		# Plotting for Text-to-Image
-		ti_values = [text_to_image_metrics[metric].get(str(K), 0) for K in topK_values]
-		line, = ax.plot(topK_values, ti_values, marker='s', label=modes[1], color='red')
+		ti_values = [text_to_image_metrics[metric].get(str(K), 0) for K in valid_K_values]
+		line, = ax.plot(valid_K_values, ti_values, marker='s', label=modes[1], color='red')
 		if modes[1] not in legend_labels:
 			legend_handles.append(line)
 			legend_labels.append(modes[1])
@@ -302,7 +310,7 @@ def plot_retrieval_metrics_best_model(
 		ax.grid(True, linestyle='--', alpha=0.7)
 		
 		# Set the x-axis to only show integer values
-		ax.set_xticks(topK_values)
+		ax.set_xticks(valid_K_values)
 		
 		# Adjust y-axis to start from 0 for better visualization
 		ax.set_ylim(bottom=0.0, top=1.05)
@@ -334,6 +342,11 @@ def plot_retrieval_metrics_per_epoch(
 	num_epochs = len(image_to_text_metrics_list)
 	if num_epochs < 2:
 		return
+
+	valid_K_values = [K for K in topK_values if str(K) in image_to_text_metrics_list[0]["mP"]]
+	if len(valid_K_values) < len(topK_values):
+		print(f"<!> Warning: K values ({set(topK_values) - set(valid_K_values)}) exceed the number of classes. They will be ignored.")
+
 	epochs = range(1, num_epochs + 1)
 	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
 	suptitle_text = f"Retrieval Performance Metrics [per epoch]: "
@@ -353,7 +366,7 @@ def plot_retrieval_metrics_per_epoch(
 	for i, task_metrics_list in enumerate([image_to_text_metrics_list, text_to_image_metrics_list]):
 		for j, metric in enumerate(metrics):
 			ax = axs[i, j]
-			for K, color, marker, linestyle in zip(topK_values, colors, markers, line_styles):
+			for K, color, marker, linestyle in zip(valid_K_values, colors, markers, line_styles):
 				values = []
 				for metrics_dict in task_metrics_list:
 					if metric in metrics_dict and str(K) in metrics_dict[metric]:
@@ -387,7 +400,7 @@ def plot_retrieval_metrics_per_epoch(
 		legend_labels,
 		fontsize=11,
 		loc='upper center',
-		ncol=len(topK_values),
+		ncol=len(valid_K_values),
 		bbox_to_anchor=(0.5, 0.96),
 		bbox_transform=fig.transFigure,
 		frameon=True,
@@ -413,7 +426,14 @@ def evaluate_loss_and_accuracy(
 	total_txt2img_correct = 0
 	num_batches = len(validation_loader)
 	total_samples = len(validation_loader.dataset)
-	img2txt_topk_accuracy = {k: 0 for k in topK_values}
+
+	# Determine valid K values based on the number of classes
+	num_classes = len(validation_loader.dataset.dataset.classes)
+	valid_K_values = [K for K in topK_values if K <= num_classes]
+	if len(valid_K_values) < len(topK_values):
+		print(f"Warning: Some K values ({set(topK_values) - set(valid_K_values)}) exceed the number of classes ({num_classes}). They will be ignored.")
+
+	img2txt_topk_accuracy = {k: 0 for k in valid_K_values}
 	reciprocal_ranks = []
 	cosine_similarities = []
 	with torch.no_grad():
@@ -445,7 +465,7 @@ def evaluate_loss_and_accuracy(
 			total_txt2img_correct += txt2img_correct
 
 			# Top-k Accuracy
-			for k in topK_values:
+			for k in valid_K_values:
 				effective_k = min(k, batch_size) # Ensure k is not greater than batch_size
 				topk_predicted_labels_values, topk_predicted_labels_idxs = torch.topk(input=logits_per_image, k=effective_k, dim=1) # values, indices
 				img2txt_topk_accuracy[k] += (topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item()
