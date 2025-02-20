@@ -1141,7 +1141,7 @@ def train(
 		topK_values=TOP_K_VALUES,
 		fname=retrieval_metrics_fpth,
 	)
-	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_best_model_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_best_model_per_k_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	plot_retrieval_metrics_best_model(
 		image_to_text_metrics=img2txt_metrics_best_model,
 		text_to_image_metrics=txt2img_metrics_best_model,
