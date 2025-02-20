@@ -515,7 +515,6 @@ def plot_loss_accuracy(
 		cosine_similarity_file_path="cosine_similarity.png",
 		DPI=250,
 		figure_size=(11, 5),
-		TOP_K_VALUES=[1, 3, 5],
 	):
 	num_epochs = len(train_losses)
 	if num_epochs == 1:
@@ -552,27 +551,22 @@ def plot_loss_accuracy(
 	plt.title(os.path.splitext(os.path.basename(accuracy_file_path))[0], fontsize=10)
 	plt.legend(title='[Top-1] Accuracy (Zero-Shot)', fontsize=8, title_fontsize=9, loc='best')
 	plt.grid(True)
-	# plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=7)
 	plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust the rect parameter to make space for the title
 	plt.savefig(accuracy_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
 	
-	plt.figure(figsize=figure_size)
-
-	# for k, acc in zip(TOP_K_VALUES, zip(*img2txt_topk_accuracy_list)):
-	# 	plt.plot(epochs, acc, label=f'Top-{k}')
-
+	plt.figure(figsize=figure_size, constrained_layout=True)
+	print(epochs)
+	print(img2txt_topk_accuracy_list)
 	for k, acc in enumerate(img2txt_topk_accuracy_list):
 		plt.plot(epochs, acc, label=f'Top-{k+1}')
-
 	plt.xlabel('Epoch')
 	plt.ylabel('Accuracy')
 	plt.title("Image-to-Text Top-k Accuracy")
 	plt.legend(ncols=len(img2txt_topk_accuracy_list), loc='best')
 	plt.grid(True, linestyle='--', alpha=0.7)
 	plt.tight_layout()
-	plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=7)
 	plt.savefig(topk_accuracy_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
@@ -933,7 +927,6 @@ def finetune(
 		topk_accuracy_file_path=topk_acc_fpth,
 		mean_reciprocal_rank_file_path=mrr_fpth,
 		cosine_similarity_file_path=cs_fpth,
-		TOP_K_VALUES=TOP_K_VALUES,
 	)
 
 	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
@@ -1137,7 +1130,6 @@ def train(
 		topk_accuracy_file_path=topk_acc_fpth,
 		mean_reciprocal_rank_file_path=mrr_fpth,
 		cosine_similarity_file_path=cs_fpth,
-		TOP_K_VALUES=TOP_K_VALUES,
 	)
 
 	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_per_epoch_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
