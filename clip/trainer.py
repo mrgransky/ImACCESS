@@ -678,11 +678,14 @@ def finetune(
 	img2txt_topk_accuracy_list = []
 	mean_reciprocal_rank_list = []
 	cosine_similarity_list = []
-	precision_list, recall_list, f1_list = [], [], []
 	current_phase = 0
 	plateau_threshold = min_delta # ensure parameter consistency
 	initial_learning_rate = learning_rate # Store the initial value
+	img2txt_metrics_list = []
+	txt2img_metrics_list = []
 	ft_st = time.time()
+	torch.cuda.empty_cache() # Clear GPU memory cache
+	# Training loop:
 	for epoch in range(num_epochs):
 		print(f"Epoch [{epoch+1}/{num_epochs}]")
 		# Adaptive Progressive Layer Freezing Schedule:
@@ -762,15 +765,25 @@ def finetune(
 		img2txt_topk_accuracy_list.append([img2txt_topk_accuracy[k] for k in TOP_K_VALUES])
 		mean_reciprocal_rank_list.append(mean_reciprocal_rank)
 		cosine_similarity_list.append(cosine_sim_mean)
-		precision_list.append(avg_precision)
-		recall_list.append(avg_recall)
-		f1_list.append(avg_f1)
 		print(
 			f'@ Epoch: {epoch+1}\n'
-			f'\t[Loss] {mode}: {avg_training_loss:.7f} Valid: {avg_valid_loss:.9f}\n'
+			f'\t[Loss] {mode}: {avg_training_loss:.7f} | Valid: {avg_valid_loss:.9f}\n'
 			f'\tValid Acc [text retrieval per image]: {img2txt_val_acc} '
 			f'[image retrieval per text]: {txt2img_val_acc}'
 		)
+		# Compute retrieval-based metrics
+		img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
+			model=model,
+			validation_loader=validation_loader,
+			device=device,
+			topK_values=TOP_K_VALUES,
+		)
+		print(f"Image-to-text retrieval metrics:")
+		print(json.dumps(img2txt_metrics, indent=4, ensure_ascii=False))
+		print(f"Text-to-image retrieval metrics:")
+		print(json.dumps(txt2img_metrics, indent=4, ensure_ascii=False))
+		img2txt_metrics_list.append(img2txt_metrics)
+		txt2img_metrics_list.append(txt2img_metrics)
 		# ############################## Early stopping ##############################
 		if early_stopping.should_stop(avg_valid_loss, model, epoch):
 			print(
@@ -805,6 +818,14 @@ def finetune(
 		mean_reciprocal_rank_file_path=mrr_fpth,
 		cosine_similarity_file_path=cs_fpth,
 		TOP_K_VALUES=TOP_K_VALUES,
+	)
+
+	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	plot_retrieval_metrics(
+		image_to_text_metrics_list=img2txt_metrics_list,
+		text_to_image_metrics_list=txt2img_metrics_list,
+		topK_values=TOP_K_VALUES,
+		fname=retrieval_metrics_fpth,
 	)
 
 def train(
@@ -894,7 +915,7 @@ def train(
 	precision_list, recall_list, f1_list = [], [], []
 	img2txt_metrics_list = []
 	txt2img_metrics_list = []
-	ft_st = time.time()
+	train_start_time = time.time()
 	print(torch.cuda.memory_summary(device=device))
 	for epoch in range(num_epochs):
 		torch.cuda.empty_cache() # Clear GPU memory cache
@@ -947,7 +968,7 @@ def train(
 		cosine_similarity_list.append(cosine_sim_mean)
 		print(
 			f'@ Epoch {epoch+1}:\n'
-			f'\t[LOSS] {mode}: {avg_training_loss:.5f} Valid: {avg_valid_loss:.8f}\n'
+			f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {avg_valid_loss:.8f}\n'
 			f'\tValid Acc [text retrieval per image]: {img2txt_val_acc} '
 			f'[image retrieval per text]: {txt2img_val_acc}'
 		)
@@ -977,7 +998,7 @@ def train(
 		# ############################## Early stopping ##############################
 		print("-"*170)
 
-	print(f"Elapsed_t: {time.time()-ft_st:.1f} sec".center(150, "-"))
+	print(f"Elapsed_t: {time.time()-train_start_time:.1f} sec".center(150, "-"))
 
 	losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
@@ -999,6 +1020,7 @@ def train(
 		cosine_similarity_file_path=cs_fpth,
 		TOP_K_VALUES=TOP_K_VALUES,
 	)
+
 	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	plot_retrieval_metrics(
 		image_to_text_metrics_list=img2txt_metrics_list,
