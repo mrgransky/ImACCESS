@@ -514,7 +514,7 @@ def plot_loss_accuracy(
 		mean_reciprocal_rank_file_path="mean_reciprocal_rank.png",
 		cosine_similarity_file_path="cosine_similarity.png",
 		DPI=250,
-		figure_size=(10, 5),
+		figure_size=(11, 5),
 		TOP_K_VALUES=[1, 3, 5],
 	):
 	num_epochs = len(train_losses)
@@ -552,20 +552,25 @@ def plot_loss_accuracy(
 	plt.title(os.path.splitext(os.path.basename(accuracy_file_path))[0], fontsize=10)
 	plt.legend(title='[Top-1] Accuracy (Zero-Shot)', fontsize=8, title_fontsize=9, loc='best')
 	plt.grid(True)
-	plt.xlim(0, num_epochs + 1)
+	# plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=7)
-	plt.tight_layout()
+	plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust the rect parameter to make space for the title
 	plt.savefig(accuracy_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
 	
 	plt.figure(figsize=figure_size)
-	for k, acc in zip(TOP_K_VALUES, zip(*img2txt_topk_accuracy_list)):
-		plt.plot(epochs, acc, label=f'Top-{k}')
+
+	# for k, acc in zip(TOP_K_VALUES, zip(*img2txt_topk_accuracy_list)):
+	# 	plt.plot(epochs, acc, label=f'Top-{k}')
+
+	for k, acc in enumerate(img2txt_topk_accuracy_list):
+		plt.plot(epochs, acc, label=f'Top-{k+1}')
+
 	plt.xlabel('Epoch')
 	plt.ylabel('Accuracy')
 	plt.title("Image-to-Text Top-k Accuracy")
-	plt.legend(ncols=len(TOP_K_VALUES), loc='best')
-	plt.grid(True)
+	plt.legend(ncols=len(img2txt_topk_accuracy_list), loc='best')
+	plt.grid(True, linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=7)
@@ -1074,7 +1079,8 @@ def train(
 		val_losses.append(avg_valid_loss)
 		val_acc_img2txt_list.append(img2txt_val_acc)
 		val_acc_txt2img_list.append(txt2img_val_acc)
-		img2txt_topk_accuracy_list.append([img2txt_topk_accuracy[k] for k in TOP_K_VALUES])
+		# img2txt_topk_accuracy_list.append([img2txt_topk_accuracy[k] for k in TOP_K_VALUES])
+		img2txt_topk_accuracy_list.append(img2txt_topk_accuracy)
 		mean_reciprocal_rank_list.append(mean_reciprocal_rank)
 		cosine_similarity_list.append(cosine_sim_mean)
 		print(
