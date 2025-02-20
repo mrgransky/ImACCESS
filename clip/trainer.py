@@ -559,8 +559,15 @@ def plot_loss_accuracy(
 	plt.figure(figsize=figure_size, constrained_layout=True)
 	print(epochs)
 	print(img2txt_topk_accuracy_list)
-	for k, acc in enumerate(img2txt_topk_accuracy_list):
-		plt.plot(epochs, acc, label=f'Top-{k+1}')
+
+	# for k, acc in enumerate(img2txt_topk_accuracy_list):
+	# 	plt.plot(epochs, acc, label=f'Top-{k+1}')
+	topk_values = list(img2txt_topk_accuracy_list[0].keys()) # [1, 5, 10]
+	print(topk_values)
+	for k in topk_values:
+		accuracy_values = [epoch_data[k] for epoch_data in img2txt_topk_accuracy_list]
+		plt.plot(epochs, accuracy_values, marker='o', label=f"Top-{k}")
+
 	plt.xlabel('Epoch')
 	plt.ylabel('Accuracy')
 	plt.title("Image-to-Text Top-k Accuracy")
@@ -580,6 +587,7 @@ def plot_loss_accuracy(
 	plt.legend()
 	plt.tight_layout()
 	plt.xlim(0, num_epochs + 1)
+	plt.ylim(0, 1)
 	plt.xticks(xticks, fontsize=7)
 	plt.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
