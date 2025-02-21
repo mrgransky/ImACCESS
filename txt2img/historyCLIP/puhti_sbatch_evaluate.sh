@@ -1,14 +1,14 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=reverse_trial_x2_preck_dataset_x
+#SBATCH --job-name=reverse_trial_x3_preck_dataset_x
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
-#SBATCH --mem=10G
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=8G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
 #SBATCH --array=0-1
@@ -50,7 +50,7 @@ if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then
 fi
 
 for strategy in "${sampling_strategies[@]}"; do
-	for prec in 15 10 5 1; do
+	for prec in 10 5 1; do
 		echo "Evaluation metrics@K=$prec for Dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$SLURM_ARRAY_TASK_ID]} with sampling strategy: $strategy"
 		python -u history_clip_evaluate.py \
 			--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
