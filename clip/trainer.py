@@ -1,5 +1,7 @@
 from utils import *
 from datasets_loader import get_dataloaders
+from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch
+
 # train cifar100 from scratch:
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 50 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
@@ -139,14 +141,14 @@ def evaluate_retrieval_performance(
 	
 	with torch.no_grad():
 		# Encode class names to text embeddings
-		text_inputs = clip.tokenize(class_names).to(device)
+		text_inputs = clip.tokenize(texts=class_names).to(device, non_blocking=True)
 		class_text_embeddings = model.encode_text(text_inputs)
 		class_text_embeddings = class_text_embeddings / class_text_embeddings.norm(dim=-1, keepdim=True)
 		
 		# Collect image embeddings and their labels
 		for bidx, (images, _, class_indices) in enumerate(validation_loader):
-			images = images.to(device)
-			class_indices = class_indices.to(device)
+			images = images.to(device, non_blocking=True)
+			class_indices = class_indices.to(device, non_blocking=True)
 			
 			image_embeds = model.encode_image(images)
 			image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
@@ -162,41 +164,52 @@ def evaluate_retrieval_performance(
 	# Compute similarity matrix
 	similarity_matrix = image_embeddings @ class_text_embeddings.T
 
-	image_to_text_metrics = compute_retrieval_metrics(
+	image_to_text_metrics = get_retrieval_metrics(
 		similarity_matrix=similarity_matrix,
 		query_labels=image_labels,
 		candidate_labels=np.arange(n_classes),
 		topK_values=topK_values,
 		mode="Image-to-Text",
+		class_counts=None,  # No class counts for Image-to-Text
+		max_k=n_classes,  # Pass max_k for Image-to-Text to limit K to the number of classes
 	)
 	
-	text_to_image_metrics = compute_retrieval_metrics(
+	text_to_image_metrics = get_retrieval_metrics(
 		similarity_matrix=class_text_embeddings @ image_embeddings.T,
 		query_labels=np.arange(n_classes),
 		candidate_labels=image_labels,
 		topK_values=topK_values,
 		mode="Text-to-Image",
-		class_counts=np.bincount(image_labels) # Count number of occurrences of each value in array of non-negative ints.
+		class_counts=np.bincount(image_labels), # Count number of occurrences of each value in array of non-negative ints.
+		max_k=None,  # No limit on K for Text-to-Image
 	)
 
 	return image_to_text_metrics, text_to_image_metrics
 
-def compute_retrieval_metrics(
-	similarity_matrix,
-	query_labels,
-	candidate_labels,
+def get_retrieval_metrics(
+	similarity_matrix: np.ndarray,
+	query_labels: np.ndarray,
+	candidate_labels: np.ndarray,
 	topK_values: List[int] = [1, 3, 5],
-	mode="Image-to-Text",
+	mode: str ="Image-to-Text",
 	class_counts: np.ndarray = None,
+	max_k: int = None,  # New parameter to limit K values (None for no limit)
 	):
 	num_queries, num_candidates = similarity_matrix.shape
 	assert num_queries == len(query_labels), "Number of queries must match labels"
 	
 	num_classes = len(np.unique(candidate_labels)) # unique values in candidate_labels
-	valid_K_values = [K for K in topK_values if K <= num_classes]
-	print(f"num_classes: {num_classes} | Valid K values: {valid_K_values}")
+
+	# Filter topK_values based on max_k and num_classes
+	if max_k is not None:
+		valid_K_values = [K for K in topK_values if K <= max_k]
+		print(f"max_k: {max_k} | Valid K values: {topK_values}")
+	else:
+		valid_K_values = topK_values # No limit on K values
+	# valid_K_values = [K for K in topK_values if K <= num_classes]
+
 	if len(valid_K_values) < len(topK_values):
-		print(f"<!> Warning: K values ({set(topK_values) - set(valid_K_values)}) exceed the number of classes ({num_classes}). They will be ignored.")
+		print(f"<!> Warning: K values: ({set(topK_values) - set(valid_K_values)}) exceed the number of classes ({num_classes}). => ignored!")
 	
 	metrics = {
 		"mP": {},
@@ -204,13 +217,10 @@ def compute_retrieval_metrics(
 		"Recall": {},
 	}
 	
-	# for K in topK_values:
 	for K in valid_K_values:
 		top_k_indices = np.argsort(-similarity_matrix, axis=1)[:, :K]
 		
-		precision = []
-		recall = []
-		ap = []
+		precision, recall, ap = [], [], []
 		for i in range(num_queries):
 			true_label = query_labels[i]
 			retrieved_labels = candidate_labels[top_k_indices[i]]
@@ -221,7 +231,7 @@ def compute_retrieval_metrics(
 			
 			# 2. Compute Recall@K with division by zero protection
 			if mode == "Image-to-Text":
-				relevant_count = 1  # Single relevant item per query
+				relevant_count = 1  # Single relevant item per query [single label per image]
 			else:
 				relevant_count = class_counts[true_label] if class_counts is not None else 0
 					
@@ -264,165 +274,6 @@ def compute_retrieval_metrics(
 	
 	return metrics
 
-def plot_retrieval_metrics_best_model(
-	image_to_text_metrics: Dict[str, Dict[str, float]],
-	text_to_image_metrics: Dict[str, Dict[str, float]],
-	fname: str ="Retrieval_Performance_Metrics_best_model.png",
-	best_model_name: str ="Best Model",
-	):
-	metrics = list(image_to_text_metrics.keys())  # ['mP', 'mAP', 'Recall']
-	suptitle_text = f"Retrieval Performance Metrics [{best_model_name}]: "
-	for metric in metrics:
-		suptitle_text += f"{metric}@K | " 
-	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
-	modes = ['Image-to-Text', 'Text-to-Image']
-	
-	fig, axes = plt.subplots(1, len(metrics), figsize=(11, 4), constrained_layout=True)
-	fig.suptitle(suptitle_text, fontsize=11, fontweight='bold')
-	
-	# Store legend handles and labels
-	legend_handles = []
-	legend_labels = []
-
-	for i, metric in enumerate(metrics):
-		ax = axes[i]
-		top_Ks = list(map(int, image_to_text_metrics[metric].keys()))  # Convert keys to integers
-		it_vals = list(image_to_text_metrics[metric].values())
-		print("Image-to-Text: ", metric, top_Ks, it_vals)
-		# Plotting for Image-to-Text
-		line, = ax.plot(
-			top_Ks, 
-			it_vals, 
-			marker='o', 
-			label=modes[0], 
-			color='blue', 
-			linestyle='-', 
-			linewidth=1.5, 
-			markersize=5,
-		)
-		if modes[0] not in legend_labels:
-			legend_handles.append(line)
-			legend_labels.append(modes[0])
-		
-		# Plotting for Text-to-Image
-		# top_Ks = list(map(int, text_to_image_metrics[metric].keys()))  # Convert keys to integers
-		ti_vals = list(text_to_image_metrics[metric].values())
-		print("Text-to-Image: ", metric, top_Ks, it_vals)
-		line, = ax.plot(top_Ks, ti_vals, marker='s', label=modes[1], color='red')
-		if modes[1] not in legend_labels:
-			legend_handles.append(line)
-			legend_labels.append(modes[1])
-		
-		ax.set_xlabel('K', fontsize=12)
-		ax.set_ylabel(f'{metric}@K', fontsize=11)
-		ax.set_title(f'{metric}@K', fontsize=12)
-		ax.grid(True, linestyle='--', alpha=0.7)
-		
-		# Set the x-axis to only show integer values
-		ax.set_xticks(top_Ks)
-		
-		# Adjust y-axis to start from 0 for better visualization
-		ax.set_ylim(bottom=-0.05, top=1.05)
-	
-	plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-	fig.legend(
-		legend_handles,
-		legend_labels,
-		fontsize=10,
-		loc='upper center',
-		ncol=len(modes),
-		bbox_to_anchor=(0.5, 0.94),
-		bbox_transform=fig.transFigure,
-		frameon=True,
-		shadow=True,
-		fancybox=True,
-		edgecolor='black',
-		facecolor='white',
-	)
-	plt.savefig(fname, dpi=300, bbox_inches='tight')
-	plt.close(fig)
-
-def plot_retrieval_metrics_per_epoch(
-	image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
-	text_to_image_metrics_list: List[Dict[str, Dict[str, float]]],
-	topK_values: List[int],
-	fname: str="Retrieval_Performance_Metrics.png",
-	):
-	num_epochs = len(image_to_text_metrics_list)
-	if num_epochs < 2:
-		return
-
-	valid_K_values = [K for K in topK_values if str(K) in image_to_text_metrics_list[0]["mP"]]
-	if len(valid_K_values) < len(topK_values):
-		print(f"<!> Warning: K values ({set(topK_values) - set(valid_K_values)}) exceed the number of classes. They will be ignored.")
-
-	epochs = range(1, num_epochs + 1)
-	modes = ["Image-to-Text", "Text-to-Image"]
-	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
-	suptitle_text = f"Retrieval Performance Metrics [per epoch]: "
-	for metric in metrics:
-		suptitle_text += f"{metric}@K | " 
-	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
-
-	cmap = plt.get_cmap("tab10")  # Use a colormap with at least 10 colors
-	colors = [cmap(i) for i in range(cmap.N)]
-	markers = ['D', 'v', 'o', 's', '^', 'P', 'X', 'd', 'H', 'h']  # Different markers for each line
-	line_styles = ['-', '--', '-.', ':', '-']  # Different line styles for each metric
-	fig, axs = plt.subplots(len(modes), len(metrics), figsize=(20, 11), constrained_layout=True)
-	fig.suptitle(suptitle_text, fontsize=15, fontweight='bold')
-	# Store legend handles and labels
-	legend_handles = []
-	legend_labels = []
-	for i, task_metrics_list in enumerate([image_to_text_metrics_list, text_to_image_metrics_list]):
-		for j, metric in enumerate(metrics):
-			ax = axs[i, j]
-			for K, color, marker, linestyle in zip(valid_K_values, colors, markers, line_styles):
-				values = []
-				for metrics_dict in task_metrics_list:
-					if metric in metrics_dict and str(K) in metrics_dict[metric]:
-						values.append(metrics_dict[metric][str(K)])
-					else:
-						values.append(0)
-				line, = ax.plot(
-					epochs,
-					values,
-					marker=marker,
-					markersize=6,
-					linestyle=linestyle,
-					label=f'K={K}',
-					color=color, 
-					alpha=0.8,
-					linewidth=2.0,
-				)
-				# Collect handles and labels for the legend
-				if f'K={K}' not in legend_labels:
-					legend_handles.append(line)
-					legend_labels.append(f'K={K}')
-			ax.set_xlabel('Epoch', fontsize=12)
-			ax.set_ylabel(f'{metric}@K', fontsize=12)
-			ax.set_title(f'{modes[i]} - {metric}@K', fontsize=14)
-			# ax.legend(fontsize=10, loc="upper left", bbox_to_anchor=(1, 1))
-			ax.grid(True, linestyle='--', alpha=0.7)
-			ax.set_xticks(epochs)
-			ax.set_ylim(bottom=-0.05, top=1.05)
-	fig.legend(
-		legend_handles,
-		legend_labels,
-		fontsize=11,
-		loc='upper center',
-		ncol=len(valid_K_values),
-		bbox_to_anchor=(0.5, 0.96),
-		bbox_transform=fig.transFigure,
-		frameon=True,
-		shadow=True,
-		fancybox=True,
-		edgecolor='black',
-		facecolor='white',
-	)
-	plt.tight_layout(rect=[0, 0.03, 0.9, 0.95])
-	plt.savefig(fname, dpi=300, bbox_inches='tight')
-	plt.close(fig)
-
 def evaluate_loss_and_accuracy(
 	model,
 	validation_loader: DataLoader,
@@ -448,7 +299,7 @@ def evaluate_loss_and_accuracy(
 	cosine_similarities = []
 	with torch.no_grad():
 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
-			images, tokenized_labels = images.to(device), tokenized_labels.to(device) # [batch_size, 3, 224, 224], [batch_size, 77]
+			images, tokenized_labels = images.to(device, non_blocking=True), tokenized_labels.to(device, non_blocking=True) # [batch_size, 3, 224, 224], [batch_size, 77]
 			batch_size = images.size(0)
 
 			# Forward pass:
@@ -509,110 +360,6 @@ def evaluate_loss_and_accuracy(
 		mean_reciprocal_rank,
 		cosine_sim_mean,
 	)
-
-def plot_loss_accuracy(
-		train_losses,
-		val_losses,
-		val_acc_img2txt_list,
-		val_acc_txt2img_list,
-		img2txt_topk_accuracy_list,
-		mean_reciprocal_rank_list,
-		cosine_similarity_list,
-		losses_file_path="losses.png",
-		accuracy_file_path="accuracy.png",
-		topk_accuracy_file_path="img2txt_topk_accuracy.png",
-		mean_reciprocal_rank_file_path="mean_reciprocal_rank.png",
-		cosine_similarity_file_path="cosine_similarity.png",
-		DPI=250,
-		figure_size=(11, 5),
-	):
-	num_epochs = len(train_losses)
-	if num_epochs == 1:
-		return
-	epochs = range(1, num_epochs + 1)
-
-	# Set xticks to be dynamically defined
-	num_xticks = 10
-	# Check if num_xticks is greater than num_epochs + 1
-	if num_xticks > num_epochs + 1:
-		num_xticks = num_epochs + 1
-	xticks = np.arange(0, num_epochs + 1, (num_epochs + 1) // num_xticks)
-
-	# Plot losses:
-	plt.figure(figsize=figure_size)
-	plt.plot(epochs, train_losses, color='b', label='Train', lw=1.25)
-	plt.plot(epochs, val_losses, color='r', label='Validation', lw=1.25)
-	plt.xlabel('Epoch')
-	plt.ylabel('Loss')
-	plt.title(os.path.splitext(os.path.basename(losses_file_path))[0], fontsize=10)
-	plt.legend(ncols=2, fontsize=10, loc='best')
-	plt.grid(True)
-	plt.xlim(0, num_epochs + 1)
-	plt.xticks(xticks, fontsize=7)
-	plt.tight_layout()
-	plt.savefig(losses_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close(fig)
-
-	plt.figure(figsize=figure_size)
-	plt.plot(epochs, val_acc_img2txt_list, label='text retrieval per image')
-	plt.plot(epochs, val_acc_txt2img_list, label='image retrieval per text')
-	plt.xlabel('Epoch')
-	plt.ylabel('Accuracy')
-	plt.title(os.path.splitext(os.path.basename(accuracy_file_path))[0], fontsize=10)
-	plt.legend(title='[Top-1] Accuracy (Zero-Shot)', fontsize=8, title_fontsize=9, loc='best')
-	plt.grid(True)
-	plt.xticks(xticks, fontsize=7)
-	plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust the rect parameter to make space for the title
-	plt.savefig(accuracy_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close(fig)
-	
-	plt.figure(figsize=figure_size, constrained_layout=True)
-	print(epochs)
-	print(img2txt_topk_accuracy_list)
-
-	# for k, acc in enumerate(img2txt_topk_accuracy_list):
-	# 	plt.plot(epochs, acc, label=f'Top-{k+1}')
-	topk_values = list(img2txt_topk_accuracy_list[0].keys()) # [1, 5, 10]
-	print(topk_values)
-	for k in topk_values:
-		accuracy_values = [epoch_data[k] for epoch_data in img2txt_topk_accuracy_list]
-		plt.plot(epochs, accuracy_values, marker='o', label=f"Top-{k}")
-	plt.xlabel('Epoch')
-	plt.ylabel('Accuracy')
-	plt.title(f"Image-to-Text Top-K Accuracy (K={topk_values})", fontsize=10, fontweight='bold')
-	plt.legend(ncols=len(img2txt_topk_accuracy_list), loc='best')
-	plt.grid(True, linestyle='--', alpha=0.7)
-	plt.tight_layout()
-	plt.xticks(xticks, fontsize=7)
-	plt.ylim([0, 1])
-	plt.savefig(topk_accuracy_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close(fig)
-	
-	plt.figure(figsize=figure_size)
-	plt.plot(epochs, mean_reciprocal_rank_list,  label='Mean Reciprocal Rank')
-	plt.xlabel('Epoch')
-	plt.ylabel('MRR')
-	plt.title("Mean Reciprocal Rank")
-	plt.grid(True)
-	plt.legend()
-	plt.tight_layout()
-	plt.ylim([0, 1])
-	plt.xticks(xticks, fontsize=7)
-	plt.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close(fig)
-		
-	plt.figure(figsize=figure_size)
-	plt.plot(epochs, cosine_similarity_list,  linestyle='-', color='g', label='Cosine Similarity')
-	plt.xlabel('Epoch')
-	plt.ylabel('Cosine Similarity')
-	plt.title("Cosine Similarity Over Epochs", fontsize=10)
-	plt.grid(True)
-	plt.tight_layout()
-	plt.legend()
-	plt.xlim(0, num_epochs + 1)
-	plt.xticks(xticks, fontsize=7)
-	plt.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close(fig)
 
 def count_clip_layers(model):
 		"""
@@ -851,7 +598,7 @@ def finetune(
 		epoch_loss = 0.0
 		for bidx, (images, labels) in enumerate(train_loader):
 			optimizer.zero_grad() # Clear gradients from previous batch
-			images, labels = images.to(device), labels.to(device) # torch.Size([b, 3, 224, 224]), torch.Size([b, 77])
+			images, labels = images.to(device, non_blocking=True), labels.to(device, non_blocking=True) # torch.Size([b, 3, 224, 224]), torch.Size([b, 77])
 			with torch.amp.autocast(device_type=device.type): # # Automatic Mixed Precision (AMP) backpropagation:
 				logits_per_image, logits_per_text = model(images, labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
 				ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
@@ -1051,7 +798,7 @@ def train(
 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
 			# torch.Size([64, 3, 224, 224]), torch.Size([64, 77]), torch.Size([64])
 			optimizer.zero_grad() # Clear gradients from previous batch
-			images, tokenized_labels = images.to(device), tokenized_labels.to(device) # torch.Size([b, 3, 224, 224]), torch.Size([b, 77])
+			images, tokenized_labels = images.to(device, non_blocking=True), tokenized_labels.to(device, non_blocking=True) # torch.Size([b, 3, 224, 224]), torch.Size([b, 77])
 			with torch.amp.autocast(device_type=device.type): # # Automatic Mixed Precision (AMP) backpropagation:
 				logits_per_image, logits_per_text = model(images, tokenized_labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
 				ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
@@ -1169,7 +916,7 @@ def pretrain(
 	device: str="cuda:0",
 	TOP_K_VALUES: List=[1, 3, 5],
 	):
-	print("Pretrain Evaluation")
+	print("Pretrain Evaluation".center(150, "-"))
 	model_name = model.__class__.__name__
 	model_arch = model.name.replace("/","_")
 	print(f"Model: {model_name} - {model_arch}") # CLIP - ViT-B/32

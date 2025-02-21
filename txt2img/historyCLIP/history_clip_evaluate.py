@@ -1363,6 +1363,7 @@ def main():
 	print(clip.available_models())
 	model, preprocess = clip.load(args.model_name, device=args.device)
 	model = model.float() # Convert model parameters to FP32
+	model.name = args.model_name
 
 	if args.sampling == "stratified_random":
 		stratified_random_sampling(
