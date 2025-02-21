@@ -277,8 +277,8 @@ def plot_retrieval_metrics_best_model(
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
 	modes = ['Image-to-Text', 'Text-to-Image']
 	
-	fig, axes = plt.subplots(1, len(metrics), figsize=(15, 5), constrained_layout=True)
-	fig.suptitle(suptitle_text, fontsize=13, fontweight='bold')
+	fig, axes = plt.subplots(1, len(metrics), figsize=(11, 4), constrained_layout=True)
+	fig.suptitle(suptitle_text, fontsize=11, fontweight='bold')
 	
 	# Store legend handles and labels
 	legend_handles = []
@@ -290,7 +290,16 @@ def plot_retrieval_metrics_best_model(
 		it_vals = list(image_to_text_metrics[metric].values())
 		print("Image-to-Text: ", metric, top_Ks, it_vals)
 		# Plotting for Image-to-Text
-		line, = ax.plot(top_Ks, it_vals, marker='o', label=modes[0], color='blue')
+		line, = ax.plot(
+			top_Ks, 
+			it_vals, 
+			marker='o', 
+			label=modes[0], 
+			color='blue', 
+			linestyle='-', 
+			linewidth=1.5, 
+			markersize=5,
+		)
 		if modes[0] not in legend_labels:
 			legend_handles.append(line)
 			legend_labels.append(modes[0])
@@ -305,8 +314,8 @@ def plot_retrieval_metrics_best_model(
 			legend_labels.append(modes[1])
 		
 		ax.set_xlabel('K', fontsize=12)
-		ax.set_ylabel(f'{metric}@K', fontsize=12)
-		ax.set_title(f'{metric}@K', fontsize=14)
+		ax.set_ylabel(f'{metric}@K', fontsize=11)
+		ax.set_title(f'{metric}@K', fontsize=12)
 		ax.grid(True, linestyle='--', alpha=0.7)
 		
 		# Set the x-axis to only show integer values
@@ -322,7 +331,7 @@ def plot_retrieval_metrics_best_model(
 		fontsize=10,
 		loc='upper center',
 		ncol=len(modes),
-		bbox_to_anchor=(0.5, 0.95),
+		bbox_to_anchor=(0.5, 0.94),
 		bbox_transform=fig.transFigure,
 		frameon=True,
 		shadow=True,
