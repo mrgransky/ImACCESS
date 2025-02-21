@@ -1,10 +1,10 @@
 from utils import *
 
 def plot_retrieval_metrics_best_model(
-	image_to_text_metrics: Dict[str, Dict[str, float]],
-	text_to_image_metrics: Dict[str, Dict[str, float]],
-	fname: str ="Retrieval_Performance_Metrics_best_model.png",
-	best_model_name: str ="Best Model",
+		image_to_text_metrics: Dict[str, Dict[str, float]],
+		text_to_image_metrics: Dict[str, Dict[str, float]],
+		fname: str ="Retrieval_Performance_Metrics_best_model.png",
+		best_model_name: str ="Best Model",
 	):
 	metrics = list(image_to_text_metrics.keys())  # ['mP', 'mAP', 'Recall']
 	suptitle_text = f"Retrieval Performance Metrics [{best_model_name}]: "
@@ -89,105 +89,24 @@ def plot_retrieval_metrics_best_model(
 	plt.savefig(fname, dpi=300, bbox_inches='tight')
 	plt.close(fig)
 
-# def plot_retrieval_metrics_per_epoch(
-# 	image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
-# 	text_to_image_metrics_list: List[Dict[str, Dict[str, float]]],
-# 	fname: str="Retrieval_Performance_Metrics.png",
-# 	):
-# 	num_epochs = len(image_to_text_metrics_list)
-# 	if num_epochs < 2:
-# 		return
-
-# 	valid_K_values = [K for K in topK_values if str(K) in image_to_text_metrics_list[0]["mP"]]
-# 	if len(valid_K_values) < len(topK_values):
-# 		print(f"<!> Warning: K values ({set(topK_values) - set(valid_K_values)}) exceed the number of classes. They will be ignored.")
-
-# 	epochs = range(1, num_epochs + 1)
-# 	modes = ["Image-to-Text", "Text-to-Image"]
-# 	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
-# 	suptitle_text = f"Retrieval Performance Metrics [per epoch]: "
-# 	for metric in metrics:
-# 		suptitle_text += f"{metric}@K | " 
-# 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
-
-# 	cmap = plt.get_cmap("tab10")  # Use a colormap with at least 10 colors
-# 	colors = [cmap(i) for i in range(cmap.N)]
-# 	markers = ['D', 'v', 'o', 's', '^', 'P', 'X', 'd', 'H', 'h']  # Different markers for each line
-# 	line_styles = ['-', '--', '-.', ':', '-']  # Different line styles for each metric
-# 	fig, axs = plt.subplots(len(modes), len(metrics), figsize=(20, 11), constrained_layout=True)
-# 	fig.suptitle(suptitle_text, fontsize=15, fontweight='bold')
-# 	# Store legend handles and labels
-# 	legend_handles = []
-# 	legend_labels = []
-# 	for i, task_metrics_list in enumerate([image_to_text_metrics_list, text_to_image_metrics_list]):
-# 		for j, metric in enumerate(metrics):
-# 			ax = axs[i, j]
-# 			for K, color, marker, linestyle in zip(valid_K_values, colors, markers, line_styles):
-# 				values = []
-# 				for metrics_dict in task_metrics_list:
-# 					if metric in metrics_dict and str(K) in metrics_dict[metric]:
-# 						values.append(metrics_dict[metric][str(K)])
-# 					else:
-# 						values.append(0)
-# 				line, = ax.plot(
-# 					epochs,
-# 					values,
-# 					marker=marker,
-# 					markersize=6,
-# 					linestyle=linestyle,
-# 					label=f'K={K}',
-# 					color=color, 
-# 					alpha=0.8,
-# 					linewidth=2.0,
-# 				)
-# 				# Collect handles and labels for the legend
-# 				if f'K={K}' not in legend_labels:
-# 					legend_handles.append(line)
-# 					legend_labels.append(f'K={K}')
-# 			ax.set_xlabel('Epoch', fontsize=12)
-# 			ax.set_ylabel(f'{metric}@K', fontsize=12)
-# 			ax.set_title(f'{modes[i]} - {metric}@K', fontsize=14)
-# 			# ax.legend(fontsize=10, loc="upper left", bbox_to_anchor=(1, 1))
-# 			ax.grid(True, linestyle='--', alpha=0.7)
-# 			ax.set_xticks(epochs)
-# 			ax.set_ylim(bottom=-0.05, top=1.05)
-# 	fig.legend(
-# 		legend_handles,
-# 		legend_labels,
-# 		fontsize=11,
-# 		loc='upper center',
-# 		ncol=len(valid_K_values),
-# 		bbox_to_anchor=(0.5, 0.96),
-# 		bbox_transform=fig.transFigure,
-# 		frameon=True,
-# 		shadow=True,
-# 		fancybox=True,
-# 		edgecolor='black',
-# 		facecolor='white',
-# 	)
-# 	plt.tight_layout(rect=[0, 0.03, 0.9, 0.95])
-# 	plt.savefig(fname, dpi=300, bbox_inches='tight')
-# 	plt.close(fig)
-
-
 def plot_retrieval_metrics_per_epoch(
-	image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
-	text_to_image_metrics_list: List[Dict[str, Dict[str, float]]],
-	fname: str = "Retrieval_Performance_Metrics.png",
+		image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
+		text_to_image_metrics_list: List[Dict[str, Dict[str, float]]],
+		fname: str = "Retrieval_Performance_Metrics.png",
 	):
 	num_epochs = len(image_to_text_metrics_list)
 	if num_epochs < 2:
-			return
+		return
 	# Derive valid K values from the metrics for each mode
 	if image_to_text_metrics_list and text_to_image_metrics_list:
-			# Get K values from the first epoch's metrics for each mode
-			it_first_metrics = image_to_text_metrics_list[0]["mP"]  # Use "mP" as a representative metric
-			ti_first_metrics = text_to_image_metrics_list[0]["mP"]  # Use "mP" as a representative metric
-			it_valid_k_values = sorted([int(k) for k in it_first_metrics.keys()])  # K values for Image-to-Text
-			ti_valid_k_values = sorted([int(k) for k in ti_first_metrics.keys()])  # K values for Text-to-Image
-			# Print warning if K values differ significantly (optional, for debugging)
-			if set(it_valid_k_values) != set(ti_valid_k_values):
-					print(f"<!> Warning: K values differ between Image-to-Text ({it_valid_k_values}) and Text-to-Image ({ti_valid_k_values}).")
+		# Get K values from the first epoch's metrics for each mode
+		it_first_metrics = image_to_text_metrics_list[0]["mP"]  # Use "mP" as a representative metric
+		ti_first_metrics = text_to_image_metrics_list[0]["mP"]  # Use "mP" as a representative metric
+		it_valid_k_values = sorted([int(k) for k in it_first_metrics.keys()])  # K values for Image-to-Text
+		ti_valid_k_values = sorted([int(k) for k in ti_first_metrics.keys()])  # K values for Text-to-Image
+		# Print warning if K values differ significantly (optional, for debugging)
+		if set(it_valid_k_values) != set(ti_valid_k_values):
+			print(f"<!> Warning: K values differ between Image-to-Text ({it_valid_k_values}) and Text-to-Image ({ti_valid_k_values}).")
 	epochs = range(1, num_epochs + 1)
 	modes = ["Image-to-Text", "Text-to-Image"]
 	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
@@ -208,52 +127,52 @@ def plot_retrieval_metrics_per_epoch(
 	legend_handles = []
 	legend_labels = []
 	for i, task_metrics_list in enumerate([image_to_text_metrics_list, text_to_image_metrics_list]):
-			for j, metric in enumerate(metrics):
-					ax = axs[i, j]
-					# Use the appropriate K values for each mode
-					valid_k_values = it_valid_k_values if i == 0 else ti_valid_k_values
-					for k_idx, (K, color, marker, linestyle) in enumerate(zip(valid_k_values, colors, markers, line_styles)):
-							values = []
-							for metrics_dict in task_metrics_list:
-									if metric in metrics_dict and str(K) in metrics_dict[metric]:
-											values.append(metrics_dict[metric][str(K)])
-									else:
-											values.append(0)  # Default to 0 if K value is missing (shouldn’t happen with valid data)
-							line, = ax.plot(
-									epochs,
-									values,
-									marker=marker,
-									markersize=6,
-									linestyle=linestyle,
-									label=f'K={K}',
-									color=color,
-									alpha=0.8,
-									linewidth=2.0,
-							)
-							# Collect handles and labels for the legend, but only for the first occurrence of each K
-							if f'K={K}' not in legend_labels:
-									legend_handles.append(line)
-									legend_labels.append(f'K={K}')
-					ax.set_xlabel('Epoch', fontsize=12)
-					ax.set_ylabel(f'{metric}@K', fontsize=12)
-					ax.set_title(f'{modes[i]} - {metric}@K', fontsize=14)
-					ax.grid(True, linestyle='--', alpha=0.7)
-					ax.set_xticks(epochs)
-					ax.set_ylim(bottom=-0.05, top=1.05)
+		for j, metric in enumerate(metrics):
+			ax = axs[i, j]
+			# Use the appropriate K values for each mode
+			valid_k_values = it_valid_k_values if i == 0 else ti_valid_k_values
+			for k_idx, (K, color, marker, linestyle) in enumerate(zip(valid_k_values, colors, markers, line_styles)):
+				values = []
+				for metrics_dict in task_metrics_list:
+					if metric in metrics_dict and str(K) in metrics_dict[metric]:
+						values.append(metrics_dict[metric][str(K)])
+					else:
+						values.append(0)  # Default to 0 if K value is missing (shouldn’t happen with valid data)
+				line, = ax.plot(
+					epochs,
+					values,
+					marker=marker,
+					markersize=6,
+					linestyle=linestyle,
+					label=f'K={K}',
+					color=color,
+					alpha=0.8,
+					linewidth=2.0,
+				)
+				# Collect handles and labels for the legend, but only for the first occurrence of each K
+				if f'K={K}' not in legend_labels:
+					legend_handles.append(line)
+					legend_labels.append(f'K={K}')
+			ax.set_xlabel('Epoch', fontsize=12)
+			ax.set_ylabel(f'{metric}@K', fontsize=12)
+			ax.set_title(f'{modes[i]} - {metric}@K', fontsize=14)
+			ax.grid(True, linestyle='--', alpha=0.7)
+			ax.set_xticks(epochs)
+			ax.set_ylim(bottom=-0.05, top=1.05)
 	
 	fig.legend(
-			legend_handles,
-			legend_labels,
-			fontsize=11,
-			loc='upper center',
-			ncol=len(legend_labels),  # Adjust number of columns based on number of K values
-			bbox_to_anchor=(0.5, 0.96),
-			bbox_transform=fig.transFigure,
-			frameon=True,
-			shadow=True,
-			fancybox=True,
-			edgecolor='black',
-			facecolor='white',
+		legend_handles,
+		legend_labels,
+		fontsize=11,
+		loc='upper center',
+		ncol=len(legend_labels),  # Adjust number of columns based on number of K values
+		bbox_to_anchor=(0.5, 0.96),
+		bbox_transform=fig.transFigure,
+		frameon=True,
+		shadow=True,
+		fancybox=True,
+		edgecolor='black',
+		facecolor='white',
 	)
 	plt.tight_layout(rect=[0, 0.03, 0.9, 0.95])
 	plt.savefig(fname, dpi=300, bbox_inches='tight')
