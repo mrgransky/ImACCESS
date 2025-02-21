@@ -191,10 +191,12 @@ def plot_retrieval_metrics_per_epoch(
 	epochs = range(1, num_epochs + 1)
 	modes = ["Image-to-Text", "Text-to-Image"]
 	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
+	
 	suptitle_text = f"Retrieval Performance Metrics [per epoch]: "
 	for metric in metrics:
-			suptitle_text += f"{metric}@K | "
+		suptitle_text += f"{metric}@K | "
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
+	
 	cmap = plt.get_cmap("tab10")  # Use a colormap with at least 10 colors
 	colors = [cmap(i) for i in range(cmap.N)]
 	markers = ['D', 'v', 'o', 's', '^', 'P', 'X', 'd', 'H', 'h']  # Different markers for each line
@@ -298,7 +300,7 @@ def plot_loss_accuracy(
 	plt.xticks(xticks, fontsize=7)
 	plt.tight_layout()
 	plt.savefig(losses_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close(fig)
+	plt.close()
 
 	plt.figure(figsize=figure_size)
 	plt.plot(epochs, val_acc_img2txt_list, label='text retrieval per image')
@@ -311,7 +313,7 @@ def plot_loss_accuracy(
 	plt.xticks(xticks, fontsize=7)
 	plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust the rect parameter to make space for the title
 	plt.savefig(accuracy_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close(fig)
+	plt.close()
 	
 	plt.figure(figsize=figure_size, constrained_layout=True)
 	print(epochs)
@@ -333,7 +335,7 @@ def plot_loss_accuracy(
 	plt.xticks(xticks, fontsize=7)
 	plt.ylim([0, 1])
 	plt.savefig(topk_accuracy_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close(fig)
+	plt.close()
 	
 	plt.figure(figsize=figure_size)
 	plt.plot(epochs, mean_reciprocal_rank_list,  label='Mean Reciprocal Rank')
@@ -346,7 +348,7 @@ def plot_loss_accuracy(
 	plt.ylim([0, 1])
 	plt.xticks(xticks, fontsize=7)
 	plt.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close(fig)
+	plt.close()
 		
 	plt.figure(figsize=figure_size)
 	plt.plot(epochs, cosine_similarity_list,  linestyle='-', color='g', label='Cosine Similarity')
@@ -359,4 +361,4 @@ def plot_loss_accuracy(
 	plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=7)
 	plt.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close(fig)
+	plt.close()
