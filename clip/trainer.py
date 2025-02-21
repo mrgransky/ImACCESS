@@ -267,7 +267,6 @@ def compute_retrieval_metrics(
 def plot_retrieval_metrics_best_model(
 	image_to_text_metrics: Dict[str, Dict[str, float]],
 	text_to_image_metrics: Dict[str, Dict[str, float]],
-	topK_values: List[int]=[1, 3, 5],
 	fname: str ="Retrieval_Performance_Metrics_best_model.png",
 	best_model_name: str ="Best Model",
 	):
@@ -284,37 +283,12 @@ def plot_retrieval_metrics_best_model(
 	# Store legend handles and labels
 	legend_handles = []
 	legend_labels = []
-	metrics = []
-	for metric, data in image_to_text_metrics.items():
-		print(f"metric: {metric}")
-		metrics.append(metric)
-		print(f"data: {data}")
-		print(f"data.keys(): {data.keys()}")
-		print(f"data.values(): {data.values()}")
-		print(f"data.items(): {data.items()}")
-		top_Ks = list(map(int, data.keys()))  # Convert keys to integers
-		print(f"top_Ks: {top_Ks}")
-		it_vals = list(data.values())
-		print(f"it_vals: {it_vals}")
 
-	for metric, data in text_to_image_metrics.items():
-		print(f"metric: {metric}")
-		print(f"data: {data}")
-		print(f"data.keys(): {data.keys()}")
-		print(f"data.values(): {data.values()}")
-		print(f"data.items(): {data.items()}")
-		top_Ks = list(map(int, data.keys()))  # Convert keys to integers
-		print(f"top_Ks: {top_Ks}")
-		ti_vals = list(data.values())
-		print(f"ti_vals: {ti_vals}")
-
-	print(metrics)
-	print(top_Ks)
-	print(it_vals)
-	print(ti_vals)
 	for i, metric in enumerate(metrics):
 		ax = axes[i]
-		
+		top_Ks = list(map(int, image_to_text_metrics[metric].keys()))  # Convert keys to integers
+		it_vals = list(image_to_text_metrics[metric].values())
+		print("Image-to-Text: ", metric, top_Ks, it_vals)
 		# Plotting for Image-to-Text
 		line, = ax.plot(top_Ks, it_vals, marker='o', label=modes[0], color='blue')
 		if modes[0] not in legend_labels:
@@ -322,6 +296,9 @@ def plot_retrieval_metrics_best_model(
 			legend_labels.append(modes[0])
 		
 		# Plotting for Text-to-Image
+		# top_Ks = list(map(int, text_to_image_metrics[metric].keys()))  # Convert keys to integers
+		ti_vals = list(text_to_image_metrics[metric].values())
+		print("Text-to-Image: ", metric, top_Ks, it_vals)
 		line, = ax.plot(top_Ks, ti_vals, marker='s', label=modes[1], color='red')
 		if modes[1] not in legend_labels:
 			legend_handles.append(line)
@@ -336,7 +313,7 @@ def plot_retrieval_metrics_best_model(
 		ax.set_xticks(top_Ks)
 		
 		# Adjust y-axis to start from 0 for better visualization
-		ax.set_ylim(bottom=0.0, top=1.05)
+		ax.set_ylim(bottom=-0.05, top=1.05)
 	
 	plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 	fig.legend(
@@ -354,7 +331,7 @@ def plot_retrieval_metrics_best_model(
 		facecolor='white',
 	)
 	plt.savefig(fname, dpi=300, bbox_inches='tight')
-	plt.close()
+	plt.close(fig)
 
 def plot_retrieval_metrics_per_epoch(
 	image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
@@ -371,6 +348,7 @@ def plot_retrieval_metrics_per_epoch(
 		print(f"<!> Warning: K values ({set(topK_values) - set(valid_K_values)}) exceed the number of classes. They will be ignored.")
 
 	epochs = range(1, num_epochs + 1)
+	modes = ["Image-to-Text", "Text-to-Image"]
 	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
 	suptitle_text = f"Retrieval Performance Metrics [per epoch]: "
 	for metric in metrics:
@@ -381,7 +359,7 @@ def plot_retrieval_metrics_per_epoch(
 	colors = [cmap(i) for i in range(cmap.N)]
 	markers = ['D', 'v', 'o', 's', '^', 'P', 'X', 'd', 'H', 'h']  # Different markers for each line
 	line_styles = ['-', '--', '-.', ':', '-']  # Different line styles for each metric
-	fig, axs = plt.subplots(2, 3, figsize=(20, 11), constrained_layout=True)
+	fig, axs = plt.subplots(len(modes), len(metrics), figsize=(20, 11), constrained_layout=True)
 	fig.suptitle(suptitle_text, fontsize=15, fontweight='bold')
 	# Store legend handles and labels
 	legend_handles = []
@@ -413,11 +391,11 @@ def plot_retrieval_metrics_per_epoch(
 					legend_labels.append(f'K={K}')
 			ax.set_xlabel('Epoch', fontsize=12)
 			ax.set_ylabel(f'{metric}@K', fontsize=12)
-			ax.set_title(f'{["Image-to-Text", "Text-to-Image"][i]} - {metric}@K', fontsize=14)
+			ax.set_title(f'{modes[i]} - {metric}@K', fontsize=14)
 			# ax.legend(fontsize=10, loc="upper left", bbox_to_anchor=(1, 1))
 			ax.grid(True, linestyle='--', alpha=0.7)
 			ax.set_xticks(epochs)
-			ax.set_ylim(bottom=0.0, top=1.05)
+			ax.set_ylim(bottom=-0.05, top=1.05)
 	fig.legend(
 		legend_handles,
 		legend_labels,
@@ -434,7 +412,7 @@ def plot_retrieval_metrics_per_epoch(
 	)
 	plt.tight_layout(rect=[0, 0.03, 0.9, 0.95])
 	plt.savefig(fname, dpi=300, bbox_inches='tight')
-	plt.close()
+	plt.close(fig)
 
 def evaluate_loss_and_accuracy(
 	model,
@@ -564,7 +542,7 @@ def plot_loss_accuracy(
 	plt.xticks(xticks, fontsize=7)
 	plt.tight_layout()
 	plt.savefig(losses_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close()
+	plt.close(fig)
 
 	plt.figure(figsize=figure_size)
 	plt.plot(epochs, val_acc_img2txt_list, label='text retrieval per image')
@@ -577,7 +555,7 @@ def plot_loss_accuracy(
 	plt.xticks(xticks, fontsize=7)
 	plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust the rect parameter to make space for the title
 	plt.savefig(accuracy_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close()
+	plt.close(fig)
 	
 	plt.figure(figsize=figure_size, constrained_layout=True)
 	print(epochs)
@@ -599,7 +577,7 @@ def plot_loss_accuracy(
 	plt.xticks(xticks, fontsize=7)
 	plt.ylim([0, 1])
 	plt.savefig(topk_accuracy_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close()
+	plt.close(fig)
 	
 	plt.figure(figsize=figure_size)
 	plt.plot(epochs, mean_reciprocal_rank_list,  label='Mean Reciprocal Rank')
@@ -612,7 +590,7 @@ def plot_loss_accuracy(
 	plt.ylim([0, 1])
 	plt.xticks(xticks, fontsize=7)
 	plt.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close()
+	plt.close(fig)
 		
 	plt.figure(figsize=figure_size)
 	plt.plot(epochs, cosine_similarity_list,  linestyle='-', color='g', label='Cosine Similarity')
@@ -625,7 +603,7 @@ def plot_loss_accuracy(
 	plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=7)
 	plt.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close()
+	plt.close(fig)
 
 def count_clip_layers(model):
 		"""
@@ -1173,7 +1151,6 @@ def train(
 	plot_retrieval_metrics_best_model(
 		image_to_text_metrics=img2txt_metrics_best_model,
 		text_to_image_metrics=txt2img_metrics_best_model,
-		topK_values=TOP_K_VALUES,
 		fname=retrieval_metrics_best_model_fpth,
 	)
 
@@ -1204,7 +1181,6 @@ def pretrain(
 	plot_retrieval_metrics_best_model(
 		image_to_text_metrics=img2txt_metrics,
 		text_to_image_metrics=txt2img_metrics,
-		topK_values=TOP_K_VALUES,
 		fname=retrieval_metrics_best_model_fpth,
 		best_model_name=f"Pretrained {model_name} {model_arch}",
 	)
