@@ -273,7 +273,7 @@ def plot_loss_accuracy(
 		mean_reciprocal_rank_file_path="mean_reciprocal_rank.png",
 		cosine_similarity_file_path="cosine_similarity.png",
 		DPI=250,
-		figure_size=(11, 5),
+		figure_size=(8, 5),
 	):
 	num_epochs = len(train_losses)
 	if num_epochs == 1:
@@ -311,6 +311,8 @@ def plot_loss_accuracy(
 	plt.legend(title='[Top-1] Accuracy (Zero-Shot)', fontsize=8, title_fontsize=9, loc='best')
 	plt.grid(True)
 	plt.xticks(xticks, fontsize=7)
+	plt.xlim(0, num_epochs + 1)
+	plt.ylim([0, 1])	
 	plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust the rect parameter to make space for the title
 	plt.savefig(accuracy_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
@@ -329,10 +331,11 @@ def plot_loss_accuracy(
 	plt.xlabel('Epoch')
 	plt.ylabel('Accuracy')
 	plt.title(f"Image-to-Text Top-K Accuracy (K={topk_values})", fontsize=10, fontweight='bold')
-	plt.legend(ncols=len(img2txt_topk_accuracy_list), loc='best')
+	plt.legend(ncols=len(img2txt_topk_accuracy_list), loc='best', fontsize=7)
 	plt.grid(True, linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.xticks(xticks, fontsize=7)
+	plt.xlim(0, num_epochs + 1)
 	plt.ylim([0, 1])
 	plt.savefig(topk_accuracy_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
@@ -345,6 +348,7 @@ def plot_loss_accuracy(
 	plt.grid(True)
 	plt.legend()
 	plt.tight_layout()
+	plt.xlim(0, num_epochs + 1)
 	plt.ylim([0, 1])
 	plt.xticks(xticks, fontsize=7)
 	plt.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
