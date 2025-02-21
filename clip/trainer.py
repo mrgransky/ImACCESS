@@ -414,41 +414,52 @@ def evaluate_loss_and_accuracy(
 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
 			images, tokenized_labels = images.to(device, non_blocking=True), tokenized_labels.to(device, non_blocking=True)  # [batch_size, 3, 224, 224], [batch_size, 77]
 			batch_size = images.size(0)
+			
 			# Forward pass to get logits
 			logits_per_image, logits_per_text = model(images, tokenized_labels)  # [batch_size, batch_size]
+			
 			# Ground Truth
 			correct_labels = torch.arange(start=0, end=batch_size, dtype=torch.long, device=device)
+			
 			# Validation Loss: Average of both losses
 			loss_img = criterion(logits_per_image, correct_labels)
 			loss_txt = criterion(logits_per_text, correct_labels)
 			batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
 			total_loss += batch_loss
+			
 			# Predictions for Top-1 Accuracy
 			pred_lbl_per_img_idxs = torch.argmax(input=logits_per_image, dim=1)  # [batch_size]
 			pred_img_per_lbl_idxs = torch.argmax(input=logits_per_text, dim=1)  # [batch_size]
+			
 			# Top-1 Accuracy
 			img2txt_correct = (pred_lbl_per_img_idxs == correct_labels).sum().item()
 			txt2img_correct = (pred_img_per_lbl_idxs == correct_labels).sum().item()
 			total_img2txt_correct += img2txt_correct
 			total_txt2img_correct += txt2img_correct
+			
 			# Top-K Accuracy for Image-to-Text
 			for k in valid_img2txt_k_values:
 				effective_k = min(k, batch_size)  # Ensure k is not greater than batch_size
 				topk_predicted_labels_values, topk_predicted_labels_idxs = torch.topk(input=logits_per_image, k=effective_k, dim=1)
 				img2txt_topk_accuracy[k] += (topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item()
+			
 			# Top-K Accuracy for Text-to-Image
 			for k in valid_txt2img_k_values:
 				effective_k = min(k, batch_size)  # Ensure k is not greater than batch_size
 				topk_predicted_images_values, topk_predicted_images_idxs = torch.topk(input=logits_per_text, k=effective_k, dim=1)
 				txt2img_topk_accuracy[k] += (topk_predicted_images_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item()
+			
 			# Mean Reciprocal Rank (MRR) for Image-to-Text
 			ranks = logits_per_image.argsort(dim=1, descending=True)
 			rr_indices = ranks.eq(correct_labels.view(-1, 1)).nonzero(as_tuple=True)[1] + 1  # +1 for rank
 			rr_indices_inv = (1.0 / rr_indices).cpu().numpy()
 			reciprocal_ranks.extend(rr_indices_inv)
+
 			# Cosine Similarity using raw embeddings (more accurate)
-			image_embeddings = model.encode_image(images) / image_embeddings.norm(dim=-1, keepdim=True)  # Normalize
-			text_embeddings = model.encode_text(tokenized_labels) / text_embeddings.norm(dim=-1, keepdim=True)  # Normalize
+			image_embeddings = model.encode_image(images)  # Step 1: Compute embeddings for images
+			image_embeddings = image_embeddings / image_embeddings.norm(dim=-1, keepdim=True)  # Normalize
+			text_embeddings = model.encode_text(tokenized_labels)  # Step 2: Compute embeddings for text labels
+			text_embeddings = text_embeddings / text_embeddings.norm(dim=-1, keepdim=True)  # Normalize
 			cos_sim = F.cosine_similarity(image_embeddings, text_embeddings, dim=-1).cpu().numpy()
 			cosine_similarities.extend(cos_sim)
 	# Compute average metrics
@@ -949,8 +960,8 @@ def train(
 			device=device,
 			topK_values=TOP_K_VALUES,
 		)
-		print(json.dumps(epoch_metrics, indent=4))
-		
+		print(json.dumps(epoch_metrics, indent=4, ensure_ascii=False))
+
 		torch.cuda.empty_cache() # free up GPU memory
 		val_losses.append(avg_valid_loss)
 		val_acc_img2txt_list.append(img2txt_val_acc)
