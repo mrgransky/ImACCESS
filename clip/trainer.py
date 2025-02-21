@@ -462,6 +462,7 @@ def evaluate_loss_and_accuracy(
 			text_embeddings = text_embeddings / text_embeddings.norm(dim=-1, keepdim=True)  # Normalize
 			cos_sim = F.cosine_similarity(image_embeddings, text_embeddings, dim=-1).cpu().numpy()
 			cosine_similarities.extend(cos_sim)
+
 	# Compute average metrics
 	print(f"Dataset: {validation_loader.dataset.dataset.__class__.__name__} | Total Samples: {total_samples} | Num Batches: {num_batches}")
 	avg_val_loss = total_loss / num_batches
@@ -471,16 +472,18 @@ def evaluate_loss_and_accuracy(
 	txt2img_topk_accuracy = {k: v / total_samples for k, v in txt2img_topk_accuracy.items()}
 	mean_reciprocal_rank = np.mean(reciprocal_ranks) if reciprocal_ranks else 0.0
 	cosine_sim_mean = np.mean(cosine_similarities) if cosine_similarities else 0.0
-	# Return all metrics in a structured format
+
+	# Convert to native Python types
 	metrics = {
-		"val_loss": avg_val_loss,
-		"img2txt_acc": img2txt_acc,
-		"txt2img_acc": txt2img_acc,
-		"img2txt_topk_acc": img2txt_topk_accuracy,
-		"txt2img_topk_acc": txt2img_topk_accuracy,
-		"mean_reciprocal_rank": mean_reciprocal_rank,
-		"cosine_similarity": cosine_sim_mean,
+			"val_loss": float(avg_val_loss),  # Convert to Python float
+			"img2txt_acc": float(img2txt_acc),  # Convert to Python float
+			"txt2img_acc": float(txt2img_acc),  # Convert to Python float
+			"img2txt_topk_acc": {k: float(v) for k, v in img2txt_topk_accuracy.items()},  # Convert each value
+			"txt2img_topk_acc": {k: float(v) for k, v in txt2img_topk_accuracy.items()},  # Convert each value
+			"mean_reciprocal_rank": float(mean_reciprocal_rank),  # Convert NumPy float32 to Python float
+			"cosine_similarity": float(cosine_sim_mean),  # Convert NumPy float32 to Python float
 	}
+
 	return metrics
 
 def count_clip_layers(model):
