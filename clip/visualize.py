@@ -107,6 +107,7 @@ def plot_retrieval_metrics_per_epoch(
 		# Print warning if K values differ significantly (optional, for debugging)
 		if set(it_valid_k_values) != set(ti_valid_k_values):
 			print(f"<!> Warning: K values differ between Image-to-Text ({it_valid_k_values}) and Text-to-Image ({ti_valid_k_values}).")
+			print(f"Note: K values for Image-to-Text are limited by the number of classes (e.g., 10 for CIFAR10).")
 	epochs = range(1, num_epochs + 1)
 	modes = ["Image-to-Text", "Text-to-Image"]
 	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
@@ -116,10 +117,25 @@ def plot_retrieval_metrics_per_epoch(
 		suptitle_text += f"{metric}@K | "
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
 	
-	cmap = plt.get_cmap("tab10")  # Use a colormap with at least 10 colors
-	colors = [cmap(i) for i in range(cmap.N)]
-	markers = ['D', 'v', 'o', 's', '^', 'P', 'X', 'd', 'H', 'h']  # Different markers for each line
-	line_styles = ['-', '--', '-.', ':', '-']  # Different line styles for each metric
+	# cmap = plt.get_cmap("tab10")  # Use a colormap with at least 10 colors
+	# colors = [cmap(i) for i in range(cmap.N)]
+	# markers = ['D', 'v', 'o', 's', '^', 'P', 'X', 'd', 'H', 'h']  # Different markers for each line
+	# line_styles = ['-', '--', '-.', ':', '-']  # Different line styles for each metric
+
+	colors = [
+		'#1f77b4',  # Blue
+		'#ff7f0e',  # Orange
+		'#2ca02c',  # Green
+		'#d62728',  # Red
+		'#9467bd',  # Purple
+		'#8c564b',  # Brown
+		'#e377c2',  # Pink
+		'#7f7f7f',  # Gray
+		'#bcbd22',  # Olive
+		'#17becf',  # Cyan
+	]
+	markers = ['o', 's', '^', 'D', 'v', 'p', 'h', '*', 'H', 'x']  # Larger, distinct markers for each line
+	line_styles = ['-', '--', ':', '-.', '-']  # Varied line styles for clarity
 	fig, axs = plt.subplots(len(modes), len(metrics), figsize=(20, 11), constrained_layout=True)
 	fig.suptitle(suptitle_text, fontsize=15, fontweight='bold')
 	
@@ -153,6 +169,7 @@ def plot_retrieval_metrics_per_epoch(
 				if f'K={K}' not in legend_labels:
 					legend_handles.append(line)
 					legend_labels.append(f'K={K}')
+
 			ax.set_xlabel('Epoch', fontsize=12)
 			ax.set_ylabel(f'{metric}@K', fontsize=12)
 			ax.set_title(f'{modes[i]} - {metric}@K', fontsize=14)
