@@ -1,19 +1,20 @@
 from utils import *
 
 def plot_retrieval_metrics_best_model(
+		dataset_name: str,
 		image_to_text_metrics: Dict[str, Dict[str, float]],
 		text_to_image_metrics: Dict[str, Dict[str, float]],
 		fname: str ="Retrieval_Performance_Metrics_best_model.png",
 		best_model_name: str ="Best Model",
 	):
 	metrics = list(image_to_text_metrics.keys())  # ['mP', 'mAP', 'Recall']
-	suptitle_text = f"Retrieval Performance Metrics [{best_model_name}]: "
+	suptitle_text = f"{dataset_name} Retrieval Performance Metrics [{best_model_name}]: "
 	for metric in metrics:
 		suptitle_text += f"{metric}@K | " 
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
 	modes = ['Image-to-Text', 'Text-to-Image']
 	
-	fig, axes = plt.subplots(1, len(metrics), figsize=(11, 4), constrained_layout=True)
+	fig, axes = plt.subplots(1, len(metrics), figsize=(10, 5), constrained_layout=True)
 	fig.suptitle(suptitle_text, fontsize=11, fontweight='bold')
 	
 	# Store legend handles and labels
@@ -90,6 +91,7 @@ def plot_retrieval_metrics_best_model(
 	plt.close(fig)
 
 def plot_retrieval_metrics_per_epoch(
+		dataset_name: str,
 		image_to_text_metrics_list: List[Dict[str, Dict[str, float]]],
 		text_to_image_metrics_list: List[Dict[str, Dict[str, float]]],
 		fname: str = "Retrieval_Performance_Metrics.png",
@@ -112,7 +114,7 @@ def plot_retrieval_metrics_per_epoch(
 	modes = ["Image-to-Text", "Text-to-Image"]
 	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
 	
-	suptitle_text = f"Retrieval Performance Metrics [per epoch]: "
+	suptitle_text = f"{dataset_name} Retrieval Performance Metrics [per epoch]: "
 	for metric in metrics:
 		suptitle_text += f"{metric}@K | "
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
@@ -196,22 +198,23 @@ def plot_retrieval_metrics_per_epoch(
 	plt.close(fig)
 
 def plot_loss_accuracy(
-		train_losses,
-		val_losses,
-		val_acc_img2txt_list,
-		val_acc_txt2img_list,
+		dataset_name: str,
+		train_losses: List[float],
+		val_losses: List[float],
+		val_acc_img2txt_list: List[float],
+		val_acc_txt2img_list: List[float],
 		img2txt_topk_accuracy_list,
 		txt2img_topk_accuracy_list,  # Added for text-to-image top-K
-		mean_reciprocal_rank_list,
-		cosine_similarity_list,
-		losses_file_path="losses.png",
-		accuracy_file_path="accuracy.png",
-		img2txt_topk_accuracy_file_path="img2txt_topk_accuracy.png",
-		txt2img_topk_accuracy_file_path="txt2img_topk_accuracy.png",  # Added for text-to-image top-K
-		mean_reciprocal_rank_file_path="mean_reciprocal_rank.png",
-		cosine_similarity_file_path="cosine_similarity.png",
-		DPI=300,  # Higher DPI for publication quality
-		figure_size=(11, 5),
+		mean_reciprocal_rank_list: List[float],
+		cosine_similarity_list: List[float],
+		losses_file_path: str ="losses.png",
+		accuracy_file_path: str ="accuracy.png",
+		img2txt_topk_accuracy_file_path: str ="img2txt_topk_accuracy.png",
+		txt2img_topk_accuracy_file_path: str ="txt2img_topk_accuracy.png",  # Added for text-to-image top-K
+		mean_reciprocal_rank_file_path: str ="mean_reciprocal_rank.png",
+		cosine_similarity_file_path: str ="cosine_similarity.png",
+		DPI: int=300,  # Higher DPI for publication quality
+		figure_size=(9, 5),
 	):
 	num_epochs = len(train_losses)
 	if num_epochs <= 1:  # No plot if only one epoch
@@ -238,7 +241,7 @@ def plot_loss_accuracy(
 	plt.plot(epochs, val_losses, color=colors['val'], label='Validation Loss', lw=2, marker='o', markersize=4)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Loss', fontsize=12)
-	plt.title('Training and Validation Loss', fontsize=14, fontweight='bold', pad=10)
+	plt.title(f'{dataset_name} Training vs. Validation Loss', fontsize=12, fontweight='bold')
 	plt.legend(fontsize=10, loc='best')
 	plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=10)
@@ -253,7 +256,7 @@ def plot_loss_accuracy(
 	plt.plot(epochs, val_acc_txt2img_list, color=colors['txt2img'], label='Text-to-Image', lw=2, marker='o', markersize=4)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Accuracy', fontsize=12)
-	plt.title('Top-1 Accuracy (Zero-Shot)', fontsize=14, fontweight='bold', pad=10)
+	plt.title(f'{dataset_name} Zero-Shot [in-batch matching Top-1 Accuracy]', fontsize=12, fontweight='bold')
 	plt.legend(fontsize=9, loc='best')
 	plt.xlim(0, num_epochs + 1)
 	plt.ylim(-0.05, 1.05)
@@ -278,7 +281,7 @@ def plot_loss_accuracy(
 		)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Accuracy', fontsize=12)
-	plt.title(f'Image-to-Text Top-K Accuracy (K={topk_values})', fontsize=14, fontweight='bold')
+	plt.title(f'{dataset_name} Image-to-Text Top-K Accuracy (K={topk_values})', fontsize=14, fontweight='bold')
 	plt.legend(fontsize=10, loc='best')
 	plt.xlim(0, num_epochs + 1)
 	plt.ylim(-0.05, 1.05)
@@ -304,7 +307,7 @@ def plot_loss_accuracy(
 		)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Accuracy', fontsize=12)
-	plt.title(f'Text-to-Image Top-K Accuracy (K={topk_values})', fontsize=14, fontweight='bold', pad=10)
+	plt.title(f'{dataset_name} Text-to-Image Top-K Accuracy (K={topk_values})', fontsize=14, fontweight='bold', pad=10)
 	plt.legend(fontsize=10, title_fontsize=11, loc='best', )
 	plt.xlim(0, num_epochs + 1)
 	plt.ylim(-0.05, 1.05)
@@ -319,7 +322,7 @@ def plot_loss_accuracy(
 	plt.plot(epochs, mean_reciprocal_rank_list, color='#9467bd', label='MRR', lw=2, marker='o', markersize=4)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Mean Reciprocal Rank', fontsize=12)
-	plt.title('Mean Reciprocal Rank (Image-to-Text)', fontsize=14, fontweight='bold', pad=10)
+	plt.title(f'{dataset_name} Mean Reciprocal Rank (Image-to-Text)', fontsize=14, fontweight='bold', pad=10)
 	plt.legend(fontsize=10, loc='upper left', )
 	plt.xlim(0, num_epochs + 1)
 	plt.ylim(-0.05, 1.05)
@@ -334,7 +337,7 @@ def plot_loss_accuracy(
 	plt.plot(epochs, cosine_similarity_list, color='#17becf', label='Cosine Similarity', lw=2, marker='o', markersize=4)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Cosine Similarity', fontsize=12)
-	plt.title('Cosine Similarity Between Embeddings', fontsize=14, fontweight='bold', pad=10)
+	plt.title(f'{dataset_name} Cosine Similarity Between Embeddings', fontsize=14, fontweight='bold', pad=10)
 	plt.legend(fontsize=10, loc='upper left', )
 	plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=10)

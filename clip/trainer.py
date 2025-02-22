@@ -537,7 +537,6 @@ def finetune(
 		model_name:str="ViT-B/32",
 		learning_rate:float=1e-5,
 		weight_decay:float=1e-3,
-		dataset_name:str="CIFAR10",
 		device:str="cuda",
 		results_dir:str="results",
 		window_size:int=10,
@@ -558,7 +557,10 @@ def finetune(
 	)
 	os.makedirs(results_dir, exist_ok=True)
 	mode = "finetune"
-	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
+	dataset_name = train_loader.dataset.dataset.__class__.__name__ # Get the name of the dataset class
+	model_name = model.__class__.__name__
+	model_arch = model.name
+	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
 
@@ -746,7 +748,6 @@ def train(
 		print_every:int=150,
 		learning_rate:float=1e-5,
 		weight_decay:float=1e-3,
-		dataset_name:str="CIFAR10",
 		device:str="cuda",
 		results_dir:str="results",
 		window_size:int=10,
@@ -765,6 +766,7 @@ def train(
 		min_epochs=minimum_epochs,					# Ensure at least 20 epochs of training
 		restore_best_weights=True						# Restore model weights to the best epoch
 	)
+	dataset_name = validation_loader.dataset.dataset.__class__.__name__ # CIFAR10, ImageNet, etc.
 	os.makedirs(results_dir, exist_ok=True)
 	mode = "train"
 	model_arch = model.name
@@ -863,7 +865,6 @@ def train(
 			device=device,
 			topK_values=TOP_K_VALUES,
 		)
-		print(json.dumps(metrics_per_epoch, indent=4, ensure_ascii=False))
 		metrics_for_all_epochs.append(metrics_per_epoch)
 		print(
 			f'@ Epoch {epoch+1}:\n'
@@ -884,7 +885,7 @@ def train(
 		torch.cuda.empty_cache() # free up GPU memory
 		# ############################## Early stopping ##############################
 		current_val_loss = metrics_per_epoch["val_loss"]
-		checkpoint ={
+		checkpoint = {
 			"epoch": epoch,
 			"model_state_dict": model.state_dict(),
 			"optimizer_state_dict": optimizer.state_dict(),
@@ -940,14 +941,14 @@ def train(
 	print(f"Elapsed_t: {time.time()-train_start_time:.1f} sec".center(150, "-"))
 
 	losses_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_top1_accuracy_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_img2txt_topk_accuracy_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_txt2img_topk_accuracy_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_topk_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	cs_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-
 	plot_loss_accuracy(
+		dataset_name=dataset_name,
 		train_losses=training_losses,
 		val_losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
 		val_acc_img2txt_list=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
@@ -969,12 +970,18 @@ def train(
 		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_retrieval_metrics_per_epoch_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png"
 	)
 	plot_retrieval_metrics_per_epoch(
+		dataset_name=dataset_name,
 		image_to_text_metrics_list=img2txt_metrics_list,
 		text_to_image_metrics_list=txt2img_metrics_list,
 		fname=retrieval_metrics_fpth,
 	)
-	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_retrieval_metrics_best_model_per_k_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+
+	retrieval_metrics_best_model_fpth = os.path.join(
+		results_dir,
+		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_retrieval_metrics_best_model_per_k_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png"
+	)
 	plot_retrieval_metrics_best_model(
+		dataset_name=dataset_name,
 		image_to_text_metrics=best_img2txt_metrics,
 		text_to_image_metrics=best_txt2img_metrics,
 		fname=retrieval_metrics_best_model_fpth,
@@ -1018,8 +1025,8 @@ def main():
 	parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
 	parser.add_argument('--epochs', '-e', type=int, default=12, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
-	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-4]')
-	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 1e-3]')
+	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-4]')
+	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 1e-3]')
 	parser.add_argument('--print_every', type=int, default=250, help='Print loss')
 	parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar100', help='Choose dataset (CIFAR10/cifar100)')
@@ -1064,7 +1071,6 @@ def main():
 			model_name=args.model_name,
 			learning_rate=args.learning_rate,
 			weight_decay=args.weight_decay,
-			dataset_name=args.dataset,
 			device=args.device,
 			results_dir=os.path.join(args.dataset, "results"),
 			window_size=args.window_size, 	# early stopping & progressive unfreezing
@@ -1084,7 +1090,6 @@ def main():
 			print_every=args.print_every,
 			learning_rate=args.learning_rate,
 			weight_decay=args.weight_decay,
-			dataset_name=args.dataset,
 			device=args.device,
 			results_dir=os.path.join(args.dataset, "results"),
 			window_size=args.window_size, # early stopping
