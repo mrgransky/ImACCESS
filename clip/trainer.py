@@ -966,12 +966,12 @@ def train(
 		)
 		print(json.dumps(metrics_per_epoch, indent=4, ensure_ascii=False))
 		metrics_for_all_epochs.append(metrics_per_epoch)
-		val_losses.append(avg_valid_loss)
-		val_acc_img2txt_list.append(img2txt_val_acc)
-		val_acc_txt2img_list.append(txt2img_val_acc)
-		img2txt_topk_accuracy_list.append(img2txt_topk_accuracy)
-		mean_reciprocal_rank_list.append(mean_reciprocal_rank)
-		cosine_similarity_list.append(cosine_sim_mean)
+		# val_losses.append(avg_valid_loss)
+		# val_acc_img2txt_list.append(img2txt_val_acc)
+		# val_acc_txt2img_list.append(txt2img_val_acc)
+		# img2txt_topk_accuracy_list.append(img2txt_topk_accuracy)
+		# mean_reciprocal_rank_list.append(mean_reciprocal_rank)
+		# cosine_similarity_list.append(cosine_sim_mean)
 		print(
 			f'@ Epoch {epoch+1}:\n'
 			f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {avg_valid_loss:.8f}\n'
