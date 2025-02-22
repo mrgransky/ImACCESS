@@ -972,12 +972,19 @@ def train(
 		# img2txt_topk_accuracy_list.append(img2txt_topk_accuracy)
 		# mean_reciprocal_rank_list.append(mean_reciprocal_rank)
 		# cosine_similarity_list.append(cosine_sim_mean)
+		# print(
+		# 	f'@ Epoch {epoch+1}:\n'
+		# 	f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {avg_valid_loss:.8f}\n'
+		# 	f'\tValid Acc [text retrieval per image]: {img2txt_val_acc} '
+		# 	f'[image retrieval per text]: {txt2img_val_acc}'
+		# )
 		print(
 			f'@ Epoch {epoch+1}:\n'
-			f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {avg_valid_loss:.8f}\n'
-			f'\tValid Acc [text retrieval per image]: {img2txt_val_acc} '
-			f'[image retrieval per text]: {txt2img_val_acc}'
+			f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {metrics_per_epoch.get("val_loss"):.8f}\n'
+			f'\tValid Acc [text retrieval per image]: {metrics_per_epoch.get("img2txt_acc")} '
+			f'[image retrieval per text]: {metrics_per_epoch.get("txt2img_acc")}'
 		)
+
 		# Compute retrieval-based metrics
 		img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
 			model=model,
