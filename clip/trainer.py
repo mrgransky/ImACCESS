@@ -1000,14 +1000,14 @@ def train(
 		txt2img_metrics_list.append(txt2img_metrics)
 		torch.cuda.empty_cache() # free up GPU memory
 		# ############################## Early stopping ##############################
-		if early_stopping.should_stop(avg_valid_loss, model, epoch):
+		if early_stopping.should_stop(metrics_per_epoch.get("val_loss"), model, epoch):
 			print(
 				f'\nEarly stopping triggered at epoch {epoch+1}\t'
 				f'Best validation loss: {early_stopping.get_best_score():.5f} @ Epoch {early_stopping.get_stopped_epoch()+1}\n'
 			)
 			break
 		else:
-			print(f"Saving best model in {mdl_fpth} for best validation loss: {avg_valid_loss:.9f}")
+			print(f"Saving best model in {mdl_fpth} for best validation loss: {metrics_per_epoch.get('val_loss'):.9f}")
 			torch.save(model.state_dict(), mdl_fpth)
 			img2txt_metrics_best_model = img2txt_metrics
 			txt2img_metrics_best_model = txt2img_metrics
