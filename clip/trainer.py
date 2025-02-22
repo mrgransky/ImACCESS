@@ -824,6 +824,9 @@ def train(
 	metrics_for_all_epochs = []
 	train_start_time = time.time()
 	print(torch.cuda.memory_summary(device=device))
+	best_val_loss = float('inf')
+	best_img2txt_metrics = None
+	best_txt2img_metrics = None
 	for epoch in range(num_epochs):
 		torch.cuda.empty_cache() # Clear GPU memory cache
 		model.train()
@@ -893,55 +896,50 @@ def train(
 		# 	txt2img_metrics_best_model = txt2img_metrics
 		# # ############################## Early stopping ##############################
 		# ############################## Early stopping ##############################
-		# Track best metrics independently
-		best_val_loss = float('inf')
-		best_img2txt_metrics = None
-		best_txt2img_metrics = None
 
 		# Inside epoch loop after computing metrics:
 		current_val_loss = metrics_per_epoch["val_loss"]
 
 		# Check if this is the best model so far
 		if current_val_loss < best_val_loss - early_stopping.min_delta:
-				print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
-				best_val_loss = current_val_loss
-				torch.save(model.state_dict(), mdl_fpth)  # Save best weights
-				best_img2txt_metrics = img2txt_metrics
-				best_txt2img_metrics = txt2img_metrics
+			print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
+			best_val_loss = current_val_loss
+			torch.save(model.state_dict(), mdl_fpth)  # Save best weights
+			best_img2txt_metrics = img2txt_metrics
+			best_txt2img_metrics = txt2img_metrics
 
 		# Early stopping check
 		if early_stopping.should_stop(current_val_loss, model, epoch):
-				print(f"\nEarly stopping at epoch {epoch+1}. Best loss: {early_stopping.get_best_score():.5f}")
-				
-				# Final evaluation with restored best weights
-				final_metrics = evaluate_loss_and_accuracy(
-						model=model,
-						validation_loader=validation_loader,
-						criterion=criterion,
-						device=device,
-						topK_values=TOP_K_VALUES
-				)
-				
-				final_img2txt, final_txt2img = evaluate_retrieval_performance(
-						model=model,
-						validation_loader=validation_loader,
-						device=device,
-						topK_values=TOP_K_VALUES
-				)
-				
-				# Update metrics to match restored weights
-				metrics_per_epoch = final_metrics
-				img2txt_metrics = final_img2txt
-				txt2img_metrics = final_txt2img
-				
-				# Ensure we keep track of absolute best metrics
-				if final_metrics["val_loss"] < best_val_loss:
-						best_val_loss = final_metrics["val_loss"]
-						best_img2txt_metrics = final_img2txt
-						best_txt2img_metrics = final_txt2img
-						torch.save(model.state_dict(), mdl_fpth)
-
-				break
+			print(f"\nEarly stopping at epoch {epoch+1}. Best loss: {early_stopping.get_best_score():.5f}")
+			
+			# Final evaluation with restored best weights
+			final_metrics = evaluate_loss_and_accuracy(
+				model=model,
+				validation_loader=validation_loader,
+				criterion=criterion,
+				device=device,
+				topK_values=TOP_K_VALUES
+			)
+			
+			final_img2txt, final_txt2img = evaluate_retrieval_performance(
+				model=model,
+				validation_loader=validation_loader,
+				device=device,
+				topK_values=TOP_K_VALUES
+			)
+			
+			# Update metrics to match restored weights
+			metrics_per_epoch = final_metrics
+			img2txt_metrics = final_img2txt
+			txt2img_metrics = final_txt2img
+			
+			# Ensure we keep track of absolute best metrics
+			if final_metrics["val_loss"] < best_val_loss:
+				best_val_loss = final_metrics["val_loss"]
+				best_img2txt_metrics = final_img2txt
+				best_txt2img_metrics = final_txt2img
+				torch.save(model.state_dict(), mdl_fpth)
+			break
 		# ############################## Early stopping ##############################
 		print("-"*170)
 
