@@ -274,94 +274,6 @@ def get_retrieval_metrics(
 	
 	return metrics
 
-# def evaluate_loss_and_accuracy(
-# 	model: torch.nn.Module,
-# 	validation_loader: DataLoader,
-# 	criterion: torch.nn.Module,
-# 	device: str="cuda",
-# 	topK_values: List=[1, 3, 5],
-# 	):
-# 	model.eval()
-# 	total_loss = 0
-# 	total_img2txt_correct = 0
-# 	total_txt2img_correct = 0
-# 	num_batches = len(validation_loader)
-# 	total_samples = len(validation_loader.dataset)
-
-# 	# Determine valid K values based on the number of classes
-# 	num_classes = len(validation_loader.dataset.dataset.classes)
-# 	valid_K_values = [K for K in topK_values if K <= num_classes]
-# 	if len(valid_K_values) < len(topK_values):
-# 		print(f"Warning: Some K values ({set(topK_values) - set(valid_K_values)}) exceed the number of classes ({num_classes}). They will be ignored.")
-
-# 	img2txt_topk_accuracy = {k: 0 for k in valid_K_values}
-# 	reciprocal_ranks = []
-# 	cosine_similarities = []
-# 	with torch.no_grad():
-# 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
-# 			images = images.to(device, non_blocking=True) # [batch_size, 3, 224, 224]
-# 			tokenized_labels = tokenized_labels.to(device, non_blocking=True) # [batch_size, 77]
-# 			batch_size = images.size(0)
-
-# 			# Forward pass:
-# 			logits_per_image, logits_per_text = model(images, tokenized_labels) # [batch_size, batch_size]
-
-# 			# Ground Truth:
-# 			correct_labels = torch.arange(start=0, end=batch_size, dtype=torch.long, device=device)
-
-# 			# Validation Loss: Average of both losses
-# 			loss_img = criterion(logits_per_image, correct_labels)
-# 			loss_txt = criterion(logits_per_text, correct_labels)
-# 			batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
-# 			total_loss += batch_loss
-
-# 			# Predictions:
-# 			pred_lbl_per_img_idxs = torch.argmax(input=logits_per_image, dim=1) # [batch_size x 1]
-# 			pred_img_per_lbl_idxs = torch.argmax(input=logits_per_text, dim=1) # [batch_size x 1]
-
-# 			# Top-1 Accuracy
-# 			img2txt_correct = (pred_lbl_per_img_idxs == correct_labels).sum().item()
-# 			txt2img_correct = (pred_img_per_lbl_idxs == correct_labels).sum().item()
-
-# 			total_img2txt_correct += img2txt_correct
-# 			total_txt2img_correct += txt2img_correct
-
-# 			# Top-k Accuracy 
-# 			for k in valid_K_values:
-# 				effective_k = min(k, batch_size) # Ensure k is not greater than batch_size
-# 				topk_predicted_labels_values, topk_predicted_labels_idxs = torch.topk(input=logits_per_image, k=effective_k, dim=1) # values, indices
-# 				img2txt_topk_accuracy[k] += (topk_predicted_labels_idxs == correct_labels.unsqueeze(1)).any(dim=1).sum().item()
-
-# 			# Reciprocal Rank
-# 			ranks = logits_per_image.argsort(dim=1, descending=True)
-# 			rr_indices = ranks.eq(correct_labels.view(-1, 1)).nonzero(as_tuple=True)[1] + 1  # +1 for rank
-# 			rr_indices_inv = (1.0 / rr_indices).cpu().numpy()
-# 			reciprocal_ranks.extend(rr_indices_inv)
-
-# 			# Cosine Similarity
-# 			cos_sim = F.cosine_similarity(logits_per_image, logits_per_text, dim=1).cpu().numpy()
-# 			cosine_similarities.extend(cos_sim)
-
-# 	# Compute average metrics
-# 	print(f"Total Samples: {total_samples} | validation_loader: {len(validation_loader)}")
-# 	print(f"val_loader contains {len(validation_loader.dataset)} samples")
-# 	avg_val_loss = total_loss / num_batches
-# 	img2txt_acc = total_img2txt_correct / total_samples
-# 	txt2img_acc = total_txt2img_correct / total_samples
-# 	img2txt_topk_accuracy = {k: v / total_samples for k, v in img2txt_topk_accuracy.items()}
-
-# 	mean_reciprocal_rank = np.mean(reciprocal_ranks)
-# 	cosine_sim_mean = np.mean(cosine_similarities)
-
-# 	return (
-# 		avg_val_loss,
-# 		img2txt_acc,
-# 		txt2img_acc,
-# 		img2txt_topk_accuracy,
-# 		mean_reciprocal_rank,
-# 		cosine_sim_mean,
-# 	)
-
 def evaluate_loss_and_accuracy(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
@@ -661,7 +573,7 @@ def finetune(
 	print(f"Freeze Schedule[{len(freeze_schedule)}]:\n{json.dumps(freeze_schedule, indent=2)}")
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
+		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_clip.pth"
 	)
 	criterion = torch.nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(
@@ -797,11 +709,11 @@ def finetune(
 		print("-"*170)
 	print(f"{mode} Elapsed_t: {time.time()-ft_st:.1f} sec".center(160, " "))
 
-	losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_val_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	losses_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_val_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_top_k_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	cs_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 
 	plot_loss_accuracy(
 		train_losses=training_losses,
@@ -818,7 +730,7 @@ def finetune(
 		cosine_similarity_file_path=cs_fpth,
 	)
 
-	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	plot_retrieval_metrics_per_epoch(
 		image_to_text_metrics_list=img2txt_metrics_list,
 		text_to_image_metrics_list=txt2img_metrics_list,
@@ -832,7 +744,6 @@ def train(
 		num_epochs:int=5,
 		nw:int=10,
 		print_every:int=150,
-		model_name:str="ViT-B/32",
 		learning_rate:float=1e-5,
 		weight_decay:float=1e-3,
 		dataset_name:str="CIFAR10",
@@ -846,22 +757,20 @@ def train(
 		TOP_K_VALUES=[1, 5, 10, 15, 20],
 	):
 	early_stopping = EarlyStopping(
-		patience=patience,												# Wait for 10 epochs without improvement before stopping
-		min_delta=min_delta,											# Consider an improvement only if the change is greater than 0.0001
-		cumulative_delta=cumulative_delta,				# Cumulative improvement over the window should be greater than 0.005
-		window_size=window_size,									# Consider the last 10 epochs for cumulative trend
-		mode='min',																# Minimize loss
-		min_epochs=minimum_epochs,			# Ensure at least 20 epochs of training
-		restore_best_weights=True									# Restore model weights to the best epoch
+		patience=patience,									# Wait for 10 epochs without improvement before stopping
+		min_delta=min_delta,								# Consider an improvement only if the change is greater than 0.0001
+		cumulative_delta=cumulative_delta,	# Cumulative improvement over the window should be greater than 0.005
+		window_size=window_size,						# Consider the last 10 epochs for cumulative trend
+		mode='min',													# Minimize loss
+		min_epochs=minimum_epochs,					# Ensure at least 20 epochs of training
+		restore_best_weights=True						# Restore model weights to the best epoch
 	)
 	os.makedirs(results_dir, exist_ok=True)
 	mode = "train"
-	print(f"{mode} CLIP {model_name} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
-	if torch.cuda.is_available():
-		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
+	model_arch = model.name
+	print(f"{mode} {model.__class__.__name__} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
 
 	for name, param in model.named_parameters():
-		# print(f"{name} requires_grad: {param.requires_grad}")
 		param.requires_grad = True # Unfreeze all layers (train from scratch)
 
 	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -877,7 +786,7 @@ def train(
 	)
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth"
+		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_clip.pth"
 	)
 	# optimizer = AdamW(
 	optimizer = AdamW(
@@ -942,21 +851,8 @@ def train(
 			epoch_loss += total_loss.item()
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
+
 		# Compute traditional loss/accuracy metrics on validation set
-		# (
-		# 	avg_valid_loss,
-		# 	img2txt_val_acc,
-		# 	txt2img_val_acc,
-		# 	img2txt_topk_accuracy,
-		# 	mean_reciprocal_rank,
-		# 	cosine_sim_mean,
-		# ) = evaluate_loss_and_accuracy(
-		# 	model=model,
-		# 	validation_loader=validation_loader,
-		# 	criterion=criterion,
-		# 	device=device,
-		# 	topK_values=TOP_K_VALUES,
-		# )
 		metrics_per_epoch = evaluate_loss_and_accuracy(
 			model=model,
 			validation_loader=validation_loader,
@@ -980,37 +876,84 @@ def train(
 			device=device,
 			topK_values=TOP_K_VALUES,
 		)
-		print(f"Image-to-text retrieval metrics:")
-		print(json.dumps(img2txt_metrics, indent=4, ensure_ascii=False))
-		print(f"Text-to-image retrieval metrics:")
-		print(json.dumps(txt2img_metrics, indent=4, ensure_ascii=False))
 		img2txt_metrics_list.append(img2txt_metrics)
 		txt2img_metrics_list.append(txt2img_metrics)
 		torch.cuda.empty_cache() # free up GPU memory
+		# # ############################## Early stopping ##############################
+		# if early_stopping.should_stop(metrics_per_epoch.get("val_loss"), model, epoch):
+		# 	print(
+		# 		f'\nEarly stopping triggered at epoch {epoch+1}\t'
+		# 		f'Best validation loss: {early_stopping.get_best_score():.5f} @ Epoch {early_stopping.get_stopped_epoch()+1}\n'
+		# 	)
+		# 	break
+		# else:
+		# 	print(f"Saving best model in {mdl_fpth} for best validation loss: {metrics_per_epoch.get('val_loss'):.9f}")
+		# 	torch.save(model.state_dict(), mdl_fpth)
+		# 	img2txt_metrics_best_model = img2txt_metrics
+		# 	txt2img_metrics_best_model = txt2img_metrics
+		# # ############################## Early stopping ##############################
 		# ############################## Early stopping ##############################
-		if early_stopping.should_stop(metrics_per_epoch.get("val_loss"), model, epoch):
-			print(
-				f'\nEarly stopping triggered at epoch {epoch+1}\t'
-				f'Best validation loss: {early_stopping.get_best_score():.5f} @ Epoch {early_stopping.get_stopped_epoch()+1}\n'
-			)
-			break
-		else:
-			print(f"Saving best model in {mdl_fpth} for best validation loss: {metrics_per_epoch.get('val_loss'):.9f}")
-			torch.save(model.state_dict(), mdl_fpth)
-			img2txt_metrics_best_model = img2txt_metrics
-			txt2img_metrics_best_model = txt2img_metrics
+		# Track best metrics independently
+		best_val_loss = float('inf')
+		best_img2txt_metrics = None
+		best_txt2img_metrics = None
+
+		# Inside epoch loop after computing metrics:
+		current_val_loss = metrics_per_epoch["val_loss"]
+
+		# Check if this is the best model so far
+		if current_val_loss < best_val_loss - early_stopping.min_delta:
+				print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
+				best_val_loss = current_val_loss
+				torch.save(model.state_dict(), mdl_fpth)  # Save best weights
+				best_img2txt_metrics = img2txt_metrics
+				best_txt2img_metrics = txt2img_metrics
+
+		# Early stopping check
+		if early_stopping.should_stop(current_val_loss, model, epoch):
+				print(f"\nEarly stopping at epoch {epoch+1}. Best loss: {early_stopping.get_best_score():.5f}")
+				
+				# Final evaluation with restored best weights
+				final_metrics = evaluate_loss_and_accuracy(
+						model=model,
+						validation_loader=validation_loader,
+						criterion=criterion,
+						device=device,
+						topK_values=TOP_K_VALUES
+				)
+				
+				final_img2txt, final_txt2img = evaluate_retrieval_performance(
+						model=model,
+						validation_loader=validation_loader,
+						device=device,
+						topK_values=TOP_K_VALUES
+				)
+				
+				# Update metrics to match restored weights
+				metrics_per_epoch = final_metrics
+				img2txt_metrics = final_img2txt
+				txt2img_metrics = final_txt2img
+				
+				# Ensure we keep track of absolute best metrics
+				if final_metrics["val_loss"] < best_val_loss:
+						best_val_loss = final_metrics["val_loss"]
+						best_img2txt_metrics = final_img2txt
+						best_txt2img_metrics = final_txt2img
+						torch.save(model.state_dict(), mdl_fpth)
+
+				break
 		# ############################## Early stopping ##############################
 		print("-"*170)
 
 	print(f"Elapsed_t: {time.time()-train_start_time:.1f} sec".center(150, "-"))
 
-	losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_img2txt_topk_accuracy_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_txt2img_topk_accuracy_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_topk_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	losses_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_img2txt_topk_accuracy_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_txt2img_topk_accuracy_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_topk_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	cs_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 
 	plot_loss_accuracy(
 		train_losses=training_losses,
@@ -1029,13 +972,16 @@ def train(
 		cosine_similarity_file_path=cs_fpth,
 	)
 
-	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_per_epoch_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	retrieval_metrics_fpth = os.path.join(
+		results_dir, 
+		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_retrieval_metrics_per_epoch_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png"
+	)
 	plot_retrieval_metrics_per_epoch(
 		image_to_text_metrics_list=img2txt_metrics_list,
 		text_to_image_metrics_list=txt2img_metrics_list,
 		fname=retrieval_metrics_fpth,
 	)
-	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_best_model_per_k_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_retrieval_metrics_best_model_per_k_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	plot_retrieval_metrics_best_model(
 		image_to_text_metrics=img2txt_metrics_best_model,
 		text_to_image_metrics=txt2img_metrics_best_model,
@@ -1102,7 +1048,6 @@ def main():
 	model, preprocess = clip.load(args.model_name, device=args.device, jit=False) # training or finetuning => jit=False
 	model = model.float() # Convert model parameters to FP32
 	model.name = args.model_name  # Custom attribute to store model name
-	# model.config = clip.model_config.MODELS[args.model_name]  # Custom attribute to store model configuration
 	print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture")
 	train_loader, validation_loader = get_dataloaders(
 		dataset_name=args.dataset,
@@ -1145,7 +1090,6 @@ def main():
 			num_epochs=args.epochs,
 			nw=args.num_workers,
 			print_every=args.print_every,
-			model_name=args.model_name,
 			learning_rate=args.learning_rate,
 			weight_decay=args.weight_decay,
 			dataset_name=args.dataset,
