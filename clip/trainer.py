@@ -892,8 +892,8 @@ def train(
 		# else:
 		# 	print(f"Saving best model in {mdl_fpth} for best validation loss: {metrics_per_epoch.get('val_loss'):.9f}")
 		# 	torch.save(model.state_dict(), mdl_fpth)
-		# 	img2txt_metrics_best_model = img2txt_metrics
-		# 	txt2img_metrics_best_model = txt2img_metrics
+		# 	best_img2txt_metrics = img2txt_metrics
+		# 	best_txt2img_metrics = txt2img_metrics
 		# # ############################## Early stopping ##############################
 		# ############################## Early stopping ##############################
 
@@ -981,8 +981,8 @@ def train(
 	)
 	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_retrieval_metrics_best_model_per_k_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	plot_retrieval_metrics_best_model(
-		image_to_text_metrics=img2txt_metrics_best_model,
-		text_to_image_metrics=txt2img_metrics_best_model,
+		image_to_text_metrics=best_img2txt_metrics,
+		text_to_image_metrics=best_txt2img_metrics,
 		fname=retrieval_metrics_best_model_fpth,
 	)
 
