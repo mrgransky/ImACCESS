@@ -882,29 +882,22 @@ def train(
 		img2txt_metrics_list.append(img2txt_metrics)
 		txt2img_metrics_list.append(txt2img_metrics)
 		torch.cuda.empty_cache() # free up GPU memory
-		# # ############################## Early stopping ##############################
-		# if early_stopping.should_stop(metrics_per_epoch.get("val_loss"), model, epoch):
-		# 	print(
-		# 		f'\nEarly stopping triggered at epoch {epoch+1}\t'
-		# 		f'Best validation loss: {early_stopping.get_best_score():.5f} @ Epoch {early_stopping.get_stopped_epoch()+1}\n'
-		# 	)
-		# 	break
-		# else:
-		# 	print(f"Saving best model in {mdl_fpth} for best validation loss: {metrics_per_epoch.get('val_loss'):.9f}")
-		# 	torch.save(model.state_dict(), mdl_fpth)
-		# 	best_img2txt_metrics = img2txt_metrics
-		# 	best_txt2img_metrics = txt2img_metrics
-		# # ############################## Early stopping ##############################
 		# ############################## Early stopping ##############################
-
-		# Inside epoch loop after computing metrics:
 		current_val_loss = metrics_per_epoch["val_loss"]
+		checkpoint ={
+			"epoch": epoch,
+			"model_state_dict": model.state_dict(),
+			"optimizer_state_dict": optimizer.state_dict(),
+			"scheduler_state_dict": scheduler.state_dict(),
+			"best_val_loss": best_val_loss,
+		}
 
 		# Check if this is the best model so far
 		if current_val_loss < best_val_loss - early_stopping.min_delta:
 			print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
 			best_val_loss = current_val_loss
-			torch.save(model.state_dict(), mdl_fpth)  # Save best weights
+			checkpoint.update({"best_val_loss": best_val_loss})
+			torch.save(checkpoint, mdl_fpth)  # Save best weights
 			best_img2txt_metrics = img2txt_metrics
 			best_txt2img_metrics = txt2img_metrics
 
@@ -936,9 +929,10 @@ def train(
 			# Ensure we keep track of absolute best metrics
 			if final_metrics["val_loss"] < best_val_loss:
 				best_val_loss = final_metrics["val_loss"]
+				checkpoint.update({"best_val_loss": best_val_loss})
 				best_img2txt_metrics = final_img2txt
 				best_txt2img_metrics = final_txt2img
-				torch.save(model.state_dict(), mdl_fpth)
+				torch.save(checkpoint, mdl_fpth)
 			break
 		# ############################## Early stopping ##############################
 		print("-"*170)
