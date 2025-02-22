@@ -20,6 +20,7 @@ import torchvision.transforms as T
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+plt.style.use('seaborn-v0_8-whitegrid')  # Modern style for sleek look
 
 from PIL import Image
 from typing import Tuple, Union, List, Dict, Any

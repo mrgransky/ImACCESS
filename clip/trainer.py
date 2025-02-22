@@ -464,7 +464,7 @@ def evaluate_loss_and_accuracy(
 			cosine_similarities.extend(cos_sim)
 
 	# Compute average metrics
-	print(f"Dataset: {validation_loader.dataset.dataset.__class__.__name__} | Total Samples: {total_samples} | Num Batches: {num_batches}")
+	print(f"Dataset: {validation_loader.dataset.dataset.__class__.__name__} | {validation_loader.name} | Total Samples: {total_samples} | Num Batches: {num_batches}")
 	avg_val_loss = total_loss / num_batches
 	img2txt_acc = total_img2txt_correct / total_samples
 	txt2img_acc = total_txt2img_correct / total_samples
@@ -475,13 +475,13 @@ def evaluate_loss_and_accuracy(
 
 	# Convert to native Python types
 	metrics = {
-			"val_loss": float(avg_val_loss),  # Convert to Python float
-			"img2txt_acc": float(img2txt_acc),  # Convert to Python float
-			"txt2img_acc": float(txt2img_acc),  # Convert to Python float
-			"img2txt_topk_acc": {k: float(v) for k, v in img2txt_topk_accuracy.items()},  # Convert each value
-			"txt2img_topk_acc": {k: float(v) for k, v in txt2img_topk_accuracy.items()},  # Convert each value
-			"mean_reciprocal_rank": float(mean_reciprocal_rank),  # Convert NumPy float32 to Python float
-			"cosine_similarity": float(cosine_sim_mean),  # Convert NumPy float32 to Python float
+		"val_loss": float(avg_val_loss),  # Convert to Python float
+		"img2txt_acc": float(img2txt_acc),  # Convert to Python float
+		"txt2img_acc": float(txt2img_acc),  # Convert to Python float
+		"img2txt_topk_acc": {k: float(v) for k, v in img2txt_topk_accuracy.items()},  # Convert each value
+		"txt2img_topk_acc": {k: float(v) for k, v in txt2img_topk_accuracy.items()},  # Convert each value
+		"mean_reciprocal_rank": float(mean_reciprocal_rank),  # Convert NumPy float32 to Python float
+		"cosine_similarity": float(cosine_sim_mean),  # Convert NumPy float32 to Python float
 	}
 
 	return metrics
@@ -912,6 +912,7 @@ def train(
 	precision_list, recall_list, f1_list = [], [], []
 	img2txt_metrics_list = []
 	txt2img_metrics_list = []
+	metrics_for_all_epochs = []
 	train_start_time = time.time()
 	print(torch.cuda.memory_summary(device=device))
 	for epoch in range(num_epochs):
@@ -956,20 +957,18 @@ def train(
 		# 	device=device,
 		# 	topK_values=TOP_K_VALUES,
 		# )
-		epoch_metrics = evaluate_loss_and_accuracy(
+		metrics_per_epoch = evaluate_loss_and_accuracy(
 			model=model,
 			validation_loader=validation_loader,
 			criterion=criterion,
 			device=device,
 			topK_values=TOP_K_VALUES,
 		)
-		print(json.dumps(epoch_metrics, indent=4, ensure_ascii=False))
-
-		torch.cuda.empty_cache() # free up GPU memory
+		print(json.dumps(metrics_per_epoch, indent=4, ensure_ascii=False))
+		metrics_for_all_epochs.append(metrics_per_epoch)
 		val_losses.append(avg_valid_loss)
 		val_acc_img2txt_list.append(img2txt_val_acc)
 		val_acc_txt2img_list.append(txt2img_val_acc)
-		# img2txt_topk_accuracy_list.append([img2txt_topk_accuracy[k] for k in TOP_K_VALUES])
 		img2txt_topk_accuracy_list.append(img2txt_topk_accuracy)
 		mean_reciprocal_rank_list.append(mean_reciprocal_rank)
 		cosine_similarity_list.append(cosine_sim_mean)
@@ -992,6 +991,7 @@ def train(
 		print(json.dumps(txt2img_metrics, indent=4, ensure_ascii=False))
 		img2txt_metrics_list.append(img2txt_metrics)
 		txt2img_metrics_list.append(txt2img_metrics)
+		torch.cuda.empty_cache() # free up GPU memory
 		# ############################## Early stopping ##############################
 		if early_stopping.should_stop(avg_valid_loss, model, epoch):
 			print(
@@ -1011,23 +1011,43 @@ def train(
 
 	losses_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_top_k_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_img2txt_topk_accuracy_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_txt2img_topk_accuracy_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_topk_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	cs_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+
 	plot_loss_accuracy(
 		train_losses=training_losses,
-		val_losses=val_losses,
-		val_acc_img2txt_list=val_acc_img2txt_list,
-		val_acc_txt2img_list=val_acc_txt2img_list,
-		img2txt_topk_accuracy_list=img2txt_topk_accuracy_list,
-		mean_reciprocal_rank_list=mean_reciprocal_rank_list,
-		cosine_similarity_list=cosine_similarity_list,
+		val_losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
+		val_acc_img2txt_list=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
+		val_acc_txt2img_list=[metrics["txt2img_acc"] for metrics in metrics_for_all_epochs],
+		img2txt_topk_accuracy_list=[metrics["img2txt_topk_acc"] for metrics in metrics_for_all_epochs],
+		txt2img_topk_accuracy_list=[metrics["txt2img_topk_acc"] for metrics in metrics_for_all_epochs],
+		mean_reciprocal_rank_list=[metrics["mean_reciprocal_rank"] for metrics in metrics_for_all_epochs],
+		cosine_similarity_list=[metrics["cosine_similarity"] for metrics in metrics_for_all_epochs],
 		losses_file_path=losses_fpth,
 		accuracy_file_path=val_acc_fpth,
-		topk_accuracy_file_path=topk_acc_fpth,
+		img2txt_topk_accuracy_file_path=img2txt_topk_accuracy_fpth,
+		txt2img_topk_accuracy_file_path=txt2img_topk_accuracy_fpth,
 		mean_reciprocal_rank_file_path=mrr_fpth,
 		cosine_similarity_file_path=cs_fpth,
 	)
+
+	# plot_loss_accuracy(
+	# 	train_losses=training_losses,
+	# 	val_losses=val_losses,
+	# 	val_acc_img2txt_list=val_acc_img2txt_list,
+	# 	val_acc_txt2img_list=val_acc_txt2img_list,
+	# 	img2txt_topk_accuracy_list=img2txt_topk_accuracy_list,
+	# 	mean_reciprocal_rank_list=mean_reciprocal_rank_list,
+	# 	cosine_similarity_list=cosine_similarity_list,
+	# 	losses_file_path=losses_fpth,
+	# 	accuracy_file_path=val_acc_fpth,
+	# 	topk_accuracy_file_path=topk_acc_fpth,
+	# 	mean_reciprocal_rank_file_path=mrr_fpth,
+	# 	cosine_similarity_file_path=cs_fpth,
+	# )
 
 	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_per_epoch_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	plot_retrieval_metrics_per_epoch(
