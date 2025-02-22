@@ -14,7 +14,7 @@ def plot_retrieval_metrics_best_model(
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
 	modes = ['Image-to-Text', 'Text-to-Image']
 	
-	fig, axes = plt.subplots(1, len(metrics), figsize=(10, 5), constrained_layout=True)
+	fig, axes = plt.subplots(1, len(metrics), figsize=(10, 4), constrained_layout=True)
 	fig.suptitle(suptitle_text, fontsize=11, fontweight='bold')
 	
 	# Store legend handles and labels
