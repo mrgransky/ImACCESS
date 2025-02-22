@@ -279,7 +279,7 @@ def plot_loss_accuracy(
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Accuracy', fontsize=12)
 	plt.title(f'Image-to-Text Top-K Accuracy (K={topk_values})', fontsize=14, fontweight='bold')
-	plt.legend(fontsize=10, title_loc='best')
+	plt.legend(fontsize=10, loc='best')
 	plt.xlim(0, num_epochs + 1)
 	plt.ylim(0, 1)
 	plt.xticks(xticks, fontsize=10)

@@ -966,18 +966,6 @@ def train(
 		)
 		print(json.dumps(metrics_per_epoch, indent=4, ensure_ascii=False))
 		metrics_for_all_epochs.append(metrics_per_epoch)
-		# val_losses.append(avg_valid_loss)
-		# val_acc_img2txt_list.append(img2txt_val_acc)
-		# val_acc_txt2img_list.append(txt2img_val_acc)
-		# img2txt_topk_accuracy_list.append(img2txt_topk_accuracy)
-		# mean_reciprocal_rank_list.append(mean_reciprocal_rank)
-		# cosine_similarity_list.append(cosine_sim_mean)
-		# print(
-		# 	f'@ Epoch {epoch+1}:\n'
-		# 	f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {avg_valid_loss:.8f}\n'
-		# 	f'\tValid Acc [text retrieval per image]: {img2txt_val_acc} '
-		# 	f'[image retrieval per text]: {txt2img_val_acc}'
-		# )
 		print(
 			f'@ Epoch {epoch+1}:\n'
 			f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {metrics_per_epoch.get("val_loss"):.8f}\n'
@@ -1040,21 +1028,6 @@ def train(
 		mean_reciprocal_rank_file_path=mrr_fpth,
 		cosine_similarity_file_path=cs_fpth,
 	)
-
-	# plot_loss_accuracy(
-	# 	train_losses=training_losses,
-	# 	val_losses=val_losses,
-	# 	val_acc_img2txt_list=val_acc_img2txt_list,
-	# 	val_acc_txt2img_list=val_acc_txt2img_list,
-	# 	img2txt_topk_accuracy_list=img2txt_topk_accuracy_list,
-	# 	mean_reciprocal_rank_list=mean_reciprocal_rank_list,
-	# 	cosine_similarity_list=cosine_similarity_list,
-	# 	losses_file_path=losses_fpth,
-	# 	accuracy_file_path=val_acc_fpth,
-	# 	topk_accuracy_file_path=topk_acc_fpth,
-	# 	mean_reciprocal_rank_file_path=mrr_fpth,
-	# 	cosine_similarity_file_path=cs_fpth,
-	# )
 
 	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_per_epoch_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
 	plot_retrieval_metrics_per_epoch(
