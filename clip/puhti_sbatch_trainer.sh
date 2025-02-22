@@ -7,10 +7,10 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=40
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=48G
-#SBATCH --partition=gpu
 #SBATCH --array=0-1
+#SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --time=03-00:00:00
 
