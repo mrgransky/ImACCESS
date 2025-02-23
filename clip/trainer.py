@@ -3,16 +3,16 @@ from datasets_loader import get_dataloaders
 from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch
 
 # train cifar100 from scratch:
-# $ nohup python -u trainer.py -d cifar100 -bs 512 -e 250 -lr 5e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 512 -e 250 -lr 5e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -a "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune cifar100:
-# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 256 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 256 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
 
 # train imagenet from scratch:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 2500 -nw 50 --device "cuda:1" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_train.out &
+# $ nohup python -u trainer.py -d imagenet -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 2500 -nw 50 --device "cuda:1" -m "train" -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_train.out &
 
 # finetune imagenet:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 2500 -nw 50 --device "cuda:0" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
+# $ nohup python -u trainer.py -d imagenet -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 2500 -nw 50 --device "cuda:0" -m "finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
 
 class EarlyStopping:
 	def __init__(
@@ -1087,7 +1087,7 @@ def main():
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-4]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 1e-3]')
 	parser.add_argument('--print_every', type=int, default=250, help='Print loss')
-	parser.add_argument('--model_name', '-md', type=str, default="ViT-B/32", help='CLIP model name')
+	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar100', help='Choose dataset (CIFAR10/cifar100)')
 	parser.add_argument('--mode', '-m', type=str, choices=['pretrain', 'train', 'finetune'], default='pretrain', help='Choose mode (pretrain/train/finetune)')
 	parser.add_argument('--window_size', '-ws', type=int, default=5, help='Windows size for early stopping and progressive freezing')
@@ -1103,10 +1103,10 @@ def main():
 	set_seeds()
 	print(clip.available_models())
 
-	# model, preprocess = clip.load(name=args.model_name, device=args.device, jit=False) # training or finetuning => jit=False
-	model, preprocess = clip.load_from_scratch("ViT-B/32", device=args.device)
+	# model, preprocess = clip.load(name=args.model_architecture, device=args.device, jit=False) # training or finetuning => jit=False
+	model, preprocess = clip.load_from_scratch(name=args.model_architecture, device=args.device)
 	model = model.float() # Convert model parameters to FP32
-	model.name = args.model_name  # Custom attribute to store model name
+	model.name = args.model_architecture  # Custom attribute to store model name
 	print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture")
 	train_loader, validation_loader = get_dataloaders(
 		dataset_name=args.dataset,
@@ -1128,7 +1128,6 @@ def main():
 			num_epochs=args.epochs,
 			nw=args.num_workers,
 			print_every=args.print_every,
-			model_name=args.model_name,
 			learning_rate=args.learning_rate,
 			weight_decay=args.weight_decay,
 			device=args.device,
