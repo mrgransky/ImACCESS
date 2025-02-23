@@ -10,7 +10,7 @@ from PIL import Image
 from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
 from tqdm import tqdm
 
-from model import build_model
+from model import build_model, build_model_from_config
 from simple_tokenizer import SimpleTokenizer as _Tokenizer
 
 try:
@@ -38,35 +38,28 @@ _MODELS = {
 }
 
 def _download(url: str, root: str):
-		os.makedirs(root, exist_ok=True)
-		filename = os.path.basename(url)
-
-		expected_sha256 = url.split("/")[-2]
-		download_target = os.path.join(root, filename)
-
-		if os.path.exists(download_target) and not os.path.isfile(download_target):
-				raise RuntimeError(f"{download_target} exists and is not a regular file")
-
-		if os.path.isfile(download_target):
-				if hashlib.sha256(open(download_target, "rb").read()).hexdigest() == expected_sha256:
-						return download_target
-				else:
-						warnings.warn(f"{download_target} exists, but the SHA256 checksum does not match; re-downloading the file")
-
-		with urllib.request.urlopen(url) as source, open(download_target, "wb") as output:
-				with tqdm(total=int(source.info().get("Content-Length")), ncols=80, unit='iB', unit_scale=True, unit_divisor=1024) as loop:
-						while True:
-								buffer = source.read(8192)
-								if not buffer:
-										break
-
-								output.write(buffer)
-								loop.update(len(buffer))
-
-		if hashlib.sha256(open(download_target, "rb").read()).hexdigest() != expected_sha256:
-				raise RuntimeError("Model has been downloaded but the SHA256 checksum does not not match")
-
-		return download_target
+	os.makedirs(root, exist_ok=True)
+	filename = os.path.basename(url)
+	expected_sha256 = url.split("/")[-2]
+	download_target = os.path.join(root, filename)
+	if os.path.exists(download_target) and not os.path.isfile(download_target):
+		raise RuntimeError(f"{download_target} exists and is not a regular file")
+	if os.path.isfile(download_target):
+		if hashlib.sha256(open(download_target, "rb").read()).hexdigest() == expected_sha256:
+			return download_target
+		else:
+			warnings.warn(f"{download_target} exists, but the SHA256 checksum does not match; re-downloading the file")
+	with urllib.request.urlopen(url) as source, open(download_target, "wb") as output:
+		with tqdm(total=int(source.info().get("Content-Length")), ncols=80, unit='iB', unit_scale=True, unit_divisor=1024) as loop:
+			while True:
+				buffer = source.read(8192)
+				if not buffer:
+					break
+				output.write(buffer)
+				loop.update(len(buffer))
+	if hashlib.sha256(open(download_target, "rb").read()).hexdigest() != expected_sha256:
+		raise RuntimeError("Model has been downloaded but the SHA256 checksum does not not match")
+	return download_target
 
 def _convert_image_to_rgb(image):
 	return image.convert("RGB")
@@ -86,7 +79,6 @@ def _transform(n_px):
 	)
 
 def available_models() -> List[str]:
-	"""Returns the names of available CLIP models"""
 	return list(_MODELS.keys())
 
 def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", jit: bool = False, download_root: str = None):
@@ -186,6 +178,25 @@ def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_a
 			patch_float(model.encode_text)
 			model.float()
 	return model, _transform(model.input_resolution.item())
+
+def load_from_scratch(model_name: str, device: str = "cuda"):
+	# ViT-B/32 configuration (same as original CLIP)
+	vit_config = {
+		"embed_dim": 512,
+		"image_resolution": 224,
+		"vision_layers": 12,
+		"vision_width": 768,
+		"vision_patch_size": 32,
+		"context_length": 77,
+		"vocab_size": 49408,
+		"transformer_width": 512,
+		"transformer_heads": 8,
+		"transformer_layers": 12
+	}
+	# Initialize model with random weights
+	model = build_model_from_config(**vit_config).to(device)
+	preprocess = _transform(vit_config["image_resolution"])
+	return model, preprocess
 
 def tokenize(texts: Union[str, List[str]], context_length: int = 77, truncate: bool = False) -> Union[torch.IntTensor, torch.LongTensor]:
 	"""

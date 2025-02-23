@@ -196,10 +196,11 @@ class Transformer(nn.Module):
 		return self.resblocks(x)
 
 class VisionTransformer(nn.Module):
-	def __init__(self, input_resolution: int, patch_size: int, width: int, layers: int, heads: int, output_dim: int):
+	def __init__(self, input_resolution: int, patch_size: int, width: int, layers: int, heads: int, output_dim: int, dropout: float = 0.1):
 		super().__init__()
 		self.input_resolution = input_resolution
 		self.output_dim = output_dim
+		self.dropout = nn.Dropout(dropout)
 		self.conv1 = nn.Conv2d(
 			in_channels=3,
 			out_channels=width,
@@ -416,4 +417,24 @@ def build_model(state_dict: dict):
 
 	convert_weights(model)
 	model.load_state_dict(state_dict)
+	return model.eval()
+
+def build_model_from_config(
+		embed_dim: int,
+		image_resolution: int,
+		vision_layers: int,
+		vision_width: int,
+		vision_patch_size: int,
+		context_length: int,
+		vocab_size: int,
+		transformer_width: int,
+		transformer_heads: int,
+		transformer_layers: int
+	):
+	"""Build CLIP model from explicit configuration parameters (no state_dict)"""
+	model = CLIP(
+		embed_dim,
+		image_resolution, vision_layers, vision_width, vision_patch_size,
+		context_length, vocab_size, transformer_width, transformer_heads, transformer_layers
+	)
 	return model.eval()

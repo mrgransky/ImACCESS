@@ -3,7 +3,7 @@ from datasets_loader import get_dataloaders
 from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch
 
 # train cifar100 from scratch:
-# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 50 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 512 -e 250 -lr 5e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune cifar100:
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 256 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -md "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
@@ -48,10 +48,10 @@ class EarlyStopping:
 		self.counter = 0
 		self.stopped_epoch = 0
 		self.value_history = []
-		self.improvement_history = []
-		
+		self.improvement_history = []		
 		self.sign = 1 if mode == 'min' else -1
-	
+		self.best_epoch = 0,
+
 	def is_improvement(self, current_value: float) -> bool:
 		if self.best_score is None:
 			return True
@@ -59,7 +59,11 @@ class EarlyStopping:
 		return improvement > self.min_delta
 	
 	def calculate_trend(self) -> float:
-		"""Calculate improvement trend over window"""
+		"""
+			Calculate improvement trend over window.
+			Returns inf (mode='min') or -inf (mode='max') if history is shorter than window_size,
+			effectively disabling window-based stopping until enough epochs have passed.
+		"""
 		if len(self.value_history) < self.window_size:
 			return float('inf') if self.mode == 'min' else float('-inf')
 		window = self.value_history[-self.window_size:]
@@ -67,60 +71,115 @@ class EarlyStopping:
 			return sum(window[i] - window[i+1] for i in range(len(window)-1))
 		return sum(window[i+1] - window[i] for i in range(len(window)-1))
 	
+	# def should_stop(self, current_value: float, model: torch.nn.Module, epoch: int) -> bool:
+	# 	"""
+	# 	Enhanced stopping decision based on multiple criteria
+	# 	"""
+	# 	self.value_history.append(current_value)
+	# 	# Don't stop before minimum epochs
+	# 	if epoch < self.min_epochs:
+	# 		if self.best_score is None or current_value * self.sign < self.best_score * self.sign:
+	# 			self.best_score = current_value
+	# 			self.stopped_epoch = epoch  # Update stopped_epoch when a new best score is achieved
+	# 			if self.restore_best_weights:
+	# 				self.best_weights = {k: v.clone().detach() for k, v in model.state_dict().items()}
+	# 		return False
+		
+	# 	if self.is_improvement(current_value):
+	# 		self.best_score = current_value
+	# 		self.stopped_epoch = epoch  # Update stopped_epoch when a new best score is achieved
+	# 		self.best_epoch = epoch  # Update best_epoch when a new best score is achieved
+	# 		if self.restore_best_weights:
+	# 			self.best_weights = copy.deepcopy(model.state_dict())
+	# 		self.counter = 0
+	# 		self.improvement_history.append(True)
+	# 	else:
+	# 		self.counter += 1
+	# 		self.improvement_history.append(False)
+		
+	# 	# Calculate trend over window
+	# 	trend = self.calculate_trend()
+	# 	cumulative_improvement = abs(trend) if len(self.value_history) >= self.window_size else float('inf')
+		
+	# 	# Decision logic combining multiple factors
+	# 	should_stop = False
+		
+	# 	# Check primary patience criterion
+	# 	if self.counter >= self.patience:
+	# 		should_stop = True
+		
+	# 	# Check if stuck in local optimum
+	# 	if len(self.improvement_history) >= self.window_size:
+	# 		recent_improvements = sum(self.improvement_history[-self.window_size:])
+	# 		if recent_improvements == 0 and cumulative_improvement < self.cumulative_delta:
+	# 			should_stop = True
+		
+	# 	# If stopping, restore best weights if configured
+	# 	if should_stop and self.restore_best_weights and self.best_weights:
+	# 		model.load_state_dict(self.best_weights)
+	# 		self.stopped_epoch = epoch # Update stopped_epoch when stopping
+		
+	# 	return should_stop
+
 	def should_stop(self, current_value: float, model: torch.nn.Module, epoch: int) -> bool:
 		"""
-		Enhanced stopping decision based on multiple criteria
+		Enhanced stopping decision based on multiple criteria.
+		
+		Args:
+				current_value: Current value of the monitored metric (e.g., validation loss).
+				model: The model being trained.
+				epoch: Current epoch number.
+		
+		Returns:
+				bool: Whether to stop training.
 		"""
 		self.value_history.append(current_value)
-		# Don't stop before minimum epochs
 		if epoch < self.min_epochs:
-			if self.best_score is None or current_value * self.sign < self.best_score * self.sign:
-				self.best_score = current_value
-				self.stopped_epoch = epoch  # Update stopped_epoch when a new best score is achieved
-				if self.restore_best_weights:
-					self.best_weights = copy.deepcopy(model.state_dict())
-			return False
+				print(f"Epoch {epoch}: Skipping early stopping (min_epochs={self.min_epochs}).")
+				return False
 		
 		if self.is_improvement(current_value):
-			self.best_score = current_value
-			self.stopped_epoch = epoch  # Update stopped_epoch when a new best score is achieved
-			if self.restore_best_weights:
-				self.best_weights = copy.deepcopy(model.state_dict())
-			self.counter = 0
-			self.improvement_history.append(True)
+				print(f"Epoch {epoch}: Improvement detected (current={current_value}, best={self.best_score}).")
+				self.best_score = current_value
+				self.stopped_epoch = epoch
+				if self.restore_best_weights:
+						self.best_weights = copy.deepcopy(model.state_dict())
+				self.counter = 0
+				self.improvement_history.append(True)
 		else:
-			self.counter += 1
-			self.improvement_history.append(False)
+				print(f"Epoch {epoch}: No improvement (current={current_value}, best={self.best_score}).")
+				self.counter += 1
+				self.improvement_history.append(False)
 		
-		# Calculate trend over window
 		trend = self.calculate_trend()
 		cumulative_improvement = abs(trend) if len(self.value_history) >= self.window_size else float('inf')
+		print(f"Trend: {trend}, Cumulative Improvement: {cumulative_improvement}")
 		
-		# Decision logic combining multiple factors
 		should_stop = False
-		
-		# Check primary patience criterion
 		if self.counter >= self.patience:
-			should_stop = True
-		
-		# Check if stuck in local optimum
-		if len(self.improvement_history) >= self.window_size:
-			recent_improvements = sum(self.improvement_history[-self.window_size:])
-			if recent_improvements == 0 and cumulative_improvement < self.cumulative_delta:
+				print(f"Early stopping triggered (patience={self.patience}).")
 				should_stop = True
 		
-		# If stopping, restore best weights if configured
+		if len(self.improvement_history) >= self.window_size:
+				recent_improvements = sum(self.improvement_history[-self.window_size:])
+				if recent_improvements == 0 and cumulative_improvement < self.cumulative_delta:
+						print("Early stopping triggered (local optimum detected).")
+						should_stop = True
+		
 		if should_stop and self.restore_best_weights and self.best_weights is not None:
-			model.load_state_dict(self.best_weights)
-			self.stopped_epoch = epoch
+				model.load_state_dict(self.best_weights)
+				print("Restored best model weights.")
 		
 		return should_stop
-	
+
 	def get_best_score(self) -> float:
 		return self.best_score
 	
 	def get_stopped_epoch(self) -> int:
 		return self.stopped_epoch
+
+	def get_best_epoch(self) -> int:
+		return self.best_epoch
 
 def evaluate_retrieval_performance(
 	model: torch.nn.Module,
@@ -1044,7 +1103,8 @@ def main():
 	set_seeds()
 	print(clip.available_models())
 
-	model, preprocess = clip.load(args.model_name, device=args.device, jit=False) # training or finetuning => jit=False
+	# model, preprocess = clip.load(args.model_name, device=args.device, jit=False) # training or finetuning => jit=False
+	model, preprocess = clip.load_from_scratch("ViT-B/32", device=args.device)
 	model = model.float() # Convert model parameters to FP32
 	model.name = args.model_name  # Custom attribute to store model name
 	print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture")
