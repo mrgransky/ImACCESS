@@ -179,7 +179,7 @@ def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_a
 			model.float()
 	return model, _transform(model.input_resolution.item())
 
-def load_from_scratch(model_name: str, device: str = "cuda"):
+def load_from_scratch(name: str, device: str = "cuda"):
 	# ViT-B/32 configuration (same as original CLIP)
 	vit_config = {
 		"embed_dim": 512,

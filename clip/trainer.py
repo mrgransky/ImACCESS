@@ -1103,7 +1103,7 @@ def main():
 	set_seeds()
 	print(clip.available_models())
 
-	# model, preprocess = clip.load(args.model_name, device=args.device, jit=False) # training or finetuning => jit=False
+	# model, preprocess = clip.load(name=args.model_name, device=args.device, jit=False) # training or finetuning => jit=False
 	model, preprocess = clip.load_from_scratch("ViT-B/32", device=args.device)
 	model = model.float() # Convert model parameters to FP32
 	model.name = args.model_name  # Custom attribute to store model name
