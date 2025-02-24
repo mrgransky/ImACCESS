@@ -151,8 +151,8 @@ def plot_retrieval_metrics_per_epoch(
 					# linestyle=linestyle,
 					label=f'K={K}',
 					color=color,
-					alpha=0.8,
-					linewidth=1.2,
+					alpha=0.9,
+					linewidth=1.8,
 				)
 				# Collect handles and labels for the legend, but only for the first occurrence of each K
 				if f'K={K}' not in legend_labels:
@@ -165,6 +165,7 @@ def plot_retrieval_metrics_per_epoch(
 			ax.grid(True, linestyle='--', alpha=0.7)
 			# ax.set_xticks(epochs)
 			ax.set_xticks(selective_xticks_epochs) # Only show selected epochs
+			ax.set_xlim(0, num_epochs + 1)
 			ax.set_ylim(bottom=-0.05, top=1.05)
 	
 	fig.legend(

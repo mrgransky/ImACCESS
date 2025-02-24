@@ -835,9 +835,9 @@ def train(
 
 	dropout_val = None
 	for name, module in model.named_modules():
-		print(f"{name}: {type(module).__name__}")
+		# print(f"{name}: {type(module).__name__}")
 		if isinstance(module, torch.nn.Dropout):
-			print(f"{name}.p: {module.p}")
+			# print(f"{name}.p: {module.p}")
 			dropout_val = module.p
 			break
 	if dropout_val is None:
@@ -852,7 +852,7 @@ def train(
 		f"[Model Parameters Statictics] Total: {total_params:,} "
 		f"Trainable: {trainable_params:,} ({trainable_percent:.2f}%) "
 		f"Frozen: {frozen_params:,} ({frozen_percent:.2f}%)"
-		.center(160, "-")
+		.center(160, " ")
 	)
 	mdl_fpth = os.path.join(
 		results_dir,
