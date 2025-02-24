@@ -97,6 +97,9 @@ def plot_retrieval_metrics_per_epoch(
 		fname: str = "Retrieval_Performance_Metrics.png",
 	):
 	num_epochs = len(image_to_text_metrics_list)
+	num_xticks = min(10, num_epochs)
+	epochs = range(1, num_epochs + 1)
+	selective_xticks_epochs = np.linspace(0, num_epochs, num_xticks, dtype=int)
 	if num_epochs < 2:
 		return
 	# Derive valid K values from the metrics for each mode
@@ -110,8 +113,6 @@ def plot_retrieval_metrics_per_epoch(
 		if set(it_valid_k_values) != set(ti_valid_k_values):
 			print(f"<!> Warning: K values differ between Image-to-Text ({it_valid_k_values}) and Text-to-Image ({ti_valid_k_values}).")
 			print(f"Note: K values for Image-to-Text are limited by the number of classes (e.g., 10 for CIFAR10).")
-	epochs = range(1, num_epochs + 1)
-	selective_epochs = [1] + [e for e in epochs if e % (num_epochs // 5) == 0 or e == num_epochs][1:]
 
 	modes = ["Image-to-Text", "Text-to-Image"]
 	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
@@ -161,7 +162,7 @@ def plot_retrieval_metrics_per_epoch(
 			ax.set_title(f'{modes[i]} - {metric}@K', fontsize=14)
 			ax.grid(True, linestyle='--', alpha=0.7)
 			# ax.set_xticks(epochs)
-			ax.set_xticks(selective_epochs, fontsize=6) # Only show selected epochs
+			ax.set_xticks(selective_xticks_epochs, fontsize=6) # Only show selected epochs
 			ax.set_ylim(bottom=-0.05, top=1.05)
 	
 	fig.legend(
@@ -205,9 +206,9 @@ def plot_loss_accuracy(
 	if num_epochs <= 1:  # No plot if only one epoch
 		return
 	epochs = range(1, num_epochs + 1)
-	# Dynamic xticks
+	# Dynamic and selective number of xticks
 	num_xticks = min(10, num_epochs)
-	xticks = np.linspace(0, num_epochs, num_xticks, dtype=int)
+	selective_xticks_epochs = np.linspace(0, num_epochs, num_xticks, dtype=int)
 	# Consistent color scheme
 	colors = {
 		'train': '#1f77b4', # muted blue
@@ -229,7 +230,7 @@ def plot_loss_accuracy(
 	plt.title(f'{dataset_name} Training vs. Validation Loss', fontsize=12, fontweight='bold')
 	plt.legend(fontsize=10, loc='best', ncol=2, frameon=True, edgecolor='black', fancybox=True)
 	plt.xlim(0, num_epochs + 1)
-	plt.xticks(xticks, fontsize=10)
+	plt.xticks(selective_xticks_epochs, fontsize=10)
 	plt.grid(True, linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.savefig(losses_file_path, dpi=DPI, bbox_inches='tight')
@@ -245,7 +246,7 @@ def plot_loss_accuracy(
 	plt.legend(fontsize=9, loc='best')
 	plt.xlim(0, num_epochs + 1)
 	plt.ylim(-0.05, 1.05)
-	plt.xticks(xticks, fontsize=10)
+	plt.xticks(selective_xticks_epochs, fontsize=10)
 	plt.grid(True, linestyle='--', alpha=0.5)
 	plt.tight_layout()
 	plt.savefig(accuracy_file_path, dpi=DPI, bbox_inches='tight')
@@ -277,7 +278,7 @@ def plot_loss_accuracy(
 	)
 	plt.xlim(0, num_epochs + 1)
 	plt.ylim(-0.05, 1.05)
-	plt.xticks(xticks, fontsize=10)
+	plt.xticks(selective_xticks_epochs, fontsize=10)
 	plt.grid(True, linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.savefig(img2txt_topk_accuracy_file_path, dpi=DPI, bbox_inches='tight')
@@ -303,7 +304,7 @@ def plot_loss_accuracy(
 	plt.legend(fontsize=10, title_fontsize=11, loc='best', )
 	plt.xlim(0, num_epochs + 1)
 	plt.ylim(-0.05, 1.05)
-	plt.xticks(xticks, fontsize=10)
+	plt.xticks(selective_xticks_epochs, fontsize=10)
 	plt.grid(True, linestyle='--', alpha=0.5)
 	plt.tight_layout()
 	plt.savefig(txt2img_topk_accuracy_file_path, dpi=DPI, bbox_inches='tight')
@@ -318,7 +319,7 @@ def plot_loss_accuracy(
 	plt.legend(fontsize=10, loc='upper left', )
 	plt.xlim(0, num_epochs + 1)
 	plt.ylim(-0.05, 1.05)
-	plt.xticks(xticks, fontsize=10)
+	plt.xticks(selective_xticks_epochs, fontsize=10)
 	plt.grid(True, linestyle='--', alpha=0.5)
 	plt.tight_layout()
 	plt.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
@@ -332,7 +333,7 @@ def plot_loss_accuracy(
 	plt.title(f'{dataset_name} Cosine Similarity Between Embeddings', fontsize=14, fontweight='bold', pad=10)
 	plt.legend(fontsize=10, loc='upper left', )
 	plt.xlim(0, num_epochs + 1)
-	plt.xticks(xticks, fontsize=10)
+	plt.xticks(selective_xticks_epochs, fontsize=10)
 	plt.grid(True, linestyle='--', alpha=0.5)
 	plt.tight_layout()
 	plt.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches='tight')
