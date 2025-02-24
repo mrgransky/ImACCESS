@@ -6,13 +6,13 @@ from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plo
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -a "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune cifar100:
-# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 256 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
 
 # train imagenet from scratch:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 2500 -nw 50 --device "cuda:1" -m "train" -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_train.out &
+# $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:1" -m "train" -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_train.out &
 
 # finetune imagenet:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 2500 -nw 50 --device "cuda:0" -m "finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
+# $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m "finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
 
 class EarlyStopping:
 	def __init__(
