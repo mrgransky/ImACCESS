@@ -202,7 +202,8 @@ def load_from_scratch(name: str, device: str = "cuda", dropout: float = 0.0):
 	}
 	# Initialize model with random weights
 	model = build_model_from_config(**vit_config).to(device)
-	preprocess = _transform(vit_config["image_resolution"])
+	# preprocess = _transform(vit_config["image_resolution"])
+	preprocess = _transform(model.input_resolution.item())
 	return model, preprocess
 
 def tokenize(
