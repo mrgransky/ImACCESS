@@ -111,6 +111,8 @@ def plot_retrieval_metrics_per_epoch(
 			print(f"<!> Warning: K values differ between Image-to-Text ({it_valid_k_values}) and Text-to-Image ({ti_valid_k_values}).")
 			print(f"Note: K values for Image-to-Text are limited by the number of classes (e.g., 10 for CIFAR10).")
 	epochs = range(1, num_epochs + 1)
+	selective_epochs = [1] + [e for e in epochs if e % (num_epochs // 5) == 0 or e == num_epochs][1:]
+
 	modes = ["Image-to-Text", "Text-to-Image"]
 	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']
 	
@@ -119,28 +121,10 @@ def plot_retrieval_metrics_per_epoch(
 		suptitle_text += f"{metric}@K | "
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
 	
-	# cmap = plt.get_cmap("tab10")  # Use a colormap with at least 10 colors
-	# colors = [cmap(i) for i in range(cmap.N)]
-	# markers = ['D', 'v', 'o', 's', '^', 'P', 'X', 'd', 'H', 'h']  # Different markers for each line
-	# line_styles = ['-', '--', '-.', ':', '-']  # Different line styles for each metric
-
-	colors = [
-		'#1f77b4',  # Blue
-		'#ff7f0e',  # Orange
-		'#2ca02c',  # Green
-		'#d62728',  # Red
-		'#9467bd',  # Purple
-		'#8c564b',  # Brown
-		'#e377c2',  # Pink
-		'#7f7f7f',  # Gray
-		'#bcbd22',  # Olive
-		'#17becf',  # Cyan
-	]
 	markers = ['o', 's', '^', 'D', 'v', 'p', 'h', '*', 'H', 'x']  # Larger, distinct markers for each line
 	line_styles = ['-', '--', ':', '-.', '-']  # Varied line styles for clarity
 	fig, axs = plt.subplots(len(modes), len(metrics), figsize=(20, 11), constrained_layout=True)
 	fig.suptitle(suptitle_text, fontsize=15, fontweight='bold')
-	
 	# Store legend handles and labels
 	legend_handles = []
 	legend_labels = []
@@ -159,13 +143,13 @@ def plot_retrieval_metrics_per_epoch(
 				line, = ax.plot(
 					epochs,
 					values,
-					marker=marker,
-					markersize=6,
-					linestyle=linestyle,
+					# marker=marker,
+					# markersize=6,
+					# linestyle=linestyle,
 					label=f'K={K}',
-					color=color,
+					color=plt.cm.tab10(k_idx),
 					alpha=0.8,
-					linewidth=2.0,
+					linewidth=1.2,
 				)
 				# Collect handles and labels for the legend, but only for the first occurrence of each K
 				if f'K={K}' not in legend_labels:
@@ -176,7 +160,8 @@ def plot_retrieval_metrics_per_epoch(
 			ax.set_ylabel(f'{metric}@K', fontsize=12)
 			ax.set_title(f'{modes[i]} - {metric}@K', fontsize=14)
 			ax.grid(True, linestyle='--', alpha=0.7)
-			ax.set_xticks(epochs)
+			# ax.set_xticks(epochs)
+			ax.set_xticks(selective_epochs, fontsize=6) # Only show selected epochs
 			ax.set_ylim(bottom=-0.05, top=1.05)
 	
 	fig.legend(
@@ -237,15 +222,15 @@ def plot_loss_accuracy(
 
 	# 1. Loss Plot
 	plt.figure(figsize=figure_size)
-	plt.plot(epochs, train_losses, color=colors['train'], label='Training Loss', lw=2, marker='o', markersize=4)
-	plt.plot(epochs, val_losses, color=colors['val'], label='Validation Loss', lw=2, marker='o', markersize=4)
+	plt.plot(epochs, train_losses, color=colors['train'], label='Training', lw=2, marker='o', markersize=4)
+	plt.plot(epochs, val_losses, color=colors['val'], label='Validation', lw=2, marker='o', markersize=4)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Loss', fontsize=12)
 	plt.title(f'{dataset_name} Training vs. Validation Loss', fontsize=12, fontweight='bold')
-	plt.legend(fontsize=10, loc='best')
+	plt.legend(fontsize=10, loc='best', ncol=2, frameon=True, edgecolor='black', fancybox=True)
 	plt.xlim(0, num_epochs + 1)
 	plt.xticks(xticks, fontsize=10)
-	plt.grid(True, linestyle='--', alpha=0.5)
+	plt.grid(True, linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.savefig(losses_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
@@ -274,19 +259,26 @@ def plot_loss_accuracy(
 			epochs,
 			accuracy_values,
 			label=f'Top-{k}',
-			lw=2,
+			lw=1.5,
 			marker='o',
-			markersize=4, 
+			markersize=2,
 			color=plt.cm.tab10(i), # # Distinct colors for each K value
 		)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Accuracy', fontsize=12)
 	plt.title(f'{dataset_name} Image-to-Text Top-K Accuracy (K={topk_values})', fontsize=14, fontweight='bold')
-	plt.legend(fontsize=10, loc='best')
+	plt.legend(
+		fontsize=8,
+		loc='best',
+		ncol=len(topk_values),
+		frameon=True,
+		fancybox=True,
+		shadow=True,
+	)
 	plt.xlim(0, num_epochs + 1)
 	plt.ylim(-0.05, 1.05)
 	plt.xticks(xticks, fontsize=10)
-	plt.grid(True, linestyle='--', alpha=0.5)
+	plt.grid(True, linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.savefig(img2txt_topk_accuracy_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()

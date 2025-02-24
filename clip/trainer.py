@@ -3,7 +3,7 @@ from datasets_loader import get_dataloaders
 from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch
 
 # train cifar100 from scratch:
-# $ nohup python -u trainer.py -d cifar100 -bs 512 -e 250 -lr 5e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -a "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -a "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune cifar100:
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 256 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
@@ -135,21 +135,21 @@ class EarlyStopping:
 		"""
 		self.value_history.append(current_value)
 		if epoch < self.min_epochs:
-				print(f"Epoch {epoch}: Skipping early stopping (min_epochs={self.min_epochs}).")
-				return False
+			print(f"Epoch {epoch+1}: Skipping early stopping (min_epochs={self.min_epochs}).")
+			return False
 		
 		if self.is_improvement(current_value):
-				print(f"Epoch {epoch}: Improvement detected (current={current_value}, best={self.best_score}).")
-				self.best_score = current_value
-				self.stopped_epoch = epoch
-				if self.restore_best_weights:
-						self.best_weights = copy.deepcopy(model.state_dict())
-				self.counter = 0
-				self.improvement_history.append(True)
+			print(f"Epoch {epoch+1}: Improvement detected (current={current_value}, best={self.best_score}).")
+			self.best_score = current_value
+			self.stopped_epoch = epoch
+			if self.restore_best_weights:
+				self.best_weights = copy.deepcopy(model.state_dict())
+			self.counter = 0
+			self.improvement_history.append(True)
 		else:
-				print(f"Epoch {epoch}: No improvement (current={current_value}, best={self.best_score}).")
-				self.counter += 1
-				self.improvement_history.append(False)
+			print(f"Epoch {epoch+1}: No improvement (current={current_value}, best={self.best_score}).")
+			self.counter += 1
+			self.improvement_history.append(False)
 		
 		trend = self.calculate_trend()
 		cumulative_improvement = abs(trend) if len(self.value_history) >= self.window_size else float('inf')
@@ -157,18 +157,18 @@ class EarlyStopping:
 		
 		should_stop = False
 		if self.counter >= self.patience:
-				print(f"Early stopping triggered (patience={self.patience}).")
-				should_stop = True
+			print(f"Early stopping triggered (patience={self.patience}).")
+			should_stop = True
 		
 		if len(self.improvement_history) >= self.window_size:
-				recent_improvements = sum(self.improvement_history[-self.window_size:])
-				if recent_improvements == 0 and cumulative_improvement < self.cumulative_delta:
-						print("Early stopping triggered (local optimum detected).")
-						should_stop = True
+			recent_improvements = sum(self.improvement_history[-self.window_size:])
+			if recent_improvements == 0 and cumulative_improvement < self.cumulative_delta:
+				print("Early stopping triggered (local optimum detected).")
+				should_stop = True
 		
 		if should_stop and self.restore_best_weights and self.best_weights is not None:
-				model.load_state_dict(self.best_weights)
-				print("Restored best model weights.")
+			model.load_state_dict(self.best_weights)
+			print("Restored best model weights.")
 		
 		return should_stop
 
@@ -187,7 +187,10 @@ def evaluate_retrieval_performance(
 	device: str="cuda:0",
 	topK_values: List=[1, 3, 5],
 	):
-	print(f"Evaluating retrieval performance on {device}".center(60, '='))
+	dataset_name = validation_loader.name
+	model_name = model.__class__.__name__
+	model_arch = model.name
+	print(f">> Evaluating {model_name} - {model_arch} Retrieval Performance [{dataset_name}]: {topK_values}...")
 	model.eval()
 	image_embeddings = []
 	image_labels = []
@@ -262,10 +265,9 @@ def get_retrieval_metrics(
 	# Filter topK_values based on max_k and num_classes
 	if max_k is not None:
 		valid_K_values = [K for K in topK_values if K <= max_k]
-		print(f"max_k: {max_k} | Valid K values: {topK_values}")
+		# print(f"max_k: {max_k} | Valid K values: {topK_values}")
 	else:
 		valid_K_values = topK_values # No limit on K values
-	# valid_K_values = [K for K in topK_values if K <= num_classes]
 
 	if len(valid_K_values) < len(topK_values):
 		print(f"<!> Warning: K values: ({set(topK_values) - set(valid_K_values)}) exceed the number of classes ({num_classes}). => ignored!")
@@ -353,10 +355,6 @@ def evaluate_loss_and_accuracy(
 			Tuple of (avg_val_loss, img2txt_acc, txt2img_acc, img2txt_topk_accuracy, 
 								txt2img_topk_accuracy, mean_reciprocal_rank, cosine_sim_mean)
 	"""
-	# Check device availability and fallback to CPU if CUDA is not available
-	if not torch.cuda.is_available() and device.startswith("cuda"):
-		print("CUDA not available, falling back to CPU.")
-		device = "cpu"
 	model.eval()
 	total_loss = 0
 	total_img2txt_correct = 0
@@ -435,7 +433,7 @@ def evaluate_loss_and_accuracy(
 			cosine_similarities.extend(cos_sim)
 
 	# Compute average metrics
-	print(f"Dataset: {validation_loader.dataset.dataset.__class__.__name__} | {validation_loader.name} | Total Samples: {total_samples} | Num Batches: {num_batches}")
+	# print(f"Dataset: {validation_loader.dataset.dataset.__class__.__name__} | {validation_loader.name} | Total Samples: {total_samples} | Num Batches: {num_batches}")
 	avg_val_loss = total_loss / num_batches
 	img2txt_acc = total_img2txt_correct / total_samples
 	txt2img_acc = total_txt2img_correct / total_samples
@@ -740,7 +738,7 @@ def finetune(
 		print(
 			f'@ Epoch: {epoch+1}\n'
 			f'\t[Loss] {mode}: {avg_training_loss:.7f} | Valid: {avg_valid_loss:.9f}\n'
-			f'\tValid Acc [text retrieval per image]: {img2txt_val_acc} '
+			f'\tIn-batch Validiation Accuracy [text retrieval per image]: {img2txt_val_acc} '
 			f'[image retrieval per text]: {txt2img_val_acc}'
 		)
 		# Compute retrieval-based metrics
@@ -1055,7 +1053,8 @@ def pretrain(
 	print("Pretrain Evaluation".center(150, "-"))
 	model_name = model.__class__.__name__
 	model_arch = model.name.replace("/","_")
-	print(f"Model: {model_name} - {model_arch}") # CLIP - ViT-B/32
+	dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	print(f"Model: {model_name} - {model_arch} |") # CLIP - ViT-B/32
 	# 1. evaluate_retrieval_performance
 	img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
 		model=model,
@@ -1071,6 +1070,7 @@ def pretrain(
 	# 2. plot_retrieval_metrics_best_model
 	retrieval_metrics_best_model_fpth = os.path.join(f"{validation_loader.name}_retrieval_metrics_pretrained_{model_name}_{model_arch}.png")
 	plot_retrieval_metrics_best_model(
+		dataset_name=dataset_name,
 		image_to_text_metrics=img2txt_metrics,
 		text_to_image_metrics=txt2img_metrics,
 		fname=retrieval_metrics_best_model_fpth,
@@ -1107,7 +1107,8 @@ def main():
 	model, preprocess = clip.load_from_scratch(name=args.model_architecture, device=args.device)
 	model = model.float() # Convert model parameters to FP32
 	model.name = args.model_architecture  # Custom attribute to store model name
-	print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture")
+	print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture on {args.device} device")
+	print(model.visual.conv1.weight[0, 0, 0])  # Random value (not zeros or pretrained values)
 	train_loader, validation_loader = get_dataloaders(
 		dataset_name=args.dataset,
 		batch_size=args.batch_size,
@@ -1119,7 +1120,7 @@ def main():
 		print(f"Batch {bi+1}/{len(train_loader)}: contains {len(batch)} element(s): {[elem.shape for elem in batch]}")
 		break
 	# visualize_(dataloader=train_loader, num_samples=5)
-	# return
+
 	if args.mode == 'finetune':
 		finetune(
 			model=model,
@@ -1163,7 +1164,7 @@ def main():
 			model=model,
 			validation_loader=validation_loader,
 			device=args.device,
-			TOP_K_VALUES=args.topK_values,			
+			TOP_K_VALUES=args.topK_values,
 		)
 	else:
 		raise ValueError("Invalid mode. Choose either 'finetune' or 'train'.")
