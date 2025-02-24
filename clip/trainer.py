@@ -833,10 +833,10 @@ def train(
 		param.requires_grad = True # Unfreeze all layers (train from scratch)
 		# print(f"{name} requires_grad: {param.requires_grad}")
 
-	for name, module in model.named_modules():
-		print(f"{name}: {type(module).__name__}")
-		if isinstance(module, torch.nn.Dropout):
-			print(f"{name}.p: {module.p}")
+	# for name, module in model.named_modules():
+	# 	print(f"{name}: {type(module).__name__}")
+	# 	if isinstance(module, torch.nn.Dropout):
+	# 		print(f"{name}.p: {module.p}")
 
 	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)	
@@ -1084,7 +1084,7 @@ def pretrain(
 
 @measure_execution_time
 def main():
-	parser = argparse.ArgumentParser(description="FineTune CLIP for Balanced Dataset")
+	parser = argparse.ArgumentParser(description="FineTune CLIP for Balanced Dataset. Note: 'train' mode always initializes with random weights, while 'pretrain' and 'finetune' use pre-trained OpenAI weights.")
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
 	parser.add_argument('--epochs', '-e', type=int, default=12, help='Number of epochs')
@@ -1102,14 +1102,20 @@ def main():
 	parser.add_argument('--minimum_epochs', type=int, default=20, help='Early stopping minimum epochs')
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 	parser.add_argument('--dropout', type=float, default=0.0, help='Dropout rate for the model')
+
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
 	print(args)
 	set_seeds()
 	print(clip.available_models())
 
-	model, preprocess = clip.load(name=args.model_architecture, device=args.device, jit=False, dropout=args.dropout) # training or finetuning => jit=False
-	# model, preprocess = clip.load_from_scratch(name=args.model_architecture, device=args.device, dropout=args.dropout)
+	model, preprocess = clip.load(
+		name=args.model_architecture, 
+		device=args.device, 
+		jit=False, # training or finetuning => jit=False
+		random_weights=True if args.mode == 'train' else False, 
+		dropout=args.dropout,
+	)
 	model = model.float() # Convert model parameters to FP32
 	model.name = args.model_architecture  # Custom attribute to store model name
 	print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture on {args.device} device")

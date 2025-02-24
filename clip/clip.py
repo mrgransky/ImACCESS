@@ -64,7 +64,7 @@ def _download(url: str, root: str):
 def _convert_image_to_rgb(image):
 	return image.convert("RGB")
 
-def _transform(n_px):
+def _transform(n_px: int):
 	return Compose(
 		[
 			Resize(n_px, interpolation=BICUBIC),
@@ -87,31 +87,42 @@ def load(
 		jit: bool = False, 
 		download_root: str = None,
 		dropout: float = 0.0,
+		random_weights: bool = False,
 	):
 	"""
-		Load a CLIP model
+		Load a CLIP model, either from pre-trained OpenAI weights or initialized from scratch with random weights.
 		Parameters
-			----------
-			name : str
-					A model name listed by `clip.available_models()`, or the path to a model checkpoint containing the state_dict
-
+		----------
+		name : str
+				A model name listed by `clip.available_models()`, or the path to a model checkpoint containing the state_dict
+				(ignored if from_scratch=True).
 		device : Union[str, torch.device]
-					The device to put the loaded model
-
+				The device to put the loaded model.
 		jit : bool
-					Whether to load the optimized JIT model or more hackable non-JIT model (default).
-
+				Whether to load the optimized JIT model or more hackable non-JIT model (default).
 		download_root: str
-					path to download the model files; by default, it uses "~/.cache/clip"
-
+				Path to download the model files; by default, it uses "~/.cache/clip".
+		random_weights : bool
+				If True, initialize the model from scratch with random weights using the ViT-B/32 configuration.
+				If False, load the pre-trained model from OpenAI weights (default).
+		dropout : float
+				Dropout rate for the model (only used if from_scratch=True). Defaults to 0.0.
 		Returns
-			-------
-			model : torch.nn.Module
-					The CLIP model
-
+		-------
+		model : torch.nn.Module
+				The CLIP model.
 		preprocess : Callable[[PIL.Image], torch.Tensor]
-			A torchvision transform that converts a PIL image into a tensor that the returned model can take as its input
+				A torchvision transform that converts a PIL image into a tensor that the returned model can take as its input.
 	"""
+	if random_weights:
+		print(f"Loading CLIP model: {name} from scratch with initialized random weights...")
+		model, preprocess = load_from_scratch(
+			name=name,
+			device=device,
+			dropout=dropout,
+		)
+		return model, preprocess
+
 	if name in _MODELS:
 		model_path = _download(_MODELS[name], download_root or os.path.expanduser("~/.cache/clip"))
 	elif os.path.isfile(name):
@@ -135,7 +146,7 @@ def load(
 		model = build_model(state_dict=state_dict or model.state_dict(), dropout=dropout).to(device)
 		if str(device) == "cpu":
 			model.float()
-		return model, _transform(model.visual.input_resolution)
+		return model, _transform(n_px=model.visual.input_resolution)
 
 	# patch the device names
 	device_holder = torch.jit.trace(lambda: torch.ones([]).to(torch.device(device)), example_inputs=[])
@@ -183,7 +194,7 @@ def load(
 			patch_float(model.encode_image)
 			patch_float(model.encode_text)
 			model.float()
-	return model, _transform(model.input_resolution.item())
+	return model, _transform(n_px=model.input_resolution.item())
 
 def load_from_scratch(name: str, device: str = "cuda", dropout: float = 0.0):
 	# ViT-B/32 configuration (same as original CLIP)
@@ -202,8 +213,7 @@ def load_from_scratch(name: str, device: str = "cuda", dropout: float = 0.0):
 	}
 	# Initialize model with random weights
 	model = build_model_from_config(**vit_config).to(device)
-	# preprocess = _transform(vit_config["image_resolution"])
-	preprocess = _transform(model.input_resolution.item())
+	preprocess = _transform(n_px=vit_config["image_resolution"])
 	return model, preprocess
 
 def tokenize(
