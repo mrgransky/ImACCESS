@@ -124,6 +124,7 @@ def plot_retrieval_metrics_per_epoch(
 	
 	markers = ['o', 's', '^', 'D', 'v', 'p', 'h', '*', 'H', 'x']  # Larger, distinct markers for each line
 	line_styles = ['-', '--', ':', '-.', '-']  # Varied line styles for clarity
+	colors = plt.cm.tab10.colors  # Use a color map for distinct colors
 	fig, axs = plt.subplots(len(modes), len(metrics), figsize=(20, 11), constrained_layout=True)
 	fig.suptitle(suptitle_text, fontsize=15, fontweight='bold')
 	# Store legend handles and labels
@@ -148,7 +149,7 @@ def plot_retrieval_metrics_per_epoch(
 					# markersize=6,
 					# linestyle=linestyle,
 					label=f'K={K}',
-					color=plt.cm.tab10(k_idx),
+					color=color,
 					alpha=0.8,
 					linewidth=1.2,
 				)
