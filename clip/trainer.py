@@ -831,6 +831,12 @@ def train(
 
 	for name, param in model.named_parameters():
 		param.requires_grad = True # Unfreeze all layers (train from scratch)
+		# print(f"{name} requires_grad: {param.requires_grad}")
+
+	for name, module in model.named_modules():
+		print(f"{name}: {type(module).__name__}")
+		if isinstance(module, torch.nn.Dropout):
+			print(f"{name}.p: {module.p}")
 
 	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)	
@@ -847,7 +853,6 @@ def train(
 		results_dir,
 		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_clip.pth"
 	)
-	# optimizer = AdamW(
 	optimizer = AdamW(
 		params=[p for p in model.parameters() if p.requires_grad],# Only optimizes parameters that require gradients
 		lr=learning_rate,
@@ -882,7 +887,7 @@ def train(
 	txt2img_metrics_list = []
 	metrics_for_all_epochs = []
 	train_start_time = time.time()
-	print(torch.cuda.memory_summary(device=device))
+	# print(torch.cuda.memory_summary(device=device))
 	best_val_loss = float('inf')
 	best_img2txt_metrics = None
 	best_txt2img_metrics = None
@@ -1096,15 +1101,15 @@ def main():
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
 	parser.add_argument('--minimum_epochs', type=int, default=20, help='Early stopping minimum epochs')
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 5, 10, 15, 20], help='Top K values for retrieval metrics')
-
+	parser.add_argument('--dropout', type=float, default=0.0, help='Dropout rate for the model')
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
 	print(args)
 	set_seeds()
 	print(clip.available_models())
 
-	# model, preprocess = clip.load(name=args.model_architecture, device=args.device, jit=False) # training or finetuning => jit=False
-	model, preprocess = clip.load_from_scratch(name=args.model_architecture, device=args.device)
+	model, preprocess = clip.load(name=args.model_architecture, device=args.device, jit=False, dropout=args.dropout) # training or finetuning => jit=False
+	# model, preprocess = clip.load_from_scratch(name=args.model_architecture, device=args.device, dropout=args.dropout)
 	model = model.float() # Convert model parameters to FP32
 	model.name = args.model_architecture  # Custom attribute to store model name
 	print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture on {args.device} device")

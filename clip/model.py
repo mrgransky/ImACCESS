@@ -160,7 +160,13 @@ class QuickGELU(nn.Module):
 		return x * torch.sigmoid(1.702 * x)
 
 class ResidualAttentionBlock(nn.Module):
-	def __init__(self, d_model: int, n_head: int, attn_mask: torch.Tensor = None):
+	def __init__(
+			self,
+			d_model: int,
+			n_head: int,
+			dropout: float,
+			attn_mask: torch.Tensor = None,
+		):
 		super().__init__()
 		self.attn = nn.MultiheadAttention(d_model, n_head) # self-attention
 		self.ln_1 = LayerNorm(d_model) # Normalize inputs to stabilize learning and improve convergence
@@ -169,6 +175,7 @@ class ResidualAttentionBlock(nn.Module):
 				[
 					("c_fc", nn.Linear(d_model, d_model * 4)),
 					("gelu", QuickGELU()),
+					("dropout", nn.Dropout(dropout)),
 					("c_proj", nn.Linear(d_model * 4, d_model))
 				]
 			)
@@ -186,17 +193,42 @@ class ResidualAttentionBlock(nn.Module):
 		return x
 
 class Transformer(nn.Module):
-	def __init__(self, width: int, layers: int, heads: int, attn_mask: torch.Tensor = None):
+	def __init__(
+			self,
+			width: int,
+			layers: int,
+			heads: int,
+			dropout: float,
+			attn_mask: torch.Tensor=None,
+		):
 		super().__init__()
 		self.width = width
 		self.layers = layers
-		self.resblocks = nn.Sequential(*[ResidualAttentionBlock(width, heads, attn_mask) for _ in range(layers)])
+		self.resblocks = nn.Sequential(
+			*[
+				ResidualAttentionBlock(
+					d_model=width,
+					n_head=heads,
+					dropout=dropout,
+					attn_mask=attn_mask,
+				) for _ in range(layers)
+			]
+		)
 	
 	def forward(self, x: torch.Tensor):
 		return self.resblocks(x)
 
 class VisionTransformer(nn.Module):
-	def __init__(self, input_resolution: int, patch_size: int, width: int, layers: int, heads: int, output_dim: int, dropout: float = 0.1):
+	def __init__(
+			self,
+			input_resolution: int, 
+			patch_size: int, 
+			width: int, 
+			layers: int, 
+			heads: int, 
+			output_dim: int, 
+			dropout: float,
+		):
 		super().__init__()
 		self.input_resolution = input_resolution
 		self.output_dim = output_dim
@@ -213,7 +245,12 @@ class VisionTransformer(nn.Module):
 		self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
 
 		self.ln_pre = LayerNorm(width) # to be applied before transformer
-		self.transformer = Transformer(width, layers, heads) 
+		self.transformer = Transformer(
+			width=width, 
+			layers=layers, 
+			heads=heads,
+			dropout=dropout,
+		)
 		self.ln_post = LayerNorm(width) # to be applied after transformer
 		
 		self.proj = nn.Parameter(data=scale * torch.randn(width, output_dim)) # to be applied to the output of the transformer
@@ -224,6 +261,7 @@ class VisionTransformer(nn.Module):
 		x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
 		x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
 		x = x + self.positional_embedding.to(x.dtype)
+		x = self.dropout(x) # 
 		# x = x + self.positional_embedding
 		x = self.ln_pre(x)
 		x = x.permute(1, 0, 2)  # NLD -> LND
@@ -232,6 +270,7 @@ class VisionTransformer(nn.Module):
 		x = self.ln_post(x[:, 0, :])
 		if self.proj is not None:
 			x = x @ self.proj
+			x = self.dropout(x)
 		return x
 
 class CLIP(nn.Module):
@@ -248,7 +287,8 @@ class CLIP(nn.Module):
 			vocab_size: int,
 			transformer_width: int,
 			transformer_heads: int,
-			transformer_layers: int
+			transformer_layers: int,
+			dropout: float,
 		):
 			super().__init__()
 			self.context_length = context_length
@@ -270,7 +310,8 @@ class CLIP(nn.Module):
 					width=vision_width,
 					layers=vision_layers,
 					heads=vision_heads,
-					output_dim=embed_dim
+					output_dim=embed_dim,
+					dropout=dropout,
 				)
 			################################ vision encoder ################################
 			################################ text encoder ################################
@@ -278,7 +319,8 @@ class CLIP(nn.Module):
 				width=transformer_width,
 				layers=transformer_layers,
 				heads=transformer_heads,
-				attn_mask=self.build_attention_mask()
+				attn_mask=self.build_attention_mask(),
+				dropout=dropout,
 			)
 			################################ text encoder ################################
 			self.vocab_size = vocab_size
@@ -291,6 +333,7 @@ class CLIP(nn.Module):
 			self.text_projection = nn.Parameter(torch.empty(transformer_width, embed_dim))
 			# scale for cosine similarity
 			self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
+			self.dropout = nn.Dropout(dropout)
 
 			self.initialize_parameters()
 
@@ -343,6 +386,7 @@ class CLIP(nn.Module):
 		x = self.ln_final(x).type(self.dtype) # [batch_size, n_ctx, transformer.width]
 		# take features from the eot embedding (eot_token is the highest number in each sequence)
 		x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.text_projection
+		x = self.dropout(x)  # Apply dropout after projection to the embedding
 		return x
 
 	def forward(self, image, text):
@@ -380,7 +424,7 @@ def convert_weights(model: nn.Module):
 					attr.data = attr.data.half()
 	model.apply(_convert_weights_to_fp16)
 
-def build_model(state_dict: dict):
+def build_model(state_dict: dict, dropout: float):
 	vit = "visual.proj" in state_dict
 
 	if vit:
@@ -408,7 +452,8 @@ def build_model(state_dict: dict):
 	model = CLIP(
 		embed_dim,
 		image_resolution, vision_layers, vision_width, vision_patch_size,
-		context_length, vocab_size, transformer_width, transformer_heads, transformer_layers
+		context_length, vocab_size, transformer_width, transformer_heads, transformer_layers,
+		dropout=dropout,
 	)
 
 	for key in ["input_resolution", "context_length", "vocab_size"]:
@@ -429,12 +474,14 @@ def build_model_from_config(
 		vocab_size: int,
 		transformer_width: int,
 		transformer_heads: int,
-		transformer_layers: int
+		transformer_layers: int,
+		dropout: float,
 	):
 	"""Build CLIP model from explicit configuration parameters (no state_dict)"""
 	model = CLIP(
 		embed_dim,
 		image_resolution, vision_layers, vision_width, vision_patch_size,
-		context_length, vocab_size, transformer_width, transformer_heads, transformer_layers
+		context_length, vocab_size, transformer_width, transformer_heads, transformer_layers,
+		dropout=dropout,
 	)
 	return model.eval()

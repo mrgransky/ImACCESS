@@ -81,7 +81,13 @@ def _transform(n_px):
 def available_models() -> List[str]:
 	return list(_MODELS.keys())
 
-def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", jit: bool = False, download_root: str = None):
+def load(
+		name: str,
+		device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", 
+		jit: bool = False, 
+		download_root: str = None,
+		dropout: float = 0.0,
+	):
 	"""
 		Load a CLIP model
 		Parameters
@@ -126,7 +132,7 @@ def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_a
 			state_dict = torch.load(opened_file, map_location="cpu")
 
 	if not jit:
-		model = build_model(state_dict or model.state_dict()).to(device)
+		model = build_model(state_dict=state_dict or model.state_dict(), dropout=dropout).to(device)
 		if str(device) == "cpu":
 			model.float()
 		return model, _transform(model.visual.input_resolution)
@@ -179,7 +185,7 @@ def load(name: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_a
 			model.float()
 	return model, _transform(model.input_resolution.item())
 
-def load_from_scratch(name: str, device: str = "cuda"):
+def load_from_scratch(name: str, device: str = "cuda", dropout: float = 0.0):
 	# ViT-B/32 configuration (same as original CLIP)
 	vit_config = {
 		"embed_dim": 512,
@@ -191,14 +197,19 @@ def load_from_scratch(name: str, device: str = "cuda"):
 		"vocab_size": 49408,
 		"transformer_width": 512,
 		"transformer_heads": 8,
-		"transformer_layers": 12
+		"transformer_layers": 12,
+		"dropout": dropout,
 	}
 	# Initialize model with random weights
 	model = build_model_from_config(**vit_config).to(device)
 	preprocess = _transform(vit_config["image_resolution"])
 	return model, preprocess
 
-def tokenize(texts: Union[str, List[str]], context_length: int = 77, truncate: bool = False) -> Union[torch.IntTensor, torch.LongTensor]:
+def tokenize(
+		texts: Union[str, List[str]],
+		context_length: int = 77,
+		truncate: bool = False,
+	) -> Union[torch.IntTensor, torch.LongTensor]:
 	"""
 		Returns the tokenized representation of given input string(s)
 		Parameters
