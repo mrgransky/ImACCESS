@@ -164,7 +164,7 @@ def plot_retrieval_metrics_per_epoch(
 			ax.set_title(f'{modes[i]} - {metric}@K', fontsize=14)
 			ax.grid(True, linestyle='--', alpha=0.7)
 			# ax.set_xticks(epochs)
-			ax.set_xticks(selective_xticks_epochs, fontsize=6) # Only show selected epochs
+			ax.set_xticks(selective_xticks_epochs) # Only show selected epochs
 			ax.set_ylim(bottom=-0.05, top=1.05)
 	
 	fig.legend(

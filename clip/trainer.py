@@ -3,13 +3,13 @@ from datasets_loader import get_dataloaders
 from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch
 
 # train cifar100 from scratch:
-# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m "train" -a "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_train.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m train -a "ViT-B/32" --dropout 0.1 > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune cifar100:
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
 
 # train imagenet from scratch:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:1" -m "train" -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_train.out &
+# $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:1" -m "train" -a "ViT-B/32" --dropout 0.1 > /media/volume/ImACCESS/trash/imagenet_train.out &
 
 # finetune imagenet:
 # $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m "finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
@@ -768,11 +768,11 @@ def finetune(
 		print("-"*170)
 	print(f"{mode} Elapsed_t: {time.time()-ft_st:.1f} sec".center(160, " "))
 
-	losses_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_val_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_top_k_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	cs_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	losses_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val:.1f}.png")
+	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_val_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val:.1f}.png")
+	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_top_k_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val:.1f}.png")
+	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val:.1f}.png")
+	cs_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val:.1f}.png")
 
 	plot_loss_accuracy(
 		train_losses=training_losses,
@@ -789,7 +789,7 @@ def finetune(
 		cosine_similarity_file_path=cs_fpth,
 	)
 
-	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val:.1f}.png")
 	plot_retrieval_metrics_per_epoch(
 		image_to_text_metrics_list=img2txt_metrics_list,
 		text_to_image_metrics_list=txt2img_metrics_list,
@@ -833,11 +833,16 @@ def train(
 		param.requires_grad = True # Unfreeze all layers (train from scratch)
 		# print(f"{name} requires_grad: {param.requires_grad}")
 
-	# for name, module in model.named_modules():
-	# 	print(f"{name}: {type(module).__name__}")
-	# 	if isinstance(module, torch.nn.Dropout):
-	# 		print(f"{name}.p: {module.p}")
-
+	dropout_val = None
+	for name, module in model.named_modules():
+		print(f"{name}: {type(module).__name__}")
+		if isinstance(module, torch.nn.Dropout):
+			print(f"{name}.p: {module.p}")
+			dropout_val = module.p
+			break
+	if dropout_val is None:
+		dropout_val = 0.0  # Default to 0.0 if no Dropout layers are found (unlikely in your case)
+	
 	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)	
 	total_params = sum(p.numel() for p in model.parameters())
@@ -854,10 +859,10 @@ def train(
 		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_clip.pth"
 	)
 	optimizer = AdamW(
-		params=[p for p in model.parameters() if p.requires_grad],# Only optimizes parameters that require gradients
+		params=[p for p in model.parameters() if p.requires_grad], # Only optimizes parameters that require gradients
 		lr=learning_rate,
 		betas=(0.9,0.98),
-		eps=1e-8,
+		eps=1e-6,
 		weight_decay=weight_decay,
 	)
 	scheduler = lr_scheduler.OneCycleLR(
@@ -877,12 +882,6 @@ def train(
 		growth_interval=2000,
 	)
 	training_losses, val_losses = [], []
-	val_acc_img2txt_list = []
-	val_acc_txt2img_list = []
-	img2txt_topk_accuracy_list = []
-	mean_reciprocal_rank_list = []
-	cosine_similarity_list = []
-	precision_list, recall_list, f1_list = [], [], []
 	img2txt_metrics_list = []
 	txt2img_metrics_list = []
 	metrics_for_all_epochs = []
@@ -1002,13 +1001,12 @@ def train(
 
 	print(f"Elapsed_t: {time.time()-train_start_time:.1f} sec".center(150, "-"))
 
-	losses_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_top1_accuracy_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_img2txt_topk_accuracy_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_txt2img_topk_accuracy_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_topk_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
-	cs_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png")
+	losses_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}.png")
+	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_top1_accuracy_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}.png")
+	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_img2txt_topk_accuracy_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}.png")
+	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_txt2img_topk_accuracy_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}.png")
+	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}.png")
+	cs_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}.png")
 	plot_loss_accuracy(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
@@ -1029,7 +1027,7 @@ def train(
 
 	retrieval_metrics_fpth = os.path.join(
 		results_dir, 
-		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_retrieval_metrics_per_epoch_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png"
+		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_retrieval_metrics_per_epoch_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}.png"
 	)
 	plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
@@ -1040,7 +1038,7 @@ def train(
 
 	retrieval_metrics_best_model_fpth = os.path.join(
 		results_dir,
-		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_retrieval_metrics_best_model_per_k_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs.png"
+		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_retrieval_metrics_best_model_per_k_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}.png"
 	)
 	plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
@@ -1101,7 +1099,7 @@ def main():
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
 	parser.add_argument('--minimum_epochs', type=int, default=20, help='Early stopping minimum epochs')
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 5, 10, 15, 20], help='Top K values for retrieval metrics')
-	parser.add_argument('--dropout', type=float, default=0.0, help='Dropout rate for the model')
+	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
@@ -1119,7 +1117,7 @@ def main():
 	model = model.float() # Convert model parameters to FP32
 	model.name = args.model_architecture  # Custom attribute to store model name
 	print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture on {args.device} device")
-	print(model.visual.conv1.weight[0, 0, 0])  # Random value (not zeros or pretrained values)
+	# print(model.visual.conv1.weight[0, 0, 0])  # Random value (not zeros or pretrained values)
 	train_loader, validation_loader = get_dataloaders(
 		dataset_name=args.dataset,
 		batch_size=args.batch_size,
