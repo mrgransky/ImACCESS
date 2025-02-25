@@ -176,14 +176,16 @@ def evaluate_retrieval_performance(
 	model.eval()
 	image_embeddings = []
 	image_labels = []
-	class_names = []
+
 	
 	# Generate text embeddings for all class names once
 	try:
-		n_classes = len(validation_loader.dataset.dataset.classes)
+		class_names = validation_loader.dataset.dataset.classes
 	except:
-		n_classes = validation_loader.dataset.num_classes
-	print(f"Number of classes: {n_classes}")
+		class_names = validation_loader.dataset.labels
+
+	n_classes = len(class_names)
+	print(f"Number of classes: {n_classes}\n{class_names}")
 	with torch.no_grad():
 		# Encode class names to text embeddings
 		text_inputs = clip.tokenize(texts=class_names).to(device, non_blocking=True)
