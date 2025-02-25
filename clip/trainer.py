@@ -182,7 +182,7 @@ def evaluate_retrieval_performance(
 	try:
 		class_names = validation_loader.dataset.dataset.classes
 	except:
-		class_names = validation_loader.dataset.labels
+		class_names = validation_loader.dataset.unique_labels
 
 	n_classes = len(class_names)
 	print(f"Number of classes: {n_classes}\n{class_names}")

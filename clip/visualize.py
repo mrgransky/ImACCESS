@@ -203,7 +203,7 @@ def plot_loss_accuracy(
 		mean_reciprocal_rank_file_path: str ="mean_reciprocal_rank.png",
 		cosine_similarity_file_path: str ="cosine_similarity.png",
 		DPI: int=300,  # Higher DPI for publication quality
-		figure_size=(9, 5),
+		figure_size=(11, 5),
 	):
 	num_epochs = len(train_losses)
 	if num_epochs <= 1:  # No plot if only one epoch
@@ -226,14 +226,30 @@ def plot_loss_accuracy(
 
 	# 1. Loss Plot
 	plt.figure(figsize=figure_size)
-	plt.plot(epochs, train_losses, color=colors['train'], label='Training', lw=2, marker='o', markersize=4)
-	plt.plot(epochs, val_losses, color=colors['val'], label='Validation', lw=2, marker='o', markersize=4)
+	plt.plot(
+		epochs,
+		train_losses,
+		color=colors['train'],
+		label='Training',
+		lw=1.5,
+		marker='o',
+		markersize=3,
+	)
+	plt.plot(
+		epochs,
+		val_losses,
+		color=colors['val'],
+		label='Validation',
+		lw=1.5,
+		marker='o',
+		markersize=3,
+	)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Loss', fontsize=12)
-	plt.title(f'{dataset_name} Training vs. Validation Loss', fontsize=12, fontweight='bold')
-	plt.legend(fontsize=10, loc='best', ncol=2, frameon=True, edgecolor='black', fancybox=True)
+	plt.title(f'{dataset_name} Training vs. Validation Loss', fontsize=9, fontweight='bold')
+	plt.legend(fontsize=9, loc='best', ncol=2, frameon=True, edgecolor='black', fancybox=True)
 	plt.xlim(0, num_epochs + 1)
-	plt.xticks(selective_xticks_epochs, fontsize=10)
+	plt.xticks(selective_xticks_epochs, fontsize=8)
 	plt.grid(True, linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.savefig(losses_file_path, dpi=DPI, bbox_inches='tight')
@@ -241,19 +257,36 @@ def plot_loss_accuracy(
 
 	# 2. Top-1 Accuracy Plot
 	plt.figure(figsize=figure_size)
-	plt.plot(epochs, val_acc_img2txt_list, color=colors['img2txt'], label='Image-to-Text', lw=2, marker='o', markersize=4)
-	plt.plot(epochs, val_acc_txt2img_list, color=colors['txt2img'], label='Text-to-Image', lw=2, marker='o', markersize=4)
+	plt.plot(
+		epochs,
+		val_acc_img2txt_list,
+		color=colors['img2txt'],
+		label='Image-to-Text',
+		lw=1.5,
+		marker='o',
+		markersize=3,
+	)
+	plt.plot(
+		epochs,
+		val_acc_txt2img_list,
+		color=colors['txt2img'],
+		label='Text-to-Image',
+		lw=1.5,
+		marker='o',
+		markersize=3,
+	)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Accuracy', fontsize=12)
-	plt.title(f'{dataset_name} Zero-Shot [in-batch matching Top-1 Accuracy]', fontsize=12, fontweight='bold')
+	plt.title(f'{dataset_name} Zero-Shot [in-batch matching Top-1 Accuracy]', fontsize=10, fontweight='bold')
 	plt.legend(fontsize=9, loc='best')
 	plt.xlim(0, num_epochs + 1)
 	plt.ylim(-0.05, 1.05)
-	plt.xticks(selective_xticks_epochs, fontsize=10)
-	plt.grid(True, linestyle='--', alpha=0.5)
+	plt.xticks(selective_xticks_epochs, fontsize=9)
+	plt.grid(True, linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.savefig(accuracy_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
+
 	# 3. Image-to-Text Top-K Accuracy Plot
 	topk_values = list(img2txt_topk_accuracy_list[0].keys())  # e.g., [1, 3, 5]
 	plt.figure(figsize=figure_size)
@@ -270,7 +303,7 @@ def plot_loss_accuracy(
 		)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Accuracy', fontsize=12)
-	plt.title(f'{dataset_name} Image-to-Text Top-K Accuracy (K={topk_values})', fontsize=14, fontweight='bold')
+	plt.title(f'{dataset_name} Image-to-Text Top-K Accuracy (K={topk_values})', fontsize=10, fontweight='bold')
 	plt.legend(
 		fontsize=8,
 		loc='best',
@@ -296,15 +329,19 @@ def plot_loss_accuracy(
 			epochs,
 			accuracy_values,
 			label=f'Top-{k}',
-			lw=2,
+			lw=1.5,
 			marker='o',
-			markersize=4,
+			markersize=3,
 			color=plt.cm.tab10(i),
 		)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Accuracy', fontsize=12)
-	plt.title(f'{dataset_name} Text-to-Image Top-K Accuracy (K={topk_values})', fontsize=14, fontweight='bold', pad=10)
-	plt.legend(fontsize=10, title_fontsize=11, loc='best', )
+	plt.title(f'{dataset_name} Text-to-Image Top-K Accuracy (K={topk_values})', fontsize=10, fontweight='bold')
+	plt.legend(
+		fontsize=10,
+		loc='best',
+		ncol=len(topk_values),
+	)
 	plt.xlim(0, num_epochs + 1)
 	plt.ylim(-0.05, 1.05)
 	plt.xticks(selective_xticks_epochs, fontsize=10)

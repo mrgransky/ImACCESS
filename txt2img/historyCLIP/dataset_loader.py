@@ -189,6 +189,7 @@ class HistoricalArchivesDataset(Dataset):
 		self.images = self.data_frame["img_path"].values
 		self.labels = self.data_frame["label"].values
 		self.labels_int = self.data_frame["label_int"].values		
+		self.unique_labels = list(set(self.labels))
 		self.tokenized_labels = clip.tokenize(texts=self.labels)
 		self._num_classes = len(np.unique(self.labels_int))
 
