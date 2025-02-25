@@ -31,7 +31,7 @@ print(args)
 
 # run in pouta:
 # train from scratch:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 256 -e 32 -lr 1e-5 -wd 1e-3 --print_every 200 -nw 40 --device "cuda:2" -m train -a "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_train.out &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 200 -nw 40 --device "cuda:2" -m train -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/europeana_train.out &
 
 # finetune:
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 256 -e 32  -lr 1e-4 -wd 1e-3 --print_every 200 -nw 40 --device "cuda:3" -m finetune -a "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_ft.out &
