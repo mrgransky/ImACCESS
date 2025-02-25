@@ -3,13 +3,13 @@ from datasets_loader import get_dataloaders
 from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch
 
 # train cifar100 from scratch:
-# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m train -a "ViT-B/32" --dropout 0.1 > /media/volume/ImACCESS/trash/cifar100_train.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m train -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/cifar100_train.out &
 
 # finetune cifar100:
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
 
 # train imagenet from scratch:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:1" -m "train" -a "ViT-B/32" --dropout 0.1 > /media/volume/ImACCESS/trash/imagenet_train.out &
+# $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:1" -m "train" -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/imagenet_train.out &
 
 # finetune imagenet:
 # $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m "finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
@@ -35,6 +35,13 @@ class EarlyStopping:
 			min_epochs: Minimum number of epochs before early stopping can trigger
 			restore_best_weights: Whether to restore model to best weights when stopped
 		"""
+
+		# Validate inputs
+		if mode not in ["min", "max"]:
+			raise ValueError(f"Invalid mode: {mode}. Must be 'min' or 'max'.")
+		if window_size < 0:
+			raise ValueError(f"Invalid window_size: {window_size}. Must be ≥ 0.")
+
 		self.patience = patience
 		self.min_delta = min_delta
 		self.cumulative_delta = cumulative_delta
@@ -42,17 +49,23 @@ class EarlyStopping:
 		self.mode = mode
 		self.min_epochs = min_epochs
 		self.restore_best_weights = restore_best_weights
+
+		self.sign = 1 if mode == 'min' else -1
+		self.reset()
 		
+	def reset(self):
 		self.best_score = None
 		self.best_weights = None
 		self.counter = 0
 		self.stopped_epoch = 0
 		self.value_history = []
-		self.improvement_history = []		
-		self.sign = 1 if mode == 'min' else -1
-		self.best_epoch = 0,
+		self.improvement_history = []
+		self.best_epoch = 0
 
-	def is_improvement(self, current_value: float) -> bool:
+	def is_improvement(
+			self,
+			current_value: float,
+		) -> bool:
 		if self.best_score is None:
 			return True
 		improvement = (self.best_score - current_value) * self.sign
@@ -64,64 +77,31 @@ class EarlyStopping:
 			Returns inf (mode='min') or -inf (mode='max') if history is shorter than window_size,
 			effectively disabling window-based stopping until enough epochs have passed.
 		"""
+		if self.window_size == 0:
+			return float("inf") if self.mode == "min" else float("-inf")
+
 		if len(self.value_history) < self.window_size:
 			return float('inf') if self.mode == 'min' else float('-inf')
-		window = self.value_history[-self.window_size:]
-		if self.mode == 'min':
-			return sum(window[i] - window[i+1] for i in range(len(window)-1))
-		return sum(window[i+1] - window[i] for i in range(len(window)-1))
-	
-	# def should_stop(self, current_value: float, model: torch.nn.Module, epoch: int) -> bool:
-	# 	"""
-	# 	Enhanced stopping decision based on multiple criteria
-	# 	"""
-	# 	self.value_history.append(current_value)
-	# 	# Don't stop before minimum epochs
-	# 	if epoch < self.min_epochs:
-	# 		if self.best_score is None or current_value * self.sign < self.best_score * self.sign:
-	# 			self.best_score = current_value
-	# 			self.stopped_epoch = epoch  # Update stopped_epoch when a new best score is achieved
-	# 			if self.restore_best_weights:
-	# 				self.best_weights = {k: v.clone().detach() for k, v in model.state_dict().items()}
-	# 		return False
-		
-	# 	if self.is_improvement(current_value):
-	# 		self.best_score = current_value
-	# 		self.stopped_epoch = epoch  # Update stopped_epoch when a new best score is achieved
-	# 		self.best_epoch = epoch  # Update best_epoch when a new best score is achieved
-	# 		if self.restore_best_weights:
-	# 			self.best_weights = copy.deepcopy(model.state_dict())
-	# 		self.counter = 0
-	# 		self.improvement_history.append(True)
-	# 	else:
-	# 		self.counter += 1
-	# 		self.improvement_history.append(False)
-		
-	# 	# Calculate trend over window
-	# 	trend = self.calculate_trend()
-	# 	cumulative_improvement = abs(trend) if len(self.value_history) >= self.window_size else float('inf')
-		
-	# 	# Decision logic combining multiple factors
-	# 	should_stop = False
-		
-	# 	# Check primary patience criterion
-	# 	if self.counter >= self.patience:
-	# 		should_stop = True
-		
-	# 	# Check if stuck in local optimum
-	# 	if len(self.improvement_history) >= self.window_size:
-	# 		recent_improvements = sum(self.improvement_history[-self.window_size:])
-	# 		if recent_improvements == 0 and cumulative_improvement < self.cumulative_delta:
-	# 			should_stop = True
-		
-	# 	# If stopping, restore best weights if configured
-	# 	if should_stop and self.restore_best_weights and self.best_weights:
-	# 		model.load_state_dict(self.best_weights)
-	# 		self.stopped_epoch = epoch # Update stopped_epoch when stopping
-		
-	# 	return should_stop
 
-	def should_stop(self, current_value: float, model: torch.nn.Module, epoch: int) -> bool:
+		window = self.value_history[-self.window_size:]
+
+		# # Calculate the trend over the window:
+		# if self.mode == 'min':
+		# 	return sum(window[i] - window[i+1] for i in range(len(window)-1))
+		# return sum(window[i+1] - window[i] for i in range(len(window)-1))
+
+		# simple trend calculation:
+		if self.mode == 'min':
+			return window[0] - window[-1]  # Total improvement over the window
+		else:
+			return window[-1] - window[0] # For accuracy-like metrics, we want to see the increase
+	
+	def should_stop(
+			self,
+			current_value: float, 
+			model: torch.nn.Module, 
+			epoch: int,
+		) -> bool:
 		"""
 		Enhanced stopping decision based on multiple criteria.
 		
@@ -142,18 +122,20 @@ class EarlyStopping:
 			print(f"Epoch {epoch+1}: Improvement detected (current={current_value}, best={self.best_score}).")
 			self.best_score = current_value
 			self.stopped_epoch = epoch
+			self.best_epoch = epoch
 			if self.restore_best_weights:
-				self.best_weights = copy.deepcopy(model.state_dict())
+				# self.best_weights = copy.deepcopy(model.state_dict())
+				self.best_weights = {k: v.clone().detach() for k, v in model.state_dict().items()}
 			self.counter = 0
 			self.improvement_history.append(True)
 		else:
-			print(f"Epoch {epoch+1}: No improvement (current={current_value}, best={self.best_score}).")
+			print(f"Epoch {epoch+1}: No improvement (current={current_value:.4f}, best={self.best_score:.4f}).")
 			self.counter += 1
 			self.improvement_history.append(False)
 		
 		trend = self.calculate_trend()
 		cumulative_improvement = abs(trend) if len(self.value_history) >= self.window_size else float('inf')
-		print(f"Trend: {trend}, Cumulative Improvement: {cumulative_improvement}")
+		print(f"Trend: {trend:.4f} | Cumulative Improvement: {cumulative_improvement:.4f}")
 		
 		should_stop = False
 		if self.counter >= self.patience:
@@ -197,10 +179,11 @@ def evaluate_retrieval_performance(
 	class_names = []
 	
 	# Generate text embeddings for all class names once
-	dataset = validation_loader.dataset.dataset
-	class_names = dataset.classes
-	n_classes = len(class_names)
-	
+	try:
+		n_classes = len(validation_loader.dataset.dataset.classes)
+	except:
+		n_classes = validation_loader.dataset.num_classes
+	print(f"Number of classes: {n_classes}")
 	with torch.no_grad():
 		# Encode class names to text embeddings
 		text_inputs = clip.tokenize(texts=class_names).to(device, non_blocking=True)
@@ -257,11 +240,15 @@ def get_retrieval_metrics(
 	class_counts: np.ndarray = None,
 	max_k: int = None,  # New parameter to limit K values (None for no limit)
 	):
+	print(f">> Retrieval mode: {mode}")
+	print(f"query_labels.shape: {query_labels.shape}")
+	print(f"candidate_labels.shape: {candidate_labels.shape}")
+	print(f"similarity_matrix.shape: {similarity_matrix.shape}")
 	num_queries, num_candidates = similarity_matrix.shape
 	assert num_queries == len(query_labels), "Number of queries must match labels"
 	
 	num_classes = len(np.unique(candidate_labels)) # unique values in candidate_labels
-
+	print(f"num_classes: {num_classes}")
 	# Filter topK_values based on max_k and num_classes
 	if max_k is not None:
 		valid_K_values = [K for K in topK_values if K <= max_k]
@@ -361,12 +348,11 @@ def evaluate_loss_and_accuracy(
 	total_txt2img_correct = 0
 	num_batches = len(validation_loader)
 	total_samples = len(validation_loader.dataset)
-	# Determine number of classes and valid K values for Image-to-Text
 	try:
 		num_classes = len(validation_loader.dataset.dataset.classes)
-	except AttributeError:
-		print("Warning: Could not determine number of classes from dataset. Using a default or dataset-specific method.")
-		num_classes = len(set(validation_loader.dataset.dataset.labels)) if hasattr(validation_loader.dataset.dataset, 'labels') else 10  # Default to 10 (e.g., CIFAR10)
+	except AttributeError as e:
+		# print(f"Error: {e}")
+		num_classes = validation_loader.dataset.num_classes
 	if num_classes <= 0:
 		raise ValueError("Number of classes must be positive.")
 	# Valid K values for Image-to-Text (limited by num_classes)
@@ -823,7 +809,10 @@ def train(
 		min_epochs=minimum_epochs,					# Ensure at least 20 epochs of training
 		restore_best_weights=True						# Restore model weights to the best epoch
 	)
-	dataset_name = validation_loader.dataset.dataset.__class__.__name__ # CIFAR10, ImageNet, etc.
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__ # CIFAR10, ImageNet, etc.
+	except AttributeError as e:
+		dataset_name = validation_loader.dataset.dataset_name # 
 	os.makedirs(results_dir, exist_ok=True)
 	mode = "train"
 	model_arch = model.name
@@ -896,7 +885,7 @@ def train(
 		print(f"Epoch [{epoch+1}/{num_epochs}]")
 		epoch_loss = 0.0
 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
-			# torch.Size([64, 3, 224, 224]), torch.Size([64, 77]), torch.Size([64])
+			# torch.Size([batch_size, 3, 224, 224]), torch.Size([batch_size, 77]), torch.Size([batch_size])
 			optimizer.zero_grad() # Clear gradients from previous batch
 			images, tokenized_labels = images.to(device, non_blocking=True), tokenized_labels.to(device, non_blocking=True) # torch.Size([b, 3, 224, 224]), torch.Size([b, 77])
 			with torch.amp.autocast(device_type=device.type): # # Automatic Mixed Precision (AMP) backpropagation:
@@ -930,7 +919,7 @@ def train(
 		print(
 			f'@ Epoch {epoch+1}:\n'
 			f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {metrics_per_epoch.get("val_loss"):.8f}\n'
-			f'\tValid Acc [text retrieval per image]: {metrics_per_epoch.get("img2txt_acc")} '
+			f'\tIn-batch Validation Accuracy [text retrieval per image]: {metrics_per_epoch.get("img2txt_acc")} '
 			f'[image retrieval per text]: {metrics_per_epoch.get("txt2img_acc")}'
 		)
 
@@ -1108,7 +1097,7 @@ def main():
 	print(clip.available_models())
 
 	model, preprocess = clip.load(
-		name=args.model_architecture, 
+		name=args.model_architecture,
 		device=args.device, 
 		jit=False, # training or finetuning => jit=False
 		random_weights=True if args.mode == 'train' else False, 
@@ -1118,6 +1107,7 @@ def main():
 	model.name = args.model_architecture  # Custom attribute to store model name
 	print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture on {args.device} device")
 	# print(model.visual.conv1.weight[0, 0, 0])  # Random value (not zeros or pretrained values)
+
 	train_loader, validation_loader = get_dataloaders(
 		dataset_name=args.dataset,
 		batch_size=args.batch_size,

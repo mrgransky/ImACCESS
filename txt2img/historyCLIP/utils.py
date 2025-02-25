@@ -59,6 +59,8 @@ import datetime
 from io import BytesIO
 from datetime import timedelta
 from absl import logging as absl_logging
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
 
 nltk_modules = [
 	'punkt',
@@ -208,13 +210,14 @@ def clean_(text:str="this is a sample text!", sw:List=list(), check_language:boo
 	return text
 
 def visualize_(dataloader, num_samples=5, ):
-	for batch_idx, (batch_imgs, batch_lbls) in enumerate(dataloader):
-		print(batch_idx, batch_imgs.shape, batch_lbls.shape, len(batch_imgs), len(batch_lbls)) # torch.Size([32, 3, 224, 224]) torch.Size([32])
+	for batch_idx, (batch_imgs, batch_lbls, batch_lbls_int) in enumerate(dataloader):
+		# torch.Size([batch_size, 3, 224, 224]), torch.Size([batch_size, 77]), torch.Size([batch_size])
+		print(batch_idx, batch_imgs.shape, batch_lbls.shape, len(batch_imgs), len(batch_lbls))
 		if batch_idx >= num_samples:
 			break
 		
 		image = batch_imgs[batch_idx].permute(1, 2, 0).numpy() # Convert tensor to numpy array and permute dimensions
-		caption_idx = batch_lbls[batch_idx]
+		caption_idx = batch_lbls_int[batch_idx]
 		print(image.shape, caption_idx)
 		print()
 			
@@ -224,7 +227,7 @@ def visualize_(dataloader, num_samples=5, ):
 		
 		plt.figure(figsize=(10, 10))
 		plt.imshow(image)
-		plt.title(f"Caption {caption_idx.shape}\n{caption_idx}", fontsize=5)
+		plt.title(f"Caption: {caption_idx}", fontsize=8)
 		plt.axis('off')
 		plt.show()
 

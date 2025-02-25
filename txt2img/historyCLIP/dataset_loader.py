@@ -1,16 +1,197 @@
 from utils import *
 
+def get_datasets(
+	ddir: str, # Dataset directory
+	sampling: str, # "stratified_random" or "kfold_stratified"
+	kfolds:int=5,  # Number of folds for K-Fold
+	force_regenerate:bool=False, # Force regenerate K-Fold splits
+	seed:int=42, # Seed for random sampling
+	):
+	if sampling not in ["stratified_random", "kfold_stratified"]:
+		raise ValueError("Invalid sampling. Choose 'stratified_random' or 'kfold_stratified'.")
+
+	print(f"Loading dataset {ddir} ...")
+	metadata_fpth = os.path.join(ddir, "metadata.csv")
+	############################################################################
+	# debugging types of columns
+	# df = pd.read_csv(filepath_or_buffer=metadata_fpth, on_bad_lines='skip')
+	# for col in df.columns:
+	# 	print(f"Column: {col}")
+	# 	print(df[col].apply(type).value_counts())
+	# 	print("-" * 50)
+	############################################################################
+	dtypes = {
+		'doc_id': str,
+		'id': str,
+		'label': str,
+		'title': str,
+		'description': str,
+		'img_url': str,
+		'label_title_description': str,
+		'raw_doc_date': str,  # Adjust based on actual data
+		'doc_year': float,      # Adjust based on actual data
+		'doc_url': str,
+		'img_path': str,
+		'doc_date': str,      # Adjust based on actual data
+		'dataset': str,
+		'date': str,          # Adjust based on actual data
+	}
+	df = pd.read_csv(
+		filepath_or_buffer=metadata_fpth, 
+		on_bad_lines='skip',
+		dtype=dtypes, 
+		low_memory=False, # Set to False to avoid memory issues
+	)
+	# print(list(df.columns))
+	# print(df.head(10))
+	print(f"FULL Dataset (df) shape: {df.shape}")
+	if sampling == "stratified_random":
+		print(f"Simple Random Sampling...")
+		metadata_train_fpth = os.path.join(ddir, "metadata_train.csv")
+		metadata_val_fpth = os.path.join(ddir, "metadata_val.csv")
+		# Load training and validation datasets
+		df_train = pd.read_csv(filepath_or_buffer=metadata_train_fpth, on_bad_lines='skip')
+		df_val = pd.read_csv(filepath_or_buffer=metadata_val_fpth, on_bad_lines='skip')
+		# Generate label mappings for simple sampling
+		labels_train = list(set(df_train["label"].tolist()))
+		labels_train = sorted(labels_train)
+		label_dict_train = {lbl: idx for idx, lbl in enumerate(labels_train)}
+		df_train['label_int'] = df_train['label'].map(label_dict_train)
+		labels_val = list(set(df_val["label"].tolist()))
+		labels_val = sorted(labels_val)
+		label_dict_val = {lbl: idx for idx, lbl in enumerate(labels_val)}
+		df_val['label_int'] = df_val['label'].map(label_dict_val)
+		return df_train, df_val
+	elif sampling == "kfold_stratified":
+		if kfolds < 2:
+			raise ValueError("kfolds must be at least 2.")
+		fold_dir = os.path.join(ddir, sampling)
+		if os.path.exists(fold_dir) and not force_regenerate:
+			print(f"K-Fold splits already exist in {fold_dir}. Loading existing splits...")
+			folds = []
+			for fold in range(1, kfolds + 1):
+				train_fpth = os.path.join(fold_dir, f"fold_{fold}", "metadata_train.csv")
+				val_fpth = os.path.join(fold_dir, f"fold_{fold}", "metadata_val.csv")
+				df_train = pd.read_csv(
+					filepath_or_buffer=train_fpth,
+					on_bad_lines='skip',
+					dtype=dtypes, 
+					low_memory=False, # Set to False to avoid memory issues
+				)
+				df_val = pd.read_csv(
+					filepath_or_buffer=val_fpth,
+					on_bad_lines='skip',
+					dtype=dtypes, 
+					low_memory=False, # Set to False to avoid memory issues
+				)
+				folds.append((df_train, df_val))
+			return folds
+		print(f"K-Fold Stratified sampling with K={kfolds} folds...")
+		if "label" not in df.columns:
+			raise ValueError("The dataset must have a 'label' column for stratified sampling.")
+		# Exclude labels that occur only once
+		label_counts = df["label"].value_counts()
+		labels_to_drop = label_counts[label_counts == 1].index
+		df = df[~df["label"].isin(labels_to_drop)]
+		if df.empty:
+			raise ValueError("No valid labels for stratified sampling (after removing labels with one occurrence).")
+		labels = list(set(df["label"].tolist())) # Get unique labels
+		labels = sorted(labels) # Get sorted unique labels
+		label_dict = {lbl: idx for idx, lbl in enumerate(labels)}
+		df["label_int"] = df["label"].map(label_dict)
+		# Create stratified K-Fold splits
+		folding_method = StratifiedKFold(
+			n_splits=kfolds,
+			shuffle=True,
+			random_state=seed,
+		)
+		folds = []
+		for fold, (train_idx, val_idx) in enumerate(folding_method.split(df, df["label"])):
+			fold_dir = os.path.join(ddir, sampling, f"fold_{fold + 1}")
+			os.makedirs(fold_dir, exist_ok=True)
+			train_fpth = os.path.join(fold_dir, "metadata_train.csv")
+			val_fpth = os.path.join(fold_dir, "metadata_val.csv")
+			df_train = df.iloc[train_idx].copy()
+			df_val = df.iloc[val_idx].copy()
+			df_train["label_int"] = df_train["label"].map(label_dict)
+			df_val["label_int"] = df_val["label"].map(label_dict)
+			df_train.to_csv(train_fpth, index=False)
+			df_val.to_csv(val_fpth, index=False)
+			folds.append((df_train, df_val))
+		print(f"K(={kfolds})-Fold splits saved successfully in {ddir}")
+		print("*"*100)
+		return folds
+	else:
+		raise ValueError("Invalid sampling. Use 'stratified_random' or 'kfold_stratified'.")
+
+def get_dataloaders(
+	dataset_dir: str,
+	sampling: str,
+	preprocess,
+	batch_size: int,
+	num_workers: int,
+	):
+	dataset_name = os.path.basename(dataset_dir)
+	print(f"Loading dataset: {dataset_name}")
+	train_dataset, val_dataset = get_datasets(
+		ddir=dataset_dir,
+		sampling=sampling,
+	)
+
+	train_dataset = HistoricalArchivesDataset(
+		dataset_name=dataset_name,
+		train=True,
+		data_frame=train_dataset,
+		transformer=preprocess,
+	)
+	print(train_dataset)
+	train_loader = DataLoader(
+		dataset=train_dataset,
+		batch_size=batch_size,
+		shuffle=True,
+		pin_memory=True, # Move data to GPU faster if using CUDA
+		persistent_workers=(num_workers > 1),  # Keep workers alive if memory allows
+		num_workers=num_workers,
+	)
+	train_loader.name = f"{dataset_name.lower()}_train".upper()
+
+	validation_dataset = HistoricalArchivesDataset(
+		dataset_name=dataset_name,
+		train=False,
+		data_frame=val_dataset,
+		transformer=preprocess,
+	)
+	
+	print(validation_dataset)
+	val_loader = DataLoader(
+		dataset=validation_dataset,
+		batch_size=batch_size,
+		shuffle=False,
+		pin_memory=True, # Move data to GPU faster if using CUDA
+		num_workers=num_workers,
+	)
+	val_loader.name = f"{dataset_name.lower()}_validation".upper()
+	return train_loader, val_loader
+
 class HistoricalArchivesDataset(Dataset):
 	def __init__(
 			self,
-			data_frame,
-			mean:List[float]=[0.52, 0.50, 0.48],
-			std:List[float]=[0.27, 0.27, 0.26],
-			transformer=None,
+			dataset_name: str,
+			train: bool,
+			data_frame: pd.DataFrame,
+			mean: List[float]=[0.52, 0.50, 0.48],
+			std: List[float]=[0.27, 0.27, 0.26],
+			transformer= None,
 		):
+		self.dataset_name = dataset_name
+		self.train = train
 		self.data_frame = data_frame
 		self.images = self.data_frame["img_path"].values
-		self.descriptions = clip.tokenize(texts=self.data_frame["label"])
+		self.labels = self.data_frame["label"].values
+		self.labels_int = self.data_frame["label_int"].values		
+		self.tokenized_labels = clip.tokenize(texts=self.labels)
+		self._num_classes = len(np.unique(self.labels_int))
+
 		if transformer:
 			self.transform = transformer
 		else:
@@ -26,28 +207,38 @@ class HistoricalArchivesDataset(Dataset):
 		return len(self.data_frame)
 
 	def __repr__(self):
-		return f"HistoricalArchivesDataset\n{self.data_frame}\nlabels={self.descriptions}\ntransform:{self.transform}" # TODO: add more details (mean, std, etc.)
+		transform_str = f"StandardTransform\nTransform: {self.transform}\n" if self.transform else ""
+		split = 'Train' if self.train else 'Validation'
+		return (
+			f"{self.dataset_name}\n" \
+			f"\tSplit: {split} {self.data_frame.shape}\n" \
+			f"\t{list(self.data_frame.columns)}\n" \
+			f"\tlabels={self.labels.shape}\n"
+			f"{transform_str}")
 
 	def __getitem__(self, idx):
 		doc_image_path = self.images[idx]
 
 		if not os.path.exists(doc_image_path): # Try to load the image and handle errors gracefully
 			print(f"{doc_image_path} Not found!")
-			# raise FileNotFoundError(f"Image not found at path: {img_path}") debugging purpose
 			return None
 
 		try:
 			Image.open(doc_image_path).verify() # # Validate the image
 			image = Image.open(doc_image_path).convert("RGB")
 		except (FileNotFoundError, IOError, Exception) as e:
-			# raise IOError(f"Error: Could not load image: {img_path} {e}") # debugging
 			print(f"ERROR: {doc_image_path}\t{e}")
 			return None
 
 		image_tensor = self.transform(image) # <class 'torch.Tensor'> torch.Size([3, 224, 224])
-		description_tensor = self.descriptions[idx] # torch.Size([num_lbls, context_length]) [10 x 77]
-		
-		return image_tensor, description_tensor 
+		tokenized_label_tensor = self.tokenized_labels[idx] # torch.Size([num_lbls, context_length]) [10 x 77]
+		label_int = self.labels_int[idx] # <class 'int'> 0
+		return image_tensor, tokenized_label_tensor, label_int
+
+	@property
+	def num_classes(self):
+		# return len(set(self.labels_int))
+		return self._num_classes
 
 class HistoryDataset(Dataset):
 	def __init__(
