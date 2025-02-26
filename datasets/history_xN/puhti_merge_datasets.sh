@@ -9,7 +9,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=40
 #SBATCH --mem=24G
-#SBATCH --partition=large
+#SBATCH --partition=interactive
 #SBATCH --time=03-00:00:00
 
 set -e
