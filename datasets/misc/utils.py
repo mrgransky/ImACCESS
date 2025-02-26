@@ -32,6 +32,7 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 from datetime import timedelta
 import glob
+import psutil  # For memory usage monitoring
 
 logging.basicConfig(level=logging.INFO)
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
@@ -453,16 +454,11 @@ def process_rgb_image(image_path: str, transform: T.Compose):
 			img = img.convert('RGB') # Ensure the image is in RGB mode
 			tensor_image = transform(img)
 			pixel_count = tensor_image.shape[1] * tensor_image.shape[2]
-			return tensor_image.sum(dim=[1, 2]), (tensor_image ** 2).sum(dim=[1, 2]), pixel_count
-		# Image.open(image_path).verify() # Validate the image
-		# image = Image.open(image_path).convert('RGB') # Ensure the image is in RGB mode
-		# tensor_image = transform(image)
-		# pixel_count = tensor_image.shape[1] * tensor_image.shape[2]
-		# # return tensor_image.sum(dim=[1, 2]), (tensor_image ** 2).sum(dim=[1, 2]), tensor_image.numel() / 3
-		# return tensor_image.sum(dim=[1, 2]), (tensor_image ** 2).sum(dim=[1, 2]), pixel_count
-	# except (IOError, OSError) as e:
-	# 	logging.error(f"Error opening image {image_path}: {e}")
-	# 	return torch.zeros(3), torch.zeros(3), 0
+			# Compute sums incrementally to reduce memory usage
+			channel_sums = tensor_image.sum(dim=[1, 2])  # Sum per channel
+			channel_sums_sq = (tensor_image ** 2).sum(dim=[1, 2])  # Sum of squares per channel
+			del tensor_image  # Explicitly free memory
+			return channel_sums, channel_sums_sq, pixel_count
 	except Exception as e:
 		logging.error(f"Unexpected error for {image_path}: {e}")
 		return torch.zeros(3), torch.zeros(3), 0
@@ -493,10 +489,15 @@ def get_mean_std_rgb_img_multiprocessing(
 	if total_images == 0:
 		raise ValueError("No images found in the provided source.")
 
-	print(f"Calculating stats for {total_images} images in {batch_size} batches with {num_workers} workers...")
+	# Adjust num_workers based on available memory and CPUs
+	available_memory = psutil.virtual_memory().available / (1024 ** 3)  # GB
+	num_workers = min(num_workers, os.cpu_count(), max(1, int(available_memory // 2)))  # Rough heuristic
+	batch_size = min(batch_size, total_images)  # Ensure batch_size <= total_images
+
+	print(f"Processing {total_images} images with {num_workers} workers and batch_size={batch_size}")
 	t0 = time.time()
-	sum_ = torch.zeros(3)
-	sum_of_squares = torch.zeros(3)
+	sum_ = torch.zeros(3, dtype=torch.float64)
+	sum_of_squares = torch.zeros(3, dtype=torch.float64)
 	count = 0
 	transform = T.Compose([T.ToTensor(),])
 	with ProcessPoolExecutor(max_workers=num_workers) as executor:
@@ -507,19 +508,20 @@ def get_mean_std_rgb_img_multiprocessing(
 			batch_args = [(path, transform) for path in batch_paths]
 			batch_futures = [executor.submit(process_rgb_image, arg[0], arg[1]) for arg in batch_args]
 			futures.extend(batch_futures)
-		for future in tqdm(as_completed(futures), total=len(futures), desc="Processing images"):
+		for future in tqdm(as_completed(futures), total=len(futures), desc="Processing", mininterval=1.0):
 			try:
 				result = future.result(timeout=120) # Set reasonable timeout to prevent indefinite waits
 				if result is not None:
 					partial_sum, partial_sum_of_squares, partial_count = result
-					sum_ += partial_sum
-					sum_of_squares += partial_sum_of_squares
-					count += partial_count
+					if partial_count > 0: # Ensure that the partial results are valid
+						sum_ += partial_sum
+						sum_of_squares += partial_sum_of_squares
+						count += partial_count
 			except TimeoutError as te:
 				logging.error(f"Timeout error: {te}")
 				continue
 			except Exception as e:
-				logging.error(f"Error in future result: {e}")
+				logging.error(f"{e}")
 	if count == 0:
 		print("No valid images found. Please check the input directory.")
 		return [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]
