@@ -71,19 +71,6 @@ all_image_paths = merged_df['img_path'].tolist()
 print(f"Total number of images: {len(all_image_paths)}")
 # print(label_counts.tail(25))
 
-
-img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
-img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
-
-mean, std = get_mean_std_rgb_img_multiprocessing(
-	source=all_image_paths,
-	num_workers=4,
-	batch_size=32,
-	img_rgb_mean_fpth=img_rgb_mean_fpth,
-	img_rgb_std_fpth=img_rgb_std_fpth,
-)
-print(f"Mean: {mean}, Std: {std}")
-
 # Visualize label distribution
 plt.figure(figsize=FIGURE_SIZE)
 label_counts.plot(kind='bar', fontsize=9)
@@ -143,3 +130,15 @@ plt.savefig(
 	dpi=DPI,
 	bbox_inches='tight'
 )
+
+img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
+img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
+
+mean, std = get_mean_std_rgb_img_multiprocessing(
+	source=all_image_paths,
+	num_workers=16,
+	batch_size=128,
+	img_rgb_mean_fpth=img_rgb_mean_fpth,
+	img_rgb_std_fpth=img_rgb_std_fpth,
+)
+print(f"Mean: {mean}, Std: {std}")
