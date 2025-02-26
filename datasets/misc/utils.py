@@ -508,7 +508,7 @@ def get_mean_std_rgb_img_multiprocessing(
 			batch_args = [(path, transform) for path in batch_paths]
 			batch_futures = [executor.submit(process_rgb_image, arg[0], arg[1]) for arg in batch_args]
 			futures.extend(batch_futures)
-		for future in tqdm(as_completed(futures), total=len(futures), desc="Processing", mininterval=1.0):
+		for future in tqdm(as_completed(futures), total=len(futures), desc="Processing"):
 			try:
 				result = future.result(timeout=120) # Set reasonable timeout to prevent indefinite waits
 				if result is not None:
