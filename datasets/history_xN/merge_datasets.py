@@ -5,6 +5,11 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 from misc.utils import *
 
+# how to run:
+# $ python merge_datasets.py
+# $ python merge_datasets.py > merge_datasets.log 2>&1 &
+# $ nohup python -u merge_datasets.py > history_xN_merged_datasets.log &
+
 USER = os.getenv("USER")
 FIGURE_SIZE = (13, 7)
 DPI = 250
@@ -57,7 +62,6 @@ print(f"merging {len(dfs)} dataframe(s) to create {dataset_name} dataset...")
 merged_df = pd.concat(dfs, ignore_index=True)
 print(list(merged_df.columns), merged_df.shape)
 print(merged_df.head(10))
-print(merged_df.loc[0, "img_path"])
 merged_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata.csv'), index=False)
 label_counts = merged_df['label'].value_counts()
 all_image_paths = merged_df['img_path'].tolist()
