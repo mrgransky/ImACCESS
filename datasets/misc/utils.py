@@ -448,7 +448,7 @@ def remove_misspelled_(documents: str="This is a sample sentence."):
 	return cleaned_text
 
 def process_rgb_image(image_path: str, transform: T.Compose):
-	# logging.info(f"Processing: {image_path}")
+	logging.info(f"Processing: {image_path}")
 	try:
 		with Image.open(image_path) as img:
 			img = img.convert('RGB') # Ensure the image is in RGB mode
