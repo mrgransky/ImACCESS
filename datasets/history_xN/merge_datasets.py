@@ -8,7 +8,10 @@ from misc.utils import *
 # how to run:
 # $ python merge_datasets.py
 # $ python merge_datasets.py > merge_datasets.log 2>&1 &
-# $ nohup python -u merge_datasets.py > history_xN_merged_datasets.log &
+# $ nohup python -u merge_datasets.py > history_xN_merged_datasets.out &
+
+# run in puhti:
+# $ nohup python -u merge_datasets.py > /scratch/project_2004072/ImACCESS/trash/logs/history_xN_merged_datasets.out &
 
 USER = os.getenv("USER")
 FIGURE_SIZE = (13, 7)
@@ -67,6 +70,19 @@ label_counts = merged_df['label'].value_counts()
 all_image_paths = merged_df['img_path'].tolist()
 print(f"Total number of images: {len(all_image_paths)}")
 # print(label_counts.tail(25))
+
+
+img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
+img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
+
+mean, std = get_mean_std_rgb_img_multiprocessing(
+	source=all_image_paths,
+	num_workers=8,
+	batch_size=128,
+	img_rgb_mean_fpth=img_rgb_mean_fpth,
+	img_rgb_std_fpth=img_rgb_std_fpth,
+)
+print(f"Mean: {mean}, Std: {std}")
 
 # Visualize label distribution
 plt.figure(figsize=FIGURE_SIZE)
@@ -127,15 +143,3 @@ plt.savefig(
 	dpi=DPI,
 	bbox_inches='tight'
 )
-
-img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
-img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
-
-mean, std = get_mean_std_rgb_img_multiprocessing(
-	source=all_image_paths,
-	num_workers=8,
-	batch_size=512,
-	img_rgb_mean_fpth=img_rgb_mean_fpth,
-	img_rgb_std_fpth=img_rgb_std_fpth,
-)
-print(f"Mean: {mean}, Std: {std}")
