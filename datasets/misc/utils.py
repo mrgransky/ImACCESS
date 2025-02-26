@@ -511,7 +511,7 @@ def get_mean_std_rgb_img_multiprocessing(
 		for future in as_completed(futures):
 		# for future in tqdm(as_completed(futures), total=len(futures), desc="Processing"):
 			try:
-				result = future.result(timeout=120) # Set reasonable timeout to prevent indefinite waits
+				result = future.result(timeout=10) # Set reasonable timeout to prevent indefinite waits
 				if result is not None:
 					partial_sum, partial_sum_of_squares, partial_count = result
 					if partial_count > 0: # Ensure that the partial results are valid
