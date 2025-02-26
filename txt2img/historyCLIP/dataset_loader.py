@@ -1,5 +1,8 @@
 from utils import *
 
+def _convert_image_to_rgb(image):
+	return image.convert("RGB")
+
 def get_datasets(
 	ddir: str, # Dataset directory
 	sampling: str, # "stratified_random" or "kfold_stratified"
@@ -127,9 +130,9 @@ def get_datasets(
 def get_dataloaders(
 	dataset_dir: str,
 	sampling: str,
-	preprocess,
 	batch_size: int,
 	num_workers: int,
+	preprocess=None,
 	):
 	dataset_name = os.path.basename(dataset_dir)
 	print(f"Loading dataset: {dataset_name}")
@@ -137,12 +140,32 @@ def get_dataloaders(
 		ddir=dataset_dir,
 		sampling=sampling,
 	)
+	if preprocess is None:
+		try:
+			# load mean and std from the dataset directory:
+			mean = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_mean.gz"))
+			std = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_std.gz"))
+			print(f"Loaded mean and std from {dataset_dir}: mean={mean}, std={std}")
+		except Exception as e:
+			mean = [0.52, 0.50, 0.48]
+			std = [0.27, 0.27, 0.26]
+			print(f"Could not load mean and std from {dataset_dir}. Using default values: mean={mean}, std={std}")
+		preprocess = T.Compose([
+			T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
+			T.CenterCrop(224),
+			_convert_image_to_rgb,
+			T.ToTensor(),
+			T.Normalize(
+				mean=mean, 
+				std=std,
+			),
+		])
 
 	train_dataset = HistoricalArchivesDataset(
 		dataset_name=dataset_name,
 		train=True,
 		data_frame=train_dataset,
-		transformer=preprocess,
+		transform=preprocess,
 	)
 	print(train_dataset)
 	train_loader = DataLoader(
@@ -159,7 +182,7 @@ def get_dataloaders(
 		dataset_name=dataset_name,
 		train=False,
 		data_frame=val_dataset,
-		transformer=preprocess,
+		transform=preprocess,
 	)
 	
 	print(validation_dataset)
@@ -181,7 +204,7 @@ class HistoricalArchivesDataset(Dataset):
 			data_frame: pd.DataFrame,
 			mean: List[float]=[0.52, 0.50, 0.48],
 			std: List[float]=[0.27, 0.27, 0.26],
-			transformer= None,
+			transform= None,
 		):
 		self.dataset_name = dataset_name
 		self.train = train
@@ -193,12 +216,14 @@ class HistoricalArchivesDataset(Dataset):
 		self.tokenized_labels = clip.tokenize(texts=self.labels)
 		self._num_classes = len(np.unique(self.labels_int))
 
-		if transformer:
-			self.transform = transformer
+		if transform:
+			self.transform = transform
 		else:
 			self.transform = T.Compose(
 				[
-					T.Resize((224, 224)),
+					T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
+					T.CenterCrop(224),
+					_convert_image_to_rgb,
 					T.ToTensor(),
 					T.Normalize(mean=mean, std=std),
 				]
@@ -248,13 +273,13 @@ class HistoryDataset(Dataset):
 			dataset_directory:str="path/2/images",
 			mean:List[float]=[0.52, 0.50, 0.48],
 			std:List[float]=[0.27, 0.27, 0.26],
-			transformer=None,
+			transform=None,
 		):
 		self.data_frame = data_frame
 		self.dataset_directory = dataset_directory
 		self.tokenized_doc_descriptions = clip.tokenize(texts=self.data_frame["label"])
-		if transformer:
-			self.transform = transformer
+		if transform:
+			self.transform = transform
 		else:
 			self.transform = T.Compose(
 				[

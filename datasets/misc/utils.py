@@ -16,13 +16,13 @@ import nltk
 import multiprocessing
 import shutil
 import logging
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Tuple, Union
 from natsort import natsorted
 import matplotlib.pyplot as plt
 import seaborn as sns
 from bs4 import BeautifulSoup
 from multiprocessing import Pool
-from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor, TimeoutError
 from requests.exceptions import RequestException
 import torchvision.transforms as T
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
@@ -31,6 +31,7 @@ from urllib.parse import urlparse, unquote, quote_plus
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 from datetime import timedelta
+import glob
 
 logging.basicConfig(level=logging.INFO)
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
@@ -445,54 +446,93 @@ def remove_misspelled_(documents: str="This is a sample sentence."):
 	# print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(100, " "))
 	return cleaned_text
 
-def process_rgb_image(args):
-	filename, dir, transform = args
-	image_path = os.path.join(dir, filename)
-	logging.info(f"Processing: {image_path}")
+def process_rgb_image(image_path: str, transform: T.Compose):
+	# logging.info(f"Processing: {image_path}")
 	try:
-		Image.open(image_path).verify()  # Validate the image
-		image = Image.open(image_path).convert('RGB')  # Ensure the image is in RGB mode
-		tensor_image = transform(image)
-		return tensor_image.sum(dim=[1, 2]), (tensor_image ** 2).sum(dim=[1, 2]), tensor_image.numel() / 3
+		with Image.open(image_path) as img:
+			img = img.convert('RGB') # Ensure the image is in RGB mode
+			tensor_image = transform(img)
+			pixel_count = tensor_image.shape[1] * tensor_image.shape[2]
+			return tensor_image.sum(dim=[1, 2]), (tensor_image ** 2).sum(dim=[1, 2]), pixel_count
+		# Image.open(image_path).verify() # Validate the image
+		# image = Image.open(image_path).convert('RGB') # Ensure the image is in RGB mode
+		# tensor_image = transform(image)
+		# pixel_count = tensor_image.shape[1] * tensor_image.shape[2]
+		# # return tensor_image.sum(dim=[1, 2]), (tensor_image ** 2).sum(dim=[1, 2]), tensor_image.numel() / 3
+		# return tensor_image.sum(dim=[1, 2]), (tensor_image ** 2).sum(dim=[1, 2]), pixel_count
+	# except (IOError, OSError) as e:
+	# 	logging.error(f"Error opening image {image_path}: {e}")
+	# 	return torch.zeros(3), torch.zeros(3), 0
 	except Exception as e:
-		logging.error(f"Error processing {image_path}: {e}")
+		logging.error(f"Unexpected error for {image_path}: {e}")
 		return torch.zeros(3), torch.zeros(3), 0
 
-def get_mean_std_rgb_img_multiprocessing(dir: str = "path/2/images", num_workers: int = 8, batch_size: int = 32):
-	print(f"Calculating Mean-Std «{len(os.listdir(dir))} RGB images » (multiprocessing with {num_workers} workers)")
+def get_mean_std_rgb_img_multiprocessing(
+		source: Union[str, list],
+		num_workers: int,
+		batch_size: int,
+		img_rgb_mean_fpth: str,
+		img_rgb_std_fpth: str,
+	) -> Tuple[List[float], List[float]]:
+
+	# Ensure valid input type
+	if not isinstance(source, (str, list)):
+		raise TypeError(f"The 'source' argument is {type(source)}! It must be a string (directory path) or a list of image paths. Please provide a valid input.")
+    
+	# Determine input type and prepare image paths
+	if isinstance(source, str):
+		# Directory mode
+		image_dir = source
+		if not os.path.isdir(image_dir):
+			raise ValueError(f"The provided directory path '{image_dir}' does not exist.")
+		image_paths = [os.path.join(image_dir, f) for f in os.listdir(image_dir)]
+	else:
+		# Precomputed paths mode
+		image_paths = source
+	total_images = len(image_paths)
+	if total_images == 0:
+		raise ValueError("No images found in the provided source.")
+
+	print(f"Calculating stats for {total_images} images in {batch_size} batches with {num_workers} workers...")
 	t0 = time.time()
-	# Initialize variables to accumulate the sum and sum of squares for each channel
 	sum_ = torch.zeros(3)
 	sum_of_squares = torch.zeros(3)
 	count = 0
-	transform = T.Compose([
-		T.ToTensor(),  # Convert to tensor (automatically converts to RGB if not already)
-	])
-	# Get list of image filenames
-	filenames = os.listdir(dir)
-	# Process images in batches
-	with ThreadPoolExecutor(max_workers=num_workers) as executor:
+	transform = T.Compose([T.ToTensor(),])
+	with ProcessPoolExecutor(max_workers=num_workers) as executor:
 		futures = []
-		for i in range(0, len(filenames), batch_size):
-			batch_filenames = filenames[i:i + batch_size]
-			batch_args = [(filename, dir, transform) for filename in batch_filenames]
-			futures.extend(executor.submit(process_rgb_image, args) for args in batch_args)
-		# Process results as they complete
+		for i in range(0, len(image_paths), batch_size):
+			batch_paths = image_paths[i:i + batch_size]
+			# Submit tasks for the current batch
+			batch_args = [(path, transform) for path in batch_paths]
+			batch_futures = [executor.submit(process_rgb_image, arg[0], arg[1]) for arg in batch_args]
+			futures.extend(batch_futures)
 		for future in tqdm(as_completed(futures), total=len(futures), desc="Processing images"):
 			try:
-				result = future.result(timeout=60)  # Add a timeout to prevent hanging
+				result = future.result(timeout=120) # Set reasonable timeout to prevent indefinite waits
 				if result is not None:
 					partial_sum, partial_sum_of_squares, partial_count = result
 					sum_ += partial_sum
 					sum_of_squares += partial_sum_of_squares
 					count += partial_count
+			except TimeoutError as te:
+				logging.error(f"Timeout error: {te}")
+				continue
 			except Exception as e:
 				logging.error(f"Error in future result: {e}")
-	# Calculate mean and standard deviation
+	if count == 0:
+		print("No valid images found. Please check the input directory.")
+		return [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]
+	
 	mean = sum_ / count
 	std = torch.sqrt((sum_of_squares / count) - (mean ** 2))
-	logging.info(f"Elapsed_t: {time.time() - t0:.2f} sec")
-	return mean.tolist(), std.tolist()
+	
+	img_rgb_mean = mean.tolist()
+	img_rgb_std = std.tolist()
+	logging.info(f"Elapsed_t: {time.time()-t0:.2f} sec")
+	save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
+	save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
+	return img_rgb_mean, img_rgb_std
 
 def check_url_status(url: str, TIMEOUT:int=50) -> bool:
 	try:

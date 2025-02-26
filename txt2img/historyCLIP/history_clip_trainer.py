@@ -31,7 +31,7 @@ print(args)
 
 # run in pouta:
 # train from scratch:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 200 -nw 40 --device "cuda:2" -m train -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/europeana_train.out &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 5e-4 -wd 1e-2 --print_every 200 -nw 40 --device "cuda:2" -m train -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/europeana_train.out &
 
 # finetune:
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 256 -e 32  -lr 1e-4 -wd 1e-3 --print_every 200 -nw 40 --device "cuda:3" -m finetune -a "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_ft.out &
@@ -55,22 +55,12 @@ def main():
 	train_loader, validation_loader = get_dataloaders(
 		dataset_dir=args.dataset_dir,
 		sampling=args.sampling,
-		preprocess=preprocess,
 		batch_size=args.batch_size,
 		num_workers=args.num_workers,
+		preprocess=None,#preprocess,
 	)
 	print(f"Train Loader: {len(train_loader)} batches, Number of unique classes: {train_loader.dataset.num_classes}")
 	print(f"Validation Loader: {len(validation_loader)} batches, Number of unique classes: {validation_loader.dataset.num_classes}")
-	# for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
-	# 	print(images.shape, tokenized_labels.shape, labels_indices.shape, labels_indices)
-	# 	break
-
-	# for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
-	# 	print(images.shape, tokenized_labels.shape, labels_indices.shape, labels_indices)
-	# 	break
-
-	# visualize_(dataloader=train_loader, num_samples=5)
-	# return
 	if args.mode == "finetune":
 		finetune(
 			model=model,

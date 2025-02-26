@@ -43,9 +43,9 @@ STOPWORDS = set(STOPWORDS)
 print(STOPWORDS, type(STOPWORDS))
 dataset_name: str = "europeana".upper()
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
-europeana_api_key: str = "plaction"
+# europeana_api_key: str = "plaction"
 # europeana_api_key: str = "api2demo"
-# europeana_api_key: str = "nLbaXYaiH"
+europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
@@ -54,17 +54,17 @@ headers = {
 	'Pragma': 'no-cache',
 }
 
-os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
+os.makedirs(DATASET_DIRECTORY, exist_ok=True)
 
-os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
 IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
+os.makedirs(IMAGE_DIR, exist_ok=True)
 
-os.makedirs(os.path.join(DATASET_DIRECTORY, "hits"), exist_ok=True)
 HITs_DIR = os.path.join(DATASET_DIRECTORY, "hits")
+os.makedirs(HITs_DIR, exist_ok=True)
 
-os.makedirs(os.path.join(DATASET_DIRECTORY, "outputs"), exist_ok=True)
 OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
+os.makedirs(OUTPUTs_DIR, exist_ok=True)
 
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
@@ -257,7 +257,12 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	europeana_df = get_synchronized_df_img(df=europeana_df_merged_raw, image_dir=IMAGE_DIR, nw=args.num_workers)
+	europeana_df = get_synchronized_df_img(
+		df=europeana_df_merged_raw,
+		image_dir=IMAGE_DIR,
+		nw=args.num_workers,
+	)
+
 	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"label_distribution_{dataset_name}_{START_DATE}_{END_DATE}_nIMGs_{europeana_df.shape[0]}.png")
 	plot_label_distribution(
 		df=europeana_df,
@@ -266,6 +271,7 @@ def main():
 		dname=dataset_name,
 		fpth=label_dirstribution_fname,
 		)
+	
 	europeana_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 	get_stratified_split(
 		df=europeana_df,
@@ -292,16 +298,17 @@ def main():
 	
 	if args.img_mean_std:
 		try:
-			img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
+			img_rgb_mean = load_pickle(fpath=img_rgb_mean_fpth) 
+			img_rgb_std = load_pickle(fpath=img_rgb_std_fpth)
 		except Exception as e:
 			print(f"{e}")
 			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
-				dir=os.path.join(DATASET_DIRECTORY, "images"), 
+				source=os.path.join(DATASET_DIRECTORY, "images"), 
 				num_workers=args.num_workers,
 				batch_size=args.batch_size,
+				img_rgb_mean_fpth=img_rgb_mean_fpth,
+				img_rgb_std_fpth=img_rgb_std_fpth,
 			)
-			save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
-			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
 		print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
 
 def test():

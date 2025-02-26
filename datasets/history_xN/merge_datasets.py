@@ -1,18 +1,18 @@
+import sys
 import os
-import pandas as pd
-import seaborn as sns
-from sklearn.model_selection import train_test_split
-import matplotlib.pyplot as plt
-import glob
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
+from misc.utils import *
 
 USER = os.getenv("USER")
 FIGURE_SIZE = (13, 7)
 DPI = 250
 VAL_SPLIT_PCT = 0.35
 DATASET_DIRECTORY = {
-				"farid": "/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs",
-				"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs",
-				"ubuntu": "/media/volume/ImACCESS/WW_DATASETs",
+	"farid": "/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs",
+	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs",
+	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs",
 }
 
 # DATASETS = [
@@ -36,9 +36,9 @@ for pattern in DATASET_PATTERNS:
 	DATASETS.extend(glob.glob(os.path.join(DATASET_DIRECTORY.get(USER), pattern)))
 print(len(DATASETS), DATASETS)
 dataset_name = f"history_x{len(DATASETS)}".upper()
-SAVING_DIRECTORY = os.path.join(DATASET_DIRECTORY.get(USER), dataset_name)
-OUTPUT_DIRECTORY = os.path.join(SAVING_DIRECTORY, "outputs")
-os.makedirs(SAVING_DIRECTORY, exist_ok=True)
+HISTORY_XN_DIRECTORY = os.path.join(DATASET_DIRECTORY.get(USER), dataset_name)
+OUTPUT_DIRECTORY = os.path.join(HISTORY_XN_DIRECTORY, "outputs")
+os.makedirs(HISTORY_XN_DIRECTORY, exist_ok=True)
 os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
 dfs = []
@@ -55,12 +55,27 @@ for i, dataset_path in enumerate(DATASETS):
 
 print(f"merging {len(dfs)} dataframe(s) to create {dataset_name} dataset...")
 merged_df = pd.concat(dfs, ignore_index=True)
-print(merged_df.shape)
+print(list(merged_df.columns), merged_df.shape)
 print(merged_df.head(10))
-merged_df.to_csv(os.path.join(SAVING_DIRECTORY, 'metadata.csv'), index=False)
+print(merged_df.loc[0, "img_path"])
+merged_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata.csv'), index=False)
 label_counts = merged_df['label'].value_counts()
+all_image_paths = merged_df['img_path'].tolist()
+print(f"Total number of images: {len(all_image_paths)}")
 # print(label_counts.tail(25))
 
+img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
+img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
+
+get_mean_std_rgb_img_multiprocessing(
+	source=all_image_paths,
+	num_workers=10,
+	batch_size=128,
+	img_rgb_mean_fpth=img_rgb_mean_fpth,
+	img_rgb_std_fpth=img_rgb_std_fpth,
+)
+
+# Visualize label distribution
 plt.figure(figsize=FIGURE_SIZE)
 label_counts.plot(kind='bar', fontsize=9)
 plt.title(f'Label Frequency (total: {label_counts.shape[0]}) total IMGs: {merged_df.shape[0]}')
@@ -101,8 +116,8 @@ train_df, val_df = train_test_split(
 	random_state=42
 )
 
-train_df.to_csv(os.path.join(SAVING_DIRECTORY, 'metadata_train.csv'), index=False)
-val_df.to_csv(os.path.join(SAVING_DIRECTORY, 'metadata_val.csv'), index=False)
+train_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_train.csv'), index=False)
+val_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_val.csv'), index=False)
 
 # Visualize label distribution in training and validation sets
 plt.figure(figsize=FIGURE_SIZE)

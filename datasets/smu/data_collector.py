@@ -7,7 +7,7 @@ from misc.utils import *
 
 # local:
 # $ python data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 --img_mean_std
-# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 15 --img_mean_std > logs/smu_dataset_collection.out &
+# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > logs/smu_dataset_collection.out &
 
 # run in Pouta:
 # $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 50 --img_mean_std > /media/volume/ImACCESS/trash/smu_data_collection.out &
@@ -248,7 +248,12 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	smu_df = get_synchronized_df_img(df=smu_df_merged_raw, image_dir=IMAGE_DIRECTORY, nw=args.num_workers)
+	smu_df = get_synchronized_df_img(
+		df=smu_df_merged_raw,
+		image_dir=IMAGE_DIRECTORY,
+		nw=args.num_workers,
+	)
+
 	label_dirstribution_fname = os.path.join(OUTPUTs_DIRECTORY, f"label_distribution_{dataset_name}_{args.start_date}_{args.end_date}_nIMGs_{smu_df.shape[0]}.png")
 	plot_label_distribution(
 		df=smu_df,
@@ -257,9 +262,10 @@ def main():
 		dname=dataset_name,
 		fpth=label_dirstribution_fname,
 	)
-	smu_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 
+	smu_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 	print(smu_df['label'].value_counts())
+
 	get_stratified_split(
 		df=smu_df,
 		val_split_pct=0.35,
@@ -289,12 +295,12 @@ def main():
 		except Exception as e:
 			print(f"{e}")
 			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
-				dir=os.path.join(DATASET_DIRECTORY, "images"), 
+				source=os.path.join(DATASET_DIRECTORY, "images"),
 				num_workers=args.num_workers,
 				batch_size=args.batch_size,
+				img_rgb_mean_fpth=img_rgb_mean_fpth,
+				img_rgb_std_fpth=img_rgb_std_fpth,
 			)
-			save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
-			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
 		print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
 
 def test_on_doc_page_url():
