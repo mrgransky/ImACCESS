@@ -136,7 +136,7 @@ img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
 
 mean, std = get_mean_std_rgb_img_multiprocessing(
 	source=all_image_paths,
-	num_workers=16,
+	num_workers=8,
 	batch_size=128,
 	img_rgb_mean_fpth=img_rgb_mean_fpth,
 	img_rgb_std_fpth=img_rgb_std_fpth,
