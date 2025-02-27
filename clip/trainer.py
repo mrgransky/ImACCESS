@@ -848,7 +848,7 @@ def train(
 	)
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_{model_name}_dropout{dropout_val}_lr_{learning_rate}_wd_{weight_decay}.pth"
+		f"{dataset_name}_mode_{mode}_{model_name}_{re.sub('/', '', model_arch)}_dropout_{dropout_val}_lr_{learning_rate}_wd_{weight_decay}.pth"
 	)
 	optimizer = AdamW(
 		params=[p for p in model.parameters() if p.requires_grad], # Only optimizes parameters that require gradients
