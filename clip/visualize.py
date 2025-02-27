@@ -358,47 +358,47 @@ def plot_loss_accuracy(
 	plt.savefig(txt2img_topk_accuracy_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close()
 
-	# 5. Mean Reciprocal Rank Plot
-	plt.figure(figsize=figure_size)
-	plt.plot(
-		epochs,
-		mean_reciprocal_rank_list,
-		color='#9467bd',
-		label='MRR',
-		lw=1.5,
-		marker='o', 
-		markersize=2,
-	)
-	plt.xlabel('Epoch', fontsize=12)
-	plt.ylabel('Mean Reciprocal Rank', fontsize=12)
-	plt.title(f'{dataset_name} Mean Reciprocal Rank (Image-to-Text)', fontsize=14, fontweight='bold', pad=10)
-	plt.legend(fontsize=10, loc='upper left', )
-	plt.xlim(0, num_epochs + 1)
-	plt.ylim(-0.05, 1.05)
-	plt.xticks(selective_xticks_epochs, fontsize=10)
-	plt.grid(True, linestyle='--', alpha=0.5)
-	plt.tight_layout()
-	plt.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close()
+	# # 5. Mean Reciprocal Rank Plot
+	# plt.figure(figsize=figure_size)
+	# plt.plot(
+	# 	epochs,
+	# 	mean_reciprocal_rank_list,
+	# 	color='#9467bd',
+	# 	label='MRR',
+	# 	lw=1.5,
+	# 	marker='o', 
+	# 	markersize=2,
+	# )
+	# plt.xlabel('Epoch', fontsize=12)
+	# plt.ylabel('Mean Reciprocal Rank', fontsize=12)
+	# plt.title(f'{dataset_name} Mean Reciprocal Rank (Image-to-Text)', fontsize=14, fontweight='bold', pad=10)
+	# plt.legend(fontsize=10, loc='upper left', )
+	# plt.xlim(0, num_epochs + 1)
+	# plt.ylim(-0.05, 1.05)
+	# plt.xticks(selective_xticks_epochs, fontsize=10)
+	# plt.grid(True, linestyle='--', alpha=0.5)
+	# plt.tight_layout()
+	# plt.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
+	# plt.close()
 
-	# 6. Cosine Similarity Plot
-	plt.figure(figsize=figure_size)
-	plt.plot(
-		epochs,
-		cosine_similarity_list,
-		color='#17becf',
-		label='Cosine Similarity',
-		lw=1.5, 
-		marker='o', 
-		markersize=2,
-	)
-	plt.xlabel('Epoch', fontsize=12)
-	plt.ylabel('Cosine Similarity', fontsize=12)
-	plt.title(f'{dataset_name} Cosine Similarity Between Embeddings', fontsize=14, fontweight='bold', pad=10)
-	plt.legend(fontsize=10, loc='upper left', )
-	plt.xlim(0, num_epochs + 1)
-	plt.xticks(selective_xticks_epochs, fontsize=10)
-	plt.grid(True, linestyle='--', alpha=0.5)
-	plt.tight_layout()
-	plt.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close()
+	# # 6. Cosine Similarity Plot
+	# plt.figure(figsize=figure_size)
+	# plt.plot(
+	# 	epochs,
+	# 	cosine_similarity_list,
+	# 	color='#17becf',
+	# 	label='Cosine Similarity',
+	# 	lw=1.5, 
+	# 	marker='o', 
+	# 	markersize=2,
+	# )
+	# plt.xlabel('Epoch', fontsize=12)
+	# plt.ylabel('Cosine Similarity', fontsize=12)
+	# plt.title(f'{dataset_name} Cosine Similarity Between Embeddings', fontsize=14, fontweight='bold', pad=10)
+	# plt.legend(fontsize=10, loc='upper left', )
+	# plt.xlim(0, num_epochs + 1)
+	# plt.xticks(selective_xticks_epochs, fontsize=10)
+	# plt.grid(True, linestyle='--', alpha=0.5)
+	# plt.tight_layout()
+	# plt.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches='tight')
+	# plt.close()
