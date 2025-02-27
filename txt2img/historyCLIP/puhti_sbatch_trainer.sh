@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=train_dataset_x
+#SBATCH --job-name=historyCLIP_train_dataset_x
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -34,8 +34,8 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 NUM_WORKERS=$((SLURM_CPUS_PER_TASK - 1))  # reserve 1 CPU for the main process and other overheads
-INIT_LRS=(1e-3 1e-3 5e-4 1e-3 1e-3)
-DROPOUTS=(0.1 0.1 0.1 0.05 0.0)
+INIT_LRS=(1e-3 1e-3 1e-3 1e-3 1e-3)
+DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
 MODES=(train finetune)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 DATASETS=(
