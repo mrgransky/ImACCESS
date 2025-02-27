@@ -788,19 +788,19 @@ def train(
 		model:torch.nn.Module,
 		train_loader:DataLoader,
 		validation_loader:DataLoader,
-		num_epochs:int=5,
-		nw:int=10,
-		print_every:int=150,
-		learning_rate:float=1e-5,
-		weight_decay:float=1e-3,
-		device:str="cuda",
-		results_dir:str="results",
+		num_epochs:int,
+		nw:int,
+		print_every:int,
+		learning_rate:float,
+		weight_decay:float,
+		device:str,
+		results_dir:str,
 		window_size:int=10,
 		patience:int=10,
 		min_delta:float=1e-4,
 		cumulative_delta:float=5e-3,
 		minimum_epochs:int=20,
-		TOP_K_VALUES=[1, 5, 10, 15, 20],
+		TOP_K_VALUES:List[int]=[1, 5, 10, 15, 20],
 	):
 	early_stopping = EarlyStopping(
 		patience=patience,									# Wait for 10 epochs without improvement before stopping
@@ -818,7 +818,8 @@ def train(
 	os.makedirs(results_dir, exist_ok=True)
 	mode = "train"
 	model_arch = model.name
-	print(f"{mode} {model.__class__.__name__} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
+	model_name = model.__class__.__name__
+	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
 
 	for name, param in model.named_parameters():
 		param.requires_grad = True # Unfreeze all layers (train from scratch)
@@ -847,7 +848,7 @@ def train(
 	)
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_clip.pth"
+		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_{model_name}_dropout{dropout_val}_lr_{learning_rate}_wd_{weight_decay}.pth"
 	)
 	optimizer = AdamW(
 		params=[p for p in model.parameters() if p.requires_grad], # Only optimizes parameters that require gradients
