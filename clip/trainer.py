@@ -840,16 +840,19 @@ def train(
 	total_params = sum(p.numel() for p in model.parameters())
 	trainable_percent = (trainable_params / total_params) * 100
 	frozen_percent = (frozen_params / total_params) * 100
+
 	print(
 		f"[Model Parameters Statictics] Total: {total_params:,} "
 		f"Trainable: {trainable_params:,} ({trainable_percent:.2f}%) "
 		f"Frozen: {frozen_params:,} ({frozen_percent:.2f}%)"
 		.center(160, " ")
 	)
+
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{dataset_name}_mode_{mode}_{model_name}_{re.sub('/', '', model_arch)}_dropout_{dropout_val}_lr_{learning_rate}_wd_{weight_decay}.pth"
 	)
+
 	optimizer = AdamW(
 		params=[p for p in model.parameters() if p.requires_grad], # Only optimizes parameters that require gradients
 		lr=learning_rate,
