@@ -14,6 +14,7 @@ import pickle
 import dill
 import copy
 import itertools
+import tabulate
 from torch.optim import AdamW, SGD, Adam, lr_scheduler
 from torch.utils.data import DataLoader, Dataset
 import torchvision.transforms as T

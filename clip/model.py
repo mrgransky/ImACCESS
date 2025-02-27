@@ -270,7 +270,7 @@ class VisionTransformer(nn.Module):
 		x = self.ln_post(x[:, 0, :])
 		if self.proj is not None:
 			x = x @ self.proj
-			x = self.dropout(x)
+			x = self.dropout(x) # # Applied only during training (model.train() mode)
 		return x
 
 class CLIP(nn.Module):

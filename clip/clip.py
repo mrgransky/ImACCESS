@@ -95,7 +95,7 @@ def load(
 		----------
 		name : str
 				A model name listed by `clip.available_models()`, or the path to a model checkpoint containing the state_dict
-				(ignored if from_scratch=True).
+				(ignored if random_weights=True).
 		device : Union[str, torch.device]
 				The device to put the loaded model.
 		jit : bool
@@ -106,7 +106,7 @@ def load(
 				If True, initialize the model from scratch with random weights using the ViT-B/32 configuration.
 				If False, load the pre-trained model from OpenAI weights (default).
 		dropout : float
-				Dropout rate for the model (only used if from_scratch=True). Defaults to 0.0.
+				Dropout rate for the model (only used if random_weights=True). Defaults to 0.0.
 		Returns
 		-------
 		model : torch.nn.Module
@@ -196,24 +196,186 @@ def load(
 			model.float()
 	return model, _transform(n_px=model.input_resolution.item())
 
-def load_from_scratch(name: str, device: str = "cuda", dropout: float = 0.0):
-	# ViT-B/32 configuration (same as original CLIP)
-	vit_config = {
-		"embed_dim": 512,
-		"image_resolution": 224,
-		"vision_layers": 12,
-		"vision_width": 768,
-		"vision_patch_size": 32,
-		"context_length": 77,
-		"vocab_size": 49408,
-		"transformer_width": 512,
-		"transformer_heads": 8,
-		"transformer_layers": 12,
-		"dropout": dropout,
+# def load_from_scratch(
+# 		name: str,
+# 		device: str, 
+# 		dropout: float,
+# 	):
+# 	# ViT-B/32 configuration (same as original CLIP)
+# 	vit_config = {
+# 		"embed_dim": 512,
+# 		"image_resolution": 224,
+# 		"vision_layers": 12,
+# 		"vision_width": 768,
+# 		"vision_patch_size": 32,
+# 		"context_length": 77,
+# 		"vocab_size": 49408,
+# 		"transformer_width": 512,
+# 		"transformer_heads": 8,
+# 		"transformer_layers": 12,
+# 		"dropout": dropout,
+# 	}
+# 	# Initialize model with random weights
+# 	model = build_model_from_config(**vit_config).to(device)
+# 	preprocess = _transform(n_px=vit_config["image_resolution"])
+# 	return model, preprocess
+
+def load_from_scratch(
+		name: str,
+		device: str,
+		dropout: float,
+	):
+	"""
+		Initialize a CLIP model from scratch with random weights based on the specified architecture.
+
+		Parameters
+		----------
+		name : str
+			A model name listed by `clip.available_models()` to determine the architecture configuration.
+		device : str
+			The device to place the loaded model (default: "cuda" if available, else "cpu").
+		dropout : float
+			Dropout rate for the model (default: 0.0).
+		
+		Returns
+		-------
+		model : torch.nn.Module
+			The CLIP model initialized with random weights.
+		preprocess : Callable[[PIL.Image], torch.Tensor]
+			A torchvision transform that converts a PIL image into a tensor that the returned model can take as its input.
+	"""
+	# Configuration dictionary for different CLIP architectures
+	model_configs = {
+		"RN50": {
+			"embed_dim": 1024,
+			"image_resolution": 224,
+			"vision_layers": (3, 4, 6, 3),  # ResNet layers
+			"vision_width": 64,
+			"vision_patch_size": None,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"RN101": {
+			"embed_dim": 1024,
+			"image_resolution": 224,
+			"vision_layers": (3, 4, 23, 3),  # ResNet layers
+			"vision_width": 64,
+			"vision_patch_size": None,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"RN50x4": {
+			"embed_dim": 640,
+			"image_resolution": 224,
+			"vision_layers": (3, 4, 6, 3),  # ResNet layers
+			"vision_width": 256,  # 4x wider
+			"vision_patch_size": None,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"RN50x16": {
+			"embed_dim": 768,
+			"image_resolution": 224,
+			"vision_layers": (3, 4, 6, 3),  # ResNet layers
+			"vision_width": 1024,  # 16x wider
+			"vision_patch_size": None,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"RN50x64": {
+			"embed_dim": 1024,
+			"image_resolution": 224,
+			"vision_layers": (3, 4, 6, 3),  # ResNet layers
+			"vision_width": 4096,  # 64x wider
+			"vision_patch_size": None,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"ViT-B/32": {
+			"embed_dim": 512,
+			"image_resolution": 224,
+			"vision_layers": 12,
+			"vision_width": 768,
+			"vision_patch_size": 32,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"ViT-B/16": {
+			"embed_dim": 512,
+			"image_resolution": 224,
+			"vision_layers": 12,
+			"vision_width": 768,
+			"vision_patch_size": 16,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 512,
+			"transformer_heads": 8,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"ViT-L/14": {
+			"embed_dim": 768,
+			"image_resolution": 224,
+			"vision_layers": 24,
+			"vision_width": 1024,
+			"vision_patch_size": 14,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 768,
+			"transformer_heads": 12,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
+		"ViT-L/14@336px": {
+			"embed_dim": 768,
+			"image_resolution": 336,
+			"vision_layers": 24,
+			"vision_width": 1024,
+			"vision_patch_size": 14,
+			"context_length": 77,
+			"vocab_size": 49408,
+			"transformer_width": 768,
+			"transformer_heads": 12,
+			"transformer_layers": 12,
+			"dropout": dropout,
+		},
 	}
+
+	# Validate the input name
+	if name not in model_configs:
+		raise ValueError(f"Unsupported model name '{name}' for scratch initialization. Supported models: {list(model_configs.keys())}")
+
+	# Get the configuration for the specified model
+	config = model_configs[name]
+
 	# Initialize model with random weights
-	model = build_model_from_config(**vit_config).to(device)
-	preprocess = _transform(n_px=vit_config["image_resolution"])
+	model = build_model_from_config(**config).to(device)
+	preprocess = _transform(n_px=config["image_resolution"])
+
 	return model, preprocess
 
 def tokenize(

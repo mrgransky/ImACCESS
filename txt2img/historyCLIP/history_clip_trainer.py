@@ -31,8 +31,8 @@ args.device = torch.device(args.device)
 # run in pouta:
 # train from scratch:
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 1e-4 -wd 1e-3 --print_every 200 -nw 50 --device "cuda:0" -m train -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/smu_train.out &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 256 -e 100 -lr 5e-4 -wd 1e-3 --print_every 200 -nw 50 --device "cuda:2" -m train -a "ViT-B/32" -do 0.05 > /media/volume/ImACCESS/trash/europeana_train.out &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 5e-4 -wd 1e-3 --print_every 200 -nw 50 --device "cuda:3" -m train -a "ViT-B/32" -do 0.05 > /media/volume/ImACCESS/trash/wwii_train.out &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 256 -e 100 -lr 1e-4 -wd 1e-3 --print_every 200 -nw 50 --device "cuda:2" -m train -a "ViT-B/32" -do 0.05 > /media/volume/ImACCESS/trash/wwii_train.out &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 5e-4 -wd 1e-3 --print_every 200 -nw 50 --device "cuda:3" -m train -a "ViT-B/32" -do 0.05 > /media/volume/ImACCESS/trash/europeana_train.out &
 
 # finetune:
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORICAL_ARCHIVES -bs 256 -e 32  -lr 1e-4 -wd 1e-3 --print_every 200 -nw 40 --device "cuda:3" -m finetune -a "ViT-B/32" > /media/volume/ImACCESS/trash/historyCLIP_ft.out &
@@ -51,7 +51,8 @@ def main():
 	)
 	model = model.float() # Convert model parameters to FP32
 	model.name = args.model_architecture  # Custom attribute to store model name
-	print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture on {args.device} device")
+	model_name = model.__class__.__name__
+	print(f"Model: {model_name} {model.name} | Device: {args.device}")
 	
 	train_loader, validation_loader = get_dataloaders(
 		dataset_dir=args.dataset_dir,

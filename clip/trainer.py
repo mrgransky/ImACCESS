@@ -173,11 +173,11 @@ def evaluate_retrieval_performance(
 	model_name = model.__class__.__name__
 	model_arch = model.name
 	print(f">> Evaluating {model_name} - {model_arch} Retrieval Performance [{dataset_name}]: {topK_values}...")
-	model.eval()
+	model.eval() # dropout is disabled, ensuring deterministic outputs
+
 	image_embeddings = []
 	image_labels = []
 
-	
 	# Generate text embeddings for all class names once
 	try:
 		class_names = validation_loader.dataset.dataset.classes
@@ -888,7 +888,7 @@ def train(
 	best_txt2img_metrics = None
 	for epoch in range(num_epochs):
 		torch.cuda.empty_cache() # Clear GPU memory cache
-		model.train()
+		model.train() # dropout is active, units are dropped with specified probability (e.g., p=0.1)
 		print(f"Epoch [{epoch+1}/{num_epochs}]")
 		epoch_loss = 0.0
 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
@@ -1100,7 +1100,9 @@ def main():
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
-	print(args)
+	print("Parser")
+	args_dict = vars(args)
+	print(tabulate.tabulate([(key, value) for key, value in args_dict.items()], headers=['Argument', 'Value'], tablefmt='orgtbl'))
 	set_seeds()
 	print(clip.available_models())
 
@@ -1123,9 +1125,9 @@ def main():
 		USER=os.environ.get('USER'),
 	)
 	print(f"Train Loader[{train_loader.name}]: {len(train_loader)} batches, Validation Loader[{validation_loader.name}]: {len(validation_loader)} batches")
-	for bi, batch in enumerate(train_loader):
-		print(f"Batch {bi+1}/{len(train_loader)}: contains {len(batch)} element(s): {[elem.shape for elem in batch]}")
-		break
+	# for bi, batch in enumerate(train_loader):
+	# 	print(f"Batch {bi+1}/{len(train_loader)}: contains {len(batch)} element(s): {[elem.shape for elem in batch]}")
+	# 	break
 	# visualize_(dataloader=train_loader, num_samples=5)
 
 	if args.mode == 'finetune':
