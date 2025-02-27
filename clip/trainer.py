@@ -850,7 +850,8 @@ def train(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{dataset_name}_mode_{mode}_{model_name}_{re.sub('/', '', model_arch)}_dropout_{dropout_val}_lr_{learning_rate}_wd_{weight_decay}.pth"
+		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
+		f"dropout_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
 	)
 
 	optimizer = AdamW(
