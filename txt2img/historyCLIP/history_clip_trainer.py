@@ -12,7 +12,7 @@ parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='sm
 parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
 parser.add_argument('--print_every', type=int, default=100, help='Print loss')
 parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
-parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='finetune', help='Choose mode (train/finetune)')
+parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='train', help='Choose mode (train/finetune)')
 parser.add_argument('--window_size', '-ws', type=int, default=5, help='Windows size for early stopping and progressive freezing')
 parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
 parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
@@ -24,7 +24,6 @@ parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 5, 1
 	
 args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
-print(args)
 
 # run in local:
 # $ nohup python -u history_clip_trainer.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 128 -e 32 -lr 1e-5 -wd 1e-3 --print_every 200 -nw 12 -m train -a "ViT-B/32" > logs/europeana_train.out &
@@ -61,6 +60,7 @@ def main():
 	)
 	print(f"Train Loader: {len(train_loader)} batches, Number of unique classes: {train_loader.dataset.num_classes}")
 	print(f"Validation Loader: {len(validation_loader)} batches, Number of unique classes: {validation_loader.dataset.num_classes}")
+	
 	if args.mode == "finetune":
 		finetune(
 			model=model,
@@ -105,5 +105,8 @@ def main():
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
+	print("Parser")
+	args_dict = vars(args)
+	print(tabulate.tabulate([(key, value) for key, value in args_dict.items()], headers=['Argument', 'Value'], tablefmt='orgtbl'))
 	main()
 	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))

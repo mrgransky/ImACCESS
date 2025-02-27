@@ -185,7 +185,7 @@ def evaluate_retrieval_performance(
 		class_names = validation_loader.dataset.unique_labels
 
 	n_classes = len(class_names)
-	print(f"Number of classes: {n_classes}\n{class_names}")
+	# print(f"Number of classes: {n_classes}\n{class_names}")
 	with torch.no_grad():
 		# Encode class names to text embeddings
 		text_inputs = clip.tokenize(texts=class_names).to(device, non_blocking=True)
@@ -242,15 +242,15 @@ def get_retrieval_metrics(
 	class_counts: np.ndarray = None,
 	max_k: int = None,  # New parameter to limit K values (None for no limit)
 	):
-	print(f">> Retrieval mode: {mode}")
-	print(f"query_labels.shape: {query_labels.shape}")
-	print(f"candidate_labels.shape: {candidate_labels.shape}")
-	print(f"similarity_matrix.shape: {similarity_matrix.shape}")
+	# print(f">> Retrieval mode: {mode}")
+	# print(f"query_labels.shape: {query_labels.shape}")
+	# print(f"candidate_labels.shape: {candidate_labels.shape}")
+	# print(f"similarity_matrix.shape: {similarity_matrix.shape}")
 	num_queries, num_candidates = similarity_matrix.shape
 	assert num_queries == len(query_labels), "Number of queries must match labels"
 	
 	num_classes = len(np.unique(candidate_labels)) # unique values in candidate_labels
-	print(f"num_classes: {num_classes}")
+	# print(f"num_classes: {num_classes}")
 	# Filter topK_values based on max_k and num_classes
 	if max_k is not None:
 		valid_K_values = [K for K in topK_values if K <= max_k]
@@ -756,11 +756,11 @@ def finetune(
 		print("-"*170)
 	print(f"{mode} Elapsed_t: {time.time()-ft_st:.1f} sec".center(160, " "))
 
-	losses_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val:.1f}.png")
-	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_val_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val:.1f}.png")
-	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_top_k_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val:.1f}.png")
-	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val:.1f}.png")
-	cs_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val:.1f}.png")
+	losses_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_losses_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val}.png")
+	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_val_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val}.png")
+	topk_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_top_k_acc_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val}.png")
+	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_mrr_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val}.png")
+	cs_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_cs_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val}.png")
 
 	plot_loss_accuracy(
 		train_losses=training_losses,
@@ -777,7 +777,7 @@ def finetune(
 		cosine_similarity_file_path=cs_fpth,
 	)
 
-	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val:.1f}.png")
+	retrieval_metrics_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_retrieval_metrics_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_{train_loader.batch_size}_bs_do_{dropout_val}.png")
 	plot_retrieval_metrics_per_epoch(
 		image_to_text_metrics_list=img2txt_metrics_list,
 		text_to_image_metrics_list=txt2img_metrics_list,
@@ -888,6 +888,7 @@ def train(
 		epoch_loss = 0.0
 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
 			# torch.Size([batch_size, 3, 224, 224]), torch.Size([batch_size, 77]), torch.Size([batch_size])
+			# print(bidx, images.shape, tokenized_labels.shape, labels_indices.shape)
 			optimizer.zero_grad() # Clear gradients from previous batch
 			images, tokenized_labels = images.to(device, non_blocking=True), tokenized_labels.to(device, non_blocking=True) # torch.Size([b, 3, 224, 224]), torch.Size([b, 77])
 			with torch.amp.autocast(device_type=device.type): # # Automatic Mixed Precision (AMP) backpropagation:
@@ -992,12 +993,12 @@ def train(
 
 	print(f"Elapsed_t: {time.time()-train_start_time:.1f} sec".center(150, "-"))
 
-	losses_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}_losses.png")
-	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}_top1_accuracy.png")
-	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}_img2txt_topk_accuracy.png")
-	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}_txt2img_topk_accuracy.png")
-	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}_mrr.png")
-	cs_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}_cos_sim.png")
+	losses_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}_losses.png")
+	val_acc_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}_top1_accuracy.png")
+	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}_img2txt_topk_accuracy.png")
+	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}_txt2img_topk_accuracy.png")
+	mrr_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}_mrr.png")
+	cs_fpth = os.path.join(results_dir, f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}_cos_sim.png")
 	plot_loss_accuracy(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
@@ -1018,7 +1019,7 @@ def train(
 
 	retrieval_metrics_fpth = os.path.join(
 		results_dir, 
-		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}_retrieval_metrics_per_epoch.png"
+		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}_retrieval_metrics_per_epoch.png"
 	)
 	plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
@@ -1029,7 +1030,7 @@ def train(
 
 	retrieval_metrics_best_model_fpth = os.path.join(
 		results_dir,
-		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val:.1f}_retrieval_metrics_best_model_per_k.png"
+		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}_retrieval_metrics_best_model_per_k.png"
 	)
 	plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,

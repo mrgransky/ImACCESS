@@ -4,11 +4,11 @@ def _convert_image_to_rgb(image):
 	return image.convert("RGB")
 
 def get_datasets(
-	ddir: str, # Dataset directory
-	sampling: str, # "stratified_random" or "kfold_stratified"
-	kfolds:int=5,  # Number of folds for K-Fold
-	force_regenerate:bool=False, # Force regenerate K-Fold splits
-	seed:int=42, # Seed for random sampling
+		ddir: str, # Dataset directory
+		sampling: str, # "stratified_random" or "kfold_stratified"
+		kfolds:int=5,  # Number of folds for K-Fold
+		force_regenerate:bool=False, # Force regenerate K-Fold splits
+		seed:int=42, # Seed for random sampling
 	):
 	if sampling not in ["stratified_random", "kfold_stratified"]:
 		raise ValueError("Invalid sampling. Choose 'stratified_random' or 'kfold_stratified'.")
@@ -32,7 +32,7 @@ def get_datasets(
 		'img_url': str,
 		'label_title_description': str,
 		'raw_doc_date': str,  # Adjust based on actual data
-		'doc_year': float,      # Adjust based on actual data
+		'doc_year': float,    # Adjust based on actual data
 		'doc_url': str,
 		'img_path': str,
 		'doc_date': str,      # Adjust based on actual data
@@ -128,11 +128,11 @@ def get_datasets(
 		raise ValueError("Invalid sampling. Use 'stratified_random' or 'kfold_stratified'.")
 
 def get_dataloaders(
-	dataset_dir: str,
-	sampling: str,
-	batch_size: int,
-	num_workers: int,
-	preprocess=None,
+		dataset_dir: str,
+		sampling: str,
+		batch_size: int,
+		num_workers: int,
+		preprocess=None,
 	):
 	dataset_name = os.path.basename(dataset_dir)
 	print(f"Loading dataset: {dataset_name}")
@@ -142,7 +142,6 @@ def get_dataloaders(
 	)
 	if preprocess is None:
 		try:
-			# load mean and std from the dataset directory:
 			mean = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_mean.gz"))
 			std = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_std.gz"))
 			print(f"Loaded mean and std from {dataset_dir}: mean={mean}, std={std}")
@@ -150,16 +149,15 @@ def get_dataloaders(
 			mean = [0.52, 0.50, 0.48]
 			std = [0.27, 0.27, 0.26]
 			print(f"Could not load mean and std from {dataset_dir}. Using default values: mean={mean}, std={std}")
-		preprocess = T.Compose([
-			T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
-			T.CenterCrop(224),
-			_convert_image_to_rgb,
-			T.ToTensor(),
-			T.Normalize(
-				mean=mean, 
-				std=std,
-			),
-		])
+		preprocess = T.Compose(
+			[
+				T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
+				T.CenterCrop(224),
+				_convert_image_to_rgb,
+				T.ToTensor(),
+				T.Normalize(mean=mean, std=std),
+			]
+		)
 
 	train_dataset = HistoricalArchivesDataset(
 		dataset_name=dataset_name,
@@ -202,18 +200,32 @@ class HistoricalArchivesDataset(Dataset):
 			dataset_name: str,
 			train: bool,
 			data_frame: pd.DataFrame,
-			mean: List[float]=[0.52, 0.50, 0.48],
-			std: List[float]=[0.27, 0.27, 0.26],
-			transform= None,
+			mean: List[float]=[0.5, 0.50, 0.5],
+			std: List[float]=[0.2, 0.2, 0.2],
+			transform=None,
 		):
 		self.dataset_name = dataset_name
 		self.train = train
-		self.data_frame = data_frame
+		# Filter valid images during initialization
+		valid_indices = []
+		for i, path in enumerate(data_frame["img_path"]):
+			if not os.path.exists(path):
+				warnings.warn(f"Image path not found: {path}")
+				continue
+			try:
+				Image.open(path).verify()  # Validate image integrity
+				valid_indices.append(i)
+			except (FileNotFoundError, IOError, Exception) as e:
+				warnings.warn(f"Invalid image {path}: {e}")
+				continue
+		if not valid_indices:
+			raise ValueError("No valid images found in the dataset.")
+
+		self.data_frame = data_frame.iloc[valid_indices]
 		self.images = self.data_frame["img_path"].values
 		self.labels = self.data_frame["label"].values
 		self.labels_int = self.data_frame["label_int"].values		
 		self.unique_labels = list(set(self.labels))
-		self.tokenized_labels = clip.tokenize(texts=self.labels)
 		self._num_classes = len(np.unique(self.labels_int))
 
 		if transform:
@@ -244,22 +256,12 @@ class HistoricalArchivesDataset(Dataset):
 
 	def __getitem__(self, idx):
 		doc_image_path = self.images[idx]
-
-		if not os.path.exists(doc_image_path): # Try to load the image and handle errors gracefully
-			print(f"{doc_image_path} Not found!")
-			return None
-
-		try:
-			Image.open(doc_image_path).verify() # # Validate the image
-			image = Image.open(doc_image_path).convert("RGB")
-		except (FileNotFoundError, IOError, Exception) as e:
-			print(f"ERROR: {doc_image_path}\t{e}")
-			return None
-
+		doc_label = self.labels[idx]
+		doc_label_int = self.labels_int[idx] # <class 'int'> 0
+		image = Image.open(doc_image_path).convert("RGB")
 		image_tensor = self.transform(image) # <class 'torch.Tensor'> torch.Size([3, 224, 224])
-		tokenized_label_tensor = self.tokenized_labels[idx] # torch.Size([num_lbls, context_length]) [10 x 77]
-		label_int = self.labels_int[idx] # <class 'int'> 0
-		return image_tensor, tokenized_label_tensor, label_int
+		tokenized_label_tensor = clip.tokenize(texts=doc_label).squeeze(0) # torch.Size([num_lbls, context_length]) [10 x 77]
+		return image_tensor, tokenized_label_tensor, doc_label_int
 
 	@property
 	def num_classes(self):

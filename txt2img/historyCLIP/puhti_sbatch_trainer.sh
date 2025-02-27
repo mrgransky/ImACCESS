@@ -1,17 +1,22 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=historyCLIP_bsz_164
-#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%N_%j.out
+#SBATCH --job-name=train_dataset_x
+#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=25
 #SBATCH --mem=64G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
+#SBATCH --array=0-4
 #SBATCH --time=03-00:00:00
+
+set -e
+set -u
+set -o pipefail
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
@@ -24,27 +29,40 @@ echo "HOST: $SLURM_SUBMIT_HOST @ $SLURM_JOB_ACCOUNT, CLUSTER: $SLURM_CLUSTER_NAM
 echo "JOBname: $SLURM_JOB_NAME, ID: $SLURM_JOB_ID, WRK_DIR: $SLURM_SUBMIT_DIR"
 echo "nNODES: $SLURM_NNODES, NODELIST: $SLURM_JOB_NODELIST, NODE_ID: $SLURM_NODEID"
 echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_NPROCS"
-echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK, MEM/CPU: $SLURM_MEM_PER_CPU"
-echo "nTASKS/CORE: $SLURM_NTASKS_PER_CORE, nTASKS/NODE: $SLURM_NTASKS_PER_NODE"
-echo "THREADS/CORE: $SLURM_THREADS_PER_CORE"
+echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
 echo "${stars// /*}"
-echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
-ddir="/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31"
-vddir="/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31"
-qu="aircraft"
+echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
+echo "${stars// /*}"
+NUM_WORKERS=$((SLURM_CPUS_PER_TASK - 1))  # reserve 1 CPU for the main process and other overheads
+INIT_LRS=(1e-3 1e-3 5e-4 1e-3 5e-3)
+DROPOUTS=(0.1 0.1 0.1 0.05 0.0)
+MODES=(train finetune)
+SAMPLINGS=("kfold_stratified" "stratified_random")
+DATASETS=(
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
+)
 
-python -u train.py \
-	--dataset_dir $ddir \
-	--validation_dataset_dir $vddir \
-	--num_epochs 7 \
-	--num_workers 30 \
+if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then
+	echo "Error: SLURM_ARRAY_TASK_ID out of bounds"
+	exit 1
+fi
+
+python -u history_clip_trainer.py \
+	--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
+	--num_epochs 100 \
+	--num_workers $NUM_WORKERS \
 	--print_every 500 \
-	--batch_size 164 \
-	--patch_size 5 \
-	--learning_rate 1e-4 \
-	--weight_decay 5e-2 \
-	--image_size 150 \
+	--batch_size 256 \
+	--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
+	--weight_decay 1e-3 \
+	--mode ${MODES[0]} \
+	--sampling ${SAMPLINGS[0]} \
+	--dropout ${DROPOUTS[$SLURM_ARRAY_TASK_ID]} \
+	--model_architecture "ViT-B/32" \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
-echo "${stars// /*}"

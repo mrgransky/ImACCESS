@@ -29,8 +29,6 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-
-from torchinfo import summary as tinfo
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.dataloader import default_collate
 from sklearn.model_selection import train_test_split
@@ -48,8 +46,7 @@ import traceback
 import multiprocessing
 import warnings
 import logging
-from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor
-from torch.utils.tensorboard import SummaryWriter
+import absl.logging
 import shutil
 import nltk
 import inspect
@@ -58,9 +55,9 @@ import requests
 import datetime
 from io import BytesIO
 from datetime import timedelta
-from absl import logging as absl_logging
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
+import tabulate
 
 nltk_modules = [
 	'punkt',
@@ -79,24 +76,44 @@ nltk.download(
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
-# Set environment variables to suppress TensorFlow and oneDNN warnings
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TensorFlow logs
+# --- Step 1: Set Environment Variables First ---
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # 0:INFO, 1:WARN, 2:ERROR, 3:DISABLE_ALL
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN warnings
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Disable GPU to avoid CUDA logs (if acceptable)
 
-# Suppress specific warnings
-warnings.filterwarnings('ignore', category=UserWarning)
-warnings.filterwarnings('ignore', category=DeprecationWarning)
-warnings.filterwarnings('ignore', category=FutureWarning)
+# --- Step 2: Configure absl.logging ---
+absl.logging.set_verbosity(absl.logging.ERROR)
+absl.logging.set_stderrthreshold(absl.logging.ERROR)
 
-# Configure logging for TensorFlow and related libraries
+# --- Step 3: Suppress Python Warnings ---
+warnings.filterwarnings(
+	action='ignore',
+	category=FutureWarning,
+	module='.*tensorflow.*'  # Target TensorFlow-specific warnings
+)
+warnings.filterwarnings(
+	action='ignore',
+	category=UserWarning,
+	module='.*tensorflow.*'
+)
+
+# --- Step 4: Configure Python Logging ---
 logging.getLogger('tensorflow').setLevel(logging.ERROR)
-logging.getLogger('xla').setLevel(logging.ERROR)
-logging.getLogger('cuda').setLevel(logging.ERROR)
-logging.getLogger('absl').setLevel(logging.ERROR)
+logging.getLogger('tensorflow').addHandler(logging.NullHandler())
 
-# Suppress absl logging
-absl_logging.set_verbosity(absl_logging.ERROR)
-absl_logging.set_stderrthreshold(absl_logging.ERROR)
+# Suppress specific CUDA/XLA loggers
+logging.getLogger('tensorflow.compiler').setLevel(logging.ERROR)  # For XLA
+logging.getLogger('tensorflow.stream_executor').setLevel(logging.ERROR)  # For CUDA
+
+# Redirect stderr for remaining messages (last resort)
+class LogLevelFilter(logging.Filter):
+	def filter(self, record):
+		return record.levelno < logging.ERROR  # Allow only non-error messages
+
+# Suppress ERROR and below from stderr
+console = logging.StreamHandler(sys.stderr)
+console.addFilter(LogLevelFilter())
+logging.getLogger().addHandler(console)
 
 # Vision
 vit_d_model = 32 # vit_heads * vit_layers = vit_d_model

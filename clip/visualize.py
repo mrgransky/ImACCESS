@@ -35,7 +35,7 @@ def plot_retrieval_metrics_best_model(
 			color='blue', 
 			linestyle='-', 
 			linewidth=1.25,
-			markersize=4,
+			markersize=2,
 		)
 		if modes[0] not in legend_labels:
 			legend_handles.append(line)
@@ -52,8 +52,8 @@ def plot_retrieval_metrics_best_model(
 			label=modes[1],
 			color='red',
 			linestyle='-',
-			linewidth=1.25,
-			markersize=4,
+			linewidth=1.5,
+			markersize=2,
 		)
 		if modes[1] not in legend_labels:
 			legend_handles.append(line)
@@ -146,15 +146,11 @@ def plot_retrieval_metrics_per_epoch(
 				line, = ax.plot(
 					epochs,
 					values,
-					# marker=marker,
-					# markersize=6,
-					# linestyle=linestyle,
 					label=f'K={K}',
 					color=color,
 					alpha=0.9,
 					linewidth=1.8,
 				)
-				# Collect handles and labels for the legend, but only for the first occurrence of each K
 				if f'K={K}' not in legend_labels:
 					legend_handles.append(line)
 					legend_labels.append(f'K={K}')
@@ -223,6 +219,7 @@ def plot_loss_accuracy(
 		'img2img': '#e377c2', # raspberry yogurt pink
 		'txt2txt': '#7f7f7f', # middle gray
 	}
+	modes = ["Image-to-Text", "Text-to-Image"]
 
 	# 1. Loss Plot
 	plt.figure(figsize=figure_size)
@@ -233,7 +230,7 @@ def plot_loss_accuracy(
 		label='Training',
 		lw=1.5,
 		marker='o',
-		markersize=3,
+		markersize=2,
 	)
 	plt.plot(
 		epochs,
@@ -242,12 +239,19 @@ def plot_loss_accuracy(
 		label='Validation',
 		lw=1.5,
 		marker='o',
-		markersize=3,
+		markersize=2,
 	)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Loss', fontsize=12)
 	plt.title(f'{dataset_name} Training vs. Validation Loss', fontsize=9, fontweight='bold')
-	plt.legend(fontsize=9, loc='best', ncol=2, frameon=True, edgecolor='black', fancybox=True)
+	plt.legend(
+		fontsize=9, 
+		loc='best', 
+		ncol=len(modes), 
+		frameon=True, 
+		edgecolor='black', 
+		fancybox=True,
+	)
 	plt.xlim(0, num_epochs + 1)
 	plt.xticks(selective_xticks_epochs, fontsize=8)
 	plt.grid(True, linestyle='--', alpha=0.7)
@@ -264,7 +268,7 @@ def plot_loss_accuracy(
 		label='Image-to-Text',
 		lw=1.5,
 		marker='o',
-		markersize=3,
+		markersize=2,
 	)
 	plt.plot(
 		epochs,
@@ -273,12 +277,16 @@ def plot_loss_accuracy(
 		label='Text-to-Image',
 		lw=1.5,
 		marker='o',
-		markersize=3,
+		markersize=2,
 	)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Accuracy', fontsize=12)
 	plt.title(f'{dataset_name} Zero-Shot [in-batch matching Top-1 Accuracy]', fontsize=10, fontweight='bold')
-	plt.legend(fontsize=9, loc='best')
+	plt.legend(
+		fontsize=9,
+		loc='best',
+		ncol=len(modes),
+	)
 	plt.xlim(0, num_epochs + 1)
 	plt.ylim(-0.05, 1.05)
 	plt.xticks(selective_xticks_epochs, fontsize=9)
@@ -331,7 +339,7 @@ def plot_loss_accuracy(
 			label=f'Top-{k}',
 			lw=1.5,
 			marker='o',
-			markersize=3,
+			markersize=2,
 			color=plt.cm.tab10(i),
 		)
 	plt.xlabel('Epoch', fontsize=12)
@@ -352,7 +360,15 @@ def plot_loss_accuracy(
 
 	# 5. Mean Reciprocal Rank Plot
 	plt.figure(figsize=figure_size)
-	plt.plot(epochs, mean_reciprocal_rank_list, color='#9467bd', label='MRR', lw=2, marker='o', markersize=4)
+	plt.plot(
+		epochs,
+		mean_reciprocal_rank_list,
+		color='#9467bd',
+		label='MRR',
+		lw=1.5,
+		marker='o', 
+		markersize=2,
+	)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Mean Reciprocal Rank', fontsize=12)
 	plt.title(f'{dataset_name} Mean Reciprocal Rank (Image-to-Text)', fontsize=14, fontweight='bold', pad=10)
@@ -367,7 +383,15 @@ def plot_loss_accuracy(
 
 	# 6. Cosine Similarity Plot
 	plt.figure(figsize=figure_size)
-	plt.plot(epochs, cosine_similarity_list, color='#17becf', label='Cosine Similarity', lw=2, marker='o', markersize=4)
+	plt.plot(
+		epochs,
+		cosine_similarity_list,
+		color='#17becf',
+		label='Cosine Similarity',
+		lw=1.5, 
+		marker='o', 
+		markersize=2,
+	)
 	plt.xlabel('Epoch', fontsize=12)
 	plt.ylabel('Cosine Similarity', fontsize=12)
 	plt.title(f'{dataset_name} Cosine Similarity Between Embeddings', fontsize=14, fontweight='bold', pad=10)

@@ -46,8 +46,9 @@ for dset in "${datasets[@]}"
 		--batch_size 256 \
 		--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
 		--weight_decay 1e-3 \
+		--dropout 0.1 \
 		--mode ${MODES[$SLURM_ARRAY_TASK_ID]} \
-		--model_name "ViT-B/32" \
+		--model_architecture "ViT-B/32" \
 
 	done
 done_txt="$user finished Slurm job: `date`"

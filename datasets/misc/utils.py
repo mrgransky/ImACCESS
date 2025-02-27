@@ -538,8 +538,7 @@ def remove_misspelled_(documents: str="This is a sample sentence."):
 # 	return img_rgb_mean, img_rgb_std
 
 def process_rgb_image(image_path: str, transform: T.Compose):
-	"""Process a single image and return channel sums/squares."""
-	logging.info(f"Processing: {image_path}")
+	# logging.info(f"Processing: {image_path}")
 	try:
 		with Image.open(image_path) as img:
 			img = img.convert('RGB')
@@ -563,7 +562,8 @@ def get_mean_std_rgb_img_multiprocessing(
 	
 	# Validate input and prepare image paths
 	if isinstance(source, str):
-		image_paths = [os.path.join(source, f) for f in os.listdir(source) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+		# image_paths = [os.path.join(source, f) for f in os.listdir(source) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+		image_paths = [os.path.join(source, f) for f in os.listdir(source)]
 	else:
 		image_paths = source
 	if not image_paths:
@@ -573,7 +573,9 @@ def get_mean_std_rgb_img_multiprocessing(
 	# Dynamically adjust batch_size based on system resources
 	available_memory = psutil.virtual_memory().available / (1024 ** 3)  # GB
 	max_batch_size = max(1, int((available_memory * 0.8) // 0.3))  # 0.3GB per batch heuristic
+	num_workers = min(num_workers, os.cpu_count(), max(1, int(available_memory // 2)))  # Rough heuristic
 	batch_size = min(batch_size, max_batch_size, total_images)
+
 	print(f"Processing {total_images} images with {num_workers} workers and batch_size={batch_size}")
 	# Use ThreadPoolExecutor for I/O-bound tasks (reading images from disk)
 	transform = T.Compose([T.ToTensor()])
