@@ -588,12 +588,12 @@ def finetune(
 	best_txt2img_metrics = None
 
 	for epoch in range(num_epochs):
-		torch.cuda.empty_cache()  # Clear GPU memory cache
+		# torch.cuda.empty_cache()  # Clear GPU memory cache
 		model.train()  # Enable dropout and training mode
 		print(f"Epoch [{epoch + 1}/{num_epochs}]")
 		epoch_loss = 0.0
 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
-			optimizer.zero_grad()  # Clear gradients from previous batch
+			optimizer.zero_grad() # Clear gradients from previous batch
 			images = images.to(device, non_blocking=True)
 			tokenized_labels = tokenized_labels.to(device, non_blocking=True)
 			
@@ -643,7 +643,7 @@ def finetune(
 		)
 		img2txt_metrics_list.append(img2txt_metrics)
 		txt2img_metrics_list.append(txt2img_metrics)
-		torch.cuda.empty_cache()  # Free up GPU memory
+		# torch.cuda.empty_cache()  # Free up GPU memory
 
 		# Early stopping
 		current_val_loss = metrics_per_epoch["val_loss"]

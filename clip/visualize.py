@@ -136,6 +136,7 @@ def plot_retrieval_metrics_per_epoch(
 			ax = axs[i, j]
 			# Use the appropriate K values for each mode
 			valid_k_values = it_valid_k_values if i == 0 else ti_valid_k_values
+			all_values = []
 			for k_idx, (K, color, marker, linestyle) in enumerate(zip(valid_k_values, colors, markers, line_styles)):
 				values = []
 				for metrics_dict in task_metrics_list:
@@ -143,6 +144,7 @@ def plot_retrieval_metrics_per_epoch(
 						values.append(metrics_dict[metric][str(K)])
 					else:
 						values.append(0)  # Default to 0 if K value is missing (shouldn’t happen with valid data)
+				all_values.extend(values)
 				line, = ax.plot(
 					epochs,
 					values,
@@ -162,7 +164,16 @@ def plot_retrieval_metrics_per_epoch(
 			# ax.set_xticks(epochs)
 			ax.set_xticks(selective_xticks_epochs) # Only show selected epochs
 			ax.set_xlim(0, num_epochs + 1)
-			ax.set_ylim(bottom=-0.05, top=1.05)
+			# ax.set_ylim(bottom=-0.05, top=1.05)
+			# Dynamic y-axis limits
+			if all_values:
+				min_val = min(all_values)
+				max_val = max(all_values)
+				padding = 0.05 * (max_val - min_val) if (max_val - min_val) > 0 else 0.05
+				# ax.set_ylim(bottom=max(0.0,min_val - padding), top=min(1.0,max_val + padding))
+				ax.set_ylim(bottom=-0.05, top=min(1.0,max_val + padding))
+			else:
+				ax.set_ylim(bottom=-0.05, top=1.05)
 	
 	fig.legend(
 		legend_handles,
