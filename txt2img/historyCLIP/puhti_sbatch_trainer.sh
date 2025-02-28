@@ -59,7 +59,7 @@ python -u history_clip_trainer.py \
 	--batch_size 256 \
 	--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
 	--weight_decay 1e-3 \
-	--mode ${MODES[0]} \ # train
+	--mode ${MODES[0]} \
 	--sampling ${SAMPLINGS[1]} \
 	--dropout ${DROPOUTS[$SLURM_ARRAY_TASK_ID]} \
 	--model_architecture "ViT-B/32" \
