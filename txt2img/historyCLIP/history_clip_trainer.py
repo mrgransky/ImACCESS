@@ -27,7 +27,7 @@ def main():
 	parser.add_argument('--epochs', '-e', type=int, default=12, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=32, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-3]')
-	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
+	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--print_every', type=int, default=100, help='Print loss')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='train', help='Choose mode (train/finetune)')
