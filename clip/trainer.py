@@ -541,6 +541,13 @@ def finetune(
 	# Unfreeze all layers for fine-tuning (optional: could freeze some layers if desired)
 	for name, param in model.named_parameters():
 			param.requires_grad = True
+	
+	mdl_fpth = os.path.join(
+		results_dir,
+		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
+		f"dropout_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
+	)
+	
 	# Initialize optimizer and scheduler
 	optimizer = AdamW(
 			params=[p for p in model.parameters() if p.requires_grad],
@@ -642,7 +649,7 @@ def finetune(
 					print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
 					best_val_loss = current_val_loss
 					checkpoint.update({"best_val_loss": best_val_loss})
-					torch.save(checkpoint, os.path.join(results_dir, f"{dataset_name}_finetune_{model_arch}_best.pth"))
+					torch.save(checkpoint, mdl_fpth)
 					best_img2txt_metrics = img2txt_metrics
 					best_txt2img_metrics = txt2img_metrics
 			if early_stopping.should_stop(current_val_loss, model, epoch):
@@ -668,7 +675,7 @@ def finetune(
 							checkpoint.update({"best_val_loss": best_val_loss})
 							best_img2txt_metrics = final_img2txt
 							best_txt2img_metrics = final_txt2img
-							torch.save(checkpoint, os.path.join(results_dir, f"{dataset_name}_finetune_{model_arch}_best.pth"))
+							torch.save(checkpoint, mdl_fpth)
 					break
 			print("-" * 170)
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(150, "-"))
