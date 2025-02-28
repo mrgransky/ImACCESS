@@ -597,7 +597,7 @@ def finetune(
 			images = images.to(device, non_blocking=True)
 			tokenized_labels = tokenized_labels.to(device, non_blocking=True)
 			
-			with torch.amp.autocast(device_type=device.type):  # Automatic Mixed Precision (AMP)
+			with torch.amp.autocast(device_type=device.type, enabled=True): # Automatic Mixed Precision (AMP)
 				logits_per_image, logits_per_text = model(images, tokenized_labels)
 				ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
 				loss_img = criterion(logits_per_image, ground_truth)
