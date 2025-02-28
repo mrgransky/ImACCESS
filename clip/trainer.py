@@ -578,12 +578,7 @@ def finetune(
 		growth_interval=2000,
 	)
 	# Lists to store metrics
-	training_losses, val_losses = [], []
-	val_acc_img2txt_list = []
-	val_acc_txt2img_list = []
-	img2txt_topk_accuracy_list = []
-	mean_reciprocal_rank_list = []
-	cosine_similarity_list = []
+	training_losses = []
 	img2txt_metrics_list = []
 	txt2img_metrics_list = []
 	metrics_for_all_epochs = []
@@ -695,7 +690,11 @@ def finetune(
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(150, "-"))
 	
 	# Generate file paths with dropout value
-	file_base_name = f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}"
+	file_base_name = (
+		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
+		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}"
+	)
 	losses_fpth = os.path.join(results_dir, f"{file_base_name}_losses.png")
 	val_acc_fpth = os.path.join(results_dir, f"{file_base_name}_top1_accuracy.png")
 	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png")
@@ -703,21 +702,21 @@ def finetune(
 	mrr_fpth = os.path.join(results_dir, f"{file_base_name}_mrr.png")
 	cs_fpth = os.path.join(results_dir, f"{file_base_name}_cos_sim.png")	
 	plot_loss_accuracy(
-			dataset_name=dataset_name,
-			train_losses=training_losses,
-			val_losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
-			val_acc_img2txt_list=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
-			val_acc_txt2img_list=[metrics["txt2img_acc"] for metrics in metrics_for_all_epochs],
-			img2txt_topk_accuracy_list=[metrics["img2txt_topk_acc"] for metrics in metrics_for_all_epochs],
-			txt2img_topk_accuracy_list=[metrics["txt2img_topk_acc"] for metrics in metrics_for_all_epochs],
-			mean_reciprocal_rank_list=[metrics["mean_reciprocal_rank"] for metrics in metrics_for_all_epochs],
-			cosine_similarity_list=[metrics["cosine_similarity"] for metrics in metrics_for_all_epochs],
-			losses_file_path=losses_fpth,
-			accuracy_file_path=val_acc_fpth,
-			img2txt_topk_accuracy_file_path=img2txt_topk_accuracy_fpth,
-			txt2img_topk_accuracy_file_path=txt2img_topk_accuracy_fpth,
-			mean_reciprocal_rank_file_path=mrr_fpth,
-			cosine_similarity_file_path=cs_fpth,
+		dataset_name=dataset_name,
+		train_losses=training_losses,
+		val_losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
+		val_acc_img2txt_list=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
+		val_acc_txt2img_list=[metrics["txt2img_acc"] for metrics in metrics_for_all_epochs],
+		img2txt_topk_accuracy_list=[metrics["img2txt_topk_acc"] for metrics in metrics_for_all_epochs],
+		txt2img_topk_accuracy_list=[metrics["txt2img_topk_acc"] for metrics in metrics_for_all_epochs],
+		mean_reciprocal_rank_list=[metrics["mean_reciprocal_rank"] for metrics in metrics_for_all_epochs],
+		cosine_similarity_list=[metrics["cosine_similarity"] for metrics in metrics_for_all_epochs],
+		losses_file_path=losses_fpth,
+		accuracy_file_path=val_acc_fpth,
+		img2txt_topk_accuracy_file_path=img2txt_topk_accuracy_fpth,
+		txt2img_topk_accuracy_file_path=txt2img_topk_accuracy_fpth,
+		mean_reciprocal_rank_file_path=mrr_fpth,
+		cosine_similarity_file_path=cs_fpth,
 	)
 
 	retrieval_metrics_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png")
@@ -951,7 +950,7 @@ def train(
 		print("-"*170)
 
 	print(f"Elapsed_t: {time.time()-train_start_time:.1f} sec".center(150, "-"))
-	file_base_name = f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}"
+	file_base_name = f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}"
 	losses_fpth = os.path.join(results_dir, f"{file_base_name}_losses.png")
 	val_acc_fpth = os.path.join(results_dir, f"{file_base_name}_top1_accuracy.png")
 	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png")

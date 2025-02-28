@@ -42,8 +42,6 @@ def main():
 		
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
-
-	print(type(args.device), args.device, torch.cuda.device_count(), args.device.index)
 	print_args_table(args=args, parser=parser)
 	set_seeds()
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
