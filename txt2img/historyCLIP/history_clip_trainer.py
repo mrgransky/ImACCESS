@@ -2,29 +2,6 @@ from utils import *
 from dataset_loader import get_dataloaders
 from trainer import finetune, train
 
-parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
-parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
-parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
-parser.add_argument('--num_workers', '-nw', type=int, default=15, help='Number of CPUs [def: max cpus]')
-parser.add_argument('--epochs', '-e', type=int, default=12, help='Number of epochs')
-parser.add_argument('--batch_size', '-bs', type=int, default=32, help='Batch size for training')
-parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-3]')
-parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
-parser.add_argument('--print_every', type=int, default=100, help='Print loss')
-parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
-parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='train', help='Choose mode (train/finetune)')
-parser.add_argument('--window_size', '-ws', type=int, default=5, help='Windows size for early stopping and progressive freezing')
-parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
-parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
-parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
-parser.add_argument('--minimum_epochs', type=int, default=20, help='Early stopping minimum epochs')
-parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
-parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
-parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 5, 10, 15, 20], help='Top K values for retrieval metrics')
-	
-args, unknown = parser.parse_known_args()
-args.device = torch.device(args.device)
-
 # run in local:
 # $ nohup python -u history_clip_trainer.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 128 -e 32 -lr 1e-5 -wd 1e-3 --print_every 200 -nw 12 -m train -a "ViT-B/32" > logs/europeana_train.out &
 
@@ -40,6 +17,31 @@ args.device = torch.device(args.device)
 
 @measure_execution_time
 def main():
+	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
+	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
+	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
+	parser.add_argument('--num_workers', '-nw', type=int, default=15, help='Number of CPUs [def: max cpus]')
+	parser.add_argument('--epochs', '-e', type=int, default=12, help='Number of epochs')
+	parser.add_argument('--batch_size', '-bs', type=int, default=32, help='Batch size for training')
+	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-3]')
+	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
+	parser.add_argument('--print_every', type=int, default=100, help='Print loss')
+	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
+	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='train', help='Choose mode (train/finetune)')
+	parser.add_argument('--window_size', '-ws', type=int, default=5, help='Windows size for early stopping and progressive freezing')
+	parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
+	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
+	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
+	parser.add_argument('--minimum_epochs', type=int, default=20, help='Early stopping minimum epochs')
+	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
+	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
+	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 5, 10, 15, 20], help='Top K values for retrieval metrics')
+		
+	args, unknown = parser.parse_known_args()
+	args.device = torch.device(args.device)
+
+	print(type(args.device), args.device, torch.cuda.device_count(), args.device.index)
+	print_args_table(args=args, parser=parser)
 	set_seeds()
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 
@@ -73,10 +75,8 @@ def main():
 			num_epochs=args.epochs,
 			nw=args.num_workers,
 			print_every=args.print_every,
-			model_name=args.model_name,
 			learning_rate=args.learning_rate,
 			weight_decay=args.weight_decay,
-			dataset_name=os.path.basename(args.dataset_dir),
 			device=args.device,
 			results_dir=os.path.join(args.dataset_dir, "results"),
 			window_size=args.window_size, 						# early stopping & progressive unfreezing
@@ -84,6 +84,7 @@ def main():
 			min_delta=args.minimum_delta, 						# early stopping & progressive unfreezing
 			cumulative_delta=args.cumulative_delta, 	# early stopping
 			minimum_epochs=args.minimum_epochs, 			# early stopping
+			TOP_K_VALUES=args.topK_values,
 		)
 	elif args.mode == "train":
 		train(
@@ -109,8 +110,5 @@ def main():
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
-	print("Parser")
-	args_dict = vars(args)
-	print(tabulate.tabulate([(key, value) for key, value in args_dict.items()], headers=['Argument', 'Value'], tablefmt='orgtbl'))
 	main()
 	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))

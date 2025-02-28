@@ -34,6 +34,29 @@ warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=FutureWarning)
 
+def print_args_table(args, parser):
+	"""
+	Print a formatted table of command-line arguments.
+	
+	Args:
+	args (argparse.Namespace): The parsed arguments.
+	parser (argparse.ArgumentParser): The argument parser object.
+	"""
+	print("Parser")
+	args_dict = vars(args)
+	table_data = [
+			[
+					key, 
+					value, 
+					parser._option_string_actions.get(f'--{key}', parser._option_string_actions.get(f'-{key}')).type.__name__ 
+					if parser._option_string_actions.get(f'--{key}') or parser._option_string_actions.get(f'-{key}') 
+					else type(value).__name__
+			] 
+			for key, value in args_dict.items()
+	]
+	# print(tabulate.tabulate([(key, value) for key, value in args_dict.items()], headers=['Argument', 'Value'], tablefmt='orgtbl'))
+	print(tabulate.tabulate(table_data, headers=['Argument', 'Value', 'Type'], tablefmt='orgtbl'))
+
 def save_pickle(pkl, fname:str=""):
 	print(f"\nSaving {type(pkl)}\n{fname}")
 	st_t = time.time()

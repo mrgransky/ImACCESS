@@ -76,45 +76,6 @@ nltk.download(
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
-# --- Step 1: Set Environment Variables First ---
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # 0:INFO, 1:WARN, 2:ERROR, 3:DISABLE_ALL
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN warnings
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Disable GPU to avoid CUDA logs (if acceptable)
-
-# --- Step 2: Configure absl.logging ---
-absl.logging.set_verbosity(absl.logging.ERROR)
-absl.logging.set_stderrthreshold(absl.logging.ERROR)
-
-# --- Step 3: Suppress Python Warnings ---
-warnings.filterwarnings(
-	action='ignore',
-	category=FutureWarning,
-	module='.*tensorflow.*'  # Target TensorFlow-specific warnings
-)
-warnings.filterwarnings(
-	action='ignore',
-	category=UserWarning,
-	module='.*tensorflow.*'
-)
-
-# --- Step 4: Configure Python Logging ---
-logging.getLogger('tensorflow').setLevel(logging.ERROR)
-logging.getLogger('tensorflow').addHandler(logging.NullHandler())
-
-# Suppress specific CUDA/XLA loggers
-logging.getLogger('tensorflow.compiler').setLevel(logging.ERROR)  # For XLA
-logging.getLogger('tensorflow.stream_executor').setLevel(logging.ERROR)  # For CUDA
-
-# Redirect stderr for remaining messages (last resort)
-class LogLevelFilter(logging.Filter):
-	def filter(self, record):
-		return record.levelno < logging.ERROR  # Allow only non-error messages
-
-# Suppress ERROR and below from stderr
-console = logging.StreamHandler(sys.stderr)
-console.addFilter(LogLevelFilter())
-logging.getLogger().addHandler(console)
-
 # Vision
 vit_d_model = 32 # vit_heads * vit_layers = vit_d_model
 n_channels = 3 # must be 3 for CLIP model
@@ -151,6 +112,29 @@ with open('meaningless_words.txt', 'r') as file_:
 	customized_meaningless_lemmas=[line.strip().lower() for line in file_]
 STOPWORDS.extend(customized_meaningless_lemmas)
 STOPWORDS = set(STOPWORDS)
+
+def print_args_table(args, parser):
+	"""
+	Print a formatted table of command-line arguments.
+	
+	Args:
+	args (argparse.Namespace): The parsed arguments.
+	parser (argparse.ArgumentParser): The argument parser object.
+	"""
+	print("Parser")
+	args_dict = vars(args)
+	table_data = [
+			[
+					key, 
+					value, 
+					parser._option_string_actions.get(f'--{key}', parser._option_string_actions.get(f'-{key}')).type.__name__ 
+					if parser._option_string_actions.get(f'--{key}') or parser._option_string_actions.get(f'-{key}') 
+					else type(value).__name__
+			] 
+			for key, value in args_dict.items()
+	]
+	# print(tabulate.tabulate([(key, value) for key, value in args_dict.items()], headers=['Argument', 'Value'], tablefmt='orgtbl'))
+	print(tabulate.tabulate(table_data, headers=['Argument', 'Value', 'Type'], tablefmt='orgtbl'))
 
 def format_elapsed_time(seconds):
 	"""

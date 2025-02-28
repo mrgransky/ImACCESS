@@ -6,12 +6,22 @@ def _convert_image_to_rgb(image):
 def get_datasets(
 		ddir: str, # Dataset directory
 		sampling: str, # "stratified_random" or "kfold_stratified"
-		kfolds:int=5,  # Number of folds for K-Fold
+		kfolds:int=None,  # Number of folds for K-Fold
 		force_regenerate:bool=False, # Force regenerate K-Fold splits
 		seed:int=42, # Seed for random sampling
 	):
-	if sampling not in ["stratified_random", "kfold_stratified"]:
-		raise ValueError("Invalid sampling. Choose 'stratified_random' or 'kfold_stratified'.")
+
+	# Validate sampling method
+	valid_sampling_methods = ["stratified_random", "kfold_stratified"]
+	if sampling not in valid_sampling_methods:
+		raise ValueError(f"Invalid sampling. Choose from: {', '.join(valid_sampling_methods)}")
+
+	# Validate K-Fold parameters
+	if sampling == "kfold_stratified":
+		if kfolds is None:
+			raise ValueError("kfolds must be specified for K-Fold stratified sampling.")
+		if kfolds < 2:
+			raise ValueError("kfolds must be at least 2.")
 
 	print(f"Loading dataset {ddir} ...")
 	metadata_fpth = os.path.join(ddir, "metadata.csv")
@@ -49,25 +59,30 @@ def get_datasets(
 	# print(df.head(10))
 	print(f"FULL Dataset (df) shape: {df.shape}")
 	if sampling == "stratified_random":
-		print(f"Simple Random Sampling...")
+		print(f">> Using stratified random sampling...")
 		metadata_train_fpth = os.path.join(ddir, "metadata_train.csv")
 		metadata_val_fpth = os.path.join(ddir, "metadata_val.csv")
+
 		# Load training and validation datasets
 		df_train = pd.read_csv(filepath_or_buffer=metadata_train_fpth, on_bad_lines='skip')
 		df_val = pd.read_csv(filepath_or_buffer=metadata_val_fpth, on_bad_lines='skip')
-		# Generate label mappings for simple sampling
+	
+		######################################################################################
+		# Map labels to integers [train] # TODO: claude => code review must be checked!
 		labels_train = list(set(df_train["label"].tolist()))
 		labels_train = sorted(labels_train)
 		label_dict_train = {lbl: idx for idx, lbl in enumerate(labels_train)}
 		df_train['label_int'] = df_train['label'].map(label_dict_train)
+		
+		# Map labels to integers [validation]
 		labels_val = list(set(df_val["label"].tolist()))
 		labels_val = sorted(labels_val)
 		label_dict_val = {lbl: idx for idx, lbl in enumerate(labels_val)}
 		df_val['label_int'] = df_val['label'].map(label_dict_val)
+		######################################################################################
+		
 		return df_train, df_val
 	elif sampling == "kfold_stratified":
-		if kfolds < 2:
-			raise ValueError("kfolds must be at least 2.")
 		fold_dir = os.path.join(ddir, sampling)
 		if os.path.exists(fold_dir) and not force_regenerate:
 			print(f"K-Fold splits already exist in {fold_dir}. Loading existing splits...")
@@ -135,7 +150,7 @@ def get_dataloaders(
 		preprocess=None,
 	):
 	dataset_name = os.path.basename(dataset_dir)
-	print(f"Loading dataset: {dataset_name}")
+	print(f"Loading dataset: {dataset_name} using {sampling} strategy...")
 	train_dataset, val_dataset = get_datasets(
 		ddir=dataset_dir,
 		sampling=sampling,
