@@ -168,11 +168,11 @@ def plot_retrieval_metrics_per_epoch(
 			if all_values:
 				min_val = min(all_values)
 				max_val = max(all_values)
-				padding = 0.05 * (max_val - min_val) if (max_val - min_val) > 0 else 0.05
-				# ax.set_ylim(bottom=min(0.0, min_val - padding), top=max(1.0, max_val + padding))
-				ax.set_ylim(bottom=-0.05, top=min(1.0, max_val + padding))
+				padding = 0.02 * (max_val - min_val) if (max_val - min_val) > 0 else 0.02
+				# ax.set_ylim(bottom=min(-0.05, min_val - padding), top=max(1.05, max_val + padding))
+				ax.set_ylim(bottom=-0.01, top=min(1.05, max_val + padding))
 			else:
-				ax.set_ylim(bottom=-0.05, top=1.05)
+				ax.set_ylim(bottom=-0.01, top=1.05)
 	
 	fig.legend(
 		legend_handles,

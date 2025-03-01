@@ -1,6 +1,6 @@
 from utils import *
 
-def _convert_image_to_rgb(image):
+def _convert_image_to_rgb(image: Image) -> Image:
 	return image.convert("RGB")
 
 def get_datasets(
@@ -10,13 +10,10 @@ def get_datasets(
 		force_regenerate:bool=False, # Force regenerate K-Fold splits
 		seed:int=42, # Seed for random sampling
 	):
-
-	# Validate sampling method
 	valid_sampling_methods = ["stratified_random", "kfold_stratified"]
 	if sampling not in valid_sampling_methods:
 		raise ValueError(f"Invalid sampling. Choose from: {', '.join(valid_sampling_methods)}")
 
-	# Validate K-Fold parameters
 	if sampling == "kfold_stratified":
 		if kfolds is None:
 			raise ValueError("kfolds must be specified for K-Fold stratified sampling.")
@@ -158,7 +155,7 @@ def get_dataloaders(
 		batch_size: int,
 		num_workers: int,
 		preprocess=None,
-	):
+	)-> Tuple[DataLoader, DataLoader]:
 	dataset_name = os.path.basename(dataset_dir)
 	print(f"Loading dataset: {dataset_name} using {sampling} strategy...")
 	train_dataset, val_dataset = get_datasets(
