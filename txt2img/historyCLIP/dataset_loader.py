@@ -169,11 +169,11 @@ def get_dataloaders(
 		try:
 			mean = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_mean.gz"))
 			std = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_std.gz"))
-			print(f"{os.path.basename(dataset_dir)} mean: {mean}, std: {std}")
+			print(f"{os.path.basename(dataset_dir)} mean: {mean} std: {std}")
 		except Exception as e:
 			mean = [0.52, 0.50, 0.48]
 			std = [0.27, 0.27, 0.26]
-			print(f"Could not load mean and std from {dataset_dir}. Using default values: mean={mean}, std={std}")
+			print(f"Could not load mean and std from {dataset_dir}. Using default values: mean={mean} std={std}")
 		preprocess = T.Compose(
 			[
 				T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),

@@ -116,7 +116,7 @@ def main():
 			TOP_K_VALUES=args.topK_values,
 		)
 	else:
-		raise ValueError("Invalid mode. Choose between 'train' or 'finetune'.")
+		raise ValueError("Invalid mode. Choose between 'pretrain', 'train', 'finetune'!")
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
