@@ -34,9 +34,11 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 NUM_WORKERS=$((SLURM_CPUS_PER_TASK - 1)) # reserve 1 CPU for the main process and other overheads
-INIT_LRS=(1e-3 1e-3 1e-3 1e-3 1e-3)
+INIT_LRS=(5e-3 5e-3 5e-3 5e-3 5e-3)
+WEIGHT_DECAYS=(1e-3 1e-3 1e-3 1e-3 1e-3)
 DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
 MODES=(train finetune) # train
+EPOCHS=(50 50 150 150 150)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
@@ -53,12 +55,12 @@ fi
 
 python -u history_clip_trainer.py \
 	--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
-	--epochs 50 \
+	--epochs $EPOCHS[$SLURM_ARRAY_TASK_ID] \
 	--num_workers $NUM_WORKERS \
-	--print_every 500 \
-	--batch_size 256 \
+	--print_every 250 \
+	--batch_size 128 \
 	--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
-	--weight_decay 1e-3 \
+	--weight_decay $WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID] \
 	--mode ${MODES[0]} \
 	--sampling ${SAMPLINGS[1]} \
 	--dropout ${DROPOUTS[$SLURM_ARRAY_TASK_ID]} \
