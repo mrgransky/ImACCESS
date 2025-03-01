@@ -57,15 +57,25 @@ def get_datasets(
 	)
 	# print(list(df.columns))
 	# print(df.head(10))
-	print(f"FULL Dataset (df) shape: {df.shape}")
+	print(f"FULL Dataset {type(df)} {df.shape}")
 	if sampling == "stratified_random":
 		print(f">> Using stratified random sampling...")
 		metadata_train_fpth = os.path.join(ddir, "metadata_train.csv")
 		metadata_val_fpth = os.path.join(ddir, "metadata_val.csv")
 
 		# Load training and validation datasets
-		df_train = pd.read_csv(filepath_or_buffer=metadata_train_fpth, on_bad_lines='skip')
-		df_val = pd.read_csv(filepath_or_buffer=metadata_val_fpth, on_bad_lines='skip')
+		df_train = pd.read_csv(
+			filepath_or_buffer=metadata_train_fpth, 
+			on_bad_lines='skip',
+			dtype=dtypes, 
+			low_memory=False, # Set to False to avoid memory issues
+		)
+		df_val = pd.read_csv(
+			filepath_or_buffer=metadata_val_fpth,
+			on_bad_lines='skip',
+			dtype=dtypes, 
+			low_memory=False, # Set to False to avoid memory issues
+		)
 	
 		######################################################################################
 		# Map labels to integers [train] # TODO: claude => code review must be checked!
@@ -159,7 +169,7 @@ def get_dataloaders(
 		try:
 			mean = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_mean.gz"))
 			std = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_std.gz"))
-			print(f"Loaded mean and std from {dataset_dir}: mean={mean}, std={std}")
+			print(f"{os.path.basename(dataset_dir)} mean: {mean}, std: {std}")
 		except Exception as e:
 			mean = [0.52, 0.50, 0.48]
 			std = [0.27, 0.27, 0.26]

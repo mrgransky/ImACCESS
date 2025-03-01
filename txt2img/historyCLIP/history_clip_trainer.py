@@ -66,8 +66,8 @@ def main():
 		num_workers=args.num_workers,
 		preprocess=None,#preprocess,
 	)
-	print(f"Train Loader: {len(train_loader)} batches, Number of unique classes: {train_loader.dataset.num_classes}")
-	print(f"Validation Loader: {len(validation_loader)} batches, Number of unique classes: {validation_loader.dataset.num_classes}")
+	print(f"Train Loader: {len(train_loader)} batches, unique classes: {train_loader.dataset.num_classes}")
+	print(f"Validation Loader: {len(validation_loader)} batches, unique classes: {validation_loader.dataset.num_classes}")
 	
 	if args.mode == "finetune":
 		finetune(

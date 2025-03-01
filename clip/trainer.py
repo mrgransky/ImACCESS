@@ -848,8 +848,9 @@ def train(
 			# torch.Size([batch_size, 3, 224, 224]), torch.Size([batch_size, 77]), torch.Size([batch_size])
 			# print(bidx, images.shape, tokenized_labels.shape, labels_indices.shape)
 			optimizer.zero_grad() # Clear gradients from previous batch
-			images, tokenized_labels = images.to(device, non_blocking=True), tokenized_labels.to(device, non_blocking=True) # torch.Size([b, 3, 224, 224]), torch.Size([b, 77])
-			with torch.amp.autocast(device_type=device.type): # # Automatic Mixed Precision (AMP) backpropagation:
+			images = images.to(device, non_blocking=True) # torch.Size([b, 3, 224, 224]),
+			tokenized_labels = tokenized_labels.to(device, non_blocking=True) # torch.Size([b, 77])
+			with torch.amp.autocast(device_type=device.type, enabled=True): # # Automatic Mixed Precision (AMP) backpropagation:
 				logits_per_image, logits_per_text = model(images, tokenized_labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
 				ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
 				loss_img = criterion(logits_per_image, ground_truth)

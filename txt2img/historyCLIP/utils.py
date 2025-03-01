@@ -65,14 +65,6 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
 def print_args_table(args, parser):
-	"""
-	Print a formatted table of command-line arguments.
-	
-	Args:
-	args (argparse.Namespace): The parsed arguments.
-	parser (argparse.ArgumentParser): The argument parser object.
-	"""
-	print("Parser")
 	args_dict = vars(args)
 	table_data = [
 			[
