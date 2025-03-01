@@ -1,4 +1,11 @@
-from unittest import result
+import os
+import sys
+
+HOME, USER = os.getenv('HOME'), os.getenv('USER')
+IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
+CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
+sys.path.insert(0, CLIP_DIR)
+
 from utils import *
 from dataset_loader import get_dataloaders
 from trainer import finetune, train, pretrain

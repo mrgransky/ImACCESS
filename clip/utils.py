@@ -17,6 +17,7 @@ import itertools
 import tabulate
 from torch.optim import AdamW, SGD, Adam, lr_scheduler
 from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.dataloader import default_collate
 import torchvision.transforms as T
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
@@ -33,6 +34,121 @@ import warnings
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=FutureWarning)
+
+Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
+
+def log_gpu_memory(device):
+	gpu_mem_allocated = torch.cuda.memory_allocated(device) / (1024 ** 2)
+	gpu_max_mem_allocated = torch.cuda.max_memory_allocated(device) / (1024 ** 2)
+	gpu_mem_reserved = torch.cuda.memory_reserved(device) / (1024 ** 2)
+	gpu_mem_free = torch.cuda.memory_allocated(device) / (1024 ** 2)
+	gpu_mem_total = torch.cuda.get_device_properties(device).total_memory / (1024 ** 2)
+	gpu_mem_utilization = (gpu_mem_allocated / gpu_mem_total) * 100
+	print(
+		f'[GPU Memory] '
+		f'Allocated: {gpu_mem_allocated:.2f} MB '
+		f'Max Allocated: {gpu_max_mem_allocated:.2f} MB '
+		f'Reserved: {gpu_mem_reserved:.2f} MB '
+		f'Free: {gpu_mem_free:.2f} MB '
+		f'Total: {gpu_mem_total:.2f} MB '
+		f'Utilization: {gpu_mem_utilization:.2f} %'
+	)
+
+def visualize_samples(dataloader, num_samples=5):
+		"""
+		Visualize a few samples from the dataloader for debugging purposes.
+		
+		Args:
+				dataloader (DataLoader): The dataloader to visualize samples from.
+				num_samples (int): Number of samples to visualize.
+		"""
+		for i, batch in enumerate(dataloader):
+				if i >= num_samples:
+						break
+				
+				images = batch['image']
+				captions = batch['caption']
+				masks = batch['mask']
+				image_filepaths = batch['image_filepath']
+				
+				for j in range(len(images)):
+						image = images[j].permute(1, 2, 0).numpy() # Convert tensor to numpy array and permute dimensions
+						caption = captions[j]
+						mask = masks[j]
+						filepath = image_filepaths[j]
+						
+						# Denormalize the image
+						image = image * np.array([0.2268645167350769]) + np.array([0.6929051876068115])
+						image = np.clip(image, 0, 1)  # Ensure pixel values are in [0, 1] range
+						
+						plt.figure(figsize=(8, 8))
+						plt.imshow(image, cmap='gray')
+						# plt.title(f"Caption: {caption}\nMask: {mask}\nFilepath: {filepath}")
+						# plt.title(f"Caption: {caption.shape}\nFilepath: {filepath}")
+						plt.title(f"Caption: {type(caption)} {caption.shape}\nMask: {type(mask)} {mask.shape}\nFilepath: {filepath}")
+						plt.axis('off')
+						plt.show()
+
+def plot_lrs_vs_steps(lrs, steps, fpath):
+	print(f"LRs[{len(lrs)}]") # num_epochs * chuncks 10 * 348 = 3480  # len(train_data_loader) * args.num_epochs
+	print(f"Steps[{len(steps)}]") # num_epochs * chuncks 10 * 348 = 3480 
+
+	print(f"Saving learning rates vs steps in {fpath}")
+	plt.figure(figsize=(10, 5))
+	plt.plot(steps, lrs , color='b')
+	plt.xlabel('Steps (Epochs x Chunks)')
+	plt.ylabel('Learning Rates')
+	plt.title(f'Learning Rate vs. Step')
+	plt.grid(True)
+	plt.savefig(fpath)
+
+def get_model_details(
+		model, 
+		img_size=(3, 224, 224), 
+		text_size=(77,), 
+		batch_size=1,
+	):
+	print(f"Model Information Detail".center(150, "-"))
+	print("Model Architecture:")
+	print(model)
+	print("\n" + "="*50 + "\n")
+	print("Detailed Model Summary (torchinfo):")
+	# Create dummy inputs
+	device = next(model.parameters()).device
+	dummy_image = torch.zeros((batch_size, *img_size), device=device)
+	dummy_text = torch.zeros((batch_size, *text_size), dtype=torch.long, device=device)		
+	# Create a dummy mask with the correct shape
+	dummy_mask = torch.ones((batch_size, text_size[0]), dtype=torch.bool, device=device)
+	try:
+			tinfo(model, 
+						input_data={
+								"image": dummy_image,
+								"text": dummy_text,
+								"mask": dummy_mask
+						},
+						depth=5, 
+						col_names=["input_size", "output_size", "num_params", "kernel_size", "mult_adds"])
+	except Exception as e:
+			print(f"Error in torchinfo: {str(e)}")
+			print("Falling back to basic model information...")
+	print("\n" + "="*50 + "\n")
+	print("Model Parameters:")
+	total_params = sum(p.numel() for p in model.parameters())
+	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	print(f"Total parameters: {total_params:,}")
+	print(f"Trainable parameters: {trainable_params:,}")
+	print(f"Non-trainable parameters: {total_params - trainable_params:,}")
+	print("\nParameter Details:")
+	for name, param in model.named_parameters():
+			if param.requires_grad:
+					print(f"{name}: {param.numel():,} parameters")
+	print("-"*150)
+
+def custom_collate_fn(batch):
+	# Filter out the None values from the batch
+	batch = [item for item in batch if item is not None]
+	# Use default collate function on the filtered batch
+	return default_collate(batch)
 
 def print_args_table(args, parser):
 	"""
