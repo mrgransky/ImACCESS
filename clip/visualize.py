@@ -263,7 +263,7 @@ def plot_loss_accuracy(
 		fancybox=True,
 	)
 	plt.xlim(0, num_epochs + 1)
-	plt.ylim(0, max(max(train_losses), max(val_losses)) * 1.05)
+	# plt.ylim(0, max(max(train_losses), max(val_losses)) * 1.05)
 	plt.xticks(selective_xticks_epochs, fontsize=8)
 	plt.grid(True, linestyle='--', alpha=0.7)
 	plt.tight_layout()
