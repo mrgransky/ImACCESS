@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=25
-#SBATCH --mem=64G
+#SBATCH --mem=32G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=0-4
@@ -36,6 +36,7 @@ echo "${stars// /*}"
 NUM_WORKERS=$((SLURM_CPUS_PER_TASK - 1))  # reserve 1 CPU for the main process and other overheads
 INIT_LRS=(1e-3 1e-3 1e-3 1e-3 1e-3)
 DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
+EPOCHS=(50 50 150 150 150)
 MODES=(train finetune) # MUST BE finetune
 SAMPLINGS=("kfold_stratified" "stratified_random")
 DATASETS=(
@@ -53,7 +54,7 @@ fi
 
 python -u history_clip_trainer.py \
 	--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
-	--num_epochs 100 \
+	--epochs $EPOCHS[$SLURM_ARRAY_TASK_ID] \
 	--num_workers $NUM_WORKERS \
 	--print_every 500 \
 	--batch_size 256 \

@@ -15,7 +15,7 @@ def plot_retrieval_metrics_best_model(
 	modes = ['Image-to-Text', 'Text-to-Image']
 	
 	fig, axes = plt.subplots(1, len(metrics), figsize=(10, 4), constrained_layout=True)
-	fig.suptitle(suptitle_text, fontsize=11, fontweight='bold')
+	fig.suptitle(suptitle_text, fontsize=9, fontweight='bold')
 	
 	# Store legend handles and labels
 	legend_handles = []

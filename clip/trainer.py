@@ -1000,14 +1000,19 @@ def train(
 def pretrain(
 	model: torch.nn.Module,
 	validation_loader: DataLoader,
-	device: str="cuda:0",
+	results_dir: str,
+	device: torch.device,
 	TOP_K_VALUES: List=[1, 3, 5],
 	):
-	print("Pretrain Evaluation".center(150, "-"))
 	model_name = model.__class__.__name__
 	model_arch = model.name.replace("/","_")
-	dataset_name = validation_loader.dataset.dataset.__class__.__name__
-	print(f"Model: {model_name} - {model_arch} |") # CLIP - ViT-B/32
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	except:
+		dataset_name = validation_loader.dataset.dataset_name
+
+	os.makedirs(results_dir, exist_ok=True)
+	print(f"Pretrain Evaluation Model: {model_name} - {model_arch}".center(150, "-"))
 	# 1. evaluate_retrieval_performance
 	img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
 		model=model,
@@ -1021,7 +1026,7 @@ def pretrain(
 	print(json.dumps(txt2img_metrics, indent=4))
 
 	# 2. plot_retrieval_metrics_best_model
-	retrieval_metrics_best_model_fpth = os.path.join(f"{validation_loader.name}_retrieval_metrics_pretrained_{model_name}_{model_arch}.png")
+	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{validation_loader.name}_retrieval_metrics_pretrained_{model_name}_{model_arch}.png")
 	plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
 		image_to_text_metrics=img2txt_metrics,
@@ -1125,6 +1130,7 @@ def main():
 		pretrain(
 			model=model,
 			validation_loader=validation_loader,
+			results_dir=os.path.join(args.dataset, "results"),
 			device=args.device,
 			TOP_K_VALUES=args.topK_values,
 		)

@@ -1,6 +1,7 @@
+from unittest import result
 from utils import *
 from dataset_loader import get_dataloaders
-from trainer import finetune, train
+from trainer import finetune, train, pretrain
 
 # run in local:
 # $ nohup python -u history_clip_trainer.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 128 -e 32 -lr 1e-5 -wd 1e-3 --print_every 200 -nw 12 -m train -a "ViT-B/32" > logs/europeana_train.out &
@@ -30,7 +31,7 @@ def main():
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-3, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--print_every', type=int, default=100, help='Print loss')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
-	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune'], default='train', help='Choose mode (train/finetune)')
+	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain'], default='pretrain', help='Choose mode (train/finetune)')
 	parser.add_argument('--window_size', '-ws', type=int, default=5, help='Windows size for early stopping and progressive freezing')
 	parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
@@ -104,6 +105,14 @@ def main():
 			min_delta=args.minimum_delta, 						# early stopping
 			cumulative_delta=args.cumulative_delta, 	# early stopping
 			minimum_epochs=args.minimum_epochs, 			# early stopping
+			TOP_K_VALUES=args.topK_values,
+		)
+	elif args.mode == "pretrain":
+		pretrain(
+			model=model,
+			validation_loader=validation_loader,
+			results_dir=os.path.join(args.dataset_dir, "results"),
+			device=args.device,
 			TOP_K_VALUES=args.topK_values,
 		)
 	else:
