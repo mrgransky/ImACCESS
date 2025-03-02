@@ -68,7 +68,7 @@ python -u history_clip_trainer.py \
 	--print_every 250 \
 	--batch_size 128 \
 	--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
-	--weight_decay $WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID] \
+	--weight_decay ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]} \
 	--mode ${MODES[0]} \
 	--sampling ${SAMPLINGS[1]} \
 	--dropout ${DROPOUTS[$SLURM_ARRAY_TASK_ID]} \
