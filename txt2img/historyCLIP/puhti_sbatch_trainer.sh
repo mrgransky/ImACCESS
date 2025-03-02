@@ -34,10 +34,10 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 NUM_WORKERS=$((SLURM_CPUS_PER_TASK - 1)) # reserve 1 CPU for the main process and other overheads
-INIT_LRS=(5e-3 5e-3 5e-3 5e-3 5e-3)
-WEIGHT_DECAYS=(1e-3 1e-3 1e-3 1e-3 1e-3)
+INIT_LRS=(5e-3 5e-3 5e-3 5e-3 1e-4)
+WEIGHT_DECAYS=(1e-3 1e-3 1e-3 1e-3 1e-2)
 DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
-MODES=(train finetune) # train
+MODES=(train finetune pretrain)
 EPOCHS=(50 50 150 150 150)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 DATASETS=(

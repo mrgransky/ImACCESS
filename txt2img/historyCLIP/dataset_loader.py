@@ -20,7 +20,6 @@ def get_datasets(
 		if kfolds < 2:
 			raise ValueError("kfolds must be at least 2.")
 
-	print(f"Loading dataset {ddir} ...")
 	metadata_fpth = os.path.join(ddir, "metadata.csv")
 	############################################################################
 	# debugging types of columns

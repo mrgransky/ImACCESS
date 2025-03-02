@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=historyCLIP_finetune_dataset_x
+#SBATCH --job-name=historyCLIP_train_dataset_x
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -33,12 +33,12 @@ echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
-NUM_WORKERS=$((SLURM_CPUS_PER_TASK - 1))  # reserve 1 CPU for the main process and other overheads
-INIT_LRS=(5e-3 5e-3 5e-3 5e-3 1e-4)
-WEIGHT_DECAYS=(1e-3 1e-3 1e-3 1e-3 1e-2)
+NUM_WORKERS=$((SLURM_CPUS_PER_TASK - 1)) # reserve 1 CPU for the main process and other overheads
+INIT_LRS=(5e-3 5e-3 5e-3 5e-3 5e-3)
+WEIGHT_DECAYS=(1e-3 1e-3 1e-3 1e-3 1e-3)
 DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
-EPOCHS=(50 50 150 150 150)
 MODES=(train finetune pretrain)
+EPOCHS=(50 50 150 150 150)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
@@ -52,6 +52,7 @@ if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then
 	echo "Error: SLURM_ARRAY_TASK_ID out of bounds"
 	exit 1
 fi
+
 # Debugging output
 echo "SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
 echo "DATASET: ${DATASETS[$SLURM_ARRAY_TASK_ID]}"
@@ -68,7 +69,7 @@ python -u history_clip_trainer.py \
 	--batch_size 128 \
 	--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
 	--weight_decay ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]} \
-	--mode ${MODES[1]} \
+	--mode ${MODES[2]} \
 	--sampling ${SAMPLINGS[1]} \
 	--dropout ${DROPOUTS[$SLURM_ARRAY_TASK_ID]} \
 	--model_architecture "ViT-B/32" \
