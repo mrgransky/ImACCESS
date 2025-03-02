@@ -7,7 +7,7 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=25
+#SBATCH --cpus-per-task=40
 #SBATCH --mem=32G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
@@ -53,9 +53,17 @@ if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then
 	exit 1
 fi
 
+# Debugging output
+echo "SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
+echo "DATASET: ${DATASETS[$SLURM_ARRAY_TASK_ID]}"
+echo "EPOCHS: ${EPOCHS[$SLURM_ARRAY_TASK_ID]}"
+echo "INIT_LR: ${INIT_LRS[$SLURM_ARRAY_TASK_ID]}"
+echo "WEIGHT_DECAY: ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]}"
+echo "DROPOUT: ${DROPOUTS[$SLURM_ARRAY_TASK_ID]}"
+
 python -u history_clip_trainer.py \
 	--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
-	--epochs $EPOCHS[$SLURM_ARRAY_TASK_ID] \
+	--epochs ${EPOCHS[$SLURM_ARRAY_TASK_ID]} \
 	--num_workers $NUM_WORKERS \
 	--print_every 250 \
 	--batch_size 128 \
