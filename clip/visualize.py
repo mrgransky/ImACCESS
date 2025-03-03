@@ -23,28 +23,30 @@ def plot_retrieval_metrics_best_model(
 
 	for i, metric in enumerate(metrics):
 		ax = axes[i] if len(metrics) > 1 else axes # Handle single subplot case
+
+		print(f"Image-to-Text:")
 		it_top_ks = list(map(int, image_to_text_metrics[metric].keys()))  # K values for Image-to-Text
 		it_vals = list(image_to_text_metrics[metric].values())
-		print("Image-to-Text: ", metric, it_top_ks, it_vals)
-		# Plotting for Image-to-Text
+		print(metric, it_top_ks, it_vals)
 		line, = ax.plot(
 			it_top_ks, 
 			it_vals, 
-			marker='o', 
+			marker='o',
 			label=modes[0], 
-			color='blue', 
-			linestyle='-', 
-			linewidth=1.25,
-			markersize=2,
+			color='blue',
+			linestyle='-',
+			linewidth=1.0,
+			markersize=2.0,
 		)
 		if modes[0] not in legend_labels:
 			legend_handles.append(line)
 			legend_labels.append(modes[0])
 		
 		# Plotting for Text-to-Image
+		print(f"Text-to-Image:")
 		ti_top_ks = list(map(int, text_to_image_metrics[metric].keys()))  # K values for Text-to-Image
 		ti_vals = list(text_to_image_metrics[metric].values())
-		print("Text-to-Image: ", metric, ti_top_ks, ti_vals)
+		print(metric, ti_top_ks, ti_vals)
 		line, = ax.plot(
 			ti_top_ks,
 			ti_vals,
@@ -52,16 +54,16 @@ def plot_retrieval_metrics_best_model(
 			label=modes[1],
 			color='red',
 			linestyle='-',
-			linewidth=1.5,
-			markersize=2,
+			linewidth=1.0,
+			markersize=2.0,
 		)
 		if modes[1] not in legend_labels:
 			legend_handles.append(line)
 			legend_labels.append(modes[1])
 		
-		ax.set_xlabel('K', fontsize=12)
-		ax.set_ylabel(f'{metric}@K', fontsize=11)
-		ax.set_title(f'{metric}@K', fontsize=12)
+		ax.set_xlabel('K', fontsize=10)
+		ax.set_ylabel(f'{metric}@K', fontsize=10)
+		ax.set_title(f'{metric}@K', fontsize=12, fontweight="bold")
 		ax.grid(True, linestyle='--', alpha=0.7)
 		
 		# Set the x-axis to only show integer values
@@ -69,7 +71,16 @@ def plot_retrieval_metrics_best_model(
 		ax.set_xticks(all_ks)
 
 		# Adjust y-axis to start from 0 for better visualization
-		ax.set_ylim(bottom=-0.05, top=1.05)
+		# ax.set_ylim(bottom=-0.05, top=1.05)
+		# Dynamic y-axis limits
+		all_values = it_vals + ti_vals
+		min_val = min(all_values)
+		max_val = max(all_values)
+		padding = 0.02 * (max_val - min_val) if (max_val - min_val) > 0 else 0.02
+		ax.set_ylim(bottom=min(-0.01, min_val - padding), top=max(1.0, max_val + padding))
+		# ax.set_ylim(bottom=0.0, top=max(1.0, max_val + padding))
+		print("*"*150)
+		
 	
 	plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 	fig.legend(
