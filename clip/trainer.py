@@ -206,7 +206,7 @@ def evaluate_retrieval_performance(
 	
 	# Compute similarity matrix
 	# similarity_matrix = image_embeddings @ class_text_embeddings.T
-	logit_scale = model.logit_scale.exp().cpu().numpy()  # Move to CPU and convert to NumPy
+	logit_scale = model.logit_scale.exp().detach().cpu().numpy()  # Detach before converting to NumPy
 	print(logit_scale)
 	similarity_matrix = logit_scale * (image_embeddings @ class_text_embeddings.T)
 	print(similarity_matrix[:5, :5]) # ensure values are reasonable (e.g., -1 to 1).
