@@ -207,6 +207,7 @@ def evaluate_retrieval_performance(
 	# Compute similarity matrix
 	# similarity_matrix = image_embeddings @ class_text_embeddings.T
 	similarity_matrix = model.logit_scale.exp() * (image_embeddings @ class_text_embeddings.T)
+	print(model.logit_scale.exp())
 	print(similarity_matrix[:5, :5]) # ensure values are reasonable (e.g., -1 to 1).
 
 	image_to_text_metrics = get_retrieval_metrics(
