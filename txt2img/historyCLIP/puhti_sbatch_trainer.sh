@@ -8,10 +8,10 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=40
-#SBATCH --mem=32G
+#SBATCH --mem=96G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=0-4
+#SBATCH --array=0-1
 #SBATCH --time=03-00:00:00
 
 set -e
@@ -34,8 +34,8 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 NUM_WORKERS=$((SLURM_CPUS_PER_TASK - 1)) # reserve 1 CPU for the main process and other overheads
-INIT_LRS=(5e-3 5e-3 5e-3 5e-3 1e-4)
-WEIGHT_DECAYS=(1e-3 1e-3 1e-3 1e-3 1e-2)
+INIT_LRS=(5e-4 5e-4 5e-3 5e-3 1e-4)
+WEIGHT_DECAYS=(1e-2 1e-2 1e-3 1e-3 1e-2)
 DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
 MODES=(train finetune pretrain)
 EPOCHS=(50 50 150 150 150)

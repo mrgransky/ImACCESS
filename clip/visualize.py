@@ -44,7 +44,7 @@ def plot_retrieval_metrics_best_model(
 		# Plotting for Text-to-Image
 		ti_top_ks = list(map(int, text_to_image_metrics[metric].keys()))  # K values for Text-to-Image
 		ti_vals = list(text_to_image_metrics[metric].values())
-		print("Text-to-Image: ", metric, ti_top_ks, it_vals)
+		print("Text-to-Image: ", metric, ti_top_ks, ti_vals)
 		line, = ax.plot(
 			ti_top_ks,
 			ti_vals,

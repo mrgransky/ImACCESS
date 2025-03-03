@@ -1014,6 +1014,7 @@ def pretrain(
 
 	os.makedirs(results_dir, exist_ok=True)
 	print(f"Pretrain Evaluation Model: {model_name} - {model_arch}".center(150, "-"))
+	
 	# 1. evaluate_retrieval_performance
 	img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
 		model=model,
@@ -1021,10 +1022,12 @@ def pretrain(
 		device=device,
 		topK_values=TOP_K_VALUES,
 	)
+
 	print("Image to Text Metrics: ")
-	print(json.dumps(img2txt_metrics, indent=4))
+	print(json.dumps(img2txt_metrics, indent=2, ensure_ascii=False))
+
 	print("Text to Image Metrics: ")
-	print(json.dumps(txt2img_metrics, indent=4))
+	print(json.dumps(txt2img_metrics, indent=2, ensure_ascii=False))
 
 	# 2. plot_retrieval_metrics_best_model
 	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{validation_loader.name}_retrieval_metrics_pretrained_{model_name}_{model_arch}.png")
