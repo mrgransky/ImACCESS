@@ -14,8 +14,8 @@ def plot_retrieval_metrics_best_model(
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
 	modes = ['Image-to-Text', 'Text-to-Image']
 	
-	fig, axes = plt.subplots(1, len(metrics), figsize=(10, 4), constrained_layout=True)
-	fig.suptitle(suptitle_text, fontsize=9, fontweight='bold')
+	fig, axes = plt.subplots(1, len(metrics), figsize=(11, 4), constrained_layout=True)
+	fig.suptitle(suptitle_text, fontsize=8, fontweight='bold')
 	
 	# Store legend handles and labels
 	legend_handles = []
@@ -61,9 +61,9 @@ def plot_retrieval_metrics_best_model(
 			legend_handles.append(line)
 			legend_labels.append(modes[1])
 		
-		ax.set_xlabel('K', fontsize=10)
-		ax.set_ylabel(f'{metric}@K', fontsize=10)
-		ax.set_title(f'{metric}@K', fontsize=12, fontweight="bold")
+		ax.set_xlabel('K', fontsize=8)
+		ax.set_ylabel(f'{metric}@K', fontsize=8)
+		ax.set_title(f'{metric}@K', fontsize=9, fontweight="bold")
 		ax.grid(True, linestyle='--', alpha=0.7)
 		
 		# Set the x-axis to only show integer values
@@ -77,8 +77,7 @@ def plot_retrieval_metrics_best_model(
 		min_val = min(all_values)
 		max_val = max(all_values)
 		padding = 0.02 * (max_val - min_val) if (max_val - min_val) > 0 else 0.02
-		ax.set_ylim(bottom=min(-0.01, min_val - padding), top=max(1.0, max_val + padding))
-		# ax.set_ylim(bottom=0.0, top=max(1.0, max_val + padding))
+		ax.set_ylim(bottom=min(-0.02, min_val - padding), top=max(0.5, max_val + padding))
 		print("*"*150)
 		
 	
@@ -86,7 +85,7 @@ def plot_retrieval_metrics_best_model(
 	fig.legend(
 		legend_handles,
 		legend_labels,
-		fontsize=10,
+		fontsize=9,
 		loc='upper center',
 		ncol=len(modes),
 		bbox_to_anchor=(0.5, 0.94),
