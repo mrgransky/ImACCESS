@@ -309,7 +309,8 @@ def plot_loss_accuracy(
 		ncol=len(modes),
 	)
 	plt.xlim(0, num_epochs + 1)
-	plt.ylim(-0.05, 1.05)
+	# plt.ylim(-0.05, 1.05)
+	plt.ylim(0, max(max(val_acc_img2txt_list), max(val_acc_txt2img_list)) * 1.05)
 	plt.xticks(selective_xticks_epochs, fontsize=9)
 	plt.grid(True, linestyle='--', alpha=0.7)
 	plt.tight_layout()

@@ -178,21 +178,17 @@ def evaluate_retrieval_performance(
 	image_embeddings = []
 	image_labels = []
 
-	# Generate text embeddings for all class names once
 	try:
 		class_names = validation_loader.dataset.dataset.classes
 	except:
 		class_names = validation_loader.dataset.unique_labels
 
 	n_classes = len(class_names)
-	# print(f"Number of classes: {n_classes}\n{class_names}")
 	with torch.no_grad():
-		# Encode class names to text embeddings
 		text_inputs = clip.tokenize(texts=class_names).to(device, non_blocking=True)
 		class_text_embeddings = model.encode_text(text_inputs)
 		class_text_embeddings = class_text_embeddings / class_text_embeddings.norm(dim=-1, keepdim=True)
 		
-		# Collect image embeddings and their labels
 		for bidx, (images, _, class_indices) in enumerate(validation_loader):
 			images = images.to(device, non_blocking=True)
 			class_indices = class_indices.to(device, non_blocking=True)
@@ -209,7 +205,9 @@ def evaluate_retrieval_performance(
 	class_text_embeddings = class_text_embeddings.cpu().numpy()
 	
 	# Compute similarity matrix
-	similarity_matrix = image_embeddings @ class_text_embeddings.T
+	# similarity_matrix = image_embeddings @ class_text_embeddings.T
+	similarity_matrix = model.logit_scale.exp() * (image_embeddings @ class_text_embeddings.T)
+	print(similarity_matrix[:5, :5]) # ensure values are reasonable (e.g., -1 to 1).
 
 	image_to_text_metrics = get_retrieval_metrics(
 		similarity_matrix=similarity_matrix,
@@ -231,6 +229,12 @@ def evaluate_retrieval_performance(
 		max_k=None,  # No limit on K for Text-to-Image
 	)
 
+	print("Image to Text Metrics: ")
+	print(json.dumps(image_to_text_metrics, indent=2, ensure_ascii=False))
+
+	print("Text to Image Metrics: ")
+	print(json.dumps(text_to_image_metrics, indent=2, ensure_ascii=False))
+
 	return image_to_text_metrics, text_to_image_metrics
 
 def get_retrieval_metrics(
@@ -242,19 +246,12 @@ def get_retrieval_metrics(
 	class_counts: np.ndarray = None,
 	max_k: int = None,  # New parameter to limit K values (None for no limit)
 	):
-	# print(f">> Retrieval mode: {mode}")
-	# print(f"query_labels.shape: {query_labels.shape}")
-	# print(f"candidate_labels.shape: {candidate_labels.shape}")
-	# print(f"similarity_matrix.shape: {similarity_matrix.shape}")
 	num_queries, num_candidates = similarity_matrix.shape
 	assert num_queries == len(query_labels), "Number of queries must match labels"
 	
 	num_classes = len(np.unique(candidate_labels)) # unique values in candidate_labels
-	# print(f"num_classes: {num_classes}")
-	# Filter topK_values based on max_k and num_classes
 	if max_k is not None:
 		valid_K_values = [K for K in topK_values if K <= max_k]
-		# print(f"max_k: {max_k} | Valid K values: {topK_values}")
 	else:
 		valid_K_values = topK_values # No limit on K values
 
@@ -976,10 +973,7 @@ def train(
 		cosine_similarity_file_path=cs_fpth,
 	)
 
-	retrieval_metrics_fpth = os.path.join(
-		results_dir, 
-		f"{file_base_name}_retrieval_metrics_per_epoch.png"
-	)
+	retrieval_metrics_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png")
 	plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
 		image_to_text_metrics_list=img2txt_metrics_list,
@@ -987,10 +981,7 @@ def train(
 		fname=retrieval_metrics_fpth,
 	)
 
-	retrieval_metrics_best_model_fpth = os.path.join(
-		results_dir,
-		f"{file_base_name}_retrieval_metrics_best_model_per_k.png"
-	)
+	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png")
 	plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
 		image_to_text_metrics=best_img2txt_metrics,
@@ -1087,9 +1078,6 @@ def main():
 		USER=os.environ.get('USER'),
 	)
 	print(f"Train Loader[{train_loader.name}]: {len(train_loader)} batches, Validation Loader[{validation_loader.name}]: {len(validation_loader)} batches")
-	# for bi, batch in enumerate(train_loader):
-	# 	print(f"Batch {bi+1}/{len(train_loader)}: contains {len(batch)} element(s): {[elem.shape for elem in batch]}")
-	# 	break
 	# visualize_(dataloader=train_loader, num_samples=5)
 
 	if args.mode == 'finetune':

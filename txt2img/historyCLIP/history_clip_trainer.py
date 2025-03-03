@@ -15,15 +15,15 @@ from trainer import finetune, train, pretrain
 
 # run in pouta:
 # train from scratch:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 1e-4 -wd 1e-1 --print_every 200 -nw 50 --device "cuda:0" -m train -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/smu_train.out &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 32 -e 100 -lr 1e-4 -wd 1e-1 --print_every 200 -nw 50 --device "cuda:0" -m train -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/smu_train.out &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 256 -e 100 -lr 1e-4 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:1" -m train -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/wwii_train.out &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 1e-4 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:2" -m train -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/europeana_train.out &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 200 -nw 50 --device "cuda:2" -m train -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/europeana_train.out &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 256 -e 100 -lr 1e-4 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:3" -m train -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/na_train.out &
 
 # finetune:
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 1e-4 -wd 1e-1 --print_every 200 -nw 50 --device "cuda:0" -m finetune -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/smu_ft.out &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 256 -e 100 -lr 1e-4 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:1" -m finetune -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/wwii_ft.out &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 1e-4 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:2" -m finetune -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/europeana_ft.out &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 200 -nw 50 --device "cuda:3" -m finetune -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/europeana_ft.out &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 256 -e 100 -lr 1e-4 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:3" -m finetune -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/na_ft.out &
 
 @measure_execution_time
@@ -34,7 +34,7 @@ def main():
 	parser.add_argument('--num_workers', '-nw', type=int, default=16, help='Number of CPUs [def: max cpus]')
 	parser.add_argument('--epochs', '-e', type=int, default=9, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=32, help='Batch size for training')
-	parser.add_argument('--learning_rate', '-lr', type=float, default=5e-4, help='small learning rate for better convergence [def: 1e-3]')
+	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--print_every', type=int, default=100, help='Print loss')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
