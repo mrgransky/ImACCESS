@@ -205,10 +205,10 @@ def evaluate_retrieval_performance(
 	class_text_embeddings = class_text_embeddings.cpu().numpy()
 	
 	# Compute similarity matrix
-	# similarity_matrix = image_embeddings @ class_text_embeddings.T
-	logit_scale = model.logit_scale.exp().detach().cpu().numpy()  # Detach before converting to NumPy
-	print(logit_scale)
-	similarity_matrix = logit_scale * (image_embeddings @ class_text_embeddings.T)
+	similarity_matrix = image_embeddings @ class_text_embeddings.T
+	# logit_scale = model.logit_scale.exp().detach().cpu().numpy()  # Detach before converting to NumPy
+	# print(logit_scale)
+	# similarity_matrix = logit_scale * (image_embeddings @ class_text_embeddings.T)
 	print(similarity_matrix[:5, :5]) # ensure values are reasonable (e.g., -1 to 1).
 
 	image_to_text_metrics = get_retrieval_metrics(
@@ -231,11 +231,11 @@ def evaluate_retrieval_performance(
 		max_k=None,  # No limit on K for Text-to-Image
 	)
 
-	print("Image to Text Metrics: ")
-	print(json.dumps(image_to_text_metrics, indent=2, ensure_ascii=False))
+	# print("Image to Text Metrics: ")
+	# print(json.dumps(image_to_text_metrics, indent=2, ensure_ascii=False))
 
-	print("Text to Image Metrics: ")
-	print(json.dumps(text_to_image_metrics, indent=2, ensure_ascii=False))
+	# print("Text to Image Metrics: ")
+	# print(json.dumps(text_to_image_metrics, indent=2, ensure_ascii=False))
 
 	return image_to_text_metrics, text_to_image_metrics
 
