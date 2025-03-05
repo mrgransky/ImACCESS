@@ -34,9 +34,30 @@ import warnings
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=FutureWarning)
-os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
+
+def print_loader_info(loader, batch_size):
+	samples_per_batch = len(loader.dataset) // batch_size
+	last_batch_size = len(loader.dataset) % batch_size
+	if last_batch_size == 0:
+		last_batch_size = batch_size
+	
+	try:
+		class_names = loader.dataset.dataset.classes
+	except:
+		class_names = loader.dataset.unique_labels
+	n_classes = len(class_names)
+
+	total_samples_calc = samples_per_batch * batch_size + last_batch_size
+	print(
+		f"\n{loader.name} Loader:\n"
+		f"\tWrapped in {len(loader)} batches\n"
+		f"\tSamples per batch (total batches: {batch_size}): {samples_per_batch}\n"
+		f"\tLast batch size: {last_batch_size}\n" 
+		f"\tTotal samples: {len(loader.dataset)} (calculated: {total_samples_calc} = {samples_per_batch} x {batch_size} + {last_batch_size})\n"
+		f"\tUnique classes: {n_classes}\n"
+	)
 
 def log_gpu_memory(device):
 	gpu_mem_allocated = torch.cuda.memory_allocated(device) / (1024 ** 2)
@@ -231,3 +252,4 @@ def set_seeds(seed:int=42, debug:bool=False):
 			torch.backends.cudnn.deterministic = True
 			torch.backends.cudnn.benchmark = False
 			torch.use_deterministic_algorithms(True, warn_only=True)
+			os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'

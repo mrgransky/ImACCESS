@@ -8,7 +8,8 @@ sys.path.insert(0, CLIP_DIR)
 from utils import *
 from dataset_loader import get_dataloaders
 from trainer import finetune, train, pretrain
-from visualize import visualize_
+from visualize import visualize_samples, visualize_
+
 # run in local:
 # $ nohup python -u history_clip_trainer.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 128 -e 32 -lr 1e-5 -wd 1e-3 --print_every 200 -nw 12 -m train -a "ViT-B/32" > logs/europeana_train.out &
 
@@ -32,7 +33,7 @@ def main():
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=16, help='Number of CPUs [def: max cpus]')
 	parser.add_argument('--epochs', '-e', type=int, default=9, help='Number of epochs')
-	parser.add_argument('--batch_size', '-bs', type=int, default=32, help='Batch size for training')
+	parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--print_every', type=int, default=100, help='Print loss')
@@ -50,7 +51,16 @@ def main():
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
 	print_args_table(args=args, parser=parser)
+	# set_seed(seed=42)
 	set_seeds(seed=42, debug=True)
+
+	print(f"PyTorch seed: {torch.initial_seed()} NumPy seed: {np.random.get_state()[1][0]}")
+	if torch.cuda.is_available():
+		print("PyTorch CUDA seed: ", torch.cuda.initial_seed())
+	print(f"PyTorch random number: {torch.randn(1)}) NumPy random number: {np.random.rand(1)}")
+
+
+	# set_seeds(seed=42, debug=True)
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 
 	model, preprocess = clip.load(
@@ -72,9 +82,9 @@ def main():
 		num_workers=args.num_workers,
 		preprocess=None,#preprocess,
 	)
-	print(f"Train Loader: {len(train_loader)} batches, unique classes: {train_loader.dataset.num_classes}")
-	print(f"Validation Loader: {len(validation_loader)} batches, unique classes: {validation_loader.dataset.num_classes}")
-	# visualize_(dataloader=validation_loader, num_samples=5)
+	print_loader_info(loader=train_loader, batch_size=args.batch_size)
+	print_loader_info(loader=validation_loader, batch_size=args.batch_size)
+	# visualize_(dataloader=validation_loader, batches=4, num_samples=7)
 	# visualize_samples(validation_loader, validation_loader.dataset, num_samples=5)
 
 	# return

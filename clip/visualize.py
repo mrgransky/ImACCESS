@@ -1,61 +1,71 @@
 from utils import *
 
 def visualize_samples(dataloader, dataset, num_samples=5):
-    for bidx, (images, tokenized_labels, labels_indices) in enumerate(dataloader):
-        print(f"Batch {bidx}, Shapes: {images.shape}, {tokenized_labels.shape}, {labels_indices.shape}")
-        if bidx >= num_samples:
-            break
-        
-        # Get the global index of the first sample in this batch
-        start_idx = bidx * dataloader.batch_size
-        for i in range(min(dataloader.batch_size, len(images))):
-            global_idx = start_idx + i
-            if global_idx >= len(dataset):
-                break
-            image = images[i].permute(1, 2, 0).numpy()  # Convert tensor to numpy array
-            caption_idx = labels_indices[i].item()
-            path = dataset.images[global_idx]
-            label = dataset.labels[global_idx]
-            label_int = dataset.labels_int[global_idx]
-            
-            print(f"Global Index: {global_idx}")
-            print(f"Image Path: {path}")
-            print(f"Label: {label}, Label Int: {label_int}, Caption Index: {caption_idx}")
-            print(f"Image Shape: {image.shape}")
-            
-            # Denormalize the image (adjust mean/std based on your dataset)
-            mean = np.array([0.5126933455467224, 0.5045100450515747, 0.48094621300697327])
-            std = np.array([0.276103675365448, 0.2733437418937683, 0.27065524458885193])
-            image = image * std + mean  # Reverse normalization
-            image = np.clip(image, 0, 1)  # Ensure pixel values are in [0, 1]
-            
-            plt.figure(figsize=(10, 10))
-            plt.imshow(image)
-            plt.title(f"Label: {label} (Index: {caption_idx})")
-            plt.axis('off')
-            plt.show()
+		for bidx, (images, tokenized_labels, labels_indices) in enumerate(dataloader):
+				print(f"Batch {bidx}, Shapes: {images.shape}, {tokenized_labels.shape}, {labels_indices.shape}")
+				if bidx >= num_samples:
+						break
+				
+				# Get the global index of the first sample in this batch
+				start_idx = bidx * dataloader.batch_size
+				for i in range(min(dataloader.batch_size, len(images))):
+						global_idx = start_idx + i
+						if global_idx >= len(dataset):
+								break
+						image = images[i].permute(1, 2, 0).numpy()  # Convert tensor to numpy array
+						caption_idx = labels_indices[i].item()
+						path = dataset.images[global_idx]
+						label = dataset.labels[global_idx]
+						label_int = dataset.labels_int[global_idx]
+						
+						print(f"Global Index: {global_idx}")
+						print(f"Image {image.shape} Path: {path}")
+						print(f"Label: {label}, Label Int: {label_int}, Caption Index: {caption_idx}")
+						
+						# Denormalize the image (adjust mean/std based on your dataset)
+						mean = np.array([0.5126933455467224, 0.5045100450515747, 0.48094621300697327])
+						std = np.array([0.276103675365448, 0.2733437418937683, 0.27065524458885193])
+						image = image * std + mean  # Reverse normalization
+						image = np.clip(image, 0, 1)  # Ensure pixel values are in [0, 1]
+						
+						plt.figure(figsize=(10, 10))
+						plt.imshow(image)
+						plt.title(f"Label: {label} (Index: {caption_idx})")
+						plt.axis('off')
+						plt.show()
 
-
-def visualize_(dataloader, num_samples=5, ):
+def visualize_(dataloader, batches=3, num_samples=5):
+	"""
+	Visualize the first 'num_samples' images of each batch in a single figure.
+	Args:
+			dataloader (torch.utils.data.DataLoader): Data loader containing images and captions.
+			num_samples (int, optional): Number of batches to visualize. Defaults to 5.
+			num_cols (int, optional): Number of columns in the visualization. Defaults to 5.
+	"""
+	# Get the number of batches in the dataloader
+	num_batches = len(dataloader)
+	# Limit the number of batches to visualize
+	num_batches = min(num_batches, batches)
+	# Create a figure with 'num_samples' rows and 'num_cols' columns
+	fig, axes = plt.subplots(nrows=num_batches, ncols=num_samples, figsize=(20, num_batches * 2))
+	# Iterate over the batches
 	for bidx, (images, tokenized_labels, labels_indices) in enumerate(dataloader):
-		print(bidx, images.shape, tokenized_labels.shape, labels_indices.shape,) # torch.Size([32, 3, 224, 224]) torch.Size([32])
-		if bidx >= num_samples:
+		if bidx >= num_batches:
 			break
-		
-		image = images[bidx].permute(1, 2, 0).numpy() # Convert tensor to numpy array and permute dimensions
-		caption_idx = labels_indices[bidx]
-		print(image.shape, caption_idx)
-		print()
-			
-		# # Denormalize the image
-		image = image * np.array([0.2268645167350769]) + np.array([0.6929051876068115])
-		image = np.clip(image, 0, 1)  # Ensure pixel values are in [0, 1] range
-		
-		plt.figure(figsize=(10, 10))
-		plt.imshow(image)
-		plt.title(f"Caption: {caption_idx}", fontsize=10)
-		plt.axis('off')
-		plt.show()
+		# Iterate over the first 'num_cols' images in the batch
+		for cidx in range(num_samples):
+			image = images[cidx].permute(1, 2, 0).numpy()  # Convert tensor to numpy array and permute dimensions
+			caption_idx = labels_indices[cidx]
+			# Denormalize the image
+			image = image * np.array([0.2268645167350769]) + np.array([0.6929051876068115])
+			image = np.clip(image, 0, 1)  # Ensure pixel values are in [0, 1] range
+			# Plot the image
+			axes[bidx, cidx].imshow(image)
+			axes[bidx, cidx].set_title(f"Batch {bidx+1}, Img {cidx+1}: {caption_idx}", fontsize=8)
+			axes[bidx, cidx].axis('off')
+	# Layout so plots do not overlap
+	plt.tight_layout()
+	plt.show()
 
 def plot_retrieval_metrics_best_model(
 		dataset_name: str,

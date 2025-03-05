@@ -1,4 +1,3 @@
-import json
 from utils import *
 
 def _convert_image_to_rgb(image: Image) -> Image:
@@ -174,7 +173,6 @@ def get_dataloaders(
 		batch_size: int,
 		num_workers: int,
 		preprocess=None,
-		seed:int=42,
 	)-> Tuple[DataLoader, DataLoader]:
 	dataset_name = os.path.basename(dataset_dir)
 	print(f"Loading dataset: {dataset_name} using {sampling} strategy...")
@@ -204,14 +202,15 @@ def get_dataloaders(
 	train_dataset = HistoricalArchivesDataset(
 		dataset_name=dataset_name,
 		train=True,
+		# data_frame=train_dataset.sort_values(by="img_path").reset_index(drop=True),
 		data_frame=train_dataset,
 		transform=preprocess,
 	)
 
 	print(train_dataset)
-	print(f"First 5 image paths:\n{train_dataset.images[:5]}")
-	print("First 5 labels:", train_dataset.labels[:5])
-	print("First 5 label_int:", train_dataset.labels_int[:5])
+	print(f"image paths:\n{train_dataset.images[:10]}")
+	print("labels:", train_dataset.labels[:10])
+	print("label_int:", train_dataset.labels_int[:10])
 
 	train_loader = DataLoader(
 		dataset=train_dataset,
@@ -220,13 +219,13 @@ def get_dataloaders(
 		pin_memory=True, # Move data to GPU faster if using CUDA
 		persistent_workers=(num_workers > 0),  # Keep workers alive if memory allows
 		num_workers=num_workers,
-		worker_init_fn=lambda worker_id: np.random.seed(seed),  # Ensure deterministic worker behavior
 	)
 	train_loader.name = f"{dataset_name.lower()}_train".upper()
 
 	validation_dataset = HistoricalArchivesDataset(
 		dataset_name=dataset_name,
 		train=False,
+		# data_frame=val_dataset.sort_values(by="img_path").reset_index(drop=True),
 		data_frame=val_dataset,
 		transform=preprocess,
 	)
@@ -235,14 +234,11 @@ def get_dataloaders(
 	print(f"image paths:\n{validation_dataset.images[:10]}")
 	print("labels:", validation_dataset.labels[:10])
 	print("label_int:", validation_dataset.labels_int[:10])
-
 	val_loader = DataLoader(
 		dataset=validation_dataset,
 		batch_size=batch_size,
 		shuffle=False,
-		pin_memory=True, # Move data to GPU faster if using CUDA
 		num_workers=num_workers,
-		worker_init_fn=lambda worker_id: np.random.seed(seed),  # Ensure deterministic worker behavior
 	)
 	val_loader.name = f"{dataset_name.lower()}_validation".upper()
 
@@ -260,30 +256,12 @@ class HistoricalArchivesDataset(Dataset):
 		):
 		self.dataset_name = dataset_name
 		self.train = train
-
-		# # Filter valid images during initialization
-		# valid_indices = []
-		# for i, path in enumerate(data_frame["img_path"]):
-		# 	if not os.path.exists(path):
-		# 		warnings.warn(f"Image path not found: {path}")
-		# 		continue
-		# 	try:
-		# 		Image.open(path).verify()  # Validate image integrity
-		# 		valid_indices.append(i)
-		# 	except (FileNotFoundError, IOError, Exception) as e:
-		# 		warnings.warn(f"Invalid image {path}: {e}")
-		# 		continue
-		# valid_indices.sort()  # Ensure deterministic order
-		# if not valid_indices:
-		# 	raise ValueError("No valid images found in the dataset.")
-		# self.data_frame = data_frame.iloc[valid_indices]
-
 		self.data_frame = data_frame
-		# self.data_frame = data_frame.sort_values(by="id").reset_index(drop=True)  # Ensure consistent order
 		self.images = self.data_frame["img_path"].values
 		self.labels = self.data_frame["label"].values
-		self.labels_int = self.data_frame["label_int"].values		
-		self.unique_labels = list(set(self.labels))
+		self.labels_int = self.data_frame["label_int"].values
+		# Sort unique labels to ensure deterministic ordering across runs (fixes non-reproducible results):
+		self.unique_labels = sorted(list(set(self.labels)))  # Sort the unique labels
 		self._num_classes = len(np.unique(self.labels_int))
 
 		if transform:
@@ -291,7 +269,7 @@ class HistoricalArchivesDataset(Dataset):
 		else:
 			self.transform = T.Compose(
 				[
-					T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
+					T.Resize(224, interpolation=T.InterpolationMode.BICUBIC, antialias=True),
 					T.CenterCrop(224),
 					_convert_image_to_rgb,
 					T.ToTensor(),
@@ -319,12 +297,8 @@ class HistoricalArchivesDataset(Dataset):
 		image = Image.open(doc_image_path).convert("RGB")
 		image_tensor = self.transform(image) # <class 'torch.Tensor'> torch.Size([3, 224, 224])
 		tokenized_label_tensor = clip.tokenize(texts=doc_label).squeeze(0) # torch.Size([num_lbls, context_length]) [10 x 77]
+		# print(f"Tokenized label {idx} (label: {doc_label}): {tokenized_label_tensor[:10]}")  # Log first 10 tokens
 		return image_tensor, tokenized_label_tensor, doc_label_int
-
-	@property
-	def num_classes(self):
-		# return len(set(self.labels_int))
-		return self._num_classes
 
 class HistoryDataset(Dataset):
 	def __init__(
