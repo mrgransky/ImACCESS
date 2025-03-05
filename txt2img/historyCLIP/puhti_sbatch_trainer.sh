@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=historyCLIP_train_dataset_x
+#SBATCH --job-name=train_historyCLIP_dataset_x
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -37,7 +37,7 @@ NUM_WORKERS=$((SLURM_CPUS_PER_TASK - 1)) # reserve 1 CPU for the main process an
 INIT_LRS=(1e-5 1e-5 1e-5 1e-5 1e-5)
 WEIGHT_DECAYS=(1e-2 1e-2 1e-2 1e-2 1e-2)
 DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
-EPOCHS=(50 50 150 150 150)
+EPOCHS=(60 60 150 150 150)
 MODES=(train finetune pretrain)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 DATASETS=(
