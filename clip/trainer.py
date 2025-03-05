@@ -531,13 +531,16 @@ def evaluate_loss_and_accuracy(
 	total_txt2img_correct = 0
 	num_batches = len(validation_loader)
 	total_samples = len(validation_loader.dataset)
+
 	try:
-		num_classes = len(validation_loader.dataset.dataset.classes)
-	except AttributeError as e:
-		# print(f"Error: {e}")
-		num_classes = validation_loader.dataset.num_classes
+			class_names = validation_loader.dataset.dataset.classes
+	except:
+			class_names = validation_loader.dataset.unique_labels
+	num_classes = len(class_names)
+
 	if num_classes <= 0:
 		raise ValueError("Number of classes must be positive.")
+
 	# Valid K values for Image-to-Text (limited by num_classes)
 	valid_img2txt_k_values = [K for K in topK_values if K <= num_classes]
 	if len(valid_img2txt_k_values) < len(topK_values):

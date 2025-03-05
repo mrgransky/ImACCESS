@@ -53,11 +53,6 @@ def main():
 	print_args_table(args=args, parser=parser)
 	set_seeds(seed=42)
 
-	print(f"PyTorch seed: {torch.initial_seed()} NumPy seed: {np.random.get_state()[1][0]}")
-	if torch.cuda.is_available():
-		print("PyTorch CUDA seed: ", torch.cuda.initial_seed())
-	print(f"PyTorch random number: {torch.randn(1)}) NumPy random number: {np.random.rand(1)}")
-
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 
 	model, preprocess = clip.load(
