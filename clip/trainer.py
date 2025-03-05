@@ -351,7 +351,7 @@ def evaluate_retrieval_performance(
 
 		with torch.no_grad():
 				text_inputs = clip.tokenize(texts=class_names).to(device, non_blocking=True)
-				print(f"Tokenized class names (first 5): {text_inputs[:5, :10]}")  # Log first 5 class names, first 10 tokens
+				# print(f"Tokenized class names (first 5): {text_inputs[:5, :10]}")  # Log first 5 class names, first 10 tokens
 				class_text_embeddings = model.encode_text(text_inputs)
 				class_text_embeddings = class_text_embeddings / class_text_embeddings.norm(dim=-1, keepdim=True)
 
@@ -372,17 +372,17 @@ def evaluate_retrieval_performance(
 
 		# Compute similarity matrix
 		similarity_matrix = image_embeddings @ class_text_embeddings.T
-		print("Similarity matrix stats:")
-		print(
-				type(similarity_matrix),
-				similarity_matrix.shape,
-				similarity_matrix.dtype,
-				similarity_matrix.min(),
-				similarity_matrix.max(),
-				similarity_matrix.mean(),
-				similarity_matrix.std(),
-		)
-		print(similarity_matrix[:10, :10])  # ensure values are reasonable (e.g., -1 to 1).
+		# print("Similarity matrix stats:")
+		# print(
+		# 		type(similarity_matrix),
+		# 		similarity_matrix.shape,
+		# 		similarity_matrix.dtype,
+		# 		similarity_matrix.min(),
+		# 		similarity_matrix.max(),
+		# 		similarity_matrix.mean(),
+		# 		similarity_matrix.std(),
+		# )
+		# print(similarity_matrix[:10, :10])  # ensure values are reasonable (e.g., -1 to 1).
 
 		image_to_text_metrics = get_retrieval_metrics(
 				similarity_matrix=similarity_matrix,
