@@ -1,5 +1,62 @@
 from utils import *
 
+def visualize_samples(dataloader, dataset, num_samples=5):
+    for bidx, (images, tokenized_labels, labels_indices) in enumerate(dataloader):
+        print(f"Batch {bidx}, Shapes: {images.shape}, {tokenized_labels.shape}, {labels_indices.shape}")
+        if bidx >= num_samples:
+            break
+        
+        # Get the global index of the first sample in this batch
+        start_idx = bidx * dataloader.batch_size
+        for i in range(min(dataloader.batch_size, len(images))):
+            global_idx = start_idx + i
+            if global_idx >= len(dataset):
+                break
+            image = images[i].permute(1, 2, 0).numpy()  # Convert tensor to numpy array
+            caption_idx = labels_indices[i].item()
+            path = dataset.images[global_idx]
+            label = dataset.labels[global_idx]
+            label_int = dataset.labels_int[global_idx]
+            
+            print(f"Global Index: {global_idx}")
+            print(f"Image Path: {path}")
+            print(f"Label: {label}, Label Int: {label_int}, Caption Index: {caption_idx}")
+            print(f"Image Shape: {image.shape}")
+            
+            # Denormalize the image (adjust mean/std based on your dataset)
+            mean = np.array([0.5126933455467224, 0.5045100450515747, 0.48094621300697327])
+            std = np.array([0.276103675365448, 0.2733437418937683, 0.27065524458885193])
+            image = image * std + mean  # Reverse normalization
+            image = np.clip(image, 0, 1)  # Ensure pixel values are in [0, 1]
+            
+            plt.figure(figsize=(10, 10))
+            plt.imshow(image)
+            plt.title(f"Label: {label} (Index: {caption_idx})")
+            plt.axis('off')
+            plt.show()
+
+
+def visualize_(dataloader, num_samples=5, ):
+	for bidx, (images, tokenized_labels, labels_indices) in enumerate(dataloader):
+		print(bidx, images.shape, tokenized_labels.shape, labels_indices.shape,) # torch.Size([32, 3, 224, 224]) torch.Size([32])
+		if bidx >= num_samples:
+			break
+		
+		image = images[bidx].permute(1, 2, 0).numpy() # Convert tensor to numpy array and permute dimensions
+		caption_idx = labels_indices[bidx]
+		print(image.shape, caption_idx)
+		print()
+			
+		# # Denormalize the image
+		image = image * np.array([0.2268645167350769]) + np.array([0.6929051876068115])
+		image = np.clip(image, 0, 1)  # Ensure pixel values are in [0, 1] range
+		
+		plt.figure(figsize=(10, 10))
+		plt.imshow(image)
+		plt.title(f"Caption: {caption_idx}", fontsize=10)
+		plt.axis('off')
+		plt.show()
+
 def plot_retrieval_metrics_best_model(
 		dataset_name: str,
 		image_to_text_metrics: Dict[str, Dict[str, float]],

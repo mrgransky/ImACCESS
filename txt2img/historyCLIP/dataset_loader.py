@@ -1,3 +1,4 @@
+import json
 from utils import *
 
 def _convert_image_to_rgb(image: Image) -> Image:
@@ -51,8 +52,6 @@ def get_datasets(
 		dtype=dtypes, 
 		low_memory=False, # Set to False to avoid memory issues
 	)
-	# print(list(df.columns))
-	# print(df.head(10))
 	print(f"FULL Dataset {type(df)} {df.shape}")
 	if sampling == "stratified_random":
 		print(f">> Using stratified random sampling...")
@@ -66,27 +65,31 @@ def get_datasets(
 			dtype=dtypes, 
 			low_memory=False, # Set to False to avoid memory issues
 		)
+
 		df_val = pd.read_csv(
 			filepath_or_buffer=metadata_val_fpth,
 			on_bad_lines='skip',
 			dtype=dtypes, 
 			low_memory=False, # Set to False to avoid memory issues
 		)
-	
-		######################################################################################
-		# Map labels to integers [train] # TODO: claude => code review must be checked!
-		labels_train = list(set(df_train["label"].tolist()))
-		labels_train = sorted(labels_train)
-		label_dict_train = {lbl: idx for idx, lbl in enumerate(labels_train)}
-		df_train['label_int'] = df_train['label'].map(label_dict_train)
-		
-		# Map labels to integers [validation]
-		labels_val = list(set(df_val["label"].tolist()))
-		labels_val = sorted(labels_val)
-		label_dict_val = {lbl: idx for idx, lbl in enumerate(labels_val)}
-		df_val['label_int'] = df_val['label'].map(label_dict_val)
-		######################################################################################
-		
+
+		# # ######################################################################################
+		# Create deterministic label mapping from all data
+		all_labels = sorted(set(df_train["label"].unique()) | set(df_val["label"].unique()))
+		label_dict = {label: idx for idx, label in enumerate(all_labels)}
+		print(json.dumps(label_dict, indent=2, ensure_ascii=False))
+
+		# Map labels to integers
+		df_train['label_int'] = df_train['label'].map(label_dict)
+		df_val['label_int'] = df_val['label'].map(label_dict)
+
+		# Validate that all validation labels exist in training
+		val_labels = set(df_val["label"].unique())
+		train_labels = set(df_train["label"].unique())
+		unknown_labels = val_labels - train_labels
+		if unknown_labels:
+			print(f"WARNING: Validation set contains labels not in training: {unknown_labels}")
+		# # ######################################################################################
 		return df_train, df_val
 	elif sampling == "kfold_stratified":
 		fold_dir = os.path.join(ddir, sampling)
@@ -110,37 +113,54 @@ def get_datasets(
 				)
 				folds.append((df_train, df_val))
 			return folds
+
 		print(f"K-Fold Stratified sampling with K={kfolds} folds...")
+
 		if "label" not in df.columns:
 			raise ValueError("The dataset must have a 'label' column for stratified sampling.")
+
 		# Exclude labels that occur only once
 		label_counts = df["label"].value_counts()
-		labels_to_drop = label_counts[label_counts == 1].index
-		df = df[~df["label"].isin(labels_to_drop)]
+		labels_to_drop = label_counts[label_counts == 1].index # 
+		if len(labels_to_drop)>0:
+			print(f"Removing {len(labels_to_drop)} labels that occur only once")
+			df = df[~df["label"].isin(labels_to_drop)]
+
+		# Check if we still have data after dropping rare labels
 		if df.empty:
 			raise ValueError("No valid labels for stratified sampling (after removing labels with one occurrence).")
-		labels = list(set(df["label"].tolist())) # Get unique labels
-		labels = sorted(labels) # Get sorted unique labels
-		label_dict = {lbl: idx for idx, lbl in enumerate(labels)}
+
+		all_labels = list(set(df["label"].tolist())) # Get unique labels
+		all_labels = sorted(all_labels) # Get sorted unique labels
+		label_dict = {lbl: idx for idx, lbl in enumerate(all_labels)}
 		df["label_int"] = df["label"].map(label_dict)
+
 		# Create stratified K-Fold splits
 		folding_method = StratifiedKFold(
 			n_splits=kfolds,
 			shuffle=True,
 			random_state=seed,
 		)
+
+		# Create each fold
 		folds = []
 		for fold, (train_idx, val_idx) in enumerate(folding_method.split(df, df["label"])):
 			fold_dir = os.path.join(ddir, sampling, f"fold_{fold + 1}")
 			os.makedirs(fold_dir, exist_ok=True)
+			
 			train_fpth = os.path.join(fold_dir, "metadata_train.csv")
 			val_fpth = os.path.join(fold_dir, "metadata_val.csv")
+
 			df_train = df.iloc[train_idx].copy()
 			df_val = df.iloc[val_idx].copy()
+			
+			# Map labels to integers for both train and validation
 			df_train["label_int"] = df_train["label"].map(label_dict)
 			df_val["label_int"] = df_val["label"].map(label_dict)
+			
 			df_train.to_csv(train_fpth, index=False)
 			df_val.to_csv(val_fpth, index=False)
+			
 			folds.append((df_train, df_val))
 		print(f"K(={kfolds})-Fold splits saved successfully in {ddir}")
 		print("*"*100)
@@ -154,6 +174,7 @@ def get_dataloaders(
 		batch_size: int,
 		num_workers: int,
 		preprocess=None,
+		seed:int=42,
 	)-> Tuple[DataLoader, DataLoader]:
 	dataset_name = os.path.basename(dataset_dir)
 	print(f"Loading dataset: {dataset_name} using {sampling} strategy...")
@@ -186,14 +207,20 @@ def get_dataloaders(
 		data_frame=train_dataset,
 		transform=preprocess,
 	)
+
 	print(train_dataset)
+	print(f"First 5 image paths:\n{train_dataset.images[:5]}")
+	print("First 5 labels:", train_dataset.labels[:5])
+	print("First 5 label_int:", train_dataset.labels_int[:5])
+
 	train_loader = DataLoader(
 		dataset=train_dataset,
 		batch_size=batch_size,
 		shuffle=True,
 		pin_memory=True, # Move data to GPU faster if using CUDA
-		persistent_workers=(num_workers > 1),  # Keep workers alive if memory allows
+		persistent_workers=(num_workers > 0),  # Keep workers alive if memory allows
 		num_workers=num_workers,
+		worker_init_fn=lambda worker_id: np.random.seed(seed),  # Ensure deterministic worker behavior
 	)
 	train_loader.name = f"{dataset_name.lower()}_train".upper()
 
@@ -205,14 +232,20 @@ def get_dataloaders(
 	)
 	
 	print(validation_dataset)
+	print(f"image paths:\n{validation_dataset.images[:10]}")
+	print("labels:", validation_dataset.labels[:10])
+	print("label_int:", validation_dataset.labels_int[:10])
+
 	val_loader = DataLoader(
 		dataset=validation_dataset,
 		batch_size=batch_size,
 		shuffle=False,
 		pin_memory=True, # Move data to GPU faster if using CUDA
 		num_workers=num_workers,
+		worker_init_fn=lambda worker_id: np.random.seed(seed),  # Ensure deterministic worker behavior
 	)
 	val_loader.name = f"{dataset_name.lower()}_validation".upper()
+
 	return train_loader, val_loader
 
 class HistoricalArchivesDataset(Dataset):
@@ -227,22 +260,26 @@ class HistoricalArchivesDataset(Dataset):
 		):
 		self.dataset_name = dataset_name
 		self.train = train
-		# Filter valid images during initialization
-		valid_indices = []
-		for i, path in enumerate(data_frame["img_path"]):
-			if not os.path.exists(path):
-				warnings.warn(f"Image path not found: {path}")
-				continue
-			try:
-				Image.open(path).verify()  # Validate image integrity
-				valid_indices.append(i)
-			except (FileNotFoundError, IOError, Exception) as e:
-				warnings.warn(f"Invalid image {path}: {e}")
-				continue
-		if not valid_indices:
-			raise ValueError("No valid images found in the dataset.")
 
-		self.data_frame = data_frame.iloc[valid_indices]
+		# # Filter valid images during initialization
+		# valid_indices = []
+		# for i, path in enumerate(data_frame["img_path"]):
+		# 	if not os.path.exists(path):
+		# 		warnings.warn(f"Image path not found: {path}")
+		# 		continue
+		# 	try:
+		# 		Image.open(path).verify()  # Validate image integrity
+		# 		valid_indices.append(i)
+		# 	except (FileNotFoundError, IOError, Exception) as e:
+		# 		warnings.warn(f"Invalid image {path}: {e}")
+		# 		continue
+		# valid_indices.sort()  # Ensure deterministic order
+		# if not valid_indices:
+		# 	raise ValueError("No valid images found in the dataset.")
+		# self.data_frame = data_frame.iloc[valid_indices]
+
+		self.data_frame = data_frame
+		# self.data_frame = data_frame.sort_values(by="id").reset_index(drop=True)  # Ensure consistent order
 		self.images = self.data_frame["img_path"].values
 		self.labels = self.data_frame["label"].values
 		self.labels_int = self.data_frame["label_int"].values		

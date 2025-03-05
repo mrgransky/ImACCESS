@@ -34,7 +34,8 @@ import warnings
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=FutureWarning)
-
+os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
 def log_gpu_memory(device):
@@ -53,41 +54,6 @@ def log_gpu_memory(device):
 		f'Total: {gpu_mem_total:.2f} MB '
 		f'Utilization: {gpu_mem_utilization:.2f} %'
 	)
-
-def visualize_samples(dataloader, num_samples=5):
-		"""
-		Visualize a few samples from the dataloader for debugging purposes.
-		
-		Args:
-				dataloader (DataLoader): The dataloader to visualize samples from.
-				num_samples (int): Number of samples to visualize.
-		"""
-		for i, batch in enumerate(dataloader):
-				if i >= num_samples:
-						break
-				
-				images = batch['image']
-				captions = batch['caption']
-				masks = batch['mask']
-				image_filepaths = batch['image_filepath']
-				
-				for j in range(len(images)):
-						image = images[j].permute(1, 2, 0).numpy() # Convert tensor to numpy array and permute dimensions
-						caption = captions[j]
-						mask = masks[j]
-						filepath = image_filepaths[j]
-						
-						# Denormalize the image
-						image = image * np.array([0.2268645167350769]) + np.array([0.6929051876068115])
-						image = np.clip(image, 0, 1)  # Ensure pixel values are in [0, 1] range
-						
-						plt.figure(figsize=(8, 8))
-						plt.imshow(image, cmap='gray')
-						# plt.title(f"Caption: {caption}\nMask: {mask}\nFilepath: {filepath}")
-						# plt.title(f"Caption: {caption.shape}\nFilepath: {filepath}")
-						plt.title(f"Caption: {type(caption)} {caption.shape}\nMask: {type(mask)} {mask.shape}\nFilepath: {filepath}")
-						plt.axis('off')
-						plt.show()
 
 def plot_lrs_vs_steps(lrs, steps, fpath):
 	print(f"LRs[{len(lrs)}]") # num_epochs * chuncks 10 * 348 = 3480  # len(train_data_loader) * args.num_epochs
@@ -151,26 +117,15 @@ def custom_collate_fn(batch):
 	return default_collate(batch)
 
 def print_args_table(args, parser):
-	"""
-	Print a formatted table of command-line arguments.
-	
-	Args:
-	args (argparse.Namespace): The parsed arguments.
-	parser (argparse.ArgumentParser): The argument parser object.
-	"""
-	print("Parser")
 	args_dict = vars(args)
-	table_data = [
-			[
-					key, 
-					value, 
-					parser._option_string_actions.get(f'--{key}', parser._option_string_actions.get(f'-{key}')).type.__name__ 
-					if parser._option_string_actions.get(f'--{key}') or parser._option_string_actions.get(f'-{key}') 
-					else type(value).__name__
-			] 
-			for key, value in args_dict.items()
-	]
-	# print(tabulate.tabulate([(key, value) for key, value in args_dict.items()], headers=['Argument', 'Value'], tablefmt='orgtbl'))
+	table_data = []
+	for key, value in args_dict.items():
+		action = parser._option_string_actions.get(f'--{key}') or parser._option_string_actions.get(f'-{key}')
+		if action and hasattr(action, 'type') and action.type:
+			arg_type = action.type.__name__
+		else:
+			arg_type = type(value).__name__
+		table_data.append([key, value, arg_type])
 	print(tabulate.tabulate(table_data, headers=['Argument', 'Value', 'Type'], tablefmt='orgtbl'))
 
 def save_pickle(pkl, fname:str=""):
@@ -264,34 +219,15 @@ def measure_execution_time(func):
 		return result
 	return wrapper
 
-def visualize_(dataloader, num_samples=5, ):
-	for batch_idx, (batch_imgs, batch_lbls) in enumerate(dataloader):
-		print(batch_idx, batch_imgs.shape, batch_lbls.shape, len(batch_imgs), len(batch_lbls)) # torch.Size([32, 3, 224, 224]) torch.Size([32])
-		if batch_idx >= num_samples:
-			break
-		
-		image = batch_imgs[batch_idx].permute(1, 2, 0).numpy() # Convert tensor to numpy array and permute dimensions
-		caption_idx = batch_lbls[batch_idx]
-		print(image.shape, caption_idx)
-		print()
-			
-		# # Denormalize the image
-		image = image * np.array([0.2268645167350769]) + np.array([0.6929051876068115])
-		image = np.clip(image, 0, 1)  # Ensure pixel values are in [0, 1] range
-		
-		plt.figure(figsize=(10, 10))
-		plt.imshow(image)
-		plt.title(f"Caption {caption_idx.shape}\n{caption_idx}", fontsize=5)
-		plt.axis('off')
-		plt.show()
-
 def set_seeds(seed:int=42, debug:bool=False):
 	random.seed(seed)
 	np.random.seed(seed)
 	torch.manual_seed(seed)
 	if torch.cuda.is_available():
+		torch.cuda.empty_cache()
 		torch.cuda.manual_seed(seed)
 		torch.cuda.manual_seed_all(seed)
 		if debug: # slows down training but ensures reproducibility
 			torch.backends.cudnn.deterministic = True
 			torch.backends.cudnn.benchmark = False
+			torch.use_deterministic_algorithms(True, warn_only=True)

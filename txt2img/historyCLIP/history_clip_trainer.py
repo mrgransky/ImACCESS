@@ -1,6 +1,5 @@
 import os
 import sys
-
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
 IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
 CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
@@ -9,7 +8,7 @@ sys.path.insert(0, CLIP_DIR)
 from utils import *
 from dataset_loader import get_dataloaders
 from trainer import finetune, train, pretrain
-
+from visualize import visualize_
 # run in local:
 # $ nohup python -u history_clip_trainer.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 128 -e 32 -lr 1e-5 -wd 1e-3 --print_every 200 -nw 12 -m train -a "ViT-B/32" > logs/europeana_train.out &
 
@@ -51,7 +50,7 @@ def main():
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
 	print_args_table(args=args, parser=parser)
-	set_seeds()
+	set_seeds(seed=42, debug=True)
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 
 	model, preprocess = clip.load(
@@ -75,6 +74,10 @@ def main():
 	)
 	print(f"Train Loader: {len(train_loader)} batches, unique classes: {train_loader.dataset.num_classes}")
 	print(f"Validation Loader: {len(validation_loader)} batches, unique classes: {validation_loader.dataset.num_classes}")
+	# visualize_(dataloader=validation_loader, num_samples=5)
+	# visualize_samples(validation_loader, validation_loader.dataset, num_samples=5)
+
+	# return
 	
 	if args.mode == "finetune":
 		finetune(

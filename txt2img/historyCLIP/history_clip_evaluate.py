@@ -1,3 +1,10 @@
+import os
+import sys
+HOME, USER = os.getenv('HOME'), os.getenv('USER')
+IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
+CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
+sys.path.insert(0, CLIP_DIR)
+
 from utils import *
 from dataset_loader import get_datasets
 # local:
@@ -18,8 +25,8 @@ parser.add_argument('--sampling', '-s', type=str, default="stratified_random", c
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
-print(args)
 args.device = torch.device(args.device)
+print_args_table(args=args, parser=parser)
 OUTPUT_DIRECTORY = os.path.join(args.dataset_dir, "outputs")
 os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 

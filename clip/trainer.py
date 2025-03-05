@@ -182,8 +182,8 @@ def evaluate_retrieval_performance(
 		class_names = validation_loader.dataset.dataset.classes
 	except:
 		class_names = validation_loader.dataset.unique_labels
-
 	n_classes = len(class_names)
+	# print(f"{n_classes} Class [Validation]:\n{class_names}")
 	with torch.no_grad():
 		text_inputs = clip.tokenize(texts=class_names).to(device, non_blocking=True)
 		class_text_embeddings = model.encode_text(text_inputs)
@@ -192,7 +192,8 @@ def evaluate_retrieval_performance(
 		for bidx, (images, _, class_indices) in enumerate(validation_loader):
 			images = images.to(device, non_blocking=True)
 			class_indices = class_indices.to(device, non_blocking=True)
-			
+			# print("Sample class indices:", class_indices[:10].cpu().numpy())
+			# print("Corresponding class names:", [class_names[i] for i in class_indices[:10].cpu().numpy()])
 			image_embeds = model.encode_image(images)
 			image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
 			
@@ -207,9 +208,11 @@ def evaluate_retrieval_performance(
 	# Compute similarity matrix
 	similarity_matrix = image_embeddings @ class_text_embeddings.T
 	# logit_scale = model.logit_scale.exp().detach().cpu().numpy()  # Detach before converting to NumPy
-	# print(logit_scale)
-	# similarity_matrix = logit_scale * (image_embeddings @ class_text_embeddings.T)
-	print(similarity_matrix[:5, :5]) # ensure values are reasonable (e.g., -1 to 1).
+	# print(logit_scale, type(logit_scale), logit_scale.shape, logit_scale.dtype)
+	# # similarity_matrix = logit_scale * (image_embeddings @ class_text_embeddings.T)
+	print(type(similarity_matrix), similarity_matrix.shape, similarity_matrix.dtype, similarity_matrix.min(), similarity_matrix.max())
+	print(similarity_matrix[:10, :10]) # ensure values are reasonable (e.g., -1 to 1).
+	print("Similarity matrix stats:", np.mean(similarity_matrix), np.std(similarity_matrix))
 
 	image_to_text_metrics = get_retrieval_metrics(
 		similarity_matrix=similarity_matrix,
@@ -230,12 +233,6 @@ def evaluate_retrieval_performance(
 		class_counts=np.bincount(image_labels), # Count number of occurrences of each value in array of non-negative ints.
 		max_k=None,  # No limit on K for Text-to-Image
 	)
-
-	# print("Image to Text Metrics: ")
-	# print(json.dumps(image_to_text_metrics, indent=2, ensure_ascii=False))
-
-	# print("Text to Image Metrics: ")
-	# print(json.dumps(text_to_image_metrics, indent=2, ensure_ascii=False))
 
 	return image_to_text_metrics, text_to_image_metrics
 
@@ -587,7 +584,7 @@ def finetune(
 	best_txt2img_metrics = None
 
 	for epoch in range(num_epochs):
-		# torch.cuda.empty_cache()  # Clear GPU memory cache
+		torch.cuda.empty_cache()  # Clear GPU memory cache
 		model.train()  # Enable dropout and training mode
 		print(f"Epoch [{epoch + 1}/{num_epochs}]")
 		epoch_loss = 0.0
@@ -1080,7 +1077,8 @@ def main():
 		USER=os.environ.get('USER'),
 	)
 	print(f"Train Loader[{train_loader.name}]: {len(train_loader)} batches, Validation Loader[{validation_loader.name}]: {len(validation_loader)} batches")
-	# visualize_(dataloader=train_loader, num_samples=5)
+	visualize_(dataloader=train_loader, num_samples=5)
+	return
 
 	if args.mode == 'finetune':
 		finetune(
