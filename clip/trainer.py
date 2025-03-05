@@ -1135,7 +1135,11 @@ def train(
 		print("-"*170)
 
 	print(f"Elapsed_t: {time.time()-train_start_time:.1f} sec".center(150, "-"))
-	file_base_name = f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_ep_{len(training_losses)}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}"
+	file_base_name = (
+		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
+		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}"
+	)
 	losses_fpth = os.path.join(results_dir, f"{file_base_name}_losses.png")
 	val_acc_fpth = os.path.join(results_dir, f"{file_base_name}_top1_accuracy.png")
 	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png")
