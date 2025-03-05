@@ -202,8 +202,8 @@ def get_dataloaders(
 	train_dataset = HistoricalArchivesDataset(
 		dataset_name=dataset_name,
 		train=True,
-		# data_frame=train_dataset.sort_values(by="img_path").reset_index(drop=True),
-		data_frame=train_dataset,
+		data_frame=train_dataset.sort_values(by="img_path").reset_index(drop=True),
+		# data_frame=train_dataset,
 		transform=preprocess,
 	)
 
@@ -216,7 +216,7 @@ def get_dataloaders(
 		dataset=train_dataset,
 		batch_size=batch_size,
 		shuffle=True,
-		pin_memory=True, # Move data to GPU faster if using CUDA
+		pin_memory=torch.cuda.is_available(), # Move data to GPU faster if CUDA available
 		persistent_workers=(num_workers > 0),  # Keep workers alive if memory allows
 		num_workers=num_workers,
 	)
@@ -225,8 +225,8 @@ def get_dataloaders(
 	validation_dataset = HistoricalArchivesDataset(
 		dataset_name=dataset_name,
 		train=False,
-		# data_frame=val_dataset.sort_values(by="img_path").reset_index(drop=True),
-		data_frame=val_dataset,
+		data_frame=val_dataset.sort_values(by="img_path").reset_index(drop=True),
+		# data_frame=val_dataset,
 		transform=preprocess,
 	)
 	
