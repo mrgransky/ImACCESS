@@ -163,248 +163,72 @@ class EarlyStopping:
 	def get_best_epoch(self) -> int:
 		return self.best_epoch
 
-# def evaluate_retrieval_performance(
-# 	model: torch.nn.Module,
-# 	validation_loader: DataLoader,
-# 	device: str="cuda:0",
-# 	topK_values: List=[1, 3, 5],
-# 	):
-# 	dataset_name = validation_loader.name
-# 	model_name = model.__class__.__name__
-# 	model_arch = model.name
-# 	print(f">> Evaluating {model_name} - {model_arch} Retrieval Performance [{dataset_name}]: {topK_values}...")
-# 	model.eval() # dropout is disabled, ensuring deterministic outputs
-
-# 	image_embeddings = []
-# 	image_labels = []
-
-# 	try:
-# 		class_names = validation_loader.dataset.dataset.classes
-# 	except:
-# 		class_names = validation_loader.dataset.unique_labels
-# 	n_classes = len(class_names)
-# 	# print(f"{n_classes} Class [Validation]:\n{class_names}")
-# 	with torch.no_grad():
-# 		text_inputs = clip.tokenize(texts=class_names).to(device, non_blocking=True)
-# 		class_text_embeddings = model.encode_text(text_inputs)
-# 		class_text_embeddings = class_text_embeddings / class_text_embeddings.norm(dim=-1, keepdim=True)
-		
-# 		for bidx, (images, _, class_indices) in enumerate(validation_loader):
-# 			images = images.to(device, non_blocking=True)
-# 			class_indices = class_indices.to(device, non_blocking=True)
-# 			# print("Sample class indices:", class_indices[:10].cpu().numpy())
-# 			# print("Corresponding class names:", [class_names[i] for i in class_indices[:10].cpu().numpy()])
-# 			image_embeds = model.encode_image(images)
-# 			image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
-			
-# 			image_embeddings.append(image_embeds.cpu().numpy())
-# 			image_labels.extend(class_indices.cpu().numpy())
-
-# 	# Aggregate and normalize embeddings
-# 	image_embeddings = np.concatenate(image_embeddings, axis=0)
-# 	image_labels = np.array(image_labels)
-# 	class_text_embeddings = class_text_embeddings.cpu().numpy()
-	
-# 	# Compute similarity matrix
-# 	similarity_matrix = image_embeddings @ class_text_embeddings.T
-# 	# logit_scale = model.logit_scale.exp().detach().cpu().numpy()  # Detach before converting to NumPy
-# 	# print(logit_scale, type(logit_scale), logit_scale.shape, logit_scale.dtype)
-# 	# # similarity_matrix = logit_scale * (image_embeddings @ class_text_embeddings.T)
-# 	print("Similarity matrix stats:")
-# 	print(
-# 		type(similarity_matrix),
-# 		similarity_matrix.shape,
-# 		similarity_matrix.dtype,
-# 		similarity_matrix.min(),
-# 		similarity_matrix.max(),
-# 		similarity_matrix.mean(),
-# 		similarity_matrix.std(),
-# 	)
-# 	print(similarity_matrix[:10, :10]) # ensure values are reasonable (e.g., -1 to 1).
-
-# 	image_to_text_metrics = get_retrieval_metrics(
-# 		similarity_matrix=similarity_matrix,
-# 		query_labels=image_labels,
-# 		candidate_labels=np.arange(n_classes),
-# 		topK_values=topK_values,
-# 		mode="Image-to-Text",
-# 		class_counts=None,  # No class counts for Image-to-Text
-# 		max_k=n_classes,  # Pass max_k for Image-to-Text to limit K to the number of classes
-# 	)
-	
-# 	text_to_image_metrics = get_retrieval_metrics(
-# 		similarity_matrix=class_text_embeddings @ image_embeddings.T,
-# 		query_labels=np.arange(n_classes),
-# 		candidate_labels=image_labels,
-# 		topK_values=topK_values,
-# 		mode="Text-to-Image",
-# 		class_counts=np.bincount(image_labels), # Count number of occurrences of each value in array of non-negative ints.
-# 		max_k=None,  # No limit on K for Text-to-Image
-# 	)
-
-# 	return image_to_text_metrics, text_to_image_metrics
-
-# def get_retrieval_metrics(
-# 	similarity_matrix: np.ndarray,
-# 	query_labels: np.ndarray,
-# 	candidate_labels: np.ndarray,
-# 	topK_values: List[int] = [1, 3, 5],
-# 	mode: str ="Image-to-Text",
-# 	class_counts: np.ndarray = None,
-# 	max_k: int = None,  # New parameter to limit K values (None for no limit)
-# 	):
-# 	num_queries, num_candidates = similarity_matrix.shape
-# 	assert num_queries == len(query_labels), "Number of queries must match labels"
-	
-# 	num_classes = len(np.unique(candidate_labels)) # unique values in candidate_labels
-# 	if max_k is not None:
-# 		valid_K_values = [K for K in topK_values if K <= max_k]
-# 	else:
-# 		valid_K_values = topK_values # No limit on K values
-
-# 	if len(valid_K_values) < len(topK_values):
-# 		print(f"<!> Warning: K values: ({set(topK_values) - set(valid_K_values)}) exceed the number of classes ({num_classes}). => ignored!")
-	
-# 	metrics = {
-# 		"mP": {},
-# 		"mAP": {},
-# 		"Recall": {},
-# 	}
-	
-# 	for K in valid_K_values:
-# 		top_k_indices = np.argsort(-similarity_matrix, axis=1)[:, :K]
-		
-# 		precision, recall, ap = [], [], []
-# 		for i in range(num_queries):
-# 			true_label = query_labels[i]
-# 			retrieved_labels = candidate_labels[top_k_indices[i]]
-# 			correct = np.sum(retrieved_labels == true_label)
-			
-# 			# 1. Precision @ K
-# 			precision.append(correct / K)
-			
-# 			# 2. Compute Recall@K with division by zero protection
-# 			if mode == "Image-to-Text":
-# 				relevant_count = 1  # Single relevant item per query [single label per image]
-# 			else:
-# 				relevant_count = class_counts[true_label] if class_counts is not None else 0
-					
-# 			if relevant_count == 0:
-# 				recall.append(0.0)
-# 			else:
-# 				recall.append(correct / relevant_count)
-
-# 			# 3. Compute AP@K with proper normalization
-# 			relevant_positions = np.where(retrieved_labels == true_label)[0]
-# 			p_at = []
-# 			cumulative_correct = 0
-
-# 			for pos in relevant_positions:
-# 				if pos < K:  # Only consider positions within top-K
-# 					cumulative_correct += 1
-# 					precision_at_rank = cumulative_correct / (pos + 1)  # pos is 0-based
-# 					p_at.append(precision_at_rank)
-
-# 			# Determine normalization factor
-# 			if mode == "Image-to-Text":
-# 				R = 1  # Always 1 relevant item for image-to-text
-# 			else:
-# 				R = class_counts[true_label] if class_counts is not None else 0
-					
-# 			# Handle queries with no relevant items
-# 			if R == 0:
-# 				ap.append(0.0)
-# 				continue
-					
-# 			if len(p_at) == 0:
-# 				ap.append(0.0)
-# 			else:
-# 				ap.append(sum(p_at) / min(R, K)) # Normalize by min(R, K)
-
-# 		# Store metrics for this K
-# 		metrics["mP"][str(K)] = np.mean(precision)
-# 		metrics["mAP"][str(K)] = np.mean(ap)
-# 		metrics["Recall"][str(K)] = np.mean(recall)
-	
-# 	return metrics
-
 def evaluate_retrieval_performance(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
 		device: str = "cuda:0",
 		topK_values: List = [1, 3, 5],
-):
-		dataset_name = validation_loader.name
-		model_name = model.__class__.__name__
-		model_arch = model.name
-		print(f">> Evaluating {model_name} - {model_arch} Retrieval Performance [{dataset_name}]: {topK_values}...")
-		model.eval()  # dropout is disabled, ensuring deterministic outputs
+	):
+	dataset_name = validation_loader.name
+	model_name = model.__class__.__name__
+	model_arch = model.name
+	print(f">> Evaluating {model_name} - {model_arch} Retrieval Performance [{dataset_name}]: {topK_values}...")
+	model.eval()  # dropout is disabled, ensuring deterministic outputs
+	image_embeddings = []
+	image_labels = []
+	try:
+		class_names = validation_loader.dataset.dataset.classes
+	except:
+		class_names = validation_loader.dataset.unique_labels
+	n_classes = len(class_names)
+	with torch.no_grad():
+		text_inputs = clip.tokenize(texts=class_names).to(device, non_blocking=True)
+		class_text_embeddings = model.encode_text(text_inputs)
+		class_text_embeddings = class_text_embeddings / class_text_embeddings.norm(dim=-1, keepdim=True)
+		for bidx, (images, _, class_indices) in enumerate(validation_loader):
+			images = images.to(device, non_blocking=True)
+			class_indices = class_indices.to(device, non_blocking=True)
+			image_embeds = model.encode_image(images)
+			image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
+			image_embeddings.append(image_embeds.cpu())
+			image_labels.extend(class_indices.cpu())
+	# Aggregate and normalize embeddings
+	image_embeddings = torch.cat(image_embeddings, dim=0)
+	image_labels = torch.tensor(image_labels)
+	class_text_embeddings = class_text_embeddings.cpu()
+	similarity_matrix = image_embeddings @ class_text_embeddings.T
+	# print("Similarity matrix stats:")
+	# print(
+	# 		type(similarity_matrix),
+	# 		similarity_matrix.shape,
+	# 		similarity_matrix.dtype,
+	# 		similarity_matrix.min(),
+	# 		similarity_matrix.max(),
+	# 		similarity_matrix.mean(),
+	# 		similarity_matrix.std(),
+	# )
+	# print(similarity_matrix[:10, :10])  # ensure values are reasonable (e.g., -1 to 1).
 
-		image_embeddings = []
-		image_labels = []
+	image_to_text_metrics = get_retrieval_metrics(
+		similarity_matrix=similarity_matrix,
+		query_labels=image_labels,
+		candidate_labels=torch.arange(n_classes),
+		topK_values=topK_values,
+		mode="Image-to-Text",
+		class_counts=None,  # No class counts for Image-to-Text
+		max_k=n_classes,  # Pass max_k for Image-to-Text to limit K to the number of classes
+	)
 
-		try:
-				class_names = validation_loader.dataset.dataset.classes
-		except:
-				class_names = validation_loader.dataset.unique_labels
-		n_classes = len(class_names)
-
-		with torch.no_grad():
-				text_inputs = clip.tokenize(texts=class_names).to(device, non_blocking=True)
-				# print(f"Tokenized class names (first 5): {text_inputs[:5, :10]}")  # Log first 5 class names, first 10 tokens
-				class_text_embeddings = model.encode_text(text_inputs)
-				class_text_embeddings = class_text_embeddings / class_text_embeddings.norm(dim=-1, keepdim=True)
-
-				for bidx, (images, _, class_indices) in enumerate(validation_loader):
-						images = images.to(device, non_blocking=True)
-						class_indices = class_indices.to(device, non_blocking=True)
-
-						image_embeds = model.encode_image(images)
-						image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
-
-						image_embeddings.append(image_embeds.cpu())
-						image_labels.extend(class_indices.cpu())
-
-		# Aggregate and normalize embeddings
-		image_embeddings = torch.cat(image_embeddings, dim=0)
-		image_labels = torch.tensor(image_labels)
-		class_text_embeddings = class_text_embeddings.cpu()
-
-		# Compute similarity matrix
-		similarity_matrix = image_embeddings @ class_text_embeddings.T
-		# print("Similarity matrix stats:")
-		# print(
-		# 		type(similarity_matrix),
-		# 		similarity_matrix.shape,
-		# 		similarity_matrix.dtype,
-		# 		similarity_matrix.min(),
-		# 		similarity_matrix.max(),
-		# 		similarity_matrix.mean(),
-		# 		similarity_matrix.std(),
-		# )
-		# print(similarity_matrix[:10, :10])  # ensure values are reasonable (e.g., -1 to 1).
-
-		image_to_text_metrics = get_retrieval_metrics(
-				similarity_matrix=similarity_matrix,
-				query_labels=image_labels,
-				candidate_labels=torch.arange(n_classes),
-				topK_values=topK_values,
-				mode="Image-to-Text",
-				class_counts=None,  # No class counts for Image-to-Text
-				max_k=n_classes,  # Pass max_k for Image-to-Text to limit K to the number of classes
-		)
-
-		text_to_image_metrics = get_retrieval_metrics(
-				similarity_matrix=class_text_embeddings @ image_embeddings.T,
-				query_labels=torch.arange(n_classes),
-				candidate_labels=image_labels,
-				topK_values=topK_values,
-				mode="Text-to-Image",
-				class_counts=torch.bincount(image_labels),  # Count number of occurrences of each value in array of non-negative ints.
-				max_k=None,  # No limit on K for Text-to-Image
-		)
-
-		return image_to_text_metrics, text_to_image_metrics
+	text_to_image_metrics = get_retrieval_metrics(
+		similarity_matrix=class_text_embeddings @ image_embeddings.T,
+		query_labels=torch.arange(n_classes),
+		candidate_labels=image_labels,
+		topK_values=topK_values,
+		mode="Text-to-Image",
+		class_counts=torch.bincount(image_labels),  # Count number of occurrences of each value in array of non-negative ints.
+		max_k=None,  # No limit on K for Text-to-Image
+	)
+	return image_to_text_metrics, text_to_image_metrics
 
 def get_retrieval_metrics(
 		similarity_matrix: torch.Tensor,
@@ -414,96 +238,74 @@ def get_retrieval_metrics(
 		mode: str = "Image-to-Text",
 		class_counts: torch.Tensor = None,
 		max_k: int = None,  # New parameter to limit K values (None for no limit)
-):
-		num_queries, num_candidates = similarity_matrix.shape
-		assert num_queries == len(query_labels), "Number of queries must match labels"
-
-		num_classes = len(torch.unique(candidate_labels))
-		if max_k is not None:
-				valid_K_values = [K for K in topK_values if K <= max_k]
-		else:
-				valid_K_values = topK_values  # No limit on K values
-
-		if len(valid_K_values) < len(topK_values):
-				print(
-						f"<!> Warning: K values: ({set(topK_values) - set(valid_K_values)}) exceed the number of classes ({num_classes}). => ignored!"
+	):
+	num_queries, num_candidates = similarity_matrix.shape
+	assert num_queries == len(query_labels), "Number of queries must match labels"
+	num_classes = len(torch.unique(candidate_labels))
+	if max_k is not None:
+		valid_K_values = [K for K in topK_values if K <= max_k]
+	else:
+		valid_K_values = topK_values  # No limit on K values
+	if len(valid_K_values) < len(topK_values):
+		print(f"<!> Warning: K values: ({set(topK_values) - set(valid_K_values)}) exceed the number of classes ({num_classes}) => ignored!")
+	metrics = {
+		"mP": {},
+		"mAP": {},
+		"Recall": {},
+	}
+	for K in valid_K_values:
+		top_k_indices = torch.argsort(-similarity_matrix, dim=1)[:, :K]
+		precision, recall, ap = [], [], []
+		for i in range(num_queries):
+			true_label = query_labels[i]
+			retrieved_labels = candidate_labels[top_k_indices[i]]
+			correct = (retrieved_labels == true_label).sum().item()
+			# 1. Precision @ K
+			precision.append(correct / K)
+			# 2. Compute Recall@K with division by zero protection
+			if mode == "Image-to-Text":
+				relevant_count = 1  # Single relevant item per query [single label per image]
+			else:
+				relevant_count = (
+					class_counts[true_label].item()
+					if class_counts is not None
+					else 0
 				)
-
-		metrics = {
-				"mP": {},
-				"mAP": {},
-				"Recall": {},
-		}
-
-		for K in valid_K_values:
-				top_k_indices = torch.argsort(-similarity_matrix, dim=1)[:, :K]
-				# print(f"first elem of top_k_indices: {top_k_indices[0]}")
-
-				precision, recall, ap = [], [], []
-				for i in range(num_queries):
-						true_label = query_labels[i]
-						retrieved_labels = candidate_labels[top_k_indices[i]]
-
-						correct = (retrieved_labels == true_label).sum().item()
-
-						# 1. Precision @ K
-						precision.append(correct / K)
-
-						# 2. Compute Recall@K with division by zero protection
-						if mode == "Image-to-Text":
-								relevant_count = 1  # Single relevant item per query [single label per image]
-						else:
-								relevant_count = (
-										class_counts[true_label].item()
-										if class_counts is not None
-										else 0
-								)
-
-						if relevant_count == 0:
-								recall.append(0.0)
-						else:
-								recall.append(correct / relevant_count)
-
-						# 3. Compute AP@K with proper normalization
-						relevant_positions = torch.where(retrieved_labels == true_label)[0]
-
-						p_at = []
-						cumulative_correct = 0
-
-						for pos in relevant_positions:
-								if pos < K:  # Only consider positions within top-K
-										cumulative_correct += 1
-										precision_at_rank = (
-												cumulative_correct / (pos + 1)
-										)  # pos is 0-based
-										p_at.append(precision_at_rank)
-
-						# Determine normalization factor
-						if mode == "Image-to-Text":
-								R = 1  # Always 1 relevant item for image-to-text
-						else:
-								R = (
-										class_counts[true_label].item()
-										if class_counts is not None
-										else 0
-								)
-
-						# Handle queries with no relevant items
-						if R == 0:
-								ap.append(0.0)
-								continue
-
-						if len(p_at) == 0:
-								ap.append(0.0)
-						else:
-								ap.append(sum(p_at) / min(R, K))  # Normalize by min(R, K)
-
-				# Store metrics for this K
-				metrics["mP"][str(K)] = torch.tensor(precision).mean().item()
-				metrics["mAP"][str(K)] = torch.tensor(ap).mean().item()
-				metrics["Recall"][str(K)] = torch.tensor(recall).mean().item()
-
-		return metrics
+			if relevant_count == 0:
+				recall.append(0.0)
+			else:
+				recall.append(correct / relevant_count)
+			# 3. Compute AP@K with proper normalization
+			relevant_positions = torch.where(retrieved_labels == true_label)[0]
+			p_at = []
+			cumulative_correct = 0
+			for pos in relevant_positions:
+				if pos < K:  # Only consider positions within top-K
+					cumulative_correct += 1
+					precision_at_rank = cumulative_correct / (pos + 1)  # pos is 0-based
+					p_at.append(precision_at_rank)
+			# Determine normalization factor
+			if mode == "Image-to-Text":
+				R = 1 # Always 1 relevant item for image-to-text
+			else:
+				R = (
+					class_counts[true_label].item()
+					if class_counts is not None
+					else 0
+				)
+			# Handle queries with no relevant items
+			if R == 0:
+				ap.append(0.0)
+				continue
+			if len(p_at) == 0:
+				ap.append(0.0)
+			else:
+				ap.append(sum(p_at) / min(R, K))  # Normalize by min(R, K)
+		# Store metrics for this K
+		metrics["mP"][str(K)] = torch.tensor(precision).mean().item()
+		metrics["mAP"][str(K)] = torch.tensor(ap).mean().item()
+		metrics["Recall"][str(K)] = torch.tensor(recall).mean().item()
+	return metrics
 
 def evaluate_loss_and_accuracy(
 		model: torch.nn.Module,
@@ -627,55 +429,6 @@ def evaluate_loss_and_accuracy(
 
 	return metrics
 
-# def finetune(
-# 		model:torch.nn.Module,
-# 		train_loader:DataLoader,
-# 		validation_loader:DataLoader,
-# 		num_epochs:int,
-# 		nw:int,
-# 		print_every:int,
-# 		learning_rate:float,
-# 		weight_decay:float,
-# 		device:str,
-# 		results_dir:str,
-# 		window_size:int=10,
-# 		patience:int=10,
-# 		min_delta:float=1e-4,
-# 		cumulative_delta:float=5e-3,
-# 		minimum_epochs:int=20,
-# 		TOP_K_VALUES:List[int]=[1, 5, 10, 15, 20],
-# 	):
-# 	early_stopping = EarlyStopping(
-# 		patience=patience,									# Wait for 10 epochs without improvement before stopping
-# 		min_delta=min_delta,								# Consider an improvement only if the change is greater than 0.0001
-# 		cumulative_delta=cumulative_delta,	# Cumulative improvement over the window should be greater than 0.005
-# 		window_size=window_size,						# Consider the last 10 epochs for cumulative trend
-# 		mode='min',													# Minimize loss
-# 		min_epochs=minimum_epochs,					# Ensure at least 20 epochs of training
-# 		restore_best_weights=True						# Restore model weights to the best epoch
-# 	)
-# 	try:
-# 		dataset_name = validation_loader.dataset.dataset.__class__.__name__ # CIFAR10, ImageNet, etc.
-# 	except AttributeError as e:
-# 		dataset_name = validation_loader.dataset.dataset_name # 
-# 	os.makedirs(results_dir, exist_ok=True)
-# 	mode = finetune.__name__
-# 	model_arch = model.name
-# 	model_name = model.__class__.__name__
-# 	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) | {type(device)} {device} [x{nw} cores]".center(160, "-"))
-# 	if torch.cuda.is_available():
-# 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
-
-# 	dropout_val = None
-# 	for name, module in model.named_modules():
-# 		# print(f"{name}: {type(module).__name__}")
-# 		if isinstance(module, torch.nn.Dropout):
-# 			# print(f"{name}.p: {module.p}")
-# 			dropout_val = module.p
-# 			break
-# 	if dropout_val is None:
-# 		dropout_val = 0.0  # Default to 0.0 if no Dropout layers are found (unlikely in your case)
-
 def finetune(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
@@ -727,15 +480,16 @@ def finetune(
 
 	# Unfreeze all layers for fine-tuning (optional: could freeze some layers if desired)
 	for name, param in model.named_parameters():
-			param.requires_grad = True
-	
+		param.requires_grad = True
+
+	get_parameters_info(model=model, mode=mode)
+
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
 		f"dropout_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
 	)
 	
-	# Initialize optimizer and scheduler
 	optimizer = AdamW(
 		params=[p for p in model.parameters() if p.requires_grad],
 		lr=learning_rate,
@@ -754,6 +508,7 @@ def finetune(
 	)
 
 	criterion = torch.nn.CrossEntropyLoss()
+
 	scaler = torch.amp.GradScaler(
 		device=device,
 		init_scale=2**16,
@@ -761,6 +516,7 @@ def finetune(
 		backoff_factor=0.5,
 		growth_interval=2000,
 	)
+
 	# Lists to store metrics
 	training_losses = []
 	img2txt_metrics_list = []
@@ -827,7 +583,7 @@ def finetune(
 		)
 		img2txt_metrics_list.append(img2txt_metrics)
 		txt2img_metrics_list.append(txt2img_metrics)
-		# torch.cuda.empty_cache()  # Free up GPU memory
+		torch.cuda.empty_cache()  # Free up GPU memory
 
 		# Early stopping
 		current_val_loss = metrics_per_epoch["val_loss"]
@@ -838,6 +594,7 @@ def finetune(
 			"scheduler_state_dict": scheduler.state_dict(),
 			"best_val_loss": best_val_loss,
 		}
+
 		if current_val_loss < best_val_loss - early_stopping.min_delta:
 			print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
 			best_val_loss = current_val_loss
@@ -845,6 +602,7 @@ def finetune(
 			torch.save(checkpoint, mdl_fpth)
 			best_img2txt_metrics = img2txt_metrics
 			best_txt2img_metrics = txt2img_metrics
+
 		if early_stopping.should_stop(current_val_loss, model, epoch):
 			print(f"\nEarly stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
 			final_metrics = evaluate_loss_and_accuracy(
@@ -854,15 +612,18 @@ def finetune(
 				device=device,
 				topK_values=TOP_K_VALUES,
 			)
+
 			final_img2txt, final_txt2img = evaluate_retrieval_performance(
 				model=model,
 				validation_loader=validation_loader,
 				device=device,
 				topK_values=TOP_K_VALUES,
 			)
+
 			metrics_per_epoch = final_metrics
 			img2txt_metrics = final_img2txt
 			txt2img_metrics = final_txt2img
+
 			if final_metrics["val_loss"] < best_val_loss:
 				best_val_loss = final_metrics["val_loss"]
 				checkpoint.update({"best_val_loss": best_val_loss})
@@ -873,18 +634,19 @@ def finetune(
 		print("-" * 170)
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(150, "-"))
 	
-	# Generate file paths with dropout value
 	file_base_name = (
 		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
 		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}"
 	)
+
 	losses_fpth = os.path.join(results_dir, f"{file_base_name}_losses.png")
 	val_acc_fpth = os.path.join(results_dir, f"{file_base_name}_top1_accuracy.png")
 	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png")
 	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_txt2img_topk_accuracy.png")
 	mrr_fpth = os.path.join(results_dir, f"{file_base_name}_mrr.png")
 	cs_fpth = os.path.join(results_dir, f"{file_base_name}_cos_sim.png")	
+
 	plot_loss_accuracy(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
@@ -972,18 +734,7 @@ def train(
 		param.requires_grad = True # Unfreeze all layers (train from scratch)
 		# print(f"{name} requires_grad: {param.requires_grad}")
 
-	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)	
-	total_params = sum(p.numel() for p in model.parameters())
-	trainable_percent = (trainable_params / total_params) * 100
-	frozen_percent = (frozen_params / total_params) * 100
-
-	print(
-		f"[Model Parameters Statictics] Total: {total_params:,} "
-		f"Trainable: {trainable_params:,} ({trainable_percent:.2f}%) "
-		f"Frozen: {frozen_params:,} ({frozen_percent:.2f}%)"
-		.center(160, " ")
-	)
+	get_parameters_info(model=model, mode=mode)
 
 	mdl_fpth = os.path.join(
 		results_dir,

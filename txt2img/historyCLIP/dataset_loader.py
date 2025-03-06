@@ -208,9 +208,9 @@ def get_dataloaders(
 	)
 
 	print(train_dataset)
-	print(f"image paths:\n{train_dataset.images[:10]}")
-	print("labels:", train_dataset.labels[:10])
-	print("label_int:", train_dataset.labels_int[:10])
+	# print(f"image paths:\n{train_dataset.images[:10]}")
+	# print("labels:", train_dataset.labels[:10])
+	# print("label_int:", train_dataset.labels_int[:10])
 
 	train_loader = DataLoader(
 		dataset=train_dataset,
@@ -231,9 +231,9 @@ def get_dataloaders(
 	)
 	
 	print(validation_dataset)
-	print(f"image paths:\n{validation_dataset.images[:10]}")
-	print("labels:", validation_dataset.labels[:10])
-	print("label_int:", validation_dataset.labels_int[:10])
+	# print(f"image paths:\n{validation_dataset.images[:10]}")
+	# print("labels:", validation_dataset.labels[:10])
+	# print("label_int:", validation_dataset.labels_int[:10])
 	val_loader = DataLoader(
 		dataset=validation_dataset,
 		batch_size=batch_size,

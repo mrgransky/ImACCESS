@@ -599,12 +599,14 @@ def finetune(
 		min_epochs=minimum_epochs,					# Ensure at least 20 epochs of training
 		restore_best_weights=True						# Restore model weights to the best epoch
 	)
+
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__ # CIFAR10, ImageNet, etc.
-	except AttributeError as e:
+	except:
 		dataset_name = validation_loader.dataset.dataset_name # 
+
 	os.makedirs(results_dir, exist_ok=True)
-	mode = "train"
+	mode = finetune.__name__
 	model_arch = model.name
 	model_name = model.__class__.__name__
 	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) | {type(device)} {device} [x{nw} cores]".center(160, "-"))
@@ -621,9 +623,6 @@ def finetune(
 	if dropout_val is None:
 		dropout_val = 0.0  # Default to 0.0 if no Dropout layers are found (unlikely in your case)
 
-
-
-
 	total_layers = count_clip_layers(model)
 	vis_nblocks, txt_nblocks = get_num_vit_blocks(model)
 	print(f"[Transformer Blocks] Vision: {vis_nblocks} | Text: {txt_nblocks}")
@@ -633,10 +632,7 @@ def finetune(
 	print(f"[Layer Groups] Visual: {total_v_layers} | Text: {total_t_layers}")
 	freeze_schedule = get_progressive_freeze_schedule(layer_groups) # progressive freezing based on validation loss plateau
 	print(f"Freeze Schedule[{len(freeze_schedule)}]:\n{json.dumps(freeze_schedule, indent=2)}")
-	mdl_fpth = os.path.join(
-		results_dir,
-		f"{dataset_name}_mode_{mode}_{re.sub('/', '', model_name)}_clip.pth"
-	)
+	mdl_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth")
 	criterion = torch.nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(
 		device=device,

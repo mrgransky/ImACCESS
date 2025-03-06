@@ -37,6 +37,19 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
+def get_parameters_info(model, mode):
+	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)
+	total_params = sum(p.numel() for p in model.parameters())
+	trainable_percent = (trainable_params / total_params) * 100
+	frozen_percent = (frozen_params / total_params) * 100
+	print(
+		f"[{model.__class__.__name__} {model.name} Parameters Statistics] Total: {total_params:,} "
+		f"{mode.capitalize()}-able: {trainable_params:,} ({trainable_percent:.2f}%) "
+		f"Frozen: {frozen_params:,} ({frozen_percent:.2f}%)"
+		.center(160, " ")
+	)
+
 def print_loader_info(loader, batch_size):
 	samples_per_batch = len(loader.dataset) // batch_size
 	last_batch_size = len(loader.dataset) % batch_size
@@ -54,7 +67,7 @@ def print_loader_info(loader, batch_size):
 		f"\n{loader.name} Loader:\n"
 		f"\tWrapped in {len(loader)} batches\n"
 		f"\tSamples per batch (total batches: {batch_size}): {samples_per_batch}\n"
-		f"\tLast batch size: {last_batch_size}\n" 
+		f"\tSamples in last batch: {last_batch_size}\n"
 		f"\tTotal samples: {len(loader.dataset)} (calculated: {total_samples_calc} = {samples_per_batch} x {batch_size} + {last_batch_size})\n"
 		f"\tUnique classes: {n_classes}\n"
 	)
