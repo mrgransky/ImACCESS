@@ -8,10 +8,10 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=5
-#SBATCH --mem=64G
+#SBATCH --mem=16G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=0-4
+#SBATCH --array=0-2
 #SBATCH --time=03-00:00:00
 ####SBATCH --array=0-4
 
@@ -41,15 +41,15 @@ DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
 EPOCHS=(50 50 150 150 150)
 MODES=(train finetune pretrain)
 MODEL_ARCHS=(
+	'ViT-B/32'
+	'ViT-B/16'
+	'ViT-L/14'
+	'ViT-L/14@336px'
 	'RN50'
 	'RN101'
 	'RN50x4'
 	'RN50x16'
 	'RN50x64'
-	'ViT-B/32'
-	'ViT-B/16'
-	'ViT-L/14'
-	'ViT-L/14@336px'
 )
 SAMPLINGS=("kfold_stratified" "stratified_random")
 DATASETS=(
@@ -80,7 +80,7 @@ for arch in "${MODEL_ARCHS[@]}"; do
 		--epochs ${EPOCHS[$SLURM_ARRAY_TASK_ID]} \
 		--num_workers $NUM_WORKERS \
 		--print_every 250 \
-		--batch_size 512 \
+		--batch_size 32 \
 		--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
 		--weight_decay ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]} \
 		--mode ${MODES[2]} \

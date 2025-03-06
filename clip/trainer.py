@@ -181,6 +181,7 @@ def evaluate_retrieval_performance(
 	except:
 		class_names = validation_loader.dataset.unique_labels
 	n_classes = len(class_names)
+	torch.cuda.empty_cache()  # Clear GPU memory cache
 	with torch.no_grad():
 		text_inputs = clip.tokenize(texts=class_names).to(device, non_blocking=True)
 		class_text_embeddings = model.encode_text(text_inputs)
@@ -228,6 +229,7 @@ def evaluate_retrieval_performance(
 		class_counts=torch.bincount(image_labels),  # Count number of occurrences of each value in array of non-negative ints.
 		max_k=None,  # No limit on K for Text-to-Image
 	)
+	
 	return image_to_text_metrics, text_to_image_metrics
 
 def get_retrieval_metrics(
