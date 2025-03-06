@@ -64,7 +64,6 @@ if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then
 	exit 1
 fi
 
-
 # Debugging output
 echo "SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
 echo "DATASET: ${DATASETS[$SLURM_ARRAY_TASK_ID]}"

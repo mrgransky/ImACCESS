@@ -55,6 +55,10 @@ def main():
 
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 
+	print(f">> Model Architecture: {args.model_architecture}...")
+	model_config = get_clip_config(model_name=args.model_architecture, dropout=0.1)
+	print(json.dumps(model_config, indent=4, ensure_ascii=False))
+
 	model, preprocess = clip.load(
 		name=args.model_architecture,
 		device=args.device, 
@@ -72,7 +76,8 @@ def main():
 		sampling=args.sampling,
 		batch_size=args.batch_size,
 		num_workers=args.num_workers,
-		preprocess=None,#preprocess,
+		input_resolution=model_config["image_resolution"],
+		# preprocess=preprocess,
 	)
 	print_loader_info(loader=train_loader, batch_size=args.batch_size)
 	print_loader_info(loader=validation_loader, batch_size=args.batch_size)

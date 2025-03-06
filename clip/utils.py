@@ -265,3 +265,139 @@ def set_seeds(seed:int=42, debug:bool=False):
 			torch.backends.cudnn.deterministic = True
 			torch.backends.cudnn.benchmark = False
 			torch.use_deterministic_algorithms(True, warn_only=True)
+
+def get_clip_config(model_name: str, dropout: float = 0.0) -> dict:
+    """
+    Returns the configuration dictionary for a specific CLIP model.
+
+    Args:
+        model_name (str): Name of the CLIP model (e.g., 'RN50', 'ViT-B/32').
+        dropout (float): Dropout rate for the model (default: 0.0).
+
+    Returns:
+        dict: Configuration dictionary for the specified model.
+    """
+    configs = {
+        "RN50": {
+            "embed_dim": 1024,
+            "image_resolution": 224,
+            "vision_layers": (3, 4, 6, 3),  # (stage1, stage2, stage3, stage4)
+            "vision_width": 64,
+            "vision_patch_size": None,
+            "context_length": 77,
+            "vocab_size": 49408,
+            "transformer_width": 512,
+            "transformer_heads": 8,
+            "transformer_layers": 12,
+            "dropout": dropout,
+        },
+        "RN101": {
+            "embed_dim": 1024,
+            "image_resolution": 224,
+            "vision_layers": (3, 4, 23, 3),
+            "vision_width": 64,
+            "vision_patch_size": None,
+            "context_length": 77,
+            "vocab_size": 49408,
+            "transformer_width": 512,
+            "transformer_heads": 8,
+            "transformer_layers": 12,
+            "dropout": dropout,
+        },
+        "RN50x4": {
+            "embed_dim": 640,
+            "image_resolution": 288,
+            "vision_layers": (3, 4, 6, 3),
+            "vision_width": 256,  # 4× width
+            "vision_patch_size": None,
+            "context_length": 77,
+            "vocab_size": 49408,
+            "transformer_width": 512,
+            "transformer_heads": 8,
+            "transformer_layers": 12,
+            "dropout": dropout,
+        },
+        "RN50x16": {
+            "embed_dim": 768,
+            "image_resolution": 384,
+            "vision_layers": (3, 4, 6, 3),
+            "vision_width": 1024,  # 16× width
+            "vision_patch_size": None,
+            "context_length": 77,
+            "vocab_size": 49408,
+            "transformer_width": 512,
+            "transformer_heads": 8,
+            "transformer_layers": 12,
+            "dropout": dropout,
+        },
+        "RN50x64": {
+            "embed_dim": 1024,
+            "image_resolution": 448,
+            "vision_layers": (3, 4, 6, 3),
+            "vision_width": 4096,  # 64× width
+            "vision_patch_size": None,
+            "context_length": 77,
+            "vocab_size": 49408,
+            "transformer_width": 512,
+            "transformer_heads": 8,
+            "transformer_layers": 12,
+            "dropout": dropout,
+        },
+        "ViT-B/32": {
+            "embed_dim": 512,
+            "image_resolution": 224,
+            "vision_layers": 12,  # transformer layers
+            "vision_width": 768,
+            "vision_patch_size": 32,
+            "context_length": 77,
+            "vocab_size": 49408,
+            "transformer_width": 512,
+            "transformer_heads": 8,
+            "transformer_layers": 12,
+            "dropout": dropout,
+        },
+        "ViT-B/16": {
+            "embed_dim": 512,
+            "image_resolution": 224,
+            "vision_layers": 12,
+            "vision_width": 768,
+            "vision_patch_size": 16,
+            "context_length": 77,
+            "vocab_size": 49408,
+            "transformer_width": 512,
+            "transformer_heads": 8,
+            "transformer_layers": 12,
+            "dropout": dropout,
+        },
+        "ViT-L/14": {
+            "embed_dim": 768,
+            "image_resolution": 224,
+            "vision_layers": 24,  # deeper transformer
+            "vision_width": 1024,
+            "vision_patch_size": 14,
+            "context_length": 77,
+            "vocab_size": 49408,
+            "transformer_width": 768,
+            "transformer_heads": 12,
+            "transformer_layers": 12,
+            "dropout": dropout,
+        },
+        "ViT-L/14@336px": {
+            "embed_dim": 768,
+            "image_resolution": 336,  # higher resolution variant
+            "vision_layers": 24,
+            "vision_width": 1024,
+            "vision_patch_size": 14,
+            "context_length": 77,
+            "vocab_size": 49408,
+            "transformer_width": 768,
+            "transformer_heads": 12,
+            "transformer_layers": 12,
+            "dropout": dropout,
+        }
+    }
+
+    if model_name not in configs:
+        raise ValueError(f"Model '{model_name}' not found. Available models: {list(configs.keys())}")
+
+    return configs[model_name]

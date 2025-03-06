@@ -172,6 +172,7 @@ def get_dataloaders(
 		sampling: str,
 		batch_size: int,
 		num_workers: int,
+		input_resolution: int,
 		preprocess=None,
 	)-> Tuple[DataLoader, DataLoader]:
 	dataset_name = os.path.basename(dataset_dir)
@@ -191,8 +192,8 @@ def get_dataloaders(
 			print(f"Could not load mean and std from {dataset_dir}. Using default values: mean={mean} std={std}")
 		preprocess = T.Compose(
 			[
-				T.Resize(224, interpolation=T.InterpolationMode.BICUBIC),
-				T.CenterCrop(224),
+				T.Resize(size=input_resolution, interpolation=T.InterpolationMode.BICUBIC, antialias=True),
+				T.CenterCrop(size=input_resolution),
 				_convert_image_to_rgb,
 				T.ToTensor(),
 				T.Normalize(mean=mean, std=std),
