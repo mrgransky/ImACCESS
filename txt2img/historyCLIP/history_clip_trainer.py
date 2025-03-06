@@ -65,6 +65,7 @@ def main():
 		jit=False, # training or finetuning => jit=False
 		random_weights=True if args.mode == 'train' else False, 
 		dropout=args.dropout,
+		download_root=get_model_directory(path=args.dataset_dir),
 	)
 	model = model.float() # Convert model parameters to FP32
 	model.name = args.model_architecture  # Custom attribute to store model name

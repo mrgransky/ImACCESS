@@ -114,6 +114,7 @@ def load(
 		preprocess : Callable[[PIL.Image], torch.Tensor]
 				A torchvision transform that converts a PIL image into a tensor that the returned model can take as its input.
 	"""
+
 	if random_weights:
 		print(f"Loading CLIP model: {name} from scratch with initialized random weights...")
 		model, preprocess = load_from_scratch(
@@ -124,7 +125,10 @@ def load(
 		return model, preprocess
 
 	if name in _MODELS:
-		model_path = _download(_MODELS[name], download_root or os.path.expanduser("~/.cache/clip"))
+		model_path = _download(
+			url=_MODELS[name], 
+			root=download_root or os.path.expanduser("~/.cache/clip")
+		)
 	elif os.path.isfile(name):
 		model_path = name
 	else:
@@ -195,30 +199,6 @@ def load(
 			patch_float(model.encode_text)
 			model.float()
 	return model, _transform(n_px=model.input_resolution.item())
-
-# def load_from_scratch(
-# 		name: str,
-# 		device: str, 
-# 		dropout: float,
-# 	):
-# 	# ViT-B/32 configuration (same as original CLIP)
-# 	vit_config = {
-# 		"embed_dim": 512,
-# 		"image_resolution": 224,
-# 		"vision_layers": 12,
-# 		"vision_width": 768,
-# 		"vision_patch_size": 32,
-# 		"context_length": 77,
-# 		"vocab_size": 49408,
-# 		"transformer_width": 512,
-# 		"transformer_heads": 8,
-# 		"transformer_layers": 12,
-# 		"dropout": dropout,
-# 	}
-# 	# Initialize model with random weights
-# 	model = build_model_from_config(**vit_config).to(device)
-# 	preprocess = _transform(n_px=vit_config["image_resolution"])
-# 	return model, preprocess
 
 def load_from_scratch(
 		name: str,

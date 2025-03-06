@@ -52,11 +52,11 @@ MODEL_ARCHS=(
 )
 SAMPLINGS=("kfold_stratified" "stratified_random")
 DATASETS=(
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
 if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then
@@ -79,7 +79,7 @@ for arch in "${MODEL_ARCHS[@]}"; do
 		--epochs ${EPOCHS[$SLURM_ARRAY_TASK_ID]} \
 		--num_workers $NUM_WORKERS \
 		--print_every 250 \
-		--batch_size 128 \
+		--batch_size 512 \
 		--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
 		--weight_decay ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]} \
 		--mode ${MODES[2]} \
