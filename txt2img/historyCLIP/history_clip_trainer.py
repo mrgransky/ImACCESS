@@ -56,7 +56,10 @@ def main():
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 
 	print(f">> Model Architecture: {args.model_architecture}...")
-	model_config = get_clip_config(model_name=args.model_architecture, dropout=0.1)
+	model_config = get_clip_config(
+		model_name=args.model_architecture,
+		dropout=args.dropout,
+	)
 	print(json.dumps(model_config, indent=4, ensure_ascii=False))
 
 	model, preprocess = clip.load(
