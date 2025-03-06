@@ -80,7 +80,7 @@ for arch in "${MODEL_ARCHS[@]}"; do
 		--epochs ${EPOCHS[$SLURM_ARRAY_TASK_ID]} \
 		--num_workers $NUM_WORKERS \
 		--print_every 250 \
-		--batch_size 32 \
+		--batch_size 64 \
 		--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
 		--weight_decay ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]} \
 		--mode ${MODES[2]} \
