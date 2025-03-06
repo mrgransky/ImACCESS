@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=5
-#SBATCH --mem=4G
+#SBATCH --mem=8G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=0-4
@@ -39,6 +39,17 @@ WEIGHT_DECAYS=(1e-2 1e-2 1e-2 1e-2 1e-2)
 DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
 EPOCHS=(50 50 150 150 150)
 MODES=(train finetune pretrain)
+MODEL_ARCHS=(
+	'RN50'
+	'RN101'
+	'RN50x4'
+	'RN50x16'
+	'RN50x64'
+	'ViT-B/32'
+	'ViT-B/16'
+	'ViT-L/14'
+	'ViT-L/14@336px'
+)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
@@ -53,6 +64,7 @@ if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then
 	exit 1
 fi
 
+
 # Debugging output
 echo "SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
 echo "DATASET: ${DATASETS[$SLURM_ARRAY_TASK_ID]}"
@@ -61,18 +73,22 @@ echo "INIT_LR: ${INIT_LRS[$SLURM_ARRAY_TASK_ID]}"
 echo "WEIGHT_DECAY: ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]}"
 echo "DROPOUT: ${DROPOUTS[$SLURM_ARRAY_TASK_ID]}"
 
-python -u history_clip_trainer.py \
-	--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
-	--epochs ${EPOCHS[$SLURM_ARRAY_TASK_ID]} \
-	--num_workers $NUM_WORKERS \
-	--print_every 250 \
-	--batch_size 128 \
-	--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
-	--weight_decay ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]} \
-	--mode ${MODES[2]} \
-	--sampling ${SAMPLINGS[1]} \
-	--dropout ${DROPOUTS[$SLURM_ARRAY_TASK_ID]} \
-	--model_architecture "ViT-B/32" \
+for arch in "${MODEL_ARCHS[@]}"; do
+	echo "Pretrained CLIP: $arch"
+	python -u history_clip_trainer.py \
+		--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
+		--epochs ${EPOCHS[$SLURM_ARRAY_TASK_ID]} \
+		--num_workers $NUM_WORKERS \
+		--print_every 250 \
+		--batch_size 128 \
+		--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
+		--weight_decay ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]} \
+		--mode ${MODES[2]} \
+		--sampling ${SAMPLINGS[1]} \
+		--dropout ${DROPOUTS[$SLURM_ARRAY_TASK_ID]} \
+		--model_architecture "$arch" \
+
+done
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
