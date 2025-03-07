@@ -941,7 +941,6 @@ def pretrain(
 	TOP_K_VALUES: List=[1, 3, 5],
 	):
 	model_name = model.__class__.__name__
-	# model_arch = model.name.replace("/","_")
 	model_arch = re.sub(r"[/@]", "_", model.name)
 
 	try:
