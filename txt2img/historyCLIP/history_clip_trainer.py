@@ -129,13 +129,6 @@ def main():
 			TOP_K_VALUES=args.topK_values,
 		)
 	elif args.mode == "pretrain":
-		# pretrain(
-		# 	model=model,
-		# 	validation_loader=validation_loader,
-		# 	results_dir=os.path.join(args.dataset_dir, "results"),
-		# 	device=args.device,
-		# 	TOP_K_VALUES=args.topK_values,
-		# )
 		all_img2txt_metrics = {}
 		all_txt2img_metrics = {}
 		available_models = clip.available_models()[::-1]#[:4]  # ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
@@ -149,11 +142,11 @@ def main():
 			print(json.dumps(model_config, indent=4, ensure_ascii=False))
 
 			model, preprocess = clip.load(
-					name=model_arch,
-					device=args.device,
-					random_weights=False,
-					download_root=get_model_directory(path=args.dataset_dir),
-					dropout=args.dropout,
+				name=model_arch,
+				device=args.device,
+				random_weights=False,
+				download_root=get_model_directory(path=args.dataset_dir),
+				dropout=args.dropout,
 			)
 			model = model.float()
 			model.name = model_arch  # Custom attribute to store model name

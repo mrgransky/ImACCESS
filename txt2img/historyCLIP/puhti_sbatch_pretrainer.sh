@@ -73,7 +73,6 @@ python -u history_clip_trainer.py \
 	--mode ${MODES[2]} \
 	--sampling ${SAMPLINGS[1]} \
 	--dropout ${DROPOUTS[$SLURM_ARRAY_TASK_ID]} \
-	--model_architecture "$arch" \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
