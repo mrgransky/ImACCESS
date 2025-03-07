@@ -1,3 +1,5 @@
+from tkinter import font
+from turtle import title
 from utils import *
 
 def plot_all_pretrain_metrics(
@@ -15,11 +17,11 @@ def plot_all_pretrain_metrics(
 	metrics = ["mP", "mAP", "Recall"]
 	modes = ["Image-to-Text", "Text-to-Image"]
 	models = list(img2txt_metrics_dict.keys())  # ['RN50', 'RN101', ..., 'ViT-L/14@336px']
-	colors = plt.cm.Set1.colors  # Use a distinct color for each of the 9 models
+	colors = plt.cm.tab10.colors  # Use a distinct color for each of the 9 models
 	markers = ['o', 's', '^', 'D', 'v', 'p', 'h', '*', 'H']  # 9 distinct markers
 	linestyles = ['-', '--', ':', '-.', '-', '--', ':', '-.', '-']  # Cycle through styles
-	fig, axes = plt.subplots(len(modes), len(metrics), figsize=(18, 10), constrained_layout=True)
-	fig.suptitle(f"{dataset_name} Pre-trained CLIP x{len(txt2img_metrics_dict)} models Retrieval Metrics", fontsize=16, fontweight='bold')
+	fig, axes = plt.subplots(len(modes), len(metrics), figsize=(18, 11), constrained_layout=True)
+	fig.suptitle(f"{dataset_name} Pre-trained CLIP x{len(txt2img_metrics_dict)} Vision Encoder Retrieval Metrics", fontsize=13, fontweight='bold')
 	for i, mode in enumerate(modes):
 			metrics_dict = img2txt_metrics_dict if mode == "Image-to-Text" else txt2img_metrics_dict
 			for j, metric in enumerate(metrics):
@@ -42,9 +44,9 @@ def plot_all_pretrain_metrics(
 									)
 									legend_handles.append(line)
 									legend_labels.append(model_name)
-					ax.set_xlabel('K', fontsize=12)
-					ax.set_ylabel(f'{metric}@K', fontsize=12)
-					ax.set_title(f'{mode} - {metric}@K', fontsize=14, fontweight='bold')
+					ax.set_xlabel('K', fontsize=10)
+					ax.set_ylabel(f'{metric}@K', fontsize=10)
+					ax.set_title(f'{mode} - {metric}@K', fontsize=11, fontweight="bold")
 					ax.grid(True, linestyle='--', alpha=0.7)
 					ax.set_xticks(topK_values)
 					ax.set_xlim(min(topK_values) - 1, max(topK_values) + 1)
@@ -53,22 +55,26 @@ def plot_all_pretrain_metrics(
 					if all_values:
 							min_val = min(all_values)
 							max_val = max(all_values)
-							padding = 0.02 * (max_val - min_val) if (max_val - min_val) > 0 else 0.02
-							ax.set_ylim(bottom=max(-0.01, min_val - padding), top=min(1.05, max_val + padding))
+							padding = 0.05 * (max_val - min_val) if (max_val - min_val) > 0 else 0.05
+							# ax.set_ylim(bottom=max(-0.01, min_val - padding), top=min(1.05, max_val + padding))
+							ax.set_ylim(bottom=0, top=max(1.01, max_val + padding))
 	# Add legend outside the subplots
 	fig.legend(
-			legend_handles,
-			legend_labels,
-			fontsize=8,
-			loc='upper center',
-			ncol=len(models) // 2 + len(models) % 2,  # Adjust columns based on number of models
-			bbox_to_anchor=(0.5, 0.02),
-			bbox_transform=fig.transFigure,
-			frameon=True,
-			shadow=True,
-			fancybox=True,
-			edgecolor='black',
-			facecolor='white',
+		legend_handles,
+		legend_labels,
+		title="Vision Encoder",
+		title_fontsize=11,
+		fontsize=11,
+		loc='upper center',
+		ncol=len(models) // 2 + len(models) % 2,  # Adjust columns based on number of models
+		bbox_to_anchor=(0.5, 0.02),
+		bbox_transform=fig.transFigure,
+		frameon=True,
+		framealpha=0.9,
+		shadow=True,
+		fancybox=True,
+		edgecolor='black',
+		facecolor='white',
 	)
 	plt.tight_layout(rect=[0, 0.05, 1, 0.95])
 	plt.savefig(fname, dpi=300, bbox_inches='tight')
