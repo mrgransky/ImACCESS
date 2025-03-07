@@ -348,7 +348,7 @@ def evaluate_loss_and_accuracy(
 	# Valid K values for Image-to-Text (limited by num_classes)
 	valid_img2txt_k_values = [K for K in topK_values if K <= num_classes]
 	if len(valid_img2txt_k_values) < len(topK_values):
-		print(f"Warning: Some K values ({set(topK_values) - set(valid_img2txt_k_values)}) exceed the number of classes ({num_classes}) for Image-to-Text. They will be ignored.")
+		print(f"<!> Warning: K values ({set(topK_values) - set(valid_img2txt_k_values)}) exceed the number of classes ({num_classes}) for Image-to-Text. => ignored.")
 	# Valid K values for Text-to-Image (no limit, use all topK_values)
 	valid_txt2img_k_values = topK_values
 	img2txt_topk_accuracy = {k: 0 for k in valid_img2txt_k_values}
@@ -941,7 +941,9 @@ def pretrain(
 	TOP_K_VALUES: List=[1, 3, 5],
 	):
 	model_name = model.__class__.__name__
-	model_arch = model.name.replace("/","_")
+	# model_arch = model.name.replace("/","_")
+	model_arch = re.sub(r"[/@]", "_", model.name)
+
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
 	except:
