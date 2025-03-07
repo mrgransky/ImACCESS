@@ -8,11 +8,11 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=5
-#SBATCH --mem=48G
+#SBATCH --mem=16G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=0-4
-#SBATCH --time=03-00:00:00
+#SBATCH --array=0-2
+#SBATCH --time=01-00:00:00
 ####SBATCH --array=0-4
 
 set -e
@@ -53,11 +53,11 @@ MODEL_ARCHS=(
 )
 SAMPLINGS=("kfold_stratified" "stratified_random")
 DATASETS=(
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
 )
 
 if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then

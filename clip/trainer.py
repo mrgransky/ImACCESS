@@ -1,6 +1,6 @@
 from utils import *
 from datasets_loader import get_dataloaders
-from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch
+from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics
 
 # train cifar100 from scratch:
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m train -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/cifar100_train.out &
@@ -975,6 +975,7 @@ def pretrain(
 		fname=retrieval_metrics_best_model_fpth,
 		best_model_name=f"Pretrained {model_name} {model_arch}",
 	)
+	return img2txt_metrics, txt2img_metrics
 
 @measure_execution_time
 def main():
@@ -1068,12 +1069,46 @@ def main():
 			TOP_K_VALUES=args.topK_values,
 		)
 	elif args.mode == "pretrain":
-		pretrain(
-			model=model,
-			validation_loader=validation_loader,
+		# pretrain(
+		# 	model=model,
+		# 	validation_loader=validation_loader,
+		# 	results_dir=os.path.join(args.dataset, "results"),
+		# 	device=args.device,
+		# 	TOP_K_VALUES=args.topK_values,
+		# )
+		#  Collect metrics for all available models
+		all_img2txt_metrics = {}
+		all_txt2img_metrics = {}
+		available_models = clip.available_models()  # ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
+		for model_arch in available_models:
+			print(f"Evaluating pre-trained model: {model_arch}")
+			model, preprocess = clip.load(
+					name=model_arch,
+					device=args.device,
+					random_weights=False,
+					dropout=args.dropout,
+			)
+			model = model.float()
+			model.name = model_arch  # Custom attribute to store model name
+			print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture on {args.device} device")
+			img2txt_metrics, txt2img_metrics = pretrain(
+					model=model,
+					validation_loader=validation_loader,
+					results_dir=os.path.join(args.dataset, "results"),
+					device=args.device,
+					TOP_K_VALUES=args.topK_values,
+			)
+			all_img2txt_metrics[model_arch] = img2txt_metrics
+			all_txt2img_metrics[model_arch] = txt2img_metrics
+			del model  # Clean up memory
+			torch.cuda.empty_cache()
+		# Pass all metrics to the new visualization function
+		plot_all_pretrain_metrics(
+			dataset_name=args.dataset,
+			img2txt_metrics_dict=all_img2txt_metrics,
+			txt2img_metrics_dict=all_txt2img_metrics,
 			results_dir=os.path.join(args.dataset, "results"),
-			device=args.device,
-			TOP_K_VALUES=args.topK_values,
+			topK_values=args.topK_values,
 		)
 	else:
 		raise ValueError("Invalid mode. Choose either 'finetune' or 'train'.")

@@ -76,7 +76,7 @@ def get_datasets(
 		# Create deterministic label mapping from all data
 		all_labels = sorted(set(df_train["label"].unique()) | set(df_val["label"].unique()))
 		label_dict = {label: idx for idx, label in enumerate(all_labels)}
-		print(json.dumps(label_dict, indent=2, ensure_ascii=False))
+		# print(json.dumps(label_dict, indent=2, ensure_ascii=False))
 
 		# Map labels to integers
 		df_train['label_int'] = df_train['label'].map(label_dict)

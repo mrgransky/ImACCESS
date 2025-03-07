@@ -8,7 +8,7 @@ sys.path.insert(0, CLIP_DIR)
 from utils import *
 from dataset_loader import get_dataloaders
 from trainer import finetune, train, pretrain
-from visualize import visualize_samples, visualize_
+from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics
 
 # run in local:
 # $ nohup python -u history_clip_trainer.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 128 -e 32 -lr 1e-5 -wd 1e-3 --print_every 200 -nw 12 -m train -a "ViT-B/32" > logs/europeana_train.out &
@@ -129,12 +129,64 @@ def main():
 			TOP_K_VALUES=args.topK_values,
 		)
 	elif args.mode == "pretrain":
-		pretrain(
-			model=model,
-			validation_loader=validation_loader,
+		# pretrain(
+		# 	model=model,
+		# 	validation_loader=validation_loader,
+		# 	results_dir=os.path.join(args.dataset_dir, "results"),
+		# 	device=args.device,
+		# 	TOP_K_VALUES=args.topK_values,
+		# )
+		all_img2txt_metrics = {}
+		all_txt2img_metrics = {}
+		available_models = clip.available_models()  # ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
+		for model_arch in available_models:
+			print(f"Evaluating pre-trained model: {model_arch}")
+			print(f">> CLIP Model Architecture: {args.model_architecture}...")
+			model_config = get_clip_config(
+				model_name=model_arch,
+				dropout=args.dropout,
+			)
+			print(json.dumps(model_config, indent=4, ensure_ascii=False))
+
+			model, preprocess = clip.load(
+					name=model_arch,
+					device=args.device,
+					random_weights=False,
+					download_root=get_model_directory(path=args.dataset_dir),
+					dropout=args.dropout,
+			)
+			model = model.float()
+			model.name = model_arch  # Custom attribute to store model name
+			print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture on {args.device} device")
+			train_loader, validation_loader = get_dataloaders(
+				dataset_dir=args.dataset_dir,
+				sampling=args.sampling,
+				batch_size=args.batch_size,
+				num_workers=args.num_workers,
+				input_resolution=model_config["image_resolution"],
+				# preprocess=preprocess,
+			)
+			print_loader_info(loader=train_loader, batch_size=args.batch_size)
+			print_loader_info(loader=validation_loader, batch_size=args.batch_size)
+
+			img2txt_metrics, txt2img_metrics = pretrain(
+					model=model,
+					validation_loader=validation_loader,
+					results_dir=os.path.join(args.dataset_dir, "results"),
+					device=args.device,
+					TOP_K_VALUES=args.topK_values,
+			)
+			all_img2txt_metrics[model_arch] = img2txt_metrics
+			all_txt2img_metrics[model_arch] = txt2img_metrics
+			del model  # Clean up memory
+			torch.cuda.empty_cache()
+		# Pass all metrics to the new visualization function
+		plot_all_pretrain_metrics(
+			dataset_name=os.path.basename(args.dataset_dir),
+			img2txt_metrics_dict=all_img2txt_metrics,
+			txt2img_metrics_dict=all_txt2img_metrics,
 			results_dir=os.path.join(args.dataset_dir, "results"),
-			device=args.device,
-			TOP_K_VALUES=args.topK_values,
+			topK_values=args.topK_values,
 		)
 	else:
 		raise ValueError("Invalid mode. Choose between 'pretrain', 'train', 'finetune'!")
