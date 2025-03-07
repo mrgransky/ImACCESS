@@ -63,17 +63,17 @@ echo "WEIGHT_DECAY: ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]}"
 echo "DROPOUT: ${DROPOUTS[$SLURM_ARRAY_TASK_ID]}"
 
 python -u history_clip_trainer.py \
-		--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
-		--epochs ${EPOCHS[$SLURM_ARRAY_TASK_ID]} \
-		--num_workers $NUM_WORKERS \
-		--print_every 250 \
-		--batch_size 64 \
-		--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
-		--weight_decay ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]} \
-		--mode ${MODES[2]} \
-		--sampling ${SAMPLINGS[1]} \
-		--dropout ${DROPOUTS[$SLURM_ARRAY_TASK_ID]} \
-		--model_architecture "$arch" \
+	--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
+	--epochs ${EPOCHS[$SLURM_ARRAY_TASK_ID]} \
+	--num_workers $NUM_WORKERS \
+	--print_every 250 \
+	--batch_size 64 \
+	--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
+	--weight_decay ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]} \
+	--mode ${MODES[2]} \
+	--sampling ${SAMPLINGS[1]} \
+	--dropout ${DROPOUTS[$SLURM_ARRAY_TASK_ID]} \
+	--model_architecture "$arch" \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
