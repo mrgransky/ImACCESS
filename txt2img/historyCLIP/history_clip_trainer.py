@@ -22,8 +22,8 @@ from visualize import visualize_samples, visualize_
 
 # finetune:
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 1e-4 -wd 1e-1 --print_every 200 -nw 50 --device "cuda:0" -m finetune -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/smu_ft.out &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 256 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:2" -m finetune -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/wwii_ft.out &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 1e-5 -wd 1e-3 --print_every 200 -nw 50 --device "cuda:2" -m finetune -a "ViT-B/32" -do 0.05 > /media/volume/ImACCESS/trash/europeana_ft.out &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 256 -e 100 -lr 5e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:2" -m finetune -a "ViT-B/32" -do 0.05 > /media/volume/ImACCESS/trash/wwii_ft.out &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 5e-5 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:2" -m finetune -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/europeana_ft.out &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 256 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m finetune -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/na_ft.out &
 
 @measure_execution_time
@@ -55,7 +55,7 @@ def main():
 
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 
-	print(f">> Model Architecture: {args.model_architecture}...")
+	print(f">> CLIP Model Architecture: {args.model_architecture}...")
 	model_config = get_clip_config(
 		model_name=args.model_architecture,
 		dropout=args.dropout,
@@ -73,7 +73,7 @@ def main():
 	model = model.float() # Convert model parameters to FP32
 	model.name = args.model_architecture  # Custom attribute to store model name
 	model_name = model.__class__.__name__
-	print(f"Model: {model_name} {model.name} | Device: {args.device}")
+	print(f"Loaded {model_name} {model.name} in {args.device}")
 	
 	train_loader, validation_loader = get_dataloaders(
 		dataset_dir=args.dataset_dir,
