@@ -40,17 +40,6 @@ WEIGHT_DECAYS=(1e-2 1e-2 1e-2 1e-2 1e-2)
 DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
 EPOCHS=(50 50 150 150 150)
 MODES=(train finetune pretrain)
-MODEL_ARCHS=(
-	'ViT-B/32'
-	'ViT-B/16'
-	'ViT-L/14'
-	'ViT-L/14@336px'
-	'RN50'
-	'RN101'
-	'RN50x4'
-	'RN50x16'
-	'RN50x64'
-)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
@@ -73,9 +62,7 @@ echo "INIT_LR: ${INIT_LRS[$SLURM_ARRAY_TASK_ID]}"
 echo "WEIGHT_DECAY: ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]}"
 echo "DROPOUT: ${DROPOUTS[$SLURM_ARRAY_TASK_ID]}"
 
-for arch in "${MODEL_ARCHS[@]}"; do
-	echo "Pretrained CLIP: $arch"
-	python -u history_clip_trainer.py \
+python -u history_clip_trainer.py \
 		--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
 		--epochs ${EPOCHS[$SLURM_ARRAY_TASK_ID]} \
 		--num_workers $NUM_WORKERS \
@@ -87,8 +74,6 @@ for arch in "${MODEL_ARCHS[@]}"; do
 		--sampling ${SAMPLINGS[1]} \
 		--dropout ${DROPOUTS[$SLURM_ARRAY_TASK_ID]} \
 		--model_architecture "$arch" \
-
-done
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
