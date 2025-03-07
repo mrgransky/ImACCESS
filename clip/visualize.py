@@ -4,7 +4,6 @@ def plot_all_pretrain_metrics(
 		dataset_name: str,
 		img2txt_metrics_dict: dict,
 		txt2img_metrics_dict: dict,
-		# results_dir: str,
 		topK_values: list,
 		fname: str = "all_pretrain_retrieval_metrics.png",
 	):
@@ -72,11 +71,9 @@ def plot_all_pretrain_metrics(
 			facecolor='white',
 	)
 	plt.tight_layout(rect=[0, 0.05, 1, 0.95])
-	# output_path = os.path.join(results_dir, fname)
-	# plt.savefig(output_path, dpi=300, bbox_inches='tight')
 	plt.savefig(fname, dpi=300, bbox_inches='tight')
 	plt.close(fig)
-	print(f"Saved combined pretrain metrics plot to {output_path}")
+	print(f"Saved combined pretrain metrics plot to {fname}")
 
 def visualize_samples(dataloader, dataset, num_samples=5):
 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(dataloader):
