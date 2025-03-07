@@ -4,7 +4,7 @@ def plot_all_pretrain_metrics(
 		dataset_name: str,
 		img2txt_metrics_dict: dict,
 		txt2img_metrics_dict: dict,
-		results_dir: str,
+		# results_dir: str,
 		topK_values: list,
 		fname: str = "all_pretrain_retrieval_metrics.png",
 	):
@@ -20,7 +20,7 @@ def plot_all_pretrain_metrics(
 	markers = ['o', 's', '^', 'D', 'v', 'p', 'h', '*', 'H']  # 9 distinct markers
 	linestyles = ['-', '--', ':', '-.', '-', '--', ':', '-.', '-']  # Cycle through styles
 	fig, axes = plt.subplots(len(modes), len(metrics), figsize=(18, 10), constrained_layout=True)
-	fig.suptitle(f"{dataset_name} Pre-trained CLIP Retrieval Metrics", fontsize=16, fontweight='bold')
+	fig.suptitle(f"{dataset_name} Pre-trained CLIP x{len(txt2img_metrics_dict)} models Retrieval Metrics", fontsize=16, fontweight='bold')
 	for i, mode in enumerate(modes):
 			metrics_dict = img2txt_metrics_dict if mode == "Image-to-Text" else txt2img_metrics_dict
 			for j, metric in enumerate(metrics):
@@ -72,8 +72,9 @@ def plot_all_pretrain_metrics(
 			facecolor='white',
 	)
 	plt.tight_layout(rect=[0, 0.05, 1, 0.95])
-	output_path = os.path.join(results_dir, fname)
-	plt.savefig(output_path, dpi=300, bbox_inches='tight')
+	# output_path = os.path.join(results_dir, fname)
+	# plt.savefig(output_path, dpi=300, bbox_inches='tight')
+	plt.savefig(fname, dpi=300, bbox_inches='tight')
 	plt.close(fig)
 	print(f"Saved combined pretrain metrics plot to {output_path}")
 

@@ -139,7 +139,7 @@ def main():
 		all_img2txt_metrics = {}
 		all_txt2img_metrics = {}
 		available_models = clip.available_models()  # ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
-		for model_arch in available_models:
+		for model_arch in available_models[:4]:
 			print(f"Evaluating pre-trained model: {model_arch}")
 			print(f">> CLIP Model Architecture: {args.model_architecture}...")
 			model_config = get_clip_config(
@@ -185,8 +185,9 @@ def main():
 			dataset_name=os.path.basename(args.dataset_dir),
 			img2txt_metrics_dict=all_img2txt_metrics,
 			txt2img_metrics_dict=all_txt2img_metrics,
-			results_dir=os.path.join(args.dataset_dir, "results"),
+			# results_dir=os.path.join(args.dataset_dir, "results"),
 			topK_values=args.topK_values,
+			fname=os.path.join(args.dataset_dir, "results", "all_pretrain_retrieval_metrics.png"),
 		)
 	else:
 		raise ValueError("Invalid mode. Choose between 'pretrain', 'train', 'finetune'!")
