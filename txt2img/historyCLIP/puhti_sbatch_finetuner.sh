@@ -33,7 +33,7 @@ echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
-INIT_LRS=(1e-5 1e-5 1e-5 1e-5 1e-5)
+INIT_LRS=(5e-4 1e-5 1e-5 1e-5 1e-5)
 WEIGHT_DECAYS=(1e-2 1e-2 1e-2 1e-2 1e-2)
 DROPOUTS=(0.1 0.1 0.1 0.1 0.1)
 EPOCHS=(60 60 150 150 150)
