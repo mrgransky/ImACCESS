@@ -19,7 +19,7 @@ print(args)
 
 # run in local laptop:
 # $ python data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31
-# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 12 --img_mean_std > logs/europeana_img_dl.out &
+# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > logs/europeana_img_dl.out &
 # $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > logs/europeana_img_dl.out &
 
 # run in Pouta:
@@ -31,7 +31,6 @@ HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 START_DATE = args.start_date
 END_DATE = args.end_date
-
 
 meaningless_words_fpth = os.path.join(parent_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
@@ -71,20 +70,20 @@ img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
 def get_europeana_date_or_year(doc_date, doc_year):
 	if doc_year is not None:
-			return doc_year
+		return doc_year
 	if doc_date is None:
-			return None
+		return None
 	# Regular expression patterns for exact date and year
 	date_pattern = re.compile(r'\d{4}-\d{2}-\d{2}')
 	year_pattern = re.compile(r'\b\d{4}\b')
 	for item in doc_date:
-			if 'def' in item:
-					date_match = date_pattern.search(item['def'])
-					if date_match:
-							return date_match.group(0)
-					year_match = year_pattern.search(item['def'])
-					if year_match:
-							return year_match.group(0)
+		if 'def' in item:
+			date_match = date_pattern.search(item['def'])
+			if date_match:
+				return date_match.group(0)
+			year_match = year_pattern.search(item['def'])
+			if year_match:
+				return year_match.group(0)
 	return None
 
 def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", label: str="world war"):
@@ -312,7 +311,7 @@ def main():
 		print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
 
 def test():
-	query = "bombing"
+	query = "naval commander"
 	params = {
 		'wskey': 'nLbaXYaiH',  # Your API key
 		'qf': [
@@ -321,9 +320,9 @@ def test():
 			# 'contentTier:"4"', # high quality images
 			'MIME_TYPE:image/jpeg',
 		],
-		'rows': 100,
+		'rows': 100, # does not work more than 100!
 		'query': query,
-		'reusability': 'open'
+		# 'reusability': 'open',
 	}
 	# Send a GET request to the API
 	response = requests.get(europeana_api_base_url, params=params)
@@ -339,17 +338,18 @@ def test():
 			print(tot_results, len(items))
 			# Output the extracted items (metadata and descriptions of the images)
 			# for item_idx, item in enumerate(items):
-			# 	print(f"item: {item_idx}")
-			# 	# print(list(item.keys()))
-			# 	print(item.get("id"))
-			# 	print(item.get("title"))
-			# 	print(item.get("edmIsShownAt"))
-			# 	print(item.get("edmIsShownBy"))
-			# 	print(item.get("edmTimespanLabel"))
-			# 	print(item.get("language"))
-			# 	print(item.get("dataProvider"))
-			# 	print(item.get("provider"))
-			# 	print("#"*100)
+				# print(f"idx: {item_idx}: {list(item.keys())}")
+				# print(item.get("id"), item.get("title"), item.get("type"))
+				# print(item.get("edmConceptLabel"))
+				# print(item.get("edmConceptPrefLabelLangAware"))
+				# print(item.get("title"))
+				# print(item.get("edmIsShownAt"))
+				# print(item.get("edmIsShownBy"))
+				# print(item.get("edmTimespanLabel"))
+				# print(item.get("language"))
+				# print(item.get("dataProvider"))
+				# print(item.get("provider"))
+				# print("#"*100)
 				# print(json.dumps(item, indent=2))  # Pretty-print the JSON data for each item
 			# You can process or save the 'items' data as needed
 		else:
@@ -361,4 +361,5 @@ if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
 	get_ip_info()
 	main()
+	# test()
 	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))

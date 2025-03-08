@@ -12,6 +12,18 @@ naval air station
 naval air base
 water based aircraft
 air force personnel
+air force commander
+special forces commander
+theater commander
+group commander
+division commander
+corps commander
+submarine commander
+naval commander
+army commander
+resistance commander
+intelligence commander
+logistics commander
 air force base
 air force station
 artillery tractor
@@ -198,7 +210,6 @@ airplane
 rationing
 Rocket
 prisoners
-commander
 Sergeant
 Admiral
 Ambulance

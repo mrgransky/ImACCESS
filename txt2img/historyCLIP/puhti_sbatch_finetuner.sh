@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=finetune_historyCLIP_dataset_x
+#SBATCH --job-name=finetune_with_dropout_historyCLIP_dataset_x
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -36,7 +36,7 @@ echo "${stars// /*}"
 NUM_WORKERS=$((SLURM_CPUS_PER_TASK - 1))  # reserve 1 CPU for the main process and other overheads
 INIT_LRS=(1e-5 1e-5 1e-5 1e-5 1e-5)
 WEIGHT_DECAYS=(1e-2 1e-2 1e-2 1e-2 1e-2)
-DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
+DROPOUTS=(0.1 0.1 0.1 0.1 0.1)
 EPOCHS=(60 60 150 150 150)
 MODES=(train finetune pretrain)
 SAMPLINGS=("kfold_stratified" "stratified_random")
@@ -65,7 +65,7 @@ python -u history_clip_trainer.py \
 	--epochs ${EPOCHS[$SLURM_ARRAY_TASK_ID]} \
 	--num_workers $NUM_WORKERS \
 	--print_every 250 \
-	--batch_size 128 \
+	--batch_size 512 \
 	--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
 	--weight_decay ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]} \
 	--mode ${MODES[1]} \
