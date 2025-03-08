@@ -11,7 +11,6 @@ from misc.utils import *
 # run in Pouta:
 # $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
 # $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 40 --img_mean_std > /media/volume/ImACCESS/trash/wwii_data_collection.out &
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs > /media/volume/ImACCESS/trash/wwii_data_collection.out &
 
 parser = argparse.ArgumentParser(description="WWII Dataset")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
@@ -22,7 +21,7 @@ parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_si
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 
 args, unknown = parser.parse_known_args()
-print(args)
+print_args_table(args=args, parser=parser)
 
 meaningless_words_fpth = os.path.join(parent_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())

@@ -85,6 +85,18 @@ if USER!="alijanif":
 	sl_dict = enchant.Dict("sl")
 	sk_dict = enchant.Dict("sk")
 
+def print_args_table(args, parser):
+	args_dict = vars(args)
+	table_data = []
+	for key, value in args_dict.items():
+		action = parser._option_string_actions.get(f'--{key}') or parser._option_string_actions.get(f'-{key}')
+		if action and hasattr(action, 'type') and action.type:
+			arg_type = action.type.__name__
+		else:
+			arg_type = type(value).__name__
+		table_data.append([key, value, arg_type])
+	print(tabulate.tabulate(table_data, headers=['Argument', 'Value', 'Type'], tablefmt='orgtbl'))
+
 def set_seeds(seed:int=42, debug:bool=False):
 	random.seed(seed)
 	np.random.seed(seed)
@@ -446,96 +458,6 @@ def remove_misspelled_(documents: str="This is a sample sentence."):
 	cleaned_text = " ".join(cleaned_words)
 	# print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(100, " "))
 	return cleaned_text
-
-# def process_rgb_image(image_path: str, transform: T.Compose):
-# 	logging.info(f"Processing: {image_path}")
-# 	try:
-# 		with Image.open(image_path) as img:
-# 			img = img.convert('RGB') # Ensure the image is in RGB mode
-# 			tensor_image = transform(img)
-# 			pixel_count = tensor_image.shape[1] * tensor_image.shape[2]
-# 			# Compute sums incrementally to reduce memory usage
-# 			channel_sums = tensor_image.sum(dim=[1, 2])  # Sum per channel
-# 			channel_sums_sq = (tensor_image ** 2).sum(dim=[1, 2])  # Sum of squares per channel
-# 			del tensor_image  # Explicitly free memory
-# 			return channel_sums, channel_sums_sq, pixel_count
-# 	except Exception as e:
-# 		logging.error(f"Unexpected error for {image_path}: {e}")
-# 		return torch.zeros(3), torch.zeros(3), 0
-
-# def get_mean_std_rgb_img_multiprocessing(
-# 		source: Union[str, list],
-# 		num_workers: int,
-# 		batch_size: int,
-# 		img_rgb_mean_fpth: str,
-# 		img_rgb_std_fpth: str,
-# 	) -> Tuple[List[float], List[float]]:
-
-# 	# Ensure valid input type
-# 	if not isinstance(source, (str, list)):
-# 		raise TypeError(f"The 'source' argument is {type(source)}! It must be a string (directory path) or a list of image paths. Please provide a valid input.")
-		
-# 	# Determine input type and prepare image paths
-# 	if isinstance(source, str):
-# 		# Directory mode
-# 		image_dir = source
-# 		if not os.path.isdir(image_dir):
-# 			raise ValueError(f"The provided directory path '{image_dir}' does not exist.")
-# 		image_paths = [os.path.join(image_dir, f) for f in os.listdir(image_dir)]
-# 	else:
-# 		# Precomputed paths mode
-# 		image_paths = source
-# 	total_images = len(image_paths)
-# 	if total_images == 0:
-# 		raise ValueError("No images found in the provided source.")
-
-# 	# Adjust num_workers based on available memory and CPUs
-# 	available_memory = psutil.virtual_memory().available / (1024 ** 3)  # GB
-# 	num_workers = min(num_workers, os.cpu_count(), max(1, int(available_memory // 2)))  # Rough heuristic
-# 	batch_size = min(batch_size, total_images)  # Ensure batch_size <= total_images
-
-# 	print(f"Processing {total_images} images with {num_workers} workers and batch_size={batch_size}")
-# 	t0 = time.time()
-# 	sum_ = torch.zeros(3, dtype=torch.float64)
-# 	sum_of_squares = torch.zeros(3, dtype=torch.float64)
-# 	count = 0
-# 	transform = T.Compose([T.ToTensor(),])
-# 	with ProcessPoolExecutor(max_workers=num_workers) as executor:
-# 		futures = []
-# 		for i in range(0, len(image_paths), batch_size):
-# 			batch_paths = image_paths[i:i + batch_size]
-# 			# Submit tasks for the current batch
-# 			batch_args = [(path, transform) for path in batch_paths]
-# 			batch_futures = [executor.submit(process_rgb_image, arg[0], arg[1]) for arg in batch_args]
-# 			futures.extend(batch_futures)
-# 		for future in as_completed(futures):
-# 		# for future in tqdm(as_completed(futures), total=len(futures), desc="Processing"):
-# 			try:
-# 				result = future.result(timeout=10) # Set reasonable timeout to prevent indefinite waits
-# 				if result is not None:
-# 					partial_sum, partial_sum_of_squares, partial_count = result
-# 					if partial_count > 0: # Ensure that the partial results are valid
-# 						sum_ += partial_sum
-# 						sum_of_squares += partial_sum_of_squares
-# 						count += partial_count
-# 			except TimeoutError as te:
-# 				logging.error(f"Timeout error: {te}")
-# 				continue
-# 			except Exception as e:
-# 				logging.error(f"{e}")
-# 	if count == 0:
-# 		print("No valid images found. Please check the input directory.")
-# 		return [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]
-	
-# 	mean = sum_ / count
-# 	std = torch.sqrt((sum_of_squares / count) - (mean ** 2))
-	
-# 	img_rgb_mean = mean.tolist()
-# 	img_rgb_std = std.tolist()
-# 	logging.info(f"Elapsed_t: {time.time()-t0:.2f} sec")
-# 	save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
-# 	save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
-# 	return img_rgb_mean, img_rgb_std
 
 def process_rgb_image(image_path: str, transform: T.Compose):
 	# logging.info(f"Processing: {image_path}")

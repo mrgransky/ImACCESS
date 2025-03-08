@@ -15,7 +15,7 @@ parser.add_argument('--img_mean_std', action='store_true', help='calculate image
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
-print(args)
+print_args_table(args=args, parser=parser)
 
 # run in local laptop:
 # $ python data_collector.py -ddir $PWD --start_date 1933-01-01 --end_date 1933-01-02
@@ -34,8 +34,6 @@ print(args)
 # $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs --start_date 1930-01-01 --end_date 1955-12-31
 # $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1930-01-01 -edt 1955-12-31 -nw 40 --img_mean_std > /media/volume/ImACCESS/trash/na_dl.out &
 
-HOME: str = os.getenv('HOME') # echo $HOME
-USER: str = os.getenv('USER') # echo $USER
 na_api_base_url: str = "https://catalog.archives.gov/proxy/records/search"
 START_DATE = args.start_date
 END_DATE = args.end_date
@@ -47,8 +45,7 @@ with open(meaningless_words_fpth, 'r') as file_:
 	customized_meaningless_words=[line.strip().lower() for line in file_]
 STOPWORDS.extend(customized_meaningless_words)
 STOPWORDS = set(STOPWORDS)
-print(STOPWORDS, type(STOPWORDS))
-
+# print(STOPWORDS, type(STOPWORDS))
 dataset_name = "NATIONAL_ARCHIVE"
 useless_collection_terms = [
 	"History of Langley Field",
@@ -261,15 +258,7 @@ def main():
 		all_label_tags = [line.strip().lower() for line in file_]
 	print(type(all_label_tags), len(all_label_tags))
 
-	# # # return
-	# if USER=="ubuntu":
-	# 	all_label_tags = all_label_tags[:111]
-	# # elif USER=="farid": # local laptop
-	# # 	all_label_tags = all_label_tags[:101]
-	# else:
-	# 	print(f"considering all {len(all_label_tags)} labels...")
-
-	print(f"{len(all_label_tags)} lables are being processed for user: {USER}, please be paitient...")
+	print(f"{len(all_label_tags)} lables are being processed...")
 	labels_with_ZERO_result = list()
 	dfs = []
 	for qi, qv in enumerate(all_label_tags):

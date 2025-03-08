@@ -15,20 +15,16 @@ parser.add_argument('--img_mean_std', action='store_true', help='calculate image
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
-print(args)
+print_args_table(args=args, parser=parser)
 
 # run in local laptop:
 # $ python data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31
 # $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > logs/europeana_img_dl.out &
-# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > logs/europeana_img_dl.out &
 
 # run in Pouta:
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
 # $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 40 --img_mean_std > /media/volume/ImACCESS/trash/europeana_1900-1970.out &
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > /media/volume/ImACCESS/trash/europeana_1900-1970.out &
 
-HOME: str = os.getenv('HOME') # echo $HOME
-USER: str = os.getenv('USER') # echo $USER
 START_DATE = args.start_date
 END_DATE = args.end_date
 
@@ -39,12 +35,12 @@ with open(meaningless_words_fpth, 'r') as file_:
 	customized_meaningless_words=[line.strip().lower() for line in file_]
 STOPWORDS.extend(customized_meaningless_words)
 STOPWORDS = set(STOPWORDS)
-print(STOPWORDS, type(STOPWORDS))
+# print(STOPWORDS, type(STOPWORDS))
 dataset_name: str = "europeana".upper()
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
-# europeana_api_key: str = "plaction"
+europeana_api_key: str = "plaction"
 # europeana_api_key: str = "api2demo"
-europeana_api_key: str = "nLbaXYaiH"
+# europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
@@ -204,7 +200,7 @@ def main():
 	with open(os.path.join(parent_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 		all_label_tags = [line.strip().lower() for line in file_]
 	print(type(all_label_tags), len(all_label_tags))
-	print(f"{len(all_label_tags)} lables are being processed for user: {USER}, please be paitient...")
+	print(f"{len(all_label_tags)} lables are being processed...")
 	dfs = []
 	for qi, qv in enumerate(all_label_tags):
 		print(f"\nQ[{qi+1}/{len(all_label_tags)}]: {qv}")

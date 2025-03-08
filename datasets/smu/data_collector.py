@@ -11,7 +11,6 @@ from misc.utils import *
 
 # run in Pouta:
 # $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 50 --img_mean_std > /media/volume/ImACCESS/trash/smu_data_collection.out &
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 > /media/volume/ImACCESS/trash/smu_1900-1970.out &
 
 parser = argparse.ArgumentParser(description="SMU ARCHIVE data colletion")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
@@ -22,10 +21,7 @@ parser.add_argument('--batch_size', '-bs', type=int, default=512, help='batch_si
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 
 args, unknown = parser.parse_known_args()
-print(args)
-
-HOME: str = os.getenv('HOME') # echo $HOME
-USER: str = os.getenv('USER') # echo $USER
+print_args_table(args=args, parser=parser)
 
 SMU_BASE_URL:str = "https://digitalcollections.smu.edu/digital"
 dataset_name = "smu".upper()
