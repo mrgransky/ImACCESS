@@ -33,6 +33,7 @@ from tqdm import tqdm
 from datetime import timedelta
 import glob
 import psutil  # For memory usage monitoring
+import tabulate
 
 logging.basicConfig(level=logging.INFO)
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
