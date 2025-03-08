@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=40
-#SBATCH --mem=48G
+#SBATCH --mem=64G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=0-4
@@ -33,7 +33,6 @@ echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
-NUM_WORKERS=$((SLURM_CPUS_PER_TASK - 1))  # reserve 1 CPU for the main process and other overheads
 INIT_LRS=(1e-5 1e-5 1e-5 1e-5 1e-5)
 WEIGHT_DECAYS=(1e-2 1e-2 1e-2 1e-2 1e-2)
 DROPOUTS=(0.1 0.1 0.1 0.1 0.1)
@@ -63,7 +62,7 @@ echo "DROPOUT: ${DROPOUTS[$SLURM_ARRAY_TASK_ID]}"
 python -u history_clip_trainer.py \
 	--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
 	--epochs ${EPOCHS[$SLURM_ARRAY_TASK_ID]} \
-	--num_workers $NUM_WORKERS \
+	--num_workers $SLURM_CPUS_PER_TASK \
 	--print_every 250 \
 	--batch_size 512 \
 	--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
