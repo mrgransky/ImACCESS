@@ -12,7 +12,8 @@ from misc.utils import *
 # $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
 # $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 40 --img_mean_std > /media/volume/ImACCESS/trash/wwii_data_collection.out &
 
-parser = argparse.ArgumentParser(description="WWII Dataset")
+dataset_name = "WWII".upper()
+parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colletion")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', '-sdt', type=str, default="1939-09-01", help='Start Date')
 parser.add_argument('--end_date', '-edt', type=str, default="1945-09-02", help='End Date')
@@ -34,7 +35,6 @@ STOPWORDS = set(STOPWORDS)
 
 START_DATE = args.start_date
 END_DATE = args.end_date
-dataset_name = "WWII"
 
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")

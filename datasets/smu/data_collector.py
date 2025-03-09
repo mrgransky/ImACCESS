@@ -12,7 +12,8 @@ from misc.utils import *
 # run in Pouta:
 # $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 50 --img_mean_std > /media/volume/ImACCESS/trash/smu_data_collection.out &
 
-parser = argparse.ArgumentParser(description="SMU ARCHIVE data colletion")
+dataset_name = "smu".upper()
+parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colletion")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', '-sdt', type=str, default="1900-01-01", help='Dataset DIR')
 parser.add_argument('--end_date', '-edt', type=str, default="1970-12-31", help='Dataset DIR')
@@ -24,7 +25,6 @@ args, unknown = parser.parse_known_args()
 print_args_table(args=args, parser=parser)
 
 SMU_BASE_URL:str = "https://digitalcollections.smu.edu/digital"
-dataset_name = "smu".upper()
 CUSTOMIZED_COLLECTIONS: list = [
 	"apnd", "aaf", "outler", "ald", "alv", "han", "wsw", "lav", "bml", "other", "civ", "cooke", "pwl", "mbc", "eaa", "wlrd", "fjd", "gcp", "gcd", "white", "wlg", "kil", "jcc", "jhv", "mcs", "UKMeth", "mex", "ngc", "nam", "ptr", "rwy", "stn", "ryr", "rdoh", "tex", "bridhist", "haws", "wes", "wrl"
 ]

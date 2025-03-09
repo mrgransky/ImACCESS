@@ -422,10 +422,10 @@ def plot_year_distribution(
 	plt.ylabel('Frequency')
 	plt.ylim(0, max_freq * 1.15)  # Add some padding to the y-axis
 	plt.yticks(fontsize=9, rotation=90)
-	plt.xlim(start_year - 5, end_year + 5)
+	plt.xlim(start_year - 4, end_year + 4)
 	plt.legend(
 		loc='best',
-		fontsize=8,
+		fontsize=9,
 		frameon=True,
 		shadow=True,
 		fancybox=True,

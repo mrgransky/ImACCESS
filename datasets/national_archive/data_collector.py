@@ -5,7 +5,8 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 from misc.utils import *
 
-parser = argparse.ArgumentParser(description="U.S. National Archive Dataset")
+dataset_name = "NATIONAL_ARCHIVE".upper()
+parser = argparse.ArgumentParser(description=f"U.S. National Archive Dataset")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', '-sdt', type=str, default="1933-01-01", help='Start Date')
 parser.add_argument('--end_date', '-edt', type=str, default="1933-01-02", help='End Date')
@@ -46,7 +47,6 @@ with open(meaningless_words_fpth, 'r') as file_:
 STOPWORDS.extend(customized_meaningless_words)
 STOPWORDS = set(STOPWORDS)
 # print(STOPWORDS, type(STOPWORDS))
-dataset_name = "NATIONAL_ARCHIVE"
 useless_collection_terms = [
 	"History of Langley Field",
 	"Cartoon", 

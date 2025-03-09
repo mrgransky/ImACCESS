@@ -5,7 +5,8 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 from misc.utils import *
 
-parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
+dataset_name: str = "europeana".upper()
+parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colletion")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', '-sdt', type=str, default="1900-01-01", help='Dataset DIR')
 parser.add_argument('--end_date', '-edt', type=str, default="1970-12-31", help='Dataset DIR')
@@ -36,7 +37,6 @@ with open(meaningless_words_fpth, 'r') as file_:
 STOPWORDS.extend(customized_meaningless_words)
 STOPWORDS = set(STOPWORDS)
 # print(STOPWORDS, type(STOPWORDS))
-dataset_name: str = "europeana".upper()
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
 europeana_api_key: str = "plaction"
 # europeana_api_key: str = "api2demo"

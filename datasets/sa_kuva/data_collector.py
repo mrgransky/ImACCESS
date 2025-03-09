@@ -5,7 +5,8 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 from misc.utils import *
 
-parser = argparse.ArgumentParser(description="SA-kuva-arkisto")
+dataset_name = "SA_KUVA_WWII".upper()
+parser = argparse.ArgumentParser(description=f"{dataset_name} Dataset Collector")
 parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', type=str, default="1939-09-01", help='Start Date')
 parser.add_argument('--end_date', type=str, default="1945-09-02", help='End Date')
@@ -39,7 +40,6 @@ STOPWORDS.extend(customized_meaningless_words)
 STOPWORDS = set(STOPWORDS)
 print(STOPWORDS, type(STOPWORDS))
 
-dataset_name = "SA_KUVA_WWII"
 useless_collection_terms = [
 	"Cartoon", 
 	"Newsmap",
