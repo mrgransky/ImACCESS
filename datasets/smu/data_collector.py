@@ -250,7 +250,7 @@ def main():
 		nw=args.num_workers,
 	)
 
-	label_dirstribution_fname = os.path.join(OUTPUTs_DIRECTORY, f"label_distribution_{dataset_name}_{args.start_date}_{args.end_date}_nIMGs_{smu_df.shape[0]}.png")
+	label_dirstribution_fname = os.path.join(OUTPUTs_DIRECTORY, f"{dataset_name}_label_distribution_nIMGs_{smu_df.shape[0]}.png")
 	plot_label_distribution(
 		df=smu_df,
 		start_date=args.start_date,
@@ -275,14 +275,12 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	yr_distro_fpth = os.path.join(OUTPUTs_DIRECTORY, f"year_distribution_{dataset_name}_{args.start_date}_{args.end_date}_nIMGs_{smu_df.shape[0]}.png")
+	yr_distro_fpth = os.path.join(OUTPUTs_DIRECTORY, f"{dataset_name}_year_distribution_nIMGs_{smu_df.shape[0]}.png")
 	plot_year_distribution(
 		df=smu_df,
-		start_date=args.start_date,
-		end_date=args.end_date,
 		dname=dataset_name,
 		fpth=yr_distro_fpth,
-		BINs=50,
+		BINs=65,
 	)
 
 	if args.img_mean_std:

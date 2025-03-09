@@ -312,7 +312,7 @@ def main():
 	print(f"Elapsed_t: {time.time()-concat_st:.1f} sec".center(100, "-"))
 
 	na_df = get_synchronized_df_img(df=na_df_merged_raw, image_dir=IMAGE_DIR, nw=args.num_workers)
-	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"label_distribution_{dataset_name}_{args.start_date}_{args.end_date}_nIMGs_{na_df.shape[0]}.png")
+	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"{dataset_name}_label_distribution_nIMGs_{na_df.shape[0]}.png")
 	plot_label_distribution(
 		df=na_df,
 		start_date=args.start_date,
@@ -320,6 +320,7 @@ def main():
 		dname=dataset_name,
 		fpth=label_dirstribution_fname,
 	)
+	
 	na_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 	get_stratified_split(
 		df=na_df,
@@ -334,11 +335,11 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	yr_distro_fpth = os.path.join(OUTPUTs_DIR, f"year_distribution_{dataset_name}_{START_DATE}_{END_DATE}_nIMGs_{na_df.shape[0]}.png")
+	yr_distro_fpth = os.path.join(OUTPUTs_DIR, f"{dataset_name}_year_distribution_nIMGs_{na_df.shape[0]}.png")
 	plot_year_distribution(
 		df=na_df,
-		start_date=START_DATE,
-		end_date=END_DATE,
+		# start_date=START_DATE,
+		# end_date=END_DATE,
 		dname=dataset_name,
 		fpth=yr_distro_fpth,
 		BINs=50,

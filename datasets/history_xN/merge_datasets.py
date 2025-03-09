@@ -130,7 +130,14 @@ plt.savefig(
 	dpi=DPI,
 	bbox_inches='tight'
 )
+plt.close()
 
+plot_year_distribution(
+	df=merged_df,
+	dname=dataset_name,
+	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_year_distribution.png'),
+	BINs=50,
+)
 img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
 

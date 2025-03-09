@@ -8,7 +8,7 @@ from misc.utils import *
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', '-sdt', type=str, default="1900-01-01", help='Dataset DIR')
-parser.add_argument('--end_date', '-edt', type=str, default="1960-12-31", help='Dataset DIR')
+parser.add_argument('--end_date', '-edt', type=str, default="1970-12-31", help='Dataset DIR')
 parser.add_argument('--num_workers', '-nw', type=int, default=16, help='Number of CPUs')
 parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_size')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std') # if given => True (ex. --img_mean_std)
@@ -18,12 +18,12 @@ args, unknown = parser.parse_known_args()
 print_args_table(args=args, parser=parser)
 
 # run in local laptop:
-# $ python data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31
-# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std > logs/europeana_img_dl.out &
+# $ python data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs
+# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -nw 8 --img_mean_std > logs/europeana_img_dl.out &
 
 # run in Pouta:
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 40 --img_mean_std > /media/volume/ImACCESS/trash/europeana_1900-1970.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 40 --img_mean_std > /media/volume/ImACCESS/trash/europeana_dl.out &
 
 START_DATE = args.start_date
 END_DATE = args.end_date
@@ -258,7 +258,7 @@ def main():
 		nw=args.num_workers,
 	)
 
-	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"label_distribution_{dataset_name}_{START_DATE}_{END_DATE}_nIMGs_{europeana_df.shape[0]}.png")
+	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"{dataset_name}_label_distribution_{europeana_df.shape[0]}_x_{europeana_df.shape[1]}.png")
 	plot_label_distribution(
 		df=europeana_df,
 		start_date=args.start_date,
@@ -281,14 +281,12 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	yr_distro_fpth = os.path.join(OUTPUTs_DIR, f"label_year_distribution_{dataset_name}_{START_DATE}_{END_DATE}_nIMGs_{europeana_df.shape[0]}.png")
+	yr_distro_fpth = os.path.join(OUTPUTs_DIR, f"{dataset_name}_label_year_distribution_nIMGs_{europeana_df.shape[0]}.png")
 	plot_year_distribution(
 		df=europeana_df,
-		start_date=START_DATE,
-		end_date=END_DATE,
 		dname=dataset_name,
 		fpth=yr_distro_fpth,
-		BINs=50,
+		BINs=60,
 	)
 	
 	if args.img_mean_std:

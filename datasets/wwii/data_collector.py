@@ -593,7 +593,7 @@ def main():
 	# print(dfs[0])
 	wwii_df = pd.concat(dfs, ignore_index=True)
 
-	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"label_distribution_{dataset_name}_{args.start_date}_{args.end_date}_nIMGs_{wwii_df.shape[0]}.png")
+	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"{dataset_name}_label_distribution_{wwii_df.shape[0]}_x_{wwii_df.shape[1]}.png")
 	plot_label_distribution(
 		df=wwii_df,
 		start_date=args.start_date,

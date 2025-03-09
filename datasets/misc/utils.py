@@ -34,6 +34,8 @@ from datetime import timedelta
 import glob
 import psutil  # For memory usage monitoring
 import tabulate
+from scipy.stats import gaussian_kde, t
+from scipy import stats
 
 logging.basicConfig(level=logging.INFO)
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
@@ -178,7 +180,7 @@ def get_stratified_split(
 	plt.legend(loc='best', ncol=2, frameon=False, fontsize=8)
 	plt.tight_layout()
 	plt.savefig(
-		fname=os.path.join(result_dir, 'outputs', f'stratified_{dname}_sampling_label_distribution.png'),
+		fname=os.path.join(result_dir, 'outputs', f'{dname}_stratified_random_sampling_label_distribution.png'),
 		dpi=dpi,
 		bbox_inches='tight'
 	)	
@@ -253,55 +255,195 @@ def get_extension(url: str="www.example.com/some_/path/to/file.jpg"):
 	# return extension[1:].lower() # Remove the leading dot from the extension ['jpg', 'png', 'jpeg', 'txt', 'mov']
 	return extension.lstrip('.').lower() # Remove the leading dot from the extension ['jpg', 'png', 'jpeg', 'txt', 'mov']
 
-def plot_year_distribution(df, start_date, end_date, dname, fpth, BINs:int=50,):
-	# Extract the year from the 'doc_date' column
-	df['year'] = df['doc_date'].apply(lambda x: x[:4] if x is not None else None)
-	# Filter out None values
+def plot_year_distribution(
+		df: pd.DataFrame,
+		dname: str,
+		fpth: str,
+		BINs: int = 50,
+		FIGURE_SIZE: tuple = (17, 10),
+		DPI: int = 250,
+	):
+	# Convert 'doc_date' to datetime and handle invalid entries
+	df['doc_date'] = pd.to_datetime(df['doc_date'], errors='coerce')
+	
+	# Extract valid dates (non-NaN)
+	valid_dates = df['doc_date'].dropna()
+	
+	# Handle edge case: no valid dates
+	if valid_dates.empty:
+		plt.figure(figsize=FIGURE_SIZE)
+		plt.text(0.5, 0.5, "No valid dates available for plotting", ha='center', va='center', fontsize=12)
+		plt.title(f'{dname} Year Distribution - No Data')
+		plt.savefig(fname=fpth, dpi=DPI, bbox_inches='tight')
+		plt.close()
+		return
+	
+	# Compute start and end dates from data
+	start_date = valid_dates.min().strftime('%Y-%m-%d')
+	end_date = valid_dates.max().strftime('%Y-%m-%d')
+	start_year = valid_dates.min().year
+	end_year = valid_dates.max().year
+	print(f"start_year: {start_year} | end_year: {end_year}")
+	
+	# Extract the year from the 'doc_date' column (now as integer)
+	df['year'] = df['doc_date'].dt.year  # This will have NaN where doc_date is NaT
+	
+	# Filter out None values (though dt.year gives NaN, which .dropna() handles)
 	year_series = df['year'].dropna().astype(int)
-
-	# Find the years with the highest and lowest frequencies
-	max_year = year_series.value_counts().idxmax()
-	max_freq = year_series.value_counts().max()
-	min_year = year_series.value_counts().idxmin()
-	min_freq = year_series.value_counts().min()
-
+	# Find the years with the highest and lowest frequencies (handle ties)
+	year_counts = year_series.value_counts()
+	max_freq = year_counts.max()
+	min_freq = year_counts.min()
+	max_freq_years = year_counts[year_counts == max_freq].index.tolist()
+	min_freq_years = year_counts[year_counts == min_freq].index.tolist()
+	# Calculate mean, median, and standard deviation
+	mean_year = year_series.mean()
+	median_year = year_series.median()
+	std_year = year_series.std()
+	# Calculate 95% confidence interval for the mean
+	confidence_level = 0.95
+	n = len(year_series)
+	mean_conf_interval = stats.t.interval(confidence_level, df=n-1, loc=mean_year, scale=stats.sem(year_series))
 	# Get the overall shape of the distribution
 	distribution_skew = year_series.skew()
 	distribution_kurtosis = year_series.kurtosis()
-
-	print(type(year_series), year_series.shape, min(year_series), max(year_series))
-	plt.figure(figsize=(17, 9))
-
-	# Overlay important historical events only if they are within the start_date and end_date range
-	start_year = datetime.datetime.strptime(start_date, '%Y-%m-%d').year
-	end_year = datetime.datetime.strptime(end_date, '%Y-%m-%d').year
-
-	print(f"start_year: {start_year} | end_year: {end_year}")
+	skew_desc = "right-skewed" if distribution_skew > 0 else "left-skewed" if distribution_skew < 0 else "symmetric"
+	kurt_desc = "heavy-tailed" if distribution_kurtosis > 0 else "light-tailed" if distribution_kurtosis < 0 else "normal-tailed"
+	# Calculate percentiles
+	q25, q75 = year_series.quantile([0.25, 0.75])
+	# Plot KDE using scipy.stats.gaussian_kde
+	plt.figure(figsize=FIGURE_SIZE)
+	sns.histplot(
+		year_series,
+		bins=BINs,
+		color="skyblue",
+		kde=True,
+		edgecolor="white",
+		alpha=0.85,
+		linewidth=1.5,
+		label="Year Distribution Histogram"
+	)
+	# Create the KDE object and adjust bandwidth to match Seaborn's default behavior
+	kde = gaussian_kde(year_series, bw_method='scott')  # Use 'scott' or 'silverman', or a custom value
+	x_range = np.linspace(start_year, end_year, 300)
+	kde_values = kde(x_range)
+	bin_width = (end_year - start_year) / BINs  # Approximate bin width of the histogram
+	kde_scaled = kde_values * len(year_series) * bin_width  # Scale KDE to match frequency
+	plt.plot(
+		x_range,
+		kde_scaled,
+		color="grey", # dark gray
+		linewidth=2.0,
+		linestyle="-",
+		label="Kernel Density Estimate (KDE)",
+	)
 	world_war_1 = [1914, 1918]
 	world_war_2 = [1939, 1945]
-	
-	if start_year <= 1914 and 1918 <= end_year:
-		for year in world_war_1:
-			plt.axvline(x=year, color='r', linestyle='--', lw=1.8)
-	if start_year <= 1939 and 1945 <= end_year:
-		for year in world_war_2:
-			plt.axvline(x=year, color='g', linestyle='--', lw=1.8)
 
-	sns.histplot(year_series, bins=BINs, color="blue", kde=True, line_kws={'color': 'red'})
-	# plt.legend(loc='best')
-	plt.title(f'{dname} Year Distribution {start_date} - {end_date} Total IMGs: {df.shape[0]}')
+	# Add shaded regions for WWI and WWII (plot these first to ensure they are in the background)
+	if start_year <= world_war_1[0] and world_war_1[1] <= end_year:
+		plt.axvspan(world_war_1[0], world_war_1[1], color='#ff3a2d', alpha=0.2, label='World War One')
+
+	if start_year <= world_war_2[0] and world_war_2[1] <= end_year:
+		plt.axvspan(world_war_2[0], world_war_2[1], color='#9aff33', alpha=0.2, label='World War Two')
+
+	if start_year <= world_war_1[0] and world_war_1[1] <= end_year:
+		for year in world_war_1:
+			plt.axvline(x=year, color='r', linestyle='--', lw=2.5)
+		plt.text(
+			x=(world_war_1[0] + world_war_1[1]) / 2,  # float division for precise centering
+			y=max_freq * 1.03,  # Position at 95% of ymax for better visibility
+			s='WWI',
+			color='red',
+			fontsize=12,
+			fontweight="bold",
+			ha="center",  # horizontal alignment
+		)
+	
+	if start_year <= world_war_2[0] and world_war_2[1] <= end_year:
+		for year in world_war_2:
+			plt.axvline(x=year, color='g', linestyle='--', lw=2.5)
+		plt.text(
+			x=(world_war_2[0] + world_war_2[1]) / 2,  # float division for precise centering
+			y=max_freq * 1.03, # Position at 95% of ymax for better visibility
+			s='WWII',
+			color='green',
+			fontsize=12,
+			fontweight="bold",
+			ha="center",  # horizontal alignment
+		)
+	# Add visual representations of key statistics
+	plt.axvline(x=mean_year, color='navy', linestyle='-.', lw=1.5, label=f'Mean Year: {mean_year:.2f}')
+	plt.text(
+		x=mean_year-0.5, # Shift slightly to the left for better visibility
+		y=max_freq * 1.03,  # Position at 95% of ymax for better visibility
+		rotation=90,
+		s='Mean',
+		color='navy',
+		fontsize=12,
+		fontweight="bold",
+		va="center",  # vertical alignment
+		ha="center",  # horizontal alignment
+	)
+
+	plt.axvspan(mean_year - std_year, mean_year + std_year, color='yellow', alpha=0.08, label='Mean ± 1 SD')
+	# Add annotations for key statistics in a text box
+	valid_count = len(year_series)
+	stats_text = (
+			"Data Summary:\n"
+			f"  Valid dates analyzed: {valid_count} ({valid_count / df.shape[0] * 100:.1f}% of total)\n\n"
+			"Frequency Statistics:\n"
+			f"  Most frequent year(s): {', '.join(map(str, max_freq_years))} ({max_freq} images)\n"
+			f"  Least frequent year(s): {', '.join(map(str, min_freq_years))} ({min_freq} images)\n\n"
+			"Central Tendency [Year]:\n"
+			f"  Mean: {mean_year:.2f}\n"
+			f"  Mean 95% CI: [{mean_conf_interval[0]:.2f}, {mean_conf_interval[1]:.2f}]\n"
+			f"  Median: {median_year:.2f}\n"
+			f"  Standard deviation: {std_year:.2f}\n\n"
+			"Percentiles:\n"
+			f"  25th: {q25:.2f}\n"
+			f"  75th: {q75:.2f}\n\n"
+			"Distribution Shape:\n"
+			f"  Skewness: {distribution_skew:.2f} ({skew_desc})\n"
+			f"  Kurtosis: {distribution_kurtosis:.2f} ({kurt_desc})"
+	)
+	plt.text(
+		0.01, 
+		0.98,
+		stats_text,
+		transform=plt.gca().transAxes,
+		ha='left',
+		va='top',
+		fontsize=8,
+		bbox=dict(boxstyle='round,pad=0.5',facecolor='white', alpha=0.5, edgecolor='gray')
+	)
+	plt.title(f'{dname} Year Distribution {start_date} - {end_date} Total Images: {df.shape[0]}')
 	plt.xlabel('Year')
 	plt.ylabel('Frequency')
-	# Add annotations for key statistics
-	plt.text(0.01, 0.98, f'Most frequent year: {max_year} ({max_freq} images)', transform=plt.gca().transAxes, va='top')
-	plt.text(0.01, 0.94, f'Least frequent year: {min_year} ({min_freq} images)', transform=plt.gca().transAxes, va='top')
-	plt.text(0.01, 0.90, f'Distribution skewness: {distribution_skew:.2f}', transform=plt.gca().transAxes, va='top')
-	plt.text(0.01, 0.86, f'Distribution kurtosis: {distribution_kurtosis:.2f}', transform=plt.gca().transAxes, va='top')
-	# plt.grid(True)
+	plt.ylim(0, max_freq * 1.15)  # Add some padding to the y-axis
+	plt.yticks(fontsize=9, rotation=90)
+	plt.xlim(start_year - 5, end_year + 5)
+	plt.legend(
+		loc='best',
+		fontsize=8,
+		frameon=True,
+		shadow=True,
+		fancybox=True,
+		edgecolor='black',
+	)
 	plt.tight_layout()
-	plt.savefig(fpth)
+	plt.savefig(fname=fpth, dpi=DPI, bbox_inches='tight')
+	plt.close()
 
-def plot_label_distribution(df, start_date, end_date, dname, fpth, figure_size=(12, 8)):
+def plot_label_distribution(
+		df: pd.DataFrame,
+		start_date: str, 
+		end_date: str, 
+		dname: str,
+		fpth: str,
+		figure_size: tuple = (12, 8),
+		DPI: int = 250,
+	):
 	label_counts = df['label'].value_counts()
 	plt.figure(figsize=figure_size)
 	label_counts.plot(kind='bar', fontsize=9)
@@ -311,11 +453,7 @@ def plot_label_distribution(df, start_date, end_date, dname, fpth, figure_size=(
 	plt.xticks(fontsize=9)
 	plt.yticks(rotation=90, fontsize=9)
 	plt.tight_layout()
-	plt.savefig(
-		fname=fpth,
-		dpi=200,
-		bbox_inches='tight',
-	)
+	plt.savefig(fname=fpth, dpi=DPI, bbox_inches='tight',)
 
 def is_valid_date(date:str="1939-12-30", start_date: str="1900-01-01", end_date:str="1950-12-31"):
 	# Define the start and end dates
