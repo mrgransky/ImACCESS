@@ -370,7 +370,7 @@ def plot_year_distribution(
 			color='green',
 			fontsize=12,
 			fontweight="bold",
-			ha="center",  # horizontal alignment
+			ha="center", # horizontal alignment
 		)
 	# Add visual representations of key statistics
 	plt.axvline(x=mean_year, color='navy', linestyle='-.', lw=1.5, label=f'Mean Year: {mean_year:.2f}')
@@ -386,8 +386,7 @@ def plot_year_distribution(
 		ha="center",  # horizontal alignment
 	)
 
-	plt.axvspan(mean_year - std_year, mean_year + std_year, color='yellow', alpha=0.08, label='Mean ± 1 SD')
-	# Add annotations for key statistics in a text box
+	plt.axvspan(mean_year - std_year, mean_year + std_year, color='yellow', alpha=0.16, label='Mean ± 1 SD')
 	valid_count = len(year_series)
 	stats_text = (
 			"Data Summary:\n"
