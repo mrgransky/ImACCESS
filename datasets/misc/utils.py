@@ -17,9 +17,6 @@ import multiprocessing
 import shutil
 import logging
 from typing import List, Dict, Set, Tuple, Union
-from natsort import natsorted
-import matplotlib.pyplot as plt
-import seaborn as sns
 from bs4 import BeautifulSoup
 from multiprocessing import Pool
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor, TimeoutError
@@ -36,6 +33,10 @@ import psutil  # For memory usage monitoring
 import tabulate
 from scipy.stats import gaussian_kde, t
 from scipy import stats
+import matplotlib
+import matplotlib.pyplot as plt
+import seaborn as sns
+from natsort import natsorted
 
 logging.basicConfig(level=logging.INFO)
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
@@ -260,9 +261,12 @@ def plot_year_distribution(
 		dname: str,
 		fpth: str,
 		BINs: int = 50,
-		FIGURE_SIZE: tuple = (17, 9),
+		FIGURE_SIZE: tuple = (18, 9),
 		DPI: int = 250,
 	):
+	# matplotlib.rcParams['font.family'] = ['Source Han Sans TW', 'sans-serif']
+	# print(natsorted(matplotlib.font_manager.get_font_names()))
+	plt.rcParams["font.family"] = "DejaVu Math TeX Gyre"
 	# Convert 'doc_date' to datetime and handle invalid entries
 	df['doc_date'] = pd.to_datetime(df['doc_date'], errors='coerce')
 	
@@ -396,8 +400,7 @@ def plot_year_distribution(
 	plt.axvspan(mean_year - std_year, mean_year + std_year, color='yellow', alpha=0.16, label='Mean ± 1 SD')
 	valid_count = len(year_series)
 	stats_text = (
-			"Data Summary:\n"
-			f"  Valid dates analyzed: {valid_count} ({valid_count / df.shape[0] * 100:.1f}% of total)\n\n"
+			f"Samples with valid dates: {valid_count} (~{round(valid_count / df.shape[0] * 100)}%)\n\n"
 			"Frequency Statistics:\n"
 			f"  Most frequent year(s): {', '.join(map(str, max_freq_years))} ({max_freq} images)\n"
 			f"  Least frequent year(s): {', '.join(map(str, min_freq_years))} ({min_freq} images)\n\n"
@@ -420,9 +423,9 @@ def plot_year_distribution(
 		transform=plt.gca().transAxes,
 		ha='left',
 		va='top',
-		fontsize=9,
+		fontsize=8.5,
 		color='black',
-		bbox=dict(boxstyle='round,pad=0.5',facecolor='white', alpha=0.5, edgecolor='gray')
+		bbox=dict(boxstyle='round,pad=0.5',facecolor='white', alpha=0.6, edgecolor='gray')
 	)
 	plt.title(f'{dname} Year Distribution {start_date} - {end_date} Total Images: {df.shape[0]}')
 	plt.xlabel('Year')
@@ -432,8 +435,8 @@ def plot_year_distribution(
 	plt.xlim(start_year - 2, end_year + 2)
 	plt.legend(
 		loc='center left',
-		fontsize=9,
-		framealpha=0.6,
+		fontsize=10,
+		framealpha=0.95,
 		frameon=True,
 		shadow=True,
 		fancybox=True,

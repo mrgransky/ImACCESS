@@ -8,9 +8,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=9
-#SBATCH --mem=16G
+#SBATCH --mem=12G
 #SBATCH --partition=large
-#SBATCH --time=00-12:00:00
+#SBATCH --time=00-08:00:00
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
