@@ -38,7 +38,8 @@ python -u data_collector.py \
 	--start_date  $st_dt \
 	--end_date  $end_dt \
 	--num_worker $num_workers \
-	--batch_size 1024 \
+	--batch_size 128 \
+	--historgram_bin 60 \
 	--img_mean_std \
 
 done_txt="$user finished Slurm job: `date`"

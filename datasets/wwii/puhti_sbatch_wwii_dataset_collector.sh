@@ -35,8 +35,9 @@ num_workers=$((SLURM_CPUS_PER_TASK - 1))  # reserve 2 CPUs for the main process 
 
 python -u data_collector.py \
 	--dataset_dir $ddir \
-	--batch_size 512 \
+	--batch_size 256 \
 	--num_worker $num_workers \
+	--historgram_bin 60 \
 	--img_mean_std \
 
 done_txt="$user finished Slurm job: `date`"

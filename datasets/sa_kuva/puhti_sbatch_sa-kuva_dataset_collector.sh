@@ -36,6 +36,7 @@ python -u data_collector.py \
 	--dataset_dir $ddir \
 	--start_date  $st_dt \
 	--end_date  $end_dt \
+	--historgram_bin 60 \
 	--num_worker 39 \
 
 done_txt="$user finished Slurm job: `date`"
