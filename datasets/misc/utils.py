@@ -260,7 +260,7 @@ def plot_year_distribution(
 		dname: str,
 		fpth: str,
 		BINs: int = 50,
-		FIGURE_SIZE: tuple = (17, 10),
+		FIGURE_SIZE: tuple = (17, 9),
 		DPI: int = 250,
 	):
 	# Convert 'doc_date' to datetime and handle invalid entries
@@ -431,12 +431,12 @@ def plot_year_distribution(
 	plt.yticks(fontsize=9, rotation=90)
 	plt.xlim(start_year - 2, end_year + 2)
 	plt.legend(
-		loc='best',
-		fontsize=8.5,
+		loc='center left',
+		fontsize=9,
+		framealpha=0.6,
 		frameon=True,
 		shadow=True,
 		fancybox=True,
-		edgecolor='black',
 	)
 	plt.tight_layout()
 	plt.savefig(fname=fpth, dpi=DPI, bbox_inches='tight')
