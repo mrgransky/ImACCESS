@@ -266,7 +266,8 @@ def plot_year_distribution(
 	):
 	# matplotlib.rcParams['font.family'] = ['Source Han Sans TW', 'sans-serif']
 	# print(natsorted(matplotlib.font_manager.get_font_names()))
-	plt.rcParams["font.family"] = "DejaVu Math TeX Gyre"
+	# plt.rcParams["font.family"] = "DejaVu Math TeX Gyre"
+
 	# Convert 'doc_date' to datetime and handle invalid entries
 	df['doc_date'] = pd.to_datetime(df['doc_date'], errors='coerce')
 	
@@ -385,17 +386,17 @@ def plot_year_distribution(
 		)
 	# Add visual representations of key statistics
 	plt.axvline(x=mean_year, color='navy', linestyle='-.', lw=1.5, label=f'Mean Year: {mean_year:.2f}')
-	plt.text(
-		x=mean_year-0.5, # Shift slightly to the left for better visibility
-		y=max_freq * padding,
-		rotation=90,
-		s='Mean',
-		color='navy',
-		fontsize=12,
-		fontweight="bold",
-		va="center",  # vertical alignment
-		ha="center",  # horizontal alignment
-	)
+	# plt.text(
+	# 	x=mean_year-0.5, # Shift slightly to the left for better visibility
+	# 	y=max_freq * padding,
+	# 	rotation=90,
+	# 	s='Mean',
+	# 	color='navy',
+	# 	fontsize=12,
+	# 	fontweight="bold",
+	# 	va="center",  # vertical alignment
+	# 	ha="center",  # horizontal alignment
+	# )
 
 	plt.axvspan(mean_year - std_year, mean_year + std_year, color='yellow', alpha=0.16, label='Mean ± 1 SD')
 	valid_count = len(year_series)

@@ -16,6 +16,8 @@ from misc.utils import *
 USER = os.getenv("USER")
 FIGURE_SIZE = (13, 7)
 DPI = 250
+BINs = 60
+
 VAL_SPLIT_PCT = 0.35
 DATASET_DIRECTORY = {
 	"farid": "/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs",
@@ -136,16 +138,16 @@ plot_year_distribution(
 	df=merged_df,
 	dname=dataset_name,
 	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_year_distribution_{merged_df.shape[0]}_samples.png'),
-	BINs=50,
+	BINs=BINs,
 )
 img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
 
-mean, std = get_mean_std_rgb_img_multiprocessing(
-	source=all_image_paths,
-	num_workers=8,
-	batch_size=16,
-	img_rgb_mean_fpth=img_rgb_mean_fpth,
-	img_rgb_std_fpth=img_rgb_std_fpth,
-)
-print(f"Mean: {mean}, Std: {std}")
+# mean, std = get_mean_std_rgb_img_multiprocessing(
+# 	source=all_image_paths,
+# 	num_workers=8,
+# 	batch_size=16,
+# 	img_rgb_mean_fpth=img_rgb_mean_fpth,
+# 	img_rgb_std_fpth=img_rgb_std_fpth,
+# )
+# print(f"Mean: {mean}, Std: {std}")

@@ -11,6 +11,7 @@ parser.add_argument('--dataset_dir', type=str, required=True, help='Dataset DIR'
 parser.add_argument('--start_date', type=str, default="1939-09-01", help='Start Date')
 parser.add_argument('--end_date', type=str, default="1945-09-02", help='End Date')
 parser.add_argument('--num_workers', type=int, default=10, help='Number of CPUs')
+parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histogram Bins')
 parser.add_argument('--img_mean_std', type=bool, default=False, help='Image mean & std')
 
 # args = parser.parse_args()
@@ -271,7 +272,7 @@ def main():
 		end_date=END_DATE,
 		dname=dataset_name,
 		fpth=yr_distro_fpth,
-		BINs=50,
+		BINs=args.historgram_bin,
 	)
 	
 

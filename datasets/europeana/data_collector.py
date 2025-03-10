@@ -12,6 +12,7 @@ parser.add_argument('--start_date', '-sdt', type=str, default="1900-01-01", help
 parser.add_argument('--end_date', '-edt', type=str, default="1970-12-31", help='Dataset DIR')
 parser.add_argument('--num_workers', '-nw', type=int, default=16, help='Number of CPUs')
 parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_size')
+parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histogram Bins')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std') # if given => True (ex. --img_mean_std)
 
 # args = parser.parse_args()
@@ -286,7 +287,7 @@ def main():
 		df=europeana_df,
 		dname=dataset_name,
 		fpth=yr_distro_fpth,
-		BINs=50,
+		BINs=args.historgram_bin,
 	)
 	
 	if args.img_mean_std:

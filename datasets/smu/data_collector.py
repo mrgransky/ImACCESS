@@ -19,6 +19,7 @@ parser.add_argument('--start_date', '-sdt', type=str, default="1900-01-01", help
 parser.add_argument('--end_date', '-edt', type=str, default="1970-12-31", help='Dataset DIR')
 parser.add_argument('--num_workers', '-nw', type=int, default=18, help='Number of CPUs')
 parser.add_argument('--batch_size', '-bs', type=int, default=512, help='batch_size')
+parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histogram Bins')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 
 args, unknown = parser.parse_known_args()
@@ -280,7 +281,7 @@ def main():
 		df=smu_df,
 		dname=dataset_name,
 		fpth=yr_distro_fpth,
-		BINs=65,
+		BINs=args.historgram_bin,
 	)
 
 	if args.img_mean_std:

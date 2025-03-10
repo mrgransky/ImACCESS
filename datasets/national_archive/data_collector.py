@@ -12,6 +12,7 @@ parser.add_argument('--start_date', '-sdt', type=str, default="1933-01-01", help
 parser.add_argument('--end_date', '-edt', type=str, default="1933-01-02", help='End Date')
 parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
 parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_size')
+parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histogram Bins')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 
 # args = parser.parse_args()
@@ -339,7 +340,7 @@ def main():
 		df=na_df,
 		dname=dataset_name,
 		fpth=os.path.join(OUTPUTs_DIR, f"{dataset_name}_year_distribution_{na_df.shape[0]}_samples.png"),
-		BINs=50,
+		BINs=args.historgram_bin,
 	)
 
 	if args.img_mean_std:
