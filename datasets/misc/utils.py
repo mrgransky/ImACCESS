@@ -292,10 +292,16 @@ def plot_year_distribution(
 	year_series = df['year'].dropna().astype(int)
 	# Find the years with the highest and lowest frequencies (handle ties)
 	year_counts = year_series.value_counts()
+	max_hist_freq = max(year_counts.values)
+	min_hist_freq = min(year_counts.values)
+	print(f"max_hist_freq: {max_hist_freq} | min_hist_freq: {min_hist_freq}")
+	
+	# Get the years with the maximum and minimum frequencies
 	max_freq = year_counts.max()
 	min_freq = year_counts.min()
 	max_freq_years = year_counts[year_counts == max_freq].index.tolist()
 	min_freq_years = year_counts[year_counts == min_freq].index.tolist()
+	
 	# Calculate mean, median, and standard deviation
 	mean_year = year_series.mean()
 	median_year = year_series.median()
@@ -319,7 +325,7 @@ def plot_year_distribution(
 		color="skyblue",
 		kde=True,
 		edgecolor="white",
-		alpha=0.85,
+		alpha=0.95,
 		linewidth=1.5,
 		label="Year Distribution Histogram"
 	)
@@ -339,7 +345,8 @@ def plot_year_distribution(
 	)
 	world_war_1 = [1914, 1918]
 	world_war_2 = [1939, 1945]
-
+	padding = 1.25
+	max_padding = 1.3
 	# Add shaded regions for WWI and WWII (plot these first to ensure they are in the background)
 	if start_year <= world_war_1[0] and world_war_1[1] <= end_year:
 		plt.axvspan(world_war_1[0], world_war_1[1], color='#ff3a2d', alpha=0.2, label='World War One')
@@ -352,7 +359,7 @@ def plot_year_distribution(
 			plt.axvline(x=year, color='r', linestyle='--', lw=2.5)
 		plt.text(
 			x=(world_war_1[0] + world_war_1[1]) / 2,  # float division for precise centering
-			y=max_freq * 1.03,  # Position at 95% of ymax for better visibility
+			y=max_freq * padding,
 			s='WWI',
 			color='red',
 			fontsize=12,
@@ -365,7 +372,7 @@ def plot_year_distribution(
 			plt.axvline(x=year, color='g', linestyle='--', lw=2.5)
 		plt.text(
 			x=(world_war_2[0] + world_war_2[1]) / 2,  # float division for precise centering
-			y=max_freq * 1.03, # Position at 95% of ymax for better visibility
+			y=max_freq * padding,
 			s='WWII',
 			color='green',
 			fontsize=12,
@@ -376,7 +383,7 @@ def plot_year_distribution(
 	plt.axvline(x=mean_year, color='navy', linestyle='-.', lw=1.5, label=f'Mean Year: {mean_year:.2f}')
 	plt.text(
 		x=mean_year-0.5, # Shift slightly to the left for better visibility
-		y=max_freq * 1.03,  # Position at 95% of ymax for better visibility
+		y=max_freq * padding,
 		rotation=90,
 		s='Mean',
 		color='navy',
@@ -413,18 +420,19 @@ def plot_year_distribution(
 		transform=plt.gca().transAxes,
 		ha='left',
 		va='top',
-		fontsize=8,
+		fontsize=9,
+		color='black',
 		bbox=dict(boxstyle='round,pad=0.5',facecolor='white', alpha=0.5, edgecolor='gray')
 	)
 	plt.title(f'{dname} Year Distribution {start_date} - {end_date} Total Images: {df.shape[0]}')
 	plt.xlabel('Year')
 	plt.ylabel('Frequency')
-	plt.ylim(0, max_freq * 1.15)  # Add some padding to the y-axis
+	plt.ylim(0, max_freq * max_padding)  # Add some padding to the y-axis
 	plt.yticks(fontsize=9, rotation=90)
-	plt.xlim(start_year - 4, end_year + 4)
+	plt.xlim(start_year - 2, end_year + 2)
 	plt.legend(
 		loc='best',
-		fontsize=9,
+		fontsize=8.5,
 		frameon=True,
 		shadow=True,
 		fancybox=True,

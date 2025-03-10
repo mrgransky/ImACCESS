@@ -135,7 +135,7 @@ plt.close()
 plot_year_distribution(
 	df=merged_df,
 	dname=dataset_name,
-	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_year_distribution.png'),
+	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_year_distribution_{merged_df.shape[0]}_samples.png'),
 	BINs=50,
 )
 img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")

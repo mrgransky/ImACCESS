@@ -281,12 +281,12 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	yr_distro_fpth = os.path.join(OUTPUTs_DIR, f"{dataset_name}_label_year_distribution_nIMGs_{europeana_df.shape[0]}.png")
+	yr_distro_fpth = os.path.join(OUTPUTs_DIR, f"{dataset_name}_year_distribution_{europeana_df.shape[0]}_samples.png")
 	plot_year_distribution(
 		df=europeana_df,
 		dname=dataset_name,
 		fpth=yr_distro_fpth,
-		BINs=60,
+		BINs=50,
 	)
 	
 	if args.img_mean_std:
