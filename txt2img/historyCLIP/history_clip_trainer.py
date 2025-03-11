@@ -26,6 +26,9 @@ from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 5e-5 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:2" -m finetune -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/europeana_ft.out &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 256 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m finetune -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/na_ft.out &
 
+# pretrain:
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 > /media/volume/ImACCESS/trash/europeana_pretrained.out &
+
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
