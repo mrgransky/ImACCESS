@@ -7,10 +7,10 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=10
 #SBATCH --mem=24G
 #SBATCH --partition=interactive
-#SBATCH --time=03-00:00:00
+#SBATCH --time=00-12:00:00
 
 set -e
 set -u

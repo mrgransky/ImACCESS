@@ -131,7 +131,7 @@ def main():
 	elif args.mode == "pretrain":
 		all_img2txt_metrics = {}
 		all_txt2img_metrics = {}
-		available_models = clip.available_models()[::-1][:4]  # ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
+		available_models = clip.available_models()[::-1]#[:4]  # ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 		for model_arch in available_models:
 			print(f"Evaluating pre-trained model: {model_arch}")
 			print(f">> CLIP Model Architecture: {args.model_architecture}...")
