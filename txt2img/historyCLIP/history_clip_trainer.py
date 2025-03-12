@@ -21,10 +21,10 @@ from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 256 -e 100 -lr 1e-5 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:0" -m train -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/na_train.out &
 
 # finetune:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 5e-6 -wd 1e-1 --print_every 200 -nw 50 --device "cuda:0" -m finetune -a "ViT-B/32" -do 0.05 > /media/volume/ImACCESS/trash/smu_ft.out &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 5e-6 -wd 1e-1 --print_every 50 -nw 50 --device "cuda:0" -m finetune -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/smu_ft.out &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 256 -e 100 -lr 5e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:2" -m finetune -a "ViT-B/32" -do 0.05 > /media/volume/ImACCESS/trash/wwii_ft.out &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 5e-5 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:2" -m finetune -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/europeana_ft.out &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 256 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m finetune -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/na_ft.out &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 5e-5 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:3" -m finetune -a "ViT-B/32" -do 0.15 > /media/volume/ImACCESS/trash/europeana_ft.out &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 256 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:0" -m finetune -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/na_ft.out &
 
 # pretrain:
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 > /media/volume/ImACCESS/trash/europeana_pretrained.out &

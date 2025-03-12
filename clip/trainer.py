@@ -135,7 +135,7 @@ class EarlyStopping:
 		
 		trend = self.calculate_trend()
 		cumulative_improvement = abs(trend) if len(self.value_history) >= self.window_size else float('inf')
-		print(f"Trend: {trend:.4f} | Cumulative Improvement: {cumulative_improvement:.4f}")
+		print(f">> Trend: {trend:.7f} | Cumulative Improvement: {cumulative_improvement:.7f}")
 		
 		should_stop = False
 		if self.counter >= self.patience:

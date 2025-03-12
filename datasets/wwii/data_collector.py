@@ -619,13 +619,16 @@ def main():
 
 	if args.img_mean_std:
 		try:
-			img_rgb_mean, img_rgb_std = load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth) # RGB images
+			img_rgb_mean = load_pickle(fpath=img_rgb_mean_fpth)
+			img_rgb_std = load_pickle(fpath=img_rgb_std_fpth)
 		except Exception as e:
 			print(f"{e}")
 			img_rgb_mean, img_rgb_std = get_mean_std_rgb_img_multiprocessing(
-				dir=os.path.join(DATASET_DIRECTORY, "images"), 
+				source=os.path.join(DATASET_DIRECTORY, "images"), 
 				num_workers=args.num_workers,
 				batch_size=args.batch_size,
+				img_rgb_mean_fpth=img_rgb_mean_fpth,
+				img_rgb_std_fpth=img_rgb_std_fpth,
 			)
 			save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
 			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
