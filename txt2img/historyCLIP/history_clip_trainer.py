@@ -36,7 +36,7 @@ def main():
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=16, help='Number of CPUs [def: max cpus]')
 	parser.add_argument('--epochs', '-e', type=int, default=9, help='Number of epochs')
-	parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
+	parser.add_argument('--batch_size', '-bs', type=int, default=32, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--print_every', type=int, default=100, help='Print loss')
@@ -90,8 +90,6 @@ def main():
 	print_loader_info(loader=validation_loader, batch_size=args.batch_size)
 	# visualize_(dataloader=validation_loader, batches=4, num_samples=7)
 	# visualize_samples(validation_loader, validation_loader.dataset, num_samples=5)
-
-	# return
 	
 	if args.mode == "finetune":
 		finetune(

@@ -167,7 +167,7 @@ def evaluate_retrieval_performance(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
 		device: str = "cuda:0",
-		topK_values: List = [1, 3, 5],
+		topK_values: List[int] = [1, 3, 5],
 	):
 	dataset_name = validation_loader.name
 	model_name = model.__class__.__name__
