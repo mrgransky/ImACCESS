@@ -198,7 +198,8 @@ def load(
 			patch_float(model.encode_image)
 			patch_float(model.encode_text)
 			model.float()
-	return model, _transform(n_px=model.input_resolution.item())
+	preprocess = _transform(n_px=model.input_resolution.item())
+	return model, preprocess
 
 def load_from_scratch(
 		name: str,

@@ -1,5 +1,6 @@
 from utils import *
 from datasets_loader import get_dataloaders
+from model import get_lora_clip
 from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics
 
 # train cifar100 from scratch:
@@ -431,7 +432,170 @@ def evaluate_loss_and_accuracy(
 
 	return metrics
 
-def finetune(
+def lora_finetune(
+		model: torch.nn.Module,
+		train_loader: DataLoader,
+		validation_loader: DataLoader,
+		num_epochs: int,
+		nw: int,
+		print_every: int,
+		learning_rate: float,
+		weight_decay: float,
+		device: str,
+		results_dir: str,
+		lora_rank: int = 8,
+		lora_alpha: float = 16.0,
+		lora_dropout: float = 0.05,
+		window_size: int = 10,
+		patience: int = 10,
+		min_delta: float = 1e-4,
+		cumulative_delta: float = 5e-3,
+		minimum_epochs: int = 20,
+		TOP_K_VALUES: List[int] = [1, 5, 10, 15, 20],
+	):
+	# Early stopping setup (same as finetune())
+	early_stopping = EarlyStopping(
+		patience=patience,
+		min_delta=min_delta,
+		cumulative_delta=cumulative_delta,
+		window_size=window_size,
+		mode='min',
+		min_epochs=minimum_epochs,
+		restore_best_weights=True
+	)
+	
+	# Dataset and directory setup (same as finetune())
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	except AttributeError:
+		dataset_name = validation_loader.dataset.dataset_name
+	os.makedirs(results_dir, exist_ok=True)
+	mode = inspect.stack()[0].function
+	model_arch = model.name
+	model_name = model.__class__.__name__
+	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) | {type(device)} {device} [x{nw} cores]".center(160, "-"))
+
+	# for name, param in model.named_parameters():
+	# 	print(f"{name} requires_grad: {param.requires_grad}")
+
+	# Apply LoRA to the model
+	model = get_lora_clip(
+		clip_model=model,
+		lora_rank=lora_rank,
+		lora_alpha=lora_alpha,
+		lora_dropout=lora_dropout
+	)
+	model.to(device)
+	# Get dropout value (same as finetune())
+	dropout_val = lora_dropout  # Use LoRA dropout as the effective dropout
+	# Print parameter info
+	get_parameters_info(model=model, mode=mode)
+	# Model file path (adjusted for LoRA parameters)
+	mdl_fpth = os.path.join(
+			results_dir,
+			f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
+			f"lora_rank_{lora_rank}_alpha_{lora_alpha}_dropout_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
+	)
+	# Optimizer and scheduler (same as finetune(), but only LoRA params are trainable)
+	optimizer = AdamW(
+			params=[p for p in model.parameters() if p.requires_grad],
+			lr=learning_rate,
+			betas=(0.9, 0.98),
+			eps=1e-6,
+			weight_decay=weight_decay,
+	)
+	scheduler = lr_scheduler.OneCycleLR(
+			optimizer=optimizer,
+			max_lr=learning_rate,
+			steps_per_epoch=len(train_loader),
+			epochs=num_epochs,
+			pct_start=0.1,
+			anneal_strategy='cos',
+	)
+	criterion = torch.nn.CrossEntropyLoss()
+	scaler = torch.amp.GradScaler(device=device)
+	# Training loop (identical to finetune())
+	training_losses = []
+	img2txt_metrics_list = []
+	txt2img_metrics_list = []
+	metrics_for_all_epochs = []
+	train_start_time = time.time()
+	best_val_loss = float('inf')
+	best_img2txt_metrics = None
+	best_txt2img_metrics = None
+	for epoch in range(num_epochs):
+			torch.cuda.empty_cache()
+			model.train()
+			print(f"Epoch [{epoch + 1}/{num_epochs}]")
+			epoch_loss = 0.0
+			for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
+					optimizer.zero_grad()
+					images = images.to(device, non_blocking=True)
+					tokenized_labels = tokenized_labels.to(device, non_blocking=True)
+					
+					with torch.amp.autocast(device_type=device.type, enabled=True):
+							logits_per_image, logits_per_text = model(images, tokenized_labels)
+							ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
+							loss_img = criterion(logits_per_image, ground_truth)
+							loss_txt = criterion(logits_per_text, ground_truth)
+							total_loss = 0.5 * (loss_img + loss_txt)
+					scaler.scale(total_loss).backward()
+					torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+					scaler.step(optimizer)
+					scaler.update()
+					scheduler.step()
+					if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+							print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
+					epoch_loss += total_loss.item()
+			avg_training_loss = epoch_loss / len(train_loader)
+			training_losses.append(avg_training_loss)
+			# Evaluation (same as finetune())
+			metrics_per_epoch = evaluate_loss_and_accuracy(
+					model=model,
+					validation_loader=validation_loader,
+					criterion=criterion,
+					device=device,
+					topK_values=TOP_K_VALUES,
+			)
+			metrics_for_all_epochs.append(metrics_per_epoch)
+			
+			img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
+					model=model,
+					validation_loader=validation_loader,
+					device=device,
+					topK_values=TOP_K_VALUES,
+			)
+			img2txt_metrics_list.append(img2txt_metrics)
+			txt2img_metrics_list.append(txt2img_metrics)
+			# Early stopping and checkpointing (same as finetune())
+			current_val_loss = metrics_per_epoch["val_loss"]
+			checkpoint = {
+					"epoch": epoch,
+					"model_state_dict": model.state_dict(),
+					"optimizer_state_dict": optimizer.state_dict(),
+					"scheduler_state_dict": scheduler.state_dict(),
+					"best_val_loss": best_val_loss,
+			}
+			if current_val_loss < best_val_loss - early_stopping.min_delta:
+					print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
+					best_val_loss = current_val_loss
+					checkpoint.update({"best_val_loss": best_val_loss})
+					torch.save(checkpoint, mdl_fpth)
+					best_img2txt_metrics = img2txt_metrics
+					best_txt2img_metrics = txt2img_metrics
+			if early_stopping.should_stop(current_val_loss, model, epoch):
+					print(f"\nEarly stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
+					break
+	# Plotting and saving (same as finetune(), adjusted file names)
+	file_base_name = (
+			f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
+			f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
+			f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_rank_{lora_rank}"
+	)
+	# Add plotting calls here similar to finetune()...
+	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(150, "-"))
+
+def full_finetune(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
 		validation_loader: DataLoader,
@@ -448,7 +612,7 @@ def finetune(
 		cumulative_delta: float = 5e-3,
 		minimum_epochs: int = 20,
 		TOP_K_VALUES: List[int] = [1, 5, 10, 15, 20],
-):
+	):
 	early_stopping = EarlyStopping(
 			patience=patience,  # Wait for 10 epochs without improvement before stopping
 			min_delta=min_delta,  # Consider an improvement only if the change is greater than 0.0001
@@ -463,7 +627,7 @@ def finetune(
 	except AttributeError as e:
 		dataset_name = validation_loader.dataset.dataset_name
 	os.makedirs(results_dir, exist_ok=True)
-	mode = finetune.__name__
+	mode = inspect.stack()[0].function
 	model_arch = model.name
 	model_name = model.__class__.__name__
 
@@ -715,7 +879,7 @@ def train(
 	except AttributeError as e:
 		dataset_name = validation_loader.dataset.dataset_name # 
 	os.makedirs(results_dir, exist_ok=True)
-	mode = train.__name__
+	mode = inspect.stack()[0].function
 	model_arch = model.name
 	model_name = model.__class__.__name__
 	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) | {type(device)} {device} [x{nw} cores]".center(160, "-"))
@@ -990,6 +1154,10 @@ def main():
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar100', help='Choose dataset (CIFAR10/cifar100)')
 	parser.add_argument('--mode', '-m', type=str, choices=['pretrain', 'train', 'finetune'], default='pretrain', help='Choose mode (pretrain/train/finetune)')
+	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora'], default='full', help='Fine-tuning strategy (full/lora) when mode is finetune')
+	parser.add_argument('--lora_rank', type=int, default=8, help='LoRA rank (used if finetune_strategy=lora)')
+	parser.add_argument('--lora_alpha', type=float, default=16.0, help='LoRA alpha (used if finetune_strategy=lora)')
+	parser.add_argument('--lora_dropout', type=float, default=0.05, help='LoRA dropout (used if finetune_strategy=lora)')
 	parser.add_argument('--window_size', '-ws', type=int, default=5, help='Windows size for early stopping and progressive freezing')
 	parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
@@ -1031,24 +1199,47 @@ def main():
 
 
 	if args.mode == 'finetune':
-		finetune(
-			model=model,
-			train_loader=train_loader,
-			validation_loader=validation_loader,
-			num_epochs=args.epochs,
-			nw=args.num_workers,
-			print_every=args.print_every,
-			learning_rate=args.learning_rate,
-			weight_decay=args.weight_decay,
-			device=args.device,
-			results_dir=os.path.join(args.dataset, "results"),
-			window_size=args.window_size, 	# early stopping & progressive unfreezing
-			patience=10, 										# early stopping
-			min_delta=1e-4, 								# early stopping & progressive unfreezing
-			cumulative_delta=5e-3, 					# early stopping
-			minimum_epochs=20, 							# early stopping
-			TOP_K_VALUES=args.topK_values,
-		)
+		if args.finetune_strategy == 'full':
+			full_finetune(
+				model=model,
+				train_loader=train_loader,
+				validation_loader=validation_loader,
+				num_epochs=args.epochs,
+				nw=args.num_workers,
+				print_every=args.print_every,
+				learning_rate=args.learning_rate,
+				weight_decay=args.weight_decay,
+				device=args.device,
+				results_dir=os.path.join(args.dataset, "results"),
+				window_size=args.window_size, 	# early stopping & progressive unfreezing
+				patience=10, 										# early stopping
+				min_delta=1e-4, 								# early stopping & progressive unfreezing
+				cumulative_delta=5e-3, 					# early stopping
+				minimum_epochs=20, 							# early stopping
+				TOP_K_VALUES=args.topK_values,
+			)
+		elif args.finetune_strategy == 'lora':
+			lora_finetune(
+				model=model,
+				train_loader=train_loader,
+				validation_loader=validation_loader,
+				num_epochs=args.epochs,
+				nw=args.num_workers,
+				print_every=args.print_every,
+				learning_rate=args.learning_rate,
+				weight_decay=args.weight_decay,
+				device=args.device,
+				results_dir=os.path.join(args.dataset, "results"),
+				lora_rank=args.lora_rank,
+				lora_alpha=args.lora_alpha,
+				lora_dropout=args.lora_dropout,
+				window_size=args.window_size,
+				patience=args.patience,
+				min_delta=args.minimum_delta,
+				cumulative_delta=args.cumulative_delta,
+				minimum_epochs=args.minimum_epochs,
+				TOP_K_VALUES=args.topK_values,
+			)
 	elif args.mode == 'train':
 		train(
 			model=model,
