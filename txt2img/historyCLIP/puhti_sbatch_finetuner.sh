@@ -63,7 +63,7 @@ python -u history_clip_trainer.py \
 	--epochs ${EPOCHS[$SLURM_ARRAY_TASK_ID]} \
 	--num_workers $SLURM_CPUS_PER_TASK \
 	--print_every 250 \
-	--batch_size 512 \
+	--batch_size 256 \
 	--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
 	--weight_decay ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]} \
 	--mode ${MODES[1]} \
