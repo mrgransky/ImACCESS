@@ -586,14 +586,56 @@ def lora_finetune(
 			if early_stopping.should_stop(current_val_loss, model, epoch):
 					print(f"\nEarly stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
 					break
-	# Plotting and saving (same as finetune(), adjusted file names)
+
+	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(150, "-"))
+
 	file_base_name = (
-			f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
-			f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
-			f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_rank_{lora_rank}"
+		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
+		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_rank_{lora_rank}"
 	)
 	# Add plotting calls here similar to finetune()...
-	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(150, "-"))
+
+	losses_fpth = os.path.join(results_dir, f"{file_base_name}_losses.png")
+	val_acc_fpth = os.path.join(results_dir, f"{file_base_name}_top1_accuracy.png")
+	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png")
+	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_txt2img_topk_accuracy.png")
+	mrr_fpth = os.path.join(results_dir, f"{file_base_name}_mrr.png")
+	cs_fpth = os.path.join(results_dir, f"{file_base_name}_cos_sim.png")	
+
+	plot_loss_accuracy(
+		dataset_name=dataset_name,
+		train_losses=training_losses,
+		val_losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
+		val_acc_img2txt_list=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
+		val_acc_txt2img_list=[metrics["txt2img_acc"] for metrics in metrics_for_all_epochs],
+		img2txt_topk_accuracy_list=[metrics["img2txt_topk_acc"] for metrics in metrics_for_all_epochs],
+		txt2img_topk_accuracy_list=[metrics["txt2img_topk_acc"] for metrics in metrics_for_all_epochs],
+		mean_reciprocal_rank_list=[metrics["mean_reciprocal_rank"] for metrics in metrics_for_all_epochs],
+		cosine_similarity_list=[metrics["cosine_similarity"] for metrics in metrics_for_all_epochs],
+		losses_file_path=losses_fpth,
+		accuracy_file_path=val_acc_fpth,
+		img2txt_topk_accuracy_file_path=img2txt_topk_accuracy_fpth,
+		txt2img_topk_accuracy_file_path=txt2img_topk_accuracy_fpth,
+		mean_reciprocal_rank_file_path=mrr_fpth,
+		cosine_similarity_file_path=cs_fpth,
+	)
+
+	retrieval_metrics_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png")
+	plot_retrieval_metrics_per_epoch(
+		dataset_name=dataset_name,
+		image_to_text_metrics_list=img2txt_metrics_list,
+		text_to_image_metrics_list=txt2img_metrics_list,
+		fname=retrieval_metrics_fpth,
+	)
+	
+	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png")
+	plot_retrieval_metrics_best_model(
+		dataset_name=dataset_name,
+		image_to_text_metrics=best_img2txt_metrics,
+		text_to_image_metrics=best_txt2img_metrics,
+		fname=retrieval_metrics_best_model_fpth,
+	)
 
 def full_finetune(
 		model: torch.nn.Module,
