@@ -1,0 +1,53 @@
+<!-- {% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>ImACCESS | Home</title>
+	<link rel="website icon" type="png" href="https://i.pinimg.com/564x/a4/32/f8/a432f8ce6336a86ae4fc649c497e086b.jpg">
+	<link rel="stylesheet" href="{% static 'css/intro_page.css' %}">
+
+</head>
+
+<body>
+	<div class="main-page-container">
+		<div class="user-input-container">
+			<h2>Welcome to  {{ project_title|safe }}</h2>
+			<h3>How would you like to proceed?</h3>
+			<div class="buttons-container"></div>
+				<a href="{% url 'txt2img' %}" class="button">Text-to-Image</a>
+				<a href="{% url 'img2txt' %}" class="button">Image-to-Text</a>
+				<a href="{% url 'img2img' %}" class="button">Image-to-Image</a>
+			</div>
+		</div>
+	</div>
+</body>
+</html> -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>ImACCESS | Home</title>
+	<link rel="website icon" type="png" href="https://static.vecteezy.com/system/resources/previews/010/397/391/large_2x/monitoring-and-information-retrieval-color-icon-illustration-vector.jpg">
+	<link rel="stylesheet" href="{% static 'css/intro_page.css' %}">
+</head>
+
+<body style="background-image: url('{% static 'media/bg.png' %}');">
+	<div class="main-page-container">
+		<div class="user-input-container">
+			<h2>{{ project_title|safe }}</h2>
+			<h2>Mutimodal Retrieval System</h2>
+			<h3>Which <i>retrieval system</i> would you choose to proceed?</h3>
+			<div class="buttons-container"></div>
+			<a href="{% url 'txt2img' %}" class="button">Text-to-Image</a>
+			<a href="{% url 'img2txt' %}" class="button">Image-to-Text</a>
+			<a href="{% url 'img2img' %}" class="button">Image-to-Image</a>
+		</div>
+	</div>
+	<script src="{% static 'js/intro_page.js' %}"></script>
+</body>
+</html>

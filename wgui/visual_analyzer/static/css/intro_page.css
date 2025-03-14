@@ -1,0 +1,71 @@
+body {
+	display: flex;
+	flex-direction: column;
+	justify-content: center; /* Center the content vertically */
+	height: 100vh;
+	max-width: 1200px; /* Ensure max-width for consistency */
+	margin: 0 auto; /* Centered layout */
+	padding: 0;
+	font-family: 'Arial', sans-serif; /* Cleaner font */
+	background-color: #ffffff; /* Soft background color */
+	color: #333; /* Improve text contrast */
+	background-size: auto;
+	background-position: center; /* Center the background image */
+	background-repeat: no-repeat; /* Avoid repetition */
+}
+
+.main-page-container {
+	text-align: center;
+	background: rgba(226, 226, 226, 0.726); /* White background for contrast */
+	padding: 10px; /* More padding for better spacing */
+	box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Subtle shadow for depth */
+	border-radius: 8px; /* Rounded corners for a modern look */
+	margin: auto; /* Centered on the page */
+	opacity: 0; /* Initially hidden */
+	transform: translateY(50px); /* Start with a downward translation */
+	transition: opacity 0.8s ease-out, transform 0.8s ease-out; /* Smooth transition for opacity and transform */
+}
+
+.main-page-container.visible {
+	opacity: 1; /* Fade in */
+	transform: translateY(0); /* Slide up into place */
+}
+
+.user-input-container {
+	margin-top: 15px;
+	padding: 20px;
+	background-color: #e0e0e0f3;
+	border-radius: 8px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.user-input-container h2 {
+	color: #6200ff;
+	margin-top: 10px;
+	margin-bottom: 10px;
+}
+
+.user-input-container h3 {
+	font-size: 1.15rem;
+	margin-bottom: 20px;
+	color: #666;
+}
+
+.button {
+	display: inline-block;
+	padding: 10px 20px;
+	background-color: #b3b3b3;
+	color: rgb(7, 6, 6);
+	text-align: center;
+	text-decoration: none;
+	font-size: 15px;
+	margin: 4px 2px;
+	font-weight: bold;
+	cursor: pointer;
+	border: none;
+	border-radius: 4px;
+}
+
+.button:hover {
+	background-color: #45a049;
+}
