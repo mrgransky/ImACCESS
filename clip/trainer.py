@@ -475,8 +475,8 @@ def lora_finetune(
 	model_name = model.__class__.__name__
 	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) | {type(device)} {device} [x{nw} cores]".center(160, "-"))
 
-	# for name, param in model.named_parameters():
-	# 	print(f"{name} requires_grad: {param.requires_grad}")
+	for name, param in model.named_parameters():
+		print(f"{name} => {param.shape}")
 
 	# Apply LoRA to the model
 	model = get_lora_clip(
@@ -1147,7 +1147,7 @@ def main():
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
 	parser.add_argument('--epochs', '-e', type=int, default=12, help='Number of epochs')
-	parser.add_argument('--batch_size', '-bs', type=int, default=16, help='Batch size for training')
+	parser.add_argument('--batch_size', '-bs', type=int, default=8, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-4]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 1e-3]')
 	parser.add_argument('--print_every', type=int, default=250, help='Print every [def: 250]')
@@ -1157,7 +1157,7 @@ def main():
 	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora'], default='full', help='Fine-tuning strategy (full/lora) when mode is finetune')
 	parser.add_argument('--lora_rank', type=int, default=8, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', type=float, default=16.0, help='LoRA alpha (used if finetune_strategy=lora)')
-	parser.add_argument('--lora_dropout', type=float, default=0.05, help='LoRA dropout (used if finetune_strategy=lora)')
+	parser.add_argument('--lora_dropout', type=float, default=0.0, help='LoRA dropout (used if finetune_strategy=lora)')
 	parser.add_argument('--window_size', '-ws', type=int, default=5, help='Windows size for early stopping and progressive freezing')
 	parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
@@ -1180,7 +1180,6 @@ def main():
 		dropout=args.dropout,
 	)
 	print(json.dumps(model_config, indent=4, ensure_ascii=False))
-
 	model, preprocess = clip.load(
 		name=args.model_architecture,
 		device=args.device, 
@@ -1192,6 +1191,7 @@ def main():
 	model.name = args.model_architecture  # Custom attribute to store model name
 	print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture on {args.device} device")
 	# print(model.visual.conv1.weight[0, 0, 0])  # Random value (not zeros or pretrained values)
+	print(f"embed_dim: {model.text_projection.size(0)}, transformer_width: {model.text_projection.size(1)}")
 
 	train_loader, validation_loader = get_dataloaders(
 		dataset_name=args.dataset,

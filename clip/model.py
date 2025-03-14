@@ -8,337 +8,318 @@ import torch.nn.functional as F
 from torch import nn
 
 # def get_lora_clip(
-#     clip_model,
-#     lora_rank: int = 8,
-#     lora_alpha: float = 16.0,
-#     lora_dropout: float = 0.05,
-#     target_text_modules: List[str] = ["q_proj", "k_proj", "v_proj", "out_proj", "c_fc", "c_proj"],
-#     target_vision_modules: List[str] = ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"]
-# ):
-#     model = copy.deepcopy(clip_model)
-#     replaced_modules = []
-#     embed_dim = clip_model.text_projection.size(1)
+# 		clip_model: torch.nn.Module,
+# 		lora_rank: int,
+# 		lora_alpha: float,
+# 		lora_dropout: float,
+# 		target_text_modules: List[str] = ["in_proj", "out_proj", "c_fc", "c_proj"],
+# 		target_vision_modules: List[str] = ["in_proj", "out_proj", "fc1", "fc2"],
+# 	):
+# 	print(f"LoRA: rank={lora_rank}, alpha={lora_alpha}, dropout={lora_dropout}")
+# 	print(f"\ttarget text modules: {target_text_modules}")
+# 	print(f"\ttarget vision modules: {target_vision_modules}")
+# 	model = copy.deepcopy(clip_model)
+# 	replaced_modules = []
+# 	print(f"{model.name} text_projection: {model.text_projection.shape}")
+# 	# print(f"{model.name} visual.proj: {model.visual.proj.shape}")
+# 	# print(f"{model.name} visual.class_embedding: {model.visual.class_embedding.shape}")
+# 	# print(f"{model.name} visual.positional_embedding: {model.visual.positional_embedding.shape}")
 
-#     # Replace text encoder modules (same for all models)
-#     for name, module in model.transformer.named_modules():
-#         if any(target in name for target in target_text_modules) and isinstance(module, nn.Linear):
-#             parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
-#             parent = model.transformer if parent_name == "" else model.transformer.get_submodule(parent_name)
-#             lora_layer = LoRALinear(
-#                 in_features=module.in_features,
-#                 out_features=module.out_features,
-#                 rank=lora_rank,
-#                 alpha=lora_alpha,
-#                 dropout=lora_dropout,
-#                 bias=module.bias is not None
-#             )
-#             lora_layer.linear.weight.data.copy_(module.weight.data)
-#             if module.bias is not None:
-#                 lora_layer.linear.bias.data.copy_(module.bias.data)
-#             setattr(parent, child_name, lora_layer)
-#             replaced_modules.append(f"Text: {name}")
+# 	################################################ Encoders ###############################################
+# 	################ process raw inputs into features, need adaptation for feature extraction ################
 
-#     # Replace vision encoder modules (same for all models)
-#     for name, module in model.visual.named_modules():
-#         if any(target in name for target in target_vision_modules) and isinstance(module, nn.Linear):
-#             parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
-#             parent = model.visual if parent_name == "" else model.visual.get_submodule(parent_name)
-#             lora_layer = LoRALinear(
-#                 in_features=module.in_features,
-#                 out_features=module.out_features,
-#                 rank=lora_rank,
-#                 alpha=lora_alpha,
-#                 dropout=lora_dropout,
-#                 bias=module.bias is not None
-#             )
-#             lora_layer.linear.weight.data.copy_(module.weight.data)
-#             if module.bias is not None:
-#                 lora_layer.linear.bias.data.copy_(module.bias.data)
-#             setattr(parent, child_name, lora_layer)
-#             replaced_modules.append(f"Vision: {name}")
+# 	# Text encoder modules
+# 	for name, module in model.transformer.named_modules():
+# 		if any(target in name for target in target_text_modules) and isinstance(module, nn.Linear):
+# 			parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
+# 			parent = model.transformer if parent_name == "" else model.transformer.get_submodule(parent_name)
+# 			lora_layer = LoRALinear(
+# 				in_features=module.in_features,
+# 				out_features=module.out_features,
+# 				rank=lora_rank,
+# 				alpha=lora_alpha,
+# 				dropout=lora_dropout,
+# 				bias=module.bias is not None
+# 			)
+# 			lora_layer.linear.weight.data.copy_(module.weight.data)
+# 			if module.bias is not None:
+# 				lora_layer.linear.bias.data.copy_(module.bias.data)
+# 			setattr(parent, child_name, lora_layer)
+# 			replaced_modules.append(f"Text: {name}")
+	
+# 	# Vision encoder modules
+# 	for name, module in model.visual.named_modules():
+# 		if any(target in name for target in target_vision_modules) and isinstance(module, nn.Linear):
+# 			parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
+# 			parent = model.visual if parent_name == "" else model.visual.get_submodule(parent_name)
+# 			lora_layer = LoRALinear(
+# 				in_features=module.in_features,
+# 				out_features=module.out_features,
+# 				rank=lora_rank,
+# 				alpha=lora_alpha,
+# 				dropout=lora_dropout,
+# 				bias=module.bias is not None
+# 			)
+# 			lora_layer.linear.weight.data.copy_(module.weight.data)
+# 			if module.bias is not None:
+# 				lora_layer.linear.bias.data.copy_(module.bias.data)
+# 			setattr(parent, child_name, lora_layer)
+# 			replaced_modules.append(f"Vision: {name}")
+# 	################################################ Encoders ###############################################
+	
+# 	############################################## Projections ##############################################
+# 	################## align features into a shared space (need adaptation for alignment) ##################
 
-#     # Handle text_projection (same for all models)
-#     if hasattr(model, "text_projection") and isinstance(model.text_projection, nn.Parameter):
-#         in_dim = model.text_projection.size(1)
-#         out_dim = embed_dim
-#         lora_text_proj = LoRALinear(
-#             in_features=in_dim,
-#             out_features=out_dim,
-#             rank=lora_rank,
-#             alpha=lora_alpha,
-#             dropout=lora_dropout,
-#             bias=False
-#         )
-#         model.lora_text_projection = lora_text_proj
-#         model.lora_text_projection.linear.weight.data.copy_(model.text_projection.t().data)
-#         def encode_text(self, text):
-#             x = self.token_embedding(text).type(self.dtype)
-#             x = x + self.positional_embedding.type(self.dtype)
-#             x = x.permute(1, 0, 2)
-#             x = self.transformer(x)
-#             x = x.permute(1, 0, 2)
-#             x = self.ln_final(x)
-#             x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)]
-#             text_features = self.lora_text_projection(x)
-#             return text_features
-#         model.encode_text = encode_text.__get__(model, type(model))
+# 	# Text_projection
+# 	if hasattr(model, "text_projection") and isinstance(model.text_projection, nn.Parameter):
+# 		lora_text_proj = LoRALinear(
+# 			in_features=model.text_projection.size(0),# text_projection: torch.Size([512, 1024]) for RN50 => in_features = 512 for RN50, 768 for ViT-L/14,
+# 			out_features=model.text_projection.size(1),# RN50 text_projection: torch.Size([512, 1024]), out_features: output dimension of both projections must match embed_dim
+# 			rank=lora_rank,
+# 			alpha=lora_alpha,
+# 			dropout=lora_dropout,
+# 			bias=False
+# 		)
+# 		model.lora_text_projection = lora_text_proj
+# 		model.lora_text_projection.linear.weight.data.copy_(model.text_projection.t().data)
 
-#     # Handle visual projection
-#     if hasattr(model.visual, "proj") and isinstance(model.visual.proj, nn.Parameter):
-#         in_dim = model.visual.proj.size(0)  # vision_width or equivalent
-#         out_dim = embed_dim
-#         lora_visual_proj = LoRALinear(
-#             in_features=in_dim,
-#             out_features=out_dim,
-#             rank=lora_rank,
-#             alpha=lora_alpha,
-#             dropout=lora_dropout,
-#             bias=False
-#         )
-#         model.visual.lora_proj = lora_visual_proj
-#         model.visual.lora_proj.linear.weight.data.copy_(model.visual.proj.t().data)
+# 		# Override original text_projection with LoRA text_projection:
+# 		def encode_text(self, text):
+# 			x = self.token_embedding(text).type(self.dtype)
+# 			x = x + self.positional_embedding.type(self.dtype)
+# 			x = x.permute(1, 0, 2)
+# 			x = self.transformer(x)
+# 			x = x.permute(1, 0, 2)
+# 			x = self.ln_final(x)
+# 			x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)]
+# 			text_features = self.lora_text_projection(x)
+# 			return text_features
+# 		model.encode_text = encode_text.__get__(model, type(model))
+	
+# 	# Visual projection 
+# 	# only for ViT-[size]/[patch_size][@resolution]
+# 	# excluding RN[depth]x[width_multiplier] 
+# 	if hasattr(model.visual, "proj") and isinstance(model.visual.proj, nn.Parameter):
+# 		lora_visual_proj = LoRALinear(
+# 			in_features=model.visual.proj.size(0), # torch.Size([1024, 768]) for ViT-L/14, 2048 for RN50, 1024 for ViT-L/14
+# 			out_features=model.text_projection.size(1),# RN50 text_projection: torch.Size([512, 1024]), out_features: output dimension of both projections must match embed_dim
+# 			rank=lora_rank,
+# 			alpha=lora_alpha,
+# 			dropout=lora_dropout,
+# 			bias=False
+# 		)
+# 		model.visual.lora_proj = lora_visual_proj
+# 		model.visual.lora_proj.linear.weight.data.copy_(model.visual.proj.t().data)
 
-#         if isinstance(model.visual, VisionTransformer):
-#             def encode_image(self, image):
-#                 x = self.conv1(image)
-#                 x = x.reshape(x.shape[0], x.shape[1], -1)
-#                 x = x.permute(0, 2, 1)
-#                 x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)
-#                 x = x + self.positional_embedding.to(x.dtype)
-#                 x = self.ln_pre(x)
-#                 x = x.permute(1, 0, 2)
-#                 x = self.transformer(x)
-#                 x = x.permute(1, 0, 2)
-#                 x = self.ln_post(x[:, 0, :])
-#                 image_features = self.lora_proj(x)
-#                 image_features = self.dropout(image_features)
-#                 return image_features
-#         elif isinstance(model.visual, ModifiedResNet):
-#             def encode_image(self, image):
-#                 def stem(x):
-#                     x = self.relu1(self.bn1(self.conv1(x)))
-#                     x = self.relu2(self.bn2(self.conv2(x)))
-#                     x = self.relu3(self.bn3(self.conv3(x)))
-#                     x = self.avgpool(x)
-#                     return x
-#                 x = image.type(self.conv1.weight.dtype)
-#                 x = stem(x)
-#                 x = self.layer1(x)
-#                 x = self.layer2(x)
-#                 x = self.layer3(x)
-#                 x = self.layer4(x)  # [batch_size, width*32, H, W]
-#                 # Modify AttentionPool2d to get pre-projection features
-#                 x = x.flatten(start_dim=2).permute(2, 0, 1)  # [HW, batch_size, embed_dim]
-#                 x = torch.cat([x.mean(dim=0, keepdim=True), x], dim=0)
-#                 x = x + self.attnpool.positional_embedding[:, None, :].to(x.dtype)
-#                 x, _ = F.multi_head_attention_forward(
-#                     query=x[:1], key=x, value=x,
-#                     embed_dim_to_check=x.shape[-1],
-#                     num_heads=self.attnpool.num_heads,
-#                     q_proj_weight=self.attnpool.q_proj.weight,
-#                     k_proj_weight=self.attnpool.k_proj.weight,
-#                     v_proj_weight=self.attnpool.v_proj.weight,
-#                     in_proj_weight=None,
-#                     in_proj_bias=torch.cat([self.attnpool.q_proj.bias, self.attnpool.k_proj.bias, self.attnpool.v_proj.bias]),
-#                     bias_k=None,
-#                     bias_v=None,
-#                     add_zero_attn=False,
-#                     dropout_p=0,
-#                     out_proj_weight=torch.zeros_like(self.attnpool.c_proj.weight),  # Bypass original proj
-#                     out_proj_bias=self.attnpool.c_proj.bias,
-#                     use_separate_proj_weight=True,
-#                     training=self.training,
-#                     need_weights=False
-#                 )
-#                 x = x.squeeze(0)  # [batch_size, embed_dim]
-#                 image_features = self.lora_proj(x)
-#                 return image_features
-#         model.encode_image = encode_image.__get__(model.visual, type(model.visual))
+# 		# Check if it's a ViT model (has 'transformer' attribute) or RN model
+# 		if hasattr(model.visual, "transformer"):  # ViT
+# 			# Override VisionTransformer forward to use lora_proj
+# 			def vit_forward(self, x: torch.Tensor):
+# 				x = self.conv1(x)  # [*, width, grid, grid]
+# 				x = x.reshape(x.shape[0], x.shape[1], -1)  # [*, width, grid ** 2]
+# 				x = x.permute(0, 2, 1)  # [*, grid ** 2, width]
+# 				x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)
+# 				x = x + self.positional_embedding.to(x.dtype)
+# 				x = self.dropout(x)
+# 				x = self.ln_pre(x)
+# 				x = x.permute(1, 0, 2)  # NLD -> LND
+# 				x = self.transformer(x)
+# 				x = x.permute(1, 0, 2)  # LND -> NLD
+# 				x = self.ln_post(x[:, 0, :])  # [batch, width]
+# 				if hasattr(self, "lora_proj"):
+# 					x = self.lora_proj(x)  # Use LoRA instead of proj
+# 					x = self.dropout(x) # consitent dropout
+# 				else:
+# 					if self.proj is not None:
+# 						x = x @ self.proj
+# 						x = self.dropout(x)
+# 				return x
+# 			model.visual.forward = vit_forward.__get__(model.visual, type(model.visual))
+# 			replaced_modules.append("Vision: transformer.proj")
+# 		else: # RN
+# 			replaced_modules.append("Vision: attnpool.proj")
+# 			def encode_image(self, image):
+# 				x = self.visual(image.type(self.dtype))  # [batch, in_dim] e.g., [batch, 2048]
+# 				if hasattr(self.visual, "lora_proj"):
+# 					x = self.visual.lora_proj(x)  # [batch, embed_dim] e.g., [batch, 1024]
+# 				return x
+# 			model.encode_image = encode_image.__get__(model, type(model))
+# 	############################################## Projections ##############################################
+	
+# 	print("Applied LoRA to the following modules:")
+# 	for module in replaced_modules:
+# 		print(f" - {module}")
+	
+# 	# Freezes all original parameters, leaving only LoRA weights trainable [memory efficient]
+# 	for name, param in model.named_parameters():
+# 		if "lora_A" in name or "lora_B" in name:
+# 			param.requires_grad = True
+# 		else:
+# 			param.requires_grad = False
 
-#     print("Applied LoRA to the following modules:")
-#     for module in replaced_modules:
-#         print(f" - {module}")
-
-#     for name, param in model.named_parameters():
-#         if "lora_A" in name or "lora_B" in name:
-#             param.requires_grad = True
-#         else:
-#             param.requires_grad = False
-
-#     return model
+# 	return model
 
 def get_lora_clip(
-    clip_model: torch.nn.Module,
-    lora_rank: int,
-    lora_alpha: float,
-    lora_dropout: float,
-    target_text_modules: List[str] = ["q_proj", "k_proj", "v_proj", "out_proj", "c_fc", "c_proj"],
-    target_vision_modules: List[str] = ["q_proj", "k_proj", "v_proj", "out_proj", "fc1", "fc2"]
+		clip_model: torch.nn.Module,
+		lora_rank: int,
+		lora_alpha: float,
+		lora_dropout: float,
+		target_text_modules: List[str] = ["in_proj", "out_proj", "c_fc", "c_proj"],
+		target_vision_modules: List[str] = ["in_proj", "out_proj", "q_proj", "k_proj", "v_proj", "c_proj"]
 ):
-    model = copy.deepcopy(clip_model)
-    replaced_modules = []
-    embed_dim = clip_model.text_projection.size(1)
+		print(f"LoRA: rank={lora_rank}, alpha={lora_alpha}, dropout={lora_dropout}")
+		print(f"\ttarget text modules: {target_text_modules}")
+		print(f"\ttarget vision modules: {target_vision_modules}")
+		model = copy.deepcopy(clip_model)
+		replaced_modules = set()  # Use a set to avoid duplicates
 
-    # Replace text encoder modules
-    for name, module in model.transformer.named_modules():
-        if any(target in name for target in target_text_modules) and isinstance(module, nn.Linear):
-            parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
-            parent = model.transformer if parent_name == "" else model.transformer.get_submodule(parent_name)
-            lora_layer = LoRALinear(
-                in_features=module.in_features,
-                out_features=module.out_features,
-                rank=lora_rank,
-                alpha=lora_alpha,
-                dropout=lora_dropout,
-                bias=module.bias is not None
-            )
-            lora_layer.linear.weight.data.copy_(module.weight.data)
-            if module.bias is not None:
-                lora_layer.linear.bias.data.copy_(module.bias.data)
-            setattr(parent, child_name, lora_layer)
-            replaced_modules.append(f"Text: {name}")
+		# Text encoder
+		for name, module in model.transformer.named_modules():
+				if isinstance(module, nn.Linear) and any(target in name for target in target_text_modules):
+						parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
+						parent = model.transformer if parent_name == "" else model.transformer.get_submodule(parent_name)
+						lora_layer = LoRALinear(
+								in_features=module.in_features,
+								out_features=module.out_features,
+								rank=lora_rank,
+								alpha=lora_alpha,
+								dropout=lora_dropout,
+								bias=module.bias is not None
+						)
+						lora_layer.linear.weight.data.copy_(module.weight.data)
+						if module.bias is not None:
+								lora_layer.linear.bias.data.copy_(module.bias.data)
+						setattr(parent, child_name, lora_layer)
+						replaced_modules.add(f"Text: {name}")
+				elif isinstance(module, nn.MultiheadAttention) and "in_proj" in target_text_modules:
+						in_features = module.embed_dim
+						out_features = module.embed_dim * 3
+						lora_layer = LoRALinear(
+								in_features=in_features,
+								out_features=out_features,
+								rank=lora_rank,
+								alpha=lora_alpha,
+								dropout=lora_dropout,
+								bias=True
+						)
+						lora_layer.linear.weight.data.copy_(module.in_proj_weight.data)
+						lora_layer.linear.bias.data.copy_(module.in_proj_bias.data)
+						module.in_proj_weight = lora_layer.linear.weight
+						module.in_proj_bias = lora_layer.linear.bias
+						module.register_module("lora_in_proj", lora_layer)
+						replaced_modules.add(f"Text: {name}.in_proj")
 
-    # Replace vision encoder modules
-    for name, module in model.visual.named_modules():
-        if any(target in name for target in target_vision_modules) and isinstance(module, nn.Linear):
-            parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
-            parent = model.visual if parent_name == "" else model.visual.get_submodule(parent_name)
-            lora_layer = LoRALinear(
-                in_features=module.in_features,
-                out_features=module.out_features,
-                rank=lora_rank,
-                alpha=lora_alpha,
-                dropout=lora_dropout,
-                bias=module.bias is not None
-            )
-            lora_layer.linear.weight.data.copy_(module.weight.data)
-            if module.bias is not None:
-                lora_layer.linear.bias.data.copy_(module.bias.data)
-            setattr(parent, child_name, lora_layer)
-            replaced_modules.append(f"Vision: {name}")
+		# Vision encoder
+		for name, module in model.visual.named_modules():
+				if isinstance(module, nn.Linear) and any(target in name for target in target_vision_modules):
+						parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
+						parent = model.visual if parent_name == "" else model.visual.get_submodule(parent_name)
+						lora_layer = LoRALinear(
+								in_features=module.in_features,
+								out_features=module.out_features,
+								rank=lora_rank,
+								alpha=lora_alpha,
+								dropout=lora_dropout,
+								bias=module.bias is not None
+						)
+						lora_layer.linear.weight.data.copy_(module.weight.data)
+						if module.bias is not None:
+								lora_layer.linear.bias.data.copy_(module.bias.data)
+						setattr(parent, child_name, lora_layer)
+						replaced_modules.add(f"Vision: {name}")
+				elif isinstance(module, nn.MultiheadAttention) and "in_proj" in target_vision_modules:
+						in_features = module.embed_dim
+						out_features = module.embed_dim * 3
+						lora_layer = LoRALinear(
+								in_features=in_features,
+								out_features=out_features,
+								rank=lora_rank,
+								alpha=lora_alpha,
+								dropout=lora_dropout,
+								bias=True
+						)
+						lora_layer.linear.weight.data.copy_(module.in_proj_weight.data)
+						lora_layer.linear.bias.data.copy_(module.in_proj_bias.data)
+						module.in_proj_weight = lora_layer.linear.weight
+						module.in_proj_bias = lora_layer.linear.bias
+						module.register_module("lora_in_proj", lora_layer)
+						replaced_modules.add(f"Vision: {name}.in_proj")
 
-    # Handle text_projection
-    if hasattr(model, "text_projection") and isinstance(model.text_projection, nn.Parameter):
-        in_dim = model.text_projection.size(1)
-        out_dim = embed_dim
-        lora_text_proj = LoRALinear(
-            in_features=in_dim,
-            out_features=out_dim,
-            rank=lora_rank,
-            alpha=lora_alpha,
-            dropout=lora_dropout,
-            bias=False
-        )
-        model.lora_text_projection = lora_text_proj
-        model.lora_text_projection.linear.weight.data.copy_(model.text_projection.t().data)
-        def encode_text(self, text):
-            x = self.token_embedding(text).type(self.dtype)
-            x = x + self.positional_embedding.type(self.dtype)
-            x = x.permute(1, 0, 2)
-            x = self.transformer(x)
-            x = x.permute(1, 0, 2)
-            x = self.ln_final(x)
-            x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)]
-            text_features = self.lora_text_projection(x)
-            return text_features
-        model.encode_text = encode_text.__get__(model, type(model))
+		# Text projection
+		if hasattr(model, "text_projection") and isinstance(model.text_projection, nn.Parameter):
+				lora_text_proj = LoRALinear(
+						in_features=model.text_projection.size(0),
+						out_features=model.text_projection.size(1),
+						rank=lora_rank,
+						alpha=lora_alpha,
+						dropout=lora_dropout,
+						bias=False
+				)
+				model.lora_text_projection = lora_text_proj
+				model.lora_text_projection.linear.weight.data.copy_(model.text_projection.t().data)
+				def encode_text(self, text):
+						x = self.token_embedding(text).type(self.dtype)
+						x = x + self.positional_embedding.type(self.dtype)
+						x = x.permute(1, 0, 2)
+						x = self.transformer(x)
+						x = x.permute(1, 0, 2)
+						x = self.ln_final(x)
+						x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)]
+						text_features = self.lora_text_projection(x)
+						return text_features
+				model.encode_text = encode_text.__get__(model, type(model))
 
-    # Handle visual projection
-    if hasattr(model.visual, "proj") and isinstance(model.visual.proj, nn.Parameter):
-        in_dim = model.visual.proj.size(0)  # vision_width or attnpool input dim
-        out_dim = embed_dim
-        lora_visual_proj = LoRALinear(
-            in_features=in_dim,
-            out_features=out_dim,
-            rank=lora_rank,
-            alpha=lora_alpha,
-            dropout=lora_dropout,
-            bias=False
-        )
-        model.visual.lora_proj = lora_visual_proj
-        model.visual.lora_proj.linear.weight.data.copy_(model.visual.proj.t().data)
+		# Visual projection
+		if hasattr(model.visual, "proj") and isinstance(model.visual.proj, nn.Parameter):
+				lora_visual_proj = LoRALinear(
+						in_features=model.visual.proj.size(0),
+						out_features=model.visual.proj.size(1),
+						rank=lora_rank,
+						alpha=lora_alpha,
+						dropout=lora_dropout,
+						bias=False
+				)
+				model.visual.lora_proj = lora_visual_proj
+				model.visual.lora_proj.linear.weight.data.copy_(model.visual.proj.t().data)
+				def vit_forward(self, x: torch.Tensor):
+						x = self.conv1(x)
+						x = x.reshape(x.shape[0], x.shape[1], -1)
+						x = x.permute(0, 2, 1)
+						x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)
+						x = x + self.positional_embedding.to(x.dtype)
+						x = self.dropout(x)
+						x = self.ln_pre(x)
+						x = x.permute(1, 0, 2)
+						x = self.transformer(x)
+						x = x.permute(1, 0, 2)
+						x = self.ln_post(x[:, 0, :])
+						if hasattr(self, "lora_proj"):
+								x = self.lora_proj(x)
+								x = self.dropout(x)
+						else:
+								if self.proj is not None:
+										x = x @ self.proj
+										x = self.dropout(x)
+						return x
+				model.visual.forward = vit_forward.__get__(model.visual, type(model.visual))
+				replaced_modules.add("Vision: transformer.proj")
+		else:  # RN50
+				def encode_image(self, image):
+						x = self.visual(image.type(self.dtype))  # attnpool.c_proj already adapted
+						return x
+				model.encode_image = encode_image.__get__(model, type(model))
 
-        if isinstance(model.visual, VisionTransformer):
-            def encode_image(self, image):
-                x = self.conv1(image)
-                x = x.reshape(x.shape[0], x.shape[1], -1)
-                x = x.permute(0, 2, 1)
-                x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)
-                x = x + self.positional_embedding.to(x.dtype)
-                x = self.ln_pre(x)
-                x = x.permute(1, 0, 2)
-                x = self.transformer(x)
-                x = x.permute(1, 0, 2)
-                x = self.ln_post(x[:, 0, :])
-                image_features = self.lora_proj(x)
-                image_features = self.dropout(image_features)
-                return image_features
-        elif isinstance(model.visual, ModifiedResNet):
-            def encode_image(self, image):
-                def stem(x):
-                    x = self.relu1(self.bn1(self.conv1(x)))
-                    x = self.relu2(self.bn2(self.conv2(x)))
-                    x = self.relu3(self.bn3(self.conv3(x)))
-                    x = self.avgpool(x)
-                    return x
-                x = image.type(self.conv1.weight.dtype)
-                x = stem(x)
-                x = self.layer1(x)
-                x = self.layer2(x)
-                x = self.layer3(x)
-                x = self.layer4(x)  # [batch_size, channels, H, W]
-                # Use original attnpool but bypass c_proj
-                x = self.attnpool(x, apply_proj=False)  # Custom modification needed
-                image_features = self.lora_proj(x)
-                return image_features
+		print("Applied LoRA to the following modules:")
+		for module in sorted(replaced_modules):
+				print(f" - {module}")
 
-            # Modify AttentionPool2d to optionally skip c_proj
-            original_attnpool = model.visual.attnpool
-            class CustomAttentionPool2d(nn.Module):
-                def __init__(self, original):
-                    super().__init__()
-                    self.__dict__.update(original.__dict__)
+		for name, param in model.named_parameters():
+				if "lora_A" in name or "lora_B" in name:
+						param.requires_grad = True
+				else:
+						param.requires_grad = False
 
-                def forward(self, x, apply_proj=True):
-                    x = x.reshape(x.shape[0], x.shape[1], x.shape[2] * x.shape[3]).permute(2, 0, 1)
-                    x = torch.cat([x.mean(dim=0, keepdim=True), x], dim=0)
-                    x = x + self.positional_embedding[:, None, :].to(x.dtype)
-                    x, _ = F.multi_head_attention_forward(
-                        query=x[:1], key=x, value=x,
-                        embed_dim_to_check=x.shape[-1],
-                        num_heads=self.num_heads,
-                        q_proj_weight=self.q_proj.weight,
-                        k_proj_weight=self.k_proj.weight,
-                        v_proj_weight=self.v_proj.weight,
-                        in_proj_weight=None,
-                        in_proj_bias=torch.cat([self.q_proj.bias, self.k_proj.bias, self.v_proj.bias]),
-                        bias_k=None,
-                        bias_v=None,
-                        add_zero_attn=False,
-                        dropout_p=0 if not self.training else self.dropout,
-                        out_proj_weight=self.c_proj.weight if apply_proj else torch.zeros_like(self.c_proj.weight),
-                        out_proj_bias=self.c_proj.bias if apply_proj else None,
-                        use_separate_proj_weight=True,
-                        training=self.training,
-                        need_weights=False
-                    )
-                    return x.squeeze(0)
-
-            model.visual.attnpool = CustomAttentionPool2d(original_attnpool)
-            model.encode_image = encode_image.__get__(model.visual, type(model.visual))
-
-    print("Applied LoRA to the following modules:")
-    for module in replaced_modules:
-        print(f" - {module}")
-
-    for name, param in model.named_parameters():
-        if "lora_A" in name or "lora_B" in name:
-            param.requires_grad = True
-        else:
-            param.requires_grad = False
-
-    return model
-    return model
+		return model
 
 class LoRALinear(nn.Module):
 	def __init__(
@@ -351,29 +332,30 @@ class LoRALinear(nn.Module):
 			bias: bool = True
 		):
 		super(LoRALinear, self).__init__()
-		# Original frozen layer
+		# Original frozen pretrained linear layer from CLIP model
 		self.linear = nn.Linear(in_features, out_features, bias=bias)
-		# Expose weight and bias directly
 		self.weight = self.linear.weight
-		if bias:
-			self.bias = self.linear.bias
-		else:
-			self.bias = None
-		self.lora_A = nn.Linear(in_features, rank, bias=False)
-		self.lora_B = nn.Linear(rank, out_features, bias=False)
-		self.dropout = nn.Dropout(dropout)
-		self.scale = alpha / rank
-		nn.init.kaiming_uniform_(self.lora_A.weight, a=math.sqrt(5))
+		self.bias = self.linear.bias if bias else None
+
+		# Low-rank adaptation layers to update the original weights 
+		self.lora_A = nn.Linear(in_features, rank, bias=False) # Maps input to a low-rank space
+		self.lora_B = nn.Linear(rank, out_features, bias=False) # Maps low-rank space to output dimension
+
+		self.dropout = nn.Dropout(dropout) # regularization to prevent overfitting
+		self.scale = alpha / rank # magnitude of LoRA update
+
+		nn.init.normal_(self.lora_A.weight, mean=0.0, std=0.02) # # Gaussian initialization
 		nn.init.zeros_(self.lora_B.weight)
-		# Freeze original weights
-		self.linear.weight.requires_grad = False
+
+		self.linear.weight.requires_grad = False # Freeze original weights
 		if bias:
-			self.linear.bias.requires_grad = False
+			self.linear.bias.requires_grad = False # Freeze original bias
 
 	def forward(self, x: torch.Tensor) -> torch.Tensor:
-		original_output = self.linear(x)
-		lora_output = self.lora_B(self.dropout(self.lora_A(x)))
-		return original_output + self.scale * lora_output
+		original_output = self.linear(x) # Original pretrained CLIP output
+		lora_output = self.lora_B(self.dropout(self.lora_A(x))) # LoRA update
+		lora_combined = original_output + self.scale * lora_output
+		return lora_combined
 
 class Bottleneck(nn.Module):
 		expansion = 4
