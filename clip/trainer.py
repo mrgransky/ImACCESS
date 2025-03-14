@@ -591,10 +591,10 @@ def lora_finetune(
 
 	file_base_name = (
 		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
+		f"alpha_{lora_alpha}_dropout_{dropout_val}_"
 		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_rank_{lora_rank}"
 	)
-	# Add plotting calls here similar to finetune()...
 
 	losses_fpth = os.path.join(results_dir, f"{file_base_name}_losses.png")
 	val_acc_fpth = os.path.join(results_dir, f"{file_base_name}_top1_accuracy.png")

@@ -6,7 +6,7 @@ sys.path.insert(0, parent_dir)
 from misc.utils import *
 
 # how to run in local:
-# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs --img_mean_std > logs/wwii_image_download.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs --img_mean_std > logs/wwii_image_download.out &
 
 # run in Pouta:
 # $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31

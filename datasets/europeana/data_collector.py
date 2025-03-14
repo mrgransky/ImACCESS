@@ -20,8 +20,8 @@ args, unknown = parser.parse_known_args()
 print_args_table(args=args, parser=parser)
 
 # run in local laptop:
-# $ python data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs
-# $ nohup python -u data_collector.py -ddir $HOME/WS_Farid/ImACCESS/datasets/WW_DATASETs -nw 8 --img_mean_std > logs/europeana_img_dl.out &
+# $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std > logs/europeana_img_dl.out &
 
 # run in Pouta:
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
