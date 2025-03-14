@@ -1248,6 +1248,8 @@ def main():
 				minimum_epochs=args.minimum_epochs,
 				TOP_K_VALUES=args.topK_values,
 			)
+		else:
+			raise ValueError(f"Invalid mode: {args.mode}")
 	elif args.mode == 'train':
 		train(
 			model=model,
