@@ -116,7 +116,7 @@ class EarlyStopping:
 		"""
 		self.value_history.append(current_value)
 		if epoch < self.min_epochs:
-			print(f"Epoch {epoch+1}: Skipping early stopping (min_epochs={self.min_epochs}).")
+			print(f"Epoch {epoch+1}: Still less than minimum epochs. Skipping early stopping. (min_epochs={self.min_epochs}).")
 			return False
 		
 		if self.is_improvement(current_value):

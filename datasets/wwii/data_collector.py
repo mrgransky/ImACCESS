@@ -52,13 +52,43 @@ OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
+def extract_url_info(url:str)-> Dict:
+	"""
+	Extracts information from a given URL.
+	Args:
+		url (str): The URL to extract information from.
+	Returns:
+		Dict: A dictionary containing the extracted information.
+	"""
+	parsed_url = urlparse(url)
+	base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/gallery" # Extract the base URL
+	path_components = parsed_url.path.strip('/').split('/') # Split the path into components		
+	# Extract country, main_label, and type
+	country = path_components[1] if len(path_components) > 1 else None
+	main_label = path_components[2] if len(path_components) > 2 else None
+	type_ = path_components[3] if len(path_components) > 3 else None
+	# Decode URL-encoded characters (if any)
+	if main_label:
+		main_label = unquote(main_label)
+		main_label = re.sub(r'[^a-zA-Z\s]', ' ', main_label) # Remove special characters and digits
+		main_label = re.sub(r'\s+', ' ', main_label)  # Remove extra whitespace
+	if type_:
+		type_ = unquote(type_)
+	return {
+		"base_url": base_url,
+		"country": country,
+		"main_label": main_label,
+		"type": type_
+	}
+
 def get_dframe(
 		doc_idx: int,
 		doc_url: str, 
 		doc_label: str,
-	):
+	) -> pd.DataFrame:
 	print(f">> Extracting DF for label[{doc_idx}]: {doc_label} from {doc_url}")
 	doc_url_info = extract_url_info(doc_url)
+	print(json.dumps(doc_url_info, indent=4, ensure_ascii=False))
 	qv_processed = re.sub(
 		pattern=" ", 
 		repl="_", 
@@ -75,6 +105,13 @@ def get_dframe(
 		df = load_pickle(fpath=df_fpth)
 		return df
 
+	try:
+		response = requests.get(doc_url)
+		response.raise_for_status()
+	except requests.RequestException as e:
+		print(f"<!> Error sending GET request: {e}")
+		return None
+
 	df_st_time = time.time()
 	qLBL_DIR = os.path.join(HITs_DIR, re.sub(" ", "_", doc_label))
 	os.makedirs(qLBL_DIR, exist_ok=True)
@@ -86,14 +123,13 @@ def get_dframe(
 		header = soup.find('h2', class_="entry-title").text
 	except Exception as e:
 		print(f"Failed to retrieve doc_url or parse content: {e}")
-		return
+		return None
 	# header = re.sub(r' part \d+', '', header.lower())
 	header = clean_(
 		text=header,
 		# sw=[],
 		sw=STOPWORDS,
 	)
-	# print(doc_url_info)
 	header = header + " " + (doc_url_info.get("country") or "") + " " + (doc_url_info.get("main_label") or "") + " " + (doc_url_info.get("type") or "")
 	print(f"Doc header: {header}")
 	filtered_descriptions_list = [
@@ -115,9 +151,8 @@ def get_dframe(
 		# sw=[],
 		sw=STOPWORDS,
 	)
-	print(f"Doc Description: {doc_description}")
-	print()
-
+	print(f"\nDoc Description:\n{doc_description}\n")
+	
 	print(f"Found {len(hits)} Document(s) => Extracting information [might take a while]")
 	data = []
 	for idoc, vdoc in enumerate(hits):

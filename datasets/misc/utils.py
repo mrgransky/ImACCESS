@@ -501,28 +501,6 @@ def get_ip_info():
 	except requests.exceptions.RequestException as e:
 		print(f"Error: {e}")
 
-def extract_url_info(url):
-	parsed_url = urlparse(url)
-	base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/gallery" # Extract the base URL
-	path_components = parsed_url.path.strip('/').split('/') # Split the path into components		
-	# Extract country, main_label, and type
-	country = path_components[1] if len(path_components) > 1 else None
-	main_label = path_components[2] if len(path_components) > 2 else None
-	type_ = path_components[3] if len(path_components) > 3 else None
-	# Decode URL-encoded characters (if any)
-	if main_label:
-		main_label = unquote(main_label)
-		main_label = re.sub(r'[^a-zA-Z\s]', ' ', main_label) # Remove special characters and digits
-		main_label = re.sub(r'\s+', ' ', main_label)  # Remove extra whitespace
-	if type_:
-		type_ = unquote(type_)
-	return {
-		"base_url": base_url,
-		"country": country,
-		"main_label": main_label,
-		"type": type_
-	}
-
 def clean_(text, sw, check_language:bool=False):
 	if not text:
 		return

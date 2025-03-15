@@ -34,7 +34,6 @@ from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 256 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:1" -m finetune  -fts lora --lora_rank 16 --lora_alpha 32 --lora_dropout 0.0 -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/na_ft_lora.out &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 256 -e 100 -lr 1e-5 -wd 1e-2 --print_every 500 -nw 50 --device "cuda:0" -m finetune -fts lora --lora_rank 16 --lora_alpha 32 --lora_dropout 0.0 -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/history_xN_ft_lora.out &
 
-
 # pretrain:
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 > /media/volume/ImACCESS/trash/europeana_pretrained.out &
 
