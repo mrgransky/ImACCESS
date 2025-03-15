@@ -12,7 +12,6 @@
 *.jpg
 *.jpeg
 *.log
-*.txt
 *.zip
 *.tar
 *.tar.gz
