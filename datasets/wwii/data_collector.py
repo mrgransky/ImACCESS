@@ -52,10 +52,13 @@ OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
-def get_dframe(doc_idx:int=1000, doc_url:str="www.example.com", doc_label: str="label"):
-	print(f"Extracting DF for label[{doc_idx}]: {doc_label}".center(150, "-"))
+def get_dframe(
+		doc_idx: int,
+		doc_url: str, 
+		doc_label: str,
+	):
+	print(f">> Extracting DF for label[{doc_idx}]: {doc_label} from {doc_url}")
 	doc_url_info = extract_url_info(doc_url)
-	print(f"{doc_url}".center(150, " "))
 	qv_processed = re.sub(
 		pattern=" ", 
 		repl="_", 
@@ -66,10 +69,12 @@ def get_dframe(doc_idx:int=1000, doc_url:str="www.example.com", doc_label: str="
 		repl="_",
 		string=doc_url,
 	)
+	# check cache for df
 	df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_URL_{url_processed}_{START_DATE}_{END_DATE}.gz")
 	if os.path.exists(df_fpth):
 		df = load_pickle(fpath=df_fpth)
 		return df
+
 	df_st_time = time.time()
 	qLBL_DIR = os.path.join(HITs_DIR, re.sub(" ", "_", doc_label))
 	os.makedirs(qLBL_DIR, exist_ok=True)
@@ -127,33 +132,19 @@ def get_dframe(doc_idx:int=1000, doc_url:str="www.example.com", doc_label: str="
 			continue
 		img_url = img_url.replace("_cache/", "") # Remove "_cache/" from the URL
 		img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url) # Remove the thumbnail size from the end of the URL
-		# print(f"[{idoc+1}/{len(hits)}] {img_url}")
-		# print(doc_title)
-		# print()
 		filename = os.path.basename(img_url)
 		img_fpath = os.path.join(qLBL_DIR, filename)
 		if not os.path.exists(img_fpath):
 			try:
 				img_response = requests.get(img_url)
-				if img_response.status_code == 200:
-					# with open(os.path.join(qLBL_DIR, filename), 'wb') as f:
-					with open(img_fpath, 'wb') as f:
-						f.write(img_response.content)
-					# print(f"Downloaded: {filename}")
-				else:
-					filename = None
-					img_url = None
-					print(f"Failed to download {img_url}. Status code: {img_response.status_code}")
+				img_response.raise_for_status()
+				with open(img_fpath, 'wb') as f:
+					f.write(img_response.content)
 			except Exception as e:
 				print(f"Failed to download {img_url}: {e}")
-		# else:
-		# 	print(f"Skipping {img_fpath}, already exists")
-		# wwii_identifier = re.sub(".jpg", "", filename)
-		wwii_identifier = filename
-		img_path = os.path.join(IMAGE_DIR, wwii_identifier)
-		# print(f"wwii_identifier: {wwii_identifier} ==>> img_path: {img_path}")
+				continue
 		row = {
-			'id': wwii_identifier, #wwii_identifier,
+			'id': filename,
 			'label': doc_label,
 			'title': doc_title,
 			'description': doc_description,
@@ -161,19 +152,18 @@ def get_dframe(doc_idx:int=1000, doc_url:str="www.example.com", doc_label: str="
 			'label_title_description': doc_label + " " + (doc_title or '') + " " + (doc_description or ''),
 			'date': None,
 			'doc_url': doc_url,
-			# 'img_path': f"{os.path.join(IMAGE_DIR, str(wwii_identifier) + '.jpg')}"
-			'img_path': img_path,
+			'img_path': os.path.join(IMAGE_DIR, filename),
 		}
 		data.append(row)
+
 	df = pd.DataFrame(data)
 	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
 	save_pickle(pkl=df, fname=df_fpth)
-	# print(df.head(20))
-	# print("#"*100)
-	# print(df.tail(20))
-	# copy images of that dir to images:
+
+	# Copy images to IMAGE_DIR
 	for fname in os.listdir(qLBL_DIR):
 		shutil.copy(os.path.join(qLBL_DIR, fname), IMAGE_DIR)
+
 	return df
 
 @measure_execution_time
@@ -581,19 +571,32 @@ def main():
 		f"{base_url}/germany/units/grossdeutschland/" : "military unit",
 		f"{base_url}/germany/units/sturmgeschutz_brigade_244/" : "military unit",
 		}
-	print(f"Scraping {len(URLs)} URLs...")
-	dfs = [
-		get_dframe(
-			doc_idx=i, 
-			doc_url=k, 
-			doc_label=v,
-		) for i, (k, v) in enumerate(URLs.items())
-	]
+	dfs_fname = os.path.join(HITs_DIR, f"{dataset_name}_{len(URLs)}_dfs.gz")
+	try:
+		dfs = load_pickle(fpth=dfs_fname,)
+		print(f"Loaded {len(dfs)} dfs from {os.path.join(OUTPUTs_DIR, f'{dataset_name}_dfs.gz')}")
+	except Exception as e:
+		print(f"<!> {e}")
+		print(f"Scraping {len(URLs)} URLs...")
+		dfs = [
+			get_dframe(
+				doc_idx=i, 
+				doc_url=k, 
+				doc_label=v,
+			) for i, (k, v) in enumerate(URLs.items())
+		]
+		dfs = [df for df in dfs if df is not None]
+		save_pickle(pkl=dfs, fname=dfs_fname,)
+		print(f"Saved {len(dfs)} dfs to {dfs_fname}")
+	print(f"Filtered {len(dfs)} dfs")
 
 	print(f"Concatinating {len(dfs)} dfs...")
-	# print(dfs[0])
 	wwii_df = pd.concat(dfs, ignore_index=True)
-
+	print(f"WWII DF: {wwii_df.shape}, {list(wwii_df.columns)}")
+	print(wwii_df.head(10))
+	print(wwii_df.tail(10))
+	print(wwii_df["label"].value_counts())
+	print(wwii_df["label"].value_counts(normalize=True))
 	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"{dataset_name}_label_distribution_{wwii_df.shape[0]}_x_{wwii_df.shape[1]}.png")
 	plot_label_distribution(
 		df=wwii_df,
@@ -630,8 +633,6 @@ def main():
 				img_rgb_mean_fpth=img_rgb_mean_fpth,
 				img_rgb_std_fpth=img_rgb_std_fpth,
 			)
-			save_pickle(pkl=img_rgb_mean, fname=img_rgb_mean_fpth)
-			save_pickle(pkl=img_rgb_std, fname=img_rgb_std_fpth)
 		print(f"RGB: Mean: {img_rgb_mean} | Std: {img_rgb_std}")
 
 if __name__ == '__main__':

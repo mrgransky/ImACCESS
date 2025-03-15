@@ -7,7 +7,6 @@ from misc.utils import *
 
 # how to run:
 # $ python merge_datasets.py
-# $ python merge_datasets.py > merge_datasets.log 2>&1 &
 # $ nohup python -u merge_datasets.py > history_xN_merged_datasets.out &
 
 # run in puhti:
@@ -20,7 +19,7 @@ BINs = 60
 
 VAL_SPLIT_PCT = 0.35
 DATASET_DIRECTORY = {
-	"farid": "/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs",
+	"farid": "/home/farid/datasets/WW_DATASETs",
 	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs",
 	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs",
 }

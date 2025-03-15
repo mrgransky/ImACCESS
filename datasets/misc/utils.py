@@ -695,7 +695,7 @@ def check_url_status(url: str, TIMEOUT:int=50) -> bool:
 		print(f"Error accessing URL {url}: {e}")
 		return False
 
-def save_pickle(pkl, fname:str=""):
+def save_pickle(pkl, fname:str):
 	print(f"\nSaving {type(pkl)}\n{fname}")
 	st_t = time.time()
 	if isinstance(pkl, dict):

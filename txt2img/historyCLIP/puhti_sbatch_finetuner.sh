@@ -38,8 +38,8 @@
 # EPOCHS=(60 60 150 150 150)
 # MODES=(train finetune pretrain)
 # FINETUNE_STRATEGIES=("full" "lora")
-# LORA_RANKS=(16 16 16 16 16)
-# LORA_ALPHA=(32 32 32 32 32)
+# LORA_RANKS=(8 8 8 8 8)
+# LORA_ALPHA=(16 16 16 16 16)
 # LORA_DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
 # SAMPLINGS=("kfold_stratified" "stratified_random")
 # DATASETS=(
@@ -77,7 +77,7 @@
 # 	--lora_dropout ${LORA_DROPOUTS[1]} \
 # 	--sampling ${SAMPLINGS[1]} \
 # 	--dropout ${DROPOUTS[$SLURM_ARRAY_TASK_ID]} \
-# 	--model_architecture "ViT-B/32" \
+# 	--model_architecture "ViT-B/16" \
 
 # done_txt="$user finished Slurm job: `date`"
 # echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
@@ -144,8 +144,8 @@ INIT_LRS=(5e-5 5e-5 1e-5 1e-5 1e-5)
 WEIGHT_DECAYS=(1e-2 1e-2 1e-2 1e-2 1e-2)
 DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
 EPOCHS=(60 60 150 150 150)
-LORA_RANKS=(16 16 16 16 16)
-LORA_ALPHAS=(32 32 32 32 32)
+LORA_RANKS=(8 8 8 8 8)
+LORA_ALPHAS=(16 16 16 16 16)
 LORA_DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 
@@ -177,7 +177,7 @@ python -u history_clip_trainer.py \
   --lora_dropout "${LORA_DROPOUTS[$dataset_index]}" \
   --sampling "${SAMPLINGS[1]}" \
   --dropout "${DROPOUTS[$dataset_index]}" \
-  --model_architecture "ViT-B/32"
+  --model_architecture "ViT-B/16"
 
 done_txt="$user finished Slurm job: $(date)"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
