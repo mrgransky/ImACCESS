@@ -240,8 +240,9 @@ def get_retrieval_metrics(
 		topK_values: List[int] = [1, 3, 5],
 		mode: str = "Image-to-Text",
 		class_counts: torch.Tensor = None,
-		max_k: int = None,  # New parameter to limit K values (None for no limit)
+		max_k: int = None, # limit K values (None for no limit)
 	):
+
 	num_queries, num_candidates = similarity_matrix.shape
 	assert num_queries == len(query_labels), "Number of queries must match labels"
 	num_classes = len(torch.unique(candidate_labels))
@@ -330,6 +331,11 @@ def evaluate_loss_and_accuracy(
 			Tuple of (avg_val_loss, img2txt_acc, txt2img_acc, img2txt_topk_accuracy, 
 								txt2img_topk_accuracy, mean_reciprocal_rank, cosine_sim_mean)
 	"""
+	dataset_name = validation_loader.name
+	model_name = model.__class__.__name__
+	model_arch = model.name
+	print(f">> Evaluating {model_name} - {model_arch} [Loss & Accuracy] [{dataset_name}]: {topK_values}...")
+
 	model.eval()
 	total_loss = 0
 	total_img2txt_correct = 0
@@ -338,9 +344,9 @@ def evaluate_loss_and_accuracy(
 	total_samples = len(validation_loader.dataset)
 
 	try:
-			class_names = validation_loader.dataset.dataset.classes
+		class_names = validation_loader.dataset.dataset.classes
 	except:
-			class_names = validation_loader.dataset.unique_labels
+		class_names = validation_loader.dataset.unique_labels
 	num_classes = len(class_names)
 
 	if num_classes <= 0:
@@ -350,12 +356,14 @@ def evaluate_loss_and_accuracy(
 	valid_img2txt_k_values = [K for K in topK_values if K <= num_classes]
 	if len(valid_img2txt_k_values) < len(topK_values):
 		print(f"<!> Warning: K values ({set(topK_values) - set(valid_img2txt_k_values)}) exceed the number of classes ({num_classes}) for Image-to-Text. => ignored.")
+
 	# Valid K values for Text-to-Image (no limit, use all topK_values)
 	valid_txt2img_k_values = topK_values
 	img2txt_topk_accuracy = {k: 0 for k in valid_img2txt_k_values}
 	txt2img_topk_accuracy = {k: 0 for k in valid_txt2img_k_values}
 	reciprocal_ranks = []
 	cosine_similarities = []
+
 	with torch.no_grad():
 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
 			images, tokenized_labels = images.to(device, non_blocking=True), tokenized_labels.to(device, non_blocking=True)  # [batch_size, 3, 224, 224], [batch_size, 77]
@@ -953,20 +961,20 @@ def progressive_freeze_finetune(
 	)
 
 	optimizer = AdamW(
-			params=filter(lambda p: p.requires_grad, model.parameters()),
-			lr=learning_rate,
-			betas=(0.9, 0.98),
-			eps=1e-8,
-			weight_decay=weight_decay,
+		params=filter(lambda p: p.requires_grad, model.parameters()),
+		lr=learning_rate,
+		betas=(0.9, 0.98),
+		eps=1e-8,
+		weight_decay=weight_decay,
 	)
 
 	scheduler = lr_scheduler.OneCycleLR(
-			optimizer=optimizer,
-			max_lr=learning_rate,
-			steps_per_epoch=len(train_loader),
-			epochs=num_epochs,
-			pct_start=0.1,
-			anneal_strategy='cos',
+		optimizer=optimizer,
+		max_lr=learning_rate,
+		steps_per_epoch=len(train_loader),
+		epochs=num_epochs,
+		pct_start=0.1,
+		anneal_strategy='cos',
 	)
 
 	# Training loop setup
@@ -983,113 +991,125 @@ def progressive_freeze_finetune(
 	initial_learning_rate = learning_rate
 
 	for epoch in range(num_epochs):
-			try:
-					torch.cuda.empty_cache()
-					logger.info(f"Epoch [{epoch+1}/{num_epochs}] - GPU Memory: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
-					# Phase transition logic
-					if epoch >= min_epochs_before_transition:
-							should_transition = should_transition_phase(
-									losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
-									th=plateau_threshold,
-									window=window_size,
-							)
-							if should_transition:
-									logger.info(f"Plateau detected @ Epoch: {epoch+1} Transitioning from phase: {current_phase} to next phase.")
-									current_phase, learning_rate = handle_phase_transition(
-											current_phase=current_phase,
-											initial_lr=initial_learning_rate,
-											max_phases=len(freeze_schedule),
-									)
-									logger.info(f"Updated learning rate: {learning_rate}")
-					# Freeze layers for the current phase
-					freeze_layers(
-							model=model,
-							strategy=freeze_schedule,
-							phase=current_phase,
-							cache=layer_cache,
+		try:
+			torch.cuda.empty_cache()
+			logger.info(f"Epoch [{epoch+1}/{num_epochs}] - GPU Memory: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
+			
+			# Phase transition logic
+			if epoch >= min_epochs_before_transition:
+				should_transition = should_transition_phase(
+					losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
+					th=plateau_threshold,
+					window=window_size,
+				)
+
+				if should_transition:
+					logger.info(f"Plateau detected @ Epoch: {epoch+1} Transitioning from phase: {current_phase} to next phase.")
+					current_phase, learning_rate = handle_phase_transition(
+						current_phase=current_phase,
+						initial_lr=initial_learning_rate,
+						max_phases=len(freeze_schedule),
 					)
-					# Update optimizer with new learning rate
-					for param_group in optimizer.param_groups:
-							param_group['lr'] = learning_rate
-					model.train()
-					epoch_loss = 0.0
-					for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
-							optimizer.zero_grad(set_to_none=True)
-							images = images.to(device, non_blocking=True)
-							tokenized_labels = tokenized_labels.to(device, non_blocking=True)
-							with torch.amp.autocast(device_type=device.type, enabled=True): # Automatic Mixed Precision (AMP) backpropagation:
-								logits_per_image, logits_per_text = model(images, tokenized_labels)
-								ground_truth = torch.arange(len(images), dtype=torch.long, device=device)
-								loss_img = criterion(logits_per_image, ground_truth)
-								loss_txt = criterion(logits_per_text, ground_truth)
-								total_loss = 0.5 * (loss_img + loss_txt)
-							scaler.scale(total_loss).backward()
-							torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-							scaler.step(optimizer)
-							scaler.update()
-							scheduler.step()
-							if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-									logger.info(
-											f"\tBatch [{bidx+1}/{len(train_loader)}] Loss: {total_loss.item():.7f}"
-									)
-							epoch_loss += total_loss.item()
-					avg_training_loss = epoch_loss / len(train_loader)
-					training_losses.append(avg_training_loss)
-					# Evaluate on validation set
-					metrics_per_epoch = evaluate_loss_and_accuracy(
-							model=model,
-							validation_loader=validation_loader,
-							criterion=criterion,
-							device=device,
-							topK_values=top_k_values,
-					)
-					metrics_for_all_epochs.append(metrics_per_epoch)
-					# Compute retrieval metrics
-					img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
-							model=model,
-							validation_loader=validation_loader,
-							device=device,
-							topK_values=top_k_values,
-					)
-					if save_metrics_to_disk:
-							metrics_dir = os.path.join(results_dir, "metrics")
-							os.makedirs(metrics_dir, exist_ok=True)
-							torch.save(img2txt_metrics, os.path.join(metrics_dir, f"img2txt_epoch_{epoch}.pt"))
-							torch.save(txt2img_metrics, os.path.join(metrics_dir, f"txt2img_epoch_{epoch}.pt"))
-					else:
-							img2txt_metrics_list.append(img2txt_metrics)
-							txt2img_metrics_list.append(txt2img_metrics)
-					# Log epoch results
-					logger.info(
-							f'@ Epoch {epoch + 1}:\n'
-							f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {metrics_per_epoch.get("val_loss"):.8f}\n'
-							f'\tIn-batch Validation Accuracy [text retrieval per image]: {metrics_per_epoch.get("img2txt_acc")} '
-							f'[image retrieval per text]: {metrics_per_epoch.get("txt2img_acc")}'
-					)
-					# Checkpointing
-					current_val_loss = metrics_per_epoch["val_loss"]
-					checkpoint = {
-							"epoch": epoch,
-							"model_state_dict": model.state_dict(),
-							"optimizer_state_dict": optimizer.state_dict(),
-							"scheduler_state_dict": scheduler.state_dict(),
-							"best_val_loss": best_val_loss,
-					}
-					if current_val_loss < best_val_loss - early_stopping.min_delta:
-							logger.info(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
-							best_val_loss = current_val_loss
-							checkpoint.update({"best_val_loss": best_val_loss})
-							torch.save(checkpoint, mdl_fpth)
-							best_img2txt_metrics = img2txt_metrics
-							best_txt2img_metrics = txt2img_metrics
-					# Early stopping
-					if early_stopping.should_stop(current_val_loss, model, epoch):
-							logger.info(f"Early stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
-							break
-					logger.info("-" * 170)
-			except RuntimeError as e:
-					logger.error(f"Training failed at epoch {epoch + 1}: {str(e)}")
-					raise
+					logger.info(f"Updated learning rate: {learning_rate}")
+			
+			# Freeze layers for the current phase
+			freeze_layers(
+				model=model,
+				strategy=freeze_schedule,
+				phase=current_phase,
+				cache=layer_cache,
+			)
+			
+			# Update optimizer with new learning rate
+			for param_group in optimizer.param_groups:
+				param_group['lr'] = learning_rate
+			
+			model.train()
+			epoch_loss = 0.0
+			for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
+				optimizer.zero_grad(set_to_none=True)
+				images = images.to(device, non_blocking=True)
+				tokenized_labels = tokenized_labels.to(device, non_blocking=True)
+				
+				with torch.amp.autocast(device_type=device.type, enabled=True): # Automatic Mixed Precision (AMP) backpropagation:
+					logits_per_image, logits_per_text = model(images, tokenized_labels)
+					ground_truth = torch.arange(len(images), dtype=torch.long, device=device)
+					loss_img = criterion(logits_per_image, ground_truth)
+					loss_txt = criterion(logits_per_text, ground_truth)
+					total_loss = 0.5 * (loss_img + loss_txt)
+				scaler.scale(total_loss).backward()
+				torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+				scaler.step(optimizer)
+				scaler.update()
+				scheduler.step()
+				
+				if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+					logger.info(f"Batch [{bidx+1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
+				
+				epoch_loss += total_loss.item()
+			avg_training_loss = epoch_loss / len(train_loader)
+			training_losses.append(avg_training_loss)
+			
+			# Evaluate on validation set
+			metrics_per_epoch = evaluate_loss_and_accuracy(
+				model=model,
+				validation_loader=validation_loader,
+				criterion=criterion,
+				device=device,
+				topK_values=top_k_values,
+			)
+			metrics_for_all_epochs.append(metrics_per_epoch)
+			
+			# Compute retrieval metrics
+			img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
+				model=model,
+				validation_loader=validation_loader,
+				device=device,
+				topK_values=top_k_values,
+			)
+			if save_metrics_to_disk:
+				metrics_dir = os.path.join(results_dir, "metrics")
+				os.makedirs(metrics_dir, exist_ok=True)
+				torch.save(img2txt_metrics, os.path.join(metrics_dir, f"img2txt_epoch_{epoch}.pt"))
+				torch.save(txt2img_metrics, os.path.join(metrics_dir, f"txt2img_epoch_{epoch}.pt"))
+			else:
+				img2txt_metrics_list.append(img2txt_metrics)
+				txt2img_metrics_list.append(txt2img_metrics)
+
+			logger.info(
+				f'@ Epoch {epoch + 1}:\n'
+				f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {metrics_per_epoch.get("val_loss"):.8f}\n'
+				f'\tIn-batch Validation Accuracy [text retrieval per image]: {metrics_per_epoch.get("img2txt_acc")} '
+				f'[image retrieval per text]: {metrics_per_epoch.get("txt2img_acc")}'
+			)
+
+			# Checkpointing
+			current_val_loss = metrics_per_epoch["val_loss"]
+			checkpoint = {
+				"epoch": epoch,
+				"model_state_dict": model.state_dict(),
+				"optimizer_state_dict": optimizer.state_dict(),
+				"scheduler_state_dict": scheduler.state_dict(),
+				"best_val_loss": best_val_loss,
+			}
+
+			if current_val_loss < best_val_loss - early_stopping.min_delta:
+				logger.info(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
+				best_val_loss = current_val_loss
+				checkpoint.update({"best_val_loss": best_val_loss})
+				torch.save(checkpoint, mdl_fpth)
+				best_img2txt_metrics = img2txt_metrics
+				best_txt2img_metrics = txt2img_metrics
+
+			# Early stopping
+			if early_stopping.should_stop(current_val_loss, model, epoch):
+				logger.info(f"Early stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
+				break
+
+			print("-" * 170)
+		except RuntimeError as e:
+			logger.error(f"Training failed at epoch {epoch + 1}: {str(e)}")
+			raise
 
 	# Final evaluation after training or early stopping
 	final_metrics = evaluate_loss_and_accuracy(
