@@ -116,7 +116,7 @@ class EarlyStopping:
 		"""
 		self.value_history.append(current_value)
 		if epoch < self.min_epochs:
-			print(f"Epoch {epoch+1}: Still less than minimum epochs. Skipping early stopping. (min_epochs={self.min_epochs}).")
+			print(f"Epoch {epoch+1}: Still less than minimum epochs. Skipping early stopping (min_epochs={self.min_epochs})")
 			return False
 		
 		if self.is_improvement(current_value):
@@ -432,6 +432,400 @@ def evaluate_loss_and_accuracy(
 
 	return metrics
 
+def count_clip_layers(model):
+		"""
+		Count total number of layers in CLIP model
+		"""
+		total_layers = 0
+		unique_layers = set()
+		
+		# Count each named parameter's layer (get base layer name without .weight/.bias)
+		for name, _ in model.named_parameters():
+				# Split the name and take everything except the last part (weight/bias)
+				layer_name = '.'.join(name.split('.')[:-1])
+				if layer_name:  # Avoid empty strings
+						unique_layers.add(layer_name)
+		
+		total_layers = len(unique_layers)
+		
+		# Detailed breakdown
+		visual_transformer_blocks = len([l for l in unique_layers if 'visual.transformer.resblocks' in l])
+		text_transformer_blocks = len([l for l in unique_layers if 'transformer.resblocks' in l])
+		projection_layers = len([l for l in unique_layers if any(x in l for x in ['visual.proj', 'text_projection', 'visual.ln_post'])])
+		frontend_layers = len([l for l in unique_layers if any(x in l for x in ['visual.conv1', 'visual.class_embedding', 'positional_embedding', 'token_embedding'])])
+		
+		print(f"\nCLIP Layer Statistics:")
+		print(f"Total unique layers: {total_layers}")
+		print(f"Visual transformer blocks: {visual_transformer_blocks}")
+		print(f"Text transformer blocks: {text_transformer_blocks}")
+		print(f"Projection layers: {projection_layers}")
+		print(f"Frontend layers: {frontend_layers}")
+		return total_layers
+
+def get_status(
+	model,
+	current_phase=0,
+	layers_to_freeze=[],
+	total_layers=0,
+	):
+	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)    
+	total_params = sum(p.numel() for p in model.parameters())
+	trainable_percent = (trainable_params / total_params) * 100
+	frozen_percent = (frozen_params / total_params) * 100
+	freeze_percentage = (len(layers_to_freeze) / total_layers) * 100 if total_layers > 0 else 0
+	unfreeze_percentage = 100 - freeze_percentage
+	print("\n" + "="*60)
+	print(f"Model Status - Phase {current_phase}".center(60))
+	print("="*60)
+	print("\nParameter Statistics:")
+	print(f"{'Total:':<25} {total_params:,}")
+	print(f"{'Trainable:':<25} {trainable_params:,} ({trainable_percent:.2f}%)")
+	print(f"{'Frozen:':<25} {frozen_params:,} ({frozen_percent:.2f}%)")
+	print("\nLayer Statistics:")
+	print(f"{'Total:':<25} {total_layers}")
+	print(f"{'Frozen:':<25} {len(layers_to_freeze)} ({freeze_percentage:.1f}%)")
+	print(f"{'Trainable:':<25} {total_layers - len(layers_to_freeze)} ({unfreeze_percentage:.1f}%)")
+	print("\n" + "="*60 + "\n")
+
+def get_num_vit_blocks(model):
+	if not hasattr(model, 'visual') or not hasattr(model.visual, 'transformer'):
+		raise ValueError("Model structure not compatible - missing visual transformer")
+	vis_transformer = model.visual.transformer
+	txt_transformer = model.transformer
+	return len(vis_transformer.resblocks), len(txt_transformer.resblocks)
+
+def get_layer_groups(nv:int=12, nt:int=12):
+	layer_groups = {
+		'visual_frontend': [
+			'visual.conv1', # patch embedding
+			'visual.class_embedding', # CLS token
+			'visual.positional_embedding', # positional embedding
+			# 'visual.ln_pre' # 
+		],
+		'visual_transformer': [f'visual.transformer.resblocks.{i}' for i in range(nv)],
+		'text_frontend': ['token_embedding','positional_embedding'],
+		'text_transformer': [f'transformer.resblocks.{i}' for i in range(nt)],
+		'projections': [
+			'visual.proj', # final normalization before projection
+			'visual.ln_post',
+			'text_projection',
+			'logit_scale', # Temperature parameter
+		],
+	}
+	return layer_groups
+
+def get_progressive_freeze_schedule(layer_groups:dict):
+	total_v_layers = len(layer_groups['visual_transformer'])
+	total_t_layers = len(layer_groups['text_transformer'])
+	print(f"Total visual layers: {total_v_layers} | 80%: {int(0.8*total_v_layers)} 60%: {int(0.6*total_v_layers)} 40%: {int(0.4*total_v_layers)}")
+	print(f"Total text layers: {total_t_layers} | 80%: {int(0.8*total_t_layers)} 60%: {int(0.6*total_t_layers)} 40%: {int(0.4*total_t_layers)}")
+	schedule = [
+		# Phase 0: Freeze all layers except the projection layers:
+		layer_groups['visual_frontend'] + layer_groups['visual_transformer'] + layer_groups['text_frontend'] + layer_groups['text_transformer'],
+		# Phase 1: Freeze 80% of transformer blocks:
+		layer_groups['visual_frontend'] + layer_groups['visual_transformer'][:int(0.8*total_v_layers)] + layer_groups['text_frontend'] + layer_groups['text_transformer'][:int(0.8*total_t_layers)],
+		# Phase 2: freeze 60% of transformer blocks:
+		layer_groups['visual_frontend'] + layer_groups['visual_transformer'][:int(0.6*total_v_layers)] + layer_groups['text_frontend'] + layer_groups['text_transformer'][:int(0.6*total_t_layers)],
+		# Phase 3: freeze 40% of transformer blocks:
+		layer_groups['visual_frontend'] + layer_groups['visual_transformer'][:int(0.4*total_v_layers)] + layer_groups['text_frontend'] + layer_groups['text_transformer'][:int(0.4*total_t_layers)],
+		# Phase 4: freeze only (visual + text) frontends
+		layer_groups['visual_frontend'] + layer_groups['text_frontend']
+	]
+	return schedule
+
+def freeze_(layers, model):
+	for name, param in model.named_parameters():
+		param.requires_grad = True # Unfreeze all layers first
+		if any(ly in name for ly in layers): # Freeze layers in the list
+			param.requires_grad = False
+
+def should_transition_phase(
+	losses:List[float],
+	th: float=1e-4,
+	window:int=3,
+	) -> bool:
+	if len(losses) < window:
+		return False # Not enough data to make a decision
+	last_window_losses = losses[-window:]
+	avg_loss = sum(last_window_losses) / window
+	relative_change = abs(last_window_losses[-1] - avg_loss) / avg_loss # Relative change in loss
+	transition_required: bool = relative_change < th
+	return transition_required
+
+def handle_phase_transition(current_phase, initial_lr, max_phases):
+	if current_phase >= max_phases - 1:
+		return current_phase, initial_lr * (0.1 ** current_phase)
+	new_phase = current_phase + 1
+	new_lr = initial_lr * (0.1 ** new_phase) # Reduce learning rate by 10x
+	print(f"<!> Plateau detected! Transitioning to Phase {new_phase} with learning rate {new_lr:.1e}")
+	return new_phase, new_lr
+
+def progressive_unfreeze_finetune(
+		model:torch.nn.Module,
+		train_loader:DataLoader,
+		validation_loader:DataLoader,
+		num_epochs:int,
+		nw:int,
+		print_every:int,
+		learning_rate:float,
+		weight_decay:float,
+		device:str,
+		results_dir:str,
+		window_size:int=10,
+		patience:int=10,
+		min_delta:float=1e-4,
+		cumulative_delta:float=5e-3,
+		minimum_epochs:int=20,
+		TOP_K_VALUES:List[int]=[1, 5, 10, 15, 20],
+	):
+	early_stopping = EarlyStopping(
+		patience=patience,									# Wait for 10 epochs without improvement before stopping
+		min_delta=min_delta,								# Consider an improvement only if the change is greater than 0.0001
+		cumulative_delta=cumulative_delta,	# Cumulative improvement over the window should be greater than 0.005
+		window_size=window_size,						# Consider the last 10 epochs for cumulative trend
+		mode='min',													# Minimize loss
+		min_epochs=minimum_epochs,					# Ensure at least 20 epochs of training
+		restore_best_weights=True						# Restore model weights to the best epoch
+	)
+
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__ # CIFAR10, ImageNet, etc.
+	except:
+		dataset_name = validation_loader.dataset.dataset_name # 
+
+	os.makedirs(results_dir, exist_ok=True)
+	mode = inspect.stack()[0].function
+	model_arch = model.name
+	model_name = model.__class__.__name__
+	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) | {type(device)} {device} [x{nw} cores]".center(160, "-"))
+	if torch.cuda.is_available():
+		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
+
+	dropout_val = None
+	for name, module in model.named_modules():
+		# print(f"{name}: {type(module).__name__}")
+		if isinstance(module, torch.nn.Dropout):
+			# print(f"{name}.p: {module.p}")
+			dropout_val = module.p
+			break
+	if dropout_val is None:
+		dropout_val = 0.0  # Default to 0.0 if no Dropout layers are found (unlikely in your case)
+
+	total_layers = count_clip_layers(model)
+	vis_nblocks, txt_nblocks = get_num_vit_blocks(model)
+	print(f"[Transformer Blocks] Vision: {vis_nblocks} | Text: {txt_nblocks}")
+	layer_groups = get_layer_groups(nv=vis_nblocks, nt=txt_nblocks,)
+	total_v_layers = len(layer_groups['visual_transformer'])
+	total_t_layers = len(layer_groups['text_transformer'])
+	print(f"[Layer Groups] Visual: {total_v_layers} | Text: {total_t_layers}")
+	freeze_schedule = get_progressive_freeze_schedule(layer_groups) # progressive freezing based on validation loss plateau
+	print(f"Freeze Schedule[{len(freeze_schedule)}]:\n{json.dumps(freeze_schedule, indent=2)}")
+	mdl_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth")
+	criterion = torch.nn.CrossEntropyLoss()
+	scaler = torch.amp.GradScaler(
+		device=device,
+		init_scale=2**16,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
+	)
+	# Lists to store metrics
+	training_losses = []
+	img2txt_metrics_list = []
+	txt2img_metrics_list = []
+	metrics_for_all_epochs = []
+	train_start_time = time.time()
+	best_val_loss = float('inf')
+	best_img2txt_metrics = None
+	best_txt2img_metrics = None
+	current_phase = 0
+	plateau_threshold = min_delta # ensure parameter consistency
+	initial_learning_rate = learning_rate # Store the initial value
+
+	for epoch in range(num_epochs):
+		print(f"Epoch [{epoch+1}/{num_epochs}]")
+		# Adaptive Progressive Layer Freezing Schedule:
+		if epoch > 1: # 2 epochs at least needed to compare
+			should_transition = should_transition_phase(
+				losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
+				th=plateau_threshold,
+				window=window_size,
+			)
+			if should_transition:
+				print(f"Plateau detected @ Epoch: {epoch+1} Transitioning from phase: {current_phase} to next phase.")
+				current_phase, learning_rate = handle_phase_transition(
+					current_phase=current_phase,
+					initial_lr=initial_learning_rate,
+					max_phases=len(freeze_schedule)
+				)
+		layers_to_freeze = freeze_schedule[current_phase]
+		freeze_(layers=layers_to_freeze, model=model)
+		get_status(model, current_phase, layers_to_freeze, total_layers)
+		optimizer = AdamW(
+			params=filter(lambda p: p.requires_grad, model.parameters()),
+			lr=learning_rate, # potentially update learning rate based on phase
+			betas=(0.9, 0.98),
+			eps=1e-8,
+			weight_decay=weight_decay,
+		)
+		scheduler = lr_scheduler.OneCycleLR(
+			optimizer=optimizer,
+			max_lr=learning_rate,
+			steps_per_epoch=len(train_loader),
+			epochs=num_epochs - epoch,  # Adjust for remaining epochs
+			pct_start=0.1,
+			anneal_strategy='cos',
+		)
+		epoch_loss = 0.0
+		for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
+			optimizer.zero_grad() # Clear gradients from previous batch
+			images = images.to(device, non_blocking=True)
+			tokenized_labels = tokenized_labels.to(device, non_blocking=True)
+
+			with torch.amp.autocast(device_type=device.type, enabled=True): # # Automatic Mixed Precision (AMP) backpropagation:
+				logits_per_image, logits_per_text = model(images, tokenized_labels) # torch.Size([batch_size, batch_size]) torch.Size([batch_size, batch_size])
+				ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
+				loss_img = criterion(logits_per_image, ground_truth)
+				loss_txt = criterion(logits_per_text, ground_truth)
+				total_loss = 0.5 * (loss_img + loss_txt)
+			scaler.scale(total_loss).backward()
+			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0) # stabilize training if exploding gradients
+			scaler.step(optimizer)
+			scaler.update()
+			scheduler.step() # Update learning rate
+			if bidx%print_every==0 or bidx+1==len(train_loader):
+				print(
+					f"\t\tBatch [{bidx+1}/{len(train_loader)}] "
+					f"Loss: {total_loss.item():.7f}",
+				)
+			epoch_loss += total_loss.item()
+
+		avg_training_loss = epoch_loss / len(train_loader)
+		training_losses.append(avg_training_loss)
+
+		metrics_per_epoch = evaluate_loss_and_accuracy(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			device=device,
+			topK_values=TOP_K_VALUES,
+		)
+		metrics_for_all_epochs.append(metrics_per_epoch)
+		print(
+			f'@ Epoch {epoch + 1}:\n'
+			f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {metrics_per_epoch.get("val_loss"):.8f}\n'
+			f'\tIn-batch Validation Accuracy [text retrieval per image]: {metrics_per_epoch.get("img2txt_acc")} '
+			f'[image retrieval per text]: {metrics_per_epoch.get("txt2img_acc")}'
+		)
+
+		# Compute retrieval-based metrics
+		img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
+			model=model,
+			validation_loader=validation_loader,
+			device=device,
+			topK_values=TOP_K_VALUES,
+		)
+		img2txt_metrics_list.append(img2txt_metrics)
+		txt2img_metrics_list.append(txt2img_metrics)
+		torch.cuda.empty_cache()  # Free up GPU memory
+
+		# Early stopping
+		current_val_loss = metrics_per_epoch["val_loss"]
+		checkpoint = {
+			"epoch": epoch,
+			"model_state_dict": model.state_dict(),
+			"optimizer_state_dict": optimizer.state_dict(),
+			"scheduler_state_dict": scheduler.state_dict(),
+			"best_val_loss": best_val_loss,
+		}
+
+		if current_val_loss < best_val_loss - early_stopping.min_delta:
+			print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
+			best_val_loss = current_val_loss
+			checkpoint.update({"best_val_loss": best_val_loss})
+			torch.save(checkpoint, mdl_fpth)
+			best_img2txt_metrics = img2txt_metrics
+			best_txt2img_metrics = txt2img_metrics
+
+		if early_stopping.should_stop(current_val_loss, model, epoch):
+			print(f"\nEarly stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
+			final_metrics = evaluate_loss_and_accuracy(
+				model=model,
+				validation_loader=validation_loader,
+				criterion=criterion,
+				device=device,
+				topK_values=TOP_K_VALUES,
+			)
+
+			final_img2txt, final_txt2img = evaluate_retrieval_performance(
+				model=model,
+				validation_loader=validation_loader,
+				device=device,
+				topK_values=TOP_K_VALUES,
+			)
+
+			metrics_per_epoch = final_metrics
+			img2txt_metrics = final_img2txt
+			txt2img_metrics = final_txt2img
+
+			if final_metrics["val_loss"] < best_val_loss:
+				best_val_loss = final_metrics["val_loss"]
+				checkpoint.update({"best_val_loss": best_val_loss})
+				best_img2txt_metrics = final_img2txt
+				best_txt2img_metrics = final_txt2img
+				torch.save(checkpoint, mdl_fpth)
+			break
+		print("-" * 170)
+	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(150, "-"))
+
+	file_base_name = (
+		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
+		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}"
+	)
+
+	losses_fpth = os.path.join(results_dir, f"{file_base_name}_losses.png")
+	val_acc_fpth = os.path.join(results_dir, f"{file_base_name}_top1_accuracy.png")
+	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png")
+	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_txt2img_topk_accuracy.png")
+	mrr_fpth = os.path.join(results_dir, f"{file_base_name}_mrr.png")
+	cs_fpth = os.path.join(results_dir, f"{file_base_name}_cos_sim.png")	
+
+	plot_loss_accuracy(
+		dataset_name=dataset_name,
+		train_losses=training_losses,
+		val_losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
+		val_acc_img2txt_list=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
+		val_acc_txt2img_list=[metrics["txt2img_acc"] for metrics in metrics_for_all_epochs],
+		img2txt_topk_accuracy_list=[metrics["img2txt_topk_acc"] for metrics in metrics_for_all_epochs],
+		txt2img_topk_accuracy_list=[metrics["txt2img_topk_acc"] for metrics in metrics_for_all_epochs],
+		mean_reciprocal_rank_list=[metrics["mean_reciprocal_rank"] for metrics in metrics_for_all_epochs],
+		cosine_similarity_list=[metrics["cosine_similarity"] for metrics in metrics_for_all_epochs],
+		losses_file_path=losses_fpth,
+		accuracy_file_path=val_acc_fpth,
+		img2txt_topk_accuracy_file_path=img2txt_topk_accuracy_fpth,
+		txt2img_topk_accuracy_file_path=txt2img_topk_accuracy_fpth,
+		mean_reciprocal_rank_file_path=mrr_fpth,
+		cosine_similarity_file_path=cs_fpth,
+	)
+
+	retrieval_metrics_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png")
+	plot_retrieval_metrics_per_epoch(
+		dataset_name=dataset_name,
+		image_to_text_metrics_list=img2txt_metrics_list,
+		text_to_image_metrics_list=txt2img_metrics_list,
+		fname=retrieval_metrics_fpth,
+	)
+	
+	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png")
+	plot_retrieval_metrics_best_model(
+		dataset_name=dataset_name,
+		image_to_text_metrics=best_img2txt_metrics,
+		text_to_image_metrics=best_txt2img_metrics,
+		fname=retrieval_metrics_best_model_fpth,
+	)
+
 def lora_finetune(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
@@ -524,69 +918,69 @@ def lora_finetune(
 	best_img2txt_metrics = None
 	best_txt2img_metrics = None
 	for epoch in range(num_epochs):
-			torch.cuda.empty_cache()
-			model.train()
-			print(f"Epoch [{epoch + 1}/{num_epochs}]")
-			epoch_loss = 0.0
-			for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
-					optimizer.zero_grad()
-					images = images.to(device, non_blocking=True)
-					tokenized_labels = tokenized_labels.to(device, non_blocking=True)
-					
-					with torch.amp.autocast(device_type=device.type, enabled=True):
-							logits_per_image, logits_per_text = model(images, tokenized_labels)
-							ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
-							loss_img = criterion(logits_per_image, ground_truth)
-							loss_txt = criterion(logits_per_text, ground_truth)
-							total_loss = 0.5 * (loss_img + loss_txt)
-					scaler.scale(total_loss).backward()
-					torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-					scaler.step(optimizer)
-					scaler.update()
-					scheduler.step()
-					if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-							print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
-					epoch_loss += total_loss.item()
-			avg_training_loss = epoch_loss / len(train_loader)
-			training_losses.append(avg_training_loss)
-			# Evaluation (same as finetune())
-			metrics_per_epoch = evaluate_loss_and_accuracy(
-					model=model,
-					validation_loader=validation_loader,
-					criterion=criterion,
-					device=device,
-					topK_values=TOP_K_VALUES,
-			)
-			metrics_for_all_epochs.append(metrics_per_epoch)
+		torch.cuda.empty_cache()
+		model.train()
+		print(f"Epoch [{epoch + 1}/{num_epochs}]")
+		epoch_loss = 0.0
+		for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
+			optimizer.zero_grad()
+			images = images.to(device, non_blocking=True)
+			tokenized_labels = tokenized_labels.to(device, non_blocking=True)
 			
-			img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
-					model=model,
-					validation_loader=validation_loader,
-					device=device,
-					topK_values=TOP_K_VALUES,
-			)
-			img2txt_metrics_list.append(img2txt_metrics)
-			txt2img_metrics_list.append(txt2img_metrics)
-			# Early stopping and checkpointing (same as finetune())
-			current_val_loss = metrics_per_epoch["val_loss"]
-			checkpoint = {
-					"epoch": epoch,
-					"model_state_dict": model.state_dict(),
-					"optimizer_state_dict": optimizer.state_dict(),
-					"scheduler_state_dict": scheduler.state_dict(),
-					"best_val_loss": best_val_loss,
-			}
-			if current_val_loss < best_val_loss - early_stopping.min_delta:
-					print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
-					best_val_loss = current_val_loss
-					checkpoint.update({"best_val_loss": best_val_loss})
-					torch.save(checkpoint, mdl_fpth)
-					best_img2txt_metrics = img2txt_metrics
-					best_txt2img_metrics = txt2img_metrics
-			if early_stopping.should_stop(current_val_loss, model, epoch):
-					print(f"\nEarly stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
-					break
-
+			with torch.amp.autocast(device_type=device.type, enabled=True):
+				logits_per_image, logits_per_text = model(images, tokenized_labels)
+				ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
+				loss_img = criterion(logits_per_image, ground_truth)
+				loss_txt = criterion(logits_per_text, ground_truth)
+				total_loss = 0.5 * (loss_img + loss_txt)
+			scaler.scale(total_loss).backward()
+			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			scaler.step(optimizer)
+			scaler.update()
+			scheduler.step()
+			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+				print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
+			epoch_loss += total_loss.item()
+		avg_training_loss = epoch_loss / len(train_loader)
+		training_losses.append(avg_training_loss)
+		# Evaluation (same as finetune())
+		metrics_per_epoch = evaluate_loss_and_accuracy(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			device=device,
+			topK_values=TOP_K_VALUES,
+		)
+		metrics_for_all_epochs.append(metrics_per_epoch)
+		
+		img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
+			model=model,
+			validation_loader=validation_loader,
+			device=device,
+			topK_values=TOP_K_VALUES,
+		)
+		img2txt_metrics_list.append(img2txt_metrics)
+		txt2img_metrics_list.append(txt2img_metrics)
+		# Early stopping and checkpointing (same as finetune())
+		current_val_loss = metrics_per_epoch["val_loss"]
+		checkpoint = {
+			"epoch": epoch,
+			"model_state_dict": model.state_dict(),
+			"optimizer_state_dict": optimizer.state_dict(),
+			"scheduler_state_dict": scheduler.state_dict(),
+			"best_val_loss": best_val_loss,
+		}
+		if current_val_loss < best_val_loss - early_stopping.min_delta:
+			print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
+			best_val_loss = current_val_loss
+			checkpoint.update({"best_val_loss": best_val_loss})
+			torch.save(checkpoint, mdl_fpth)
+			best_img2txt_metrics = img2txt_metrics
+			best_txt2img_metrics = txt2img_metrics
+		if early_stopping.should_stop(current_val_loss, model, epoch):
+			print(f"\nEarly stopping triggered at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
+			break
+		print("-" * 170)
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(150, "-"))
 
 	file_base_name = (
@@ -1156,7 +1550,7 @@ def pretrain(
 
 	os.makedirs(results_dir, exist_ok=True)
 
-	print(f"Pretrain Evaluation {dataset_name} | {model_name} - {model_arch} | {device}".center(150, "-"))
+	print(f"Pretrain Evaluation {dataset_name} with {validation_loader.dataset.__class__.__name__} samples| {model_name} - {model_arch} | {device}".center(150, "-"))
 	
 	# 1. evaluate_retrieval_performance
 	img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
@@ -1194,9 +1588,9 @@ def main():
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 1e-3]')
 	parser.add_argument('--print_every', type=int, default=250, help='Print every [def: 250]')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP Architecture (ViT-B/32, ViT-B/16, ViT-L/14, ViT-L/14@336px)')
-	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet'], default='cifar100', help='Choose dataset (CIFAR10/cifar100)')
+	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet', 'svhn'], default='cifar100', help='Choose dataset (CIFAR10/cifar100)')
 	parser.add_argument('--mode', '-m', type=str, choices=['pretrain', 'train', 'finetune'], default='pretrain', help='Choose mode (pretrain/train/finetune)')
-	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora'], default='full', help='Fine-tuning strategy (full/lora) when mode is finetune')
+	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora', 'progressive_unfreeze'], default='full', help='Fine-tuning strategy (full/lora) when mode is finetune')
 	parser.add_argument('--lora_rank', type=int, default=8, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', type=float, default=16.0, help='LoRA alpha (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_dropout', type=float, default=0.0, help='LoRA dropout (used if finetune_strategy=lora)')
@@ -1217,10 +1611,8 @@ def main():
 	print(clip.available_models()) # List all available CLIP models
 	# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 	print(f">> CLIP Model Architecture: {args.model_architecture}...")
-	model_config = get_clip_config(
-		model_name=args.model_architecture,
-		dropout=args.dropout,
-	)
+	model_config = get_config(architecture=args.model_architecture, dropout=args.dropout,)
+
 	print(json.dumps(model_config, indent=4, ensure_ascii=False))
 	model, preprocess = clip.load(
 		name=args.model_architecture,
@@ -1233,7 +1625,7 @@ def main():
 	model.name = args.model_architecture  # Custom attribute to store model name
 	print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture on {args.device} device")
 	# print(model.visual.conv1.weight[0, 0, 0])  # Random value (not zeros or pretrained values)
-	print(f"embed_dim: {model.text_projection.size(0)}, transformer_width: {model.text_projection.size(1)}")
+	# print(f"embed_dim: {model.text_projection.size(0)}, transformer_width: {model.text_projection.size(1)}")
 
 	train_loader, validation_loader = get_dataloaders(
 		dataset_name=args.dataset,
@@ -1241,6 +1633,7 @@ def main():
 		nw=args.num_workers,
 		USER=os.environ.get('USER'),
 		input_resolution=model_config["image_resolution"],
+		preprocess=None,
 		# preprocess=preprocess,
 	)
 	print_loader_info(loader=train_loader, batch_size=args.batch_size)
@@ -1290,6 +1683,25 @@ def main():
 				minimum_epochs=args.minimum_epochs,
 				TOP_K_VALUES=args.topK_values,
 			)
+		elif args.finetune_strategy == 'progressive_unfreeze':
+			progressive_unfreeze_finetune(
+				model=model,
+				train_loader=train_loader,
+				validation_loader=validation_loader,
+				num_epochs=args.epochs,
+				nw=args.num_workers,
+				print_every=args.print_every,
+				learning_rate=args.learning_rate,
+				weight_decay=args.weight_decay,
+				device=args.device,
+				results_dir=os.path.join(args.dataset, "results"),
+				window_size=args.window_size, # early stopping
+				patience=10,									# early stopping
+				min_delta=1e-4,								# early stopping
+				cumulative_delta=5e-3,				# early stopping
+				minimum_epochs=20,						# early stopping
+				TOP_K_VALUES=args.topK_values,
+			)
 		else:
 			raise ValueError(f"Invalid mode: {args.mode}")
 	elif args.mode == 'train':
@@ -1312,34 +1724,41 @@ def main():
 			TOP_K_VALUES=args.topK_values,
 		)
 	elif args.mode == "pretrain":
-		# pretrain(
-		# 	model=model,
-		# 	validation_loader=validation_loader,
-		# 	results_dir=os.path.join(args.dataset, "results"),
-		# 	device=args.device,
-		# 	TOP_K_VALUES=args.topK_values,
-		# )
-		#  Collect metrics for all available models
 		all_img2txt_metrics = {}
 		all_txt2img_metrics = {}
 		available_models = clip.available_models()  # ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
-		for model_arch in available_models:
-			print(f"Evaluating pre-trained model: {model_arch}")
+		for model_arch in available_models[::-1]:
+			print(f"Evaluating pre-trained {model_arch}")
+			model_config = get_config(architecture=model_arch, dropout=args.dropout,)
+			print(json.dumps(model_config, indent=4, ensure_ascii=False))
+
 			model, preprocess = clip.load(
-					name=model_arch,
-					device=args.device,
-					random_weights=False,
-					dropout=args.dropout,
+				name=model_arch,
+				device=args.device,
+				random_weights=False,
+				dropout=args.dropout,
 			)
 			model = model.float()
 			model.name = model_arch  # Custom attribute to store model name
-			print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture on {args.device} device")
+			print(f"{model.__class__.__name__} - {model_arch} loaded successfully")
+			train_loader, validation_loader = get_dataloaders(
+				dataset_name=args.dataset,
+				batch_size=args.batch_size,
+				nw=args.num_workers,
+				USER=os.environ.get('USER'),
+				input_resolution=model_config["image_resolution"],
+				preprocess=None,
+				# preprocess=preprocess,
+			)
+			print_loader_info(loader=train_loader, batch_size=args.batch_size)
+			print_loader_info(loader=validation_loader, batch_size=args.batch_size)
+
 			img2txt_metrics, txt2img_metrics = pretrain(
-					model=model,
-					validation_loader=validation_loader,
-					results_dir=os.path.join(args.dataset, "results"),
-					device=args.device,
-					TOP_K_VALUES=args.topK_values,
+				model=model,
+				validation_loader=validation_loader,
+				results_dir=os.path.join(args.dataset, "results"),
+				device=args.device,
+				TOP_K_VALUES=args.topK_values,
 			)
 			all_img2txt_metrics[model_arch] = img2txt_metrics
 			all_txt2img_metrics[model_arch] = txt2img_metrics

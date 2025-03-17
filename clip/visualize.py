@@ -227,8 +227,7 @@ def plot_retrieval_metrics_best_model(
 		padding = 0.02 * (max_val - min_val) if (max_val - min_val) > 0 else 0.02
 		ax.set_ylim(bottom=min(-0.02, min_val - padding), top=max(0.5, max_val + padding))
 		print("*"*150)
-		
-	
+
 	plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 	fig.legend(
 		legend_handles,

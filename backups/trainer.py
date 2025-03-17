@@ -443,6 +443,7 @@ def evaluate_loss_and_accuracy(
 
 	return metrics
 
+
 def count_clip_layers(model):
 		"""
 		Count total number of layers in CLIP model
@@ -572,7 +573,7 @@ def handle_phase_transition(current_phase, initial_lr, max_phases):
 	print(f"<!> Plateau detected! Transitioning to Phase {new_phase} with learning rate {new_lr:.1e}")
 	return new_phase, new_lr
 
-def finetune(
+def progressive_unfreeze_finetune(
 		model:torch.nn.Module,
 		train_loader:DataLoader,
 		validation_loader:DataLoader,
@@ -794,6 +795,7 @@ def finetune(
 		text_to_image_metrics_list=txt2img_metrics_list,
 		fname=retrieval_metrics_fpth,
 	)
+
 
 def train(
 		model:torch.nn.Module,
@@ -1144,7 +1146,7 @@ def main():
 	# visualize_(dataloader=train_loader, num_samples=5)
 
 	if args.mode == 'finetune':
-		finetune(
+		progressive_unfreeze_finetune(
 			model=model,
 			train_loader=train_loader,
 			validation_loader=validation_loader,

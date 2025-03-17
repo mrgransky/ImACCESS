@@ -1,5 +1,5 @@
 from utils import *
-from torchvision.datasets import CIFAR10, CIFAR100
+from torchvision.datasets import CIFAR10, CIFAR100, SVHN
 
 def _convert_image_to_rgb(image):
 	return image.convert("RGB")
@@ -11,6 +11,7 @@ def get_dataset_transform(dname:str, input_resolution:int):
 		'CIFAR100': ((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)),
 		'IMAGENET': ((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
 		'CINIC10': ((0.128, 0.109, 0.075), (0.202, 0.185, 0.167)),
+		'SVHN': ((0.4376821, 0.4437697, 0.47280442), (0.19803012, 0.20101562, 0.19703614)),
 	}
 	if dname in mean_std_dict.keys():
 		mean = mean_std_dict[dname][0]
@@ -35,7 +36,7 @@ def get_dataset(
 		transform = get_dataset_transform(dname=dname, input_resolution=input_resolution)
 	dname = dname.upper()
 	ddir = {
-		"farid": f'/home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/{dname}',
+		"farid": f'/home/farid/datasets/WW_DATASETs/{dname}',
 		"ubuntu": f'/media/volume/ImACCESS/WW_DATASETs/{dname}',
 		"alijanif": f'/scratch/project_2004072/ImACCESS/WW_DATASETs/{dname}',
 	}
@@ -89,6 +90,21 @@ def get_dataset(
 			download=True,
 			transform=transform,
 		)
+	elif dname == 'SVHN':
+		train_dataset = SVHN(
+			root=os.path.expanduser("~/.cache"),
+			split='train',
+			download=True,
+			transform=transform,
+		)
+		train_dataset.classes = [str(i) for i in range(10)]  # Define class names for digits 0-9
+		validation_dataset = SVHN(
+			root=os.path.expanduser("~/.cache"),
+			split='test',
+			download=True,
+			transform=transform,
+		)
+		validation_dataset.classes = [str(i) for i in range(10)]  # Define class names for digits 0-9
 	else:
 		raise ValueError(f"Invalid dataset name: {dname}. Available: [CIFAR10, cifar100, IMAGENET, CINIC10]")
 	print(train_dataset)
@@ -138,8 +154,20 @@ def get_dataloaders(
 class IMAGE_TEXT_DATASET(Dataset):
 	def __init__(self, dataset):
 		self.dataset = dataset
-		self.label_names = dataset.classes  # Class names like 'airplane', 'automobile', etc.
-	
+		# self.label_names = dataset.classes  # Class names like 'airplane', 'automobile', etc.
+
+		# Check if dataset has 'classes' attribute
+		if hasattr(dataset, 'classes'):
+			self.label_names = dataset.classes
+		else:
+			# Fallback for datasets like SVHN without explicit class names
+			max_label = max(label for _, label in dataset)
+			self.label_names = [str(i) for i in range(max_label + 1)]
+		
+		# Ensure label_names has valid entries
+		if not self.label_names:
+			raise ValueError("Dataset must have class labels defined.")
+
 	def __getitem__(self, index):
 		img, lbl_idx = self.dataset[index]
 		label = self.label_names[lbl_idx]  # Use label name as text prompt

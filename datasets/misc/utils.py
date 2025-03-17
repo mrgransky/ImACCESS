@@ -16,7 +16,7 @@ import nltk
 import multiprocessing
 import shutil
 import logging
-from typing import List, Dict, Set, Tuple, Union
+from typing import List, Dict, Set, Tuple, Union, Callable
 from bs4 import BeautifulSoup
 from multiprocessing import Pool
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor, TimeoutError

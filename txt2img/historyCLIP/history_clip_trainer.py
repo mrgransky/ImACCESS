@@ -25,14 +25,14 @@ from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 256 -e 100 -lr 5e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:2" -m finetune -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/wwii_ft_full.out &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 5e-5 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:2" -m finetune -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/europeana_ft_full.out &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 256 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:0" -m finetune -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/na_ft_full.out &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 256 -e 100 -lr 1e-5 -wd 1e-2 --print_every 500 -nw 50 --device "cuda:3" -m finetune -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/history_xN_ft_full.out &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 256 -e 100 -lr 1e-5 -wd 1e-2 --print_every 250 -nw 50 --device "cuda:3" -m finetune -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/history_xN_ft_full.out &
 
 # finetune [lora]:
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 5e-6 -wd 1e-1 --print_every 50 -nw 50 --device "cuda:0" -m finetune -fts lora --lora_rank 16 --lora_alpha 32 --lora_dropout 0.0 -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/smu_ft_lora.out &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 256 -e 100 -lr 5e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:3" -m finetune -fts lora --lora_rank 16 --lora_alpha 32 --lora_dropout 0.0 -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/wwii_ft_lora.out &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 256 -e 100 -lr 5e-5 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:2" -m finetune -fts lora --lora_rank 16 --lora_alpha 32 --lora_dropout 0.0 -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/europeana_ft_lora.out &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 256 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:1" -m finetune  -fts lora --lora_rank 16 --lora_alpha 32 --lora_dropout 0.0 -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/na_ft_lora.out &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 256 -e 100 -lr 1e-5 -wd 1e-2 --print_every 500 -nw 50 --device "cuda:0" -m finetune -fts lora --lora_rank 16 --lora_alpha 32 --lora_dropout 0.0 -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/history_xN_ft_lora.out &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 256 -e 100 -lr 1e-5 -wd 1e-2 --print_every 250 -nw 50 --device "cuda:0" -m finetune -fts lora --lora_rank 16 --lora_alpha 32 --lora_dropout 0.0 -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/history_xN_ft_lora.out &
 
 # pretrain:
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 > /media/volume/ImACCESS/trash/europeana_pretrained.out &
@@ -44,7 +44,7 @@ def main():
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=16, help='Number of CPUs [def: max cpus]')
 	parser.add_argument('--epochs', '-e', type=int, default=9, help='Number of epochs')
-	parser.add_argument('--batch_size', '-bs', type=int, default=32, help='Batch size for training')
+	parser.add_argument('--batch_size', '-bs', type=int, default=8, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--print_every', type=int, default=100, help='Print loss')
@@ -71,10 +71,7 @@ def main():
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 
 	print(f">> CLIP Model Architecture: {args.model_architecture}...")
-	model_config = get_clip_config(
-		model_name=args.model_architecture,
-		dropout=args.dropout,
-	)
+	model_config = get_config(architecture=args.model_architecture, dropout=args.dropout,)
 	print(json.dumps(model_config, indent=4, ensure_ascii=False))
 
 	model, preprocess = clip.load(
@@ -96,7 +93,7 @@ def main():
 		batch_size=args.batch_size,
 		num_workers=args.num_workers,
 		input_resolution=model_config["image_resolution"],
-		# preprocess=preprocess,
+		preprocess=None, # preprocess,
 	)
 	print_loader_info(loader=train_loader, batch_size=args.batch_size)
 	print_loader_info(loader=validation_loader, batch_size=args.batch_size)
@@ -169,13 +166,10 @@ def main():
 	elif args.mode == "pretrain":
 		all_img2txt_metrics = {}
 		all_txt2img_metrics = {}
-		available_models = clip.available_models()[::-1]#[:4]  # ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
+		available_models = clip.available_models()[::-1]#[:4] # ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 		for model_arch in available_models:
 			print(f"Evaluating pre-trained model: {model_arch}")
-			model_config = get_clip_config(
-				model_name=model_arch,
-				dropout=args.dropout,
-			)
+			model_config = get_config(architecture=model_arch, dropout=args.dropout,)
 			print(json.dumps(model_config, indent=4, ensure_ascii=False))
 
 			model, preprocess = clip.load(
@@ -194,7 +188,7 @@ def main():
 				batch_size=args.batch_size,
 				num_workers=args.num_workers,
 				input_resolution=model_config["image_resolution"],
-				# preprocess=preprocess,
+				preprocess=None, # preprocess,
 			)
 			print_loader_info(loader=train_loader, batch_size=args.batch_size)
 			print_loader_info(loader=validation_loader, batch_size=args.batch_size)
