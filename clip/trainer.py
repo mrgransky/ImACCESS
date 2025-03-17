@@ -432,62 +432,6 @@ def evaluate_loss_and_accuracy(
 
 	return metrics
 
-def count_clip_layers(model):
-		"""
-		Count total number of layers in CLIP model
-		"""
-		total_layers = 0
-		unique_layers = set()
-		
-		# Count each named parameter's layer (get base layer name without .weight/.bias)
-		for name, _ in model.named_parameters():
-				# Split the name and take everything except the last part (weight/bias)
-				layer_name = '.'.join(name.split('.')[:-1])
-				if layer_name:  # Avoid empty strings
-						unique_layers.add(layer_name)
-		
-		total_layers = len(unique_layers)
-		
-		# Detailed breakdown
-		visual_transformer_blocks = len([l for l in unique_layers if 'visual.transformer.resblocks' in l])
-		text_transformer_blocks = len([l for l in unique_layers if 'transformer.resblocks' in l])
-		projection_layers = len([l for l in unique_layers if any(x in l for x in ['visual.proj', 'text_projection', 'visual.ln_post'])])
-		frontend_layers = len([l for l in unique_layers if any(x in l for x in ['visual.conv1', 'visual.class_embedding', 'positional_embedding', 'token_embedding'])])
-		
-		print(f"\nCLIP Layer Statistics:")
-		print(f"Total unique layers: {total_layers}")
-		print(f"Visual transformer blocks: {visual_transformer_blocks}")
-		print(f"Text transformer blocks: {text_transformer_blocks}")
-		print(f"Projection layers: {projection_layers}")
-		print(f"Frontend layers: {frontend_layers}")
-		return total_layers
-
-def get_status(
-	model,
-	current_phase=0,
-	layers_to_freeze=[],
-	total_layers=0,
-	):
-	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)    
-	total_params = sum(p.numel() for p in model.parameters())
-	trainable_percent = (trainable_params / total_params) * 100
-	frozen_percent = (frozen_params / total_params) * 100
-	freeze_percentage = (len(layers_to_freeze) / total_layers) * 100 if total_layers > 0 else 0
-	unfreeze_percentage = 100 - freeze_percentage
-	print("\n" + "="*60)
-	print(f"Model Status - Phase {current_phase}".center(60))
-	print("="*60)
-	print("\nParameter Statistics:")
-	print(f"{'Total:':<25} {total_params:,}")
-	print(f"{'Trainable:':<25} {trainable_params:,} ({trainable_percent:.2f}%)")
-	print(f"{'Frozen:':<25} {frozen_params:,} ({frozen_percent:.2f}%)")
-	print("\nLayer Statistics:")
-	print(f"{'Total:':<25} {total_layers}")
-	print(f"{'Frozen:':<25} {len(layers_to_freeze)} ({freeze_percentage:.1f}%)")
-	print(f"{'Trainable:':<25} {total_layers - len(layers_to_freeze)} ({unfreeze_percentage:.1f}%)")
-	print("\n" + "="*60 + "\n")
-
 def get_num_vit_blocks(model):
 	if not hasattr(model, 'visual') or not hasattr(model.visual, 'transformer'):
 		raise ValueError("Model structure not compatible - missing visual transformer")
@@ -495,7 +439,10 @@ def get_num_vit_blocks(model):
 	txt_transformer = model.transformer
 	return len(vis_transformer.resblocks), len(txt_transformer.resblocks)
 
-def get_layer_groups(nv:int=12, nt:int=12):
+def get_layer_groups(model: torch.nn.Module,) -> dict:
+	vis_nblocks, txt_nblocks = get_num_vit_blocks(model=model)
+	print(f"[Transformer Blocks] Vision: {vis_nblocks} | Text: {txt_nblocks}")
+
 	layer_groups = {
 		'visual_frontend': [
 			'visual.conv1', # patch embedding
@@ -503,9 +450,9 @@ def get_layer_groups(nv:int=12, nt:int=12):
 			'visual.positional_embedding', # positional embedding
 			# 'visual.ln_pre' # 
 		],
-		'visual_transformer': [f'visual.transformer.resblocks.{i}' for i in range(nv)],
+		'visual_transformer': [f'visual.transformer.resblocks.{i}' for i in range(vis_nblocks)],
 		'text_frontend': ['token_embedding','positional_embedding'],
-		'text_transformer': [f'transformer.resblocks.{i}' for i in range(nt)],
+		'text_transformer': [f'transformer.resblocks.{i}' for i in range(txt_nblocks)],
 		'projections': [
 			'visual.proj', # final normalization before projection
 			'visual.ln_post',
@@ -513,9 +460,15 @@ def get_layer_groups(nv:int=12, nt:int=12):
 			'logit_scale', # Temperature parameter
 		],
 	}
+	total_v_layers = len(layer_groups['visual_transformer'])
+	total_t_layers = len(layer_groups['text_transformer'])
+	print(f"[Layer Groups] Visual: {total_v_layers} | Text: {total_t_layers}")
+
 	return layer_groups
 
-def get_progressive_freeze_schedule(layer_groups:dict):
+def get_progressive_freeze_schedule(model: torch.nn.Module):
+	layer_groups = get_layer_groups(model=model)
+
 	total_v_layers = len(layer_groups['visual_transformer'])
 	total_t_layers = len(layer_groups['text_transformer'])
 	print(f"Total visual layers: {total_v_layers} | 80%: {int(0.8*total_v_layers)} 60%: {int(0.6*total_v_layers)} 40%: {int(0.4*total_v_layers)}")
@@ -538,7 +491,7 @@ def freeze_(layers, model):
 	for name, param in model.named_parameters():
 		param.requires_grad = True # Unfreeze all layers first
 		if any(ly in name for ly in layers): # Freeze layers in the list
-			param.requires_grad = False
+			param.requires_grad = False # Freeze the layer
 
 def should_transition_phase(
 	losses:List[float],
@@ -561,7 +514,150 @@ def handle_phase_transition(current_phase, initial_lr, max_phases):
 	print(f"<!> Plateau detected! Transitioning to Phase {new_phase} with learning rate {new_lr:.1e}")
 	return new_phase, new_lr
 
-def progressive_unfreeze_finetune(
+from collections import defaultdict
+from tabulate import tabulate
+import torch
+
+def count_clip_layers(model: torch.nn.Module) -> dict:
+		"""
+		Accurately counts and categorizes CLIP model layers for all architectures
+		Returns layer categories and total count
+		"""
+		layer_categories = defaultdict(set)
+
+		for name, _ in model.named_parameters():
+				parts = name.split('.')
+				parent_layer = '.'.join(parts[:-1])  # Get parent module
+				
+				# Visual components
+				if 'visual' in parts:
+						if 'transformer' in parts:
+								# ViT models: group by transformer block
+								idx = parts.index('transformer') + 2
+								base = '.'.join(parts[:idx])
+								layer_categories['Visual Transformer'].add(base)
+						elif 'layer' in parts:
+								# ResNet models: group by CNN layer block
+								idx = parts.index('layer') + 2
+								base = '.'.join(parts[:idx])
+								layer_categories['Visual CNN'].add(base)
+						elif any(x in parts for x in ['conv1', 'class_embedding', 'positional_embedding']):
+								layer_categories['Visual Frontend'].add(parent_layer)
+						elif any(x in parts for x in ['proj', 'ln_post']):
+								layer_categories['Visual Projection'].add(parent_layer)
+						else:
+								layer_categories['Visual Other'].add(parent_layer)
+				
+				# Text components
+				elif 'text' in parts or 'token_embedding' in name:
+						if 'transformer' in parts:
+								idx = parts.index('transformer') + 2
+								base = '.'.join(parts[:idx])
+								layer_categories['Text Transformer'].add(base)
+						elif any(x in parts for x in ['token_embedding', 'positional_embedding']):
+								layer_categories['Text Frontend'].add(parent_layer)
+						elif 'text_projection' in parts:
+								layer_categories['Text Projection'].add(parent_layer)
+						else:
+								layer_categories['Text Other'].add(parent_layer)
+				
+				# Other components
+				else:
+						layer_categories['Other'].add(parent_layer)
+
+		# Convert to counts and add metadata
+		counts = {k: len(v) for k, v in layer_categories.items()}
+		counts['total'] = sum(counts.values())
+		return {
+				'categories': layer_categories,
+				'counts': counts,
+				'all_layers': {layer for v in layer_categories.values() for layer in v}
+		}
+
+def get_status(
+		model: torch.nn.Module,
+		current_phase: int = 0,
+		layers_to_freeze: list = [],
+):
+		"""
+		Comprehensive model status reporting with architecture-aware statistics
+		"""
+		# Get layer information
+		layer_info = count_clip_layers(model)
+		total_layers = layer_info['counts']['total']
+		
+		# Parameter statistics
+		trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+		frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)
+		total_params = trainable_params + frozen_params
+		
+		# Layer freezing statistics
+		frozen_layer_set = set(layers_to_freeze)
+		total_frozen = len(frozen_layer_set & layer_info['all_layers'])
+		
+		# Prepare statistics
+		stats = {
+				'parameters': {
+						'total': total_params,
+						'trainable': trainable_params,
+						'frozen': frozen_params,
+						'trainable_percent': (trainable_params / total_params) * 100,
+						'frozen_percent': (frozen_params / total_params) * 100
+				},
+				'layers': {
+						'total': total_layers,
+						'frozen': total_frozen,
+						'frozen_percent': (total_frozen / total_layers) * 100 if total_layers > 0 else 0,
+						'categories': {
+								k: {
+										'total': v,
+										'frozen': len(frozen_layer_set & layer_info['categories'][k])
+								} 
+								for k, v in layer_info['counts'].items() if k != 'total'
+						}
+				}
+		}
+
+		# Print formatted report
+		print("\n" + "="*80)
+		print(f"Model Status - Phase {current_phase}".center(80))
+		print("="*80)
+		
+		# Parameter table
+		param_table = [
+				["Total Parameters", f"{stats['parameters']['total']:,}"],
+				["Trainable Parameters", f"{stats['parameters']['trainable']:,} ({stats['parameters']['trainable_percent']:.2f}%)"],
+				["Frozen Parameters", f"{stats['parameters']['frozen']:,} ({stats['parameters']['frozen_percent']:.2f}%)"]
+		]
+		print("\nParameter Statistics:")
+		print(tabulate(param_table, tablefmt="grid"))
+		
+		# Layer table
+		layer_table = [
+				["Total Layers", stats['layers']['total']],
+				["Frozen Layers", f"{stats['layers']['frozen']} ({stats['layers']['frozen_percent']:.1f}%)"]
+		]
+		print("\nLayer Statistics:")
+		print(tabulate(layer_table, tablefmt="grid"))
+		
+		# Category breakdown
+		category_table = []
+		for cat, data in stats['layers']['categories'].items():
+				category_table.append([
+						cat.replace('_', ' ').title(),
+						f"{data['frozen']}/{data['total']}",
+						f"{(data['frozen']/data['total'])*100:.1f}%" if data['total'] > 0 else "0.0%"
+				])
+		
+		print("\nLayer Category Breakdown:")
+		print(tabulate(category_table, 
+								 headers=["Category", "Frozen/Total", "% Frozen"], 
+								 tablefmt="grid"))
+		
+		print("\n" + "="*80 + "\n")
+		return stats
+
+def progressive_freeze_finetune(
 		model:torch.nn.Module,
 		train_loader:DataLoader,
 		validation_loader:DataLoader,
@@ -598,7 +694,7 @@ def progressive_unfreeze_finetune(
 	mode = inspect.stack()[0].function
 	model_arch = model.name
 	model_name = model.__class__.__name__
-	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) | {type(device)} {device} [x{nw} cores]".center(160, "-"))
+	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
 
@@ -611,17 +707,16 @@ def progressive_unfreeze_finetune(
 			break
 	if dropout_val is None:
 		dropout_val = 0.0  # Default to 0.0 if no Dropout layers are found (unlikely in your case)
-
-	total_layers = count_clip_layers(model)
-	vis_nblocks, txt_nblocks = get_num_vit_blocks(model)
-	print(f"[Transformer Blocks] Vision: {vis_nblocks} | Text: {txt_nblocks}")
-	layer_groups = get_layer_groups(nv=vis_nblocks, nt=txt_nblocks,)
-	total_v_layers = len(layer_groups['visual_transformer'])
-	total_t_layers = len(layer_groups['text_transformer'])
-	print(f"[Layer Groups] Visual: {total_v_layers} | Text: {total_t_layers}")
-	freeze_schedule = get_progressive_freeze_schedule(layer_groups) # progressive freezing based on validation loss plateau
+	
+	freeze_schedule = get_progressive_freeze_schedule(model=model) # progressive freezing based on validation loss plateau
 	print(f"Freeze Schedule[{len(freeze_schedule)}]:\n{json.dumps(freeze_schedule, indent=2)}")
-	mdl_fpth = os.path.join(results_dir, f"{dataset_name}_{mode}_{re.sub('/', '', model_name)}_clip.pth")
+
+	mdl_fpth = os.path.join(
+		results_dir,
+		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
+		f"dropout_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
+	)
+	
 	criterion = torch.nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -630,7 +725,6 @@ def progressive_unfreeze_finetune(
 		backoff_factor=0.5,
 		growth_interval=2000,
 	)
-	# Lists to store metrics
 	training_losses = []
 	img2txt_metrics_list = []
 	txt2img_metrics_list = []
@@ -661,7 +755,7 @@ def progressive_unfreeze_finetune(
 				)
 		layers_to_freeze = freeze_schedule[current_phase]
 		freeze_(layers=layers_to_freeze, model=model)
-		get_status(model, current_phase, layers_to_freeze, total_layers)
+		get_status(model, current_phase, layers_to_freeze)
 		optimizer = AdamW(
 			params=filter(lambda p: p.requires_grad, model.parameters()),
 			lr=learning_rate, # potentially update learning rate based on phase
@@ -673,7 +767,7 @@ def progressive_unfreeze_finetune(
 			optimizer=optimizer,
 			max_lr=learning_rate,
 			steps_per_epoch=len(train_loader),
-			epochs=num_epochs - epoch,  # Adjust for remaining epochs
+			epochs=num_epochs - epoch, # Adjust for remaining epochs
 			pct_start=0.1,
 			anneal_strategy='cos',
 		)
@@ -1080,9 +1174,8 @@ def full_finetune(
 	if dropout_val is None:
 			dropout_val = 0.0  # Default to 0.0 if no Dropout layers are found (unlikely in your case)
 
-	# Unfreeze all layers for fine-tuning (optional: could freeze some layers if desired)
 	for name, param in model.named_parameters():
-		param.requires_grad = True
+		param.requires_grad = True # Unfreeze all layers for fine-tuning, all parammeters are trainable
 
 	get_parameters_info(model=model, mode=mode)
 
@@ -1333,7 +1426,7 @@ def train(
 		dropout_val = 0.0  # Default to 0.0 if no Dropout layers are found (unlikely in your case)
 	
 	for name, param in model.named_parameters():
-		param.requires_grad = True # Unfreeze all layers (train from scratch)
+		param.requires_grad = True # Unfreeze all layers (train from scratch) initialized with random weights
 		# print(f"{name} requires_grad: {param.requires_grad}")
 
 	get_parameters_info(model=model, mode=mode)
@@ -1590,7 +1683,7 @@ def main():
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP Architecture (ViT-B/32, ViT-B/16, ViT-L/14, ViT-L/14@336px)')
 	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet', 'svhn'], default='cifar100', help='Choose dataset (CIFAR10/cifar100)')
 	parser.add_argument('--mode', '-m', type=str, choices=['pretrain', 'train', 'finetune'], default='pretrain', help='Choose mode (pretrain/train/finetune)')
-	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora', 'progressive_unfreeze'], default='full', help='Fine-tuning strategy (full/lora) when mode is finetune')
+	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora', 'progressive_freeze'], default='full', help='Fine-tuning strategy (full/lora) when mode is finetune')
 	parser.add_argument('--lora_rank', type=int, default=8, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', type=float, default=16.0, help='LoRA alpha (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_dropout', type=float, default=0.0, help='LoRA dropout (used if finetune_strategy=lora)')
@@ -1683,8 +1776,8 @@ def main():
 				minimum_epochs=args.minimum_epochs,
 				TOP_K_VALUES=args.topK_values,
 			)
-		elif args.finetune_strategy == 'progressive_unfreeze':
-			progressive_unfreeze_finetune(
+		elif args.finetune_strategy == 'progressive_freeze':
+			progressive_freeze_finetune(
 				model=model,
 				train_loader=train_loader,
 				validation_loader=validation_loader,
@@ -1726,7 +1819,7 @@ def main():
 	elif args.mode == "pretrain":
 		all_img2txt_metrics = {}
 		all_txt2img_metrics = {}
-		available_models = clip.available_models()  # ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
+		available_models = clip.available_models() # ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 		for model_arch in available_models[::-1]:
 			print(f"Evaluating pre-trained {model_arch}")
 			model_config = get_config(architecture=model_arch, dropout=args.dropout,)
