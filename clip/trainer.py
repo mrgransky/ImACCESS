@@ -251,7 +251,7 @@ def get_retrieval_metrics(
 	else:
 		valid_K_values = topK_values  # No limit on K values
 	if len(valid_K_values) < len(topK_values):
-		print(f"<!> Warning: K values: ({set(topK_values) - set(valid_K_values)}) exceed the number of classes ({num_classes}) => ignored!")
+		print(f"\t<!> Warning: K values: ({set(topK_values) - set(valid_K_values)}) exceed the number of classes ({num_classes}) => ignored!")
 	metrics = {
 		"mP": {},
 		"mAP": {},
@@ -355,7 +355,7 @@ def evaluate_loss_and_accuracy(
 	# Valid K values for Image-to-Text (limited by num_classes)
 	valid_img2txt_k_values = [K for K in topK_values if K <= num_classes]
 	if len(valid_img2txt_k_values) < len(topK_values):
-		print(f"<!> Warning: K values ({set(topK_values) - set(valid_img2txt_k_values)}) exceed the number of classes ({num_classes}) for Image-to-Text. => ignored.")
+		print(f"\t<!> Warning: K values ({set(topK_values) - set(valid_img2txt_k_values)}) exceed the number of classes ({num_classes}) for Image-to-Text. => ignored.")
 
 	# Valid K values for Text-to-Image (no limit, use all topK_values)
 	valid_txt2img_k_values = topK_values
@@ -600,28 +600,6 @@ def get_freeze_schedule(
 			logger.debug(f"Phase {phase} (freeze_pct={freeze_pct}): {len(phase_layers)} layers to freeze")
 	logger.info(f"Freeze schedule contains {len(schedule)} different phases.")
 	return schedule
-
-# def get_freeze_schedule(model: torch.nn.Module):
-# 	layer_groups = get_layer_groups(model=model)
-
-# 	total_v_layers = len(layer_groups['visual_transformer'])
-# 	total_t_layers = len(layer_groups['text_transformer'])
-# 	print(f"Total visual layers: {total_v_layers} | 80%: {int(0.8*total_v_layers)} 60%: {int(0.6*total_v_layers)} 40%: {int(0.4*total_v_layers)}")
-# 	print(f"Total text layers: {total_t_layers} | 80%: {int(0.8*total_t_layers)} 60%: {int(0.6*total_t_layers)} 40%: {int(0.4*total_t_layers)}")
-
-# 	schedule = [
-# 		# Phase 0: Freeze all layers except the projection layers:
-# 		layer_groups['visual_frontend'] + layer_groups['visual_transformer'] + layer_groups['text_frontend'] + layer_groups['text_transformer'],
-# 		# Phase 1: Freeze 80% of transformer blocks:
-# 		layer_groups['visual_frontend'] + layer_groups['visual_transformer'][:int(0.8*total_v_layers)] + layer_groups['text_frontend'] + layer_groups['text_transformer'][:int(0.8*total_t_layers)],
-# 		# Phase 2: freeze 60% of transformer blocks:
-# 		layer_groups['visual_frontend'] + layer_groups['visual_transformer'][:int(0.6*total_v_layers)] + layer_groups['text_frontend'] + layer_groups['text_transformer'][:int(0.6*total_t_layers)],
-# 		# Phase 3: freeze 40% of transformer blocks:
-# 		layer_groups['visual_frontend'] + layer_groups['visual_transformer'][:int(0.4*total_v_layers)] + layer_groups['text_frontend'] + layer_groups['text_transformer'][:int(0.4*total_t_layers)],
-# 		# Phase 4: freeze only (visual + text) frontends
-# 		layer_groups['visual_frontend'] + layer_groups['text_frontend']
-# 	]
-# 	return schedule
 
 def freeze_layers(
 	model: torch.nn.Module, 
@@ -1133,8 +1111,7 @@ def progressive_freeze_finetune(
 		best_img2txt_metrics = final_img2txt
 		best_txt2img_metrics = final_txt2img
 		torch.save(checkpoint, mdl_fpth)
-	elapsed_time = time.time() - train_start_time
-	logger.info(f"Elapsed_t: {elapsed_time:.1f} sec".center(150, "-"))
+	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
 	# Plotting
 	file_base_name = (
@@ -1354,7 +1331,7 @@ def lora_finetune(
 			print(f"\nEarly stopping triggered at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
 			break
 		print("-" * 170)
-	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(150, "-"))
+	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
 	file_base_name = (
 		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
@@ -1606,7 +1583,7 @@ def full_finetune(
 				torch.save(checkpoint, mdl_fpth)
 			break
 		print("-" * 170)
-	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(150, "-"))
+	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 	
 	file_base_name = (
 		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
@@ -1858,7 +1835,7 @@ def train(
 		# ############################## Early stopping ##############################
 		print("-"*170)
 
-	print(f"Elapsed_t: {time.time()-train_start_time:.1f} sec".center(150, "-"))
+	print(f"Elapsed_t: {time.time()-train_start_time:.1f} sec".center(170, "-"))
 	file_base_name = (
 		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
 		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
@@ -1921,7 +1898,7 @@ def pretrain(
 
 	os.makedirs(results_dir, exist_ok=True)
 
-	print(f"Pretrain Evaluation {dataset_name} with {validation_loader.dataset.__class__.__name__} samples| {model_name} - {model_arch} | {device}".center(150, "-"))
+	print(f"Pretrain Evaluation {dataset_name} with {validation_loader.dataset.__class__.__name__} samples| {model_name} - {model_arch} | {device}".center(170, "-"))
 	
 	# 1. evaluate_retrieval_performance
 	img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
