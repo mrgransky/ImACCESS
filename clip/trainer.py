@@ -1118,7 +1118,7 @@ def progressive_freeze_finetune(
 
 	# Plotting
 	file_base_name = (
-		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
+		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
 		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}_run_{run_id}"
 	)
