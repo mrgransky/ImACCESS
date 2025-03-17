@@ -26,15 +26,20 @@ import matplotlib.ticker as ticker
 plt.style.use('seaborn-v0_8-whitegrid')  # Modern style for sleek look
 
 from PIL import Image
-from typing import Tuple, Union, List, Dict, Any
+from typing import Tuple, Union, List, Dict, Any, Optional
 from sklearn.metrics import precision_recall_curve, roc_curve, auc
 from sklearn.linear_model import LogisticRegression
 from tqdm import tqdm
 from collections import defaultdict
+import logging
 import warnings
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=FutureWarning)
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
