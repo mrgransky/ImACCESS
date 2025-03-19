@@ -9,6 +9,12 @@ from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plo
 # finetune cifar100:
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/cifar100_ft.out &
 
+# finetune cifar100 with lora:
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -fts "lora"  -a "ViT-B/32" --lora > /media/volume/ImACCESS/trash/cifar100_ft_lora.out &
+
+# finetune cifar100 with progressive unfreezing:
+# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -fts "progressive_unfreezing" -a "ViT-B/32" --lora > /media/volume/ImACCESS/trash/cifar100_ft_progressive.out &
+
 # train imagenet from scratch:
 # $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:1" -m "train" -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/imagenet_train.out &
 
@@ -16,13 +22,13 @@ from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plo
 # $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m "finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
 
 # finetune svhn with progressive unfreezing:
-# $ nohup python -u trainer.py -d svhn -bs 256 -e 150 -lr 1e-4 -wd 1e-2 --print_every 250 -nw 50 --device "cuda:0" -m finetune -fts progressive_unfreeze -a "ViT-B/32" > /media/volume/ImACCESS/trash/svhn_prog_unfreeze_ft.out &
+# $ nohup python -u trainer.py -d svhn -bs 256 -e 150 -lr 1e-4 -wd 1e-2 --print_every 250 -nw 50 --device "cuda:0" -m finetune -fts progressive -a "ViT-B/32" > /media/volume/ImACCESS/trash/svhn_prog_unfreeze_ft.out &
 
 # finetune imagenet with progressive unfreezing:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m finetune -fts progressive_unfreeze -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_pf_ft.out &
+# $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m finetune -fts progressive -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_prog_unfreeze_ft.out &
 
 # finetune imagenet with progressive unfreezing and dropout:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m "progressive_unfreeze_finetune" -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/imagenet_pf_ft_do.out &
+# $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m "progressive_finetune" -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/imagenet_pf_ft_do.out &
 
 
 class EarlyStopping:
@@ -1814,7 +1820,7 @@ def main():
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP Architecture (ViT-B/32, ViT-B/16, ViT-L/14, ViT-L/14@336px)')
 	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet', 'svhn'], default='cifar100', help='Choose dataset (CIFAR10/cifar100)')
 	parser.add_argument('--mode', '-m', type=str, choices=['pretrain', 'train', 'finetune'], default='pretrain', help='Choose mode (pretrain/train/finetune)')
-	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora', 'progressive_unfreeze'], default='full', help='Fine-tuning strategy (full/lora) when mode is finetune')
+	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora', 'progressive'], default='full', help='Fine-tuning strategy (full/lora) when mode is finetune')
 	parser.add_argument('--lora_rank', type=int, default=8, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', type=float, default=16.0, help='LoRA alpha (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_dropout', type=float, default=0.0, help='LoRA dropout (used if finetune_strategy=lora)')
@@ -1907,7 +1913,7 @@ def main():
 				minimum_epochs=args.minimum_epochs,
 				TOP_K_VALUES=args.topK_values,
 			)
-		elif args.finetune_strategy == 'progressive_unfreeze':
+		elif args.finetune_strategy == 'progressive':
 			progressive_unfreeze_finetune(
 				model=model,
 				train_loader=train_loader,
