@@ -13,7 +13,7 @@ from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plo
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -fts "lora"  -a "ViT-B/32" --lora > /media/volume/ImACCESS/trash/cifar100_ft_lora.out &
 
 # finetune cifar100 with progressive unfreezing:
-# $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m "finetune" -fts "progressive_unfreezing" -a "ViT-B/32" --lora > /media/volume/ImACCESS/trash/cifar100_ft_progressive.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 512 -e 150 -lr 1e-4 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:2" -m finetune -fts progressive -a "ViT-B/32"  > /media/volume/ImACCESS/trash/cifar100_ft_progressive.out &
 
 # train imagenet from scratch:
 # $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:1" -m "train" -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/imagenet_train.out &
@@ -709,7 +709,9 @@ def should_transition_phase(
 		window: int = 10,  # Match early stopping window
 		best_loss: Optional[float] = None,
 	) -> bool:
+
 	if len(losses) < window:
+		print(f"Epoch {len(losses)}: Not enough epochs ({len(losses)} < {window}) to evaluate phase transition.")
 		return False
 	
 	# Loss-based criterion: cumulative improvement over the window
@@ -724,14 +726,26 @@ def should_transition_phase(
 	close_to_best_loss = best_loss is not None and abs(last_window_losses[-1] - best_loss) < best_loss_threshold
 			
 	# Accuracy-based criterion (if provided)
-	acc_plateau = True
+	acc_plateau = False
 	if accuracies is not None and len(accuracies) >= window:
 		last_window_accs = accuracies[-window:]
 		cumulative_acc_improvement = abs(last_window_accs[-1] - last_window_accs[0])
 		acc_plateau = cumulative_acc_improvement < accuracy_threshold
 	
+
+	# Log the decision-making metrics
+	print(f"Epoch {len(losses)}: Phase transition evaluation:")
+	print(f"  Loss improvement over window: {cumulative_loss_improvement:.5f} (threshold: {loss_threshold:.5f}, plateau: {loss_plateau})")
+	print(f"  Loss trend: {loss_trend:.5f} (increasing/flat: {loss_trend >= 0})")
+	print(f"  Close to best loss: {close_to_best_loss} (current: {last_window_losses[-1]:.5f}, best: {best_loss if best_loss is not None else 'N/A'})")
+	if cumulative_acc_improvement is not None:
+		print(f"  Accuracy improvement over window: {cumulative_acc_improvement:.5f} (threshold: {accuracy_threshold:.5f}, plateau: {acc_plateau})")
+	else:
+		print("  Accuracy data not available for phase transition evaluation.")
+
 	# Transition if: loss has plateaued AND (loss is not improving OR close to best) OR accuracy has plateaued
 	transition_required = (loss_plateau and (loss_trend >= 0 or close_to_best_loss)) or acc_plateau
+	print(f"\tPhase Transition required?: {transition_required}")
 	return transition_required
 
 def handle_phase_transition(
@@ -741,8 +755,10 @@ def handle_phase_transition(
 		scheduler,
 	):
 
+	# 1e-4 → 5e-5 → 2.5e-5 → 1.25e-5 → 6.25e-6 → 3.125e-6
 	if current_phase >= max_phases - 1:
-		return current_phase, initial_lr * (0.1 ** current_phase)
+		new_lr = initial_lr * (0.5 ** current_phase)  # Consistent 2x reduction
+		return current_phase, new_lr
 
 	new_phase = current_phase + 1
 	new_lr = initial_lr * (0.5 ** new_phase)  # Reduce by 2x per phase
@@ -888,10 +904,14 @@ def progressive_unfreeze_finetune(
 
 		# Phase transition logic
 		if epoch >= min_epochs_before_transition and epochs_in_current_phase >= min_epochs_per_phase:
+			img2txt_accs = [metrics["img2txt_acc"] for metrics in metrics_for_all_epochs]
+			txt2img_accs = [metrics["txt2img_acc"] for metrics in metrics_for_all_epochs]
+			avg_accs = [(img + txt) / 2 for img, txt in zip(img2txt_accs, txt2img_accs)]
 			should_transition = should_transition_phase(
 				losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
-				accuracies=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
-				loss_threshold=min_delta,
+				# accuracies=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
+				accuracies=avg_accs,
+				loss_threshold=cumulative_delta, # Align with early stopping cumulative_delta
 				accuracy_threshold=1e-3,
 				best_loss_threshold=1e-3,
 				window=window_size,
