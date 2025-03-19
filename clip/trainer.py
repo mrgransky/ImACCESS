@@ -641,24 +641,50 @@ def unfreeze_layers(
 	)
 
 def should_transition_phase(
-	losses:List[float],
-	th: float=1e-4,
-	window:int=3,
+		losses: List[float],
+		th: float = 5e-3,  # Relative change threshold
+		absolute_th: float = 1e-2,  # Absolute change threshold
+		window: int = 5,
+		best_loss: Optional[float] = None,
+		min_delta: float = 1e-4,
 	) -> bool:
+
 	if len(losses) < window:
-		return False # Not enough data to make a decision
+		return False
+	
 	last_window_losses = losses[-window:]
 	avg_loss = sum(last_window_losses) / window
-	relative_change = abs(last_window_losses[-1] - avg_loss) / avg_loss # Relative change in loss
-	transition_required: bool = relative_change < th
+	relative_change = abs(last_window_losses[-1] - avg_loss) / avg_loss
+	absolute_change = abs(last_window_losses[-1] - avg_loss)
+	
+	# Check trend: is the loss increasing or flat?
+	trend = last_window_losses[-1] - last_window_losses[0]  # Positive if increasing, negative if decreasing
+	
+	# Check if loss is close to the best loss (if provided)
+	close_to_best = best_loss is not None and abs(last_window_losses[-1] - best_loss) < min_delta
+	
+	# Transition if: small relative change OR small absolute change AND (loss is not improving OR close to best)
+	transition_required = (relative_change < th or absolute_change < absolute_th) and (trend >= 0 or close_to_best)
 	return transition_required
 
-def handle_phase_transition(current_phase, initial_lr, max_phases):
+def handle_phase_transition(
+		current_phase: int,
+		initial_lr: float,
+		max_phases: int,
+		scheduler,
+	):
+
 	if current_phase >= max_phases - 1:
 		return current_phase, initial_lr * (0.1 ** current_phase)
+
 	new_phase = current_phase + 1
-	new_lr = initial_lr * (0.1 ** new_phase) # Reduce learning rate by 10x
+	new_lr = initial_lr * (0.5 ** new_phase)  # Reduce by 2x per phase
+	# update schuler max_lr:
+	scheduler.max_lr = new_lr
+	for param_group in scheduler.optimizer.param_groups:
+		param_group['lr'] = new_lr
 	print(f"<!> Plateau detected! Transitioning to Phase {new_phase} with new learning rate {new_lr:.1e}")
+
 	return new_phase, new_lr
 
 def get_status(model, phase, layers_to_unfreeze, cache=None):
@@ -836,29 +862,37 @@ def progressive_unfreeze_finetune(
 	best_img2txt_metrics = None
 	best_txt2img_metrics = None
 	current_phase = 0
-	plateau_threshold = min_delta
+	epochs_in_current_phase = 0
+	min_epochs_per_phase = 5
+	max_epochs_per_phase = 15
 	initial_learning_rate = learning_rate
+	min_phases_before_stopping = 3 # ensure model progresses through at least 3 phases (unfreezing 60% of transformer blocks) before early stopping can trigger
 	layer_cache = {} # Cache for layer freezing status
 
 	for epoch in range(num_epochs):
 		torch.cuda.empty_cache()
 		print(f"Epoch [{epoch+1}/{num_epochs}] GPU Memory usage: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
-		
+		epochs_in_current_phase += 1 # Increment the epoch counter for the current phase
+
 		# Phase transition logic
-		if epoch >= min_epochs_before_transition:
+		if epoch >= min_epochs_before_transition and epochs_in_current_phase >= min_epochs_per_phase:
 			should_transition = should_transition_phase(
 				losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
-				th=plateau_threshold,
+				th=min_delta,
 				window=window_size,
 			)
-			if should_transition:
+			if should_transition or epochs_in_current_phase >= max_epochs_per_phase:
+				if not should_transition:
+					print(f"Forcing transition due to max epochs ({max_epochs_per_phase}) reached in Phase {current_phase}...")
 				print(f"Plateau detected @ Epoch: {epoch+1} Transitioning from phase: {current_phase} to next phase.")
 				current_phase, learning_rate = handle_phase_transition(
 					current_phase=current_phase,
 					initial_lr=initial_learning_rate,
 					max_phases=len(unfreeze_schedule),
+					scheduler=scheduler,
 				)
 				print(f"Updated learning rate: {learning_rate}")
+				epochs_in_current_phase = 0  # Reset the counter after transitioning
 		
 		# Unfreeze layers for the current phase
 		unfreeze_layers(
@@ -944,9 +978,11 @@ def progressive_unfreeze_finetune(
 			best_txt2img_metrics = txt2img_metrics
 
 		# Early stopping
-		if early_stopping.should_stop(current_val_loss, model, epoch):
+		if early_stopping.should_stop(current_val_loss, model, epoch) and current_phase >= min_phases_before_stopping:
 			print(f"Early stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
 			break
+		elif early_stopping.should_stop(current_val_loss, model, epoch):
+			print(f"Early stopping conidtion met at epoch {epoch + 1}! but delaying until minimum phases ({min_phases_before_stopping}) are reached. Current phase: {current_phase}")
 		print("-" * 140)
 
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
@@ -1425,7 +1461,7 @@ def full_finetune(
 	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png")
 	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_txt2img_topk_accuracy.png")
 	mrr_fpth = os.path.join(results_dir, f"{file_base_name}_mrr.png")
-	cs_fpth = os.path.join(results_dir, f"{file_base_name}_cos_sim.png")	
+	cs_fpth = os.path.join(results_dir, f"{file_base_name}_cos_sim.png")
 
 	plot_loss_accuracy(
 		dataset_name=dataset_name,
