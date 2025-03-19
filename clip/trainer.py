@@ -710,6 +710,7 @@ def should_transition_phase(
 		best_loss: Optional[float] = None,
 	) -> bool:
 
+	current_epoch = len(losses) + 1
 	if len(losses) < window:
 		print(f"Epoch {len(losses)}: Not enough epochs ({len(losses)} < {window}) to evaluate phase transition.")
 		return False
@@ -732,20 +733,19 @@ def should_transition_phase(
 		cumulative_acc_improvement = abs(last_window_accs[-1] - last_window_accs[0])
 		acc_plateau = cumulative_acc_improvement < accuracy_threshold
 	
-
 	# Log the decision-making metrics
-	print(f"Epoch {len(losses)}: Phase transition evaluation:")
-	print(f"  Loss improvement over window: {cumulative_loss_improvement:.5f} (threshold: {loss_threshold:.5f}, plateau: {loss_plateau})")
-	print(f"  Loss trend: {loss_trend:.5f} (increasing/flat: {loss_trend >= 0})")
-	print(f"  Close to best loss: {close_to_best_loss} (current: {last_window_losses[-1]:.5f}, best: {best_loss if best_loss is not None else 'N/A'})")
+	print(f"Phase transition evaluation for epoch {current_epoch}")
+	print(f"\tLoss improvement over {window} windows: {cumulative_loss_improvement:.5f} (threshold: {loss_threshold:.5f}, plateau: {loss_plateau})")
+	print(f"\tLoss trend: {loss_trend:.5f} (increasing/flat: {loss_trend >= 0})")
+	print(f"\tClose to best loss: {close_to_best_loss} (current: {last_window_losses[-1]:.5f}, best: {best_loss if best_loss is not None else 'N/A'})")
 	if cumulative_acc_improvement is not None:
-		print(f"  Accuracy improvement over window: {cumulative_acc_improvement:.5f} (threshold: {accuracy_threshold:.5f}, plateau: {acc_plateau})")
+		print(f"\tAccuracy improvement over window: {cumulative_acc_improvement:.5f} (threshold: {accuracy_threshold:.5f}, plateau: {acc_plateau})")
 	else:
-		print("  Accuracy data not available for phase transition evaluation.")
+		print("\tAccuracy data not available for phase transition evaluation.")
 
 	# Transition if: loss has plateaued AND (loss is not improving OR close to best) OR accuracy has plateaued
 	transition_required = (loss_plateau and (loss_trend >= 0 or close_to_best_loss)) or acc_plateau
-	print(f"\tPhase Transition required?: {transition_required}")
+	print(f"==>> Phase Transition required for epoch {current_epoch} ? {transition_required}")
 	return transition_required
 
 def handle_phase_transition(
@@ -880,7 +880,6 @@ def progressive_unfreeze_finetune(
 		anneal_strategy='cos',
 	)
 
-	# Training loop setup
 	training_losses = []
 	metrics_for_all_epochs = []
 	img2txt_metrics_list = [] if not save_metrics_to_disk else None
