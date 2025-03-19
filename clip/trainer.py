@@ -16,7 +16,7 @@ from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plo
 # $ nohup python -u trainer.py -d cifar100 -bs 512 -e 250 -lr 1e-4 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:2" -m finetune -fts progressive -a "ViT-B/32"  > /media/volume/ImACCESS/trash/cifar100_ft_progressive.out &
 
 # finetune svhn with progressive unfreezing:
-# $ nohup python -u trainer.py -d svhn -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 250 -nw 50 --device "cuda:0" -m finetune -fts progressive -a "ViT-B/32" > /media/volume/ImACCESS/trash/svhn_prog_unfreeze_ft.out &
+# $ nohup python -u trainer.py -d svhn -bs 512 -e 250 -lr 1e-4 -wd 1e-2 --print_every 250 -nw 50 --device "cuda:0" -m finetune -fts progressive -a "ViT-B/32" > /media/volume/ImACCESS/trash/svhn_ft_progreessive.out &
 
 # finetune imagenet [full]:
 # $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m finetune -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
@@ -1832,7 +1832,7 @@ def main():
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP Architecture (ViT-B/32, ViT-B/16, ViT-L/14, ViT-L/14@336px)')
 	parser.add_argument('--dataset', '-d', type=str, choices=['cifar10', 'cifar100', 'cinic10', 'imagenet', 'svhn'], default='cifar100', help='Choose dataset (CIFAR10/cifar100)')
 	parser.add_argument('--mode', '-m', type=str, choices=['pretrain', 'train', 'finetune'], default='pretrain', help='Choose mode (pretrain/train/finetune)')
-	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora', 'progressive'], default='full', help='Fine-tuning strategy (full/lora) when mode is finetune')
+	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora', 'progressive'], default='full', help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
 	parser.add_argument('--lora_rank', type=int, default=8, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', type=float, default=16.0, help='LoRA alpha (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_dropout', type=float, default=0.0, help='LoRA dropout (used if finetune_strategy=lora)')

@@ -7,7 +7,7 @@ sys.path.insert(0, CLIP_DIR)
 
 from utils import *
 from dataset_loader import get_dataloaders
-from trainer import train, pretrain, full_finetune, lora_finetune
+from trainer import train, pretrain, full_finetune, lora_finetune, progressive_unfreeze_finetune
 from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics
 
 # run in local:
@@ -50,7 +50,7 @@ def main():
 	parser.add_argument('--print_every', type=int, default=100, help='Print loss')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain'], default='pretrain', help='Choose mode (train/finetune)')
-	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora'], default='full', help='Fine-tuning strategy (full/lora) when mode is finetune')
+	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora', 'progressive'], default='full', help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
 	parser.add_argument('--lora_rank', type=int, default=8, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', type=float, default=16.0, help='LoRA alpha (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_dropout', type=float, default=0.0, help='LoRA dropout (used if finetune_strategy=lora)')
@@ -141,6 +141,25 @@ def main():
 				cumulative_delta=args.cumulative_delta, 	# early stopping
 				minimum_epochs=args.minimum_epochs, 			# early stopping
 				TOP_K_VALUES=args.topK_values,
+			)
+		elif args.finetune_strategy == 'progressive':
+			progressive_unfreeze_finetune(
+				model=model,
+				train_loader=train_loader,
+				validation_loader=validation_loader,
+				num_epochs=args.epochs,
+				nw=args.num_workers,
+				print_every=args.print_every,
+				learning_rate=args.learning_rate,
+				weight_decay=args.weight_decay,
+				device=args.device,
+				results_dir=os.path.join(args.dataset_dir, "results"),
+				window_size=args.window_size, # early stopping
+				patience=10,									# early stopping
+				min_delta=1e-4,								# early stopping
+				cumulative_delta=5e-3,				# early stopping
+				minimum_epochs=20,						# early stopping
+				top_k_values=args.topK_values,
 			)
 		else:
 			raise ValueError(f"Invalid mode: {args.mode}")
