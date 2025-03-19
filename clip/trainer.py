@@ -15,10 +15,13 @@ from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plo
 # finetune imagenet:
 # $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m "finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
 
-# finetune imagenet with progressive freezing:
-# $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m "progressive_unfreeze_finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_pf_ft.out &
+# finetune svhn with progressive unfreezing:
+# $ nohup python -u trainer.py -d svhn -bs 256 -e 150 -lr 1e-4 -wd 1e-2 --print_every 250 -nw 50 --device "cuda:0" -m finetune -fts progressive_unfreeze -a "ViT-B/32" > /media/volume/ImACCESS/trash/svhn_punfreeze_ft.out &
 
-# finetune imagenet with progressive freezing and dropout:
+# finetune imagenet with progressive unfreezing:
+# $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m finetune -fts progressive_unfreeze -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_pf_ft.out &
+
+# finetune imagenet with progressive unfreezing and dropout:
 # $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m "progressive_unfreeze_finetune" -a "ViT-B/32" -do 0.1 > /media/volume/ImACCESS/trash/imagenet_pf_ft_do.out &
 
 
@@ -450,10 +453,10 @@ def evaluate_loss_and_accuracy(
 def get_num_transformer_blocks(model: torch.nn.Module) -> tuple:
 	# Ensure the model has the required attributes
 	if not hasattr(model, 'visual'):
-		raise ValueError(f"Model {model.__class__.__name__} ({model.name}) lacks 'visual' attribute.")
+		raise ValueError(f"{model.__class__.__name__} ({model.name}) lacks 'visual' attribute.")
 	
 	if not hasattr(model, 'transformer'):
-		raise ValueError(f"Model {model.__class__.__name__} ({model.name}) lacks 'transformer' attribute.")
+		raise ValueError(f"{model.__class__.__name__} ({model.name}) lacks 'transformer' attribute.")
 
 	# Determine model type
 	is_vit = "ViT" in model.name
@@ -462,10 +465,9 @@ def get_num_transformer_blocks(model: torch.nn.Module) -> tuple:
 	# Count visual blocks
 	visual_blocks = 0
 	if is_vit:
-		if not hasattr(model.visual, 'transformer'):
-			print(f"Model {model.name} is a ViT but lacks 'visual.transformer'. Visual blocks set to 0.")
-		else:
-			visual_blocks = len(model.visual.transformer.resblocks)
+		if not hasattr(model.visual, 'transformer') or not hasattr(model.visual.transformer, 'resblocks'):
+			raise ValueError(f"{model.__class__.__name__} ({model.name}) lacks 'visual.transformer.resblocks' attribute.")
+		visual_blocks = len(model.visual.transformer.resblocks)
 	elif is_resnet:
 		# ResNet models use 'layer1', 'layer2', etc.
 		visual_layers = [attr for attr in dir(model.visual) if attr.startswith('layer') and attr[5:].isdigit()]
@@ -473,7 +475,7 @@ def get_num_transformer_blocks(model: torch.nn.Module) -> tuple:
 		if visual_blocks == 0:
 			print(f"Model {model.name} is a ResNet but no 'visual.layerX' blocks found. Visual blocks set to 0.")
 	else:
-		print(f"Unsupported architecture {model.name}. Visual blocks set to 0.")
+		raise ValueError(f"Unsupported architecture {model.name}. Expected ViT or ResNet.")
 	
 	# Count text transformer blocks
 	text_blocks = 0
@@ -506,6 +508,13 @@ def get_layer_groups(model: torch.nn.Module) -> dict:
 	if txt_nblocks == 0:
 		print(f"No text transformer blocks defined for model {model.name}")
 
+	"""
+		ViT architecture (patch embedding → transformer blocks → projection)
+		- Frontend (Lower Layers): initial layers responsible for converting raw inputs (images or text) into a format suitable for transformer blocks.
+		- Transformer Blocks (Intermediate Layers): core layers that perform feature extraction and contextualization (self-attention mechanisms).
+		- Projection (Output Layers): final layers that map the transformer outputs to the shared embedding space and compute similarity scores.
+	"""
+
 	layer_groups = {
 		'visual_frontend': [
 			'visual.conv1',  # patch embedding (ViT) or first conv layer (ResNet)
@@ -513,16 +522,16 @@ def get_layer_groups(model: torch.nn.Module) -> dict:
 			'visual.positional_embedding' if is_vit else 'visual.relu',  # positional embedding for ViT, relu for ResNet
 		],
 		'visual_transformer': visual_blocks,
-		'text_frontend': [
+		'text_frontend': [ # Converts tokenized text into embeddings (token_embedding) then adds positional information (positional_embedding).
 			'token_embedding', 
 			'positional_embedding',
 		],
 		'text_transformer': text_blocks,
 		'projections': [
-			'visual.proj',
+			'visual.proj', # Projects visual transformer’s output (e.g., the CLS token embedding) into the shared space.
 			'visual.ln_post' if is_vit else 'visual.attnpool',  # ln_post for ViT, attnpool for ResNet
-			'text_projection',
-			'logit_scale',
+			'text_projection', # Projects the text transformer’s output into the shared space.
+			'logit_scale', # learnable scalar that scales the cosine similarities between image and text embeddings during contrastive loss computation.
 		],
 	}
 
@@ -530,8 +539,9 @@ def get_layer_groups(model: torch.nn.Module) -> dict:
 
 def get_unfreeze_schedule(
 		model: torch.nn.Module,
-		unfreeze_percentages: List[float] = [0.0 , 0.2, 0.4, 0.6, 0.8, 1.0], # Start at 0% unfrozen, increase to 100%
-		layer_groups_to_unfreeze: List[str] = ['visual_frontend', 'visual_transformer', 'text_frontend', 'text_transformer', 'projections']
+		unfreeze_percentages: List[float] = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], # Start at 0% unfrozen, increase to 100%
+		layer_groups_to_unfreeze: List[str] = ['visual_frontend', 'visual_transformer', 'text_frontend', 'text_transformer', 'projections'],
+		max_trainable_params: Optional[int] = None
 	) -> Dict[int, List[str]]:
 
 	# Validate input
@@ -543,6 +553,7 @@ def get_unfreeze_schedule(
 
 	layer_groups = get_layer_groups(model=model)
 	selected_groups = {group: layer_groups[group] for group in layer_groups_to_unfreeze if group in layer_groups}
+
 	if not selected_groups:
 		raise ValueError("No valid layer groups found for freezing.")
 	
@@ -550,6 +561,9 @@ def get_unfreeze_schedule(
 	total_v_layers = len(selected_groups.get('visual_transformer', []))
 	total_t_layers = len(selected_groups.get('text_transformer', []))
 	total_p_layers = len(selected_groups.get('projections', []))
+
+	if total_v_layers == 0 and total_t_layers == 0:
+		raise ValueError("No transformer blocks found in visual or text encoders. Cannot create unfreezing schedule.")
 
 	display_percentages = sorted(unfreeze_percentages)  # Ascending order for table
 	def create_layer_table(num_layers: int, layer_type: str) -> str:
@@ -584,16 +598,20 @@ def get_unfreeze_schedule(
 		t_unfreeze_count = int(unfreeze_pct * total_t_layers)
 		p_unfreeze_count = int(unfreeze_pct * total_p_layers)
 
+		# Unfreeze from last to first to prioritize high-level feature adaptation
 		v_transformers_to_unfreeze = selected_groups.get('visual_transformer', [])[-v_unfreeze_count:] if v_unfreeze_count > 0 else []
 		t_transformers_to_unfreeze = selected_groups.get('text_transformer', [])[-t_unfreeze_count:] if t_unfreeze_count > 0 else []
-		# Unfreeze all projections at 0% to start training
-		projections_to_unfreeze = selected_groups.get('projections', []) if unfreeze_pct >= 0.0 else []
-		layers_to_unfreeze = v_transformers_to_unfreeze + t_transformers_to_unfreeze + projections_to_unfreeze
+		projections_to_unfreeze = selected_groups.get('projections', []) # always unfrozen from Phase 0 to allow early adaptation of the output space.
+
+		frontend_layers_to_unfreeze = base_layers if unfreeze_pct == 1.0 else []
+		layers_to_unfreeze = v_transformers_to_unfreeze + t_transformers_to_unfreeze + projections_to_unfreeze + frontend_layers_to_unfreeze
 		schedule[phase] = layers_to_unfreeze
+
 		print(f"Phase {phase} (unfreeze_pct={unfreeze_pct}): {len(layers_to_unfreeze)} layers to unfreeze")
 
-	print(f"\nUnfreeze schedule contains {len(schedule)} different phases:\n{[f'phase {phase}: {len(layers)} layers' for phase, layers in schedule.items()]}\n")
+	print(f"\nUnfreeze Schedule contains {len(schedule)} different phases:\n{[f'phase {phase}: {len(layers)} layers' for phase, layers in schedule.items()]}\n")
 	print(json.dumps(schedule, indent=2, ensure_ascii=False))
+	print("-"*50)
 	return schedule
 
 def unfreeze_layers(
@@ -607,6 +625,8 @@ def unfreeze_layers(
 	layers_to_unfreeze = strategy[phase]
 
 	# 2. Unfreeze the layers
+	# Assumes layer names in layers_to_unfreeze are prefixes of parameter names 
+	# (e.g., 'visual.transformer.resblocks.0' matches 'visual.transformer.resblocks.0.attn.in_proj_weight')
 	for name, param in model.named_parameters():
 		param.requires_grad = False # Freeze all layers first
 		if any(ly in name for ly in layers_to_unfreeze): # Unfreeze layers in the list
@@ -718,33 +738,6 @@ def progressive_unfreeze_finetune(
 		save_metrics_to_disk: bool = False,
 		run_id: Optional[str] = None,
 	) -> Dict[str, any]:
-	"""
-	Fine-tunes a CLIP model with progressive layer freezing.
-	Args:
-			model (torch.nn.Module): The CLIP model to fine-tune.
-			train_loader (DataLoader): DataLoader for training data.
-			validation_loader (DataLoader): DataLoader for validation data.
-			num_epochs (int): Number of epochs to train.
-			nw (int): Number of workers for data loading.
-			print_every (int): Print training stats every `print_every` batches.
-			learning_rate (float): Initial learning rate.
-			weight_decay (float): Weight decay for the optimizer.
-			device (str): Device to train on (e.g., 'cuda:0').
-			results_dir (str): Directory to save results.
-			window_size (int): Window size for early stopping and phase transitions.
-			patience (int): Patience for early stopping.
-			min_delta (float): Minimum improvement for early stopping.
-			cumulative_delta (float): Cumulative improvement threshold for early stopping.
-			minimum_epochs (int): Minimum epochs before early stopping.
-			top_k_values (List[int]): Top-K values for retrieval metrics.
-			unfreeze_percentages (List[float]): Percentages for progressive freezing.
-			layer_groups_to_unfreeze (List[str]): Layer groups to freeze progressively.
-			min_epochs_before_transition (int): Minimum epochs before allowing phase transitions.
-			save_metrics_to_disk (bool): If True, save metrics to disk instead of storing in memory.
-			run_id (Optional[str]): Unique identifier for the run to avoid overwriting files.
-	Returns:
-			Dict[str, any]: Final training metrics and best retrieval metrics.
-	"""
 	# Input validation
 	if not train_loader or not validation_loader:
 		raise ValueError("Train and validation loaders must not be empty.")
@@ -773,16 +766,17 @@ def progressive_unfreeze_finetune(
 	model_name = model.__class__.__name__
 	
 	for name, param in model.named_parameters():
-		print(f"{name} => {param.shape}")
+		print(f"{name} => {param.shape} {param.requires_grad}")
 
 	# Generate a unique run ID if not provided
 	if run_id is None:
 		run_id = time.strftime("%Y%m%d_%H%M%S")
 	
 	# Log run information
-	logger.info(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
+	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
+
 	if torch.cuda.is_available():
-		logger.info(f"{torch.cuda.get_device_name(device)}".center(160, " "))
+		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
 	
 	# Find dropout value
 	dropout_val = 0.0
@@ -848,7 +842,7 @@ def progressive_unfreeze_finetune(
 
 	for epoch in range(num_epochs):
 		torch.cuda.empty_cache()
-		logger.info(f"Epoch [{epoch+1}/{num_epochs}] - GPU Memory: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
+		print(f"Epoch [{epoch+1}/{num_epochs}] GPU Memory usage: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
 		
 		# Phase transition logic
 		if epoch >= min_epochs_before_transition:
@@ -858,13 +852,13 @@ def progressive_unfreeze_finetune(
 				window=window_size,
 			)
 			if should_transition:
-				logger.info(f"Plateau detected @ Epoch: {epoch+1} Transitioning from phase: {current_phase} to next phase.")
+				print(f"Plateau detected @ Epoch: {epoch+1} Transitioning from phase: {current_phase} to next phase.")
 				current_phase, learning_rate = handle_phase_transition(
 					current_phase=current_phase,
 					initial_lr=initial_learning_rate,
 					max_phases=len(unfreeze_schedule),
 				)
-				logger.info(f"Updated learning rate: {learning_rate}")
+				print(f"Updated learning rate: {learning_rate}")
 		
 		# Unfreeze layers for the current phase
 		unfreeze_layers(
@@ -885,12 +879,13 @@ def progressive_unfreeze_finetune(
 			images = images.to(device, non_blocking=True)
 			tokenized_labels = tokenized_labels.to(device, non_blocking=True)
 			
-			with torch.amp.autocast(device_type=device.type, enabled=True): # Automatic Mixed Precision (AMP) backpropagation:
+			with torch.amp.autocast(device_type=device.type, enabled=True): # Automatic Mixed Precision (AMP) backpropagation
 				logits_per_image, logits_per_text = model(images, tokenized_labels)
 				ground_truth = torch.arange(len(images), dtype=torch.long, device=device)
 				loss_img = criterion(logits_per_image, ground_truth)
 				loss_txt = criterion(logits_per_text, ground_truth)
 				total_loss = 0.5 * (loss_img + loss_txt)
+
 			scaler.scale(total_loss).backward()
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			scaler.step(optimizer)
@@ -898,7 +893,7 @@ def progressive_unfreeze_finetune(
 			scheduler.step()
 			
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-				logger.info(f"Batch [{bidx+1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
+				print(f"Batch [{bidx+1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
 			
 			epoch_loss += total_loss.item()
 		avg_training_loss = epoch_loss / len(train_loader)
@@ -921,20 +916,16 @@ def progressive_unfreeze_finetune(
 			device=device,
 			topK_values=top_k_values,
 		)
-		if save_metrics_to_disk:
-			metrics_dir = os.path.join(results_dir, "metrics")
-			os.makedirs(metrics_dir, exist_ok=True)
-			torch.save(img2txt_metrics, os.path.join(metrics_dir, f"img2txt_epoch_{epoch}.pt"))
-			torch.save(txt2img_metrics, os.path.join(metrics_dir, f"txt2img_epoch_{epoch}.pt"))
-		else:
-			img2txt_metrics_list.append(img2txt_metrics)
-			txt2img_metrics_list.append(txt2img_metrics)
-		logger.info(
+
+		img2txt_metrics_list.append(img2txt_metrics)
+		txt2img_metrics_list.append(txt2img_metrics)
+		print(
 			f'@ Epoch {epoch + 1}:\n'
 			f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {metrics_per_epoch.get("val_loss"):.8f}\n'
 			f'\tIn-batch Validation Accuracy [text retrieval per image]: {metrics_per_epoch.get("img2txt_acc")} '
 			f'[image retrieval per text]: {metrics_per_epoch.get("txt2img_acc")}'
 		)
+
 		# Checkpointing
 		current_val_loss = metrics_per_epoch["val_loss"]
 		checkpoint = {
@@ -945,39 +936,19 @@ def progressive_unfreeze_finetune(
 			"best_val_loss": best_val_loss,
 		}
 		if current_val_loss < best_val_loss - early_stopping.min_delta:
-			logger.info(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
+			print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
 			best_val_loss = current_val_loss
 			checkpoint.update({"best_val_loss": best_val_loss})
 			torch.save(checkpoint, mdl_fpth)
 			best_img2txt_metrics = img2txt_metrics
 			best_txt2img_metrics = txt2img_metrics
+
 		# Early stopping
 		if early_stopping.should_stop(current_val_loss, model, epoch):
-			logger.info(f"Early stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
+			print(f"Early stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
 			break
-		print("-" * 170)
-	# Final evaluation after training or early stopping
-	final_metrics = evaluate_loss_and_accuracy(
-		model=model,
-		validation_loader=validation_loader,
-		criterion=criterion,
-		device=device,
-		topK_values=top_k_values,
-	)
+		print("-" * 140)
 
-	final_img2txt, final_txt2img = evaluate_retrieval_performance(
-		model=model,
-		validation_loader=validation_loader,
-		device=device,
-		topK_values=top_k_values,
-	)
-
-	if final_metrics["val_loss"] < best_val_loss:
-		best_val_loss = final_metrics["val_loss"]
-		checkpoint.update({"best_val_loss": best_val_loss})
-		best_img2txt_metrics = final_img2txt
-		best_txt2img_metrics = final_txt2img
-		torch.save(checkpoint, mdl_fpth)
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
 	# Plotting
@@ -998,10 +969,6 @@ def progressive_unfreeze_finetune(
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 	}
 
-	# Load metrics from disk if saved
-	if save_metrics_to_disk:
-		img2txt_metrics_list = [torch.load(os.path.join(results_dir, "metrics", f"img2txt_epoch_{e}.pt")) for e in range(len(training_losses))]
-		txt2img_metrics_list = [torch.load(os.path.join(results_dir, "metrics", f"txt2img_epoch_{e}.pt")) for e in range(len(training_losses))]
 
 	plot_loss_accuracy(
 		dataset_name=dataset_name,
@@ -1034,14 +1001,6 @@ def progressive_unfreeze_finetune(
 		text_to_image_metrics=best_txt2img_metrics,
 		fname=plot_paths["retrieval_best"],
 	)
-
-	return {
-		"final_metrics": final_metrics,
-		"best_img2txt_metrics": best_img2txt_metrics,
-		"best_txt2img_metrics": best_txt2img_metrics,
-		"training_losses": training_losses,
-		"metrics_for_all_epochs": metrics_for_all_epochs,
-	}
 
 def lora_finetune(
 		model: torch.nn.Module,
@@ -1087,7 +1046,7 @@ def lora_finetune(
 	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) | {type(device)} {device} [x{nw} cores]".center(160, "-"))
 
 	for name, param in model.named_parameters():
-		print(f"{name} => {param.shape}")
+		print(f"{name} => {param.shape} {param.requires_grad}")
 
 	# Apply LoRA to the model
 	model = get_lora_clip(
@@ -1134,6 +1093,7 @@ def lora_finetune(
 	best_val_loss = float('inf')
 	best_img2txt_metrics = None
 	best_txt2img_metrics = None
+
 	for epoch in range(num_epochs):
 		torch.cuda.empty_cache()
 		model.train()
@@ -1160,7 +1120,7 @@ def lora_finetune(
 			epoch_loss += total_loss.item()
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
-		# Evaluation (same as finetune())
+
 		metrics_per_epoch = evaluate_loss_and_accuracy(
 			model=model,
 			validation_loader=validation_loader,
@@ -1178,6 +1138,7 @@ def lora_finetune(
 		)
 		img2txt_metrics_list.append(img2txt_metrics)
 		txt2img_metrics_list.append(txt2img_metrics)
+
 		# Early stopping and checkpointing (same as finetune())
 		current_val_loss = metrics_per_epoch["val_loss"]
 		checkpoint = {
@@ -1197,7 +1158,7 @@ def lora_finetune(
 		if early_stopping.should_stop(current_val_loss, model, epoch):
 			print(f"\nEarly stopping triggered at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
 			break
-		print("-" * 170)
+		print("-" * 140)
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
 	file_base_name = (
@@ -1295,6 +1256,7 @@ def full_finetune(
 		if isinstance(module, torch.nn.Dropout):
 			dropout_val = module.p
 			break
+
 	if dropout_val is None:
 			dropout_val = 0.0  # Default to 0.0 if no Dropout layers are found (unlikely in your case)
 
@@ -1449,7 +1411,7 @@ def full_finetune(
 				best_txt2img_metrics = final_txt2img
 				torch.save(checkpoint, mdl_fpth)
 			break
-		print("-" * 170)
+		print("-" * 140)
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 	
 	file_base_name = (
