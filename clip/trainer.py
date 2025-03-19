@@ -16,7 +16,7 @@ from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plo
 # $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m "finetune" -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
 
 # finetune svhn with progressive unfreezing:
-# $ nohup python -u trainer.py -d svhn -bs 256 -e 150 -lr 1e-4 -wd 1e-2 --print_every 250 -nw 50 --device "cuda:0" -m finetune -fts progressive_unfreeze -a "ViT-B/32" > /media/volume/ImACCESS/trash/svhn_punfreeze_ft.out &
+# $ nohup python -u trainer.py -d svhn -bs 256 -e 150 -lr 1e-4 -wd 1e-2 --print_every 250 -nw 50 --device "cuda:0" -m finetune -fts progressive_unfreeze -a "ViT-B/32" > /media/volume/ImACCESS/trash/svhn_prog_unfreeze_ft.out &
 
 # finetune imagenet with progressive unfreezing:
 # $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m finetune -fts progressive_unfreeze -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_pf_ft.out &
@@ -450,6 +450,60 @@ def evaluate_loss_and_accuracy(
 
 	return metrics
 
+def get_status(model, phase, layers_to_unfreeze, cache=None):
+	# Compute parameter statistics
+	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)
+	total_params = trainable_params + frozen_params
+	
+	# Count unique layers based on group membership
+	layer_groups = get_layer_groups(model)
+	all_layers = set()
+	for group, layers in layer_groups.items():
+		for layer in layers:
+			all_layers.add(layer)  # Use exact layer names from groups
+	total_layers = len(all_layers)
+
+	# Count unique frozen layers
+	frozen_layers = 0
+	unfrozen_layers = set(layers_to_unfreeze)  # Layers to unfreeze in this phase
+	for layer in all_layers:
+		# Check if any parameter in this layer is frozen
+		is_frozen = all(not p.requires_grad for name, p in model.named_parameters() if layer in name)
+		if is_frozen and layer not in unfrozen_layers:
+			frozen_layers += 1
+
+	# Update category breakdown
+	category_breakdown = {}
+	for group, layers in layer_groups.items():
+		frozen_in_group = sum(1 for layer in layers if all(not p.requires_grad for name, p in model.named_parameters() if layer in name) and layer not in unfrozen_layers)
+		total_in_group = len(layers)
+		category_breakdown[group] = (frozen_in_group, total_in_group)
+	
+	# Cache results if provided
+	if cache is not None:
+		cache[f"phase_{phase}"] = {"trainable": trainable_params, "frozen": frozen_params}
+	
+	# Print detailed status using tabulate
+	headers = ["Metric", "Value"]
+	param_stats = [
+		["Phase #", f"{phase}"],
+		["Total Parameters", f"{total_params:,}"],
+		["Trainable Parameters", f"{trainable_params:,} ({trainable_params/total_params*100:.2f}%)"],
+		["Frozen Parameters", f"{frozen_params:,} ({frozen_params/total_params*100:.2f}%)"]
+	]
+	layer_stats = [
+		["Total Layers", total_layers],
+		["Frozen Layers", f"{frozen_layers} ({frozen_layers/total_layers*100:.2f}%)"]
+	]
+	category_stats = [[group, f"{frozen}/{total} ({frozen/total*100:.2f}%)"] for group, (frozen, total) in category_breakdown.items()]
+
+	print(tabulate.tabulate(param_stats, headers=headers, tablefmt="pretty", colalign=("left", "left")))
+	print("\nLayer Statistics:")
+	print(tabulate.tabulate(layer_stats, headers=headers, tablefmt="pretty", colalign=("left", "left")))
+	print("\nLayer Category Breakdown:")
+	print(tabulate.tabulate(category_stats, headers=["Category", "Frozen/Total (Percentage)"], tablefmt="pretty", colalign=("left", "left")))
+
 def get_num_transformer_blocks(model: torch.nn.Module) -> tuple:
 	# Ensure the model has the required attributes
 	if not hasattr(model, 'visual'):
@@ -642,29 +696,36 @@ def unfreeze_layers(
 
 def should_transition_phase(
 		losses: List[float],
-		th: float = 5e-3,  # Relative change threshold
-		absolute_th: float = 1e-2,  # Absolute change threshold
-		window: int = 5,
+		accuracies: List[float] = None,  # Optional: in-batch validation accuracy
+		loss_threshold: float = 5e-3,  # Cumulative improvement threshold for loss
+		accuracy_threshold: float = 1e-3,  # Cumulative improvement threshold for accuracy
+		best_loss_threshold: float = 1e-3,  # Threshold for closeness to best loss
+		window: int = 10,  # Match early stopping window
 		best_loss: Optional[float] = None,
-		min_delta: float = 1e-4,
 	) -> bool:
-
 	if len(losses) < window:
 		return False
 	
+	# Loss-based criterion: cumulative improvement over the window
 	last_window_losses = losses[-window:]
-	avg_loss = sum(last_window_losses) / window
-	relative_change = abs(last_window_losses[-1] - avg_loss) / avg_loss
-	absolute_change = abs(last_window_losses[-1] - avg_loss)
+	cumulative_loss_improvement = abs(last_window_losses[0] - last_window_losses[-1])
+	loss_plateau = cumulative_loss_improvement < loss_threshold
 	
-	# Check trend: is the loss increasing or flat?
-	trend = last_window_losses[-1] - last_window_losses[0]  # Positive if increasing, negative if decreasing
+	# Trend: is the loss increasing or flat?
+	loss_trend = last_window_losses[-1] - last_window_losses[0]  # Positive if increasing, negative if decreasing
+
+	# Check if loss is close to the best loss
+	close_to_best_loss = best_loss is not None and abs(last_window_losses[-1] - best_loss) < best_loss_threshold
+			
+	# Accuracy-based criterion (if provided)
+	acc_plateau = True
+	if accuracies is not None and len(accuracies) >= window:
+		last_window_accs = accuracies[-window:]
+		cumulative_acc_improvement = abs(last_window_accs[-1] - last_window_accs[0])
+		acc_plateau = cumulative_acc_improvement < accuracy_threshold
 	
-	# Check if loss is close to the best loss (if provided)
-	close_to_best = best_loss is not None and abs(last_window_losses[-1] - best_loss) < min_delta
-	
-	# Transition if: small relative change OR small absolute change AND (loss is not improving OR close to best)
-	transition_required = (relative_change < th or absolute_change < absolute_th) and (trend >= 0 or close_to_best)
+	# Transition if: loss has plateaued AND (loss is not improving OR close to best) OR accuracy has plateaued
+	transition_required = (loss_plateau and (loss_trend >= 0 or close_to_best_loss)) or acc_plateau
 	return transition_required
 
 def handle_phase_transition(
@@ -686,60 +747,6 @@ def handle_phase_transition(
 	print(f"<!> Plateau detected! Transitioning to Phase {new_phase} with new learning rate {new_lr:.1e}")
 
 	return new_phase, new_lr
-
-def get_status(model, phase, layers_to_unfreeze, cache=None):
-	# Compute parameter statistics
-	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)
-	total_params = trainable_params + frozen_params
-	
-	# Count unique layers based on group membership
-	layer_groups = get_layer_groups(model)
-	all_layers = set()
-	for group, layers in layer_groups.items():
-		for layer in layers:
-			all_layers.add(layer)  # Use exact layer names from groups
-	total_layers = len(all_layers)
-
-	# Count unique frozen layers
-	frozen_layers = 0
-	unfrozen_layers = set(layers_to_unfreeze)  # Layers to unfreeze in this phase
-	for layer in all_layers:
-		# Check if any parameter in this layer is frozen
-		is_frozen = all(not p.requires_grad for name, p in model.named_parameters() if layer in name)
-		if is_frozen and layer not in unfrozen_layers:
-			frozen_layers += 1
-
-	# Update category breakdown
-	category_breakdown = {}
-	for group, layers in layer_groups.items():
-		frozen_in_group = sum(1 for layer in layers if all(not p.requires_grad for name, p in model.named_parameters() if layer in name) and layer not in unfrozen_layers)
-		total_in_group = len(layers)
-		category_breakdown[group] = (frozen_in_group, total_in_group)
-	
-	# Cache results if provided
-	if cache is not None:
-		cache[f"phase_{phase}"] = {"trainable": trainable_params, "frozen": frozen_params}
-	
-	# Print detailed status using tabulate
-	headers = ["Metric", "Value"]
-	param_stats = [
-		["Phase #", f"{phase}"],
-		["Total Parameters", f"{total_params:,}"],
-		["Trainable Parameters", f"{trainable_params:,} ({trainable_params/total_params*100:.2f}%)"],
-		["Frozen Parameters", f"{frozen_params:,} ({frozen_params/total_params*100:.2f}%)"]
-	]
-	layer_stats = [
-		["Total Layers", total_layers],
-		["Frozen Layers", f"{frozen_layers} ({frozen_layers/total_layers*100:.2f}%)"]
-	]
-	category_stats = [[group, f"{frozen}/{total} ({frozen/total*100:.2f}%)"] for group, (frozen, total) in category_breakdown.items()]
-
-	print(tabulate.tabulate(param_stats, headers=headers, tablefmt="pretty", colalign=("left", "left")))
-	print("\nLayer Statistics:")
-	print(tabulate.tabulate(layer_stats, headers=headers, tablefmt="pretty", colalign=("left", "left")))
-	print("\nLayer Category Breakdown:")
-	print(tabulate.tabulate(category_stats, headers=["Category", "Frozen/Total (Percentage)"], tablefmt="pretty", colalign=("left", "left")))
 
 def progressive_unfreeze_finetune(
 		model: torch.nn.Module,
@@ -798,8 +805,7 @@ def progressive_unfreeze_finetune(
 	if run_id is None:
 		run_id = time.strftime("%Y%m%d_%H%M%S")
 	
-	# Log run information
-	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
+	print(f"{run_id} {mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
 
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
@@ -878,12 +884,17 @@ def progressive_unfreeze_finetune(
 		if epoch >= min_epochs_before_transition and epochs_in_current_phase >= min_epochs_per_phase:
 			should_transition = should_transition_phase(
 				losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
-				th=min_delta,
+				accuracies=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
+				loss_threshold=min_delta,
+				accuracy_threshold=1e-3,
+				best_loss_threshold=1e-3,
 				window=window_size,
+				best_loss=best_val_loss,
 			)
 			if should_transition or epochs_in_current_phase >= max_epochs_per_phase:
 				if not should_transition:
 					print(f"Forcing transition due to max epochs ({max_epochs_per_phase}) reached in Phase {current_phase}...")
+
 				print(f"Plateau detected @ Epoch: {epoch+1} Transitioning from phase: {current_phase} to next phase.")
 				current_phase, learning_rate = handle_phase_transition(
 					current_phase=current_phase,
@@ -891,10 +902,10 @@ def progressive_unfreeze_finetune(
 					max_phases=len(unfreeze_schedule),
 					scheduler=scheduler,
 				)
-				print(f"Updated learning rate: {learning_rate}")
+
 				epochs_in_current_phase = 0  # Reset the counter after transitioning
 		
-		# Unfreeze layers for the current phase
+		# Unfreeze layers for current phase
 		unfreeze_layers(
 			model=model,
 			strategy=unfreeze_schedule,
