@@ -11,7 +11,7 @@ from trainer import train, pretrain, full_finetune, lora_finetune, progressive_u
 from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics
 
 # run in local:
-# $ nohup python -u history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -m finetune -fts progressive -a "ViT-B/32" > logs/europeana_ft_progressive.out &
+# $ nohup python -u history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 32 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -m finetune -fts progressive -a "ViT-B/32" > logs/europeana_ft_progressive.out &
 
 # run in pouta:
 
@@ -63,7 +63,6 @@ def main():
 	parser.add_argument('--lora_rank', type=int, default=8, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', type=float, default=16.0, help='LoRA alpha (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_dropout', type=float, default=0.0, help='LoRA dropout (used if finetune_strategy=lora)')
-	parser.add_argument('--window_size', '-ws', type=int, default=10, help='Windows size for early stopping and progressive freezing')
 	parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
@@ -163,7 +162,6 @@ def main():
 				weight_decay=args.weight_decay,
 				device=args.device,
 				results_dir=os.path.join(args.dataset_dir, "results"),
-				# window_size=args.window_size, # early stopping
 				patience=10,									# early stopping
 				min_delta=1e-4,								# early stopping
 				cumulative_delta=5e-3,				# early stopping

@@ -80,10 +80,11 @@ def get_parameters_info(model, mode):
 	)
 
 def print_loader_info(loader, batch_size):
-	samples_per_batch = len(loader.dataset) // batch_size
-	last_batch_size = len(loader.dataset) % batch_size
-	if last_batch_size == 0:
-		last_batch_size = batch_size
+	loader_num_samples = len(loader.dataset)
+	per_batch_samples = loader_num_samples // batch_size
+	last_batch_samples = loader_num_samples % batch_size
+	if last_batch_samples == 0:
+		last_batch_samples = batch_size
 	
 	try:
 		class_names = loader.dataset.dataset.classes
@@ -91,13 +92,13 @@ def print_loader_info(loader, batch_size):
 		class_names = loader.dataset.unique_labels
 	n_classes = len(class_names)
 
-	total_samples_calc = samples_per_batch * batch_size + last_batch_size
+	total_samples_calc = per_batch_samples * batch_size + last_batch_samples
 	print(
 		f"\n{loader.name} Loader:\n"
 		f"\tWrapped in {len(loader)} batches\n"
-		f"\tSamples per batch (total batches: {batch_size}): {samples_per_batch}\n"
-		f"\tSamples in last batch: {last_batch_size}\n"
-		f"\tTotal samples: {len(loader.dataset)} (calculated: {total_samples_calc} = {samples_per_batch} x {batch_size} + {last_batch_size})\n"
+		f"\tSamples per batch (total batches: {batch_size}): {per_batch_samples}\n"
+		f"\tSamples in last batch: {last_batch_samples}\n"
+		f"\tTotal samples: {loader_num_samples} (calculated: {total_samples_calc} = {per_batch_samples} x {batch_size} + {last_batch_samples})\n"
 		f"\tUnique classes: {n_classes}\n"
 	)
 

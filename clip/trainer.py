@@ -693,53 +693,53 @@ def unfreeze_layers(
 		cache=cache,
 	)
 
-# def should_transition_phase(
-# 		losses: List[float],
-# 		accuracies: List[float] = None,  # Optional: in-batch validation accuracy
-# 		loss_threshold: float = 5e-3,  # Cumulative improvement threshold for loss
-# 		accuracy_threshold: float = 1e-3,  # Cumulative improvement threshold for accuracy
-# 		best_loss_threshold: float = 1e-3,  # Threshold for closeness to best loss
-# 		window: int = 10,  # Match early stopping window
-# 		best_loss: Optional[float] = None,
-# 	) -> bool:
+def should_transition_phase_orig(
+		losses: List[float],
+		accuracies: List[float] = None,  # Optional: in-batch validation accuracy
+		loss_threshold: float = 5e-3,  # Cumulative improvement threshold for loss
+		accuracy_threshold: float = 1e-3,  # Cumulative improvement threshold for accuracy
+		best_loss_threshold: float = 1e-3,  # Threshold for closeness to best loss
+		window: int = 10,  # Match early stopping window
+		best_loss: Optional[float] = None,
+	) -> bool:
 
-# 	current_epoch = len(losses) + 1
-# 	if len(losses) < window:
-# 		print(f"Epoch {len(losses)}: Not enough epochs ({len(losses)} < {window}) to evaluate phase transition.")
-# 		return False
+	current_epoch = len(losses) + 1
+	if len(losses) < window:
+		print(f"Epoch {len(losses)}: Not enough epochs ({len(losses)} < {window}) to evaluate phase transition.")
+		return False
 	
-# 	# Loss-based criterion: cumulative improvement over the window
-# 	last_window_losses = losses[-window:]
-# 	cumulative_loss_improvement = abs(last_window_losses[0] - last_window_losses[-1])
-# 	loss_plateau = cumulative_loss_improvement < loss_threshold
+	# Loss-based criterion: cumulative improvement over the window
+	last_window_losses = losses[-window:]
+	cumulative_loss_improvement = abs(last_window_losses[0] - last_window_losses[-1])
+	loss_plateau = cumulative_loss_improvement < loss_threshold
 	
-# 	# Trend: is the loss increasing or flat?
-# 	loss_trend = last_window_losses[-1] - last_window_losses[0]  # Positive if increasing, negative if decreasing
+	# Trend: is the loss increasing or flat?
+	loss_trend = last_window_losses[-1] - last_window_losses[0]  # Positive if increasing, negative if decreasing
 
-# 	# Check if loss is close to the best loss
-# 	close_to_best_loss = best_loss is not None and abs(last_window_losses[-1] - best_loss) < best_loss_threshold
+	# Check if loss is close to the best loss
+	close_to_best_loss = best_loss is not None and abs(last_window_losses[-1] - best_loss) < best_loss_threshold
 			
-# 	# Accuracy-based criterion (if provided)
-# 	acc_plateau = False
-# 	if accuracies is not None and len(accuracies) >= window:
-# 		last_window_accs = accuracies[-window:]
-# 		cumulative_acc_improvement = abs(last_window_accs[-1] - last_window_accs[0])
-# 		acc_plateau = cumulative_acc_improvement < accuracy_threshold
+	# Accuracy-based criterion (if provided)
+	acc_plateau = False
+	if accuracies is not None and len(accuracies) >= window:
+		last_window_accs = accuracies[-window:]
+		cumulative_acc_improvement = abs(last_window_accs[-1] - last_window_accs[0])
+		acc_plateau = cumulative_acc_improvement < accuracy_threshold
 	
-# 	# Log the decision-making metrics
-# 	print(f"Phase transition evaluation [epoch {current_epoch}]:")
-# 	print(f"\tLoss improvement over {window} windows: {cumulative_loss_improvement} (threshold: {loss_threshold:.5f}, plateau: {loss_plateau})")
-# 	print(f"\tLoss trend: {loss_trend:.5f} (increasing/flat: {loss_trend >= 0})")
-# 	print(f"\tClose to best loss: {close_to_best_loss} (current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'}) (threshold: {best_loss_threshold})")
-# 	if cumulative_acc_improvement is not None:
-# 		print(f"\tAccuracy improvement over {window} windows: {cumulative_acc_improvement} (threshold: {accuracy_threshold:.5f}, plateau: {acc_plateau})")
-# 	else:
-# 		print("\tAccuracy data not available for phase transition evaluation.")
+	# Log the decision-making metrics
+	print(f"Phase transition evaluation [epoch {current_epoch}]:")
+	print(f"\tLoss improvement over {window} windows: {cumulative_loss_improvement} (threshold: {loss_threshold:.5f}, plateau: {loss_plateau})")
+	print(f"\tLoss trend: {loss_trend:.5f} (increasing/flat: {loss_trend >= 0})")
+	print(f"\tClose to best loss: {close_to_best_loss} (current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'}) (threshold: {best_loss_threshold})")
+	if cumulative_acc_improvement is not None:
+		print(f"\tAccuracy improvement over {window} windows: {cumulative_acc_improvement} (threshold: {accuracy_threshold:.5f}, plateau: {acc_plateau})")
+	else:
+		print("\tAccuracy data not available for phase transition evaluation.")
 
-# 	# Transition if: loss has plateaued AND (loss is not improving OR close to best) OR accuracy has plateaued
-# 	transition_required = (loss_plateau and (loss_trend >= 0 or close_to_best_loss)) or acc_plateau
-# 	print(f"==>> Phase Transition? {transition_required}")
-# 	return transition_required
+	# Transition if: loss has plateaued AND (loss is not improving OR close to best) OR accuracy has plateaued
+	transition_required = (loss_plateau and (loss_trend >= 0 or close_to_best_loss)) or acc_plateau
+	print(f"==>> Phase Transition? {transition_required}")
+	return transition_required
 
 def should_transition_phase(
 				losses: List[float],
@@ -853,7 +853,6 @@ def progressive_unfreeze_finetune(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		# window_size: int = 10,
 		patience: int = 10,
 		min_delta: float = 1e-4,
 		cumulative_delta: float = 5e-3,
@@ -867,7 +866,7 @@ def progressive_unfreeze_finetune(
 		raise ValueError("Train and validation loaders must not be empty.")
 	
 	window_size = max(5, int(0.1 * len(train_loader)))  # 10% of training batches
-
+	print(f"training batch: {len(train_loader)}, window_size: {window_size}")
 	# Initialize early stopping
 	early_stopping = EarlyStopping(
 		patience=patience,
@@ -985,7 +984,7 @@ def progressive_unfreeze_finetune(
 				# accuracies=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
 				accuracies=avg_accs,
 				# loss_threshold=cumulative_delta, # Align with early stopping cumulative_delta
-				loss_threshold=min_delta * 2,  # More tolerant threshold
+				loss_threshold=min_delta * 2, # More tolerant threshold
 				accuracy_threshold=1e-3,
 				best_loss_threshold=min_delta * 5,#5e-3,
 				window=window_size,
@@ -999,8 +998,8 @@ def progressive_unfreeze_finetune(
 					scheduler=scheduler,
 				)
 				epochs_in_current_phase = 0  # Reset the counter after transitioning
-				# TODO: Reset early stopping between phases
-				early_stopping.reset()
+				# # TODO: Reset early stopping between phases
+				# early_stopping.reset()
 		
 		# Unfreeze layers for current phase
 		unfreeze_layers(
@@ -1916,7 +1915,6 @@ def main():
 	parser.add_argument('--lora_rank', type=int, default=8, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', type=float, default=16.0, help='LoRA alpha (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_dropout', type=float, default=0.0, help='LoRA dropout (used if finetune_strategy=lora)')
-	parser.add_argument('--window_size', '-ws', type=int, default=10, help='Windows size for early stopping and progressive freezing')
 	parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
@@ -2017,7 +2015,6 @@ def main():
 				weight_decay=args.weight_decay,
 				device=args.device,
 				results_dir=os.path.join(args.dataset, "results"),
-				# window_size=args.window_size, # early stopping and progressive unfreezing
 				patience=10,									# early stopping
 				min_delta=1e-4,								# early stopping
 				cumulative_delta=5e-3,				# early stopping and progressive unfreezing
