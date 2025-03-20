@@ -693,53 +693,104 @@ def unfreeze_layers(
 		cache=cache,
 	)
 
-def should_transition_phase(
-		losses: List[float],
-		accuracies: List[float] = None,  # Optional: in-batch validation accuracy
-		loss_threshold: float = 5e-3,  # Cumulative improvement threshold for loss
-		accuracy_threshold: float = 1e-3,  # Cumulative improvement threshold for accuracy
-		best_loss_threshold: float = 1e-3,  # Threshold for closeness to best loss
-		window: int = 10,  # Match early stopping window
-		best_loss: Optional[float] = None,
-	) -> bool:
+# def should_transition_phase(
+# 		losses: List[float],
+# 		accuracies: List[float] = None,  # Optional: in-batch validation accuracy
+# 		loss_threshold: float = 5e-3,  # Cumulative improvement threshold for loss
+# 		accuracy_threshold: float = 1e-3,  # Cumulative improvement threshold for accuracy
+# 		best_loss_threshold: float = 1e-3,  # Threshold for closeness to best loss
+# 		window: int = 10,  # Match early stopping window
+# 		best_loss: Optional[float] = None,
+# 	) -> bool:
 
-	current_epoch = len(losses) + 1
-	if len(losses) < window:
-		print(f"Epoch {len(losses)}: Not enough epochs ({len(losses)} < {window}) to evaluate phase transition.")
-		return False
+# 	current_epoch = len(losses) + 1
+# 	if len(losses) < window:
+# 		print(f"Epoch {len(losses)}: Not enough epochs ({len(losses)} < {window}) to evaluate phase transition.")
+# 		return False
 	
-	# Loss-based criterion: cumulative improvement over the window
-	last_window_losses = losses[-window:]
-	cumulative_loss_improvement = abs(last_window_losses[0] - last_window_losses[-1])
-	loss_plateau = cumulative_loss_improvement < loss_threshold
+# 	# Loss-based criterion: cumulative improvement over the window
+# 	last_window_losses = losses[-window:]
+# 	cumulative_loss_improvement = abs(last_window_losses[0] - last_window_losses[-1])
+# 	loss_plateau = cumulative_loss_improvement < loss_threshold
 	
-	# Trend: is the loss increasing or flat?
-	loss_trend = last_window_losses[-1] - last_window_losses[0]  # Positive if increasing, negative if decreasing
+# 	# Trend: is the loss increasing or flat?
+# 	loss_trend = last_window_losses[-1] - last_window_losses[0]  # Positive if increasing, negative if decreasing
 
-	# Check if loss is close to the best loss
-	close_to_best_loss = best_loss is not None and abs(last_window_losses[-1] - best_loss) < best_loss_threshold
+# 	# Check if loss is close to the best loss
+# 	close_to_best_loss = best_loss is not None and abs(last_window_losses[-1] - best_loss) < best_loss_threshold
 			
-	# Accuracy-based criterion (if provided)
-	acc_plateau = False
-	if accuracies is not None and len(accuracies) >= window:
-		last_window_accs = accuracies[-window:]
-		cumulative_acc_improvement = abs(last_window_accs[-1] - last_window_accs[0])
-		acc_plateau = cumulative_acc_improvement < accuracy_threshold
+# 	# Accuracy-based criterion (if provided)
+# 	acc_plateau = False
+# 	if accuracies is not None and len(accuracies) >= window:
+# 		last_window_accs = accuracies[-window:]
+# 		cumulative_acc_improvement = abs(last_window_accs[-1] - last_window_accs[0])
+# 		acc_plateau = cumulative_acc_improvement < accuracy_threshold
 	
-	# Log the decision-making metrics
-	print(f"Phase transition evaluation [epoch {current_epoch}]:")
-	print(f"\tLoss improvement over {window} windows: {cumulative_loss_improvement} (threshold: {loss_threshold:.5f}, plateau: {loss_plateau})")
-	print(f"\tLoss trend: {loss_trend:.5f} (increasing/flat: {loss_trend >= 0})")
-	print(f"\tClose to best loss: {close_to_best_loss} (current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'}) (threshold: {best_loss_threshold})")
-	if cumulative_acc_improvement is not None:
-		print(f"\tAccuracy improvement over {window} windows: {cumulative_acc_improvement} (threshold: {accuracy_threshold:.5f}, plateau: {acc_plateau})")
-	else:
-		print("\tAccuracy data not available for phase transition evaluation.")
+# 	# Log the decision-making metrics
+# 	print(f"Phase transition evaluation [epoch {current_epoch}]:")
+# 	print(f"\tLoss improvement over {window} windows: {cumulative_loss_improvement} (threshold: {loss_threshold:.5f}, plateau: {loss_plateau})")
+# 	print(f"\tLoss trend: {loss_trend:.5f} (increasing/flat: {loss_trend >= 0})")
+# 	print(f"\tClose to best loss: {close_to_best_loss} (current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'}) (threshold: {best_loss_threshold})")
+# 	if cumulative_acc_improvement is not None:
+# 		print(f"\tAccuracy improvement over {window} windows: {cumulative_acc_improvement} (threshold: {accuracy_threshold:.5f}, plateau: {acc_plateau})")
+# 	else:
+# 		print("\tAccuracy data not available for phase transition evaluation.")
 
-	# Transition if: loss has plateaued AND (loss is not improving OR close to best) OR accuracy has plateaued
-	transition_required = (loss_plateau and (loss_trend >= 0 or close_to_best_loss)) or acc_plateau
-	print(f"==>> Phase Transition? {transition_required}")
-	return transition_required
+# 	# Transition if: loss has plateaued AND (loss is not improving OR close to best) OR accuracy has plateaued
+# 	transition_required = (loss_plateau and (loss_trend >= 0 or close_to_best_loss)) or acc_plateau
+# 	print(f"==>> Phase Transition? {transition_required}")
+# 	return transition_required
+
+def should_transition_phase(
+				losses: List[float],
+				accuracies: List[float] = None,
+				loss_threshold: float = 5e-3,
+				accuracy_threshold: float = 1e-3,
+				best_loss_threshold: float = 1e-3,
+				window: int = 10,
+				best_loss: Optional[float] = None,
+		) -> bool:
+
+		current_epoch = len(losses)
+		if len(losses) < window:
+				print(f"Epoch {current_epoch}: Not enough epochs ({len(losses)} < {window}) to evaluate phase transition.")
+				return False
+		
+		last_window_losses = losses[-window:]
+		cumulative_loss_improvement = last_window_losses[0] - last_window_losses[-1]  # Positive is improvement
+		loss_plateau = abs(cumulative_loss_improvement) < loss_threshold
+		loss_trend = last_window_losses[-1] - last_window_losses[0]  # Positive = worsening
+		
+		close_to_best = best_loss is not None and abs(last_window_losses[-1] - best_loss) < best_loss_threshold
+		sustained_improvement = cumulative_loss_improvement > loss_threshold  # Significant continuous improvement
+		
+		# Accuracy plateau detection
+		acc_plateau = False
+		if accuracies is not None and len(accuracies) >= window:
+				last_window_accs = accuracies[-window:]
+				acc_improvement = last_window_accs[-1] - last_window_accs[0]
+				acc_plateau = abs(acc_improvement) < accuracy_threshold
+
+		print(f"Phase transition evaluation [epoch {current_epoch+1}]:")
+		print(f"\tLoss improvement: {cumulative_loss_improvement:.4f} (threshold: {loss_threshold:.4f})")
+		print(f"\tLoss trend: {loss_trend:.4f} (>0 = worsening)")
+		print(f"\tClose to best: {close_to_best} | Sustained improvement: {sustained_improvement}")
+		
+		# Revised transition logic
+		transition = False
+		if loss_plateau:
+				if loss_trend > 0:  # Active deterioration
+						transition = True
+						print("\tTransition: Active deterioration detected")
+				elif not close_to_best and not sustained_improvement:  # Stagnation without justification
+						transition = True
+						print("\tTransition: Stagnation without proximity to best loss")
+		elif acc_plateau:
+				transition = True
+				print("\tTransition: Accuracy plateau detected")
+
+		print(f"==>> Phase Transition? {transition}")
+		return transition
 
 def handle_phase_transition(
 		current_phase: int,
@@ -763,6 +814,34 @@ def handle_phase_transition(
 
 	return new_phase, new_lr
 
+def get_unfreeze_pcts_hybrid(
+		model: torch.nn.Module,
+		train_loader: DataLoader,
+		min_phases: int,
+		max_phases: int,
+	):
+	vis_nblocks, txt_nblocks = get_num_transformer_blocks(model=model)
+	total_transformer_layers = vis_nblocks + txt_nblocks
+	layers_per_phase = 2 # Unfreezing 1 layer per modality per phase
+	baseline_phases = total_transformer_layers // layers_per_phase + 1
+	print(f"Baseline Phases (with total_transformer_layers: {total_transformer_layers}): {baseline_phases}")
+	dataset_size = len(train_loader.dataset)
+	dataset_phases = int(5 + np.log10(dataset_size))
+	print(f"Dataset Size: {dataset_size}: Phases: {dataset_phases}")
+	num_phases = max(
+		min_phases, 
+		min(
+			max_phases, 
+			min(
+				baseline_phases,
+				dataset_phases,
+			)
+		)
+	)
+	unfreeze_pcts = np.linspace(0, 1, num_phases).tolist()
+	print(f"Unfreeze Schedule contains {len(unfreeze_pcts)} different phases:\n{unfreeze_pcts}")
+	return unfreeze_pcts
+
 def progressive_unfreeze_finetune(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
@@ -774,22 +853,21 @@ def progressive_unfreeze_finetune(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		window_size: int = 10,
+		# window_size: int = 10,
 		patience: int = 10,
 		min_delta: float = 1e-4,
 		cumulative_delta: float = 5e-3,
 		minimum_epochs: int = 20,
 		top_k_values: List[int] = [1, 5, 10, 15, 20],
-		unfreeze_percentages: List[float] = [0.0 , 0.2, 0.4, 0.6, 0.8, 1.0], # Start at 0%(unfrozen[pre-trained]) => 100%(unfreeze [fine-tune])
 		layer_groups_to_unfreeze: List[str] = ['visual_frontend', 'visual_transformer', 'text_frontend', 'text_transformer', 'projections'],
 		min_epochs_before_transition: int = 5,
-		save_metrics_to_disk: bool = False,
-		run_id: Optional[str] = None,
 	) -> Dict[str, any]:
 	# Input validation
 	if not train_loader or not validation_loader:
 		raise ValueError("Train and validation loaders must not be empty.")
 	
+	window_size = max(5, int(0.1 * len(train_loader)))  # 10% of training batches
+
 	# Initialize early stopping
 	early_stopping = EarlyStopping(
 		patience=patience,
@@ -815,12 +893,8 @@ def progressive_unfreeze_finetune(
 	
 	for name, param in model.named_parameters():
 		print(f"{name} => {param.shape} {param.requires_grad}")
-
-	# Generate a unique run ID if not provided
-	if run_id is None:
-		run_id = time.strftime("%Y%m%d_%H%M%S")
 	
-	print(f"{run_id} {mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
+	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
 
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
@@ -832,7 +906,13 @@ def progressive_unfreeze_finetune(
 			dropout_val = module.p
 			break
 	
-	# Initialize freeze schedule
+	unfreeze_percentages = get_unfreeze_pcts_hybrid(
+		model=model,
+		train_loader=train_loader,
+		min_phases=7,
+		max_phases=15,
+	)
+
 	unfreeze_schedule = get_unfreeze_schedule(
 		model=model,
 		unfreeze_percentages=unfreeze_percentages,
@@ -842,7 +922,7 @@ def progressive_unfreeze_finetune(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
-		f"dropout_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_run_{run_id}.pth"
+		f"dropout_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
 	)
 	
 	# Initialize training components
@@ -875,8 +955,8 @@ def progressive_unfreeze_finetune(
 
 	training_losses = []
 	metrics_for_all_epochs = []
-	img2txt_metrics_list = [] if not save_metrics_to_disk else None
-	txt2img_metrics_list = [] if not save_metrics_to_disk else None
+	img2txt_metrics_list = []
+	txt2img_metrics_list = []
 	train_start_time = time.time()
 	best_val_loss = float('inf')
 	best_img2txt_metrics = None
@@ -903,15 +983,14 @@ def progressive_unfreeze_finetune(
 				losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
 				# accuracies=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
 				accuracies=avg_accs,
-				loss_threshold=cumulative_delta, # Align with early stopping cumulative_delta
-				accuracy_threshold=5e-4,
-				best_loss_threshold=5e-3,
+				# loss_threshold=cumulative_delta, # Align with early stopping cumulative_delta
+				loss_threshold=min_delta * 2,  # More tolerant threshold
+				accuracy_threshold=1e-3,
+				best_loss_threshold=min_delta * 5,#5e-3,
 				window=window_size,
 				best_loss=best_val_loss,
 			)
-			if should_transition or epochs_in_current_phase >= max_epochs_per_phase:
-				if not should_transition:
-					print(f"Forcing transition due to max epochs ({max_epochs_per_phase}) reached in Phase {current_phase}...")
+			if should_transition:
 				current_phase, learning_rate = handle_phase_transition(
 					current_phase=current_phase,
 					initial_lr=initial_learning_rate,
@@ -919,6 +998,8 @@ def progressive_unfreeze_finetune(
 					scheduler=scheduler,
 				)
 				epochs_in_current_phase = 0  # Reset the counter after transitioning
+				# TODO: Reset early stopping between phases
+				early_stopping.reset()
 		
 		# Unfreeze layers for current phase
 		unfreeze_layers(
@@ -1004,20 +1085,21 @@ def progressive_unfreeze_finetune(
 			best_txt2img_metrics = txt2img_metrics
 
 		# Early stopping
-		if early_stopping.should_stop(current_val_loss, model, epoch) and current_phase >= min_phases_before_stopping:
-			print(f"Early stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
-			break
-		elif early_stopping.should_stop(current_val_loss, model, epoch):
-			print(f"Early stopping conidtion met at epoch {epoch + 1}! but delaying until minimum phases ({min_phases_before_stopping}) are reached. Current phase: {current_phase}")
+		if early_stopping.should_stop(current_val_loss, model, epoch):
+			if current_phase >= min_phases_before_stopping:
+				print(f"Early stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
+				break
+			else:
+				print(f"Early stopping condition met at epoch {epoch + 1}! but delaying until minimum phases ({min_phases_before_stopping}) are reached. Current phase: {current_phase}")
 		print("-" * 140)
 
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
-	# Plotting
+
 	file_base_name = (
 		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
-		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}_run_{run_id}"
+		f"ep_{len(training_losses)}_init_lr_{initial_learning_rate:.1e}_final_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
+		f"bs_{train_loader.batch_size}_dropout_{dropout_val}"
 	)
 
 	plot_paths = {
@@ -1934,7 +2016,7 @@ def main():
 				weight_decay=args.weight_decay,
 				device=args.device,
 				results_dir=os.path.join(args.dataset, "results"),
-				window_size=args.window_size, # early stopping and progressive unfreezing
+				# window_size=args.window_size, # early stopping and progressive unfreezing
 				patience=10,									# early stopping
 				min_delta=1e-4,								# early stopping
 				cumulative_delta=5e-3,				# early stopping and progressive unfreezing

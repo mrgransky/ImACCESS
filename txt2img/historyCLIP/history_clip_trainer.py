@@ -163,7 +163,7 @@ def main():
 				weight_decay=args.weight_decay,
 				device=args.device,
 				results_dir=os.path.join(args.dataset_dir, "results"),
-				window_size=args.window_size, # early stopping
+				# window_size=args.window_size, # early stopping
 				patience=10,									# early stopping
 				min_delta=1e-4,								# early stopping
 				cumulative_delta=5e-3,				# early stopping
