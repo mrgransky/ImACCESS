@@ -891,8 +891,9 @@ def progressive_unfreeze_finetune(
 	model_arch = model.name
 	model_name = model.__class__.__name__
 	
-	for name, param in model.named_parameters():
-		print(f"{name} => {param.shape} {param.requires_grad}")
+	# just for debugging:
+	# for name, param in model.named_parameters():
+	# 	print(f"{name} => {param.shape} {param.requires_grad}")
 	
 	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
 
