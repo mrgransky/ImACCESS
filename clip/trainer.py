@@ -13,7 +13,7 @@ from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plo
 # $ nohup python -u trainer.py -d cifar100 -bs 256 -e 250 -lr 1e-4 -wd 1e-3 --print_every 100 -nw 50 --device "cuda:2" -m finetune -fts "lora"  -a "ViT-B/32" --lora > /media/volume/ImACCESS/trash/cifar100_ft_lora.out &
 
 # finetune cifar100 with progressive unfreezing:
-# $ nohup python -u trainer.py -d cifar100 -bs 512 -e 250 -lr 1e-4 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:2" -m finetune -fts progressive -a "ViT-B/32"  > /media/volume/ImACCESS/trash/cifar100_ft_progressive.out &
+# $ nohup python -u trainer.py -d cifar100 -bs 128 -e 250 -lr 1e-4 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:2" -m finetune -fts progressive -a "ViT-B/32"  > /media/volume/ImACCESS/trash/cifar100_ft_progressive.out &
 
 # finetune svhn with progressive unfreezing:
 # $ nohup python -u trainer.py -d svhn -bs 512 -e 250 -lr 1e-4 -wd 1e-2 --print_every 250 -nw 50 --device "cuda:0" -m finetune -fts progressive -a "ViT-B/32" > /media/volume/ImACCESS/trash/svhn_ft_progreessive.out &
@@ -727,7 +727,7 @@ def should_transition_phase(
 		acc_plateau = cumulative_acc_improvement < accuracy_threshold
 	
 	# Log the decision-making metrics
-	print(f"Phase transition evaluation for epoch {current_epoch}")
+	print(f"Phase transition evaluation [epoch {current_epoch}]:")
 	print(f"\tLoss improvement over {window} windows: {cumulative_loss_improvement:.5f} (threshold: {loss_threshold:.5f}, plateau: {loss_plateau})")
 	print(f"\tLoss trend: {loss_trend:.5f} (increasing/flat: {loss_trend >= 0})")
 	print(f"\tClose to best loss: {close_to_best_loss} (current: {last_window_losses[-1]:.5f}, best: {best_loss if best_loss is not None else 'N/A'})")
@@ -738,7 +738,7 @@ def should_transition_phase(
 
 	# Transition if: loss has plateaued AND (loss is not improving OR close to best) OR accuracy has plateaued
 	transition_required = (loss_plateau and (loss_trend >= 0 or close_to_best_loss)) or acc_plateau
-	print(f"==>> Phase Transition required for epoch {current_epoch} ? {transition_required}")
+	print(f"==>> Phase Transition required? {transition_required}")
 	return transition_required
 
 def handle_phase_transition(
