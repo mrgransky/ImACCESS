@@ -16,7 +16,7 @@ from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plo
 # $ nohup python -u trainer.py -d cifar100 -bs 128 -e 250 -lr 1e-4 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:2" -m finetune -fts progressive -a "ViT-B/32"  > /media/volume/ImACCESS/trash/cifar100_ft_progressive.out &
 
 # finetune svhn with progressive unfreezing:
-# $ nohup python -u trainer.py -d svhn -bs 512 -e 250 -lr 1e-4 -wd 1e-2 --print_every 250 -nw 50 --device "cuda:0" -m finetune -fts progressive -a "ViT-B/32" > /media/volume/ImACCESS/trash/svhn_ft_progreessive.out &
+# $ nohup python -u trainer.py -d svhn -bs 512 -e 250 -lr 1e-5 -wd 1e-1 --print_every 50 -nw 50 --device "cuda:0" -m finetune -fts progressive -a "ViT-B/32" > /media/volume/ImACCESS/trash/svhn_ft_progreessive.out &
 
 # finetune imagenet [full]:
 # $ nohup python -u trainer.py -d imagenet -bs 256 -e 250 -lr 1e-4 -wd 1e-2 --print_every 2500 -nw 50 --device "cuda:0" -m finetune -a "ViT-B/32" > /media/volume/ImACCESS/trash/imagenet_ft.out &
@@ -149,7 +149,7 @@ class EarlyStopping:
 		
 		should_stop = False
 		if self.counter >= self.patience:
-			print(f"Early stopping triggered (patience={self.patience}).")
+			print(f"Early stopping triggered! validation loss fails to improve for (patience={self.patience}) epochs.")
 			should_stop = True
 		
 		if len(self.improvement_history) >= self.window_size:
@@ -728,17 +728,17 @@ def should_transition_phase(
 	
 	# Log the decision-making metrics
 	print(f"Phase transition evaluation [epoch {current_epoch}]:")
-	print(f"\tLoss improvement over {window} windows: {cumulative_loss_improvement:.5f} (threshold: {loss_threshold:.5f}, plateau: {loss_plateau})")
+	print(f"\tLoss improvement over {window} windows: {cumulative_loss_improvement} (threshold: {loss_threshold:.5f}, plateau: {loss_plateau})")
 	print(f"\tLoss trend: {loss_trend:.5f} (increasing/flat: {loss_trend >= 0})")
-	print(f"\tClose to best loss: {close_to_best_loss} (current: {last_window_losses[-1]:.5f}, best: {best_loss if best_loss is not None else 'N/A'})")
+	print(f"\tClose to best loss: {close_to_best_loss} (current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'}) (threshold: {best_loss_threshold})")
 	if cumulative_acc_improvement is not None:
-		print(f"\tAccuracy improvement over window: {cumulative_acc_improvement:.5f} (threshold: {accuracy_threshold:.5f}, plateau: {acc_plateau})")
+		print(f"\tAccuracy improvement over {window} windows: {cumulative_acc_improvement} (threshold: {accuracy_threshold:.5f}, plateau: {acc_plateau})")
 	else:
 		print("\tAccuracy data not available for phase transition evaluation.")
 
 	# Transition if: loss has plateaued AND (loss is not improving OR close to best) OR accuracy has plateaued
 	transition_required = (loss_plateau and (loss_trend >= 0 or close_to_best_loss)) or acc_plateau
-	print(f"==>> Phase Transition required? {transition_required}")
+	print(f"==>> Phase Transition? {transition_required}")
 	return transition_required
 
 def handle_phase_transition(
@@ -759,7 +759,7 @@ def handle_phase_transition(
 	scheduler.max_lr = new_lr
 	for param_group in scheduler.optimizer.param_groups:
 		param_group['lr'] = new_lr
-	print(f"<!> Plateau detected! Transitioning to Phase {new_phase} with new learning rate {new_lr:.1e}")
+	print(f"\tTransitioning to Phase {new_phase} with new learning rate {new_lr:.1e}")
 
 	return new_phase, new_lr
 
@@ -904,23 +904,20 @@ def progressive_unfreeze_finetune(
 				# accuracies=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
 				accuracies=avg_accs,
 				loss_threshold=cumulative_delta, # Align with early stopping cumulative_delta
-				accuracy_threshold=1e-3,
-				best_loss_threshold=1e-3,
+				accuracy_threshold=5e-4,
+				best_loss_threshold=5e-3,
 				window=window_size,
 				best_loss=best_val_loss,
 			)
 			if should_transition or epochs_in_current_phase >= max_epochs_per_phase:
 				if not should_transition:
 					print(f"Forcing transition due to max epochs ({max_epochs_per_phase}) reached in Phase {current_phase}...")
-
-				print(f"Plateau detected @ Epoch: {epoch+1} Transitioning from phase: {current_phase} to next phase.")
 				current_phase, learning_rate = handle_phase_transition(
 					current_phase=current_phase,
 					initial_lr=initial_learning_rate,
 					max_phases=len(unfreeze_schedule),
 					scheduler=scheduler,
 				)
-
 				epochs_in_current_phase = 0  # Reset the counter after transitioning
 		
 		# Unfreeze layers for current phase
@@ -1836,11 +1833,11 @@ def main():
 	parser.add_argument('--lora_rank', type=int, default=8, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', type=float, default=16.0, help='LoRA alpha (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_dropout', type=float, default=0.0, help='LoRA dropout (used if finetune_strategy=lora)')
-	parser.add_argument('--window_size', '-ws', type=int, default=5, help='Windows size for early stopping and progressive freezing')
+	parser.add_argument('--window_size', '-ws', type=int, default=10, help='Windows size for early stopping and progressive freezing')
 	parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
-	parser.add_argument('--minimum_epochs', type=int, default=20, help='Early stopping minimum epochs')
+	parser.add_argument('--minimum_epochs', type=int, default=15, help='Early stopping minimum epochs')
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
 
@@ -1937,10 +1934,10 @@ def main():
 				weight_decay=args.weight_decay,
 				device=args.device,
 				results_dir=os.path.join(args.dataset, "results"),
-				window_size=args.window_size, # early stopping
+				window_size=args.window_size, # early stopping and progressive unfreezing
 				patience=10,									# early stopping
 				min_delta=1e-4,								# early stopping
-				cumulative_delta=5e-3,				# early stopping
+				cumulative_delta=5e-3,				# early stopping and progressive unfreezing
 				minimum_epochs=20,						# early stopping
 				top_k_values=args.topK_values,
 			)
