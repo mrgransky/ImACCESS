@@ -755,8 +755,9 @@ def should_transition_phase(
 	else:
 		print("\tAccuracy data not available for phase transition evaluation.")
 	
-	# Transition logic
 	transition = False
+
+	# Transition logic
 	if loss_plateau:
 		if loss_trend > 0:
 			transition = True
@@ -767,6 +768,7 @@ def should_transition_phase(
 	elif acc_plateau:
 		transition = True
 		print("\tDecision: Transition due to accuracy plateau")
+
 	print(f"==>> Phase Transition Required? {transition}")
 	return transition
 
@@ -777,19 +779,26 @@ def handle_phase_transition(
 		scheduler,
 	):
 
-	# 1e-4 → 5e-5 → 2.5e-5 → 1.25e-5 → 6.25e-6 → 3.125e-6
 	if current_phase >= max_phases - 1:
-		new_lr = initial_lr * (0.5 ** current_phase)  # Consistent 2x reduction
-		return current_phase, new_lr
+		# return current_phase, initial_lr * (0.5 ** current_phase)  # Consistent 2x reduction
+		return current_phase, initial_lr * 0.1  # Final phase uses 10% of initial LR
 
 	new_phase = current_phase + 1
-	new_lr = initial_lr * (0.5 ** new_phase)  # Reduce by 2x per phase
-	# update schuler max_lr:
-	scheduler.max_lr = new_lr
-	for param_group in scheduler.optimizer.param_groups:
-		param_group['lr'] = new_lr
-	print(f"\tTransitioning to Phase {new_phase} with new learning rate {new_lr:.1e}")
+	new_lr = initial_lr * (0.8 ** new_phase)  # Gentle 20% reduction per phase
 
+	# update schuler max_lr: Preserve scheduler momentum when possible
+	if isinstance(scheduler, lr_scheduler.OneCycleLR):
+		scheduler.max_lr = new_lr
+		for param_group in scheduler.optimizer.param_groups:
+			param_group['lr'] = new_lr
+	else:
+		scheduler = lr_scheduler.CosineAnnealingLR(
+			scheduler.optimizer, 
+			T_max=10, 
+			eta_min=new_lr*0.1
+		)
+
+	print(f"\tTransitioning to Phase {new_phase} with new learning rate {new_lr:.1e}")
 	return new_phase, new_lr
 
 def get_unfreeze_pcts_hybrid(
@@ -820,7 +829,7 @@ def get_unfreeze_pcts_hybrid(
 	print(f"Unfreeze Schedule contains {len(unfreeze_pcts)} different phases:\n{unfreeze_pcts}")
 	return unfreeze_pcts
 
-def progressive_unfreeze_finetune(
+def progressive_unfreeze_finetune_micro_batch(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
 		validation_loader: DataLoader,
@@ -848,13 +857,13 @@ def progressive_unfreeze_finetune(
 	print(f"Training batch: {len(train_loader)}, window_size: {window_size}")
 
 	early_stopping = EarlyStopping(
-			patience=patience,
-			min_delta=min_delta,
-			cumulative_delta=cumulative_delta,
-			window_size=window_size,
-			mode='min',
-			min_epochs=minimum_epochs,
-			restore_best_weights=True,
+		patience=patience,
+		min_delta=min_delta,
+		cumulative_delta=cumulative_delta,
+		window_size=window_size,
+		mode='min',
+		min_epochs=minimum_epochs,
+		restore_best_weights=True,
 	)
 	
 	try:
@@ -920,6 +929,7 @@ def progressive_unfreeze_finetune(
 			pct_start=0.1,
 			anneal_strategy='cos',
 	)
+
 	training_losses = []
 	metrics_for_all_epochs = []
 	img2txt_metrics_list = []
@@ -1113,7 +1123,7 @@ def progressive_unfreeze_finetune(
 			fname=plot_paths["retrieval_best"],
 	)
 
-def progressive_unfreeze_finetune_original(
+def progressive_unfreeze_finetune(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
 		validation_loader: DataLoader,
@@ -1255,10 +1265,10 @@ def progressive_unfreeze_finetune_original(
 			should_transition = should_transition_phase(
 				losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
 				# accuracies=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
-				accuracies=avg_accs,
+				accuracies=None,#avg_accs,
 				# loss_threshold=cumulative_delta, # Align with early stopping cumulative_delta
-				loss_threshold=min_delta * 2, # More tolerant threshold
-				accuracy_threshold=1e-4,
+				loss_threshold=min_delta * 3, # More tolerant threshold
+				accuracy_threshold=5e-5,
 				best_loss_threshold=min_delta * 5,#5e-3,
 				window=window_size,
 				best_loss=best_val_loss,
