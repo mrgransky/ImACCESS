@@ -789,15 +789,15 @@ def should_transition_phase(
 
 	# Detailed debugging prints
 	print(f"Phase transition evaluation [epoch {current_epoch}]:")
-	print(f"\tWindow losses: {last_window_losses}")
+	print(f"\t{window} Window losses: {last_window_losses}")
 	print(f"\tCumulative loss improvement: {cumulative_loss_improvement:.6f} (threshold: {loss_threshold:.6f})")
 	print(f"\tLoss plateau: {loss_plateau}")
-	print(f"\tLoss trend: {loss_trend:.6f} (>0 = worsening)")
+	print(f"\tLoss trend: {loss_trend:.6f} (>0 means worsening)")
 	print(f"\tClose to best loss: {close_to_best} (current: {last_window_losses[-1]:.6f}, best: {best_loss if best_loss is not None else 'N/A'}, threshold: {best_loss_threshold:.6f})")
 	print(f"\tSustained loss improvement: {sustained_improvement}")
 	
 	if accuracies is not None and len(accuracies) >= window:
-		print(f"\tWindow accuracies: {last_window_accs}")
+		print(f"\t{window} Window accuracies: {last_window_accs}")
 		print(f"\tCumulative accuracy improvement: {cumulative_acc_improvement:.6f} (threshold: {accuracy_threshold:.6f})")
 		print(f"\tAccuracy plateau: {acc_plateau}")
 	else:
@@ -1006,17 +1006,19 @@ def progressive_unfreeze_finetune(
 			img2txt_accs = [metrics["img2txt_acc"] for metrics in metrics_for_all_epochs]
 			txt2img_accs = [metrics["txt2img_acc"] for metrics in metrics_for_all_epochs]
 			avg_accs = [(img + txt) / 2 for img, txt in zip(img2txt_accs, txt2img_accs)]
+
 			should_transition = should_transition_phase(
 				losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
 				# accuracies=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
 				accuracies=avg_accs,
 				# loss_threshold=cumulative_delta, # Align with early stopping cumulative_delta
 				loss_threshold=min_delta * 2, # More tolerant threshold
-				accuracy_threshold=1e-3,
+				accuracy_threshold=1e-4,
 				best_loss_threshold=min_delta * 5,#5e-3,
 				window=window_size,
 				best_loss=best_val_loss,
 			)
+
 			if should_transition:
 				current_phase, learning_rate = handle_phase_transition(
 					current_phase=current_phase,
@@ -1139,7 +1141,6 @@ def progressive_unfreeze_finetune(
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 	}
-
 
 	plot_loss_accuracy(
 		dataset_name=dataset_name,
