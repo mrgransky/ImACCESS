@@ -693,7 +693,7 @@ def unfreeze_layers(
 		cache=cache,
 	)
 
-def should_transition_phase_orig(
+def should_transition_phase_original(
 		losses: List[float],
 		accuracies: List[float] = None,  # Optional: in-batch validation accuracy
 		loss_threshold: float = 5e-3,  # Cumulative improvement threshold for loss
@@ -742,55 +742,81 @@ def should_transition_phase_orig(
 	return transition_required
 
 def should_transition_phase(
-				losses: List[float],
-				accuracies: List[float] = None,
-				loss_threshold: float = 5e-3,
-				accuracy_threshold: float = 1e-3,
-				best_loss_threshold: float = 1e-3,
-				window: int = 10,
-				best_loss: Optional[float] = None,
-		) -> bool:
+		losses: List[float],
+		accuracies: List[float] = None,
+		loss_threshold: float = 5e-3,
+		accuracy_threshold: float = 1e-3,
+		best_loss_threshold: float = 1e-3,
+		window: int = 10,
+		best_loss: Optional[float] = None,
+	) -> bool:
+	"""
+	Determines if a phase transition is needed based on loss and accuracy trends.
+	
+	Args:
+		losses: List of training losses per epoch.
+		accuracies: Optional list of validation accuracies per epoch.
+		loss_threshold: Minimum cumulative loss improvement to avoid plateau.
+		accuracy_threshold: Minimum cumulative accuracy improvement to avoid plateau.
+		best_loss_threshold: Threshold for closeness to best loss.
+		window: Number of epochs to evaluate trends over.
+		best_loss: Optional best loss achieved so far.
+	
+	Returns:
+		bool: True if phase transition is required, False otherwise.
+	"""
 
-		current_epoch = len(losses)
-		if len(losses) < window:
-				print(f"Epoch {current_epoch}: Not enough epochs ({len(losses)} < {window}) to evaluate phase transition.")
-				return False
-		
-		last_window_losses = losses[-window:]
-		cumulative_loss_improvement = last_window_losses[0] - last_window_losses[-1]  # Positive is improvement
-		loss_plateau = abs(cumulative_loss_improvement) < loss_threshold
-		loss_trend = last_window_losses[-1] - last_window_losses[0]  # Positive = worsening
-		
-		close_to_best = best_loss is not None and abs(last_window_losses[-1] - best_loss) < best_loss_threshold
-		sustained_improvement = cumulative_loss_improvement > loss_threshold  # Significant continuous improvement
-		
-		# Accuracy plateau detection
-		acc_plateau = False
-		if accuracies is not None and len(accuracies) >= window:
-				last_window_accs = accuracies[-window:]
-				acc_improvement = last_window_accs[-1] - last_window_accs[0]
-				acc_plateau = abs(acc_improvement) < accuracy_threshold
+	current_epoch = len(losses) + 1  # Assume epochs start at 1 for user-friendly logging
+	if len(losses) < window:
+		print(f"Epoch {current_epoch}: Not enough epochs ({len(losses)} < {window}) to evaluate phase transition.")
+		return False
+	
+	# Loss analysis
+	last_window_losses = losses[-window:]
+	cumulative_loss_improvement = last_window_losses[0] - last_window_losses[-1]  # Positive = improvement
+	loss_plateau = abs(cumulative_loss_improvement) < loss_threshold
+	loss_trend = last_window_losses[-1] - last_window_losses[0]  # Positive = worsening
+	close_to_best = best_loss is not None and abs(last_window_losses[-1] - best_loss) < best_loss_threshold
+	sustained_improvement = cumulative_loss_improvement > loss_threshold  # Significant improvement
 
-		print(f"Phase transition evaluation [epoch {current_epoch+1}]:")
-		print(f"\tLoss improvement: {cumulative_loss_improvement:.4f} (threshold: {loss_threshold:.4f})")
-		print(f"\tLoss trend: {loss_trend:.4f} (>0 = worsening)")
-		print(f"\tClose to best: {close_to_best} | Sustained improvement: {sustained_improvement}")
-		
-		# Revised transition logic
-		transition = False
-		if loss_plateau:
-				if loss_trend > 0:  # Active deterioration
-						transition = True
-						print("\tTransition: Active deterioration detected")
-				elif not close_to_best and not sustained_improvement:  # Stagnation without justification
-						transition = True
-						print("\tTransition: Stagnation without proximity to best loss")
-		elif acc_plateau:
-				transition = True
-				print("\tTransition: Accuracy plateau detected")
+	# Accuracy analysis
+	acc_plateau = False
+	cumulative_acc_improvement = None
+	if accuracies is not None and len(accuracies) >= window:
+		last_window_accs = accuracies[-window:]
+		cumulative_acc_improvement = last_window_accs[-1] - last_window_accs[0]  # Positive = improvement
+		acc_plateau = abs(cumulative_acc_improvement) < accuracy_threshold
 
-		print(f"==>> Phase Transition? {transition}")
-		return transition
+	# Detailed debugging prints
+	print(f"Phase transition evaluation [epoch {current_epoch}]:")
+	print(f"\tWindow losses: {last_window_losses}")
+	print(f"\tCumulative loss improvement: {cumulative_loss_improvement:.6f} (threshold: {loss_threshold:.6f})")
+	print(f"\tLoss plateau: {loss_plateau}")
+	print(f"\tLoss trend: {loss_trend:.6f} (>0 = worsening)")
+	print(f"\tClose to best loss: {close_to_best} (current: {last_window_losses[-1]:.6f}, best: {best_loss if best_loss is not None else 'N/A'}, threshold: {best_loss_threshold:.6f})")
+	print(f"\tSustained loss improvement: {sustained_improvement}")
+	
+	if accuracies is not None and len(accuracies) >= window:
+		print(f"\tWindow accuracies: {last_window_accs}")
+		print(f"\tCumulative accuracy improvement: {cumulative_acc_improvement:.6f} (threshold: {accuracy_threshold:.6f})")
+		print(f"\tAccuracy plateau: {acc_plateau}")
+	else:
+		print("\tAccuracy data not available for phase transition evaluation.")
+	
+	# Transition logic
+	transition = False
+	if loss_plateau:
+		if loss_trend > 0:
+			transition = True
+			print("\tDecision: Transition due to active loss deterioration")
+		elif not close_to_best and not sustained_improvement:
+			transition = True
+			print("\tDecision: Transition due to stagnation without proximity to best loss")
+	elif acc_plateau:
+		transition = True
+		print("\tDecision: Transition due to accuracy plateau")
+	print(f"==>> Phase Transition Required? {transition}")
+	return transition
 
 def handle_phase_transition(
 		current_phase: int,
