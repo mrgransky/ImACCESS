@@ -276,11 +276,10 @@ def main():
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	yr_distro_fpth = os.path.join(OUTPUTs_DIRECTORY, f"{dataset_name}_year_distribution_nIMGs_{smu_df.shape[0]}.png")
 	plot_year_distribution(
 		df=smu_df,
 		dname=dataset_name,
-		fpth=yr_distro_fpth,
+		fpth=os.path.join(OUTPUTs_DIRECTORY, f"{dataset_name}_year_distribution_nIMGs_{smu_df.shape[0]}.png"),
 		BINs=args.historgram_bin,
 	)
 

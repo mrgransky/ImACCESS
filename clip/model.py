@@ -38,8 +38,8 @@ class LoRALinear(nn.Module):
 			self.linear.bias.requires_grad = False # Freeze original bias
 
 	def forward(self, x: torch.Tensor) -> torch.Tensor:
-		original_output = self.linear(x) # Original pretrained CLIP output
-		lora_output = self.lora_B(self.dropout(self.lora_A(x))) # LoRA update
+		original_output = self.linear(x) # Original frozen pretrained CLIP output
+		lora_output = self.lora_B(self.dropout(self.lora_A(x))) # LoRA update with dropout regularization
 		lora_combined = original_output + self.scale * lora_output
 		return lora_combined
 
@@ -668,7 +668,8 @@ def get_lora_clip(
 	for module in sorted(replaced_modules):
 		print(f" - {module}")
 
-	# Freeze non-LoRA parameters
+	# Freeze all non-LoRA parameters:
+	# base model’s weights (and their associated dropout layers) are frozen
 	for name, param in model.named_parameters():
 		param.requires_grad = "lora_A" in name or "lora_B" in name
 

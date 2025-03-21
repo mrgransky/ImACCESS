@@ -312,7 +312,12 @@ def main():
 		print(f"Failed to write Excel file: {e}")
 	print(f"Elapsed_t: {time.time()-concat_st:.1f} sec".center(100, "-"))
 
-	na_df = get_synchronized_df_img(df=na_df_merged_raw, image_dir=IMAGE_DIR, nw=args.num_workers)
+	na_df = get_synchronized_df_img(
+		df=na_df_merged_raw,
+		image_dir=IMAGE_DIR,
+		nw=args.num_workers,
+	)
+
 	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"{dataset_name}_label_distribution_nIMGs_{na_df.shape[0]}.png")
 	plot_label_distribution(
 		df=na_df,
@@ -323,6 +328,7 @@ def main():
 	)
 	
 	na_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
+
 	get_stratified_split(
 		df=na_df,
 		val_split_pct=0.35,
@@ -331,6 +337,7 @@ def main():
 		result_dir=DATASET_DIRECTORY,
 		dname=dataset_name,
 	)
+
 	try:
 		na_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
@@ -339,7 +346,7 @@ def main():
 	plot_year_distribution(
 		df=na_df,
 		dname=dataset_name,
-		fpth=os.path.join(OUTPUTs_DIR, f"{dataset_name}_year_distribution_{na_df.shape[0]}_samples.png"),
+		fpth=os.path.join(OUTPUTs_DIR, f"{dataset_name}_year_distribution_nIMGs_{na_df.shape[0]}.png"),
 		BINs=args.historgram_bin,
 	)
 

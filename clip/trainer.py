@@ -867,6 +867,7 @@ def progressive_unfreeze_finetune(
 	
 	window_size = max(5, int(0.1 * len(train_loader)))  # 10% of training batches
 	print(f"training batch: {len(train_loader)}, window_size: {window_size}")
+
 	# Initialize early stopping
 	early_stopping = EarlyStopping(
 		patience=patience,
@@ -1160,13 +1161,33 @@ def lora_finetune(
 		lora_rank: int = 8,
 		lora_alpha: float = 16.0,
 		lora_dropout: float = 0.05,
-		window_size: int = 10,
 		patience: int = 10,
 		min_delta: float = 1e-4,
 		cumulative_delta: float = 5e-3,
 		minimum_epochs: int = 20,
 		TOP_K_VALUES: List[int] = [1, 5, 10, 15, 20],
 	):
+
+	# Inspect the model for dropout layers
+	dropout_values = []
+	for name, module in model.named_modules():
+		if isinstance(module, torch.nn.Dropout):
+			dropout_values.append((name, module.p))
+	
+	# Check for non-zero dropout in the base model
+	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
+	if non_zero_dropouts:
+		dropout_info = ", ".join([f"{name}: p={p}" for name, p in non_zero_dropouts])
+		assert False, (
+			f"\nNon-zero dropout detected in base {model.__class__.__name__} {model.name} during LoRA fine-tuning:"
+			f"\n{dropout_info}\n"
+			"This adds stochasticity and noise to the frozen base model, which is unconventional for LoRA practices.\n"
+			"Fix: Set dropout=0.0 in clip.load() to enforce a deterministic base model behavior during LoRA fine-tuning "
+			"which gives you more control over LoRA-specific regularization without affecting the base model.\n"
+		)
+
+	window_size = max(5, int(0.1 * len(train_loader)))  # 10% of training batches
+
 	# Early stopping setup (same as finetune())
 	early_stopping = EarlyStopping(
 		patience=patience,
@@ -1201,16 +1222,14 @@ def lora_finetune(
 	)
 	model.to(device)
 	# Get dropout value (same as finetune())
-	dropout_val = lora_dropout  # Use LoRA dropout as the effective dropout
-	# Print parameter info
 	get_parameters_info(model=model, mode=mode)
-	# Model file path (adjusted for LoRA parameters)
+
 	mdl_fpth = os.path.join(
-			results_dir,
-			f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
-			f"lora_rank_{lora_rank}_alpha_{lora_alpha}_dropout_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
+		results_dir,
+		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
+		f"lora_rank_{lora_rank}_alpha_{lora_alpha}_lora_dropout_{lora_dropout}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
 	)
-	# Optimizer and scheduler (same as finetune(), but only LoRA params are trainable)
+
 	optimizer = AdamW(
 			params=[p for p in model.parameters() if p.requires_grad],
 			lr=learning_rate,
@@ -1228,7 +1247,7 @@ def lora_finetune(
 	)
 	criterion = torch.nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(device=device)
-	# Training loop (identical to finetune())
+
 	training_losses = []
 	img2txt_metrics_list = []
 	txt2img_metrics_list = []
@@ -1244,7 +1263,7 @@ def lora_finetune(
 		print(f"Epoch [{epoch + 1}/{num_epochs}]")
 		epoch_loss = 0.0
 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
-			optimizer.zero_grad()
+			optimizer.zero_grad(set_to_none=True)
 			images = images.to(device, non_blocking=True)
 			tokenized_labels = tokenized_labels.to(device, non_blocking=True)
 			
@@ -1307,7 +1326,7 @@ def lora_finetune(
 
 	file_base_name = (
 		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
-		f"alpha_{lora_alpha}_dropout_{dropout_val}_"
+		f"alpha_{lora_alpha}_lora_dropout_{lora_dropout}_"
 		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_rank_{lora_rank}"
 	)
@@ -1364,13 +1383,14 @@ def full_finetune(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		window_size: int = 10,
 		patience: int = 10,
 		min_delta: float = 1e-4,
 		cumulative_delta: float = 5e-3,
 		minimum_epochs: int = 20,
 		TOP_K_VALUES: List[int] = [1, 5, 10, 15, 20],
 	):
+
+	window_size = max(5, int(0.1 * len(train_loader)))  # 10% of training batches
 
 	early_stopping = EarlyStopping(
 			patience=patience,  # Wait for 10 epochs without improvement before stopping
@@ -1616,13 +1636,14 @@ def train(
 		weight_decay:float,
 		device:torch.device,
 		results_dir:str,
-		window_size:int=10,
 		patience:int=10,
 		min_delta:float=1e-4,
 		cumulative_delta:float=5e-3,
 		minimum_epochs:int=20,
 		TOP_K_VALUES:List[int]=[1, 5, 10, 15, 20],
 	):
+	window_size = max(5, int(0.1 * len(train_loader)))  # 10% of training batches
+
 	early_stopping = EarlyStopping(
 		patience=patience,									# Wait for 10 epochs without improvement before stopping
 		min_delta=min_delta,								# Consider an improvement only if the change is greater than 0.0001
@@ -1914,13 +1935,13 @@ def main():
 	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora', 'progressive'], default='full', help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
 	parser.add_argument('--lora_rank', type=int, default=8, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', type=float, default=16.0, help='LoRA alpha (used if finetune_strategy=lora)')
-	parser.add_argument('--lora_dropout', type=float, default=0.0, help='LoRA dropout (used if finetune_strategy=lora)')
+	parser.add_argument('--lora_dropout', type=float, default=0.0, help='Regularizes trainable LoRA parameters, [primary focus of fine-tuning]')
 	parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
 	parser.add_argument('--minimum_epochs', type=int, default=15, help='Early stopping minimum epochs')
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 5, 10, 15, 20], help='Top K values for retrieval metrics')
-	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
+	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the base model')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
@@ -1953,8 +1974,7 @@ def main():
 		nw=args.num_workers,
 		USER=os.environ.get('USER'),
 		input_resolution=model_config["image_resolution"],
-		preprocess=None,
-		# preprocess=preprocess,
+		preprocess=None,# preprocess,
 	)
 	print_loader_info(loader=train_loader, batch_size=args.batch_size)
 	print_loader_info(loader=validation_loader, batch_size=args.batch_size)
@@ -1974,7 +1994,6 @@ def main():
 				weight_decay=args.weight_decay,
 				device=args.device,
 				results_dir=os.path.join(args.dataset, "results"),
-				window_size=args.window_size, 	# early stopping & progressive unfreezing
 				patience=10, 										# early stopping
 				min_delta=1e-4, 								# early stopping & progressive unfreezing
 				cumulative_delta=5e-3, 					# early stopping
@@ -1996,7 +2015,6 @@ def main():
 				lora_rank=args.lora_rank,
 				lora_alpha=args.lora_alpha,
 				lora_dropout=args.lora_dropout,
-				window_size=args.window_size,
 				patience=args.patience,
 				min_delta=args.minimum_delta,
 				cumulative_delta=args.cumulative_delta,
@@ -2035,7 +2053,6 @@ def main():
 			weight_decay=args.weight_decay,
 			device=args.device,
 			results_dir=os.path.join(args.dataset, "results"),
-			window_size=args.window_size, # early stopping
 			patience=10,									# early stopping
 			min_delta=1e-4,								# early stopping
 			cumulative_delta=5e-3,				# early stopping
