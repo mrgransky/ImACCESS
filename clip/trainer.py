@@ -1207,7 +1207,6 @@ def progressive_unfreeze_finetune(
 		f"dropout_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
 	)
 	
-	# Initialize training components
 	criterion = torch.nn.CrossEntropyLoss()
 
 	scaler = torch.amp.GradScaler(
@@ -1264,12 +1263,10 @@ def progressive_unfreeze_finetune(
 
 			should_transition = should_transition_phase(
 				losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
-				# accuracies=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
 				accuracies=None,#avg_accs,
-				# loss_threshold=cumulative_delta, # Align with early stopping cumulative_delta
 				loss_threshold=min_delta * 3, # More tolerant threshold
 				accuracy_threshold=5e-5,
-				best_loss_threshold=min_delta * 5,#5e-3,
+				best_loss_threshold=min_delta * 5,
 				window=window_size,
 				best_loss=best_val_loss,
 			)
