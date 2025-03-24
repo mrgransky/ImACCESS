@@ -752,8 +752,8 @@ def should_transition_phase(
 		f"=> Loss plateau(<{loss_threshold}): {loss_plateau}"
 	)
 	print(
-		f"\tCumulative loss improvement: {cumulative_loss_improvement} "
-		f"Sustained Improvement (>{loss_threshold}): {sustained_improvement}"
+		f"\tCumulative loss improvement = {cumulative_loss_improvement} "
+		f"=> Sustained Improvement (>{loss_threshold}): {sustained_improvement}"
 	)
 	print(f"\tLoss trend(last-first): {loss_trend} (>0 means worsening)")
 	print(f"\tClose to best loss: {close_to_best} (current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'}, threshold: {best_loss_threshold})")
@@ -771,15 +771,15 @@ def should_transition_phase(
 	if loss_plateau:
 		if loss_trend > 0:
 			transition = True
-			print("\tDecision: Transition due to active loss deterioration")
+			print(f"\t>> Decision: Transition due to active loss deterioration, regardless of proximity to best loss! (loss_trend: {loss_trend} > 0)")
 		elif not close_to_best and not sustained_improvement:
 			transition = True
-			print("\tDecision: Transition due to stagnation without proximity to best loss")
+			print("\t>> Decision: Transition due to stagnation without proximity to best loss")
 		else:
-			print(f"\tDecision: No transition due to close to best loss ({best_loss}) or sustained improvement ({cumulative_loss_improvement})")
+			print(f"\t>> Decision: No transition due to close to best loss ({best_loss}) or sustained improvement ({cumulative_loss_improvement})")
 	elif acc_plateau:
 		transition = True
-		print("\tDecision: Transition due to accuracy plateau")
+		print("\t>> Decision: Transition due to accuracy plateau")
 
 	print(f"==>> Phase Transition Required? {transition}")
 	return transition
@@ -1018,8 +1018,8 @@ def progressive_unfreeze_finetune(
 	train_start_time = time.time()
 	for epoch in range(num_epochs):
 		torch.cuda.empty_cache()
-		print(f"Epoch [{epoch+1}/{num_epochs}] GPU Memory usage: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
 		epochs_in_current_phase += 1 # Increment the epoch counter for the current phase
+		print(f"Epoch [{epoch+1}/{num_epochs}] GPU Memory usage: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
 
 		# Phase transition logic
 		if epoch >= min_epochs_before_transition and epochs_in_current_phase >= min_epochs_per_phase:
