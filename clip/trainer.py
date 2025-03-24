@@ -1164,11 +1164,15 @@ def progressive_unfreeze_finetune(
 
 	file_base_name = (
 		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
-		f"ep_{len(training_losses)}_init_lr_{initial_learning_rate:.1e}"
-		f"{'_final_lr_' + f'{learning_rate:.1e}' if learning_rate is not None else ''}"
+		f"ep_{len(training_losses)}"
 		f"_wd_{weight_decay:.1e}"
-		f"_bs_{train_loader.batch_size}_dropout_{dropout_val}"
+		f"_bs_{train_loader.batch_size}_"
+		f"dropout_{dropout_val}_"
+		f"_init_lr_{initial_learning_rate:.1e}"
 	)
+	if learning_rate is not None:
+		file_base_name += f"_final_lr_{learning_rate:.1e}"
+
 
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
