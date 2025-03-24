@@ -731,9 +731,9 @@ def should_transition_phase(
 	# Loss analysis
 	last_window_losses = losses[-window:]
 	cumulative_loss_improvement = last_window_losses[0] - last_window_losses[-1]  # Positive = improvement
-	loss_plateau = abs(cumulative_loss_improvement) < loss_threshold
 	loss_trend = last_window_losses[-1] - last_window_losses[0]  # Positive = worsening
 	close_to_best = best_loss is not None and abs(last_window_losses[-1] - best_loss) < best_loss_threshold
+	loss_plateau = abs(cumulative_loss_improvement) < loss_threshold
 	sustained_improvement = cumulative_loss_improvement > loss_threshold  # Significant continuous improvement
 
 	# Accuracy analysis
@@ -747,13 +747,16 @@ def should_transition_phase(
 	# Detailed debugging prints
 	print(f"Phase transition evaluation [epoch {current_epoch}]:")
 	print(f"\t{window} Window losses: {last_window_losses}")
-	print(f"\tLoss plateau: {loss_plateau}")
-	print(f"\tLoss trend(last-first): {loss_trend} (>0 means worsening)")
-	print(f"\tClose to best loss: {close_to_best} (current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'}, threshold: {best_loss_threshold})")
+	print(
+		f"\t|Cumulative loss improvement| = {abs(cumulative_loss_improvement)} "
+		f"=> Loss plateau(<{loss_threshold}): {loss_plateau}"
+	)
 	print(
 		f"\tCumulative loss improvement: {cumulative_loss_improvement} "
 		f"Sustained Improvement (>{loss_threshold}): {sustained_improvement}"
 	)
+	print(f"\tLoss trend(last-first): {loss_trend} (>0 means worsening)")
+	print(f"\tClose to best loss: {close_to_best} (current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'}, threshold: {best_loss_threshold})")
 	
 	if accuracies is not None and len(accuracies) >= window:
 		print(f"\t{window} Window accuracies: {last_window_accs}")
