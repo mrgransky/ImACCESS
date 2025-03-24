@@ -751,7 +751,7 @@ def should_transition_phase(
 	print(f"\tLoss trend(last-first): {loss_trend} (>0 means worsening)")
 	print(f"\tClose to best loss: {close_to_best} (current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'}, threshold: {best_loss_threshold})")
 	print(
-		f"\tCumulative loss improvement: {cumulative_loss_improvement}"
+		f"\tCumulative loss improvement: {cumulative_loss_improvement} "
 		f"Sustained Improvement (>{loss_threshold}): {sustained_improvement}"
 	)
 	
