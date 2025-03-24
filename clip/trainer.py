@@ -758,7 +758,7 @@ def should_transition_phase(
 		print(f"\tCumulative accuracy improvement: {cumulative_acc_improvement:.6f} (threshold: {accuracy_threshold:.6f})")
 		print(f"\tAccuracy plateau: {acc_plateau}")
 	else:
-		print("\tAccuracy data not available for phase transition evaluation.")
+		print("\tAccuracy data not available for phase transition evaluation. => Skipping accuracy checks.")
 	
 	transition = False
 
@@ -887,12 +887,11 @@ def progressive_unfreeze_finetune(
 		device: str,
 		results_dir: str,
 		patience: int = 10,
-		min_delta: float = 1e-4,
+		min_delta: float = 1e-3,
 		cumulative_delta: float = 5e-3,
 		minimum_epochs: int = 20,
 		top_k_values: List[int] = [1, 5, 10, 15, 20],
 		layer_groups_to_unfreeze: List[str] = ['visual_frontend', 'visual_transformer', 'text_frontend', 'text_transformer', 'projections'],
-		min_epochs_before_transition: int = 5,
 	) -> Dict[str, any]:
 	# Input validation
 	if not train_loader or not validation_loader:
@@ -902,7 +901,7 @@ def progressive_unfreeze_finetune(
 	window_size =get_adaptive_window_size(
 		loader=train_loader,
 		min_window=5,
-		max_window=15,
+		max_window=10,
 	)
 
 	# Initialize early stopping
@@ -1000,8 +999,8 @@ def progressive_unfreeze_finetune(
 	best_txt2img_metrics = None
 	current_phase = 0
 	epochs_in_current_phase = 0
-	min_epochs_per_phase = 5
-	max_epochs_per_phase = 15
+	min_epochs_per_phase = 7
+	min_epochs_before_transition = int(min_epochs_per_phase * 0.75) # 
 	initial_learning_rate = learning_rate
 	min_phases_before_stopping = 3 # ensure model progresses through at least 3 phases (unfreezing 60% of transformer blocks) before early stopping can trigger
 	layer_cache = {} # Cache for layer freezing status
@@ -1020,9 +1019,9 @@ def progressive_unfreeze_finetune(
 			should_transition = should_transition_phase(
 				losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
 				accuracies=None,#avg_accs,
-				loss_threshold=min_delta * 3, # More tolerant threshold
+				loss_threshold=5e-2,
 				accuracy_threshold=5e-5,
-				best_loss_threshold=min_delta * 5,
+				best_loss_threshold=5e-2,
 				window=window_size,
 				best_loss=best_val_loss,
 			)
