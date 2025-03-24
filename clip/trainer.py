@@ -449,7 +449,12 @@ def evaluate_loss_and_accuracy(
 
 	return metrics
 
-def get_status(model, phase, layers_to_unfreeze, cache=None):
+def get_status(
+		model,
+		phase,
+		layers_to_unfreeze,
+		cache=None,
+	):
 	# Compute parameter statistics
 	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)
@@ -777,29 +782,39 @@ def handle_phase_transition(
 		initial_lr: float,
 		max_phases: int,
 		scheduler,
+		window_size: int,  # Add window_size parameter
+		current_loss: float,  # Add current validation loss
+		best_loss: float,  # Add best observed loss
 	):
 
+	# Calculate adaptive LR reduction factor
+	loss_ratio = current_loss / best_loss if best_loss > 0 else 1.0
+	window_factor = max(0.5, min(2.0, 10/window_size))  # 0.5-2.0 range
+	
 	if current_phase >= max_phases - 1:
-		# return current_phase, initial_lr * (0.5 ** current_phase)  # Consistent 2x reduction
-		return current_phase, initial_lr * 0.1  # Final phase uses 10% of initial LR
-
-	new_phase = current_phase + 1
-	new_lr = initial_lr * (0.8 ** new_phase)  # Gentle 20% reduction per phase
-
-	# update schuler max_lr: Preserve scheduler momentum when possible
+		# Final phase uses dynamic minimum LR
+		new_lr = initial_lr * (0.1 * window_factor)
+		print(f"Final phase LR: {new_lr:.2e} (window factor: {window_factor:.2f})")
+		return current_phase, new_lr
+	
+	# Dynamic phase-based reduction with window consideration
+	phase_factor = 0.8 ** (current_phase / (window_size/5))  # Scaled by window
+	new_lr = initial_lr * max(0.05, phase_factor * loss_ratio)  # Never <5% of initial
+	
+	# Update scheduler
 	if isinstance(scheduler, lr_scheduler.OneCycleLR):
 		scheduler.max_lr = new_lr
-		for param_group in scheduler.optimizer.param_groups:
-			param_group['lr'] = new_lr
-	else:
-		scheduler = lr_scheduler.CosineAnnealingLR(
-			scheduler.optimizer, 
-			T_max=10, 
-			eta_min=new_lr*0.1
-		)
-
-	print(f"\tTransitioning to Phase {new_phase} with new learning rate {new_lr:.1e}")
-	return new_phase, new_lr
+		scheduler.base_lrs = [new_lr] * len(scheduler.base_lrs)
+	
+	for param_group in scheduler.optimizer.param_groups:
+		param_group['lr'] = new_lr
+	
+	print(
+		f"Phase {current_phase+1} LR: {new_lr:.2e} | "
+		f"Factors: phase={phase_factor:.2f}, window={window_factor:.2f}, "
+		f"loss={loss_ratio:.2f}"
+	)	
+	return current_phase + 1, new_lr
 
 def get_unfreeze_pcts_hybrid(
 		model: torch.nn.Module,
@@ -807,6 +822,7 @@ def get_unfreeze_pcts_hybrid(
 		min_phases: int,
 		max_phases: int,
 	):
+
 	vis_nblocks, txt_nblocks = get_num_transformer_blocks(model=model)
 	total_transformer_layers = vis_nblocks + txt_nblocks
 	layers_per_phase = 2 # Unfreezing 1 layer per modality per phase
@@ -829,299 +845,35 @@ def get_unfreeze_pcts_hybrid(
 	print(f"Unfreeze Schedule contains {len(unfreeze_pcts)} different phases:\n{unfreeze_pcts}")
 	return unfreeze_pcts
 
-def progressive_unfreeze_finetune_micro_batch(
-		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
-		num_epochs: int,
-		nw: int,
-		print_every: int,
-		learning_rate: float,
-		weight_decay: float,
-		device: str,
-		results_dir: str,
-		patience: int = 10,
-		min_delta: float = 1e-4,
-		cumulative_delta: float = 5e-3,
-		minimum_epochs: int = 20,
-		top_k_values: List[int] = [1, 5, 10, 15, 20],
-		layer_groups_to_unfreeze: List[str] = ['visual_frontend', 'visual_transformer', 'text_frontend', 'text_transformer', 'projections'],
-		min_epochs_before_transition: int = 5,
-		accumulation_steps: int = 4, # Gradient accumulation to control the number of micro-batches 
-	) -> Dict[str, any]:
+def get_adaptive_window_size(
+		loader: DataLoader,
+		min_window: int,
+		max_window: int,
+	) -> int:
 
-	if not train_loader or not validation_loader:
-		raise ValueError("Train and validation loaders must not be empty.")
-	
-	window_size = max(5, int(0.1 * len(train_loader)))  # 10% of training batches
-	print(f"Training batch: {len(train_loader)}, window_size: {window_size}")
-
-	early_stopping = EarlyStopping(
-		patience=patience,
-		min_delta=min_delta,
-		cumulative_delta=cumulative_delta,
-		window_size=window_size,
-		mode='min',
-		min_epochs=minimum_epochs,
-		restore_best_weights=True,
-	)
-	
-	try:
-			dataset_name = validation_loader.dataset.dataset.__class__.__name__
-	except AttributeError:
-			dataset_name = getattr(validation_loader.dataset, 'dataset_name', 'Unknown')
-	
-	# Create results directory
-	os.makedirs(results_dir, exist_ok=True)
-	mode = inspect.stack()[0].function
-	model_arch = model.name
-	model_name = model.__class__.__name__
-	
-	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) {device} [x{nw} cores]".center(160, "-"))
-	if torch.cuda.is_available():
-			print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
-	
-	# Find dropout value
-	dropout_val = 0.0
-	for name, module in model.named_modules():
-			if isinstance(module, torch.nn.Dropout):
-					dropout_val = module.p
-					break
-	
-	unfreeze_percentages = get_unfreeze_pcts_hybrid(
-			model=model,
-			train_loader=train_loader,
-			min_phases=7,
-			max_phases=15,
-	)
-	unfreeze_schedule = get_unfreeze_schedule(
-			model=model,
-			unfreeze_percentages=unfreeze_percentages,
-			layer_groups_to_unfreeze=layer_groups_to_unfreeze,
-	)
-	mdl_fpth = os.path.join(
-			results_dir,
-			f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
-			f"dropout_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
-	)
-	
-	# Initialize training components
-	criterion = torch.nn.CrossEntropyLoss()
-	scaler = torch.amp.GradScaler(
-			device=device,
-			init_scale=2**16,
-			growth_factor=2.0,
-			backoff_factor=0.5,
-			growth_interval=2000,
-	)
-	optimizer = AdamW(
-			params=filter(lambda p: p.requires_grad, model.parameters()),
-			lr=learning_rate,
-			betas=(0.9, 0.98),
-			eps=1e-8,
-			weight_decay=weight_decay,
-	)
-	scheduler = lr_scheduler.OneCycleLR(
-			optimizer=optimizer,
-			max_lr=learning_rate,
-			steps_per_epoch=len(train_loader),
-			epochs=num_epochs,
-			pct_start=0.1,
-			anneal_strategy='cos',
-	)
-
-	training_losses = []
-	metrics_for_all_epochs = []
-	img2txt_metrics_list = []
-	txt2img_metrics_list = []
-	train_start_time = time.time()
-	best_val_loss = float('inf')
-	best_img2txt_metrics = None
-	best_txt2img_metrics = None
-	current_phase = 0
-	epochs_in_current_phase = 0
-	min_epochs_per_phase = 5
-	max_epochs_per_phase = 15
-	initial_learning_rate = learning_rate
-	min_phases_before_stopping = 3  # Ensure model progresses through at least 3 phases before early stopping
-	layer_cache = {}  # Cache for layer freezing status
-	# Effective batch size and micro-batch size
-	effective_batch_size = train_loader.batch_size
-	micro_batch_size = effective_batch_size // accumulation_steps
-	if micro_batch_size == 0:
-			micro_batch_size = 1
-			accumulation_steps = effective_batch_size  # Adjust accumulation steps if batch size is too small
-	print(f"Effective Batch Size: {effective_batch_size}, Micro-Batch Size: {micro_batch_size}, Accumulation Steps: {accumulation_steps}")
-	for epoch in range(num_epochs):
-			torch.cuda.empty_cache()
-			print(f"Epoch [{epoch+1}/{num_epochs}] GPU Memory usage: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
-			epochs_in_current_phase += 1
-			# Phase transition logic
-			if epoch >= min_epochs_before_transition and epochs_in_current_phase >= min_epochs_per_phase:
-					img2txt_accs = [metrics["img2txt_acc"] for metrics in metrics_for_all_epochs]
-					txt2img_accs = [metrics["txt2img_acc"] for metrics in metrics_for_all_epochs]
-					avg_accs = [(img + txt) / 2 for img, txt in zip(img2txt_accs, txt2img_accs)]
-					should_transition = should_transition_phase(
-							losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
-							accuracies=avg_accs,
-							loss_threshold=min_delta * 2,
-							accuracy_threshold=1e-4,
-							best_loss_threshold=min_delta * 5,
-							window=window_size,
-							best_loss=best_val_loss,
-					)
-					if should_transition:
-							current_phase, learning_rate = handle_phase_transition(
-									current_phase=current_phase,
-									initial_lr=initial_learning_rate,
-									max_phases=len(unfreeze_schedule),
-									scheduler=scheduler,
-							)
-							epochs_in_current_phase = 0  # Reset the counter after transitioning
-			
-			# Unfreeze layers for current phase
-			unfreeze_layers(
-					model=model,
-					strategy=unfreeze_schedule,
-					phase=current_phase,
-					cache=layer_cache,
+		n_samples = len(loader.dataset)
+		try:
+			class_names = loader.dataset.dataset.classes
+		except:
+			class_names = loader.dataset.unique_labels
+		n_classes = len(class_names)
+		
+		# Base window on dataset complexity
+		complexity_factor = np.log10(n_samples * n_classes)
+		
+		# Bounded exponential scaling
+		window = int(
+			min(
+				max_window, 
+				max(
+					min_window, 
+					np.round(complexity_factor * 3)
+				)
 			)
-			
-			# Update optimizer with new learning rate
-			for param_group in optimizer.param_groups:
-					param_group['lr'] = learning_rate
-			
-			model.train()
-			epoch_loss = 0.0
-			optimizer.zero_grad(set_to_none=True)  # Clear gradients at the start of the epoch
-			for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
-					# Split the batch into micro-batches
-					num_samples = images.size(0)
-					micro_batches = []
-					for micro_idx in range(0, num_samples, micro_batch_size):
-							micro_end = min(micro_idx + micro_batch_size, num_samples)
-							micro_images = images[micro_idx:micro_end].to(device, non_blocking=True)
-							micro_tokenized_labels = tokenized_labels[micro_idx:micro_end].to(device, non_blocking=True)
-							micro_batches.append((micro_images, micro_tokenized_labels))
-					# Process each micro-batch
-					for micro_idx, (micro_images, micro_tokenized_labels) in enumerate(micro_batches):
-							with torch.amp.autocast(device_type=device.type, enabled=True):
-									logits_per_image, logits_per_text = model(micro_images, micro_tokenized_labels)
-									ground_truth = torch.arange(len(micro_images), dtype=torch.long, device=device)
-									loss_img = criterion(logits_per_image, ground_truth)
-									loss_txt = criterion(logits_per_text, ground_truth)
-									total_loss = 0.5 * (loss_img + loss_txt)
-							# Scale the loss to account for accumulation (normalize by accumulation_steps)
-							scaled_loss = total_loss / accumulation_steps
-							scaler.scale(scaled_loss).backward()
-							# Accumulate gradients
-							if (micro_idx + 1) % accumulation_steps == 0 or micro_idx == len(micro_batches) - 1:
-									torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-									scaler.step(optimizer)
-									scaler.update()
-									optimizer.zero_grad(set_to_none=True)  # Clear gradients after optimization step
-									scheduler.step()
-							epoch_loss += total_loss.item() * micro_images.size(0)  # Accumulate loss for reporting
-					if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-							print(f"Batch [{bidx+1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
-			
-			avg_training_loss = epoch_loss / len(train_loader.dataset)  # Normalize by total samples
-			training_losses.append(avg_training_loss)
-			
-			# Evaluate on validation set
-			metrics_per_epoch = evaluate_loss_and_accuracy(
-					model=model,
-					validation_loader=validation_loader,
-					criterion=criterion,
-					device=device,
-					topK_values=top_k_values,
-			)
-			metrics_for_all_epochs.append(metrics_per_epoch)
-			
-			# Compute retrieval metrics
-			img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
-					model=model,
-					validation_loader=validation_loader,
-					device=device,
-					topK_values=top_k_values,
-			)
-			img2txt_metrics_list.append(img2txt_metrics)
-			txt2img_metrics_list.append(txt2img_metrics)
-			print(
-					f'@ Epoch {epoch + 1}:\n'
-					f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {metrics_per_epoch.get("val_loss"):.8f}\n'
-					f'\tIn-batch Validation Accuracy [text retrieval per image]: {metrics_per_epoch.get("img2txt_acc")} '
-					f'[image retrieval per text]: {metrics_per_epoch.get("txt2img_acc")}'
-			)
-			# Checkpointing
-			current_val_loss = metrics_per_epoch["val_loss"]
-			checkpoint = {
-					"epoch": epoch,
-					"model_state_dict": model.state_dict(),
-					"optimizer_state_dict": optimizer.state_dict(),
-					"scheduler_state_dict": scheduler.state_dict(),
-					"best_val_loss": best_val_loss,
-			}
-			if current_val_loss < best_val_loss - early_stopping.min_delta:
-					print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
-					best_val_loss = current_val_loss
-					checkpoint.update({"best_val_loss": best_val_loss})
-					torch.save(checkpoint, mdl_fpth)
-					best_img2txt_metrics = img2txt_metrics
-					best_txt2img_metrics = txt2img_metrics
-			# Early stopping
-			if early_stopping.should_stop(current_val_loss, model, epoch):
-					if current_phase >= min_phases_before_stopping:
-							print(f"Early stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
-							break
-					else:
-							print(f"Early stopping condition met at epoch {epoch + 1}! but delaying until minimum phases ({min_phases_before_stopping}) are reached. Current phase: {current_phase}")
-			print("-" * 140)
-	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
-	file_base_name = (
-			f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
-			f"ep_{len(training_losses)}_init_lr_{initial_learning_rate:.1e}_final_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
-			f"bs_{train_loader.batch_size}_dropout_{dropout_val}"
-	)
-	plot_paths = {
-			"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-			"val_acc": os.path.join(results_dir, f"{file_base_name}_top1_accuracy.png"),
-			"img2txt_topk": os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png"),
-			"txt2img_topk": os.path.join(results_dir, f"{file_base_name}_txt2img_topk_accuracy.png"),
-			"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
-			"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
-			"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-			"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-	}
-	plot_loss_accuracy(
-			dataset_name=dataset_name,
-			train_losses=training_losses,
-			val_losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
-			val_acc_img2txt_list=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
-			val_acc_txt2img_list=[metrics["txt2img_acc"] for metrics in metrics_for_all_epochs],
-			img2txt_topk_accuracy_list=[metrics["img2txt_topk_acc"] for metrics in metrics_for_all_epochs],
-			txt2img_topk_accuracy_list=[metrics["txt2img_topk_acc"] for metrics in metrics_for_all_epochs],
-			mean_reciprocal_rank_list=[metrics["mean_reciprocal_rank"] for metrics in metrics_for_all_epochs],
-			cosine_similarity_list=[metrics["cosine_similarity"] for metrics in metrics_for_all_epochs],
-			losses_file_path=plot_paths["losses"],
-			accuracy_file_path=plot_paths["val_acc"],
-			img2txt_topk_accuracy_file_path=plot_paths["img2txt_topk"],
-			txt2img_topk_accuracy_file_path=plot_paths["txt2img_topk"],
-			mean_reciprocal_rank_file_path=plot_paths["mrr"],
-			cosine_similarity_file_path=plot_paths["cs"],
-	)
-	plot_retrieval_metrics_per_epoch(
-			dataset_name=dataset_name,
-			image_to_text_metrics_list=img2txt_metrics_list,
-			text_to_image_metrics_list=txt2img_metrics_list,
-			fname=plot_paths["retrieval_per_epoch"],
-	)
-	plot_retrieval_metrics_best_model(
-			dataset_name=dataset_name,
-			image_to_text_metrics=best_img2txt_metrics,
-			text_to_image_metrics=best_txt2img_metrics,
-			fname=plot_paths["retrieval_best"],
-	)
+		)
+		
+		print(f"Adaptive window: {window} | Samples: {n_samples} | Classes: {n_classes}")
+		return window
 
 def progressive_unfreeze_finetune(
 		model: torch.nn.Module,
@@ -1146,8 +898,12 @@ def progressive_unfreeze_finetune(
 	if not train_loader or not validation_loader:
 		raise ValueError("Train and validation loaders must not be empty.")
 	
-	window_size = max(5, int(0.1 * len(train_loader)))  # 10% of training batches
-	print(f"training batch: {len(train_loader)}, window_size: {window_size}")
+	# window_size = max(5, int(0.1 * len(train_loader)))  # 10% of training batches
+	window_size =get_adaptive_window_size(
+		loader=train_loader,
+		min_window=5,
+		max_window=15,
+	)
 
 	# Initialize early stopping
 	early_stopping = EarlyStopping(
@@ -1277,10 +1033,13 @@ def progressive_unfreeze_finetune(
 					initial_lr=initial_learning_rate,
 					max_phases=len(unfreeze_schedule),
 					scheduler=scheduler,
+					window_size=window_size,
+					current_loss=metrics_for_all_epochs[-1]["val_loss"],
+					best_loss=best_val_loss,
 				)
 				epochs_in_current_phase = 0  # Reset the counter after transitioning
 				# # TODO: Reset early stopping between phases
-				# early_stopping.reset()
+				early_stopping.reset()
 		
 		# Unfreeze layers for current phase
 		unfreeze_layers(
