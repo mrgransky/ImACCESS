@@ -734,7 +734,7 @@ def should_transition_phase(
 	loss_plateau = abs(cumulative_loss_improvement) < loss_threshold
 	loss_trend = last_window_losses[-1] - last_window_losses[0]  # Positive = worsening
 	close_to_best = best_loss is not None and abs(last_window_losses[-1] - best_loss) < best_loss_threshold
-	sustained_improvement = cumulative_loss_improvement > loss_threshold  # Significant improvement
+	sustained_improvement = cumulative_loss_improvement > loss_threshold  # Significant continuous improvement
 
 	# Accuracy analysis
 	acc_plateau = False
@@ -749,16 +749,16 @@ def should_transition_phase(
 	print(f"\t{window} Window losses: {last_window_losses}")
 	print(f"\tCumulative loss improvement: {cumulative_loss_improvement:.6f} (threshold: {loss_threshold:.6f})")
 	print(f"\tLoss plateau: {loss_plateau}")
-	print(f"\tLoss trend: {loss_trend:.6f} (>0 means worsening)")
+	print(f"\tLoss trend(last-first): {loss_trend:.6f} (>0 means worsening)")
 	print(f"\tClose to best loss: {close_to_best} (current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'}, threshold: {best_loss_threshold:.6f})")
-	print(f"\tSustained loss improvement: {sustained_improvement}")
+	print(f"\tSustained Improvement (>{loss_threshold}): {sustained_improvement}")
 	
 	if accuracies is not None and len(accuracies) >= window:
 		print(f"\t{window} Window accuracies: {last_window_accs}")
 		print(f"\tCumulative accuracy improvement: {cumulative_acc_improvement:.6f} (threshold: {accuracy_threshold:.6f})")
 		print(f"\tAccuracy plateau: {acc_plateau}")
 	else:
-		print("\tAccuracy data not available for phase transition evaluation. => Skipping accuracy checks.")
+		print("\tAccuracy data unavailable; relying solely on loss for phase transition.")
 	
 	transition = False
 
@@ -770,6 +770,8 @@ def should_transition_phase(
 		elif not close_to_best and not sustained_improvement:
 			transition = True
 			print("\tDecision: Transition due to stagnation without proximity to best loss")
+		else:
+			print(f"\tDecision: No transition due to close to best loss ({best_loss}) or sustained improvement ({cumulative_loss_improvement})")
 	elif acc_plateau:
 		transition = True
 		print("\tDecision: Transition due to accuracy plateau")
@@ -1003,7 +1005,7 @@ def progressive_unfreeze_finetune(
 	min_epochs_before_transition = int(min_epochs_per_phase * 0.75) # 
 	min_phases_before_stopping = 3 # ensure model progresses through at least 3 phases (unfreezing 60% of transformer blocks) before early stopping can trigger
 	layer_cache = {} # Cache for layer freezing status
-
+	learning_rate = None
 	for epoch in range(num_epochs):
 		torch.cuda.empty_cache()
 		print(f"Epoch [{epoch+1}/{num_epochs}] GPU Memory usage: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
@@ -1135,7 +1137,9 @@ def progressive_unfreeze_finetune(
 
 	file_base_name = (
 		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
-		f"ep_{len(training_losses)}_init_lr_{initial_learning_rate:.1e}_final_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_"
+		f"ep_{len(training_losses)}_init_lr_{initial_learning_rate:.1e}_"
+		f"final_lr_{learning_rate:.1e}" if learning_rate is not None else ""
+		f"_wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_dropout_{dropout_val}"
 	)
 
@@ -1961,7 +1965,7 @@ def main():
 	parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
 	parser.add_argument('--epochs', '-e', type=int, default=12, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=8, help='Batch size for training')
-	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-4]')
+	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-4]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 1e-3]')
 	parser.add_argument('--print_every', type=int, default=250, help='Print every [def: 250]')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP Architecture (ViT-B/32, ViT-B/16, ViT-L/14, ViT-L/14@336px)')
