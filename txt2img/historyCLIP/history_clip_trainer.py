@@ -155,7 +155,7 @@ def main():
 				num_epochs=args.epochs,
 				nw=args.num_workers,
 				print_every=args.print_every,
-				learning_rate=args.learning_rate,
+				initial_learning_rate=args.learning_rate,
 				weight_decay=args.weight_decay,
 				device=args.device,
 				results_dir=os.path.join(args.dataset_dir, "results"),

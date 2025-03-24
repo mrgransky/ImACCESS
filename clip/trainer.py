@@ -750,7 +750,7 @@ def should_transition_phase(
 	print(f"\tCumulative loss improvement: {cumulative_loss_improvement:.6f} (threshold: {loss_threshold:.6f})")
 	print(f"\tLoss plateau: {loss_plateau}")
 	print(f"\tLoss trend: {loss_trend:.6f} (>0 means worsening)")
-	print(f"\tClose to best loss: {close_to_best} (current: {last_window_losses[-1]:.6f}, best: {best_loss if best_loss is not None else 'N/A'}, threshold: {best_loss_threshold:.6f})")
+	print(f"\tClose to best loss: {close_to_best} (current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'}, threshold: {best_loss_threshold:.6f})")
 	print(f"\tSustained loss improvement: {sustained_improvement}")
 	
 	if accuracies is not None and len(accuracies) >= window:
@@ -882,7 +882,7 @@ def progressive_unfreeze_finetune(
 		num_epochs: int,
 		nw: int,
 		print_every: int,
-		learning_rate: float,
+		initial_learning_rate: float,
 		weight_decay: float,
 		device: str,
 		results_dir: str,
@@ -959,7 +959,7 @@ def progressive_unfreeze_finetune(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
-		f"dropout_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
+		f"dropout_{dropout_val}_init_lr_{initial_learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
 	)
 	
 	criterion = torch.nn.CrossEntropyLoss()
@@ -974,15 +974,15 @@ def progressive_unfreeze_finetune(
 
 	optimizer = AdamW(
 		params=filter(lambda p: p.requires_grad, model.parameters()),
-		lr=learning_rate,
+		lr=initial_learning_rate,
 		betas=(0.9, 0.98),
-		eps=1e-8,
+		eps=1e-6,
 		weight_decay=weight_decay,
 	)
 
 	scheduler = lr_scheduler.OneCycleLR(
 		optimizer=optimizer,
-		max_lr=learning_rate,
+		max_lr=initial_learning_rate,
 		steps_per_epoch=len(train_loader),
 		epochs=num_epochs,
 		pct_start=0.1,
@@ -1001,7 +1001,6 @@ def progressive_unfreeze_finetune(
 	epochs_in_current_phase = 0
 	min_epochs_per_phase = 7
 	min_epochs_before_transition = int(min_epochs_per_phase * 0.75) # 
-	initial_learning_rate = learning_rate
 	min_phases_before_stopping = 3 # ensure model progresses through at least 3 phases (unfreezing 60% of transformer blocks) before early stopping can trigger
 	layer_cache = {} # Cache for layer freezing status
 
@@ -1037,8 +1036,11 @@ def progressive_unfreeze_finetune(
 					best_loss=best_val_loss,
 				)
 				epochs_in_current_phase = 0  # Reset the counter after transitioning
-				# # TODO: Reset early stopping between phases
-				early_stopping.reset()
+				early_stopping.reset() # Reset early stopping after phase transition (between phases)
+
+				# Update optimizer with new learning rate
+				for param_group in optimizer.param_groups:
+					param_group['lr'] = learning_rate
 		
 		# Unfreeze layers for current phase
 		unfreeze_layers(
@@ -1047,10 +1049,6 @@ def progressive_unfreeze_finetune(
 			phase=current_phase,
 			cache=layer_cache,
 		)
-		
-		# Update optimizer with new learning rate
-		for param_group in optimizer.param_groups:
-			param_group['lr'] = learning_rate
 		
 		model.train()
 		epoch_loss = 0.0
@@ -2066,7 +2064,7 @@ def main():
 				num_epochs=args.epochs,
 				nw=args.num_workers,
 				print_every=args.print_every,
-				learning_rate=args.learning_rate,
+				initial_learning_rate=args.learning_rate,
 				weight_decay=args.weight_decay,
 				device=args.device,
 				results_dir=os.path.join(args.dataset, "results"),
