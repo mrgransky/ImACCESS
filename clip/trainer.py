@@ -139,7 +139,7 @@ class EarlyStopping:
 			self.counter = 0
 			self.improvement_history.append(True)
 		else:
-			print(f"Epoch {epoch+1}: No improvement (current={current_value:.4f}, best={self.best_score:.4f}).")
+			print(f"\tNO improvement detected! (current={current_value}, best={self.best_score}) Incrementing counter (current counter={self.counter})")
 			self.counter += 1
 			self.improvement_history.append(False)
 		
