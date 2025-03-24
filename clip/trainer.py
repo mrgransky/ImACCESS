@@ -747,11 +747,13 @@ def should_transition_phase(
 	# Detailed debugging prints
 	print(f"Phase transition evaluation [epoch {current_epoch}]:")
 	print(f"\t{window} Window losses: {last_window_losses}")
-	print(f"\tCumulative loss improvement: {cumulative_loss_improvement} (threshold: {loss_threshold})")
 	print(f"\tLoss plateau: {loss_plateau}")
 	print(f"\tLoss trend(last-first): {loss_trend} (>0 means worsening)")
 	print(f"\tClose to best loss: {close_to_best} (current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'}, threshold: {best_loss_threshold})")
-	print(f"\tSustained Improvement (>{loss_threshold}): {sustained_improvement}")
+	print(
+		f"\tCumulative loss improvement: {cumulative_loss_improvement}"
+		f"Sustained Improvement (>{loss_threshold}): {sustained_improvement}"
+	)
 	
 	if accuracies is not None and len(accuracies) >= window:
 		print(f"\t{window} Window accuracies: {last_window_accs}")
