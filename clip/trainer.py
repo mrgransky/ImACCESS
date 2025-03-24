@@ -747,18 +747,18 @@ def should_transition_phase(
 	# Detailed debugging prints
 	print(f"Phase transition evaluation [epoch {current_epoch}]:")
 	print(f"\t{window} Window losses: {last_window_losses}")
-	print(f"\tCumulative loss improvement: {cumulative_loss_improvement:.6f} (threshold: {loss_threshold:.6f})")
+	print(f"\tCumulative loss improvement: {cumulative_loss_improvement} (threshold: {loss_threshold})")
 	print(f"\tLoss plateau: {loss_plateau}")
-	print(f"\tLoss trend(last-first): {loss_trend:.6f} (>0 means worsening)")
-	print(f"\tClose to best loss: {close_to_best} (current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'}, threshold: {best_loss_threshold:.6f})")
+	print(f"\tLoss trend(last-first): {loss_trend} (>0 means worsening)")
+	print(f"\tClose to best loss: {close_to_best} (current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'}, threshold: {best_loss_threshold})")
 	print(f"\tSustained Improvement (>{loss_threshold}): {sustained_improvement}")
 	
 	if accuracies is not None and len(accuracies) >= window:
 		print(f"\t{window} Window accuracies: {last_window_accs}")
-		print(f"\tCumulative accuracy improvement: {cumulative_acc_improvement:.6f} (threshold: {accuracy_threshold:.6f})")
+		print(f"\tCumulative accuracy improvement: {cumulative_acc_improvement} (threshold: {accuracy_threshold})")
 		print(f"\tAccuracy plateau: {acc_plateau}")
 	else:
-		print("\tAccuracy data unavailable; relying solely on loss for phase transition.")
+		print("\t<!> Accuracy data unavailable; relying solely on loss for phase transition.")
 	
 	transition = False
 
@@ -796,7 +796,7 @@ def handle_phase_transition(
 	if current_phase >= max_phases - 1:
 		# Final phase uses dynamic minimum LR
 		new_lr = initial_lr * (0.1 * window_factor)
-		print(f"Final phase LR: {new_lr:.2e} (window factor: {window_factor:.2f})")
+		print(f"Final phase LR: {new_lr:.2e} (window factor: {window_factor})")
 		return current_phase, new_lr
 	
 	# Dynamic phase-based reduction with window consideration
@@ -813,8 +813,8 @@ def handle_phase_transition(
 	
 	print(
 		f"Phase {current_phase+1} LR: {new_lr:.2e} | "
-		f"Factors: phase={phase_factor:.2f}, window={window_factor:.2f}, "
-		f"loss={loss_ratio:.2f}"
+		f"Factors: phase={phase_factor}, window={window_factor}, "
+		f"loss={loss_ratio}"
 	)	
 	return current_phase + 1, new_lr
 
@@ -895,11 +895,12 @@ def progressive_unfreeze_finetune(
 		top_k_values: List[int] = [1, 5, 10, 15, 20],
 		layer_groups_to_unfreeze: List[str] = ['visual_frontend', 'visual_transformer', 'text_frontend', 'text_transformer', 'projections'],
 	) -> Dict[str, any]:
+
 	# Input validation
 	if not train_loader or not validation_loader:
 		raise ValueError("Train and validation loaders must not be empty.")
 	
-	# window_size = max(5, int(0.1 * len(train_loader)))  # 10% of training batches
+	# Adaptive window size
 	window_size =get_adaptive_window_size(
 		loader=train_loader,
 		min_window=5,
@@ -995,17 +996,21 @@ def progressive_unfreeze_finetune(
 	metrics_for_all_epochs = []
 	img2txt_metrics_list = []
 	txt2img_metrics_list = []
-	train_start_time = time.time()
+	global_patience = minimum_epochs # Total epochs without improvement across phases
+	global_counter = 0
+	global_best_loss = float('inf')
 	best_val_loss = float('inf')
 	best_img2txt_metrics = None
 	best_txt2img_metrics = None
 	current_phase = 0
 	epochs_in_current_phase = 0
 	min_epochs_per_phase = 7
-	min_epochs_before_transition = int(min_epochs_per_phase * 0.75) # 
+	min_epochs_before_transition = int(min_epochs_per_phase * 0.75)
 	min_phases_before_stopping = 3 # ensure model progresses through at least 3 phases (unfreezing 60% of transformer blocks) before early stopping can trigger
 	layer_cache = {} # Cache for layer freezing status
 	learning_rate = None
+
+	train_start_time = time.time()
 	for epoch in range(num_epochs):
 		torch.cuda.empty_cache()
 		print(f"Epoch [{epoch+1}/{num_epochs}] GPU Memory usage: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
@@ -1043,7 +1048,10 @@ def progressive_unfreeze_finetune(
 				# Update optimizer with new learning rate
 				for param_group in optimizer.param_groups:
 					param_group['lr'] = learning_rate
-		
+
+				scheduler.base_lrs = [learning_rate] * len(scheduler.base_lrs)
+				scheduler.max_lr = learning_rate
+
 		# Unfreeze layers for current phase
 		unfreeze_layers(
 			model=model,
@@ -1127,10 +1135,14 @@ def progressive_unfreeze_finetune(
 		# Early stopping
 		if early_stopping.should_stop(current_val_loss, model, epoch):
 			if current_phase >= min_phases_before_stopping:
-				print(f"Early stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
+				print(f"Early stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score()}")
 				break
 			else:
-				print(f"Early stopping condition met at epoch {epoch + 1}! but delaying until minimum phases ({min_phases_before_stopping}) are reached. Current phase: {current_phase}")
+				print(
+					f"Early stopping condition met at epoch {epoch + 1}! "
+					f"but delaying until minimum phases ({min_phases_before_stopping}) are reached. "
+					f"Current phase: {current_phase}"
+				)
 		print("-" * 140)
 
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
