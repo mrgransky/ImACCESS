@@ -129,7 +129,7 @@ class EarlyStopping:
 			return False
 		
 		if self.is_improvement(current_value):
-			print(f"Epoch {epoch+1}: Improvement detected (current={current_value}, best={self.best_score}).")
+			print(f"\tImprovement detected (current: {current_value}, best: {self.best_score})")
 			self.best_score = current_value
 			self.stopped_epoch = epoch
 			self.best_epoch = epoch
@@ -145,7 +145,7 @@ class EarlyStopping:
 		
 		trend = self.calculate_trend()
 		cumulative_improvement = abs(trend) if len(self.value_history) >= self.window_size else float('inf')
-		print(f">> Trend: {trend:.7f} | Cumulative Improvement: {cumulative_improvement:.7f}")
+		print(f">> Trend: {trend} | Cumulative Improvement: {cumulative_improvement}")
 		
 		should_stop = False
 		if self.counter >= self.patience:
@@ -723,9 +723,8 @@ def should_transition_phase(
 		bool: True if phase transition is required, False otherwise.
 	"""
 
-	current_epoch = len(losses) + 1  # Assume epochs start at 1 for user-friendly logging
 	if len(losses) < window:
-		print(f"Epoch {current_epoch}: Not enough epochs ({len(losses)} < {window}) to evaluate phase transition.")
+		print(f"<!> Not enough loss data ({len(losses)} < {window} windows) to evaluate phase transition.")
 		return False
 	
 	# Loss analysis
@@ -745,11 +744,11 @@ def should_transition_phase(
 		acc_plateau = abs(cumulative_acc_improvement) < accuracy_threshold
 
 	# Detailed debugging prints
-	print(f"Phase transition evaluation [epoch {current_epoch}]:")
+	print(f"Phase transition evaluation:")
 	print(f"\t{window} Window losses: {last_window_losses}")
 	print(
 		f"\t|Cumulative loss improvement| = {abs(cumulative_loss_improvement)} "
-		f"=> Loss plateau(<{loss_threshold}): {loss_plateau}"
+		f"=> Loss plateau (<{loss_threshold}): {loss_plateau}"
 	)
 	print(
 		f"\tCumulative loss improvement = {cumulative_loss_improvement} "
@@ -1130,7 +1129,7 @@ def progressive_unfreeze_finetune(
 			"best_val_loss": best_val_loss,
 		}
 		if current_val_loss < best_val_loss - early_stopping.min_delta:
-			print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
+			# print(f"New best model found: (current loss: {current_val_loss} < best loss: {best_val_loss})")
 			best_val_loss = current_val_loss
 			checkpoint.update({"best_val_loss": best_val_loss})
 			torch.save(checkpoint, mdl_fpth)
@@ -1165,10 +1164,10 @@ def progressive_unfreeze_finetune(
 
 	file_base_name = (
 		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
-		f"ep_{len(training_losses)}_init_lr_{initial_learning_rate:.1e}_"
-		f"final_lr_{learning_rate:.1e}" if learning_rate is not None else ""
-		f"_wd_{weight_decay:.1e}_"
-		f"bs_{train_loader.batch_size}_dropout_{dropout_val}"
+		f"ep_{len(training_losses)}_init_lr_{initial_learning_rate:.1e}"
+		f"{'_final_lr_' + f'{learning_rate:.1e}' if learning_rate is not None else ''}"
+		f"_wd_{weight_decay:.1e}"
+		f"_bs_{train_loader.batch_size}_dropout_{dropout_val}"
 	)
 
 	plot_paths = {
