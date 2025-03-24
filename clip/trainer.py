@@ -1132,7 +1132,7 @@ def progressive_unfreeze_finetune(
 			best_img2txt_metrics = img2txt_metrics
 			best_txt2img_metrics = txt2img_metrics
 
-		# Early stopping
+		# Early stopping (per-phase)
 		if early_stopping.should_stop(current_val_loss, model, epoch):
 			if current_phase >= min_phases_before_stopping:
 				print(f"Early stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score()}")
@@ -1143,6 +1143,17 @@ def progressive_unfreeze_finetune(
 					f"but delaying until minimum phases ({min_phases_before_stopping}) are reached. "
 					f"Current phase: {current_phase}"
 				)
+		
+		# Global Early Stopping
+		if current_val_loss < global_best_loss - min_delta:
+			global_best_loss = current_val_loss
+			global_counter = 0
+		else:
+			global_counter += 1
+		if global_counter >= global_patience and current_phase >= min_phases_before_stopping:
+			print(f"Global early stopping triggered after {global_patience} epochs without improvement.")
+			break
+
 		print("-" * 140)
 
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
