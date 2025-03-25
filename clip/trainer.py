@@ -711,8 +711,11 @@ def should_transition_phase(
 	
 	# Loss analysis
 	last_window_losses = losses[-window:]
-	stability = 
-	cv = (np.std(last_window_losses) / np.mean(last_window_losses)) * 100 if mean != 0 else 0  # Avoid division by zero
+
+	last_window_losses_mean = np.mean(last_window_losses)
+	last_window_losses_std = np.std(last_window_losses)
+	last_window_losses_cv = (last_window_losses_std / last_window_losses_mean) * 100 if last_window_losses_mean != 0 else 0
+
 	cumulative_loss_improvement = last_window_losses[0] - last_window_losses[-1]  # Positive = improvement
 	loss_trend = last_window_losses[-1] - last_window_losses[0]  # Positive = worsening
 	close_to_best = best_loss is not None and abs(last_window_losses[-1] - best_loss) < best_loss_threshold
@@ -731,8 +734,9 @@ def should_transition_phase(
 		acc_plateau = abs(cumulative_acc_improvement) < accuracy_threshold
 
 	# Detailed debugging prints
-	print(f"Phase transition:")
-	print(f"Losses[{len(last_window_losses)}={window} Windows]: Coefficient of Variation: {cv}\n{last_window_losses}")
+	print(f"Phase transition analysis: {window} Window Losses:")
+	print(f"Window Losses[{len(last_window_losses)}]/total losses[{len(losses)}]: Coefficient of Variation: {last_window_losses_cv}")
+	print(last_window_losses)
 	print(
 		f"\t|Cumulative loss improvement| = {abs(cumulative_loss_improvement)} "
 		f"=> Loss plateau (<{loss_threshold}): {loss_plateau}"
