@@ -7,7 +7,7 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=11
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=48G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
@@ -33,7 +33,6 @@ echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
 echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
-NUM_WORKERS=$((SLURM_CPUS_PER_TASK - 1)) # reserve 1 CPU for the main process and other overheads
 MODES=(train finetune pretrain)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 DATASETS=(
@@ -55,7 +54,7 @@ echo "DATASET: ${DATASETS[$SLURM_ARRAY_TASK_ID]}"
 
 python -u history_clip_trainer.py \
 	--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
-	--num_workers $NUM_WORKERS \
+	--num_workers $SLURM_CPUS_PER_TASK \
 	--batch_size 32 \
 	--mode ${MODES[2]} \
 	--sampling ${SAMPLINGS[1]} \
