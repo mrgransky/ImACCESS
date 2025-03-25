@@ -851,36 +851,6 @@ def get_unfreeze_pcts_hybrid(
 	print(f"Unfreeze Schedule contains {len(unfreeze_pcts)} different phases:\n{unfreeze_pcts}")
 	return unfreeze_pcts
 
-def get_adaptive_window_size(
-		loader: DataLoader,
-		min_window: int,
-		max_window: int,
-	) -> int:
-
-		n_samples = len(loader.dataset)
-		try:
-			class_names = loader.dataset.dataset.classes
-		except:
-			class_names = loader.dataset.unique_labels
-		n_classes = len(class_names)
-		
-		# Base window on dataset complexity
-		complexity_factor = np.log10(n_samples * n_classes)
-		
-		# Bounded exponential scaling
-		window = int(
-			min(
-				max_window, 
-				max(
-					min_window, 
-					np.round(complexity_factor * 3)
-				)
-			)
-		)
-		
-		print(f"Adaptive window: {window} | Samples: {n_samples} | Classes: {n_classes}")
-		return window
-
 def progressive_unfreeze_finetune(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
@@ -892,6 +862,7 @@ def progressive_unfreeze_finetune(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
+		window_size: int,
 		patience: int = 10,
 		min_delta: float = 1e-3,
 		cumulative_delta: float = 5e-3,
@@ -904,13 +875,6 @@ def progressive_unfreeze_finetune(
 	if not train_loader or not validation_loader:
 		raise ValueError("Train and validation loaders must not be empty.")
 	
-	# Adaptive window size
-	window_size =get_adaptive_window_size(
-		loader=train_loader,
-		min_window=5,
-		max_window=20,
-	)
-
 	# Initialize early stopping
 	early_stopping = EarlyStopping(
 		patience=patience,
@@ -1240,6 +1204,7 @@ def lora_finetune(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
+		window_size: int,
 		lora_rank: int = 8,
 		lora_alpha: float = 16.0,
 		lora_dropout: float = 0.05,
@@ -1267,8 +1232,6 @@ def lora_finetune(
 			"Fix: Set dropout=0.0 in clip.load() to enforce a deterministic base model behavior during LoRA fine-tuning "
 			"which gives you more control over LoRA-specific regularization without affecting the base model.\n"
 		)
-
-	window_size = max(5, int(0.1 * len(train_loader)))  # 10% of training batches
 
 	# Early stopping setup (same as finetune())
 	early_stopping = EarlyStopping(
@@ -1465,14 +1428,13 @@ def full_finetune(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
+		window_size: int,
 		patience: int = 10,
 		min_delta: float = 1e-4,
 		cumulative_delta: float = 5e-3,
 		minimum_epochs: int = 20,
 		TOP_K_VALUES: List[int] = [1, 5, 10, 15, 20],
 	):
-
-	window_size = max(5, int(0.1 * len(train_loader)))  # 10% of training batches
 
 	early_stopping = EarlyStopping(
 			patience=patience,  # Wait for 10 epochs without improvement before stopping
@@ -1717,7 +1679,8 @@ def train(
 		learning_rate:float,
 		weight_decay:float,
 		device:torch.device,
-		results_dir:str,
+		results_dir: str,
+		window_size: int,
 		patience:int=10,
 		min_delta:float=1e-4,
 		cumulative_delta:float=5e-3,

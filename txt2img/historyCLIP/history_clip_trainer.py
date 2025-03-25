@@ -107,6 +107,13 @@ def main():
 	# visualize_(dataloader=validation_loader, batches=4, num_samples=7)
 	# visualize_samples(validation_loader, validation_loader.dataset, num_samples=5)
 	
+	# Adaptive window size
+	window_size = get_adaptive_window_size(
+		loader=train_loader,
+		min_window=5,
+		max_window=20,
+	)
+
 	if args.mode == "finetune":
 		if args.finetune_strategy == "full":
 			full_finetune(
@@ -120,6 +127,7 @@ def main():
 				weight_decay=args.weight_decay,
 				device=args.device,
 				results_dir=os.path.join(args.dataset_dir, "results"),
+				window_size=window_size, 									# early stopping & progressive unfreezing
 				patience=args.patience, 									# early stopping
 				min_delta=args.minimum_delta, 						# early stopping & progressive unfreezing
 				cumulative_delta=args.cumulative_delta, 	# early stopping
@@ -138,6 +146,7 @@ def main():
 				weight_decay=args.weight_decay,
 				device=args.device,
 				results_dir=os.path.join(args.dataset_dir, "results"),
+				window_size=window_size, 									# early stopping & progressive unfreezing
 				lora_rank=args.lora_rank,
 				lora_alpha=args.lora_alpha,
 				lora_dropout=args.lora_dropout,
@@ -159,10 +168,11 @@ def main():
 				weight_decay=args.weight_decay,
 				device=args.device,
 				results_dir=os.path.join(args.dataset_dir, "results"),
-				patience=10,									# early stopping
-				min_delta=1e-4,								# early stopping
-				cumulative_delta=5e-3,				# early stopping
-				minimum_epochs=20,						# early stopping
+				window_size=window_size, 									# early stopping & progressive unfreezing
+				patience=10,															# early stopping
+				min_delta=1e-4,														# early stopping
+				cumulative_delta=5e-3,										# early stopping
+				minimum_epochs=20,												# early stopping
 				top_k_values=args.topK_values,
 			)
 		else:
@@ -179,6 +189,7 @@ def main():
 			weight_decay=args.weight_decay,
 			device=args.device,
 			results_dir=os.path.join(args.dataset_dir, "results"),
+			window_size=window_size, 									# early stopping & progressive unfreezing
 			patience=args.patience, 									# early stopping
 			min_delta=args.minimum_delta, 						# early stopping
 			cumulative_delta=args.cumulative_delta, 	# early stopping

@@ -43,6 +43,36 @@ logger = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
+def get_adaptive_window_size(
+		loader: DataLoader,
+		min_window: int,
+		max_window: int,
+	) -> int:
+
+	n_samples = len(loader.dataset)
+	try:
+		class_names = loader.dataset.dataset.classes
+	except:
+		class_names = loader.dataset.unique_labels
+	n_classes = len(class_names)
+	
+	# Base window on dataset complexity
+	complexity_factor = np.log10(n_samples * n_classes)
+	
+	# Bounded exponential scaling
+	window = int(
+		min(
+			max_window, 
+			max(
+				min_window, 
+				np.round(complexity_factor * 3)
+			)
+		)
+	)
+	
+	print(f"Adaptive window: {window} | Samples: {n_samples} | Classes: {n_classes}")
+	return window
+
 def get_model_directory(path):
 	"""
 	Extracts the model directory from a given path.
