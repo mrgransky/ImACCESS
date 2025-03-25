@@ -711,6 +711,11 @@ def should_transition_phase(
 	
 	# Loss analysis
 	last_window_losses = losses[-window:]
+	previous_window = losses[-2*window:-window]  # E.g., compare to the prior 10 epochs
+	current_window_avg = np.mean(last_window_losses)
+	previous_window_avg = np.mean(previous_window)
+	avg_improvement = previous_window_avg - current_window_avg
+
 	stability = np.std(last_window_losses)
 	cumulative_loss_improvement = last_window_losses[0] - last_window_losses[-1]  # Positive = improvement
 	loss_trend = last_window_losses[-1] - last_window_losses[0]  # Positive = worsening
@@ -749,7 +754,7 @@ def should_transition_phase(
 		f"Close to best loss (absolute diff) [<{best_loss_threshold}]: {close_to_best} "
 	)
 	print(f"pairwise_improvements[{len(pairwise_improvements)}]:\n{pairwise_improvements}")
-	print(f"\tAverage pairwise lost improvement: {average_improvement}")
+	print(f"\tAverage pairwise lost improvement: {average_improvement} vs avg_improvement: {avg_improvement}")
 	
 	if accuracies is not None and len(accuracies) >= window:
 		print(f"\t{window} Window accuracies: {last_window_accs}")
