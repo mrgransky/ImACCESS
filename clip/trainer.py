@@ -2132,8 +2132,9 @@ def main():
 	elif args.mode == "pretrain":
 		all_img2txt_metrics = {}
 		all_txt2img_metrics = {}
-		available_models = clip.available_models() # ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
-		for model_arch in available_models[::-1]:
+		all_vit_encoders = ['ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
+		all_available_clip_encoders = clip.available_models() # ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
+		for model_arch in all_vit_encoders:
 			print(f"Evaluating pre-trained {model_arch}")
 			model_config = get_config(architecture=model_arch, dropout=args.dropout,)
 			print(json.dumps(model_config, indent=4, ensure_ascii=False))
@@ -2153,8 +2154,7 @@ def main():
 				nw=args.num_workers,
 				USER=os.environ.get('USER'),
 				input_resolution=model_config["image_resolution"],
-				preprocess=None,
-				# preprocess=preprocess,
+				preprocess=None,#preprocess,
 			)
 			print_loader_info(loader=train_loader, batch_size=args.batch_size)
 			print_loader_info(loader=validation_loader, batch_size=args.batch_size)

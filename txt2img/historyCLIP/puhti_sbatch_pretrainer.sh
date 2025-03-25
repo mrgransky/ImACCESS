@@ -1,19 +1,18 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=pretrained-clip_different_archs_dataset_x
+#SBATCH --job-name=pretrained-clip_vit_encoders_dataset_x
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=11
-#SBATCH --mem=64G
+#SBATCH --mem=48G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=0-4
-#SBATCH --time=03-00:00:00
-####SBATCH --array=0-4
+#SBATCH --time=02-00:00:00
 
 set -e
 set -u
@@ -35,10 +34,6 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 NUM_WORKERS=$((SLURM_CPUS_PER_TASK - 1)) # reserve 1 CPU for the main process and other overheads
-INIT_LRS=(1e-5 1e-5 1e-5 1e-5 1e-5)
-WEIGHT_DECAYS=(1e-2 1e-2 1e-2 1e-2 1e-2)
-DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
-EPOCHS=(50 50 150 150 150)
 MODES=(train finetune pretrain)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 DATASETS=(
@@ -57,22 +52,13 @@ fi
 # Debugging output
 echo "SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
 echo "DATASET: ${DATASETS[$SLURM_ARRAY_TASK_ID]}"
-echo "EPOCHS: ${EPOCHS[$SLURM_ARRAY_TASK_ID]}"
-echo "INIT_LR: ${INIT_LRS[$SLURM_ARRAY_TASK_ID]}"
-echo "WEIGHT_DECAY: ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]}"
-echo "DROPOUT: ${DROPOUTS[$SLURM_ARRAY_TASK_ID]}"
 
 python -u history_clip_trainer.py \
 	--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
-	--epochs ${EPOCHS[$SLURM_ARRAY_TASK_ID]} \
 	--num_workers $NUM_WORKERS \
-	--print_every 250 \
-	--batch_size 64 \
-	--learning_rate ${INIT_LRS[$SLURM_ARRAY_TASK_ID]} \
-	--weight_decay ${WEIGHT_DECAYS[$SLURM_ARRAY_TASK_ID]} \
+	--batch_size 32 \
 	--mode ${MODES[2]} \
 	--sampling ${SAMPLINGS[1]} \
-	--dropout ${DROPOUTS[$SLURM_ARRAY_TASK_ID]} \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

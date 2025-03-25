@@ -7,7 +7,7 @@ def plot_all_pretrain_metrics(
 		img2txt_metrics_dict: dict,
 		txt2img_metrics_dict: dict,
 		topK_values: list,
-		fname: str = "all_pretrain_retrieval_metrics.png",
+		results_dir: str,
 	):
 	"""
 	Plot retrieval metrics (mP@K, mAP@K, Recall@K) for all pre-trained CLIP models in a 2x3 subplot grid.
@@ -17,11 +17,12 @@ def plot_all_pretrain_metrics(
 	metrics = ["mP", "mAP", "Recall"]
 	modes = ["Image-to-Text", "Text-to-Image"]
 	models = list(img2txt_metrics_dict.keys())  # ['RN50', 'RN101', ..., 'ViT-L/14@336px']
+	fname = f"{dataset_name}_x_{len(models)}_pretrained_clip_models_{'_'.join(re.sub(r'[/@]', '-', m) for m in models)}.png"
 	colors = plt.cm.tab10.colors  # Use a distinct color for each of the 9 models
 	markers = ['o', 's', '^', 'D', 'v', 'p', 'h', '*', 'H']  # 9 distinct markers
 	linestyles = ['-', '--', ':', '-.', '-', '--', ':', '-.', '-']  # Cycle through styles
 	fig, axes = plt.subplots(len(modes), len(metrics), figsize=(18, 11), constrained_layout=True)
-	fig.suptitle(f"{dataset_name} Pre-trained CLIP x{len(txt2img_metrics_dict)} Vision Encoder Retrieval Metrics", fontsize=13, fontweight='bold')
+	fig.suptitle(f"{dataset_name} Pre-trained CLIP x{len(txt2img_metrics_dict)} Vision Encoder Retrieval Metrics", fontsize=12, fontweight='bold')
 	for i, mode in enumerate(modes):
 			metrics_dict = img2txt_metrics_dict if mode == "Image-to-Text" else txt2img_metrics_dict
 			for j, metric in enumerate(metrics):
@@ -77,7 +78,7 @@ def plot_all_pretrain_metrics(
 		facecolor='white',
 	)
 	plt.tight_layout(rect=[0, 0.05, 1, 0.95])
-	plt.savefig(fname, dpi=300, bbox_inches='tight')
+	plt.savefig(os.join.path(results_dir, fname), dpi=300, bbox_inches='tight')
 	plt.close(fig)
 	print(f"Saved combined pretrain metrics plot to {fname}")
 
