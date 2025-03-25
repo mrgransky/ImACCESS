@@ -117,7 +117,11 @@ class EarlyStopping:
 			self.counter = 0
 			self.improvement_history.append(True)
 		else:
-			print(f"\tNO improvement detected! (current={current_value}, best={self.best_score}) Incrementing counter (current counter={self.counter})")
+			print(
+				f"\tNO improvement detected! (current={current_value}, best={self.best_score}) "
+				f"absolute difference: {abs(current_value - self.best_score)} "
+				f"=> Incrementing counter (current counter={self.counter})"
+			)
 			self.counter += 1
 			self.improvement_history.append(False)
 		
@@ -729,13 +733,13 @@ def should_transition_phase(
 		f"=> Loss plateau (<{loss_threshold}): {loss_plateau}"
 	)
 	print(
-		f"\tCumulative loss improvement = {cumulative_loss_improvement} "
+		f"\tCumulative loss improvement(first-last) = {cumulative_loss_improvement} "
 		f"=> Sustained Improvement (>{loss_threshold}): {sustained_improvement}"
 	)
-	print(f"\tLoss trend(last-first): {loss_trend} (>0 means worsening: {loss_trend > 0})")
+	print(f"\tLoss trend(last-first): {loss_trend} (>0 worsening: {loss_trend > 0})")
 	print(
-		f"\tCurrent loss: {last_window_losses[-1]}, best loss: {best_loss if best_loss is not None else 'N/A'} | "
-		f"Close to best loss (absolute diff) [< threshold: {best_loss_threshold}]: {close_to_best} "
+		f"\tCurrent loss: {last_window_losses[-1]} best loss: {best_loss if best_loss is not None else 'N/A'} | "
+		f"Close to best loss (absolute diff) [<{best_loss_threshold}]: {close_to_best} "
 	)
 	
 	if accuracies is not None and len(accuracies) >= window:
@@ -756,7 +760,10 @@ def should_transition_phase(
 			transition = True
 			print("\t>> Decision: Transition due to stagnation without proximity to best loss")
 		else:
-			print(f"\t>> Decision: No transition due to close to best loss ({best_loss}) or sustained improvement ({cumulative_loss_improvement})")
+			print(
+				f"\t>> Decision: No transition! Close to best loss ({close_to_best}) | Sustained improvement ({sustained_improvement})"
+				f"For transition: Close to best loss must be False and sustained improvement must be False."
+			)
 	elif acc_plateau:
 		transition = True
 		print("\t>> Decision: Transition due to accuracy plateau")
@@ -1018,9 +1025,9 @@ def progressive_unfreeze_finetune(
 			should_transition = should_transition_phase(
 				losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
 				accuracies=None,#avg_accs,
-				loss_threshold=5e-2,
+				loss_threshold=1e-2,
 				accuracy_threshold=5e-5,
-				best_loss_threshold=5e-3,
+				best_loss_threshold=1e-3,
 				window=window_size,
 				best_loss=best_val_loss,
 			)
