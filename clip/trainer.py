@@ -722,8 +722,8 @@ def should_transition_phase(
 		acc_plateau = abs(cumulative_acc_improvement) < accuracy_threshold
 
 	# Detailed debugging prints
-	print(f"Phase transition evaluation:")
-	print(f"\t{window} Window losses: {last_window_losses}")
+	print(f"Phase transition:")
+	print(f"Losses[{len(losses)}={window} Windows]:\n{last_window_losses}")
 	print(
 		f"\t|Cumulative loss improvement| = {abs(cumulative_loss_improvement)} "
 		f"=> Loss plateau (<{loss_threshold}): {loss_plateau}"
@@ -732,7 +732,7 @@ def should_transition_phase(
 		f"\tCumulative loss improvement = {cumulative_loss_improvement} "
 		f"=> Sustained Improvement (>{loss_threshold}): {sustained_improvement}"
 	)
-	print(f"\tLoss trend(last-first): {loss_trend} (>0 means worsening)")
+	print(f"\tLoss trend(last-first): {loss_trend} (>0 means worsening: {loss_trend > 0})")
 	print(
 		f"\tCurrent loss: {last_window_losses[-1]}, best loss: {best_loss if best_loss is not None else 'N/A'} | "
 		f"Close to best loss (absolute diff) [< threshold: {best_loss_threshold}]: {close_to_best} "
