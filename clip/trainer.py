@@ -717,6 +717,9 @@ def should_transition_phase(
 	loss_plateau = abs(cumulative_loss_improvement) < loss_threshold
 	sustained_improvement = cumulative_loss_improvement > loss_threshold  # Significant continuous improvement
 
+	pairwise_improvements = [last_window_losses[i] - last_window_losses[i+1] for i in range(len(last_window_losses)-1)]
+	average_improvement = sum(pairwise_improvements) / len(pairwise_improvements) if pairwise_improvements else 0.0
+	
 	# Accuracy analysis
 	acc_plateau = False
 	cumulative_acc_improvement = None
@@ -727,7 +730,7 @@ def should_transition_phase(
 
 	# Detailed debugging prints
 	print(f"Phase transition:")
-	print(f"Losses[{len(losses)}={window} Windows]:\n{last_window_losses}")
+	print(f"Losses[{len(last_window_losses)}={window} Windows]:\n{last_window_losses}")
 	print(
 		f"\t|Cumulative loss improvement| = {abs(cumulative_loss_improvement)} "
 		f"=> Loss plateau (<{loss_threshold}): {loss_plateau}"
@@ -741,6 +744,7 @@ def should_transition_phase(
 		f"\tCurrent loss: {last_window_losses[-1]} best loss: {best_loss if best_loss is not None else 'N/A'} | "
 		f"Close to best loss (absolute diff) [<{best_loss_threshold}]: {close_to_best} "
 	)
+	print(f"\tAverage pairwise lost improvement: {average_improvement}")
 	
 	if accuracies is not None and len(accuracies) >= window:
 		print(f"\t{window} Window accuracies: {last_window_accs}")
@@ -756,7 +760,7 @@ def should_transition_phase(
 		if loss_trend > 0:
 			transition = True
 			print(f"\t>> Decision: Transition due to active loss deterioration, regardless of proximity to best loss! (loss_trend: {loss_trend} > 0)")
-		elif not close_to_best and not sustained_improvement:
+		elif close_to_best is False and sustained_improvement is False:
 			transition = True
 			print("\t>> Decision: Transition due to stagnation without proximity to best loss")
 		else:
@@ -996,8 +1000,12 @@ def progressive_unfreeze_finetune(
 	best_txt2img_metrics = None
 	current_phase = 0
 	epochs_in_current_phase = 0
-	min_epochs_per_phase = 5
-	min_epochs_before_transition = int(min_epochs_per_phase * 0.75)
+	min_epochs_per_phase = 7
+
+	# global minimum number of epochs that must be completed 
+	# before any phase transition can occur:
+	min_epochs_before_transition = min(window_size, minimum_epochs)
+
 	min_phases_before_stopping = 3 # ensure model progresses through at least 3 phases (unfreezing 60% of transformer blocks) before early stopping can trigger
 	layer_cache = {} # Cache for layer freezing status
 	learning_rate = None
