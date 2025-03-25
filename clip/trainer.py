@@ -127,7 +127,7 @@ class EarlyStopping:
 		
 		should_stop = False
 		if self.counter >= self.patience:
-			print(f"Early stopping triggered! validation loss fails to improve for (patience={self.patience}) epochs.")
+			print(f"Early stopping can be triggered since validation loss fails to improve for (patience={self.patience}) epochs.")
 			should_stop = True
 		
 		if len(self.improvement_history) >= self.window_size:
@@ -733,7 +733,10 @@ def should_transition_phase(
 		f"=> Sustained Improvement (>{loss_threshold}): {sustained_improvement}"
 	)
 	print(f"\tLoss trend(last-first): {loss_trend} (>0 means worsening)")
-	print(f"\tClose to best loss: {close_to_best} (current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'}, threshold: {best_loss_threshold})")
+	print(
+		f"\tClose to best loss(absolute diff) [< threshold: {best_loss_threshold}]: {close_to_best} "
+		f"current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'} "
+	)
 	
 	if accuracies is not None and len(accuracies) >= window:
 		print(f"\t{window} Window accuracies: {last_window_accs}")
@@ -986,7 +989,7 @@ def progressive_unfreeze_finetune(
 	best_txt2img_metrics = None
 	current_phase = 0
 	epochs_in_current_phase = 0
-	min_epochs_per_phase = 7
+	min_epochs_per_phase = 5
 	min_epochs_before_transition = int(min_epochs_per_phase * 0.75)
 	min_phases_before_stopping = 3 # ensure model progresses through at least 3 phases (unfreezing 60% of transformer blocks) before early stopping can trigger
 	layer_cache = {} # Cache for layer freezing status
@@ -1017,7 +1020,7 @@ def progressive_unfreeze_finetune(
 				accuracies=None,#avg_accs,
 				loss_threshold=5e-2,
 				accuracy_threshold=5e-5,
-				best_loss_threshold=5e-2,
+				best_loss_threshold=5e-3,
 				window=window_size,
 				best_loss=best_val_loss,
 			)
@@ -1125,11 +1128,11 @@ def progressive_unfreeze_finetune(
 		# Early stopping (per-phase)
 		if early_stopping.should_stop(current_val_loss, model, epoch):
 			if current_phase >= min_phases_before_stopping:
-				print(f"Early stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score()}")
+				print(f"[Per Phase] Early stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score()}")
 				break
 			else:
 				print(
-					f"Early stopping condition met at epoch {epoch + 1}! "
+					f"[Per Phase] Early stopping condition met at epoch {epoch + 1}! "
 					f"but delaying until minimum phases ({min_phases_before_stopping}) are reached. "
 					f"Current phase: {current_phase}"
 				)
@@ -1141,7 +1144,7 @@ def progressive_unfreeze_finetune(
 		else:
 			global_counter += 1
 		if global_counter >= global_patience and current_phase >= min_phases_before_stopping:
-			print(f"Global early stopping triggered after {global_patience} epochs without improvement.")
+			print(f"Global early stopping triggered after (global_patience={global_patience}) epochs without improvement.")
 			break
 
 		print("-" * 140)
