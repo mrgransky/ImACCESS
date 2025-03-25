@@ -6,7 +6,7 @@ CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
 sys.path.insert(0, CLIP_DIR)
 
 from utils import *
-from dataset_loader import get_dataloaders
+from historical_dataset_loader import get_dataloaders
 from trainer import train, pretrain, full_finetune, lora_finetune, progressive_unfreeze_finetune
 from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics
 

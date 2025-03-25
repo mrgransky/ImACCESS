@@ -112,12 +112,12 @@ def get_dataset(
 	return train_dataset, validation_dataset
 
 def get_dataloaders(
-	dataset_name: str,
-	batch_size: int,
-	nw: int,
-	USER: str,
-	input_resolution: int,
-	preprocess=None,
+		dataset_name: str,
+		batch_size: int,
+		nw: int,
+		USER: str,
+		input_resolution: int,
+		preprocess=None,
 	):
 	dataset_name = dataset_name.upper()
 	train_dataset, validation_dataset = get_dataset(
