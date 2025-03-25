@@ -734,16 +734,16 @@ def should_transition_phase(
 	)
 	print(f"\tLoss trend(last-first): {loss_trend} (>0 means worsening)")
 	print(
-		f"\tClose to best loss(absolute diff) [< threshold: {best_loss_threshold}]: {close_to_best} "
-		f"current: {last_window_losses[-1]}, best: {best_loss if best_loss is not None else 'N/A'} "
+		f"\tCurrent loss: {last_window_losses[-1]}, best loss: {best_loss if best_loss is not None else 'N/A'} | "
+		f"Close to best loss (absolute diff) [< threshold: {best_loss_threshold}]: {close_to_best} "
 	)
 	
 	if accuracies is not None and len(accuracies) >= window:
 		print(f"\t{window} Window accuracies: {last_window_accs}")
 		print(f"\tCumulative accuracy improvement: {cumulative_acc_improvement} (threshold: {accuracy_threshold})")
 		print(f"\tAccuracy plateau: {acc_plateau}")
-	else:
-		print("\t<!> Accuracy data unavailable; relying solely on loss for phase transition.")
+	# else:
+	# 	print("\t<!> Accuracy data unavailable; relying solely on loss for phase transition.")
 	
 	transition = False
 
@@ -889,7 +889,7 @@ def progressive_unfreeze_finetune(
 	window_size =get_adaptive_window_size(
 		loader=train_loader,
 		min_window=5,
-		max_window=10,
+		max_window=20,
 	)
 
 	# Initialize early stopping
