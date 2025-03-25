@@ -1,5 +1,3 @@
-from tkinter import font
-from turtle import title
 from utils import *
 
 def plot_all_pretrain_metrics(
@@ -9,16 +7,13 @@ def plot_all_pretrain_metrics(
 		topK_values: list,
 		results_dir: str,
 	):
-	"""
-	Plot retrieval metrics (mP@K, mAP@K, Recall@K) for all pre-trained CLIP models in a 2x3 subplot grid.
-	Rows: Image-to-Text and Text-to-Image modes.
-	Columns: mP@K, mAP@K, Recall@K metrics.
-	"""
 	metrics = ["mP", "mAP", "Recall"]
 	modes = ["Image-to-Text", "Text-to-Image"]
 	models = list(img2txt_metrics_dict.keys())  # ['RN50', 'RN101', ..., 'ViT-L/14@336px']
 	fname = f"{dataset_name}_x_{len(models)}_pretrained_clip_models_{'_'.join(re.sub(r'[/@]', '-', m) for m in models)}.png"
-	colors = plt.cm.tab10.colors  # Use a distinct color for each of the 9 models
+	# colors = plt.cm.tab10.colors  # Use a distinct color for each of the 9 models
+	# colors = plt.cm.Dark2.colors
+	colors = plt.cm.Set1.colors
 	markers = ['o', 's', '^', 'D', 'v', 'p', 'h', '*', 'H']  # 9 distinct markers
 	linestyles = ['-', '--', ':', '-.', '-', '--', ':', '-.', '-']  # Cycle through styles
 	fig, axes = plt.subplots(len(modes), len(metrics), figsize=(18, 11), constrained_layout=True)
@@ -80,7 +75,6 @@ def plot_all_pretrain_metrics(
 	plt.tight_layout(rect=[0, 0.05, 1, 0.95])
 	plt.savefig(os.path.join(results_dir, fname), dpi=300, bbox_inches='tight')
 	plt.close(fig)
-	print(f"Saved combined pretrain metrics plot to {fname}")
 
 def visualize_samples(dataloader, dataset, num_samples=5):
 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(dataloader):
