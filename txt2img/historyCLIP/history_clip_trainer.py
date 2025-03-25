@@ -169,10 +169,10 @@ def main():
 				device=args.device,
 				results_dir=os.path.join(args.dataset_dir, "results"),
 				window_size=window_size, 									# early stopping & progressive unfreezing
-				patience=10,															# early stopping
-				min_delta=1e-4,														# early stopping
-				cumulative_delta=5e-3,										# early stopping
-				minimum_epochs=20,												# early stopping
+				patience=args.patience, 									# early stopping
+				min_delta=args.minimum_delta, 						# early stopping
+				cumulative_delta=args.cumulative_delta, 	# early stopping
+				minimum_epochs=args.minimum_epochs, 			# early stopping
 				top_k_values=args.topK_values,
 			)
 		else:
