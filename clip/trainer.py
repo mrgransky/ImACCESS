@@ -711,23 +711,16 @@ def should_transition_phase(
 	
 	# Loss analysis
 	last_window_losses = losses[-window:]
-	previous_window = losses[-2*window:-window]  # E.g., compare to the prior 10 epochs
-	current_window_avg = np.mean(last_window_losses)
-	previous_window_avg = np.mean(previous_window)
-	avg_improvement = previous_window_avg - current_window_avg
-
-	stability = np.std(last_window_losses)
+	stability = 
+	cv = (np.std(last_window_losses) / np.mean(last_window_losses)) * 100 if mean != 0 else 0  # Avoid division by zero
 	cumulative_loss_improvement = last_window_losses[0] - last_window_losses[-1]  # Positive = improvement
 	loss_trend = last_window_losses[-1] - last_window_losses[0]  # Positive = worsening
 	close_to_best = best_loss is not None and abs(last_window_losses[-1] - best_loss) < best_loss_threshold
 	loss_plateau = abs(cumulative_loss_improvement) < loss_threshold
 	sustained_improvement = cumulative_loss_improvement > loss_threshold  # Significant continuous improvement
 
-	pairwise_improvements = [last_window_losses[i+1] - last_window_losses[i] for i in range(len(last_window_losses)-1)]
-	average_improvement = sum(pairwise_improvements) / len(pairwise_improvements) if pairwise_improvements else 0.0
-
-	# pairwise_improvements = np.diff(last_window_losses)
-	# average_improvement = np.mean(pairwise_improvements)
+	pairwise_improvements = [last_window_losses[i] - last_window_losses[i+1] for i in range(len(last_window_losses)-1)]
+	average_improvement = np.mean(pairwise_improvements) if pairwise_improvements else 0.0 # positive → improvement
 	
 	# Accuracy analysis
 	acc_plateau = False
@@ -739,7 +732,7 @@ def should_transition_phase(
 
 	# Detailed debugging prints
 	print(f"Phase transition:")
-	print(f"Losses[{len(last_window_losses)}={window} Windows]: stability: {stability}\n{last_window_losses}")
+	print(f"Losses[{len(last_window_losses)}={window} Windows]: Coefficient of Variation: {cv}\n{last_window_losses}")
 	print(
 		f"\t|Cumulative loss improvement| = {abs(cumulative_loss_improvement)} "
 		f"=> Loss plateau (<{loss_threshold}): {loss_plateau}"
@@ -754,7 +747,7 @@ def should_transition_phase(
 		f"Close to best loss (absolute diff) [<{best_loss_threshold}]: {close_to_best} "
 	)
 	print(f"pairwise_improvements[{len(pairwise_improvements)}]:\n{pairwise_improvements}")
-	print(f"\tAverage pairwise lost improvement: {average_improvement} vs avg_improvement: {avg_improvement}")
+	print(f"\tAverage pairwise lost improvement: {average_improvement}")
 	
 	if accuracies is not None and len(accuracies) >= window:
 		print(f"\t{window} Window accuracies: {last_window_accs}")
