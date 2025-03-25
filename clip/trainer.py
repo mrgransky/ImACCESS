@@ -998,10 +998,10 @@ def progressive_unfreeze_finetune(
 		epochs_in_current_phase += 1 # Increment the epoch counter for the current phase
 		print(f"Epoch [{epoch+1}/{num_epochs}] GPU Memory usage: {torch.cuda.memory_allocated(device) / 1024**3:.2f} GB")
 		print(
-			f"epoch: {epoch} min_epochs_before_transition: {min_epochs_before_transition}"
-			f"epoch >= min_epochs_before_transition: {epoch >= min_epochs_before_transition} "
+			f"epoch: {epoch} min_epochs_before_transition: {min_epochs_before_transition} "
+			f"epoch >= min_epochs_before_transition: {epoch >= min_epochs_before_transition}\n"
 			f"epochs_in_current_phase: {epochs_in_current_phase} min_epochs_per_phase: {min_epochs_per_phase} "
-			f"epochs_in_current_phase >= min_epochs_per_phase: {epochs_in_current_phase >= min_epochs_per_phase} "
+			f"epochs_in_current_phase >= min_epochs_per_phase: {epochs_in_current_phase >= min_epochs_per_phase}\n"
 			f"epoch >= min_epochs_before_transition and epochs_in_current_phase >= min_epochs_per_phase: "
 			f"{epoch >= min_epochs_before_transition and epochs_in_current_phase >= min_epochs_per_phase}"
 		)
