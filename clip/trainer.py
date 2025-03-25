@@ -1940,7 +1940,7 @@ def pretrain(
 
 	os.makedirs(results_dir, exist_ok=True)
 
-	print(f"Pretrain Evaluation {dataset_name} with {validation_loader.dataset.__class__.__name__} samples| {model_name} - {model_arch} | {device}".center(170, "-"))
+	print(f"Pretrain Evaluation {dataset_name} {model_name} - {model_arch} {device}".center(170, "-"))
 	
 	# 1. evaluate_retrieval_performance
 	img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(

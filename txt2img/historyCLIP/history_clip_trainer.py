@@ -233,7 +233,7 @@ def main():
 			img2txt_metrics_dict=all_img2txt_metrics,
 			txt2img_metrics_dict=all_txt2img_metrics,
 			topK_values=args.topK_values,
-			fname=os.path.join(args.dataset_dir, "results", f"{os.path.basename(args.dataset_dir)}_x{len(available_models)}_pretrained_clip_retrieval_metrics.png"),
+			results_dir=os.path.join(args.dataset_dir, "results"),
 		)
 	else:
 		raise ValueError("Invalid mode. Choose between 'pretrain', 'train', 'finetune'!")
