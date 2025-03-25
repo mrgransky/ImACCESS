@@ -978,7 +978,7 @@ def progressive_unfreeze_finetune(
 	metrics_for_all_epochs = []
 	img2txt_metrics_list = []
 	txt2img_metrics_list = []
-	global_patience = minimum_epochs # Total epochs without improvement across phases
+	global_patience = int(minimum_epochs * 1.5) # Total epochs without improvement across phases
 	global_counter = 0
 	global_best_loss = float('inf')
 	best_val_loss = float('inf')
