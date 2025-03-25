@@ -57,7 +57,9 @@ class EarlyStopping:
 		if self.best_score is None:
 			return True
 		improvement = (self.best_score - current_value) * self.sign
-		return improvement > self.min_delta
+		improved = improvement > self.min_delta
+		print(f"Improvement: {improvement} > min_delta: {self.min_delta} => Improved: {improved}")
+		return improved
 	
 	def calculate_trend(self) -> float:
 		"""
@@ -112,7 +114,6 @@ class EarlyStopping:
 			self.stopped_epoch = epoch
 			self.best_epoch = epoch
 			if self.restore_best_weights:
-				# self.best_weights = copy.deepcopy(model.state_dict())
 				self.best_weights = {k: v.clone().detach() for k, v in model.state_dict().items()}
 			self.counter = 0
 			self.improvement_history.append(True)
@@ -127,7 +128,7 @@ class EarlyStopping:
 		
 		trend = self.calculate_trend()
 		cumulative_improvement = abs(trend) if len(self.value_history) >= self.window_size else float('inf')
-		print(f">> Trend: {trend} | Cumulative Improvement: {cumulative_improvement}")
+		print(f">> Trend: {trend} | Cumulative Improvement: {cumulative_improvement} (cumulative_delta={self.cumulative_delta})")
 		
 		should_stop = False
 		if self.counter >= self.patience:
@@ -734,8 +735,8 @@ def should_transition_phase(
 		acc_plateau = abs(cumulative_acc_improvement) < accuracy_threshold
 
 	# Detailed debugging prints
-	print(f"Phase transition analysis: {window} Window Losses:")
-	print(f"Window Losses[{len(last_window_losses)}]/total losses[{len(losses)}]: Coefficient of Variation: {last_window_losses_cv}")
+	print(f"\nPhase transition analysis over {window} Window Losses:")
+	print(f"Window Losses[{len(last_window_losses)}]/total losses[{len(losses)}]: Coefficient of Variation: {last_window_losses_cv:.3f}%")
 	print(last_window_losses)
 	print(
 		f"\t|Cumulative loss improvement| = {abs(cumulative_loss_improvement)} "
@@ -779,7 +780,7 @@ def should_transition_phase(
 		transition = True
 		print("\t>> Decision: Transition due to accuracy plateau")
 
-	print(f"==>> Phase Transition Required? {transition}")
+	print(f"==>> Phase Transition Required? {transition}\n")
 	return transition
 
 def handle_phase_transition(
@@ -1040,7 +1041,7 @@ def progressive_unfreeze_finetune(
 			should_transition = should_transition_phase(
 				losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
 				accuracies=None,#avg_accs,
-				loss_threshold=1e-2,
+				loss_threshold=min_delta,
 				accuracy_threshold=5e-5,
 				best_loss_threshold=1e-3,
 				window=window_size,
@@ -1723,7 +1724,6 @@ def train(
 		minimum_epochs:int=20,
 		TOP_K_VALUES:List[int]=[1, 5, 10, 15, 20],
 	):
-	window_size = max(5, int(0.1 * len(train_loader)))  # 10% of training batches
 
 	early_stopping = EarlyStopping(
 		patience=patience,									# Wait for 10 epochs without improvement before stopping

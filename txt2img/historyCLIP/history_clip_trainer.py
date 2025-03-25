@@ -63,7 +63,7 @@ def main():
 	parser.add_argument('--lora_alpha', type=float, default=16.0, help='LoRA alpha (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_dropout', type=float, default=0.0, help='LoRA dropout (used if finetune_strategy=lora)')
 	parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
-	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
+	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=5e-2, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
 	parser.add_argument('--minimum_epochs', type=int, default=20, help='Early stopping minimum epochs')
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
