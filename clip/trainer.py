@@ -747,7 +747,7 @@ def should_transition_phase(
 		f"Close to best loss (absolute diff) [<{best_loss_threshold}]: {close_to_best} "
 	)
 	print(f"pairwise_improvements[{len(pairwise_improvements)}]:\n{pairwise_improvements}")
-	print(f"\tAverage pairwise lost improvement: {average_improvement}")
+	print(f"\tAverage pairwise lost improvement (>0 improvement): {average_improvement}")
 	
 	if accuracies is not None and len(accuracies) >= window:
 		print(f"\t{window} Window accuracies: {last_window_accs}")
