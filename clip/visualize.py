@@ -78,7 +78,7 @@ def plot_all_pretrain_metrics(
 		facecolor='white',
 	)
 	plt.tight_layout(rect=[0, 0.05, 1, 0.95])
-	plt.savefig(os.join.path(results_dir, fname), dpi=300, bbox_inches='tight')
+	plt.savefig(os.path.join(results_dir, fname), dpi=300, bbox_inches='tight')
 	plt.close(fig)
 	print(f"Saved combined pretrain metrics plot to {fname}")
 
