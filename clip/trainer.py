@@ -717,8 +717,11 @@ def should_transition_phase(
 	loss_plateau = abs(cumulative_loss_improvement) < loss_threshold
 	sustained_improvement = cumulative_loss_improvement > loss_threshold  # Significant continuous improvement
 
-	pairwise_improvements = [last_window_losses[i] - last_window_losses[i+1] for i in range(len(last_window_losses)-1)]
-	average_improvement = sum(pairwise_improvements) / len(pairwise_improvements) if pairwise_improvements else 0.0
+	# pairwise_improvements = [last_window_losses[i+1] - last_window_losses[i] for i in range(len(last_window_losses)-1)]
+	# average_improvement = sum(pairwise_improvements) / len(pairwise_improvements) if pairwise_improvements else 0.0
+
+	pairwise_improvements = np.diff(last_window_losses)
+	average_improvement = np.mean(pairwise_improvements)
 	
 	# Accuracy analysis
 	acc_plateau = False
