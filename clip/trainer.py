@@ -58,7 +58,7 @@ class EarlyStopping:
 			return True
 		improvement = (self.best_score - current_value) * self.sign
 		improved = improvement > self.min_delta
-		print(f"Improvement: {improvement} > min_delta: {self.min_delta} => Improved: {improved}")
+		print(f"\tImprovement(w.r.t. best score={self.best_score}): {improvement} > min_delta: {self.min_delta}: {improved}")
 		return improved
 	
 	def calculate_trend(self) -> float:
@@ -682,6 +682,76 @@ def unfreeze_layers(
 	)
 
 def should_transition_phase(
+		losses: list[float],
+		window: int,
+		best_loss: float,
+		best_loss_threshold: float = 1e-3,
+		volatility_threshold: float = 10.0,  	# High volatility threshold (CV%)
+		slope_threshold: float = 0.0,        	# Slope must be > this to indicate increase
+		pairwise_imp_threshold: float = 5e-3  # Minimum pairwise improvement
+	) -> bool:
+	
+	if len(losses) < window:
+		print(f"<!> Not enough loss data ({len(losses)} < {window} epochs) to evaluate phase transition.")
+		return False
+	
+	last_window = losses[-window:]
+	current_loss = last_window[-1]
+
+	# --- METRIC CALCULATIONS ---
+	# 1. Volatility (Coefficient of Variation)
+	mean_loss = np.mean(last_window)
+	std_loss = np.std(last_window)
+	cv = (std_loss / mean_loss) * 100 if mean_loss != 0 else 0  # Volatility in %
+
+	# 2. Pairwise Improvement (average improvement per step)
+	pairwise_diffs = [last_window[i] - last_window[i+1] for i in range(len(last_window)-1)]
+	pairwise_imp_avg = np.mean(pairwise_diffs) if pairwise_diffs else 0
+
+	# 3. Trend Slope (using linear regression)
+	def compute_slope(losses):
+			x = np.arange(len(losses))
+			A = np.vstack([x, np.ones(len(x))]).T
+			m, c = np.linalg.lstsq(A, losses, rcond=None)[0]
+			return m  # Slope
+	
+	slope = compute_slope(last_window)
+
+	# 4. Proximity to best loss
+	close_to_best = abs(current_loss - best_loss) < best_loss_threshold
+
+	# --- DECISION LOGIC ---
+	transition = False
+	reasons = []
+	# Check volatility
+	if cv >= volatility_threshold:
+			transition = True
+			reasons.append(f"High volatility (CV={cv:.2f}%)")
+	# Check upward trend (loss increasing)
+	if slope > slope_threshold:
+			transition = True
+			reasons.append(f"Positive slope (slope={slope:.5f})")
+	# Check insufficient improvement and not near best loss
+	if (pairwise_imp_avg < pairwise_imp_threshold) and (not close_to_best):
+			transition = True
+			reasons.append(f"Low improvement ({pairwise_imp_avg:.5f} < {pairwise_imp_threshold})")
+
+	# --- DEBUGGING OUTPUTS ---
+	print(f"\nPhase Transition Evaluation (Window={window}):")
+	print(f"Last {window} Losses: {last_window}")
+	print(f"Current Loss: {current_loss:.5f} | Best Loss: {best_loss if best_loss else 'N/A'}")
+	print(f"Volatility (CV%): {cv:.2f}% | Pairwise Improvement: {pairwise_imp_avg:.5f}")
+	print(f"Trend Slope: {slope:.5f} (Positive = increasing loss)")
+	print(f"Close to best loss? {close_to_best}")
+
+	if transition:
+		print(f"==>> Transition Required! Reasons: {', '.join(reasons)}")
+	else:
+		print("==>> No transition needed: Stable and improving.")
+	
+	return transition
+
+def should_transition_phase_original(
 		losses: List[float],
 		accuracies: List[float] = None,
 		loss_threshold: float = 5e-3,
@@ -1002,14 +1072,21 @@ def progressive_unfreeze_finetune(
 			txt2img_accs = [metrics["txt2img_acc"] for metrics in metrics_for_all_epochs]
 			avg_accs = [(img + txt) / 2 for img, txt in zip(img2txt_accs, txt2img_accs)]
 
+			# should_transition = should_transition_phase(
+			# 	losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
+			# 	accuracies=None,#avg_accs,
+			# 	loss_threshold=min_delta,
+			# 	accuracy_threshold=5e-5,
+			# 	best_loss_threshold=1e-3,
+			# 	window=window_size,
+			# 	best_loss=best_val_loss,
+			# )
+
 			should_transition = should_transition_phase(
 				losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
-				accuracies=None,#avg_accs,
-				loss_threshold=min_delta,
-				accuracy_threshold=5e-5,
-				best_loss_threshold=1e-3,
 				window=window_size,
 				best_loss=best_val_loss,
+				best_loss_threshold=1e-3,
 			)
 
 			if should_transition:
