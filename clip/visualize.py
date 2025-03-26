@@ -6,7 +6,7 @@ def plot_all_pretrain_metrics(
 		txt2img_metrics_dict: dict,
 		topK_values: list,
 		results_dir: str,
-		figure_size=(14, 8),
+		figure_size=(12, 8),
 		DPI: int=300,  # Higher DPI for publication quality
 	):
 	metrics = ["mP", "mAP", "Recall"]
@@ -16,8 +16,8 @@ def plot_all_pretrain_metrics(
 	# colors = plt.cm.tab10.colors  # Use a distinct color for each of the 9 models
 	# colors = plt.cm.Dark2.colors
 	colors = plt.cm.Set1.colors
-	markers = ['o', 's', '^', 'D', 'v', 'p', 'h', '*', 'H']  # 9 distinct markers
-	linestyles = ['-', '--', ':', '-.', '-', '--', ':', '-.', '-']  # Cycle through styles
+	markers = ['D', 'v', 'o', 's', '^', 'p', 'h', '*', 'H']  # 9 distinct markers
+	linestyles = [':', '-.', '-', '--', '-', '--', ':', '-.', '-']  # Cycle through styles
 	fig, axes = plt.subplots(len(modes), len(metrics), figsize=figure_size, constrained_layout=True)
 	fig.suptitle(f"{dataset_name} Pre-trained CLIP x{len(txt2img_metrics_dict)} Vision Encoder Retrieval Metrics", fontsize=12, fontweight='bold')
 	for i, mode in enumerate(modes):
@@ -37,8 +37,8 @@ def plot_all_pretrain_metrics(
 											color=color,
 											marker=marker,
 											linestyle=linestyle,
-											linewidth=1.5,
-											markersize=6,
+											linewidth=1.9,
+											markersize=4,
 									)
 									legend_handles.append(line)
 									legend_labels.append(model_name)
