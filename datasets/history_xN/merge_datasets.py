@@ -4,6 +4,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 from misc.utils import *
+from misc.visualize import *
 
 # how to run:
 # $ python merge_datasets.py
@@ -13,8 +14,8 @@ from misc.utils import *
 # $ nohup python -u merge_datasets.py > /scratch/project_2004072/ImACCESS/trash/logs/history_xN_merged_datasets.out &
 
 USER = os.getenv("USER")
-FIGURE_SIZE = (13, 7)
-DPI = 250
+FIGURE_SIZE = (12, 9)
+DPI = 350
 BINs = 60
 
 VAL_SPLIT_PCT = 0.35
@@ -67,41 +68,24 @@ merged_df = pd.concat(dfs, ignore_index=True)
 print(list(merged_df.columns), merged_df.shape)
 print(merged_df.head(10))
 merged_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata.csv'), index=False)
-label_counts = merged_df['label'].value_counts()
 all_image_paths = merged_df['img_path'].tolist()
 print(f"Total number of images: {len(all_image_paths)}")
-# print(label_counts.tail(25))
 
-# Visualize label distribution
-plt.figure(figsize=FIGURE_SIZE)
-label_counts.plot(kind='bar', fontsize=9)
-plt.title(f'Label Frequency (total: {label_counts.shape[0]}) total IMGs: {merged_df.shape[0]}')
-plt.xlabel('Label')
-plt.ylabel('Frequency')
-plt.yticks(rotation=90, fontsize=9,)
-plt.tight_layout()
-plt.savefig(
-	fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_all_query_labels_x_{label_counts.shape[0]}_freq.png"),
-	dpi=DPI,
-	bbox_inches='tight'
+plot_label_distribution(
+	df=merged_df,
+	dname=dataset_name,
+	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_all_labels_distribution.png'),
+	FIGURE_SIZE=(14, 8),
+	DPI=DPI,
 )
 
-dataset_unique_label_counts = merged_df.groupby('dataset')['label'].nunique()
-print(dataset_unique_label_counts)
-plt.figure(figsize=FIGURE_SIZE)
-sns.countplot(x="label", hue="dataset", data=merged_df, palette="bright")
-ax = plt.gca()
-ax.tick_params(axis='x', rotation=90, labelsize=9)  # Rotate the x-axis tick labels
-ax.tick_params(axis='y', rotation=90, labelsize=9)
-handles, labels = ax.get_legend_handles_labels()
-new_labels = [f"{label} | ({dataset_unique_label_counts[label]})" for label in labels]
-ax.legend(handles, new_labels, loc="best", fontsize=8, title="Dataset | (Unique Label Count)")
-plt.title(f'Grouped Bar Chart for total of {label_counts.shape[0]} Labels Frequency for {len(dfs)} Datasets')
-plt.tight_layout()
-plt.savefig(
-	fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_labels_x_{label_counts.shape[0]}_freq_x_{len(dfs)}.png"),
-	dpi=DPI,
-	bbox_inches='tight'
+plot_grouped_bar_chart(
+	merged_df=merged_df,
+	dataset_name=dataset_name,
+	OUTPUT_DIRECTORY=OUTPUT_DIRECTORY,
+	DPI=DPI,
+	FIGURE_SIZE=(16, 8),
+	fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_labels_x_{merged_df['label'].value_counts().shape[0]}_freq_x_{len(dfs)}_datasets_grouped_bar_chart.png")
 )
 
 # stratified splitting
@@ -116,37 +100,33 @@ train_df, val_df = train_test_split(
 train_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_train.csv'), index=False)
 val_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_val.csv'), index=False)
 
-# Visualize label distribution in training and validation sets
-plt.figure(figsize=FIGURE_SIZE)
-train_df['label'].value_counts().plot(kind='bar', color='blue', alpha=0.6, label=f'Train {1-VAL_SPLIT_PCT}')
-val_df['label'].value_counts().plot(kind='bar', color='red', alpha=0.9, label=f'Validation {VAL_SPLIT_PCT}')
-plt.title(f'Stratified Label Distribution of {train_df.shape[0]} Training samples {val_df.shape[0]} & Validation Samples (Total: {merged_df.shape[0]})', fontsize=9)
-plt.xlabel('Label')
-plt.ylabel('Frequency')
-plt.yticks(rotation=90, fontsize=9,)
-plt.legend(loc='best', ncol=2, frameon=False, fontsize=8)
-plt.tight_layout()
-plt.savefig(
+plot_train_val_label_distribution(
+	train_df=train_df,
+	val_df=val_df,
+	dataset_name=dataset_name,
+	OUTPUT_DIRECTORY=OUTPUT_DIRECTORY,
+	VAL_SPLIT_PCT=VAL_SPLIT_PCT,
 	fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_simple_random_split_stratified_label_distribution_train_val.png'),
-	dpi=DPI,
-	bbox_inches='tight'
+	FIGURE_SIZE=(14, 8),
+	DPI=DPI,
 )
-plt.close()
 
 plot_year_distribution(
 	df=merged_df,
 	dname=dataset_name,
 	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_year_distribution_{merged_df.shape[0]}_samples.png'),
 	BINs=BINs,
+	FIGURE_SIZE=(18, 10),
+	DPI=DPI,
 )
-img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
-img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
 
-mean, std = get_mean_std_rgb_img_multiprocessing(
-	source=all_image_paths,
-	num_workers=8,
-	batch_size=16,
-	img_rgb_mean_fpth=img_rgb_mean_fpth,
-	img_rgb_std_fpth=img_rgb_std_fpth,
-)
-print(f"Mean: {mean}, Std: {std}")
+# img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
+# img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
+# mean, std = get_mean_std_rgb_img_multiprocessing(
+# 	source=all_image_paths,
+# 	num_workers=8,
+# 	batch_size=16,
+# 	img_rgb_mean_fpth=img_rgb_mean_fpth,
+# 	img_rgb_std_fpth=img_rgb_std_fpth,
+# )
+# print(f"Mean: {mean}, Std: {std}")
