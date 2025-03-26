@@ -723,26 +723,29 @@ def should_transition_phase(
 	# --- DECISION LOGIC ---
 	transition = False
 	reasons = []
+
 	# Check volatility
 	if cv >= volatility_threshold:
 			transition = True
-			reasons.append(f"High volatility (CV={cv:.2f}%)")
+			reasons.append(f"High volatility (CV={cv:.3f}%)")
+
 	# Check upward trend (loss increasing)
 	if slope > slope_threshold:
 			transition = True
-			reasons.append(f"Positive slope (slope={slope:.5f})")
+			reasons.append(f"Positive slope (slope={slope})")
+
 	# Check insufficient improvement and not near best loss
 	if (pairwise_imp_avg < pairwise_imp_threshold) and (not close_to_best):
 			transition = True
-			reasons.append(f"Low improvement ({pairwise_imp_avg:.5f} < {pairwise_imp_threshold})")
+			reasons.append(f"Low improvement ({pairwise_imp_avg} < {pairwise_imp_threshold})")
 
 	# --- DEBUGGING OUTPUTS ---
 	print(f"\nPhase Transition Evaluation (Window={window}):")
-	print(f"Last {window} Losses: {last_window}")
-	print(f"Current Loss: {current_loss:.5f} | Best Loss: {best_loss if best_loss else 'N/A'}")
-	print(f"Volatility (CV%): {cv:.2f}% | Pairwise Improvement: {pairwise_imp_avg:.5f}")
-	print(f"Trend Slope: {slope:.5f} (Positive = increasing loss)")
-	print(f"Close to best loss? {close_to_best}")
+	print(f"Last {window} Losses:\n{last_window}")
+	print(f"\tCurrent Loss: {current_loss} | Best Loss: {best_loss}")
+	print(f"\tVolatility (CV%): {cv:.3f}% | Pairwise Improvement: {pairwise_imp_avg}")
+	print(f"\tTrend Slope: {slope} (Positive = increasing loss)")
+	print(f"\tClose to best loss? {close_to_best}")
 
 	if transition:
 		print(f"==>> Transition Required! Reasons: {', '.join(reasons)}")
@@ -1042,7 +1045,7 @@ def progressive_unfreeze_finetune(
 	best_txt2img_metrics = None
 	current_phase = 0
 	epochs_in_current_phase = 0
-	min_epochs_per_phase = 7
+	min_epochs_per_phase = 5
 
 	# global minimum number of epochs that must be completed 
 	# before any phase transition can occur:
