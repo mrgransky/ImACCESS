@@ -6,6 +6,8 @@ def plot_all_pretrain_metrics(
 		txt2img_metrics_dict: dict,
 		topK_values: list,
 		results_dir: str,
+		figure_size=(14, 8),
+		DPI: int=300,  # Higher DPI for publication quality
 	):
 	metrics = ["mP", "mAP", "Recall"]
 	modes = ["Image-to-Text", "Text-to-Image"]
@@ -16,7 +18,7 @@ def plot_all_pretrain_metrics(
 	colors = plt.cm.Set1.colors
 	markers = ['o', 's', '^', 'D', 'v', 'p', 'h', '*', 'H']  # 9 distinct markers
 	linestyles = ['-', '--', ':', '-.', '-', '--', ':', '-.', '-']  # Cycle through styles
-	fig, axes = plt.subplots(len(modes), len(metrics), figsize=(18, 11), constrained_layout=True)
+	fig, axes = plt.subplots(len(modes), len(metrics), figsize=figure_size, constrained_layout=True)
 	fig.suptitle(f"{dataset_name} Pre-trained CLIP x{len(txt2img_metrics_dict)} Vision Encoder Retrieval Metrics", fontsize=12, fontweight='bold')
 	for i, mode in enumerate(modes):
 			metrics_dict = img2txt_metrics_dict if mode == "Image-to-Text" else txt2img_metrics_dict
@@ -59,10 +61,11 @@ def plot_all_pretrain_metrics(
 		legend_handles,
 		legend_labels,
 		title="Vision Encoder",
-		title_fontsize=11,
-		fontsize=11,
+		title_fontsize=14,
+		fontsize=12,
 		loc='upper center',
-		ncol=len(models) // 2 + len(models) % 2,  # Adjust columns based on number of models
+		# ncol=len(models) // 2 + len(models) % 2,  # Adjust columns based on number of models
+		ncol=len(models),  # Adjust columns based on number of models
 		bbox_to_anchor=(0.5, 0.02),
 		bbox_transform=fig.transFigure,
 		frameon=True,
@@ -73,7 +76,7 @@ def plot_all_pretrain_metrics(
 		facecolor='white',
 	)
 	plt.tight_layout(rect=[0, 0.05, 1, 0.95])
-	plt.savefig(os.path.join(results_dir, fname), dpi=300, bbox_inches='tight')
+	plt.savefig(os.path.join(results_dir, fname), dpi=DPI, bbox_inches='tight')
 	plt.close(fig)
 
 def visualize_samples(dataloader, dataset, num_samples=5):
