@@ -2,21 +2,20 @@ from utils import *
 from model import get_lora_clip
 from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics
 
-# Moved compute_slope outside the class to be globally accessible
 def compute_slope(losses: List[float]) -> float:
-		"""Computes the slope of the best-fit line for a list of losses."""
-		if len(losses) < 2: # Need at least two points for a slope
-				# print("Warning: compute_slope called with less than 2 points. Returning 0.")
-				return 0.0
-		x = np.arange(len(losses))
-		A = np.vstack([x, np.ones(len(x))]).T
-		try:
-				# Use np.linalg.lstsq for linear regression
-				m, _ = np.linalg.lstsq(A, np.array(losses), rcond=None)[0]
-				return m
-		except np.linalg.LinAlgError:
-				print("Warning: Least squares failed in compute_slope, returning slope 0.")
-				return 0.0 # Handle potential numerical issues
+	"""Computes the slope of the best-fit line for a list of losses."""
+	if len(losses) < 2: # Need at least two points for a slope
+		print("Warning: compute_slope called with less than 2 points. Returning 0.")
+		return 0.0
+	x = np.arange(len(losses))
+	A = np.vstack([x, np.ones(len(x))]).T
+	try:
+		# Use np.linalg.lstsq for linear regression
+		m, _ = np.linalg.lstsq(A, np.array(losses), rcond=None)[0]
+		return m
+	except np.linalg.LinAlgError:
+		print("Warning: Least squares failed in compute_slope, returning slope 0.")
+		return 0.0 # Handle potential numerical issues
 
 class EarlyStopping:
 		"""
@@ -969,7 +968,7 @@ def progressive_unfreeze_finetune(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		window_size: int, # Make adaptive or pass explicitly
+		window_size: int,
 		patience: int = 10,
 		min_delta: float = 1e-4, # Make slightly less sensitive than default
 		cumulative_delta: float = 5e-3, # Keep cumulative check reasonable
@@ -1053,7 +1052,6 @@ def progressive_unfreeze_finetune(
 				layer_groups_to_unfreeze=layer_groups_to_unfreeze,
 		)
 		max_phases = len(unfreeze_schedule)
-		print(f"Generated unfreeze schedule with {max_phases} phases.")
 
 		# Optimizer and Scheduler
 		# Filter parameters dynamically based on requires_grad, which changes per phase
@@ -1145,11 +1143,11 @@ def progressive_unfreeze_finetune(
 										initial_lr=initial_learning_rate,
 										max_phases=max_phases,
 										optimizer=optimizer, # Pass optimizer
-										# scheduler=scheduler, # Pass scheduler
 										window_size=window_size,
 										current_loss=val_losses[-1],
 										best_loss=early_stopping.get_best_score()
 								)
+
 								epochs_in_current_phase = 0 # Reset phase epoch counter
 								early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
 								print(f"Transitioned to Phase {current_phase}. Early stopping reset.")
@@ -1289,8 +1287,7 @@ def progressive_unfreeze_finetune(
 				epochs_in_current_phase += 1
 				epoch_duration = time.time() - epoch_start_time
 				print(f"Epoch {epoch+1} Duration: {epoch_duration:.2f}s")
-				# Optional: Print detailed status from early stopper
-				# print(f"EarlyStopping Status: {early_stopping.get_status()}")
+				print(f"EarlyStopping Status: {early_stopping.get_status()}")
 				print("-" * 80)
 
 		# --- End of Training ---
@@ -1337,9 +1334,8 @@ def progressive_unfreeze_finetune(
 		# Adjust file naming for plots
 		plot_file_base = os.path.join(results_dir, f"{base_filename}_ep{epoch+1}_ph{current_phase}")
 
-
 		file_base_name = (
-			f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
+			f"{dataset_name}_{mode_name}_{model_name}_{re.sub('/', '', model_arch)}_"
 			f"ep_{len(training_losses)}_"
 			f"wd_{weight_decay:.1e}_"
 			f"bs_{train_loader.batch_size}_"
