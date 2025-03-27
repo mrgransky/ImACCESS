@@ -316,7 +316,7 @@ def plot_label_distribution(
 	for i, v in enumerate(label_counts):
 		ax.text(
 			i, 
-			v + 0.9, 
+			v + (v * 0.06),  # Adjust vertical position relative to bar height
 			str(v), 
 			ha='center',
 			fontsize=8,
@@ -324,6 +324,12 @@ def plot_label_distribution(
 			alpha=0.8,
 			color='black',
 			rotation=75,
+			bbox=dict(
+				facecolor='white',
+				edgecolor='none',
+				alpha=0.7,
+				pad=0.5
+			)
 		)
 	
 	# Add a logarithmic scale option for highly imbalanced distributions
@@ -335,8 +341,11 @@ def plot_label_distribution(
 			ax=ax_log,
 			color='red',
 			marker='o',
-			linewidth=2,
-			alpha=0.6,
+			markerfacecolor='none',  # Remove marker fill
+			markeredgecolor='red',   # Set marker edge color
+			markersize=5,           # Optional: adjust marker size
+			linewidth=1.5,
+			alpha=0.8,
 			label='Logarithmic'
 		)
 		ax_log.set_ylabel('Log Frequency', color='red', fontsize=9, fontweight='bold')
@@ -362,7 +371,6 @@ def plot_label_distribution(
 		f"    Least frequent: {least_freq_label:.2f}%"
 	)
 	print(f"stats_text:\n{stats_text}\n")
-	# Place stats_text inside the plot
 	plt.text(
 		0.865, # horizontal position
 		0.88, # vertical position
