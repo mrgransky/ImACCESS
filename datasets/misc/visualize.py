@@ -9,20 +9,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import inspect
 
-# # Set a consistent, publication-quality style
-# plt.style.use('seaborn-v0_8-whitegrid')
-# sns.set_context("paper")
-
-# # Define a consistent color palette 
-# colors = {
-# 		'primary': '#1f77b4',   # blue
-# 		'secondary': '#ff7f0e', # orange
-# 		'highlight': '#d62728', # red
-# 		'accent': '#2ca02c',    # green
-# 		'neutral': '#7f7f7f',   # gray
-# 		'background': '#f5f5f5' # light gray
-# }
-
 def plot_grouped_bar_chart(
 		merged_df: pd.DataFrame,
 		dataset_name: str,
@@ -312,10 +298,13 @@ def plot_label_distribution(
 		width=0.8,
 		edgecolor='white',
 		linewidth=0.8,
+		alpha=0.8,
+		label='Linear'
 	)
 	ax.spines['top'].set_visible(False)
 	plt.setp(ax.spines.values(), visible=False)  # This will ensure spines are hidden
 	ax.set_frame_on(True)  # Keep the frame but hide specific spines
+
 	# Enhance readability for large number of labels
 	if len(label_counts) > 20:
 		plt.xticks(rotation=90, fontsize=11)
@@ -327,14 +316,14 @@ def plot_label_distribution(
 	for i, v in enumerate(label_counts):
 		ax.text(
 			i, 
-			v + 0.8, 
+			v + 0.9, 
 			str(v), 
 			ha='center',
 			fontsize=8,
 			fontweight='bold',
 			alpha=0.8,
 			color='black',
-			rotation=60,
+			rotation=75,
 		)
 	
 	# Add a logarithmic scale option for highly imbalanced distributions
@@ -348,29 +337,67 @@ def plot_label_distribution(
 			marker='o',
 			linewidth=2,
 			alpha=0.6,
-			label='Log scale'
+			label='Logarithmic'
 		)
-		ax_log.set_ylabel('Log Frequency', color='red', fontsize=9)
+		ax_log.set_ylabel('Log Frequency', color='red', fontsize=9, fontweight='bold')
 		ax_log.tick_params(axis='y', colors='red')
-		ax_log.legend(loc='upper right')
 	
 	ax.set_xlabel('Label', fontsize=10)
 	ax.set_ylabel('Frequency', fontsize=10)
 	
 	# Add basic statistics for the distribution
+	imbalaned_ratio = label_counts.max()/label_counts.min()
+	median_label_size = label_counts.median()
+	mean_label_size = label_counts.mean()
+	std_label_size = label_counts.std()
+	most_freq_label = label_counts.max()/df.shape[0]*100
+	least_freq_label = label_counts.min()/df.shape[0]*100
 	stats_text = (
-		f"Imbalance ratio: {label_counts.max()/label_counts.min():.2f} | "
-		f"Median class size: {label_counts.median():.0f} | "
-		f"Mean class size: {label_counts.mean():.2f}"
+		f"Imbalance ratio: {imbalaned_ratio:.2f}\n"
+		f"Median label size: {median_label_size:.0f}\n"
+		f"Mean label size: {mean_label_size:.2f}\n"
+		f"Standard deviation: {std_label_size:.2f}\n"
+		f"Most frequent label: {most_freq_label:.1f}%\n"
+		f"Least frequent label: {least_freq_label:.2f}%"
 	)
-	
+	print(f"stats_text:\n{stats_text}\n")
+	# Place stats_text inside the plot
+	plt.text(
+		0.882, # horizontal position
+		0.88, # vertical position
+		stats_text,
+		transform=ax.transAxes,
+		fontsize=7,
+		verticalalignment='top',
+		horizontalalignment='left',
+		color='black',
+		bbox=dict(boxstyle='round,pad=0.5',facecolor='white', alpha=0.8, edgecolor='black', linewidth=0.8)
+	)
+
 	# Enhanced title and labels
 	plt.title(
-		f'{dname} Label Distribution (Total samples: {df.shape[0]} Labels: {len(df["label"].unique())})\n'
-		f'{stats_text}', 
+		f'{dname} Label Distribution (Total samples: {df.shape[0]} Unique Labels: {len(df["label"].unique())})', 
 		fontsize=11, 
 		fontweight='bold',
 	)
+	# Create a single legend
+	h1, l1 = ax.get_legend_handles_labels()
+	h2, l2 = ax_log.get_legend_handles_labels()
+	ax.legend(
+		h1 + h2, 
+		l1 + l2, 
+		loc='best', 
+		title='Label Distribution (Scale)',
+		title_fontsize=12,
+		fontsize=9, 
+		ncol=2,
+		frameon=True, 
+		fancybox=True, 
+		shadow=True, 
+		edgecolor='black', 
+		facecolor='white'
+	)
+
 	plt.grid(axis='y', alpha=0.7, linestyle='--')
 	plt.tight_layout()
 	plt.savefig(fpth, dpi=DPI, bbox_inches='tight')
