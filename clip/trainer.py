@@ -868,81 +868,66 @@ def should_transition_phase(
 		return transition
 
 def handle_phase_transition(
-    current_phase: int,
-    initial_lr: float,
-    max_phases: int,
-    optimizer: torch.optim.Optimizer, # Pass optimizer directly
-    scheduler, # Keep scheduler for OneCycleLR specific updates if needed
-    window_size: int,
-    current_loss: float,
-    best_loss: Optional[float] # Best loss can be None initially
+		current_phase: int,
+		initial_lr: float,
+		max_phases: int,
+		optimizer: torch.optim.Optimizer, # Pass optimizer directly
+		window_size: int,
+		current_loss: float,
+		best_loss: Optional[float] # Best loss can be None initially
 	) -> Tuple[int, float]:
-    """
-    Handles the logic for transitioning to the next phase, including LR adjustment.
+		"""
+		Handles the logic for transitioning to the next phase, including LR adjustment.
 
-    Args:
-        current_phase: The current phase index (0-based).
-        initial_lr: The initial learning rate set at the beginning of training.
-        max_phases: The total number of phases defined in the schedule.
-        optimizer: The PyTorch optimizer instance.
-        scheduler: The learning rate scheduler instance.
-        window_size: The window size used for metrics.
-        current_loss: The validation loss of the last epoch.
-        best_loss: The best validation loss observed so far.
+		Args:
+				current_phase: The current phase index (0-based).
+				initial_lr: The initial learning rate set at the beginning of training.
+				max_phases: The total number of phases defined in the schedule.
+				optimizer: The PyTorch optimizer instance.
+				window_size: The window size used for metrics.
+				current_loss: The validation loss of the last epoch.
+				best_loss: The best validation loss observed so far.
 
-    Returns:
-        Tuple containing the new phase index and the new learning rate.
-    """
-    if best_loss is None or best_loss <= 0:
-      loss_ratio = 1.0 # Avoid division by zero or negative ratio
-    else:
-      loss_ratio = min(max(0.5, current_loss / best_loss), 2.0) # Clamp ratio for stability
+		Returns:
+				Tuple containing the new phase index and the new learning rate.
+		"""
+		if best_loss is None or best_loss <= 0:
+			loss_ratio = 1.0 # Avoid division by zero or negative ratio
+		else:
+			loss_ratio = min(max(0.5, current_loss / best_loss), 2.0) # Clamp ratio for stability
 
-    # Adaptive window factor
-    window_factor = max(0.5, min(1.5, 10 / window_size)) # Slightly less aggressive range
+		# Adaptive window factor
+		window_factor = max(0.5, min(1.5, 10 / window_size)) # Slightly less aggressive range
 
-    next_phase = current_phase + 1
-    if next_phase >= max_phases:
-        # Already in the last phase or beyond, potentially just reduce LR further
-        next_phase = max_phases - 1 # Stay in the last defined phase
-        # Use a more aggressive reduction in the final phase
-        phase_factor = 0.1 # Fixed reduction factor
-        print(f"<!> Already in final phase ({current_phase}). Applying fixed LR reduction.")
-    else:
-        # Dynamic phase-based reduction, potentially scaled by window size
-        # Scale exponent based on relative progress through phases
-        phase_progress = next_phase / max(1, max_phases -1) # 0 to 1
-        phase_factor = 0.75 ** phase_progress # Exponential decay based on phase progress (less aggressive than 0.8)
+		next_phase = current_phase + 1
+		if next_phase >= max_phases:
+				# Already in the last phase or beyond, potentially just reduce LR further
+				next_phase = max_phases - 1 # Stay in the last defined phase
+				# Use a more aggressive reduction in the final phase
+				phase_factor = 0.1 # Fixed reduction factor
+				print(f"<!> Already in final phase ({current_phase}). Applying fixed LR reduction.")
+		else:
+				# Dynamic phase-based reduction, potentially scaled by window size
+				# Scale exponent based on relative progress through phases
+				phase_progress = next_phase / max(1, max_phases -1) # 0 to 1
+				phase_factor = 0.75 ** phase_progress # Exponential decay based on phase progress (less aggressive than 0.8)
 
-    # Calculate new learning rate
-    # Combine factors, ensure LR doesn't drop too low
-    new_lr = initial_lr * phase_factor * loss_ratio * window_factor
-    min_allowable_lr = initial_lr * 1e-3 # Don't go below 0.1% of initial LR
-    new_lr = max(new_lr, min_allowable_lr)
+		# Calculate new learning rate
+		# Combine factors, ensure LR doesn't drop too low
+		new_lr = initial_lr * phase_factor * loss_ratio * window_factor
+		min_allowable_lr = initial_lr * 1e-3 # Don't go below 0.1% of initial LR
+		new_lr = max(new_lr, min_allowable_lr)
 
-    print(f"\n--- Phase Transition Occurred (Moving to Phase {next_phase}) ---")
-    print(f"Previous Phase: {current_phase}")
-    print(f"Factors -> Loss Ratio: {loss_ratio:.3f}, Window Factor: {window_factor:.3f}, Phase Factor: {phase_factor:.3f}")
-    print(f"Calculated New LR: {new_lr:.3e} (min allowable: {min_allowable_lr:.3e})")
+		print(f"\n--- Phase Transition Occurred (Moving to Phase {next_phase}) ---")
+		print(f"Previous Phase: {current_phase}")
+		print(f"Factors -> Loss Ratio: {loss_ratio:.3f}, Window Factor: {window_factor:.3f}, Phase Factor: {phase_factor:.3f}")
+		print(f"Calculated New LR: {new_lr:.3e} (min allowable: {min_allowable_lr:.3e})")
 
-    # Update LR in the optimizer directly
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = new_lr
+		# Update LR in the optimizer directly
+		for param_group in optimizer.param_groups:
+				param_group['lr'] = new_lr
 
-    # Update OneCycleLR scheduler if used (adjust max_lr and base_lrs)
-    if isinstance(scheduler, torch.optim.lr_scheduler.OneCycleLR):
-        print(f"Updating OneCycleLR: max_lr={new_lr:.3e}")
-        # Important: Update internal state correctly for OneCycleLR
-        scheduler.max_lr = new_lr
-        # scheduler.base_lrs needs careful handling based on OneCycleLR implementation details
-        # Often, just setting max_lr might be enough if base_lrs scale relative to it,
-        # but directly setting base_lrs might be needed depending on version/usage.
-        # Let's assume setting max_lr is the primary way for now.
-        # If issues arise, consult OneCycleLR docs for resetting base LRs.
-        # scheduler.base_lrs = [new_lr / scheduler.total_steps * scheduler.step_num for _ in scheduler.base_lrs] # Example complex update
-        # Safest might be recreating scheduler, but let's try updating max_lr first.
-
-    return next_phase, new_lr
+		return next_phase, new_lr
 
 def get_unfreeze_pcts_hybrid(
 		model: torch.nn.Module,
@@ -1045,6 +1030,13 @@ def progressive_unfreeze_finetune(
 				min_phases_before_stopping=min_phases_before_stopping
 		)
 
+		# Find dropout value
+		dropout_val = 0.0
+		for name, module in model.named_modules():
+			if isinstance(module, torch.nn.Dropout):
+				dropout_val = module.p
+				break
+
 		# Determine unfreeze schedule percentages
 		if unfreeze_percentages is None:
 				unfreeze_percentages = get_unfreeze_pcts_hybrid(
@@ -1094,11 +1086,11 @@ def progressive_unfreeze_finetune(
 		layer_cache = {} # Cache for layer status (optional, used by get_status)
 		last_lr = initial_learning_rate # Track current LR
 
-		# Model saving path
 		try:
 			dataset_name = validation_loader.dataset.dataset.__class__.__name__
 		except:
 			dataset_name = validation_loader.dataset.dataset_name
+
 		mode_name = inspect.stack()[0].function
 		model_arch = re.sub('/', '', model.name) if hasattr(model, 'name') else 'unknown_arch'
 		model_class_name = model.__class__.__name__
@@ -1112,7 +1104,6 @@ def progressive_unfreeze_finetune(
 		print(f"Early Stopping: Patience={patience}, MinDelta={min_delta}, Window={window_size}, MinEpochs={minimum_epochs}, MinPhases={min_phases_before_stopping}")
 		print(f"Phase Transition: Window={window_size}, MinEpochsInPhase={min_epochs_per_phase}")
 		print("-" * 80)
-
 
 		# --- Main Training Loop ---
 		train_start_time = time.time()
@@ -1154,7 +1145,7 @@ def progressive_unfreeze_finetune(
 										initial_lr=initial_learning_rate,
 										max_phases=max_phases,
 										optimizer=optimizer, # Pass optimizer
-										scheduler=scheduler, # Pass scheduler
+										# scheduler=scheduler, # Pass scheduler
 										window_size=window_size,
 										current_loss=val_losses[-1],
 										best_loss=early_stopping.get_best_score()
@@ -1171,6 +1162,21 @@ def progressive_unfreeze_finetune(
 								# Re-initialize scheduler state if necessary (especially for step-based schedulers)
 								# For OneCycleLR, updating max_lr might be sufficient, but re-creating might be safer if state issues occur.
 								# Let's assume updating max_lr was handled in handle_phase_transition for now.
+								optimizer.param_groups[0]['lr'] = last_lr # Set the LR for the new group
+								print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e} for the new phase.")
+
+								print("Re-initializing OneCycleLR scheduler...")
+								scheduler = torch.optim.lr_scheduler.OneCycleLR(
+									optimizer=optimizer,
+									max_lr=initial_learning_rate, # Use the overall peak LR
+									steps_per_epoch=len(train_loader),
+									epochs=num_epochs, # Schedule over the *total* intended epochs
+									pct_start=0.1,
+									anneal_strategy='cos',
+									# Optional: Set last_epoch to the current step if you want to resume the cycle precisely
+									# last_epoch=epoch * len(train_loader) - 1 # Or more precise step count
+								)
+								print("Scheduler re-initialized.")
 
 				# --- Unfreeze Layers for Current Phase ---
 				print(f"Applying unfreeze strategy for Phase {current_phase}...")
@@ -1330,6 +1336,31 @@ def progressive_unfreeze_finetune(
 		print("\nGenerating result plots...")
 		# Adjust file naming for plots
 		plot_file_base = os.path.join(results_dir, f"{base_filename}_ep{epoch+1}_ph{current_phase}")
+
+
+		file_base_name = (
+			f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
+			f"ep_{len(training_losses)}_"
+			f"wd_{weight_decay:.1e}_"
+			f"bs_{train_loader.batch_size}_"
+			f"dropout_{dropout_val}_"
+			f"init_lr_{initial_learning_rate:.1e}"
+		)
+
+		if last_lr is not None:
+			file_base_name += f"_final_lr_{last_lr:.1e}"
+
+		plot_paths = {
+			"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+			"val_acc": os.path.join(results_dir, f"{file_base_name}_top1_accuracy.png"),
+			"img2txt_topk": os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png"),
+			"txt2img_topk": os.path.join(results_dir, f"{file_base_name}_txt2img_topk_accuracy.png"),
+			"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
+			"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
+			"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+			"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		}
+
 
 		plot_loss_accuracy(
 				dataset_name=dataset_name,
