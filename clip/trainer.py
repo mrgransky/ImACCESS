@@ -1087,6 +1087,8 @@ def progressive_unfreeze_finetune(
 		current_phase = 0
 		epochs_in_current_phase = 0
 		training_losses = [] # History of average training loss per epoch
+		img2txt_metrics_list = []
+		txt2img_metrics_list = []
 		metrics_for_all_epochs = [] # History of validation metrics dicts per epoch
 		best_val_loss = None # Track the absolute best validation loss
 		layer_cache = {} # Cache for layer status (optional, used by get_status)
