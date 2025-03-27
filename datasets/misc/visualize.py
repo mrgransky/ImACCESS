@@ -353,17 +353,18 @@ def plot_label_distribution(
 	most_freq_label = label_counts.max()/df.shape[0]*100
 	least_freq_label = label_counts.min()/df.shape[0]*100
 	stats_text = (
-		f"Imbalance ratio: {imbalaned_ratio:.2f}\n"
-		f"Median label size: {median_label_size:.0f}\n"
-		f"Mean label size: {mean_label_size:.2f}\n"
-		f"Standard deviation: {std_label_size:.2f}\n"
-		f"Most frequent label: {most_freq_label:.1f}%\n"
-		f"Least frequent label: {least_freq_label:.2f}%"
+		f"Dataset Imbalance ratio: {imbalaned_ratio:.2f}\n\n"
+		f"Label Statistics:\n"
+		f"    Median: {median_label_size:.0f}\n"
+		f"    Mean: {mean_label_size:.2f}\n"
+		f"    Standard deviation: {std_label_size:.2f}\n"
+		f"    Most frequent: {most_freq_label:.1f}%\n"
+		f"    Least frequent: {least_freq_label:.2f}%"
 	)
 	print(f"stats_text:\n{stats_text}\n")
 	# Place stats_text inside the plot
 	plt.text(
-		0.882, # horizontal position
+		0.865, # horizontal position
 		0.88, # vertical position
 		stats_text,
 		transform=ax.transAxes,
