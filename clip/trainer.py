@@ -1136,23 +1136,9 @@ def progressive_unfreeze_finetune(
 								epochs_in_current_phase = 0 # Reset phase epoch counter
 								early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
 								print(f"Transitioned to Phase {current_phase}. Early stopping reset.")
-
-								# CRITICAL: Update optimizer's parameter groups after potential unfreezing
-								# Clear existing param groups and add newly trainable ones
-								optimizer.param_groups.clear()
-								optimizer.add_param_group({'params': [p for p in model.parameters() if p.requires_grad], 'lr': last_lr})
-								print("Optimizer parameter groups refreshed.")
-								optimizer.param_groups[0]['lr'] = last_lr # Set the LR for the new group
-								print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e} for the new phase.")
-
-								if isinstance(scheduler, torch.optim.lr_scheduler.OneCycleLR):
-									scheduler.max_lr = last_lr
-									print(f"Updated existing OneCycleLR: max_lr set to {last_lr:.3e}")
-								else:
-									print("Warning: Scheduler is not OneCycleLR. max_lr not updated automatically.")
 								
 								phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
-								print(f"Transitioned to Phase {current_phase}. Optimizer refresh pending after unfreeze.")
+								print(f"Phase transition triggered. Optimizer/Scheduler refresh pending after unfreeze.")
 
 				# --- Unfreeze Layers for Current Phase ---
 				print(f"Applying unfreeze strategy for Phase {current_phase}...")
@@ -1163,10 +1149,35 @@ def progressive_unfreeze_finetune(
 						phase=current_phase,
 						cache=layer_cache # Optional cache
 				)
+
 				if phase_just_changed or epoch == 0:
 					print("Refreshing optimizer parameter groups...")
 					optimizer.param_groups.clear()
 					optimizer.add_param_group({'params': [p for p in model.parameters() if p.requires_grad], 'lr': last_lr})
+					print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e}.")
+					
+					# --- Re-initialize Scheduler (Option B Implementation) ---
+					print("Re-initializing OneCycleLR scheduler for new phase/start...")
+					steps_per_epoch = len(train_loader)
+					# Decide on remaining epochs for the new schedule
+					# Option 1: Schedule over all original epochs (simpler, might finish annealing early)
+					# scheduler_epochs = num_epochs
+					# Option 2: Schedule over remaining epochs (more adaptive)
+					scheduler_epochs = num_epochs - epoch
+					# Ensure scheduler_epochs is at least 1
+					scheduler_epochs = max(1, scheduler_epochs)
+					scheduler = torch.optim.lr_scheduler.OneCycleLR(
+						optimizer=optimizer,
+						max_lr=last_lr, # Use the new LR as the peak for the new cycle
+						steps_per_epoch=steps_per_epoch,
+						epochs=scheduler_epochs, # Schedule over remaining or total epochs
+						pct_start=0.1, # Consider if this needs adjustment in later phases
+						anneal_strategy='cos',
+						# last_epoch = -1 # Ensures it starts fresh
+					)
+					print(f"Scheduler re-initialized with max_lr={last_lr:.3e} for {scheduler_epochs} epochs.")
+					# --- End Scheduler Re-initialization ---
+
 					phase_just_changed = False # Reset the flag
 
 				# --- Training Epoch ---
@@ -1198,7 +1209,6 @@ def progressive_unfreeze_finetune(
 										continue # Skip optimizer step if loss is NaN
 
 								scaler.scale(batch_loss).backward()
-								# Optional: Gradient clipping
 								scaler.unscale_(optimizer) # Unscale before clipping
 								torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 								scaler.step(optimizer)
@@ -1218,11 +1228,11 @@ def progressive_unfreeze_finetune(
 				# --- Validation ---
 				print("Running validation...")
 				val_metrics = evaluate_loss_and_accuracy(
-						model=model,
-						validation_loader=validation_loader,
-						criterion=criterion,
-						device=device,
-						topK_values=top_k_values
+					model=model,
+					validation_loader=validation_loader,
+					criterion=criterion,
+					device=device,
+					topK_values=top_k_values
 				)
 				current_val_loss = val_metrics.get("val_loss", float('inf')) # Handle missing key safely
 				metrics_for_all_epochs.append(val_metrics)
