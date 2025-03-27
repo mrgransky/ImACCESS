@@ -322,7 +322,7 @@ def plot_label_distribution(
 	for i, v in enumerate(label_counts):
 		ax.text(
 			i, 
-			v + (v * 0.02),  # Adjust vertical position relative to bar height
+			v + (v * 0.03),  # Adjust vertical position relative to bar height
 			str(v), 
 			ha='center',
 			fontsize=8,
