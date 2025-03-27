@@ -20,31 +20,31 @@ def compute_slope(losses: List[float]) -> float:
 class EarlyStopping:
 	def __init__(
 			self,
-			patience: int = 5,
-			min_delta: float = 1e-3,
-			cumulative_delta: float = 0.01,
-			window_size: int = 5,
-			mode: str = 'min',
-			min_epochs: int = 5,
-			restore_best_weights: bool = True,
-			volatility_threshold: float = 10.0, # Percentage
-			slope_threshold: float = 0.0, # Stop if slope is positive (worsening)
-			pairwise_imp_threshold: float = 5e-3, # Min avg improvement between consecutive epochs
-			min_phases_before_stopping: int = 3, # How many phases must complete before global stop
+			patience: int = 5,             				# How many epochs to wait for improvement before stopping
+			min_delta: float = 1e-3,       				# Minimum change needed to count as an improvement
+			cumulative_delta: float = 0.01,				# Minimum total improvement over window_size needed
+			window_size: int = 5,          				# How many recent epochs to consider for trend analysis
+			mode: str = 'min',             				# 'min' (decrease is better, e.g., loss) or 'max' (increase is better, e.g., accuracy)
+			min_epochs: int = 5,           				# Minimum total epochs before stopping can EVER occur
+			restore_best_weights: bool = True, 		# Load best weights back when stopping?
+			volatility_threshold: float = 10.0, 	# Stop if % volatility in window exceeds this
+			slope_threshold: float = 0.0,  				# Stop if slope worsens beyond this threshold (e.g., >0 for loss)
+			pairwise_imp_threshold: float = 5e-3, # Stop if avg improvement between adjacent epochs is below this
+			min_phases_before_stopping: int = 3, 	# Minimum training phases to complete before stopping
 		):
-		self.patience = patience
-		self.min_delta = min_delta
-		self.cumulative_delta = cumulative_delta
-		self.window_size = window_size
-		self.mode = mode
-		self.min_epochs = min_epochs
-		self.restore_best_weights = restore_best_weights
-		self.volatility_threshold = volatility_threshold
-		self.slope_threshold = slope_threshold
-		self.pairwise_imp_threshold = pairwise_imp_threshold
-		self.min_phases_before_stopping = min_phases_before_stopping
-		self.sign = 1 if mode == 'min' else -1 # Multiplier for improvement calculation
-		self.reset()
+			self.patience = patience
+			self.min_delta = min_delta
+			self.cumulative_delta = cumulative_delta
+			self.window_size = window_size
+			self.mode = mode
+			self.min_epochs = min_epochs
+			self.restore_best_weights = restore_best_weights
+			self.volatility_threshold = volatility_threshold
+			self.slope_threshold = slope_threshold
+			self.pairwise_imp_threshold = pairwise_imp_threshold
+			self.min_phases_before_stopping = min_phases_before_stopping
+			self.sign = 1 if mode == 'min' else -1 # Multiplier for improvement calculation
+			self.reset()
 	
 	def reset(self):
 		print("--- EarlyStopping state reset, Essential for starting fresh or resetting between training phases ---")
@@ -1284,10 +1284,13 @@ def progressive_unfreeze_finetune(
 		# Generate plots using the collected history and final best metrics
 		print("\nGenerating result plots...")
 		# Adjust file naming for plots
-		plot_file_base = os.path.join(results_dir, f"{base_filename}_ep{epoch+1}_ph{current_phase}")
 
 		file_base_name = (
-			f"{dataset_name}_{mode_name}_{model_class_name}_{re.sub('/', '', model_arch)}_"
+			f"{dataset_name}_"
+			f"{model_class_name}_"
+			f"{re.sub('/', '', model_arch)}_"
+			f"{mode_name}_"
+			f"last_phase_{current_phase}_"
 			f"ep_{len(training_losses)}_"
 			f"wd_{weight_decay:.1e}_"
 			f"bs_{train_loader.batch_size}_"
@@ -1311,21 +1314,21 @@ def progressive_unfreeze_finetune(
 
 
 		plot_loss_accuracy(
-				dataset_name=dataset_name,
-				train_losses=training_losses,
-				val_losses=[m.get("val_loss", float('nan')) for m in metrics_for_all_epochs],
-				val_acc_img2txt_list=[m.get("img2txt_acc", float('nan')) for m in metrics_for_all_epochs],
-				val_acc_txt2img_list=[m.get("txt2img_acc", float('nan')) for m in metrics_for_all_epochs],
-				img2txt_topk_accuracy_list=[m.get("img2txt_topk_acc", {}) for m in metrics_for_all_epochs],
-				txt2img_topk_accuracy_list=[m.get("txt2img_topk_acc", {}) for m in metrics_for_all_epochs],
-				mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in metrics_for_all_epochs],
-				cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in metrics_for_all_epochs],
-				losses_file_path=f"{plot_file_base}_losses.png",
-				accuracy_file_path=f"{plot_file_base}_top1_accuracy.png",
-				img2txt_topk_accuracy_file_path=f"{plot_file_base}_img2txt_topk_accuracy.png",
-				txt2img_topk_accuracy_file_path=f"{plot_file_base}_txt2img_topk_accuracy.png",
-				mean_reciprocal_rank_file_path=f"{plot_file_base}_mrr.png",
-				cosine_similarity_file_path=f"{plot_file_base}_cos_sim.png",
+			dataset_name=dataset_name,
+			train_losses=training_losses,
+			val_losses=[m.get("val_loss", float('nan')) for m in metrics_for_all_epochs],
+			val_acc_img2txt_list=[m.get("img2txt_acc", float('nan')) for m in metrics_for_all_epochs],
+			val_acc_txt2img_list=[m.get("txt2img_acc", float('nan')) for m in metrics_for_all_epochs],
+			img2txt_topk_accuracy_list=[m.get("img2txt_topk_acc", {}) for m in metrics_for_all_epochs],
+			txt2img_topk_accuracy_list=[m.get("txt2img_topk_acc", {}) for m in metrics_for_all_epochs],
+			mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in metrics_for_all_epochs],
+			cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in metrics_for_all_epochs],
+			losses_file_path=plot_paths["losses"],
+			accuracy_file_path=plot_paths["val_acc"],
+			img2txt_topk_accuracy_file_path=plot_paths["img2txt_topk"],
+			txt2img_topk_accuracy_file_path=plot_paths["txt2img_topk"],
+			mean_reciprocal_rank_file_path=plot_paths["mrr"],
+			cosine_similarity_file_path=plot_paths["cs"],
 		)
 
 		plot_retrieval_metrics_per_epoch(
@@ -1339,10 +1342,9 @@ def progressive_unfreeze_finetune(
 			dataset_name=dataset_name,
 			image_to_text_metrics=final_img2txt_metrics,
 			text_to_image_metrics=final_txt2img_metrics,
-			fname=f"{plot_file_base}_retrieval_metrics_best.png",
+			fname=plot_paths["retrieval_best"],
 		)
 
-		print("--- Progressive Unfreezing Finetune Complete ---")
 		return metrics_for_all_epochs # Return history for potential further analysis
 
 def lora_finetune(
