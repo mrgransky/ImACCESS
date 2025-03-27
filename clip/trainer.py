@@ -871,7 +871,7 @@ def handle_phase_transition(
     current_phase: int,
     initial_lr: float,
     max_phases: int,
-    optimizer: optim.Optimizer, # Pass optimizer directly
+    optimizer: torch.optim.Optimizer, # Pass optimizer directly
     scheduler, # Keep scheduler for OneCycleLR specific updates if needed
     window_size: int,
     current_loss: float,
