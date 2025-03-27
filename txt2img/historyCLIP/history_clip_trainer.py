@@ -245,7 +245,6 @@ def main():
 			torch.cuda.empty_cache()
 		# Pass all metrics to the new visualization function
 		plot_all_pretrain_metrics(
-			# dataset_name=os.path.basename(args.dataset_dir),
 			dataset_name=validation_loader.name,
 			img2txt_metrics_dict=all_img2txt_metrics,
 			txt2img_metrics_dict=all_txt2img_metrics,

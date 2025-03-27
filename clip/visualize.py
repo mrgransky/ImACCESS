@@ -11,7 +11,7 @@ def plot_all_pretrain_metrics(
 	):
 	metrics = ["mP", "mAP", "Recall"]
 	modes = ["Image-to-Text", "Text-to-Image"]
-	models = list(img2txt_metrics_dict.keys())  # ['RN50', 'RN101', ..., 'ViT-L/14@336px']
+	models = list(img2txt_metrics_dict.keys()) # ['RN50', 'RN101', ..., 'ViT-L/14@336px']
 	fname = f"{dataset_name}_x_{len(models)}_pretrained_clip_models_{'_'.join(re.sub(r'[/@]', '-', m) for m in models)}.png"
 	# colors = plt.cm.tab10.colors  # Use a distinct color for each of the 9 models
 	# colors = plt.cm.Dark2.colors
