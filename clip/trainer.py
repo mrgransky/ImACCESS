@@ -44,19 +44,27 @@ class EarlyStopping:
 			self.pairwise_imp_threshold = pairwise_imp_threshold
 			self.min_phases_before_stopping = min_phases_before_stopping
 			self.sign = 1 if mode == 'min' else -1 # Multiplier for improvement calculation
-			self.reset()
+			self.reset() # set up the initial internal state variables
 	
 	def reset(self):
 		print("--- EarlyStopping state reset, Essential for starting fresh or resetting between training phases ---")
+		# Best score (metric value) observed so far
 		self.best_score = None
+		# state_dict of the model when best_score was achieved (if restore_best_weights is True)
 		self.best_weights = None
-		self.counter = 0 # Patience counter
-		self.stopped_epoch = 0 # Epoch where improvement last occurred or training started
-		self.best_epoch = 0 # Epoch where the absolute best score was achieved
-		self.value_history = [] # History of monitored values (e.g., val_loss)
-		self.improvement_history = [] # History of boolean improvement checks
-		self.current_phase = 0 # Track the phase during which the state exists (useful if not resetting)
-	
+		# Counter for consecutive epochs without improvement
+		self.counter = 0
+		# The epoch number when improvement was last observed
+		self.stopped_epoch = 0
+		# The epoch number when the absolute best_score was achieved
+		self.best_epoch = 0
+		# List storing the history of the monitored metric values (e.g., validation losses)
+		self.value_history = []
+		# List storing boolean flags indicating if improvement occurred in each epoch
+		self.improvement_history = []
+		# Track the current training phase (set by should_stop)
+		self.current_phase = 0
+
 	def compute_volatility(self, window: List[float]) -> float:
 		"""Computes the coefficient of variation (volatility) as a percentage."""
 		if not window or len(window) < 2:
@@ -67,106 +75,133 @@ class EarlyStopping:
 	
 	def is_improvement(self, current_value: float) -> bool:
 		"""Checks if the current value is an improvement over the best score."""
+		# If no best_score exists yet (first epoch), it's always an improvement.
 		if self.best_score is None:
 			return True # First epoch is always an improvement
 		# Calculate improvement based on mode ('min' or 'max')
+		# - If mode='min' (sign=1): improvement = best_score - current_value. Positive if current < best.
+		# - If mode='max' (sign=-1): improvement = -(best_score - current_value) = current_value - best_score. Positive if current > best.
 		improvement = (self.best_score - current_value) * self.sign
 		return improvement > self.min_delta
 	
 	def should_stop(self, current_value: float, model: torch.nn.Module, epoch: int, current_phase: int) -> bool:
+		# --- Update State ---
 		self.value_history.append(current_value)
 		self.current_phase = current_phase # Update internal phase tracker
 		print(f"\n--- EarlyStopping Check (Epoch {epoch+1}, Phase {current_phase}) ---")
 		print(f"Current Value: {current_value:.6f}")
+		# --- Initial Checks ---
+		# 1. Minimum Epochs Check: Don't stop if fewer than min_epochs have run.
 		if epoch < self.min_epochs:
 			print(f"Skipping early stopping check (epoch {epoch+1} < min_epochs {self.min_epochs})")
-			return False
-		# Check for improvement
+			return False # Continue training
+		# --- Improvement Tracking ---
+		# 2. Check if the current value is an improvement over the best score seen so far.
 		improved = self.is_improvement(current_value)
 		if improved:
 				print(f"\tImprovement detected! Best: {self.best_score if self.best_score is not None else 'N/A'} -> {current_value:.6f} (delta: {self.min_delta})")
-				self.best_score = current_value
-				self.best_epoch = epoch
-				self.stopped_epoch = epoch # Track last improvement epoch for patience
-				self.counter = 0 # Reset patience counter
-				self.improvement_history.append(True)
+				self.best_score = current_value         # Update the best score
+				self.best_epoch = epoch                 # Record the epoch number of this best score
+				self.stopped_epoch = epoch              # Update the epoch where improvement last happened
+				self.counter = 0                        # Reset the patience counter
+				self.improvement_history.append(True)   # Record improvement in history
 				if self.restore_best_weights:
-						print("\tSaving best model weights...")
-						# Use CPU state_dict to save memory if possible, clone to avoid issues
-						self.best_weights = {k: v.clone().cpu().detach() for k, v in model.state_dict().items()}
+					print("\tSaving best model weights...")
+					# Use CPU state_dict to save memory if possible, clone to avoid issues
+					self.best_weights = {k: v.clone().cpu().detach() for k, v in model.state_dict().items()}
 		else:
-				self.counter += 1
-				self.improvement_history.append(False)
+				self.counter += 1                       # Increment the patience counter
+				self.improvement_history.append(False)  # Record lack of improvement
 				print(f"\tNo improvement detected. Best: {self.best_score:.6f}. Patience counter: {self.counter}/{self.patience}")
-		# ----- Compute Metrics for Stopping Criteria -----
+		# --- Window-Based Metric Calculation ---
+		# 3. Check if enough history exists for window-based calculations.
 		if len(self.value_history) < self.window_size:
-				print(f"\tNot enough history ({len(self.value_history)} < {self.window_size}) for window-based checks.")
-				# Still check patience
-				if self.counter >= self.patience and current_phase >= self.min_phases_before_stopping:
-						 print(f"EARLY STOPPING TRIGGERED (Phase {current_phase} >= {self.min_phases_before_stopping}): Patience ({self.counter}/{self.patience}) exceeded.")
-						 return True
-				return False # Not enough data for other checks yet
-		# Use the last 'window_size' elements for windowed metrics
+			print(f"\tNot enough history ({len(self.value_history)} < {self.window_size}) for window-based checks.")
+			# Even without window metrics, check if patience is exceeded *and* min phases are done.
+			if self.counter >= self.patience and current_phase >= self.min_phases_before_stopping:
+				print(f"EARLY STOPPING TRIGGERED (Phase {current_phase} >= {self.min_phases_before_stopping}): Patience ({self.counter}/{self.patience}) exceeded.")
+				return True
+			return False # Not enough history for other checks, and patience/phase condition not met
+		# If enough history exists, proceed with window calculations:
 		last_window = self.value_history[-self.window_size:]
 		print(f"\tWindow ({self.window_size} epochs): {last_window}")
-		# 1. Slope Check
+		# Calculate metrics over the window:
+		# a) Slope Check
 		slope = compute_slope(last_window) # Use global function
 		print(f"\tSlope over window: {slope:.5f} (Threshold: > {self.slope_threshold})")
-		# 2. Volatility Check
+		# b) Volatility Check
 		volatility = self.compute_volatility(last_window)
 		print(f"\tVolatility over window: {volatility:.2f}% (Threshold: >= {self.volatility_threshold}%)")
-		# 3. Pairwise Improvement Check
-		# Calculate average difference between consecutive elements in the window
+		# c) Average Pairwise Improvement: Calculate the average change between adjacent epochs.
+		# (last_window[i] - last_window[i+1]) * self.sign 
+		# ensures positive values mean improvement regardless of 'min' or 'max' mode.
 		pairwise_diffs = [(last_window[i] - last_window[i+1]) * self.sign for i in range(len(last_window)-1)]
 		pairwise_imp_avg = np.mean(pairwise_diffs) if pairwise_diffs else 0.0
 		print(f"\tAvg Pairwise Improvement over window: {pairwise_imp_avg:.5f} (Threshold: < {self.pairwise_imp_threshold})")
-		# 4. Closeness to Best Score Check (used by pairwise improvement criterion)
+		# d) Closeness to Best: Check if the current value is already very close to the best score.
 		close_to_best = abs(current_value - self.best_score) < self.min_delta if self.best_score is not None else False
 		print(f"\tClose to best score ({self.best_score:.6f}): {close_to_best}")
-		# 5. Cumulative Improvement Check (Corrected)
-		window_start_value = self.value_history[-self.window_size] # Value at the start of the window
-		window_end_value = self.value_history[-1]       # Most recent value
+		# e) Cumulative Improvement: Check Check total improvement from the start to the end of the window.
+		window_start_value = self.value_history[-self.window_size]
+		window_end_value = self.value_history[-1]
 		# Calculate improvement based on mode, then take absolute value for threshold check
 		cumulative_improvement_signed = (window_start_value - window_end_value) * self.sign
 		cumulative_improvement_abs = abs(cumulative_improvement_signed)
 		print(f"\tCumulative Improvement over window: {cumulative_improvement_signed:.5f} (Threshold for lack of imp: < {self.cumulative_delta})")
 		# ----- Combine Stopping Criteria -----
+		# 4. Check if any stopping conditions are met.
 		stop_reason = []
 		# Reason 1: Patience exceeded
 		if self.counter >= self.patience:
-				stop_reason.append(f"Patience ({self.counter}/{self.patience})")
+			stop_reason.append(f"Patience ({self.counter}/{self.patience})")
 		# Reason 2: High Volatility indicates instability
 		if volatility >= self.volatility_threshold:
-				stop_reason.append(f"High volatility ({volatility:.2f}%)")
-		# Reason 3: Trend is worsening (positive slope for 'min' mode)
-		# We check > slope_threshold (e.g. > 0 for loss)
-		if (slope * self.sign) < (-self.slope_threshold * self.sign): # Check if trend is going the wrong way
-				 stop_reason.append(f"Worsening slope ({slope:.5f})")
-		# Reason 4: Stagnation - average improvement is low AND not already near the best score
+			stop_reason.append(f"High volatility ({volatility:.2f}%)")
+		# Reason 3: Worsening Trend (Slope)
+		# Check if the slope is moving in the 'wrong' direction beyond the threshold.
+		# The condition `(slope * self.sign) < (-self.slope_threshold * self.sign)` handles both 'min' and 'max' modes.
+		# E.g., for 'min' mode (sign=1) & slope_threshold=0, this is `slope < 0`, which seems wrong.
+		# Let's rethink: We want to stop if slope indicates worsening.
+		# For 'min' mode (loss), worsening means slope > slope_threshold (e.g., > 0).
+		# For 'max' mode (accuracy), worsening means slope < slope_threshold (e.g., < 0).
+		# Let's simplify the condition:
+		is_worsening = False
+		if self.mode == 'min' and slope > self.slope_threshold:
+			is_worsening = True
+		elif self.mode == 'max' and slope < self.slope_threshold:
+			is_worsening = True
+		if is_worsening:
+			stop_reason.append(f"Worsening slope ({slope:.5f})")
+		# Reason 4: Stagnation (Low Pairwise Improvement AND Not Close to Best)
+		# Stop if average improvement per step is low, unless we are already very near the best score found.
 		if pairwise_imp_avg < self.pairwise_imp_threshold and not close_to_best:
-				stop_reason.append(f"Low pairwise improvement ({pairwise_imp_avg:.5f}) & not close to best")
+			stop_reason.append(f"Low pairwise improvement ({pairwise_imp_avg:.5f}) & not close to best")
 		# Reason 5: Lack of significant cumulative improvement over the window
+		# Stop if the total improvement over the whole window is below the threshold.
 		if cumulative_improvement_abs < self.cumulative_delta:
-				stop_reason.append(f"Low cumulative improvement ({cumulative_improvement_abs:.5f})")
-		# Final Decision: Only stop if a reason exists AND minimum phases are completed
+			stop_reason.append(f"Low cumulative improvement ({cumulative_improvement_abs:.5f})")
+		# --- Final Decision ---
+		# 5. Decide whether to actually stop based on reasons and minimum phases.
 		should_really_stop = False
 		if stop_reason:
-				reason_str = ', '.join(stop_reason)
-				if current_phase >= self.min_phases_before_stopping:
-						print(f"EARLY STOPPING TRIGGERED (Phase {current_phase} >= {self.min_phases_before_stopping}): {reason_str}")
-						should_really_stop = True
-				else:
-						print(f"\tStopping condition met ({reason_str}), but delaying stop (Phase {current_phase} < {self.min_phases_before_stopping})")
+			reason_str = ', '.join(stop_reason)
+			# Check if the minimum number of training phases has been completed.
+			if current_phase >= self.min_phases_before_stopping:
+				print(f"EARLY STOPPING TRIGGERED (Phase {current_phase} >= {self.min_phases_before_stopping}): {reason_str}")
+				should_really_stop = True
+			else:
+				print(f"\tStopping condition met ({reason_str}), but delaying stop (Phase {current_phase} < {self.min_phases_before_stopping})")
 		else:
-				print("\tNo stopping conditions met.")
-		# Restore best weights if stopping and configured to do so
+			print("\tNo stopping conditions met.")
+		# --- Restore Best Weights (if stopping) ---
+		# 6. If stopping and configured, load the best saved weights back into the model.
 		if should_really_stop and self.restore_best_weights:
-				if self.best_weights is not None:
-						print(f"Restoring model weights from best epoch {self.best_epoch + 1} (score: {self.best_score:.6f})")
-						# Load state dict, ensuring tensors are moved to the correct device
-						model.load_state_dict({k: v.to(model.device) for k, v in self.best_weights.items()})
-				else:
-						print("Warning: restore_best_weights is True, but no best weights were saved.")
+			if self.best_weights is not None:
+				print(f"Restoring model weights from best epoch {self.best_epoch + 1} (score: {self.best_score:.6f})")
+				# Load state dict, ensuring tensors are moved to the correct device
+				model.load_state_dict({k: v.to(model.device) for k, v in self.best_weights.items()})
+			else:
+				print("Warning: restore_best_weights is True, but no best weights were saved.")
 		return should_really_stop
 	
 	def get_status(self) -> Dict[str, Any]:
@@ -729,156 +764,155 @@ def should_transition_phase(
 		pairwise_imp_threshold: float = 5e-3,
 		accuracy_plateau_threshold: float = 1e-3 # Threshold for accuracy stagnation
 	) -> bool:
-		"""
-		Determines if a phase transition should occur based on loss and accuracy trends.
 
-		Args:
-				losses: List of validation losses.
-				accuracies: Optional list of validation accuracies.
-				window: Number of epochs to consider for trends.
-				best_loss: The best validation loss observed so far.
-				best_loss_threshold: Threshold for being "close" to the best loss.
-				volatility_threshold: Threshold for loss volatility percentage.
-				slope_threshold: Threshold for positive loss slope (worsening trend).
-				pairwise_imp_threshold: Minimum average loss improvement between epochs.
-				accuracy_plateau_threshold: Minimum average accuracy improvement to avoid plateau.
+	print(f"\n--- Phase Transition Check (Window: {window}) ---")
 
-		Returns:
-				bool: True if a phase transition is recommended, False otherwise.
-		"""
-		print(f"\n--- Phase Transition Check (Window: {window}) ---")
-		if len(losses) < window:
-				print(f"<!> Insufficient loss data ({len(losses)} < {window}) for phase transition.")
-				return False
+	if len(losses) < window:
+		print(f"<!> Insufficient loss data ({len(losses)} < {window}) for phase transition.")
+		return False
 
-		# --- Loss Analysis ---
-		last_window_losses = losses[-window:]
-		current_loss = last_window_losses[-1]
-		mean_loss = np.mean(last_window_losses)
-		std_loss = np.std(last_window_losses)
-		loss_volatility = (std_loss / abs(mean_loss)) * 100 if mean_loss != 0 else 0.0
-		# Pairwise improvement (positive means loss decreased)
-		loss_pairwise_diffs = [last_window_losses[i] - last_window_losses[i+1] for i in range(len(last_window_losses)-1)]
-		loss_pairwise_imp_avg = np.mean(loss_pairwise_diffs) if loss_pairwise_diffs else 0.0
-		loss_slope = compute_slope(last_window_losses) # Use global function
+	# --- Loss Analysis ---
+	# Coefficient of Variation = (Standard Deviation / |Mean|) * 100
+	last_window_losses = losses[-window:]
+	current_loss = last_window_losses[-1]
+	mean_loss = np.mean(last_window_losses)
+	std_loss = np.std(last_window_losses)
+	loss_volatility = (std_loss / abs(mean_loss)) * 100 if mean_loss != 0 else 0.0
 
-		close_to_best = best_loss is not None and abs(current_loss - best_loss) < best_loss_threshold
+	# Calculate Average Pairwise Loss Improvement:
+	#    - Computes the difference between each adjacent epoch's loss within the window.
+	#    - `loss[i] - loss[i+1]` means a positive value indicates loss DECREASED (improvement).
+	loss_pairwise_diffs = [last_window_losses[i] - last_window_losses[i+1] for i in range(len(last_window_losses)-1)]
+	#    - Average these differences to get the typical improvement per step in the window.
+	loss_pairwise_imp_avg = np.mean(loss_pairwise_diffs) if loss_pairwise_diffs else 0.0
+	
+	# Calculate Loss Slope:
+	#    - Fits a line to the losses in the window and gets the slope.
+	#    - Positive slope means loss is generally increasing (worsening).
+	#    - Negative slope means loss is generally decreasing (improving).
+	loss_slope = compute_slope(last_window_losses) # Use global function
+	
+	# Check Closeness to Best Loss:
+	#    - Determines if the current loss is already very near the absolute best loss ever recorded.
+	#    - Handles the case where best_loss might still be None (early in training).
+	close_to_best = best_loss is not None and abs(current_loss - best_loss) < best_loss_threshold
+	
+	print(f"Loss Window: {last_window_losses}")
+	print(f"Current Loss: {current_loss:.6f} | Best Loss: {best_loss if best_loss is not None else 'N/A'} | Close: {close_to_best} (Thresh: {best_loss_threshold})")
+	print(f"Loss Volatility: {loss_volatility:.2f}% (Thresh: >= {volatility_threshold}%)")
+	print(f"Loss Slope: {loss_slope:.5f} (Thresh: > {slope_threshold})")
+	print(f"Avg Pairwise Loss Improvement: {loss_pairwise_imp_avg:.5f} (Thresh: < {pairwise_imp_threshold})")
 
-		print(f"Loss Window: {last_window_losses}")
-		print(f"Current Loss: {current_loss:.6f} | Best Loss: {best_loss if best_loss is not None else 'N/A'} | Close: {close_to_best} (Thresh: {best_loss_threshold})")
-		print(f"Loss Volatility: {loss_volatility:.2f}% (Thresh: >= {volatility_threshold}%)")
-		print(f"Loss Slope: {loss_slope:.5f} (Thresh: > {slope_threshold})")
-		print(f"Avg Pairwise Loss Improvement: {loss_pairwise_imp_avg:.5f} (Thresh: < {pairwise_imp_threshold})")
-
-
-		# --- Accuracy Analysis (Optional) ---
-		accuracy_plateau = False
-		if accuracies is not None:
-				if len(accuracies) >= window:
-						last_window_acc = accuracies[-window:]
-						# Pairwise improvement (positive means accuracy increased)
-						acc_pairwise_diffs = [last_window_acc[i+1] - last_window_acc[i] for i in range(len(last_window_acc)-1)]
-						acc_pairwise_imp_avg = np.mean(acc_pairwise_diffs) if acc_pairwise_diffs else 0.0
-						accuracy_plateau = acc_pairwise_imp_avg < accuracy_plateau_threshold
-						print(f"Accuracy Window: {last_window_acc}")
-						print(f"Avg Pairwise Acc Improvement: {acc_pairwise_imp_avg:.5f} (Plateau Thresh: < {accuracy_plateau_threshold}) => Plateau: {accuracy_plateau}")
-				else:
-						print(f"<!> Insufficient accuracy data ({len(accuracies)} < {window}) for plateau check.")
+	# --- Accuracy Analysis (Optional) ---
+	accuracy_plateau = False
+	if accuracies is not None:
+		if len(accuracies) >= window:
+			last_window_acc = accuracies[-window:]
+			# Calculate Average Pairwise Accuracy Improvement:
+			#     - `acc[i+1] - acc[i]` means a positive value indicates accuracy INCREASED (improvement).
+			acc_pairwise_diffs = [last_window_acc[i+1] - last_window_acc[i] for i in range(len(last_window_acc)-1)]
+			acc_pairwise_imp_avg = np.mean(acc_pairwise_diffs) if acc_pairwise_diffs else 0.0
+			# Determine Accuracy Plateau: If the average improvement is below the threshold, accuracy has likely stalled.
+			accuracy_plateau = acc_pairwise_imp_avg < accuracy_plateau_threshold
+			print(f"Accuracy Window: {last_window_acc}")
+			print(f"Avg Pairwise Acc Improvement: {acc_pairwise_imp_avg:.5f} (Plateau Thresh: < {accuracy_plateau_threshold}) => Plateau: {accuracy_plateau}")
 		else:
-				print("Accuracy data not provided, skipping accuracy plateau check.")
+			print(f"<!> Insufficient accuracy data ({len(accuracies)} < {window}) for plateau check.")
+	else:
+		print("Accuracy data not provided, skipping accuracy plateau check.")
 
-		# --- Transition Logic ---
-		transition = False
-		reasons = []
-
-		# Reason 1: Loss is highly volatile (unstable)
-		if loss_volatility >= volatility_threshold:
-				transition = True
-				reasons.append(f"High loss volatility ({loss_volatility:.2f}%)")
-
-		# Reason 2: Loss trend is worsening (slope > threshold)
-		if loss_slope > slope_threshold:
-				transition = True
-				reasons.append(f"Worsening loss slope ({loss_slope:.5f})")
-
-		# Reason 3: Loss improvement has stagnated AND not close to best
-		if loss_pairwise_imp_avg < pairwise_imp_threshold and not close_to_best:
-				transition = True
-				reasons.append(f"Low loss improvement ({loss_pairwise_imp_avg:.5f}) & not close to best")
-
-		# Reason 4: Accuracy has plateaued (if available)
-		if accuracy_plateau:
-				transition = True
-				reasons.append("Accuracy plateau detected")
-
-		if transition:
-				print(f"==>> PHASE TRANSITION RECOMMENDED: {', '.join(reasons)}")
-		else:
-				print("==>> No phase transition needed: Stable progress or close to best.")
-
-		return transition
+	# --- Transition Logic ---
+	transition = False
+	reasons = []
+	
+	# Reason 1: Loss is highly volatile (unstable)
+	if loss_volatility >= volatility_threshold:
+		transition = True
+		reasons.append(f"High loss volatility ({loss_volatility:.2f}%)")
+	
+	# Reason 2: Loss trend is worsening (slope > threshold)
+	if loss_slope > slope_threshold:
+		transition = True
+		reasons.append(f"Worsening loss slope ({loss_slope:.5f})")
+	
+	# Reason 3: Loss improvement has stagnated AND not close to best
+	if loss_pairwise_imp_avg < pairwise_imp_threshold and not close_to_best:
+		transition = True
+		reasons.append(f"Low loss improvement ({loss_pairwise_imp_avg:.5f}) & not close to best")
+	
+	# Reason 4: Accuracy has plateaued (if available)
+	if accuracy_plateau:
+		transition = True
+		reasons.append("Accuracy plateau detected")
+	
+	if transition:
+		print(f"==>> PHASE TRANSITION RECOMMENDED: {', '.join(reasons)}")
+	else:
+		print("==>> No phase transition needed: Stable progress or close to best.")
+	return transition
 
 def handle_phase_transition(
-		current_phase: int,
-		initial_lr: float,
-		max_phases: int,
-		optimizer: torch.optim.Optimizer, # Pass optimizer directly
-		window_size: int,
-		current_loss: float,
-		best_loss: Optional[float] # Best loss can be None initially
-	) -> Tuple[int, float]:
-		"""
-		Handles the logic for transitioning to the next phase, including LR adjustment.
-
-		Args:
-				current_phase: The current phase index (0-based).
-				initial_lr: The initial learning rate set at the beginning of training.
-				max_phases: The total number of phases defined in the schedule.
-				optimizer: The PyTorch optimizer instance.
-				window_size: The window size used for metrics.
-				current_loss: The validation loss of the last epoch.
-				best_loss: The best validation loss observed so far.
-
-		Returns:
-				Tuple containing the new phase index and the new learning rate.
-		"""
-		if best_loss is None or best_loss <= 0:
-			loss_ratio = 1.0 # Avoid division by zero or negative ratio
-		else:
-			loss_ratio = min(max(0.5, current_loss / best_loss), 2.0) # Clamp ratio for stability
-
-		# Adaptive window factor
-		window_factor = max(0.5, min(1.5, 10 / window_size)) # Slightly less aggressive range
-
-		next_phase = current_phase + 1
-		if next_phase >= max_phases:
-				# Already in the last phase or beyond, potentially just reduce LR further
-				next_phase = max_phases - 1 # Stay in the last defined phase
-				# Use a more aggressive reduction in the final phase
-				phase_factor = 0.1 # Fixed reduction factor
-				print(f"<!> Already in final phase ({current_phase}). Applying fixed LR reduction.")
-		else:
-				# Dynamic phase-based reduction, potentially scaled by window size
-				# Scale exponent based on relative progress through phases
-				phase_progress = next_phase / max(1, max_phases -1) # 0 to 1
-				phase_factor = 0.75 ** phase_progress # Exponential decay based on phase progress (less aggressive than 0.8)
-
-		# Calculate new learning rate
-		# Combine factors, ensure LR doesn't drop too low
-		new_lr = initial_lr * phase_factor * loss_ratio * window_factor
-		min_allowable_lr = initial_lr * 1e-3 # Don't go below 0.1% of initial LR
-		new_lr = max(new_lr, min_allowable_lr)
-
-		print(f"\n--- Phase Transition Occurred (Moving to Phase {next_phase}) ---")
-		print(f"Previous Phase: {current_phase}")
-		print(f"Factors -> Loss Ratio: {loss_ratio:.3f}, Window Factor: {window_factor:.3f}, Phase Factor: {phase_factor:.3f}")
-		print(f"Calculated New LR: {new_lr:.3e} (min allowable: {min_allowable_lr:.3e})")
-
-		# Update LR in the optimizer directly
-		for param_group in optimizer.param_groups:
-				param_group['lr'] = new_lr
-
-		return next_phase, new_lr
+		current_phase: int,                # Input: The index of the phase just completed (0-based)
+		initial_lr: float,                 # Input: The LR the training started with
+		max_phases: int,                   # Input: Total number of phases defined (e.g., length of unfreeze_schedule)
+		window_size: int,                  # Input: Window size used for analysis (affects window_factor)
+		current_loss: float,               # Input: Validation loss from the most recent epoch
+		best_loss: Optional[float]         # Input: Best validation loss seen so far (can be None)
+	) -> Tuple[int, float]:                # Output: (new_phase_index, new_learning_rate)
+	
+	# --- 1. Calculate Loss Ratio ---
+	# This factor scales the LR based on how the current loss compares to the best loss.
+	if best_loss is None or best_loss <= 0:
+		# If no best loss yet, or best loss is invalid, use a neutral ratio of 1.0.
+		loss_ratio = 1.0
+	else:
+		# Calculate ratio: current / best.
+		# Clamp the ratio between 0.5 and 2.0 to prevent extreme scaling effects
+		# if the current loss is drastically different from the best loss. Adds stability.
+		loss_ratio = min(max(0.5, current_loss / best_loss), 2.0)
+	
+	# --- 2. Calculate Window Factor ---
+	# Scales LR based on the window size. The formula 10 / window_size means
+	# smaller windows result in a potentially larger factor (up to 1.5).
+	# This might imply wanting more aggressive LR changes if decisions are based on shorter histories.
+	# Clamped between 0.5 and 1.5 for stability. This is a tuning parameter.
+	window_factor = max(0.5, min(1.5, 10 / window_size))
+	
+	# --- 3. Determine Next Phase Index and Phase Factor ---
+	next_phase = current_phase + 1 # Tentative next phase index
+	# Check if we are transitioning beyond the last defined phase
+	if next_phase >= max_phases:
+		# Stay in the last defined phase (index = max_phases - 1).
+		next_phase = max_phases - 1
+		# Apply a fixed, aggressive LR reduction factor since transition was triggered
+		# even in the final phase, suggesting strong need for LR drop.
+		phase_factor = 0.1
+		print(f"<!> Already in final phase ({current_phase}). Applying fixed LR reduction.")
+	else:
+		# Calculate progress through the phases (approx. 0 to 1).
+		# `max(1, max_phases - 1)` prevents division by zero if max_phases is 1.
+		phase_progress = next_phase / max(1, max_phases - 1)
+		# Calculate an exponential decay factor based on phase progress.
+		# As training progresses (phase_progress -> 1), the factor decreases (towards 0.75).
+		# This generally reduces the LR more significantly in later phases. Base 0.75 is a tuning choice.
+		phase_factor = 0.75 ** phase_progress
+	
+	# --- 4. Calculate New Learning Rate ---
+	# Combine the initial LR with all calculated scaling factors.
+	new_lr = initial_lr * phase_factor * loss_ratio * window_factor
+	# Define a floor for the learning rate (e.g., 0.1% of the initial LR)
+	# to prevent it from becoming extremely small or zero.
+	min_allowable_lr = initial_lr * 1e-3
+	# Enforce the minimum learning rate.
+	new_lr = max(new_lr, min_allowable_lr)
+	
+	print(f"\n--- Phase Transition Occurred (Moving to Phase {next_phase}) ---")
+	print(f"Previous Phase: {current_phase}")
+	print(f"Factors -> Loss Ratio: {loss_ratio:.3f}, Window Factor: {window_factor:.3f}, Phase Factor: {phase_factor:.3f}")
+	print(f"Calculated New LR: {new_lr:.3e} (min allowable: {min_allowable_lr:.3e})")
+		
+	# Return the index of the phase we are *entering* and the new learning rate.
+	return next_phase, new_lr
 
 def get_unfreeze_pcts_hybrid(
 		model: torch.nn.Module,
@@ -1035,6 +1069,7 @@ def progressive_unfreeze_finetune(
 		best_val_loss = None # Track the absolute best validation loss
 		layer_cache = {} # Cache for layer status (optional, used by get_status)
 		last_lr = initial_learning_rate # Track current LR
+		phase_just_changed = False # Flag to signal optimizer refresh needed
 
 		try:
 			dataset_name = validation_loader.dataset.dataset.__class__.__name__
@@ -1089,15 +1124,13 @@ def progressive_unfreeze_finetune(
 						)
 
 						if should_trans:
-								# Perform the transition
 								current_phase, last_lr = handle_phase_transition(
-										current_phase=current_phase,
-										initial_lr=initial_learning_rate,
-										max_phases=max_phases,
-										optimizer=optimizer, # Pass optimizer
-										window_size=window_size,
-										current_loss=val_losses[-1],
-										best_loss=early_stopping.get_best_score()
+									current_phase=current_phase,
+									initial_lr=initial_learning_rate,
+									max_phases=max_phases,
+									window_size=window_size,
+									current_loss=val_losses[-1],
+									best_loss=early_stopping.get_best_score()
 								)
 
 								epochs_in_current_phase = 0 # Reset phase epoch counter
@@ -1109,24 +1142,17 @@ def progressive_unfreeze_finetune(
 								optimizer.param_groups.clear()
 								optimizer.add_param_group({'params': [p for p in model.parameters() if p.requires_grad], 'lr': last_lr})
 								print("Optimizer parameter groups refreshed.")
-								# Re-initialize scheduler state if necessary (especially for step-based schedulers)
-								# For OneCycleLR, updating max_lr might be sufficient, but re-creating might be safer if state issues occur.
-								# Let's assume updating max_lr was handled in handle_phase_transition for now.
 								optimizer.param_groups[0]['lr'] = last_lr # Set the LR for the new group
 								print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e} for the new phase.")
 
-								print("Re-initializing OneCycleLR scheduler...")
-								scheduler = torch.optim.lr_scheduler.OneCycleLR(
-									optimizer=optimizer,
-									max_lr=initial_learning_rate, # Use the overall peak LR
-									steps_per_epoch=len(train_loader),
-									epochs=num_epochs, # Schedule over the *total* intended epochs
-									pct_start=0.1,
-									anneal_strategy='cos',
-									# Optional: Set last_epoch to the current step if you want to resume the cycle precisely
-									# last_epoch=epoch * len(train_loader) - 1 # Or more precise step count
-								)
-								print("Scheduler re-initialized.")
+								if isinstance(scheduler, torch.optim.lr_scheduler.OneCycleLR):
+									scheduler.max_lr = last_lr
+									print(f"Updated existing OneCycleLR: max_lr set to {last_lr:.3e}")
+								else:
+									print("Warning: Scheduler is not OneCycleLR. max_lr not updated automatically.")
+								
+								phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
+								print(f"Transitioned to Phase {current_phase}. Optimizer refresh pending after unfreeze.")
 
 				# --- Unfreeze Layers for Current Phase ---
 				print(f"Applying unfreeze strategy for Phase {current_phase}...")
@@ -1137,11 +1163,11 @@ def progressive_unfreeze_finetune(
 						phase=current_phase,
 						cache=layer_cache # Optional cache
 				)
-				# Important: Ensure optimizer only targets trainable parameters *after* unfreezing
-				# If optimizer wasn't refreshed after phase transition, do it here.
-				# (It's better to do it after transition logic as done above)
-				# optimizer.param_groups[0]['params'] = [p for p in model.parameters() if p.requires_grad]
-
+				if phase_just_changed or epoch == 0:
+					print("Refreshing optimizer parameter groups...")
+					optimizer.param_groups.clear()
+					optimizer.add_param_group({'params': [p for p in model.parameters() if p.requires_grad], 'lr': last_lr})
+					phase_just_changed = False # Reset the flag
 
 				# --- Training Epoch ---
 				model.train()
@@ -1200,6 +1226,7 @@ def progressive_unfreeze_finetune(
 				)
 				current_val_loss = val_metrics.get("val_loss", float('inf')) # Handle missing key safely
 				metrics_for_all_epochs.append(val_metrics)
+
 				print(f"Epoch {epoch+1} Validation Loss: {current_val_loss:.6f}")
 				print(f"\tImg2Txt Acc: {val_metrics.get('img2txt_acc', 'N/A'):.4f} | Txt2Img Acc: {val_metrics.get('txt2img_acc', 'N/A'):.4f}")
 
