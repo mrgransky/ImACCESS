@@ -294,16 +294,22 @@ def plot_label_distribution(
 	bars = label_counts.plot(
 		kind='bar',
 		ax=ax,
-		color="blue",
+		color="green",
 		width=0.8,
 		edgecolor='white',
 		linewidth=0.8,
 		alpha=0.8,
 		label='Linear'
 	)
-	ax.spines['top'].set_visible(False)
-	plt.setp(ax.spines.values(), visible=False)  # This will ensure spines are hidden
-	ax.set_frame_on(True)  # Keep the frame but hide specific spines
+
+	# Hide all spines initially
+	for spine in ax.spines.values():
+		spine.set_visible(False)
+
+	# Show only the left, right and bottom spines
+	ax.spines['bottom'].set_visible(True)
+	ax.spines['left'].set_visible(True)
+	ax.spines['right'].set_visible(True)
 
 	# Enhance readability for large number of labels
 	if len(label_counts) > 20:
@@ -316,13 +322,13 @@ def plot_label_distribution(
 	for i, v in enumerate(label_counts):
 		ax.text(
 			i, 
-			v + (v * 0.06),  # Adjust vertical position relative to bar height
+			v + (v * 0.02),  # Adjust vertical position relative to bar height
 			str(v), 
 			ha='center',
 			fontsize=8,
 			fontweight='bold',
 			alpha=0.8,
-			color='black',
+			color='blue',
 			rotation=75,
 			bbox=dict(
 				facecolor='white',
@@ -351,6 +357,10 @@ def plot_label_distribution(
 		ax_log.set_ylabel('Log Frequency', color='red', fontsize=9, fontweight='bold')
 		ax_log.tick_params(axis='y', colors='red')
 	
+	# Hide all spines for the logarithmic scale
+	for spine in ax_log.spines.values():
+		spine.set_visible(False)
+
 	ax.set_xlabel('Label', fontsize=10)
 	ax.set_ylabel('Frequency', fontsize=10)
 	
@@ -373,7 +383,7 @@ def plot_label_distribution(
 	print(f"stats_text:\n{stats_text}\n")
 	plt.text(
 		0.865, # horizontal position
-		0.88, # vertical position
+		0.87, # vertical position
 		stats_text,
 		transform=ax.transAxes,
 		fontsize=7,
