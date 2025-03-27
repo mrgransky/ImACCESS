@@ -777,7 +777,7 @@ def should_transition_phase(
 		slope_threshold: float = 0.0,
 		pairwise_imp_threshold: float = 5e-3,
 		accuracy_plateau_threshold: float = 1e-3 # Threshold for accuracy stagnation
-) -> bool:
+	) -> bool:
 		"""
 		Determines if a phase transition should occur based on loss and accuracy trends.
 
@@ -867,6 +867,83 @@ def should_transition_phase(
 
 		return transition
 
+def handle_phase_transition(
+    current_phase: int,
+    initial_lr: float,
+    max_phases: int,
+    optimizer: optim.Optimizer, # Pass optimizer directly
+    scheduler, # Keep scheduler for OneCycleLR specific updates if needed
+    window_size: int,
+    current_loss: float,
+    best_loss: Optional[float] # Best loss can be None initially
+	) -> Tuple[int, float]:
+    """
+    Handles the logic for transitioning to the next phase, including LR adjustment.
+
+    Args:
+        current_phase: The current phase index (0-based).
+        initial_lr: The initial learning rate set at the beginning of training.
+        max_phases: The total number of phases defined in the schedule.
+        optimizer: The PyTorch optimizer instance.
+        scheduler: The learning rate scheduler instance.
+        window_size: The window size used for metrics.
+        current_loss: The validation loss of the last epoch.
+        best_loss: The best validation loss observed so far.
+
+    Returns:
+        Tuple containing the new phase index and the new learning rate.
+    """
+    if best_loss is None or best_loss <= 0:
+      loss_ratio = 1.0 # Avoid division by zero or negative ratio
+    else:
+      loss_ratio = min(max(0.5, current_loss / best_loss), 2.0) # Clamp ratio for stability
+
+    # Adaptive window factor
+    window_factor = max(0.5, min(1.5, 10 / window_size)) # Slightly less aggressive range
+
+    next_phase = current_phase + 1
+    if next_phase >= max_phases:
+        # Already in the last phase or beyond, potentially just reduce LR further
+        next_phase = max_phases - 1 # Stay in the last defined phase
+        # Use a more aggressive reduction in the final phase
+        phase_factor = 0.1 # Fixed reduction factor
+        print(f"<!> Already in final phase ({current_phase}). Applying fixed LR reduction.")
+    else:
+        # Dynamic phase-based reduction, potentially scaled by window size
+        # Scale exponent based on relative progress through phases
+        phase_progress = next_phase / max(1, max_phases -1) # 0 to 1
+        phase_factor = 0.75 ** phase_progress # Exponential decay based on phase progress (less aggressive than 0.8)
+
+    # Calculate new learning rate
+    # Combine factors, ensure LR doesn't drop too low
+    new_lr = initial_lr * phase_factor * loss_ratio * window_factor
+    min_allowable_lr = initial_lr * 1e-3 # Don't go below 0.1% of initial LR
+    new_lr = max(new_lr, min_allowable_lr)
+
+    print(f"\n--- Phase Transition Occurred (Moving to Phase {next_phase}) ---")
+    print(f"Previous Phase: {current_phase}")
+    print(f"Factors -> Loss Ratio: {loss_ratio:.3f}, Window Factor: {window_factor:.3f}, Phase Factor: {phase_factor:.3f}")
+    print(f"Calculated New LR: {new_lr:.3e} (min allowable: {min_allowable_lr:.3e})")
+
+    # Update LR in the optimizer directly
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = new_lr
+
+    # Update OneCycleLR scheduler if used (adjust max_lr and base_lrs)
+    if isinstance(scheduler, torch.optim.lr_scheduler.OneCycleLR):
+        print(f"Updating OneCycleLR: max_lr={new_lr:.3e}")
+        # Important: Update internal state correctly for OneCycleLR
+        scheduler.max_lr = new_lr
+        # scheduler.base_lrs needs careful handling based on OneCycleLR implementation details
+        # Often, just setting max_lr might be enough if base_lrs scale relative to it,
+        # but directly setting base_lrs might be needed depending on version/usage.
+        # Let's assume setting max_lr is the primary way for now.
+        # If issues arise, consult OneCycleLR docs for resetting base LRs.
+        # scheduler.base_lrs = [new_lr / scheduler.total_steps * scheduler.step_num for _ in scheduler.base_lrs] # Example complex update
+        # Safest might be recreating scheduler, but let's try updating max_lr first.
+
+    return next_phase, new_lr
+
 def get_unfreeze_pcts_hybrid(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
@@ -921,7 +998,7 @@ def progressive_unfreeze_finetune(
 		top_k_values: list[int] = [1, 5, 10],
 		layer_groups_to_unfreeze: list[str] = ['visual_transformer', 'text_transformer', 'projections'], # Focus on key layers
 		unfreeze_percentages: Optional[List[float]] = None, # Allow passing custom percentages
-):
+	):
 		"""
 		Performs progressive unfreezing fine-tuning with integrated early stopping
 		and phase transition logic.
@@ -952,9 +1029,6 @@ def progressive_unfreeze_finetune(
 				unfreeze_percentages: Optional list of percentages [0.0, ..., 1.0] defining the phases.
 																If None, uses get_unfreeze_pcts_hybrid.
 		"""
-
-		# --- Setup ---
-		os.makedirs(results_dir, exist_ok=True)
 
 		# Initialize EarlyStopping with tuned parameters
 		early_stopping = EarlyStopping(
@@ -1216,7 +1290,7 @@ def progressive_unfreeze_finetune(
 		print(f"\n--- Training Finished ---")
 		print(f"Total Epochs Run: {epoch + 1}")
 		print(f"Final Phase Reached: {current_phase}")
-		print(f"Best Validation Loss Achieved: {early_stopping.get_best_score():.6f} at Epoch {early_stopping.get_best_epoch() + 1}")
+		# print(f"Best Validation Loss Achieved: {early_stopping.get_best_score():.6f} at Epoch {early_stopping.get_best_epoch() + 1}")
 		print(f"Total Training Time: {total_training_time:.2f}s")
 
 		# --- Final Evaluation & Plotting ---
@@ -1281,10 +1355,10 @@ def progressive_unfreeze_finetune(
 		)
 
 		plot_retrieval_metrics_best_model(
-				dataset_name=dataset_name,
-				image_to_text_metrics=final_img2txt_metrics,
-				text_to_image_metrics=final_txt2img_metrics,
-				fname=f"{plot_file_base}_retrieval_metrics_best.png",
+			dataset_name=dataset_name,
+			image_to_text_metrics=final_img2txt_metrics,
+			text_to_image_metrics=final_txt2img_metrics,
+			fname=f"{plot_file_base}_retrieval_metrics_best.png",
 		)
 
 		print("--- Progressive Unfreezing Finetune Complete ---")
@@ -1443,6 +1517,12 @@ def lora_finetune(
 		)
 		img2txt_metrics_list.append(img2txt_metrics)
 		txt2img_metrics_list.append(txt2img_metrics)
+		print(
+			f'@ Epoch {epoch + 1}:\n'
+			f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {metrics_per_epoch.get("val_loss"):.8f}\n'
+			f'\tIn-batch Validation Accuracy [text retrieval per image]: {metrics_per_epoch.get("img2txt_acc")} '
+			f'[image retrieval per text]: {metrics_per_epoch.get("txt2img_acc")}'
+		)
 
 		# Early stopping and checkpointing (same as finetune())
 		current_val_loss = metrics_per_epoch["val_loss"]
