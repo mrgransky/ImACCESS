@@ -18,228 +18,180 @@ def compute_slope(losses: List[float]) -> float:
 		return 0.0 # Handle potential numerical issues
 
 class EarlyStopping:
-		"""
-		Enhanced EarlyStopping class incorporating multiple criteria like
-		patience, volatility, slope, and pairwise improvement, with awareness
-		of training phases.
-		"""
-		def __init__(
-				self,
-				patience: int = 5,
-				min_delta: float = 1e-3,
-				cumulative_delta: float = 0.01,
-				window_size: int = 5,
-				mode: str = 'min',
-				min_epochs: int = 5,
-				restore_best_weights: bool = True,
-				volatility_threshold: float = 10.0, # Percentage
-				slope_threshold: float = 0.0, # Stop if slope is positive (worsening)
-				pairwise_imp_threshold: float = 5e-3, # Min avg improvement between consecutive epochs
-				min_phases_before_stopping: int = 3, # How many phases must complete before global stop
+	def __init__(
+			self,
+			patience: int = 5,
+			min_delta: float = 1e-3,
+			cumulative_delta: float = 0.01,
+			window_size: int = 5,
+			mode: str = 'min',
+			min_epochs: int = 5,
+			restore_best_weights: bool = True,
+			volatility_threshold: float = 10.0, # Percentage
+			slope_threshold: float = 0.0, # Stop if slope is positive (worsening)
+			pairwise_imp_threshold: float = 5e-3, # Min avg improvement between consecutive epochs
+			min_phases_before_stopping: int = 3, # How many phases must complete before global stop
 		):
-				# Validate inputs
-				if mode not in ["min", "max"]:
-						raise ValueError(f"Invalid mode: {mode}. Must be 'min' or 'max'.")
-				if window_size <= 0:
-						raise ValueError(f"Invalid window_size: {window_size}. Must be > 0.")
-				if patience <= 0:
-						 raise ValueError(f"Invalid patience: {patience}. Must be > 0.")
-				if min_epochs < 0:
-						 raise ValueError(f"Invalid min_epochs: {min_epochs}. Must be >= 0.")
-
-				self.patience = patience
-				self.min_delta = min_delta
-				self.cumulative_delta = cumulative_delta
-				self.window_size = window_size
-				self.mode = mode
-				self.min_epochs = min_epochs
-				self.restore_best_weights = restore_best_weights
-				self.volatility_threshold = volatility_threshold
-				self.slope_threshold = slope_threshold
-				self.pairwise_imp_threshold = pairwise_imp_threshold
-				self.min_phases_before_stopping = min_phases_before_stopping
-
-				self.sign = 1 if mode == 'min' else -1 # Multiplier for improvement calculation
-				self.reset()
-
-		def reset(self):
-				"""Resets the state of the early stopper."""
-				print("--- EarlyStopping state reset ---")
-				self.best_score = None
-				self.best_weights = None
-				self.counter = 0 # Patience counter
-				self.stopped_epoch = 0 # Epoch where improvement last occurred or training started
-				self.best_epoch = 0 # Epoch where the absolute best score was achieved
-				self.value_history = [] # History of monitored values (e.g., val_loss)
-				self.improvement_history = [] # History of boolean improvement checks
-				self.current_phase = 0 # Track the phase during which the state exists (useful if not resetting)
-
-		def compute_volatility(self, window: List[float]) -> float:
-				"""Computes the coefficient of variation (volatility) as a percentage."""
-				if not window or len(window) < 2:
-						return 0.0
-				mean_val = np.mean(window)
-				std_val = np.std(window)
-				return (std_val / abs(mean_val)) * 100 if mean_val != 0 else 0.0
-
-		def is_improvement(self, current_value: float) -> bool:
-				"""Checks if the current value is an improvement over the best score."""
-				if self.best_score is None:
-						return True # First epoch is always an improvement
-				# Calculate improvement based on mode ('min' or 'max')
-				improvement = (self.best_score - current_value) * self.sign
-				return improvement > self.min_delta
-
-		def should_stop(self, current_value: float, model: torch.nn.Module, epoch: int, current_phase: int) -> bool:
-				"""
-				Determines if training should stop based on multiple criteria.
-
-				Args:
-						current_value: The monitored value for the current epoch (e.g., validation loss).
-						model: The PyTorch model being trained.
-						epoch: The current epoch number (0-based).
-						current_phase: The current training phase number (0-based).
-
-				Returns:
-						bool: True if training should stop, False otherwise.
-				"""
-				self.value_history.append(current_value)
-				self.current_phase = current_phase # Update internal phase tracker
-
-				print(f"\n--- EarlyStopping Check (Epoch {epoch+1}, Phase {current_phase}) ---")
-				print(f"Current Value: {current_value:.6f}")
-
-				if epoch < self.min_epochs:
-						print(f"Skipping early stopping check (epoch {epoch+1} < min_epochs {self.min_epochs})")
-						return False
-
-				# Check for improvement
-				improved = self.is_improvement(current_value)
-				if improved:
-						print(f"\tImprovement detected! Best: {self.best_score if self.best_score is not None else 'N/A'} -> {current_value:.6f} (delta: {self.min_delta})")
-						self.best_score = current_value
-						self.best_epoch = epoch
-						self.stopped_epoch = epoch # Track last improvement epoch for patience
-						self.counter = 0 # Reset patience counter
-						self.improvement_history.append(True)
-						if self.restore_best_weights:
-								print("\tSaving best model weights...")
-								# Use CPU state_dict to save memory if possible, clone to avoid issues
-								self.best_weights = {k: v.clone().cpu().detach() for k, v in model.state_dict().items()}
+		self.patience = patience
+		self.min_delta = min_delta
+		self.cumulative_delta = cumulative_delta
+		self.window_size = window_size
+		self.mode = mode
+		self.min_epochs = min_epochs
+		self.restore_best_weights = restore_best_weights
+		self.volatility_threshold = volatility_threshold
+		self.slope_threshold = slope_threshold
+		self.pairwise_imp_threshold = pairwise_imp_threshold
+		self.min_phases_before_stopping = min_phases_before_stopping
+		self.sign = 1 if mode == 'min' else -1 # Multiplier for improvement calculation
+		self.reset()
+	
+	def reset(self):
+		print("--- EarlyStopping state reset, Essential for starting fresh or resetting between training phases ---")
+		self.best_score = None
+		self.best_weights = None
+		self.counter = 0 # Patience counter
+		self.stopped_epoch = 0 # Epoch where improvement last occurred or training started
+		self.best_epoch = 0 # Epoch where the absolute best score was achieved
+		self.value_history = [] # History of monitored values (e.g., val_loss)
+		self.improvement_history = [] # History of boolean improvement checks
+		self.current_phase = 0 # Track the phase during which the state exists (useful if not resetting)
+	
+	def compute_volatility(self, window: List[float]) -> float:
+		"""Computes the coefficient of variation (volatility) as a percentage."""
+		if not window or len(window) < 2:
+			return 0.0
+		mean_val = np.mean(window)
+		std_val = np.std(window)
+		return (std_val / abs(mean_val)) * 100 if mean_val != 0 else 0.0
+	
+	def is_improvement(self, current_value: float) -> bool:
+		"""Checks if the current value is an improvement over the best score."""
+		if self.best_score is None:
+			return True # First epoch is always an improvement
+		# Calculate improvement based on mode ('min' or 'max')
+		improvement = (self.best_score - current_value) * self.sign
+		return improvement > self.min_delta
+	
+	def should_stop(self, current_value: float, model: torch.nn.Module, epoch: int, current_phase: int) -> bool:
+		self.value_history.append(current_value)
+		self.current_phase = current_phase # Update internal phase tracker
+		print(f"\n--- EarlyStopping Check (Epoch {epoch+1}, Phase {current_phase}) ---")
+		print(f"Current Value: {current_value:.6f}")
+		if epoch < self.min_epochs:
+			print(f"Skipping early stopping check (epoch {epoch+1} < min_epochs {self.min_epochs})")
+			return False
+		# Check for improvement
+		improved = self.is_improvement(current_value)
+		if improved:
+				print(f"\tImprovement detected! Best: {self.best_score if self.best_score is not None else 'N/A'} -> {current_value:.6f} (delta: {self.min_delta})")
+				self.best_score = current_value
+				self.best_epoch = epoch
+				self.stopped_epoch = epoch # Track last improvement epoch for patience
+				self.counter = 0 # Reset patience counter
+				self.improvement_history.append(True)
+				if self.restore_best_weights:
+						print("\tSaving best model weights...")
+						# Use CPU state_dict to save memory if possible, clone to avoid issues
+						self.best_weights = {k: v.clone().cpu().detach() for k, v in model.state_dict().items()}
+		else:
+				self.counter += 1
+				self.improvement_history.append(False)
+				print(f"\tNo improvement detected. Best: {self.best_score:.6f}. Patience counter: {self.counter}/{self.patience}")
+		# ----- Compute Metrics for Stopping Criteria -----
+		if len(self.value_history) < self.window_size:
+				print(f"\tNot enough history ({len(self.value_history)} < {self.window_size}) for window-based checks.")
+				# Still check patience
+				if self.counter >= self.patience and current_phase >= self.min_phases_before_stopping:
+						 print(f"EARLY STOPPING TRIGGERED (Phase {current_phase} >= {self.min_phases_before_stopping}): Patience ({self.counter}/{self.patience}) exceeded.")
+						 return True
+				return False # Not enough data for other checks yet
+		# Use the last 'window_size' elements for windowed metrics
+		last_window = self.value_history[-self.window_size:]
+		print(f"\tWindow ({self.window_size} epochs): {last_window}")
+		# 1. Slope Check
+		slope = compute_slope(last_window) # Use global function
+		print(f"\tSlope over window: {slope:.5f} (Threshold: > {self.slope_threshold})")
+		# 2. Volatility Check
+		volatility = self.compute_volatility(last_window)
+		print(f"\tVolatility over window: {volatility:.2f}% (Threshold: >= {self.volatility_threshold}%)")
+		# 3. Pairwise Improvement Check
+		# Calculate average difference between consecutive elements in the window
+		pairwise_diffs = [(last_window[i] - last_window[i+1]) * self.sign for i in range(len(last_window)-1)]
+		pairwise_imp_avg = np.mean(pairwise_diffs) if pairwise_diffs else 0.0
+		print(f"\tAvg Pairwise Improvement over window: {pairwise_imp_avg:.5f} (Threshold: < {self.pairwise_imp_threshold})")
+		# 4. Closeness to Best Score Check (used by pairwise improvement criterion)
+		close_to_best = abs(current_value - self.best_score) < self.min_delta if self.best_score is not None else False
+		print(f"\tClose to best score ({self.best_score:.6f}): {close_to_best}")
+		# 5. Cumulative Improvement Check (Corrected)
+		window_start_value = self.value_history[-self.window_size] # Value at the start of the window
+		window_end_value = self.value_history[-1]       # Most recent value
+		# Calculate improvement based on mode, then take absolute value for threshold check
+		cumulative_improvement_signed = (window_start_value - window_end_value) * self.sign
+		cumulative_improvement_abs = abs(cumulative_improvement_signed)
+		print(f"\tCumulative Improvement over window: {cumulative_improvement_signed:.5f} (Threshold for lack of imp: < {self.cumulative_delta})")
+		# ----- Combine Stopping Criteria -----
+		stop_reason = []
+		# Reason 1: Patience exceeded
+		if self.counter >= self.patience:
+				stop_reason.append(f"Patience ({self.counter}/{self.patience})")
+		# Reason 2: High Volatility indicates instability
+		if volatility >= self.volatility_threshold:
+				stop_reason.append(f"High volatility ({volatility:.2f}%)")
+		# Reason 3: Trend is worsening (positive slope for 'min' mode)
+		# We check > slope_threshold (e.g. > 0 for loss)
+		if (slope * self.sign) < (-self.slope_threshold * self.sign): # Check if trend is going the wrong way
+				 stop_reason.append(f"Worsening slope ({slope:.5f})")
+		# Reason 4: Stagnation - average improvement is low AND not already near the best score
+		if pairwise_imp_avg < self.pairwise_imp_threshold and not close_to_best:
+				stop_reason.append(f"Low pairwise improvement ({pairwise_imp_avg:.5f}) & not close to best")
+		# Reason 5: Lack of significant cumulative improvement over the window
+		if cumulative_improvement_abs < self.cumulative_delta:
+				stop_reason.append(f"Low cumulative improvement ({cumulative_improvement_abs:.5f})")
+		# Final Decision: Only stop if a reason exists AND minimum phases are completed
+		should_really_stop = False
+		if stop_reason:
+				reason_str = ', '.join(stop_reason)
+				if current_phase >= self.min_phases_before_stopping:
+						print(f"EARLY STOPPING TRIGGERED (Phase {current_phase} >= {self.min_phases_before_stopping}): {reason_str}")
+						should_really_stop = True
 				else:
-						self.counter += 1
-						self.improvement_history.append(False)
-						print(f"\tNo improvement detected. Best: {self.best_score:.6f}. Patience counter: {self.counter}/{self.patience}")
-
-				# ----- Compute Metrics for Stopping Criteria -----
-				if len(self.value_history) < self.window_size:
-						print(f"\tNot enough history ({len(self.value_history)} < {self.window_size}) for window-based checks.")
-						# Still check patience
-						if self.counter >= self.patience and current_phase >= self.min_phases_before_stopping:
-								 print(f"EARLY STOPPING TRIGGERED (Phase {current_phase} >= {self.min_phases_before_stopping}): Patience ({self.counter}/{self.patience}) exceeded.")
-								 return True
-						return False # Not enough data for other checks yet
-
-				# Use the last 'window_size' elements for windowed metrics
-				last_window = self.value_history[-self.window_size:]
-				print(f"\tWindow ({self.window_size} epochs): {last_window}")
-
-				# 1. Slope Check
-				slope = compute_slope(last_window) # Use global function
-				print(f"\tSlope over window: {slope:.5f} (Threshold: > {self.slope_threshold})")
-
-				# 2. Volatility Check
-				volatility = self.compute_volatility(last_window)
-				print(f"\tVolatility over window: {volatility:.2f}% (Threshold: >= {self.volatility_threshold}%)")
-
-				# 3. Pairwise Improvement Check
-				# Calculate average difference between consecutive elements in the window
-				pairwise_diffs = [(last_window[i] - last_window[i+1]) * self.sign for i in range(len(last_window)-1)]
-				pairwise_imp_avg = np.mean(pairwise_diffs) if pairwise_diffs else 0.0
-				print(f"\tAvg Pairwise Improvement over window: {pairwise_imp_avg:.5f} (Threshold: < {self.pairwise_imp_threshold})")
-
-				# 4. Closeness to Best Score Check (used by pairwise improvement criterion)
-				close_to_best = abs(current_value - self.best_score) < self.min_delta if self.best_score is not None else False
-				print(f"\tClose to best score ({self.best_score:.6f}): {close_to_best}")
-
-				# 5. Cumulative Improvement Check (Corrected)
-				window_start_value = self.value_history[-self.window_size] # Value at the start of the window
-				window_end_value = self.value_history[-1]       # Most recent value
-				# Calculate improvement based on mode, then take absolute value for threshold check
-				cumulative_improvement_signed = (window_start_value - window_end_value) * self.sign
-				cumulative_improvement_abs = abs(cumulative_improvement_signed)
-				print(f"\tCumulative Improvement over window: {cumulative_improvement_signed:.5f} (Threshold for lack of imp: < {self.cumulative_delta})")
-
-
-				# ----- Combine Stopping Criteria -----
-				stop_reason = []
-				# Reason 1: Patience exceeded
-				if self.counter >= self.patience:
-						stop_reason.append(f"Patience ({self.counter}/{self.patience})")
-
-				# Reason 2: High Volatility indicates instability
-				if volatility >= self.volatility_threshold:
-						stop_reason.append(f"High volatility ({volatility:.2f}%)")
-
-				# Reason 3: Trend is worsening (positive slope for 'min' mode)
-				# We check > slope_threshold (e.g. > 0 for loss)
-				if (slope * self.sign) < (-self.slope_threshold * self.sign): # Check if trend is going the wrong way
-						 stop_reason.append(f"Worsening slope ({slope:.5f})")
-
-				# Reason 4: Stagnation - average improvement is low AND not already near the best score
-				if pairwise_imp_avg < self.pairwise_imp_threshold and not close_to_best:
-						stop_reason.append(f"Low pairwise improvement ({pairwise_imp_avg:.5f}) & not close to best")
-
-				# Reason 5: Lack of significant cumulative improvement over the window
-				if cumulative_improvement_abs < self.cumulative_delta:
-						stop_reason.append(f"Low cumulative improvement ({cumulative_improvement_abs:.5f})")
-
-				# Final Decision: Only stop if a reason exists AND minimum phases are completed
-				should_really_stop = False
-				if stop_reason:
-						reason_str = ', '.join(stop_reason)
-						if current_phase >= self.min_phases_before_stopping:
-								print(f"EARLY STOPPING TRIGGERED (Phase {current_phase} >= {self.min_phases_before_stopping}): {reason_str}")
-								should_really_stop = True
-						else:
-								print(f"\tStopping condition met ({reason_str}), but delaying stop (Phase {current_phase} < {self.min_phases_before_stopping})")
+						print(f"\tStopping condition met ({reason_str}), but delaying stop (Phase {current_phase} < {self.min_phases_before_stopping})")
+		else:
+				print("\tNo stopping conditions met.")
+		# Restore best weights if stopping and configured to do so
+		if should_really_stop and self.restore_best_weights:
+				if self.best_weights is not None:
+						print(f"Restoring model weights from best epoch {self.best_epoch + 1} (score: {self.best_score:.6f})")
+						# Load state dict, ensuring tensors are moved to the correct device
+						model.load_state_dict({k: v.to(model.device) for k, v in self.best_weights.items()})
 				else:
-						print("\tNo stopping conditions met.")
-
-				# Restore best weights if stopping and configured to do so
-				if should_really_stop and self.restore_best_weights:
-						if self.best_weights is not None:
-								print(f"Restoring model weights from best epoch {self.best_epoch + 1} (score: {self.best_score:.6f})")
-								# Load state dict, ensuring tensors are moved to the correct device
-								model.load_state_dict({k: v.to(model.device) for k, v in self.best_weights.items()})
-						else:
-								print("Warning: restore_best_weights is True, but no best weights were saved.")
-
-				return should_really_stop
-
-		def get_status(self) -> Dict[str, Any]:
-				"""Returns the current status of the early stopper."""
-				status = {
-						"best_score": self.best_score,
-						"best_epoch": self.best_epoch + 1 if self.best_score is not None else 0,
-						"patience_counter": self.counter,
-						"current_phase": self.current_phase,
-						"value_history_len": len(self.value_history)
-				}
-				if len(self.value_history) >= self.window_size:
-						 last_window = self.value_history[-self.window_size:]
-						 status["volatility_window"] = self.compute_volatility(last_window)
-						 status["slope_window"] = compute_slope(last_window) # Use global
-				else:
-						 status["volatility_window"] = None
-						 status["slope_window"] = None
-				return status
-
-		def get_best_score(self) -> Optional[float]:
-				return self.best_score
-
-		def get_best_epoch(self) -> int:
-				return self.best_epoch # 0-based
+						print("Warning: restore_best_weights is True, but no best weights were saved.")
+		return should_really_stop
+	
+	def get_status(self) -> Dict[str, Any]:
+		"""Returns the current status of the early stopper."""
+		status = {
+			"best_score": self.best_score,
+			"best_epoch": self.best_epoch + 1 if self.best_score is not None else 0,
+			"patience_counter": self.counter,
+			"current_phase": self.current_phase,
+			"value_history_len": len(self.value_history)
+		}
+		if len(self.value_history) >= self.window_size:
+			last_window = self.value_history[-self.window_size:]
+			status["volatility_window"] = self.compute_volatility(last_window)
+			status["slope_window"] = compute_slope(last_window) # Use global
+		else:
+			status["volatility_window"] = None
+			status["slope_window"] = None
+		return status
+	
+	def get_best_score(self) -> Optional[float]:
+		return self.best_score
+	
+	def get_best_epoch(self) -> int:
+		return self.best_epoch # 0-based
 
 def evaluate_retrieval_performance(
 		model: torch.nn.Module,
@@ -1096,7 +1048,7 @@ def progressive_unfreeze_finetune(
 		base_filename = f"{dataset_name}_{mode_name}_{model_class_name}_{model_arch}"
 		best_model_path = os.path.join(results_dir, f"{base_filename}_best_model.pth")
 
-		print(f"\nStarting Training: {base_filename}")
+		print(f"\nStarting Training: {base_filename}...")
 		print(f"Epochs: {num_epochs} | Device: {device} | Initial LR: {initial_learning_rate:.2e}")
 		print(f"Optimizer: AdamW | Scheduler: OneCycleLR | Criterion: CrossEntropyLoss")
 		print(f"Early Stopping: Patience={patience}, MinDelta={min_delta}, Window={window_size}, MinEpochs={minimum_epochs}, MinPhases={min_phases_before_stopping}")
@@ -1287,7 +1239,7 @@ def progressive_unfreeze_finetune(
 				epochs_in_current_phase += 1
 				epoch_duration = time.time() - epoch_start_time
 				print(f"Epoch {epoch+1} Duration: {epoch_duration:.2f}s")
-				print(f"EarlyStopping Status: {early_stopping.get_status()}")
+				print(f"EarlyStopping Status:\n{json.dumps(early_stopping.get_status(), indent=2, ensure_ascii=False)}")
 				print("-" * 80)
 
 		# --- End of Training ---
@@ -1335,7 +1287,7 @@ def progressive_unfreeze_finetune(
 		plot_file_base = os.path.join(results_dir, f"{base_filename}_ep{epoch+1}_ph{current_phase}")
 
 		file_base_name = (
-			f"{dataset_name}_{mode_name}_{model_name}_{re.sub('/', '', model_arch)}_"
+			f"{dataset_name}_{mode_name}_{model_class_name}_{re.sub('/', '', model_arch)}_"
 			f"ep_{len(training_losses)}_"
 			f"wd_{weight_decay:.1e}_"
 			f"bs_{train_loader.batch_size}_"
