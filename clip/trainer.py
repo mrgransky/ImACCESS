@@ -974,7 +974,7 @@ def progressive_unfreeze_finetune(
 		layer_groups_to_unfreeze: list[str] = ['visual_transformer', 'text_transformer', 'projections'], # Focus on key layers
 		unfreeze_percentages: Optional[List[float]] = None, # Allow passing custom percentages
 	):
-	# Initialize EarlyStopping with tuned parameters
+
 	early_stopping = EarlyStopping(
 		patience=patience,
 		min_delta=min_delta,
@@ -1174,10 +1174,9 @@ def progressive_unfreeze_finetune(
 					print(f"\tBatch [{bidx+1}/{num_train_batches}] Loss: {batch_loss_item:.6f}")
 		avg_epoch_train_loss = epoch_train_loss / num_train_batches if num_train_batches > 0 and trainable_params_exist else 0.0
 		training_losses.append(avg_epoch_train_loss)
-		print(f"Epoch {epoch+1} Avg Training Loss: {avg_epoch_train_loss:.6f}")
 		
 		# --- Validation ---
-		print("Running validation...")
+		print(f"Epoch: {epoch+1} validation...")
 		# Compute traditional loss/accuracy metrics on validation set:
 		loss_acc_metrics_per_epoch = evaluate_loss_and_accuracy(
 			model=model,
@@ -1319,7 +1318,7 @@ def progressive_unfreeze_finetune(
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 	}
-	plot_loss_accuracy(
+	plot_loss_accuracy_metrics(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
 		val_losses=[m.get("val_loss", float('nan')) for m in loss_acc_metrics_all_epochs],
@@ -1546,7 +1545,7 @@ def lora_finetune(
 	mrr_fpth = os.path.join(results_dir, f"{file_base_name}_mrr.png")
 	cs_fpth = os.path.join(results_dir, f"{file_base_name}_cos_sim.png")	
 
-	plot_loss_accuracy(
+	plot_loss_accuracy_metrics(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
 		val_losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
@@ -1798,7 +1797,7 @@ def full_finetune(
 	mrr_fpth = os.path.join(results_dir, f"{file_base_name}_mrr.png")
 	cs_fpth = os.path.join(results_dir, f"{file_base_name}_cos_sim.png")
 
-	plot_loss_accuracy(
+	plot_loss_accuracy_metrics(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
 		val_losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
@@ -2048,7 +2047,7 @@ def train(
 	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_txt2img_topk_accuracy.png")
 	mrr_fpth = os.path.join(results_dir, f"{file_base_name}_mrr.png")
 	cs_fpth = os.path.join(results_dir, f"{file_base_name}_cos_sim.png")
-	plot_loss_accuracy(
+	plot_loss_accuracy_metrics(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
 		val_losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],

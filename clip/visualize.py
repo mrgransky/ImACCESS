@@ -347,7 +347,7 @@ def plot_retrieval_metrics_per_epoch(
 	plt.savefig(fname, dpi=300, bbox_inches='tight')
 	plt.close(fig)
 
-def plot_loss_accuracy(
+def plot_loss_accuracy_metrics(
 		dataset_name: str,
 		train_losses: List[float],
 		val_losses: List[float],
@@ -371,7 +371,7 @@ def plot_loss_accuracy(
 		return
 	epochs = range(1, num_epochs + 1)
 	# Dynamic and selective number of xticks
-	num_xticks = min(10, num_epochs)
+	num_xticks = min(20, num_epochs)
 	selective_xticks_epochs = np.linspace(0, num_epochs, num_xticks, dtype=int)
 	# Consistent color scheme
 	colors = {
