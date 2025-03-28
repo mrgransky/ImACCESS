@@ -197,9 +197,15 @@ class EarlyStopping:
 		# 6. If stopping and configured, load the best saved weights back into the model.
 		if should_really_stop and self.restore_best_weights:
 			if self.best_weights is not None:
-				print(f"Restoring model weights from best epoch {self.best_epoch + 1} (score: {self.best_score:.6f})")
-				# Load state dict, ensuring tensors are moved to the correct device
-				model.load_state_dict({k: v.to(model.device) for k, v in self.best_weights.items()})
+				try:
+					# Get device from model's parameters instead of assuming model.device exists
+					target_device = next(model.parameters()).device
+					# Load state dict, ensuring tensors are moved to the correct device
+					print(f"Restoring model weights from best epoch {self.best_epoch + 1} (score: {self.best_score:.6f})")
+					# Load state dict, ensuring tensors are moved to the correct device
+					model.load_state_dict({k: v.to(target_device) for k, v in self.best_weights.items()})
+				except Exception as e:
+					print(f"Error restoring model weights: {e}! Skipping weight restoration.")
 			else:
 				print("Warning: restore_best_weights is True, but no best weights were saved.")
 		return should_really_stop
@@ -1196,7 +1202,7 @@ def progressive_unfreeze_finetune(
 		current_val_loss = loss_acc_metrics_per_epoch.get("val_loss", float('inf')) # Handle missing key safely
 		print(
 			f'@ Epoch {epoch + 1}:\n'
-			f'\t[LOSS] {mode_name}: {avg_epoch_train_loss:.5f} | Valid: {loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
+			f'\t[LOSS] {mode_name}(Training): {avg_epoch_train_loss:.5f} | Validation: {loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
 			f'\tIn-batch Validation Accuracy: '
 			f'[text retrieval per image]: {loss_acc_metrics_per_epoch.get("img2txt_acc")} '
 			f'[image retrieval per text]: {loss_acc_metrics_per_epoch.get("txt2img_acc")}'
@@ -1206,31 +1212,34 @@ def progressive_unfreeze_finetune(
 		# Use the best_score from EarlyStopping state as it's more robust
 		current_best_from_stopper = early_stopping.get_best_score()
 		if current_best_from_stopper is not None and current_val_loss <= current_best_from_stopper :
-				 # This logic relies on early_stopping.is_improvement having updated best_score
-				 # Let's refine this slightly for clarity:
-				 if early_stopping.is_improvement(current_val_loss) or best_val_loss is None: # Checks min_delta
-						 if best_val_loss is None or current_val_loss < best_val_loss: # Update absolute best
-									print(f"*** New Best Validation Loss Found: {current_val_loss:.6f} (Epoch {epoch+1}) ***")
-									best_val_loss = current_val_loss
-									# Save the actual best model state (could be from stopper's cache or current model)
-									if early_stopping.restore_best_weights and early_stopping.best_weights is not None:
-											# Save the state dict stored by early stopping
-											torch.save(early_stopping.best_weights, best_model_path)
-											print(f"Best model weights (from epoch {early_stopping.best_epoch+1}) saved to {best_model_path}")
-									else:
-											 # Save current model state if not restoring or no weights saved yet
-											 torch.save(model.state_dict(), best_model_path)
-											 print(f"Best model weights (current epoch {epoch+1}) saved to {best_model_path}")
+			# This logic relies on early_stopping.is_improvement having updated best_score
+			# Let's refine this slightly for clarity:
+			if early_stopping.is_improvement(current_val_loss) or best_val_loss is None: # Checks min_delta
+				if best_val_loss is None or current_val_loss < best_val_loss: # Update absolute best
+					print(f"*** New Best Validation Loss Found: {current_val_loss:.6f} (Epoch {epoch+1}) ***")
+					best_val_loss = current_val_loss
+					# Save the actual best model state (could be from stopper's cache or current model)
+					if early_stopping.restore_best_weights and early_stopping.best_weights is not None:
+						# Save the state dict stored by early stopping
+						torch.save(early_stopping.best_weights, best_model_path)
+						print(f"Best model weights (from epoch {early_stopping.best_epoch+1}) saved to {best_model_path}")
+					else:
+						# Save current model state if not restoring or no weights saved yet
+						torch.save(model.state_dict(), best_model_path)
+						print(f"Best model weights (current epoch {epoch+1}) saved to {best_model_path}")
+
 		# --- Early Stopping Check ---
 		stop_training = early_stopping.should_stop(
-				current_value=current_val_loss,
-				model=model,
-				epoch=epoch,
-				current_phase=current_phase
+			current_value=current_val_loss,
+			model=model,
+			epoch=epoch,
+			current_phase=current_phase
 		)
+
 		if stop_training:
-				print(f"--- Training stopped early at epoch {epoch+1} ---")
-				break # Exit the main training loop
+			print(f"--- Training stopped early at epoch {epoch+1} ---")
+			break # Exit the main training loop
+
 		# --- End of Epoch ---
 		epochs_in_current_phase += 1
 		epoch_duration = time.time() - epoch_start_time
@@ -1248,34 +1257,45 @@ def progressive_unfreeze_finetune(
 	# --- Final Evaluation & Plotting ---
 	# Load the best model weights for final evaluation
 	if early_stopping.restore_best_weights and os.path.exists(best_model_path):
-			 print(f"\nLoading best model weights from {best_model_path} for final evaluation...")
-			 # Load weights carefully, handling potential device mismatches if needed
-			 best_weights_loaded = torch.load(best_model_path, map_location=device)
-			 # Check if it's a state_dict or the full stopper cache
-			 if isinstance(best_weights_loaded, dict) and not any(k.startswith('best_score') for k in best_weights_loaded.keys()): # Heuristic for state_dict
-					 model.load_state_dict(best_weights_loaded)
-			 elif isinstance(best_weights_loaded, dict) and 'model_state_dict' in best_weights_loaded: # Check if it's a checkpoint dict
-						model.load_state_dict(best_weights_loaded['model_state_dict'])
-			 else:
-						print("Warning: Loaded best model file format not recognized as state_dict. Using weights stored in EarlyStopping if available.")
-						if early_stopping.best_weights is not None:
-								 model.load_state_dict({k: v.to(device) for k, v in early_stopping.best_weights.items()})
+		print(f"\nLoading best model weights from {best_model_path} for final evaluation...")
+		# Load weights carefully, handling potential device mismatches if needed
+		best_weights_loaded = torch.load(best_model_path, map_location=device)
+		# Check if it's a state_dict or the full stopper cache
+		if isinstance(best_weights_loaded, dict) and not any(k.startswith('best_score') for k in best_weights_loaded.keys()): # Heuristic for state_dict
+			model.load_state_dict(best_weights_loaded)
+		elif isinstance(best_weights_loaded, dict) and 'model_state_dict' in best_weights_loaded: # Check if it's a checkpoint dict
+			model.load_state_dict(best_weights_loaded['model_state_dict'])
+		else:
+			print("Warning: Loaded best model file format not recognized as state_dict. Using weights stored in EarlyStopping if available.")
+			if early_stopping.best_weights is not None:
+				model.load_state_dict({k: v.to(device) for k, v in early_stopping.best_weights.items()})
+
 	print("\nPerforming final evaluation on the best model...")
 	final_metrics = evaluate_loss_and_accuracy(
-			model=model, validation_loader=validation_loader, criterion=criterion, device=device, topK_values=top_k_values
+		model=model, 
+		validation_loader=validation_loader, 
+		criterion=criterion, 
+		device=device, 
+		topK_values=top_k_values,
 	)
+
 	final_img2txt_metrics, final_txt2img_metrics = evaluate_retrieval_performance(
-			model=model, validation_loader=validation_loader, device=device, topK_values=top_k_values
+		model=model,
+		validation_loader=validation_loader,
+		device=device,
+		topK_values=top_k_values,
 	)
-	print("\n--- Final Metrics (Best Model) ---")
+
+	print("\n--- Final Metrics[Validation Loss & Accuracy] (Best Model) ---")
 	print(json.dumps(final_metrics, indent=2))
+
 	print("Image-to-Text Retrieval:")
 	print(json.dumps(final_img2txt_metrics, indent=2))
+
 	print("Text-to-Image Retrieval:")
 	print(json.dumps(final_txt2img_metrics, indent=2))
-	# Generate plots using the collected history and final best metrics
+
 	print("\nGenerating result plots...")
-	# Adjust file naming for plots
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{model_class_name}_"
