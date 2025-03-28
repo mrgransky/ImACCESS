@@ -1319,8 +1319,8 @@ def progressive_unfreeze_finetune(
 	)
 	plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
-		image_to_text_metrics_list=img2txt_metrics_list,
-		text_to_image_metrics_list=txt2img_metrics_list,
+		image_to_text_metrics_list=img2txt_metrics_all_epochs,
+		text_to_image_metrics_list=txt2img_metrics_all_epochs,
 		fname=plot_paths["retrieval_per_epoch"],
 	)
 	plot_retrieval_metrics_best_model(
