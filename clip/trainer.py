@@ -1196,7 +1196,7 @@ def progressive_unfreeze_finetune(
 		current_val_loss = loss_acc_metrics_per_epoch.get("val_loss", float('inf')) # Handle missing key safely
 		print(
 			f'@ Epoch {epoch + 1}:\n'
-			f'\t[LOSS] {mode}: {avg_epoch_train_loss:.5f} | Valid: {loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
+			f'\t[LOSS] {mode_name}: {avg_epoch_train_loss:.5f} | Valid: {loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
 			f'\tIn-batch Validation Accuracy: '
 			f'[text retrieval per image]: {loss_acc_metrics_per_epoch.get("img2txt_acc")} '
 			f'[image retrieval per text]: {loss_acc_metrics_per_epoch.get("txt2img_acc")}'
