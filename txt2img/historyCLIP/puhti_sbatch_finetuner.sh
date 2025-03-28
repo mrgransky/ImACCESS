@@ -1,14 +1,14 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=finetune_historyCLIP_zero_dropout_strategy_x_dataset_x
+#SBATCH --job-name=finetune_historyCLIP_strategy_x_dataset_x
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=40
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=24
+#SBATCH --mem=51G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=0-14               # 3 strategies × 5 datasets = 15 tasks
