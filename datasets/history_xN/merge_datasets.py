@@ -80,6 +80,12 @@ plot_label_distribution(
 	DPI=DPI,
 )
 
+plot_label_distribution_pie_chart(
+	df=merged_df,
+	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_all_labels_distribution_pie_chart.png'),
+	figure_size=(7, 11),
+	DPI=DPI,
+)
 plot_grouped_bar_chart(
 	merged_df=merged_df,
 	dataset_name=dataset_name,

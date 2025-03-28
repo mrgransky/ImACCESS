@@ -200,7 +200,6 @@ class EarlyStopping:
 				try:
 					# Get device from model's parameters instead of assuming model.device exists
 					target_device = next(model.parameters()).device
-					# Load state dict, ensuring tensors are moved to the correct device
 					print(f"Restoring model weights from best epoch {self.best_epoch + 1} (score: {self.best_score:.6f})")
 					# Load state dict, ensuring tensors are moved to the correct device
 					model.load_state_dict({k: v.to(target_device) for k, v in self.best_weights.items()})

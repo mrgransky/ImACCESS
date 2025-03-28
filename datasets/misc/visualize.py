@@ -9,6 +9,118 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import inspect
 
+def plot_label_distribution_pie_chart(
+		df: pd.DataFrame = None,
+		fpth: str = "label_distribution_pie_chart.png",
+		figure_size: tuple = (15, 10),
+		DPI: int = 250,
+		dataset_name: str = "EUROPEANA_1900-01-01_1970-12-31",
+	):
+	# Count labels and sort by count (descending)
+	label_counts = df['label'].value_counts().sort_values(ascending=False)
+	labels = label_counts.index
+	total_samples = label_counts.sum()
+	unique_labels = len(labels)
+	# Group small categories into "Other"
+	threshold = 0.01  # 1% threshold
+	other_count = label_counts[label_counts / total_samples < threshold].sum()
+	main_counts = label_counts[label_counts / total_samples >= threshold]
+	if other_count > 0:
+			main_counts['Other'] = other_count
+	labels = main_counts.index
+	label_counts = main_counts
+	# Create figure with vertical layout
+	fig = plt.figure(figsize=figure_size)
+	gs = fig.add_gridspec(2, 1, height_ratios=[1.6, 1])
+	ax_pie = fig.add_subplot(gs[0])
+	ax_legend = fig.add_subplot(gs[1])
+	# Use a colorblind-friendly categorical colormap
+	colors = plt.cm.tab20c(np.linspace(0, 1, len(labels)))
+	# Explode larger wedges
+	explode = [0.1 if i < 3 else 0 for i in range(len(labels))]
+	# Create pie chart
+	wedges, texts, autotexts = ax_pie.pie(
+			label_counts.values,
+			labels=[''] * len(labels),
+			colors=colors,
+			autopct=lambda p: f'{p:.1f}%' if p > 5 else '',
+			startangle=0,
+			explode=explode,
+			wedgeprops={
+					'edgecolor': 'black',
+					'linewidth': 0.7,
+					'alpha': 0.8,
+			}
+	)
+	# Adjust percentage label contrast and position
+	for i, autotext in enumerate(autotexts):
+			if autotext.get_text():
+					wedge_color = wedges[i].get_facecolor()
+					luminance = 0.299 * wedge_color[0] + 0.587 * wedge_color[1] + 0.114 * wedge_color[2]
+					autotext.set_color('white' if luminance < 0.5 else 'black')
+					if label_counts.values[i] / total_samples < 0.1:
+							autotext.set_position((autotext.get_position()[0] * 1.2, autotext.get_position()[1] * 1.2))
+					autotext.set_fontsize(14)  # Increase font size to 12
+					autotext.set_weight('bold')  # Make font bold
+
+	# Turn off axis for legend subplot
+	ax_legend.axis('off')
+	# Create truncated legend
+	if len(labels) > 6:
+			selected_wedges = wedges[:3] + [None] + wedges[-3:]
+			legend_labels_full = [
+					f"{label} ({count:,}, {count/total_samples*100:.1f}%)"
+					for label, count in label_counts.items()
+			]
+			omitted_count = len(labels) - 6
+			# selected_labels = legend_labels_full[:3] + [f'... ({omitted_count} categories omitted)'] + legend_labels_full[-3:]
+			selected_labels = legend_labels_full[:3] + [f'...'] + legend_labels_full[-3:]
+			dummy_artist = plt.Rectangle((0, 0), 1, 1, fc='none', fill=False, edgecolor='none', linewidth=0)
+			selected_wedges[3] = dummy_artist
+	else:
+			selected_wedges = wedges
+			selected_labels = [
+					f"{label} ({count:,}, {count/total_samples*100:.1f}%)"
+					for label, count in label_counts.items()
+			]
+	# Create legend
+	ax_legend.legend(
+			selected_wedges,
+			selected_labels,
+			loc='center',
+			bbox_to_anchor=(0.5, 0.5),
+			fontsize=14,
+			title=f"Labels (Total: {total_samples:,} samples, {unique_labels} unique)",
+			title_fontsize=16,
+			fancybox=True,
+			shadow=True,
+			edgecolor='black',
+			facecolor='white',
+			ncol=1,
+			labelspacing=1.2,
+			labelcolor='black',
+	)
+	ax_pie.axis('equal')
+	plt.tight_layout()
+	plt.savefig(fpth, dpi=DPI, bbox_inches='tight')
+	plt.close()
+
+	# Optional bar chart for top 10 categories
+	plt.figure(figsize=(15, 5))
+	top_n = 10
+	top_counts = label_counts[:top_n]
+	if len(label_counts) > top_n:
+			top_counts['Other'] = label_counts[top_n:].sum()
+	colors = plt.cm.tab20c(np.linspace(0, 1, len(top_counts)))
+	plt.bar(top_counts.index, top_counts.values, color=colors)
+	plt.yscale('log')  # Log scale for visibility of small categories
+	plt.xticks(rotation=45, ha='right')
+	plt.ylabel('Sample Count (Log Scale)')
+	plt.title(f"Top {top_n} Label Distribution for {dataset_name} Dataset")
+	plt.tight_layout()
+	plt.savefig(fpth.replace('.png', '_bar.png'), dpi=DPI, bbox_inches='tight')
+	plt.close()
+
 def plot_grouped_bar_chart(
 		merged_df: pd.DataFrame,
 		dataset_name: str,
@@ -288,7 +400,7 @@ def plot_label_distribution(
 		top_labels = pd.concat([top_labels, pd.Series([other_count], index=['Other'])])
 		label_counts = top_labels
 	
-	fig, ax = plt.subplots(figsize=FIGURE_SIZE)
+	fig, ax = plt.subplots(figsize=FIGURE_SIZE, facecolor='white')
 	
 	# Plot with better styling
 	bars = label_counts.plot(
