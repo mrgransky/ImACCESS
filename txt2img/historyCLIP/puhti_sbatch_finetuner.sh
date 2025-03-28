@@ -56,7 +56,7 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] || [ $strategy_index -ge ${#FINETUNE_S
 fi
 
 # Hyperparameter configuration
-INIT_LRS=(1e-4 1e-4 5e-4 2e-4 2e-4)
+INIT_LRS=(1e-4 1e-4 1e-4 1e-5 2e-5)
 WEIGHT_DECAYS=(1e-1 1e-1 1e-1 1e-1 1e-1)
 DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
 EPOCHS=(50 50 150 150 150)
