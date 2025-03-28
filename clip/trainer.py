@@ -1389,17 +1389,17 @@ def lora_finetune(
 			"which gives you more control over LoRA-specific regularization without affecting the base model.\n"
 		)
 
-	# Early stopping setup (same as finetune())
 	early_stopping = EarlyStopping(
 		patience=patience,
 		min_delta=min_delta,
 		cumulative_delta=cumulative_delta,
 		window_size=window_size,
-		mode='min',
+		mode='min', # Monitoring validation loss
 		min_epochs=minimum_epochs,
-		restore_best_weights=True
+		restore_best_weights=True,
 	)
-	
+
+
 	# Dataset and directory setup (same as finetune())
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
@@ -1599,14 +1599,15 @@ def full_finetune(
 	):
 
 	early_stopping = EarlyStopping(
-			patience=patience,  # Wait for 10 epochs without improvement before stopping
-			min_delta=min_delta,  # Consider an improvement only if the change is greater than 0.0001
-			cumulative_delta=cumulative_delta,  # Cumulative improvement over the window should be greater than 0.005
-			window_size=window_size,  # Consider the last 10 epochs for cumulative trend
-			mode='min',  # Minimize loss
-			min_epochs=minimum_epochs,  # Ensure at least 20 epochs of training
-			restore_best_weights=True  # Restore model weights to the best epoch
+		patience=patience,
+		min_delta=min_delta,
+		cumulative_delta=cumulative_delta,
+		window_size=window_size,
+		mode='min', # Monitoring validation loss
+		min_epochs=minimum_epochs,
+		restore_best_weights=True,
 	)
+
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__  # CIFAR10, ImageNet, etc.
 	except AttributeError as e:
@@ -1851,14 +1852,15 @@ def train(
 	):
 
 	early_stopping = EarlyStopping(
-		patience=patience,									# Wait for 10 epochs without improvement before stopping
-		min_delta=min_delta,								# Consider an improvement only if the change is greater than 0.0001
-		cumulative_delta=cumulative_delta,	# Cumulative improvement over the window should be greater than 0.005
-		window_size=window_size,						# Consider the last 10 epochs for cumulative trend
-		mode='min',													# Minimize loss
-		min_epochs=minimum_epochs,					# Ensure at least 20 epochs of training
-		restore_best_weights=True						# Restore model weights to the best epoch
+		patience=patience,
+		min_delta=min_delta,
+		cumulative_delta=cumulative_delta,
+		window_size=window_size,
+		mode='min', # Monitoring validation loss
+		min_epochs=minimum_epochs,
+		restore_best_weights=True,
 	)
+
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__ # CIFAR10, ImageNet, etc.
 	except AttributeError as e:
