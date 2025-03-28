@@ -969,420 +969,367 @@ def progressive_unfreeze_finetune(
 		layer_groups_to_unfreeze: list[str] = ['visual_transformer', 'text_transformer', 'projections'], # Focus on key layers
 		unfreeze_percentages: Optional[List[float]] = None, # Allow passing custom percentages
 	):
-		"""
-		Performs progressive unfreezing fine-tuning with integrated early stopping
-		and phase transition logic.
+	# Initialize EarlyStopping with tuned parameters
+	early_stopping = EarlyStopping(
+		patience=patience,
+		min_delta=min_delta,
+		cumulative_delta=cumulative_delta,
+		window_size=window_size,
+		mode='min', # Monitoring validation loss
+		min_epochs=minimum_epochs,
+		restore_best_weights=True,
+		volatility_threshold=volatility_threshold,
+		slope_threshold=slope_threshold, # Positive slope is bad for loss
+		pairwise_imp_threshold=pairwise_imp_threshold,
+		min_phases_before_stopping=min_phases_before_stopping
+	)
 
-		Args:
-				model: The PyTorch model.
-				train_loader: DataLoader for training data.
-				validation_loader: DataLoader for validation data.
-				num_epochs: Total maximum number of epochs.
-				nw: Number of workers for DataLoaders.
-				print_every: Frequency of printing batch loss within an epoch.
-				initial_learning_rate: Starting learning rate.
-				weight_decay: Weight decay for the optimizer.
-				device: Computation device ('cuda', 'cpu').
-				results_dir: Directory to save results (model weights, plots).
-				patience: Epochs to wait for improvement before stopping (EarlyStopping).
-				min_delta: Minimum change to qualify as improvement (EarlyStopping).
-				cumulative_delta: Min cumulative improvement over window (EarlyStopping).
-				minimum_epochs: Min total epochs before EarlyStopping can trigger.
-				min_epochs_per_phase: Min epochs in a phase before transition check.
-				volatility_threshold: Volatility % threshold for stopping/transitioning.
-				slope_threshold: Loss slope threshold for stopping/transitioning.
-				pairwise_imp_threshold: Min pairwise improvement threshold for stopping/transitioning.
-				accuracy_plateau_threshold: Threshold for accuracy stagnation (phase transition).
-				min_phases_before_stopping: Min phases completed before EarlyStopping can globally stop.
-				top_k_values: K values for top-K accuracy/retrieval metrics.
-				layer_groups_to_unfreeze: Specific layer groups to include in the unfreezing schedule.
-				unfreeze_percentages: Optional list of percentages [0.0, ..., 1.0] defining the phases.
-																If None, uses get_unfreeze_pcts_hybrid.
-		"""
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	except:
+		dataset_name = validation_loader.dataset.dataset_name
+	mode_name = inspect.stack()[0].function
+	model_arch = re.sub('/', '', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_class_name = model.__class__.__name__
+	base_filename = f"{dataset_name}_{mode_name}_{model_class_name}_{model_arch}"
+	best_model_path = os.path.join(results_dir, f"{base_filename}_best_model.pth")
 
-		# Initialize EarlyStopping with tuned parameters
-		early_stopping = EarlyStopping(
-				patience=patience,
-				min_delta=min_delta,
-				cumulative_delta=cumulative_delta,
-				window_size=window_size,
-				mode='min', # Monitoring validation loss
-				min_epochs=minimum_epochs,
-				restore_best_weights=True,
+	# Find dropout value
+	dropout_val = 0.0
+	for name, module in model.named_modules():
+		if isinstance(module, torch.nn.Dropout):
+			dropout_val = module.p
+			break
+	# Determine unfreeze schedule percentages
+	if unfreeze_percentages is None:
+		unfreeze_percentages = get_unfreeze_pcts_hybrid(
+			model=model,
+			train_loader=train_loader,
+			min_phases=max(4, min_phases_before_stopping + 1), # Ensure enough phases
+			max_phases=15, # Cap the number of phases
+		)
+	# Get the detailed layer unfreeze schedule
+	unfreeze_schedule = get_unfreeze_schedule(
+		model=model,
+		unfreeze_percentages=unfreeze_percentages,
+		layer_groups_to_unfreeze=layer_groups_to_unfreeze,
+	)
+	max_phases = len(unfreeze_schedule)
+	# Optimizer and Scheduler
+	# Filter parameters dynamically based on requires_grad, which changes per phase
+	optimizer = AdamW(
+		params=filter(lambda p: p.requires_grad, model.parameters()), # Initially might be empty if phase 0 has no unfrozen layers
+		lr=initial_learning_rate,
+		betas=(0.9, 0.98),
+		eps=1e-6,
+		weight_decay=weight_decay,
+	)
+	scheduler = torch.optim.lr_scheduler.OneCycleLR(
+		optimizer=optimizer,
+		max_lr=initial_learning_rate,
+		steps_per_epoch=len(train_loader),
+		epochs=num_epochs,
+		pct_start=0.1, # Standard pct_start
+		anneal_strategy='cos' # Cosine annealing
+	)
+	criterion = torch.nn.CrossEntropyLoss()
+	scaler = torch.amp.GradScaler(device=device) # For mixed precision
+
+	# --- Training State ---
+	current_phase = 0
+	epochs_in_current_phase = 0
+	training_losses = [] # History of average training loss per epoch
+	img2txt_metrics_all_epochs = list()
+	txt2img_metrics_all_epochs = list()
+	loss_acc_metrics_all_epochs = list() # History of validation metrics dicts per epoch
+	best_val_loss = None # Track the absolute best validation loss
+	layer_cache = {} # Cache for layer status (optional, used by get_status)
+	last_lr = initial_learning_rate # Track current LR
+	phase_just_changed = False # Flag to signal optimizer refresh needed
+	print(f"\nStarting Training: {base_filename}...")
+	print(f"Epochs: {num_epochs} | Device: {device} | Initial LR: {initial_learning_rate:.2e}")
+	print(f"Optimizer: AdamW | Scheduler: OneCycleLR | Criterion: CrossEntropyLoss")
+	print(f"Early Stopping: Patience={patience}, MinDelta={min_delta}, cimulativeDelta={cumulative_delta}, Window={window_size}, MinEpochs={minimum_epochs}, MinPhases={min_phases_before_stopping}")
+	print(f"Phase Transition: Window={window_size}, MinEpochsInPhase={min_epochs_per_phase}")
+	print("-" * 80)
+
+	# --- Main Training Loop ---
+	train_start_time = time.time()
+	for epoch in range(num_epochs):
+		epoch_start_time = time.time()
+		print(f"\n=== Epoch {epoch+1}/{num_epochs} | Phase {current_phase} | LR: {last_lr:.3e} ===")
+		torch.cuda.empty_cache()
+		# --- Phase Transition Check ---
+		# Check only if enough epochs *overall* and *within the phase* have passed,
+		# and if we are not already in the last phase.
+		if (epoch >= minimum_epochs and # Overall min epochs check
+			epochs_in_current_phase >= min_epochs_per_phase and
+			current_phase < max_phases - 1 and
+			len(early_stopping.value_history) >= window_size):
+			print(f"Checking for phase transition (Epochs in phase: {epochs_in_current_phase})")
+			# Extract necessary data for should_transition_phase
+			val_losses = early_stopping.value_history
+
+			val_accs = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in loss_acc_metrics_all_epochs] if loss_acc_metrics_all_epochs else None
+			should_trans = should_transition_phase(
+				losses=val_losses,
+				accuracies=val_accs, # Pass average accuracy
+				window=window_size,
+				best_loss=early_stopping.get_best_score(), # Use best score from early stopping state
+				best_loss_threshold=min_delta, # Use min_delta for closeness check
 				volatility_threshold=volatility_threshold,
-				slope_threshold=slope_threshold, # Positive slope is bad for loss
+				slope_threshold=slope_threshold, # Use positive threshold for worsening loss
 				pairwise_imp_threshold=pairwise_imp_threshold,
-				min_phases_before_stopping=min_phases_before_stopping
-		)
-
-		# Find dropout value
-		dropout_val = 0.0
-		for name, module in model.named_modules():
-			if isinstance(module, torch.nn.Dropout):
-				dropout_val = module.p
-				break
-
-		# Determine unfreeze schedule percentages
-		if unfreeze_percentages is None:
-				unfreeze_percentages = get_unfreeze_pcts_hybrid(
-						model=model,
-						train_loader=train_loader,
-						min_phases=max(4, min_phases_before_stopping + 1), # Ensure enough phases
-						max_phases=15, # Cap the number of phases
+				accuracy_plateau_threshold=accuracy_plateau_threshold
+			)
+			if should_trans:
+				current_phase, last_lr = handle_phase_transition(
+					current_phase=current_phase,
+					initial_lr=initial_learning_rate,
+					max_phases=max_phases,
+					window_size=window_size,
+					current_loss=val_losses[-1],
+					best_loss=early_stopping.get_best_score()
 				)
-
-		# Get the detailed layer unfreeze schedule
-		unfreeze_schedule = get_unfreeze_schedule(
-				model=model,
-				unfreeze_percentages=unfreeze_percentages,
-				layer_groups_to_unfreeze=layer_groups_to_unfreeze,
+				epochs_in_current_phase = 0 # Reset phase epoch counter
+				early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
+				print(f"Transitioned to Phase {current_phase}. Early stopping reset.")
+				
+				phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
+				print(f"Phase transition triggered. Optimizer/Scheduler refresh pending after unfreeze.")
+		# --- Unfreeze Layers for Current Phase ---
+		print(f"Applying unfreeze strategy for Phase {current_phase}...")
+		# Ensure layers are correctly frozen/unfrozen *before* optimizer step
+		unfreeze_layers(
+			model=model,
+			strategy=unfreeze_schedule,
+			phase=current_phase,
+			cache=layer_cache # Optional cache
 		)
-		max_phases = len(unfreeze_schedule)
-
-		# Optimizer and Scheduler
-		# Filter parameters dynamically based on requires_grad, which changes per phase
-		optimizer = AdamW(
-				params=filter(lambda p: p.requires_grad, model.parameters()), # Initially might be empty if phase 0 has no unfrozen layers
-				lr=initial_learning_rate,
-				betas=(0.9, 0.98),
-				eps=1e-6,
-				weight_decay=weight_decay,
-		)
-		scheduler = torch.optim.lr_scheduler.OneCycleLR(
+		if phase_just_changed or epoch == 0:
+			print("Refreshing optimizer parameter groups...")
+			optimizer.param_groups.clear()
+			optimizer.add_param_group({'params': [p for p in model.parameters() if p.requires_grad], 'lr': last_lr})
+			print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e}.")
+			
+			# --- Re-initialize Scheduler (Option B Implementation) ---
+			print("Re-initializing OneCycleLR scheduler for new phase/start...")
+			steps_per_epoch = len(train_loader)
+			# Decide on remaining epochs for the new schedule
+			# Option 1: Schedule over all original epochs (simpler, might finish annealing early)
+			# scheduler_epochs = num_epochs
+			# Option 2: Schedule over remaining epochs (more adaptive)
+			scheduler_epochs = num_epochs - epoch
+			# Ensure scheduler_epochs is at least 1
+			scheduler_epochs = max(1, scheduler_epochs)
+			scheduler = torch.optim.lr_scheduler.OneCycleLR(
 				optimizer=optimizer,
-				max_lr=initial_learning_rate,
-				steps_per_epoch=len(train_loader),
-				epochs=num_epochs,
-				pct_start=0.1, # Standard pct_start
-				anneal_strategy='cos' # Cosine annealing
+				max_lr=last_lr, # Use the new LR as the peak for the new cycle
+				steps_per_epoch=steps_per_epoch,
+				epochs=scheduler_epochs, # Schedule over remaining or total epochs
+				pct_start=0.1, # Consider if this needs adjustment in later phases
+				anneal_strategy='cos',
+				# last_epoch = -1 # Ensures it starts fresh
+			)
+			print(f"Scheduler re-initialized with max_lr={last_lr:.3e} for {scheduler_epochs} epochs.")
+			# --- End Scheduler Re-initialization ---
+			phase_just_changed = False # Reset the flag
+		# --- Training Epoch ---
+		model.train()
+		epoch_train_loss = 0.0
+		num_train_batches = len(train_loader)
+		trainable_params_exist = any(p.requires_grad for p in model.parameters())
+		if not trainable_params_exist:
+			print("Warning: No trainable parameters found for the current phase. Skipping training steps.")
+		else:
+			for bidx, batch_data in enumerate(train_loader):
+				# Assuming batch_data unpacks correctly
+				images, tokenized_labels, _ = batch_data # Adjust unpacking as needed
+				images = images.to(device, non_blocking=True)
+				tokenized_labels = tokenized_labels.to(device, non_blocking=True)
+				optimizer.zero_grad(set_to_none=True)
+				with torch.amp.autocast(device_type=device.type, enabled=True):
+					logits_per_image, logits_per_text = model(images, tokenized_labels)
+					ground_truth = torch.arange(len(images), dtype=torch.long, device=device)
+					loss_img = criterion(logits_per_image, ground_truth)
+					loss_txt = criterion(logits_per_text, ground_truth)
+					batch_loss = 0.5 * (loss_img + loss_txt)
+				if torch.isnan(batch_loss):
+					print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
+					continue # Skip optimizer step if loss is NaN
+				scaler.scale(batch_loss).backward()
+				scaler.unscale_(optimizer) # Unscale before clipping
+				torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+				scaler.step(optimizer)
+				scaler.update()
+				scheduler.step() # Step the scheduler
+				batch_loss_item = batch_loss.item()
+				epoch_train_loss += batch_loss_item
+				if bidx % print_every == 0 or bidx + 1 == num_train_batches:
+					print(f"\tBatch [{bidx+1}/{num_train_batches}] Loss: {batch_loss_item:.6f}")
+		avg_epoch_train_loss = epoch_train_loss / num_train_batches if num_train_batches > 0 and trainable_params_exist else 0.0
+		training_losses.append(avg_epoch_train_loss)
+		print(f"Epoch {epoch+1} Avg Training Loss: {avg_epoch_train_loss:.6f}")
+		
+		# --- Validation ---
+		print("Running validation...")
+		# Compute traditional loss/accuracy metrics on validation set:
+		loss_acc_metrics_per_epoch = evaluate_loss_and_accuracy(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			device=device,
+			topK_values=top_k_values
 		)
-		criterion = torch.nn.CrossEntropyLoss()
-		scaler = torch.amp.GradScaler(device=device) # For mixed precision
+		loss_acc_metrics_all_epochs.append(loss_acc_metrics_per_epoch)
 
-		# --- Training State ---
-		current_phase = 0
-		epochs_in_current_phase = 0
-		training_losses = [] # History of average training loss per epoch
-		img2txt_metrics_list = []
-		txt2img_metrics_list = []
-		metrics_for_all_epochs = [] # History of validation metrics dicts per epoch
-		best_val_loss = None # Track the absolute best validation loss
-		layer_cache = {} # Cache for layer status (optional, used by get_status)
-		last_lr = initial_learning_rate # Track current LR
-		phase_just_changed = False # Flag to signal optimizer refresh needed
+		# Compute retrieval-based metrics
+		img2txt_metrics_per_epoch, txt2img_metrics_per_epoch = evaluate_retrieval_performance(
+			model=model,
+			validation_loader=validation_loader,
+			device=device,
+			topK_values=top_k_values,
+		)
+		img2txt_metrics_all_epochs.append(img2txt_metrics_per_epoch)
+		txt2img_metrics_all_epochs.append(txt2img_metrics_per_epoch)
 
-		try:
-			dataset_name = validation_loader.dataset.dataset.__class__.__name__
-		except:
-			dataset_name = validation_loader.dataset.dataset_name
+		current_val_loss = loss_acc_metrics_per_epoch.get("val_loss", float('inf')) # Handle missing key safely
+		print(
+			f'@ Epoch {epoch + 1}:\n'
+			f'\t[LOSS] {mode}: {avg_epoch_train_loss:.5f} | Valid: {loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
+			f'\tIn-batch Validation Accuracy: '
+			f'[text retrieval per image]: {loss_acc_metrics_per_epoch.get("img2txt_acc")} '
+			f'[image retrieval per text]: {loss_acc_metrics_per_epoch.get("txt2img_acc")}'
+		)
 
-		mode_name = inspect.stack()[0].function
-		model_arch = re.sub('/', '', model.name) if hasattr(model, 'name') else 'unknown_arch'
-		model_class_name = model.__class__.__name__
-
-		base_filename = f"{dataset_name}_{mode_name}_{model_class_name}_{model_arch}"
-		best_model_path = os.path.join(results_dir, f"{base_filename}_best_model.pth")
-
-		print(f"\nStarting Training: {base_filename}...")
-		print(f"Epochs: {num_epochs} | Device: {device} | Initial LR: {initial_learning_rate:.2e}")
-		print(f"Optimizer: AdamW | Scheduler: OneCycleLR | Criterion: CrossEntropyLoss")
-		print(f"Early Stopping: Patience={patience}, MinDelta={min_delta}, Window={window_size}, MinEpochs={minimum_epochs}, MinPhases={min_phases_before_stopping}")
-		print(f"Phase Transition: Window={window_size}, MinEpochsInPhase={min_epochs_per_phase}")
+		# --- Checkpointing Best Model ---
+		# Use the best_score from EarlyStopping state as it's more robust
+		current_best_from_stopper = early_stopping.get_best_score()
+		if current_best_from_stopper is not None and current_val_loss <= current_best_from_stopper :
+				 # This logic relies on early_stopping.is_improvement having updated best_score
+				 # Let's refine this slightly for clarity:
+				 if early_stopping.is_improvement(current_val_loss) or best_val_loss is None: # Checks min_delta
+						 if best_val_loss is None or current_val_loss < best_val_loss: # Update absolute best
+									print(f"*** New Best Validation Loss Found: {current_val_loss:.6f} (Epoch {epoch+1}) ***")
+									best_val_loss = current_val_loss
+									# Save the actual best model state (could be from stopper's cache or current model)
+									if early_stopping.restore_best_weights and early_stopping.best_weights is not None:
+											# Save the state dict stored by early stopping
+											torch.save(early_stopping.best_weights, best_model_path)
+											print(f"Best model weights (from epoch {early_stopping.best_epoch+1}) saved to {best_model_path}")
+									else:
+											 # Save current model state if not restoring or no weights saved yet
+											 torch.save(model.state_dict(), best_model_path)
+											 print(f"Best model weights (current epoch {epoch+1}) saved to {best_model_path}")
+		# --- Early Stopping Check ---
+		stop_training = early_stopping.should_stop(
+				current_value=current_val_loss,
+				model=model,
+				epoch=epoch,
+				current_phase=current_phase
+		)
+		if stop_training:
+				print(f"--- Training stopped early at epoch {epoch+1} ---")
+				break # Exit the main training loop
+		# --- End of Epoch ---
+		epochs_in_current_phase += 1
+		epoch_duration = time.time() - epoch_start_time
+		print(f"Epoch {epoch+1} Duration: {epoch_duration:.2f}s")
+		print(f"EarlyStopping Status:\n{json.dumps(early_stopping.get_status(), indent=2, ensure_ascii=False)}")
 		print("-" * 80)
 
-		# --- Main Training Loop ---
-		train_start_time = time.time()
-		for epoch in range(num_epochs):
-				epoch_start_time = time.time()
-				print(f"\n=== Epoch {epoch+1}/{num_epochs} | Phase {current_phase} | LR: {last_lr:.3e} ===")
-				torch.cuda.empty_cache()
-
-				# --- Phase Transition Check ---
-				# Check only if enough epochs *overall* and *within the phase* have passed,
-				# and if we are not already in the last phase.
-				if (epoch >= minimum_epochs and # Overall min epochs check
-						epochs_in_current_phase >= min_epochs_per_phase and
-						current_phase < max_phases - 1 and
-						len(early_stopping.value_history) >= window_size):
-
-						print(f"Checking for phase transition (Epochs in phase: {epochs_in_current_phase})")
-						# Extract necessary data for should_transition_phase
-						val_losses = early_stopping.value_history
-						# Assuming metrics_for_all_epochs stores dicts from evaluate_loss_and_accuracy
-						val_accs = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in metrics_for_all_epochs] if metrics_for_all_epochs else None
-
-						should_trans = should_transition_phase(
-								losses=val_losses,
-								accuracies=val_accs, # Pass average accuracy
-								window=window_size,
-								best_loss=early_stopping.get_best_score(), # Use best score from early stopping state
-								best_loss_threshold=min_delta, # Use min_delta for closeness check
-								volatility_threshold=volatility_threshold,
-								slope_threshold=slope_threshold, # Use positive threshold for worsening loss
-								pairwise_imp_threshold=pairwise_imp_threshold,
-								accuracy_plateau_threshold=accuracy_plateau_threshold
-						)
-
-						if should_trans:
-								current_phase, last_lr = handle_phase_transition(
-									current_phase=current_phase,
-									initial_lr=initial_learning_rate,
-									max_phases=max_phases,
-									window_size=window_size,
-									current_loss=val_losses[-1],
-									best_loss=early_stopping.get_best_score()
-								)
-
-								epochs_in_current_phase = 0 # Reset phase epoch counter
-								early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
-								print(f"Transitioned to Phase {current_phase}. Early stopping reset.")
-								
-								phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
-								print(f"Phase transition triggered. Optimizer/Scheduler refresh pending after unfreeze.")
-
-				# --- Unfreeze Layers for Current Phase ---
-				print(f"Applying unfreeze strategy for Phase {current_phase}...")
-				# Ensure layers are correctly frozen/unfrozen *before* optimizer step
-				unfreeze_layers(
-						model=model,
-						strategy=unfreeze_schedule,
-						phase=current_phase,
-						cache=layer_cache # Optional cache
-				)
-
-				if phase_just_changed or epoch == 0:
-					print("Refreshing optimizer parameter groups...")
-					optimizer.param_groups.clear()
-					optimizer.add_param_group({'params': [p for p in model.parameters() if p.requires_grad], 'lr': last_lr})
-					print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e}.")
-					
-					# --- Re-initialize Scheduler (Option B Implementation) ---
-					print("Re-initializing OneCycleLR scheduler for new phase/start...")
-					steps_per_epoch = len(train_loader)
-					# Decide on remaining epochs for the new schedule
-					# Option 1: Schedule over all original epochs (simpler, might finish annealing early)
-					# scheduler_epochs = num_epochs
-					# Option 2: Schedule over remaining epochs (more adaptive)
-					scheduler_epochs = num_epochs - epoch
-					# Ensure scheduler_epochs is at least 1
-					scheduler_epochs = max(1, scheduler_epochs)
-					scheduler = torch.optim.lr_scheduler.OneCycleLR(
-						optimizer=optimizer,
-						max_lr=last_lr, # Use the new LR as the peak for the new cycle
-						steps_per_epoch=steps_per_epoch,
-						epochs=scheduler_epochs, # Schedule over remaining or total epochs
-						pct_start=0.1, # Consider if this needs adjustment in later phases
-						anneal_strategy='cos',
-						# last_epoch = -1 # Ensures it starts fresh
-					)
-					print(f"Scheduler re-initialized with max_lr={last_lr:.3e} for {scheduler_epochs} epochs.")
-					# --- End Scheduler Re-initialization ---
-
-					phase_just_changed = False # Reset the flag
-
-				# --- Training Epoch ---
-				model.train()
-				epoch_train_loss = 0.0
-				num_train_batches = len(train_loader)
-				trainable_params_exist = any(p.requires_grad for p in model.parameters())
-
-				if not trainable_params_exist:
-						 print("Warning: No trainable parameters found for the current phase. Skipping training steps.")
-				else:
-						for bidx, batch_data in enumerate(train_loader):
-								 # Assuming batch_data unpacks correctly
-								images, tokenized_labels, _ = batch_data # Adjust unpacking as needed
-								images = images.to(device, non_blocking=True)
-								tokenized_labels = tokenized_labels.to(device, non_blocking=True)
-
-								optimizer.zero_grad(set_to_none=True)
-
-								with torch.amp.autocast(device_type=device.type, enabled=True):
-										logits_per_image, logits_per_text = model(images, tokenized_labels)
-										ground_truth = torch.arange(len(images), dtype=torch.long, device=device)
-										loss_img = criterion(logits_per_image, ground_truth)
-										loss_txt = criterion(logits_per_text, ground_truth)
-										batch_loss = 0.5 * (loss_img + loss_txt)
-
-								if torch.isnan(batch_loss):
-										print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
-										continue # Skip optimizer step if loss is NaN
-
-								scaler.scale(batch_loss).backward()
-								scaler.unscale_(optimizer) # Unscale before clipping
-								torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-								scaler.step(optimizer)
-								scaler.update()
-								scheduler.step() # Step the scheduler
-
-								batch_loss_item = batch_loss.item()
-								epoch_train_loss += batch_loss_item
-
-								if bidx % print_every == 0 or bidx + 1 == num_train_batches:
-										print(f"\tBatch [{bidx+1}/{num_train_batches}] Loss: {batch_loss_item:.6f}")
-
-				avg_epoch_train_loss = epoch_train_loss / num_train_batches if num_train_batches > 0 and trainable_params_exist else 0.0
-				training_losses.append(avg_epoch_train_loss)
-				print(f"Epoch {epoch+1} Avg Training Loss: {avg_epoch_train_loss:.6f}")
-
-				# --- Validation ---
-				print("Running validation...")
-				val_metrics = evaluate_loss_and_accuracy(
-					model=model,
-					validation_loader=validation_loader,
-					criterion=criterion,
-					device=device,
-					topK_values=top_k_values
-				)
-				current_val_loss = val_metrics.get("val_loss", float('inf')) # Handle missing key safely
-				metrics_for_all_epochs.append(val_metrics)
-
-				print(f"Epoch {epoch+1} Validation Loss: {current_val_loss:.6f}")
-				print(f"\tImg2Txt Acc: {val_metrics.get('img2txt_acc', 'N/A'):.4f} | Txt2Img Acc: {val_metrics.get('txt2img_acc', 'N/A'):.4f}")
-
-				# --- Checkpointing Best Model ---
-				# Use the best_score from EarlyStopping state as it's more robust
-				current_best_from_stopper = early_stopping.get_best_score()
-				if current_best_from_stopper is not None and current_val_loss <= current_best_from_stopper :
-						 # This logic relies on early_stopping.is_improvement having updated best_score
-						 # Let's refine this slightly for clarity:
-						 if early_stopping.is_improvement(current_val_loss) or best_val_loss is None: # Checks min_delta
-								 if best_val_loss is None or current_val_loss < best_val_loss: # Update absolute best
-											print(f"*** New Best Validation Loss Found: {current_val_loss:.6f} (Epoch {epoch+1}) ***")
-											best_val_loss = current_val_loss
-											# Save the actual best model state (could be from stopper's cache or current model)
-											if early_stopping.restore_best_weights and early_stopping.best_weights is not None:
-													# Save the state dict stored by early stopping
-													torch.save(early_stopping.best_weights, best_model_path)
-													print(f"Best model weights (from epoch {early_stopping.best_epoch+1}) saved to {best_model_path}")
-											else:
-													 # Save current model state if not restoring or no weights saved yet
-													 torch.save(model.state_dict(), best_model_path)
-													 print(f"Best model weights (current epoch {epoch+1}) saved to {best_model_path}")
-
-
-				# --- Early Stopping Check ---
-				stop_training = early_stopping.should_stop(
-						current_value=current_val_loss,
-						model=model,
-						epoch=epoch,
-						current_phase=current_phase
-				)
-				if stop_training:
-						print(f"--- Training stopped early at epoch {epoch+1} ---")
-						break # Exit the main training loop
-
-				# --- End of Epoch ---
-				epochs_in_current_phase += 1
-				epoch_duration = time.time() - epoch_start_time
-				print(f"Epoch {epoch+1} Duration: {epoch_duration:.2f}s")
-				print(f"EarlyStopping Status:\n{json.dumps(early_stopping.get_status(), indent=2, ensure_ascii=False)}")
-				print("-" * 80)
-
-		# --- End of Training ---
-		total_training_time = time.time() - train_start_time
-		print(f"\n--- Training Finished ---")
-		print(f"Total Epochs Run: {epoch + 1}")
-		print(f"Final Phase Reached: {current_phase}")
-		# print(f"Best Validation Loss Achieved: {early_stopping.get_best_score():.6f} at Epoch {early_stopping.get_best_epoch() + 1}")
-		print(f"Total Training Time: {total_training_time:.2f}s")
-
-		# --- Final Evaluation & Plotting ---
-		# Load the best model weights for final evaluation
-		if early_stopping.restore_best_weights and os.path.exists(best_model_path):
-				 print(f"\nLoading best model weights from {best_model_path} for final evaluation...")
-				 # Load weights carefully, handling potential device mismatches if needed
-				 best_weights_loaded = torch.load(best_model_path, map_location=device)
-				 # Check if it's a state_dict or the full stopper cache
-				 if isinstance(best_weights_loaded, dict) and not any(k.startswith('best_score') for k in best_weights_loaded.keys()): # Heuristic for state_dict
-						 model.load_state_dict(best_weights_loaded)
-				 elif isinstance(best_weights_loaded, dict) and 'model_state_dict' in best_weights_loaded: # Check if it's a checkpoint dict
-							model.load_state_dict(best_weights_loaded['model_state_dict'])
-				 else:
-							print("Warning: Loaded best model file format not recognized as state_dict. Using weights stored in EarlyStopping if available.")
-							if early_stopping.best_weights is not None:
-									 model.load_state_dict({k: v.to(device) for k, v in early_stopping.best_weights.items()})
-
-		print("\nPerforming final evaluation on the best model...")
-		final_metrics = evaluate_loss_and_accuracy(
-				model=model, validation_loader=validation_loader, criterion=criterion, device=device, topK_values=top_k_values
-		)
-		final_img2txt_metrics, final_txt2img_metrics = evaluate_retrieval_performance(
-				model=model, validation_loader=validation_loader, device=device, topK_values=top_k_values
-		)
-
-		print("\n--- Final Metrics (Best Model) ---")
-		print(json.dumps(final_metrics, indent=2))
-		print("Image-to-Text Retrieval:")
-		print(json.dumps(final_img2txt_metrics, indent=2))
-		print("Text-to-Image Retrieval:")
-		print(json.dumps(final_txt2img_metrics, indent=2))
-
-		# Generate plots using the collected history and final best metrics
-		print("\nGenerating result plots...")
-		# Adjust file naming for plots
-
-		file_base_name = (
-			f"{dataset_name}_"
-			f"{model_class_name}_"
-			f"{re.sub('/', '', model_arch)}_"
-			f"{mode_name}_"
-			f"last_phase_{current_phase}_"
-			f"ep_{len(training_losses)}_"
-			f"wd_{weight_decay:.1e}_"
-			f"bs_{train_loader.batch_size}_"
-			f"dropout_{dropout_val}_"
-			f"init_lr_{initial_learning_rate:.1e}"
-		)
-
-		if last_lr is not None:
-			file_base_name += f"_final_lr_{last_lr:.1e}"
-
-		plot_paths = {
-			"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-			"val_acc": os.path.join(results_dir, f"{file_base_name}_top1_accuracy.png"),
-			"img2txt_topk": os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png"),
-			"txt2img_topk": os.path.join(results_dir, f"{file_base_name}_txt2img_topk_accuracy.png"),
-			"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
-			"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
-			"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-			"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-		}
-
-
-		plot_loss_accuracy(
-			dataset_name=dataset_name,
-			train_losses=training_losses,
-			val_losses=[m.get("val_loss", float('nan')) for m in metrics_for_all_epochs],
-			val_acc_img2txt_list=[m.get("img2txt_acc", float('nan')) for m in metrics_for_all_epochs],
-			val_acc_txt2img_list=[m.get("txt2img_acc", float('nan')) for m in metrics_for_all_epochs],
-			img2txt_topk_accuracy_list=[m.get("img2txt_topk_acc", {}) for m in metrics_for_all_epochs],
-			txt2img_topk_accuracy_list=[m.get("txt2img_topk_acc", {}) for m in metrics_for_all_epochs],
-			mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in metrics_for_all_epochs],
-			cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in metrics_for_all_epochs],
-			losses_file_path=plot_paths["losses"],
-			accuracy_file_path=plot_paths["val_acc"],
-			img2txt_topk_accuracy_file_path=plot_paths["img2txt_topk"],
-			txt2img_topk_accuracy_file_path=plot_paths["txt2img_topk"],
-			mean_reciprocal_rank_file_path=plot_paths["mrr"],
-			cosine_similarity_file_path=plot_paths["cs"],
-		)
-
-		plot_retrieval_metrics_per_epoch(
-			dataset_name=dataset_name,
-			image_to_text_metrics_list=img2txt_metrics_list,
-			text_to_image_metrics_list=txt2img_metrics_list,
-			fname=plot_paths["retrieval_per_epoch"],
-		)
-
-		plot_retrieval_metrics_best_model(
-			dataset_name=dataset_name,
-			image_to_text_metrics=final_img2txt_metrics,
-			text_to_image_metrics=final_txt2img_metrics,
-			fname=plot_paths["retrieval_best"],
-		)
-
-		return metrics_for_all_epochs # Return history for potential further analysis
+	# --- End of Training ---
+	total_training_time = time.time() - train_start_time
+	print(f"\n--- Training Finished ---")
+	print(f"Total Epochs Run: {epoch + 1}")
+	print(f"Final Phase Reached: {current_phase}")
+	# print(f"Best Validation Loss Achieved: {early_stopping.get_best_score():.6f} at Epoch {early_stopping.get_best_epoch() + 1}")
+	print(f"Total Training Time: {total_training_time:.2f}s")
+	# --- Final Evaluation & Plotting ---
+	# Load the best model weights for final evaluation
+	if early_stopping.restore_best_weights and os.path.exists(best_model_path):
+			 print(f"\nLoading best model weights from {best_model_path} for final evaluation...")
+			 # Load weights carefully, handling potential device mismatches if needed
+			 best_weights_loaded = torch.load(best_model_path, map_location=device)
+			 # Check if it's a state_dict or the full stopper cache
+			 if isinstance(best_weights_loaded, dict) and not any(k.startswith('best_score') for k in best_weights_loaded.keys()): # Heuristic for state_dict
+					 model.load_state_dict(best_weights_loaded)
+			 elif isinstance(best_weights_loaded, dict) and 'model_state_dict' in best_weights_loaded: # Check if it's a checkpoint dict
+						model.load_state_dict(best_weights_loaded['model_state_dict'])
+			 else:
+						print("Warning: Loaded best model file format not recognized as state_dict. Using weights stored in EarlyStopping if available.")
+						if early_stopping.best_weights is not None:
+								 model.load_state_dict({k: v.to(device) for k, v in early_stopping.best_weights.items()})
+	print("\nPerforming final evaluation on the best model...")
+	final_metrics = evaluate_loss_and_accuracy(
+			model=model, validation_loader=validation_loader, criterion=criterion, device=device, topK_values=top_k_values
+	)
+	final_img2txt_metrics, final_txt2img_metrics = evaluate_retrieval_performance(
+			model=model, validation_loader=validation_loader, device=device, topK_values=top_k_values
+	)
+	print("\n--- Final Metrics (Best Model) ---")
+	print(json.dumps(final_metrics, indent=2))
+	print("Image-to-Text Retrieval:")
+	print(json.dumps(final_img2txt_metrics, indent=2))
+	print("Text-to-Image Retrieval:")
+	print(json.dumps(final_txt2img_metrics, indent=2))
+	# Generate plots using the collected history and final best metrics
+	print("\nGenerating result plots...")
+	# Adjust file naming for plots
+	file_base_name = (
+		f"{dataset_name}_"
+		f"{model_class_name}_"
+		f"{re.sub('/', '', model_arch)}_"
+		f"{mode_name}_"
+		f"last_phase_{current_phase}_"
+		f"ep_{len(training_losses)}_"
+		f"wd_{weight_decay:.1e}_"
+		f"bs_{train_loader.batch_size}_"
+		f"dropout_{dropout_val}_"
+		f"init_lr_{initial_learning_rate:.1e}"
+	)
+	if last_lr is not None:
+		file_base_name += f"_final_lr_{last_lr:.1e}"
+	plot_paths = {
+		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+		"val_acc": os.path.join(results_dir, f"{file_base_name}_top1_accuracy.png"),
+		"img2txt_topk": os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png"),
+		"txt2img_topk": os.path.join(results_dir, f"{file_base_name}_txt2img_topk_accuracy.png"),
+		"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
+		"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
+		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+	}
+	plot_loss_accuracy(
+		dataset_name=dataset_name,
+		train_losses=training_losses,
+		val_losses=[m.get("val_loss", float('nan')) for m in loss_acc_metrics_all_epochs],
+		val_acc_img2txt_list=[m.get("img2txt_acc", float('nan')) for m in loss_acc_metrics_all_epochs],
+		val_acc_txt2img_list=[m.get("txt2img_acc", float('nan')) for m in loss_acc_metrics_all_epochs],
+		img2txt_topk_accuracy_list=[m.get("img2txt_topk_acc", {}) for m in loss_acc_metrics_all_epochs],
+		txt2img_topk_accuracy_list=[m.get("txt2img_topk_acc", {}) for m in loss_acc_metrics_all_epochs],
+		mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in loss_acc_metrics_all_epochs],
+		cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in loss_acc_metrics_all_epochs],
+		losses_file_path=plot_paths["losses"],
+		accuracy_file_path=plot_paths["val_acc"],
+		img2txt_topk_accuracy_file_path=plot_paths["img2txt_topk"],
+		txt2img_topk_accuracy_file_path=plot_paths["txt2img_topk"],
+		mean_reciprocal_rank_file_path=plot_paths["mrr"],
+		cosine_similarity_file_path=plot_paths["cs"],
+	)
+	plot_retrieval_metrics_per_epoch(
+		dataset_name=dataset_name,
+		image_to_text_metrics_list=img2txt_metrics_list,
+		text_to_image_metrics_list=txt2img_metrics_list,
+		fname=plot_paths["retrieval_per_epoch"],
+	)
+	plot_retrieval_metrics_best_model(
+		dataset_name=dataset_name,
+		image_to_text_metrics=final_img2txt_metrics,
+		text_to_image_metrics=final_txt2img_metrics,
+		fname=plot_paths["retrieval_best"],
+	)
+	return loss_acc_metrics_all_epochs # Return history for potential further analysis
 
 def lora_finetune(
 		model: torch.nn.Module,
