@@ -239,6 +239,7 @@ def evaluate_retrieval_performance(
 		device: str = "cuda:0",
 		topK_values: List[int] = [1, 3, 5],
 	):
+
 	dataset_name = validation_loader.name
 	model_name = model.__class__.__name__
 	model_arch = model.name
@@ -246,12 +247,14 @@ def evaluate_retrieval_performance(
 	model.eval()  # dropout is disabled, ensuring deterministic outputs
 	image_embeddings = []
 	image_labels = []
+
 	try:
 		class_names = validation_loader.dataset.dataset.classes
 	except:
 		class_names = validation_loader.dataset.unique_labels
 	n_classes = len(class_names)
-	torch.cuda.empty_cache()  # Clear GPU memory cache
+	torch.cuda.empty_cache() # Clear GPU memory cache
+
 	with torch.no_grad():
 		text_inputs = clip.tokenize(texts=class_names).to(device, non_blocking=True)
 		class_text_embeddings = model.encode_text(text_inputs)
@@ -263,6 +266,7 @@ def evaluate_retrieval_performance(
 			image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
 			image_embeddings.append(image_embeds.cpu())
 			image_labels.extend(class_indices.cpu())
+
 	# Aggregate and normalize embeddings
 	image_embeddings = torch.cat(image_embeddings, dim=0)
 	image_labels = torch.tensor(image_labels)
@@ -381,83 +385,165 @@ def get_retrieval_metrics(
 	return metrics
 
 def get_loss_accuracy_metrics(
+		model: torch.nn.Module,
+		validation_loader: DataLoader,
+		criterion: torch.nn.Module,
+		device: str = "cuda",
+		topK_values: List = [1, 5, 10, 15, 20],
+	):
+	"""
+	Evaluate the CLIP model's performance on the full validation set.
+	Computes loss per batch and accuracy over all samples.
+	"""
+	dataset_name = validation_loader.name
+	model_name = model.__class__.__name__
+	model_arch = model.name
+	print(f">> Evaluating {model_name} - {model_arch} [Full Loss & Accuracy] [{dataset_name}]: {topK_values}...")
+	model.eval()
+	total_loss = 0
+	num_batches = len(validation_loader)
+	total_samples = len(validation_loader.dataset)
+	all_image_embeds = []
+	all_text_embeds = []
+	# Step 1: Collect embeddings and compute per-batch loss
+	with torch.no_grad():
+		for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
+			images = images.to(device, non_blocking=True)
+			tokenized_labels = tokenized_labels.to(device, non_blocking=True)
+			batch_size = images.size(0)
+			# Forward pass
+			logits_per_image, logits_per_text = model(images, tokenized_labels)
+			image_embeds = model.encode_image(images)  # Extract normalized embeddings
+			text_embeds = model.encode_text(tokenized_labels)
+			image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
+			text_embeds = text_embeds / text_embeds.norm(dim=-1, keepdim=True)
+			# Compute batch loss
+			ground_truth = torch.arange(batch_size, dtype=torch.long, device=device)
+			loss_img = criterion(logits_per_image, ground_truth)
+			loss_txt = criterion(logits_per_text, ground_truth)
+			batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
+			total_loss += batch_loss
+			# Collect embeddings
+			all_image_embeds.append(image_embeds.cpu())
+			all_text_embeds.append(text_embeds.cpu())
+	# Average loss
+	avg_val_loss = total_loss / num_batches
+	# Step 2: Concatenate all embeddings
+	all_image_embeds = torch.cat(all_image_embeds, dim=0)  # [total_samples, embed_dim]
+	all_text_embeds = torch.cat(all_text_embeds, dim=0)    # [total_samples, embed_dim]
+	all_image_embeds = all_image_embeds.to(device)
+	all_text_embeds = all_text_embeds.to(device)
+	# Step 3: Compute full similarity matrix
+	similarities_img2txt = all_image_embeds @ all_text_embeds.T  # [total_samples, total_samples]
+	# Step 4: Compute full validation set accuracy
+	ground_truth = torch.arange(total_samples, device=device)
+	img2txt_preds = similarities_img2txt.argmax(dim=1)  # Highest scoring text per image
+	txt2img_preds = similarities_img2txt.T.argmax(dim=1)  # Highest scoring image per text
+	img2txt_acc = (img2txt_preds == ground_truth).float().mean().item()
+	txt2img_acc = (txt2img_preds == ground_truth).float().mean().item()
+	# Metrics dictionary
+	metrics = {
+			"val_loss": float(avg_val_loss),
+			"img2txt_acc": float(img2txt_acc),
+			"txt2img_acc": float(txt2img_acc),
+			# Optionally retain top-K or other metrics if needed
+	}
+	return metrics
+
+def get_loss_accuracy_metrics(
 		model: torch.nn.Module, 
 		val_loader: DataLoader, 
 		criterion: torch.nn.Module, 
 		device: str, 
 		topk_values: List[int],
 	):
+	dataset_name = val_loader.name
+	model_name = model.__class__.__name__
+	model_arch = model.name
+
+	try:
+		class_names = val_loader.dataset.dataset.classes
+	except:
+		class_names = val_loader.dataset.unique_labels
+	n_classes = len(class_names)
+	torch.cuda.empty_cache() # Clear GPU memory cache
+
+	print(f">> Evaluating {model_name} - {model_arch} [Full Loss & Accuracy] [{dataset_name}]: {topk_values}...")
+
 	model.eval()
 	val_loss = 0.0
 	
 	# Store all embeddings
-	all_image_embeddings = []
-	all_text_embeddings = []
-	all_labels = []
+	image_embeddings = []
+	image_labels = []
 	
+	# Pre-compute text embeddings for all classes
 	with torch.no_grad():
-		# Step 1: Compute and store all embeddings
-		for batch in val_loader:
-			images, texts, labels = batch['image'].to(device), batch['text'].to(device), batch['label']
+		text_inputs = clip.tokenize(class_names).to(device, non_blocking=True)
+		class_text_embeddings = model.encode_text(text_inputs)
+		class_text_embeddings = class_text_embeddings / class_text_embeddings.norm(dim=-1, keepdim=True)
+		
+		# Process images
+		for bidx, (images, _, class_indices) in enumerate(val_loader):
+			images = images.to(device, non_blocking=True)
+			class_indices = class_indices.to(device, non_blocking=True)
 			
-			# Forward pass
-			image_features, text_features, logit_scale = model(images, texts)
+			# Get image embeddings
+			image_embeds = model.encode_image(images)
+			image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
 			
-			# Normalize features
-			image_features = F.normalize(image_features, dim=-1)
-			text_features = F.normalize(text_features, dim=-1)
-			
-			# Compute loss
-			logits_per_image = logit_scale * image_features @ text_features.t()
-			logits_per_text = logits_per_image.t()
-			
-			loss_i = criterion(logits_per_image, torch.arange(len(images)).to(device))
-			loss_t = criterion(logits_per_text, torch.arange(len(texts)).to(device))
-			loss = (loss_i + loss_t) / 2
+			# Calculate loss (if needed)
+			logits = 100.0 * image_embeds @ class_text_embeddings.T
+			loss = criterion(logits, class_indices)
 			val_loss += loss.item() * images.size(0)
 			
 			# Store embeddings and labels
-			all_image_embeddings.append(image_features.cpu())
-			all_text_embeddings.append(text_features.cpu())
-			all_labels.append(labels.cpu())
-		
-		# Step 2: Concatenate all embeddings and labels
-		all_image_embeddings = torch.cat(all_image_embeddings, dim=0)
-		all_text_embeddings = torch.cat(all_text_embeddings, dim=0)
-		all_labels = torch.cat(all_labels, dim=0)
-		
-		# Step 3: Compute full similarity matrix
-		similarity_matrix = all_image_embeddings @ all_text_embeddings.t()
-		
-		# Step 4: Calculate metrics
-		i2t_metrics = compute_retrieval_metrics(similarity_matrix, all_labels, 'i2t', topk_values)
-		t2i_metrics = compute_retrieval_metrics(similarity_matrix.t(), all_labels, 't2i', topk_values)
-			
+			image_embeddings.append(image_embeds.cpu())
+			image_labels.extend(class_indices.cpu().tolist())
+	
+	# Aggregate embeddings
+	image_embeddings = torch.cat(image_embeddings, dim=0)
+	image_labels = torch.tensor(image_labels)
+	
+	# Compute similarity matrix
+	similarity_matrix = image_embeddings @ class_text_embeddings.cpu().T
+	
+	# Calculate metrics
+	i2t_metrics = compute_retrieval_metrics(similarity_matrix, image_labels, 'i2t', topk_values)
+	
 	val_loss /= len(val_loader.dataset)
-	return val_loss, i2t_metrics, t2i_metrics
+
+
+	metrics = {
+		"val_loss": float(val_loss),
+		"img2txt_acc": float(img2txt_acc),
+		"txt2img_acc": float(txt2img_acc),
+		# ... (top-K accuracy and other metrics omitted for brevity)
+	}
+	return metrics
 
 def compute_retrieval_metrics(similarity_matrix, labels, mode, topk_values):
+	"""Compute retrieval metrics like accuracy@k, recall@k, etc."""
 	num_samples = similarity_matrix.size(0)
 	metrics = {}
 	
 	# Get indices of highest similarities
-	_, indices = similarity_matrix.topk(max(topk_values), dim=1)
+	_, indices = similarity_matrix.topk(min(max(topk_values), similarity_matrix.size(1)), dim=1)
 	
 	# Compute accuracy at each k
 	for k in topk_values:
 		if k > similarity_matrix.size(1):
-			continue
+				continue
 				
 		# For each query, check if the true match is in the top-k predictions
 		correct = 0
 		for i in range(num_samples):
-			retrieved_labels = labels[indices[i, :k]]
-			if labels[i] in retrieved_labels:
+			retrieved_labels = indices[i, :k].tolist()
+			if labels[i].item() in retrieved_labels:
 				correct += 1
 		
 		metrics[f'accuracy@{k}'] = correct / num_samples
-
-	#TODO: Add more sophisticated metrics like mAP, MRR, etc.
+			
 	return metrics
 
 def get_in_batch_loss_accuracy(
@@ -467,23 +553,10 @@ def get_in_batch_loss_accuracy(
 		device: str = "cuda",
 		topK_values: List = [1, 3, 5],
 	):
-	"""
-	Evaluate the CLIP model's performance on a validation dataset, computing loss, accuracy,
-	top-K accuracy, mean reciprocal rank (MRR), and cosine similarity between embeddings.
-	Args:
-			model: CLIP model instance
-			validation_loader: DataLoader for validation data
-			criterion: Loss function (e.g., CrossEntropyLoss)
-			device: Device to run evaluation on ("cuda" or "cpu")
-			topK_values: List of K values for top-K accuracy computation
-	Returns:
-			Tuple of (avg_val_loss, img2txt_acc, txt2img_acc, img2txt_topk_accuracy, 
-								txt2img_topk_accuracy, mean_reciprocal_rank, cosine_sim_mean)
-	"""
 	dataset_name = validation_loader.name
 	model_name = model.__class__.__name__
 	model_arch = model.name
-	print(f">> Evaluating {model_name} - {model_arch} [Loss & Accuracy] [{dataset_name}]: {topK_values}...")
+	print(f">> Evaluating {model_name} - {model_arch} [in-batch Loss & Accuracy] [{dataset_name}]: {topK_values}...")
 
 	model.eval()
 	total_loss = 0
@@ -1270,10 +1343,10 @@ def progressive_unfreeze_finetune(
 		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
 		loss_acc_metrics_per_epoch = get_loss_accuracy_metrics(
 			model=model,
-			val_loader=validation_loader,
+			validation_loader=validation_loader,
 			criterion=criterion,
 			device=device,
-			topk_values=top_k_values
+			topK_values=top_k_values
 		)
 		loss_acc_metrics_all_epochs.append(loss_acc_metrics_per_epoch)
 
