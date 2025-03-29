@@ -405,6 +405,7 @@ def get_loss_accuracy_metrics(
 	total_samples = len(validation_loader.dataset)
 	all_image_embeds = []
 	all_text_embeds = []
+	metrics = {}
 	# Step 1: Collect embeddings and compute per-batch loss
 	with torch.no_grad():
 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
@@ -428,6 +429,7 @@ def get_loss_accuracy_metrics(
 			all_text_embeds.append(text_embeds.cpu())
 	# Average loss
 	avg_val_loss = total_loss / num_batches
+	metrics = {"val_loss": float(avg_val_loss)}
 	# Step 2: Concatenate all embeddings
 	all_image_embeds = torch.cat(all_image_embeds, dim=0)  # [total_samples, embed_dim]
 	all_text_embeds = torch.cat(all_text_embeds, dim=0)    # [total_samples, embed_dim]
@@ -437,17 +439,19 @@ def get_loss_accuracy_metrics(
 	similarities_img2txt = all_image_embeds @ all_text_embeds.T  # [total_samples, total_samples]
 	# Step 4: Compute full validation set accuracy
 	ground_truth = torch.arange(total_samples, device=device)
-	img2txt_preds = similarities_img2txt.argmax(dim=1)  # Highest scoring text per image
-	txt2img_preds = similarities_img2txt.T.argmax(dim=1)  # Highest scoring image per text
-	img2txt_acc = (img2txt_preds == ground_truth).float().mean().item()
-	txt2img_acc = (txt2img_preds == ground_truth).float().mean().item()
-	# Metrics dictionary
-	metrics = {
-			"val_loss": float(avg_val_loss),
-			"img2txt_acc": float(img2txt_acc),
-			"txt2img_acc": float(txt2img_acc),
-			# Optionally retain top-K or other metrics if needed
-	}
+
+	# Image-to-Text Retrieval
+	for k in topK_values:
+		topk_img2txt = similarities_img2txt.topk(k, dim=1).indices
+		img2txt_acc_k = (topk_img2txt == ground_truth.view(-1, 1)).any(dim=1).float().mean().item()
+		metrics[f"img2txt_acc@{k}"] = float(img2txt_acc_k)
+
+	# Text-to-Image Retrieval
+	for k in topK_values:
+		topk_txt2img = similarities_img2txt.T.topk(k, dim=1).indices
+		txt2img_acc_k = (topk_txt2img == ground_truth.view(-1, 1)).any(dim=1).float().mean().item()
+		metrics[f"txt2img_acc@{k}"] = float(txt2img_acc_k)
+
 	return metrics
 
 def get_in_batch_loss_accuracy(
@@ -1094,6 +1098,7 @@ def progressive_unfreeze_finetune(
 		pct_start=0.1, # Standard pct_start
 		anneal_strategy='cos' # Cosine annealing
 	)
+
 	criterion = torch.nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(device=device) # For mixed precision
 
@@ -1236,7 +1241,7 @@ def progressive_unfreeze_finetune(
 		
 		# --- Validation ---
 		print(f"Epoch: {epoch+1} validation...")
-		# Compute traditional loss/accuracy metrics on validation set:
+		# Compute in-batch loss/accuracy metrics on validation set:
 		in_batch_loss_acc_metrics_per_epoch = get_in_batch_loss_accuracy(
 			model=model,
 			validation_loader=validation_loader,
@@ -1267,14 +1272,19 @@ def progressive_unfreeze_finetune(
 		current_val_loss = in_batch_loss_acc_metrics_per_epoch.get("val_loss", float('inf')) # Handle missing key safely
 		print(
 			f'@ Epoch {epoch + 1}:\n'
-			f'\t[LOSS] {mode_name}(Training): {avg_epoch_train_loss:.5f} | Validation: {in_batch_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
+			f'\t[LOSS] {mode_name}'
+			f'(Training): {avg_epoch_train_loss} '
+			f'Validation(in-batch): {in_batch_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))} '
+			f'Validation(full): {loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
 			f'\tValidation Accuracy:\n'
-			f'\tIn-batch: '
+			f'\tIn-batch: (Top-1) '
 			f'[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_acc")} '
 			f'[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_acc")}\n'
-			f'\tFull: '
-			f'[text retrieval per image]: {loss_acc_metrics_per_epoch.get("img2txt_acc")} '
-			f'[image retrieval per text]: {loss_acc_metrics_per_epoch.get("txt2img_acc")}'
+			f'\tFull Validation Set:\n'
+			f'\t\tText retrieval per image (img2txt):\n'
+			f'\t\t\t' + '\n\t\t\t'.join([f'accuracy@{k}: {loss_acc_metrics_per_epoch.get(f"img2txt_acc@{k}", "N/A"):.4f}' for k in top_k_values]) + '\n'
+			f'\t\tImage retrieval per text (txt2img):\n'
+			f'\t\t\t' + '\n\t\t\t'.join([f'accuracy@{k}: {loss_acc_metrics_per_epoch.get(f"txt2img_acc@{k}", "N/A"):.4f}' for k in top_k_values])
 		)
 
 		# --- Checkpointing Best Model ---
@@ -1341,10 +1351,10 @@ def progressive_unfreeze_finetune(
 
 	print("\nPerforming final evaluation on the best model...")
 	final_metrics = get_in_batch_loss_accuracy(
-		model=model, 
-		validation_loader=validation_loader, 
-		criterion=criterion, 
-		device=device, 
+		model=model,
+		validation_loader=validation_loader,
+		criterion=criterion,
+		device=device,
 		topK_values=top_k_values,
 	)
 
@@ -1365,6 +1375,7 @@ def progressive_unfreeze_finetune(
 	print(json.dumps(final_txt2img_metrics, indent=2))
 
 	print("\nGenerating result plots...")
+
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{model_class_name}_"
@@ -1377,11 +1388,13 @@ def progressive_unfreeze_finetune(
 		f"dropout_{dropout_val}_"
 		f"init_lr_{initial_learning_rate:.1e}"
 	)
+
 	if last_lr is not None:
 		file_base_name += f"_final_lr_{last_lr:.1e}"
+
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"val_acc": os.path.join(results_dir, f"{file_base_name}_top1_accuracy.png"),
+		"val_acc": os.path.join(results_dir, f"{file_base_name}_in_batch_top1_accuracy_t2i_i2t.png"),
 		"img2txt_topk": os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png"),
 		"txt2img_topk": os.path.join(results_dir, f"{file_base_name}_txt2img_topk_accuracy.png"),
 		"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
@@ -1389,6 +1402,7 @@ def progressive_unfreeze_finetune(
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 	}
+
 	plot_loss_accuracy_metrics(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
@@ -1406,18 +1420,21 @@ def progressive_unfreeze_finetune(
 		mean_reciprocal_rank_file_path=plot_paths["mrr"],
 		cosine_similarity_file_path=plot_paths["cs"],
 	)
+
 	plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
 		image_to_text_metrics_list=img2txt_metrics_all_epochs,
 		text_to_image_metrics_list=txt2img_metrics_all_epochs,
 		fname=plot_paths["retrieval_per_epoch"],
 	)
+
 	plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
 		image_to_text_metrics=final_img2txt_metrics,
 		text_to_image_metrics=final_txt2img_metrics,
 		fname=plot_paths["retrieval_best"],
 	)
+
 	return in_batch_loss_acc_metrics_all_epochs # Return history for potential further analysis
 
 def lora_finetune(
