@@ -380,7 +380,87 @@ def get_retrieval_metrics(
 		metrics["Recall"][str(K)] = torch.tensor(recall).mean().item()
 	return metrics
 
-def evaluate_loss_and_accuracy(
+def get_loss_accuracy(
+		model: torch.nn.Module, 
+		val_loader: DataLoader, 
+		criterion: torch.nn.Module, 
+		device: str, 
+		topk_values: List[int],
+	):
+	model.eval()
+	val_loss = 0.0
+	
+	# Store all embeddings
+	all_image_embeddings = []
+	all_text_embeddings = []
+	all_labels = []
+	
+	with torch.no_grad():
+		# Step 1: Compute and store all embeddings
+		for batch in val_loader:
+			images, texts, labels = batch['image'].to(device), batch['text'].to(device), batch['label']
+			
+			# Forward pass
+			image_features, text_features, logit_scale = model(images, texts)
+			
+			# Normalize features
+			image_features = F.normalize(image_features, dim=-1)
+			text_features = F.normalize(text_features, dim=-1)
+			
+			# Compute loss
+			logits_per_image = logit_scale * image_features @ text_features.t()
+			logits_per_text = logits_per_image.t()
+			
+			loss_i = criterion(logits_per_image, torch.arange(len(images)).to(device))
+			loss_t = criterion(logits_per_text, torch.arange(len(texts)).to(device))
+			loss = (loss_i + loss_t) / 2
+			val_loss += loss.item() * images.size(0)
+			
+			# Store embeddings and labels
+			all_image_embeddings.append(image_features.cpu())
+			all_text_embeddings.append(text_features.cpu())
+			all_labels.append(labels.cpu())
+		
+		# Step 2: Concatenate all embeddings and labels
+		all_image_embeddings = torch.cat(all_image_embeddings, dim=0)
+		all_text_embeddings = torch.cat(all_text_embeddings, dim=0)
+		all_labels = torch.cat(all_labels, dim=0)
+		
+		# Step 3: Compute full similarity matrix
+		similarity_matrix = all_image_embeddings @ all_text_embeddings.t()
+		
+		# Step 4: Calculate metrics
+		i2t_metrics = compute_retrieval_metrics(similarity_matrix, all_labels, 'i2t', topk_values)
+		t2i_metrics = compute_retrieval_metrics(similarity_matrix.t(), all_labels, 't2i', topk_values)
+			
+	val_loss /= len(val_loader.dataset)
+	return val_loss, i2t_metrics, t2i_metrics
+
+def compute_retrieval_metrics(similarity_matrix, labels, mode, topk_values):
+	num_samples = similarity_matrix.size(0)
+	metrics = {}
+	
+	# Get indices of highest similarities
+	_, indices = similarity_matrix.topk(max(topk_values), dim=1)
+	
+	# Compute accuracy at each k
+	for k in topk_values:
+		if k > similarity_matrix.size(1):
+			continue
+				
+		# For each query, check if the true match is in the top-k predictions
+		correct = 0
+		for i in range(num_samples):
+			retrieved_labels = labels[indices[i, :k]]
+			if labels[i] in retrieved_labels:
+				correct += 1
+		
+		metrics[f'accuracy@{k}'] = correct / num_samples
+
+	#TODO: Add more sophisticated metrics like mAP, MRR, etc.
+	return metrics
+
+def get_in_batch_loss_accuracy(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
 		criterion: torch.nn.Module,
@@ -1046,6 +1126,7 @@ def progressive_unfreeze_finetune(
 	training_losses = [] # History of average training loss per epoch
 	img2txt_metrics_all_epochs = list()
 	txt2img_metrics_all_epochs = list()
+	in_batch_loss_acc_metrics_all_epochs = list() # History of [in-batch] validation metrics dicts per epoch
 	loss_acc_metrics_all_epochs = list() # History of validation metrics dicts per epoch
 	best_val_loss = None # Track the absolute best validation loss
 	layer_cache = {} # Cache for layer status (optional, used by get_status)
@@ -1075,7 +1156,7 @@ def progressive_unfreeze_finetune(
 			# Extract necessary data for should_transition_phase
 			val_losses = early_stopping.value_history
 
-			val_accs = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in loss_acc_metrics_all_epochs] if loss_acc_metrics_all_epochs else None
+			val_accs = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in in_batch_loss_acc_metrics_all_epochs] if in_batch_loss_acc_metrics_all_epochs else None
 			should_trans = should_transition_phase(
 				losses=val_losses,
 				accuracies=val_accs, # Pass average accuracy
@@ -1102,6 +1183,7 @@ def progressive_unfreeze_finetune(
 				
 				phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
 				print(f"Phase transition triggered. Optimizer/Scheduler refresh pending after unfreeze.")
+				print(f"Current Phase: {current_phase}")
 		# --- Unfreeze Layers for Current Phase ---
 		print(f"Applying unfreeze strategy for Phase {current_phase}...")
 		# Ensure layers are correctly frozen/unfrozen *before* optimizer step
@@ -1178,7 +1260,15 @@ def progressive_unfreeze_finetune(
 		# --- Validation ---
 		print(f"Epoch: {epoch+1} validation...")
 		# Compute traditional loss/accuracy metrics on validation set:
-		loss_acc_metrics_per_epoch = evaluate_loss_and_accuracy(
+		in_batch_loss_acc_metrics_per_epoch = get_in_batch_loss_accuracy(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			device=device,
+			topK_values=top_k_values
+		)
+		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
+		loss_acc_metrics_per_epoch = get_loss_accuracy_metrics(
 			model=model,
 			validation_loader=validation_loader,
 			criterion=criterion,
@@ -1197,11 +1287,14 @@ def progressive_unfreeze_finetune(
 		img2txt_metrics_all_epochs.append(img2txt_metrics_per_epoch)
 		txt2img_metrics_all_epochs.append(txt2img_metrics_per_epoch)
 
-		current_val_loss = loss_acc_metrics_per_epoch.get("val_loss", float('inf')) # Handle missing key safely
+		current_val_loss = in_batch_loss_acc_metrics_per_epoch.get("val_loss", float('inf')) # Handle missing key safely
 		print(
 			f'@ Epoch {epoch + 1}:\n'
-			f'\t[LOSS] {mode_name}(Training): {avg_epoch_train_loss:.5f} | Validation: {loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
+			f'\t[LOSS] {mode_name}(Training): {avg_epoch_train_loss:.5f} | Validation: {in_batch_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
 			f'\tIn-batch Validation Accuracy: '
+			f'[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_acc")} '
+			f'[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_acc")}'
+			f'\tFull Validation Accuracy: '
 			f'[text retrieval per image]: {loss_acc_metrics_per_epoch.get("img2txt_acc")} '
 			f'[image retrieval per text]: {loss_acc_metrics_per_epoch.get("txt2img_acc")}'
 		)
@@ -1269,7 +1362,7 @@ def progressive_unfreeze_finetune(
 				model.load_state_dict({k: v.to(device) for k, v in early_stopping.best_weights.items()})
 
 	print("\nPerforming final evaluation on the best model...")
-	final_metrics = evaluate_loss_and_accuracy(
+	final_metrics = get_in_batch_loss_accuracy(
 		model=model, 
 		validation_loader=validation_loader, 
 		criterion=criterion, 
@@ -1321,13 +1414,13 @@ def progressive_unfreeze_finetune(
 	plot_loss_accuracy_metrics(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
-		val_losses=[m.get("val_loss", float('nan')) for m in loss_acc_metrics_all_epochs],
-		val_acc_img2txt_list=[m.get("img2txt_acc", float('nan')) for m in loss_acc_metrics_all_epochs],
-		val_acc_txt2img_list=[m.get("txt2img_acc", float('nan')) for m in loss_acc_metrics_all_epochs],
-		img2txt_topk_accuracy_list=[m.get("img2txt_topk_acc", {}) for m in loss_acc_metrics_all_epochs],
-		txt2img_topk_accuracy_list=[m.get("txt2img_topk_acc", {}) for m in loss_acc_metrics_all_epochs],
-		mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in loss_acc_metrics_all_epochs],
-		cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in loss_acc_metrics_all_epochs],
+		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		val_acc_img2txt_list=[m.get("img2txt_acc", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		val_acc_txt2img_list=[m.get("txt2img_acc", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		img2txt_topk_accuracy_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+		txt2img_topk_accuracy_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+		mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
 		losses_file_path=plot_paths["losses"],
 		accuracy_file_path=plot_paths["val_acc"],
 		img2txt_topk_accuracy_file_path=plot_paths["img2txt_topk"],
@@ -1347,7 +1440,7 @@ def progressive_unfreeze_finetune(
 		text_to_image_metrics=final_txt2img_metrics,
 		fname=plot_paths["retrieval_best"],
 	)
-	return loss_acc_metrics_all_epochs # Return history for potential further analysis
+	return in_batch_loss_acc_metrics_all_epochs # Return history for potential further analysis
 
 def lora_finetune(
 		model: torch.nn.Module,
@@ -1485,7 +1578,7 @@ def lora_finetune(
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
 
-		metrics_per_epoch = evaluate_loss_and_accuracy(
+		metrics_per_epoch = get_in_batch_loss_accuracy(
 			model=model,
 			validation_loader=validation_loader,
 			criterion=criterion,
@@ -1711,7 +1804,7 @@ def full_finetune(
 		training_losses.append(avg_training_loss)
 
 		# Evaluate on validation set
-		metrics_per_epoch = evaluate_loss_and_accuracy(
+		metrics_per_epoch = get_in_batch_loss_accuracy(
 			model=model,
 			validation_loader=validation_loader,
 			criterion=criterion,
@@ -1756,7 +1849,7 @@ def full_finetune(
 
 		if early_stopping.should_stop(current_val_loss, model, epoch):
 			print(f"\nEarly stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
-			final_metrics = evaluate_loss_and_accuracy(
+			final_metrics = get_in_batch_loss_accuracy(
 				model=model,
 				validation_loader=validation_loader,
 				criterion=criterion,
@@ -1958,7 +2051,7 @@ def train(
 		training_losses.append(avg_training_loss)
 
 		# Compute traditional loss/accuracy metrics on validation set
-		metrics_per_epoch = evaluate_loss_and_accuracy(
+		metrics_per_epoch = get_in_batch_loss_accuracy(
 			model=model,
 			validation_loader=validation_loader,
 			criterion=criterion,
@@ -2006,7 +2099,7 @@ def train(
 			print(f"\nEarly stopping at epoch {epoch+1}. Best loss: {early_stopping.get_best_score():.5f}")
 			
 			# Final evaluation with restored best weights
-			final_metrics = evaluate_loss_and_accuracy(
+			final_metrics = get_in_batch_loss_accuracy(
 				model=model,
 				validation_loader=validation_loader,
 				criterion=criterion,
