@@ -380,7 +380,7 @@ def get_retrieval_metrics(
 		metrics["Recall"][str(K)] = torch.tensor(recall).mean().item()
 	return metrics
 
-def get_loss_accuracy(
+def get_loss_accuracy_metrics(
 		model: torch.nn.Module, 
 		val_loader: DataLoader, 
 		criterion: torch.nn.Module, 
@@ -1291,10 +1291,11 @@ def progressive_unfreeze_finetune(
 		print(
 			f'@ Epoch {epoch + 1}:\n'
 			f'\t[LOSS] {mode_name}(Training): {avg_epoch_train_loss:.5f} | Validation: {in_batch_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
-			f'\tIn-batch Validation Accuracy: '
+			f'\tValidation Accuracy:\n'
+			f'\tIn-batch: '
 			f'[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_acc")} '
-			f'[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_acc")}'
-			f'\tFull Validation Accuracy: '
+			f'[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_acc")}\n'
+			f'\tFull: '
 			f'[text retrieval per image]: {loss_acc_metrics_per_epoch.get("img2txt_acc")} '
 			f'[image retrieval per text]: {loss_acc_metrics_per_epoch.get("txt2img_acc")}'
 		)
