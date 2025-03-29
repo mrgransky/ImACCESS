@@ -1270,7 +1270,7 @@ def progressive_unfreeze_finetune(
 		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
 		loss_acc_metrics_per_epoch = get_loss_accuracy_metrics(
 			model=model,
-			validation_loader=validation_loader,
+			val_loader=validation_loader,
 			criterion=criterion,
 			device=device,
 			topK_values=top_k_values
