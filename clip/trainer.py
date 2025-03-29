@@ -1,6 +1,6 @@
 from utils import *
 from model import get_lora_clip
-from visualize import plot_loss_accuracy, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics
+from visualize import plot_loss_accuracy_metrics, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics
 
 def compute_slope(losses: List[float]) -> float:
 	"""Computes the slope of the best-fit line for a list of losses."""
