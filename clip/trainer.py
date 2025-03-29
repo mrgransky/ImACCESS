@@ -1273,7 +1273,7 @@ def progressive_unfreeze_finetune(
 			val_loader=validation_loader,
 			criterion=criterion,
 			device=device,
-			topK_values=top_k_values
+			topk_values=top_k_values
 		)
 		loss_acc_metrics_all_epochs.append(loss_acc_metrics_per_epoch)
 
