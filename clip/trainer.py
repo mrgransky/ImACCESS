@@ -857,13 +857,13 @@ def unfreeze_layers(
 
 def should_transition_phase(
 		losses: List[float],
-		accuracies: Optional[List[float]], # Added optional accuracy list
 		window: int,
 		best_loss: Optional[float],
-		best_loss_threshold: float = 1e-3,
-		volatility_threshold: float = 10.0,
-		slope_threshold: float = 0.0,
-		pairwise_imp_threshold: float = 5e-3,
+		best_loss_threshold: float,
+		volatility_threshold: float,
+		slope_threshold: float,
+		pairwise_imp_threshold: float,
+		accuracies: Optional[List[float]]=None, # Added optional accuracy list
 		accuracy_plateau_threshold: float = 1e-3 # Threshold for accuracy stagnation
 	) -> bool:
 
