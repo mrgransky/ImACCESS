@@ -29,6 +29,7 @@ echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_N
 echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
+
 # Define constants
 FINETUNE_STRATEGIES=("full" "lora" "progressive")
 DATASETS=(
@@ -45,11 +46,12 @@ dataset_index=$((SLURM_ARRAY_TASK_ID % NUM_DATASETS))
 strategy_index=$((SLURM_ARRAY_TASK_ID / NUM_DATASETS))
 # Validate indices
 if [ $dataset_index -ge ${#DATASETS[@]} ] || [ $strategy_index -ge ${#FINETUNE_STRATEGIES[@]} ]; then
-echo "Error: Invalid dataset or strategy index"
-exit 1
+	echo "Error: Invalid dataset or strategy index"
+	exit 1
 fi
+
 # Hyperparameter configuration
-INIT_LRS=(1e-4 1e-4 1e-4 1e-5 2e-5)
+INIT_LRS=(1e-4 1e-4 1e-4 1e-5 1e-5)
 WEIGHT_DECAYS=(1e-1 1e-1 1e-1 1e-1 1e-1)
 DROPOUTS=(0.1 0.1 0.1 0.2 0.2)
 EPOCHS=(50 50 150 150 150)
