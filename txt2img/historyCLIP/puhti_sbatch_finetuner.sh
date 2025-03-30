@@ -86,7 +86,7 @@ python -u history_clip_trainer.py \
 	--epochs "${EPOCHS[$dataset_index]}" \
 	--num_workers "$SLURM_CPUS_PER_TASK" \
 	--print_every 250 \
-	--batch_size 256 \
+	--batch_size 128 \
 	--learning_rate "${INIT_LRS[$dataset_index]}" \
 	--weight_decay "${WEIGHT_DECAYS[$dataset_index]}" \
 	--mode "finetune" \
