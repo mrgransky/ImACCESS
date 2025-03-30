@@ -1110,13 +1110,16 @@ def progressive_unfreeze_finetune(
 			min_phases=max(4, min_phases_before_stopping + 1), # Ensure enough phases
 			max_phases=15, # Cap the number of phases
 		)
+
 	# Get the detailed layer unfreeze schedule
 	unfreeze_schedule = get_unfreeze_schedule(
 		model=model,
 		unfreeze_percentages=unfreeze_percentages,
 		layer_groups_to_unfreeze=layer_groups_to_unfreeze,
 	)
+
 	max_phases = len(unfreeze_schedule)
+
 	# Optimizer and Scheduler
 	# Filter parameters dynamically based on requires_grad, which changes per phase
 	optimizer = AdamW(
@@ -1126,6 +1129,7 @@ def progressive_unfreeze_finetune(
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
+
 	scheduler = torch.optim.lr_scheduler.OneCycleLR(
 		optimizer=optimizer,
 		max_lr=initial_learning_rate,
@@ -1171,20 +1175,21 @@ def progressive_unfreeze_finetune(
 			current_phase < max_phases - 1 and
 			len(early_stopping.value_history) >= window_size):
 			print(f"Checking for phase transition (Epochs in phase: {epochs_in_current_phase})")
-			# Extract necessary data for should_transition_phase
-			val_losses = early_stopping.value_history
 
-			val_accs = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in in_batch_loss_acc_metrics_all_epochs] if in_batch_loss_acc_metrics_all_epochs else None
+			val_losses = early_stopping.value_history
+			val_accs_in_batch = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in in_batch_loss_acc_metrics_all_epochs]
+			val_accs_full = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in loss_acc_metrics_all_epochs]
+
 			should_trans = should_transition_phase(
 				losses=val_losses,
-				accuracies=val_accs, # Pass average accuracy
 				window=window_size,
 				best_loss=early_stopping.get_best_score(), # Use best score from early stopping state
 				best_loss_threshold=min_delta, # Use min_delta for closeness check
 				volatility_threshold=volatility_threshold,
 				slope_threshold=slope_threshold, # Use positive threshold for worsening loss
 				pairwise_imp_threshold=pairwise_imp_threshold,
-				accuracy_plateau_threshold=accuracy_plateau_threshold
+				# accuracies=val_accs, # Pass average accuracy
+				# accuracy_plateau_threshold=accuracy_plateau_threshold,
 			)
 			if should_trans:
 				current_phase, last_lr = handle_phase_transition(
@@ -1277,6 +1282,7 @@ def progressive_unfreeze_finetune(
 		
 		# --- Validation ---
 		print(f"Epoch: {epoch+1} validation...")
+
 		# Compute in-batch loss/accuracy metrics on validation set:
 		in_batch_loss_acc_metrics_per_epoch = get_in_batch_loss_accuracy_metrics(
 			model=model,
@@ -1286,6 +1292,7 @@ def progressive_unfreeze_finetune(
 			topK_values=top_k_values
 		)
 		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
+
 		loss_acc_metrics_per_epoch = get_loss_accuracy_metrics(
 			model=model,
 			validation_loader=validation_loader,
