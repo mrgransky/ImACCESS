@@ -419,7 +419,7 @@ def plot_loss_accuracy_metrics(
 					
 	setup_plot(
 		ax, ylabel='Loss', 
-		title=f'{dataset_name} Training vs. Validation Loss',
+		title=f'{dataset_name} Learning Curve: (Loss)',
 	)
 	ax.legend(
 		fontsize=10, 
