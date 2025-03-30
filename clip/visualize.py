@@ -361,7 +361,7 @@ def plot_loss_accuracy_metrics(
 		mean_reciprocal_rank_file_path: str = "mean_reciprocal_rank.png",
 		cosine_similarity_file_path: str = "cosine_similarity.png",
 		DPI: int = 300,
-		figure_size = (8, 5),
+		figure_size = (10, 4),
 	):
 
 	num_epochs = len(train_losses)
@@ -434,7 +434,7 @@ def plot_loss_accuracy_metrics(
 	fig.savefig(losses_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close(fig)
 	
-	# 2. Image-to-Text Top-K Accuracy plot
+	# 2. Image-to-Text Top-K[in-batch matching] Validation Accuracy plot
 	if in_batch_topk_val_accuracy_i2t_list:
 		topk_values = list(in_batch_topk_val_accuracy_i2t_list[0].keys())
 		fig, ax = plt.subplots(figsize=figure_size)

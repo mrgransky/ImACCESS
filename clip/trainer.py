@@ -1102,6 +1102,18 @@ def progressive_unfreeze_finetune(
 		if isinstance(module, torch.nn.Dropout):
 			dropout_val = module.p
 			break
+
+	# Inspect the model for dropout layers
+	dropout_values = []
+	for name, module in model.named_modules():
+		if isinstance(module, torch.nn.Dropout):
+			dropout_values.append((name, module.p))
+
+	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
+	print(f"\nNon-zero dropout detected in base {model.__class__.__name__} {model.name} during {mode_name} fine-tuning:")
+	print(non_zero_dropouts)
+	print()
+
 	# Determine unfreeze schedule percentages
 	if unfreeze_percentages is None:
 		unfreeze_percentages = get_unfreeze_pcts_hybrid(
