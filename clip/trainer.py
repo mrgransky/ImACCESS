@@ -1391,7 +1391,15 @@ def progressive_unfreeze_finetune(
 				model.load_state_dict({k: v.to(device) for k, v in early_stopping.best_weights.items()})
 
 	print("\nPerforming final evaluation on the best model...")
-	final_metrics = get_in_batch_loss_accuracy_metrics(
+	final_metrics_in_batch = get_in_batch_loss_accuracy_metrics(
+		model=model,
+		validation_loader=validation_loader,
+		criterion=criterion,
+		device=device,
+		topK_values=top_k_values,
+	)
+
+	final_metrics_full = get_loss_accuracy_metrics(
 		model=model,
 		validation_loader=validation_loader,
 		criterion=criterion,
@@ -1406,14 +1414,17 @@ def progressive_unfreeze_finetune(
 		topK_values=top_k_values,
 	)
 
-	print("\n--- Final Metrics[Validation Loss & Accuracy] (Best Model) ---")
-	print(json.dumps(final_metrics, indent=2))
+	print("\n--- Final Metrics[in-batch Validation Loss & Accuracy] (Best Model) ---")
+	print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
+
+	print("--- Final Metrics[full Validation Loss & Accuracy] (Best Model) ---")
+	print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
 
 	print("Image-to-Text Retrieval:")
-	print(json.dumps(final_img2txt_metrics, indent=2))
+	print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
 
 	print("Text-to-Image Retrieval:")
-	print(json.dumps(final_txt2img_metrics, indent=2))
+	print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
 
 	print("\nGenerating result plots...")
 
@@ -1435,9 +1446,10 @@ def progressive_unfreeze_finetune(
 
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"val_acc": os.path.join(results_dir, f"{file_base_name}_in_batch_top1_accuracy_t2i_i2t.png"),
-		"img2txt_topk": os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png"),
-		"txt2img_topk": os.path.join(results_dir, f"{file_base_name}_txt2img_topk_accuracy.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
 		"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
 		"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
@@ -1448,16 +1460,13 @@ def progressive_unfreeze_finetune(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
 		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-		val_acc_img2txt_list=[m.get("img2txt_acc", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-		val_acc_txt2img_list=[m.get("txt2img_acc", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-		img2txt_topk_accuracy_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-		txt2img_topk_accuracy_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+		in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+		in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
 		mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
 		cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
 		losses_file_path=plot_paths["losses"],
-		accuracy_file_path=plot_paths["val_acc"],
-		img2txt_topk_accuracy_file_path=plot_paths["img2txt_topk"],
-		txt2img_topk_accuracy_file_path=plot_paths["txt2img_topk"],
+		in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
+		in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
 		mean_reciprocal_rank_file_path=plot_paths["mrr"],
 		cosine_similarity_file_path=plot_paths["cs"],
 	)
@@ -1667,29 +1676,31 @@ def lora_finetune(
 		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_rank_{lora_rank}"
 	)
 
-	losses_fpth = os.path.join(results_dir, f"{file_base_name}_losses.png")
-	val_acc_fpth = os.path.join(results_dir, f"{file_base_name}_top1_accuracy.png")
-	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png")
-	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_txt2img_topk_accuracy.png")
-	mrr_fpth = os.path.join(results_dir, f"{file_base_name}_mrr.png")
-	cs_fpth = os.path.join(results_dir, f"{file_base_name}_cos_sim.png")	
+	plot_paths = {
+		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
+		"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
+		"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
+		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+	}
 
 	plot_loss_accuracy_metrics(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
-		val_losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
-		val_acc_img2txt_list=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
-		val_acc_txt2img_list=[metrics["txt2img_acc"] for metrics in metrics_for_all_epochs],
-		img2txt_topk_accuracy_list=[metrics["img2txt_topk_acc"] for metrics in metrics_for_all_epochs],
-		txt2img_topk_accuracy_list=[metrics["txt2img_topk_acc"] for metrics in metrics_for_all_epochs],
-		mean_reciprocal_rank_list=[metrics["mean_reciprocal_rank"] for metrics in metrics_for_all_epochs],
-		cosine_similarity_list=[metrics["cosine_similarity"] for metrics in metrics_for_all_epochs],
-		losses_file_path=losses_fpth,
-		accuracy_file_path=val_acc_fpth,
-		img2txt_topk_accuracy_file_path=img2txt_topk_accuracy_fpth,
-		txt2img_topk_accuracy_file_path=txt2img_topk_accuracy_fpth,
-		mean_reciprocal_rank_file_path=mrr_fpth,
-		cosine_similarity_file_path=cs_fpth,
+		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+		in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+		mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		losses_file_path=plot_paths["losses"],
+		in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
+		in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
+		mean_reciprocal_rank_file_path=plot_paths["mrr"],
+		cosine_similarity_file_path=plot_paths["cs"],
 	)
 
 	retrieval_metrics_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png")
@@ -1920,29 +1931,31 @@ def full_finetune(
 		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}"
 	)
 
-	losses_fpth = os.path.join(results_dir, f"{file_base_name}_losses.png")
-	val_acc_fpth = os.path.join(results_dir, f"{file_base_name}_top1_accuracy.png")
-	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png")
-	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_txt2img_topk_accuracy.png")
-	mrr_fpth = os.path.join(results_dir, f"{file_base_name}_mrr.png")
-	cs_fpth = os.path.join(results_dir, f"{file_base_name}_cos_sim.png")
+	plot_paths = {
+		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
+		"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
+		"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
+		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+	}
 
 	plot_loss_accuracy_metrics(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
-		val_losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
-		val_acc_img2txt_list=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
-		val_acc_txt2img_list=[metrics["txt2img_acc"] for metrics in metrics_for_all_epochs],
-		img2txt_topk_accuracy_list=[metrics["img2txt_topk_acc"] for metrics in metrics_for_all_epochs],
-		txt2img_topk_accuracy_list=[metrics["txt2img_topk_acc"] for metrics in metrics_for_all_epochs],
-		mean_reciprocal_rank_list=[metrics["mean_reciprocal_rank"] for metrics in metrics_for_all_epochs],
-		cosine_similarity_list=[metrics["cosine_similarity"] for metrics in metrics_for_all_epochs],
-		losses_file_path=losses_fpth,
-		accuracy_file_path=val_acc_fpth,
-		img2txt_topk_accuracy_file_path=img2txt_topk_accuracy_fpth,
-		txt2img_topk_accuracy_file_path=txt2img_topk_accuracy_fpth,
-		mean_reciprocal_rank_file_path=mrr_fpth,
-		cosine_similarity_file_path=cs_fpth,
+		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+		in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+		mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		losses_file_path=plot_paths["losses"],
+		in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
+		in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
+		mean_reciprocal_rank_file_path=plot_paths["mrr"],
+		cosine_similarity_file_path=plot_paths["cs"],
 	)
 
 	retrieval_metrics_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png")
@@ -2172,28 +2185,32 @@ def train(
 		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}"
 	)
-	losses_fpth = os.path.join(results_dir, f"{file_base_name}_losses.png")
-	val_acc_fpth = os.path.join(results_dir, f"{file_base_name}_top1_accuracy.png")
-	img2txt_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_img2txt_topk_accuracy.png")
-	txt2img_topk_accuracy_fpth = os.path.join(results_dir, f"{file_base_name}_txt2img_topk_accuracy.png")
-	mrr_fpth = os.path.join(results_dir, f"{file_base_name}_mrr.png")
-	cs_fpth = os.path.join(results_dir, f"{file_base_name}_cos_sim.png")
+
+	plot_paths = {
+		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
+		"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
+		"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
+		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+	}
+
 	plot_loss_accuracy_metrics(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
-		val_losses=[metrics["val_loss"] for metrics in metrics_for_all_epochs],
-		val_acc_img2txt_list=[metrics["img2txt_acc"] for metrics in metrics_for_all_epochs],
-		val_acc_txt2img_list=[metrics["txt2img_acc"] for metrics in metrics_for_all_epochs],
-		img2txt_topk_accuracy_list=[metrics["img2txt_topk_acc"] for metrics in metrics_for_all_epochs],
-		txt2img_topk_accuracy_list=[metrics["txt2img_topk_acc"] for metrics in metrics_for_all_epochs],
-		mean_reciprocal_rank_list=[metrics["mean_reciprocal_rank"] for metrics in metrics_for_all_epochs],
-		cosine_similarity_list=[metrics["cosine_similarity"] for metrics in metrics_for_all_epochs],
-		losses_file_path=losses_fpth,
-		accuracy_file_path=val_acc_fpth,
-		img2txt_topk_accuracy_file_path=img2txt_topk_accuracy_fpth,
-		txt2img_topk_accuracy_file_path=txt2img_topk_accuracy_fpth,
-		mean_reciprocal_rank_file_path=mrr_fpth,
-		cosine_similarity_file_path=cs_fpth,
+		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+		in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+		mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		losses_file_path=plot_paths["losses"],
+		in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
+		in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
+		mean_reciprocal_rank_file_path=plot_paths["mrr"],
+		cosine_similarity_file_path=plot_paths["cs"],
 	)
 
 	retrieval_metrics_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png")

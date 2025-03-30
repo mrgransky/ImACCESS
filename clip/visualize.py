@@ -351,221 +351,372 @@ def plot_loss_accuracy_metrics(
 		dataset_name: str,
 		train_losses: List[float],
 		val_losses: List[float],
-		val_acc_img2txt_list: List[float],
-		val_acc_txt2img_list: List[float],
-		img2txt_topk_accuracy_list,
-		txt2img_topk_accuracy_list,  # Added for text-to-image top-K
-		mean_reciprocal_rank_list: List[float],
-		cosine_similarity_list: List[float],
-		losses_file_path: str ="losses.png",
-		accuracy_file_path: str ="accuracy.png",
-		img2txt_topk_accuracy_file_path: str ="img2txt_topk_accuracy.png",
-		txt2img_topk_accuracy_file_path: str ="txt2img_topk_accuracy.png",  # Added for text-to-image top-K
-		mean_reciprocal_rank_file_path: str ="mean_reciprocal_rank.png",
-		cosine_similarity_file_path: str ="cosine_similarity.png",
-		DPI: int=300,  # Higher DPI for publication quality
-		figure_size=(11, 5),
+		in_batch_topk_val_accuracy_i2t_list: List[float],
+		in_batch_topk_val_accuracy_t2i_list: List[float],
+		mean_reciprocal_rank_list: List[float] = None,
+		cosine_similarity_list: List[float] = None,
+		losses_file_path: str = "losses.png",
+		in_batch_topk_val_acc_i2t_fpth: str = "in_batch_val_topk_accuracy_i2t.png",
+		in_batch_topk_val_acc_t2i_fpth: str = "in_batch_val_topk_accuracy_t2i.png",
+		mean_reciprocal_rank_file_path: str = "mean_reciprocal_rank.png",
+		cosine_similarity_file_path: str = "cosine_similarity.png",
+		DPI: int = 300,
+		figure_size = (8, 5),
 	):
+
 	num_epochs = len(train_losses)
 	if num_epochs <= 1:  # No plot if only one epoch
 		return
-	epochs = range(1, num_epochs + 1)
-	# Dynamic and selective number of xticks
+			
+	# Setup common plotting configurations
+	epochs = np.arange(1, num_epochs + 1)
+	
+	# Create selective x-ticks for better readability
 	num_xticks = min(20, num_epochs)
-	selective_xticks_epochs = np.linspace(0, num_epochs, num_xticks, dtype=int)
-	# Consistent color scheme
+	selective_xticks = np.linspace(1, num_epochs, num_xticks, dtype=int)
+	
+	# Define a consistent color palette
 	colors = {
-		'train': '#1f77b4', # muted blue
-		'val': '#ff7f0e', # safety orange
-		'img2txt': '#2ca02c', # cooked asparagus green
-		'txt2img': '#d62728', # brick red
-		'mean_reciprocal_rank': '#9467bd', # muted purple
-		'cosine_similarity': '#8c564b', # chestnut brown
-		'img2img': '#e377c2', # raspberry yogurt pink
-		'txt2txt': '#7f7f7f', # middle gray
+		'train': '#1f77b4',
+		'val': '#ff7f0e',
+		'img2txt': '#2ca02c',
+		'txt2img': '#d62728'
 	}
-	modes = ["Image-to-Text", "Text-to-Image"]
-
-	# 1. Loss Plot
-	plt.figure(figsize=figure_size)
-	plt.plot(
+	
+	# Common plot settings function
+	def setup_plot(ax, xlabel='Epoch', ylabel=None, title=None):
+			ax.set_xlabel(xlabel, fontsize=12)
+			if ylabel:
+					ax.set_ylabel(ylabel, fontsize=12)
+			if title:
+					ax.set_title(title, fontsize=10, fontweight='bold')
+			ax.set_xlim(0, num_epochs + 1)
+			ax.set_xticks(selective_xticks)
+			ax.tick_params(axis='both', labelsize=10)
+			ax.grid(True, linestyle='--', alpha=0.7)
+			return ax
+	
+	# 1. Losses plot
+	fig, ax = plt.subplots(figsize=figure_size)
+	ax.plot(
 		epochs,
-		train_losses,
-		color=colors['train'],
-		label='Training',
-		lw=1.5,
-		marker='o',
+		train_losses, 
+		color=colors['train'], 
+		label='Training', 
+		lw=1.5, 
+		marker='o', 
 		markersize=2,
 	)
-	plt.plot(
+	ax.plot(
 		epochs,
 		val_losses,
-		color=colors['val'],
+		color=colors['val'], 
 		label='Validation',
-		lw=1.5,
-		marker='o',
+		lw=1.5, 
+		marker='o', 
 		markersize=2,
 	)
-	plt.xlabel('Epoch', fontsize=12)
-	plt.ylabel('Loss', fontsize=12)
-	plt.title(f'{dataset_name} Training vs. Validation Loss', fontsize=9, fontweight='bold')
-	plt.legend(
-		fontsize=9, 
+					
+	setup_plot(
+		ax, ylabel='Loss', 
+		title=f'{dataset_name} Training vs. Validation Loss',
+	)
+	ax.legend(
+		fontsize=10, 
 		loc='best', 
-		ncol=len(modes), 
 		frameon=True, 
-		edgecolor='black', 
-		fancybox=True,
-	)
-	plt.xlim(0, num_epochs + 1)
-	# plt.ylim(0, max(max(train_losses), max(val_losses)) * 1.05)
-	plt.xticks(selective_xticks_epochs, fontsize=8)
-	plt.grid(True, linestyle='--', alpha=0.7)
-	plt.tight_layout()
-	plt.savefig(losses_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close()
-
-	# 2. Top-1 Accuracy Plot
-	plt.figure(figsize=figure_size)
-	plt.plot(
-		epochs,
-		val_acc_img2txt_list,
-		color=colors['img2txt'],
-		label='Image-to-Text',
-		lw=1.5,
-		marker='o',
-		markersize=2,
-	)
-	plt.plot(
-		epochs,
-		val_acc_txt2img_list,
-		color=colors['txt2img'],
-		label='Text-to-Image',
-		lw=1.5,
-		marker='o',
-		markersize=2,
-	)
-	plt.xlabel('Epoch', fontsize=12)
-	plt.ylabel('Accuracy', fontsize=12)
-	plt.title(f'{dataset_name} Zero-Shot [in-batch matching Top-1 Accuracy]', fontsize=10, fontweight='bold')
-	plt.legend(
-		fontsize=9,
-		loc='best',
-		ncol=len(modes),
-	)
-	plt.xlim(0, num_epochs + 1)
-	# plt.ylim(-0.05, 1.05)
-	plt.ylim(0, max(max(val_acc_img2txt_list), max(val_acc_txt2img_list)) * 1.05)
-	plt.xticks(selective_xticks_epochs, fontsize=9)
-	plt.grid(True, linestyle='--', alpha=0.7)
-	plt.tight_layout()
-	plt.savefig(accuracy_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close()
-
-	# 3. Image-to-Text Top-K Accuracy Plot
-	topk_values = list(img2txt_topk_accuracy_list[0].keys())  # e.g., [1, 3, 5]
-	plt.figure(figsize=figure_size)
-	for i, k in enumerate(topk_values):
-		accuracy_values = [epoch_data[k] for epoch_data in img2txt_topk_accuracy_list]
-		plt.plot(
-			epochs,
-			accuracy_values,
-			label=f'Top-{k}',
-			lw=1.5,
-			marker='o',
-			markersize=2,
-			color=plt.cm.tab10(i), # # Distinct colors for each K value
-		)
-	plt.xlabel('Epoch', fontsize=12)
-	plt.ylabel('Accuracy', fontsize=12)
-	plt.title(f'{dataset_name} Image-to-Text Top-K Accuracy (K={topk_values})', fontsize=10, fontweight='bold')
-	plt.legend(
-		fontsize=8,
-		loc='best',
-		ncol=len(topk_values),
-		frameon=True,
 		fancybox=True,
 		shadow=True,
+		facecolor='white',
+		edgecolor='black',
 	)
-	plt.xlim(0, num_epochs + 1)
-	plt.ylim(-0.05, 1.05)
-	plt.xticks(selective_xticks_epochs, fontsize=10)
-	plt.grid(True, linestyle='--', alpha=0.7)
-	plt.tight_layout()
-	plt.savefig(img2txt_topk_accuracy_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close()
-
-	# 4. Text-to-Image Top-K Accuracy Plot (New)
-	topk_values = list(txt2img_topk_accuracy_list[0].keys())  # e.g., [1, 3, 5]
-	plt.figure(figsize=figure_size)
-	for i, k in enumerate(topk_values):
-		accuracy_values = [epoch_data[k] for epoch_data in txt2img_topk_accuracy_list]
-		plt.plot(
-			epochs,
-			accuracy_values,
-			label=f'Top-{k}',
-			lw=1.5,
-			marker='o',
-			markersize=2,
-			color=plt.cm.tab10(i),
+	fig.tight_layout()
+	fig.savefig(losses_file_path, dpi=DPI, bbox_inches='tight')
+	plt.close(fig)
+	
+	# 2. Image-to-Text Top-K Accuracy plot
+	if in_batch_topk_val_accuracy_i2t_list:
+		topk_values = list(in_batch_topk_val_accuracy_i2t_list[0].keys())
+		fig, ax = plt.subplots(figsize=figure_size)
+		
+		for i, k in enumerate(topk_values):
+				accuracy_values = [epoch_data[k] for epoch_data in in_batch_topk_val_accuracy_i2t_list]
+				ax.plot(
+					epochs, 
+					accuracy_values, 
+					label=f'Top-{k}',
+					lw=1.5, 
+					marker='o', 
+					markersize=2, 
+					color=plt.cm.tab10(i),
+				)
+							 
+		setup_plot(
+			ax, 
+			ylabel='Accuracy', 
+			title=f'{dataset_name} Image-to-Text Top-K [in-batch matching] Validation Accuracy'
 		)
-	plt.xlabel('Epoch', fontsize=12)
-	plt.ylabel('Accuracy', fontsize=12)
-	plt.title(f'{dataset_name} Text-to-Image Top-K Accuracy (K={topk_values})', fontsize=10, fontweight='bold')
-	plt.legend(
-		fontsize=10,
-		loc='best',
-		ncol=len(topk_values),
-	)
-	plt.xlim(0, num_epochs + 1)
-	plt.ylim(-0.05, 1.05)
-	plt.xticks(selective_xticks_epochs, fontsize=10)
-	plt.grid(True, linestyle='--', alpha=0.5)
-	plt.tight_layout()
-	plt.savefig(txt2img_topk_accuracy_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close()
+		ax.set_ylim(-0.05, 1.05)
+		ax.legend(
+			fontsize=9, 
+			loc='best', 
+			ncol=min(len(topk_values), 3), 
+			frameon=True, 
+			fancybox=True,
+			shadow=True,
+			facecolor='white',
+			edgecolor='black',
+		)
+		fig.tight_layout()
+		fig.savefig(in_batch_topk_val_acc_i2t_fpth, dpi=DPI, bbox_inches='tight')
+		plt.close(fig)
+	
+	# 3. Text-to-Image Top-K Accuracy plot
+	if in_batch_topk_val_accuracy_t2i_list:
+			topk_values = list(in_batch_topk_val_accuracy_t2i_list[0].keys())
+			fig, ax = plt.subplots(figsize=figure_size)
+			
+			for i, k in enumerate(topk_values):
+					accuracy_values = [epoch_data[k] for epoch_data in in_batch_topk_val_accuracy_t2i_list]
+					ax.plot(
+						epochs, 
+						accuracy_values, 
+						label=f'Top-{k}',
+						lw=1.5, 
+						marker='o', 
+						markersize=2, 
+						color=plt.cm.tab10(i),
+					)
+								 
+			setup_plot(
+				ax, 
+				ylabel='Accuracy', 
+				title=f'{dataset_name} Text-to-Image Top-K [in-batch matching] Validation Accuracy'
+			)
+			ax.set_ylim(-0.05, 1.05)
+			ax.legend(
+				fontsize=9, 
+				loc='best',
+				ncol=min(len(topk_values), 3), 
+				frameon=True, 
+				fancybox=True, 
+				shadow=True,
+				edgecolor='black',
+				facecolor='white',
+			)
+			fig.tight_layout()
+			fig.savefig(in_batch_topk_val_acc_t2i_fpth, dpi=DPI, bbox_inches='tight')
+			plt.close(fig)
+	
+	# 4. Mean Reciprocal Rank plot (if data provided)
+	if mean_reciprocal_rank_list and len(mean_reciprocal_rank_list) > 0:
+			fig, ax = plt.subplots(figsize=figure_size)
+			ax.plot(epochs, mean_reciprocal_rank_list, color='#9467bd', 
+							label='MRR', lw=1.5, marker='o', markersize=2)
+							
+			setup_plot(ax, ylabel='Mean Reciprocal Rank',
+								title=f'{dataset_name} Mean Reciprocal Rank (Image-to-Text)')
+			ax.set_ylim(-0.05, 1.05)
+			ax.legend(fontsize=10, loc='best')
+			fig.tight_layout()
+			fig.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
+			plt.close(fig)
+	
+	# 5. Cosine Similarity plot (if data provided)
+	if cosine_similarity_list and len(cosine_similarity_list) > 0:
+			fig, ax = plt.subplots(figsize=figure_size)
+			ax.plot(epochs, cosine_similarity_list, color='#17becf',
+							label='Cosine Similarity', lw=1.5, marker='o', markersize=2)
+							
+			setup_plot(ax, ylabel='Cosine Similarity',
+								title=f'{dataset_name} Cosine Similarity Between Embeddings')
+			ax.legend(fontsize=10, loc='best')
+			fig.tight_layout()
+			fig.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches='tight')
+			plt.close(fig)
 
-	# # 5. Mean Reciprocal Rank Plot
-	# plt.figure(figsize=figure_size)
-	# plt.plot(
-	# 	epochs,
-	# 	mean_reciprocal_rank_list,
-	# 	color='#9467bd',
-	# 	label='MRR',
-	# 	lw=1.5,
-	# 	marker='o', 
-	# 	markersize=2,
-	# )
-	# plt.xlabel('Epoch', fontsize=12)
-	# plt.ylabel('Mean Reciprocal Rank', fontsize=12)
-	# plt.title(f'{dataset_name} Mean Reciprocal Rank (Image-to-Text)', fontsize=14, fontweight='bold', pad=10)
-	# plt.legend(fontsize=10, loc='upper left', )
-	# plt.xlim(0, num_epochs + 1)
-	# plt.ylim(-0.05, 1.05)
-	# plt.xticks(selective_xticks_epochs, fontsize=10)
-	# plt.grid(True, linestyle='--', alpha=0.5)
-	# plt.tight_layout()
-	# plt.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
-	# plt.close()
+# def plot_loss_accuracy_metrics(
+# 		dataset_name: str,
+# 		train_losses: List[float],
+# 		val_losses: List[float],
+# 		in_batch_topk_val_accuracy_i2t_list: List[float],
+# 		in_batch_topk_val_accuracy_t2i_list: List[float],
+# 		mean_reciprocal_rank_list: List[float],
+# 		cosine_similarity_list: List[float],
+# 		losses_file_path: str ="losses.png",
+# 		in_batch_topk_val_acc_i2t_fpth: str ="in_batch_val_topk_accuracy_i2t.png",
+# 		in_batch_topk_val_acc_t2i_fpth: str ="in_batch_val_topk_accuracy_t2i.png",
+# 		mean_reciprocal_rank_file_path: str ="mean_reciprocal_rank.png",
+# 		cosine_similarity_file_path: str ="cosine_similarity.png",
+# 		DPI: int=300,  # Higher DPI for publication quality
+# 		figure_size=(8, 5),
+# 	):
+# 	num_epochs = len(train_losses)
+# 	if num_epochs <= 1:  # No plot if only one epoch
+# 		return
+# 	epochs = range(1, num_epochs + 1)
+# 	# Dynamic and selective number of xticks
+# 	num_xticks = min(20, num_epochs)
+# 	selective_xticks_epochs = np.linspace(0, num_epochs, num_xticks, dtype=int)
+# 	# Consistent color scheme
+# 	colors = {
+# 		'train': '#1f77b4', # muted blue
+# 		'val': '#ff7f0e', # safety orange
+# 		'img2txt': '#2ca02c', # cooked asparagus green
+# 		'txt2img': '#d62728', # brick red
+# 		'mean_reciprocal_rank': '#9467bd', # muted purple
+# 		'cosine_similarity': '#8c564b', # chestnut brown
+# 		'img2img': '#e377c2', # raspberry yogurt pink
+# 		'txt2txt': '#7f7f7f', # middle gray
+# 	}
+# 	modes = ["Image-to-Text", "Text-to-Image"]
 
-	# # 6. Cosine Similarity Plot
-	# plt.figure(figsize=figure_size)
-	# plt.plot(
-	# 	epochs,
-	# 	cosine_similarity_list,
-	# 	color='#17becf',
-	# 	label='Cosine Similarity',
-	# 	lw=1.5, 
-	# 	marker='o', 
-	# 	markersize=2,
-	# )
-	# plt.xlabel('Epoch', fontsize=12)
-	# plt.ylabel('Cosine Similarity', fontsize=12)
-	# plt.title(f'{dataset_name} Cosine Similarity Between Embeddings', fontsize=14, fontweight='bold', pad=10)
-	# plt.legend(fontsize=10, loc='upper left', )
-	# plt.xlim(0, num_epochs + 1)
-	# plt.xticks(selective_xticks_epochs, fontsize=10)
-	# plt.grid(True, linestyle='--', alpha=0.5)
-	# plt.tight_layout()
-	# plt.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches='tight')
-	# plt.close()
+# 	# 1. Loss Plot
+# 	plt.figure(figsize=figure_size)
+# 	plt.plot(
+# 		epochs,
+# 		train_losses,
+# 		color=colors['train'],
+# 		label='Training',
+# 		lw=1.5,
+# 		marker='o',
+# 		markersize=2,
+# 	)
+# 	plt.plot(
+# 		epochs,
+# 		val_losses,
+# 		color=colors['val'],
+# 		label='Validation',
+# 		lw=1.5,
+# 		marker='o',
+# 		markersize=2,
+# 	)
+# 	plt.xlabel('Epoch', fontsize=12)
+# 	plt.ylabel('Loss', fontsize=12)
+# 	plt.title(f'{dataset_name} Training vs. Validation Loss', fontsize=9, fontweight='bold')
+# 	plt.legend(
+# 		fontsize=9, 
+# 		loc='best', 
+# 		ncol=len(modes), 
+# 		frameon=True, 
+# 		edgecolor='black', 
+# 		fancybox=True,
+# 	)
+# 	plt.xlim(0, num_epochs + 1)
+# 	# plt.ylim(0, max(max(train_losses), max(val_losses)) * 1.05)
+# 	plt.xticks(selective_xticks_epochs, fontsize=8)
+# 	plt.grid(True, linestyle='--', alpha=0.7)
+# 	plt.tight_layout()
+# 	plt.savefig(losses_file_path, dpi=DPI, bbox_inches='tight')
+# 	plt.close()
+
+# 	plt.figure(figsize=figure_size)
+# 	for i, k in enumerate(list(in_batch_topk_val_accuracy_i2t_list[0].keys())):
+# 		accuracy_values = [epoch_data[k] for epoch_data in in_batch_topk_val_accuracy_i2t_list]
+# 		plt.plot(
+# 			epochs,
+# 			accuracy_values,
+# 			label=f'Top-{k}',
+# 			lw=1.5,
+# 			marker='o',
+# 			markersize=2,
+# 			color=plt.cm.tab10(i), # # Distinct colors for each K value
+# 		)
+# 	plt.xlabel('Epoch', fontsize=12)
+# 	plt.ylabel('Accuracy', fontsize=12)
+# 	plt.title(f'{dataset_name} Image-to-Text Top-K [in-batch matching] Validation Accuracy', fontsize=8, fontweight='bold')
+# 	plt.legend(
+# 		fontsize=8,
+# 		loc='best',
+# 		ncol=len(topk_values),
+# 		frameon=True,
+# 		fancybox=True,
+# 		shadow=True,
+# 		edgecolor='black',
+# 		facecolor='white',
+# 	)
+# 	plt.xlim(0, num_epochs + 1)
+# 	plt.ylim(-0.05, 1.05)
+# 	plt.xticks(selective_xticks_epochs, fontsize=10)
+# 	plt.grid(True, linestyle='--', alpha=0.7)
+# 	plt.tight_layout()
+# 	plt.savefig(in_batch_topk_val_acc_i2t_fpth, dpi=DPI, bbox_inches='tight')
+# 	plt.close()
+
+# 	plt.figure(figsize=figure_size)
+# 	for i, k in enumerate(list(in_batch_topk_val_accuracy_t2i_list[0].keys())):
+# 		accuracy_values = [epoch_data[k] for epoch_data in in_batch_topk_val_accuracy_t2i_list]
+# 		plt.plot(
+# 			epochs,
+# 			accuracy_values,
+# 			label=f'Top-{k}',
+# 			lw=1.5,
+# 			marker='o',
+# 			markersize=2,
+# 			color=plt.cm.tab10(i),
+# 		)
+# 	plt.xlabel('Epoch', fontsize=12)
+# 	plt.ylabel('Accuracy', fontsize=12)
+# 	plt.title(f'{dataset_name} Text-to-Image Top-K [in-batch matching] Validation Accuracy', fontsize=8, fontweight='bold')
+# 	plt.legend(
+# 		fontsize=10,
+# 		loc='best',
+# 		ncol=len(topk_values),
+# 		frameon=True,
+# 		fancybox=True,
+# 		shadow=True,
+# 		edgecolor='black',
+# 		facecolor='white',
+# 	)
+# 	plt.xlim(0, num_epochs + 1)
+# 	plt.ylim(-0.05, 1.05)
+# 	plt.xticks(selective_xticks_epochs, fontsize=10)
+# 	plt.grid(True, linestyle='--', alpha=0.5)
+# 	plt.tight_layout()
+# 	plt.savefig(in_batch_topk_val_acc_t2i_fpth, dpi=DPI, bbox_inches='tight')
+# 	plt.close()
+
+# 	# # 5. Mean Reciprocal Rank Plot
+# 	# plt.figure(figsize=figure_size)
+# 	# plt.plot(
+# 	# 	epochs,
+# 	# 	mean_reciprocal_rank_list,
+# 	# 	color='#9467bd',
+# 	# 	label='MRR',
+# 	# 	lw=1.5,
+# 	# 	marker='o', 
+# 	# 	markersize=2,
+# 	# )
+# 	# plt.xlabel('Epoch', fontsize=12)
+# 	# plt.ylabel('Mean Reciprocal Rank', fontsize=12)
+# 	# plt.title(f'{dataset_name} Mean Reciprocal Rank (Image-to-Text)', fontsize=14, fontweight='bold', pad=10)
+# 	# plt.legend(fontsize=10, loc='upper left', )
+# 	# plt.xlim(0, num_epochs + 1)
+# 	# plt.ylim(-0.05, 1.05)
+# 	# plt.xticks(selective_xticks_epochs, fontsize=10)
+# 	# plt.grid(True, linestyle='--', alpha=0.5)
+# 	# plt.tight_layout()
+# 	# plt.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
+# 	# plt.close()
+
+# 	# # 6. Cosine Similarity Plot
+# 	# plt.figure(figsize=figure_size)
+# 	# plt.plot(
+# 	# 	epochs,
+# 	# 	cosine_similarity_list,
+# 	# 	color='#17becf',
+# 	# 	label='Cosine Similarity',
+# 	# 	lw=1.5, 
+# 	# 	marker='o', 
+# 	# 	markersize=2,
+# 	# )
+# 	# plt.xlabel('Epoch', fontsize=12)
+# 	# plt.ylabel('Cosine Similarity', fontsize=12)
+# 	# plt.title(f'{dataset_name} Cosine Similarity Between Embeddings', fontsize=14, fontweight='bold', pad=10)
+# 	# plt.legend(fontsize=10, loc='upper left', )
+# 	# plt.xlim(0, num_epochs + 1)
+# 	# plt.xticks(selective_xticks_epochs, fontsize=10)
+# 	# plt.grid(True, linestyle='--', alpha=0.5)
+# 	# plt.tight_layout()
+# 	# plt.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches='tight')
+# 	# plt.close()
