@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=finetune_historyCLIP_strategy_x_dataset_x
+#SBATCH --job-name=finetune_historyCLIP_with_dropout_strategy_x_dataset_x
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -58,7 +58,7 @@ fi
 # Hyperparameter configuration
 INIT_LRS=(1e-4 1e-4 1e-4 1e-5 2e-5)
 WEIGHT_DECAYS=(1e-1 1e-1 1e-1 1e-1 1e-1)
-DROPOUTS=(0.0 0.0 0.0 0.0 0.0)
+DROPOUTS=(0.1 0.1 0.1 0.2 0.2)
 EPOCHS=(50 50 150 150 150)
 LORA_RANKS=(4 4 16 16 16)
 LORA_ALPHAS=(16 16 16 16 16)
