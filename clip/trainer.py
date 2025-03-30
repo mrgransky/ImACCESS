@@ -32,20 +32,30 @@ class EarlyStopping:
 			pairwise_imp_threshold: float = 5e-3, # Stop if avg improvement between adjacent epochs is below this
 			min_phases_before_stopping: int = 3, 	# Minimum training phases to complete before stopping
 		):
-			self.patience = patience
-			self.min_delta = min_delta
-			self.cumulative_delta = cumulative_delta
-			self.window_size = window_size
-			self.mode = mode
-			self.min_epochs = min_epochs
-			self.restore_best_weights = restore_best_weights
-			self.volatility_threshold = volatility_threshold
-			self.slope_threshold = slope_threshold
-			self.pairwise_imp_threshold = pairwise_imp_threshold
-			self.min_phases_before_stopping = min_phases_before_stopping
-			self.sign = 1 if mode == 'min' else -1 # Multiplier for improvement calculation
-			self.reset() # set up the initial internal state variables
-	
+		
+		self.patience = patience
+		self.min_delta = min_delta
+		self.cumulative_delta = cumulative_delta
+		self.window_size = window_size
+		self.mode = mode
+		self.min_epochs = min_epochs
+		self.restore_best_weights = restore_best_weights
+		self.volatility_threshold = volatility_threshold
+		self.slope_threshold = slope_threshold
+		self.pairwise_imp_threshold = pairwise_imp_threshold
+		self.min_phases_before_stopping = min_phases_before_stopping
+		self.sign = 1 if mode == 'min' else -1 # Multiplier for improvement calculation
+		self.reset() # set up the initial internal state variables
+		print(
+			f"EarlyStopping Initialized: "
+			f"Patience={patience}, "
+			f"MinDelta={min_delta}, "
+			f"CumulativeDelta={cumulative_delta}, "
+			f"Window={window_size}, "
+			f"MinEpochs={min_epochs}, "
+			f"MinPhases={min_phases_before_stopping} (if applicable)"
+		)
+
 	def reset(self):
 		print("--- EarlyStopping state reset, Essential for starting fresh or resetting between training phases ---")
 		# Best score (metric value) observed so far
@@ -84,47 +94,68 @@ class EarlyStopping:
 		improvement = (self.best_score - current_value) * self.sign
 		return improvement > self.min_delta
 	
-	def should_stop(self, current_value: float, model: torch.nn.Module, epoch: int, current_phase: int) -> bool:
+	def should_stop(
+			self, 
+			current_value: float, 
+			model: torch.nn.Module, 
+			epoch: int, 
+			current_phase: Optional[int] = None,
+		) -> bool:
+		
 		# --- Update State ---
 		self.value_history.append(current_value)
-		self.current_phase = current_phase # Update internal phase tracker
-		print(f"\n--- EarlyStopping Check (Epoch {epoch+1}, Phase {current_phase}) ---")
-		print(f"Current Value: {current_value:.6f}")
+		phase_info = f", Phase {current_phase}" if current_phase is not None else ""
+		print(f"\n--- EarlyStopping Check (Epoch {epoch+1}{phase_info}) ---")
+		print(f"Current Value: {current_value}")
+
 		# --- Initial Checks ---
 		# 1. Minimum Epochs Check: Don't stop if fewer than min_epochs have run.
 		if epoch < self.min_epochs:
 			print(f"Skipping early stopping check (epoch {epoch+1} < min_epochs {self.min_epochs})")
 			return False # Continue training
+
 		# --- Improvement Tracking ---
 		# 2. Check if the current value is an improvement over the best score seen so far.
 		improved = self.is_improvement(current_value)
 		if improved:
-				print(f"\tImprovement detected! Best: {self.best_score if self.best_score is not None else 'N/A'} -> {current_value:.6f} (delta: {self.min_delta})")
-				self.best_score = current_value         # Update the best score
-				self.best_epoch = epoch                 # Record the epoch number of this best score
-				self.stopped_epoch = epoch              # Update the epoch where improvement last happened
-				self.counter = 0                        # Reset the patience counter
-				self.improvement_history.append(True)   # Record improvement in history
-				if self.restore_best_weights:
-					print("\tSaving best model weights...")
-					# Use CPU state_dict to save memory if possible, clone to avoid issues
-					self.best_weights = {k: v.clone().cpu().detach() for k, v in model.state_dict().items()}
+			print(f"\tImprovement detected! Best: {self.best_score if self.best_score is not None else 'N/A'} -> {current_value:.6f} (delta: {self.min_delta})")
+			self.best_score = current_value         # Update the best score
+			self.best_epoch = epoch                 # Record the epoch number of this best score
+			self.stopped_epoch = epoch              # Update the epoch where improvement last happened
+			self.counter = 0                        # Reset the patience counter
+			self.improvement_history.append(True)   # Record improvement in history
+			if self.restore_best_weights:
+				print("\tSaving best model weights...")
+				# Use CPU state_dict to save memory if possible, clone to avoid issues
+				self.best_weights = {k: v.clone().cpu().detach() for k, v in model.state_dict().items()}
 		else:
-				self.counter += 1                       # Increment the patience counter
-				self.improvement_history.append(False)  # Record lack of improvement
-				print(f"\tNo improvement detected. Best: {self.best_score:.6f}. Patience counter: {self.counter}/{self.patience}")
+			self.counter += 1                       # Increment the patience counter
+			self.improvement_history.append(False)  # Record lack of improvement
+			print(f"\tNo improvement detected. Best: {self.best_score:.6f}. Patience counter: {self.counter}/{self.patience}")
+
 		# --- Window-Based Metric Calculation ---
 		# 3. Check if enough history exists for window-based calculations.
 		if len(self.value_history) < self.window_size:
 			print(f"\tNot enough history ({len(self.value_history)} < {self.window_size}) for window-based checks.")
 			# Even without window metrics, check if patience is exceeded *and* min phases are done.
+			patience_exceeded = self.counter >= self.patience
+			phase_constraint_met = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
+			if patience_exceeded: 
+				if phase_constraint_met:
+					print(f"EARLY STOPPING TRIGGERED (Phase {current_phase} >= {self.min_phases_before_stopping}): Patience ({self.counter}/{self.patience}) exceeded.")
+					return True
+				else:
+					print(f"\tPatience ({self.counter}/{self.patience}) exceeded, but delaying stop (Phase {current_phase} < {self.min_phases_before_stopping})")
+					return False
 			if self.counter >= self.patience and current_phase >= self.min_phases_before_stopping:
 				print(f"EARLY STOPPING TRIGGERED (Phase {current_phase} >= {self.min_phases_before_stopping}): Patience ({self.counter}/{self.patience}) exceeded.")
 				return True
 			return False # Not enough history for other checks, and patience/phase condition not met
+
 		# If enough history exists, proceed with window calculations:
 		last_window = self.value_history[-self.window_size:]
 		print(f"\tWindow ({self.window_size} epochs): {last_window}")
+
 		# Calculate metrics over the window:
 		# a) Slope Check
 		slope = compute_slope(last_window) # Use global function
@@ -166,10 +197,8 @@ class EarlyStopping:
 		# For 'max' mode (accuracy), worsening means slope < slope_threshold (e.g., < 0).
 		# Let's simplify the condition:
 		is_worsening = False
-		if self.mode == 'min' and slope > self.slope_threshold:
-			is_worsening = True
-		elif self.mode == 'max' and slope < self.slope_threshold:
-			is_worsening = True
+		if self.mode == 'min' and slope > self.slope_threshold: is_worsening = True
+		elif self.mode == 'max' and slope < self.slope_threshold: is_worsening = True
 		if is_worsening:
 			stop_reason.append(f"Worsening slope ({slope:.5f})")
 		# Reason 4: Stagnation (Low Pairwise Improvement AND Not Close to Best)
@@ -180,21 +209,25 @@ class EarlyStopping:
 		# Stop if the total improvement over the whole window is below the threshold.
 		if cumulative_improvement_abs < self.cumulative_delta:
 			stop_reason.append(f"Low cumulative improvement ({cumulative_improvement_abs:.5f})")
+
 		# --- Final Decision ---
-		# 5. Decide whether to actually stop based on reasons and minimum phases.
+		should_trigger_stop = bool(stop_reason)
 		should_really_stop = False
-		if stop_reason:
+
+		if should_trigger_stop:
 			reason_str = ', '.join(stop_reason)
-			# Check if the minimum number of training phases has been completed.
-			if current_phase >= self.min_phases_before_stopping:
-				print(f"EARLY STOPPING TRIGGERED (Phase {current_phase} >= {self.min_phases_before_stopping}): {reason_str}")
+			# Apply phase check ONLY if current_phase is provided
+			phase_constraint_met = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
+			if phase_constraint_met:
+				print(f"EARLY STOPPING TRIGGERED: {reason_str}")
 				should_really_stop = True
-			else:
+			else: # Phase constraint is active and not met
 				print(f"\tStopping condition met ({reason_str}), but delaying stop (Phase {current_phase} < {self.min_phases_before_stopping})")
 		else:
 			print("\tNo stopping conditions met.")
+
 		# --- Restore Best Weights (if stopping) ---
-		# 6. If stopping and configured, load the best saved weights back into the model.
+		# 6. load the best saved weights back into the model.
 		if should_really_stop and self.restore_best_weights:
 			if self.best_weights is not None:
 				try:
@@ -215,13 +248,12 @@ class EarlyStopping:
 			"best_score": self.best_score,
 			"best_epoch": self.best_epoch + 1 if self.best_score is not None else 0,
 			"patience_counter": self.counter,
-			"current_phase": self.current_phase,
 			"value_history_len": len(self.value_history)
 		}
 		if len(self.value_history) >= self.window_size:
 			last_window = self.value_history[-self.window_size:]
 			status["volatility_window"] = self.compute_volatility(last_window)
-			status["slope_window"] = compute_slope(last_window) # Use global
+			status["slope_window"] = compute_slope(last_window)
 		else:
 			status["volatility_window"] = None
 			status["slope_window"] = None
@@ -1675,7 +1707,11 @@ def lora_finetune(
 			torch.save(checkpoint, mdl_fpth)
 			best_img2txt_metrics = img2txt_metrics
 			best_txt2img_metrics = txt2img_metrics
-		if early_stopping.should_stop(current_val_loss, model, epoch):
+		if early_stopping.should_stop(
+			current_value=current_val_loss, 
+			model=model, 
+			epoch=epoch,
+		):
 			print(f"\nEarly stopping triggered at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
 			break
 		print("-" * 140)
@@ -1906,7 +1942,11 @@ def full_finetune(
 			best_img2txt_metrics = img2txt_metrics
 			best_txt2img_metrics = txt2img_metrics
 
-		if early_stopping.should_stop(current_val_loss, model, epoch):
+		if early_stopping.should_stop(
+			current_value=current_val_loss, 
+			model=model, 
+			epoch=epoch,
+		):
 			print(f"\nEarly stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
 			final_metrics = get_in_batch_loss_accuracy_metrics(
 				model=model,
@@ -2156,7 +2196,11 @@ def train(
 			best_txt2img_metrics = txt2img_metrics
 
 		# Early stopping check
-		if early_stopping.should_stop(current_val_loss, model, epoch):
+		if early_stopping.should_stop(
+			current_value=current_val_loss, 
+			model=model, 
+			epoch=epoch,
+		):
 			print(f"\nEarly stopping at epoch {epoch+1}. Best loss: {early_stopping.get_best_score():.5f}")
 			
 			# Final evaluation with restored best weights
