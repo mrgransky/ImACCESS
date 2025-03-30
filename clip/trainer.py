@@ -1817,7 +1817,18 @@ def full_finetune(
 			break
 
 	if dropout_val is None:
-			dropout_val = 0.0  # Default to 0.0 if no Dropout layers are found (unlikely in your case)
+		dropout_val = 0.0  # Default to 0.0 if no Dropout layers are found (unlikely in your case)
+
+	# Inspect the model for dropout layers
+	dropout_values = []
+	for name, module in model.named_modules():
+		if isinstance(module, torch.nn.Dropout):
+			dropout_values.append((name, module.p))
+
+	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
+	print(f"\nNon-zero dropout detected in base {model.__class__.__name__} {model.name} during {mode_name} fine-tuning:")
+	print(non_zero_dropouts)
+	print()
 
 	for name, param in model.named_parameters():
 		param.requires_grad = True # Unfreeze all layers for fine-tuning, all parammeters are trainable
