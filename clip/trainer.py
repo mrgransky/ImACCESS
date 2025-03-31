@@ -1619,6 +1619,7 @@ def lora_finetune(
 			eps=1e-6,
 			weight_decay=weight_decay,
 	)
+
 	scheduler = lr_scheduler.OneCycleLR(
 			optimizer=optimizer,
 			max_lr=learning_rate,
@@ -1627,6 +1628,7 @@ def lora_finetune(
 			pct_start=0.1,
 			anneal_strategy='cos',
 	)
+
 	criterion = torch.nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(device=device)
 
@@ -1638,6 +1640,8 @@ def lora_finetune(
 	best_val_loss = float('inf')
 	best_img2txt_metrics = None
 	best_txt2img_metrics = None
+	in_batch_loss_acc_metrics_all_epochs = []
+	full_val_loss_acc_metrics_all_epochs = []
 
 	for epoch in range(num_epochs):
 		torch.cuda.empty_cache()
@@ -1666,15 +1670,25 @@ def lora_finetune(
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
 
-		metrics_per_epoch = get_in_batch_loss_accuracy_metrics(
+		# Compute in-batch loss/accuracy metrics on validation set:
+		in_batch_loss_acc_metrics_per_epoch = get_in_batch_loss_accuracy_metrics(
 			model=model,
 			validation_loader=validation_loader,
 			criterion=criterion,
 			device=device,
-			topK_values=topk_values,
+			topK_values=topk_values
 		)
-		metrics_for_all_epochs.append(metrics_per_epoch)
-		
+		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
+
+		full_val_loss_acc_metrics_per_epoch = get_loss_accuracy_metrics(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			device=device,
+			topK_values=topk_values
+		)
+		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
+
 		img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
 			model=model,
 			validation_loader=validation_loader,
@@ -1683,11 +1697,14 @@ def lora_finetune(
 		)
 		img2txt_metrics_list.append(img2txt_metrics)
 		txt2img_metrics_list.append(txt2img_metrics)
+
 		print(
 			f'@ Epoch {epoch + 1}:\n'
-			f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {metrics_per_epoch.get("val_loss"):.8f}\n'
-			f'\tIn-batch Validation Accuracy [text retrieval per image]: {metrics_per_epoch.get("img2txt_acc")} '
-			f'[image retrieval per text]: {metrics_per_epoch.get("txt2img_acc")}'
+			f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {in_batch_loss_acc_metrics_per_epoch.get("val_loss"):.8f}\n'
+			f'\tIn-batch Validation Accuracy [text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_acc")} '
+			f'[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_acc")}'
+			f'\n\tFull Validation Set Accuracy [text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_acc")} '
+			f'[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_acc")}'
 		)
 
 		# Early stopping and checkpointing (same as finetune())

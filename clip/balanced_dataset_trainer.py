@@ -102,7 +102,7 @@ def main():
 				min_delta=1e-4, 								# early stopping & progressive unfreezing
 				cumulative_delta=5e-3, 					# early stopping
 				minimum_epochs=20, 							# early stopping
-				TOP_K_VALUES=args.topK_values,
+				topk_values=args.topK_values,
 			)
 		elif args.finetune_strategy == 'lora':
 			lora_finetune(
@@ -123,7 +123,7 @@ def main():
 				min_delta=args.minimum_delta,
 				cumulative_delta=args.cumulative_delta,
 				minimum_epochs=args.minimum_epochs,
-				TOP_K_VALUES=args.topK_values,
+				topk_values=args.topK_values,
 			)
 		elif args.finetune_strategy == 'progressive':
 			progressive_unfreeze_finetune(
@@ -161,7 +161,7 @@ def main():
 			min_delta=1e-4,								# early stopping
 			cumulative_delta=5e-3,				# early stopping
 			minimum_epochs=20,						# early stopping
-			TOP_K_VALUES=args.topK_values,
+			topk_values=args.topK_values,
 		)
 	elif args.mode == "pretrain":
 		all_img2txt_metrics = {}
@@ -198,7 +198,7 @@ def main():
 				validation_loader=validation_loader,
 				results_dir=os.path.join(args.dataset, "results"),
 				device=args.device,
-				TOP_K_VALUES=args.topK_values,
+				topk_values=args.topK_values,
 			)
 			all_img2txt_metrics[model_arch] = img2txt_metrics
 			all_txt2img_metrics[model_arch] = txt2img_metrics
