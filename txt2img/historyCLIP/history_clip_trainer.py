@@ -61,7 +61,7 @@ from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 64 -e 100 -lr 1e-5 -wd 1e-2 --print_every 250 -nw 50 --device "cuda:0" -m finetune -fts progressive -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/history_xN_ft_progressive.txt &
 
 # using one command[with dropout]:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 10 -nw 50 --device "cuda:0" -m finetune -fts progressive -a "ViT-B/32" -do 0.2 > /media/volume/ImACCESS/trash/smu_ft_progressive_dropout_0.2.txt &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -e 2 -lr 1e-5 -wd 1e-2 --print_every 10 -nw 50 --device "cuda:0" -m finetune -fts progressive -a "ViT-B/32" -do 0.2 --log_dir /media/volume/ImACCESS/trash &
 
 
 @measure_execution_time
@@ -111,7 +111,7 @@ def main():
 			sys.stderr = log_file
 			print(f"Log file opened: {log_file.name} | {log_file_path}")
 
-
+		print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
 		print_args_table(args=args, parser=parser)
 		set_seeds(seed=42)
 
@@ -291,6 +291,7 @@ def main():
 		else:
 			raise ValueError("Invalid mode. Choose between 'pretrain', 'train', 'finetune'!")
 
+		print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))
 	finally:
 		if log_file:
 			log_file.flush()
@@ -302,6 +303,4 @@ def main():
 
 
 if __name__ == "__main__":
-	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
 	main()
-	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))
