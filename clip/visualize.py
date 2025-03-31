@@ -464,7 +464,6 @@ def plot_loss_accuracy_metrics(
 		ax.legend(
 			fontsize=9, 
 			loc='best', 
-			ncol=min(len(topk_values), 3), 
 			frameon=True, 
 			fancybox=True,
 			shadow=True,
@@ -501,7 +500,6 @@ def plot_loss_accuracy_metrics(
 		ax.legend(
 			fontsize=9,
 			loc='best',
-			ncol=min(len(topk_values), 3),
 			frameon=True,
 			fancybox=True,
 			shadow=True,
@@ -536,7 +534,6 @@ def plot_loss_accuracy_metrics(
 		ax.legend(
 			fontsize=9,
 			loc='best',
-			ncol=min(len(topk_values), 3),
 			frameon=True,
 			fancybox=True,
 			shadow=True,
@@ -573,7 +570,6 @@ def plot_loss_accuracy_metrics(
 		ax.legend(
 			fontsize=9, 
 			loc='best',
-			ncol=min(len(topk_values), 3), 
 			frameon=True, 
 			fancybox=True, 
 			shadow=True,
