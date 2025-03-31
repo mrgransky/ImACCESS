@@ -1088,7 +1088,8 @@ def progressive_unfreeze_finetune(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		window_size: int,
+		log_file_path: str=None,
+		window_size: int=10,
 		patience: int = 10,
 		min_delta: float = 1e-4, # Make slightly less sensitive than default
 		cumulative_delta: float = 5e-3, # Keep cumulative check reasonable
@@ -1115,7 +1116,7 @@ def progressive_unfreeze_finetune(
 		volatility_threshold=volatility_threshold,
 		slope_threshold=slope_threshold, # Positive slope is bad for loss
 		pairwise_imp_threshold=pairwise_imp_threshold,
-		min_phases_before_stopping=min_phases_before_stopping
+		min_phases_before_stopping=min_phases_before_stopping,
 	)
 
 	try:
@@ -1204,7 +1205,19 @@ def progressive_unfreeze_finetune(
 	for epoch in range(num_epochs):
 		epoch_start_time = time.time()
 		print(f"\n=== Epoch {epoch+1}/{num_epochs} | Phase {current_phase} | LR: {last_lr:.3e} ===")
+		
+		# Flush log file after each epoch header
+		if log_file_path is not None:
+			if isinstance(log_file_path, str):
+				# If it's a file path string, get the file object
+				with open(log_file_path, 'a') as f:
+					f.flush()
+			else:
+				# If it's already a file object
+				log_file_path.flush()
+		
 		torch.cuda.empty_cache()
+		
 		# --- Phase Transition Check ---
 		# Check only if enough epochs *overall* and *within the phase* have passed,
 		# and if we are not already in the last phase.
@@ -1213,38 +1226,45 @@ def progressive_unfreeze_finetune(
 			current_phase < max_phases - 1 and
 			len(early_stopping.value_history) >= window_size):
 			print(f"Checking for phase transition (Epochs in phase: {epochs_in_current_phase})")
+			# Flush after important status messages
+			if log_file_path is not None:
+				if isinstance(log_file_path, str):
+					with open(log_file_path, 'a') as f:
+						f.flush()
+				else:
+					log_file_path.flush()
 
-			val_losses = early_stopping.value_history
-			val_accs_in_batch = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in in_batch_loss_acc_metrics_all_epochs]
-			val_accs_full = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in full_val_loss_acc_metrics_all_epochs]
+		val_losses = early_stopping.value_history
+		val_accs_in_batch = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in in_batch_loss_acc_metrics_all_epochs]
+		val_accs_full = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in full_val_loss_acc_metrics_all_epochs]
 
-			should_trans = should_transition_phase(
-				losses=val_losses,
-				window=window_size,
-				best_loss=early_stopping.get_best_score(), # Use best score from early stopping state
-				best_loss_threshold=min_delta, # Use min_delta for closeness check
-				volatility_threshold=volatility_threshold,
-				slope_threshold=slope_threshold, # Use positive threshold for worsening loss
-				pairwise_imp_threshold=pairwise_imp_threshold,
-				# accuracies=val_accs, # Pass average accuracy
-				# accuracy_plateau_threshold=accuracy_plateau_threshold,
+		should_trans = should_transition_phase(
+			losses=val_losses,
+			window=window_size,
+			best_loss=early_stopping.get_best_score(), # Use best score from early stopping state
+			best_loss_threshold=min_delta, # Use min_delta for closeness check
+			volatility_threshold=volatility_threshold,
+			slope_threshold=slope_threshold, # Use positive threshold for worsening loss
+			pairwise_imp_threshold=pairwise_imp_threshold,
+			# accuracies=val_accs, # Pass average accuracy
+			# accuracy_plateau_threshold=accuracy_plateau_threshold,
+		)
+		if should_trans:
+			current_phase, last_lr = handle_phase_transition(
+				current_phase=current_phase,
+				initial_lr=initial_learning_rate,
+				max_phases=max_phases,
+				window_size=window_size,
+				current_loss=val_losses[-1],
+				best_loss=early_stopping.get_best_score()
 			)
-			if should_trans:
-				current_phase, last_lr = handle_phase_transition(
-					current_phase=current_phase,
-					initial_lr=initial_learning_rate,
-					max_phases=max_phases,
-					window_size=window_size,
-					current_loss=val_losses[-1],
-					best_loss=early_stopping.get_best_score()
-				)
-				epochs_in_current_phase = 0 # Reset phase epoch counter
-				early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
-				print(f"Transitioned to Phase {current_phase}. Early stopping reset.")
-				
-				phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
-				print(f"Phase transition triggered. Optimizer/Scheduler refresh pending after unfreeze.")
-				print(f"Current Phase: {current_phase}")
+			epochs_in_current_phase = 0 # Reset phase epoch counter
+			early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
+			print(f"Transitioned to Phase {current_phase}. Early stopping reset.")
+			
+			phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
+			print(f"Phase transition triggered. Optimizer/Scheduler refresh pending after unfreeze.")
+			print(f"Current Phase: {current_phase}")
 		# --- Unfreeze Layers for Current Phase ---
 		print(f"Applying unfreeze strategy for Phase {current_phase}...")
 		# Ensure layers are correctly frozen/unfrozen *before* optimizer step
@@ -1357,7 +1377,7 @@ def progressive_unfreeze_finetune(
 			f'(Training): {avg_epoch_train_loss} '
 			f'Validation(in-batch): {in_batch_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))} '
 			f'Validation(full): {full_val_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
-			f'\tValidation Accuracy:\n'
+			f'\tValidation Top-k Accuracy:\n'
 			f'\tIn-batch:\n'
 			f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
 			f'\t\t[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
@@ -1501,8 +1521,8 @@ def progressive_unfreeze_finetune(
 		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
 		in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
 		in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-		full_topk_val_accuracy_i2t_list=[m.get("full_img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
-		full_topk_val_accuracy_t2i_list=[m.get("full_txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+		full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+		full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
 		# mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
 		# cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
 		losses_file_path=plot_paths["losses"],
@@ -1701,9 +1721,11 @@ def lora_finetune(
 		print(
 			f'@ Epoch {epoch + 1}:\n'
 			f'\t[LOSS] {mode}: {avg_training_loss} | Valid: {in_batch_loss_acc_metrics_per_epoch.get("val_loss")}\n'
-			f'\tIn-batch Validation Accuracy [text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_acc")} '
+			f'\tIn-batch Validation [Top-1 Accuracy]: '
+			f'[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_acc")} '
 			f'[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_acc")}'
-			f'\n\tFull Validation Set Accuracy [text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_acc")} '
+			f'\n\tFull Validation Set [Top-1 Accuracy]'
+			f'[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_acc")} '
 			f'[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_acc")}'
 		)
 
