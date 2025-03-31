@@ -1824,53 +1824,6 @@ def lora_finetune(
 		fname=plot_paths["retrieval_best"],
 	)
 
-	#########################################################################
-
-
-
-	# plot_paths = {
-	# 	"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-	# 	"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
-	# 	"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
-	# 	"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
-	# 	"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
-	# 	"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
-	# 	"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
-	# 	"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-	# 	"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-	# }
-
-	# plot_loss_accuracy_metrics(
-	# 	dataset_name=dataset_name,
-	# 	train_losses=training_losses,
-	# 	val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-	# 	in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-	# 	in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-	# 	mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-	# 	cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-	# 	losses_file_path=plot_paths["losses"],
-	# 	in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
-	# 	in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
-	# 	mean_reciprocal_rank_file_path=plot_paths["mrr"],
-	# 	cosine_similarity_file_path=plot_paths["cs"],
-	# )
-
-	# retrieval_metrics_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png")
-	# plot_retrieval_metrics_per_epoch(
-	# 	dataset_name=dataset_name,
-	# 	image_to_text_metrics_list=img2txt_metrics_all_epochs,
-	# 	text_to_image_metrics_list=txt2img_metrics_all_epochs,
-	# 	fname=retrieval_metrics_fpth,
-	# )
-	
-	# retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png")
-	# plot_retrieval_metrics_best_model(
-	# 	dataset_name=dataset_name,
-	# 	image_to_text_metrics=final_img2txt_metrics,
-	# 	text_to_image_metrics=final_txt2img_metrics,
-	# 	fname=retrieval_metrics_best_model_fpth,
-	# )
-
 def full_finetune(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
