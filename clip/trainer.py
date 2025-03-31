@@ -1362,8 +1362,8 @@ def progressive_unfreeze_finetune(
 			f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
 			f'\t\t[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
 			f'\tFull Validation Set:\n'
-			f'\t\t[text retrieval per image]: {loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-			f'\t\t[image retrieval per text]: {loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+			f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
 
 		# --- Checkpointing Best Model ---
