@@ -299,19 +299,45 @@ def format_elapsed_time(seconds):
 	# Format the time as DD-HH-MM-SS
 	return f"{days:02d}-{hours:02d}-{minutes:02d}-{seconds:02d}"
 
+# def measure_execution_time(func):
+# 	"""
+# 	Decorator to measure the execution time of a function.
+# 	"""
+# 	def wrapper(*args, **kwargs):
+# 		start_time = time.time()
+# 		result = func(*args, **kwargs) # # Execute the function and store the result		
+# 		end_time = time.time()
+# 		elapsed_time = end_time - start_time
+# 		formatted_time = format_elapsed_time(elapsed_time)
+# 		print(f"function {func.__name__} elapsed time(DD-HH-MM-SS): \033[92m{formatted_time}\033[0m")		
+# 		return result
+# 	return wrapper
+
 def measure_execution_time(func):
-	"""
-	Decorator to measure the execution time of a function.
-	"""
-	def wrapper(*args, **kwargs):
-		start_time = time.time()
-		result = func(*args, **kwargs) # # Execute the function and store the result		
-		end_time = time.time()
-		elapsed_time = end_time - start_time
-		formatted_time = format_elapsed_time(elapsed_time)
-		print(f"function {func.__name__} elapsed time(DD-HH-MM-SS): \033[92m{formatted_time}\033[0m")		
-		return result
-	return wrapper
+    """
+    Decorator to measure the execution time of a function.
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)  # Execute the function and store the result
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        formatted_time = format_elapsed_time(elapsed_time)
+        
+        # Get the current stdout
+        current_stdout = sys.stdout
+        
+        # Print to both log file and original stdout
+        message = f"function {func.__name__} elapsed time(DD-HH-MM-SS): \033[92m{formatted_time}\033[0m"
+        print(message)  # This goes to the current stdout (log file if redirected)
+        
+        # If stdout is redirected, also print to the original stdout (console)
+        if current_stdout != sys.__stdout__:
+            print(message, file=sys.__stdout__)
+            
+        return result
+    return wrapper
 
 def set_seeds(seed:int=42, debug:bool=False):
 	random.seed(seed)
