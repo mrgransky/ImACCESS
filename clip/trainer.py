@@ -1412,6 +1412,7 @@ def progressive_unfreeze_finetune(
 	print(f"Final Phase Reached: {current_phase}")
 	# print(f"Best Validation Loss Achieved: {early_stopping.get_best_score():.6f} at Epoch {early_stopping.get_best_epoch() + 1}")
 	print(f"Total Training Time: {total_training_time:.2f}s")
+
 	# --- Final Evaluation & Plotting ---
 	# Load the best model weights for final evaluation
 	if early_stopping.restore_best_weights and os.path.exists(best_model_path):
@@ -1548,7 +1549,7 @@ def lora_finetune(
 		min_delta: float = 1e-4,
 		cumulative_delta: float = 5e-3,
 		minimum_epochs: int = 20,
-		TOP_K_VALUES: List[int] = [1, 5, 10, 15, 20],
+		topk_values: List[int] = [1, 5, 10, 15, 20],
 	):
 
 	# Inspect the model for dropout layers
@@ -1670,7 +1671,7 @@ def lora_finetune(
 			validation_loader=validation_loader,
 			criterion=criterion,
 			device=device,
-			topK_values=TOP_K_VALUES,
+			topK_values=topk_values,
 		)
 		metrics_for_all_epochs.append(metrics_per_epoch)
 		
@@ -1678,7 +1679,7 @@ def lora_finetune(
 			model=model,
 			validation_loader=validation_loader,
 			device=device,
-			topK_values=TOP_K_VALUES,
+			topK_values=topk_values,
 		)
 		img2txt_metrics_list.append(img2txt_metrics)
 		txt2img_metrics_list.append(txt2img_metrics)
@@ -1723,7 +1724,7 @@ def lora_finetune(
 		validation_loader=validation_loader,
 		criterion=criterion,
 		device=device,
-		topK_values=top_k_values,
+		topK_values=topk_values,
 	)
 
 	final_metrics_full = get_loss_accuracy_metrics(
@@ -1731,14 +1732,14 @@ def lora_finetune(
 		validation_loader=validation_loader,
 		criterion=criterion,
 		device=device,
-		topK_values=top_k_values,
+		topK_values=topk_values,
 	)
 
 	final_img2txt_metrics, final_txt2img_metrics = evaluate_retrieval_performance(
 		model=model,
 		validation_loader=validation_loader,
 		device=device,
-		topK_values=top_k_values,
+		topK_values=topk_values,
 	)
 
 	print("\n--- Final Metrics[in-batch Validation Loss & Accuracy] (Best Model) ---")
@@ -1870,7 +1871,7 @@ def full_finetune(
 		min_delta: float = 1e-4,
 		cumulative_delta: float = 5e-3,
 		minimum_epochs: int = 20,
-		TOP_K_VALUES: List[int] = [1, 5, 10, 15, 20],
+		topk_values: List[int] = [1, 5, 10, 15, 20],
 	):
 
 	early_stopping = EarlyStopping(
@@ -2002,7 +2003,7 @@ def full_finetune(
 			validation_loader=validation_loader,
 			criterion=criterion,
 			device=device,
-			topK_values=TOP_K_VALUES,
+			topK_values=topk_values,
 		)
 		metrics_for_all_epochs.append(metrics_per_epoch)
 		print(
@@ -2017,7 +2018,7 @@ def full_finetune(
 			model=model,
 			validation_loader=validation_loader,
 			device=device,
-			topK_values=TOP_K_VALUES,
+			topK_values=topk_values,
 		)
 		img2txt_metrics_list.append(img2txt_metrics)
 		txt2img_metrics_list.append(txt2img_metrics)
@@ -2051,14 +2052,14 @@ def full_finetune(
 				validation_loader=validation_loader,
 				criterion=criterion,
 				device=device,
-				topK_values=TOP_K_VALUES,
+				topK_values=topk_values,
 			)
 
 			final_img2txt, final_txt2img = evaluate_retrieval_performance(
 				model=model,
 				validation_loader=validation_loader,
 				device=device,
-				topK_values=TOP_K_VALUES,
+				topK_values=topk_values,
 			)
 
 			metrics_per_epoch = final_metrics
@@ -2144,7 +2145,7 @@ def train(
 		min_delta:float=1e-4,
 		cumulative_delta:float=5e-3,
 		minimum_epochs:int=20,
-		TOP_K_VALUES:List[int]=[1, 5, 10, 15, 20],
+		topk_values:List[int]=[1, 5, 10, 15, 20],
 	):
 
 	early_stopping = EarlyStopping(
@@ -2259,7 +2260,7 @@ def train(
 			validation_loader=validation_loader,
 			criterion=criterion,
 			device=device,
-			topK_values=TOP_K_VALUES,
+			topK_values=topk_values,
 		)
 		metrics_for_all_epochs.append(metrics_per_epoch)
 		print(
@@ -2274,7 +2275,7 @@ def train(
 			model=model,
 			validation_loader=validation_loader,
 			device=device,
-			topK_values=TOP_K_VALUES,
+			topK_values=topk_values,
 		)
 		img2txt_metrics_list.append(img2txt_metrics)
 		txt2img_metrics_list.append(txt2img_metrics)
@@ -2311,14 +2312,14 @@ def train(
 				validation_loader=validation_loader,
 				criterion=criterion,
 				device=device,
-				topK_values=TOP_K_VALUES
+				topK_values=topk_values
 			)
 			
 			final_img2txt, final_txt2img = evaluate_retrieval_performance(
 				model=model,
 				validation_loader=validation_loader,
 				device=device,
-				topK_values=TOP_K_VALUES
+				topK_values=topk_values
 			)
 			
 			# Update metrics to match restored weights
@@ -2392,7 +2393,7 @@ def pretrain(
 	validation_loader: DataLoader,
 	results_dir: str,
 	device: torch.device,
-	TOP_K_VALUES: List=[1, 3, 5],
+	topk_values: List=[1, 3, 5],
 	):
 	model_name = model.__class__.__name__
 	model_arch = re.sub(r"[/@]", "_", model.name)
@@ -2409,7 +2410,7 @@ def pretrain(
 		model=model,
 		validation_loader=validation_loader,
 		device=device,
-		topK_values=TOP_K_VALUES,
+		topK_values=topk_values,
 	)
 
 	print("Image to Text Metrics: ")
