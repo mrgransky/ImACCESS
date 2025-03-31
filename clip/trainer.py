@@ -1700,7 +1700,7 @@ def lora_finetune(
 
 		print(
 			f'@ Epoch {epoch + 1}:\n'
-			f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {in_batch_loss_acc_metrics_per_epoch.get("val_loss"):.8f}\n'
+			f'\t[LOSS] {mode}: {avg_training_loss} | Valid: {in_batch_loss_acc_metrics_per_epoch.get("val_loss")}\n'
 			f'\tIn-batch Validation Accuracy [text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_acc")} '
 			f'[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_acc")}'
 			f'\n\tFull Validation Set Accuracy [text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_acc")} '
@@ -1708,7 +1708,7 @@ def lora_finetune(
 		)
 
 		# Early stopping and checkpointing (same as finetune())
-		current_val_loss = metrics_per_epoch["val_loss"]
+		current_val_loss = in_batch_loss_acc_metrics_all_epochs["val_loss"]
 		checkpoint = {
 			"epoch": epoch,
 			"model_state_dict": model.state_dict(),
