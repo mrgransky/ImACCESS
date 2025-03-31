@@ -1707,8 +1707,7 @@ def lora_finetune(
 			f'[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_acc")}'
 		)
 
-		# Early stopping and checkpointing (same as finetune())
-		current_val_loss = in_batch_loss_acc_metrics_all_epochs["val_loss"]
+		current_val_loss = in_batch_loss_acc_metrics_per_epoch.get("val_loss")
 		checkpoint = {
 			"epoch": epoch,
 			"model_state_dict": model.state_dict(),
