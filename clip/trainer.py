@@ -106,7 +106,7 @@ class EarlyStopping:
 		self.value_history.append(current_value)
 		phase_info = f", Phase {current_phase}" if current_phase is not None else ""
 		print(f"\n--- EarlyStopping Check (Epoch {epoch+1}{phase_info}) ---")
-		print(f"Current Value: {current_value}")
+		print(f"Current Validation Loss: {current_value}")
 
 		# --- Initial Checks ---
 		# 1. Minimum Epochs Check: Don't stop if fewer than min_epochs have run.
@@ -1193,17 +1193,11 @@ def progressive_unfreeze_finetune(
 	img2txt_metrics_all_epochs = list()
 	txt2img_metrics_all_epochs = list()
 	in_batch_loss_acc_metrics_all_epochs = list() # History of [in-batch] validation metrics dicts per epoch
-	loss_acc_metrics_all_epochs = list() # History of validation metrics dicts per epoch
+	full_val_loss_acc_metrics_all_epochs = list() # History of [full] validation metrics dicts per epoch
 	best_val_loss = None # Track the absolute best validation loss
 	layer_cache = {} # Cache for layer status (optional, used by get_status)
 	last_lr = initial_learning_rate # Track current LR
 	phase_just_changed = False # Flag to signal optimizer refresh needed
-	print(f"\nStarting Training: {base_filename}...")
-	print(f"Epochs: {num_epochs} | Device: {device} | Initial LR: {initial_learning_rate:.2e}")
-	print(f"Optimizer: AdamW | Scheduler: OneCycleLR | Criterion: CrossEntropyLoss")
-	print(f"Early Stopping: Patience={patience}, MinDelta={min_delta}, cimulativeDelta={cumulative_delta}, Window={window_size}, MinEpochs={minimum_epochs}, MinPhases={min_phases_before_stopping}")
-	print(f"Phase Transition: Window={window_size}, MinEpochsInPhase={min_epochs_per_phase}")
-	print("-" * 80)
 
 	# --- Main Training Loop ---
 	train_start_time = time.time()
@@ -1222,7 +1216,7 @@ def progressive_unfreeze_finetune(
 
 			val_losses = early_stopping.value_history
 			val_accs_in_batch = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in in_batch_loss_acc_metrics_all_epochs]
-			val_accs_full = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in loss_acc_metrics_all_epochs]
+			val_accs_full = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in full_val_loss_acc_metrics_all_epochs]
 
 			should_trans = should_transition_phase(
 				losses=val_losses,
@@ -1337,14 +1331,14 @@ def progressive_unfreeze_finetune(
 		)
 		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
 
-		loss_acc_metrics_per_epoch = get_loss_accuracy_metrics(
+		full_val_loss_acc_metrics_per_epoch = get_loss_accuracy_metrics(
 			model=model,
 			validation_loader=validation_loader,
 			criterion=criterion,
 			device=device,
 			topK_values=top_k_values
 		)
-		loss_acc_metrics_all_epochs.append(loss_acc_metrics_per_epoch)
+		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
 
 		# Compute retrieval-based metrics
 		img2txt_metrics_per_epoch, txt2img_metrics_per_epoch = evaluate_retrieval_performance(
@@ -1506,13 +1500,17 @@ def progressive_unfreeze_finetune(
 		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
 		in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
 		in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-		mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-		cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		full_topk_val_accuracy_i2t_list=[m.get("full_img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+		full_topk_val_accuracy_t2i_list=[m.get("full_txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+		# mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		# cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
 		losses_file_path=plot_paths["losses"],
 		in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
 		in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
-		mean_reciprocal_rank_file_path=plot_paths["mrr"],
-		cosine_similarity_file_path=plot_paths["cs"],
+		full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
+		full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
+		# mean_reciprocal_rank_file_path=plot_paths["mrr"],
+		# cosine_similarity_file_path=plot_paths["cs"],
 	)
 
 	plot_retrieval_metrics_per_epoch(
@@ -1717,11 +1715,51 @@ def lora_finetune(
 		print("-" * 140)
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
+
+	#########################################################################
+	print("\nPerforming final evaluation on the best model...")
+	final_metrics_in_batch = get_in_batch_loss_accuracy_metrics(
+		model=model,
+		validation_loader=validation_loader,
+		criterion=criterion,
+		device=device,
+		topK_values=top_k_values,
+	)
+
+	final_metrics_full = get_loss_accuracy_metrics(
+		model=model,
+		validation_loader=validation_loader,
+		criterion=criterion,
+		device=device,
+		topK_values=top_k_values,
+	)
+
+	final_img2txt_metrics, final_txt2img_metrics = evaluate_retrieval_performance(
+		model=model,
+		validation_loader=validation_loader,
+		device=device,
+		topK_values=top_k_values,
+	)
+
+	print("\n--- Final Metrics[in-batch Validation Loss & Accuracy] (Best Model) ---")
+	print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
+
+	print("--- Final Metrics[full Validation Loss & Accuracy] (Best Model) ---")
+	print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
+
+	print("Image-to-Text Retrieval:")
+	print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
+
+	print("Text-to-Image Retrieval:")
+	print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+
+	print("\nGenerating result plots...")
+
 	file_base_name = (
 		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
-		f"alpha_{lora_alpha}_lora_dropout_{lora_dropout}_"
+		f"lora_alpha_{lora_alpha}_lora_dropout_{lora_dropout}_lora_rank_{lora_rank}_"
 		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_rank_{lora_rank}"
+		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_"
 	)
 
 	plot_paths = {
@@ -1742,30 +1780,79 @@ def lora_finetune(
 		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
 		in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
 		in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-		mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-		cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		full_topk_val_accuracy_i2t_list=[m.get("full_img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+		full_topk_val_accuracy_t2i_list=[m.get("full_txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+		# mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		# cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
 		losses_file_path=plot_paths["losses"],
 		in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
 		in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
-		mean_reciprocal_rank_file_path=plot_paths["mrr"],
-		cosine_similarity_file_path=plot_paths["cs"],
+		full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
+		full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
+		# mean_reciprocal_rank_file_path=plot_paths["mrr"],
+		# cosine_similarity_file_path=plot_paths["cs"],
 	)
 
-	retrieval_metrics_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png")
 	plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
-		image_to_text_metrics_list=img2txt_metrics_list,
-		text_to_image_metrics_list=txt2img_metrics_list,
-		fname=retrieval_metrics_fpth,
+		image_to_text_metrics_list=img2txt_metrics_all_epochs,
+		text_to_image_metrics_list=txt2img_metrics_all_epochs,
+		fname=plot_paths["retrieval_per_epoch"],
 	)
-	
-	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png")
+
 	plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
-		image_to_text_metrics=best_img2txt_metrics,
-		text_to_image_metrics=best_txt2img_metrics,
-		fname=retrieval_metrics_best_model_fpth,
+		image_to_text_metrics=final_img2txt_metrics,
+		text_to_image_metrics=final_txt2img_metrics,
+		fname=plot_paths["retrieval_best"],
 	)
+
+	#########################################################################
+
+
+
+	# plot_paths = {
+	# 	"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+	# 	"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
+	# 	"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
+	# 	"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
+	# 	"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
+	# 	"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
+	# 	"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
+	# 	"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+	# 	"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+	# }
+
+	# plot_loss_accuracy_metrics(
+	# 	dataset_name=dataset_name,
+	# 	train_losses=training_losses,
+	# 	val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+	# 	in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+	# 	in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+	# 	mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+	# 	cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+	# 	losses_file_path=plot_paths["losses"],
+	# 	in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
+	# 	in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
+	# 	mean_reciprocal_rank_file_path=plot_paths["mrr"],
+	# 	cosine_similarity_file_path=plot_paths["cs"],
+	# )
+
+	# retrieval_metrics_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png")
+	# plot_retrieval_metrics_per_epoch(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics_list=img2txt_metrics_list,
+	# 	text_to_image_metrics_list=txt2img_metrics_list,
+	# 	fname=retrieval_metrics_fpth,
+	# )
+	
+	# retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png")
+	# plot_retrieval_metrics_best_model(
+	# 	dataset_name=dataset_name,
+	# 	image_to_text_metrics=best_img2txt_metrics,
+	# 	text_to_image_metrics=best_txt2img_metrics,
+	# 	fname=retrieval_metrics_best_model_fpth,
+	# )
 
 def full_finetune(
 		model: torch.nn.Module,
@@ -2012,11 +2099,15 @@ def full_finetune(
 		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
 		in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
 		in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+		full_topk_val_accuracy_i2t_list=[m.get("full_img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+		full_topk_val_accuracy_t2i_list=[m.get("full_txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
 		mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
 		cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
 		losses_file_path=plot_paths["losses"],
 		in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
 		in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
+		full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
+		full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
 		mean_reciprocal_rank_file_path=plot_paths["mrr"],
 		cosine_similarity_file_path=plot_paths["cs"],
 	)

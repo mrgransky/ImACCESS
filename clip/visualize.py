@@ -353,15 +353,19 @@ def plot_loss_accuracy_metrics(
 		val_losses: List[float],
 		in_batch_topk_val_accuracy_i2t_list: List[float],
 		in_batch_topk_val_accuracy_t2i_list: List[float],
+		full_topk_val_accuracy_i2t_list: List[float] = None,
+		full_topk_val_accuracy_t2i_list: List[float] = None,
 		mean_reciprocal_rank_list: List[float] = None,
 		cosine_similarity_list: List[float] = None,
 		losses_file_path: str = "losses.png",
 		in_batch_topk_val_acc_i2t_fpth: str = "in_batch_val_topk_accuracy_i2t.png",
 		in_batch_topk_val_acc_t2i_fpth: str = "in_batch_val_topk_accuracy_t2i.png",
+		full_topk_val_acc_i2t_fpth: str = "full_val_topk_accuracy_i2t.png",
+		full_topk_val_acc_t2i_fpth: str = "full_val_topk_accuracy_t2i.png",
 		mean_reciprocal_rank_file_path: str = "mean_reciprocal_rank.png",
 		cosine_similarity_file_path: str = "cosine_similarity.png",
 		DPI: int = 300,
-		figure_size = (10, 4),
+		figure_size: tuple = (10, 4),
 	):
 
 	num_epochs = len(train_losses)
@@ -470,7 +474,79 @@ def plot_loss_accuracy_metrics(
 		fig.tight_layout()
 		fig.savefig(in_batch_topk_val_acc_i2t_fpth, dpi=DPI, bbox_inches='tight')
 		plt.close(fig)
-	
+
+	# 2. Image-to-Text Top-K[full matching] Validation Accuracy plot
+	if full_topk_val_accuracy_i2t_list:
+		topk_values = list(full_topk_val_accuracy_i2t_list[0].keys())
+		fig, ax = plt.subplots(figsize=figure_size)
+
+		for i, k in enumerate(topk_values):
+			accuracy_values = [epoch_data[k] for epoch_data in full_topk_val_accuracy_i2t_list]
+			ax.plot(
+				epochs,
+				accuracy_values,
+				label=f'Top-{k}',
+				lw=1.5,
+				marker='o',
+				markersize=2,
+				color=plt.cm.tab10(i),
+			)
+
+		setup_plot(
+			ax,
+			ylabel='Accuracy',
+			title=f'{dataset_name} Image-to-Text Top-K [full matching] Validation Accuracy'
+		)
+		ax.set_ylim(-0.05, 1.05)
+		ax.legend(
+			fontsize=9,
+			loc='best',
+			ncol=min(len(topk_values), 3),
+			frameon=True,
+			fancybox=True,
+			shadow=True,
+			edgecolor='black',
+			facecolor='white',
+		)
+		fig.tight_layout()
+		fig.savefig(full_topk_val_acc_i2t_fpth, dpi=DPI, bbox_inches='tight')
+		plt.close(fig)
+
+	if full_topk_val_accuracy_t2i_list:
+		topk_values = list(full_topk_val_accuracy_t2i_list[0].keys())
+		fig, ax = plt.subplots(figsize=figure_size)
+		for i, k in enumerate(topk_values):
+			accuracy_values = [epoch_data[k] for epoch_data in full_topk_val_accuracy_t2i_list]
+			ax.plot(
+				epochs,
+				accuracy_values,
+				label=f'Top-{k}',
+				lw=1.5,
+				marker='o',
+				markersize=2,
+				color=plt.cm.tab10(i),
+			)
+
+		setup_plot(
+			ax,
+			ylabel='Accuracy',
+			title=f'{dataset_name} Text-to-Image Top-K [full matching] Validation Accuracy'
+		)
+		ax.set_ylim(-0.05, 1.05)
+		ax.legend(
+			fontsize=9,
+			loc='best',
+			ncol=min(len(topk_values), 3),
+			frameon=True,
+			fancybox=True,
+			shadow=True,
+			edgecolor='black',
+			facecolor='white',
+		)
+		fig.tight_layout()
+		fig.savefig(full_topk_val_acc_t2i_fpth, dpi=DPI, bbox_inches='tight')
+		plt.close(fig)
+
 	# 3. Text-to-Image Top-K Accuracy plot
 	if in_batch_topk_val_accuracy_t2i_list:
 		topk_values = list(in_batch_topk_val_accuracy_t2i_list[0].keys())
