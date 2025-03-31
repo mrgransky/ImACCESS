@@ -305,7 +305,5 @@ def main():
 			log_file.close()
 			print(f"Log file closed: {log_file.name} >> {log_file_path}")
 
-
-
 if __name__ == "__main__":
 	main()
