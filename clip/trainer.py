@@ -1356,7 +1356,7 @@ def progressive_unfreeze_finetune(
 			f'\t[LOSS] {mode_name}'
 			f'(Training): {avg_epoch_train_loss} '
 			f'Validation(in-batch): {in_batch_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))} '
-			f'Validation(full): {loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
+			f'Validation(full): {full_val_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
 			f'\tValidation Accuracy:\n'
 			f'\tIn-batch:\n'
 			f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
