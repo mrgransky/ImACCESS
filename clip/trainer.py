@@ -1633,13 +1633,13 @@ def lora_finetune(
 	scaler = torch.amp.GradScaler(device=device)
 
 	training_losses = []
-	img2txt_metrics_list = []
-	txt2img_metrics_list = []
+	img2txt_metrics_all_epochs = []
+	txt2img_metrics_all_epochs = []
 	metrics_for_all_epochs = []
 	train_start_time = time.time()
 	best_val_loss = float('inf')
-	best_img2txt_metrics = None
-	best_txt2img_metrics = None
+	final_img2txt_metrics = None
+	final_txt2img_metrics = None
 	in_batch_loss_acc_metrics_all_epochs = []
 	full_val_loss_acc_metrics_all_epochs = []
 
@@ -1695,8 +1695,8 @@ def lora_finetune(
 			device=device,
 			topK_values=topk_values,
 		)
-		img2txt_metrics_list.append(img2txt_metrics)
-		txt2img_metrics_list.append(txt2img_metrics)
+		img2txt_metrics_all_epochs.append(img2txt_metrics)
+		txt2img_metrics_all_epochs.append(txt2img_metrics)
 
 		print(
 			f'@ Epoch {epoch + 1}:\n'
@@ -1720,8 +1720,8 @@ def lora_finetune(
 			best_val_loss = current_val_loss
 			checkpoint.update({"best_val_loss": best_val_loss})
 			torch.save(checkpoint, mdl_fpth)
-			best_img2txt_metrics = img2txt_metrics
-			best_txt2img_metrics = txt2img_metrics
+			final_img2txt_metrics = img2txt_metrics
+			final_txt2img_metrics = txt2img_metrics
 		if early_stopping.should_stop(
 			current_value=current_val_loss, 
 			model=model, 
@@ -1858,16 +1858,16 @@ def lora_finetune(
 	# retrieval_metrics_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png")
 	# plot_retrieval_metrics_per_epoch(
 	# 	dataset_name=dataset_name,
-	# 	image_to_text_metrics_list=img2txt_metrics_list,
-	# 	text_to_image_metrics_list=txt2img_metrics_list,
+	# 	image_to_text_metrics_list=img2txt_metrics_all_epochs,
+	# 	text_to_image_metrics_list=txt2img_metrics_all_epochs,
 	# 	fname=retrieval_metrics_fpth,
 	# )
 	
 	# retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png")
 	# plot_retrieval_metrics_best_model(
 	# 	dataset_name=dataset_name,
-	# 	image_to_text_metrics=best_img2txt_metrics,
-	# 	text_to_image_metrics=best_txt2img_metrics,
+	# 	image_to_text_metrics=final_img2txt_metrics,
+	# 	text_to_image_metrics=final_txt2img_metrics,
 	# 	fname=retrieval_metrics_best_model_fpth,
 	# )
 
@@ -1974,13 +1974,13 @@ def full_finetune(
 
 	# Lists to store metrics
 	training_losses = []
-	img2txt_metrics_list = []
-	txt2img_metrics_list = []
+	img2txt_metrics_all_epochs = []
+	txt2img_metrics_all_epochs = []
 	metrics_for_all_epochs = []
 	train_start_time = time.time()
 	best_val_loss = float('inf')
-	best_img2txt_metrics = None
-	best_txt2img_metrics = None
+	final_img2txt_metrics = None
+	final_txt2img_metrics = None
 
 	for epoch in range(num_epochs):
 		torch.cuda.empty_cache()  # Clear GPU memory cache
@@ -2036,8 +2036,8 @@ def full_finetune(
 			device=device,
 			topK_values=topk_values,
 		)
-		img2txt_metrics_list.append(img2txt_metrics)
-		txt2img_metrics_list.append(txt2img_metrics)
+		img2txt_metrics_all_epochs.append(img2txt_metrics)
+		txt2img_metrics_all_epochs.append(txt2img_metrics)
 
 		# Early stopping
 		current_val_loss = metrics_per_epoch["val_loss"]
@@ -2054,8 +2054,8 @@ def full_finetune(
 			best_val_loss = current_val_loss
 			checkpoint.update({"best_val_loss": best_val_loss})
 			torch.save(checkpoint, mdl_fpth)
-			best_img2txt_metrics = img2txt_metrics
-			best_txt2img_metrics = txt2img_metrics
+			final_img2txt_metrics = img2txt_metrics
+			final_txt2img_metrics = txt2img_metrics
 
 		if early_stopping.should_stop(
 			current_value=current_val_loss, 
@@ -2085,8 +2085,8 @@ def full_finetune(
 			if final_metrics["val_loss"] < best_val_loss:
 				best_val_loss = final_metrics["val_loss"]
 				checkpoint.update({"best_val_loss": best_val_loss})
-				best_img2txt_metrics = final_img2txt
-				best_txt2img_metrics = final_txt2img
+				final_img2txt_metrics = final_img2txt
+				final_txt2img_metrics = final_txt2img
 				torch.save(checkpoint, mdl_fpth)
 			break
 		print("-" * 140)
@@ -2132,16 +2132,16 @@ def full_finetune(
 	retrieval_metrics_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png")
 	plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
-		image_to_text_metrics_list=img2txt_metrics_list,
-		text_to_image_metrics_list=txt2img_metrics_list,
+		image_to_text_metrics_list=img2txt_metrics_all_epochs,
+		text_to_image_metrics_list=txt2img_metrics_all_epochs,
 		fname=retrieval_metrics_fpth,
 	)
 	
 	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png")
 	plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
-		image_to_text_metrics=best_img2txt_metrics,
-		text_to_image_metrics=best_txt2img_metrics,
+		image_to_text_metrics=final_img2txt_metrics,
+		text_to_image_metrics=final_txt2img_metrics,
 		fname=retrieval_metrics_best_model_fpth,
 	)
 
@@ -2232,14 +2232,14 @@ def train(
 		growth_interval=2000,
 	)
 	training_losses = []
-	img2txt_metrics_list = []
-	txt2img_metrics_list = []
+	img2txt_metrics_all_epochs = []
+	txt2img_metrics_all_epochs = []
 	metrics_for_all_epochs = []
 	train_start_time = time.time()
 	# print(torch.cuda.memory_summary(device=device))
 	best_val_loss = float('inf')
-	best_img2txt_metrics = None
-	best_txt2img_metrics = None
+	final_img2txt_metrics = None
+	final_txt2img_metrics = None
 	for epoch in range(num_epochs):
 		torch.cuda.empty_cache() # Clear GPU memory cache
 		model.train() # dropout is active, units are dropped with specified probability (e.g., p=0.1)
@@ -2293,8 +2293,8 @@ def train(
 			device=device,
 			topK_values=topk_values,
 		)
-		img2txt_metrics_list.append(img2txt_metrics)
-		txt2img_metrics_list.append(txt2img_metrics)
+		img2txt_metrics_all_epochs.append(img2txt_metrics)
+		txt2img_metrics_all_epochs.append(txt2img_metrics)
 		# ############################## Early stopping ##############################
 		current_val_loss = metrics_per_epoch["val_loss"]
 		checkpoint = {
@@ -2311,8 +2311,8 @@ def train(
 			best_val_loss = current_val_loss
 			checkpoint.update({"best_val_loss": best_val_loss})
 			torch.save(checkpoint, mdl_fpth)  # Save best weights
-			best_img2txt_metrics = img2txt_metrics
-			best_txt2img_metrics = txt2img_metrics
+			final_img2txt_metrics = img2txt_metrics
+			final_txt2img_metrics = txt2img_metrics
 
 		# Early stopping check
 		if early_stopping.should_stop(
@@ -2347,8 +2347,8 @@ def train(
 			if final_metrics["val_loss"] < best_val_loss:
 				best_val_loss = final_metrics["val_loss"]
 				checkpoint.update({"best_val_loss": best_val_loss})
-				best_img2txt_metrics = final_img2txt
-				best_txt2img_metrics = final_txt2img
+				final_img2txt_metrics = final_img2txt
+				final_txt2img_metrics = final_txt2img
 				torch.save(checkpoint, mdl_fpth)
 			break
 		# ############################## Early stopping ##############################
@@ -2391,16 +2391,16 @@ def train(
 	retrieval_metrics_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png")
 	plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
-		image_to_text_metrics_list=img2txt_metrics_list,
-		text_to_image_metrics_list=txt2img_metrics_list,
+		image_to_text_metrics_list=img2txt_metrics_all_epochs,
+		text_to_image_metrics_list=txt2img_metrics_all_epochs,
 		fname=retrieval_metrics_fpth,
 	)
 
 	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png")
 	plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
-		image_to_text_metrics=best_img2txt_metrics,
-		text_to_image_metrics=best_txt2img_metrics,
+		image_to_text_metrics=final_img2txt_metrics,
+		text_to_image_metrics=final_txt2img_metrics,
 		fname=retrieval_metrics_best_model_fpth,
 	)
 
