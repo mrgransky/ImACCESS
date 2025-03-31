@@ -321,22 +321,29 @@ def measure_execution_time(func):
     """
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
+        # Store the original stdout at the start
+        original_stdout = sys.__stdout__
+        
         start_time = time.time()
         result = func(*args, **kwargs)  # Execute the function and store the result
         end_time = time.time()
         elapsed_time = end_time - start_time
         formatted_time = format_elapsed_time(elapsed_time)
         
-        # Get the current stdout
+        # Get the current stdout (which might be a file if redirected)
         current_stdout = sys.stdout
         
-        # Print to both log file and original stdout
-        message = f"function {func.__name__} elapsed time(DD-HH-MM-SS): \033[92m{formatted_time}\033[0m"
-        print(message)  # This goes to the current stdout (log file if redirected)
+        # Format message with color codes for console
+        console_message = f"function {func.__name__} elapsed time(DD-HH-MM-SS): \033[92m{formatted_time}\033[0m"
+        # Format message without color codes for log file (as ANSI color codes won't display in the file)
+        log_message = f"function {func.__name__} elapsed time(DD-HH-MM-SS): {formatted_time}"
         
-        # If stdout is redirected, also print to the original stdout (console)
-        if current_stdout != sys.__stdout__:
-            print(message, file=sys.__stdout__)
+        # Print to the current stdout (log file if redirected)
+        print(log_message)
+        
+        # Also print to the original stdout (console) with color
+        if current_stdout != original_stdout:
+            print(console_message, file=original_stdout)
             
         return result
     return wrapper

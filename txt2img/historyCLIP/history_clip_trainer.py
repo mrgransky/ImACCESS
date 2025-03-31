@@ -103,8 +103,12 @@ def main():
 			os.makedirs(args.log_dir, exist_ok=True)
 			dataset_name = os.path.basename(args.dataset_dir)
 			arch_name = args.model_architecture.replace('/', '').replace('@', '_')
-			log_filename = f"{dataset_name}_{args.mode}_{args.finetune_strategy}_{arch_name}_bs_{args.batch_size}_e{args.epochs}_lr_{args.learning_rate}_wd_{args.weight_decay}_logs.txt"
-			log_file_path = os.path.join(args.log_dir, log_filename)
+
+			log_file_base_name = f"{dataset_name}_{args.mode}_{args.finetune_strategy}_{arch_name}_bs_{args.batch_size}_e{args.epochs}_lr_{args.learning_rate}_wd_{args.weight_decay}_do_{args.dropout}_logs" 
+			if args.finetune_strategy == "lora":
+				log_file_base_name += f"_lora_rank_{args.lora_rank}_lora_alpha_{args.lora_alpha}_lora_dropout_{args.lora_dropout}"
+			
+			log_file_path = os.path.join(args.log_dir, f"{log_file_base_name}.txt")
 
 			log_file = open(log_file_path, 'w')
 			sys.stdout = log_file
@@ -294,6 +298,7 @@ def main():
 		print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))
 	finally:
 		if log_file:
+			print(f"Log file closing: {log_file_path}")
 			log_file.flush()
 			sys.stdout = original_stdout
 			sys.stderr = original_stderr
