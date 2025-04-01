@@ -986,83 +986,62 @@ def should_transition_phase(
 	return transition
 
 def handle_phase_transition(
-		current_phase: int,							# Input: The index of the phase just completed (0-based)
-		initial_lr: float,							# Input: The LR the training started with
-		initial_wd: float,              # Input: The initial weight decay value
-		max_phases: int,								# Input: Total number of phases defined (e.g., length of unfreeze_schedule)
-		window_size: int,								# Input: Window size used for analysis (affects window_factor)
-		current_loss: float,						# Input: Validation loss from the most recent epoch
-		best_loss: Optional[float],			# Input: Best validation loss seen so far (can be None)
-		max_wd_increase_factor: float,	# Input: Factor by which WD can increase (e.g., 2.0 means max WD is 2*initial_wd)
+		current_phase: int,
+		initial_lr: float,
+		initial_wd: float,
+		max_phases: int,
+		window_size: int,
+		current_loss: float,
+		best_loss: Optional[float],
 	) -> Tuple[int, float, float]:              
 	
-	# --- 1. Calculate Loss Ratio ---
-	# This factor scales the LR based on how the current loss compares to the best loss.
+	# --- 1. Calculate Loss Stability Factor ---
 	if best_loss is None or best_loss <= 0:
-		# If no best loss yet, or best loss is invalid, use a neutral ratio of 1.0.
-		loss_ratio = 1.0
+		loss_stability_factor = 1.0
 	else:
-		# Calculate ratio: current / best.
-		# Clamp the ratio between 0.5 and 2.0 to prevent extreme scaling effects
-		# if the current loss is drastically different from the best loss. Adds stability.
-		loss_ratio = min(max(0.5, current_loss / best_loss), 2.0)
+		loss_stability_factor = min(max(0.5, current_loss / best_loss), 2.0)
 	
 	# --- 2. Calculate Window Factor ---
-	# Scales LR based on the window size. The formula 10 / window_size means
-	# smaller windows result in a potentially larger factor (up to 1.5).
-	# This might imply wanting more aggressive LR changes if decisions are based on shorter histories.
-	# Clamped between 0.5 and 1.5 for stability. This is a tuning parameter.
 	window_factor = max(0.5, min(1.5, 10 / window_size))
 	
 	# --- 3. Determine Next Phase Index and Phase Factor ---
-	next_phase = current_phase + 1 # Tentative next phase index
-	# Check if we are transitioning beyond the last defined phase
+	next_phase = current_phase + 1 
 	if next_phase >= max_phases:
-		# Stay in the last defined phase (index = max_phases - 1).
 		next_phase = max_phases - 1
-		# Apply a fixed, aggressive LR reduction factor since transition was triggered
-		# even in the final phase, suggesting strong need for LR drop.
 		phase_factor = 0.1
 		print(f"<!> Already in final phase ({current_phase}). Applying fixed LR reduction.")
 	else:
-		# Calculate progress through the phases (approx. 0 to 1).
-		# `max(1, max_phases - 1)` prevents division by zero if max_phases is 1.
 		phase_progress = next_phase / max(1, max_phases - 1)
-		# Calculate an exponential decay factor based on phase progress.
-		# As training progresses (phase_progress -> 1), the factor decreases (towards 0.75).
-		# This generally reduces the LR more significantly in later phases. Base 0.75 is a tuning choice.
 		phase_factor = 0.75 ** phase_progress
 	
 	# --- 4. Calculate New Learning Rate ---
-	# Combine the initial LR with all calculated scaling factors.
-	new_lr = initial_lr * phase_factor * loss_ratio * window_factor
-	# Define a floor for the learning rate (e.g., 0.1% of the initial LR)
-	# to prevent it from becoming extremely small or zero.
+	new_lr = initial_lr * phase_factor * loss_stability_factor * window_factor
 	min_allowable_lr = initial_lr * 1e-3
-	# Enforce the minimum learning rate.
 	new_lr = max(new_lr, min_allowable_lr)
 	
-	# --- 5. Calculate New Weight Decay (Linear Increase Example) ---
-	# Calculate progress (0 to 1) based on the phase we are *entering*
-	# Ensure progress doesn't exceed 1 even if already in the last phase
+	# --- 5. Calculate New Weight Decay with Dynamic Max Factor ---
 	wd_phase_progress = min(1.0, next_phase / max(1, max_phases - 1))
+	
+	# Dynamically determine max_wd_increase_factor based on context
+	max_wd_increase_factor = 1.0 + (wd_phase_progress * 1.5) + ((1 - loss_stability_factor) * 1.0)
+	
 	# Calculate the total possible increase range
 	wd_increase_range = initial_wd * (max_wd_increase_factor - 1.0)
-	# Calculate the new weight decay based on linear progression(default) 
-	#TODO: other progression patterns like exponential could be valididated
+	
+	# Calculate the new weight decay based on linear progression
 	new_wd = initial_wd + (wd_increase_range * wd_phase_progress)
-
-	# Add a maximum cap for weight decay:
+	
+	# Add a maximum cap (which is now redundant but kept for clarity)
 	max_allowable_wd = initial_wd * max_wd_increase_factor
 	new_wd = min(new_wd, max_allowable_wd)
 
 	print(f"\n--- Phase Transition Occurred (Moving to Phase {next_phase}) ---")
 	print(f"Previous Phase: {current_phase}")
-	print(f"Factors -> Loss Ratio: {loss_ratio:.3f}, Window Factor: {window_factor:.3f}, Phase Factor: {phase_factor:.3f}")
+	print(f"Factors -> Loss Stability: {loss_stability_factor:.3f}, Window Factor: {window_factor:.3f}, Phase Factor: {phase_factor:.3f}")
 	print(f"Calculated New LR: {new_lr:.3e} (min allowable: {min_allowable_lr:.3e})")
-	print(f"WD Factors -> Phase Progress: {wd_phase_progress:.2f}, Max Increase Factor: {max_wd_increase_factor}")
+	print(f"WD Factors -> Phase Progress: {wd_phase_progress:.2f}, Dynamic Max Increase Factor: {max_wd_increase_factor:.2f}")
 	print(f"Calculated New WD: {new_wd:.3e} (initial: {initial_wd:.3e})")
-		
+			
 	return next_phase, new_lr, new_wd
 
 def get_unfreeze_pcts_hybrid(
@@ -1255,7 +1234,6 @@ def progressive_unfreeze_finetune(
 				window_size=window_size,
 				current_loss=val_losses[-1],
 				best_loss=early_stopping.get_best_score(),
-				max_wd_increase_factor=max_wd_increase_factor,
 			)
 			epochs_in_current_phase = 0 # Reset phase epoch counter
 			early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
@@ -1502,8 +1480,8 @@ def progressive_unfreeze_finetune(
 		f"ep_{len(training_losses)}_"
 		f"bs_{train_loader.batch_size}_"
 		f"dropout_{dropout_val}_"
-		f"init_wd_{initial_weight_decay:.1e}_"
 		f"init_lr_{initial_learning_rate:.1e}"
+		f"init_wd_{initial_weight_decay:.1e}_"
 	)
 
 	if last_lr is not None:
