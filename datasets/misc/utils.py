@@ -134,15 +134,7 @@ def measure_execution_time(func):
 		return result
 	return wrapper
 
-def get_stratified_split(
-	df:pd.DataFrame,
-	val_split_pct:float=0.2,
-	figure_size:tuple=(11, 7),
-	dpi:int=200,
-	result_dir:str="result_directory",
-	dname:str="DATASET_NAME",
-	seed:int=42,
-	):
+def get_stratified_split(df:pd.DataFrame, val_split_pct:float, seed:int=42,):
 	set_seeds(seed=seed, debug=False)
 	# Count the occurrences of each label
 	label_counts = df['label'].value_counts()
@@ -162,24 +154,7 @@ def get_stratified_split(
 		stratify=df_filtered['label'],
 		random_state=seed,
 	)
-	train_df.to_csv(os.path.join(result_dir, 'metadata_train.csv'), index=False)
-	val_df.to_csv(os.path.join(result_dir, 'metadata_val.csv'), index=False)
 
-	# Visualize label distribution in training and validation sets
-	plt.figure(figsize=figure_size)
-	train_df['label'].value_counts().plot(kind='bar', color='blue', alpha=0.6, label=f'Train {1-val_split_pct}')
-	val_df['label'].value_counts().plot(kind='bar', color='red', alpha=0.9, label=f'Validation {val_split_pct}')
-	plt.title(f'{dname} Stratified Sampling Label Distribution of {train_df.shape[0]} Training samples {val_df.shape[0]} Validation Samples (Total samples: {df_filtered.shape[0]})', fontsize=9)
-	plt.xlabel('Label')
-	plt.ylabel('Frequency')
-	plt.yticks(rotation=90, fontsize=9)
-	plt.legend(loc='best', ncol=2, frameon=False, fontsize=8)
-	plt.tight_layout()
-	plt.savefig(
-		fname=os.path.join(result_dir, 'outputs', f'{dname}_stratified_random_sampling_label_distribution.png'),
-		dpi=dpi,
-		bbox_inches='tight'
-	)	
 	return train_df, val_df
 
 def download_image(row, session, image_dir, total_rows, retries=2, backoff_factor=0.5):
