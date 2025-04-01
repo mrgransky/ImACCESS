@@ -103,7 +103,7 @@ def plot_all_pretrain_metrics(
 		metrics_dict = img2txt_metrics_dict if mode == "Image-to-Text" else txt2img_metrics_dict
 		
 		# Create a filename for each plot
-		mode_fname = f"{dataset_name}_{mode.replace('-', '_').lower()}_{len(models)}_pretrained_clip_models.png"
+		file_name = f"{dataset_name}_{len(models)}_pretrained_clip_models_{mode.replace('-', '_').lower()}_{'_'.join(re.sub(r'[/@]', '-', m) for m in models)}.png"
 		
 		# Create a figure with 1x3 subplots (one for each metric)
 		fig, axes = plt.subplots(1, len(metrics), figsize=figure_size, constrained_layout=True)
@@ -140,7 +140,7 @@ def plot_all_pretrain_metrics(
 				ax.set_xlabel('K', fontsize=10)
 				ax.set_ylabel(f'{metric}@K', fontsize=10)
 				ax.set_title(f'{metric}@K', fontsize=12, fontweight="bold")
-				ax.grid(True, linestyle='--', alpha=0.7)
+				ax.grid(True, linestyle='--', alpha=0.9)
 				ax.set_xticks(topK_values)
 				ax.set_xlim(min(topK_values) - 1, max(topK_values) + 1)
 				
@@ -173,7 +173,7 @@ def plot_all_pretrain_metrics(
 			
 			# Adjust layout and save figure
 			plt.tight_layout(rect=[0, 0.08, 1, 0.95])  # Make room for the legend at bottom
-			plt.savefig(os.path.join(results_dir, mode_fname), dpi=DPI, bbox_inches='tight')
+			plt.savefig(os.path.join(results_dir, file_name), dpi=DPI, bbox_inches='tight')
 			plt.close(fig)
 
 def visualize_samples(dataloader, dataset, num_samples=5):
