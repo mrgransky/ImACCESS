@@ -1253,6 +1253,7 @@ def progressive_unfreeze_finetune(
 				window_size=window_size,
 				current_loss=val_losses[-1],
 				best_loss=early_stopping.get_best_score()
+				max_wd_increase_factor=max_wd_increase_factor,
 			)
 			epochs_in_current_phase = 0 # Reset phase epoch counter
 			early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
@@ -2426,7 +2427,6 @@ def pretrain(
 	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt_txt2img.png")
 
 	try:
-		# load
 		img2txt_metrics = load_pickle(fpath=i2t_retrieval_metrics_fpth)
 		txt2img_metrics = load_pickle(fpath=t2i_retrieval_metrics_fpth)
 	except Exception as e:
@@ -2445,11 +2445,9 @@ def pretrain(
 		print("Text to Image Metrics: ")
 		print(json.dumps(txt2img_metrics, indent=2, ensure_ascii=False))
 
-		# save retrieval metrics
 		save_pickle(pkl=img2txt_metrics, fname=i2t_retrieval_metrics_fpth)
 		save_pickle(pkl=txt2img_metrics, fname=t2i_retrieval_metrics_fpth)
 
-	# 2. plot_retrieval_metrics_best_model
 	plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
 		image_to_text_metrics=img2txt_metrics,
