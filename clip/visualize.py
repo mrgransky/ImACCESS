@@ -85,97 +85,96 @@ def plot_all_pretrain_metrics(
 		txt2img_metrics_dict: dict,
 		topK_values: list,
 		results_dir: str,
-		figure_size=(11, 4),
+		figure_size=(11, 5),
 		DPI: int=300, # Higher DPI for publication quality
-):
-		metrics = ["mP", "mAP", "Recall"]
-		modes = ["Image-to-Text", "Text-to-Image"]
-		models = list(img2txt_metrics_dict.keys()) # ['RN50', 'RN101', ..., 'ViT-L/14@336px']
+	):
+	metrics = ["mP", "mAP", "Recall"]
+	modes = ["Image-to-Text", "Text-to-Image"]
+	models = list(img2txt_metrics_dict.keys()) # ['RN50', 'RN101', ..., 'ViT-L/14@336px']
+	
+	# Use distinct colors, markers, and linestyles for each model
+	colors = plt.cm.Set1.colors
+	markers = ['D', 'v', 'o', 's', '^', 'p', 'h', '*', 'H'] # 9 distinct markers
+	linestyles = [':', '-.', '-', '--', '-', '--', ':', '-.', '-'] # Cycle through styles
+	
+	# Create separate plots for each mode (Image-to-Text and Text-to-Image)
+	for i, mode in enumerate(modes):
+		# Determine which metrics dictionary to use based on the mode
+		metrics_dict = img2txt_metrics_dict if mode == "Image-to-Text" else txt2img_metrics_dict
 		
-		# Use distinct colors, markers, and linestyles for each model
-		colors = plt.cm.Set1.colors
-		markers = ['D', 'v', 'o', 's', '^', 'p', 'h', '*', 'H'] # 9 distinct markers
-		linestyles = [':', '-.', '-', '--', '-', '--', ':', '-.', '-'] # Cycle through styles
+		# Create a filename for each plot
+		mode_fname = f"{dataset_name}_{mode.replace('-', '_').lower()}_{len(models)}_pretrained_clip_models.png"
 		
-		# Create separate plots for each mode (Image-to-Text and Text-to-Image)
-		for i, mode in enumerate(modes):
-				# Determine which metrics dictionary to use based on the mode
-				metrics_dict = img2txt_metrics_dict if mode == "Image-to-Text" else txt2img_metrics_dict
+		# Create a figure with 1x3 subplots (one for each metric)
+		fig, axes = plt.subplots(1, len(metrics), figsize=figure_size, constrained_layout=True)
+		# fig.suptitle(f"{dataset_name} Pre-trained CLIP - {mode} Retrieval Metrics", fontsize=11, fontweight='bold')
+		fig.suptitle(f"Pre-trained CLIP {mode} Retrieval Metrics", fontsize=11, fontweight='bold')
+		
+		# Create a plot for each metric
+		for j, metric in enumerate(metrics):
+			ax = axes[j]
+			legend_handles = []
+			legend_labels = []
+			
+			# Plot data for each model
+			for k, (model_name, color, marker, linestyle) in enumerate(zip(models, colors, markers, linestyles)):
+				if model_name in metrics_dict:
+					k_values = sorted([int(k) for k in metrics_dict[model_name][metric].keys() if int(k) in topK_values])
+					values = [metrics_dict[model_name][metric][str(k)] for k in k_values]
+					
+					line, = ax.plot(
+						k_values,
+						values,
+						label=model_name,
+						color=color,
+						marker=marker,
+						linestyle=linestyle,
+						linewidth=1.8,
+						markersize=5,
+					)
+					
+					legend_handles.append(line)
+					legend_labels.append(model_name)
 				
-				# Create a filename for each plot
-				mode_fname = f"{dataset_name}_{mode.replace('-', '_').lower()}_{len(models)}_pretrained_clip_models.png"
+				# Configure the axes and labels
+				ax.set_xlabel('K', fontsize=10)
+				ax.set_ylabel(f'{metric}@K', fontsize=10)
+				ax.set_title(f'{metric}@K', fontsize=12, fontweight="bold")
+				ax.grid(True, linestyle='--', alpha=0.7)
+				ax.set_xticks(topK_values)
+				ax.set_xlim(min(topK_values) - 1, max(topK_values) + 1)
 				
-				# Create a figure with 1x3 subplots (one for each metric)
-				fig, axes = plt.subplots(1, len(metrics), figsize=figure_size, constrained_layout=True)
-				# fig.suptitle(f"{dataset_name} Pre-trained CLIP - {mode} Retrieval Metrics", fontsize=11, fontweight='bold')
-				fig.suptitle(f"Pre-trained CLIP - {mode} Retrieval Metrics", fontsize=11, fontweight='bold')
-				
-				# Create a plot for each metric
-				for j, metric in enumerate(metrics):
-						ax = axes[j]
-						legend_handles = []
-						legend_labels = []
-						
-						# Plot data for each model
-						for k, (model_name, color, marker, linestyle) in enumerate(zip(models, colors, markers, linestyles)):
-								if model_name in metrics_dict:
-										k_values = sorted([int(k) for k in metrics_dict[model_name][metric].keys() if int(k) in topK_values])
-										values = [metrics_dict[model_name][metric][str(k)] for k in k_values]
-										
-										line, = ax.plot(
-												k_values,
-												values,
-												label=model_name,
-												color=color,
-												marker=marker,
-												linestyle=linestyle,
-												linewidth=2.1,
-												markersize=6,
-										)
-										
-										legend_handles.append(line)
-										legend_labels.append(model_name)
-						
-						# Configure the axes and labels
-						ax.set_xlabel('K', fontsize=10)
-						ax.set_ylabel(f'{metric}@K', fontsize=10)
-						ax.set_title(f'{metric}@K', fontsize=12, fontweight="bold")
-						ax.grid(True, linestyle='--', alpha=0.7)
-						ax.set_xticks(topK_values)
-						ax.set_xlim(min(topK_values) - 1, max(topK_values) + 1)
-						
-						# Set dynamic y-axis limits
-						all_values = [v for m in models if m in metrics_dict 
-												 for v in [metrics_dict[m][metric][str(k)] for k in k_values]]
-						if all_values:
-								min_val = min(all_values)
-								max_val = max(all_values)
-								padding = 0.05 * (max_val - min_val) if (max_val - min_val) > 0 else 0.05
-								ax.set_ylim(bottom=0, top=max(1.01, max_val + padding))
-				
-				# Add legend at the bottom of the figure
-				fig.legend(
-						legend_handles,
-						legend_labels,
-						title="Vision Encoder",
-						title_fontsize=12,
-						fontsize=10,
-						loc='lower center',
-						ncol=min(len(models), 5),  # Limit to 5 columns for readability
-						bbox_to_anchor=(0.5, 0.01),
-						bbox_transform=fig.transFigure,
-						frameon=True,
-						framealpha=0.95,
-						shadow=True,
-						fancybox=True,
-						edgecolor='black',
-						facecolor='white',
-				)
-				
-				# Adjust layout and save figure
-				plt.tight_layout(rect=[0, 0.08, 1, 0.95])  # Make room for the legend at bottom
-				plt.savefig(os.path.join(results_dir, mode_fname), dpi=DPI, bbox_inches='tight')
-				plt.close(fig)
+				# Set dynamic y-axis limits
+				all_values = [v for m in models if m in metrics_dict for v in [metrics_dict[m][metric][str(k)] for k in k_values]]
+				if all_values:
+					min_val = min(all_values)
+					max_val = max(all_values)
+					padding = 0.05 * (max_val - min_val) if (max_val - min_val) > 0 else 0.05
+					ax.set_ylim(bottom=0, top=max(1.01, max_val + padding))
+			
+			# Add legend at the bottom of the figure
+			fig.legend(
+				legend_handles,
+				legend_labels,
+				title="Image Encoder",
+				title_fontsize=12,
+				fontsize=10,
+				loc='lower center',
+				ncol=min(len(models), 5),  # Limit to 5 columns for readability
+				bbox_to_anchor=(0.5, 0.01),
+				bbox_transform=fig.transFigure,
+				frameon=True,
+				framealpha=0.95,
+				shadow=True,
+				fancybox=True,
+				edgecolor='black',
+				facecolor='white',
+			)
+			
+			# Adjust layout and save figure
+			plt.tight_layout(rect=[0, 0.08, 1, 0.95])  # Make room for the legend at bottom
+			plt.savefig(os.path.join(results_dir, mode_fname), dpi=DPI, bbox_inches='tight')
+			plt.close(fig)
 
 def visualize_samples(dataloader, dataset, num_samples=5):
 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(dataloader):
