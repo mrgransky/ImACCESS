@@ -322,8 +322,6 @@ def main():
 	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"{dataset_name}_label_distribution_nIMGs_{na_df.shape[0]}.png")
 	plot_label_distribution(
 		df=na_df,
-		start_date=args.start_date,
-		end_date=args.end_date,
 		dname=dataset_name,
 		fpth=label_dirstribution_fname,
 	)

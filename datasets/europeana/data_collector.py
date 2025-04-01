@@ -263,8 +263,6 @@ def main():
 	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"{dataset_name}_label_distribution_{europeana_df.shape[0]}_x_{europeana_df.shape[1]}.png")
 	plot_label_distribution(
 		df=europeana_df,
-		start_date=args.start_date,
-		end_date=args.end_date,
 		dname=dataset_name,
 		fpth=label_dirstribution_fname,
 		)
