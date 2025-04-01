@@ -1905,7 +1905,7 @@ def full_finetune(
 			dropout_values.append((name, module.p))
 
 	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
-	print(f"\nNon-zero dropout detected in base {model.__class__.__name__} {model.name} during {mode_name} fine-tuning:")
+	print(f"\nNon-zero dropout detected in base {model_name} {model_arch} during {mode}:")
 	print(non_zero_dropouts)
 	print()
 

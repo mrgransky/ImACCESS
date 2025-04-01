@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH --account=project_2009043
-#SBATCH --job-name=finetune_historyCLIP_with_dropout_strategy_x_dataset_x
+#SBATCH --job-name=finetune_historyCLIP_dropout_strategy_x_dataset_x
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=24
-#SBATCH --mem=51G
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=64G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=0-14 # 3 strategies × 5 datasets = 15 tasks
@@ -51,11 +51,11 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] || [ $strategy_index -ge ${#FINETUNE_S
 fi
 
 # Hyperparameter configuration
-INIT_LRS=(1e-4 1e-4 1e-4 1e-5 1e-5)
-WEIGHT_DECAYS=(1e-1 1e-1 1e-1 1e-1 1e-1)
-DROPOUTS=(0.1 0.1 0.1 0.2 0.2)
+INIT_LRS=(1e-5 1e-5 1e-5 5e-5 8e-6)
+WEIGHT_DECAYS=(1e-2 1e-2 1e-2 1e-2 1e-2)
+DROPOUTS=(0.1 0.1 0.1 0.1 0.05)
 EPOCHS=(50 50 150 150 150)
-LORA_RANKS=(4 4 16 16 16)
+LORA_RANKS=(4 4 8 8 8)
 LORA_ALPHAS=(16 16 16 16 16)
 LORA_DROPOUTS=(0.0 0.0 0.0 0.0 0.0) # TODO: Lora dropout must be 0.05 [original paper]
 SAMPLINGS=("kfold_stratified" "stratified_random")
@@ -86,7 +86,7 @@ python -u history_clip_trainer.py \
 	--epochs "${EPOCHS[$dataset_index]}" \
 	--num_workers "$SLURM_CPUS_PER_TASK" \
 	--print_every 250 \
-	--batch_size 128 \
+	--batch_size 64 \
 	--learning_rate "${INIT_LRS[$dataset_index]}" \
 	--weight_decay "${WEIGHT_DECAYS[$dataset_index]}" \
 	--mode "finetune" \
