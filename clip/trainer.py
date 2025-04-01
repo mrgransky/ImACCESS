@@ -1252,7 +1252,7 @@ def progressive_unfreeze_finetune(
 				max_phases=max_phases,
 				window_size=window_size,
 				current_loss=val_losses[-1],
-				best_loss=early_stopping.get_best_score()
+				best_loss=early_stopping.get_best_score(),
 				max_wd_increase_factor=max_wd_increase_factor,
 			)
 			epochs_in_current_phase = 0 # Reset phase epoch counter
