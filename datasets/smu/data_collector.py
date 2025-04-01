@@ -4,6 +4,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 from misc.utils import *
+from misc.visualize import *
 
 # local:
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 --img_mean_std

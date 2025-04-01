@@ -4,6 +4,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 from misc.utils import *
+from misc.visualize import *
 
 # how to run in local:
 # $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs --img_mean_std > logs/wwii_image_download.out &
