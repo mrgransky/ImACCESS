@@ -2421,8 +2421,8 @@ def pretrain(
 		dataset_name = validation_loader.dataset.dataset_name
 
 	print(f"Pretrain Evaluation {dataset_name} {model_name} - {model_arch} {device}".center(170, "-"))
-	i2t_retrieval_metrics_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_img2txt_retrieval_metrics.json")
-	t2i_retrieval_metrics_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_txt2img_retrieval_metrics.json")
+	i2t_retrieval_metrics_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt.json")
+	t2i_retrieval_metrics_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_txt2img.json")
 	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt_txt2img.png")
 
 	try:

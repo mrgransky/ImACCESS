@@ -85,7 +85,7 @@ def plot_all_pretrain_metrics(
 		txt2img_metrics_dict: dict,
 		topK_values: list,
 		results_dir: str,
-		figure_size=(12, 8),
+		figure_size=(11, 4),
 		DPI: int=300, # Higher DPI for publication quality
 ):
 		metrics = ["mP", "mAP", "Recall"]
@@ -107,8 +107,8 @@ def plot_all_pretrain_metrics(
 				
 				# Create a figure with 1x3 subplots (one for each metric)
 				fig, axes = plt.subplots(1, len(metrics), figsize=figure_size, constrained_layout=True)
-				fig.suptitle(f"{dataset_name} Pre-trained CLIP x{len(models)} - {mode} Retrieval Metrics", 
-										fontsize=14, fontweight='bold')
+				# fig.suptitle(f"{dataset_name} Pre-trained CLIP - {mode} Retrieval Metrics", fontsize=11, fontweight='bold')
+				fig.suptitle(f"Pre-trained CLIP - {mode} Retrieval Metrics", fontsize=11, fontweight='bold')
 				
 				# Create a plot for each metric
 				for j, metric in enumerate(metrics):
@@ -129,8 +129,8 @@ def plot_all_pretrain_metrics(
 												color=color,
 												marker=marker,
 												linestyle=linestyle,
-												linewidth=1.9,
-												markersize=5,
+												linewidth=2.1,
+												markersize=6,
 										)
 										
 										legend_handles.append(line)
@@ -165,7 +165,7 @@ def plot_all_pretrain_metrics(
 						bbox_to_anchor=(0.5, 0.01),
 						bbox_transform=fig.transFigure,
 						frameon=True,
-						framealpha=0.9,
+						framealpha=0.95,
 						shadow=True,
 						fancybox=True,
 						edgecolor='black',
@@ -250,6 +250,8 @@ def plot_retrieval_metrics_best_model(
 		text_to_image_metrics: Dict[str, Dict[str, float]],
 		fname: str ="Retrieval_Performance_Metrics_best_model.png",
 		best_model_name: str ="Best Model",
+		figure_size=(11, 4),
+		DPI: int=300,
 	):
 	metrics = list(image_to_text_metrics.keys())  # ['mP', 'mAP', 'Recall']
 	suptitle_text = f"{dataset_name} Retrieval Performance Metrics [{best_model_name}]: "
@@ -258,7 +260,7 @@ def plot_retrieval_metrics_best_model(
 	suptitle_text = suptitle_text[:-3]  # Remove trailing " | "
 	modes = ['Image-to-Text', 'Text-to-Image']
 	
-	fig, axes = plt.subplots(1, len(metrics), figsize=(11, 4), constrained_layout=True)
+	fig, axes = plt.subplots(1, len(metrics), figsize=figure_size, constrained_layout=True)
 	fig.suptitle(suptitle_text, fontsize=8, fontweight='bold')
 	
 	# Store legend handles and labels
@@ -339,7 +341,7 @@ def plot_retrieval_metrics_best_model(
 		edgecolor='black',
 		facecolor='white',
 	)
-	plt.savefig(fname, dpi=300, bbox_inches='tight')
+	plt.savefig(fname, dpi=DPI, bbox_inches='tight')
 	plt.close(fig)
 
 def plot_retrieval_metrics_per_epoch(
