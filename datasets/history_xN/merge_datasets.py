@@ -10,6 +10,9 @@ from misc.visualize import *
 # $ python merge_datasets.py
 # $ nohup python -u merge_datasets.py > history_xN_merged_datasets.out &
 
+# run in pouta:
+# $ nohup python -u merge_datasets.py > /media/volume/ImACCESS/trash/history_xN_merged_datasets.out &
+
 # run in puhti:
 # $ nohup python -u merge_datasets.py > /scratch/project_2004072/ImACCESS/trash/logs/history_xN_merged_datasets.out &
 
@@ -127,13 +130,13 @@ plot_year_distribution(
 	DPI=DPI,
 )
 
-# img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
-# img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
-# mean, std = get_mean_std_rgb_img_multiprocessing(
-# 	source=all_image_paths,
-# 	num_workers=8,
-# 	batch_size=16,
-# 	img_rgb_mean_fpth=img_rgb_mean_fpth,
-# 	img_rgb_std_fpth=img_rgb_std_fpth,
-# )
-# print(f"Mean: {mean}, Std: {std}")
+img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
+img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
+mean, std = get_mean_std_rgb_img_multiprocessing(
+	source=all_image_paths,
+	num_workers=8,
+	batch_size=16,
+	img_rgb_mean_fpth=img_rgb_mean_fpth,
+	img_rgb_std_fpth=img_rgb_std_fpth,
+)
+print(f"Mean: {mean}, Std: {std}")
