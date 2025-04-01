@@ -1104,7 +1104,6 @@ def progressive_unfreeze_finetune(
 		initial_weight_decay: float,
 		device: str,
 		results_dir: str,
-		log_file_path: str=None,
 		window_size: int=10,
 		patience: int = 10,
 		min_delta: float = 1e-4, # Make slightly less sensitive than default
@@ -1220,20 +1219,8 @@ def progressive_unfreeze_finetune(
 	train_start_time = time.time()
 	for epoch in range(num_epochs):
 		epoch_start_time = time.time()
-		print(f"\n=== Epoch {epoch+1}/{num_epochs} Phase {current_phase} current LR: {last_lr:.3e} current WD: {last_wd:.3e}) ===")
-		
-		# Flush log file after each epoch header
-		if log_file_path is not None:
-			if isinstance(log_file_path, str):
-				# If it's a file path string, get the file object
-				with open(log_file_path, 'a') as f:
-					f.flush()
-			else:
-				# If it's already a file object
-				log_file_path.flush()
-		
+		print(f"\n=== Epoch {epoch+1}/{num_epochs} Phase {current_phase} current LR: {last_lr:.3e} current WD: {last_wd:.3e}) ===")		
 		torch.cuda.empty_cache()
-		
 		# --- Phase Transition Check ---
 		# Check only if enough epochs *overall* and *within the phase* have passed,
 		# and if we are not already in the last phase.
@@ -1242,13 +1229,6 @@ def progressive_unfreeze_finetune(
 			current_phase < max_phases - 1 and
 			len(early_stopping.value_history) >= window_size):
 			print(f"Checking for phase transition (Epochs in phase: {epochs_in_current_phase})")
-			# Flush after important status messages
-			if log_file_path is not None:
-				if isinstance(log_file_path, str):
-					with open(log_file_path, 'a') as f:
-						f.flush()
-				else:
-					log_file_path.flush()
 
 		val_losses = early_stopping.value_history
 		val_accs_in_batch = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in in_batch_loss_acc_metrics_all_epochs]
@@ -1769,6 +1749,7 @@ def lora_finetune(
 			torch.save(checkpoint, mdl_fpth)
 			final_img2txt_metrics = img2txt_metrics
 			final_txt2img_metrics = txt2img_metrics
+
 		if early_stopping.should_stop(
 			current_value=current_val_loss, 
 			model=model, 
@@ -1776,6 +1757,7 @@ def lora_finetune(
 		):
 			print(f"\nEarly stopping triggered at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
 			break
+
 		print("-" * 140)
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
@@ -2439,28 +2421,41 @@ def pretrain(
 		dataset_name = validation_loader.dataset.dataset_name
 
 	print(f"Pretrain Evaluation {dataset_name} {model_name} - {model_arch} {device}".center(170, "-"))
-	
-	# 1. evaluate_retrieval_performance
-	img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
-		model=model,
-		validation_loader=validation_loader,
-		device=device,
-		topK_values=topk_values,
-	)
-
-	print("Image to Text Metrics: ")
-	print(json.dumps(img2txt_metrics, indent=2, ensure_ascii=False))
-
-	print("Text to Image Metrics: ")
-	print(json.dumps(txt2img_metrics, indent=2, ensure_ascii=False))
-
-	# 2. plot_retrieval_metrics_best_model
+	i2t_retrieval_metrics_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_img2txt_retrieval_metrics_.json")
+	t2i_retrieval_metrics_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_txt2img_retrieval_metrics_.json")
 	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{validation_loader.name}_retrieval_metrics_pretrained_{model_name}_{model_arch}.png")
-	plot_retrieval_metrics_best_model(
-		dataset_name=dataset_name,
-		image_to_text_metrics=img2txt_metrics,
-		text_to_image_metrics=txt2img_metrics,
-		fname=retrieval_metrics_best_model_fpth,
-		best_model_name=f"Pretrained {model_name} {model_arch}",
-	)
+
+	try:
+		# load
+		img2txt_metrics = load_pickle(fname=i2t_retrieval_metrics_fpth)
+		txt2img_metrics = load_pickle(fname=t2i_retrieval_metrics_fpth)
+	except Exception as e:
+		print(e)
+
+		# 1. evaluate_retrieval_performance
+		img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
+			model=model,
+			validation_loader=validation_loader,
+			device=device,
+			topK_values=topk_values,
+		)
+
+		print("Image to Text Metrics: ")
+		print(json.dumps(img2txt_metrics, indent=2, ensure_ascii=False))
+
+		print("Text to Image Metrics: ")
+		print(json.dumps(txt2img_metrics, indent=2, ensure_ascii=False))
+
+		# 2. plot_retrieval_metrics_best_model
+		plot_retrieval_metrics_best_model(
+			dataset_name=dataset_name,
+			image_to_text_metrics=img2txt_metrics,
+			text_to_image_metrics=txt2img_metrics,
+			fname=retrieval_metrics_best_model_fpth,
+			best_model_name=f"Pretrained {model_name} {model_arch}",
+		)
+		# save retrieval metrics
+		save_pickle(pkl=img2txt_metrics, fname=i2t_retrieval_metrics_fpth)
+		save_pickle(pkl=txt2img_metrics, fname=t2i_retrieval_metrics_fpth)
+		
 	return img2txt_metrics, txt2img_metrics
