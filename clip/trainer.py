@@ -1116,7 +1116,7 @@ def progressive_unfreeze_finetune(
 		pairwise_imp_threshold: float = 1e-4, # Stricter requirement for pairwise improvement
 		accuracy_plateau_threshold: float = 5e-4, # For phase transition based on accuracy
 		min_phases_before_stopping: int = 3, # Ensure significant unfreezing before global stop
-		max_wd_increase_factor: float = 2.0,
+		max_wd_increase_factor: float = 5.0,
 		top_k_values: list[int] = [1, 5, 10],
 		layer_groups_to_unfreeze: list[str] = ['visual_transformer', 'text_transformer', 'projections'], # Focus on key layers
 		unfreeze_percentages: Optional[List[float]] = None, # Allow passing custom percentages
