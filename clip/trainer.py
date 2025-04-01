@@ -988,6 +988,7 @@ def should_transition_phase(
 def handle_phase_transition(
 		current_phase: int,							# Input: The index of the phase just completed (0-based)
 		initial_lr: float,							# Input: The LR the training started with
+		initial_wd: float,              # Input: The initial weight decay value
 		max_phases: int,								# Input: Total number of phases defined (e.g., length of unfreeze_schedule)
 		window_size: int,								# Input: Window size used for analysis (affects window_factor)
 		current_loss: float,						# Input: Validation loss from the most recent epoch
@@ -1249,6 +1250,7 @@ def progressive_unfreeze_finetune(
 			current_phase, last_lr, last_wd = handle_phase_transition(
 				current_phase=current_phase,
 				initial_lr=initial_learning_rate,
+				initial_wd=initial_weight_decay,
 				max_phases=max_phases,
 				window_size=window_size,
 				current_loss=val_losses[-1],
