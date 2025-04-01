@@ -57,11 +57,11 @@ headers = {
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{args.start_date}_{args.end_date}")
 HITS_DIRECTORY = os.path.join(DATASET_DIRECTORY, "hits")
 IMAGE_DIRECTORY = os.path.join(DATASET_DIRECTORY, "images")
-OUTPUTs_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
+OUTPUT_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
 os.makedirs(DATASET_DIRECTORY, exist_ok=True)
 os.makedirs(IMAGE_DIRECTORY, exist_ok=True)
 os.makedirs(HITS_DIRECTORY, exist_ok=True)
-os.makedirs(OUTPUTs_DIRECTORY, exist_ok=True)
+os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
@@ -256,7 +256,7 @@ def main():
 		nw=args.num_workers,
 	)
 
-	label_dirstribution_fname = os.path.join(OUTPUTs_DIRECTORY, f"{dataset_name}_label_distribution_nIMGs_{smu_df.shape[0]}.png")
+	label_dirstribution_fname = os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_label_distribution_nIMGs_{smu_df.shape[0]}.png")
 	plot_label_distribution(
 		df=smu_df,
 		dname=dataset_name,
@@ -289,7 +289,7 @@ def main():
 	plot_year_distribution(
 		df=smu_df,
 		dname=dataset_name,
-		fpth=os.path.join(OUTPUTs_DIRECTORY, f"{dataset_name}_year_distribution_{smu_df.shape[0]}_samples.png"),
+		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_year_distribution_{smu_df.shape[0]}_samples.png"),
 		BINs=args.historgram_bin,
 	)
 
