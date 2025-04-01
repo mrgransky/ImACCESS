@@ -52,8 +52,8 @@ fi
 
 # Hyperparameter configuration
 INIT_LRS=(1e-5 1e-5 1e-5 5e-5 8e-6)
-WEIGHT_DECAYS=(1e-2 1e-2 1e-2 1e-2 1e-2)
-DROPOUTS=(0.1 0.1 0.1 0.1 0.05)
+INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
+DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 EPOCHS=(50 50 150 150 150)
 LORA_RANKS=(4 4 8 8 8)
 LORA_ALPHAS=(16 16 16 16 16)
@@ -76,8 +76,8 @@ echo "DATASET: ${DATASETS[$dataset_index]}"
 echo "STRATEGY_INDEX: $strategy_index"
 echo "FINETUNE_STRATEGY: ${FINETUNE_STRATEGIES[$strategy_index]}"
 echo "EPOCHS: ${EPOCHS[$dataset_index]}"
-echo "INIT_LR: ${INIT_LRS[$dataset_index]}"
-echo "WEIGHT_DECAY: ${WEIGHT_DECAYS[$dataset_index]}"
+echo "INITIAL LEARNING RATE: ${INIT_LRS[$dataset_index]}"
+echo "INITIAL WEIGHT DECAY: ${INIT_WDS[$dataset_index]}"
 echo "DROPOUT: ${DROPOUT}"
 
 # Run training command
@@ -85,10 +85,10 @@ python -u history_clip_trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \
 	--epochs "${EPOCHS[$dataset_index]}" \
 	--num_workers "$SLURM_CPUS_PER_TASK" \
-	--print_every 250 \
+	--print_every 100 \
 	--batch_size 64 \
 	--learning_rate "${INIT_LRS[$dataset_index]}" \
-	--weight_decay "${WEIGHT_DECAYS[$dataset_index]}" \
+	--weight_decay "${INIT_WDS[$dataset_index]}" \
 	--mode "finetune" \
 	--finetune_strategy "${FINETUNE_STRATEGIES[$strategy_index]}" \
 	--lora_rank "${LORA_RANKS[$dataset_index]}" \
