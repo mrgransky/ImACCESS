@@ -2421,18 +2421,17 @@ def pretrain(
 		dataset_name = validation_loader.dataset.dataset_name
 
 	print(f"Pretrain Evaluation {dataset_name} {model_name} - {model_arch} {device}".center(170, "-"))
-	i2t_retrieval_metrics_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_img2txt_retrieval_metrics_.json")
-	t2i_retrieval_metrics_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_txt2img_retrieval_metrics_.json")
-	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{validation_loader.name}_retrieval_metrics_pretrained_{model_name}_{model_arch}.png")
+	i2t_retrieval_metrics_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_img2txt_retrieval_metrics.json")
+	t2i_retrieval_metrics_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_txt2img_retrieval_metrics.json")
+	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt_txt2img.png")
 
 	try:
 		# load
-		img2txt_metrics = load_pickle(fname=i2t_retrieval_metrics_fpth)
-		txt2img_metrics = load_pickle(fname=t2i_retrieval_metrics_fpth)
+		img2txt_metrics = load_pickle(fpath=i2t_retrieval_metrics_fpth)
+		txt2img_metrics = load_pickle(fpath=t2i_retrieval_metrics_fpth)
 	except Exception as e:
 		print(e)
 
-		# 1. evaluate_retrieval_performance
 		img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
 			model=model,
 			validation_loader=validation_loader,
@@ -2446,16 +2445,17 @@ def pretrain(
 		print("Text to Image Metrics: ")
 		print(json.dumps(txt2img_metrics, indent=2, ensure_ascii=False))
 
-		# 2. plot_retrieval_metrics_best_model
-		plot_retrieval_metrics_best_model(
-			dataset_name=dataset_name,
-			image_to_text_metrics=img2txt_metrics,
-			text_to_image_metrics=txt2img_metrics,
-			fname=retrieval_metrics_best_model_fpth,
-			best_model_name=f"Pretrained {model_name} {model_arch}",
-		)
 		# save retrieval metrics
 		save_pickle(pkl=img2txt_metrics, fname=i2t_retrieval_metrics_fpth)
 		save_pickle(pkl=txt2img_metrics, fname=t2i_retrieval_metrics_fpth)
-		
+
+	# 2. plot_retrieval_metrics_best_model
+	plot_retrieval_metrics_best_model(
+		dataset_name=dataset_name,
+		image_to_text_metrics=img2txt_metrics,
+		text_to_image_metrics=txt2img_metrics,
+		fname=retrieval_metrics_best_model_fpth,
+		best_model_name=f"Pretrained {model_name} {model_arch}",
+	)
+
 	return img2txt_metrics, txt2img_metrics
