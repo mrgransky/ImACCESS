@@ -205,7 +205,7 @@ def main():
 					nw=args.num_workers,
 					print_every=args.print_every,
 					initial_learning_rate=args.learning_rate,
-					weight_decay=args.weight_decay,
+					initial_weight_decay=args.weight_decay,
 					device=args.device,
 					results_dir=RESULT_DIRECTORY,
 					window_size=window_size, 									# early stopping & progressive unfreezing

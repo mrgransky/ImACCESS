@@ -986,13 +986,14 @@ def should_transition_phase(
 	return transition
 
 def handle_phase_transition(
-		current_phase: int,                # Input: The index of the phase just completed (0-based)
-		initial_lr: float,                 # Input: The LR the training started with
-		max_phases: int,                   # Input: Total number of phases defined (e.g., length of unfreeze_schedule)
-		window_size: int,                  # Input: Window size used for analysis (affects window_factor)
-		current_loss: float,               # Input: Validation loss from the most recent epoch
-		best_loss: Optional[float]         # Input: Best validation loss seen so far (can be None)
-	) -> Tuple[int, float]:                # Output: (new_phase_index, new_learning_rate)
+		current_phase: int,							# Input: The index of the phase just completed (0-based)
+		initial_lr: float,							# Input: The LR the training started with
+		max_phases: int,								# Input: Total number of phases defined (e.g., length of unfreeze_schedule)
+		window_size: int,								# Input: Window size used for analysis (affects window_factor)
+		current_loss: float,						# Input: Validation loss from the most recent epoch
+		best_loss: Optional[float],			# Input: Best validation loss seen so far (can be None)
+		max_wd_increase_factor: float,	# Input: Factor by which WD can increase (e.g., 2.0 means max WD is 2*initial_wd)
+	) -> Tuple[int, float, float]:              
 	
 	# --- 1. Calculate Loss Ratio ---
 	# This factor scales the LR based on how the current loss compares to the best loss.
@@ -1040,13 +1041,28 @@ def handle_phase_transition(
 	# Enforce the minimum learning rate.
 	new_lr = max(new_lr, min_allowable_lr)
 	
+	# --- 5. Calculate New Weight Decay (Linear Increase Example) ---
+	# Calculate progress (0 to 1) based on the phase we are *entering*
+	# Ensure progress doesn't exceed 1 even if already in the last phase
+	wd_phase_progress = min(1.0, next_phase / max(1, max_phases - 1))
+	# Calculate the total possible increase range
+	wd_increase_range = initial_wd * (max_wd_increase_factor - 1.0)
+	# Calculate the new weight decay based on linear progression(default) 
+	#TODO: other progression patterns like exponential could be valididated
+	new_wd = initial_wd + (wd_increase_range * wd_phase_progress)
+
+	# Add a maximum cap for weight decay:
+	max_allowable_wd = initial_wd * max_wd_increase_factor
+	new_wd = min(new_wd, max_allowable_wd)
+
 	print(f"\n--- Phase Transition Occurred (Moving to Phase {next_phase}) ---")
 	print(f"Previous Phase: {current_phase}")
 	print(f"Factors -> Loss Ratio: {loss_ratio:.3f}, Window Factor: {window_factor:.3f}, Phase Factor: {phase_factor:.3f}")
 	print(f"Calculated New LR: {new_lr:.3e} (min allowable: {min_allowable_lr:.3e})")
+	print(f"WD Factors -> Phase Progress: {wd_phase_progress:.2f}, Max Increase Factor: {max_wd_increase_factor}")
+	print(f"Calculated New WD: {new_wd:.3e} (initial: {initial_wd:.3e})")
 		
-	# Return the index of the phase we are *entering* and the new learning rate.
-	return next_phase, new_lr
+	return next_phase, new_lr, new_wd
 
 def get_unfreeze_pcts_hybrid(
 		model: torch.nn.Module,
@@ -1082,10 +1098,10 @@ def progressive_unfreeze_finetune(
 		train_loader: DataLoader,
 		validation_loader: DataLoader,
 		num_epochs: int,
-		nw: int, # num_workers for DataLoader
-		print_every: int, # Print frequency within epoch
+		nw: int,
+		print_every: int,
 		initial_learning_rate: float,
-		weight_decay: float,
+		initial_weight_decay: float,
 		device: str,
 		results_dir: str,
 		log_file_path: str=None,
@@ -1100,6 +1116,7 @@ def progressive_unfreeze_finetune(
 		pairwise_imp_threshold: float = 1e-4, # Stricter requirement for pairwise improvement
 		accuracy_plateau_threshold: float = 5e-4, # For phase transition based on accuracy
 		min_phases_before_stopping: int = 3, # Ensure significant unfreezing before global stop
+		max_wd_increase_factor: float = 2.0,
 		top_k_values: list[int] = [1, 5, 10],
 		layer_groups_to_unfreeze: list[str] = ['visual_transformer', 'text_transformer', 'projections'], # Focus on key layers
 		unfreeze_percentages: Optional[List[float]] = None, # Allow passing custom percentages
@@ -1165,14 +1182,12 @@ def progressive_unfreeze_finetune(
 
 	max_phases = len(unfreeze_schedule)
 
-	# Optimizer and Scheduler
-	# Filter parameters dynamically based on requires_grad, which changes per phase
 	optimizer = AdamW(
 		params=filter(lambda p: p.requires_grad, model.parameters()), # Initially might be empty if phase 0 has no unfrozen layers
 		lr=initial_learning_rate,
 		betas=(0.9, 0.98),
 		eps=1e-6,
-		weight_decay=weight_decay,
+		weight_decay=initial_weight_decay,
 	)
 
 	scheduler = torch.optim.lr_scheduler.OneCycleLR(
@@ -1198,13 +1213,14 @@ def progressive_unfreeze_finetune(
 	best_val_loss = None # Track the absolute best validation loss
 	layer_cache = {} # Cache for layer status (optional, used by get_status)
 	last_lr = initial_learning_rate # Track current LR
+	last_wd = initial_weight_decay # Track current WD
 	phase_just_changed = False # Flag to signal optimizer refresh needed
 
 	# --- Main Training Loop ---
 	train_start_time = time.time()
 	for epoch in range(num_epochs):
 		epoch_start_time = time.time()
-		print(f"\n=== Epoch {epoch+1}/{num_epochs} | Phase {current_phase} | LR: {last_lr:.3e} ===")
+		print(f"\n=== Epoch {epoch+1}/{num_epochs} Phase {current_phase} current LR: {last_lr:.3e} current WD: {last_wd:.3e}) ===")
 		
 		# Flush log file after each epoch header
 		if log_file_path is not None:
@@ -1250,7 +1266,7 @@ def progressive_unfreeze_finetune(
 			# accuracy_plateau_threshold=accuracy_plateau_threshold,
 		)
 		if should_trans:
-			current_phase, last_lr = handle_phase_transition(
+			current_phase, last_lr, last_wd = handle_phase_transition(
 				current_phase=current_phase,
 				initial_lr=initial_learning_rate,
 				max_phases=max_phases,
@@ -1265,6 +1281,7 @@ def progressive_unfreeze_finetune(
 			phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
 			print(f"Phase transition triggered. Optimizer/Scheduler refresh pending after unfreeze.")
 			print(f"Current Phase: {current_phase}")
+
 		# --- Unfreeze Layers for Current Phase ---
 		print(f"Applying unfreeze strategy for Phase {current_phase}...")
 		# Ensure layers are correctly frozen/unfrozen *before* optimizer step
@@ -1277,24 +1294,26 @@ def progressive_unfreeze_finetune(
 		if phase_just_changed or epoch == 0:
 			print("Refreshing optimizer parameter groups...")
 			optimizer.param_groups.clear()
-			optimizer.add_param_group({'params': [p for p in model.parameters() if p.requires_grad], 'lr': last_lr})
-			print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e}.")
+			optimizer.add_param_group(
+				{
+					'params': [p for p in model.parameters() if p.requires_grad], 
+					'lr': last_lr, # Use the new LR
+					'weight_decay': last_wd, # Use the new WD
+				}
+			)
+			print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e}, WD set to {last_wd:.3e}.")
 			
 			# --- Re-initialize Scheduler (Option B Implementation) ---
 			print("Re-initializing OneCycleLR scheduler for new phase/start...")
 			steps_per_epoch = len(train_loader)
-			# Decide on remaining epochs for the new schedule
-			# Option 1: Schedule over all original epochs (simpler, might finish annealing early)
-			# scheduler_epochs = num_epochs
-			# Option 2: Schedule over remaining epochs (more adaptive)
-			scheduler_epochs = num_epochs - epoch
-			# Ensure scheduler_epochs is at least 1
-			scheduler_epochs = max(1, scheduler_epochs)
+			# Schedule over remaining epochs (more adaptive) 
+			# max: Ensure scheduler_epochs is at least 1
+			scheduler_epochs = max(1, num_epochs - epoch)
 			scheduler = torch.optim.lr_scheduler.OneCycleLR(
 				optimizer=optimizer,
 				max_lr=last_lr, # Use the new LR as the peak for the new cycle
 				steps_per_epoch=steps_per_epoch,
-				epochs=scheduler_epochs, # Schedule over remaining or total epochs
+				epochs=scheduler_epochs,
 				pct_start=0.1, # Consider if this needs adjustment in later phases
 				anneal_strategy='cos',
 				# last_epoch = -1 # Ensures it starts fresh
@@ -1385,6 +1404,10 @@ def progressive_unfreeze_finetune(
 			f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
 			f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
+
+		print(f"Retrieval Metrics:\n")
+		print(f"Image-to-Text Retrieval: {img2txt_metrics_per_epoch}")
+		print(f"Text-to-Image Retrieval: {txt2img_metrics_per_epoch}")
 
 		# --- Checkpointing Best Model ---
 		# Use the best_score from EarlyStopping state as it's more robust
@@ -1494,14 +1517,17 @@ def progressive_unfreeze_finetune(
 		f"{mode_name}_"
 		f"last_phase_{current_phase}_"
 		f"ep_{len(training_losses)}_"
-		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
 		f"dropout_{dropout_val}_"
+		f"init_wd_{initial_weight_decay:.1e}_"
 		f"init_lr_{initial_learning_rate:.1e}"
 	)
 
 	if last_lr is not None:
 		file_base_name += f"_final_lr_{last_lr:.1e}"
+	
+	if last_wd is not None:
+		file_base_name += f"_final_wd_{last_wd:.1e}"
 
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
@@ -1655,7 +1681,6 @@ def lora_finetune(
 	training_losses = []
 	img2txt_metrics_all_epochs = []
 	txt2img_metrics_all_epochs = []
-	metrics_for_all_epochs = []
 	train_start_time = time.time()
 	best_val_loss = float('inf')
 	final_img2txt_metrics = None
@@ -1951,7 +1976,8 @@ def full_finetune(
 	training_losses = []
 	img2txt_metrics_all_epochs = []
 	txt2img_metrics_all_epochs = []
-	metrics_for_all_epochs = []
+	in_batch_loss_acc_metrics_all_epochs = []
+	full_val_loss_acc_metrics_all_epochs = []
 	train_start_time = time.time()
 	best_val_loss = float('inf')
 	final_img2txt_metrics = None
@@ -1989,20 +2015,23 @@ def full_finetune(
 		training_losses.append(avg_training_loss)
 
 		# Evaluate on validation set
-		metrics_per_epoch = get_in_batch_loss_accuracy_metrics(
+		in_batch_loss_acc_metrics_per_epoch = get_in_batch_loss_accuracy_metrics(
 			model=model,
 			validation_loader=validation_loader,
 			criterion=criterion,
 			device=device,
 			topK_values=topk_values,
 		)
-		metrics_for_all_epochs.append(metrics_per_epoch)
-		print(
-			f'@ Epoch {epoch + 1}:\n'
-			f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {metrics_per_epoch.get("val_loss"):.8f}\n'
-			f'\tIn-batch Validation Accuracy [text retrieval per image]: {metrics_per_epoch.get("img2txt_acc")} '
-			f'[image retrieval per text]: {metrics_per_epoch.get("txt2img_acc")}'
+		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
+
+		full_val_loss_acc_metrics_per_epoch = get_loss_accuracy_metrics(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			device=device,
+			topK_values=topk_values
 		)
+		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
 
 		# Compute retrieval-based metrics
 		img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
@@ -2014,8 +2043,26 @@ def full_finetune(
 		img2txt_metrics_all_epochs.append(img2txt_metrics)
 		txt2img_metrics_all_epochs.append(txt2img_metrics)
 
+		print(
+			f'@ Epoch {epoch + 1}:\n'
+			f'\t[LOSS] {mode}'
+			f'(Training): {avg_training_loss} '
+			f'Validation(in-batch): {in_batch_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))} '
+			f'Validation(full): {full_val_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
+			f'\tValidation Top-k Accuracy:\n'
+			f'\tIn-batch:\n'
+			f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t\t[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
+			f'\tFull Validation Set:\n'
+			f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+		)
+		print(f"Retrieval Metrics:\n")
+		print(f"Image-to-Text Retrieval: {img2txt_metrics}")
+		print(f"Text-to-Image Retrieval: {txt2img_metrics}")
+
 		# Early stopping
-		current_val_loss = metrics_per_epoch["val_loss"]
+		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
 		checkpoint = {
 			"epoch": epoch,
 			"model_state_dict": model.state_dict(),
@@ -2053,7 +2100,6 @@ def full_finetune(
 				topK_values=topk_values,
 			)
 
-			metrics_per_epoch = final_metrics
 			img2txt_metrics = final_img2txt
 			txt2img_metrics = final_txt2img
 
@@ -2093,15 +2139,15 @@ def full_finetune(
 		in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
 		full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
 		full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
-		mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-		cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-		losses_file_path=plot_paths["losses"],
+		# mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		# cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		# losses_file_path=plot_paths["losses"],
 		in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
 		in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
 		full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
 		full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
-		mean_reciprocal_rank_file_path=plot_paths["mrr"],
-		cosine_similarity_file_path=plot_paths["cs"],
+		# mean_reciprocal_rank_file_path=plot_paths["mrr"],
+		# cosine_similarity_file_path=plot_paths["cs"],
 	)
 
 	retrieval_metrics_fpth = os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png")
@@ -2209,7 +2255,7 @@ def train(
 	training_losses = []
 	img2txt_metrics_all_epochs = []
 	txt2img_metrics_all_epochs = []
-	metrics_for_all_epochs = []
+	in_batch_loss_acc_metrics_all_epochs = []
 	train_start_time = time.time()
 	# print(torch.cuda.memory_summary(device=device))
 	best_val_loss = float('inf')
@@ -2246,19 +2292,19 @@ def train(
 		training_losses.append(avg_training_loss)
 
 		# Compute traditional loss/accuracy metrics on validation set
-		metrics_per_epoch = get_in_batch_loss_accuracy_metrics(
+		in_batch_loss_acc_metrics_per_epoch = get_in_batch_loss_accuracy_metrics(
 			model=model,
 			validation_loader=validation_loader,
 			criterion=criterion,
 			device=device,
 			topK_values=topk_values,
 		)
-		metrics_for_all_epochs.append(metrics_per_epoch)
+		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
 		print(
 			f'@ Epoch {epoch+1}:\n'
-			f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {metrics_per_epoch.get("val_loss"):.8f}\n'
-			f'\tIn-batch Validation Accuracy [text retrieval per image]: {metrics_per_epoch.get("img2txt_acc")} '
-			f'[image retrieval per text]: {metrics_per_epoch.get("txt2img_acc")}'
+			f'\t[LOSS] {mode}: {avg_training_loss:.5f} | Valid: {in_batch_loss_acc_metrics_per_epoch.get("val_loss"):.8f}\n'
+			f'\tIn-batch Validation Accuracy [text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_acc")} '
+			f'[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_acc")}'
 		)
 
 		# Compute retrieval-based metrics
@@ -2271,7 +2317,7 @@ def train(
 		img2txt_metrics_all_epochs.append(img2txt_metrics)
 		txt2img_metrics_all_epochs.append(txt2img_metrics)
 		# ############################## Early stopping ##############################
-		current_val_loss = metrics_per_epoch["val_loss"]
+		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
 		checkpoint = {
 			"epoch": epoch,
 			"model_state_dict": model.state_dict(),
@@ -2313,8 +2359,6 @@ def train(
 				topK_values=topk_values
 			)
 			
-			# Update metrics to match restored weights
-			metrics_per_epoch = final_metrics
 			img2txt_metrics = final_img2txt
 			txt2img_metrics = final_txt2img
 			
