@@ -98,7 +98,7 @@ def get_model_directory(path):
 	model_directory = os.path.join(model_directory, "models")
 	return model_directory
 
-def get_parameters_info(model, mode):
+def get_parameters_info_original(model, mode):
 	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 	frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)
 	total_params = sum(p.numel() for p in model.parameters())
@@ -106,10 +106,50 @@ def get_parameters_info(model, mode):
 	frozen_percent = (frozen_params / total_params) * 100
 	print(
 		f"[{model.__class__.__name__} {model.name} Parameters Statistics] Total: {total_params:,} "
-		f"{mode.capitalize()}-able: {trainable_params:,} ({trainable_percent:.2f}%) "
+		f"{mode.capitalize()} (Trainablable [Unfrozen]): {trainable_params:,} ({trainable_percent:.2f}%) "
 		f"Frozen: {frozen_params:,} ({frozen_percent:.2f}%)"
-		.center(160, " ")
+		.center(170, " ")
 	)
+
+def get_parameters_info(model, mode):
+	"""
+	Prints parameter statistics for a CLIP model, separating image and text encoder parameters.
+	
+	Args:
+			model: The CLIP model instance (e.g., with `visual` and `transformer` attributes).
+			mode: String, typically 'train' or 'eval', used in the output message.
+	"""
+	# Helper function to calculate parameters for a submodule
+	def count_params(submodule):
+		trainable = sum(p.numel() for p in submodule.parameters() if p.requires_grad)
+		frozen = sum(p.numel() for p in submodule.parameters() if not p.requires_grad)
+		total = sum(p.numel() for p in submodule.parameters())
+		return trainable, frozen, total
+	# Total model parameters
+	total_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	total_frozen = sum(p.numel() for p in model.parameters() if not p.requires_grad)
+	total_params = sum(p.numel() for p in model.parameters())
+	total_trainable_percent = (total_trainable / total_params) * 100 if total_params > 0 else 0
+	total_frozen_percent = (total_frozen / total_params) * 100 if total_params > 0 else 0
+	# Image encoder parameters (assuming 'visual' attribute)
+	img_trainable, img_frozen, img_total = count_params(model.visual)
+	img_trainable_percent = (img_trainable / img_total) * 100 if img_total > 0 else 0
+	img_frozen_percent = (img_frozen / img_total) * 100 if img_total > 0 else 0
+	# Text encoder parameters (assuming 'transformer', 'token_embedding', 'ln_final', 'text_projection')
+	text_submodules = [model.transformer, model.token_embedding, model.ln_final, model.text_projection]
+	text_trainable = sum(sum(p.numel() for p in m.parameters() if p.requires_grad) for m in text_submodules)
+	text_frozen = sum(sum(p.numel() for p in m.parameters() if not p.requires_grad) for m in text_submodules)
+	text_total = sum(sum(p.numel() for p in m.parameters()) for m in text_submodules)
+	text_trainable_percent = (text_trainable / text_total) * 100 if text_total > 0 else 0
+	text_frozen_percent = (text_frozen / text_total) * 100 if text_total > 0 else 0
+	# Logit scale (scalar parameter)
+	logit_scale_params = model.logit_scale.numel()
+	# Print detailed statistics
+	print(f"[{model.__class__.__name__} {model.name} Parameters Statistics]".center(160, " "))
+	print(f"Image Encoder: Total: {img_total:,}  {mode.capitalize()}-able: {img_trainable:,} ({img_trainable_percent:.2f}%)  Frozen: {img_frozen:,} ({img_frozen_percent:.2f}%)".center(160, " "))
+	print(f"Text Encoder: Total: {text_total:,}  {mode.capitalize()}-able: {text_trainable:,} ({text_trainable_percent:.2f}%)  Frozen: {text_frozen:,} ({text_frozen_percent:.2f}%)".center(160, " "))
+	print(f"Logit Scale: {logit_scale_params:,}".center(160, " "))
+	print(f"Total Model: Total: {total_params:,}  {mode.capitalize()}-able: {total_trainable:,} ({total_trainable_percent:.2f}%)  Frozen: {total_frozen:,} ({total_frozen_percent:.2f}%)".center(160, " "))
 
 def print_loader_info(loader, batch_size):
 	loader_num_samples = len(loader.dataset)

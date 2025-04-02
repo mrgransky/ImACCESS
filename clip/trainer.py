@@ -2,6 +2,147 @@ from utils import *
 from model import get_lora_clip
 from visualize import plot_loss_accuracy_metrics, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics
 
+def load_best_model_and_evaluate(
+		model,
+		validation_loader,
+		criterion,
+		early_stopping,
+		checkpoint_path,
+		device,
+		topk_values=[1, 5, 10],
+		verbose=True
+	):
+	"""
+	Load the best model weights and perform comprehensive evaluation.
+	
+	This function handles loading the best model weights from a checkpoint file
+	or from early stopping's cached weights, then performs a complete evaluation
+	using multiple metrics.
+	
+	Args:
+			model: The model to load weights into and evaluate
+			validation_loader: DataLoader for the validation dataset
+			criterion: Loss function to use for evaluation
+			early_stopping: EarlyStopping instance that might contain best weights
+			checkpoint_path: Path to the saved checkpoint file
+			device: Device to use for evaluation ('cuda' or 'cpu')
+			topk_values: List of k values for top-k accuracy metrics
+			verbose: Whether to print detailed evaluation information
+			
+	Returns:
+			dict: A dictionary containing all evaluation results:
+					- in_batch_metrics: Loss and accuracy metrics within batches
+					- full_metrics: Loss and accuracy metrics across all validation data
+					- img2txt_metrics: Image-to-text retrieval metrics
+					- txt2img_metrics: Text-to-image retrieval metrics
+					- model_loaded_from: Source of the loaded weights ('checkpoint', 'early_stopping', or 'current')
+	"""
+	model_source = "current"  # Default if we don't load anything
+	
+	# First try to load from checkpoint file
+	if os.path.exists(checkpoint_path):
+			if verbose:
+					print(f"\nLoading best model weights from {checkpoint_path} for final evaluation...")
+			
+			try:
+					checkpoint = torch.load(checkpoint_path, map_location=device)
+					
+					# Handle different checkpoint formats
+					if 'model_state_dict' in checkpoint:
+							# Full checkpoint with optimizer state etc.
+							model.load_state_dict(checkpoint['model_state_dict'])
+							best_epoch = checkpoint.get('epoch', 'unknown')
+							if verbose:
+									print(f"Loaded weights from checkpoint (epoch {best_epoch+1})")
+							model_source = "checkpoint"
+					elif isinstance(checkpoint, dict) and 'epoch' not in checkpoint:
+							# Direct state dict
+							model.load_state_dict(checkpoint)
+							if verbose:
+									print("Loaded weights from direct state dictionary")
+							model_source = "checkpoint"
+					else:
+							if verbose:
+									print("Warning: Loaded file format not recognized as a model checkpoint.")
+							# Fall through to early stopping fallback
+			except Exception as e:
+					if verbose:
+							print(f"Error loading checkpoint: {e}")
+					# Fall through to early stopping fallback
+	
+	# Fallback to early stopping's cached best weights
+	if model_source == "current" and early_stopping.restore_best_weights and early_stopping.best_weights is not None:
+			try:
+					if verbose:
+							print(f"Loading weights from early stopping (epoch {early_stopping.best_epoch+1})")
+					model.load_state_dict({k: v.to(device, non_blocking=True) for k, v in early_stopping.best_weights.items()})
+					model_source = "early_stopping"
+			except Exception as e:
+					if verbose:
+							print(f"Error loading weights from early stopping: {e}")
+					if verbose:
+							print("Proceeding with current model weights.")
+	
+	# Verify the loaded model
+	param_count = sum(p.numel() for p in model.parameters())
+	if verbose:
+			print(f"Model ready for evaluation. Parameters: {param_count:,}")
+	
+	# Set model to evaluation mode
+	model.eval()
+	
+	if verbose:
+			print("\nPerforming final evaluation on the best model...")
+	
+	# Compute in-batch loss/accuracy metrics
+	in_batch_metrics = get_in_batch_loss_accuracy_metrics(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			device=device,
+			topK_values=topk_values
+	)
+	
+	# Compute full validation set metrics
+	full_metrics = get_loss_accuracy_metrics(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			device=device,
+			topK_values=topk_values
+	)
+	
+	# Compute retrieval-based metrics
+	img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
+			model=model,
+			validation_loader=validation_loader,
+			device=device,
+			topK_values=topk_values
+	)
+	
+	# Print evaluation results if verbose
+	if verbose:
+			print("\n--- Final Metrics [In-batch Validation] ---")
+			print(json.dumps(in_batch_metrics, indent=2, ensure_ascii=False))
+			
+			print("\n--- Final Metrics [Full Validation Set] ---")
+			print(json.dumps(full_metrics, indent=2, ensure_ascii=False))
+			
+			print("\n--- Image-to-Text Retrieval ---")
+			print(json.dumps(img2txt_metrics, indent=2, ensure_ascii=False))
+			
+			print("\n--- Text-to-Image Retrieval ---")
+			print(json.dumps(txt2img_metrics, indent=2, ensure_ascii=False))
+	
+	# Return all metrics in a single dictionary
+	return {
+			"in_batch_metrics": in_batch_metrics,
+			"full_metrics": full_metrics,
+			"img2txt_metrics": img2txt_metrics,
+			"txt2img_metrics": txt2img_metrics,
+			"model_loaded_from": model_source
+	}
+
 def checkpoint_best_model(
 		model,
 		optimizer,
@@ -16,30 +157,37 @@ def checkpoint_best_model(
 		txt2img_metrics=None,
 	):
 	"""
-	model checkpointing.
+	Checkpoint the model when performance improves, with comprehensive state saving.
+	
+	This function evaluates whether the current model represents an improvement
+	over previous checkpoints and saves the model state if it does. It uses a
+	combination of early stopping criteria and direct validation loss comparison.
+	
 	Args:
-		model: The model to checkpoint
-		optimizer: The optimizer used for training
-		scheduler: The learning rate scheduler
-		current_val_loss: The current validation loss
-		best_val_loss: The best validation loss so far
-		early_stopping: The early stopping object
-		checkpoint_path: Path to save the checkpoint
-		epoch: Current epoch number
-		current_phase: Current phase number (for progressive training)
-		img2txt_metrics: Image-to-text retrieval metrics
-		txt2img_metrics: Text-to-image retrieval metrics
+			model: The model to checkpoint
+			optimizer: The optimizer used for training
+			scheduler: The learning rate scheduler
+			current_val_loss: The current validation loss
+			best_val_loss: The best validation loss observed so far (None if first evaluation)
+			early_stopping: The early stopping object used for tracking improvement
+			checkpoint_path: Path where the checkpoint should be saved
+			epoch: Current epoch number (0-indexed)
+			current_phase: Current phase number for progressive training (optional)
+			img2txt_metrics: Image-to-text retrieval metrics for current evaluation (optional)
+			txt2img_metrics: Text-to-image retrieval metrics for current evaluation (optional)
+	
 	Returns:
-		best_val_loss: Updated best validation loss
-		final_img2txt_metrics: Updated image-to-text metrics if model improved
-		final_txt2img_metrics: Updated text-to-image metrics if model improved
+			tuple: (
+					updated_best_val_loss: The new best validation loss after this check,
+					final_img2txt_metrics: Image-to-text metrics if model improved, unchanged otherwise,
+					final_txt2img_metrics: Text-to-image metrics if model improved, unchanged otherwise
+			)
 	"""
-	# Initialize return values
+	# Initialize return values - will remain unchanged unless model improves
 	final_img2txt_metrics = img2txt_metrics
 	final_txt2img_metrics = txt2img_metrics
-	model_improved = False
 	
-	# Create comprehensive checkpoint dictionary
+	# Create baseline checkpoint dictionary (will be updated if needed)
 	checkpoint = {
 		"epoch": epoch,
 		"model_state_dict": model.state_dict(),
@@ -51,52 +199,63 @@ def checkpoint_best_model(
 	# Add phase information if available (for progressive training)
 	if current_phase is not None:
 		checkpoint["phase"] = current_phase
-		
-	# --- Complex Validation Logic ---
-	# Get best score from early stopping (more robust)
-	current_best_from_stopper = early_stopping.get_best_score()
 	
-	# First check: Is this potentially a new best model?
-	if current_best_from_stopper is not None and current_val_loss <= current_best_from_stopper:
-		# Second check: Does it meet the improvement threshold?
-		if early_stopping.is_improvement(current_val_loss) or best_val_loss is None:
-			# Third check: Is it better than our absolute best?
-			if best_val_loss is None or current_val_loss < best_val_loss:
-				print(f"*** New Best Validation Loss Found: {current_val_loss:.6f} (Epoch {epoch+1}) ***")
-				best_val_loss = current_val_loss
-				model_improved = True
-	# Simple fallback check (in case early stopping is not properly configured)
-	elif best_val_loss is not None and current_val_loss < best_val_loss - early_stopping.min_delta:
-		print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
-		best_val_loss = current_val_loss
-		model_improved = True
-	# Handle the case where best_val_loss is None (first epoch)
-	elif best_val_loss is None:
+	# --- Simplified Improvement Detection Logic ---
+	model_improved = False
+	
+	# Case 1: First evaluation (no previous best)
+	if best_val_loss is None:
 		print(f"Initial best model (loss {current_val_loss:.5f})")
 		best_val_loss = current_val_loss
 		model_improved = True
-		
-	# Save the model if it improved
+	
+	# Case 2: Early stopping detects improvement
+	elif early_stopping.is_improvement(current_val_loss):
+		print(f"*** New Best Validation Loss Found: {current_val_loss:.6f} (Epoch {epoch+1}) ***")
+		best_val_loss = current_val_loss
+		model_improved = True
+	
+	# Case 3: Fallback - direct comparison with minimum delta
+	# This handles cases where early stopping might not be properly configured
+	elif current_val_loss < best_val_loss - early_stopping.min_delta:
+		print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
+		best_val_loss = current_val_loss
+		model_improved = True
+	
+	# --- Save Improved Model ---
 	if model_improved:
+		# Cache best weights to avoid potential race condition
+		current_best_weights = None
+		if early_stopping.restore_best_weights and early_stopping.best_weights is not None:
+			# Make a reference copy to avoid potential race condition
+			current_best_weights = early_stopping.best_weights
+		
 		# Update the best validation loss in the checkpoint
 		checkpoint["best_val_loss"] = best_val_loss
+		
 		# Determine which weights to save
-		if early_stopping.restore_best_weights and early_stopping.best_weights is not None:
+		if current_best_weights is not None:
 			# Use the weights cached by early stopping
-			checkpoint["model_state_dict"] = early_stopping.best_weights
-			print(f"Best model weights (from epoch {early_stopping.best_epoch+1}) saved to {checkpoint_path}")
+			checkpoint["model_state_dict"] = current_best_weights
+			best_epoch = getattr(early_stopping, 'best_epoch', 0)
+			print(f"Best model weights (from epoch {best_epoch+1}) saved to {checkpoint_path}")
 		else:
 			# Use current model weights
 			checkpoint["model_state_dict"] = model.state_dict()
 			print(f"Best model weights (current epoch {epoch+1}) saved to {checkpoint_path}")
+		
 		# Save the checkpoint
-		torch.save(checkpoint, checkpoint_path)
-		# Update metrics if available
+		try:
+			torch.save(checkpoint, checkpoint_path)
+		except Exception as e:
+			print(f"Warning: Failed to save checkpoint to {checkpoint_path}: {e}")
+		
+		# Update metrics return values if available
 		if img2txt_metrics is not None:
 			final_img2txt_metrics = img2txt_metrics
 		if txt2img_metrics is not None:
 			final_txt2img_metrics = txt2img_metrics
-
+	
 	return best_val_loss, final_img2txt_metrics, final_txt2img_metrics
 
 def compute_slope(losses: List[float]) -> float:
@@ -1192,7 +1351,7 @@ def progressive_unfreeze_finetune(
 		pairwise_imp_threshold: float = 1e-4, # Stricter requirement for pairwise improvement
 		accuracy_plateau_threshold: float = 5e-4, # For phase transition based on accuracy
 		min_phases_before_stopping: int = 3, # Ensure significant unfreezing before global stop
-		top_k_values: list[int] = [1, 5, 10],
+		topk_values: list[int] = [1, 5, 10],
 		layer_groups_to_unfreeze: list[str] = ['visual_transformer', 'text_transformer', 'projections'], # Focus on key layers
 		unfreeze_percentages: Optional[List[float]] = None, # Allow passing custom percentages
 	):
@@ -1217,11 +1376,8 @@ def progressive_unfreeze_finetune(
 		dataset_name = validation_loader.dataset.dataset_name
 
 	mode_name = inspect.stack()[0].function
-	model_arch = re.sub('/', '', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_arch = re.sub(r'[/@]', '', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_class_name = model.__class__.__name__
-
-	base_filename = f"{dataset_name}_{mode_name}_{model_class_name}_{model_arch}"
-	best_model_path = os.path.join(results_dir, f"{base_filename}_best_model.pth")
 
 	# Find dropout value
 	dropout_val = 0.0
@@ -1229,6 +1385,13 @@ def progressive_unfreeze_finetune(
 		if isinstance(module, torch.nn.Dropout):
 			dropout_val = module.p
 			break
+
+	mdl_fpth = os.path.join(
+		results_dir,
+		f"{dataset_name}_{mode_name}_{model_class_name}_{model_arch}_"
+		f"dropout_{dropout_val}_init_lr_{initial_learning_rate:.1e}_init_wd_{initial_weight_decay:.1e}_"
+		f"best_model.pth"
+	)
 
 	# Inspect the model for dropout layers
 	dropout_values = []
@@ -1425,7 +1588,7 @@ def progressive_unfreeze_finetune(
 			validation_loader=validation_loader,
 			criterion=criterion,
 			device=device,
-			topK_values=top_k_values
+			topK_values=topk_values
 		)
 		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
 
@@ -1434,7 +1597,7 @@ def progressive_unfreeze_finetune(
 			validation_loader=validation_loader,
 			criterion=criterion,
 			device=device,
-			topK_values=top_k_values
+			topK_values=topk_values
 		)
 		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
 
@@ -1443,7 +1606,7 @@ def progressive_unfreeze_finetune(
 			model=model,
 			validation_loader=validation_loader,
 			device=device,
-			topK_values=top_k_values,
+			topK_values=topk_values,
 		)
 		img2txt_metrics_all_epochs.append(img2txt_metrics_per_epoch)
 		txt2img_metrics_all_epochs.append(txt2img_metrics_per_epoch)
@@ -1476,7 +1639,7 @@ def progressive_unfreeze_finetune(
 			current_val_loss=current_val_loss,
 			best_val_loss=best_val_loss,
 			early_stopping=early_stopping,
-			checkpoint_path=best_model_path,
+			checkpoint_path=mdl_fpth,
 			epoch=epoch,
 			current_phase=current_phase,
 			img2txt_metrics=img2txt_metrics_per_epoch,
@@ -1508,57 +1671,25 @@ def progressive_unfreeze_finetune(
 	print(f"Best Validation Loss Achieved: {early_stopping.get_best_score()} @ Epoch {early_stopping.get_best_epoch() + 1}")
 	print(f"Total Training Time: {total_training_time:.2f}s")
 
-	# --- Final Evaluation & Plotting ---
-	# Load the best model weights for final evaluation
-	if early_stopping.restore_best_weights and os.path.exists(best_model_path):
-		print(f"\nLoading best model weights from {best_model_path} for final evaluation...")
-		# Load weights carefully, handling potential device mismatches if needed
-		best_weights_loaded = torch.load(best_model_path, map_location=device)
-		# Check if it's a state_dict or the full stopper cache
-		if isinstance(best_weights_loaded, dict) and not any(k.startswith('best_score') for k in best_weights_loaded.keys()): # Heuristic for state_dict
-			model.load_state_dict(best_weights_loaded)
-		elif isinstance(best_weights_loaded, dict) and 'model_state_dict' in best_weights_loaded: # Check if it's a checkpoint dict
-			model.load_state_dict(best_weights_loaded['model_state_dict'])
-		else:
-			print("Warning: Loaded best model file format not recognized as state_dict. Using weights stored in EarlyStopping if available.")
-			if early_stopping.best_weights is not None:
-				model.load_state_dict({k: v.to(device) for k, v in early_stopping.best_weights.items()})
-
-	print("\nPerforming final evaluation on the best model...")
-	final_metrics_in_batch = get_in_batch_loss_accuracy_metrics(
+	evaluation_results = load_best_model_and_evaluate(
 		model=model,
 		validation_loader=validation_loader,
 		criterion=criterion,
+		early_stopping=early_stopping,
+		checkpoint_path=mdl_fpth,
 		device=device,
-		topK_values=top_k_values,
+		topk_values=topk_values,
+		verbose=True
 	)
 
-	final_metrics_full = get_loss_accuracy_metrics(
-		model=model,
-		validation_loader=validation_loader,
-		criterion=criterion,
-		device=device,
-		topK_values=top_k_values,
-	)
+	# Access individual metrics as needed
+	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
+	final_metrics_full = evaluation_results["full_metrics"]
+	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
+	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
 
-	final_img2txt_metrics, final_txt2img_metrics = evaluate_retrieval_performance(
-		model=model,
-		validation_loader=validation_loader,
-		device=device,
-		topK_values=top_k_values,
-	)
-
-	print("\n--- Final Metrics[in-batch Validation Loss & Accuracy] (Best Model) ---")
-	print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
-
-	print("--- Final Metrics[full Validation Loss & Accuracy] (Best Model) ---")
-	print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-
-	print("Image-to-Text Retrieval:")
-	print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-
-	print("Text-to-Image Retrieval:")
-	print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+	model_source = evaluation_results["model_loaded_from"]
+	print(f"Final evaluation used model weights from: {model_source}")
 
 	print("\nGenerating result plots...")
 
@@ -1707,7 +1838,7 @@ def lora_finetune(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
-		f"lora_rank_{lora_rank}_alpha_{lora_alpha}_lora_dropout_{lora_dropout}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
+		f"rank_{lora_rank}_alpha_{lora_alpha}_dropout_{lora_dropout}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
 	)
 
 	optimizer = AdamW(
@@ -1833,42 +1964,24 @@ def lora_finetune(
 		print("-" * 140)
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
-	#########################################################################
-	print("\nPerforming final evaluation on the best model...")
-	final_metrics_in_batch = get_in_batch_loss_accuracy_metrics(
+	evaluation_results = load_best_model_and_evaluate(
 		model=model,
 		validation_loader=validation_loader,
 		criterion=criterion,
+		early_stopping=early_stopping,
+		checkpoint_path=mdl_fpth,
 		device=device,
-		topK_values=topk_values,
+		topk_values=topk_values,
+		verbose=True
 	)
 
-	final_metrics_full = get_loss_accuracy_metrics(
-		model=model,
-		validation_loader=validation_loader,
-		criterion=criterion,
-		device=device,
-		topK_values=topk_values,
-	)
-
-	final_img2txt_metrics, final_txt2img_metrics = evaluate_retrieval_performance(
-		model=model,
-		validation_loader=validation_loader,
-		device=device,
-		topK_values=topk_values,
-	)
-
-	print("\n--- Final Metrics[in-batch Validation Loss & Accuracy] (Best Model) ---")
-	print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
-
-	print("--- Final Metrics[full Validation Loss & Accuracy] (Best Model) ---")
-	print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-
-	print("Image-to-Text Retrieval:")
-	print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-
-	print("Text-to-Image Retrieval:")
-	print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+	# Access individual metrics as needed
+	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
+	final_metrics_full = evaluation_results["full_metrics"]
+	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
+	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
+	model_source = evaluation_results["model_loaded_from"]
+	print(f"Final evaluation used model weights from: {model_source}")
 
 	print("\nGenerating result plots...")
 
@@ -2125,7 +2238,7 @@ def full_finetune(
 			current_val_loss=current_val_loss,
 			best_val_loss=best_val_loss,
 			early_stopping=early_stopping,
-			checkpoint_path=best_model_path,
+			checkpoint_path=mdl_fpth,
 			epoch=epoch,
 			img2txt_metrics=img2txt_metrics,
 			txt2img_metrics=txt2img_metrics
@@ -2142,6 +2255,28 @@ def full_finetune(
 		print("-" * 140)
 	
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+
+	evaluation_results = load_best_model_and_evaluate(
+		model=model,
+		validation_loader=validation_loader,
+		criterion=criterion,
+		early_stopping=early_stopping,
+		checkpoint_path=mdl_fpth,
+		device=device,
+		topk_values=topk_values,
+		verbose=True
+	)
+
+	# Access individual metrics as needed
+	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
+	final_metrics_full = evaluation_results["full_metrics"]
+	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
+	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
+
+	model_source = evaluation_results["model_loaded_from"]
+	print(f"Final evaluation used model weights from: {model_source}")
+
+	print("\nGenerating result plots...")
 
 	file_base_name = (
 		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
@@ -2171,7 +2306,7 @@ def full_finetune(
 		full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
 		# mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
 		# cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-		# losses_file_path=plot_paths["losses"],
+		losses_file_path=plot_paths["losses"],
 		in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
 		in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
 		full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],

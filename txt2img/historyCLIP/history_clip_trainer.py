@@ -213,7 +213,7 @@ def main():
 					min_delta=args.minimum_delta, 						# early stopping
 					cumulative_delta=args.cumulative_delta, 	# early stopping
 					minimum_epochs=args.minimum_epochs, 			# early stopping
-					top_k_values=args.topK_values,
+					topk_values=args.topK_values,
 				)
 			else:
 				raise ValueError(f"Invalid mode: {args.mode}! Choose between 'full', 'lora', 'progressive'!")
