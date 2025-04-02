@@ -48,7 +48,7 @@ def plot_comparison_metrics(
 					linestyle='--',
 					linewidth=2,
 					markersize=5,
-					alpha=0.7
+					alpha=0.55,
 				)
 			
 			# Plot fine-tuned model performance
@@ -69,19 +69,44 @@ def plot_comparison_metrics(
 				
 				# Add improvement percentages at key points
 				if model_name in pretrained_dict:
-					for idx, k in enumerate([1, 10]):
+					key_k_values = [1, 10, 20]  # Annotate these K values if available
+					for k in key_k_values:
 						if k in k_values:
 							k_idx = k_values.index(k)
 							pretrained_val = pretrained_dict[model_name][metric][str(k)]
 							finetuned_val = values[k_idx]
 							improvement = ((finetuned_val - pretrained_val) / pretrained_val) * 100
+							
+							# Determine annotation position based on K value and metric trend
+							if k == 1:
+								x_offset = -5
+								y_offset = 10 if finetuned_val > 0.5 else -15
+							elif k == 10:
+								x_offset = 0
+								y_offset = -15 if finetuned_val > 0.5 else 10
+							else:  # k == 20
+								x_offset = 5
+								y_offset = 10 if finetuned_val > 0.5 else -15
+							
+							# Add arrow for better visibility
 							ax.annotate(
-								f"{improvement:.1f}%", 
+								f"{'+' if improvement >= 0 else ''}{improvement:.1f}%",
 								xy=(k, finetuned_val),
-								xytext=(5, 5),
+								xytext=(x_offset, y_offset),
 								textcoords='offset points',
 								fontsize=8,
-								fontweight='bold'
+								fontweight='bold',
+								bbox=dict(
+									facecolor='white',
+									edgecolor='none',
+									alpha=0.7,
+									pad=0.5
+								),
+								arrowprops=dict(
+									arrowstyle='->',
+									connectionstyle='arc3,rad=0.2',
+									alpha=0.7
+								) if abs(improvement) > 5 else None  # Only show arrow for significant changes
 							)
 			
 			# Configure axes
