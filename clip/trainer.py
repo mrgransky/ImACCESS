@@ -1782,6 +1782,7 @@ def progressive_unfreeze_finetune(
 		finetuned_img2txt_dict=finetuned_img2txt_dict,
 		finetuned_txt2img_dict=finetuned_txt2img_dict,
 		model_name=model_arch,
+		finetune_strategy=mode_name,
 		topK_values=topk_values,
 		results_dir=results_dir,
 	)

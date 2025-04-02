@@ -7,6 +7,7 @@ def plot_comparison_metrics(
 		finetuned_img2txt_dict: dict,
 		finetuned_txt2img_dict: dict,
 		model_name: str,  # e.g., 'ViT-B/32'
+		finetune_strategy: str,  # e.g., 'LoRA'
 		topK_values: list,
 		results_dir: str,
 		figure_size=(15, 10),
@@ -109,7 +110,7 @@ def plot_comparison_metrics(
 							
 	# Save the figure
 	plt.savefig(
-		os.path.join(results_dir, f"{dataset_name}_{model_name.replace(r'[/@]', '-')}_comparison.png"), 
+		os.path.join(results_dir, f"{dataset_name}_{finetune_strategy}_vs_pretrained_{model_name.replace(r'[/@]', '-')}_comparison.png"), 
 		dpi=DPI, 
 		bbox_inches='tight'
 	)
