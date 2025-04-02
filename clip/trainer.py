@@ -2020,7 +2020,7 @@ def lora_finetune(
 		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
 		f"lora_alpha_{lora_alpha}_lora_dropout_{lora_dropout}_lora_rank_{lora_rank}_"
 		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_"
+		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}"
 	)
 
 	plot_paths = {
