@@ -1356,17 +1356,6 @@ def progressive_unfreeze_finetune(
 		unfreeze_percentages: Optional[List[float]] = None, # Allow passing custom percentages
 	):
 
-	#################
-	# Pretrain
-	pretrained_img2txt_dict = {}
-	pretrained_txt2img_dict = {}
-	pretrained_img2txt_dict[model_arch], pretrained_txt2img_dict[model_arch] = pretrain(
-		model=model,
-		validation_loader=validation_loader,
-		results_dir=results_dir,
-		device=device,
-		topk_values=topk_values,
-	)
 
 
 	early_stopping = EarlyStopping(
@@ -1391,6 +1380,19 @@ def progressive_unfreeze_finetune(
 	mode_name = inspect.stack()[0].function
 	model_arch = re.sub(r'[/@]', '', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_class_name = model.__class__.__name__
+
+	#################
+	# Pretrain
+	pretrained_img2txt_dict = {}
+	pretrained_txt2img_dict = {}
+	pretrained_img2txt_dict[model_arch], pretrained_txt2img_dict[model_arch] = pretrain(
+		model=model,
+		validation_loader=validation_loader,
+		results_dir=results_dir,
+		device=device,
+		topk_values=topk_values,
+	)
+
 
 	# Find dropout value
 	dropout_val = 0.0
