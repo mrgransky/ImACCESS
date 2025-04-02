@@ -10,7 +10,7 @@ def plot_comparison_metrics(
 		finetune_strategy: str,  # e.g., 'LoRA'
 		topK_values: list,
 		results_dir: str,
-		figure_size=(15, 10),
+		figure_size=(14, 8),
 		DPI: int=300
 	):
 	metrics = ["mP", "mAP", "Recall"]
@@ -20,7 +20,7 @@ def plot_comparison_metrics(
 	
 	# Create figure with 2x3 subplots
 	fig, axes = plt.subplots(2, 3, figsize=figure_size, constrained_layout=True)
-	fig.suptitle(f"{dataset_name} CLIP Model Performance: Pre-trained vs. Fine-tuned {model_name}", fontsize=16, fontweight='bold')
+	fig.suptitle(f"Performance Comparison: CLIP Pre-trained {model_name} vs. {finetune_strategy} Fine-tuned", fontsize=16, fontweight='bold')
 	
 	# Plot data for each mode and metric
 	for i, mode in enumerate(modes):
