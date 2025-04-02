@@ -158,10 +158,10 @@ def get_parameters_info(model, mode):
 
     # Print detailed statistics
     print(f"[{model.__class__.__name__} {model.name} Parameters Statistics]".center(160, " "))
-    print(f"Image Encoder: Total: {img_total:,}  {mode.capitalize()}-able: {img_trainable:,} ({img_trainable_percent:.2f}%)  Frozen: {img_frozen:,} ({img_frozen_percent:.2f}%)".center(160, " "))
-    print(f"Text Encoder: Total: {text_total:,}  {mode.capitalize()}-able: {text_trainable:,} ({text_trainable_percent:.2f}%)  Frozen: {text_frozen:,} ({text_frozen_percent:.2f}%)".center(160, " "))
+    print(f"Image Encoder: Total: {img_total:,}  {mode.capitalize()} (Trainable [Unfrozen]): {img_trainable:,} ({img_trainable_percent:.2f}%)  Frozen: {img_frozen:,} ({img_frozen_percent:.2f}%)".center(160, " "))
+    print(f"Text Encoder: Total: {text_total:,}  {mode.capitalize()} (Trainable [Unfrozen]): {text_trainable:,} ({text_trainable_percent:.2f}%)  Frozen: {text_frozen:,} ({text_frozen_percent:.2f}%)".center(160, " "))
     print(f"Logit Scale: {logit_scale_params:,}".center(160, " "))
-    print(f"Total Model: Total: {total_params:,}  {mode.capitalize()}-able: {total_trainable:,} ({total_trainable_percent:.2f}%)  Frozen: {total_frozen:,} ({total_frozen_percent:.2f}%)".center(160, " "))
+    print(f"Total Model: Total: {total_params:,}  {mode.capitalize()} (Trainable [Unfrozen]): {total_trainable:,} ({total_trainable_percent:.2f}%)  Frozen: {total_frozen:,} ({total_frozen_percent:.2f}%)".center(160, " "))
 
 def print_loader_info(loader, batch_size):
 	loader_num_samples = len(loader.dataset)

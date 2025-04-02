@@ -2,7 +2,7 @@ from utils import *
 from model import get_lora_clip
 from visualize import plot_loss_accuracy_metrics, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics
 
-def load_best_model_and_evaluate(
+def evaluate_best_model(
 		model,
 		validation_loader,
 		criterion,
@@ -1671,7 +1671,7 @@ def progressive_unfreeze_finetune(
 	print(f"Best Validation Loss Achieved: {early_stopping.get_best_score()} @ Epoch {early_stopping.get_best_epoch() + 1}")
 	print(f"Total Training Time: {total_training_time:.2f}s")
 
-	evaluation_results = load_best_model_and_evaluate(
+	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
 		criterion=criterion,
@@ -1964,7 +1964,7 @@ def lora_finetune(
 		print("-" * 140)
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
-	evaluation_results = load_best_model_and_evaluate(
+	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
 		criterion=criterion,
@@ -2256,7 +2256,7 @@ def full_finetune(
 	
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
-	evaluation_results = load_best_model_and_evaluate(
+	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
 		criterion=criterion,
