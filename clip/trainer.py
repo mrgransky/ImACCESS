@@ -38,6 +38,7 @@ def checkpoint_best_model(
 	final_img2txt_metrics = img2txt_metrics
 	final_txt2img_metrics = txt2img_metrics
 	model_improved = False
+	
 	# Create comprehensive checkpoint dictionary
 	checkpoint = {
 		"epoch": epoch,
@@ -46,12 +47,15 @@ def checkpoint_best_model(
 		"scheduler_state_dict": scheduler.state_dict(),
 		"best_val_loss": best_val_loss,
 	}
+	
 	# Add phase information if available (for progressive training)
 	if current_phase is not None:
 		checkpoint["phase"] = current_phase
+		
 	# --- Complex Validation Logic ---
 	# Get best score from early stopping (more robust)
 	current_best_from_stopper = early_stopping.get_best_score()
+	
 	# First check: Is this potentially a new best model?
 	if current_best_from_stopper is not None and current_val_loss <= current_best_from_stopper:
 		# Second check: Does it meet the improvement threshold?
@@ -62,10 +66,16 @@ def checkpoint_best_model(
 				best_val_loss = current_val_loss
 				model_improved = True
 	# Simple fallback check (in case early stopping is not properly configured)
-	elif current_val_loss < best_val_loss - early_stopping.min_delta:
+	elif best_val_loss is not None and current_val_loss < best_val_loss - early_stopping.min_delta:
 		print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
 		best_val_loss = current_val_loss
 		model_improved = True
+	# Handle the case where best_val_loss is None (first epoch)
+	elif best_val_loss is None:
+		print(f"Initial best model (loss {current_val_loss:.5f})")
+		best_val_loss = current_val_loss
+		model_improved = True
+		
 	# Save the model if it improved
 	if model_improved:
 		# Update the best validation loss in the checkpoint
@@ -1469,8 +1479,8 @@ def progressive_unfreeze_finetune(
 			checkpoint_path=best_model_path,
 			epoch=epoch,
 			current_phase=current_phase,
-			img2txt_metrics=img2txt_metrics,
-			txt2img_metrics=txt2img_metrics
+			img2txt_metrics=img2txt_metrics_per_epoch,
+			txt2img_metrics=txt2img_metrics_per_epoch,
 		)
 
 		# --- Early Stopping Check ---
