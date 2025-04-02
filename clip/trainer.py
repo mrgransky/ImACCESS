@@ -1357,7 +1357,8 @@ def progressive_unfreeze_finetune(
 	):
 
 	#################
-	pretrained_img2txt_dict, pretrained_txt2img_dict = pretrain(
+	# Pretrain
+	pretrained_img2txt_dict[model_arch], pretrained_txt2img_dict[model_arch] = pretrain(
 		model=model,
 		validation_loader=validation_loader,
 		results_dir=results_dir,
@@ -1766,13 +1767,16 @@ def progressive_unfreeze_finetune(
 		text_to_image_metrics=final_txt2img_metrics,
 		fname=plot_paths["retrieval_best"],
 	)
-
+	finetuned_img2txt_dict = {}
+	finetuned_txt2img_dict = {}
+	finetuned_img2txt_dict[model_arch] = final_img2txt_metrics
+	finetuned_txt2img_dict[model_arch] = final_txt2img_metrics
 	plot_comparison_metrics(
 		dataset_name=dataset_name,
 		pretrained_img2txt_dict=pretrained_img2txt_dict,
 		pretrained_txt2img_dict=pretrained_txt2img_dict,
-		finetuned_img2txt_dict=final_img2txt_metrics,
-		finetuned_txt2img_dict=final_txt2img_metrics,
+		finetuned_img2txt_dict=finetuned_img2txt_dict,
+		finetuned_txt2img_dict=finetuned_txt2img_dict,
 		model_name=model_arch,
 		topK_values=topk_values,
 		results_dir=results_dir,

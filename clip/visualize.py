@@ -32,7 +32,10 @@ def plot_comparison_metrics(
 			# Select the appropriate dictionaries
 			pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
 			finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
-			
+			print(f"mode: {mode}")
+			print(f"pretrained_dict: {pretrained_dict}")
+			print(f"finetuned_dict: {finetuned_dict}")
+			print()
 			for j, metric in enumerate(metrics):
 					ax = axes[i, j]
 					
