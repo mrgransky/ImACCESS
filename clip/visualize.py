@@ -77,6 +77,9 @@ def plot_comparison_metrics(
 							finetuned_val = values[k_idx]
 							improvement = ((finetuned_val - pretrained_val) / pretrained_val) * 100
 							
+							# Set color based on improvement value
+							text_color = 'darkgreen' if improvement >= 0 else 'red'
+							
 							# Place annotations to the right with slight upward offset
 							ax.annotate(
 								f"{'+' if improvement >= 0 else ''}{improvement:.1f}%",
@@ -85,6 +88,7 @@ def plot_comparison_metrics(
 								textcoords='offset points',
 								fontsize=8,
 								fontweight='bold',
+								color=text_color,  # Apply the color
 								bbox=dict(
 									facecolor='white',
 									edgecolor='none',
