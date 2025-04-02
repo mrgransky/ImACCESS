@@ -1358,6 +1358,8 @@ def progressive_unfreeze_finetune(
 
 	#################
 	# Pretrain
+	pretrained_img2txt_dict = {}
+	pretrained_txt2img_dict = {}
 	pretrained_img2txt_dict[model_arch], pretrained_txt2img_dict[model_arch] = pretrain(
 		model=model,
 		validation_loader=validation_loader,
