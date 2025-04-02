@@ -17,10 +17,10 @@ def plot_comparison_metrics(
 	
 	# Create consistent colors for different models
 	model_colors = {
-		'ViT-B/32': 'red',
-		'ViT-B/16': 'blue',
-		'ViT-L/14': 'green',
-		'ViT-L/14@336px': 'purple'
+		'ViT-B32': 'red',
+		'ViT-B16': 'blue',
+		'ViT-L14': 'green',
+		'ViT-L14336px': 'purple'
 	}
 	
 	# Create figure with 2x3 subplots
@@ -49,7 +49,7 @@ def plot_comparison_metrics(
 									k_values,
 									values,
 									label=f"Pre-trained",
-									color=model_colors[model_name],
+									# color=model_colors[model_name],
 									marker='o',
 									linestyle='--',
 									linewidth=2,
