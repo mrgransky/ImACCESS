@@ -20,7 +20,7 @@ def plot_comparison_metrics(
 	
 	# Create figure with 2x3 subplots
 	fig, axes = plt.subplots(2, 3, figsize=figure_size, constrained_layout=True)
-	fig.suptitle(f"Performance Comparison: CLIP Pre-trained {model_name} vs. {finetune_strategy} Fine-tuned", fontsize=16, fontweight='bold')
+	fig.suptitle(f"Performance Comparison: CLIP Pre-trained {model_name} vs. {finetune_strategy.replace('_', ' ').capitalize()}", fontsize=12, fontweight='bold')
 	
 	# Plot data for each mode and metric
 	for i, mode in enumerate(modes):
@@ -77,22 +77,11 @@ def plot_comparison_metrics(
 							finetuned_val = values[k_idx]
 							improvement = ((finetuned_val - pretrained_val) / pretrained_val) * 100
 							
-							# Determine annotation position based on K value and metric trend
-							if k == 1:
-								x_offset = -5
-								y_offset = 10 if finetuned_val > 0.5 else -15
-							elif k == 10:
-								x_offset = 0
-								y_offset = -15 if finetuned_val > 0.5 else 10
-							else:  # k == 20
-								x_offset = 5
-								y_offset = 10 if finetuned_val > 0.5 else -15
-							
-							# Add arrow for better visibility
+							# Place annotations to the right with slight upward offset
 							ax.annotate(
 								f"{'+' if improvement >= 0 else ''}{improvement:.1f}%",
 								xy=(k, finetuned_val),
-								xytext=(x_offset, y_offset),
+								xytext=(5, 3),  # Fixed offset to the right and slightly up
 								textcoords='offset points',
 								fontsize=8,
 								fontweight='bold',
@@ -101,12 +90,7 @@ def plot_comparison_metrics(
 									edgecolor='none',
 									alpha=0.7,
 									pad=0.5
-								),
-								arrowprops=dict(
-									arrowstyle='->',
-									connectionstyle='arc3,rad=0.2',
-									alpha=0.7
-								) if abs(improvement) > 5 else None  # Only show arrow for significant changes
+								)
 							)
 			
 			# Configure axes
