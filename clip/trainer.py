@@ -1,6 +1,6 @@
 from utils import *
 from model import get_lora_clip
-from visualize import plot_loss_accuracy_metrics, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics
+from visualize import plot_loss_accuracy_metrics, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics, plot_comparison_metrics
 
 def evaluate_best_model(
 		model,
@@ -1356,6 +1356,16 @@ def progressive_unfreeze_finetune(
 		unfreeze_percentages: Optional[List[float]] = None, # Allow passing custom percentages
 	):
 
+	#################
+	pretrained_img2txt_dict, pretrained_txt2img_dict = pretrain(
+		model=model,
+		validation_loader=validation_loader,
+		results_dir=results_dir,
+		device=device,
+		topk_values=topk_values,
+	)
+
+
 	early_stopping = EarlyStopping(
 		patience=patience,
 		min_delta=min_delta,
@@ -1756,6 +1766,19 @@ def progressive_unfreeze_finetune(
 		text_to_image_metrics=final_txt2img_metrics,
 		fname=plot_paths["retrieval_best"],
 	)
+
+	plot_comparison_metrics(
+		dataset_name=dataset_name,
+		pretrained_img2txt_dict=pretrained_img2txt_dict,
+		pretrained_txt2img_dict=pretrained_txt2img_dict,
+		finetuned_img2txt_dict=final_img2txt_metrics,
+		finetuned_txt2img_dict=final_txt2img_metrics,
+		model_name=model_arch,
+		topK_values=topk_values,
+		results_dir=results_dir,
+	)
+
+	print("Result plots generated.")
 
 	return in_batch_loss_acc_metrics_all_epochs # Return history for potential further analysis
 
@@ -2560,11 +2583,11 @@ def train(
 	)
 
 def pretrain(
-	model: torch.nn.Module,
-	validation_loader: DataLoader,
-	results_dir: str,
-	device: torch.device,
-	topk_values: List=[1, 3, 5],
+		model: torch.nn.Module,
+		validation_loader: DataLoader,
+		results_dir: str,
+		device: torch.device,
+		topk_values: List=[1, 3, 5],
 	):
 	model_name = model.__class__.__name__
 	model_arch = re.sub(r"[/@]", "_", model.name)

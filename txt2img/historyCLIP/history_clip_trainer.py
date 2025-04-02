@@ -112,7 +112,7 @@ def main():
 		print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
 		print_args_table(args=args, parser=parser)
 		set_seeds(seed=42)
-
+		# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 		print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 		RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"results")
 		os.makedirs(RESULT_DIRECTORY, exist_ok=True)
