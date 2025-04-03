@@ -10,7 +10,7 @@ def plot_comparison_metrics(
 		finetune_strategy: str,  # e.g., 'LoRA'
 		results_dir: str,
 		topK_values: list,
-		figure_size=(13, 5),
+		figure_size=(14, 5),
 		DPI: int=300,
 	):
 	metrics = ["mP", "mAP", "Recall"]
@@ -21,7 +21,7 @@ def plot_comparison_metrics(
 	
 	# Print detailed analysis information to logs
 	print(f"\n{'='*80}")
-	print(f"DETAILED PERFORMANCE ANALYSIS FOR {dataset_name} - {model_name} WITH {finetune_strategy} FINE-TUNING")
+	print(f"DETAILED PERFORMANCE ANALYSIS FOR {dataset_name} - {model_name} WITH {finetune_strategy.capitalize()} FINE-TUNING")
 	print(f"{'='*80}")
 	
 	# Create separate figures for each mode
