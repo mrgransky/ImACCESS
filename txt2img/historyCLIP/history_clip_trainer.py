@@ -350,7 +350,7 @@ def main():
 					model_name=args.model_architecture,
 					finetune_strategy=args.finetune_strategy,
 					topK_values=args.topK_values,
-					fname=comparison_plot_path,
+					# fname=comparison_plot_path,
 				)
 					
 			except Exception as e:
