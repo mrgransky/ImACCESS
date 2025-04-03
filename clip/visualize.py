@@ -22,7 +22,7 @@ def plot_comparison_metrics(
 	# Create figure with 2x3 subplots
 	fig, axes = plt.subplots(2, 3, figsize=figure_size, constrained_layout=True)
 	fig.suptitle(
-		f"Retrieval Performance Comparison\nPre-trained CLIP {model_name} vs. {finetune_strategy} Fine-tuning",
+		f"Retrieval Performance Comparison\nPre-trained CLIP {model_name} vs. {finetune_strategy.capitalize()} Fine-tuning",
 		fontsize=10,
 		fontweight='bold',
 	)
@@ -128,7 +128,6 @@ def plot_comparison_metrics(
 							
 	plt.savefig(fname=fname, dpi=DPI, bbox_inches='tight')
 	plt.close(fig)
-
 
 def plot_all_pretrain_metrics(
 		dataset_name: str,

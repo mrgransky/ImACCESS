@@ -279,7 +279,6 @@ def main():
 				all_txt2img_metrics[model_arch] = txt2img_metrics
 				del model  # Clean up memory
 				torch.cuda.empty_cache()
-			# Pass all metrics to the new visualization function
 			plot_all_pretrain_metrics(
 				dataset_name=validation_loader.name,
 				img2txt_metrics_dict=all_img2txt_metrics,
