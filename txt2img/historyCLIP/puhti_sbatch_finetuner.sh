@@ -58,7 +58,10 @@ EPOCHS=(50 50 150 150 150)
 LORA_RANKS=(4 4 8 8 8)
 LORA_ALPHAS=(16 16 16 16 16)
 LORA_DROPOUTS=(0.0 0.0 0.0 0.0 0.0) # TODO: Lora dropout must be 0.05 [original paper]
+BATCH_SIZES=(64 32 64 64 64)
+PRINT_FREQUENCIES=(250 250 50 50 10)
 SAMPLINGS=("kfold_stratified" "stratified_random")
+MODEL_ARCHITECTURES=("ViT-B/32" "ViT-B/16" "ViT-L/14" "ViT-L/14@336px")
 
 # Set dropout based on strategy
 # Only full and progressive can have nonzero dropouts, lora must have zero dropouts
@@ -85,8 +88,8 @@ python -u history_clip_trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \
 	--epochs "${EPOCHS[$dataset_index]}" \
 	--num_workers "$SLURM_CPUS_PER_TASK" \
-	--print_every 100 \
-	--batch_size 64 \
+	--print_every "${PRINT_FREQUENCIES[$dataset_index]}" \
+	--batch_size "${BATCH_SIZES[$dataset_index]}" \
 	--learning_rate "${INIT_LRS[$dataset_index]}" \
 	--weight_decay "${INIT_WDS[$dataset_index]}" \
 	--mode "finetune" \
@@ -96,7 +99,7 @@ python -u history_clip_trainer.py \
 	--lora_dropout "${LORA_DROPOUTS[$dataset_index]}" \
 	--sampling "${SAMPLINGS[1]}" \
 	--dropout "${DROPOUT}" \
-	--model_architecture "ViT-B/32"
+	--model_architecture "${MODEL_ARCHITECTURES[0]}" # Use ViT-B/32 for all
 
 done_txt="$user finished Slurm job: $(date)"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
