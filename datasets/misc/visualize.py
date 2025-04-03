@@ -26,7 +26,7 @@ def plot_label_distribution_pie_chart(
 	other_count = label_counts[label_counts / total_samples < threshold].sum()
 	main_counts = label_counts[label_counts / total_samples >= threshold]
 	if other_count > 0:
-			main_counts['Other'] = other_count
+		main_counts['Other'] = other_count
 	labels = main_counts.index
 	label_counts = main_counts
 	# Create figure with vertical layout
@@ -102,7 +102,7 @@ def plot_label_distribution_pie_chart(
 	)
 	ax_pie.axis('equal')
 	plt.tight_layout()
-	plt.savefig(fpth, dpi=DPI, bbox_inches='tight')
+	plt.savefig(fname=fpth, dpi=DPI, bbox_inches='tight')
 	plt.close()
 
 	# Optional bar chart for top 10 categories
@@ -118,7 +118,11 @@ def plot_label_distribution_pie_chart(
 	plt.ylabel('Sample Count (Log Scale)')
 	plt.title(f"Top {top_n} Label Distribution for {dataset_name} Dataset")
 	plt.tight_layout()
-	plt.savefig(fpth.replace('.png', '_bar.png'), dpi=DPI, bbox_inches='tight')
+	plt.savefig(
+		fname=fpth.replace('.png', '_bar.png'), 
+		dpi=DPI, 
+		bbox_inches='tight',
+	)
 	plt.close()
 
 def plot_grouped_bar_chart(

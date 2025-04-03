@@ -85,7 +85,7 @@ plot_label_distribution(
 
 plot_label_distribution_pie_chart(
 	df=merged_df,
-	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_all_labels_distribution_pie_chart.png'),
+	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_all_labels_distribution_pie_chart_{merged_df.shape[0]}_samples.png'),
 	figure_size=(7, 11),
 	DPI=DPI,
 )

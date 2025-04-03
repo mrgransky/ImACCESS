@@ -1334,7 +1334,6 @@ def progressive_unfreeze_finetune(
 		train_loader: DataLoader,
 		validation_loader: DataLoader,
 		num_epochs: int,
-		nw: int,
 		print_every: int,
 		initial_learning_rate: float,
 		initial_weight_decay: float,
@@ -1378,7 +1377,7 @@ def progressive_unfreeze_finetune(
 	mode = inspect.stack()[0].function
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
-
+	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) | batch_size: {train_loader.batch_size} | {type(device)} {device}".center(160, "-"))
 	# Find dropout value
 	dropout_val = 0.0
 	for name, module in model.named_modules():
@@ -1773,7 +1772,6 @@ def lora_finetune(
 		train_loader: DataLoader,
 		validation_loader: DataLoader,
 		num_epochs: int,
-		nw: int,
 		print_every: int,
 		learning_rate: float,
 		weight_decay: float,
@@ -1827,7 +1825,7 @@ def lora_finetune(
 	mode = inspect.stack()[0].function
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
-	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) | {type(device)} {device} [x{nw} cores]".center(160, "-"))
+	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) | batch_size: {train_loader.batch_size} | {type(device)} {device}".center(160, "-"))
 
 	for name, param in model.named_parameters():
 		print(f"{name} => {param.shape} {param.requires_grad}")
@@ -2060,7 +2058,6 @@ def full_finetune(
 		train_loader: DataLoader,
 		validation_loader: DataLoader,
 		num_epochs: int,
-		nw: int,
 		print_every: int,
 		learning_rate: float,
 		weight_decay: float,
@@ -2093,7 +2090,7 @@ def full_finetune(
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
 
-	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) | {type(device)} {device} [x{nw} cores]".center(160, "-"))
+	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) | batch_size: {train_loader.batch_size} | {type(device)} {device}".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
 
@@ -2361,7 +2358,6 @@ def train(
 		train_loader:DataLoader,
 		validation_loader:DataLoader,
 		num_epochs:int,
-		nw:int,
 		print_every:int,
 		learning_rate:float,
 		weight_decay:float,
@@ -2393,7 +2389,7 @@ def train(
 	mode = inspect.stack()[0].function
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
-	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) | {type(device)} {device} [x{nw} cores]".center(160, "-"))
+	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) | batch_size: {train_loader.batch_size} | {type(device)} {device}".center(160, "-"))
 	if torch.cuda.is_available():
 		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
 
