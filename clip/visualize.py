@@ -123,10 +123,9 @@ def plot_comparison_metrics(
 								)
 							)
 			
-			# Configure axes
 			ax.set_xlabel('K', fontsize=11)
-			ax.set_ylabel(f'{metric}@K', fontsize=11)
-			ax.set_title(f'{metric}@K', fontsize=14)
+			# ax.set_ylabel(f'{metric}@K', fontsize=11)
+			ax.set_title(f'{metric}@K', fontsize=14, fontweight='bold')
 			ax.grid(True, linestyle='--', alpha=0.9)
 			ax.set_xticks(topK_values)
 			
