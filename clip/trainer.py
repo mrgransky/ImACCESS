@@ -1356,8 +1356,6 @@ def progressive_unfreeze_finetune(
 		unfreeze_percentages: Optional[List[float]] = None, # Allow passing custom percentages
 	):
 
-
-
 	early_stopping = EarlyStopping(
 		patience=patience,
 		min_delta=min_delta,
@@ -1392,7 +1390,6 @@ def progressive_unfreeze_finetune(
 		device=device,
 		topk_values=topk_values,
 	)
-
 
 	# Find dropout value
 	dropout_val = 0.0
@@ -1457,7 +1454,6 @@ def progressive_unfreeze_finetune(
 	criterion = torch.nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(device=device) # For mixed precision
 
-	# --- Training State ---
 	current_phase = 0
 	epochs_in_current_phase = 0
 	training_losses = [] # History of average training loss per epoch
@@ -1473,6 +1469,7 @@ def progressive_unfreeze_finetune(
 
 	# --- Main Training Loop ---
 	train_start_time = time.time()
+
 	for epoch in range(num_epochs):
 		epoch_start_time = time.time()
 		print(f"\n=== Epoch {epoch+1}/{num_epochs} Phase {current_phase} current LR: {last_lr:.3e} current WD: {last_wd:.3e}) ===")
