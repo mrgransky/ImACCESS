@@ -119,7 +119,8 @@ def plot_comparison_metrics(
 								min_val = min(all_values)
 								max_val = max(all_values)
 								padding = 0.1 * (max_val - min_val) if max_val > min_val else 0.1
-								ax.set_ylim(bottom=max(0, min_val - padding), top=min(1.0, max_val + padding))
+								# ax.set_ylim(bottom=max(0, min_val - padding), top=min(1.0, max_val + padding))
+								ax.set_ylim(bottom=-0.01, top=1.01)
 						
 						# Add legend to first subplot only
 						if j == 0:
