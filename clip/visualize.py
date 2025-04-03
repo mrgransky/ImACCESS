@@ -32,10 +32,11 @@ def plot_comparison_metrics(
 		# Set a descriptive title for the figure
 		file_path = os.path.join(results_dir, fname)
 		fig.suptitle(
-			f"{mode} Retrieval Performance\n"
-			f"Pre-trained CLIP {model_name} vs. {finetune_strategy} Fine-tuning",
+			f'Retrieval Performance $\\it{{{mode}}}$\n'
+			f'Pre-trained CLIP {model_name} vs. {finetune_strategy.capitalize()} Fine-tuning',
 			fontsize=12,
 			fontweight='bold',
+			pad=5,
 		)
 		
 		# Select the appropriate dictionaries
