@@ -9,7 +9,7 @@ def plot_comparison_metrics(
 		model_name: str,  # e.g., 'ViT-B/32'
 		finetune_strategy: str,  # e.g., 'LoRA'
 		topK_values: list,
-		figure_size=(11, 5),
+		figure_size=(13, 5),
 		DPI: int=300,
 	):
 	metrics = ["mP", "mAP", "Recall"]
@@ -30,10 +30,10 @@ def plot_comparison_metrics(
 		fname = f"{dataset_name}_{finetune_strategy}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '_', model_name)}_retrieval_performance_comparison_{mode.replace('-', '_')}.png"
 		# Set a descriptive title for the figure
 		fig.suptitle(
-				f"{mode} Retrieval Performance\n"
-				f"Pre-trained CLIP {model_name} vs. {finetune_strategy} Fine-tuning",
-				fontsize=12,
-				fontweight='bold',
+			f"{mode} Retrieval Performance\n"
+			f"Pre-trained CLIP {model_name} vs. {finetune_strategy} Fine-tuning",
+			fontsize=12,
+			fontweight='bold',
 		)
 		
 		# Select the appropriate dictionaries
@@ -123,7 +123,7 @@ def plot_comparison_metrics(
 			
 			# Add legend to first subplot only
 			if j == 0:
-					ax.legend(fontsize=10, loc='lower right')
+					ax.legend(fontsize=9, loc='best')
 					
 			# Print detailed metrics to logs
 			if improvement_percentages:
