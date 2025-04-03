@@ -66,7 +66,7 @@ def plot_comparison_metrics(
 								pretrained_line, = ax.plot(
 										k_values,
 										values,
-										label=f"Pre-trained",
+										label=f"Pre-trained CLIP {model_name}",
 										color=model_colors[model_name_idx],
 										marker='o',
 										linestyle='--',
@@ -102,10 +102,10 @@ def plot_comparison_metrics(
 														improvement_percentages.append((k, improvement, pretrained_val, finetuned_val))
 						
 						# Configure axes
-						ax.set_xlabel('K', fontsize=12)
-						ax.set_ylabel(f'{metric}@K', fontsize=12)
+						ax.set_xlabel('K', fontsize=11)
+						ax.set_ylabel(f'{metric}@K', fontsize=11)
 						ax.set_title(f'{metric}@K', fontsize=14)
-						ax.grid(True, linestyle='--', alpha=0.7)
+						ax.grid(True, linestyle='--', alpha=0.9)
 						ax.set_xticks(topK_values)
 						
 						# Set y-axis limits based on data
