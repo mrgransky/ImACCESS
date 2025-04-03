@@ -10,6 +10,7 @@ def plot_comparison_metrics(
 		finetune_strategy: str,  # e.g., 'LoRA'
 		topK_values: list,
 		fname_prefix: str="Comparison_Metrics",
+		fname: str="comparison.png",
 		figure_size=(12, 5),
 		DPI: int=300,
 	):
@@ -299,7 +300,11 @@ def plot_comparison_metrics(
 						ax.legend(fontsize=10)
 		
 		# Save the improvement summary figure
-		plt.savefig(fname=f"{fname_prefix}_Relative_Improvements.png", dpi=DPI, bbox_inches='tight')
+		plt.savefig(
+			# fname=f"{fname_prefix}_Relative_Improvements.png", 
+			dpi=DPI, 
+			bbox_inches='tight',
+		)
 		plt.close(fig)
 
 def plot_comparison_metrics_original(
