@@ -36,7 +36,6 @@ def plot_comparison_metrics(
 			f'Pre-trained CLIP {model_name} vs. {finetune_strategy.capitalize()} Fine-tuning',
 			fontsize=12,
 			fontweight='bold',
-			pad=5,
 		)
 		
 		# Select the appropriate dictionaries
@@ -126,7 +125,7 @@ def plot_comparison_metrics(
 			
 			ax.set_xlabel('K', fontsize=11)
 			# ax.set_ylabel(f'{metric}@K', fontsize=11)
-			ax.set_title(f'{metric}@K', fontsize=14, fontweight='bold')
+			ax.set_title(f'{metric}@K', fontsize=10, fontweight='bold')
 			ax.grid(True, linestyle='--', alpha=0.9)
 			ax.set_xticks(topK_values)
 			
