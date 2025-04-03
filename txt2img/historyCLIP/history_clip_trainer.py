@@ -7,8 +7,8 @@ sys.path.insert(0, CLIP_DIR)
 
 from utils import *
 from historical_dataset_loader import get_dataloaders
-from trainer import train, pretrain, full_finetune, lora_finetune, progressive_unfreeze_finetune
-from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics
+from trainer import train, pretrain, full_finetune, lora_finetune, progressive_unfreeze_finetune, evaluate_best_model
+from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics, plot_comparison_metrics
 
 # $ python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=10))))"
 
@@ -66,7 +66,7 @@ def main():
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--print_every', type=int, default=100, help='Print loss')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
-	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain'], default='pretrain', help='Choose mode (train/finetune)')
+	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain', 'compare'], default='pretrain', help='Choose mode (train/finetune/pretrain/compare)')
 	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora', 'progressive'], default='full', help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
 	parser.add_argument('--lora_rank', type=int, default=8, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', type=float, default=16.0, help='LoRA alpha (used if finetune_strategy=lora)')
@@ -79,7 +79,8 @@ def main():
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 	parser.add_argument('--log_dir', type=str, default=None, help='Directory to store log files (if not specified, logs will go to stdout)')
-	
+	parser.add_argument('--checkpoint_path', '-cp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
+
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
 
@@ -286,8 +287,81 @@ def main():
 				topK_values=args.topK_values,
 				results_dir=RESULT_DIRECTORY,
 			)
+		elif args.mode == "compare":
+			if args.checkpoint_path is None:
+				raise ValueError("Please provide a checkpoint path for comparison!")
+
+			if not os.path.exists(args.checkpoint_path):
+				raise ValueError(f"Checkpoint path {args.checkpoint_path} does not exist!")
+
+			if args.finetune_strategy not in args.checkpoint_path:
+				raise ValueError(f"Checkpoint path {args.checkpoint_path} does not match the assigned finetune strategy: « {args.finetune_strategy} »!")
+
+			# Step 1: Compute pretrained model metrics
+			print(f">> Computing metrics for pretrained {args.model_architecture}...")
+			pretrained_img2txt, pretrained_txt2img = pretrain(
+				model=model,
+				validation_loader=validation_loader,
+				results_dir=RESULT_DIRECTORY,
+				device=args.device,
+				topk_values=args.topK_values,
+			)
+			pretrained_img2txt_dict = {args.model_architecture: pretrained_img2txt}
+			pretrained_txt2img_dict = {args.model_architecture: pretrained_txt2img}
+			print(f">> Pretrained model metrics computed successfully.")
+
+			# Step 2: Load and evaluate finetuned model
+			print(f">> Loading finetuned model from {args.checkpoint_path}...")
+						
+			try:
+				# Load the model
+				checkpoint = torch.load(args.checkpoint_path, map_location=args.device)
+				if 'model_state_dict' in checkpoint:
+					model.load_state_dict(checkpoint['model_state_dict'])
+				else:
+					model.load_state_dict(checkpoint)
+				
+				# Evaluate finetuned model
+				criterion = torch.nn.CrossEntropyLoss()
+				evaluation_results = evaluate_best_model(
+					model=model,
+					validation_loader=validation_loader,
+					criterion=criterion,
+					early_stopping=None,
+					checkpoint_path=args.checkpoint_path,
+					device=args.device,
+					topk_values=args.topK_values,
+					verbose=True
+				)
+				
+				finetuned_img2txt_dict = {args.model_architecture: evaluation_results["img2txt_metrics"]}
+				finetuned_txt2img_dict = {args.model_architecture: evaluation_results["txt2img_metrics"]}
+
+				comparison_plot_path = os.path.join(
+					RESULT_DIRECTORY,
+					f"{validation_loader.name}_{args.finetune_strategy}_vs_pretrained_{re.sub(r'[/@]', '_', args.model_architecture)}_comparison.png"
+				)
+				print(f"Generating comparison plot at: {comparison_plot_path}")
+				plot_comparison_metrics(
+					dataset_name=validation_loader.name,
+					pretrained_img2txt_dict=pretrained_img2txt_dict,
+					pretrained_txt2img_dict=pretrained_txt2img_dict,
+					finetuned_img2txt_dict=finetuned_img2txt_dict,
+					finetuned_txt2img_dict=finetuned_txt2img_dict,
+					model_name=args.model_architecture,
+					finetune_strategy=args.finetune_strategy,
+					topK_values=args.topK_values,
+					fname=comparison_plot_path,
+				)
+					
+			except Exception as e:
+				print(f"Error loading or evaluating finetuned model: {e}")
+				traceback.print_exc()
+
 		else:
-			raise ValueError("Invalid mode. Choose between 'pretrain', 'train', 'finetune'!")
+			raise ValueError("Invalid mode. Choose between: 'pretrain', 'train', 'finetune', 'compare'!")
+
+
 
 		print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))
 	finally:

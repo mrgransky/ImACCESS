@@ -9,9 +9,9 @@ def plot_comparison_metrics(
 		model_name: str,  # e.g., 'ViT-B/32'
 		finetune_strategy: str,  # e.g., 'LoRA'
 		topK_values: list,
-		results_dir: str,
+		fname: str="Comparison_Metrics.png",
 		figure_size=(14, 8),
-		DPI: int=300
+		DPI: int=300,
 	):
 	metrics = ["mP", "mAP", "Recall"]
 	modes = ["Image-to-Text", "Text-to-Image"]
@@ -121,12 +121,7 @@ def plot_comparison_metrics(
 			if i == 0 and j == 0:
 				ax.legend(fontsize=10)
 							
-	# Save the figure
-	plt.savefig(
-		os.path.join(results_dir, f"{dataset_name}_{finetune_strategy}_vs_pretrained_{model_name.replace(r'[/@]', '-')}_comparison.png"), 
-		dpi=DPI, 
-		bbox_inches='tight'
-	)
+	plt.savefig(fname=fname, dpi=DPI, bbox_inches='tight')
 	plt.close(fig)
 
 

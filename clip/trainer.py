@@ -1781,7 +1781,7 @@ def progressive_unfreeze_finetune(
 		model_name=model_arch,
 		finetune_strategy=mode_name,
 		topK_values=topk_values,
-		results_dir=results_dir,
+		fname=os.path.join(results_dir, f"{file_base_name}_comparison_metrics.png"),
 	)
 
 	print("Result plots generated.")
