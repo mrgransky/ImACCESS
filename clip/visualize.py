@@ -28,11 +28,11 @@ def plot_comparison_metrics(
 	for i, mode in enumerate(modes):
 		# Create a new figure for each mode
 		fig, axes = plt.subplots(1, 3, figsize=figure_size, constrained_layout=True)
-		fname = f"{dataset_name}_{finetune_strategy}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '_', model_name)}_retrieval_performance_comparison_{mode.replace('-', '_')}.png"
+		fname = f"{dataset_name}_{finetune_strategy}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_retrieval_performance_comparison_{mode.replace('-', '_')}.png"
 		# Set a descriptive title for the figure
 		file_path = os.path.join(results_dir, fname)
 		fig.suptitle(
-			f'Retrieval Performance $\\it{{{mode}}}$\n'
+			f'$\\it{{{mode}}}$ Retrieval Performance Comparison\n'
 			f'Pre-trained CLIP {model_name} vs. {finetune_strategy.capitalize()} Fine-tuning',
 			fontsize=12,
 			fontweight='bold',

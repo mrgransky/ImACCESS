@@ -296,6 +296,9 @@ def main():
 			if args.finetune_strategy not in args.checkpoint_path:
 				raise ValueError(f"Checkpoint path {args.checkpoint_path} does not match the assigned finetune strategy: « {args.finetune_strategy} »!")
 
+			if re.sub(r'[/@]', '-', args.model_architecture) not in args.checkpoint_path:
+				raise ValueError(f"Checkpoint path {args.checkpoint_path} does not match the assigned model architecture: « {args.model_architecture} »!")
+
 			# Step 1: Compute pretrained model metrics
 			print(f">> Computing metrics for pretrained {args.model_architecture}...")
 			pretrained_img2txt, pretrained_txt2img = pretrain(

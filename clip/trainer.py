@@ -1376,7 +1376,7 @@ def progressive_unfreeze_finetune(
 		dataset_name = validation_loader.dataset.dataset_name
 
 	mode_name = inspect.stack()[0].function
-	model_arch = re.sub(r'[/@]', '', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_class_name = model.__class__.__name__
 
 	# Find dropout value
@@ -1696,7 +1696,7 @@ def progressive_unfreeze_finetune(
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{model_class_name}_"
-		f"{re.sub('/', '', model_arch)}_"
+		f"{re.sub(r'[/@]', '-', model_arch)}_"
 		f"{mode_name}_"
 		f"last_phase_{current_phase}_"
 		f"ep_{len(training_losses)}_"
@@ -1837,7 +1837,7 @@ def lora_finetune(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
+		f"{dataset_name}_{mode}_{model_name}_{re.sub(r'[/@]', '-', model_arch)}_"
 		f"rank_{lora_rank}_alpha_{lora_alpha}_dropout_{lora_dropout}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
 	)
 
@@ -1986,7 +1986,7 @@ def lora_finetune(
 	print("\nGenerating result plots...")
 
 	file_base_name = (
-		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
+		f"{dataset_name}_{mode}_{re.sub(r'[/@]', '-', model_arch)}_"
 		f"lora_alpha_{lora_alpha}_lora_dropout_{lora_dropout}_lora_rank_{lora_rank}_"
 		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}"
@@ -2107,8 +2107,8 @@ def full_finetune(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
-		f"dropout_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
+		f"{dataset_name}_{mode}_{model_name}_{re.sub(r'[/@]', '-', model_arch)}_"
+		f"do_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_best_model.pth"
 	)
 
 	optimizer = AdamW(
@@ -2279,7 +2279,7 @@ def full_finetune(
 	print("\nGenerating result plots...")
 
 	file_base_name = (
-		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
+		f"{dataset_name}_{mode}_{re.sub(r'[/@]', '-', model_arch)}_"
 		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}"
 	)
@@ -2390,7 +2390,7 @@ def train(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{dataset_name}_{mode}_{model_name}_{re.sub('/', '', model_arch)}_"
+		f"{dataset_name}_{mode}_{model_name}_{re.sub(r'[/@]', '-', model_arch)}_"
 		f"dropout_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
 	)
 
@@ -2511,7 +2511,7 @@ def train(
 
 	print(f"Elapsed_t: {time.time()-train_start_time:.1f} sec".center(170, "-"))
 	file_base_name = (
-		f"{dataset_name}_{mode}_{re.sub('/', '', model_arch)}_"
+		f"{dataset_name}_{mode}_{re.sub(r'[/@]', '-', model_arch)}_"
 		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}"
 	)
