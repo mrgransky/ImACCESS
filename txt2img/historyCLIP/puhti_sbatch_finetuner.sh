@@ -8,7 +8,6 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=64G
-#SBATCH --mem-per-gpu=64G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
@@ -17,7 +16,6 @@
 set -e
 set -u
 set -o pipefail
-
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
 txt="$user began Slurm job: `date`"
@@ -56,16 +54,8 @@ remainder=$((SLURM_ARRAY_TASK_ID % total_datasets_x_architectures))
 dataset_index=$((remainder / NUM_ARCHITECTURES))
 architecture_index=$((remainder % NUM_ARCHITECTURES))
 
-# Set a higher memory requirement for larger models
-if [[ $SLURM_JOB_ID != "" && "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-		# Request more memory for ViT-L models
-		export SLURM_MEM_PER_NODE=96G
-		
-		# For 336px models, request even more memory
-		if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"336px"* ]]; then
-				export SLURM_MEM_PER_NODE=128G
-		fi
-fi
+# Note: We can't change SLURM memory allocation dynamically after job submission
+# The memory optimization is handled through reduced batch sizes for large models
 
 # Validate indices
 if [ $dataset_index -ge ${#DATASETS[@]} ] || 
