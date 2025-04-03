@@ -1375,9 +1375,9 @@ def progressive_unfreeze_finetune(
 	except:
 		dataset_name = validation_loader.dataset.dataset_name
 
-	mode_name = inspect.stack()[0].function
+	mode = inspect.stack()[0].function
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
-	model_class_name = model.__class__.__name__
+	model_name = model.__class__.__name__
 
 	# Find dropout value
 	dropout_val = 0.0
@@ -1388,8 +1388,14 @@ def progressive_unfreeze_finetune(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{dataset_name}_{mode_name}_{model_class_name}_{model_arch}_"
-		f"dropout_{dropout_val}_init_lr_{initial_learning_rate:.1e}_init_wd_{initial_weight_decay:.1e}_"
+		f"{dataset_name}_"
+		f"{mode}_"
+		f"{model_name}_"
+		f"{model_arch}_"
+		f"do_{dropout_val}_"
+		f"init_lr_{learning_rate:.1e}_"
+		f"init_wd_{weight_decay:.1e}_"
+		f"bs_{train_loader.batch_size}_"
 		f"best_model.pth"
 	)
 
@@ -1400,7 +1406,7 @@ def progressive_unfreeze_finetune(
 			dropout_values.append((name, module.p))
 
 	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
-	print(f"\nNon-zero dropout detected in base {model.__class__.__name__} {model.name} during {mode_name} fine-tuning:")
+	print(f"\nNon-zero dropout detected in base {model.__class__.__name__} {model.name} during {mode} fine-tuning:")
 	print(non_zero_dropouts)
 	print()
 
@@ -1614,7 +1620,7 @@ def progressive_unfreeze_finetune(
 		current_val_loss = in_batch_loss_acc_metrics_per_epoch.get("val_loss", float('inf')) # Handle missing key safely
 		print(
 			f'@ Epoch {epoch + 1}:\n'
-			f'\t[LOSS] {mode_name}'
+			f'\t[LOSS] {mode}'
 			f'(Training): {avg_epoch_train_loss} '
 			f'Validation(in-batch): {in_batch_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))} '
 			f'Validation(full): {full_val_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
@@ -1695,9 +1701,9 @@ def progressive_unfreeze_finetune(
 
 	file_base_name = (
 		f"{dataset_name}_"
-		f"{model_class_name}_"
-		f"{re.sub(r'[/@]', '-', model_arch)}_"
-		f"{mode_name}_"
+		f"{model_name}_"
+		f"{model_arch}_"
+		f"{mode}_"
 		f"last_phase_{current_phase}_"
 		f"ep_{len(training_losses)}_"
 		f"bs_{train_loader.batch_size}_"
@@ -1809,7 +1815,6 @@ def lora_finetune(
 		restore_best_weights=True,
 	)
 
-
 	# Dataset and directory setup (same as finetune())
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
@@ -1817,7 +1822,7 @@ def lora_finetune(
 		dataset_name = validation_loader.dataset.dataset_name
 	os.makedirs(results_dir, exist_ok=True)
 	mode = inspect.stack()[0].function
-	model_arch = model.name
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
 	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) | {type(device)} {device} [x{nw} cores]".center(160, "-"))
 
@@ -1837,8 +1842,18 @@ def lora_finetune(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{dataset_name}_{mode}_{model_name}_{re.sub(r'[/@]', '-', model_arch)}_"
-		f"rank_{lora_rank}_alpha_{lora_alpha}_dropout_{lora_dropout}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
+		f"{dataset_name}_"
+		f"{mode}_"
+		f"{model_name}_"
+		f"{model_arch}_"
+		f"do_{dropout_val}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"lora_rank_{lora_rank}_"
+		f"lora_alpha_{lora_alpha}_"
+		f"lora_dropout_{lora_dropout}_"
+		f"bs_{train_loader.batch_size}_"
+		f"best_model.pth"
 	)
 
 	optimizer = AdamW(
@@ -1986,7 +2001,7 @@ def lora_finetune(
 	print("\nGenerating result plots...")
 
 	file_base_name = (
-		f"{dataset_name}_{mode}_{re.sub(r'[/@]', '-', model_arch)}_"
+		f"{dataset_name}_{mode}_{model_arch}_"
 		f"lora_alpha_{lora_alpha}_lora_dropout_{lora_dropout}_lora_rank_{lora_rank}_"
 		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}"
@@ -2072,7 +2087,7 @@ def full_finetune(
 		dataset_name = validation_loader.dataset.dataset_name
 	os.makedirs(results_dir, exist_ok=True)
 	mode = inspect.stack()[0].function
-	model_arch = model.name
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
 
 	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) | {type(device)} {device} [x{nw} cores]".center(160, "-"))
@@ -2107,8 +2122,15 @@ def full_finetune(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{dataset_name}_{mode}_{model_name}_{re.sub(r'[/@]', '-', model_arch)}_"
-		f"do_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_best_model.pth"
+		f"{dataset_name}_"
+		f"{mode}_"
+		f"{model_name}_"
+		f"{model_arch}_"
+		f"do_{dropout_val}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"bs_{train_loader.batch_size}_"
+		f"best_model.pth"
 	)
 
 	optimizer = AdamW(
@@ -2279,7 +2301,7 @@ def full_finetune(
 	print("\nGenerating result plots...")
 
 	file_base_name = (
-		f"{dataset_name}_{mode}_{re.sub(r'[/@]', '-', model_arch)}_"
+		f"{dataset_name}_{mode}_{model_arch}_"
 		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}"
 	)
@@ -2366,7 +2388,7 @@ def train(
 		dataset_name = validation_loader.dataset.dataset_name #
 	os.makedirs(results_dir, exist_ok=True)
 	mode = inspect.stack()[0].function
-	model_arch = model.name
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
 	print(f"{mode} {model_name} {model_arch} « {dataset_name} » {num_epochs} Epoch(s) | {type(device)} {device} [x{nw} cores]".center(160, "-"))
 	if torch.cuda.is_available():
@@ -2390,8 +2412,15 @@ def train(
 
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{dataset_name}_{mode}_{model_name}_{re.sub(r'[/@]', '-', model_arch)}_"
-		f"dropout_{dropout_val}_lr_{learning_rate:.1e}_wd_{weight_decay:.1e}.pth"
+		f"{dataset_name}_"
+		f"{mode}_"
+		f"{model_name}_"
+		f"{model_arch}_"
+		f"do_{dropout_val}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"bs_{train_loader.batch_size}_"
+		f"best_model.pth"
 	)
 
 	optimizer = AdamW(
@@ -2511,7 +2540,7 @@ def train(
 
 	print(f"Elapsed_t: {time.time()-train_start_time:.1f} sec".center(170, "-"))
 	file_base_name = (
-		f"{dataset_name}_{mode}_{re.sub(r'[/@]', '-', model_arch)}_"
+		f"{dataset_name}_{mode}_{model_arch}_"
 		f"ep_{len(training_losses)}_lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_bs_{train_loader.batch_size}_do_{dropout_val}"
 	)
