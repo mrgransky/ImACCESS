@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=project_2009043
-#SBATCH --job-name=finetune_historyCLIP_dropout_strategy_x_dataset_x
+#SBATCH --job-name=finetune_historyCLIP_finetune_strategy_x_dataset_x_model_architecture_x_with_dropout
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
