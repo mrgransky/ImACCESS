@@ -531,7 +531,7 @@ def evaluate_retrieval_performance(
 	dataset_name = validation_loader.name
 	model_name = model.__class__.__name__
 	model_arch = model.name
-	print(f">> Evaluating {model_name} - {model_arch} Retrieval Performance [{dataset_name}]: {topK_values}...")
+	print(f">> Evaluating {model_name} {model_arch} Retrieval Performance [{dataset_name}]: {topK_values}...")
 	model.eval()  # dropout is disabled, ensuring deterministic outputs
 	image_embeddings = []
 	image_labels = []
@@ -694,7 +694,7 @@ def get_loss_accuracy_metrics(
 	dataset_name = validation_loader.name
 	model_name = model.__class__.__name__
 	model_arch = model.name
-	print(f">> Evaluating {model_name} - {model_arch} [Full Loss & Accuracy] [{dataset_name}]: {topK_values}...")
+	print(f">> Evaluating {model_name} {model_arch} [Full Loss & Accuracy] [{dataset_name}]: {topK_values}...")
 	model.eval()
 	total_loss = 0
 	num_batches = len(validation_loader)
@@ -788,7 +788,7 @@ def get_in_batch_loss_accuracy_metrics(
 	dataset_name = validation_loader.name
 	model_name = model.__class__.__name__
 	model_arch = model.name
-	print(f">> Evaluating {model_name} - {model_arch} [in-batch Loss & Accuracy] [{dataset_name}]: {topK_values}...")
+	print(f">> Evaluating {model_name} {model_arch} [in-batch Loss & Accuracy] [{dataset_name}]: {topK_values}...")
 
 	model.eval()
 	total_loss = 0
