@@ -1379,18 +1379,6 @@ def progressive_unfreeze_finetune(
 	model_arch = re.sub(r'[/@]', '', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_class_name = model.__class__.__name__
 
-	#################
-	# Pretrain
-	pretrained_img2txt_dict = {}
-	pretrained_txt2img_dict = {}
-	pretrained_img2txt_dict[model_arch], pretrained_txt2img_dict[model_arch] = pretrain(
-		model=model,
-		validation_loader=validation_loader,
-		results_dir=results_dir,
-		device=device,
-		topk_values=topk_values,
-	)
-
 	# Find dropout value
 	dropout_val = 0.0
 	for name, module in model.named_modules():
@@ -1714,8 +1702,8 @@ def progressive_unfreeze_finetune(
 		f"ep_{len(training_losses)}_"
 		f"bs_{train_loader.batch_size}_"
 		f"dropout_{dropout_val}_"
-		f"init_lr_{initial_learning_rate:.1e}"
-		f"init_wd_{initial_weight_decay:.1e}_"
+		f"init_lr_{initial_learning_rate:.1e}_"
+		f"init_wd_{initial_weight_decay:.1e}"
 	)
 
 	if last_lr is not None:
@@ -1768,23 +1756,6 @@ def progressive_unfreeze_finetune(
 		text_to_image_metrics=final_txt2img_metrics,
 		fname=plot_paths["retrieval_best"],
 	)
-	finetuned_img2txt_dict = {}
-	finetuned_txt2img_dict = {}
-	finetuned_img2txt_dict[model_arch] = final_img2txt_metrics
-	finetuned_txt2img_dict[model_arch] = final_txt2img_metrics
-	plot_comparison_metrics(
-		dataset_name=dataset_name,
-		pretrained_img2txt_dict=pretrained_img2txt_dict,
-		pretrained_txt2img_dict=pretrained_txt2img_dict,
-		finetuned_img2txt_dict=finetuned_img2txt_dict,
-		finetuned_txt2img_dict=finetuned_txt2img_dict,
-		model_name=model_arch,
-		finetune_strategy=mode_name,
-		topK_values=topk_values,
-		fname=os.path.join(results_dir, f"{file_base_name}_comparison_metrics.png"),
-	)
-
-	print("Result plots generated.")
 
 	return in_batch_loss_acc_metrics_all_epochs # Return history for potential further analysis
 

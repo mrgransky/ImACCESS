@@ -15,12 +15,17 @@ def plot_comparison_metrics(
 	):
 	metrics = ["mP", "mAP", "Recall"]
 	modes = ["Image-to-Text", "Text-to-Image"]
-	
+	all_model_architectures = ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
+	model_name_idx = all_model_architectures.index(model_name)
 	model_colors = plt.cm.tab10.colors
 	
 	# Create figure with 2x3 subplots
 	fig, axes = plt.subplots(2, 3, figsize=figure_size, constrained_layout=True)
-	fig.suptitle(f"Performance Comparison: CLIP Pre-trained {model_name} vs. {finetune_strategy.replace('_', ' ').capitalize()}", fontsize=12, fontweight='bold')
+	fig.suptitle(
+		f"Retrieval Performance Comparison\nPre-trained CLIP {model_name} vs. {finetune_strategy} Fine-tuning",
+		fontsize=10,
+		fontweight='bold',
+	)
 	
 	# Plot data for each mode and metric
 	for i, mode in enumerate(modes):
@@ -43,7 +48,7 @@ def plot_comparison_metrics(
 					k_values,
 					values,
 					label=f"Pre-trained",
-					color=model_colors[0],
+					color=model_colors[model_name_idx],
 					marker='o',
 					linestyle='--',
 					linewidth=2,
@@ -60,7 +65,7 @@ def plot_comparison_metrics(
 					k_values,
 					values,
 					label=f"Fine-tuned",
-					color=model_colors[0],
+					color=model_colors[model_name_idx],
 					marker='s',
 					linestyle='-',
 					linewidth=2,
@@ -84,16 +89,16 @@ def plot_comparison_metrics(
 							ax.annotate(
 								f"{'+' if improvement >= 0 else ''}{improvement:.1f}%",
 								xy=(k, finetuned_val),
-								xytext=(5, 3),  # Fixed offset to the right and slightly up
+								xytext=(5, 5),  # Fixed offset to the right and slightly up
 								textcoords='offset points',
-								fontsize=8,
+								fontsize=8.5,
 								fontweight='bold',
 								color=text_color,  # Apply the color
 								bbox=dict(
 									facecolor='white',
 									edgecolor='none',
 									alpha=0.7,
-									pad=0.5
+									pad=0.3
 								)
 							)
 			
