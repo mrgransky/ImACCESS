@@ -1583,7 +1583,7 @@ def progressive_unfreeze_finetune(
 				elif bidx == num_train_batches - 1 and batch_loss_item > 0:
 					print(f"\tBatch [{bidx+1}/{num_train_batches}] Loss: {batch_loss_item:.6f}")
 				else:
-					print(f"Nothing to print")
+					pass
 
 		avg_epoch_train_loss = epoch_train_loss / num_train_batches if num_train_batches > 0 and trainable_params_exist else 0.0
 		training_losses.append(avg_epoch_train_loss)
