@@ -8,6 +8,7 @@ def plot_comparison_metrics(
 		finetuned_txt2img_dict: dict,
 		model_name: str,  # e.g., 'ViT-B/32'
 		finetune_strategy: str,  # e.g., 'LoRA'
+		results_dir: str,
 		topK_values: list,
 		figure_size=(13, 5),
 		DPI: int=300,
@@ -29,6 +30,7 @@ def plot_comparison_metrics(
 		fig, axes = plt.subplots(1, 3, figsize=figure_size, constrained_layout=True)
 		fname = f"{dataset_name}_{finetune_strategy}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '_', model_name)}_retrieval_performance_comparison_{mode.replace('-', '_')}.png"
 		# Set a descriptive title for the figure
+		file_path = os.path.join(results_dir, fname)
 		fig.suptitle(
 			f"{mode} Retrieval Performance\n"
 			f"Pre-trained CLIP {model_name} vs. {finetune_strategy} Fine-tuning",
@@ -76,29 +78,50 @@ def plot_comparison_metrics(
 			
 			# Plot fine-tuned model performance
 			if model_name in finetuned_dict and metric in finetuned_dict[model_name]:
-					k_values = sorted([int(k) for k in finetuned_dict[model_name][metric].keys() if int(k) in topK_values])
-					values = [finetuned_dict[model_name][metric][str(k)] for k in k_values]
-					finetuned_values = values
-					
-					finetuned_line, = ax.plot(
-							k_values,
-							values,
-							label=f"{finetune_strategy} Fine-tuned",
-							color=model_colors[model_name_idx],
-							marker='s',
-							linestyle='-',
-							linewidth=2,
-							markersize=5
-					)
-					
-					# Calculate improvements for logging
-					if model_name in pretrained_dict and metric in pretrained_dict[model_name]:
-							for k_idx, k in enumerate(k_values):
-									if str(k) in pretrained_dict[model_name][metric]:
-											pretrained_val = pretrained_dict[model_name][metric][str(k)]
-											finetuned_val = values[k_idx]
-											improvement = ((finetuned_val - pretrained_val) / pretrained_val) * 100
-											improvement_percentages.append((k, improvement, pretrained_val, finetuned_val))
+				k_values = sorted([int(k) for k in finetuned_dict[model_name][metric].keys() if int(k) in topK_values])
+				values = [finetuned_dict[model_name][metric][str(k)] for k in k_values]
+				finetuned_values = values
+				
+				finetuned_line, = ax.plot(
+					k_values,
+					values,
+					label=f"{finetune_strategy.capitalize()} Fine-tune",
+					color=model_colors[model_name_idx],
+					marker='s',
+					linestyle='-',
+					linewidth=2,
+					markersize=5
+				)
+				
+				# Add improvement percentages at key points
+				if model_name in pretrained_dict:
+					key_k_values = [1, 10, 20]  # Annotate these K values if available
+					for k in key_k_values:
+						if k in k_values:
+							k_idx = k_values.index(k)
+							pretrained_val = pretrained_dict[model_name][metric][str(k)]
+							finetuned_val = values[k_idx]
+							improvement = ((finetuned_val - pretrained_val) / pretrained_val) * 100
+							
+							# Set color based on improvement value
+							text_color = 'darkgreen' if improvement >= 0 else 'red'
+							
+							# Place annotations to the right with slight upward offset
+							ax.annotate(
+								f"{'+' if improvement >= 0 else ''}{improvement:.1f}%",
+								xy=(k, finetuned_val),
+								xytext=(5, 5),  # Fixed offset to the right and slightly up
+								textcoords='offset points',
+								fontsize=8.5,
+								fontweight='bold',
+								color=text_color,  # Apply the color
+								bbox=dict(
+									facecolor='white',
+									edgecolor='none',
+									alpha=0.7,
+									pad=0.3
+								)
+							)
 			
 			# Configure axes
 			ax.set_xlabel('K', fontsize=11)
@@ -152,7 +175,7 @@ def plot_comparison_metrics(
 		
 		# Save the figure for this mode
 		plt.savefig(
-			fname=fname,
+			fname=file_path,
 			dpi=DPI,
 			bbox_inches='tight',
 		)

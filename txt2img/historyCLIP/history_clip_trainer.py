@@ -336,11 +336,6 @@ def main():
 				finetuned_img2txt_dict = {args.model_architecture: evaluation_results["img2txt_metrics"]}
 				finetuned_txt2img_dict = {args.model_architecture: evaluation_results["txt2img_metrics"]}
 
-				comparison_plot_path = os.path.join(
-					RESULT_DIRECTORY,
-					f"{validation_loader.name}_{args.finetune_strategy}_fine-tuning_vs_pretrained_CLIP_{re.sub(r'[/@]', '_', args.model_architecture)}_retrieval_performance_comparison.png"
-				)
-				print(f"Generating comparison plot at: {comparison_plot_path}")
 				plot_comparison_metrics(
 					dataset_name=validation_loader.name,
 					pretrained_img2txt_dict=pretrained_img2txt_dict,
@@ -350,7 +345,7 @@ def main():
 					model_name=args.model_architecture,
 					finetune_strategy=args.finetune_strategy,
 					topK_values=args.topK_values,
-					# fname=comparison_plot_path,
+					results_dir=RESULT_DIRECTORY,
 				)
 					
 			except Exception as e:
