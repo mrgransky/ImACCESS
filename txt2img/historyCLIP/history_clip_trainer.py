@@ -338,7 +338,7 @@ def main():
 
 				comparison_plot_path = os.path.join(
 					RESULT_DIRECTORY,
-					f"{validation_loader.name}_{args.finetune_strategy}_vs_pretrained_{re.sub(r'[/@]', '_', args.model_architecture)}_comparison.png"
+					f"{validation_loader.name}_{args.finetune_strategy}_fine-tuning_vs_pretrained_CLIP_{re.sub(r'[/@]', '_', args.model_architecture)}_retrieval_performance_comparison.png"
 				)
 				print(f"Generating comparison plot at: {comparison_plot_path}")
 				plot_comparison_metrics(
@@ -358,9 +358,7 @@ def main():
 				traceback.print_exc()
 
 		else:
-			raise ValueError("Invalid mode. Choose between: 'pretrain', 'train', 'finetune', 'compare'!")
-
-
+			raise ValueError(f"Invalid mode: {args.mode}. Choose between: 'pretrain', 'train', 'finetune', 'compare'!")
 
 		print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))
 	finally:
