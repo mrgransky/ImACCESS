@@ -1530,8 +1530,6 @@ def progressive_unfreeze_finetune(
 				}
 			)
 			print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e}, WD set to {last_wd:.3e}.")
-
-			# --- Re-initialize Scheduler (Option B Implementation) ---
 			print("Re-initializing OneCycleLR scheduler for new phase/start...")
 			steps_per_epoch = len(train_loader)
 			# Schedule over remaining epochs (more adaptive)
@@ -1547,8 +1545,8 @@ def progressive_unfreeze_finetune(
 				# last_epoch = -1 # Ensures it starts fresh
 			)
 			print(f"Scheduler re-initialized with max_lr={last_lr:.3e} for {scheduler_epochs} epochs.")
-			# --- End Scheduler Re-initialization ---
 			phase_just_changed = False # Reset the flag
+
 		# --- Training Epoch ---
 		model.train()
 		epoch_train_loss = 0.0
@@ -1558,7 +1556,6 @@ def progressive_unfreeze_finetune(
 			print("Warning: No trainable parameters found for the current phase. Skipping training steps.")
 		else:
 			for bidx, batch_data in enumerate(train_loader):
-				# Assuming batch_data unpacks correctly
 				images, tokenized_labels, _ = batch_data # Adjust unpacking as needed
 				images = images.to(device, non_blocking=True)
 				tokenized_labels = tokenized_labels.to(device, non_blocking=True)
@@ -1580,8 +1577,14 @@ def progressive_unfreeze_finetune(
 				scheduler.step() # Step the scheduler
 				batch_loss_item = batch_loss.item()
 				epoch_train_loss += batch_loss_item
-				if bidx % print_every == 0 or bidx + 1 == num_train_batches:
+
+				if bidx % print_every == 0:
 					print(f"\tBatch [{bidx+1}/{num_train_batches}] Loss: {batch_loss_item:.6f}")
+				elif bidx == num_train_batches - 1 and batch_loss_item > 0:
+					print(f"\tBatch [{bidx+1}/{num_train_batches}] Loss: {batch_loss_item:.6f}")
+				else:
+					print(f"Nothing to print")
+
 		avg_epoch_train_loss = epoch_train_loss / num_train_batches if num_train_batches > 0 and trainable_params_exist else 0.0
 		training_losses.append(avg_epoch_train_loss)
 
