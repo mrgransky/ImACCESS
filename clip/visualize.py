@@ -1,6 +1,6 @@
 from utils import *
 
-def plot_comparison_metrics(
+def plot_comparison_metrics_detailed(
 		dataset_name: str,
 		pretrained_img2txt_dict: dict,
 		pretrained_txt2img_dict: dict,
@@ -11,7 +11,7 @@ def plot_comparison_metrics(
 		topK_values: list,
 		fname_prefix: str="Comparison_Metrics",
 		fname: str="comparison.png",
-		figure_size=(12, 5),
+		figure_size=(15, 8),
 		DPI: int=300,
 	):
 		metrics = ["mP", "mAP", "Recall"]
@@ -307,7 +307,7 @@ def plot_comparison_metrics(
 		)
 		plt.close(fig)
 
-def plot_comparison_metrics_original(
+def plot_comparison_metrics(
 		dataset_name: str,
 		pretrained_img2txt_dict: dict,
 		pretrained_txt2img_dict: dict,
@@ -427,8 +427,8 @@ def plot_comparison_metrics_original(
 				min_val = min(all_values)
 				max_val = max(all_values)
 				padding = 0.1 * (max_val - min_val) if max_val > min_val else 0.1
-				ax.set_ylim(bottom=max(0, min_val - padding), top=min(1.0, max_val + padding))
-				# ax.set_ylim(bottom=-0.05, top=1.05)
+				# ax.set_ylim(bottom=max(0, min_val - padding), top=min(1.0, max_val + padding))
+				ax.set_ylim(bottom=-0.05, top=1.05)
 
 			# Add legend to first subplot only
 			if i == 0 and j == 0:
