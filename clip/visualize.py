@@ -301,7 +301,7 @@ def plot_comparison_metrics(
 		
 		# Save the improvement summary figure
 		plt.savefig(
-			# fname=f"{fname_prefix}_Relative_Improvements.png", 
+			fname=f"{fname_prefix}_Relative_Improvements.png",
 			dpi=DPI, 
 			bbox_inches='tight',
 		)
