@@ -1393,8 +1393,8 @@ def progressive_unfreeze_finetune(
 		f"{model_name}_"
 		f"{model_arch}_"
 		f"do_{dropout_val}_"
-		f"init_lr_{learning_rate:.1e}_"
-		f"init_wd_{weight_decay:.1e}_"
+		f"init_lr_{initial_learning_rate:.1e}_"
+		f"init_wd_{initial_weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
 		f"best_model.pth"
 	)
