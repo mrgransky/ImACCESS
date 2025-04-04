@@ -501,8 +501,8 @@ class EarlyStopping:
 def evaluate_retrieval_performance(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
-		device: str = "cuda:0",
-		topK_values: List[int] = [1, 3, 5],
+		device: str,
+		topK_values: List[int],
 	):
 
 	dataset_name = validation_loader.name
@@ -517,6 +517,7 @@ def evaluate_retrieval_performance(
 		class_names = validation_loader.dataset.dataset.classes
 	except:
 		class_names = validation_loader.dataset.unique_labels
+	
 	n_classes = len(class_names)
 	torch.cuda.empty_cache() # Clear GPU memory cache
 
@@ -537,6 +538,7 @@ def evaluate_retrieval_performance(
 	image_labels = torch.tensor(image_labels)
 	class_text_embeddings = class_text_embeddings.cpu()
 	similarity_matrix = image_embeddings @ class_text_embeddings.T
+
 	# print("Similarity matrix stats:")
 	# print(
 	# 		type(similarity_matrix),
@@ -575,7 +577,7 @@ def get_retrieval_metrics(
 		similarity_matrix: torch.Tensor,
 		query_labels: torch.Tensor,
 		candidate_labels: torch.Tensor,
-		topK_values: List[int] = [1, 3, 5],
+		topK_values: List[int],
 		mode: str = "Image-to-Text",
 		class_counts: torch.Tensor = None,
 		max_k: int = None, # limit K values (None for no limit)
@@ -584,17 +586,21 @@ def get_retrieval_metrics(
 	num_queries, num_candidates = similarity_matrix.shape
 	assert num_queries == len(query_labels), "Number of queries must match labels"
 	num_classes = len(torch.unique(candidate_labels))
+
 	if max_k is not None:
 		valid_K_values = [K for K in topK_values if K <= max_k]
 	else:
 		valid_K_values = topK_values  # No limit on K values
+
 	if len(valid_K_values) < len(topK_values):
 		print(f"\t<!> Warning: K values: ({set(topK_values) - set(valid_K_values)}) exceed the number of classes ({num_classes}) => ignored!")
+
 	metrics = {
 		"mP": {},
 		"mAP": {},
 		"Recall": {},
 	}
+
 	for K in valid_K_values:
 		top_k_indices = torch.argsort(-similarity_matrix, dim=1)[:, :K]
 		precision, recall, ap = [], [], []
@@ -649,19 +655,312 @@ def get_retrieval_metrics(
 		metrics["Recall"][str(K)] = torch.tensor(recall).mean().item()
 	return metrics
 
+# def get_loss_accuracy_metrics(
+# 		model: torch.nn.Module,
+# 		validation_loader: DataLoader,
+# 		criterion: torch.nn.Module,
+# 		device: str,
+# 		print_every: int = 10,
+# 		topK_values: List[int] = [1, 5, 10, 15, 20],
+# 	) -> Dict[str, float]:
+
+# 	dataset_name = validation_loader.name
+# 	model_name = model.__class__.__name__
+# 	model_arch = model.name
+# 	print(f">> Evaluating {model_name} {model_arch} [Full Loss & Accuracy] [{dataset_name}]: {topK_values}...")
+	
+# 	# Get available GPU memory and calculate chunk size dynamically
+# 	torch.cuda.empty_cache()
+# 	free_mem = torch.cuda.mem_get_info()[0] / (1024 ** 3)  # Available memory in GB
+# 	# Reserve 20% of free memory for intermediate operations
+# 	available_mem = free_mem * 0.8
+# 	# Approximate memory per sample (embedding size * 4 bytes for float32)
+# 	embed_dim = 512  # Typical CLIP embedding dimension
+# 	mem_per_sample = embed_dim * 4 * 2 / (1024 ** 3)  # GB per sample (both image and text)
+# 	# Calculate max samples that fit in memory
+# 	max_samples_in_memory = int(available_mem / mem_per_sample)
+# 	# Set chunk size with a minimum of 32 samples
+# 	chunk_size = max(32, min(max_samples_in_memory, 1024))
+	
+# 	print(f"Dynamic chunk size: {chunk_size} (based on {free_mem:.2f}GB free GPU memory)")
+	
+# 	model.eval()
+# 	total_loss = 0
+# 	num_batches = len(validation_loader)
+# 	total_samples = len(validation_loader.dataset)
+	
+# 	# Step 1: Collect embeddings and compute per-batch loss
+# 	all_image_embeds = []
+# 	all_text_embeds = []
+# 	reciprocal_ranks = []
+# 	cosine_similarities = []
+	
+# 	with torch.no_grad():
+# 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
+# 			images = images.to(device, non_blocking=True)
+# 			tokenized_labels = tokenized_labels.to(device, non_blocking=True)
+# 			batch_size = images.size(0)
+			
+# 			# Forward pass
+# 			logits_per_image, logits_per_text = model(images, tokenized_labels)
+# 			image_embeds = model.encode_image(images)
+# 			text_embeds = model.encode_text(tokenized_labels)
+			
+# 			# Normalize embeddings
+# 			image_embeds = F.normalize(image_embeds, dim=-1)
+# 			text_embeds = F.normalize(text_embeds, dim=-1)
+			
+# 			# Compute batch loss
+# 			ground_truth = torch.arange(batch_size, dtype=torch.long, device=device)
+# 			loss_img = criterion(logits_per_image, ground_truth)
+# 			loss_txt = criterion(logits_per_text, ground_truth)
+# 			batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
+# 			total_loss += batch_loss
+			
+# 			# Collect embeddings (keep on CPU to save GPU memory)
+# 			all_image_embeds.append(image_embeds.cpu())
+# 			all_text_embeds.append(text_embeds.cpu())
+			
+# 			# Mean Reciprocal Rank (MRR) for Image-to-Text within batch
+# 			ranks = logits_per_image.argsort(dim=1, descending=True)
+# 			rr_indices = ranks.eq(ground_truth.view(-1, 1)).nonzero(as_tuple=True)[1] + 1
+# 			rr_indices_inv = (1.0 / rr_indices).cpu().numpy()
+# 			reciprocal_ranks.extend(rr_indices_inv)
+			
+# 			# Cosine Similarity
+# 			cos_sim = F.cosine_similarity(image_embeds, text_embeds, dim=-1).cpu().numpy()
+# 			cosine_similarities.extend(cos_sim)
+			
+# 			# Print progress
+# 			if bidx % print_every == 0 or bidx == num_batches - 1:
+# 				print(f"  Processed {bidx+1}/{num_batches} batches")
+	
+# 	# Average loss
+# 	avg_val_loss = total_loss / num_batches
+	
+# 	# Step 2: Concatenate all embeddings (keep on CPU)
+# 	all_image_embeds = torch.cat(all_image_embeds, dim=0)  # [total_samples, embed_dim]
+# 	all_text_embeds = torch.cat(all_text_embeds, dim=0)    # [total_samples, embed_dim]
+	
+# 	# Initialize counters for top-k accuracy
+# 	img2txt_correct = {k: 0 for k in topK_values}
+# 	txt2img_correct = {k: 0 for k in topK_values}
+	
+# 	# Global ground truth indices
+# 	all_indices = torch.arange(total_samples)
+	
+# 	# Step 3 & 4: Process in chunks to compute similarity and metrics
+# 	num_img_chunks = (total_samples + chunk_size - 1) // chunk_size
+# 	num_txt_chunks = (total_samples + chunk_size - 1) // chunk_size
+	
+# 	# For exact top-1 computation (used for img2txt_acc and txt2img_acc)
+# 	img2txt_top1_correct = 0
+# 	txt2img_top1_correct = 0
+	
+# 	print(f"Computing image-to-text retrieval metrics in {num_img_chunks} chunks...")
+	
+# 	# Process image-to-text in chunks
+# 	for i in range(num_img_chunks):
+# 			start_idx = i * chunk_size
+# 			end_idx = min((i + 1) * chunk_size, total_samples)
+# 			chunk_size_i = end_idx - start_idx
+			
+# 			# Get chunk of image embeddings and move to GPU
+# 			chunk_img_embeds = all_image_embeds[start_idx:end_idx].to(device)
+# 			chunk_indices = all_indices[start_idx:end_idx]
+			
+# 			# Compute similarities in sub-chunks for text embeddings if needed
+# 			max_txt_chunk = 4096  # Adjust based on memory
+# 			all_topk_indices = {k: [] for k in topK_values}
+			
+# 			# Process text embeddings in sub-chunks
+# 			for j in range(0, total_samples, max_txt_chunk):
+# 					j_end = min(j + max_txt_chunk, total_samples)
+					
+# 					# Load text sub-chunk to GPU
+# 					txt_subchunk = all_text_embeds[j:j_end].to(device)
+					
+# 					# Compute similarity for this sub-chunk
+# 					chunk_similarities = chunk_img_embeds @ txt_subchunk.T  # [chunk_size_i, max_txt_chunk]
+					
+# 					# Store top-k for each k in topK_values
+# 					for k in topK_values:
+# 							if k <= j_end - j:
+# 									# Get top-k indices and values for this sub-chunk
+# 									topk_vals, topk_idxs = chunk_similarities.topk(min(k, j_end - j), dim=1)
+									
+# 									# Adjust indices to global text indices
+# 									topk_idxs = topk_idxs + j
+									
+# 									if j == 0:
+# 											all_topk_indices[k] = topk_idxs
+# 									else:
+# 											# Compare with previous top values and merge
+# 											prev_topk = all_topk_indices[k]
+# 											prev_vals = torch.gather(
+# 													chunk_similarities[:, :j], 1, 
+# 													(prev_topk < j).nonzero(as_tuple=True)[1].view(chunk_size_i, -1)
+# 											)
+											
+# 											# Combine previous and current
+# 											combined_vals = torch.cat([prev_vals, topk_vals], dim=1)
+# 											combined_idxs = torch.cat([prev_topk, topk_idxs], dim=1)
+											
+# 											# Get top-k from combined
+# 											_, top_combined = combined_vals.topk(min(k, combined_vals.size(1)), dim=1)
+# 											all_topk_indices[k] = torch.gather(combined_idxs, 1, top_combined)
+					
+# 					# Free memory
+# 					del txt_subchunk, chunk_similarities
+# 					torch.cuda.empty_cache()
+			
+# 			# Compute accuracy for this chunk
+# 			for k in topK_values:
+# 					# Check if ground truth is in top-k predictions
+# 					is_correct = (all_topk_indices[k] == chunk_indices.view(-1, 1).to(device)).any(dim=1)
+# 					img2txt_correct[k] += is_correct.sum().item()
+					
+# 					# For top-1 accuracy
+# 					if k == 1:
+# 							img2txt_top1_correct += is_correct.sum().item()
+			
+# 			# Free memory
+# 			del chunk_img_embeds, all_topk_indices
+# 			torch.cuda.empty_cache()
+			
+# 			# Print progress
+# 			if (i + 1) % print_every == 0 or (i + 1) == num_img_chunks:
+# 					print(f"  Processed {i+1}/{num_img_chunks} image chunks")
+	
+# 	print(f"Computing text-to-image retrieval metrics in {num_txt_chunks} chunks...")
+	
+# 	# Process text-to-image in chunks (similar approach)
+# 	for i in range(num_txt_chunks):
+# 			start_idx = i * chunk_size
+# 			end_idx = min((i + 1) * chunk_size, total_samples)
+# 			chunk_size_i = end_idx - start_idx
+			
+# 			# Get chunk of text embeddings and move to GPU
+# 			chunk_txt_embeds = all_text_embeds[start_idx:end_idx].to(device)
+# 			chunk_indices = all_indices[start_idx:end_idx]
+			
+# 			# Compute similarities in sub-chunks for image embeddings if needed
+# 			max_img_chunk = 4096  # Adjust based on memory
+# 			all_topk_indices = {k: [] for k in topK_values}
+			
+# 			# Process image embeddings in sub-chunks
+# 			for j in range(0, total_samples, max_img_chunk):
+# 					j_end = min(j + max_img_chunk, total_samples)
+					
+# 					# Load image sub-chunk to GPU
+# 					img_subchunk = all_image_embeds[j:j_end].to(device)
+					
+# 					# Compute similarity for this sub-chunk
+# 					chunk_similarities = chunk_txt_embeds @ img_subchunk.T  # [chunk_size_i, max_img_chunk]
+					
+# 					# Store top-k for each k in topK_values
+# 					for k in topK_values:
+# 							if k <= j_end - j:
+# 									# Get top-k indices and values for this sub-chunk
+# 									topk_vals, topk_idxs = chunk_similarities.topk(min(k, j_end - j), dim=1)
+									
+# 									# Adjust indices to global image indices
+# 									topk_idxs = topk_idxs + j
+									
+# 									if j == 0:
+# 											all_topk_indices[k] = topk_idxs
+# 									else:
+# 											# Compare with previous top values and merge
+# 											prev_topk = all_topk_indices[k]
+# 											prev_vals = torch.gather(
+# 													chunk_similarities[:, :j], 1, 
+# 													(prev_topk < j).nonzero(as_tuple=True)[1].view(chunk_size_i, -1)
+# 											)
+											
+# 											# Combine previous and current
+# 											combined_vals = torch.cat([prev_vals, topk_vals], dim=1)
+# 											combined_idxs = torch.cat([prev_topk, topk_idxs], dim=1)
+											
+# 											# Get top-k from combined
+# 											_, top_combined = combined_vals.topk(min(k, combined_vals.size(1)), dim=1)
+# 											all_topk_indices[k] = torch.gather(combined_idxs, 1, top_combined)
+					
+# 					# Free memory
+# 					del img_subchunk, chunk_similarities
+# 					torch.cuda.empty_cache()
+			
+# 			# Compute accuracy for this chunk
+# 			for k in topK_values:
+# 					# Check if ground truth is in top-k predictions
+# 					is_correct = (all_topk_indices[k] == chunk_indices.view(-1, 1).to(device)).any(dim=1)
+# 					txt2img_correct[k] += is_correct.sum().item()
+					
+# 					# For top-1 accuracy
+# 					if k == 1:
+# 							txt2img_top1_correct += is_correct.sum().item()
+			
+# 			# Free memory
+# 			del chunk_txt_embeds, all_topk_indices
+# 			torch.cuda.empty_cache()
+			
+# 			# Print progress
+# 			if (i + 1) % print_every == 0 or (i + 1) == num_txt_chunks:
+# 					print(f"  Processed {i+1}/{num_txt_chunks} text chunks")
+	
+# 	# Calculate final metrics
+# 	img2txt_topk_accuracy = {k: float(img2txt_correct[k]/total_samples) for k in topK_values}
+# 	txt2img_topk_accuracy = {k: float(txt2img_correct[k]/total_samples) for k in topK_values}
+	
+# 	img2txt_acc = float(img2txt_top1_correct/total_samples)
+# 	txt2img_acc = float(txt2img_top1_correct/total_samples)
+	
+# 	# Additional metrics
+# 	mean_reciprocal_rank = float(np.mean(reciprocal_ranks)) if reciprocal_ranks else 0.0
+# 	cosine_sim_mean = float(np.mean(cosine_similarities)) if cosine_similarities else 0.0
+	
+# 	# Construct metrics dictionary
+# 	metrics = {
+# 			"val_loss": float(avg_val_loss),
+# 			"img2txt_acc": img2txt_acc,
+# 			"txt2img_acc": txt2img_acc,
+# 			"img2txt_topk_acc": img2txt_topk_accuracy,
+# 			"txt2img_topk_acc": txt2img_topk_accuracy,
+# 			"mean_reciprocal_rank": mean_reciprocal_rank,
+# 			"cosine_similarity": cosine_sim_mean,
+# 	}
+	
+# 	return metrics
+
 def get_loss_accuracy_metrics(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
 		criterion: torch.nn.Module,
-		device: str = "cuda",
-		print_every: int = 10,
-		topK_values: List[int] = [1, 5, 10, 15, 20],
+		device: str,
+		print_every: int,
+		topK_values: List[int],
 	) -> Dict[str, float]:
-
+	"""
+	Evaluate the CLIP model's performance on the full validation set.
+	Computes loss and retrieval metrics over all samples with memory-efficient chunking.
+	"""
 	dataset_name = validation_loader.name
 	model_name = model.__class__.__name__
 	model_arch = model.name
-	print(f">> Evaluating {model_name} {model_arch} [Full Loss & Accuracy] [{dataset_name}]: {topK_values}...")
+	
+	# Get the number of classes
+	try:
+			class_names = validation_loader.dataset.dataset.classes
+	except:
+			class_names = validation_loader.dataset.unique_labels
+	n_classes = len(class_names)
+	
+	# Filter topK values for image-to-text based on number of classes
+	i2t_valid_k_values = [k for k in topK_values if k <= n_classes]
+	if len(i2t_valid_k_values) < len(topK_values):
+			print(f"Warning: K values {set(topK_values) - set(i2t_valid_k_values)} exceed the number of classes ({n_classes}) for image-to-text retrieval")
+	
+	print(f">> Evaluating {model_name} {model_arch} [Full Loss & Accuracy] [{dataset_name}]...")
+	print(f"   Image-to-Text topK: {i2t_valid_k_values}, Text-to-Image topK: {topK_values}")
 	
 	# Get available GPU memory and calculate chunk size dynamically
 	torch.cuda.empty_cache()
@@ -690,44 +989,49 @@ def get_loss_accuracy_metrics(
 	cosine_similarities = []
 	
 	with torch.no_grad():
-		for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
-			images = images.to(device, non_blocking=True)
-			tokenized_labels = tokenized_labels.to(device, non_blocking=True)
-			batch_size = images.size(0)
+			# Pre-compute text embeddings for all classes
+			text_inputs = clip.tokenize(class_names).to(device, non_blocking=True)
+			class_text_embeddings = model.encode_text(text_inputs)
+			class_text_embeddings = F.normalize(class_text_embeddings, dim=-1)
 			
-			# Forward pass
-			logits_per_image, logits_per_text = model(images, tokenized_labels)
-			image_embeds = model.encode_image(images)
-			text_embeds = model.encode_text(tokenized_labels)
-			
-			# Normalize embeddings
-			image_embeds = F.normalize(image_embeds, dim=-1)
-			text_embeds = F.normalize(text_embeds, dim=-1)
-			
-			# Compute batch loss
-			ground_truth = torch.arange(batch_size, dtype=torch.long, device=device)
-			loss_img = criterion(logits_per_image, ground_truth)
-			loss_txt = criterion(logits_per_text, ground_truth)
-			batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
-			total_loss += batch_loss
-			
-			# Collect embeddings (keep on CPU to save GPU memory)
-			all_image_embeds.append(image_embeds.cpu())
-			all_text_embeds.append(text_embeds.cpu())
-			
-			# Mean Reciprocal Rank (MRR) for Image-to-Text within batch
-			ranks = logits_per_image.argsort(dim=1, descending=True)
-			rr_indices = ranks.eq(ground_truth.view(-1, 1)).nonzero(as_tuple=True)[1] + 1
-			rr_indices_inv = (1.0 / rr_indices).cpu().numpy()
-			reciprocal_ranks.extend(rr_indices_inv)
-			
-			# Cosine Similarity
-			cos_sim = F.cosine_similarity(image_embeds, text_embeds, dim=-1).cpu().numpy()
-			cosine_similarities.extend(cos_sim)
-			
-			# Print progress
-			if bidx % print_every == 0 or bidx == num_batches - 1:
-				print(f"  Processed {bidx+1}/{num_batches} batches")
+			for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
+					images = images.to(device, non_blocking=True)
+					tokenized_labels = tokenized_labels.to(device, non_blocking=True)
+					batch_size = images.size(0)
+					
+					# Forward pass
+					logits_per_image, logits_per_text = model(images, tokenized_labels)
+					image_embeds = model.encode_image(images)
+					text_embeds = model.encode_text(tokenized_labels)
+					
+					# Normalize embeddings
+					image_embeds = F.normalize(image_embeds, dim=-1)
+					text_embeds = F.normalize(text_embeds, dim=-1)
+					
+					# Compute batch loss
+					ground_truth = torch.arange(batch_size, dtype=torch.long, device=device)
+					loss_img = criterion(logits_per_image, ground_truth)
+					loss_txt = criterion(logits_per_text, ground_truth)
+					batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
+					total_loss += batch_loss
+					
+					# Collect embeddings (keep on CPU to save GPU memory)
+					all_image_embeds.append(image_embeds.cpu())
+					all_text_embeds.append(text_embeds.cpu())
+					
+					# Mean Reciprocal Rank (MRR) for Image-to-Text within batch
+					ranks = logits_per_image.argsort(dim=1, descending=True)
+					rr_indices = ranks.eq(ground_truth.view(-1, 1)).nonzero(as_tuple=True)[1] + 1
+					rr_indices_inv = (1.0 / rr_indices).cpu().numpy()
+					reciprocal_ranks.extend(rr_indices_inv)
+					
+					# Cosine Similarity
+					cos_sim = F.cosine_similarity(image_embeds, text_embeds, dim=-1).cpu().numpy()
+					cosine_similarities.extend(cos_sim)
+					
+					# Print progress
+					if bidx % print_every == 0 or bidx == num_batches - 1:
+							print(f"  Processed {bidx+1}/{num_batches} batches")
 	
 	# Average loss
 	avg_val_loss = total_loss / num_batches
@@ -736,189 +1040,156 @@ def get_loss_accuracy_metrics(
 	all_image_embeds = torch.cat(all_image_embeds, dim=0)  # [total_samples, embed_dim]
 	all_text_embeds = torch.cat(all_text_embeds, dim=0)    # [total_samples, embed_dim]
 	
-	# Initialize counters for top-k accuracy
-	img2txt_correct = {k: 0 for k in topK_values}
-	txt2img_correct = {k: 0 for k in topK_values}
+	# Initialize metrics dictionaries
+	img2txt_topk_accuracy = {k: 0.0 for k in i2t_valid_k_values}
+	txt2img_topk_accuracy = {k: 0.0 for k in topK_values}
 	
-	# Global ground truth indices
-	all_indices = torch.arange(total_samples)
+	# Step 3: IMAGE-TO-TEXT RETRIEVAL (using class text embeddings)
+	print("Computing image-to-text retrieval metrics...")
 	
-	# Step 3 & 4: Process in chunks to compute similarity and metrics
-	num_img_chunks = (total_samples + chunk_size - 1) // chunk_size
-	num_txt_chunks = (total_samples + chunk_size - 1) // chunk_size
-	
-	# For exact top-1 computation (used for img2txt_acc and txt2img_acc)
+	# Process in chunks for memory efficiency
+	num_chunks = (total_samples + chunk_size - 1) // chunk_size
 	img2txt_top1_correct = 0
-	txt2img_top1_correct = 0
 	
-	print(f"Computing image-to-text retrieval metrics in {num_img_chunks} chunks...")
+	image_labels = []
+	for bidx, (_, _, labels_indices) in enumerate(validation_loader):
+			image_labels.extend(labels_indices.tolist())
+	image_labels = torch.tensor(image_labels)
 	
-	# Process image-to-text in chunks
-	for i in range(num_img_chunks):
+	for i in range(num_chunks):
 			start_idx = i * chunk_size
 			end_idx = min((i + 1) * chunk_size, total_samples)
-			chunk_size_i = end_idx - start_idx
 			
-			# Get chunk of image embeddings and move to GPU
+			# Get image embeddings for this chunk
 			chunk_img_embeds = all_image_embeds[start_idx:end_idx].to(device)
-			chunk_indices = all_indices[start_idx:end_idx]
+			chunk_labels = image_labels[start_idx:end_idx].to(device)
 			
-			# Compute similarities in sub-chunks for text embeddings if needed
-			max_txt_chunk = 4096  # Adjust based on memory
-			all_topk_indices = {k: [] for k in topK_values}
+			# Compute similarity with class text embeddings
+			similarity = chunk_img_embeds @ class_text_embeddings.to(device).T
 			
-			# Process text embeddings in sub-chunks
-			for j in range(0, total_samples, max_txt_chunk):
-					j_end = min(j + max_txt_chunk, total_samples)
+			# Compute accuracy for various k values
+			for k in i2t_valid_k_values:
+					topk_indices = similarity.topk(k, dim=1)[1]
+					correct = (topk_indices == chunk_labels.unsqueeze(1)).any(dim=1).sum().item()
+					img2txt_topk_accuracy[k] += correct
 					
-					# Load text sub-chunk to GPU
-					txt_subchunk = all_text_embeds[j:j_end].to(device)
-					
-					# Compute similarity for this sub-chunk
-					chunk_similarities = chunk_img_embeds @ txt_subchunk.T  # [chunk_size_i, max_txt_chunk]
-					
-					# Store top-k for each k in topK_values
-					for k in topK_values:
-							if k <= j_end - j:
-									# Get top-k indices and values for this sub-chunk
-									topk_vals, topk_idxs = chunk_similarities.topk(min(k, j_end - j), dim=1)
-									
-									# Adjust indices to global text indices
-									topk_idxs = topk_idxs + j
-									
-									if j == 0:
-											all_topk_indices[k] = topk_idxs
-									else:
-											# Compare with previous top values and merge
-											prev_topk = all_topk_indices[k]
-											prev_vals = torch.gather(
-													chunk_similarities[:, :j], 1, 
-													(prev_topk < j).nonzero(as_tuple=True)[1].view(chunk_size_i, -1)
-											)
-											
-											# Combine previous and current
-											combined_vals = torch.cat([prev_vals, topk_vals], dim=1)
-											combined_idxs = torch.cat([prev_topk, topk_idxs], dim=1)
-											
-											# Get top-k from combined
-											_, top_combined = combined_vals.topk(min(k, combined_vals.size(1)), dim=1)
-											all_topk_indices[k] = torch.gather(combined_idxs, 1, top_combined)
-					
-					# Free memory
-					del txt_subchunk, chunk_similarities
-					torch.cuda.empty_cache()
-			
-			# Compute accuracy for this chunk
-			for k in topK_values:
-					# Check if ground truth is in top-k predictions
-					is_correct = (all_topk_indices[k] == chunk_indices.view(-1, 1).to(device)).any(dim=1)
-					img2txt_correct[k] += is_correct.sum().item()
-					
-					# For top-1 accuracy
 					if k == 1:
-							img2txt_top1_correct += is_correct.sum().item()
+							img2txt_top1_correct += correct
 			
-			# Free memory
-			del chunk_img_embeds, all_topk_indices
+			# Clean up
+			del chunk_img_embeds, similarity, chunk_labels
 			torch.cuda.empty_cache()
 			
-			# Print progress
-			if (i + 1) % 5 == 0 or (i + 1) == num_img_chunks:
-					print(f"  Processed {i+1}/{num_img_chunks} image chunks")
+			if (i + 1) % print_every == 0 or (i + 1) == num_chunks:
+					print(f"  Processed {i+1}/{num_chunks} image chunks")
 	
-	print(f"Computing text-to-image retrieval metrics in {num_txt_chunks} chunks...")
+	# Normalize metrics by total number of samples
+	img2txt_topk_accuracy = {k: v / total_samples for k, v in img2txt_topk_accuracy.items()}
+	img2txt_acc = img2txt_top1_correct / total_samples
 	
-	# Process text-to-image in chunks (similar approach)
-	for i in range(num_txt_chunks):
+	# Step 4: TEXT-TO-IMAGE RETRIEVAL
+	print("Computing text-to-image retrieval metrics...")
+	
+	# Process in chunks for memory efficiency
+	num_chunks = (n_classes + chunk_size - 1) // chunk_size
+	txt2img_top1_correct = 0
+	
+	# For text-to-image, we need to handle class distribution
+	class_counts = torch.bincount(image_labels)
+	
+	for i in range(num_chunks):
 			start_idx = i * chunk_size
-			end_idx = min((i + 1) * chunk_size, total_samples)
-			chunk_size_i = end_idx - start_idx
+			end_idx = min((i + 1) * chunk_size, n_classes)
 			
-			# Get chunk of text embeddings and move to GPU
-			chunk_txt_embeds = all_text_embeds[start_idx:end_idx].to(device)
-			chunk_indices = all_indices[start_idx:end_idx]
+			if end_idx <= start_idx:
+					continue
+					
+			# Get text embeddings for this chunk of classes
+			chunk_txt_embeds = class_text_embeddings[start_idx:end_idx].to(device)
+			chunk_class_indices = torch.arange(start_idx, end_idx, device=device)
 			
-			# Compute similarities in sub-chunks for image embeddings if needed
-			max_img_chunk = 4096  # Adjust based on memory
+			# Process image embeddings in sub-chunks for memory efficiency
+			max_img_chunk = 4096
 			all_topk_indices = {k: [] for k in topK_values}
+			all_topk_values = {k: [] for k in topK_values}
 			
-			# Process image embeddings in sub-chunks
 			for j in range(0, total_samples, max_img_chunk):
 					j_end = min(j + max_img_chunk, total_samples)
 					
-					# Load image sub-chunk to GPU
+					# Get sub-chunk of image embeddings
 					img_subchunk = all_image_embeds[j:j_end].to(device)
+					img_labels_subchunk = image_labels[j:j_end].to(device)
 					
-					# Compute similarity for this sub-chunk
-					chunk_similarities = chunk_txt_embeds @ img_subchunk.T  # [chunk_size_i, max_img_chunk]
+					# Compute similarity
+					similarity = chunk_txt_embeds @ img_subchunk.T
 					
-					# Store top-k for each k in topK_values
+					# For each k, get topk and store
 					for k in topK_values:
-							if k <= j_end - j:
-									# Get top-k indices and values for this sub-chunk
-									topk_vals, topk_idxs = chunk_similarities.topk(min(k, j_end - j), dim=1)
-									
+							if j == 0:
+									topk_vals, topk_idxs = similarity.topk(min(k, j_end - j), dim=1)
 									# Adjust indices to global image indices
 									topk_idxs = topk_idxs + j
+									all_topk_indices[k] = topk_idxs
+									all_topk_values[k] = topk_vals
+							else:
+									# For subsequent chunks, we need to merge with previous results
+									current_topk_vals, current_topk_idxs = similarity.topk(min(k, j_end - j), dim=1)
+									current_topk_idxs = current_topk_idxs + j
 									
-									if j == 0:
-											all_topk_indices[k] = topk_idxs
-									else:
-											# Compare with previous top values and merge
-											prev_topk = all_topk_indices[k]
-											prev_vals = torch.gather(
-													chunk_similarities[:, :j], 1, 
-													(prev_topk < j).nonzero(as_tuple=True)[1].view(chunk_size_i, -1)
-											)
-											
-											# Combine previous and current
-											combined_vals = torch.cat([prev_vals, topk_vals], dim=1)
-											combined_idxs = torch.cat([prev_topk, topk_idxs], dim=1)
-											
-											# Get top-k from combined
-											_, top_combined = combined_vals.topk(min(k, combined_vals.size(1)), dim=1)
-											all_topk_indices[k] = torch.gather(combined_idxs, 1, top_combined)
+									# Combine with previous results
+									combined_vals = torch.cat([all_topk_values[k], current_topk_vals], dim=1)
+									combined_idxs = torch.cat([all_topk_indices[k], current_topk_idxs], dim=1)
+									
+									# Re-sort to get top-k overall
+									topk_vals, topk_indices = combined_vals.topk(min(k, combined_vals.size(1)), dim=1)
+									
+									# Gather corresponding indices
+									batch_indices = torch.arange(topk_indices.size(0), device=device).unsqueeze(1)
+									batch_indices = batch_indices.expand(-1, topk_indices.size(1))
+									new_topk_idxs = combined_idxs[batch_indices, topk_indices]
+									
+									all_topk_indices[k] = new_topk_idxs
+									all_topk_values[k] = topk_vals
 					
-					# Free memory
-					del img_subchunk, chunk_similarities
+					# Clean up
+					del img_subchunk, similarity, img_labels_subchunk
 					torch.cuda.empty_cache()
 			
-			# Compute accuracy for this chunk
+			# Compute accuracy for this chunk of classes
 			for k in topK_values:
-					# Check if ground truth is in top-k predictions
-					is_correct = (all_topk_indices[k] == chunk_indices.view(-1, 1).to(device)).any(dim=1)
-					txt2img_correct[k] += is_correct.sum().item()
-					
-					# For top-1 accuracy
-					if k == 1:
-							txt2img_top1_correct += is_correct.sum().item()
+					for c_idx, class_idx in enumerate(chunk_class_indices):
+							retrieved_labels = image_labels[all_topk_indices[k][c_idx]].to(device)
+							correct = (retrieved_labels == class_idx).sum().item()
+							
+							# For top-k accuracy, we count as correct if any retrieved items match the class
+							txt2img_topk_accuracy[k] += 1 if correct > 0 else 0
+							
+							# For top-1, we check only the first retrieved item
+							if k == 1:
+									txt2img_top1_correct += 1 if correct > 0 else 0
 			
-			# Free memory
-			del chunk_txt_embeds, all_topk_indices
+			# Clean up
+			del chunk_txt_embeds, all_topk_indices, all_topk_values
 			torch.cuda.empty_cache()
 			
-			# Print progress
-			if (i + 1) % 5 == 0 or (i + 1) == num_txt_chunks:
-					print(f"  Processed {i+1}/{num_txt_chunks} text chunks")
+			if (i + 1) % print_every == 0 or (i + 1) == num_chunks:
+					print(f"  Processed {i+1}/{num_chunks} text chunks")
 	
-	# Calculate final metrics
-	img2txt_topk_accuracy = {k: float(img2txt_correct[k]/total_samples) for k in topK_values}
-	txt2img_topk_accuracy = {k: float(txt2img_correct[k]/total_samples) for k in topK_values}
-	
-	img2txt_acc = float(img2txt_top1_correct/total_samples)
-	txt2img_acc = float(txt2img_top1_correct/total_samples)
+	# Normalize text-to-image metrics by number of classes
+	txt2img_topk_accuracy = {k: v / n_classes for k, v in txt2img_topk_accuracy.items()}
+	txt2img_acc = txt2img_top1_correct / n_classes
 	
 	# Additional metrics
 	mean_reciprocal_rank = float(np.mean(reciprocal_ranks)) if reciprocal_ranks else 0.0
 	cosine_sim_mean = float(np.mean(cosine_similarities)) if cosine_similarities else 0.0
 	
-	# Construct metrics dictionary
+	# Construct final metrics dictionary
 	metrics = {
 			"val_loss": float(avg_val_loss),
-			"img2txt_acc": img2txt_acc,
-			"txt2img_acc": txt2img_acc,
-			"img2txt_topk_acc": img2txt_topk_accuracy,
-			"txt2img_topk_acc": txt2img_topk_accuracy,
+			"img2txt_acc": float(img2txt_acc),
+			"txt2img_acc": float(txt2img_acc),
+			"img2txt_topk_acc": {str(k): float(v) for k, v in img2txt_topk_accuracy.items()},
+			"txt2img_topk_acc": {str(k): float(v) for k, v in txt2img_topk_accuracy.items()},
 			"mean_reciprocal_rank": mean_reciprocal_rank,
 			"cosine_similarity": cosine_sim_mean,
 	}
