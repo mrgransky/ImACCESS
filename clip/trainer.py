@@ -1385,19 +1385,6 @@ def progressive_unfreeze_finetune(
 			dropout_val = module.p
 			break
 
-	mdl_fpth = os.path.join(
-		results_dir,
-		f"{dataset_name}_"
-		f"{mode}_"
-		f"{model_name}_"
-		f"{model_arch}_"
-		f"do_{dropout_val}_"
-		f"init_lr_{initial_learning_rate:.1e}_"
-		f"init_wd_{initial_weight_decay:.1e}_"
-		f"bs_{train_loader.batch_size}_"
-		f"best_model.pth"
-	)
-
 	# Inspect the model for dropout layers
 	dropout_values = []
 	for name, module in model.named_modules():
@@ -1443,9 +1430,32 @@ def progressive_unfreeze_finetune(
 		pct_start=0.1, # Standard pct_start
 		anneal_strategy='cos' # Cosine annealing
 	)
+	print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
 
 	criterion = torch.nn.CrossEntropyLoss()
+	print(f"Using {criterion.__class__.__name__} as the loss function")
+
 	scaler = torch.amp.GradScaler(device=device) # For mixed precision
+	print(f"Using {scaler.__class__.__name__} for mixed precision training")
+
+	mdl_fpth = os.path.join(
+		results_dir,
+		f"{dataset_name}_"
+		f"{mode}_"
+		f"{model_name}_"
+		f"{model_arch}_"
+		f"opt_{optimizer.__class__.__name__}_"
+		f"sch_{scheduler.__class__.__name__}_"
+		f"loss_{criterion.__class__.__name__}_"
+		f"scaler_{scaler.__class__.__name__}_"
+		f"init_epochs_{num_epochs}_"
+		f"do_{dropout_val}_"
+		f"init_lr_{initial_learning_rate:.1e}_"
+		f"init_wd_{initial_weight_decay:.1e}_"
+		f"bs_{train_loader.batch_size}_"
+		f"best_model.pth"
+	)
+	print(f"Best model will be saved in: {mdl_fpth}")
 
 	current_phase = 0
 	epochs_in_current_phase = 0
@@ -1841,13 +1851,37 @@ def lora_finetune(
 	# Get dropout value (same as finetune())
 	get_parameters_info(model=model, mode=mode)
 
+	optimizer = AdamW(
+		params=[p for p in model.parameters() if p.requires_grad],
+		lr=learning_rate,
+		betas=(0.9, 0.98),
+		eps=1e-6,
+		weight_decay=weight_decay,
+	)
+
+	scheduler = lr_scheduler.OneCycleLR(
+		optimizer=optimizer,
+		max_lr=learning_rate,
+		steps_per_epoch=len(train_loader),
+		epochs=num_epochs,
+		pct_start=0.1,
+		anneal_strategy='cos',
+	)
+
+	criterion = torch.nn.CrossEntropyLoss()
+	scaler = torch.amp.GradScaler(device=device)
+
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{dataset_name}_"
 		f"{mode}_"
 		f"{model_name}_"
 		f"{model_arch}_"
-		f"do_{dropout_val}_"
+		f"opt_{optimizer.__class__.__name__}_"
+		f"sch_{scheduler.__class__.__name__}_"
+		f"loss_{criterion.__class__.__name__}_"
+		f"scaler_{scaler.__class__.__name__}_"
+		f"init_epochs_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"lora_rank_{lora_rank}_"
@@ -1856,26 +1890,7 @@ def lora_finetune(
 		f"bs_{train_loader.batch_size}_"
 		f"best_model.pth"
 	)
-
-	optimizer = AdamW(
-			params=[p for p in model.parameters() if p.requires_grad],
-			lr=learning_rate,
-			betas=(0.9, 0.98),
-			eps=1e-6,
-			weight_decay=weight_decay,
-	)
-
-	scheduler = lr_scheduler.OneCycleLR(
-			optimizer=optimizer,
-			max_lr=learning_rate,
-			steps_per_epoch=len(train_loader),
-			epochs=num_epochs,
-			pct_start=0.1,
-			anneal_strategy='cos',
-	)
-
-	criterion = torch.nn.CrossEntropyLoss()
-	scaler = torch.amp.GradScaler(device=device)
+	print(f"Best model will be saved in: {mdl_fpth}")
 
 	training_losses = []
 	img2txt_metrics_all_epochs = []
@@ -2120,19 +2135,6 @@ def full_finetune(
 
 	get_parameters_info(model=model, mode=mode)
 
-	mdl_fpth = os.path.join(
-		results_dir,
-		f"{dataset_name}_"
-		f"{mode}_"
-		f"{model_name}_"
-		f"{model_arch}_"
-		f"do_{dropout_val}_"
-		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
-		f"bs_{train_loader.batch_size}_"
-		f"best_model.pth"
-	)
-
 	optimizer = AdamW(
 		params=[p for p in model.parameters() if p.requires_grad],
 		lr=learning_rate,
@@ -2160,7 +2162,25 @@ def full_finetune(
 		growth_interval=2000,
 	)
 
-	# Lists to store metrics
+	mdl_fpth = os.path.join(
+		results_dir,
+		f"{dataset_name}_"
+		f"{mode}_"
+		f"{model_name}_"
+		f"{model_arch}_"
+		f"opt_{optimizer.__class__.__name__}_"
+		f"sch_{scheduler.__class__.__name__}_"
+		f"loss_{criterion.__class__.__name__}_"
+		f"scaler_{scaler.__class__.__name__}_"
+		f"init_epochs_{num_epochs}_"
+		f"do_{dropout_val}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"bs_{train_loader.batch_size}_"
+		f"best_model.pth"
+	)
+	print(f"Best model will be saved in: {mdl_fpth}")
+
 	training_losses = []
 	img2txt_metrics_all_epochs = []
 	txt2img_metrics_all_epochs = []
@@ -2409,19 +2429,6 @@ def train(
 
 	get_parameters_info(model=model, mode=mode)
 
-	mdl_fpth = os.path.join(
-		results_dir,
-		f"{dataset_name}_"
-		f"{mode}_"
-		f"{model_name}_"
-		f"{model_arch}_"
-		f"do_{dropout_val}_"
-		f"lr_{learning_rate:.1e}_"
-		f"wd_{weight_decay:.1e}_"
-		f"bs_{train_loader.batch_size}_"
-		f"best_model.pth"
-	)
-
 	optimizer = AdamW(
 		params=[p for p in model.parameters() if p.requires_grad], # Only optimizes parameters that require gradients
 		lr=learning_rate,
@@ -2429,6 +2436,7 @@ def train(
 		eps=1e-6,
 		weight_decay=weight_decay,
 	)
+
 	scheduler = lr_scheduler.OneCycleLR(
 		optimizer=optimizer,
 		max_lr=learning_rate,
@@ -2445,6 +2453,26 @@ def train(
 		backoff_factor=0.5,
 		growth_interval=2000,
 	)
+
+	mdl_fpth = os.path.join(
+		results_dir,
+		f"{dataset_name}_"
+		f"{mode}_"
+		f"{model_name}_"
+		f"{model_arch}_"
+		f"opt_{optimizer.__class__.__name__}_"
+		f"sch_{scheduler.__class__.__name__}_"
+		f"loss_{criterion.__class__.__name__}_"
+		f"scaler_{scaler.__class__.__name__}_"
+		f"init_epochs_{num_epochs}_"
+		f"do_{dropout_val}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"bs_{train_loader.batch_size}_"
+		f"best_model.pth"
+	)
+	print(f"Best model will be saved in: {mdl_fpth}")
+
 	training_losses = []
 	img2txt_metrics_all_epochs = []
 	txt2img_metrics_all_epochs = []
