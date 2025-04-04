@@ -13,31 +13,6 @@ def evaluate_best_model(
 		topk_values:list[int]=[1, 5, 10],
 		verbose:bool=True
 	):
-	"""
-	Load the best model weights and perform comprehensive evaluation.
-	
-	This function handles loading the best model weights from a checkpoint file
-	or from early stopping's cached weights, then performs a complete evaluation
-	using multiple metrics.
-	
-	Args:
-			model: The model to load weights into and evaluate
-			validation_loader: DataLoader for the validation dataset
-			criterion: Loss function to use for evaluation
-			early_stopping: EarlyStopping instance that might contain best weights
-			checkpoint_path: Path to the saved checkpoint file
-			device: Device to use for evaluation ('cuda' or 'cpu')
-			topk_values: List of k values for top-k accuracy metrics
-			verbose: Whether to print detailed evaluation information
-			
-	Returns:
-			dict: A dictionary containing all evaluation results:
-					- in_batch_metrics: Loss and accuracy metrics within batches
-					- full_metrics: Loss and accuracy metrics across all validation data
-					- img2txt_metrics: Image-to-text retrieval metrics
-					- txt2img_metrics: Text-to-image retrieval metrics
-					- model_loaded_from: Source of the loaded weights ('checkpoint', 'early_stopping', or 'current')
-	"""
 	model_source = "current"  # Default if we don't load anything
 	
 	# First try to load from checkpoint file
@@ -93,7 +68,7 @@ def evaluate_best_model(
 	model.eval()
 	
 	if verbose:
-			print("\nPerforming final evaluation on the best model...")
+		print("\nPerforming final evaluation on the best model...")
 	
 	# Compute in-batch loss/accuracy metrics
 	in_batch_metrics = get_in_batch_loss_accuracy_metrics(
