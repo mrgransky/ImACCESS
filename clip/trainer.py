@@ -1020,7 +1020,7 @@ def get_loss_accuracy_metrics(
 						weighted_precision_sum += precision * chunk_weights[c_idx].item()
 						if k == 1:
 							txt2img_top1_correct += 1 if correct > 0 else 0
-					print(f"Epoch {epoch}: K={k}, Weighted Precision Sum = {weighted_precision_sum}")  # Debug print
+					print(f"K={k}, Weighted Precision Sum = {weighted_precision_sum}")  # Debug print
 					txt2img_topk_accuracy[k] += weighted_precision_sum
 
 				del chunk_txt_embeds, all_topk_indices, all_topk_values
