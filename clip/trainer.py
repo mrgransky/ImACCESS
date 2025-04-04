@@ -1158,15 +1158,17 @@ def get_loss_accuracy_metrics(
 			# Compute accuracy for this chunk of classes
 			for k in topK_values:
 					for c_idx, class_idx in enumerate(chunk_class_indices):
-							retrieved_labels = image_labels[all_topk_indices[k][c_idx]].to(device)
-							correct = (retrieved_labels == class_idx).sum().item()
-							
-							# For top-k accuracy, we count as correct if any retrieved items match the class
-							txt2img_topk_accuracy[k] += 1 if correct > 0 else 0
-							
-							# For top-1, we check only the first retrieved item
-							if k == 1:
-									txt2img_top1_correct += 1 if correct > 0 else 0
+						# Move indices to CPU before indexing the CPU tensor
+						topk_indices_cpu = all_topk_indices[k][c_idx].cpu()
+						retrieved_labels = image_labels[topk_indices_cpu].to(device)
+						correct = (retrieved_labels == class_idx).sum().item()
+						
+						# For top-k accuracy, we count as correct if any retrieved items match the class
+						txt2img_topk_accuracy[k] += 1 if correct > 0 else 0
+						
+						# For top-1, we check only the first retrieved item
+						if k == 1:
+								txt2img_top1_correct += 1 if correct > 0 else 0
 			
 			# Clean up
 			del chunk_txt_embeds, all_topk_indices, all_topk_values
