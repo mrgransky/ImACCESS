@@ -10,8 +10,8 @@ def evaluate_best_model(
 		checkpoint_path,
 		device,
 		print_every:int=100,
-		topk_values=[1, 5, 10],
-		verbose=True
+		topk_values:list[int]=[1, 5, 10],
+		verbose:bool=True
 	):
 	"""
 	Load the best model weights and perform comprehensive evaluation.
