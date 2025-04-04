@@ -34,11 +34,6 @@ st_dt="1900-01-01"
 end_dt="1970-12-31"
 num_workers=$((SLURM_CPUS_PER_TASK - 1))
 
-ddir="/lustre/sgn-data/ImACCESS/WW_DATASETs"
-st_dt="1939-09-01"
-end_dt="1945-09-02"
-num_workers=$((SLURM_CPUS_PER_TASK - 1))
-
 python -u data_collector.py \
 	--dataset_dir $ddir \
 	--batch_size 256 \
