@@ -54,36 +54,6 @@ nltk.download(
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 
-if USER!="alijanif":
-	import enchant
-	import libvoikko
-	fi_dict = libvoikko.Voikko(language="fi")	
-	fii_dict = enchant.Dict("fi")
-	sv_dict = enchant.Dict("sv_SE")
-	sv_fi_dict = enchant.Dict("sv_FI")
-	en_dict = enchant.Dict("en")
-	de_dict = enchant.Dict("de")
-	no_dict = enchant.Dict("no")
-	da_dict = enchant.Dict("da")
-	es_dict = enchant.Dict("es")
-	et_dict = enchant.Dict("et")
-	
-	cs_dict = enchant.Dict("cs")
-	cy_dict = enchant.Dict("cy")
-	fo_dict = enchant.Dict("fo")
-	fr_dict = enchant.Dict("fr")
-	ga_dict = enchant.Dict("ga")
-	hr_dict = enchant.Dict("hr")
-	hu_dict = enchant.Dict("hu")
-	is_dict = enchant.Dict("is")
-	it_dict = enchant.Dict("it")
-	lt_dict = enchant.Dict("lt")
-	lv_dict = enchant.Dict("lv")
-	nl_dict = enchant.Dict("nl")
-	pl_dict = enchant.Dict("pl")
-	sl_dict = enchant.Dict("sl")
-	sk_dict = enchant.Dict("sk")
-
 def print_args_table(args, parser):
 	args_dict = vars(args)
 	table_data = []
@@ -261,7 +231,7 @@ def get_ip_info():
 	except requests.exceptions.RequestException as e:
 		print(f"Error: {e}")
 
-def clean_(text, sw, check_language:bool=False):
+def clean_(text:str, sw:list):
 	if not text:
 		return
 	# print(text)
@@ -269,8 +239,6 @@ def clean_(text, sw, check_language:bool=False):
 	# text = re.sub(r'[";=&#<>_\-\+\^\.\$\[\]]', " ", text)
 	# text = re.sub(r'[!"#$%&\'()*+,-./:;<=>?@\[\]^_`{|}~]', ' ', text) # remove all punctuation marks except periods and commas,
 	text = re.sub(r"[^\w\s'-]", " ", text) # remove all punctuation marks, including periods and commas,
-	if check_language:
-		text = remove_misspelled_(documents=text)
 	words = nltk.tokenize.word_tokenize(text) # Tokenize the text into words
 	# Filter out stopwords and words with fewer than 3 characters
 	words = [
@@ -307,45 +275,6 @@ def clean_(text, sw, check_language:bool=False):
 	if len(text) == 0:
 		return None
 	return text
-
-@cache
-def remove_misspelled_(documents: str="This is a sample sentence."):
-	# print(f"Removing misspelled word(s)".center(100, " "))	
-	# Split the documents into words
-	documents = documents.title()
-	if not isinstance(documents, list):
-		# print(f"Convert to a list of words using split() command |", end=" ")
-		words = documents.split()
-	else:
-		words = documents	
-	# print(f"Document conatins {len(words)} word(s)")
-	# Remove misspelled words
-	cleaned_words = []
-	for word in words:
-		if not (
-			fi_dict.spell(word)
-			or fii_dict.check(word)
-			or sv_dict.check(word)
-			or sv_fi_dict.check(word)
-			or en_dict.check(word)
-			or de_dict.check(word)
-			or da_dict.check(word)
-			or es_dict.check(word)
-			or et_dict.check(word)
-			or cs_dict.check(word)
-			or fr_dict.check(word)
-			# or ga_dict.check(word)
-			# or hr_dict.check(word)
-			# or hu_dict.check(word)
-		):
-			# print(f"\t\t{word} does not exist")
-			pass
-		else:
-			cleaned_words.append(word)
-	# Join the cleaned words back into a string
-	cleaned_text = " ".join(cleaned_words)
-	# print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(100, " "))
-	return cleaned_text
 
 def process_rgb_image(image_path: str, transform: T.Compose):
 	# logging.info(f"Processing: {image_path}")
