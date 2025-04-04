@@ -11,10 +11,6 @@
 #SBATCH --partition=normal
 #SBATCH --time=00-10:00:00
 
-set -e # Exit immediately if a command exits with a non-zero status.
-set -u # Treat unset variables as an error and exit immediately.
-set -o pipefail # If any command in a pipeline fails, the entire pipeline will fail.
-
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
 txt="$user began Slurm job: `date`"
