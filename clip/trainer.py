@@ -1008,25 +1008,26 @@ def get_loss_accuracy_metrics(
 
 				# Compute weighted precision@K for each class
 				for k in topK_values:
-						precision_sum = 0
-						weighted_precision_sum = 0
-						for c_idx, class_idx in enumerate(chunk_class_indices):
-								topk_indices_cpu = all_topk_indices[k][c_idx].cpu()
-								retrieved_labels = image_labels[topk_indices_cpu].to(device)
-								relevant_count = class_counts[class_idx].item()
-								correct = (retrieved_labels == class_idx).sum().item()
-								precision = correct / k if relevant_count > 0 else 0.0
-								precision_sum += precision
-								weighted_precision_sum += precision * chunk_weights[c_idx].item()
-								if k == 1:
-										txt2img_top1_correct += 1 if correct > 0 else 0
-						txt2img_topk_accuracy[k] += weighted_precision_sum
+					precision_sum = 0
+					weighted_precision_sum = 0
+					for c_idx, class_idx in enumerate(chunk_class_indices):
+						topk_indices_cpu = all_topk_indices[k][c_idx].cpu()
+						retrieved_labels = image_labels[topk_indices_cpu].to(device)
+						relevant_count = class_counts[class_idx].item()
+						correct = (retrieved_labels == class_idx).sum().item()
+						precision = correct / k if relevant_count > 0 else 0.0
+						precision_sum += precision
+						weighted_precision_sum += precision * chunk_weights[c_idx].item()
+						if k == 1:
+							txt2img_top1_correct += 1 if correct > 0 else 0
+					print(f"Epoch {epoch}: K={k}, Weighted Precision Sum = {weighted_precision_sum}")  # Debug print
+					txt2img_topk_accuracy[k] += weighted_precision_sum
 
 				del chunk_txt_embeds, all_topk_indices, all_topk_values
 				torch.cuda.empty_cache()
 
 				if (i + 1) % print_every == 0 or (i + 1) == num_chunks:
-						print(f"  Processed {i+1}/{num_chunks} text chunks")
+					print(f"  Processed {i+1}/{num_chunks} text chunks")
 
 		txt2img_topk_accuracy = {k: v for k, v in txt2img_topk_accuracy.items()}  # Already weighted
 		txt2img_acc = txt2img_top1_correct / n_classes
