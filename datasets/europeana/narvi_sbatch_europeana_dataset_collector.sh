@@ -6,9 +6,9 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=9
 #SBATCH --mem=9G
-#SBATCH --partition=normal
+#SBATCH --partition=amd
 #SBATCH --time=00-10:00:00
 
 user="`whoami`"
