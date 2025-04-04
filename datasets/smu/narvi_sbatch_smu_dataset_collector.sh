@@ -7,7 +7,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=4G
+#SBATCH --mem=2G
 #SBATCH --partition=test
 #SBATCH --time=00-04:00:00
 
@@ -26,9 +26,9 @@ echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK, MEM/CP
 echo "nTASKS/CORE: $SLURM_NTASKS_PER_CORE, nTASKS/NODE: $SLURM_NTASKS_PER_NODE"
 echo "THREADS/CORE: $SLURM_THREADS_PER_CORE"
 echo "${stars// /*}"
-echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
-echo ">> Using $SLURM_CLUSTER_NAME conda env from Anaconda..."
+echo "$SLURM_SUBMIT_HOST ($SLURM_CLUSTER_NAME) conda env from Anaconda..."
 source activate py39
+
 ddir="/lustre/sgn-data/ImACCESS/WW_DATASETs"
 st_dt="1900-01-01"
 end_dt="1970-12-31"

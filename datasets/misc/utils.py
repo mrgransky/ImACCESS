@@ -37,18 +37,18 @@ logging.basicConfig(level=logging.INFO)
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
 
 nltk_modules = [
-		'punkt',
-		'wordnet',
-		'averaged_perceptron_tagger', 
-		'omw-1.4',
-		'stopwords',
+	'punkt',
+	'wordnet',
+	'averaged_perceptron_tagger', 
+	'omw-1.4',
+	'stopwords',
 ]
 nltk.download(
-		# 'all',
-		nltk_modules,
-		# 'stopwords',
-		quiet=True,
-		# raise_on_error=True,
+	# 'all',
+	nltk_modules,
+	# 'stopwords',
+	quiet=True,
+	# raise_on_error=True,
 )
 
 HOME: str = os.getenv('HOME') # echo $HOME
