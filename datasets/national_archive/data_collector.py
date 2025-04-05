@@ -334,7 +334,7 @@ def main():
 		print(f"Failed to write Excel file: {e}")
 
 	# stratified splitting:
-	train_df, val_df = get_stratified_split(df=smu_df, val_split_pct=args.val_split_pct,)
+	train_df, val_df = get_stratified_split(df=na_df, val_split_pct=args.val_split_pct,)
 	train_df.to_csv(os.path.join(DATASET_DIRECTORY, 'metadata_train.csv'), index=False)
 	val_df.to_csv(os.path.join(DATASET_DIRECTORY, 'metadata_val.csv'), index=False)
 
