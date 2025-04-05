@@ -26,6 +26,7 @@ DATASET_DIRECTORY = {
 	"farid": "/home/farid/datasets/WW_DATASETs",
 	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs",
 	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs",
+	"alijani": "/lustre/sgn-data/ImACCESS/WW_DATASETs",
 }
 
 # DATASETS = [
