@@ -30,6 +30,8 @@ print_args_table(args=args, parser=parser)
 
 START_DATE = args.start_date
 END_DATE = args.end_date
+FIGURE_SIZE = (12, 9)
+DPI = 350
 
 meaningless_words_fpth = os.path.join(parent_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
