@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=history_Xn_dataset_merge
-#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%N_%j.out
+#SBATCH --output=/lustre/sgn-data/ImACCESS/trash/logs/%x_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
