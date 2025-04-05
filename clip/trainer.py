@@ -1745,8 +1745,8 @@ def progressive_unfreeze_finetune(
 			checkpoint_path=mdl_fpth,
 			epoch=epoch,
 			current_phase=current_phase,
-			img2txt_metrics=img2txt_metrics_per_epoch,
-			txt2img_metrics=txt2img_metrics_per_epoch,
+			img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
+			txt2img_metrics=retrieval_metrics_per_epoch["txt2img"],
 		)
 
 		# --- Early Stopping Check ---
