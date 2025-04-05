@@ -81,7 +81,7 @@ os.makedirs(os.path.join(DATASET_DIRECTORY, "hits"), exist_ok=True)
 HITs_DIR = os.path.join(DATASET_DIRECTORY, "hits")
 
 os.makedirs(os.path.join(DATASET_DIRECTORY, "outputs"), exist_ok=True)
-OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
+OUTPUT_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
 
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
@@ -320,7 +320,7 @@ def main():
 		nw=args.num_workers,
 	)
 
-	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"{dataset_name}_label_distribution_nIMGs_{na_df.shape[0]}.png")
+	label_dirstribution_fname = os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_label_distribution_nIMGs_{na_df.shape[0]}.png")
 	plot_label_distribution(
 		df=na_df,
 		dname=dataset_name,
