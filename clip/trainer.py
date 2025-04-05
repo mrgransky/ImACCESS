@@ -90,7 +90,7 @@ def evaluate_best_model(
 	)
 	
 	# Compute retrieval-based metrics
-	img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
+	retrieval_metrics = evaluate_retrieval_performance(
 			model=model,
 			validation_loader=validation_loader,
 			device=device,
@@ -106,17 +106,17 @@ def evaluate_best_model(
 			print(json.dumps(full_metrics, indent=2, ensure_ascii=False))
 			
 			print("\n--- Image-to-Text Retrieval ---")
-			print(json.dumps(img2txt_metrics, indent=2, ensure_ascii=False))
+			print(json.dumps(retrieval_metrics["img2txt"], indent=2, ensure_ascii=False))
 			
 			print("\n--- Text-to-Image Retrieval ---")
-			print(json.dumps(txt2img_metrics, indent=2, ensure_ascii=False))
+			print(json.dumps(retrieval_metrics["txt2img"], indent=2, ensure_ascii=False))
 	
 	# Return all metrics in a single dictionary
 	return {
 			"in_batch_metrics": in_batch_metrics,
 			"full_metrics": full_metrics,
-			"img2txt_metrics": img2txt_metrics,
-			"txt2img_metrics": txt2img_metrics,
+			"img2txt_metrics": retrieval_metrics["img2txt"],
+			"txt2img_metrics": retrieval_metrics["txt2img"],
 			"model_loaded_from": model_source
 	}
 
@@ -570,8 +570,10 @@ def evaluate_retrieval_performance(
 		class_counts=torch.bincount(image_labels),  # Count number of occurrences of each value in array of non-negative ints.
 		max_k=None,  # No limit on K for Text-to-Image
 	)
-
-	return image_to_text_metrics, text_to_image_metrics
+	return {
+		"img2txt": image_to_text_metrics,
+		"txt2img": text_to_image_metrics,
+	}
 
 def get_retrieval_metrics(
 		similarity_matrix: torch.Tensor,
@@ -1703,14 +1705,14 @@ def progressive_unfreeze_finetune(
 		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
 
 		# Compute retrieval-based metrics
-		img2txt_metrics_per_epoch, txt2img_metrics_per_epoch = evaluate_retrieval_performance(
+		retrieval_metrics_per_epoch = evaluate_retrieval_performance(
 			model=model,
 			validation_loader=validation_loader,
 			device=device,
 			topK_values=topk_values,
 		)
-		img2txt_metrics_all_epochs.append(img2txt_metrics_per_epoch)
-		txt2img_metrics_all_epochs.append(txt2img_metrics_per_epoch)
+		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
+		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
 
 		current_val_loss = in_batch_loss_acc_metrics_per_epoch.get("val_loss", float('inf')) # Handle missing key safely
 		print(
@@ -1729,8 +1731,8 @@ def progressive_unfreeze_finetune(
 		)
 
 		print(f"Retrieval Metrics:\n")
-		print(f"Image-to-Text Retrieval: {img2txt_metrics_per_epoch}")
-		print(f"Text-to-Image Retrieval: {txt2img_metrics_per_epoch}")
+		print(f"Image-to-Text Retrieval: {retrieval_metrics_per_epoch['img2txt']}")
+		print(f"Text-to-Image Retrieval: {retrieval_metrics_per_epoch['txt2img']}")
 
 		# --- Checkpointing Best Model ---
 		best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
@@ -2033,14 +2035,14 @@ def lora_finetune(
 		)
 		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
 
-		img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
+		retrieval_metrics = evaluate_retrieval_performance(
 			model=model,
 			validation_loader=validation_loader,
 			device=device,
 			topK_values=topk_values,
 		)
-		img2txt_metrics_all_epochs.append(img2txt_metrics)
-		txt2img_metrics_all_epochs.append(txt2img_metrics)
+		img2txt_metrics_all_epochs.append(retrieval_metrics["img2txt"])
+		txt2img_metrics_all_epochs.append(retrieval_metrics["txt2img"])
 
 		print(
 			f'@ Epoch {epoch + 1}:\n'
@@ -2336,14 +2338,14 @@ def full_finetune(
 		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
 
 		# Compute retrieval-based metrics
-		img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
+		retrieval_metrics = evaluate_retrieval_performance(
 			model=model,
 			validation_loader=validation_loader,
 			device=device,
 			topK_values=topk_values,
 		)
-		img2txt_metrics_all_epochs.append(img2txt_metrics)
-		txt2img_metrics_all_epochs.append(txt2img_metrics)
+		img2txt_metrics_all_epochs.append(retrieval_metrics["img2txt"])
+		txt2img_metrics_all_epochs.append(retrieval_metrics["txt2img"])
 
 		print(
 			f'@ Epoch {epoch + 1}:\n'
@@ -2360,8 +2362,8 @@ def full_finetune(
 			f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
 		print(f"Retrieval Metrics:\n")
-		print(f"Image-to-Text Retrieval: {img2txt_metrics}")
-		print(f"Text-to-Image Retrieval: {txt2img_metrics}")
+		print(f"Image-to-Text Retrieval: {retrieval_metrics['img2txt']}")
+		print(f"Text-to-Image Retrieval: {retrieval_metrics['txt2img']}")
 
 		# Early stopping
 		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
@@ -2376,8 +2378,8 @@ def full_finetune(
 			early_stopping=early_stopping,
 			checkpoint_path=mdl_fpth,
 			epoch=epoch,
-			img2txt_metrics=img2txt_metrics,
-			txt2img_metrics=txt2img_metrics
+			img2txt_metrics=retrieval_metrics["img2txt"],
+			txt2img_metrics=retrieval_metrics["txt2img"]
 		)
 
 		# --- Early Stopping Check ---
@@ -2630,14 +2632,14 @@ def train(
 		)
 
 		# Compute retrieval-based metrics
-		img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
+		retrieval_metrics = evaluate_retrieval_performance(
 			model=model,
 			validation_loader=validation_loader,
 			device=device,
 			topK_values=topk_values,
 		)
-		img2txt_metrics_all_epochs.append(img2txt_metrics)
-		txt2img_metrics_all_epochs.append(txt2img_metrics)
+		img2txt_metrics_all_epochs.append(retrieval_metrics["img2txt"])
+		txt2img_metrics_all_epochs.append(retrieval_metrics["txt2img"])
 
 		# ############################## Early stopping ##############################
 		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
@@ -2748,7 +2750,7 @@ def pretrain(
 	except Exception as e:
 		print(e)
 
-		img2txt_metrics, txt2img_metrics = evaluate_retrieval_performance(
+		retrieval_metrics = evaluate_retrieval_performance(
 			model=model,
 			validation_loader=validation_loader,
 			device=device,
@@ -2756,13 +2758,13 @@ def pretrain(
 		)
 
 		print("Image to Text Metrics: ")
-		print(json.dumps(img2txt_metrics, indent=2, ensure_ascii=False))
+		print(json.dumps(retrieval_metrics["img2txt"], indent=2, ensure_ascii=False))
 
 		print("Text to Image Metrics: ")
-		print(json.dumps(txt2img_metrics, indent=2, ensure_ascii=False))
+		print(json.dumps(retrieval_metrics["txt2img"], indent=2, ensure_ascii=False))
 
-		save_pickle(pkl=img2txt_metrics, fname=i2t_retrieval_metrics_fpth)
-		save_pickle(pkl=txt2img_metrics, fname=t2i_retrieval_metrics_fpth)
+		save_pickle(pkl=retrieval_metrics["img2txt"], fname=i2t_retrieval_metrics_fpth)
+		save_pickle(pkl=retrieval_metrics["txt2img"], fname=t2i_retrieval_metrics_fpth)
 
 	plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
