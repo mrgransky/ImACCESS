@@ -7,7 +7,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=9
-#SBATCH --mem=9G
+#SBATCH --mem=32G
 #SBATCH --partition=normal
 #SBATCH --time=01-00:00:00 # 1 day
 

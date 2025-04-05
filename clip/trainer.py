@@ -2067,8 +2067,8 @@ def lora_finetune(
 			early_stopping=early_stopping,
 			checkpoint_path=mdl_fpth,
 			epoch=epoch,
-			img2txt_metrics=img2txt_metrics,
-			txt2img_metrics=txt2img_metrics
+			img2txt_metrics=retrieval_metrics["img2txt"],
+			txt2img_metrics=retrieval_metrics["txt2img"]
 		)
 
 		if early_stopping.should_stop(
