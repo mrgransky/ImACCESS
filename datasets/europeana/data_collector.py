@@ -15,7 +15,7 @@ parser.add_argument('--num_workers', '-nw', type=int, default=16, help='Number o
 parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_size')
 parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histogram Bins')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std') # if given => True (ex. --img_mean_std)
-parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.1, help='Validation Split Percentage')
+parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='Validation Split Percentage')
 
 args, unknown = parser.parse_known_args()
 print_args_table(args=args, parser=parser)
