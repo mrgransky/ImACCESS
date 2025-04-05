@@ -24,7 +24,6 @@ parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histo
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='Validation Split Percentage')
 
-
 args, unknown = parser.parse_known_args()
 print_args_table(args=args, parser=parser)
 

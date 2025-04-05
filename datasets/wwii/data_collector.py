@@ -22,6 +22,7 @@ parser.add_argument('--num_workers', '-nw', type=int, default=12, help='Number o
 parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_size')
 parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histogram Bins')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
+parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='Validation Split Percentage')
 
 args, unknown = parser.parse_known_args()
 print_args_table(args=args, parser=parser)
@@ -48,10 +49,13 @@ os.makedirs(os.path.join(DATASET_DIRECTORY, "hits"), exist_ok=True)
 HITs_DIR = os.path.join(DATASET_DIRECTORY, "hits")
 
 os.makedirs(os.path.join(DATASET_DIRECTORY, "outputs"), exist_ok=True)
-OUTPUTs_DIR = os.path.join(DATASET_DIRECTORY, "outputs")
+OUTPUT_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
 
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
+
+FIGURE_SIZE = (12, 9)
+DPI = 350
 
 def extract_url_info(url:str)-> Dict:
 	"""
@@ -610,7 +614,7 @@ def main():
 	dfs_fname = os.path.join(HITs_DIR, f"{dataset_name}_{len(URLs)}_dfs.gz")
 	try:
 		dfs = load_pickle(fpth=dfs_fname,)
-		print(f"Loaded {len(dfs)} dfs from {os.path.join(OUTPUTs_DIR, f'{dataset_name}_dfs.gz')}")
+		print(f"Loaded {len(dfs)} dfs from {os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_dfs.gz')}")
 	except Exception as e:
 		print(f"<!> {e}")
 		print(f"Scraping {len(URLs)} URLs...")
@@ -633,26 +637,34 @@ def main():
 	print(wwii_df.tail(10))
 	print(wwii_df["label"].value_counts())
 	print(wwii_df["label"].value_counts(normalize=True))
-	label_dirstribution_fname = os.path.join(OUTPUTs_DIR, f"{dataset_name}_label_distribution_{wwii_df.shape[0]}_x_{wwii_df.shape[1]}.png")
+
+	label_dirstribution_fname = os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_label_distribution_{wwii_df.shape[0]}_x_{wwii_df.shape[1]}.png")
 	plot_label_distribution(
 		df=wwii_df,
 		dname=dataset_name,
 		fpth=label_dirstribution_fname,
 	)
-	wwii_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
-	get_stratified_split(
-		df=wwii_df,
-		val_split_pct=0.35,
-		figure_size=(12, 6),
-		dpi=250,
-		result_dir=DATASET_DIRECTORY,
-		dname=dataset_name,
-	)
 
+	wwii_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
 	try:
 		wwii_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
+
+	train_df, val_df = get_stratified_split(df=wwii_df, val_split_pct=args.val_split_pct,)
+	train_df.to_csv(os.path.join(DATASET_DIRECTORY, 'metadata_train.csv'), index=False)
+	val_df.to_csv(os.path.join(DATASET_DIRECTORY, 'metadata_val.csv'), index=False)
+
+	plot_train_val_label_distribution(
+		train_df=train_df,
+		val_df=val_df,
+		dataset_name=dataset_name,
+		OUTPUT_DIRECTORY=OUTPUT_DIRECTORY,
+		VAL_SPLIT_PCT=args.val_split_pct,
+		fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_simple_random_split_stratified_label_distribution_train_val_{args.val_split_pct}_pct.png'),
+		FIGURE_SIZE=(14, 8),
+		DPI=DPI,
+	)
 
 	if args.img_mean_std:
 		try:
