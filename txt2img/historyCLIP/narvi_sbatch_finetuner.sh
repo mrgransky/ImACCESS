@@ -10,13 +10,14 @@
 #SBATCH --mem=64G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:teslav100:1
+#SBATCH --constraint=gpumem_32
 #SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
 #SBATCH --time=07-00:00:00
-#### #SBATCH --constraint=gpumem_32
 
 set -e
 set -u
 set -o pipefail
+
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
 txt="$user began Slurm job: `date`"
@@ -31,7 +32,8 @@ echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_N
 echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
 echo "${stars// /*}"
 
-source activate py39
+source /home/opt/anaconda3/etc/profile.d/conda.sh
+conda activate py39
 
 # Define constants
 FINETUNE_STRATEGIES=("full" "lora" "progressive")
@@ -125,8 +127,7 @@ if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"336px"* ]]; then
 		fi
 fi
 
-echo "ADJUSTED_BATCH_SIZE: ${ADJUSTED_BATCH_SIZE}"
-
+echo "Starting Python execution for task $SLURM_ARRAY_TASK_ID | ADJUSTED_BATCH_SIZE: ${ADJUSTED_BATCH_SIZE}"
 # Run training command
 python -u history_clip_trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \
@@ -144,6 +145,8 @@ python -u history_clip_trainer.py \
 	--sampling "${SAMPLINGS[1]}" \
 	--dropout "${DROPOUT}" \
 	--model_architecture "${MODEL_ARCHITECTURES[$architecture_index]}"
+
+echo "Python execution finished for task $SLURM_ARRAY_TASK_ID"
 
 done_txt="$user finished Slurm job: $(date)"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
