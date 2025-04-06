@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=finetune_historyCLIP_finetune_strategy_x_dataset_x_model_architecture_x_with_dropout
-#SBATCH --output=/lustre/sgn-data/ImACCESS/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
+#SBATCH --output=/lustre/sgn-data/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
@@ -35,11 +35,11 @@ echo "${stars// /*}"
 # Define constants
 FINETUNE_STRATEGIES=("full" "lora" "progressive")
 DATASETS=(
-/lustre/sgn-data/ImACCESS/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
-/lustre/sgn-data/ImACCESS/ImACCESS/WW_DATASETs/HISTORY_X4
-/lustre/sgn-data/ImACCESS/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
-/lustre/sgn-data/ImACCESS/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
-/lustre/sgn-data/ImACCESS/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
+/lustre/sgn-data/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
+/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4
+/lustre/sgn-data/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
+/lustre/sgn-data/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
+/lustre/sgn-data/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 MODEL_ARCHITECTURES=("ViT-B/32" "ViT-B/16" "ViT-L/14" "ViT-L/14@336px")
 
