@@ -26,7 +26,7 @@ from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics, 
 # finetune [full]:
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 16 -e 100 -lr 1e-5 -wd 1e-2 --print_every 50 -nw 50 --device "cuda:3" -m finetune -a "ViT-L/14" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 64 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:2" -m finetune -a "ViT-B/32" -do 0.0 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 16 -e 100 -lr 5e-5 -wd 1e-1 --print_every 200 -nw 50 --device "cuda:2" -m finetune -a "ViT-L/14" -do 0.0 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 16 -e 100 -lr 5e-5 -wd 1e-1 --print_every 200 -nw 50 --device "cuda:3" -m finetune -a "ViT-L/14" -do 0.0 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 64 -e 100 -lr 5e-5 -wd 1e-1 --print_every 100 -nw 50 --device "cuda:0" -m finetune -a "ViT-B/32" -do 0.0 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 250 -nw 50 --device "cuda:3" -m finetune -a "ViT-B/32" -do 0.0 --log_dir /media/volume/ImACCESS/trash &
 
@@ -66,11 +66,11 @@ def main():
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--print_every', type=int, default=100, help='Print loss')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
-	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain', 'compare'], default='pretrain', help='Choose mode (train/finetune/pretrain/compare)')
-	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora', 'progressive'], default='full', help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
-	parser.add_argument('--lora_rank', type=int, default=8, help='LoRA rank (used if finetune_strategy=lora)')
-	parser.add_argument('--lora_alpha', type=float, default=16.0, help='LoRA alpha (used if finetune_strategy=lora)')
-	parser.add_argument('--lora_dropout', type=float, default=0.0, help='LoRA dropout (used if finetune_strategy=lora)')
+	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain', 'compare'], required=True, help='Choose mode (train/finetune/pretrain/compare)')
+	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora', 'progressive'], default=None, help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
+	parser.add_argument('--lora_rank', type=int, default=None, help='LoRA rank (used if finetune_strategy=lora)')
+	parser.add_argument('--lora_alpha', type=float, default=None, help='LoRA alpha (used if finetune_strategy=lora)')
+	parser.add_argument('--lora_dropout', type=float, default=None, help='LoRA dropout (used if finetune_strategy=lora)')
 	parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')

@@ -72,8 +72,8 @@ DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 EPOCHS=(50 50 150 150 150)
 LORA_RANKS=(4 4 8 8 8)
 LORA_ALPHAS=(16 16 16 16 16)
-LORA_DROPOUTS=(0.0 0.0 0.0 0.0 0.0) # TODO: Lora dropout must be 0.05 [original paper]
-BATCH_SIZES=(64 32 64 64 64)
+LORA_DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
+BATCH_SIZES=(64 64 64 64 64)
 PRINT_FREQUENCIES=(250 250 50 50 10)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 
@@ -117,9 +117,9 @@ fi
 if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"336px"* ]]; then
 		# Even smaller batch size for 336px resolution
 		if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
-				ADJUSTED_BATCH_SIZE=4  # Extremely conservative for largest model + largest dataset
+				ADJUSTED_BATCH_SIZE=16  # Extremely conservative for largest model + largest dataset
 		else
-				ADJUSTED_BATCH_SIZE=8  # Very conservative for largest model with other datasets
+				ADJUSTED_BATCH_SIZE=32  # Very conservative for largest model with other datasets
 		fi
 fi
 

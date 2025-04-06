@@ -120,9 +120,9 @@ ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
 	# Further reduce batch size for HISTORY_X4 dataset due to its size
 	if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
-		ADJUSTED_BATCH_SIZE=8  # Very conservative batch size for large model + large dataset
+		ADJUSTED_BATCH_SIZE=16  # Very conservative batch size for large model + large dataset
 	else
-		ADJUSTED_BATCH_SIZE=16 # Reduced batch size for large models with other datasets
+		ADJUSTED_BATCH_SIZE=32 # Reduced batch size for large models with other datasets
 	fi
 fi
 
