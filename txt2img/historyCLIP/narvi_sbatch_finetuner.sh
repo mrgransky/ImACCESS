@@ -6,11 +6,11 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16  # Match the 24 CPUs available on skylake nodes with Tesla V100 32GB
+#SBATCH --cpus-per-task=24  # Match the 24 CPUs available on skylake nodes with Tesla V100 32GB
 #SBATCH --mem=64G
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:rtx100:1
-#SBATCH --constraint=gpumem_44
+#SBATCH --gres=gpu:teslap100:1
+#SBATCH --constraint=gpumem_32
 #SBATCH --array=5-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
 #SBATCH --time=07-00:00:00
 
