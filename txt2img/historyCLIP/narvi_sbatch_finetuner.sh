@@ -7,10 +7,10 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16  # Match the 24 CPUs available on skylake nodes with Tesla V100 32GB
-#SBATCH --mem=128G
+#SBATCH --mem=64G
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:teslav100:1
-#SBATCH --constraint=gpumem_32
+#SBATCH --gres=gpu:rtx100:1
+#SBATCH --constraint=gpumem_44
 #SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
 #SBATCH --time=07-00:00:00
 
@@ -35,7 +35,7 @@ echo "${stars// /*}"
 
 # Set a default PS1 to avoid unbound variable error
 if [ -z "${PS1+x}" ]; then
-		PS1='SLURM> '
+	PS1='SLURM> '
 fi
 
 # Robust Conda activation
@@ -118,22 +118,22 @@ ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 
 # For larger models (ViT-L/14 and ViT-L/14@336px), reduce batch size
 if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-		# Further reduce batch size for HISTORY_X4 dataset due to its size
-		if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
-				ADJUSTED_BATCH_SIZE=8  # Very conservative batch size for large model + large dataset
-		else
-				ADJUSTED_BATCH_SIZE=16 # Reduced batch size for large models with other datasets
-		fi
+	# Further reduce batch size for HISTORY_X4 dataset due to its size
+	if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
+		ADJUSTED_BATCH_SIZE=8  # Very conservative batch size for large model + large dataset
+	else
+		ADJUSTED_BATCH_SIZE=16 # Reduced batch size for large models with other datasets
+	fi
 fi
 
 # Further batch size reduction for the largest model with 336px resolution
 if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"336px"* ]]; then
-		# Even smaller batch size for 336px resolution
-		if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
-				ADJUSTED_BATCH_SIZE=4  # Extremely conservative for largest model + largest dataset
-		else
-				ADJUSTED_BATCH_SIZE=8  # Very conservative for largest model with other datasets
-		fi
+	# Even smaller batch size for 336px resolution
+	if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
+		ADJUSTED_BATCH_SIZE=4  # Extremely conservative for largest model + largest dataset
+	else
+		ADJUSTED_BATCH_SIZE=8  # Very conservative for largest model with other datasets
+	fi
 fi
 
 echo "Starting Python execution for task $SLURM_ARRAY_TASK_ID | ADJUSTED_BATCH_SIZE: ${ADJUSTED_BATCH_SIZE}"
