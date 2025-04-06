@@ -11,7 +11,7 @@
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:rtx100:1
 #SBATCH --constraint=gpumem_44
-#SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
+#SBATCH --array=5-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
 #SBATCH --time=07-00:00:00
 
 set -e
