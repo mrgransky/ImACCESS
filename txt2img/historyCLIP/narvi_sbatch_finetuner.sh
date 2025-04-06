@@ -33,9 +33,16 @@ echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_N
 echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
 echo "${stars// /*}"
 
+# Set a default PS1 to avoid unbound variable error
+if [ -z "${PS1+x}" ]; then
+		PS1='SLURM> '
+fi
+
 # Robust Conda activation
-eval "$(/home/opt/anaconda3/bin/conda shell.bash hook)"
-conda activate py39
+echo "Activating Conda environment..."
+eval "$(/home/opt/anaconda3/bin/conda shell.bash hook)" || { echo "Failed to evaluate Conda hook" >&2; exit 1; }
+conda activate py39 || { echo "Failed to activate py39 environment" >&2; exit 1; }
+echo "Conda environment activated successfully"
 
 # Define constants
 FINETUNE_STRATEGIES=("full" "lora" "progressive")
