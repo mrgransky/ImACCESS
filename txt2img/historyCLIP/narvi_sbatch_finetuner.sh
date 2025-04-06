@@ -10,7 +10,7 @@
 #SBATCH --mem=48G
 #SBATCH --partition=gpu
 #SBATCH --constraint=gpumem_32
-#SBATCH --gres=gpu:v100:1
+#SBATCH --gres=gpu:teslav100:1
 #SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
 #SBATCH --time=07-00:00:00
 
