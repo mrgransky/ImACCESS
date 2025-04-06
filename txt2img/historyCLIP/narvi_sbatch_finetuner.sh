@@ -9,7 +9,7 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:teslap100:1
+#SBATCH --gres=gpu:teslav100:1
 #SBATCH --constraint=gpumem_32
 #SBATCH --array=5-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
 #SBATCH --time=07-00:00:00
