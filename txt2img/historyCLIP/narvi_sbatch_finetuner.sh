@@ -7,7 +7,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16  # Match the 24 CPUs available on skylake nodes with Tesla V100 32GB
-#SBATCH --mem=64G
+#SBATCH --mem=128G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:teslav100:1
 #SBATCH --constraint=gpumem_32
@@ -16,6 +16,7 @@
 
 set -e
 set -u
+set -x # Print commands as they are executed
 set -o pipefail
 
 user="`whoami`"
@@ -32,7 +33,8 @@ echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_N
 echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
 echo "${stars// /*}"
 
-source /home/opt/anaconda3/etc/profile.d/conda.sh
+# Robust Conda activation
+eval "$(/home/opt/anaconda3/bin/conda shell.bash hook)"
 conda activate py39
 
 # Define constants
