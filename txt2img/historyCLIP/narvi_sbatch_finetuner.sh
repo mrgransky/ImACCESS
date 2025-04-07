@@ -16,7 +16,7 @@
 
 set -e
 set -u
-set -x # Print commands as they are executed
+# set -x # Print commands as they are executed
 set -o pipefail
 
 user="`whoami`"
