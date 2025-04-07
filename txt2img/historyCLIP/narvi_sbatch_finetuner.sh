@@ -7,11 +7,11 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
+#SBATCH --mem=50G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:teslav100:1
 #SBATCH --constraint=gpumem_32
-#SBATCH --array=5-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
+#SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
 #SBATCH --time=07-00:00:00
 
 set -e
@@ -45,7 +45,12 @@ conda activate py39 || { echo "Failed to activate py39 environment" >&2; exit 1;
 echo "Conda environment activated successfully"
 
 # Define constants
-FINETUNE_STRATEGIES=("full" "lora" "progressive")
+FINETUNE_STRATEGIES=(
+"full" # 0-19
+"lora" # 20-39
+"progressive" # 40-59
+)
+
 DATASETS=(
 /lustre/sgn-data/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
 /lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4
@@ -53,7 +58,13 @@ DATASETS=(
 /lustre/sgn-data/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
 /lustre/sgn-data/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
-MODEL_ARCHITECTURES=("ViT-B/32" "ViT-B/16" "ViT-L/14" "ViT-L/14@336px")
+
+MODEL_ARCHITECTURES=(
+"ViT-B/32"
+"ViT-B/16" 
+"ViT-L/14" 
+"ViT-L/14@336px"
+)
 
 NUM_DATASETS=${#DATASETS[@]} # Number of datasets
 NUM_STRATEGIES=${#FINETUNE_STRATEGIES[@]} # Number of fine-tune strategies
@@ -85,9 +96,9 @@ DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 EPOCHS=(50 50 150 150 150)
 LORA_RANKS=(4 4 8 8 8)
 LORA_ALPHAS=(16 16 16 16 16)
-LORA_DROPOUTS=(0.0 0.0 0.0 0.0 0.0) # TODO: Lora dropout must be 0.05 [original paper]
+LORA_DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
 BATCH_SIZES=(64 32 64 64 64)
-PRINT_FREQUENCIES=(250 250 50 50 10)
+PRINT_FREQUENCIES=(750 750 50 50 10)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 
 # Set dropout based on strategy
@@ -130,13 +141,16 @@ fi
 if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"336px"* ]]; then
 	# Even smaller batch size for 336px resolution
 	if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
-		ADJUSTED_BATCH_SIZE=4  # Extremely conservative for largest model + largest dataset
+		ADJUSTED_BATCH_SIZE=8
 	else
-		ADJUSTED_BATCH_SIZE=8  # Very conservative for largest model with other datasets
+		ADJUSTED_BATCH_SIZE=16
 	fi
 fi
 
-echo "Starting Python execution for task $SLURM_ARRAY_TASK_ID | ADJUSTED_BATCH_SIZE: ${ADJUSTED_BATCH_SIZE}"
+echo "Starting Python execution for task $SLURM_ARRAY_TASK_ID"
+echo "DATASET: ${DATASETS[$dataset_index]}"
+echo "ADJUSTED_BATCH_SIZE: ${ADJUSTED_BATCH_SIZE}"
+
 # Run training command
 python -u history_clip_trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \

@@ -7,7 +7,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
-#SBATCH --mem=64G
+#SBATCH --mem=50G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
@@ -74,7 +74,7 @@ LORA_RANKS=(4 4 8 8 8)
 LORA_ALPHAS=(16 16 16 16 16)
 LORA_DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
 BATCH_SIZES=(64 64 64 64 64)
-PRINT_FREQUENCIES=(250 250 50 50 10)
+PRINT_FREQUENCIES=(750 750 50 50 10)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 
 # Set dropout based on strategy
@@ -123,6 +123,8 @@ if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"336px"* ]]; then
 		fi
 fi
 
+echo "Starting Python execution for task $SLURM_ARRAY_TASK_ID"
+echo "DATASET: ${DATASETS[$dataset_index]}"
 echo "ADJUSTED_BATCH_SIZE: ${ADJUSTED_BATCH_SIZE}"
 
 # Run training command
