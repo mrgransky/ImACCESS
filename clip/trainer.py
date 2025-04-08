@@ -829,8 +829,8 @@ def get_in_batch_loss_accuracy_metrics(
 							del logits_per_image, logits_per_text, image_embeddings, text_embeddings
 							torch.cuda.empty_cache()
 					
-					if (bidx + 1) % 10 == 0 or bidx == num_batches - 1:
-							print(f"  Processed {bidx+1}/{num_batches} batches")
+					# if (bidx + 1) % 10 == 0 or bidx == num_batches - 1:
+					# 		print(f"  Processed {bidx+1}/{num_batches} batches")
 	
 	# Compute average metrics
 	avg_val_loss = total_loss / num_batches
@@ -930,8 +930,8 @@ def get_loss_accuracy_metrics(
 			all_text_embeds.append(text_embeds.cpu())
 			cos_sim = F.cosine_similarity(image_embeds, text_embeds, dim=-1).cpu().numpy()
 			cosine_similarities.extend(cos_sim)
-			if bidx % print_every == 0 or bidx == num_batches - 1:
-				print(f"  Processed {bidx+1}/{num_batches} batches")
+			# if bidx % print_every == 0 or bidx == num_batches - 1:
+			# 	print(f"  Processed {bidx+1}/{num_batches} batches")
 	avg_val_loss = total_loss / num_batches
 	all_image_embeds = torch.cat(all_image_embeds, dim=0)
 	all_text_embeds = torch.cat(all_text_embeds, dim=0)
