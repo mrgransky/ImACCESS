@@ -7,7 +7,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=50G
+#SBATCH --mem=75G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:teslav100:1
 #SBATCH --constraint=gpumem_32
