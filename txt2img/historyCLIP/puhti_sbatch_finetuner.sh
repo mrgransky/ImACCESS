@@ -86,7 +86,7 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 fi
 
 # Hyperparameter configuration
-INIT_LRS=(1e-5 1e-5 1e-5 1e-5 1e-5)
+INIT_LRS=(1e-5 1e-5 1e-5 5e-5 1e-5)
 INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
 DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
 EPOCHS=(50 50 150 150 150)
@@ -96,6 +96,26 @@ LORA_DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
 BATCH_SIZES=(64 64 64 64 64)
 PRINT_FREQUENCIES=(750 750 50 50 10)
 SAMPLINGS=("kfold_stratified" "stratified_random")
+# EARLY_STOPPING_MIN_EPOCHS=(25 25 20 20 10)
+
+# Base min_epochs by dataset size
+BASE_MIN_EPOCHS=(25 25 17 17 12)  # National Archive, History_X4, Europeana, WWII, SMU
+
+# Adjust min_epochs based on strategy
+strategy="${FINETUNE_STRATEGIES[$strategy_index]}"
+base_min_epochs="${BASE_MIN_EPOCHS[$dataset_index]}"
+case $strategy in
+  "full")
+    MIN_EPOCHS=$((base_min_epochs - 5))  # Lower for Full
+    ;;
+  "lora")
+    MIN_EPOCHS=$((base_min_epochs + 5))  # Higher for LoRA
+    ;;
+  "progressive")
+    MIN_EPOCHS=$base_min_epochs          # Base for Progressive
+    ;;
+esac
+MIN_EPOCHS=$((MIN_EPOCHS < 5 ? 5 : MIN_EPOCHS))  # Ensure minimum of 5
 
 # Set dropout based on strategy
 # Only full and progressive can have nonzero dropouts, lora must have zero dropouts
@@ -119,6 +139,7 @@ echo "INITIAL LEARNING RATE: ${INIT_LRS[$dataset_index]}"
 echo "INITIAL WEIGHT DECAY: ${INIT_WDS[$dataset_index]}"
 echo "DROPOUT: ${DROPOUT}"
 echo "DEFAULT BATCH SIZE: ${BATCH_SIZES[$dataset_index]}"
+echo "EARLY_STOPPING_MIN_EPOCHS: ${MIN_EPOCHS}"
 
 # Dynamically adjust batch size based on model architecture and dataset
 ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
@@ -163,6 +184,7 @@ python -u history_clip_trainer.py \
 	--lora_dropout "${LORA_DROPOUTS[$dataset_index]}" \
 	--sampling "${SAMPLINGS[1]}" \
 	--dropout "${DROPOUT}" \
+	--minimum_epochs "${MIN_EPOCHS}" \
 	--model_architecture "${MODEL_ARCHITECTURES[$architecture_index]}"
 
 done_txt="$user finished Slurm job: $(date)"

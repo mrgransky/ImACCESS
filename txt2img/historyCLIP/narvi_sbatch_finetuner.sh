@@ -8,14 +8,14 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
 #SBATCH --partition=gpu
-#SBATCH --constraint=gpumem_16 # must be adjusted dynamically
-#SBATCH --mem=46G # must be adjusted dynamically
-#SBATCH --gres=gpu:teslap100:1 # must be adjusted dynamically
-#SBATCH --time=02-00:00:00 # must be adjusted dynamically
+#SBATCH --constraint=gpumem_44 # must be adjusted dynamically
+#SBATCH --mem=128G # must be adjusted dynamically
+#SBATCH --gres=gpu:rtx100:1 # must be adjusted dynamically
+#SBATCH --time=07-00:00:00 # must be adjusted dynamically
 # #SBATCH --array=0-11 # NA
-# #SBATCH --array=12-23 # H4
+#SBATCH --array=12-23 # H4
 # #SBATCH --array=24-35 # EU
-#SBATCH --array=36-47 # WWII
+# #SBATCH --array=36-47 # WWII
 # #SBATCH --array=48-59 # SMU
 
 ######SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
@@ -83,7 +83,7 @@ NUM_ARCHITECTURES=${#MODEL_ARCHITECTURES[@]} # Number of model architectures
 ### 0-11:  dataset[0] with all strategy×architecture combinations #SBATCH --gres=gpu:teslav100:1 #SBATCH --constraint=gpumem_32
 ### 12-23: dataset[1] with all strategy×architecture combinations #SBATCH --gres=gpu:rtx100:1 #SBATCH --constraint=gpumem_44
 ### 24-35: dataset[2] with all strategy×architecture combinations #SBATCH --gres=gpu:teslav100:1 #SBATCH --constraint=gpumem_16
-### 36-47: dataset[3] with all strategy×architecture combinations #SBATCH --gres=gpu:teslap100:1 #SBATCH --constraint=gpumem_16
+### 36-47: dataset[3] with all strategy×architecture combinations #SBATCH --gres=gpu:teslap100:1 #SBATCH --constraint=gpumem_16 xxx failure with bs: 32 (vit-l/14)
 ### 48-59: dataset[4] with all strategy×architecture combinations #SBATCH --gres=gpu:teslap100:1 #SBATCH --constraint=gpumem_16
 dataset_index=$((SLURM_ARRAY_TASK_ID / (NUM_STRATEGIES * NUM_ARCHITECTURES)))
 remainder=$((SLURM_ARRAY_TASK_ID % (NUM_STRATEGIES * NUM_ARCHITECTURES)))
@@ -101,14 +101,34 @@ fi
 # Hyperparameter configuration
 INIT_LRS=(1e-5 1e-5 1e-5 5e-5 1e-5)
 INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
-DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
+DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
 EPOCHS=(50 50 150 150 150)
 LORA_RANKS=(4 4 8 8 8)
 LORA_ALPHAS=(16 16 16 16 16)
 LORA_DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
-BATCH_SIZES=(64 32 64 64 64)
+BATCH_SIZES=(64 64 64 64 64)
 PRINT_FREQUENCIES=(750 750 50 50 10)
 SAMPLINGS=("kfold_stratified" "stratified_random")
+# EARLY_STOPPING_MIN_EPOCHS=(25 25 20 20 10)
+
+# Base min_epochs by dataset size
+BASE_MIN_EPOCHS=(25 25 17 17 12)  # National Archive, History_X4, Europeana, WWII, SMU
+
+# Adjust min_epochs based on strategy
+strategy="${FINETUNE_STRATEGIES[$strategy_index]}"
+base_min_epochs="${BASE_MIN_EPOCHS[$dataset_index]}"
+case $strategy in
+  "full")
+    MIN_EPOCHS=$((base_min_epochs - 5))  # Lower for Full
+    ;;
+  "lora")
+    MIN_EPOCHS=$((base_min_epochs + 5))  # Higher for LoRA
+    ;;
+  "progressive")
+    MIN_EPOCHS=$base_min_epochs          # Base for Progressive
+    ;;
+esac
+MIN_EPOCHS=$((MIN_EPOCHS < 5 ? 5 : MIN_EPOCHS))  # Ensure minimum of 5
 
 # Set dropout based on strategy
 # Only full and progressive can have nonzero dropouts, lora must have zero dropouts
@@ -132,6 +152,8 @@ echo "INITIAL LEARNING RATE: ${INIT_LRS[$dataset_index]}"
 echo "INITIAL WEIGHT DECAY: ${INIT_WDS[$dataset_index]}"
 echo "DROPOUT: ${DROPOUT}"
 echo "DEFAULT BATCH SIZE: ${BATCH_SIZES[$dataset_index]}"
+# echo "EARLY_STOPPING_MIN_EPOCHS: ${EARLY_STOPPING_MIN_EPOCHS[$strategy_index]}"
+echo "EARLY_STOPPING_MIN_EPOCHS: ${MIN_EPOCHS}"
 
 # Dynamically adjust batch size based on model architecture and dataset
 ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
@@ -176,6 +198,7 @@ python -u history_clip_trainer.py \
 	--lora_dropout "${LORA_DROPOUTS[$dataset_index]}" \
 	--sampling "${SAMPLINGS[1]}" \
 	--dropout "${DROPOUT}" \
+	--minimum_epochs "${MIN_EPOCHS}" \
 	--model_architecture "${MODEL_ARCHITECTURES[$architecture_index]}"
 
 echo "Python execution finished for task $SLURM_ARRAY_TASK_ID"
