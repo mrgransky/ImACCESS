@@ -7,17 +7,20 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=75G
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:teslav100:1
-#SBATCH --constraint=gpumem_32
-#SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
-#SBATCH --time=07-00:00:00
+# #SBATCH --constraint=gpumem_32 # must be adjusted dynamically
+#SBATCH --mem=46G # must be adjusted dynamically
+#SBATCH --gres=gpu:teslap100:1 # must be adjusted dynamically
+#SBATCH --time=03-00:00:00 # must be adjusted dynamically
+# #SBATCH --array=0-11 # NA
+# #SBATCH --array=12-23 # H4
+# #SBATCH --array=24-35 # EU
+# #SBATCH --array=36-47 # WWII
+#SBATCH --array=48-59 # SMU
 
-set -e
-set -u
-# set -x # Print commands as they are executed
-set -o pipefail
+######SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
+
+set -euo pipefail
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
@@ -45,11 +48,7 @@ conda activate py39 || { echo "Failed to activate py39 environment" >&2; exit 1;
 echo "Conda environment activated successfully"
 
 # Define constants
-FINETUNE_STRATEGIES=(
-"full" # 0-19
-"lora" # 20-39
-"progressive" # 40-59
-)
+FINETUNE_STRATEGIES=("full" "lora" "progressive")
 
 DATASETS=(
 /lustre/sgn-data/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
@@ -70,12 +69,25 @@ NUM_DATASETS=${#DATASETS[@]} # Number of datasets
 NUM_STRATEGIES=${#FINETUNE_STRATEGIES[@]} # Number of fine-tune strategies
 NUM_ARCHITECTURES=${#MODEL_ARCHITECTURES[@]} # Number of model architectures
 
-# Calculate indices from SLURM_ARRAY_TASK_ID
-# We're now using a 3D array: strategy × dataset × architecture
-total_datasets_x_architectures=$((NUM_DATASETS * NUM_ARCHITECTURES))
-strategy_index=$((SLURM_ARRAY_TASK_ID / total_datasets_x_architectures))
-remainder=$((SLURM_ARRAY_TASK_ID % total_datasets_x_architectures))
-dataset_index=$((remainder / NUM_ARCHITECTURES))
+# # Approach 1: strategy × dataset × architecture 
+# # 0-19: strategy[0] with all dataset×architecture combinations
+# # 20-39: strategy[1] with all dataset×architecture combinations
+# # 40-59: strategy[2] with all dataset×architecture combinations
+# total_datasets_x_architectures=$((NUM_DATASETS * NUM_ARCHITECTURES))
+# strategy_index=$((SLURM_ARRAY_TASK_ID / total_datasets_x_architectures))
+# remainder=$((SLURM_ARRAY_TASK_ID % total_datasets_x_architectures))
+# dataset_index=$((remainder / NUM_ARCHITECTURES))
+# architecture_index=$((remainder % NUM_ARCHITECTURES))
+
+# Approach 2: dataset × strategy × architecture
+### 0-11:  dataset[0] with all strategy×architecture combinations #SBATCH --gres=gpu:teslav100:1 #SBATCH --constraint=gpumem_32
+### 12-23: dataset[1] with all strategy×architecture combinations #SBATCH --gres=gpu:rtx100:1 #SBATCH --constraint=gpumem_44
+### 24-35: dataset[2] with all strategy×architecture combinations #SBATCH --gres=gpu:teslav100:1
+### 36-47: dataset[3] with all strategy×architecture combinations #SBATCH --gres=gpu:teslap100:1
+### 48-59: dataset[4] with all strategy×architecture combinations #SBATCH --gres=gpu:teslap100:1
+dataset_index=$((SLURM_ARRAY_TASK_ID / (NUM_STRATEGIES * NUM_ARCHITECTURES)))
+remainder=$((SLURM_ARRAY_TASK_ID % (NUM_STRATEGIES * NUM_ARCHITECTURES)))
+strategy_index=$((remainder / NUM_ARCHITECTURES))
 architecture_index=$((remainder % NUM_ARCHITECTURES))
 
 # Note: We can't change SLURM memory allocation dynamically after job submission
