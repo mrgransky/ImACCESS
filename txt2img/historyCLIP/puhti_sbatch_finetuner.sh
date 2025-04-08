@@ -13,9 +13,8 @@
 #SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
 #SBATCH --time=03-00:00:00
 
-set -e
-set -u
-set -o pipefail
+set -euo pipefail
+
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
 txt="$user began Slurm job: `date`"
@@ -77,9 +76,9 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 fi
 
 # Hyperparameter configuration
-INIT_LRS=(1e-5 1e-5 1e-5 5e-5 8e-6)
+INIT_LRS=(1e-5 1e-5 1e-5 1e-5 1e-5)
 INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
-DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
+DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
 EPOCHS=(50 50 150 150 150)
 LORA_RANKS=(4 4 8 8 8)
 LORA_ALPHAS=(16 16 16 16 16)

@@ -6,17 +6,17 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=20
 #SBATCH --partition=gpu
-# #SBATCH --constraint=gpumem_32 # must be adjusted dynamically
+#SBATCH --constraint=gpumem_16 # must be adjusted dynamically
 #SBATCH --mem=46G # must be adjusted dynamically
 #SBATCH --gres=gpu:teslap100:1 # must be adjusted dynamically
-#SBATCH --time=03-00:00:00 # must be adjusted dynamically
+#SBATCH --time=02-00:00:00 # must be adjusted dynamically
 # #SBATCH --array=0-11 # NA
 # #SBATCH --array=12-23 # H4
 # #SBATCH --array=24-35 # EU
-# #SBATCH --array=36-47 # WWII
-#SBATCH --array=48-59 # SMU
+#SBATCH --array=36-47 # WWII
+# #SBATCH --array=48-59 # SMU
 
 ######SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
 
@@ -82,9 +82,9 @@ NUM_ARCHITECTURES=${#MODEL_ARCHITECTURES[@]} # Number of model architectures
 # Approach 2: dataset × strategy × architecture
 ### 0-11:  dataset[0] with all strategy×architecture combinations #SBATCH --gres=gpu:teslav100:1 #SBATCH --constraint=gpumem_32
 ### 12-23: dataset[1] with all strategy×architecture combinations #SBATCH --gres=gpu:rtx100:1 #SBATCH --constraint=gpumem_44
-### 24-35: dataset[2] with all strategy×architecture combinations #SBATCH --gres=gpu:teslav100:1
-### 36-47: dataset[3] with all strategy×architecture combinations #SBATCH --gres=gpu:teslap100:1
-### 48-59: dataset[4] with all strategy×architecture combinations #SBATCH --gres=gpu:teslap100:1
+### 24-35: dataset[2] with all strategy×architecture combinations #SBATCH --gres=gpu:teslav100:1 #SBATCH --constraint=gpumem_16
+### 36-47: dataset[3] with all strategy×architecture combinations #SBATCH --gres=gpu:teslap100:1 #SBATCH --constraint=gpumem_16
+### 48-59: dataset[4] with all strategy×architecture combinations #SBATCH --gres=gpu:teslap100:1 #SBATCH --constraint=gpumem_16
 dataset_index=$((SLURM_ARRAY_TASK_ID / (NUM_STRATEGIES * NUM_ARCHITECTURES)))
 remainder=$((SLURM_ARRAY_TASK_ID % (NUM_STRATEGIES * NUM_ARCHITECTURES)))
 strategy_index=$((remainder / NUM_ARCHITECTURES))
@@ -102,7 +102,7 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 fi
 
 # Hyperparameter configuration
-INIT_LRS=(1e-5 1e-5 1e-5 5e-5 8e-6)
+INIT_LRS=(1e-5 1e-5 1e-5 5e-5 1e-5)
 INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
 DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 EPOCHS=(50 50 150 150 150)
