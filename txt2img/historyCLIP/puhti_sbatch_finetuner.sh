@@ -56,16 +56,26 @@ NUM_DATASETS=${#DATASETS[@]} # Number of datasets
 NUM_STRATEGIES=${#FINETUNE_STRATEGIES[@]} # Number of fine-tune strategies
 NUM_ARCHITECTURES=${#MODEL_ARCHITECTURES[@]} # Number of model architectures
 
-# Calculate indices from SLURM_ARRAY_TASK_ID
-# We're now using a 3D array: strategy × dataset × architecture
-total_datasets_x_architectures=$((NUM_DATASETS * NUM_ARCHITECTURES))
-strategy_index=$((SLURM_ARRAY_TASK_ID / total_datasets_x_architectures))
-remainder=$((SLURM_ARRAY_TASK_ID % total_datasets_x_architectures))
-dataset_index=$((remainder / NUM_ARCHITECTURES))
-architecture_index=$((remainder % NUM_ARCHITECTURES))
+# # # Approach 1: strategy × dataset × architecture 
+# # # 0-19: strategy[0] with all dataset×architecture combinations
+# # # 20-39: strategy[1] with all dataset×architecture combinations
+# # # 40-59: strategy[2] with all dataset×architecture combinations
+# total_datasets_x_architectures=$((NUM_DATASETS * NUM_ARCHITECTURES))
+# strategy_index=$((SLURM_ARRAY_TASK_ID / total_datasets_x_architectures))
+# remainder=$((SLURM_ARRAY_TASK_ID % total_datasets_x_architectures))
+# dataset_index=$((remainder / NUM_ARCHITECTURES))
+# architecture_index=$((remainder % NUM_ARCHITECTURES))
 
-# Note: We can't change SLURM memory allocation dynamically after job submission
-# The memory optimization is handled through reduced batch sizes for large models
+# Approach 2: dataset × strategy × architecture
+### 0-11:  dataset[0] with all strategy×architecture combinations #SBATCH --gres=gpu:teslav100:1 #SBATCH --constraint=gpumem_32
+### 12-23: dataset[1] with all strategy×architecture combinations #SBATCH --gres=gpu:rtx100:1 #SBATCH --constraint=gpumem_44
+### 24-35: dataset[2] with all strategy×architecture combinations #SBATCH --gres=gpu:teslav100:1 #SBATCH --constraint=gpumem_16
+### 36-47: dataset[3] with all strategy×architecture combinations #SBATCH --gres=gpu:teslap100:1 #SBATCH --constraint=gpumem_16
+### 48-59: dataset[4] with all strategy×architecture combinations #SBATCH --gres=gpu:teslap100:1 #SBATCH --constraint=gpumem_16
+dataset_index=$((SLURM_ARRAY_TASK_ID / (NUM_STRATEGIES * NUM_ARCHITECTURES)))
+remainder=$((SLURM_ARRAY_TASK_ID % (NUM_STRATEGIES * NUM_ARCHITECTURES)))
+strategy_index=$((remainder / NUM_ARCHITECTURES))
+architecture_index=$((remainder % NUM_ARCHITECTURES))
 
 # Validate indices
 if [ $dataset_index -ge ${#DATASETS[@]} ] || 

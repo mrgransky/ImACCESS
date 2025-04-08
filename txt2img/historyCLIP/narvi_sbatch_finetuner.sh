@@ -90,9 +90,6 @@ remainder=$((SLURM_ARRAY_TASK_ID % (NUM_STRATEGIES * NUM_ARCHITECTURES)))
 strategy_index=$((remainder / NUM_ARCHITECTURES))
 architecture_index=$((remainder % NUM_ARCHITECTURES))
 
-# Note: We can't change SLURM memory allocation dynamically after job submission
-# The memory optimization is handled through reduced batch sizes for large models
-
 # Validate indices
 if [ $dataset_index -ge ${#DATASETS[@]} ] || 
 	 [ $strategy_index -ge ${#FINETUNE_STRATEGIES[@]} ] ||
