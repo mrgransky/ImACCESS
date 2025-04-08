@@ -139,6 +139,7 @@ echo "INITIAL LEARNING RATE: ${INIT_LRS[$dataset_index]}"
 echo "INITIAL WEIGHT DECAY: ${INIT_WDS[$dataset_index]}"
 echo "DROPOUT: ${DROPOUT}"
 echo "DEFAULT BATCH SIZE: ${BATCH_SIZES[$dataset_index]}"
+# echo "EARLY_STOPPING_MIN_EPOCHS: ${EARLY_STOPPING_MIN_EPOCHS[$strategy_index]}"
 echo "EARLY_STOPPING_MIN_EPOCHS: ${MIN_EPOCHS}"
 
 # Dynamically adjust batch size based on model architecture and dataset
@@ -154,15 +155,15 @@ if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
 		fi
 fi
 
-# Further batch size reduction for the largest model with 336px resolution
-if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"336px"* ]]; then
-		# Even smaller batch size for 336px resolution
-		if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
-				ADJUSTED_BATCH_SIZE=16  # Extremely conservative for largest model + largest dataset
-		else
-				ADJUSTED_BATCH_SIZE=32  # Very conservative for largest model with other datasets
-		fi
-fi
+# # Further batch size reduction for the largest model with 336px resolution
+# if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"336px"* ]]; then
+# 		# Even smaller batch size for 336px resolution
+# 		if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
+# 				ADJUSTED_BATCH_SIZE=16  # Extremely conservative for largest model + largest dataset
+# 		else
+# 				ADJUSTED_BATCH_SIZE=32  # Very conservative for largest model with other datasets
+# 		fi
+# fi
 
 echo "Starting Python execution for task $SLURM_ARRAY_TASK_ID"
 echo "DATASET: ${DATASETS[$dataset_index]}"

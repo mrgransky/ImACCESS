@@ -168,15 +168,15 @@ if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
 	fi
 fi
 
-# Further batch size reduction for the largest model with 336px resolution
-if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"336px"* ]]; then
-	# Even smaller batch size for 336px resolution
-	if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
-		ADJUSTED_BATCH_SIZE=8
-	else
-		ADJUSTED_BATCH_SIZE=16
-	fi
-fi
+# # Further batch size reduction for the largest model with 336px resolution
+# if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"336px"* ]]; then
+# 	# Even smaller batch size for 336px resolution
+# 	if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
+# 		ADJUSTED_BATCH_SIZE=8
+# 	else
+# 		ADJUSTED_BATCH_SIZE=16
+# 	fi
+# fi
 
 echo "Starting Python execution for task $SLURM_ARRAY_TASK_ID"
 echo "DATASET: ${DATASETS[$dataset_index]}"

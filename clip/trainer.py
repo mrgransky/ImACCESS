@@ -1194,6 +1194,31 @@ def get_layer_groups(model: torch.nn.Module) -> dict:
 
 	return layer_groups
 
+def unfreeze_layers(
+		model: torch.nn.Module,
+		strategy: Dict[int, List[str]],
+		phase: int,
+		cache: Dict[int, List[str]],
+	):
+	# 1. Get the layers to unfreeze at this phase
+	layers_to_unfreeze = strategy[phase]
+
+	# 2. Unfreeze the layers
+	# Assumes layer names in layers_to_unfreeze are prefixes of parameter names
+	# (e.g., 'visual.transformer.resblocks.0' matches 'visual.transformer.resblocks.0.attn.in_proj_weight')
+	for name, param in model.named_parameters():
+		param.requires_grad = False # Freeze all layers first
+		if any(ly in name for ly in layers_to_unfreeze): # Unfreeze layers in the list
+			param.requires_grad = True
+
+	# 3. Cache the frozen layers
+	get_status(
+		model=model,
+		phase=phase,
+		layers_to_unfreeze=layers_to_unfreeze,
+		cache=cache,
+	)
+
 def get_unfreeze_schedule(
 		model: torch.nn.Module,
 		unfreeze_percentages: List[float] = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], # Start at 0% unfrozen, increase to 100%
@@ -1270,32 +1295,6 @@ def get_unfreeze_schedule(
 	print(json.dumps(schedule, indent=2, ensure_ascii=False))
 	print("-"*50)
 	return schedule
-
-def unfreeze_layers(
-		model: torch.nn.Module,
-		strategy: Dict[int, List[str]],
-		phase: int,
-		cache: Dict[int, List[str]],
-	):
-
-	# 1. Get the layers to unfreeze at this phase
-	layers_to_unfreeze = strategy[phase]
-
-	# 2. Unfreeze the layers
-	# Assumes layer names in layers_to_unfreeze are prefixes of parameter names
-	# (e.g., 'visual.transformer.resblocks.0' matches 'visual.transformer.resblocks.0.attn.in_proj_weight')
-	for name, param in model.named_parameters():
-		param.requires_grad = False # Freeze all layers first
-		if any(ly in name for ly in layers_to_unfreeze): # Unfreeze layers in the list
-			param.requires_grad = True
-
-	# 3. Cache the frozen layers
-	get_status(
-		model=model,
-		phase=phase,
-		layers_to_unfreeze=layers_to_unfreeze,
-		cache=cache,
-	)
 
 def should_transition_phase(
 		losses: List[float],
@@ -1531,7 +1530,12 @@ def progressive_unfreeze_finetune(
 	mode = inspect.stack()[0].function
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
-	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) | batch_size: {train_loader.batch_size} | {type(device)} {device}".center(160, "-"))
+	print(f"{mode} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
+		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+
 	# Find dropout value
 	dropout_val = 0.0
 	for name, module in model.named_modules():
@@ -1991,7 +1995,11 @@ def lora_finetune(
 	mode = inspect.stack()[0].function
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
-	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) | batch_size: {train_loader.batch_size} | {type(device)} {device}".center(160, "-"))
+	print(f"{mode} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
+		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
 	for name, param in model.named_parameters():
 		print(f"{name} => {param.shape} {param.requires_grad}")
@@ -2272,7 +2280,9 @@ def full_finetune(
 
 	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) | batch_size: {train_loader.batch_size} | {type(device)} {device}".center(160, "-"))
 	if torch.cuda.is_available():
-		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
+		gpu_name = torch.cuda.get_device_name(device)
+		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
+		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
 	# Extract dropout value from the model (if any)
 	dropout_val = None
@@ -2584,7 +2594,9 @@ def train(
 	model_name = model.__class__.__name__
 	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) | batch_size: {train_loader.batch_size} | {type(device)} {device}".center(160, "-"))
 	if torch.cuda.is_available():
-		print(f"{torch.cuda.get_device_name(device)}".center(160, " "))
+		gpu_name = torch.cuda.get_device_name(device)
+		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
+		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
 	dropout_val = None
 	for name, module in model.named_modules():
