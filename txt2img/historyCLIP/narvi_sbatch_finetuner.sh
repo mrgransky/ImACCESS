@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=finetune_historyCLIP_finetune_strategy_x_dataset_x_model_architecture_x_with_dropout
+#SBATCH --job-name=finetune_historyCLIP_dataset_x_strategy_x_architecture_with_dropout
 #SBATCH --output=/lustre/sgn-data/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
