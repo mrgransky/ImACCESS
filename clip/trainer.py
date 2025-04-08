@@ -1031,8 +1031,7 @@ def get_loss_accuracy_metrics(
 	max_samples_in_memory = int(available_mem / mem_per_sample)
 	chunk_size = max(32, min(max_samples_in_memory, 1024))
 	max_img_chunk = max(32, min(max_samples_in_memory, 4096))
-	print(f"Dynamic chunk size: {chunk_size} (based on {free_mem:.2f}GB free GPU memory)")
-	# print(f"Dynamic max_img_chunk: {max_img_chunk}")
+	print(f"Dynamic chunk size: [{chunk_size}/max:{max_img_chunk}] (based on {free_mem:.2f}GB free GPU memory)")
 
 	model.eval()
 	total_loss = 0
