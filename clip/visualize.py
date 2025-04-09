@@ -277,6 +277,7 @@ def plot_comparison_metrics_split(
 	]
 	model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
 	model_colors = plt.cm.tab10.colors
+
 	for mode in modes:
 		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
 		finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict

@@ -2175,7 +2175,7 @@ def lora_finetune(
 	# Access individual metrics as needed
 	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
 	final_metrics_full = evaluation_results["full_metrics"]
-	final_metrics_full_original = evaluation_results["full_metrics_original"]
+
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
 	model_source = evaluation_results["model_loaded_from"]
