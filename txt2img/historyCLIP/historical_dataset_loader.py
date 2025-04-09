@@ -3,6 +3,38 @@ from utils import *
 def _convert_image_to_rgb(image: Image) -> Image:
 	return image.convert("RGB")
 
+def get_preprocess(dataset_dir: str, input_resolution: int) -> T.Compose:
+	"""
+	Create a preprocessing transformation pipeline for image data.
+	
+	Args:
+			dataset_dir: Directory containing the dataset and possibly mean/std statistics
+			input_resolution: Target resolution for the images
+			
+	Returns:
+			A torchvision.transforms.Compose object containing the preprocessing pipeline
+	"""
+	try:
+		mean = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_mean.gz"))
+		std = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_std.gz"))
+		print(f"{os.path.basename(dataset_dir)} mean: {mean} std: {std}")
+	except Exception as e:
+		mean = [0.52, 0.50, 0.48]
+		std = [0.27, 0.27, 0.26]
+		print(f"Could not load mean and std from {dataset_dir}. Using default values: mean={mean} std={std}")
+	
+	preprocess = T.Compose(
+		[
+			T.Resize(size=input_resolution, interpolation=T.InterpolationMode.BICUBIC, antialias=True),
+			T.CenterCrop(size=input_resolution),
+			_convert_image_to_rgb,
+			T.ToTensor(),
+			T.Normalize(mean=mean, std=std),
+		]
+	)
+	
+	return preprocess
+
 def get_datasets(
 		ddir: str, # Dataset directory
 		sampling: str, # "stratified_random" or "kfold_stratified"
@@ -173,32 +205,29 @@ def get_dataloaders(
 		batch_size: int,
 		num_workers: int,
 		input_resolution: int,
-		preprocess=None,
 	)-> Tuple[DataLoader, DataLoader]:
 	dataset_name = os.path.basename(dataset_dir)
 	print(f"Loading dataset: {dataset_name} using {sampling} strategy...")
-	train_dataset, val_dataset = get_datasets(
-		ddir=dataset_dir,
-		sampling=sampling,
-	)
-	if preprocess is None:
-		try:
-			mean = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_mean.gz"))
-			std = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_std.gz"))
-			print(f"{os.path.basename(dataset_dir)} mean: {mean} std: {std}")
-		except Exception as e:
-			mean = [0.52, 0.50, 0.48]
-			std = [0.27, 0.27, 0.26]
-			print(f"Could not load mean and std from {dataset_dir}. Using default values: mean={mean} std={std}")
-		preprocess = T.Compose(
-			[
-				T.Resize(size=input_resolution, interpolation=T.InterpolationMode.BICUBIC, antialias=True),
-				T.CenterCrop(size=input_resolution),
-				_convert_image_to_rgb,
-				T.ToTensor(),
-				T.Normalize(mean=mean, std=std),
-			]
-		)
+	train_dataset, val_dataset = get_datasets(ddir=dataset_dir, sampling=sampling)
+	preprocess = get_preprocess(dataset_dir=dataset_dir, input_resolution=input_resolution)
+	
+	# try:
+	# 	mean = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_mean.gz"))
+	# 	std = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_std.gz"))
+	# 	print(f"{os.path.basename(dataset_dir)} mean: {mean} std: {std}")
+	# except Exception as e:
+	# 	mean = [0.52, 0.50, 0.48]
+	# 	std = [0.27, 0.27, 0.26]
+	# 	print(f"Could not load mean and std from {dataset_dir}. Using default values: mean={mean} std={std}")
+	# preprocess = T.Compose(
+	# 	[
+	# 		T.Resize(size=input_resolution, interpolation=T.InterpolationMode.BICUBIC, antialias=True),
+	# 		T.CenterCrop(size=input_resolution),
+	# 		_convert_image_to_rgb,
+	# 		T.ToTensor(),
+	# 		T.Normalize(mean=mean, std=std),
+	# 	]
+	# )
 
 	train_dataset = HistoricalArchivesDataset(
 		dataset_name=dataset_name,
@@ -251,9 +280,7 @@ class HistoricalArchivesDataset(Dataset):
 			dataset_name: str,
 			train: bool,
 			data_frame: pd.DataFrame,
-			mean: List[float]=[0.5, 0.50, 0.5],
-			std: List[float]=[0.2, 0.2, 0.2],
-			transform=None,
+			transform,
 		):
 		self.dataset_name = dataset_name
 		self.train = train
@@ -264,19 +291,7 @@ class HistoricalArchivesDataset(Dataset):
 		# Sort unique labels to ensure deterministic ordering across runs (fixes non-reproducible results):
 		self.unique_labels = sorted(list(set(self.labels)))  # Sort the unique labels
 		self._num_classes = len(np.unique(self.labels_int))
-
-		if transform:
-			self.transform = transform
-		else:
-			self.transform = T.Compose(
-				[
-					T.Resize(224, interpolation=T.InterpolationMode.BICUBIC, antialias=True),
-					T.CenterCrop(224),
-					_convert_image_to_rgb,
-					T.ToTensor(),
-					T.Normalize(mean=mean, std=std),
-				]
-			)
+		self.transform = transform
 
 	def __len__(self):
 		return len(self.data_frame)

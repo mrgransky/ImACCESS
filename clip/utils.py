@@ -1,3 +1,4 @@
+import hashlib
 import os
 import torch
 import clip
@@ -19,6 +20,8 @@ import inspect
 import functools
 import sys
 import traceback
+import requests
+import hashlib
 from torch.optim import AdamW, SGD, Adam, lr_scheduler
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.dataloader import default_collate
@@ -393,7 +396,7 @@ def set_seeds(seed:int=42, debug:bool=False):
 			torch.backends.cudnn.benchmark = False
 			torch.use_deterministic_algorithms(True, warn_only=True)
 
-def get_config(architecture: str, dropout: float = 0.0) -> dict:
+def get_config(architecture: str, dropout: float=0.0) -> dict:
 	configs = {
 		"RN50": {
 			"embed_dim": 1024,

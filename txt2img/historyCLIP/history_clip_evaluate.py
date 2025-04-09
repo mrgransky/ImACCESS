@@ -6,7 +6,7 @@ CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
 sys.path.insert(0, CLIP_DIR)
 
 from utils import *
-from dataset_loader import get_datasets
+# from dataset_loader import get_datasets
 # local:
 # $ python history_clip_evaluate.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -s "kfold_stratified" -k 1
 

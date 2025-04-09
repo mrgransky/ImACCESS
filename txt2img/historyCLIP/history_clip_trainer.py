@@ -48,7 +48,7 @@ from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics, 
 # $ for lr in 1e-6 5e-6 1e-5 5e-5 1e-4 5e-4; do nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 64 -e 100 -lr $lr -wd 1e-1 --print_every 250 -nw 50 --device "cuda:3" -m finetune -fts progressive -a "ViT-B/32" -do 0.0 > /media/volume/ImACCESS/trash/history_xN_ft_progressive_lr_${lr}.txt & done
 
 # using one command:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 150 -bs 32 -lr 1e-5 -wd 1e-2 --print_every 10 -nw 10 --device "cuda:1" -m finetune -fts progressive -a "ViT-L/14@336px" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 150 -bs 64 -lr 1e-5 -wd 1e-2 --print_every 10 -nw 10 --device "cuda:1" -m finetune -fts progressive -a "ViT-B/32" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 5e-6 -wd 1e-2 --print_every 50 -nw 50 --device "cuda:2" -m finetune -fts progressive -a "ViT-B/16" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 32 -e 150 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:2" -m finetune -fts progressive -a "ViT-L/14" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 32 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:0" -m finetune  -fts progressive -a "ViT-L/14" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
@@ -122,7 +122,7 @@ def main():
 		model_config = get_config(architecture=args.model_architecture, dropout=args.dropout,)
 		print(json.dumps(model_config, indent=4, ensure_ascii=False))
 
-		model, preprocess = clip.load(
+		model, _ = clip.load(
 			name=args.model_architecture,
 			device=args.device, 
 			jit=False, # training or finetuning => jit=False
@@ -141,7 +141,6 @@ def main():
 			batch_size=args.batch_size,
 			num_workers=args.num_workers,
 			input_resolution=model_config["image_resolution"],
-			preprocess=None, # preprocess,
 		)
 		print_loader_info(loader=train_loader, batch_size=args.batch_size)
 		print_loader_info(loader=validation_loader, batch_size=args.batch_size)

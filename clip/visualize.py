@@ -1,4 +1,107 @@
 from utils import *
+import matplotlib.gridspec as gridspec
+
+def plot_image_to_texts(
+		best_pretrained_model: torch.nn.Module,
+		validation_loader: DataLoader,
+		preprocess,
+		img_path: str,
+		topk: int,
+		device: str,
+		results_dir: str,
+		figure_size=(13, 7),
+		dpi: int = 300,
+	):
+	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
+	best_pretrained_model_name = best_pretrained_model.__class__.__name__
+	best_pretrained_model_arch = re.sub(r'[/@]', '-', best_pretrained_model.name) if hasattr(best_pretrained_model, 'name') else 'unknown_arch'
+	best_pretrained_model.eval()
+	print(f"[Image-to-text(s)] {best_pretrained_model_name} {best_pretrained_model_arch} Zero-Shot Image Classification of image: {img_path}".center(200, " "))
+	t0 = time.time()
+	try:
+		labels = validation_loader.dataset.dataset.classes
+	except AttributeError:
+		labels = validation_loader.dataset.unique_labels
+	n_labels = len(labels)
+	if topk > n_labels:
+		print(f"ERROR: requested Top-{topk} labeling is greater than number of labels ({n_labels}) => EXIT...")
+		return
+	# Tokenize the labels and move to device
+	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
+
+	try:
+		img = Image.open(img_path).convert("RGB")
+	except FileNotFoundError:
+		try:
+			response = requests.get(img_path)
+			response.raise_for_status()
+			img = Image.open(BytesIO(response.content)).convert("RGB")
+		except requests.exceptions.RequestException as e:
+			print(f"ERROR: failed to load image from {img_path} => {e}")
+			return
+	# Preprocess image
+	image_tensor = preprocess(img).unsqueeze(0).to(device)
+	
+	# Encode and compute similarity
+	with torch.no_grad():
+		image_features = best_pretrained_model.encode_image(image_tensor)
+		labels_features = best_pretrained_model.encode_text(tokenized_labels_tensor)
+		image_features /= image_features.norm(dim=-1, keepdim=True)
+		labels_features /= labels_features.norm(dim=-1, keepdim=True)
+		similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
+	
+	# Get top-k predictions
+	topk_pred_probs, topk_pred_labels_idx = similarities.topk(topk, dim=-1)
+	topk_pred_probs = topk_pred_probs.squeeze().cpu().numpy()
+	topk_pred_indices = topk_pred_labels_idx.squeeze().cpu().numpy()
+	topk_pred_labels = [labels[i] for i in topk_pred_indices]
+	print(f"Top-{topk} predicted labels: {topk_pred_labels}")
+	# Sort predictions by descending probability
+	sorted_indices = topk_pred_probs.argsort()[::-1]
+	sorted_probs = topk_pred_probs[sorted_indices]
+	print(sorted_probs)
+	sorted_labels = [topk_pred_labels[i] for i in sorted_indices]
+	# Hash image path for unique filename
+	img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
+	file_name = os.path.join(
+			results_dir,
+			f'i2t_Top{topk}_labels_{img_hash}_dataset_{dataset_name}_{best_pretrained_model_name}_{best_pretrained_model_arch}.png'
+	)
+	# Plot
+	fig = plt.figure(figsize=figure_size, dpi=dpi)
+	gs = gridspec.GridSpec(1, 2, width_ratios=[1, 1.05], wspace=0.01)
+	# Subplot 1: Image
+	ax0 = plt.subplot(gs[0])
+	ax0.imshow(img)
+	ax0.axis('off')
+	ax0.set_title("Query Image", fontsize=12)
+	# Subplot 2: Horizontal bar plot
+	ax1 = plt.subplot(gs[1])
+	y_pos = range(topk)
+	ax1.barh(y_pos, sorted_probs, color='steelblue', edgecolor='white')
+	ax1.invert_yaxis()  # Highest probs on top
+	ax1.set_yticks([])  # Hide y-axis ticks
+	ax1.set_xlim(0, 1)
+	ax1.set_xlabel("Probability", fontsize=11)
+	ax1.set_title(f"Top-{topk} Predicted Labels", fontsize=10)
+	ax1.grid(False)
+	# ax1.grid(True, axis='x', linestyle='--', alpha=0.5, color='black')
+	for spine in ax1.spines.values():
+		spine.set_edgecolor('black')
+
+	# Annotate bars on the right with labels and probs
+	for i, (label, prob) in enumerate(zip(sorted_labels, sorted_probs)):
+		ax1.text(prob + 0.02, i, f"{label} ({prob:.2f})", va='center', fontsize=8, color='black', fontweight='bold', backgroundcolor='white', alpha=0.8)
+	
+	plt.tight_layout()
+	plt.savefig(file_name, bbox_inches='tight')
+	plt.close()
+	print(f"Saved visualization to: {file_name}")
+	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
+
+
+def plot_text_to_images():
+	pass
 
 def plot_comparison_metrics(
 		dataset_name: str,
