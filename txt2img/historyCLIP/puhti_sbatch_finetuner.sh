@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=project_2009043
-#SBATCH --job-name=history_x4_strategy_x_architecture_x_with_dropout_and_lora_dropout
+#SBATCH --job-name=h4_x_str_x_arch
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
