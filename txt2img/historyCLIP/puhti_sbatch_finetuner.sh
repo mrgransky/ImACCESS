@@ -6,11 +6,11 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=32
-#SBATCH --mem=50G
+#SBATCH --cpus-per-task=40
+#SBATCH --mem=96G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
+#SBATCH --array=12-23
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
@@ -38,11 +38,11 @@ FINETUNE_STRATEGIES=(
 )
 
 DATASETS=(
-/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
-/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
-/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
-/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
-/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
 MODEL_ARCHITECTURES=(
@@ -67,11 +67,11 @@ NUM_ARCHITECTURES=${#MODEL_ARCHITECTURES[@]} # Number of model architectures
 # architecture_index=$((remainder % NUM_ARCHITECTURES))
 
 # Approach 2: dataset × strategy × architecture
-### 0-11:  dataset[0] with all strategy×architecture combinations #SBATCH --gres=gpu:teslav100:1 #SBATCH --constraint=gpumem_32
-### 12-23: dataset[1] with all strategy×architecture combinations #SBATCH --gres=gpu:rtx100:1 #SBATCH --constraint=gpumem_44
-### 24-35: dataset[2] with all strategy×architecture combinations #SBATCH --gres=gpu:teslav100:1 #SBATCH --constraint=gpumem_16
-### 36-47: dataset[3] with all strategy×architecture combinations #SBATCH --gres=gpu:teslap100:1 #SBATCH --constraint=gpumem_16
-### 48-59: dataset[4] with all strategy×architecture combinations #SBATCH --gres=gpu:teslap100:1 #SBATCH --constraint=gpumem_16
+### 0-11:  dataset[0] with all strategy×architecture
+### 12-23: dataset[1] with all strategy×architecture
+### 24-35: dataset[2] with all strategy×architecture
+### 36-47: dataset[3] with all strategy×architecture
+### 48-59: dataset[4] with all strategy×architecture
 dataset_index=$((SLURM_ARRAY_TASK_ID / (NUM_STRATEGIES * NUM_ARCHITECTURES)))
 remainder=$((SLURM_ARRAY_TASK_ID % (NUM_STRATEGIES * NUM_ARCHITECTURES)))
 strategy_index=$((remainder / NUM_ARCHITECTURES))
@@ -149,9 +149,9 @@ ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
 		# Further reduce batch size for HISTORY_X4 dataset due to its size
 		if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
-				ADJUSTED_BATCH_SIZE=8  # Very conservative batch size for large model + large dataset
+				ADJUSTED_BATCH_SIZE=16  # Very conservative batch size for large model + large dataset
 		else
-				ADJUSTED_BATCH_SIZE=16 # Reduced batch size for large models with other datasets
+				ADJUSTED_BATCH_SIZE=32 # Reduced batch size for large models with other datasets
 		fi
 fi
 

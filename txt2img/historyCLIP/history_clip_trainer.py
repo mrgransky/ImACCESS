@@ -8,12 +8,15 @@ sys.path.insert(0, CLIP_DIR)
 from utils import *
 from historical_dataset_loader import get_dataloaders
 from trainer import train, pretrain, full_finetune, lora_finetune, progressive_unfreeze_finetune, evaluate_best_model
-from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics, plot_comparison_metrics
+from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics, plot_comparison_metrics_merged, plot_comparison_metrics_split
 
 # $ python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=10))))"
 
 # run in local:
 # $ nohup python -u history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -m finetune -fts progressive -a "ViT-B/32" > logs/europeana_ft_progressive.txt &
+
+# quantitative evaluation:
+# python history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -m quantitative -cp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_9_do_0.0_init_lr_1.0e-04_init_wd_1.0e-02_bs_64_best_model.pth -fts progressive
 
 # Pouta:
 # pretrain:
@@ -66,7 +69,7 @@ def main():
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--print_every', type=int, default=100, help='Print loss')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
-	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain', 'compare'], required=True, help='Choose mode (train/finetune/pretrain/compare)')
+	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain', 'quantitative'], required=True, help='Choose mode (train/finetune/pretrain/quantitative)')
 	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora', 'progressive'], default=None, help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
 	parser.add_argument('--lora_rank', type=int, default=None, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', type=float, default=None, help='LoRA alpha (used if finetune_strategy=lora)')
@@ -281,7 +284,7 @@ def main():
 				topK_values=args.topK_values,
 				results_dir=RESULT_DIRECTORY,
 			)
-		elif args.mode == "compare":
+		elif args.mode == "quantitative":
 			if args.checkpoint_path is None:
 				raise ValueError("Please provide a checkpoint path for comparison!")
 
@@ -334,7 +337,7 @@ def main():
 				finetuned_img2txt_dict = {args.model_architecture: evaluation_results["img2txt_metrics"]}
 				finetuned_txt2img_dict = {args.model_architecture: evaluation_results["txt2img_metrics"]}
 
-				plot_comparison_metrics(
+				plot_comparison_metrics_merged(
 					dataset_name=validation_loader.name,
 					pretrained_img2txt_dict=pretrained_img2txt_dict,
 					pretrained_txt2img_dict=pretrained_txt2img_dict,
@@ -345,13 +348,23 @@ def main():
 					topK_values=args.topK_values,
 					results_dir=RESULT_DIRECTORY,
 				)
-					
+				plot_comparison_metrics_split(
+					dataset_name=validation_loader.name,
+					pretrained_img2txt_dict=pretrained_img2txt_dict,
+					pretrained_txt2img_dict=pretrained_txt2img_dict,
+					finetuned_img2txt_dict=finetuned_img2txt_dict,
+					finetuned_txt2img_dict=finetuned_txt2img_dict,
+					model_name=args.model_architecture,
+					finetune_strategy=args.finetune_strategy,
+					topK_values=args.topK_values,
+					results_dir=RESULT_DIRECTORY,
+				)
 			except Exception as e:
 				print(f"Error loading or evaluating finetuned model: {e}")
 				traceback.print_exc()
 
 		else:
-			raise ValueError(f"Invalid mode: {args.mode}. Choose between: 'pretrain', 'train', 'finetune', 'compare'!")
+			raise ValueError(f"Invalid mode: {args.mode}. Choose between: 'pretrain', 'train', 'finetune', 'quantitative'!")
 
 		print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))
 	finally:

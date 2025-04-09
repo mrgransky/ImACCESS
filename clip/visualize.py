@@ -1,7 +1,154 @@
 from utils import *
 import matplotlib.gridspec as gridspec
 
-def plot_image_to_texts(
+def plot_image_to_texts_stacked_horizontal_bar(
+		models: dict,
+		validation_loader: DataLoader,
+		preprocess,
+		img_path: str,
+		topk: int,
+		device: str,
+		results_dir: str,
+		figure_size=(10, 10),
+		dpi: int = 250,
+	):
+	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
+	print(len(models))
+	# Prepare labels
+	try:
+		labels = validation_loader.dataset.dataset.classes
+	except AttributeError:
+		labels = validation_loader.dataset.unique_labels
+	n_labels = len(labels)
+	if topk > n_labels:
+			print(f"ERROR: requested Top-{topk} labeling is greater than number of labels ({n_labels}) => EXIT...")
+			return
+	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
+	# Load and preprocess image (only for prediction, not for plotting)
+	try:
+			img = Image.open(img_path).convert("RGB")
+	except FileNotFoundError:
+			try:
+					response = requests.get(img_path)
+					response.raise_for_status()
+					img = Image.open(BytesIO(response.content)).convert("RGB")
+			except requests.exceptions.RequestException as e:
+					print(f"ERROR: failed to load image from {img_path} => {e}")
+					return
+	image_tensor = preprocess(img).unsqueeze(0).to(device)
+
+	# Compute predictions for each model
+	model_predictions = {}
+	pretrained_topk_labels = []  # To store the top-k labels from the pre-trained model
+	pretrained_topk_probs = []  # To store the corresponding probabilities for sorting
+	for model_name, model in models.items():
+			model.eval()
+			print(f"[Image-to-text(s)] {model_name} Zero-Shot Image Classification of image: {img_path}".center(200, " "))
+			t0 = time.time()
+			with torch.no_grad():
+					image_features = model.encode_image(image_tensor)
+					labels_features = model.encode_text(tokenized_labels_tensor)
+					image_features /= image_features.norm(dim=-1, keepdim=True)
+					labels_features /= labels_features.norm(dim=-1, keepdim=True)
+					similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
+			
+			# Store full probabilities for all labels
+			all_probs = similarities.squeeze().cpu().numpy()
+			model_predictions[model_name] = all_probs
+			# If this is the pre-trained model, get its top-k labels and probabilities
+			if model_name == "pretrained":
+					topk_pred_probs, topk_pred_labels_idx = similarities.topk(topk, dim=-1)
+					topk_pred_probs = topk_pred_probs.squeeze().cpu().numpy()
+					topk_pred_indices = topk_pred_labels_idx.squeeze().cpu().numpy()
+					pretrained_topk_labels = [labels[i] for i in topk_pred_indices]
+					pretrained_topk_probs = topk_pred_probs
+					print(f"Top-{topk} predicted labels for pretrained model: {pretrained_topk_labels}")
+			print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
+
+	# Sort the pre-trained model's top-k labels by their probabilities (descending)
+	sorted_indices = np.argsort(pretrained_topk_probs)[::-1]  # Descending order
+	pretrained_topk_labels = [pretrained_topk_labels[i] for i in sorted_indices]
+	# Prepare data for plotting: probabilities for each model for the pre-trained model's top-k labels
+	num_labels = len(pretrained_topk_labels)
+	num_models = len(models)
+	plot_data = np.zeros((num_labels, num_models))  # Rows: labels, Columns: models
+	model_names = list(models.keys())
+	for model_idx, (model_name, probs) in enumerate(model_predictions.items()):
+			for label_idx, label in enumerate(pretrained_topk_labels):
+					# Find the index of this label in the full label list
+					label_full_idx = labels.index(label)
+					plot_data[label_idx, model_idx] = probs[label_full_idx]
+	# Dynamically adjust the figure height based on the number of labels
+	# Base height per label, with a minimum height for readability
+	height_per_label = 0.8  # Adjust this multiplier for spacing
+	fig_height = max(4, num_labels * height_per_label)  # Minimum height of 4
+	fig_width = figure_size[0]  # Keep the width as specified
+	# fig, ax = plt.subplots(figsize=(fig_width, fig_height), dpi=dpi)
+	fig, ax = plt.subplots(figsize=figure_size, dpi=dpi)
+	# Plot the stacked horizontal bar plot
+	bar_width = 0.2  # Width of each bar
+	y_pos = np.arange(num_labels)
+	# Use a professional color palette
+	colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']  # Blue, Orange, Green, Red
+	for model_idx, model_name in enumerate(model_names):
+			# Offset each model's bars
+			offset = (model_idx - num_models / 2) * bar_width
+			bars = ax.barh(
+					y_pos + offset,
+					plot_data[:, model_idx],
+					height=bar_width,
+					label=model_name.split('_')[-1].replace('finetune', '').capitalize() if '_' in model_name else model_name.capitalize(),
+					color=colors[model_idx],
+					edgecolor='white',
+					alpha=0.85
+			)
+			# Annotate bars with probabilities
+			for i, bar in enumerate(bars):
+					width = bar.get_width()
+					if width > 0.01:  # Only annotate if probability is significant
+							ax.text(
+									width + 0.01,
+									bar.get_y() + bar.get_height() / 2,
+									f"{width:.2f}",
+									va='center',
+									fontsize=8,
+									color='black',
+									fontweight='bold',
+									alpha=0.85,
+							)
+	# Configure the plot for publication quality
+	ax.set_yticks(y_pos)
+	ax.set_yticklabels([label.replace('_', ' ').title() for label in pretrained_topk_labels], fontsize=9)
+	ax.set_xlim(0, 1)
+	ax.set_xlabel("Probability", fontsize=10)
+	ax.set_title(f"Top-{topk} Predictions (Pre-trained Baseline)", fontsize=12, fontweight='bold')
+	ax.grid(True, axis='x', linestyle='--', alpha=0.6, color='black',)
+	ax.tick_params(axis='x', labelsize=12)
+	ax.legend(
+		fontsize=8,
+		loc='best',
+		ncol=len(models),
+		frameon=True,
+		facecolor='white',
+		shadow=True,
+		fancybox=True,
+	)
+	# Adjust spines for a cleaner look
+	for spine in ax.spines.values():
+		spine.set_color('black')
+		# spine.set_linewidth(0.8)
+	# Save plot
+	img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
+	file_name = os.path.join(
+			results_dir,
+			f'i2t_Top{topk}_labels_{img_hash}_dataset_{dataset_name}_stacked_bar.png'
+	)
+	plt.tight_layout()
+	plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
+	plt.close()
+	print(f"Saved visualization to: {file_name}")
+
+def plot_image_to_texts_pretrained(
 		best_pretrained_model: torch.nn.Module,
 		validation_loader: DataLoader,
 		preprocess,
@@ -14,7 +161,7 @@ def plot_image_to_texts(
 	):
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	best_pretrained_model_name = best_pretrained_model.__class__.__name__
-	best_pretrained_model_arch = re.sub(r'[/@]', '-', best_pretrained_model.name) if hasattr(best_pretrained_model, 'name') else 'unknown_arch'
+	best_pretrained_model_arch = re.sub(r'[/@]', '-', best_pretrained_model.name)
 	best_pretrained_model.eval()
 	print(f"[Image-to-text(s)] {best_pretrained_model_name} {best_pretrained_model_arch} Zero-Shot Image Classification of image: {img_path}".center(200, " "))
 	t0 = time.time()
@@ -99,11 +246,107 @@ def plot_image_to_texts(
 	print(f"Saved visualization to: {file_name}")
 	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 
-
 def plot_text_to_images():
 	pass
 
-def plot_comparison_metrics(
+def plot_comparison_metrics_split(
+		dataset_name: str,
+		pretrained_img2txt_dict: dict,
+		pretrained_txt2img_dict: dict,
+		finetuned_img2txt_dict: dict,
+		finetuned_txt2img_dict: dict,
+		model_name: str,
+		finetune_strategy: str,
+		results_dir: str,
+		topK_values: list,
+		figure_size=(7, 7),
+		DPI: int = 300,
+	):
+	metrics = ["mP", "mAP", "Recall"]
+	modes = ["Image-to-Text", "Text-to-Image"]
+	all_model_architectures = [
+		'RN50', 
+		'RN101', 
+		'RN50x4', 
+		'RN50x16', 
+		'RN50x64', 
+		'ViT-B/32', 
+		'ViT-B/16', 
+		'ViT-L/14', 
+		'ViT-L/14@336px',
+	]
+	model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
+	model_colors = plt.cm.tab10.colors
+	for mode in modes:
+		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
+		finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+		print(f"\n{'='*80}")
+		print(f"ANALYSIS: {mode} | Model: {model_name} | Finetune: {finetune_strategy}")
+		print(f"{'='*80}")
+		for metric in metrics:
+			print(f"\nMetric: {metric}")
+			fig, ax = plt.subplots(figsize=figure_size)
+			fname = f"{dataset_name}_{finetune_strategy}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_{mode.replace('-', '_')}_{metric}_comparison.png"
+			file_path = os.path.join(results_dir, fname)
+			k_values = sorted(
+				k for k in topK_values if
+				str(k) in pretrained_dict.get(model_name, {}).get(metric, {}) or
+				str(k) in finetuned_dict.get(model_name, {}).get(metric, {})
+			)
+			pretrained_vals = [pretrained_dict[model_name][metric].get(str(k), float('nan')) for k in k_values]
+			finetuned_vals = [finetuned_dict[model_name][metric].get(str(k), float('nan')) for k in k_values]
+			# Plot Pre-trained
+			ax.plot(
+					k_values,
+					pretrained_vals,
+					label=f"Pre-trained CLIP {model_name}",
+					color=model_colors[model_name_idx],
+					linestyle='--',
+					marker='o',
+					linewidth=2,
+					alpha=0.7
+			)
+			# Plot Fine-tuned
+			ax.plot(
+				k_values,
+				finetuned_vals,
+				label=f"{finetune_strategy.capitalize()} Fine-tune",
+				color=model_colors[model_name_idx],
+				linestyle='-',
+				marker='s',
+				linewidth=2
+			)
+			# Add annotation for key Ks
+			for k in [1, 10, 20]:
+				if str(k) in pretrained_dict[model_name][metric] and str(k) in finetuned_dict[model_name][metric]:
+					pre = pretrained_dict[model_name][metric][str(k)]
+					fine = finetuned_dict[model_name][metric][str(k)]
+					imp = (fine - pre) / pre * 100 if pre != 0 else 0
+					color = 'darkgreen' if imp >= 0 else 'red'
+					ax.annotate(
+						f"{imp:+.1f}%",
+						xy=(k, fine),
+						xytext=(5, 5),
+						textcoords='offset points',
+						fontsize=9,
+						fontweight='bold',
+						color=color,
+						bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3)
+					)
+			# Axes formatting
+			ax.set_title(f"{mode}: {metric}@K", fontsize=12, fontweight='bold')
+			ax.set_xlabel("K", fontsize=11)
+			ax.set_xticks(topK_values)
+			ax.grid(True, linestyle='--', alpha=0.9)
+			ax.set_ylim(bottom=-0.01, top=1.01)
+			ax.legend(fontsize=9, loc='best')
+			# Save and close
+			plt.tight_layout()
+			plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
+			plt.close(fig)
+			print(f"Saved: {file_path}")
+
+def plot_comparison_metrics_merged(
 		dataset_name: str,
 		pretrained_img2txt_dict: dict,
 		pretrained_txt2img_dict: dict,
@@ -131,7 +374,7 @@ def plot_comparison_metrics(
 	for i, mode in enumerate(modes):
 		# Create a new figure for each mode
 		fig, axes = plt.subplots(1, 3, figsize=figure_size, constrained_layout=True)
-		fname = f"{dataset_name}_{finetune_strategy}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_retrieval_performance_comparison_{mode.replace('-', '_')}.png"
+		fname = f"{dataset_name}_{finetune_strategy}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_retrieval_performance_comparison_{mode.replace('-', '_')}_merged.png"
 		# Set a descriptive title for the figure
 		file_path = os.path.join(results_dir, fname)
 		fig.suptitle(
@@ -1037,7 +1280,6 @@ def plot_retrieval_metrics_per_epoch(
 		# Print warning if K values differ significantly (optional, for debugging)
 		if set(it_valid_k_values) != set(ti_valid_k_values):
 			print(f"<!> Warning: K values differ between Image-to-Text ({it_valid_k_values}) and Text-to-Image ({ti_valid_k_values}).")
-			print(f"Note: K values for Image-to-Text are limited by the number of classes (e.g., 10 for CIFAR10).")
 
 	modes = ["Image-to-Text", "Text-to-Image"]
 	metrics = list(image_to_text_metrics_list[0].keys())  # ['mP', 'mAP', 'Recall']

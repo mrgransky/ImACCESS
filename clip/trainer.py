@@ -1,6 +1,6 @@
 from utils import *
 from model import get_lora_clip
-from visualize import plot_loss_accuracy_metrics, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics, plot_comparison_metrics
+from visualize import plot_loss_accuracy_metrics, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics
 
 def evaluate_best_model(
 		model,
@@ -1991,10 +1991,11 @@ def lora_finetune(
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
-	os.makedirs(results_dir, exist_ok=True)
+
 	mode = inspect.stack()[0].function
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
+
 	print(f"{mode} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
@@ -2012,7 +2013,6 @@ def lora_finetune(
 		lora_dropout=lora_dropout
 	)
 	model.to(device)
-	# Get dropout value (same as finetune())
 	get_parameters_info(model=model, mode=mode)
 
 	optimizer = AdamW(
@@ -2175,6 +2175,7 @@ def lora_finetune(
 	# Access individual metrics as needed
 	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
 	final_metrics_full = evaluation_results["full_metrics"]
+	final_metrics_full_original = evaluation_results["full_metrics_original"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
 	model_source = evaluation_results["model_loaded_from"]
