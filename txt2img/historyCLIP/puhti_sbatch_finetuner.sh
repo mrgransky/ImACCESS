@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=project_2009043
-#SBATCH --job-name=finetune_historyCLIP_finetune_strategy_x_dataset_x_model_architecture_x_with_dropout_and_lora_dropout
+#SBATCH --job-name=history_x4_strategy_x_architecture_x_with_dropout_and_lora_dropout
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -10,7 +10,7 @@
 #SBATCH --mem=96G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=12-23
+#SBATCH --array=12-23 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
