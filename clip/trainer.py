@@ -2839,15 +2839,17 @@ def pretrain(
 			device=device,
 			topK_values=topk_values,
 		)
+		img2txt_metrics = retrieval_metrics["img2txt"]
+		txt2img_metrics = retrieval_metrics["txt2img"]
 
 		print("Image to Text Metrics: ")
-		print(json.dumps(retrieval_metrics["img2txt"], indent=2, ensure_ascii=False))
+		print(json.dumps(img2txt_metrics, indent=2, ensure_ascii=False))
 
 		print("Text to Image Metrics: ")
-		print(json.dumps(retrieval_metrics["txt2img"], indent=2, ensure_ascii=False))
+		print(json.dumps(txt2img_metrics, indent=2, ensure_ascii=False))
 
-		save_pickle(pkl=retrieval_metrics["img2txt"], fname=i2t_retrieval_metrics_fpth)
-		save_pickle(pkl=retrieval_metrics["txt2img"], fname=t2i_retrieval_metrics_fpth)
+		save_pickle(pkl=img2txt_metrics, fname=i2t_retrieval_metrics_fpth)
+		save_pickle(pkl=txt2img_metrics, fname=t2i_retrieval_metrics_fpth)
 
 	plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
