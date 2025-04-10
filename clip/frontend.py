@@ -288,40 +288,160 @@
 # 						dpi=300, bbox_inches='tight', facecolor=fig.get_facecolor())
 # plt.close()
 
-import matplotlib.pyplot as plt 
+# import matplotlib.pyplot as plt 
+# import numpy as np
+# def plot_label_distribution_pie_chart(labels=None, counts=None):
+# 	if labels is None or counts is None:
+# 		# Default data for demonstration
+# 		# Sample data: skewed distribution for a historical wartime dataset
+# 		labels = ["Aircraft", "Infantry", "Tanks", "Ships", "Military Bases", "Artillery", "Border"]
+# 		counts = [np.random.randint(1, int(5e2)) if i == 0 else np.random.randint(1, 10) for i in range(len(labels))]  # Highly imbalanced (long-tailed) 
+
+# 	# colors = plt.cm.tab20c.colors
+# 	# colors = plt.cm.tab20c.colors
+# 	colors = plt.cm.cividis(np.linspace(0, 0.98, len(labels)))
+# 	# Set up the figure and axis. Adjust the size for a research paper quality figure.
+# 	fig, ax = plt.subplots(figsize=(15, 10), constrained_layout=True, facecolor='white', edgecolor='black')
+
+# 	# Create the pie chart with enhanced aesthetics:
+# 	wedges, texts, autotexts = ax.pie(
+# 			counts,
+# 			labels=labels,
+# 			autopct='',
+# 			startangle=0,              # Rotate so that the first slice starts at 90 degrees
+# 			colors=colors,
+# 			textprops={'fontsize': 12, 'color': 'black'},
+# 			wedgeprops={'edgecolor': 'white', 'linewidth': 2}  # Crisp white borders between slices
+# 	)
+
+# 	# Add a title that suits a research paper style
+# 	# ax.set_title("Long-tailed Label Distribution", fontsize=18, weight='bold', pad=20)
+# 	ax.axis('equal')  # Ensure the pie chart is a circle
+
+# 	# Improve layout and display the chart
+# 	plt.tight_layout()
+# 	plt.show()
+
+
+# if __name__ == "__main__":
+# 	plot_label_distribution_pie_chart()
+
+from visualize import *
+
 import numpy as np
-def plot_label_distribution_pie_chart(labels=None, counts=None):
-	if labels is None or counts is None:
-		# Default data for demonstration
-		# Sample data: skewed distribution for a historical wartime dataset
-		labels = ["Aircraft", "Infantry", "Tanks", "Ships", "Military Bases", "Artillery", "Border"]
-		counts = [np.random.randint(1, int(5e2)) if i == 0 else np.random.randint(1, 10) for i in range(len(labels))]  # Highly imbalanced (long-tailed) 
 
-	# colors = plt.cm.tab20c.colors
-	# colors = plt.cm.tab20c.colors
-	colors = plt.cm.cividis(np.linspace(0, 0.98, len(labels)))
-	# Set up the figure and axis. Adjust the size for a research paper quality figure.
-	fig, ax = plt.subplots(figsize=(15, 10), constrained_layout=True, facecolor='white', edgecolor='black')
+# Define K values
+topK_values = [1, 3, 5, 10, 15, 20]
 
-	# Create the pie chart with enhanced aesthetics:
-	wedges, texts, autotexts = ax.pie(
-			counts,
-			labels=labels,
-			autopct='',
-			startangle=0,              # Rotate so that the first slice starts at 90 degrees
-			colors=colors,
-			textprops={'fontsize': 12, 'color': 'black'},
-			wedgeprops={'edgecolor': 'white', 'linewidth': 2}  # Crisp white borders between slices
-	)
+# Helper function to generate synthetic metric values
+def generate_metric_values(base_value, trend='decrease', noise_level=0.05, k_values=topK_values):
+    values = []
+    for k in k_values:
+        # Base trend: decrease, increase, or stable
+        if trend == 'decrease':
+            val = base_value * (1 - 0.1 * (k / max(k_values)))  # Decrease with K
+        elif trend == 'increase':
+            val = base_value * (1 + 0.1 * (k / max(k_values)))  # Increase with K
+        else:
+            val = base_value  # Stable
+        # Add some noise
+        noise = np.random.uniform(-noise_level, noise_level)
+        val = max(0, min(1, val + noise))  # Ensure value is between 0 and 1
+        values.append(val)
+    return {str(k): val for k, val in zip(k_values, values)}
 
-	# Add a title that suits a research paper style
-	# ax.set_title("Long-tailed Label Distribution", fontsize=18, weight='bold', pad=20)
-	ax.axis('equal')  # Ensure the pie chart is a circle
+# Pre-trained CLIP ViT-B/32 (Image-to-Text)
+pretrained_img2txt_dict = {
+    'ViT-B/32': {
+        'mP': generate_metric_values(0.8, trend='decrease', noise_level=0.05),
+        'mAP': generate_metric_values(0.6, trend='stable', noise_level=0.03),
+        'Recall': generate_metric_values(0.4, trend='increase', noise_level=0.04),
+    }
+}
 
-	# Improve layout and display the chart
-	plt.tight_layout()
-	plt.show()
+# Pre-trained CLIP ViT-B/32 (Text-to-Image)
+pretrained_txt2img_dict = {
+    'ViT-B/32': {
+        'mP': generate_metric_values(0.7, trend='decrease', noise_level=0.05),
+        'mAP': generate_metric_values(0.5, trend='stable', noise_level=0.03),
+        'Recall': generate_metric_values(0.3, trend='increase', noise_level=0.04),
+    }
+}
 
+# Fine-tuned CLIP ViT-B/32 (Image-to-Text)
+finetuned_img2txt_dict = {
+    'ViT-B/32': {
+        'full': {
+            'mP': generate_metric_values(0.85, trend='decrease', noise_level=0.05),
+            'mAP': generate_metric_values(0.65, trend='stable', noise_level=0.03),
+            'Recall': generate_metric_values(0.45, trend='increase', noise_level=0.04),
+        },
+        'lora': {
+            'mP': generate_metric_values(0.75, trend='decrease', noise_level=0.05),
+            'mAP': generate_metric_values(0.55, trend='stable', noise_level=0.03),
+            'Recall': generate_metric_values(0.35, trend='increase', noise_level=0.04),
+        },
+        'progressive': {
+            'mP': generate_metric_values(0.9, trend='decrease', noise_level=0.05),
+            'mAP': generate_metric_values(0.7, trend='stable', noise_level=0.03),
+            'Recall': generate_metric_values(0.5, trend='increase', noise_level=0.04),
+        },
+    }
+}
 
-if __name__ == "__main__":
-	plot_label_distribution_pie_chart()
+# Fine-tuned CLIP ViT-B/32 (Text-to-Image)
+finetuned_txt2img_dict = {
+    'ViT-B/32': {
+        'full': {
+            'mP': generate_metric_values(0.75, trend='decrease', noise_level=0.05),
+            'mAP': generate_metric_values(0.55, trend='stable', noise_level=0.03),
+            'Recall': generate_metric_values(0.35, trend='increase', noise_level=0.04),
+        },
+        'lora': {
+            'mP': generate_metric_values(0.65, trend='decrease', noise_level=0.05),
+            'mAP': generate_metric_values(0.45, trend='stable', noise_level=0.03),
+            'Recall': generate_metric_values(0.25, trend='increase', noise_level=0.04),
+        },
+        'progressive': {
+            'mP': generate_metric_values(0.8, trend='decrease', noise_level=0.05),
+            'mAP': generate_metric_values(0.6, trend='stable', noise_level=0.03),
+            'Recall': generate_metric_values(0.4, trend='increase', noise_level=0.04),
+        },
+    }
+}
+# Define parameters
+dataset_name = "DummyDataset"
+model_name = "ViT-B/32"
+finetune_strategies = ["full", "lora", "progressive"]
+results_dir = "./dummy_plots"
+os.makedirs(results_dir, exist_ok=True)
+
+# Call plot_comparison_metrics_split()
+plot_comparison_metrics_split(
+    dataset_name=dataset_name,
+    pretrained_img2txt_dict=pretrained_img2txt_dict,
+    pretrained_txt2img_dict=pretrained_txt2img_dict,
+    finetuned_img2txt_dict=finetuned_img2txt_dict,
+    finetuned_txt2img_dict=finetuned_txt2img_dict,
+    model_name=model_name,
+    finetune_strategies=finetune_strategies,
+    results_dir=results_dir,
+    topK_values=topK_values,
+    figure_size=(7, 7),
+    DPI=300,
+)
+
+# Call plot_comparison_metrics_merged()
+plot_comparison_metrics_merged(
+    dataset_name=dataset_name,
+    pretrained_img2txt_dict=pretrained_img2txt_dict,
+    pretrained_txt2img_dict=pretrained_txt2img_dict,
+    finetuned_img2txt_dict=finetuned_img2txt_dict,
+    finetuned_txt2img_dict=finetuned_txt2img_dict,
+    model_name=model_name,
+    finetune_strategies=finetune_strategies,
+    results_dir=results_dir,
+    topK_values=topK_values,
+    figure_size=(14, 5),
+    DPI=300,
+)

@@ -259,8 +259,8 @@ def plot_comparison_metrics_split(
 		finetune_strategies: list,
 		results_dir: str,
 		topK_values: list,
-		figure_size=(7, 7),
-		DPI: int = 300,
+		figure_size=(8, 8),
+		DPI: int = 250,
 	):
 		metrics = ["mP", "mAP", "Recall"]
 		modes = ["Image-to-Text", "Text-to-Image"]
@@ -283,8 +283,8 @@ def plot_comparison_metrics_split(
 				return
 		model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
 		# Define a professional color palette for fine-tuned strategies
-		strategy_colors = {'full': '#1f77b4', 'lora': '#ff7f0e', 'progressive': '#2ca02c'}  # Blue, Orange, Green
-		pretrained_color = '#7f7f7f'  # Gray for pre-trained
+		strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Green
+		pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#7f7f7f'}
 		strategy_styles = {'full': 's', 'lora': '^', 'progressive': 'd'}  # Unique markers
 
 		for mode in modes:
@@ -321,7 +321,7 @@ def plot_comparison_metrics_split(
 						ax.plot(
 								k_values, pretrained_vals,
 								label=f"Pre-trained CLIP {model_name}",
-								color=pretrained_color, linestyle='--', marker='o',
+								color=pretrained_colors[model_name], linestyle='--', marker='o',
 								linewidth=1.5, markersize=5, alpha=0.7
 						)
 						# Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
@@ -348,17 +348,17 @@ def plot_comparison_metrics_split(
 										# Annotate best strategy (green)
 										if pre_val != 0:
 												best_imp = (best_val - pre_val) / pre_val * 100
-												# Set color based on improvement value
-												text_color = 'darkgreen' if best_imp >= 0 else 'red'
-												arrow_style = '-|>' if best_imp >= 0 else '<|-'
+												text_color = '#016e2bff' if best_imp >= 0 else 'red'
+												arrow_style = '<|-' if best_imp >= 0 else '-|>'
+												print(f"Best strategy at K={k}: {best_strategy} with improvement: {best_imp:.2f}% | arrow: {arrow_style}")
 												
 												# Place annotations with arrows
 												ax.annotate(
-													f"{best_imp:+.1f}% ({best_strategy.capitalize()})",
+													f"{best_imp:+.1f}%",
 													xy=(k, best_val),
-													xytext=(5, 10 if best_imp >= 0 else -15),
+													xytext=(0, 30),
 													textcoords='offset points',
-													fontsize=9,
+													fontsize=8,
 													fontweight='bold',
 													color=text_color,
 													bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3),
@@ -374,17 +374,17 @@ def plot_comparison_metrics_split(
 										# Annotate worst strategy (red)
 										if pre_val != 0:
 												worst_imp = (worst_val - pre_val) / pre_val * 100
-												# Set color based on improvement value
-												text_color = 'red' if worst_imp >= 0 else 'darkgreen'
+												text_color = '#016e2bff' if worst_imp >= 0 else 'red'
 												arrow_style = '-|>' if worst_imp >= 0 else '<|-'
+												print(f"Worst strategy at K={k}: {worst_strategy} with improvement: {worst_imp:.2f}% | arrow: {arrow_style}")
 												
 												# Place annotations with arrows
 												ax.annotate(
-													f"{worst_imp:+.1f}% ({worst_strategy.capitalize()})",
+													f"{worst_imp:+.1f}%",
 													xy=(k, worst_val),
-													xytext=(5, 10 if worst_imp >= 0 else -15),
+													xytext=(0, -30),
 													textcoords='offset points',
-													fontsize=9,
+													fontsize=8,
 													fontweight='bold',
 													color=text_color,
 													bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3),
@@ -399,7 +399,7 @@ def plot_comparison_metrics_split(
 												)
 						# Axes formatting
 						ax.set_title(f"{metric}@K", fontsize=10, fontweight='bold')
-						ax.set_xlabel("K", fontsize=11)
+						ax.set_xlabel("K", fontsize=9)
 						ax.set_xticks(k_values)
 						ax.grid(True, linestyle='--', alpha=0.9)
 						ax.set_ylim(-0.01, 1.01)
@@ -501,7 +501,7 @@ def plot_comparison_metrics_split_orig(
 											pre = pretrained_dict[model_name][metric][str(k)]
 											fine = finetuned_dict[model_name][strategy][metric][str(k)]
 											imp = (fine - pre) / pre * 100 if pre != 0 else 0
-											color = 'darkgreen' if imp >= 0 else 'red'
+											color = '#016e2bff' if imp >= 0 else 'red'
 											ax.annotate(
 													f"{imp:+.1f}%",
 													xy=(k, fine), xytext=(5, 5 * (idx + 1)),  # Offset per strategy
@@ -530,7 +530,7 @@ def plot_comparison_metrics_merged(
 		finetune_strategies: list,  # Changed to list
 		results_dir: str,
 		topK_values: list,
-		figure_size=(15, 7),
+		figure_size=(15, 6),
 		DPI: int = 300,
 	):
 		metrics = ["mP", "mAP", "Recall"]
@@ -548,8 +548,8 @@ def plot_comparison_metrics_merged(
 						return
 		model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
 		# Define a professional color palette for fine-tuned strategies
-		strategy_colors = {'full': '#1f77b4', 'lora': '#ff7f0e', 'progressive': '#2ca02c'}  # Blue, Orange, Green
-		pretrained_color = '#7f7f7f'  # Gray for pre-trained
+		strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Green
+		pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#7f7f7f'}
 		strategy_styles = {'full': 's', 'lora': '^', 'progressive': 'd'}  # Unique markers
 
 		print(f"\n{'='*80}")
@@ -588,7 +588,7 @@ def plot_comparison_metrics_merged(
 						ax.plot(
 								k_values, pretrained_values,
 								label=f"Pre-trained CLIP {model_name}",
-								color=pretrained_color, marker='o', linestyle='--',
+								color=pretrained_colors[model_name], marker='o', linestyle='--',
 								linewidth=1.5, markersize=5, alpha=0.7,
 						)
 						# Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
@@ -616,16 +616,16 @@ def plot_comparison_metrics_merged(
 										if pre_val != 0:
 												best_imp = (best_val - pre_val) / pre_val * 100
 												# Set color based on improvement value
-												text_color = 'darkgreen' if best_imp >= 0 else 'red'
-												arrow_style = '-|>' if best_imp >= 0 else '<|-'
+												text_color = '#016e2bff' if best_imp >= 0 else 'red'
+												arrow_style = '<|-' if best_imp >= 0 else '-|>'
 												
 												# Place annotations with arrows
 												ax.annotate(
 													f"{best_imp:+.1f}%",
 													xy=(k, best_val),
-													xytext=(5, 10 if best_imp >= 0 else -15),
+													xytext=(0, 30),
 													textcoords='offset points',
-													fontsize=7,
+													fontsize=8,
 													fontweight='bold',
 													color=text_color,
 													bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3),
@@ -642,16 +642,16 @@ def plot_comparison_metrics_merged(
 										if pre_val != 0:
 												worst_imp = (worst_val - pre_val) / pre_val * 100
 												# Set color based on improvement value
-												text_color = 'red' if worst_imp >= 0 else 'darkgreen'
+												text_color = 'red' if worst_imp <= 0 else '#016e2bff'
 												arrow_style = '-|>' if worst_imp >= 0 else '<|-'
 												
 												# Place annotations with arrows
 												ax.annotate(
-													f"{worst_imp:+.1f}% ({worst_strategy.capitalize()})",
+													f"{worst_imp:+.1f}%",
 													xy=(k, worst_val),
-													xytext=(5, 10 if worst_imp >= 0 else -15),
+													xytext=(0, -30),
 													textcoords='offset points',
-													fontsize=7,
+													fontsize=8,
 													fontweight='bold',
 													color=text_color,
 													bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3),
@@ -794,7 +794,7 @@ def plot_comparison_metrics_merged_orig(
 											fine = finetuned_values[k_idx]
 											if pre != 0:
 													improvement = ((fine - pre) / pre) * 100
-													text_color = 'darkgreen' if improvement >= 0 else 'red'
+													text_color = '#016e2bff' if improvement >= 0 else 'red'
 													ax.annotate(
 															f"{'+' if improvement >= 0 else ''}{improvement:.1f}%",
 															xy=(k, fine), xytext=(5, 5 * (idx + 1)),
@@ -923,7 +923,7 @@ def plot_comparison_metrics_original(
 							improvement = ((finetuned_val - pretrained_val) / pretrained_val) * 100
 							
 							# Set color based on improvement value
-							text_color = 'darkgreen' if improvement >= 0 else 'red'
+							text_color = '#016e2bff' if improvement >= 0 else 'red'
 							
 							# Place annotations to the right with slight upward offset
 							ax.annotate(
