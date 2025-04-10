@@ -161,7 +161,8 @@ def main():
 	plot_image_to_texts_pretrained(
 		best_pretrained_model=pretrained_model,
 		validation_loader=validation_loader,
-		preprocess=pretrained_preprocess, # customized_preprocess,
+		# preprocess=pretrained_preprocess, # customized_preprocess,
+		preprocess=customized_preprocess,
 		img_path=args.query_image,
 		topk=args.topK,
 		device=args.device,
