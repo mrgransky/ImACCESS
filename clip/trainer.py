@@ -523,12 +523,14 @@ def evaluate_retrieval_performance(
 
 	with torch.no_grad():
 		text_inputs = clip.tokenize(texts=class_names).to(device, non_blocking=True)
-		class_text_embeddings = model.encode_text(text_inputs)
+		with torch.amp.autocast(device_type=device.type, enabled=True):
+			class_text_embeddings = model.encode_text(text_inputs)
 		class_text_embeddings = class_text_embeddings / class_text_embeddings.norm(dim=-1, keepdim=True)
 		for bidx, (images, _, class_indices) in enumerate(validation_loader):
 			images = images.to(device, non_blocking=True)
 			class_indices = class_indices.to(device, non_blocking=True)
-			image_embeds = model.encode_image(images)
+			with torch.amp.autocast(device_type=device.type, enabled=True):
+				image_embeds = model.encode_image(images)
 			image_embeds = image_embeds / image_embeds.norm(dim=-1, keepdim=True)
 			image_embeddings.append(image_embeds.cpu())
 			image_labels.extend(class_indices.cpu())
@@ -708,12 +710,10 @@ def get_in_batch_loss_accuracy_metrics(
 			class_names = validation_loader.dataset.unique_labels
 	
 	num_classes = len(class_names)
-	if num_classes <= 0:
-			raise ValueError("Number of classes must be positive.")
 	
 	valid_img2txt_k_values = [K for K in topK_values if K <= num_classes]
 	if len(valid_img2txt_k_values) < len(topK_values):
-			print(f"\t<!> Warning: K values ({set(topK_values) - set(valid_img2txt_k_values)}) exceed the number of classes ({num_classes}) for Image-to-Text. => ignored.")
+		print(f"\t<!> Warning: K values ({set(topK_values) - set(valid_img2txt_k_values)}) exceed the number of classes ({num_classes}) for Image-to-Text. => ignored.")
 	
 	valid_txt2img_k_values = topK_values
 	img2txt_topk_accuracy = {k: 0 for k in valid_img2txt_k_values}
@@ -739,7 +739,8 @@ def get_in_batch_loss_accuracy_metrics(
 							chunk_size_actual = chunk_images.size(0)
 							
 							# Forward pass to get logits
-							logits_per_image, logits_per_text = model(chunk_images, chunk_tokenized_labels)
+							with torch.amp.autocast(device_type=device.type, enabled=True):
+								logits_per_image, logits_per_text = model(chunk_images, chunk_tokenized_labels)
 							
 							# Ground Truth
 							ground_truth = torch.arange(start=0, end=chunk_size_actual, dtype=torch.long, device=device)
@@ -807,18 +808,17 @@ def get_in_batch_loss_accuracy_metrics(
 							
 							# Compute and store embeddings efficiently
 							with torch.no_grad():
-									# Get image embeddings
-									image_embeddings = model.encode_image(chunk_images)
-									image_embeddings = F.normalize(image_embeddings, dim=-1)
-									all_image_embeddings.append(image_embeddings.cpu())
+									# Compute embeddings:
+									with torch.amp.autocast(device_type=device.type, enabled=True):
+										image_embeddings = model.encode_image(chunk_images)
+										text_embeddings = model.encode_text(chunk_tokenized_labels)
 									
-									# Get text embeddings
-									text_embeddings = model.encode_text(chunk_tokenized_labels)
+									image_embeddings = F.normalize(image_embeddings, dim=-1)									
 									text_embeddings = F.normalize(text_embeddings, dim=-1)
+
+									all_image_embeddings.append(image_embeddings.cpu())
 									all_text_embeddings.append(text_embeddings.cpu())
-									
-									# Store labels
-									all_labels.extend(chunk_labels_indices.cpu().tolist())
+									all_labels.extend(chunk_labels_indices.cpu().tolist()) # [chunk_size] store actual class indices
 									
 									# Compute cosine similarity
 									cos_sim = F.cosine_similarity(image_embeddings, text_embeddings, dim=-1).cpu().numpy()

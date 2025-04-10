@@ -13,28 +13,26 @@ def plot_image_to_texts_stacked_horizontal_bar(
 		dpi: int = 250,
 	):
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
-	print(len(models))
-	# Prepare labels
+	print(f"num_models: {len(models)}")
 	try:
 		labels = validation_loader.dataset.dataset.classes
 	except AttributeError:
 		labels = validation_loader.dataset.unique_labels
 	n_labels = len(labels)
 	if topk > n_labels:
-			print(f"ERROR: requested Top-{topk} labeling is greater than number of labels ({n_labels}) => EXIT...")
-			return
+		print(f"ERROR: requested Top-{topk} labeling is greater than number of labels ({n_labels}) => EXIT...")
+		return
 	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
-	# Load and preprocess image (only for prediction, not for plotting)
 	try:
-			img = Image.open(img_path).convert("RGB")
+		img = Image.open(img_path).convert("RGB")
 	except FileNotFoundError:
-			try:
-					response = requests.get(img_path)
-					response.raise_for_status()
-					img = Image.open(BytesIO(response.content)).convert("RGB")
-			except requests.exceptions.RequestException as e:
-					print(f"ERROR: failed to load image from {img_path} => {e}")
-					return
+		try:
+			response = requests.get(img_path)
+			response.raise_for_status()
+			img = Image.open(BytesIO(response.content)).convert("RGB")
+		except requests.exceptions.RequestException as e:
+			print(f"ERROR: failed to load image from {img_path} => {e}")
+			return
 	image_tensor = preprocess(img).unsqueeze(0).to(device)
 
 	# Compute predictions for each model
@@ -84,41 +82,44 @@ def plot_image_to_texts_stacked_horizontal_bar(
 	y_pos = np.arange(num_labels)
 	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Green
 	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#7f7f7f'}
-	colors = [pretrained_colors.get(models.get("pretrained").name, '#000000')] + list(strategy_colors.values())
+	pretrained_model_arch = models.get("pretrained").name
+	colors = [pretrained_colors.get(pretrained_model_arch, '#000000')] + list(strategy_colors.values())
 	print(f"colors: {colors}")
 	winning_model_per_label = np.argmax(plot_data, axis=1)
 
 	for model_idx, model_name in enumerate(model_names):
+			if model_name == "pretrained":
+				model_name = f"{model_name.capitalize()} {pretrained_model_arch}"
 			offset = (model_idx - num_models / 2) * bar_width
 			bars = ax.barh(
-					y_pos + offset,
-					plot_data[:, model_idx],
-					height=bar_width,
-					label=model_name.split('_')[-1].replace('finetune', '').capitalize() if '_' in model_name else model_name.capitalize(),
-					color=colors[model_idx],
-					edgecolor='white',
-					alpha=0.85,
+				y_pos + offset,
+				plot_data[:, model_idx],
+				height=bar_width,
+				label=model_name.split('_')[-1].replace('finetune', '').capitalize() if '_' in model_name else model_name,
+				color=colors[model_idx],
+				edgecolor='white',
+				alpha=0.85,
 			)
 			for i, bar in enumerate(bars):
-					width = bar.get_width()
-					if width > 0.01:
-							is_winner = (model_idx == winning_model_per_label[i])
-							ax.text(
-									width + 0.01,
-									bar.get_y() + bar.get_height() / 2,
-									f"{width:.2f}",
-									va='center',
-									fontsize=8,
-									color='black',
-									fontweight='bold' if is_winner else 'normal',
-									alpha=0.85,
-							)
+				width = bar.get_width()
+				if width > 0.01:
+					is_winner = (model_idx == winning_model_per_label[i])
+					ax.text(
+						width + 0.01,
+						bar.get_y() + bar.get_height() / 2,
+						f"{width:.2f}",
+						va='center',
+						fontsize=8,
+						color='black',
+						fontweight='bold' if is_winner else 'normal',
+						alpha=0.85,
+					)
 	ax.set_yticks(y_pos)
 	ax.set_yticklabels([label.replace('_', ' ').title() for label in pretrained_topk_labels], fontsize=11)
 	ax.set_xlim(0, 1.02)
 	ax.set_xlabel("Probability", fontsize=10)
 	ax.set_title(f"Top-{topk} Predictions (Pre-trained Baseline)", fontsize=12, fontweight='bold')
-	ax.grid(True, axis='x', linestyle='--', alpha=0.6, color='black',)
+	ax.grid(True, axis='x', linestyle='--', alpha=0.5, color='black',)
 	ax.tick_params(axis='x', labelsize=12)
 	ax.legend(
 		fontsize=9,
@@ -140,6 +141,19 @@ def plot_image_to_texts_stacked_horizontal_bar(
 	plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
 	plt.close()
 	print(f"Saved visualization to: {file_name}")
+
+
+	# Save the original image separately using same hash (for visual comparison)
+	fig_img, ax_img = plt.subplots(figsize=(4, 4), dpi=dpi)
+	ax_img.imshow(img)
+	ax_img.axis('off')
+	ax_img.set_title("Query Image", fontsize=12)
+	img_file_name = os.path.join(results_dir, f'{dataset_name}_query_image_{img_hash}_original.png')
+	plt.tight_layout()
+	plt.savefig(img_file_name, bbox_inches='tight', dpi=dpi)
+	plt.close()
+	print(f"Saved original image to: {img_file_name}")
+
 
 def plot_image_to_texts_pretrained(
 		best_pretrained_model: torch.nn.Module,
