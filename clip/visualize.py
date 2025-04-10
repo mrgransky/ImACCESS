@@ -80,7 +80,7 @@ def plot_image_to_texts_stacked_horizontal_bar(
 					plot_data[label_idx, model_idx] = probs[label_full_idx]
 
 	fig, ax = plt.subplots(figsize=figure_size, dpi=dpi)
-	bar_width = 0.21  # Width of each bar
+	bar_width = 0.21
 	y_pos = np.arange(num_labels)
 	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Green
 	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#7f7f7f'}
@@ -99,7 +99,6 @@ def plot_image_to_texts_stacked_horizontal_bar(
 					edgecolor='white',
 					alpha=0.85,
 			)
-			# Annotate bars with probabilities
 			for i, bar in enumerate(bars):
 					width = bar.get_width()
 					if width > 0.01:  # Only annotate if probability is significant
@@ -113,7 +112,6 @@ def plot_image_to_texts_stacked_horizontal_bar(
 									fontweight='bold',
 									alpha=0.85,
 							)
-	# Configure the plot for publication quality
 	ax.set_yticks(y_pos)
 	ax.set_yticklabels([label.replace('_', ' ').title() for label in pretrained_topk_labels], fontsize=11)
 	ax.set_xlim(0, 1.02)
@@ -130,15 +128,12 @@ def plot_image_to_texts_stacked_horizontal_bar(
 		shadow=True,
 		fancybox=True,
 	)
-	# Adjust spines for a cleaner look
 	for spine in ax.spines.values():
 		spine.set_color('black')
-		# spine.set_linewidth(0.8)
-	# Save plot
 	img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
 	file_name = os.path.join(
 		results_dir,
-		f'i2t_Top{topk}_labels_{img_hash}_dataset_{dataset_name}_stacked_bar.png'
+		f'{dataset_name}_Top{topk}_labels_{img_hash}_dataset_stacked_bar_image_to_text.png'
 	)
 	plt.tight_layout()
 	plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
