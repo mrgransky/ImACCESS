@@ -62,9 +62,6 @@ def main():
 		if f"_lora_dropout_{args.lora_dropout}" not in args.lora_checkpoint:
 			raise ValueError("LoRA dropout in checkpoint path does not match provided LoRA dropout!") 
 
-	if not all(args.model_architecture in checkpoint for checkpoint in [args.full_checkpoint, args.lora_checkpoint, args.progressive_checkpoint]):
-		raise ValueError("Checkpoint path does not match the assigned model architecture!")
-
 	# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 	RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"results")
@@ -82,6 +79,9 @@ def main():
 	pretrained_model_name = pretrained_model.__class__.__name__ # CLIP
 	pretrained_model.name = args.model_architecture # ViT-B/32
 	pretrained_model_arch = re.sub(r'[/@]', '-', args.model_architecture)
+	if not all(pretrained_model_arch in checkpoint for checkpoint in [args.full_checkpoint, args.lora_checkpoint, args.progressive_checkpoint]):
+		raise ValueError("Checkpoint path does not match the assigned model architecture!")
+
 	models_to_plot["pretrained"] = pretrained_model
 
 	train_loader, validation_loader = get_dataloaders(
