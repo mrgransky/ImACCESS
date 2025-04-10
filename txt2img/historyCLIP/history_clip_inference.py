@@ -1,4 +1,3 @@
-from email.policy import default
 import os
 import sys
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
@@ -12,17 +11,20 @@ from model import get_lora_clip
 from trainer import pretrain, evaluate_best_model
 from visualize import plot_image_to_texts_stacked_horizontal_bar, plot_text_to_images, plot_image_to_texts_pretrained, plot_comparison_metrics_split, plot_comparison_metrics_merged
 
-# run in local for all fine-tuned models:
-# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -m quantitative -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_9_do_0.0_lr_1.0e-04_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_9_do_0.0_init_lr_1.0e-04_init_wd_1.0e-02_bs_64_best_model.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_50_lr_1.0e-04_wd_1.0e-02_lora_rank_4_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 4 -loa 16.0 -lod 0.05
+# # run in local for all fine-tuned models:
+# # $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_9_do_0.0_lr_1.0e-04_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_9_do_0.0_init_lr_1.0e-04_init_wd_1.0e-02_bs_64_best_model.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_50_lr_1.0e-04_wd_1.0e-02_lora_rank_4_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 4 -loa 16.0 -lod 0.05
 
-# run in pouta for all fine-tuned models:
-# $ python history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -m quantitative -fcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_100_do_0.05_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_do_0.05_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_lr_1.0e-05_wd_1.0e-01_lora_rank_8_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 8 -loa 16.0 -lod 0.05
+# # run in pouta for all fine-tuned models:
+# # $ python history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_100_do_0.05_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_do_0.05_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_lr_1.0e-05_wd_1.0e-01_lora_rank_8_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 8 -loa 16.0 -lod 0.05
+
+# # run in Puhti:
+# # $ python history_clip_inference.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -fcp /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/results/WWII_1939-09-01_1945-09-02_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_do_0.05_lr_5.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/results/WWII_1939-09-01_1945-09-02_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_do_0.05_init_lr_5.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/results/WWII_1939-09-01_1945-09-02_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_lr_5.0e-05_wd_1.0e-02_lora_rank_8_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 8 -loa 16.0 -lod 0.05
+
 
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
-	parser.add_argument('--mode', '-m', type=str, choices=['quantitative', 'qualitative'], required=True, help='Choose mode (qualitative/quantitative)')
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=16, help='Number of CPUs [def: max cpus]')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
@@ -43,10 +45,10 @@ def main():
 	args.device = torch.device(args.device)
 	print_args_table(args=args, parser=parser)
 	set_seeds(seed=42)
-	if args.mode == "qualitative":
-		assert args.query_image is not None, "query_image must be provided for qualitative mode"
-		assert args.query_label is not None, "query_label must be provided for qualitative mode"
-		assert args.topK is not None, "topK must be provided for qualitative mode"
+
+	assert args.query_image is not None, "query_image must be provided for qualitative mode"
+	assert args.query_label is not None, "query_label must be provided for qualitative mode"
+	assert args.topK is not None, "topK must be provided for qualitative mode"
 
 	if args.lora_checkpoint is not None:
 		if not os.path.exists(args.lora_checkpoint):
@@ -59,6 +61,9 @@ def main():
 			raise ValueError("LoRA alpha in checkpoint path does not match provided LoRA alpha!")
 		if f"_lora_dropout_{args.lora_dropout}" not in args.lora_checkpoint:
 			raise ValueError("LoRA dropout in checkpoint path does not match provided LoRA dropout!") 
+
+	if not all(args.model_architecture in checkpoint for checkpoint in [args.full_checkpoint, args.lora_checkpoint, args.progressive_checkpoint]):
+		raise ValueError("Checkpoint path does not match the assigned model architecture!")
 
 	# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
@@ -153,83 +158,74 @@ def main():
 	print(f"finetuned_txt2img_dict:")
 	print(json.dumps(finetuned_txt2img_dict, indent=4, ensure_ascii=False))
 
-	if args.mode == "qualitative":
-		# only for pre-trained model:
-		plot_image_to_texts_pretrained(
-			best_pretrained_model=pretrained_model,
-			validation_loader=validation_loader,
-			preprocess=pretrained_preprocess, # customized_preprocess,
-			img_path=args.query_image,
-			topk=args.topK,
-			device=args.device,
-			results_dir=RESULT_DIRECTORY,
-		)
-
-		plot_image_to_texts_stacked_horizontal_bar(
-			models=models_to_plot,
-			validation_loader=validation_loader,
-			preprocess=pretrained_preprocess,
-			img_path=args.query_image,
-			topk=args.topK,
-			device=args.device,
-			results_dir=RESULT_DIRECTORY,
-		)
-	elif args.mode == "quantitative":
-		finetune_strategies = []
-		if args.full_checkpoint is not None:
-			finetune_strategies.append("full")
-		if args.lora_checkpoint is not None:
-			finetune_strategies.append("lora")
-		if args.progressive_checkpoint is not None:
-			finetune_strategies.append("progressive")
-		if len(finetune_strategies) == 0:
-			raise ValueError("Please provide at least one checkpoint for comparison!")
-		print(f">> Finetune strategies: {finetune_strategies}")
-
-		# Compute pretrained model metrics
-		print(f">> Computing metrics for pretrained {args.model_architecture}...")
-		pretrained_img2txt_dict = {args.model_architecture: {}}
-		pretrained_txt2img_dict = {args.model_architecture: {}}
-		pretrained_img2txt, pretrained_txt2img = pretrain(
-			model=pretrained_model,
-			validation_loader=validation_loader,
-			results_dir=RESULT_DIRECTORY,
-			device=args.device,
-			topk_values=args.topK_values,
-		)
-		pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
-		pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
-		print(f">> Pretrained model metrics computed successfully.")
-		print(f"pretrained_img2txt_dict:")
-		print(json.dumps(pretrained_img2txt_dict, indent=4, ensure_ascii=False))
-		print(f"pretrained_txt2img_dict:")
-		print(json.dumps(pretrained_txt2img_dict, indent=4, ensure_ascii=False))
-
-		plot_comparison_metrics_split(
-			dataset_name=validation_loader.name,
-			pretrained_img2txt_dict=pretrained_img2txt_dict,
-			pretrained_txt2img_dict=pretrained_txt2img_dict,
-			finetuned_img2txt_dict=finetuned_img2txt_dict,
-			finetuned_txt2img_dict=finetuned_txt2img_dict,
-			model_name=args.model_architecture,
-			finetune_strategies=finetune_strategies,
-			topK_values=args.topK_values,
-			results_dir=RESULT_DIRECTORY,
-		)
-
-		plot_comparison_metrics_merged(
-			dataset_name=validation_loader.name,
-			pretrained_img2txt_dict=pretrained_img2txt_dict,
-			pretrained_txt2img_dict=pretrained_txt2img_dict,
-			finetuned_img2txt_dict=finetuned_img2txt_dict,
-			finetuned_txt2img_dict=finetuned_txt2img_dict,
-			model_name=args.model_architecture,
-			finetune_strategies=finetune_strategies,
-			topK_values=args.topK_values,
-			results_dir=RESULT_DIRECTORY,
-		)
-	else:
-		raise ValueError(f"Invalid mode: {args.mode}. Choose between: 'qualitative', 'quantitative'!")
+	plot_image_to_texts_pretrained(
+		best_pretrained_model=pretrained_model,
+		validation_loader=validation_loader,
+		preprocess=pretrained_preprocess, # customized_preprocess,
+		img_path=args.query_image,
+		topk=args.topK,
+		device=args.device,
+		results_dir=RESULT_DIRECTORY,
+	)
+	plot_image_to_texts_stacked_horizontal_bar(
+		models=models_to_plot,
+		validation_loader=validation_loader,
+		preprocess=pretrained_preprocess,
+		img_path=args.query_image,
+		topk=args.topK,
+		device=args.device,
+		results_dir=RESULT_DIRECTORY,
+	)
+	finetune_strategies = []
+	if args.full_checkpoint is not None:
+		finetune_strategies.append("full")
+	if args.lora_checkpoint is not None:
+		finetune_strategies.append("lora")
+	if args.progressive_checkpoint is not None:
+		finetune_strategies.append("progressive")
+	if len(finetune_strategies) == 0:
+		raise ValueError("Please provide at least one checkpoint for comparison!")
+	print(f">> Finetune strategies: {finetune_strategies}")
+	# Compute pretrained model metrics
+	print(f">> Computing metrics for pretrained {args.model_architecture}...")
+	pretrained_img2txt_dict = {args.model_architecture: {}}
+	pretrained_txt2img_dict = {args.model_architecture: {}}
+	pretrained_img2txt, pretrained_txt2img = pretrain(
+		model=pretrained_model,
+		validation_loader=validation_loader,
+		results_dir=RESULT_DIRECTORY,
+		device=args.device,
+		topk_values=args.topK_values,
+	)
+	pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
+	pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
+	print(f">> Pretrained model metrics computed successfully.")
+	print(f"pretrained_img2txt_dict:")
+	print(json.dumps(pretrained_img2txt_dict, indent=4, ensure_ascii=False))
+	print(f"pretrained_txt2img_dict:")
+	print(json.dumps(pretrained_txt2img_dict, indent=4, ensure_ascii=False))
+	plot_comparison_metrics_split(
+		dataset_name=validation_loader.name,
+		pretrained_img2txt_dict=pretrained_img2txt_dict,
+		pretrained_txt2img_dict=pretrained_txt2img_dict,
+		finetuned_img2txt_dict=finetuned_img2txt_dict,
+		finetuned_txt2img_dict=finetuned_txt2img_dict,
+		model_name=args.model_architecture,
+		finetune_strategies=finetune_strategies,
+		topK_values=args.topK_values,
+		results_dir=RESULT_DIRECTORY,
+	)
+	plot_comparison_metrics_merged(
+		dataset_name=validation_loader.name,
+		pretrained_img2txt_dict=pretrained_img2txt_dict,
+		pretrained_txt2img_dict=pretrained_txt2img_dict,
+		finetuned_img2txt_dict=finetuned_img2txt_dict,
+		finetuned_txt2img_dict=finetuned_txt2img_dict,
+		model_name=args.model_architecture,
+		finetune_strategies=finetune_strategies,
+		topK_values=args.topK_values,
+		results_dir=RESULT_DIRECTORY,
+	)
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
