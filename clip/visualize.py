@@ -530,9 +530,9 @@ def plot_comparison_metrics_merged(
 		finetune_strategies: list,  # Changed to list
 		results_dir: str,
 		topK_values: list,
-		figure_size=(12, 5),
+		figure_size=(15, 7),
 		DPI: int = 300,
-):
+	):
 		metrics = ["mP", "mAP", "Recall"]
 		modes = ["Image-to-Text", "Text-to-Image"]
 		all_model_architectures = ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
@@ -625,7 +625,7 @@ def plot_comparison_metrics_merged(
 													xy=(k, best_val),
 													xytext=(5, 10 if best_imp >= 0 else -15),
 													textcoords='offset points',
-													fontsize=8.5,
+													fontsize=7,
 													fontweight='bold',
 													color=text_color,
 													bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3),
@@ -651,7 +651,7 @@ def plot_comparison_metrics_merged(
 													xy=(k, worst_val),
 													xytext=(5, 10 if worst_imp >= 0 else -15),
 													textcoords='offset points',
-													fontsize=8.5,
+													fontsize=7,
 													fontweight='bold',
 													color=text_color,
 													bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3),
