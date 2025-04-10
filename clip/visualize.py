@@ -256,7 +256,7 @@ def plot_comparison_metrics_split(
 		finetuned_img2txt_dict: dict,
 		finetuned_txt2img_dict: dict,
 		model_name: str,
-		finetune_strategy: str,
+		finetune_strategies: list,  # Changed to list
 		results_dir: str,
 		topK_values: list,
 		figure_size=(7, 7),
@@ -265,87 +265,96 @@ def plot_comparison_metrics_split(
 	metrics = ["mP", "mAP", "Recall"]
 	modes = ["Image-to-Text", "Text-to-Image"]
 	all_model_architectures = [
-		'RN50', 
-		'RN101', 
-		'RN50x4', 
-		'RN50x16', 
-		'RN50x64', 
-		'ViT-B/32', 
-		'ViT-B/16', 
-		'ViT-L/14', 
-		'ViT-L/14@336px',
+			'RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64',
+			'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px',
 	]
+	if model_name not in finetuned_img2txt_dict.keys():
+			print(f"WARNING: {model_name} not found in finetuned_img2txt_dict. Skipping...")
+			print(json.dumps(finetuned_img2txt_dict, indent=4, ensure_ascii=False))
+			return
+	if model_name not in finetuned_txt2img_dict.keys():
+			print(f"WARNING: {model_name} not found in finetuned_txt2img_dict. Skipping...")
+			print(json.dumps(finetuned_txt2img_dict, indent=4, ensure_ascii=False))
+			return
+	# Validate finetune_strategies
+	finetune_strategies = [s for s in finetune_strategies if s in ["full", "lora", "progressive"]][:3]  # Max 3
+	if not finetune_strategies:
+			print("WARNING: No valid finetune strategies provided. Skipping...")
+			return
 	model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
 	model_colors = plt.cm.tab10.colors
-
+	strategy_styles = {'full': ('-', 's'), 'lora': ('-.', '^'), 'progressive': (':', 'd')}  # Unique styles
 	for mode in modes:
-		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
-		finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
-		print(f"\n{'='*80}")
-		print(f"ANALYSIS: {mode} | Model: {model_name} | Finetune: {finetune_strategy}")
-		print(f"{'='*80}")
-		for metric in metrics:
-			print(f"\nMetric: {metric}")
-			fig, ax = plt.subplots(figsize=figure_size)
-			fname = f"{dataset_name}_{finetune_strategy}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_{mode.replace('-', '_')}_{metric}_comparison.png"
-			file_path = os.path.join(results_dir, fname)
-			k_values = sorted(
-				k for k in topK_values if
-				str(k) in pretrained_dict.get(model_name, {}).get(metric, {}) or
-				str(k) in finetuned_dict.get(model_name, {}).get(metric, {})
-			)
-			pretrained_vals = [pretrained_dict[model_name][metric].get(str(k), float('nan')) for k in k_values]
-			finetuned_vals = [finetuned_dict[model_name][metric].get(str(k), float('nan')) for k in k_values]
-			# Plot Pre-trained
-			ax.plot(
-					k_values,
-					pretrained_vals,
-					label=f"Pre-trained CLIP {model_name}",
-					color=model_colors[model_name_idx],
-					linestyle='--',
-					marker='o',
-					linewidth=2,
-					alpha=0.7
-			)
-			# Plot Fine-tuned
-			ax.plot(
-				k_values,
-				finetuned_vals,
-				label=f"{finetune_strategy.capitalize()} Fine-tune",
-				color=model_colors[model_name_idx],
-				linestyle='-',
-				marker='s',
-				linewidth=2
-			)
-			# Add annotation for key Ks
-			for k in [1, 10, 20]:
-				if str(k) in pretrained_dict[model_name][metric] and str(k) in finetuned_dict[model_name][metric]:
-					pre = pretrained_dict[model_name][metric][str(k)]
-					fine = finetuned_dict[model_name][metric][str(k)]
-					imp = (fine - pre) / pre * 100 if pre != 0 else 0
-					color = 'darkgreen' if imp >= 0 else 'red'
-					ax.annotate(
-						f"{imp:+.1f}%",
-						xy=(k, fine),
-						xytext=(5, 5),
-						textcoords='offset points',
-						fontsize=9,
-						fontweight='bold',
-						color=color,
-						bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3)
+			pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
+			finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+			print(f"\n{'='*80}")
+			print(f"ANALYSIS: {mode} | Model: {model_name} | Finetune Strategies: {', '.join(finetune_strategies)}")
+			print(f"{'='*80}")
+			for metric in metrics:
+					print(f"\nMetric: {metric}")
+					fig, ax = plt.subplots(figsize=figure_size)
+					fname = f"{dataset_name}_{'_'.join(finetune_strategies)}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_{mode.replace('-', '_')}_{metric}_comparison.png"
+					file_path = os.path.join(results_dir, fname)
+					if metric not in pretrained_dict.get(model_name, {}):
+							print(f"WARNING: Metric {metric} not found in pretrained_{mode.lower().replace('-', '_')}_dict for {model_name}")
+							continue
+					# Get available k values across all dictionaries
+					k_values = sorted(
+							k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {})
 					)
-			# Axes formatting
-			ax.set_title(f"{mode}: {metric}@K", fontsize=12, fontweight='bold')
-			ax.set_xlabel("K", fontsize=11)
-			ax.set_xticks(topK_values)
-			ax.grid(True, linestyle='--', alpha=0.9)
-			ax.set_ylim(bottom=-0.01, top=1.01)
-			ax.legend(fontsize=9, loc='best')
-			# Save and close
-			plt.tight_layout()
-			plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
-			plt.close(fig)
-			print(f"Saved: {file_path}")
+					for strategy in finetune_strategies:
+							if strategy not in finetuned_dict.get(model_name, {}) or metric not in finetuned_dict.get(model_name, {}).get(strategy, {}):
+									print(f"WARNING: Metric {metric} not found in finetuned_{mode.lower().replace('-', '_')}_dict for {model_name}/{strategy}")
+									k_values = []  # Reset if any strategy is missing
+									break
+							k_values = sorted(
+									set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys())
+							)
+					if not k_values:
+							print(f"WARNING: No matching K values found for {metric}")
+							continue
+					# Plot Pre-trained
+					pretrained_vals = [pretrained_dict[model_name][metric].get(str(k), float('nan')) for k in k_values]
+					ax.plot(
+							k_values, pretrained_vals,
+							label=f"Pre-trained CLIP {model_name}",
+							color=model_colors[model_name_idx], linestyle='--', marker='o',
+							linewidth=2, alpha=0.7
+					)
+					# Plot each Fine-tuned strategy
+					for idx, strategy in enumerate(finetune_strategies):
+							finetuned_vals = [finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) for k in k_values]
+							linestyle, marker = strategy_styles[strategy]
+							ax.plot(
+									k_values, finetuned_vals,
+									label=f"{strategy.capitalize()} Fine-tune",
+									color=model_colors[(model_name_idx + idx + 1) % len(model_colors)],  # Cycle colors
+									linestyle=linestyle, marker=marker, linewidth=2
+							)
+							# Add annotations for key Ks
+							for k in [1, 10, 20]:
+									if k in k_values:
+											pre = pretrained_dict[model_name][metric][str(k)]
+											fine = finetuned_dict[model_name][strategy][metric][str(k)]
+											imp = (fine - pre) / pre * 100 if pre != 0 else 0
+											color = 'darkgreen' if imp >= 0 else 'red'
+											ax.annotate(
+													f"{imp:+.1f}%",
+													xy=(k, fine), xytext=(5, 5 * (idx + 1)),  # Offset per strategy
+													textcoords='offset points', fontsize=9, fontweight='bold',
+													color=color, bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3)
+											)
+					# Axes formatting
+					ax.set_title(f"{mode}: {metric}@K", fontsize=12, fontweight='bold')
+					ax.set_xlabel("K", fontsize=11)
+					ax.set_xticks(k_values)
+					ax.grid(True, linestyle='--', alpha=0.9)
+					ax.set_ylim(bottom=-0.01, top=1.01)
+					ax.legend(fontsize=9, loc='best')
+					plt.tight_layout()
+					plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
+					plt.close(fig)
+					print(f"Saved: {file_path}")
 
 def plot_comparison_metrics_merged(
 		dataset_name: str,
@@ -353,518 +362,132 @@ def plot_comparison_metrics_merged(
 		pretrained_txt2img_dict: dict,
 		finetuned_img2txt_dict: dict,
 		finetuned_txt2img_dict: dict,
-		model_name: str,  # e.g., 'ViT-B/32'
-		finetune_strategy: str,  # e.g., 'LoRA'
+		model_name: str,
+		finetune_strategies: list,  # Changed to list
 		results_dir: str,
 		topK_values: list,
 		figure_size=(14, 5),
-		DPI: int=300,
+		DPI: int = 300,
 	):
 	metrics = ["mP", "mAP", "Recall"]
 	modes = ["Image-to-Text", "Text-to-Image"]
 	all_model_architectures = ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
+	# Validate model_name and finetune_strategies
+	finetune_strategies = [s for s in finetune_strategies if s in ["full", "lora", "progressive"]][:3]  # Max 3
+	if not finetune_strategies:
+			print("WARNING: No valid finetune strategies provided. Skipping...")
+			return
+	for mode in modes:
+			finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+			if model_name not in finetuned_dict or not all(strategy in finetuned_dict.get(model_name, {}) for strategy in finetune_strategies):
+					print(f"WARNING: Some strategies for {model_name} not found in finetuned_{mode.lower().replace('-', '_')}_dict. Skipping...")
+					return
 	model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
 	model_colors = plt.cm.tab10.colors
-	
-	# Print detailed analysis information to logs
+	strategy_styles = {'full': ('-', 's'), 'lora': ('-.', '^'), 'progressive': (':', 'd')}  # Unique styles
 	print(f"\n{'='*80}")
-	print(f"DETAILED PERFORMANCE ANALYSIS FOR {dataset_name} - {model_name} WITH {finetune_strategy.capitalize()} FINE-TUNING")
+	print(f"DETAILED PERFORMANCE ANALYSIS FOR {dataset_name} - {model_name} WITH {', '.join(s.capitalize() for s in finetune_strategies)} FINE-TUNING")
 	print(f"{'='*80}")
-	
-	# Create separate figures for each mode
 	for i, mode in enumerate(modes):
-		# Create a new figure for each mode
-		fig, axes = plt.subplots(1, 3, figsize=figure_size, constrained_layout=True)
-		fname = f"{dataset_name}_{finetune_strategy}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_retrieval_performance_comparison_{mode.replace('-', '_')}_merged.png"
-		# Set a descriptive title for the figure
-		file_path = os.path.join(results_dir, fname)
-		fig.suptitle(
-			f'$\\it{{{mode}}}$ Retrieval Performance Comparison\n'
-			f'Pre-trained CLIP {model_name} vs. {finetune_strategy.capitalize()} Fine-tuning',
-			fontsize=12,
-			fontweight='bold',
-		)
-		
-		# Select the appropriate dictionaries
-		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
-		finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
-		
-		print(f"\n{'-'*40}")
-		print(f"MODE: {mode}: {fname}")
-		print(f"{'-'*40}")
-		
-		for j, metric in enumerate(metrics):
-			ax = axes[j]
-			
-			print(f"\nMetric: {metric}")
-			print("-" * 20)
-			
-			# Lists to store values for logging
-			k_values = []
-			pretrained_values = []
-			finetuned_values = []
-			improvement_percentages = []
-			
-			# Plot pre-trained model performance
-			if model_name in pretrained_dict and metric in pretrained_dict[model_name]:
-					k_values = sorted([int(k) for k in pretrained_dict[model_name][metric].keys() if int(k) in topK_values])
-					values = [pretrained_dict[model_name][metric][str(k)] for k in k_values]
-					pretrained_values = values
-					
-					pretrained_line, = ax.plot(
-							k_values,
-							values,
-							label=f"Pre-trained CLIP {model_name}",
-							color=model_colors[model_name_idx],
-							marker='o',
-							linestyle='--',
-							linewidth=2,
-							markersize=5,
-							alpha=0.7,
+			fig, axes = plt.subplots(1, 3, figsize=figure_size, constrained_layout=True)
+			fname = f"{dataset_name}_{'_'.join(finetune_strategies)}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_retrieval_performance_comparison_{mode.replace('-', '_')}_merged.png"
+			file_path = os.path.join(results_dir, fname)
+			fig.suptitle(
+					f'$\\it{{{mode}}}$ Retrieval Performance Comparison\n'
+					f'Pre-trained CLIP {model_name} vs. {", ".join(s.capitalize() for s in finetune_strategies)} Fine-tuning',
+					fontsize=12, fontweight='bold',
+			)
+			pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
+			finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+			print(f"\n{'-'*40}")
+			print(f"MODE: {mode}: {fname}")
+			print(f"{'-'*40}")
+			for j, metric in enumerate(metrics):
+					ax = axes[j]
+					print(f"\nMetric: {metric}")
+					print("-" * 20)
+					k_values = sorted(
+							k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {})
 					)
-			
-			# Plot fine-tuned model performance
-			if model_name in finetuned_dict and metric in finetuned_dict[model_name]:
-				k_values = sorted([int(k) for k in finetuned_dict[model_name][metric].keys() if int(k) in topK_values])
-				values = [finetuned_dict[model_name][metric][str(k)] for k in k_values]
-				finetuned_values = values
-				
-				finetuned_line, = ax.plot(
-					k_values,
-					values,
-					label=f"{finetune_strategy.capitalize()} Fine-tune",
-					color=model_colors[model_name_idx],
-					marker='s',
-					linestyle='-',
-					linewidth=2,
-					markersize=5
-				)
-				
-				# Add improvement percentages at key points
-				if model_name in pretrained_dict:
-					key_k_values = [1, 10, 20]  # Annotate these K values if available
-					for k in key_k_values:
-						if k in k_values:
-							k_idx = k_values.index(k)
-							pretrained_val = pretrained_dict[model_name][metric][str(k)]
-							finetuned_val = values[k_idx]
-							improvement = ((finetuned_val - pretrained_val) / pretrained_val) * 100
-							
-							# Set color based on improvement value
-							text_color = 'darkgreen' if improvement >= 0 else 'red'
-							
-							# Place annotations to the right with slight upward offset
-							ax.annotate(
-								f"{'+' if improvement >= 0 else ''}{improvement:.1f}%",
-								xy=(k, finetuned_val),
-								xytext=(5, 5),  # Fixed offset to the right and slightly up
-								textcoords='offset points',
-								fontsize=8.5,
-								fontweight='bold',
-								color=text_color,  # Apply the color
-								bbox=dict(
-									facecolor='white',
-									edgecolor='none',
-									alpha=0.7,
-									pad=0.3
-								)
+					for strategy in finetune_strategies:
+							k_values = sorted(
+									set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys())
 							)
-			
-			ax.set_xlabel('K', fontsize=11)
-			# ax.set_ylabel(f'{metric}@K', fontsize=11)
-			ax.set_title(f'{metric}@K', fontsize=10, fontweight='bold')
-			ax.grid(True, linestyle='--', alpha=0.9)
-			ax.set_xticks(topK_values)
-			
-			# Set y-axis limits based on data
-			all_values = []
-			if model_name in pretrained_dict and metric in pretrained_dict[model_name]:
-					all_values.extend([pretrained_dict[model_name][metric][str(k)] for k in k_values if str(k) in pretrained_dict[model_name][metric]])
-			if model_name in finetuned_dict and metric in finetuned_dict[model_name]:
-					all_values.extend([finetuned_dict[model_name][metric][str(k)] for k in k_values if str(k) in finetuned_dict[model_name][metric]])
-			
-			if all_values:
-					min_val = min(all_values)
-					max_val = max(all_values)
-					padding = 0.1 * (max_val - min_val) if max_val > min_val else 0.1
-					# ax.set_ylim(bottom=max(0, min_val - padding), top=min(1.0, max_val + padding))
-					ax.set_ylim(bottom=-0.01, top=1.01)
-			
-			# Add legend to first subplot only
-			if j == 0:
-					ax.legend(fontsize=9, loc='best')
-					
-			# Print detailed metrics to logs
-			if improvement_percentages:
-					# Print K-specific improvements
-					print(f"K-specific performance:")
-					print(f"{'K':<5} {'Pre-trained':<12} {'Fine-tuned':<12} {'Improvement':<12}")
-					for k, imp, pre, fine in improvement_percentages:
-							print(f"{k:<5} {pre:.4f}{' ':<10} {fine:.4f}{' ':<10} {imp:+.2f}%")
-					
-					# Print summary statistics
-					avg_improvement = sum([imp for _, imp, _, _ in improvement_percentages]) / len(improvement_percentages)
-					max_improvement_data = max(improvement_percentages, key=lambda x: x[1])
-					min_improvement_data = min(improvement_percentages, key=lambda x: x[1])
-					
-					print("\nSummary statistics:")
-					print(f"Average improvement: {avg_improvement:+.2f}%")
-					print(f"Maximum improvement: {max_improvement_data[1]:+.2f}% at K={max_improvement_data[0]}")
-					print(f"Minimum improvement: {min_improvement_data[1]:+.2f}% at K={min_improvement_data[0]}")
-					
-					# Calculate Area Under the Curve improvement if applicable
-					if len(pretrained_values) == len(finetuned_values) and len(pretrained_values) > 1:
-							pre_auc = sum(pretrained_values)
-							fine_auc = sum(finetuned_values)
-							auc_improvement = ((fine_auc - pre_auc) / pre_auc) * 100
-							print(f"Area Under Curve improvement: {auc_improvement:+.2f}%")
-		
-		# Save the figure for this mode
-		plt.savefig(
-			fname=file_path,
-			dpi=DPI,
-			bbox_inches='tight',
-		)
-		plt.close(fig)
-	
-	# Print overall summary
+					if not k_values:
+							print(f"WARNING: No matching K values for {mode}, {metric}")
+							continue
+					# Plot Pre-trained
+					pretrained_values = [pretrained_dict.get(model_name, {}).get(metric, {}).get(str(k), float('nan')) for k in k_values]
+					ax.plot(
+							k_values, pretrained_values,
+							label=f"Pre-trained CLIP {model_name}",
+							color=model_colors[model_name_idx], marker='o', linestyle='--',
+							linewidth=2, markersize=5, alpha=0.7,
+					)
+					# Plot each Fine-tuned strategy
+					for idx, strategy in enumerate(finetune_strategies):
+							finetuned_values = [finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).get(str(k), float('nan')) for k in k_values]
+							linestyle, marker = strategy_styles[strategy]
+							ax.plot(
+									k_values, finetuned_values,
+									label=f"{strategy.capitalize()} Fine-tune",
+									color=model_colors[(model_name_idx + idx + 1) % len(model_colors)],
+									marker=marker, linestyle=linestyle, linewidth=2, markersize=5,
+							)
+							# Add improvement percentages
+							key_k_values = [1, 10, 20]
+							for k in key_k_values:
+									if k in k_values:
+											k_idx = k_values.index(k)
+											pre = pretrained_values[k_idx]
+											fine = finetuned_values[k_idx]
+											if pre != 0:
+													improvement = ((fine - pre) / pre) * 100
+													text_color = 'darkgreen' if improvement >= 0 else 'red'
+													ax.annotate(
+															f"{'+' if improvement >= 0 else ''}{improvement:.1f}%",
+															xy=(k, fine), xytext=(5, 5 * (idx + 1)),
+															textcoords='offset points', fontsize=8.5, fontweight='bold',
+															color=text_color, bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3),
+													)
+					# Axes formatting
+					ax.set_xlabel('K', fontsize=11)
+					ax.set_title(f'{metric}@K', fontsize=10, fontweight='bold')
+					ax.grid(True, linestyle='--', alpha=0.9)
+					ax.set_xticks(k_values)
+					ax.set_ylim(-0.01, 1.01)
+					if j == 0:
+							ax.legend(fontsize=9, loc='best')
+			plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
+			print(f"Saved: {file_path}")
+			plt.close(fig)
+	# Overall summary
 	print(f"\n{'='*40}")
 	print(f"OVERALL PERFORMANCE SUMMARY")
 	print(f"{'='*40}")
-	
 	for mode in modes:
-		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
-		finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
-		
-		print(f"\nMode: {mode}")
-		for metric in metrics:
-			if (model_name in pretrained_dict and metric in pretrained_dict[model_name] and
-				model_name in finetuned_dict and metric in finetuned_dict[model_name]):
-				
-				# Calculate average improvement across all K values
-				k_values = sorted([int(k) for k in pretrained_dict[model_name][metric].keys() if int(k) in topK_values])
-				improvements = []
-				
-				for k in k_values:
-					str_k = str(k)
-					if str_k in pretrained_dict[model_name][metric] and str_k in finetuned_dict[model_name][metric]:
-						pretrained_val = pretrained_dict[model_name][metric][str_k]
-						finetuned_val = finetuned_dict[model_name][metric][str_k]
-						improvement = ((finetuned_val - pretrained_val) / pretrained_val) * 100
-						improvements.append(improvement)
-				
-				if improvements:
-					avg_improvement = sum(improvements) / len(improvements)
-					print(f"  {metric}: Average improvement across all K values: {avg_improvement:+.2f}%")
-	
+			pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
+			finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+			print(f"\nMode: {mode}")
+			for metric in metrics:
+					k_values = sorted(
+							k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {})
+					)
+					for strategy in finetune_strategies:
+							k_values = sorted(
+									set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys())
+							)
+					if k_values:
+							for strategy in finetune_strategies:
+									improvements = [
+											((finetuned_dict[model_name][strategy][metric][str(k)] - pretrained_dict[model_name][metric][str(k)]) /
+											 pretrained_dict[model_name][metric][str(k)] * 100)
+											for k in k_values if pretrained_dict[model_name][metric][str(k)] != 0
+									]
+									if improvements:
+											avg_improvement = sum(improvements) / len(improvements)
+											print(f"  {metric} ({strategy.capitalize()}): Average improvement across all K values: {avg_improvement:+.2f}%")
 	print(f"\n{'='*80}")
-
-def plot_comparison_metrics_detailed(
-		dataset_name: str,
-		pretrained_img2txt_dict: dict,
-		pretrained_txt2img_dict: dict,
-		finetuned_img2txt_dict: dict,
-		finetuned_txt2img_dict: dict,
-		model_name: str,  # e.g., 'ViT-B/32'
-		finetune_strategy: str,  # e.g., 'LoRA'
-		topK_values: list,
-		fname_prefix: str="Comparison_Metrics",
-		fname: str="comparison.png",
-		figure_size=(15, 8),
-		DPI: int=300,
-	):
-		metrics = ["mP", "mAP", "Recall"]
-		modes = ["Image-to-Text", "Text-to-Image"]
-		all_model_architectures = ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
-		model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
-		model_colors = plt.cm.tab10.colors
-		
-		# Create separate figures for each mode
-		for i, mode in enumerate(modes):
-				# Create a new figure for each mode
-				fig, axes = plt.subplots(1, 3, figsize=figure_size, constrained_layout=True)
-				
-				# Set a descriptive title for the figure
-				fig.suptitle(
-						f"{dataset_name} Dataset - {mode} Retrieval Performance\n"
-						f"Pre-trained CLIP {model_name} vs. {finetune_strategy.capitalize()} Fine-tuning",
-						fontsize=14,
-						fontweight='bold',
-				)
-				
-				# Select the appropriate dictionaries
-				pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
-				finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
-				
-				# Track best improvement for annotation
-				best_improvements = {metric: {'value': 0, 'k': 0} for metric in metrics}
-				
-				for j, metric in enumerate(metrics):
-						ax = axes[j]
-						
-						# Create lists to store values for statistical annotations
-						pretrained_values = []
-						finetuned_values = []
-						
-						# Plot pre-trained model performance
-						if model_name in pretrained_dict and metric in pretrained_dict[model_name]:
-								k_values = sorted([int(k) for k in pretrained_dict[model_name][metric].keys() if int(k) in topK_values])
-								values = [pretrained_dict[model_name][metric][str(k)] for k in k_values]
-								pretrained_values = values
-								
-								pretrained_line, = ax.plot(
-										k_values,
-										values,
-										label=f"Pre-trained",
-										color=model_colors[model_name_idx],
-										marker='o',
-										linestyle='--',
-										linewidth=2,
-										markersize=5,
-										alpha=0.7,
-								)
-						
-						# Plot fine-tuned model performance
-						if model_name in finetuned_dict and metric in finetuned_dict[model_name]:
-								k_values = sorted([int(k) for k in finetuned_dict[model_name][metric].keys() if int(k) in topK_values])
-								values = [finetuned_dict[model_name][metric][str(k)] for k in k_values]
-								finetuned_values = values
-								
-								finetuned_line, = ax.plot(
-										k_values,
-										values,
-										label=f"{finetune_strategy} Fine-tuned",
-										color=model_colors[model_name_idx],
-										marker='s',
-										linestyle='-',
-										linewidth=2,
-										markersize=5
-								)
-								
-								# Add improvement percentages at key points
-								if model_name in pretrained_dict and metric in pretrained_dict[model_name]:
-										# Calculate improvement at all K values
-										all_improvements = []
-										for k_idx, k in enumerate(k_values):
-												if str(k) in pretrained_dict[model_name][metric]:
-														pretrained_val = pretrained_dict[model_name][metric][str(k)]
-														finetuned_val = values[k_idx]
-														improvement = ((finetuned_val - pretrained_val) / pretrained_val) * 100
-														all_improvements.append((k, improvement))
-														
-														# Track the best improvement
-														if improvement > best_improvements[metric]['value']:
-																best_improvements[metric]['value'] = improvement
-																best_improvements[metric]['k'] = k
-										
-										# Annotate key improvement points (top 3 improvements)
-										sorted_improvements = sorted(all_improvements, key=lambda x: abs(x[1]), reverse=True)
-										for idx, (k, improvement) in enumerate(sorted_improvements[:2]):  # Annotate top 2 improvements
-												k_idx = k_values.index(k)
-												finetuned_val = values[k_idx]
-												
-												# Set color based on improvement value
-												text_color = 'darkgreen' if improvement >= 0 else 'red'
-												
-												# Place annotations to the right with slight upward offset
-												ax.annotate(
-														f"{'+' if improvement >= 0 else ''}{improvement:.1f}% @K={k}",
-														xy=(k, finetuned_val),
-														xytext=(5, 5 + idx * 15),  # Offset to avoid overlap
-														textcoords='offset points',
-														fontsize=8.5,
-														fontweight='bold',
-														color=text_color,
-														bbox=dict(
-																facecolor='white',
-																edgecolor='none',
-																alpha=0.7,
-																pad=0.3
-														),
-														arrowprops=dict(
-																arrowstyle="->",
-																color=text_color,
-																shrinkA=5,
-																shrinkB=5,
-																alpha=0.7
-														)
-												)
-						
-						# Add statistical analysis summary if we have both pretrained and finetuned values
-						if pretrained_values and finetuned_values and len(pretrained_values) == len(finetuned_values):
-								# Calculate average improvement
-								avg_improvement = sum([((f - p) / p) * 100 for p, f in zip(pretrained_values, finetuned_values)]) / len(pretrained_values)
-								
-								# Calculate maximum improvement
-								max_improvement = max([((f - p) / p) * 100 for p, f in zip(pretrained_values, finetuned_values)])
-								max_k = k_values[np.argmax([((f - p) / p) * 100 for p, f in zip(pretrained_values, finetuned_values)])]
-								
-								# Add text box with statistics
-								stat_text = (
-										f"Average Improvement: {avg_improvement:.1f}%\n"
-										f"Maximum Improvement: {max_improvement:.1f}% @K={max_k}"
-								)
-								
-								# Add the statistics box in upper left or right corner
-								x_pos = 0.05 if avg_improvement > 0 else 0.55  # Left if positive, right if negative
-								ax.text(
-										x_pos, 0.95, stat_text,
-										transform=ax.transAxes,
-										fontsize=8,
-										verticalalignment='top',
-										bbox=dict(
-												boxstyle='round,pad=0.5',
-												facecolor='white',
-												alpha=0.8,
-												edgecolor='gray'
-										)
-								)
-						
-						# Configure axes
-						ax.set_xlabel('K', fontsize=12)
-						ax.set_ylabel(f'{metric}@K', fontsize=12)
-						ax.set_title(f'{metric}@K', fontsize=14)
-						ax.grid(True, linestyle='--', alpha=0.7)
-						ax.set_xticks(topK_values)
-						
-						# Set y-axis limits based on data
-						all_values = []
-						if model_name in pretrained_dict and metric in pretrained_dict[model_name]:
-								all_values.extend([pretrained_dict[model_name][metric][str(k)] for k in k_values if str(k) in pretrained_dict[model_name][metric]])
-						if model_name in finetuned_dict and metric in finetuned_dict[model_name]:
-								all_values.extend([finetuned_dict[model_name][metric][str(k)] for k in k_values if str(k) in finetuned_dict[model_name][metric]])
-						
-						if all_values:
-								min_val = min(all_values)
-								max_val = max(all_values)
-								padding = 0.1 * (max_val - min_val) if max_val > min_val else 0.1
-								ax.set_ylim(bottom=max(0, min_val - padding), top=min(1.0, max_val + padding))
-						
-						# Add legend to first subplot only
-						if j == 0:
-								ax.legend(fontsize=10, loc='lower right')
-				
-				# Add a summary of best improvements across metrics at the bottom of the figure
-				summary = "\n".join([
-						f"Best {metric} improvement: {best_improvements[metric]['value']:.1f}% at K={best_improvements[metric]['k']}"
-						for metric in metrics
-				])
-				fig.text(
-						0.5, 0.01, 
-						summary,
-						ha='center',
-						fontsize=9,
-						bbox=dict(
-								boxstyle='round,pad=0.5',
-								facecolor='lightyellow',
-								alpha=0.8,
-								edgecolor='gray'
-						)
-				)
-				
-				# Save the figure for this mode
-				plt.savefig(fname=f"{fname_prefix}_{mode.replace('-', '_')}.png", dpi=DPI, bbox_inches='tight')
-				plt.close(fig)
-				
-		# Create an additional summary plot showing the relative percentage improvements
-		fig, axes = plt.subplots(1, 3, figsize=figure_size, constrained_layout=True)
-		fig.suptitle(
-				f"{dataset_name} Dataset - Relative Improvement from Fine-tuning\n"
-				f"CLIP {model_name} with {finetune_strategy.capitalize()} Strategy",
-				fontsize=14,
-				fontweight='bold',
-		)
-		
-		for j, metric in enumerate(metrics):
-				ax = axes[j]
-				
-				# Extract improvement percentages for both modes
-				improvements_by_mode = {}
-				
-				for mode in modes:
-						pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
-						finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
-						
-						if (model_name in pretrained_dict and metric in pretrained_dict[model_name] and
-								model_name in finetuned_dict and metric in finetuned_dict[model_name]):
-								
-								k_values = sorted([int(k) for k in pretrained_dict[model_name][metric].keys() if int(k) in topK_values])
-								improvements = []
-								
-								for k in k_values:
-										str_k = str(k)
-										if str_k in pretrained_dict[model_name][metric] and str_k in finetuned_dict[model_name][metric]:
-												pretrained_val = pretrained_dict[model_name][metric][str_k]
-												finetuned_val = finetuned_dict[model_name][metric][str_k]
-												improvement = ((finetuned_val - pretrained_val) / pretrained_val) * 100
-												improvements.append(improvement)
-								
-								improvements_by_mode[mode] = {
-										'k_values': k_values,
-										'improvements': improvements
-								}
-				
-				# Plot improvements for each mode
-				bar_width = 0.35
-				for mode_idx, mode in enumerate(modes):
-						if mode in improvements_by_mode:
-								k_values = improvements_by_mode[mode]['k_values']
-								improvements = improvements_by_mode[mode]['improvements']
-								
-								x_positions = np.array(range(len(k_values))) + (mode_idx - 0.5) * bar_width
-								bars = ax.bar(
-										x_positions,
-										improvements,
-										bar_width,
-										label=mode,
-										color=model_colors[mode_idx],
-										alpha=0.7
-								)
-								
-								# Add value labels on top of bars
-								for bar_idx, bar in enumerate(bars):
-										height = bar.get_height()
-										align = 'center'
-										va = 'bottom' if height >= 0 else 'top'
-										
-										ax.text(
-												bar.get_x() + bar.get_width() / 2,
-												height + (5 if height >= 0 else -5),
-												f"{height:.1f}%",
-												ha=align,
-												va=va,
-												fontsize=8,
-												rotation=90,
-												color='black'
-										)
-				
-				# Configure axes
-				ax.set_xlabel('K', fontsize=12)
-				ax.set_ylabel('Relative Improvement (%)', fontsize=12)
-				ax.set_title(f'{metric}@K Improvement', fontsize=14)
-				ax.grid(True, linestyle='--', alpha=0.7, axis='y')
-				
-				# Set x-axis ticks to K values
-				if any(improvements_by_mode.values()):
-						# Use first available mode's K values for x-axis labels
-						first_mode = next(iter(improvements_by_mode.values()))
-						ax.set_xticks(range(len(first_mode['k_values'])))
-						ax.set_xticklabels([f"K={k}" for k in first_mode['k_values']])
-				
-				# Add zero line for reference
-				ax.axhline(y=0, color='black', linestyle='-', alpha=0.5)
-				
-				# Add legend to first subplot only
-				if j == 0:
-						ax.legend(fontsize=10)
-		
-		# Save the improvement summary figure
-		plt.savefig(
-			fname=f"{fname_prefix}_Relative_Improvements.png",
-			dpi=DPI, 
-			bbox_inches='tight',
-		)
-		plt.close(fig)
 
 def plot_comparison_metrics_original(
 		dataset_name: str,
