@@ -20,7 +20,9 @@ import inspect
 import functools
 import sys
 import traceback
+from PIL import Image
 import requests
+from io import BytesIO
 import hashlib
 from torch.optim import AdamW, SGD, Adam, lr_scheduler
 from torch.utils.data import DataLoader, Dataset
