@@ -328,120 +328,120 @@
 
 from visualize import *
 
-import numpy as np
+# import numpy as np
 
-# Define K values
-topK_values = [1, 3, 5, 10, 15, 20]
+# # Define K values
+# topK_values = [1, 3, 5, 10, 15, 20]
 
-# Helper function to generate synthetic metric values
-def generate_metric_values(base_value, trend='decrease', noise_level=0.05, k_values=topK_values):
-    values = []
-    for k in k_values:
-        # Base trend: decrease, increase, or stable
-        if trend == 'decrease':
-            val = base_value * (1 - 0.1 * (k / max(k_values)))  # Decrease with K
-        elif trend == 'increase':
-            val = base_value * (1 + 0.1 * (k / max(k_values)))  # Increase with K
-        else:
-            val = base_value  # Stable
-        # Add some noise
-        noise = np.random.uniform(-noise_level, noise_level)
-        val = max(0, min(1, val + noise))  # Ensure value is between 0 and 1
-        values.append(val)
-    return {str(k): val for k, val in zip(k_values, values)}
+# # Helper function to generate synthetic metric values
+# def generate_metric_values(base_value, trend='decrease', noise_level=0.05, k_values=topK_values):
+#     values = []
+#     for k in k_values:
+#         # Base trend: decrease, increase, or stable
+#         if trend == 'decrease':
+#             val = base_value * (1 - 0.1 * (k / max(k_values)))  # Decrease with K
+#         elif trend == 'increase':
+#             val = base_value * (1 + 0.1 * (k / max(k_values)))  # Increase with K
+#         else:
+#             val = base_value  # Stable
+#         # Add some noise
+#         noise = np.random.uniform(-noise_level, noise_level)
+#         val = max(0, min(1, val + noise))  # Ensure value is between 0 and 1
+#         values.append(val)
+#     return {str(k): val for k, val in zip(k_values, values)}
 
-# Pre-trained CLIP ViT-B/32 (Image-to-Text)
-pretrained_img2txt_dict = {
-    'ViT-B/32': {
-        'mP': generate_metric_values(0.8, trend='decrease', noise_level=0.05),
-        'mAP': generate_metric_values(0.6, trend='stable', noise_level=0.03),
-        'Recall': generate_metric_values(0.4, trend='increase', noise_level=0.04),
-    }
-}
+# # Pre-trained CLIP ViT-B/32 (Image-to-Text)
+# pretrained_img2txt_dict = {
+#     'ViT-B/32': {
+#         'mP': generate_metric_values(0.8, trend='decrease', noise_level=0.05),
+#         'mAP': generate_metric_values(0.6, trend='stable', noise_level=0.03),
+#         'Recall': generate_metric_values(0.4, trend='increase', noise_level=0.04),
+#     }
+# }
 
-# Pre-trained CLIP ViT-B/32 (Text-to-Image)
-pretrained_txt2img_dict = {
-    'ViT-B/32': {
-        'mP': generate_metric_values(0.7, trend='decrease', noise_level=0.05),
-        'mAP': generate_metric_values(0.5, trend='stable', noise_level=0.03),
-        'Recall': generate_metric_values(0.3, trend='increase', noise_level=0.04),
-    }
-}
+# # Pre-trained CLIP ViT-B/32 (Text-to-Image)
+# pretrained_txt2img_dict = {
+#     'ViT-B/32': {
+#         'mP': generate_metric_values(0.7, trend='decrease', noise_level=0.05),
+#         'mAP': generate_metric_values(0.5, trend='stable', noise_level=0.03),
+#         'Recall': generate_metric_values(0.3, trend='increase', noise_level=0.04),
+#     }
+# }
 
-# Fine-tuned CLIP ViT-B/32 (Image-to-Text)
-finetuned_img2txt_dict = {
-    'ViT-B/32': {
-        'full': {
-            'mP': generate_metric_values(0.85, trend='decrease', noise_level=0.05),
-            'mAP': generate_metric_values(0.65, trend='stable', noise_level=0.03),
-            'Recall': generate_metric_values(0.45, trend='increase', noise_level=0.04),
-        },
-        'lora': {
-            'mP': generate_metric_values(0.75, trend='decrease', noise_level=0.05),
-            'mAP': generate_metric_values(0.55, trend='stable', noise_level=0.03),
-            'Recall': generate_metric_values(0.35, trend='increase', noise_level=0.04),
-        },
-        'progressive': {
-            'mP': generate_metric_values(0.9, trend='decrease', noise_level=0.05),
-            'mAP': generate_metric_values(0.7, trend='stable', noise_level=0.03),
-            'Recall': generate_metric_values(0.5, trend='increase', noise_level=0.04),
-        },
-    }
-}
+# # Fine-tuned CLIP ViT-B/32 (Image-to-Text)
+# finetuned_img2txt_dict = {
+#     'ViT-B/32': {
+#         'full': {
+#             'mP': generate_metric_values(0.85, trend='decrease', noise_level=0.05),
+#             'mAP': generate_metric_values(0.65, trend='stable', noise_level=0.03),
+#             'Recall': generate_metric_values(0.45, trend='increase', noise_level=0.04),
+#         },
+#         'lora': {
+#             'mP': generate_metric_values(0.75, trend='decrease', noise_level=0.05),
+#             'mAP': generate_metric_values(0.55, trend='stable', noise_level=0.03),
+#             'Recall': generate_metric_values(0.35, trend='increase', noise_level=0.04),
+#         },
+#         'progressive': {
+#             'mP': generate_metric_values(0.9, trend='decrease', noise_level=0.05),
+#             'mAP': generate_metric_values(0.7, trend='stable', noise_level=0.03),
+#             'Recall': generate_metric_values(0.5, trend='increase', noise_level=0.04),
+#         },
+#     }
+# }
 
-# Fine-tuned CLIP ViT-B/32 (Text-to-Image)
-finetuned_txt2img_dict = {
-    'ViT-B/32': {
-        'full': {
-            'mP': generate_metric_values(0.75, trend='decrease', noise_level=0.05),
-            'mAP': generate_metric_values(0.55, trend='stable', noise_level=0.03),
-            'Recall': generate_metric_values(0.35, trend='increase', noise_level=0.04),
-        },
-        'lora': {
-            'mP': generate_metric_values(0.65, trend='decrease', noise_level=0.05),
-            'mAP': generate_metric_values(0.45, trend='stable', noise_level=0.03),
-            'Recall': generate_metric_values(0.25, trend='increase', noise_level=0.04),
-        },
-        'progressive': {
-            'mP': generate_metric_values(0.8, trend='decrease', noise_level=0.05),
-            'mAP': generate_metric_values(0.6, trend='stable', noise_level=0.03),
-            'Recall': generate_metric_values(0.4, trend='increase', noise_level=0.04),
-        },
-    }
-}
-# Define parameters
-dataset_name = "DummyDataset"
-model_name = "ViT-B/32"
-finetune_strategies = ["full", "lora", "progressive"]
-results_dir = "./dummy_plots"
-os.makedirs(results_dir, exist_ok=True)
+# # Fine-tuned CLIP ViT-B/32 (Text-to-Image)
+# finetuned_txt2img_dict = {
+#     'ViT-B/32': {
+#         'full': {
+#             'mP': generate_metric_values(0.75, trend='decrease', noise_level=0.05),
+#             'mAP': generate_metric_values(0.55, trend='stable', noise_level=0.03),
+#             'Recall': generate_metric_values(0.35, trend='increase', noise_level=0.04),
+#         },
+#         'lora': {
+#             'mP': generate_metric_values(0.65, trend='decrease', noise_level=0.05),
+#             'mAP': generate_metric_values(0.45, trend='stable', noise_level=0.03),
+#             'Recall': generate_metric_values(0.25, trend='increase', noise_level=0.04),
+#         },
+#         'progressive': {
+#             'mP': generate_metric_values(0.8, trend='decrease', noise_level=0.05),
+#             'mAP': generate_metric_values(0.6, trend='stable', noise_level=0.03),
+#             'Recall': generate_metric_values(0.4, trend='increase', noise_level=0.04),
+#         },
+#     }
+# }
+# # Define parameters
+# dataset_name = "DummyDataset"
+# model_name = "ViT-B/32"
+# finetune_strategies = ["full", "lora", "progressive"]
+# results_dir = "./dummy_plots"
+# os.makedirs(results_dir, exist_ok=True)
 
-# Call plot_comparison_metrics_split()
-plot_comparison_metrics_split(
-    dataset_name=dataset_name,
-    pretrained_img2txt_dict=pretrained_img2txt_dict,
-    pretrained_txt2img_dict=pretrained_txt2img_dict,
-    finetuned_img2txt_dict=finetuned_img2txt_dict,
-    finetuned_txt2img_dict=finetuned_txt2img_dict,
-    model_name=model_name,
-    finetune_strategies=finetune_strategies,
-    results_dir=results_dir,
-    topK_values=topK_values,
-    figure_size=(7, 7),
-    DPI=300,
-)
+# # Call plot_comparison_metrics_split()
+# plot_comparison_metrics_split(
+#     dataset_name=dataset_name,
+#     pretrained_img2txt_dict=pretrained_img2txt_dict,
+#     pretrained_txt2img_dict=pretrained_txt2img_dict,
+#     finetuned_img2txt_dict=finetuned_img2txt_dict,
+#     finetuned_txt2img_dict=finetuned_txt2img_dict,
+#     model_name=model_name,
+#     finetune_strategies=finetune_strategies,
+#     results_dir=results_dir,
+#     topK_values=topK_values,
+#     figure_size=(7, 7),
+#     DPI=300,
+# )
 
-# Call plot_comparison_metrics_merged()
-plot_comparison_metrics_merged(
-    dataset_name=dataset_name,
-    pretrained_img2txt_dict=pretrained_img2txt_dict,
-    pretrained_txt2img_dict=pretrained_txt2img_dict,
-    finetuned_img2txt_dict=finetuned_img2txt_dict,
-    finetuned_txt2img_dict=finetuned_txt2img_dict,
-    model_name=model_name,
-    finetune_strategies=finetune_strategies,
-    results_dir=results_dir,
-    topK_values=topK_values,
-    figure_size=(14, 5),
-    DPI=300,
-)
+# # Call plot_comparison_metrics_merged()
+# plot_comparison_metrics_merged(
+#     dataset_name=dataset_name,
+#     pretrained_img2txt_dict=pretrained_img2txt_dict,
+#     pretrained_txt2img_dict=pretrained_txt2img_dict,
+#     finetuned_img2txt_dict=finetuned_img2txt_dict,
+#     finetuned_txt2img_dict=finetuned_txt2img_dict,
+#     model_name=model_name,
+#     finetune_strategies=finetune_strategies,
+#     results_dir=results_dir,
+#     topK_values=topK_values,
+#     figure_size=(14, 5),
+#     DPI=300,
+# )

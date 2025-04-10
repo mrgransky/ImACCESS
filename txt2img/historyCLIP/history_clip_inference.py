@@ -15,6 +15,9 @@ from visualize import plot_image_to_texts_stacked_horizontal_bar, plot_text_to_i
 # run in local for all fine-tuned models:
 # $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -m quantitative -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_9_do_0.0_lr_1.0e-04_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_9_do_0.0_init_lr_1.0e-04_init_wd_1.0e-02_bs_64_best_model.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_50_lr_1.0e-04_wd_1.0e-02_lora_rank_4_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 4 -loa 16.0 -lod 0.05
 
+# run in pouta for all fine-tuned models:
+# $ python history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -m quantitative -fcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_100_do_0.05_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_do_0.05_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_lr_1.0e-05_wd_1.0e-01_lora_rank_8_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 8 -loa 16.0 -lod 0.05
+
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
@@ -72,7 +75,7 @@ def main():
 	)
 	pretrained_model = pretrained_model.float() # Convert model parameters to FP32
 	pretrained_model_name = pretrained_model.__class__.__name__ # CLIP
-	pretrained_model.name = args.model_architecture
+	pretrained_model.name = args.model_architecture # ViT-B/32
 	pretrained_model_arch = re.sub(r'[/@]', '-', args.model_architecture)
 	models_to_plot["pretrained"] = pretrained_model
 
@@ -141,8 +144,6 @@ def main():
 			)
 			finetuned_img2txt_dict[args.model_architecture][ft_name] = evaluation_results["img2txt_metrics"]
 			finetuned_txt2img_dict[args.model_architecture][ft_name] = evaluation_results["txt2img_metrics"]
-			# finetuned_img2txt_dict = {args.model_architecture: evaluation_results["img2txt_metrics"]}
-			# finetuned_txt2img_dict = {args.model_architecture: evaluation_results["txt2img_metrics"]}
 		else:
 			print(f"WARNING: Fine-tuned model not found at {ft_path}. Skipping {ft_name}")
 	models_to_plot.update(fine_tuned_models)
@@ -227,7 +228,6 @@ def main():
 			topK_values=args.topK_values,
 			results_dir=RESULT_DIRECTORY,
 		)
-
 	else:
 		raise ValueError(f"Invalid mode: {args.mode}. Choose between: 'qualitative', 'quantitative'!")
 
