@@ -621,7 +621,7 @@ def plot_comparison_metrics_merged(
 												
 												# Place annotations with arrows
 												ax.annotate(
-													f"{best_imp:+.1f}% ({best_strategy.capitalize()})",
+													f"{best_imp:+.1f}%",
 													xy=(k, best_val),
 													xytext=(5, 10 if best_imp >= 0 else -15),
 													textcoords='offset points',
