@@ -250,6 +250,136 @@ def plot_text_to_images():
 	pass
 
 def plot_comparison_metrics_split(
+    dataset_name: str,
+    pretrained_img2txt_dict: dict,
+    pretrained_txt2img_dict: dict,
+    finetuned_img2txt_dict: dict,
+    finetuned_txt2img_dict: dict,
+    model_name: str,
+    finetune_strategies: list,  # Changed to list
+    results_dir: str,
+    topK_values: list,
+    figure_size=(7, 7),
+    DPI: int = 300,
+):
+    metrics = ["mP", "mAP", "Recall"]
+    modes = ["Image-to-Text", "Text-to-Image"]
+    all_model_architectures = [
+        'RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64',
+        'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px',
+    ]
+    if model_name not in finetuned_img2txt_dict.keys():
+        print(f"WARNING: {model_name} not found in finetuned_img2txt_dict. Skipping...")
+        print(json.dumps(finetuned_img2txt_dict, indent=4, ensure_ascii=False))
+        return
+    if model_name not in finetuned_txt2img_dict.keys():
+        print(f"WARNING: {model_name} not found in finetuned_txt2img_dict. Skipping...")
+        print(json.dumps(finetuned_txt2img_dict, indent=4, ensure_ascii=False))
+        return
+    # Validate finetune_strategies
+    finetune_strategies = [s for s in finetune_strategies if s in ["full", "lora", "progressive"]][:3]  # Max 3
+    if not finetune_strategies:
+        print("WARNING: No valid finetune strategies provided. Skipping...")
+        return
+    model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
+    # Define a professional color palette for fine-tuned strategies
+    strategy_colors = {'full': '#1f77b4', 'lora': '#ff7f0e', 'progressive': '#2ca02c'}  # Blue, Orange, Green
+    pretrained_color = '#7f7f7f'  # Gray for pre-trained
+    strategy_styles = {'full': 's', 'lora': '^', 'progressive': 'd'}  # Unique markers
+
+    for mode in modes:
+        pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
+        finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+        print(f"\n{'='*80}")
+        print(f"ANALYSIS: {mode} | Model: {model_name} | Finetune Strategies: {', '.join(finetune_strategies)}")
+        print(f"{'='*80}")
+        for metric in metrics:
+            print(f"\nMetric: {metric}")
+            fig, ax = plt.subplots(figsize=figure_size)
+            fname = f"{dataset_name}_{'_'.join(finetune_strategies)}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_{mode.replace('-', '_')}_{metric}_comparison.png"
+            file_path = os.path.join(results_dir, fname)
+            if metric not in pretrained_dict.get(model_name, {}):
+                print(f"WARNING: Metric {metric} not found in pretrained_{mode.lower().replace('-', '_')}_dict for {model_name}")
+                continue
+            # Get available k values across all dictionaries
+            k_values = sorted(
+                k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {})
+            )
+            for strategy in finetune_strategies:
+                if strategy not in finetuned_dict.get(model_name, {}) or metric not in finetuned_dict.get(model_name, {}).get(strategy, {}):
+                    print(f"WARNING: Metric {metric} not found in finetuned_{mode.lower().replace('-', '_')}_dict for {model_name}/{strategy}")
+                    k_values = []  # Reset if any strategy is missing
+                    break
+                k_values = sorted(
+                    set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys())
+                )
+            if not k_values:
+                print(f"WARNING: No matching K values found for {metric}")
+                continue
+            # Plot Pre-trained (dashed line)
+            pretrained_vals = [pretrained_dict[model_name][metric].get(str(k), float('nan')) for k in k_values]
+            ax.plot(
+                k_values, pretrained_vals,
+                label=f"Pre-trained CLIP {model_name}",
+                color=pretrained_color, linestyle='--', marker='o',
+                linewidth=1.5, markersize=5, alpha=0.7
+            )
+            # Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
+            for strategy in finetune_strategies:
+                finetuned_vals = [finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) for k in k_values]
+                ax.plot(
+                    k_values, finetuned_vals,
+                    label=f"{strategy.capitalize()} Fine-tune",
+                    color=strategy_colors[strategy], linestyle='-', marker=strategy_styles[strategy],
+                    linewidth=2.5, markersize=6
+                )
+            # Find the best and worst performing strategies at key K values
+            key_k_values = [1, 10, 20]
+            for k in key_k_values:
+                if k in k_values:
+                    k_idx = k_values.index(k)
+                    pre_val = pretrained_vals[k_idx]
+                    finetuned_vals_at_k = {strategy: finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) for strategy in finetune_strategies}
+                    # Find best and worst strategies
+                    best_strategy = max(finetuned_vals_at_k, key=finetuned_vals_at_k.get)
+                    worst_strategy = min(finetuned_vals_at_k, key=finetuned_vals_at_k.get)
+                    best_val = finetuned_vals_at_k[best_strategy]
+                    worst_val = finetuned_vals_at_k[worst_strategy]
+                    # Annotate best strategy (green)
+                    if pre_val != 0:
+                        best_imp = (best_val - pre_val) / pre_val * 100
+                        ax.annotate(
+                            f"{best_imp:+.1f}% ({best_strategy.capitalize()})",
+                            xy=(k, best_val), xytext=(5, 10),
+                            textcoords='offset points', fontsize=9, fontweight='bold',
+                            color='darkgreen', bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3)
+                        )
+                    # Annotate worst strategy (red)
+                    if pre_val != 0:
+                        worst_imp = (worst_val - pre_val) / pre_val * 100
+                        ax.annotate(
+                            f"{worst_imp:+.1f}% ({worst_strategy.capitalize()})",
+                            xy=(k, worst_val), xytext=(5, -15),
+                            textcoords='offset points', fontsize=9, fontweight='bold',
+                            color='red', bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3)
+                        )
+            # Axes formatting
+            ax.set_title(f"{metric}@K", fontsize=10, fontweight='bold')
+            ax.set_xlabel("K", fontsize=11)
+            ax.set_xticks(k_values)
+            ax.grid(True, linestyle='--', alpha=0.9)
+            ax.set_ylim(-0.01, 1.01)
+            ax.legend(fontsize=9, loc='best')
+            # Set spine edge color to solid black
+            for spine in ax.spines.values():
+                spine.set_color('black')
+                spine.set_linewidth(1.0)
+            plt.tight_layout()
+            plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
+            plt.close(fig)
+            print(f"Saved: {file_path}")
+
+def plot_comparison_metrics_split_orig(
 		dataset_name: str,
 		pretrained_img2txt_dict: dict,
 		pretrained_txt2img_dict: dict,
@@ -345,7 +475,7 @@ def plot_comparison_metrics_split(
 													color=color, bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3)
 											)
 					# Axes formatting
-					ax.set_title(f"{mode}: {metric}@K", fontsize=12, fontweight='bold')
+					ax.set_title(f"{metric}@K", fontsize=10, fontweight='bold')
 					ax.set_xlabel("K", fontsize=11)
 					ax.set_xticks(k_values)
 					ax.grid(True, linestyle='--', alpha=0.9)
@@ -357,6 +487,159 @@ def plot_comparison_metrics_split(
 					print(f"Saved: {file_path}")
 
 def plot_comparison_metrics_merged(
+    dataset_name: str,
+    pretrained_img2txt_dict: dict,
+    pretrained_txt2img_dict: dict,
+    finetuned_img2txt_dict: dict,
+    finetuned_txt2img_dict: dict,
+    model_name: str,
+    finetune_strategies: list,  # Changed to list
+    results_dir: str,
+    topK_values: list,
+    figure_size=(14, 5),
+    DPI: int = 300,
+):
+    metrics = ["mP", "mAP", "Recall"]
+    modes = ["Image-to-Text", "Text-to-Image"]
+    all_model_architectures = ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
+    # Validate model_name and finetune_strategies
+    finetune_strategies = [s for s in finetune_strategies if s in ["full", "lora", "progressive"]][:3]  # Max 3
+    if not finetune_strategies:
+        print("WARNING: No valid finetune strategies provided. Skipping...")
+        return
+    for mode in modes:
+        finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+        if model_name not in finetuned_dict or not all(strategy in finetuned_dict.get(model_name, {}) for strategy in finetune_strategies):
+            print(f"WARNING: Some strategies for {model_name} not found in finetuned_{mode.lower().replace('-', '_')}_dict. Skipping...")
+            return
+    model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
+    # Define a professional color palette for fine-tuned strategies
+    strategy_colors = {'full': '#1f77b4', 'lora': '#ff7f0e', 'progressive': '#2ca02c'}  # Blue, Orange, Green
+    pretrained_color = '#7f7f7f'  # Gray for pre-trained
+    strategy_styles = {'full': 's', 'lora': '^', 'progressive': 'd'}  # Unique markers
+
+    print(f"\n{'='*80}")
+    print(f"DETAILED PERFORMANCE ANALYSIS FOR {dataset_name} - {model_name} WITH {', '.join(s.capitalize() for s in finetune_strategies)} FINE-TUNING")
+    print(f"{'='*80}")
+    for i, mode in enumerate(modes):
+        fig, axes = plt.subplots(1, 3, figsize=figure_size, constrained_layout=True)
+        fname = f"{dataset_name}_{'_'.join(finetune_strategies)}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_retrieval_performance_comparison_{mode.replace('-', '_')}_merged.png"
+        file_path = os.path.join(results_dir, fname)
+        fig.suptitle(
+            f'$\\it{{{mode}}}$ Retrieval Performance Comparison\n'
+            f'Pre-trained CLIP {model_name} vs. {", ".join(s.capitalize() for s in finetune_strategies)} Fine-tuning',
+            fontsize=12, fontweight='bold',
+        )
+        pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
+        finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+        print(f"\n{'-'*40}")
+        print(f"MODE: {mode}: {fname}")
+        print(f"{'-'*40}")
+        for j, metric in enumerate(metrics):
+            ax = axes[j]
+            print(f"\nMetric: {metric}")
+            print("-" * 20)
+            k_values = sorted(
+                k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {})
+            )
+            for strategy in finetune_strategies:
+                k_values = sorted(
+                    set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys())
+                )
+            if not k_values:
+                print(f"WARNING: No matching K values for {mode}, {metric}")
+                continue
+            # Plot Pre-trained (dashed line)
+            pretrained_values = [pretrained_dict.get(model_name, {}).get(metric, {}).get(str(k), float('nan')) for k in k_values]
+            ax.plot(
+                k_values, pretrained_values,
+                label=f"Pre-trained CLIP {model_name}",
+                color=pretrained_color, marker='o', linestyle='--',
+                linewidth=1.5, markersize=5, alpha=0.7,
+            )
+            # Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
+            for strategy in finetune_strategies:
+                finetuned_values = [finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).get(str(k), float('nan')) for k in k_values]
+                ax.plot(
+                    k_values, finetuned_values,
+                    label=f"{strategy.capitalize()} Fine-tune",
+                    color=strategy_colors[strategy], marker=strategy_styles[strategy], linestyle='-',
+                    linewidth=2.5, markersize=6,
+                )
+            # Find the best and worst performing strategies at key K values
+            key_k_values = [1, 10, 20]
+            for k in key_k_values:
+                if k in k_values:
+                    k_idx = k_values.index(k)
+                    pre_val = pretrained_values[k_idx]
+                    finetuned_vals_at_k = {strategy: finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).get(str(k), float('nan')) for strategy in finetune_strategies}
+                    # Find best and worst strategies
+                    best_strategy = max(finetuned_vals_at_k, key=finetuned_vals_at_k.get)
+                    worst_strategy = min(finetuned_vals_at_k, key=finetuned_vals_at_k.get)
+                    best_val = finetuned_vals_at_k[best_strategy]
+                    worst_val = finetuned_vals_at_k[worst_strategy]
+                    # Annotate best strategy (green)
+                    if pre_val != 0:
+                        best_imp = (best_val - pre_val) / pre_val * 100
+                        ax.annotate(
+                            f"{best_imp:+.1f}% ({best_strategy.capitalize()})",
+                            xy=(k, best_val), xytext=(5, 10),
+                            textcoords='offset points', fontsize=8.5, fontweight='bold',
+                            color='darkgreen', bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3),
+                        )
+                    # Annotate worst strategy (red)
+                    if pre_val != 0:
+                        worst_imp = (worst_val - pre_val) / pre_val * 100
+                        ax.annotate(
+                            f"{worst_imp:+.1f}% ({worst_strategy.capitalize()})",
+                            xy=(k, worst_val), xytext=(5, -15),
+                            textcoords='offset points', fontsize=8.5, fontweight='bold',
+                            color='red', bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3),
+                        )
+            # Axes formatting
+            ax.set_xlabel('K', fontsize=11)
+            ax.set_title(f'{metric}@K', fontsize=10, fontweight='bold')
+            ax.grid(True, linestyle='--', alpha=0.9)
+            ax.set_xticks(k_values)
+            ax.set_ylim(-0.01, 1.01)
+            if j == 0:
+                ax.legend(fontsize=9, loc='best')
+            # Set spine edge color to solid black
+            for spine in ax.spines.values():
+                spine.set_color('black')
+                spine.set_linewidth(1.0)
+        plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
+        print(f"Saved: {file_path}")
+        plt.close(fig)
+    # Overall summary
+    print(f"\n{'='*40}")
+    print(f"OVERALL PERFORMANCE SUMMARY")
+    print(f"{'='*40}")
+    for mode in modes:
+        pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
+        finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+        print(f"\nMode: {mode}")
+        for metric in metrics:
+            k_values = sorted(
+                k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {})
+            )
+            for strategy in finetune_strategies:
+                k_values = sorted(
+                    set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys())
+                )
+            if k_values:
+                for strategy in finetune_strategies:
+                    improvements = [
+                        ((finetuned_dict[model_name][strategy][metric][str(k)] - pretrained_dict[model_name][metric][str(k)]) /
+                         pretrained_dict[model_name][metric][str(k)] * 100)
+                        for k in k_values if pretrained_dict[model_name][metric][str(k)] != 0
+                    ]
+                    if improvements:
+                        avg_improvement = sum(improvements) / len(improvements)
+                        print(f"  {metric} ({strategy.capitalize()}): Average improvement across all K values: {avg_improvement:+.2f}%")
+    print(f"\n{'='*80}")
+
+def plot_comparison_metrics_merged_orig(
 		dataset_name: str,
 		pretrained_img2txt_dict: dict,
 		pretrained_txt2img_dict: dict,

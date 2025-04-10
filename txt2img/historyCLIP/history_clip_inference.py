@@ -12,6 +12,9 @@ from model import get_lora_clip
 from trainer import pretrain, evaluate_best_model
 from visualize import plot_image_to_texts_stacked_horizontal_bar, plot_text_to_images, plot_image_to_texts_pretrained, plot_comparison_metrics_split, plot_comparison_metrics_merged
 
+# run in local for all fine-tuned models:
+# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -m quantitative -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_9_do_0.0_lr_1.0e-04_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_9_do_0.0_init_lr_1.0e-04_init_wd_1.0e-02_bs_64_best_model.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_50_lr_1.0e-04_wd_1.0e-02_lora_rank_4_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 4 -loa 16.0 -lod 0.05
+
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
