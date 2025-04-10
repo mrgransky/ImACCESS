@@ -9,7 +9,7 @@ def plot_image_to_texts_stacked_horizontal_bar(
 		topk: int,
 		device: str,
 		results_dir: str,
-		figure_size=(8, 8),
+		figure_size=(8, 6),
 		dpi: int = 250,
 	):
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
@@ -115,8 +115,8 @@ def plot_image_to_texts_stacked_horizontal_bar(
 							)
 	# Configure the plot for publication quality
 	ax.set_yticks(y_pos)
-	ax.set_yticklabels([label.replace('_', ' ').title() for label in pretrained_topk_labels], fontsize=9)
-	ax.set_xlim(0, 1)
+	ax.set_yticklabels([label.replace('_', ' ').title() for label in pretrained_topk_labels], fontsize=11)
+	ax.set_xlim(0, 1.02)
 	ax.set_xlabel("Probability", fontsize=10)
 	ax.set_title(f"Top-{topk} Predictions (Pre-trained Baseline)", fontsize=12, fontweight='bold')
 	ax.grid(True, axis='x', linestyle='--', alpha=0.6, color='black',)
@@ -137,8 +137,8 @@ def plot_image_to_texts_stacked_horizontal_bar(
 	# Save plot
 	img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
 	file_name = os.path.join(
-			results_dir,
-			f'i2t_Top{topk}_labels_{img_hash}_dataset_{dataset_name}_stacked_bar.png'
+		results_dir,
+		f'i2t_Top{topk}_labels_{img_hash}_dataset_{dataset_name}_stacked_bar.png'
 	)
 	plt.tight_layout()
 	plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
