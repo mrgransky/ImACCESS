@@ -86,9 +86,9 @@ def plot_image_to_texts_stacked_horizontal_bar(
 	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#7f7f7f'}
 	colors = [pretrained_colors.get(models.get("pretrained").name, '#000000')] + list(strategy_colors.values())
 	print(f"colors: {colors}")
+	winning_model_per_label = np.argmax(plot_data, axis=1)
 
 	for model_idx, model_name in enumerate(model_names):
-			# Offset each model's bars
 			offset = (model_idx - num_models / 2) * bar_width
 			bars = ax.barh(
 					y_pos + offset,
@@ -101,7 +101,8 @@ def plot_image_to_texts_stacked_horizontal_bar(
 			)
 			for i, bar in enumerate(bars):
 					width = bar.get_width()
-					if width > 0.01:  # Only annotate if probability is significant
+					if width > 0.01:
+							is_winner = (model_idx == winning_model_per_label[i])
 							ax.text(
 									width + 0.01,
 									bar.get_y() + bar.get_height() / 2,
@@ -109,7 +110,7 @@ def plot_image_to_texts_stacked_horizontal_bar(
 									va='center',
 									fontsize=8,
 									color='black',
-									fontweight='bold',
+									fontweight='bold' if is_winner else 'normal',
 									alpha=0.85,
 							)
 	ax.set_yticks(y_pos)
