@@ -904,7 +904,7 @@ def get_retrieval_metrics(
 	}
 
 	for K in valid_K_values:
-		top_k_indices = torch.argsort(-similarity_matrix, dim=1)[:, :K]
+		top_k_indices = torch.argsort(-similarity_matrix, dim=1)[:, :K].cpu()
 		precision, recall, ap = [], [], []
 		for i in range(num_queries):
 			true_label = query_labels[i]
