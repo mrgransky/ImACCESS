@@ -19,7 +19,7 @@ def evaluate_validation_set(
 		cache_dir: str = None,
 		chunk_size: int = 1024,
 		verbose: bool = True
-) -> Dict:
+	) -> Dict:
 		"""
 		Unified validation function to compute in-batch, full-set, and retrieval metrics in one pass.
 		
@@ -162,100 +162,128 @@ def evaluate_validation_set(
 		}
 
 def compute_in_batch_metrics(
-		image_embeds: torch.Tensor,
-		text_embeds: torch.Tensor,
-		labels: torch.Tensor,
-		total_loss: float,
-		num_batches: int,
-		total_samples: int,
-		topK_values: List[int],
-		n_classes: int,
-		device: str,
-		cosine_similarities: List[float]
+    image_embeds: torch.Tensor,
+    text_embeds: torch.Tensor,
+    labels: torch.Tensor,
+    total_loss: float,
+    num_batches: int,
+    total_samples: int,
+    topK_values: List[int],
+    n_classes: int,
+    device: str,
+    cosine_similarities: List[float]
 ) -> Dict:
-		"""
-		Compute in-batch metrics including loss, accuracy, and top-K accuracy.
-		"""
-		avg_loss = total_loss / num_batches
-		valid_k_values = [k for k in topK_values if k <= n_classes]
-		
-		# Compute in-batch top-K accuracies
-		img2txt_topk_acc = {k: 0 for k in valid_k_values}
-		txt2img_topk_acc = {k: 0 for k in topK_values}
-		
-		# Simplified accuracy computation (can be enhanced based on original logic)
-		similarity = image_embeds.to(device) @ text_embeds.to(device).T
-		img2txt_pred = similarity.argmax(dim=1)
-		txt2img_pred = similarity.T.argmax(dim=1)
-		img2txt_acc = (img2txt_pred.cpu() == labels).float().mean().item()
-		txt2img_acc = (txt2img_pred.cpu() == labels).float().mean().item()
-		
-		for k in valid_k_values:
-				topk_img2txt = similarity.topk(k, dim=1)[1]
-				img2txt_topk_acc[k] = (topk_img2txt.cpu() == labels.view(-1, 1)).any(dim=1).float().mean().item()
-				topk_txt2img = similarity.T.topk(k, dim=1)[1]
-				txt2img_topk_acc[k] = (topk_txt2img.cpu() == labels.view(-1, 1)).any(dim=1).float().mean().item()
-		
-		return {
-				"val_loss": float(avg_loss),
-				"img2txt_acc": float(img2txt_acc),
-				"txt2img_acc": float(txt2img_acc),
-				"img2txt_topk_acc": {str(k): float(v) for k, v in img2txt_topk_acc.items()},
-				"txt2img_topk_acc": {str(k): float(v) for k, v in txt2img_topk_acc.items()},
-				"cosine_similarity": float(np.mean(cosine_similarities)) if cosine_similarities else 0.0
-		}
+    avg_loss = total_loss / num_batches
+    valid_k_values = [k for k in topK_values if k <= n_classes]
+    
+    img2txt_topk_acc = {k: 0 for k in valid_k_values}
+    txt2img_topk_acc = {k: 0 for k in topK_values}
+    img2txt_correct = 0
+    txt2img_correct = 0
+    
+    # Process embeddings in chunks to simulate batch-wise computation
+    batch_size = validation_loader.batch_size
+    for start in range(0, total_samples, batch_size):
+        end = min(start + batch_size, total_samples)
+        chunk_img_embeds = image_embeds[start:end].to(device)
+        chunk_txt_embeds = text_embeds[start:end].to(device)
+        chunk_labels = labels[start:end].to(device)
+        chunk_size = end - start
+        
+        similarity = chunk_img_embeds @ chunk_txt_embeds.T
+        img2txt_pred = similarity.argmax(dim=1)
+        txt2img_pred = similarity.T.argmax(dim=1)
+        
+        for i in range(chunk_size):
+            pred_label = chunk_labels[img2txt_pred[i]].item()
+            true_label = chunk_labels[i].item()
+            if pred_label == true_label:
+                img2txt_correct += 1
+            pred_label = chunk_labels[txt2img_pred[i]].item()
+            if pred_label == true_label:
+                txt2img_correct += 1
+        
+        for k in valid_k_values:
+            topk_img2txt = similarity.topk(min(k, chunk_size), dim=1)[1]
+            for i in range(chunk_size):
+                topk_labels = chunk_labels[topk_img2txt[i]].cpu()
+                if chunk_labels[i].item() in topk_labels:
+                    img2txt_topk_acc[k] += 1
+            topk_txt2img = similarity.T.topk(min(k, chunk_size), dim=1)[1]
+            for i in range(chunk_size):
+                topk_labels = chunk_labels[topk_txt2img[i]].cpu()
+                if chunk_labels[i].item() in topk_labels:
+                    txt2img_topk_acc[k] += 1
+    
+    img2txt_acc = img2txt_correct / total_samples
+    txt2img_acc = txt2img_correct / total_samples
+    img2txt_topk_acc = {k: v / total_samples for k, v in img2txt_topk_acc.items()}
+    txt2img_topk_acc = {k: v / total_samples for k, v in txt2img_topk_acc.items()}
+    
+    return {
+        "val_loss": float(avg_loss),
+        "img2txt_acc": float(img2txt_acc),
+        "txt2img_acc": float(txt2img_acc),
+        "img2txt_topk_acc": {str(k): float(v) for k, v in img2txt_topk_acc.items()},
+        "txt2img_topk_acc": {str(k): float(v) for k, v in txt2img_topk_acc.items()},
+        "cosine_similarity": float(np.mean(cosine_similarities)) if cosine_similarities else 0.0
+    }
 
 def compute_full_metrics(
-		image_embeds: torch.Tensor,
-		text_embeds: torch.Tensor,
-		labels: torch.Tensor,
-		class_text_embeds: torch.Tensor,
-		total_loss: float,
-		num_batches: int,
-		total_samples: int,
-		topK_values: List[int],
-		n_classes: int,
-		device: str,
-		cosine_similarities: List[float]
+    image_embeds: torch.Tensor,
+    text_embeds: torch.Tensor,
+    labels: torch.Tensor,
+    class_text_embeds: torch.Tensor,
+    total_loss: float,
+    num_batches: int,
+    total_samples: int,
+    topK_values: List[int],
+    n_classes: int,
+    device: str,
+    cosine_similarities: List[float]
 ) -> Dict:
-		"""
-		Compute full-set metrics including loss, accuracy, top-K accuracy, and MRR.
-		"""
-		avg_loss = total_loss / num_batches
-		valid_k_values = [k for k in topK_values if k <= n_classes]
-		
-		# Compute full-set metrics
-		similarity = image_embeds.to(device) @ class_text_embeds.to(device).T
-		img2txt_pred = similarity.argmax(dim=1)
-		img2txt_acc = (img2txt_pred.cpu() == labels).float().mean().item()
-		
-		img2txt_topk_acc = {}
-		img2txt_mrr = []
-		for k in valid_k_values:
-				topk_indices = similarity.topk(k, dim=1)[1]
-				correct = (topk_indices == labels.unsqueeze(1).to(device)).any(dim=1)
-				img2txt_topk_acc[k] = correct.float().mean().item()
-				
-				# MRR
-				ranks = similarity.argsort(dim=1, descending=True)
-				rr_indices = ranks.eq(labels.view(-1, 1).to(device)).nonzero(as_tuple=True)[1] + 1
-				img2txt_mrr.extend((1.0 / rr_indices.float()).cpu().numpy())
-		
-		# Text-to-image metrics (simplified, can be enhanced)
-		similarity_t2i = class_text_embeds.to(device) @ image_embeds.to(device).T
-		txt2img_pred = similarity_t2i.argmax(dim=1)
-		txt2img_acc = (txt2img_pred.cpu() == torch.arange(n_classes)).float().mean().item()
-		txt2img_topk_acc = {k: 0.0 for k in topK_values}  # Placeholder, enhance as needed
-		
-		return {
-				"val_loss": float(avg_loss),
-				"img2txt_acc": float(img2txt_acc),
-				"txt2img_acc": float(txt2img_acc),
-				"img2txt_topk_acc": {str(k): float(v) for k, v in img2txt_topk_acc.items()},
-				"txt2img_topk_acc": {str(k): float(v) for k, v in txt2img_topk_acc.items()},
-				"mean_reciprocal_rank": float(np.mean(img2txt_mrr)) if img2txt_mrr else 0.0,
-				"cosine_similarity": float(np.mean(cosine_similarities)) if cosine_similarities else 0.0
-		}
+    avg_loss = total_loss / num_batches
+    valid_k_values = [k for k in topK_values if k <= n_classes]
+    
+    # Image-to-text metrics
+    similarity = image_embeds.to(device) @ class_text_embeds.to(device).T
+    img2txt_pred = similarity.argmax(dim=1)
+    img2txt_acc = (img2txt_pred.cpu() == labels).float().mean().item()
+    
+    img2txt_topk_acc = {}
+    img2txt_mrr = []
+    for k in valid_k_values:
+        topk_indices = similarity.topk(k, dim=1)[1]
+        correct = (topk_indices == labels.unsqueeze(1).to(device)).any(dim=1)
+        img2txt_topk_acc[k] = correct.float().mean().item()
+        
+        ranks = similarity.argsort(dim=1, descending=True)
+        rr_indices = ranks.eq(labels.view(-1, 1).to(device)).nonzero(as_tuple=True)[1] + 1
+        img2txt_mrr.extend((1.0 / rr_indices.float()).cpu().numpy())
+    
+    # Text-to-image metrics
+    similarity_t2i = class_text_embeds.to(device) @ image_embeds.to(device).T
+    txt2img_topk_acc = {}
+    for k in topK_values:
+        topk_indices = similarity_t2i.topk(k, dim=1)[1]
+        correct = 0
+        for i in range(n_classes):
+            retrieved_labels = labels[topk_indices[i]].cpu()
+            true_label = i
+            if true_label in retrieved_labels:
+                correct += 1
+        txt2img_topk_acc[k] = correct / n_classes  # Micro-average precision per class
+    txt2img_acc = txt2img_topk_acc.get(1, 0.0)
+    
+    return {
+        "val_loss": float(avg_loss),
+        "img2txt_acc": float(img2txt_acc),
+        "txt2img_acc": float(txt2img_acc),
+        "img2txt_topk_acc": {str(k): float(v) for k, v in img2txt_topk_acc.items()},
+        "txt2img_topk_acc": {str(k): float(v) for k, v in txt2img_topk_acc.items()},
+        "mean_reciprocal_rank": float(np.mean(img2txt_mrr)) if img2txt_mrr else 0.0,
+        "cosine_similarity": float(np.mean(cosine_similarities)) if cosine_similarities else 0.0
+    }
 
 def compute_retrieval_metrics(
 		image_embeds: torch.Tensor,
@@ -887,6 +915,7 @@ def get_retrieval_metrics(
 
 	num_queries, num_candidates = similarity_matrix.shape
 	assert num_queries == len(query_labels), "Number of queries must match labels"
+	assert query_labels.device == candidate_labels.device, "query_labels and candidate_labels must be on the same device"
 	num_classes = len(torch.unique(candidate_labels))
 
 	if max_k is not None:
