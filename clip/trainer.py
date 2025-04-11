@@ -663,6 +663,122 @@ def get_retrieval_metrics(
 	return metrics
 
 def get_in_batch_loss_accuracy_metrics(
+        model: torch.nn.Module,
+        validation_loader: DataLoader,
+        criterion: torch.nn.Module,
+        device: str = "cuda",
+        topK_values: List[int] = [1, 3, 5],
+        max_batches: int = None  # Limit number of batches for quicker evaluation
+    ):
+    start_time = time.time()
+    torch.cuda.empty_cache()
+    
+    # Determine available memory and optimal chunk size
+    if torch.cuda.is_available():
+        free_mem = torch.cuda.mem_get_info()[0] / (1024 ** 3)
+        available_mem = free_mem * 0.95  # Use 90% of available memory
+        
+        # Dynamically adjust chunk size based on free memory and model size
+        model_size_factor = 1.0
+        if "ViT-L" in model.name:
+            model_size_factor = 0.5  # Reduce chunk size for larger models
+        elif "ViT-H" in model.name:
+            model_size_factor = 0.25  # Further reduce for huge models
+            
+        embed_dim = 512  # Standard CLIP embedding dimension
+        if hasattr(model, 'embed_dim'):
+            embed_dim = model.embed_dim
+            
+        mem_per_sample = embed_dim * 4 * 2 / (1024 ** 3)  # Memory needed per sample in GB
+        max_samples_in_memory = int(available_mem / mem_per_sample * model_size_factor)
+        chunk_size = max(32, min(max_samples_in_memory, 1024))
+    else:
+        chunk_size = 64  # Conservative default for CPU
+    
+    print(f"Optimized in-batch metrics using chunk size: {chunk_size}")
+    
+    model.eval()
+    total_loss = 0
+    total_img2txt_correct = {k: 0 for k in topK_values}
+    total_txt2img_correct = {k: 0 for k in topK_values}
+    
+    if max_batches is None:
+        max_batches = len(validation_loader)
+    else:
+        max_batches = min(max_batches, len(validation_loader))
+        
+    total_samples = 0
+    
+    # Use inference_mode for max efficiency
+    with torch.inference_mode():
+        for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
+            if bidx >= max_batches:
+                break
+                
+            batch_size = images.size(0)
+            total_samples += batch_size
+            
+            # Process in chunks if needed
+            for chunk_start in range(0, batch_size, chunk_size):
+                chunk_end = min(chunk_start + chunk_size, batch_size)
+                chunk_images = images[chunk_start:chunk_end].to(device, non_blocking=True)
+                chunk_tokenized = tokenized_labels[chunk_start:chunk_end].to(device, non_blocking=True)
+                chunk_labels = labels_indices[chunk_start:chunk_end].to(device, non_blocking=True)
+                chunk_size_actual = chunk_images.size(0)
+                
+                # Forward pass with mixed precision
+                with torch.amp.autocast(device_type=device.type, enabled=True):
+                    logits_per_image, logits_per_text = model(chunk_images, chunk_tokenized)
+                    ground_truth = torch.arange(chunk_size_actual, device=device)
+                    
+                    # Calculate loss
+                    loss_img = criterion(logits_per_image, ground_truth)
+                    loss_txt = criterion(logits_per_text, ground_truth)
+                    batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
+                    total_loss += batch_loss * (chunk_size_actual / batch_size)
+                
+                # Top-K Accuracy for Image-to-Text
+                for k in topK_values:
+                    if k <= chunk_size_actual:  # Ensure k is valid
+                        topk_vals, topk_inds = torch.topk(logits_per_image, k=k, dim=1)
+                        correct = 0
+                        for i in range(chunk_size_actual):
+                            if i in topk_inds[i]:  # Check if correct index is in top-k
+                                correct += 1
+                        total_img2txt_correct[k] += correct
+                
+                # Top-K Accuracy for Text-to-Image
+                for k in topK_values:
+                    if k <= chunk_size_actual:  # Ensure k is valid
+                        topk_vals, topk_inds = torch.topk(logits_per_text, k=k, dim=1)
+                        correct = 0
+                        for i in range(chunk_size_actual):
+                            if i in topk_inds[i]:  # Check if correct index is in top-k
+                                correct += 1
+                        total_txt2img_correct[k] += correct
+                
+                # Clean up to free memory
+                del chunk_images, chunk_tokenized, chunk_labels, logits_per_image, logits_per_text
+                
+            # Status update
+            if bidx % 10 == 0 and bidx > 0:
+                elapsed = time.time() - start_time
+                print(f"  Processed {bidx}/{max_batches} batches ({total_samples} samples) in {elapsed:.1f}s")
+    
+    # Calculate final metrics
+    avg_loss = total_loss / max_batches
+    metrics = {
+        "val_loss": float(avg_loss),
+        "img2txt_acc": float(total_img2txt_correct[1] / total_samples) if 1 in topK_values else 0.0,
+        "txt2img_acc": float(total_txt2img_correct[1] / total_samples) if 1 in topK_values else 0.0,
+        "img2txt_topk_acc": {str(k): float(total_img2txt_correct[k] / total_samples) for k in topK_values if k in total_img2txt_correct},
+        "txt2img_topk_acc": {str(k): float(total_txt2img_correct[k] / total_samples) for k in topK_values if k in total_txt2img_correct},
+    }
+    
+    print(f"Optimized in-batch metrics completed in {time.time() - start_time:.1f}s")
+    return metrics
+
+def get_in_batch_loss_accuracy_metrics_non_optimized(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
 		criterion: torch.nn.Module,
@@ -671,9 +787,12 @@ def get_in_batch_loss_accuracy_metrics(
 	):
 	start_time = time.time()
 	torch.cuda.empty_cache()
+
 	free_mem = torch.cuda.mem_get_info()[0] / (1024 ** 3)
-	available_mem = free_mem * 0.8  # Use 80% of available memory
-	embed_dim = 512  # Standard CLIP embedding dimension
+	available_mem = free_mem * 0.95  # Use 80% of available memory
+
+	embed_dim = model.embed_dim if hasattr(model, 'embed_dim') else 512  # Standard CLIP embedding dimension
+	print(f"{hasattr(model, 'embed_dim')} | embed_dim: {embed_dim}")
 	mem_per_sample = embed_dim * 4 * 2 / (1024 ** 3)  # Memory needed per sample in GB
 	max_samples_in_memory = int(available_mem / mem_per_sample)
 	chunk_size = max(32, min(max_samples_in_memory, 1024))
@@ -692,9 +811,9 @@ def get_in_batch_loss_accuracy_metrics(
 	total_samples = len(validation_loader.dataset)
 	
 	try:
-			class_names = validation_loader.dataset.dataset.classes
+		class_names = validation_loader.dataset.dataset.classes
 	except:
-			class_names = validation_loader.dataset.unique_labels
+		class_names = validation_loader.dataset.unique_labels
 	
 	num_classes = len(class_names)
 	
@@ -728,15 +847,14 @@ def get_in_batch_loss_accuracy_metrics(
 							# Forward pass to get logits
 							with torch.amp.autocast(device_type=device.type, enabled=True):
 								logits_per_image, logits_per_text = model(chunk_images, chunk_tokenized_labels)
+								# Ground Truth
+								ground_truth = torch.arange(start=0, end=chunk_size_actual, dtype=torch.long, device=device)
 							
-							# Ground Truth
-							ground_truth = torch.arange(start=0, end=chunk_size_actual, dtype=torch.long, device=device)
-							
-							# Validation Loss: Average of both losses
-							loss_img = criterion(logits_per_image, ground_truth)
-							loss_txt = criterion(logits_per_text, ground_truth)
-							batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
-							total_loss += batch_loss * (chunk_size_actual / batch_size)  # Weight by portion of batch
+								# Validation Loss: Average of both losses
+								loss_img = criterion(logits_per_image, ground_truth)
+								loss_txt = criterion(logits_per_text, ground_truth)
+								batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
+								total_loss += batch_loss * (chunk_size_actual / batch_size)  # Weight by portion of batch
 							
 							# Map in-batch indices to actual labels
 							batch_labels = chunk_labels_indices  # [chunk_size], actual class indices
