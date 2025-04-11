@@ -2948,9 +2948,6 @@ def full_finetune(
 		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
 		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
 
-
-
-
 		print(
 			f'@ Epoch {epoch + 1}:\n'
 			f'\t[LOSS] {mode}'
