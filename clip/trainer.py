@@ -663,26 +663,13 @@ def get_retrieval_metrics(
 	return metrics
 
 def get_in_batch_loss_accuracy_metrics(
-			model: torch.nn.Module,
-			validation_loader: DataLoader,
-			criterion: torch.nn.Module,
-			device: str = "cuda",
-			topK_values: List[int] = [1, 3, 5],
+		model: torch.nn.Module,
+		validation_loader: DataLoader,
+		criterion: torch.nn.Module,
+		device: str = "cuda",
+		topK_values: List[int] = [1, 3, 5],
 	):
-	"""
-	Evaluate the CLIP model's in-batch performance on the validation set with memory-efficient chunking.
-	Computes loss, top-K accuracies, and cosine similarity within each batch.
-	Args:
-					model: CLIP model instance
-					validation_loader: DataLoader for validation data
-					criterion: Loss function (e.g., CrossEntropyLoss)
-					device: Device to run evaluation on ("cuda" or "cpu")
-					topK_values: List of K values for top-K accuracy computation
-	Returns:
-					Dictionary of metrics: val_loss, img2txt_acc, txt2img_acc, img2txt_topk_acc, txt2img_topk_acc, cosine_similarity
-	"""
 	start_time = time.time()
-	# Calculate available GPU memory and determine chunk size
 	torch.cuda.empty_cache()
 	free_mem = torch.cuda.mem_get_info()[0] / (1024 ** 3)
 	available_mem = free_mem * 0.8  # Use 80% of available memory
@@ -859,19 +846,6 @@ def get_loss_accuracy_metrics(
 		print_every: int,
 		topK_values: List[int],
 	) -> Dict[str, float]:
-	"""
-	Evaluate the CLIP model's performance on the full validation set.
-	Computes loss, top-K accuracies, MRR, and cosine similarity over all samples with memory-efficient chunking.
-	Args:
-			model: CLIP model instance
-			validation_loader: DataLoader for validation data
-			criterion: Loss function (e.g., CrossEntropyLoss)
-			device: Device to run evaluation on ("cuda" or "cpu")
-			print_every: Frequency of progress printing
-			topK_values: List of K values for top-K accuracy computation
-	Returns:
-			Dictionary of metrics: val_loss, img2txt_acc, txt2img_acc, img2txt_topk_acc, txt2img_topk_acc, mean_reciprocal_rank, cosine_similarity
-	"""
 	start_time = time.time()
 	dataset_name = validation_loader.name
 	model_name = model.__class__.__name__

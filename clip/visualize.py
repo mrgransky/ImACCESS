@@ -118,7 +118,7 @@ def plot_image_to_texts_stacked_horizontal_bar(
 	ax.set_yticklabels([label.replace('_', ' ').title() for label in pretrained_topk_labels], fontsize=11)
 	ax.set_xlim(0, 1.02)
 	ax.set_xlabel("Probability", fontsize=10)
-	ax.set_title(f"Top-{topk} Predictions (Pre-trained Baseline)", fontsize=12, fontweight='bold')
+	# ax.set_title(f"Top-{topk} Predictions (Pre-trained Baseline)", fontsize=12, fontweight='bold')
 	ax.grid(True, axis='x', linestyle='--', alpha=0.5, color='black',)
 	ax.tick_params(axis='x', labelsize=12)
 	ax.legend(
@@ -142,18 +142,16 @@ def plot_image_to_texts_stacked_horizontal_bar(
 	plt.close()
 	print(f"Saved visualization to: {file_name}")
 
-
 	# Save the original image separately using same hash (for visual comparison)
 	fig_img, ax_img = plt.subplots(figsize=(4, 4), dpi=dpi)
 	ax_img.imshow(img)
 	ax_img.axis('off')
-	ax_img.set_title("Query Image", fontsize=12)
+	# ax_img.set_title("Query Image", fontsize=12)
 	img_file_name = os.path.join(results_dir, f'{dataset_name}_query_image_{img_hash}_original.png')
 	plt.tight_layout()
 	plt.savefig(img_file_name, bbox_inches='tight', dpi=dpi)
 	plt.close()
 	print(f"Saved original image to: {img_file_name}")
-
 
 def plot_image_to_texts_pretrained(
 		best_pretrained_model: torch.nn.Module,
