@@ -270,7 +270,7 @@ def compute_full_metrics(
         topk_indices = similarity_t2i.topk(k, dim=1)[1]
         correct = 0
         for i in range(n_classes):
-            retrieved_labels = labels[topk_indices[i]].cpu()
+            retrieved_labels = labels[topk_indices[i]]#.cpu()
             true_label = i
             if true_label in retrieved_labels:
                 correct += 1
