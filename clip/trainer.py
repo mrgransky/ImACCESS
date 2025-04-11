@@ -10,6 +10,16 @@ import time
 from torch.utils.data import DataLoader
 from typing import List, Dict, Optional
 
+import torch
+import torch.nn.functional as F
+import numpy as np
+import os
+import time
+import json
+import re
+from torch.utils.data import DataLoader
+from typing import List, Dict
+
 def evaluate_validation_set(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
@@ -20,174 +30,213 @@ def evaluate_validation_set(
 		cache_dir: str,
 		chunk_size: int = 1024,
 		verbose: bool = True
-	) -> Dict:
-	"""
-	Unified validation function to compute in-batch, full-set, and retrieval metrics in one pass.
-	Uses cached embeddings for efficiency but recomputes loss and cosine similarity for correctness.
-	Args:
-			model: The CLIP model to evaluate.
-			validation_loader: DataLoader for the validation set.
-			criterion: Loss function (e.g., CrossEntropyLoss).
-			device: Device to run computations on (e.g., 'cuda').
-			topK_values: List of K values for top-K metrics.
-			finetune_strategy: Fine-tuning strategy (e.g., 'full_finetune', 'lora_finetune').
-			cache_dir: Directory to cache embeddings.
-			chunk_size: Size of chunks for memory-efficient processing.
-			verbose: Whether to print progress and results.
-	Returns:
-			Dictionary containing in_batch_metrics, full_metrics, img2txt_metrics, and txt2img_metrics.
-	"""
-	model.eval()
-	torch.cuda.empty_cache()
-	start_time = time.time()
-	# Initialize storage
-	all_image_embeds = []
-	all_text_embeds = []
-	all_labels = []
-	in_batch_loss = 0.0
-	full_loss = 0.0
-	num_batches = len(validation_loader)
-	total_samples = len(validation_loader.dataset)
-	cosine_similarities = []
-	try:
-			class_names = validation_loader.dataset.dataset.classes
-	except:
-			class_names = validation_loader.dataset.unique_labels
-	n_classes = len(class_names)
-	# Define cache file with unique naming
-	cache_file = os.path.join(
-			cache_dir,
-			f"validation_embeddings_"
-			f"{finetune_strategy}_"
-			f"bs_{validation_loader.batch_size}_"
-			f"{model.__class__.__name__}_"
-			f"{re.sub(r'[/@]', '', model.name)}.pt"
-	)
-	# Load cached embeddings if available
-	if cache_file and os.path.exists(cache_file):
-		if verbose:
-			print(f"Loading cached embeddings from {cache_file}")
-		cached = torch.load(cache_file, map_location='cpu')
-		all_image_embeds = cached['image_embeds']
-		all_text_embeds = cached['text_embeds']
-		all_labels = cached['labels']
-		class_text_embeds = cached['class_text_embeds']
-		# Recompute loss and cosine similarity with current model
-		with torch.no_grad():
-				for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
-						batch_size = images.size(0)
-						for start in range(0, batch_size, chunk_size):
-								end = min(start + chunk_size, batch_size)
-								chunk_images = images[start:end].to(device, non_blocking=True)
-								chunk_texts = tokenized_labels[start:end].to(device, non_blocking=True)
-								chunk_labels = labels_indices[start:end].to(device, non_blocking=True)
-								chunk_size_actual = end - start
-								with torch.amp.autocast(device_type=device.type, enabled=True):
-										logits_per_image, logits_per_text = model(chunk_images, chunk_texts)
-										image_embeds = model.encode_image(chunk_images)
-										text_embeds = model.encode_text(chunk_texts)
-								# In-batch loss
-								ground_truth = torch.arange(chunk_size_actual, device=device)
-								loss_img = criterion(logits_per_image, ground_truth)
-								loss_txt = criterion(logits_per_text, ground_truth)
-								batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
-								in_batch_loss += batch_loss * (chunk_size_actual / batch_size)
-								full_loss += batch_loss * (chunk_size_actual / batch_size)
-								# Cosine similarity
-								cos_sim = F.cosine_similarity(image_embeds, text_embeds, dim=-1).cpu().numpy()
-								cosine_similarities.extend(cos_sim)
-						if verbose and ((bidx + 1) % 100 == 0 or bidx + 1 == num_batches):
-								print(f"Processed {bidx + 1}/{num_batches} batches for loss recomputation")
-	else:
-		# Compute embeddings and loss from scratch
-		with torch.no_grad():
-				# Compute class text embeddings
-				text_inputs = clip.tokenize(class_names).to(device, non_blocking=True)
-				with torch.amp.autocast(device_type=device.type, enabled=True):
-					class_text_embeds = model.encode_text(text_inputs)
-				class_text_embeds = F.normalize(class_text_embeds, dim=-1).cpu()
-				# Single pass through validation set
-				for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
-					batch_size = images.size(0)
-					for start in range(0, batch_size, chunk_size):
-						end = min(start + chunk_size, batch_size)
-						chunk_images = images[start:end].to(device, non_blocking=True)
-						chunk_texts = tokenized_labels[start:end].to(device, non_blocking=True)
-						chunk_labels = labels_indices[start:end].to(device, non_blocking=True)
-						chunk_size_actual = end - start
-						with torch.amp.autocast(device_type=device.type, enabled=True):
-							logits_per_image, logits_per_text = model(chunk_images, chunk_texts)
-							image_embeds = model.encode_image(chunk_images)
-							text_embeds = model.encode_text(chunk_texts)
-						# In-batch loss
-						ground_truth = torch.arange(chunk_size_actual, device=device)
-						loss_img = criterion(logits_per_image, ground_truth)
-						loss_txt = criterion(logits_per_text, ground_truth)
-						batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
-						in_batch_loss += batch_loss * (chunk_size_actual / batch_size)
-						full_loss += batch_loss * (chunk_size_actual / batch_size)
-						# Normalize and store embeddings
-						image_embeds = F.normalize(image_embeds, dim=-1).cpu()
-						text_embeds = F.normalize(text_embeds, dim=-1).cpu()
-						all_image_embeds.append(image_embeds)
-						all_text_embeds.append(text_embeds)
-						all_labels.extend(chunk_labels.cpu().tolist())
-						# Cosine similarity
-						cos_sim = F.cosine_similarity(image_embeds, text_embeds, dim=-1).cpu().numpy()
-						cosine_similarities.extend(cos_sim)
-					if verbose and ((bidx + 1) % 100 == 0 or bidx + 1 == num_batches):
-						print(f"Processed {bidx + 1}/{num_batches} batches")
-				
-				# Concatenate embeddings
-				all_image_embeds = torch.cat(all_image_embeds, dim=0)
-				all_text_embeds = torch.cat(all_text_embeds, dim=0)
-				all_labels = torch.tensor(all_labels)
-				
-				# Save embeddings to cache
-				os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-				cache_content = {
-					'image_embeds': all_image_embeds,
-					'text_embeds': all_text_embeds,
-					'labels': all_labels,
-					'class_text_embeds': class_text_embeds,
-				}
-				torch.save(cache_content, cache_file)
+) -> Dict:
+		"""
+		Unified validation function to compute in-batch, full-set, and retrieval metrics in one pass.
+		Uses cached embeddings for efficiency but recomputes embeddings, loss, and cosine similarity
+		with the current model state for correctness.
+
+		Args:
+				model: The CLIP model to evaluate.
+				validation_loader: DataLoader for the validation set.
+				criterion: Loss function (e.g., CrossEntropyLoss).
+				device: Device to run computations on (e.g., 'cuda').
+				topK_values: List of K values for top-K metrics.
+				finetune_strategy: Fine-tuning strategy (e.g., 'full_finetune', 'lora_finetune').
+				cache_dir: Directory to cache embeddings.
+				chunk_size: Size of chunks for memory-efficient processing.
+				verbose: Whether to print progress and results.
+
+		Returns:
+				Dictionary containing in_batch_metrics, full_metrics, img2txt_metrics, and txt2img_metrics.
+		"""
+		model.eval()
+		torch.cuda.empty_cache()
+		start_time = time.time()
+
+		# Initialize storage
+		all_image_embeds = []
+		all_text_embeds = []
+		all_labels = []
+		in_batch_loss = 0.0
+		full_loss = 0.0
+		num_batches = len(validation_loader)
+		total_samples = len(validation_loader.dataset)
+		cosine_similarities = []
+
+		try:
+				class_names = validation_loader.dataset.dataset.classes
+		except:
+				class_names = validation_loader.dataset.unique_labels
+		n_classes = len(class_names)
+
+		# Define cache file with unique naming
+		cache_file = os.path.join(
+				cache_dir,
+				f"validation_embeddings_"
+				f"{finetune_strategy}_"
+				f"bs_{validation_loader.batch_size}_"
+				f"{model.__class__.__name__}_"
+				f"{re.sub(r'[/@]', '', model.name)}.pt"
+		)
+
+		# Load cached embeddings as a starting point if available
+		if cache_file and os.path.exists(cache_file):
 				if verbose:
-					print(f"Saved embeddings to {cache_file}")
-	# Compute metrics using cached or newly computed embeddings
-	in_batch_metrics = compute_in_batch_metrics(
-		validation_loader,
-		all_image_embeds, all_text_embeds, all_labels, in_batch_loss, num_batches,
-		total_samples, topK_values, n_classes, device, cosine_similarities
-	)
-	full_metrics = compute_full_metrics(
-		all_image_embeds, all_text_embeds, all_labels, class_text_embeds, full_loss,
-		num_batches, total_samples, topK_values, n_classes, device, cosine_similarities
-	)
-	retrieval_metrics = compute_retrieval_metrics(
-		all_image_embeds, all_text_embeds, all_labels, class_text_embeds,
-		topK_values, n_classes, device
-	)
+						print(f"Loading cached embeddings from {cache_file}")
+				cached = torch.load(cache_file, map_location='cpu')
+				all_image_embeds = cached['image_embeds']
+				all_text_embeds = cached['text_embeds']
+				all_labels = cached['labels']
+				class_text_embeds = cached['class_text_embeds']
 
-	if verbose:
-		print("\n--- Validation Metrics ---")
-		print("In-batch Metrics:")
-		print(json.dumps(in_batch_metrics, indent=2, ensure_ascii=False))
-		print("Full-set Metrics:")
-		print(json.dumps(full_metrics, indent=2, ensure_ascii=False))
-		print("Image-to-Text Retrieval:")
-		print(json.dumps(retrieval_metrics["img2txt"], indent=2, ensure_ascii=False))
-		print("Text-to-Image Retrieval:")
-		print(json.dumps(retrieval_metrics["txt2img"], indent=2, ensure_ascii=False))
-		print(f"Validation evaluation completed in {time.time() - start_time:.1f} sec")
+				# Recompute embeddings, loss, and cosine similarity with current model
+				temp_image_embeds = []
+				temp_text_embeds = []
+				temp_labels = []
+				with torch.no_grad():
+						for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
+								batch_size = images.size(0)
+								for start in range(0, batch_size, chunk_size):
+										end = min(start + chunk_size, batch_size)
+										chunk_images = images[start:end].to(device, non_blocking=True)
+										chunk_texts = tokenized_labels[start:end].to(device, non_blocking=True)
+										chunk_labels = labels_indices[start:end].to(device, non_blocking=True)
+										chunk_size_actual = end - start
 
-	return {
-		"in_batch_metrics": in_batch_metrics,
-		"full_metrics": full_metrics,
-		"img2txt_metrics": retrieval_metrics["img2txt"],
-		"txt2img_metrics": retrieval_metrics["txt2img"]
-	}
+										with torch.amp.autocast(device_type=device.type, enabled=True):
+												logits_per_image, logits_per_text = model(chunk_images, chunk_texts)
+												image_embeds = model.encode_image(chunk_images)
+												text_embeds = model.encode_text(chunk_texts)
 
+										# In-batch loss
+										ground_truth = torch.arange(chunk_size_actual, device=device)
+										loss_img = criterion(logits_per_image, ground_truth)
+										loss_txt = criterion(logits_per_text, ground_truth)
+										batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
+										in_batch_loss += batch_loss * (chunk_size_actual / batch_size)
+										full_loss += batch_loss * (chunk_size_actual / batch_size)
+
+										# Normalize and store updated embeddings
+										image_embeds = F.normalize(image_embeds, dim=-1).cpu()
+										text_embeds = F.normalize(text_embeds, dim=-1).cpu()
+										temp_image_embeds.append(image_embeds)
+										temp_text_embeds.append(text_embeds)
+										temp_labels.extend(chunk_labels.cpu().tolist())
+
+										# Cosine similarity
+										cos_sim = F.cosine_similarity(image_embeds, text_embeds, dim=-1).cpu().numpy()
+										cosine_similarities.extend(cos_sim)
+
+								if verbose and ((bidx + 1) % 100 == 0 or bidx + 1 == num_batches):
+										print(f"Processed {bidx + 1}/{num_batches} batches for loss recomputation")
+
+						# Replace cached embeddings with recomputed ones
+						all_image_embeds = torch.cat(temp_image_embeds, dim=0)
+						all_text_embeds = torch.cat(temp_text_embeds, dim=0)
+						all_labels = torch.tensor(temp_labels)
+
+						# Recompute class text embeddings with current model
+						text_inputs = clip.tokenize(class_names).to(device, non_blocking=True)
+						with torch.amp.autocast(device_type=device.type, enabled=True):
+								class_text_embeds = model.encode_text(text_inputs)
+						class_text_embeds = F.normalize(class_text_embeds, dim=-1).cpu()
+		else:
+				# Compute embeddings and loss from scratch
+				with torch.no_grad():
+						# Compute class text embeddings
+						text_inputs = clip.tokenize(class_names).to(device, non_blocking=True)
+						with torch.amp.autocast(device_type=device.type, enabled=True):
+								class_text_embeds = model.encode_text(text_inputs)
+						class_text_embeds = F.normalize(class_text_embeds, dim=-1).cpu()
+
+						# Single pass through validation set
+						for bidx, (images, tokenized_labels, labels_indices) in enumerate(validation_loader):
+								batch_size = images.size(0)
+								for start in range(0, batch_size, chunk_size):
+										end = min(start + chunk_size, batch_size)
+										chunk_images = images[start:end].to(device, non_blocking=True)
+										chunk_texts = tokenized_labels[start:end].to(device, non_blocking=True)
+										chunk_labels = labels_indices[start:end].to(device, non_blocking=True)
+										chunk_size_actual = end - start
+
+										with torch.amp.autocast(device_type=device.type, enabled=True):
+												logits_per_image, logits_per_text = model(chunk_images, chunk_texts)
+												image_embeds = model.encode_image(chunk_images)
+												text_embeds = model.encode_text(chunk_texts)
+
+										# In-batch loss
+										ground_truth = torch.arange(chunk_size_actual, device=device)
+										loss_img = criterion(logits_per_image, ground_truth)
+										loss_txt = criterion(logits_per_text, ground_truth)
+										batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
+										in_batch_loss += batch_loss * (chunk_size_actual / batch_size)
+										full_loss += batch_loss * (chunk_size_actual / batch_size)
+
+										# Normalize and store embeddings
+										image_embeds = F.normalize(image_embeds, dim=-1).cpu()
+										text_embeds = F.normalize(text_embeds, dim=-1).cpu()
+										all_image_embeds.append(image_embeds)
+										all_text_embeds.append(text_embeds)
+										all_labels.extend(chunk_labels.cpu().tolist())
+
+										# Cosine similarity
+										cos_sim = F.cosine_similarity(image_embeds, text_embeds, dim=-1).cpu().numpy()
+										cosine_similarities.extend(cos_sim)
+
+								if verbose and ((bidx + 1) % 100 == 0 or bidx + 1 == num_batches):
+										print(f"Processed {bidx + 1}/{num_batches} batches")
+
+						# Concatenate embeddings
+						all_image_embeds = torch.cat(all_image_embeds, dim=0)
+						all_text_embeds = torch.cat(all_text_embeds, dim=0)
+						all_labels = torch.tensor(all_labels)
+
+						# Save embeddings to cache
+						os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+						cache_content = {
+								'image_embeds': all_image_embeds,
+								'text_embeds': all_text_embeds,
+								'labels': all_labels,
+								'class_text_embeds': class_text_embeds,
+						}
+						torch.save(cache_content, cache_file)
+						if verbose:
+								print(f"Saved embeddings to {cache_file}")
+
+		# Compute metrics using the updated embeddings
+		in_batch_metrics = compute_in_batch_metrics(
+				validation_loader,
+				all_image_embeds, all_text_embeds, all_labels, in_batch_loss, num_batches,
+				total_samples, topK_values, n_classes, device, cosine_similarities
+		)
+		full_metrics = compute_full_metrics(
+				all_image_embeds, all_text_embeds, all_labels, class_text_embeds, full_loss,
+				num_batches, total_samples, topK_values, n_classes, device, cosine_similarities
+		)
+		retrieval_metrics = compute_retrieval_metrics(
+				all_image_embeds, all_text_embeds, all_labels, class_text_embeds,
+				topK_values, n_classes, device
+		)
+
+		if verbose:
+				print("\n--- Validation Metrics ---")
+				print("In-batch Metrics:")
+				print(json.dumps(in_batch_metrics, indent=2, ensure_ascii=False))
+				print("Full-set Metrics:")
+				print(json.dumps(full_metrics, indent=2, ensure_ascii=False))
+				print("Image-to-Text Retrieval:")
+				print(json.dumps(retrieval_metrics["img2txt"], indent=2, ensure_ascii=False))
+				print("Text-to-Image Retrieval:")
+				print(json.dumps(retrieval_metrics["txt2img"], indent=2, ensure_ascii=False))
+				print(f"Validation evaluation completed in {time.time() - start_time:.1f} sec")
+
+		return {
+				"in_batch_metrics": in_batch_metrics,
+				"full_metrics": full_metrics,
+				"img2txt_metrics": retrieval_metrics["img2txt"],
+				"txt2img_metrics": retrieval_metrics["txt2img"]
+		}
 
 def compute_in_batch_metrics(
 		validation_loader: DataLoader,
@@ -202,14 +251,17 @@ def compute_in_batch_metrics(
 		device: str,
 		cosine_similarities: List[float]
 ) -> Dict:
+		"""
+		Compute in-batch metrics including loss, accuracy, and top-K accuracy using updated embeddings.
+		"""
 		avg_loss = total_loss / num_batches
 		valid_k_values = [k for k in topK_values if k <= n_classes]
-		
+
 		img2txt_topk_acc = {k: 0 for k in valid_k_values}
 		txt2img_topk_acc = {k: 0 for k in topK_values}
 		img2txt_correct = 0
 		txt2img_correct = 0
-		
+
 		# Process embeddings in chunks to simulate batch-wise computation
 		batch_size = validation_loader.batch_size
 		for start in range(0, total_samples, batch_size):
@@ -218,11 +270,11 @@ def compute_in_batch_metrics(
 				chunk_txt_embeds = text_embeds[start:end].to(device)
 				chunk_labels = labels[start:end].to(device)
 				chunk_size = end - start
-				
+
 				similarity = chunk_img_embeds @ chunk_txt_embeds.T
 				img2txt_pred = similarity.argmax(dim=1)
 				txt2img_pred = similarity.T.argmax(dim=1)
-				
+
 				for i in range(chunk_size):
 						pred_label = chunk_labels[img2txt_pred[i]].item()
 						true_label = chunk_labels[i].item()
@@ -231,7 +283,7 @@ def compute_in_batch_metrics(
 						pred_label = chunk_labels[txt2img_pred[i]].item()
 						if pred_label == true_label:
 								txt2img_correct += 1
-				
+
 				for k in valid_k_values:
 						topk_img2txt = similarity.topk(min(k, chunk_size), dim=1)[1]
 						for i in range(chunk_size):
@@ -243,12 +295,12 @@ def compute_in_batch_metrics(
 								topk_labels = chunk_labels[topk_txt2img[i]].cpu()
 								if chunk_labels[i].item() in topk_labels:
 										txt2img_topk_acc[k] += 1
-		
+
 		img2txt_acc = img2txt_correct / total_samples
 		txt2img_acc = txt2img_correct / total_samples
 		img2txt_topk_acc = {k: v / total_samples for k, v in img2txt_topk_acc.items()}
 		txt2img_topk_acc = {k: v / total_samples for k, v in txt2img_topk_acc.items()}
-		
+
 		return {
 				"val_loss": float(avg_loss),
 				"img2txt_acc": float(img2txt_acc),
@@ -271,25 +323,28 @@ def compute_full_metrics(
 		device: str,
 		cosine_similarities: List[float]
 ) -> Dict:
+		"""
+		Compute full-set metrics including loss, accuracy, top-K accuracy, and MRR using updated embeddings.
+		"""
 		avg_loss = total_loss / num_batches
 		valid_k_values = [k for k in topK_values if k <= n_classes]
-		
+
 		# Image-to-text metrics
 		similarity = image_embeds.to(device) @ class_text_embeds.to(device).T
 		img2txt_pred = similarity.argmax(dim=1)
 		img2txt_acc = (img2txt_pred.cpu() == labels).float().mean().item()
-		
+
 		img2txt_topk_acc = {}
 		img2txt_mrr = []
 		for k in valid_k_values:
 				topk_indices = similarity.topk(k, dim=1)[1]
 				correct = (topk_indices == labels.unsqueeze(1).to(device)).any(dim=1)
 				img2txt_topk_acc[k] = correct.float().mean().item()
-				
+
 				ranks = similarity.argsort(dim=1, descending=True)
 				rr_indices = ranks.eq(labels.view(-1, 1).to(device)).nonzero(as_tuple=True)[1] + 1
 				img2txt_mrr.extend((1.0 / rr_indices.float()).cpu().numpy())
-		
+
 		# Text-to-image metrics
 		similarity_t2i = class_text_embeds.to(device) @ image_embeds.to(device).T
 		txt2img_topk_acc = {}
@@ -303,7 +358,7 @@ def compute_full_metrics(
 								correct += 1
 				txt2img_topk_acc[k] = correct / n_classes  # Micro-average precision per class
 		txt2img_acc = txt2img_topk_acc.get(1, 0.0)
-		
+
 		return {
 				"val_loss": float(avg_loss),
 				"img2txt_acc": float(img2txt_acc),
@@ -324,34 +379,32 @@ def compute_retrieval_metrics(
 		device: str
 ) -> Dict:
 		"""
-		Compute retrieval metrics (mP@K, mAP@K, Recall@K).
+		Compute retrieval metrics (mP@K, mAP@K, Recall@K) using updated embeddings.
 		"""
-		# Re-use get_retrieval_metrics from your original code
 		similarity_i2t = image_embeds.to(device) @ class_text_embeds.to(device).T
 		class_counts = torch.bincount(labels, minlength=n_classes)
-		
-		img2txt_metrics = get_retrieval_metrics(
-			similarity_matrix=similarity_i2t,
-			query_labels=labels,
-			candidate_labels=torch.arange(n_classes),
-			topK_values=topK_values,
-			mode="Image-to-Text",
-			class_counts=None,
-			max_k=n_classes
-		)
-		
-		similarity_t2i = class_text_embeds.to(device) @ image_embeds.to(device).T
 
-		txt2img_metrics = get_retrieval_metrics(
-			similarity_matrix=similarity_t2i,
-			query_labels=torch.arange(n_classes),
-			candidate_labels=labels,
-			topK_values=topK_values,
-			mode="Text-to-Image",
-			class_counts=class_counts,
-			max_k=None
+		img2txt_metrics = get_retrieval_metrics(
+				similarity_matrix=similarity_i2t,
+				query_labels=labels,
+				candidate_labels=torch.arange(n_classes),
+				topK_values=topK_values,
+				mode="Image-to-Text",
+				class_counts=None,
+				max_k=n_classes
 		)
-		
+
+		similarity_t2i = class_text_embeds.to(device) @ image_embeds.to(device).T
+		txt2img_metrics = get_retrieval_metrics(
+				similarity_matrix=similarity_t2i,
+				query_labels=torch.arange(n_classes),
+				candidate_labels=labels,
+				topK_values=topK_values,
+				mode="Text-to-Image",
+				class_counts=class_counts,
+				max_k=None
+		)
+
 		return {"img2txt": img2txt_metrics, "txt2img": txt2img_metrics}
 
 def evaluate_best_model(
