@@ -339,13 +339,15 @@ class CLIP(nn.Module):
 			dropout: float,
 		):
 			super().__init__()
+			self.embed_dim = embed_dim  # Add this line
 			self.context_length = context_length
+
 			################################ vision encoder ################################
 			if isinstance(vision_layers, (tuple, list)): # modified ResNet
 				vision_heads = vision_width * 32 // 64
 				self.visual = ModifiedResNet(
 					layers=vision_layers,
-					output_dim=embed_dim,
+					output_dim=self.embed_dim,
 					heads=vision_heads,
 					input_resolution=image_resolution,
 					width=vision_width
@@ -358,7 +360,7 @@ class CLIP(nn.Module):
 					width=vision_width,
 					layers=vision_layers,
 					heads=vision_heads,
-					output_dim=embed_dim,
+					output_dim=self.embed_dim,
 					dropout=dropout,
 				)
 			################################ vision encoder ################################
@@ -371,6 +373,7 @@ class CLIP(nn.Module):
 				dropout=dropout,
 			)
 			################################ text encoder ################################
+
 			self.vocab_size = vocab_size
 			# token and positional embeddings
 			self.token_embedding = nn.Embedding(vocab_size, transformer_width)
