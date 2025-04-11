@@ -267,10 +267,10 @@ def compute_full_metrics(
     similarity_t2i = class_text_embeds.to(device) @ image_embeds.to(device).T
     txt2img_topk_acc = {}
     for k in topK_values:
-        topk_indices = similarity_t2i.topk(k, dim=1)[1]
+        topk_indices = similarity_t2i.topk(k, dim=1)[1].cpu()
         correct = 0
         for i in range(n_classes):
-            retrieved_labels = labels[topk_indices[i]]#.cpu()
+            retrieved_labels = labels[topk_indices[i]]
             true_label = i
             if true_label in retrieved_labels:
                 correct += 1
