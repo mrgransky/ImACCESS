@@ -70,7 +70,7 @@ def evaluate_validation_set(
 				# Compute class text embeddings once
 				with torch.no_grad():
 						text_inputs = clip.tokenize(class_names).to(device, non_blocking=True)
-						with torch.amp.autocast(device_type=device.split(':')[0], enabled=True):
+						with torch.amp.autocast(device_type=device.type, enabled=True):
 								class_text_embeds = model.encode_text(text_inputs)
 						class_text_embeds = F.normalize(class_text_embeds, dim=-1).cpu()
 				
@@ -85,7 +85,7 @@ def evaluate_validation_set(
 										chunk_labels = labels_indices[start:end].to(device, non_blocking=True)
 										chunk_size_actual = end - start
 										
-										with torch.amp.autocast(device_type=device.split(':')[0], enabled=True):
+										with torch.amp.autocast(device_type=device.type, enabled=True):
 												logits_per_image, logits_per_text = model(chunk_images, chunk_texts)
 												image_embeds = model.encode_image(chunk_images)
 												text_embeds = model.encode_text(chunk_texts)
