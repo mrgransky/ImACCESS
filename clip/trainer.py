@@ -378,7 +378,6 @@ def compute_retrieval_metrics(
 
 		return {"img2txt": img2txt_metrics, "txt2img": txt2img_metrics}
 
-
 def evaluate_best_model(
 		model,
 		validation_loader,
@@ -728,7 +727,7 @@ class EarlyStopping:
 		# 2. Check if the current value is an improvement over the best score seen so far.
 		improved = self.is_improvement(current_value)
 		if improved:
-			print(f"\tImprovement detected! Best: {self.best_score if self.best_score is not None else 'N/A'} -> {current_value:.6f} (delta: {self.min_delta})")
+			print(f"\tImprovement detected! Best: {self.best_score if self.best_score is not None else 'N/A'} -> {current_value} (delta: {self.min_delta})")
 			self.best_score = current_value         # Update the best score
 			self.best_epoch = epoch                 # Record the epoch number of this best score
 			self.stopped_epoch = epoch              # Update the epoch where improvement last happened
