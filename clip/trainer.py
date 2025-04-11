@@ -129,6 +129,7 @@ def evaluate_validation_set(
 		
 		# Compute metrics
 		in_batch_metrics = compute_in_batch_metrics(
+				validation_loader,
 				all_image_embeds, all_text_embeds, all_labels, in_batch_loss, num_batches,
 				total_samples, topK_values, n_classes, device, cosine_similarities
 		)
@@ -162,6 +163,7 @@ def evaluate_validation_set(
 		}
 
 def compute_in_batch_metrics(
+		validation_loader: DataLoader,
     image_embeds: torch.Tensor,
     text_embeds: torch.Tensor,
     labels: torch.Tensor,
