@@ -2374,50 +2374,50 @@ def full_finetune(
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
 
-		# all metrics in one using caching mechanism:
-		validation_results = evaluate_validation_set(
+		# # all metrics in one using caching mechanism:
+		# validation_results = evaluate_validation_set(
+		# 	model=model,
+		# 	validation_loader=validation_loader,
+		# 	criterion=criterion,
+		# 	device=device,
+		# 	topK_values=topk_values,
+		# 	finetune_strategy=mode,
+		# 	cache_dir=results_dir,
+		# 	verbose=True,
+		# )
+		# in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
+		# full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
+		# retrieval_metrics_per_epoch = {
+		# 	"img2txt": validation_results["img2txt_metrics"],
+		# 	"txt2img": validation_results["txt2img_metrics"]
+		# }
+
+		# in-batch validation metrics:
+		in_batch_loss_acc_metrics_per_epoch = get_in_batch_validation_metrics(
 			model=model,
 			validation_loader=validation_loader,
 			criterion=criterion,
 			device=device,
 			topK_values=topk_values,
-			finetune_strategy=mode,
-			cache_dir=results_dir,
-			verbose=True,
 		)
-		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
-		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
-		retrieval_metrics_per_epoch = {
-			"img2txt": validation_results["img2txt_metrics"],
-			"txt2img": validation_results["txt2img_metrics"]
-		}
 
-		# # in-batch validation metrics:
-		# in_batch_loss_acc_metrics_per_epoch = get_in_batch_validation_metrics(
-		# 	model=model,
-		# 	validation_loader=validation_loader,
-		# 	criterion=criterion,
-		# 	device=device,
-		# 	topK_values=topk_values,
-		# )
-
-		# # full-set validation metrics:
-		# full_val_loss_acc_metrics_per_epoch = get_full_set_validation_metrics(
-		# 	model=model,
-		# 	validation_loader=validation_loader,
-		# 	criterion=criterion,
-		# 	device=device,
-		# 	print_every=print_every,
-		# 	topK_values=topk_values
-		# )
+		# full-set validation metrics:
+		full_val_loss_acc_metrics_per_epoch = get_full_set_validation_metrics(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			device=device,
+			print_every=print_every,
+			topK_values=topk_values
+		)
 		
-		# # retrieval-based metrics
-		# retrieval_metrics_per_epoch = evaluate_retrieval_performance(
-		# 	model=model,
-		# 	validation_loader=validation_loader,
-		# 	device=device,
-		# 	topK_values=topk_values,
-		# )
+		# retrieval-based metrics
+		retrieval_metrics_per_epoch = evaluate_retrieval_performance(
+			model=model,
+			validation_loader=validation_loader,
+			device=device,
+			topK_values=topk_values,
+		)
 
 		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
 		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
