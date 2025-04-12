@@ -6,16 +6,16 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
+#SBATCH --cpus-per-task=18
 #SBATCH --partition=gpu
-#SBATCH --constraint=gpumem_44 # must be adjusted dynamically
-#SBATCH --mem=128G # must be adjusted dynamically
-#SBATCH --gres=gpu:rtx100:1 # must be adjusted dynamically
-#SBATCH --time=07-00:00:00 # must be adjusted dynamically
+# #SBATCH --constraint=gpumem_32 # must be adjusted dynamically
+#SBATCH --mem=64G # must be adjusted dynamically
+#SBATCH --gres=gpu:teslav100:1 # must be adjusted dynamically
+#SBATCH --time=05-00:00:00 # must be adjusted dynamically
 # #SBATCH --array=0-11 # NA
-#SBATCH --array=12-23 # H4
+# #SBATCH --array=12-23 # H4
 # #SBATCH --array=24-35 # EU
-# #SBATCH --array=36-47 # WWII
+#SBATCH --array=36-47 # WWII
 # #SBATCH --array=48-59 # SMU
 
 ######SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
@@ -29,7 +29,7 @@ ch="#"
 echo -e "${txt//?/$ch}\n${txt}\n${txt//?/$ch}"
 echo "${stars// /*}"
 echo "CPUS/NODE: $SLURM_JOB_CPUS_PER_NODE, MEM/NODE(--mem): $SLURM_MEM_PER_NODE"
-echo "HOST: $SLURM_SUBMIT_HOST @ $SLURM_JOB_ACCOUNT, CLUSTER: $SLURM_CLUSTER_NAME, Partition: $SLURM_JOB_PARTITION"
+echo "HOST: $SLURM_SUBMIT_HOST @ $SLURM_JOB_ACCOUNT, CLUSTER: $SLURM_CLUSTER_NAME, Partition: $SLURM_JOB_PARTITION : $SLURM_JOB_GPUS"
 echo "JOBname: $SLURM_JOB_NAME, ID: $SLURM_JOB_ID, WRK_DIR: $SLURM_SUBMIT_DIR"
 echo "nNODES: $SLURM_NNODES, NODELIST: $SLURM_JOB_NODELIST, NODE_ID: $SLURM_NODEID"
 echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_NPROCS"
@@ -102,9 +102,9 @@ fi
 INIT_LRS=(1e-5 1e-5 1e-5 5e-5 1e-5)
 INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
 DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
-EPOCHS=(50 50 150 150 150)
-LORA_RANKS=(4 4 8 8 8)
-LORA_ALPHAS=(16 16 16 16 16)
+EPOCHS=(60 60 100 100 100)
+LORA_RANKS=(4 4 4 4 4)
+LORA_ALPHAS=(32.0 32.0 32.0 32.0 32.0)
 LORA_DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
 BATCH_SIZES=(64 64 64 64 64)
 PRINT_FREQUENCIES=(750 750 50 50 10)
@@ -141,8 +141,7 @@ fi
 # Debugging output
 echo "=== CONFIGURATION ==="
 echo "SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
-echo "DATASET_INDEX: $dataset_index"
-echo "DATASET: ${DATASETS[$dataset_index]}"
+echo "DATASET (INDEX): $dataset_index : ${DATASETS[$dataset_index]}"
 echo "STRATEGY_INDEX: $strategy_index"
 echo "FINETUNE_STRATEGY: ${FINETUNE_STRATEGIES[$strategy_index]}"
 echo "ARCHITECTURE_INDEX: $architecture_index"
@@ -179,7 +178,6 @@ fi
 # fi
 
 echo "Starting Python execution for task $SLURM_ARRAY_TASK_ID"
-echo "DATASET: ${DATASETS[$dataset_index]}"
 echo "ADJUSTED_BATCH_SIZE: ${ADJUSTED_BATCH_SIZE}"
 
 # Run training command
