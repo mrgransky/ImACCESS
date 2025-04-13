@@ -501,7 +501,6 @@ def compute_full_set_metrics_from_cache(
 				i2t_similarity: torch.Tensor,
 				t2i_similarity: torch.Tensor,
 				labels: torch.Tensor,
-				loss: float,
 				n_classes: int,
 				topK_values: List[int],
 				device: str
@@ -513,7 +512,6 @@ def compute_full_set_metrics_from_cache(
 				i2t_similarity: Image-to-text similarity matrix
 				t2i_similarity: Text-to-image similarity matrix
 				labels: Image labels
-				loss: Validation loss value
 				n_classes: Number of classes
 				topK_values: List of K values for top-K metrics
 				device: Computation device
@@ -562,7 +560,6 @@ def compute_full_set_metrics_from_cache(
 		
 		# Return metrics in the expected format
 		return {
-				"val_loss": float(loss),
 				"img2txt_acc": float(img2txt_acc),
 				"txt2img_acc": float(txt2img_acc),
 				"img2txt_topk_acc": {str(k): float(v) for k, v in img2txt_topk_acc.items()},
@@ -2338,8 +2335,7 @@ def progressive_unfreeze_finetune(
 			f'@ Epoch {epoch + 1}:\n'
 			f'\t[LOSS] {mode}'
 			f'(Training): {avg_epoch_train_loss} '
-			f'Validation(in-batch): {in_batch_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))} '
-			f'Validation(full): {full_val_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
+			f'Validation(in-batch): {in_batch_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
 			f'\tValidation Top-k Accuracy:\n'
 			f'\tIn-batch:\n'
 			f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
@@ -2666,10 +2662,11 @@ def lora_finetune(
 		)
 		img2txt_metrics_all_epochs.append(retrieval_metrics["img2txt"])
 		txt2img_metrics_all_epochs.append(retrieval_metrics["txt2img"])
+		current_val_loss = in_batch_loss_acc_metrics_per_epoch.get("val_loss")
 
 		print(
 			f'@ Epoch {epoch + 1}:\n'
-			f'\t[LOSS] {mode}: {avg_training_loss} | Valid: {in_batch_loss_acc_metrics_per_epoch.get("val_loss")}\n'
+			f'\t[LOSS] {mode}: {avg_training_loss} | Validation: {current_val_loss}\n'
 			f'\tIn-batch Validation [Top-1 Accuracy]: '
 			f'[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_acc")} '
 			f'[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_acc")}'
@@ -2678,7 +2675,6 @@ def lora_finetune(
 			f'[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_acc")}'
 		)
 
-		current_val_loss = in_batch_loss_acc_metrics_per_epoch.get("val_loss")
 
 		# Use our unified checkpointing function
 		best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
@@ -2997,8 +2993,7 @@ def full_finetune(
 			f'@ Epoch {epoch + 1}:\n'
 			f'\t[LOSS] {mode}'
 			f'(Training): {avg_training_loss} '
-			f'Validation(in-batch): {in_batch_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))} '
-			f'Validation(full): {full_val_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
+			f'Validation(in-batch): {in_batch_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
 			f'\tValidation Top-k Accuracy:\n'
 			f'\tIn-batch:\n'
 			f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
