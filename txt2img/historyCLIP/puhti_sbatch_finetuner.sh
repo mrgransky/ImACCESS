@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH --account=project_2009043
-#SBATCH --job-name=h4_x_str_x_arch
+#SBATCH --job-name=history_x4_x_str_x_arch
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=32
-#SBATCH --mem=96G
+#SBATCH --cpus-per-task=24
+#SBATCH --mem=80G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=12-23 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
