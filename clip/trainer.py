@@ -2,17 +2,6 @@ from utils import *
 from model import get_lora_clip
 from visualize import plot_loss_accuracy_metrics, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics
 
-import hashlib
-import os
-import time
-import json
-import re
-import torch
-import torch.nn.functional as F
-import numpy as np
-from torch.utils.data import DataLoader
-from typing import List, Dict, Any, Optional, Tuple
-
 def get_model_hash(model: torch.nn.Module) -> str:
     """
     Generate a hash of model parameters to detect when model weights have changed.
@@ -173,77 +162,6 @@ def compute_direct_in_batch_metrics(
         "img2txt_topk_acc": {str(k): float(v) for k, v in img2txt_topk_acc.items()},
         "txt2img_topk_acc": {str(k): float(v) for k, v in txt2img_topk_acc.items()},
         "cosine_similarity": float(avg_cos_sim)
-    }
-
-def compute_full_set_metrics_from_cache(
-        i2t_similarity: torch.Tensor,
-        t2i_similarity: torch.Tensor,
-        labels: torch.Tensor,
-        loss: float,
-        n_classes: int,
-        topK_values: List[int],
-        device: str
-) -> Dict:
-    """
-    Compute full-set metrics using pre-computed similarity matrices.
-    
-    Args:
-        i2t_similarity: Image-to-text similarity matrix
-        t2i_similarity: Text-to-image similarity matrix
-        labels: Image labels
-        loss: Validation loss value
-        n_classes: Number of classes
-        topK_values: List of K values for top-K metrics
-        device: Computation device
-        
-    Returns:
-        Dict of full-set metrics
-    """
-    # Filter valid K values
-    valid_k_values = [k for k in topK_values if k <= n_classes]
-    
-    # Image-to-text accuracy metrics
-    img2txt_preds = torch.argmax(i2t_similarity, dim=1)
-    img2txt_acc = (img2txt_preds == labels).float().mean().item()
-    
-    # Image-to-text top-K accuracy
-    img2txt_topk_acc = {}
-    for k in valid_k_values:
-        topk_indices = i2t_similarity.topk(k, dim=1)[1]
-        correct = (topk_indices == labels.unsqueeze(1)).any(dim=1)
-        img2txt_topk_acc[k] = correct.float().mean().item()
-    
-    # Text-to-image top-K accuracy
-    txt2img_topk_acc = {}
-    for k in topK_values:
-        class_correct = 0
-        effective_k = min(k, i2t_similarity.size(0))
-        
-        topk_indices = t2i_similarity.topk(effective_k, dim=1)[1]
-        for class_idx in range(n_classes):
-            retrieved_labels = labels[topk_indices[class_idx]]
-            if class_idx in retrieved_labels:
-                class_correct += 1
-        
-        txt2img_topk_acc[k] = class_correct / n_classes
-    
-    # Set top-1 text-to-image accuracy
-    txt2img_acc = txt2img_topk_acc.get(1, 0.0)
-    
-    # Compute MRR (Mean Reciprocal Rank)
-    ranks = i2t_similarity.argsort(dim=1, descending=True)
-    rr_indices = ranks.eq(labels.view(-1, 1)).nonzero(as_tuple=True)[1] + 1
-    img2txt_mrr = (1.0 / rr_indices.float()).mean().item()
-    
-    # Return metrics in the expected format
-    return {
-        "val_loss": float(loss),
-        "img2txt_acc": float(img2txt_acc),
-        "txt2img_acc": float(txt2img_acc),
-        "img2txt_topk_acc": {str(k): float(v) for k, v in img2txt_topk_acc.items()},
-        "txt2img_topk_acc": {str(k): float(v) for k, v in txt2img_topk_acc.items()},
-        "mean_reciprocal_rank": float(img2txt_mrr),
-        "cosine_similarity": 0.0  # Placeholder since we don't have direct pairs
     }
 
 def compute_retrieval_metrics_from_similarity(
@@ -578,15 +496,6 @@ def get_validation_metrics(
         print(f"Validation evaluation completed in {time.time() - start_time:.1f} sec")
     
     return result
-
-def get_model_hash(model: torch.nn.Module) -> str:
-		"""
-		Generate a hash of model parameters to detect model changes.
-		"""
-		hasher = hashlib.md5()
-		for param in model.parameters():
-				hasher.update(param.data.cpu().numpy().tobytes())
-		return hasher.hexdigest()
 
 def compute_full_set_metrics_from_cache(
 				i2t_similarity: torch.Tensor,

@@ -1191,7 +1191,7 @@ def plot_loss_accuracy_metrics(
 	fig.savefig(losses_file_path, dpi=DPI, bbox_inches='tight')
 	plt.close(fig)
 	
-	# 2. Image-to-Text Top-K[in-batch matching] Validation Accuracy plot
+	# 1. Image-to-Text Top-K[in-batch matching] Validation Accuracy plot
 	if in_batch_topk_val_accuracy_i2t_list:
 		topk_values = list(in_batch_topk_val_accuracy_i2t_list[0].keys())
 		fig, ax = plt.subplots(figsize=figure_size)
@@ -1216,7 +1216,8 @@ def plot_loss_accuracy_metrics(
 		ax.set_ylim(-0.05, 1.05)
 		ax.legend(
 			fontsize=9, 
-			loc='best', 
+			loc='best',
+			ncol=len(topk_values),
 			frameon=True, 
 			fancybox=True,
 			shadow=True,
@@ -1253,6 +1254,7 @@ def plot_loss_accuracy_metrics(
 		ax.legend(
 			fontsize=9,
 			loc='best',
+			ncol=len(topk_values),
 			frameon=True,
 			fancybox=True,
 			shadow=True,
@@ -1287,6 +1289,7 @@ def plot_loss_accuracy_metrics(
 		ax.legend(
 			fontsize=9,
 			loc='best',
+			ncol=len(topk_values),
 			frameon=True,
 			fancybox=True,
 			shadow=True,
@@ -1323,6 +1326,7 @@ def plot_loss_accuracy_metrics(
 		ax.legend(
 			fontsize=9, 
 			loc='best',
+			ncol=len(topk_values),
 			frameon=True, 
 			fancybox=True, 
 			shadow=True,
@@ -1353,7 +1357,7 @@ def plot_loss_accuracy_metrics(
 		)
 		
 		ax.set_ylim(-0.05, 1.05)
-		ax.legend(fontsize=10, loc='best')
+		ax.legend(fontsize=10, loc='best', frameon=True)
 		fig.tight_layout()
 		fig.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
 		plt.close(fig)
