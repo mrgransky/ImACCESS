@@ -450,7 +450,6 @@ def get_validation_metrics(
         i2t_similarity=i2t_similarity,
         t2i_similarity=t2i_similarity,
         labels=device_labels,
-        loss=in_batch_metrics["val_loss"],  # Use in-batch loss for consistency
         n_classes=n_classes,
         topK_values=topK_values,
         device=device
@@ -2294,48 +2293,67 @@ def progressive_unfreeze_finetune(
 				else:
 					pass
 
-		avg_epoch_train_loss = epoch_train_loss / num_train_batches if num_train_batches > 0 and trainable_params_exist else 0.0
-		training_losses.append(avg_epoch_train_loss)
+		avg_training_loss = epoch_train_loss / num_train_batches if num_train_batches > 0 and trainable_params_exist else 0.0
+		training_losses.append(avg_training_loss)
 
 		# --- Validation ---
 		print(f"Epoch: {epoch+1} validation...")
-
-		# Compute in-batch loss/accuracy metrics on validation set:
-		in_batch_loss_acc_metrics_per_epoch = get_in_batch_validation_metrics(
+		# all metrics in one using caching mechanism:
+		validation_results = get_validation_metrics(
 			model=model,
 			validation_loader=validation_loader,
 			criterion=criterion,
-			device=device,
-			topK_values=topk_values
-		)
-		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
-
-		full_val_loss_acc_metrics_per_epoch = get_full_set_validation_metrics(
-			model=model,
-			validation_loader=validation_loader,
-			criterion=criterion,
-			device=device,
-			print_every=print_every,
-			topK_values=topk_values
-		)
-		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
-
-		# Compute retrieval-based metrics
-		retrieval_metrics_per_epoch = evaluate_retrieval_performance(
-			model=model,
-			validation_loader=validation_loader,
 			device=device,
 			topK_values=topk_values,
+			finetune_strategy=mode,
+			cache_dir=results_dir,
+			verbose=True,
 		)
+		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
+		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
+		retrieval_metrics_per_epoch = {
+			"img2txt": validation_results["img2txt_metrics"],
+			"txt2img": validation_results["txt2img_metrics"]
+		}
+
+		# # in-batch validation metrics:
+		# in_batch_loss_acc_metrics_per_epoch = get_in_batch_validation_metrics(
+		# 	model=model,
+		# 	validation_loader=validation_loader,
+		# 	criterion=criterion,
+		# 	device=device,
+		# 	topK_values=topk_values,
+		# )
+
+		# # full-set validation metrics:
+		# full_val_loss_acc_metrics_per_epoch = get_full_set_validation_metrics(
+		# 	model=model,
+		# 	validation_loader=validation_loader,
+		# 	criterion=criterion,
+		# 	device=device,
+		# 	print_every=print_every,
+		# 	topK_values=topk_values
+		# )
+		
+		# # retrieval-based metrics
+		# retrieval_metrics_per_epoch = evaluate_retrieval_performance(
+		# 	model=model,
+		# 	validation_loader=validation_loader,
+		# 	device=device,
+		# 	topK_values=topk_values,
+		# )
+
+		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
+		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
 		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
 		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
+		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
 
-		current_val_loss = in_batch_loss_acc_metrics_per_epoch.get("val_loss", float('inf')) # Handle missing key safely
 		print(
 			f'@ Epoch {epoch + 1}:\n'
 			f'\t[LOSS] {mode}'
-			f'(Training): {avg_epoch_train_loss} '
-			f'Validation(in-batch): {in_batch_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
+			f'(Training): {avg_training_loss} '
+			f'Validation(in-batch): {current_val_loss}\n'
 			f'\tValidation Top-k Accuracy:\n'
 			f'\tIn-batch:\n'
 			f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
@@ -2344,7 +2362,6 @@ def progressive_unfreeze_finetune(
 			f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
 			f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
-
 		print(f"Retrieval Metrics:\n")
 		print(f"Image-to-Text Retrieval: {retrieval_metrics_per_epoch['img2txt']}")
 		print(f"Text-to-Image Retrieval: {retrieval_metrics_per_epoch['txt2img']}")
@@ -2634,47 +2651,73 @@ def lora_finetune(
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
 
-		# Compute in-batch loss/accuracy metrics on validation set:
-		in_batch_loss_acc_metrics_per_epoch = get_in_batch_validation_metrics(
+		# all metrics in one using caching mechanism:
+		validation_results = get_validation_metrics(
 			model=model,
 			validation_loader=validation_loader,
 			criterion=criterion,
-			device=device,
-			topK_values=topk_values
-		)
-		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
-
-		full_val_loss_acc_metrics_per_epoch = get_full_set_validation_metrics(
-			model=model,
-			validation_loader=validation_loader,
-			criterion=criterion,
-			device=device,
-			print_every=print_every,
-			topK_values=topk_values
-		)
-		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
-
-		retrieval_metrics = evaluate_retrieval_performance(
-			model=model,
-			validation_loader=validation_loader,
 			device=device,
 			topK_values=topk_values,
+			finetune_strategy=mode,
+			cache_dir=results_dir,
+			verbose=True,
 		)
-		img2txt_metrics_all_epochs.append(retrieval_metrics["img2txt"])
-		txt2img_metrics_all_epochs.append(retrieval_metrics["txt2img"])
-		current_val_loss = in_batch_loss_acc_metrics_per_epoch.get("val_loss")
+		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
+		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
+		retrieval_metrics_per_epoch = {
+			"img2txt": validation_results["img2txt_metrics"],
+			"txt2img": validation_results["txt2img_metrics"]
+		}
+
+		# # in-batch validation metrics:
+		# in_batch_loss_acc_metrics_per_epoch = get_in_batch_validation_metrics(
+		# 	model=model,
+		# 	validation_loader=validation_loader,
+		# 	criterion=criterion,
+		# 	device=device,
+		# 	topK_values=topk_values,
+		# )
+
+		# # full-set validation metrics:
+		# full_val_loss_acc_metrics_per_epoch = get_full_set_validation_metrics(
+		# 	model=model,
+		# 	validation_loader=validation_loader,
+		# 	criterion=criterion,
+		# 	device=device,
+		# 	print_every=print_every,
+		# 	topK_values=topk_values
+		# )
+		
+		# # retrieval-based metrics
+		# retrieval_metrics_per_epoch = evaluate_retrieval_performance(
+		# 	model=model,
+		# 	validation_loader=validation_loader,
+		# 	device=device,
+		# 	topK_values=topk_values,
+		# )
+
+		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
+		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
+		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
+		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
+		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
 
 		print(
 			f'@ Epoch {epoch + 1}:\n'
-			f'\t[LOSS] {mode}: {avg_training_loss} | Validation: {current_val_loss}\n'
-			f'\tIn-batch Validation [Top-1 Accuracy]: '
-			f'[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_acc")} '
-			f'[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_acc")}'
-			f'\n\tFull Validation Set [Top-1 Accuracy]'
-			f'[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_acc")} '
-			f'[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_acc")}'
+			f'\t[LOSS] {mode}'
+			f'(Training): {avg_training_loss} '
+			f'Validation(in-batch): {current_val_loss}\n'
+			f'\tValidation Top-k Accuracy:\n'
+			f'\tIn-batch:\n'
+			f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t\t[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
+			f'\tFull Validation Set:\n'
+			f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
-
+		print(f"Retrieval Metrics:\n")
+		print(f"Image-to-Text Retrieval: {retrieval_metrics_per_epoch['img2txt']}")
+		print(f"Text-to-Image Retrieval: {retrieval_metrics_per_epoch['txt2img']}")
 
 		# Use our unified checkpointing function
 		best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
@@ -2686,8 +2729,8 @@ def lora_finetune(
 			early_stopping=early_stopping,
 			checkpoint_path=mdl_fpth,
 			epoch=epoch,
-			img2txt_metrics=retrieval_metrics["img2txt"],
-			txt2img_metrics=retrieval_metrics["txt2img"]
+			img2txt_metrics=retrieval_metrics_per_epoch.get("img2txt"),
+			txt2img_metrics=retrieval_metrics_per_epoch.get("txt2img")
 		)
 
 		if early_stopping.should_stop(
@@ -2988,12 +3031,13 @@ def full_finetune(
 		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
 		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
 		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
+		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
 
 		print(
 			f'@ Epoch {epoch + 1}:\n'
 			f'\t[LOSS] {mode}'
 			f'(Training): {avg_training_loss} '
-			f'Validation(in-batch): {in_batch_loss_acc_metrics_per_epoch.get("val_loss", float("inf"))}\n'
+			f'Validation(in-batch): {current_val_loss}\n'
 			f'\tValidation Top-k Accuracy:\n'
 			f'\tIn-batch:\n'
 			f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
@@ -3006,8 +3050,6 @@ def full_finetune(
 		print(f"Image-to-Text Retrieval: {retrieval_metrics_per_epoch['img2txt']}")
 		print(f"Text-to-Image Retrieval: {retrieval_metrics_per_epoch['txt2img']}")
 
-		# Early stopping
-		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
 		
 		# --- Checkpointing Best Model ---
 		best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
