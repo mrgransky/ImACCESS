@@ -300,230 +300,211 @@ def compute_retrieval_metrics_from_similarity(
 		return metrics
 
 def get_validation_metrics(
-				model: torch.nn.Module,
-				validation_loader: DataLoader,
-				criterion: torch.nn.Module,
-				device: str,
-				topK_values: List[int],
-				finetune_strategy: str,
-				cache_dir: str,
-				print_every: int = 100,
-				chunk_size: int = 1024,
-				verbose: bool = True,
-				max_in_batch_samples: int = 320,  # For in-batch metrics only
-				force_recompute: bool = False
-) -> Dict:
-		"""
-		Unified validation function that computes all validation metrics efficiently with caching.
-		
-		Args:
-				model: The CLIP model to evaluate
-				validation_loader: DataLoader for validation dataset
-				criterion: Loss function
-				device: Device to use for computation
-				topK_values: List of K values for top-K metrics
-				finetune_strategy: Strategy name (for cache file naming)
-				cache_dir: Directory to store cache files
-				print_every: How often to print progress
-				chunk_size: Size of chunks for processing large tensors
-				verbose: Whether to print verbose output
-				max_in_batch_samples: Maximum samples to use for in-batch metrics
-				force_recompute: Whether to force recomputation instead of using cache
-				
-		Returns:
-				Dict containing all validation metrics (in-batch, full-set, and retrieval)
-		"""
-		model.eval()
-		torch.cuda.empty_cache()
-		start_time = time.time()
-		
-		# Get dataset info
+		model: torch.nn.Module,
+		validation_loader: DataLoader,
+		criterion: torch.nn.Module,
+		device: str,
+		topK_values: List[int],
+		cache_dir: str,
+		finetune_strategy: str,
+		print_every: int = 100,
+		chunk_size: int = 1024,
+		verbose: bool = True,
+		max_in_batch_samples: int = 320,  # For in-batch metrics only
+		force_recompute: bool = False
+	) -> Dict:
+
+	model.eval()
+	torch.cuda.empty_cache()
+	start_time = time.time()
+	
+	# Get dataset info
+	try:
+			class_names = validation_loader.dataset.dataset.classes
+	except:
+			class_names = validation_loader.dataset.unique_labels
+	
+	n_classes = len(class_names)
+	total_samples = len(validation_loader.dataset)
+	
+	# Define cache file path with unique naming based on model and dataset
+	os.makedirs(cache_dir, exist_ok=True)
+	cache_file = os.path.join(
+		cache_dir,
+		f"validation_embeddings_"
+		f"{finetune_strategy}_"
+		f"bs_{validation_loader.batch_size}_"
+		f"{model.__class__.__name__}_"
+		f"{re.sub(r'[/@]', '', model.name)}.pt"
+	)
+	
+	# Step 1: Compute in-batch metrics using a small subset for efficiency
+	in_batch_start = time.time()
+	in_batch_metrics = compute_direct_in_batch_metrics(
+		model=model,
+		validation_loader=validation_loader,
+		criterion=criterion,
+		device=device,
+		topK_values=topK_values,
+		max_samples=max_in_batch_samples
+	)
+	if verbose:
+			print(f"Direct in-batch metrics computed in {time.time() - in_batch_start:.1f} sec")
+	
+	# Initialize cache data
+	cache_loaded = False
+	all_image_embeds = None
+	all_text_embeds = None
+	class_text_embeds = None
+	all_labels = None
+	i2t_similarity = None
+	t2i_similarity = None
+	
+	# Step 2: Try to load cache if available
+	if os.path.exists(cache_file) and not force_recompute:
+		if verbose:
+			print(f"Loading cached embeddings from {cache_file}")
 		try:
-				class_names = validation_loader.dataset.dataset.classes
-		except:
-				class_names = validation_loader.dataset.unique_labels
-		
-		n_classes = len(class_names)
-		total_samples = len(validation_loader.dataset)
-		
-		# Define cache file path with unique naming based on model and dataset
-		os.makedirs(cache_dir, exist_ok=True)
-		cache_file = os.path.join(
-				cache_dir,
-				f"validation_embeddings_"
-				f"{finetune_strategy}_"
-				f"bs_{validation_loader.batch_size}_"
-				f"{model.__class__.__name__}_"
-				f"{re.sub(r'[/@]', '', model.name)}.pt"
-		)
-		
-		# Step 1: Compute in-batch metrics using a small subset for efficiency
-		in_batch_start = time.time()
-		in_batch_metrics = compute_direct_in_batch_metrics(
-				model=model,
-				validation_loader=validation_loader,
-				criterion=criterion,
-				device=device,
-				topK_values=topK_values,
-				max_samples=max_in_batch_samples
-		)
-		if verbose:
-				print(f"Direct in-batch metrics computed in {time.time() - in_batch_start:.1f} sec")
-		
-		# Initialize cache data
-		cache_loaded = False
-		all_image_embeds = None
-		all_text_embeds = None
-		class_text_embeds = None
-		all_labels = None
-		i2t_similarity = None
-		t2i_similarity = None
-		
-		# Step 2: Try to load cache if available
-		if os.path.exists(cache_file) and not force_recompute:
-				if verbose:
-						print(f"Loading cached embeddings from {cache_file}")
-				try:
-						cache_start = time.time()
-						cached = torch.load(cache_file, map_location='cpu')
-						all_image_embeds = cached.get('image_embeds')
-						all_text_embeds = cached.get('text_embeds')
-						all_labels = cached.get('labels')
-						cache_loaded = True
-						if verbose:
-								print(f"Cache loaded in {time.time() - cache_start:.1f} sec")
-				except Exception as e:
-						if verbose:
-								print(f"Error loading cache: {e}. Computing from scratch.")
-						cache_loaded = False
-		
-		# Step 3: Process embeddings (either from cache or compute new ones)
-		embed_start = time.time()
-		
-		# Always recompute class text embeddings with current model state
-		with torch.no_grad():
-				text_inputs = clip.tokenize(class_names).to(device, non_blocking=True)
-				with torch.amp.autocast(device_type=device.type, enabled=True):
-						class_text_embeds = model.encode_text(text_inputs)
-				class_text_embeds = F.normalize(class_text_embeds, dim=-1).cpu()
-		
-		if not cache_loaded or all_image_embeds is None:
-				# Need to compute embeddings from scratch
-				if verbose:
-						print("Computing embeddings from scratch")
-				
-				# Initialize lists to store embeddings and labels
-				all_image_embeds = []
-				all_labels = []
-				
-				# Process validation dataset in batches
-				with torch.no_grad():
-						for bidx, (images, _, labels_indices) in enumerate(validation_loader):
-								# Move data to device
-								images = images.to(device, non_blocking=True)
-								
-								# Process in chunks if needed for very large batches
-								for start in range(0, images.size(0), chunk_size):
-										end = min(start + chunk_size, images.size(0))
-										chunk_images = images[start:end]
-										
-										# Compute image embeddings with mixed precision
-										with torch.amp.autocast(device_type=device.type, enabled=True):
-												image_embeds = model.encode_image(chunk_images)
-										
-										# Normalize embeddings
-										image_embeds = F.normalize(image_embeds, dim=-1).cpu()
-										
-										# Store embeddings
-										all_image_embeds.append(image_embeds)
-								
-								# Store labels
-								all_labels.extend(labels_indices.cpu().tolist())
-								
-								# Print progress
-								if verbose and (bidx + 1) % print_every == 0:
-										print(f"Processed {bidx + 1}/{len(validation_loader)} batches")
-				
-				# Concatenate all embeddings
-				all_image_embeds = torch.cat(all_image_embeds, dim=0)
-				all_labels = torch.tensor(all_labels)
-				
-				# Save cache for future use
-				try:
-						cache_content = {
-								'image_embeds': all_image_embeds,
-								'labels': all_labels,
-						}
-						torch.save(cache_content, cache_file)
-						if verbose:
-								print(f"Saved embeddings to {cache_file}")
-				except Exception as e:
-						if verbose:
-								print(f"Warning: Failed to save cache: {e}")
-		
-		# Step 4: Compute similarity matrices for metrics
-		device_image_embeds = all_image_embeds.to(device)
-		device_class_text_embeds = class_text_embeds.to(device)
-		device_labels = all_labels.to(device)
-		
-		# Compute similarity matrices
-		i2t_similarity = device_image_embeds @ device_class_text_embeds.T
-		t2i_similarity = device_class_text_embeds @ device_image_embeds.T
-		
-		if verbose:
-				print(f"Embeddings processed in {time.time() - embed_start:.1f} sec")
-		
-		# Step 5: Compute full-set metrics using cached embeddings and similarities
-		full_set_start = time.time()
-		full_metrics = compute_full_set_metrics_from_cache(
-				i2t_similarity=i2t_similarity,
-				t2i_similarity=t2i_similarity,
-				labels=device_labels,
-				n_classes=n_classes,
-				topK_values=topK_values,
-				device=device
-		)
-		if verbose:
-				print(f"Full-set metrics computed in {time.time() - full_set_start:.1f} sec")
-		
-		# Step 6: Compute retrieval metrics using cached embeddings and similarities
-		retrieval_start = time.time()
-		img2txt_metrics = compute_retrieval_metrics_from_similarity(
-				similarity_matrix=i2t_similarity,
-				query_labels=device_labels,
-				candidate_labels=torch.arange(n_classes, device=device),
-				topK_values=topK_values,
-				mode="Image-to-Text",
-				max_k=n_classes
-		)
-		
-		# Get class counts for text-to-image retrieval
-		class_counts = torch.bincount(device_labels, minlength=n_classes)
-		
-		txt2img_metrics = compute_retrieval_metrics_from_similarity(
-				similarity_matrix=t2i_similarity,
-				query_labels=torch.arange(n_classes, device=device),
-				candidate_labels=device_labels,
-				topK_values=topK_values,
-				mode="Text-to-Image",
-				class_counts=class_counts
-		)
-		
-		if verbose:
-				print(f"Retrieval metrics computed in {time.time() - retrieval_start:.1f} sec")
-		
-		# Step 7: Return all metrics in the expected format
-		result = {
-				"in_batch_metrics": in_batch_metrics,
-				"full_metrics": full_metrics,
-				"img2txt_metrics": img2txt_metrics,
-				"txt2img_metrics": txt2img_metrics
-		}
-		
-		if verbose:
-				print(f"Validation evaluation completed in {time.time() - start_time:.1f} sec")
-		
-		return result
+			cache_start = time.time()
+			cached = torch.load(cache_file, map_location='cpu')
+			all_image_embeds = cached.get('image_embeds')
+			all_text_embeds = cached.get('text_embeds')
+			all_labels = cached.get('labels')
+			cache_loaded = True
+			if verbose:
+				print(f"Cache loaded in {time.time() - cache_start:.1f} sec")
+		except Exception as e:
+			if verbose:
+				print(f"Error loading cache: {e}. Computing from scratch.")
+			cache_loaded = False
+	
+	# Step 3: Process embeddings (either from cache or compute new ones)
+	embed_start = time.time()
+	
+	# Always recompute class text embeddings with current model state
+	with torch.no_grad():
+			text_inputs = clip.tokenize(class_names).to(device, non_blocking=True)
+			with torch.amp.autocast(device_type=device.type, enabled=True):
+					class_text_embeds = model.encode_text(text_inputs)
+			class_text_embeds = F.normalize(class_text_embeds, dim=-1).cpu()
+	
+	if not cache_loaded or all_image_embeds is None:
+			# Need to compute embeddings from scratch
+			if verbose:
+					print("Computing embeddings from scratch")
+			
+			# Initialize lists to store embeddings and labels
+			all_image_embeds = []
+			all_labels = []
+			
+			# Process validation dataset in batches
+			with torch.no_grad():
+					for bidx, (images, _, labels_indices) in enumerate(validation_loader):
+							# Move data to device
+							images = images.to(device, non_blocking=True)
+							
+							# Process in chunks if needed for very large batches
+							for start in range(0, images.size(0), chunk_size):
+									end = min(start + chunk_size, images.size(0))
+									chunk_images = images[start:end]
+									
+									# Compute image embeddings with mixed precision
+									with torch.amp.autocast(device_type=device.type, enabled=True):
+											image_embeds = model.encode_image(chunk_images)
+									
+									# Normalize embeddings
+									image_embeds = F.normalize(image_embeds, dim=-1).cpu()
+									
+									# Store embeddings
+									all_image_embeds.append(image_embeds)
+							
+							# Store labels
+							all_labels.extend(labels_indices.cpu().tolist())
+							
+							# Print progress
+							if verbose and (bidx + 1) % print_every == 0:
+									print(f"Processed {bidx + 1}/{len(validation_loader)} batches")
+			
+			# Concatenate all embeddings
+			all_image_embeds = torch.cat(all_image_embeds, dim=0)
+			all_labels = torch.tensor(all_labels)
+			
+			# Save cache for future use
+			try:
+					cache_content = {
+							'image_embeds': all_image_embeds,
+							'labels': all_labels,
+					}
+					torch.save(cache_content, cache_file)
+					if verbose:
+							print(f"Saved embeddings to {cache_file}")
+			except Exception as e:
+					if verbose:
+							print(f"Warning: Failed to save cache: {e}")
+	
+	# Step 4: Compute similarity matrices for metrics
+	device_image_embeds = all_image_embeds.to(device)
+	device_class_text_embeds = class_text_embeds.to(device)
+	device_labels = all_labels.to(device)
+	
+	# Compute similarity matrices
+	i2t_similarity = device_image_embeds @ device_class_text_embeds.T
+	t2i_similarity = device_class_text_embeds @ device_image_embeds.T
+	
+	if verbose:
+			print(f"Embeddings processed in {time.time() - embed_start:.1f} sec")
+	
+	# Step 5: Compute full-set metrics using cached embeddings and similarities
+	full_set_start = time.time()
+	full_metrics = compute_full_set_metrics_from_cache(
+			i2t_similarity=i2t_similarity,
+			t2i_similarity=t2i_similarity,
+			labels=device_labels,
+			n_classes=n_classes,
+			topK_values=topK_values,
+			device=device
+	)
+	if verbose:
+			print(f"Full-set metrics computed in {time.time() - full_set_start:.1f} sec")
+	
+	# Step 6: Compute retrieval metrics using cached embeddings and similarities
+	retrieval_start = time.time()
+	img2txt_metrics = compute_retrieval_metrics_from_similarity(
+			similarity_matrix=i2t_similarity,
+			query_labels=device_labels,
+			candidate_labels=torch.arange(n_classes, device=device),
+			topK_values=topK_values,
+			mode="Image-to-Text",
+			max_k=n_classes
+	)
+	
+	# Get class counts for text-to-image retrieval
+	class_counts = torch.bincount(device_labels, minlength=n_classes)
+	
+	txt2img_metrics = compute_retrieval_metrics_from_similarity(
+			similarity_matrix=t2i_similarity,
+			query_labels=torch.arange(n_classes, device=device),
+			candidate_labels=device_labels,
+			topK_values=topK_values,
+			mode="Text-to-Image",
+			class_counts=class_counts
+	)
+	
+	if verbose:
+		print(f"Retrieval metrics computed in {time.time() - retrieval_start:.1f} sec")
+	
+	# Step 7: Return all metrics in the expected format
+	result = {
+			"in_batch_metrics": in_batch_metrics,
+			"full_metrics": full_metrics,
+			"img2txt_metrics": img2txt_metrics,
+			"txt2img_metrics": txt2img_metrics
+	}
+	
+	if verbose:
+		print(f"Validation evaluation completed in {time.time() - start_time:.1f} sec")
+	
+	return result
 
 def compute_full_set_metrics_from_cache(
 				i2t_similarity: torch.Tensor,
@@ -602,8 +583,9 @@ def evaluate_best_model(
 		criterion,
 		early_stopping,
 		checkpoint_path,
+		finetune_strategy,
 		device,
-		print_every:int=100,
+		cache_dir,
 		topk_values:list[int]=[1, 5, 10],
 		verbose:bool=True
 	):
@@ -656,62 +638,81 @@ def evaluate_best_model(
 	# Verify the loaded model
 	param_count = sum(p.numel() for p in model.parameters())
 	if verbose:
-			print(f"Model ready for evaluation. Parameters: {param_count:,}")
+		print(f"Model ready for evaluation. Parameters: {param_count:,}")
 	
 	# Set model to evaluation mode
 	model.eval()
 	
 	if verbose:
 		print("\nPerforming final evaluation on the best model...")
-	
-	# Compute in-batch loss/accuracy metrics
-	in_batch_metrics = get_in_batch_validation_metrics(
-			model=model,
-			validation_loader=validation_loader,
-			criterion=criterion,
-			device=device,
-			topK_values=topk_values
+
+
+	# all metrics in one using caching mechanism:
+	validation_results = get_validation_metrics(
+		model=model,
+		validation_loader=validation_loader,
+		criterion=criterion,
+		device=device,
+		topK_values=topk_values,
+		finetune_strategy=finetune_strategy,
+		cache_dir=cache_dir,
+		verbose=True,
 	)
+	in_batch_metrics = validation_results["in_batch_metrics"]
+	full_metrics = validation_results["full_metrics"]
+	retrieval_metrics = {
+		"img2txt": validation_results["img2txt_metrics"],
+		"txt2img": validation_results["txt2img_metrics"]
+	}
+
+
+	# # Compute in-batch loss/accuracy metrics
+	# in_batch_metrics = get_in_batch_validation_metrics(
+	# 	model=model,
+	# 	validation_loader=validation_loader,
+	# 	criterion=criterion,
+	# 	device=device,
+	# 	topK_values=topk_values
+	# )
 	
-	# Compute full validation set metrics
-	full_metrics = get_full_set_validation_metrics(
-			model=model,
-			validation_loader=validation_loader,
-			criterion=criterion,
-			device=device,
-			print_every=print_every,
-			topK_values=topk_values
-	)
+	# # Compute full validation set metrics
+	# full_metrics = get_full_set_validation_metrics(
+	# 	model=model,
+	# 	validation_loader=validation_loader,
+	# 	criterion=criterion,
+	# 	device=device,
+	# 	print_every=print_every,
+	# 	topK_values=topk_values
+	# )
 	
-	# Compute retrieval-based metrics
-	retrieval_metrics = evaluate_retrieval_performance(
-			model=model,
-			validation_loader=validation_loader,
-			device=device,
-			topK_values=topk_values
-	)
+	# # Compute retrieval-based metrics
+	# retrieval_metrics = evaluate_retrieval_performance(
+	# 	model=model,
+	# 	validation_loader=validation_loader,
+	# 	device=device,
+	# 	topK_values=topk_values
+	# )
 	
 	# Print evaluation results if verbose
 	if verbose:
-			print("\n--- Final Metrics [In-batch Validation] ---")
-			print(json.dumps(in_batch_metrics, indent=2, ensure_ascii=False))
-			
-			print("\n--- Final Metrics [Full Validation Set] ---")
-			print(json.dumps(full_metrics, indent=2, ensure_ascii=False))
-			
-			print("\n--- Image-to-Text Retrieval ---")
-			print(json.dumps(retrieval_metrics["img2txt"], indent=2, ensure_ascii=False))
-			
-			print("\n--- Text-to-Image Retrieval ---")
-			print(json.dumps(retrieval_metrics["txt2img"], indent=2, ensure_ascii=False))
+		print("\n--- Final Metrics [In-batch Validation] ---")
+		print(json.dumps(in_batch_metrics, indent=2, ensure_ascii=False))
+		
+		print("\n--- Final Metrics [Full Validation Set] ---")
+		print(json.dumps(full_metrics, indent=2, ensure_ascii=False))
+		
+		print("\n--- Image-to-Text Retrieval ---")
+		print(json.dumps(retrieval_metrics["img2txt"], indent=2, ensure_ascii=False))
+		
+		print("\n--- Text-to-Image Retrieval ---")
+		print(json.dumps(retrieval_metrics["txt2img"], indent=2, ensure_ascii=False))
 	
-	# Return all metrics in a single dictionary
 	return {
-			"in_batch_metrics": in_batch_metrics,
-			"full_metrics": full_metrics,
-			"img2txt_metrics": retrieval_metrics["img2txt"],
-			"txt2img_metrics": retrieval_metrics["txt2img"],
-			"model_loaded_from": model_source
+		"in_batch_metrics": in_batch_metrics,
+		"full_metrics": full_metrics,
+		"img2txt_metrics": retrieval_metrics["img2txt"],
+		"txt2img_metrics": retrieval_metrics["txt2img"],
+		"model_loaded_from": model_source
 	}
 
 def checkpoint_best_model(
@@ -2327,6 +2328,7 @@ def progressive_unfreeze_finetune(
 
 		# --- Validation ---
 		print(f"Epoch: {epoch+1} validation...")
+
 		# all metrics in one using caching mechanism:
 		validation_results = get_validation_metrics(
 			model=model,
@@ -2441,8 +2443,9 @@ def progressive_unfreeze_finetune(
 		criterion=criterion,
 		early_stopping=early_stopping,
 		checkpoint_path=mdl_fpth,
+		finetune_strategy=mode,
 		device=device,
-		print_every=print_every,
+		cache_dir=results_dir,
 		topk_values=topk_values,
 		verbose=True
 	)
@@ -2797,8 +2800,9 @@ def lora_finetune(
 		criterion=criterion,
 		early_stopping=early_stopping,
 		checkpoint_path=mdl_fpth,
+		finetune_strategy=mode,
 		device=device,
-		print_every=print_every,
+		cache_dir=results_dir,
 		topk_values=topk_values,
 		verbose=True
 	)
@@ -3141,8 +3145,9 @@ def full_finetune(
 		criterion=criterion,
 		early_stopping=early_stopping,
 		checkpoint_path=mdl_fpth,
+		finetune_strategy=mode,
 		device=device,
-		print_every=print_every,
+		cache_dir=results_dir,
 		topk_values=topk_values,
 		verbose=True
 	)

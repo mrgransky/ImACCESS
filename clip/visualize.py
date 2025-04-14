@@ -216,8 +216,8 @@ def plot_image_to_texts_pretrained(
 	# Hash image path for unique filename
 	img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
 	file_name = os.path.join(
-			results_dir,
-			f'i2t_Top{topk}_labels_{img_hash}_dataset_{dataset_name}_{best_pretrained_model_name}_{best_pretrained_model_arch}.png'
+		results_dir,
+		f'{dataset_name}_Top{topk}_labels_{img_hash}_pretrained_{best_pretrained_model_name}_{best_pretrained_model_arch}_image_to_text.png'
 	)
 	# Plot
 	fig = plt.figure(figsize=figure_size, dpi=dpi)
@@ -251,8 +251,184 @@ def plot_image_to_texts_pretrained(
 	print(f"Saved visualization to: {file_name}")
 	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 
-def plot_text_to_images():
-	pass
+def plot_text_to_images(
+        models: dict,
+        validation_loader: DataLoader,
+        preprocess,
+        query_text: str,
+        topk: int,
+        device: str,
+        results_dir: str,
+        figure_size=(15, 10),
+        dpi: int = 300,
+):
+    """
+    Retrieves and visualizes the top-k images most relevant to a given text query.
+    Adapted from working get_text_to_images function.
+    """
+    # Create output directory and unique hash for the query
+    dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
+    img_hash = hashlib.sha256(query_text.encode()).hexdigest()[:8]
+    os.makedirs(results_dir, exist_ok=True)
+    
+    # Prepare the text query
+    tokenized_query = clip.tokenize([query_text]).to(device)
+    
+    # Process with each model
+    for model_name, model in models.items():
+        model.eval()
+        print(f"[Text-to-image(s)] {model_name} Zero-Shot Text-to-Image Retrieval for query: '{query_text}'".center(200, " "))
+        t0 = time.time()
+        
+        # Generate cache file path
+        cache_file = os.path.join(
+                results_dir, 
+                f"{model_name}_{dataset_name}_embeddings.pt"
+        )
+        
+        # Try to load cached embeddings and image paths
+        all_image_embeddings = None
+        image_paths = []
+        
+        if os.path.exists(cache_file):
+            print(f"Loading cached embeddings from {cache_file}")
+            try:
+                cached_data = torch.load(cache_file, map_location='cpu')
+                all_image_embeddings = cached_data['embeddings'].to(device)
+                image_paths = cached_data.get('image_paths', [])
+                print(f"Successfully loaded {len(all_image_embeddings)} cached embeddings")
+            except Exception as e:
+                print(f"Error loading cached embeddings: {e}")
+                all_image_embeddings = None
+        
+        # If no cached embeddings, compute them
+        if all_image_embeddings is None:
+            print("Computing image embeddings (this may take a while)...")
+            image_embeddings_list = []
+            image_paths = []
+            
+            # Get the dataset reference from the loader
+            dataset = validation_loader.dataset
+            
+            # Check if dataset has img_path attribute (like your working function)
+            has_img_path = hasattr(dataset, 'img_path') or (
+                hasattr(dataset, '__getitem__') and 
+                isinstance(dataset[0], (tuple, list)) and 
+                len(dataset[0]) > 1 and
+                isinstance(dataset[0][1], str)  # Assuming second element is path
+            )
+            
+            for batch_idx, batch in enumerate(validation_loader):
+                # Handle different batch structures
+                if isinstance(batch, (list, tuple)):
+                    images = batch[0]
+                    if has_img_path and len(batch) > 1:
+                        batch_paths = batch[1]
+                    else:
+                        batch_paths = [f"batch_{batch_idx}_img_{i}" for i in range(len(images))]
+                else:
+                    images = batch
+                    batch_paths = [f"batch_{batch_idx}_img_{i}" for i in range(len(images))]
+                
+                # Store paths for visualization
+                image_paths.extend(batch_paths)
+                
+                # Skip if not a tensor or wrong shape
+                if not isinstance(images, torch.Tensor) or len(images.shape) != 4:
+                    print(f"Warning: Invalid image tensor in batch {batch_idx}")
+                    continue
+                
+                # Compute embeddings
+                with torch.no_grad():
+                    images = images.to(device)
+                    image_features = model.encode_image(images)
+                    image_features = F.normalize(image_features, dim=-1)
+                    image_embeddings_list.append(image_features.cpu())
+                
+                # Report progress
+                if (batch_idx + 1) % 10 == 0:
+                    print(f"Processed {batch_idx + 1}/{len(validation_loader)} batches")
+            
+            # Combine all embeddings
+            if image_embeddings_list:
+                all_image_embeddings = torch.cat(image_embeddings_list, dim=0).to(device)
+                print(f"Computed {len(all_image_embeddings)} image embeddings")
+                
+                # Save to cache
+                try:
+                    torch.save({
+                        'embeddings': all_image_embeddings.cpu(),
+                        'image_paths': image_paths
+                    }, cache_file)
+                    print(f"Saved embeddings to {cache_file}")
+                except Exception as e:
+                    print(f"Warning: Failed to save embeddings cache: {e}")
+            else:
+                print("Error: No valid image embeddings were collected")
+                continue
+        
+        # Compute similarities
+        with torch.no_grad():
+            text_features = model.encode_text(tokenized_query)
+            text_features = F.normalize(text_features, dim=-1)
+            similarities = (100.0 * text_features @ all_image_embeddings.T).softmax(dim=-1)
+            
+            effective_topk = min(topk, len(all_image_embeddings))
+            topk_scores, topk_indices = torch.topk(similarities.squeeze(), effective_topk)
+            topk_scores = topk_scores.cpu().numpy()
+            topk_indices = topk_indices.cpu().numpy()
+        
+        # Create visualization figure
+        fig, axes = plt.subplots(1, effective_topk, figsize=figure_size)
+        if effective_topk == 1:
+            axes = [axes]
+        
+        fig.suptitle(f"Top-{effective_topk} Images for Query: '{query_text}'\nModel: {model_name}", 
+                    fontsize=14, fontweight='bold')
+        
+        # Display the top-k images
+        for i, (ax, idx) in enumerate(zip(axes, topk_indices)):
+            try:
+                # Try to get image path first
+                img_path = image_paths[idx]
+                
+                if os.path.exists(img_path):
+                    img = Image.open(img_path).convert('RGB')
+                    ax.imshow(img)
+                    ax.set_title(f"Rank {i+1}\nScore: {topk_scores[i]:.4f}", fontsize=10)
+                else:
+                    # Fallback to dataset access if path doesn't exist
+                    dataset = validation_loader.dataset
+                    if hasattr(dataset, '__getitem__'):
+                        img, _ = dataset[idx]
+                        if isinstance(img, torch.Tensor):
+                            img = img.cpu().numpy()
+                            if img.shape[0] == 3:  # CHW to HWC
+                                img = img.transpose(1, 2, 0)
+                            img = (img * 255).astype(np.uint8)
+                        ax.imshow(img)
+                        ax.set_title(f"Rank {i+1}\nScore: {topk_scores[i]:.4f}", fontsize=10)
+                    else:
+                        raise FileNotFoundError(f"Image path not found: {img_path}")
+            except Exception as e:
+                print(f"Warning: Could not display image {idx}: {e}")
+                ax.imshow(np.ones((224, 224, 3)) * 0.5)
+                ax.set_title(f"Rank {i+1}\nScore: {topk_scores[i]:.4f}\nError loading image", fontsize=10)
+            
+            ax.axis('off')
+        
+        # Save the visualization
+        file_name = os.path.join(
+            results_dir,
+            f'{dataset_name}_Top{effective_topk}_images_{img_hash}_{model_name}_text_to_image.png'
+        )
+        
+        plt.tight_layout()
+        plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
+        plt.close()
+        
+        print(f"Saved visualization to: {file_name}")
+        print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 
 def plot_comparison_metrics_split(
 		dataset_name: str,
@@ -295,11 +471,7 @@ def plot_comparison_metrics_split(
 		for mode in modes:
 				pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
 				finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
-				print(f"\n{'='*80}")
-				print(f"ANALYSIS: {mode} | Model: {model_name} | Finetune Strategies: {', '.join(finetune_strategies)}")
-				print(f"{'='*80}")
 				for metric in metrics:
-						print(f"\nMetric: {metric}")
 						fig, ax = plt.subplots(figsize=figure_size)
 						fname = f"{dataset_name}_{'_'.join(finetune_strategies)}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_{mode.replace('-', '_')}_{metric}_comparison.png"
 						file_path = os.path.join(results_dir, fname)
@@ -355,7 +527,7 @@ def plot_comparison_metrics_split(
 												best_imp = (best_val - pre_val) / pre_val * 100
 												text_color = '#016e2bff' if best_imp >= 0 else 'red'
 												arrow_style = '<|-' if best_imp >= 0 else '-|>'
-												print(f"Best strategy at K={k}: {best_strategy} with improvement: {best_imp:.2f}% | arrow: {arrow_style}")
+												# print(f"Best strategy at K={k}: {best_strategy} with improvement: {best_imp:.2f}% | arrow: {arrow_style}")
 												
 												# Place annotations with arrows
 												ax.annotate(
@@ -381,7 +553,7 @@ def plot_comparison_metrics_split(
 												worst_imp = (worst_val - pre_val) / pre_val * 100
 												text_color = '#016e2bff' if worst_imp >= 0 else 'red'
 												arrow_style = '-|>' if worst_imp >= 0 else '<|-'
-												print(f"Worst strategy at K={k}: {worst_strategy} with improvement: {worst_imp:.2f}% | arrow: {arrow_style}")
+												# print(f"Worst strategy at K={k}: {worst_strategy} with improvement: {worst_imp:.2f}% | arrow: {arrow_style}")
 												
 												# Place annotations with arrows
 												ax.annotate(
@@ -445,14 +617,10 @@ def plot_comparison_metrics_merged(
 						print(f"WARNING: Some strategies for {model_name} not found in finetuned_{mode.lower().replace('-', '_')}_dict. Skipping...")
 						return
 		model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
-		# Define a professional color palette for fine-tuned strategies
 		strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Green
 		pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#7f7f7f'}
 		strategy_styles = {'full': 's', 'lora': '^', 'progressive': 'd'}  # Unique markers
 
-		print(f"\n{'='*80}")
-		print(f"DETAILED PERFORMANCE ANALYSIS FOR {dataset_name} - {model_name} WITH {', '.join(s.capitalize() for s in finetune_strategies)} FINE-TUNING")
-		print(f"{'='*80}")
 		for i, mode in enumerate(modes):
 				fig, axes = plt.subplots(1, 3, figsize=figure_size, constrained_layout=True)
 				fname = f"{dataset_name}_{'_'.join(finetune_strategies)}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_retrieval_performance_comparison_{mode.replace('-', '_')}_merged.png"
@@ -469,8 +637,6 @@ def plot_comparison_metrics_merged(
 				print(f"{'-'*40}")
 				for j, metric in enumerate(metrics):
 						ax = axes[j]
-						print(f"\nMetric: {metric}")
-						print("-" * 20)
 						k_values = sorted(
 								k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {})
 						)
@@ -577,6 +743,7 @@ def plot_comparison_metrics_merged(
 				plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
 				print(f"Saved: {file_path}")
 				plt.close(fig)
+
 		# Overall summary
 		print(f"\n{'='*40}")
 		print(f"OVERALL PERFORMANCE SUMMARY")

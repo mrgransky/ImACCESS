@@ -332,13 +332,13 @@ def get_image_to_texts(
 	plt.close()
 
 def get_text_to_images(
-	dataset,
-	model,
-	preprocess,
-	query:str="cat",
-	topk:int=5,
-	batch_size:int=64,
-	device:str="cuda:0",
+		dataset,
+		model,
+		preprocess,
+		query:str,
+		topk:int,
+		batch_size:int,
+		device:str,
 	):
 	print(f"Top-{topk} Image Retrieval {device} CLIP Query: « {query} »".center(160, " "))
 	t0 = time.time()

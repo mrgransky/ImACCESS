@@ -12,7 +12,7 @@ from trainer import pretrain, evaluate_best_model
 from visualize import plot_image_to_texts_stacked_horizontal_bar, plot_text_to_images, plot_image_to_texts_pretrained, plot_comparison_metrics_split, plot_comparison_metrics_merged
 
 # # run in local for all fine-tuned models:
-# # $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_9_do_0.0_lr_1.0e-04_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_9_do_0.0_init_lr_1.0e-04_init_wd_1.0e-02_bs_64_best_model.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_50_lr_1.0e-04_wd_1.0e-02_lora_rank_4_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 4 -loa 16.0 -lod 0.05 -qi "https://pbs.twimg.com/media/GoJ-dM-aIAAaVat?format=jpg"
+# # $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_15_do_0.0_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_15_do_0.0_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_15_lr_1.0e-05_wd_1.0e-02_lora_rank_8_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 8 -loa 16.0 -lod 0.05 -qi "https://pbs.twimg.com/media/GoJ-dM-aIAAaVat?format=jpg"
 
 # # run in pouta for all fine-tuned models:
 # # $ python history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_100_do_0.05_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_do_0.05_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_lr_1.0e-05_wd_1.0e-01_lora_rank_8_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 8 -loa 16.0 -lod 0.05 -qi "https://pbs.twimg.com/media/Gn5iu_fbwAA7go8?format=jpg"
@@ -30,8 +30,8 @@ def main():
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
 	parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
-	parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/datasets/TEST_IMGs/5968_115463.jpg", help='image path for zero shot classification')
-	parser.add_argument('--query_label', '-ql', type=str, default="aircraft", help='image path for zero shot classification')
+	parser.add_argument('--query_image', '-qi', type=str, default=None, help='image path for zero shot classification')
+	parser.add_argument('--query_label', '-ql', type=str, default=None, help='image path for zero shot classification')
 	parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
 	parser.add_argument('--full_checkpoint', '-fcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
 	parser.add_argument('--lora_checkpoint', '-lcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
@@ -143,7 +143,9 @@ def main():
 				criterion=criterion,
 				early_stopping=None,
 				checkpoint_path=finetuned_checkpoint_paths.get(ft_name, None),
+				finetune_strategy=ft_name,
 				device=args.device,
+				cache_dir=RESULT_DIRECTORY,
 				topk_values=args.topK_values,
 				verbose=True
 			)
@@ -158,25 +160,38 @@ def main():
 	print(f"finetuned_txt2img_dict:")
 	print(json.dumps(finetuned_txt2img_dict, indent=4, ensure_ascii=False))
 
-	plot_image_to_texts_pretrained(
-		best_pretrained_model=pretrained_model,
-		validation_loader=validation_loader,
-		# preprocess=pretrained_preprocess, # customized_preprocess,
-		preprocess=customized_preprocess,
-		img_path=args.query_image,
-		topk=args.topK,
-		device=args.device,
-		results_dir=RESULT_DIRECTORY,
-	)
-	plot_image_to_texts_stacked_horizontal_bar(
-		models=models_to_plot,
-		validation_loader=validation_loader,
-		preprocess=customized_preprocess,
-		img_path=args.query_image,
-		topk=args.topK,
-		device=args.device,
-		results_dir=RESULT_DIRECTORY,
-	)
+	if args.query_image is not None:
+		plot_image_to_texts_pretrained(
+			best_pretrained_model=pretrained_model,
+			validation_loader=validation_loader,
+			# preprocess=pretrained_preprocess, # customized_preprocess,
+			preprocess=customized_preprocess,
+			img_path=args.query_image,
+			topk=args.topK,
+			device=args.device,
+			results_dir=RESULT_DIRECTORY,
+		)
+		plot_image_to_texts_stacked_horizontal_bar(
+			models=models_to_plot,
+			validation_loader=validation_loader,
+			preprocess=customized_preprocess,
+			img_path=args.query_image,
+			topk=args.topK,
+			device=args.device,
+			results_dir=RESULT_DIRECTORY,
+		)
+
+	if args.query_label is not None:
+		plot_text_to_images(
+			models=models_to_plot,
+			validation_loader=validation_loader,
+			preprocess=customized_preprocess,
+			query_text=args.query_label,  # Using the query_label as the text query
+			topk=args.topK,
+			device=args.device,
+			results_dir=RESULT_DIRECTORY,
+		)
+
 	finetune_strategies = []
 	if args.full_checkpoint is not None:
 		finetune_strategies.append("full")
