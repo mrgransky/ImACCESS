@@ -2172,12 +2172,12 @@ def progressive_unfreeze_finetune(
 		f"{mode}_"
 		f"{model_name}_"
 		f"{model_arch}_"
-		f"opt_{optimizer.__class__.__name__}_"
-		f"sch_{scheduler.__class__.__name__}_"
-		f"loss_{criterion.__class__.__name__}_"
-		f"scaler_{scaler.__class__.__name__}_"
+		f"{optimizer.__class__.__name__}_"
+		f"{scheduler.__class__.__name__}_"
+		f"{criterion.__class__.__name__}_"
+		f"{scaler.__class__.__name__}_"
 		f"init_epochs_{num_epochs}_"
-		f"do_{dropout_val}_"
+		f"dropout_{dropout_val}_"
 		f"init_lr_{initial_learning_rate:.1e}_"
 		f"init_wd_{initial_weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
@@ -2457,25 +2457,35 @@ def progressive_unfreeze_finetune(
 	print(f"Final evaluation used model weights from: {model_source}")
 
 	print("\nGenerating result plots...")
-
+	actual_trained_epochs = len(training_losses)
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
 		f"{model_name}_"
 		f"{model_arch}_"
 		f"last_phase_{current_phase}_"
-		f"ep_{len(training_losses)}_"
+		f"ep_{actual_trained_epochs}_"
 		f"bs_{train_loader.batch_size}_"
 		f"dropout_{dropout_val}_"
 		f"init_lr_{initial_learning_rate:.1e}_"
 		f"init_wd_{initial_weight_decay:.1e}"
 	)
-
 	if last_lr is not None:
 		file_base_name += f"_final_lr_{last_lr:.1e}"
 
 	if last_wd is not None:
 		file_base_name += f"_final_wd_{last_wd:.1e}"
+
+	mdl_fpth = get_updated_model_name(
+		original_path=mdl_fpth,
+		actual_epochs=actual_trained_epochs,
+		additional_info={
+			'final_phase': current_phase,
+			'final_lr': last_lr,
+			'final_wd': last_wd
+		}
+	)
+	print(f"Best model will be renamed to: {mdl_fpth}")
 
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
@@ -2637,10 +2647,10 @@ def lora_finetune(
 		f"{mode}_"
 		f"{model_name}_"
 		f"{model_arch}_"
-		f"opt_{optimizer.__class__.__name__}_"
-		f"sch_{scheduler.__class__.__name__}_"
-		f"loss_{criterion.__class__.__name__}_"
-		f"scaler_{scaler.__class__.__name__}_"
+		f"{optimizer.__class__.__name__}_"
+		f"{scheduler.__class__.__name__}_"
+		f"{criterion.__class__.__name__}_"
+		f"{scaler.__class__.__name__}_"
 		f"init_epochs_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
@@ -2650,7 +2660,6 @@ def lora_finetune(
 		f"bs_{train_loader.batch_size}_"
 		f"best_model.pth"
 	)
-	print(f"Best model will be saved in: {mdl_fpth}")
 
 	training_losses = []
 	img2txt_metrics_all_epochs = []
@@ -2804,7 +2813,7 @@ def lora_finetune(
 	print(f"Final evaluation used model weights from: {model_source}")
 
 	print("\nGenerating result plots...")
-
+	actual_trained_epochs = len(training_losses)
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
@@ -2813,11 +2822,13 @@ def lora_finetune(
 		f"lora_alpha_{lora_alpha}_"
 		f"lora_dropout_{lora_dropout}_"
 		f"lora_rank_{lora_rank}_"
-		f"ep_{len(training_losses)}_"
+		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}"
 	)
+	mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
+	print(f"Best model will be renamed to: {mdl_fpth}")
 
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
@@ -2975,12 +2986,12 @@ def full_finetune(
 		f"{mode}_"
 		f"{model_name}_"
 		f"{model_arch}_"
-		f"opt_{optimizer.__class__.__name__}_"
-		f"sch_{scheduler.__class__.__name__}_"
-		f"loss_{criterion.__class__.__name__}_"
-		f"scaler_{scaler.__class__.__name__}_"
+		f"{optimizer.__class__.__name__}_"
+		f"{scheduler.__class__.__name__}_"
+		f"{criterion.__class__.__name__}_"
+		f"{scaler.__class__.__name__}_"
 		f"init_epochs_{num_epochs}_"
-		f"do_{dropout_val}_"
+		f"dropout_{dropout_val}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
@@ -3146,18 +3157,20 @@ def full_finetune(
 	print(f"Final evaluation used model weights from: {model_source}")
 
 	print("\nGenerating result plots...")
-
+	actual_trained_epochs = len(training_losses)
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
 		f"{model_name}_"
 		f"{model_arch}_"
-		f"ep_{len(training_losses)}_"
+		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
 		f"dropout_{dropout_val}"
 	)
+	mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
+	print(f"Best model will be renamed to: {mdl_fpth}")
 
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
@@ -3214,7 +3227,6 @@ def full_finetune(
 		model_name=model.__class__.__name__,
 		model_arch=model.name if hasattr(model, 'name') else 'unknown_arch'
 	)
-
 
 def train(
 		model:torch.nn.Module,
@@ -3305,10 +3317,10 @@ def train(
 		f"{mode}_"
 		f"{model_name}_"
 		f"{model_arch}_"
-		f"opt_{optimizer.__class__.__name__}_"
-		f"sch_{scheduler.__class__.__name__}_"
-		f"loss_{criterion.__class__.__name__}_"
-		f"scaler_{scaler.__class__.__name__}_"
+		f"{optimizer.__class__.__name__}_"
+		f"{scheduler.__class__.__name__}_"
+		f"{criterion.__class__.__name__}_"
+		f"{scaler.__class__.__name__}_"
 		f"init_epochs_{num_epochs}_"
 		f"do_{dropout_val}_"
 		f"lr_{learning_rate:.1e}_"

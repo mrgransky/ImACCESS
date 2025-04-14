@@ -6,14 +6,14 @@ CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
 sys.path.insert(0, CLIP_DIR)
 
 from utils import *
-# from dataset_loader import get_datasets
+from historical_dataset_loader import get_datasets
 # local:
-# $ python history_clip_evaluate.py -ddir /home/farid/WS_Farid/ImACCESS/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -s "kfold_stratified" -k 1
+# $ python history_clip_evaluate.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -s "kfold_stratified" -k 1
 
 parser = argparse.ArgumentParser(description="Generate Images to Query Prompts")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
-parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/WS_Farid/ImACCESS/TEST_IMGs/5968_115463.jpg", help='image path for zero shot classification')
+parser.add_argument('--query_image', '-qi', type=str, default="/home/farid/datasets/TEST_IMGs/5968_115463.jpg", help='image path for zero shot classification')
 parser.add_argument('--query_label', '-ql', type=str, default="aircraft", help='image path for zero shot classification')
 parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
 parser.add_argument('--kfolds', '-kf', type=int, default=3, help='kfolds for stratified sampling')
@@ -27,7 +27,7 @@ parser.add_argument('--sampling', '-s', type=str, default="stratified_random", c
 args, unknown = parser.parse_known_args()
 args.device = torch.device(args.device)
 print_args_table(args=args, parser=parser)
-OUTPUT_DIRECTORY = os.path.join(args.dataset_dir, "outputs")
+OUTPUT_DIRECTORY = os.path.join(args.dataset_dir, "results")
 os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
 def get_image_to_text_linear_prob_zero_shot_accuracy(
