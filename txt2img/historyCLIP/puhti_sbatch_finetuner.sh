@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=project_2009043
-#SBATCH --job-name=na_x_str_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --job-name=h4_fts_str_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -10,7 +10,7 @@
 #SBATCH --mem=80G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=0-11 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --array=12-23 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
@@ -89,7 +89,7 @@ fi
 # Hyperparameter configuration
 INIT_LRS=(1e-5 1e-5 1e-5 5e-5 1e-5)
 INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
-DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
+DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 EPOCHS=(100 100 150 150 150)
 LORA_RANKS=(4 4 8 8 8)
 LORA_ALPHAS=(16 16 16 16 16)
