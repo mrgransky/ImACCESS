@@ -191,6 +191,7 @@ def plot_image_to_texts_pretrained(
 		except requests.exceptions.RequestException as e:
 			print(f"ERROR: failed to load image from {img_path} => {e}")
 			return
+
 	# Preprocess image
 	image_tensor = preprocess(img).unsqueeze(0).to(device)
 	
@@ -208,17 +209,23 @@ def plot_image_to_texts_pretrained(
 	topk_pred_indices = topk_pred_labels_idx.squeeze().cpu().numpy()
 	topk_pred_labels = [labels[i] for i in topk_pred_indices]
 	print(f"Top-{topk} predicted labels: {topk_pred_labels}")
+
 	# Sort predictions by descending probability
 	sorted_indices = topk_pred_probs.argsort()[::-1]
 	sorted_probs = topk_pred_probs[sorted_indices]
 	print(sorted_probs)
+
 	sorted_labels = [topk_pred_labels[i] for i in sorted_indices]
+
 	# Hash image path for unique filename
 	img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
 	file_name = os.path.join(
 		results_dir,
 		f'{dataset_name}_Top{topk}_labels_{img_hash}_pretrained_{best_pretrained_model_name}_{best_pretrained_model_arch}_image_to_text.png'
 	)
+	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Green
+	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#7f7f7f'}
+
 	# Plot
 	fig = plt.figure(figsize=figure_size, dpi=dpi)
 	gs = gridspec.GridSpec(1, 2, width_ratios=[1, 1.05], wspace=0.01)
@@ -227,10 +234,11 @@ def plot_image_to_texts_pretrained(
 	ax0.imshow(img)
 	ax0.axis('off')
 	ax0.set_title("Query Image", fontsize=12)
+
 	# Subplot 2: Horizontal bar plot
 	ax1 = plt.subplot(gs[1])
 	y_pos = range(topk)
-	ax1.barh(y_pos, sorted_probs, color='steelblue', edgecolor='white')
+	ax1.barh(y_pos, sorted_probs, color=pretrained_colors.get(best_pretrained_model.name, '#000000'), edgecolor='white')
 	ax1.invert_yaxis()  # Highest probs on top
 	ax1.set_yticks([])  # Hide y-axis ticks
 	ax1.set_xlim(0, 1)
@@ -251,184 +259,446 @@ def plot_image_to_texts_pretrained(
 	print(f"Saved visualization to: {file_name}")
 	print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 
+def plot_text_to_images_merged(
+		models: dict,
+		validation_loader: DataLoader,
+		preprocess,
+		query_text: str,
+		topk: int,
+		device: str,
+		results_dir: str,
+		figure_size=(12, 8),
+		dpi: int = 300,
+	):
+	"""
+	Retrieves and visualizes the top-k images most relevant to a given text query for all models in a single plot.
+	"""
+	# Create output directory and unique hash for the query
+	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
+	img_hash = hashlib.sha256(query_text.encode()).hexdigest()[:8]
+	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}
+	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#7f7f7f'}
+	pretrained_model_arch = models.get("pretrained").name
+	colors = [pretrained_colors.get(pretrained_model_arch, '#000000')] + list(strategy_colors.values())
+	print(f"colors: {colors}")
+
+	# Prepare the text query
+	tokenized_query = clip.tokenize([query_text]).to(device)
+	
+	# Define colors for borders
+	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
+	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#7f7f7f'}
+	
+	# Store top-k results for each model
+	model_results = {}
+	num_models = len(models)
+	model_names = list(models.keys())
+	
+	# Process each model to get top-k images
+	for model_name, model in models.items():
+		model.eval()
+		print(f"[Text-to-image(s)] {model_name} Zero-Shot Text-to-Image Retrieval for query: '{query_text}'".center(200, " "))
+		t0 = time.time()
+		
+		# Generate cache file path
+		cache_file = os.path.join(results_dir, f"{model_name}_{dataset_name}_embeddings.pt")
+		
+		# Try to load cached embeddings and image paths
+		all_image_embeddings = None
+		image_paths = []
+		
+		if os.path.exists(cache_file):
+			print(f"Loading cached embeddings from {cache_file}")
+			try:
+				cached_data = torch.load(cache_file, map_location='cpu')
+				all_image_embeddings = cached_data['embeddings'].to(device)
+				image_paths = cached_data.get('image_paths', [])
+				print(f"Successfully loaded {len(all_image_embeddings)} cached embeddings")
+			except Exception as e:
+				print(f"Error loading cached embeddings: {e}")
+				all_image_embeddings = None
+		
+		# If no cached embeddings, compute them
+		if all_image_embeddings is None:
+			print("Computing image embeddings (this may take a while)...")
+			image_embeddings_list = []
+			image_paths = []
+			
+			# Get the dataset reference from the loader
+			dataset = validation_loader.dataset
+			
+			# Check if dataset has img_path attribute or can provide paths
+			has_img_path = hasattr(dataset, 'images') and isinstance(dataset.images, (list, tuple))
+			for batch_idx, batch in enumerate(validation_loader):
+				# Handle batch structure (images, tokenized_labels, labels_indices)
+				images = batch[0]
+				if has_img_path:
+					# Access dataset.images to get actual paths
+					start_idx = batch_idx * validation_loader.batch_size
+					batch_paths = []
+					for i in range(len(images)):
+						global_idx = start_idx + i
+						if global_idx < len(dataset):
+							batch_paths.append(dataset.images[global_idx])
+						else:
+							batch_paths.append(f"missing_path_{global_idx}")
+				else:
+						batch_paths = [f"batch_{batch_idx}_img_{i}" for i in range(len(images))]
+				
+				# Store paths for visualization
+				image_paths.extend(batch_paths)
+				
+				# Skip if not a tensor or wrong shape
+				if not isinstance(images, torch.Tensor) or len(images.shape) != 4:
+					print(f"Warning: Invalid image tensor in batch {batch_idx}")
+					continue
+				
+				# Compute embeddings
+				with torch.no_grad():
+					images = images.to(device)
+					image_features = model.encode_image(images)
+					image_features = F.normalize(image_features, dim=-1)
+					image_embeddings_list.append(image_features.cpu())
+				
+				# Report progress
+				if (batch_idx + 1) % 10 == 0:
+					print(f"Processed {batch_idx + 1}/{len(validation_loader)} batches")
+			
+			# Combine all embeddings
+			if image_embeddings_list:
+				all_image_embeddings = torch.cat(image_embeddings_list, dim=0).to(device)
+				print(f"Computed {len(all_image_embeddings)} image embeddings")
+				
+				# Save to cache
+				try:
+					torch.save({
+						'embeddings': all_image_embeddings.cpu(),
+						'image_paths': image_paths
+					}, cache_file)
+					print(f"Saved embeddings to {cache_file}")
+				except Exception as e:
+					print(f"Warning: Failed to save embeddings cache: {e}")
+			else:
+				print("Error: No valid image embeddings were collected")
+				continue
+		
+		# Compute similarities
+		with torch.no_grad():
+			text_features = model.encode_text(tokenized_query)
+			text_features = F.normalize(text_features, dim=-1)
+			similarities = (100.0 * text_features @ all_image_embeddings.T).softmax(dim=-1)
+			
+			effective_topk = min(topk, len(all_image_embeddings))
+			topk_scores, topk_indices = torch.topk(similarities.squeeze(), effective_topk)
+			topk_scores = topk_scores.cpu().numpy()
+			topk_indices = topk_indices.cpu().numpy()
+		
+		# Store results for this model
+		model_results[model_name] = {
+			'topk_scores': topk_scores,
+			'topk_indices': topk_indices,
+			'image_paths': image_paths
+		}
+		print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
+	
+	# Create a single plot with (num_models x topk) grid
+	fig, axes = plt.subplots(num_models, effective_topk, figsize=(effective_topk * 3, num_models * 3))
+	fig.suptitle(
+		f"Top-{effective_topk} Images for Query: '{query_text}' Across Models", 
+		fontsize=16,
+		fontweight='bold',
+	)
+	
+	# If there's only one model or topk=1, adjust axes to be 2D
+	if num_models == 1:
+		axes = [axes]
+	if effective_topk == 1:
+		axes = [[ax] for ax in axes]
+	
+	# Plot images for each model
+	for row_idx, model_name in enumerate(model_names):
+		# Get border color for this model
+		if model_name == 'pretrained':
+			model = models[model_name]
+			border_color = pretrained_colors.get(model.name, '#745555')  # Default to ViT-B/32 color if not found
+		else:
+			border_color = strategy_colors.get(model_name, '#000000')  # Default to black if not found
+		
+		# Get top-k results for this model
+		result = model_results[model_name]
+		topk_scores = result['topk_scores']
+		topk_indices = result['topk_indices']
+		image_paths = result['image_paths']
+		dataset = validation_loader.dataset
+		
+		for col_idx, (idx, score) in enumerate(zip(topk_indices, topk_scores)):
+			ax = axes[row_idx][col_idx]
+			try:
+				# Try to load image using the path
+				img_path = image_paths[idx]
+				if os.path.exists(img_path):
+					img = Image.open(img_path).convert('RGB')
+					ax.imshow(img)
+				else:
+					# Fallback to dataset access
+					if hasattr(dataset, '__getitem__'):
+						sample = dataset[idx]
+						if len(sample) >= 3:
+							img = sample[0]  # First element is the image
+						else:
+							raise ValueError(f"Unexpected dataset structure at index {idx}: {sample}")
+						
+						if isinstance(img, torch.Tensor):
+							# Convert tensor to numpy for display
+							img = img.cpu().numpy()
+							if img.shape[0] in [1, 3]:  # CHW to HWC
+								img = img.transpose(1, 2, 0)
+							# Denormalize if necessary
+							mean = np.array([0.5126933455467224, 0.5045100450515747, 0.48094621300697327])
+							std = np.array([0.276103675365448, 0.2733437418937683, 0.27065524458885193])
+							if img.shape[-1] == 1:  # Grayscale
+								img = img.squeeze(-1)
+								mean = np.array([0.5126933455467224])
+								std = np.array([0.276103675365448])
+							img = img * std + mean
+							img = np.clip(img, 0, 1)
+						ax.imshow(img)
+					else:
+						raise FileNotFoundError(f"Image path not found and dataset access unavailable: {img_path}")
+
+				# Set title for the subplot
+				if row_idx == 0:
+					ax.set_title(f"Rank {col_idx+1}\nScore: {score:.4f}", fontsize=10)
+			
+			except Exception as e:
+				print(f"Warning: Could not display image {idx} for model {model_name}: {e}")
+				ax.imshow(np.ones((224, 224, 3)) * 0.5)
+				if row_idx == 0:
+					ax.set_title(f"Rank {col_idx+1}\nScore: {score:.4f}\nError loading image", fontsize=10)
+				else:
+					ax.set_title("Error loading image", fontsize=8)
+			
+			# Set border color for the subplot
+			for spine in ax.spines.values():
+				spine.set_color(border_color)
+				spine.set_linewidth(2)
+			
+			ax.axis('off')
+		
+		# Add model name label on the left side of the row
+		axes[row_idx][0].text(
+			-0.1,
+			0.5,
+			model_name.capitalize(), 
+			transform=axes[row_idx][0].transAxes, 
+			fontsize=10,
+			fontweight='bold',
+			va='center',
+			ha='right',
+			rotation=90,
+		)
+	
+	# Save the visualization
+	file_name = os.path.join(
+		results_dir,
+		f"{dataset_name}_Top{effective_topk}_images_{img_hash}_Q_{re.sub(' ', '_', query_text)}_{'_'.join(model_names)}_text_to_image.png"
+	)
+	
+	plt.tight_layout()
+	plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
+	plt.close()
+	
+	print(f"Saved merged visualization to: {file_name}")
+
 def plot_text_to_images(
-        models: dict,
-        validation_loader: DataLoader,
-        preprocess,
-        query_text: str,
-        topk: int,
-        device: str,
-        results_dir: str,
-        figure_size=(15, 10),
-        dpi: int = 300,
-):
-    """
-    Retrieves and visualizes the top-k images most relevant to a given text query.
-    Adapted from working get_text_to_images function.
-    """
-    # Create output directory and unique hash for the query
-    dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
-    img_hash = hashlib.sha256(query_text.encode()).hexdigest()[:8]
-    os.makedirs(results_dir, exist_ok=True)
-    
-    # Prepare the text query
-    tokenized_query = clip.tokenize([query_text]).to(device)
-    
-    # Process with each model
-    for model_name, model in models.items():
-        model.eval()
-        print(f"[Text-to-image(s)] {model_name} Zero-Shot Text-to-Image Retrieval for query: '{query_text}'".center(200, " "))
-        t0 = time.time()
-        
-        # Generate cache file path
-        cache_file = os.path.join(
-                results_dir, 
-                f"{model_name}_{dataset_name}_embeddings.pt"
-        )
-        
-        # Try to load cached embeddings and image paths
-        all_image_embeddings = None
-        image_paths = []
-        
-        if os.path.exists(cache_file):
-            print(f"Loading cached embeddings from {cache_file}")
-            try:
-                cached_data = torch.load(cache_file, map_location='cpu')
-                all_image_embeddings = cached_data['embeddings'].to(device)
-                image_paths = cached_data.get('image_paths', [])
-                print(f"Successfully loaded {len(all_image_embeddings)} cached embeddings")
-            except Exception as e:
-                print(f"Error loading cached embeddings: {e}")
-                all_image_embeddings = None
-        
-        # If no cached embeddings, compute them
-        if all_image_embeddings is None:
-            print("Computing image embeddings (this may take a while)...")
-            image_embeddings_list = []
-            image_paths = []
-            
-            # Get the dataset reference from the loader
-            dataset = validation_loader.dataset
-            
-            # Check if dataset has img_path attribute (like your working function)
-            has_img_path = hasattr(dataset, 'img_path') or (
-                hasattr(dataset, '__getitem__') and 
-                isinstance(dataset[0], (tuple, list)) and 
-                len(dataset[0]) > 1 and
-                isinstance(dataset[0][1], str)  # Assuming second element is path
-            )
-            
-            for batch_idx, batch in enumerate(validation_loader):
-                # Handle different batch structures
-                if isinstance(batch, (list, tuple)):
-                    images = batch[0]
-                    if has_img_path and len(batch) > 1:
-                        batch_paths = batch[1]
-                    else:
-                        batch_paths = [f"batch_{batch_idx}_img_{i}" for i in range(len(images))]
-                else:
-                    images = batch
-                    batch_paths = [f"batch_{batch_idx}_img_{i}" for i in range(len(images))]
-                
-                # Store paths for visualization
-                image_paths.extend(batch_paths)
-                
-                # Skip if not a tensor or wrong shape
-                if not isinstance(images, torch.Tensor) or len(images.shape) != 4:
-                    print(f"Warning: Invalid image tensor in batch {batch_idx}")
-                    continue
-                
-                # Compute embeddings
-                with torch.no_grad():
-                    images = images.to(device)
-                    image_features = model.encode_image(images)
-                    image_features = F.normalize(image_features, dim=-1)
-                    image_embeddings_list.append(image_features.cpu())
-                
-                # Report progress
-                if (batch_idx + 1) % 10 == 0:
-                    print(f"Processed {batch_idx + 1}/{len(validation_loader)} batches")
-            
-            # Combine all embeddings
-            if image_embeddings_list:
-                all_image_embeddings = torch.cat(image_embeddings_list, dim=0).to(device)
-                print(f"Computed {len(all_image_embeddings)} image embeddings")
-                
-                # Save to cache
-                try:
-                    torch.save({
-                        'embeddings': all_image_embeddings.cpu(),
-                        'image_paths': image_paths
-                    }, cache_file)
-                    print(f"Saved embeddings to {cache_file}")
-                except Exception as e:
-                    print(f"Warning: Failed to save embeddings cache: {e}")
-            else:
-                print("Error: No valid image embeddings were collected")
-                continue
-        
-        # Compute similarities
-        with torch.no_grad():
-            text_features = model.encode_text(tokenized_query)
-            text_features = F.normalize(text_features, dim=-1)
-            similarities = (100.0 * text_features @ all_image_embeddings.T).softmax(dim=-1)
-            
-            effective_topk = min(topk, len(all_image_embeddings))
-            topk_scores, topk_indices = torch.topk(similarities.squeeze(), effective_topk)
-            topk_scores = topk_scores.cpu().numpy()
-            topk_indices = topk_indices.cpu().numpy()
-        
-        # Create visualization figure
-        fig, axes = plt.subplots(1, effective_topk, figsize=figure_size)
-        if effective_topk == 1:
-            axes = [axes]
-        
-        fig.suptitle(f"Top-{effective_topk} Images for Query: '{query_text}'\nModel: {model_name}", 
-                    fontsize=14, fontweight='bold')
-        
-        # Display the top-k images
-        for i, (ax, idx) in enumerate(zip(axes, topk_indices)):
-            try:
-                # Try to get image path first
-                img_path = image_paths[idx]
-                
-                if os.path.exists(img_path):
-                    img = Image.open(img_path).convert('RGB')
-                    ax.imshow(img)
-                    ax.set_title(f"Rank {i+1}\nScore: {topk_scores[i]:.4f}", fontsize=10)
-                else:
-                    # Fallback to dataset access if path doesn't exist
-                    dataset = validation_loader.dataset
-                    if hasattr(dataset, '__getitem__'):
-                        img, _ = dataset[idx]
-                        if isinstance(img, torch.Tensor):
-                            img = img.cpu().numpy()
-                            if img.shape[0] == 3:  # CHW to HWC
-                                img = img.transpose(1, 2, 0)
-                            img = (img * 255).astype(np.uint8)
-                        ax.imshow(img)
-                        ax.set_title(f"Rank {i+1}\nScore: {topk_scores[i]:.4f}", fontsize=10)
-                    else:
-                        raise FileNotFoundError(f"Image path not found: {img_path}")
-            except Exception as e:
-                print(f"Warning: Could not display image {idx}: {e}")
-                ax.imshow(np.ones((224, 224, 3)) * 0.5)
-                ax.set_title(f"Rank {i+1}\nScore: {topk_scores[i]:.4f}\nError loading image", fontsize=10)
-            
-            ax.axis('off')
-        
-        # Save the visualization
-        file_name = os.path.join(
-            results_dir,
-            f'{dataset_name}_Top{effective_topk}_images_{img_hash}_{model_name}_text_to_image.png'
-        )
-        
-        plt.tight_layout()
-        plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
-        plt.close()
-        
-        print(f"Saved visualization to: {file_name}")
-        print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
+		models: dict,
+		validation_loader: DataLoader,
+		preprocess,
+		query_text: str,
+		topk: int,
+		device: str,
+		results_dir: str,
+		figure_size=(9, 6),
+		dpi: int = 250,
+	):
+	"""
+	Retrieves and visualizes the top-k images most relevant to a given text query.
+	"""
+	# Create output directory and unique hash for the query
+	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
+	img_hash = hashlib.sha256(query_text.encode()).hexdigest()[:8]
+	os.makedirs(results_dir, exist_ok=True)
+	
+	# Prepare the text query
+	tokenized_query = clip.tokenize([query_text]).to(device)
+	
+	# Process with each model
+	for model_name, model in models.items():
+		model.eval()
+		print(f"[Text-to-image(s)] {model_name} Zero-Shot Text-to-Image Retrieval for query: '{query_text}'".center(200, " "))
+		t0 = time.time()
+		
+		# Generate cache file path
+		cache_file = os.path.join(results_dir, f"{model_name}_{dataset_name}_embeddings.pt")
+		
+		# Try to load cached embeddings and image paths
+		all_image_embeddings = None
+		image_paths = []
+		
+		if os.path.exists(cache_file):
+			print(f"Loading cached embeddings from {cache_file}")
+			try:
+				cached_data = torch.load(cache_file, map_location='cpu')
+				all_image_embeddings = cached_data['embeddings'].to(device)
+				image_paths = cached_data.get('image_paths', [])
+				print(f"Successfully loaded {len(all_image_embeddings)} cached embeddings")
+			except Exception as e:
+				print(f"Error loading cached embeddings: {e}")
+				all_image_embeddings = None
+		
+		# If no cached embeddings, compute them
+		if all_image_embeddings is None:
+			print("Computing image embeddings (this may take a while)...")
+			image_embeddings_list = []
+			image_paths = []
+			
+			# Get the dataset reference from the loader
+			dataset = validation_loader.dataset
+			
+			# Check if dataset has img_path attribute or can provide paths
+			has_img_path = hasattr(dataset, 'images') and isinstance(dataset.images, (list, tuple))
+			for batch_idx, batch in enumerate(validation_loader):
+				# Handle batch structure (images, tokenized_labels, labels_indices)
+				images = batch[0]
+				if has_img_path:
+					# Access dataset.images to get actual paths
+					start_idx = batch_idx * validation_loader.batch_size
+					batch_paths = []
+					for i in range(len(images)):
+						global_idx = start_idx + i
+						if global_idx < len(dataset):
+							batch_paths.append(dataset.images[global_idx])
+						else:
+							batch_paths.append(f"missing_path_{global_idx}")
+				else:
+					batch_paths = [f"batch_{batch_idx}_img_{i}" for i in range(len(images))]
+				
+				# Store paths for visualization
+				image_paths.extend(batch_paths)
+				
+				# Skip if not a tensor or wrong shape
+				if not isinstance(images, torch.Tensor) or len(images.shape) != 4:
+					print(f"Warning: Invalid image tensor in batch {batch_idx}")
+					continue
+				
+				# Compute embeddings
+				with torch.no_grad():
+					images = images.to(device)
+					image_features = model.encode_image(images)
+					image_features = F.normalize(image_features, dim=-1)
+					image_embeddings_list.append(image_features.cpu())
+				
+				# Report progress
+				if (batch_idx + 1) % 10 == 0:
+					print(f"Processed {batch_idx + 1}/{len(validation_loader)} batches")
+			
+			# Combine all embeddings
+			if image_embeddings_list:
+				all_image_embeddings = torch.cat(image_embeddings_list, dim=0).to(device)
+				print(f"Computed {len(all_image_embeddings)} image embeddings")
+				
+				# Save to cache
+				try:
+					torch.save({
+						'embeddings': all_image_embeddings.cpu(),
+						'image_paths': image_paths
+					}, cache_file)
+					print(f"Saved embeddings to {cache_file}")
+				except Exception as e:
+					print(f"Warning: Failed to save embeddings cache: {e}")
+			else:
+				print("Error: No valid image embeddings were collected")
+				continue
+		
+		# Compute similarities
+		with torch.no_grad():
+			text_features = model.encode_text(tokenized_query)
+			text_features = F.normalize(text_features, dim=-1)
+			similarities = (100.0 * text_features @ all_image_embeddings.T).softmax(dim=-1)
+			
+			effective_topk = min(topk, len(all_image_embeddings))
+			topk_scores, topk_indices = torch.topk(similarities.squeeze(), effective_topk)
+			topk_scores = topk_scores.cpu().numpy()
+			topk_indices = topk_indices.cpu().numpy()
+		
+		# Create visualization figure
+		fig, axes = plt.subplots(1, effective_topk, figsize=figure_size)
+		if effective_topk == 1:
+			axes = [axes]
+		
+		fig.suptitle(
+			f"Top-{effective_topk} Images for Query: '{query_text}'\nModel: {model_name}", 
+			fontsize=11,
+			fontweight='bold'
+		)
+		
+		# Display the top-k images
+		for i, (ax, idx) in enumerate(zip(axes, topk_indices)):
+			try:
+				# Try to load image using the path
+				img_path = image_paths[idx]
+				if os.path.exists(img_path):
+					img = Image.open(img_path).convert('RGB')
+					ax.imshow(img)
+					ax.set_title(f"Top-{i+1} (Score: {topk_scores[i]:.4f})", fontsize=10)
+				else:
+					# Fallback to dataset access
+					dataset = validation_loader.dataset
+					if hasattr(dataset, '__getitem__'):
+						# Expect (image, tokenized_labels, labels_indices)
+						sample = dataset[idx]
+						if len(sample) >= 3:
+							img = sample[0]  # First element is the image
+						else:
+							raise ValueError(f"Unexpected dataset structure at index {idx}: {sample}")
+						
+						if isinstance(img, torch.Tensor):
+							# Convert tensor to numpy for display
+							img = img.cpu().numpy()
+							if img.shape[0] in [1, 3]:  # CHW to HWC
+								img = img.transpose(1, 2, 0)
+							# Denormalize if necessary (adjust mean/std as per your dataset)
+							mean = np.array([0.5126933455467224, 0.5045100450515747, 0.48094621300697327])
+							std = np.array([0.276103675365448, 0.2733437418937683, 0.27065524458885193])
+							if img.shape[-1] == 1:  # Grayscale
+								img = img.squeeze(-1)
+								mean = np.array([0.5126933455467224])
+								std = np.array([0.276103675365448])
+							img = img * std + mean
+							img = np.clip(img, 0, 1)
+						ax.imshow(img)
+						ax.set_title(f"Top-{i+1} (Score: {topk_scores[i]:.4f})", fontsize=10)
+					else:
+						raise FileNotFoundError(f"Image path not found and dataset access unavailable: {img_path}")
+			except Exception as e:
+				print(f"Warning: Could not display image {idx}: {e}")
+				ax.imshow(np.ones((224, 224, 3)) * 0.5)
+				ax.set_title(f"Top-{i+1} (Score: {topk_scores[i]:.4f})\nError loading image", fontsize=10)
+			
+			ax.axis('off')
+		
+		# Save the visualization
+		file_name = os.path.join(
+			results_dir,
+			f'{dataset_name}_Top{effective_topk}_images_{img_hash}_Q_{re.sub(" ", "_", query_text)}_{model_name}_text_to_image.png'
+		)
+		
+		plt.tight_layout()
+		plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
+		plt.close()
+		
+		print(f"Saved visualization to: {file_name}")
+		print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 
 def plot_comparison_metrics_split(
 		dataset_name: str,
@@ -597,7 +867,7 @@ def plot_comparison_metrics_merged(
 		finetuned_img2txt_dict: dict,
 		finetuned_txt2img_dict: dict,
 		model_name: str,
-		finetune_strategies: list,  # Changed to list
+		finetune_strategies: list,
 		results_dir: str,
 		topK_values: list,
 		figure_size=(15, 6),

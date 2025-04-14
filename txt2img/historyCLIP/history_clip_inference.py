@@ -9,7 +9,7 @@ from utils import *
 from historical_dataset_loader import get_dataloaders, get_preprocess
 from model import get_lora_clip
 from trainer import pretrain, evaluate_best_model
-from visualize import plot_image_to_texts_stacked_horizontal_bar, plot_text_to_images, plot_image_to_texts_pretrained, plot_comparison_metrics_split, plot_comparison_metrics_merged
+from visualize import plot_image_to_texts_stacked_horizontal_bar, plot_text_to_images, plot_image_to_texts_pretrained, plot_comparison_metrics_split, plot_comparison_metrics_merged, plot_text_to_images_merged
 
 # # run in local for all fine-tuned models:
 # # $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_15_do_0.0_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_15_do_0.0_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_15_lr_1.0e-05_wd_1.0e-02_lora_rank_8_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 8 -loa 16.0 -lod 0.05 -qi "https://pbs.twimg.com/media/GoJ-dM-aIAAaVat?format=jpg"
@@ -186,7 +186,17 @@ def main():
 			models=models_to_plot,
 			validation_loader=validation_loader,
 			preprocess=customized_preprocess,
-			query_text=args.query_label,  # Using the query_label as the text query
+			query_text=args.query_label,
+			topk=args.topK,
+			device=args.device,
+			results_dir=RESULT_DIRECTORY,
+		)
+
+		plot_text_to_images_merged(
+			models=models_to_plot,
+			validation_loader=validation_loader,
+			preprocess=customized_preprocess,
+			query_text=args.query_label,
 			topk=args.topK,
 			device=args.device,
 			results_dir=RESULT_DIRECTORY,
