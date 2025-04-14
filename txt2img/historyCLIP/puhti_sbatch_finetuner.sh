@@ -67,11 +67,12 @@ NUM_ARCHITECTURES=${#MODEL_ARCHITECTURES[@]} # Number of model architectures
 # architecture_index=$((remainder % NUM_ARCHITECTURES))
 
 # Approach 2: dataset × strategy × architecture
-### 0-11:  dataset[0] with all strategy×architecture
-### 12-23: dataset[1] with all strategy×architecture
-### 24-35: dataset[2] with all strategy×architecture
-### 36-47: dataset[3] with all strategy×architecture
-### 48-59: dataset[4] with all strategy×architecture
+### 0-11:  dataset[0] with all strategy×architecture [NA]
+### 12-23: dataset[1] with all strategy×architecture [H4]
+### 24-35: dataset[2] with all strategy×architecture [EU]
+### 36-47: dataset[3] with all strategy×architecture [WWII]
+### 48-59: dataset[4] with all strategy×architecture [SMU]
+
 dataset_index=$((SLURM_ARRAY_TASK_ID / (NUM_STRATEGIES * NUM_ARCHITECTURES)))
 remainder=$((SLURM_ARRAY_TASK_ID % (NUM_STRATEGIES * NUM_ARCHITECTURES)))
 strategy_index=$((remainder / NUM_ARCHITECTURES))
@@ -89,7 +90,7 @@ fi
 INIT_LRS=(1e-5 1e-5 1e-5 5e-5 1e-5)
 INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
 DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
-EPOCHS=(50 50 150 150 150)
+EPOCHS=(100 100 150 150 150)
 LORA_RANKS=(4 4 8 8 8)
 LORA_ALPHAS=(16 16 16 16 16)
 LORA_DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
