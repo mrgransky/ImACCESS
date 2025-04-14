@@ -126,7 +126,6 @@ else
 	DROPOUT="${DROPOUTS[$dataset_index]}" # Use the original dropout for full and progressive
 fi
 
-# Debugging output
 echo "=== CONFIGURATION ==="
 echo "SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
 echo "DATASET_INDEX: $dataset_index"
@@ -155,16 +154,6 @@ if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
 				ADJUSTED_BATCH_SIZE=32 # Reduced batch size for large models with other datasets
 		fi
 fi
-
-# # Further batch size reduction for the largest model with 336px resolution
-# if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"336px"* ]]; then
-# 		# Even smaller batch size for 336px resolution
-# 		if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
-# 				ADJUSTED_BATCH_SIZE=16  # Extremely conservative for largest model + largest dataset
-# 		else
-# 				ADJUSTED_BATCH_SIZE=32  # Very conservative for largest model with other datasets
-# 		fi
-# fi
 
 echo "Starting Python execution for task $SLURM_ARRAY_TASK_ID"
 echo "DATASET: ${DATASETS[$dataset_index]}"
