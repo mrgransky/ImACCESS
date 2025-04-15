@@ -6,14 +6,14 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
+#SBATCH --cpus-per-task=10
 #SBATCH --partition=gpu
 # #SBATCH --constraint=gpumem_32 # must be adjusted dynamically
 #SBATCH --mem=80G # must be adjusted dynamically
-#SBATCH --gres=gpu:teslav100:1 # must be adjusted dynamically
+#SBATCH --gres=gpu:rtx100:1 # must be adjusted dynamically
 #SBATCH --time=07-00:00:00 # must be adjusted dynamically
 # #SBATCH --array=0-11 # NA
-#SBATCH --array=13-23 # H4
+#SBATCH --array=20-23 # H4
 # #SBATCH --array=24-35 # EU
 # #SBATCH --array=36-47 # WWII
 # #SBATCH --array=48-59 # SMU
