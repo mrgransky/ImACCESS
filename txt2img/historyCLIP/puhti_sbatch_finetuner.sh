@@ -7,7 +7,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=80G
+#SBATCH --mem=68G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=12-23 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -30,7 +30,6 @@ echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
-# Define constants
 FINETUNE_STRATEGIES=(
 	"full" 
 	"lora" 
@@ -46,10 +45,10 @@ DATASETS=(
 )
 
 MODEL_ARCHITECTURES=(
-	"ViT-B/32" 
-	"ViT-B/16" 
-	"ViT-L/14" 
 	"ViT-L/14@336px"
+	"ViT-L/14"
+	"ViT-B/32"
+	"ViT-B/16"
 )
 
 NUM_DATASETS=${#DATASETS[@]} # Number of datasets
@@ -86,12 +85,11 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 	exit 1
 fi
 
-# Hyperparameter configuration
 INIT_LRS=(1e-5 1e-5 1e-5 5e-5 1e-5)
 INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
 DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 EPOCHS=(100 100 150 150 150)
-LORA_RANKS=(4 4 8 8 8)
+LORA_RANKS=(8 8 8 8 8)
 LORA_ALPHAS=(16 16 16 16 16)
 LORA_DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
 BATCH_SIZES=(64 64 64 64 64)

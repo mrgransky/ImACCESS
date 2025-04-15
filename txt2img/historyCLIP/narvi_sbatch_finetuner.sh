@@ -47,22 +47,25 @@ eval "$(/home/opt/anaconda3/bin/conda shell.bash hook)" || { echo "Failed to eva
 conda activate py39 || { echo "Failed to activate py39 environment" >&2; exit 1; }
 echo "Conda environment activated successfully"
 
-# Define constants
-FINETUNE_STRATEGIES=("full" "lora" "progressive")
+FINETUNE_STRATEGIES=(
+	"full" 
+	"lora" 
+	"progressive"
+)
 
 DATASETS=(
-/lustre/sgn-data/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
-/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4
-/lustre/sgn-data/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
-/lustre/sgn-data/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
-/lustre/sgn-data/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
+	/lustre/sgn-data/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
+	/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4
+	/lustre/sgn-data/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
+	/lustre/sgn-data/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
+	/lustre/sgn-data/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
 MODEL_ARCHITECTURES=(
-"ViT-B/32"
-"ViT-B/16" 
-"ViT-L/14" 
-"ViT-L/14@336px"
+	"ViT-L/14@336px"
+	"ViT-L/14"
+	"ViT-B/32"
+	"ViT-B/16"
 )
 
 NUM_DATASETS=${#DATASETS[@]} # Number of datasets
