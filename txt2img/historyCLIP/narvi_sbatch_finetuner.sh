@@ -13,7 +13,7 @@
 #SBATCH --gres=gpu:teslav100:1 # must be adjusted dynamically
 #SBATCH --time=07-00:00:00 # must be adjusted dynamically
 # #SBATCH --array=0-11 # NA
-#SBATCH --array=12-23 # H4
+#SBATCH --array=16-23 # H4
 # #SBATCH --array=15,23
 # #SBATCH --array=24-35 # EU
 # #SBATCH --array=36-47 # WWII
