@@ -300,18 +300,18 @@ def compute_retrieval_metrics_from_similarity(
 		return metrics
 
 def get_validation_metrics(
-		model: torch.nn.Module,
-		validation_loader: DataLoader,
-		criterion: torch.nn.Module,
-		device: str,
-		topK_values: List[int],
-		cache_dir: str,
-		finetune_strategy: str,
-		print_every: int = 100,
-		chunk_size: int = 1024,
-		verbose: bool = True,
-		max_in_batch_samples: int = 320,  # For in-batch metrics only
-		force_recompute: bool = False
+		model:torch.nn.Module,
+		validation_loader:DataLoader,
+		criterion:torch.nn.Module,
+		device:str,
+		topK_values: list[int],
+		cache_dir:str,
+		finetune_strategy:str,
+		print_every:int=100,
+		chunk_size:int=1024,
+		verbose:bool=True,
+		max_in_batch_samples:int=320,  # For in-batch metrics only
+		force_recompute:bool=False
 	) -> Dict:
 
 	model.eval()
@@ -320,9 +320,9 @@ def get_validation_metrics(
 	
 	# Get dataset info
 	try:
-			class_names = validation_loader.dataset.dataset.classes
+		class_names = validation_loader.dataset.dataset.classes
 	except:
-			class_names = validation_loader.dataset.unique_labels
+		class_names = validation_loader.dataset.unique_labels
 	
 	n_classes = len(class_names)
 	total_samples = len(validation_loader.dataset)
@@ -335,7 +335,7 @@ def get_validation_metrics(
 		f"{finetune_strategy}_"
 		f"bs_{validation_loader.batch_size}_"
 		f"{model.__class__.__name__}_"
-		f"{re.sub(r'[/@]', '', model.name)}.pt"
+		f"{re.sub(r'[/@]', '_', model.name)}.pt"
 	)
 	
 	# Step 1: Compute in-batch metrics using a small subset for efficiency
@@ -585,7 +585,7 @@ def evaluate_best_model(
 		checkpoint_path,
 		finetune_strategy,
 		device,
-		cache_dir,
+		cache_dir:str,
 		topk_values:list[int]=[1, 5, 10],
 		verbose:bool=True
 	):
