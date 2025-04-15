@@ -6,7 +6,7 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
+#SBATCH --cpus-per-task=8
 #SBATCH --partition=gpu
 # #SBATCH --constraint=gpumem_32 # must be adjusted dynamically
 #SBATCH --mem=80G # must be adjusted dynamically
