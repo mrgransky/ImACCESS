@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=history_x4_dataset_x_strategy_x_architecture_with_dropout
+#SBATCH --job-name=h4_x_str_x_arch
 #SBATCH --output=/lustre/sgn-data/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -8,12 +8,13 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --partition=gpu
-# #SBATCH --constraint=gpumem_32 # must be adjusted dynamically
-#SBATCH --mem=80G # must be adjusted dynamically
-#SBATCH --gres=gpu:rtx100:1 # must be adjusted dynamically
+#SBATCH --constraint=gpumem_32 # must be adjusted dynamically
+#SBATCH --mem=68G # must be adjusted dynamically
+#SBATCH --gres=gpu:teslav100:1 # must be adjusted dynamically
 #SBATCH --time=07-00:00:00 # must be adjusted dynamically
 # #SBATCH --array=0-11 # NA
-#SBATCH --array=20-23 # H4
+#SBATCH --array=12-23 # H4
+# #SBATCH --array=15,23
 # #SBATCH --array=24-35 # EU
 # #SBATCH --array=36-47 # WWII
 # #SBATCH --array=48-59 # SMU
@@ -101,11 +102,10 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 	exit 1
 fi
 
-# Hyperparameter configuration
-INIT_LRS=(1e-5 1e-5 1e-5 5e-5 1e-5)
+INIT_LRS=(5e-6 1e-5 1e-5 5e-5 1e-5)
 INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
-DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
-EPOCHS=(100 100 150 150 150)
+DROPOUTS=(0.05 0.1 0.05 0.05 0.05)
+EPOCHS=(110 100 150 150 150)
 LORA_RANKS=(8 8 8 8 8)
 LORA_ALPHAS=(16.0 16.0 16.0 16.0 16.0)
 LORA_DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
