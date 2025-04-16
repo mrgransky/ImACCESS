@@ -12,7 +12,7 @@ import inspect
 def plot_label_distribution_pie_chart(
 		df: pd.DataFrame = None,
 		fpth: str = "label_distribution_pie_chart.png",
-		figure_size: tuple = (15, 10),
+		figure_size: tuple = (12, 7),
 		DPI: int = 250,
 		dataset_name: str = "EUROPEANA_1900-01-01_1970-12-31",
 	):
@@ -60,46 +60,48 @@ def plot_label_distribution_pie_chart(
 					autotext.set_color('white' if luminance < 0.5 else 'black')
 					if label_counts.values[i] / total_samples < 0.1:
 							autotext.set_position((autotext.get_position()[0] * 1.2, autotext.get_position()[1] * 1.2))
-					autotext.set_fontsize(14)  # Increase font size to 12
+					autotext.set_fontsize(18)
 					autotext.set_weight('bold')  # Make font bold
 
 	# Turn off axis for legend subplot
 	ax_legend.axis('off')
 	# Create truncated legend
 	if len(labels) > 6:
-			selected_wedges = wedges[:3] + [None] + wedges[-3:]
-			legend_labels_full = [
-					f"{label} ({count:,}, {count/total_samples*100:.1f}%)"
-					for label, count in label_counts.items()
-			]
-			omitted_count = len(labels) - 6
-			# selected_labels = legend_labels_full[:3] + [f'... ({omitted_count} categories omitted)'] + legend_labels_full[-3:]
-			selected_labels = legend_labels_full[:3] + [f'...'] + legend_labels_full[-3:]
-			dummy_artist = plt.Rectangle((0, 0), 1, 1, fc='none', fill=False, edgecolor='none', linewidth=0)
-			selected_wedges[3] = dummy_artist
+		selected_wedges = wedges[:3] + [None] + wedges[-3:]
+		legend_labels_full = [
+			f"{label} ({count:,}, {count/total_samples*100:.1f}%)"
+			for label, count in label_counts.items()
+		]
+		omitted_count = len(labels) - 6
+		# selected_labels = legend_labels_full[:3] + [f'... ({omitted_count} categories omitted)'] + legend_labels_full[-3:]
+		selected_labels = legend_labels_full[:3] + [f'...'] + legend_labels_full[-3:]
+		dummy_artist = plt.Rectangle((0, 0), 1, 1, fc='none', fill=False, edgecolor='none', linewidth=0)
+		selected_wedges[3] = dummy_artist
 	else:
-			selected_wedges = wedges
-			selected_labels = [
-					f"{label} ({count:,}, {count/total_samples*100:.1f}%)"
-					for label, count in label_counts.items()
-			]
+		selected_wedges = wedges
+		selected_labels = [
+			f"{label} ({count:,}, {count/total_samples*100:.1f}%)"
+			for label, count in label_counts.items()
+		]
 	# Create legend
-	ax_legend.legend(
-			selected_wedges,
-			selected_labels,
-			loc='center',
-			bbox_to_anchor=(0.5, 0.5),
-			fontsize=14,
-			title=f"Labels (Total: {total_samples:,} samples, {unique_labels} unique)",
-			title_fontsize=16,
-			fancybox=True,
-			shadow=True,
-			edgecolor='black',
-			facecolor='white',
-			ncol=1,
-			labelspacing=1.2,
-			labelcolor='black',
-	)
+	legend = ax_legend.legend(
+		selected_wedges,
+		selected_labels,
+		loc='center',
+		bbox_to_anchor=(0.5, 0.5),
+		fontsize=16,
+		title=f"Total samples: {total_samples:,} (Unique Labels: {unique_labels})",
+		title_fontsize=15,
+		fancybox=True,
+		shadow=True,
+		edgecolor='black',
+		facecolor='white',
+		ncol=1,
+		labelspacing=1.2,
+		labelcolor='black',
+	)	
+	for text in legend.get_texts():
+		text.set_fontweight('bold')
 	ax_pie.axis('equal')
 	plt.tight_layout()
 	plt.savefig(fname=fpth, dpi=DPI, bbox_inches='tight')
