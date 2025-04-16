@@ -2,34 +2,29 @@ from utils import *
 from model import get_lora_clip
 from visualize import plot_loss_accuracy_metrics, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics
 
-def cleanup_embedding_cache(cache_dir: str, finetune_strategy: str, batch_size: int, model_name: str, model_arch: str):
-		"""
-		Delete the embedding cache file for a specific model and training configuration.
-		
-		Args:
-				cache_dir: Directory containing cache files
-				finetune_strategy: Strategy name used in the cache file name
-				batch_size: Batch size used in the cache file name
-				model_name: Model class name used in the cache file name
-				model_arch: Model architecture name used in the cache file name
-		"""
-		cache_file = os.path.join(
-				cache_dir,
-				f"validation_embeddings_"
-				f"{finetune_strategy}_"
-				f"bs_{batch_size}_"
-				f"{model_name}_"
-				f"{re.sub(r'[/@]', '', model_arch)}.pt"
-		)
-		
-		if os.path.exists(cache_file):
-				try:
-						os.remove(cache_file)
-						print(f"Successfully removed cache file: {cache_file}")
-				except Exception as e:
-						print(f"Warning: Failed to remove cache file {cache_file}: {e}")
-		else:
-				print(f"Cache file not found: {cache_file}")
+def cleanup_embedding_cache(
+		cache_dir: str, 
+		finetune_strategy: str, 
+		batch_size: int, 
+		model_name: str, 
+		model_arch: str,
+	):
+	cache_file = os.path.join(
+		cache_dir,
+		f"validation_embeddings_"
+		f"{finetune_strategy}_"
+		f"bs_{batch_size}_"
+		f"{model_name}_"
+		f"{re.sub(r'[/@]', '_', model_arch)}.pt"
+	)	
+	if os.path.exists(cache_file):
+		try:
+			os.remove(cache_file)
+			print(f"Successfully removed cache file: {cache_file}")
+		except Exception as e:
+			print(f"Warning: Failed to remove cache file {cache_file}: {e}")
+	else:
+		print(f"Cache file not found: {cache_file}")
 
 def get_model_hash(model: torch.nn.Module) -> str:
 		"""
@@ -693,20 +688,25 @@ def evaluate_best_model(
 	# 	topK_values=topk_values
 	# )
 	
-	# Print evaluation results if verbose
 	if verbose:
 		print("\n--- Final Metrics [In-batch Validation] ---")
 		print(json.dumps(in_batch_metrics, indent=2, ensure_ascii=False))
-		
 		print("\n--- Final Metrics [Full Validation Set] ---")
 		print(json.dumps(full_metrics, indent=2, ensure_ascii=False))
-		
 		print("\n--- Image-to-Text Retrieval ---")
 		print(json.dumps(retrieval_metrics["img2txt"], indent=2, ensure_ascii=False))
-		
 		print("\n--- Text-to-Image Retrieval ---")
 		print(json.dumps(retrieval_metrics["txt2img"], indent=2, ensure_ascii=False))
-	
+
+	# Clean up cache file
+	cleanup_embedding_cache(
+		cache_dir=cache_dir,
+		finetune_strategy=finetune_strategy,
+		batch_size=validation_loader.batch_size,
+		model_name=model.__class__.__name__,
+		model_arch=model.name if hasattr(model, 'name') else 'unknown_arch'
+	)
+
 	return {
 		"in_batch_metrics": in_batch_metrics,
 		"full_metrics": full_metrics,
@@ -2535,15 +2535,6 @@ def progressive_unfreeze_finetune(
 		fname=plot_paths["retrieval_best"],
 	)
 
-	# Clean up cache file
-	cleanup_embedding_cache(
-		cache_dir=results_dir,
-		finetune_strategy=mode,
-		batch_size=train_loader.batch_size,
-		model_name=model.__class__.__name__,
-		model_arch=model.name if hasattr(model, 'name') else 'unknown_arch'
-	)
-
 	return in_batch_loss_acc_metrics_all_epochs # Return history for potential further analysis
 
 def lora_finetune(
@@ -2877,15 +2868,6 @@ def lora_finetune(
 		image_to_text_metrics=final_img2txt_metrics,
 		text_to_image_metrics=final_txt2img_metrics,
 		fname=plot_paths["retrieval_best"],
-	)
-
-	# Clean up cache file
-	cleanup_embedding_cache(
-		cache_dir=results_dir,
-		finetune_strategy=mode,
-		batch_size=train_loader.batch_size,
-		model_name=model.__class__.__name__,
-		model_arch=model.name if hasattr(model, 'name') else 'unknown_arch'
 	)
 
 def full_finetune(
@@ -3222,15 +3204,6 @@ def full_finetune(
 		image_to_text_metrics=final_img2txt_metrics,
 		text_to_image_metrics=final_txt2img_metrics,
 		fname=retrieval_metrics_best_model_fpth,
-	)
-
-	# Clean up cache file
-	cleanup_embedding_cache(
-		cache_dir=results_dir,
-		finetune_strategy=mode,
-		batch_size=train_loader.batch_size,
-		model_name=model.__class__.__name__,
-		model_arch=model.name if hasattr(model, 'name') else 'unknown_arch'
 	)
 
 def train(

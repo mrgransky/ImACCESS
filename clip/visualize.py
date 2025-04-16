@@ -270,9 +270,7 @@ def plot_text_to_images_merged(
 		figure_size=(12, 8),
 		dpi: int = 300,
 	):
-	"""
-	Retrieves and visualizes the top-k images most relevant to a given text query for all models in a single plot.
-	"""
+
 	# Create output directory and unique hash for the query
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	img_hash = hashlib.sha256(query_text.encode()).hexdigest()[:8]
@@ -296,12 +294,16 @@ def plot_text_to_images_merged(
 	
 	# Process each model to get top-k images
 	for model_name, model in models.items():
+		print(f"Processing model: {model_name} ".center(160, " "))
+		if model_name == 'pretrained':
+			model_arch = re.sub(r'[/@]', '-', model.name)
+			print(f"{model.__class__.__name__} {model_arch}".center(160, " "))
 		model.eval()
 		print(f"[Text-to-image(s)] {model_name} Zero-Shot Text-to-Image Retrieval for query: '{query_text}'".center(200, " "))
 		t0 = time.time()
 		
 		# Generate cache file path
-		cache_file = os.path.join(results_dir, f"{model_name}_{dataset_name}_embeddings.pt")
+		cache_file = os.path.join(results_dir, f"{dataset_name}_{model_name}_embeddings.pt")
 		
 		# Try to load cached embeddings and image paths
 		all_image_embeddings = None
@@ -404,8 +406,8 @@ def plot_text_to_images_merged(
 	# Create a single plot with (num_models x topk) grid
 	fig, axes = plt.subplots(num_models, effective_topk, figsize=(effective_topk * 3, num_models * 3))
 	fig.suptitle(
-		f"Top-{effective_topk} Images for Query: '{query_text}' Across Models", 
-		fontsize=16,
+		f"Query: '{query_text}' Top-{effective_topk} Images Across Models",
+		fontsize=13,
 		fontweight='bold',
 	)
 	
@@ -468,13 +470,13 @@ def plot_text_to_images_merged(
 
 				# Set title for the subplot
 				if row_idx == 0:
-					ax.set_title(f"Rank {col_idx+1}\nScore: {score:.4f}", fontsize=10)
+					ax.set_title(f"Top-{col_idx+1} (Score: {score:.3f})", fontsize=10)
 			
 			except Exception as e:
 				print(f"Warning: Could not display image {idx} for model {model_name}: {e}")
 				ax.imshow(np.ones((224, 224, 3)) * 0.5)
 				if row_idx == 0:
-					ax.set_title(f"Rank {col_idx+1}\nScore: {score:.4f}\nError loading image", fontsize=10)
+					ax.set_title(f"Top-{col_idx+1} (Score: {score:.3f})\nError loading image", fontsize=10)
 				else:
 					ax.set_title("Error loading image", fontsize=8)
 			
@@ -489,7 +491,7 @@ def plot_text_to_images_merged(
 		axes[row_idx][0].text(
 			-0.1,
 			0.5,
-			model_name.capitalize(), 
+			model_name.capitalize(),
 			transform=axes[row_idx][0].transAxes, 
 			fontsize=10,
 			fontweight='bold',
@@ -501,7 +503,7 @@ def plot_text_to_images_merged(
 	# Save the visualization
 	file_name = os.path.join(
 		results_dir,
-		f"{dataset_name}_Top{effective_topk}_images_{img_hash}_Q_{re.sub(' ', '_', query_text)}_{'_'.join(model_names)}_text_to_image.png"
+		f"{dataset_name}_Top{effective_topk}_images_{img_hash}_Q_{re.sub(' ', '_', query_text)}_{'_'.join(model_names)}_{model_arch}_t2i_merged.png"
 	)
 	
 	plt.tight_layout()
@@ -527,19 +529,22 @@ def plot_text_to_images(
 	# Create output directory and unique hash for the query
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	img_hash = hashlib.sha256(query_text.encode()).hexdigest()[:8]
-	os.makedirs(results_dir, exist_ok=True)
 	
 	# Prepare the text query
 	tokenized_query = clip.tokenize([query_text]).to(device)
 	
 	# Process with each model
 	for model_name, model in models.items():
+		print(f"Processing model: {model_name} ".center(160, " "))
+		if model_name == 'pretrained':
+			model_arch = re.sub(r'[/@]', '-', model.name)
+			print(f"{model.__class__.__name__} {model_arch}".center(160, " "))
 		model.eval()
-		print(f"[Text-to-image(s)] {model_name} Zero-Shot Text-to-Image Retrieval for query: '{query_text}'".center(200, " "))
+		print(f"[Text-to-image(s)] {model_name} Zero-Shot Text-to-Image Retrieval | Query: '{query_text}'".center(200, " "))
 		t0 = time.time()
 		
 		# Generate cache file path
-		cache_file = os.path.join(results_dir, f"{model_name}_{dataset_name}_embeddings.pt")
+		cache_file = os.path.join(results_dir, f"{dataset_name}_{model_name}_embeddings.pt")
 		
 		# Try to load cached embeddings and image paths
 		all_image_embeddings = None
@@ -637,7 +642,7 @@ def plot_text_to_images(
 			axes = [axes]
 		
 		fig.suptitle(
-			f"Top-{effective_topk} Images for Query: '{query_text}'\nModel: {model_name}", 
+			f"Top-{effective_topk} Images Query: '{query_text}'\nModel: {model_name} {model_arch}", 
 			fontsize=11,
 			fontweight='bold'
 		)
@@ -690,7 +695,7 @@ def plot_text_to_images(
 		# Save the visualization
 		file_name = os.path.join(
 			results_dir,
-			f'{dataset_name}_Top{effective_topk}_images_{img_hash}_Q_{re.sub(" ", "_", query_text)}_{model_name}_text_to_image.png'
+			f'{dataset_name}_Top{effective_topk}_images_{img_hash}_Q_{re.sub(" ", "_", query_text)}_{model_name}_{model_arch}_t2i.png'
 		)
 		
 		plt.tight_layout()
