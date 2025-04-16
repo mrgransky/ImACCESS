@@ -305,7 +305,7 @@ def get_validation_metrics(
 		print_every:int=250,
 		chunk_size:int=1024,
 		verbose:bool=True,
-		max_in_batch_samples:int=320,  # For in-batch metrics only
+		max_in_batch_samples:int=320, # For in-batch metrics only
 		force_recompute:bool=False
 	) -> Dict:
 
@@ -563,7 +563,8 @@ def evaluate_best_model(
 		device,
 		cache_dir:str,
 		topk_values:list[int]=[1, 5, 10],
-		verbose:bool=True
+		verbose:bool=True,
+		clean_cache:bool=True,
 	):
 	model_source = "current"  # Default if we don't load anything
 	
@@ -680,13 +681,14 @@ def evaluate_best_model(
 		print(json.dumps(retrieval_metrics["txt2img"], indent=2, ensure_ascii=False))
 
 	# Clean up cache file
-	cleanup_embedding_cache(
-		cache_dir=cache_dir,
-		finetune_strategy=finetune_strategy,
-		batch_size=validation_loader.batch_size,
-		model_name=model.__class__.__name__,
-		model_arch=model.name if hasattr(model, 'name') else 'unknown_arch'
-	)
+	if clean_cache:
+		cleanup_embedding_cache(
+			cache_dir=cache_dir,
+			finetune_strategy=finetune_strategy,
+			batch_size=validation_loader.batch_size,
+			model_name=model.__class__.__name__,
+			model_arch=model.name if hasattr(model, 'name') else 'unknown_arch'
+		)
 
 	return {
 		"in_batch_metrics": in_batch_metrics,
