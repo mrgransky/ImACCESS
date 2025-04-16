@@ -267,45 +267,28 @@ def plot_text_to_images_merged(
 		topk: int,
 		device: str,
 		results_dir: str,
-		figure_size=(12, 8),
 		dpi: int = 300,
 	):
-
-	# Create output directory and unique hash for the query
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	img_hash = hashlib.sha256(query_text.encode()).hexdigest()[:8]
+	
 	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}
 	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#7f7f7f'}
+	
 	pretrained_model_arch = models.get("pretrained").name
-	colors = [pretrained_colors.get(pretrained_model_arch, '#000000')] + list(strategy_colors.values())
-	print(f"colors: {colors}")
-
-	# Prepare the text query
 	tokenized_query = clip.tokenize([query_text]).to(device)
 	
-	# Define colors for borders
-	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
-	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#7f7f7f'}
-	
-	# Store top-k results for each model
 	model_results = {}
 	num_models = len(models)
 	model_names = list(models.keys())
 	
-	# Process each model to get top-k images
 	for model_name, model in models.items():
-		print(f"Processing model: {model_name} ".center(160, " "))
-		if model_name == 'pretrained':
-			model_arch = re.sub(r'[/@]', '-', model.name)
-			print(f"{model.__class__.__name__} {model_arch}".center(160, " "))
+		print(f"Processing model: {model_name} {model.__class__.__name__} {pretrained_model_arch}".center(160, " "))
 		model.eval()
-		print(f"[Text-to-image(s)] {model_name} Zero-Shot Text-to-Image Retrieval for query: '{query_text}'".center(200, " "))
-		t0 = time.time()
+		print(f"[Text-to-image(s)] {model_name} Zero-Shot Text-to-Image Retrieval for query: '{query_text}'".center(100, " "))
 		
-		# Generate cache file path
 		cache_file = os.path.join(results_dir, f"{dataset_name}_{model_name}_embeddings.pt")
 		
-		# Try to load cached embeddings and image paths
 		all_image_embeddings = None
 		image_paths = []
 		
@@ -326,7 +309,6 @@ def plot_text_to_images_merged(
 			image_embeddings_list = []
 			image_paths = []
 			
-			# Get the dataset reference from the loader
 			dataset = validation_loader.dataset
 			
 			# Check if dataset has img_path attribute or can provide paths
@@ -345,7 +327,7 @@ def plot_text_to_images_merged(
 						else:
 							batch_paths.append(f"missing_path_{global_idx}")
 				else:
-						batch_paths = [f"batch_{batch_idx}_img_{i}" for i in range(len(images))]
+					batch_paths = [f"batch_{batch_idx}_img_{i}" for i in range(len(images))]
 				
 				# Store paths for visualization
 				image_paths.extend(batch_paths)
@@ -384,7 +366,7 @@ def plot_text_to_images_merged(
 				print("Error: No valid image embeddings were collected")
 				continue
 		
-		# Compute similarities
+		# Compute similarities between text query and all images
 		with torch.no_grad():
 			text_features = model.encode_text(tokenized_query)
 			text_features = F.normalize(text_features, dim=-1)
@@ -401,10 +383,17 @@ def plot_text_to_images_merged(
 			'topk_indices': topk_indices,
 			'image_paths': image_paths
 		}
-		print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 	
-	# Create a single plot with (num_models x topk) grid
-	fig, axes = plt.subplots(num_models, effective_topk, figsize=(effective_topk * 3, num_models * 3))
+	# Create a figure with a larger figure size to accommodate the borders
+	fig_width = effective_topk * 3.2
+	fig_height = num_models * 3.5
+	fig, axes = plt.subplots(
+		nrows=num_models, 
+		ncols=effective_topk, 
+		figsize=(fig_width, fig_height),
+		constrained_layout=True,
+	)
+
 	fig.suptitle(
 		f"Query: '{query_text}' Top-{effective_topk} Images Across Models",
 		fontsize=13,
@@ -417,12 +406,15 @@ def plot_text_to_images_merged(
 	if effective_topk == 1:
 		axes = [[ax] for ax in axes]
 	
+	# Create more space between rows for the borders
+	plt.subplots_adjust(hspace=0.4)
+	
 	# Plot images for each model
 	for row_idx, model_name in enumerate(model_names):
 		# Get border color for this model
 		if model_name == 'pretrained':
 			model = models[model_name]
-			border_color = pretrained_colors.get(model.name, '#745555')  # Default to ViT-B/32 color if not found
+			border_color = pretrained_colors.get(model.name, '#745555')  # Default if not found
 		else:
 			border_color = strategy_colors.get(model_name, '#000000')  # Default to black if not found
 		
@@ -433,6 +425,7 @@ def plot_text_to_images_merged(
 		image_paths = result['image_paths']
 		dataset = validation_loader.dataset
 		
+		# Plot each image in the row
 		for col_idx, (idx, score) in enumerate(zip(topk_indices, topk_scores)):
 			ax = axes[row_idx][col_idx]
 			try:
@@ -467,51 +460,73 @@ def plot_text_to_images_merged(
 						ax.imshow(img)
 					else:
 						raise FileNotFoundError(f"Image path not found and dataset access unavailable: {img_path}")
-
-				# Set title for the subplot
-				if row_idx == 0:
-					ax.set_title(f"Top-{col_idx+1} (Score: {score:.3f})", fontsize=10)
+				ax.set_title(f"Top-{col_idx+1} (Score: {score:.3f})", fontsize=12)
 			
 			except Exception as e:
 				print(f"Warning: Could not display image {idx} for model {model_name}: {e}")
 				ax.imshow(np.ones((224, 224, 3)) * 0.5)
-				if row_idx == 0:
-					ax.set_title(f"Top-{col_idx+1} (Score: {score:.3f})\nError loading image", fontsize=10)
-				else:
-					ax.set_title("Error loading image", fontsize=8)
+				ax.set_title(f"Top-{col_idx+1} (Score: {score:.3f})\nError loading image", fontsize=10)
 			
-			# Set border color for the subplot
+			# Remove default spines
 			for spine in ax.spines.values():
-				spine.set_color(border_color)
-				spine.set_linewidth(2)
+				spine.set_visible(False)
 			
 			ax.axis('off')
 		
 		# Add model name label on the left side of the row
 		axes[row_idx][0].text(
-			-0.1,
+			-0.15,
 			0.5,
-			model_name.capitalize(),
+			model_name.upper() if model_name != 'pretrained' else f"{model_name.capitalize()} {pretrained_model_arch}",
 			transform=axes[row_idx][0].transAxes, 
-			fontsize=10,
+			fontsize=14,
 			fontweight='bold',
 			va='center',
 			ha='right',
 			rotation=90,
+			color=border_color,
 		)
+		
+		# Create a rectangle patch that surrounds the entire row
+		# Get the position of the first and last subplot in the row
+		first_pos = axes[row_idx][0].get_position()
+		last_pos = axes[row_idx][-1].get_position()
+		
+		# Create a rectangle with the appropriate dimensions
+		rect_x = first_pos.x0 - 0.02
+		rect_y = first_pos.y0 - 0.02
+		rect_width = (last_pos.x1 - first_pos.x0) + 0.04
+		rect_height = (first_pos.y1 - first_pos.y0) + 0.04
+		
+		# Add the rectangle to the figure
+		rect = plt.Rectangle(
+			(rect_x, rect_y),
+			rect_width,
+			rect_height,
+			fill=False,
+			linewidth=3,
+			edgecolor=border_color,
+			transform=fig.transFigure,
+			zorder=-1,
+		)
+		# fig.add_artist(rect)
 	
 	# Save the visualization
 	file_name = os.path.join(
 		results_dir,
-		f"{dataset_name}_Top{effective_topk}_images_{img_hash}_Q_{re.sub(' ', '_', query_text)}_{'_'.join(model_names)}_{model_arch}_t2i_merged.png"
+		f"{dataset_name}_"
+		f"Top{effective_topk}_images_"
+		f"{img_hash}_"
+		f"Q_{re.sub(' ', '_', query_text)}_"
+		f"{'_'.join(model_names)}_"
+		f"{re.sub(r'[/@]', '-', pretrained_model_arch)}_"
+		f"t2i_merged.png"
 	)
 	
 	plt.tight_layout()
 	plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
 	plt.close()
 	
-	print(f"Saved merged visualization to: {file_name}")
-
 def plot_text_to_images(
 		models: dict,
 		validation_loader: DataLoader,
@@ -541,7 +556,6 @@ def plot_text_to_images(
 			print(f"{model.__class__.__name__} {model_arch}".center(160, " "))
 		model.eval()
 		print(f"[Text-to-image(s)] {model_name} Zero-Shot Text-to-Image Retrieval | Query: '{query_text}'".center(200, " "))
-		t0 = time.time()
 		
 		# Generate cache file path
 		cache_file = os.path.join(results_dir, f"{dataset_name}_{model_name}_embeddings.pt")
@@ -701,9 +715,6 @@ def plot_text_to_images(
 		plt.tight_layout()
 		plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
 		plt.close()
-		
-		print(f"Saved visualization to: {file_name}")
-		print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 
 def plot_comparison_metrics_split(
 		dataset_name: str,
