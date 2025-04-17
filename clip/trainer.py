@@ -2797,13 +2797,13 @@ def lora_finetune(
 		f"{mode}_"
 		f"{model_name}_"
 		f"{model_arch}_"
-		f"lora_alpha_{lora_alpha}_"
-		f"lora_dropout_{lora_dropout}_"
-		f"lora_rank_{lora_rank}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
-		f"bs_{train_loader.batch_size}"
+		f"bs_{train_loader.batch_size}_"
+		f"lora_rank_{lora_rank}_"
+		f"lora_alpha_{lora_alpha}_"
+		f"lora_dropout_{lora_dropout}"
 	)
 	mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
 	print(f"Best model will be renamed to: {mdl_fpth}")
