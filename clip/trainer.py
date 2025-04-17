@@ -381,7 +381,7 @@ def get_validation_metrics(
 	
 	if not cache_loaded or all_image_embeds is None:
 		if verbose:
-			print("Computing embeddings from scratch")
+			print(f"Computing embeddings from scratch {finetune_strategy} {model.__class__.__name__} {model.name}")
 		all_image_embeds = []
 		all_labels = []
 		
@@ -441,7 +441,7 @@ def get_validation_metrics(
 	)
 
 	if verbose:
-		print(f"Full-set metrics computed in {time.time() - full_set_start:.1f} sec")
+		print(f"Full-set validation metrics computed in {time.time() - full_set_start:.1f} sec")
 	
 	# Step 6: Compute retrieval metrics using cached embeddings and similarities
 	retrieval_start = time.time()
@@ -3442,29 +3442,29 @@ def train(
 def pretrain(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
-		results_dir: str,
 		device: torch.device,
+		results_dir: str,
+		cache_dir: str=None,
 		topk_values: List=[1, 3, 5],
 	):
 	model_name = model.__class__.__name__
 	model_arch = re.sub(r"[/@]", "_", model.name)
-
+	if cache_dir is None:
+		cache_dir = results_dir
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
 	except:
 		dataset_name = validation_loader.dataset.dataset_name
-
 	print(f"Pretrain Evaluation {dataset_name} {model_name} - {model_arch} {device}".center(170, "-"))
-	i2t_retrieval_metrics_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt.json")
-	t2i_retrieval_metrics_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_txt2img.json")
-	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{validation_loader.name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt_txt2img.png")
+	i2t_retrieval_metrics_fpth = os.path.join(cache_dir, f"{dataset_name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt.json")
+	t2i_retrieval_metrics_fpth = os.path.join(cache_dir, f"{dataset_name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_txt2img.json")
+	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{dataset_name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt_txt2img.png")
 
 	try:
 		img2txt_metrics = load_pickle(fpath=i2t_retrieval_metrics_fpth)
 		txt2img_metrics = load_pickle(fpath=t2i_retrieval_metrics_fpth)
 	except Exception as e:
 		print(e)
-
 		retrieval_metrics = evaluate_retrieval_performance(
 			model=model,
 			validation_loader=validation_loader,

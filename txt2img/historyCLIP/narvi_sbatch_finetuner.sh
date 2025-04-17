@@ -152,7 +152,6 @@ echo "EPOCHS: ${EPOCHS[$dataset_index]}"
 echo "INITIAL LEARNING RATE: ${INIT_LRS[$dataset_index]}"
 echo "INITIAL WEIGHT DECAY: ${INIT_WDS[$dataset_index]}"
 echo "DROPOUT: ${DROPOUT}"
-echo "DEFAULT BATCH SIZE: ${BATCH_SIZES[$dataset_index]}"
 # echo "EARLY_STOPPING_MIN_EPOCHS: ${EARLY_STOPPING_MIN_EPOCHS[$strategy_index]}"
 echo "EARLY_STOPPING_MIN_EPOCHS: ${MIN_EPOCHS}"
 
@@ -168,10 +167,8 @@ if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
 		ADJUSTED_BATCH_SIZE=32 # Reduced batch size for large models with other datasets
 	fi
 fi
-
-echo "Starting Python execution for task $SLURM_ARRAY_TASK_ID"
-echo "ADJUSTED_BATCH_SIZE: ${ADJUSTED_BATCH_SIZE}"
-
+echo "BATCH SIZE: [DEFAULT]: ${BATCH_SIZES[$dataset_index]} ADJUSTED: ${ADJUSTED_BATCH_SIZE}"
+echo "Starting history_clip_trainer.py for task $SLURM_ARRAY_TASK_ID"
 # Run training command
 python -u history_clip_trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \

@@ -1,3 +1,4 @@
+from functools import cache
 import os
 import sys
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
@@ -24,7 +25,8 @@ from visualize import (
 
 # # run in pouta for all fine-tuned models:
 # # $ python history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_100_do_0.05_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_do_0.05_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_lr_1.0e-05_wd_1.0e-01_lora_rank_8_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 8 -loa 16.0 -lod 0.05 -qi "https://pbs.twimg.com/media/Gn5iu_fbwAA7go8?format=jpg"
-# # $ python history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -fcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_full_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_21_dropout_0.1_lr_1.0e-05_wd_1.0e-01_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_progressive_unfreeze_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_dropout_0.1_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_lora_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_21_lr_1.0e-05_wd_1.0e-02_lora_rank_4_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 4 -loa 16.0 -lod 0.05 -qi "https://pbs.twimg.com/media/Gn5iu_fbwAA7go8?format=jpg" -ql "military personnel"
+# # $ python history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -fcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_full_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_21_dropout_0.1_lr_1.0e-05_wd_1.0e-01_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_progressive_unfreeze_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_dropout_0.1_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_lora_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_21_lr_1.0e-05_wd_1.0e-02_lora_rank_4_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 4 -loa 16.0 -lod 0.05 -qi "https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2652/default.jpg" -ql "aircraft" --device "cuda:3" -k 3
+# $ nohup python -u history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -fcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_full_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_21_dropout_0.1_lr_1.0e-05_wd_1.0e-01_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_progressive_unfreeze_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_dropout_0.1_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_lora_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_21_lr_1.0e-05_wd_1.0e-02_lora_rank_4_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 4 -loa 16.0 -lod 0.05 -qi "https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2652/default.jpg" -ql "aircraft" --device "cuda:3" -k 3 > /media/volume/ImACCESS/trash/history_clip_inference.txt &
 
 # # run in Puhti:
 # # $ python history_clip_inference.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -fcp /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/results/WWII_1939-09-01_1945-09-02_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_do_0.05_lr_5.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/results/WWII_1939-09-01_1945-09-02_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_do_0.05_init_lr_5.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/results/WWII_1939-09-01_1945-09-02_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_lr_5.0e-05_wd_1.0e-02_lora_rank_8_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 8 -loa 16.0 -lod 0.05
@@ -74,7 +76,9 @@ def main():
 	# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 	RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"results")
+	CACHE_DIRECTORY = os.path.join(RESULT_DIRECTORY, "inference_cache")
 	os.makedirs(RESULT_DIRECTORY, exist_ok=True)
+	os.makedirs(CACHE_DIRECTORY, exist_ok=True)
 	models_to_plot = {}
 	print(f">> CLIP model configuration: {args.model_architecture}...")
 	model_config = get_config(architecture=args.model_architecture)
@@ -88,6 +92,7 @@ def main():
 	pretrained_model_name = pretrained_model.__class__.__name__ # CLIP
 	pretrained_model.name = args.model_architecture # ViT-B/32
 	pretrained_model_arch = re.sub(r'[/@]', '-', args.model_architecture)
+
 	if not all(pretrained_model_arch in checkpoint for checkpoint in [args.full_checkpoint, args.lora_checkpoint, args.progressive_checkpoint]):
 		raise ValueError("Checkpoint path does not match the assigned model architecture!")
 
@@ -104,7 +109,10 @@ def main():
 	print_loader_info(loader=validation_loader, batch_size=args.batch_size)
 	criterion = torch.nn.CrossEntropyLoss()
 
-	customized_preprocess = get_preprocess(dataset_dir=args.dataset_dir, input_resolution=model_config["image_resolution"])
+	customized_preprocess = get_preprocess(
+		dataset_dir=args.dataset_dir, 
+		input_resolution=model_config["image_resolution"],
+	)
 
 	# for all finetuned models(+ pre-trained):
 	finetuned_checkpoint_paths = {
@@ -154,7 +162,7 @@ def main():
 				checkpoint_path=finetuned_checkpoint_paths.get(ft_name, None),
 				finetune_strategy=ft_name,
 				device=args.device,
-				cache_dir=RESULT_DIRECTORY,
+				cache_dir=CACHE_DIRECTORY,
 				topk_values=args.topK_values,
 				verbose=True,
 				clean_cache=False, # don't clean cache for all models [to speedup]
@@ -209,6 +217,7 @@ def main():
 			topk=args.topK,
 			device=args.device,
 			results_dir=RESULT_DIRECTORY,
+			cache_dir=CACHE_DIRECTORY,
 		)
 
 		plot_text_to_images_merged(
@@ -219,6 +228,7 @@ def main():
 			topk=args.topK,
 			device=args.device,
 			results_dir=RESULT_DIRECTORY,
+			cache_dir=CACHE_DIRECTORY,
 		)
 
 	finetune_strategies = []
@@ -239,6 +249,7 @@ def main():
 		model=pretrained_model,
 		validation_loader=validation_loader,
 		results_dir=RESULT_DIRECTORY,
+		cache_dir=CACHE_DIRECTORY,
 		device=args.device,
 		topk_values=args.topK_values,
 	)
