@@ -634,7 +634,7 @@ def plot_text_to_images_merged(
 	
 	# Create a figure with a larger figure size to accommodate the borders
 	fig_width = effective_topk * 3.2
-	fig_height = num_strategies * 3.5
+	fig_height = num_strategies * 4
 	fig, axes = plt.subplots(
 		nrows=num_strategies, 
 		ncols=effective_topk, 
@@ -760,7 +760,6 @@ def plot_text_to_images(
 		device: str,
 		results_dir: str,
 		cache_dir: str = None,
-		figure_size=(9, 6),
 		dpi: int = 250,
 		print_every: int = 250,
 	):
@@ -889,13 +888,18 @@ def plot_text_to_images(
 				print(f"Warning: Could not retrieve ground-truth labels: {e}")
 				topk_ground_truth_labels = [f"Unknown GT {idx}" for idx in topk_indices]  # Fallback
 		# Create visualization figure
-		fig, axes = plt.subplots(1, effective_topk, figsize=figure_size)
+		fig, axes = plt.subplots(
+			nrows=1, 
+			ncols=effective_topk, 
+			figsize=(effective_topk * 1.8, 3.0),
+			constrained_layout=True,
+		)
 		if effective_topk == 1:
-				axes = [axes]
+			axes = [axes]
 		
 		fig.suptitle(
-			f"Top-{effective_topk} Images Query: '{query_text}'\nModel: {strategy} {model_arch}", 
-			fontsize=11,
+			f"Query: '{query_text}' | Strategy: {strategy.upper()} {model_arch}", 
+			fontsize=10,
 			fontweight='bold'
 		)
 		
@@ -907,7 +911,7 @@ def plot_text_to_images(
 				if os.path.exists(img_path):
 					img = Image.open(img_path).convert('RGB')
 					ax.imshow(img)
-					ax.set_title(f"Top-{i+1} (Score: {score:.4f})\nGT: {gt_label}", fontsize=10)
+					ax.set_title(f"Top-{i+1} (Score: {score:.3f})\nGT: {gt_label}", fontsize=8)
 				else:
 					# Fallback to dataset access
 					dataset = validation_loader.dataset
@@ -934,13 +938,13 @@ def plot_text_to_images(
 							img = img * std + mean
 							img = np.clip(img, 0, 1)
 						ax.imshow(img)
-						ax.set_title(f"Top-{i+1} (Score: {score:.4f})\nGT: {gt_label}", fontsize=10)
+						ax.set_title(f"Top-{i+1} (Score: {score:.3f})\nGT: {gt_label}", fontsize=10)
 					else:
 						raise FileNotFoundError(f"Image path not found and dataset access unavailable: {img_path}")
 			except Exception as e:
 				print(f"Warning: Could not display image {idx}: {e}")
 				ax.imshow(np.ones((224, 224, 3)) * 0.5)
-				ax.set_title(f"Top-{i+1} (Score: {score:.4f})\nGT: Unknown", fontsize=10)
+				ax.set_title(f"Top-{i+1} (Score: {score:.3f})\nGT: Unknown", fontsize=10)
 			ax.axis('off')
 		file_name = os.path.join(
 			results_dir,

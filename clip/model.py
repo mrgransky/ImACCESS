@@ -544,6 +544,7 @@ def get_lora_clip(
 		lora_dropout: float,
 		target_text_modules: List[str] = ["in_proj", "out_proj", "c_fc", "c_proj"],
 		target_vision_modules: List[str] = ["in_proj", "out_proj", "q_proj", "k_proj", "v_proj", "c_fc", "c_proj"],
+		verbose: bool = False,
 	):
 	model = copy.deepcopy(clip_model)
 	replaced_modules = set()
@@ -667,9 +668,10 @@ def get_lora_clip(
 		replaced_modules.add("Vision: transformer.proj")
 	############################################## Projections ##############################################
 
-	print("Applied LoRA to the following modules:")
-	for module in sorted(replaced_modules):
-		print(f" - {module}")
+	if verbose: 
+		print("Applied LoRA to the following modules:")
+		for module in sorted(replaced_modules):
+			print(f" - {module}")
 
 	# Freeze all non-LoRA parameters:
 	# base model’s weights (and their associated dropout layers) are frozen

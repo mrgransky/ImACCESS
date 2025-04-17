@@ -116,8 +116,8 @@ def main():
 
 	# for all finetuned models(+ pre-trained):
 	finetuned_checkpoint_paths = {
-		"lora": args.lora_checkpoint,
 		"full": args.full_checkpoint,
+		"lora": args.lora_checkpoint,
 		"progressive": args.progressive_checkpoint,
 	}
 	print(json.dumps(finetuned_checkpoint_paths, indent=4, ensure_ascii=False))
@@ -140,6 +140,7 @@ def main():
 					lora_rank=args.lora_rank,
 					lora_alpha=args.lora_alpha,
 					lora_dropout=args.lora_dropout,
+					verbose=False,
 				)
 				model.to(args.device)
 			

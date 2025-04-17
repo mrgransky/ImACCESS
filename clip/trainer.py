@@ -301,7 +301,7 @@ def get_validation_metrics(
 		device:str,
 		topK_values: list[int],
 		cache_dir:str,
-		finetune_strategy:str,
+		finetune_strategy:str=None,
 		print_every:int=250,
 		chunk_size:int=1024,
 		verbose:bool=True,
@@ -312,7 +312,8 @@ def get_validation_metrics(
 	model.eval()
 	torch.cuda.empty_cache()
 	start_time = time.time()
-	
+	if finetune_strategy is None:
+		finetune_strategy = "pretrained"
 	# Get dataset info
 	try:
 		class_names = validation_loader.dataset.dataset.classes
@@ -670,15 +671,15 @@ def evaluate_best_model(
 	# 	topK_values=topk_values
 	# )
 	
-	if verbose:
-		print("\n--- Final Metrics [In-batch Validation] ---")
-		print(json.dumps(in_batch_metrics, indent=2, ensure_ascii=False))
-		print("\n--- Final Metrics [Full Validation Set] ---")
-		print(json.dumps(full_metrics, indent=2, ensure_ascii=False))
-		print("\n--- Image-to-Text Retrieval ---")
-		print(json.dumps(retrieval_metrics["img2txt"], indent=2, ensure_ascii=False))
-		print("\n--- Text-to-Image Retrieval ---")
-		print(json.dumps(retrieval_metrics["txt2img"], indent=2, ensure_ascii=False))
+	# if verbose:
+	# 	print("\n--- Final Metrics [In-batch Validation] ---")
+	# 	print(json.dumps(in_batch_metrics, indent=2, ensure_ascii=False))
+	# 	print("\n--- Final Metrics [Full Validation Set] ---")
+	# 	print(json.dumps(full_metrics, indent=2, ensure_ascii=False))
+	# 	print("\n--- Image-to-Text Retrieval ---")
+	# 	print(json.dumps(retrieval_metrics["img2txt"], indent=2, ensure_ascii=False))
+	# 	print("\n--- Text-to-Image Retrieval ---")
+	# 	print(json.dumps(retrieval_metrics["txt2img"], indent=2, ensure_ascii=False))
 
 	# Clean up cache file
 	if clean_cache:
@@ -3467,12 +3468,32 @@ def pretrain(
 		txt2img_metrics = load_pickle(fpath=t2i_retrieval_metrics_fpth)
 	except Exception as e:
 		print(e)
+		# Compute retrieval-based metrics (time-consuming)
 		retrieval_metrics = evaluate_retrieval_performance(
 			model=model,
 			validation_loader=validation_loader,
 			device=device,
 			topK_values=topk_values,
 		)
+
+		# # all metrics in one using caching mechanism:
+		# criterion = torch.nn.CrossEntropyLoss()
+		# validation_results = get_validation_metrics(
+		# 	model=model,
+		# 	validation_loader=validation_loader,
+		# 	criterion=criterion,
+		# 	device=device,
+		# 	topK_values=topk_values,
+		# 	cache_dir=cache_dir,
+		# 	verbose=True,
+		# )
+		# # in_batch_metrics = validation_results["in_batch_metrics"]
+		# # full_metrics = validation_results["full_metrics"]
+		# retrieval_metrics = {
+		# 	"img2txt": validation_results["img2txt_metrics"],
+		# 	"txt2img": validation_results["txt2img_metrics"]
+		# }
+
 		img2txt_metrics = retrieval_metrics["img2txt"]
 		txt2img_metrics = retrieval_metrics["txt2img"]
 
