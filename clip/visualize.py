@@ -1106,7 +1106,6 @@ def plot_comparison_metrics_split(
 						plt.tight_layout()
 						plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
 						plt.close(fig)
-						print(f"Saved: {file_path}")
 
 def plot_comparison_metrics_merged(
 		dataset_name: str,
@@ -1150,9 +1149,6 @@ def plot_comparison_metrics_merged(
 				)
 				pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
 				finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
-				print(f"\n{'-'*40}")
-				print(f"MODE: {mode}: {fname}")
-				print(f"{'-'*40}")
 				for j, metric in enumerate(metrics):
 						ax = axes[j]
 						k_values = sorted(
@@ -1259,7 +1255,6 @@ def plot_comparison_metrics_merged(
 								spine.set_color('black')
 								spine.set_linewidth(1.0)
 				plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
-				print(f"Saved: {file_path}")
 				plt.close(fig)
 
 		# Overall summary
