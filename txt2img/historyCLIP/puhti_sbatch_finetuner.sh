@@ -6,7 +6,7 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=10
 #SBATCH --mem=68G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
@@ -85,19 +85,17 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 	exit 1
 fi
 
-INIT_LRS=(1e-5 1e-5 1e-5 5e-5 1e-5)
+INIT_LRS=(5e-6 1e-5 1e-5 5e-5 1e-5)
 INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
 DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 EPOCHS=(100 100 150 150 150)
-LORA_RANKS=(8 8 8 8 8)
-LORA_ALPHAS=(16 16 16 16 16)
+LORA_RANKS=(16 16 16 16 16)
+LORA_ALPHAS=(32.0 16.0 16.0 16.0 16.0)
 LORA_DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
 BATCH_SIZES=(64 64 64 64 64)
 PRINT_FREQUENCIES=(750 750 50 50 10)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 # EARLY_STOPPING_MIN_EPOCHS=(25 25 20 20 10)
-
-# Base min_epochs by dataset size
 BASE_MIN_EPOCHS=(25 25 17 17 12)  # National Archive, History_X4, Europeana, WWII, SMU
 
 # Adjust min_epochs based on strategy
@@ -153,7 +151,6 @@ if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
 fi
 echo "BATCH SIZE: [DEFAULT]: ${BATCH_SIZES[$dataset_index]} ADJUSTED: ${ADJUSTED_BATCH_SIZE}"
 echo "Starting history_clip_trainer.py for task $SLURM_ARRAY_TASK_ID"
-# Run training command
 python -u history_clip_trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \
 	--epochs "${EPOCHS[$dataset_index]}" \

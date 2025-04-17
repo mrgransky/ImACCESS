@@ -173,10 +173,10 @@ def main():
 			print(f"WARNING: Fine-tuned model not found at {ft_path}. Skipping {ft_name}")
 	models_to_plot.update(fine_tuned_models)
 	print(f">> Fine-tuned models loaded successfully.")
-	print(f"finetuned_img2txt_dict:")
-	print(json.dumps(finetuned_img2txt_dict, indent=4, ensure_ascii=False))
-	print(f"finetuned_txt2img_dict:")
-	print(json.dumps(finetuned_txt2img_dict, indent=4, ensure_ascii=False))
+	# print(f"finetuned_img2txt_dict:")
+	# print(json.dumps(finetuned_img2txt_dict, indent=4, ensure_ascii=False))
+	# print(f"finetuned_txt2img_dict:")
+	# print(json.dumps(finetuned_txt2img_dict, indent=4, ensure_ascii=False))
 
 	if args.query_image is not None:
 		plot_image_to_texts_pretrained(
@@ -240,8 +240,8 @@ def main():
 		finetune_strategies.append("progressive")
 	if len(finetune_strategies) == 0:
 		raise ValueError("Please provide at least one checkpoint for comparison!")
-	print(f">> Finetune strategies: {finetune_strategies}")
-	# Compute pretrained model metrics
+	print(f">> All available finetune strategies: {finetune_strategies}")
+
 	print(f">> Computing metrics for pretrained {args.model_architecture}...")
 	pretrained_img2txt_dict = {args.model_architecture: {}}
 	pretrained_txt2img_dict = {args.model_architecture: {}}
@@ -252,14 +252,16 @@ def main():
 		cache_dir=CACHE_DIRECTORY,
 		device=args.device,
 		topk_values=args.topK_values,
+		verbose=False,
 	)
 	pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
 	pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
 	print(f">> Pretrained model metrics computed successfully.")
-	print(f"pretrained_img2txt_dict:")
-	print(json.dumps(pretrained_img2txt_dict, indent=4, ensure_ascii=False))
-	print(f"pretrained_txt2img_dict:")
-	print(json.dumps(pretrained_txt2img_dict, indent=4, ensure_ascii=False))
+	# print(f"pretrained_img2txt_dict:")
+	# print(json.dumps(pretrained_img2txt_dict, indent=4, ensure_ascii=False))
+	# print(f"pretrained_txt2img_dict:")
+	# print(json.dumps(pretrained_txt2img_dict, indent=4, ensure_ascii=False))
+
 	plot_comparison_metrics_split(
 		dataset_name=validation_loader.name,
 		pretrained_img2txt_dict=pretrained_img2txt_dict,

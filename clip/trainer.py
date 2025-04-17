@@ -3446,6 +3446,7 @@ def pretrain(
 		results_dir: str,
 		cache_dir: str=None,
 		topk_values: List=[1, 3, 5],
+		verbose:bool=True,
 	):
 	model_name = model.__class__.__name__
 	model_arch = re.sub(r"[/@]", "_", model.name)
@@ -3455,7 +3456,8 @@ def pretrain(
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
 	except:
 		dataset_name = validation_loader.dataset.dataset_name
-	print(f"Pretrain Evaluation {dataset_name} {model_name} - {model_arch} {device}".center(170, "-"))
+	if verbose:
+		print(f"Pretrain Evaluation {dataset_name} {model_name} - {model_arch} {device}".center(170, "-"))
 	i2t_retrieval_metrics_fpth = os.path.join(cache_dir, f"{dataset_name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt.json")
 	t2i_retrieval_metrics_fpth = os.path.join(cache_dir, f"{dataset_name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_txt2img.json")
 	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{dataset_name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt_txt2img.png")
@@ -3474,14 +3476,14 @@ def pretrain(
 		img2txt_metrics = retrieval_metrics["img2txt"]
 		txt2img_metrics = retrieval_metrics["txt2img"]
 
-		print("Image to Text Metrics: ")
-		print(json.dumps(img2txt_metrics, indent=2, ensure_ascii=False))
-
-		print("Text to Image Metrics: ")
-		print(json.dumps(txt2img_metrics, indent=2, ensure_ascii=False))
-
 		save_pickle(pkl=img2txt_metrics, fname=i2t_retrieval_metrics_fpth)
 		save_pickle(pkl=txt2img_metrics, fname=t2i_retrieval_metrics_fpth)
+
+	if verbose:
+		print("Image to Text Metrics: ")
+		print(json.dumps(img2txt_metrics, indent=2, ensure_ascii=False))
+		print("Text to Image Metrics: ")
+		print(json.dumps(txt2img_metrics, indent=2, ensure_ascii=False))
 
 	plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,

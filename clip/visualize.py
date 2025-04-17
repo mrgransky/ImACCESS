@@ -514,9 +514,9 @@ def plot_text_to_images_merged(
 	all_strategies = list(models.keys())
 	
 	for strategy, model in models.items():
-		print(f"Processing model: {strategy} {model.__class__.__name__} {pretrained_model_arch}".center(160, " "))
+		print(f"Processing strategy: {strategy} {model.__class__.__name__} {pretrained_model_arch}".center(160, " "))
 		model.eval()
-		print(f"[Text-to-image(s) (merged)] {strategy} Zero-Shot Text-to-Image Retrieval for query: '{query_text}'".center(100, " "))
+		print(f"[Text-to-image(s) (merged)] {strategy} query: '{query_text}'".center(160, " "))
 		
 		cache_file = os.path.join(
 			cache_dir, 
@@ -775,12 +775,12 @@ def plot_text_to_images(
 	
 	# Process with each model
 	for strategy, model in models.items():
-		print(f"Processing model: {strategy} ".center(160, " "))
+		print(f"Processing strategy: {strategy} ".center(160, " "))
 		if strategy == 'pretrained':
 				model_arch = re.sub(r'[/@]', '-', model.name)
 				print(f"{model.__class__.__name__} {model_arch}".center(160, " "))
 		model.eval()
-		print(f"[Text-to-image(s)] {strategy} Zero-Shot Text-to-Image Retrieval | Query: '{query_text}'".center(200, " "))
+		print(f"[Text-to-image(s)] strategy: {strategy} Query: '{query_text}'".center(160, " "))
 		
 		# Generate cache file path
 		cache_file = os.path.join(cache_dir, f"{dataset_name}_{strategy}_{model.__class__.__name__}_{model_arch}_embeddings.pt")
@@ -1608,11 +1608,10 @@ def plot_retrieval_metrics_best_model(
 
 	for i, metric in enumerate(metrics):
 		ax = axes[i] if len(metrics) > 1 else axes # Handle single subplot case
-
-		print(f"Image-to-Text:")
+		# print(f"Image-to-Text:")
 		it_top_ks = list(map(int, image_to_text_metrics[metric].keys()))  # K values for Image-to-Text
 		it_vals = list(image_to_text_metrics[metric].values())
-		print(metric, it_top_ks, it_vals)
+		# print(metric, it_top_ks, it_vals)
 		line, = ax.plot(
 			it_top_ks, 
 			it_vals, 
@@ -1628,10 +1627,10 @@ def plot_retrieval_metrics_best_model(
 			legend_labels.append(modes[0])
 		
 		# Plotting for Text-to-Image
-		print(f"Text-to-Image:")
+		# print(f"Text-to-Image:")
 		ti_top_ks = list(map(int, text_to_image_metrics[metric].keys()))  # K values for Text-to-Image
 		ti_vals = list(text_to_image_metrics[metric].values())
-		print(metric, ti_top_ks, ti_vals)
+		# print(metric, ti_top_ks, ti_vals)
 		line, = ax.plot(
 			ti_top_ks,
 			ti_vals,
@@ -1657,13 +1656,11 @@ def plot_retrieval_metrics_best_model(
 
 		# Adjust y-axis to start from 0 for better visualization
 		# ax.set_ylim(bottom=-0.05, top=1.05)
-		# Dynamic y-axis limits
 		all_values = it_vals + ti_vals
 		min_val = min(all_values)
 		max_val = max(all_values)
 		padding = 0.02 * (max_val - min_val) if (max_val - min_val) > 0 else 0.02
 		ax.set_ylim(bottom=min(-0.02, min_val - padding), top=max(0.5, max_val + padding))
-		print("*"*150)
 
 	plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 	fig.legend(
