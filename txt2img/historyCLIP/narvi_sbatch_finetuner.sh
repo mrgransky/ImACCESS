@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=h4_x_str_x_arch
+#SBATCH --job-name=history_x4_finetune_strategy_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --output=/lustre/sgn-data/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
