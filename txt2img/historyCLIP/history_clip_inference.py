@@ -179,6 +179,7 @@ def main():
 	# print(f"finetuned_txt2img_dict:")
 	# print(json.dumps(finetuned_txt2img_dict, indent=4, ensure_ascii=False))
 
+	####################################### Qualitative Analysis #######################################
 	if args.query_image is not None:
 		plot_image_to_texts_pretrained(
 			best_pretrained_model=pretrained_model,
@@ -231,7 +232,10 @@ def main():
 			results_dir=RESULT_DIRECTORY,
 			cache_dir=CACHE_DIRECTORY,
 		)
+	####################################### Qualitative Analysis #######################################
 
+
+	####################################### Quantitative Analysis #######################################
 	finetune_strategies = []
 	if args.full_checkpoint is not None:
 		finetune_strategies.append("full")
@@ -257,7 +261,7 @@ def main():
 	)
 	pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
 	pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
-	print(f">> Pretrained model metrics computed successfully.")
+	print(f">> Pretrained model metrics computed successfully. [for Quantitative Analysis]")
 	# print(f"pretrained_img2txt_dict:")
 	# print(json.dumps(pretrained_img2txt_dict, indent=4, ensure_ascii=False))
 	# print(f"pretrained_txt2img_dict:")
@@ -285,6 +289,7 @@ def main():
 		topK_values=args.topK_values,
 		results_dir=RESULT_DIRECTORY,
 	)
+	####################################### Quantitative Analysis #######################################
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))

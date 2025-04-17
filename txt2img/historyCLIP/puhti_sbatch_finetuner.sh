@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --account=project_2009043
-#SBATCH --job-name=h4_fts_str_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --job-name=history_x4_finetune_strategy_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
+#SBATCH --cpus-per-task=20
 #SBATCH --mem=68G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
@@ -88,15 +88,15 @@ fi
 INIT_LRS=(5e-6 1e-5 1e-5 5e-5 1e-5)
 INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
 DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
-EPOCHS=(100 100 150 150 150)
+EPOCHS=(110 100 150 150 150)
 LORA_RANKS=(16 16 16 16 16)
-LORA_ALPHAS=(32.0 16.0 16.0 16.0 16.0)
-LORA_DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
+LORA_ALPHAS=(32.0 32.0 32.0 32.0 32.0) # 2x rank
+LORA_DROPOUTS=(0.1 0.05 0.05 0.05 0.05)
 BATCH_SIZES=(64 64 64 64 64)
 PRINT_FREQUENCIES=(750 750 50 50 10)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 # EARLY_STOPPING_MIN_EPOCHS=(25 25 20 20 10)
-BASE_MIN_EPOCHS=(25 25 17 17 12)  # National Archive, History_X4, Europeana, WWII, SMU
+BASE_MIN_EPOCHS=(20 20 17 17 12)  # National Archive, History_X4, Europeana, WWII, SMU
 
 # Adjust min_epochs based on strategy
 strategy="${FINETUNE_STRATEGIES[$strategy_index]}"
