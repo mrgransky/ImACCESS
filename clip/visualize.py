@@ -108,7 +108,7 @@ def plot_image_to_texts_separate_horizontal_bars(
 		ax0 = plt.subplot(gs[0])
 		ax0.imshow(img)
 		ax0.axis('off')
-		# ax0.set_title("Query Image", fontsize=14, fontweight='bold', pad=10)
+		ax0.set_title("Query", fontsize=10, fontweight='bold')
 
 		# Define colors consistent with plot_comparison_metrics_split/merged
 		strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
@@ -1266,9 +1266,9 @@ def plot_comparison_metrics_merged(
 				plt.close(fig)
 
 		# Overall summary
-		print(f"\n{'='*40}")
-		print(f"OVERALL PERFORMANCE SUMMARY")
-		print(f"{'='*40}")
+		print(f"\n{'='*80}")
+		print(f"OVERALL PERFORMANCE SUMMARY [QUANTITATIVE ANALYSIS]")
+		print(f"{'='*80}")
 		for mode in modes:
 				pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
 				finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict

@@ -3479,31 +3479,31 @@ def pretrain(
 		txt2img_metrics = load_pickle(fpath=t2i_retrieval_metrics_fpth)
 	except Exception as e:
 		print(e)
-		# Compute retrieval-based metrics (time-consuming)
-		retrieval_metrics = evaluate_retrieval_performance(
-			model=model,
-			validation_loader=validation_loader,
-			device=device,
-			topK_values=topk_values,
-		)
-
-		# # all metrics in one using caching mechanism:
-		# criterion = torch.nn.CrossEntropyLoss()
-		# validation_results = get_validation_metrics(
+		# # Compute retrieval-based metrics (time-consuming)
+		# retrieval_metrics = evaluate_retrieval_performance(
 		# 	model=model,
 		# 	validation_loader=validation_loader,
-		# 	criterion=criterion,
 		# 	device=device,
 		# 	topK_values=topk_values,
-		# 	cache_dir=cache_dir,
-		# 	verbose=True,
 		# )
-		# # in_batch_metrics = validation_results["in_batch_metrics"]
-		# # full_metrics = validation_results["full_metrics"]
-		# retrieval_metrics = {
-		# 	"img2txt": validation_results["img2txt_metrics"],
-		# 	"txt2img": validation_results["txt2img_metrics"]
-		# }
+
+		# all metrics in one using caching mechanism:
+		criterion = torch.nn.CrossEntropyLoss()
+		validation_results = get_validation_metrics(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			device=device,
+			topK_values=topk_values,
+			cache_dir=cache_dir,
+			verbose=True,
+		)
+		# in_batch_metrics = validation_results["in_batch_metrics"]
+		# full_metrics = validation_results["full_metrics"]
+		retrieval_metrics = {
+			"img2txt": validation_results["img2txt_metrics"],
+			"txt2img": validation_results["txt2img_metrics"]
+		}
 
 		img2txt_metrics = retrieval_metrics["img2txt"]
 		txt2img_metrics = retrieval_metrics["txt2img"]
