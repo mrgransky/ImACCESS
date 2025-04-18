@@ -89,14 +89,14 @@ INIT_LRS=(5e-6 1e-5 1e-5 5e-5 1e-5)
 INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
 DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 EPOCHS=(110 100 150 150 150)
-LORA_RANKS=(16 16 16 16 16)
-LORA_ALPHAS=(32.0 32.0 32.0 32.0 32.0) # 2x rank
-LORA_DROPOUTS=(0.1 0.05 0.05 0.05 0.05)
+LORA_RANKS=(64 64 64 64 64)
+LORA_ALPHAS=(128.0 128.0 128.0 128.0 128.0) # 2x rank
+LORA_DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
 BATCH_SIZES=(64 64 64 64 64)
 PRINT_FREQUENCIES=(750 750 50 50 10)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 # EARLY_STOPPING_MIN_EPOCHS=(25 25 20 20 10)
-BASE_MIN_EPOCHS=(20 20 17 17 12)  # National Archive, History_X4, Europeana, WWII, SMU
+BASE_MIN_EPOCHS=(25 20 17 17 12)  # National Archive, History_X4, Europeana, WWII, SMU
 
 # Adjust min_epochs based on strategy
 strategy="${FINETUNE_STRATEGIES[$strategy_index]}"
