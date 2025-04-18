@@ -3,19 +3,24 @@ from model import get_lora_clip
 from visualize import plot_loss_accuracy_metrics, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics
 
 def cleanup_embedding_cache(
-		cache_dir: str, 
+		dataset_name: str,
+		cache_dir: str,
 		finetune_strategy: str, 
 		batch_size: int, 
 		model_name: str, 
 		model_arch: str,
+		num_workers: int,
 	):
+
 	cache_file = os.path.join(
 		cache_dir,
-		f"validation_embeddings_"
+		f"{dataset_name}_"
 		f"{finetune_strategy}_"
 		f"bs_{batch_size}_"
+		f"nw_{num_workers}_"
 		f"{model_name}_"
-		f"{re.sub(r'[/@]', '_', model_arch)}.pt"
+		f"{re.sub(r'[/@]', '_', model_arch)}_"
+		f"validation_embeddings.pt"
 	)	
 	if os.path.exists(cache_file):
 		try:
@@ -314,21 +319,24 @@ def get_validation_metrics(
 	start_time = time.time()
 	if finetune_strategy is None:
 		finetune_strategy = "pretrained"
-	# Get dataset info
+
 	try:
 		class_names = validation_loader.dataset.dataset.classes
 	except:
 		class_names = validation_loader.dataset.unique_labels
-	
+	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
+	num_workers = getattr(validation_loader, 'num_workers', 0)
 	n_classes = len(class_names)
 	
 	cache_file = os.path.join(
 		cache_dir,
-		f"validation_embeddings_"
+		f"{dataset_name}_"
 		f"{finetune_strategy}_"
 		f"bs_{validation_loader.batch_size}_"
+		f"nw_{num_workers}_"
 		f"{model.__class__.__name__}_"
-		f"{re.sub(r'[/@]', '_', model.name)}.pt"
+		f"{re.sub(r'[/@]', '_', model.name)}_"
+		f"validation_embeddings.pt"
 	)
 	
 	# Step 1: Compute in-batch metrics using a small subset for efficiency
@@ -568,6 +576,7 @@ def evaluate_best_model(
 		clean_cache:bool=True,
 	):
 	model_source = "current"  # Default if we don't load anything
+	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	
 	# First try to load from checkpoint file
 	if os.path.exists(checkpoint_path):
@@ -684,9 +693,11 @@ def evaluate_best_model(
 	# Clean up cache file
 	if clean_cache:
 		cleanup_embedding_cache(
+			dataset_name=dataset_name,
 			cache_dir=cache_dir,
 			finetune_strategy=finetune_strategy,
 			batch_size=validation_loader.batch_size,
+			num_workers=validation_loader.num_workers,
 			model_name=model.__class__.__name__,
 			model_arch=model.name if hasattr(model, 'name') else 'unknown_arch'
 		)
