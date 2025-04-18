@@ -85,7 +85,7 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 	exit 1
 fi
 
-INIT_LRS=(5e-6 1e-5 1e-5 5e-5 1e-5)
+INIT_LRS=(1e-5 1e-5 1e-5 5e-5 1e-5)
 INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
 DROPOUTS=(0.15 0.1 0.05 0.05 0.05)
 EPOCHS=(110 100 150 150 150)
