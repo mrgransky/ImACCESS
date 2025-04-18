@@ -129,8 +129,6 @@ def plot_label_distribution_pie_chart(
 
 def plot_grouped_bar_chart(
 		merged_df: pd.DataFrame,
-		dataset_name: str,
-		OUTPUT_DIRECTORY: str,
 		DPI: int = 250,
 		FIGURE_SIZE: tuple = (12, 8),
 		fname: str = "grouped_bar_chart.png",

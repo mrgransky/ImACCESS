@@ -211,29 +211,10 @@ def get_dataloaders(
 	train_dataset, val_dataset = get_datasets(ddir=dataset_dir, sampling=sampling)
 	preprocess = get_preprocess(dataset_dir=dataset_dir, input_resolution=input_resolution)
 	
-	# try:
-	# 	mean = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_mean.gz"))
-	# 	std = load_pickle(fpath=os.path.join(dataset_dir, "img_rgb_std.gz"))
-	# 	print(f"{os.path.basename(dataset_dir)} mean: {mean} std: {std}")
-	# except Exception as e:
-	# 	mean = [0.52, 0.50, 0.48]
-	# 	std = [0.27, 0.27, 0.26]
-	# 	print(f"Could not load mean and std from {dataset_dir}. Using default values: mean={mean} std={std}")
-	# preprocess = T.Compose(
-	# 	[
-	# 		T.Resize(size=input_resolution, interpolation=T.InterpolationMode.BICUBIC, antialias=True),
-	# 		T.CenterCrop(size=input_resolution),
-	# 		_convert_image_to_rgb,
-	# 		T.ToTensor(),
-	# 		T.Normalize(mean=mean, std=std),
-	# 	]
-	# )
-
 	train_dataset = HistoricalArchivesDataset(
 		dataset_name=dataset_name,
 		train=True,
 		data_frame=train_dataset.sort_values(by="img_path").reset_index(drop=True),
-		# data_frame=train_dataset,
 		transform=preprocess,
 	)
 
@@ -256,7 +237,6 @@ def get_dataloaders(
 		dataset_name=dataset_name,
 		train=False,
 		data_frame=val_dataset.sort_values(by="img_path").reset_index(drop=True),
-		# data_frame=val_dataset,
 		transform=preprocess,
 	)
 	

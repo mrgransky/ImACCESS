@@ -763,6 +763,7 @@ def plot_text_to_images(
 		dpi: int = 250,
 		print_every: int = 250,
 	):
+	plt_start_time = time.time()
 	# Create output directory and unique hash for the query
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	img_hash = hashlib.sha256(query_text.encode()).hexdigest()[:8]
@@ -801,89 +802,91 @@ def plot_text_to_images(
 		
 		# If no cached embeddings, compute them
 		if all_image_embeddings is None:
-				print("Computing image embeddings (this may take a while)...")
-				image_embeddings_list = []
-				image_paths = []
-				
-				# Get the dataset reference from the loader
-				dataset = validation_loader.dataset
-				
-				# Check if dataset has img_path attribute or can provide paths
-				has_img_path = hasattr(dataset, 'images') and isinstance(dataset.images, (list, tuple))
-				for batch_idx, batch in enumerate(validation_loader):
-						# Handle batch structure (images, tokenized_labels, labels_indices)
-						images = batch[0]
-						if has_img_path:
-								# Access dataset.images to get actual paths
-								start_idx = batch_idx * validation_loader.batch_size
-								batch_paths = []
-								for i in range(len(images)):
-										global_idx = start_idx + i
-										if global_idx < len(dataset):
-												batch_paths.append(dataset.images[global_idx])
-										else:
-												batch_paths.append(f"missing_path_{global_idx}")
+			print("Computing image embeddings (this may take a while)...")
+			emb_start_time = time.time()
+			image_embeddings_list = []
+			image_paths = []
+			
+			# Get the dataset reference from the loader
+			dataset = validation_loader.dataset
+			
+			# Check if dataset has img_path attribute or can provide paths
+			has_img_path = hasattr(dataset, 'images') and isinstance(dataset.images, (list, tuple))
+			for batch_idx, batch in enumerate(validation_loader):
+				# Handle batch structure (images, tokenized_labels, labels_indices)
+				images = batch[0]
+				if has_img_path:
+					# Access dataset.images to get actual paths
+					start_idx = batch_idx * validation_loader.batch_size
+					batch_paths = []
+					for i in range(len(images)):
+						global_idx = start_idx + i
+						if global_idx < len(dataset):
+							batch_paths.append(dataset.images[global_idx])
 						else:
-								batch_paths = [f"batch_{batch_idx}_img_{i}" for i in range(len(images))]
-						
-						# Store paths for visualization
-						image_paths.extend(batch_paths)
-						
-						# Skip if not a tensor or wrong shape
-						if not isinstance(images, torch.Tensor) or len(images.shape) != 4:
-								print(f"Warning: Invalid image tensor in batch {batch_idx}")
-								continue
-						
-						# Compute embeddings
-						with torch.no_grad():
-								images = images.to(device)
-								image_features = model.encode_image(images)
-								image_features /= image_features.norm(dim=-1, keepdim=True)
-								image_embeddings_list.append(image_features.cpu())
-						
-						# Report progress
-						if (batch_idx + 1) % print_every == 0:
-								print(f"Processed {batch_idx + 1}/{len(validation_loader)} batches")
-				
-				# Combine all embeddings
-				if image_embeddings_list:
-						all_image_embeddings = torch.cat(image_embeddings_list, dim=0).to(device)
-						print(f"Computed {len(all_image_embeddings)} image embeddings for {dataset_name} | « {strategy} » strategy")
-						
-						# Save to cache
-						try:
-								torch.save({
-										'embeddings': all_image_embeddings.cpu(),
-										'image_paths': image_paths
-								}, cache_file)
-								print(f"Saved embeddings to {cache_file}")
-						except Exception as e:
-								print(f"Warning: Failed to save embeddings cache: {e}")
+							batch_paths.append(f"missing_path_{global_idx}")
 				else:
-						print("Error: No valid image embeddings were collected")
-						continue
+					batch_paths = [f"batch_{batch_idx}_img_{i}" for i in range(len(images))]
+				
+				# Store paths for visualization
+				image_paths.extend(batch_paths)
+				
+				# Skip if not a tensor or wrong shape
+				if not isinstance(images, torch.Tensor) or len(images.shape) != 4:
+					print(f"Warning: Invalid image tensor in batch {batch_idx}")
+					continue
+				
+				# Compute embeddings
+				with torch.no_grad():
+					images = images.to(device)
+					image_features = model.encode_image(images)
+					image_features /= image_features.norm(dim=-1, keepdim=True)
+					image_embeddings_list.append(image_features.cpu())
+				
+				# Report progress
+				if (batch_idx + 1) % print_every == 0:
+					print(f"Processed {batch_idx + 1}/{len(validation_loader)} batches")
+			
+			# Combine all embeddings
+			if image_embeddings_list:
+					all_image_embeddings = torch.cat(image_embeddings_list, dim=0).to(device)
+					print(f"Computed {len(all_image_embeddings)} image embeddings for {dataset_name} | « {strategy} » strategy")
+					
+					# Save to cache
+					try:
+						torch.save({
+							'embeddings': all_image_embeddings.cpu(),
+							'image_paths': image_paths
+						}, cache_file)
+						print(f"Saved embeddings to {cache_file}")
+					except Exception as e:
+						print(f"Warning: Failed to save embeddings cache: {e}")
+			else:
+				print("Error: No valid image embeddings were collected")
+				continue
+			print(f"Elapsed_t: {time.time()-emb_start_time:.3f} sec".center(160, " "))
 		
 		# Compute similarities
 		with torch.no_grad():
-				text_features = model.encode_text(tokenized_query)
-				text_features = F.normalize(text_features, dim=-1)
-				similarities = (100.0 * text_features @ all_image_embeddings.T).softmax(dim=-1)
-				
-				effective_topk = min(topk, len(all_image_embeddings))
-				topk_scores, topk_indices = torch.topk(similarities.squeeze(), effective_topk)
-				topk_scores = topk_scores.cpu().numpy()
-				topk_indices = topk_indices.cpu().numpy()
+			text_features = model.encode_text(tokenized_query)
+			text_features = F.normalize(text_features, dim=-1)
+			similarities = (100.0 * text_features @ all_image_embeddings.T).softmax(dim=-1)
+			
+			effective_topk = min(topk, len(all_image_embeddings))
+			topk_scores, topk_indices = torch.topk(similarities.squeeze(), effective_topk)
+			topk_scores = topk_scores.cpu().numpy()
+			topk_indices = topk_indices.cpu().numpy()
 		
 		# Retrieve ground-truth labels from the dataset
 		dataset = validation_loader.dataset
 		try:
-				if hasattr(dataset, 'label') and isinstance(dataset.label, (list, np.ndarray)):
-						ground_truth_labels = dataset.label  # Assuming label is a list or array of ground-truth labels
-				elif hasattr(dataset, 'labels') and isinstance(dataset.labels, (list, np.ndarray)):
-						ground_truth_labels = dataset.labels
-				else:
-						raise AttributeError("Dataset does not have accessible 'label' or 'labels' attribute")
-				topk_ground_truth_labels = [ground_truth_labels[idx] for idx in topk_indices]
+			if hasattr(dataset, 'label') and isinstance(dataset.label, (list, np.ndarray)):
+				ground_truth_labels = dataset.label  # Assuming label is a list or array of ground-truth labels
+			elif hasattr(dataset, 'labels') and isinstance(dataset.labels, (list, np.ndarray)):
+				ground_truth_labels = dataset.labels
+			else:
+				raise AttributeError("Dataset does not have accessible 'label' or 'labels' attribute")
+			topk_ground_truth_labels = [ground_truth_labels[idx] for idx in topk_indices]
 		except (AttributeError, IndexError) as e:
 				print(f"Warning: Could not retrieve ground-truth labels: {e}")
 				topk_ground_truth_labels = [f"Unknown GT {idx}" for idx in topk_indices]  # Fallback
@@ -953,6 +956,7 @@ def plot_text_to_images(
 		plt.tight_layout()
 		plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
 		plt.close()
+	print(f"Total Elapsed_t: {time.time()-plt_start_time:.3f} sec".center(160, "-"))
 
 def plot_comparison_metrics_split(
 		dataset_name: str,

@@ -92,14 +92,12 @@ plot_label_distribution_pie_chart(
 )
 plot_grouped_bar_chart(
 	merged_df=merged_df,
-	dataset_name=dataset_name,
-	OUTPUT_DIRECTORY=OUTPUT_DIRECTORY,
 	DPI=DPI,
 	FIGURE_SIZE=(16, 8),
 	fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_labels_x_{merged_df['label'].value_counts().shape[0]}_freq_x_{len(dfs)}_datasets_grouped_bar_chart.png")
 )
 
-# stratified splitting
+print(f"Stratified Splitting".center(150, "-"))
 train_df, val_df = train_test_split(
 	merged_df,
 	test_size=VAL_SPLIT_PCT,
@@ -110,6 +108,10 @@ train_df, val_df = train_test_split(
 
 train_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_train.csv'), index=False)
 val_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_val.csv'), index=False)
+
+
+print(train_df.groupby('dataset')['label'].nunique())
+print(val_df.groupby('dataset')['label'].nunique())
 
 plot_train_val_label_distribution(
 	train_df=train_df,
