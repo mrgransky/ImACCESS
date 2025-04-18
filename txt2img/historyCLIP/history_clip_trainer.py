@@ -35,7 +35,7 @@ from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics, 
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 200 -nw 50 --device "cuda:2" -m finetune -fts lora --lora_rank 4 --lora_alpha 32.0 --lora_dropout 0.05 -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 64 -e 150 -lr 1e-4 -wd 1e-1 --print_every 100 -nw 50 --device "cuda:3" -m finetune -fts lora --lora_rank 8 --lora_alpha 32.0 --lora_dropout 0.05 -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:1" -m finetune  -fts lora --lora_rank 4 --lora_alpha 32.0 --lora_dropout 0.0 -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 64 -e 110 -lr 5e-6 -wd 1e-2 --print_every 500 -nw 20 --device "cuda:2" -m finetune -fts lora --lora_rank 16 --lora_alpha 32.0 --lora_dropout 0.05 -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 64 -e 110 -lr 5e-6 -wd 1e-2 --print_every 500 -nw 50 --device "cuda:1" -m finetune -fts lora --lora_rank 32 --lora_alpha 64.0 --lora_dropout 0.05 -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
 
 # finetune [progressive unfreezing]:
 # using for loop:
@@ -68,7 +68,7 @@ def main():
 	parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
-	parser.add_argument('--minimum_epochs', '-mep', type=int, default=20, help='Early stopping minimum epochs')
+	parser.add_argument('--minimum_epochs', '-mep', type=int, default=15, help='Early stopping minimum epochs')
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
