@@ -680,16 +680,6 @@ def evaluate_best_model(
 	# 	topK_values=topk_values
 	# )
 	
-	# if verbose:
-	# 	print("\n--- Final Metrics [In-batch Validation] ---")
-	# 	print(json.dumps(in_batch_metrics, indent=2, ensure_ascii=False))
-	# 	print("\n--- Final Metrics [Full Validation Set] ---")
-	# 	print(json.dumps(full_metrics, indent=2, ensure_ascii=False))
-	# 	print("\n--- Image-to-Text Retrieval ---")
-	# 	print(json.dumps(retrieval_metrics["img2txt"], indent=2, ensure_ascii=False))
-	# 	print("\n--- Text-to-Image Retrieval ---")
-	# 	print(json.dumps(retrieval_metrics["txt2img"], indent=2, ensure_ascii=False))
-
 	# Clean up cache file
 	if clean_cache:
 		cleanup_embedding_cache(
@@ -2802,6 +2792,15 @@ def lora_finetune(
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
 	model_source = evaluation_results["model_loaded_from"]
 	print(f"Final evaluation used model weights from: {model_source}")
+	
+	print("--- Final Metrics [In-batch Validation] ---")
+	print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
+	print("--- Final Metrics [Full Validation Set] ---")
+	print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
+	print("--- Image-to-Text Retrieval ---")
+	print(json.dumps(final_img2txt_metrics["img2txt"], indent=2, ensure_ascii=False))
+	print("--- Text-to-Image Retrieval ---")
+	print(json.dumps(final_txt2img_metrics["txt2img"], indent=2, ensure_ascii=False))
 
 	print("\nGenerating result plots...")
 	actual_trained_epochs = len(training_losses)
