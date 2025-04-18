@@ -1001,7 +1001,7 @@ class EarlyStopping:
 		# Calculate improvement based on mode, then take absolute value for threshold check
 		cumulative_improvement_signed = (window_start_value - window_end_value) * self.sign
 		cumulative_improvement_abs = abs(cumulative_improvement_signed)
-		print(f"\tCumulative Improvement over window: {cumulative_improvement_signed:.5f} (Threshold for lack of imp: < {self.cumulative_delta})")
+		print(f"\tCumulative Improvement over window: {cumulative_improvement_signed} (Threshold for lack of improvement: < {self.cumulative_delta})")
 		# ----- Combine Stopping Criteria -----
 		# 4. Check if any stopping conditions are met.
 		stop_reason = []
@@ -2597,8 +2597,8 @@ def lora_finetune(
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
 		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-	for name, param in model.named_parameters():
-		print(f"{name} => {param.shape} {param.requires_grad}")
+	# for name, param in model.named_parameters():
+	# 	print(f"{name} => {param.shape} {param.requires_grad}")
 
 	# Apply LoRA to the model
 	model = get_lora_clip(
@@ -2687,6 +2687,7 @@ def lora_finetune(
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
 
+		print(f">> Validation for epoch {epoch+1}...")
 		# all metrics in one using caching mechanism:
 		validation_results = get_validation_metrics(
 			model=model,
