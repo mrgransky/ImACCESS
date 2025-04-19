@@ -193,109 +193,191 @@ def compute_direct_in_batch_metrics(
 				"cosine_similarity": float(avg_cos_sim)
 		}
 
+
 def compute_retrieval_metrics_from_similarity(
-				similarity_matrix: torch.Tensor,
-				query_labels: torch.Tensor,
-				candidate_labels: torch.Tensor,
-				topK_values: List[int],
-				mode: str = "Image-to-Text",
-				class_counts: Optional[torch.Tensor] = None,
-				max_k: Optional[int] = None
-) -> Dict:
+		similarity_matrix: torch.Tensor,
+		query_labels: torch.Tensor,
+		candidate_labels: torch.Tensor,
+		topK_values: List[int],
+		mode: str = "Image-to-Text",
+		class_counts: Optional[torch.Tensor] = None,
+		max_k: Optional[int] = None
+	) -> Dict:
 		"""
-		Compute retrieval metrics (mP@K, mAP@K, Recall@K) using pre-computed similarity matrix.
-		This is a streamlined version of get_retrieval_metrics that focuses on performance.
-		
+		Compute retrieval metrics (mP@K, mAP@K, Recall@K) using a pre-computed similarity matrix.
+		This optimized version leverages vectorization and parallelization for enhanced performance.
+
 		Args:
-				similarity_matrix: Pre-computed similarity matrix
-				query_labels: Labels for query items
-				candidate_labels: Labels for candidate items
-				topK_values: List of K values for top-K metrics
-				mode: "Image-to-Text" or "Text-to-Image"
-				class_counts: Class counts for Text-to-Image mode
-				max_k: Maximum K value to consider
-				
+				similarity_matrix: Tensor of shape (num_queries, num_candidates) with similarity scores
+				query_labels: Tensor of query labels
+				candidate_labels: Tensor of candidate labels
+				topK_values: List of K values to compute metrics for
+				mode: Retrieval mode ("Image-to-Text" or "Text-to-Image")
+				class_counts: Tensor of relevant item counts per class (for Text-to-Image mode)
+				max_k: Maximum K value to consider (optional)
+
 		Returns:
-				Dict of retrieval metrics
+				Dictionary containing mP@K, mAP@K, and Recall@K metrics
 		"""
 		num_queries, num_candidates = similarity_matrix.shape
-		
-		# Filter K values if max_k is specified
+		device = similarity_matrix.device
+
+		# Filter K values based on max_k
 		if max_k is not None:
 				valid_K_values = [K for K in topK_values if K <= max_k]
 		else:
 				valid_K_values = topK_values
-		
+
 		metrics = {
 				"mP": {},
 				"mAP": {},
 				"Recall": {},
+		}
+
+		# Precompute sorted indices for efficiency
+		all_sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
+
+		for K in valid_K_values:
+				# Extract top-K indices
+				top_k_indices = all_sorted_indices[:, :K]
+
+				# Retrieve labels for top-K candidates
+				retrieved_labels = candidate_labels[top_k_indices]
+
+				# Expand query labels to match top-K shape
+				true_labels_expanded = query_labels.unsqueeze(1).expand(-1, K)
+
+				# Compute correctness mask
+				correct_mask = (retrieved_labels == true_labels_expanded)
+
+				# Precision@K: Average fraction of correct items in top-K
+				precision = correct_mask.float().mean(dim=1)
+				metrics["mP"][str(K)] = precision.mean().item()
+
+				# Recall@K
+				if mode == "Image-to-Text":
+						# One relevant item per query
+						recall = correct_mask.any(dim=1).float().mean().item()
+				else:
+						# Use class_counts for number of relevant items
+						relevant_counts = class_counts[query_labels]
+						recall = (correct_mask.sum(dim=1) / relevant_counts.clamp(min=1)).mean().item()
+				metrics["Recall"][str(K)] = recall
+
+				# Average Precision@K: Parallel computation
+				def compute_ap(i):
+						correct = correct_mask[i]
+						if correct.any():
+								# Precision at each relevant position
+								relevant_positions = torch.where(correct)[0]
+								precisions = []
+								cumulative_correct = 0
+								for pos in relevant_positions:
+										cumulative_correct += 1
+										precision_at_pos = cumulative_correct / (pos.item() + 1)
+										precisions.append(precision_at_pos)
+								if mode == "Image-to-Text":
+										R = 1  # One relevant item
+								else:
+										R = class_counts[query_labels[i]].item()
+								if R > 0:
+										return sum(precisions) / min(R, K)
+						return 0.0
+
+				# Parallelize AP computation across queries
+				with Pool(cpu_count()) as pool:
+						ap_values = pool.map(compute_ap, range(num_queries))
+
+				metrics["mAP"][str(K)] = sum(ap_values) / num_queries
+
+		return metrics
+
+def compute_retrieval_metrics_from_similarity_old(
+		similarity_matrix: torch.Tensor,
+		query_labels: torch.Tensor,
+		candidate_labels: torch.Tensor,
+		topK_values: List[int],
+		mode: str = "Image-to-Text",
+		class_counts: Optional[torch.Tensor] = None,
+		max_k: Optional[int] = None
+	) -> Dict:
+		num_queries, num_candidates = similarity_matrix.shape
+		
+		if max_k is not None:
+			valid_K_values = [K for K in topK_values if K <= max_k]
+		else:
+			valid_K_values = topK_values
+		
+		metrics = {
+			"mP": {},
+			"mAP": {},
+			"Recall": {},
 		}
 		
 		# Sort once for all K values to improve efficiency
 		all_sorted_indices = torch.argsort(-similarity_matrix, dim=1)
 		
 		for K in valid_K_values:
-				top_k_indices = all_sorted_indices[:, :K]
+			top_k_indices = all_sorted_indices[:, :K]
+			
+			precision, recall, ap = [], [], []
+			for i in range(num_queries):
+				true_label = query_labels[i]
+				retrieved_labels = candidate_labels[top_k_indices[i]]
 				
-				precision, recall, ap = [], [], []
-				for i in range(num_queries):
-						true_label = query_labels[i]
-						retrieved_labels = candidate_labels[top_k_indices[i]]
-						
-						# Count correct items in top-K 
-						correct_mask = (retrieved_labels == true_label)
-						correct = correct_mask.sum().item()
-						
-						# 1. Precision @ K
-						precision.append(correct / K)
-						
-						# 2. Compute Recall@K
-						if mode == "Image-to-Text":
-								relevant_count = 1  # Single relevant item per query
-						else:
-								relevant_count = (
-										class_counts[true_label].item()
-										if class_counts is not None
-										else 0
-								)
-						
-						if relevant_count > 0:
-								recall.append(correct / relevant_count)
-						else:
-								recall.append(0.0)
-						
-						# 3. Compute AP@K
-						relevant_positions = torch.where(correct_mask)[0]
-						p_at = []
-						cumulative_correct = 0
-						
-						for pos in relevant_positions:
-								if pos < K:  # Only consider positions within top-K
-										cumulative_correct += 1
-										precision_at_rank = cumulative_correct / (pos + 1)
-										p_at.append(precision_at_rank)
-						
-						# Determine normalization factor for AP
-						if mode == "Image-to-Text":
-								R = 1  # Always 1 relevant item for image-to-text
-						else:
-								R = (
-										class_counts[true_label].item()
-										if class_counts is not None
-										else 0
-								)
-						
-						# Handle edge cases
-						if R == 0 or len(p_at) == 0:
-								ap.append(0.0)
-						else:
-								ap.append(sum(p_at) / min(R, K))
+				# Count correct items in top-K 
+				correct_mask = (retrieved_labels == true_label)
+				correct = correct_mask.sum().item()
 				
-				# Store metrics for this K
-				metrics["mP"][str(K)] = torch.tensor(precision).mean().item()
-				metrics["mAP"][str(K)] = torch.tensor(ap).mean().item()
-				metrics["Recall"][str(K)] = torch.tensor(recall).mean().item()
+				# 1. Precision @ K
+				precision.append(correct / K)
+				
+				# 2. Compute Recall@K
+				if mode == "Image-to-Text":
+					relevant_count = 1  # Single relevant item per query
+				else:
+					relevant_count = (
+						class_counts[true_label].item()
+						if class_counts is not None
+						else 0
+					)
+				
+				if relevant_count > 0:
+					recall.append(correct / relevant_count)
+				else:
+					recall.append(0.0)
+				
+				# 3. Compute AP@K
+				relevant_positions = torch.where(correct_mask)[0]
+				p_at = []
+				cumulative_correct = 0
+				
+				for pos in relevant_positions:
+					if pos < K:  # Only consider positions within top-K
+						cumulative_correct += 1
+						precision_at_rank = cumulative_correct / (pos + 1)
+						p_at.append(precision_at_rank)
+				
+				# Determine normalization factor for AP
+				if mode == "Image-to-Text":
+					R = 1  # Always 1 relevant item for image-to-text
+				else:
+					R = (
+						class_counts[true_label].item()
+						if class_counts is not None
+						else 0
+					)
+				
+				# Handle edge cases
+				if R == 0 or len(p_at) == 0:
+					ap.append(0.0)
+				else:
+					ap.append(sum(p_at) / min(R, K))
+			
+			# Store metrics for this K
+			metrics["mP"][str(K)] = torch.tensor(precision).mean().item()
+			metrics["mAP"][str(K)] = torch.tensor(ap).mean().item()
+			metrics["Recall"][str(K)] = torch.tensor(recall).mean().item()
 		
 		return metrics
 

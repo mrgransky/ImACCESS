@@ -267,28 +267,28 @@ def plot_image_to_texts_stacked_horizontal_bar(
 	pretrained_topk_labels = []  # To store the top-k labels from the pre-trained model
 	pretrained_topk_probs = []  # To store the corresponding probabilities for sorting
 	for model_name, model in models.items():
-			model.eval()
-			print(f"[Image-to-text(s)] {model_name} Zero-Shot Image Classification of image: {img_path}".center(200, " "))
-			t0 = time.time()
-			with torch.no_grad():
-					image_features = model.encode_image(image_tensor)
-					labels_features = model.encode_text(tokenized_labels_tensor)
-					image_features /= image_features.norm(dim=-1, keepdim=True)
-					labels_features /= labels_features.norm(dim=-1, keepdim=True)
-					similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
-			
-			# Store full probabilities for all labels
-			all_probs = similarities.squeeze().cpu().numpy()
-			model_predictions[model_name] = all_probs
-			# If this is the pre-trained model, get its top-k labels and probabilities
-			if model_name == "pretrained":
-					topk_pred_probs, topk_pred_labels_idx = similarities.topk(topk, dim=-1)
-					topk_pred_probs = topk_pred_probs.squeeze().cpu().numpy()
-					topk_pred_indices = topk_pred_labels_idx.squeeze().cpu().numpy()
-					pretrained_topk_labels = [labels[i] for i in topk_pred_indices]
-					pretrained_topk_probs = topk_pred_probs
-					print(f"Top-{topk} predicted labels for pretrained model: {pretrained_topk_labels}")
-			print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
+		model.eval()
+		print(f"[Image-to-text(s)] {model_name} Zero-Shot Image Classification of image: {img_path}".center(200, " "))
+		t0 = time.time()
+		with torch.no_grad():
+			image_features = model.encode_image(image_tensor)
+			labels_features = model.encode_text(tokenized_labels_tensor)
+			image_features /= image_features.norm(dim=-1, keepdim=True)
+			labels_features /= labels_features.norm(dim=-1, keepdim=True)
+			similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
+		
+		# Store full probabilities for all labels
+		all_probs = similarities.squeeze().cpu().numpy()
+		model_predictions[model_name] = all_probs
+		# If this is the pre-trained model, get its top-k labels and probabilities
+		if model_name == "pretrained":
+			topk_pred_probs, topk_pred_labels_idx = similarities.topk(topk, dim=-1)
+			topk_pred_probs = topk_pred_probs.squeeze().cpu().numpy()
+			topk_pred_indices = topk_pred_labels_idx.squeeze().cpu().numpy()
+			pretrained_topk_labels = [labels[i] for i in topk_pred_indices]
+			pretrained_topk_probs = topk_pred_probs
+			print(f"Top-{topk} predicted labels for pretrained model: {pretrained_topk_labels}")
+		print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
 
 	# Sort the pre-trained model's top-k labels by their probabilities (descending)
 	sorted_indices = np.argsort(pretrained_topk_probs)[::-1]  # Descending order
