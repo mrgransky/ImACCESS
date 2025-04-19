@@ -193,6 +193,43 @@ def compute_direct_in_batch_metrics(
 				"cosine_similarity": float(avg_cos_sim)
 		}
 
+from typing import List, Optional, Dict
+import torch
+import torch.nn.functional as F
+from multiprocessing import Pool, cpu_count
+
+def compute_ap(i: int, correct_mask: torch.Tensor, query_labels: torch.Tensor, class_counts: Optional[torch.Tensor], mode: str, K: int) -> float:
+		"""
+		Compute Average Precision (AP) for a single query.
+		
+		Args:
+				i: Index of the query
+				correct_mask: Tensor of shape (num_queries, K) indicating correct retrievals
+				query_labels: Tensor of query labels
+				class_counts: Tensor of relevant item counts per class (for Text-to-Image mode)
+				mode: Retrieval mode ("Image-to-Text" or "Text-to-Image")
+				K: Top-K value
+		
+		Returns:
+				AP value for the query
+		"""
+		correct = correct_mask[i]
+		if correct.any():
+				# Precision at each relevant position
+				relevant_positions = torch.where(correct)[0]
+				precisions = []
+				cumulative_correct = 0
+				for pos in relevant_positions:
+						cumulative_correct += 1
+						precision_at_pos = cumulative_correct / (pos.item() + 1)
+						precisions.append(precision_at_pos)
+				if mode == "Image-to-Text":
+						R = 1  # One relevant item
+				else:
+						R = class_counts[query_labels[i]].item()
+				if R > 0:
+						return sum(precisions) / min(R, K)
+		return 0.0
 
 def compute_retrieval_metrics_from_similarity(
 		similarity_matrix: torch.Tensor,
@@ -202,7 +239,7 @@ def compute_retrieval_metrics_from_similarity(
 		mode: str = "Image-to-Text",
 		class_counts: Optional[torch.Tensor] = None,
 		max_k: Optional[int] = None
-	) -> Dict:
+) -> Dict:
 		"""
 		Compute retrieval metrics (mP@K, mAP@K, Recall@K) using a pre-computed similarity matrix.
 		This optimized version leverages vectorization and parallelization for enhanced performance.
@@ -265,28 +302,11 @@ def compute_retrieval_metrics_from_similarity(
 				metrics["Recall"][str(K)] = recall
 
 				# Average Precision@K: Parallel computation
-				def compute_ap(i):
-						correct = correct_mask[i]
-						if correct.any():
-								# Precision at each relevant position
-								relevant_positions = torch.where(correct)[0]
-								precisions = []
-								cumulative_correct = 0
-								for pos in relevant_positions:
-										cumulative_correct += 1
-										precision_at_pos = cumulative_correct / (pos.item() + 1)
-										precisions.append(precision_at_pos)
-								if mode == "Image-to-Text":
-										R = 1  # One relevant item
-								else:
-										R = class_counts[query_labels[i]].item()
-								if R > 0:
-										return sum(precisions) / min(R, K)
-						return 0.0
-
-				# Parallelize AP computation across queries
 				with Pool(cpu_count()) as pool:
-						ap_values = pool.map(compute_ap, range(num_queries))
+						ap_values = pool.starmap(
+								compute_ap,
+								[(i, correct_mask, query_labels, class_counts, mode, K) for i in range(num_queries)]
+						)
 
 				metrics["mAP"][str(K)] = sum(ap_values) / num_queries
 
