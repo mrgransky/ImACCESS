@@ -102,15 +102,15 @@ BASE_MIN_EPOCHS=(25 20 17 17 12)  # National Archive, History_X4, Europeana, WWI
 strategy="${FINETUNE_STRATEGIES[$strategy_index]}"
 base_min_epochs="${BASE_MIN_EPOCHS[$dataset_index]}"
 case $strategy in
-  "full")
-    MIN_EPOCHS=$((base_min_epochs - 5))  # Lower for Full
-    ;;
-  "lora")
-    MIN_EPOCHS=$((base_min_epochs + 5))  # Higher for LoRA
-    ;;
-  "progressive")
-    MIN_EPOCHS=$base_min_epochs          # Base for Progressive
-    ;;
+	"full")
+		MIN_EPOCHS=$((base_min_epochs - 5))  # Lower for Full
+		;;
+	"lora")
+		MIN_EPOCHS=$((base_min_epochs + 5))  # Higher for LoRA
+		;;
+	"progressive")
+		MIN_EPOCHS=$base_min_epochs          # Base for Progressive
+		;;
 esac
 MIN_EPOCHS=$((MIN_EPOCHS < 5 ? 5 : MIN_EPOCHS))  # Ensure minimum of 5
 

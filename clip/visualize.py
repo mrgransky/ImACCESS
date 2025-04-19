@@ -572,7 +572,7 @@ def plot_text_to_images_merged(
 						continue
 					
 					# Compute embeddings
-					with torch.no_grad():
+					with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=True):
 						images = images.to(device)
 						image_features = model.encode_image(images)
 						image_features /= image_features.norm(dim=-1, keepdim=True)

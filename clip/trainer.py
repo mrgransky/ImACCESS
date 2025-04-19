@@ -2798,9 +2798,9 @@ def lora_finetune(
 	print("--- Final Metrics [Full Validation Set] ---")
 	print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
 	print("--- Image-to-Text Retrieval ---")
-	print(json.dumps(final_img2txt_metrics["img2txt"], indent=2, ensure_ascii=False))
+	print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
 	print("--- Text-to-Image Retrieval ---")
-	print(json.dumps(final_txt2img_metrics["txt2img"], indent=2, ensure_ascii=False))
+	print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
 
 	print("\nGenerating result plots...")
 	actual_trained_epochs = len(training_losses)
