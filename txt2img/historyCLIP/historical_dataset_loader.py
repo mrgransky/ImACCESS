@@ -238,8 +238,6 @@ def get_dataloaders(
 		train=False,
 		data_frame=val_dataset.sort_values(by="img_path").reset_index(drop=True),
 		transform=preprocess,
-		pin_memory=torch.cuda.is_available(), # Move data to GPU faster if CUDA available
-		num_workers=num_workers,
 	)
 	
 	print(validation_dataset)
@@ -250,6 +248,7 @@ def get_dataloaders(
 		dataset=validation_dataset,
 		batch_size=batch_size,
 		shuffle=False,
+		pin_memory=torch.cuda.is_available(), # Move data to GPU faster if CUDA available
 		num_workers=num_workers,
 	)
 	val_loader.name = f"{dataset_name.lower()}_validation".upper()
