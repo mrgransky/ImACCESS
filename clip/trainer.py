@@ -193,11 +193,6 @@ def compute_direct_in_batch_metrics(
 				"cosine_similarity": float(avg_cos_sim)
 		}
 
-from typing import List, Optional, Dict
-import torch
-import torch.nn.functional as F
-from multiprocessing import Pool, cpu_count
-
 def compute_ap(i: int, correct_mask: torch.Tensor, query_labels: torch.Tensor, class_counts: Optional[torch.Tensor], mode: str, K: int) -> float:
 		"""
 		Compute Average Precision (AP) for a single query.
@@ -215,7 +210,6 @@ def compute_ap(i: int, correct_mask: torch.Tensor, query_labels: torch.Tensor, c
 		"""
 		correct = correct_mask[i]
 		if correct.any():
-				# Precision at each relevant position
 				relevant_positions = torch.where(correct)[0]
 				precisions = []
 				cumulative_correct = 0
@@ -224,7 +218,7 @@ def compute_ap(i: int, correct_mask: torch.Tensor, query_labels: torch.Tensor, c
 						precision_at_pos = cumulative_correct / (pos.item() + 1)
 						precisions.append(precision_at_pos)
 				if mode == "Image-to-Text":
-						R = 1  # One relevant item
+						R = 1
 				else:
 						R = class_counts[query_labels[i]].item()
 				if R > 0:
@@ -242,7 +236,6 @@ def compute_retrieval_metrics_from_similarity(
 ) -> Dict:
 		"""
 		Compute retrieval metrics (mP@K, mAP@K, Recall@K) using a pre-computed similarity matrix.
-		This optimized version leverages vectorization and parallelization for enhanced performance.
 
 		Args:
 				similarity_matrix: Tensor of shape (num_queries, num_candidates) with similarity scores
@@ -259,7 +252,6 @@ def compute_retrieval_metrics_from_similarity(
 		num_queries, num_candidates = similarity_matrix.shape
 		device = similarity_matrix.device
 
-		# Filter K values based on max_k
 		if max_k is not None:
 				valid_K_values = [K for K in topK_values if K <= max_k]
 		else:
@@ -271,41 +263,34 @@ def compute_retrieval_metrics_from_similarity(
 				"Recall": {},
 		}
 
-		# Precompute sorted indices for efficiency
 		all_sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
 
 		for K in valid_K_values:
-				# Extract top-K indices
 				top_k_indices = all_sorted_indices[:, :K]
-
-				# Retrieve labels for top-K candidates
 				retrieved_labels = candidate_labels[top_k_indices]
-
-				# Expand query labels to match top-K shape
 				true_labels_expanded = query_labels.unsqueeze(1).expand(-1, K)
-
-				# Compute correctness mask
 				correct_mask = (retrieved_labels == true_labels_expanded)
 
-				# Precision@K: Average fraction of correct items in top-K
 				precision = correct_mask.float().mean(dim=1)
 				metrics["mP"][str(K)] = precision.mean().item()
 
-				# Recall@K
 				if mode == "Image-to-Text":
-						# One relevant item per query
 						recall = correct_mask.any(dim=1).float().mean().item()
 				else:
-						# Use class_counts for number of relevant items
 						relevant_counts = class_counts[query_labels]
 						recall = (correct_mask.sum(dim=1) / relevant_counts.clamp(min=1)).mean().item()
 				metrics["Recall"][str(K)] = recall
 
-				# Average Precision@K: Parallel computation
+				# Move tensors to CPU for multiprocessing
+				correct_mask_cpu = correct_mask.cpu()
+				query_labels_cpu = query_labels.cpu()
+				class_counts_cpu = class_counts.cpu() if class_counts is not None else None
+
+				# Parallel AP computation
 				with Pool(cpu_count()) as pool:
 						ap_values = pool.starmap(
 								compute_ap,
-								[(i, correct_mask, query_labels, class_counts, mode, K) for i in range(num_queries)]
+								[(i, correct_mask_cpu, query_labels_cpu, class_counts_cpu, mode, K) for i in range(num_queries)]
 						)
 
 				metrics["mAP"][str(K)] = sum(ap_values) / num_queries
