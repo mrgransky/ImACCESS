@@ -58,6 +58,125 @@ def compute_direct_in_batch_metrics(
 		criterion: torch.nn.Module,
 		device: str,
 		topK_values: List[int],
+		max_samples: int = 384  # Increased to align with batch size 128
+) -> Dict:
+		model.eval()
+		total_loss = 0.0
+		total_img2txt_correct = 0
+		total_txt2img_correct = 0
+		processed_batches = 0
+		total_samples = 0
+		cosine_similarities = []
+		
+		try:
+				class_names = validation_loader.dataset.dataset.classes
+		except:
+				class_names = validation_loader.dataset.unique_labels
+		
+		n_classes = len(class_names)
+		valid_k_values = [k for k in topK_values if k <= n_classes]
+		
+		img2txt_topk_accuracy = {k: 0 for k in valid_k_values}
+		txt2img_topk_accuracy = {k: 0 for k in topK_values}
+		
+		with torch.no_grad():
+				for bidx, batch in enumerate(validation_loader):
+						try:
+								images, tokenized_labels, labels_indices = batch
+								if total_samples >= max_samples:
+										break
+								
+								batch_size = images.size(0)
+								if total_samples + batch_size > max_samples:
+										effective_batch_size = max_samples - total_samples
+										images = images[:effective_batch_size]
+										tokenized_labels = tokenized_labels[:effective_batch_size]
+										labels_indices = labels_indices[:effective_batch_size]
+										batch_size = effective_batch_size
+								
+								images = images.to(device, non_blocking=True)
+								tokenized_labels = tokenized_labels.to(device, non_blocking=True)
+								
+								with torch.amp.autocast(device_type=device.type, enabled=True):
+										logits_per_image, logits_per_text = model(images, tokenized_labels)
+										
+										ground_truth = torch.arange(batch_size, device=device)
+										
+										loss_img = criterion(logits_per_image, ground_truth)
+										loss_txt = criterion(logits_per_text, ground_truth)
+										batch_loss = 0.5 * (loss_img.item() + loss_txt.item())
+										total_loss += batch_loss
+								
+								img2txt_preds = torch.argmax(logits_per_image, dim=1)
+								img2txt_correct = (img2txt_preds == ground_truth).sum().item()
+								total_img2txt_correct += img2txt_correct
+								
+								txt2img_preds = torch.argmax(logits_per_text, dim=1)
+								txt2img_correct = (txt2img_preds == ground_truth).sum().item()
+								total_txt2img_correct += txt2img_correct
+								
+								# Vectorized top-K accuracy
+								for k in valid_k_values:
+										topk_preds = torch.topk(logits_per_image, k=min(k, batch_size), dim=1)[1]
+										img2txt_topk_accuracy[k] += torch.isin(ground_truth.unsqueeze(1), topk_preds).any(dim=1).sum().item()
+								
+								for k in topK_values:
+										topk_preds = torch.topk(logits_per_text, k=min(k, batch_size), dim=1)[1]
+										txt2img_topk_accuracy[k] += torch.isin(ground_truth.unsqueeze(1), topk_preds).any(dim=1).sum().item()
+								
+								with torch.amp.autocast(device_type=device.type, enabled=True):
+										image_embeds = model.encode_image(images)
+										text_embeds = model.encode_text(tokenized_labels)
+								
+								image_embeds = F.normalize(image_embeds, dim=-1)
+								text_embeds = F.normalize(text_embeds, dim=-1)
+								
+								# Vectorized cosine similarity
+								cos_sim = F.cosine_similarity(image_embeds, text_embeds, dim=-1).cpu().numpy()
+								cosine_similarities.extend(cos_sim.tolist())
+								
+								processed_batches += 1
+								total_samples += batch_size
+						
+						except Exception as e:
+								print(f"Warning: Error processing batch {bidx}: {e}")
+								continue
+				
+				if total_samples == 0:
+						print("Warning: No samples processed")
+						return {
+								"val_loss": 0.0,
+								"img2txt_acc": 0.0,
+								"txt2img_acc": 0.0,
+								"img2txt_topk_acc": {str(k): 0.0 for k in valid_k_values},
+								"txt2img_topk_acc": {str(k): 0.0 for k in topK_values},
+								"cosine_similarity": 0.0
+						}
+				
+				avg_loss = total_loss / processed_batches if processed_batches > 0 else 0.0
+				img2txt_acc = total_img2txt_correct / total_samples if total_samples > 0 else 0.0
+				txt2img_acc = total_txt2img_correct / total_samples if total_samples > 0 else 0.0
+				
+				img2txt_topk_acc = {k: v / total_samples for k, v in img2txt_topk_accuracy.items()} if total_samples > 0 else {k: 0.0 for k in valid_k_values}
+				txt2img_topk_acc = {k: v / total_samples for k, v in txt2img_topk_accuracy.items()} if total_samples > 0 else {k: 0.0 for k in topK_values}
+				
+				avg_cos_sim = sum(cosine_similarities) / len(cosine_similarities) if cosine_similarities else 0.0
+				
+				return {
+						"val_loss": float(avg_loss),
+						"img2txt_acc": float(img2txt_acc),
+						"txt2img_acc": float(txt2img_acc),
+						"img2txt_topk_acc": {str(k): float(v) for k, v in img2txt_topk_acc.items()},
+						"txt2img_topk_acc": {str(k): float(v) for k, v in txt2img_topk_acc.items()},
+						"cosine_similarity": float(avg_cos_sim)
+				}
+
+def compute_direct_in_batch_metrics_old(
+		model: torch.nn.Module,
+		validation_loader: DataLoader,
+		criterion: torch.nn.Module,
+		device: str,
+		topK_values: List[int],
 		max_samples: int = 320  # Default limit
 ) -> Dict:
 		model.eval()
@@ -199,6 +318,72 @@ def compute_ap(
 	return 0.0
 
 def compute_retrieval_metrics_from_similarity(
+		similarity_matrix: torch.Tensor,
+		query_labels: torch.Tensor,
+		candidate_labels: torch.Tensor,
+		topK_values: List[int],
+		mode: str = "Image-to-Text",
+		class_counts: Optional[torch.Tensor] = None,
+		max_k: Optional[int] = None,
+		cache_dir: str = None,
+		cache_key: str = None
+) -> Dict:
+		num_queries, num_candidates = similarity_matrix.shape
+		device = similarity_matrix.device
+		
+		# Check cache
+		if cache_dir and cache_key:
+				cache_file = os.path.join(cache_dir, f"{cache_key}_retrieval_metrics.json")
+				if os.path.exists(cache_file):
+						try:
+								with open(cache_file, 'r') as f:
+										return json.load(f)
+						except Exception as e:
+								print(f"Error loading cache: {e}. Computing metrics.")
+		
+		if max_k is not None:
+				valid_K_values = [K for K in topK_values if K <= max_k]
+		else:
+				valid_K_values = topK_values
+		
+		metrics = {"mP": {}, "mAP": {}, "Recall": {}}
+		
+		all_sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
+		
+		for K in valid_K_values:
+				top_k_indices = all_sorted_indices[:, :K]
+				retrieved_labels = candidate_labels[top_k_indices]
+				true_labels_expanded = query_labels.unsqueeze(1).expand(-1, K)
+				correct_mask = (retrieved_labels == true_labels_expanded)
+				
+				metrics["mP"][str(K)] = correct_mask.float().mean(dim=1).mean().item()
+				
+				if mode == "Image-to-Text":
+						metrics["Recall"][str(K)] = correct_mask.any(dim=1).float().mean().item()
+				else:
+						relevant_counts = class_counts[query_labels]
+						metrics["Recall"][str(K)] = (correct_mask.sum(dim=1) / relevant_counts.clamp(min=1)).mean().item()
+				
+				# Vectorized AP
+				positions = torch.arange(1, K + 1, device=device).float().unsqueeze(0).expand(num_queries, K)
+				cumulative_correct = correct_mask.float().cumsum(dim=1)
+				precisions = cumulative_correct / positions
+				ap = (precisions * correct_mask.float()).sum(dim=1) / correct_mask.sum(dim=1).clamp(min=1)
+				metrics["mAP"][str(K)] = ap.nanmean().item()
+		
+		# Save to cache
+		if cache_dir and cache_key:
+				try:
+						os.makedirs(cache_dir, exist_ok=True)
+						with open(cache_file, 'w') as f:
+								json.dump(metrics, f)
+						print(f"Saved metrics to {cache_file}")
+				except Exception as e:
+						print(f"Warning: Failed to save cache: {e}")
+		
+		return metrics
+
+def compute_retrieval_metrics_from_similarity_old(
 		similarity_matrix: torch.Tensor,
 		query_labels: torch.Tensor,
 		candidate_labels: torch.Tensor,
@@ -436,7 +621,7 @@ def get_validation_metrics(
 			class_counts=class_counts
 	)
 	if verbose:
-			print(f"Retrieval metrics computed in {time.time() - retrieval_start:.1f} sec")
+			print(f"Retrieval metrics computed in {time.time() - retrieval_start:.5f} sec")
 	
 	# Step 7: Return results
 	result = {

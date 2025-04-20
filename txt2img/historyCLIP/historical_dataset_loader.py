@@ -269,7 +269,7 @@ class HistoricalArchivesDataset(Dataset):
 		train: bool,
 		data_frame: pd.DataFrame,
 		transform,
-		memory_threshold_gib: float = 50.0,  # Minimum available memory (GiB) to preload images
+		memory_threshold_gib: float = 500.0,  # Minimum available memory (GiB) to preload images
 	):
 		self.dataset_name = dataset_name
 		self.train = train
@@ -294,12 +294,12 @@ class HistoricalArchivesDataset(Dataset):
 		print(f"Preloading images into memory for {self.dataset_name} ({'train' if self.train else 'validation'})...")
 		cache = []
 		for img_path in tqdm(self.images, desc="Loading images"):
-				try:
-						img = Image.open(img_path).convert("RGB")
-						cache.append(img)
-				except Exception as e:
-						print(f"ERROR: {img_path}\t{e}")
-						cache.append(None)
+			try:
+				img = Image.open(img_path).convert("RGB")
+				cache.append(img)
+			except Exception as e:
+				print(f"ERROR: {img_path}\t{e}")
+				cache.append(None)
 		print(f"Preloaded {sum(1 for img in cache if img is not None)}/{len(cache)} images successfully")
 		return cache
 	
