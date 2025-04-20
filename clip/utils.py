@@ -56,23 +56,31 @@ logger = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
-def compute_model_embeddings(strategy, model, loader, device, cache_dir, dataset_name):
+def compute_model_embeddings(strategy, model, loader, device, cache_dir):
 	model.eval()
 	embeddings = []
 	paths = []
+	dataset_name = getattr(loader, 'name', 'unknown_dataset')
 	cache_file = os.path.join(cache_dir, f"{dataset_name}_{strategy}_embeddings.pt")
-	
 	if os.path.exists(cache_file):
-		data = torch.load(cache_file, map_location='cpu')
-		return data['embeddings'].to(device), data['image_paths']
+		try:
+			# Attempt to load directly to the specified device
+			data = torch.load(cache_file, map_location=device)
+			print(f"Loaded cache file: {cache_file} to {device}")
+			return data['embeddings'].to(device), data['image_paths']
+		except RuntimeError as e:
+			# Fallback to CPU if loading to device fails (e.g., no GPU or incompatible device)
+			print(f"Failed to load cache file to {device}: {e}. Falling back to CPU.")
+			data = torch.load(cache_file, map_location='cpu')
+			return data['embeddings'].to(device), data['image_paths']
 	
-	print(f"Computing embeddings for {strategy}...")
+	print(f"\tStrategy: {strategy}")
 	for batch_idx, (images, _, _) in enumerate(tqdm(loader, desc=f"Processing {strategy}")):
 		images = images.to(device)
 		with torch.no_grad():
 			features = model.encode_image(images)
 			features /= features.norm(dim=-1, keepdim=True)
-		embeddings.append(features.cpu())
+		embeddings.append(features.cpu())  # Still save to CPU for portability
 		paths.extend([f"batch_{batch_idx}_img_{i}" for i in range(len(images))])
 	
 	embeddings = torch.cat(embeddings, dim=0)

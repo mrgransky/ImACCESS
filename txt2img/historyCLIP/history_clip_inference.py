@@ -33,14 +33,6 @@ from visualize import (
 # # run in Puhti:
 # $ python history_clip_inference.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -fcp /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/results/WWII_1939-09-01_1945-09-02_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_do_0.05_lr_5.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/results/WWII_1939-09-01_1945-09-02_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_do_0.05_init_lr_5.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/results/WWII_1939-09-01_1945-09-02_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_lr_5.0e-05_wd_1.0e-02_lora_rank_8_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 8 -loa 16.0 -lod 0.05
 
-def parallel_compute_embeddings(args_tuple):
-	strategy, model, loader, device, cache_dir, dataset_name = args_tuple
-	# Ensure each process uses a unique CUDA context
-	torch.cuda.set_device(device)
-	model = model.cpu()
-	embeddings, paths = compute_model_embeddings(strategy, model, loader, device, cache_dir, dataset_name)
-	return strategy, (embeddings.cpu(), paths)
-
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
@@ -49,7 +41,7 @@ def main():
 	parser.add_argument('--num_workers', '-nw', type=int, default=16, help='Number of CPUs [def: max cpus]')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
-	parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
+	parser.add_argument('--batch_size', '-bs', type=int, default=128, help='Batch size for training')
 	parser.add_argument('--query_image', '-qi', type=str, default=None, help='image path for zero shot classification')
 	parser.add_argument('--query_label', '-ql', type=str, default=None, help='image path for zero shot classification')
 	parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
@@ -158,18 +150,8 @@ def main():
 			loader=validation_loader,
 			device=args.device,
 			cache_dir=CACHE_DIRECTORY,
-			dataset_name=validation_loader.name
 		)
 		embeddings_cache[strategy] = (embeddings, paths)
-
-	# print("Computing Model Embeddings [in parallel]...")
-	# model_args = [
-	# 	(strategy, model, validation_loader, args.device, CACHE_DIRECTORY, validation_loader.name)
-	# 	for strategy, model in models_to_plot.items()
-	# ]
-	# with multiprocessing.Pool(processes=2) as pool:  # Limit to 2 processes to avoid GPU contention
-	# 	results = pool.map(parallel_compute_embeddings, model_args)
-	# embeddings_cache = {strategy: (embeddings, paths) for strategy, (embeddings, paths) in results}
 
 	# Evaluate fine-tuned models
 	for ft_name, ft_path in finetuned_checkpoint_paths.items():
