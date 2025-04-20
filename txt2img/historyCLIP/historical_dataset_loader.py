@@ -230,6 +230,7 @@ def get_dataloaders(
 		pin_memory=torch.cuda.is_available(), # Move data to GPU faster if CUDA available
 		persistent_workers=(num_workers > 0),  # Keep workers alive if memory allows
 		num_workers=num_workers,
+		prefetch_factor=2, # 
 	)
 	train_loader.name = f"{dataset_name.lower()}_train".upper()
 
@@ -250,6 +251,8 @@ def get_dataloaders(
 		shuffle=False,
 		pin_memory=torch.cuda.is_available(), # Move data to GPU faster if CUDA available
 		num_workers=num_workers,
+		prefetch_factor=2, # Number of batches loaded in advance by each worker
+		persistent_workers=(num_workers > 0),  # Keep workers alive if memory allows
 	)
 	val_loader.name = f"{dataset_name.lower()}_validation".upper()
 

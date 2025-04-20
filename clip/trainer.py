@@ -507,7 +507,7 @@ def compute_retrieval_metrics_from_similarity_old(
 		
 		return metrics
 
-def get_validation_metrics(
+def get_validation_metrics_new(
 		model: torch.nn.Module,
 		validation_loader: torch.utils.data.DataLoader,
 		criterion: torch.nn.Module,
@@ -685,7 +685,7 @@ def get_validation_metrics(
 		
 		return result
 
-def get_validation_metrics_old(
+def get_validation_metrics(
 		model: torch.nn.Module,
 		validation_loader: torch.utils.data.DataLoader,
 		criterion: torch.nn.Module,

@@ -65,19 +65,19 @@ def compute_model_embeddings(strategy, model, loader, device, cache_dir):
 	if os.path.exists(cache_file):
 		try:
 			# Attempt to load directly to the specified device
-			data = torch.load(cache_file, map_location=device)
+			data = torch.load(cache_file, map_location=device, mmap=True)
 			print(f"Loaded cache file: {cache_file} to {device}")
 			return data['embeddings'].to(device), data['image_paths']
 		except RuntimeError as e:
 			# Fallback to CPU if loading to device fails (e.g., no GPU or incompatible device)
 			print(f"Failed to load cache file to {device}: {e}. Falling back to CPU.")
-			data = torch.load(cache_file, map_location='cpu')
+			data = torch.load(cache_file, map_location='cpu', mmap=True)
 			return data['embeddings'].to(device), data['image_paths']
 	
 	print(f"\tStrategy: {strategy}")
 	for batch_idx, (images, _, _) in enumerate(tqdm(loader, desc=f"Processing {strategy}")):
-		images = images.to(device)
-		with torch.no_grad():
+		images = images.to(device, non_blocking=True)
+		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=True):
 			features = model.encode_image(images)
 			features /= features.norm(dim=-1, keepdim=True)
 		embeddings.append(features.cpu())  # Still save to CPU for portability
