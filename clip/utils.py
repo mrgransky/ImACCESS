@@ -20,6 +20,7 @@ import inspect
 import functools
 import sys
 import traceback
+from turbojpeg import TurboJPEG
 from PIL import Image
 import requests
 from io import BytesIO
@@ -27,7 +28,7 @@ import hashlib
 from torch.optim import AdamW, SGD, Adam, lr_scheduler
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.dataloader import default_collate
-from multiprocessing import Pool, cpu_count
+import multiprocessing
 
 import torchvision.transforms as T
 import torch.nn.functional as F
@@ -54,6 +55,29 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
+
+def compute_model_embeddings(strategy, model, loader, device, cache_dir, dataset_name):
+	model.eval()
+	embeddings = []
+	paths = []
+	cache_file = os.path.join(cache_dir, f"{dataset_name}_{strategy}_embeddings.pt")
+	
+	if os.path.exists(cache_file):
+		data = torch.load(cache_file, map_location='cpu')
+		return data['embeddings'].to(device), data['image_paths']
+	
+	print(f"Computing embeddings for {strategy}...")
+	for batch_idx, (images, _, _) in enumerate(tqdm(loader, desc=f"Processing {strategy}")):
+		images = images.to(device)
+		with torch.no_grad():
+			features = model.encode_image(images)
+			features /= features.norm(dim=-1, keepdim=True)
+		embeddings.append(features.cpu())
+		paths.extend([f"batch_{batch_idx}_img_{i}" for i in range(len(images))])
+	
+	embeddings = torch.cat(embeddings, dim=0)
+	torch.save({'embeddings': embeddings, 'image_paths': paths}, cache_file)
+	return embeddings.to(device), paths
 
 def get_updated_model_name(
 		original_path: str,

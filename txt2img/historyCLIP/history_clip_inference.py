@@ -33,6 +33,13 @@ from visualize import (
 # # run in Puhti:
 # $ python history_clip_inference.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -fcp /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/results/WWII_1939-09-01_1945-09-02_full_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_do_0.05_lr_5.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/results/WWII_1939-09-01_1945-09-02_progressive_unfreeze_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_do_0.05_init_lr_5.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/results/WWII_1939-09-01_1945-09-02_lora_finetune_CLIP_ViT-B-32_opt_AdamW_sch_OneCycleLR_loss_CrossEntropyLoss_scaler_GradScaler_init_epochs_150_lr_5.0e-05_wd_1.0e-02_lora_rank_8_lora_alpha_16.0_lora_dropout_0.05_bs_64_best_model.pth -lor 8 -loa 16.0 -lod 0.05
 
+def parallel_compute_embeddings(args_tuple):
+	strategy, model, loader, device, cache_dir, dataset_name = args_tuple
+	# Ensure each process uses a unique CUDA context
+	torch.cuda.set_device(device)
+	model = model.cpu()
+	embeddings, paths = compute_model_embeddings(strategy, model, loader, device, cache_dir, dataset_name)
+	return strategy, (embeddings.cpu(), paths)
 
 @measure_execution_time
 def main():
@@ -131,55 +138,58 @@ def main():
 	for ft_name, ft_path in finetuned_checkpoint_paths.items():
 		if ft_path and os.path.exists(ft_path):
 			print(f">> Loading Fine-tuned Model: {ft_name} from {ft_path}...")
-			model, _ = clip.load(
-				name=args.model_architecture,
-				device=args.device,
-				download_root=get_model_directory(path=args.dataset_dir),
-			)
+			model, _ = clip.load(name=args.model_architecture, device=args.device, download_root=get_model_directory(path=args.dataset_dir))
 			if ft_name == "lora":
-				model = get_lora_clip(
-					clip_model=model,
-					lora_rank=args.lora_rank,
-					lora_alpha=args.lora_alpha,
-					lora_dropout=args.lora_dropout,
-					verbose=False,
-				)
-				model.to(args.device)
-			
+					model = get_lora_clip(model, lora_rank=args.lora_rank, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout, verbose=False)
+			model.to(args.device)
 			model = model.float()
 			model.name = args.model_architecture
 			checkpoint = torch.load(ft_path, map_location=args.device)
-			if 'model_state_dict' in checkpoint:
-				model.load_state_dict(checkpoint['model_state_dict'])
-			else:
-				model.load_state_dict(checkpoint)
-			model = model.float()
+			model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)
 			fine_tuned_models[ft_name] = model
+	models_to_plot.update(fine_tuned_models)
 
-			# Evaluate finetuned model
+	print("Computing Model Embeddings [sequentially]...")
+	embeddings_cache = {}
+	for strategy, model in models_to_plot.items():
+		embeddings, paths = compute_model_embeddings(
+			strategy=strategy,
+			model=model,
+			loader=validation_loader,
+			device=args.device,
+			cache_dir=CACHE_DIRECTORY,
+			dataset_name=validation_loader.name
+		)
+		embeddings_cache[strategy] = (embeddings, paths)
+
+	# print("Computing Model Embeddings [in parallel]...")
+	# model_args = [
+	# 	(strategy, model, validation_loader, args.device, CACHE_DIRECTORY, validation_loader.name)
+	# 	for strategy, model in models_to_plot.items()
+	# ]
+	# with multiprocessing.Pool(processes=2) as pool:  # Limit to 2 processes to avoid GPU contention
+	# 	results = pool.map(parallel_compute_embeddings, model_args)
+	# embeddings_cache = {strategy: (embeddings, paths) for strategy, (embeddings, paths) in results}
+
+	# Evaluate fine-tuned models
+	for ft_name, ft_path in finetuned_checkpoint_paths.items():
+		if ft_name in fine_tuned_models:
 			evaluation_results = evaluate_best_model(
-				model=model,
+				model=fine_tuned_models[ft_name],
 				validation_loader=validation_loader,
 				criterion=criterion,
 				early_stopping=None,
-				checkpoint_path=finetuned_checkpoint_paths.get(ft_name, None),
+				checkpoint_path=ft_path,
 				finetune_strategy=ft_name,
 				device=args.device,
 				cache_dir=CACHE_DIRECTORY,
 				topk_values=args.topK_values,
 				verbose=True,
-				clean_cache=False, # don't clean cache for all models [to speedup]
+				clean_cache=False,
+				embeddings_cache=embeddings_cache[ft_name]  # Pass cached embeddings
 			)
 			finetuned_img2txt_dict[args.model_architecture][ft_name] = evaluation_results["img2txt_metrics"]
 			finetuned_txt2img_dict[args.model_architecture][ft_name] = evaluation_results["txt2img_metrics"]
-		else:
-			print(f"WARNING: Fine-tuned model not found at {ft_path}. Skipping {ft_name}")
-	models_to_plot.update(fine_tuned_models)
-	print(f">> Fine-tuned models loaded successfully.")
-	# print(f"finetuned_img2txt_dict:")
-	# print(json.dumps(finetuned_img2txt_dict, indent=4, ensure_ascii=False))
-	# print(f"finetuned_txt2img_dict:")
-	# print(json.dumps(finetuned_txt2img_dict, indent=4, ensure_ascii=False))
 
 	####################################### Qualitative Analysis #######################################
 	if args.query_image is not None:
@@ -222,6 +232,7 @@ def main():
 			device=args.device,
 			results_dir=RESULT_DIRECTORY,
 			cache_dir=CACHE_DIRECTORY,
+			embeddings_cache=embeddings_cache,
 		)
 		plot_text_to_images_merged(
 			models=models_to_plot,
@@ -293,6 +304,7 @@ def main():
 	####################################### Quantitative Analysis #######################################
 
 if __name__ == "__main__":
+	multiprocessing.set_start_method('spawn')
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
 	main()
 	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))

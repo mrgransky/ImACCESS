@@ -291,7 +291,24 @@ class HistoricalArchivesDataset(Dataset):
 		doc_image_path = self.images[idx]
 		doc_label = self.labels[idx]
 		doc_label_int = self.labels_int[idx] # <class 'int'> 0
-		image = Image.open(doc_image_path).convert("RGB")
+		# image = Image.open(doc_image_path).convert("RGB")
+
+		# load image with TurboJPEG for performance
+		try:
+			from turbojpeg import TurboJPEG
+			jpeg = TurboJPEG()
+			with open(doc_image_path, 'rb') as f:
+				img_data = f.read()
+			img_array = jpeg.decode(img_data, pixel_format=0)  # RGB format
+			image = Image.fromarray(img_array)
+		except (RuntimeError, OSError) as e:
+			print(f"WARNING: Failed to load {doc_image_path} with TurboJPEG: {e}. Using PIL.")
+			try :
+				image = Image.open(doc_image_path).convert("RGB")
+			except (FileNotFoundError, IOError, Exception) as e:
+				print(f"ERROR: {doc_image_path}\t{e}")
+				raise  # Re-raise to stop execution on critical errors
+
 		image_tensor = self.transform(image) # <class 'torch.Tensor'> torch.Size([3, 224, 224])
 		tokenized_label_tensor = clip.tokenize(texts=doc_label).squeeze(0) # torch.Size([num_lbls, context_length]) [10 x 77]
 		# print(f"Tokenized label {idx} (label: {doc_label}): {tokenized_label_tensor[:10]}")  # Log first 10 tokens
