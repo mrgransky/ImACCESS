@@ -168,7 +168,8 @@ def main():
 				topk_values=args.topK_values,
 				verbose=True,
 				clean_cache=False,
-				embeddings_cache=embeddings_cache[ft_name]  # Pass cached embeddings
+				embeddings_cache=embeddings_cache[ft_name],
+				max_in_batch_samples=1024  # Limit to ~8 batches (128 * 8)
 			)
 			finetuned_img2txt_dict[args.model_architecture][ft_name] = evaluation_results["img2txt_metrics"]
 			finetuned_txt2img_dict[args.model_architecture][ft_name] = evaluation_results["txt2img_metrics"]
