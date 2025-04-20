@@ -536,90 +536,89 @@ def evaluate_best_model(
 		clean_cache: bool = True,
 		embeddings_cache=None,
 		max_in_batch_samples: int = 320  # Add parameter
-):
-		model_source = "current"
-		dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
-		
-		if os.path.exists(checkpoint_path):
+	):
+	model_source = "current"
+	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
+	
+	if os.path.exists(checkpoint_path):
+		if verbose:
+			print(f"\nLoading best model weights from {checkpoint_path} for final evaluation...")
+		try:
+			checkpoint = torch.load(checkpoint_path, map_location=device)
+			if 'model_state_dict' in checkpoint:
+				model.load_state_dict(checkpoint['model_state_dict'])
+				best_epoch = checkpoint.get('epoch', 'unknown')
 				if verbose:
-						print(f"\nLoading best model weights from {checkpoint_path} for final evaluation...")
-				try:
-						checkpoint = torch.load(checkpoint_path, map_location=device)
-						if 'model_state_dict' in checkpoint:
-								model.load_state_dict(checkpoint['model_state_dict'])
-								best_epoch = checkpoint.get('epoch', 'unknown')
-								if verbose:
-										print(f"Loaded weights from checkpoint (epoch {best_epoch+1})")
-								model_source = "checkpoint"
-						elif isinstance(checkpoint, dict) and 'epoch' not in checkpoint:
-								model.load_state_dict(checkpoint)
-								if verbose:
-										print("Loaded weights from direct state dictionary")
-								model_source = "checkpoint"
-						else:
-								if verbose:
-										print("Warning: Loaded file format not recognized as a model checkpoint.")
-				except Exception as e:
-						if verbose:
-								print(f"Error loading checkpoint: {e}")
-		
-		if model_source == "current" and early_stopping and early_stopping.restore_best_weights and early_stopping.best_weights is not None:
-				try:
-						if verbose:
-								print(f"Loading weights from early stopping (epoch {early_stopping.best_epoch+1})")
-						model.load_state_dict({k: v.to(device, non_blocking=True) for k, v in early_stopping.best_weights.items()})
-						model_source = "early_stopping"
-				except Exception as e:
-						if verbose:
-								print(f"Error loading weights from early stopping: {e}")
-								print("Proceeding with current model weights.")
-		
-		param_count = sum(p.numel() for p in model.parameters())
-		if verbose:
-				print(f"Model ready for evaluation. Parameters: {param_count:,}")
-		
-		model.eval()
-		
-		if verbose:
-				print("\nPerforming final evaluation on the best model...")
-		
-		validation_results = get_validation_metrics(
-				model=model,
-				validation_loader=validation_loader,
-				criterion=criterion,
-				device=device,
-				topK_values=topk_values,
-				finetune_strategy=finetune_strategy,
-				cache_dir=cache_dir,
-				verbose=True,
-				max_in_batch_samples=max_in_batch_samples,  # Pass parameter
-				embeddings_cache=embeddings_cache
-		)
-		in_batch_metrics = validation_results["in_batch_metrics"]
-		full_metrics = validation_results["full_metrics"]
-		retrieval_metrics = {
-				"img2txt": validation_results["img2txt_metrics"],
-				"txt2img": validation_results["txt2img_metrics"]
-		}
-		
-		if clean_cache:
-				cleanup_embedding_cache(
-						dataset_name=dataset_name,
-						cache_dir=cache_dir,
-						finetune_strategy=finetune_strategy,
-						batch_size=validation_loader.batch_size,
-						num_workers=validation_loader.num_workers,
-						model_name=model.__class__.__name__,
-						model_arch=model.name if hasattr(model, 'name') else 'unknown_arch'
-				)
+					print(f"Loaded weights from checkpoint (epoch {best_epoch+1})")
+				model_source = "checkpoint"
+			elif isinstance(checkpoint, dict) and 'epoch' not in checkpoint:
+				model.load_state_dict(checkpoint)
+				if verbose:
+					print("Loaded weights from direct state dictionary")
+				model_source = "checkpoint"
+			else:
+				if verbose:
+					print("Warning: Loaded file format not recognized as a model checkpoint.")
+		except Exception as e:
+			if verbose:
+				print(f"Error loading checkpoint: {e}")
+	
+	if model_source == "current" and early_stopping and early_stopping.restore_best_weights and early_stopping.best_weights is not None:
+		try:
+			if verbose:
+				print(f"Loading weights from early stopping (epoch {early_stopping.best_epoch+1})")
+			model.load_state_dict({k: v.to(device, non_blocking=True) for k, v in early_stopping.best_weights.items()})
+			model_source = "early_stopping"
+		except Exception as e:
+			if verbose:
+				print(f"Error loading weights from early stopping: {e}")
+				print("Proceeding with current model weights.")
 
-		return {
-				"in_batch_metrics": in_batch_metrics,
-				"full_metrics": full_metrics,
-				"img2txt_metrics": retrieval_metrics["img2txt"],
-				"txt2img_metrics": retrieval_metrics["txt2img"],
-				"model_loaded_from": model_source
-		}
+	param_count = sum(p.numel() for p in model.parameters())
+	if verbose:
+		print(f"Model ready for evaluation. Parameters: {param_count:,}")
+	
+	model.eval()
+	
+	if verbose:
+		print("\nPerforming final evaluation on the best model...")
+	
+	validation_results = get_validation_metrics(
+		model=model,
+		validation_loader=validation_loader,
+		criterion=criterion,
+		device=device,
+		topK_values=topk_values,
+		finetune_strategy=finetune_strategy,
+		cache_dir=cache_dir,
+		verbose=verbose,
+		max_in_batch_samples=max_in_batch_samples,
+		embeddings_cache=embeddings_cache
+	)
+	in_batch_metrics = validation_results["in_batch_metrics"]
+	full_metrics = validation_results["full_metrics"]
+	retrieval_metrics = {
+		"img2txt": validation_results["img2txt_metrics"],
+		"txt2img": validation_results["txt2img_metrics"]
+	}
+	
+	if clean_cache:
+		cleanup_embedding_cache(
+			dataset_name=dataset_name,
+			cache_dir=cache_dir,
+			finetune_strategy=finetune_strategy,
+			batch_size=validation_loader.batch_size,
+			num_workers=validation_loader.num_workers,
+			model_name=model.__class__.__name__,
+			model_arch=model.name if hasattr(model, 'name') else 'unknown_arch'
+		)
+	return {
+		"in_batch_metrics": in_batch_metrics,
+		"full_metrics": full_metrics,
+		"img2txt_metrics": retrieval_metrics["img2txt"],
+		"txt2img_metrics": retrieval_metrics["txt2img"],
+		"model_loaded_from": model_source
+	}
 
 def checkpoint_best_model(
 		model,

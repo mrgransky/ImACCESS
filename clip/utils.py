@@ -66,7 +66,7 @@ def compute_model_embeddings(strategy, model, loader, device, cache_dir):
 		data = torch.load(
 			f=cache_file, 
 			map_location=device, 
-			# mmap=True,
+			mmap=True, # Memory-mapping for faster loading
 		)
 		return data['embeddings'], data['image_paths']
 	

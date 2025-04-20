@@ -258,14 +258,19 @@ def get_dataloaders(
 
 	return train_loader, val_loader
 
+from utils import *
+from tqdm import tqdm
+import psutil
+
 class HistoricalArchivesDataset(Dataset):
 	def __init__(
-			self,
-			dataset_name: str,
-			train: bool,
-			data_frame: pd.DataFrame,
-			transform,
-		):
+		self,
+		dataset_name: str,
+		train: bool,
+		data_frame: pd.DataFrame,
+		transform,
+		memory_threshold_gib: float = 50.0,  # Minimum available memory (GiB) to preload images
+	):
 		self.dataset_name = dataset_name
 		self.train = train
 		self.data_frame = data_frame
@@ -276,28 +281,63 @@ class HistoricalArchivesDataset(Dataset):
 		self.unique_labels = sorted(list(set(self.labels)))  # Sort the unique labels
 		self._num_classes = len(np.unique(self.labels_int))
 		self.transform = transform
-
+		# Preload images into memory if available memory exceeds threshold
+		available_memory_gib = psutil.virtual_memory().available / (1024 ** 3)  # Convert bytes to GiB
+		if available_memory_gib >= memory_threshold_gib:
+			print(f"Available memory ({available_memory_gib:.2f} GiB) exceeds threshold ({memory_threshold_gib} GiB). Preloading images...")
+			self.image_cache = self._preload_images()
+		else:
+			print(f"Available memory ({available_memory_gib:.2f} GiB) below threshold ({memory_threshold_gib} GiB). Skipping preloading.")
+			self.image_cache = None
+	
+	def _preload_images(self):
+		print(f"Preloading images into memory for {self.dataset_name} ({'train' if self.train else 'validation'})...")
+		cache = []
+		for img_path in tqdm(self.images, desc="Loading images"):
+				try:
+						img = Image.open(img_path).convert("RGB")
+						cache.append(img)
+				except Exception as e:
+						print(f"ERROR: {img_path}\t{e}")
+						cache.append(None)
+		print(f"Preloaded {sum(1 for img in cache if img is not None)}/{len(cache)} images successfully")
+		return cache
+	
 	def __len__(self):
 		return len(self.data_frame)
-
+	
 	def __repr__(self):
 		transform_str = f"StandardTransform\nTransform: {self.transform}\n" if self.transform else ""
 		split = 'Train' if self.train else 'Validation'
+		cache_status = "Preloaded" if self.image_cache is not None else "Not preloaded"
 		return (
-			f"{self.dataset_name}\n" \
-			f"\tSplit: {split} {self.data_frame.shape}\n" \
-			f"\t{list(self.data_frame.columns)}\n" \
+			f"{self.dataset_name}\n"
+			f"\tSplit: {split} {self.data_frame.shape}\n"
+			f"\t{list(self.data_frame.columns)}\n"
 			f"\tlabels={self.labels.shape}\n"
-			f"{transform_str}")
-
+			f"\tCache: {cache_status}\n"
+			f"{transform_str}"
+		)
+	
 	def __getitem__(self, idx):
-		doc_image_path = self.images[idx]
 		doc_label = self.labels[idx]
-		doc_label_int = self.labels_int[idx] # <class 'int'> 0
-		image = Image.open(doc_image_path).convert("RGB")
-		image_tensor = self.transform(image) # <class 'torch.Tensor'> torch.Size([3, 224, 224])
-		tokenized_label_tensor = clip.tokenize(texts=doc_label).squeeze(0) # torch.Size([num_lbls, context_length]) [10 x 77]
-		# print(f"Tokenized label {idx} (label: {doc_label}): {tokenized_label_tensor[:10]}")  # Log first 10 tokens
+		doc_label_int = self.labels_int[idx]
+		
+		# Use cached image if available, otherwise load from disk
+		if self.image_cache is not None:
+			image = self.image_cache[idx]
+			if image is None:
+				raise ValueError(f"Failed to load image at index {idx} (cached as None)")
+		else:
+			doc_image_path = self.images[idx]
+			try:
+				image = Image.open(doc_image_path).convert("RGB")
+			except Exception as e:
+				print(f"ERROR: {doc_image_path}\t{e}")
+				raise
+
+		image_tensor = self.transform(image)
+		tokenized_label_tensor = clip.tokenize(texts=doc_label).squeeze(0)
 		return image_tensor, tokenized_label_tensor, doc_label_int
 
 class HistoryDataset(Dataset):

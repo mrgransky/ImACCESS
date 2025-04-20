@@ -142,6 +142,7 @@ def main():
 	models_to_plot.update(fine_tuned_models)
 
 	print("Computing Model Embeddings [sequentially]...")
+	mdl_emb_start = time.time()
 	embeddings_cache = {}
 	for strategy, model in models_to_plot.items():
 		embeddings, paths = compute_model_embeddings(
@@ -152,6 +153,7 @@ def main():
 			cache_dir=CACHE_DIRECTORY,
 		)
 		embeddings_cache[strategy] = (embeddings, paths)
+	print(f"Model Embeddings computed in {time.time() - mdl_emb_start:.5f} sec")
 
 	# Evaluate fine-tuned models
 	for ft_name, ft_path in finetuned_checkpoint_paths.items():
