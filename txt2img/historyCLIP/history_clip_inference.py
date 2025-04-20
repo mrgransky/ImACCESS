@@ -253,6 +253,7 @@ def main():
 		device=args.device,
 		topk_values=args.topK_values,
 		verbose=False,
+		embeddings_cache=embeddings_cache["pretrained"],
 	)
 	pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
 	pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
