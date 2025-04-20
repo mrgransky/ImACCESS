@@ -58,21 +58,40 @@ Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
 def compute_model_embeddings(strategy, model, loader, device, cache_dir):
 	model.eval()
+	dataset_name = getattr(loader, 'name', 'unknown_dataset')
+	cache_file = os.path.join(cache_dir, f"{dataset_name}_{strategy}_embeddings.pt")
+	
+	if os.path.exists(cache_file):
+		data = torch.load(cache_file, map_location=device, mmap=True)
+		return data['embeddings'], data['image_paths']
+
+	# Pre-allocate tensors on GPU
+	embeddings = torch.empty((len(loader.dataset), model.visual.output_dim), device=device)
+	paths = []
+	
+	with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=True):
+		start_idx = 0
+		for batch_idx, (images, _, _) in enumerate(tqdm(loader, desc=f"Processing {strategy}")):
+			batch = images.to(device, non_blocking=True)
+			batch_features = model.encode_image(batch)
+			batch_features /= batch_features.norm(dim=-1, keepdim=True)
+			
+			end_idx = start_idx + len(batch)
+			embeddings[start_idx:end_idx] = batch_features
+			paths.extend([f"batch_{batch_idx}_img_{i}" for i in range(len(images))])
+			start_idx = end_idx
+	torch.save({'embeddings': embeddings.cpu(), 'image_paths': paths}, cache_file)
+	return embeddings, paths
+
+def compute_model_embeddings_old(strategy, model, loader, device, cache_dir):
+	model.eval()
 	embeddings = []
 	paths = []
 	dataset_name = getattr(loader, 'name', 'unknown_dataset')
 	cache_file = os.path.join(cache_dir, f"{dataset_name}_{strategy}_embeddings.pt")
 	if os.path.exists(cache_file):
-		try:
-			# Attempt to load directly to the specified device
-			data = torch.load(cache_file, map_location=device, mmap=True)
-			print(f"Loaded cache file: {cache_file} to {device}")
-			return data['embeddings'].to(device), data['image_paths']
-		except RuntimeError as e:
-			# Fallback to CPU if loading to device fails (e.g., no GPU or incompatible device)
-			print(f"Failed to load cache file to {device}: {e}. Falling back to CPU.")
-			data = torch.load(cache_file, map_location='cpu', mmap=True)
-			return data['embeddings'].to(device), data['image_paths']
+		data = torch.load(cache_file, map_location=device, mmap=True)
+		return data['embeddings'], data['image_paths']
 	
 	print(f"\tStrategy: {strategy}")
 	for batch_idx, (images, _, _) in enumerate(tqdm(loader, desc=f"Processing {strategy}")):
