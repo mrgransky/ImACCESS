@@ -102,7 +102,7 @@ bs="${ADJUSTED_BATCH_SIZE[$dataset_index]}"
 # Define checkpoint paths
 results_dir="${dataset_dir}/results"
 full_checkpoint="${results_dir}/${dataset_name}_full_finetune_CLIP_${model_arch_filename}_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_21_dropout_${dropout}_lr_${LR}_wd_${WD}_bs_${bs}_best_model.pth"
-lora_checkpoint="${results_dir}/${dataset_name}_lora_finetune_CLIP_${model_arch_filename}_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_31_lr_${LR}_wd_${WD}_lora_rank_${lora_rank}_lora_alpha_${lora_alpha}_lora_dropout_${lora_dropout}_bs_${bs}_best_model.pth"
+lora_checkpoint="${results_dir}/${dataset_name}_lora_finetune_CLIP_${model_arch_filename}_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_26_lr_${LR}_wd_${WD}_lora_rank_${lora_rank}_lora_alpha_${lora_alpha}_lora_dropout_${lora_dropout}_bs_${bs}_best_model.pth"
 progressive_checkpoint="${results_dir}/${dataset_name}_progressive_unfreeze_finetune_CLIP_${model_arch_filename}_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_dropout_${dropout}_init_lr_${LR}_init_wd_${WD}_bs_${bs}_best_model.pth"
 
 
