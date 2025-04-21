@@ -48,8 +48,8 @@ DATASET_NAMES["/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-0
 DATASET_NAMES["/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02"]="WWII_1939-09-01_1945-09-02"
 DATASET_NAMES["/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31"]="SMU_1900-01-01_1970-12-31"
 
-INIT_LRS=(1e-5 1e-5 1e-5 5e-5 1e-5)
-INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
+INIT_LRS=(1.0e-5 1.0e-5 1.0e-5 1.0e-5 1.0e-5)
+INIT_WDS=(1.0e-2 1.0e-2 1.0e-2 1.0e-2 1.0e-2)
 DROPOUTS=(0.15 0.1 0.05 0.05 0.05)
 EPOCHS=(110 100 150 150 150)
 LORA_RANKS=(64 64 64 64 64)
@@ -101,8 +101,8 @@ bs="${ADJUSTED_BATCH_SIZE[$dataset_index]}"
 
 # Define checkpoint paths
 results_dir="${dataset_dir}/results"
-full_checkpoint="${results_dir}/${dataset_name}_full_finetune_CLIP_${model_arch_filename}_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_20_dropout_${dropout}_lr_${LR}_wd_${WD}_bs_${bs}_best_model.pth"
-lora_checkpoint="${results_dir}/${dataset_name}_lora_finetune_CLIP_${model_arch_filename}_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_27_lr_${LR}_wd_${WD}_lora_rank_${lora_rank}_lora_alpha_${lora_alpha}_lora_dropout_${lora_dropout}_bs_${bs}_best_model.pth"
+full_checkpoint="${results_dir}/${dataset_name}_full_finetune_CLIP_${model_arch_filename}_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_21_dropout_${dropout}_lr_${LR}_wd_${WD}_bs_${bs}_best_model.pth"
+lora_checkpoint="${results_dir}/${dataset_name}_lora_finetune_CLIP_${model_arch_filename}_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_31_lr_${LR}_wd_${WD}_lora_rank_${lora_rank}_lora_alpha_${lora_alpha}_lora_dropout_${lora_dropout}_bs_${bs}_best_model.pth"
 progressive_checkpoint="${results_dir}/${dataset_name}_progressive_unfreeze_finetune_CLIP_${model_arch_filename}_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_dropout_${dropout}_init_lr_${LR}_init_wd_${WD}_bs_${bs}_best_model.pth"
 
 
