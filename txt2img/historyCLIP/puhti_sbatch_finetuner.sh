@@ -1,16 +1,16 @@
 #!/bin/bash
 #SBATCH --account=project_2009043
-#SBATCH --job-name=history_x4_finetune_strategy_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --job-name=historyX4_finetune_strategy_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=64G
+#SBATCH --mem=56G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=12-23 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --array=0-11 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
@@ -37,8 +37,8 @@ FINETUNE_STRATEGIES=(
 )
 
 DATASETS=(
-	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4
+	/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
@@ -55,23 +55,12 @@ NUM_DATASETS=${#DATASETS[@]} # Number of datasets
 NUM_STRATEGIES=${#FINETUNE_STRATEGIES[@]} # Number of fine-tune strategies
 NUM_ARCHITECTURES=${#MODEL_ARCHITECTURES[@]} # Number of model architectures
 
-# # # Approach 1: strategy × dataset × architecture 
-# # # 0-19: strategy[0] with all dataset×architecture combinations
-# # # 20-39: strategy[1] with all dataset×architecture combinations
-# # # 40-59: strategy[2] with all dataset×architecture combinations
-# total_datasets_x_architectures=$((NUM_DATASETS * NUM_ARCHITECTURES))
-# strategy_index=$((SLURM_ARRAY_TASK_ID / total_datasets_x_architectures))
-# remainder=$((SLURM_ARRAY_TASK_ID % total_datasets_x_architectures))
-# dataset_index=$((remainder / NUM_ARCHITECTURES))
-# architecture_index=$((remainder % NUM_ARCHITECTURES))
-
 # Approach 2: dataset × strategy × architecture
-### 0-11:  dataset[0] with all strategy×architecture [NA]
-### 12-23: dataset[1] with all strategy×architecture [H4]
+### 0-11:  dataset[0] with all strategy×architecture [H4]
+### 12-23: dataset[1] with all strategy×architecture [NA]
 ### 24-35: dataset[2] with all strategy×architecture [EU]
 ### 36-47: dataset[3] with all strategy×architecture [WWII]
 ### 48-59: dataset[4] with all strategy×architecture [SMU]
-
 dataset_index=$((SLURM_ARRAY_TASK_ID / (NUM_STRATEGIES * NUM_ARCHITECTURES)))
 remainder=$((SLURM_ARRAY_TASK_ID % (NUM_STRATEGIES * NUM_ARCHITECTURES)))
 strategy_index=$((remainder / NUM_ARCHITECTURES))
@@ -85,9 +74,9 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 	exit 1
 fi
 
-INIT_LRS=(1e-5 1e-5 1e-5 5e-5 1e-5)
+INIT_LRS=(5e-6 1e-5 1e-5 5e-5 1e-5)
 INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
-DROPOUTS=(0.15 0.1 0.05 0.05 0.05)
+DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 EPOCHS=(110 100 150 150 150)
 LORA_RANKS=(64 64 64 64 64)
 LORA_ALPHAS=(128.0 128.0 128.0 128.0 128.0) # 2x rank
@@ -96,7 +85,7 @@ BATCH_SIZES=(64 64 64 64 64)
 PRINT_FREQUENCIES=(750 750 50 50 10)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 # EARLY_STOPPING_MIN_EPOCHS=(25 25 20 20 10)
-BASE_MIN_EPOCHS=(25 20 17 17 12)  # National Archive, History_X4, Europeana, WWII, SMU
+BASE_MIN_EPOCHS=(25 25 17 17 12)  # History_X4, National Archive, Europeana, WWII, SMU
 
 # Adjust min_epochs based on strategy
 strategy="${FINETUNE_STRATEGIES[$strategy_index]}"
