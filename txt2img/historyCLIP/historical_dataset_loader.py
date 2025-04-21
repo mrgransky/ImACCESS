@@ -205,6 +205,7 @@ def get_dataloaders(
 		batch_size: int,
 		num_workers: int,
 		input_resolution: int,
+		memory_threshold_gib: float = 500.0,  # Minimum available memory (GiB) to preload images
 	)-> Tuple[DataLoader, DataLoader]:
 	dataset_name = os.path.basename(dataset_dir)
 	print(f"Loading dataset: {dataset_name} using {sampling} strategy...")
@@ -216,6 +217,7 @@ def get_dataloaders(
 		train=True,
 		data_frame=train_dataset.sort_values(by="img_path").reset_index(drop=True),
 		transform=preprocess,
+		memory_threshold_gib=memory_threshold_gib,
 	)
 
 	print(train_dataset)
@@ -239,6 +241,7 @@ def get_dataloaders(
 		train=False,
 		data_frame=val_dataset.sort_values(by="img_path").reset_index(drop=True),
 		transform=preprocess,
+		memory_threshold_gib=memory_threshold_gib,
 	)
 	
 	print(validation_dataset)
@@ -257,10 +260,6 @@ def get_dataloaders(
 	val_loader.name = f"{dataset_name.lower()}_validation".upper()
 
 	return train_loader, val_loader
-
-from utils import *
-from tqdm import tqdm
-import psutil
 
 class HistoricalArchivesDataset(Dataset):
 	def __init__(

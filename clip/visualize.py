@@ -39,6 +39,14 @@ def plot_image_to_texts_separate_horizontal_bars(
 			print(f"ERROR: failed to load image from {img_path} => {e}")
 			return
 	image_tensor = preprocess(img).unsqueeze(0).to(device)
+	# Check if img_path is in the validation set and get ground-truth label if available
+	ground_truth_label = None
+	validation_dataset = validation_loader.dataset
+	if hasattr(validation_dataset, 'data_frame') and 'img_path' in validation_dataset.data_frame.columns:
+		matching_rows = validation_dataset.data_frame[validation_dataset.data_frame['img_path'] == img_path]
+		if not matching_rows.empty:
+			ground_truth_label = matching_rows['label'].iloc[0]
+			print(f"Ground truth label for {img_path}: {ground_truth_label}")
 	# Compute predictions for each model
 	model_predictions = {}
 	model_topk_labels = {}
@@ -100,20 +108,17 @@ def plot_image_to_texts_separate_horizontal_bars(
 	ax0 = plt.subplot(gs[0])
 	ax0.imshow(img)
 	ax0.axis('off')
-	
-	# Remove the top title
-	ax0.set_title("")
-	
-	# Add title at the bottom of the subplot
+	ax0.set_title("") # # Remove the top title
+	title_text = f"Query\n(GT: {ground_truth_label})" if ground_truth_label else "Query"
 	ax0.text(
-			0.5,  # x position (center)
-			-0.05,  # y position (just below the image)
-			"Query",
-			fontsize=10,
-			fontweight='bold',
-			ha='center',
-			va='top',
-			transform=ax0.transAxes  # Use axes coordinates
+		0.5,  # x position (center)
+		-0.05,  # y position (just below the image)
+		title_text,
+		fontsize=10,
+		fontweight='bold',
+		ha='center',
+		va='top',
+		transform=ax0.transAxes  # Use axes coordinates
 	)
 	# Define colors consistent with plot_comparison_metrics_split/merged
 	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple

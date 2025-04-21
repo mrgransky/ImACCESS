@@ -25,8 +25,12 @@ from visualize import (
 # "https://pbs.twimg.com/media/Go0qRhvWEAAIxpn?format=png"
 # "https://pbs.twimg.com/media/Go2T7FJbIAApElq?format=jpg"
 
-# # run in local for all fine-tuned models:
+# # run in local for all fine-tuned models with image and label:
 # $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -qi "https://pbs.twimg.com/media/Go0qRhvWEAAIxpn?format=png" -ql "military personnel" -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_15_actual_epochs_15_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_15_dropout_0.0_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_15_actual_epochs_15_lr_1.0e-05_wd_1.0e-02_lora_rank_32_lora_alpha_64.0_lora_dropout_0.05_bs_64_best_model.pth
+
+# # run in local for all fine-tuned models without image and label:
+# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.05_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.05_ilr_1.0e-05_iwd_1.0e-02_bs_64_best_model_last_phase_0_flr_1.0e-05_fwd_0.01.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_lr_1.0e-05_wd_1.0e-02_lor_64_loa_128.0_lod_0.05_bs_64_best_model.pth
+
 
 # # run in pouta for all fine-tuned models:
 # $ nohup python -u history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -qi "https://pbs.twimg.com/media/Go0qRhvWEAAIxpn?format=png" -ql "cemetery" -nw 40 --device "cuda:2" -k 5 -bs 256 -fcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_full_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_21_dropout_0.1_lr_1.0e-05_wd_1.0e-01_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_progressive_unfreeze_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_dropout_0.1_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_lora_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_110_lr_1.0e-05_wd_1.0e-02_lora_rank_64_lora_alpha_128.0_lora_dropout_0.05_bs_64_best_model.pth > /media/volume/ImACCESS/trash/history_clip_inference.txt &
@@ -52,9 +56,11 @@ def main():
 	args.device = torch.device(args.device)
 	print_args_table(args=args, parser=parser)
 	set_seeds(seed=42)
+	RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"results")
+	CACHE_DIRECTORY = os.path.join(RESULT_DIRECTORY, "inference_cache")
+	os.makedirs(RESULT_DIRECTORY, exist_ok=True)
+	os.makedirs(CACHE_DIRECTORY, exist_ok=True)
 
-	assert args.query_image is not None, "query_image must be provided for qualitative mode"
-	assert args.query_label is not None, "query_label must be provided for qualitative mode"
 	if args.full_checkpoint is not None:
 		assert os.path.exists(args.full_checkpoint), f"full_checkpoint {args.full_checkpoint} does not exist!"
 	if args.lora_checkpoint is not None:
@@ -65,7 +71,7 @@ def main():
 	if args.lora_checkpoint is not None:
 		params = get_lora_params(args.lora_checkpoint)
 		if params:
-			print(f"LoRA parameters extracted from the checkpoint: {args.lora_checkpoint} {params}")
+			print(f">> {args.lora_checkpoint}\n\tLoRA parameters: {params}")
 			args.lora_rank = params['lora_rank']
 			args.lora_alpha = params['lora_alpha']
 			args.lora_dropout = params['lora_dropout']
@@ -73,11 +79,7 @@ def main():
 			raise ValueError("LoRA parameters not found in the provided checkpoint path!")
 
 	# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
-	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
-	RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"results")
-	CACHE_DIRECTORY = os.path.join(RESULT_DIRECTORY, "inference_cache")
-	os.makedirs(RESULT_DIRECTORY, exist_ok=True)
-	os.makedirs(CACHE_DIRECTORY, exist_ok=True)
+	# print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
 	models_to_plot = {}
 	print(f">> CLIP model configuration: {args.model_architecture}...")
 	model_config = get_config(architecture=args.model_architecture)
@@ -112,6 +114,23 @@ def main():
 		dataset_dir=args.dataset_dir, 
 		input_resolution=model_config["image_resolution"],
 	)
+
+	# Select random sample from validation set if query_image or query_label is not provided
+	if args.query_image is None or args.query_label is None:
+		print("One or both of query_image and query_label not provided. Selecting a random sample from validation set...")
+		validation_dataset = validation_loader.dataset
+		# Use a random seed based on the current time
+		# rng = random.Random(int(time.time() * 1000))  # Seed with millisecond timestamp		
+		# random_idx = rng.randint(0, len(validation_dataset) - 1)
+		random_idx = random.randint(0, len(validation_dataset) - 1) # reproducible
+		random_sample = validation_dataset.data_frame.iloc[random_idx]
+		if args.query_image is None:
+			args.query_image = random_sample['img_path']
+			print(f"Selected random image: {args.query_image}")
+		if args.query_label is None:
+			args.query_label = random_sample['label']
+			print(f"Selected random label: {args.query_label}")
+
 
 	# for all finetuned models(+ pre-trained):
 	finetuned_checkpoint_paths = {

@@ -29,6 +29,7 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.dataloader import default_collate
 import multiprocessing
 import glob
+import psutil
 
 import torchvision.transforms as T
 import torch.nn.functional as F
@@ -56,33 +57,56 @@ logger = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
+def get_lora_params(path_string):
+    """
+    Extracts lora_rank, lora_alpha, and lora_dropout parameters from a given string,
+    handling two different naming conventions.
+
+    Args:
+        path_string: The string containing the parameters.
+
+    Returns:
+        A dictionary containing the extracted parameters (if found).
+        Keys: "lora_rank" (int, optional), "lora_alpha" (float, optional),
+              "lora_dropout" (float, optional).
+        Returns an empty dictionary if none of the lora parameters are found.
+    """
+    params = {}
+
+    # Convention 1: lora_rank_(\d+), lora_alpha_(\d+\.\d+), lora_dropout_(\d+\.\d+)
+    lora_rank_match_long = re.search(r"lora_rank_(\d+)", path_string)
+    lora_alpha_match_long = re.search(r"lora_alpha_(\d+\.\d+)", path_string)
+    lora_dropout_match_long = re.search(r"lora_dropout_(\d+\.\d+)", path_string)
+
+    if lora_rank_match_long:
+        params["lora_rank"] = int(lora_rank_match_long.group(1))
+    if lora_alpha_match_long:
+        params["lora_alpha"] = float(lora_alpha_match_long.group(1))
+    if lora_dropout_match_long:
+        params["lora_dropout"] = float(lora_dropout_match_long.group(1))
+
+    # Convention 2: _lor_(\d+)_ , _loa_(\d+\.\d+)_ , _lod_(\d+\.\d+)_
+    lora_rank_match_short = re.search(r"_lor_(\d+)_", path_string)
+    lora_alpha_match_short = re.search(r"_loa_(\d+\.\d+)_", path_string)
+    lora_dropout_match_short = re.search(r"_lod_(\d+\.\d+)_", path_string)
+
+    if "lora_rank" not in params and lora_rank_match_short:
+        params["lora_rank"] = int(lora_rank_match_short.group(1))
+    if "lora_alpha" not in params and lora_alpha_match_short:
+        params["lora_alpha"] = float(lora_alpha_match_short.group(1))
+    if "lora_dropout" not in params and lora_dropout_match_short:
+        params["lora_dropout"] = float(lora_dropout_match_short.group(1))
+
+    return params
 
 def get_model_hash(model: torch.nn.Module) -> str:
-		hasher = hashlib.md5()
-		param_sample = []
-		for i, param in enumerate(model.parameters()):
-				if i % 10 == 0:  # Sample every 10th parameter
-						param_sample.append(param.data.cpu().numpy().mean())
-		hasher.update(str(param_sample).encode())
-		return hasher.hexdigest()
-
-def get_lora_params(path_string):
-	# Regular expressions to find the parameters
-	lora_rank_match = re.search(r"lora_rank_(\d+)", path_string)
-	lora_alpha_match = re.search(r"lora_alpha_(\d+\.\d+)", path_string)
-	lora_dropout_match = re.search(r"lora_dropout_(\d+\.\d+)", path_string)
-	# Extract the values if found
-	if lora_rank_match and lora_alpha_match and lora_dropout_match:
-		lora_rank = int(lora_rank_match.group(1))
-		lora_alpha = float(lora_alpha_match.group(1))
-		lora_dropout = float(lora_dropout_match.group(1))
-		return {
-			"lora_rank": lora_rank,
-			"lora_alpha": lora_alpha,
-			"lora_dropout": lora_dropout
-		}
-	else:
-		return None  # Return None if any parameter is not found
+	hasher = hashlib.md5()
+	param_sample = []
+	for i, param in enumerate(model.parameters()):
+		if i % 10 == 0:  # Sample every 10th parameter
+			param_sample.append(param.data.cpu().numpy().mean())
+	hasher.update(str(param_sample).encode())
+	return hasher.hexdigest()
 
 def get_max_samples(batch_size, N, device, memory_per_sample_mb=100, safety_factor=0.95, verbose=False):
 	total_memory_mb = torch.cuda.get_device_properties(device).total_memory / (1024 ** 2)  
