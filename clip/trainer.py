@@ -206,7 +206,8 @@ def compute_retrieval_metrics_from_similarity(
 		max_k: Optional[int] = None,
 		cache_dir: str = None,
 		cache_key: str = None,
-		is_training: bool = False,  # New parameter
+		is_training: bool = False,
+		verbose: bool = True,
 ) -> Dict:
 		num_queries, num_candidates = similarity_matrix.shape
 		device = similarity_matrix.device
@@ -3004,6 +3005,9 @@ def full_finetune(
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
 
+
+		param_norm = sum(torch.norm(p) for p in model.parameters() if p.requires_grad).item()
+		print(f"Epoch {epoch+1}: Model parameter norm={param_norm:.4f}")
 		# all metrics in one using caching mechanism:
 		validation_results = get_validation_metrics(
 			model=model,
