@@ -2259,6 +2259,7 @@ def progressive_finetune(
 			finetune_strategy=mode,
 			cache_dir=results_dir,
 			verbose=True,
+			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 		)
 		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
@@ -2368,7 +2369,7 @@ def progressive_finetune(
 		cache_dir=results_dir,
 		topk_values=topk_values,
 		verbose=True,
-		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=validation_loader.device),
+		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 	)
 
 	# Access individual metrics as needed
@@ -2630,7 +2631,8 @@ def lora_finetune(
 				"lora_rank": lora_rank,
 				"lora_alpha": lora_alpha,
 				"lora_dropout": lora_dropout,
-			}
+			},
+			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 		)
 		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
@@ -2725,7 +2727,7 @@ def lora_finetune(
 		cache_dir=results_dir,
 		topk_values=topk_values,
 		verbose=True,
-		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=validation_loader.device),
+		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 	)
 
 	# Access individual metrics as needed
@@ -2976,6 +2978,7 @@ def full_finetune(
 			finetune_strategy=mode,
 			cache_dir=results_dir,
 			verbose=True,
+			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 		)
 		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
@@ -3072,7 +3075,7 @@ def full_finetune(
 		cache_dir=results_dir,
 		topk_values=topk_values,
 		verbose=True,
-		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=validation_loader.device),
+		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 	)
 
 	# Access individual metrics as needed
