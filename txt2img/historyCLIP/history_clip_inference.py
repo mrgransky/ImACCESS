@@ -58,6 +58,12 @@ def main():
 
 	assert args.query_image is not None, "query_image must be provided for qualitative mode"
 	assert args.query_label is not None, "query_label must be provided for qualitative mode"
+	if args.full_checkpoint is not None:
+		assert os.path.exists(args.full_checkpoint), f"full_checkpoint {args.full_checkpoint} does not exist!"
+	if args.lora_checkpoint is not None:
+		assert os.path.exists(args.lora_checkpoint), f"lora_checkpoint {args.lora_checkpoint} does not exist!"
+	if args.progressive_checkpoint is not None:
+		assert os.path.exists(args.progressive_checkpoint), f"progressive_checkpoint {args.progressive_checkpoint} does not exist!"
 
 	if args.lora_checkpoint is not None:
 		params = get_lora_params(args.lora_checkpoint)
