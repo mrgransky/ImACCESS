@@ -49,6 +49,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=FutureWarning)
 warnings.filterwarnings('ignore', category=FutureWarning, module='torch.utils._pytree')
+warnings.filterwarnings('ignore', message='optree is installed but the version is too old to support PyTorch Dynamo in C++ pytree.')
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
