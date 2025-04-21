@@ -125,6 +125,8 @@ def main():
 	print(json.dumps(finetuned_checkpoint_paths, indent=4, ensure_ascii=False))
 
 	# Load Fine-tuned Models
+	print("Loading Fine-tuned Models [takes a while]...")
+	ft_start = time.time()
 	fine_tuned_models = {}
 	finetuned_img2txt_dict = {args.model_architecture: {}}
 	finetuned_txt2img_dict = {args.model_architecture: {}}
@@ -145,6 +147,7 @@ def main():
 			checkpoint = torch.load(ft_path, map_location=args.device)
 			model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)
 			fine_tuned_models[ft_name] = model
+	print(f"Fine-tuned Models loaded in {time.time() - ft_start:.5f} sec")
 	models_to_plot.update(fine_tuned_models)
 
 	print("Computing Model Embeddings [sequentially]...")
