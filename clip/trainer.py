@@ -459,7 +459,7 @@ def get_validation_metrics(
 				cache_dir=cache_dir,
 				cache_key=f"{cache_key_base}_img2txt",
 				is_training=is_training,
-				# verbose=verbose,
+				verbose=verbose,
 		)
 		
 		class_counts = torch.bincount(device_labels, minlength=n_classes)
@@ -473,7 +473,7 @@ def get_validation_metrics(
 				cache_dir=cache_dir,
 				cache_key=f"{cache_key_base}_txt2img",
 				is_training=is_training,
-				# verbose=verbose,
+				verbose=verbose,
 		)
 		if verbose:
 				print(f"Retrieval metrics computed in {time.time() - retrieval_start:.5f} sec")
@@ -1626,8 +1626,6 @@ def get_status(
 	print(tabulate.tabulate(layer_stats, headers=headers, tablefmt="pretty", colalign=("left", "left")))
 	print("\nLayer Category Breakdown:")
 	print(tabulate.tabulate(category_stats, headers=["Category", "Frozen/Total (Percentage)"], tablefmt="pretty", colalign=("left", "left")))
-
-
 
 def get_num_transformer_blocks(model: torch.nn.Module) -> tuple:
 	# Ensure the model has the required attributes
