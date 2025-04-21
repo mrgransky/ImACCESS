@@ -20,7 +20,6 @@ import inspect
 import functools
 import sys
 import traceback
-from turbojpeg import TurboJPEG
 from PIL import Image
 import requests
 from io import BytesIO
