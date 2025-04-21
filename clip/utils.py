@@ -33,7 +33,7 @@ import torchvision.transforms as T
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-plt.style.use('seaborn-v0_8-whitegrid')  # Modern style for sleek look
+# plt.style.use('seaborn-v0_8-whitegrid')  # Modern style for sleek look
 
 from PIL import Image
 from typing import Tuple, Union, List, Dict, Any, Optional
@@ -91,6 +91,59 @@ def get_max_samples(batch_size, N, device, memory_per_sample_mb=100, safety_fact
 	return max_samples
 
 def compute_model_embeddings(
+		strategy,
+		model,
+		loader,
+		device,
+		cache_dir,
+		lora_rank=None,
+		lora_alpha=None,
+		lora_dropout=None
+	):
+	model.eval()
+	embeddings = []
+	paths = []
+	dataset_name = getattr(loader, 'name', 'unknown_dataset')
+	
+	# Construct cache file name
+	cache_file_name = (
+			f"{dataset_name}_"
+			f"{strategy}_"
+			f"{model.__class__.__name__}_"
+			f"{re.sub(r'[/@]', '_', model.name)}_"
+	)
+	if strategy == "lora" and lora_rank is not None and lora_alpha is not None and lora_dropout is not None:
+			cache_file_name += (
+					f"lora_rank_{lora_rank}_"
+					f"lora_alpha_{lora_alpha}_"
+					f"lora_dropout_{lora_dropout}_"
+			)
+	cache_file_name += "embeddings.pt"
+	cache_file = os.path.join(cache_dir, cache_file_name)
+	
+	# Load from cache if available
+	if os.path.exists(cache_file):
+			data = torch.load(
+					f=cache_file,
+					map_location=device,
+					mmap=True  # Memory-mapping for faster loading
+			)
+			return data['embeddings'], data['image_paths']
+	
+	print(f"\tStrategy: {strategy}")
+	for batch_idx, (images, _, _) in enumerate(tqdm(loader, desc=f"Processing {strategy}")):
+			images = images.to(device, non_blocking=True)
+			with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=True):
+					features = model.encode_image(images)
+					features /= features.norm(dim=-1, keepdim=True)
+			embeddings.append(features.cpu())  # Save to CPU for portability
+			paths.extend([f"batch_{batch_idx}_img_{i}" for i in range(len(images))])
+	
+	embeddings = torch.cat(embeddings, dim=0)
+	torch.save({'embeddings': embeddings, 'image_paths': paths}, cache_file)
+	return embeddings.to(device), paths
+
+def compute_model_embeddings_old(
 		strategy, 
 		model, 
 		loader, 

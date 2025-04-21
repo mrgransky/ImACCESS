@@ -275,7 +275,8 @@ def get_validation_metrics(
 		verbose: bool = True,
 		max_in_batch_samples: Optional[int] = None,
 		force_recompute: bool = False,
-		embeddings_cache: tuple = None
+		embeddings_cache: tuple = None,
+		lora_params = None,
 	) -> Dict:
 	model.eval()
 	torch.cuda.empty_cache()
@@ -419,6 +420,10 @@ def get_validation_metrics(
 	
 	# Step 6: Compute retrieval metrics
 	retrieval_start = time.time()
+	cache_key_base = f"{dataset_name}_{finetune_strategy}_{model.__class__.__name__}_{re.sub(r'[/@]', '_', model.name)}"
+	if lora_params is not None:
+		cache_key_base += f"_lora_rank_{lora_params['lora_rank']}_lora_alpha_{lora_params['lora_alpha']}_lora_dropout_{lora_params['lora_dropout']}"
+
 	img2txt_metrics = compute_retrieval_metrics_from_similarity(
 		similarity_matrix=i2t_similarity,
 		query_labels=device_labels,
@@ -427,7 +432,7 @@ def get_validation_metrics(
 		mode="Image-to-Text",
 		max_k=n_classes,
 		cache_dir=cache_dir,
-		cache_key=f"{dataset_name}_{finetune_strategy}_{model.__class__.__name__}_{re.sub(r'[/@]', '_', model.name)}_img2txt"
+		cache_key=f"{cache_key_base}_img2txt"
 	)
 	
 	class_counts = torch.bincount(device_labels, minlength=n_classes)
@@ -439,7 +444,7 @@ def get_validation_metrics(
 		mode="Text-to-Image",
 		class_counts=class_counts,
 		cache_dir=cache_dir,
-		cache_key=f"{dataset_name}_{finetune_strategy}_{model.__class__.__name__}_{re.sub(r'[/@]', '_', model.name)}_txt2img"
+		cache_key=f"{cache_key_base}_txt2img"
 	)
 	if verbose:
 		print(f"Retrieval metrics computed in {time.time() - retrieval_start:.5f} sec")
@@ -453,7 +458,7 @@ def get_validation_metrics(
 	}
 	
 	if verbose:
-		print(f"Validation evaluation completed in {time.time() - start_time} sec")
+		print(f"Validation evaluation completed in {time.time() - start_time:.3f} sec")
 	
 	return result
 
@@ -541,7 +546,8 @@ def evaluate_best_model(
 		verbose: bool = True,
 		clean_cache: bool = True,
 		embeddings_cache=None,
-		max_in_batch_samples: int = 320  # Add parameter
+		max_in_batch_samples: int = 384,
+		lora_params = None,
 	):
 	model_source = "current"
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
@@ -599,7 +605,8 @@ def evaluate_best_model(
 		cache_dir=cache_dir,
 		verbose=verbose,
 		max_in_batch_samples=max_in_batch_samples,
-		embeddings_cache=embeddings_cache
+		embeddings_cache=embeddings_cache,
+		lora_params=lora_params,
 	)
 	in_batch_metrics = validation_results["in_batch_metrics"]
 	full_metrics = validation_results["full_metrics"]
@@ -2619,6 +2626,11 @@ def lora_finetune(
 			finetune_strategy=mode,
 			cache_dir=results_dir,
 			verbose=True,
+			lora_params={
+				"lora_rank": lora_rank,
+				"lora_alpha": lora_alpha,
+				"lora_dropout": lora_dropout,
+			}
 		)
 		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]

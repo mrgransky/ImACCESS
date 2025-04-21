@@ -158,6 +158,9 @@ def main():
 			loader=validation_loader,
 			device=args.device,
 			cache_dir=CACHE_DIRECTORY,
+			lora_rank=args.lora_rank if strategy == "lora" else None,
+			lora_alpha=args.lora_alpha if strategy == "lora" else None,
+			lora_dropout=args.lora_dropout if strategy == "lora" else None,
 		)
 		embeddings_cache[strategy] = (embeddings, paths)
 	print(f"Model Embeddings computed in {time.time() - mdl_emb_start:.5f} sec")
@@ -179,6 +182,11 @@ def main():
 				clean_cache=False,
 				embeddings_cache=embeddings_cache[ft_name],
 				max_in_batch_samples=None, # get_max_samples(batch_size=args.batch_size, N=10, device=args.device),
+				lora_params={
+					"lora_rank": args.lora_rank,
+					"lora_alpha": args.lora_alpha,
+					"lora_dropout": args.lora_dropout,
+				} if ft_name == "lora" else None,
 			)
 			finetuned_img2txt_dict[args.model_architecture][ft_name] = evaluation_results["img2txt_metrics"]
 			finetuned_txt2img_dict[args.model_architecture][ft_name] = evaluation_results["txt2img_metrics"]

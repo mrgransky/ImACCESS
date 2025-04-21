@@ -8,9 +8,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=16G
+#SBATCH --mem=24G
 #SBATCH --partition=gpu
-#SBATCH --time=01-00:00:00
+#SBATCH --time=05-00:00:00
 #SBATCH --array=0 # HISTORY_X4
 #####SBATCH --array=0-19 # 4 architectures x 5 datasets = 20 jobs
 #SBATCH --gres=gpu:v100:1
