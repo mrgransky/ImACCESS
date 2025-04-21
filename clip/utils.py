@@ -55,7 +55,23 @@ logger = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
-import torch
+def get_lora_params(path_string):
+	# Regular expressions to find the parameters
+	lora_rank_match = re.search(r"lora_rank_(\d+)", path_string)
+	lora_alpha_match = re.search(r"lora_alpha_(\d+\.\d+)", path_string)
+	lora_dropout_match = re.search(r"lora_dropout_(\d+\.\d+)", path_string)
+	# Extract the values if found
+	if lora_rank_match and lora_alpha_match and lora_dropout_match:
+		lora_rank = int(lora_rank_match.group(1))
+		lora_alpha = float(lora_alpha_match.group(1))
+		lora_dropout = float(lora_dropout_match.group(1))
+		return {
+			"lora_rank": lora_rank,
+			"lora_alpha": lora_alpha,
+			"lora_dropout": lora_dropout
+		}
+	else:
+		return None  # Return None if any parameter is not found
 
 def get_max_samples(batch_size, N, device, memory_per_sample_mb=100, safety_factor=0.95, verbose=False):
 	total_memory_mb = torch.cuda.get_device_properties(device).total_memory / (1024 ** 2)  

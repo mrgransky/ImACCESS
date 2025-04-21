@@ -102,7 +102,12 @@ python -u history_clip_inference.py \
 	--sampling "${SAMPLINGS[1]}" \
 	--full_checkpoint "${full_checkpoint}" \
 	--lora_checkpoint "${lora_checkpoint}" \
-	--progressive_checkpoint "${progressive_checkpoint}"
+	--progressive_checkpoint "${progressive_checkpoint}" \
+	--query_image "https://pbs.twimg.com/media/GowwFwkbQAAaMs-?format=jpg" \
+	--query_label "cemetery" \
+	--lora_rank 64 \
+	--lora_alpha 128.0 \
+	--lora_dropout 0.05 \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

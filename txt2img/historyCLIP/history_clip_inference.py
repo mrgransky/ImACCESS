@@ -49,9 +49,6 @@ def main():
 	parser.add_argument('--full_checkpoint', '-fcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
 	parser.add_argument('--lora_checkpoint', '-lcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
 	parser.add_argument('--progressive_checkpoint', '-pcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
-	parser.add_argument('--lora_rank', '-lor', type=int, default=None, help='LoRA rank (used if finetune_strategy=lora)')
-	parser.add_argument('--lora_alpha', '-loa', type=float, default=None, help='LoRA alpha (used if finetune_strategy=lora)')
-	parser.add_argument('--lora_dropout', '-lod', type=float, default=None, help='LoRA dropout (used if finetune_strategy=lora)')
 	parser.add_argument('--topK_values', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 
 	args, unknown = parser.parse_known_args()
@@ -61,19 +58,16 @@ def main():
 
 	assert args.query_image is not None, "query_image must be provided for qualitative mode"
 	assert args.query_label is not None, "query_label must be provided for qualitative mode"
-	assert args.topK is not None, "topK must be provided for qualitative mode"
 
 	if args.lora_checkpoint is not None:
-		if not os.path.exists(args.lora_checkpoint):
-			raise ValueError(f"Checkpoint path {args.lora_checkpoint} does not exist!")
-		if args.lora_rank is None or args.lora_alpha is None or args.lora_dropout is None:
-			raise ValueError("Please provide LoRA parameters for comparison!")
-		if f"_lora_rank_{args.lora_rank}" not in args.lora_checkpoint:
-			raise ValueError("LoRA rank in checkpoint path does not match provided LoRA rank!")
-		if f"_lora_alpha_{args.lora_alpha}" not in args.lora_checkpoint:
-			raise ValueError("LoRA alpha in checkpoint path does not match provided LoRA alpha!")
-		if f"_lora_dropout_{args.lora_dropout}" not in args.lora_checkpoint:
-			raise ValueError("LoRA dropout in checkpoint path does not match provided LoRA dropout!") 
+		params = get_lora_params(args.lora_checkpoint)
+		if params:
+			print(f"LoRA parameters extracted from the checkpoint: {args.lora_checkpoint} {params}")
+			args.lora_rank = params['lora_rank']
+			args.lora_alpha = params['lora_alpha']
+			args.lora_dropout = params['lora_dropout']
+		else:
+			raise ValueError("LoRA parameters not found in the provided checkpoint path!")
 
 	# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 	print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
