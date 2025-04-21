@@ -8,9 +8,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=64G
+#SBATCH --mem=32G
 #SBATCH --partition=gpu
-#SBATCH --time=01-00:00:00
+#SBATCH --time=0-05:00:00
 #SBATCH --array=0,5,10,15 # History_X4
 #SBATCH --gres=gpu:v100:1
 
@@ -150,7 +150,7 @@ progressive_checkpoints=(
 )
 
 # Define checkpoint paths
-results_dir="${dataset_dir}/results/sample_models"
+results_dir="${dataset_dir}/results"
 full_checkpoint="${results_dir}/${full_checkpoints[$architecture_index]}"
 lora_checkpoint="${results_dir}/${lora_checkpoints[$architecture_index]}"
 progressive_checkpoint="${results_dir}/${progressive_checkpoints[$architecture_index]}"

@@ -11,222 +11,212 @@ def plot_image_to_texts_separate_horizontal_bars(
 		results_dir: str,
 		figure_size=(15, 6),  # Adjusted for multiple subplots
 		dpi: int = 300,  # Increased for publication quality
-):
-		dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
-		print(f"num_strategies: {len(models)}")
-		
-		# Prepare labels
+	):
+	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
+	pretrained_model_arch = models.get("pretrained").name
+	print(f"{len(models)} strategies for {dataset_name} {pretrained_model_arch}")
+	
+	# Prepare labels
+	try:
+		labels = validation_loader.dataset.dataset.classes
+	except AttributeError:
+		labels = validation_loader.dataset.unique_labels
+	n_labels = len(labels)
+	if topk > n_labels:
+		print(f"ERROR: requested Top-{topk} labeling is greater than number of labels ({n_labels}) => EXIT...")
+		return
+	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
+	
+	# Load and preprocess image
+	try:
+		img = Image.open(img_path).convert("RGB")
+	except FileNotFoundError:
 		try:
-				labels = validation_loader.dataset.dataset.classes
-		except AttributeError:
-				labels = validation_loader.dataset.unique_labels
-		n_labels = len(labels)
-		if topk > n_labels:
-				print(f"ERROR: requested Top-{topk} labeling is greater than number of labels ({n_labels}) => EXIT...")
-				return
-		tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
+			response = requests.get(img_path)
+			response.raise_for_status()
+			img = Image.open(BytesIO(response.content)).convert("RGB")
+		except requests.exceptions.RequestException as e:
+			print(f"ERROR: failed to load image from {img_path} => {e}")
+			return
+	image_tensor = preprocess(img).unsqueeze(0).to(device)
+	# Compute predictions for each model
+	model_predictions = {}
+	model_topk_labels = {}
+	model_topk_probs = {}
+	for model_name, model in models.items():
+		model.eval()
+		print(f"[Image-to-text(s)] {model_name} Zero-Shot Image Classification of image: {img_path}".center(200, " "))
+		t0 = time.time()
+		with torch.no_grad():
+			image_features = model.encode_image(image_tensor)
+			labels_features = model.encode_text(tokenized_labels_tensor)
+			image_features /= image_features.norm(dim=-1, keepdim=True)
+			labels_features /= labels_features.norm(dim=-1, keepdim=True)
+			similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
 		
-		# Load and preprocess image
-		try:
-				img = Image.open(img_path).convert("RGB")
-		except FileNotFoundError:
-				try:
-						response = requests.get(img_path)
-						response.raise_for_status()
-						img = Image.open(BytesIO(response.content)).convert("RGB")
-				except requests.exceptions.RequestException as e:
-						print(f"ERROR: failed to load image from {img_path} => {e}")
-						return
-		image_tensor = preprocess(img).unsqueeze(0).to(device)
-
-		# Compute predictions for each model
-		model_predictions = {}
-		model_topk_labels = {}
-		model_topk_probs = {}
-		for model_name, model in models.items():
-				model.eval()
-				print(f"[Image-to-text(s)] {model_name} Zero-Shot Image Classification of image: {img_path}".center(200, " "))
-				t0 = time.time()
-				with torch.no_grad():
-						image_features = model.encode_image(image_tensor)
-						labels_features = model.encode_text(tokenized_labels_tensor)
-						image_features /= image_features.norm(dim=-1, keepdim=True)
-						labels_features /= labels_features.norm(dim=-1, keepdim=True)
-						similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
-				
-				# Store full probabilities for all labels
-				all_probs = similarities.squeeze().cpu().numpy()
-				model_predictions[model_name] = all_probs
-				
-				# Get top-k labels and probabilities for this model
-				topk_pred_probs, topk_pred_labels_idx = similarities.topk(topk, dim=-1)
-				topk_pred_probs = topk_pred_probs.squeeze().cpu().numpy()
-				topk_pred_indices = topk_pred_labels_idx.squeeze().cpu().numpy()
-				topk_pred_labels = [labels[i] for i in topk_pred_indices]
-				
-				# Sort by descending probability
-				sorted_indices = np.argsort(topk_pred_probs)[::-1]
-				model_topk_labels[model_name] = [topk_pred_labels[i] for i in sorted_indices]
-				model_topk_probs[model_name] = topk_pred_probs[sorted_indices]
-				print(f"Top-{topk} predicted labels for {model_name}: {model_topk_labels[model_name]}")
-				print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
-
-		# Create subplot grid: 1 row, (1 + len(models)) columns
-		num_strategies = len(models)
+		# Store full probabilities for all labels
+		all_probs = similarities.squeeze().cpu().numpy()
+		model_predictions[model_name] = all_probs
 		
-		# Get image dimensions for dynamic sizing
-		img_width, img_height = img.size
-		aspect_ratio = img_height / img_width
+		# Get top-k labels and probabilities for this model
+		topk_pred_probs, topk_pred_labels_idx = similarities.topk(topk, dim=-1)
+		topk_pred_probs = topk_pred_probs.squeeze().cpu().numpy()
+		topk_pred_indices = topk_pred_labels_idx.squeeze().cpu().numpy()
+		topk_pred_labels = [labels[i] for i in topk_pred_indices]
 		
-		# Calculate figure dimensions based on image aspect ratio
-		img_subplot_width = 3  # Base width for image subplot in inches
-		img_subplot_height = img_subplot_width * aspect_ratio  # Maintain image aspect ratio
-		
-		# Adjust model subplot widths based on image height
-		model_subplot_width = 3  # Base width for model subplots
-		model_subplot_height = img_subplot_height  # Match height with image
-		
-		# Calculate total figure dimensions
-		fig_width = img_subplot_width + (model_subplot_width * num_strategies)
-		fig_height = max(4, model_subplot_height)  # Ensure minimum height
-		
-		# Create figure with calculated dimensions
-		fig = plt.figure(figsize=(fig_width, fig_height), dpi=dpi)
-		
-		# Create grid with appropriate width ratios
-		# First column for image, remaining columns for models
-		width_ratios = [img_subplot_width/model_subplot_width] + [1] * num_strategies
-		gs = gridspec.GridSpec(1, 1 + num_strategies, width_ratios=width_ratios, wspace=0.02)
-
-		# # Add a suptitle for the entire figure
-		# fig.suptitle(
-		# 		f"Top-{topk} Predicted Labels for Query Image Across Models",
-		# 		fontsize=16, fontweight='bold', y=1.05
-		# )
-
-		# Subplot 1: Query Image
-		ax0 = plt.subplot(gs[0])
-		ax0.imshow(img)
-		ax0.axis('off')
-		ax0.set_title("Query", fontsize=10, fontweight='bold')
-
-		# Define colors consistent with plot_comparison_metrics_split/merged
-		strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
-		pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#7f7f7f'}
-		pretrained_model_arch = models.get("pretrained").name
-		colors = [pretrained_colors.get(pretrained_model_arch, '#000000')] + list(strategy_colors.values())
-		print(f"colors: {colors}")
-
-		# Subplots for each model
-		all_strategies = list(models.keys())
-		axes = []
-		# Create subplots iteratively to avoid referencing 'axes' before assignment
-		for model_idx in range(num_strategies):
-				if model_idx == 0:
-						# First subplot shares x-axis with ax0 (image subplot)
-						ax = plt.subplot(gs[model_idx + 1])
-				else:
-						# Subsequent subplots share x-axis with the first model subplot (axes[0])
-						ax = plt.subplot(gs[model_idx + 1], sharex=axes[0])
-				axes.append(ax)
-
-		# Create a list of handles for the legend
-		legend_handles = []
-		for model_idx, (model_name, ax) in enumerate(zip(all_strategies, axes)):
-				y_pos = np.arange(topk)#*0.8  # Multiply by factor < 1 to reduce spacing
-				sorted_probs = model_topk_probs[model_name]
-				sorted_labels = model_topk_labels[model_name]
-
-				# Plot horizontal bars and create a handle for the legend
-				bars = ax.barh(
-						y_pos,
-						sorted_probs,
-						height=0.5,
-						color=colors[model_idx],
-						edgecolor='white',
-						alpha=0.9,
-						label=model_name.split('_')[-1].replace('finetune', '').capitalize() if '_' in model_name else f"{model_name.capitalize()} {pretrained_model_arch}"
-				)
-				legend_handles.append(bars)
-
-				ax.invert_yaxis()  # Highest probs on top
-				# Hide y-axis ticks and labels
-				ax.set_yticks([])
-				ax.set_yticklabels([])  # Empty labels
-				# Set specific x-axis limits and ticks
-				ax.set_xlim(0, 1)
-				ax.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
-				ax.set_xticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=7)
-				# # Add model architecture to pretrained title
-				# if model_name == "pretrained":
-				# 		ax.set_title(f"{model_name.capitalize()} {pretrained_model_arch}", fontsize=14, fontweight='bold', pad=10)
-				# else:
-				# 		ax.set_title(
-				# 				model_name.split('_')[-1].replace('finetune', '').capitalize(),
-				# 				fontsize=14, fontweight='bold', pad=10
-				# 		)
-				ax.grid(True, axis='x', linestyle='--', alpha=0.5, color='#888888')  # Subtler grid
-				ax.tick_params(axis='x', labelsize=8)
-
-				# Annotate bars with labels and probabilities
-				for i, (label, prob) in enumerate(zip(sorted_labels, sorted_probs)):
-						formatted_label = label.replace('_', ' ').title()
-						ax.text(
-								prob + 0.01 if prob < 0.5 else prob - 0.01,
-								i,
-								f"{formatted_label}\n({prob:.2f})",
-								va='center',
-								ha='right' if prob > 0.5 else 'left',
-								fontsize=7,
-								color='black',
-								fontweight='bold' if prob == max(sorted_probs) else 'normal',
-						)
-
-				for spine in ax.spines.values():
-						spine.set_color('black')
-
-		# Add a legend at the top of the figure
-		fig.legend(
-			legend_handles,
-			[handle.get_label() for handle in legend_handles],
+		# Sort by descending probability
+		sorted_indices = np.argsort(topk_pred_probs)[::-1]
+		model_topk_labels[model_name] = [topk_pred_labels[i] for i in sorted_indices]
+		model_topk_probs[model_name] = topk_pred_probs[sorted_indices]
+		print(f"Top-{topk} predicted labels for {model_name}: {model_topk_labels[model_name]}")
+		print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
+	# Create subplot grid: 1 row, (1 + len(models)) columns
+	num_strategies = len(models)
+	
+	# Get image dimensions for dynamic sizing
+	img_width, img_height = img.size
+	aspect_ratio = img_height / img_width
+	
+	# Calculate figure dimensions based on image aspect ratio
+	img_subplot_width = 3  # Base width for image subplot in inches
+	img_subplot_height = img_subplot_width * aspect_ratio  # Maintain image aspect ratio
+	
+	# Adjust model subplot widths based on image height
+	model_subplot_width = 3  # Base width for model subplots
+	model_subplot_height = img_subplot_height  # Match height with image
+	
+	# Calculate total figure dimensions
+	fig_width = img_subplot_width + (model_subplot_width * num_strategies)
+	fig_height = max(4, model_subplot_height)  # Ensure minimum height
+	
+	# Create figure with calculated dimensions
+	fig = plt.figure(figsize=(fig_width, fig_height), dpi=dpi)
+	
+	# Create grid with appropriate width ratios
+	# First column for image, remaining columns for models
+	width_ratios = [img_subplot_width/model_subplot_width] + [1] * num_strategies
+	gs = gridspec.GridSpec(1, 1 + num_strategies, width_ratios=width_ratios, wspace=0.02)
+	# Subplot 1: Query Image
+	ax0 = plt.subplot(gs[0])
+	ax0.imshow(img)
+	ax0.axis('off')
+	
+	# Remove the top title
+	ax0.set_title("")
+	
+	# Add title at the bottom of the subplot
+	ax0.text(
+			0.5,  # x position (center)
+			-0.05,  # y position (just below the image)
+			"Query",
 			fontsize=10,
-			loc='upper center',
-			ncol=len(legend_handles),
-			bbox_to_anchor=(0.5, 0.98),
-			bbox_transform=fig.transFigure,
-			frameon=True,
-			shadow=True,
-			fancybox=True,
-			edgecolor='black',
-			facecolor='white',
-		)
-		fig.text(
-			0.5,  # x position (center of figure)
-			0.02,  # y position (near bottom of figure)
-			"Probability",
-			ha='center',  # horizontal alignment
-			va='center',  # vertical alignment
-			fontsize=12,
-			fontweight='bold'
-		)
-
-		plt.tight_layout() 
-
-		# Add a border around the entire figure
-		for spine in fig.gca().spines.values():
-				spine.set_visible(True)
-				spine.set_color('black')
-				spine.set_linewidth(1.0)
-
-		# Save plot
-		img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
-		file_name = os.path.join(
-				results_dir,
-				f'{dataset_name}_Top{topk}_labels_{img_hash}_dataset_separate_bar_image_to_text.png'
-		)
-		plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
-		plt.close()
-		print(f"Saved visualization to: {file_name}")
+			fontweight='bold',
+			ha='center',
+			va='top',
+			transform=ax0.transAxes  # Use axes coordinates
+	)
+	# Define colors consistent with plot_comparison_metrics_split/merged
+	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
+	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#7f7f7f'}
+	colors = [pretrained_colors.get(pretrained_model_arch, '#000000')] + list(strategy_colors.values())
+	print(f"colors: {colors}")
+	# Subplots for each model
+	all_strategies = list(models.keys())
+	axes = []
+	# Create subplots iteratively to avoid referencing 'axes' before assignment
+	for model_idx in range(num_strategies):
+			if model_idx == 0:
+					# First subplot shares x-axis with ax0 (image subplot)
+					ax = plt.subplot(gs[model_idx + 1])
+			else:
+					# Subsequent subplots share x-axis with the first model subplot (axes[0])
+					ax = plt.subplot(gs[model_idx + 1], sharex=axes[0])
+			axes.append(ax)
+	# Create a list of handles for the legend
+	legend_handles = []
+	for model_idx, (model_name, ax) in enumerate(zip(all_strategies, axes)):
+			y_pos = np.arange(topk)#*0.8  # Multiply by factor < 1 to reduce spacing
+			sorted_probs = model_topk_probs[model_name]
+			sorted_labels = model_topk_labels[model_name]
+			# Plot horizontal bars and create a handle for the legend
+			bars = ax.barh(
+					y_pos,
+					sorted_probs,
+					height=0.5,
+					color=colors[model_idx],
+					edgecolor='white',
+					alpha=0.9,
+					label=model_name.split('_')[-1].replace('finetune', '').capitalize() if '_' in model_name else f"{model_name.capitalize()} {pretrained_model_arch}"
+			)
+			legend_handles.append(bars)
+			ax.invert_yaxis()  # Highest probs on top
+			# Hide y-axis ticks and labels
+			ax.set_yticks([])
+			ax.set_yticklabels([])  # Empty labels
+			# Set specific x-axis limits and ticks
+			ax.set_xlim(0, 1)
+			ax.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
+			ax.set_xticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=7)
+			ax.grid(True, axis='x', linestyle='--', alpha=0.5, color='#888888')  # Subtler grid
+			ax.tick_params(axis='x', labelsize=8)
+			# Annotate bars with labels and probabilities
+			for i, (label, prob) in enumerate(zip(sorted_labels, sorted_probs)):
+					formatted_label = label.replace('_', ' ').title()
+					ax.text(
+							prob + 0.01 if prob < 0.5 else prob - 0.01,
+							i,
+							f"{formatted_label}\n({prob:.2f})",
+							va='center',
+							ha='right' if prob > 0.5 else 'left',
+							fontsize=7,
+							color='black',
+							fontweight='bold' if prob == max(sorted_probs) else 'normal',
+					)
+			for spine in ax.spines.values():
+					spine.set_color('black')
+	# Add a legend at the top of the figure
+	fig.legend(
+		legend_handles,
+		[handle.get_label() for handle in legend_handles],
+		fontsize=10,
+		loc='upper center',
+		ncol=len(legend_handles),
+		bbox_to_anchor=(0.5, 0.98),
+		bbox_transform=fig.transFigure,
+		frameon=True,
+		shadow=True,
+		fancybox=True,
+		edgecolor='black',
+		facecolor='white',
+	)
+	fig.text(
+		0.5,  # x position (center of figure)
+		0.02,  # y position (near bottom of figure)
+		"Probability",
+		ha='center',  # horizontal alignment
+		va='center',  # vertical alignment
+		fontsize=12,
+		fontweight='bold'
+	)
+	plt.tight_layout() 
+	# Add a border around the entire figure
+	for spine in fig.gca().spines.values():
+			spine.set_visible(True)
+			spine.set_color('black')
+			spine.set_linewidth(1.0)
+	# Save plot
+	img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
+	file_name = os.path.join(
+			results_dir,
+			f'{dataset_name}_'
+			f'Top{topk}_labels_'
+			f'image_{img_hash}_'
+			f"{re.sub(r'[/@]', '-', pretrained_model_arch)}_"
+			f'separate_bar_image_to_text.png'
+	)
+	plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
+	plt.close()
+	print(f"Saved visualization to: {file_name}")
 
 def plot_image_to_texts_stacked_horizontal_bar(
 		models: dict,
@@ -293,16 +283,17 @@ def plot_image_to_texts_stacked_horizontal_bar(
 	# Sort the pre-trained model's top-k labels by their probabilities (descending)
 	sorted_indices = np.argsort(pretrained_topk_probs)[::-1]  # Descending order
 	pretrained_topk_labels = [pretrained_topk_labels[i] for i in sorted_indices]
-	# Prepare data for plotting: probabilities for each model for the pre-trained model's top-k labels
+
 	num_labels = len(pretrained_topk_labels)
 	num_strategies = len(models)
 	plot_data = np.zeros((num_labels, num_strategies))  # Rows: labels, Columns: models
 	all_strategies = list(models.keys())
+
 	for model_idx, (model_name, probs) in enumerate(model_predictions.items()):
-			for label_idx, label in enumerate(pretrained_topk_labels):
-					# Find the index of this label in the full label list
-					label_full_idx = labels.index(label)
-					plot_data[label_idx, model_idx] = probs[label_full_idx]
+		for label_idx, label in enumerate(pretrained_topk_labels):
+			# Find the index of this label in the full label list
+			label_full_idx = labels.index(label)
+			plot_data[label_idx, model_idx] = probs[label_full_idx]
 
 	fig, ax = plt.subplots(figsize=figure_size, dpi=dpi)
 	bar_width = 0.21
@@ -361,8 +352,12 @@ def plot_image_to_texts_stacked_horizontal_bar(
 		spine.set_color('black')
 	img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
 	file_name = os.path.join(
-		results_dir,
-		f'{dataset_name}_Top{topk}_labels_{img_hash}_dataset_stacked_bar_image_to_text.png'
+			results_dir,
+			f'{dataset_name}_'
+			f'Top{topk}_labels_'
+			f'image_{img_hash}_'
+			f"{re.sub(r'[/@]', '-', pretrained_model_arch)}_"
+			f'stacked_bar_image_to_text.png'
 	)
 	plt.tight_layout()
 	plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
@@ -373,8 +368,7 @@ def plot_image_to_texts_stacked_horizontal_bar(
 	fig_img, ax_img = plt.subplots(figsize=(4, 4), dpi=dpi)
 	ax_img.imshow(img)
 	ax_img.axis('off')
-	# ax_img.set_title("Query Image", fontsize=12)
-	img_file_name = os.path.join(results_dir, f'{dataset_name}_query_image_{img_hash}_original.png')
+	img_file_name = os.path.join(results_dir, f'{dataset_name}_query_original_image_{img_hash}.png')
 	plt.tight_layout()
 	plt.savefig(img_file_name, bbox_inches='tight', dpi=dpi)
 	plt.close()
@@ -447,8 +441,12 @@ def plot_image_to_texts_pretrained(
 	# Hash image path for unique filename
 	img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
 	file_name = os.path.join(
-		results_dir,
-		f'{dataset_name}_Top{topk}_labels_{img_hash}_pretrained_{best_pretrained_model_name}_{best_pretrained_model_arch}_image_to_text.png'
+			results_dir,
+			f'{dataset_name}_'
+			f'Top{topk}_labels_'
+			f'image_{img_hash}_'
+			f"{re.sub(r'[/@]', '-', best_pretrained_model_arch)}_pretrained_"
+			f'bar_image_to_text.png'
 	)
 	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Green
 	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#7f7f7f'}
