@@ -55,6 +55,16 @@ logger = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
+
+def get_model_hash(model: torch.nn.Module) -> str:
+		hasher = hashlib.md5()
+		param_sample = []
+		for i, param in enumerate(model.parameters()):
+				if i % 10 == 0:  # Sample every 10th parameter
+						param_sample.append(param.data.cpu().numpy().mean())
+		hasher.update(str(param_sample).encode())
+		return hasher.hexdigest()
+
 def get_lora_params(path_string):
 	# Regular expressions to find the parameters
 	lora_rank_match = re.search(r"lora_rank_(\d+)", path_string)

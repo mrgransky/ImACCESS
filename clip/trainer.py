@@ -277,6 +277,8 @@ def get_validation_metrics(
 		force_recompute: bool = False,
 		embeddings_cache: tuple = None,
 		lora_params = None,
+		is_training: bool = False,
+		model_hash: str = None,
 	) -> Dict:
 	model.eval()
 	torch.cuda.empty_cache()
@@ -303,7 +305,9 @@ def get_validation_metrics(
 		f"{re.sub(r'[/@]', '_', model.name)}"
 		f"_validation_embeddings.pt"
 	)
-	
+	if model_hash:
+		cache_file = cache_file.replace(".pt", f"_{model_hash}.pt")
+
 	# Step 1: Compute in-batch metrics only if max_in_batch_samples is provided
 	in_batch_metrics = None
 	if max_in_batch_samples is not None:
@@ -328,30 +332,34 @@ def get_validation_metrics(
 	all_image_embeds = None
 	all_labels = None
 	
-	if embeddings_cache is not None:
-		# Use provided embeddings
+	if not is_training and embeddings_cache is not None:
+		# Use provided embeddings for inference
+		if not isinstance(embeddings_cache, tuple) or len(embeddings_cache) < 2:
+			raise ValueError("embeddings_cache must be a tuple of (image_embeds, labels, ...)")
 		all_image_embeds, _ = embeddings_cache
 		all_labels = torch.tensor([validation_loader.dataset.labels_int[i] for i in range(len(validation_loader.dataset))], device='cpu')
 		cache_loaded = True
 		if verbose:
 			print("Using precomputed embeddings from embeddings_cache")
-	elif os.path.exists(cache_file) and not force_recompute:
+	elif not is_training and os.path.exists(cache_file) and not force_recompute:
+		# Load cache only during inference if it exists
 		if verbose:
 			print(f"Loading cached embeddings from {cache_file}")
 		try:
 			cache_start = time.time()
-			cached = torch.load(cache_file, map_location='cpu')
-			all_image_embeds = cached.get('image_embeds')
-			all_labels = cached.get('labels')
+			cached = torch.load(cache_file, map_location="cpu") # portability
+			all_image_embeds = cached.get('image_embeds').to(device)
+			all_labels = cached.get('labels').to(device)
 			cache_loaded = True
 			if verbose:
-				print(f"Cache loaded in {time.time() - cache_start:.1f} sec")
+				print(f"Cache loaded in {time.time() - cache_start:.5f} sec")
 		except Exception as e:
 			if verbose:
 				print(f"Error loading cache: {e}. Computing from scratch.")
 			cache_loaded = False
 	
-	if not cache_loaded or all_image_embeds is None:
+	# Compute embeddings if no cache is loaded or during training
+	if not cache_loaded or all_image_embeds is None or is_training:
 		if verbose:
 			print(f"Computing embeddings from scratch {finetune_strategy} {model.__class__.__name__} {model.name}")
 		all_image_embeds = []
@@ -373,15 +381,16 @@ def get_validation_metrics(
 		
 		all_image_embeds = torch.cat(all_image_embeds, dim=0)
 		all_labels = torch.tensor(all_labels, device='cpu')
-		
-		try:
+
+		if not is_training:
+			try:
 				cache_content = {'image_embeds': all_image_embeds, 'labels': all_labels}
 				torch.save(cache_content, cache_file)
 				if verbose:
-						print(f"Saved embeddings to {cache_file}")
-		except Exception as e:
+					print(f"Saved embeddings to {cache_file}")
+			except Exception as e:
 				if verbose:
-						print(f"Warning: Failed to save cache: {e}")
+					print(f"Warning: Failed to save cache: {e}")
 	
 	# Step 3: Compute class text embeddings
 	embed_start = time.time()
@@ -607,6 +616,8 @@ def evaluate_best_model(
 		max_in_batch_samples=max_in_batch_samples,
 		embeddings_cache=embeddings_cache,
 		lora_params=lora_params,
+		is_training=False,  # Use cache for final evaluation/inference
+		model_hash=get_model_hash(model),
 	)
 	in_batch_metrics = validation_results["in_batch_metrics"]
 	full_metrics = validation_results["full_metrics"]
@@ -2260,6 +2271,8 @@ def progressive_finetune(
 			cache_dir=results_dir,
 			verbose=True,
 			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+			is_training=True,
+			model_hash=get_model_hash(model),
 		)
 		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
@@ -2633,6 +2646,8 @@ def lora_finetune(
 				"lora_dropout": lora_dropout,
 			},
 			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+			is_training=True,
+			model_hash=get_model_hash(model),
 		)
 		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
@@ -2979,6 +2994,8 @@ def full_finetune(
 			cache_dir=results_dir,
 			verbose=True,
 			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+			is_training=True,
+			model_hash=get_model_hash(model),
 		)
 		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
@@ -3431,7 +3448,9 @@ def pretrain(
 		topK_values=topk_values,
 		cache_dir=cache_dir,
 		verbose=True,
-		embeddings_cache=embeddings_cache
+		embeddings_cache=embeddings_cache,
+		is_training=False,
+		model_hash=get_model_hash(model),
 	)
 	# in_batch_metrics = validation_results["in_batch_metrics"]
 	# full_metrics = validation_results["full_metrics"]
