@@ -7,11 +7,12 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
-#SBATCH --mem=128G
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=4G
 #SBATCH --partition=gpu
-#SBATCH --time=03-00:00:00
-#SBATCH --array=0 # History X4
+#SBATCH --time=01-00:00:00
+#SBATCH --array=0 # HISTORY_X4
+#####SBATCH --array=0-19 # 4 architectures x 5 datasets = 20 jobs
 #SBATCH --gres=gpu:v100:1
 
 set -euo pipefail
@@ -39,6 +40,14 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
+# Map dataset directories to their names for checkpoint paths
+declare -A DATASET_NAMES
+DATASET_NAMES["/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4"]="HISTORY_X4"
+DATASET_NAMES["/scratch/project_2004072/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31"]="NATIONAL_ARCHIVE_1900-01-01_1970-12-31"
+DATASET_NAMES["/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31"]="EUROPEANA_1900-01-01_1970-12-31"
+DATASET_NAMES["/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02"]="WWII_1939-09-01_1945-09-02"
+DATASET_NAMES["/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31"]="SMU_1900-01-01_1970-12-31"
+
 BATCH_SIZES=(64 64 64 64 64)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 MODEL_ARCHITECTURES=(
@@ -48,33 +57,52 @@ MODEL_ARCHITECTURES=(
 	"ViT-B/16"
 )
 
-if [ $SLURM_ARRAY_TASK_ID -ge ${#DATASETS[@]} ]; then
-	echo "Error: SLURM_ARRAY_TASK_ID out of bounds"
+# Calculate indices
+dataset_index=$((SLURM_ARRAY_TASK_ID % ${#DATASETS[@]}))
+architecture_index=$((SLURM_ARRAY_TASK_ID / ${#DATASETS[@]}))
+
+# Validate indices
+if [ $dataset_index -ge ${#DATASETS[@]} ] || [ $architecture_index -ge ${#MODEL_ARCHITECTURES[@]} ]; then
+	echo "Error: Invalid SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
 	exit 1
 fi
+
+# Convert model architecture to filename format (e.g., ViT-B/16 -> ViT-B-16)
+model_arch_filename=${MODEL_ARCHITECTURES[$architecture_index]//[@\/]/-}
+
+# Get dataset name for checkpoint paths
+dataset_dir=${DATASETS[$dataset_index]}
+dataset_name=${DATASET_NAMES[$dataset_dir]}
+
+# Define checkpoint paths
+results_dir="${dataset_dir}/results"
+full_checkpoint="${results_dir}/${dataset_name}_full_finetune_CLIP_${model_arch_filename}_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_20_dropout_0.1_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth"
+lora_checkpoint="${results_dir}/${dataset_name}_lora_finetune_CLIP_${model_arch_filename}_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_27_lr_1.0e-05_wd_1.0e-02_lora_rank_64_lora_alpha_128.0_lora_dropout_0.05_bs_64_best_model.pth"
+progressive_checkpoint="${results_dir}/${dataset_name}_progressive_unfreeze_finetune_CLIP_${model_arch_filename}_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_dropout_0.1_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth"
 
 # Dynamically adjust batch size based on model architecture and dataset
 ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 
 # For larger models (ViT-L/14 and ViT-L/14@336px), reduce batch size
 if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-		# Further reduce batch size for HISTORY_X4 dataset due to its size
-		if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
-				ADJUSTED_BATCH_SIZE=16  # Very conservative batch size for large model + large dataset
-		else
-				ADJUSTED_BATCH_SIZE=32 # Reduced batch size for large models with other datasets
-		fi
+	if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
+		ADJUSTED_BATCH_SIZE=16  # Very conservative batch size for large model + large dataset
+	else
+		ADJUSTED_BATCH_SIZE=32  # Reduced batch size for large models with other datasets
+	fi
 fi
 echo "BATCH SIZE: [DEFAULT]: ${BATCH_SIZES[$dataset_index]} ADJUSTED: ${ADJUSTED_BATCH_SIZE}"
 
 echo "Starting history_clip_inference.py for task $SLURM_ARRAY_TASK_ID"
 python -u history_clip_inference.py \
-	--dataset_dir ${DATASETS[$SLURM_ARRAY_TASK_ID]} \
+	--dataset_dir "${DATASETS[$dataset_index]}" \
 	--num_workers "$SLURM_CPUS_PER_TASK" \
 	--batch_size "${ADJUSTED_BATCH_SIZE}" \
-	--model_architecture "${MODEL_ARCHITECTURES[$architecture_index]}"\
-	--topK $prec \
+	--model_architecture "${MODEL_ARCHITECTURES[$architecture_index]}" \
 	--sampling "${SAMPLINGS[1]}" \
+	--full_checkpoint "${full_checkpoint}" \
+	--lora_checkpoint "${lora_checkpoint}" \
+	--progressive_checkpoint "${progressive_checkpoint}"
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
