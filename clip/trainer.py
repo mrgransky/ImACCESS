@@ -469,7 +469,7 @@ def get_validation_metrics(
     }
     
     if verbose:
-        print(f"Validation evaluation completed in {time.time() - start_time:.1f} sec")
+        print(f"Validation evaluation completed in {time.time() - start_time} sec")
     
     return result
 
@@ -3420,39 +3420,25 @@ def pretrain(
 		dataset_name = validation_loader.dataset.dataset_name
 	if verbose:
 		print(f"Pretrain Evaluation {dataset_name} {model_name} - {model_arch} {device}".center(170, "-"))
-	i2t_retrieval_metrics_fpth = os.path.join(cache_dir, f"{dataset_name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt.json")
-	t2i_retrieval_metrics_fpth = os.path.join(cache_dir, f"{dataset_name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_txt2img.json")
-	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{dataset_name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt_txt2img.png")
 
-	try:
-		img2txt_metrics = load_pickle(fpath=i2t_retrieval_metrics_fpth)
-		txt2img_metrics = load_pickle(fpath=t2i_retrieval_metrics_fpth)
-	except Exception as e:
-		print(e)
-		# all metrics in one using caching mechanism:
-		criterion = torch.nn.CrossEntropyLoss()
-		validation_results = get_validation_metrics(
-			model=model,
-			validation_loader=validation_loader,
-			criterion=criterion,
-			device=device,
-			topK_values=topk_values,
-			cache_dir=cache_dir,
-			verbose=True,
-			embeddings_cache=embeddings_cache
-		)
-		# in_batch_metrics = validation_results["in_batch_metrics"]
-		# full_metrics = validation_results["full_metrics"]
-		retrieval_metrics = {
-			"img2txt": validation_results["img2txt_metrics"],
-			"txt2img": validation_results["txt2img_metrics"]
-		}
-
-		img2txt_metrics = retrieval_metrics["img2txt"]
-		txt2img_metrics = retrieval_metrics["txt2img"]
-
-		# save_pickle(pkl=img2txt_metrics, fname=i2t_retrieval_metrics_fpth)
-		# save_pickle(pkl=txt2img_metrics, fname=t2i_retrieval_metrics_fpth)
+	validation_results = get_validation_metrics(
+		model=model,
+		validation_loader=validation_loader,
+		criterion=torch.nn.CrossEntropyLoss(),
+		device=device,
+		topK_values=topk_values,
+		cache_dir=cache_dir,
+		verbose=True,
+		embeddings_cache=embeddings_cache
+	)
+	# in_batch_metrics = validation_results["in_batch_metrics"]
+	# full_metrics = validation_results["full_metrics"]
+	retrieval_metrics = {
+		"img2txt": validation_results["img2txt_metrics"],
+		"txt2img": validation_results["txt2img_metrics"]
+	}
+	img2txt_metrics = retrieval_metrics["img2txt"]
+	txt2img_metrics = retrieval_metrics["txt2img"]
 
 	if verbose:
 		print("Image to Text Metrics: ")
@@ -3460,6 +3446,7 @@ def pretrain(
 		print("Text to Image Metrics: ")
 		print(json.dumps(txt2img_metrics, indent=2, ensure_ascii=False))
 
+	retrieval_metrics_best_model_fpth = os.path.join(results_dir, f"{dataset_name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt_txt2img.png")
 	plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
 		image_to_text_metrics=img2txt_metrics,
