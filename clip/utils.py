@@ -58,37 +58,43 @@ Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
 import torch
 
-def get_max_samples(batch_size, N, device, memory_per_sample_mb=100, safety_factor=0.95):
-    # Get total GPU memory in MB
-    total_memory_mb = torch.cuda.get_device_properties(device).total_memory / (1024 ** 2)
-    
-    # Apply safety factor to determine usable memory
-    memory_cap_mb = total_memory_mb * safety_factor
-    
-    # Calculate max samples based on memory constraint
-    max_samples_memory = int(memory_cap_mb // memory_per_sample_mb)
-    
-    # Desired number of samples based on N and batch_size
-    desired_max_samples = N * batch_size
-    
-    # Use the smaller of the two values to avoid exceeding memory
-    max_samples = min(desired_max_samples, max_samples_memory)
-    
-    # Optional: Print debug info
-    print(f"Total GPU Memory: {total_memory_mb:.2f} MB")
-    print(f"Usable Memory (after safety factor): {memory_cap_mb:.2f} MB")
-    print(f"Max Samples (Memory): {max_samples_memory}")
-    print(f"Desired Max Samples: {desired_max_samples}")
-    print(f"Final Max Samples: {max_samples}")
-    
-    return max_samples
+def get_max_samples(batch_size, N, device, memory_per_sample_mb=100, safety_factor=0.95, verbose=False):
+	total_memory_mb = torch.cuda.get_device_properties(device).total_memory / (1024 ** 2)  
+	memory_cap_mb = total_memory_mb * safety_factor
+	# Calculate max samples based on memory constraint
+	max_samples_memory = int(memory_cap_mb // memory_per_sample_mb)
+	# Desired number of samples based on N and batch_size
+	desired_max_samples = N * batch_size
+	# Use the smaller of the two values to avoid exceeding memory
+	max_samples = min(desired_max_samples, max_samples_memory)
+	if verbose:
+		print(f"Total GPU Memory: {total_memory_mb:.2f} MB")
+		print(f"Usable Memory (after safety factor): {memory_cap_mb:.2f} MB")
+		print(f"Max Samples (Memory): {max_samples_memory}")
+		print(f"Desired Max Samples: {desired_max_samples}")
+		print(f"Final Max Samples: {max_samples}")
+	return max_samples
 
-def compute_model_embeddings(strategy, model, loader, device, cache_dir):
+def compute_model_embeddings(
+		strategy, 
+		model, 
+		loader, 
+		device, 
+		cache_dir,
+	):
 	model.eval()
 	embeddings = []
 	paths = []
 	dataset_name = getattr(loader, 'name', 'unknown_dataset')
-	cache_file = os.path.join(cache_dir, f"{dataset_name}_{strategy}_embeddings.pt")
+	cache_file = os.path.join(
+		cache_dir, 
+		f"{dataset_name}_"
+		f"{strategy}_"
+		f"{model.__class__.__name__}_"
+		f"{re.sub(r'[/@]', '_', model.name)}_"
+		f"embeddings.pt"
+	)
+
 	if os.path.exists(cache_file):
 		data = torch.load(
 			f=cache_file, 
