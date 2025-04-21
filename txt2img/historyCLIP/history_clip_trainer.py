@@ -7,7 +7,7 @@ sys.path.insert(0, CLIP_DIR)
 
 from utils import *
 from historical_dataset_loader import get_dataloaders
-from trainer import train, pretrain, full_finetune, lora_finetune, progressive_unfreeze_finetune, evaluate_best_model
+from trainer import train, pretrain, full_finetune, lora_finetune, progressive_finetune, evaluate_best_model
 from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics, plot_comparison_metrics_merged, plot_comparison_metrics_split
 
 # $ python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=10))))"
@@ -189,7 +189,7 @@ def main():
 					topk_values=args.topK_values,
 				)
 			elif args.finetune_strategy == 'progressive':
-				progressive_unfreeze_finetune(
+				progressive_finetune(
 					model=model,
 					train_loader=train_loader,
 					validation_loader=validation_loader,

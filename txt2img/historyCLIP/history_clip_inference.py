@@ -25,7 +25,7 @@ from visualize import (
 # "https://pbs.twimg.com/media/Go0qRhvWEAAIxpn?format=png"
 
 # # run in local for all fine-tuned models:
-# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -qi "https://pbs.twimg.com/media/Gowu5zDaYAAZ2YK?format=jpg" -ql "military personnel" -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_15_actual_epochs_15_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_15_dropout_0.0_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_15_actual_epochs_15_lr_1.0e-05_wd_1.0e-02_lora_rank_32_lora_alpha_64.0_lora_dropout_0.05_bs_64_best_model.pth -lor 32 -loa 64.0 -lod 0.05
+# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -qi "https://pbs.twimg.com/media/Go0qRhvWEAAIxpn?format=png" -ql "military personnel" -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_15_actual_epochs_15_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_15_dropout_0.0_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_15_actual_epochs_15_lr_1.0e-05_wd_1.0e-02_lora_rank_32_lora_alpha_64.0_lora_dropout_0.05_bs_64_best_model.pth -lor 32 -loa 64.0 -lod 0.05
 
 # # run in pouta for all fine-tuned models:
 # $ nohup python -u history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -qi "https://pbs.twimg.com/media/GowwFwkbQAAaMs-?format=jpg" -ql "aircraft" -nw 40 --device "cuda:2" -k 5 -bs 128 -nw 26 -fcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_full_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_21_dropout_0.1_lr_1.0e-05_wd_1.0e-01_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_progressive_unfreeze_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_dropout_0.1_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_lora_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_110_lr_1.0e-05_wd_1.0e-02_lora_rank_64_lora_alpha_128.0_lora_dropout_0.05_bs_64_best_model.pth -lor 64 -loa 128.0 -lod 0.05 > /media/volume/ImACCESS/trash/history_clip_inference.txt &
@@ -132,7 +132,13 @@ def main():
 			print(f">> Loading Fine-tuned Model: {ft_name} from {ft_path}...")
 			model, _ = clip.load(name=args.model_architecture, device=args.device, download_root=get_model_directory(path=args.dataset_dir))
 			if ft_name == "lora":
-					model = get_lora_clip(model, lora_rank=args.lora_rank, lora_alpha=args.lora_alpha, lora_dropout=args.lora_dropout, verbose=False)
+				model = get_lora_clip(
+					clip_model=model, 
+					lora_rank=args.lora_rank, 
+					lora_alpha=args.lora_alpha, 
+					lora_dropout=args.lora_dropout, 
+					verbose=False,
+				)
 			model.to(args.device)
 			model = model.float()
 			model.name = args.model_architecture
@@ -171,7 +177,7 @@ def main():
 				verbose=True,
 				clean_cache=False,
 				embeddings_cache=embeddings_cache[ft_name],
-				max_in_batch_samples=1024  # Limit to ~8 batches (128 * 8)
+				max_in_batch_samples=get_max_samples(batch_size=args.batch_size, N=10, device=args.device),
 			)
 			finetuned_img2txt_dict[args.model_architecture][ft_name] = evaluation_results["img2txt_metrics"]
 			finetuned_txt2img_dict[args.model_architecture][ft_name] = evaluation_results["txt2img_metrics"]

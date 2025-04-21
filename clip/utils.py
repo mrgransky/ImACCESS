@@ -56,6 +56,33 @@ logger = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
+import torch
+
+def get_max_samples(batch_size, N, device, memory_per_sample_mb=100, safety_factor=0.95):
+    # Get total GPU memory in MB
+    total_memory_mb = torch.cuda.get_device_properties(device).total_memory / (1024 ** 2)
+    
+    # Apply safety factor to determine usable memory
+    memory_cap_mb = total_memory_mb * safety_factor
+    
+    # Calculate max samples based on memory constraint
+    max_samples_memory = int(memory_cap_mb // memory_per_sample_mb)
+    
+    # Desired number of samples based on N and batch_size
+    desired_max_samples = N * batch_size
+    
+    # Use the smaller of the two values to avoid exceeding memory
+    max_samples = min(desired_max_samples, max_samples_memory)
+    
+    # Optional: Print debug info
+    print(f"Total GPU Memory: {total_memory_mb:.2f} MB")
+    print(f"Usable Memory (after safety factor): {memory_cap_mb:.2f} MB")
+    print(f"Max Samples (Memory): {max_samples_memory}")
+    print(f"Desired Max Samples: {desired_max_samples}")
+    print(f"Final Max Samples: {max_samples}")
+    
+    return max_samples
+
 def compute_model_embeddings(strategy, model, loader, device, cache_dir):
 	model.eval()
 	embeddings = []
@@ -83,77 +110,59 @@ def compute_model_embeddings(strategy, model, loader, device, cache_dir):
 	torch.save({'embeddings': embeddings, 'image_paths': paths}, cache_file)
 	return embeddings.to(device), paths
 
-def get_updated_model_name(
-		original_path: str,
-		actual_epochs: int,
-		additional_info: dict = None
-) -> str:
-		"""
-		Updates a model filename to include the actual number of epochs trained and optionally
-		other training information.
-		
-		Args:
-				original_path: The original path to the model file
-				actual_epochs: The actual number of epochs the model was trained for
-				additional_info: Optional dictionary with additional information to add to filename
-												 e.g. {'final_phase': 2, 'final_lr': 1e-5}
-		
-		Returns:
-				The path to the renamed file, or the original path if renaming failed
-		"""
-		if not os.path.exists(original_path):
-				print(f"Warning: Original model file not found at {original_path}")
-				return original_path
-		
-		# Extract the directory and filename
-		directory, filename = os.path.split(original_path)
-		
-		# Check if the filename already contains actual_epochs
-		if f"actual_epochs_{actual_epochs}" in filename:
-				print(f"File already contains actual epochs information: {filename}")
-				return original_path
-		
-		# Replace 'init_epochs_X' with 'init_epochs_X_actual_epochs_Y'
-		if "init_epochs_" in filename:
-				pattern = r"(init_epochs_\d+)"
-				replacement = f"\\1_actual_epochs_{actual_epochs}"
-				new_filename = re.sub(pattern, replacement, filename)
-		else:
-				# If 'init_epochs' not found, insert actual_epochs before '.pth'
-				base, ext = os.path.splitext(filename)
-				new_filename = f"{base}_actual_epochs_{actual_epochs}{ext}"
-		
-		# Add any additional information to the filename
-		if additional_info:
-				base, ext = os.path.splitext(new_filename)
-				for key, value in additional_info.items():
-						# Format numerical values with scientific notation if they're very small
-						if isinstance(value, float) and abs(value) < 0.01:
-								formatted_value = f"{value:.1e}"
-						else:
-								formatted_value = str(value)
-						base = f"{base}_{key}_{formatted_value}"
-				new_filename = f"{base}{ext}"
-		
-		# Create the new path
-		new_path = os.path.join(directory, new_filename)
-		
-		# Try to rename the file
+def get_updated_model_name(original_path:str, actual_epochs:int, additional_info: dict=None) -> str:
+	if not os.path.exists(original_path):
+		print(f"Warning: Original model file not found at {original_path}")
+		return original_path
+	
+	# Extract the directory and filename
+	directory, filename = os.path.split(original_path)
+	
+	# Check if the filename already contains actual_epochs
+	if f"actual_epochs_{actual_epochs}" in filename:
+		print(f"File already contains actual epochs information: {filename}")
+		return original_path
+	
+	# Replace 'ieps_X' with 'ieps_X_actual_eps_Y'
+	if "ieps_" in filename:
+		pattern = r"(ieps_\d+)"
+		replacement = f"\\1_actual_eps_{actual_epochs}"
+		new_filename = re.sub(pattern, replacement, filename)
+	else:
+		base, ext = os.path.splitext(filename)
+		new_filename = f"{base}_actual_eps_{actual_epochs}{ext}"
+	
+	# Add any additional information to the filename
+	if additional_info:
+		base, ext = os.path.splitext(new_filename)
+		for key, value in additional_info.items():
+			# Format numerical values with scientific notation if they're very small
+			if isinstance(value, float) and abs(value) < 0.01:
+				formatted_value = f"{value:.1e}"
+			else:
+				formatted_value = str(value)
+			base = f"{base}_{key}_{formatted_value}"
+		new_filename = f"{base}{ext}"
+	
+	# Create the new path
+	new_path = os.path.join(directory, new_filename)
+	
+	# rename file
+	try:
+		os.rename(original_path, new_path)
+		print(f"Model saved as: {new_path}")
+		return new_path
+	except Exception as e:
+		print(f"Warning: Could not rename model file: {e}")
 		try:
-				os.rename(original_path, new_path)
-				print(f"Model saved as: {new_path}")
-				return new_path
-		except Exception as e:
-				print(f"Warning: Could not rename model file: {e}")
-				try:
-						# Try copying the file instead
-						import shutil
-						shutil.copy2(original_path, new_path)
-						print(f"Model copied to: {new_path}")
-						return new_path
-				except Exception as e2:
-						print(f"Error: Could not copy model file: {e2}")
-						return original_path
+			# Try copying the file instead
+			import shutil
+			shutil.copy2(original_path, new_path)
+			print(f"Model copied to: {new_path}")
+			return new_path
+		except Exception as e2:
+			print(f"Error: Could not copy model file: {e2}")
+			return original_path
 
 def get_adaptive_window_size(
 		loader: DataLoader,
