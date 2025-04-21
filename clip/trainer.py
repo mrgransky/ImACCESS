@@ -5,6 +5,37 @@ from visualize import plot_loss_accuracy_metrics, plot_retrieval_metrics_best_mo
 def cleanup_embedding_cache(
 		dataset_name: str,
 		cache_dir: str,
+		finetune_strategy: str,
+		batch_size: int,
+		model_name: str,
+		model_arch: str,
+		num_workers: int,
+	):
+	base_name = os.path.join(
+			cache_dir,
+			f"{dataset_name}_"
+			f"{finetune_strategy}_"
+			f"bs_{batch_size}_"
+			f"nw_{num_workers}_"
+			f"{model_name}_"
+			f"{re.sub(r'[/@]', '_', model_arch)}_"
+			f"validation_embeddings"
+	)
+	cache_files = glob.glob(f"{base_name}.pt") + glob.glob(f"{base_name}_*.pt")
+	if cache_files:
+			print(f"Found {len(cache_files)} cache file(s) to clean up.")
+			for cache_file in cache_files:
+					try:
+							os.remove(cache_file)
+							print(f"Successfully removed cache file: {cache_file}")
+					except Exception as e:
+							print(f"Warning: Failed to remove cache file {cache_file}: {e}")
+	else:
+			print(f"No cache files found for {base_name}*.pt")
+
+def cleanup_embedding_cache_old(
+		dataset_name: str,
+		cache_dir: str,
 		finetune_strategy: str, 
 		batch_size: int, 
 		model_name: str, 
