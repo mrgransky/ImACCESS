@@ -74,8 +74,8 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 	exit 1
 fi
 
-INIT_LRS=(5e-6 1e-5 1e-5 5e-5 1e-5)
-INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
+INIT_LRS=(5.0e-06 1.0e-05 1.0e-05 1.0e-05 1.0e-05)
+INIT_WDS=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 EPOCHS=(110 100 150 150 150)
 LORA_RANKS=(64 64 64 64 64)

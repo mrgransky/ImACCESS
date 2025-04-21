@@ -28,7 +28,7 @@ from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics, 
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-6 -wd 1e-2 --print_every 200 -nw 12 --device "cuda:1" -m finetune -fts full -a "ViT-B/32" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 64 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 --device "cuda:2" -m finetune -a "ViT-B/32" -do 0.0 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 64 -e 100 -lr 5e-5 -wd 1e-1 --print_every 100 -nw 50 --device "cuda:0" -m finetune -a "ViT-B/32" -do 0.0 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 8 -e 110 -lr 1e-5 -wd 1e-2 --print_every 750 -nw 50 --device "cuda:0" -m finetune -fts full -a "ViT-L/14@336px" -do 0.1 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 64 -e 110 -lr 5e-6 -wd 1e-2 --print_every 750 -nw 50 --device "cuda:0" -m finetune -fts full -a "ViT-B/32" -do 0.1 --log_dir /media/volume/ImACCESS/trash &
 
 # finetune [lora]: alpha = 2x rank
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-1 --print_every 50 -nw 50 --device "cuda:1" -m finetune -fts lora --lora_rank 8 --lora_alpha 16.0 --lora_dropout 0.05 -a "ViT-B/32" -mep 10 --log_dir /media/volume/ImACCESS/trash &
