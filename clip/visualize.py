@@ -53,7 +53,7 @@ def plot_image_to_texts_separate_horizontal_bars(
 	model_topk_probs = {}
 	for model_name, model in models.items():
 		model.eval()
-		print(f"[Image-to-text(s)] {model_name} Zero-Shot Image Classification of image: {img_path}".center(200, " "))
+		print(f"[Image-to-text(s)] {model_name} Zero-Shot Image Classification Query: {img_path}".center(200, " "))
 		t0 = time.time()
 		with torch.no_grad():
 			image_features = model.encode_image(image_tensor)

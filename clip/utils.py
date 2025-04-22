@@ -62,141 +62,109 @@ import numpy as np
 import random
 import os
 
-def select_qualitative_samples(metadata_path, metadata_train_path, metadata_val_path, num_samples_per_segment=5):
-    """
-    Analyzes label distribution across the full dataset, categorizes labels
-    into head, torso, and tail segments, and selects example queries
-    from the validation set for qualitative analysis.
-
-    Args:
-        metadata_path (str): Path to the full metadata.csv file (for overall distribution analysis).
-        metadata_train_path (str): Path to the metadata_train.csv file.
-        metadata_val_path (str): Path to the metadata_val.csv file (for sampling queries).
-        num_samples_per_segment (int): The number of query samples to select from
-                                       each segment (head, torso, tail) for both
-                                       Image-to-Text and Text-to-Image tasks.
-
-    Returns:
-        tuple: A tuple containing two lists:
-               - i2t_queries (list of dict): List of dictionaries, each with 'image_path' and 'label'.
-               - t2i_queries (list of dict): List of dictionaries, each with 'label'.
-               Returns None if insufficient data is found for sampling.
-    """
-    print(f"--- Analyzing Label Distribution from {metadata_path} ---")
-    # 1. Load DataFrames
-    try:
-        df_full = pd.read_csv(metadata_path)
-        df_train = pd.read_csv(metadata_train_path)
-        df_val = pd.read_csv(metadata_val_path)
-    except FileNotFoundError as e:
-        print(f"Error loading metadata files: {e}")
-        return None, None
-
-    # Use the 'label' column for string labels as used in plotting and potentially queries
-    # Use 'label_int' for analysis requiring unique integer counts if necessary,
-    # but counts based on string labels from the full dataset match Figure 2.
-
-    # 2. In-depth Analysis of Head/Torso/Tail
-    label_counts_full = df_full['label'].value_counts()
-    total_unique_labels_full = len(label_counts_full)
-    print(f"Total unique labels in full dataset: {total_unique_labels_full}")
-    print(f"Label Counts (full dataset): \n{label_counts_full.head(10)}")
-    print("...")
-    print(f"{label_counts_full.tail(10)}")
-
-    # Define approximate thresholds based on visual inspection of Figure 2 and counts
-    # These thresholds are subjective and can be adjusted based on the specific distribution shape
-    # Example based on Figure 2:
-    head_threshold = 5000 # Labels with frequency > 5000
-    tail_threshold = 500  # Labels with frequency < 500
-    # Torso: Labels with frequency between tail_threshold and head_threshold
-
-    head_labels = label_counts_full[label_counts_full > head_threshold].index.tolist()
-    tail_labels = label_counts_full[label_counts_full < tail_threshold].index.tolist()
-    torso_labels = label_counts_full[(label_counts_full >= tail_threshold) & (label_counts_full <= head_threshold)].index.tolist()
-
-    print(f"\n--- Distribution Segments (based on full dataset frequency > {head_threshold} (Head), < {tail_threshold} (Tail)) ---")
-    print(f"Head Segment ({len(head_labels)} labels): {head_labels[:min(10, len(head_labels))]}...")
-    print(f"Torso Segment ({len(torso_labels)} labels): {torso_labels[:min(10, len(torso_labels))]}...")
-    print(f"Tail Segment ({len(tail_labels)} labels): {tail_labels[:min(10, len(tail_labels))]}...")
-
-    # 3. Select Samples from Validation Set
-    print(f"\n--- Selecting {num_samples_per_segment} Samples from Validation Set for Each Segment ---")
-    i2t_queries = []
-    t2i_queries = []
-
-    # Get labels actually present in the validation set
-    labels_in_val = df_val['label'].unique().tolist()
-
-    # Filter segment labels to include only those present in validation for sampling
-    head_labels_in_val = [lbl for lbl in head_labels if lbl in labels_in_val]
-    torso_labels_in_val = [lbl for lbl in torso_labels if lbl in labels_in_val]
-    tail_labels_in_val = [lbl for lbl in tail_labels if lbl in labels_in_val]
-
-    print(f"Head labels available in validation: {len(head_labels_in_val)}")
-    print(f"Torso labels available in validation: {len(torso_labels_in_val)}")
-    print(f"Tail labels available in validation: {len(tail_labels_in_val)}")
-
-    # Check if enough labels/samples exist for sampling
-    if len(head_labels_in_val) < num_samples_per_segment or \
-       len(torso_labels_in_val) < num_samples_per_segment or \
-       len(tail_labels_in_val) < num_samples_per_segment:
-        print("\nWarning: Not enough unique labels available in validation for one or more segments to select the requested number of samples.")
-        # Adjust sampling if not enough labels, but we still need to try to get *some*
-        # We'll sample up to the number of available labels/samples
-
-    segments = {'Head': head_labels_in_val, 'Torso': torso_labels_in_val, 'Tail': tail_labels_in_val}
-
-    # Sample for I2T (Query Image -> Text Labels)
-    print("\n--- I2T Query Samples (Image Path + GT Label) ---")
-    for segment_name, segment_labels in segments.items():
-        if not segment_labels:
-            print(f"No {segment_name} labels in validation set. Skipping I2T sampling for this segment.")
-            continue
-
-        # Sample *labels* from the segment that are in the validation set
-        labels_to_sample_from = random.sample(segment_labels, min(num_samples_per_segment, len(segment_labels)))
-
-        print(f"\nSelected {min(num_samples_per_segment, len(segment_labels))} {segment_name} labels for I2T image sampling:")
-        for label in labels_to_sample_from:
-            # Get all images with this label in the validation set
-            images_for_label = df_val[df_val['label'] == label]['img_path'].tolist()
-            if images_for_label:
-                # Sample one image path for this label
-                sampled_img_path = random.choice(images_for_label)
-                i2t_queries.append({'image_path': sampled_img_path, 'label': label})
-                print(f"- Label: '{label}' ({len(images_for_label)} samples in val) -> Image: {sampled_img_path}")
-            else:
-                 print(f"- Warning: No images found for label '{label}' in the validation set for I2T query.")
-
-
-    # Sample for T2I (Query Label -> Images)
-    print("\n--- T2I Query Samples (Label String) ---")
-    for segment_name, segment_labels in segments.items():
-        if not segment_labels:
-            print(f"No {segment_name} labels in validation set. Skipping T2I sampling for this segment.")
-            continue
-        # Sample *label strings* from the segment that are in the validation set
-        labels_to_sample = random.sample(segment_labels, min(num_samples_per_segment, len(segment_labels)))
-        print(f"\nSelected {min(num_samples_per_segment, len(segment_labels))} {segment_name} labels for T2I query:")
-        for label in labels_to_sample:
-             # Check if the label actually exists in the validation set (should be true if sampled from segment_labels_in_val)
-             # And ideally, check if there's at least one image for it in the validation set
-             if label in df_val['label'].values:
-                 images_for_label = df_val[df_val['label'] == label]['img_path'].tolist()
-                 if images_for_label:
-                    t2i_queries.append({'label': label})
-                    print(f"- Label: '{label}' ({len(images_for_label)} samples in val)")
-                 else:
-                    print(f"- Warning: Label '{label}' found in val labels, but no images. Skipping T2I query.")
-             else:
-                 print(f"- Warning: Label '{label}' not found in validation set for T2I query. Skipping.") # Should not happen with segment_labels_in_val
-
-    print("\n--- Sampling Complete ---")
-    print(f"Total I2T query samples selected: {len(i2t_queries)}")
-    print(f"Total T2I query samples selected: {len(t2i_queries)}")
-
-    return i2t_queries, t2i_queries
+def select_qualitative_samples(
+		metadata_path, 
+		metadata_train_path, 
+		metadata_val_path, 
+		num_samples_per_segment=5,
+	):
+	print(f"--- Analyzing Label Distribution from {metadata_path} ---")
+	# 1. Load DataFrames
+	try:
+			df_full = pd.read_csv(metadata_path)
+			df_train = pd.read_csv(metadata_train_path)
+			df_val = pd.read_csv(metadata_val_path)
+	except FileNotFoundError as e:
+			print(f"Error loading metadata files: {e}")
+			return None, None
+	# Use the 'label' column for string labels as used in plotting and potentially queries
+	# Use 'label_int' for analysis requiring unique integer counts if necessary,
+	# but counts based on string labels from the full dataset match Figure 2.
+	# 2. In-depth Analysis of Head/Torso/Tail
+	label_counts_full = df_full['label'].value_counts()
+	total_unique_labels_full = len(label_counts_full)
+	print(f"Total unique labels in full dataset: {total_unique_labels_full}")
+	print(f"Label Counts (full dataset): \n{label_counts_full.head(10)}")
+	print("...")
+	print(f"{label_counts_full.tail(10)}")
+	# Define approximate thresholds based on visual inspection of Figure 2 and counts
+	# These thresholds are subjective and can be adjusted based on the specific distribution shape
+	# Example based on Figure 2:
+	head_threshold = 5000 # Labels with frequency > 5000
+	tail_threshold = 500  # Labels with frequency < 500
+	# Torso: Labels with frequency between tail_threshold and head_threshold
+	head_labels = label_counts_full[label_counts_full > head_threshold].index.tolist()
+	tail_labels = label_counts_full[label_counts_full < tail_threshold].index.tolist()
+	torso_labels = label_counts_full[(label_counts_full >= tail_threshold) & (label_counts_full <= head_threshold)].index.tolist()
+	print(f"\n--- Distribution Segments (based on full dataset frequency > {head_threshold} (Head), < {tail_threshold} (Tail)) ---")
+	print(f"Head Segment ({len(head_labels)} labels): {head_labels[:min(10, len(head_labels))]}...")
+	print(f"Torso Segment ({len(torso_labels)} labels): {torso_labels[:min(10, len(torso_labels))]}...")
+	print(f"Tail Segment ({len(tail_labels)} labels): {tail_labels[:min(10, len(tail_labels))]}...")
+	# 3. Select Samples from Validation Set
+	print(f"\n--- Selecting {num_samples_per_segment} Samples from Validation Set for Each Segment ---")
+	i2t_queries = []
+	t2i_queries = []
+	# Get labels actually present in the validation set
+	labels_in_val = df_val['label'].unique().tolist()
+	# Filter segment labels to include only those present in validation for sampling
+	head_labels_in_val = [lbl for lbl in head_labels if lbl in labels_in_val]
+	torso_labels_in_val = [lbl for lbl in torso_labels if lbl in labels_in_val]
+	tail_labels_in_val = [lbl for lbl in tail_labels if lbl in labels_in_val]
+	print(f"Head labels available in validation: {len(head_labels_in_val)}")
+	print(f"Torso labels available in validation: {len(torso_labels_in_val)}")
+	print(f"Tail labels available in validation: {len(tail_labels_in_val)}")
+	# Check if enough labels/samples exist for sampling
+	if len(head_labels_in_val) < num_samples_per_segment or \
+		 len(torso_labels_in_val) < num_samples_per_segment or \
+		 len(tail_labels_in_val) < num_samples_per_segment:
+			print("\nWarning: Not enough unique labels available in validation for one or more segments to select the requested number of samples.")
+			# Adjust sampling if not enough labels, but we still need to try to get *some*
+			# We'll sample up to the number of available labels/samples
+	segments = {'Head': head_labels_in_val, 'Torso': torso_labels_in_val, 'Tail': tail_labels_in_val}
+	# Sample for I2T (Query Image -> Text Labels)
+	print("\n--- I2T Query Samples (Image Path + GT Label) ---")
+	for segment_name, segment_labels in segments.items():
+			if not segment_labels:
+					print(f"No {segment_name} labels in validation set. Skipping I2T sampling for this segment.")
+					continue
+			# Sample *labels* from the segment that are in the validation set
+			labels_to_sample_from = random.sample(segment_labels, min(num_samples_per_segment, len(segment_labels)))
+			print(f"\nSelected {min(num_samples_per_segment, len(segment_labels))} {segment_name} labels for I2T image sampling:")
+			for label in labels_to_sample_from:
+					# Get all images with this label in the validation set
+					images_for_label = df_val[df_val['label'] == label]['img_path'].tolist()
+					if images_for_label:
+							# Sample one image path for this label
+							sampled_img_path = random.choice(images_for_label)
+							i2t_queries.append({'image_path': sampled_img_path, 'label': label})
+							print(f"- Label: '{label}' ({len(images_for_label)} samples in val) -> Image: {sampled_img_path}")
+					else:
+							 print(f"- Warning: No images found for label '{label}' in the validation set for I2T query.")
+	# Sample for T2I (Query Label -> Images)
+	print("\n--- T2I Query Samples (Label String) ---")
+	for segment_name, segment_labels in segments.items():
+			if not segment_labels:
+					print(f"No {segment_name} labels in validation set. Skipping T2I sampling for this segment.")
+					continue
+			# Sample *label strings* from the segment that are in the validation set
+			labels_to_sample = random.sample(segment_labels, min(num_samples_per_segment, len(segment_labels)))
+			print(f"\nSelected {min(num_samples_per_segment, len(segment_labels))} {segment_name} labels for T2I query:")
+			for label in labels_to_sample:
+					 # Check if the label actually exists in the validation set (should be true if sampled from segment_labels_in_val)
+					 # And ideally, check if there's at least one image for it in the validation set
+					 if label in df_val['label'].values:
+							 images_for_label = df_val[df_val['label'] == label]['img_path'].tolist()
+							 if images_for_label:
+									t2i_queries.append({'label': label})
+									print(f"- Label: '{label}' ({len(images_for_label)} samples in val)")
+							 else:
+									print(f"- Warning: Label '{label}' found in val labels, but no images. Skipping T2I query.")
+					 else:
+							 print(f"- Warning: Label '{label}' not found in validation set for T2I query. Skipping.") # Should not happen with segment_labels_in_val
+	print("\n--- Sampling Complete ---")
+	print(f"Total I2T query samples selected: {len(i2t_queries)}")
+	print(f"Total T2I query samples selected: {len(t2i_queries)}")
+	return i2t_queries, t2i_queries
 
 
 def get_lora_params(path_string: str) -> dict:

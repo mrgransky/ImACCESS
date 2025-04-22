@@ -28,9 +28,8 @@ from visualize import (
 # # run in local for all fine-tuned models with image and label:
 # $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -qi "https://pbs.twimg.com/media/Go0qRhvWEAAIxpn?format=png" -ql "military personnel" -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_15_actual_epochs_15_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_15_dropout_0.0_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_15_actual_epochs_15_lr_1.0e-05_wd_1.0e-02_lora_rank_32_lora_alpha_64.0_lora_dropout_0.05_bs_64_best_model.pth
 
-# # run in local for all fine-tuned models without image and label:
+# # Local | All fine-tuned models (head, torso, tail):
 # $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.05_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.05_ilr_1.0e-05_iwd_1.0e-02_bs_64_best_model_last_phase_0_flr_1.0e-05_fwd_0.01.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_lr_1.0e-05_wd_1.0e-02_lor_64_loa_128.0_lod_0.05_bs_64_best_model.pth
-
 
 # # run in pouta for all fine-tuned models:
 # $ nohup python -u history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -qi "https://pbs.twimg.com/media/Go0qRhvWEAAIxpn?format=png" -ql "cemetery" -nw 40 --device "cuda:2" -k 5 -bs 256 -fcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_full_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_21_dropout_0.1_lr_1.0e-05_wd_1.0e-01_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_progressive_unfreeze_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_dropout_0.1_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_lora_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_110_lr_1.0e-05_wd_1.0e-02_lora_rank_64_lora_alpha_128.0_lora_dropout_0.05_bs_64_best_model.pth > /media/volume/ImACCESS/trash/history_clip_inference.txt &
@@ -114,20 +113,43 @@ def main():
 		input_resolution=model_config["image_resolution"],
 	)
 
+	# ####################################### Randomly select one sample from validation set #######################################
+	# if args.query_image is None or args.query_label is None:
+	# 	print("One or both of query_image and query_label not provided. Selecting a random sample from validation set...")
+	# 	validation_dataset = validation_loader.dataset
+	# 	# Use a random seed based on the current time
+	# 	rng = random.Random(int(time.time() * 1000))  # Seed with millisecond timestamp		
+	# 	random_idx = rng.randint(0, len(validation_dataset) - 1)
+	# 	# random_idx = random.randint(0, len(validation_dataset) - 1) # reproducible
+	# 	random_sample = validation_dataset.data_frame.iloc[random_idx]
+	# 	if args.query_image is None:
+	# 		args.query_image = random_sample['img_path']
+	# 		print(f"Selected random image: {args.query_image}")
+	# 	if args.query_label is None:
+	# 		args.query_label = random_sample['label']
+	# 		print(f"Selected random label: {args.query_label}")
+	# ####################################### Randomly select one sample from validation set #######################################
+
+	# Systematic selection of samples from validation set: Head, Torso, Tail
 	if args.query_image is None or args.query_label is None:
-		print("One or both of query_image and query_label not provided. Selecting a random sample from validation set...")
-		validation_dataset = validation_loader.dataset
-		# Use a random seed based on the current time
-		rng = random.Random(int(time.time() * 1000))  # Seed with millisecond timestamp		
-		random_idx = rng.randint(0, len(validation_dataset) - 1)
-		# random_idx = random.randint(0, len(validation_dataset) - 1) # reproducible
-		random_sample = validation_dataset.data_frame.iloc[random_idx]
-		if args.query_image is None:
-			args.query_image = random_sample['img_path']
-			print(f"Selected random image: {args.query_image}")
-		if args.query_label is None:
-			args.query_label = random_sample['label']
-			print(f"Selected random label: {args.query_label}")
+		print("One or both of query_image and query_label not provided. Selecting samples from validation set...")
+		i2t_samples, t2i_samples = select_qualitative_samples(
+			metadata_path=os.path.join(args.dataset_dir, "metadata.csv"),
+			metadata_train_path=os.path.join(args.dataset_dir, "metadata_train.csv"),
+			metadata_val_path=os.path.join(args.dataset_dir, "metadata_val.csv"),
+			num_samples_per_segment=5 # Select 5 samples per segment
+		)
+		if i2t_samples and t2i_samples:
+			QUERY_IMAGES = [sample['image_path'] for sample in i2t_samples]
+			QUERY_LABELS = [sample['label'] for sample in t2i_samples]
+		else:
+			raise ValueError("No samples selected from validation set!")
+	else:
+		QUERY_IMAGES = [args.query_image]
+		QUERY_LABELS = [args.query_label]
+	print(len(QUERY_IMAGES), QUERY_IMAGES)
+	print()
+	print(len(QUERY_LABELS), QUERY_LABELS)
 
 	# for all finetuned models(+ pre-trained):
 	finetuned_checkpoint_paths = {
@@ -207,13 +229,15 @@ def main():
 			finetuned_txt2img_dict[args.model_architecture][ft_name] = evaluation_results["txt2img_metrics"]
 
 	####################################### Qualitative Analysis #######################################
-	if args.query_image is not None:
+	print(f"Qualitative Analysis".center(160, " "))
+	for query_image in QUERY_IMAGES:
+		print(f">> Query Image: {query_image}")
 		plot_image_to_texts_pretrained(
 			best_pretrained_model=pretrained_model,
 			validation_loader=validation_loader,
 			# preprocess=pretrained_preprocess, # customized_preprocess,
 			preprocess=customized_preprocess,
-			img_path=args.query_image,
+			img_path=query_image,
 			topk=args.topK,
 			device=args.device,
 			results_dir=RESULT_DIRECTORY,
@@ -222,7 +246,7 @@ def main():
 			models=models_to_plot,
 			validation_loader=validation_loader,
 			preprocess=customized_preprocess,
-			img_path=args.query_image,
+			img_path=query_image,
 			topk=args.topK,
 			device=args.device,
 			results_dir=RESULT_DIRECTORY,
@@ -231,18 +255,19 @@ def main():
 			models=models_to_plot,
 			validation_loader=validation_loader,
 			preprocess=customized_preprocess,
-			img_path=args.query_image,
+			img_path=query_image,
 			topk=args.topK,
 			device=args.device,
 			results_dir=RESULT_DIRECTORY,
 		)
 
-	if args.query_label is not None:
+	for query_label in QUERY_LABELS:
+		print(f">> Query Label: {query_label}")
 		plot_text_to_images(
 			models=models_to_plot,
 			validation_loader=validation_loader,
 			preprocess=customized_preprocess,
-			query_text=args.query_label,
+			query_text=query_label,
 			topk=args.topK,
 			device=args.device,
 			results_dir=RESULT_DIRECTORY,
@@ -253,7 +278,7 @@ def main():
 			models=models_to_plot,
 			validation_loader=validation_loader,
 			preprocess=customized_preprocess,
-			query_text=args.query_label,
+			query_text=query_label,
 			topk=args.topK,
 			device=args.device,
 			results_dir=RESULT_DIRECTORY,
