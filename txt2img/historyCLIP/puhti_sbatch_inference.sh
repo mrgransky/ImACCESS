@@ -8,8 +8,8 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=12G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
 #SBATCH --partition=gpu
 #SBATCH --time=0-01:00:00
 #SBATCH --array=0,5,10,15 # History_X4
