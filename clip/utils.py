@@ -150,17 +150,17 @@ def select_qualitative_samples(
 			labels_to_sample = random.sample(segment_labels, min(num_samples_per_segment, len(segment_labels)))
 			print(f"\nSelected {min(num_samples_per_segment, len(segment_labels))} {segment_name} labels for T2I query:")
 			for label in labels_to_sample:
-					 # Check if the label actually exists in the validation set (should be true if sampled from segment_labels_in_val)
-					 # And ideally, check if there's at least one image for it in the validation set
-					 if label in df_val['label'].values:
-							 images_for_label = df_val[df_val['label'] == label]['img_path'].tolist()
-							 if images_for_label:
-									t2i_queries.append({'label': label, 'segment': segment_name})
-									print(f"- Label: '{label}' ({len(images_for_label)} samples in val)")
-							 else:
-									print(f"- Warning: Label '{label}' found in val labels, but no images. Skipping T2I query.")
-					 else:
-							 print(f"- Warning: Label '{label}' not found in validation set for T2I query. Skipping.") # Should not happen with segment_labels_in_val
+				# Check if the label actually exists in the validation set (should be true if sampled from segment_labels_in_val)
+				# And ideally, check if there's at least one image for it in the validation set
+				if label in df_val['label'].values:
+						images_for_label = df_val[df_val['label'] == label]['img_path'].tolist()
+						if images_for_label:
+							t2i_queries.append({'label': label, 'segment': segment_name})
+							print(f"- Label: '{label}' ({len(images_for_label)} samples in val)")
+						else:
+							print(f"- Warning: Label '{label}' found in val labels, but no images. Skipping T2I query.")
+				else:
+						 print(f"- Warning: Label '{label}' not found in validation set for T2I query. Skipping.") # Should not happen with segment_labels_in_val
 	print("\n--- Sampling Complete ---")
 	print(f"Total I2T query samples selected: {len(i2t_queries)}")
 	print(json.dumps(i2t_queries, indent=2, ensure_ascii=False))
