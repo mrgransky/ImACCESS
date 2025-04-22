@@ -1,16 +1,16 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=inference_history_x4
+#SBATCH --job-name=inference_history_x4_testing
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
-#SBATCH --mem=32G
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=28G
 #SBATCH --partition=gpu
-#SBATCH --time=0-05:00:00
+#SBATCH --time=0-01:00:00
 #SBATCH --array=0,5,10,15 # History_X4
 #SBATCH --gres=gpu:v100:1
 
@@ -175,8 +175,8 @@ python -u history_clip_inference.py \
 		--lora_rank "${LORA_RANK}" \
 		--lora_alpha "${LORA_ALPHA}" \
 		--lora_dropout "${LORA_DROPOUT}" \
-		--query_image "https://pbs.twimg.com/media/GowwFwkbQAAaMs-?format=jpg" \
-		--query_label "cemetery"
+		# --query_image "https://pbs.twimg.com/media/GowwFwkbQAAaMs-?format=jpg" \ # validaton set
+		# --query_label "cemetery" \ # validation set
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
