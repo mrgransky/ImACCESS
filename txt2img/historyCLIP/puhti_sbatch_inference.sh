@@ -176,6 +176,7 @@ python -u history_clip_inference.py \
 		--lora_rank "${LORA_RANK}" \
 		--lora_alpha "${LORA_ALPHA}" \
 		--lora_dropout "${LORA_DROPOUT}" \
+		--topK 3 \
 		# --query_image "https://pbs.twimg.com/media/GowwFwkbQAAaMs-?format=jpg" \ # validaton set
 		# --query_label "cemetery" \ # validation set
 
