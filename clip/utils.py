@@ -136,7 +136,7 @@ def select_qualitative_samples(
 					if images_for_label:
 							# Sample one image path for this label
 							sampled_img_path = random.choice(images_for_label)
-							i2t_queries.append({'image_path': sampled_img_path, 'label': label})
+							i2t_queries.append({'image_path': sampled_img_path, 'label': label, 'segment': segment_name})
 							print(f"- Label: '{label}' ({len(images_for_label)} samples in val) -> Image: {sampled_img_path}")
 					else:
 							 print(f"- Warning: No images found for label '{label}' in the validation set for I2T query.")
@@ -155,7 +155,7 @@ def select_qualitative_samples(
 					 if label in df_val['label'].values:
 							 images_for_label = df_val[df_val['label'] == label]['img_path'].tolist()
 							 if images_for_label:
-									t2i_queries.append({'label': label})
+									t2i_queries.append({'label': label, 'segment': segment_name})
 									print(f"- Label: '{label}' ({len(images_for_label)} samples in val)")
 							 else:
 									print(f"- Warning: Label '{label}' found in val labels, but no images. Skipping T2I query.")
@@ -163,7 +163,10 @@ def select_qualitative_samples(
 							 print(f"- Warning: Label '{label}' not found in validation set for T2I query. Skipping.") # Should not happen with segment_labels_in_val
 	print("\n--- Sampling Complete ---")
 	print(f"Total I2T query samples selected: {len(i2t_queries)}")
+	print(json.dumps(i2t_queries, indent=2, ensure_ascii=False))
+	print()
 	print(f"Total T2I query samples selected: {len(t2i_queries)}")
+	print(json.dumps(t2i_queries, indent=2, ensure_ascii=False))
 	return i2t_queries, t2i_queries
 
 
