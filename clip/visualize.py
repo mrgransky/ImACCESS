@@ -216,6 +216,7 @@ def plot_image_to_texts_separate_horizontal_bars(
 			f'{dataset_name}_'
 			f'Top{topk}_labels_'
 			f'image_{img_hash}_'
+			f'gt_{ground_truth_label}_'
 			f"{re.sub(r'[/@]', '-', pretrained_model_arch)}_"
 			f'separate_bar_image_to_text.png'
 	)
