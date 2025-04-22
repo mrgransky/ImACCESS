@@ -67,7 +67,6 @@ def main():
 		assert os.path.exists(args.lora_checkpoint), f"lora_checkpoint {args.lora_checkpoint} does not exist!"
 	if args.progressive_checkpoint is not None:
 		assert os.path.exists(args.progressive_checkpoint), f"progressive_checkpoint {args.progressive_checkpoint} does not exist!"
-
 	if args.lora_checkpoint is not None:
 		params = get_lora_params(args.lora_checkpoint)
 		if params:
@@ -130,7 +129,6 @@ def main():
 		if args.query_label is None:
 			args.query_label = random_sample['label']
 			print(f"Selected random label: {args.query_label}")
-
 
 	# for all finetuned models(+ pre-trained):
 	finetuned_checkpoint_paths = {
@@ -310,6 +308,7 @@ def main():
 		topK_values=args.topK_values,
 		results_dir=RESULT_DIRECTORY,
 	)
+	
 	plot_comparison_metrics_merged(
 		dataset_name=validation_loader.name,
 		pretrained_img2txt_dict=pretrained_img2txt_dict,
