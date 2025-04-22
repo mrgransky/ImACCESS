@@ -216,7 +216,7 @@ def plot_image_to_texts_separate_horizontal_bars(
 			f'{dataset_name}_'
 			f'Top{topk}_labels_'
 			f'image_{img_hash}_'
-			f'gt_{ground_truth_label}_'
+			f'gt_{ground_truth_label.replace(" ", "-")}_'
 			f"{re.sub(r'[/@]', '-', pretrained_model_arch)}_"
 			f'separate_bar_image_to_text.png'
 	)
@@ -1012,10 +1012,15 @@ def plot_comparison_metrics_split(
 			# Plot Pre-trained (dashed line)
 			pretrained_vals = [pretrained_dict[model_name][metric].get(str(k), float('nan')) for k in k_values]
 			ax.plot(
-				k_values, pretrained_vals,
-				label=f"Pre-trained CLIP {model_name}",
-				color=pretrained_colors[model_name], linestyle='--', marker='o',
-				linewidth=1.5, markersize=5, alpha=0.7
+				k_values,
+				pretrained_vals,
+				label=f"CLIP {model_name}",
+				color=pretrained_colors[model_name],
+				linestyle='--', 
+				marker='o',
+				linewidth=1.5,
+				markersize=4,
+				alpha=0.75,
 			)
 			# Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
 			for strategy in finetune_strategies:
@@ -1092,7 +1097,13 @@ def plot_comparison_metrics_split(
 								# connectionstyle="arc3,rad=.2"
 							)
 						)
-			ax.set_title(f"{metric}@K", fontsize=10, fontweight='bold')
+			ax.set_title(
+				f"{metric}@K", 
+				fontsize=10, 
+				fontweight='bold', 
+				# pad=25, # Increase the padding to move the title further away from the plot
+				y=1.15, # Adjust the y-position of the title
+			)
 			ax.set_xlabel("K", fontsize=8)
 			ax.set_xticks(k_values)
 			ax.grid(True, linestyle='--', alpha=0.75)
@@ -1110,7 +1121,7 @@ def plot_comparison_metrics_split(
 			# Set spine edge color to solid black
 			for spine in ax.spines.values():
 				spine.set_color('black')
-				spine.set_linewidth(0.8)
+				spine.set_linewidth(0.7)
 			plt.tight_layout()
 			plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
 			plt.close(fig)
