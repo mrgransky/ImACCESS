@@ -445,3 +445,48 @@ from visualize import *
 #     figure_size=(14, 5),
 #     DPI=300,
 # )
+from utils import select_qualitative_samples
+
+# --- Example Usage ---
+if __name__ == '__main__':
+	DATASET_DIRECTORY = {
+	"farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
+	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4",
+	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/HISTORY_X4",
+	"alijani": "/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4",
+	}
+
+	# Replace with the actual paths to your metadata files
+	# Assumes you are running this script from a directory where these paths are valid
+	full_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata.csv")
+	train_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata_train.csv")
+	val_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata_val.csv")
+	# Use a fixed seed for reproducible sample selection during development/analysis
+	random.seed(42)
+	np.random.seed(42)
+	i2t_samples, t2i_samples = select_qualitative_samples(
+			metadata_path=full_meta,
+			metadata_train_path=train_meta, # Train path not strictly needed for this version but good practice
+			metadata_val_path=val_meta,
+			num_samples_per_segment=5 # Select 5 samples per segment
+	)
+	if i2t_samples and t2i_samples:
+			print("\n--- Selected I2T Queries (Image Path, GT Label) ---")
+			for i, sample in enumerate(i2t_samples):
+					print(f"Sample {i+1} (GT: {sample['label']}): {sample['image_path']}")
+					# Example of how to pass to your inference code:
+					# !python history_clip_inference.py -qi "{sample['image_path']}" ... (other args)
+			print("\n--- Selected T2I Queries (Label String) ---")
+			for i, sample in enumerate(t2i_samples):
+					print(f"Sample {i+1}: '{sample['label']}'")
+					# Example of how to pass to your inference code:
+					# !python history_clip_inference.py -ql "{sample['label']}" ... (other args)
+			# Example of a hand-picked "bias" example if needed
+			# print("\n--- Example 'Bias' T2I Query ---")
+			# print("Query Label: 'political figure'") # Or the specific label for the nature photo GT
+			# print("Expected Output: Visually relevant images of politicians")
+			# print("Observed Output (Progressive FT, Top-1): Image of nature scene due to metadata.")
+			# Add the image path and GT label of that specific nature photo here if you want to reference it.
+			# bias_image_path = "/path/to/that/specific/nature/image.jpg"
+			# bias_image_gt_label = "political figure" # Or whatever its actual label is
+			# print(f"Specific image illustrating bias (GT: {bias_image_gt_label}): {bias_image_path}")
