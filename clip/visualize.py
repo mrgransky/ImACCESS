@@ -108,13 +108,13 @@ def plot_image_to_texts_separate_horizontal_bars(
 	ax0 = plt.subplot(gs[0])
 	ax0.imshow(img)
 	ax0.axis('off')
-	ax0.set_title("") # # Remove the top title
-	title_text = f"Query\n(GT: {ground_truth_label})" if ground_truth_label else "Query"
+	ax0.set_title("")
+	title_text = f"Query Image\nGT: {ground_truth_label.capitalize()}" if ground_truth_label else "Query"
 	ax0.text(
 		0.5,  # x position (center)
 		-0.05,  # y position (just below the image)
 		title_text,
-		fontsize=10,
+		fontsize=9,
 		fontweight='bold',
 		ha='center',
 		va='top',
@@ -145,13 +145,13 @@ def plot_image_to_texts_separate_horizontal_bars(
 			sorted_labels = model_topk_labels[model_name]
 			# Plot horizontal bars and create a handle for the legend
 			bars = ax.barh(
-					y_pos,
-					sorted_probs,
-					height=0.5,
-					color=colors[model_idx],
-					edgecolor='white',
-					alpha=0.9,
-					label=model_name.split('_')[-1].replace('finetune', '').capitalize() if '_' in model_name else f"{model_name.capitalize()} {pretrained_model_arch}"
+				y_pos,
+				sorted_probs,
+				height=0.5,
+				color=colors[model_idx],
+				edgecolor='white',
+				alpha=0.9,
+				label=f"CLIP {pretrained_model_arch}" if model_name == "pretrained" else model_name.upper()
 			)
 			legend_handles.append(bars)
 			ax.invert_yaxis()  # Highest probs on top
@@ -183,7 +183,7 @@ def plot_image_to_texts_separate_horizontal_bars(
 	fig.legend(
 		legend_handles,
 		[handle.get_label() for handle in legend_handles],
-		fontsize=10,
+		fontsize=11,
 		loc='upper center',
 		ncol=len(legend_handles),
 		bbox_to_anchor=(0.5, 0.98),
