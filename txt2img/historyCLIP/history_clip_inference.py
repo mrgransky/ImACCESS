@@ -114,14 +114,13 @@ def main():
 		input_resolution=model_config["image_resolution"],
 	)
 
-	# Select random sample from validation set if query_image or query_label is not provided
 	if args.query_image is None or args.query_label is None:
 		print("One or both of query_image and query_label not provided. Selecting a random sample from validation set...")
 		validation_dataset = validation_loader.dataset
 		# Use a random seed based on the current time
-		# rng = random.Random(int(time.time() * 1000))  # Seed with millisecond timestamp		
-		# random_idx = rng.randint(0, len(validation_dataset) - 1)
-		random_idx = random.randint(0, len(validation_dataset) - 1) # reproducible
+		rng = random.Random(int(time.time() * 1000))  # Seed with millisecond timestamp		
+		random_idx = rng.randint(0, len(validation_dataset) - 1)
+		# random_idx = random.randint(0, len(validation_dataset) - 1) # reproducible
 		random_sample = validation_dataset.data_frame.iloc[random_idx]
 		if args.query_image is None:
 			args.query_image = random_sample['img_path']
@@ -308,7 +307,7 @@ def main():
 		topK_values=args.topK_values,
 		results_dir=RESULT_DIRECTORY,
 	)
-	
+
 	plot_comparison_metrics_merged(
 		dataset_name=validation_loader.name,
 		pretrained_img2txt_dict=pretrained_img2txt_dict,
