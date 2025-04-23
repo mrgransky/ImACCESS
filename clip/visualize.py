@@ -212,13 +212,13 @@ def plot_image_to_texts_separate_horizontal_bars(
 	# Save plot
 	img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
 	file_name = os.path.join(
-			results_dir,
-			f'{dataset_name}_'
-			f'Top{topk}_labels_'
-			f'image_{img_hash}_'
-			f'gt_{ground_truth_label.replace(" ", "-")}_'
-			f"{re.sub(r'[/@]', '-', pretrained_model_arch)}_"
-			f'separate_bar_image_to_text.png'
+		results_dir,
+		f'{dataset_name}_'
+		f'Top{topk}_labels_'
+		f'image_{img_hash}_'
+		f"{'gt_' + ground_truth_label.replace(' ', '-') + '_' if ground_truth_label else ''}"
+		f"{re.sub(r'[/@]', '-', pretrained_model_arch)}_"
+		f'separate_bar_image_to_text.png'
 	)
 	plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
 	plt.close()
@@ -758,103 +758,6 @@ def plot_text_to_images_merged(
 		print(f"Saved visualization to: {file_name}")
 
 def plot_text_to_images(
-    models, 
-    validation_loader, 
-    preprocess, 
-    query_text, 
-    topk, 
-    device, 
-    results_dir, 
-    cache_dir=None, 
-    embeddings_cache=None, 
-    dpi=250
-):
-    plt_start_time = time.time()
-    dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
-    img_hash = hashlib.sha256(query_text.encode()).hexdigest()[:8]
-    if cache_dir is None:
-        cache_dir = results_dir
-    tokenized_query = clip.tokenize([query_text]).to(device)
-    
-    for strategy, model in models.items():
-        print(f"Processing strategy: {strategy} ".center(160, " "))
-        if strategy == 'pretrained':
-            model_arch = re.sub(r'[/@]', '-', model.name)
-            print(f"{model.__class__.__name__} {model_arch}".center(160, " "))
-        model.eval()
-        print(f"[Text-to-image(s)] strategy: {strategy} Query: '{query_text}'".center(160, " "))
-        
-        # Use cached embeddings
-        all_image_embeddings, image_paths = embeddings_cache[strategy]
-        all_image_embeddings = all_image_embeddings.to(device, dtype=torch.float32)  # Ensure float32
-        
-        with torch.no_grad():
-            text_features = model.encode_text(tokenized_query).to(torch.float32)  # Ensure float32
-            text_features = F.normalize(text_features, dim=-1)
-            
-            # Debug dtypes
-            print(f"{strategy}: text_features dtype: {text_features.dtype}, all_image_embeddings dtype: {all_image_embeddings.dtype}")
-            
-            similarities = (100.0 * text_features @ all_image_embeddings.T).softmax(dim=-1)
-            effective_topk = min(topk, len(all_image_embeddings))
-            topk_scores, topk_indices = torch.topk(similarities.squeeze(), effective_topk)
-            topk_scores = topk_scores.cpu().numpy()
-            topk_indices = topk_indices.cpu().numpy()
-        
-        dataset = validation_loader.dataset
-        try:
-            ground_truth_labels = dataset.labels
-            topk_ground_truth_labels = [ground_truth_labels[idx] for idx in topk_indices]
-        except (AttributeError, IndexError) as e:
-            print(f"Warning: Could not retrieve ground-truth labels: {e}")
-            topk_ground_truth_labels = [f"Unknown GT {idx}" for idx in topk_indices]
-        
-        fig, axes = plt.subplots(nrows=1, ncols=effective_topk, figsize=(effective_topk*1.8, 3.5), constrained_layout=True)
-        if effective_topk == 1:
-            axes = [axes]
-        
-        fig.suptitle(f"Query: '{query_text}'\n{strategy.upper()} {model_arch}", fontsize=10, fontweight='bold')
-        
-        for i, (ax, idx, score, gt_label) in enumerate(zip(axes, topk_indices, topk_scores, topk_ground_truth_labels)):
-            try:
-                img_path = image_paths[idx]
-                if os.path.exists(img_path):
-                    img = Image.open(img_path).convert('RGB')
-                    ax.imshow(img)
-                    ax.set_title(f"Top-{i+1}\nScore: {score:.3f}\nGT: {gt_label.capitalize()}", fontsize=8)
-                else:
-                    sample = dataset[idx]
-                    if len(sample) >= 3:
-                        img = sample[0]
-                    else:
-                        raise ValueError(f"Unexpected dataset structure at index {idx}: {sample}")
-                    if isinstance(img, torch.Tensor):
-                        img = img.cpu().numpy()
-                        if img.shape[0] in [1, 3]:
-                            img = img.transpose(1, 2, 0)
-                        mean = np.array([0.5754663102194626, 0.564594860510725, 0.5443646108296668])
-                        std = np.array([0.2736517370426002, 0.26753170455186887, 0.2619102890668636])
-                        img = img * std + mean
-                        img = np.clip(img, 0, 1)
-                    ax.imshow(img)
-                    ax.set_title(f"Top-{i+1}\nScore: {score:.3f}\nGT: {gt_label.capitalize()}", fontsize=8)
-            except Exception as e:
-                print(f"Warning: Could not display image {idx}: {e}")
-                ax.imshow(np.ones((224, 224, 3)) * 0.5)
-                ax.set_title(f"Top-{i+1} (Score: {score:.3f})\nGT: Unknown", fontsize=10)
-            ax.axis('off')
-        
-        file_name = os.path.join(
-            results_dir,
-            f'{dataset_name}_Top{effective_topk}_images_{img_hash}_Q_{re.sub(" ", "_", query_text)}_{strategy}_{model_arch}_t2i.png'
-        )
-        plt.tight_layout()
-        plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
-        plt.close()
-    
-    print(f"Total Elapsed_t: {time.time()-plt_start_time:.3f} sec".center(160, "-"))
-
-def plot_text_to_images_old(
 		models, 
 		validation_loader, 
 		preprocess, 
@@ -864,85 +767,101 @@ def plot_text_to_images_old(
 		results_dir, 
 		cache_dir=None, 
 		embeddings_cache=None, 
-		dpi=250
+		dpi=300,
 	):
 	plt_start_time = time.time()
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	img_hash = hashlib.sha256(query_text.encode()).hexdigest()[:8]
 	if cache_dir is None:
-			cache_dir = results_dir
+		cache_dir = results_dir
 	tokenized_query = clip.tokenize([query_text]).to(device)
 	
 	for strategy, model in models.items():
-			print(f"Processing strategy: {strategy} ".center(160, " "))
-			if strategy == 'pretrained':
-					model_arch = re.sub(r'[/@]', '-', model.name)
-					print(f"{model.__class__.__name__} {model_arch}".center(160, " "))
-			model.eval()
-			print(f"[Text-to-image(s)] strategy: {strategy} Query: '{query_text}'".center(160, " "))
+		print(f"Processing strategy: {strategy} ".center(160, " "))
+		if strategy == 'pretrained':
+			model_arch = re.sub(r'[/@]', '-', model.name)
+			print(f"{model.__class__.__name__} {model_arch}".center(160, " "))
+		model.eval()
+		print(f"[Text-to-image(s)] strategy: {strategy} Query: '{query_text}'".center(160, " "))
+		
+		# Use cached embeddings
+		all_image_embeddings, image_paths = embeddings_cache[strategy]
+		all_image_embeddings = all_image_embeddings.to(device, dtype=torch.float32)  # Ensure float32
+		
+		with torch.no_grad():
+			text_features = model.encode_text(tokenized_query).to(torch.float32)  # Ensure float32
+			text_features = F.normalize(text_features, dim=-1)
 			
-			# Use cached embeddings
-			all_image_embeddings, image_paths = embeddings_cache[strategy]
+			# Debug dtypes
+			print(f"{strategy}: text_features dtype: {text_features.dtype}, all_image_embeddings dtype: {all_image_embeddings.dtype}")
 			
-			with torch.no_grad():
-				text_features = model.encode_text(tokenized_query)
-				text_features = F.normalize(text_features, dim=-1)
-				similarities = (100.0 * text_features @ all_image_embeddings.T).softmax(dim=-1)
-				effective_topk = min(topk, len(all_image_embeddings))
-				topk_scores, topk_indices = torch.topk(similarities.squeeze(), effective_topk)
-				topk_scores = topk_scores.cpu().numpy()
-				topk_indices = topk_indices.cpu().numpy()
-			
-			dataset = validation_loader.dataset
+			similarities = (100.0 * text_features @ all_image_embeddings.T).softmax(dim=-1)
+			effective_topk = min(topk, len(all_image_embeddings))
+			topk_scores, topk_indices = torch.topk(similarities.squeeze(), effective_topk)
+			topk_scores = topk_scores.cpu().numpy()
+			topk_indices = topk_indices.cpu().numpy()
+		
+		dataset = validation_loader.dataset
+		try:
+			ground_truth_labels = dataset.labels
+			topk_ground_truth_labels = [ground_truth_labels[idx] for idx in topk_indices]
+		except (AttributeError, IndexError) as e:
+			print(f"Warning: Could not retrieve ground-truth labels: {e}")
+			topk_ground_truth_labels = [f"Unknown GT {idx}" for idx in topk_indices]
+		
+		fig, axes = plt.subplots(
+			nrows=1, 
+			ncols=effective_topk, 
+			figsize=(effective_topk*1.1, 3.0), 
+			constrained_layout=True,
+		)
+		if effective_topk == 1:
+			axes = [axes]
+		
+		# fig.suptitle(f"Query: '{query_text}'\n{strategy.upper()} {model_arch}", fontsize=10, fontweight='bold')
+		
+		for i, (ax, idx, score, gt_label) in enumerate(zip(axes, topk_indices, topk_scores, topk_ground_truth_labels)):
 			try:
-				ground_truth_labels = dataset.labels
-				topk_ground_truth_labels = [ground_truth_labels[idx] for idx in topk_indices]
-			except (AttributeError, IndexError) as e:
-				print(f"Warning: Could not retrieve ground-truth labels: {e}")
-				topk_ground_truth_labels = [f"Unknown GT {idx}" for idx in topk_indices]
-			
-			fig, axes = plt.subplots(nrows=1, ncols=effective_topk, figsize=(effective_topk * 1.8, 3.0), constrained_layout=True)
-			if effective_topk == 1:
-				axes = [axes]
-			
-			fig.suptitle(f"Query: '{query_text}' | Strategy: {strategy.upper()} {model_arch}", fontsize=10, fontweight='bold')
-			
-			for i, (ax, idx, score, gt_label) in enumerate(zip(axes, topk_indices, topk_scores, topk_ground_truth_labels)):
-				try:
-					img_path = image_paths[idx]
-					if os.path.exists(img_path):
-						img = Image.open(img_path).convert('RGB')
-						ax.imshow(img)
-						ax.set_title(f"Top-{i+1} (Score: {score:.3f})\nGT: {gt_label}", fontsize=8)
+				img_path = image_paths[idx]
+				if os.path.exists(img_path):
+					img = Image.open(img_path).convert('RGB')
+					ax.imshow(img)
+					ax.set_title(f"Top-{i+1}\nScore: {score:.3f}\nGT: {gt_label.capitalize()}", fontsize=9)
+				else:
+					sample = dataset[idx]
+					if len(sample) >= 3:
+						img = sample[0]
 					else:
-						sample = dataset[idx]
-						if len(sample) >= 3:
-							img = sample[0]
-						else:
-							raise ValueError(f"Unexpected dataset structure at index {idx}: {sample}")
-						if isinstance(img, torch.Tensor):
-							img = img.cpu().numpy()
-							if img.shape[0] in [1, 3]:
-								img = img.transpose(1, 2, 0)
-							mean = np.array([0.5754663102194626, 0.564594860510725, 0.5443646108296668])
-							std = np.array([0.2736517370426002, 0.26753170455186887, 0.2619102890668636])
-							img = img * std + mean
-							img = np.clip(img, 0, 1)
-						ax.imshow(img)
-						ax.set_title(f"Top-{i+1} (Score: {score:.3f})\nGT: {gt_label}", fontsize=10)
-				except Exception as e:
-					print(f"Warning: Could not display image {idx}: {e}")
-					ax.imshow(np.ones((224, 224, 3)) * 0.5)
-					ax.set_title(f"Top-{i+1} (Score: {score:.3f})\nGT: Unknown", fontsize=10)
-				ax.axis('off')
-			
-			file_name = os.path.join(
-				results_dir,
-				f'{dataset_name}_Top{effective_topk}_images_{img_hash}_Q_{re.sub(" ", "_", query_text)}_{strategy}_{model_arch}_t2i.png'
-			)
-			plt.tight_layout()
-			plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
-			plt.close()
+						raise ValueError(f"Unexpected dataset structure at index {idx}: {sample}")
+					if isinstance(img, torch.Tensor):
+						img = img.cpu().numpy()
+						if img.shape[0] in [1, 3]:
+							img = img.transpose(1, 2, 0)
+						mean = np.array([0.5754663102194626, 0.564594860510725, 0.5443646108296668])
+						std = np.array([0.2736517370426002, 0.26753170455186887, 0.2619102890668636])
+						img = img * std + mean
+						img = np.clip(img, 0, 1)
+					ax.imshow(img)
+					ax.set_title(f"Top-{i+1}\nScore: {score:.3f}\nGT: {gt_label.capitalize()}", fontsize=8)
+			except Exception as e:
+				print(f"Warning: Could not display image {idx}: {e}")
+				ax.imshow(np.ones((224, 224, 3)) * 0.5)
+				ax.set_title(f"Top-{i+1} (Score: {score:.3f})\nGT: Unknown", fontsize=10)
+			ax.axis('off')
+		
+		file_name = os.path.join(
+			results_dir,
+			f'{dataset_name}_'
+			f'Top{effective_topk}_'
+			f'images_{img_hash}_'
+			f'Q_{re.sub(" ", "_", query_text)}_'
+			f'{strategy}_'
+			f'{model_arch}_'
+			f't2i.png'
+		)
+		plt.tight_layout()
+		plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
+		plt.close()
 	
 	print(f"Total Elapsed_t: {time.time()-plt_start_time:.3f} sec".center(160, "-"))
 

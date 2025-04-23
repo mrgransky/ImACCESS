@@ -26,10 +26,10 @@ from visualize import (
 # "https://pbs.twimg.com/media/Go2T7FJbIAApElq?format=jpg"
 
 # # run in local for all fine-tuned models with image and label:
-# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -qi "https://pbs.twimg.com/media/Go0qRhvWEAAIxpn?format=png" -ql "military personnel" -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_full_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_15_actual_epochs_15_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_progressive_unfreeze_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_15_dropout_0.0_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/SMU_1900-01-01_1970-12-31_lora_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_15_actual_epochs_15_lr_1.0e-05_wd_1.0e-02_lora_rank_32_lora_alpha_64.0_lora_dropout_0.05_bs_64_best_model.pth
+# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -qi "https://pbs.twimg.com/media/Go0qRhvWEAAIxpn?format=png" -ql "military personnel" -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_24_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_bs_64_best_model_last_phase_1_flr_6.9e-06_fwd_0.01030392170778281.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_lr_1.0e-05_wd_1.0e-02_lor_64_loa_128.0_lod_0.05_bs_64_best_model.pth
 
 # # Local | All fine-tuned models (head, torso, tail):
-# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.05_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.05_ilr_1.0e-05_iwd_1.0e-02_bs_64_best_model_last_phase_0_flr_1.0e-05_fwd_0.01.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_lr_1.0e-05_wd_1.0e-02_lor_64_loa_128.0_lod_0.05_bs_64_best_model.pth
+# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_24_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_64_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_bs_64_best_model_last_phase_1_flr_6.9e-06_fwd_0.01030392170778281.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_lr_1.0e-05_wd_1.0e-02_lor_64_loa_128.0_lod_0.05_bs_64_best_model.pth
 
 # # run in pouta for all fine-tuned models:
 # $ nohup python -u history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -nw 32 --device "cuda:2" -k 5 -bs 256 -fcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_full_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_actual_epochs_21_dropout_0.1_lr_1.0e-05_wd_1.0e-01_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_progressive_unfreeze_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_100_dropout_0.1_init_lr_1.0e-05_init_wd_1.0e-02_bs_64_best_model.pth -lcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/HISTORY_X4_lora_finetune_CLIP_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_init_epochs_110_lr_1.0e-05_wd_1.0e-02_lora_rank_64_lora_alpha_128.0_lora_dropout_0.05_bs_64_best_model.pth > /media/volume/ImACCESS/trash/history_clip_inference.txt &
@@ -112,23 +112,6 @@ def main():
 		dataset_dir=args.dataset_dir, 
 		input_resolution=model_config["image_resolution"],
 	)
-
-	# ####################################### Randomly select one sample from validation set #######################################
-	# if args.query_image is None or args.query_label is None:
-	# 	print("One or both of query_image and query_label not provided. Selecting a random sample from validation set...")
-	# 	validation_dataset = validation_loader.dataset
-	# 	# Use a random seed based on the current time
-	# 	rng = random.Random(int(time.time() * 1000))  # Seed with millisecond timestamp		
-	# 	random_idx = rng.randint(0, len(validation_dataset) - 1)
-	# 	# random_idx = random.randint(0, len(validation_dataset) - 1) # reproducible
-	# 	random_sample = validation_dataset.data_frame.iloc[random_idx]
-	# 	if args.query_image is None:
-	# 		args.query_image = random_sample['img_path']
-	# 		print(f"Selected random image: {args.query_image}")
-	# 	if args.query_label is None:
-	# 		args.query_label = random_sample['label']
-	# 		print(f"Selected random label: {args.query_label}")
-	# ####################################### Randomly select one sample from validation set #######################################
 
 	# Systematic selection of samples from validation set: Head, Torso, Tail
 	if args.query_image is None or args.query_label is None:
