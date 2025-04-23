@@ -809,11 +809,11 @@ def plot_text_to_images(
             print(f"Warning: Could not retrieve ground-truth labels: {e}")
             topk_ground_truth_labels = [f"Unknown GT {idx}" for idx in topk_indices]
         
-        fig, axes = plt.subplots(nrows=1, ncols=effective_topk, figsize=(effective_topk * 1.8, 3.0), constrained_layout=True)
+        fig, axes = plt.subplots(nrows=1, ncols=effective_topk, figsize=(effective_topk*1.8, 3.5), constrained_layout=True)
         if effective_topk == 1:
             axes = [axes]
         
-        fig.suptitle(f"Query: '{query_text}' | Strategy: {strategy.upper()} {model_arch}", fontsize=10, fontweight='bold')
+        fig.suptitle(f"Query: '{query_text}'\n{strategy.upper()} {model_arch}", fontsize=10, fontweight='bold')
         
         for i, (ax, idx, score, gt_label) in enumerate(zip(axes, topk_indices, topk_scores, topk_ground_truth_labels)):
             try:
@@ -821,7 +821,7 @@ def plot_text_to_images(
                 if os.path.exists(img_path):
                     img = Image.open(img_path).convert('RGB')
                     ax.imshow(img)
-                    ax.set_title(f"Top-{i+1} (Score: {score:.3f})\nGT: {gt_label}", fontsize=8)
+                    ax.set_title(f"Top-{i+1}\nScore: {score:.3f}\nGT: {gt_label.capitalize()}", fontsize=8)
                 else:
                     sample = dataset[idx]
                     if len(sample) >= 3:
@@ -837,7 +837,7 @@ def plot_text_to_images(
                         img = img * std + mean
                         img = np.clip(img, 0, 1)
                     ax.imshow(img)
-                    ax.set_title(f"Top-{i+1} (Score: {score:.3f})\nGT: {gt_label}", fontsize=10)
+                    ax.set_title(f"Top-{i+1}\nScore: {score:.3f}\nGT: {gt_label.capitalize()}", fontsize=8)
             except Exception as e:
                 print(f"Warning: Could not display image {idx}: {e}")
                 ax.imshow(np.ones((224, 224, 3)) * 0.5)
@@ -956,8 +956,8 @@ def plot_comparison_metrics_split(
 		finetune_strategies: list,
 		results_dir: str,
 		topK_values: list,
-		figure_size=(6, 5),
-		DPI: int = 300,
+		figure_size=(6, 5.5),
+		DPI: int = 250,
 	):
 	metrics = ["mP", "mAP", "Recall"]
 	modes = ["Image-to-Text", "Text-to-Image"]
@@ -1102,13 +1102,13 @@ def plot_comparison_metrics_split(
 				fontsize=10, 
 				fontweight='bold', 
 				# pad=25, # Increase the padding to move the title further away from the plot
-				y=1.15, # Adjust the y-position of the title
+				y=1.12, # Adjust the y-position of the title
 			)
-			ax.set_xlabel("K", fontsize=8)
+			ax.set_xlabel("K", fontsize=10, fontweight='bold')
 			ax.set_xticks(k_values)
 			ax.grid(True, linestyle='--', alpha=0.75)
 			ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
-			ax.set_yticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=7)
+			ax.set_yticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=10)
 			ax.set_ylim(-0.01, 1.01)
 			ax.tick_params(axis='both', labelsize=7)
 			ax.legend(

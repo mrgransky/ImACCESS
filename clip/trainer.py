@@ -2411,7 +2411,8 @@ def progressive_finetune(
 		epochs_in_current_phase += 1
 		epoch_duration = time.time() - epoch_start_time
 		print(f"Epoch {epoch+1} Duration: {epoch_duration:.2f}s")
-		print(f"EarlyStopping Status:\n{json.dumps(early_stopping.get_status(), indent=2, ensure_ascii=False)}")
+		if epoch+1 > minimum_epochs: 
+			print(f"EarlyStopping Status:\n{json.dumps(early_stopping.get_status(), indent=2, ensure_ascii=False)}")
 		print("-" * 80)
 
 	# --- End of Training ---
