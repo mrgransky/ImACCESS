@@ -214,7 +214,6 @@ def main():
 	####################################### Qualitative Analysis #######################################
 	print(f"Qualitative Analysis".center(160, " "))
 	for query_image in QUERY_IMAGES:
-		print(f">> Query Image: {query_image}")
 		plot_image_to_texts_pretrained(
 			best_pretrained_model=pretrained_model,
 			validation_loader=validation_loader,
@@ -245,7 +244,6 @@ def main():
 		)
 
 	for query_label in QUERY_LABELS:
-		print(f">> Query Label: {query_label}")
 		plot_text_to_images(
 			models=models_to_plot,
 			validation_loader=validation_loader,
