@@ -863,20 +863,26 @@ def plot_text_to_images(
 		for i, img in enumerate(topk_images):
 			composite.paste(img, (x_offset, title_height))  # Leave space at top for text
 			x_offset += img.width
-		
+
+		default_font_size_title = 24  # Choose a larger size for the title
+		default_font_size_score = 19  # Choose a larger size for the score
+		default_font_size_gt = 16     # Choose a larger size for the GT
 		try:
-			title_font = ImageFont.truetype("DejaVuSansMono-Bold.ttf", 20)  # For "Top-N"
-			score_font = ImageFont.truetype("DejaVuSansMono.ttf", 18)  # For "Score: X.XXX"
-			gt_font = ImageFont.truetype("NimbusSans-Regular.otf", 16)     # For "GT: Label text"
+			title_font = ImageFont.truetype("DejaVuSansMono-Bold.ttf", default_font_size_title)  # For "Top-N"
+			score_font = ImageFont.truetype("DejaVuSansMono.ttf", default_font_size_score)  # For "Score: X.XXX"
+			gt_font = ImageFont.truetype("NimbusSans-Regular.otf", default_font_size_gt)     # For "GT: Label text"
 		except IOError:
 			try:
-				title_font = ImageFont.truetype("NimbusSans-Bold.otf", 20)
-				score_font = ImageFont.truetype("NimbusSans-Regular.otf", 18)
-				gt_font = ImageFont.truetype("NimbusSans-Regular.otf", 16)
+				title_font = ImageFont.truetype("NimbusSans-Bold.otf", default_font_size_title)
+				score_font = ImageFont.truetype("NimbusSans-Regular.otf", default_font_size_score)
+				gt_font = ImageFont.truetype("NimbusSans-Regular.otf", default_font_size_gt)
 			except IOError:
 				print("Warning: Could not load any fonts. Falling back to default font.")
-				title_font = score_font = gt_font = ImageFont.load_default()
-		
+				# title_font = score_font = gt_font = ImageFont.load_default()
+				title_font = ImageFont.load_default().font_variant(size=default_font_size_title)
+				score_font = ImageFont.load_default().font_variant(size=default_font_size_score)
+				gt_font = ImageFont.load_default().font_variant(size=default_font_size_gt)
+
 		draw = ImageDraw.Draw(composite)
 		
 		# Add a subtle dividing line between title area and image
