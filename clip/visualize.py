@@ -1001,11 +1001,11 @@ def plot_text_to_images(
 						f'Q_{re.sub(" ", "_", query_text)}_'
 						f'{strategy}_'
 						f'{model_arch}_'
-						f't2i_seamless.png'
+						f't2i.png'
 				)
 				
 				composite.save(file_name, dpi=(dpi, dpi))
-				print(f"Saved seamless visualization to: {file_name}")
+				print(f"Saved visualization to: {file_name}")
 		
 		print(f"Total Elapsed_t: {time.time()-plt_start_time:.3f} sec".center(160, "-"))
 
