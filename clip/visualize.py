@@ -836,6 +836,188 @@ def plot_text_to_images(
 								blank_img = np.ones((224, 224, 3), dtype=np.uint8) * 128
 								topk_images.append(Image.fromarray(blank_img))
 				
+				# Title height in pixels - increase this for more vertical padding
+				title_height = 90  # Increased from 60 to 90 for more padding
+				
+				# First determine dimensions
+				heights = [img.height for img in topk_images]
+				widths = [img.width for img in topk_images]
+				
+				# Use the same aspect ratio for all images
+				max_height = max(heights)
+				# Resize images to have same height
+				for i in range(len(topk_images)):
+						if topk_images[i].height != max_height:
+								w = int(topk_images[i].width * (max_height / topk_images[i].height))
+								topk_images[i] = topk_images[i].resize((w, max_height), Image.LANCZOS)
+				
+				# Update widths after resizing
+				widths = [img.width for img in topk_images]
+				
+				# Create a composite image
+				total_width = sum(widths)
+				composite = Image.new('RGB', (total_width, max_height + title_height), color='white')
+				
+				# Add each image
+				x_offset = 0
+				for i, img in enumerate(topk_images):
+						composite.paste(img, (x_offset, title_height))  # Leave space at top for text
+						x_offset += img.width
+				
+				# Add text using PIL
+				from PIL import ImageDraw, ImageFont
+				
+				try:
+					# Try to load a larger font, fall back to default if not available
+					font = ImageFont.truetype("arial.ttf", 20)
+					font_gt = ImageFont.truetype("arial.ttf", 14)
+				except IOError:
+					try:
+							# Try another common font
+							font = ImageFont.truetype("DejaVuSans.ttf", 20)
+							font_gt = ImageFont.truetype("DejaVuSans.ttf", 14)
+					except IOError:
+							font = ImageFont.load_default()
+							font_gt = ImageFont.load_default()
+				
+				draw = ImageDraw.Draw(composite)
+				
+				# Add text for each image
+				x_offset = 0
+				for i, (score, gt_label, img) in enumerate(zip(topk_scores, topk_ground_truth_labels, topk_images)):
+						# Prepare the title text
+						title = f"Top-{i+1}"
+						score_text = f"Score: {score:.3f}"
+						gt_text = f"GT: {gt_label.capitalize()}"
+						
+						# Calculate center position for this image section
+						center_x = x_offset + img.width // 2
+						
+						# Draw each line of text, centered horizontally above the image
+						# Using getbbox() for newer PIL versions or getsize() for older versions
+						if hasattr(font, 'getbbox'):
+								bbox = font.getbbox(title)
+								text_width = bbox[2] - bbox[0]
+						else:
+								text_width = font.getsize(title)[0]
+						
+						# Position text with more vertical spacing
+						draw.text((center_x - text_width//2, 5), title, fill="black", font=font)
+						
+						if hasattr(font, 'getbbox'):
+								bbox = font.getbbox(score_text)
+								text_width = bbox[2] - bbox[0]
+						else:
+								text_width = font.getsize(score_text)[0]
+						
+						draw.text((center_x - text_width//2, 30), score_text, fill="black", font=font)
+						
+						if hasattr(font, 'getbbox'):
+								bbox = font.getbbox(gt_text)
+								text_width = bbox[2] - bbox[0]
+						else:
+								text_width = font.getsize(gt_text)[0]
+						
+						draw.text((center_x - text_width//2, 55), gt_text, fill="black", font=font_gt)
+						
+						x_offset += img.width
+				
+				# Save the composite image
+				file_name = os.path.join(
+						results_dir,
+						f'{dataset_name}_'
+						f'Top{effective_topk}_'
+						f'images_{img_hash}_'
+						f'Q_{re.sub(" ", "_", query_text)}_'
+						f'{strategy}_'
+						f'{model_arch}_'
+						f't2i_seamless.png'
+				)
+				
+				composite.save(file_name, dpi=(dpi, dpi))
+				print(f"Saved seamless visualization to: {file_name}")
+		
+		print(f"Total Elapsed_t: {time.time()-plt_start_time:.3f} sec".center(160, "-"))
+
+def plot_text_to_images_good(
+				models, 
+				validation_loader, 
+				preprocess, 
+				query_text, 
+				topk, 
+				device, 
+				results_dir, 
+				cache_dir=None, 
+				embeddings_cache=None, 
+				dpi=300,
+		):
+		plt_start_time = time.time()
+		dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
+		img_hash = hashlib.sha256(query_text.encode()).hexdigest()[:8]
+		if cache_dir is None:
+				cache_dir = results_dir
+		tokenized_query = clip.tokenize([query_text]).to(device)
+		
+		for strategy, model in models.items():
+				print(f"Processing strategy: {strategy} ".center(160, " "))
+				if strategy == 'pretrained':
+						model_arch = re.sub(r'[/@]', '-', model.name)
+						print(f"{model.__class__.__name__} {model_arch}".center(160, " "))
+				model.eval()
+				print(f"[Text-to-image(s)] strategy: {strategy} Query: '{query_text}'".center(160, " "))
+				
+				# Get top-k images
+				all_image_embeddings, image_paths = embeddings_cache[strategy]
+				all_image_embeddings = all_image_embeddings.to(device, dtype=torch.float32)
+				
+				with torch.no_grad():
+						text_features = model.encode_text(tokenized_query).to(torch.float32)
+						text_features = F.normalize(text_features, dim=-1)
+						similarities = (100.0 * text_features @ all_image_embeddings.T).softmax(dim=-1)
+						effective_topk = min(topk, len(all_image_embeddings))
+						topk_scores, topk_indices = torch.topk(similarities.squeeze(), effective_topk)
+						topk_scores = topk_scores.cpu().numpy()
+						topk_indices = topk_indices.cpu().numpy()
+				
+				# Get ground truth labels
+				dataset = validation_loader.dataset
+				try:
+						ground_truth_labels = dataset.labels
+						topk_ground_truth_labels = [ground_truth_labels[idx] for idx in topk_indices]
+				except (AttributeError, IndexError) as e:
+						print(f"Warning: Could not retrieve ground-truth labels: {e}")
+						topk_ground_truth_labels = [f"Unknown GT {idx}" for idx in topk_indices]
+				
+				# Load all images first
+				topk_images = []
+				for idx in topk_indices:
+						try:
+								img_path = image_paths[idx]
+								if os.path.exists(img_path):
+										img = Image.open(img_path).convert('RGB')
+								else:
+										sample = dataset[idx]
+										if len(sample) >= 3:
+												img = sample[0]
+										else:
+												raise ValueError(f"Unexpected dataset structure at index {idx}")
+										
+										if isinstance(img, torch.Tensor):
+												img = img.cpu().numpy()
+												if img.shape[0] in [1, 3]:
+														img = img.transpose(1, 2, 0)
+												mean = np.array([0.5754663102194626, 0.564594860510725, 0.5443646108296668])
+												std = np.array([0.2736517370426002, 0.26753170455186887, 0.2619102890668636])
+												img = img * std + mean
+												img = np.clip(img, 0, 1)
+												img = (img * 255).astype(np.uint8)
+												img = Image.fromarray(img)
+								topk_images.append(img)
+						except Exception as e:
+								print(f"Warning: Could not load image {idx}: {e}")
+								blank_img = np.ones((224, 224, 3), dtype=np.uint8) * 128
+								topk_images.append(Image.fromarray(blank_img))
+				
 				# Title height in pixels - adjust as needed
 				title_height = 60
 				
@@ -879,7 +1061,7 @@ def plot_text_to_images(
 				draw = ImageDraw.Draw(composite)
 				
 				# Add text for each image
-				x_offset = 0
+				x_offset = 1
 				for i, (score, gt_label, img) in enumerate(zip(topk_scores, topk_ground_truth_labels, topk_images)):
 						# Prepare the title text
 						title = f"Top-{i+1}"
