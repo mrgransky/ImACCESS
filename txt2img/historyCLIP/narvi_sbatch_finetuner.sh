@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=history_x4_finetune_strategy_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --job-name=clip_str_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --output=/lustre/sgn-data/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -9,12 +9,13 @@
 #SBATCH --cpus-per-task=12
 #SBATCH --partition=gpu
 #SBATCH --constraint=gpumem_32 # must be adjusted dynamically
-#SBATCH --mem=68G # must be adjusted dynamically
+#SBATCH --mem=64G # must be adjusted dynamically
 #SBATCH --gres=gpu:teslav100:1 # must be adjusted dynamically
 #SBATCH --time=07-00:00:00 # must be adjusted dynamically
+#SBATCH --array=0-59 # all
 # #SBATCH --array=0-11 # NA
-#SBATCH --array=12-23 # H4
-# #SBATCH --array=15,23
+# #SBATCH --array=0-11 # NA
+# #SBATCH --array=12-23 # H4
 # #SBATCH --array=24-35 # EU
 # #SBATCH --array=36-47 # WWII
 # #SBATCH --array=48-59 # SMU
@@ -55,8 +56,8 @@ FINETUNE_STRATEGIES=(
 )
 
 DATASETS=(
-	/lustre/sgn-data/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
 	/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4
+	/lustre/sgn-data/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31
 	/lustre/sgn-data/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
 	/lustre/sgn-data/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
 	/lustre/sgn-data/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
@@ -72,16 +73,6 @@ MODEL_ARCHITECTURES=(
 NUM_DATASETS=${#DATASETS[@]} # Number of datasets
 NUM_STRATEGIES=${#FINETUNE_STRATEGIES[@]} # Number of fine-tune strategies
 NUM_ARCHITECTURES=${#MODEL_ARCHITECTURES[@]} # Number of model architectures
-
-# # Approach 1: strategy × dataset × architecture 
-# # 0-19: strategy[0] with all dataset×architecture combinations
-# # 20-39: strategy[1] with all dataset×architecture combinations
-# # 40-59: strategy[2] with all dataset×architecture combinations
-# total_datasets_x_architectures=$((NUM_DATASETS * NUM_ARCHITECTURES))
-# strategy_index=$((SLURM_ARRAY_TASK_ID / total_datasets_x_architectures))
-# remainder=$((SLURM_ARRAY_TASK_ID % total_datasets_x_architectures))
-# dataset_index=$((remainder / NUM_ARCHITECTURES))
-# architecture_index=$((remainder % NUM_ARCHITECTURES))
 
 # Approach 2: dataset × strategy × architecture
 ### 0-11:  dataset[0] with all strategy×architecture combinations #SBATCH --gres=gpu:teslav100:1 #SBATCH --constraint=gpumem_32
@@ -102,18 +93,18 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 	exit 1
 fi
 
-INIT_LRS=(5e-6 1e-5 1e-5 5e-5 1e-5)
-INIT_WDS=(1e-2 1e-2 1e-2 1e-2 1e-2)
-DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
-EPOCHS=(110 100 150 150 150)
-LORA_RANKS=(32 32 32 32 32)
-LORA_ALPHAS=(64.0 64.0 64.0 64.0 64.0) # 2x rank
-LORA_DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
+INIT_LRS=(6.0e-06 1.0e-05 1.0e-05 1.0e-05 1.0e-05)
+INIT_WDS=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
+DROPOUTS=(0.2 0.1 0.05 0.05 0.05)
+EPOCHS=(100 100 150 150 150)
+LORA_RANKS=(64 64 64 64 64)
+LORA_ALPHAS=(128.0 128.0 128.0 128.0 128.0) # 2x rank
+LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 BATCH_SIZES=(64 64 64 64 64)
-PRINT_FREQUENCIES=(750 750 50 50 10)
+PRINT_FREQUENCIES=(500 500 50 50 10)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 # EARLY_STOPPING_MIN_EPOCHS=(25 25 20 20 10)
-BASE_MIN_EPOCHS=(20 20 17 17 12)  # National Archive, History_X4, Europeana, WWII, SMU
+BASE_MIN_EPOCHS=(25 25 17 17 12)  # History_X4, National Archive, Europeana, WWII, SMU
 
 # Adjust min_epochs based on strategy
 strategy="${FINETUNE_STRATEGIES[$strategy_index]}"
@@ -184,8 +175,6 @@ python -u history_clip_trainer.py \
 	--dropout "${DROPOUT}" \
 	--minimum_epochs "${MIN_EPOCHS}" \
 	--model_architecture "${MODEL_ARCHITECTURES[$architecture_index]}"
-
-echo "Python execution finished for task $SLURM_ARRAY_TASK_ID"
 
 done_txt="$user finished Slurm job: $(date)"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
