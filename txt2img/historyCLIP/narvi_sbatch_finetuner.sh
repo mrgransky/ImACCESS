@@ -7,9 +7,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=12
+#SBATCH --mem=64G # must be adjusted dynamically
 #SBATCH --partition=gpu
 #SBATCH --constraint=gpumem_32 # must be adjusted dynamically
-#SBATCH --mem=64G # must be adjusted dynamically
 #SBATCH --gres=gpu:teslav100:1 # must be adjusted dynamically
 #SBATCH --time=07-00:00:00 # must be adjusted dynamically
 #SBATCH --array=0-59 # all
@@ -50,9 +50,9 @@ conda activate py39 || { echo "Failed to activate py39 environment" >&2; exit 1;
 echo "Conda environment activated successfully"
 
 FINETUNE_STRATEGIES=(
-	"full" 
-	"lora" 
-	"progressive"
+	"full" 				# 0-3, 12-15, 24-27, 36-39, 48-51
+	"lora" 				# 4-7, 16-19, 28-31, 40-43, 52-55
+	"progressive" # 8-11, 20-23, 32-35, 44-47, 56-59
 )
 
 DATASETS=(

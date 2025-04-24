@@ -31,9 +31,9 @@ echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
 FINETUNE_STRATEGIES=(
-	"full" # 12-15
-	"lora" # 16-19
-	"progressive" # 20-23
+	"full" 				# 0-3, 12-15, 24-27, 36-39, 48-51
+	"lora" 				# 4-7, 16-19, 28-31, 40-43, 52-55
+	"progressive" # 8-11, 20-23, 32-35, 44-47, 56-59
 )
 
 DATASETS=(
