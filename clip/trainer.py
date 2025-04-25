@@ -423,9 +423,10 @@ def get_validation_metrics(
 				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 					image_embeds = model.encode_image(images)
 					image_embeds = F.normalize(image_embeds, dim=-1)
-				all_image_embeds.append(image_embeds.to(torch.float32).cpu())
+				image_embeds_cpu = image_embeds.to(torch.float32).cpu()
+				all_image_embeds.append(image_embeds_cpu)
 				all_labels.extend(labels_indices.cpu().tolist())
-				del images, image_embeds
+				del images, image_embeds, image_embeds_cpu
 				torch.cuda.empty_cache()
 		
 		all_image_embeds = torch.cat(all_image_embeds, dim=0)
@@ -441,11 +442,9 @@ def get_validation_metrics(
 			try:
 				cache_content = {'image_embeds': all_image_embeds, 'labels': all_labels}
 				torch.save(cache_content, cache_file)
-				if verbose:
-					print(f"Saved embeddings to {cache_file}")
+				if verbose: print(f"Saved embeddings to {cache_file}")
 			except Exception as e:
-				if verbose:
-					print(f"Warning: Failed to save cache: {e}")
+				if verbose: print(f"Warning: Failed to save cache: {e}")
 	
 	# Step 3: Compute class text embeddings
 	embed_start = time.time()
@@ -454,8 +453,7 @@ def get_validation_metrics(
 		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 			class_text_embeds = model.encode_text(text_inputs)
 		class_text_embeds = F.normalize(class_text_embeds, dim=-1).to(torch.float32).cpu()
-	if verbose:
-		print(f"Text embeddings computed in {time.time() - embed_start:.3f} sec")
+	if verbose:	print(f"Text embeddings computed in {time.time() - embed_start:.3f} sec")
 	
 	# Step 4: Compute similarity matrices
 	device_image_embeds = all_image_embeds.to(device, dtype=torch.float32)
