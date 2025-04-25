@@ -292,7 +292,7 @@ def plot_year_distribution(
 	plt.plot(
 		x_range,
 		kde_scaled,
-		color="#414141",
+		color="#3a3a3a",
 		linewidth=2.0,
 		linestyle="-",
 		label="Kernel Density Estimate (KDE)",
@@ -336,7 +336,7 @@ def plot_year_distribution(
 		)
 
 	# Add visual representations of key statistics
-	plt.axvline(x=mean_year, color='#eb8715ee', linestyle='-.', lw=1.5, label=f'Mean Year: {mean_year:.2f}')
+	plt.axvline(x=mean_year, color='#ee8206ee', linestyle='-.', lw=2.5, label=f'Mean Year: {mean_year:.1f}')
 	plt.axvspan(mean_year - std_year, mean_year + std_year, color='#fdff7c', alpha=0.15, label='Mean ± 1 SD')
 
 	valid_count = len(year_series)
@@ -347,9 +347,9 @@ def plot_year_distribution(
 		f"  Least frequent year(s): {', '.join(map(str, min_freq_years))} ({min_freq} images)\n\n"
 		"Central Tendency [Year]:\n"
 		f"  Median: {median_year:.0f}\n"
-		f"  Mean: {mean_year:.2f}\n"
-		f"  Mean 95% CI: [{mean_conf_interval[0]:.2f}, {mean_conf_interval[1]:.2f}]\n"
-		f"  Standard deviation: {std_year:.2f}\n\n"
+		f"  Mean: {mean_year:.1f}\n"
+		f"     Confidence Interval (95%): [{mean_conf_interval[0]:.1f}, {mean_conf_interval[1]:.1f}]\n"
+		f"  Standard deviation: {std_year:.1f}\n\n"
 		"Percentiles:\n"
 		f"  25th: {q25:.2f}\n"
 		f"  75th: {q75:.2f}\n\n"
@@ -358,11 +358,11 @@ def plot_year_distribution(
 		f"  Kurtosis: {distribution_kurtosis:.2f} ({kurt_desc})"
 	)
 	plt.text(
-		0.01, 
+		0.01,
 		0.98,
 		stats_text,
 		transform=plt.gca().transAxes,
-		fontsize=11,
+		fontsize=10,
 		verticalalignment='top',
 		horizontalalignment='left',
 		color='black',
@@ -386,7 +386,7 @@ def plot_year_distribution(
 	plt.legend(
 		loc='upper left',
 		bbox_to_anchor=(0.01, 0.56),
-		fontsize=11,
+		fontsize=10,
 		frameon=False,
 	)
 	plt.tight_layout()
