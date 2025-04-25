@@ -276,7 +276,7 @@ def plot_year_distribution(
 	sns.histplot(
 		year_series,
 		bins=BINs,
-		color="skyblue",
+		color="#5c6cf8",
 		kde=True,
 		edgecolor="white",
 		alpha=0.95,
@@ -292,21 +292,22 @@ def plot_year_distribution(
 	plt.plot(
 		x_range,
 		kde_scaled,
-		color="grey", # dark gray
+		color="#414141",
 		linewidth=2.0,
 		linestyle="-",
 		label="Kernel Density Estimate (KDE)",
 	)
 	world_war_1 = [1914, 1918]
 	world_war_2 = [1939, 1945]
+	ww_cols = ['#fa3627', '#24f81d']
 	padding = 1.05
 	max_padding = 1.1
 	# Add shaded regions for WWI and WWII (plot these first to ensure they are in the background)
 	if start_year <= world_war_1[0] and world_war_1[1] <= end_year:
-		plt.axvspan(world_war_1[0], world_war_1[1], color='#ff3a2d', alpha=0.2, label='World War One')
+		plt.axvspan(world_war_1[0], world_war_1[1], color=ww_cols[0], alpha=0.2, label='World War One')
 
 	if start_year <= world_war_2[0] and world_war_2[1] <= end_year:
-		plt.axvspan(world_war_2[0], world_war_2[1], color='#9aff33', alpha=0.2, label='World War Two')
+		plt.axvspan(world_war_2[0], world_war_2[1], color=ww_cols[1], alpha=0.2, label='World War Two')
 
 	if start_year <= world_war_1[0] and world_war_1[1] <= end_year:
 		for year in world_war_1:
@@ -315,7 +316,7 @@ def plot_year_distribution(
 			x=(world_war_1[0] + world_war_1[1]) / 2,  # float division for precise centering
 			y=max_freq * padding,
 			s='WWI',
-			color='red',
+			color=ww_cols[0],
 			fontsize=12,
 			fontweight="bold",
 			ha="center",  # horizontal alignment
@@ -323,20 +324,20 @@ def plot_year_distribution(
 	
 	if start_year <= world_war_2[0] and world_war_2[1] <= end_year:
 		for year in world_war_2:
-			plt.axvline(x=year, color='g', linestyle='--', lw=2.5)
+			plt.axvline(x=year, color=ww_cols[1], linestyle='--', lw=2.5)
 		plt.text(
 			x=(world_war_2[0] + world_war_2[1]) / 2,  # float division for precise centering
 			y=max_freq * padding,
 			s='WWII',
-			color='green',
+			color=ww_cols[1],
 			fontsize=12,
 			fontweight="bold",
 			ha="center", # horizontal alignment
 		)
 
 	# Add visual representations of key statistics
-	plt.axvline(x=mean_year, color='navy', linestyle='-.', lw=1.5, label=f'Mean Year: {mean_year:.2f}')
-	plt.axvspan(mean_year - std_year, mean_year + std_year, color='yellow', alpha=0.16, label='Mean ± 1 SD')
+	plt.axvline(x=mean_year, color='#eb8715ee', linestyle='-.', lw=1.5, label=f'Mean Year: {mean_year:.2f}')
+	plt.axvspan(mean_year - std_year, mean_year + std_year, color='#fdff7c', alpha=0.15, label='Mean ± 1 SD')
 
 	valid_count = len(year_series)
 	stats_text = (
@@ -374,7 +375,7 @@ def plot_year_distribution(
 		)
 	)
 	plt.title(
-		label=f'Temporal Distribution ({start_date} - {end_date}) Total Samples: {df.shape[0]}', fontsize=10, fontweight='bold')
+		label=f'Temporal Distribution ({start_date} - {end_date}) Total Samples: {df.shape[0]}', fontsize=12, fontweight='bold')
 	plt.xlabel('')
 	plt.tick_params(axis='x', length=0, width=0, color='black', labelcolor='black', labelsize=15)
 	plt.ylabel('Frequency', fontsize=15, fontweight='bold')
@@ -384,12 +385,9 @@ def plot_year_distribution(
 	plt.xlim(start_year - 2, end_year + 2)
 	plt.legend(
 		loc='upper left',
-		bbox_to_anchor=(0.01, 0.54),
-		fontsize=10,
+		bbox_to_anchor=(0.01, 0.56),
+		fontsize=11,
 		frameon=False,
-		# framealpha=0.95,
-		# shadow=True,
-		# fancybox=True,
 	)
 	plt.tight_layout()
 	plt.savefig(fname=fpth, dpi=DPI, bbox_inches='tight')
