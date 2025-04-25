@@ -390,7 +390,7 @@ def plot_label_distribution(
 		df: pd.DataFrame,
 		dname: str,
 		fpth: str,
-		FIGURE_SIZE: tuple = (13, 8),
+		FIGURE_SIZE: tuple = (14, 8),
 		DPI: int = 200,
 		top_n: int = None  # Option to show only top N labels
 	):
@@ -404,7 +404,11 @@ def plot_label_distribution(
 		top_labels = pd.concat([top_labels, pd.Series([other_count], index=['Other'])])
 		label_counts = top_labels
 	
-	fig, ax = plt.subplots(figsize=FIGURE_SIZE, facecolor='white')
+	fig, ax = plt.subplots(
+		figsize=FIGURE_SIZE, 
+		facecolor='white', 
+		# constrained_layout=True,
+	)
 	
 	# Plot with better styling
 	bars = label_counts.plot(
@@ -438,7 +442,7 @@ def plot_label_distribution(
 	for i, v in enumerate(label_counts):
 		ax.text(
 			i, 
-			v + (v * 0.03),  # Adjust vertical position relative to bar height
+			v + (v * 0.05),  # Adjust vertical position relative to bar height
 			str(v), 
 			ha='center',
 			fontsize=8,
@@ -465,20 +469,27 @@ def plot_label_distribution(
 			marker='o',
 			markerfacecolor='none',  # Remove marker fill
 			markeredgecolor='red',   # Set marker edge color
-			markersize=5,           # Optional: adjust marker size
-			linewidth=1.5,
-			alpha=0.8,
+			markersize=3,           # Optional: adjust marker size
+			linewidth=2.5,
+			alpha=0.9,
 			label='Logarithmic'
 		)
-		ax_log.set_ylabel('Log Frequency', color='red', fontsize=9, fontweight='bold')
+		ax_log.set_ylabel(
+			ylabel='Log Sample Frequency', 
+			color='red', 
+			fontsize=10, 
+			fontweight='bold',
+		)
 		ax_log.tick_params(axis='y', colors='red')
 	
 	# Hide all spines for the logarithmic scale
 	for spine in ax_log.spines.values():
 		spine.set_visible(False)
 
-	ax.set_xlabel('Label', fontsize=10)
-	ax.set_ylabel('Frequency', fontsize=10)
+	ax.set_xlabel('')
+	ax.tick_params(axis='x', length=0, width=0, color='none', labelcolor='black', labelsize=12)
+	ax.tick_params(axis='y', color='black', labelcolor='black', labelsize=11)
+	ax.set_ylabel('Sample Frequency', fontsize=10, fontweight='bold')
 	
 	# Add basic statistics for the distribution
 	imbalaned_ratio = label_counts.max()/label_counts.min()
