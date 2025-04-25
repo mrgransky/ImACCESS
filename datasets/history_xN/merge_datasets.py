@@ -127,8 +127,6 @@ plot_year_distribution(
 	dname=dataset_name,
 	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_year_distribution_{merged_df.shape[0]}_samples.png'),
 	BINs=BINs,
-	FIGURE_SIZE=(18, 10),
-	DPI=DPI,
 )
 
 # img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")

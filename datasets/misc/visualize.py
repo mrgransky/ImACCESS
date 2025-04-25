@@ -13,7 +13,7 @@ def plot_label_distribution_pie_chart(
 		df: pd.DataFrame = None,
 		fpth: str = "label_distribution_pie_chart.png",
 		figure_size: tuple = (12, 7),
-		DPI: int = 250,
+		DPI: int = 200,
 		dataset_name: str = "EUROPEANA_1900-01-01_1970-12-31",
 	):
 	# Count labels and sort by count (descending)
@@ -129,7 +129,7 @@ def plot_label_distribution_pie_chart(
 
 def plot_grouped_bar_chart(
 		merged_df: pd.DataFrame,
-		DPI: int = 250,
+		DPI: int = 200,
 		FIGURE_SIZE: tuple = (12, 8),
 		fname: str = "grouped_bar_chart.png",
 	):
@@ -168,7 +168,7 @@ def plot_train_val_label_distribution(
 		val_df: pd.DataFrame,
 		dataset_name: str,
 		OUTPUT_DIRECTORY: str,
-		DPI: int = 250,
+		DPI: int = 200,
 		FIGURE_SIZE: tuple = (12, 8),
 		VAL_SPLIT_PCT: float = 0.2,
 		fname: str = "simple_random_split_stratified_label_distribution_train_val.png",
@@ -210,8 +210,8 @@ def plot_year_distribution(
 		dname: str,
 		fpth: str,
 		BINs: int = 50,
-		FIGURE_SIZE: tuple = (18, 9),
-		DPI: int = 250,
+		FIGURE_SIZE: tuple = (18, 8),
+		DPI: int = 200,
 	):
 	# matplotlib.rcParams['font.family'] = ['Source Han Sans TW', 'sans-serif']
 	# print(natsorted(matplotlib.font_manager.get_font_names()))
@@ -299,8 +299,8 @@ def plot_year_distribution(
 	)
 	world_war_1 = [1914, 1918]
 	world_war_2 = [1939, 1945]
-	padding = 1.25
-	max_padding = 1.3
+	padding = 1.05
+	max_padding = 1.1
 	# Add shaded regions for WWI and WWII (plot these first to ensure they are in the background)
 	if start_year <= world_war_1[0] and world_war_1[1] <= end_year:
 		plt.axvspan(world_war_1[0], world_war_1[1], color='#ff3a2d', alpha=0.2, label='World War One')
@@ -340,47 +340,55 @@ def plot_year_distribution(
 
 	valid_count = len(year_series)
 	stats_text = (
-			f"Samples with valid dates: {valid_count} (~{round(valid_count / df.shape[0] * 100)}%)\n\n"
-			"Frequency Statistics:\n"
-			f"  Most frequent year(s): {', '.join(map(str, max_freq_years))} ({max_freq} images)\n"
-			f"  Least frequent year(s): {', '.join(map(str, min_freq_years))} ({min_freq} images)\n\n"
-			"Central Tendency [Year]:\n"
-			f"  Mean: {mean_year:.2f}\n"
-			f"  Mean 95% CI: [{mean_conf_interval[0]:.2f}, {mean_conf_interval[1]:.2f}]\n"
-			f"  Median: {median_year:.2f}\n"
-			f"  Standard deviation: {std_year:.2f}\n\n"
-			"Percentiles:\n"
-			f"  25th: {q25:.2f}\n"
-			f"  75th: {q75:.2f}\n\n"
-			"Distribution Shape:\n"
-			f"  Skewness: {distribution_skew:.2f} ({skew_desc})\n"
-			f"  Kurtosis: {distribution_kurtosis:.2f} ({kurt_desc})"
+		# f"Samples with valid dates: {valid_count} (~{round(valid_count / df.shape[0] * 100)}%)\n\n"
+		"Frequency Statistics:\n"
+		f"  Most frequent year(s): {', '.join(map(str, max_freq_years))} ({max_freq} images)\n"
+		f"  Least frequent year(s): {', '.join(map(str, min_freq_years))} ({min_freq} images)\n\n"
+		"Central Tendency [Year]:\n"
+		f"  Median: {median_year:.0f}\n"
+		f"  Mean: {mean_year:.2f}\n"
+		f"  Mean 95% CI: [{mean_conf_interval[0]:.2f}, {mean_conf_interval[1]:.2f}]\n"
+		f"  Standard deviation: {std_year:.2f}\n\n"
+		"Percentiles:\n"
+		f"  25th: {q25:.2f}\n"
+		f"  75th: {q75:.2f}\n\n"
+		"Distribution Shape:\n"
+		f"  Skewness: {distribution_skew:.2f} ({skew_desc})\n"
+		f"  Kurtosis: {distribution_kurtosis:.2f} ({kurt_desc})"
 	)
 	plt.text(
 		0.01, 
 		0.98,
 		stats_text,
 		transform=plt.gca().transAxes,
-		ha='left',
-		va='top',
-		fontsize=10.0,
+		fontsize=11,
+		verticalalignment='top',
+		horizontalalignment='left',
 		color='black',
-		bbox=dict(boxstyle='round,pad=0.5',facecolor='white', alpha=0.8, edgecolor='gray')
+		bbox=dict(
+			boxstyle='round,pad=0.5',
+			facecolor='white',
+			alpha=0.9,
+			edgecolor='none', 
+			linewidth=0.0,
+		)
 	)
-	plt.title(f'{dname} Temporal Distribution ({start_date} - {end_date}) Total Samples: {df.shape[0]}', fontsize=10, fontweight='bold')
-	plt.xlabel('Year')
-	plt.ylabel('Frequency')
+	plt.title(
+		label=f'Temporal Distribution ({start_date} - {end_date}) Total Samples: {df.shape[0]}', fontsize=10, fontweight='bold')
+	plt.xlabel('')
+	plt.ylabel('Frequency', fontsize=10, fontweight='bold')
 	plt.ylim(0, max_freq * max_padding)  # Add some padding to the y-axis
 	plt.yticks(fontsize=10, rotation=90, va='center')
 
 	plt.xlim(start_year - 2, end_year + 2)
 	plt.legend(
-		loc='center left',
+		loc='upper left',
+		bbox_to_anchor=(0.01, 0.54),
 		fontsize=10,
-		framealpha=0.95,
-		frameon=True,
-		shadow=True,
-		fancybox=True,
+		frameon=False,
+		# framealpha=0.95,
+		# shadow=True,
+		# fancybox=True,
 	)
 	plt.tight_layout()
 	plt.savefig(fname=fpth, dpi=DPI, bbox_inches='tight')
