@@ -390,8 +390,8 @@ def plot_label_distribution(
 		df: pd.DataFrame,
 		dname: str,
 		fpth: str,
-		FIGURE_SIZE: tuple = (12, 7),
-		DPI: int = 300,
+		FIGURE_SIZE: tuple = (13, 8),
+		DPI: int = 200,
 		top_n: int = None  # Option to show only top N labels
 	):
 
@@ -488,31 +488,37 @@ def plot_label_distribution(
 	most_freq_label = label_counts.max()/df.shape[0]*100
 	least_freq_label = label_counts.min()/df.shape[0]*100
 	stats_text = (
-		f"Dataset Imbalance ratio: {imbalaned_ratio:.2f}\n\n"
+		f"Imbalance ratio: {imbalaned_ratio:.1f}\n\n"
 		f"Label Statistics:\n"
 		f"    Median: {median_label_size:.0f}\n"
-		f"    Mean: {mean_label_size:.2f}\n"
-		f"    Standard deviation: {std_label_size:.2f}\n"
+		f"    Mean: {mean_label_size:.1f}\n"
+		f"    Standard deviation: {std_label_size:.1f}\n"
 		f"    Most frequent: {most_freq_label:.1f}%\n"
 		f"    Least frequent: {least_freq_label:.2f}%"
 	)
 	print(f"stats_text:\n{stats_text}\n")
 	plt.text(
-		0.865, # horizontal position
-		0.87, # vertical position
+		0.74, # horizontal position
+		0.86, # vertical position
 		stats_text,
 		transform=ax.transAxes,
-		fontsize=7,
+		fontsize=15,
 		verticalalignment='top',
 		horizontalalignment='left',
 		color='black',
-		bbox=dict(boxstyle='round,pad=0.5',facecolor='white', alpha=0.8, edgecolor='black', linewidth=0.8)
+		bbox=dict(
+			boxstyle='round,pad=0.5',
+			facecolor='white',
+			alpha=0.8,
+			edgecolor='none', 
+			linewidth=0.0,
+		)
 	)
 
 	# Enhanced title and labels
 	plt.title(
-		f'{dname} Label Distribution (Total samples: {df.shape[0]} Unique Labels: {len(df["label"].unique())})', 
-		fontsize=11, 
+		f'Label Distribution (Total samples: {df.shape[0]} Unique Labels: {len(df["label"].unique())})', 
+		fontsize=15,
 		fontweight='bold',
 	)
 	# Create a single legend
@@ -521,16 +527,18 @@ def plot_label_distribution(
 	ax.legend(
 		h1 + h2, 
 		l1 + l2, 
-		loc='best', 
+		# loc='best', 
+		loc='upper left',  # Changed to upper left
+		bbox_to_anchor=(0.73, 0.99),  # Match horizontal position with text (0.74)
 		title='Label Distribution (Scale)',
 		title_fontsize=12,
-		fontsize=9, 
+		fontsize=11, 
 		ncol=2,
-		frameon=True, 
-		fancybox=True, 
-		shadow=True, 
-		edgecolor='black', 
-		facecolor='white'
+		frameon=False, 
+		# fancybox=True, 
+		# shadow=True, 
+		# edgecolor='black', 
+		# facecolor='white'
 	)
 
 	plt.grid(axis='y', alpha=0.7, linestyle='--')
