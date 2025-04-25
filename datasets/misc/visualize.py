@@ -376,9 +376,10 @@ def plot_year_distribution(
 	plt.title(
 		label=f'Temporal Distribution ({start_date} - {end_date}) Total Samples: {df.shape[0]}', fontsize=10, fontweight='bold')
 	plt.xlabel('')
-	plt.ylabel('Frequency', fontsize=10, fontweight='bold')
+	plt.tick_params(axis='x', length=0, width=0, color='black', labelcolor='black', labelsize=15)
+	plt.ylabel('Frequency', fontsize=15, fontweight='bold')
 	plt.ylim(0, max_freq * max_padding)  # Add some padding to the y-axis
-	plt.yticks(fontsize=10, rotation=90, va='center')
+	plt.yticks(fontsize=15, rotation=90, va='center')
 
 	plt.xlim(start_year - 2, end_year + 2)
 	plt.legend(
