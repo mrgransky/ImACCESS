@@ -416,7 +416,7 @@ def create_distribution_plot_with_long_tail_analysis(
 	tail_labels = label_counts[label_counts < tail_threshold].index.tolist()
 	torso_labels = label_counts[(label_counts >= tail_threshold) & (label_counts <= head_threshold)].index.tolist()
 	segment_colors = {
-		'Head': '#047ca0e5',
+		'Head': '#00a87ee5',
 		'Torso': '#b99700',
 		'Tail': '#eb3e3e',
 	}
