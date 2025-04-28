@@ -1477,7 +1477,7 @@ def plot_comparison_metrics_split(
 										)
 						
 						# Format the plot
-						y_offset = 1.1
+						y_offset = 1.05
 						ax.set_title(
 							f"{metric}@K", 
 							fontsize=10, 
@@ -1486,27 +1486,27 @@ def plot_comparison_metrics_split(
 						)
 						ax.set_xlabel("K", fontsize=10, fontweight='bold')
 						ax.set_xticks(k_values)
-						ax.grid(True, linestyle='--', alpha=0.75)
+						ax.grid(True, linestyle='--', alpha=0.4, color='black')
 						# ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
 						# ax.set_yticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=10)
 						y_max = max(max(pretrained_vals), max(finetuned_vals))
 						y_min = min(min(pretrained_vals), min(finetuned_vals))
-						padding = (y_max - y_min) * 0.1
+						padding = (y_max - y_min) * 0.12
 						print(f"{metric}@K y_min: {y_min}, y_max: {y_max} padding: {padding}")
 						# ax.set_ylim(min(0, y_min - padding), max(1, y_max + padding))
 						ax.set_ylim(y_min - padding, y_max + padding)
 						# ax.set_ylim(-0.01, 1.01)
 						ax.tick_params(axis='both', labelsize=7)
-												
+						
 						# Place legend at the top of the plot where it typically has fewer conflicts
 						# with annotations (which are usually near data points)
 						ax.legend(
-								loc='upper center',
-								bbox_to_anchor=(0.5, y_offset),  # Position above the plot
-								frameon=False,
-								fontsize=8,
-								facecolor='white',
-								ncol=len(finetune_strategies) + 1,
+							loc='upper center',
+							bbox_to_anchor=(0.5, y_offset),  # Position above the plot
+							frameon=False,
+							fontsize=8,
+							facecolor='white',
+							ncol=len(finetune_strategies) + 1,
 						)
 						
 						# Set spine edge color to solid black
