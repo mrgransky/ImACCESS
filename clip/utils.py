@@ -61,6 +61,9 @@ def select_qualitative_samples(
 		metadata_train_path, 
 		metadata_val_path, 
 		num_samples_per_segment=5,
+		head_threshold = 5000, # Labels with frequency > 5000
+		tail_threshold = 1000  # Labels with frequency < 1000
+
 	):
 	print(f"--- Analyzing Label Distribution from {metadata_path} ---")
 	# 1. Load DataFrames
@@ -81,12 +84,6 @@ def select_qualitative_samples(
 	print(f"Label Counts (full dataset): \n{label_counts_full.head(10)}")
 	print("...")
 	print(f"{label_counts_full.tail(10)}")
-	# Define approximate thresholds based on visual inspection of Figure 2 and counts
-	# These thresholds are subjective and can be adjusted based on the specific distribution shape
-	# Example based on Figure 2:
-	head_threshold = 5000 # Labels with frequency > 5000
-	tail_threshold = 500  # Labels with frequency < 500
-	# Torso: Labels with frequency between tail_threshold and head_threshold
 	head_labels = label_counts_full[label_counts_full > head_threshold].index.tolist()
 	tail_labels = label_counts_full[label_counts_full < tail_threshold].index.tolist()
 	torso_labels = label_counts_full[(label_counts_full >= tail_threshold) & (label_counts_full <= head_threshold)].index.tolist()

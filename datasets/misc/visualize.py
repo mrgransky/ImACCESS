@@ -454,7 +454,7 @@ def create_distribution_plot_with_long_tail_analysis(
 	ymax = label_counts.max() * 1.1  # Set maximum y-value for shading
 	
 	segment_opacity = 0.2
-	segment_text_offset = 1.06
+	segment_text_yoffset = 1.045 if len(head_labels) < 5 else 1.02
 	segment_text_opacity = 0.7
 	if head_indices:
 		ax.axvspan(
@@ -466,7 +466,7 @@ def create_distribution_plot_with_long_tail_analysis(
 		)
 		ax.text(
 			np.mean(head_indices), 
-			ymax * segment_text_offset,
+			ymax * segment_text_yoffset,
 			f"HEAD\n({len(head_labels)} labels)",
 			horizontalalignment='center',
 			verticalalignment='center',
@@ -487,7 +487,7 @@ def create_distribution_plot_with_long_tail_analysis(
 		)
 		ax.text(
 			np.mean(torso_indices), 
-			ymax * segment_text_offset, 
+			ymax * segment_text_yoffset, 
 			f"TORSO\n({len(torso_labels)} labels)",
 			horizontalalignment='center',
 			verticalalignment='center',
@@ -508,7 +508,7 @@ def create_distribution_plot_with_long_tail_analysis(
 			)
 			ax.text(
 				np.mean(tail_indices), 
-				ymax * segment_text_offset,
+				ymax * segment_text_yoffset,
 				f"TAIL\n({len(tail_labels)} labels)",
 				horizontalalignment='center',
 				verticalalignment='center',
@@ -542,12 +542,10 @@ def create_distribution_plot_with_long_tail_analysis(
 	
 	# Add value labels on top of bars
 	for i, v in enumerate(label_counts):
-		# Add color coding for values based on segment
 		text_color = segment_colors['Head'] if i in head_indices else (segment_colors['Torso'] if i in torso_indices else segment_colors['Tail'])
-		
 		ax.text(
 			i, 
-			v + (v * 0.05),  # Adjust vertical position relative to bar height
+			v + (v * 0.04),  # Adjust vertical position relative to bar height
 			str(v), 
 			ha='center',
 			fontsize=8,
@@ -578,7 +576,7 @@ def create_distribution_plot_with_long_tail_analysis(
 			markersize=3,           # Optional: adjust marker size
 			linewidth=2.5,
 			alpha=0.9,
-			label='Logarithmic',
+			label='Logarithmic Scale'.capitalize(),
 			zorder=3,
 		)
 		ax_log.set_ylabel(
@@ -635,20 +633,20 @@ def create_distribution_plot_with_long_tail_analysis(
 			f"    Tail: {len(tail_labels)} labels, {tail_count} samples ({tail_percent:.1f}%)"
 	)
 	print(f"stats_text:\n{stats_text}\n")
-	plt.title(
-			f'Long-tailed Label Distribution (Total samples: {df.shape[0]}, Unique Labels: {len(df["label"].unique())}, Head: >{head_threshold}, Tail: <{tail_threshold})',
-			fontsize=14,
-			fontweight='bold',
-			y=1.17,
-	)
+	# plt.title(
+	# 	f'Long-tailed Label Distribution (Total samples: {df.shape[0]}, Unique Labels: {len(df["label"].unique())}, Head: >{head_threshold}, Tail: <{tail_threshold})',
+	# 	fontsize=14,
+	# 	fontweight='bold',
+	# 	y=1.15,
+	# )
 	
 	h1, l1 = ax.get_legend_handles_labels()
 	h2, l2 = ax_log.get_legend_handles_labels()
 	legend = ax.legend(
 		h1 + h2, 
 		l1 + l2, 
-		title='Label Distribution (Scale)',
-		title_fontsize=13,
+		# title='Label Distribution (Scale)',
+		# title_fontsize=13,
 		fontsize=12, 
 		ncol=1,
 		frameon=True,
@@ -704,7 +702,7 @@ def plot_label_distribution(
 		edgecolor='white',
 		linewidth=0.8,
 		alpha=0.8,
-		label='Linear'
+		label='Linear Scale'.capitalize()
 	)
 
 	# Hide all spines initially
