@@ -394,13 +394,13 @@ def plot_year_distribution(
 	plt.close()
 
 def create_distribution_plot_with_long_tail_analysis(
-			df: pd.DataFrame,
-			fpth: str,
-			FIGURE_SIZE: tuple = (14, 9),
-			DPI: int = 200,
-			top_n: int = None,  # Option to show only top N labels
-			head_threshold: int = 5000,  # Labels with frequency > head_threshold
-			tail_threshold: int = 500,   # Labels with frequency < tail_threshold
+		df: pd.DataFrame,
+		fpth: str,
+		FIGURE_SIZE: tuple = (14, 9),
+		DPI: int = 200,
+		top_n: int = None,  # Option to show only top N labels
+		head_threshold: int = 5000,  # Labels with frequency > head_threshold
+		tail_threshold: int = 1000,   # Labels with frequency < tail_threshold
 	):
 	label_counts = df['label'].value_counts().sort_values(ascending=False)
 	
