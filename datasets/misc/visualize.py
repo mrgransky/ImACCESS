@@ -1,11 +1,11 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import seaborn as sns
 import scipy.stats as stats
 from scipy.stats import gaussian_kde, t
 from scipy import stats
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import seaborn as sns
 import inspect
 
@@ -428,15 +428,15 @@ def create_distribution_plot_with_long_tail_analysis(
 	
 	# Plot with better styling
 	bars = label_counts.plot(
-			kind='bar',
-			ax=ax,
-			color="#00315393",
-			width=0.7,
-			edgecolor='white',
-			linewidth=0.8,
-			alpha=0.65,
-			label='Linear Scale'.capitalize(),
-			zorder=2,
+		kind='bar',
+		ax=ax,
+		color="#00315393",
+		width=0.7,
+		edgecolor='white',
+		linewidth=0.8,
+		alpha=0.65,
+		label='Linear Scale'.capitalize(),
+		zorder=2,
 	)
 	
 	# Create shaded regions for Head, Torso, and Tail
@@ -462,7 +462,7 @@ def create_distribution_plot_with_long_tail_analysis(
 			max(head_indices) + 0.4, 
 			alpha=segment_opacity, 
 			color=segment_colors['Head'], 
-			label='Head'.upper()
+			# label='Head'.upper()
 		)
 		ax.text(
 			np.mean(head_indices), 
@@ -483,7 +483,7 @@ def create_distribution_plot_with_long_tail_analysis(
 			max(torso_indices) + 0.4, 
 			alpha=segment_opacity, 
 			color=segment_colors['Torso'], 
-			label='Torso'.upper(),
+			# label='Torso'.upper(),
 		)
 		ax.text(
 			np.mean(torso_indices), 
@@ -504,7 +504,7 @@ def create_distribution_plot_with_long_tail_analysis(
 				max(tail_indices) + 0.4, 
 				alpha=segment_opacity, 
 				color=segment_colors['Tail'], 
-				label='Tail'.upper()
+				# label='Tail'.upper()
 			)
 			ax.text(
 				np.mean(tail_indices), 
@@ -633,29 +633,32 @@ def create_distribution_plot_with_long_tail_analysis(
 			f"    Tail: {len(tail_labels)} labels, {tail_count} samples ({tail_percent:.1f}%)"
 	)
 	print(f"stats_text:\n{stats_text}\n")
-	# plt.title(
-	# 	f'Long-tailed Label Distribution (Total samples: {df.shape[0]}, Unique Labels: {len(df["label"].unique())}, Head: >{head_threshold}, Tail: <{tail_threshold})',
-	# 	fontsize=14,
-	# 	fontweight='bold',
-	# 	y=1.15,
-	# )
-	
-	h1, l1 = ax.get_legend_handles_labels()
-	h2, l2 = ax_log.get_legend_handles_labels()
+
+	# Create custom legend elements
+	custom_lines = [
+		Line2D([0], [0], color="#00315393", lw=4),  # Linear scale
+		Line2D([0], [0], color='#8a008a', lw=2, marker='o', markersize=3, markerfacecolor='none', markeredgecolor='#8a008a')  # Logarithmic scale
+	]
+
+	custom_labels = ['Linear', 'Logarithmic']
+
+	# Create the legend with just these elements
 	legend = ax.legend(
-		h1 + h2, 
-		l1 + l2, 
-		# title='Label Distribution (Scale)',
-		# title_fontsize=13,
-		fontsize=12, 
-		ncol=1,
-		frameon=True,
-		fancybox=True,
-		shadow=True,
-		edgecolor='black',
-		facecolor='white',
+			custom_lines, 
+			custom_labels, 
+			loc="best",
+			title='Label Distribution (Scale)',
+			title_fontsize=14,
+			fontsize=12,
+			ncol=1,
+			frameon=True,
+			fancybox=True,
+			shadow=True,
+			edgecolor='black',
+			facecolor='white',
 	)
 	legend.set_zorder(100)
+
 	plt.tight_layout()
 	plt.savefig(fpth, dpi=DPI, bbox_inches='tight')
 	plt.close()
