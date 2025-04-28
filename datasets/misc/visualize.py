@@ -647,7 +647,7 @@ def create_distribution_plot_with_long_tail_analysis(
 			custom_lines, 
 			custom_labels, 
 			loc="best",
-			title='Label Distribution (Scale)',
+			title='Label Distribution',
 			title_fontsize=14,
 			fontsize=12,
 			ncol=1,
