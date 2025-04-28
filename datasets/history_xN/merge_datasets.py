@@ -129,6 +129,10 @@ plot_year_distribution(
 	BINs=BINs,
 )
 
+create_distribution_plot_with_long_tail_analysis(
+	df=merged_df,
+	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_long_tail_analysis.png'),
+)
 # img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
 # img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
 # mean, std = get_mean_std_rgb_img_multiprocessing(

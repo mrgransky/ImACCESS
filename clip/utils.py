@@ -155,14 +155,7 @@ def select_qualitative_samples(
 							print(f"- Warning: Label '{label}' found in val labels, but no images. Skipping T2I query.")
 				else:
 						 print(f"- Warning: Label '{label}' not found in validation set for T2I query. Skipping.") # Should not happen with segment_labels_in_val
-	# print("\n--- Sampling Complete ---")
-	# print(f"Total I2T query samples selected: {len(i2t_queries)}")
-	# print(json.dumps(i2t_queries, indent=2, ensure_ascii=False))
-	# print()
-	# print(f"Total T2I query samples selected: {len(t2i_queries)}")
-	# print(json.dumps(t2i_queries, indent=2, ensure_ascii=False))
 	return i2t_queries, t2i_queries
-
 
 def get_lora_params(path_string: str) -> dict:
 	params = {}

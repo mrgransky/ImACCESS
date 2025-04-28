@@ -393,6 +393,284 @@ def plot_year_distribution(
 	plt.savefig(fname=fpth, dpi=DPI, bbox_inches='tight')
 	plt.close()
 
+def create_distribution_plot_with_long_tail_analysis(
+			df: pd.DataFrame,
+			fpth: str,
+			FIGURE_SIZE: tuple = (14, 9),
+			DPI: int = 200,
+			top_n: int = None,  # Option to show only top N labels
+			head_threshold: int = 5000,  # Labels with frequency > head_threshold
+			tail_threshold: int = 500,   # Labels with frequency < tail_threshold
+	):
+	label_counts = df['label'].value_counts().sort_values(ascending=False)
+	
+	# Handle large number of labels
+	if top_n and len(label_counts) > top_n:
+			top_labels = label_counts.head(top_n)
+			other_count = label_counts[top_n:].sum()
+			top_labels = pd.concat([top_labels, pd.Series([other_count], index=['Other'])])
+			label_counts = top_labels
+	
+	# Identify Head, Torso, and Tail segments
+	head_labels = label_counts[label_counts > head_threshold].index.tolist()
+	tail_labels = label_counts[label_counts < tail_threshold].index.tolist()
+	torso_labels = label_counts[(label_counts >= tail_threshold) & (label_counts <= head_threshold)].index.tolist()
+	segment_colors = {
+		'Head': '#007ad1ff', 
+		'Torso': '#37a637ee', 
+		'Tail': '#ee4d4dee',
+	}
+	# Create figure and primary axis
+	fig, ax = plt.subplots(
+		figsize=FIGURE_SIZE, 
+		facecolor='white', 
+	)
+	
+	# Plot with better styling
+	bars = label_counts.plot(
+			kind='bar',
+			ax=ax,
+			color="#00315393",
+			width=0.8,
+			edgecolor='white',
+			linewidth=0.8,
+			alpha=0.6,
+			label='Linear',
+			zorder=2,
+	)
+	
+	# Create shaded regions for Head, Torso, and Tail
+	all_indices = np.arange(len(label_counts))
+	head_indices = [i for i, label in enumerate(label_counts.index) if label in head_labels]
+	torso_indices = [i for i, label in enumerate(label_counts.index) if label in torso_labels]
+	tail_indices = [i for i, label in enumerate(label_counts.index) if label in tail_labels]
+	
+	# Sort the indices to ensure proper shading
+	head_indices.sort()
+	torso_indices.sort()
+	tail_indices.sort()
+	
+	# Add shaded areas if segments exist
+	ymax = label_counts.max() * 1.1  # Set maximum y-value for shading
+	
+	segment_opacity = 0.2
+	segment_text_offset = 1.06
+	segment_text_opacity = 0.7
+	if head_indices:
+		ax.axvspan(
+			min(head_indices) - 0.4, 
+			max(head_indices) + 0.4, 
+			alpha=segment_opacity, 
+			color=segment_colors['Head'], 
+			label='Head'.upper()
+		)
+		ax.text(
+			np.mean(head_indices), 
+			ymax * segment_text_offset,
+			f"HEAD\n({len(head_labels)} labels)",
+			horizontalalignment='center',
+			verticalalignment='center',
+			fontsize=12,
+			fontweight='bold',
+			color=segment_colors['Head'],
+			bbox=dict(facecolor='white', alpha=segment_text_opacity, edgecolor='none', pad=2),
+			zorder=5,
+		)
+	
+	if torso_indices:
+		ax.axvspan(
+			min(torso_indices) - 0.4, 
+			max(torso_indices) + 0.4, 
+			alpha=segment_opacity, 
+			color=segment_colors['Torso'], 
+			label='Torso'.upper(),
+		)
+		ax.text(
+			np.mean(torso_indices), 
+			ymax * segment_text_offset, 
+			f"TORSO\n({len(torso_labels)} labels)",
+			horizontalalignment='center',
+			verticalalignment='center',
+			fontsize=12,
+			fontweight='bold',
+			color=segment_colors['Torso'],
+			bbox=dict(facecolor='white', alpha=segment_text_opacity, edgecolor='none', pad=2),
+			zorder=5,
+		)
+	
+	if tail_indices:
+			ax.axvspan(
+				min(tail_indices) - 0.4, 
+				max(tail_indices) + 0.4, 
+				alpha=segment_opacity, 
+				color=segment_colors['Tail'], 
+				label='Tail'.upper()
+			)
+			ax.text(
+				np.mean(tail_indices), 
+				ymax * segment_text_offset,
+				f"TAIL\n({len(tail_labels)} labels)",
+				horizontalalignment='center',
+				verticalalignment='center',
+				fontsize=12,
+				fontweight='bold',
+				color=segment_colors['Tail'],
+				bbox=dict(
+					facecolor='white', 
+					alpha=0.5, 
+					edgecolor='none', 
+					pad=2,
+				),
+				zorder=5,
+			)
+	
+	# Hide all spines initially
+	for spine in ax.spines.values():
+		spine.set_visible(False)
+
+	# Show only the left, right and bottom spines
+	ax.spines['bottom'].set_visible(True)
+	ax.spines['left'].set_visible(True)
+	ax.spines['right'].set_visible(True)
+
+	# Enhance readability for large number of labels
+	if len(label_counts) > 20:
+		plt.xticks(rotation=90, fontsize=11)
+	else:
+		plt.xticks(rotation=45, fontsize=9, ha='right')
+	plt.yticks(fontsize=9, rotation=90, va='center')
+	
+	# Add value labels on top of bars
+	for i, v in enumerate(label_counts):
+		# Add color coding for values based on segment
+		text_color = segment_colors['Head'] if i in head_indices else (segment_colors['Torso'] if i in torso_indices else segment_colors['Tail'])
+		
+		ax.text(
+			i, 
+			v + (v * 0.05),  # Adjust vertical position relative to bar height
+			str(v), 
+			ha='center',
+			fontsize=8,
+			fontweight='bold',
+			alpha=0.8,
+			color=text_color,
+			rotation=75,
+			bbox=dict(
+				facecolor='white',
+				edgecolor='none',
+				alpha=0.78,
+				pad=0.5
+			),
+			zorder=5,
+		)
+	
+	# Add a logarithmic scale option for highly imbalanced distributions
+	if label_counts.max() / label_counts.min() > 50:
+		ax_log = ax.twinx()
+		ax_log.set_yscale('log')
+		label_counts.plot(
+			kind='line',
+			ax=ax_log,
+			color='#8a008a',
+			marker='o',
+			markerfacecolor='none',  # Remove marker fill
+			markeredgecolor='#8a008a',   # Set marker edge color
+			markersize=3,           # Optional: adjust marker size
+			linewidth=2.5,
+			alpha=0.9,
+			label='Logarithmic',
+			zorder=3,
+		)
+		ax_log.set_ylabel(
+				ylabel='Log Sample Frequency', 
+				color='#8a008a', 
+				fontsize=10, 
+				fontweight='bold',
+		)
+		ax_log.tick_params(axis='y', colors='#8a008a')
+		ax_log.spines['right'].set_visible(True)
+		ax_log.spines['right'].set_color('#8a008a')
+		ax_log.spines['right'].set_linewidth(1.0)
+		ax_log.spines['right'].set_alpha(0.7)
+		ax_log.grid(axis='y', alpha=0.3, linestyle='--', color='#727272', zorder=0)
+
+		# Hide all spines for the logarithmic scale
+		for spine in ax_log.spines.values():
+			spine.set_visible(False)
+	ax.set_xlabel('')
+	ax.tick_params(axis='x', length=0, width=0, color='none', labelcolor='black', labelsize=12)
+	ax.tick_params(axis='y', color='black', labelcolor='black', labelsize=11)
+	ax.set_ylabel('Sample Frequency', fontsize=10, fontweight='bold')
+	# ax.set_ylim(0, label_counts.max() * 1.1)
+	
+	# Add basic statistics for the distribution
+	imbalance_ratio = label_counts.max()/label_counts.min()
+	median_label_size = label_counts.median()
+	mean_label_size = label_counts.mean()
+	std_label_size = label_counts.std()
+	most_freq_label = label_counts.max()/df.shape[0]*100
+	least_freq_label = label_counts.min()/df.shape[0]*100
+	
+	# Add segment statistics
+	head_count = sum(label_counts[head_labels])
+	torso_count = sum(label_counts[torso_labels])
+	tail_count = sum(label_counts[tail_labels])
+	total_samples = df.shape[0]
+	
+	head_percent = head_count/total_samples*100 if total_samples > 0 else 0
+	torso_percent = torso_count/total_samples*100 if total_samples > 0 else 0
+	tail_percent = tail_count/total_samples*100 if total_samples > 0 else 0
+	
+	stats_text = (
+			f"Imbalance ratio: {imbalance_ratio:.1f}\n\n"
+			f"Label Statistics:\n"
+			f"    Median: {median_label_size:.0f}\n"
+			f"    Mean: {mean_label_size:.1f}\n"
+			f"    Standard deviation: {std_label_size:.1f}\n"
+			f"    Most frequent: {most_freq_label:.1f}%\n"
+			f"    Least frequent: {least_freq_label:.2f}%\n\n"
+			f"Segment Statistics:\n"
+			f"    Head: {len(head_labels)} labels, {head_count} samples ({head_percent:.1f}%)\n"
+			f"    Torso: {len(torso_labels)} labels, {torso_count} samples ({torso_percent:.1f}%)\n"
+			f"    Tail: {len(tail_labels)} labels, {tail_count} samples ({tail_percent:.1f}%)"
+	)
+	print(f"stats_text:\n{stats_text}\n")
+	plt.title(
+			f'Long-tailed Label Distribution (Total samples: {df.shape[0]}, Unique Labels: {len(df["label"].unique())}, Head: >{head_threshold}, Tail: <{tail_threshold})',
+			fontsize=14,
+			fontweight='bold',
+			y=1.17,
+	)
+	
+	h1, l1 = ax.get_legend_handles_labels()
+	h2, l2 = ax_log.get_legend_handles_labels()
+	legend = ax.legend(
+		h1 + h2, 
+		l1 + l2, 
+		title='Label Distribution (Scale)',
+		title_fontsize=13,
+		fontsize=12, 
+		ncol=1,
+		frameon=True,
+		fancybox=True,
+		shadow=True,
+		edgecolor='black',
+		facecolor='white',
+	)
+	legend.set_zorder(100)
+	plt.tight_layout()
+	plt.savefig(fpth, dpi=DPI, bbox_inches='tight')
+	plt.close()
+	
+	return {
+		'head_labels': head_labels,
+		'torso_labels': torso_labels,
+		'tail_labels': tail_labels,
+		'head_count': head_count,
+		'torso_count': torso_count,
+		'tail_count': tail_count,
+	}
+
 def plot_label_distribution(
 		df: pd.DataFrame,
 		dname: str,
