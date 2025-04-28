@@ -435,7 +435,7 @@ def create_distribution_plot_with_long_tail_analysis(
 			edgecolor='white',
 			linewidth=0.8,
 			alpha=0.6,
-			label='Linear',
+			label='Linear Scale'.capitalize(),
 			zorder=2,
 	)
 	
