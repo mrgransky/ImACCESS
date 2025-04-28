@@ -768,7 +768,7 @@ def plot_text_to_images(
 		cache_dir=None, 
 		embeddings_cache=None, 
 		dpi=200,
-		scale_factor=5.0,
+		scale_factor=4.0,
 	):
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	img_hash = hashlib.sha256(query_text.encode()).hexdigest()[:8]
