@@ -416,9 +416,9 @@ def create_distribution_plot_with_long_tail_analysis(
 	tail_labels = label_counts[label_counts < tail_threshold].index.tolist()
 	torso_labels = label_counts[(label_counts >= tail_threshold) & (label_counts <= head_threshold)].index.tolist()
 	segment_colors = {
-		'Head': '#007ad1ff', 
-		'Torso': '#37a637ee', 
-		'Tail': '#ee4d4dee',
+		'Head': '#009682e5',
+		'Torso': '#c9a400',
+		'Tail': '#e68888',
 	}
 	# Create figure and primary axis
 	fig, ax = plt.subplots(
@@ -431,10 +431,10 @@ def create_distribution_plot_with_long_tail_analysis(
 			kind='bar',
 			ax=ax,
 			color="#00315393",
-			width=0.8,
+			width=0.7,
 			edgecolor='white',
 			linewidth=0.8,
-			alpha=0.6,
+			alpha=0.65,
 			label='Linear Scale'.capitalize(),
 			zorder=2,
 	)
