@@ -1032,7 +1032,7 @@ def plot_comparison_metrics_split_old(
 				finetune_strategies: list,
 				results_dir: str,
 				topK_values: list,
-				figure_size=(8, 7),
+				figure_size=(7, 6),
 				DPI: int = 200,
 		):
 		metrics = ["mP", "mAP", "Recall"]
@@ -1336,11 +1336,11 @@ def plot_comparison_metrics_split(
 						# Validate k values across all strategies
 						for strategy in finetune_strategies:
 								if strategy not in finetuned_dict.get(model_name, {}) or metric not in finetuned_dict.get(model_name, {}).get(strategy, {}):
-										print(f"WARNING: Metric {metric} not found in finetuned_{mode.lower().replace('-', '_')}_dict for {model_name}/{strategy}")
-										k_values = []  # Reset if any strategy is missing
-										break
+									print(f"WARNING: Metric {metric} not found in finetuned_{mode.lower().replace('-', '_')}_dict for {model_name}/{strategy}")
+									k_values = []  # Reset if any strategy is missing
+									break
 								k_values = sorted(
-										set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys())
+									set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys())
 								)
 								
 						if not k_values:
@@ -1447,11 +1447,11 @@ def plot_comparison_metrics_split(
 										color=best_text_color,
 										bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.1),
 										arrowprops=dict(
-												arrowstyle=best_arrow_style,
-												color=best_text_color,
-												shrinkA=0,
-												shrinkB=3, # 
-												alpha=0.8,
+											arrowstyle=best_arrow_style,
+											color=best_text_color,
+											shrinkA=0,
+											shrinkB=3, # 
+											alpha=0.8,
 										)
 								)
 								
@@ -1459,52 +1459,58 @@ def plot_comparison_metrics_split(
 								# Only annotate worst if it's different from best (avoids duplication)
 								if worst_strategy != best_strategy:
 										ax.annotate(
-												f"{worst_imp:+.1f}%",
-												xy=(k, worst_val),
-												xytext=worst_offset,
-												textcoords='offset points',
-												fontsize=8,
-												fontweight='bold',
+											f"{worst_imp:+.1f}%",
+											xy=(k, worst_val),
+											xytext=worst_offset,
+											textcoords='offset points',
+											fontsize=8,
+											fontweight='bold',
+											color=worst_text_color,
+											bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.1),
+											arrowprops=dict(
+												arrowstyle=worst_arrow_style,
 												color=worst_text_color,
-												bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.1),
-												arrowprops=dict(
-														arrowstyle=worst_arrow_style,
-														color=worst_text_color,
-														shrinkA=0,
-														shrinkB=3,
-														alpha=0.8,
-												)
+												shrinkA=0,
+												shrinkB=3,
+												alpha=0.8,
+											)
 										)
 						
 						# Format the plot
 						y_offset = 1.05
+						title_bottom_y = y_offset + 0.04  # Calculate position below title
+						legend_gap = 0.0  # Fixed gap between title and legend
+						legend_y_pos = title_bottom_y - legend_gap
+
 						ax.set_title(
 							f"{metric}@K", 
-							fontsize=10, 
+							fontsize=13, 
 							fontweight='bold', 
 							y=y_offset,
 						)
-						ax.set_xlabel("K", fontsize=10, fontweight='bold')
+						ax.set_xlabel("K", fontsize=11, fontweight='bold')
 						ax.set_xticks(k_values)
-						ax.grid(True, linestyle='--', alpha=0.4, color='black')
+						ax.set_xticklabels(k_values, fontsize=15)
 						# ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
 						# ax.set_yticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=10)
+						ax.grid(True, linestyle='--', alpha=0.4, color='black')
 						y_max = max(max(pretrained_vals), max(finetuned_vals))
 						y_min = min(min(pretrained_vals), min(finetuned_vals))
-						padding = (y_max - y_min) * 0.12
+						padding = (y_max - y_min) * 0.13
 						print(f"{metric}@K y_min: {y_min}, y_max: {y_max} padding: {padding}")
 						# ax.set_ylim(min(0, y_min - padding), max(1, y_max + padding))
 						ax.set_ylim(y_min - padding, y_max + padding)
 						# ax.set_ylim(-0.01, 1.01)
-						ax.tick_params(axis='both', labelsize=7)
+						ax.set_yticklabels([f'{y:.2f}' for y in ax.get_yticks()], fontsize=15)
+						# ax.tick_params(axis='both', labelsize=7)
 						
 						# Place legend at the top of the plot where it typically has fewer conflicts
 						# with annotations (which are usually near data points)
 						ax.legend(
 							loc='upper center',
-							bbox_to_anchor=(0.5, y_offset),  # Position above the plot
+							bbox_to_anchor=(0.5, legend_y_pos),  # Position with fixed gap below title
 							frameon=False,
-							fontsize=8,
+							fontsize=11,
 							facecolor='white',
 							ncol=len(finetune_strategies) + 1,
 						)
