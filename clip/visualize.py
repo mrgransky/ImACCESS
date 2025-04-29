@@ -1022,7 +1022,7 @@ def plot_text_to_images(
 			composite.save(file_name, dpi=(dpi, dpi))
 			print(f"Saved scaled composite image to: {file_name}")
 
-def plot_comparison_metrics_split_old(
+def plot_comparison_metrics_split_table_annotation(
 				dataset_name: str,
 				pretrained_img2txt_dict: dict,
 				pretrained_txt2img_dict: dict,
@@ -1282,7 +1282,7 @@ def plot_comparison_metrics_split(
 				finetune_strategies: list,
 				results_dir: str,
 				topK_values: list,
-				figure_size=(6, 5.5),
+				figure_size=(8, 5),
 				DPI: int = 250,
 		):
 		metrics = ["mP", "mAP", "Recall"]
