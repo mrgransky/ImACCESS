@@ -46,7 +46,7 @@ def main():
 	parser.add_argument('--batch_size', '-bs', type=int, default=128, help='Batch size for training')
 	parser.add_argument('--query_image', '-qi', type=str, default=None, help='image path for zero shot classification')
 	parser.add_argument('--query_label', '-ql', type=str, default=None, help='image path for zero shot classification')
-	parser.add_argument('--topK', '-k', type=int, default=5, help='TopK results')
+	parser.add_argument('--topK', '-k', type=int, default=3, help='TopK results')
 	parser.add_argument('--full_checkpoint', '-fcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
 	parser.add_argument('--lora_checkpoint', '-lcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
 	parser.add_argument('--progressive_checkpoint', '-pcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
@@ -121,7 +121,7 @@ def main():
 			metadata_path=os.path.join(args.dataset_dir, "metadata.csv"),
 			metadata_train_path=os.path.join(args.dataset_dir, "metadata_train.csv"),
 			metadata_val_path=os.path.join(args.dataset_dir, "metadata_val.csv"),
-			num_samples_per_segment=5 # Select 5 samples per segment
+			num_samples_per_segment=10,
 		)
 		if i2t_samples and t2i_samples:
 			QUERY_IMAGES = [sample['image_path'] for sample in i2t_samples]
