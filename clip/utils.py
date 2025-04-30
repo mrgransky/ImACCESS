@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
-def select_qualitative_samples(
+def select_qualitative_samples_all(
         metadata_path, 
         metadata_train_path, 
         metadata_val_path, 
@@ -185,7 +185,7 @@ def select_qualitative_samples(
     
     return i2t_queries, t2i_queries
 
-def select_qualitative_samples_old(
+def select_qualitative_samples(
 		metadata_path, 
 		metadata_train_path, 
 		metadata_val_path, 

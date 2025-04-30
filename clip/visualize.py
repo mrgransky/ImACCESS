@@ -1287,7 +1287,7 @@ def plot_comparison_metrics_split(
 		results_dir: str,
 		topK_values: list,
 		figure_size=(9, 8),
-		DPI: int = 250,
+		DPI: int = 300,
 	):
 	metrics = ["mP", "mAP", "Recall"]
 	modes = ["Image-to-Text", "Text-to-Image"]
