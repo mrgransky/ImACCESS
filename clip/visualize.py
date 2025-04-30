@@ -1498,7 +1498,7 @@ def plot_comparison_metrics_split(
 			padding = (y_max - y_min) * 0.2
 			print(f"{metric}@K y_min: {y_min}, y_max: {y_max} padding: {padding}")
 			# ax.set_ylim(min(0, y_min - padding), max(1, y_max + padding))
-			ax.set_ylim(y_min - padding, min(1.02, y_max + padding))
+			ax.set_ylim(max(-0.02, y_min - padding), min(1.02, y_max + padding))
 			# ax.set_ylim(-0.01, 1.01)
 			ax.set_yticklabels([f'{y:.2f}' for y in ax.get_yticks()], fontsize=15)
 			
