@@ -1,228 +1,248 @@
 from utils import *
-import matplotlib.gridspec as gridspec
 
 def plot_image_to_texts_separate_horizontal_bars(
-		models: dict,
-		validation_loader: DataLoader,
-		preprocess,
-		img_path: str,
-		topk: int,
-		device: str,
-		results_dir: str,
-		figure_size=(15, 6),  # Adjusted for multiple subplots
-		dpi: int = 300,  # Increased for publication quality
-	):
-	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
-	pretrained_model_arch = models.get("pretrained").name
-	print(f"{len(models)} strategies for {dataset_name} {pretrained_model_arch}")
-	
-	# Prepare labels
-	try:
-		labels = validation_loader.dataset.dataset.classes
-	except AttributeError:
-		labels = validation_loader.dataset.unique_labels
-	n_labels = len(labels)
-	if topk > n_labels:
-		print(f"ERROR: requested Top-{topk} labeling is greater than number of labels ({n_labels}) => EXIT...")
-		return
-	tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
-	
-	# Load and preprocess image
-	try:
-		img = Image.open(img_path).convert("RGB")
-	except FileNotFoundError:
-		try:
-			response = requests.get(img_path)
-			response.raise_for_status()
-			img = Image.open(BytesIO(response.content)).convert("RGB")
-		except requests.exceptions.RequestException as e:
-			print(f"ERROR: failed to load image from {img_path} => {e}")
-			return
-	image_tensor = preprocess(img).unsqueeze(0).to(device)
-	# Check if img_path is in the validation set and get ground-truth label if available
-	ground_truth_label = None
-	validation_dataset = validation_loader.dataset
-	if hasattr(validation_dataset, 'data_frame') and 'img_path' in validation_dataset.data_frame.columns:
-		matching_rows = validation_dataset.data_frame[validation_dataset.data_frame['img_path'] == img_path]
-		if not matching_rows.empty:
-			ground_truth_label = matching_rows['label'].iloc[0]
-			print(f"Ground truth label for {img_path}: {ground_truth_label}")
-	# Compute predictions for each model
-	model_predictions = {}
-	model_topk_labels = {}
-	model_topk_probs = {}
-	for model_name, model in models.items():
-		model.eval()
-		print(f"[Image-to-text(s)] {model_name} Zero-Shot Image Classification Query: {img_path}".center(200, " "))
-		t0 = time.time()
-		with torch.no_grad():
-			image_features = model.encode_image(image_tensor)
-			labels_features = model.encode_text(tokenized_labels_tensor)
-			image_features /= image_features.norm(dim=-1, keepdim=True)
-			labels_features /= labels_features.norm(dim=-1, keepdim=True)
-			similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
-		
-		# Store full probabilities for all labels
-		all_probs = similarities.squeeze().cpu().numpy()
-		model_predictions[model_name] = all_probs
-		
-		# Get top-k labels and probabilities for this model
-		topk_pred_probs, topk_pred_labels_idx = similarities.topk(topk, dim=-1)
-		topk_pred_probs = topk_pred_probs.squeeze().cpu().numpy()
-		topk_pred_indices = topk_pred_labels_idx.squeeze().cpu().numpy()
-		topk_pred_labels = [labels[i] for i in topk_pred_indices]
-		
-		# Sort by descending probability
-		sorted_indices = np.argsort(topk_pred_probs)[::-1]
-		model_topk_labels[model_name] = [topk_pred_labels[i] for i in sorted_indices]
-		model_topk_probs[model_name] = topk_pred_probs[sorted_indices]
-		print(f"Top-{topk} predicted labels for {model_name}: {model_topk_labels[model_name]}")
-		print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
-	# Create subplot grid: 1 row, (1 + len(models)) columns
-	num_strategies = len(models)
-	
-	# Get image dimensions for dynamic sizing
-	img_width, img_height = img.size
-	aspect_ratio = img_height / img_width
-	
-	# Calculate figure dimensions based on image aspect ratio
-	img_subplot_width = 3  # Base width for image subplot in inches
-	img_subplot_height = img_subplot_width * aspect_ratio  # Maintain image aspect ratio
-	
-	# Adjust model subplot widths based on image height
-	model_subplot_width = 3  # Base width for model subplots
-	model_subplot_height = img_subplot_height  # Match height with image
-	
-	# Calculate total figure dimensions
-	fig_width = img_subplot_width + (model_subplot_width * num_strategies)
-	fig_height = max(4, model_subplot_height)  # Ensure minimum height
-	
-	# Create figure with calculated dimensions
-	fig = plt.figure(figsize=(fig_width, fig_height), dpi=dpi)
-	
-	# Create grid with appropriate width ratios
-	# First column for image, remaining columns for models
-	width_ratios = [img_subplot_width/model_subplot_width] + [1] * num_strategies
-	gs = gridspec.GridSpec(1, 1 + num_strategies, width_ratios=width_ratios, wspace=0.02)
-	# Subplot 1: Query Image
-	ax0 = plt.subplot(gs[0])
-	ax0.imshow(img)
-	ax0.axis('off')
-	ax0.set_title("")
-	title_text = f"Query Image\nGT: {ground_truth_label.capitalize()}" if ground_truth_label else "Query"
-	ax0.text(
-		0.5,  # x position (center)
-		-0.05,  # y position (just below the image)
-		title_text,
-		fontsize=9,
-		fontweight='bold',
-		ha='center',
-		va='top',
-		transform=ax0.transAxes  # Use axes coordinates
-	)
-	# Define colors consistent with plot_comparison_metrics_split/merged
-	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
-	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
-	colors = [pretrained_colors.get(pretrained_model_arch, '#000000')] + list(strategy_colors.values())
-	print(f"colors: {colors}")
-	# Subplots for each model
-	all_strategies = list(models.keys())
-	axes = []
-	# Create subplots iteratively to avoid referencing 'axes' before assignment
-	for model_idx in range(num_strategies):
-			if model_idx == 0:
-					# First subplot shares x-axis with ax0 (image subplot)
-					ax = plt.subplot(gs[model_idx + 1])
-			else:
-					# Subsequent subplots share x-axis with the first model subplot (axes[0])
-					ax = plt.subplot(gs[model_idx + 1], sharex=axes[0])
-			axes.append(ax)
-	# Create a list of handles for the legend
-	legend_handles = []
-	for model_idx, (model_name, ax) in enumerate(zip(all_strategies, axes)):
-			y_pos = np.arange(topk)#*0.8  # Multiply by factor < 1 to reduce spacing
-			sorted_probs = model_topk_probs[model_name]
-			sorted_labels = model_topk_labels[model_name]
-			# Plot horizontal bars and create a handle for the legend
-			bars = ax.barh(
-				y_pos,
-				sorted_probs,
-				height=0.5,
-				color=colors[model_idx],
-				edgecolor='white',
-				alpha=0.9,
-				label=f"CLIP {pretrained_model_arch}" if model_name == "pretrained" else model_name.upper()
-			)
-			legend_handles.append(bars)
-			ax.invert_yaxis()  # Highest probs on top
-			# Hide y-axis ticks and labels
-			ax.set_yticks([])
-			ax.set_yticklabels([])  # Empty labels
-			# Set specific x-axis limits and ticks
-			ax.set_xlim(0, 1)
-			ax.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
-			ax.set_xticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=7)
-			ax.grid(True, axis='x', linestyle='--', alpha=0.5, color='#888888')  # Subtler grid
-			ax.tick_params(axis='x', labelsize=8)
-			# Annotate bars with labels and probabilities
-			for i, (label, prob) in enumerate(zip(sorted_labels, sorted_probs)):
-					formatted_label = label.replace('_', ' ').title()
-					ax.text(
-							prob + 0.01 if prob < 0.5 else prob - 0.01,
-							i,
-							f"{formatted_label}\n({prob:.2f})",
-							va='center',
-							ha='right' if prob > 0.5 else 'left',
-							fontsize=7,
-							color='black',
-							fontweight='bold' if prob == max(sorted_probs) else 'normal',
-					)
-			for spine in ax.spines.values():
-					spine.set_color('black')
-	# Add a legend at the top of the figure
-	fig.legend(
-		legend_handles,
-		[handle.get_label() for handle in legend_handles],
-		fontsize=11,
-		loc='upper center',
-		ncol=len(legend_handles),
-		bbox_to_anchor=(0.5, 0.98),
-		bbox_transform=fig.transFigure,
-		frameon=True,
-		shadow=True,
-		fancybox=True,
-		edgecolor='black',
-		facecolor='white',
-	)
-	fig.text(
-		0.5,  # x position (center of figure)
-		0.02,  # y position (near bottom of figure)
-		"Probability",
-		ha='center',  # horizontal alignment
-		va='center',  # vertical alignment
-		fontsize=12,
-		fontweight='bold'
-	)
-	plt.tight_layout() 
-	# Add a border around the entire figure
-	for spine in fig.gca().spines.values():
-			spine.set_visible(True)
-			spine.set_color('black')
-			spine.set_linewidth(1.0)
-	# Save plot
-	img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
-	file_name = os.path.join(
-		results_dir,
-		f'{dataset_name}_'
-		f'Top{topk}_labels_'
-		f'image_{img_hash}_'
-		f"{'gt_' + ground_truth_label.replace(' ', '-') + '_' if ground_truth_label else ''}"
-		f"{re.sub(r'[/@]', '-', pretrained_model_arch)}_"
-		f'separate_bar_image_to_text.png'
-	)
-	plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
-	plt.close()
-	print(f"Saved visualization to: {file_name}")
+        models: dict,
+        validation_loader: DataLoader,
+        preprocess,
+        img_path: str,
+        topk: int,
+        device: str,
+        results_dir: str,
+        dpi: int = 250,
+    ):
+    dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
+    pretrained_model_arch = models.get("pretrained").name
+    print(f"{len(models)} strategies for {dataset_name} {pretrained_model_arch}")
+    
+    # Prepare labels
+    try:
+        labels = validation_loader.dataset.dataset.classes
+    except AttributeError:
+        labels = validation_loader.dataset.unique_labels
+    n_labels = len(labels)
+    if topk > n_labels:
+        print(f"ERROR: requested Top-{topk} labeling is greater than number of labels ({n_labels}) => EXIT...")
+        return
+    tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
+    
+    # Load and preprocess image
+    try:
+        img = Image.open(img_path).convert("RGB")
+    except FileNotFoundError:
+        try:
+            response = requests.get(img_path)
+            response.raise_for_status()
+            img = Image.open(BytesIO(response.content)).convert("RGB")
+        except requests.exceptions.RequestException as e:
+            print(f"ERROR: failed to load image from {img_path} => {e}")
+            return
+    image_tensor = preprocess(img).unsqueeze(0).to(device)
+    
+    # Check if img_path is in the validation set and get ground-truth label if available
+    ground_truth_label = None
+    validation_dataset = validation_loader.dataset
+    if hasattr(validation_dataset, 'data_frame') and 'img_path' in validation_dataset.data_frame.columns:
+        matching_rows = validation_dataset.data_frame[validation_dataset.data_frame['img_path'] == img_path]
+        if not matching_rows.empty:
+            ground_truth_label = matching_rows['label'].iloc[0]
+            print(f"Ground truth label for {img_path}: {ground_truth_label}")
+    
+    # Compute predictions for each model
+    model_predictions = {}
+    model_topk_labels = {}
+    model_topk_probs = {}
+    for model_name, model in models.items():
+        model.eval()
+        print(f"[Image-to-text(s)] {model_name} Zero-Shot Image Classification Query: {img_path}".center(200, " "))
+        t0 = time.time()
+        with torch.no_grad():
+            image_features = model.encode_image(image_tensor)
+            labels_features = model.encode_text(tokenized_labels_tensor)
+            image_features /= image_features.norm(dim=-1, keepdim=True)
+            labels_features /= labels_features.norm(dim=-1, keepdim=True)
+            similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
+        
+        # Store full probabilities for all labels
+        all_probs = similarities.squeeze().cpu().numpy()
+        model_predictions[model_name] = all_probs
+        
+        # Get top-k labels and probabilities for this model
+        topk_pred_probs, topk_pred_labels_idx = similarities.topk(topk, dim=-1)
+        topk_pred_probs = topk_pred_probs.squeeze().cpu().numpy()
+        topk_pred_indices = topk_pred_labels_idx.squeeze().cpu().numpy()
+        topk_pred_labels = [labels[i] for i in topk_pred_indices]
+        
+        # Sort by descending probability
+        sorted_indices = np.argsort(topk_pred_probs)[::-1]
+        model_topk_labels[model_name] = [topk_pred_labels[i] for i in sorted_indices]
+        model_topk_probs[model_name] = topk_pred_probs[sorted_indices]
+        print(f"Top-{topk} predicted labels for {model_name}: {model_topk_labels[model_name]}")
+        print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
+    
+    # IMPROVED LAYOUT CALCULATION
+    # Get image dimensions for dynamic sizing
+    img_width, img_height = img.size
+    aspect_ratio = img_height / img_width
+    
+    # Number of models to display
+    num_strategies = len(models)
+    
+    # Base the entire layout on the image aspect ratio
+    img_display_width = 4  # Base width for image in inches
+    img_display_height = img_display_width * aspect_ratio
+    
+    # Set model result panels to have identical height as the image
+    # Each model panel should have a fixed width ratio relative to the image
+    model_panel_width = 3.5  # Width for each model panel
+    
+    # Calculate total figure dimensions
+    fig_width = img_display_width + (model_panel_width * num_strategies)
+    fig_height = max(4, img_display_height)  # Ensure minimum height
+    
+    # Create figure
+    fig = plt.figure(figsize=(fig_width, fig_height), dpi=dpi)
+    
+    # Create grid with precise width ratios
+    # First column for image, remaining columns for models
+    width_ratios = [img_display_width] + [model_panel_width] * num_strategies
+    
+    # Create GridSpec with exact dimensions
+    gs = gridspec.GridSpec(
+        1, 
+        1 + num_strategies, 
+        width_ratios=width_ratios,
+        wspace=0.05  # Reduced whitespace between panels
+    )
+    
+    # Subplot 1: Query Image
+    ax0 = fig.add_subplot(gs[0])
+    ax0.imshow(img)
+    ax0.axis('off')
+    
+    # Add title with ground truth if available
+    title_text = f"Query Image\nGT: {ground_truth_label.capitalize()}" if ground_truth_label else "Query Image"
+    ax0.text(
+        0.5,  # x position (center)
+        -0.05,  # y position (just below the image)
+        title_text,
+        fontsize=10,
+        fontweight='bold',
+        ha='center',
+        va='top',
+        transform=ax0.transAxes  # Use axes coordinates
+    )
+    
+    # Define colors consistent with plot_comparison_metrics_split/merged
+    strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
+    pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
+    colors = [pretrained_colors.get(pretrained_model_arch, '#000000')] + list(strategy_colors.values())
+    print(f"colors: {colors}")
+    
+    # Subplots for each model
+    all_strategies = list(models.keys())
+    axes = []
+    
+    # Create subplots for models - ensuring dimensions are consistent
+    for model_idx in range(num_strategies):
+        ax = fig.add_subplot(gs[model_idx + 1])
+        axes.append(ax)
+    
+    # Create a list of handles for the legend
+    legend_handles = []
+    
+    # Plot data for each model
+    for model_idx, (model_name, ax) in enumerate(zip(all_strategies, axes)):
+        y_pos = np.arange(topk)
+        sorted_probs = model_topk_probs[model_name]
+        sorted_labels = model_topk_labels[model_name]
+        
+        # Plot horizontal bars and create a handle for the legend
+        bars = ax.barh(
+            y_pos,
+            sorted_probs,
+            height=0.5,
+            color=colors[model_idx],
+            edgecolor='white',
+            alpha=0.9,
+            label=f"CLIP {pretrained_model_arch}" if model_name == "pretrained" else model_name.upper()
+        )
+        legend_handles.append(bars)
+        
+        # Format axis appearance
+        ax.invert_yaxis()  # Highest probs on top
+        ax.set_yticks([])  # Hide y-axis ticks 
+        ax.set_yticklabels([])  # Empty labels
+        
+        # Set consistent x-axis limits and ticks
+        ax.set_xlim(0, 1)
+        ax.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
+        ax.set_xticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=8)
+        ax.grid(True, axis='x', linestyle='--', alpha=0.5, color='#888888')
+        
+        # Annotate bars with labels and probabilities
+        for i, (label, prob) in enumerate(zip(sorted_labels, sorted_probs)):
+            formatted_label = label.replace('_', ' ').title()
+            ax.text(
+                prob + 0.01 if prob < 0.5 else prob - 0.01,
+                i,
+                f"{formatted_label}\n({prob:.2f})",
+                va='center',
+                ha='right' if prob > 0.5 else 'left',
+                fontsize=8,
+                color='black',
+                fontweight='bold' if prob == max(sorted_probs) else 'normal',
+            )
+        
+        # Set border color
+        for spine in ax.spines.values():
+            spine.set_color('black')
+    
+    # Add a legend at the top of the figure
+    fig.legend(
+        legend_handles,
+        [handle.get_label() for handle in legend_handles],
+        fontsize=11,
+        loc='upper center',
+        ncol=len(legend_handles),
+        bbox_to_anchor=(0.5, 1.02),
+        bbox_transform=fig.transFigure,
+        frameon=True,
+        shadow=True,
+        fancybox=True,
+        edgecolor='black',
+        facecolor='white',
+    )
+    
+    # Add x-axis label
+    fig.text(
+        0.5,  # x position (center of figure)
+        0.02,  # y position (near bottom of figure)
+        "Probability",
+        ha='center',
+        va='center',
+        fontsize=12,
+        fontweight='bold'
+    )
+    
+    # IMPORTANT: Instead of tight_layout which can override our settings,
+    # use a more controlled approach
+    fig.subplots_adjust(top=0.85, bottom=0.1, left=0.05, right=0.95)
+    
+    # Save the figure
+    img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
+    file_name = os.path.join(
+        results_dir,
+        f'{dataset_name}_'
+        f'Top{topk}_labels_'
+        f'image_{img_hash}_'
+        f"{'gt_' + ground_truth_label.replace(' ', '-') + '_' if ground_truth_label else ''}"
+        f"{re.sub(r'[/@]', '-', pretrained_model_arch)}_"
+        f'separate_bar_image_to_text.png'
+    )
+    
+    plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
+    plt.close()
+    print(f"Saved visualization to: {file_name}")
 
 def plot_image_to_texts_stacked_horizontal_bar(
 		models: dict,
@@ -751,8 +771,8 @@ def plot_text_to_images(
 		results_dir, 
 		cache_dir=None, 
 		embeddings_cache=None, 
-		dpi=150,
-		scale_factor=3.0,
+		dpi=200,
+		scale_factor=6.0,
 	):
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	img_hash = hashlib.sha256(query_text.encode()).hexdigest()[:8]
@@ -1257,256 +1277,248 @@ def plot_comparison_metrics_split_table_annotation(
 						plt.close(fig)
 
 def plot_comparison_metrics_split(
-				dataset_name: str,
-				pretrained_img2txt_dict: dict,
-				pretrained_txt2img_dict: dict,
-				finetuned_img2txt_dict: dict,
-				finetuned_txt2img_dict: dict,
-				model_name: str,
-				finetune_strategies: list,
-				results_dir: str,
-				topK_values: list,
-				figure_size=(8, 5),
-				DPI: int = 250,
-		):
-		metrics = ["mP", "mAP", "Recall"]
-		modes = ["Image-to-Text", "Text-to-Image"]
-		all_model_architectures = [
-				'RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64',
-				'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px',
-		]
-		if model_name not in finetuned_img2txt_dict.keys():
-				print(f"WARNING: {model_name} not found in finetuned_img2txt_dict. Skipping...")
-				print(json.dumps(finetuned_img2txt_dict, indent=4, ensure_ascii=False))
-				return
-		if model_name not in finetuned_txt2img_dict.keys():
-				print(f"WARNING: {model_name} not found in finetuned_txt2img_dict. Skipping...")
-				print(json.dumps(finetuned_txt2img_dict, indent=4, ensure_ascii=False))
-				return
-		
-		# Validate finetune_strategies
-		finetune_strategies = [s for s in finetune_strategies if s in ["full", "lora", "progressive"]][:3]  # Max 3
-		if not finetune_strategies:
-				print("WARNING: No valid finetune strategies provided. Skipping...")
-				return
-		model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
-		
-		# Define a professional color palette for fine-tuned strategies
-		strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
-		pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
-		strategy_styles = {'full': 's', 'lora': '^', 'progressive': 'd'}  # Unique markers
-		
-		for mode in modes:
-				pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
-				finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
-				for metric in metrics:
-						# Create figure with slightly adjusted size for better annotation spacing
-						fig, ax = plt.subplots(figsize=figure_size, constrained_layout=True)
-						
-						# Create filename for the output
-						fname = f"{dataset_name}_{'_'.join(finetune_strategies)}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_{mode.replace('-', '_')}_{metric}_comparison.png"
-						file_path = os.path.join(results_dir, fname)
-						
-						# Check if metric exists in pretrained dictionary
-						if metric not in pretrained_dict.get(model_name, {}):
-								print(f"WARNING: Metric {metric} not found in pretrained_{mode.lower().replace('-', '_')}_dict for {model_name}")
-								continue
-								
-						# Get available k values across all dictionaries
-						k_values = sorted(
-								k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {})
+		dataset_name: str,
+		pretrained_img2txt_dict: dict,
+		pretrained_txt2img_dict: dict,
+		finetuned_img2txt_dict: dict,
+		finetuned_txt2img_dict: dict,
+		model_name: str,
+		finetune_strategies: list,
+		results_dir: str,
+		topK_values: list,
+		figure_size=(9, 8),
+		DPI: int = 250,
+	):
+	metrics = ["mP", "mAP", "Recall"]
+	modes = ["Image-to-Text", "Text-to-Image"]
+	all_model_architectures = [
+		'RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64',
+		'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px',
+	]
+	if model_name not in finetuned_img2txt_dict.keys():
+		print(f"WARNING: {model_name} not found in finetuned_img2txt_dict. Skipping...")
+		print(json.dumps(finetuned_img2txt_dict, indent=4, ensure_ascii=False))
+		return
+	if model_name not in finetuned_txt2img_dict.keys():
+		print(f"WARNING: {model_name} not found in finetuned_txt2img_dict. Skipping...")
+		print(json.dumps(finetuned_txt2img_dict, indent=4, ensure_ascii=False))
+		return
+	
+	# Validate finetune_strategies
+	finetune_strategies = [s for s in finetune_strategies if s in ["full", "lora", "progressive"]][:3]  # Max 3
+	if not finetune_strategies:
+		print("WARNING: No valid finetune strategies provided. Skipping...")
+		return
+	model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
+	
+	# Define a professional color palette for fine-tuned strategies
+	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
+	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
+	strategy_styles = {'full': 's', 'lora': '^', 'progressive': 'd'}  # Unique markers
+	
+	for mode in modes:
+		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
+		finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+		for metric in metrics:
+			# Create figure with slightly adjusted size for better annotation spacing
+			fig, ax = plt.subplots(figsize=figure_size, constrained_layout=True)
+			
+			# Create filename for the output
+			fname = f"{dataset_name}_{'_'.join(finetune_strategies)}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_{mode.replace('-', '_')}_{metric}_comparison.png"
+			file_path = os.path.join(results_dir, fname)
+			
+			# Check if metric exists in pretrained dictionary
+			if metric not in pretrained_dict.get(model_name, {}):
+				print(f"WARNING: Metric {metric} not found in pretrained_{mode.lower().replace('-', '_')}_dict for {model_name}")
+				continue
+					
+			# Get available k values across all dictionaries
+			k_values = sorted(k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {}))
+			
+			# Validate k values across all strategies
+			for strategy in finetune_strategies:
+				if strategy not in finetuned_dict.get(model_name, {}) or metric not in finetuned_dict.get(model_name, {}).get(strategy, {}):
+					print(f"WARNING: Metric {metric} not found in finetuned_{mode.lower().replace('-', '_')}_dict for {model_name}/{strategy}")
+					k_values = []  # Reset if any strategy is missing
+					break
+				k_values = sorted(set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys()))
+					
+			if not k_values:
+				print(f"WARNING: No matching K values found for {metric}")
+				continue
+					
+			# Plot Pre-trained (dashed line)
+			pretrained_vals = [pretrained_dict[model_name][metric].get(str(k), float('nan')) for k in k_values]
+			ax.plot(
+				k_values,
+				pretrained_vals,
+				label=f"CLIP {model_name}",
+				color=pretrained_colors[model_name],
+				linestyle='--', 
+				marker='o',
+				linewidth=2.0,
+				markersize=4,
+				alpha=0.75,
+			)
+			
+			# Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
+			for strategy in finetune_strategies:
+				finetuned_vals = [finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) for k in k_values]
+				ax.plot(
+					k_values,
+					finetuned_vals,
+					label=f"{strategy.upper()}",
+					color=strategy_colors[strategy], 
+					linestyle='-', 
+					marker=strategy_styles[strategy],
+					linewidth=2.5,
+					markersize=5,
+				)
+			
+			# Analyze plot data to place annotations intelligently
+			key_k_values = [1, 10, 20]  # These are the key points to annotate
+			annotation_positions = {}    # To store planned annotation positions
+			
+			# First pass: gather data about values and improvements
+			for k in key_k_values:
+				if k in k_values:
+					k_idx = k_values.index(k)
+					pre_val = pretrained_vals[k_idx]
+					finetuned_vals_at_k = {strategy: finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) for strategy in finetune_strategies}
+					
+					# Calculate improvements
+					improvements = {}
+					for strategy, val in finetuned_vals_at_k.items():
+						if pre_val != 0:
+							imp = (val - pre_val) / pre_val * 100
+							improvements[strategy] = (imp, val)
+					
+					# Store data for this k
+					annotation_positions[k] = {
+						'best': max(improvements.items(), key=lambda x: x[1][0]),
+						'worst': min(improvements.items(), key=lambda x: x[1][0]),
+						'all_values': [v[1] for v in improvements.values()]
+					}
+			
+			# Second pass: determine optimal annotation placement based on plot density
+			for k, data in annotation_positions.items():
+				best_strategy, (best_imp, best_val) = data['best']
+				worst_strategy, (worst_imp, worst_val) = data['worst']
+				
+				# Find y positions of all lines at this k
+				all_values = data['all_values']
+				all_values.sort()  # Sort for easier gap analysis
+				
+				# For best annotation (typically placed above)
+				best_text_color = '#016e2bff' if best_imp >= 0 else 'red'
+				best_arrow_style = '<|-' if best_imp >= 0 else '-|>'
+				
+				# For worst annotation (typically placed below)
+				worst_text_color = '#016e2bff' if worst_imp >= 0 else 'red'
+				worst_arrow_style = '-|>' if worst_imp >= 0 else '<|-'
+				
+				# Calculate the overall range and spacing between values
+				if len(all_values) > 1:  # More than one strategy
+					value_range = max(all_values) - min(all_values)
+					avg_gap = value_range / (len(all_values) - 1) if len(all_values) > 1 else 0.1
+					
+					# Check if annotation positioning needs adjustment
+					if value_range < 0.15:  # Values are close together
+						# Use more extreme offsets
+						best_offset = (5, 20)  # Further right and higher up
+						worst_offset = (5, -20)  # Further right and lower down
+					else:
+						# Regular offsets for well-separated values
+						best_offset = (0, 20)
+						worst_offset = (0, -20)
+				else:
+					# Default offsets when there's only one strategy
+					best_offset = (0, 30)
+					worst_offset = (0, -30)
+				
+				# Place best strategy annotation with adjusted position
+				ax.annotate(
+					f"{best_imp:+.1f}%",
+					xy=(k, best_val),
+					xytext=best_offset,
+					textcoords='offset points',
+					fontsize=12,
+					fontweight='bold',
+					color=best_text_color,
+					bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.1),
+					arrowprops=dict(
+						arrowstyle=best_arrow_style,
+						color=best_text_color,
+						shrinkA=0,
+						shrinkB=3, # 
+						alpha=0.8,
+					)
+				)
+				
+				# Place worst strategy annotation with adjusted position
+				# Only annotate worst if it's different from best (avoids duplication)
+				if worst_strategy != best_strategy:
+					ax.annotate(
+						f"{worst_imp:+.1f}%",
+						xy=(k, worst_val),
+						xytext=worst_offset,
+						textcoords='offset points',
+						fontsize=12,
+						fontweight='bold',
+						color=worst_text_color,
+						bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.1),
+						arrowprops=dict(
+							arrowstyle=worst_arrow_style,
+							color=worst_text_color,
+							shrinkA=0,
+							shrinkB=3,
+							alpha=0.8,
 						)
-						
-						# Validate k values across all strategies
-						for strategy in finetune_strategies:
-								if strategy not in finetuned_dict.get(model_name, {}) or metric not in finetuned_dict.get(model_name, {}).get(strategy, {}):
-									print(f"WARNING: Metric {metric} not found in finetuned_{mode.lower().replace('-', '_')}_dict for {model_name}/{strategy}")
-									k_values = []  # Reset if any strategy is missing
-									break
-								k_values = sorted(
-									set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys())
-								)
-								
-						if not k_values:
-								print(f"WARNING: No matching K values found for {metric}")
-								continue
-								
-						# Plot Pre-trained (dashed line)
-						pretrained_vals = [pretrained_dict[model_name][metric].get(str(k), float('nan')) for k in k_values]
-						ax.plot(
-								k_values,
-								pretrained_vals,
-								label=f"CLIP {model_name}",
-								color=pretrained_colors[model_name],
-								linestyle='--', 
-								marker='o',
-								linewidth=1.5,
-								markersize=4,
-								alpha=0.75,
-						)
-						
-						# Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
-						for strategy in finetune_strategies:
-								finetuned_vals = [finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) for k in k_values]
-								ax.plot(
-										k_values,
-										finetuned_vals,
-										label=f"{strategy.upper()}",
-										color=strategy_colors[strategy], 
-										linestyle='-', 
-										marker=strategy_styles[strategy],
-										linewidth=2.0, 
-										markersize=5,
-								)
-						
-						# Analyze plot data to place annotations intelligently
-						key_k_values = [1, 10, 20]  # These are the key points to annotate
-						annotation_positions = {}    # To store planned annotation positions
-						
-						# First pass: gather data about values and improvements
-						for k in key_k_values:
-								if k in k_values:
-										k_idx = k_values.index(k)
-										pre_val = pretrained_vals[k_idx]
-										finetuned_vals_at_k = {strategy: finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) for strategy in finetune_strategies}
-										
-										# Calculate improvements
-										improvements = {}
-										for strategy, val in finetuned_vals_at_k.items():
-												if pre_val != 0:
-														imp = (val - pre_val) / pre_val * 100
-														improvements[strategy] = (imp, val)
-										
-										# Store data for this k
-										annotation_positions[k] = {
-												'best': max(improvements.items(), key=lambda x: x[1][0]),
-												'worst': min(improvements.items(), key=lambda x: x[1][0]),
-												'all_values': [v[1] for v in improvements.values()]
-										}
-						
-						# Second pass: determine optimal annotation placement based on plot density
-						for k, data in annotation_positions.items():
-								best_strategy, (best_imp, best_val) = data['best']
-								worst_strategy, (worst_imp, worst_val) = data['worst']
-								
-								# Find y positions of all lines at this k
-								all_values = data['all_values']
-								all_values.sort()  # Sort for easier gap analysis
-								
-								# For best annotation (typically placed above)
-								best_text_color = '#016e2bff' if best_imp >= 0 else 'red'
-								best_arrow_style = '<|-' if best_imp >= 0 else '-|>'
-								
-								# For worst annotation (typically placed below)
-								worst_text_color = '#016e2bff' if worst_imp >= 0 else 'red'
-								worst_arrow_style = '-|>' if worst_imp >= 0 else '<|-'
-								
-								# Calculate the overall range and spacing between values
-								if len(all_values) > 1:  # More than one strategy
-										value_range = max(all_values) - min(all_values)
-										avg_gap = value_range / (len(all_values) - 1) if len(all_values) > 1 else 0.1
-										
-										# Check if annotation positioning needs adjustment
-										if value_range < 0.15:  # Values are close together
-												# Use more extreme offsets
-												best_offset = (5, 20)  # Further right and higher up
-												worst_offset = (5, -20)  # Further right and lower down
-										else:
-												# Regular offsets for well-separated values
-												best_offset = (0, 20)
-												worst_offset = (0, -20)
-								else:
-										# Default offsets when there's only one strategy
-										best_offset = (0, 30)
-										worst_offset = (0, -30)
-								
-								# Place best strategy annotation with adjusted position
-								ax.annotate(
-										f"{best_imp:+.1f}%",
-										xy=(k, best_val),
-										xytext=best_offset,
-										textcoords='offset points',
-										fontsize=8,
-										fontweight='bold',
-										color=best_text_color,
-										bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.1),
-										arrowprops=dict(
-											arrowstyle=best_arrow_style,
-											color=best_text_color,
-											shrinkA=0,
-											shrinkB=3, # 
-											alpha=0.8,
-										)
-								)
-								
-								# Place worst strategy annotation with adjusted position
-								# Only annotate worst if it's different from best (avoids duplication)
-								if worst_strategy != best_strategy:
-										ax.annotate(
-											f"{worst_imp:+.1f}%",
-											xy=(k, worst_val),
-											xytext=worst_offset,
-											textcoords='offset points',
-											fontsize=8,
-											fontweight='bold',
-											color=worst_text_color,
-											bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.1),
-											arrowprops=dict(
-												arrowstyle=worst_arrow_style,
-												color=worst_text_color,
-												shrinkA=0,
-												shrinkB=3,
-												alpha=0.8,
-											)
-										)
-						
-						# Format the plot
-						y_offset = 1.05
-						title_bottom_y = y_offset + 0.04  # Calculate position below title
-						legend_gap = 0.0  # Fixed gap between title and legend
-						legend_y_pos = title_bottom_y - legend_gap
-
-						ax.set_title(
-							f"{metric}@K", 
-							fontsize=13, 
-							fontweight='bold', 
-							y=y_offset,
-						)
-						ax.set_xlabel("K", fontsize=11, fontweight='bold')
-						ax.set_xticks(k_values)
-						ax.set_xticklabels(k_values, fontsize=15)
-						# ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
-						# ax.set_yticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=10)
-						ax.grid(True, linestyle='--', alpha=0.4, color='black')
-						y_max = max(max(pretrained_vals), max(finetuned_vals))
-						y_min = min(min(pretrained_vals), min(finetuned_vals))
-						padding = (y_max - y_min) * 0.13
-						print(f"{metric}@K y_min: {y_min}, y_max: {y_max} padding: {padding}")
-						# ax.set_ylim(min(0, y_min - padding), max(1, y_max + padding))
-						ax.set_ylim(y_min - padding, y_max + padding)
-						# ax.set_ylim(-0.01, 1.01)
-						ax.set_yticklabels([f'{y:.2f}' for y in ax.get_yticks()], fontsize=15)
-						# ax.tick_params(axis='both', labelsize=7)
-						
-						# Place legend at the top of the plot where it typically has fewer conflicts
-						# with annotations (which are usually near data points)
-						ax.legend(
-							loc='upper center',
-							bbox_to_anchor=(0.5, legend_y_pos),  # Position with fixed gap below title
-							frameon=False,
-							fontsize=11,
-							facecolor='white',
-							ncol=len(finetune_strategies) + 1,
-						)
-						
-						# Set spine edge color to solid black
-						for spine in ax.spines.values():
-								spine.set_color('black')
-								spine.set_linewidth(0.7)
-								
-						plt.tight_layout()
-						plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
-						plt.close(fig)
+					)
+			
+			# Format the plot
+			y_offset = 1.05
+			title_bottom_y = y_offset + 0.02  # Calculate position below title
+			legend_gap = 0.0  # Fixed gap between title and legend
+			legend_y_pos = title_bottom_y - legend_gap
+			ax.set_title(
+				f"{metric}@K", 
+				fontsize=13, 
+				fontweight='bold', 
+				y=y_offset,
+			)
+			ax.set_xlabel("K", fontsize=11, fontweight='bold')
+			ax.set_xticks(k_values)
+			ax.set_xticklabels(k_values, fontsize=15)
+			# ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
+			# ax.set_yticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=10)
+			ax.grid(True, linestyle='--', alpha=0.4, color='black')
+			y_max = max(max(pretrained_vals), max(finetuned_vals))
+			y_min = min(min(pretrained_vals), min(finetuned_vals))
+			padding = (y_max - y_min) * 0.2
+			print(f"{metric}@K y_min: {y_min}, y_max: {y_max} padding: {padding}")
+			# ax.set_ylim(min(0, y_min - padding), max(1, y_max + padding))
+			ax.set_ylim(y_min - padding, min(1.02, y_max + padding))
+			# ax.set_ylim(-0.01, 1.01)
+			ax.set_yticklabels([f'{y:.2f}' for y in ax.get_yticks()], fontsize=15)
+			
+			ax.legend(
+				loc='upper center',
+				bbox_to_anchor=(0.5, legend_y_pos),  # Position with fixed gap below title
+				frameon=False,
+				fontsize=12,
+				facecolor='white',
+				ncol=len(finetune_strategies) + 1,
+			)
+			
+			# Set spine edge color to solid black
+			for spine in ax.spines.values():
+				spine.set_color('black')
+				spine.set_linewidth(0.7)
+					
+			plt.tight_layout()
+			plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
+			plt.close(fig)
 
 def plot_comparison_metrics_merged(
 		dataset_name: str,
