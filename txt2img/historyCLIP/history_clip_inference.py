@@ -117,7 +117,7 @@ def main():
 	# Systematic selection of samples from validation set: Head, Torso, Tail
 	if args.query_image is None or args.query_label is None:
 		print("One or both of query_image and query_label not provided. Selecting samples from validation set...")
-		i2t_samples, t2i_samples = select_qualitative_samples(
+		i2t_samples, t2i_samples = get_head_torso_tail_sample(
 			metadata_path=os.path.join(args.dataset_dir, "metadata.csv"),
 			metadata_train_path=os.path.join(args.dataset_dir, "metadata_train.csv"),
 			metadata_val_path=os.path.join(args.dataset_dir, "metadata_val.csv"),
