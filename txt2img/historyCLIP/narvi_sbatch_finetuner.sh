@@ -7,7 +7,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=24
-#SBATCH --mem=55G # must be adjusted dynamically
+#SBATCH --mem=64G # must be adjusted dynamically
 #SBATCH --partition=gpu
 #SBATCH --constraint=gpumem_32 # must be adjusted dynamically
 #SBATCH --gres=gpu:teslav100:1 # must be adjusted dynamically
