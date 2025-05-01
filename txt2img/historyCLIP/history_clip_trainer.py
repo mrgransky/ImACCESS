@@ -145,7 +145,7 @@ def main():
 			batch_size=args.batch_size,
 			num_workers=args.num_workers,
 			input_resolution=model_config["image_resolution"],
-			memory_threshold_gib=500.0, # GiB
+			memory_threshold_gib=999.0, # GiB
 		)
 		print_loader_info(loader=train_loader, batch_size=args.batch_size)
 		print_loader_info(loader=validation_loader, batch_size=args.batch_size)

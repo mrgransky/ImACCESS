@@ -6,21 +6,18 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=64G # must be adjusted dynamically
+#SBATCH --cpus-per-task=24
+#SBATCH --mem=55G # must be adjusted dynamically
 #SBATCH --partition=gpu
 #SBATCH --constraint=gpumem_32 # must be adjusted dynamically
 #SBATCH --gres=gpu:teslav100:1 # must be adjusted dynamically
 #SBATCH --time=07-00:00:00 # must be adjusted dynamically
-#SBATCH --array=0-59 # all
-# #SBATCH --array=0-11 # NA
-# #SBATCH --array=0-11 # NA
-# #SBATCH --array=12-23 # H4
+# #SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
+#SBATCH --array=0-11 # H4
+# #SBATCH --array=12-23 # NA
 # #SBATCH --array=24-35 # EU
 # #SBATCH --array=36-47 # WWII
 # #SBATCH --array=48-59 # SMU
-
-######SBATCH --array=0-59 # 3 strategies × 5 datasets × 4 model architectures = 60 tasks
 
 set -euo pipefail
 
@@ -93,10 +90,10 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 	exit 1
 fi
 
-INIT_LRS=(6.0e-06 1.0e-05 1.0e-05 1.0e-05 1.0e-05)
+INIT_LRS=(1.0e-06 1.0e-06 1.0e-05 1.0e-05 1.0e-05)
 INIT_WDS=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
-DROPOUTS=(0.2 0.1 0.05 0.05 0.05)
-EPOCHS=(100 100 150 150 150)
+DROPOUTS=(0.15 0.1 0.05 0.05 0.05)
+EPOCHS=(110 100 150 150 150)
 LORA_RANKS=(64 64 64 64 64)
 LORA_ALPHAS=(128.0 128.0 128.0 128.0 128.0) # 2x rank
 LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
