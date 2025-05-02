@@ -561,8 +561,8 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 DetectorFactory.seed = 42
 
 DATASET_DIRECTORY = {
-	# "farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
-	"farid": "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31",
+	"farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
+	# "farid": "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31",
 	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4",
 	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/HISTORY_X4",
 	"alijani": "/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4",
@@ -620,50 +620,50 @@ RELEVANT_ENTITY_TYPES = {
 
 # ===== ENHANCED LANGUAGE FILTERING =====
 def is_english(text):
-		"""Enhanced English detection with character set analysis"""
-		if not text or len(text) < 5:
-				return False
-		
-		# First check: percentage of Latin alphabet characters
-		ascii_chars = sum(c.isalpha() and ord(c) < 128 for c in text)
-		total_chars = sum(c.isalpha() for c in text)
-		
-		# If less than 90% of alphabetic chars are ASCII, reject
-		if total_chars > 10 and ascii_chars / total_chars < 0.9:
-				return False
-		
-		# Second check: language detection for longer texts
-		if len(text) >= 20:
-				try:
-						return detect(text) == 'en'
-				except:
-						# Fallback to looking for common English words
-						words = text.lower().split()
-						common_words = {'the', 'and', 'of', 'to', 'in', 'is', 'was', 'for', 'with', 'on'}
-						return any(word in common_words for word in words)
-		
-		# For very short texts, check if they contain only ASCII 
-		return ascii_chars / max(1, total_chars) > 0.95
+	"""Enhanced English detection with character set analysis"""
+	if not text or len(text) < 5:
+		return False
+	
+	# First check: percentage of Latin alphabet characters
+	ascii_chars = sum(c.isalpha() and ord(c) < 128 for c in text)
+	total_chars = sum(c.isalpha() for c in text)
+	
+	# If less than 90% of alphabetic chars are ASCII, reject
+	if total_chars > 10 and ascii_chars / total_chars < 0.9:
+		return False
+	
+	# Second check: language detection for longer texts
+	if len(text) >= 20:
+		try:
+			return detect(text) == 'en'
+		except:
+			# Fallback to looking for common English words
+			words = text.lower().split()
+			common_words = {'the', 'and', 'of', 'to', 'in', 'is', 'was', 'for', 'with', 'on'}
+			return any(word in common_words for word in words)
+	
+	# For very short texts, check if they contain only ASCII 
+	return ascii_chars / max(1, total_chars) > 0.95
 
 def is_likely_english_term(term):
-		"""Check if a term is likely English or a proper noun"""
-		if not term or len(term) < 3:
-				return False
-						
-		# Common characters in European languages but not in English
-		non_english_chars = 'äöüßñéèêëìíîïçåæœø'
-		
-		# Check for non-English characters
-		if any(char in non_english_chars for char in term.lower()):
-				return False
-						
-		# Allow terms that might be proper nouns (start with uppercase)
-		if term[0].isupper():
-				return True
-						
-		# Check if term is in an English dictionary
-		common_english_words = set(nltk.corpus.words.words())
-		return term.lower() in common_english_words
+	"""Check if a term is likely English or a proper noun"""
+	if not term or len(term) < 3:
+		return False
+					
+	# Common characters in European languages but not in English
+	non_english_chars = 'äöüßñéèêëìíîïçåæœø'
+	
+	# Check for non-English characters
+	if any(char in non_english_chars for char in term.lower()):
+		return False
+					
+	# Allow terms that might be proper nouns (start with uppercase)
+	if term[0].isupper():
+		return True
+
+	# Check if term is in an English dictionary
+	common_english_words = set(nltk.corpus.words.words())
+	return term.lower() in common_english_words
 
 def clean_text(text):
 		"""Clean text by removing special characters and excess whitespace"""
@@ -1042,55 +1042,51 @@ def quick_filter_candidates(text, labels, max_keep=30):
 		return sorted_labels[:max_keep]
 
 def batch_filter_by_relevance(texts, all_labels_list, threshold=0.3, batch_size=100):
-		"""Process document relevance filtering in efficient batches"""
-		results = []
-		total = len(texts)
+	"""Process document relevance filtering in efficient batches"""
+	results = []
+	total = len(texts)
+	
+	# Process in batches to avoid memory issues
+	for batch_start in range(0, total, batch_size):
+		batch_end = min(batch_start + batch_size, total)
+		batch_texts = texts[batch_start:batch_end]
+		batch_labels_list = all_labels_list[batch_start:batch_end]
 		
-		# Process in batches to avoid memory issues
-		for batch_start in range(0, total, batch_size):
-				batch_end = min(batch_start + batch_size, total)
-				batch_texts = texts[batch_start:batch_end]
-				batch_labels_list = all_labels_list[batch_start:batch_end]
-				
-				print(f"Processing batch {batch_start//batch_size + 1}/{(total-1)//batch_size + 1}...")
-				
-				# First apply quick filtering to reduce candidates
-				quick_filtered_batch = []
-				for text, labels in zip(batch_texts, batch_labels_list):
-						quick_filtered = quick_filter_candidates(text, labels)
-						quick_filtered_batch.append(quick_filtered)
-				
-				# Get text embeddings for the batch (more efficient)
-				text_embeddings = sent_model.encode(batch_texts, show_progress_bar=True, 
-																					batch_size=32, convert_to_numpy=True)
-				
-				batch_results = []
-				for i, (text_emb, labels) in enumerate(zip(text_embeddings, quick_filtered_batch)):
-						if not labels:
-								batch_results.append([])
-								continue
-								
-						# Encode all labels at once for this document
-						label_embeddings = sent_model.encode(labels, show_progress_bar=False, 
-																								convert_to_numpy=True)
-						
-						# Calculate similarities all at once (vectorized operation)
-						similarities = np.dot(label_embeddings, text_emb) / (
-								np.linalg.norm(label_embeddings, axis=1) * np.linalg.norm(text_emb) + 1e-8
-						)
-						
-						# Filter by threshold
-						relevant_indices = np.where(similarities > threshold)[0]
-						batch_results.append([labels[idx] for idx in relevant_indices])
-						
-						# Progress indicator within batch
-						if (i + 1) % 20 == 0 or i + 1 == len(batch_texts):
-								print(f"  Processed {i+1}/{len(batch_texts)} documents in current batch")
-				
-				results.extend(batch_results)
-				print(f"  Completed batch with {sum(len(labels) for labels in batch_results)} relevant labels found")
+		print(f"Processing batch {batch_start//batch_size + 1}/{(total-1)//batch_size + 1}...")
 		
-		return results
+		# First apply quick filtering to reduce candidates
+		quick_filtered_batch = []
+		for text, labels in zip(batch_texts, batch_labels_list):
+			quick_filtered = quick_filter_candidates(text, labels)
+			quick_filtered_batch.append(quick_filtered)
+		
+		# Get text embeddings for the batch (more efficient)
+		text_embeddings = sent_model.encode(batch_texts, show_progress_bar=True, batch_size=batch_size, convert_to_numpy=True)
+		
+		batch_results = []
+		for i, (text_emb, labels) in enumerate(zip(text_embeddings, quick_filtered_batch)):
+			if not labels:
+				batch_results.append([])
+				continue
+					
+			# Encode all labels at once for this document
+			label_embeddings = sent_model.encode(labels, show_progress_bar=False, convert_to_numpy=True)
+			
+			# Calculate similarities all at once (vectorized operation)
+			similarities = np.dot(label_embeddings, text_emb) / (np.linalg.norm(label_embeddings, axis=1) * np.linalg.norm(text_emb) + 1e-8)
+			
+			# Filter by threshold
+			relevant_indices = np.where(similarities > threshold)[0]
+			batch_results.append([labels[idx] for idx in relevant_indices])
+			
+			# Progress indicator within batch
+			if (i + 1) % 250 == 0 or i + 1 == len(batch_texts):
+				print(f"  Processed {i+1}/{len(batch_texts)} documents in current batch")
+
+		results.extend(batch_results)
+		print(f"  Completed batch with {sum(len(labels) for labels in batch_results)} relevant labels found")
+	
+	return results
 
 # ===== PARALLEL PROCESSING SUPPORT =====
 def process_document_chunk(chunk_data):
@@ -1158,184 +1154,186 @@ def parallel_relevance_filtering(texts, all_labels, n_processes=None):
 		return all_results
 
 def process_text_chunk(chunk):
-		return [extract_named_entities(text) for text in chunk]
+	return [extract_named_entities(text) for text in chunk]
 
 # ===== MAIN FUNCTION =====
-def get_text_based_annotation(csv_file, title_col='title', desc_col='description', label_col='label', use_parallel=True, num_processes=4):
-		print(f"Automatic label extraction from text data".center(150, "-"))
-		print(f"Loading metadata from {csv_file}...")
-		
-		# Define dtypes to avoid warnings and errors
-		dtypes = {
-				'doc_id': str, 'id': str, 'label': str, 'title': str,
-				'description': str, 'img_url': str, 'label_title_description': str,
-				'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
-				'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
-		}
-		
-		df = pd.read_csv(
-				filepath_or_buffer=csv_file, 
-				on_bad_lines='skip',
-				dtype=dtypes, 
-				low_memory=False,
-		)
-		print(f"FULL Dataset {type(df)} {df.shape}")
-		
-		# Create combined 'content' field
-		df['content'] = df[title_col].fillna('') + ' ' + df[desc_col].fillna('')
-		if label_col in df.columns:
-				df['content'] = df['content'] + ' ' + df[label_col].fillna('')
-		
-		# Clean text
-		print("Cleaning text...")
-		df['clean_content'] = df['content'].apply(clean_text)
-		
-		# Apply enhanced language filtering
-		print("Filtering non-English entries...")
-		t0 = time.time()
-		english_mask = df['clean_content'].apply(is_english)
-		print(f"{sum(english_mask)} / {len(df)} texts are English")
-		print(f"Language filter done in {time.time() - t0:.1f} sec")
-		
-		df = df[english_mask].reset_index(drop=True)
-		clean_texts = df['clean_content'].tolist()
-		
-		# Step 1: Topic Modeling with redundancy reduction
-		print("Performing topic modeling...")
-		t0 = time.time()
-		topics, flat_topic_words = extract_semantic_topics(
-				texts=clean_texts, 
-				n_clusters=min(30, len(clean_texts) // 100 + 5),  # Increased clusters
-				top_k_words=10,
-				merge_threshold=0.65  # Merge similar topics
-		)
-		print(f"{len(topics)} Topics(clusters) {type(topics)}:\n{topics}")
-		print(f"Topic modeling done in {time.time() - t0:.1f} sec")
-		
-		# Step 2: Named Entity Recognition per image
-		print("Extracting named entities per image...")
-		t0 = time.time()
-		
-		# Use parallel processing for NER if dataset is large
-		if len(clean_texts) > 1000 and use_parallel:
-			# num_processes = max(1, multiprocessing.cpu_count() - 1)
-			chunk_size = len(clean_texts) // num_processes + 1
-			chunks = [
-				(clean_texts[i:i+chunk_size]) 
-				for i in range(0, len(clean_texts), chunk_size)
-			]
-			print(f"Using {num_processes} processes for NER extraction...")
-			with multiprocessing.Pool(processes=num_processes) as pool:
-				ner_results = pool.map(process_text_chunk, chunks)
+def get_text_based_annotation(
+		csv_file: str, 
+		title_col: str='title', 
+		desc_col: str='description', 
+		label_col: str='label', 
+		use_parallel: bool=False, 
+		num_processes: int=4,
+		batch_size: int=512,
+	):
+	print(f"Automatic label extraction from text data".center(150, "-"))
+	print(f"Loading metadata from {csv_file}...")
+	
+	# Define dtypes to avoid warnings and errors
+	dtypes = {
+			'doc_id': str, 'id': str, 'label': str, 'title': str,
+			'description': str, 'img_url': str, 'label_title_description': str,
+			'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
+			'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+	}
+	
+	df = pd.read_csv(
+			filepath_or_buffer=csv_file, 
+			on_bad_lines='skip',
+			dtype=dtypes, 
+			low_memory=False,
+	)
+	print(f"FULL Dataset {type(df)} {df.shape}")
+	
+	# Create combined 'content' field
+	df['content'] = df[title_col].fillna('') + ' ' + df[desc_col].fillna('')
+	if label_col in df.columns:
+			df['content'] = df['content'] + ' ' + df[label_col].fillna('')
+	
+	# Clean text
+	print("Cleaning text...")
+	df['clean_content'] = df['content'].apply(clean_text)
+	
+	# Apply enhanced language filtering
+	print("Filtering non-English entries...")
+	t0 = time.time()
+	english_mask = df['clean_content'].apply(is_english)
+	print(f"{sum(english_mask)} / {len(df)} texts are English")
+	print(f"Language filter done in {time.time() - t0:.1f} sec")
+	
+	df = df[english_mask].reset_index(drop=True)
+	clean_texts = df['clean_content'].tolist()
+	
+	# Step 1: Topic Modeling with redundancy reduction
+	print("Performing topic modeling...")
+	t0 = time.time()
+	topics, flat_topic_words = extract_semantic_topics(
+			texts=clean_texts, 
+			n_clusters=min(30, len(clean_texts) // 100 + 5),  # Increased clusters
+			top_k_words=10,
+			merge_threshold=0.65  # Merge similar topics
+	)
+	print(f"{len(topics)} Topics(clusters) {type(topics)}:\n{topics}")
+	print(f"Topic modeling done in {time.time() - t0:.1f} sec")
+	
+	# Step 2: Named Entity Recognition per image
+	print("Extracting named entities per image...")
+	t0 = time.time()
+	
+	# Use parallel processing for NER if dataset is large
+	if len(clean_texts) > 1000 and use_parallel:
+		# num_processes = max(1, multiprocessing.cpu_count() - 1)
+		chunk_size = len(clean_texts) // num_processes + 1
+		chunks = [
+			(clean_texts[i:i+chunk_size]) 
+			for i in range(0, len(clean_texts), chunk_size)
+		]
+		print(f"Using {num_processes} processes for NER extraction...")
+		with multiprocessing.Pool(processes=num_processes) as pool:
+			ner_results = pool.map(process_text_chunk, chunks)
+				
+		per_image_ner_labels = []
+		for chunk_result in ner_results:
+			per_image_ner_labels.extend(chunk_result)
+	else:
+		per_image_ner_labels = []
+		for i, text in enumerate(tqdm(clean_texts, desc="NER Progress")):
+			entities = extract_named_entities(text)
+			per_image_ner_labels.append(entities)
 					
-			per_image_ner_labels = []
-			for chunk_result in ner_results:
-				per_image_ner_labels.extend(chunk_result)
-		else:
-			per_image_ner_labels = []
-			for i, text in enumerate(tqdm(clean_texts, desc="NER Progress")):
-				entities = extract_named_entities(text)
-				per_image_ner_labels.append(entities)
-						
-		print(f"NER done in {time.time() - t0:.1f} sec")
+	print(f"NER done in {time.time() - t0:.1f} sec")
+	
+	# Step 3: Extract keywords per image
+	print("Extracting keywords per image...")
+	t0 = time.time()
+	per_image_keywords = [extract_keywords(text) for text in clean_texts]
+	print(f"Keyword extraction done in {time.time() - t0:.1f} sec")
+	
+	# Step 4: Add individual topic labels
+	print("Assigning topic labels per image...")
+	t0 = time.time()
+	per_image_topic_labels = []
+	for text in clean_texts:
+		# text_tokens = set(text.split())
+		# Find topic words that appear in the text
+		matching_topics = [word for word in flat_topic_words if word in text]
+		per_image_topic_labels.append(matching_topics)
+	print(f"Topic assignment done in {time.time() - t0:.1f} sec")
+	# Step 5: Combine all label sources and clean
+	print("Combining and cleaning labels...")
+	t0 = time.time()
+	per_image_combined_labels = []
+	for ner, keywords, topics in zip(per_image_ner_labels, per_image_keywords, per_image_topic_labels):
+		# Combine all sources
+		all_labels = list(set(ner + keywords + topics))
+		# Clean the labels
+		cleaned_labels = clean_labels(all_labels)
+		# Filter metadata terms
+		cleaned_labels = filter_metadata_terms(cleaned_labels)
+		per_image_combined_labels.append(cleaned_labels)
+	print(f"Label combination and cleaning done in {time.time() - t0:.3f} sec")
+	# Step 6: Filter by relevance and handle languages (optimized)
+	print("Filtering labels by relevance...")
+	t0 = time.time()
+	if use_parallel:
+		print("Using parallel processing for relevance filtering...")
+		per_image_relevant_labels = parallel_relevance_filtering(
+			texts=clean_texts,
+			all_labels=per_image_combined_labels,
+			n_processes=num_processes,
+		)
+	else:
+		print("Using batch processing for relevance filtering...")
+		per_image_relevant_labels = batch_filter_by_relevance(
+			texts=clean_texts,
+			all_labels_list=per_image_combined_labels,
+			threshold=0.3,
+			batch_size=batch_size,
+		)		
+	# Post-process: language handling, deduplication, etc.
+	print("Post-processing labels...")
+	per_image_labels = []
+	for i, relevant_labels in enumerate(per_image_relevant_labels):
+		# Handle languages
+		filtered_labels = handle_multilingual_labels(relevant_labels)
 		
-		# Step 3: Extract keywords per image
-		print("Extracting keywords per image...")
-		t0 = time.time()
-		per_image_keywords = [extract_keywords(text) for text in clean_texts]
-		print(f"Keyword extraction done in {time.time() - t0:.1f} sec")
+		# Add original label if it exists
+		if label_col in df.columns:
+			original_label = df.iloc[i][label_col]
+			if isinstance(original_label, str) and original_label.strip():
+				original_label_clean = re.sub(r"[^a-z0-9\s\-]", "", original_label.lower().strip())
+				if all(ord(char) < 128 for char in original_label_clean):
+					filtered_labels.append(original_label_clean)
 		
-		# Step 4: Add individual topic labels
-		print("Assigning topic labels per image...")
-		t0 = time.time()
-		per_image_topic_labels = []
-		for text in clean_texts:
-				text_tokens = set(text.split())
-				# Find topic words that appear in the text
-				matching_topics = [word for word in flat_topic_words if word in text]
-				per_image_topic_labels.append(matching_topics)
-		print(f"Topic assignment done in {time.time() - t0:.1f} sec")
-
-		# Step 5: Combine all label sources and clean
-		print("Combining and cleaning labels...")
-		t0 = time.time()
-		per_image_combined_labels = []
-		for ner, keywords, topics in zip(per_image_ner_labels, per_image_keywords, per_image_topic_labels):
-				# Combine all sources
-				all_labels = list(set(ner + keywords + topics))
-				# Clean the labels
-				cleaned_labels = clean_labels(all_labels)
-				# Filter metadata terms
-				cleaned_labels = filter_metadata_terms(cleaned_labels)
-				per_image_combined_labels.append(cleaned_labels)
-		print(f"Label combination and cleaning done in {time.time() - t0:.3f} sec")
-
-		# Step 6: Filter by relevance and handle languages (optimized)
-		print("Filtering labels by relevance...")
-		t0 = time.time()
-
-		if use_parallel:
-			print("Using parallel processing for relevance filtering...")
-			per_image_relevant_labels = parallel_relevance_filtering(
-					texts=clean_texts,
-					all_labels=per_image_combined_labels,
-					n_processes=max(1, multiprocessing.cpu_count() - 1)
-			)
-		else:
-			print("Using batch processing for relevance filtering...")
-			per_image_relevant_labels = batch_filter_by_relevance(
-					texts=clean_texts,
-					all_labels_list=per_image_combined_labels,
-					threshold=0.3,
-					batch_size=200  # Adjust based on available memory
-			)		
-
-		# Post-process: language handling, deduplication, etc.
-		print("Post-processing labels...")
-		per_image_labels = []
-		for i, relevant_labels in enumerate(per_image_relevant_labels):
-				# Handle languages
-				filtered_labels = handle_multilingual_labels(relevant_labels)
-				
-				# Add original label if it exists
-				if label_col in df.columns:
-						original_label = df.iloc[i][label_col]
-						if isinstance(original_label, str) and original_label.strip():
-								original_label_clean = re.sub(r"[^a-z0-9\s\-]", "", original_label.lower().strip())
-								if all(ord(char) < 128 for char in original_label_clean):
-										filtered_labels.append(original_label_clean)
-				
-				# Remove redundancy
-				filtered_labels = deduplicate_labels(filtered_labels)
-				
-				# Add semantic categories
-				categorized = assign_semantic_categories(filtered_labels)
-				final_labels = sorted(set(filtered_labels + categorized))
-				per_image_labels.append(final_labels)
+		# Remove redundancy
+		filtered_labels = deduplicate_labels(filtered_labels)
 		
-		print(f"Relevance filtering done in {time.time() - t0:.1f} sec")
-
-		# Balance label counts
-		print("Balancing label counts...")
-		t0 = time.time()
-		per_image_labels = balance_label_count(per_image_labels, min_labels=3, max_labels=12)
-		print(f"Label balancing done in {time.time() - t0:.3f} sec")
-
-		# Save the results
-		df['generated_labels'] = per_image_labels
-		output_path = os.path.join(os.path.dirname(csv_file), "metadata_with_labels.csv")
-		df.to_csv(output_path, index=False)
-		
-		# Print some examples
-		print("\nExample results:")
-		sample_cols = ['title', 'description', 'label', 'generated_labels']
-		available_cols = [col for col in sample_cols if col in df.columns]
-		for i in range(min(15, len(df))):
-				print(f"\nExample {i+1}:")
-				for col in available_cols:
-						print(f"{col}: {df.iloc[i][col]}")
-		
-		return per_image_labels
+		# Add semantic categories
+		categorized = assign_semantic_categories(filtered_labels)
+		final_labels = sorted(set(filtered_labels + categorized))
+		per_image_labels.append(final_labels)
+	
+	print(f"Relevance filtering done in {time.time() - t0:.1f} sec")
+	# Balance label counts
+	print("Balancing label counts...")
+	t0 = time.time()
+	per_image_labels = balance_label_count(per_image_labels, min_labels=3, max_labels=12)
+	print(f"Label balancing done in {time.time() - t0:.3f} sec")
+	# Save the results
+	df['generated_labels'] = per_image_labels
+	output_path = os.path.join(os.path.dirname(csv_file), "metadata_with_labels.csv")
+	df.to_csv(output_path, index=False)
+	
+	# Print some examples
+	print("\nExample results:")
+	sample_cols = ['title', 'description', 'label', 'generated_labels']
+	available_cols = [col for col in sample_cols if col in df.columns]
+	for i in range(min(15, len(df))):
+		print(f"\nExample {i+1}:")
+		for col in available_cols:
+			print(f"{col}: {df.iloc[i][col]}")
+	
+	return per_image_labels
 
 if __name__ == "__main__":
 	multiprocessing.set_start_method('spawn', force=True)
