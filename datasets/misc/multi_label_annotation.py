@@ -387,7 +387,29 @@ def extract_keywords(text, min_count=3):
 def get_text_based_annotation(csv_file, title_col='title', desc_col='description', label_col='label'):
 	print(f"Automatic label extraction from text data".center(150, "-"))
 	print(f"Loading metadata from {csv_file}...")
-	df = pd.read_csv(csv_file)
+	dtypes = {
+		'doc_id': str,
+		'id': str,
+		'label': str,
+		'title': str,
+		'description': str,
+		'img_url': str,
+		'label_title_description': str,
+		'raw_doc_date': str,  # Adjust based on actual data
+		'doc_year': float,    # Adjust based on actual data
+		'doc_url': str,
+		'img_path': str,
+		'doc_date': str,      # Adjust based on actual data
+		'dataset': str,
+		'date': str,          # Adjust based on actual data
+	}
+	df = pd.read_csv(
+		filepath_or_buffer=csv_file, 
+		on_bad_lines='skip',
+		dtype=dtypes, 
+		low_memory=False, # Set to False to avoid memory issues
+	)
+	print(f"FULL Dataset {type(df)} {df.shape}")
 	
 	# Create combined 'content' field with title, description, and existing label
 	df['content'] = df[title_col].fillna('') + ' ' + df[desc_col].fillna('')
