@@ -7,11 +7,14 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import NMF
 from sklearn.cluster import KMeans
 from collections import Counter, defaultdict
-import spacy
 import faiss
+import re
+from transformers import pipeline
+from transformers import AutoTokenizer, AutoModelForTokenClassification
 from sentence_transformers import SentenceTransformer, util
 from langdetect import detect, DetectorFactory
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+
 import nltk
 import matplotlib.pyplot as plt
 nltk.download('words')
@@ -40,12 +43,10 @@ CUSTOM_STOPWORDS = ENGLISH_STOP_WORDS.union(
 		"sent", "received", "taken", "made", "created", "produced", "found",
 		"above", "below", "beside", "behind", "between", "among", "alongside",
 		"across", "opposite", "near", "under", "over", "inside", "outside",
-		"collection", "collections", 
+		"collection", "collections", "number",
 	}
 )
 
-# Load English language model for Named Entity Recognition
-nlp = spacy.load("en_core_web_sm")
 sent_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Define relevant entity types for historical images
@@ -230,41 +231,42 @@ def filter_metadata_terms(labels):
 		return [label for label in labels if not any(frag in label for frag in metadata_fragments)]
 
 def balance_label_count(image_labels_list, min_labels=3, max_labels=10):
-		"""Ensure each image has a balanced number of labels"""
-		balanced_labels = []
-		
-		for labels in image_labels_list:
-				# Case 1: Too few labels - attempt to generate more
-				if len(labels) < min_labels:
-						# Create compound labels by combining existing ones
-						compound_labels = []
-						if len(labels) >= 2:
-								for i in range(len(labels)):
-										for j in range(i+1, len(labels)):
-												compound = f"{labels[i]} {labels[j]}"
-												if 3 <= len(compound.split()) <= 4:  # Reasonable phrase length
-														compound_labels.append(compound)
-						
-						# Add compound labels to reach minimum
-						expanded_labels = labels + compound_labels
-						balanced_labels.append(expanded_labels[:min_labels] if len(expanded_labels) >= min_labels else expanded_labels)
-						
-				# Case 2: Too many labels - prioritize the most relevant ones
-				elif len(labels) > max_labels:
-						# Sort labels by potential relevance (length can be a simple heuristic)
-						sorted_labels = sorted(labels, key=lambda x: len(x.split()), reverse=True)
-						
-						# Ensure we keep some single-word labels for searchability
-						single_word = [label for label in labels if ' ' not in label][:max_labels//3]
-						multi_word = [label for label in sorted_labels if ' ' in label][:max_labels - len(single_word)]
-						
-						balanced_labels.append(single_word + multi_word)
+	"""Ensure each image has a balanced number of labels"""
+	balanced_labels = []
+	
+	for labels in image_labels_list:
+
+		# Case 1: Too few labels - attempt to generate more
+		if len(labels) < min_labels:
+			# Create compound labels by combining existing ones
+			compound_labels = []
+			if len(labels) >= 2:
+				for i in range(len(labels)):
+					for j in range(i+1, len(labels)):
+						compound = f"{labels[i]} {labels[j]}"
+						if 3 <= len(compound.split()) <= 4:  # Reasonable phrase length
+							compound_labels.append(compound)
+			
+			# Add compound labels to reach minimum
+			expanded_labels = labels + compound_labels
+			balanced_labels.append(expanded_labels[:min_labels] if len(expanded_labels) >= min_labels else expanded_labels)
 				
-				# Case 3: Good label count - keep as is
-				else:
-						balanced_labels.append(labels)
+		# Case 2: Too many labels - prioritize the most relevant ones
+		elif len(labels) > max_labels:
+			# Sort labels by potential relevance (length can be a simple heuristic)
+			sorted_labels = sorted(labels, key=lambda x: len(x.split()), reverse=True)
+			
+			# Ensure we keep some single-word labels for searchability
+			single_word = [label for label in labels if ' ' not in label][:max_labels//3]
+			multi_word = [label for label in sorted_labels if ' ' in label][:max_labels - len(single_word)]
+			
+			balanced_labels.append(single_word + multi_word)
 		
-		return balanced_labels
+		# Case 3: Good label count - keep as is
+		else:
+			balanced_labels.append(labels)
+	
+	return balanced_labels
 
 def deduplicate_labels(labels):
 	"""Remove semantically redundant labels"""
@@ -300,24 +302,24 @@ def deduplicate_labels(labels):
 	
 	return deduplicated
 
+# Initialize the NER model
+tokenizer = AutoTokenizer.from_pretrained("dslim/bert-base-NER")
+model = AutoModelForTokenClassification.from_pretrained("dslim/bert-base-NER")
+nlp = pipeline("ner", model=model, tokenizer=tokenizer, aggregation_strategy="simple")
+
 def extract_named_entities(text):
-		"""Extract named entities from text using spaCy"""
-		doc = nlp(text[:nlp.max_length] if len(text) > nlp.max_length else text)
-		
-		# Extract entities of relevant types, ignoring numeric entities
-		entities = []
-		for ent in doc.ents:
-				if ent.label_ in RELEVANT_ENTITY_TYPES and not ent.text.isdigit():
-						# Clean and normalize entity text
-						entity_text = re.sub(r'[^\w\s\-]', '', ent.text.lower()).strip()
-						if entity_text and len(entity_text) > 2 and entity_text not in CUSTOM_STOPWORDS:
-								entities.append(entity_text)
-		
-		# Also extract multi-word phrases that might be significant but not recognized as entities
-		tokens = [token.text.lower() for token in doc if not token.is_stop and not token.is_punct and len(token.text) > 2]
-		
-		# Return unique list of entities and tokens
-		return list(set(entities + tokens))
+	ner_results = nlp(text)
+	entities = []
+	for entity in ner_results:
+		if entity["entity_group"] in RELEVANT_ENTITY_TYPES and entity["word"].isalpha():
+			# Clean and normalize entity text
+			entity_text = re.sub(r'[^\w\s\-]', '', entity["word"].lower()).strip()
+			if entity_text and len(entity_text) > 2 and entity_text not in CUSTOM_STOPWORDS:
+				entities.append(entity_text)
+	# Also extract multi-word phrases that might be significant but not recognized as entities
+	tokens = [word.lower() for word in text.split() if word.isalpha() and len(word) > 2 and word.lower() not in CUSTOM_STOPWORDS]
+	# Return unique list of entities and tokens
+	return list(set(entities + tokens))
 
 def assign_semantic_categories(labels):
 		"""Categorize labels into semantic groups"""
@@ -329,23 +331,6 @@ def assign_semantic_categories(labels):
 										categorized_labels.append(label)
 								break
 		return categorized_labels
-
-def filter_by_relevance_old(labels, original_text, threshold=0.3):
-	"""Filter labels by relevance to the original text using embeddings"""
-	if not labels:
-		return []
-	
-	# Encode the text and candidate labels
-	text_embedding = sent_model.encode([original_text], show_progress_bar=False)
-	label_embeddings = sent_model.encode(labels, show_progress_bar=False)
-	
-	# Calculate similarities
-	similarities = util.cos_sim(text_embedding, label_embeddings)[0]
-	
-	# Filter labels with similarity above threshold
-	# relevant_indices = [i for i, sim in enumerate(similarities) if sim > threshold]
-	relevant_indices = [i for i, sim in enumerate(similarities[0]) if sim > threshold]
-	return [labels[i] for i in relevant_indices]
 
 def filter_by_relevance(labels, original_text, threshold=0.3):
 	if not labels:
@@ -484,13 +469,10 @@ def get_text_based_annotation(csv_file, title_col='title', desc_col='description
 	print(f"Label combination and cleaning done in {time.time() - t0:.3f} sec")
 
 	# Step 6: Filter by relevance and handle languages
-	print("Filtering labels by relevance...")
+	print("Filtering labels by relevance (and handling languages) might take a while...")
 	t0 = time.time()
 	per_image_labels = []
 	for i, (text, labels) in enumerate(zip(clean_texts, per_image_combined_labels)):		
-		# Filter labels by relevance
-		# print(i, len(labels))
-		t1 = time.time()
 		relevant_labels = filter_by_relevance(labels, text)
 		
 		# Consistent language handling
@@ -509,7 +491,6 @@ def get_text_based_annotation(csv_file, title_col='title', desc_col='description
 		categorized = assign_semantic_categories(relevant_labels)
 		final_labels = sorted(set(relevant_labels + categorized))
 		per_image_labels.append(final_labels)
-		# print(f"Label filtering done in {time.time() - t1:.3f} sec")
 	print(f"Relevance filtering done in {time.time() - t0:.1f} sec")
 
 	# Balance label counts
@@ -518,8 +499,6 @@ def get_text_based_annotation(csv_file, title_col='title', desc_col='description
 	per_image_labels = balance_label_count(per_image_labels, min_labels=3, max_labels=12)
 	print(f"Label balancing done in {time.time() - t0:.3f} sec")
 
-	# Save the results
-	print("Saving labels to CSV...")
 	df['generated_labels'] = per_image_labels
 	output_path = os.path.join(os.path.dirname(csv_file), "metadata_with_labels.csv")
 	df.to_csv(output_path, index=False)
