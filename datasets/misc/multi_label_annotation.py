@@ -437,7 +437,7 @@ def get_text_based_annotation(csv_file, title_col='title', desc_col='description
 	topics, flat_topic_words = extract_semantic_topics(
 		texts=clean_texts, 
 		n_clusters=min(20, len(clean_texts) // 100 + 5),  # Dynamic cluster count
-		top_k_words=25,
+		top_k_words=10,
 	)
 
 	print(f"{len(topics)} Topics(clusters) {type(topics)}:\n{topics}")
