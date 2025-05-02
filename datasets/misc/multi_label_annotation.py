@@ -8,17 +8,18 @@ from sklearn.decomposition import NMF
 from sklearn.cluster import KMeans
 from collections import Counter, defaultdict
 import spacy
+import faiss
 from sentence_transformers import SentenceTransformer, util
 from langdetect import detect, DetectorFactory
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 import nltk
-
+import matplotlib.pyplot as plt
 nltk.download('words')
 
 DetectorFactory.seed = 42 # Make language detection deterministic
 DATASET_DIRECTORY = {
-	# "farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
-	"farid": "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31",
+	"farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
+	# "farid": "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31",
 	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4",
 	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/HISTORY_X4",
 	"alijani": "/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4",
@@ -27,17 +28,21 @@ full_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata.csv")
 train_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata_train.csv")
 val_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata_val.csv")
 
-CUSTOM_STOPWORDS = ENGLISH_STOP_WORDS.union({
-	"original", "bildetekst", "photo", "image", "archive", "arkivreferanse",
-	"copyright", "description", "riksarkivet", "ntbs", "ra", "pa", "bildetekst",
-	"left", "right", "center", "top", "bottom", "middle", "front", "back",
-	"year", "month", "day", "date", "century", "decade", "era",
-	"showing", "shown", "shows", "depicts", "depicting", "pictured", "picture",
-	"original", "copy", "version", "view", "looking", "seen", "visible",
-	"photograph", "photographer", "photography", "photo", "image", "img",
-	"sent", "received", "taken", "made", "created", "produced", "found",
-	"above", "below", "beside", "behind", "between", "among", "alongside",
-})
+CUSTOM_STOPWORDS = ENGLISH_STOP_WORDS.union(
+	{
+		"original", "bildetekst", "photo", "image", "archive", "arkivreferanse",
+		"copyright", "description", "riksarkivet", "ntbs", "ra", "pa", "bildetekst",
+		"left", "right", "center", "top", "bottom", "middle", "front", "back",
+		"year", "month", "day", "date", "century", "decade", "era",
+		"showing", "shown", "shows", "depicts", "depicting", "pictured", "picture",
+		"original", "copy", "version", "view", "looking", "seen", "visible",
+		"photograph", "photographer", "photography", "photo", "image", "img",
+		"sent", "received", "taken", "made", "created", "produced", "found",
+		"above", "below", "beside", "behind", "between", "among", "alongside",
+		"across", "opposite", "near", "under", "over", "inside", "outside",
+		"collection", "collections", 
+	}
+)
 
 # Load English language model for Named Entity Recognition
 nlp = spacy.load("en_core_web_sm")
@@ -92,40 +97,53 @@ def clean_labels(labels):
 		return sorted(cleaned)
 
 def extract_phrases(text, max_words=3):
-		"""Extract meaningful phrases from text"""
-		words = text.lower().split()
-		phrases = []
-		for i in range(len(words)):
-				for j in range(1, min(max_words + 1, len(words) - i + 1)):
-						phrase = ' '.join(words[i:i+j])
-						if all(word not in CUSTOM_STOPWORDS for word in phrase.split()):
-								phrases.append(phrase)
-		return phrases
+	"""Extract meaningful phrases from text"""
+	words = text.lower().split()
+	phrases = []
+	for i in range(len(words)):
+		for j in range(1, min(max_words + 1, len(words) - i + 1)):
+			phrase = ' '.join(words[i:i+j])
+			if all(word not in CUSTOM_STOPWORDS for word in phrase.split()):
+				phrases.append(phrase)
+	return phrases
 
-def extract_semantic_topics(texts, n_clusters=15, top_k_words=10):
+def extract_semantic_topics(texts: list, n_clusters: int=15, top_k_words: int=10):
 		"""Extract semantic topics using sentence embeddings and clustering"""
 		print(f"Generating embeddings for {len(texts)} texts...")
 		embeddings = sent_model.encode(texts, show_progress_bar=True)
 		
-		print(f"Clustering into {n_clusters} topics...")
-		kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+		print(f"Clustering embeddings {embeddings.shape} into {n_clusters} topics with KMeans...")
+		kmeans = KMeans(n_clusters=n_clusters, random_state=42, init='k-means++', max_iter=1000, n_init='auto')
 		labels = kmeans.fit_predict(embeddings)
 		
+
+		# Plot distribution
+		topic_counts = Counter(labels)
+		plt.figure(figsize=(12, 6))
+		plt.bar(range(len(topic_counts)), [topic_counts[i] for i in range(n_clusters)])
+		plt.title('Document Distribution Across Topics')
+		plt.xlabel('Topic ID')
+		plt.ylabel('Number of Documents')
+		plt.xticks(range(n_clusters))
+		plt.savefig('topic_distribution.png')
+
 		# Collect phrases for each cluster
 		cluster_phrases = defaultdict(Counter)
 		for i, label in enumerate(labels):
-				phrases = extract_phrases(texts[i])
-				# Filter out phrases less than 3 characters or containing stopwords
-				valid_phrases = [phrase for phrase in phrases 
-												 if len(phrase) > 3 and 
-												 not any(word in CUSTOM_STOPWORDS for word in phrase.split())]
-				cluster_phrases[label].update(valid_phrases)
+			phrases = extract_phrases(texts[i])
+			# Filter out phrases less than 3 characters or containing stopwords
+			valid_phrases = [
+				phrase for phrase in phrases 
+				if len(phrase) > 3 and 
+				not any(word in CUSTOM_STOPWORDS for word in phrase.split())
+			]
+			cluster_phrases[label].update(valid_phrases)
 		
 		# Extract top phrases from each cluster
 		topics = []
 		for label, counter in cluster_phrases.items():
-				most_common = [w for w, c in counter.most_common(top_k_words * 3) if len(w.split()) <= 2] # Prefer 1-2 word phrases
-				topics.append(most_common[:top_k_words])
+			most_common = [w for w, c in counter.most_common(top_k_words * 4) if len(w.split()) <= 3] # Prefer 1-2 word phrases
+			topics.append(most_common[:top_k_words])
 		
 		# Flatten and return unique topics
 		flat_topics = set(word for topic in topics for word in topic)
@@ -133,13 +151,53 @@ def extract_semantic_topics(texts, n_clusters=15, top_k_words=10):
 		return topics, flat_topics
 
 def is_english(text):
-		"""Detect if text is in English"""
-		if not text or len(text) < 10:
-				return False
-		try:
-				return detect(text) == 'en'
-		except:
-				return False
+	if not text or len(text) < 5:
+		return False
+	try:
+		return detect(text) == 'en'
+	except:
+		return False
+
+def is_likely_english_term(term):
+	"""Check if a term is likely English or a proper noun"""
+	if not term or len(term) < 3:
+			return False
+			
+	# Common characters in European languages but not in English
+	non_english_chars = 'äöüßñéèêëìíîïçåæœø'
+	
+	# Check for non-English characters
+	if any(char in non_english_chars for char in term.lower()):
+			return False
+			
+	# Allow terms that might be proper nouns (start with uppercase)
+	if term[0].isupper():
+			return True
+			
+	# Check if term is in an English dictionary
+	# This is a simplified approach - could use a proper dictionary lookup
+	common_english_words = set(nltk.corpus.words.words())
+	return term.lower() in common_english_words
+
+def handle_multilingual_labels(labels):
+		"""Process multilingual labels consistently"""
+		processed_labels = []
+		
+		for label in labels:
+				words = label.split()
+				
+				# Single word label
+				if len(words) == 1:
+						if is_likely_english_term(label) or label[0].isupper():
+								processed_labels.append(label)
+								
+				# Multi-word label
+				else:
+						# Keep if all words are likely English or proper nouns
+						if all(is_likely_english_term(word) or word[0].isupper() for word in words):
+								processed_labels.append(label)
+		
+		return processed_labels
 
 def clean_text(text):
 	"""Clean text by removing special characters and excess whitespace"""
@@ -170,47 +228,6 @@ def filter_metadata_terms(labels):
 		
 		# Return only labels that don't contain metadata fragments
 		return [label for label in labels if not any(frag in label for frag in metadata_fragments)]
-
-def is_likely_english_term(term):
-		"""Check if a term is likely English or a proper noun"""
-		if not term or len(term) < 3:
-				return False
-				
-		# Common characters in European languages but not in English
-		non_english_chars = 'äöüßñéèêëìíîïçåæœø'
-		
-		# Check for non-English characters
-		if any(char in non_english_chars for char in term.lower()):
-				return False
-				
-		# Allow terms that might be proper nouns (start with uppercase)
-		if term[0].isupper():
-				return True
-				
-		# Check if term is in an English dictionary
-		# This is a simplified approach - could use a proper dictionary lookup
-		common_english_words = set(nltk.corpus.words.words())
-		return term.lower() in common_english_words
-
-def handle_multilingual_labels(labels):
-		"""Process multilingual labels consistently"""
-		processed_labels = []
-		
-		for label in labels:
-				words = label.split()
-				
-				# Single word label
-				if len(words) == 1:
-						if is_likely_english_term(label) or label[0].isupper():
-								processed_labels.append(label)
-								
-				# Multi-word label
-				else:
-						# Keep if all words are likely English or proper nouns
-						if all(is_likely_english_term(word) or word[0].isupper() for word in words):
-								processed_labels.append(label)
-		
-		return processed_labels
 
 def balance_label_count(image_labels_list, min_labels=3, max_labels=10):
 		"""Ensure each image has a balanced number of labels"""
@@ -250,38 +267,38 @@ def balance_label_count(image_labels_list, min_labels=3, max_labels=10):
 		return balanced_labels
 
 def deduplicate_labels(labels):
-		"""Remove semantically redundant labels"""
-		if not labels:
-				return []
-		
-		# Sort labels by length (typically longer labels are more specific)
-		sorted_labels = sorted(labels, key=len, reverse=True)
-		deduplicated = []
-		
-		for label in sorted_labels:
-				# Check if this label is a substring of any already-kept label
-				is_redundant = False
-				for kept_label in deduplicated:
-						# If label is completely contained in a kept label, it's redundant
-						if label in kept_label:
-								is_redundant = True
-								break
-								
-						# Check for high token overlap in multi-word labels
-						if ' ' in label and ' ' in kept_label:
-								label_tokens = set(label.split())
-								kept_tokens = set(kept_label.split())
-								
-								# If 75% or more tokens overlap, consider redundant
-								overlap_ratio = len(label_tokens & kept_tokens) / len(label_tokens)
-								if overlap_ratio > 0.75:
-										is_redundant = True
-										break
+	"""Remove semantically redundant labels"""
+	if not labels:
+		return []
+	
+	# Sort labels by length (typically longer labels are more specific)
+	sorted_labels = sorted(labels, key=len, reverse=True)
+	deduplicated = []
+	
+	for label in sorted_labels:
+		# Check if this label is a substring of any already-kept label
+		is_redundant = False
+		for kept_label in deduplicated:
+			# If label is completely contained in a kept label, it's redundant
+			if label in kept_label:
+				is_redundant = True
+				break
+					
+			# Check for high token overlap in multi-word labels
+			if ' ' in label and ' ' in kept_label:
+				label_tokens = set(label.split())
+				kept_tokens = set(kept_label.split())
 				
-				if not is_redundant:
-						deduplicated.append(label)
+				# If 80% or more tokens overlap, consider redundant
+				overlap_ratio = len(label_tokens & kept_tokens) / len(label_tokens)
+				if overlap_ratio > 0.8:
+					is_redundant = True
+					break
 		
-		return deduplicated
+		if not is_redundant:
+			deduplicated.append(label)
+	
+	return deduplicated
 
 def extract_named_entities(text):
 		"""Extract named entities from text using spaCy"""
@@ -313,22 +330,36 @@ def assign_semantic_categories(labels):
 								break
 		return categorized_labels
 
-def filter_by_relevance(labels, original_text):
-		"""Filter labels by relevance to the original text using embeddings"""
-		if not labels:
-				return []
-		
-		# Encode the text and candidate labels
-		text_embedding = sent_model.encode(original_text)
-		label_embeddings = sent_model.encode(labels)
-		
-		# Calculate similarities
-		similarities = util.cos_sim(text_embedding, label_embeddings)[0]
-		
-		# Filter labels with similarity above threshold
-		threshold = 0.3  # Adjust as needed
-		relevant_indices = [i for i, sim in enumerate(similarities) if sim > threshold]
-		return [labels[i] for i in relevant_indices]
+def filter_by_relevance_old(labels, original_text, threshold=0.3):
+	"""Filter labels by relevance to the original text using embeddings"""
+	if not labels:
+		return []
+	
+	# Encode the text and candidate labels
+	text_embedding = sent_model.encode([original_text], show_progress_bar=False)
+	label_embeddings = sent_model.encode(labels, show_progress_bar=False)
+	
+	# Calculate similarities
+	similarities = util.cos_sim(text_embedding, label_embeddings)[0]
+	
+	# Filter labels with similarity above threshold
+	# relevant_indices = [i for i, sim in enumerate(similarities) if sim > threshold]
+	relevant_indices = [i for i, sim in enumerate(similarities[0]) if sim > threshold]
+	return [labels[i] for i in relevant_indices]
+
+def filter_by_relevance(labels, original_text, threshold=0.3):
+	if not labels:
+		return []
+
+	# Encode the text and candidate labels
+	text_embedding = sent_model.encode([original_text], show_progress_bar=False)
+	label_embeddings = sent_model.encode(labels, show_progress_bar=False)
+
+	# Use FAISS for efficient similarity search
+	index = faiss.IndexFlatIP(label_embeddings.shape[1])
+	index.add(label_embeddings)
+	_, indices = index.search(text_embedding, len(labels))
+	return [labels[i] for i in indices[0] if util.cos_sim(text_embedding, label_embeddings[i]) > threshold]
 
 def extract_keywords(text, min_count=3):
 	"""Extract keywords based on TF-IDF"""
@@ -353,7 +384,8 @@ def extract_keywords(text, min_count=3):
 	except:
 		return []
 
-def get_text_based_annotation(csv_file, title_col='title', desc_col='description', label_col='label', print_every=10000):
+def get_text_based_annotation(csv_file, title_col='title', desc_col='description', label_col='label'):
+	print(f"Automatic label extraction from text data".center(150, "-"))
 	print(f"Loading metadata from {csv_file}...")
 	df = pd.read_csv(csv_file)
 	
@@ -369,7 +401,8 @@ def get_text_based_annotation(csv_file, title_col='title', desc_col='description
 	# Filter to English-only content
 	print("Filtering non-English entries...")
 	t0 = time.time()
-	english_mask = df['clean_content'].apply(lambda x: is_english(x) if len(x) > 10 else True)
+	# english_mask = df['clean_content'].apply(lambda x: is_english(x) if len(x) > 10 else True)
+	english_mask = df['clean_content'].apply(is_english)
 	print(f"{sum(english_mask)} / {len(df)} texts are English or too short to determine")
 	print(f"Language filter done in {time.time() - t0:.1f} sec")
 	
@@ -382,16 +415,17 @@ def get_text_based_annotation(csv_file, title_col='title', desc_col='description
 	topics, flat_topic_words = extract_semantic_topics(
 		texts=clean_texts, 
 		n_clusters=min(20, len(clean_texts) // 100 + 5),  # Dynamic cluster count
-		top_k_words=10
+		top_k_words=25,
 	)
-	print(f"Topics: {topics}")
+
+	print(f"{len(topics)} Topics(clusters) {type(topics)}:\n{topics}")
 	print(f"Topic modeling done in {time.time() - t0:.1f} sec")
 	
 	# Step 2: Named Entity Recognition per image
 	print("Extracting named entities per image...")
 	t0 = time.time()
 	per_image_ner_labels = []
-	for i, text in enumerate(clean_texts):
+	for _, text in enumerate(clean_texts):
 		entities = extract_named_entities(text)
 		per_image_ner_labels.append(entities)
 	print(f"NER done in {time.time() - t0:.1f} sec")
@@ -425,7 +459,7 @@ def get_text_based_annotation(csv_file, title_col='title', desc_col='description
 		# Filter metadata terms
 		cleaned_labels = filter_metadata_terms(cleaned_labels)
 		per_image_combined_labels.append(cleaned_labels)
-	print(f"Label combination and cleaning done in {time.time() - t0:.1f} sec")
+	print(f"Label combination and cleaning done in {time.time() - t0:.3f} sec")
 
 	# Step 6: Filter by relevance and handle languages
 	print("Filtering labels by relevance...")
@@ -433,6 +467,8 @@ def get_text_based_annotation(csv_file, title_col='title', desc_col='description
 	per_image_labels = []
 	for i, (text, labels) in enumerate(zip(clean_texts, per_image_combined_labels)):		
 		# Filter labels by relevance
+		# print(i, len(labels))
+		t1 = time.time()
 		relevant_labels = filter_by_relevance(labels, text)
 		
 		# Consistent language handling
@@ -451,13 +487,14 @@ def get_text_based_annotation(csv_file, title_col='title', desc_col='description
 		categorized = assign_semantic_categories(relevant_labels)
 		final_labels = sorted(set(relevant_labels + categorized))
 		per_image_labels.append(final_labels)
+		# print(f"Label filtering done in {time.time() - t1:.3f} sec")
 	print(f"Relevance filtering done in {time.time() - t0:.1f} sec")
 
 	# Balance label counts
 	print("Balancing label counts...")
 	t0 = time.time()
 	per_image_labels = balance_label_count(per_image_labels, min_labels=3, max_labels=12)
-	print(f"Label balancing done in {time.time() - t0:.1f} sec")
+	print(f"Label balancing done in {time.time() - t0:.3f} sec")
 
 	# Save the results
 	print("Saving labels to CSV...")
