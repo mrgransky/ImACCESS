@@ -549,17 +549,23 @@ from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 import matplotlib.pyplot as plt
 import nltk
 from tqdm import tqdm
+import warnings
+
 nltk.download('words', quiet=True)
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
 
 # Make language detection deterministic
 DetectorFactory.seed = 42
 
-# Dataset directories
 DATASET_DIRECTORY = {
-		"farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
-		"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4",
-		"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/HISTORY_X4",
-		"alijani": "/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4",
+	# "farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
+	"farid": "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31",
+	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4",
+	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/HISTORY_X4",
+	"alijani": "/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4",
 }
 full_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata.csv")
 train_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata_train.csv")
@@ -594,7 +600,7 @@ METADATA_PATTERNS = [
 sent_model = SentenceTransformer("all-MiniLM-L6-v2")
 tokenizer = AutoTokenizer.from_pretrained("dslim/bert-base-NER")
 model = AutoModelForTokenClassification.from_pretrained("dslim/bert-base-NER")
-nlp = pipeline("ner", model=model, tokenizer=tokenizer, aggregation_strategy="simple")
+nlp = pipeline(task="ner", model=model, tokenizer=tokenizer, aggregation_strategy="simple", device=0)
 
 # Semantic categories for organization
 SEMANTIC_CATEGORIES = {
@@ -716,23 +722,23 @@ def extract_semantic_topics(texts, n_clusters=25, top_k_words=10, merge_threshol
 		# Collect phrases for each cluster
 		cluster_phrases = defaultdict(Counter)
 		for i, label in enumerate(labels):
-				# Check if the text is English before extracting phrases
-				if is_english(texts[i]):
-						phrases = extract_phrases(texts[i])
-						# Filter out phrases less than 3 characters or containing stopwords
-						valid_phrases = [
-								phrase for phrase in phrases 
-								if len(phrase) > 3 and 
-								not any(word in CUSTOM_STOPWORDS for word in phrase.split())
-						]
-						cluster_phrases[label].update(valid_phrases)
+						# Check if the text is English before extracting phrases
+						if is_english(texts[i]):
+										phrases = extract_phrases(texts[i])
+										# Filter out phrases less than 3 characters or containing stopwords
+										valid_phrases = [
+														phrase for phrase in phrases 
+														if len(phrase) > 3 and 
+														not any(word in CUSTOM_STOPWORDS for word in phrase.split())
+										]
+										cluster_phrases[label].update(valid_phrases)
 		
 		# Extract top phrases from each cluster
 		initial_topics = []
 		for label, counter in cluster_phrases.items():
-				most_common = [w for w, c in counter.most_common(top_k_words * 4) 
-											if len(w.split()) <= 3 and all(ord(char) < 128 for char in w)]
-				initial_topics.append(most_common[:top_k_words])
+						most_common = [w for w, c in counter.most_common(top_k_words * 4) 
+																				if len(w.split()) <= 3 and all(ord(char) < 128 for char in w)]
+						initial_topics.append(most_common[:top_k_words])
 		
 		# NEW: Calculate topic similarities for merging
 		print("Calculating topic similarities for redundancy reduction...")
@@ -743,35 +749,35 @@ def extract_semantic_topics(texts, n_clusters=25, top_k_words=10, merge_threshol
 		word_to_embedding = {}
 		
 		if all_words:
-				word_embeddings = sent_model.encode(all_words, show_progress_bar=True)
-				for i, word in enumerate(all_words):
-						word_to_embedding[word] = word_embeddings[i]
+						word_embeddings = sent_model.encode(all_words, show_progress_bar=True)
+						for i, word in enumerate(all_words):
+										word_to_embedding[word] = word_embeddings[i]
 		
 		# Calculate average embedding for each topic
 		topic_embeddings = []
 		for topic in initial_topics:
-				if not topic:
-						# Empty topic gets zero embedding
-						topic_embeddings.append(np.zeros(embeddings.shape[1]))
-						continue
-				
-				# Average the embeddings of words in this topic
-				topic_embs = [word_to_embedding[word] for word in topic if word in word_to_embedding]
-				if topic_embs:
-						topic_emb = np.mean(topic_embs, axis=0)
-						topic_embeddings.append(topic_emb)
-				else:
-						topic_embeddings.append(np.zeros(embeddings.shape[1]))
+						if not topic:
+										# Empty topic gets zero embedding
+										topic_embeddings.append(np.zeros(embeddings.shape[1]))
+										continue
+						
+						# Average the embeddings of words in this topic
+						topic_embs = [word_to_embedding[word] for word in topic if word in word_to_embedding]
+						if topic_embs:
+										topic_emb = np.mean(topic_embs, axis=0)
+										topic_embeddings.append(topic_emb)
+						else:
+										topic_embeddings.append(np.zeros(embeddings.shape[1]))
 		
 		# Calculate similarity between each pair of topics
 		for i in range(len(initial_topics)):
-				for j in range(i+1, len(initial_topics)):
-						sim = util.cos_sim(
-								[topic_embeddings[i]], 
-								[topic_embeddings[j]]
-						)[0][0].item()
-						similarity_matrix[i, j] = sim
-						similarity_matrix[j, i] = sim  # Symmetric matrix
+						for j in range(i+1, len(initial_topics)):
+										sim = util.cos_sim(
+														[topic_embeddings[i]], 
+														[topic_embeddings[j]]
+										)[0][0].item()
+										similarity_matrix[i, j] = sim
+										similarity_matrix[j, i] = sim  # Symmetric matrix
 		
 		# Merge similar topics
 		print(f"Merging similar topics with threshold {merge_threshold}...")
@@ -779,26 +785,26 @@ def extract_semantic_topics(texts, n_clusters=25, top_k_words=10, merge_threshol
 		used_indices = set()
 		
 		for i in range(len(initial_topics)):
-				if i in used_indices:
-						continue
-				
-				# Start a new merged topic with all words from topic i
-				merged_words = set(initial_topics[i])
-				used_indices.add(i)
-				
-				# Find similar topics to merge
-				for j in range(len(initial_topics)):
-						if j in used_indices or i == j:
-								continue
+						if i in used_indices:
+										continue
 						
-						if similarity_matrix[i, j] > merge_threshold:
-								# Add all words from topic j
-								merged_words.update(initial_topics[j])
-								used_indices.add(j)
-				
-				# Limit to top words and ensure English only
-				merged_topics.append([w for w in sorted(list(merged_words))[:top_k_words] 
-															if all(ord(char) < 128 for char in w)])
+						# Start a new merged topic with all words from topic i
+						merged_words = set(initial_topics[i])
+						used_indices.add(i)
+						
+						# Find similar topics to merge
+						for j in range(len(initial_topics)):
+										if j in used_indices or i == j:
+														continue
+										
+										if similarity_matrix[i, j] > merge_threshold:
+														# Add all words from topic j
+														merged_words.update(initial_topics[j])
+														used_indices.add(j)
+						
+						# Limit to top words and ensure English only
+						merged_topics.append([w for w in sorted(list(merged_words))[:top_k_words] 
+																										if all(ord(char) < 128 for char in w)])
 		
 		print(f"Reduced from {len(initial_topics)} to {len(merged_topics)} topics after merging")
 		
@@ -811,8 +817,8 @@ def extract_semantic_topics(texts, n_clusters=25, top_k_words=10, merge_threshol
 		plt.xticks(range(len(merged_topics)))
 		plt.savefig('merged_topic_distribution.png')
 		
-		# Flatten and return unique topics
-		flat_topics = set(word for topic in merged_topics for word in word)
+		# Flatten and return unique topics - FIXED LINE BELOW
+		flat_topics = set(word for topic in merged_topics for word in topic)
 		print(f"Extracted {len(flat_topics)} unique topic terms after merging")
 		
 		return merged_topics, flat_topics
@@ -1151,8 +1157,11 @@ def parallel_relevance_filtering(texts, all_labels, n_processes=None):
 		
 		return all_results
 
+def process_text_chunk(chunk):
+		return [extract_named_entities(text) for text in chunk]
+
 # ===== MAIN FUNCTION =====
-def get_text_based_annotation(csv_file, title_col='title', desc_col='description', label_col='label', use_parallel=True):
+def get_text_based_annotation(csv_file, title_col='title', desc_col='description', label_col='label', use_parallel=True, num_processes=4):
 		print(f"Automatic label extraction from text data".center(150, "-"))
 		print(f"Loading metadata from {csv_file}...")
 		
@@ -1209,22 +1218,24 @@ def get_text_based_annotation(csv_file, title_col='title', desc_col='description
 		
 		# Use parallel processing for NER if dataset is large
 		if len(clean_texts) > 1000 and use_parallel:
-				num_processes = max(1, multiprocessing.cpu_count() - 1)
-				chunk_size = len(clean_texts) // num_processes + 1
-				chunks = [(clean_texts[i:i+chunk_size]) 
-								 for i in range(0, len(clean_texts), chunk_size)]
-				
-				with multiprocessing.Pool(processes=num_processes) as pool:
-						ner_results = pool.map(lambda chunk: [extract_named_entities(text) for text in chunk], chunks)
-						
-				per_image_ner_labels = []
-				for chunk_result in ner_results:
-						per_image_ner_labels.extend(chunk_result)
+			# num_processes = max(1, multiprocessing.cpu_count() - 1)
+			chunk_size = len(clean_texts) // num_processes + 1
+			chunks = [
+				(clean_texts[i:i+chunk_size]) 
+				for i in range(0, len(clean_texts), chunk_size)
+			]
+			print(f"Using {num_processes} processes for NER extraction...")
+			with multiprocessing.Pool(processes=num_processes) as pool:
+				ner_results = pool.map(process_text_chunk, chunks)
+					
+			per_image_ner_labels = []
+			for chunk_result in ner_results:
+				per_image_ner_labels.extend(chunk_result)
 		else:
-				per_image_ner_labels = []
-				for i, text in enumerate(tqdm(clean_texts, desc="NER Progress")):
-						entities = extract_named_entities(text)
-						per_image_ner_labels.append(entities)
+			per_image_ner_labels = []
+			for i, text in enumerate(tqdm(clean_texts, desc="NER Progress")):
+				entities = extract_named_entities(text)
+				per_image_ner_labels.append(entities)
 						
 		print(f"NER done in {time.time() - t0:.1f} sec")
 		
@@ -1327,4 +1338,5 @@ def get_text_based_annotation(csv_file, title_col='title', desc_col='description
 		return per_image_labels
 
 if __name__ == "__main__":
-		labels = get_text_based_annotation(csv_file=full_meta)
+	multiprocessing.set_start_method('spawn', force=True)
+	labels = get_text_based_annotation(csv_file=full_meta)
