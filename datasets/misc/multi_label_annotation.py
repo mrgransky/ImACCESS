@@ -19,6 +19,7 @@ from tqdm import tqdm
 import warnings
 import urllib.request
 import fasttext
+import argparse
 
 nltk.download('words', quiet=True)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -29,8 +30,11 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 # Make language detection deterministic
 DetectorFactory.seed = 42
 
-url = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz"
-urllib.request.urlretrieve(url, "lid.176.ftz")
+FastText_Language_Identification = "lid.176.ftz"
+if "lid.176.ftz" not in os.listdir():
+	url = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz"
+	urllib.request.urlretrieve(url, "lid.176.ftz")
+
 ft_model = fasttext.load_model("lid.176.ftz")
 
 DATASET_DIRECTORY = {
@@ -79,7 +83,7 @@ nlp = pipeline(
 	tokenizer=tokenizer, 
 	aggregation_strategy="simple",
 	device="cuda:0",
-	batch_size=128,
+	batch_size=512,
 )
 
 # Semantic categories for organization
@@ -165,8 +169,12 @@ def extract_phrases(text, max_words=3):
 								phrases.append(phrase)
 		return phrases
 
-# ===== OPTIMIZED TOPIC MODELING =====
-def extract_semantic_topics(texts, n_clusters=25, top_k_words=10, merge_threshold=0.65):
+def extract_semantic_topics(
+		texts: list[str], 
+		n_clusters: int =25, 
+		top_k_words: int =10, 
+		merge_threshold: float =0.65
+	):
 	"""Extract semantic topics using sentence embeddings and clustering with redundancy reduction"""
 	# Generate embeddings
 	print(f"Generating embeddings for {len(texts)} texts...")
@@ -314,11 +322,6 @@ def extract_named_entities(text):
 	# Skip if text is not primarily English
 	if not is_english(text):
 		return []
-
-	# # Limit text length to prevent timeout
-	# max_length = 1024
-	# if len(text) > max_length:
-	# 	text = text[:max_length]
 
 	try:
 		ner_results = nlp(text)
@@ -504,7 +507,13 @@ def quick_filter_candidates(text, labels, max_keep=30):
 		sorted_labels = [l for l, s in sorted(scores, key=lambda x: x[1], reverse=True)]
 		return sorted_labels[:max_keep]
 
-def batch_filter_by_relevance(texts, all_labels_list, threshold=0.3, batch_size=128, print_every=500):
+def batch_filter_by_relevance(
+		texts: list,
+		all_labels_list: list[list[str]],
+		threshold: float=0.3,
+		batch_size: int=128,
+		print_every=500,
+	):
 	"""Process document relevance filtering in efficient batches"""
 	results = []
 	total = len(texts)
@@ -524,7 +533,7 @@ def batch_filter_by_relevance(texts, all_labels_list, threshold=0.3, batch_size=
 			quick_filtered_batch.append(quick_filtered)
 		
 		# Get text embeddings for the batch (more efficient)
-		text_embeddings = sent_model.encode(batch_texts, show_progress_bar=True, batch_size=batch_size, convert_to_numpy=True)
+		text_embeddings = sent_model.encode(batch_texts, show_progress_bar=False, batch_size=batch_size, convert_to_numpy=True)
 		
 		batch_results = []
 		for i, (text_emb, labels) in enumerate(zip(text_embeddings, quick_filtered_batch)):
@@ -542,9 +551,9 @@ def batch_filter_by_relevance(texts, all_labels_list, threshold=0.3, batch_size=
 			relevant_indices = np.where(similarities > threshold)[0]
 			batch_results.append([labels[idx] for idx in relevant_indices])
 			
-			# Progress indicator within batch
-			if (i + 1) % print_every == 0 or i + 1 == len(batch_texts):
-				print(f"  Processed {i+1}/{len(batch_texts)} documents in current batch")
+			# # Progress indicator within batch
+			# if (i + 1) % print_every == 0 or i + 1 == len(batch_texts):
+			# 	print(f"  Processed {i+1}/{len(batch_texts)} documents in current batch")
 
 		results.extend(batch_results)
 		print(f"  Completed batch with {sum(len(labels) for labels in batch_results)} relevant labels found")
@@ -628,7 +637,6 @@ def get_text_based_annotation(
 	print(f"Automatic label extraction from text data".center(150, "-"))
 	print(f"Loading metadata from {csv_file}...")
 	
-	# Define dtypes to avoid warnings and errors
 	dtypes = {
 		'doc_id': str, 'id': str, 'label': str, 'title': str,
 		'description': str, 'img_url': str, 'label_title_description': str,
@@ -665,9 +673,9 @@ def get_text_based_annotation(
 	t0 = time.time()
 	topics, flat_topic_words = extract_semantic_topics(
 			texts=clean_texts, 
-			n_clusters=min(30, len(clean_texts) // 100 + 5),
+			n_clusters=min(20, len(clean_texts) // 100 + 5),
 			top_k_words=10,
-			merge_threshold=0.65  # Merge similar topics
+			merge_threshold=0.85 # Merge similar topics
 	)
 	print(f"{len(topics)} Topics(clusters) {type(topics)}:\n{topics}")
 	print(f"Topic modeling done in {time.time() - t0:.1f} sec")
@@ -795,5 +803,17 @@ def get_text_based_annotation(
 	return per_image_labels
 
 if __name__ == "__main__":
+	parser = argparse.ArgumentParser()
+	parser.add_argument("--csv_file", type=str, default=full_meta)
+	parser.add_argument("--use_parallel", action="store_true")
+	parser.add_argument("--num_processes", type=int, default=16)
+	parser.add_argument("--batch_size", type=int, default=512)
+	args = parser.parse_args()
 	multiprocessing.set_start_method('spawn', force=True)
-	labels = get_text_based_annotation(csv_file=full_meta)
+
+	labels = get_text_based_annotation(
+		csv_file=args.csv_file,
+		use_parallel=args.use_parallel,
+		num_processes=args.num_processes,
+		batch_size=args.batch_size,
+	)
