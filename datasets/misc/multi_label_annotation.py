@@ -1162,8 +1162,8 @@ def get_text_based_annotation(
 		title_col: str='title', 
 		desc_col: str='description', 
 		label_col: str='label', 
-		use_parallel: bool=False, 
-		num_processes: int=4,
+		use_parallel: bool=True, 
+		num_processes: int=32,
 		batch_size: int=512,
 	):
 	print(f"Automatic label extraction from text data".center(150, "-"))
