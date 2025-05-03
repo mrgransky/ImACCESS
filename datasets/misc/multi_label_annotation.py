@@ -28,8 +28,8 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 DetectorFactory.seed = 42
 
 DATASET_DIRECTORY = {
-	# "farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
-	"farid": "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31",
+	"farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
+	# "farid": "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31",
 	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4",
 	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/HISTORY_X4",
 	"alijani": "/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4",
@@ -67,22 +67,29 @@ METADATA_PATTERNS = [
 sent_model = SentenceTransformer("all-MiniLM-L6-v2")
 tokenizer = AutoTokenizer.from_pretrained("dslim/bert-base-NER")
 model = AutoModelForTokenClassification.from_pretrained("dslim/bert-base-NER")
-nlp = pipeline(task="ner", model=model, tokenizer=tokenizer, aggregation_strategy="simple", device=0)
+nlp = pipeline(
+	task="ner", 
+	model=model, 
+	tokenizer=tokenizer, 
+	aggregation_strategy="simple",
+	device="cuda:0",
+	batch_size=128,
+)
 
 # Semantic categories for organization
 SEMANTIC_CATEGORIES = {
-		'military': ['military', 'army', 'navy', 'air force', 'soldier', 'officer', 'troop', 'regiment', 'division', 'corps', 'battalion'],
-		'political': ['government', 'parliament', 'president', 'prime minister', 'minister', 'official', 'politician', 'leader'],
-		'event': ['war', 'battle', 'attack', 'invasion', 'liberation', 'occupation', 'revolution', 'protest', 'march', 'ceremony'],
-		'location': ['city', 'town', 'village', 'country', 'region', 'territory', 'front', 'border', 'base', 'camp'],
-		'vehicle': ['tank', 'aircraft', 'plane', 'ship', 'submarine', 'boat', 'truck', 'car', 'jeep', 'vehicle'],
-		'weapon': ['gun', 'rifle', 'cannon', 'artillery', 'weapon', 'bomb', 'missile', 'ammunition'],
+	'military': ['military', 'army', 'navy', 'air force', 'soldier', 'officer', 'troop', 'regiment', 'division', 'corps', 'battalion'],
+	'political': ['government', 'parliament', 'president', 'prime minister', 'minister', 'official', 'politician', 'leader'],
+	'event': ['war', 'battle', 'attack', 'invasion', 'liberation', 'occupation', 'revolution', 'protest', 'march', 'ceremony'],
+	'location': ['city', 'town', 'village', 'country', 'region', 'territory', 'front', 'border', 'base', 'camp'],
+	'vehicle': ['tank', 'aircraft', 'plane', 'ship', 'submarine', 'boat', 'truck', 'car', 'jeep', 'vehicle'],
+	'weapon': ['gun', 'rifle', 'cannon', 'artillery', 'weapon', 'bomb', 'missile', 'ammunition'],
 }
 
 # Entity types for NER
 RELEVANT_ENTITY_TYPES = {
-		'PERSON', 'ORG', 'GPE', 'LOC', 'NORP', 'FAC', 
-		'EVENT', 'WORK_OF_ART', 'PRODUCT', 'DATE'
+	'PERSON', 'ORG', 'GPE', 'LOC', 'NORP', 'FAC', 
+	'EVENT', 'WORK_OF_ART', 'PRODUCT', 'DATE'
 }
 
 # ===== ENHANCED LANGUAGE FILTERING =====
@@ -310,39 +317,39 @@ def clean_labels(labels):
 		return sorted(cleaned)
 
 def extract_named_entities(text):
-		"""Extract named entities using NER pipeline"""
-		# Skip if text is not primarily English
-		if not is_english(text):
-				return []
+	# Skip if text is not primarily English
+	if not is_english(text):
+		return []
+
+	# # Limit text length to prevent timeout
+	# max_length = 1024
+	# if len(text) > max_length:
+	# 	text = text[:max_length]
+
+	try:
+		ner_results = nlp(text)
+		entities = []
+		for entity in ner_results:
+			if entity["entity_group"] in RELEVANT_ENTITY_TYPES and entity["word"].isalpha():
+				# Clean and normalize entity text
+				entity_text = re.sub(r'[^\w\s\-]', '', entity["word"].lower()).strip()
+				if (entity_text and len(entity_text) > 2 and 
+					entity_text not in CUSTOM_STOPWORDS and 
+					all(ord(char) < 128 for char in entity_text)):
+					entities.append(entity_text)
+		# Also extract multi-word phrases that might be significant
+		tokens = [
+			word.lower() for word in text.split() 
+			if word.isalpha() and len(word) > 2 
+			and word.lower() not in CUSTOM_STOPWORDS
+			and all(ord(char) < 128 for char in word)
+		]
 				
-		# Limit text length to prevent timeout
-		max_length = 512
-		if len(text) > max_length:
-				text = text[:max_length]
-				
-		try:
-				ner_results = nlp(text)
-				entities = []
-				for entity in ner_results:
-						if entity["entity_group"] in RELEVANT_ENTITY_TYPES and entity["word"].isalpha():
-								# Clean and normalize entity text
-								entity_text = re.sub(r'[^\w\s\-]', '', entity["word"].lower()).strip()
-								if (entity_text and len(entity_text) > 2 and 
-										entity_text not in CUSTOM_STOPWORDS and 
-										all(ord(char) < 128 for char in entity_text)):
-										entities.append(entity_text)
-										
-				# Also extract multi-word phrases that might be significant
-				tokens = [word.lower() for word in text.split() 
-									if word.isalpha() and len(word) > 2 
-									and word.lower() not in CUSTOM_STOPWORDS
-									and all(ord(char) < 128 for char in word)]
-									
-				# Return unique list of entities and tokens
-				return list(set(entities + tokens))
-		except Exception as e:
-				print(f"NER error: {e}")
-				return []
+		# Return unique list of entities and tokens
+		return list(set(entities + tokens))
+	except Exception as e:
+		print(f"NER error: {e}")
+		return []
 
 def extract_keywords(text, min_count=3):
 		"""Extract keywords based on TF-IDF"""
@@ -437,15 +444,15 @@ def deduplicate_labels(labels):
 		return deduplicated
 
 def assign_semantic_categories(labels):
-		"""Categorize labels into semantic groups"""
-		categorized_labels = []
-		for label in labels:
-				for category, terms in SEMANTIC_CATEGORIES.items():
-						if any(term in label for term in terms):
-								if label not in categorized_labels:
-										categorized_labels.append(label)
-								break
-		return categorized_labels
+	"""Categorize labels into semantic groups"""
+	categorized_labels = []
+	for label in labels:
+		for category, terms in SEMANTIC_CATEGORIES.items():
+			if any(term in label for term in terms):
+				if label not in categorized_labels:
+					categorized_labels.append(label)
+				break
+	return categorized_labels
 
 def balance_label_count(image_labels_list, min_labels=3, max_labels=10):
 		"""Ensure each image has a balanced number of labels"""
@@ -503,7 +510,7 @@ def quick_filter_candidates(text, labels, max_keep=30):
 		sorted_labels = [l for l, s in sorted(scores, key=lambda x: x[1], reverse=True)]
 		return sorted_labels[:max_keep]
 
-def batch_filter_by_relevance(texts, all_labels_list, threshold=0.3, batch_size=100, print_every=500):
+def batch_filter_by_relevance(texts, all_labels_list, threshold=0.3, batch_size=128, print_every=500):
 	"""Process document relevance filtering in efficient batches"""
 	results = []
 	total = len(texts)
@@ -751,17 +758,17 @@ def get_text_based_annotation(
 	print("Post-processing labels, deduplication, and semantic categorization...")
 	t0 = time.time()
 	per_image_labels = []
-	for i, relevant_labels in enumerate(tqdm(per_image_relevant_labels, desc="Post-processing labels", unit="image")):
+	for i, relevant_labels in enumerate(tqdm(per_image_relevant_labels, desc="Post-processing", unit="image")):
 		# Handle languages
 		filtered_labels = handle_multilingual_labels(relevant_labels)
 		
-		# # Add original label if it exists
-		# if label_col in df.columns:
-		# 	original_label = df.iloc[i][label_col]
-		# 	if isinstance(original_label, str) and original_label.strip():
-		# 		original_label_clean = re.sub(r"[^a-z0-9\s\-]", "", original_label.lower().strip())
-		# 		if all(ord(char) < 128 for char in original_label_clean):
-		# 			filtered_labels.append(original_label_clean)
+		# # Add user query if it exists
+		if "user_query" in df.columns:
+			original_label = df.iloc[i]["user_query"]
+			if isinstance(original_label, str) and original_label.strip():
+				original_label_clean = re.sub(r"[^a-z0-9\s\-]", "", original_label.lower().strip())
+				if all(ord(char) < 128 for char in original_label_clean):
+					filtered_labels.append(original_label_clean)
 		
 		# Remove redundancy
 		filtered_labels = deduplicate_labels(filtered_labels)
@@ -784,7 +791,7 @@ def get_text_based_annotation(
 	
 	# Print some examples
 	print("\nExample results:")
-	sample_cols = ['title', 'description', 'label', 'generated_labels']
+	sample_cols = ['title', 'description', 'label', 'label_title_description', 'generated_labels']
 	available_cols = [col for col in sample_cols if col in df.columns]
 	for i in range(min(25, len(df))):
 		print(f"\nExample {i+1}:")
