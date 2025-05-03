@@ -40,27 +40,27 @@ val_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata_val.csv"
 
 # Custom stopwords and metadata patterns
 CUSTOM_STOPWORDS = ENGLISH_STOP_WORDS.union({
-		"original", "bildetekst", "photo", "image", "archive", "arkivreferanse",
-		"copyright", "description", "riksarkivet", "ntbs", "ra", "pa", "bildetekst",
-		"left", "right", "center", "top", "bottom", "middle", "front", "back",
-		"year", "month", "day", "date", "century", "decade", "era",
-		"showing", "shown", "shows", "depicts", "depicting", "pictured", "picture",
-		"original", "copy", "version", "view", "looking", "seen", "visible",
-		"photograph", "photographer", "photography", "photo", "image", "img",
-		"sent", "received", "taken", "made", "created", "produced", "found",
-		"above", "below", "beside", "behind", "between", "among", "alongside",
-		"across", "opposite", "near", "under", "over", "inside", "outside",
-		"collection", "collections", "number",
+	"original", "bildetekst", "photo", "image", "archive", "arkivreferanse",
+	"copyright", "description", "riksarkivet", "ntbs", "ra", "pa", "bildetekst",
+	"left", "right", "center", "top", "bottom", "middle", "front", "back",
+	"year", "month", "day", "date", "century", "decade", "era",
+	"showing", "shown", "shows", "depicts", "depicting", "pictured", "picture",
+	"original", "copy", "version", "view", "looking", "seen", "visible",
+	"photograph", "photographer", "photography", "photo", "image", "img",
+	"sent", "received", "taken", "made", "created", "produced", "found",
+	"above", "below", "beside", "behind", "between", "among", "alongside",
+	"across", "opposite", "near", "under", "over", "inside", "outside",
+	"collection", "collections", "number",
 })
 
 METADATA_PATTERNS = [
-		r'bildetekst \w+',        # Matches 'bildetekst german' and similar
-		r'kunststoff \w+',        # Matches photography material descriptions
-		r'arkivreferanse \w+',    # Archive references
-		r'\w+ pa \d+',            # Reference codes like 'ra pa-1209'
-		r'donated \w+',           # Donation information
-		r'information received',  # Source information
-		r'\w+ association',       # Organization suffixes without context
+	r'bildetekst \w+',        # Matches 'bildetekst german' and similar
+	r'kunststoff \w+',        # Matches photography material descriptions
+	r'arkivreferanse \w+',    # Archive references
+	r'\w+ pa \d+',            # Reference codes like 'ra pa-1209'
+	r'donated \w+',           # Donation information
+	r'information received',  # Source information
+	r'\w+ association',       # Organization suffixes without context
 ]
 
 # Load models
