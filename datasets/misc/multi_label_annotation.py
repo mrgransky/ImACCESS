@@ -17,6 +17,8 @@ import matplotlib.pyplot as plt
 import nltk
 from tqdm import tqdm
 import warnings
+import urllib.request
+import fasttext
 
 nltk.download('words', quiet=True)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -26,6 +28,10 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 
 # Make language detection deterministic
 DetectorFactory.seed = 42
+
+url = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz"
+urllib.request.urlretrieve(url, "lid.176.ftz")
+ft_model = fasttext.load_model("lid.176.ftz")
 
 DATASET_DIRECTORY = {
 	"farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
@@ -92,32 +98,20 @@ RELEVANT_ENTITY_TYPES = {
 	'EVENT', 'WORK_OF_ART', 'PRODUCT', 'DATE'
 }
 
-# ===== ENHANCED LANGUAGE FILTERING =====
 def is_english(text):
-	"""Enhanced English detection with character set analysis"""
 	if not text or len(text) < 5:
 		return False
-	
-	# First check: percentage of Latin alphabet characters
-	ascii_chars = sum(c.isalpha() and ord(c) < 128 for c in text)
-	total_chars = sum(c.isalpha() for c in text)
-	
-	# If less than 90% of alphabetic chars are ASCII, reject
-	if total_chars > 10 and ascii_chars / total_chars < 0.9:
-		return False
-	
-	# Second check: language detection for longer texts
-	if len(text) >= 20:
-		try:
-			return detect(text) == 'en'
-		except:
-			# Fallback to looking for common English words
-			words = text.lower().split()
-			common_words = {'the', 'and', 'of', 'to', 'in', 'is', 'was', 'for', 'with', 'on'}
-			return any(word in common_words for word in words)
-	
-	# For very short texts, check if they contain only ASCII 
-	return ascii_chars / max(1, total_chars) > 0.95
+	if len(text) < 20:
+		# Short texts: rely on ASCII + stopword heuristics
+		ascii_chars = sum(c.isalpha() and ord(c) < 128 for c in text)
+		total_chars = sum(c.isalpha() for c in text)
+		if total_chars == 0 or ascii_chars / total_chars < 0.9:
+			return False
+		common_words = {'the', 'and', 'of', 'to', 'in', 'is', 'was', 'for', 'with', 'on'}
+		words = text.lower().split()
+		return any(word in common_words for word in words)
+	# Long texts: fasttext is preferred
+	return ft_model.predict(text)[0][0] == '__label__en'
 
 def is_likely_english_term(term):
 	"""Check if a term is likely English or a proper noun"""

@@ -13,6 +13,7 @@
 *.jpeg
 *.log
 *.zip
+*.ftz
 *.tar
 *.tar.gz
 *.tar.xz
