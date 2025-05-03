@@ -7,7 +7,7 @@ import multiprocessing
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 from collections import Counter, defaultdict
-import faiss
+# import faiss
 from transformers import pipeline
 from transformers import AutoTokenizer, AutoModelForTokenClassification
 from sentence_transformers import SentenceTransformer, util
