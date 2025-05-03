@@ -162,7 +162,7 @@ def get_dframe(query: str="query", start_date:str="1900-01-01", end_date:str="19
 		doc_description = doc.get("dcDescription") # TODO: must be taken from doc_page_url
 		row = {
 			'id': doc_combined_identifier,
-			'label': query,
+			'user_query': query,
 			'title': doc_title,
 			'description': doc.get("dcDescription"),
 			'img_url': doc_img_link,
@@ -210,8 +210,9 @@ def main():
 			dfs.append(df)
 
 	print(f"Concatinating {len(dfs)} dfs...")
-	# print(dfs[0])
 	smu_df_merged_raw = pd.concat(dfs, ignore_index=True)
+	print(f"Concatinated dfs: {smu_df_merged_raw.shape}")
+
 	print(f"<!> Replacing labels with super classes")
 	json_file_path = os.path.join(parent_dir, 'misc', 'super_labels.json')
 	if os.path.exists(json_file_path):
@@ -221,11 +222,10 @@ def main():
 		print(f"Error: {json_file_path} does not exist.")
 
 	print(f"pre-processing merged {type(smu_df_merged_raw)} {smu_df_merged_raw.shape}")
-	smu_df_merged_raw['label'] = smu_df_merged_raw['label'].replace(replacement_dict)
-	smu_df_merged_raw = smu_df_merged_raw.dropna(subset=['img_url']) # drop None firstDigitalObjectUrl
+	smu_df_merged_raw['label'] = smu_df_merged_raw['user_query'].replace(replacement_dict)
+	smu_df_merged_raw = smu_df_merged_raw.dropna(subset=['img_url'])
 	num_duplicates = smu_df_merged_raw.duplicated(subset='img_url', keep=False).sum()
-	print(f"num_duplicates ['img_url']: {num_duplicates}") #
-
+	print(f"num_duplicates ['img_url']: {num_duplicates}")
 	print(list(smu_df_merged_raw.columns))
 
 	# Identify duplicates based on img_url
@@ -235,7 +235,7 @@ def main():
 	duplicate_rows = smu_df_merged_raw[duplicates_mask]
 
 	# You can now select the required columns and print the result
-	result = duplicate_rows#[['id', 'label', 'title']]
+	result = duplicate_rows
 	print(result)
 
 	smu_df_merged_raw = smu_df_merged_raw.drop_duplicates(subset=['img_url']) # drop duplicate firstDigitalObjectUrl
@@ -267,7 +267,6 @@ def main():
 		smu_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
-	print(smu_df['label'].value_counts())
 
 	# stratified splitting:
 	train_df, val_df = get_stratified_split(df=smu_df, val_split_pct=args.val_split_pct,)
