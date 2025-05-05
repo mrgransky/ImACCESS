@@ -27,12 +27,14 @@ import argparse
 from typing import List
 from PIL import Image
 
-
 nltk.download('words', quiet=True)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=FutureWarning)
+
+# how to run[Pouta]:
+# $ nohup python -u multi_label_annotation.py --csv_file /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv --num_processes 40 --batch_size 1024 --vision_threshold 0.5 --vision_batch_size 256 > /media/volume/ImACCESS/trash/multi_label_annotation.out &
 
 # Make language detection deterministic
 DetectorFactory.seed = 42
@@ -44,17 +46,17 @@ if "lid.176.ftz" not in os.listdir():
 
 ft_model = fasttext.load_model("lid.176.ftz")
 
-DATASET_DIRECTORY = {
-	# "farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
-	# "farid": "/home/farid/datasets/WW_DATASETs/WW_VEHICLES",
-	"farid": "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31",
-	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4",
-	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/HISTORY_X4",
-	"alijani": "/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4",
-}
-full_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata.csv")
-train_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata_train.csv")
-val_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata_val.csv")
+# DATASET_DIRECTORY = {
+# 	# "farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
+# 	# "farid": "/home/farid/datasets/WW_DATASETs/WW_VEHICLES",
+# 	"farid": "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31",
+# 	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4",
+# 	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/HISTORY_X4",
+# 	"alijani": "/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4",
+# }
+# full_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata.csv")
+# train_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata_train.csv")
+# val_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata_val.csv")
 
 # Custom stopwords and metadata patterns
 CUSTOM_STOPWORDS = ENGLISH_STOP_WORDS.union({
@@ -637,182 +639,182 @@ def process_text_chunk(chunk):
 	return [extract_named_entities(text) for text in chunk]
 
 def get_text_based_annotation(
-        csv_file: str, 
-        use_parallel: bool=False, 
-        num_processes: int=16,
-        batch_size: int=512,
-        relevance_threshold: float=0.25,
-    ):
-    print(f"Automatic label extraction from text data".center(150, "-"))
-    print(f"Loading metadata from {csv_file}...")
-    
-    # Load the full dataset
-    dtypes = {
-        'doc_id': str, 'id': str, 'label': str, 'title': str,
-        'description': str, 'img_url': str, 'label_title_description': str,
-        'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
-        'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
-    }
-    
-    df = pd.read_csv(
-        filepath_or_buffer=csv_file, 
-        on_bad_lines='skip',
-        dtype=dtypes, 
-        low_memory=False,
-    )
-    print(f"FULL Dataset {type(df)} {df.shape}")
-    
-    df['content'] = df['label_title_description'].fillna('')
-    total_entries = len(df)
-    
-    # Clean text
-    print("Cleaning text...")
-    df['clean_content'] = df['content'].apply(clean_text)
-    
-    print("Filtering non-English entries...")
-    t0 = time.time()
-    english_mask = df['clean_content'].apply(is_english)
-    english_indices = english_mask[english_mask].index.tolist()
-    print(f"{sum(english_mask)} / {len(df)} texts are English")
-    print(f"Language filter done in {time.time() - t0:.1f} sec")
-    
-    # Create a filtered dataframe with only English entries
-    english_df = df[english_mask].reset_index(drop=True)
-    english_texts = english_df['clean_content'].tolist()
-    
-    # Initialize results for all entries with empty lists
-    per_image_labels = [[] for _ in range(total_entries)]
-    
-    if len(english_texts) > 0:
-        # Step 1: Topic Modeling with redundancy reduction
-        print("Performing topic modeling...")
-        t0 = time.time()
-        topics, flat_topic_words = extract_semantic_topics(
-            texts=english_texts,
-            n_clusters=min(20, len(english_texts) // 100 + 5),
-            top_k_words=10,
-            merge_threshold=0.85 # Merge similar topics
-        )
-        print(f"{len(topics)} Topics(clusters) {type(topics)}:\n{topics}")
-        print(f"Topic modeling done in {time.time() - t0:.1f} sec")
-        
-        # Process only English entries but track their original indices
-        # Step 2: Named Entity Recognition per image
-        print("Extracting named entities per image...")
-        t0 = time.time()
-        if len(english_texts) > 1000 and use_parallel:
-            chunk_size = len(english_texts) // num_processes + 1
-            chunks = [
-                (english_texts[i:i+chunk_size]) 
-                for i in range(0, len(english_texts), chunk_size)
-            ]
-            print(f"Using {num_processes} processes for NER extraction...")
-            with multiprocessing.Pool(processes=num_processes) as pool:
-                ner_results = pool.map(process_text_chunk, chunks)
-                
-            per_image_ner_labels = []
-            for chunk_result in ner_results:
-                per_image_ner_labels.extend(chunk_result)
-        else:
-            per_image_ner_labels = []
-            for i, text in enumerate(tqdm(english_texts, desc="NER Progress")):
-                entities = extract_named_entities(text)
-                per_image_ner_labels.append(entities)
-        print(f"NER done in {time.time() - t0:.1f} sec")
-        
-        # Step 3: Extract keywords per image
-        print("Extracting keywords per image using TF-IDF...")
-        t0 = time.time()
-        per_image_keywords = [extract_keywords(text) for text in english_texts]
-        print(f"Keyword extraction done in {time.time() - t0:.1f} sec")
-        
-        # Step 4: Add individual topic labels
-        print("Assigning topic labels per image...")
-        t0 = time.time()
-        per_image_topic_labels = []
-        for text in english_texts:
-            matching_topics = [word for word in flat_topic_words if word in text]
-            per_image_topic_labels.append(matching_topics)
-        print(f"Topic assignment done in {time.time() - t0:.1f} sec")
+				csv_file: str, 
+				use_parallel: bool=False, 
+				num_processes: int=16,
+				batch_size: int=512,
+				relevance_threshold: float=0.25,
+		):
+		print(f"Automatic label extraction from text data".center(150, "-"))
+		print(f"Loading metadata from {csv_file}...")
+		
+		# Load the full dataset
+		dtypes = {
+				'doc_id': str, 'id': str, 'label': str, 'title': str,
+				'description': str, 'img_url': str, 'label_title_description': str,
+				'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
+				'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+		}
+		
+		df = pd.read_csv(
+				filepath_or_buffer=csv_file, 
+				on_bad_lines='skip',
+				dtype=dtypes, 
+				low_memory=False,
+		)
+		print(f"FULL Dataset {type(df)} {df.shape}")
+		
+		df['content'] = df['label_title_description'].fillna('')
+		total_entries = len(df)
+		
+		# Clean text
+		print("Cleaning text...")
+		df['clean_content'] = df['content'].apply(clean_text)
+		
+		print("Filtering non-English entries...")
+		t0 = time.time()
+		english_mask = df['clean_content'].apply(is_english)
+		english_indices = english_mask[english_mask].index.tolist()
+		print(f"{sum(english_mask)} / {len(df)} texts are English")
+		print(f"Language filter done in {time.time() - t0:.1f} sec")
+		
+		# Create a filtered dataframe with only English entries
+		english_df = df[english_mask].reset_index(drop=True)
+		english_texts = english_df['clean_content'].tolist()
+		
+		# Initialize results for all entries with empty lists
+		per_image_labels = [[] for _ in range(total_entries)]
+		
+		if len(english_texts) > 0:
+				# Step 1: Topic Modeling with redundancy reduction
+				print("Performing topic modeling...")
+				t0 = time.time()
+				topics, flat_topic_words = extract_semantic_topics(
+						texts=english_texts,
+						n_clusters=min(20, len(english_texts) // 100 + 5),
+						top_k_words=10,
+						merge_threshold=0.85 # Merge similar topics
+				)
+				print(f"{len(topics)} Topics(clusters) {type(topics)}:\n{topics}")
+				print(f"Topic modeling done in {time.time() - t0:.1f} sec")
+				
+				# Process only English entries but track their original indices
+				# Step 2: Named Entity Recognition per image
+				print("Extracting named entities per image...")
+				t0 = time.time()
+				if len(english_texts) > 1000 and use_parallel:
+						chunk_size = len(english_texts) // num_processes + 1
+						chunks = [
+								(english_texts[i:i+chunk_size]) 
+								for i in range(0, len(english_texts), chunk_size)
+						]
+						print(f"Using {num_processes} processes for NER extraction...")
+						with multiprocessing.Pool(processes=num_processes) as pool:
+								ner_results = pool.map(process_text_chunk, chunks)
+								
+						per_image_ner_labels = []
+						for chunk_result in ner_results:
+								per_image_ner_labels.extend(chunk_result)
+				else:
+						per_image_ner_labels = []
+						for i, text in enumerate(tqdm(english_texts, desc="NER Progress")):
+								entities = extract_named_entities(text)
+								per_image_ner_labels.append(entities)
+				print(f"NER done in {time.time() - t0:.1f} sec")
+				
+				# Step 3: Extract keywords per image
+				print("Extracting keywords per image using TF-IDF...")
+				t0 = time.time()
+				per_image_keywords = [extract_keywords(text) for text in english_texts]
+				print(f"Keyword extraction done in {time.time() - t0:.1f} sec")
+				
+				# Step 4: Add individual topic labels
+				print("Assigning topic labels per image...")
+				t0 = time.time()
+				per_image_topic_labels = []
+				for text in english_texts:
+						matching_topics = [word for word in flat_topic_words if word in text]
+						per_image_topic_labels.append(matching_topics)
+				print(f"Topic assignment done in {time.time() - t0:.1f} sec")
 
-        # Step 5: Combine all label sources and clean
-        print("Combining and cleaning labels...")
-        t0 = time.time()
-        per_image_combined_labels = []
-        for ner, keywords, topics in zip(per_image_ner_labels, per_image_keywords, per_image_topic_labels):
-            # Combine all sources
-            all_labels = list(set(ner + keywords + topics))
-            # Clean the labels
-            cleaned_labels = clean_labels(all_labels)
-            # Filter metadata terms
-            cleaned_labels = filter_metadata_terms(cleaned_labels)
-            per_image_combined_labels.append(cleaned_labels)
-        print(f"Label combination and cleaning done in {time.time() - t0:.3f} sec")
+				# Step 5: Combine all label sources and clean
+				print("Combining and cleaning labels...")
+				t0 = time.time()
+				per_image_combined_labels = []
+				for ner, keywords, topics in zip(per_image_ner_labels, per_image_keywords, per_image_topic_labels):
+						# Combine all sources
+						all_labels = list(set(ner + keywords + topics))
+						# Clean the labels
+						cleaned_labels = clean_labels(all_labels)
+						# Filter metadata terms
+						cleaned_labels = filter_metadata_terms(cleaned_labels)
+						per_image_combined_labels.append(cleaned_labels)
+				print(f"Label combination and cleaning done in {time.time() - t0:.3f} sec")
 
-        # Step 6: Filter by relevance and handle languages (optimized)
-        print("Filtering labels by relevance...")
-        t0 = time.time()
-        if use_parallel:
-            print("Using parallel processing for relevance filtering...")
-            per_image_relevant_labels = parallel_relevance_filtering(
-                texts=english_texts,
-                all_labels=per_image_combined_labels,
-                n_processes=num_processes,
-            )
-        else:
-            print(f"Using batch processing for relevance filtering (thresh: {relevance_threshold})...")
-            per_image_relevant_labels = batch_filter_by_relevance(
-                texts=english_texts,
-                all_labels_list=per_image_combined_labels,
-                threshold=relevance_threshold,
-                batch_size=batch_size,
-                print_every=500,
-            )
-        print(f"Relevance filtering done in {time.time() - t0:.1f} sec")
+				# Step 6: Filter by relevance and handle languages (optimized)
+				print("Filtering labels by relevance...")
+				t0 = time.time()
+				if use_parallel:
+						print("Using parallel processing for relevance filtering...")
+						per_image_relevant_labels = parallel_relevance_filtering(
+								texts=english_texts,
+								all_labels=per_image_combined_labels,
+								n_processes=num_processes,
+						)
+				else:
+						print(f"Using batch processing for relevance filtering (thresh: {relevance_threshold})...")
+						per_image_relevant_labels = batch_filter_by_relevance(
+								texts=english_texts,
+								all_labels_list=per_image_combined_labels,
+								threshold=relevance_threshold,
+								batch_size=batch_size,
+								print_every=500,
+						)
+				print(f"Relevance filtering done in {time.time() - t0:.1f} sec")
 
-        # Post-process: language handling, deduplication, etc.
-        print("Post-processing labels, deduplication, and semantic categorization...")
-        t0 = time.time()
-        english_labels = []
-        for i, relevant_labels in enumerate(tqdm(per_image_relevant_labels, desc="Post-processing", unit="image")):
-            filtered_labels = handle_multilingual_labels(relevant_labels)
-            
-            if "user_query" in english_df.columns:
-                original_label = english_df.iloc[i]["user_query"]
-                if isinstance(original_label, str) and original_label.strip():
-                    original_label_clean = re.sub(r"[^a-z0-9\s\-]", "", original_label.lower().strip())
-                    if all(ord(char) < 128 for char in original_label_clean):
-                        filtered_labels.append(original_label_clean)
-            
-            filtered_labels = deduplicate_labels(filtered_labels)
+				# Post-process: language handling, deduplication, etc.
+				print("Post-processing labels, deduplication, and semantic categorization...")
+				t0 = time.time()
+				english_labels = []
+				for i, relevant_labels in enumerate(tqdm(per_image_relevant_labels, desc="Post-processing", unit="image")):
+						filtered_labels = handle_multilingual_labels(relevant_labels)
+						
+						if "user_query" in english_df.columns:
+								original_label = english_df.iloc[i]["user_query"]
+								if isinstance(original_label, str) and original_label.strip():
+										original_label_clean = re.sub(r"[^a-z0-9\s\-]", "", original_label.lower().strip())
+										if all(ord(char) < 128 for char in original_label_clean):
+												filtered_labels.append(original_label_clean)
+						
+						filtered_labels = deduplicate_labels(filtered_labels)
 
-            # Add semantic categories
-            categorized = assign_semantic_categories(filtered_labels)
-            final_labels = sorted(set(filtered_labels + categorized))
-            english_labels.append(final_labels)
-        print(f"Post-processing done in {time.time() - t0:.1f} sec")
+						# Add semantic categories
+						categorized = assign_semantic_categories(filtered_labels)
+						final_labels = sorted(set(filtered_labels + categorized))
+						english_labels.append(final_labels)
+				print(f"Post-processing done in {time.time() - t0:.1f} sec")
 
-        # Balance label counts
-        print("Balancing label counts...")
-        t0 = time.time()
-        english_labels = balance_label_count(english_labels, min_labels=3, max_labels=12)
-        print(f"Label balancing done in {time.time() - t0:.3f} sec")
-        
-        # Transfer results to the full-sized results array using original indices
-        for i, orig_idx in enumerate(english_indices):
-            if i < len(english_labels):
-                per_image_labels[orig_idx] = english_labels[i]
-    else:
-        print("No English texts found. Returning empty labels for all entries.")
-    
-    # Save the results in a separate column
-    df['textual_based_labels'] = per_image_labels
-    output_path = os.path.join(os.path.dirname(csv_file), "metadata_textual_based_labels.csv")
-    df.to_csv(output_path, index=False)
-    
-    print(f">> Generated text labels for {sum(1 for labels in per_image_labels if labels)} out of {total_entries} entries")
-    
-    return per_image_labels
+				# Balance label counts
+				print("Balancing label counts...")
+				t0 = time.time()
+				english_labels = balance_label_count(english_labels, min_labels=3, max_labels=12)
+				print(f"Label balancing done in {time.time() - t0:.3f} sec")
+				
+				# Transfer results to the full-sized results array using original indices
+				for i, orig_idx in enumerate(english_indices):
+						if i < len(english_labels):
+								per_image_labels[orig_idx] = english_labels[i]
+		else:
+				print("No English texts found. Returning empty labels for all entries.")
+		
+		# Save the results in a separate column
+		df['textual_based_labels'] = per_image_labels
+		output_path = os.path.join(os.path.dirname(csv_file), "metadata_textual_based_labels.csv")
+		df.to_csv(output_path, index=False)
+		
+		print(f">> Generated text labels for {sum(1 for labels in per_image_labels if labels)} out of {total_entries} entries")
+		
+		return per_image_labels
 
 def get_visual_based_annotation(
 		csv_file: str,
@@ -1006,12 +1008,12 @@ def get_visual_based_annotation(
 
 def main():
 	parser = argparse.ArgumentParser(description="Multi-label annotation for Historical Archives Dataset")
-	parser.add_argument("--csv_file", type=str, default=full_meta)
+	parser.add_argument("--csv_file", type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--use_parallel", action="store_true")
-	parser.add_argument("--num_processes", type=int, default=16)
+	parser.add_argument("--num_processes", type=int, default=10)
 	parser.add_argument("--batch_size", type=int, default=512)
 	parser.add_argument("--vision_threshold", type=float, default=0.5, help="Confidence threshold for vision models")
-	parser.add_argument("--vision_batch_size", type=int, default=32, help="Batch size for vision processing")
+	parser.add_argument("--vision_batch_size", type=int, default=128, help="Batch size for vision processing")
 	args, unknown = parser.parse_known_args()
 
 	print("Generating text-based annotations...")
