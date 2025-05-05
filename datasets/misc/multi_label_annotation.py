@@ -350,31 +350,32 @@ def extract_named_entities(text):
 		return []
 
 def extract_keywords(text, min_count=3):
-		"""Extract keywords based on TF-IDF"""
-		if not is_english(text) or len(text) < 10:
-				return []
-				
-		vectorizer = TfidfVectorizer(
-				max_df=0.9,
-				min_df=min_count/len([text]),
-				stop_words=CUSTOM_STOPWORDS,
-				ngram_range=(1, 2)
-		)
-
-		try:
-				X = vectorizer.fit_transform([text])
-				feature_names = vectorizer.get_feature_names_out()
-				# Get scores for the first document
-				scores = zip(feature_names, X.toarray()[0])
-				# Sort by score in descending order
-				sorted_scores = sorted(scores, key=lambda x: x[1], reverse=True)
-				# Return top keywords
-				top_k = 20  # Get more keywords initially for further filtering
-				keywords = [kw for kw, score in sorted_scores[:top_k] 
-									 if score > 0.01 and all(ord(char) < 128 for char in kw)]
-				return keywords
-		except:
-				return []
+	"""Extract keywords based on TF-IDF"""
+	if not is_english(text) or len(text) < 5:
+		return []
+			
+	vectorizer = TfidfVectorizer(
+		max_df=0.9,
+		min_df=min_count/len([text]),
+		stop_words=CUSTOM_STOPWORDS,
+		ngram_range=(1, 3)
+	)
+	try:
+		X = vectorizer.fit_transform([text])
+		feature_names = vectorizer.get_feature_names_out()
+		# Get scores for the first document
+		scores = zip(feature_names, X.toarray()[0])
+		# Sort by score in descending order
+		sorted_scores = sorted(scores, key=lambda x: x[1], reverse=True)
+		# Return top keywords
+		top_k = 50  # Get more keywords initially for further filtering
+		keywords = [
+			kw for kw, score in sorted_scores[:top_k] 
+			if score > 0.01 and all(ord(char) < 128 for char in kw)
+		]
+		return keywords
+	except:
+		return []
 
 def filter_metadata_terms(labels):
 		"""Filter out metadata-specific terms"""
@@ -702,7 +703,7 @@ def get_text_based_annotation(
 		for i, text in enumerate(tqdm(clean_texts, desc="NER Progress")):
 			entities = extract_named_entities(text)
 			per_image_ner_labels.append(entities)
-					
+		print(f"NER per image:{len(per_image_ner_labels)}\n{per_image_ner_labels}")
 	print(f"NER done in {time.time() - t0:.1f} sec")
 	
 	# Step 3: Extract keywords per image
