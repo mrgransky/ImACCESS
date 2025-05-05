@@ -3,6 +3,7 @@ import pandas as pd
 import re
 import os
 import time
+import torch
 import multiprocessing
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
@@ -10,6 +11,8 @@ from collections import Counter, defaultdict
 # import faiss
 from transformers import pipeline
 from transformers import AutoTokenizer, AutoModelForTokenClassification
+from transformers import CLIPProcessor, CLIPModel
+
 from sentence_transformers import SentenceTransformer, util
 from langdetect import detect, DetectorFactory
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
@@ -20,6 +23,10 @@ import warnings
 import urllib.request
 import fasttext
 import argparse
+
+from typing import List
+from PIL import Image
+
 
 nltk.download('words', quiet=True)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -39,8 +46,8 @@ ft_model = fasttext.load_model("lid.176.ftz")
 
 DATASET_DIRECTORY = {
 	# "farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
-	# "farid": "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31",
 	"farid": "/home/farid/datasets/WW_DATASETs/WW_VEHICLES",
+	# "farid": "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31",
 	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4",
 	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/HISTORY_X4",
 	"alijani": "/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4",
@@ -355,8 +362,8 @@ def extract_keywords(text, min_count=3):
 		return []
 			
 	vectorizer = TfidfVectorizer(
-		max_df=0.9,
-		min_df=min_count/len([text]),
+		# max_df=0.9,
+		# min_df=min_count/len([text]),
 		stop_words=CUSTOM_STOPWORDS,
 		ngram_range=(1, 3)
 	)
@@ -409,38 +416,37 @@ def handle_multilingual_labels(labels):
 		return processed_labels
 
 def deduplicate_labels(labels):
-		"""Remove semantically redundant labels"""
-		if not labels:
-				return []
+	"""Remove semantically redundant labels"""
+	if not labels:
+		return []
+
+	# Sort labels by length (typically longer labels are more specific)
+	sorted_labels = sorted(labels, key=len, reverse=True)
+	deduplicated = []
+	for label in sorted_labels:
+		# Check if this label is a substring of any already-kept label
+		is_redundant = False
+		for kept_label in deduplicated:
+			# If label is completely contained in a kept label, it's redundant
+			if label in kept_label:
+				is_redundant = True
+				break
+
+			# Check for high token overlap in multi-word labels
+			if ' ' in label and ' ' in kept_label:
+				label_tokens = set(label.split())
+				kept_tokens = set(kept_label.split())
+
+				# If 75% or more tokens overlap, consider redundant
+				overlap_ratio = len(label_tokens & kept_tokens) / len(label_tokens)
+				if overlap_ratio > 0.75:
+					is_redundant = True
+					break
 		
-		# Sort labels by length (typically longer labels are more specific)
-		sorted_labels = sorted(labels, key=len, reverse=True)
-		deduplicated = []
-		
-		for label in sorted_labels:
-				# Check if this label is a substring of any already-kept label
-				is_redundant = False
-				for kept_label in deduplicated:
-						# If label is completely contained in a kept label, it's redundant
-						if label in kept_label:
-								is_redundant = True
-								break
-								
-						# Check for high token overlap in multi-word labels
-						if ' ' in label and ' ' in kept_label:
-								label_tokens = set(label.split())
-								kept_tokens = set(kept_label.split())
-								
-								# If 80% or more tokens overlap, consider redundant
-								overlap_ratio = len(label_tokens & kept_tokens) / len(label_tokens)
-								if overlap_ratio > 0.8:
-										is_redundant = True
-										break
-				
-				if not is_redundant:
-						deduplicated.append(label)
-		
-		return deduplicated
+		if not is_redundant:
+			deduplicated.append(label)
+	
+	return deduplicated
 
 def assign_semantic_categories(labels):
 	"""Categorize labels into semantic groups"""
@@ -635,6 +641,7 @@ def get_text_based_annotation(
 		use_parallel: bool=False, 
 		num_processes: int=16,
 		batch_size: int=512,
+		relevance_threshold: float=0.25,
 	):
 	print(f"Automatic label extraction from text data".center(150, "-"))
 	print(f"Loading metadata from {csv_file}...")
@@ -660,7 +667,6 @@ def get_text_based_annotation(
 	print("Cleaning text...")
 	df['clean_content'] = df['content'].apply(clean_text)
 	
-	# Apply enhanced language filtering
 	print("Filtering non-English entries...")
 	t0 = time.time()
 	english_mask = df['clean_content'].apply(is_english)
@@ -674,10 +680,10 @@ def get_text_based_annotation(
 	print("Performing topic modeling...")
 	t0 = time.time()
 	topics, flat_topic_words = extract_semantic_topics(
-			texts=clean_texts, 
-			n_clusters=min(20, len(clean_texts) // 100 + 5),
-			top_k_words=10,
-			merge_threshold=0.85 # Merge similar topics
+		texts=clean_texts,
+		n_clusters=min(20, len(clean_texts) // 100 + 5),
+		top_k_words=10,
+		merge_threshold=0.85 # Merge similar topics
 	)
 	print(f"{len(topics)} Topics(clusters) {type(topics)}:\n{topics}")
 	print(f"Topic modeling done in {time.time() - t0:.1f} sec")
@@ -703,11 +709,11 @@ def get_text_based_annotation(
 		for i, text in enumerate(tqdm(clean_texts, desc="NER Progress")):
 			entities = extract_named_entities(text)
 			per_image_ner_labels.append(entities)
-		print(f"NER per image:{len(per_image_ner_labels)}\n{per_image_ner_labels}")
+		print(f"NER per image: {len(per_image_ner_labels)}:\n{per_image_ner_labels}")
 	print(f"NER done in {time.time() - t0:.1f} sec")
 	
 	# Step 3: Extract keywords per image
-	print("Extracting keywords per image...")
+	print("Extracting keywords per image using TF-IDF...")
 	t0 = time.time()
 	per_image_keywords = [extract_keywords(text) for text in clean_texts]
 	print(f"Keyword extraction done in {time.time() - t0:.1f} sec")
@@ -748,11 +754,11 @@ def get_text_based_annotation(
 			n_processes=num_processes,
 		)
 	else:
-		print("Using batch processing for relevance filtering...")
+		print(f"Using batch processing for relevance filtering (thresh: {relevance_threshold})...")
 		per_image_relevant_labels = batch_filter_by_relevance(
 			texts=clean_texts,
 			all_labels_list=per_image_combined_labels,
-			threshold=0.3,
+			threshold=relevance_threshold,
 			batch_size=batch_size,
 			print_every=500,
 		)
@@ -763,10 +769,8 @@ def get_text_based_annotation(
 	t0 = time.time()
 	per_image_labels = []
 	for i, relevant_labels in enumerate(tqdm(per_image_relevant_labels, desc="Post-processing", unit="image")):
-		# Handle languages
 		filtered_labels = handle_multilingual_labels(relevant_labels)
 		
-		# # Add user query if it exists
 		if "user_query" in df.columns:
 			original_label = df.iloc[i]["user_query"]
 			if isinstance(original_label, str) and original_label.strip():
@@ -774,7 +778,6 @@ def get_text_based_annotation(
 				if all(ord(char) < 128 for char in original_label_clean):
 					filtered_labels.append(original_label_clean)
 		
-		# Remove redundancy
 		filtered_labels = deduplicate_labels(filtered_labels)
 
 		# Add semantic categories
@@ -804,18 +807,260 @@ def get_text_based_annotation(
 	
 	return per_image_labels
 
-if __name__ == "__main__":
-	parser = argparse.ArgumentParser()
+def get_visual_based_annotation(
+		csv_file: str,
+		img_path_col: str = 'img_path',
+		confidence_threshold: float = 0.5,
+		batch_size: int = 16,
+		device: str = "cuda" if torch.cuda.is_available() else "cpu",
+		verbose: bool = True
+	) -> List[List[str]]:
+	"""
+	Generate image labels using computer vision analysis with CLIP for zero-shot classification.
+	
+	Args:
+			csv_file: Path to CSV file containing image metadata
+			img_path_col: Column name for image paths in CSV file
+			confidence_threshold: Minimum confidence score for detections
+			batch_size: Batch size for processing images
+			device: Device to run model on ('cuda' or 'cpu')
+			verbose: Whether to print detailed progress
+			
+	Returns:
+			List of label lists, one per image
+	"""
+	start_time = time.time()
+	
+	# Load dataset
+	if verbose:
+		print(f"Loading metadata from {csv_file}...")
+	df = pd.read_csv(csv_file, dtype={img_path_col: str})
+	image_paths = df[img_path_col].tolist()
+	if verbose:
+		print(f"Found {len(image_paths)} images to process...")
+	
+	# Load CLIP model
+	if verbose:
+		print("Loading CLIP model for zero-shot image classification...")
+	model_name = "openai/clip-vit-large-patch14"
+	model = CLIPModel.from_pretrained(model_name).to(device)
+	processor = CLIPProcessor.from_pretrained(model_name)
+	model.eval()
+	
+	# Define category sets for different aspects of visual content
+	object_categories = [
+			# Military vehicles
+			"tank", "jeep", "armored car", "truck", "military aircraft", "helicopter",
+			"submarine", "battleship", "aircraft carrier", "fighter jet", "bomber aircraft",
+			
+			# Military personnel
+			"soldier", "officer", "military personnel", "pilot", "sailor", "cavalry",
+			
+			# Weapons
+			"gun", "rifle", "machine gun", "artillery", "cannon", "missile", "bomb",
+			
+			# Other military objects
+			"military base", "bunker", "trench", "fortification", "flag", "military uniform"
+	]
+	
+	scene_categories = [
+			# Terrain types
+			"desert", "forest", "urban area", "beach", "mountain", "field", "ocean", "river",
+			
+			# Military scenes
+			"battlefield", "military camp", "airfield", "naval base", "military parade",
+			"military exercise", "war zone", "training ground", "military factory"
+	]
+	
+	era_categories = [
+			"World War I era", "World War II era", "Cold War era", "modern military",
+			"1910s style", "1940s style", "1960s style", "1980s style", "2000s style"
+	]
+	
+	activity_categories = [
+			"driving", "flying", "marching", "fighting", "training", "maintenance",
+			"loading equipment", "unloading equipment", "towing", "firing weapon",
+			"military parade", "crossing terrain", "naval operation"
+	]
+	
+	# Function to process image batches
+	def process_batch(batch_paths, categories):
+		valid_images = []
+		valid_indices = []
+		
+		# Load images
+		for i, path in enumerate(batch_paths):
+				try:
+						if os.path.exists(path):
+								img = Image.open(path).convert('RGB')
+								valid_images.append(img)
+								valid_indices.append(i)
+				except Exception as e:
+						if verbose:
+								print(f"Error loading image {path}: {e}")
+		
+		if not valid_images:
+				return [[] for _ in range(len(batch_paths))]
+				
+		# Prepare text prompts
+		text_prompts = [f"a photo of {cat}" for cat in categories]
+		
+		# Process with CLIP
+		with torch.no_grad():
+				# Prepare inputs
+				inputs = processor(
+						text=text_prompts,
+						images=valid_images, 
+						return_tensors="pt", 
+						padding=True
+				).to(device)
+				
+				# Get embeddings
+				outputs = model(**inputs)
+				
+				# Normalize embeddings
+				image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
+				text_embeds = outputs.text_embeds / outputs.text_embeds.norm(dim=-1, keepdim=True)
+				
+				# Calculate similarity scores
+				similarity = (100.0 * image_embeds @ text_embeds.T).softmax(dim=-1)
+				
+				# Create results
+				batch_results = [[] for _ in range(len(batch_paths))]
+				
+				# Extract predictions above threshold
+				for img_idx, similarities in enumerate(similarity.cpu().numpy()):
+						batch_idx = valid_indices[img_idx]
+						for cat_idx, score in enumerate(similarities):
+								if score > confidence_threshold:
+										batch_results[batch_idx].append(categories[cat_idx])
+		
+		return batch_results
+	
+	# Process images in batches
+	all_labels = []
+	
+	# 1. Object Detection
+	if verbose:
+			print("Performing visual object detection...")
+	for i in tqdm(range(0, len(image_paths), batch_size), desc="Object Detection"):
+			batch_paths = image_paths[i:i+batch_size]
+			batch_results = process_batch(batch_paths, object_categories)
+			all_labels.extend(batch_results)
+	
+	# 2. Scene Classification
+	if verbose:
+			print("Performing scene classification...")
+	scene_labels = []
+	for i in tqdm(range(0, len(image_paths), batch_size), desc="Scene Classification"):
+			batch_paths = image_paths[i:i+batch_size]
+			batch_results = process_batch(batch_paths, scene_categories)
+			scene_labels.extend(batch_results)
+	
+	# 3. Era Detection (Temporal Visual Cues)
+	if verbose:
+			print("Detecting temporal visual cues...")
+	era_labels = []
+	for i in tqdm(range(0, len(image_paths), batch_size), desc="Era Detection"):
+			batch_paths = image_paths[i:i+batch_size]
+			# Lower threshold for era detection (more challenging)
+			batch_results = process_batch(batch_paths, era_categories)
+			era_labels.extend(batch_results)
+	
+	# 4. Activity Recognition (Visual Relationship Detection)
+	if verbose:
+			print("Detecting visual relationships and activities...")
+	activity_labels = []
+	for i in tqdm(range(0, len(image_paths), batch_size), desc="Activity Recognition"):
+			batch_paths = image_paths[i:i+batch_size]
+			batch_results = process_batch(batch_paths, activity_categories)
+			activity_labels.extend(batch_results)
+	
+	# Combine all visual annotations
+	combined_labels = []
+	for i in range(len(image_paths)):
+			image_labels = []
+			
+			# Add object labels if available
+			if i < len(all_labels):
+					image_labels.extend(all_labels[i])
+			
+			# Add scene labels if available
+			if i < len(scene_labels):
+					image_labels.extend(scene_labels[i])
+			
+			# Add era labels if available
+			if i < len(era_labels):
+					image_labels.extend(era_labels[i])
+			
+			# Add activity labels if available
+			if i < len(activity_labels):
+					image_labels.extend(activity_labels[i])
+			
+			# Remove duplicates and sort
+			combined_labels.append(sorted(set(image_labels)))
+	
+	if verbose:
+			total_labels = sum(len(labels) for labels in combined_labels)
+			print(f"Vision-based annotation completed in {time.time() - start_time:.2f} seconds")
+			print(f"Generated {total_labels} labels for {len(image_paths)} images")
+			print(f"Average labels per image: {total_labels/len(image_paths):.2f}")
+	
+	return combined_labels
+
+def main():
+	parser = argparse.ArgumentParser(description="Multi-label annotation for Historical Archives Dataset")
 	parser.add_argument("--csv_file", type=str, default=full_meta)
 	parser.add_argument("--use_parallel", action="store_true")
 	parser.add_argument("--num_processes", type=int, default=16)
 	parser.add_argument("--batch_size", type=int, default=512)
-	args = parser.parse_args()
-	multiprocessing.set_start_method('spawn', force=True)
+	parser.add_argument("--vision_threshold", type=float, default=0.5, help="Confidence threshold for vision models")
+	parser.add_argument("--vision_batch_size", type=int, default=32, help="Batch size for vision processing")
+	args, unknown = parser.parse_known_args()
 
-	labels = get_text_based_annotation(
+	print("Generating text-based annotations...")
+	text_based_labels = get_text_based_annotation(
 		csv_file=args.csv_file,
 		use_parallel=args.use_parallel,
 		num_processes=args.num_processes,
 		batch_size=args.batch_size,
 	)
+
+	print("Generating vision-based annotations...")
+	visual_based_labels = get_visual_based_annotation(
+		csv_file=args.csv_file,
+		batch_size=args.vision_batch_size,
+		verbose=True,
+		confidence_threshold=args.vision_threshold,
+	)
+
+	# Combine text and vision labels
+	print("Merging annotations...")
+	combined_labels = []
+	for text_labels, vision_labels in zip(text_based_labels, visual_based_labels):
+			# Combine all labels
+			all_labels = list(set(text_labels + vision_labels))
+			
+			# Clean and filter
+			all_labels = clean_labels(all_labels)
+			all_labels = filter_metadata_terms(all_labels)
+			all_labels = deduplicate_labels(all_labels)
+			
+			# Add semantic categories
+			categorized = assign_semantic_categories(all_labels)
+			final_labels = sorted(set(all_labels + categorized))
+			
+			combined_labels.append(final_labels)
+	
+	# Save results
+	df = pd.read_csv(args.csv_file)
+	df['multimodal_labels'] = combined_labels
+	output_path = os.path.join(os.path.dirname(args.csv_file), "metadata_with_multimodal_labels.csv")
+	df.to_csv(output_path, index=False)
+	
+	print(f"Combined labels saved to: {output_path}")
+	return combined_labels
+
+if __name__ == "__main__":
+	multiprocessing.set_start_method('spawn', force=True)
+	main()

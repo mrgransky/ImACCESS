@@ -168,15 +168,15 @@ def extract_metadata_and_images(html_content, base_url, event, country, download
 			"title": title,  # Empty string if no title
 			"country": country or "",  # Empty string if no country
 			"description": description,  # Empty string if no description
-			"image_path": local_img_path,
-			"image_url": img_url,
+			"img_path": local_img_path,
+			"img_url": img_url,
 			"label_title_description": label_title_description or "",  # Empty string if all are empty
 			"event": event or "",  # Empty string if no event
 		})
 	return data
 
 def save_to_csv(data, filename=CSV_FILENAME):
-	fieldnames = ["id", "label", "title", "country", "description", "image_path", "image_url", "label_title_description", "event"]
+	fieldnames = ["id", "label", "title", "country", "description", "img_path", "img_url", "label_title_description", "event"]
 	with open(filename, mode="w", newline="", encoding="utf-8") as csvfile:
 		writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 		writer.writeheader()
