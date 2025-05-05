@@ -445,48 +445,110 @@ from visualize import *
 #     figure_size=(14, 5),
 #     DPI=300,
 # )
-from utils import select_qualitative_samples
+# from utils import select_qualitative_samples
 
-# --- Example Usage ---
-if __name__ == '__main__':
-	DATASET_DIRECTORY = {
-	"farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
-	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4",
-	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/HISTORY_X4",
-	"alijani": "/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4",
-	}
+# # --- Example Usage ---
+# if __name__ == '__main__':
+# 	DATASET_DIRECTORY = {
+# 	"farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
+# 	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4",
+# 	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/HISTORY_X4",
+# 	"alijani": "/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4",
+# 	}
 
-	# Replace with the actual paths to your metadata files
-	# Assumes you are running this script from a directory where these paths are valid
-	full_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata.csv")
-	train_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata_train.csv")
-	val_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata_val.csv")
-	# Use a fixed seed for reproducible sample selection during development/analysis
-	random.seed(42)
-	np.random.seed(42)
-	i2t_samples, t2i_samples = select_qualitative_samples(
-			metadata_path=full_meta,
-			metadata_train_path=train_meta, # Train path not strictly needed for this version but good practice
-			metadata_val_path=val_meta,
-			num_samples_per_segment=5 # Select 5 samples per segment
-	)
-	if i2t_samples and t2i_samples:
-			print("\n--- Selected I2T Queries (Image Path, GT Label) ---")
-			for i, sample in enumerate(i2t_samples):
-					print(f"Sample {i+1} (GT: {sample['label']}): {sample['image_path']}")
-					# Example of how to pass to your inference code:
-					# !python history_clip_inference.py -qi "{sample['image_path']}" ... (other args)
-			print("\n--- Selected T2I Queries (Label String) ---")
-			for i, sample in enumerate(t2i_samples):
-					print(f"Sample {i+1}: '{sample['label']}'")
-					# Example of how to pass to your inference code:
-					# !python history_clip_inference.py -ql "{sample['label']}" ... (other args)
-			# Example of a hand-picked "bias" example if needed
-			# print("\n--- Example 'Bias' T2I Query ---")
-			# print("Query Label: 'political figure'") # Or the specific label for the nature photo GT
-			# print("Expected Output: Visually relevant images of politicians")
-			# print("Observed Output (Progressive FT, Top-1): Image of nature scene due to metadata.")
-			# Add the image path and GT label of that specific nature photo here if you want to reference it.
-			# bias_image_path = "/path/to/that/specific/nature/image.jpg"
-			# bias_image_gt_label = "political figure" # Or whatever its actual label is
-			# print(f"Specific image illustrating bias (GT: {bias_image_gt_label}): {bias_image_path}")
+# 	# Replace with the actual paths to your metadata files
+# 	# Assumes you are running this script from a directory where these paths are valid
+# 	full_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata.csv")
+# 	train_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata_train.csv")
+# 	val_meta = os.path.join(DATASET_DIRECTORY[os.getenv("USER")], "metadata_val.csv")
+# 	# Use a fixed seed for reproducible sample selection during development/analysis
+# 	random.seed(42)
+# 	np.random.seed(42)
+# 	i2t_samples, t2i_samples = select_qualitative_samples(
+# 			metadata_path=full_meta,
+# 			metadata_train_path=train_meta, # Train path not strictly needed for this version but good practice
+# 			metadata_val_path=val_meta,
+# 			num_samples_per_segment=5 # Select 5 samples per segment
+# 	)
+# 	if i2t_samples and t2i_samples:
+# 			print("\n--- Selected I2T Queries (Image Path, GT Label) ---")
+# 			for i, sample in enumerate(i2t_samples):
+# 					print(f"Sample {i+1} (GT: {sample['label']}): {sample['image_path']}")
+# 					# Example of how to pass to your inference code:
+# 					# !python history_clip_inference.py -qi "{sample['image_path']}" ... (other args)
+# 			print("\n--- Selected T2I Queries (Label String) ---")
+# 			for i, sample in enumerate(t2i_samples):
+# 					print(f"Sample {i+1}: '{sample['label']}'")
+# 					# Example of how to pass to your inference code:
+# 					# !python history_clip_inference.py -ql "{sample['label']}" ... (other args)
+# 			# Example of a hand-picked "bias" example if needed
+# 			# print("\n--- Example 'Bias' T2I Query ---")
+# 			# print("Query Label: 'political figure'") # Or the specific label for the nature photo GT
+# 			# print("Expected Output: Visually relevant images of politicians")
+# 			# print("Observed Output (Progressive FT, Top-1): Image of nature scene due to metadata.")
+# 			# Add the image path and GT label of that specific nature photo here if you want to reference it.
+# 			# bias_image_path = "/path/to/that/specific/nature/image.jpg"
+# 			# bias_image_gt_label = "political figure" # Or whatever its actual label is
+# 			# print(f"Specific image illustrating bias (GT: {bias_image_gt_label}): {bias_image_path}")
+
+from transformers import ViTImageProcessor, ViTForImageClassification, ViTModel
+from PIL import Image
+import requests
+
+# url = 'http://images.cocodataset.org/val2017/000000039769.jpg'
+# image = Image.open(requests.get(url, stream=True).raw)
+image = Image.open("/home/farid/datasets/TEST_IMGs/6002_107454.jpg")
+
+processor = ViTImageProcessor.from_pretrained('google/vit-large-patch32-384')
+model = ViTForImageClassification.from_pretrained('google/vit-large-patch32-384')
+
+# processor = ViTImageProcessor.from_pretrained('google/vit-base-patch16-224-in21k')
+# model = ViTModel.from_pretrained('google/vit-base-patch16-224-in21k')
+
+inputs = processor(images=image, return_tensors="pt")
+outputs = model(**inputs)
+logits = outputs.logits
+print(type(logits), logits.shape, logits.dtype, logits.device)
+# model predicts one of the 1000 ImageNet classes
+predicted_class_idx = logits.argmax(-1).item()
+print("Predicted class:", model.config.id2label[predicted_class_idx])
+
+# Convert logits to probabilities using softmax
+probs = torch.nn.functional.softmax(logits, dim=1)
+
+# Get top-5 predictions
+top_probs, top_indices = torch.topk(probs, 5)
+print(f"\nTop 5 Predictions (ImageNet Labels):\n{'-'*40}")
+
+for i in range(5):
+    idx = top_indices[0][i].item()
+    prob = top_probs[0][i].item()
+    label = model.config.id2label[idx]
+    print(f"{i+1}. {label} ({prob:.2%})")
+
+print("\nLogits info:")
+print(f"Type: {type(logits)}, Shape: {logits.shape}, Dtype: {logits.dtype}, Device: {logits.device}")
+# import torch
+# import torch.nn.functional as F
+# from urllib.request import urlopen
+# from PIL import Image
+# from open_clip import create_model_from_pretrained, get_tokenizer # works on open-clip-torch >= 2.31.0, timm >= 1.0.15
+
+# model, preprocess = create_model_from_pretrained('hf-hub:timm/ViT-gopt-16-SigLIP2-384')
+# tokenizer = get_tokenizer('hf-hub:timm/ViT-gopt-16-SigLIP2-384')
+
+# image = Image.open(urlopen(
+#     'https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/beignets-task-guide.png'
+# ))
+# image = preprocess(image).unsqueeze(0)
+
+# labels_list = ["a dog", "a cat", "a donut", "a beignet"]
+# text = tokenizer(labels_list, context_length=model.context_length)
+
+# with torch.no_grad(), torch.cuda.amp.autocast():
+#     image_features = model.encode_image(image, normalize=True)
+#     text_features = model.encode_text(text, normalize=True)
+#     text_probs = torch.sigmoid(image_features @ text_features.T * model.logit_scale.exp() + model.logit_bias)
+
+# zipped_list = list(zip(labels_list, [100 * round(p.item(), 3) for p in text_probs[0]]))
+# print("Label probabilities: ", zipped_list)

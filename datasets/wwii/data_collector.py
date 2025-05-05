@@ -89,15 +89,15 @@ def extract_url_info(url:str)-> Dict:
 def get_dframe(
 		doc_idx: int,
 		doc_url: str, 
-		doc_label: str,
+		user_query: str,
 	) -> pd.DataFrame:
-	print(f">> Extracting DF for label[{doc_idx}]: {doc_label} from {doc_url}")
+	print(f">> Extracting DF for label[{doc_idx}]: {user_query} from {doc_url}")
 	doc_url_info = extract_url_info(doc_url)
 	print(json.dumps(doc_url_info, indent=4, ensure_ascii=False))
 	qv_processed = re.sub(
 		pattern=" ", 
 		repl="_", 
-		string=doc_label,
+		string=user_query,
 	)
 	url_processed = re.sub(
 		pattern=r"/|:|\.",
@@ -118,7 +118,7 @@ def get_dframe(
 		return None
 
 	df_st_time = time.time()
-	qLBL_DIR = os.path.join(HITs_DIR, re.sub(" ", "_", doc_label))
+	qLBL_DIR = os.path.join(HITs_DIR, re.sub(" ", "_", user_query))
 	os.makedirs(qLBL_DIR, exist_ok=True)
 	try:
 		response = requests.get(doc_url)
@@ -162,11 +162,7 @@ def get_dframe(
 	data = []
 	for idoc, vdoc in enumerate(hits):
 		img_url = vdoc.get('data-src')
-		doc_title = clean_(
-			text=vdoc.get("alt"), 
-			# sw=[],
-			sw=STOPWORDS,
-		)
+		doc_title = clean_(text=vdoc.get("alt"), sw=STOPWORDS)
 		# doc_title = vdoc.get("alt").lower()
 		if not img_url:
 			continue
@@ -185,11 +181,12 @@ def get_dframe(
 				continue
 		row = {
 			'id': filename,
-			'label': doc_label,
+			'label': user_query, # TODO: must be taken from doc_url
+			'user_query': user_query,
 			'title': doc_title,
 			'description': doc_description,
 			'img_url': img_url,
-			'label_title_description': doc_label + " " + (doc_title or '') + " " + (doc_description or ''),
+			'label_title_description': user_query + " " + (doc_title or '') + " " + (doc_description or ''),
 			'date': None,
 			'doc_url': doc_url,
 			'img_path': os.path.join(IMAGE_DIR, filename),
@@ -209,7 +206,7 @@ def get_dframe(
 @measure_execution_time
 def main():
 	base_url = "https://www.worldwarphotos.info/gallery"
-	URLs = { # key: url : val: doc_label
+	URLs = { # key: url : val: user_query
 		f"{base_url}/france/normandy-1944/": "normandy invasion", # Invasion of Normandy 1944 photo gallery
 		f"{base_url}/france/tanks-france/" : "armored fighting vehicle", # French Tanks of World War II
 		f"{base_url}/italy/spg2/75-18/" : "armored fighting vehicle", # https://en.wikipedia.org/wiki/Armoured_fighting_vehicle
@@ -250,8 +247,8 @@ def main():
 		f"{base_url}/japan/aircrafts/wrecks/": "wreck", #
 		f"{base_url}/japan/aircrafts/d4y/": "aircraft", #
 		f"{base_url}/japan/aircrafts/yokosuka_mxy7_ohka/": "aircraft", #
-		f"{base_url}/japan/aircrafts/p1y/": "aircraft", #
-		f"{base_url}/japan/ijn/midget/": "naval forces", # japanese navy
+		f"{base_url}/japan/aircrafts/p1y/": "aircraft",
+		f"{base_url}/japan/ijn/midget/": "naval forces",
 		f"{base_url}/japan/japanese-tanks/": "armored fighting vehicle",
 		f"{base_url}/uk/british-tanks/cruiser-mk-iii-a13-mk-i-cruiser-mk-iv-a13-mk-ii/": "armored fighting vehicle",
 		f"{base_url}/uk/british-tanks/challenger/": "armored fighting vehicle",
@@ -599,7 +596,7 @@ def main():
 		f"{base_url}/germany/artillery/hummel/": "artillery",
 		f"{base_url}/germany/artillery/karl-gerat/": "artillery",
 		f"{base_url}/germany/artillery/lorraine-schlepper/": "armored fighting vehicle",
-		f"{base_url}/germany/artillery/pak43/": "artillery", # anti-tank
+		f"{base_url}/germany/artillery/pak43/": "artillery",
 		f"{base_url}/germany/artillery/sig33b/": "armored fighting vehicle",
 		f"{base_url}/germany/artillery/sig33-bison/": "armored fighting vehicle",
 		f"{base_url}/germany/artillery/sturmpanzer_ii/": "armored fighting vehicle",
@@ -622,7 +619,7 @@ def main():
 			get_dframe(
 				doc_idx=i, 
 				doc_url=k, 
-				doc_label=v,
+				user_query=v,
 			) for i, (k, v) in enumerate(URLs.items())
 		]
 		dfs = [df for df in dfs if df is not None]
@@ -634,9 +631,6 @@ def main():
 	wwii_df = pd.concat(dfs, ignore_index=True)
 	print(f"WWII DF: {wwii_df.shape}, {list(wwii_df.columns)}")
 	print(wwii_df.head(10))
-	print(wwii_df.tail(10))
-	print(wwii_df["label"].value_counts())
-	print(wwii_df["label"].value_counts(normalize=True))
 
 	label_dirstribution_fname = os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_label_distribution_{wwii_df.shape[0]}_x_{wwii_df.shape[1]}.png")
 	plot_label_distribution(

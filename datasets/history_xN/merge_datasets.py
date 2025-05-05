@@ -73,6 +73,12 @@ merged_df = pd.concat(dfs, ignore_index=True)
 print(list(merged_df.columns), merged_df.shape)
 print(merged_df.head(10))
 merged_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata.csv'), index=False)
+try:
+	merged_df.to_excel(os.path.join(HISTORY_XN_DIRECTORY, "metadata.xlsx"), index=False)
+except Exception as e:
+	print(f"Failed to write Excel file: {e}")
+
+
 all_image_paths = merged_df['img_path'].tolist()
 print(f"Total number of images: {len(all_image_paths)}")
 
@@ -95,6 +101,7 @@ plot_grouped_bar_chart(
 	fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_labels_x_{merged_df['label'].value_counts().shape[0]}_freq_x_{len(dfs)}_datasets_grouped_bar_chart.png")
 )
 
+
 print(f"Stratified Splitting".center(150, "-"))
 train_df, val_df = train_test_split(
 	merged_df,
@@ -103,7 +110,6 @@ train_df, val_df = train_test_split(
 	stratify=merged_df['label'],
 	random_state=42
 )
-
 train_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_train.csv'), index=False)
 val_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_val.csv'), index=False)
 

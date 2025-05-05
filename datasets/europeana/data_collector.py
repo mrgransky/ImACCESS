@@ -43,8 +43,8 @@ STOPWORDS = set(STOPWORDS)
 # print(STOPWORDS, type(STOPWORDS))
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
 # europeana_api_key: str = "plaction"
-europeana_api_key: str = "api2demo"
-# europeana_api_key: str = "nLbaXYaiH"
+# europeana_api_key: str = "api2demo"
+europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
@@ -175,7 +175,7 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 		row = {
 			'doc_id': europeana_id,
 			'id': doc_id,
-			'label': label,
+			'user_query': label,
 			'title': doc_title,
 			'description': doc_description,
 			'img_url': image_url,
@@ -243,9 +243,17 @@ def main():
 		print(f"Error: {json_file_path} does not exist.")
 
 	print(f"pre-processing merged {type(europeana_df_merged_raw)} {europeana_df_merged_raw.shape}")
-	europeana_df_merged_raw['label'] = europeana_df_merged_raw['label'].replace(replacement_dict)
-	europeana_df_merged_raw = europeana_df_merged_raw.dropna(subset=['img_url']) # drop None firstDigitalObjectUrl
-	europeana_df_merged_raw = europeana_df_merged_raw.drop_duplicates(subset=['img_url']) # drop duplicate firstDigitalObjectUrl
+	print(f"Handling user_query...")
+	europeana_df_merged_raw['label'] = europeana_df_merged_raw['user_query'].replace(replacement_dict)
+	print(f"Handling img_url with None...")
+	print(f"img_url with None: {europeana_df_merged_raw['img_url'].isna().sum()}")
+	europeana_df_merged_raw = europeana_df_merged_raw.dropna(subset=['img_url'])
+	print(f"img_url with None: {europeana_df_merged_raw['img_url'].isna().sum()}")
+
+	print(f"Handling img_url with duplicate...")
+	print(f"img_url with duplicate: {europeana_df_merged_raw['img_url'].duplicated().sum()}")
+	europeana_df_merged_raw = europeana_df_merged_raw.drop_duplicates(subset=['img_url'])
+	print(f"img_url with duplicate: {europeana_df_merged_raw['img_url'].duplicated().sum()}")
 
 	print(f"Processed europeana_df_merged_raw: {europeana_df_merged_raw.shape}")
 	print(europeana_df_merged_raw.head(20))

@@ -233,7 +233,7 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 			first_digital_object_url = None
 		row = {
 			'id': na_identifier,
-			'label': label,
+			'user_query': label,
 			'title': doc_title,
 			'description': doc_description,
 			'img_url': first_digital_object_url,
@@ -303,7 +303,7 @@ def main():
 	print(f">> {len(unq_labels)} Unique Label(s):\n{unq_labels}")
 
 	print(f"pre-processing merged {type(na_df_merged_raw)} {na_df_merged_raw.shape}")
-	na_df_merged_raw['label'] = na_df_merged_raw['label'].replace(replacement_dict)
+	na_df_merged_raw['label'] = na_df_merged_raw['user_query'].replace(replacement_dict)
 	na_df_merged_raw = na_df_merged_raw.dropna(subset=['img_url']) # drop None img_url
 	na_df_merged_raw = na_df_merged_raw.drop_duplicates(subset=['img_url'], keep="first", ignore_index=True) # drop duplicate img_url
 	print(f"Processed na_df_merged_raw: {na_df_merged_raw.shape}")

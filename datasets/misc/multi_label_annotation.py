@@ -38,8 +38,9 @@ if "lid.176.ftz" not in os.listdir():
 ft_model = fasttext.load_model("lid.176.ftz")
 
 DATASET_DIRECTORY = {
-	"farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
+	# "farid": "/home/farid/datasets/WW_DATASETs/HISTORY_X3",
 	# "farid": "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31",
+	"farid": "/home/farid/datasets/WW_DATASETs/WW_VEHICLES",
 	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4",
 	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/HISTORY_X4",
 	"alijani": "/lustre/sgn-data/ImACCESS/WW_DATASETs/HISTORY_X4",
