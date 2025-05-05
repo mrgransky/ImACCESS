@@ -541,7 +541,7 @@ tokenizer = get_tokenizer('hf-hub:timm/ViT-gopt-16-SigLIP2-384')
 
 image = Image.open(urlopen(
 	# 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1f/8inchHowitzerTowedByScammellPioneer12Jan1940.jpg/632px-8inchHowitzerTowedByScammellPioneer12Jan1940.jpg'
-	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-68709&index=0"
+	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-38625&index=0"
 ))
 image = preprocess(image).unsqueeze(0)
 
