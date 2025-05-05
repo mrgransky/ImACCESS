@@ -491,64 +491,103 @@ from visualize import *
 # 			# bias_image_gt_label = "political figure" # Or whatever its actual label is
 # 			# print(f"Specific image illustrating bias (GT: {bias_image_gt_label}): {bias_image_path}")
 
-from transformers import ViTImageProcessor, ViTForImageClassification, ViTModel
-from PIL import Image
-import requests
-
-# url = 'http://images.cocodataset.org/val2017/000000039769.jpg'
-# image = Image.open(requests.get(url, stream=True).raw)
-image = Image.open("/home/farid/datasets/TEST_IMGs/6002_107454.jpg")
-
-processor = ViTImageProcessor.from_pretrained('google/vit-large-patch32-384')
-model = ViTForImageClassification.from_pretrained('google/vit-large-patch32-384')
-
-# processor = ViTImageProcessor.from_pretrained('google/vit-base-patch16-224-in21k')
-# model = ViTModel.from_pretrained('google/vit-base-patch16-224-in21k')
-
-inputs = processor(images=image, return_tensors="pt")
-outputs = model(**inputs)
-logits = outputs.logits
-print(type(logits), logits.shape, logits.dtype, logits.device)
-# model predicts one of the 1000 ImageNet classes
-predicted_class_idx = logits.argmax(-1).item()
-print("Predicted class:", model.config.id2label[predicted_class_idx])
-
-# Convert logits to probabilities using softmax
-probs = torch.nn.functional.softmax(logits, dim=1)
-
-# Get top-5 predictions
-top_probs, top_indices = torch.topk(probs, 5)
-print(f"\nTop 5 Predictions (ImageNet Labels):\n{'-'*40}")
-
-for i in range(5):
-    idx = top_indices[0][i].item()
-    prob = top_probs[0][i].item()
-    label = model.config.id2label[idx]
-    print(f"{i+1}. {label} ({prob:.2%})")
-
-print("\nLogits info:")
-print(f"Type: {type(logits)}, Shape: {logits.shape}, Dtype: {logits.dtype}, Device: {logits.device}")
-# import torch
-# import torch.nn.functional as F
-# from urllib.request import urlopen
+# from transformers import ViTImageProcessor, ViTForImageClassification, ViTModel
 # from PIL import Image
-# from open_clip import create_model_from_pretrained, get_tokenizer # works on open-clip-torch >= 2.31.0, timm >= 1.0.15
+# import requests
 
-# model, preprocess = create_model_from_pretrained('hf-hub:timm/ViT-gopt-16-SigLIP2-384')
-# tokenizer = get_tokenizer('hf-hub:timm/ViT-gopt-16-SigLIP2-384')
+# # url = 'http://images.cocodataset.org/val2017/000000039769.jpg'
+# # image = Image.open(requests.get(url, stream=True).raw)
+# image = Image.open("/home/farid/datasets/TEST_IMGs/6002_107454.jpg")
 
-# image = Image.open(urlopen(
-#     'https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/beignets-task-guide.png'
-# ))
-# image = preprocess(image).unsqueeze(0)
+# processor = ViTImageProcessor.from_pretrained('google/vit-large-patch32-384')
+# model = ViTForImageClassification.from_pretrained('google/vit-large-patch32-384')
 
-# labels_list = ["a dog", "a cat", "a donut", "a beignet"]
-# text = tokenizer(labels_list, context_length=model.context_length)
+# # processor = ViTImageProcessor.from_pretrained('google/vit-base-patch16-224-in21k')
+# # model = ViTModel.from_pretrained('google/vit-base-patch16-224-in21k')
 
-# with torch.no_grad(), torch.cuda.amp.autocast():
-#     image_features = model.encode_image(image, normalize=True)
-#     text_features = model.encode_text(text, normalize=True)
-#     text_probs = torch.sigmoid(image_features @ text_features.T * model.logit_scale.exp() + model.logit_bias)
+# inputs = processor(images=image, return_tensors="pt")
+# outputs = model(**inputs)
+# logits = outputs.logits
+# print(type(logits), logits.shape, logits.dtype, logits.device)
+# # model predicts one of the 1000 ImageNet classes
+# predicted_class_idx = logits.argmax(-1).item()
+# print("Predicted class:", model.config.id2label[predicted_class_idx])
 
-# zipped_list = list(zip(labels_list, [100 * round(p.item(), 3) for p in text_probs[0]]))
-# print("Label probabilities: ", zipped_list)
+# # Convert logits to probabilities using softmax
+# probs = torch.nn.functional.softmax(logits, dim=1)
+
+# # Get top-5 predictions
+# top_probs, top_indices = torch.topk(probs, 5)
+# print(f"\nTop 5 Predictions (ImageNet Labels):\n{'-'*40}")
+
+# for i in range(5):
+#     idx = top_indices[0][i].item()
+#     prob = top_probs[0][i].item()
+#     label = model.config.id2label[idx]
+#     print(f"{i+1}. {label} ({prob:.2%})")
+
+# print("\nLogits info:")
+# print(f"Type: {type(logits)}, Shape: {logits.shape}, Dtype: {logits.dtype}, Device: {logits.device}")
+
+
+import torch
+import torch.nn.functional as F
+from urllib.request import urlopen
+from PIL import Image
+from open_clip import create_model_from_pretrained, get_tokenizer # works on open-clip-torch >= 2.31.0, timm >= 1.0.15
+
+model, preprocess = create_model_from_pretrained('hf-hub:timm/ViT-gopt-16-SigLIP2-384')
+tokenizer = get_tokenizer('hf-hub:timm/ViT-gopt-16-SigLIP2-384')
+
+image = Image.open(urlopen(
+	'https://i0.wp.com/bestsellingcarsblog.com/wp-content/uploads/2014/08/Renault-AHR.-Picture-courtesy-of-acemodel.com_.ua3_.jpg'
+))
+image = preprocess(image).unsqueeze(0)
+
+
+# Define category sets for different aspects of visual content
+object_categories = [
+		# Military vehicles
+		"tank", "jeep", "armored car", "truck", "military aircraft", "helicopter",
+		"submarine", "battleship", "aircraft carrier", "fighter jet", "bomber aircraft",
+		
+		# Military personnel
+		"soldier", "officer", "military personnel", "pilot", "sailor", "cavalry",
+		
+		# Weapons
+		"gun", "rifle", "machine gun", "artillery", "cannon", "missile", "bomb",
+		
+		# Other military objects
+		"military base", "bunker", "trench", "fortification", "flag", "military uniform"
+]
+
+scene_categories = [
+		# Terrain types
+		"desert", "forest", "urban area", "beach", "mountain", "field", "ocean", "river",
+		
+		# Military scenes
+		"battlefield", "military camp", "airfield", "naval base", "military parade",
+		"military exercise", "war zone", "training ground", "military factory"
+]
+
+era_categories = [
+		"World War I era", "World War II era", "Cold War era", "modern military",
+		"1910s style", "1940s style", "1960s style", "1980s style", "2000s style"
+]
+
+activity_categories = [
+		"driving", "flying", "marching", "fighting", "training", "maintenance",
+		"loading equipment", "unloading equipment", "towing", "firing weapon",
+		"military parade", "crossing terrain", "naval operation"
+]
+
+labels_list = object_categories + scene_categories + era_categories + activity_categories
+text = tokenizer(labels_list, context_length=model.context_length)
+
+with torch.no_grad(), torch.cuda.amp.autocast():
+	image_features = model.encode_image(image, normalize=True)
+	text_features = model.encode_text(text, normalize=True)
+	text_probs = torch.sigmoid(image_features @ text_features.T * model.logit_scale.exp() + model.logit_bias)
+
+zipped_list = list(zip(labels_list, [100 * round(p.item(), 3) for p in text_probs[0]]))
+print("Label probabilities: ", zipped_list)
