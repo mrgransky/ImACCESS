@@ -540,45 +540,45 @@ model, preprocess = create_model_from_pretrained('hf-hub:timm/ViT-gopt-16-SigLIP
 tokenizer = get_tokenizer('hf-hub:timm/ViT-gopt-16-SigLIP2-384')
 
 image = Image.open(urlopen(
-	'https://i0.wp.com/bestsellingcarsblog.com/wp-content/uploads/2014/08/Renault-AHR.-Picture-courtesy-of-acemodel.com_.ua3_.jpg'
+	'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1f/8inchHowitzerTowedByScammellPioneer12Jan1940.jpg/632px-8inchHowitzerTowedByScammellPioneer12Jan1940.jpg'
 ))
 image = preprocess(image).unsqueeze(0)
 
 
 # Define category sets for different aspects of visual content
 object_categories = [
-		# Military vehicles
-		"tank", "jeep", "armored car", "truck", "military aircraft", "helicopter",
-		"submarine", "battleship", "aircraft carrier", "fighter jet", "bomber aircraft",
-		
-		# Military personnel
-		"soldier", "officer", "military personnel", "pilot", "sailor", "cavalry",
-		
-		# Weapons
-		"gun", "rifle", "machine gun", "artillery", "cannon", "missile", "bomb",
-		
-		# Other military objects
-		"military base", "bunker", "trench", "fortification", "flag", "military uniform"
+	# Military vehicles
+	"tank", "jeep", "armored car", "truck", "military aircraft", "helicopter",
+	"submarine", "battleship", "aircraft carrier", "fighter jet", "bomber aircraft",
+	
+	# Military personnel
+	"soldier", "officer", "military personnel", "pilot", "sailor", "cavalry",
+	
+	# Weapons
+	"gun", "rifle", "machine gun", "artillery", "cannon", "missile", "bomb",
+	
+	# Other military objects
+	"military base", "bunker", "trench", "fortification", "flag", "military uniform"
 ]
 
 scene_categories = [
-		# Terrain types
-		"desert", "forest", "urban area", "beach", "mountain", "field", "ocean", "river",
-		
-		# Military scenes
-		"battlefield", "military camp", "airfield", "naval base", "military parade",
-		"military exercise", "war zone", "training ground", "military factory"
+	# Terrain types
+	"desert", "forest", "urban area", "beach", "mountain", "field", "ocean", "river",
+	
+	# Military scenes
+	"battlefield", "military camp", "airfield", "naval base", "military parade",
+	"military exercise", "war zone", "training ground", "military factory"
 ]
 
 era_categories = [
-		"World War I era", "World War II era", "Cold War era", "modern military",
-		"1910s style", "1940s style", "1960s style", "1980s style", "2000s style"
+	"World War I era", "World War II era", "Cold War era", "modern military",
+	"1910s style", "1940s style", "1960s style", "1980s style", "2000s style"
 ]
 
 activity_categories = [
-		"driving", "flying", "marching", "fighting", "training", "maintenance",
-		"loading equipment", "unloading equipment", "towing", "firing weapon",
-		"military parade", "crossing terrain", "naval operation"
+	"driving", "flying", "marching", "fighting", "training", "maintenance",
+	"loading equipment", "unloading equipment", "towing", "firing weapon",
+	"military parade", "crossing terrain", "naval operation"
 ]
 
 labels_list = object_categories + scene_categories + era_categories + activity_categories
