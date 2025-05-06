@@ -1172,10 +1172,11 @@ def main():
 	parser.add_argument("--use_parallel", '-parallel', action="store_true")
 	parser.add_argument("--num_workers", '-nw', type=int, default=10)
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=512)
-	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=64, help="Batch size for vision processing")
+	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=32, help="Batch size for vision processing")
 	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.25, help="Relevance threshold for text-based filtering")
-	parser.add_argument("--vision_threshold", '-vth', type=float, default=0.15, help="Confidence threshold for VLM-based filtering")
+	parser.add_argument("--vision_threshold", '-vth', type=float, default=0.20, help="Confidence threshold for VLM-based filtering")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
+
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
 
