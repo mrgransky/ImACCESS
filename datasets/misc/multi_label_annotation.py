@@ -4,6 +4,7 @@ import re
 import os
 import time
 import torch
+import torchvision
 import multiprocessing
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
@@ -11,7 +12,7 @@ from collections import Counter, defaultdict
 # import faiss
 from transformers import pipeline
 from transformers import AutoTokenizer, AutoModelForTokenClassification
-from transformers import CLIPProcessor, CLIPModel
+from transformers import CLIPProcessor, CLIPModel, AlignProcessor, AlignModel
 
 from sentence_transformers import SentenceTransformer, util
 from langdetect import detect, DetectorFactory
@@ -28,13 +29,14 @@ from typing import List
 from PIL import Image
 
 nltk.download('words', quiet=True)
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=FutureWarning)
 
 # how to run[Pouta]:
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -nw 40 -tbs 1024 -vbs 256 -vth 0.5 -rth 0.25 > /media/volume/ImACCESS/trash/multi_label_annotation.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -nw 50 -tbs 1024 -vbs 512 -vth 0.15 -rth 0.25 > /media/volume/ImACCESS/trash/multi_label_annotation.out &
 
 # Make language detection deterministic
 DetectorFactory.seed = 42
@@ -500,7 +502,7 @@ def batch_filter_by_relevance(
 		all_labels_list: list[list[str]],
 		threshold: float=0.3,
 		batch_size: int=128,
-		print_every=500,
+		print_every=10,
 	):
 	"""Process document relevance filtering in efficient batches"""
 	results = []
@@ -511,8 +513,7 @@ def batch_filter_by_relevance(
 		batch_end = min(batch_start + batch_size, total)
 		batch_texts = texts[batch_start:batch_end]
 		batch_labels_list = all_labels_list[batch_start:batch_end]
-		
-		print(f"Processing batch {batch_start//batch_size + 1}/{(total-1)//batch_size + 1}...")
+
 		
 		# First apply quick filtering to reduce candidates
 		quick_filtered_batch = []
@@ -544,7 +545,9 @@ def batch_filter_by_relevance(
 			# 	print(f"  Processed {i+1}/{len(batch_texts)} documents in current batch")
 
 		results.extend(batch_results)
-		print(f"\tCompleted batch with {sum(len(labels) for labels in batch_results)} relevant labels found")
+
+		if batch_start % print_every == 0 or batch_start == 0:
+			print(f"batch {batch_start//batch_size + 1}/{(total-1)//batch_size + 1} with {sum(len(labels) for labels in batch_results)} relevant labels found")
 	
 	return results
 
@@ -655,7 +658,8 @@ def get_textual_based_annotation(
 		dtype=dtypes, 
 		low_memory=False,
 	)
-	print(f"FULL Dataset {type(df)} {df.shape} {df.columns}")
+
+	print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
 	
 	df['content'] = df['label_title_description'].fillna('')
 	num_samples = len(df)
@@ -810,10 +814,10 @@ def get_textual_based_annotation(
 
 def get_visual_based_annotation(
 		csv_file: str,
-		confidence_threshold: float = 0.5,
-		batch_size: int = 16,
-		device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
-		verbose: bool = True
+		confidence_threshold: float,
+		batch_size: int,
+		device: str,
+		verbose: bool,
 	) -> List[List[str]]:
 	print(f"Automatic label extraction from image data".center(160, "-"))
 	start_time = time.time()
@@ -827,47 +831,210 @@ def get_visual_based_annotation(
 		print(f"Found {len(image_paths)} samples to process...")
 	
 	if verbose:
-		print("Loading CLIP model for zero-shot image classification...")
-	model_name = "openai/clip-vit-large-patch14"
-	model = CLIPModel.from_pretrained(model_name).to(device)
-	processor = CLIPProcessor.from_pretrained(model_name)
+		print("Loading VLM model for image labeling...")
+	# model_name = "openai/clip-vit-large-patch14"
+	# model = CLIPModel.from_pretrained(model_name).to(device)
+	# processor = CLIPProcessor.from_pretrained(model_name)
+	processor = AlignProcessor.from_pretrained("kakaobrain/align-base")
+	model = AlignModel.from_pretrained("kakaobrain/align-base")
+	model.to(device) # Add this line to move the model to the GPU
 	model.eval()
-	
-	# Define category sets for different aspects of visual content
+
 	object_categories = [
-		# Military vehicles
-		"tank", "jeep", "armored car", "truck", "military aircraft", "helicopter",
-		"submarine", "battleship", "aircraft carrier", "fighter jet", "bomber aircraft",
-		
-		# Military personnel
-		"soldier", "officer", "military personnel", "pilot", "sailor", "cavalry",
-		
-		# Weapons
-		"gun", "rifle", "machine gun", "artillery", "cannon", "missile", "bomb",
-		
-		# Other military objects
-		"military base", "bunker", "trench", "fortification", "flag", "military uniform"
+			# Tanks & Armored Vehicles (WWI-WWII)
+			"tank", "light tank", "medium tank", "heavy tank", "super-heavy tank", 
+			"tank destroyer", "self-propelled gun", "armored car", "half-track", 
+			"armored personnel carrier", "armored train", "reconnaissance vehicle",
+			"Mark IV tank", "Tiger tank", "Panther tank", "T-34 tank", "Sherman tank",
+			"Churchill tank", "KV-1 tank", "Panzer IV", "Panzer III", "Stuart tank",
+			"SdKfz armored vehicle", "Kettenkrad", "M4 Sherman", "T-34/85", "IS-2 tank",
+			
+			# Light & Utility Vehicles
+			"jeep", "staff car", "command car", "ambulance", "motorcycle", 
+			"military truck", "supply truck", "fuel truck", "artillery tractor", 
+			"amphibious vehicle", "scout car", "Willys Jeep", "Kubelwagen", 
+			"Dodge WC series", "Opel Blitz", "Zis truck", "weapons carrier",
+			
+			# Aircraft
+			"military aircraft", "fighter aircraft", "bomber aircraft", "reconnaissance aircraft", 
+			"dive bomber", "torpedo bomber", "transport aircraft", "seaplane", "flying boat",
+			"biplane", "monoplane", "fighter-bomber", "ground attack aircraft", "night fighter",
+			"Spitfire", "Messerschmitt Bf 109", "P-51 Mustang", "Focke-Wulf Fw 190", 
+			"B-17 Flying Fortress", "Lancaster bomber", "Heinkel He 111", "Junkers Ju 87 Stuka",
+			"Mitsubishi Zero", "Il-2 Sturmovik", "P-47 Thunderbolt", "Hurricane fighter", "helicopter",
+			
+			# Naval Vessels
+			"submarine", "U-boat", "destroyer", "cruiser", "battleship", "aircraft carrier", 
+			"battlecruiser", "corvette", "frigate", "minesweeper", "torpedo boat", 
+			"landing craft", "PT boat", "pocket battleship", "gunboat", "escort carrier",
+			"liberty ship", "merchant vessel", "hospital ship", "troop transport",
+			
+			# Military Personnel
+			"soldier", "infantryman", "officer", "NCO", "general", "field marshal",
+			"pilot", "bomber crew", "tanker", "artilleryman", "sailor", "marine", 
+			"paratrooper", "commando", "sniper", "medic", "military police", 
+			"cavalry", "SS officer", "Wehrmacht soldier", "Red Army soldier", 
+			"Desert Rat", "Afrika Korps soldier", "Luftwaffe personnel", "naval officer",
+			
+			# Weapons & Ordnance
+			"rifle", "machine gun", "submachine gun", "pistol", "bayonet", "flamethrower", 
+			"mortar", "artillery piece", "howitzer", "field gun", "anti-tank gun", "cannon", 
+			"anti-aircraft gun", "rocket launcher", "grenade", "hand grenade", "rifle grenade",
+			"landmine", "naval mine", "depth charge", "torpedo", "aerial bomb", "incendiary bomb",
+			"Thompson submachine gun", "MG-42", "Karabiner 98k", "M1 Garand", "Sten gun",
+			"Luger pistol", "PIAT", "Bazooka", "Panzerfaust", "88mm gun",
+			
+			# Military Infrastructure
+			"bunker", "pillbox", "gun emplacement", "observation post", "barbed wire", 
+			"trenches", "foxhole", "dugout", "fortification", "coastal defense", 
+			"anti-tank obstacle", "dragon's teeth", "minefield", "pontoon bridge",
+			"Bailey bridge", "military headquarters", "command post", "communications center",
+			
+			# Military Insignia & Symbols
+			"military flag", "swastika flag", "rising sun flag", "Soviet flag", "Union Jack", 
+			"American flag", "regimental colors", "military insignia", "rank insignia", 
+			"unit patch", "medal", "military decoration", "Iron Cross", "Victoria Cross",
+			"Medal of Honor", "military helmet", "steel helmet", "Brodie helmet",
+			"Stahlhelm", "Adrian helmet", "gas mask",
+			
+			# Military Equipment
+			"military uniform", "combat uniform", "field equipment", "backpack", "mess kit", 
+			"entrenching tool", "canteen", "ammunition belt", "bandolier", "map case", 
+			"binoculars", "field telephone", "radio equipment", "signal equipment",
+			"parachute", "life vest", "fuel drum", "jerry can", "ration box",
+			"military stretcher", "field kitchen", "anti-gas equipment"
 	]
-	
+
 	scene_categories = [
-		# Terrain types
-		"desert", "forest", "urban area", "beach", "mountain", "field", "ocean", "river",
-		
-		# Military scenes
-		"battlefield", "military camp", "airfield", "naval base", "military parade",
-		"military exercise", "war zone", "training ground", "military factory"
+			# European Theaters
+			"Western Front", "Eastern Front", "Italian Front", "North African Front",
+			"Normandy beaches", "French countryside", "Belgian forest", "Dutch canal",
+			"Russian steppe", "Ukrainian wheat field", "Alpine mountain", "Mediterranean coast",
+			"Sicilian town", "German city ruins", "English Channel", "Atlantic Wall",
+			"Ardennes Forest", "Rhineland", "Soviet urban ruins", "Berlin streets",
+			
+			# Pacific & Asian Theaters
+			"Pacific island", "jungle battlefield", "Pacific beach landing", "atoll",
+			"tropical forest", "coral reef", "bamboo grove", "rice paddy",
+			"Burmese jungle", "Chinese village", "Philippine beach", "volcanic island",
+			"Japanese homeland", "Pacific airfield", "jungle airstrip", "coconut plantation",
+			
+			# Military Settings
+			"prisoner of war camp", "concentration camp", "military hospital", "field hospital",
+			"military cemetery", "aircraft factory", "tank factory", "shipyard",
+			"military depot", "ammunition dump", "fuel depot", "supply dump",
+			"military port", "embarkation point", "submarine pen", "naval dry dock",
+			
+			# Terrain Types
+			"desert", "desert oasis", "desert dunes", "rocky desert", "forest",
+			"dense forest", "winter forest", "urban area", "bombed city", "city ruins",
+			"beach", "landing beach", "rocky beach", "mountain", "mountain pass",
+			"field", "farm field", "snow-covered field", "ocean", "open ocean",
+			"coastal waters", "river", "river crossing", "flooded river", "bridge",
+			
+			# Military Infrastructure
+			"airfield", "temporary airstrip", "bomber base", "fighter base",
+			"naval base", "submarine base", "army barracks", "training camp",
+			"military headquarters", "command bunker", "coastal defense",
+			"fortified line", "defensive position", "artillery position",
+			
+			# Military Activities
+			"battlefield", "active battlefield", "battlefield aftermath",
+			"military parade", "victory parade", "surrender ceremony",
+			"military exercise", "amphibious landing exercise", "tank maneuvers",
+			"war zone", "civilian evacuation", "occupation zone", "frontline",
+			"military checkpoint", "border checkpoint", "military convoy route",
+			
+			# Home Front
+			"war factory", "armaments factory", "aircraft assembly line",
+			"vehicle assembly line", "shipbuilding yard", "munitions factory",
+			"civilian air raid shelter", "bombed civilian area", "rationing center",
+			"recruitment office", "propaganda poster display", "war bonds office",
+			"civil defense drill", "air raid aftermath", "victory celebration"
 	]
-	
+
 	era_categories = [
-		"World War I era", "World War II era", "Cold War era", "modern military",
-		"1910s style", "1940s style", "1960s style", "1980s style", "2000s style"
+			# Pre-War & Early War
+			"pre-World War I era", "World War I era", "interwar period", "early 1930s",
+			"Spanish Civil War era", "pre-1939 military", "early World War II",
+			"Phoney War period", "Blitzkrieg era", "1939-1940 equipment",
+			
+			# World War II Specific Periods
+			"Battle of Britain era", "North African campaign", "Eastern Front 1941",
+			"Pearl Harbor era", "Midway period", "Stalingrad era", "Normandy invasion",
+			"Operation Barbarossa", "Battle of the Bulge", "Italian campaign",
+			"D-Day preparations", "Market Garden operation", "Fall of Berlin",
+			"Island-hopping campaign", "Battle of the Atlantic", "V-E Day era",
+			"Pacific War late stage", "atomic bomb era", "Japanese surrender period",
+			
+			# Post-War Periods
+			"immediate post-war", "occupation period", "early Cold War",
+			"Korean War era", "1950s military", "Vietnam era", "late Cold War",
+			
+			# Visual Style Markers
+			"1910s style", "1920s style", "1930s style", "1940s style", "1940s military aesthetic",
+			"wartime propaganda style", "black and white photography era",
+			"wartime color photography", "Technicolor film era", "wartime newsreel style",
+			"press photography style", "military documentation style",
+			
+			# Military Technology Eras
+			"early tank warfare", "biplane era", "early radar period", "monoplane transition",
+			"early jet aircraft", "V-weapon period", "heavy bomber era", "aircraft carrier warfare",
+			"submarine warfare golden age", "amphibious assault development",
+			"mechanized warfare", "combined arms doctrine", "early nuclear era",
+			
+			# National Military Period Styles
+			"Wehrmacht prime", "Soviet military buildup", "British Empire forces",
+			"American war production peak", "Imperial Japanese forces",
+			"Nazi Germany zenith", "Allied powers ascendancy", "Axis powers decline",
+			"Red Army resurgence", "American military dominance"
 	]
-	
+
 	activity_categories = [
-			"driving", "flying", "marching", "fighting", "training", "maintenance",
-			"loading equipment", "unloading equipment", "towing", "firing weapon",
-			"military parade", "crossing terrain", "naval operation"
+			# Combat Activities
+			"fighting", "tank battle", "infantry assault", "naval engagement",
+			"aerial dogfight", "bombing run", "strafing run", "artillery barrage",
+			"firing weapon", "machine gun firing", "mortar firing", "shelling",
+			"anti-aircraft firing", "sniper activity", "flamethrower attack",
+			"bayonet charge", "hand-to-hand combat", "urban combat", "house-to-house fighting",
+			
+			# Movement & Transportation
+			"driving", "convoy movement", "tank column", "troop transport",
+			"marching", "infantry advance", "tactical retreat", "military withdrawal",
+			"flying", "air patrol", "reconnaissance flight", "bombing mission",
+			"parachute drop", "airborne landing", "glider landing", "air resupply",
+			"crossing terrain", "river crossing", "beach landing", "amphibious assault",
+			"fording stream", "mountain climbing", "moving through jungle",
+			"naval convoy", "fleet movement", "submarine patrol", "naval blockade",
+			
+			# Military Operations
+			"digging trenches", "building fortifications", "laying mines", "clearing mines",
+			"constructing bridge", "demolishing bridge", "breaching obstacles",
+			"setting up artillery", "camouflaging position", "establishing perimeter",
+			"setting up command post", "establishing field hospital", "creating airstrip",
+			
+			# Logistics & Support
+			"loading equipment", "unloading equipment", "loading ammunition", "refueling",
+			"resupplying troops", "distributing rations", "loading wounded", "evacuating casualties",
+			"loading ships", "unloading landing craft", "airdrop receiving", "gathering supplies",
+			"towing disabled vehicle", "vehicle recovery", "aircraft maintenance", "tank repair",
+			"weapon cleaning", "equipment maintenance", "vehicle maintenance",
+			
+			# Military Life & Routines
+			"training", "infantry drill", "weapons training", "tank crew training", "pilot training",
+			"field exercise", "receiving briefing", "map reading", "radio communication",
+			"standing guard", "sentry duty", "prisoner handling", "military inspection",
+			"cooking field rations", 'military rations', "eating meal", "resting between battles", "writing letters",
+			"medical treatment", "field surgery", "distributing supplies", "receiving orders",
+			
+			# Ceremonial & Administrative
+			"military parade", "award ceremony", "flag raising", "surrender ceremony", 
+			"prisoner processing", "military funeral", "military wedding", "religious service",
+			"officer briefing", "signing documents", "military trial", "propaganda filming",
+			"press conference", "VIP visit", "civilian interaction", "occupation duty",
+			"war crime investigation", "reconnaissance reporting"
 	]
+
 	
 	# Function to process image batches
 	def process_batch(batch_paths, categories):
@@ -891,8 +1058,8 @@ def get_visual_based_annotation(
 		# Prepare text prompts
 		text_prompts = [f"a photo of {cat}" for cat in categories]
 		
-		# Process with CLIP
-		with torch.no_grad():
+		# Process with VLM
+		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 			# Prepare inputs
 			inputs = processor(
 				text=text_prompts,
@@ -926,7 +1093,7 @@ def get_visual_based_annotation(
 	# Process images in batches
 	all_labels = []
 	
-	# 1. Object Detection
+	# 1. Visual Object Detection
 	if verbose:
 		print("Performing visual object detection...")
 	for i in tqdm(range(0, len(image_paths), batch_size), desc="Object Detection"):
@@ -1005,10 +1172,12 @@ def main():
 	parser.add_argument("--use_parallel", '-parallel', action="store_true")
 	parser.add_argument("--num_workers", '-nw', type=int, default=10)
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=512)
-	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=512, help="Batch size for vision processing")
+	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=64, help="Batch size for vision processing")
 	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.25, help="Relevance threshold for text-based filtering")
-	parser.add_argument("--vision_threshold", '-vth', type=float, default=0.5, help="Confidence threshold for vision models")
+	parser.add_argument("--vision_threshold", '-vth', type=float, default=0.15, help="Confidence threshold for VLM-based filtering")
+	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	args, unknown = parser.parse_known_args()
+	args.device = torch.device(args.device)
 
 	textual_based_labels = get_textual_based_annotation(
 		csv_file=args.csv_file,
@@ -1023,7 +1192,9 @@ def main():
 		batch_size=args.vision_batch_size,
 		verbose=True,
 		confidence_threshold=args.vision_threshold,
+		device=args.device,
 	)
+	
 	print(textual_based_labels[:10])
 	print(visual_based_labels[:10])
 
