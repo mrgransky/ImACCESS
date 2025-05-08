@@ -5,6 +5,12 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 from misc.utils import *
 from misc.visualize import *
+import httpx
+import re
+import json
+from bs4 import BeautifulSoup
+from typing import Dict
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 # local:
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 --img_mean_std
@@ -64,6 +70,39 @@ os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
+FIELD_KEY_MAP = {
+	"creato": "creator",
+	"datea": "iso_date",
+	"decade": "decade",
+	"audien": "audience",
+	"covera": "coverage",
+	"descri": "description",
+	"notes": "notes",
+	"langua": "language",
+	"author": "subjects",
+	"source": "source",
+	"formge": "genre",
+	"digita": "digital_type",
+	"digiti": "digitized",
+	"digitb": "display_format",
+	"archiv": "archival_scan",
+	"archia": "archival_image_a",
+	"archib": "archival_image_b",
+	"digitc": "digitization_notes",
+	"digitd": "collection_name",
+	"librar": "library",
+	"publis": "publisher",
+	"rights": "rights",
+	"call": "call_number",
+	"upload": "upload_file",
+	"series": "series",
+	"part": "collection_part",
+	"place": "location",
+	"keywor": "keywords",
+	"physic": "physical_description",
+	"boxfol": "box_folder",
+	"relate": "related_resources"
+}
 
 def get_doc_year(raw_doc_date):
 	# if not pd.isna(raw_doc_date): # Check if raw_doc_date is missing (None or NaN)
@@ -158,22 +197,27 @@ def get_dframe(query: str="query", start_date:str="1900-01-01", end_date:str="19
 		doc_link = doc.get("itemLink") # /singleitem/collection/ryr/id/2479
 		doc_page_url = f"{SMU_BASE_URL}/collection/{doc.get('collectionAlias')}/id/{doc.get('itemId')}"
 		doc_img_link = f"{SMU_BASE_URL}/api/singleitem/image/{doc_collection}/{doc_id}/default.jpg"
-		doc_title = clean_(text=doc.get("title"), sw=STOPWORDS)# doc.get("title")
-		doc_description = doc.get("dcDescription") # TODO: must be taken from doc_page_url
+		
+		# doc_title = clean_(text=doc.get("title"), sw=STOPWORDS)# doc.get("title")
+		doc_title = doc.get("title")
+		doc_detailed_metadata = scrape_item_metadata(doc_url=doc_page_url)
+		doc_description = doc_detailed_metadata.get("description", None)
+		doc_keywords = doc_detailed_metadata.get("keywords", None)
+		
 		row = {
 			'id': doc_combined_identifier,
+			'doc_url': doc_page_url,
 			'user_query': query,
 			'title': doc_title,
-			'description': doc.get("dcDescription"),
-			'img_url': doc_img_link,
-			'doc_url': doc_page_url,
-			'label_title_description': query + " " + (doc_title or '') + " " + (doc_description or ''),
+			'description': doc_description,
+			'keywords': doc_keywords,
+			'enriched_document_description': (doc_title or '') + " " + (doc_keywords or '') + " " + (doc_description or ''),
 			'raw_doc_date': doc_date,
-			'img_path': f"{os.path.join(IMAGE_DIRECTORY, str(doc_combined_identifier) + '.jpg')}"
+			'img_path': f"{os.path.join(IMAGE_DIRECTORY, str(doc_combined_identifier) + '.jpg')}",
+			'img_url': doc_img_link
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
-	print(df.head(10))
 	# Apply the function to the 'raw_doc_date' and 'doc_year' columns
 	df['doc_date'] = df.apply(lambda row: get_doc_year(row['raw_doc_date']), axis=1)
 
@@ -184,24 +228,79 @@ def get_dframe(query: str="query", start_date:str="1900-01-01", end_date:str="19
 	save_pickle(pkl=df, fname=df_file_path)
 	return df
 
+@retry(
+	reraise=True,
+	stop=stop_after_attempt(3),
+	wait=wait_exponential(multiplier=1, min=1, max=10),
+	retry=retry_if_exception_type(httpx.RequestError)
+)
+def fetch_html(url: str, timeout: float = 10.0) -> str:
+	"""Fetch HTML content from a URL with retry logic."""
+	with httpx.Client(timeout=timeout, headers=headers, follow_redirects=True) as client:
+		response = client.get(url)
+		response.raise_for_status()
+		return response.text
+
+def extract_initial_state_json(html: str) -> Dict:
+	"""Extract and decode JSON from the window.__INITIAL_STATE__ script tag."""
+	soup = BeautifulSoup(html, 'html.parser')
+	script_tag = soup.find('script', string=re.compile(r'window\.__INITIAL_STATE__'))
+	if not script_tag:
+			raise ValueError("Script tag with window.__INITIAL_STATE__ not found.")
+	# Extract JSON.parse(...) string
+	json_match = re.search(
+			r'window\.__INITIAL_STATE__\s*=\s*JSON\.parse\("((?:\\.|[^"\\])*)"\);?',
+			script_tag.string
+	)
+	if not json_match:
+			raise ValueError("Unable to extract JSON.parse content from script tag.")
+	encoded_json_str = json_match.group(1)
+	try:
+			# Decode double-escaped JSON string
+			decoded_json = bytes(encoded_json_str, "utf-8").decode("unicode_escape")
+			decoded_json = decoded_json.replace(r'\/', '/')  # Optional: fix slashes
+			return json.loads(decoded_json)
+	except json.JSONDecodeError as e:
+			snippet = encoded_json_str[max(0, e.pos - 50):e.pos + 50]
+			print(f"Failed to decode JSON near position {e.pos}: ...{snippet}...")
+			raise e
+
+def scrape_item_metadata(doc_url: str) -> Dict:
+	"""Scrape metadata from an SMU document page."""
+	try:
+			html = fetch_html(doc_url)
+			data = extract_initial_state_json(html)
+			metadata = {}
+			fields = data.get("item", {}).get("item", {}).get("fields", [])
+			for field in fields:
+					key = FIELD_KEY_MAP.get(field.get("key", "").strip().lower().replace(" ", "_"), "")
+					value = field.get("value", "").strip()
+					if key:
+							metadata[key] = value
+			return metadata
+	except Exception as e:
+			print(f"[ERROR] Failed to scrape metadata from {doc_url}: {e}")
+			return {}
+
 @measure_execution_time
 def main():
 	with open(os.path.join(parent_dir, 'misc', 'query_labels.txt'), 'r') as file_:
-		all_label_tags = [line.strip().lower() for line in file_]
+		all_label_tags = list(set([line.strip() for line in file_]))
 	print(type(all_label_tags), len(all_label_tags))
 	print(f"{len(all_label_tags)} Query phrases are being processed, please be patient...")
 
 	dfs = []
 	for qi, qv in enumerate(all_label_tags):
 		print(f"\nQ[{qi+1}/{len(all_label_tags)}]: {qv}")
-		qv_processed = re.sub(" ", "_", qv.lower())
+		qv = clean_(text=qv, sw=STOPWORDS)
+		qv_processed = re.sub(" ", "_", qv)
 		df_fpth = os.path.join(HITS_DIRECTORY, f"df_query_{qv_processed}_{args.start_date}_{args.end_date}.gz")
 		try:
 			df = load_pickle(fpath=df_fpth)
 		except Exception as e:
 			print(e)
 			df = get_dframe(
-				query=qv.lower(),
+				query=qv,
 				start_date=args.start_date,
 				end_date=args.end_date,
 				df_file_path=df_fpth,
@@ -222,38 +321,78 @@ def main():
 		print(f"Error: {json_file_path} does not exist.")
 
 	print(f"pre-processing merged {type(smu_df_merged_raw)} {smu_df_merged_raw.shape}")
+	print(f"Handling user_query...")
 	smu_df_merged_raw['label'] = smu_df_merged_raw['user_query'].replace(replacement_dict)
+	print(f"Handling img_url with None...")
+	print(f"img_url with None: {smu_df_merged_raw['img_url'].isna().sum()}")
 	smu_df_merged_raw = smu_df_merged_raw.dropna(subset=['img_url'])
-	num_duplicates = smu_df_merged_raw.duplicated(subset='img_url', keep=False).sum()
-	print(f"num_duplicates ['img_url']: {num_duplicates}")
-	print(list(smu_df_merged_raw.columns))
 
-	# Identify duplicates based on img_url
-	duplicates_mask = smu_df_merged_raw['img_url'].duplicated(keep=False)
+	############################## Dropping duplicated img_url ##############################
+	# print(f"img_url with duplicate: {smu_df_merged_raw['img_url'].duplicated().sum()}")
+	# num_duplicates = smu_df_merged_raw.duplicated(subset='img_url', keep=False).sum()
+	# print(f"num_duplicates ['img_url']: {num_duplicates}")
+	# print(list(smu_df_merged_raw.columns))
 
-	# Filter the DataFrame to keep only the duplicates
-	duplicate_rows = smu_df_merged_raw[duplicates_mask]
+	# # Identify duplicates based on img_url
+	# duplicates_mask = smu_df_merged_raw['img_url'].duplicated(keep=False)
 
-	# You can now select the required columns and print the result
-	result = duplicate_rows
-	print(result)
+	# # Filter the DataFrame to keep only the duplicates
+	# duplicate_rows = smu_df_merged_raw[duplicates_mask]
 
-	smu_df_merged_raw = smu_df_merged_raw.drop_duplicates(subset=['img_url']) # drop duplicate firstDigitalObjectUrl
+	# # You can now select the required columns and print the result
+	# result = duplicate_rows
+	# print(result)
 
-	print(f"Processed smu_df_merged_raw: {smu_df_merged_raw.shape}")
-	print(smu_df_merged_raw.head(20))
+	# smu_df_merged_raw = smu_df_merged_raw.drop_duplicates(subset=['img_url'])
 
-	smu_df_merged_raw.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
+	# print(f"Processed smu_df_merged_raw: {smu_df_merged_raw.shape}")
+	# print(smu_df_merged_raw.head(20))
+
+	# smu_df_merged_raw.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
+	# try:
+	# 	smu_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
+	# except Exception as e:
+	# 	print(f"Failed to write Excel file: {e}")
+	# smu_df = get_synchronized_df_img(
+	# 	df=smu_df_merged_raw,
+	# 	image_dir=IMAGE_DIRECTORY,
+	# 	nw=args.num_workers,
+	# )
+	############################## Dropping duplicated img_url ##############################
+
+	############################## aggregating user_query to list ##############################
+	print(f"Handling img_url duplicates and aggregating user_query...")
+	grouped = smu_df_merged_raw.groupby('img_url').agg(
+		{
+			'id': 'first',
+			'title': 'first',
+			'description': 'first',
+			'user_query': lambda x: list(set(x)),  # Combine user_query into a list with unique elements
+			'enriched_document_description': 'first',
+			'raw_doc_date': 'first',
+			'doc_url': 'first',
+			'img_path': 'first',
+			'doc_date': 'first'
+		}
+	).reset_index()
+	grouped['label'] = grouped['user_query'].apply(lambda x: replacement_dict.get(x[0], x[0]))
+
+	# Map user_query to labels using replacement_dict
+	grouped['label'] = grouped['user_query'].apply(lambda x: replacement_dict.get(x[0], x[0]))
+	print(f"Processed europeana_df_merged_raw: {grouped.shape}")
+	print(grouped.head(20))
+	grouped.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
 	try:
-		smu_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
+		grouped.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
 	smu_df = get_synchronized_df_img(
-		df=smu_df_merged_raw,
+		df=grouped,
 		image_dir=IMAGE_DIRECTORY,
 		nw=args.num_workers,
 	)
+	############################## aggregating user_query to list ##############################
 
 	label_dirstribution_fname = os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_label_distribution_nIMGs_{smu_df.shape[0]}.png")
 	plot_label_distribution(
@@ -305,16 +444,6 @@ def main():
 			)
 		print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
 
-def test_on_doc_page_url():
-	doc_page_url = f"{SMU_BASE_URL}/api/collection/mex/id/3845/download"
-	print(f"testing on a document page url: {doc_page_url}")
-	# Send a GET request to the API
-	response = requests.get(doc_page_url)
-	print(response.status_code)
-	print(type(response), response)
-	# print(response.text)
-	print(response.headers['Content-Type']) # must be 'application/json'
-
 def test_on_search_(query="shovel", start_date="1900-01-01", end_date="1970-12-31"):
 	START_DATE = re.sub("-", "", start_date) # modified date: 19140101
 	END_DATE = re.sub("-", "", end_date) # modiifed date: 19140102
@@ -335,7 +464,7 @@ def test_on_search_(query="shovel", start_date="1900-01-01", end_date="1970-12-3
 	# query_url = f"{SMU_BASE_URL}/api/search/collection/{CUSTOMIZED_COLLECTIONS_STR}/searchterm/searchterm/Photographs!image!{query}!{START_DATE}-{END_DATE}/field/formge!type!all!date/mode/exact!exact!exact!exact/conn/and!and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}"
 	# 
 	query_url = f"{SMU_BASE_URL}/api/search/searchterm/{FORBIDDEN_DOCUMENT_FORMATS}!{query}!image!{START_DATE}-{END_DATE}/field/all!all!type!date/mode/none!exact!exact!exact/conn/and!and!and!and/maxRecords/{MAX_HITS_IN_ONE_PAGE}"
-
+	print(query_url)
 	# Send a GET request to the API
 	response = requests.get(query_url)
 	print(response.status_code)
@@ -387,8 +516,24 @@ def test_on_search_(query="shovel", start_date="1900-01-01", end_date="1970-12-3
 	else:
 		print(f"Request failed with status code {response.status_code}")
 
+def test_on_doc_page_url():
+	doc_urls = [
+		"https://digitalcollections.smu.edu/digital/collection/stn/id/1014",
+		"https://digitalcollections.smu.edu/digital/collection/ryr/id/2239",
+		"https://digitalcollections.smu.edu/digital/collection/ryr/id/3338"
+	]
+	for url in doc_urls:
+		print(f"\nTesting metadata scraping for URL: {url}")
+		metadata = scrape_item_metadata(url)
+		if metadata:
+			print(json.dumps(metadata, indent=2))
+		else:
+			print("No metadata extracted.")
+
 if __name__ == '__main__':
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
 	get_ip_info()
 	main()
+	# test_on_search_()
+	# test_on_doc_page_url()
 	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))

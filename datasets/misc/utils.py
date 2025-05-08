@@ -32,15 +32,18 @@ import glob
 import psutil  # For memory usage monitoring
 import tabulate
 from natsort import natsorted
-
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import warnings
 logging.basicConfig(level=logging.INFO)
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
-
+warnings.filterwarnings('ignore', category=DeprecationWarning, message="invalid escape sequence")
 nltk_modules = [
 	'punkt',
 	'wordnet',
 	'averaged_perceptron_tagger', 
 	'omw-1.4',
+	'punkt_tab',
 	'stopwords',
 ]
 nltk.download(

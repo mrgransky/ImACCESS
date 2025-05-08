@@ -29,7 +29,8 @@ from typing import List
 from PIL import Image
 
 nltk.download('words', quiet=True)
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_ENABLE_ONEDNN_OPTS']='0'
+
 
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
@@ -620,13 +621,14 @@ def process_text_chunk(nlp, chunk):
 
 def get_textual_based_annotation(
 		csv_file: str, 
+		num_workers: int,
+		batch_size: int,
+		num_clusters: int,
+		top_k_words: int,
+		relevance_threshold: float,
+		merge_threshold: float,
+		metadata_fpth: str,
 		use_parallel: bool=False, 
-		num_workers: int=16,
-		batch_size: int=512,
-		relevance_threshold: float=0.25,
-		num_clusters: int =25,
-		top_k_words: int =10,
-		merge_threshold: float =0.65,
 	):
 	print(f"Automatic label extraction from text data".center(160, "-"))
 	print(f"Loading metadata from {csv_file}...")
@@ -647,7 +649,7 @@ def get_textual_based_annotation(
 	# Load the full dataset
 	dtypes = {
 		'doc_id': str, 'id': str, 'label': str, 'title': str,
-		'description': str, 'img_url': str, 'label_title_description': str,
+		'description': str, 'img_url': str, 'title_description': str,
 		'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
 		'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
 	}
@@ -661,7 +663,7 @@ def get_textual_based_annotation(
 
 	print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
 	
-	df['content'] = df['label_title_description'].fillna('')
+	df['content'] = df['title_description'].fillna('')
 	num_samples = len(df)
 	
 	# Clean text
@@ -804,8 +806,8 @@ def get_textual_based_annotation(
 	
 	# Save the results in a separate column
 	df['textual_based_labels'] = per_image_labels
-	output_path = os.path.join(os.path.dirname(csv_file), "metadata_textual_based_labels.csv")
-	df.to_csv(output_path, index=False)
+	
+	df.to_csv(metadata_fpth, index=False)
 	
 	print(f">> Generated text labels for {sum(1 for labels in per_image_labels if labels)} out of {num_samples} entries")
 	print(f"Text-based annotation Elapsed time: {time.time() - text_based_annotation_start_time:.2f} sec".center(160, " "))
@@ -818,6 +820,7 @@ def get_visual_based_annotation(
 		batch_size: int,
 		device: str,
 		verbose: bool,
+		metadata_fpth: str,
 	) -> List[List[str]]:
 	print(f"Automatic label extraction from image data".center(160, "-"))
 	start_time = time.time()
@@ -887,8 +890,8 @@ def get_visual_based_annotation(
 			# Military Infrastructure
 			"bunker", "pillbox", "gun emplacement", "observation post", "barbed wire", 
 			"trenches", "foxhole", "dugout", "fortification", "coastal defense", 
-			"anti-tank obstacle", "dragon's teeth", "minefield", "pontoon bridge",
-			"Bailey bridge", "military headquarters", "command post", "communications center",
+			"anti-tank obstacle", "dragon's teeth", "minefield", "floating bridge",
+			"portable bridge", "military headquarters", "command post", "communications center",
 			
 			# Military Insignia & Symbols
 			"military flag", "swastika flag", "rising sun flag", "Soviet flag", "Union Jack", 
@@ -908,10 +911,7 @@ def get_visual_based_annotation(
 	scene_categories = [
 			# European Theaters
 			"Western Front", "Eastern Front", "Italian Front", "North African Front",
-			"Normandy beaches", "French countryside", "Belgian forest", "Dutch canal",
-			"Russian steppe", "Ukrainian wheat field", "Alpine mountain", "Mediterranean coast",
-			"Sicilian town", "German city ruins", "English Channel", "Atlantic Wall",
-			"Ardennes Forest", "Rhineland", "Soviet urban ruins", "Berlin streets",
+			"Normandy beaches", "coastline", "Soviet urban ruins",
 			
 			# Pacific & Asian Theaters
 			"Pacific island", "jungle battlefield", "Pacific beach landing", "atoll",
@@ -947,7 +947,7 @@ def get_visual_based_annotation(
 			
 			# Home Front
 			"war factory", "armaments factory", "aircraft assembly line",
-			"vehicle assembly line", "shipbuilding yard", "munitions factory",
+			"vehicle assembly line", "shipyard", "munitions factory",
 			"civilian air raid shelter", "bombed civilian area", "rationing center",
 			"recruitment office", "propaganda poster display", "war bonds office",
 			"civil defense drill", "air raid aftermath", "victory celebration"
@@ -955,12 +955,12 @@ def get_visual_based_annotation(
 
 	era_categories = [
 			# Pre-War & Early War
-			"pre-World War I era", "World War I era", "interwar period", "early 1930s",
-			"Spanish Civil War era", "pre-1939 military", "early World War II",
+			"pre-World War I era", "World War I era", "interwar period",
+			"pre-1939 military",
 			"Phoney War period", "Blitzkrieg era", "1939-1940 equipment",
 			
 			# World War II Specific Periods
-			"Battle of Britain era", "North African campaign", "Eastern Front 1941",
+			"World War II era", "Battle of Britain era", "North African campaign", "Eastern Front 1941",
 			"Pearl Harbor era", "Midway period", "Stalingrad era", "Normandy invasion",
 			"Operation Barbarossa", "Battle of the Bulge", "Italian campaign",
 			"D-Day preparations", "Market Garden operation", "Fall of Berlin",
@@ -970,13 +970,7 @@ def get_visual_based_annotation(
 			# Post-War Periods
 			"immediate post-war", "occupation period", "early Cold War",
 			"Korean War era", "1950s military", "Vietnam era", "late Cold War",
-			
-			# Visual Style Markers
-			"1910s style", "1920s style", "1930s style", "1940s style", "1940s military aesthetic",
-			"wartime propaganda style", "black and white photography era",
-			"wartime color photography", "Technicolor film era", "wartime newsreel style",
-			"press photography style", "military documentation style",
-			
+						
 			# Military Technology Eras
 			"early tank warfare", "biplane era", "early radar period", "monoplane transition",
 			"early jet aircraft", "V-weapon period", "heavy bomber era", "aircraft carrier warfare",
@@ -1160,8 +1154,7 @@ def get_visual_based_annotation(
 		print(f"Average labels per image: {total_labels/len(image_paths):.2f}")
 
 	df['visual_based_labels'] = combined_labels
-	output_path = os.path.join(os.path.dirname(csv_file), "metadata_visual_based_labels.csv")
-	df.to_csv(output_path, index=False)
+	df.to_csv(metadata_fpth, index=False)
 	print(f"Visual-based annotation Elapsed time: {time.time() - start_time:.2f} sec".center(160, " "))
 
 	return combined_labels
@@ -1171,6 +1164,7 @@ def main():
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--use_parallel", '-parallel', action="store_true")
 	parser.add_argument("--num_workers", '-nw', type=int, default=10)
+	parser.add_argument("--num_text_clusters", '-nc', type=int, default=30)
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=512)
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=32, help="Batch size for vision processing")
 	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.25, help="Relevance threshold for text-based filtering")
@@ -1180,60 +1174,159 @@ def main():
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
 
-	textual_based_labels = get_textual_based_annotation(
-		csv_file=args.csv_file,
-		use_parallel=args.use_parallel,
-		num_workers=args.num_workers,
-		batch_size=args.text_batch_size,
-		relevance_threshold=args.relevance_threshold,
-	)
-
-	visual_based_labels = get_visual_based_annotation(
-		csv_file=args.csv_file,
-		batch_size=args.vision_batch_size,
-		verbose=True,
-		confidence_threshold=args.vision_threshold,
-		device=args.device,
-	)
+	base_dir = os.path.dirname(args.csv_file)
+	text_output_path = os.path.join(base_dir, "metadata_textual_based_labels.csv")
+	vision_output_path = os.path.join(base_dir, "metadata_visual_based_labels.csv")
+	combined_output_path = os.path.join(base_dir, "metadata_multimodal_labels.csv")
 	
-	print(textual_based_labels[:10])
-	print(visual_based_labels[:10])
+	if os.path.exists(text_output_path):
+		print(f"Found existing textual-based labels at {text_output_path}. Loading...")
+		text_df = pd.read_csv(text_output_path)
+		
+		# Handle textual labels with proper null value handling
+		textual_based_labels = []
+		for label_str in text_df['textual_based_labels']:
+			if pd.isna(label_str) or label_str == '[]' or not label_str:
+				textual_based_labels.append([])
+			else:
+				try:
+					labels = eval(label_str)
+					textual_based_labels.append(labels if labels else [])
+				except:
+					textual_based_labels.append([])
+		
+		print(f"Loaded {len(textual_based_labels)} textual-based labels")
+	else:
+		textual_based_labels = get_textual_based_annotation(
+			csv_file=args.csv_file,
+			use_parallel=args.use_parallel,
+			num_workers=args.num_workers,
+			batch_size=args.text_batch_size,
+			num_clusters=args.num_text_clusters,
+			top_k_words=20,
+			merge_threshold=0.65,
+			relevance_threshold=args.relevance_threshold,
+			metadata_fpth=text_output_path,
+		)
 
+	if os.path.exists(vision_output_path):
+		print(f"Found existing visual-based labels at {vision_output_path}. Loading...")
+		vision_df = pd.read_csv(vision_output_path)
+		
+		# Handle visual labels with proper null value handling
+		visual_based_labels = []
+		for label_str in vision_df['visual_based_labels']:
+			if pd.isna(label_str) or label_str == '[]' or not label_str:
+				visual_based_labels.append([])
+			else:
+				try:
+					labels = eval(label_str)
+					visual_based_labels.append(labels if labels else [])
+				except:
+					visual_based_labels.append([])
+		
+		print(f"Loaded {len(visual_based_labels)} visual-based labels")
+	else:
+		visual_based_labels = get_visual_based_annotation(
+			csv_file=args.csv_file,
+			batch_size=args.vision_batch_size,
+			verbose=True,
+			confidence_threshold=args.vision_threshold,
+			device=args.device,
+			metadata_fpth=vision_output_path,
+		)
+	
+	print("Sample textual labels:", textual_based_labels[:15])
+	print("Sample visual labels:", visual_based_labels[:15])
 	assert len(textual_based_labels) == len(visual_based_labels), "Label lists must have same length"
 	
+	# Check if combined file already exists
+	if os.path.exists(combined_output_path):
+			print(f"Found existing combined labels at {combined_output_path}.")
+			recompute = input("Do you want to recompute the combined labels? (y/n): ").lower() == 'y'
+			if not recompute:
+					print("Using existing combined labels.")
+					combined_df = pd.read_csv(combined_output_path)
+					
+					# Handle combined labels with proper null value handling
+					combined_labels = []
+					for label_str in combined_df['multimodal_labels']:
+							if pd.isna(label_str) or label_str == '[]' or not label_str:
+									combined_labels.append([])
+							else:
+									try:
+											labels = eval(label_str)
+											combined_labels.append(labels if labels else [])
+									except:
+											combined_labels.append([])
+											
+					print(f"Loaded {len(combined_labels)} combined labels")
+					return combined_labels
 	print("Merging text and vision annotations...")
 	combined_labels = []
+	empty_count = 0
+	
 	for text_labels, vision_labels in zip(textual_based_labels, visual_based_labels):
-		# Combine all labels
-		all_labels = list(set(text_labels + vision_labels))
-		
-		# Clean and filter
-		all_labels = clean_labels(all_labels)
-		all_labels = filter_metadata_terms(all_labels)
-		all_labels = deduplicate_labels(all_labels)
-		
-		# Add semantic categories
-		categorized = assign_semantic_categories(all_labels)
-		final_labels = sorted(set(all_labels + categorized))
-		
-		combined_labels.append(final_labels)
+			# Check if both are empty - if so, store None for this entry
+			if not text_labels and not vision_labels:
+					combined_labels.append([])
+					empty_count += 1
+					continue
+					
+			# Ensure both are lists before combining
+			if not isinstance(text_labels, list):
+					text_labels = []
+			if not isinstance(vision_labels, list):
+					vision_labels = []
+					
+			# Combine all labels
+			all_labels = list(set(text_labels + vision_labels))
+			
+			# Clean and filter
+			all_labels = clean_labels(all_labels)
+			all_labels = filter_metadata_terms(all_labels)
+			all_labels = deduplicate_labels(all_labels)
+			
+			# Add semantic categories
+			categorized = assign_semantic_categories(all_labels)
+			final_labels = sorted(set(all_labels + categorized))
+			
+			combined_labels.append(final_labels)
+	
+	print(f"Created {len(combined_labels)} combined labels ({empty_count} empty entries)")
 	
 	# Save results
 	df = pd.read_csv(args.csv_file)
-	df['multimodal_labels'] = combined_labels
-	output_path = os.path.join(os.path.dirname(args.csv_file), "metadata_with_multimodal_labels.csv")
-	df.to_csv(output_path, index=False)
-
+	
+	# Convert empty lists to None for better CSV representation
+	df['textual_based_labels'] = [labels if labels else None for labels in textual_based_labels]
+	df['visual_based_labels'] = [labels if labels else None for labels in visual_based_labels]
+	df['multimodal_labels'] = [labels if labels else None for labels in combined_labels]
+	
+	# Save to CSV
+	df.to_csv(combined_output_path, index=False)
+	
+	# Try to save as Excel
+	try:
+			excel_path = combined_output_path.replace('.csv', '.xlsx')
+			print(f"Saving Excel file to {excel_path}...")
+			df.to_excel(excel_path, index=False)
+			print(f"Excel file saved successfully")
+	except Exception as e:
+			print(f"Failed to write Excel file: {e}")
 	# Print some examples
 	print("\nExample results:")
-	sample_cols = ['title', 'description', 'label', 'img_url', 'label_title_description', 'textual_based_labels', 'visual_based_labels', 'multimodal_labels']
+	sample_cols = ['title', 'description', 'label', 'img_url', 'textual_based_labels', 'visual_based_labels', 'multimodal_labels']
 	available_cols = [col for col in sample_cols if col in df.columns]
-	for i in range(min(50, len(df))):
-		print(f"\nExample {i+1}:")
-		for col in available_cols:
-			print(f"{col}: {df.iloc[i][col]}")
-
-	print(f"Combined labels saved to: {output_path}")
+	for i in range(min(5, len(df))):
+			print(f"\nExample {i+1}:")
+			for col in available_cols:
+					value = df.iloc[i][col]
+					if col in ['textual_based_labels', 'visual_based_labels', 'multimodal_labels']:
+							print(f"{col}: {value if value else '[]'}")
+					else:
+							print(f"{col}: {value}")
+	print(f"Combined labels saved to: {combined_output_path}")
 	return combined_labels
 
 if __name__ == "__main__":

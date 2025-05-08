@@ -70,7 +70,11 @@ image = Image.open(
 		# 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1f/8inchHowitzerTowedByScammellPioneer12Jan1940.jpg/632px-8inchHowitzerTowedByScammellPioneer12Jan1940.jpg'
 		# "https://truck-encyclopedia.com/ww1/img/photos/Liberty_B2_Truck.jpg"
 		# "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Military_Parade_in_Cairo_%285%29.tif/lossy-page1-2316px-Military_Parade_in_Cairo_%285%29.tif.jpg"
-		"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2455/default.jpg"
+		# "https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2455/default.jpg"
+		# "https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/LIAZ_MT.jpg/640px-LIAZ_MT.jpg"
+		# "https://truck-encyclopedia.com/ww2/us/photos/Dodge_T-203_VF-407_Ambulance_12ton-serie.jpg"
+		# "https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2457/default.jpg"
+		"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2424/default.jpg"
 	)
 ).convert("RGB")
 

@@ -48,6 +48,8 @@ Trailer camp
 Winter camp
 allied invasion
 normandy invasion
+train station
+power station
 Power Plant
 attack aircraft
 fighter aircraft
@@ -108,6 +110,7 @@ military leader
 military vehicle
 military unit
 military museum
+military men
 military personnel
 military ship
 military boat
@@ -137,6 +140,7 @@ military truck
 afrika korps
 flying fortress
 vice president
+Prime Minister
 health professional
 bombing attack
 atomic bomb
@@ -199,7 +203,6 @@ Rifle
 knives
 bayonet
 flamethrower
-evacuation
 aircraft
 soldier
 Infantry
@@ -233,7 +236,9 @@ migration
 Border
 shovel
 hospital
-Railroad
+locomotive
+railway
+railroad
 captain
 Minesweeper
 Ceremony

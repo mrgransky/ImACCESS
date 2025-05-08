@@ -43,8 +43,8 @@ STOPWORDS = set(STOPWORDS)
 # print(STOPWORDS, type(STOPWORDS))
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
 # europeana_api_key: str = "plaction"
-# europeana_api_key: str = "api2demo"
-europeana_api_key: str = "nLbaXYaiH"
+europeana_api_key: str = "api2demo"
+# europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
@@ -152,10 +152,14 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 		# print(type(doc.get("title")), len(doc.get("title")))
 		doc_title_list = doc.get("title") # ["title1", "title2", "title3", ...]
 		doc_description_list = doc.get("dcDescription" )# ["desc1", "desc2", "desc3", ...]
-		doc_title = clean_(text=' '.join(doc_title_list), sw=STOPWORDS) if doc_title_list else None
-		doc_description = clean_(text=" ".join(doc_description_list), sw=STOPWORDS) if doc_description_list else None
-		# doc_title = ' '.join(doc_title_list) if doc_title_list else None
-		# doc_description = " ".join(doc_description_list) if doc_description_list else None
+
+		# with cleaning:
+		# doc_title = clean_(text=' '.join(doc_title_list), sw=STOPWORDS) if doc_title_list else None
+		# doc_description = clean_(text=" ".join(doc_description_list), sw=STOPWORDS) if doc_description_list else None
+
+		doc_title = ' '.join(doc_title_list) if doc_title_list else None
+		doc_description = " ".join(doc_description_list) if doc_description_list else None
+
 		image_url = doc.get("edmIsShownBy")[0]
 		# print(doc.get("edmTimespanLabel"), doc.get("year"), europeana_id, image_url, doc.get("link"))
 		# print(int(doc.get("year")[0]) < 1946)
@@ -179,11 +183,11 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 			'title': doc_title,
 			'description': doc_description,
 			'img_url': image_url,
-			'label_title_description': label + " " + (doc_title or '') + " " + (doc_description or ''),
+			"doc_url": doc_url,
+			'enriched_document_description': (doc_title or '') + " " + (doc_description or ''),
 			'raw_doc_date': raw_doc_date,
 			'doc_year': doc_year,
 			# 'my_date': pDate,
-			"doc_url": doc_url,
 			'img_path': f"{os.path.join(IMAGE_DIR, str(doc_id) + '.jpg')}"
 		}
 		data.append(row)
@@ -196,13 +200,15 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=START_DATE, end_date=END_DATE))]
 
 	# df = df.drop(['raw_doc_date', 'doc_year'], axis=1)
-	print(f"DF: {df.shape} {type(df)} Elapsed_t: {time.time()-df_st_time:.1f} sec")
+	print()
+	print(f"DF: {df.shape} {list(df.columns)}")
+	print(f"Elapsed_t: {time.time()-df_st_time:.1f} sec".center(160, "-"))
 	return df
 
 @measure_execution_time
 def main():
 	with open(os.path.join(parent_dir, 'misc', 'query_labels.txt'), 'r') as file_:
-		all_label_tags = [line.strip().lower() for line in file_]
+		all_label_tags = list(set([line.strip() for line in file_]))
 	print(type(all_label_tags), len(all_label_tags))
 	print(f"{len(all_label_tags)} lables are being processed...")
 	dfs = []
@@ -229,9 +235,8 @@ def main():
 					docs=label_all_hits,
 				)
 				save_pickle(pkl=df, fname=df_fpth)
-			# print(df)
-			# print(df.head())
-			dfs.append(df)
+			if df is not None:
+				dfs.append(df)
 
 	print(f"Concatinating {len(dfs)} dfs...")
 	europeana_df_merged_raw = pd.concat(dfs, ignore_index=True)
@@ -246,29 +251,66 @@ def main():
 	print(f"Handling user_query...")
 	europeana_df_merged_raw['label'] = europeana_df_merged_raw['user_query'].replace(replacement_dict)
 	print(f"Handling img_url with None...")
+
 	print(f"img_url with None: {europeana_df_merged_raw['img_url'].isna().sum()}")
 	europeana_df_merged_raw = europeana_df_merged_raw.dropna(subset=['img_url'])
-	print(f"img_url with None: {europeana_df_merged_raw['img_url'].isna().sum()}")
 
-	print(f"Handling img_url with duplicate...")
-	print(f"img_url with duplicate: {europeana_df_merged_raw['img_url'].duplicated().sum()}")
-	europeana_df_merged_raw = europeana_df_merged_raw.drop_duplicates(subset=['img_url'])
-	print(f"img_url with duplicate: {europeana_df_merged_raw['img_url'].duplicated().sum()}")
+	############################## Dropping duplicated img_url ##############################
+	# print(f"Handling img_url with duplicate...")
+	# print(f"img_url with duplicate: {europeana_df_merged_raw['img_url'].duplicated().sum()}")
+	# europeana_df_merged_raw = europeana_df_merged_raw.drop_duplicates(subset=['img_url'])
+	# print(f"img_url with duplicate: {europeana_df_merged_raw['img_url'].duplicated().sum()}")
+	# print(f"Processed europeana_df_merged_raw: {europeana_df_merged_raw.shape}")
+	# print(europeana_df_merged_raw.head(20))
+	# europeana_df_merged_raw.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
+	# try:
+	# 	europeana_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
+	# except Exception as e:
+	# 	print(f"Failed to write Excel file: {e}")
 
-	print(f"Processed europeana_df_merged_raw: {europeana_df_merged_raw.shape}")
-	print(europeana_df_merged_raw.head(20))
+	# europeana_df = get_synchronized_df_img(
+	# 	df=europeana_df_merged_raw,
+	# 	image_dir=IMAGE_DIR,
+	# 	nw=args.num_workers,
+	# )
+	############################## Dropping duplicated img_url ##############################
 
-	europeana_df_merged_raw.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
+	############################## aggregating user_query to list ##############################
+	print(f"Handling img_url duplicates and aggregating user_query...")
+	grouped = europeana_df_merged_raw.groupby('img_url').agg(
+		{
+			'id': 'first',
+			'doc_id': 'first',
+			'title': 'first',
+			'description': 'first',
+			'user_query': lambda x: list(set(x)),  # Combine user_query into a list with unique elements
+			'enriched_document_description': 'first',
+			'raw_doc_date': 'first',
+			'doc_year': 'first',
+			'doc_url': 'first',
+			'img_path': 'first',
+			'doc_date': 'first'
+		}
+	).reset_index()
+	grouped['label'] = grouped['user_query'].apply(lambda x: replacement_dict.get(x[0], x[0]))
+
+	# Map user_query to labels using replacement_dict
+	grouped['label'] = grouped['user_query'].apply(lambda x: replacement_dict.get(x[0], x[0]))
+	print(f"Processed europeana_df_merged_raw: {grouped.shape}")
+	print(grouped.head(20))
+	grouped.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
 	try:
-		europeana_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
+		grouped.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
 	europeana_df = get_synchronized_df_img(
-		df=europeana_df_merged_raw,
+		df=grouped,
 		image_dir=IMAGE_DIR,
 		nw=args.num_workers,
 	)
+	############################## aggregating user_query to list ##############################
+
 
 	label_dirstribution_fname = os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_label_distribution_{europeana_df.shape[0]}_x_{europeana_df.shape[1]}.png")
 	plot_label_distribution(
@@ -367,6 +409,7 @@ def test():
 			print("No 'items' found in the response.")
 	else:
 		print(f"Request failed with status code {response.status_code}")
+
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))

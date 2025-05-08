@@ -22,10 +22,10 @@ args, unknown = parser.parse_known_args()
 print_args_table(args=args, parser=parser)
 
 # run in local laptop:
-# $ python data_collector.py -ddir $PWD --start_date 1933-01-01 --end_date 1933-01-02
+# $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-10
 
 ########################## --start_date 1933-01-01 --end_date 1933-01-02 ##########################
-# $ nohup python -u data_collector.py -ddir $PWD --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 8 --img_mean_std > logs/na_image_download.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-10 --num_workers 8 --img_mean_std > logs/na_image_download.out &
 # $ nohup python -u data_collector.py -ddir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 8 --img_mean_std > logs/na_image_download.out &
 
 ########################## --start_date 1914-01-01 --end_date 1946-12-31 ##########################
@@ -77,7 +77,7 @@ useless_collection_terms = [
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
 os.makedirs(os.path.join(DATASET_DIRECTORY, "images"), exist_ok=True)
-IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
+IMAGE_DIRECTORY = os.path.join(DATASET_DIRECTORY, "images")
 
 os.makedirs(os.path.join(DATASET_DIRECTORY, "hits"), exist_ok=True)
 HITs_DIR = os.path.join(DATASET_DIRECTORY, "hits")
@@ -89,18 +89,18 @@ img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
 def get_doc_year(text, raw_doc_date):
-		if not pd.isna(raw_doc_date):  # Check if raw_doc_date is missing (None or NaN)
-				return raw_doc_date
-		if text is None:  # Check if text is None
-				return None
-		# year_pattern = r'\b\d{4}\b'
-		year_pattern = re.compile(r'\b\d{4}\b')
-		match = re.search(year_pattern, text) # <re.Match object; span=(54, 58), match='1946'>
-		# print(match)
-		if match:
-				return match.group()
-		else:
-				return None
+	if not pd.isna(raw_doc_date):  # Check if raw_doc_date is missing (None or NaN)
+		return raw_doc_date
+	if text is None:  # Check if text is None
+		return None
+	# year_pattern = r'\b\d{4}\b'
+	year_pattern = re.compile(r'\b\d{4}\b')
+	match = re.search(year_pattern, text) # <re.Match object; span=(54, 58), match='1946'>
+	# print(match)
+	if match:
+		return match.group()
+	else:
+		return None
 
 def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", label: str="world war"):
 	t0 = time.time()
@@ -187,8 +187,13 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 	for doc in docs:
 		record = doc.get('_source', {}).get('record', {})
 		fields = doc.get('fields', {})
-		doc_title = clean_(text=record.get('title'), sw=STOPWORDS)
-		doc_description = clean_(text=record.get('scopeAndContentNote'), sw=STOPWORDS) if record.get('scopeAndContentNote') else None
+
+		# doc_title = clean_(text=record.get('title'), sw=STOPWORDS)
+		# doc_description = clean_(text=record.get('scopeAndContentNote'), sw=STOPWORDS) if record.get('scopeAndContentNote') else None
+
+		doc_title = record.get('title')
+		doc_description = record.get('scopeAndContentNote', None)
+
 		na_identifier = record.get('naId')
 		raw_doc_date = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
@@ -237,10 +242,10 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 			'title': doc_title,
 			'description': doc_description,
 			'img_url': first_digital_object_url,
-			'label_title_description': label + " " + (doc_title or '') + " " + (doc_description or ''),
+			'enriched_document_description': label + " " + (doc_title or '') + " " + (doc_description or ''),
 			'raw_doc_date': raw_doc_date,
 			'doc_url': f"https://catalog.archives.gov/id/{na_identifier}",
-			'img_path': f"{os.path.join(IMAGE_DIR, str(na_identifier) + '.jpg')}"
+			'img_path': f"{os.path.join(IMAGE_DIRECTORY, str(na_identifier) + '.jpg')}"
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
@@ -260,7 +265,7 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 @measure_execution_time
 def main():
 	with open(os.path.join(parent_dir, 'misc', 'query_labels.txt'), 'r') as file_:
-		all_label_tags = [line.strip().lower() for line in file_]
+		all_label_tags = [line.strip() for line in file_]
 	print(type(all_label_tags), len(all_label_tags))
 
 	print(f"{len(all_label_tags)} lables are being processed...")
@@ -276,8 +281,8 @@ def main():
 		)
 		if label_all_hits:
 			df = get_dframe(
-					label=qv,
-					docs=label_all_hits,
+				label=qv,
+				docs=label_all_hits,
 			)
 			if df is not None and df.shape[0]>1:
 				dfs.append(df)
@@ -303,24 +308,62 @@ def main():
 	print(f">> {len(unq_labels)} Unique Label(s):\n{unq_labels}")
 
 	print(f"pre-processing merged {type(na_df_merged_raw)} {na_df_merged_raw.shape}")
+	print(f"Handling user_query...")
 	na_df_merged_raw['label'] = na_df_merged_raw['user_query'].replace(replacement_dict)
-	na_df_merged_raw = na_df_merged_raw.dropna(subset=['img_url']) # drop None img_url
-	na_df_merged_raw = na_df_merged_raw.drop_duplicates(subset=['img_url'], keep="first", ignore_index=True) # drop duplicate img_url
-	print(f"Processed na_df_merged_raw: {na_df_merged_raw.shape}")
-	print(na_df_merged_raw.head(20))
+	print(f"Handling img_url with None...")
+	print(f"img_url with None: {na_df_merged_raw['img_url'].isna().sum()}")
+	na_df_merged_raw = na_df_merged_raw.dropna(subset=['img_url'])
 
-	na_df_merged_raw.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
+	############################## Dropping duplicated img_url ##############################
+	# na_df_merged_raw = na_df_merged_raw.drop_duplicates(subset=['img_url'], keep="first", ignore_index=True) # drop duplicate img_url
+	# print(f"Processed na_df_merged_raw: {na_df_merged_raw.shape}")
+
+	# na_df_merged_raw.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
+	# try:
+	# 	na_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
+	# except Exception as e:
+	# 	print(f"Failed to write Excel file: {e}")
+	# print(f"Elapsed_t: {time.time()-concat_st:.1f} sec".center(100, "-"))
+
+	# na_df = get_synchronized_df_img(
+	# 	df=na_df_merged_raw,
+	# 	image_dir=IMAGE_DIRECTORY,
+	# 	nw=args.num_workers,
+	# )
+	############################## Dropping duplicated img_url ##############################
+
+	############################## aggregating user_query to list ##############################
+	print(f"Handling img_url duplicates and aggregating user_query...")
+	grouped = na_df_merged_raw.groupby('img_url').agg(
+		{
+			'id': 'first',
+			'title': 'first',
+			'description': 'first',
+			'user_query': lambda x: list(set(x)),  # Combine user_query into a list with unique elements
+			'enriched_document_description': 'first',
+			'raw_doc_date': 'first',
+			'doc_url': 'first',
+			'doc_date': 'first',
+			'img_path': 'first',
+		}
+	).reset_index()
+	grouped['label'] = grouped['user_query'].apply(lambda x: replacement_dict.get(x[0], x[0]))
+
+	# Map user_query to labels using replacement_dict
+	grouped['label'] = grouped['user_query'].apply(lambda x: replacement_dict.get(x[0], x[0]))
+	print(f"Processed europeana_df_merged_raw: {grouped.shape}")
+	grouped.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
 	try:
-		na_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
+		grouped.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
-	print(f"Elapsed_t: {time.time()-concat_st:.1f} sec".center(100, "-"))
 
 	na_df = get_synchronized_df_img(
-		df=na_df_merged_raw,
-		image_dir=IMAGE_DIR,
+		df=grouped,
+		image_dir=IMAGE_DIRECTORY,
 		nw=args.num_workers,
 	)
+	############################## aggregating user_query to list ##############################
 
 	label_dirstribution_fname = os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_label_distribution_nIMGs_{na_df.shape[0]}.png")
 	plot_label_distribution(
