@@ -55,7 +55,9 @@ CUSTOM_STOPWORDS = ENGLISH_STOP_WORDS.union(
 		"sent", "received", "taken", "made", "created", "produced", "found",
 		"above", "below", "beside", "behind", "between", "among", "alongside",
 		"across", "opposite", "near", "under", "over", "inside", "outside",
-		"collection", "collections", "number",
+		"collection", "collections", "number", "abbreviation", "abbreviations",
+		"folder", "box", "file", "document", "page", "index", "label", "code", "icon",
+		"folder icon", "box icon", "file icon", "document icon", "page icon", "index icon", "label icon", "code icon",
 	}
 )
 
@@ -649,7 +651,7 @@ def get_textual_based_annotation(
 	# Load the full dataset
 	dtypes = {
 		'doc_id': str, 'id': str, 'label': str, 'title': str,
-		'description': str, 'img_url': str, 'title_description': str,
+		'description': str, 'img_url': str, 'enriched_document_description': str,
 		'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
 		'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
 	}
@@ -663,7 +665,7 @@ def get_textual_based_annotation(
 
 	print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
 	
-	df['content'] = df['title_description'].fillna('')
+	df['content'] = df['enriched_document_description'].fillna('')
 	num_samples = len(df)
 	
 	# Clean text
@@ -850,7 +852,7 @@ def get_visual_based_annotation(
 			"armored personnel carrier", "armored train", "reconnaissance vehicle",
 			"Mark IV tank", "Tiger tank", "Panther tank", "T-34 tank", "Sherman tank",
 			"Churchill tank", "KV-1 tank", "Panzer IV", "Panzer III", "Stuart tank",
-			"SdKfz armored vehicle", "Kettenkrad", "M4 Sherman", "T-34/85", "IS-2 tank",
+			"Sonderkraftfahrzeug", "Kettenkrad", "M4 Sherman", "T-34/85", "IS-2 tank",
 			
 			# Light & Utility Vehicles
 			"jeep", "staff car", "command car", "ambulance", "motorcycle", 
@@ -957,10 +959,10 @@ def get_visual_based_annotation(
 			# Pre-War & Early War
 			"pre-World War I era", "World War I era", "interwar period",
 			"pre-1939 military",
-			"Phoney War period", "Blitzkrieg era", "1939-1940 equipment",
+			"Phoney War", "Blitzkrieg era", "1939-1940 military equipment",
 			
 			# World War II Specific Periods
-			"World War II era", "Battle of Britain era", "North African campaign", "Eastern Front 1941",
+			"World War II era", "Battle of Britain era", "North African campaign",
 			"Pearl Harbor era", "Midway period", "Stalingrad era", "Normandy invasion",
 			"Operation Barbarossa", "Battle of the Bulge", "Italian campaign",
 			"D-Day preparations", "Market Garden operation", "Fall of Berlin",
@@ -968,8 +970,8 @@ def get_visual_based_annotation(
 			"Pacific War late stage", "atomic bomb era", "Japanese surrender period",
 			
 			# Post-War Periods
-			"immediate post-war", "occupation period", "early Cold War",
-			"Korean War era", "1950s military", "Vietnam era", "late Cold War",
+			"immediate post-war", "occupation period", "Cold War",
+			"Korean War era", "1950s military", "Vietnam era", "Japanse World War era",
 						
 			# Military Technology Eras
 			"early tank warfare", "biplane era", "early radar period", "monoplane transition",
@@ -1203,8 +1205,8 @@ def main():
 			num_workers=args.num_workers,
 			batch_size=args.text_batch_size,
 			num_clusters=args.num_text_clusters,
-			top_k_words=20,
-			merge_threshold=0.65,
+			top_k_words=25,
+			merge_threshold=0.7,
 			relevance_threshold=args.relevance_threshold,
 			metadata_fpth=text_output_path,
 		)

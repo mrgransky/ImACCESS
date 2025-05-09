@@ -91,9 +91,7 @@ def get_dframe(
 		doc_url: str, 
 		user_query: str,
 	) -> pd.DataFrame:
-	print(f">> Extracting DF for label[{doc_idx}]: {user_query} from {doc_url}")
-	doc_url_info = extract_url_info(doc_url)
-	print(json.dumps(doc_url_info, indent=4, ensure_ascii=False))
+	print(f">> Extracting DF for label[{doc_idx}]: « {user_query} » from {doc_url}")
 	qv_processed = re.sub(
 		pattern=" ", 
 		repl="_", 
@@ -110,6 +108,8 @@ def get_dframe(
 		df = load_pickle(fpath=df_fpth)
 		return df
 
+	doc_url_info = extract_url_info(doc_url)
+	print(json.dumps(doc_url_info, indent=4, ensure_ascii=False))
 	try:
 		response = requests.get(doc_url)
 		response.raise_for_status()
@@ -118,8 +118,6 @@ def get_dframe(
 		return None
 
 	df_st_time = time.time()
-	qLBL_DIR = os.path.join(HITs_DIR, re.sub(" ", "_", user_query))
-	os.makedirs(qLBL_DIR, exist_ok=True)
 	try:
 		response = requests.get(doc_url)
 		soup = BeautifulSoup(response.text, 'html.parser')
@@ -129,12 +127,8 @@ def get_dframe(
 	except Exception as e:
 		print(f"Failed to retrieve doc_url or parse content: {e}")
 		return None
-	# header = re.sub(r' part \d+', '', header.lower())
-	header = clean_(
-		text=header,
-		# sw=[],
-		sw=STOPWORDS,
-	)
+	# header = clean_(text=header, sw=STOPWORDS)
+
 	header = header + " " + (doc_url_info.get("country") or "") + " " + (doc_url_info.get("main_label") or "") + " " + (doc_url_info.get("type") or "")
 	print(f"Doc header: {header}")
 	filtered_descriptions_list = [
@@ -151,25 +145,23 @@ def get_dframe(
 		string=filtered_descriptions,
 	)
 	doc_description = re.sub(r'\s+', ' ', filtered_descriptions).strip()
-	doc_description = clean_(
-		text=header + " " + doc_description, 
-		# sw=[],
-		sw=STOPWORDS,
-	)
+	# doc_description = clean_(text=header + " " + doc_description, sw=STOPWORDS,)
+	doc_description = header + " " + doc_description
 	print(f"\nDoc Description:\n{doc_description}\n")
 	
 	print(f"Found {len(hits)} Document(s) => Extracting information [might take a while]")
 	data = []
 	for idoc, vdoc in enumerate(hits):
 		img_url = vdoc.get('data-src')
-		doc_title = clean_(text=vdoc.get("alt"), sw=STOPWORDS)
-		# doc_title = vdoc.get("alt").lower()
+		doc_title = vdoc.get("alt")
 		if not img_url:
 			continue
 		img_url = img_url.replace("_cache/", "") # Remove "_cache/" from the URL
 		img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url) # Remove the thumbnail size from the end of the URL
 		filename = os.path.basename(img_url)
-		img_fpath = os.path.join(qLBL_DIR, filename)
+		img_fpath = os.path.join(IMAGE_DIR, filename)
+		parent_a = vdoc.find_parent('a')
+		specific_doc_url = urljoin(doc_url, parent_a.get('href')) if parent_a and parent_a.get('href') else doc_url
 		if not os.path.exists(img_fpath):
 			try:
 				img_response = requests.get(img_url)
@@ -181,14 +173,15 @@ def get_dframe(
 				continue
 		row = {
 			'id': filename,
-			'label': user_query, # TODO: must be taken from doc_url
-			'user_query': user_query,
+			'doc_url': specific_doc_url,
+			'img_url': img_url,
 			'title': doc_title,
 			'description': doc_description,
-			'img_url': img_url,
-			'label_title_description': user_query + " " + (doc_title or '') + " " + (doc_description or ''),
+			'enriched_document_description': (doc_title or '') + " " + (doc_description or ''),
+			'country': doc_url_info.get("country"),
+			'user_query': [user_query] if user_query and len(user_query) > 0 else None,
+			'label': (doc_url_info.get("main_label") or "") + " " + (doc_url_info.get("type") or ""),
 			'date': None,
-			'doc_url': doc_url,
 			'img_path': os.path.join(IMAGE_DIR, filename),
 		}
 		data.append(row)
@@ -196,21 +189,16 @@ def get_dframe(
 	df = pd.DataFrame(data)
 	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
 	save_pickle(pkl=df, fname=df_fpth)
-
-	# Copy images to IMAGE_DIR
-	for fname in os.listdir(qLBL_DIR):
-		shutil.copy(os.path.join(qLBL_DIR, fname), IMAGE_DIR)
-
 	return df
 
 @measure_execution_time
 def main():
 	base_url = "https://www.worldwarphotos.info/gallery"
 	URLs = { # key: url : val: user_query
-		f"{base_url}/france/normandy-1944/": "normandy invasion", # Invasion of Normandy 1944 photo gallery
-		f"{base_url}/france/tanks-france/" : "armored fighting vehicle", # French Tanks of World War II
 		f"{base_url}/italy/spg2/75-18/" : "armored fighting vehicle", # https://en.wikipedia.org/wiki/Armoured_fighting_vehicle
 		f"{base_url}/italy/spg2/l40/" : "armored fighting vehicle", # https://en.wikipedia.org/wiki/Armoured_fighting_vehicle
+		f"{base_url}/france/tanks-france/" : "armored fighting vehicle", # French Tanks of World War II
+		f"{base_url}/france/normandy-1944/": "normandy invasion", # Invasion of Normandy 1944 photo gallery
 		f"{base_url}/japan/aircrafts/b7a/": "aircraft", #
 		f"{base_url}/japan/aircrafts/d3a/": "aircraft", #
 		f"{base_url}/japan/aircrafts/e13a/": "aircraft", #
@@ -480,6 +468,23 @@ def main():
 		f"{base_url}/usa/us-navy/": "naval forces",
 		f"{base_url}/usa/vehicles/g506/": "military vehicle",
 		f"{base_url}/usa/vehicles/m29/": "military vehicle",
+		f"{base_url}/usa/pacific/biak/": "",
+		f"{base_url}/usa/pacific/bougainville/": "",
+		f"{base_url}/usa/pacific/gloucester/": "",
+		f"{base_url}/usa/pacific/eniwetok/": "",
+		f"{base_url}/usa/pacific/guadalcanal/": "",
+		f"{base_url}/usa/pacific/guam/": "",
+		f"{base_url}/usa/pacific/iwo-jima/": "",
+		f"{base_url}/usa/pacific/iwo-jima2/": "",
+		f"{base_url}/usa/pacific/kwajalein/": "",
+		f"{base_url}/usa/pacific/makin/": "",
+		f"{base_url}/usa/pacific/new-guinea/": "",
+		f"{base_url}/usa/pacific/okinawa/": "",
+		f"{base_url}/usa/pacific/peleliu/": "",
+		f"{base_url}/usa/pacific/philippines/": "",
+		f"{base_url}/usa/pacific/saipan/": "",
+		f"{base_url}/usa/pacific/tarawa/": "",
+		f"{base_url}/usa/pacific/tinian/": "",
 		f"{base_url}/ussr/vvs/ar-2/": "aircraft",
 		f"{base_url}/ussr/vvs/i153/": "aircraft",
 		f"{base_url}/ussr/vvs/il2-sturmovik/": "aircraft",
@@ -610,7 +615,7 @@ def main():
 		}
 	dfs_fname = os.path.join(HITs_DIR, f"{dataset_name}_{len(URLs)}_dfs.gz")
 	try:
-		dfs = load_pickle(fpth=dfs_fname,)
+		dfs = load_pickle(fpath=dfs_fname,)
 		print(f"Loaded {len(dfs)} dfs from {os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_dfs.gz')}")
 	except Exception as e:
 		print(f"<!> {e}")
@@ -620,7 +625,7 @@ def main():
 				doc_idx=i, 
 				doc_url=k, 
 				user_query=v,
-			) for i, (k, v) in enumerate(URLs.items())
+			) for i, (k, v) in enumerate(URLs.items()) # for i, (k, v) in enumerate(list(URLs.items())[:5])#
 		]
 		dfs = [df for df in dfs if df is not None]
 		save_pickle(pkl=dfs, fname=dfs_fname,)

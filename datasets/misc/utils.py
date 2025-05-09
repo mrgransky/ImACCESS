@@ -24,7 +24,7 @@ from requests.exceptions import RequestException
 import torchvision.transforms as T
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
 from functools import cache
-from urllib.parse import urlparse, unquote, quote_plus
+from urllib.parse import urlparse, unquote, quote_plus, urljoin
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 from datetime import timedelta

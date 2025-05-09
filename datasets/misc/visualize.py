@@ -745,6 +745,7 @@ def plot_label_distribution(
 		)
 	
 	# Add a logarithmic scale option for highly imbalanced distributions
+	ax_log = None
 	if label_counts.max() / label_counts.min() > 50:
 		ax_log = ax.twinx()
 		ax_log.set_yscale('log')
@@ -769,8 +770,9 @@ def plot_label_distribution(
 		ax_log.tick_params(axis='y', colors='red')
 	
 	# Hide all spines for the logarithmic scale
-	for spine in ax_log.spines.values():
-		spine.set_visible(False)
+	if ax_log is not None:
+		for spine in ax_log.spines.values():
+			spine.set_visible(False)
 
 	ax.set_xlabel('')
 	ax.tick_params(axis='x', length=0, width=0, color='none', labelcolor='black', labelsize=12)
@@ -820,7 +822,8 @@ def plot_label_distribution(
 	)
 	# Create a single legend
 	h1, l1 = ax.get_legend_handles_labels()
-	h2, l2 = ax_log.get_legend_handles_labels()
+	# h2, l2 = ax_log.get_legend_handles_labels()
+	h2, l2 = ([], []) if ax_log is None else ax_log.get_legend_handles_labels()
 	ax.legend(
 		h1 + h2, 
 		l1 + l2, 
