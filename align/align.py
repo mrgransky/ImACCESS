@@ -74,7 +74,9 @@ image = Image.open(
 		# "https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/LIAZ_MT.jpg/640px-LIAZ_MT.jpg"
 		# "https://truck-encyclopedia.com/ww2/us/photos/Dodge_T-203_VF-407_Ambulance_12ton-serie.jpg"
 		# "https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2457/default.jpg"
-		"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2424/default.jpg"
+		# "https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2424/default.jpg"
+		# "https://www.worldwarphotos.info/wp-content/gallery/japan/aircrafts/a6m-zero/Nakajima_Sakae_12_1942.jpg"
+		"https://www.worldwarphotos.info/wp-content/gallery/japan/aircrafts/g4m/G4M_Betty_Bomber_TAIU.jpg"
 	)
 ).convert("RGB")
 
@@ -123,7 +125,7 @@ object_categories = [
 		"armored personnel carrier", "armored train", "reconnaissance vehicle",
 		"Mark IV tank", "Tiger tank", "Panther tank", "T-34 tank", "Sherman tank",
 		"Churchill tank", "KV-1 tank", "Panzer IV", "Panzer III", "Stuart tank",
-		"SdKfz armored vehicle", "Kettenkrad", "M4 Sherman", "T-34/85", "IS-2 tank",
+		"Sonderkraftfahrzeug", "Kettenkrad", "M4 Sherman", "T-34/85", "IS-2 tank",
 		
 		# Light & Utility Vehicles
 		"jeep", "staff car", "command car", "ambulance", "motorcycle", 
@@ -138,7 +140,9 @@ object_categories = [
 		"Spitfire", "Messerschmitt Bf 109", "P-51 Mustang", "Focke-Wulf Fw 190", 
 		"B-17 Flying Fortress", "Lancaster bomber", "Heinkel He 111", "Junkers Ju 87 Stuka",
 		"Mitsubishi Zero", "Il-2 Sturmovik", "P-47 Thunderbolt", "Hurricane fighter", "helicopter",
-		
+		"aircraft engine", "aircraft propeller", "aircraft wing", "aircraft fuselage", "aircraft tail",
+		"aircraft manufacturing company",
+
 		# Naval Vessels
 		"submarine", "U-boat", "destroyer", "cruiser", "battleship", "aircraft carrier", 
 		"battlecruiser", "corvette", "frigate", "minesweeper", "torpedo boat", 
@@ -147,7 +151,7 @@ object_categories = [
 		
 		# Military Personnel
 		"soldier", "infantryman", "officer", "NCO", "general", "field marshal",
-		"pilot", "bomber crew", "tanker", "artilleryman", "sailor", "marine", 
+		"pilot", "bomber crew", "aircraft crew", "tanker", "artilleryman", "sailor", "marine", 
 		"paratrooper", "commando", "sniper", "medic", "military police", 
 		"cavalry", "SS officer", "Wehrmacht soldier", "Red Army soldier", 
 		"Desert Rat", "Afrika Korps soldier", "Luftwaffe personnel", "naval officer",
@@ -330,8 +334,6 @@ print(topk_indices)
 print(topk_indices.indices)
 print(topk_indices.values)
 print([candidate_labels[i] for i in topk_indices.indices])
-
-
 
 # Get probabilities for the first image (assuming batch size is 1)
 image_probs = probs[0]

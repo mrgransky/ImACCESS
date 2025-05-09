@@ -161,7 +161,7 @@ def extract_metadata_and_images(html_content, base_url, event, country, download
 			continue
 		downloaded_ids_global.add(img_id)
 		# Combine label, title, and description
-		label_title_description = " ".join(filter(None, [label, title, description])).strip()
+		enriched_document_description = " ".join(filter(None, [label, title, description])).strip()
 		data.append({
 			"id": img_id,
 			"label": label,  # Empty string if no alt
@@ -170,13 +170,13 @@ def extract_metadata_and_images(html_content, base_url, event, country, download
 			"description": description,  # Empty string if no description
 			"img_path": local_img_path,
 			"img_url": img_url,
-			"label_title_description": label_title_description or "",  # Empty string if all are empty
+			"enriched_document_description": enriched_document_description or "",  # Empty string if all are empty
 			"event": event or "",  # Empty string if no event
 		})
 	return data
 
 def save_to_csv(data, filename=CSV_FILENAME):
-	fieldnames = ["id", "label", "title", "country", "description", "img_path", "img_url", "label_title_description", "event"]
+	fieldnames = ["id", "label", "title", "country", "description", "img_path", "img_url", "enriched_document_description", "event"]
 	with open(filename, mode="w", newline="", encoding="utf-8") as csvfile:
 		writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 		writer.writeheader()

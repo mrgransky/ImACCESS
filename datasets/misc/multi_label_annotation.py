@@ -56,7 +56,7 @@ CUSTOM_STOPWORDS = ENGLISH_STOP_WORDS.union(
 		"above", "below", "beside", "behind", "between", "among", "alongside",
 		"across", "opposite", "near", "under", "over", "inside", "outside",
 		"collection", "collections", "number", "abbreviation", "abbreviations",
-		"folder", "box", "file", "document", "page", "index", "label", "code", "icon",
+		"folder", "box", "file", "document", "page", "index", "label", "code", "icon", "type", 
 		"folder icon", "box icon", "file icon", "document icon", "page icon", "index icon", "label icon", "code icon",
 	}
 )
@@ -341,16 +341,16 @@ def extract_named_entities(nlp: pipeline, text: str):
 		print(f"NER error: {e}")
 		return []
 
-def extract_keywords(text, min_count=3):
-	"""Extract keywords based on TF-IDF"""
+def extract_keywords(text, min_count=3, max_df=0.9, min_df=0.01, max_features=1000, ngram_range=(1, 3), top_k=50):
 	if not is_english(text) or len(text) < 5:
 		return []
 			
 	vectorizer = TfidfVectorizer(
-		# max_df=0.9,
-		# min_df=min_count/len([text]),
+		# max_df=max_df,
+		# min_df=min_df,
+		# max_features=max_features,
+		ngram_range=ngram_range,
 		stop_words=CUSTOM_STOPWORDS,
-		ngram_range=(1, 3)
 	)
 	try:
 		X = vectorizer.fit_transform([text])
@@ -360,7 +360,6 @@ def extract_keywords(text, min_count=3):
 		# Sort by score in descending order
 		sorted_scores = sorted(scores, key=lambda x: x[1], reverse=True)
 		# Return top keywords
-		top_k = 50  # Get more keywords initially for further filtering
 		keywords = [
 			kw for kw, score in sorted_scores[:top_k] 
 			if score > 0.01 and all(ord(char) < 128 for char in kw)
@@ -630,7 +629,8 @@ def get_textual_based_annotation(
 		relevance_threshold: float,
 		merge_threshold: float,
 		metadata_fpth: str,
-		use_parallel: bool=False, 
+		device: str,
+		use_parallel: bool=False,
 	):
 	print(f"Automatic label extraction from text data".center(160, "-"))
 	print(f"Loading metadata from {csv_file}...")
@@ -644,7 +644,7 @@ def get_textual_based_annotation(
 		model=model, 
 		tokenizer=tokenizer, 
 		aggregation_strategy="simple",
-		device="cuda:0",
+		device=device,
 		batch_size=batch_size,
 	)
 
@@ -702,7 +702,7 @@ def get_textual_based_annotation(
 		print(f"Topic modeling done in {time.time() - t0:.1f} sec")
 		
 		# Step 2: Named Entity Recognition per image
-		print("Extracting named entities per image...")
+		print("Extracting NER per sample...")
 		t0 = time.time()
 		if len(english_texts) > 1000 and use_parallel:
 			chunk_size = len(english_texts) // num_workers + 1
@@ -744,13 +744,13 @@ def get_textual_based_annotation(
 		t0 = time.time()
 		per_image_combined_labels = []
 		for ner, keywords, topics in zip(per_image_ner_labels, per_image_keywords, per_image_topic_labels):
-				# Combine all sources
-				all_labels = list(set(ner + keywords + topics))
-				# Clean the labels
-				cleaned_labels = clean_labels(all_labels)
-				# Filter metadata terms
-				cleaned_labels = filter_metadata_terms(cleaned_labels)
-				per_image_combined_labels.append(cleaned_labels)
+			# Combine all sources
+			all_labels = list(set(ner + keywords + topics))
+			# Clean the labels
+			cleaned_labels = clean_labels(all_labels)
+			# Filter metadata terms
+			cleaned_labels = filter_metadata_terms(cleaned_labels)
+			per_image_combined_labels.append(cleaned_labels)
 		print(f"Label combination and cleaning done in {time.time() - t0:.3f} sec")
 		# Step 6: Filter by relevance and handle languages (optimized)
 		print("Filtering labels by relevance...")
@@ -846,192 +846,193 @@ def get_visual_based_annotation(
 	model.eval()
 
 	object_categories = [
-			# Tanks & Armored Vehicles (WWI-WWII)
-			"tank", "light tank", "medium tank", "heavy tank", "super-heavy tank", 
-			"tank destroyer", "self-propelled gun", "armored car", "half-track", 
-			"armored personnel carrier", "armored train", "reconnaissance vehicle",
-			"Mark IV tank", "Tiger tank", "Panther tank", "T-34 tank", "Sherman tank",
-			"Churchill tank", "KV-1 tank", "Panzer IV", "Panzer III", "Stuart tank",
-			"Sonderkraftfahrzeug", "Kettenkrad", "M4 Sherman", "T-34/85", "IS-2 tank",
+		# Tanks & Armored Vehicles (WWI-WWII)
+		"tank", "light tank", "medium tank", "heavy tank", "super-heavy tank", 
+		"tank destroyer", "self-propelled gun", "armored car", "half-track", 
+		"armored personnel carrier", "armored train", "reconnaissance vehicle",
+		"Mark IV tank", "Tiger tank", "Panther tank", "T-34 tank", "Sherman tank",
+		"Churchill tank", "KV-1 tank", "Panzer IV", "Panzer III", "Stuart tank",
+		"Sonderkraftfahrzeug", "Kettenkrad", "M4 Sherman", "T-34/85", "IS-2 tank",
+		
+		# Light & Utility Vehicles
+		"jeep", "staff car", "command car", "ambulance", "motorcycle", 
+		"military truck", "supply truck", "fuel truck", "artillery tractor", 
+		"amphibious vehicle", "scout car", "Willys Jeep", "Kubelwagen", 
+		"Dodge WC series", "Opel Blitz", "Zis truck", "weapons carrier",
 			
-			# Light & Utility Vehicles
-			"jeep", "staff car", "command car", "ambulance", "motorcycle", 
-			"military truck", "supply truck", "fuel truck", "artillery tractor", 
-			"amphibious vehicle", "scout car", "Willys Jeep", "Kubelwagen", 
-			"Dodge WC series", "Opel Blitz", "Zis truck", "weapons carrier",
+		# Aircraft
+		"military aircraft", "fighter aircraft", "bomber aircraft", "reconnaissance aircraft", 
+		"dive bomber", "torpedo bomber", "transport aircraft", "seaplane", "flying boat",
+		"biplane", "monoplane", "fighter-bomber", "ground attack aircraft", "night fighter",
+		"Spitfire", "Messerschmitt Bf 109", "P-51 Mustang", "Focke-Wulf Fw 190", 
+		"B-17 Flying Fortress", "Lancaster bomber", "Heinkel He 111", "Junkers Ju 87 Stuka",
+		"Mitsubishi Zero", "Il-2 Sturmovik", "P-47 Thunderbolt", "Hurricane fighter", "helicopter",
+		"aircraft engine", "aircraft propeller", "aircraft wing", "aircraft fuselage", "aircraft tail",
+		"aircraft manufacturing company",
+	
+		# Naval Vessels
+		"submarine", "U-boat", "destroyer", "cruiser", "battleship", "aircraft carrier", 
+		"battlecruiser", "corvette", "frigate", "minesweeper", "torpedo boat", 
+		"landing craft", "PT boat", "pocket battleship", "gunboat", "escort carrier",
+		"liberty ship", "merchant vessel", "hospital ship", "troop transport",
 			
-			# Aircraft
-			"military aircraft", "fighter aircraft", "bomber aircraft", "reconnaissance aircraft", 
-			"dive bomber", "torpedo bomber", "transport aircraft", "seaplane", "flying boat",
-			"biplane", "monoplane", "fighter-bomber", "ground attack aircraft", "night fighter",
-			"Spitfire", "Messerschmitt Bf 109", "P-51 Mustang", "Focke-Wulf Fw 190", 
-			"B-17 Flying Fortress", "Lancaster bomber", "Heinkel He 111", "Junkers Ju 87 Stuka",
-			"Mitsubishi Zero", "Il-2 Sturmovik", "P-47 Thunderbolt", "Hurricane fighter", "helicopter",
-			
-			# Naval Vessels
-			"submarine", "U-boat", "destroyer", "cruiser", "battleship", "aircraft carrier", 
-			"battlecruiser", "corvette", "frigate", "minesweeper", "torpedo boat", 
-			"landing craft", "PT boat", "pocket battleship", "gunboat", "escort carrier",
-			"liberty ship", "merchant vessel", "hospital ship", "troop transport",
-			
-			# Military Personnel
-			"soldier", "infantryman", "officer", "NCO", "general", "field marshal",
-			"pilot", "bomber crew", "tanker", "artilleryman", "sailor", "marine", 
-			"paratrooper", "commando", "sniper", "medic", "military police", 
-			"cavalry", "SS officer", "Wehrmacht soldier", "Red Army soldier", 
-			"Desert Rat", "Afrika Korps soldier", "Luftwaffe personnel", "naval officer",
-			
-			# Weapons & Ordnance
-			"rifle", "machine gun", "submachine gun", "pistol", "bayonet", "flamethrower", 
-			"mortar", "artillery piece", "howitzer", "field gun", "anti-tank gun", "cannon", 
-			"anti-aircraft gun", "rocket launcher", "grenade", "hand grenade", "rifle grenade",
-			"landmine", "naval mine", "depth charge", "torpedo", "aerial bomb", "incendiary bomb",
-			"Thompson submachine gun", "MG-42", "Karabiner 98k", "M1 Garand", "Sten gun",
-			"Luger pistol", "PIAT", "Bazooka", "Panzerfaust", "88mm gun",
-			
-			# Military Infrastructure
-			"bunker", "pillbox", "gun emplacement", "observation post", "barbed wire", 
-			"trenches", "foxhole", "dugout", "fortification", "coastal defense", 
-			"anti-tank obstacle", "dragon's teeth", "minefield", "floating bridge",
-			"portable bridge", "military headquarters", "command post", "communications center",
-			
-			# Military Insignia & Symbols
-			"military flag", "swastika flag", "rising sun flag", "Soviet flag", "Union Jack", 
-			"American flag", "regimental colors", "military insignia", "rank insignia", 
-			"unit patch", "medal", "military decoration", "Iron Cross", "Victoria Cross",
-			"Medal of Honor", "military helmet", "steel helmet", "Brodie helmet",
-			"Stahlhelm", "Adrian helmet", "gas mask",
-			
-			# Military Equipment
-			"military uniform", "combat uniform", "field equipment", "backpack", "mess kit", 
-			"entrenching tool", "canteen", "ammunition belt", "bandolier", "map case", 
-			"binoculars", "field telephone", "radio equipment", "signal equipment",
-			"parachute", "life vest", "fuel drum", "jerry can", "ration box",
-			"military stretcher", "field kitchen", "anti-gas equipment"
+		# Military Personnel
+		"soldier", "infantryman", "officer", "NCO", "general", "field marshal",
+		"pilot", "bomber crew", "aircraft crew", "tanker", "artilleryman", "sailor", "marine", 
+		"paratrooper", "commando", "sniper", "medic", "military police", 
+		"cavalry", "SS officer", "Wehrmacht soldier", "Red Army soldier", 
+		"Desert Rat", "Afrika Korps soldier", "Luftwaffe personnel", "naval officer",
+		
+		# Weapons & Ordnance
+		"rifle", "machine gun", "submachine gun", "pistol", "bayonet", "flamethrower", 
+		"mortar", "artillery piece", "howitzer", "field gun", "anti-tank gun", "cannon", 
+		"anti-aircraft gun", "rocket launcher", "grenade", "hand grenade", "rifle grenade",
+		"landmine", "naval mine", "depth charge", "torpedo", "aerial bomb", "incendiary bomb",
+		"Thompson submachine gun", "MG-42", "Karabiner 98k", "M1 Garand", "Sten gun",
+		"Luger pistol", "PIAT", "Bazooka", "Panzerfaust", "88mm gun",
+		
+		# Military Infrastructure
+		"bunker", "pillbox", "gun emplacement", "observation post", "barbed wire", 
+		"trenches", "foxhole", "dugout", "fortification", "coastal defense", 
+		"anti-tank obstacle", "dragon's teeth", "minefield", "floating bridge",
+		"portable bridge", "military headquarters", "command post", "communications center",
+		
+		# Military Insignia & Symbols
+		"military flag", "swastika flag", "rising sun flag", "Soviet flag", "Union Jack", 
+		"American flag", "regimental colors", "military insignia", "rank insignia", 
+		"unit patch", "medal", "military decoration", "Iron Cross", "Victoria Cross",
+		"Medal of Honor", "military helmet", "steel helmet", "Brodie helmet",
+		"Stahlhelm", "Adrian helmet", "gas mask",
+		
+		# Military Equipment
+		"military uniform", "combat uniform", "field equipment", "backpack", "mess kit", 
+		"entrenching tool", "canteen", "ammunition belt", "bandolier", "map case", 
+		"binoculars", "field telephone", "radio equipment", "signal equipment",
+		"parachute", "life vest", "fuel drum", "jerry can", "ration box",
+		"military stretcher", "field kitchen", "anti-gas equipment"
 	]
 
 	scene_categories = [
-			# European Theaters
-			"Western Front", "Eastern Front", "Italian Front", "North African Front",
-			"Normandy beaches", "coastline", "Soviet urban ruins",
-			
-			# Pacific & Asian Theaters
-			"Pacific island", "jungle battlefield", "Pacific beach landing", "atoll",
-			"tropical forest", "coral reef", "bamboo grove", "rice paddy",
-			"Burmese jungle", "Chinese village", "Philippine beach", "volcanic island",
-			"Japanese homeland", "Pacific airfield", "jungle airstrip", "coconut plantation",
-			
-			# Military Settings
-			"prisoner of war camp", "concentration camp", "military hospital", "field hospital",
-			"military cemetery", "aircraft factory", "tank factory", "shipyard",
-			"military depot", "ammunition dump", "fuel depot", "supply dump",
-			"military port", "embarkation point", "submarine pen", "naval dry dock",
-			
-			# Terrain Types
-			"desert", "desert oasis", "desert dunes", "rocky desert", "forest",
-			"dense forest", "winter forest", "urban area", "bombed city", "city ruins",
-			"beach", "landing beach", "rocky beach", "mountain", "mountain pass",
-			"field", "farm field", "snow-covered field", "ocean", "open ocean",
-			"coastal waters", "river", "river crossing", "flooded river", "bridge",
-			
-			# Military Infrastructure
-			"airfield", "temporary airstrip", "bomber base", "fighter base",
-			"naval base", "submarine base", "army barracks", "training camp",
-			"military headquarters", "command bunker", "coastal defense",
-			"fortified line", "defensive position", "artillery position",
-			
-			# Military Activities
-			"battlefield", "active battlefield", "battlefield aftermath",
-			"military parade", "victory parade", "surrender ceremony",
-			"military exercise", "amphibious landing exercise", "tank maneuvers",
-			"war zone", "civilian evacuation", "occupation zone", "frontline",
-			"military checkpoint", "border checkpoint", "military convoy route",
-			
-			# Home Front
-			"war factory", "armaments factory", "aircraft assembly line",
-			"vehicle assembly line", "shipyard", "munitions factory",
-			"civilian air raid shelter", "bombed civilian area", "rationing center",
-			"recruitment office", "propaganda poster display", "war bonds office",
-			"civil defense drill", "air raid aftermath", "victory celebration"
+		# European Theaters
+		"Western Front", "Eastern Front", "Italian Front", "North African Front",
+		"Normandy beaches", "coastline", "Soviet urban ruins",
+		
+		# Pacific & Asian Theaters
+		"Pacific island", "jungle battlefield", "Pacific beach landing", "atoll",
+		"tropical forest", "coral reef", "bamboo grove", "rice paddy",
+		"Burmese jungle", "Chinese village", "Philippine beach", "volcanic island",
+		"Japanese homeland", "Pacific airfield", "jungle airstrip", "coconut plantation",
+		
+		# Military Settings
+		"prisoner of war camp", "concentration camp", "military hospital", "field hospital",
+		"military cemetery", "aircraft factory", "tank factory", "shipyard",
+		"military depot", "ammunition dump", "fuel depot", "supply dump",
+		"military port", "embarkation point", "submarine pen", "naval dry dock",
+		
+		# Terrain Types
+		"desert", "desert oasis", "desert dunes", "rocky desert", "forest",
+		"dense forest", "winter forest", "urban area", "bombed city", "city ruins",
+		"beach", "landing beach", "rocky beach", "mountain", "mountain pass",
+		"field", "farm field", "snow-covered field", "ocean", "open ocean",
+		"coastal waters", "river", "river crossing", "flooded river", "bridge",
+		
+		# Military Infrastructure
+		"airfield", "temporary airstrip", "bomber base", "fighter base",
+		"naval base", "submarine base", "army barracks", "training camp",
+		"military headquarters", "command bunker", "coastal defense",
+		"fortified line", "defensive position", "artillery position",
+		
+		# Military Activities
+		"battlefield", "active battlefield", "battlefield aftermath",
+		"military parade", "victory parade", "surrender ceremony",
+		"military exercise", "amphibious landing exercise", "tank maneuvers",
+		"war zone", "civilian evacuation", "occupation zone", "frontline",
+		"military checkpoint", "border checkpoint", "military convoy route",
+		
+		# Home Front
+		"war factory", "armaments factory", "aircraft assembly line",
+		"vehicle assembly line", "shipyard", "munitions factory",
+		"civilian air raid shelter", "bombed civilian area", "rationing center",
+		"recruitment office", "propaganda poster display", "war bonds office",
+		"civil defense drill", "air raid aftermath", "victory celebration"
 	]
 
 	era_categories = [
-			# Pre-War & Early War
-			"pre-World War I era", "World War I era", "interwar period",
-			"pre-1939 military",
-			"Phoney War", "Blitzkrieg era", "1939-1940 military equipment",
-			
-			# World War II Specific Periods
-			"World War II era", "Battle of Britain era", "North African campaign",
-			"Pearl Harbor era", "Midway period", "Stalingrad era", "Normandy invasion",
-			"Operation Barbarossa", "Battle of the Bulge", "Italian campaign",
-			"D-Day preparations", "Market Garden operation", "Fall of Berlin",
-			"Island-hopping campaign", "Battle of the Atlantic", "V-E Day era",
-			"Pacific War late stage", "atomic bomb era", "Japanese surrender period",
-			
-			# Post-War Periods
-			"immediate post-war", "occupation period", "Cold War",
-			"Korean War era", "1950s military", "Vietnam era", "Japanse World War era",
-						
-			# Military Technology Eras
-			"early tank warfare", "biplane era", "early radar period", "monoplane transition",
-			"early jet aircraft", "V-weapon period", "heavy bomber era", "aircraft carrier warfare",
-			"submarine warfare golden age", "amphibious assault development",
-			"mechanized warfare", "combined arms doctrine", "early nuclear era",
-			
-			# National Military Period Styles
-			"Wehrmacht prime", "Soviet military buildup", "British Empire forces",
-			"American war production peak", "Imperial Japanese forces",
-			"Nazi Germany zenith", "Allied powers ascendancy", "Axis powers decline",
-			"Red Army resurgence", "American military dominance"
+		# Pre-War & Early War
+		"pre-World War I era", "World War I era", "interwar period",
+		"pre-1939 military",
+		"Phoney War", "Blitzkrieg era", "1939-1940 military equipment",
+		
+		# World War II Specific Periods
+		"World War II era", "Battle of Britain era", "North African campaign",
+		"Pearl Harbor era", "Midway period", "Stalingrad era", "Normandy invasion",
+		"Operation Barbarossa", "Battle of the Bulge", "Italian campaign",
+		"D-Day preparations", "Market Garden operation", "Fall of Berlin",
+		"Island-hopping campaign", "Battle of the Atlantic", "V-E Day era",
+		"Pacific War late stage", "atomic bomb era", "Japanese surrender period",
+		
+		# Post-War Periods
+		"immediate post-war", "occupation period", "Cold War",
+		"Korean War era", "1950s military", "Vietnam era", "Japanse World War era",
+					
+		# Military Technology Eras
+		"early tank warfare", "biplane era", "early radar period", "monoplane transition",
+		"early jet aircraft", "V-weapon period", "heavy bomber era", "aircraft carrier warfare",
+		"submarine warfare golden age", "amphibious assault development",
+		"mechanized warfare", "combined arms doctrine", "early nuclear era",
+		
+		# National Military Period Styles
+		"Wehrmacht prime", "Soviet military buildup", "British Empire forces",
+		"American war production peak", "Imperial Japanese forces",
+		"Nazi Germany zenith", "Allied powers ascendancy", "Axis powers decline",
+		"Red Army resurgence", "American military dominance"
 	]
 
 	activity_categories = [
-			# Combat Activities
-			"fighting", "tank battle", "infantry assault", "naval engagement",
-			"aerial dogfight", "bombing run", "strafing run", "artillery barrage",
-			"firing weapon", "machine gun firing", "mortar firing", "shelling",
-			"anti-aircraft firing", "sniper activity", "flamethrower attack",
-			"bayonet charge", "hand-to-hand combat", "urban combat", "house-to-house fighting",
-			
-			# Movement & Transportation
-			"driving", "convoy movement", "tank column", "troop transport",
-			"marching", "infantry advance", "tactical retreat", "military withdrawal",
-			"flying", "air patrol", "reconnaissance flight", "bombing mission",
-			"parachute drop", "airborne landing", "glider landing", "air resupply",
-			"crossing terrain", "river crossing", "beach landing", "amphibious assault",
-			"fording stream", "mountain climbing", "moving through jungle",
-			"naval convoy", "fleet movement", "submarine patrol", "naval blockade",
-			
-			# Military Operations
-			"digging trenches", "building fortifications", "laying mines", "clearing mines",
-			"constructing bridge", "demolishing bridge", "breaching obstacles",
-			"setting up artillery", "camouflaging position", "establishing perimeter",
-			"setting up command post", "establishing field hospital", "creating airstrip",
-			
-			# Logistics & Support
-			"loading equipment", "unloading equipment", "loading ammunition", "refueling",
-			"resupplying troops", "distributing rations", "loading wounded", "evacuating casualties",
-			"loading ships", "unloading landing craft", "airdrop receiving", "gathering supplies",
-			"towing disabled vehicle", "vehicle recovery", "aircraft maintenance", "tank repair",
-			"weapon cleaning", "equipment maintenance", "vehicle maintenance",
-			
-			# Military Life & Routines
-			"training", "infantry drill", "weapons training", "tank crew training", "pilot training",
-			"field exercise", "receiving briefing", "map reading", "radio communication",
-			"standing guard", "sentry duty", "prisoner handling", "military inspection",
-			"cooking field rations", 'military rations', "eating meal", "resting between battles", "writing letters",
-			"medical treatment", "field surgery", "distributing supplies", "receiving orders",
-			
-			# Ceremonial & Administrative
-			"military parade", "award ceremony", "flag raising", "surrender ceremony", 
-			"prisoner processing", "military funeral", "military wedding", "religious service",
-			"officer briefing", "signing documents", "military trial", "propaganda filming",
-			"press conference", "VIP visit", "civilian interaction", "occupation duty",
-			"war crime investigation", "reconnaissance reporting"
+		# Combat Activities
+		"fighting", "tank battle", "infantry assault", "naval engagement",
+		"aerial dogfight", "bombing run", "strafing run", "artillery barrage",
+		"firing weapon", "machine gun firing", "mortar firing", "shelling",
+		"anti-aircraft firing", "sniper activity", "flamethrower attack",
+		"bayonet charge", "hand-to-hand combat", "urban combat", "house-to-house fighting",
+		
+		# Movement & Transportation
+		"driving", "convoy movement", "tank column", "troop transport",
+		"marching", "infantry advance", "tactical retreat", "military withdrawal",
+		"flying", "air patrol", "reconnaissance flight", "bombing mission",
+		"parachute drop", "airborne landing", "glider landing", "air resupply",
+		"crossing terrain", "river crossing", "beach landing", "amphibious assault",
+		"fording stream", "mountain climbing", "moving through jungle",
+		"naval convoy", "fleet movement", "submarine patrol", "naval blockade",
+		
+		# Military Operations
+		"digging trenches", "building fortifications", "laying mines", "clearing mines",
+		"constructing bridge", "demolishing bridge", "breaching obstacles",
+		"setting up artillery", "camouflaging position", "establishing perimeter",
+		"setting up command post", "establishing field hospital", "creating airstrip",
+		
+		# Logistics & Support
+		"loading equipment", "unloading equipment", "loading ammunition", "refueling",
+		"resupplying troops", "distributing rations", "loading wounded", "evacuating casualties",
+		"loading ships", "unloading landing craft", "airdrop receiving", "gathering supplies",
+		"towing disabled vehicle", "vehicle recovery", "aircraft maintenance", "tank repair",
+		"weapon cleaning", "equipment maintenance", "vehicle maintenance",
+		
+		# Military Life & Routines
+		"training", "infantry drill", "weapons training", "tank crew training", "pilot training",
+		"field exercise", "receiving briefing", "map reading", "radio communication",
+		"standing guard", "sentry duty", "prisoner handling", "military inspection",
+		"cooking field rations", 'military rations', "eating meal", "resting between battles", "writing letters",
+		"medical treatment", "field surgery", "distributing supplies", "receiving orders",
+		
+		# Ceremonial & Administrative
+		"military parade", "award ceremony", "flag raising", "surrender ceremony", 
+		"prisoner processing", "military funeral", "military wedding", "religious service",
+		"officer briefing", "signing documents", "military trial", "propaganda filming",
+		"press conference", "VIP visit", "civilian interaction", "occupation duty",
+		"war crime investigation", "reconnaissance reporting"
 	]
 
-	
 	# Function to process image batches
 	def process_batch(batch_paths, categories):
 		valid_images = []
@@ -1167,8 +1168,8 @@ def main():
 	parser.add_argument("--use_parallel", '-parallel', action="store_true")
 	parser.add_argument("--num_workers", '-nw', type=int, default=10)
 	parser.add_argument("--num_text_clusters", '-nc', type=int, default=30)
-	parser.add_argument("--text_batch_size", '-tbs', type=int, default=512)
-	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=32, help="Batch size for vision processing")
+	parser.add_argument("--text_batch_size", '-tbs', type=int, default=1024)
+	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=16, help="Batch size for vision processing")
 	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.25, help="Relevance threshold for text-based filtering")
 	parser.add_argument("--vision_threshold", '-vth', type=float, default=0.20, help="Confidence threshold for VLM-based filtering")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
@@ -1209,6 +1210,7 @@ def main():
 			merge_threshold=0.7,
 			relevance_threshold=args.relevance_threshold,
 			metadata_fpth=text_output_path,
+			device=args.device,
 		)
 
 	if os.path.exists(vision_output_path):
