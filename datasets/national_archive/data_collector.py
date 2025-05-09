@@ -25,7 +25,7 @@ print_args_table(args=args, parser=parser)
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-10
 
 ########################## --start_date 1933-01-01 --end_date 1933-01-02 ##########################
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-10 --num_workers 8 --img_mean_std > logs/na_image_download.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-05 --num_workers 8 --img_mean_std > logs/na_image_download.out &
 # $ nohup python -u data_collector.py -ddir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 8 --img_mean_std > logs/na_image_download.out &
 
 ########################## --start_date 1914-01-01 --end_date 1946-12-31 ##########################
@@ -187,43 +187,45 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 	for doc in docs:
 		record = doc.get('_source', {}).get('record', {})
 		fields = doc.get('fields', {})
-
-		# doc_title = clean_(text=record.get('title'), sw=STOPWORDS)
-		# doc_description = clean_(text=record.get('scopeAndContentNote'), sw=STOPWORDS) if record.get('scopeAndContentNote') else None
-
-		doc_title = record.get('title')
-		doc_description = record.get('scopeAndContentNote', None)
-
 		na_identifier = record.get('naId')
 		raw_doc_date = record.get('productionDates')[0].get("logicalDate") if record.get('productionDates') else None
 		first_digital_object_url = fields.get('firstDigitalObject', [{}])[0].get('objectUrl')
 		ancesstor_collections = [f"{itm.get('title')}" for itm in record.get('ancestors')] # record.get('ancestors'): list of dict
+
+		# doc_title = clean_(text=record.get('title'), sw=STOPWORDS)
+		# doc_description = clean_(text=record.get('scopeAndContentNote'), sw=STOPWORDS) if record.get('scopeAndContentNote') else None
+
+
+		doc_title = record.get('title')
+		doc_description = record.get('scopeAndContentNote', None)
+
 		useless_title_terms = [
-			"wildflowers" not in doc_title, 
-			"-sc-" not in doc_title,
-			"notes" not in doc_title,
-			"page" not in doc_title,
-			"exhibit" not in doc_title,
-			"ad:" not in doc_title,
-			"sheets" not in doc_title,
-			"report" not in doc_title,
-			"map" not in doc_title,
-			"portrait of" not in doc_title,
-			"poster" not in doc_title,
-			"drawing" not in doc_title,
-			"sketch of" not in doc_title,
-			"layout" not in doc_title,
-			"postcard" not in doc_title,
-			"table:" not in doc_title,
-			"traffic statistics:" not in doc_title,
+			"wildflowers" not in doc_title.lower(), 
+			"-sc-" not in doc_title.lower(),
+			"notes" not in doc_title.lower(),
+			"page" not in doc_title.lower(),
+			"exhibit" not in doc_title.lower(),
+			"ad:" not in doc_title.lower(),
+			"sheets" not in doc_title.lower(),
+			"report" not in doc_title.lower(),
+			"map" not in doc_title.lower(),
+			"portrait of" not in doc_title.lower(),
+			"poster" not in doc_title.lower(),
+			"drawing" not in doc_title.lower(),
+			"sketch of" not in doc_title.lower(),
+			"layout" not in doc_title.lower(),
+			"postcard" not in doc_title.lower(),
+			"table:" not in doc_title.lower(),
+			"traffic statistics:" not in doc_title.lower(),
 			"sketch" not in doc_title,
 		] if doc_title is not None else []
+
 		useless_description_terms = [
-			"certificate" not in doc_description,
-			"drawing" not in doc_description,
-			"sketch of" not in doc_description,
-			"newspaper" not in doc_description,
-			"sketch" not in doc_description,
+			"certificate" not in doc_description.lower(),
+			"drawing" not in doc_description.lower(),
+			"sketch of" not in doc_description.lower(),
+			"newspaper" not in doc_description.lower(),
+			"sketch" not in doc_description.lower(),
 		] if doc_description is not None else []
 
 		if (
