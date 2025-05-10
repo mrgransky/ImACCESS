@@ -56,7 +56,7 @@ CUSTOM_STOPWORDS = ENGLISH_STOP_WORDS.union(
 		"above", "below", "beside", "behind", "between", "among", "alongside",
 		"across", "opposite", "near", "under", "over", "inside", "outside",
 		"collection", "collections", "number", "abbreviation", "abbreviations",
-		"folder", "box", "file", "document", "page", "index", "label", "code", "icon", "type", 
+		"folder", "box", "file", "document", "page", "index", "label", "code", "icon", "type", "unknown", "unknow",
 		"folder icon", "box icon", "file icon", "document icon", "page icon", "index icon", "label icon", "code icon",
 	}
 )
@@ -75,7 +75,6 @@ FastText_Language_Identification = "lid.176.ftz"
 if "lid.176.ftz" not in os.listdir():
 	url = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz"
 	urllib.request.urlretrieve(url, "lid.176.ftz")
-ft_model = fasttext.load_model("lid.176.ftz")
 
 # Semantic categories for organization
 SEMANTIC_CATEGORIES = {
@@ -93,7 +92,7 @@ RELEVANT_ENTITY_TYPES = {
 	'EVENT', 'WORK_OF_ART', 'PRODUCT', 'DATE'
 }
 
-def is_english(text):
+def is_english(text: str, ft_model: fasttext.FastText._FastText):
 	if not text or len(text) < 5:
 		return False
 	if len(text) < 20:
@@ -164,18 +163,23 @@ def extract_semantic_topics(
 		sent_model: SentenceTransformer,
 		ft_model: fasttext.FastText._FastText,
 		texts: list[str],
-		n_clusters: int =25, 
-		top_k_words: int =10, 
-		merge_threshold: float =0.65,
+		n_clusters: int,
+		top_k_words: int,
+		merge_threshold: float,
 	):
-	"""Extract semantic topics using sentence embeddings and clustering with redundancy reduction"""
 	# Generate embeddings
 	print(f"Generating embeddings for {len(texts)} texts...")
 	embeddings = sent_model.encode(texts, show_progress_bar=True)
 	
 	# Clustering with increased default clusters
 	print(f"Clustering embeddings {embeddings.shape} into {n_clusters} topics with KMeans...")
-	kmeans = KMeans(n_clusters=n_clusters, random_state=42, init='k-means++', max_iter=1000, n_init='auto')
+	kmeans = KMeans(
+		n_clusters=n_clusters, 
+		random_state=42, 
+		init='k-means++', 
+		max_iter=1000, 
+		n_init='auto',
+	)
 	labels = kmeans.fit_predict(embeddings)
 	
 	# Plot original distribution
@@ -186,13 +190,13 @@ def extract_semantic_topics(
 	plt.xlabel('Topic ID')
 	plt.ylabel('Number of Documents')
 	plt.xticks(range(n_clusters))
-	plt.savefig('topic_distribution.png')
+	plt.savefig(f'topic_distribution_before_merging_topics_{n_clusters}_topics_{top_k_words}_words_per_topic_per_cluster.png')
 	
 	# Collect phrases for each cluster
 	cluster_phrases = defaultdict(Counter)
 	for i, label in enumerate(labels):
 		# Check if the text is English before extracting phrases
-		if is_english(texts[i]):
+		if is_english(text=texts[i], ft_model=ft_model):
 			phrases = extract_phrases(texts[i])
 			# Filter out phrases less than 3 characters or containing stopwords
 			valid_phrases = [
@@ -205,7 +209,11 @@ def extract_semantic_topics(
 	# Extract top phrases from each cluster
 	initial_topics = []
 	for label, counter in cluster_phrases.items():
-		most_common = [w for w, c in counter.most_common(top_k_words * 4) if len(w.split()) <= 3 and all(ord(char) < 128 for char in w)]
+		most_common = [
+			w 
+			for w, c in counter.most_common(top_k_words * 4) 
+			if len(w.split()) <= 3 and all(ord(char) < 128 for char in w)
+		]
 		initial_topics.append(most_common[:top_k_words])
 	
 	# NEW: Calculate topic similarities for merging
@@ -279,7 +287,7 @@ def extract_semantic_topics(
 	plt.xlabel('Topic ID')
 	plt.ylabel('Number of Terms')
 	plt.xticks(range(len(merged_topics)))
-	plt.savefig('merged_topic_distribution.png')
+	plt.savefig(f'merged_topic_distribution_{merge_threshold}_merge_threshold_{top_k_words}_top_k_words_per_topic_per_cluster_{n_clusters}_clusters_per_topic.png')
 	
 	# Flatten and return unique topics - FIXED LINE BELOW
 	flat_topics = set(word for topic in merged_topics for word in topic)
@@ -311,9 +319,9 @@ def clean_labels(labels):
 				cleaned.add(label)
 		return sorted(cleaned)
 
-def extract_named_entities(nlp: pipeline, text: str):
+def extract_named_entities(nlp: pipeline, text: str, ft_model: fasttext.FastText._FastText):
 	# Skip if text is not primarily English
-	if not is_english(text):
+	if not is_english(text=text, ft_model=ft_model):
 		return []
 
 	try:
@@ -341,8 +349,17 @@ def extract_named_entities(nlp: pipeline, text: str):
 		print(f"NER error: {e}")
 		return []
 
-def extract_keywords(text, min_count=3, max_df=0.9, min_df=0.01, max_features=1000, ngram_range=(1, 3), top_k=50):
-	if not is_english(text) or len(text) < 5:
+def extract_keywords(
+		text: str, 
+		ft_model: fasttext.FastText._FastText, 
+		min_count: int=3, 
+		max_df: float=0.9, 
+		min_df: float=0.01, 
+		max_features: int=1000, 
+		ngram_range: tuple=(1, 3), 
+		top_k: int=50
+	):
+	if not is_english(text, ft_model) or len(text) < 5:
 		return []
 			
 	vectorizer = TfidfVectorizer(
@@ -637,6 +654,7 @@ def get_textual_based_annotation(
 	text_based_annotation_start_time = time.time()
 
 	sent_model = SentenceTransformer("all-MiniLM-L6-v2")
+	ft_model = fasttext.load_model("lid.176.ftz")
 	tokenizer = AutoTokenizer.from_pretrained("dslim/bert-base-NER")
 	model = AutoModelForTokenClassification.from_pretrained("dslim/bert-base-NER")
 	nlp = pipeline(
@@ -674,7 +692,7 @@ def get_textual_based_annotation(
 	
 	print("Filtering non-English entries...")
 	t0 = time.time()
-	english_mask = df['clean_content'].apply(is_english)
+	english_mask = df['clean_content'].apply(lambda x: is_english(x, ft_model))
 	english_indices = english_mask[english_mask].index.tolist()
 	print(f"{sum(english_mask)} / {len(df)} texts are English")
 	print(f"Language filter done in {time.time() - t0:.2f} sec")
@@ -688,7 +706,7 @@ def get_textual_based_annotation(
 	
 	if len(english_texts) > 0:
 		# Step 1: Topic Modeling with redundancy reduction
-		print("Performing topic modeling...")
+		print("Topic Modeling".center(160, "-"))
 		t0 = time.time()
 		topics, flat_topic_words = extract_semantic_topics(
 			sent_model=sent_model,
@@ -699,7 +717,7 @@ def get_textual_based_annotation(
 			merge_threshold=merge_threshold, # Merge similar topics
 		)
 		print(f"{len(topics)} Topics(clusters) {type(topics)}:\n{topics}")
-		print(f"Topic modeling done in {time.time() - t0:.1f} sec")
+		print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(160, "-"))
 		
 		# Step 2: Named Entity Recognition per image
 		print("Extracting NER per sample...")
@@ -720,14 +738,14 @@ def get_textual_based_annotation(
 		else:
 			per_image_ner_labels = []
 			for i, text in enumerate(tqdm(english_texts, desc="NER Progress")):
-				entities = extract_named_entities(nlp=nlp, text=text)
+				entities = extract_named_entities(nlp=nlp, text=text, ft_model=ft_model)
 				per_image_ner_labels.append(entities)
 		print(f"NER done in {time.time() - t0:.1f} sec")
 		
 		# Step 3: Extract keywords per image
 		print("Extracting keywords per image using TF-IDF...")
 		t0 = time.time()
-		per_image_keywords = [extract_keywords(text) for text in english_texts]
+		per_image_keywords = [extract_keywords(text, ft_model) for text in english_texts]
 		print(f"Keyword extraction done in {time.time() - t0:.1f} sec")
 		
 		# Step 4: Add individual topic labels
@@ -1168,7 +1186,9 @@ def main():
 	parser.add_argument("--use_parallel", '-parallel', action="store_true")
 	parser.add_argument("--num_workers", '-nw', type=int, default=10)
 	parser.add_argument("--num_text_clusters", '-nc', type=int, default=30)
-	parser.add_argument("--text_batch_size", '-tbs', type=int, default=1024)
+	parser.add_argument("--text_batch_size", '-tbs', type=int, default=512)
+	parser.add_argument("--top_k_words", '-tkw', type=int, default=25)
+	parser.add_argument("--merge_threshold", '-mt', type=float, default=0.8)
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=16, help="Batch size for vision processing")
 	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.25, help="Relevance threshold for text-based filtering")
 	parser.add_argument("--vision_threshold", '-vth', type=float, default=0.20, help="Confidence threshold for VLM-based filtering")
@@ -1206,8 +1226,8 @@ def main():
 			num_workers=args.num_workers,
 			batch_size=args.text_batch_size,
 			num_clusters=args.num_text_clusters,
-			top_k_words=25,
-			merge_threshold=0.7,
+			top_k_words=args.top_k_words,
+			merge_threshold=args.merge_threshold,
 			relevance_threshold=args.relevance_threshold,
 			metadata_fpth=text_output_path,
 			device=args.device,
