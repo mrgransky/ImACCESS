@@ -6,6 +6,7 @@ import re
 import os
 import time
 import torch
+from ImACCESS.datasets.smu.data_collector import DATASET_DIRECTORY
 import torchvision
 import multiprocessing
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -57,12 +58,12 @@ DetectorFactory.seed = 42
 # Custom stopwords and metadata patterns
 CUSTOM_STOPWORDS = ENGLISH_STOP_WORDS.union(
 	{
-		"original", "bildetekst", "photo", "image", "archive", "arkivreferanse",
+		"bildetekst", "photo", "image", "archive", "arkivreferanse",
 		"copyright", "description", "riksarkivet", "ntbs", "ra", "pa", "bildetekst",
 		"left", "right", "center", "top", "bottom", "middle", "front", "back",
 		"year", "month", "day", "date", "century", "decade", "era",
 		"showing", "shown", "shows", "depicts", "depicting", "pictured", "picture",
-		"original", "copy", "version", "view", "looking", "seen", "visible",
+		"copy", "version", "view", "looking", "seen", "visible",
 		"photograph", "photographer", "photography", "photo", "image", "img",
 		"sent", "received", "taken", "made", "created", "produced", "found",
 		"above", "below", "beside", "behind", "between", "among", "alongside",
@@ -70,7 +71,7 @@ CUSTOM_STOPWORDS = ENGLISH_STOP_WORDS.union(
 		"collection", "collections", "number", "abbreviation", "abbreviations",
 		"folder", "box", "file", "document", "page", "index", "label", "code", "icon", "type", "unknown", "unknow",
 		"folder icon", "box icon", "file icon", "document icon", "page icon", "index icon", "label icon", "code icon",
-		"used", "states", "animal", "southern", "built", "year", "1944", "1945",
+		"used", "states", "animal", "southern", "built", "year",
 		"original", "information", "item", "http", "www", "jpg", 
 		"jpeg", "png", "gif", "bmp", "tiff", "tif", "ico", "svg", "webp", "heic", "heif", "raw", "cr2", "nef", "orf", "arw", "dng", "nrw", "k25", "kdc", "rw2", "raf", "mrw", "pef", "sr2", "srf",
 	}
@@ -237,7 +238,7 @@ def extract_semantic_topics(
 					yval = bar.get_height()
 					plt.text(bar.get_x() + bar.get_width()/2, yval + 0.5, int(yval), ha='center', va='bottom')
 			plt.legend()
-			plt.savefig(f'topic_distribution_before_merging_{n_clusters}_clusters.png', bbox_inches='tight')
+			plt.savefig(os.path.join(dataset_dir, f'topic_distribution_before_merging_{n_clusters}_clusters.png'), bbox_inches='tight')
 			plt.close()
 	# Visualization 2: Interactive UMAP Scatter Plot with Plotly
 	if enable_visualizations:
@@ -301,7 +302,7 @@ def extract_semantic_topics(
 			plt.xlabel('PCA 1')
 			plt.ylabel('PCA 2')
 			plt.legend(title='Cluster', bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
-			plt.savefig('pca_cluster_visualization_enhanced.png', bbox_inches='tight')
+			plt.savefig(os.path.join(dataset_dir, 'pca_cluster_visualization_enhanced.png'), bbox_inches='tight')
 			plt.close()
 	# Collect phrases for each cluster
 	cluster_phrases = defaultdict(Counter)
@@ -393,7 +394,7 @@ def extract_semantic_topics(
 			plt.axhline(y=1 - merge_threshold, color='red', linestyle='--', label=f'Merge Threshold ({merge_threshold:.4f})')
 			plt.legend()
 			plt.xticks(rotation=90, fontsize=8)
-			plt.savefig('similarity_dendrogram.png', bbox_inches='tight')
+			plt.savefig(os.path.join(dataset_dir, 'similarity_dendrogram.png'), bbox_inches='tight')
 			plt.close()
 		else:
 			print("Similarity matrix is empty.")
@@ -432,7 +433,7 @@ def extract_semantic_topics(
 			nx.draw_networkx_nodes(G, pos, node_size=500, node_color='lightblue')
 			nx.draw_networkx_labels(G, pos, font_size=10)
 			plt.title(f'Phrase Co-Occurrence Network for Topic {label}')
-			plt.savefig(f'cooccurrence_network_topic_{label}.png', bbox_inches='tight')
+			plt.savefig(os.path.join(dataset_dir, f'cooccurrence_network_topic_{label}.png'), bbox_inches='tight')
 			plt.close()
 
 	# Visualization 5: Topic Evolution Over Time (if years available)
@@ -454,7 +455,7 @@ def extract_semantic_topics(
 		plt.ylabel('Number of Documents (Rolling Avg)')
 		plt.legend(title='Topic')
 		plt.grid(True)
-		plt.savefig('topic_evolution_over_time.png', bbox_inches='tight')
+		plt.savefig(os.path.join(dataset_dir, 'topic_evolution_over_time.png'), bbox_inches='tight')
 		plt.close()
 	# Visualization 6: Cluster Quality Metrics
 	if enable_visualizations:
@@ -481,7 +482,7 @@ def extract_semantic_topics(
 		plt.ylabel('Score')
 		plt.legend()
 		plt.grid(True)
-		plt.savefig('cluster_quality_metrics.png', bbox_inches='tight')
+		plt.savefig(os.path.join(dataset_dir, 'cluster_quality_metrics.png'), bbox_inches='tight')
 		plt.close()
 	# Visualization 7: Word Cloud for Each Topic
 	if enable_visualizations:
@@ -527,7 +528,7 @@ def extract_semantic_topics(
 					axes[i].set_visible(False)
 			plt.tight_layout()
 			plt.subplots_adjust(top=0.95)
-			plt.savefig(f'wordcloud_all_topics_{len(valid_topics)}_topics.png', bbox_inches='tight', dpi=300)
+			plt.savefig(os.path.join(dataset_dir, f'wordcloud_all_topics_{len(valid_topics)}_topics.png'), bbox_inches='tight', dpi=300)
 			plt.close()
 	# Visualization 8: UMAP with Top Phrases
 	if enable_visualizations:
@@ -559,7 +560,7 @@ def extract_semantic_topics(
 		plt.xlabel('UMAP 1')
 		plt.ylabel('UMAP 2')
 		plt.legend(title='Cluster', bbox_to_anchor=(1.01, 1), loc='upper left')
-		plt.savefig('umap_cluster_visualization_with_phrases.png', bbox_inches='tight')
+		plt.savefig(os.path.join(dataset_dir, 'umap_cluster_visualization_with_phrases.png'), bbox_inches='tight')
 		plt.close()
 	# Visualization 9: Topic Similarity Heatmap
 	if enable_visualizations and np.any(similarity_matrix):
@@ -568,7 +569,7 @@ def extract_semantic_topics(
 		plt.title('Topic Similarity Matrix (Cosine Similarity)')
 		plt.xlabel('Topic ID')
 		plt.ylabel('Topic ID')
-		plt.savefig(f'topic_similarity_heatmap_{merge_threshold}_threshold.png', bbox_inches='tight')
+		plt.savefig(os.path.join(dataset_dir, f'topic_similarity_heatmap_{merge_threshold}_threshold.png'), bbox_inches='tight')
 		plt.close()
 
 	# Visualization 10: Cluster Size vs. Term Count Plot
@@ -595,7 +596,7 @@ def extract_semantic_topics(
 		plt.xlabel('Number of Documents in Cluster')
 		plt.ylabel('Number of Unique Terms')
 		plt.legend(title='Cluster', bbox_to_anchor=(1.01, 1), loc='upper left')
-		plt.savefig('cluster_size_vs_term_count.png', bbox_inches='tight')
+		plt.savefig(os.path.join(dataset_dir, 'cluster_size_vs_term_count.png'), bbox_inches='tight')
 		plt.close()
 
 	# Visualization 11: Top Phrases Bar Plot for Each Topic
@@ -614,7 +615,7 @@ def extract_semantic_topics(
 			plt.title(f'Top 10 Phrases in Topic {label}')
 			plt.xlabel('Frequency')
 			plt.ylabel('Phrase')
-			plt.savefig(f'top_phrases_topic_{label}.png', bbox_inches='tight')
+			plt.savefig(os.path.join(dataset_dir, f'top_phrases_topic_{label}.png'), bbox_inches='tight')
 			plt.close()
 
 	# Visualization 12: Interactive Topic Similarity Network
@@ -724,7 +725,7 @@ def extract_semantic_topics(
 			for bar in bars_before + bars_after:
 					yval = bar.get_height()
 					plt.text(bar.get_x() + bar.get_width()/2, yval + 0.5, int(yval), ha='center', va='bottom')
-			plt.savefig(f'merged_topic_distribution_comparison_{merge_threshold}_threshold.png', bbox_inches='tight')
+			plt.savefig(os.path.join(dataset_dir, f'merged_topic_distribution_comparison_{merge_threshold}_threshold.png'), bbox_inches='tight')
 			plt.close()
 	flat_topics = set(word for topic in merged_topics for word in topic)
 	print(f"Extracted {len(flat_topics)} unique topic terms after merging")
@@ -1093,11 +1094,15 @@ def get_textual_based_annotation(
 		merge_threshold: float,
 		metadata_fpth: str,
 		device: str,
+		verbose: bool=True,
 		use_parallel: bool=False,
 	):
-	print(f"Automatic label extraction from text data".center(160, "-"))
-	print(f"Loading metadata from {csv_file}...")
+	if verbose:
+		print(f"Automatic label extraction from text data".center(160, "-"))
+		print(f"Loading metadata from {csv_file}...")
 	text_based_annotation_start_time = time.time()
+
+	dataset_dir = os.path.dirname(csv_file)
 
 	sent_model = SentenceTransformer("all-MiniLM-L6-v2")
 	ft_model = fasttext.load_model("lid.176.ftz")
@@ -1641,10 +1646,10 @@ def main():
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
 
-	base_dir = os.path.dirname(args.csv_file)
-	text_output_path = os.path.join(base_dir, "metadata_textual_based_labels.csv")
-	vision_output_path = os.path.join(base_dir, "metadata_visual_based_labels.csv")
-	combined_output_path = os.path.join(base_dir, "metadata_multimodal_labels.csv")
+	DATASET_DIRECTORY = os.path.dirname(args.csv_file)
+	text_output_path = os.path.join(DATASET_DIRECTORY, "metadata_textual_based_labels.csv")
+	vision_output_path = os.path.join(DATASET_DIRECTORY, "metadata_visual_based_labels.csv")
+	combined_output_path = os.path.join(DATASET_DIRECTORY, "metadata_multimodal_labels.csv")
 	
 	if os.path.exists(text_output_path):
 		print(f"Found existing textual-based labels at {text_output_path}. Loading...")
@@ -1675,6 +1680,8 @@ def main():
 			relevance_threshold=args.relevance_threshold,
 			metadata_fpth=text_output_path,
 			device=args.device,
+			verbose=True,
+			dataset_dir=DATASET_DIRECTORY,
 		)
 
 	if os.path.exists(vision_output_path):
