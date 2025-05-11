@@ -1,13 +1,10 @@
 import json
-
 import numpy as np
 import pandas as pd
 import re
 import os
 import time
 import torch
-from ImACCESS.datasets.smu.data_collector import DATASET_DIRECTORY
-import torchvision
 import multiprocessing
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
@@ -194,6 +191,7 @@ def extract_semantic_topics(
 		n_clusters: int,
 		top_k_words: int,
 		merge_threshold: float,
+		dataset_dir: str,
 		enable_visualizations: bool = True,
 		min_phrases_per_topic: int = 3,
 	) -> Tuple[List[List[str]], Set[str]]:
@@ -213,7 +211,7 @@ def extract_semantic_topics(
 
 	# Adjust n_clusters dynamically
 	n_clusters = min(n_clusters, max(5, int(np.sqrt(len(texts)))))
-	print(f"Adjusted n_clusters to {n_clusters}")
+	print(f"Adjusted n_clusters to {n_clusters} based on dataset size {len(texts)} (original: {n_clusters})")
 
 	# Clustering
 	print(f"Clustering embeddings {embeddings.shape} into {n_clusters} topics with KMeans...")
@@ -277,7 +275,7 @@ def extract_semantic_topics(
 					textposition='top center',
 					name='Centroids'
 			))
-			fig.write_html('umap_cluster_visualization_interactive.html')
+			fig.write_html(os.path.join(dataset_dir, 'umap_cluster_visualization_interactive.html'))
 	# Visualization 3: PCA Scatter Plot
 	if enable_visualizations:
 			pca_reducer = PCA(n_components=2, random_state=42)
@@ -449,7 +447,7 @@ def extract_semantic_topics(
 				years_sorted = sorted(years_counts.keys())
 				counts = pd.Series([years_counts[y] for y in years_sorted], index=years_sorted)
 				smoothed_counts = counts.rolling(window=3, min_periods=1, center=True).mean()
-				plt.plot(years_sorted, smoothed_counts, marker='o', label=f'Topic {label}')
+				plt.plot(years_sorted, smoothed_counts, marker='o', label=f'{label}')
 		plt.title('Topic Prevalence Over Time (Smoothed)')
 		plt.xlabel('Year')
 		plt.ylabel('Number of Documents (Rolling Avg)')
@@ -586,11 +584,11 @@ def extract_semantic_topics(
 		for i in range(n_clusters):
 			plt.text(
 				topic_counts[i], 
-				term_counts_per_cluster[i] + 8,
+				term_counts_per_cluster[i] + 7,
 				f'Topic {i}',
 				ha='center', 
 				va='bottom',
-				fontsize=7,
+				fontsize=10,
 			)
 		plt.title('Cluster Size vs. Number of Unique Terms')
 		plt.xlabel('Number of Documents in Cluster')
@@ -670,7 +668,7 @@ def extract_semantic_topics(
 					xaxis=dict(showgrid=False, zeroline=False),
 					yaxis=dict(showgrid=False, zeroline=False)
 			)
-			fig.write_html('topic_similarity_network_interactive.html')
+			fig.write_html(os.path.join(dataset_dir, 'topic_similarity_network_interactive.html'))
 	# Merge similar topics
 	print(f"Merging similar topics with threshold {merge_threshold}...")
 	merged_topics = []
@@ -1165,6 +1163,7 @@ def get_textual_based_annotation(
 			n_clusters=num_clusters,
 			top_k_words=top_k_words,
 			merge_threshold=merge_threshold, # Merge similar topics
+			dataset_dir=dataset_dir,
 		)
 		print(f"{len(topics)} Topics(clusters) {type(topics)}:\n{topics}")
 		print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(160, "-"))
@@ -1681,7 +1680,6 @@ def main():
 			metadata_fpth=text_output_path,
 			device=args.device,
 			verbose=True,
-			dataset_dir=DATASET_DIRECTORY,
 		)
 
 	if os.path.exists(vision_output_path):
