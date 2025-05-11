@@ -372,29 +372,31 @@ def extract_semantic_topics(
 					sim = util.cos_sim([topic_embeddings[i]], [topic_embeddings[j]])[0][0].item()
 					similarity_matrix[i, j] = sim
 					similarity_matrix[j, i] = sim
+
 	# Log similarity matrix statistics and dendrogram
 	if enable_visualizations:
-			sim_values = similarity_matrix[np.triu_indices(len(initial_topics), k=1)]
-			if sim_values.size > 0:
-					mean_sim = np.mean(sim_values)
-					min_sim = np.min(sim_values)
-					max_sim = np.max(sim_values)
-					dynamic_threshold = np.percentile(sim_values, 75)
-					print(f"Similarity matrix stats: Mean={mean_sim:.3f}, Min={min_sim:.3f}, Max={max_sim:.3f}")
-					print(f"Dynamic merge threshold (75th percentile): {dynamic_threshold:.3f}")
-					merge_threshold = max(merge_threshold, dynamic_threshold)
-					plt.figure(figsize=(12, 8))
-					linkage_matrix = linkage(sim_values, method='average')
-					dendrogram(linkage_matrix, labels=[f'Topic {i}' for i in range(len(initial_topics))])
-					plt.title('Dendrogram of Topic Similarities')
-					plt.xlabel('Topics')
-					plt.ylabel('Distance (1 - Cosine Similarity)')
-					plt.axhline(y=1 - merge_threshold, color='red', linestyle='--', label=f'Merge Threshold ({merge_threshold})')
-					plt.legend()
-					plt.savefig('similarity_dendrogram.png', bbox_inches='tight')
-					plt.close()
-			else:
-					print("Similarity matrix is empty.")
+		sim_values = similarity_matrix[np.triu_indices(len(initial_topics), k=1)]
+		if sim_values.size > 0:
+			mean_sim = np.mean(sim_values)
+			min_sim = np.min(sim_values)
+			max_sim = np.max(sim_values)
+			dynamic_threshold = np.percentile(sim_values, 75)
+			print(f"Similarity matrix stats: Mean={mean_sim:.3f}, Min={min_sim:.3f}, Max={max_sim:.3f}")
+			print(f"Dynamic merge threshold (75th percentile): {dynamic_threshold:.3f}")
+			merge_threshold = max(merge_threshold, dynamic_threshold)
+			plt.figure(figsize=(15, 8))
+			linkage_matrix = linkage(sim_values, method='average')
+			dendrogram(linkage_matrix, labels=[f'Topic {i}' for i in range(len(initial_topics))])
+			plt.title('Dendrogram of Topic Similarities')
+			plt.xlabel('Topics')
+			plt.ylabel('Distance (1 - Cosine Similarity)')
+			plt.axhline(y=1 - merge_threshold, color='red', linestyle='--', label=f'Merge Threshold ({merge_threshold:.4f})')
+			plt.legend()
+			plt.xticks(rotation=90, fontsize=8)
+			plt.savefig('similarity_dendrogram.png', bbox_inches='tight')
+			plt.close()
+		else:
+			print("Similarity matrix is empty.")
 	print(f"Using merge threshold: {merge_threshold}")
 
 	# Visualization 4: Phrase Co-Occurrence Network for Each Topic
@@ -423,7 +425,7 @@ def extract_semantic_topics(
 			for phrase in topic_phrases:
 				if phrase not in G:
 					G.add_node(phrase)
-			plt.figure(figsize=(17, 15))
+			plt.figure(figsize=(17, 8))
 			pos = nx.spring_layout(G)
 			edge_weights = [G[u][v]['weight'] for u, v in G.edges()]
 			nx.draw_networkx_edges(G, pos, width=[w * 1.5 for w in edge_weights], alpha=0.5)
@@ -568,9 +570,10 @@ def extract_semantic_topics(
 		plt.ylabel('Topic ID')
 		plt.savefig(f'topic_similarity_heatmap_{merge_threshold}_threshold.png', bbox_inches='tight')
 		plt.close()
+
 	# Visualization 10: Cluster Size vs. Term Count Plot
 	if enable_visualizations:
-		plt.figure(figsize=(12, 6))
+		plt.figure(figsize=(17, 10))
 		sns.scatterplot(
 			x=[topic_counts[i] for i in range(n_clusters)],
 			y=term_counts_per_cluster,
@@ -580,15 +583,18 @@ def extract_semantic_topics(
 			sizes=(50, 500)
 		)
 		for i in range(n_clusters):
-				plt.text(
-						topic_counts[i], term_counts_per_cluster[i] + 5,
-						f'Topic {i}',
-						ha='center', va='bottom'
-				)
+			plt.text(
+				topic_counts[i], 
+				term_counts_per_cluster[i] + 8,
+				f'Topic {i}',
+				ha='center', 
+				va='bottom',
+				fontsize=7,
+			)
 		plt.title('Cluster Size vs. Number of Unique Terms')
 		plt.xlabel('Number of Documents in Cluster')
 		plt.ylabel('Number of Unique Terms')
-		plt.legend(title='Cluster', bbox_to_anchor=(1.05, 1), loc='upper left')
+		plt.legend(title='Cluster', bbox_to_anchor=(1.01, 1), loc='upper left')
 		plt.savefig('cluster_size_vs_term_count.png', bbox_inches='tight')
 		plt.close()
 
@@ -603,7 +609,7 @@ def extract_semantic_topics(
 			if not top_10:
 				continue
 			phrases, frequencies = zip(*top_10)
-			plt.figure(figsize=(12, 6))
+			plt.figure(figsize=(14, 6))
 			sns.barplot(x=frequencies, y=phrases, palette='Blues_r')
 			plt.title(f'Top 10 Phrases in Topic {label}')
 			plt.xlabel('Frequency')
@@ -1624,7 +1630,7 @@ def main():
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--use_parallel", '-parallel', action="store_true")
 	parser.add_argument("--num_workers", '-nw', type=int, default=10)
-	parser.add_argument("--num_text_clusters", '-nc', type=int, default=20)
+	parser.add_argument("--num_text_clusters", '-nc', type=int, default=17)
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=512)
 	parser.add_argument("--top_k_words", '-tkw', type=int, default=20)
 	parser.add_argument("--merge_threshold", '-mt', type=float, default=0.7)
