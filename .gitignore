@@ -19,6 +19,7 @@
 *.tar.xz
 *.tar.bz2
 *.tgz
+*.html
 models/
 
 # Django
