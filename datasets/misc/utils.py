@@ -1,22 +1,58 @@
-import requests
 import json
+import numpy as np
+import pandas as pd
+import re
+import os
 import time
+import torch
+import multiprocessing
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
+from collections import Counter, defaultdict
+# import faiss
+from transformers import pipeline
+from transformers import AutoTokenizer, AutoModelForTokenClassification
+from transformers import CLIPProcessor, CLIPModel, AlignProcessor, AlignModel
+
+from sentence_transformers import SentenceTransformer, util
+from langdetect import detect, DetectorFactory
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+import matplotlib.pyplot as plt
+import nltk
+from tqdm import tqdm
+import warnings
+import urllib.request
+import fasttext
+import argparse
+import umap
+from sklearn.decomposition import PCA
+import seaborn as sns
+from wordcloud import WordCloud
+from typing import List, Dict, Set, Tuple, Union, Callable, Optional
+import hdbscan
+import plotly.express as px
+import plotly.graph_objects as go
+import networkx as nx
+from sklearn.metrics import silhouette_score
+from scipy.cluster.hierarchy import dendrogram, linkage
+from sklearn.neighbors import NearestNeighbors
+from kneed import KneeLocator
+
+nltk.download('words', quiet=True)
+os.environ['TF_ENABLE_ONEDNN_OPTS']='0'
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
+
+
+import requests
 import dill
 import gzip
 import random
-import pandas as pd
-import numpy as np
-import os
-import sys
 import datetime
-import re
-import argparse
-import torch
-import nltk
-import multiprocessing
-import shutil
 import logging
-from typing import List, Dict, Set, Tuple, Union, Callable
 from bs4 import BeautifulSoup
 from multiprocessing import Pool
 from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExecutor, TimeoutError
@@ -38,8 +74,10 @@ import warnings
 logging.basicConfig(level=logging.INFO)
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
 warnings.filterwarnings('ignore', category=DeprecationWarning, message="invalid escape sequence")
+
 nltk_modules = [
 	'punkt',
+	'words',
 	'wordnet',
 	'averaged_perceptron_tagger', 
 	'omw-1.4',
