@@ -1,7 +1,7 @@
 from utils import *
 
 # how to run[Pouta]:
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -nw 50 -tbs 1024 -vbs 512 -vth 0.15 -rth 0.25 > /media/volume/ImACCESS/trash/multi_label_annotation.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -d "cuda:1" -nw 50 -tbs 1024 -vbs 512 -vth 0.2 -rth 0.25 > /media/volume/ImACCESS/trash/multi_label_annotation.out &
 
 # Make language detection deterministic
 DetectorFactory.seed = 42
@@ -290,16 +290,17 @@ def extract_semantic_topics(
 
 	if enable_visualizations:
 		# Visualize embeddings with UMAP
-		print(f"Reducing embeddings: {embeddings.shape} to 2D for visualization using UMAP...")
+		print(f"Reducing embeddings: {embeddings.shape} to 2D for visualization using UMAP")
 		umap_reducer = umap.UMAP(n_components=2, random_state=42, metric='cosine')
 		embeddings_2d = umap_reducer.fit_transform(embeddings)
-
+		print(f"UMAP Visualization")
 		plt.figure(figsize=(18, 10))
-		plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], s=10, c='#f1f8ff', edgecolors='#0078e9', alpha=0.8)
-		plt.title(f"UMAP Visualization of Embeddings ({len(texts)} Texts)")
+		plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], s=25, c='#f1f8ff', edgecolors='#0078e9', alpha=0.8)
+		plt.title(f"UMAP Visualization of Embeddings ({dataset_size} Texts)")
 		plt.xlabel("UMAP Dimension 1")
 		plt.ylabel("UMAP Dimension 2")
 		plt.savefig(os.path.join(dataset_dir, f'umap_raw_embeddings_{embeddings.shape[0]}_x_{embeddings.shape[1]}.png'), bbox_inches='tight')
+		print(f"UMAP visualization saved to {os.path.join(dataset_dir, f'umap_raw_embeddings_{embeddings.shape[0]}_x_{embeddings.shape[1]}.png')}")
 
 	print(f"Clustering embeddings {embeddings.shape} into topics with HDBSCAN...")
 	t0 = time.time()
@@ -315,7 +316,7 @@ def extract_semantic_topics(
 		# min_samples = 10
 		min_cluster_size, min_samples = get_robust_hdbscan_parameters(
 			embeddings=embeddings,
-			dataset_size=len(texts)
+			dataset_size=dataset_size,
 		)
 
 		cluster_selection_method = 'eom' if dataset_size < 500 else 'leaf'
@@ -328,6 +329,7 @@ def extract_semantic_topics(
 			cluster_selection_method=cluster_selection_method,
 		)
 		labels = clusterer.fit_predict(embeddings)
+		print(f"HDBSCAN clustering generated {len(set(labels))} clusters [including noise points]")
 		n_clusters = len(set(labels)) - (1 if -1 in labels else 0)  # Exclude noise points (-1)
 		print(f"Found {n_clusters} clusters (excluding noise points) in {time.time() - t0:.2f} sec")
 
@@ -371,81 +373,132 @@ def extract_semantic_topics(
 			color='Cluster',
 			symbol='Outlier',
 			hover_data=['Text', 'Distance_to_Centroid'],
-			title='Interactive UMAP Visualization of Text Embeddings by Cluster'
+			title=f'Interactive UMAP Visualization of Text Embeddings for {dataset_size} Texts into {n_clusters} Cluster'
 		)
 		fig.add_trace(go.Scatter(
 			x=centroids[:, 0],
 			y=centroids[:, 1],
 			mode='markers+text',
-			marker=dict(size=15, symbol='x', color='black'),
+			marker=dict(size=15, symbol='x', color='#000000'),
 			text=[f'Centroid {i}' for i in range(n_clusters)],
 			textposition='top center',
 			name='Centroids'
 		))
 		fig.write_html(os.path.join(dataset_dir, 'umap_cluster_visualization_interactive.html'))
 
+	# # Visualization 3: PCA Scatter Plot
+	# if enable_visualizations:
+	# 	pca_reducer = PCA(n_components=2, random_state=42)
+	# 	embeddings_2d_pca = pca_reducer.fit_transform(embeddings)
+
+	# 	# Verify outliers definition
+	# 	outliers = labels == -1  # Ensure outliers are noise points
+	# 	print(f"Number of noise points (outliers): {np.sum(outliers)}")
+		
+	# 	unique_clusters = np.unique(labels[~outliers])  # Exclude noise points (-1)
+	# 	print(f"Unique clusters (excluding noise): {unique_clusters}")
+
+	# 	if len(unique_clusters) > 0:
+	# 		centroids = np.array([np.mean(embeddings_2d_pca[labels == cluster], axis=0) for cluster in unique_clusters])
+	# 		print(f"Centroids shape: {centroids.shape}")
+			
+	# 		plt.figure(figsize=(21, 11))
+	# 		sns.scatterplot(
+	# 			x=embeddings_2d_pca[~outliers, 0],
+	# 			y=embeddings_2d_pca[~outliers, 1],
+	# 			hue=labels[~outliers],
+	# 			palette='tab20',
+	# 			alpha=0.98,
+	# 			legend=False,
+	# 			zorder=2,
+	# 		)
+	# 		sns.scatterplot(
+	# 			x=embeddings_2d_pca[outliers, 0],
+	# 			y=embeddings_2d_pca[outliers, 1],
+	# 			color='#fcfcfcd2',
+	# 			marker='^',
+	# 			edgecolors='#6e0000d2',
+	# 			alpha=0.3,
+	# 			legend=False,
+	# 			zorder=1,
+	# 		)
+	# 		# Map cluster labels to colors from the 'tab20' palette
+	# 		cluster_colors = plt.cm.tab20(np.linspace(0, 1, len(unique_clusters)))
+	# 		for i, centroid in enumerate(centroids):
+	# 			plt.scatter(centroid[0], centroid[1], c=[cluster_colors[i]], marker='x', s=200, linewidths=2.5, zorder=3, alpha=0.8)
+	# 		plt.title(f'2D PCA Visualization of Text Embeddings for {len(unique_clusters)} Clusters')
+	# 		plt.xlabel('PCA 1')
+	# 		plt.ylabel('PCA 2')
+	# 		ax = plt.gca()
+	# 		if ax.legend_ is not None:
+	# 			ax.legend_.remove()
+	# 		# plt.legend(title='Cluster', bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
+	# 		plt.savefig(os.path.join(dataset_dir, f'pca_{len(unique_clusters)}_clusters.png'), bbox_inches='tight')
+	# 		plt.close()
+	# 	else:
+	# 		print("No unique clusters found, skipping PCA visualization...")
+	
 	# Visualization 3: PCA Scatter Plot
 	if enable_visualizations:
-		pca_reducer = PCA(n_components=2, random_state=42)
-		embeddings_2d_pca = pca_reducer.fit_transform(embeddings)
+			pca_reducer = PCA(n_components=2, random_state=42)
+			embeddings_2d_pca = pca_reducer.fit_transform(embeddings)
 
-		# Verify outliers definition
-		outliers = labels == -1  # Ensure outliers are noise points
-		print(f"Number of noise points (outliers): {np.sum(outliers)}")
-		
-		# Calculate centroids in 2D PCA space, excluding noise points
-		unique_clusters = np.unique(labels[~outliers])  # Exclude noise points (-1)
-		print(f"Unique clusters (excluding noise): {unique_clusters}")
-
-		if len(unique_clusters) > 0:
-			centroids = np.array([np.mean(embeddings_2d_pca[labels == cluster], axis=0) for cluster in unique_clusters])
-			print(f"Centroids shape: {centroids.shape}")
+			# Verify outliers definition
+			outliers = labels == -1  # Ensure outliers are noise points
+			print(f"Number of noise points (outliers): {np.sum(outliers)}")
 			
-			plt.figure(figsize=(20, 18))
-			sns.scatterplot(
-				x=embeddings_2d_pca[~outliers, 0],
-				y=embeddings_2d_pca[~outliers, 1],
-				hue=labels[~outliers],
-				palette='tab20',
-				alpha=0.98,
-				legend=False,
-				zorder=2,
-			)
-			sns.scatterplot(
-				x=embeddings_2d_pca[outliers, 0],
-				y=embeddings_2d_pca[outliers, 1],
-				color='#fcfcfcd2',
-				marker='^',
-				edgecolors='#6e0000d2',
-				alpha=0.3,
-				legend=False,
-				zorder=1,
-			)
-			# Map cluster labels to colors from the 'tab20' palette
-			cluster_colors = plt.cm.tab20(np.linspace(0, 1, len(unique_clusters)))
-			for i, centroid in enumerate(centroids):
-				plt.scatter(centroid[0], centroid[1], c=[cluster_colors[i]], marker='x', s=200, zorder=3, alpha=0.7)
-				plt.text(
-					centroid[0],
-					centroid[1] + 0.5,
-					f"Topic {i}",
-					fontsize=10, 
-					ha='center', 
-					va='bottom',
-					bbox=dict(facecolor='white', alpha=0.8, edgecolor='black', boxstyle='round,pad=0.5')
+			unique_clusters = np.unique(labels[~outliers])  # Exclude noise points (-1)
+			print(f"Unique clusters (excluding noise): {unique_clusters}")
+
+			if len(unique_clusters) > 0:
+				centroids = np.array([np.mean(embeddings_2d_pca[labels == cluster], axis=0) for cluster in unique_clusters])
+				print(f"Centroids shape: {centroids.shape}")
+				
+				plt.figure(figsize=(21, 11))
+				sns.scatterplot(
+						x=embeddings_2d_pca[~outliers, 0],
+						y=embeddings_2d_pca[~outliers, 1],
+						hue=labels[~outliers],
+						palette='tab20',
+						alpha=0.98,
+						legend=False,
+						zorder=2,
 				)
-			plt.title(f'2D PCA Visualization of Text Embeddings for {len(unique_clusters)} Clusters')
-			plt.xlabel('PCA 1')
-			plt.ylabel('PCA 2')
-			ax = plt.gca()
-			if ax.legend_ is not None:
-				ax.legend_.remove()
-			# plt.legend(title='Cluster', bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
-			plt.savefig(os.path.join(dataset_dir, 'pca_cluster_visualization_enhanced.png'), bbox_inches='tight')
-			plt.close()
-		else:
-			print("No unique clusters found, skipping PCA visualization...")
-	
+				
+				# Plot outliers based on their cluster
+				for i, cluster in enumerate(unique_clusters):
+						cluster_outliers = np.logical_and(outliers, labels == cluster)
+						cluster_color = plt.cm.tab20(i / len(unique_clusters))
+						plt.scatter(
+								x=embeddings_2d_pca[cluster_outliers, 0],
+								y=embeddings_2d_pca[cluster_outliers, 1],
+								c=[cluster_color],
+								marker='^',
+								alpha=0.5,
+								edgecolors='black',
+								zorder=2,
+						)
+				
+				# Map cluster labels to colors from the 'tab20' palette
+				cluster_colors = plt.cm.tab20(np.linspace(0, 1, len(unique_clusters)))
+				
+				# Plot centroids with corresponding cluster colors
+				for i, centroid in enumerate(centroids):
+						plt.scatter(centroid[0], centroid[1], c=[cluster_colors[i]], marker='x', s=200, linewidths=2.5, zorder=4, alpha=0.8)
+				
+				plt.title(f'2D PCA Visualization of Text Embeddings for {len(unique_clusters)} Clusters')
+				plt.xlabel('PCA 1')
+				plt.ylabel('PCA 2')
+				ax = plt.gca()
+				if ax.legend_ is not None:
+						ax.legend_.remove()
+				# plt.legend(title='Cluster', bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
+				plt.savefig(os.path.join(dataset_dir, f'pca_{len(unique_clusters)}_clusters.png'), bbox_inches='tight')
+				plt.close()
+			else:
+				print("No unique clusters found, skipping PCA visualization...")
+
+
 	# Collect phrases for each cluster
 	cluster_phrases = defaultdict(Counter)
 	cluster_text_counts = defaultdict(int)
@@ -608,7 +661,7 @@ def extract_semantic_topics(
 	if enable_visualizations:
 		print("Generating co-occurrence networks for each topic...")
 		for label, topic_phrases in enumerate(initial_topics):
-			print(f"Topic {label} with {len(topic_phrases)} phrases: {topic_phrases}")
+			print(f"Topic {label} contains Top-{len(topic_phrases)} phrases")
 			if not topic_phrases:
 				print(f"Skipping Topic {label}: No phrases available.")
 				continue
