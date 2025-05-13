@@ -1,7 +1,10 @@
 from utils import *
 
 # how to run[Pouta]:
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -d "cuda:1" -nw 50 -tbs 1024 -vbs 512 -vth 0.2 -rth 0.25 > /media/volume/ImACCESS/trash/multi_label_annotation.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 50 -tbs 1024 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31/metadata.csv -d "cuda:1" -nw 50 -tbs 1024 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 50 -tbs 1024 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -d "cuda:3" -nw 50 -tbs 1024 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_HISTORY_X4.out &
 
 # Make language detection deterministic
 DetectorFactory.seed = 42
@@ -1877,6 +1880,7 @@ def get_visual_based_annotation(
 
 	return combined_labels
 
+@measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="Multi-label annotation for Historical Archives Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
@@ -1890,6 +1894,8 @@ def main():
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
+	print_args_table(args=args, parser=parser)
+
 	set_seeds(seed=42)
 	DATASET_DIRECTORY = os.path.dirname(args.csv_file)
 	text_output_path = os.path.join(DATASET_DIRECTORY, "metadata_textual_based_labels.csv")
@@ -2024,24 +2030,24 @@ def main():
 	
 	# Try to save as Excel
 	try:
-			excel_path = combined_output_path.replace('.csv', '.xlsx')
-			print(f"Saving Excel file to {excel_path}...")
-			df.to_excel(excel_path, index=False)
-			print(f"Excel file saved successfully")
+		excel_path = combined_output_path.replace('.csv', '.xlsx')
+		print(f"Saving Excel file to {excel_path}...")
+		df.to_excel(excel_path, index=False)
+		print(f"Excel file saved successfully")
 	except Exception as e:
-			print(f"Failed to write Excel file: {e}")
-	# Print some examples
+		print(f"Failed to write Excel file: {e}")
+
 	print("\nExample results:")
 	sample_cols = ['title', 'description', 'label', 'img_url', 'textual_based_labels', 'visual_based_labels', 'multimodal_labels']
 	available_cols = [col for col in sample_cols if col in df.columns]
-	for i in range(min(5, len(df))):
-			print(f"\nExample {i+1}:")
-			for col in available_cols:
-					value = df.iloc[i][col]
-					if col in ['textual_based_labels', 'visual_based_labels', 'multimodal_labels']:
-							print(f"{col}: {value if value else '[]'}")
-					else:
-							print(f"{col}: {value}")
+	for i in range(min(25, len(df))):
+		print(f"\nExample {i+1}:")
+		for col in available_cols:
+			value = df.iloc[i][col]
+			if col in ['textual_based_labels', 'visual_based_labels', 'multimodal_labels']:
+				print(f"{col}: {value if value else '[]'}")
+			else:
+				print(f"{col}: {value}")
 	print(f"Combined labels saved to: {combined_output_path}")
 	return combined_labels
 
