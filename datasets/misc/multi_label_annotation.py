@@ -528,7 +528,7 @@ def extract_semantic_topics(
 							keyphrase_ngram_range=(1, 3),  # 1-3 word phrases
 							stop_words="english",
 							top_n=5,  # Top 5 phrases
-							diversity=0.7,  # Reduce redundancy
+							# diversity=0.7,  # Reduce redundancy
 							# use_maxsum=True # makes it slow
 					)
 					# Filter and normalize phrases
@@ -1316,7 +1316,7 @@ def get_textual_based_annotation(
 
 	dataset_dir = os.path.dirname(csv_file)
 
-	sent_model = SentenceTransformer("all-MiniLM-L6-v2")
+	sent_model = SentenceTransformer("all-MiniLM-L6-v2", device=device)
 	ft_model = fasttext.load_model("lid.176.ftz")
 	tokenizer = AutoTokenizer.from_pretrained("dslim/bert-base-NER")
 	model = AutoModelForTokenClassification.from_pretrained("dslim/bert-base-NER")
@@ -1411,6 +1411,7 @@ def get_textual_based_annotation(
 		print("Extracting keywords per image using KeyBERT...")
 		t0 = time.time()
 		per_image_keywords = []
+		kw_model = KeyBERT(model=sent_model)
 		for text in tqdm(english_texts, desc="Keyword Extraction"):
 			if not is_english(text, ft_model):  # Skip non-English texts
 				per_image_keywords.append([])
