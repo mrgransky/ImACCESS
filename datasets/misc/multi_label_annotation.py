@@ -11,18 +11,16 @@ CUSTOM_STOPWORDS = ENGLISH_STOP_WORDS.union(
 	{
 		"bildetekst", "photo", "image", "archive", "arkivreferanse", "caption", "following", "below", "above",
 		"copyright", "description", "riksarkivet", "ntbs", "ra", "pa", "bildetekst",
-		"left", "right", "center", "top", "bottom", "middle", "front", "back", "author", "specsification", "specs",
-		"year", "month", "day", "date", "century", "decade", "era", "illustration", "illustrations", "illustrated",
 		"showing", "shown", "shows", "depicts", "depicting", "pictured", "picture", "pinterest",
-		"copy", "version", "view", "looking", "seen", "visible",
+		"copy", "version", "view", "looking", "seen", "visible", "illustration",
 		"photograph", "photography", "photo", "image", "img", "photographer",
 		"sent", "received", "taken", "made", "created", "produced", "found",
 		"across", "opposite", "near", "under", "over", "inside", "outside",
 		"collection", "collections", "number", "abbreviation", "abbreviations",
 		"folder", "box", "file", "document", "page", "index", "label", "code", "icon", "type", "unknown", "unknow",
 		"folder icon", "box icon", "file icon", "document icon", "page icon", "index icon", "label icon", "code icon",
-		"used", "states", "animal", "southern", "built", "year",
-		"original", "information", "item", "http", "www", "jpg", 
+		"used", "southern", "built",
+		"original", "information", "item", "http", "www", "jpg", "000",
 		"jpeg", "png", "gif", "bmp", "tiff", "tif", "ico", "svg", "webp", "heic", "heif", "raw", "cr2", "nef", "orf", "arw", "dng", "nrw", "k25", "kdc", "rw2", "raf", "mrw", "pef", "sr2", "srf",
 	}
 )
@@ -153,54 +151,83 @@ def find_optimal_min_cluster_size(embeddings, dataset_size, max_clusters=50):
 		
 		return best_size
 
-def get_robust_hdbscan_parameters(embeddings, dataset_size):
-		"""Combined approach using multiple methods"""
-		# Method 1: Silhouette-based
-		silhouette_size = find_optimal_min_cluster_size(embeddings, dataset_size)
-		
-		# Method 2: Knee point detection
-		knee_size = find_knee_point(embeddings)
-		
-		# Method 3: Density-based
-		density_size, density_samples = density_based_parameters(embeddings)
-		
-		# Combine results (median of suggestions)
-		suggestions = [
-				silhouette_size,
-				knee_size,
-				density_size,
-				int(np.sqrt(dataset_size)),  # Original approach
-				int(np.log(dataset_size)**2),  # Alternative approach
-				100  # Reasonable default
-		]
-		
-		# Remove outliers (values outside 25%-75% percentile)
-		q25, q75 = np.percentile(suggestions, [25, 75])
-		iqr = q75 - q25
-		filtered = [x for x in suggestions if (x >= q25 - 1.5*iqr) and (x <= q75 + 1.5*iqr)]
-		
-		min_cluster_size = int(np.median(filtered))
-		min_samples = max(5, min(min_cluster_size//2, density_samples))
-		
-		return min_cluster_size, min_samples
+def get_hdbscan_parameters(embeddings, use_static=False):
+	print(f"get hdbscan parameters for embeddings {embeddings.shape}...")
+	if use_static:
+		return 100, 10
+	num_samples, num_embeddings = embeddings.shape
+
+	# Method 1: Silhouette-based
+	silhouette_size = find_optimal_min_cluster_size(embeddings, num_samples)
+	
+	# Method 2: Knee point detection
+	knee_size = find_knee_point(embeddings)
+	
+	# Method 3: Density-based
+	density_size, density_samples = density_based_parameters(embeddings)
+	
+	# Combine results (median of suggestions)
+	suggestions = [
+		silhouette_size,
+		knee_size,
+		density_size,
+		int(np.sqrt(num_samples) // 2),
+		int(np.sqrt(num_samples) / 2), # ~102 for 42,146
+		int(np.log(num_samples)**2),
+		int(np.log(num_samples)**3),
+		50,
+		70,
+		80,  
+		100,
+		120,
+	]
+	print(f"Suggestions: {suggestions}")
+	# Remove outliers (values outside 25%-75% percentile)
+	q25, q75 = np.percentile(suggestions, [25, 75])
+	iqr = q75 - q25
+	print(f"q25: {q25}, q75: {q75}, iqr: {iqr}")
+	filtered = [x for x in suggestions if (x >= q25 - 2*iqr) and (x <= q75 + 2*iqr)]
+	print(f"Filtered: {filtered} median: {np.median(filtered)} min: {min(filtered)} max: {max(filtered)} mean: {np.mean(filtered)}")
+	
+	min_cluster_size = max(50, int(np.median(filtered)))
+	min_samples = max(5, min(10, density_samples)) # Cap min_samples lower
+	
+	return min_cluster_size, min_samples
 
 def is_english(
 		text: str, 
-		ft_model: fasttext.FastText._FastText
-	):
-	if not text or len(text) < 5:
+		ft_model: fasttext.FastText._FastText,
+		verbose: bool=False,
+		min_length: int=5,
+	) -> bool:
+	if verbose:
+		print(f"text({len(text)}): {text}")
+	if not text or len(text) < min_length:
+		if verbose:
+			print(f"text({len(text)}) is too short")
 		return False
+	text = text.replace("\n", " ").replace("\r", " ").strip()  # 🛠️ sanitize input
 	if len(text) < 20:
 		# Short texts: rely on ASCII + stopword heuristics
 		ascii_chars = sum(c.isalpha() and ord(c) < 128 for c in text)
 		total_chars = sum(c.isalpha() for c in text)
 		if total_chars == 0 or ascii_chars / total_chars < 0.9:
+			if verbose:
+				print(f"text({len(text)}) is not English")
 			return False
 		common_words = {'the', 'and', 'of', 'to', 'in', 'is', 'was', 'for', 'with', 'on'}
 		words = text.lower().split()
 		return any(word in common_words for word in words)
 	# Long texts: fasttext is preferred
-	return ft_model.predict(text)[0][0] == '__label__en'
+	try:
+		prediction = ft_model.predict(text)[0][0]
+		if verbose:
+			print(f"Fasttext prediction: {prediction}")
+		return prediction == '__label__en'
+	except ValueError as e:
+		if verbose:
+			print(f"FastText error: {e}")
+		return False
 
 def is_likely_english_term(term):
 	"""Check if a term is likely English or a proper noun"""
@@ -222,58 +249,16 @@ def is_likely_english_term(term):
 	common_english_words = set(nltk.corpus.words.words())
 	return term.lower() in common_english_words
 
-def clean_text(text):
-		"""Clean text by removing special characters and excess whitespace"""
-		if not isinstance(text, str):
-				return ""
-		
-		# Apply all metadata pattern removals
-		for pattern in METADATA_PATTERNS:
-				text = re.sub(pattern, '', text)
-
-		# Replace specific patterns often found in metadata
-		text = re.sub(r'\[\{.*?\}\]', '', text)  # Remove JSON-like structures
-		text = re.sub(r'http\S+', '', text)      # Remove URLs
-		text = re.sub(r'\d+\.\d+', '', text)     # Remove floating point numbers
-		# Remove non-alphanumeric characters but keep spaces
-		text = re.sub(r'[^\w\s]', ' ', text)
-		# Replace multiple spaces with a single space
-		text = re.sub(r'\s+', ' ', text)
-		text = text.strip().lower()
-
-		return text
-
-def extract_phrases(text, max_words=3):
-	"""Extract meaningful phrases from text"""
-	words = text.lower().split()
-	phrases = []
-	for i in range(len(words)):
-		for j in range(1, min(max_words + 1, len(words) - i + 1)):
-			phrase = ' '.join(words[i:i+j])
-			if all(word not in CUSTOM_STOPWORDS for word in phrase.split()):
-				phrases.append(phrase)
-	return phrases
-
 def extract_semantic_topics(
 		sent_model: SentenceTransformer,
-		ft_model,
+		ft_model: fasttext.FastText._FastText,
 		texts: List[str],
-		top_k_words: int,
-		merge_threshold: float,
 		dataset_dir: str,
 		enable_visualizations: bool = True,
-		min_phrases_per_topic: int = 3,
-		top_phrases_per_topic: int = 10,
 	) -> Tuple[List[List[str]], Set[str]]:
-	# Extract years for temporal analysis
-	def extract_year(text: str) -> Optional[int]:
-		years = re.findall(r'\b(19\d{2}|20\d{2})\b', text)
-		return int(years[0]) if years else None
-	
-	years = [extract_year(text) for text in texts]
-	year_available = any(y is not None for y in years)
 
 	# Generate embeddings
+	kw_model = KeyBERT(model=sent_model)
 	dataset_size = len(texts)
 	emb_fpth = os.path.join(dataset_dir, f'text_embeddings_{dataset_size}_samples.gz')
 	t0 = time.time()
@@ -285,70 +270,46 @@ def extract_semantic_topics(
 		embeddings = sent_model.encode(texts, show_progress_bar=False)
 		save_pickle(pkl=embeddings, fname=emb_fpth)
 
-	# embeddings = sent_model.encode(texts, show_progress_bar=False)
-	print(f"Embeddings: {embeddings.shape} generated in {time.time() - t0:.2f} sec")
+	print(f"Raw Embeddings: {embeddings.shape} generated in {time.time() - t0:.2f} sec")
 
-	# Visualization 0: Raw Embeddings into 2D for better debugging
-	if enable_visualizations:
-		# Visualize embeddings with UMAP
-		print(f"Reducing embeddings: {embeddings.shape} to 2D for visualization using UMAP")
-		umap_reducer = umap.UMAP(n_components=2, random_state=42, metric='cosine')
-		embeddings_2d_umap = umap_reducer.fit_transform(embeddings)
-		print(f"UMAP Visualization")
-		plt.figure(figsize=(18, 10))
-		plt.scatter(embeddings_2d_umap[:, 0], embeddings_2d_umap[:, 1], s=25, c='#f1f8ff', edgecolors='#0078e9', alpha=0.8)
-		plt.title(f"UMAP Visualization of Embeddings ({dataset_size} Texts)")
-		plt.xlabel("UMAP Dimension 1")
-		plt.ylabel("UMAP Dimension 2")
-		plt.savefig(os.path.join(dataset_dir, f'umap_raw_embeddings_{embeddings.shape[0]}_x_{embeddings.shape[1]}.png'), bbox_inches='tight')
-		print(f"UMAP visualization saved to {os.path.join(dataset_dir, f'umap_raw_embeddings_{embeddings.shape[0]}_x_{embeddings.shape[1]}.png')}")
+	# # Visualization 0: Raw Embeddings into 2D for better debugging
+	# print(f"Reducing embeddings: {embeddings.shape} to 2D for visualization using UMAP")
+	# umap_reducer = umap.UMAP(
+	# 	n_neighbors=15,
+	# 	min_dist=0.1,
+	# 	densmap=True,
+	# 	spread=1.0,
+	# 	n_components=2, 
+	# 	random_state=42, 
+	# 	metric='cosine',
+	# )
+	# emb_umap = umap_reducer.fit_transform(embeddings)
+	# if enable_visualizations:
+	# 	# Visualize embeddings with UMAP
+	# 	print(f"Reducing embeddings: {embeddings.shape} to 2D for visualization using UMAP")
+	# 	plt.figure(figsize=(18, 10))
+	# 	plt.scatter(emb_umap[:, 0], emb_umap[:, 1], s=25, c='#f1f8ff', edgecolors='#0078e9', alpha=0.8)
+	# 	plt.title(f"UMAP Visualization of Embeddings ({dataset_size} Texts)")
+	# 	plt.xlabel("UMAP Dimension 1")
+	# 	plt.ylabel("UMAP Dimension 2")
+	# 	plt.savefig(os.path.join(dataset_dir, f'umap_raw_embeddings_{embeddings.shape[0]}_x_{embeddings.shape[1]}.png'), bbox_inches='tight')
+	# 	print(f"UMAP visualization saved to {os.path.join(dataset_dir, f'umap_raw_embeddings_{embeddings.shape[0]}_x_{embeddings.shape[1]}.png')}")
 
-		# Visualize embeddings with PCA
-		print(f"Reducing embeddings: {embeddings.shape} to 2D for visualization using PCA")
-		pca_reducer = PCA(n_components=2, random_state=42)
-		embeddings_2d_pca = pca_reducer.fit_transform(embeddings)
-		print(f"PCA Visualization")
-		plt.figure(figsize=(18, 10))
-		plt.scatter(embeddings_2d_pca[:, 0], embeddings_2d_pca[:, 1], s=25, c='#f1f8ff', edgecolors='#0078e9', alpha=0.8)
-		plt.title(f"PCA Visualization of Embeddings ({dataset_size} Texts)")
-		plt.xlabel("PCA Dimension 1")
-		plt.ylabel("PCA Dimension 2")
-		plt.savefig(os.path.join(dataset_dir, f'pca_raw_embeddings_{embeddings.shape[0]}_x_{embeddings.shape[1]}.png'), bbox_inches='tight')
-		print(f"PCA visualization saved to {os.path.join(dataset_dir, f'pca_raw_embeddings_{embeddings.shape[0]}_x_{embeddings.shape[1]}.png')}")
-
-		# Visualize embeddings with t-SNE
-		print(f"Reducing embeddings: {embeddings.shape} to 2D for visualization using t-SNE")
-		tsne_reducer = TSNE(n_components=2, random_state=42, metric='cosine', learning_rate='auto',)
-		embeddings_2d_tsne = tsne_reducer.fit_transform(embeddings)
-		print(f"t-SNE Visualization")
-		plt.figure(figsize=(18, 10))
-		plt.scatter(embeddings_2d_tsne[:, 0], embeddings_2d_tsne[:, 1], s=25, c='#f1f8ff', edgecolors='#0078e9', alpha=0.8)
-		plt.title(f"t-SNE Visualization of Embeddings ({dataset_size} Texts)")
-		plt.xlabel("t-SNE Dimension 1")
-		plt.ylabel("t-SNE Dimension 2")
-		plt.savefig(os.path.join(dataset_dir, f'tsne_raw_embeddings_{embeddings.shape[0]}_x_{embeddings.shape[1]}.png'), bbox_inches='tight')
-		print(f"t-SNE visualization saved to {os.path.join(dataset_dir, f'tsne_raw_embeddings_{embeddings.shape[0]}_x_{embeddings.shape[1]}.png')}")
-
-	print(f"Clustering embeddings {embeddings.shape} into topics with HDBSCAN...")
 	t0 = time.time()
 	if dataset_size < 500:
 		print("Dataset is small, using KMeans for clustering...")
 		kmeans = KMeans(n_clusters=min(10, max(2, int(np.sqrt(dataset_size)))), random_state=42)
 		labels = kmeans.fit_predict(embeddings)
-		n_clusters = len(set(labels)) - (1 if -1 in labels else 0)  # Exclude noise points (-1)
-		top_k_words = 10
-		print(f"Found {n_clusters} clusters (excluding noise points) in {time.time() - t0:.2f} sec")
 	else:
-		# min_cluster_size = 100
-		# min_samples = 10
-		min_cluster_size, min_samples = get_robust_hdbscan_parameters(
+		print(f"Clustering embeddings {embeddings.shape} into topics with HDBSCAN...")
+		min_cluster_size, min_samples = get_hdbscan_parameters(
 			embeddings=embeddings,
-			dataset_size=dataset_size,
+			use_static=False,
 		)
-
 		cluster_selection_method = 'eom' if dataset_size < 500 else 'leaf'
 		print(f"min_cluster_size: {min_cluster_size}, min_samples: {min_samples}, cluster_selection_method: {cluster_selection_method}")
 		clusterer = hdbscan.HDBSCAN(
+			alpha=1.0,
 			min_cluster_size=min_cluster_size,
 			min_samples=min_samples,
 			algorithm='best',
@@ -356,15 +317,14 @@ def extract_semantic_topics(
 			cluster_selection_method=cluster_selection_method,
 		)
 		labels = clusterer.fit_predict(embeddings)
-		print(f"HDBSCAN clustering generated {len(set(labels))} clusters [including noise points]")
-		n_clusters = len(set(labels)) - (1 if -1 in labels else 0)  # Exclude noise points (-1)
-		print(f"Found {n_clusters} clusters (excluding noise points) in {time.time() - t0:.2f} sec")
+	n_clusters = len(set(labels)) - (1 if -1 in labels else 0)  # Exclude noise points (-1)
+	print(f">>>> Found {n_clusters} clusters (excluding noise points) in {time.time() - t0:.2f} sec")
 
 	# Visualization 1: Cluster Distribution Bar Plot (Before Merging)
 	if enable_visualizations:
 		topic_counts = Counter(labels)
 		plt.figure(figsize=(16, 7))
-		bars = plt.bar(range(len(topic_counts)), [topic_counts[i] for i in sorted(topic_counts.keys())], color='skyblue', label='Before Merging')
+		bars = plt.bar(range(len(topic_counts)), [topic_counts[i] for i in sorted(topic_counts.keys())], color='#3785e6', label='Before Merging')
 		plt.title('Document Distribution Across Clusters (Before Merging)')
 		plt.xlabel('Cluster ID')
 		plt.ylabel('Number of Documents')
@@ -376,218 +336,101 @@ def extract_semantic_topics(
 		plt.savefig(os.path.join(dataset_dir, f'topic_distribution_before_merging_{n_clusters}_clusters.png'), bbox_inches='tight')
 		plt.close()
 
-	# Visualization 2: Interactive UMAP Scatter Plot with Plotly
-	if enable_visualizations:
-		centroids = np.zeros((n_clusters, 2))
-		for i in range(n_clusters):
-			cluster_points = embeddings_2d_umap[labels == i]
-			if len(cluster_points) > 0:
-				centroids[i] = np.mean(cluster_points, axis=0)
-		distances = np.array([np.linalg.norm(embeddings_2d_umap[i] - centroids[labels[i]]) if labels[i] != -1 else 0 for i in range(len(texts))])
-		outliers = distances > (np.mean(distances[distances > 0]) + 2 * np.std(distances[distances > 0])) if distances[distances > 0].size > 0 else np.zeros(len(texts), dtype=bool)
-		df_plot = pd.DataFrame({
-			'UMAP1': embeddings_2d_umap[:, 0],
-			'UMAP2': embeddings_2d_umap[:, 1],
-			'Cluster': [f'Cluster {l}' if l != -1 else 'Noise' for l in labels],
-			'Text': [text[:100] + '...' if len(text) > 100 else text for text in texts],
-			'Distance_to_Centroid': distances,
-			'Outlier': ['Yes' if o else 'No' for o in outliers]
-		})
-		fig = px.scatter(
-			df_plot,
-			x='UMAP1',
-			y='UMAP2',
-			color='Cluster',
-			symbol='Outlier',
-			hover_data=['Text', 'Distance_to_Centroid'],
-			title=f'Interactive UMAP Visualization of Text Embeddings for {dataset_size} Texts into {n_clusters} Cluster'
-		)
-		fig.add_trace(go.Scatter(
-			x=centroids[:, 0],
-			y=centroids[:, 1],
-			mode='markers+text',
-			marker=dict(size=15, symbol='x', color='#000000'),
-			text=[f'Centroid {i}' for i in range(n_clusters)],
-			textposition='top center',
-			name='Centroids'
-		))
-		fig.write_html(os.path.join(dataset_dir, 'umap_cluster_visualization_interactive.html'))
-
-	# Visualization 3: PCA Scatter Plot
-	if enable_visualizations:
-			pca_reducer = PCA(n_components=2, random_state=42)
-			embeddings_2d_pca = pca_reducer.fit_transform(embeddings)
-
-			# Verify outliers definition
-			outliers = labels == -1  # Ensure outliers are noise points
-			print(f"Number of noise points (outliers): {np.sum(outliers)}")
-			
-			unique_clusters = np.unique(labels[~outliers])  # Exclude noise points (-1)
-			print(f"Unique clusters (excluding noise) ({len(unique_clusters)}):\n{unique_clusters}")
-
-			if len(unique_clusters) > 0:
-					centroids = np.array([np.mean(embeddings_2d_pca[labels == cluster], axis=0) for cluster in unique_clusters])
-					print(f"Centroids shape: {centroids.shape}")
-					
-					plt.figure(figsize=(21, 11))
-					
-					# Plot clusters and outliers
-					for i, cluster in enumerate(unique_clusters):
-							cluster_points = labels == cluster
-							cluster_color = plt.cm.tab20(i / len(unique_clusters))
-							plt.scatter(
-									x=embeddings_2d_pca[cluster_points, 0],
-									y=embeddings_2d_pca[cluster_points, 1],
-									c=[cluster_color],
-									alpha=0.98,
-									zorder=2,
-							)
-							
-							# Plot outliers of the current cluster
-							cluster_outliers = np.logical_and(outliers, ~np.isnan(labels * 1.0))  # Create a mask to select points
-							cluster_outliers_indices = np.where(cluster_outliers)[0]  # Get the indices of the outliers
-							outliers_in_cluster = labels[cluster_outliers_indices]  # Get the labels of the outliers
-							outliers_of_current_cluster = outliers_in_cluster == cluster  # Get the outliers of the current cluster
-							if np.any(outliers_of_current_cluster):
-									plt.scatter(
-											x=embeddings_2d_pca[cluster_outliers, 0][outliers_of_current_cluster],
-											y=embeddings_2d_pca[cluster_outliers, 1][outliers_of_current_cluster],
-											c=[cluster_color],
-											marker='^',
-											alpha=0.5,
-											edgecolors='black',
-											zorder=2,
-									)
-					
-					# Plot centroids with corresponding cluster colors
-					cluster_colors = plt.cm.tab20(np.linspace(0, 1, len(unique_clusters)))
-					for i, centroid in enumerate(centroids):
-							plt.scatter(centroid[0], centroid[1], c=[cluster_colors[i]], marker='x', s=200, linewidths=2.5, zorder=4, alpha=0.8)
-					
-					plt.title(f'2D PCA Visualization of Text Embeddings for {len(unique_clusters)} Clusters')
-					plt.xlabel('PCA 1')
-					plt.ylabel('PCA 2')
-					ax = plt.gca()
-					if ax.legend_ is not None:
-							ax.legend_.remove()
-					# plt.legend(title='Cluster', bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
-					plt.savefig(os.path.join(dataset_dir, f'pca_{len(unique_clusters)}_clusters.png'), bbox_inches='tight')
-					plt.close()
-			else:
-					print("No unique clusters found, skipping PCA visualization...")
-
-
-
-	# # Visualization 3: PCA Scatter Plot
+	# # Visualization 2: Interactive UMAP Scatter Plot with Plotly
 	# if enable_visualizations:
-	# 	# Verify outliers definition
-	# 	outliers = labels == -1  # Ensure outliers are noise points
-	# 	print(f"Number of noise points (outliers): {np.sum(outliers)}")
-		
-	# 	unique_clusters = np.unique(labels[~outliers])  # Exclude noise points (-1)
-	# 	print(f"Unique clusters (excluding noise): {unique_clusters}")
-
-	# 	if len(unique_clusters) > 0:
-	# 		centroids = np.array([np.mean(embeddings_2d_pca[labels == cluster], axis=0) for cluster in unique_clusters])
-	# 		print(f"Centroids shape: {centroids.shape}")
-			
-	# 		plt.figure(figsize=(21, 11))
-	# 		sns.scatterplot(
-	# 			x=embeddings_2d_pca[~outliers, 0],
-	# 			y=embeddings_2d_pca[~outliers, 1],
-	# 			hue=labels[~outliers],
-	# 			palette='tab20',
-	# 			alpha=0.98,
-	# 			legend=False,
-	# 			zorder=2,
-	# 		)
-
-	# 		# Plot outliers
-	# 		sns.scatterplot(
-	# 			x=embeddings_2d_pca[outliers, 0],
-	# 			y=embeddings_2d_pca[outliers, 1],
-	# 			color='#fcfcfcd2',
-	# 			marker='^',
-	# 			edgecolors='#6e0000d2',
-	# 			alpha=0.3,
-	# 			legend=False,
-	# 			zorder=1,
-	# 		)
-
-	# 		# Plot outliers based on their cluster
-	# 		for i, cluster in enumerate(unique_clusters):
-	# 			cluster_outliers = np.logical_and(outliers, labels==cluster)
-	# 			cluster_color = plt.cm.tab20(i / len(unique_clusters))
-	# 			print(f"Cluster({i}): {cluster}: {np.sum(cluster_outliers)} outliers")					
-	# 			plt.scatter(
-	# 				x=embeddings_2d_pca[cluster_outliers, 0],
-	# 				y=embeddings_2d_pca[cluster_outliers, 1],
-	# 				c=[cluster_color],
-	# 				marker='^',
-	# 				alpha=0.5,
-	# 				edgecolors='black',
-	# 				zorder=2,
-	# 			)
-			
-	# 		# Map cluster labels to colors from the 'tab20' palette
-	# 		cluster_colors = plt.cm.tab20(np.linspace(0, 1, len(unique_clusters)))
-			
-	# 		# Plot centroids with corresponding cluster colors
-	# 		for i, centroid in enumerate(centroids):
-	# 			plt.scatter(centroid[0], centroid[1], c=[cluster_colors[i]], marker='x', s=250, edgecolors='black', linewidths=3.5, zorder=4, alpha=0.95)
-			
-	# 		plt.title(f'2D PCA Visualization of Text Embeddings for {len(unique_clusters)} Clusters')
-	# 		plt.xlabel('PCA 1')
-	# 		plt.ylabel('PCA 2')
-	# 		ax = plt.gca()
-	# 		if ax.legend_ is not None:
-	# 			ax.legend_.remove()
-	# 		plt.savefig(os.path.join(dataset_dir, f'pca_{len(unique_clusters)}_clusters.png'), bbox_inches='tight')
-	# 		plt.close()
-	# 	else:
-	# 		print("No unique clusters found, skipping PCA visualization...")
+	# 	centroids = np.zeros((n_clusters, 2))
+	# 	for i in range(n_clusters):
+	# 		cluster_points = emb_umap[labels == i]
+	# 		if len(cluster_points) > 0:
+	# 			centroids[i] = np.mean(cluster_points, axis=0)
+	# 	distances = np.array([np.linalg.norm(emb_umap[i] - centroids[labels[i]]) if labels[i] != -1 else 0 for i in range(len(texts))])
+	# 	outliers = distances > (np.mean(distances[distances > 0]) + 2 * np.std(distances[distances > 0])) if distances[distances > 0].size > 0 else np.zeros(len(texts), dtype=bool)
+	# 	df_plot = pd.DataFrame({
+	# 		'UMAP1': emb_umap[:, 0],
+	# 		'UMAP2': emb_umap[:, 1],
+	# 		'Cluster': [f'Cluster {l}' if l != -1 else 'Noise' for l in labels],
+	# 		'Text': [text[:100] + '...' if len(text) > 100 else text for text in texts],
+	# 		'Distance_to_Centroid': distances,
+	# 		'Outlier': ['Yes' if o else 'No' for o in outliers]
+	# 	})
+	# 	fig = px.scatter(
+	# 		df_plot,
+	# 		x='UMAP1',
+	# 		y='UMAP2',
+	# 		color='Cluster',
+	# 		symbol='Outlier',
+	# 		hover_data=['Text', 'Distance_to_Centroid'],
+	# 		title=f'Interactive UMAP Visualization of Text Embeddings for {dataset_size} Texts into {n_clusters} Cluster'
+	# 	)
+	# 	fig.add_trace(go.Scatter(
+	# 		x=centroids[:, 0],
+	# 		y=centroids[:, 1],
+	# 		mode='markers+text',
+	# 		marker=dict(size=15, symbol='x', color='#000000'),
+	# 		text=[f'Centroid {i}' for i in range(n_clusters)],
+	# 		textposition='top center',
+	# 		name='Centroids'
+	# 	))
+	# 	fig.write_html(os.path.join(dataset_dir, 'umap_cluster_visualization_interactive.html'))
 
 	# Collect phrases for each cluster
+	print("Extracting keywords for each cluster using KeyBERT...")
+	t0 = time.time()
 	cluster_phrases = defaultdict(Counter)
 	cluster_text_counts = defaultdict(int)
 	phrase_filter_log = {'total_phrases': 0, 'stopword_filtered': 0, 'length_filtered': 0}
-	
 	for i, (text, label) in enumerate(zip(texts, labels)):
 		if label == -1:  # Skip noise points
 			continue
 		if is_english(text=text, ft_model=ft_model):
-			phrases = extract_phrases(text)
+			# Extract keyphrases with KeyBERT
+			phrases = kw_model.extract_keywords(
+				text,
+				keyphrase_ngram_range=(1, 3),  # 1-3 word phrases
+				stop_words="english",
+				top_n=5,  # Top 5 phrases
+				# diversity=0.7,  # Reduce redundancy
+				# use_maxsum=True
+			)
+			# print(phrases)
 			phrase_filter_log['total_phrases'] += len(phrases)
 			# Filter phrases
 			valid_phrases = []
-			for phrase in phrases:
-				# Relaxed stopword filter: allow some stopwords if they provide context
-				words = phrase.split()
-				stopword_count = sum(1 for word in words if word in CUSTOM_STOPWORDS)
-				if stopword_count / len(words) > 0.7:  # Allow phrases with <=50% stopwords
-					phrase_filter_log['stopword_filtered'] += 1
-					continue
-				# Length filter (relaxed)
-				if len(phrase) <= 2:
-					phrase_filter_log['length_filtered'] += 1
-					continue
-				valid_phrases.append(phrase)
+			for phrase, _ in phrases:  # Ignore KeyBERT scores for now
+					words = phrase.split()
+					stopword_count = sum(1 for word in words if word in CUSTOM_STOPWORDS)
+					# Relaxed stopword filter: allow <=70% stopwords
+					if stopword_count / len(words) > 0.7:
+							phrase_filter_log['stopword_filtered'] += 1
+							continue
+					# Length filter: ensure phrase has 2+ words
+					if len(words) < 2:
+							phrase_filter_log['length_filtered'] += 1
+							continue
+					valid_phrases.append(phrase)
 			
 			# Normalize phrases to reduce repetition
 			normalized_phrases = []
+			seen_phrases = set()
 			for phrase in valid_phrases:
-				words = phrase.split()
-				normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
-				if len(normalized) > 2:
-					normalized_phrases.append(normalized)
-				else:
-					phrase_filter_log['length_filtered'] += 1
+					# Remove consecutive duplicate words
+					words = phrase.split()
+					normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
+					# Ensure normalized phrase is unique and meets length requirement
+					if len(normalized.split()) >= 2 and normalized not in seen_phrases:
+							normalized_phrases.append(normalized)
+							seen_phrases.add(normalized)
+					else:
+							phrase_filter_log['length_filtered'] += 1
 			
 			if not normalized_phrases:
-				print(f"Text {i} has no valid phrases: {text[:150]}...")
+					print(f"Text {i} has no valid phrases: {text[:500]}")
 			else:
-				cluster_phrases[label].update(normalized_phrases)
+					cluster_phrases[label].update(normalized_phrases)
 			cluster_text_counts[label] += 1
+		else:
+			print(f"Text {i} is not English: {text[:500]}")
+	print(f"Phrase collection done in {time.time() - t0:.2f} sec")
 	
 	# Visualization 4: Phrase Retention Histogram
 	if enable_visualizations:
@@ -607,14 +450,16 @@ def extract_semantic_topics(
 		plt.close()
 	
 	# Extract initial topics with diversity scoring
-	initial_topics = []
+	topics_before_merging = []
 	term_counts_per_cluster = []
 	for label, counter in cluster_phrases.items():
-		print(f"Topic {label}: {cluster_text_counts[label]} texts, {len(counter)} phrases, Sample: {list(counter.items())[:5]}")
+		# print(f"Topic {label}: {cluster_text_counts[label]} texts, {len(counter)} phrases, Sample: {list(counter.items())[:5]}")
 		if not counter:
 			print(f"Warning: Topic {label} has no phrases.")
 		# Score phrases with diversity bonus
 		phrase_scores = []
+		top_k_words = max(10, len(counter) // 15)
+		print(f"Topic {label}: {len(counter)} phrases, Selecting Top-{top_k_words}")
 		seen_words = set()
 		for phrase, count in counter.items():
 			words = set(phrase.split())
@@ -622,7 +467,6 @@ def extract_semantic_topics(
 			score = count * (1 + 0.1 * len(words) + 0.7 * diversity_bonus)
 			phrase_scores.append((phrase, count, score))
 			seen_words.update(words)
-		
 		phrase_scores.sort(key=lambda x: x[2], reverse=True)
 		selected_phrases = []
 		seen_words = set()
@@ -632,20 +476,20 @@ def extract_semantic_topics(
 				continue
 			selected_phrases.append(phrase)
 			seen_words.update(words)
-		
-		initial_topics.append(selected_phrases[:top_k_words])
+		topics_before_merging.append(selected_phrases[:top_k_words])
 		term_counts_per_cluster.append(len(counter))
-	if not any(initial_topics):
+	if not any(topics_before_merging):
 		print("Error: No valid phrases found in any topics.")
 		return [], set()
 	
 	# Calculate topic similarities
-	print("Calculating topic similarities for redundancy reduction...")
-	similarity_matrix = np.zeros((len(initial_topics), len(initial_topics)))
+	print("Calculating topic similarities for merging [cosine similarity]...")
+	similarity_matrix = np.zeros((len(topics_before_merging), len(topics_before_merging)))
 	word_to_embedding = {}
-	all_words = list(set(word for topic in initial_topics for word in topic if word))
+	all_words = list(set(word for topic in topics_before_merging for word in topic if word))
 	if all_words:
 		word_embeddings = sent_model.encode(all_words, show_progress_bar=True)
+		print(f"Word embeddings shape: {word_embeddings.shape}")
 		for i, word in enumerate(all_words):
 			word_to_embedding[word] = word_embeddings[i]
 	else:
@@ -653,18 +497,98 @@ def extract_semantic_topics(
 
 	topic_embeddings = []
 
-	for topic in initial_topics:
+	for topic in topics_before_merging:
 		topic_embs = [word_to_embedding[word] for word in topic if word in word_to_embedding]
-		topic_emb = np.mean(topic_embs, axis=0) if topic_embs else np.zeros(embeddings.shape[1])
+		topic_emb = np.mean(topic_embs, axis=0) if topic_embs else np.zeros(word_embeddings.shape[1])
 		topic_embeddings.append(topic_emb)
-	for i in range(len(initial_topics)):
-		for j in range(i + 1, len(initial_topics)):
+	for i in range(len(topics_before_merging)):
+		for j in range(i + 1, len(topics_before_merging)):
 			sim = util.cos_sim([topic_embeddings[i]], [topic_embeddings[j]])[0][0].item()
 			similarity_matrix[i, j] = sim
 			similarity_matrix[j, i] = sim
-	
-	# Visualization 5: Topic Similarity Heatmap
-	if enable_visualizations and np.any(similarity_matrix):
+
+	# Visualization 7: Phrase Co-Occurrence Network for Each Topic [before merging]
+	if enable_visualizations:
+		print(f"Generating co-occurrence networks for {len(topics_before_merging)} topics [before merging]...")
+		for label, topic_phrases in enumerate(topics_before_merging):
+			if not topic_phrases:
+					print(f"Skipping Topic {label}: No phrases available.")
+					continue
+			counter = cluster_phrases[label]
+			cluster_texts = [texts[i] for i, l in enumerate(labels) if l == label and is_english(texts[i], ft_model)]
+			if not cluster_texts:
+					print(f"Skipping Topic {label}: No valid texts for co-occurrence.")
+					continue
+			phrase_set = set(topic_phrases)
+			cooc_matrix = defaultdict(int)
+			for text in cluster_texts:
+					# Extract keyphrases with KeyBERT
+					phrases = kw_model.extract_keywords(
+							text,
+							keyphrase_ngram_range=(1, 3),  # 1-3 word phrases
+							stop_words="english",
+							top_n=5,  # Top 5 phrases
+							diversity=0.7,  # Reduce redundancy
+							# use_maxsum=True # makes it slow
+					)
+					# Filter and normalize phrases
+					valid_phrases = []
+					seen_phrases = set()
+					for phrase, _ in phrases:
+							words = phrase.split()
+							stopword_count = sum(1 for w in words if w in CUSTOM_STOPWORDS)
+							if stopword_count / len(words) > 0.7 or len(words) < 2:
+									continue
+							normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
+							if len(normalized.split()) >= 2 and normalized not in seen_phrases:
+									valid_phrases.append(normalized)
+									seen_phrases.add(normalized)
+					# Compute co-occurrences within topic phrases
+					text_phrases = set(valid_phrases).intersection(phrase_set)
+					for p1 in text_phrases:
+							for p2 in text_phrases:
+									if p1 < p2:
+											cooc_matrix[(p1, p2)] += 1
+			G = nx.Graph()
+			for (p1, p2), count in cooc_matrix.items():
+					if count > 0:
+							G.add_edge(p1, p2, weight=count)
+			for phrase in topic_phrases:
+					if phrase not in G:
+							G.add_node(phrase)
+			plt.figure(figsize=(18, 12))
+			pos = nx.spring_layout(G)
+			edge_weights = [G[u][v]['weight'] for u, v in G.edges()]
+			nx.draw_networkx_edges(G, pos, width=[w * 1.1 for w in edge_weights], alpha=0.7, edge_color='#000a16')
+			nx.draw_networkx_nodes(G, pos, node_size=500, node_color='#54a1ff', alpha=0.8)
+			nx.draw_networkx_labels(G, pos, font_size=10, font_family='monospace')
+			plt.title(f'Phrase Co-Occurrence Network for Topic {label} [before merging] with {len(G.nodes())} nodes and {len(G.edges())} edges')
+			plt.savefig(os.path.join(dataset_dir, f'cooccurrence_network_topic_{label}_before_merging.png'), bbox_inches='tight')
+			plt.close()
+
+	# Visualization 12: Top-K Phrases Bar Plot for Each Topic [before merging]
+	if enable_visualizations:
+		for label, topic_phrases in enumerate(topics_before_merging):
+			if not topic_phrases:
+				print(f"Skipping Topic {label}: No phrases available.")
+				continue
+			counter = cluster_phrases[label]
+			print(f"Topic {label}: {len(counter)} phrases, Selecting Top-{len(topic_phrases)}")
+			phrase_freq = {phrase: counter[phrase] for phrase in topic_phrases if phrase in counter}
+			top_k_phrases_per_topic_before_merging = sorted(phrase_freq.items(), key=lambda x: x[1], reverse=True)[:10]
+			if not top_k_phrases_per_topic_before_merging:
+				continue
+			phrases, frequencies = zip(*top_k_phrases_per_topic_before_merging)
+			plt.figure(figsize=(14, 6))
+			sns.barplot(x=frequencies, y=phrases, palette='Blues_r')
+			plt.title(f'Top {len(top_k_phrases_per_topic_before_merging)} Phrases {len(phrase_freq)} in Topic {label} [before merging]')
+			plt.xlabel('Frequency')
+			plt.ylabel('Phrase')
+			plt.savefig(os.path.join(dataset_dir, f'topK_phrases_topic_{label}_before_merging.png'), bbox_inches='tight')
+			plt.close()
+
+	# Visualization 5: Topic Similarity Heatmap (before merging)
+	if enable_visualizations:
 		plt.figure(figsize=(17, 12))
 		sns.heatmap(
 			data=similarity_matrix, 
@@ -674,277 +598,173 @@ def extract_semantic_topics(
 			vmax=1, 
 			square=True,
 		)
-		plt.title(f'Topic Similarity Matrix (Cosine Similarity) with Threshold {merge_threshold}')
+		plt.title(f'Topic Similarity Matrix (Cosine Similarity) [before merging]')
 		plt.xlabel('Topic ID')
 		plt.ylabel('Topic ID')
-		plt.savefig(os.path.join(dataset_dir, f'topic_similarity_heatmap_{merge_threshold}_threshold.png'), bbox_inches='tight')
+		plt.savefig(os.path.join(dataset_dir, f'topic_similarity_heatmap_before_merging.png'), bbox_inches='tight')
 		plt.close()
 	
-	# Visualization 6: Dendrogram of Topic Similarities
+	# Visualization 6: Dendrogram of Topic Similarities (before merging)
 	if enable_visualizations:
-		sim_values = similarity_matrix[np.triu_indices(len(initial_topics), k=1)]
+		sim_values = similarity_matrix[np.triu_indices(len(topics_before_merging), k=1)]
 		if sim_values.size > 0:
 			mean_sim = np.mean(sim_values)
 			min_sim = np.min(sim_values)
 			max_sim = np.max(sim_values)
-			dynamic_threshold = np.percentile(sim_values, 75)
 			print(f"Similarity matrix stats: Mean={mean_sim:.3f}, Min={min_sim:.3f}, Max={max_sim:.3f}")
-			merge_threshold = max(merge_threshold, dynamic_threshold + 0.05)  # Add 0.05 to preserve diversity
-			print(f"Dynamic merge threshold (75th percentile): {dynamic_threshold:.3f} => Final merge threshold: {merge_threshold:.3f}")
+			merge_threshold = np.percentile(sim_values, 75) + 0.10  # Add 0.10 to preserve diversity (dynamic threshold)
+			print(f"Dynamic merge threshold (75th percentile): {merge_threshold}")
 			plt.figure(figsize=(17, 10))
 			linkage_matrix = linkage(sim_values, method='average')
-			dendrogram(linkage_matrix, labels=[f'Topic {i}' for i in range(len(initial_topics))])
-			plt.title(f'Dendrogram of Topic Similarities')
+			dendrogram(linkage_matrix, labels=[f'Topic {i}' for i in range(len(topics_before_merging))])
+			plt.title(f'Dendrogram of Topic Similarities [before merging]')
 			plt.xlabel('Topics')
 			plt.ylabel('Distance (1 - Cosine Similarity)')
-			plt.axhline(y=1 - merge_threshold, color='red', linestyle='--', label=f'Merge Threshold ({merge_threshold:.4f})')
+			plt.axhline(y=1-merge_threshold, color='red', linestyle='--', label=f'Merge Threshold ({merge_threshold:.4f})')
 			plt.legend()
 			plt.xticks(rotation=90, fontsize=8)
-			plt.savefig(os.path.join(dataset_dir, f'similarity_dendrogram_{merge_threshold:.4f}_threshold.png'), bbox_inches='tight')
+			plt.savefig(os.path.join(dataset_dir, f'similarity_dendrogram_before_merging_thresh_{merge_threshold:.4f}.png'), bbox_inches='tight')
 			plt.close()
 		else:
 			print("Similarity matrix is empty.")
-	
-	# Visualization 7: Phrase Co-Occurrence Network for Each Topic
-	if enable_visualizations:
-		print(f"Generating co-occurrence networks for {len(initial_topics)} topics...")
-		for label, topic_phrases in enumerate(initial_topics):
-			print(f"Topic {label} contains Top-{len(topic_phrases)} phrases")
-			if not topic_phrases:
-				print(f"Skipping Topic {label}: No phrases available.")
-				continue
-			counter = cluster_phrases[label]
-			cluster_texts = [texts[i] for i, l in enumerate(labels) if l == label and is_english(texts[i], ft_model)]
-			if not cluster_texts:
-				print(f"Skipping Topic {label}: No valid texts for co-occurrence.")
-				continue
-			phrase_set = set(topic_phrases)
-			cooc_matrix = defaultdict(int)
-			for text in cluster_texts:
-				text_phrases = set(extract_phrases(text)).intersection(phrase_set)
-				for p1 in text_phrases:
-					for p2 in text_phrases:
-						if p1 < p2:
-							cooc_matrix[(p1, p2)] += 1
-			G = nx.Graph()
-			for (p1, p2), count in cooc_matrix.items():
-				if count > 0:
-					G.add_edge(p1, p2, weight=count)
-			for phrase in topic_phrases:
-				if phrase not in G:
-					G.add_node(phrase)
-			plt.figure(figsize=(18, 12))
-			pos = nx.spring_layout(G)
-			edge_weights = [G[u][v]['weight'] for u, v in G.edges()]
-			nx.draw_networkx_edges(G, pos, width=[w * 1.1 for w in edge_weights], alpha=0.7, edge_color='#000a16')
-			nx.draw_networkx_nodes(G, pos, node_size=500, node_color='#54a1ff', alpha=0.8)
-			nx.draw_networkx_labels(G, pos, font_size=10, font_family='monospace')
-			plt.title(f'Phrase Co-Occurrence Network for Topic {label} with {len(G.nodes())} nodes and {len(G.edges())} edges')
-			plt.savefig(os.path.join(dataset_dir, f'cooccurrence_network_topic_{label}.png'), bbox_inches='tight')
-			plt.close()
-
-	# Visualization 8: Topic Evolution Over Time
-	if enable_visualizations and year_available:
-		topic_year_counts = defaultdict(lambda: defaultdict(int))
-		for label, year in zip(labels, years):
-			if label == -1 or year is None:
-				continue
-			topic_year_counts[label][year] += 1
-		plt.figure(figsize=(16, 7))
-		for label in range(n_clusters):
-			years_counts = topic_year_counts[label]
-			if years_counts:
-				years_sorted = sorted(years_counts.keys())
-				counts = pd.Series([years_counts[y] for y in years_sorted], index=years_sorted)
-				smoothed_counts = counts.rolling(window=3, min_periods=1, center=True).mean()
-				plt.plot(years_sorted, smoothed_counts, marker='o',)
-		plt.title('Topic Prevalence Over Time (Smoothed)')
-		plt.xlabel('Year')
-		plt.ylabel('Number of Documents (Rolling Avg)')
-		ax = plt.gca()
-		if ax.legend_ is not None:
-			ax.legend_.remove()
-		# plt.legend(title='Topic')
-		plt.grid(True)
-		plt.savefig(os.path.join(dataset_dir, 'topic_evolution_over_time.png'), bbox_inches='tight')
-		plt.close()
-
-	# Visualization 9: Cluster Quality Metrics
-	if enable_visualizations:
-		cluster_range = range(2, min(10, len(texts)))
-		silhouette_scores = []
-		inertia_scores = []
-		for k in cluster_range:
-			kmeans_temp = KMeans(
-					n_clusters=k,
-					random_state=42,
-					init='k-means++',
-					max_iter=1000,
-					n_init='auto'
-			)
-			temp_labels = kmeans_temp.fit_predict(embeddings)
-			silhouette_scores.append(silhouette_score(embeddings, temp_labels))
-			inertia_scores.append(kmeans_temp.inertia_)
-		plt.figure(figsize=(15, 10))
-		plt.plot(cluster_range, silhouette_scores, marker='o', label='Silhouette Score')
-		plt.plot(cluster_range, [i / max(inertia_scores) * max(silhouette_scores) for i in inertia_scores], marker='o', label='Scaled Inertia')
-		plt.axvline(x=n_clusters, color='red', linestyle='--', label=f'Chosen clusters: k={n_clusters}')
-		plt.title('Cluster Quality Metrics vs. Number of Clusters')
-		plt.xlabel('Number of Clusters (k)')
-		plt.ylabel('Score')
-		plt.legend()
-		plt.grid(True)
-		plt.savefig(os.path.join(dataset_dir, 'cluster_quality_metrics.png'), bbox_inches='tight')
-		plt.close()
-	
-	# Visualization 10: Word Cloud for Each Topic
-	if enable_visualizations:
-		valid_topics = []
-		valid_wordclouds = []
-		valid_labels = []
-		top_phrases_per_topic = []
-		for label, topic_phrases in enumerate(initial_topics):
-			if not topic_phrases or len(topic_phrases) < min_phrases_per_topic:
-				print(f"Skipping Topic {label}: Insufficient phrases.")
-				continue
-			counter = cluster_phrases[label]
-			phrase_freq = {phrase: counter[phrase] for phrase in topic_phrases if phrase in counter}
-			if not phrase_freq:
-				print(f"Skipping Topic {label}: No valid phrases found.")
-				continue
-			wordcloud = WordCloud(
-					width=800, 
-					height=400, 
-					background_color='white',
-					min_font_size=10, 
-					max_font_size=100, 
-					scale=3,
-			).generate_from_frequencies(phrase_freq)
-			valid_topics.append(topic_phrases)
-			valid_wordclouds.append(wordcloud)
-			valid_labels.append(label)
-			top_phrases = sorted(phrase_freq.items(), key=lambda x: x[1], reverse=True)[:3]
-			top_phrases_per_topic.append(top_phrases)
 		
-		if valid_topics:
-			n_cols = min(4, len(valid_topics))
-			n_rows = (len(valid_topics) + n_cols - 1) // n_cols
-			fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
-			fig.suptitle('Word Clouds for All Topics', fontsize=20, fontweight='bold', y=0.98)
-			axes = axes.flatten() if n_rows > 1 or n_cols > 1 else [axes]
-			for i, (wordcloud, label) in enumerate(zip(valid_wordclouds, valid_labels)):
-					if i < len(axes):
-							axes[i].imshow(wordcloud, interpolation='bilinear')
-							axes[i].set_title(f'Topic {label}', fontsize=14, fontweight='bold')
-							axes[i].axis('off')
-			for i in range(len(valid_topics), len(axes)):
-					axes[i].axis('off')
-					axes[i].set_visible(False)
-			plt.tight_layout()
-			plt.subplots_adjust(top=0.95)
-			plt.savefig(os.path.join(dataset_dir, f'wordcloud_all_topics_{len(valid_topics)}_topics.png'), bbox_inches='tight', dpi=300)
-			plt.close()
-	
-	# Visualization 11: UMAP with Top Phrases
-	if enable_visualizations and top_phrases_per_topic:
-		plt.figure(figsize=(16, 7))
-		sns.scatterplot(
-			x=embeddings_2d_umap[~outliers, 0],
-			y=embeddings_2d_umap[~outliers, 1],
-			hue=labels[~outliers],
-			palette='tab20',
-			alpha=0.6,
-			legend=False,
-		)
-		sns.scatterplot(
-			x=embeddings_2d_umap[outliers, 0],
-			y=embeddings_2d_umap[outliers, 1],
-			color='#df0404bd',
-			marker='^',
-			alpha=0.85,
-			legend=False,
-		)
-		plt.scatter(centroids[:, 0], centroids[:, 1], c='white', marker='o', s=250, edgecolors='black', linewidths=1.5, alpha=0.4, zorder=3)
-		plt.scatter(centroids[:, 0], centroids[:, 1], c='black', marker='x', s=200, zorder=3, alpha=0.4)
-		# for i, (centroid, phrases) in enumerate(zip(centroids, top_phrases_per_topic)):
-		# 	top_phrase_text = '\n'.join([f"{phrase}: {freq}" for phrase, freq in phrases])
-		# 	plt.text(
-		# 		centroid[0],
-		# 		centroid[1] + 0.5,
-		# 		f"Topic {i}\n{top_phrase_text}",
-		# 		fontsize=10, 
-		# 		ha='center', 
-		# 		va='bottom',
-		# 		bbox=dict(facecolor='white', alpha=0.8, edgecolor='black', boxstyle='round,pad=0.5')
-		# 	)
-		plt.title('2D UMAP Visualization of Text Embeddings with Top Phrases')
-		plt.xlabel('UMAP 1')
-		plt.ylabel('UMAP 2')
-		ax = plt.gca()
-		if ax.legend_ is not None:
-			ax.legend_.remove()
-		# plt.legend(title='Cluster', bbox_to_anchor=(1.01, 1), loc='upper left')
-		plt.savefig(os.path.join(dataset_dir, 'umap_cluster_visualization_with_phrases.png'), bbox_inches='tight')
-		plt.close()
+	# # Visualization 10: UMAP with Top Phrases
+	# if enable_visualizations:
+	# 	# Verify outliers definition (HDBSCAN noise points)
+	# 	outliers = labels == -1  # Noise points from HDBSCAN
+	# 	print(f"Noise points (outliers) in UMAP plot: {np.sum(outliers)}/{len(texts)} texts [{np.sum(outliers) / len(texts) * 100:.2f}%]")
+		
+	# 	# Get unique clusters (excluding noise)
+	# 	unique_clusters = np.unique(labels[~outliers])
+	# 	print(f">> {len(unique_clusters)} Unique Clusters (excluding noise) [{np.sum(outliers) / len(texts) * 100:.2f}% noise]")
+	# 	if len(unique_clusters) > 0:
+	# 		# Calculate centroids in 2D UMAP space
+	# 		centroids = np.zeros((n_clusters, 2))
+	# 		for i in range(n_clusters):
+	# 			cluster_points = emb_umap[labels == i]
+	# 			if len(cluster_points) > 0:
+	# 				centroids[i] = np.mean(cluster_points, axis=0)
+	# 		print(f"Centroids shape: {centroids.shape}")
+			
+	# 		# Assign outliers to nearest cluster based on distance
+	# 		outlier_assignments = np.full(emb_umap.shape[0], -1)
+	# 		if np.sum(outliers) > 0:
+	# 			# Compute distances from outlier points to centroids
+	# 			outlier_indices = np.where(outliers)[0]
+	# 			outlier_points = emb_umap[outlier_indices]
+	# 			distances = np.linalg.norm(outlier_points[:, np.newaxis] - centroids, axis=2)
+	# 			# Assign each outlier to the nearest cluster
+	# 			nearest_clusters = unique_clusters[np.argmin(distances, axis=1)]
+	# 			outlier_assignments[outlier_indices] = nearest_clusters
+			
+	# 		plt.figure(figsize=(18, 10))
+	# 		# Map cluster labels to colors from the 'tab20' palette
+	# 		tab20_cmap = plt.cm.get_cmap('tab20')
+	# 		cluster_colors = tab20_cmap(np.linspace(0, 1, len(unique_clusters)))
+	# 		# Create a mapping of cluster labels to colors
+	# 		cluster_color_map = {cluster: color for cluster, color in zip(unique_clusters, cluster_colors)}
+			
+	# 		# Plot inliers as empty circles with edge colors matching their cluster
+	# 		for cluster in unique_clusters:
+	# 			cluster_mask = labels == cluster
+	# 			plt.scatter(
+	# 				emb_umap[cluster_mask, 0],
+	# 				emb_umap[cluster_mask, 1],
+	# 				facecolors='none',
+	# 				edgecolors=cluster_color_map[cluster],
+	# 				marker='o',
+	# 				s=30,
+	# 				linewidths=1.1,
+	# 				alpha=0.98,
+	# 				label=None,
+	# 				zorder=2,
+	# 			)
+			
+	# 		# Plot outliers with same color as nearest cluster, less transparency
+	# 		if np.sum(outliers) > 0:
+	# 			plt.scatter(
+	# 				emb_umap[outliers, 0],
+	# 				emb_umap[outliers, 1],
+	# 				# facecolors='none',
+	# 				facecolors=[cluster_color_map[cluster] for cluster in outlier_assignments[outliers]],
+	# 				marker='^',
+	# 				s=15,
+	# 				linewidths=1.0,
+	# 				alpha=0.7,
+	# 				label=None,
+	# 				zorder=1,
+	# 			)
+	# 		# Plot centroids with colors matching their clusters
+	# 		for i, cluster in enumerate(unique_clusters):
+	# 			plt.scatter(
+	# 				centroids[cluster, 0],
+	# 				centroids[cluster, 1],
+	# 				c=[cluster_color_map[cluster]],
+	# 				marker='x',
+	# 				s=300,
+	# 				linewidths=3.5,
+	# 				alpha=0.75,
+	# 				zorder=3,
+	# 			)
+			
+	# 		plt.title(f'2D UMAP Visualization of Text Embeddings with Top Phrases for {len(unique_clusters)} Clusters')
+	# 		plt.xlabel('UMAP 1')
+	# 		plt.ylabel('UMAP 2')
+	# 		ax = plt.gca()
+	# 		if ax.legend_ is not None:
+	# 			ax.legend_.remove()
+	# 		plt.savefig(os.path.join(dataset_dir, 'umap_cluster_visualization_with_phrases.png'), bbox_inches='tight')
+	# 		plt.close()
+	# 	else:
+	# 		print("No unique clusters found, skipping UMAP visualization with top phrases...")
 
-	# Visualization 12: Cluster Size vs. Term Count Plot
+	# Visualization 11: Cluster Size vs. Term Count Plot
 	if enable_visualizations:
-		plt.figure(figsize=(17, 10))
-		sns.scatterplot(
-			x=[cluster_text_counts[i] for i in range(n_clusters) if i in cluster_text_counts],
-			y=[term_counts_per_cluster[i] for i in range(len(term_counts_per_cluster))],
-			hue=range(len(term_counts_per_cluster)),
-			palette='tab20',
-			size=term_counts_per_cluster,
-			sizes=(50, 500),
-			legend=False,
-		)
-		for i in range(len(term_counts_per_cluster)):
-			plt.text(
-				cluster_text_counts[i], 
-				term_counts_per_cluster[i] + 8,
-				f'Topic {i}',
-				ha='center', 
-				va='bottom',
-				fontsize=10,
+		print("Cluster Size vs. Term Count Plot")
+		print(f"Cluster Text Counts(before merging) {len(cluster_text_counts)}: {cluster_text_counts}")
+		print(f"Term Counts per Cluster(before merging): {len(term_counts_per_cluster)}: {term_counts_per_cluster}")
+		# Align clusters with valid phrases
+		valid_clusters = [i for i in range(n_clusters) if i in cluster_text_counts and i < len(term_counts_per_cluster)]
+		if valid_clusters:
+			plt.figure(figsize=(19, 13))
+			sns.scatterplot(
+				x=[cluster_text_counts[i] for i in valid_clusters],
+				y=[term_counts_per_cluster[i] for i in valid_clusters],
+				hue=[i for i in valid_clusters],
+				palette='tab20',
+				size=[term_counts_per_cluster[i] for i in valid_clusters],
+				sizes=(50, 500),
+				legend=False,
 			)
-		plt.title('Cluster Size vs. Number of Unique Terms')
-		plt.xlabel('Number of Documents in Cluster')
-		plt.ylabel('Number of Unique Terms')
-		ax = plt.gca()
-		if ax.legend_ is not None:
-			ax.legend_.remove()
-		# plt.legend(title='Cluster', bbox_to_anchor=(1.01, 1), loc='upper left')
-		plt.savefig(os.path.join(dataset_dir, 'cluster_size_vs_term_count.png'), bbox_inches='tight')
-		plt.close()
-
-	# Visualization 13: Top Phrases Bar Plot for Each Topic
-	if enable_visualizations:
-		for label, topic_phrases in enumerate(initial_topics):
-			if not topic_phrases:
-				continue
-			counter = cluster_phrases[label]
-			phrase_freq = {phrase: counter[phrase] for phrase in topic_phrases if phrase in counter}
-			top_10 = sorted(phrase_freq.items(), key=lambda x: x[1], reverse=True)[:10]
-			if not top_10:
-				continue
-			phrases, frequencies = zip(*top_10)
-			plt.figure(figsize=(14, 6))
-			sns.barplot(x=frequencies, y=phrases, palette='Blues_r')
-			plt.title(f'Top 10 Phrases in Topic {label}')
-			plt.xlabel('Frequency')
-			plt.ylabel('Phrase')
-			plt.savefig(os.path.join(dataset_dir, f'top_phrases_topic_{label}.png'), bbox_inches='tight')
+			for i in valid_clusters:
+				plt.text(
+					cluster_text_counts[i], 
+					term_counts_per_cluster[i] + 5,
+					f'Topic {i}',
+					ha='center', 
+					va='bottom',
+					fontsize=10,
+				)
+			plt.title('Cluster Size vs. Number of Unique Terms')
+			plt.xlabel('Number of Documents in Cluster')
+			plt.ylabel('Number of Unique Terms')
+			ax = plt.gca()
+			if ax.legend_ is not None:
+				ax.legend_.remove()
+			# plt.legend(title='Cluster', bbox_to_anchor=(1.01, 1), loc='upper left')
+			plt.savefig(os.path.join(dataset_dir, 'cluster_size_vs_term_count.png'), bbox_inches='tight')
 			plt.close()
+		else:
+			print("No valid clusters found, skipping Cluster Size vs. Term Count Plot...")
 
-	# Visualization 14: Interactive Topic Similarity Network
+	# Visualization 13: Interactive Topic Similarity Network
 	if enable_visualizations:
 		G = nx.Graph()
-		for i in range(len(initial_topics)):
+		for i in range(len(topics_before_merging)):
 				G.add_node(i, label=f'Topic {i}')
 		edge_weights = []
-		for i in range(len(initial_topics)):
-				for j in range(i + 1, len(initial_topics)):
+		for i in range(len(topics_before_merging)):
+				for j in range(i + 1, len(topics_before_merging)):
 						sim = similarity_matrix[i, j]
 						if sim > 0.5:
 								G.add_edge(i, j, weight=sim)
@@ -992,63 +812,65 @@ def extract_semantic_topics(
 		fig.write_html(os.path.join(dataset_dir, 'topic_similarity_network_interactive.html'))
 
 	# Merge similar topics
-	print(f"Merging similar topics with threshold {merge_threshold}...")
+	print(f"\n>> Merging similar topics with dynamic merging threshold {merge_threshold}")
 	merged_topics = []
 	used_indices = set()
-	min_topics = max(1, len(initial_topics) // 2)
-	max_merges = len(initial_topics) - min_topics
+	min_topics = max(1, len(topics_before_merging) // 2)
+	max_merges = len(topics_before_merging) - min_topics
 	merge_count = 0
-	for i in range(len(initial_topics)):
-			if i in used_indices:
-					continue
-			merged_words = set(initial_topics[i])
-			merged_indices = {i}
-			used_indices.add(i)
-			for j in range(len(initial_topics)):
-					if j in used_indices or i == j or merge_count >= max_merges:
-							continue
-					if similarity_matrix[i, j] > merge_threshold:
-							merged_words.update(initial_topics[j])
-							merged_indices.add(j)
-							used_indices.add(j)
-							merge_count += 1
-			
-			# Aggregate frequencies and prioritize diversity
-			counter = Counter()
-			for topic_idx in merged_indices:
-					for phrase in initial_topics[topic_idx]:
-							for orig_counter in cluster_phrases.values():
-									if phrase in orig_counter:
-											counter[phrase] += orig_counter[phrase]
-			
-			# Score phrases with diversity bonus
-			phrase_scores = []
-			seen_words = set()
-			for phrase, count in counter.items():
-					words = set(phrase.split())
-					diversity_bonus = sum(1 for word in words if word not in seen_words)
-					score = count * (1 + 0.2 * diversity_bonus)
-					phrase_scores.append((phrase, count, score))
-					seen_words.update(words)
-			
-			phrase_scores.sort(key=lambda x: x[2], reverse=True)
-			sorted_phrases = [phrase for phrase, _, _ in phrase_scores[:top_k_words]]
-			if sorted_phrases:
-					merged_topics.append(sorted_phrases)
-	print(f"Topics Reduced from {len(initial_topics)} to {len(merged_topics)} topics after merging")
+	for i in range(len(topics_before_merging)):
+		if i in used_indices:
+			continue
+		merged_words = set(topics_before_merging[i])
+		merged_indices = {i}
+		used_indices.add(i)
+		for j in range(len(topics_before_merging)):
+			if j in used_indices or i == j or merge_count >= max_merges:
+				continue
+			if similarity_matrix[i, j] > merge_threshold:
+				merged_words.update(topics_before_merging[j])
+				merged_indices.add(j)
+				used_indices.add(j)
+				merge_count += 1
+		
+		# Aggregate frequencies and prioritize diversity
+		counter = Counter()
+		for topic_idx in merged_indices:
+			for phrase in topics_before_merging[topic_idx]:
+				for orig_counter in cluster_phrases.values():
+					if phrase in orig_counter:
+						counter[phrase] += orig_counter[phrase]
+		
+		# Score phrases with diversity bonus
+		phrase_scores = []
+		seen_words = set()
+		for phrase, count in counter.items():
+			words = set(phrase.split())
+			diversity_bonus = sum(1 for word in words if word not in seen_words)
+			score = count * (1 + 0.2 * diversity_bonus)
+			phrase_scores.append((phrase, count, score))
+			seen_words.update(words)
+		phrase_scores.sort(key=lambda x: x[2], reverse=True)
+		print(f"Topic {i} contains {len(counter)} phrases before merging")
+		sorted_phrases = [
+			phrase 
+			for phrase, _, _ in phrase_scores[:top_k_words]
+		]
+		print(f"\tTopic {i} contains {len(sorted_phrases)} phrases after merging")
+		if sorted_phrases:
+			merged_topics.append(sorted_phrases)
+	print(f"Topics Reduced from {len(topics_before_merging)} to {len(merged_topics)} topics after merging")
 
-	# Visualization 15: Topic Diversity Plot
+	# Visualization 14: Topic Diversity Plot (after merging)
 	if enable_visualizations:
 		unique_terms_per_topic = [len(set(topic)) for topic in merged_topics]
-		plt.figure(figsize=(17, 10))
-		plt.bar(range(len(merged_topics)), unique_terms_per_topic, color='skyblue')
-		for i, val in enumerate(unique_terms_per_topic):
-			plt.text(i, val + 0.5, str(val), ha='center', va='bottom')
-		plt.title('Number of Unique Terms per Merged Topic')
+		plt.figure(figsize=(17, 7))
+		plt.bar(range(len(merged_topics)), unique_terms_per_topic, color='#3785e6')
+		plt.title('Number of Unique Terms per Topic (after merging)')
 		plt.xlabel('Topic ID')
 		plt.ylabel('Number of Unique Terms')
 		plt.xticks(range(len(merged_topics)))
-		plt.savefig(os.path.join(dataset_dir, 'topic_diversity.png'), bbox_inches='tight')
+		plt.savefig(os.path.join(dataset_dir, 'merged_topic_diversity.png'), bbox_inches='tight')
 		plt.close()
 		# Compute topic diversity (Jaccard similarity between topics)
 		topic_sets = [set(topic) for topic in merged_topics]
@@ -1059,7 +881,6 @@ def extract_semantic_topics(
 				union = len(topic_sets[i] | topic_sets[j])
 				jaccard_matrix[i, j] = intersection / union if union > 0 else 0
 				jaccard_matrix[j, i] = jaccard_matrix[i, j]
-		
 		plt.figure(figsize=(15, 11))
 		sns.heatmap(
 			data=jaccard_matrix, 
@@ -1069,41 +890,38 @@ def extract_semantic_topics(
 			vmax=1, 
 			square=True,
 		)
-		plt.title('Topic Diversity (Jaccard Similarity Between Topics)')
+		plt.title('Merged Topic Diversity (Jaccard Similarity Between Topics)')
 		plt.xlabel('Topic ID')
 		plt.ylabel('Topic ID')
-		plt.savefig(os.path.join(dataset_dir, 'topic_diversity_jaccard.png'), bbox_inches='tight')
+		plt.savefig(os.path.join(dataset_dir, 'merged_topic_diversity_jaccard_similarity.png'), bbox_inches='tight')
 		plt.close()
 
-	# Visualization 16: Merged Topic Distribution Comparison
+	# Visualization 15: Topic Distribution Comparison: Before vs. After Merging
 	if enable_visualizations:
-		plt.figure(figsize=(16, 7))
+		plt.figure(figsize=(19, 10))
 		bars_before = plt.bar(
-			[i - 0.2 for i in range(n_clusters)],
+			[i - 0.1 for i in range(n_clusters)],
 			[cluster_text_counts[i] for i in range(n_clusters) if i in cluster_text_counts],
-			width=0.4,
-			color='skyblue',
+			width=0.2,
+			color='#3785e6',
 			label=f'Before Merging: {sum(cluster_text_counts[i] for i in range(n_clusters))} in {n_clusters} clusters'
 		)
 		bars_after = plt.bar(
-			[i + 0.2 for i in range(len(merged_topics))],
+			[i + 0.1 for i in range(len(merged_topics))],
 			[len(topic) for topic in merged_topics],
-			width=0.4,
-			color='salmon',
-			label=f'After Merging (Terms): {sum(len(topic) for topic in merged_topics)} in {len(merged_topics)} topics'
+			width=0.2,
+			color='#e45151',
+			label=f'After Merging (Terms): {sum(len(topic) for topic in merged_topics)} in {len(merged_topics)} clusters'
 		)
 		plt.title('Cluster Distribution: Before vs. After Merging')
-		plt.xlabel('Cluster/Topic ID')
+		plt.xlabel('Cluster/Topic')
+		plt.xticks(range(max(n_clusters, len(merged_topics))), labels=range(max(n_clusters, len(merged_topics))), fontsize=10, va='center', ha='center', rotation=90)
 		plt.ylabel('Count')
-		plt.xticks(range(max(n_clusters, len(merged_topics))))
 		plt.legend()
-		# for bar in bars_before + bars_after:
-		# 	yval = bar.get_height()
-		# 	plt.text(bar.get_x() + bar.get_width()/2, yval + 0.5, int(yval), ha='center', va='bottom')
-		plt.savefig(os.path.join(dataset_dir, f'merged_topic_distribution_comparison_{merge_threshold}_threshold.png'), bbox_inches='tight')
+		plt.savefig(os.path.join(dataset_dir, f'topic_distribution_original_vs_merged_thresh_{merge_threshold:.4f}.png'), bbox_inches='tight')
 		plt.close()
 	
-	# Visualization 17: Noise Analysis Plot
+	# Visualization 16: Noise Analysis Plot
 	if enable_visualizations:
 		noise_texts = [texts[i] for i, label in enumerate(labels) if label == -1]
 		noise_lengths = [len(text.split()) for text in noise_texts]
@@ -1123,6 +941,7 @@ def extract_semantic_topics(
 		plt.tight_layout()
 		plt.savefig(os.path.join(dataset_dir, 'noise_analysis.png'), bbox_inches='tight')
 		plt.close()
+	
 	flat_topics = set(word for topic in merged_topics for word in topic)
 	print(f"Extracted {len(flat_topics)} unique topic terms after merging")
 	return merged_topics, flat_topics
@@ -1484,9 +1303,7 @@ def get_textual_based_annotation(
 		csv_file: str, 
 		num_workers: int,
 		batch_size: int,
-		top_k_words: int,
 		relevance_threshold: float,
-		merge_threshold: float,
 		metadata_fpth: str,
 		device: str,
 		verbose: bool=True,
@@ -1529,23 +1346,20 @@ def get_textual_based_annotation(
 
 	print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
 	
-	df['content'] = df['enriched_document_description'].fillna('')
+	df['content'] = df['enriched_document_description'].fillna('').astype(str)
 	num_samples = len(df)
-	
-	# Clean text
-	print("Cleaning text...")
-	df['clean_content'] = df['content'].apply(clean_text)
+	print(f"Total number of samples: {num_samples}")
 	
 	print("Filtering non-English entries...")
 	t0 = time.time()
-	english_mask = df['clean_content'].apply(lambda x: is_english(x, ft_model))
+	english_mask = df['content'].apply(lambda x: is_english(text=x, ft_model=ft_model, verbose=False))
 	english_indices = english_mask[english_mask].index.tolist()
 	print(f"{sum(english_mask)} / {len(df)} texts are English")
 	print(f"Language filter done in {time.time() - t0:.2f} sec")
 	
 	# Create a filtered dataframe with only English entries
 	english_df = df[english_mask].reset_index(drop=True)
-	english_texts = english_df['clean_content'].tolist()
+	english_texts = english_df['content'].tolist()
 
 	# Initialize results for all entries with empty lists
 	per_image_labels = [[] for _ in range(num_samples)]
@@ -1557,11 +1371,9 @@ def get_textual_based_annotation(
 			sent_model=sent_model,
 			ft_model=ft_model,
 			texts=english_texts,
-			top_k_words=top_k_words,
-			merge_threshold=merge_threshold, # Merge similar topics
 			dataset_dir=dataset_dir,
 		)
-		print(f"{len(topics)} Topics(clusters) {type(topics)}:\n{topics}")
+		print(f"{len(topics)} Topics (clusters) {type(topics)}:\n{[len(tp) for tp in topics]}")
 		print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(160, "-"))
 		
 		# Step 2: Named Entity Recognition per image
@@ -1587,12 +1399,51 @@ def get_textual_based_annotation(
 				per_image_ner_labels.append(entities)
 		print(f"NER done in {time.time() - t0:.1f} sec")
 		
-		# Step 3: Extract keywords per image
-		print("Extracting keywords per image using TF-IDF...")
+		# # Step 3: Extract keywords per image
+		# print("Extracting keywords per image using TF-IDF...")
+		# t0 = time.time()
+		# # per_image_keywords = [extract_keywords(text, ft_model) for text in english_texts]
+		# per_image_keywords = [
+		# 	kw_model.extract_keywords(text, keyphrase_ngram_range=(1, 3), stop_words='english', top_n=10) 
+		# 	for text in english_texts
+		# ]
+		# print(f"Keyword extraction done in {time.time() - t0:.1f} sec")		
+		print("Extracting keywords per image using KeyBERT...")
 		t0 = time.time()
-		per_image_keywords = [extract_keywords(text, ft_model) for text in english_texts]
+		per_image_keywords = []
+		for text in tqdm(english_texts, desc="Keyword Extraction"):
+			if not is_english(text, ft_model):  # Skip non-English texts
+				per_image_keywords.append([])
+				continue
+			try:
+				# Extract keyphrases with KeyBERT
+				phrases = kw_model.extract_keywords(
+					text,
+					keyphrase_ngram_range=(1, 3),  # 1-3 word phrases
+					stop_words=CUSTOM_STOPWORDS,  # Use custom stopwords
+					top_n=10,  # Top 10 phrases
+					# diversity=0.7,  # Reduce redundancy
+					# use_maxsum=True
+				)
+				# Filter and normalize phrases
+				keywords = []
+				seen_phrases = set()
+				for phrase, _ in phrases:
+					words = phrase.split()
+					stopword_count = sum(1 for w in words if w in CUSTOM_STOPWORDS)
+					if stopword_count / len(words) > 0.7 or len(words) < 1:  # Allow single words
+						continue
+					normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
+					if len(normalized.split()) >= 1 and normalized not in seen_phrases:
+						keywords.append(normalized)
+						seen_phrases.add(normalized)
+				per_image_keywords.append(keywords)
+			except Exception as e:
+				print(f"KeyBERT error for text: {text[:100]}...: {e}")
+				per_image_keywords.append([])
 		print(f"Keyword extraction done in {time.time() - t0:.1f} sec")
-		
+
+
 		# Step 4: Add individual topic labels
 		print("Assigning topic labels per image...")
 		t0 = time.time()
@@ -2031,8 +1882,6 @@ def main():
 	parser.add_argument("--use_parallel", '-parallel', action="store_true")
 	parser.add_argument("--num_workers", '-nw', type=int, default=16)
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=512)
-	parser.add_argument("--top_k_words", '-tkw', type=int, default=100)
-	parser.add_argument("--merge_threshold", '-mt', type=float, default=0.7)
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=16, help="Batch size for vision processing")
 	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.25, help="Relevance threshold for text-based filtering")
 	parser.add_argument("--vision_threshold", '-vth', type=float, default=0.20, help="Confidence threshold for VLM-based filtering")
@@ -2069,8 +1918,6 @@ def main():
 			use_parallel=args.use_parallel,
 			num_workers=args.num_workers,
 			batch_size=args.text_batch_size,
-			top_k_words=args.top_k_words,
-			merge_threshold=args.merge_threshold,
 			relevance_threshold=args.relevance_threshold,
 			metadata_fpth=text_output_path,
 			device=args.device,

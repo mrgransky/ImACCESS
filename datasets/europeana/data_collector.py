@@ -364,7 +364,7 @@ def main():
 		print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
 
 def test():
-	query = "naval commander"
+	query = "military vehicle"
 	params = {
 		'wskey': 'nLbaXYaiH',  # Your API key
 		'qf': [
@@ -389,22 +389,20 @@ def test():
 			items = data['items']
 			tot_results = data['totalResults']
 			print(tot_results, len(items))
-			# Output the extracted items (metadata and descriptions of the images)
-			# for item_idx, item in enumerate(items):
-				# print(f"idx: {item_idx}: {list(item.keys())}")
-				# print(item.get("id"), item.get("title"), item.get("type"))
-				# print(item.get("edmConceptLabel"))
-				# print(item.get("edmConceptPrefLabelLangAware"))
-				# print(item.get("title"))
-				# print(item.get("edmIsShownAt"))
-				# print(item.get("edmIsShownBy"))
-				# print(item.get("edmTimespanLabel"))
-				# print(item.get("language"))
-				# print(item.get("dataProvider"))
-				# print(item.get("provider"))
-				# print("#"*100)
-				# print(json.dumps(item, indent=2))  # Pretty-print the JSON data for each item
-			# You can process or save the 'items' data as needed
+			for item_idx, item in enumerate(items):
+				print(f"idx: {item_idx}: {list(item.keys())}")
+				print(item.get("id"), item.get("title"), item.get("type"))
+				print(item.get("edmConceptLabel"))
+				print(item.get("edmConceptPrefLabelLangAware"))
+				print(item.get("title"))
+				print(item.get("edmIsShownAt"))
+				print(item.get("edmIsShownBy"))
+				print(item.get("edmTimespanLabel"))
+				print(item.get("language"))
+				print(item.get("dataProvider"))
+				print(item.get("provider"))
+				print("#"*100)
+				print(json.dumps(item, indent=2))  # Pretty-print the JSON data for each item
 		else:
 			print("No 'items' found in the response.")
 	else:
@@ -414,6 +412,6 @@ def test():
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
 	get_ip_info()
-	main()
-	# test()
+	# main()
+	test()
 	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))

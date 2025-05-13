@@ -38,8 +38,8 @@ from sklearn.metrics import silhouette_score
 from scipy.cluster.hierarchy import dendrogram, linkage
 from sklearn.neighbors import NearestNeighbors
 from kneed import KneeLocator
-
-nltk.download('words', quiet=True)
+from keybert import KeyBERT
+# nltk.download('words', quiet=True)
 os.environ['TF_ENABLE_ONEDNN_OPTS']='0'
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -78,11 +78,9 @@ warnings.filterwarnings('ignore', category=DeprecationWarning, message="invalid 
 
 nltk_modules = [
 	'punkt',
-	'words',
 	'wordnet',
 	'averaged_perceptron_tagger', 
 	'omw-1.4',
-	'punkt_tab',
 	'stopwords',
 ]
 nltk.download(
@@ -317,6 +315,27 @@ def clean_(text:str, sw:list):
 	if len(text) == 0:
 		return None
 	return text
+
+# def clean_text(text):
+# 		"""Clean text by removing special characters and excess whitespace"""
+# 		if not isinstance(text, str):
+# 				return ""
+		
+# 		# Apply all metadata pattern removals
+# 		for pattern in METADATA_PATTERNS:
+# 				text = re.sub(pattern, '', text)
+
+# 		# Replace specific patterns often found in metadata
+# 		text = re.sub(r'\[\{.*?\}\]', '', text)  # Remove JSON-like structures
+# 		text = re.sub(r'http\S+', '', text)      # Remove URLs
+# 		text = re.sub(r'\d+\.\d+', '', text)     # Remove floating point numbers
+# 		# Remove non-alphanumeric characters but keep spaces
+# 		text = re.sub(r'[^\w\s]', ' ', text)
+# 		# Replace multiple spaces with a single space
+# 		text = re.sub(r'\s+', ' ', text)
+# 		text = text.strip().lower()
+
+# 		return text
 
 def process_rgb_image(image_path: str, transform: T.Compose):
 	# logging.info(f"Processing: {image_path}")
