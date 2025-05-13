@@ -2,8 +2,8 @@ from utils import *
 
 # how to run[Pouta]:
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 50 -tbs 1024 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31/metadata.csv -d "cuda:1" -nw 50 -tbs 1024 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 50 -tbs 1024 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31/metadata.csv -d "cuda:1" -nw 50 -tbs 1024 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_NA.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 50 -tbs 1024 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -d "cuda:3" -nw 50 -tbs 1024 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_HISTORY_X4.out &
 
 # Make language detection deterministic
@@ -257,6 +257,7 @@ def extract_semantic_topics(
 		ft_model: fasttext.FastText._FastText,
 		texts: List[str],
 		dataset_dir: str,
+		num_workers: int,
 		enable_visualizations: bool = True,
 	) -> Tuple[List[List[str]], Set[str]]:
 
@@ -318,6 +319,7 @@ def extract_semantic_topics(
 			algorithm='best',
 			metric='euclidean',
 			cluster_selection_method=cluster_selection_method,
+			core_dist_n_jobs=num_workers,
 		)
 		labels = clusterer.fit_predict(embeddings)
 	n_clusters = len(set(labels)) - (1 if -1 in labels else 0)  # Exclude noise points (-1)
@@ -1374,6 +1376,7 @@ def get_textual_based_annotation(
 			sent_model=sent_model,
 			ft_model=ft_model,
 			texts=english_texts,
+			num_workers=num_workers,
 			dataset_dir=dataset_dir,
 		)
 		print(f"{len(topics)} Topics (clusters) {type(topics)}:\n{[len(tp) for tp in topics]}")
