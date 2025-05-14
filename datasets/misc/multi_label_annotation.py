@@ -276,29 +276,6 @@ def extract_semantic_topics(
 
 	print(f"Raw Embeddings: {embeddings.shape} generated in {time.time() - t0:.2f} sec")
 
-	# # Visualization 0: Raw Embeddings into 2D for better debugging
-	# print(f"Reducing embeddings: {embeddings.shape} to 2D for visualization using UMAP")
-	# umap_reducer = umap.UMAP(
-	# 	n_neighbors=15,
-	# 	min_dist=0.1,
-	# 	densmap=True,
-	# 	spread=1.0,
-	# 	n_components=2, 
-	# 	random_state=42, 
-	# 	metric='cosine',
-	# )
-	# emb_umap = umap_reducer.fit_transform(embeddings)
-	# if enable_visualizations:
-	# 	# Visualize embeddings with UMAP
-	# 	print(f"Reducing embeddings: {embeddings.shape} to 2D for visualization using UMAP")
-	# 	plt.figure(figsize=(18, 10))
-	# 	plt.scatter(emb_umap[:, 0], emb_umap[:, 1], s=25, c='#f1f8ff', edgecolors='#0078e9', alpha=0.8)
-	# 	plt.title(f"UMAP Visualization of Embeddings ({dataset_size} Texts)")
-	# 	plt.xlabel("UMAP Dimension 1")
-	# 	plt.ylabel("UMAP Dimension 2")
-	# 	plt.savefig(os.path.join(dataset_dir, f'umap_raw_embeddings_{embeddings.shape[0]}_x_{embeddings.shape[1]}.png'), bbox_inches='tight')
-	# 	print(f"UMAP visualization saved to {os.path.join(dataset_dir, f'umap_raw_embeddings_{embeddings.shape[0]}_x_{embeddings.shape[1]}.png')}")
-
 	t0 = time.time()
 	if dataset_size < 500:
 		print("Dataset is small, using KMeans for clustering...")
@@ -341,45 +318,58 @@ def extract_semantic_topics(
 		plt.savefig(os.path.join(dataset_dir, f'topic_distribution_before_merging_{n_clusters}_clusters.png'), bbox_inches='tight')
 		plt.close()
 
-	# # Visualization 2: Interactive UMAP Scatter Plot with Plotly
-	# if enable_visualizations:
-	# 	centroids = np.zeros((n_clusters, 2))
-	# 	for i in range(n_clusters):
-	# 		cluster_points = emb_umap[labels == i]
-	# 		if len(cluster_points) > 0:
-	# 			centroids[i] = np.mean(cluster_points, axis=0)
-	# 	distances = np.array([np.linalg.norm(emb_umap[i] - centroids[labels[i]]) if labels[i] != -1 else 0 for i in range(len(texts))])
-	# 	outliers = distances > (np.mean(distances[distances > 0]) + 2 * np.std(distances[distances > 0])) if distances[distances > 0].size > 0 else np.zeros(len(texts), dtype=bool)
-	# 	df_plot = pd.DataFrame({
-	# 		'UMAP1': emb_umap[:, 0],
-	# 		'UMAP2': emb_umap[:, 1],
-	# 		'Cluster': [f'Cluster {l}' if l != -1 else 'Noise' for l in labels],
-	# 		'Text': [text[:100] + '...' if len(text) > 100 else text for text in texts],
-	# 		'Distance_to_Centroid': distances,
-	# 		'Outlier': ['Yes' if o else 'No' for o in outliers]
-	# 	})
-	# 	fig = px.scatter(
-	# 		df_plot,
-	# 		x='UMAP1',
-	# 		y='UMAP2',
-	# 		color='Cluster',
-	# 		symbol='Outlier',
-	# 		hover_data=['Text', 'Distance_to_Centroid'],
-	# 		title=f'Interactive UMAP Visualization of Text Embeddings for {dataset_size} Texts into {n_clusters} Cluster'
-	# 	)
-	# 	fig.add_trace(go.Scatter(
-	# 		x=centroids[:, 0],
-	# 		y=centroids[:, 1],
-	# 		mode='markers+text',
-	# 		marker=dict(size=15, symbol='x', color='#000000'),
-	# 		text=[f'Centroid {i}' for i in range(n_clusters)],
-	# 		textposition='top center',
-	# 		name='Centroids'
-	# 	))
-	# 	fig.write_html(os.path.join(dataset_dir, 'umap_cluster_visualization_interactive.html'))
+	# Visualization 2: Interactive UMAP Scatter Plot with Plotly
+	if enable_visualizations:
+		print(f"UMAP reducing embeddings: {embeddings.shape}")
+		umap_reducer = umap.UMAP(
+			n_neighbors=15,
+			min_dist=0.1,
+			densmap=True,
+			spread=1.0,
+			n_components=2, 
+			random_state=42, 
+			metric='cosine',
+		)
+		emb_umap = umap_reducer.fit_transform(embeddings)
+
+		centroids = np.zeros((n_clusters, 2))
+		for i in range(n_clusters):
+			cluster_points = emb_umap[labels == i]
+			if len(cluster_points) > 0:
+				centroids[i] = np.mean(cluster_points, axis=0)
+		distances = np.array([np.linalg.norm(emb_umap[i] - centroids[labels[i]]) if labels[i] != -1 else 0 for i in range(len(texts))])
+		outliers = distances > (np.mean(distances[distances > 0]) + 2 * np.std(distances[distances > 0])) if distances[distances > 0].size > 0 else np.zeros(len(texts), dtype=bool)
+		df_plot = pd.DataFrame({
+			'UMAP1': emb_umap[:, 0],
+			'UMAP2': emb_umap[:, 1],
+			'Cluster': [f'Cluster {l}' if l != -1 else 'Noise' for l in labels],
+			'Text': [text[:100] + '...' if len(text) > 100 else text for text in texts],
+			'Distance_to_Centroid': distances,
+			'Outlier': ['Yes' if o else 'No' for o in outliers]
+		})
+		fig = px.scatter(
+			df_plot,
+			x='UMAP1',
+			y='UMAP2',
+			color='Cluster',
+			symbol='Outlier',
+			hover_data=['Text', 'Distance_to_Centroid'],
+			title=f'Interactive UMAP Visualization of Text Embeddings for {dataset_size} Texts into {n_clusters} Cluster'
+		)
+		fig.add_trace(go.Scatter(
+			x=centroids[:, 0],
+			y=centroids[:, 1],
+			mode='markers+text',
+			marker=dict(size=15, symbol='x', color='#000000'),
+			text=[f'Centroid {i}' for i in range(n_clusters)],
+			textposition='top center',
+			name='Centroids'
+		))
+		fig.write_html(os.path.join(dataset_dir, 'umap_cluster_visualization_interactive.html'))
 
 	# Collect phrases for each cluster
 	print("Extracting keywords for each cluster using KeyBERT...")
+
 	t0 = time.time()
 	cluster_phrases = defaultdict(Counter)
 	cluster_text_counts = defaultdict(int)
@@ -571,7 +561,7 @@ def extract_semantic_topics(
 			plt.savefig(os.path.join(dataset_dir, f'cooccurrence_network_topic_{label}_before_merging.png'), bbox_inches='tight')
 			plt.close()
 
-	# Visualization 12: Top-K Phrases Bar Plot for Each Topic [before merging]
+	# Visualization 3: Top-K Phrases Bar Plot for Each Topic [before merging]
 	if enable_visualizations:
 		for label, topic_phrases in enumerate(topics_before_merging):
 			if not topic_phrases:
@@ -592,7 +582,7 @@ def extract_semantic_topics(
 			plt.savefig(os.path.join(dataset_dir, f'topK_phrases_topic_{label}_before_merging.png'), bbox_inches='tight')
 			plt.close()
 
-	# Visualization 5: Topic Similarity Heatmap (before merging)
+	# Visualization 4: Topic Similarity Heatmap (before merging)
 	if enable_visualizations:
 		plt.figure(figsize=(17, 12))
 		sns.heatmap(
@@ -609,29 +599,7 @@ def extract_semantic_topics(
 		plt.savefig(os.path.join(dataset_dir, f'topic_similarity_heatmap_before_merging.png'), bbox_inches='tight')
 		plt.close()
 	
-	# Visualization 6: Dendrogram of Topic Similarities (before merging)
-	# if enable_visualizations:
-	# 	sim_values = similarity_matrix[np.triu_indices(len(topics_before_merging), k=1)]
-	# 	if sim_values.size > 0:
-	# 		mean_sim = np.mean(sim_values)
-	# 		min_sim = np.min(sim_values)
-	# 		max_sim = np.max(sim_values)
-	# 		print(f"Similarity matrix stats: Mean={mean_sim:.3f}, Min={min_sim:.3f}, Max={max_sim:.3f}")
-	# 		merge_threshold = np.percentile(sim_values, 75) + 0.10  # Add 0.10 to preserve diversity (dynamic threshold)
-	# 		print(f"Dynamic merge threshold (75th percentile): {merge_threshold}")
-	# 		plt.figure(figsize=(17, 10))
-	# 		linkage_matrix = linkage(sim_values, method='average')
-	# 		dendrogram(linkage_matrix, labels=[f'Topic {i}' for i in range(len(topics_before_merging))])
-	# 		plt.title(f'Dendrogram of Topic Similarities [before merging]')
-	# 		plt.xlabel('Topics')
-	# 		plt.ylabel('Distance (1 - Cosine Similarity)')
-	# 		plt.axhline(y=1-merge_threshold, color='red', linestyle='--', label=f'Merge Threshold ({merge_threshold:.4f})')
-	# 		plt.legend()
-	# 		plt.xticks(rotation=90, fontsize=8)
-	# 		plt.savefig(os.path.join(dataset_dir, f'similarity_dendrogram_before_merging_thresh_{merge_threshold:.4f}.png'), bbox_inches='tight')
-	# 		plt.close()
-	# 	else:
-	# 		print("Similarity matrix is empty.")
+	# Visualization 5: Dendrogram of Topic Similarities (before merging)
 	if enable_visualizations:
 		sim_values = similarity_matrix[np.triu_indices(len(topics_before_merging), k=1)]
 
@@ -674,99 +642,97 @@ def extract_semantic_topics(
 		else:
 				print("Similarity matrix is empty.")
 
-
-
-	# # Visualization 10: UMAP with Top Phrases
-	# if enable_visualizations:
-	# 	# Verify outliers definition (HDBSCAN noise points)
-	# 	outliers = labels == -1  # Noise points from HDBSCAN
-	# 	print(f"Noise points (outliers) in UMAP plot: {np.sum(outliers)}/{len(texts)} texts [{np.sum(outliers) / len(texts) * 100:.2f}%]")
+	# Visualization 6: UMAP with Top Phrases
+	if enable_visualizations:
+		# Verify outliers definition (HDBSCAN noise points)
+		outliers = labels == -1  # Noise points from HDBSCAN
+		print(f"Noise points (outliers) in UMAP plot: {np.sum(outliers)}/{len(texts)} texts [{np.sum(outliers) / len(texts) * 100:.2f}%]")
 		
-	# 	# Get unique clusters (excluding noise)
-	# 	unique_clusters = np.unique(labels[~outliers])
-	# 	print(f">> {len(unique_clusters)} Unique Clusters (excluding noise) [{np.sum(outliers) / len(texts) * 100:.2f}% noise]")
-	# 	if len(unique_clusters) > 0:
-	# 		# Calculate centroids in 2D UMAP space
-	# 		centroids = np.zeros((n_clusters, 2))
-	# 		for i in range(n_clusters):
-	# 			cluster_points = emb_umap[labels == i]
-	# 			if len(cluster_points) > 0:
-	# 				centroids[i] = np.mean(cluster_points, axis=0)
-	# 		print(f"Centroids shape: {centroids.shape}")
+		# Get unique clusters (excluding noise)
+		unique_clusters = np.unique(labels[~outliers])
+		print(f">> {len(unique_clusters)} Unique Clusters (excluding noise) [{np.sum(outliers) / len(texts) * 100:.2f}% noise]")
+		if len(unique_clusters) > 0:
+			# Calculate centroids in 2D UMAP space
+			centroids = np.zeros((n_clusters, 2))
+			for i in range(n_clusters):
+				cluster_points = emb_umap[labels == i]
+				if len(cluster_points) > 0:
+					centroids[i] = np.mean(cluster_points, axis=0)
+			print(f"Centroids shape: {centroids.shape}")
 			
-	# 		# Assign outliers to nearest cluster based on distance
-	# 		outlier_assignments = np.full(emb_umap.shape[0], -1)
-	# 		if np.sum(outliers) > 0:
-	# 			# Compute distances from outlier points to centroids
-	# 			outlier_indices = np.where(outliers)[0]
-	# 			outlier_points = emb_umap[outlier_indices]
-	# 			distances = np.linalg.norm(outlier_points[:, np.newaxis] - centroids, axis=2)
-	# 			# Assign each outlier to the nearest cluster
-	# 			nearest_clusters = unique_clusters[np.argmin(distances, axis=1)]
-	# 			outlier_assignments[outlier_indices] = nearest_clusters
+			# Assign outliers to nearest cluster based on distance
+			outlier_assignments = np.full(emb_umap.shape[0], -1)
+			if np.sum(outliers) > 0:
+				# Compute distances from outlier points to centroids
+				outlier_indices = np.where(outliers)[0]
+				outlier_points = emb_umap[outlier_indices]
+				distances = np.linalg.norm(outlier_points[:, np.newaxis] - centroids, axis=2)
+				# Assign each outlier to the nearest cluster
+				nearest_clusters = unique_clusters[np.argmin(distances, axis=1)]
+				outlier_assignments[outlier_indices] = nearest_clusters
 			
-	# 		plt.figure(figsize=(18, 10))
-	# 		# Map cluster labels to colors from the 'tab20' palette
-	# 		tab20_cmap = plt.cm.get_cmap('tab20')
-	# 		cluster_colors = tab20_cmap(np.linspace(0, 1, len(unique_clusters)))
-	# 		# Create a mapping of cluster labels to colors
-	# 		cluster_color_map = {cluster: color for cluster, color in zip(unique_clusters, cluster_colors)}
+			plt.figure(figsize=(18, 10))
+			# Map cluster labels to colors from the 'tab20' palette
+			tab20_cmap = plt.cm.get_cmap('tab20')
+			cluster_colors = tab20_cmap(np.linspace(0, 1, len(unique_clusters)))
+			# Create a mapping of cluster labels to colors
+			cluster_color_map = {cluster: color for cluster, color in zip(unique_clusters, cluster_colors)}
 			
-	# 		# Plot inliers as empty circles with edge colors matching their cluster
-	# 		for cluster in unique_clusters:
-	# 			cluster_mask = labels == cluster
-	# 			plt.scatter(
-	# 				emb_umap[cluster_mask, 0],
-	# 				emb_umap[cluster_mask, 1],
-	# 				facecolors='none',
-	# 				edgecolors=cluster_color_map[cluster],
-	# 				marker='o',
-	# 				s=30,
-	# 				linewidths=1.1,
-	# 				alpha=0.98,
-	# 				label=None,
-	# 				zorder=2,
-	# 			)
+			# Plot inliers as empty circles with edge colors matching their cluster
+			for cluster in unique_clusters:
+				cluster_mask = labels == cluster
+				plt.scatter(
+					emb_umap[cluster_mask, 0],
+					emb_umap[cluster_mask, 1],
+					facecolors='none',
+					edgecolors=cluster_color_map[cluster],
+					marker='o',
+					s=30,
+					linewidths=1.1,
+					alpha=0.98,
+					label=None,
+					zorder=2,
+				)
 			
-	# 		# Plot outliers with same color as nearest cluster, less transparency
-	# 		if np.sum(outliers) > 0:
-	# 			plt.scatter(
-	# 				emb_umap[outliers, 0],
-	# 				emb_umap[outliers, 1],
-	# 				# facecolors='none',
-	# 				facecolors=[cluster_color_map[cluster] for cluster in outlier_assignments[outliers]],
-	# 				marker='^',
-	# 				s=15,
-	# 				linewidths=1.0,
-	# 				alpha=0.7,
-	# 				label=None,
-	# 				zorder=1,
-	# 			)
-	# 		# Plot centroids with colors matching their clusters
-	# 		for i, cluster in enumerate(unique_clusters):
-	# 			plt.scatter(
-	# 				centroids[cluster, 0],
-	# 				centroids[cluster, 1],
-	# 				c=[cluster_color_map[cluster]],
-	# 				marker='x',
-	# 				s=300,
-	# 				linewidths=3.5,
-	# 				alpha=0.75,
-	# 				zorder=3,
-	# 			)
+			# Plot outliers with same color as nearest cluster, less transparency
+			if np.sum(outliers) > 0:
+				plt.scatter(
+					emb_umap[outliers, 0],
+					emb_umap[outliers, 1],
+					# facecolors='none',
+					facecolors=[cluster_color_map[cluster] for cluster in outlier_assignments[outliers]],
+					marker='^',
+					s=15,
+					linewidths=1.0,
+					alpha=0.7,
+					label=None,
+					zorder=1,
+				)
+			# Plot centroids with colors matching their clusters
+			for i, cluster in enumerate(unique_clusters):
+				plt.scatter(
+					centroids[cluster, 0],
+					centroids[cluster, 1],
+					c=[cluster_color_map[cluster]],
+					marker='x',
+					s=300,
+					linewidths=3.5,
+					alpha=0.75,
+					zorder=3,
+				)
 			
-	# 		plt.title(f'2D UMAP Visualization of Text Embeddings with Top Phrases for {len(unique_clusters)} Clusters')
-	# 		plt.xlabel('UMAP 1')
-	# 		plt.ylabel('UMAP 2')
-	# 		ax = plt.gca()
-	# 		if ax.legend_ is not None:
-	# 			ax.legend_.remove()
-	# 		plt.savefig(os.path.join(dataset_dir, 'umap_cluster_visualization_with_phrases.png'), bbox_inches='tight')
-	# 		plt.close()
-	# 	else:
-	# 		print("No unique clusters found, skipping UMAP visualization with top phrases...")
+			plt.title(f'2D UMAP Visualization of Text Embeddings with Top Phrases for {len(unique_clusters)} Clusters')
+			plt.xlabel('UMAP 1')
+			plt.ylabel('UMAP 2')
+			ax = plt.gca()
+			if ax.legend_ is not None:
+				ax.legend_.remove()
+			plt.savefig(os.path.join(dataset_dir, 'umap_cluster_visualization_with_phrases.png'), bbox_inches='tight')
+			plt.close()
+		else:
+			print("No unique clusters found, skipping UMAP visualization with top phrases...")
 
-	# Visualization 11: Cluster Size vs. Term Count Plot
+	# Visualization 7: Cluster Size vs. Term Count Plot
 	if enable_visualizations:
 		print("Cluster Size vs. Term Count Plot")
 		print(f"Cluster Text Counts(before merging) {len(cluster_text_counts)}: {cluster_text_counts}")
@@ -805,7 +771,7 @@ def extract_semantic_topics(
 		else:
 			print("No valid clusters found, skipping Cluster Size vs. Term Count Plot...")
 
-	# Visualization 13: Interactive Topic Similarity Network
+	# Visualization 8: Interactive Topic Similarity Network
 	if enable_visualizations:
 		G = nx.Graph()
 		for i in range(len(topics_before_merging)):
@@ -944,7 +910,7 @@ def extract_semantic_topics(
 		plt.savefig(os.path.join(dataset_dir, 'merged_topic_diversity_jaccard_similarity.png'), bbox_inches='tight')
 		plt.close()
 
-	# Visualization 15: Topic Distribution Comparison: Before vs. After Merging
+	# Visualization 9: Topic Distribution Comparison: Before vs. After Merging
 	if enable_visualizations:
 		plt.figure(figsize=(19, 10))
 		bars_before = plt.bar(
@@ -969,7 +935,7 @@ def extract_semantic_topics(
 		plt.savefig(os.path.join(dataset_dir, f'topic_distribution_original_vs_merged_thresh_{merge_threshold:.4f}.png'), bbox_inches='tight')
 		plt.close()
 	
-	# Visualization 16: Noise Analysis Plot
+	# Visualization 10: Noise Analysis Plot
 	if enable_visualizations:
 		noise_texts = [texts[i] for i, label in enumerate(labels) if label == -1]
 		noise_lengths = [len(text.split()) for text in noise_texts]
@@ -1124,6 +1090,17 @@ def handle_multilingual_labels(labels):
 
 	return processed_labels
 
+def assign_semantic_categories(labels):
+	"""Categorize labels into semantic groups"""
+	categorized_labels = []
+	for label in labels:
+		for category, terms in SEMANTIC_CATEGORIES.items():
+			if any(term in label for term in terms):
+				if label not in categorized_labels:
+					categorized_labels.append(label)
+				break
+	return categorized_labels
+
 def deduplicate_labels(labels):
 	"""Remove semantically redundant labels"""
 	if not labels:
@@ -1156,17 +1133,6 @@ def deduplicate_labels(labels):
 			deduplicated.append(label)
 	
 	return deduplicated
-
-def assign_semantic_categories(labels):
-	"""Categorize labels into semantic groups"""
-	categorized_labels = []
-	for label in labels:
-		for category, terms in SEMANTIC_CATEGORIES.items():
-			if any(term in label for term in terms):
-				if label not in categorized_labels:
-					categorized_labels.append(label)
-				break
-	return categorized_labels
 
 def balance_label_count(
 		image_labels_list, 
@@ -1361,9 +1327,9 @@ def get_textual_based_annotation(
 		print(f"Automatic label extraction from text data".center(160, "-"))
 		print(f"Loading metadata from {csv_file}...")
 	text_based_annotation_start_time = time.time()
-
 	dataset_dir = os.path.dirname(csv_file)
 
+	# Load models
 	sent_model = SentenceTransformer("all-MiniLM-L6-v2", device=device)
 	ft_model = fasttext.load_model("lid.176.ftz")
 	tokenizer = AutoTokenizer.from_pretrained("dslim/bert-base-NER")
@@ -1377,7 +1343,6 @@ def get_textual_based_annotation(
 		batch_size=batch_size,
 	)
 
-	# Load the full dataset
 	dtypes = {
 		'doc_id': str, 'id': str, 'label': str, 'title': str,
 		'description': str, 'img_url': str, 'enriched_document_description': str,
@@ -1450,13 +1415,7 @@ def get_textual_based_annotation(
 		
 		# # Step 3: Extract keywords per image
 		# print("Extracting keywords per image using TF-IDF...")
-		# t0 = time.time()
-		# # per_image_keywords = [extract_keywords(text, ft_model) for text in english_texts]
-		# per_image_keywords = [
-		# 	kw_model.extract_keywords(text, keyphrase_ngram_range=(1, 3), stop_words='english', top_n=10) 
-		# 	for text in english_texts
-		# ]
-		# print(f"Keyword extraction done in {time.time() - t0:.1f} sec")		
+
 		print("Extracting keywords per image using KeyBERT...")
 		t0 = time.time()
 		per_image_keywords = []
@@ -1493,12 +1452,11 @@ def get_textual_based_annotation(
 				per_image_keywords.append([])
 		print(f"Keyword extraction done in {time.time() - t0:.1f} sec")
 
-
 		# Step 4: Add individual topic labels
 		print("Assigning topic labels per image...")
 		t0 = time.time()
 		per_image_topic_labels = []
-		for text in english_texts:
+		for text in tqdm(english_texts, desc="Topic Assignment"):
 			matching_topics = [word for word in flat_topic_words if word in text]
 			per_image_topic_labels.append(matching_topics)
 		print(f"Topic assignment done in {time.time() - t0:.1f} sec")
