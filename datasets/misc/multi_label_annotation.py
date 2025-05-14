@@ -610,29 +610,72 @@ def extract_semantic_topics(
 		plt.close()
 	
 	# Visualization 6: Dendrogram of Topic Similarities (before merging)
+	# if enable_visualizations:
+	# 	sim_values = similarity_matrix[np.triu_indices(len(topics_before_merging), k=1)]
+	# 	if sim_values.size > 0:
+	# 		mean_sim = np.mean(sim_values)
+	# 		min_sim = np.min(sim_values)
+	# 		max_sim = np.max(sim_values)
+	# 		print(f"Similarity matrix stats: Mean={mean_sim:.3f}, Min={min_sim:.3f}, Max={max_sim:.3f}")
+	# 		merge_threshold = np.percentile(sim_values, 75) + 0.10  # Add 0.10 to preserve diversity (dynamic threshold)
+	# 		print(f"Dynamic merge threshold (75th percentile): {merge_threshold}")
+	# 		plt.figure(figsize=(17, 10))
+	# 		linkage_matrix = linkage(sim_values, method='average')
+	# 		dendrogram(linkage_matrix, labels=[f'Topic {i}' for i in range(len(topics_before_merging))])
+	# 		plt.title(f'Dendrogram of Topic Similarities [before merging]')
+	# 		plt.xlabel('Topics')
+	# 		plt.ylabel('Distance (1 - Cosine Similarity)')
+	# 		plt.axhline(y=1-merge_threshold, color='red', linestyle='--', label=f'Merge Threshold ({merge_threshold:.4f})')
+	# 		plt.legend()
+	# 		plt.xticks(rotation=90, fontsize=8)
+	# 		plt.savefig(os.path.join(dataset_dir, f'similarity_dendrogram_before_merging_thresh_{merge_threshold:.4f}.png'), bbox_inches='tight')
+	# 		plt.close()
+	# 	else:
+	# 		print("Similarity matrix is empty.")
 	if enable_visualizations:
 		sim_values = similarity_matrix[np.triu_indices(len(topics_before_merging), k=1)]
+
 		if sim_values.size > 0:
-			mean_sim = np.mean(sim_values)
-			min_sim = np.min(sim_values)
-			max_sim = np.max(sim_values)
-			print(f"Similarity matrix stats: Mean={mean_sim:.3f}, Min={min_sim:.3f}, Max={max_sim:.3f}")
-			merge_threshold = np.percentile(sim_values, 75) + 0.10  # Add 0.10 to preserve diversity (dynamic threshold)
-			print(f"Dynamic merge threshold (75th percentile): {merge_threshold}")
-			plt.figure(figsize=(17, 10))
-			linkage_matrix = linkage(sim_values, method='average')
-			dendrogram(linkage_matrix, labels=[f'Topic {i}' for i in range(len(topics_before_merging))])
-			plt.title(f'Dendrogram of Topic Similarities [before merging]')
-			plt.xlabel('Topics')
-			plt.ylabel('Distance (1 - Cosine Similarity)')
-			plt.axhline(y=1-merge_threshold, color='red', linestyle='--', label=f'Merge Threshold ({merge_threshold:.4f})')
-			plt.legend()
-			plt.xticks(rotation=90, fontsize=8)
-			plt.savefig(os.path.join(dataset_dir, f'similarity_dendrogram_before_merging_thresh_{merge_threshold:.4f}.png'), bbox_inches='tight')
-			plt.close()
+				mean_sim = np.mean(sim_values)
+				min_sim = np.min(sim_values)
+				max_sim = np.max(sim_values)
+				print(f"Similarity matrix stats: Mean={mean_sim:.3f}, Min={min_sim:.3f}, Max={max_sim:.3f}")
+
+				merge_threshold = np.percentile(sim_values, 75) + 0.10
+				print(f"Dynamic merge threshold (75th percentile): {merge_threshold:.4f}")
+
+				# Convert similarity → distance
+				dist_matrix = 1.0 - similarity_matrix
+				dist_matrix = np.clip(dist_matrix, 0, 2)  # Ensure all distances are in [0, 2]
+
+				# ✅ Zero out diagonal to make it a valid distance matrix
+				np.fill_diagonal(dist_matrix, 0.0)
+
+				from scipy.spatial.distance import squareform
+				condensed_dist = squareform(dist_matrix)  # Converts to condensed form for linkage
+
+				from scipy.cluster.hierarchy import linkage, dendrogram
+				plt.figure(figsize=(17, 10))
+				linkage_matrix = linkage(condensed_dist, method='average')
+				dendrogram(
+						linkage_matrix,
+						labels=[f'Topic {i}' for i in range(len(topics_before_merging))],
+						color_threshold=1 - merge_threshold
+				)
+				plt.title('Dendrogram of Topic Similarities [before merging]')
+				plt.xlabel('Topics')
+				plt.ylabel('Distance (1 - Cosine Similarity)')
+				plt.axhline(y=1 - merge_threshold, color='red', linestyle='--',
+										label=f'Merge Threshold ({merge_threshold:.4f})')
+				plt.legend()
+				plt.xticks(rotation=90, fontsize=8)
+				plt.savefig(os.path.join(dataset_dir, f'similarity_dendrogram_before_merging_thresh_{merge_threshold:.4f}.png'), bbox_inches='tight')
+				plt.close()
 		else:
-			print("Similarity matrix is empty.")
-		
+				print("Similarity matrix is empty.")
+
+
+
 	# # Visualization 10: UMAP with Top Phrases
 	# if enable_visualizations:
 	# 	# Verify outliers definition (HDBSCAN noise points)
@@ -2041,7 +2084,7 @@ def main():
 		print(f"Failed to write Excel file: {e}")
 
 	print("\nExample results:")
-	sample_cols = ['title', 'description', 'label', 'img_url', 'textual_based_labels', 'visual_based_labels', 'multimodal_labels']
+	sample_cols = ['title', 'description', 'label', 'user_query', 'img_url', 'enriched_document_description', 'textual_based_labels', 'visual_based_labels', 'multimodal_labels']
 	available_cols = [col for col in sample_cols if col in df.columns]
 	for i in range(min(25, len(df))):
 		print(f"\nExample {i+1}:")

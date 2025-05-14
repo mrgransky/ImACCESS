@@ -136,7 +136,7 @@ def measure_execution_time(func):
 	"""
 	def wrapper(*args, **kwargs):
 		start_time = time.time()
-		result = func(*args, **kwargs) # # Execute the function and store the result		
+		result = func(*args, **kwargs)
 		end_time = time.time()
 		elapsed_time = end_time - start_time
 		formatted_time = format_elapsed_time(elapsed_time)
