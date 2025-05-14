@@ -14,6 +14,7 @@
 *.log
 *.zip
 *.ftz
+*.bin
 *.tar
 *.tar.gz
 *.tar.xz

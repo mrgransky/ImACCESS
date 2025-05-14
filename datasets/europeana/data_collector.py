@@ -6,6 +6,11 @@ sys.path.insert(0, parent_dir)
 from misc.utils import *
 from misc.visualize import *
 
+FastText_Language_Identification = "lid.176.bin"
+if FastText_Language_Identification not in os.listdir():
+	url = f"https://dl.fbaipublicfiles.com/fasttext/supervised-models/{FastText_Language_Identification}"
+	urllib.request.urlretrieve(url, FastText_Language_Identification)
+ft_model = fasttext.load_model(FastText_Language_Identification)
 dataset_name: str = "europeana".upper()
 parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colletion")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
@@ -145,30 +150,36 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 	df_st_time = time.time()
 	data = []
 	for doc_idx, doc in enumerate(docs):
-		# print(type(doc.get("title")), doc.get("title"))
-		# title = doc.get("title")
 		europeana_id = doc.get("id")
 		doc_id = re.sub("/", "SLASH", europeana_id)
-		# print(type(doc.get("title")), len(doc.get("title")))
 		doc_title_list = doc.get("title") # ["title1", "title2", "title3", ...]
 		doc_description_list = doc.get("dcDescription" )# ["desc1", "desc2", "desc3", ...]
-
-		# with cleaning:
-		# doc_title = clean_(text=' '.join(doc_title_list), sw=STOPWORDS) if doc_title_list else None
-		# doc_description = clean_(text=" ".join(doc_description_list), sw=STOPWORDS) if doc_description_list else None
 
 		doc_title = ' '.join(doc_title_list) if doc_title_list else None
 		doc_description = " ".join(doc_description_list) if doc_description_list else None
 
 		image_url = doc.get("edmIsShownBy")[0]
-		# print(doc.get("edmTimespanLabel"), doc.get("year"), europeana_id, image_url, doc.get("link"))
-		# print(int(doc.get("year")[0]) < 1946)
 
 		pDate = doc.get("edmTimespanLabel")[0].get("def") if (doc.get("edmTimespanLabel") and doc.get("edmTimespanLabel")[0].get("def")) else None
 		raw_doc_date = doc.get("edmTimespanLabel")
 		doc_year = doc.get("year")[0] if (doc.get("year") and doc.get("year")[0]) else None
 		doc_url = f"https://www.europeana.eu/en/item{europeana_id}" # doc.get("guid")
-		
+		# print(f"-"*50)
+		# print(f'{doc.get("title")}: {[is_english(text=title, ft_model=ft_model) for title in doc.get("title") if title]}')
+		for title in doc.get("title"):
+			if title and is_english(text=title, ft_model=ft_model):
+				title_en = title
+				break
+			else:
+				title_en = None
+		# print(f"title_en: {title_en}")
+		description_en = " ".join(doc.get("dcDescriptionLangAware", {}).get("en", [])) if doc.get("dcDescriptionLangAware", {}).get("en", []) else None
+		# print(f"description_en: {description_en}")
+		enriched_document_description = (title_en or '') + " " + (description_en or '')
+		enriched_document_description = enriched_document_description.lstrip() if len(enriched_document_description) > 1 else None
+		# print(f"enriched_document_description: {enriched_document_description}")
+		# print(f"-"*50)
+	
 		if (
 			image_url 
 			and (image_url.endswith('.jpg') or image_url.endswith('.jpeg'))
@@ -180,14 +191,17 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 			'doc_id': europeana_id,
 			'id': doc_id,
 			'user_query': label,
-			'title': doc_title,
-			'description': doc_description,
+			'title': title_en,
+			'description': description_en,
+			'enriched_document_description': enriched_document_description,
+			# 'title': doc_title,
+			# 'description': doc_description,
+			# 'enriched_document_description': (doc_title or '') + " " + (doc_description or ''),
 			'img_url': image_url,
 			"doc_url": doc_url,
-			'enriched_document_description': (doc_title or '') + " " + (doc_description or ''),
 			'raw_doc_date': raw_doc_date,
 			'doc_year': doc_year,
-			# 'my_date': pDate,
+			'country': doc.get("country"),
 			'img_path': f"{os.path.join(IMAGE_DIR, str(doc_id) + '.jpg')}"
 		}
 		data.append(row)
@@ -289,7 +303,8 @@ def main():
 			'doc_year': 'first',
 			'doc_url': 'first',
 			'img_path': 'first',
-			'doc_date': 'first'
+			'doc_date': 'first',
+			'country': 'first',
 		}
 	).reset_index()
 	grouped['label'] = grouped['user_query'].apply(lambda x: replacement_dict.get(x[0], x[0]))
@@ -299,6 +314,7 @@ def main():
 	print(f"Processed europeana_df_merged_raw: {grouped.shape}")
 	print(grouped.head(20))
 	grouped.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
+
 	try:
 		grouped.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
 	except Exception as e:
@@ -364,7 +380,7 @@ def main():
 		print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
 
 def test():
-	query = "military vehicle"
+	query = "RESERVOIR"
 	params = {
 		'wskey': 'nLbaXYaiH',  # Your API key
 		'qf': [
@@ -390,24 +406,39 @@ def test():
 			tot_results = data['totalResults']
 			print(tot_results, len(items))
 			for item_idx, item in enumerate(items):
-				print(f"idx: {item_idx}: {list(item.keys())}")
-				print(item.get("id"), item.get("title"), item.get("type"))
+				print(f"\nidx: {item_idx}: {list(item.keys())}")
+				print(item.get("id"))
+				print(f"-"*50)
+				print(f'{item.get("title")}: {[is_english(text=title, ft_model=ft_model) for title in item.get("title") if title]}')
+				for title in item.get("title"):
+					if title and is_english(text=title, ft_model=ft_model):
+						title_en = title
+						break
+					else:
+						title_en = None
+				print(f"title_en: {title_en}")
+				description_en = " ".join(item.get("dcDescriptionLangAware", {}).get("en", [])) if item.get("dcDescriptionLangAware", {}).get("en", []) else None
+				print(f"description_en: {description_en}")
+				enriched_document_description = (title_en or '') + " " + (description_en or '')
+				enriched_document_description = enriched_document_description.lstrip() if len(enriched_document_description) > 1 else None
+				print(f"enriched_document_description: {enriched_document_description}")
+				print(f"-"*50)
+				print(item.get("type"))
 				print(item.get("edmConceptLabel"))
 				print(item.get("edmConceptPrefLabelLangAware"))
-				print(item.get("title"))
 				print(item.get("edmIsShownAt"))
 				print(item.get("edmIsShownBy"))
 				print(item.get("edmTimespanLabel"))
 				print(item.get("language"))
 				print(item.get("dataProvider"))
 				print(item.get("provider"))
-				print("#"*100)
-				print(json.dumps(item, indent=2))  # Pretty-print the JSON data for each item
+				print(item.get("country")[0])
+				# print(json.dumps(item, indent=2, assure_ascii=False))
+				print("#"*150)
 		else:
 			print("No 'items' found in the response.")
 	else:
 		print(f"Request failed with status code {response.status_code}")
-
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))

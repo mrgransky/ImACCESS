@@ -38,10 +38,10 @@ METADATA_PATTERNS = [
 	r'\w+ association',       # Organization suffixes without context
 ]
 
-FastText_Language_Identification = "lid.176.ftz"
-if "lid.176.ftz" not in os.listdir():
-	url = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz"
-	urllib.request.urlretrieve(url, "lid.176.ftz")
+FastText_Language_Identification = "lid.176.bin"
+if FastText_Language_Identification not in os.listdir():
+	url = f"https://dl.fbaipublicfiles.com/fasttext/supervised-models/{FastText_Language_Identification}"
+	urllib.request.urlretrieve(url, FastText_Language_Identification)
 
 # Semantic categories for organization
 SEMANTIC_CATEGORIES = {
@@ -196,41 +196,6 @@ def get_hdbscan_parameters(embeddings, use_static=False):
 	min_samples = max(5, min(10, density_samples)) # Cap min_samples lower
 	
 	return min_cluster_size, min_samples
-
-def is_english(
-		text: str, 
-		ft_model: fasttext.FastText._FastText,
-		verbose: bool=False,
-		min_length: int=5,
-	) -> bool:
-	if verbose:
-		print(f"text({len(text)}): {text}")
-	if not text or len(text) < min_length:
-		if verbose:
-			print(f"text({len(text)}) is too short")
-		return False
-	text = text.replace("\n", " ").replace("\r", " ").strip()  # 🛠️ sanitize input
-	if len(text) < 20:
-		# Short texts: rely on ASCII + stopword heuristics
-		ascii_chars = sum(c.isalpha() and ord(c) < 128 for c in text)
-		total_chars = sum(c.isalpha() for c in text)
-		if total_chars == 0 or ascii_chars / total_chars < 0.9:
-			if verbose:
-				print(f"text({len(text)}) is not English")
-			return False
-		common_words = {'the', 'and', 'of', 'to', 'in', 'is', 'was', 'for', 'with', 'on'}
-		words = text.lower().split()
-		return any(word in common_words for word in words)
-	# Long texts: fasttext is preferred
-	try:
-		prediction = ft_model.predict(text)[0][0]
-		if verbose:
-			print(f"Fasttext prediction: {prediction}")
-		return prediction == '__label__en'
-	except ValueError as e:
-		if verbose:
-			print(f"FastText error: {e}")
-		return False
 
 def is_likely_english_term(term):
 	"""Check if a term is likely English or a proper noun"""

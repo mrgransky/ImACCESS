@@ -93,6 +93,41 @@ nltk.download(
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 
+def is_english(
+		text: str, 
+		ft_model: fasttext.FastText._FastText,
+		verbose: bool=False,
+		min_length: int=5,
+	) -> bool:
+	if verbose:
+		print(f"text({len(text)}): {text}")
+	if not text or len(text) < min_length:
+		if verbose:
+			print(f"text({len(text)}) is too short")
+		return False
+	text = text.replace("\n", " ").replace("\r", " ").strip()  # 🛠️ sanitize input
+	if len(text) < 20:
+		# Short texts: rely on ASCII + stopword heuristics
+		ascii_chars = sum(c.isalpha() and ord(c) < 128 for c in text)
+		total_chars = sum(c.isalpha() for c in text)
+		if total_chars == 0 or ascii_chars / total_chars < 0.9:
+			if verbose:
+				print(f"text({len(text)}) is not English")
+			return False
+		common_words = {'the', 'and', 'of', 'to', 'in', 'is', 'was', 'for', 'with', 'on'}
+		words = text.lower().split()
+		return any(word in common_words for word in words)
+	# Long texts: fasttext is preferred
+	try:
+		prediction = ft_model.predict(text)[0][0]
+		if verbose:
+			print(f"Fasttext prediction: {prediction}")
+		return prediction == '__label__en'
+	except ValueError as e:
+		if verbose:
+			print(f"FastText error: {e}")
+		return False
+
 def print_args_table(args, parser):
 	args_dict = vars(args)
 	table_data = []
