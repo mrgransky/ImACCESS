@@ -1397,7 +1397,7 @@ def get_textual_based_annotation(
 
 	print(f"Loading sentence-transformer model: {st_model_name}...")
 	sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
-	ft_model = fasttext.load_model("lid.176.ftz")
+	ft_model = fasttext.load_model(FastText_Language_Identification)
 	tokenizer = AutoTokenizer.from_pretrained("dslim/bert-base-NER")
 	model = AutoModelForTokenClassification.from_pretrained("dslim/bert-base-NER")
 	nlp = pipeline(

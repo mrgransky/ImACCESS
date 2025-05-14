@@ -101,13 +101,21 @@ def is_english(
 	) -> bool:
 	if verbose:
 		print(f"text({len(text)}): {text}")
+	# Check for empty text
 	if not text or len(text) < min_length:
 		if verbose:
 			print(f"text({len(text)}) is too short")
 		return False
-	text = text.replace("\n", " ").replace("\r", " ").strip()  # 🛠️ sanitize input
+	# Sanitize input
+	text = text.lower().replace("\n", " ").replace("\r", " ").strip()
+	# Remove patterns like C.d.Lupo, S.d.Roma, etc.
+	text = re.sub(r'\b[A-Z]\.d\.[A-Z][a-z]+\b', '', text)
+	# Remove repeated punctuation and excess whitespace
+	text = re.sub(r'\s+', ' ', text)
+	text = text.strip(" .\n\r\t")
+
+	# Short texts: rely on ASCII + stopword heuristics
 	if len(text) < 20:
-		# Short texts: rely on ASCII + stopword heuristics
 		ascii_chars = sum(c.isalpha() and ord(c) < 128 for c in text)
 		total_chars = sum(c.isalpha() for c in text)
 		if total_chars == 0 or ascii_chars / total_chars < 0.9:
@@ -115,8 +123,9 @@ def is_english(
 				print(f"text({len(text)}) is not English")
 			return False
 		common_words = {'the', 'and', 'of', 'to', 'in', 'is', 'was', 'for', 'with', 'on'}
-		words = text.lower().split()
+		words = text.split()
 		return any(word in common_words for word in words)
+	
 	# Long texts: fasttext is preferred
 	try:
 		prediction = ft_model.predict(text)[0][0]

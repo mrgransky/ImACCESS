@@ -164,21 +164,21 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 		raw_doc_date = doc.get("edmTimespanLabel")
 		doc_year = doc.get("year")[0] if (doc.get("year") and doc.get("year")[0]) else None
 		doc_url = f"https://www.europeana.eu/en/item{europeana_id}" # doc.get("guid")
-		# print(f"-"*50)
-		# print(f'{doc.get("title")}: {[is_english(text=title, ft_model=ft_model) for title in doc.get("title") if title]}')
+		print(f"-"*50)
+		print(f'{doc.get("title")}: {[is_english(text=title, ft_model=ft_model) for title in doc.get("title") if title]}')
 		for title in doc.get("title"):
 			if title and is_english(text=title, ft_model=ft_model):
 				title_en = title
 				break
 			else:
 				title_en = None
-		# print(f"title_en: {title_en}")
+		print(f"title_en: {title_en}")
 		description_en = " ".join(doc.get("dcDescriptionLangAware", {}).get("en", [])) if doc.get("dcDescriptionLangAware", {}).get("en", []) else None
-		# print(f"description_en: {description_en}")
+		print(f"description_en: {description_en}")
 		enriched_document_description = (title_en or '') + " " + (description_en or '')
 		enriched_document_description = enriched_document_description.lstrip() if len(enriched_document_description) > 1 else None
-		# print(f"enriched_document_description: {enriched_document_description}")
-		# print(f"-"*50)
+		print(f"enriched_document_description: {enriched_document_description}")
+		print(f"-"*50)
 	
 		if (
 			image_url 
@@ -443,6 +443,6 @@ def test():
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
 	get_ip_info()
-	# main()
-	test()
+	main()
+	# test()
 	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))
