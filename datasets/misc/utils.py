@@ -39,7 +39,6 @@ from scipy.cluster.hierarchy import dendrogram, linkage
 from sklearn.neighbors import NearestNeighbors
 from kneed import KneeLocator
 from keybert import KeyBERT
-# nltk.download('words', quiet=True)
 os.environ['TF_ENABLE_ONEDNN_OPTS']='0'
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 

@@ -264,7 +264,8 @@ def extract_semantic_topics(
 	# Generate embeddings
 	kw_model = KeyBERT(model=sent_model)
 	dataset_size = len(texts)
-	emb_fpth = os.path.join(dataset_dir, f'text_embeddings_{dataset_size}_samples.gz')
+	sentence_transformer_name = sent_model._first_module().auto_model.config._name_or_path.replace(r"/", "_") # 'sentence-transformers_all-mpnet-base-v2'
+	emb_fpth = os.path.join(dataset_dir, f'{sentence_transformer_name}_embeddings_{dataset_size}_samples.gz')
 	t0 = time.time()
 	try:
 		embeddings = load_pickle(fpath=emb_fpth)
@@ -369,7 +370,6 @@ def extract_semantic_topics(
 
 	# Collect phrases for each cluster
 	print("Extracting keywords for each cluster using KeyBERT...")
-
 	t0 = time.time()
 	cluster_phrases = defaultdict(Counter)
 	cluster_text_counts = defaultdict(int)
@@ -384,51 +384,50 @@ def extract_semantic_topics(
 				keyphrase_ngram_range=(1, 3),  # 1-3 word phrases
 				stop_words="english",
 				top_n=5,  # Top 5 phrases
-				# diversity=0.7,  # Reduce redundancy
-				# use_maxsum=True
 			)
 			# print(phrases)
 			phrase_filter_log['total_phrases'] += len(phrases)
 			# Filter phrases
 			valid_phrases = []
 			for phrase, _ in phrases:  # Ignore KeyBERT scores for now
-					words = phrase.split()
-					stopword_count = sum(1 for word in words if word in CUSTOM_STOPWORDS)
-					# Relaxed stopword filter: allow <=70% stopwords
-					if stopword_count / len(words) > 0.7:
-							phrase_filter_log['stopword_filtered'] += 1
-							continue
-					# Length filter: ensure phrase has 2+ words
-					if len(words) < 2:
-							phrase_filter_log['length_filtered'] += 1
-							continue
-					valid_phrases.append(phrase)
+				words = phrase.split()
+				stopword_count = sum(1 for word in words if word in CUSTOM_STOPWORDS)
+				# Relaxed stopword filter: allow <=70% stopwords
+				if stopword_count / len(words) > 0.7:
+					phrase_filter_log['stopword_filtered'] += 1
+					continue
+				# Length filter: ensure phrase has 2+ words
+				if len(words) < 2:
+					phrase_filter_log['length_filtered'] += 1
+					continue
+				valid_phrases.append(phrase)
 			
 			# Normalize phrases to reduce repetition
 			normalized_phrases = []
 			seen_phrases = set()
 			for phrase in valid_phrases:
-					# Remove consecutive duplicate words
-					words = phrase.split()
-					normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
-					# Ensure normalized phrase is unique and meets length requirement
-					if len(normalized.split()) >= 2 and normalized not in seen_phrases:
-							normalized_phrases.append(normalized)
-							seen_phrases.add(normalized)
-					else:
-							phrase_filter_log['length_filtered'] += 1
+				# Remove consecutive duplicate words
+				words = phrase.split()
+				normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
+				# Ensure normalized phrase is unique and meets length requirement
+				if len(normalized.split()) >= 2 and normalized not in seen_phrases:
+					normalized_phrases.append(normalized)
+					seen_phrases.add(normalized)
+				else:
+					phrase_filter_log['length_filtered'] += 1
 			
 			if not normalized_phrases:
-					print(f"Text {i} has no valid phrases: {text[:500]}")
+				print(f"Text {i} has no valid phrases: {text[:500]}")
 			else:
-					cluster_phrases[label].update(normalized_phrases)
+				cluster_phrases[label].update(normalized_phrases)
 			cluster_text_counts[label] += 1
 		else:
 			print(f"Text {i} is not English: {text[:500]}")
 	print(f"Phrase collection done in {time.time() - t0:.2f} sec")
 	
-	# Visualization 4: Phrase Retention Histogram
+	# Visualization 3: Phrase Retention Histogram
 	if enable_visualizations:
+		print("Phrase Retention Histogram")
 		plt.figure(figsize=(12, 6))
 		plt.bar(
 			['Total Phrases', 'Stopword Filtered', 'Length Filtered'], 
@@ -448,7 +447,6 @@ def extract_semantic_topics(
 	topics_before_merging = []
 	term_counts_per_cluster = []
 	for label, counter in cluster_phrases.items():
-		# print(f"Topic {label}: {cluster_text_counts[label]} texts, {len(counter)} phrases, Sample: {list(counter.items())[:5]}")
 		if not counter:
 			print(f"Warning: Topic {label} has no phrases.")
 		# Score phrases with diversity bonus
@@ -491,7 +489,6 @@ def extract_semantic_topics(
 		print("Warning: No words available for topic embeddings.")
 
 	topic_embeddings = []
-
 	for topic in topics_before_merging:
 		topic_embs = [word_to_embedding[word] for word in topic if word in word_to_embedding]
 		topic_emb = np.mean(topic_embs, axis=0) if topic_embs else np.zeros(word_embeddings.shape[1])
@@ -502,66 +499,90 @@ def extract_semantic_topics(
 			similarity_matrix[i, j] = sim
 			similarity_matrix[j, i] = sim
 
-	# Visualization 7: Phrase Co-Occurrence Network for Each Topic [before merging]
+	# Visualization 4: Phrase Co-Occurrence Network for Each Topic [before merging]
 	if enable_visualizations:
 		print(f"Generating co-occurrence networks for {len(topics_before_merging)} topics [before merging]...")
 		for label, topic_phrases in enumerate(topics_before_merging):
 			if not topic_phrases:
-					print(f"Skipping Topic {label}: No phrases available.")
-					continue
+				print(f"Skipping Topic {label}: No phrases available.")
+				continue
+			# Select top 10 phrases by frequency to reduce clutter
 			counter = cluster_phrases[label]
+			phrase_freq = {phrase: counter[phrase] for phrase in topic_phrases if phrase in counter}
+			top_phrases = sorted(phrase_freq.items(), key=lambda x: x[1], reverse=True)[:10]
+			top_phrases = [phrase for phrase, _ in top_phrases]
+			if not top_phrases:
+				print(f"Skipping Topic {label}: No phrases after filtering.")
+				continue
 			cluster_texts = [texts[i] for i, l in enumerate(labels) if l == label and is_english(texts[i], ft_model)]
 			if not cluster_texts:
-					print(f"Skipping Topic {label}: No valid texts for co-occurrence.")
-					continue
-			phrase_set = set(topic_phrases)
+				print(f"Skipping Topic {label}: No valid texts for co-occurrence.")
+				continue
+			phrase_set = set(top_phrases)
 			cooc_matrix = defaultdict(int)
 			for text in cluster_texts:
-					# Extract keyphrases with KeyBERT
-					phrases = kw_model.extract_keywords(
-							text,
-							keyphrase_ngram_range=(1, 3),  # 1-3 word phrases
-							stop_words="english",
-							top_n=5,  # Top 5 phrases
-							# diversity=0.7,  # Reduce redundancy
-							# use_maxsum=True # makes it slow
-					)
-					# Filter and normalize phrases
-					valid_phrases = []
-					seen_phrases = set()
-					for phrase, _ in phrases:
-							words = phrase.split()
-							stopword_count = sum(1 for w in words if w in CUSTOM_STOPWORDS)
-							if stopword_count / len(words) > 0.7 or len(words) < 2:
-									continue
-							normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
-							if len(normalized.split()) >= 2 and normalized not in seen_phrases:
-									valid_phrases.append(normalized)
-									seen_phrases.add(normalized)
-					# Compute co-occurrences within topic phrases
-					text_phrases = set(valid_phrases).intersection(phrase_set)
-					for p1 in text_phrases:
-							for p2 in text_phrases:
-									if p1 < p2:
-											cooc_matrix[(p1, p2)] += 1
+				phrases = kw_model.extract_keywords(
+					text,
+					keyphrase_ngram_range=(1, 3),
+					stop_words="english",
+					top_n=5,
+				)
+				valid_phrases = []
+				seen_phrases = set()
+				for phrase, _ in phrases:
+					words = phrase.split()
+					stopword_count = sum(1 for w in words if w in CUSTOM_STOPWORDS)
+					if stopword_count / len(words) > 0.7 or len(words) < 2:
+						continue
+					normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
+					if len(normalized.split()) >= 2 and normalized not in seen_phrases:
+						valid_phrases.append(normalized)
+						seen_phrases.add(normalized)
+				text_phrases = set(valid_phrases).intersection(phrase_set)
+				for p1 in text_phrases:
+					for p2 in text_phrases:
+						if p1 < p2:
+							cooc_matrix[(p1, p2)] += 1
 			G = nx.Graph()
 			for (p1, p2), count in cooc_matrix.items():
-					if count > 0:
-							G.add_edge(p1, p2, weight=count)
-			for phrase in topic_phrases:
-					if phrase not in G:
-							G.add_node(phrase)
-			plt.figure(figsize=(18, 12))
-			pos = nx.spring_layout(G)
+				if count >= 2:  # Minimum co-occurrence threshold
+					G.add_edge(p1, p2, weight=count)
+			for phrase in top_phrases:
+				if phrase not in G:
+					G.add_node(phrase)
+			plt.figure(figsize=(12, 8))
+			pos = nx.spring_layout(G, k=0.5, iterations=50)  # Adjusted k for better spacing
+			print(f"Position: {pos}")
 			edge_weights = [G[u][v]['weight'] for u, v in G.edges()]
-			nx.draw_networkx_edges(G, pos, width=[w * 1.1 for w in edge_weights], alpha=0.7, edge_color='#000a16')
-			nx.draw_networkx_nodes(G, pos, node_size=500, node_color='#54a1ff', alpha=0.8)
-			nx.draw_networkx_labels(G, pos, font_size=10, font_family='monospace')
-			plt.title(f'Phrase Co-Occurrence Network for Topic {label} [before merging] with {len(G.nodes())} nodes and {len(G.edges())} edges')
-			plt.savefig(os.path.join(dataset_dir, f'cooccurrence_network_topic_{label}_before_merging.png'), bbox_inches='tight')
+			print(f"Edge weights: {edge_weights}")
+			nx.draw_networkx_edges(
+				G=G, 
+				pos=pos,
+				width=[w * 0.1 for w in edge_weights],
+				alpha=0.65,
+				edge_color='#303030b7'
+			)
+			nx.draw_networkx_nodes(
+				G, 
+				pos,
+				node_size=100,
+				node_color='#1070b1',
+				alpha=0.9,
+			)
+			nx.draw_networkx_labels(
+				G, 
+				pos,
+				font_size=5,
+				alpha=0.95,
+				verticalalignment='baseline',
+				horizontalalignment='left'
+			)
+			plt.title(f'Phrase Co-Occurrence Network for Topic {label} [before merging] ({len(G.nodes())} nodes, {len(G.edges())} edges)')
+			plt.axis('off')
+			plt.savefig(os.path.join(dataset_dir, f'cooccurrence_network_topic_{label}_before_merging.png'), bbox_inches='tight', dpi=300)
 			plt.close()
 
-	# Visualization 3: Top-K Phrases Bar Plot for Each Topic [before merging]
+	# Visualization 5: Top-K Phrases Bar Plot for Each Topic [before merging]
 	if enable_visualizations:
 		for label, topic_phrases in enumerate(topics_before_merging):
 			if not topic_phrases:
@@ -582,7 +603,7 @@ def extract_semantic_topics(
 			plt.savefig(os.path.join(dataset_dir, f'topK_phrases_topic_{label}_before_merging.png'), bbox_inches='tight')
 			plt.close()
 
-	# Visualization 4: Topic Similarity Heatmap (before merging)
+	# Visualization 6: Topic Similarity Heatmap (before merging)
 	if enable_visualizations:
 		plt.figure(figsize=(17, 12))
 		sns.heatmap(
@@ -599,50 +620,43 @@ def extract_semantic_topics(
 		plt.savefig(os.path.join(dataset_dir, f'topic_similarity_heatmap_before_merging.png'), bbox_inches='tight')
 		plt.close()
 	
-	# Visualization 5: Dendrogram of Topic Similarities (before merging)
+	# Visualization 7: Dendrogram of Topic Similarities (before merging)
 	if enable_visualizations:
 		sim_values = similarity_matrix[np.triu_indices(len(topics_before_merging), k=1)]
-
 		if sim_values.size > 0:
-				mean_sim = np.mean(sim_values)
-				min_sim = np.min(sim_values)
-				max_sim = np.max(sim_values)
-				print(f"Similarity matrix stats: Mean={mean_sim:.3f}, Min={min_sim:.3f}, Max={max_sim:.3f}")
-
-				merge_threshold = np.percentile(sim_values, 75) + 0.10
-				print(f"Dynamic merge threshold (75th percentile): {merge_threshold:.4f}")
-
-				# Convert similarity → distance
-				dist_matrix = 1.0 - similarity_matrix
-				dist_matrix = np.clip(dist_matrix, 0, 2)  # Ensure all distances are in [0, 2]
-
-				# ✅ Zero out diagonal to make it a valid distance matrix
-				np.fill_diagonal(dist_matrix, 0.0)
-
-				from scipy.spatial.distance import squareform
-				condensed_dist = squareform(dist_matrix)  # Converts to condensed form for linkage
-
-				from scipy.cluster.hierarchy import linkage, dendrogram
-				plt.figure(figsize=(17, 10))
-				linkage_matrix = linkage(condensed_dist, method='average')
-				dendrogram(
-						linkage_matrix,
-						labels=[f'Topic {i}' for i in range(len(topics_before_merging))],
-						color_threshold=1 - merge_threshold
-				)
-				plt.title('Dendrogram of Topic Similarities [before merging]')
-				plt.xlabel('Topics')
-				plt.ylabel('Distance (1 - Cosine Similarity)')
-				plt.axhline(y=1 - merge_threshold, color='red', linestyle='--',
-										label=f'Merge Threshold ({merge_threshold:.4f})')
-				plt.legend()
-				plt.xticks(rotation=90, fontsize=8)
-				plt.savefig(os.path.join(dataset_dir, f'similarity_dendrogram_before_merging_thresh_{merge_threshold:.4f}.png'), bbox_inches='tight')
-				plt.close()
+			mean_sim = np.mean(sim_values)
+			min_sim = np.min(sim_values)
+			max_sim = np.max(sim_values)
+			print(f"Similarity matrix stats: Mean={mean_sim:.3f}, Min={min_sim:.3f}, Max={max_sim:.3f}")
+			merge_threshold = np.percentile(sim_values, 75) + 0.10
+			print(f"Dynamic merge threshold (75th percentile): {merge_threshold:.4f}")
+			# Convert similarity → distance
+			dist_matrix = 1.0 - similarity_matrix
+			dist_matrix = np.clip(dist_matrix, 0, 2)  # Ensure all distances are in [0, 2]
+			# Zero out diagonal to make it a valid distance matrix
+			np.fill_diagonal(dist_matrix, 0.0)
+			from scipy.spatial.distance import squareform
+			condensed_dist = squareform(dist_matrix)  # Converts to condensed form for linkage
+			from scipy.cluster.hierarchy import linkage, dendrogram
+			plt.figure(figsize=(17, 10))
+			linkage_matrix = linkage(condensed_dist, method='average')
+			dendrogram(
+				linkage_matrix,
+				labels=[f'Topic {i}' for i in range(len(topics_before_merging))],
+				color_threshold=1 - merge_threshold
+			)
+			plt.title('Dendrogram of Topic Similarities [before merging]')
+			plt.xlabel('Topics')
+			plt.ylabel('Distance (1 - Cosine Similarity)')
+			plt.axhline(y=1 - merge_threshold, color='red', linestyle='--', label=f'Merge Threshold ({merge_threshold:.4f})')
+			plt.legend()
+			plt.xticks(rotation=90, fontsize=8)
+			plt.savefig(os.path.join(dataset_dir, f'similarity_dendrogram_before_merging_thresh_{merge_threshold:.4f}.png'), bbox_inches='tight')
+			plt.close()
 		else:
-				print("Similarity matrix is empty.")
+			print("Similarity matrix is empty.")
 
-	# Visualization 6: UMAP with Top Phrases
+	# Visualization 8: UMAP with Top Phrases
 	if enable_visualizations:
 		# Verify outliers definition (HDBSCAN noise points)
 		outliers = labels == -1  # Noise points from HDBSCAN
@@ -732,7 +746,7 @@ def extract_semantic_topics(
 		else:
 			print("No unique clusters found, skipping UMAP visualization with top phrases...")
 
-	# Visualization 7: Cluster Size vs. Term Count Plot
+	# Visualization 9: Cluster Size vs. Term Count Plot
 	if enable_visualizations:
 		print("Cluster Size vs. Term Count Plot")
 		print(f"Cluster Text Counts(before merging) {len(cluster_text_counts)}: {cluster_text_counts}")
@@ -771,7 +785,7 @@ def extract_semantic_topics(
 		else:
 			print("No valid clusters found, skipping Cluster Size vs. Term Count Plot...")
 
-	# Visualization 8: Interactive Topic Similarity Network
+	# Visualization 10: Interactive Topic Similarity Network
 	if enable_visualizations:
 		G = nx.Graph()
 		for i in range(len(topics_before_merging)):
@@ -875,7 +889,7 @@ def extract_semantic_topics(
 			merged_topics.append(sorted_phrases)
 	print(f"Topics Reduced from {len(topics_before_merging)} to {len(merged_topics)} topics after merging")
 
-	# Visualization 14: Topic Diversity Plot (after merging)
+	# Visualization 11: Topic Diversity Plot (after merging)
 	if enable_visualizations:
 		unique_terms_per_topic = [len(set(topic)) for topic in merged_topics]
 		plt.figure(figsize=(17, 7))
@@ -910,7 +924,7 @@ def extract_semantic_topics(
 		plt.savefig(os.path.join(dataset_dir, 'merged_topic_diversity_jaccard_similarity.png'), bbox_inches='tight')
 		plt.close()
 
-	# Visualization 9: Topic Distribution Comparison: Before vs. After Merging
+	# Visualization 12: Topic Distribution Comparison: Before vs. After Merging
 	if enable_visualizations:
 		plt.figure(figsize=(19, 10))
 		bars_before = plt.bar(
@@ -935,7 +949,7 @@ def extract_semantic_topics(
 		plt.savefig(os.path.join(dataset_dir, f'topic_distribution_original_vs_merged_thresh_{merge_threshold:.4f}.png'), bbox_inches='tight')
 		plt.close()
 	
-	# Visualization 10: Noise Analysis Plot
+	# Visualization 13: Noise Analysis Plot
 	if enable_visualizations:
 		noise_texts = [texts[i] for i, label in enumerate(labels) if label == -1]
 		noise_lengths = [len(text.split()) for text in noise_texts]
@@ -955,7 +969,111 @@ def extract_semantic_topics(
 		plt.tight_layout()
 		plt.savefig(os.path.join(dataset_dir, 'noise_analysis.png'), bbox_inches='tight')
 		plt.close()
-	
+
+	# Visualization 14: Phrase Co-Occurrence Network for Each Topic [after merging]
+	if enable_visualizations:
+		print(f"Generating co-occurrence networks for {len(merged_topics)} topics [after merging]...")
+		# Map merged topic indices to original cluster indices
+		cluster_to_merged = {}
+		current_merged_idx = 0
+		used_indices = set()
+		for i in range(len(topics_before_merging)):
+			if i in used_indices:
+				continue
+			merged_indices = {i}
+			used_indices.add(i)
+			for j in range(len(topics_before_merging)):
+				if j in used_indices or i == j:
+					continue
+				if similarity_matrix[i, j] > merge_threshold:
+					merged_indices.add(j)
+					used_indices.add(j)
+			for orig_idx in merged_indices:
+				cluster_to_merged[orig_idx] = current_merged_idx
+			current_merged_idx += 1
+		for merged_idx, topic_phrases in enumerate(merged_topics):
+			if not topic_phrases:
+					print(f"Skipping Merged Topic {merged_idx}: No phrases available.")
+					continue
+			# Select top 10 phrases by frequency to reduce clutter
+			counter = Counter()
+			original_clusters = [orig_idx for orig_idx, m_idx in cluster_to_merged.items() if m_idx == merged_idx]
+			for orig_idx in original_clusters:
+					for phrase in cluster_phrases[orig_idx]:
+							counter[phrase] += cluster_phrases[orig_idx][phrase]
+			phrase_freq = {phrase: counter[phrase] for phrase in topic_phrases if phrase in counter}
+			top_phrases = sorted(phrase_freq.items(), key=lambda x: x[1], reverse=True)[:10]
+			top_phrases = [phrase for phrase, _ in top_phrases]
+			if not top_phrases:
+					print(f"Skipping Merged Topic {merged_idx}: No phrases after filtering.")
+					continue
+			# Collect texts from all original clusters that were merged into this topic
+			cluster_texts = [
+					texts[i] for i, l in enumerate(labels)
+					if l in original_clusters and is_english(texts[i], ft_model)
+			]
+			if not cluster_texts:
+					print(f"Skipping Merged Topic {merged_idx}: No valid texts for co-occurrence.")
+					continue
+			phrase_set = set(top_phrases)
+			cooc_matrix = defaultdict(int)
+			for text in cluster_texts:
+					phrases = kw_model.extract_keywords(
+							text,
+							keyphrase_ngram_range=(1, 3),
+							stop_words="english",
+							top_n=5,
+					)
+					valid_phrases = []
+					seen_phrases = set()
+					for phrase, _ in phrases:
+							words = phrase.split()
+							stopword_count = sum(1 for w in words if w in CUSTOM_STOPWORDS)
+							if stopword_count / len(words) > 0.7 or len(words) < 2:
+									continue
+							normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
+							if len(normalized.split()) >= 2 and normalized not in seen_phrases:
+									valid_phrases.append(normalized)
+									seen_phrases.add(normalized)
+					text_phrases = set(valid_phrases).intersection(phrase_set)
+					for p1 in text_phrases:
+							for p2 in text_phrases:
+									if p1 < p2:
+											cooc_matrix[(p1, p2)] += 1
+			G = nx.Graph()
+			for (p1, p2), count in cooc_matrix.items():
+					if count >= 2:  # Minimum co-occurrence threshold
+							G.add_edge(p1, p2, weight=count)
+			for phrase in top_phrases:
+					if phrase not in G:
+							G.add_node(phrase)
+			plt.figure(figsize=(12, 8))
+			pos = nx.spring_layout(G, k=0.5, iterations=50)  # Adjusted k for better spacing
+			edge_weights = [G[u][v]['weight'] for u, v in G.edges()]
+			nx.draw_networkx_edges(
+					G, pos,
+					width=[w * 0.1 for w in edge_weights],  # Scale edge width
+					alpha=0.6,
+					edge_color='#474646'
+			)
+			nx.draw_networkx_nodes(
+					G, pos,
+					node_size=150,
+					node_color='#bddf00',  # Orange color for distinction
+					alpha=0.9
+			)
+			nx.draw_networkx_labels(
+					G, pos,
+					font_size=5,
+					alpha=0.95,
+					verticalalignment='center',
+					horizontalalignment='center'
+			)
+			plt.title(f'Phrase Co-Occurrence Network for Merged Topic {merged_idx} ({len(G.nodes())} nodes, {len(G.edges())} edges)')
+			plt.axis('off')
+			plt.savefig(os.path.join(dataset_dir, f'cooccurrence_network_merged_topic_{merged_idx}.png'), bbox_inches='tight', dpi=300)
+			plt.close()
+
 	flat_topics = set(word for topic in merged_topics for word in topic)
 	print(f"Extracted {len(flat_topics)} unique topic terms after merging")
 	return merged_topics, flat_topics
@@ -1197,53 +1315,33 @@ def batch_filter_by_relevance(
 		all_labels_list: list[list[str]],
 		threshold: float=0.3,
 		batch_size: int=128,
-		print_every=10,
 	):
-	"""Process document relevance filtering in efficient batches"""
 	results = []
 	total = len(texts)
-	
-	# Process in batches to avoid memory issues
-	for batch_start in range(0, total, batch_size):
+	for batch_start in tqdm(range(0, total, batch_size), desc="Relevance Filtering"):
 		batch_end = min(batch_start + batch_size, total)
 		batch_texts = texts[batch_start:batch_end]
 		batch_labels_list = all_labels_list[batch_start:batch_end]
-
-		
 		# First apply quick filtering to reduce candidates
 		quick_filtered_batch = []
 		for text, labels in zip(batch_texts, batch_labels_list):
 			quick_filtered = quick_filter_candidates(text, labels)
 			quick_filtered_batch.append(quick_filtered)
-		
 		# Get text embeddings for the batch (more efficient)
 		text_embeddings = sent_model.encode(batch_texts, show_progress_bar=False, batch_size=batch_size, convert_to_numpy=True)
-		
 		batch_results = []
 		for i, (text_emb, labels) in enumerate(zip(text_embeddings, quick_filtered_batch)):
 			if not labels:
 				batch_results.append([])
 				continue
-					
 			# Encode all labels at once for this document
 			label_embeddings = sent_model.encode(labels, show_progress_bar=False, convert_to_numpy=True)
-			
 			# Calculate similarities all at once (vectorized operation)
 			similarities = np.dot(label_embeddings, text_emb) / (np.linalg.norm(label_embeddings, axis=1) * np.linalg.norm(text_emb) + 1e-8)
-			
 			# Filter by threshold
 			relevant_indices = np.where(similarities > threshold)[0]
-			batch_results.append([labels[idx] for idx in relevant_indices])
-			
-			# # Progress indicator within batch
-			# if (i + 1) % print_every == 0 or i + 1 == len(batch_texts):
-			# 	print(f"  Processed {i+1}/{len(batch_texts)} documents in current batch")
-
+			batch_results.append([labels[idx] for idx in relevant_indices])			
 		results.extend(batch_results)
-
-		if batch_start % print_every == 0 or batch_start == 0:
-			print(f"batch {batch_start//batch_size + 1}/{(total-1)//batch_size + 1} with {sum(len(labels) for labels in batch_results)} relevant labels found")
-	
 	return results
 
 def process_document_chunk(chunk_data):
@@ -1320,23 +1418,26 @@ def get_textual_based_annotation(
 		relevance_threshold: float,
 		metadata_fpth: str,
 		device: str,
+		st_model_name: str,
 		verbose: bool=True,
 		use_parallel: bool=False,
 	):
+
 	if verbose:
 		print(f"Automatic label extraction from text data".center(160, "-"))
 		print(f"Loading metadata from {csv_file}...")
+
 	text_based_annotation_start_time = time.time()
 	dataset_dir = os.path.dirname(csv_file)
 
-	# Load models
-	sent_model = SentenceTransformer("all-MiniLM-L6-v2", device=device)
+	print(f"Loading sentence-transformer model: {st_model_name}...")
+	sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
 	ft_model = fasttext.load_model("lid.176.ftz")
 	tokenizer = AutoTokenizer.from_pretrained("dslim/bert-base-NER")
 	model = AutoModelForTokenClassification.from_pretrained("dslim/bert-base-NER")
 	nlp = pipeline(
 		task="ner", 
-		model=model, 
+		model=model,
 		tokenizer=tokenizer, 
 		aggregation_strategy="simple",
 		device=device,
@@ -1376,6 +1477,7 @@ def get_textual_based_annotation(
 
 	# Initialize results for all entries with empty lists
 	per_image_labels = [[] for _ in range(num_samples)]
+
 	if len(english_texts) > 0:
 		# Step 1: Topic Modeling with redundancy reduction
 		print("Topic Modeling".center(160, "-"))
@@ -1430,9 +1532,7 @@ def get_textual_based_annotation(
 					text,
 					keyphrase_ngram_range=(1, 3),  # 1-3 word phrases
 					stop_words=CUSTOM_STOPWORDS,  # Use custom stopwords
-					top_n=10,  # Top 10 phrases
-					# diversity=0.7,  # Reduce redundancy
-					# use_maxsum=True
+					top_n=5,  # Top 5 phrases
 				)
 				# Filter and normalize phrases
 				keywords = []
@@ -1475,7 +1575,7 @@ def get_textual_based_annotation(
 			per_image_combined_labels.append(cleaned_labels)
 		print(f"Label combination and cleaning done in {time.time() - t0:.3f} sec")
 		# Step 6: Filter by relevance and handle languages (optimized)
-		print("Filtering labels by relevance...")
+		print(f"Filtering labels by relevance (thresh: {relevance_threshold})...")
 		t0 = time.time()
 		if use_parallel:
 			print("Using parallel processing for relevance filtering...")
@@ -1492,7 +1592,6 @@ def get_textual_based_annotation(
 				all_labels_list=per_image_combined_labels,
 				threshold=relevance_threshold,
 				batch_size=batch_size,
-				print_every=500,
 			)
 		print(f"Relevance filtering done in {time.time() - t0:.1f} sec")
 		# Post-process: language handling, deduplication, etc.
@@ -1890,10 +1989,11 @@ def main():
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--use_parallel", '-parallel', action="store_true")
 	parser.add_argument("--num_workers", '-nw', type=int, default=16)
-	parser.add_argument("--text_batch_size", '-tbs', type=int, default=512)
+	parser.add_argument("--text_batch_size", '-tbs', type=int, default=64)
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=16, help="Batch size for vision processing")
-	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.25, help="Relevance threshold for text-based filtering")
-	parser.add_argument("--vision_threshold", '-vth', type=float, default=0.20, help="Confidence threshold for VLM-based filtering")
+	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.2, help="Relevance threshold for text-based filtering")
+	parser.add_argument("--vision_threshold", '-vth', type=float, default=0.30, help="Confidence threshold for VLM-based filtering")
+	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2"], help="Sentence-transformer model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 
 	args, unknown = parser.parse_known_args()
@@ -1930,6 +2030,7 @@ def main():
 			num_workers=args.num_workers,
 			batch_size=args.text_batch_size,
 			relevance_threshold=args.relevance_threshold,
+			st_model_name=args.sentence_model_name,
 			metadata_fpth=text_output_path,
 			device=args.device,
 			verbose=True,
@@ -1968,26 +2069,24 @@ def main():
 	
 	# Check if combined file already exists
 	if os.path.exists(combined_output_path):
-			print(f"Found existing combined labels at {combined_output_path}.")
-			recompute = input("Do you want to recompute the combined labels? (y/n): ").lower() == 'y'
-			if not recompute:
-					print("Using existing combined labels.")
-					combined_df = pd.read_csv(combined_output_path)
-					
-					# Handle combined labels with proper null value handling
-					combined_labels = []
-					for label_str in combined_df['multimodal_labels']:
-							if pd.isna(label_str) or label_str == '[]' or not label_str:
-									combined_labels.append([])
-							else:
-									try:
-											labels = eval(label_str)
-											combined_labels.append(labels if labels else [])
-									except:
-											combined_labels.append([])
-											
-					print(f"Loaded {len(combined_labels)} combined labels")
-					return combined_labels
+		print(f"Found existing combined labels at {combined_output_path}.")
+		recompute = input("Do you want to recompute the combined labels? (y/n): ").lower() == 'y'
+		if not recompute:
+			print("Using existing combined labels.")
+			combined_df = pd.read_csv(combined_output_path)
+			# Handle combined labels with proper null value handling
+			combined_labels = []
+			for label_str in combined_df['multimodal_labels']:
+				if pd.isna(label_str) or label_str == '[]' or not label_str:
+					combined_labels.append([])
+				else:
+					try:
+						labels = eval(label_str)
+						combined_labels.append(labels if labels else [])
+					except:
+						combined_labels.append([])				
+			print(f"Loaded {len(combined_labels)} combined labels")
+			return combined_labels
 	print("Merging text and vision annotations...")
 	combined_labels = []
 	empty_count = 0
