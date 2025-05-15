@@ -292,7 +292,7 @@ def extract_semantic_topics(
 			# UMAP embedding:
 			print(f"Reducing embeddings: {embeddings.shape} to 50D for clustering using UMAP...")
 			umap_reducer = umap.UMAP(
-				n_neighbors=15,
+				n_neighbors=5,
 				min_dist=0.1,
 				densmap=True,
 				spread=1.0,
