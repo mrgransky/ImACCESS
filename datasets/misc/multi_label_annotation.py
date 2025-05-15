@@ -263,7 +263,7 @@ def extract_semantic_topics(
 	print(f"Raw Embeddings: {embeddings.shape} generated in {time.time() - t0:.2f} sec")
 
 	t0 = time.time()
-	if dataset_size < 500:
+	if dataset_size < 1000:
 		print("Dataset is small, using KMeans for clustering...")
 		kmeans = KMeans(n_clusters=min(10, max(2, int(np.sqrt(dataset_size)))), random_state=42)
 		labels = kmeans.fit_predict(embeddings)
