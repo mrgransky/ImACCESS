@@ -3,7 +3,7 @@ from utils import *
 # how to run[Pouta]:
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31/metadata.csv -d "cuda:1" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_NA.out &
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 50 -tbs 256 -vbs 512 -vth 0.3 -rth 0.2 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -d "cuda:3" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_HISTORY_X4.out &
 
 # Make language detection deterministic
@@ -157,7 +157,7 @@ def find_optimal_min_cluster_size(embeddings, dataset_size, max_clusters=50):
 def get_hdbscan_parameters(
         embeddings, 
         use_static=False, 
-        minimum_cap=20,
+        minimum_cap=10,  # Reduced from 20
         percentage=None,
 ):
     print(f"get hdbscan parameters for embeddings {embeddings.shape}...".center(160, "-"))
@@ -178,9 +178,9 @@ def get_hdbscan_parameters(
     if num_samples < 5000:
         percentage = 0.005  # 0.5% for small datasets
     elif num_samples < 50000:
-        percentage = 0.0005  # 0.05% for medium datasets (reduced further)
+        percentage = 0.0007  # 0.07% for medium datasets (increased from 0.0005)
     else:
-        percentage = 0.0003  # 0.03% for large datasets (reduced further)
+        percentage = 0.0003  # 0.03% for large datasets
     
     percentage_size = max(minimum_cap, int(num_samples * percentage))
 
@@ -205,11 +205,11 @@ def get_hdbscan_parameters(
     filtered = [x for x in suggestions if (x >= q25 - 2*iqr) and (x <= q75 + 2*iqr)]
     print(f"Filtered: {filtered} median: {np.median(filtered)} min: {min(filtered)} max: {max(filtered)} mean: {np.mean(filtered)}")
     
-    # Use percentage-based size directly (remove validation)
+    # Use percentage-based size directly
     min_cluster_size = percentage_size
     
     # Adjust min_samples to scale with min_cluster_size
-    min_samples = max(5, int(min_cluster_size * 0.15))  # 15% of min_cluster_size, min 5
+    min_samples = max(3, int(min_cluster_size * 0.1))  # 10% of min_cluster_size, min 3
     
     # Log expected number of clusters
     expected_clusters = num_samples / min_cluster_size
