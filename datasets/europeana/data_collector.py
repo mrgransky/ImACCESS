@@ -201,7 +201,7 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 			"doc_url": doc_url,
 			'raw_doc_date': raw_doc_date,
 			'doc_year': doc_year,
-			'country': doc.get("country"),
+			'country': doc.get("country")[0],
 			'img_path': f"{os.path.join(IMAGE_DIR, str(doc_id) + '.jpg')}"
 		}
 		data.append(row)

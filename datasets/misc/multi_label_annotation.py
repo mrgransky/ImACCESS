@@ -1,10 +1,10 @@
 from utils import *
 
 # how to run[Pouta]:
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 50 -tbs 1024 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31/metadata.csv -d "cuda:1" -nw 50 -tbs 1024 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_NA.out &
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 50 -tbs 1024 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -d "cuda:3" -nw 50 -tbs 1024 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_HISTORY_X4.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31/metadata.csv -d "cuda:1" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_NA.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -d "cuda:3" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_HISTORY_X4.out &
 
 # Make language detection deterministic
 DetectorFactory.seed = 42
@@ -154,48 +154,68 @@ def find_optimal_min_cluster_size(embeddings, dataset_size, max_clusters=50):
 		
 		return best_size
 
-def get_hdbscan_parameters(embeddings, use_static=False):
-	print(f"get hdbscan parameters for embeddings {embeddings.shape}...")
-	if use_static:
-		return 100, 10
-	num_samples, num_embeddings = embeddings.shape
+def get_hdbscan_parameters(
+        embeddings, 
+        use_static=False, 
+        minimum_cap=20,
+        percentage=None,
+):
+    print(f"get hdbscan parameters for embeddings {embeddings.shape}...".center(160, "-"))
+    if use_static:
+        return 100, 10
+    num_samples, num_embeddings = embeddings.shape
 
-	# Method 1: Silhouette-based
-	silhouette_size = find_optimal_min_cluster_size(embeddings, num_samples)
-	
-	# Method 2: Knee point detection
-	knee_size = find_knee_point(embeddings)
-	
-	# Method 3: Density-based
-	density_size, density_samples = density_based_parameters(embeddings)
-	
-	# Combine results (median of suggestions)
-	suggestions = [
-		silhouette_size,
-		knee_size,
-		density_size,
-		int(np.sqrt(num_samples) // 2),
-		int(np.sqrt(num_samples) / 2), # ~102 for 42,146
-		int(np.log(num_samples)**2),
-		int(np.log(num_samples)**3),
-		50,
-		70,
-		80,  
-		100,
-		120,
-	]
-	print(f"Suggestions: {suggestions}")
-	# Remove outliers (values outside 25%-75% percentile)
-	q25, q75 = np.percentile(suggestions, [25, 75])
-	iqr = q75 - q25
-	print(f"q25: {q25}, q75: {q75}, iqr: {iqr}")
-	filtered = [x for x in suggestions if (x >= q25 - 2*iqr) and (x <= q75 + 2*iqr)]
-	print(f"Filtered: {filtered} median: {np.median(filtered)} min: {min(filtered)} max: {max(filtered)} mean: {np.mean(filtered)}")
-	
-	min_cluster_size = max(50, int(np.median(filtered)))
-	min_samples = max(5, min(10, density_samples)) # Cap min_samples lower
-	
-	return min_cluster_size, min_samples
+    # Method 1: Silhouette-based
+    silhouette_size = find_optimal_min_cluster_size(embeddings, num_samples)
+    
+    # Method 2: Knee point detection
+    knee_size = find_knee_point(embeddings)
+    
+    # Method 3: Density-based
+    density_size, density_samples = density_based_parameters(embeddings)
+    
+    # Dynamically set percentage based on dataset size
+    if num_samples < 5000:
+        percentage = 0.005  # 0.5% for small datasets
+    elif num_samples < 50000:
+        percentage = 0.0005  # 0.05% for medium datasets (reduced further)
+    else:
+        percentage = 0.0003  # 0.03% for large datasets (reduced further)
+    
+    percentage_size = max(minimum_cap, int(num_samples * percentage))
+
+    # Combine results (for logging)
+    suggestions = [
+        silhouette_size,
+        knee_size,
+        density_size,
+        percentage_size,
+        int(np.sqrt(num_samples) // 2),
+        int(np.sqrt(num_samples) / 2),
+        int(np.log(num_samples)**2),
+        int(np.log(num_samples)**3),
+        50, 70, 80, 100, 120,
+    ]
+    print(f"Suggestions: {suggestions}")
+    
+    # Remove outliers (for logging)
+    q25, q75 = np.percentile(suggestions, [25, 75])
+    iqr = q75 - q25
+    print(f"q25: {q25}, q75: {q75}, iqr: {iqr}")
+    filtered = [x for x in suggestions if (x >= q25 - 2*iqr) and (x <= q75 + 2*iqr)]
+    print(f"Filtered: {filtered} median: {np.median(filtered)} min: {min(filtered)} max: {max(filtered)} mean: {np.mean(filtered)}")
+    
+    # Use percentage-based size directly (remove validation)
+    min_cluster_size = percentage_size
+    
+    # Adjust min_samples to scale with min_cluster_size
+    min_samples = max(5, int(min_cluster_size * 0.15))  # 15% of min_cluster_size, min 5
+    
+    # Log expected number of clusters
+    expected_clusters = num_samples / min_cluster_size
+    print(f"Expected number of clusters: {expected_clusters:.0f}")
+    
+    return min_cluster_size, min_samples
 
 def is_likely_english_term(term):
 	"""Check if a term is likely English or a proper noun"""
@@ -253,8 +273,8 @@ def extract_semantic_topics(
 			embeddings=embeddings,
 			use_static=False,
 		)
-		cluster_selection_method = 'eom' if dataset_size < 500 else 'leaf'
-		print(f"min_cluster_size: {min_cluster_size}, min_samples: {min_samples}, cluster_selection_method: {cluster_selection_method}")
+		cluster_selection_method = 'eom' if dataset_size < 50000 else 'leaf'
+		print(f"min_cluster_size: {min_cluster_size}, min_samples: {min_samples}, cluster_selection_method(dataset_size: {dataset_size}): {cluster_selection_method}")
 		clusterer = hdbscan.HDBSCAN(
 			alpha=1.0,
 			min_cluster_size=min_cluster_size,
@@ -265,21 +285,23 @@ def extract_semantic_topics(
 			core_dist_n_jobs=num_workers,
 		)
 		labels = clusterer.fit_predict(embeddings)
+
 	n_clusters = len(set(labels)) - (1 if -1 in labels else 0)  # Exclude noise points (-1)
 	print(f">>>> Found {n_clusters} clusters (excluding noise points) in {time.time() - t0:.2f} sec")
+	print(f"Cluster Noise (-1) contains: {np.sum(labels == -1)} samples, [{np.sum(labels == -1) / len(labels) * 100:.2f}%]")
 
 	# Visualization 1: Cluster Distribution Bar Plot (Before Merging)
 	if enable_visualizations:
 		topic_counts = Counter(labels)
 		plt.figure(figsize=(16, 7))
 		bars = plt.bar(range(len(topic_counts)), [topic_counts[i] for i in sorted(topic_counts.keys())], color='#3785e6', label='Before Merging')
-		plt.title('Document Distribution Across Clusters (Before Merging)')
+		plt.title('Sample Distribution Across Clusters (Before Merging) [Noise included]')
 		plt.xlabel('Cluster ID')
 		plt.ylabel('Number of Documents')
-		plt.xticks(range(len(topic_counts)), labels=sorted(topic_counts.keys()))
+		plt.xticks(range(len(topic_counts)), labels=sorted(topic_counts.keys()), fontsize=8, va='center', ha='center', rotation=90)
 		for bar in bars:
 			yval = bar.get_height()
-			plt.text(bar.get_x() + bar.get_width()/2, yval + 0.5, int(yval), ha='center', va='bottom')
+			plt.text(bar.get_x() + bar.get_width()/2, yval + 0.7, int(yval), ha='center', va='bottom', fontsize=7, color='#16171a')
 		plt.legend()
 		plt.savefig(os.path.join(dataset_dir, f'topic_distribution_before_merging_{n_clusters}_clusters.png'), bbox_inches='tight')
 		plt.close()
@@ -417,7 +439,7 @@ def extract_semantic_topics(
 		# Score phrases with diversity bonus
 		phrase_scores = []
 		top_k_words = max(10, len(counter) // 15)
-		print(f"Topic {label}: {len(counter)} phrases, Selecting Top-{top_k_words}")
+		# print(f"Topic {label}: {len(counter)} phrases, Selecting Top-{top_k_words}")
 		seen_words = set()
 		for phrase, count in counter.items():
 			words = set(phrase.split())
@@ -510,16 +532,16 @@ def extract_semantic_topics(
 							cooc_matrix[(p1, p2)] += 1
 			G = nx.Graph()
 			for (p1, p2), count in cooc_matrix.items():
-				if count >= 2:  # Minimum co-occurrence threshold
+				if count >= 2: # An edge exists between two phrases if they appear together in the same text at least twice
 					G.add_edge(p1, p2, weight=count)
 			for phrase in top_phrases:
 				if phrase not in G:
 					G.add_node(phrase)
 			plt.figure(figsize=(12, 8))
 			pos = nx.spring_layout(G, k=0.5, iterations=50)  # Adjusted k for better spacing
-			print(f"Position: {pos}")
+			print(f"Position:\n{pos}")
 			edge_weights = [G[u][v]['weight'] for u, v in G.edges()]
-			print(f"Edge weights: {edge_weights}")
+			print(f"Edge weights:\n{edge_weights}")
 			nx.draw_networkx_edges(
 				G=G, 
 				pos=pos,
@@ -1007,7 +1029,7 @@ def extract_semantic_topics(
 											cooc_matrix[(p1, p2)] += 1
 			G = nx.Graph()
 			for (p1, p2), count in cooc_matrix.items():
-					if count >= 2:  # Minimum co-occurrence threshold
+					if count >= 2: # An edge exists between two phrases if they appear together in the same text at least twice
 							G.add_edge(p1, p2, weight=count)
 			for phrase in top_phrases:
 					if phrase not in G:
