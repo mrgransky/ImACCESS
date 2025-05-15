@@ -268,7 +268,14 @@ def extract_semantic_topics(
 		kmeans = KMeans(n_clusters=min(10, max(2, int(np.sqrt(dataset_size)))), random_state=42)
 		labels = kmeans.fit_predict(embeddings)
 	else:
-		sample_size = min(1000, dataset_size)
+		print("Dataset is large, using HDBSCAN for clustering...")
+		min_cluster_size, min_samples = get_hdbscan_parameters(
+			embeddings=embeddings,
+			use_static=False,
+		)
+		# Check for high noise in a sample of the data
+		print(f"Checking for high noise in a sample of the data...")
+		sample_size = min(5000, dataset_size)
 		sample_indices = np.random.choice(dataset_size, sample_size, replace=False)
 		sample_embeddings = embeddings[sample_indices]
 		sample_clusterer = hdbscan.HDBSCAN(
@@ -279,7 +286,7 @@ def extract_semantic_topics(
 		)
 		sample_labels = sample_clusterer.fit_predict(sample_embeddings)
 		noise_ratio = np.sum(sample_labels == -1) / sample_size
-		print(f"Initial noise ratio (sample): {noise_ratio:.2%}")
+		print(f"Initial noise ratio ({sample_size} samples): {noise_ratio:.2%}")
 		if noise_ratio > 0.4:  # Threshold for applying UMAP
 			print(f"High noise detected ({noise_ratio:.2%}), applying UMAP preprocessing...")
 			# UMAP embedding:
@@ -297,10 +304,6 @@ def extract_semantic_topics(
 			embeddings = umap_reducer.fit_transform(embeddings)
 			print(f"UMAP embedding {embeddings.shape} generated in {time.time() - t0:.2f} sec")
 		print(f"Clustering embeddings {embeddings.shape} into topics with HDBSCAN...")
-		min_cluster_size, min_samples = get_hdbscan_parameters(
-			embeddings=embeddings,
-			use_static=False,
-		)
 		cluster_selection_method = 'eom' if dataset_size < 50000 else 'leaf'
 		print(f"min_cluster_size: {min_cluster_size}, min_samples: {min_samples}, cluster_selection_method(dataset_size: {dataset_size}): {cluster_selection_method}")
 		clusterer = hdbscan.HDBSCAN(
