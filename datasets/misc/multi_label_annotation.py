@@ -268,20 +268,34 @@ def extract_semantic_topics(
 		kmeans = KMeans(n_clusters=min(10, max(2, int(np.sqrt(dataset_size)))), random_state=42)
 		labels = kmeans.fit_predict(embeddings)
 	else:
-		# UMAP embedding:
-		print(f"Reducing embeddings: {embeddings.shape} to 50D for clustering using UMAP...")
-		umap_reducer = umap.UMAP(
-			n_neighbors=15,
-			min_dist=0.1,
-			densmap=True,
-			spread=1.0,
-			n_components=50, 
-			random_state=42, 
-			metric='cosine',
-			n_jobs=num_workers,
+		sample_size = min(1000, dataset_size)
+		sample_indices = np.random.choice(dataset_size, sample_size, replace=False)
+		sample_embeddings = embeddings[sample_indices]
+		sample_clusterer = hdbscan.HDBSCAN(
+			min_cluster_size=min_cluster_size,
+			min_samples=min_samples,
+			cluster_selection_method='eom',
+			metric='euclidean',
 		)
-		embeddings = umap_reducer.fit_transform(embeddings)
-		print(f"UMAP embedding {embeddings.shape} generated in {time.time() - t0:.2f} sec")
+		sample_labels = sample_clusterer.fit_predict(sample_embeddings)
+		noise_ratio = np.sum(sample_labels == -1) / sample_size
+		print(f"Initial noise ratio (sample): {noise_ratio:.2%}")
+		if noise_ratio > 0.4:  # Threshold for applying UMAP
+			print(f"High noise detected ({noise_ratio:.2%}), applying UMAP preprocessing...")
+			# UMAP embedding:
+			print(f"Reducing embeddings: {embeddings.shape} to 50D for clustering using UMAP...")
+			umap_reducer = umap.UMAP(
+				n_neighbors=15,
+				min_dist=0.1,
+				densmap=True,
+				spread=1.0,
+				n_components=50, 
+				random_state=42, 
+				metric='cosine',
+				n_jobs=num_workers,
+			)
+			embeddings = umap_reducer.fit_transform(embeddings)
+			print(f"UMAP embedding {embeddings.shape} generated in {time.time() - t0:.2f} sec")
 		print(f"Clustering embeddings {embeddings.shape} into topics with HDBSCAN...")
 		min_cluster_size, min_samples = get_hdbscan_parameters(
 			embeddings=embeddings,
@@ -590,7 +604,7 @@ def extract_semantic_topics(
 				# print(f"Skipping Topic {label}: No phrases available.")
 				continue
 			counter = cluster_phrases[label]
-			print(f"Topic {label}: {len(counter)} phrases, Selecting Top-{len(topic_phrases)}")
+			# print(f"Topic {label}: {len(counter)} phrases, Selecting Top-{len(topic_phrases)}")
 			phrase_freq = {phrase: counter[phrase] for phrase in topic_phrases if phrase in counter}
 			top_k_phrases_per_topic_before_merging = sorted(phrase_freq.items(), key=lambda x: x[1], reverse=True)[:10]
 			if not top_k_phrases_per_topic_before_merging:
@@ -657,95 +671,95 @@ def extract_semantic_topics(
 		else:
 			print("Similarity matrix is empty.")
 
-	# Visualization 8: UMAP with Top Phrases
-	if enable_visualizations:
-		# Verify outliers definition (HDBSCAN noise points)
-		outliers = labels == -1  # Noise points from HDBSCAN
-		print(f"Noise points (outliers) in UMAP plot: {np.sum(outliers)}/{len(texts)} texts [{np.sum(outliers) / len(texts) * 100:.2f}%]")
+	# # Visualization 8: UMAP with Top Phrases
+	# if enable_visualizations:
+	# 	# Verify outliers definition (HDBSCAN noise points)
+	# 	outliers = labels == -1  # Noise points from HDBSCAN
+	# 	print(f"Noise points (outliers) in UMAP plot: {np.sum(outliers)}/{len(texts)} texts [{np.sum(outliers) / len(texts) * 100:.2f}%]")
 		
-		# Get unique clusters (excluding noise)
-		unique_clusters = np.unique(labels[~outliers])
-		print(f">> {len(unique_clusters)} Unique Clusters (excluding noise) [{np.sum(outliers) / len(texts) * 100:.2f}% noise]")
-		if len(unique_clusters) > 0:
-			# Calculate centroids in 2D UMAP space
-			centroids = np.zeros((n_clusters, 2))
-			for i in range(n_clusters):
-				cluster_points = emb_umap[labels == i]
-				if len(cluster_points) > 0:
-					centroids[i] = np.mean(cluster_points, axis=0)
-			print(f"Centroids shape: {centroids.shape}")
+	# 	# Get unique clusters (excluding noise)
+	# 	unique_clusters = np.unique(labels[~outliers])
+	# 	print(f">> {len(unique_clusters)} Unique Clusters (excluding noise) [{np.sum(outliers) / len(texts) * 100:.2f}% noise]")
+	# 	if len(unique_clusters) > 0:
+	# 		# Calculate centroids in 2D UMAP space
+	# 		centroids = np.zeros((n_clusters, 2))
+	# 		for i in range(n_clusters):
+	# 			cluster_points = emb_umap[labels == i]
+	# 			if len(cluster_points) > 0:
+	# 				centroids[i] = np.mean(cluster_points, axis=0)
+	# 		print(f"Centroids shape: {centroids.shape}")
 			
-			# Assign outliers to nearest cluster based on distance
-			outlier_assignments = np.full(emb_umap.shape[0], -1)
-			if np.sum(outliers) > 0:
-				# Compute distances from outlier points to centroids
-				outlier_indices = np.where(outliers)[0]
-				outlier_points = emb_umap[outlier_indices]
-				distances = np.linalg.norm(outlier_points[:, np.newaxis] - centroids, axis=2)
-				# Assign each outlier to the nearest cluster
-				nearest_clusters = unique_clusters[np.argmin(distances, axis=1)]
-				outlier_assignments[outlier_indices] = nearest_clusters
+	# 		# Assign outliers to nearest cluster based on distance
+	# 		outlier_assignments = np.full(emb_umap.shape[0], -1)
+	# 		if np.sum(outliers) > 0:
+	# 			# Compute distances from outlier points to centroids
+	# 			outlier_indices = np.where(outliers)[0]
+	# 			outlier_points = emb_umap[outlier_indices]
+	# 			distances = np.linalg.norm(outlier_points[:, np.newaxis] - centroids, axis=2)
+	# 			# Assign each outlier to the nearest cluster
+	# 			nearest_clusters = unique_clusters[np.argmin(distances, axis=1)]
+	# 			outlier_assignments[outlier_indices] = nearest_clusters
 			
-			plt.figure(figsize=(18, 10))
-			# Map cluster labels to colors from the 'tab20' palette
-			tab20_cmap = plt.cm.get_cmap('tab20')
-			cluster_colors = tab20_cmap(np.linspace(0, 1, len(unique_clusters)))
-			# Create a mapping of cluster labels to colors
-			cluster_color_map = {cluster: color for cluster, color in zip(unique_clusters, cluster_colors)}
+	# 		plt.figure(figsize=(18, 10))
+	# 		# Map cluster labels to colors from the 'tab20' palette
+	# 		tab20_cmap = plt.cm.get_cmap('tab20')
+	# 		cluster_colors = tab20_cmap(np.linspace(0, 1, len(unique_clusters)))
+	# 		# Create a mapping of cluster labels to colors
+	# 		cluster_color_map = {cluster: color for cluster, color in zip(unique_clusters, cluster_colors)}
 			
-			# Plot inliers as empty circles with edge colors matching their cluster
-			for cluster in unique_clusters:
-				cluster_mask = labels == cluster
-				plt.scatter(
-					emb_umap[cluster_mask, 0],
-					emb_umap[cluster_mask, 1],
-					facecolors='none',
-					edgecolors=cluster_color_map[cluster],
-					marker='o',
-					s=30,
-					linewidths=1.1,
-					alpha=0.98,
-					label=None,
-					zorder=2,
-				)
+	# 		# Plot inliers as empty circles with edge colors matching their cluster
+	# 		for cluster in unique_clusters:
+	# 			cluster_mask = labels == cluster
+	# 			plt.scatter(
+	# 				emb_umap[cluster_mask, 0],
+	# 				emb_umap[cluster_mask, 1],
+	# 				facecolors='none',
+	# 				edgecolors=cluster_color_map[cluster],
+	# 				marker='o',
+	# 				s=30,
+	# 				linewidths=1.1,
+	# 				alpha=0.98,
+	# 				label=None,
+	# 				zorder=2,
+	# 			)
 			
-			# Plot outliers with same color as nearest cluster, less transparency
-			if np.sum(outliers) > 0:
-				plt.scatter(
-					emb_umap[outliers, 0],
-					emb_umap[outliers, 1],
-					# facecolors='none',
-					facecolors=[cluster_color_map[cluster] for cluster in outlier_assignments[outliers]],
-					marker='^',
-					s=15,
-					linewidths=1.0,
-					alpha=0.7,
-					label=None,
-					zorder=1,
-				)
-			# Plot centroids with colors matching their clusters
-			for i, cluster in enumerate(unique_clusters):
-				plt.scatter(
-					centroids[cluster, 0],
-					centroids[cluster, 1],
-					c=[cluster_color_map[cluster]],
-					marker='x',
-					s=300,
-					linewidths=3.5,
-					alpha=0.75,
-					zorder=3,
-				)
+	# 		# Plot outliers with same color as nearest cluster, less transparency
+	# 		if np.sum(outliers) > 0:
+	# 			plt.scatter(
+	# 				emb_umap[outliers, 0],
+	# 				emb_umap[outliers, 1],
+	# 				# facecolors='none',
+	# 				facecolors=[cluster_color_map[cluster] for cluster in outlier_assignments[outliers]],
+	# 				marker='^',
+	# 				s=15,
+	# 				linewidths=1.0,
+	# 				alpha=0.7,
+	# 				label=None,
+	# 				zorder=1,
+	# 			)
+	# 		# Plot centroids with colors matching their clusters
+	# 		for i, cluster in enumerate(unique_clusters):
+	# 			plt.scatter(
+	# 				centroids[cluster, 0],
+	# 				centroids[cluster, 1],
+	# 				c=[cluster_color_map[cluster]],
+	# 				marker='x',
+	# 				s=300,
+	# 				linewidths=3.5,
+	# 				alpha=0.75,
+	# 				zorder=3,
+	# 			)
 			
-			plt.title(f'2D UMAP Visualization of Text Embeddings with Top Phrases for {len(unique_clusters)} Clusters')
-			plt.xlabel('UMAP 1')
-			plt.ylabel('UMAP 2')
-			ax = plt.gca()
-			if ax.legend_ is not None:
-				ax.legend_.remove()
-			plt.savefig(os.path.join(dataset_dir, 'umap_cluster_visualization_with_phrases.png'), bbox_inches='tight')
-			plt.close()
-		else:
-			print("No unique clusters found, skipping UMAP visualization with top phrases...")
+	# 		plt.title(f'2D UMAP Visualization of Text Embeddings with Top Phrases for {len(unique_clusters)} Clusters')
+	# 		plt.xlabel('UMAP 1')
+	# 		plt.ylabel('UMAP 2')
+	# 		ax = plt.gca()
+	# 		if ax.legend_ is not None:
+	# 			ax.legend_.remove()
+	# 		plt.savefig(os.path.join(dataset_dir, 'umap_cluster_visualization_with_phrases.png'), bbox_inches='tight')
+	# 		plt.close()
+	# 	else:
+	# 		print("No unique clusters found, skipping UMAP visualization with top phrases...")
 
 	# Visualization 9: Cluster Size vs. Term Count Plot
 	if enable_visualizations:
