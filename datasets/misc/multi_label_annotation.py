@@ -268,6 +268,20 @@ def extract_semantic_topics(
 		kmeans = KMeans(n_clusters=min(10, max(2, int(np.sqrt(dataset_size)))), random_state=42)
 		labels = kmeans.fit_predict(embeddings)
 	else:
+		# UMAP embedding:
+		print(f"Reducing embeddings: {embeddings.shape} to 50D for clustering using UMAP...")
+		umap_reducer = umap.UMAP(
+			n_neighbors=15,
+			min_dist=0.1,
+			densmap=True,
+			spread=1.0,
+			n_components=50, 
+			random_state=42, 
+			metric='cosine',
+			n_jobs=num_workers,
+		)
+		embeddings = umap_reducer.fit_transform(embeddings)
+		print(f"UMAP embedding {embeddings.shape} generated in {time.time() - t0:.2f} sec")
 		print(f"Clustering embeddings {embeddings.shape} into topics with HDBSCAN...")
 		min_cluster_size, min_samples = get_hdbscan_parameters(
 			embeddings=embeddings,
@@ -306,54 +320,54 @@ def extract_semantic_topics(
 		plt.savefig(os.path.join(dataset_dir, f'topic_distribution_before_merging_{n_clusters}_clusters.png'), bbox_inches='tight')
 		plt.close()
 
-	# Visualization 2: Interactive UMAP Scatter Plot with Plotly
-	if enable_visualizations:
-		print(f"UMAP reducing embeddings: {embeddings.shape}")
-		umap_reducer = umap.UMAP(
-			n_neighbors=15,
-			min_dist=0.1,
-			densmap=True,
-			spread=1.0,
-			n_components=2, 
-			random_state=42, 
-			metric='cosine',
-		)
-		emb_umap = umap_reducer.fit_transform(embeddings)
+	# # Visualization 2: Interactive UMAP Scatter Plot with Plotly
+	# if enable_visualizations:
+	# 	print(f"UMAP reducing embeddings: {embeddings.shape}")
+	# 	umap_reducer = umap.UMAP(
+	# 		n_neighbors=15,
+	# 		min_dist=0.1,
+	# 		densmap=True,
+	# 		spread=1.0,
+	# 		n_components=2, 
+	# 		random_state=42, 
+	# 		metric='cosine',
+	# 	)
+	# 	emb_umap = umap_reducer.fit_transform(embeddings)
 
-		centroids = np.zeros((n_clusters, 2))
-		for i in range(n_clusters):
-			cluster_points = emb_umap[labels == i]
-			if len(cluster_points) > 0:
-				centroids[i] = np.mean(cluster_points, axis=0)
-		distances = np.array([np.linalg.norm(emb_umap[i] - centroids[labels[i]]) if labels[i] != -1 else 0 for i in range(len(texts))])
-		outliers = distances > (np.mean(distances[distances > 0]) + 2 * np.std(distances[distances > 0])) if distances[distances > 0].size > 0 else np.zeros(len(texts), dtype=bool)
-		df_plot = pd.DataFrame({
-			'UMAP1': emb_umap[:, 0],
-			'UMAP2': emb_umap[:, 1],
-			'Cluster': [f'Cluster {l}' if l != -1 else 'Noise' for l in labels],
-			'Text': [text[:100] + '...' if len(text) > 100 else text for text in texts],
-			'Distance_to_Centroid': distances,
-			'Outlier': ['Yes' if o else 'No' for o in outliers]
-		})
-		fig = px.scatter(
-			df_plot,
-			x='UMAP1',
-			y='UMAP2',
-			color='Cluster',
-			symbol='Outlier',
-			hover_data=['Text', 'Distance_to_Centroid'],
-			title=f'Interactive UMAP Visualization of Text Embeddings for {dataset_size} Texts into {n_clusters} Cluster'
-		)
-		fig.add_trace(go.Scatter(
-			x=centroids[:, 0],
-			y=centroids[:, 1],
-			mode='markers+text',
-			marker=dict(size=15, symbol='x', color='#000000'),
-			text=[f'Centroid {i}' for i in range(n_clusters)],
-			textposition='top center',
-			name='Centroids'
-		))
-		fig.write_html(os.path.join(dataset_dir, 'umap_cluster_visualization_interactive.html'))
+	# 	centroids = np.zeros((n_clusters, 2))
+	# 	for i in range(n_clusters):
+	# 		cluster_points = emb_umap[labels == i]
+	# 		if len(cluster_points) > 0:
+	# 			centroids[i] = np.mean(cluster_points, axis=0)
+	# 	distances = np.array([np.linalg.norm(emb_umap[i] - centroids[labels[i]]) if labels[i] != -1 else 0 for i in range(len(texts))])
+	# 	outliers = distances > (np.mean(distances[distances > 0]) + 2 * np.std(distances[distances > 0])) if distances[distances > 0].size > 0 else np.zeros(len(texts), dtype=bool)
+	# 	df_plot = pd.DataFrame({
+	# 		'UMAP1': emb_umap[:, 0],
+	# 		'UMAP2': emb_umap[:, 1],
+	# 		'Cluster': [f'Cluster {l}' if l != -1 else 'Noise' for l in labels],
+	# 		'Text': [text[:100] + '...' if len(text) > 100 else text for text in texts],
+	# 		'Distance_to_Centroid': distances,
+	# 		'Outlier': ['Yes' if o else 'No' for o in outliers]
+	# 	})
+	# 	fig = px.scatter(
+	# 		df_plot,
+	# 		x='UMAP1',
+	# 		y='UMAP2',
+	# 		color='Cluster',
+	# 		symbol='Outlier',
+	# 		hover_data=['Text', 'Distance_to_Centroid'],
+	# 		title=f'Interactive UMAP Visualization of Text Embeddings for {dataset_size} Texts into {n_clusters} Cluster'
+	# 	)
+	# 	fig.add_trace(go.Scatter(
+	# 		x=centroids[:, 0],
+	# 		y=centroids[:, 1],
+	# 		mode='markers+text',
+	# 		marker=dict(size=15, symbol='x', color='#000000'),
+	# 		text=[f'Centroid {i}' for i in range(n_clusters)],
+	# 		textposition='top center',
+	# 		name='Centroids'
+	# 	))
+	# 	fig.write_html(os.path.join(dataset_dir, 'umap_cluster_visualization_interactive.html'))
 
 	# Collect phrases for each cluster
 	print("Extracting keywords for each cluster using KeyBERT...")
@@ -491,7 +505,7 @@ def extract_semantic_topics(
 		print(f"Generating co-occurrence networks for {len(topics_before_merging)} topics [before merging]...")
 		for label, topic_phrases in enumerate(topics_before_merging):
 			if not topic_phrases:
-				print(f"Skipping Topic {label}: No phrases available.")
+				# print(f"Skipping Topic {label}: No phrases available.")
 				continue
 			# Select top 10 phrases by frequency to reduce clutter
 			counter = cluster_phrases[label]
@@ -499,11 +513,11 @@ def extract_semantic_topics(
 			top_phrases = sorted(phrase_freq.items(), key=lambda x: x[1], reverse=True)[:10]
 			top_phrases = [phrase for phrase, _ in top_phrases]
 			if not top_phrases:
-				print(f"Skipping Topic {label}: No phrases after filtering.")
+				# print(f"Skipping Topic {label}: No phrases after filtering.")
 				continue
 			cluster_texts = [texts[i] for i, l in enumerate(labels) if l == label and is_english(texts[i], ft_model)]
 			if not cluster_texts:
-				print(f"Skipping Topic {label}: No valid texts for co-occurrence.")
+				# print(f"Skipping Topic {label}: No valid texts for co-occurrence.")
 				continue
 			phrase_set = set(top_phrases)
 			cooc_matrix = defaultdict(int)
@@ -573,7 +587,7 @@ def extract_semantic_topics(
 	if enable_visualizations:
 		for label, topic_phrases in enumerate(topics_before_merging):
 			if not topic_phrases:
-				print(f"Skipping Topic {label}: No phrases available.")
+				# print(f"Skipping Topic {label}: No phrases available.")
 				continue
 			counter = cluster_phrases[label]
 			print(f"Topic {label}: {len(counter)} phrases, Selecting Top-{len(topic_phrases)}")
@@ -980,7 +994,7 @@ def extract_semantic_topics(
 			current_merged_idx += 1
 		for merged_idx, topic_phrases in enumerate(merged_topics):
 			if not topic_phrases:
-					print(f"Skipping Merged Topic {merged_idx}: No phrases available.")
+					# print(f"Skipping Merged Topic {merged_idx}: No phrases available.")
 					continue
 			# Select top 10 phrases by frequency to reduce clutter
 			counter = Counter()
@@ -992,7 +1006,7 @@ def extract_semantic_topics(
 			top_phrases = sorted(phrase_freq.items(), key=lambda x: x[1], reverse=True)[:10]
 			top_phrases = [phrase for phrase, _ in top_phrases]
 			if not top_phrases:
-					print(f"Skipping Merged Topic {merged_idx}: No phrases after filtering.")
+					# print(f"Skipping Merged Topic {merged_idx}: No phrases after filtering.")
 					continue
 			# Collect texts from all original clusters that were merged into this topic
 			cluster_texts = [
