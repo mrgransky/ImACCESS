@@ -268,7 +268,7 @@ def extract_semantic_topics(
 		kmeans = KMeans(n_clusters=min(10, max(2, int(np.sqrt(dataset_size)))), random_state=42)
 		labels = kmeans.fit_predict(embeddings)
 	else:
-		print("Dataset is large, using HDBSCAN for clustering...")
+		print(f"Dataset is large: {dataset_size} samples => HDBSCAN clustering...")
 		min_cluster_size, min_samples = get_hdbscan_parameters(
 			embeddings=embeddings,
 			use_static=False,
