@@ -1424,17 +1424,15 @@ def get_textual_based_annotation(
 	)
 
 	print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
-	
 	df['content'] = df['enriched_document_description'].fillna('').astype(str)
-	num_samples = len(df)
-	print(f"Total number of samples: {num_samples}")
+	num_samples = df.shape[0]
 	
-	print("Filtering non-English entries...")
+	print(f"Filtering non-English entries for {num_samples} samples")
 	t0 = time.time()
 	english_mask = df['content'].apply(lambda x: is_english(text=x, ft_model=ft_model, verbose=False))
 	english_indices = english_mask[english_mask].index.tolist()
-	print(f"{sum(english_mask)} / {len(df)} texts are English")
-	print(f"Language filter done in {time.time() - t0:.2f} sec")
+	print(f"{sum(english_mask)} / {len(df)} texts are English [{sum(english_mask)/len(df)*100:.2f}%]")
+	print(f"Elapsed_t: {time.time() - t0:.2f} sec")
 	
 	# Create a filtered dataframe with only English entries
 	english_df = df[english_mask].reset_index(drop=True)
@@ -1483,6 +1481,7 @@ def get_textual_based_annotation(
 		# # Step 3: Extract keywords per image
 		# print("Extracting keywords per image using TF-IDF...")
 
+		# Step 3: Extract keywords per image
 		print("Extracting keywords per image using KeyBERT...")
 		t0 = time.time()
 		per_image_keywords = []
@@ -1539,6 +1538,7 @@ def get_textual_based_annotation(
 			cleaned_labels = filter_metadata_terms(cleaned_labels)
 			per_image_combined_labels.append(cleaned_labels)
 		print(f"Label combination and cleaning done in {time.time() - t0:.3f} sec")
+
 		# Step 6: Filter by relevance and handle languages (optimized)
 		print(f"Filtering labels by relevance (thresh: {relevance_threshold})...")
 		t0 = time.time()
@@ -1559,7 +1559,8 @@ def get_textual_based_annotation(
 				batch_size=batch_size,
 			)
 		print(f"Relevance filtering done in {time.time() - t0:.1f} sec")
-		# Post-process: language handling, deduplication, etc.
+
+		# Step 7: Post-process: language handling, deduplication, etc.
 		print("Post-processing labels, deduplication, and semantic categorization...")
 		t0 = time.time()
 		english_labels = []
@@ -1579,7 +1580,7 @@ def get_textual_based_annotation(
 			final_labels = sorted(set(filtered_labels + categorized))
 			english_labels.append(final_labels)
 		print(f"Post-processing done in {time.time() - t0:.1f} sec")
-		# Balance label counts
+
 		print("Balancing label counts...")
 		t0 = time.time()
 		english_labels = balance_label_count(english_labels, min_labels=3, max_labels=12)
@@ -1592,9 +1593,7 @@ def get_textual_based_annotation(
 	else:
 		print("No English texts found. Returning empty labels for all entries.")
 	
-	# Save the results in a separate column
-	df['textual_based_labels'] = per_image_labels
-	
+	df['textual_based_labels'] = per_image_labels	
 	df.to_csv(metadata_fpth, index=False)
 	
 	print(f">> Generated text labels for {sum(1 for labels in per_image_labels if labels)} out of {num_samples} entries")
@@ -1610,7 +1609,7 @@ def get_visual_based_annotation(
 		verbose: bool,
 		metadata_fpth: str,
 	) -> List[List[str]]:
-	print(f"Automatic label extraction from image data".center(160, "-"))
+	print(f"Semi-Supervised label extraction from image data(using VLM)".center(160, "-"))
 	start_time = time.time()
 	
 	# Load dataset
@@ -1623,9 +1622,6 @@ def get_visual_based_annotation(
 	
 	if verbose:
 		print("Loading VLM model for image labeling...")
-	# model_name = "openai/clip-vit-large-patch14"
-	# model = CLIPModel.from_pretrained(model_name).to(device)
-	# processor = CLIPProcessor.from_pretrained(model_name)
 	processor = AlignProcessor.from_pretrained("kakaobrain/align-base")
 	model = AlignModel.from_pretrained("kakaobrain/align-base")
 	model.to(device) # Add this line to move the model to the GPU
