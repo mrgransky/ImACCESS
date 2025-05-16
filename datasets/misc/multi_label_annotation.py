@@ -3,7 +3,7 @@ from utils import *
 # how to run[Pouta]:
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31/metadata.csv -d "cuda:1" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_NA.out &
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 50 -tbs 256 -vbs 512 -vth 0.3 -rth 0.2 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 50 -tbs 256 -vbs 512 -vth 0.3 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -d "cuda:3" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_HISTORY_X4.out &
 
 # Make language detection deterministic
@@ -45,7 +45,7 @@ if FastText_Language_Identification not in os.listdir():
 
 # Semantic categories for organization
 SEMANTIC_CATEGORIES = {
-	'military': ['military', 'army', 'navy', 'air force', 'soldier', 'officer', 'troop', 'regiment', 'division', 'corps', 'battalion'],
+	'military': ['military', 'army', 'navy', 'air force', 'soldier', 'officer', 'troop', 'regiment', 'division', 'corps', 'battalion', 'brigade'],
 	'political': ['government', 'parliament', 'president', 'prime minister', 'minister', 'official', 'politician', 'leader'],
 	'event': ['war', 'battle', 'attack', 'invasion', 'liberation', 'occupation', 'revolution', 'protest', 'march', 'ceremony'],
 	'location': ['city', 'town', 'village', 'country', 'region', 'territory', 'front', 'border', 'base', 'camp'],
@@ -155,67 +155,65 @@ def find_optimal_min_cluster_size(embeddings, dataset_size, max_clusters=50):
 		return best_size
 
 def get_hdbscan_parameters(
-        embeddings, 
-        use_static=False, 
-        minimum_cap=10,  # Reduced from 20
-        percentage=None,
-):
-    print(f"get hdbscan parameters for embeddings {embeddings.shape}...".center(160, "-"))
-    if use_static:
-        return 100, 10
-    num_samples, num_embeddings = embeddings.shape
-
-    # Method 1: Silhouette-based
-    silhouette_size = find_optimal_min_cluster_size(embeddings, num_samples)
-    
-    # Method 2: Knee point detection
-    knee_size = find_knee_point(embeddings)
-    
-    # Method 3: Density-based
-    density_size, density_samples = density_based_parameters(embeddings)
-    
-    # Dynamically set percentage based on dataset size
-    if num_samples < 5000:
-        percentage = 0.005  # 0.5% for small datasets
-    elif num_samples < 50000:
-        percentage = 0.0007  # 0.07% for medium datasets (increased from 0.0005)
-    else:
-        percentage = 0.0003  # 0.03% for large datasets
-    
-    percentage_size = max(minimum_cap, int(num_samples * percentage))
-
-    # Combine results (for logging)
-    suggestions = [
-        silhouette_size,
-        knee_size,
-        density_size,
-        percentage_size,
-        int(np.sqrt(num_samples) // 2),
-        int(np.sqrt(num_samples) / 2),
-        int(np.log(num_samples)**2),
-        int(np.log(num_samples)**3),
-        50, 70, 80, 100, 120,
-    ]
-    print(f"Suggestions: {suggestions}")
-    
-    # Remove outliers (for logging)
-    q25, q75 = np.percentile(suggestions, [25, 75])
-    iqr = q75 - q25
-    print(f"q25: {q25}, q75: {q75}, iqr: {iqr}")
-    filtered = [x for x in suggestions if (x >= q25 - 2*iqr) and (x <= q75 + 2*iqr)]
-    print(f"Filtered: {filtered} median: {np.median(filtered)} min: {min(filtered)} max: {max(filtered)} mean: {np.mean(filtered)}")
-    
-    # Use percentage-based size directly
-    min_cluster_size = percentage_size
-    
-    # Adjust min_samples to scale with min_cluster_size
-    min_samples = max(3, int(min_cluster_size * 0.1))  # 10% of min_cluster_size, min 3
-    
-    # Log expected number of clusters
-    expected_clusters = num_samples / min_cluster_size
-    print(f"Expected number of clusters: {expected_clusters:.0f}")
-    
-    return min_cluster_size, min_samples
+		embeddings, 
+		use_static=False, 
+		minimum_cap=10,
+		percentage=None,
+	):
+	print(f"get hdbscan parameters for embeddings {embeddings.shape}...".center(160, "-"))
+	if use_static:
+			return 100, 10
+	num_samples, num_embeddings = embeddings.shape
+	# Method 1: Silhouette-based
+	silhouette_size = find_optimal_min_cluster_size(embeddings, num_samples)
+	
+	# Method 2: Knee point detection
+	knee_size = find_knee_point(embeddings)
+	
+	# Method 3: Density-based
+	density_size, density_samples = density_based_parameters(embeddings)
+	
+	# Dynamically set percentage based on dataset size
+	if num_samples < 5000:
+			percentage = 0.005  # 0.5% for small datasets
+	elif num_samples < 50000:
+			percentage = 0.0007  # 0.07% for medium datasets (increased from 0.0005)
+	else:
+			percentage = 0.0003  # 0.03% for large datasets
+	
+	percentage_size = max(minimum_cap, int(num_samples * percentage))
+	# Combine results (for logging)
+	suggestions = [
+			silhouette_size,
+			knee_size,
+			density_size,
+			percentage_size,
+			int(np.sqrt(num_samples) // 2),
+			int(np.sqrt(num_samples) / 2),
+			int(np.log(num_samples)**2),
+			int(np.log(num_samples)**3),
+			50, 70, 80, 100, 120,
+	]
+	print(f"Suggestions: {suggestions}")
+	
+	# Remove outliers (for logging)
+	q25, q75 = np.percentile(suggestions, [25, 75])
+	iqr = q75 - q25
+	print(f"q25: {q25}, q75: {q75}, iqr: {iqr}")
+	filtered = [x for x in suggestions if (x >= q25 - 2*iqr) and (x <= q75 + 2*iqr)]
+	print(f"Filtered: {filtered} median: {np.median(filtered)} min: {min(filtered)} max: {max(filtered)} mean: {np.mean(filtered)}")
+	
+	# Use percentage-based size directly
+	min_cluster_size = percentage_size
+	
+	# Adjust min_samples to scale with min_cluster_size
+	min_samples = max(3, int(min_cluster_size * 0.1))  # 10% of min_cluster_size, min 3
+	
+	# Log expected number of clusters
+	expected_clusters = num_samples / min_cluster_size
+	print(f"Expected number of clusters: {expected_clusters:.0f}")
+	
+	return min_cluster_size, min_samples
 
 def is_likely_english_term(term):
 	"""Check if a term is likely English or a proper noun"""
@@ -275,7 +273,7 @@ def extract_semantic_topics(
 		)
 		# Check for high noise in a sample of the data
 		print(f"Checking for high noise in a sample of the data...")
-		sample_size = min(5000, dataset_size)
+		sample_size = min(1000, dataset_size)
 		sample_indices = np.random.choice(dataset_size, sample_size, replace=False)
 		sample_embeddings = embeddings[sample_indices]
 		sample_clusterer = hdbscan.HDBSCAN(
@@ -401,7 +399,7 @@ def extract_semantic_topics(
 				text,
 				keyphrase_ngram_range=(1, 3),  # 1-3 word phrases
 				stop_words="english",
-				top_n=5,  # Top 5 phrases
+				top_n=10 if len(text.split()) > 100 else 5,
 			)
 			# print(phrases)
 			phrase_filter_log['total_phrases'] += len(phrases)
@@ -543,14 +541,14 @@ def extract_semantic_topics(
 					text,
 					keyphrase_ngram_range=(1, 3),
 					stop_words="english",
-					top_n=5,
+					top_n=10 if len(text.split()) > 100 else 5,
 				)
 				valid_phrases = []
 				seen_phrases = set()
 				for phrase, _ in phrases:
 					words = phrase.split()
 					stopword_count = sum(1 for w in words if w in CUSTOM_STOPWORDS)
-					if stopword_count / len(words) > 0.7 or len(words) < 2:
+					if stopword_count / len(words) > 0.6 or len(words) < 2:
 						continue
 					normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
 					if len(normalized.split()) >= 2 and normalized not in seen_phrases:
@@ -1036,56 +1034,59 @@ def extract_semantic_topics(
 			phrase_set = set(top_phrases)
 			cooc_matrix = defaultdict(int)
 			for text in cluster_texts:
-					phrases = kw_model.extract_keywords(
-							text,
-							keyphrase_ngram_range=(1, 3),
-							stop_words="english",
-							top_n=5,
-					)
-					valid_phrases = []
-					seen_phrases = set()
-					for phrase, _ in phrases:
-							words = phrase.split()
-							stopword_count = sum(1 for w in words if w in CUSTOM_STOPWORDS)
-							if stopword_count / len(words) > 0.7 or len(words) < 2:
-									continue
-							normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
-							if len(normalized.split()) >= 2 and normalized not in seen_phrases:
-									valid_phrases.append(normalized)
-									seen_phrases.add(normalized)
-					text_phrases = set(valid_phrases).intersection(phrase_set)
-					for p1 in text_phrases:
-							for p2 in text_phrases:
-									if p1 < p2:
-											cooc_matrix[(p1, p2)] += 1
+				phrases = kw_model.extract_keywords(
+					text,
+					keyphrase_ngram_range=(1, 3),
+					stop_words="english",
+					top_n=10 if len(text.split()) > 100 else 5,
+				)
+				valid_phrases = []
+				seen_phrases = set()
+				for phrase, _ in phrases:
+					words = phrase.split()
+					stopword_count = sum(1 for w in words if w in CUSTOM_STOPWORDS)
+					if stopword_count / len(words) > 0.6 or len(words) < 2:
+						continue
+					normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
+					if len(normalized.split()) >= 2 and normalized not in seen_phrases:
+						valid_phrases.append(normalized)
+						seen_phrases.add(normalized)
+				text_phrases = set(valid_phrases).intersection(phrase_set)
+				for p1 in text_phrases:
+					for p2 in text_phrases:
+						if p1 < p2:
+							cooc_matrix[(p1, p2)] += 1
 			G = nx.Graph()
 			for (p1, p2), count in cooc_matrix.items():
-					if count >= 2: # An edge exists between two phrases if they appear together in the same text at least twice
-							G.add_edge(p1, p2, weight=count)
+				if count >= 2: # An edge exists between two phrases if they appear together in the same text at least twice
+					G.add_edge(p1, p2, weight=count)
 			for phrase in top_phrases:
-					if phrase not in G:
-							G.add_node(phrase)
+				if phrase not in G:
+					G.add_node(phrase)
 			plt.figure(figsize=(12, 8))
 			pos = nx.spring_layout(G, k=0.5, iterations=50)  # Adjusted k for better spacing
 			edge_weights = [G[u][v]['weight'] for u, v in G.edges()]
 			nx.draw_networkx_edges(
-					G, pos,
-					width=[w * 0.1 for w in edge_weights],  # Scale edge width
-					alpha=0.6,
-					edge_color='#474646'
+				G=G, 
+				pos=pos,
+				width=[w * 0.1 for w in edge_weights],  # Scale edge width
+				alpha=0.6,
+				edge_color='#474646'
 			)
 			nx.draw_networkx_nodes(
-					G, pos,
-					node_size=150,
-					node_color='#bddf00',  # Orange color for distinction
-					alpha=0.9
+				G=G, 
+				pos=pos,
+				node_size=150,
+				node_color='#df9100',
+				alpha=0.9
 			)
 			nx.draw_networkx_labels(
-					G, pos,
-					font_size=5,
-					alpha=0.95,
-					verticalalignment='center',
-					horizontalalignment='center'
+				G=G, 
+				pos=pos,
+				font_size=5,
+				alpha=0.95,
+				verticalalignment='center',
+				horizontalalignment='center'
 			)
 			plt.title(f'Phrase Co-Occurrence Network for Merged Topic {merged_idx} ({len(G.nodes())} nodes, {len(G.edges())} edges)')
 			plt.axis('off')
@@ -1096,28 +1097,74 @@ def extract_semantic_topics(
 	print(f"Extracted {len(flat_topics)} unique topic terms after merging")
 	return merged_topics, flat_topics
 
+def combine_and_clean_labels(ner, keywords, topics, text, sent_model, min_threshold=0.15, max_threshold=0.35):
+		# Combine all sources
+		all_labels = list(set(ner + keywords + topics))
+		if not all_labels:
+				return []
+		
+		# Compute relevance scores
+		text_emb = sent_model.encode(text, show_progress_bar=False)
+		label_embs = sent_model.encode(all_labels, show_progress_bar=False)
+		similarities = np.dot(label_embs, text_emb) / (
+				np.linalg.norm(label_embs, axis=1) * np.linalg.norm(text_emb) + 1e-8
+		)
+		
+		# Adaptive threshold based on similarity distribution and text length
+		text_length = len(text.split())
+		if similarities.size > 0:
+				# Use 75th percentile of similarities, clipped between min and max thresholds
+				adaptive_threshold = np.clip(
+						np.percentile(similarities, 75),
+						min_threshold,
+						max_threshold
+				)
+				# Adjust threshold based on text length (shorter texts need lower threshold)
+				if text_length < 50:
+						adaptive_threshold = max(min_threshold, adaptive_threshold * 0.8)
+				elif text_length > 200:
+						adaptive_threshold = min(max_threshold, adaptive_threshold * 1.2)
+		else:
+				adaptive_threshold = min_threshold
+		
+		# Filter by adaptive threshold
+		relevant_labels = [label for i, label in enumerate(all_labels) if similarities[i] > adaptive_threshold]
+		
+		# Clean the labels
+		cleaned_labels = clean_labels(relevant_labels)
+		
+		# Filter metadata terms
+		cleaned_labels = filter_metadata_terms(cleaned_labels)
+		
+		return cleaned_labels
+
 def clean_labels(labels):
-	cleaned = set()
-	for label in labels:
-		# Normalize the label
-		label = label.lower().strip()
-		# Remove non-alphanumeric characters except spaces and hyphens
-		label = re.sub(r"[^a-z0-9\s\-]", "", label)
-		# Skip short labels and stopwords
-		if label in CUSTOM_STOPWORDS or len(label) < 3:
-				continue
-		# Skip labels that are just numbers
-		if label.isdigit():
-				continue
-		# Skip labels that start with numbers unless they're years (4 digits)
-		if label[0].isdigit() and not (len(label) == 4 and label.isdigit()):
-				continue
-		# Skip non-English labels
-		if not all(ord(char) < 128 for char in label):
-				continue
-		# Add the cleaned label
-		cleaned.add(label)
-	return sorted(cleaned)
+		cleaned = set()
+		# Predefined list of valid historical non-ASCII terms
+		VALID_HISTORICAL_TERMS = {
+				"blitzkrieg", "kübelwagen", "wehrmacht", "panzer", "luftwaffe",
+				"stuka", "t-34", "afrika korps"
+		}
+		for label in labels:
+				# Normalize the label
+				label = label.lower().strip()
+				# Remove non-alphanumeric characters except spaces and hyphens
+				label = re.sub(r"[^a-z0-9\s\-äöüßñéèêëìíîïçåæœø]", "", label)
+				# Skip short labels, stopwords, or invalid labels
+				if label in CUSTOM_STOPWORDS or len(label) < 3:
+						continue
+				# Skip labels that are just numbers
+				if label.isdigit():
+						continue
+				# Skip labels that start with numbers unless they're years (4 digits)
+				if label[0].isdigit() and not (len(label) == 4 and label.isdigit()):
+						continue
+				# Allow non-ASCII labels if proper noun or in valid historical terms
+				if not all(ord(char) < 128 for char in label):
+						if not (label[0].isupper() or label in VALID_HISTORICAL_TERMS):
+								continue
+				cleaned.add(label)
+		return sorted(cleaned)
 
 def extract_named_entities(
 		nlp: pipeline, 
@@ -1127,7 +1174,6 @@ def extract_named_entities(
 	# Skip if text is not primarily English
 	if not is_english(text=text, ft_model=ft_model):
 		return []
-
 	try:
 		ner_results = nlp(text)
 		entities = []
@@ -1135,16 +1181,19 @@ def extract_named_entities(
 			if entity["entity_group"] in RELEVANT_ENTITY_TYPES and entity["word"].isalpha():
 				# Clean and normalize entity text
 				entity_text = re.sub(r'[^\w\s\-]', '', entity["word"].lower()).strip()
-				if (entity_text and len(entity_text) > 2 and 
-					entity_text not in CUSTOM_STOPWORDS and 
-					all(ord(char) < 128 for char in entity_text)):
+				if (
+					entity_text 
+					and len(entity_text) > 2 
+					and entity_text not in CUSTOM_STOPWORDS 
+					# and all(ord(char) < 128 for char in entity_text)
+				):
 					entities.append(entity_text)
 		# Also extract multi-word phrases that might be significant
 		tokens = [
 			word.lower() for word in text.split() 
 			if word.isalpha() and len(word) > 2 
 			and word.lower() not in CUSTOM_STOPWORDS
-			and all(ord(char) < 128 for char in word)
+			# and all(ord(char) < 128 for char in word)
 		]
 
 		# Return unique list of entities and tokens
@@ -1152,42 +1201,6 @@ def extract_named_entities(
 	except Exception as e:
 		print(f"NER error: {e}")
 		print(f"Text: {text}")
-		return []
-
-def extract_keywords(
-		text: str, 
-		ft_model: fasttext.FastText._FastText, 
-		min_count: int=3, 
-		max_df: float=0.9, 
-		min_df: float=0.01, 
-		max_features: int=1000, 
-		ngram_range: tuple=(1, 3), 
-		top_k: int=50
-	):
-	if not is_english(text, ft_model) or len(text) < 5:
-		return []
-			
-	vectorizer = TfidfVectorizer(
-		# max_df=max_df,
-		# min_df=min_df,
-		# max_features=max_features,
-		ngram_range=ngram_range,
-		stop_words=CUSTOM_STOPWORDS,
-	)
-	try:
-		X = vectorizer.fit_transform([text])
-		feature_names = vectorizer.get_feature_names_out()
-		# Get scores for the first document
-		scores = zip(feature_names, X.toarray()[0])
-		# Sort by score in descending order
-		sorted_scores = sorted(scores, key=lambda x: x[1], reverse=True)
-		# Return top keywords
-		keywords = [
-			kw for kw, score in sorted_scores[:top_k] 
-			if score > 0.01 and all(ord(char) < 128 for char in kw)
-		]
-		return keywords
-	except:
 		return []
 
 def filter_metadata_terms(labels):
@@ -1226,17 +1239,6 @@ def handle_multilingual_labels(labels):
 
 	return processed_labels
 
-def assign_semantic_categories(labels):
-	"""Categorize labels into semantic groups"""
-	categorized_labels = []
-	for label in labels:
-		for category, terms in SEMANTIC_CATEGORIES.items():
-			if any(term in label for term in terms):
-				if label not in categorized_labels:
-					categorized_labels.append(label)
-				break
-	return categorized_labels
-
 def deduplicate_labels(labels):
 	"""Remove semantically redundant labels"""
 	if not labels:
@@ -1269,6 +1271,17 @@ def deduplicate_labels(labels):
 			deduplicated.append(label)
 	
 	return deduplicated
+
+def assign_semantic_categories(labels):
+	"""Categorize labels into semantic groups"""
+	categorized_labels = []
+	for label in labels:
+		for category, terms in SEMANTIC_CATEGORIES.items():
+			if any(term in label for term in terms):
+				if label not in categorized_labels:
+					categorized_labels.append(label)
+				break
+	return categorized_labels
 
 def balance_label_count(
 		image_labels_list, 
@@ -1309,42 +1322,44 @@ def balance_label_count(
 	
 	return balanced_labels
 
-def quick_filter_candidates(text, labels, max_keep=30):
-	"""Quick pre-filtering using simple word overlap"""
+def quick_filter_candidates(text: str, labels: list[str], sent_model: SentenceTransformer, max_keep: int = 30) -> list[str]:
 	if not labels:
+		print(f"Warning: Empty labels list for text: {text[:50]}...")
 		return []
-			
-	text_words = set(text.lower().split())
-	scores = []
 	
-	for label in labels:
-		label_words = set(label.lower().split())
-		# Calculate simple overlap score
-		overlap = len(text_words.intersection(label_words))
-		scores.append((label, overlap))
+	text_emb = sent_model.encode(text)
+	label_embs = sent_model.encode(labels)
+
+	# Ensure label_embs is not empty (redundant but defensive)
+	if label_embs.size == 0:
+		print(f"Warning: No embeddings generated for labels: {labels[:5]}...")
+		return []
 	
-	# Sort by score and keep top candidates
-	sorted_labels = [l for l, s in sorted(scores, key=lambda x: x[1], reverse=True)]
+	similarities = np.dot(label_embs, text_emb) / (np.linalg.norm(label_embs, axis=1) * np.linalg.norm(text_emb) + 1e-8)
+	sorted_labels = [label for _, label in sorted(zip(similarities, labels), reverse=True)]
 	return sorted_labels[:max_keep]
 
 def batch_filter_by_relevance(
 		sent_model: SentenceTransformer,
 		texts: list,
 		all_labels_list: list[list[str]],
-		threshold: float=0.3,
-		batch_size: int=128,
+		threshold: float,
+		batch_size: int,
 	):
 	results = []
 	total = len(texts)
-	for batch_start in tqdm(range(0, total, batch_size), desc="Relevance Filtering"):
+	for batch_start in range(0, total, batch_size):
 		batch_end = min(batch_start + batch_size, total)
 		batch_texts = texts[batch_start:batch_end]
 		batch_labels_list = all_labels_list[batch_start:batch_end]
+
 		# First apply quick filtering to reduce candidates
 		quick_filtered_batch = []
 		for text, labels in zip(batch_texts, batch_labels_list):
-			quick_filtered = quick_filter_candidates(text, labels)
+			# quick_filtered = quick_filter_candidates(text, labels)
+			quick_filtered = quick_filter_candidates(text=text, labels=labels, sent_model=sent_model, max_keep=30)
 			quick_filtered_batch.append(quick_filtered)
+		
 		# Get text embeddings for the batch (more efficient)
 		text_embeddings = sent_model.encode(batch_texts, show_progress_bar=False, batch_size=batch_size, convert_to_numpy=True)
 		batch_results = []
@@ -1363,43 +1378,43 @@ def batch_filter_by_relevance(
 	return results
 
 def process_document_chunk(chunk_data):
-		"""Process a chunk of documents in parallel"""
-		start_idx, end_idx, texts, combined_labels = chunk_data
+	"""Process a chunk of documents in parallel"""
+	start_idx, end_idx, texts, combined_labels = chunk_data
+	
+	# Initialize sent_model within the process
+	local_model = SentenceTransformer("all-MiniLM-L6-v2")
+	
+	results = []
+	for i in range(start_idx, end_idx):
+		idx = i - start_idx  # Local index within chunk
+		text = texts[idx]
+		labels = combined_labels[idx]
 		
-		# Initialize sent_model within the process
-		local_model = SentenceTransformer("all-MiniLM-L6-v2")
+		# Quick filter first
+		filtered_labels = quick_filter_candidates(text, labels)
 		
-		results = []
-		for i in range(start_idx, end_idx):
-				idx = i - start_idx  # Local index within chunk
-				text = texts[idx]
-				labels = combined_labels[idx]
+		if not filtered_labels:
+				results.append([])
+				continue
 				
-				# Quick filter first
-				filtered_labels = quick_filter_candidates(text, labels)
-				
-				if not filtered_labels:
-						results.append([])
-						continue
-						
-				# Encode text and labels
-				text_emb = local_model.encode(text)
-				label_embs = local_model.encode(filtered_labels)
-				
-				# Calculate similarities
-				similarities = []
-				for label_emb in label_embs:
-						sim = np.dot(text_emb, label_emb) / (
-								np.linalg.norm(text_emb) * np.linalg.norm(label_emb) + 1e-8
-						)
-						similarities.append(sim)
-						
-				# Filter by threshold
-				threshold = 0.3
-				relevant_indices = [i for i, sim in enumerate(similarities) if sim > threshold]
-				results.append([filtered_labels[i] for i in relevant_indices])
+		# Encode text and labels
+		text_emb = local_model.encode(text)
+		label_embs = local_model.encode(filtered_labels)
 		
-		return results
+		# Calculate similarities
+		similarities = []
+		for label_emb in label_embs:
+				sim = np.dot(text_emb, label_emb) / (
+						np.linalg.norm(text_emb) * np.linalg.norm(label_emb) + 1e-8
+				)
+				similarities.append(sim)
+				
+		# Filter by threshold
+		threshold = 0.3
+		relevant_indices = [i for i, sim in enumerate(similarities) if sim > threshold]
+		results.append([filtered_labels[i] for i in relevant_indices])
+	
+	return results
 
 def parallel_relevance_filtering(texts, all_labels, n_processes=None):
 		"""Run relevance filtering in parallel using multiple processes"""
@@ -1451,12 +1466,14 @@ def get_textual_based_annotation(
 	print(f"Loading sentence-transformer model: {st_model_name}...")
 	sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
 	ft_model = fasttext.load_model(FastText_Language_Identification)
-	tokenizer = AutoTokenizer.from_pretrained("dslim/bert-base-NER")
-	model = AutoModelForTokenClassification.from_pretrained("dslim/bert-base-NER")
+	# ner_model_name = "dslim/bert-large-NER"
+	# ner_model_name = "dslim/bert-base-NER"
+	ner_model_name = "Babelscape/wikineural-multilingual-ner"
+	print(f"Loading NER model: {ner_model_name}...")
 	nlp = pipeline(
 		task="ner", 
-		model=model,
-		tokenizer=tokenizer, 
+		model=AutoModelForTokenClassification.from_pretrained(ner_model_name),
+		tokenizer=AutoTokenizer.from_pretrained(ner_model_name), 
 		aggregation_strategy="simple",
 		device=device,
 		batch_size=batch_size,
@@ -1490,9 +1507,7 @@ def get_textual_based_annotation(
 	# Create a filtered dataframe with only English entries
 	english_df = df[english_mask].reset_index(drop=True)
 	english_texts = english_df['content'].tolist()
-
-	# Initialize results for all entries with empty lists
-	per_image_labels = [[] for _ in range(num_samples)]
+	per_image_labels = [[] for _ in range(num_samples)] # Initialize results for all entries with empty lists	
 
 	if len(english_texts) > 0:
 		# Step 1: Topic Modeling with redundancy reduction
@@ -1531,9 +1546,6 @@ def get_textual_based_annotation(
 				per_image_ner_labels.append(entities)
 		print(f"NER done in {time.time() - t0:.1f} sec")
 		
-		# # Step 3: Extract keywords per image
-		# print("Extracting keywords per image using TF-IDF...")
-
 		# Step 3: Extract keywords per image
 		print("Extracting keywords per image using KeyBERT...")
 		t0 = time.time()
@@ -1549,7 +1561,7 @@ def get_textual_based_annotation(
 					text,
 					keyphrase_ngram_range=(1, 3),  # 1-3 word phrases
 					stop_words=CUSTOM_STOPWORDS,  # Use custom stopwords
-					top_n=5,  # Top 5 phrases
+					top_n=10 if len(text.split()) > 100 else 5,
 				)
 				# Filter and normalize phrases
 				keywords = []
@@ -1557,7 +1569,7 @@ def get_textual_based_annotation(
 				for phrase, _ in phrases:
 					words = phrase.split()
 					stopword_count = sum(1 for w in words if w in CUSTOM_STOPWORDS)
-					if stopword_count / len(words) > 0.7 or len(words) < 1:  # Allow single words
+					if stopword_count / len(words) > 0.6 or len(words) < 1:  # Allow single words
 						continue
 					normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
 					if len(normalized.split()) >= 1 and normalized not in seen_phrases:
@@ -1582,17 +1594,20 @@ def get_textual_based_annotation(
 		print("Combining and cleaning labels...")
 		t0 = time.time()
 		per_image_combined_labels = []
-		for ner, keywords, topics in zip(per_image_ner_labels, per_image_keywords, per_image_topic_labels):
-			# Combine all sources
-			all_labels = list(set(ner + keywords + topics))
-			# Clean the labels
-			cleaned_labels = clean_labels(all_labels)
-			# Filter metadata terms
-			cleaned_labels = filter_metadata_terms(cleaned_labels)
+		for text, ner, keywords, topics in zip(english_texts, per_image_ner_labels, per_image_keywords, per_image_topic_labels):
+			cleaned_labels = combine_and_clean_labels(ner, keywords, topics, text, sent_model, min_threshold=0.15, max_threshold=0.35)
 			per_image_combined_labels.append(cleaned_labels)
+		# for ner, keywords, topics in zip(per_image_ner_labels, per_image_keywords, per_image_topic_labels):
+		# 	# Combine all sources
+		# 	all_labels = list(set(ner + keywords + topics))
+		# 	# Clean the labels
+		# 	cleaned_labels = clean_labels(all_labels)
+		# 	# Filter metadata terms
+		# 	cleaned_labels = filter_metadata_terms(cleaned_labels)
+		# 	per_image_combined_labels.append(cleaned_labels)
 		print(f"Label combination and cleaning done in {time.time() - t0:.3f} sec")
 
-		# Step 6: Filter by relevance and handle languages (optimized)
+		# Step 6: Filter by relevance and handle languages
 		print(f"Filtering labels by relevance (thresh: {relevance_threshold})...")
 		t0 = time.time()
 		if use_parallel:
@@ -1603,7 +1618,7 @@ def get_textual_based_annotation(
 				n_processes=num_workers,
 			)
 		else:
-			print(f"Using batch processing for relevance filtering (thresh: {relevance_threshold})...")
+			print(f"Using batch processing: ({batch_size} batches) for relevance filtering (thresh: {relevance_threshold})...")
 			per_image_relevant_labels = batch_filter_by_relevance(
 				sent_model=sent_model,
 				texts=english_texts,
@@ -1625,7 +1640,11 @@ def get_textual_based_annotation(
 				if isinstance(original_label, str) and original_label.strip():
 					original_label_clean = re.sub(r"[^a-z0-9\s\-]", "", original_label.lower().strip())
 					if all(ord(char) < 128 for char in original_label_clean):
-						filtered_labels.append(original_label_clean)
+						text_emb = sent_model.encode(english_df.iloc[i]['content'])
+						query_emb = sent_model.encode(original_label_clean)
+						sim = np.dot(text_emb, query_emb) / (np.linalg.norm(text_emb) * np.linalg.norm(query_emb) + 1e-8)
+						if sim > relevance_threshold:
+							filtered_labels.append(original_label_clean)
 			
 			filtered_labels = deduplicate_labels(filtered_labels)
 			# Add semantic categories
@@ -1647,6 +1666,7 @@ def get_textual_based_annotation(
 		print("No English texts found. Returning empty labels for all entries.")
 	
 	df['textual_based_labels'] = per_image_labels	
+
 	df.to_csv(metadata_fpth, index=False)
 	
 	print(f">> Generated text labels for {sum(1 for labels in per_image_labels if labels)} out of {num_samples} entries")
@@ -2005,7 +2025,7 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=16)
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=64)
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=16, help="Batch size for vision processing")
-	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.2, help="Relevance threshold for text-based filtering")
+	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.30, help="Relevance threshold for text-based filtering")
 	parser.add_argument("--vision_threshold", '-vth', type=float, default=0.30, help="Confidence threshold for VLM-based filtering")
 	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2"], help="Sentence-transformer model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
