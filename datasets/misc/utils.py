@@ -46,6 +46,12 @@ warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=FutureWarning)
 
+from skimage.filters.rank import entropy
+from skimage.morphology import disk
+from skimage.measure import shannon_entropy
+from skimage.transform import resize
+from joblib import Parallel, delayed
+from scipy.sparse import csr_matrix
 
 import requests
 import dill

@@ -1304,7 +1304,7 @@ def balance_label_count(
 			# Add compound labels to reach minimum
 			expanded_labels = labels + compound_labels
 			balanced_labels.append(expanded_labels[:min_labels] if len(expanded_labels) >= min_labels else expanded_labels)
-						
+
 		# Case 2: Too many labels - prioritize the most relevant ones
 		elif len(labels) > max_labels:
 			# Sort labels by potential relevance (length can be a simple heuristic)
@@ -1313,7 +1313,6 @@ def balance_label_count(
 			# Ensure we keep some single-word labels for searchability
 			single_word = [label for label in labels if ' ' not in label][:max_labels//3]
 			multi_word = [label for label in sorted_labels if ' ' in label][:max_labels - len(single_word)]
-			
 			balanced_labels.append(single_word + multi_word)
 		
 		# Case 3: Good label count - keep as is
@@ -1634,7 +1633,6 @@ def get_textual_based_annotation(
 		english_labels = []
 		for i, relevant_labels in enumerate(tqdm(per_image_relevant_labels, desc="Post-processing", unit="image")):
 			filtered_labels = handle_multilingual_labels(relevant_labels)
-			
 			if "user_query" in english_df.columns:
 				original_label = english_df.iloc[i]["user_query"]
 				if isinstance(original_label, str) and original_label.strip():
@@ -1674,25 +1672,119 @@ def get_textual_based_annotation(
 	
 	return per_image_labels
 
+def get_category_type(category, category_type_map):
+	return category_type_map.get(category, "unknown")
+
+def compute_entropy(image, downsample_size=None):
+	img_array = np.array(image.convert('L'))
+	if downsample_size:
+		img_array = resize(img_array, downsample_size, anti_aliasing=True, preserve_range=True).astype(np.uint8)
+	return shannon_entropy(img_array)
+
+def compute_adaptive_thresholds(
+		images: list,
+		categories: list,
+		text_similarities: np.ndarray,
+		object_categories: list,
+		scene_categories: list,
+		era_categories: list,
+		activity_categories: list,
+		n_jobs: int,
+		batch_size: int = 32,
+		similarity_threshold: float = 0.1,
+		downsample_size: tuple = (128, 128)
+	):
+	num_images = len(images)
+	num_categories = len(categories)
+	thresholds = np.zeros((num_images, num_categories))
+	
+	# Create category type map
+	category_type_map = {}
+	base_thresholds = {
+			"object": 0.4,
+			"scene": 0.25,
+			"era": 0.2,
+			"activity": 0.3
+	}
+	for cat, cat_type in [
+			(cat, "object") for cat in object_categories
+	] + [
+			(cat, "scene") for cat in scene_categories
+	] + [
+			(cat, "era") for cat in era_categories
+	] + [
+			(cat, "activity") for cat in activity_categories
+	]:
+			category_type_map[cat] = cat_type
+	
+	# Convert text similarities to sparse matrix for memory efficiency
+	text_similarities = csr_matrix(text_similarities)
+	
+	# Parallel entropy computation
+	entropies = Parallel(n_jobs=n_jobs, verbose=1)(delayed(compute_entropy)(img, downsample_size) for img in images)
+	entropies = np.array(entropies)
+	
+	# Precompute complexity factors
+	max_entropy = 8.0  # Approximate max for 8-bit grayscale
+	complexity_factors = 1.0 - 0.2 * (entropies / max_entropy)
+	
+	# Batch process thresholds
+	for cat_idx, category in enumerate(tqdm(categories, desc="Computing Thresholds")):
+		cat_type = get_category_type(category, category_type_map)
+		base_threshold = base_thresholds.get(cat_type, 0.3)
+		
+		# Get non-zero text similarities
+		text_scores = text_similarities[:, cat_idx].toarray().flatten()
+		valid_indices = np.where(text_scores >= similarity_threshold)[0]
+		
+		if len(valid_indices) == 0:
+			continue  # Skip if no relevant similarities
+		
+		# Vectorized threshold computation
+		text_factors = 0.8 + 0.2 * text_scores[valid_indices]
+		thresholds[valid_indices, cat_idx] = (base_threshold * complexity_factors[valid_indices] * text_factors)
+	
+	return thresholds
+
 def get_visual_based_annotation(
 		csv_file: str,
-		confidence_threshold: float,
+		st_model_name: str,
 		batch_size: int,
 		device: str,
+		num_workers: int,
 		verbose: bool,
 		metadata_fpth: str,
 	) -> List[List[str]]:
 	print(f"Semi-Supervised label extraction from image data(using VLM)".center(160, "-"))
 	start_time = time.time()
-	
+	dataset_dir = os.path.dirname(csv_file)
+
 	# Load dataset
 	if verbose:
 		print(f"Loading metadata from {csv_file}...")
-	df = pd.read_csv(csv_file, dtype={'img_path': str}, low_memory=False)
-	image_paths = df['img_path'].tolist()
+	dtypes = {
+		'doc_id': str, 'id': str, 'label': str, 'title': str,
+		'description': str, 'img_url': str, 'enriched_document_description': str,
+		'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
+		'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+	}
+	df = pd.read_csv(
+		filepath_or_buffer=csv_file, 
+		on_bad_lines='skip',
+		dtype=dtypes, 
+		low_memory=False,
+	)
+
 	if verbose:
-		print(f"Found {len(image_paths)} samples to process...")
-	
+		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
+	df['content'] = df['enriched_document_description'].fillna('').astype(str)
+	image_paths = df['img_path'].tolist()
+	text_descriptions = df['content'].tolist()
+
+	if verbose:
+		print(f"Loading sentence-transformer model: {st_model_name}...")
+	sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
+
 	if verbose:
 		print("Loading VLM model for image labeling...")
 	processor = AlignProcessor.from_pretrained("kakaobrain/align-base")
@@ -1701,247 +1793,197 @@ def get_visual_based_annotation(
 	model.eval()
 
 	object_categories = [
-		# Tanks & Armored Vehicles (WWI-WWII)
-		"tank", "light tank", "medium tank", "heavy tank", "super-heavy tank", 
-		"tank destroyer", "self-propelled gun", "armored car", "half-track", 
-		"armored personnel carrier", "armored train", "reconnaissance vehicle",
-		"Mark IV tank", "Tiger tank", "Panther tank", "T-34 tank", "Sherman tank",
-		"Churchill tank", "KV-1 tank", "Panzer IV", "Panzer III", "Stuart tank",
-		"Sonderkraftfahrzeug", "Kettenkrad", "M4 Sherman", "T-34/85", "IS-2 tank",
-		
-		# Light & Utility Vehicles
-		"jeep", "staff car", "command car", "ambulance", "motorcycle", 
-		"military truck", "supply truck", "fuel truck", "artillery tractor", 
-		"amphibious vehicle", "scout car", "Willys Jeep", "Kubelwagen", 
-		"Dodge WC series", "Opel Blitz", "Zis truck", "weapons carrier",
-			
-		# Aircraft
-		"military aircraft", "fighter aircraft", "bomber aircraft", "reconnaissance aircraft", 
-		"dive bomber", "torpedo bomber", "transport aircraft", "seaplane", "flying boat",
-		"biplane", "monoplane", "fighter-bomber", "ground attack aircraft", "night fighter",
-		"Spitfire", "Messerschmitt Bf 109", "P-51 Mustang", "Focke-Wulf Fw 190", 
-		"B-17 Flying Fortress", "Lancaster bomber", "Heinkel He 111", "Junkers Ju 87 Stuka",
-		"Mitsubishi Zero", "Il-2 Sturmovik", "P-47 Thunderbolt", "Hurricane fighter", "helicopter",
-		"aircraft engine", "aircraft propeller", "aircraft wing", "aircraft fuselage", "aircraft tail",
-		"aircraft manufacturing company",
-	
-		# Naval Vessels
-		"submarine", "U-boat", "destroyer", "cruiser", "battleship", "aircraft carrier", 
-		"battlecruiser", "corvette", "frigate", "minesweeper", "torpedo boat", 
-		"landing craft", "PT boat", "pocket battleship", "gunboat", "escort carrier",
-		"liberty ship", "merchant vessel", "hospital ship", "troop transport",
-			
-		# Military Personnel
-		"soldier", "infantryman", "officer", "NCO", "general", "field marshal",
-		"pilot", "bomber crew", "aircraft crew", "tanker", "artilleryman", "sailor", "marine", 
-		"paratrooper", "commando", "sniper", "medic", "military police", 
-		"cavalry", "SS officer", "Wehrmacht soldier", "Red Army soldier", 
-		"Desert Rat", "Afrika Korps soldier", "Luftwaffe personnel", "naval officer",
-		
-		# Weapons & Ordnance
-		"rifle", "machine gun", "submachine gun", "pistol", "bayonet", "flamethrower", 
-		"mortar", "artillery piece", "howitzer", "field gun", "anti-tank gun", "cannon", 
-		"anti-aircraft gun", "rocket launcher", "grenade", "hand grenade", "rifle grenade",
-		"landmine", "naval mine", "depth charge", "torpedo", "aerial bomb", "incendiary bomb",
-		"Thompson submachine gun", "MG-42", "Karabiner 98k", "M1 Garand", "Sten gun",
-		"Luger pistol", "PIAT", "Bazooka", "Panzerfaust", "88mm gun",
-		
-		# Military Infrastructure
-		"bunker", "pillbox", "gun emplacement", "observation post", "barbed wire", 
-		"trenches", "foxhole", "dugout", "fortification", "coastal defense", 
-		"anti-tank obstacle", "dragon's teeth", "minefield", "floating bridge",
-		"portable bridge", "military headquarters", "command post", "communications center",
-		
-		# Military Insignia & Symbols
-		"military flag", "swastika flag", "rising sun flag", "Soviet flag", "Union Jack", 
-		"American flag", "regimental colors", "military insignia", "rank insignia", 
-		"unit patch", "medal", "military decoration", "Iron Cross", "Victoria Cross",
-		"Medal of Honor", "military helmet", "steel helmet", "Brodie helmet",
-		"Stahlhelm", "Adrian helmet", "gas mask",
-		
-		# Military Equipment
-		"military uniform", "combat uniform", "field equipment", "backpack", "mess kit", 
-		"entrenching tool", "canteen", "ammunition belt", "bandolier", "map case", 
-		"binoculars", "field telephone", "radio equipment", "signal equipment",
-		"parachute", "life vest", "fuel drum", "jerry can", "ration box",
-		"military stretcher", "field kitchen", "anti-gas equipment"
+			# Military Vehicles
+			"tank", "light tank", "medium tank", "tank destroyer", "armored car",
+			"half-track", "armored personnel carrier", "armored train", "Kubelwagen", "Willys Jeep",
+			"jeep", "military truck", "supply truck", "artillery tractor", "amphibious vehicle",
+
+			# Aircraft
+			"military aircraft", "fighter aircraft", "bomber aircraft", "reconnaissance aircraft",
+			"seaplane", "biplane", "monoplane", "Spitfire", "Messerschmitt Bf 109", "B-17 Flying Fortress",
+
+			# Naval Vessels
+			"submarine", "destroyer", "cruiser", "battleship", "aircraft carrier",
+			"corvette", "minesweeper", "landing craft", "hospital ship", "troop transport", "tugboat",
+
+			# Military Personnel
+			"soldier", "infantryman", "officer", "pilot", "sailor", "marine", "medic",
+			"Wehrmacht soldier", "Red Army soldier",
+
+			# Weapons
+			"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery piece",
+			"cannon", "anti-tank gun", "grenade", "landmine", "torpedo", "M1 Garand",
+
+			# Military Infrastructure
+			"bunker", "gun emplacement", "observation post", "barbed wire", "trenches",
+			"fortification", "coastal defense", "minefield",
+
+			# Military Symbols
+			"military flag", "Union Jack", "military insignia",
+			"medal", "military helmet", "gas mask",
+
+			# Military Equipment
+			"military uniform", "backpack", "entrenching tool", "binoculars", "field telephone",
+			"radio equipment", "parachute", "jerry can", "stretcher",
+
+			# Infrastructure
+			"construction crane", "tunnel slab", "gasometer", "railway track", "locomotive wheel",
+			"train car", "ferry slip", "locomotive engine", "railway signal",
+
+			# Civilian Objects
+			"wheelbarrow", "leather apron", "signature document", "blood pressure monitor",
+			"medical chart",
+
+			# Cultural
+			"cannon carriage", "museum exhibit", "photo album", "pavilion structure",
+			"market stall", "religious monument", "basilica statue", "palace garden", "historical plaque",
+
+			# Animals
+			"donkey", "camel", "workhorse", "mule", "ox", "reindeer",
 	]
 
 	scene_categories = [
-		# European Theaters
-		"Western Front", "Eastern Front", "Italian Front", "North African Front",
-		"Normandy beaches", "coastline", "Soviet urban ruins",
-		
-		# Pacific & Asian Theaters
-		"Pacific island", "jungle battlefield", "Pacific beach landing", "atoll",
-		"tropical forest", "coral reef", "bamboo grove", "rice paddy",
-		"Burmese jungle", "Chinese village", "Philippine beach", "volcanic island",
-		"Japanese homeland", "Pacific airfield", "jungle airstrip", "coconut plantation",
-		
-		# Military Settings
-		"prisoner of war camp", "concentration camp", "military hospital", "field hospital",
-		"military cemetery", "aircraft factory", "tank factory", "shipyard",
-		"military depot", "ammunition dump", "fuel depot", "supply dump",
-		"military port", "embarkation point", "submarine pen", "naval dry dock",
-		
-		# Terrain Types
-		"desert", "desert oasis", "desert dunes", "rocky desert", "forest",
-		"dense forest", "winter forest", "urban area", "bombed city", "city ruins",
-		"beach", "landing beach", "rocky beach", "mountain", "mountain pass",
-		"field", "farm field", "snow-covered field", "ocean", "open ocean",
-		"coastal waters", "river", "river crossing", "flooded river", "bridge",
-		
-		# Military Infrastructure
-		"airfield", "temporary airstrip", "bomber base", "fighter base",
-		"naval base", "submarine base", "army barracks", "training camp",
-		"military headquarters", "command bunker", "coastal defense",
-		"fortified line", "defensive position", "artillery position",
-		
-		# Military Activities
-		"battlefield", "active battlefield", "battlefield aftermath",
-		"military parade", "victory parade", "surrender ceremony",
-		"military exercise", "amphibious landing exercise", "tank maneuvers",
-		"war zone", "civilian evacuation", "occupation zone", "frontline",
-		"military checkpoint", "border checkpoint", "military convoy route",
-		
-		# Home Front
-		"war factory", "armaments factory", "aircraft assembly line",
-		"vehicle assembly line", "shipyard", "munitions factory",
-		"civilian air raid shelter", "bombed civilian area", "rationing center",
-		"recruitment office", "propaganda poster display", "war bonds office",
-		"civil defense drill", "air raid aftermath", "victory celebration"
+			# Military Theaters
+			"Western Front", "Eastern Front", "Italian Front", "North African Front",
+			"coastline", "city ruins",
+
+			# Terrain
+			"desert", "forest", "winter forest", "urban area", "mountain", "mountain valley",
+			"field", "rural farmland", "snow-covered field", "ocean", "coastal waters",
+			"river", "river crossing", "bridge", "lake shore", "coastal landscape",
+
+			# Military Settings
+			"military hospital", "field hospital", "military cemetery", "aircraft factory",
+			"military depot", "military port", "naval dry dock",
+
+			# Military Infrastructure
+			"airfield", "naval base", "army barracks", "military headquarters",
+			"coastal defense", "artillery position",
+
+			# Civilian & Cultural
+			"urban construction", "industrial site", "railroad station", "ferry dock",
+			"harbor port", "bathing area", "museum interior", "palace courtyard",
+			"historical plaza", "library hall", "urban plaza", "cathedral square",
+			"palace grounds", "village square"
 	]
 
 	era_categories = [
-		# Pre-War & Early War
-		"pre-World War I era", "World War I era", "interwar period",
-		"pre-1939 military",
-		"Phoney War", "Blitzkrieg era", "1939-1940 military equipment",
-		
-		# World War II Specific Periods
-		"World War II era", "Battle of Britain era", "North African campaign",
-		"Pearl Harbor era", "Midway period", "Stalingrad era", "Normandy invasion",
-		"Operation Barbarossa", "Battle of the Bulge", "Italian campaign",
-		"D-Day preparations", "Market Garden operation", "Fall of Berlin",
-		"Island-hopping campaign", "Battle of the Atlantic", "V-E Day era",
-		"Pacific War late stage", "atomic bomb era", "Japanese surrender period",
-		
-		# Post-War Periods
-		"immediate post-war", "occupation period", "Cold War",
-		"Korean War era", "1950s military", "Vietnam era", "Japanse World War era",
-					
-		# Military Technology Eras
-		"early tank warfare", "biplane era", "early radar period", "monoplane transition",
-		"early jet aircraft", "V-weapon period", "heavy bomber era", "aircraft carrier warfare",
-		"submarine warfare golden age", "amphibious assault development",
-		"mechanized warfare", "combined arms doctrine", "early nuclear era",
-		
-		# National Military Period Styles
-		"Wehrmacht prime", "Soviet military buildup", "British Empire forces",
-		"American war production peak", "Imperial Japanese forces",
-		"Nazi Germany zenith", "Allied powers ascendancy", "Axis powers decline",
-		"Red Army resurgence", "American military dominance"
+		"World War I era", "World War II era", "Cold War era", 
+		"modern military",
 	]
 
 	activity_categories = [
-		# Combat Activities
-		"fighting", "tank battle", "infantry assault", "naval engagement",
-		"aerial dogfight", "bombing run", "strafing run", "artillery barrage",
-		"firing weapon", "machine gun firing", "mortar firing", "shelling",
-		"anti-aircraft firing", "sniper activity", "flamethrower attack",
-		"bayonet charge", "hand-to-hand combat", "urban combat", "house-to-house fighting",
-		
-		# Movement & Transportation
-		"driving", "convoy movement", "tank column", "troop transport",
-		"marching", "infantry advance", "tactical retreat", "military withdrawal",
-		"flying", "air patrol", "reconnaissance flight", "bombing mission",
-		"parachute drop", "airborne landing", "glider landing", "air resupply",
-		"crossing terrain", "river crossing", "beach landing", "amphibious assault",
-		"fording stream", "mountain climbing", "moving through jungle",
-		"naval convoy", "fleet movement", "submarine patrol", "naval blockade",
-		
-		# Military Operations
-		"digging trenches", "building fortifications", "laying mines", "clearing mines",
-		"constructing bridge", "demolishing bridge", "breaching obstacles",
-		"setting up artillery", "camouflaging position", "establishing perimeter",
-		"setting up command post", "establishing field hospital", "creating airstrip",
-		
-		# Logistics & Support
-		"loading equipment", "unloading equipment", "loading ammunition", "refueling",
-		"resupplying troops", "distributing rations", "loading wounded", "evacuating casualties",
-		"loading ships", "unloading landing craft", "airdrop receiving", "gathering supplies",
-		"towing disabled vehicle", "vehicle recovery", "aircraft maintenance", "tank repair",
-		"weapon cleaning", "equipment maintenance", "vehicle maintenance",
-		
-		# Military Life & Routines
-		"training", "infantry drill", "weapons training", "tank crew training", "pilot training",
-		"field exercise", "receiving briefing", "map reading", "radio communication",
-		"standing guard", "sentry duty", "prisoner handling", "military inspection",
-		"cooking field rations", 'military rations', "eating meal", "resting between battles", "writing letters",
-		"medical treatment", "field surgery", "distributing supplies", "receiving orders",
-		
-		# Ceremonial & Administrative
-		"military parade", "award ceremony", "flag raising", "surrender ceremony", 
-		"prisoner processing", "military funeral", "military wedding", "religious service",
-		"officer briefing", "signing documents", "military trial", "propaganda filming",
-		"press conference", "VIP visit", "civilian interaction", "occupation duty",
-		"war crime investigation", "reconnaissance reporting"
+			# Combat
+			"fighting", "tank battle", "infantry assault", "naval engagement", "artillery barrage",
+			"firing weapon",
+
+			# Movement
+			"driving", "troop transport", "marching", "reconnaissance flight", "river crossing",
+
+			# Military Operations
+			"digging trenches", "building fortifications", "laying mines", "setting up artillery",
+			"establishing field hospital",
+
+			# Logistics
+			"loading equipment", "loading ammunition", "evacuating casualties", "aircraft maintenance",
+
+			# Military Life
+			"training", "receiving briefing", "standing guard", "medical treatment",
+			"distributing supplies",
+
+			# Ceremonial
+			"military parade", "flag raising", "ceremonial speech", "ceremony",
+			"officer briefing", "civilian interaction",
+
+			# Civilian & Cultural
+			"tunnel digging", "building restoration", "railway maintenance", "wood stacking",
+			"bathing", "family portrait", "market trading", "exhibition setup", "museum curation",
+			"artifact display", "signature documentation", "photo album creation",
+			"farming harvest", "tourist visit", "art exhibition",
+
+			# Transport
+			"ferry operation", "train operation", "freight loading"
 	]
 
-	# Function to process image batches
-	def process_batch(batch_paths, categories):
-		valid_images = []
-		valid_indices = []
-		
-		# Load images
-		for i, path in enumerate(batch_paths):
+	all_categories = object_categories + scene_categories + era_categories + activity_categories
+
+	def process_batch(batched_indices, batched_img_paths, batched_txt_decriptions, categories, sent_model, device, thresholds):
+		valid_images, valid_indices = [], []
+		for i, path in enumerate(batched_img_paths):
 			try:
 				if os.path.exists(path):
-					img = Image.open(path).convert('RGB')
-					valid_images.append(img)
+					valid_images.append(Image.open(path).convert('RGB'))
 					valid_indices.append(i)
 			except Exception as e:
-				if verbose:
-					print(f"Error loading image {path}: {e}")
+				print(f"Error loading image {path}: {e}")
 		
 		if not valid_images:
-			return [[] for _ in range(len(batch_paths))]
-				
-		# Prepare text prompts
-		text_prompts = [f"a photo of {cat}" for cat in categories]
+			return [[] for _ in range(len(batched_img_paths))]
 		
-		# Process with VLM
-		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			# Prepare inputs
-			inputs = processor(
-				text=text_prompts,
-				images=valid_images, 
-				return_tensors="pt", 
-				padding=True
-			).to(device)
-			
-			# Get embeddings
-			outputs = model(**inputs)
-			
-			# Normalize embeddings
-			image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
-			text_embeds = outputs.text_embeds / outputs.text_embeds.norm(dim=-1, keepdim=True)
-			
-			# Calculate similarity scores
-			similarity = (100.0 * image_embeds @ text_embeds.T).softmax(dim=-1)
-			
-			# Create results
-			batch_results = [[] for _ in range(len(batch_paths))]
-			
-			# Extract predictions above threshold
-			for img_idx, similarities in enumerate(similarity.cpu().numpy()):
-				batch_idx = valid_indices[img_idx]
-				for cat_idx, score in enumerate(similarities):
-					if score > confidence_threshold:
-						batch_results[batch_idx].append(categories[cat_idx])
+		text_prompts = [f"a photo of {cat}" for cat in categories]
+		text_embeds = sent_model.encode(batched_txt_decriptions, device=device, show_progress_bar=False)
+		prompt_embeds = sent_model.encode(text_prompts, device=device, show_progress_bar=False)
 
+		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			inputs = processor(text=text_prompts, images=valid_images, return_tensors="pt", padding=True)
+			inputs = inputs.to(device)
+			outputs = model(**inputs)
+			image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
+			vlm_embeds = outputs.text_embeds / outputs.text_embeds.norm(dim=-1, keepdim=True)
+			vlm_similarity = (100.0 * image_embeds @ vlm_embeds.T).softmax(dim=-1)
+			text_similarity = np.dot(prompt_embeds, text_embeds.T) / (
+				np.linalg.norm(prompt_embeds, axis=1)[:, None] * np.linalg.norm(text_embeds, axis=1)[None, :] + 1e-8
+			)
+			batch_results = [[] for _ in range(len(batched_img_paths))]
+			for img_idx, similarities in enumerate(vlm_similarity.cpu().numpy()):
+				batch_idx = valid_indices[img_idx]
+				global_idx = batched_indices[batch_idx]  # Map to global dataset index
+				for cat_idx, vlm_score in enumerate(similarities):
+					text_score = text_similarity[cat_idx, batch_idx]
+					final_score = vlm_score * (0.7 + 0.3 * text_score)
+					if final_score > thresholds[global_idx, cat_idx]:
+						batch_results[batch_idx].append(categories[cat_idx])
+		
 		return batch_results
-	
+
+	# Pre-load images and compute text similarities
+	if verbose:
+		print("Loading images and computing text similarities...")
+	t0 = time.time()
+	images = []
+	valid_image_indices = []
+	for i, path in tqdm(enumerate(image_paths), desc="Loading images"):
+		try:
+			if os.path.exists(path):
+				images.append(Image.open(path).convert('RGB'))
+				valid_image_indices.append(i)
+		except Exception as e:
+			print(f"Error loading image {path}: {e}")
+	text_prompts = [f"a photo of {cat}" for cat in all_categories]
+	text_embeds = sent_model.encode([text_descriptions[i] for i in valid_image_indices], device=device, show_progress_bar=False)
+	prompt_embeds = sent_model.encode(text_prompts, device=device, show_progress_bar=False)
+	text_similarities = np.dot(prompt_embeds, text_embeds.T) / (
+		np.linalg.norm(prompt_embeds, axis=1)[:, None] * np.linalg.norm(text_embeds, axis=1)[None, :] + 1e-8
+	)
+	if verbose:
+		print(f"Loading and text similarities done in {time.time() - t0:.3f} sec")
+
+	if verbose:
+		print("Computing adaptive thresholds...")
+	t0 = time.time()
+	thresholds = compute_adaptive_thresholds(
+		images=images, 
+		categories=all_categories,
+		text_similarities=text_similarities.T,  # Transpose to [num_images, num_categories]
+		object_categories=object_categories, 
+		scene_categories=scene_categories, 
+		era_categories=era_categories, 
+		activity_categories=activity_categories,
+		n_jobs=num_workers,
+	)
+	if verbose:
+		print(f"Adaptive thresholds computed in {time.time() - t0:.3f} sec")
+
 	# Process images in batches
 	all_labels = []
 	
@@ -1949,8 +1991,18 @@ def get_visual_based_annotation(
 	if verbose:
 		print("Performing visual object detection...")
 	for i in tqdm(range(0, len(image_paths), batch_size), desc="Object Detection"):
-		batch_paths = image_paths[i:i+batch_size]
-		batch_results = process_batch(batch_paths, object_categories)
+		batched_img_paths = image_paths[i:i+batch_size]
+		batched_txt_decriptions = text_descriptions[i:i+batch_size]
+		batched_indices = list(range(i, i+batch_size))
+		batch_results = process_batch(
+			batched_indices=batched_indices,
+			batched_img_paths=batched_img_paths,
+			batched_txt_decriptions=batched_txt_decriptions,
+			categories=object_categories,
+			sent_model=sent_model,
+			device=device,
+			thresholds=thresholds,
+		)
 		all_labels.extend(batch_results)
 	
 	# 2. Scene Classification
@@ -1958,8 +2010,18 @@ def get_visual_based_annotation(
 		print("Performing scene classification...")
 	scene_labels = []
 	for i in tqdm(range(0, len(image_paths), batch_size), desc="Scene Classification"):
-		batch_paths = image_paths[i:i+batch_size]
-		batch_results = process_batch(batch_paths, scene_categories)
+		batched_img_paths = image_paths[i:i+batch_size]
+		batched_txt_decriptions = text_descriptions[i:i+batch_size]
+		batched_indices = list(range(i, i+batch_size))
+		batch_results = process_batch(
+			batched_indices=batched_indices,
+			batched_img_paths=batched_img_paths, 
+			categories=scene_categories, 
+			batched_txt_decriptions=batched_txt_decriptions, 
+			sent_model=sent_model, 
+			device=device, 
+			thresholds=thresholds,
+		)
 		scene_labels.extend(batch_results)
 	
 	# 3. Era Detection (Temporal Visual Cues)
@@ -1967,9 +2029,18 @@ def get_visual_based_annotation(
 		print("Detecting temporal visual cues...")
 	era_labels = []
 	for i in tqdm(range(0, len(image_paths), batch_size), desc="Era Detection"):
-		batch_paths = image_paths[i:i+batch_size]
-		# Lower threshold for era detection (more challenging)
-		batch_results = process_batch(batch_paths, era_categories)
+		batched_img_paths = image_paths[i:i+batch_size]
+		batched_txt_decriptions = text_descriptions[i:i+batch_size]
+		batched_indices = list(range(i, i+batch_size))
+		batch_results = process_batch(
+			batched_indices=batched_indices,
+			batched_img_paths=batched_img_paths, 
+			categories=era_categories, 
+			batched_txt_decriptions=batched_txt_decriptions, 
+			sent_model=sent_model, 
+			device=device, 
+			thresholds=thresholds,
+		)
 		era_labels.extend(batch_results)
 	
 	# 4. Activity Recognition (Visual Relationship Detection)
@@ -1977,8 +2048,18 @@ def get_visual_based_annotation(
 		print("Detecting visual relationships and activities...")
 	activity_labels = []
 	for i in tqdm(range(0, len(image_paths), batch_size), desc="Activity Recognition"):
-		batch_paths = image_paths[i:i+batch_size]
-		batch_results = process_batch(batch_paths, activity_categories)
+		batched_img_paths = image_paths[i:i+batch_size]
+		batched_txt_decriptions = text_descriptions[i:i+batch_size]
+		batched_indices = list(range(i, i+batch_size))
+		batch_results = process_batch(
+			batched_indices=batched_indices,
+			batched_img_paths=batched_img_paths, 
+			categories=activity_categories, 
+			batched_txt_decriptions=batched_txt_decriptions, 
+			sent_model=sent_model, 
+			device=device, 
+			thresholds=thresholds,
+		)
 		activity_labels.extend(batch_results)
 	
 	# Combine all visual annotations
@@ -2022,11 +2103,9 @@ def main():
 	parser = argparse.ArgumentParser(description="Multi-label annotation for Historical Archives Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--use_parallel", '-parallel', action="store_true")
-	parser.add_argument("--num_workers", '-nw', type=int, default=16)
+	parser.add_argument("--num_workers", '-nw', type=int, default=10, help="Number of workers for parallel processing")
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=64)
-	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=16, help="Batch size for vision processing")
-	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.30, help="Relevance threshold for text-based filtering")
-	parser.add_argument("--vision_threshold", '-vth', type=float, default=0.30, help="Confidence threshold for VLM-based filtering")
+	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=10, help="Batch size for vision processing")
 	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2"], help="Sentence-transformer model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 
@@ -2090,10 +2169,11 @@ def main():
 	else:
 		visual_based_labels = get_visual_based_annotation(
 			csv_file=args.csv_file,
+			st_model_name=args.sentence_model_name,
 			batch_size=args.vision_batch_size,
 			verbose=True,
-			confidence_threshold=args.vision_threshold,
 			device=args.device,
+			num_workers=args.num_workers,
 			metadata_fpth=vision_output_path,
 		)
 	
