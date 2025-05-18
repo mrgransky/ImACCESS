@@ -22,7 +22,7 @@ CUSTOM_STOPWORDS = ENGLISH_STOP_WORDS.union(
 		"collection", "collections", "number", "abbreviation", "abbreviations",
 		"folder", "box", "file", "document", "page", "index", "label", "code", "icon", "type", "unknown", "unknow",
 		"folder icon", "box icon", "file icon", "document icon", "page icon", "index icon", "label icon", "code icon",
-		"used", "southern", "built",
+		"used", "southern", "built", "album", "album cover",
 		"original", "information", "item", "http", "www", "jpg", "000",
 		"jpeg", "png", "gif", "bmp", "tiff", "tif", "ico", "svg", "webp", "heic", "heif", "raw", "cr2", "nef", "orf", "arw", "dng", "nrw", "k25", "kdc", "rw2", "raf", "mrw", "pef", "sr2", "srf",
 	}
@@ -67,6 +67,96 @@ RELEVANT_ENTITY_TYPES = {
 	'DATE',
 	'TIME',
 }
+
+object_categories = [
+	# Military Vehicles
+	"tank", "light tank", "medium tank", "tank destroyer", "armored car",
+	"half-track", "armored personnel carrier", "armored train", "Kubelwagen", "Willys Jeep",
+	"jeep", "military truck", "supply truck", "artillery tractor", "amphibious vehicle",
+	# Aircraft
+	"military aircraft", "fighter aircraft", "bomber aircraft", "reconnaissance aircraft",
+	"seaplane", "biplane", "monoplane", "Spitfire", "Messerschmitt Bf 109", "B-17 Flying Fortress",
+	# Naval Vessels
+	"submarine", "destroyer", "cruiser", "battleship", "aircraft carrier",
+	"corvette", "minesweeper", "landing craft", "hospital ship", "troop transport", "tugboat",
+	# Military Personnel
+	"soldier", "infantryman", "officer", "pilot", "sailor", "marine", "medic",
+	"Wehrmacht soldier", "Red Army soldier",
+	# Weapons
+	"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery piece",
+	"cannon", "anti-tank gun", "grenade", "landmine", "torpedo", "M1 Garand",
+	# Military Infrastructure
+	"bunker", "gun emplacement", "observation post", "barbed wire", "trenches",
+	"fortification", "coastal defense", "minefield",
+	# Military Symbols
+	"military flag", "Union Jack", "military insignia",
+	"medal", "military helmet", "gas mask",
+	# Military Equipment
+	"military uniform", "backpack", "entrenching tool", "binoculars", "field telephone",
+	"radio equipment", "parachute", "jerry can", "stretcher",
+	# Infrastructure
+	"construction crane", "tunnel slab", "gasometer", "railway track", "locomotive wheel",
+	"train car", "ferry slip", "locomotive engine", "railway signal",
+	# Civilian Objects
+	"wheelbarrow", "leather apron", "signature document", "blood pressure monitor",
+	"medical chart",
+	# Cultural
+	"cannon carriage", "museum exhibit", "photo album", "pavilion structure",
+	"market stall", "religious monument", "basilica statue", "palace garden", "historical plaque",
+	# Animals
+	"donkey", "camel", "workhorse", "mule", "ox", "reindeer",
+]
+scene_categories = [
+	# Military Theaters
+	"Western Front", "Eastern Front", "Italian Front", "North African Front",
+	"coastline", "city ruins",
+	# Terrain
+	"desert", "forest", "winter forest", "urban area", "mountain", "mountain valley",
+	"field", "rural farmland", "snow-covered field", "ocean", "coastal waters",
+	"river", "river crossing", "bridge", "lake shore", "coastal landscape",
+	# Military Settings
+	"military hospital", "field hospital", "military cemetery", "aircraft factory",
+	"military depot", "military port", "naval dry dock",
+	# Military Infrastructure
+	"airfield", "naval base", "army barracks", "military headquarters",
+	"coastal defense", "artillery position",
+	# Civilian & Cultural
+	"urban construction", "industrial site", "railroad station", "ferry dock",
+	"harbor port", "bathing area", "museum interior", "palace courtyard",
+	"historical plaza", "library hall", "urban plaza", "cathedral square",
+	"palace grounds", "village square"
+]
+
+era_categories = [
+	"WWI era", "WWII era", "Cold War era", 
+	"modern military",
+]
+
+activity_categories = [
+	# Combat
+	"fighting", "tank battle", "infantry assault", "naval engagement", "artillery barrage",
+	"firing weapon",
+	# Movement
+	"driving", "troop transport", "marching", "reconnaissance flight", "river crossing",
+	# Military Operations
+	"digging trenches", "building fortifications", "laying mines", "setting up artillery",
+	"establishing field hospital",
+	# Logistics
+	"loading equipment", "loading ammunition", "evacuating casualties", "aircraft maintenance",
+	# Military Life
+	"training", "receiving briefing", "standing guard", "medical treatment",
+	"distributing supplies",
+	# Ceremonial
+	"military parade", "flag raising", "ceremonial speech", "ceremony",
+	"officer briefing", "civilian interaction",
+	# Civilian & Cultural
+	"tunnel digging", "building restoration", "railway maintenance", "wood stacking",
+	"bathing", "family portrait", "market trading", "exhibition setup", "museum curation",
+	"artifact display", "signature documentation", "photo album creation",
+	"farming harvest", "tourist visit", "art exhibition",
+	# Transport
+	"ferry operation", "train operation", "freight loading"
+]
 
 def density_based_parameters(embeddings, n_neighbors=15):
 		"""Determine parameters based on local density"""
@@ -390,55 +480,51 @@ def extract_semantic_topics(
 	cluster_phrases = defaultdict(Counter)
 	cluster_text_counts = defaultdict(int)
 	phrase_filter_log = {'total_phrases': 0, 'stopword_filtered': 0, 'length_filtered': 0}
-	for i, (text, label) in enumerate(zip(texts, labels)):
+	for i, (text, label) in tqdm(enumerate(zip(texts, labels)), total=len(texts), desc="Keywords Extraction Progress"):
 		if label == -1:  # Skip noise points
 			continue
-		if is_english(text=text, ft_model=ft_model):
-			# Extract keyphrases with KeyBERT
-			phrases = kw_model.extract_keywords(
-				text,
-				keyphrase_ngram_range=(1, 3),  # 1-3 word phrases
-				stop_words="english",
-				top_n=10 if len(text.split()) > 100 else 5,
-			)
-			# print(phrases)
-			phrase_filter_log['total_phrases'] += len(phrases)
-			# Filter phrases
-			valid_phrases = []
-			for phrase, _ in phrases:  # Ignore KeyBERT scores for now
-				words = phrase.split()
-				stopword_count = sum(1 for word in words if word in CUSTOM_STOPWORDS)
-				# Relaxed stopword filter: allow <=70% stopwords
-				if stopword_count / len(words) > 0.7:
-					phrase_filter_log['stopword_filtered'] += 1
-					continue
-				# Length filter: ensure phrase has 2+ words
-				if len(words) < 2:
-					phrase_filter_log['length_filtered'] += 1
-					continue
-				valid_phrases.append(phrase)
-			
-			# Normalize phrases to reduce repetition
-			normalized_phrases = []
-			seen_phrases = set()
-			for phrase in valid_phrases:
-				# Remove consecutive duplicate words
-				words = phrase.split()
-				normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
-				# Ensure normalized phrase is unique and meets length requirement
-				if len(normalized.split()) >= 2 and normalized not in seen_phrases:
-					normalized_phrases.append(normalized)
-					seen_phrases.add(normalized)
-				else:
-					phrase_filter_log['length_filtered'] += 1
-			
-			if not normalized_phrases:
-				print(f"Text {i} has no valid phrases: {text[:500]}")
+		phrases = kw_model.extract_keywords(
+			text,
+			keyphrase_ngram_range=(1, 3),
+			stop_words="english",
+			top_n=10 if len(text.split()) > 100 else 5,
+		)
+		# print(phrases)
+		phrase_filter_log['total_phrases'] += len(phrases)
+		# Filter phrases
+		valid_phrases = []
+		for phrase, _ in phrases:  # Ignore KeyBERT scores for now
+			words = phrase.split()
+			stopword_count = sum(1 for word in words if word in CUSTOM_STOPWORDS)
+			# Relaxed stopword filter: allow <=70% stopwords
+			if stopword_count / len(words) > 0.7:
+				phrase_filter_log['stopword_filtered'] += 1
+				continue
+			# # Length filter: ensure phrase has 2+ words
+			# if len(words) < 2:
+			# 	phrase_filter_log['length_filtered'] += 1
+			# 	continue
+			valid_phrases.append(phrase)
+		
+		# Normalize phrases to reduce repetition
+		normalized_phrases = []
+		seen_phrases = set()
+		for phrase in valid_phrases:
+			# Remove consecutive duplicate words
+			words = phrase.split()
+			normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
+			# Ensure normalized phrase is unique and meets length requirement
+			if len(normalized.split()) >= 2 and normalized not in seen_phrases:
+				normalized_phrases.append(normalized)
+				seen_phrases.add(normalized)
 			else:
-				cluster_phrases[label].update(normalized_phrases)
-			cluster_text_counts[label] += 1
+				phrase_filter_log['length_filtered'] += 1
+		
+		if not normalized_phrases:
+			print(f"Text {i} has no valid phrases: {text[:500]}")
 		else:
-			print(f"Text {i} is not English: {text[:500]}")
+			cluster_phrases[label].update(normalized_phrases)
+		cluster_text_counts[label] += 1
 	print(f"Phrase collection done in {time.time() - t0:.2f} sec")
 	
 	# Visualization 3: Phrase Retention Histogram
@@ -1631,7 +1717,7 @@ def get_textual_based_annotation(
 		print("Post-processing labels, deduplication, and semantic categorization...")
 		t0 = time.time()
 		english_labels = []
-		for i, relevant_labels in enumerate(tqdm(per_image_relevant_labels, desc="Post-processing", unit="image")):
+		for i, relevant_labels in enumerate(per_image_relevant_labels):
 			filtered_labels = handle_multilingual_labels(relevant_labels)
 			if "user_query" in english_df.columns:
 				original_label = english_df.iloc[i]["user_query"]
@@ -1643,7 +1729,6 @@ def get_textual_based_annotation(
 						sim = np.dot(text_emb, query_emb) / (np.linalg.norm(text_emb) * np.linalg.norm(query_emb) + 1e-8)
 						if sim > relevance_threshold:
 							filtered_labels.append(original_label_clean)
-			
 			filtered_labels = deduplicate_labels(filtered_labels)
 			# Add semantic categories
 			categorized = assign_semantic_categories(filtered_labels)
@@ -1672,431 +1757,297 @@ def get_textual_based_annotation(
 	
 	return per_image_labels
 
-def get_category_type(category, category_type_map):
-	return category_type_map.get(category, "unknown")
-
-def compute_entropy(image, downsample_size=None):
-	img_array = np.array(image.convert('L'))
-	if downsample_size:
-		img_array = resize(img_array, downsample_size, anti_aliasing=True, preserve_range=True).astype(np.uint8)
-	return shannon_entropy(img_array)
-
-def compute_adaptive_thresholds(
-		images: list,
-		categories: list,
-		text_similarities: np.ndarray,
-		object_categories: list,
-		scene_categories: list,
-		era_categories: list,
-		activity_categories: list,
-		n_jobs: int,
-		batch_size: int = 32,
-		similarity_threshold: float = 0.1,
-		downsample_size: tuple = (128, 128)
-	):
-	num_images = len(images)
-	num_categories = len(categories)
-	thresholds = np.zeros((num_images, num_categories))
-	
-	# Create category type map
-	category_type_map = {}
-	base_thresholds = {
-			"object": 0.4,
-			"scene": 0.25,
-			"era": 0.2,
-			"activity": 0.3
-	}
-	for cat, cat_type in [
-			(cat, "object") for cat in object_categories
-	] + [
-			(cat, "scene") for cat in scene_categories
-	] + [
-			(cat, "era") for cat in era_categories
-	] + [
-			(cat, "activity") for cat in activity_categories
-	]:
-			category_type_map[cat] = cat_type
-	
-	# Convert text similarities to sparse matrix for memory efficiency
-	text_similarities = csr_matrix(text_similarities)
-	
-	# Parallel entropy computation
-	entropies = Parallel(n_jobs=n_jobs, verbose=1)(delayed(compute_entropy)(img, downsample_size) for img in images)
-	entropies = np.array(entropies)
-	
-	# Precompute complexity factors
-	max_entropy = 8.0  # Approximate max for 8-bit grayscale
-	complexity_factors = 1.0 - 0.2 * (entropies / max_entropy)
-	
-	# Batch process thresholds
-	for cat_idx, category in enumerate(tqdm(categories, desc="Computing Thresholds")):
-		cat_type = get_category_type(category, category_type_map)
-		base_threshold = base_thresholds.get(cat_type, 0.3)
-		
-		# Get non-zero text similarities
-		text_scores = text_similarities[:, cat_idx].toarray().flatten()
-		valid_indices = np.where(text_scores >= similarity_threshold)[0]
-		
-		if len(valid_indices) == 0:
-			continue  # Skip if no relevant similarities
-		
-		# Vectorized threshold computation
-		text_factors = 0.8 + 0.2 * text_scores[valid_indices]
-		thresholds[valid_indices, cat_idx] = (base_threshold * complexity_factors[valid_indices] * text_factors)
-	
-	return thresholds
-
 def get_visual_based_annotation(
-		csv_file: str,
-		st_model_name: str,
-		batch_size: int,
-		device: str,
-		num_workers: int,
-		verbose: bool,
-		metadata_fpth: str,
-	) -> List[List[str]]:
-	print(f"Semi-Supervised label extraction from image data(using VLM)".center(160, "-"))
-	start_time = time.time()
-	dataset_dir = os.path.dirname(csv_file)
+			csv_file: str,
+			st_model_name: str,
+			batch_size: int,
+			device: str,
+			num_workers: int,
+			verbose: bool,
+			metadata_fpth: str,
+		) -> List[List[str]]:
+		print(f"Semi-Supervised label extraction from image data (using VLM) batch_size: {batch_size}".center(160, "-"))
+		start_time = time.time()
+		dataset_dir = os.path.dirname(csv_file)
 
-	# Load dataset
-	if verbose:
-		print(f"Loading metadata from {csv_file}...")
-	dtypes = {
-		'doc_id': str, 'id': str, 'label': str, 'title': str,
-		'description': str, 'img_url': str, 'enriched_document_description': str,
-		'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
-		'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
-	}
-	df = pd.read_csv(
-		filepath_or_buffer=csv_file, 
-		on_bad_lines='skip',
-		dtype=dtypes, 
-		low_memory=False,
-	)
+		if verbose:
+			print(f"Loading metadata from {csv_file}...")
+		dtypes = {
+			'doc_id': str, 'id': str, 'label': str, 'title': str,
+			'description': str, 'img_url': str, 'enriched_document_description': str,
+			'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
+			'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+		}
+		df = pd.read_csv(
+			filepath_or_buffer=csv_file, 
+			on_bad_lines='skip',
+			dtype=dtypes, 
+			low_memory=False,
+		)
 
-	if verbose:
-		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
-	df['content'] = df['enriched_document_description'].fillna('').astype(str)
-	image_paths = df['img_path'].tolist()
-	text_descriptions = df['content'].tolist()
-
-	if verbose:
-		print(f"Loading sentence-transformer model: {st_model_name}...")
-	sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
-
-	if verbose:
-		print("Loading VLM model for image labeling...")
-	processor = AlignProcessor.from_pretrained("kakaobrain/align-base")
-	model = AlignModel.from_pretrained("kakaobrain/align-base")
-	model.to(device) # Add this line to move the model to the GPU
-	model.eval()
-
-	object_categories = [
-			# Military Vehicles
-			"tank", "light tank", "medium tank", "tank destroyer", "armored car",
-			"half-track", "armored personnel carrier", "armored train", "Kubelwagen", "Willys Jeep",
-			"jeep", "military truck", "supply truck", "artillery tractor", "amphibious vehicle",
-
-			# Aircraft
-			"military aircraft", "fighter aircraft", "bomber aircraft", "reconnaissance aircraft",
-			"seaplane", "biplane", "monoplane", "Spitfire", "Messerschmitt Bf 109", "B-17 Flying Fortress",
-
-			# Naval Vessels
-			"submarine", "destroyer", "cruiser", "battleship", "aircraft carrier",
-			"corvette", "minesweeper", "landing craft", "hospital ship", "troop transport", "tugboat",
-
-			# Military Personnel
-			"soldier", "infantryman", "officer", "pilot", "sailor", "marine", "medic",
-			"Wehrmacht soldier", "Red Army soldier",
-
-			# Weapons
-			"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery piece",
-			"cannon", "anti-tank gun", "grenade", "landmine", "torpedo", "M1 Garand",
-
-			# Military Infrastructure
-			"bunker", "gun emplacement", "observation post", "barbed wire", "trenches",
-			"fortification", "coastal defense", "minefield",
-
-			# Military Symbols
-			"military flag", "Union Jack", "military insignia",
-			"medal", "military helmet", "gas mask",
-
-			# Military Equipment
-			"military uniform", "backpack", "entrenching tool", "binoculars", "field telephone",
-			"radio equipment", "parachute", "jerry can", "stretcher",
-
-			# Infrastructure
-			"construction crane", "tunnel slab", "gasometer", "railway track", "locomotive wheel",
-			"train car", "ferry slip", "locomotive engine", "railway signal",
-
-			# Civilian Objects
-			"wheelbarrow", "leather apron", "signature document", "blood pressure monitor",
-			"medical chart",
-
-			# Cultural
-			"cannon carriage", "museum exhibit", "photo album", "pavilion structure",
-			"market stall", "religious monument", "basilica statue", "palace garden", "historical plaque",
-
-			# Animals
-			"donkey", "camel", "workhorse", "mule", "ox", "reindeer",
-	]
-
-	scene_categories = [
-			# Military Theaters
-			"Western Front", "Eastern Front", "Italian Front", "North African Front",
-			"coastline", "city ruins",
-
-			# Terrain
-			"desert", "forest", "winter forest", "urban area", "mountain", "mountain valley",
-			"field", "rural farmland", "snow-covered field", "ocean", "coastal waters",
-			"river", "river crossing", "bridge", "lake shore", "coastal landscape",
-
-			# Military Settings
-			"military hospital", "field hospital", "military cemetery", "aircraft factory",
-			"military depot", "military port", "naval dry dock",
-
-			# Military Infrastructure
-			"airfield", "naval base", "army barracks", "military headquarters",
-			"coastal defense", "artillery position",
-
-			# Civilian & Cultural
-			"urban construction", "industrial site", "railroad station", "ferry dock",
-			"harbor port", "bathing area", "museum interior", "palace courtyard",
-			"historical plaza", "library hall", "urban plaza", "cathedral square",
-			"palace grounds", "village square"
-	]
-
-	era_categories = [
-		"World War I era", "World War II era", "Cold War era", 
-		"modern military",
-	]
-
-	activity_categories = [
-			# Combat
-			"fighting", "tank battle", "infantry assault", "naval engagement", "artillery barrage",
-			"firing weapon",
-
-			# Movement
-			"driving", "troop transport", "marching", "reconnaissance flight", "river crossing",
-
-			# Military Operations
-			"digging trenches", "building fortifications", "laying mines", "setting up artillery",
-			"establishing field hospital",
-
-			# Logistics
-			"loading equipment", "loading ammunition", "evacuating casualties", "aircraft maintenance",
-
-			# Military Life
-			"training", "receiving briefing", "standing guard", "medical treatment",
-			"distributing supplies",
-
-			# Ceremonial
-			"military parade", "flag raising", "ceremonial speech", "ceremony",
-			"officer briefing", "civilian interaction",
-
-			# Civilian & Cultural
-			"tunnel digging", "building restoration", "railway maintenance", "wood stacking",
-			"bathing", "family portrait", "market trading", "exhibition setup", "museum curation",
-			"artifact display", "signature documentation", "photo album creation",
-			"farming harvest", "tourist visit", "art exhibition",
-
-			# Transport
-			"ferry operation", "train operation", "freight loading"
-	]
-
-	all_categories = object_categories + scene_categories + era_categories + activity_categories
-
-	def process_batch(batched_indices, batched_img_paths, batched_txt_decriptions, categories, sent_model, device, thresholds):
-		valid_images, valid_indices = [], []
-		for i, path in enumerate(batched_img_paths):
+		if verbose:
+			print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
+		df['content'] = df['enriched_document_description'].fillna('').astype(str)
+		image_paths = df['img_path'].tolist()
+		text_descriptions = df['content'].tolist()
+		
+		# Create checkpointing mechanism to resume from interruptions
+		checkpoint_path = os.path.join(dataset_dir, "visual_annotation_checkpoint.pkl")
+		start_idx = 0
+		all_labels = []
+		scene_labels = []
+		era_labels = []
+		activity_labels = []
+		
+		if os.path.exists(checkpoint_path):
+			if verbose:
+				print(f"Found checkpoint file. Loading...")
 			try:
-				if os.path.exists(path):
-					valid_images.append(Image.open(path).convert('RGB'))
-					valid_indices.append(i)
+				with open(checkpoint_path, 'rb') as f:
+					checkpoint = pickle.load(f)
+					start_idx = checkpoint['next_idx']
+					all_labels = checkpoint['all_labels']
+					scene_labels = checkpoint['scene_labels']
+					era_labels = checkpoint['era_labels']
+					activity_labels = checkpoint['activity_labels']
+				if verbose:
+					print(f"Resuming from index {start_idx}/{len(image_paths)}")
 			except Exception as e:
-				print(f"Error loading image {path}: {e}")
-		
-		if not valid_images:
-			return [[] for _ in range(len(batched_img_paths))]
-		
-		text_prompts = [f"a photo of {cat}" for cat in categories]
-		text_embeds = sent_model.encode(batched_txt_decriptions, device=device, show_progress_bar=False)
-		prompt_embeds = sent_model.encode(text_prompts, device=device, show_progress_bar=False)
+				print(f"Error loading checkpoint: {e}. Starting from beginning.")
 
+		if verbose:
+			print(f"Loading sentence-transformer model: {st_model_name}...")
+		sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
+
+		if verbose:
+			print("Loading VLM model for image labeling...")
+		processor = AlignProcessor.from_pretrained("kakaobrain/align-base")
+		model = AlignModel.from_pretrained("kakaobrain/align-base")
+		model.to(device)
+		model.eval()
+
+		# Create category type map for thresholding
+		category_type_map = {}
+		for cat in object_categories:
+			category_type_map[cat] = "object"
+		for cat in scene_categories:
+			category_type_map[cat] = "scene"
+		for cat in era_categories:
+			category_type_map[cat] = "era"
+		for cat in activity_categories:
+			category_type_map[cat] = "activity"
+		
+		# Base thresholds by category type
+		base_thresholds = {
+			"object": 0.25,
+			"scene": 0.22,
+			"era": 0.18,
+			"activity": 0.22
+		}
+
+		# Pre-compute category prompts and embeddings (done once, not per batch)
+		if verbose:
+			print("Pre-computing category prompt embeddings...")
+
+		object_prompts = [f"a photo of {cat}" for cat in object_categories]
+		scene_prompts = [f"a photo of {cat}" for cat in scene_categories]
+		era_prompts = [f"a photo of {cat}" for cat in era_categories]
+		activity_prompts = [f"a photo of {cat}" for cat in activity_categories]
+		
 		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			inputs = processor(text=text_prompts, images=valid_images, return_tensors="pt", padding=True)
-			inputs = inputs.to(device)
-			outputs = model(**inputs)
-			image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
-			vlm_embeds = outputs.text_embeds / outputs.text_embeds.norm(dim=-1, keepdim=True)
-			vlm_similarity = (100.0 * image_embeds @ vlm_embeds.T).softmax(dim=-1)
-			text_similarity = np.dot(prompt_embeds, text_embeds.T) / (
-				np.linalg.norm(prompt_embeds, axis=1)[:, None] * np.linalg.norm(text_embeds, axis=1)[None, :] + 1e-8
-			)
-			batch_results = [[] for _ in range(len(batched_img_paths))]
-			for img_idx, similarities in enumerate(vlm_similarity.cpu().numpy()):
-				batch_idx = valid_indices[img_idx]
-				global_idx = batched_indices[batch_idx]  # Map to global dataset index
-				for cat_idx, vlm_score in enumerate(similarities):
-					text_score = text_similarity[cat_idx, batch_idx]
-					final_score = vlm_score * (0.7 + 0.3 * text_score)
-					if final_score > thresholds[global_idx, cat_idx]:
-						batch_results[batch_idx].append(categories[cat_idx])
-		
-		return batch_results
+			object_prompt_embeds = sent_model.encode(object_prompts, device=device, convert_to_tensor=True)
+			scene_prompt_embeds = sent_model.encode(scene_prompts, device=device, convert_to_tensor=True)
+			era_prompt_embeds = sent_model.encode(era_prompts, device=device, convert_to_tensor=True)
+			activity_prompt_embeds = sent_model.encode(activity_prompts, device=device, convert_to_tensor=True)
 
-	# Pre-load images and compute text similarities
-	if verbose:
-		print("Loading images and computing text similarities...")
-	t0 = time.time()
-	images = []
-	valid_image_indices = []
-	for i, path in tqdm(enumerate(image_paths), desc="Loading images"):
-		try:
-			if os.path.exists(path):
-				images.append(Image.open(path).convert('RGB'))
-				valid_image_indices.append(i)
-		except Exception as e:
-			print(f"Error loading image {path}: {e}")
-	text_prompts = [f"a photo of {cat}" for cat in all_categories]
-	text_embeds = sent_model.encode([text_descriptions[i] for i in valid_image_indices], device=device, show_progress_bar=False)
-	prompt_embeds = sent_model.encode(text_prompts, device=device, show_progress_bar=False)
-	text_similarities = np.dot(prompt_embeds, text_embeds.T) / (
-		np.linalg.norm(prompt_embeds, axis=1)[:, None] * np.linalg.norm(text_embeds, axis=1)[None, :] + 1e-8
-	)
-	if verbose:
-		print(f"Loading and text similarities done in {time.time() - t0:.3f} sec")
+		# Function to process a single category type efficiently
+		def process_category_batch(batch_indices, batch_paths, batch_descriptions, categories, prompt_embeds, category_type):
+			valid_images = []
+			valid_indices = []
+			valid_descriptions = []
+			
+			# Load images
+			for i, path in enumerate(batch_paths):
+				try:
+					if os.path.exists(path):
+						img = Image.open(path).convert('RGB')
+						valid_images.append(img)
+						valid_indices.append(i)
+						valid_descriptions.append(batch_descriptions[i])
+				except Exception as e:
+					if verbose and i % 100 == 0:
+						print(f"Error loading image {path}: {e}")
+			
+			if not valid_images:
+				return [[] for _ in range(len(batch_paths))]
+			
+			# Prepare prompts
+			text_prompts = [f"a photo of {cat}" for cat in categories]
+			
+			# Calculate text similarities using pre-computed prompt embeddings
+			# Only encode descriptions once per batch
+			with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				text_embeds = sent_model.encode(valid_descriptions, device=device, convert_to_tensor=True)
+				text_similarities = torch.mm(prompt_embeds, text_embeds.T).cpu().numpy()
+				prompt_norms = torch.norm(prompt_embeds, dim=1, keepdim=True)
+				text_norms = torch.norm(text_embeds, dim=1, keepdim=True)
+				text_similarities = text_similarities / (torch.mm(prompt_norms, text_norms.T).cpu().numpy() + 1e-8)
+			
+			# Process with VLM model in mixed precision
+			with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				model.eval()
+				
+				# Process in smaller sub-batches if needed (for very large batches)
+				sub_batch_size = min(len(valid_images), 16)  # VLM usually handles 16 images well
+				batch_results = [[] for _ in range(len(batch_paths))]
+				
+				for sub_idx in range(0, len(valid_images), sub_batch_size):
+						sub_end = min(sub_idx + sub_batch_size, len(valid_images))
+						sub_images = valid_images[sub_idx:sub_end]
+						sub_valid_indices = valid_indices[sub_idx:sub_end]
+						
+						# Prepare inputs efficiently
+						inputs = processor(
+							text=text_prompts,
+							images=sub_images, 
+							return_tensors="pt", 
+							padding=True
+						).to(device)
+						
+						# Get embeddings
+						outputs = model(**inputs)
+						
+						# Normalize and calculate similarity
+						image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
+						vlm_embeds = outputs.text_embeds / outputs.text_embeds.norm(dim=-1, keepdim=True)
+						vlm_similarity = (100.0 * image_embeds @ vlm_embeds.T).softmax(dim=-1).cpu().numpy()
+						
+						# Get threshold based on category type
+						threshold = base_thresholds[category_type]
+						
+						# Process results
+						for i, img_idx in enumerate(range(sub_idx, sub_end)):
+							batch_idx = sub_valid_indices[i]
+							local_img_idx = img_idx - sub_idx
+							
+							for cat_idx, cat in enumerate(categories):
+								# Get text similarity score
+								text_score = text_similarities[cat_idx, img_idx]
+								
+								# Adapt threshold based on text evidence
+								adaptive_threshold = threshold
+								if text_score > 0.5:
+									adaptive_threshold *= 0.8  # Lower threshold if strong text evidence
+								elif text_score < 0.1:
+									adaptive_threshold *= 1.2  # Higher threshold if no text evidence
+								
+								# Get VLM score
+								vlm_score = vlm_similarity[local_img_idx, cat_idx]
+								
+								# Combine VLM and text scores
+								combined_score = vlm_score * (0.8 + 0.2 * text_score)
+								
+								if combined_score > adaptive_threshold:
+									batch_results[batch_idx].append(categories[cat_idx])
+			
+			return batch_results
 
-	if verbose:
-		print("Computing adaptive thresholds...")
-	t0 = time.time()
-	thresholds = compute_adaptive_thresholds(
-		images=images, 
-		categories=all_categories,
-		text_similarities=text_similarities.T,  # Transpose to [num_images, num_categories]
-		object_categories=object_categories, 
-		scene_categories=scene_categories, 
-		era_categories=era_categories, 
-		activity_categories=activity_categories,
-		n_jobs=num_workers,
-	)
-	if verbose:
-		print(f"Adaptive thresholds computed in {time.time() - t0:.3f} sec")
+		for category_idx, (categories, prompt_embeds, category_type, labels_list) in enumerate([
+			(object_categories, object_prompt_embeds, "object", all_labels),
+			(scene_categories, scene_prompt_embeds, "scene", scene_labels),
+			(era_categories, era_prompt_embeds, "era", era_labels),
+			(activity_categories, activity_prompt_embeds, "activity", activity_labels)
+		]):
+			if verbose:
+				print(f"Processing {category_type} categories ({len(categories)} categories)...")
+			
+			# Only process categories that haven't been completed
+			if len(labels_list) >= len(image_paths):
+				if verbose:
+					print(f"Skipping {category_type} categories - already processed")
+				continue
+			
+			for i in range(start_idx, len(image_paths), batch_size):
+				batch_end = min(i + batch_size, len(image_paths))
+				batch_paths = image_paths[i:batch_end]
+				batch_descriptions = text_descriptions[i:batch_end]
+				batch_indices = list(range(i, batch_end))
+				
+				# Process this batch
+				batch_results = process_category_batch(
+					batch_indices=batch_indices,
+					batch_paths=batch_paths,
+					batch_descriptions=batch_descriptions,
+					categories=categories,
+					prompt_embeds=prompt_embeds,
+					category_type=category_type
+				)
+				
+				# Extend results list
+				while len(labels_list) < batch_end:
+					labels_list.append([])
+						
+				# Update with new results
+				for idx, results in zip(batch_indices, batch_results):
+					labels_list[idx].extend(results)
+						
+				# Save checkpoint every 500 batches
+				if (i // batch_size) % 500 == 0 and i > start_idx:
+					checkpoint = {
+						'next_idx': batch_end,
+						'all_labels': all_labels,
+						'scene_labels': scene_labels,
+						'era_labels': era_labels,
+						'activity_labels': activity_labels
+					}
+					with open(checkpoint_path, 'wb') as f:
+						pickle.dump(checkpoint, f)
+					if verbose:
+						print(f"Checkpoint saved at index {batch_end}")
+				
+			# Reset start index for next category batch
+			start_idx = 0
+		
+		# Remove checkpoint file after successful completion
+		if os.path.exists(checkpoint_path):
+			os.remove(checkpoint_path)
+		
+		# Combine all visual annotations
+		combined_labels = []
+		for i in range(len(image_paths)):
+			image_labels = []
+			
+			# Add object labels if available
+			if i < len(all_labels):
+				image_labels.extend(all_labels[i])
+			
+			# Add scene labels if available
+			if i < len(scene_labels):
+				image_labels.extend(scene_labels[i])
+			
+			# Add era labels if available
+			if i < len(era_labels):
+				image_labels.extend(era_labels[i])
+			
+			# Add activity labels if available
+			if i < len(activity_labels):
+				image_labels.extend(activity_labels[i])
+			
+			# Remove duplicates and sort
+			combined_labels.append(sorted(set(image_labels)))
+		
+		if verbose:
+			total_labels = sum(len(labels) for labels in combined_labels)
+			print(f"Vision-based annotation completed in {time.time() - start_time:.2f} seconds")
+			print(f"Generated {total_labels} labels for {len(image_paths)} images")
+			print(f"Average labels per image: {total_labels/len(image_paths):.2f}")
 
-	# Process images in batches
-	all_labels = []
-	
-	# 1. Visual Object Detection
-	if verbose:
-		print("Performing visual object detection...")
-	for i in tqdm(range(0, len(image_paths), batch_size), desc="Object Detection"):
-		batched_img_paths = image_paths[i:i+batch_size]
-		batched_txt_decriptions = text_descriptions[i:i+batch_size]
-		batched_indices = list(range(i, i+batch_size))
-		batch_results = process_batch(
-			batched_indices=batched_indices,
-			batched_img_paths=batched_img_paths,
-			batched_txt_decriptions=batched_txt_decriptions,
-			categories=object_categories,
-			sent_model=sent_model,
-			device=device,
-			thresholds=thresholds,
-		)
-		all_labels.extend(batch_results)
-	
-	# 2. Scene Classification
-	if verbose:
-		print("Performing scene classification...")
-	scene_labels = []
-	for i in tqdm(range(0, len(image_paths), batch_size), desc="Scene Classification"):
-		batched_img_paths = image_paths[i:i+batch_size]
-		batched_txt_decriptions = text_descriptions[i:i+batch_size]
-		batched_indices = list(range(i, i+batch_size))
-		batch_results = process_batch(
-			batched_indices=batched_indices,
-			batched_img_paths=batched_img_paths, 
-			categories=scene_categories, 
-			batched_txt_decriptions=batched_txt_decriptions, 
-			sent_model=sent_model, 
-			device=device, 
-			thresholds=thresholds,
-		)
-		scene_labels.extend(batch_results)
-	
-	# 3. Era Detection (Temporal Visual Cues)
-	if verbose:
-		print("Detecting temporal visual cues...")
-	era_labels = []
-	for i in tqdm(range(0, len(image_paths), batch_size), desc="Era Detection"):
-		batched_img_paths = image_paths[i:i+batch_size]
-		batched_txt_decriptions = text_descriptions[i:i+batch_size]
-		batched_indices = list(range(i, i+batch_size))
-		batch_results = process_batch(
-			batched_indices=batched_indices,
-			batched_img_paths=batched_img_paths, 
-			categories=era_categories, 
-			batched_txt_decriptions=batched_txt_decriptions, 
-			sent_model=sent_model, 
-			device=device, 
-			thresholds=thresholds,
-		)
-		era_labels.extend(batch_results)
-	
-	# 4. Activity Recognition (Visual Relationship Detection)
-	if verbose:
-		print("Detecting visual relationships and activities...")
-	activity_labels = []
-	for i in tqdm(range(0, len(image_paths), batch_size), desc="Activity Recognition"):
-		batched_img_paths = image_paths[i:i+batch_size]
-		batched_txt_decriptions = text_descriptions[i:i+batch_size]
-		batched_indices = list(range(i, i+batch_size))
-		batch_results = process_batch(
-			batched_indices=batched_indices,
-			batched_img_paths=batched_img_paths, 
-			categories=activity_categories, 
-			batched_txt_decriptions=batched_txt_decriptions, 
-			sent_model=sent_model, 
-			device=device, 
-			thresholds=thresholds,
-		)
-		activity_labels.extend(batch_results)
-	
-	# Combine all visual annotations
-	combined_labels = []
-	for i in range(len(image_paths)):
-		image_labels = []
-		
-		# Add object labels if available
-		if i < len(all_labels):
-			image_labels.extend(all_labels[i])
-		
-		# Add scene labels if available
-		if i < len(scene_labels):
-			image_labels.extend(scene_labels[i])
-		
-		# Add era labels if available
-		if i < len(era_labels):
-			image_labels.extend(era_labels[i])
-		
-		# Add activity labels if available
-		if i < len(activity_labels):
-			image_labels.extend(activity_labels[i])
-		
-		# Remove duplicates and sort
-		combined_labels.append(sorted(set(image_labels)))
-	
-	if verbose:
-		total_labels = sum(len(labels) for labels in combined_labels)
-		print(f"Vision-based annotation completed in {time.time() - start_time:.2f} seconds")
-		print(f"Generated {total_labels} labels for {len(image_paths)} images")
-		print(f"Average labels per image: {total_labels/len(image_paths):.2f}")
+		# Save results
+		df['visual_based_labels'] = combined_labels
+		df.to_csv(metadata_fpth, index=False)
+		print(f"Visual-based annotation Elapsed time: {time.time() - start_time:.2f} sec".center(160, " "))
 
-	df['visual_based_labels'] = combined_labels
-	df.to_csv(metadata_fpth, index=False)
-	print(f"Visual-based annotation Elapsed time: {time.time() - start_time:.2f} sec".center(160, " "))
-
-	return combined_labels
+		return combined_labels
 
 @measure_execution_time
 def main():
@@ -2104,8 +2055,9 @@ def main():
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--use_parallel", '-parallel', action="store_true")
 	parser.add_argument("--num_workers", '-nw', type=int, default=10, help="Number of workers for parallel processing")
+	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.25, help="Relevance threshold for textual-based annotation")
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=64)
-	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=10, help="Batch size for vision processing")
+	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=64, help="Batch size for vision processing")
 	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2"], help="Sentence-transformer model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 
@@ -2171,10 +2123,10 @@ def main():
 			csv_file=args.csv_file,
 			st_model_name=args.sentence_model_name,
 			batch_size=args.vision_batch_size,
-			verbose=True,
 			device=args.device,
 			num_workers=args.num_workers,
 			metadata_fpth=vision_output_path,
+			verbose=True,
 		)
 	
 	print("Sample textual labels:", textual_based_labels[:15])
