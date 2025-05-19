@@ -5,6 +5,7 @@ import re
 import os
 import time
 import torch
+import pickle
 import multiprocessing
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans

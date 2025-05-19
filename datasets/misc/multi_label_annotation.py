@@ -81,7 +81,7 @@ object_categories = [
 	"corvette", "minesweeper", "landing craft", "hospital ship", "troop transport", "tugboat",
 	# Military Personnel
 	"soldier", "infantryman", "officer", "pilot", "sailor", "marine", "medic",
-	"Wehrmacht soldier", "Red Army soldier",
+	"Wehrmacht soldier", "Red Army soldier", "nurse", "military policeman",
 	# Weapons
 	"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery piece",
 	"cannon", "anti-tank gun", "grenade", "landmine", "torpedo", "M1 Garand",
@@ -106,6 +106,7 @@ object_categories = [
 	# Animals
 	"donkey", "camel", "workhorse", "mule", "ox", "reindeer",
 ]
+
 scene_categories = [
 	# Military Theaters
 	"Western Front", "Eastern Front", "Italian Front", "North African Front",
@@ -349,9 +350,9 @@ def extract_semantic_topics(
 		save_pickle(pkl=embeddings, fname=emb_fpth)
 
 	print(f"Raw Embeddings: {embeddings.shape} generated in {time.time() - t0:.2f} sec")
-
+	small_dataset_sample_size = min(5000, dataset_size)
 	t0 = time.time()
-	if dataset_size < 1000:
+	if dataset_size < small_dataset_sample_size:
 		print("Dataset is small, using KMeans for clustering...")
 		kmeans = KMeans(n_clusters=min(10, max(2, int(np.sqrt(dataset_size)))), random_state=42)
 		labels = kmeans.fit_predict(embeddings)
@@ -363,7 +364,7 @@ def extract_semantic_topics(
 		)
 		# Check for high noise in a sample of the data
 		print(f"Checking for high noise in a sample of the data...")
-		sample_size = min(1000, dataset_size)
+		sample_size = small_dataset_sample_size
 		sample_indices = np.random.choice(dataset_size, sample_size, replace=False)
 		sample_embeddings = embeddings[sample_indices]
 		sample_clusterer = hdbscan.HDBSCAN(
@@ -375,7 +376,7 @@ def extract_semantic_topics(
 		sample_labels = sample_clusterer.fit_predict(sample_embeddings)
 		noise_ratio = np.sum(sample_labels == -1) / sample_size
 		print(f"Initial noise ratio ({sample_size} samples): {noise_ratio:.2%}")
-		if noise_ratio > 0.4:  # Threshold for applying UMAP
+		if noise_ratio > 0.3:  # Threshold for applying UMAP
 			print(f"High noise detected ({noise_ratio:.2%}), applying UMAP preprocessing...")
 			# UMAP embedding:
 			print(f"Reducing embeddings: {embeddings.shape} to 50D for clustering using UMAP...")
@@ -476,6 +477,7 @@ def extract_semantic_topics(
 
 	# Collect phrases for each cluster
 	print("Extracting keywords for each cluster using KeyBERT...")
+	
 	t0 = time.time()
 	cluster_phrases = defaultdict(Counter)
 	cluster_text_counts = defaultdict(int)
@@ -487,7 +489,8 @@ def extract_semantic_topics(
 			text,
 			keyphrase_ngram_range=(1, 3),
 			stop_words="english",
-			top_n=10 if len(text.split()) > 100 else 5,
+			top_n=15 if len(text.split()) > 100 else 5,
+			diversity=0.7,
 		)
 		# print(phrases)
 		phrase_filter_log['total_phrases'] += len(phrases)
@@ -500,10 +503,6 @@ def extract_semantic_topics(
 			if stopword_count / len(words) > 0.7:
 				phrase_filter_log['stopword_filtered'] += 1
 				continue
-			# # Length filter: ensure phrase has 2+ words
-			# if len(words) < 2:
-			# 	phrase_filter_log['length_filtered'] += 1
-			# 	continue
 			valid_phrases.append(phrase)
 		
 		# Normalize phrases to reduce repetition
@@ -514,19 +513,19 @@ def extract_semantic_topics(
 			words = phrase.split()
 			normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
 			# Ensure normalized phrase is unique and meets length requirement
-			if len(normalized.split()) >= 2 and normalized not in seen_phrases:
+			if len(normalized.split()) >= 1 and normalized not in seen_phrases:
 				normalized_phrases.append(normalized)
 				seen_phrases.add(normalized)
 			else:
 				phrase_filter_log['length_filtered'] += 1
 		
 		if not normalized_phrases:
-			print(f"Text {i} has no valid phrases: {text[:500]}")
+			print(f"Text {i} has no valid phrases: {text}")
 		else:
 			cluster_phrases[label].update(normalized_phrases)
 		cluster_text_counts[label] += 1
 	print(f"Phrase collection done in {time.time() - t0:.2f} sec")
-	
+
 	# Visualization 3: Phrase Retention Histogram
 	if enable_visualizations:
 		print("Phrase Retention Histogram")
@@ -627,7 +626,8 @@ def extract_semantic_topics(
 					text,
 					keyphrase_ngram_range=(1, 3),
 					stop_words="english",
-					top_n=10 if len(text.split()) > 100 else 5,
+					top_n=15 if len(text.split()) > 100 else 5,
+					diversity=0.7,
 				)
 				valid_phrases = []
 				seen_phrases = set()
@@ -1124,7 +1124,8 @@ def extract_semantic_topics(
 					text,
 					keyphrase_ngram_range=(1, 3),
 					stop_words="english",
-					top_n=10 if len(text.split()) > 100 else 5,
+					top_n=15 if len(text.split()) > 100 else 5,
+					diversity=0.7,
 				)
 				valid_phrases = []
 				seen_phrases = set()
@@ -1184,45 +1185,43 @@ def extract_semantic_topics(
 	return merged_topics, flat_topics
 
 def combine_and_clean_labels(ner, keywords, topics, text, sent_model, min_threshold=0.15, max_threshold=0.35):
-		# Combine all sources
-		all_labels = list(set(ner + keywords + topics))
-		if not all_labels:
-				return []
-		
-		# Compute relevance scores
-		text_emb = sent_model.encode(text, show_progress_bar=False)
-		label_embs = sent_model.encode(all_labels, show_progress_bar=False)
-		similarities = np.dot(label_embs, text_emb) / (
-				np.linalg.norm(label_embs, axis=1) * np.linalg.norm(text_emb) + 1e-8
+	# Combine all sources
+	all_labels = list(set(ner + keywords + topics))
+	if not all_labels:
+		return []
+	
+	# Compute relevance scores
+	text_emb = sent_model.encode(text, show_progress_bar=False)
+	label_embs = sent_model.encode(all_labels, show_progress_bar=False)
+	similarities = np.dot(label_embs, text_emb) / (np.linalg.norm(label_embs, axis=1) * np.linalg.norm(text_emb) + 1e-8)
+	
+	# Adaptive threshold based on similarity distribution and text length
+	text_length = len(text.split())
+	if similarities.size > 0:
+		# Use 75th percentile of similarities, clipped between min and max thresholds
+		adaptive_threshold = np.clip(
+			np.percentile(similarities, 75),
+			min_threshold,
+			max_threshold
 		)
-		
-		# Adaptive threshold based on similarity distribution and text length
-		text_length = len(text.split())
-		if similarities.size > 0:
-				# Use 75th percentile of similarities, clipped between min and max thresholds
-				adaptive_threshold = np.clip(
-						np.percentile(similarities, 75),
-						min_threshold,
-						max_threshold
-				)
-				# Adjust threshold based on text length (shorter texts need lower threshold)
-				if text_length < 50:
-						adaptive_threshold = max(min_threshold, adaptive_threshold * 0.8)
-				elif text_length > 200:
-						adaptive_threshold = min(max_threshold, adaptive_threshold * 1.2)
-		else:
-				adaptive_threshold = min_threshold
-		
-		# Filter by adaptive threshold
-		relevant_labels = [label for i, label in enumerate(all_labels) if similarities[i] > adaptive_threshold]
-		
-		# Clean the labels
-		cleaned_labels = clean_labels(relevant_labels)
-		
-		# Filter metadata terms
-		cleaned_labels = filter_metadata_terms(cleaned_labels)
-		
-		return cleaned_labels
+		# Adjust threshold based on text length (shorter texts need lower threshold)
+		if text_length < 50:
+			adaptive_threshold = max(min_threshold, adaptive_threshold * 0.8)
+		elif text_length > 200:
+			adaptive_threshold = min(max_threshold, adaptive_threshold * 1.2)
+	else:
+		adaptive_threshold = min_threshold
+	
+	# Filter by adaptive threshold
+	relevant_labels = [label for i, label in enumerate(all_labels) if similarities[i] > adaptive_threshold]
+	
+	# Clean the labels
+	cleaned_labels = clean_labels(relevant_labels)
+	
+	# Filter metadata terms
+	cleaned_labels = filter_metadata_terms(cleaned_labels)
+	
+	return cleaned_labels
 
 def clean_labels(labels):
 		cleaned = set()
@@ -1469,19 +1468,21 @@ def balance_label_count(
 	
 	return balanced_labels
 
-def quick_filter_candidates(text: str, labels: list[str], sent_model: SentenceTransformer, max_keep: int = 30) -> list[str]:
+def quick_filter_candidates(
+		text: str, 
+		labels: list[str], 
+		sent_model: SentenceTransformer, 
+		max_keep: int=30
+	) -> list[str]:
 	if not labels:
-		print(f"Warning: Empty labels list for text: {text[:50]}...")
+		print(f"<!> Empty labels list: {text}")
 		return []
-	
 	text_emb = sent_model.encode(text)
 	label_embs = sent_model.encode(labels)
-
 	# Ensure label_embs is not empty (redundant but defensive)
 	if label_embs.size == 0:
-		print(f"Warning: No embeddings generated for labels: {labels[:5]}...")
+		print(f"<!> No embeddings generated for labels: {labels}")
 		return []
-	
 	similarities = np.dot(label_embs, text_emb) / (np.linalg.norm(label_embs, axis=1) * np.linalg.norm(text_emb) + 1e-8)
 	sorted_labels = [label for _, label in sorted(zip(similarities, labels), reverse=True)]
 	return sorted_labels[:max_keep]
@@ -1599,10 +1600,10 @@ def get_textual_based_annotation(
 		metadata_fpth: str,
 		device: str,
 		st_model_name: str,
+		ner_model_name: str,
 		verbose: bool=True,
 		use_parallel: bool=False,
 	):
-
 	if verbose:
 		print(f"Automatic label extraction from text data".center(160, "-"))
 		print(f"Loading metadata from {csv_file}...")
@@ -1613,9 +1614,6 @@ def get_textual_based_annotation(
 	print(f"Loading sentence-transformer model: {st_model_name}...")
 	sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
 	ft_model = fasttext.load_model(FastText_Language_Identification)
-	# ner_model_name = "dslim/bert-large-NER"
-	# ner_model_name = "dslim/bert-base-NER"
-	ner_model_name = "Babelscape/wikineural-multilingual-ner"
 	print(f"Loading NER model: {ner_model_name}...")
 	nlp = pipeline(
 		task="ner", 
@@ -1708,7 +1706,8 @@ def get_textual_based_annotation(
 					text,
 					keyphrase_ngram_range=(1, 3),  # 1-3 word phrases
 					stop_words=CUSTOM_STOPWORDS,  # Use custom stopwords
-					top_n=10 if len(text.split()) > 100 else 5,
+					top_n=15 if len(text.split()) > 100 else 5,
+					diversity=0.7,
 				)
 				# Filter and normalize phrases
 				keywords = []
@@ -1738,10 +1737,11 @@ def get_textual_based_annotation(
 		print(f"Topic assignment done in {time.time() - t0:.1f} sec")
 		
 		# Step 5: Combine all label sources and clean
-		print("Combining and cleaning labels...")
+		print("Combining and cleaning labels [might take a while]...")
 		t0 = time.time()
 		per_image_combined_labels = []
-		for text, ner, keywords, topics in zip(english_texts, per_image_ner_labels, per_image_keywords, per_image_topic_labels):
+		mixed_texts = zip(english_texts, per_image_ner_labels, per_image_keywords, per_image_topic_labels)
+		for text, ner, keywords, topics in tqdm(mixed_texts, total=len(english_texts), desc="Label Combination"):
 			cleaned_labels = combine_and_clean_labels(ner, keywords, topics, text, sent_model, min_threshold=0.15, max_threshold=0.35)
 			per_image_combined_labels.append(cleaned_labels)
 		print(f"Label combination and cleaning done in {time.time() - t0:.3f} sec")
@@ -1757,7 +1757,7 @@ def get_textual_based_annotation(
 				n_processes=num_workers,
 			)
 		else:
-			print(f"Using batch processing: ({batch_size} batches) for relevance filtering (thresh: {relevance_threshold})...")
+			print(f"Using batch processing ({batch_size} batches) for relevance filtering (thresh: {relevance_threshold})...")
 			per_image_relevant_labels = batch_filter_by_relevance(
 				sent_model=sent_model,
 				texts=english_texts,
@@ -1817,297 +1817,6 @@ def get_textual_based_annotation(
 	
 	return per_image_labels
 
-# def get_visual_based_annotation(
-# 			csv_file: str,
-# 			st_model_name: str,
-# 			batch_size: int,
-# 			device: str,
-# 			num_workers: int,
-# 			verbose: bool,
-# 			metadata_fpth: str,
-# 		) -> List[List[str]]:
-# 		print(f"Semi-Supervised label extraction from image data (using VLM) batch_size: {batch_size}".center(160, "-"))
-# 		start_time = time.time()
-# 		dataset_dir = os.path.dirname(csv_file)
-
-# 		if verbose:
-# 			print(f"Loading metadata from {csv_file}...")
-# 		dtypes = {
-# 			'doc_id': str, 'id': str, 'label': str, 'title': str,
-# 			'description': str, 'img_url': str, 'enriched_document_description': str,
-# 			'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
-# 			'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
-# 		}
-# 		df = pd.read_csv(
-# 			filepath_or_buffer=csv_file, 
-# 			on_bad_lines='skip',
-# 			dtype=dtypes, 
-# 			low_memory=False,
-# 		)
-
-# 		if verbose:
-# 			print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
-# 		df['content'] = df['enriched_document_description'].fillna('').astype(str)
-# 		image_paths = df['img_path'].tolist()
-# 		text_descriptions = df['content'].tolist()
-		
-# 		# Create checkpointing mechanism to resume from interruptions
-# 		checkpoint_path = os.path.join(dataset_dir, "visual_annotation_checkpoint.pkl")
-# 		start_idx = 0
-# 		all_labels = []
-# 		scene_labels = []
-# 		era_labels = []
-# 		activity_labels = []
-		
-# 		if os.path.exists(checkpoint_path):
-# 			if verbose:
-# 				print(f"Found checkpoint file. Loading...")
-# 			try:
-# 				with open(checkpoint_path, 'rb') as f:
-# 					checkpoint = pickle.load(f)
-# 					start_idx = checkpoint['next_idx']
-# 					all_labels = checkpoint['all_labels']
-# 					scene_labels = checkpoint['scene_labels']
-# 					era_labels = checkpoint['era_labels']
-# 					activity_labels = checkpoint['activity_labels']
-# 				if verbose:
-# 					print(f"Resuming from index {start_idx}/{len(image_paths)}")
-# 			except Exception as e:
-# 				print(f"Error loading checkpoint: {e}. Starting from beginning.")
-
-# 		if verbose:
-# 			print(f"Loading sentence-transformer model: {st_model_name}...")
-# 		sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
-
-# 		if verbose:
-# 			print("Loading VLM model for image labeling...")
-# 		processor = AlignProcessor.from_pretrained("kakaobrain/align-base")
-# 		model = AlignModel.from_pretrained("kakaobrain/align-base")
-# 		model.to(device)
-# 		model.eval()
-
-# 		# Create category type map for thresholding
-# 		category_type_map = {}
-# 		for cat in object_categories:
-# 			category_type_map[cat] = "object"
-# 		for cat in scene_categories:
-# 			category_type_map[cat] = "scene"
-# 		for cat in era_categories:
-# 			category_type_map[cat] = "era"
-# 		for cat in activity_categories:
-# 			category_type_map[cat] = "activity"
-		
-# 		# Pre-compute category prompts and embeddings (done once, not per batch)
-# 		if verbose:
-# 			print("Pre-computing category prompt embeddings...")
-
-# 		object_prompts = [f"a photo of {cat}" for cat in object_categories]
-# 		scene_prompts = [f"a photo of {cat}" for cat in scene_categories]
-# 		era_prompts = [f"a photo of {cat}" for cat in era_categories]
-# 		activity_prompts = [f"a photo of {cat}" for cat in activity_categories]
-		
-# 		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-# 			object_prompt_embeds = sent_model.encode(object_prompts, device=device, convert_to_tensor=True)
-# 			scene_prompt_embeds = sent_model.encode(scene_prompts, device=device, convert_to_tensor=True)
-# 			era_prompt_embeds = sent_model.encode(era_prompts, device=device, convert_to_tensor=True)
-# 			activity_prompt_embeds = sent_model.encode(activity_prompts, device=device, convert_to_tensor=True)
-
-# 		# Base thresholds by category type
-# 		base_thresholds = {
-# 			"object": 0.25,
-# 			"scene": 0.22,
-# 			"era": 0.18,
-# 			"activity": 0.22
-# 		}
-
-# 		def process_category_batch(batch_indices, batch_paths, batch_descriptions, categories, prompt_embeds, category_type):
-# 			valid_images = []
-# 			valid_indices = []
-# 			valid_descriptions = []
-	
-# 			# Load images
-# 			for i, path in enumerate(batch_paths):
-# 				try:
-# 					if os.path.exists(path):
-# 						img = Image.open(path).convert('RGB')
-# 						valid_images.append(img)
-# 						valid_indices.append(i)
-# 						valid_descriptions.append(batch_descriptions[i])
-# 				except Exception as e:
-# 					if verbose and i % 100 == 0:
-# 						print(f"Error loading image {path}: {e}")
-			
-# 			if not valid_images:
-# 				return [[] for _ in range(len(batch_paths))]
-			
-# 			# Prepare prompts
-# 			text_prompts = [f"a photo of {cat}" for cat in categories]
-			
-# 			# Calculate text similarities using pre-computed prompt embeddings
-# 			# Only encode descriptions once per batch
-# 			with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-# 				text_embeds = sent_model.encode(valid_descriptions, device=device, convert_to_tensor=True)
-# 				text_similarities = torch.mm(prompt_embeds, text_embeds.T).cpu().numpy()
-# 				prompt_norms = torch.norm(prompt_embeds, dim=1, keepdim=True)
-# 				text_norms = torch.norm(text_embeds, dim=1, keepdim=True)
-# 				text_similarities = text_similarities / (torch.mm(prompt_norms, text_norms.T).cpu().numpy() + 1e-8)
-			
-# 			# Process with VLM model in mixed precision
-# 			with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-# 				model.eval()
-				
-# 				# Process in smaller sub-batches if needed (for very large batches)
-# 				sub_batch_size = min(len(valid_images), 16)  # VLM usually handles 16 images well
-# 				batch_results = [[] for _ in range(len(batch_paths))]
-				
-# 				for sub_idx in range(0, len(valid_images), sub_batch_size):
-# 						sub_end = min(sub_idx + sub_batch_size, len(valid_images))
-# 						sub_images = valid_images[sub_idx:sub_end]
-# 						sub_valid_indices = valid_indices[sub_idx:sub_end]
-						
-# 						# Prepare inputs efficiently
-# 						inputs = processor(
-# 							text=text_prompts,
-# 							images=sub_images, 
-# 							return_tensors="pt", 
-# 							padding=True
-# 						).to(device)
-						
-# 						# Get embeddings
-# 						outputs = model(**inputs)
-						
-# 						# Normalize and calculate similarity
-# 						image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
-# 						vlm_embeds = outputs.text_embeds / outputs.text_embeds.norm(dim=-1, keepdim=True)
-# 						vlm_similarity = (100.0 * image_embeds @ vlm_embeds.T).softmax(dim=-1).cpu().numpy()
-						
-# 						# Get threshold based on category type
-# 						threshold = base_thresholds[category_type]
-						
-# 						# Process results
-# 						for i, img_idx in enumerate(range(sub_idx, sub_end)):
-# 							batch_idx = sub_valid_indices[i]
-# 							local_img_idx = img_idx - sub_idx
-							
-# 							for cat_idx, cat in enumerate(categories):
-# 								# Get text similarity score
-# 								text_score = text_similarities[cat_idx, img_idx]
-								
-# 								# Adapt threshold based on text evidence
-# 								adaptive_threshold = threshold
-# 								if text_score > 0.5:
-# 									adaptive_threshold *= 0.8  # Lower threshold if strong text evidence
-# 								elif text_score < 0.1:
-# 									adaptive_threshold *= 1.2  # Higher threshold if no text evidence
-								
-# 								# Get VLM score
-# 								vlm_score = vlm_similarity[local_img_idx, cat_idx]
-								
-# 								# Combine VLM and text scores
-# 								combined_score = vlm_score * (0.8 + 0.2 * text_score)
-								
-# 								if combined_score > adaptive_threshold:
-# 									batch_results[batch_idx].append(categories[cat_idx])
-			
-# 			return batch_results
-
-# 		for category_idx, (categories, prompt_embeds, category_type, labels_list) in enumerate([
-# 			(object_categories, object_prompt_embeds, "object", all_labels),
-# 			(scene_categories, scene_prompt_embeds, "scene", scene_labels),
-# 			(era_categories, era_prompt_embeds, "era", era_labels),
-# 			(activity_categories, activity_prompt_embeds, "activity", activity_labels)
-# 		]):
-# 			if verbose:
-# 				print(f"Processing {category_type} categories ({len(categories)} categories)...")
-			
-# 			# Only process categories that haven't been completed
-# 			if len(labels_list) >= len(image_paths):
-# 				if verbose:
-# 					print(f"Skipping {category_type} categories - already processed")
-# 				continue
-			
-# 			for i in range(start_idx, len(image_paths), batch_size):
-# 				batch_end = min(i + batch_size, len(image_paths))
-# 				batch_paths = image_paths[i:batch_end]
-# 				batch_descriptions = text_descriptions[i:batch_end]
-# 				batch_indices = list(range(i, batch_end))
-				
-# 				# Process this batch
-# 				batch_results = process_category_batch(
-# 					batch_indices=batch_indices,
-# 					batch_paths=batch_paths,
-# 					batch_descriptions=batch_descriptions,
-# 					categories=categories,
-# 					prompt_embeds=prompt_embeds,
-# 					category_type=category_type
-# 				)
-				
-# 				# Extend results list
-# 				while len(labels_list) < batch_end:
-# 					labels_list.append([])
-						
-# 				# Update with new results
-# 				for idx, results in zip(batch_indices, batch_results):
-# 					labels_list[idx].extend(results)
-						
-# 				# Save checkpoint every 500 batches
-# 				if (i // batch_size) % 500 == 0 and i > start_idx:
-# 					checkpoint = {
-# 						'next_idx': batch_end,
-# 						'all_labels': all_labels,
-# 						'scene_labels': scene_labels,
-# 						'era_labels': era_labels,
-# 						'activity_labels': activity_labels
-# 					}
-# 					with open(checkpoint_path, 'wb') as f:
-# 						pickle.dump(checkpoint, f)
-# 					if verbose:
-# 						print(f"Checkpoint saved at index {batch_end}")
-				
-# 			# Reset start index for next category batch
-# 			start_idx = 0
-		
-# 		# Remove checkpoint file after successful completion
-# 		if os.path.exists(checkpoint_path):
-# 			os.remove(checkpoint_path)
-		
-# 		# Combine all visual annotations
-# 		combined_labels = []
-# 		for i in range(len(image_paths)):
-# 			image_labels = []
-			
-# 			# Add object labels if available
-# 			if i < len(all_labels):
-# 				image_labels.extend(all_labels[i])
-			
-# 			# Add scene labels if available
-# 			if i < len(scene_labels):
-# 				image_labels.extend(scene_labels[i])
-			
-# 			# Add era labels if available
-# 			if i < len(era_labels):
-# 				image_labels.extend(era_labels[i])
-			
-# 			# Add activity labels if available
-# 			if i < len(activity_labels):
-# 				image_labels.extend(activity_labels[i])
-			
-# 			# Remove duplicates and sort
-# 			combined_labels.append(sorted(set(image_labels)))
-		
-# 		if verbose:
-# 			total_labels = sum(len(labels) for labels in combined_labels)
-# 			print(f"Vision-based annotation completed in {time.time() - start_time:.2f} seconds")
-# 			print(f"Generated {total_labels} labels for {len(image_paths)} images")
-# 			print(f"Average labels per image: {total_labels/len(image_paths):.2f}")
-
-# 		# Save results
-# 		df['visual_based_labels'] = combined_labels
-# 		df.to_csv(metadata_fpth, index=False)
-# 		print(f"Visual-based annotation Elapsed time: {time.time() - start_time:.2f} sec".center(160, " "))
-
-# 		return combined_labels
-
 def is_year_compatible(category, year):
 		"""
 		Check if a label's era is compatible with the document year.
@@ -2133,70 +1842,68 @@ def is_year_compatible(category, year):
 		return True
 
 def post_process_labels(labels, text_description, sent_model, doc_year, vlm_scores, max_labels=10, similarity_threshold=0.8):
-		"""
-		Post-process visual labels to remove duplicates, validate temporally, and rank by relevance.
-		
-		Args:
-				labels: List of labels
-				text_description: String enriched document description
-				sent_model: SentenceTransformer model
-				doc_year: Float or int document year
-				vlm_scores: List of VLM similarity scores
-				max_labels: Maximum number of labels to retain
-				similarity_threshold: Cosine similarity threshold for deduplication
-		
-		Returns:
-				List of processed labels
-		"""
-		if not labels:
-				print("Warning: No labels provided for post-processing.")
-				return []
-		
-		# Ensure vlm_scores length matches labels
-		if len(vlm_scores) != len(labels):
-				print(f"Warning: Mismatch between labels ({len(labels)}) and vlm_scores ({len(vlm_scores)}). Padding with zeros.")
-				vlm_scores = vlm_scores + [0.0] * (len(labels) - len(vlm_scores)) if len(vlm_scores) < len(labels) else vlm_scores[:len(labels)]
-		
-		# Encode labels and text for similarity
-		# print(f"Encoding {len(labels)} labels and text description...")
-		label_embs = sent_model.encode(labels, show_progress_bar=False, convert_to_numpy=True)
-		text_emb = sent_model.encode(text_description, show_progress_bar=False, convert_to_numpy=True)
-		
-		# Deduplicate based on semantic similarity
-		deduplicated = []
-		for i, label in enumerate(labels):
-				is_redundant = False
-				for kept_label, kept_emb, _ in deduplicated:  # Unpack three values
-						sim = np.dot(label_embs[i], kept_emb) / (
-								np.linalg.norm(label_embs[i]) * np.linalg.norm(kept_emb) + 1e-8
-						)
-						if sim > similarity_threshold:
-								is_redundant = True
-								break
-				if not is_redundant:
-						deduplicated.append((label, label_embs[i], vlm_scores[i]))
-		
-		# print(f"Deduplicated from {len(labels)} to {len(deduplicated)} labels.")
-		
-		# Temporal validation
-		validated = [
-			(label, emb, score)
-			for label, emb, score in deduplicated
-			if is_year_compatible(label, doc_year)
-		]
-		# print(f"Validated {len(validated)} labels after temporal check.")
-		
-		# Rank by combined VLM and text similarity
-		if validated:
-			nominator = np.dot(np.array([emb for _, emb, _ in validated]),text_emb)
-			denominator = np.linalg.norm([emb for _, emb, _ in validated], axis=1) * np.linalg.norm(text_emb) + 1e-8
-			text_sims = nominator / denominator
-			combined_scores = [0.6 * vlm_score + 0.4 * text_sim for vlm_score, text_sim in zip([score for _, _, score in validated], text_sims)]
-			ranked = [label for _, label in sorted(zip(combined_scores, [label for label, _, _ in validated]), reverse=True)]
-			return ranked[:max_labels]
-		
-		print("No validated labels after processing.")
+	"""
+	Post-process visual labels to remove duplicates, validate temporally, and rank by relevance.
+	
+	Args:
+			labels: List of labels
+			text_description: String enriched document description
+			sent_model: SentenceTransformer model
+			doc_year: Float or int document year
+			vlm_scores: List of VLM similarity scores
+			max_labels: Maximum number of labels to retain
+			similarity_threshold: Cosine similarity threshold for deduplication
+	
+	Returns:
+			List of processed labels
+	"""
+	if not labels:
+		# print("Warning: No labels provided for post-processing.")
 		return []
+	
+	# Ensure vlm_scores length matches labels
+	if len(vlm_scores) != len(labels):
+		print(f"Warning: Mismatch between labels ({len(labels)}) and vlm_scores ({len(vlm_scores)}). Padding with zeros.")
+		vlm_scores = vlm_scores + [0.0] * (len(labels) - len(vlm_scores)) if len(vlm_scores) < len(labels) else vlm_scores[:len(labels)]
+	
+	# Encode labels and text for similarity
+	# print(f"Encoding {len(labels)} labels and text description...")
+	label_embs = sent_model.encode(labels, show_progress_bar=False, convert_to_numpy=True)
+	text_emb = sent_model.encode(text_description, show_progress_bar=False, convert_to_numpy=True)
+	
+	# Deduplicate based on semantic similarity
+	deduplicated = []
+	for i, label in enumerate(labels):
+		is_redundant = False
+		for kept_label, kept_emb, _ in deduplicated:  # Unpack three values
+			sim = np.dot(label_embs[i], kept_emb) / (np.linalg.norm(label_embs[i]) * np.linalg.norm(kept_emb) + 1e-8)
+			if sim > similarity_threshold:
+				is_redundant = True
+				break
+		if not is_redundant:
+			deduplicated.append((label, label_embs[i], vlm_scores[i]))
+	
+	# print(f"Deduplicated from {len(labels)} to {len(deduplicated)} labels.")
+	
+	# Temporal validation
+	validated = [
+		(label, emb, score)
+		for label, emb, score in deduplicated
+		if is_year_compatible(label, doc_year)
+	]
+	# print(f"Validated {len(validated)} labels after temporal check.")
+	
+	# Rank by combined VLM and text similarity
+	if validated:
+		nominator = np.dot(np.array([emb for _, emb, _ in validated]),text_emb)
+		denominator = np.linalg.norm([emb for _, emb, _ in validated], axis=1) * np.linalg.norm(text_emb) + 1e-8
+		text_sims = nominator / denominator
+		combined_scores = [0.6 * vlm_score + 0.4 * text_sim for vlm_score, text_sim in zip([score for _, _, score in validated], text_sims)]
+		ranked = [label for _, label in sorted(zip(combined_scores, [label for label, _, _ in validated]), reverse=True)]
+		return ranked[:max_labels]
+	
+	# print("No validated labels after processing.")
+	return []
 
 def get_visual_based_annotation(
 		csv_file: str,
@@ -2491,6 +2198,7 @@ def main():
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=64)
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=16, help="Batch size for vision processing")
 	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2"], help="Sentence-transformer model name")
+	parser.add_argument("--ner_model_name", '-ner', type=str, default="Babelscape/wikineural-multilingual-ner", choices=["dslim/bert-large-NER", "dslim/bert-base-NER", "Babelscape/wikineural-multilingual-ner"], help="NER model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 
 	args, unknown = parser.parse_known_args()
@@ -2528,6 +2236,7 @@ def main():
 			batch_size=args.text_batch_size,
 			relevance_threshold=args.relevance_threshold,
 			st_model_name=args.sentence_model_name,
+			ner_model_name=args.ner_model_name,
 			metadata_fpth=text_output_path,
 			device=args.device,
 			verbose=True,
