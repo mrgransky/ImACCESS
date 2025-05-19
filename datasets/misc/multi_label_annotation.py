@@ -2191,11 +2191,8 @@ def post_process_labels(labels, text_description, sent_model, doc_year, vlm_scor
 			nominator = np.dot(np.array([emb for _, emb, _ in validated]),text_emb)
 			denominator = np.linalg.norm([emb for _, emb, _ in validated], axis=1) * np.linalg.norm(text_emb) + 1e-8
 			text_sims = nominator / denominator
-			combined_scores = [
-				0.6 * vlm_score + 0.4 * text_sim
-				for vlm_score, text_sim in zip([score for _, _, score in validated], text_sims)
-			]
-			ranked = [label for _, label in sorted(zip(combined_scores, [label for label, _, _ in validated]), reverse=True]
+			combined_scores = [0.6 * vlm_score + 0.4 * text_sim for vlm_score, text_sim in zip([score for _, _, score in validated], text_sims)]
+			ranked = [label for _, label in sorted(zip(combined_scores, [label for label, _, _ in validated]), reverse=True)]
 			return ranked[:max_labels]
 		
 		print("No validated labels after processing.")
