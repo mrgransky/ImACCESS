@@ -2158,7 +2158,7 @@ def post_process_labels(labels, text_description, sent_model, doc_year, vlm_scor
 				vlm_scores = vlm_scores + [0.0] * (len(labels) - len(vlm_scores)) if len(vlm_scores) < len(labels) else vlm_scores[:len(labels)]
 		
 		# Encode labels and text for similarity
-		print(f"Encoding {len(labels)} labels and text description...")
+		# print(f"Encoding {len(labels)} labels and text description...")
 		label_embs = sent_model.encode(labels, show_progress_bar=False, convert_to_numpy=True)
 		text_emb = sent_model.encode(text_description, show_progress_bar=False, convert_to_numpy=True)
 		
@@ -2176,34 +2176,27 @@ def post_process_labels(labels, text_description, sent_model, doc_year, vlm_scor
 				if not is_redundant:
 						deduplicated.append((label, label_embs[i], vlm_scores[i]))
 		
-		print(f"Deduplicated from {len(labels)} to {len(deduplicated)} labels.")
+		# print(f"Deduplicated from {len(labels)} to {len(deduplicated)} labels.")
 		
 		# Temporal validation
 		validated = [
-				(label, emb, score) for label, emb, score in deduplicated
-				if is_year_compatible(label, doc_year)
+			(label, emb, score)
+			for label, emb, score in deduplicated
+			if is_year_compatible(label, doc_year)
 		]
-		print(f"Validated {len(validated)} labels after temporal check.")
+		# print(f"Validated {len(validated)} labels after temporal check.")
 		
 		# Rank by combined VLM and text similarity
 		if validated:
-				text_sims = np.dot(
-						np.array([emb for _, emb, _ in validated]),
-						text_emb
-				) / (
-						np.linalg.norm([emb for _, emb, _ in validated], axis=1) * np.linalg.norm(text_emb) + 1e-8
-				)
-				combined_scores = [
-						0.6 * vlm_score + 0.4 * text_sim
-						for vlm_score, text_sim in zip([score for _, _, score in validated], text_sims)
-				]
-				ranked = [
-						label for _, label in sorted(
-								zip(combined_scores, [label for label, _, _ in validated]),
-								reverse=True
-						)
-				]
-				return ranked[:max_labels]
+			nominator = np.dot(np.array([emb for _, emb, _ in validated]),text_emb)
+			denominator = np.linalg.norm([emb for _, emb, _ in validated], axis=1) * np.linalg.norm(text_emb) + 1e-8
+			text_sims = nominator / denominator
+			combined_scores = [
+				0.6 * vlm_score + 0.4 * text_sim
+				for vlm_score, text_sim in zip([score for _, _, score in validated], text_sims)
+			]
+			ranked = [label for _, label in sorted(zip(combined_scores, [label for label, _, _ in validated]), reverse=True]
+			return ranked[:max_labels]
 		
 		print("No validated labels after processing.")
 		return []
