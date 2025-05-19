@@ -96,7 +96,7 @@ object_categories = [
 	"radio equipment", "parachute", "jerry can", "stretcher",
 	# Infrastructure
 	"construction crane", "tunnel slab", "gasometer", "railway track", "locomotive wheel",
-	"train car", "ferry slip", "locomotive engine", "railway signal",
+	"train car", "ferry slip", "locomotive engine", "railway signal", "construction site",
 	# Civilian Objects
 	"wheelbarrow", "leather apron", "signature document", "blood pressure monitor",
 	"medical chart",
@@ -1302,6 +1302,17 @@ def filter_metadata_terms(labels):
 	]
 	return [label for label in labels if not any(frag in label for frag in metadata_fragments)]
 
+def filter_temporal_labels(labels, doc_year):
+		if not doc_year:
+				return labels
+		year = float(doc_year.split('-')[0]) if isinstance(doc_year, str) else doc_year
+		era_ranges = {
+				"WWI era": (1914, 1918),
+				"WWII era": (1939, 1945),
+				"Cold War era": (1947, 1991)
+		}
+		return [label for label in labels if not any(era in label and not (start <= year <= end) for era, (start, end) in era_ranges.items())]
+
 def handle_multilingual_labels(labels):
 	processed_labels = []
 	
@@ -1370,40 +1381,91 @@ def assign_semantic_categories(labels):
 	return categorized_labels
 
 def balance_label_count(
-		image_labels_list, 
-		min_labels=3, 
-		max_labels=10,
+		image_labels_list,
+		text_descriptions,
+		sent_model,
+		min_labels=1,
+		max_labels=12,
+		similarity_threshold=0.5
 	):
+	"""
+	Balance the number of labels per image, prioritizing multi-word labels and ensuring semantic coherence.
+	
+	Args:
+			image_labels_list: List of lists of labels
+			text_descriptions: List of text descriptions for relevance scoring
+			sent_model: SentenceTransformer model for embeddings
+			min_labels: Minimum number of labels per image
+			max_labels: Maximum number of labels per image
+			similarity_threshold: Minimum cosine similarity for compound labels
+	
+	Returns:
+			List of lists of balanced labels
+	"""
 	balanced_labels = []
-	for labels in image_labels_list:
-		# Case 1: Too few labels - attempt to generate more
-		if len(labels) < min_labels:
-			# Create compound labels by combining existing ones
-			compound_labels = []
-			if len(labels) >= 2:
-				for i in range(len(labels)):
-					for j in range(i+1, len(labels)):
-						compound = f"{labels[i]} {labels[j]}"
-						if 3 <= len(compound.split()) <= 4:  # Reasonable phrase length
-							compound_labels.append(compound)
-
-			# Add compound labels to reach minimum
-			expanded_labels = labels + compound_labels
-			balanced_labels.append(expanded_labels[:min_labels] if len(expanded_labels) >= min_labels else expanded_labels)
-
-		# Case 2: Too many labels - prioritize the most relevant ones
-		elif len(labels) > max_labels:
-			# Sort labels by potential relevance (length can be a simple heuristic)
-			sorted_labels = sorted(labels, key=lambda x: len(x.split()), reverse=True)
+	
+	# Encode text descriptions once
+	text_embeds = sent_model.encode(text_descriptions, show_progress_bar=False, convert_to_numpy=True)
+	
+	for idx, labels in tqdm(enumerate(image_labels_list), total=len(image_labels_list), desc="Label Balancing"):
+			text_emb = text_embeds[idx]
 			
-			# Ensure we keep some single-word labels for searchability
-			single_word = [label for label in labels if ' ' not in label][:max_labels//3]
-			multi_word = [label for label in sorted_labels if ' ' in label][:max_labels - len(single_word)]
-			balanced_labels.append(single_word + multi_word)
-		
-		# Case 3: Good label count - keep as is
-		else:
-			balanced_labels.append(labels)
+			# Case 1: Too few labels - generate coherent compounds
+			if len(labels) < min_labels:
+					compound_labels = []
+					if len(labels) >= 2:
+							# Encode existing labels
+							label_embs = sent_model.encode(labels, show_progress_bar=False, convert_to_numpy=True)
+							for i in range(len(labels)):
+									for j in range(i+1, len(labels)):
+											compound = f"{labels[i]} {labels[j]}"
+											if 2 <= len(compound.split()) <= 3:  # 2-3 word compounds
+													# Compute similarity of compound to text
+													compound_emb = sent_model.encode(compound, show_progress_bar=False)
+													similarity = np.dot(compound_emb, text_emb) / (
+															np.linalg.norm(compound_emb) * np.linalg.norm(text_emb) + 1e-8
+													)
+													if similarity > similarity_threshold:
+															compound_labels.append(compound)
+					
+					# Sort compounds by similarity
+					if compound_labels:
+							compound_embs = sent_model.encode(compound_labels, show_progress_bar=False, convert_to_numpy=True)
+							similarities = np.dot(compound_embs, text_emb) / (
+									np.linalg.norm(compound_embs, axis=1) * np.linalg.norm(text_emb) + 1e-8
+							)
+							compound_labels = [compound_labels[i] for i in np.argsort(similarities)[::-1]]
+					
+					# Add compounds to reach min_labels
+					expanded_labels = labels + compound_labels[:min_labels - len(labels)]
+					balanced_labels.append(expanded_labels[:min_labels] if len(expanded_labels) >= min_labels else expanded_labels)
+			
+			# Case 2: Too many labels - prioritize multi-word by relevance
+			elif len(labels) > max_labels:
+					# Encode labels and compute similarities
+					label_embs = sent_model.encode(labels, show_progress_bar=False, convert_to_numpy=True)
+					similarities = np.dot(label_embs, text_emb) / (
+							np.linalg.norm(label_embs, axis=1) * np.linalg.norm(text_emb) + 1e-8
+					)
+					
+					# Separate multi-word and single-word labels
+					multi_word = [(label, sim) for label, sim in zip(labels, similarities) if ' ' in label]
+					single_word = [(label, sim) for label, sim in zip(labels, similarities) if ' ' not in label]
+					
+					# Sort by similarity
+					multi_word.sort(key=lambda x: x[1], reverse=True)
+					single_word.sort(key=lambda x: x[1], reverse=True)
+					
+					# Prioritize multi-word, fill with single-word if needed
+					selected_labels = [label for label, _ in multi_word[:max_labels]]
+					if len(selected_labels) < max_labels:
+							selected_labels.extend([label for label, _ in single_word[:max_labels - len(selected_labels)]])
+					
+					balanced_labels.append(selected_labels)
+			
+			# Case 3: Good label count - keep as is
+			else:
+					balanced_labels.append(labels)
 	
 	return balanced_labels
 
@@ -1738,7 +1800,13 @@ def get_textual_based_annotation(
 
 		print("Balancing label counts...")
 		t0 = time.time()
-		english_labels = balance_label_count(english_labels, min_labels=3, max_labels=12)
+		english_labels = balance_label_count(
+			image_labels_list=english_labels, 
+			text_descriptions=english_texts, 
+			sent_model=sent_model, 
+			min_labels=1, 
+			max_labels=12,
+		)
 		print(f"Label balancing done in {time.time() - t0:.3f} sec")
 		
 		# Transfer results to the full-sized results array using original indices
@@ -1757,297 +1825,653 @@ def get_textual_based_annotation(
 	
 	return per_image_labels
 
-def get_visual_based_annotation(
-			csv_file: str,
-			st_model_name: str,
-			batch_size: int,
-			device: str,
-			num_workers: int,
-			verbose: bool,
-			metadata_fpth: str,
-		) -> List[List[str]]:
-		print(f"Semi-Supervised label extraction from image data (using VLM) batch_size: {batch_size}".center(160, "-"))
-		start_time = time.time()
-		dataset_dir = os.path.dirname(csv_file)
+# def get_visual_based_annotation(
+# 			csv_file: str,
+# 			st_model_name: str,
+# 			batch_size: int,
+# 			device: str,
+# 			num_workers: int,
+# 			verbose: bool,
+# 			metadata_fpth: str,
+# 		) -> List[List[str]]:
+# 		print(f"Semi-Supervised label extraction from image data (using VLM) batch_size: {batch_size}".center(160, "-"))
+# 		start_time = time.time()
+# 		dataset_dir = os.path.dirname(csv_file)
 
-		if verbose:
-			print(f"Loading metadata from {csv_file}...")
-		dtypes = {
-			'doc_id': str, 'id': str, 'label': str, 'title': str,
-			'description': str, 'img_url': str, 'enriched_document_description': str,
-			'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
-			'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
-		}
-		df = pd.read_csv(
-			filepath_or_buffer=csv_file, 
-			on_bad_lines='skip',
-			dtype=dtypes, 
-			low_memory=False,
-		)
+# 		if verbose:
+# 			print(f"Loading metadata from {csv_file}...")
+# 		dtypes = {
+# 			'doc_id': str, 'id': str, 'label': str, 'title': str,
+# 			'description': str, 'img_url': str, 'enriched_document_description': str,
+# 			'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
+# 			'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+# 		}
+# 		df = pd.read_csv(
+# 			filepath_or_buffer=csv_file, 
+# 			on_bad_lines='skip',
+# 			dtype=dtypes, 
+# 			low_memory=False,
+# 		)
 
-		if verbose:
-			print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
-		df['content'] = df['enriched_document_description'].fillna('').astype(str)
-		image_paths = df['img_path'].tolist()
-		text_descriptions = df['content'].tolist()
+# 		if verbose:
+# 			print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
+# 		df['content'] = df['enriched_document_description'].fillna('').astype(str)
+# 		image_paths = df['img_path'].tolist()
+# 		text_descriptions = df['content'].tolist()
 		
-		# Create checkpointing mechanism to resume from interruptions
-		checkpoint_path = os.path.join(dataset_dir, "visual_annotation_checkpoint.pkl")
-		start_idx = 0
-		all_labels = []
-		scene_labels = []
-		era_labels = []
-		activity_labels = []
+# 		# Create checkpointing mechanism to resume from interruptions
+# 		checkpoint_path = os.path.join(dataset_dir, "visual_annotation_checkpoint.pkl")
+# 		start_idx = 0
+# 		all_labels = []
+# 		scene_labels = []
+# 		era_labels = []
+# 		activity_labels = []
 		
-		if os.path.exists(checkpoint_path):
-			if verbose:
-				print(f"Found checkpoint file. Loading...")
-			try:
-				with open(checkpoint_path, 'rb') as f:
-					checkpoint = pickle.load(f)
-					start_idx = checkpoint['next_idx']
-					all_labels = checkpoint['all_labels']
-					scene_labels = checkpoint['scene_labels']
-					era_labels = checkpoint['era_labels']
-					activity_labels = checkpoint['activity_labels']
-				if verbose:
-					print(f"Resuming from index {start_idx}/{len(image_paths)}")
-			except Exception as e:
-				print(f"Error loading checkpoint: {e}. Starting from beginning.")
+# 		if os.path.exists(checkpoint_path):
+# 			if verbose:
+# 				print(f"Found checkpoint file. Loading...")
+# 			try:
+# 				with open(checkpoint_path, 'rb') as f:
+# 					checkpoint = pickle.load(f)
+# 					start_idx = checkpoint['next_idx']
+# 					all_labels = checkpoint['all_labels']
+# 					scene_labels = checkpoint['scene_labels']
+# 					era_labels = checkpoint['era_labels']
+# 					activity_labels = checkpoint['activity_labels']
+# 				if verbose:
+# 					print(f"Resuming from index {start_idx}/{len(image_paths)}")
+# 			except Exception as e:
+# 				print(f"Error loading checkpoint: {e}. Starting from beginning.")
 
-		if verbose:
-			print(f"Loading sentence-transformer model: {st_model_name}...")
-		sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
+# 		if verbose:
+# 			print(f"Loading sentence-transformer model: {st_model_name}...")
+# 		sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
 
-		if verbose:
-			print("Loading VLM model for image labeling...")
-		processor = AlignProcessor.from_pretrained("kakaobrain/align-base")
-		model = AlignModel.from_pretrained("kakaobrain/align-base")
-		model.to(device)
-		model.eval()
+# 		if verbose:
+# 			print("Loading VLM model for image labeling...")
+# 		processor = AlignProcessor.from_pretrained("kakaobrain/align-base")
+# 		model = AlignModel.from_pretrained("kakaobrain/align-base")
+# 		model.to(device)
+# 		model.eval()
 
-		# Create category type map for thresholding
-		category_type_map = {}
-		for cat in object_categories:
-			category_type_map[cat] = "object"
-		for cat in scene_categories:
-			category_type_map[cat] = "scene"
-		for cat in era_categories:
-			category_type_map[cat] = "era"
-		for cat in activity_categories:
-			category_type_map[cat] = "activity"
+# 		# Create category type map for thresholding
+# 		category_type_map = {}
+# 		for cat in object_categories:
+# 			category_type_map[cat] = "object"
+# 		for cat in scene_categories:
+# 			category_type_map[cat] = "scene"
+# 		for cat in era_categories:
+# 			category_type_map[cat] = "era"
+# 		for cat in activity_categories:
+# 			category_type_map[cat] = "activity"
 		
-		# Base thresholds by category type
-		base_thresholds = {
-			"object": 0.25,
-			"scene": 0.22,
-			"era": 0.18,
-			"activity": 0.22
-		}
+# 		# Pre-compute category prompts and embeddings (done once, not per batch)
+# 		if verbose:
+# 			print("Pre-computing category prompt embeddings...")
 
-		# Pre-compute category prompts and embeddings (done once, not per batch)
-		if verbose:
-			print("Pre-computing category prompt embeddings...")
-
-		object_prompts = [f"a photo of {cat}" for cat in object_categories]
-		scene_prompts = [f"a photo of {cat}" for cat in scene_categories]
-		era_prompts = [f"a photo of {cat}" for cat in era_categories]
-		activity_prompts = [f"a photo of {cat}" for cat in activity_categories]
+# 		object_prompts = [f"a photo of {cat}" for cat in object_categories]
+# 		scene_prompts = [f"a photo of {cat}" for cat in scene_categories]
+# 		era_prompts = [f"a photo of {cat}" for cat in era_categories]
+# 		activity_prompts = [f"a photo of {cat}" for cat in activity_categories]
 		
-		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			object_prompt_embeds = sent_model.encode(object_prompts, device=device, convert_to_tensor=True)
-			scene_prompt_embeds = sent_model.encode(scene_prompts, device=device, convert_to_tensor=True)
-			era_prompt_embeds = sent_model.encode(era_prompts, device=device, convert_to_tensor=True)
-			activity_prompt_embeds = sent_model.encode(activity_prompts, device=device, convert_to_tensor=True)
+# 		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+# 			object_prompt_embeds = sent_model.encode(object_prompts, device=device, convert_to_tensor=True)
+# 			scene_prompt_embeds = sent_model.encode(scene_prompts, device=device, convert_to_tensor=True)
+# 			era_prompt_embeds = sent_model.encode(era_prompts, device=device, convert_to_tensor=True)
+# 			activity_prompt_embeds = sent_model.encode(activity_prompts, device=device, convert_to_tensor=True)
 
-		# Function to process a single category type efficiently
-		def process_category_batch(batch_indices, batch_paths, batch_descriptions, categories, prompt_embeds, category_type):
-			valid_images = []
-			valid_indices = []
-			valid_descriptions = []
+# 		# Base thresholds by category type
+# 		base_thresholds = {
+# 			"object": 0.25,
+# 			"scene": 0.22,
+# 			"era": 0.18,
+# 			"activity": 0.22
+# 		}
+
+# 		def process_category_batch(batch_indices, batch_paths, batch_descriptions, categories, prompt_embeds, category_type):
+# 			valid_images = []
+# 			valid_indices = []
+# 			valid_descriptions = []
+	
+# 			# Load images
+# 			for i, path in enumerate(batch_paths):
+# 				try:
+# 					if os.path.exists(path):
+# 						img = Image.open(path).convert('RGB')
+# 						valid_images.append(img)
+# 						valid_indices.append(i)
+# 						valid_descriptions.append(batch_descriptions[i])
+# 				except Exception as e:
+# 					if verbose and i % 100 == 0:
+# 						print(f"Error loading image {path}: {e}")
 			
-			# Load images
-			for i, path in enumerate(batch_paths):
-				try:
-					if os.path.exists(path):
-						img = Image.open(path).convert('RGB')
-						valid_images.append(img)
-						valid_indices.append(i)
-						valid_descriptions.append(batch_descriptions[i])
-				except Exception as e:
-					if verbose and i % 100 == 0:
-						print(f"Error loading image {path}: {e}")
+# 			if not valid_images:
+# 				return [[] for _ in range(len(batch_paths))]
 			
-			if not valid_images:
-				return [[] for _ in range(len(batch_paths))]
+# 			# Prepare prompts
+# 			text_prompts = [f"a photo of {cat}" for cat in categories]
 			
-			# Prepare prompts
-			text_prompts = [f"a photo of {cat}" for cat in categories]
+# 			# Calculate text similarities using pre-computed prompt embeddings
+# 			# Only encode descriptions once per batch
+# 			with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+# 				text_embeds = sent_model.encode(valid_descriptions, device=device, convert_to_tensor=True)
+# 				text_similarities = torch.mm(prompt_embeds, text_embeds.T).cpu().numpy()
+# 				prompt_norms = torch.norm(prompt_embeds, dim=1, keepdim=True)
+# 				text_norms = torch.norm(text_embeds, dim=1, keepdim=True)
+# 				text_similarities = text_similarities / (torch.mm(prompt_norms, text_norms.T).cpu().numpy() + 1e-8)
 			
-			# Calculate text similarities using pre-computed prompt embeddings
-			# Only encode descriptions once per batch
-			with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-				text_embeds = sent_model.encode(valid_descriptions, device=device, convert_to_tensor=True)
-				text_similarities = torch.mm(prompt_embeds, text_embeds.T).cpu().numpy()
-				prompt_norms = torch.norm(prompt_embeds, dim=1, keepdim=True)
-				text_norms = torch.norm(text_embeds, dim=1, keepdim=True)
-				text_similarities = text_similarities / (torch.mm(prompt_norms, text_norms.T).cpu().numpy() + 1e-8)
-			
-			# Process with VLM model in mixed precision
-			with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-				model.eval()
+# 			# Process with VLM model in mixed precision
+# 			with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+# 				model.eval()
 				
-				# Process in smaller sub-batches if needed (for very large batches)
-				sub_batch_size = min(len(valid_images), 16)  # VLM usually handles 16 images well
-				batch_results = [[] for _ in range(len(batch_paths))]
+# 				# Process in smaller sub-batches if needed (for very large batches)
+# 				sub_batch_size = min(len(valid_images), 16)  # VLM usually handles 16 images well
+# 				batch_results = [[] for _ in range(len(batch_paths))]
 				
-				for sub_idx in range(0, len(valid_images), sub_batch_size):
-						sub_end = min(sub_idx + sub_batch_size, len(valid_images))
-						sub_images = valid_images[sub_idx:sub_end]
-						sub_valid_indices = valid_indices[sub_idx:sub_end]
+# 				for sub_idx in range(0, len(valid_images), sub_batch_size):
+# 						sub_end = min(sub_idx + sub_batch_size, len(valid_images))
+# 						sub_images = valid_images[sub_idx:sub_end]
+# 						sub_valid_indices = valid_indices[sub_idx:sub_end]
 						
-						# Prepare inputs efficiently
-						inputs = processor(
-							text=text_prompts,
-							images=sub_images, 
-							return_tensors="pt", 
-							padding=True
-						).to(device)
+# 						# Prepare inputs efficiently
+# 						inputs = processor(
+# 							text=text_prompts,
+# 							images=sub_images, 
+# 							return_tensors="pt", 
+# 							padding=True
+# 						).to(device)
 						
-						# Get embeddings
-						outputs = model(**inputs)
+# 						# Get embeddings
+# 						outputs = model(**inputs)
 						
-						# Normalize and calculate similarity
-						image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
-						vlm_embeds = outputs.text_embeds / outputs.text_embeds.norm(dim=-1, keepdim=True)
-						vlm_similarity = (100.0 * image_embeds @ vlm_embeds.T).softmax(dim=-1).cpu().numpy()
+# 						# Normalize and calculate similarity
+# 						image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
+# 						vlm_embeds = outputs.text_embeds / outputs.text_embeds.norm(dim=-1, keepdim=True)
+# 						vlm_similarity = (100.0 * image_embeds @ vlm_embeds.T).softmax(dim=-1).cpu().numpy()
 						
-						# Get threshold based on category type
-						threshold = base_thresholds[category_type]
+# 						# Get threshold based on category type
+# 						threshold = base_thresholds[category_type]
 						
-						# Process results
-						for i, img_idx in enumerate(range(sub_idx, sub_end)):
-							batch_idx = sub_valid_indices[i]
-							local_img_idx = img_idx - sub_idx
+# 						# Process results
+# 						for i, img_idx in enumerate(range(sub_idx, sub_end)):
+# 							batch_idx = sub_valid_indices[i]
+# 							local_img_idx = img_idx - sub_idx
 							
-							for cat_idx, cat in enumerate(categories):
-								# Get text similarity score
-								text_score = text_similarities[cat_idx, img_idx]
+# 							for cat_idx, cat in enumerate(categories):
+# 								# Get text similarity score
+# 								text_score = text_similarities[cat_idx, img_idx]
 								
-								# Adapt threshold based on text evidence
-								adaptive_threshold = threshold
-								if text_score > 0.5:
-									adaptive_threshold *= 0.8  # Lower threshold if strong text evidence
-								elif text_score < 0.1:
-									adaptive_threshold *= 1.2  # Higher threshold if no text evidence
+# 								# Adapt threshold based on text evidence
+# 								adaptive_threshold = threshold
+# 								if text_score > 0.5:
+# 									adaptive_threshold *= 0.8  # Lower threshold if strong text evidence
+# 								elif text_score < 0.1:
+# 									adaptive_threshold *= 1.2  # Higher threshold if no text evidence
 								
-								# Get VLM score
-								vlm_score = vlm_similarity[local_img_idx, cat_idx]
+# 								# Get VLM score
+# 								vlm_score = vlm_similarity[local_img_idx, cat_idx]
 								
-								# Combine VLM and text scores
-								combined_score = vlm_score * (0.8 + 0.2 * text_score)
+# 								# Combine VLM and text scores
+# 								combined_score = vlm_score * (0.8 + 0.2 * text_score)
 								
-								if combined_score > adaptive_threshold:
-									batch_results[batch_idx].append(categories[cat_idx])
+# 								if combined_score > adaptive_threshold:
+# 									batch_results[batch_idx].append(categories[cat_idx])
 			
-			return batch_results
+# 			return batch_results
 
-		for category_idx, (categories, prompt_embeds, category_type, labels_list) in enumerate([
-			(object_categories, object_prompt_embeds, "object", all_labels),
-			(scene_categories, scene_prompt_embeds, "scene", scene_labels),
-			(era_categories, era_prompt_embeds, "era", era_labels),
-			(activity_categories, activity_prompt_embeds, "activity", activity_labels)
-		]):
-			if verbose:
-				print(f"Processing {category_type} categories ({len(categories)} categories)...")
+# 		for category_idx, (categories, prompt_embeds, category_type, labels_list) in enumerate([
+# 			(object_categories, object_prompt_embeds, "object", all_labels),
+# 			(scene_categories, scene_prompt_embeds, "scene", scene_labels),
+# 			(era_categories, era_prompt_embeds, "era", era_labels),
+# 			(activity_categories, activity_prompt_embeds, "activity", activity_labels)
+# 		]):
+# 			if verbose:
+# 				print(f"Processing {category_type} categories ({len(categories)} categories)...")
 			
-			# Only process categories that haven't been completed
-			if len(labels_list) >= len(image_paths):
-				if verbose:
-					print(f"Skipping {category_type} categories - already processed")
-				continue
+# 			# Only process categories that haven't been completed
+# 			if len(labels_list) >= len(image_paths):
+# 				if verbose:
+# 					print(f"Skipping {category_type} categories - already processed")
+# 				continue
 			
-			for i in range(start_idx, len(image_paths), batch_size):
-				batch_end = min(i + batch_size, len(image_paths))
-				batch_paths = image_paths[i:batch_end]
-				batch_descriptions = text_descriptions[i:batch_end]
-				batch_indices = list(range(i, batch_end))
+# 			for i in range(start_idx, len(image_paths), batch_size):
+# 				batch_end = min(i + batch_size, len(image_paths))
+# 				batch_paths = image_paths[i:batch_end]
+# 				batch_descriptions = text_descriptions[i:batch_end]
+# 				batch_indices = list(range(i, batch_end))
 				
-				# Process this batch
-				batch_results = process_category_batch(
-					batch_indices=batch_indices,
-					batch_paths=batch_paths,
-					batch_descriptions=batch_descriptions,
-					categories=categories,
-					prompt_embeds=prompt_embeds,
-					category_type=category_type
-				)
+# 				# Process this batch
+# 				batch_results = process_category_batch(
+# 					batch_indices=batch_indices,
+# 					batch_paths=batch_paths,
+# 					batch_descriptions=batch_descriptions,
+# 					categories=categories,
+# 					prompt_embeds=prompt_embeds,
+# 					category_type=category_type
+# 				)
 				
-				# Extend results list
-				while len(labels_list) < batch_end:
-					labels_list.append([])
+# 				# Extend results list
+# 				while len(labels_list) < batch_end:
+# 					labels_list.append([])
 						
-				# Update with new results
-				for idx, results in zip(batch_indices, batch_results):
-					labels_list[idx].extend(results)
+# 				# Update with new results
+# 				for idx, results in zip(batch_indices, batch_results):
+# 					labels_list[idx].extend(results)
 						
-				# Save checkpoint every 500 batches
-				if (i // batch_size) % 500 == 0 and i > start_idx:
-					checkpoint = {
-						'next_idx': batch_end,
-						'all_labels': all_labels,
-						'scene_labels': scene_labels,
-						'era_labels': era_labels,
-						'activity_labels': activity_labels
-					}
-					with open(checkpoint_path, 'wb') as f:
-						pickle.dump(checkpoint, f)
-					if verbose:
-						print(f"Checkpoint saved at index {batch_end}")
+# 				# Save checkpoint every 500 batches
+# 				if (i // batch_size) % 500 == 0 and i > start_idx:
+# 					checkpoint = {
+# 						'next_idx': batch_end,
+# 						'all_labels': all_labels,
+# 						'scene_labels': scene_labels,
+# 						'era_labels': era_labels,
+# 						'activity_labels': activity_labels
+# 					}
+# 					with open(checkpoint_path, 'wb') as f:
+# 						pickle.dump(checkpoint, f)
+# 					if verbose:
+# 						print(f"Checkpoint saved at index {batch_end}")
 				
-			# Reset start index for next category batch
-			start_idx = 0
+# 			# Reset start index for next category batch
+# 			start_idx = 0
 		
-		# Remove checkpoint file after successful completion
-		if os.path.exists(checkpoint_path):
-			os.remove(checkpoint_path)
+# 		# Remove checkpoint file after successful completion
+# 		if os.path.exists(checkpoint_path):
+# 			os.remove(checkpoint_path)
 		
-		# Combine all visual annotations
-		combined_labels = []
-		for i in range(len(image_paths)):
-			image_labels = []
+# 		# Combine all visual annotations
+# 		combined_labels = []
+# 		for i in range(len(image_paths)):
+# 			image_labels = []
 			
-			# Add object labels if available
-			if i < len(all_labels):
-				image_labels.extend(all_labels[i])
+# 			# Add object labels if available
+# 			if i < len(all_labels):
+# 				image_labels.extend(all_labels[i])
 			
-			# Add scene labels if available
-			if i < len(scene_labels):
-				image_labels.extend(scene_labels[i])
+# 			# Add scene labels if available
+# 			if i < len(scene_labels):
+# 				image_labels.extend(scene_labels[i])
 			
-			# Add era labels if available
-			if i < len(era_labels):
-				image_labels.extend(era_labels[i])
+# 			# Add era labels if available
+# 			if i < len(era_labels):
+# 				image_labels.extend(era_labels[i])
 			
-			# Add activity labels if available
-			if i < len(activity_labels):
-				image_labels.extend(activity_labels[i])
+# 			# Add activity labels if available
+# 			if i < len(activity_labels):
+# 				image_labels.extend(activity_labels[i])
 			
-			# Remove duplicates and sort
-			combined_labels.append(sorted(set(image_labels)))
+# 			# Remove duplicates and sort
+# 			combined_labels.append(sorted(set(image_labels)))
 		
-		if verbose:
-			total_labels = sum(len(labels) for labels in combined_labels)
-			print(f"Vision-based annotation completed in {time.time() - start_time:.2f} seconds")
-			print(f"Generated {total_labels} labels for {len(image_paths)} images")
-			print(f"Average labels per image: {total_labels/len(image_paths):.2f}")
+# 		if verbose:
+# 			total_labels = sum(len(labels) for labels in combined_labels)
+# 			print(f"Vision-based annotation completed in {time.time() - start_time:.2f} seconds")
+# 			print(f"Generated {total_labels} labels for {len(image_paths)} images")
+# 			print(f"Average labels per image: {total_labels/len(image_paths):.2f}")
 
-		# Save results
-		df['visual_based_labels'] = combined_labels
-		df.to_csv(metadata_fpth, index=False)
-		print(f"Visual-based annotation Elapsed time: {time.time() - start_time:.2f} sec".center(160, " "))
+# 		# Save results
+# 		df['visual_based_labels'] = combined_labels
+# 		df.to_csv(metadata_fpth, index=False)
+# 		print(f"Visual-based annotation Elapsed time: {time.time() - start_time:.2f} sec".center(160, " "))
 
-		return combined_labels
+# 		return combined_labels
+
+def is_year_compatible(category, year):
+    """
+    Check if a label's era is compatible with the document year.
+    
+    Args:
+        category: String label
+        year: Float or int document year
+    
+    Returns:
+        Bool indicating compatibility
+    """
+    era_ranges = {
+        "WWI era": (1914, 1918),
+        "WWII era": (1939, 1945),
+        "Cold War era": (1947, 1991)
+    }
+    for era, (start, end) in era_ranges.items():
+        if era in category and year and not (start <= year <= end):
+            return False
+    return True
+
+def post_process_labels(labels, text_description, sent_model, doc_year, vlm_scores, max_labels=10, similarity_threshold=0.8):
+    """
+    Post-process visual labels to remove duplicates, validate temporally, and rank by relevance.
+    
+    Args:
+        labels: List of labels
+        text_description: String enriched document description
+        sent_model: SentenceTransformer model
+        doc_year: Float or int document year
+        vlm_scores: List of VLM similarity scores
+        max_labels: Maximum number of labels to retain
+        similarity_threshold: Cosine similarity threshold for deduplication
+    
+    Returns:
+        List of processed labels
+    """
+    if not labels:
+        return []
+    
+    # Encode labels and text for similarity
+    label_embs = sent_model.encode(labels, show_progress_bar=False, convert_to_numpy=True)
+    text_emb = sent_model.encode(text_description, show_progress_bar=False, convert_to_numpy=True)
+    
+    # Deduplicate based on semantic similarity
+    deduplicated = []
+    for i, label in enumerate(labels):
+        is_redundant = False
+        for kept_label, kept_emb in deduplicated:
+            sim = np.dot(label_embs[i], kept_emb) / (
+                np.linalg.norm(label_embs[i]) * np.linalg.norm(kept_emb) + 1e-8
+            )
+            if sim > similarity_threshold:
+                is_redundant = True
+                break
+        if not is_redundant:
+            deduplicated.append((label, label_embs[i], vlm_scores[i]))
+    
+    # Temporal validation
+    validated = [
+        (label, emb, score) for label, emb, score in deduplicated
+        if is_year_compatible(label, doc_year)
+    ]
+    
+    # Rank by combined VLM and text similarity
+    if validated:
+        text_sims = np.dot(
+            np.array([emb for _, emb, _ in validated]),
+            text_emb
+        ) / (
+            np.linalg.norm([emb for _, emb, _ in validated], axis=1) * np.linalg.norm(text_emb) + 1e-8
+        )
+        combined_scores = [
+            0.6 * vlm_score + 0.4 * text_sim
+            for vlm_score, text_sim in zip([score for _, _, score in validated], text_sims)
+        ]
+        ranked = [
+            label for _, label in sorted(
+                zip(combined_scores, [label for label, _, _ in validated]),
+                reverse=True
+            )
+        ]
+        return ranked[:max_labels]
+    return []
+
+def get_visual_based_annotation(
+    csv_file: str,
+    st_model_name: str,
+    batch_size: int,
+    device: str,
+    num_workers: int,
+    verbose: bool,
+    metadata_fpth: str,
+) -> List[List[str]]:
+    print(f"Semi-Supervised label extraction from image data (using VLM) batch_size: {batch_size}".center(160, "-"))
+    start_time = time.time()
+    dataset_dir = os.path.dirname(csv_file)
+
+    if verbose:
+        print(f"Loading metadata from {csv_file}...")
+    dtypes = {
+        'doc_id': str, 'id': str, 'label': str, 'title': str,
+        'description': str, 'img_url': str, 'enriched_document_description': str,
+        'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
+        'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+    }
+    df = pd.read_csv(
+        filepath_or_buffer=csv_file,
+        on_bad_lines='skip',
+        dtype=dtypes,
+        low_memory=False,
+    )
+
+    if verbose:
+        print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
+    df['content'] = df['enriched_document_description'].fillna('').astype(str)
+    image_paths = df['img_path'].tolist()
+    text_descriptions = df['content'].tolist()
+    doc_years = df.get('doc_year', [None] * len(df)).tolist()
+
+    checkpoint_path = os.path.join(dataset_dir, "visual_annotation_checkpoint.pkl")
+    start_idx = 0
+    all_labels = []
+    scene_labels = []
+    era_labels = []
+    activity_labels = []
+
+    if os.path.exists(checkpoint_path):
+        if verbose:
+            print(f"Found checkpoint file. Loading...")
+        try:
+            with open(checkpoint_path, 'rb') as f:
+                checkpoint = pickle.load(f)
+                start_idx = checkpoint['next_idx']
+                all_labels = checkpoint['all_labels']
+                scene_labels = checkpoint['scene_labels']
+                era_labels = checkpoint['era_labels']
+                activity_labels = checkpoint['activity_labels']
+            if verbose:
+                print(f"Resuming from index {start_idx}/{len(image_paths)}")
+        except Exception as e:
+            print(f"Error loading checkpoint: {e}. Starting from beginning.")
+
+    if verbose:
+        print(f"Loading sentence-transformer model: {st_model_name}...")
+    sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
+
+    if verbose:
+        print("Loading VLM model for image labeling...")
+    processor = AlignProcessor.from_pretrained("kakaobrain/align-base")
+    model = AlignModel.from_pretrained("kakaobrain/align-base")
+    model.to(device)
+    model.eval()
+
+    # Define category type map
+    category_type_map = {}
+    for cat in object_categories:
+        category_type_map[cat] = "object"
+    for cat in scene_categories:
+        category_type_map[cat] = "scene"
+    for cat in era_categories:
+        category_type_map[cat] = "era"
+    for cat in activity_categories:
+        category_type_map[cat] = "activity"
+
+    base_thresholds = {
+        "object": 0.25,
+        "scene": 0.22,
+        "era": 0.18,
+        "activity": 0.22
+    }
+
+    # Pre-compute category prompt embeddings
+    if verbose:
+        print("Pre-computing category prompt embeddings...")
+    object_prompts = [f"a photo of {cat}" for cat in object_categories]
+    scene_prompts = [f"a photo of {cat}" for cat in scene_categories]
+    era_prompts = [f"a photo of {cat}" for cat in era_categories]
+    activity_prompts = [f"a photo of {cat}" for cat in activity_categories]
+
+    with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+        object_prompt_embeds = sent_model.encode(object_prompts, device=device, convert_to_tensor=True)
+        scene_prompt_embeds = sent_model.encode(scene_prompts, device=device, convert_to_tensor=True)
+        era_prompt_embeds = sent_model.encode(era_prompts, device=device, convert_to_tensor=True)
+        activity_prompt_embeds = sent_model.encode(activity_prompts, device=device, convert_to_tensor=True)
+
+    def process_category_batch(batch_indices, batch_paths, batch_descriptions, categories, prompt_embeds, category_type):
+        valid_images = []
+        valid_indices = []
+        valid_descriptions = []
+
+        for i, path in enumerate(batch_paths):
+            try:
+                if os.path.exists(path):
+                    img = Image.open(path).convert('RGB')
+                    valid_images.append(img)
+                    valid_indices.append(i)
+                    valid_descriptions.append(batch_descriptions[i])
+            except Exception as e:
+                if verbose and i % 100 == 0:
+                    print(f"Error loading image {path}: {e}")
+
+        if not valid_images:
+            return [[] for _ in range(len(batch_paths))], [[] for _ in range(len(batch_paths))]
+
+        text_prompts = [f"a photo of {cat}" for cat in categories]
+
+        with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+            text_embeds = sent_model.encode(valid_descriptions, device=device, convert_to_tensor=True)
+            text_similarities = torch.mm(prompt_embeds, text_embeds.T).cpu().numpy()
+            prompt_norms = torch.norm(prompt_embeds, dim=1, keepdim=True)
+            text_norms = torch.norm(text_embeds, dim=1, keepdim=True)
+            text_similarities = text_similarities / (torch.mm(prompt_norms, text_norms.T).cpu().numpy() + 1e-8)
+
+            model.eval()
+            sub_batch_size = min(len(valid_images), 16)
+            batch_results = [[] for _ in range(len(batch_paths))]
+            batch_scores = [[] for _ in range(len(batch_paths))]
+
+            for sub_idx in range(0, len(valid_images), sub_batch_size):
+                sub_end = min(sub_idx + sub_batch_size, len(valid_images))
+                sub_images = valid_images[sub_idx:sub_end]
+                sub_valid_indices = valid_indices[sub_idx:sub_end]
+
+                inputs = processor(
+                    text=text_prompts,
+                    images=sub_images,
+                    return_tensors="pt",
+                    padding=True
+                ).to(device)
+
+                outputs = model(**inputs)
+                image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
+                vlm_embeds = outputs.text_embeds / outputs.text_embeds.norm(dim=-1, keepdim=True)
+                vlm_similarity = (100.0 * image_embeds @ vlm_embeds.T).softmax(dim=-1).cpu().numpy()
+
+                threshold = base_thresholds[category_type]
+
+                for i, img_idx in enumerate(range(sub_idx, sub_end)):
+                    batch_idx = sub_valid_indices[i]
+                    local_img_idx = img_idx - sub_idx
+
+                    for cat_idx, cat in enumerate(categories):
+                        text_score = text_similarities[cat_idx, img_idx]
+                        adaptive_threshold = threshold
+                        if text_score > 0.5:
+                            adaptive_threshold *= 0.8
+                        elif text_score < 0.1:
+                            adaptive_threshold *= 1.2
+
+                        vlm_score = vlm_similarity[local_img_idx, cat_idx]
+                        combined_score = vlm_score * (0.8 + 0.2 * text_score)
+
+                        if combined_score > adaptive_threshold:
+                            batch_results[batch_idx].append(categories[cat_idx])
+                            batch_scores[batch_idx].append(vlm_score)
+
+            return batch_results, batch_scores
+
+    for category_idx, (categories, prompt_embeds, category_type, labels_list) in enumerate([
+        (object_categories, object_prompt_embeds, "object", all_labels),
+        (scene_categories, scene_prompt_embeds, "scene", scene_labels),
+        (era_categories, era_prompt_embeds, "era", era_labels),
+        (activity_categories, activity_prompt_embeds, "activity", activity_labels)
+    ]):
+        if verbose:
+            print(f"Processing {category_type} categories ({len(categories)} categories)...")
+
+        if len(labels_list) >= len(image_paths):
+            if verbose:
+                print(f"Skipping {category_type} categories - already processed")
+            continue
+
+        for i in range(start_idx, len(image_paths), batch_size):
+            batch_end = min(i + batch_size, len(image_paths))
+            batch_paths = image_paths[i:batch_end]
+            batch_descriptions = text_descriptions[i:batch_end]
+            batch_indices = list(range(i, batch_end))
+
+            batch_results, batch_scores = process_category_batch(
+                batch_indices=batch_indices,
+                batch_paths=batch_paths,
+                batch_descriptions=batch_descriptions,
+                categories=categories,
+                prompt_embeds=prompt_embeds,
+                category_type=category_type
+            )
+
+            while len(labels_list) < batch_end:
+                labels_list.append([])
+
+            for idx, (results, scores) in zip(batch_indices, zip(batch_results, batch_scores)):
+                labels_list[idx].extend(results)
+
+            if (i // batch_size) % 500 == 0 and i > start_idx:
+                checkpoint = {
+                    'next_idx': batch_end,
+                    'all_labels': all_labels,
+                    'scene_labels': scene_labels,
+                    'era_labels': era_labels,
+                    'activity_labels': activity_labels
+                }
+                with open(checkpoint_path, 'wb') as f:
+                    pickle.dump(checkpoint, f)
+                if verbose:
+                    print(f"Checkpoint saved at index {batch_end}")
+
+        start_idx = 0
+
+    if os.path.exists(checkpoint_path):
+        os.remove(checkpoint_path)
+
+    # Combine and post-process visual annotations
+    combined_labels = []
+    for i in range(len(image_paths)):
+        image_labels = []
+        image_scores = []
+
+        if i < len(all_labels):
+            image_labels.extend(all_labels[i])
+            image_scores.extend([0.25] * len(all_labels[i]))  # Placeholder scores
+        if i < len(scene_labels):
+            image_labels.extend(scene_labels[i])
+            image_scores.extend([0.22] * len(scene_labels[i]))
+        if i < len(era_labels):
+            image_labels.extend(era_labels[i])
+            image_scores.extend([0.18] * len(era_labels[i]))
+        if i < len(activity_labels):
+            image_labels.extend(activity_labels[i])
+            image_scores.extend([0.22] * len(activity_labels[i]))
+
+        # Post-process labels
+        processed_labels = post_process_labels(
+            labels=image_labels,
+            text_description=text_descriptions[i],
+            sent_model=sent_model,
+            doc_year=doc_years[i],
+            vlm_scores=image_scores,
+            max_labels=10,
+            similarity_threshold=0.8
+        )
+
+        combined_labels.append(sorted(set(processed_labels)))
+
+    if verbose:
+        total_labels = sum(len(labels) for labels in combined_labels)
+        print(f"Vision-based annotation completed in {time.time() - start_time:.2f} seconds")
+        print(f"Generated {total_labels} labels for {len(image_paths)} images")
+        print(f"Average labels per image: {total_labels/len(image_paths):.2f}")
+
+    df['visual_based_labels'] = combined_labels
+    df.to_csv(metadata_fpth, index=False)
+    print(f"Visual-based annotation Elapsed time: {time.time() - start_time:.2f} sec".center(160, " "))
+
+    return combined_labels
+
 
 @measure_execution_time
 def main():
@@ -2057,7 +2481,7 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=10, help="Number of workers for parallel processing")
 	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.25, help="Relevance threshold for textual-based annotation")
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=64)
-	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=64, help="Batch size for vision processing")
+	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=16, help="Batch size for vision processing")
 	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2"], help="Sentence-transformer model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 
