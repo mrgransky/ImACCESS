@@ -1,7 +1,7 @@
 from utils import *
 
 # how to run[Pouta]:
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 50 -tbs 512 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31/metadata.csv -d "cuda:1" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_NA.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 50 -tbs 256 -vbs 512 -vth 0.3 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -d "cuda:3" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_HISTORY_X4.out &
@@ -1478,8 +1478,8 @@ def quick_filter_candidates(
 	if not labels:
 		print(f"<!> Empty labels list: {text}")
 		return []
-	text_emb = sent_model.encode(text)
-	label_embs = sent_model.encode(labels)
+	text_emb = sent_model.encode(text, show_progress_bar=False)
+	label_embs = sent_model.encode(labels, show_progress_bar=False)
 	# Ensure label_embs is not empty (redundant but defensive)
 	if label_embs.size == 0:
 		print(f"<!> No embeddings generated for labels: {labels}")
@@ -1611,11 +1611,14 @@ def get_textual_based_annotation(
 
 	text_based_annotation_start_time = time.time()
 	dataset_dir = os.path.dirname(csv_file)
+	if verbose:
+		print(f"Loading sentence-transformer model: {st_model_name}...")
 
-	print(f"Loading sentence-transformer model: {st_model_name}...")
 	sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
 	ft_model = fasttext.load_model(FastText_Language_Identification)
-	print(f"Loading NER model: {ner_model_name}...")
+	if verbose:
+		print(f"Loading NER model: {ner_model_name}...")
+
 	nlp = pipeline(
 		task="ner", 
 		model=AutoModelForTokenClassification.from_pretrained(ner_model_name),
@@ -1639,7 +1642,8 @@ def get_textual_based_annotation(
 		low_memory=False,
 	)
 
-	print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
+	if verbose:
+		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
 	df['content'] = df['enriched_document_description'].fillna('').astype(str)
 	num_samples = df.shape[0]
 	
@@ -2012,14 +2016,16 @@ def get_visual_based_annotation(
 		scene_prompts = [f"a photo of {cat}" for cat in scene_categories]
 		era_prompts = [f"a photo of {cat}" for cat in era_categories]
 		activity_prompts = [f"a photo of {cat}" for cat in activity_categories]
-
 		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 			object_prompt_embeds = sent_model.encode(object_prompts, device=device, convert_to_tensor=True)
 			scene_prompt_embeds = sent_model.encode(scene_prompts, device=device, convert_to_tensor=True)
 			era_prompt_embeds = sent_model.encode(era_prompts, device=device, convert_to_tensor=True)
 			activity_prompt_embeds = sent_model.encode(activity_prompts, device=device, convert_to_tensor=True)
 
-		def process_category_batch(batch_paths, batch_descriptions, batch_indices, df, categories, prompt_embeds, category_type, sent_model, processor, model, device, verbose, base_thresholds):
+		def process_category_batch(
+				batch_paths, batch_descriptions, batch_indices, df, categories, prompt_embeds,
+				category_type, sent_model, processor, model, device, verbose, base_thresholds
+		):
 				"""
 				Process a batch of images for a specific category type, incorporating entropy-based thresholds,
 				dynamic user query categories, and sparse metadata handling.
@@ -2048,15 +2054,17 @@ def get_visual_based_annotation(
 				valid_descriptions = []
 
 				# Step 1: Add dynamic categories from user_query
-				user_queries = [df.get('user_query', [''])[idx] for idx in batch_indices]
+				if 'user_query' not in df.columns:
+					user_queries = [''] * len(batch_indices)
+				else:
+					user_queries = df['user_query'].fillna('').iloc[batch_indices].tolist()
+
 				extended_categories = categories.copy()
 				new_queries = []
-				for query_list in user_queries:
-						if isinstance(query_list, list):
-								for query in query_list:
-										if isinstance(query, str) and query.strip() and query not in extended_categories:
-												extended_categories.append(query)
-												new_queries.append(query)
+				for query in user_queries:
+						if isinstance(query, str) and query.strip() and query not in extended_categories:
+								extended_categories.append(query)
+								new_queries.append(query)
 				
 				# Update prompt embeddings for new queries
 				extended_prompt_embeds = prompt_embeds
@@ -2073,8 +2081,8 @@ def get_visual_based_annotation(
 										valid_indices.append(i)
 										# Step 2: Handle sparse metadata
 										desc = batch_descriptions[i]
-										if not desc.strip() and isinstance(user_queries[i], list) and user_queries[i]:
-												desc = user_queries[i][0]  # Use first query term
+										if not desc.strip() and user_queries[i].strip():
+												desc = user_queries[i]
 										valid_descriptions.append(desc)
 						except Exception as e:
 								if verbose and i % 100 == 0:
@@ -2125,7 +2133,7 @@ def get_visual_based_annotation(
 										img_array = np.array(img.convert('L'))
 										img_array = resize(img_array, (128, 128), anti_aliasing=True, preserve_range=True).astype(np.uint8)
 										entropy = shannon_entropy(img_array)
-										complexity_factor = 1.0 - 0.2 * (entropy / 8.0)  # Max entropy ~8 for 8-bit grayscale
+										complexity_factor = 1.0 - 0.2 * (entropy / 8.0)
 
 										for cat_idx, cat in enumerate(extended_categories):
 												text_score = text_similarities[cat_idx, img_idx]
@@ -2136,7 +2144,6 @@ def get_visual_based_annotation(
 														adaptive_threshold *= 1.2
 
 												vlm_score = vlm_similarity[local_img_idx, cat_idx]
-												# Step 4: Adjust scoring for sparse metadata
 												is_sparse = not valid_descriptions[img_idx].strip()
 												combined_score = (
 														0.5 * vlm_score + 0.5 * text_score if is_sparse
