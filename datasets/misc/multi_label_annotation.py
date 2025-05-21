@@ -2062,7 +2062,7 @@ def get_visual_based_annotation(
 				extended_prompt_embeds = prompt_embeds
 				if new_queries:
 						new_prompts = [f"a photo of {q}" for q in new_queries]
-						new_embeds = sent_model.encode(new_prompts, device=device, convert_to_tensor=True)
+						new_embeds = sent_model.encode(new_prompts, device=device, convert_to_tensor=True, show_progress_bar=False)
 						extended_prompt_embeds = torch.cat([prompt_embeds, new_embeds], dim=0)
 
 				for i, path in enumerate(batch_paths):
@@ -2086,7 +2086,7 @@ def get_visual_based_annotation(
 				text_prompts = [f"a photo of {cat}" for cat in extended_categories]
 
 				with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-						text_embeds = sent_model.encode(valid_descriptions, device=device, convert_to_tensor=True)
+						text_embeds = sent_model.encode(valid_descriptions, device=device, convert_to_tensor=True, show_progress_bar=False)
 						text_similarities = torch.mm(extended_prompt_embeds, text_embeds.T).cpu().numpy()
 						prompt_norms = torch.norm(extended_prompt_embeds, dim=1, keepdim=True)
 						text_norms = torch.norm(text_embeds, dim=1, keepdim=True)
