@@ -128,7 +128,7 @@ scene_categories = [
 ]
 
 era_categories = [
-	"World War one era", "World War two era",
+	"world war one", "world war two",
 ]
 
 activity_categories = [
