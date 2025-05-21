@@ -38,6 +38,8 @@ import networkx as nx
 from sklearn.metrics import silhouette_score
 from scipy.cluster.hierarchy import dendrogram, linkage
 from sklearn.neighbors import NearestNeighbors
+import hashlib
+from torch.cuda import get_device_properties, memory_allocated
 
 from kneed import KneeLocator
 from keybert import KeyBERT
@@ -67,7 +69,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed, ThreadPoolExec
 from requests.exceptions import RequestException
 import torchvision.transforms as T
 from PIL import Image, ImageDraw, ImageOps, ImageFilter
-from functools import cache
+from functools import cache, partial
 from urllib.parse import urlparse, unquote, quote_plus, urljoin
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
@@ -75,6 +77,8 @@ from datetime import timedelta
 import glob
 import psutil  # For memory usage monitoring
 import tabulate
+import ast
+
 from natsort import natsorted
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry

@@ -3,7 +3,7 @@ from utils import *
 # how to run[Pouta]:
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 50 -tbs 512 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31/metadata.csv -d "cuda:1" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_NA.out &
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 50 -tbs 256 -vbs 512 -vth 0.3 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 50 -tbs 512 -vbs 512 -vth 0.3 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -d "cuda:3" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_HISTORY_X4.out &
 
 # Make language detection deterministic
@@ -13,7 +13,7 @@ DetectorFactory.seed = 42
 CUSTOM_STOPWORDS = ENGLISH_STOP_WORDS.union(
 	{
 		"bildetekst", "photo", "image", "archive", "arkivreferanse", "caption", "following", "below", "above",
-		"copyright", "description", "riksarkivet", "ntbs", "ra", "pa", "bildetekst",
+		"copyright", "description", "riksarkivet", "ntbs", "ra", "pa", "bildetekst", "century", "twentieth",
 		"showing", "shown", "shows", "depicts", "depicting", "pictured", "picture", "pinterest",
 		"copy", "version", "view", "looking", "seen", "visible", "illustration",
 		"photograph", "photography", "photo", "image", "img", "photographer",
@@ -70,21 +70,21 @@ RELEVANT_ENTITY_TYPES = {
 
 object_categories = [
 	# Military Vehicles
-	"tank", "light tank", "medium tank", "tank destroyer", "armored car",
-	"half-track", "armored personnel carrier", "armored train", "Kubelwagen", "Willys Jeep",
+	"tank", "tank destroyer", "armored car",
+	"half-track", "armored personnel carrier", "armored train", "Kubelwagen",
 	"jeep", "military truck", "supply truck", "artillery tractor", "amphibious vehicle",
 	# Aircraft
 	"military aircraft", "fighter aircraft", "bomber aircraft", "reconnaissance aircraft",
-	"seaplane", "biplane", "monoplane", "Spitfire", "Messerschmitt Bf 109", "B-17 Flying Fortress",
+	"seaplane", "biplane", "monoplane", "Spitfire", "B-17 Flying Fortress",
 	# Naval Vessels
 	"submarine", "destroyer", "cruiser", "battleship", "aircraft carrier",
 	"corvette", "minesweeper", "landing craft", "hospital ship", "troop transport", "tugboat",
 	# Military Personnel
 	"soldier", "infantryman", "officer", "pilot", "sailor", "marine", "medic",
-	"Wehrmacht soldier", "Red Army soldier", "nurse", "military policeman",
+	"Wehrmacht soldier", "Red Army soldier", "nurse",
 	# Weapons
 	"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery piece",
-	"cannon", "anti-tank gun", "grenade", "landmine", "torpedo", "M1 Garand",
+	"cannon", "anti-tank gun", "grenade", "landmine", "torpedo",
 	# Military Infrastructure
 	"bunker", "gun emplacement", "observation post", "barbed wire", "trenches",
 	"fortification", "coastal defense", "minefield",
@@ -101,7 +101,7 @@ object_categories = [
 	"wheelbarrow", "leather apron", "signature document", "blood pressure monitor",
 	"medical chart",
 	# Cultural
-	"cannon carriage", "museum exhibit", "photo album", "pavilion structure",
+	"cannon carriage", "museum", "pavilion structure",
 	"market stall", "religious monument", "basilica statue", "palace garden", "historical plaque",
 	# Animals
 	"donkey", "camel", "workhorse", "mule", "ox", "reindeer",
@@ -109,38 +109,36 @@ object_categories = [
 
 scene_categories = [
 	# Military Theaters
-	"Western Front", "Eastern Front", "Italian Front", "North African Front",
-	"coastline", "city ruins",
+	"Western Front", "Eastern Front", "coastline", "city ruins", "battlefield", "military camp",
 	# Terrain
 	"desert", "forest", "winter forest", "urban area", "mountain", "mountain valley",
 	"field", "rural farmland", "snow-covered field", "ocean", "coastal waters",
 	"river", "river crossing", "bridge", "lake shore", "coastal landscape",
 	# Military Settings
 	"military hospital", "field hospital", "military cemetery", "aircraft factory",
-	"military depot", "military port", "naval dry dock",
+	"military depot", "military port", "dry dock",
 	# Military Infrastructure
 	"airfield", "naval base", "army barracks", "military headquarters",
-	"coastal defense", "artillery position",
+	"coastal defense",
 	# Civilian & Cultural
 	"urban construction", "industrial site", "railroad station", "ferry dock",
-	"harbor port", "bathing area", "museum interior", "palace courtyard",
-	"historical plaza", "library hall", "urban plaza", "cathedral square",
-	"palace grounds", "village square"
+	"harbor port", "bathing area", "palace courtyard",
+	"historical plaza", "library hall", "urban plaza", "cathedral",
+	"palace grounds",
 ]
 
 era_categories = [
-	"WWI era", "WWII era", "Cold War era", 
-	"modern military",
+	"World War one era", "World War two era",
 ]
 
 activity_categories = [
 	# Combat
-	"fighting", "tank battle", "infantry assault", "naval engagement", "artillery barrage",
+	"fighting", "tank battle", "infantry assault", "naval engagement", "barrage",
 	"firing weapon",
 	# Movement
 	"driving", "troop transport", "marching", "reconnaissance flight", "river crossing",
 	# Military Operations
-	"digging trenches", "building fortifications", "laying mines", "setting up artillery",
+	"digging trenches", "fortification", "laying mines", "setting up artillery",
 	"establishing field hospital",
 	# Logistics
 	"loading equipment", "loading ammunition", "evacuating casualties", "aircraft maintenance",
@@ -151,10 +149,10 @@ activity_categories = [
 	"military parade", "flag raising", "ceremonial speech", "ceremony",
 	"officer briefing", "civilian interaction",
 	# Civilian & Cultural
-	"tunnel digging", "building restoration", "railway maintenance", "wood stacking",
-	"bathing", "family portrait", "market trading", "exhibition setup", "museum curation",
-	"artifact display", "signature documentation", "photo album creation",
-	"farming harvest", "tourist visit", "art exhibition",
+	"tunnel digging", "restoration", "railway maintenance", "wood stacking",
+	"bathing", "portrait", "market trading", "museum curation",
+	"signature documentation",
+	"farming harvest", "exhibition",
 	# Transport
 	"ferry operation", "train operation", "freight loading"
 ]
@@ -942,7 +940,7 @@ def extract_semantic_topics(
 		fig.write_html(os.path.join(dataset_dir, 'topic_similarity_network_interactive.html'))
 
 	# Merge similar topics
-	print(f"\n>> Merging similar topics with dynamic merging threshold {merge_threshold}")
+	print(f"\n>> Merging similar topics with dynamic merging threshold {merge_threshold:.4f}")
 	merged_topics = []
 	used_indices = set()
 	min_topics = max(1, len(topics_before_merging) // 2)
@@ -1185,45 +1183,6 @@ def extract_semantic_topics(
 	print(f"Extracted {len(flat_topics)} unique topic terms after merging")
 	return merged_topics, flat_topics
 
-def combine_and_clean_labels(ner, keywords, topics, text, sent_model, min_threshold=0.15, max_threshold=0.35):
-	# Combine all sources
-	all_labels = list(set(ner + keywords + topics))
-	if not all_labels:
-		return []
-	
-	# Compute relevance scores
-	text_emb = sent_model.encode(text, show_progress_bar=False)
-	label_embs = sent_model.encode(all_labels, show_progress_bar=False)
-	similarities = np.dot(label_embs, text_emb) / (np.linalg.norm(label_embs, axis=1) * np.linalg.norm(text_emb) + 1e-8)
-	
-	# Adaptive threshold based on similarity distribution and text length
-	text_length = len(text.split())
-	if similarities.size > 0:
-		# Use 75th percentile of similarities, clipped between min and max thresholds
-		adaptive_threshold = np.clip(
-			np.percentile(similarities, 75),
-			min_threshold,
-			max_threshold
-		)
-		# Adjust threshold based on text length (shorter texts need lower threshold)
-		if text_length < 50:
-			adaptive_threshold = max(min_threshold, adaptive_threshold * 0.8)
-		elif text_length > 200:
-			adaptive_threshold = min(max_threshold, adaptive_threshold * 1.2)
-	else:
-		adaptive_threshold = min_threshold
-	
-	# Filter by adaptive threshold
-	relevant_labels = [label for i, label in enumerate(all_labels) if similarities[i] > adaptive_threshold]
-	
-	# Clean the labels
-	cleaned_labels = clean_labels(relevant_labels)
-	
-	# Filter metadata terms
-	cleaned_labels = filter_metadata_terms(cleaned_labels)
-	
-	return cleaned_labels
-
 def clean_labels(labels):
 		cleaned = set()
 		# Predefined list of valid historical non-ASCII terms
@@ -1335,39 +1294,6 @@ def handle_multilingual_labels(labels):
 				processed_labels.append(label)
 
 	return processed_labels
-
-def deduplicate_labels(labels):
-	"""Remove semantically redundant labels"""
-	if not labels:
-		return []
-
-	# Sort labels by length (typically longer labels are more specific)
-	sorted_labels = sorted(labels, key=len, reverse=True)
-	deduplicated = []
-	for label in sorted_labels:
-		# Check if this label is a substring of any already-kept label
-		is_redundant = False
-		for kept_label in deduplicated:
-			# If label is completely contained in a kept label, it's redundant
-			if label in kept_label:
-				is_redundant = True
-				break
-
-			# Check for high token overlap in multi-word labels
-			if ' ' in label and ' ' in kept_label:
-				label_tokens = set(label.split())
-				kept_tokens = set(kept_label.split())
-
-				# If 75% or more tokens overlap, consider redundant
-				overlap_ratio = len(label_tokens & kept_tokens) / len(label_tokens)
-				if overlap_ratio > 0.75:
-					is_redundant = True
-					break
-		
-		if not is_redundant:
-			deduplicated.append(label)
-	
-	return deduplicated
 
 def assign_semantic_categories(labels):
 	"""Categorize labels into semantic groups"""
@@ -1488,44 +1414,6 @@ def quick_filter_candidates(
 	sorted_labels = [label for _, label in sorted(zip(similarities, labels), reverse=True)]
 	return sorted_labels[:max_keep]
 
-def batch_filter_by_relevance(
-		sent_model: SentenceTransformer,
-		texts: list,
-		all_labels_list: list[list[str]],
-		threshold: float,
-		batch_size: int,
-	):
-	results = []
-	total = len(texts)
-	for batch_start in range(0, total, batch_size):
-		batch_end = min(batch_start + batch_size, total)
-		batch_texts = texts[batch_start:batch_end]
-		batch_labels_list = all_labels_list[batch_start:batch_end]
-
-		# First apply quick filtering to reduce candidates
-		quick_filtered_batch = []
-		for text, labels in zip(batch_texts, batch_labels_list):
-			# quick_filtered = quick_filter_candidates(text, labels)
-			quick_filtered = quick_filter_candidates(text=text, labels=labels, sent_model=sent_model, max_keep=30)
-			quick_filtered_batch.append(quick_filtered)
-		
-		# Get text embeddings for the batch (more efficient)
-		text_embeddings = sent_model.encode(batch_texts, show_progress_bar=False, batch_size=batch_size, convert_to_numpy=True)
-		batch_results = []
-		for i, (text_emb, labels) in enumerate(zip(text_embeddings, quick_filtered_batch)):
-			if not labels:
-				batch_results.append([])
-				continue
-			# Encode all labels at once for this document
-			label_embeddings = sent_model.encode(labels, show_progress_bar=False, convert_to_numpy=True)
-			# Calculate similarities all at once (vectorized operation)
-			similarities = np.dot(label_embeddings, text_emb) / (np.linalg.norm(label_embeddings, axis=1) * np.linalg.norm(text_emb) + 1e-8)
-			# Filter by threshold
-			relevant_indices = np.where(similarities > threshold)[0]
-			batch_results.append([labels[idx] for idx in relevant_indices])			
-		results.extend(batch_results)
-	return results
-
 def process_document_chunk(chunk_data):
 	"""Process a chunk of documents in parallel"""
 	start_idx, end_idx, texts, combined_labels = chunk_data
@@ -1565,350 +1453,247 @@ def process_document_chunk(chunk_data):
 	
 	return results
 
-def parallel_relevance_filtering(texts, all_labels, n_processes=None):
-		"""Run relevance filtering in parallel using multiple processes"""
-		if n_processes is None:
-			n_processes = max(1, multiprocessing.cpu_count() - 1)
-		
-		total_docs = len(texts)
-		chunk_size = total_docs // n_processes + (1 if total_docs % n_processes else 0)
-		chunks = []
-		
-		# Create chunks of data
-		for i in range(0, total_docs, chunk_size):
-			end_idx = min(i + chunk_size, total_docs)
-			chunks.append((i, end_idx, texts[i:end_idx], all_labels[i:end_idx]))
-		
-		# Process chunks in parallel
-		with multiprocessing.Pool(processes=n_processes) as pool:
-			chunk_results = pool.map(process_document_chunk, chunks)
-		
-		# Combine results
-		all_results = []
-		for chunk in chunk_results:
-			all_results.extend(chunk)
-		
-		return all_results
-
-def process_text_chunk(nlp, chunk):
-	return [extract_named_entities(nlp=nlp, text=text) for text in chunk]
-
-def get_textual_based_annotation(
-		csv_file: str, 
-		num_workers: int,
-		batch_size: int,
-		relevance_threshold: float,
-		metadata_fpth: str,
-		device: str,
-		st_model_name: str,
-		ner_model_name: str,
-		verbose: bool=True,
-		use_parallel: bool=False,
-	):
-	if verbose:
-		print(f"Automatic label extraction from text data".center(160, "-"))
-		print(f"Loading metadata from {csv_file}...")
-
-	text_based_annotation_start_time = time.time()
-	dataset_dir = os.path.dirname(csv_file)
-	if verbose:
-		print(f"Loading sentence-transformer model: {st_model_name}...")
-
-	sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
-	ft_model = fasttext.load_model(FastText_Language_Identification)
-	if verbose:
-		print(f"Loading NER model: {ner_model_name}...")
-
-	nlp = pipeline(
-		task="ner", 
-		model=AutoModelForTokenClassification.from_pretrained(ner_model_name),
-		tokenizer=AutoTokenizer.from_pretrained(ner_model_name), 
-		aggregation_strategy="simple",
-		device=device,
-		batch_size=batch_size,
-	)
-
-	dtypes = {
-		'doc_id': str, 'id': str, 'label': str, 'title': str,
-		'description': str, 'img_url': str, 'enriched_document_description': str,
-		'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
-		'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
-	}
-	
-	df = pd.read_csv(
-		filepath_or_buffer=csv_file, 
-		on_bad_lines='skip',
-		dtype=dtypes, 
-		low_memory=False,
-	)
-
-	if verbose:
-		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
-	df['content'] = df['enriched_document_description'].fillna('').astype(str)
-	num_samples = df.shape[0]
-	
-	print(f"Filtering non-English entries for {num_samples} samples")
-	t0 = time.time()
-	english_mask = df['content'].apply(lambda x: is_english(text=x, ft_model=ft_model, verbose=False))
-	english_indices = english_mask[english_mask].index.tolist()
-	print(f"{sum(english_mask)} / {len(df)} texts are English [{sum(english_mask)/len(df)*100:.2f}%]")
-	print(f"Elapsed_t: {time.time() - t0:.2f} sec")
-	
-	# Create a filtered dataframe with only English entries
-	english_df = df[english_mask].reset_index(drop=True)
-	english_texts = english_df['content'].tolist()
-	per_image_labels = [[] for _ in range(num_samples)] # Initialize results for all entries with empty lists	
-
-	if len(english_texts) > 0:
-		# Step 1: Topic Modeling with redundancy reduction
-		print("Topic Modeling".center(160, "-"))
-		t0 = time.time()
-		topics, flat_topic_words = extract_semantic_topics(
-			sent_model=sent_model,
-			ft_model=ft_model,
-			texts=english_texts,
-			num_workers=num_workers,
-			dataset_dir=dataset_dir,
-		)
-		print(f"{len(topics)} Topics (clusters) {type(topics)}:\n{[len(tp) for tp in topics]}")
-		print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(160, "-"))
-		
-		# Step 2: Named Entity Recognition per image
-		print("Extracting NER per sample...")
-		t0 = time.time()
-		if len(english_texts) > 1000 and use_parallel:
-			chunk_size = len(english_texts) // num_workers + 1
-			chunks = [
-				(english_texts[i:i+chunk_size]) 
-				for i in range(0, len(english_texts), chunk_size)
-			]
-			print(f"Using {num_workers} processes for NER extraction...")
-			with multiprocessing.Pool(processes=num_workers) as pool:
-				ner_results = pool.map(process_text_chunk, chunks)
-					
-			per_image_ner_labels = []
-			for chunk_result in ner_results:
-				per_image_ner_labels.extend(chunk_result)
-		else:
-			per_image_ner_labels = []
-			for i, text in enumerate(tqdm(english_texts, desc="NER Progress")):
-				entities = extract_named_entities(nlp=nlp, text=text, ft_model=ft_model)
-				per_image_ner_labels.append(entities)
-		print(f"NER done in {time.time() - t0:.1f} sec")
-		
-		# Step 3: Extract keywords per image
-		print("Extracting keywords per image using KeyBERT...")
-		t0 = time.time()
-		per_image_keywords = []
-		kw_model = KeyBERT(model=sent_model)
-		for text in tqdm(english_texts, desc="Keyword Extraction"):
-			if not is_english(text, ft_model):  # Skip non-English texts
-				per_image_keywords.append([])
-				continue
-			try:
-				# Extract keyphrases with KeyBERT
-				phrases = kw_model.extract_keywords(
-					text,
-					keyphrase_ngram_range=(1, 3),  # 1-3 word phrases
-					stop_words=CUSTOM_STOPWORDS,  # Use custom stopwords
-					top_n=15 if len(text.split()) > 100 else 5,
-					diversity=0.7,
-				)
-				# Filter and normalize phrases
-				keywords = []
-				seen_phrases = set()
-				for phrase, _ in phrases:
-					words = phrase.split()
-					stopword_count = sum(1 for w in words if w in CUSTOM_STOPWORDS)
-					if stopword_count / len(words) > 0.6 or len(words) < 1:  # Allow single words
-						continue
-					normalized = " ".join(word for i, word in enumerate(words) if i == 0 or word != words[i-1])
-					if len(normalized.split()) >= 1 and normalized not in seen_phrases:
-						keywords.append(normalized)
-						seen_phrases.add(normalized)
-				per_image_keywords.append(keywords)
-			except Exception as e:
-				print(f"KeyBERT error for text: {text[:100]}...: {e}")
-				per_image_keywords.append([])
-		print(f"Keyword extraction done in {time.time() - t0:.1f} sec")
-
-		# Step 4: Add individual topic labels
-		print("Assigning topic labels per image...")
-		t0 = time.time()
-		per_image_topic_labels = []
-		for text in tqdm(english_texts, desc="Topic Assignment"):
-			matching_topics = [word for word in flat_topic_words if word in text]
-			per_image_topic_labels.append(matching_topics)
-		print(f"Topic assignment done in {time.time() - t0:.1f} sec")
-		
-		# Step 5: Combine all label sources and clean
-		print("Combining and cleaning labels [might take a while]...")
-		t0 = time.time()
-		per_image_combined_labels = []
-		mixed_texts = zip(english_texts, per_image_ner_labels, per_image_keywords, per_image_topic_labels)
-		for text, ner, keywords, topics in tqdm(mixed_texts, total=len(english_texts), desc="Label Combination"):
-			cleaned_labels = combine_and_clean_labels(ner, keywords, topics, text, sent_model, min_threshold=0.15, max_threshold=0.35)
-			per_image_combined_labels.append(cleaned_labels)
-		print(f"Label combination and cleaning done in {time.time() - t0:.3f} sec")
-
-		# Step 6: Filter by relevance and handle languages
-		print(f"Filtering labels by relevance (thresh: {relevance_threshold})...")
-		t0 = time.time()
-		if use_parallel:
-			print("Using parallel processing for relevance filtering...")
-			per_image_relevant_labels = parallel_relevance_filtering(
-				texts=english_texts,
-				all_labels=per_image_combined_labels,
-				n_processes=num_workers,
-			)
-		else:
-			print(f"Using batch processing ({batch_size} batches) for relevance filtering (thresh: {relevance_threshold})...")
-			per_image_relevant_labels = batch_filter_by_relevance(
-				sent_model=sent_model,
-				texts=english_texts,
-				all_labels_list=per_image_combined_labels,
-				threshold=relevance_threshold,
-				batch_size=batch_size,
-			)
-		print(f"Relevance filtering done in {time.time() - t0:.1f} sec")
-
-		# Step 7: Post-process: language handling, deduplication, etc.
-		print("Post-processing labels, deduplication, and semantic categorization...")
-		t0 = time.time()
-		english_labels = []
-		for i, relevant_labels in enumerate(per_image_relevant_labels):
-			filtered_labels = handle_multilingual_labels(relevant_labels)
-			if "user_query" in english_df.columns:
-				original_label = english_df.iloc[i]["user_query"]
-				if isinstance(original_label, str) and original_label.strip():
-					original_label_clean = re.sub(r"[^a-z0-9\s\-]", "", original_label.lower().strip())
-					if all(ord(char) < 128 for char in original_label_clean):
-						text_emb = sent_model.encode(english_df.iloc[i]['content'])
-						query_emb = sent_model.encode(original_label_clean)
-						sim = np.dot(text_emb, query_emb) / (np.linalg.norm(text_emb) * np.linalg.norm(query_emb) + 1e-8)
-						if sim > relevance_threshold:
-							filtered_labels.append(original_label_clean)
-			filtered_labels = deduplicate_labels(filtered_labels)
-			# Add semantic categories
-			categorized = assign_semantic_categories(filtered_labels)
-			final_labels = sorted(set(filtered_labels + categorized))
-			english_labels.append(final_labels)
-		print(f"Post-processing done in {time.time() - t0:.1f} sec")
-
-		print("Balancing label counts...")
-		t0 = time.time()
-		english_labels = balance_label_count(
-			image_labels_list=english_labels, 
-			text_descriptions=english_texts, 
-			sent_model=sent_model, 
-			min_labels=1, 
-			max_labels=12,
-		)
-		print(f"Label balancing done in {time.time() - t0:.3f} sec")
-		
-		# Transfer results to the full-sized results array using original indices
-		for i, orig_idx in enumerate(english_indices):
-			if i < len(english_labels):
-				per_image_labels[orig_idx] = english_labels[i]
-	else:
-		print("No English texts found. Returning empty labels for all entries.")
-	
-	df['textual_based_labels'] = per_image_labels	
-
-	df.to_csv(metadata_fpth, index=False)
-	
-	print(f">> Generated text labels for {sum(1 for labels in per_image_labels if labels)} out of {num_samples} entries")
-	print(f"Text-based annotation Elapsed time: {time.time() - text_based_annotation_start_time:.2f} sec".center(160, " "))
-	
-	return per_image_labels
+def get_all_unique_user_queries(df: pd.DataFrame) -> Set[str]:
+		"""Collects all unique and cleaned user_query terms from the entire DataFrame."""
+		unique_queries = set()
+		if 'user_query' in df.columns:
+				for query in df['user_query'].fillna('').astype(str):
+						if query.strip():
+								# Simple cleaning for user query before adding to global pool
+								cleaned_query = re.sub(r'[^\w\s\-]', '', query.lower()).strip()
+								if cleaned_query and cleaned_query not in CUSTOM_STOPWORDS and len(cleaned_query) > 2:
+										unique_queries.add(cleaned_query)
+		return unique_queries
 
 def is_year_compatible(category, year):
 		"""
 		Check if a label's era is compatible with the document year.
 		
 		Args:
-				category: String label
-				year: Float or int document year
+						category: String label
+						year: Float or int document year
 		
 		Returns:
-				Bool indicating compatibility
+						Bool indicating compatibility
 		"""
 		if year is None:
-				return True
+						return True
 
 		era_ranges = {
-				"WWI era": (1914, 1918),
-				"WWII era": (1939, 1945),
-				"Cold War era": (1947, 1991)
+						"WWI era": (1914, 1918),
+						"WWII era": (1939, 1945),
+						"Cold War era": (1947, 1991)
 		}
 		for era, (start, end) in era_ranges.items():
-				if era in category and year and not (start <= year <= end):
-						return False
+						if era.lower() in category.lower() and year and not (start <= year <= end):
+										return False
 		return True
 
 def post_process_labels(labels, text_description, sent_model, doc_year, vlm_scores, max_labels=10, similarity_threshold=0.8):
-	"""
-	Post-process visual labels to remove duplicates, validate temporally, and rank by relevance.
-	
-	Args:
-			labels: List of labels
-			text_description: String enriched document description
-			sent_model: SentenceTransformer model
-			doc_year: Float or int document year
-			vlm_scores: List of VLM similarity scores
-			max_labels: Maximum number of labels to retain
-			similarity_threshold: Cosine similarity threshold for deduplication
-	
-	Returns:
-			List of processed labels
-	"""
-	if not labels:
-		# print("Warning: No labels provided for post-processing.")
+		"""
+		Post-process visual labels to remove duplicates, validate temporally, and rank by relevance.
+		
+		Args:
+				labels: List of labels
+				text_description: String enriched document description
+				sent_model: SentenceTransformer model
+				doc_year: Float or int document year
+				vlm_scores: List of VLM similarity scores
+				max_labels: Maximum number of labels to retain
+				similarity_threshold: Cosine similarity threshold for deduplication
+		
+		Returns:
+				List of processed labels
+		"""
+		if not labels:
+				return []
+		
+		# Validate vlm_scores length
+		if len(vlm_scores) != len(labels):
+				vlm_scores = vlm_scores + [0.0] * (len(labels) - len(vlm_scores)) if len(vlm_scores) < len(labels) else vlm_scores[:len(labels)]
+		
+		# Encode labels and text
+		label_embs = sent_model.encode(labels, show_progress_bar=False, convert_to_numpy=True)
+		text_emb = sent_model.encode(text_description, show_progress_bar=False, convert_to_numpy=True)
+		
+		# Deduplicate based on semantic similarity
+		deduplicated = []
+		for i, (label, score) in enumerate(zip(labels, vlm_scores)):
+				is_redundant = False
+				for kept_label, kept_emb, _ in deduplicated:
+						sim = np.dot(label_embs[i], kept_emb) / (np.linalg.norm(label_embs[i]) * np.linalg.norm(kept_emb) + 1e-8)
+						if sim > similarity_threshold:
+								is_redundant = True
+								break
+				if not is_redundant:
+						deduplicated.append((label, label_embs[i], score))
+		
+		# Temporal validation
+		validated = [
+				(label, emb, score)
+				for label, emb, score in deduplicated
+				if is_year_compatible(label, doc_year)
+		]
+		
+		# Rank by combined VLM and text similarity
+		if validated:
+				text_sims = np.dot(np.array([emb for _, emb, _ in validated]), text_emb) / (
+						np.linalg.norm([emb for _, emb, _ in validated], axis=1) * np.linalg.norm(text_emb) + 1e-8
+				)
+				combined_scores = [0.6 * vlm_score + 0.4 * text_sim for vlm_score, text_sim in zip(
+						[score for _, _, score in validated], text_sims
+				)]
+				ranked = [label for _, label in sorted(zip(combined_scores, [label for label, _, _ in validated]), reverse=True)]
+				return ranked[:max_labels]
+		
 		return []
-	
-	# Ensure vlm_scores length matches labels
-	if len(vlm_scores) != len(labels):
-		print(f"Warning: Mismatch between labels ({len(labels)}) and vlm_scores ({len(vlm_scores)}). Padding with zeros.")
-		vlm_scores = vlm_scores + [0.0] * (len(labels) - len(vlm_scores)) if len(vlm_scores) < len(labels) else vlm_scores[:len(labels)]
-	
-	# Encode labels and text for similarity
-	# print(f"Encoding {len(labels)} labels and text description...")
-	label_embs = sent_model.encode(labels, show_progress_bar=False, convert_to_numpy=True)
-	text_emb = sent_model.encode(text_description, show_progress_bar=False, convert_to_numpy=True)
-	
-	# Deduplicate based on semantic similarity
-	deduplicated = []
-	for i, label in enumerate(labels):
-		is_redundant = False
-		for kept_label, kept_emb, _ in deduplicated:  # Unpack three values
-			sim = np.dot(label_embs[i], kept_emb) / (np.linalg.norm(label_embs[i]) * np.linalg.norm(kept_emb) + 1e-8)
-			if sim > similarity_threshold:
-				is_redundant = True
-				break
-		if not is_redundant:
-			deduplicated.append((label, label_embs[i], vlm_scores[i]))
-	
-	# print(f"Deduplicated from {len(labels)} to {len(deduplicated)} labels.")
-	
-	# Temporal validation
-	validated = [
-		(label, emb, score)
-		for label, emb, score in deduplicated
-		if is_year_compatible(label, doc_year)
-	]
-	# print(f"Validated {len(validated)} labels after temporal check.")
-	
-	# Rank by combined VLM and text similarity
-	if validated:
-		nominator = np.dot(np.array([emb for _, emb, _ in validated]),text_emb)
-		denominator = np.linalg.norm([emb for _, emb, _ in validated], axis=1) * np.linalg.norm(text_emb) + 1e-8
-		text_sims = nominator / denominator
-		combined_scores = [0.6 * vlm_score + 0.4 * text_sim for vlm_score, text_sim in zip([score for _, _, score in validated], text_sims)]
-		ranked = [label for _, label in sorted(zip(combined_scores, [label for label, _, _ in validated]), reverse=True)]
-		return ranked[:max_labels]
-	
-	# print("No validated labels after processing.")
-	return []
+
+def process_category_batch(
+		batch_paths, batch_descriptions, batch_indices, df, categories, prompt_embeds,
+		category_type, sent_model, processor, model, device, verbose, base_thresholds, sub_batch_size
+):
+		"""
+		Process a batch of images for a specific category type with adaptive thresholding and sparse metadata handling.
+		
+		Args:
+				batch_paths: List of image file paths
+				batch_descriptions: List of enriched document descriptions
+				batch_indices: List of global indices for the batch
+				df: DataFrame with metadata
+				categories: List of category strings
+				prompt_embeds: Pre-computed prompt embeddings
+				category_type: String ('object', 'scene', 'era', 'activity')
+				sent_model: SentenceTransformer model
+				processor: ALIGN processor
+				model: ALIGN model
+				device: Torch device
+				verbose: Bool for logging
+				base_thresholds: Dict of base thresholds per category type
+				sub_batch_size: Size of sub-batches for GPU memory management
+		
+		Returns:
+				batch_results: List of lists of selected categories
+				batch_scores: List of lists of VLM scores
+		"""
+		valid_images = []
+		valid_indices = []
+		valid_descriptions = []
+		failed_images = []
+
+		# Handle sparse metadata with fallback to title
+		user_queries = df['user_query'].fillna('').iloc[batch_indices].tolist() if 'user_query' in df.columns else [''] * len(batch_indices)
+		titles = df['title'].fillna('').iloc[batch_indices].tolist() if 'title' in df.columns else [''] * len(batch_indices)
+
+		# Validate images and descriptions
+		for i, path in enumerate(batch_paths):
+			try:
+				if os.path.exists(path):
+					img = Image.open(path).convert('RGB')
+					desc = batch_descriptions[i].strip()
+					if not desc and user_queries[i].strip():
+						desc = user_queries[i]
+					if not desc and titles[i].strip():
+						desc = titles[i]
+					if len(desc.strip()) < 10:
+						desc = ""  # Treat as sparse
+					valid_images.append(img)
+					valid_indices.append(i)
+					valid_descriptions.append(desc)
+				else:
+					failed_images.append(path)
+			except Exception as e:
+				failed_images.append(path)
+				if verbose:
+					print(f"Error loading image {path}: {e}")
+
+		if not valid_images:
+			if verbose and failed_images:
+				print(f"Failed to load {len(failed_images)} images in batch")
+			return [[] for _ in range(len(batch_paths))], [[] for _ in range(len(batch_paths))]
+
+		# Add dynamic categories from user_query
+		extended_categories = categories.copy()
+		new_queries = []
+		for query in user_queries:
+			if isinstance(query, str) and query.strip() and query not in extended_categories:
+				# extended_categories.append(query)
+				# new_queries.append(query)
+				try:
+					# Try to parse as a list
+					parsed_query = ast.literal_eval(query) if query.startswith('[') and query.endswith(']') else [query]
+					for q in parsed_query:
+						if isinstance(q, str) and q.strip() and q not in extended_categories:
+							extended_categories.append(q)
+							new_queries.append(q)
+				except (ValueError, SyntaxError):
+					# Treat as single string if parsing fails
+					if query not in extended_categories:
+						extended_categories.append(query)
+						new_queries.append(query)
+
+		# Update prompt embeddings
+		extended_prompt_embeds = prompt_embeds
+		if new_queries:
+			new_prompts = [f"a photo of {q}" for q in new_queries]
+			new_embeds = sent_model.encode(new_prompts, device=device, convert_to_tensor=True, show_progress_bar=False)
+			extended_prompt_embeds = torch.cat([prompt_embeds, new_embeds], dim=0)
+
+		# Compute text similarities
+		text_prompts = [f"a photo of {cat}" for cat in extended_categories]
+		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			text_embeds = sent_model.encode(valid_descriptions, device=device, convert_to_tensor=True, show_progress_bar=False)
+			text_similarities = torch.mm(extended_prompt_embeds, text_embeds.T).cpu().numpy()
+			prompt_norms = torch.norm(extended_prompt_embeds, dim=1, keepdim=True)
+			text_norms = torch.norm(text_embeds, dim=1, keepdim=True)
+			text_similarities = text_similarities / (torch.mm(prompt_norms, text_norms.T).cpu().numpy() + 1e-8)
+			model.eval()
+			batch_results = [[] for _ in range(len(batch_paths))]
+			batch_scores = [[] for _ in range(len(batch_paths))]
+			# Process sub-batches
+			for sub_idx in range(0, len(valid_images), sub_batch_size):
+				sub_end = min(sub_idx + sub_batch_size, len(valid_images))
+				sub_images = valid_images[sub_idx:sub_end]
+				sub_valid_indices = valid_indices[sub_idx:sub_end]
+				inputs = processor(
+					text=text_prompts,
+					images=sub_images,
+					return_tensors="pt",
+					padding=True
+				).to(device)
+				outputs = model(**inputs)
+				image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
+				vlm_embeds = outputs.text_embeds / outputs.text_embeds.norm(dim=-1, keepdim=True)
+				vlm_similarity = (100.0 * image_embeds @ vlm_embeds.T).softmax(dim=-1).cpu().numpy()
+				threshold = base_thresholds[category_type]
+				for i, img_idx in enumerate(range(sub_idx, sub_end)):
+					batch_idx = sub_valid_indices[i]
+					local_img_idx = img_idx - sub_idx
+					# Entropy-based threshold adjustment
+					img = sub_images[i]
+					img_array = np.array(img.convert('L'))
+					img_array = resize(img_array, (128, 128), anti_aliasing=True, preserve_range=True).astype(np.uint8)
+					entropy = shannon_entropy(img_array)
+					complexity_factor = max(0.7, 1.0 - 0.15 * (entropy / 8.0))
+					adaptive_threshold = max(0.15, threshold * complexity_factor)
+					is_sparse = not valid_descriptions[img_idx].strip()
+					for cat_idx, cat in enumerate(extended_categories):
+						# Moved text_score computation inside the loop
+						text_score = text_similarities[cat_idx, img_idx]
+						adjusted_threshold = adaptive_threshold
+						if text_score > 0.5:
+							adjusted_threshold *= 0.8
+						elif text_score < 0.1:
+							adjusted_threshold *= 1.2
+						vlm_score = vlm_similarity[local_img_idx, cat_idx]
+						combined_score = (
+							0.5 * vlm_score + 0.5 * text_score if is_sparse
+							else vlm_score * (0.8 + 0.2 * text_score)
+						)
+						if combined_score > adjusted_threshold:
+							batch_results[batch_idx].append(cat)
+							batch_scores[batch_idx].append(vlm_score)
+
+		return batch_results, batch_scores
 
 def get_visual_based_annotation(
 		csv_file: str,
@@ -1919,31 +1704,46 @@ def get_visual_based_annotation(
 		verbose: bool,
 		metadata_fpth: str,
 ) -> List[List[str]]:
+		"""
+		Semi-supervised label extraction from image data using VLM with sequential processing and robust error handling.
+		
+		Args:
+				csv_file: Path to metadata CSV
+				st_model_name: SentenceTransformer model name
+				batch_size: Batch size for processing
+				device: Device for model inference
+				num_workers: Number of workers (unused in sequential processing)
+				verbose: Boolean for logging
+				metadata_fpth: Path to save updated CSV
+		
+		Returns:
+				List of lists of visual-based labels
+		"""
 		print(f"Semi-Supervised label extraction from image data (using VLM) batch_size: {batch_size}".center(160, "-"))
 		start_time = time.time()
 		dataset_dir = os.path.dirname(csv_file)
 
 		if verbose:
-				print(f"Loading metadata from {csv_file}...")
+			print(f"Loading metadata from {csv_file}...")
 		dtypes = {
-				'doc_id': str, 'id': str, 'label': str, 'title': str,
-				'description': str, 'img_url': str, 'enriched_document_description': str,
-				'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
-				'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+			'doc_id': str, 'id': str, 'label': str, 'title': str,
+			'description': str, 'img_url': str, 'enriched_document_description': str,
+			'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
+			'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
 		}
 		df = pd.read_csv(
-				filepath_or_buffer=csv_file,
-				on_bad_lines='skip',
-				dtype=dtypes,
-				low_memory=False,
+			filepath_or_buffer=csv_file,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
 		)
 
 		if verbose:
 			print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
 
-		# Check for 'doc_year' and derive if missing
+		# Derive doc_year if missing
 		if 'doc_year' not in df.columns:
-			print("Warning: 'doc_year' column missing. Attempting to derive from 'doc_date' or 'raw_doc_date'...")
+			print("Warning: 'doc_year' column missing. Deriving from 'doc_date' or 'raw_doc_date'...")
 			if 'doc_date' in df.columns:
 				df['doc_year'] = pd.to_datetime(df['doc_date'], errors='coerce').dt.year
 			elif 'raw_doc_date' in df.columns:
@@ -1957,12 +1757,14 @@ def get_visual_based_annotation(
 		text_descriptions = df['content'].tolist()
 		doc_years = df.get('doc_year', [None] * len(df)).tolist()
 
+		# Checkpoint handling with validation
 		checkpoint_path = os.path.join(dataset_dir, "visual_annotation_checkpoint.pkl")
 		start_idx = 0
 		all_labels = []
 		scene_labels = []
 		era_labels = []
 		activity_labels = []
+		csv_hash = hashlib.md5(open(csv_file, 'rb').read()).hexdigest()
 
 		if os.path.exists(checkpoint_path):
 			if verbose:
@@ -1970,18 +1772,23 @@ def get_visual_based_annotation(
 			try:
 				with open(checkpoint_path, 'rb') as f:
 					checkpoint = pickle.load(f)
-					start_idx = checkpoint['next_idx']
-					all_labels = checkpoint['all_labels']
-					scene_labels = checkpoint['scene_labels']
-					era_labels = checkpoint['era_labels']
-					activity_labels = checkpoint['activity_labels']
-				if verbose:
-					print(f"Resuming from index {start_idx}/{len(image_paths)}")
+					if checkpoint['csv_hash'] == csv_hash and checkpoint['image_paths'] == image_paths:
+						start_idx = checkpoint['next_idx']
+						all_labels = checkpoint['all_labels']
+						scene_labels = checkpoint['scene_labels']
+						era_labels = checkpoint['era_labels']
+						activity_labels = checkpoint['activity_labels']
+						if verbose:
+							print(f"Resuming from index {start_idx}/{len(image_paths)}")
+					else:
+						print("Checkpoint invalid due to CSV or image path mismatch. Starting from beginning.")
 			except Exception as e:
 				print(f"Error loading checkpoint: {e}. Starting from beginning.")
 
+		# Load models with local caching
 		if verbose:
 			print(f"Loading sentence-transformer model: {st_model_name}...")
+		model_cache = os.path.join(dataset_dir, "model_cache")
 		sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
 
 		if verbose:
@@ -1991,7 +1798,7 @@ def get_visual_based_annotation(
 		model.to(device)
 		model.eval()
 
-		# Define category type map
+		# Category type map and thresholds
 		category_type_map = {}
 		for cat in object_categories:
 			category_type_map[cat] = "object"
@@ -2003,10 +1810,10 @@ def get_visual_based_annotation(
 			category_type_map[cat] = "activity"
 
 		base_thresholds = {
-			"object": 0.3,
-			"scene": 0.25,
-			"era": 0.22,
-			"activity": 0.25
+			"object": 0.35,
+			"scene": 0.2,
+			"era": 0.18,
+			"activity": 0.21
 		}
 
 		# Pre-compute category prompt embeddings
@@ -2016,145 +1823,15 @@ def get_visual_based_annotation(
 		scene_prompts = [f"a photo of {cat}" for cat in scene_categories]
 		era_prompts = [f"a photo of {cat}" for cat in era_categories]
 		activity_prompts = [f"a photo of {cat}" for cat in activity_categories]
+		
 		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			object_prompt_embeds = sent_model.encode(object_prompts, device=device, convert_to_tensor=True)
-			scene_prompt_embeds = sent_model.encode(scene_prompts, device=device, convert_to_tensor=True)
-			era_prompt_embeds = sent_model.encode(era_prompts, device=device, convert_to_tensor=True)
-			activity_prompt_embeds = sent_model.encode(activity_prompts, device=device, convert_to_tensor=True)
+			object_prompt_embeds = sent_model.encode(object_prompts, device=device, convert_to_tensor=True, show_progress_bar=verbose)
+			scene_prompt_embeds = sent_model.encode(scene_prompts, device=device, convert_to_tensor=True, show_progress_bar=verbose)
+			era_prompt_embeds = sent_model.encode(era_prompts, device=device, convert_to_tensor=True, show_progress_bar=verbose)
+			activity_prompt_embeds = sent_model.encode(activity_prompts, device=device, convert_to_tensor=True, show_progress_bar=verbose)
 
-		def process_category_batch(
-				batch_paths, batch_descriptions, batch_indices, df, categories, prompt_embeds,
-				category_type, sent_model, processor, model, device, verbose, base_thresholds
-		):
-				"""
-				Process a batch of images for a specific category type, incorporating entropy-based thresholds,
-				dynamic user query categories, and sparse metadata handling.
-				
-				Args:
-						batch_paths: List of image file paths
-						batch_descriptions: List of enriched document descriptions
-						batch_indices: List of global indices for the batch
-						df: DataFrame with metadata (including user_query)
-						categories: List of category strings
-						prompt_embeds: Pre-computed prompt embeddings
-						category_type: String ('object', 'scene', 'era', 'activity')
-						sent_model: SentenceTransformer model
-						processor: ALIGN processor
-						model: ALIGN model
-						device: Torch device
-						verbose: Bool for logging
-						base_thresholds: Dict of base thresholds per category type
-				
-				Returns:
-						batch_results: List of lists of selected categories
-						batch_scores: List of lists of VLM scores
-				"""
-				valid_images = []
-				valid_indices = []
-				valid_descriptions = []
-
-				# Step 1: Add dynamic categories from user_query
-				if 'user_query' not in df.columns:
-					user_queries = [''] * len(batch_indices)
-				else:
-					user_queries = df['user_query'].fillna('').iloc[batch_indices].tolist()
-
-				extended_categories = categories.copy()
-				new_queries = []
-				for query in user_queries:
-						if isinstance(query, str) and query.strip() and query not in extended_categories:
-								extended_categories.append(query)
-								new_queries.append(query)
-				
-				# Update prompt embeddings for new queries
-				extended_prompt_embeds = prompt_embeds
-				if new_queries:
-						new_prompts = [f"a photo of {q}" for q in new_queries]
-						new_embeds = sent_model.encode(new_prompts, device=device, convert_to_tensor=True, show_progress_bar=False)
-						extended_prompt_embeds = torch.cat([prompt_embeds, new_embeds], dim=0)
-
-				for i, path in enumerate(batch_paths):
-						try:
-								if os.path.exists(path):
-										img = Image.open(path).convert('RGB')
-										valid_images.append(img)
-										valid_indices.append(i)
-										# Step 2: Handle sparse metadata
-										desc = batch_descriptions[i]
-										if not desc.strip() and user_queries[i].strip():
-												desc = user_queries[i]
-										valid_descriptions.append(desc)
-						except Exception as e:
-								if verbose and i % 100 == 0:
-										print(f"Error loading image {path}: {e}")
-
-				if not valid_images:
-						return [[] for _ in range(len(batch_paths))], [[] for _ in range(len(batch_paths))]
-
-				text_prompts = [f"a photo of {cat}" for cat in extended_categories]
-
-				with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-						text_embeds = sent_model.encode(valid_descriptions, device=device, convert_to_tensor=True, show_progress_bar=False)
-						text_similarities = torch.mm(extended_prompt_embeds, text_embeds.T).cpu().numpy()
-						prompt_norms = torch.norm(extended_prompt_embeds, dim=1, keepdim=True)
-						text_norms = torch.norm(text_embeds, dim=1, keepdim=True)
-						text_similarities = text_similarities / (torch.mm(prompt_norms, text_norms.T).cpu().numpy() + 1e-8)
-
-						model.eval()
-						sub_batch_size = min(len(valid_images), 16)
-						batch_results = [[] for _ in range(len(batch_paths))]
-						batch_scores = [[] for _ in range(len(batch_paths))]
-
-						for sub_idx in range(0, len(valid_images), sub_batch_size):
-								sub_end = min(sub_idx + sub_batch_size, len(valid_images))
-								sub_images = valid_images[sub_idx:sub_end]
-								sub_valid_indices = valid_indices[sub_idx:sub_end]
-
-								inputs = processor(
-										text=text_prompts,
-										images=sub_images,
-										return_tensors="pt",
-										padding=True
-								).to(device)
-
-								outputs = model(**inputs)
-								image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
-								vlm_embeds = outputs.text_embeds / outputs.text_embeds.norm(dim=-1, keepdim=True)
-								vlm_similarity = (100.0 * image_embeds @ vlm_embeds.T).softmax(dim=-1).cpu().numpy()
-
-								threshold = base_thresholds[category_type]
-
-								for i, img_idx in enumerate(range(sub_idx, sub_end)):
-										batch_idx = sub_valid_indices[i]
-										local_img_idx = img_idx - sub_idx
-
-										# Step 3: Compute entropy-based threshold adjustment
-										img = sub_images[i]
-										img_array = np.array(img.convert('L'))
-										img_array = resize(img_array, (128, 128), anti_aliasing=True, preserve_range=True).astype(np.uint8)
-										entropy = shannon_entropy(img_array)
-										complexity_factor = 1.0 - 0.2 * (entropy / 8.0)
-
-										for cat_idx, cat in enumerate(extended_categories):
-												text_score = text_similarities[cat_idx, img_idx]
-												adaptive_threshold = threshold * complexity_factor
-												if text_score > 0.5:
-														adaptive_threshold *= 0.8
-												elif text_score < 0.1:
-														adaptive_threshold *= 1.2
-
-												vlm_score = vlm_similarity[local_img_idx, cat_idx]
-												is_sparse = not valid_descriptions[img_idx].strip()
-												combined_score = (
-														0.5 * vlm_score + 0.5 * text_score if is_sparse
-														else vlm_score * (0.8 + 0.2 * text_score)
-												)
-
-												if combined_score > adaptive_threshold:
-														batch_results[batch_idx].append(extended_categories[cat_idx])
-														batch_scores[batch_idx].append(vlm_score)
-
-						return batch_results, batch_scores
+		combined_labels = [[] for _ in range(len(image_paths))]
+		total_failed_images = []
 
 		for category_idx, (categories, prompt_embeds, category_type, labels_list) in enumerate([
 			(object_categories, object_prompt_embeds, "object", all_labels),
@@ -2168,12 +1845,31 @@ def get_visual_based_annotation(
 				if verbose:
 					print(f"Skipping {category_type} categories - already processed")
 				continue
-			for i in range(start_idx, len(image_paths), batch_size):
-				batch_end = min(i + batch_size, len(image_paths))
-				batch_paths = image_paths[i:batch_end]
-				batch_descriptions = text_descriptions[i:batch_end]
-				batch_indices = list(range(i, batch_end))
-
+			if torch.cuda.is_available():
+				mem_limit = get_device_properties(device).total_memory * 0.9
+				if memory_allocated(device) > mem_limit:
+					sub_batch_size = max(8, batch_size // 2)
+				else:
+					sub_batch_size = batch_size
+			if verbose:
+				print(f"batch_size: {batch_size} sub_batch_size: {sub_batch_size}")
+			batches = [
+				(
+					image_paths[i:i+batch_size],
+					text_descriptions[i:i+batch_size],
+					list(range(i, min(i+batch_size, len(image_paths)))),
+					categories,
+					prompt_embeds,
+					category_type
+				)
+				for i in range(start_idx, len(image_paths), batch_size)
+			]
+			if verbose:
+				print(f"Processing {len(batches)} batches sequentially...")
+			results = []
+			t0 = time.time()
+			for batch in batches:
+				batch_paths, batch_descriptions, batch_indices, categories, prompt_embeds, category_type = batch
 				batch_results, batch_scores = process_category_batch(
 					batch_paths=batch_paths,
 					batch_descriptions=batch_descriptions,
@@ -2187,48 +1883,70 @@ def get_visual_based_annotation(
 					model=model,
 					device=device,
 					verbose=verbose,
-					base_thresholds=base_thresholds
+					base_thresholds=base_thresholds,
+					sub_batch_size=sub_batch_size
 				)
+				results.append((batch_results, batch_scores))
+			if verbose:
+				print(f"Elapsed_t: {time.time()-t0:.1f} sec")
+
+			# Collect results
+			for batch_idx, (batch_results, batch_scores) in enumerate(results):
+				batch_start = start_idx + batch_idx * batch_size
+				batch_end = min(batch_start + batch_size, len(image_paths))
+				batch_paths = batches[batch_idx][0]  # Get batch_paths for this batch
 				while len(labels_list) < batch_end:
 					labels_list.append([])
-				for idx, (results, scores) in zip(batch_indices, zip(batch_results, batch_scores)):
+				for idx, (results, scores) in zip(range(batch_start, batch_end), zip(batch_results, batch_scores)):
+					if len(results) != len(scores):
+						print(f"Error: Mismatched results ({len(results)}) and scores ({len(scores)}) at index {idx}")
+						scores = [0.0] * len(results)
 					labels_list[idx].extend(results)
-				if (i // batch_size) % 500 == 0 and i > start_idx:
+					total_failed_images.extend(
+						[
+							batch_paths[j] for j in range(len(batch_results))
+							if not batch_results[j] and batch_paths[j] not in total_failed_images
+						]
+					)
+
+				# Save checkpoint
+				if (batch_idx % 500 == 0 and batch_idx > 0) or batch_idx == len(batches) - 1:
 					checkpoint = {
 						'next_idx': batch_end,
 						'all_labels': all_labels,
 						'scene_labels': scene_labels,
 						'era_labels': era_labels,
-						'activity_labels': activity_labels
+						'activity_labels': activity_labels,
+						'csv_hash': csv_hash,
+						'image_paths': image_paths
 					}
 					with open(checkpoint_path, 'wb') as f:
 						pickle.dump(checkpoint, f)
 					if verbose:
 						print(f"Checkpoint saved at index {batch_end}")
+
 			start_idx = 0
 
+		# Remove checkpoint
 		if os.path.exists(checkpoint_path):
 			os.remove(checkpoint_path)
 
-		# Combine and post-process visual annotations
-		combined_labels = []
+		# Combine and post-process labels
 		for i in range(len(image_paths)):
 			image_labels = []
 			image_scores = []
 			if i < len(all_labels):
 				image_labels.extend(all_labels[i])
-				image_scores.extend([base_thresholds.get("object", 0.25)] * len(all_labels[i]))
+				image_scores.extend([base_thresholds.get("object", 0.35)] * len(all_labels[i]))
 			if i < len(scene_labels):
 				image_labels.extend(scene_labels[i])
-				image_scores.extend([base_thresholds.get("scene", 0.22)] * len(scene_labels[i]))
+				image_scores.extend([base_thresholds.get("scene", 0.2)] * len(scene_labels[i]))
 			if i < len(era_labels):
 				image_labels.extend(era_labels[i])
 				image_scores.extend([base_thresholds.get("era", 0.18)] * len(era_labels[i]))
 			if i < len(activity_labels):
 				image_labels.extend(activity_labels[i])
-				image_scores.extend([base_thresholds.get("activity", 0.22)] * len(activity_labels[i]))
-
-			# Post-process labels
+				image_scores.extend([base_thresholds.get("activity", 0.26)] * len(activity_labels[i]))
 			processed_labels = post_process_labels(
 				labels=image_labels,
 				text_description=text_descriptions[i],
@@ -2238,19 +1956,444 @@ def get_visual_based_annotation(
 				max_labels=10,
 				similarity_threshold=0.8
 			)
-			combined_labels.append(sorted(set(processed_labels)))
+			combined_labels[i] = sorted(set(processed_labels))
 
-		if verbose:
-				total_labels = sum(len(labels) for labels in combined_labels)
-				print(f"Vision-based annotation completed in {time.time() - start_time:.2f} seconds")
-				print(f"Generated {total_labels} labels for {len(image_paths)} images")
-				print(f"Average labels per image: {total_labels/len(image_paths):.2f}")
+		# Report failed images
+		if verbose and total_failed_images:
+			print(f"Total failed images: {len(total_failed_images)}")
 
+		# Save results
 		df['visual_based_labels'] = combined_labels
 		df.to_csv(metadata_fpth, index=False)
+		if verbose:
+			total_labels = sum(len(labels) for labels in combined_labels)
+			print(f"Vision-based annotation completed in {time.time() - start_time:.2f} seconds")
+			print(f"Generated {total_labels} labels for {len(image_paths)} images")
+			print(f"Average labels per image: {total_labels/len(image_paths):.2f}")
 		print(f"Visual-based annotation Elapsed time: {time.time() - start_time:.2f} sec".center(160, " "))
-
 		return combined_labels
+
+def combine_and_clean_labels(ner_labels, keywords, topic_labels, user_query, text, sent_model, min_threshold=0.4, max_threshold=0.7):
+		"""
+		Combine labels from NER, keywords, topics, and user_query, splitting concatenated phrases and ensuring coherence.
+		
+		Args:
+				ner_labels: List of NER-extracted labels
+				keywords: List of KeyBERT-extracted keywords
+				topic_labels: List of topic-derived labels
+				user_query: User-provided query (string or list)
+				text: Original text for context
+				sent_model: SentenceTransformer model
+				min_threshold: Minimum similarity threshold for label retention
+				max_threshold: Maximum similarity threshold for deduplication
+		
+		Returns:
+				List of cleaned, unique labels
+		"""
+		# Initialize combined labels
+		combined = set(ner_labels + keywords + topic_labels)
+		
+		# Parse user_query
+		if isinstance(user_query, str) and user_query.strip():
+				try:
+						parsed_query = ast.literal_eval(user_query) if user_query.startswith('[') else [user_query]
+						combined.update(str(q).strip().lower() for q in parsed_query if isinstance(q, str) and q.strip())
+				except (ValueError, SyntaxError):
+						combined.add(user_query.strip().lower())
+		
+		# Remove stopwords and invalid labels
+		combined = [label for label in combined if label.lower() not in CUSTOM_STOPWORDS and len(label.split()) <= 2]
+		
+		if not combined:
+				return []
+		
+		# Split concatenated phrases
+		split_labels = []
+		for label in combined:
+				words = label.split()
+				if len(words) > 2:
+						# Split into 1-2 word phrases
+						for i in range(0, len(words), 2):
+								phrase = " ".join(words[i:i+2])
+								if phrase and any(word in text.lower() for word in phrase.split()):
+										split_labels.append(phrase)
+						# Add single words if not covered
+						for word in words:
+								if word not in CUSTOM_STOPWORDS and word in text.lower():
+										split_labels.append(word)
+				else:
+						split_labels.append(label)
+		
+		# Remove duplicates
+		split_labels = list(set(split_labels))
+		
+		# Encode text and labels
+		text_emb = sent_model.encode(text, show_progress_bar=False)
+		label_embs = sent_model.encode(split_labels, show_progress_bar=False)
+		
+		# Filter by relevance to text
+		similarities = np.dot(label_embs, text_emb) / (
+				np.linalg.norm(label_embs, axis=1) * np.linalg.norm(text_emb) + 1e-8
+		)
+		relevant_labels = [split_labels[i] for i in range(len(split_labels)) if similarities[i] > min_threshold]
+		
+		if not relevant_labels:
+				return []
+		
+		# Semantic deduplication
+		label_embs = sent_model.encode(relevant_labels, show_progress_bar=False)
+		deduplicated = []
+		for i, (label, sim) in enumerate(zip(relevant_labels, similarities)):
+				is_redundant = False
+				for kept_label, _, kept_emb in deduplicated:
+						sim_to_kept = np.dot(label_embs[i], kept_emb) / (
+								np.linalg.norm(label_embs[i]) * np.linalg.norm(kept_emb) + 1e-8
+						)
+						if sim_to_kept > max_threshold or label in kept_label or kept_label in label:
+								is_redundant = True
+								break
+				if not is_redundant and any(word in text.lower() for word in label.split()):
+						deduplicated.append((label, sim, label_embs[i]))
+		
+		# Sort by similarity and limit to max 10 labels
+		deduplicated.sort(key=lambda x: x[1], reverse=True)
+		final_labels = [label for label, _, _ in deduplicated[:10]]
+		
+		return sorted(set(final_labels))
+
+def deduplicate_labels(labels):
+		"""
+		Deduplicate labels based on semantic similarity and substring containment.
+		
+		Args:
+				labels: List of labels
+		
+		Returns:
+				List of deduplicated labels
+		"""
+		if not labels:
+				return []
+		
+		# Substring and semantic deduplication
+		deduplicated = []
+		for label in sorted(labels, key=len, reverse=True):
+				if not any(
+						label in kept_label or kept_label in label or label.lower() == kept_label.lower()
+						for kept_label in deduplicated
+				):
+						deduplicated.append(label)
+		
+		return sorted(deduplicated)
+
+def batch_filter_by_relevance(
+		sent_model: SentenceTransformer,
+		texts: list,
+		all_labels_list: list[list[str]],
+		threshold: float,
+		batch_size: int,
+):
+		"""
+		Filter labels by relevance to their corresponding texts.
+		
+		Args:
+				sent_model: SentenceTransformer model
+				texts: List of texts
+				all_labels_list: List of label lists
+				threshold: Relevance threshold
+				batch_size: Batch size for processing
+		
+		Returns:
+				List of filtered label lists
+		"""
+		results = []
+		total = len(texts)
+		
+		for batch_start in range(0, total, batch_size):
+				batch_end = min(batch_start + batch_size, total)
+				batch_texts = texts[batch_start:batch_end]
+				batch_labels_list = all_labels_list[batch_start:batch_end]
+				
+				# Encode batch texts
+				text_embeddings = sent_model.encode(batch_texts, show_progress_bar=False, batch_size=batch_size, convert_to_numpy=True)
+				batch_results = []
+				
+				for i, (text_emb, labels) in enumerate(zip(text_embeddings, batch_labels_list)):
+						if not labels:
+								batch_results.append([])
+								continue
+						# Encode labels
+						label_embeddings = sent_model.encode(labels, show_progress_bar=False, convert_to_numpy=True)
+						similarities = np.dot(label_embeddings, text_emb) / (
+								np.linalg.norm(label_embeddings, axis=1) * np.linalg.norm(text_emb) + 1e-8
+						)
+						relevant_indices = np.where(similarities > threshold)[0]
+						batch_results.append([labels[idx] for idx in relevant_indices])
+				
+				results.extend(batch_results)
+		
+		return results
+
+def get_textual_based_annotation(
+		csv_file: str, 
+		num_workers: int,
+		batch_size: int,
+		relevance_threshold: float,
+		metadata_fpth: str,
+		device: str,
+		st_model_name: str,
+		ner_model_name: str,
+		verbose: bool=True,
+		use_parallel: bool=False,
+):
+		"""
+		Extract textual-based labels from metadata with strict phrase splitting and deduplication.
+		
+		Args:
+				csv_file: Path to metadata CSV
+				num_workers: Number of workers for parallel processing
+				batch_size: Batch size for processing
+				relevance_threshold: Relevance threshold for filtering
+				metadata_fpth: Path to save updated CSV
+				device: Device for model inference
+				st_model_name: SentenceTransformer model name
+				ner_model_name: NER model name
+				verbose: Boolean for logging
+				use_parallel: Boolean for parallel processing
+		
+		Returns:
+				List of lists of textual-based labels
+		"""
+		if verbose:
+				print(f"Automatic label extraction from text data".center(160, "-"))
+				print(f"Loading metadata from {csv_file}...")
+
+		text_based_annotation_start_time = time.time()
+		dataset_dir = os.path.dirname(csv_file)
+		
+		if verbose:
+				print(f"Loading sentence-transformer model: {st_model_name}...")
+		sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
+		
+		ft_model = fasttext.load_model(FastText_Language_Identification)
+		
+		if verbose:
+				print(f"Loading NER model: {ner_model_name}...")
+		nlp = pipeline(
+				task="ner", 
+				model=AutoModelForTokenClassification.from_pretrained(ner_model_name),
+				tokenizer=AutoTokenizer.from_pretrained(ner_model_name), 
+				aggregation_strategy="simple",
+				device=device,
+				batch_size=batch_size,
+		)
+
+		dtypes = {
+				'doc_id': str, 'id': str, 'label': str, 'title': str,
+				'description': str, 'img_url': str, 'enriched_document_description': str,
+				'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
+				'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+				'user_query': str,
+		}
+		
+		df = pd.read_csv(
+				filepath_or_buffer=csv_file, 
+				on_bad_lines='skip',
+				dtype=dtypes, 
+				low_memory=False,
+		)
+
+		if verbose:
+			print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
+		
+		df['content'] = df['enriched_document_description'].fillna('').astype(str)
+		# Handle missing 'user_query' column
+		if 'user_query' not in df.columns:
+			if verbose:
+				print("Warning: 'user_query' column missing in DataFrame. Using empty queries.")
+			user_queries = [''] * len(df)
+		else:
+			user_queries = df['user_query'].fillna('').tolist()
+
+		num_samples = df.shape[0]
+		
+		print(f"Filtering non-English entries for {num_samples} samples")
+		t0 = time.time()
+		english_mask = df['content'].apply(lambda x: is_english(text=x, ft_model=ft_model, verbose=False))
+		english_indices = english_mask[english_mask].index.tolist()
+		print(f"{sum(english_mask)} / {len(df)} texts are English [{sum(english_mask)/len(df)*100:.2f}%]")
+		print(f"Elapsed_t: {time.time() - t0:.2f} sec")
+		
+		english_df = df[english_mask].reset_index(drop=True)
+		english_texts = english_df['content'].tolist()
+		english_queries = [user_queries[i] for i in english_indices]
+		per_image_labels = [[] for _ in range(num_samples)]
+
+		if len(english_texts) > 0:
+				# Step 1: Topic Modeling
+				print("Topic Modeling".center(160, "-"))
+				t0 = time.time()
+				topics, flat_topic_words = extract_semantic_topics(
+						sent_model=sent_model,
+						ft_model=ft_model,
+						texts=english_texts,
+						num_workers=num_workers,
+						dataset_dir=dataset_dir,
+				)
+				print(f"{len(topics)} Topics (clusters) {type(topics)}:\n{[len(tp) for tp in topics]}")
+				print(f"Elapsed_t: {time.time()-t0:.2f} sec".center(160, "-"))
+				
+				# Step 2: Named Entity Recognition
+				print("Extracting NER per sample...")
+				t0 = time.time()
+				if len(english_texts) > 1000 and use_parallel:
+						chunk_size = len(english_texts) // num_workers + 1
+						chunks = [(english_texts[i:i+chunk_size]) for i in range(0, len(english_texts), chunk_size)]
+						print(f"Using {num_workers} processes for NER extraction...")
+						with multiprocessing.Pool(processes=num_workers) as pool:
+								ner_results = pool.map(process_text_chunk, [(nlp, chunk) for chunk in chunks])
+						per_image_ner_labels = []
+						for chunk_result in ner_results:
+								per_image_ner_labels.extend(chunk_result)
+				else:
+						per_image_ner_labels = []
+						for text in tqdm(english_texts, desc="NER Progress"):
+								entities = extract_named_entities(nlp=nlp, text=text, ft_model=ft_model)
+								per_image_ner_labels.append(entities)
+				print(f"NER done in {time.time() - t0:.1f} sec")
+				
+				# Step 3: Extract keywords
+				print("Extracting keywords per image using KeyBERT...")
+				t0 = time.time()
+				per_image_keywords = []
+				kw_model = KeyBERT(model=sent_model)
+				for text in tqdm(english_texts, desc="Keyword Extraction"):
+						if not is_english(text, ft_model):
+								per_image_keywords.append([])
+								continue
+						try:
+								phrases = kw_model.extract_keywords(
+										text,
+										keyphrase_ngram_range=(1, 2),
+										stop_words=CUSTOM_STOPWORDS,
+										top_n=10,
+										diversity=0.7,
+								)
+								keywords = []
+								seen_phrases = set()
+								for phrase, _ in phrases:
+										if phrase.lower() in CUSTOM_STOPWORDS or len(phrase.split()) > 2:
+												continue
+										normalized = " ".join(word for word in phrase.split() if word not in CUSTOM_STOPWORDS)
+										if normalized and normalized not in seen_phrases and any(word in text.lower() for word in normalized.split()):
+												keywords.append(normalized)
+												seen_phrases.add(normalized)
+								per_image_keywords.append(keywords)
+						except Exception as e:
+								print(f"KeyBERT error for text: {text[:100]}...: {e}")
+								per_image_keywords.append([])
+				print(f"Keyword extraction done in {time.time() - t0:.1f} sec")
+
+				# Step 4: Add topic labels
+				print("Assigning topic labels per image...")
+				t0 = time.time()
+				per_image_topic_labels = []
+				for text in tqdm(english_texts, desc="Topic Assignment"):
+						matching_topics = [word for word in flat_topic_words if word in text.lower() and word not in CUSTOM_STOPWORDS]
+						per_image_topic_labels.append(matching_topics)
+				print(f"Topic assignment done in {time.time() - t0:.1f} sec")
+				
+				# Step 5: Combine and clean labels
+				print("Combining and cleaning labels...")
+				t0 = time.time()
+				per_image_combined_labels = []
+				for text, query, ner, keywords, topics in tqdm(zip(english_texts, english_queries, per_image_ner_labels, per_image_keywords, per_image_topic_labels), total=len(english_texts), desc="Label Combination"):
+						cleaned_labels = combine_and_clean_labels(ner, keywords, topics, query, text, sent_model, min_threshold=0.4, max_threshold=0.7)
+						per_image_combined_labels.append(cleaned_labels)
+				print(f"Label combination and cleaning done in {time.time() - t0:.3f} sec")
+
+				# Step 6: Filter by relevance
+				print(f"Filtering labels by relevance (thresh: {relevance_threshold})...")
+				t0 = time.time()
+				if use_parallel:
+						print("Using parallel processing for relevance filtering...")
+						per_image_relevant_labels = parallel_relevance_filtering(
+								texts=english_texts,
+								all_labels=per_image_combined_labels,
+								n_processes=num_workers,
+						)
+				else:
+						print(f"Using batch processing ({batch_size} batches) for relevance filtering (thresh: {relevance_threshold})...")
+						per_image_relevant_labels = batch_filter_by_relevance(
+								sent_model=sent_model,
+								texts=english_texts,
+								all_labels_list=per_image_combined_labels,
+								threshold=relevance_threshold,
+								batch_size=batch_size,
+						)
+				print(f"Relevance filtering done in {time.time() - t0:.1f} sec")
+
+				# Step 7: Post-process
+				print("Post-processing labels, deduplication, and semantic categorization...")
+				t0 = time.time()
+				english_labels = []
+				for i, relevant_labels in enumerate(per_image_relevant_labels):
+						filtered_labels = handle_multilingual_labels(relevant_labels)
+						filtered_labels = deduplicate_labels(filtered_labels)
+						categorized = assign_semantic_categories(filtered_labels)
+						final_labels = sorted(set(filtered_labels + categorized))
+						english_labels.append(final_labels)
+				print(f"Post-processing done in {time.time() - t0:.1f} sec")
+
+				print("Balancing label counts...")
+				t0 = time.time()
+				english_labels = balance_label_count(
+						image_labels_list=english_labels, 
+						text_descriptions=english_texts, 
+						sent_model=sent_model, 
+						min_labels=1, 
+						max_labels=12,
+				)
+				print(f"Label balancing done in {time.time() - t0:.3f} sec")
+				
+				# Transfer results
+				for i, orig_idx in enumerate(english_indices):
+						if i < len(english_labels):
+								per_image_labels[orig_idx] = english_labels[i]
+		else:
+				print("No English texts found. Returning empty labels for all entries.")
+		
+		df['textual_based_labels'] = per_image_labels
+		df.to_csv(metadata_fpth, index=False)
+		
+		print(f">> Generated text labels for {sum(1 for labels in per_image_labels if labels)} out of {num_samples} entries")
+		print(f"Text-based annotation Elapsed time: {time.time() - text_based_annotation_start_time:.2f} sec".center(160, " "))
+		
+		return per_image_labels
+
+def process_text_chunk(nlp, chunk):
+	return [extract_named_entities(nlp=nlp, text=text) for text in chunk]
+
+def parallel_relevance_filtering(texts, all_labels, n_processes=None):
+	if n_processes is None:
+		n_processes = max(1, multiprocessing.cpu_count() - 1)
+	
+	total_docs = len(texts)
+	chunk_size = total_docs // n_processes + (1 if total_docs % n_processes else 0)
+	chunks = []
+	
+	for i in range(0, total_docs, chunk_size):
+			end_idx = min(i + chunk_size, total_docs)
+			chunks.append((i, end_idx, texts[i:end_idx], all_labels[i:end_idx]))
+	
+	with multiprocessing.Pool(processes=n_processes) as pool:
+			chunk_results = pool.map(process_document_chunk, chunks)
+	
+	all_results = []
+	for chunk in chunk_results:
+			all_results.extend(chunk)
+	
+	return all_results
+
 
 @measure_execution_time
 def main():
