@@ -591,7 +591,7 @@ object_categories = [
 
 scene_categories = [
 	# Military Theaters
-	"Western Front", "Eastern Front", "coastline", "city ruins", "battlefield", "military camp",
+	"coastline", "city ruins", "battlefield", "military camp",
 	# Terrain
 	"desert", "forest", "winter forest", "urban area", "mountain", "mountain valley",
 	"field", "rural farmland", "snow-covered field", "ocean", "coastal waters",
@@ -609,10 +609,6 @@ scene_categories = [
 	"palace grounds",
 	# Damaged Scenes
 	"wreckage site", "battle damage", "disaster area", "ruined building", "shipwreck", "plane wreck"
-]
-
-era_categories = [
-	"world war one", "world war two",
 ]
 
 activity_categories = [
@@ -645,18 +641,33 @@ activity_categories = [
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Device: {device}")
 print(f"Context length: {model.context_length}")
-labels_list = list(set(object_categories + scene_categories + era_categories + activity_categories))
+
+# Check available GPU memory if using CUDA
+if torch.cuda.is_available():
+	gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+	print(f"Total GPU memory: {gpu_memory:.1f} GB")
+	# Clear cache before processing
+	torch.cuda.empty_cache()
+
+# Move model to device
+model = model.to(device)
+image = image.to(device)
+
+labels_list = list(set(object_categories + scene_categories + activity_categories))
+
 print(f"labels_list: {len(labels_list)}")
 text = tokenizer(labels_list, context_length=model.context_length)
 print(f"text: {type(text)} {text.shape}")
+
+
 with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 	image_features = model.encode_image(image, normalize=True)
 	text_features = model.encode_text(text, normalize=True)
 	text_probs = torch.sigmoid(image_features @ text_features.T * model.logit_scale.exp() + model.logit_bias)
 
 zipped_list = list(zip(labels_list, [100 * round(p.item(), 3) for p in text_probs[0]]))
-# Sort by probability in descending order (highest probability first)
 sorted_list = sorted(zipped_list, key=lambda x: x[1], reverse=True)
+
 print(f"")
 print("Label probabilities (sorted by confidence):")
 print("-" * 50)
