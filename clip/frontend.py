@@ -674,7 +674,7 @@ inputs = processor(
 	text=texts, 
 	images=image, 
 	padding="max_length", 
-	max_num_patches=256, 
+	max_num_patches=4096,
 	max_length=64, 
 	return_tensors="pt",
 ).to(device)
@@ -699,7 +699,6 @@ if torch.cuda.is_available():
 	print(f"Total GPU memory: {gpu_memory:.1f} GB")
 	# Clear cache before processing
 	torch.cuda.empty_cache()
-
 
 # zero shot classification:
 image_classifier = pipeline(model=ckpt, task="zero-shot-image-classification", device=device)
