@@ -34,7 +34,7 @@ FLAG_FILENAMES = {
 		"canada_r.jpg", "poland_r.jpg", "soviet_r.jpg", "czech_r.jpg",
 		"nazi_r.jpg", "china_r.jpg", "east-germany_r.jpg", "west-germany_r.jpg",
 		"uk_r.jpg", "uk_r.gif", "jp_r.jpg", "ussr_r.jpg", "germany_r.jpg",
-		"challenge-coins.jpg",
+		"challenge-coins.jpg", "italww2_r.jpg"
 }
 
 SLIDE_PATTERN = re.compile(r"slide\d+\.jpg", re.IGNORECASE)

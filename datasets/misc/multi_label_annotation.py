@@ -1817,10 +1817,10 @@ def get_visual_based_annotation(
 			category_type_map[cat] = "activity"
 
 		base_thresholds = {
-			"object": 0.35,
-			"scene": 0.2,
-			"era": 0.18,
-			"activity": 0.21
+			"object": 0.45,
+			"scene": 0.3,
+			"era": 0.05,
+			"activity": 0.25
 		}
 
 		# Pre-compute category prompt embeddings

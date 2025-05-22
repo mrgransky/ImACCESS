@@ -539,7 +539,8 @@ model, preprocess = create_model_from_pretrained('hf-hub:timm/ViT-gopt-16-SigLIP
 tokenizer = get_tokenizer('hf-hub:timm/ViT-gopt-16-SigLIP2-384')
 
 # url = "https://media.cnn.com/api/v1/images/stellar/prod/180207010106-military-parades-us-new-york-1946.jpg"
-url = "https://truck-encyclopedia.com/ww1/img/photos/German_WWI_armoured_car_destroyed.jpg"
+# url = "https://truck-encyclopedia.com/ww1/img/photos/German_WWI_armoured_car_destroyed.jpg"
+url = "https://truck-encyclopedia.com/ww1/img/photos/Dart-CC4-production.jpg"
 image = Image.open(urlopen(url))
 image = preprocess(image).unsqueeze(0)
 
