@@ -70,12 +70,12 @@ RELEVANT_ENTITY_TYPES = {
 
 object_categories = [
 	# Military Vehicles
-	"tank", "tank destroyer", "armored car",
+	"tank", "tank destroyer", "armored car", "utility vehicle"
 	"half-track", "armored personnel carrier", "armored train", "Kubelwagen",
 	"jeep", "military truck", "supply truck", "artillery tractor", "amphibious vehicle",
 	# Aircraft
 	"military aircraft", "fighter aircraft", "bomber aircraft", "reconnaissance aircraft",
-	"seaplane", "biplane", "monoplane", "Spitfire", "B-17 Flying Fortress",
+	"seaplane", "biplane", "monoplane",
 	# Naval Vessels
 	"submarine", "destroyer", "cruiser", "battleship", "aircraft carrier",
 	"corvette", "minesweeper", "landing craft", "hospital ship", "troop transport", "tugboat",

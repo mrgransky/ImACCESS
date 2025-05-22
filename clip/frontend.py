@@ -538,20 +538,19 @@ from open_clip import create_model_from_pretrained, get_tokenizer # works on ope
 model, preprocess = create_model_from_pretrained('hf-hub:timm/ViT-gopt-16-SigLIP2-384')
 tokenizer = get_tokenizer('hf-hub:timm/ViT-gopt-16-SigLIP2-384')
 
-image = Image.open(urlopen(
-	# 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1f/8inchHowitzerTowedByScammellPioneer12Jan1940.jpg/632px-8inchHowitzerTowedByScammellPioneer12Jan1940.jpg'
-	"https://media.cnn.com/api/v1/images/stellar/prod/180207010106-military-parades-us-new-york-1946.jpg"
-))
+# url = "https://media.cnn.com/api/v1/images/stellar/prod/180207010106-military-parades-us-new-york-1946.jpg"
+url = "https://truck-encyclopedia.com/ww1/img/photos/German_WWI_armoured_car_destroyed.jpg"
+image = Image.open(urlopen(url))
 image = preprocess(image).unsqueeze(0)
 
 object_categories = [
 	# Military Vehicles
-	"tank", "tank destroyer", "armored car",
+	"tank", "tank destroyer", "armored car", "utility vehicle"
 	"half-track", "armored personnel carrier", "armored train", "Kubelwagen",
 	"jeep", "military truck", "supply truck", "artillery tractor", "amphibious vehicle",
 	# Aircraft
 	"military aircraft", "fighter aircraft", "bomber aircraft", "reconnaissance aircraft",
-	"seaplane", "biplane", "monoplane", "Spitfire", "B-17 Flying Fortress",
+	"seaplane", "biplane", "monoplane",
 	# Naval Vessels
 	"submarine", "destroyer", "cruiser", "battleship", "aircraft carrier",
 	"corvette", "minesweeper", "landing craft", "hospital ship", "troop transport", "tugboat",
@@ -648,7 +647,7 @@ with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.
 zipped_list = list(zip(labels_list, [100 * round(p.item(), 3) for p in text_probs[0]]))
 # Sort by probability in descending order (highest probability first)
 sorted_list = sorted(zipped_list, key=lambda x: x[1], reverse=True)
-
+print(f"")
 print("Label probabilities (sorted by confidence):")
 print("-" * 50)
 for label, prob in sorted_list:
