@@ -683,7 +683,7 @@ print("="*60)
 print(f"Top-{topk} Predictions:")
 print("="*60)
 for i, idx in enumerate(topk_indices):
-	print(f"{candidate_labels[idx]:<30}{topk_probs[i].item():.2%}")
+	print(f"{candidate_labels[idx]:<30}{topk_probs[i].item():.5f}")
 
 # Check available GPU memory if using CUDA
 if torch.cuda.is_available():
@@ -702,7 +702,7 @@ labels_list = list(set(object_categories + scene_categories + activity_categorie
 # urls = df["img_url"].values.tolist()
 print(f"Loaded {len(urls)} urls")
 for i, url in enumerate(urls):
-	print(f"Processing URL {i+1}/{len(urls)}: {url} ...")
+	print(f"Processing URL {i+1}/{len(urls)}: {url}")
 	try:
 		image = Image.open(requests.get(url, stream=True).raw).convert("RGB")
 	except Exception as e:
