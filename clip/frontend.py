@@ -726,4 +726,4 @@ for i, url in enumerate(urls):
 	print()
 	for idx, elem in enumerate(topk_sorted_outputs):
 		print(f'{elem.get("label"):<30}: {elem.get("score"):>8.5f}')
-	print("-" * 100)
+	print("-" * 150)
