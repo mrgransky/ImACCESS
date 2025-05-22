@@ -633,6 +633,7 @@ activity_categories = [
 	# Transport
 	"ferry operation", "train operation", "freight loading",
 ]
+device = "cuda:0"
 
 labels_list = object_categories + scene_categories + era_categories + activity_categories
 text = tokenizer(labels_list, context_length=model.context_length)
