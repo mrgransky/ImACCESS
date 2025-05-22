@@ -70,7 +70,7 @@ RELEVANT_ENTITY_TYPES = {
 
 object_categories = [
 	# Military Vehicles
-	"tank", "tank destroyer", "armored car", "utility vehicle"
+	"tank", "tank destroyer", "armored car", "utility vehicle",
 	"half-track", "armored personnel carrier", "armored train", "Kubelwagen",
 	"jeep", "military truck", "supply truck", "artillery tractor", "amphibious vehicle",
 	# Aircraft
@@ -105,6 +105,9 @@ object_categories = [
 	"market stall", "religious monument", "basilica statue", "palace garden", "historical plaque",
 	# Animals
 	"donkey", "camel", "workhorse", "mule", "ox", "reindeer",
+	# Damaged Equipment and Infrastructure
+	"wreck", "debris", "damaged vehicle", "damaged aircraft", "damaged ship",
+	"ruined building", "collapsed bridge"
 ]
 
 scene_categories = [
@@ -125,6 +128,8 @@ scene_categories = [
 	"harbor port", "bathing area", "palace courtyard",
 	"historical plaza", "library hall", "urban plaza", "cathedral",
 	"palace grounds",
+	# Damaged Scenes
+	"wreckage site", "battle damage", "disaster area", "ruined building", "shipwreck", "plane wreck"
 ]
 
 era_categories = [
@@ -155,6 +160,8 @@ activity_categories = [
 	"farming harvest", "exhibition",
 	# Transport
 	"ferry operation", "train operation", "freight loading",
+	# Damage-Related Activities
+	"marine salvage", "demolition", "repair"
 ]
 
 def density_based_parameters(embeddings, n_neighbors=15):
