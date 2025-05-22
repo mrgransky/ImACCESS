@@ -600,6 +600,8 @@ scene_categories = [
 	"harbor port", "bathing area", "palace courtyard",
 	"historical plaza", "library hall", "urban plaza", "cathedral",
 	"palace grounds",
+	# Damaged Scenes
+	"wreckage site", "battle damage", "disaster area", "ruined building", "shipwreck", "plane wreck"
 ]
 
 era_categories = [
@@ -630,6 +632,8 @@ activity_categories = [
 	"farming harvest", "exhibition",
 	# Transport
 	"ferry operation", "train operation", "freight loading",
+	# Damage-Related Activities
+	"salvage operation", "demolition", "repair"
 ]
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
