@@ -682,16 +682,13 @@ for label, prob in sorted_list:
 # 	print(f"{i:2d}. {label:<50}: {prob:>8.1f}%")
 
 topk = 25
-nonzero_indexes = [i for i, item in enumerate(sorted_list) if item[1] > 0]
+nonzero_sorted_list = [item for item in sorted_list if item[1] > 0]
 
-# Fill with remaining items if there are less than topk nonzero items
-remaining_indexes = [i for i in range(len(sorted_list)) if i not in nonzero_indexes]
-
-# Combine nonzero and remaining items, up to topk
-combined_list = [sorted_list[i] for i in nonzero_indexes + remaining_indexes[:topk-len(nonzero_indexes)]]
+# Calculate topk based on the number of nonzero probabilities
+topk = min(topk, len(nonzero_sorted_list))
 
 print("\n" + "="*50)
-print(f"Top-{topk} predictions:")
+print(f"Top-{topk} predictions (nonzero probabilities):")
 print("="*50)
-for i, (label, prob) in enumerate(combined_list, 1):
-	print(f"{i:2d}. {label:<50}: {prob:>8.1f}%")
+for i, (label, prob) in enumerate(nonzero_sorted_list[:topk], 1):
+    print(f"{i:2d}. {label:<50}: {prob:>8.1f}%")
