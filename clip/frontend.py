@@ -633,7 +633,7 @@ activity_categories = [
 	# Transport
 	"ferry operation", "train operation", "freight loading",
 ]
-device = "cuda:0"
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 labels_list = object_categories + scene_categories + era_categories + activity_categories
 text = tokenizer(labels_list, context_length=model.context_length)
