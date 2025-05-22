@@ -653,7 +653,7 @@ urls = [
 ]
 
 topk = 10
-candidate_labels = object_categories + scene_categories + activity_categories
+candidate_labels = list(set(object_categories + scene_categories + activity_categories))
 texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
 
 # load pipeline
@@ -696,9 +696,9 @@ for i, url in enumerate(urls):
 	probs = torch.sigmoid(logits_per_image)
 	# print(probs.shape, type(probs), probs.dtype, probs.device)
 	topk_probs, topk_indices = probs[0].topk(topk)
-	print("="*60)
+	print("="*50)
 	print(f"Top-{topk} Predictions:")
-	print("="*60)
+	print("="*50)
 	for i, idx in enumerate(topk_indices):
 		print(f"{candidate_labels[idx]:<30}{topk_probs[i].item():.5f}")
 
