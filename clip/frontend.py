@@ -546,7 +546,7 @@ image = preprocess(image).unsqueeze(0)
 
 object_categories = [
 	# Military Vehicles
-	"tank", "tank destroyer", "armored car", "utility vehicle"
+	"tank", "tank destroyer", "armored car", "utility vehicle",
 	"half-track", "armored personnel carrier", "armored train", "Kubelwagen",
 	"jeep", "military truck", "supply truck", "artillery tractor", "amphibious vehicle",
 	# Aircraft
@@ -643,7 +643,7 @@ activity_categories = [
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Device: {device}")
 print(f"Context length: {model.context_length}")
-labels_list = object_categories + scene_categories + era_categories + activity_categories
+labels_list = list(set(object_categories + scene_categories + era_categories + activity_categories))
 print(f"labels_list: {len(labels_list)}")
 text = tokenizer(labels_list, context_length=model.context_length)
 print(f"text: {type(text)} {text.shape}")
