@@ -694,7 +694,7 @@ for i, url in enumerate(urls):
 
 	logits_per_image = outputs.logits_per_image
 	probs = torch.sigmoid(logits_per_image)
-	print(probs.shape, type(probs), probs.dtype, probs.device)
+	# print(probs.shape, type(probs), probs.dtype, probs.device)
 	topk_probs, topk_indices = probs[0].topk(topk)
 	print("="*60)
 	print(f"Top-{topk} Predictions:")
