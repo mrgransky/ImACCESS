@@ -605,7 +605,7 @@ scene_categories = [
 activity_categories = [
 	# Combat
 	"fighting", "tank battle", "infantry assault", "naval engagement", "barrage",
-	"firing weapon", "bombing", "conversation",
+	"firing weapon", "bombing",
 	# Movement
 	"driving", "troop transport", "marching", "reconnaissance flight", "river crossing",
 	# Military Operations
@@ -617,7 +617,8 @@ activity_categories = [
 	"distributing supplies",
 	# Ceremonial
 	"military parade", "flag raising", "ceremonial speech", "ceremony",
-	"officer briefing", "civilian interaction", "hand shaking", "reading", "resting", "writing", "smoking",
+	"officer briefing", "civilian interaction", "hand shaking", "reading", 
+	"resting", "writing", "smoking", "conversation", "singing",
 	# Civilian & Cultural
 	"tunnel digging", "restoration", "railway maintenance", "wood stacking",
 	"bathing", "portrait", "museum curation",
@@ -629,10 +630,13 @@ activity_categories = [
 ]
 
 urls = [
+	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2457/default.jpg",
+	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2752/default.jpg",
 	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-129040",
 	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-165758",
 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/209/default.jpg",
 	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40750",
+	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/219/default.jpg",
 	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-66759",
 	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-69135",
 	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40652",
@@ -704,30 +708,31 @@ for i, url in enumerate(urls):
 		print(f"Total GPU memory: {gpu_memory:.1f} GB")
 		# Clear cache before processing
 		torch.cuda.empty_cache()
+	print("-" * 100)
 
-# zero shot classification:
-image_classifier = pipeline(model=ckpt, task="zero-shot-image-classification", device=device)
-labels_list = list(set(object_categories + scene_categories + activity_categories))
+# # zero shot classification:
+# image_classifier = pipeline(model=ckpt, task="zero-shot-image-classification", device=device)
+# labels_list = list(set(object_categories + scene_categories + activity_categories))
 
-# df = pd.read_csv(filepath_or_buffer="/home/farid/datasets/WW_DATASETs/WW_VEHICLES/metadata.csv")
-# print(df.shape)
-# urls = df["img_url"].values.tolist()
-print(f"Loaded {len(urls)} urls")
-for i, url in enumerate(urls):
-	print(f"Processing URL {i+1}/{len(urls)}: {url}")
-	try:
-		image = Image.open(requests.get(url, stream=True).raw).convert("RGB")
-	except Exception as e:
-		print(f"ERROR: failed to load image from {url} => {e}")
-		continue
+# # df = pd.read_csv(filepath_or_buffer="/home/farid/datasets/WW_DATASETs/WW_VEHICLES/metadata.csv")
+# # print(df.shape)
+# # urls = df["img_url"].values.tolist()
+# print(f"Loaded {len(urls)} urls")
+# for i, url in enumerate(urls):
+# 	print(f"Processing URL {i+1}/{len(urls)}: {url}")
+# 	try:
+# 		image = Image.open(requests.get(url, stream=True).raw).convert("RGB")
+# 	except Exception as e:
+# 		print(f"ERROR: failed to load image from {url} => {e}")
+# 		continue
 
-	outputs = image_classifier(image, candidate_labels=labels_list)
-	sorted_outputs = sorted(outputs, key=lambda x: x['score'], reverse=True)
-	nonzero_sorted_outputs = [elem for elem in sorted_outputs if elem['score'] > 0]
-	topk = min(topk, len(nonzero_sorted_outputs))
-	topk_sorted_outputs = nonzero_sorted_outputs[:topk]
-	print(f"Label probabilities (sorted by score): {len(topk_sorted_outputs)}")
-	print()
-	for idx, elem in enumerate(topk_sorted_outputs):
-		print(f'{elem.get("label"):<30}: {elem.get("score"):>8.5f}')
-	print("-" * 150)
+# 	outputs = image_classifier(image, candidate_labels=labels_list)
+# 	sorted_outputs = sorted(outputs, key=lambda x: x['score'], reverse=True)
+# 	nonzero_sorted_outputs = [elem for elem in sorted_outputs if elem['score'] > 0]
+# 	topk = min(topk, len(nonzero_sorted_outputs))
+# 	topk_sorted_outputs = nonzero_sorted_outputs[:topk]
+# 	print(f"Label probabilities (sorted by score): {len(topk_sorted_outputs)}")
+# 	print()
+# 	for idx, elem in enumerate(topk_sorted_outputs):
+# 		print(f'{elem.get("label"):<30}: {elem.get("score"):>8.5f}')
+# 	print("-" * 150)
