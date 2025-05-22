@@ -676,7 +676,6 @@ with torch.no_grad():#, torch.amp.autocast(device_type=device.type, enabled=torc
 logits_per_image = outputs.logits_per_image
 probs = torch.sigmoid(logits_per_image)
 print(probs.shape, type(probs), probs.dtype, probs.device)
-print(probs)
 topk = 10
 topk_probs, topk_indices = probs[0].topk(topk)
 print("="*60)
