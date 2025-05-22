@@ -545,47 +545,99 @@ image = Image.open(urlopen(
 ))
 image = preprocess(image).unsqueeze(0)
 
-
-# Define category sets for different aspects of visual content
 object_categories = [
-	# Military vehicles
-	"tank", "jeep", "armored car", "truck", "military aircraft", "helicopter",
-	"submarine", "battleship", "aircraft carrier", "fighter jet", "bomber aircraft",
-	
-	# Military personnel
-	"soldier", "officer", "military personnel", "pilot", "sailor", "cavalry",
-	
+	# Military Vehicles
+	"tank", "tank destroyer", "armored car",
+	"half-track", "armored personnel carrier", "armored train", "Kubelwagen",
+	"jeep", "military truck", "supply truck", "artillery tractor", "amphibious vehicle",
+	# Aircraft
+	"military aircraft", "fighter aircraft", "bomber aircraft", "reconnaissance aircraft",
+	"seaplane", "biplane", "monoplane", "Spitfire", "B-17 Flying Fortress",
+	# Naval Vessels
+	"submarine", "destroyer", "cruiser", "battleship", "aircraft carrier",
+	"corvette", "minesweeper", "landing craft", "hospital ship", "troop transport", "tugboat",
+	# Military Personnel
+	"soldier", "infantryman", "officer", "pilot", "sailor", "marine", "medic",
+	"Wehrmacht soldier", "Red Army soldier", "nurse",
 	# Weapons
-	"gun", "rifle", "machine gun", "artillery", "cannon", "missile", "bomb",
-	
-	# Other military objects
-	"military base", "bunker", "trench", "fortification", "flag", "military uniform"
+	"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery piece",
+	"cannon", "anti-tank gun", "grenade", "landmine", "torpedo",
+	# Military Infrastructure
+	"bunker", "gun emplacement", "observation post", "barbed wire", "trenches",
+	"fortification", "coastal defense", "minefield",
+	# Military Symbols
+	"military flag", "Union Jack", "military insignia",
+	"medal", "military helmet", "gas mask",
+	# Military Equipment
+	"military uniform", "backpack", "entrenching tool", "binoculars", "field telephone",
+	"radio equipment", "parachute", "jerry can", "stretcher",
+	# Infrastructure
+	"construction crane", "tunnel slab", "gasometer", "railway track", "locomotive wheel",
+	"train car", "ferry slip", "locomotive engine", "railway signal", "construction site",
+	# Civilian Objects
+	"wheelbarrow", "leather apron", "signature document", "blood pressure monitor",
+	"medical chart",
+	# Cultural
+	"cannon carriage", "museum", "pavilion structure",
+	"market stall", "religious monument", "basilica statue", "palace garden", "historical plaque",
+	# Animals
+	"donkey", "camel", "workhorse", "mule", "ox", "reindeer",
 ]
 
 scene_categories = [
-	# Terrain types
-	"desert", "forest", "urban area", "beach", "mountain", "field", "ocean", "river",
-	
-	# Military scenes
-	"battlefield", "military camp", "airfield", "naval base", "military parade",
-	"military exercise", "war zone", "training ground", "military factory"
+	# Military Theaters
+	"Western Front", "Eastern Front", "coastline", "city ruins", "battlefield", "military camp",
+	# Terrain
+	"desert", "forest", "winter forest", "urban area", "mountain", "mountain valley",
+	"field", "rural farmland", "snow-covered field", "ocean", "coastal waters",
+	"river", "river crossing", "bridge", "lake shore", "coastal landscape",
+	# Military Settings
+	"military hospital", "field hospital", "military cemetery", "aircraft factory",
+	"military depot", "military port", "dry dock",
+	# Military Infrastructure
+	"airfield", "naval base", "army barracks", "military headquarters",
+	"coastal defense",
+	# Civilian & Cultural
+	"urban construction", "industrial site", "railroad station", "ferry dock",
+	"harbor port", "bathing area", "palace courtyard",
+	"historical plaza", "library hall", "urban plaza", "cathedral",
+	"palace grounds",
 ]
 
 era_categories = [
-	"World War I era", "World War II era", "Cold War era", "modern military",
-	"1910s style", "1940s style", "1960s style", "1980s style", "2000s style"
+	"world war one", "world war two",
 ]
 
 activity_categories = [
-	"driving", "flying", "marching", "fighting", "training", "maintenance",
-	"loading equipment", "unloading equipment", "towing", "firing weapon",
-	"military parade", "crossing terrain", "naval operation"
+	# Combat
+	"fighting", "tank battle", "infantry assault", "naval engagement", "barrage",
+	"firing weapon", "bombing",
+	# Movement
+	"driving", "troop transport", "marching", "reconnaissance flight", "river crossing",
+	# Military Operations
+	"digging trenches", "fortification", "laying mines", "setting up artillery",
+	"establishing field hospital",
+	# Logistics
+	"loading equipment", "loading ammunition", "evacuating casualties", "aircraft maintenance",
+	# Military Life
+	"training", "receiving briefing", "standing guard", "medical treatment",
+	"distributing supplies",
+	# Ceremonial
+	"military parade", "flag raising", "ceremonial speech", "ceremony",
+	"officer briefing", "civilian interaction", "hand shaking",
+	# Civilian & Cultural
+	"tunnel digging", "restoration", "railway maintenance", "wood stacking",
+	"bathing", "portrait", "museum curation",
+	"signature documentation",
+	"farming harvest", "exhibition",
+	# Transport
+	"ferry operation", "train operation", "freight loading",
 ]
 
 labels_list = object_categories + scene_categories + era_categories + activity_categories
 text = tokenizer(labels_list, context_length=model.context_length)
 
-with torch.no_grad(), with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
+with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 	image_features = model.encode_image(image, normalize=True)
 	text_features = model.encode_text(text, normalize=True)
 	text_probs = torch.sigmoid(image_features @ text_features.T * model.logit_scale.exp() + model.logit_bias)
