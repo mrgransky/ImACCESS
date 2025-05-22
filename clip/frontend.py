@@ -531,7 +531,6 @@ from visualize import *
 
 
 import torch
-import torch.nn.functional as F
 from urllib.request import urlopen
 from PIL import Image
 from open_clip import create_model_from_pretrained, get_tokenizer # works on open-clip-torch >= 2.31.0, timm >= 1.0.15
@@ -633,15 +632,31 @@ activity_categories = [
 	# Transport
 	"ferry operation", "train operation", "freight loading",
 ]
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
+print(f"Device: {device}")
+print(f"Context length: {model.context_length}")
 labels_list = object_categories + scene_categories + era_categories + activity_categories
+print(f"labels_list: {len(labels_list)}")
 text = tokenizer(labels_list, context_length=model.context_length)
-
+print(f"text: {type(text)} {text.shape}")
 with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 	image_features = model.encode_image(image, normalize=True)
 	text_features = model.encode_text(text, normalize=True)
 	text_probs = torch.sigmoid(image_features @ text_features.T * model.logit_scale.exp() + model.logit_bias)
 
 zipped_list = list(zip(labels_list, [100 * round(p.item(), 3) for p in text_probs[0]]))
-print("Label probabilities: ", zipped_list)
+# Sort by probability in descending order (highest probability first)
+sorted_list = sorted(zipped_list, key=lambda x: x[1], reverse=True)
+
+print("Label probabilities (sorted by confidence):")
+print("-" * 50)
+for label, prob in sorted_list:
+	print(f"{label:<30}: {prob:>6.1f}%")
+
+topk = 25
+print("\n" + "="*50)
+print(f"Top-{topk} predictions:")
+print("="*50)
+for i, (label, prob) in enumerate(sorted_list[:topk], 1):
+	print(f"{i:2d}. {label:<25}: {prob:>6.1f}%")
