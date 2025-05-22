@@ -580,6 +580,9 @@ object_categories = [
 	"market stall", "religious monument", "basilica statue", "palace garden", "historical plaque",
 	# Animals
 	"donkey", "camel", "workhorse", "mule", "ox", "reindeer",
+	# Damaged Equipment and Infrastructure
+	"wreck", "debris", "damaged vehicle", "damaged aircraft", "damaged ship",
+	"ruined building", "collapsed bridge"
 ]
 
 scene_categories = [
