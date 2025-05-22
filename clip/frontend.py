@@ -670,9 +670,18 @@ model = AutoModel.from_pretrained(
 	# attn_implementation="sdpa",
 )
 processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=ckpt)
-inputs = processor(text=texts, images=image, padding="max_length", max_length=64, return_tensors="pt").to(device)
-with torch.no_grad():#, torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+inputs = processor(
+	text=texts, 
+	images=image, 
+	padding="max_length", 
+	max_num_patches=256, 
+	max_length=64, 
+	return_tensors="pt",
+).to(device)
+
+with torch.no_grad():
 	outputs = model(**inputs)
+
 logits_per_image = outputs.logits_per_image
 probs = torch.sigmoid(logits_per_image)
 print(probs.shape, type(probs), probs.dtype, probs.device)
