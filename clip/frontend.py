@@ -649,9 +649,6 @@ if torch.cuda.is_available():
 	# Clear cache before processing
 	torch.cuda.empty_cache()
 
-# Move model to device
-model = model.to(device)
-image = image.to(device)
 
 labels_list = list(set(object_categories + scene_categories + activity_categories))
 
@@ -659,6 +656,9 @@ print(f"labels_list: {len(labels_list)}")
 text = tokenizer(labels_list, context_length=model.context_length)
 print(f"text: {type(text)} {text.shape}")
 
+model = model.to(device)
+image = image.to(device)
+text = text.to(device)
 
 with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 	image_features = model.encode_image(image, normalize=True)
