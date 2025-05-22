@@ -540,7 +540,8 @@ tokenizer = get_tokenizer('hf-hub:timm/ViT-gopt-16-SigLIP2-384')
 
 # url = "https://media.cnn.com/api/v1/images/stellar/prod/180207010106-military-parades-us-new-york-1946.jpg"
 # url = "https://truck-encyclopedia.com/ww1/img/photos/German_WWI_armoured_car_destroyed.jpg"
-url = "https://truck-encyclopedia.com/ww1/img/photos/Dart-CC4-production.jpg"
+# url = "https://truck-encyclopedia.com/ww1/img/photos/Dart-CC4-production.jpg"
+url = "https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/British_wounded_Bernafay_Wood_19_July_1916.jpg/2157px-British_wounded_Bernafay_Wood_19_July_1916.jpg"
 image = Image.open(urlopen(url))
 image = preprocess(image).unsqueeze(0)
 
@@ -571,8 +572,8 @@ object_categories = [
 	"military uniform", "backpack", "entrenching tool", "binoculars", "field telephone",
 	"radio equipment", "parachute", "jerry can", "stretcher",
 	# Infrastructure
-	"construction crane", "tunnel slab", "gasometer", "railway track", "locomotive wheel",
-	"train car", "ferry slip", "locomotive engine", "railway signal", "construction site",
+	"construction crane", "tunnel slab", "railway track", "locomotive wheel", "bridge", "dam", "tunnel",
+	"train car", "ferry slip", "locomotive engine", "railway signal", "construction site", "aircraft engine",
 	# Civilian Objects
 	"wheelbarrow", "leather apron", "signature document", "blood pressure monitor",
 	"medical chart",
@@ -584,6 +585,8 @@ object_categories = [
 	# Damaged Equipment and Infrastructure
 	"wreck", "debris", "damaged vehicle", "damaged aircraft", "damaged ship",
 	"ruined building", "collapsed bridge"
+	# Add more categories as needed
+	"casualties", "prisoners", "mass atrocities", "war crimes"
 ]
 
 scene_categories = [
@@ -619,8 +622,7 @@ activity_categories = [
 	# Movement
 	"driving", "troop transport", "marching", "reconnaissance flight", "river crossing",
 	# Military Operations
-	"digging trenches", "fortification", "laying mines", "setting up artillery",
-	"establishing field hospital",
+	"digging trenches", "fortification",
 	# Logistics
 	"loading equipment", "loading ammunition", "evacuating casualties", "aircraft maintenance",
 	# Military Life
@@ -659,11 +661,11 @@ print(f"")
 print("Label probabilities (sorted by confidence):")
 print("-" * 50)
 for label, prob in sorted_list:
-	print(f"{label:<30}: {prob:>6.1f}%")
+	print(f"{label:<50}: {prob:>8.1f}%")
 
 topk = 25
 print("\n" + "="*50)
 print(f"Top-{topk} predictions:")
 print("="*50)
 for i, (label, prob) in enumerate(sorted_list[:topk], 1):
-	print(f"{i:2d}. {label:<25}: {prob:>6.1f}%")
+	print(f"{i:2d}. {label:<50}: {prob:>8.1f}%")
