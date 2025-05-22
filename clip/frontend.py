@@ -648,6 +648,7 @@ urls = [
 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/270/default.jpg",
 ]
 
+topk = 10
 candidate_labels = object_categories + scene_categories + activity_categories
 texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
 
@@ -660,45 +661,49 @@ ckpt = "google/siglip2-so400m-patch16-naflex"
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Loading {ckpt} in {device}...")
 
-url = urls[0]
-image = Image.open(requests.get(url, stream=True).raw)
+for i, url in enumerate(urls):
+	print(f"Processing URL {i+1}/{len(urls)}: {url}")
+	try:
+		image = Image.open(requests.get(url, stream=True).raw).convert("RGB")
+	except Exception as e:
+		print(f"ERROR: failed to load image from {url} => {e}")
+		continue
+	
+	model = AutoModel.from_pretrained(
+		pretrained_model_name_or_path=ckpt, 
+		# torch_dtype=torch.float16,
+		device_map=device,
+		# attn_implementation="sdpa",
+	)
+	processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=ckpt)
+	inputs = processor(
+		text=texts, 
+		images=image, 
+		padding="max_length", 
+		max_num_patches=4096,
+		max_length=64, 
+		return_tensors="pt",
+	).to(device)
 
-model = AutoModel.from_pretrained(
-	pretrained_model_name_or_path=ckpt, 
-	# torch_dtype=torch.float16,
-	device_map=device,
-	# attn_implementation="sdpa",
-)
-processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=ckpt)
-inputs = processor(
-	text=texts, 
-	images=image, 
-	padding="max_length", 
-	max_num_patches=4096,
-	max_length=64, 
-	return_tensors="pt",
-).to(device)
+	with torch.no_grad():
+		outputs = model(**inputs)
 
-with torch.no_grad():
-	outputs = model(**inputs)
+	logits_per_image = outputs.logits_per_image
+	probs = torch.sigmoid(logits_per_image)
+	print(probs.shape, type(probs), probs.dtype, probs.device)
+	topk_probs, topk_indices = probs[0].topk(topk)
+	print("="*60)
+	print(f"Top-{topk} Predictions:")
+	print("="*60)
+	for i, idx in enumerate(topk_indices):
+		print(f"{candidate_labels[idx]:<30}{topk_probs[i].item():.5f}")
 
-logits_per_image = outputs.logits_per_image
-probs = torch.sigmoid(logits_per_image)
-print(probs.shape, type(probs), probs.dtype, probs.device)
-topk = 10
-topk_probs, topk_indices = probs[0].topk(topk)
-print("="*60)
-print(f"Top-{topk} Predictions:")
-print("="*60)
-for i, idx in enumerate(topk_indices):
-	print(f"{candidate_labels[idx]:<30}{topk_probs[i].item():.5f}")
-
-# Check available GPU memory if using CUDA
-if torch.cuda.is_available():
-	gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
-	print(f"Total GPU memory: {gpu_memory:.1f} GB")
-	# Clear cache before processing
-	torch.cuda.empty_cache()
+	# Check available GPU memory if using CUDA
+	if torch.cuda.is_available():
+		gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+		print(f"Total GPU memory: {gpu_memory:.1f} GB")
+		# Clear cache before processing
+		torch.cuda.empty_cache()
 
 # zero shot classification:
 image_classifier = pipeline(model=ckpt, task="zero-shot-image-classification", device=device)
