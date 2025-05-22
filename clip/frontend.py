@@ -697,8 +697,8 @@ if torch.cuda.is_available():
 image_classifier = pipeline(model=ckpt, task="zero-shot-image-classification", device=device)
 labels_list = list(set(object_categories + scene_categories + activity_categories))
 
-df = pd.read_csv(filepath_or_buffer="/home/farid/datasets/WW_DATASETs/WW_VEHICLES/metadata.csv")
-print(df.shape)
+# df = pd.read_csv(filepath_or_buffer="/home/farid/datasets/WW_DATASETs/WW_VEHICLES/metadata.csv")
+# print(df.shape)
 # urls = df["img_url"].values.tolist()
 print(f"Loaded {len(urls)} urls")
 for i, url in enumerate(urls):
