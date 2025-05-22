@@ -531,24 +531,17 @@ from visualize import *
 
 
 import torch
-from urllib.request import urlopen
+from transformers import pipeline
+from transformers import AutoModel, AutoProcessor
+from io import BytesIO
 from PIL import Image
-from open_clip import create_model_from_pretrained, get_tokenizer # works on open-clip-torch >= 2.31.0, timm >= 1.0.15
-
-model, preprocess = create_model_from_pretrained('hf-hub:timm/ViT-gopt-16-SigLIP2-384')
-tokenizer = get_tokenizer('hf-hub:timm/ViT-gopt-16-SigLIP2-384')
-
-# url = "https://media.cnn.com/api/v1/images/stellar/prod/180207010106-military-parades-us-new-york-1946.jpg"
-# url = "https://truck-encyclopedia.com/ww1/img/photos/German_WWI_armoured_car_destroyed.jpg"
-# url = "https://truck-encyclopedia.com/ww1/img/photos/Dart-CC4-production.jpg"
-url = "https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/British_wounded_Bernafay_Wood_19_July_1916.jpg/2157px-British_wounded_Bernafay_Wood_19_July_1916.jpg"
-image = Image.open(urlopen(url))
-image = preprocess(image).unsqueeze(0)
+import pandas as pd
 
 object_categories = [
 	# Military Vehicles
-	"tank", "tank destroyer", "armored car", "utility vehicle",
-	"half-track", "armored personnel carrier", "armored train", "Kubelwagen",
+	"armoured fighting vehicle", "utility vehicle", "motorcycle",
+	"half-track", "armoured personnel carrier", "ambulance",
+	# "armoured train",
 	"jeep", "military truck", "supply truck", "artillery tractor", "amphibious vehicle",
 	# Aircraft
 	"military aircraft", "fighter aircraft", "bomber aircraft", "reconnaissance aircraft",
@@ -557,16 +550,15 @@ object_categories = [
 	"submarine", "destroyer", "cruiser", "battleship", "aircraft carrier",
 	"corvette", "minesweeper", "landing craft", "hospital ship", "troop transport", "tugboat",
 	# Military Personnel
-	"soldier", "infantryman", "officer", "pilot", "sailor", "marine", "medic",
-	"Wehrmacht soldier", "Red Army soldier", "nurse",
+	"soldier", "infantry", "officer", "pilot", "sailor", "marine", "medical care", "nurse",
 	# Weapons
-	"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery piece",
+	"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery",
 	"cannon", "anti-tank gun", "grenade", "landmine", "torpedo",
 	# Military Infrastructure
 	"bunker", "gun emplacement", "observation post", "barbed wire", "trenches",
 	"fortification", "coastal defense", "minefield",
 	# Military Symbols
-	"military flag", "Union Jack", "military insignia",
+	"military flag", "military insignia",
 	"medal", "military helmet", "gas mask",
 	# Military Equipment
 	"military uniform", "backpack", "entrenching tool", "binoculars", "field telephone",
@@ -575,18 +567,18 @@ object_categories = [
 	"construction crane", "tunnel slab", "railway track", "locomotive wheel", "bridge", "dam", "tunnel",
 	"train car", "ferry slip", "locomotive engine", "railway signal", "construction site", "aircraft engine",
 	# Civilian Objects
-	"wheelbarrow", "leather apron", "signature document", "blood pressure monitor",
+	"wheelbarrow", "leather apron", "blood pressure monitor",
 	"medical chart",
 	# Cultural
-	"cannon carriage", "museum", "pavilion structure",
+	"museum", "pavilion structure",
 	"market stall", "religious monument", "basilica statue", "palace garden", "historical plaque",
 	# Animals
-	"donkey", "camel", "workhorse", "mule", "ox", "reindeer",
+	"reindeer", "horse", 
 	# Damaged Equipment and Infrastructure
 	"wreck", "debris", "damaged vehicle", "damaged aircraft", "damaged ship",
 	"ruined building", "collapsed bridge"
 	# Add more categories as needed
-	"casualties", "prisoners", "mass atrocities", "war crimes"
+	"casualties", "prisoners", "mass atrocities", "genocide", "war crimes", "refugee", "forced displacement",
 ]
 
 scene_categories = [
@@ -594,14 +586,13 @@ scene_categories = [
 	"coastline", "city ruins", "battlefield", "military camp",
 	# Terrain
 	"desert", "forest", "winter forest", "urban area", "mountain", "mountain valley",
-	"field", "rural farmland", "snow-covered field", "ocean", "coastal waters",
+	"field", "rural farmland", "snow field", "ocean", "coastal waters",
 	"river", "river crossing", "bridge", "lake shore", "coastal landscape",
 	# Military Settings
-	"military hospital", "field hospital", "military cemetery", "aircraft factory",
-	"military depot", "military port", "dry dock",
+	"hospital", "cemetery", "aircraft factory",
+	"military depot", "dry dock",
 	# Military Infrastructure
-	"airfield", "naval base", "army barracks", "military headquarters",
-	"coastal defense",
+	"airfield", "naval base", "army barracks", "coastal defense",
 	# Civilian & Cultural
 	"urban construction", "industrial site", "railroad station", "ferry dock",
 	"harbor port", "bathing area", "palace courtyard",
@@ -614,7 +605,7 @@ scene_categories = [
 activity_categories = [
 	# Combat
 	"fighting", "tank battle", "infantry assault", "naval engagement", "barrage",
-	"firing weapon", "bombing",
+	"firing weapon", "bombing", "conversation",
 	# Movement
 	"driving", "troop transport", "marching", "reconnaissance flight", "river crossing",
 	# Military Operations
@@ -626,11 +617,10 @@ activity_categories = [
 	"distributing supplies",
 	# Ceremonial
 	"military parade", "flag raising", "ceremonial speech", "ceremony",
-	"officer briefing", "civilian interaction", "hand shaking",
+	"officer briefing", "civilian interaction", "hand shaking", "reading", "resting", "writing", "smoking",
 	# Civilian & Cultural
 	"tunnel digging", "restoration", "railway maintenance", "wood stacking",
 	"bathing", "portrait", "museum curation",
-	"signature documentation",
 	"farming harvest", "exhibition",
 	# Transport
 	"ferry operation", "train operation", "freight loading",
@@ -638,9 +628,62 @@ activity_categories = [
 	"marine salvage", "demolition", "repair"
 ]
 
+urls = [
+	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-129040",
+	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-165758",
+	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/209/default.jpg",
+	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40750",
+	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-66759",
+	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-69135",
+	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40652",
+	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-153539",
+	"https://s1.cdn.autoevolution.com/images/gallery/MERCEDESBENZG4-W31--2596_8.jpg",
+	"https://media.cnn.com/api/v1/images/stellar/prod/180207010106-military-parades-us-new-york-1946.jpg",
+	"https://truck-encyclopedia.com/ww1/img/photos/German_WWI_armoured_car_destroyed.jpg",
+	"https://truck-encyclopedia.com/ww1/img/photos/Dart-CC4-production.jpg",
+	"https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/British_wounded_Bernafay_Wood_19_July_1916.jpg/2157px-British_wounded_Bernafay_Wood_19_July_1916.jpg",
+	"https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/LIAZ_MT.jpg/640px-LIAZ_MT.jpg",
+	"https://truck-encyclopedia.com/ww2/us/photos/Dodge_T-203_VF-407_Ambulance_12ton-serie.jpg",
+	"https://truck-encyclopedia.com/ww2/italy/Autocarretta-35.png",
+	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/270/default.jpg",
+]
+
+candidate_labels = object_categories + scene_categories + activity_categories
+texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
+
+# load pipeline
+# ckpt = "google/siglip2-base-patch16-224"
+# ckpt = "google/siglip2-base-patch16-384"
+# ckpt = "google/siglip2-so400m-patch14-384"
+ckpt = "google/siglip2-so400m-patch16-naflex"
+# ckpt = "kakaobrain/align-base"
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print(f"Device: {device}")
-print(f"Context length: {model.context_length}")
+print(f"Loading {ckpt} in {device}...")
+
+url = urls[0]
+image = Image.open(requests.get(url, stream=True).raw)
+
+model = AutoModel.from_pretrained(
+	pretrained_model_name_or_path=ckpt, 
+	# torch_dtype=torch.float16,
+	device_map=device,
+	# attn_implementation="sdpa",
+)
+processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=ckpt)
+inputs = processor(text=texts, images=image, padding="max_length", max_length=64, return_tensors="pt").to(device)
+with torch.no_grad():#, torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+	outputs = model(**inputs)
+logits_per_image = outputs.logits_per_image
+probs = torch.sigmoid(logits_per_image)
+print(probs.shape, type(probs), probs.dtype, probs.device)
+print(probs)
+topk = 10
+topk_probs, topk_indices = probs[0].topk(topk)
+print("="*60)
+print(f"Top-{topk} Predictions:")
+print("="*60)
+for i, idx in enumerate(topk_indices):
+	print(f"{candidate_labels[idx]:<30}{topk_probs[i].item():.2%}")
 
 # Check available GPU memory if using CUDA
 if torch.cuda.is_available():
@@ -650,45 +693,29 @@ if torch.cuda.is_available():
 	torch.cuda.empty_cache()
 
 
+# zero shot classification:
+image_classifier = pipeline(model=ckpt, task="zero-shot-image-classification", device=device)
 labels_list = list(set(object_categories + scene_categories + activity_categories))
 
-print(f"labels_list: {len(labels_list)}")
-text = tokenizer(labels_list, context_length=model.context_length)
-print(f"text: {type(text)} {text.shape}")
+df = pd.read_csv(filepath_or_buffer="/home/farid/datasets/WW_DATASETs/WW_VEHICLES/metadata.csv")
+print(df.shape)
+# urls = df["img_url"].values.tolist()
+print(f"Loaded {len(urls)} urls")
+for i, url in enumerate(urls):
+	print(f"Processing URL {i+1}/{len(urls)}: {url} ...")
+	try:
+		image = Image.open(requests.get(url, stream=True).raw).convert("RGB")
+	except Exception as e:
+		print(f"ERROR: failed to load image from {url} => {e}")
+		continue
 
-model = model.to(device)
-image = image.to(device)
-text = text.to(device)
-
-with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-	image_features = model.encode_image(image, normalize=True)
-	text_features = model.encode_text(text, normalize=True)
-	text_probs = torch.sigmoid(image_features @ text_features.T * model.logit_scale.exp() + model.logit_bias)
-
-zipped_list = list(zip(labels_list, [100 * round(p.item(), 3) for p in text_probs[0]]))
-sorted_list = sorted(zipped_list, key=lambda x: x[1], reverse=True)
-
-print(f"")
-print("Label probabilities (sorted by confidence):")
-print("-" * 50)
-for label, prob in sorted_list:
-	print(f"{label:<50}: {prob:>8.1f}%")
-
-# topk = 25
-# print("\n" + "="*50)
-# print(f"Top-{topk} predictions:")
-# print("="*50)
-# for i, (label, prob) in enumerate(sorted_list[:topk], 1):
-# 	print(f"{i:2d}. {label:<50}: {prob:>8.1f}%")
-
-topk = 25
-nonzero_sorted_list = [item for item in sorted_list if item[1] > 0]
-
-# Calculate topk based on the number of nonzero probabilities
-topk = min(topk, len(nonzero_sorted_list))
-
-print("\n" + "="*50)
-print(f"Top-{topk} predictions (nonzero probabilities):")
-print("="*50)
-for i, (label, prob) in enumerate(nonzero_sorted_list[:topk], 1):
-    print(f"{i:2d}. {label:<50}: {prob:>8.1f}%")
+	outputs = image_classifier(image, candidate_labels=labels_list)
+	sorted_outputs = sorted(outputs, key=lambda x: x['score'], reverse=True)
+	nonzero_sorted_outputs = [elem for elem in sorted_outputs if elem['score'] > 0]
+	topk = min(topk, len(nonzero_sorted_outputs))
+	topk_sorted_outputs = nonzero_sorted_outputs[:topk]
+	print(f"Label probabilities (sorted by score): {len(topk_sorted_outputs)}")
+	print()
+	for idx, elem in enumerate(topk_sorted_outputs):
+		print(f'{elem.get("label"):<30}: {elem.get("score"):>8.5f}')
+	print("-" * 100)

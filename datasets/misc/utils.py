@@ -14,7 +14,7 @@ from collections import Counter, defaultdict
 from transformers import pipeline
 from transformers import AutoTokenizer, AutoModelForTokenClassification
 from transformers import CLIPProcessor, CLIPModel, AlignProcessor, AlignModel
-
+from transformers import AutoModel, AutoProcessor
 from sentence_transformers import SentenceTransformer, util
 from langdetect import detect, DetectorFactory
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS

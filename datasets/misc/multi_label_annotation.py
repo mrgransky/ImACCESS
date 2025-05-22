@@ -70,8 +70,9 @@ RELEVANT_ENTITY_TYPES = {
 
 object_categories = [
 	# Military Vehicles
-	"tank", "tank destroyer", "armored car", "utility vehicle",
-	"half-track", "armored personnel carrier", "armored train", "Kubelwagen",
+	"armoured fighting vehicle", "armoured vehicle", "utility vehicle", "motorcycle",
+	"half-track", "armoured personnel carrier",
+	# "armoured train",
 	"jeep", "military truck", "supply truck", "artillery tractor", "amphibious vehicle",
 	# Aircraft
 	"military aircraft", "fighter aircraft", "bomber aircraft", "reconnaissance aircraft",
@@ -80,49 +81,49 @@ object_categories = [
 	"submarine", "destroyer", "cruiser", "battleship", "aircraft carrier",
 	"corvette", "minesweeper", "landing craft", "hospital ship", "troop transport", "tugboat",
 	# Military Personnel
-	"soldier", "infantryman", "officer", "pilot", "sailor", "marine", "medic",
-	"Wehrmacht soldier", "Red Army soldier", "nurse",
+	"soldier", "infantry", "officer", "pilot", "sailor", "marine", "medical care", "nurse",
 	# Weapons
-	"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery piece",
+	"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery",
 	"cannon", "anti-tank gun", "grenade", "landmine", "torpedo",
 	# Military Infrastructure
 	"bunker", "gun emplacement", "observation post", "barbed wire", "trenches",
 	"fortification", "coastal defense", "minefield",
 	# Military Symbols
-	"military flag", "Union Jack", "military insignia",
+	"military flag", "military insignia",
 	"medal", "military helmet", "gas mask",
 	# Military Equipment
 	"military uniform", "backpack", "entrenching tool", "binoculars", "field telephone",
 	"radio equipment", "parachute", "jerry can", "stretcher",
 	# Infrastructure
-	"construction crane", "tunnel slab", "gasometer", "railway track", "locomotive wheel",
-	"train car", "ferry slip", "locomotive engine", "railway signal", "construction site",
+	"construction crane", "tunnel slab", "railway track", "locomotive wheel", "bridge", "dam", "tunnel",
+	"train car", "ferry slip", "locomotive engine", "railway signal", "construction site", "aircraft engine",
 	# Civilian Objects
 	"wheelbarrow", "leather apron", "signature document", "blood pressure monitor",
 	"medical chart",
 	# Cultural
-	"cannon carriage", "museum", "pavilion structure",
+	"museum", "pavilion structure",
 	"market stall", "religious monument", "basilica statue", "palace garden", "historical plaque",
 	# Animals
-	"donkey", "camel", "workhorse", "mule", "ox", "reindeer",
+	"reindeer", "horse", 
 	# Damaged Equipment and Infrastructure
 	"wreck", "debris", "damaged vehicle", "damaged aircraft", "damaged ship",
 	"ruined building", "collapsed bridge"
+	# Add more categories as needed
+	"casualties", "prisoners", "mass atrocities", "war crimes",
 ]
 
 scene_categories = [
 	# Military Theaters
-	"Western Front", "Eastern Front", "coastline", "city ruins", "battlefield", "military camp",
+	"coastline", "city ruins", "battlefield", "military camp",
 	# Terrain
 	"desert", "forest", "winter forest", "urban area", "mountain", "mountain valley",
 	"field", "rural farmland", "snow-covered field", "ocean", "coastal waters",
 	"river", "river crossing", "bridge", "lake shore", "coastal landscape",
 	# Military Settings
-	"military hospital", "field hospital", "military cemetery", "aircraft factory",
-	"military depot", "military port", "dry dock",
+	"hospital", "cemetery", "aircraft factory",
+	"military depot", "dry dock",
 	# Military Infrastructure
-	"airfield", "naval base", "army barracks", "military headquarters",
-	"coastal defense",
+	"airfield", "naval base", "army barracks", "coastal defense",
 	# Civilian & Cultural
 	"urban construction", "industrial site", "railroad station", "ferry dock",
 	"harbor port", "bathing area", "palace courtyard",
@@ -132,10 +133,6 @@ scene_categories = [
 	"wreckage site", "battle damage", "disaster area", "ruined building", "shipwreck", "plane wreck"
 ]
 
-era_categories = [
-	"world war one", "world war two",
-]
-
 activity_categories = [
 	# Combat
 	"fighting", "tank battle", "infantry assault", "naval engagement", "barrage",
@@ -143,8 +140,7 @@ activity_categories = [
 	# Movement
 	"driving", "troop transport", "marching", "reconnaissance flight", "river crossing",
 	# Military Operations
-	"digging trenches", "fortification", "laying mines", "setting up artillery",
-	"establishing field hospital",
+	"digging trenches", "fortification",
 	# Logistics
 	"loading equipment", "loading ammunition", "evacuating casualties", "aircraft maintenance",
 	# Military Life
@@ -152,7 +148,7 @@ activity_categories = [
 	"distributing supplies",
 	# Ceremonial
 	"military parade", "flag raising", "ceremonial speech", "ceremony",
-	"officer briefing", "civilian interaction", "hand shaking",
+	"officer briefing", "civilian interaction", "hand shaking", "reading", "resting", "writing", "smoking",
 	# Civilian & Cultural
 	"tunnel digging", "restoration", "railway maintenance", "wood stacking",
 	"bathing", "portrait", "museum curation",
@@ -1664,8 +1660,8 @@ def process_category_batch(
 				inputs = processor(
 					text=text_prompts,
 					images=sub_images,
+					padding="max_length",
 					return_tensors="pt",
-					padding=True
 				).to(device)
 				outputs = model(**inputs)
 				image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
@@ -1705,27 +1701,13 @@ def process_category_batch(
 def get_visual_based_annotation(
 		csv_file: str,
 		st_model_name: str,
+		vlm_model_name: str,
 		batch_size: int,
 		device: str,
 		num_workers: int,
 		verbose: bool,
 		metadata_fpth: str,
 ) -> List[List[str]]:
-		"""
-		Semi-supervised label extraction from image data using VLM with sequential processing and robust error handling.
-		
-		Args:
-				csv_file: Path to metadata CSV
-				st_model_name: SentenceTransformer model name
-				batch_size: Batch size for processing
-				device: Device for model inference
-				num_workers: Number of workers (unused in sequential processing)
-				verbose: Boolean for logging
-				metadata_fpth: Path to save updated CSV
-		
-		Returns:
-				List of lists of visual-based labels
-		"""
 		print(f"Semi-Supervised label extraction from image data (using VLM) batch_size: {batch_size}".center(160, "-"))
 		start_time = time.time()
 		dataset_dir = os.path.dirname(csv_file)
@@ -1769,7 +1751,6 @@ def get_visual_based_annotation(
 		start_idx = 0
 		all_labels = []
 		scene_labels = []
-		era_labels = []
 		activity_labels = []
 		csv_hash = hashlib.md5(open(csv_file, 'rb').read()).hexdigest()
 
@@ -1783,7 +1764,6 @@ def get_visual_based_annotation(
 						start_idx = checkpoint['next_idx']
 						all_labels = checkpoint['all_labels']
 						scene_labels = checkpoint['scene_labels']
-						era_labels = checkpoint['era_labels']
 						activity_labels = checkpoint['activity_labels']
 						if verbose:
 							print(f"Resuming from index {start_idx}/{len(image_paths)}")
@@ -1795,15 +1775,19 @@ def get_visual_based_annotation(
 		# Load models with local caching
 		if verbose:
 			print(f"Loading sentence-transformer model: {st_model_name}...")
-		model_cache = os.path.join(dataset_dir, "model_cache")
-		sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
+		sent_model = SentenceTransformer(
+			model_name_or_path=st_model_name, 
+			device=device,
+		)
 
 		if verbose:
-			print("Loading VLM model for image labeling...")
-		processor = AlignProcessor.from_pretrained("kakaobrain/align-base")
-		model = AlignModel.from_pretrained("kakaobrain/align-base")
-		model.to(device)
-		model.eval()
+			print(f"Loading VLM model: {vlm_model_name} for image labeling...")
+		model = AutoModel.from_pretrained(
+			pretrained_model_name_or_path=vlm_model_name,
+			device_map=device, 
+			# torch_dtype=torch.float16
+		).eval()
+		processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=vlm_model_name)
 
 		# Category type map and thresholds
 		category_type_map = {}
@@ -1811,8 +1795,6 @@ def get_visual_based_annotation(
 			category_type_map[cat] = "object"
 		for cat in scene_categories:
 			category_type_map[cat] = "scene"
-		for cat in era_categories:
-			category_type_map[cat] = "era"
 		for cat in activity_categories:
 			category_type_map[cat] = "activity"
 
@@ -1828,13 +1810,11 @@ def get_visual_based_annotation(
 			print("Pre-computing category prompt embeddings...")
 		object_prompts = [f"a photo of {cat}" for cat in object_categories]
 		scene_prompts = [f"a photo of {cat}" for cat in scene_categories]
-		era_prompts = [f"a photo of {cat}" for cat in era_categories]
 		activity_prompts = [f"a photo of {cat}" for cat in activity_categories]
 		
 		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 			object_prompt_embeds = sent_model.encode(object_prompts, device=device, convert_to_tensor=True, show_progress_bar=verbose)
 			scene_prompt_embeds = sent_model.encode(scene_prompts, device=device, convert_to_tensor=True, show_progress_bar=verbose)
-			era_prompt_embeds = sent_model.encode(era_prompts, device=device, convert_to_tensor=True, show_progress_bar=verbose)
 			activity_prompt_embeds = sent_model.encode(activity_prompts, device=device, convert_to_tensor=True, show_progress_bar=verbose)
 
 		combined_labels = [[] for _ in range(len(image_paths))]
@@ -1843,7 +1823,6 @@ def get_visual_based_annotation(
 		for category_idx, (categories, prompt_embeds, category_type, labels_list) in enumerate([
 			(object_categories, object_prompt_embeds, "object", all_labels),
 			(scene_categories, scene_prompt_embeds, "scene", scene_labels),
-			(era_categories, era_prompt_embeds, "era", era_labels),
 			(activity_categories, activity_prompt_embeds, "activity", activity_labels)
 		]):
 			if verbose:
@@ -1922,7 +1901,6 @@ def get_visual_based_annotation(
 						'next_idx': batch_end,
 						'all_labels': all_labels,
 						'scene_labels': scene_labels,
-						'era_labels': era_labels,
 						'activity_labels': activity_labels,
 						'csv_hash': csv_hash,
 						'image_paths': image_paths
@@ -1948,9 +1926,6 @@ def get_visual_based_annotation(
 			if i < len(scene_labels):
 				image_labels.extend(scene_labels[i])
 				image_scores.extend([base_thresholds.get("scene", 0.2)] * len(scene_labels[i]))
-			if i < len(era_labels):
-				image_labels.extend(era_labels[i])
-				image_scores.extend([base_thresholds.get("era", 0.18)] * len(era_labels[i]))
 			if i < len(activity_labels):
 				image_labels.extend(activity_labels[i])
 				image_scores.extend([base_thresholds.get("activity", 0.26)] * len(activity_labels[i]))
@@ -2456,8 +2431,9 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=10, help="Number of workers for parallel processing")
 	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.25, help="Relevance threshold for textual-based annotation")
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=64)
-	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=16, help="Batch size for vision processing")
+	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=64, help="Batch size for vision processing")
 	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2"], help="Sentence-transformer model name")
+	parser.add_argument("--vlm_model_name", '-vlm', type=str, default="kakaobrain/align-base", choices=["kakaobrain/align-base", "google/siglip2-so400m-patch16-naflex"], help="Vision-Language model name")
 	parser.add_argument("--ner_model_name", '-ner', type=str, default="Babelscape/wikineural-multilingual-ner", choices=["dslim/bert-large-NER", "dslim/bert-base-NER", "Babelscape/wikineural-multilingual-ner"], help="NER model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 
@@ -2523,6 +2499,7 @@ def main():
 		visual_based_labels = get_visual_based_annotation(
 			csv_file=args.csv_file,
 			st_model_name=args.sentence_model_name,
+			vlm_model_name=args.vlm_model_name,
 			batch_size=args.vision_batch_size,
 			device=args.device,
 			num_workers=args.num_workers,
