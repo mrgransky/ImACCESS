@@ -579,6 +579,7 @@ object_categories = [
 	"ruined building", "collapsed bridge"
 	# Add more categories as needed
 	"casualties", "prisoners", "mass atrocities", "genocide", "war crimes", "refugee", "forced displacement",
+	"maintenance worker",
 ]
 
 scene_categories = [
@@ -652,7 +653,7 @@ urls = [
 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/270/default.jpg",
 ]
 
-topk = 10
+topk = 5
 candidate_labels = list(set(object_categories + scene_categories + activity_categories))
 texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
 
@@ -696,9 +697,9 @@ for i, url in enumerate(urls):
 	probs = torch.sigmoid(logits_per_image)
 	# print(probs.shape, type(probs), probs.dtype, probs.device)
 	topk_probs, topk_indices = probs[0].topk(topk)
-	print("="*50)
+	print("="*40)
 	print(f"Top-{topk} Predictions:")
-	print("="*50)
+	print("="*40)
 	for i, idx in enumerate(topk_indices):
 		print(f"{candidate_labels[idx]:<30}{topk_probs[i].item():.5f}")
 
