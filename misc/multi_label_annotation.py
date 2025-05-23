@@ -1,6 +1,7 @@
 from utils import *
 
 # how to run[Pouta]:
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata.csv -d "cuda:1" -nw 50 -tbs 512 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_SMU.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 50 -tbs 512 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31/metadata.csv -d "cuda:1" -nw 50 -tbs 256 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_NA.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 50 -tbs 512 -vbs 32 -vth 0.3 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
@@ -67,6 +68,65 @@ RELEVANT_ENTITY_TYPES = {
 	'DATE',
 	'TIME',
 }
+
+class VLMImageDataset(Dataset):
+    def __init__(self, img_paths, processor=None, transform=None):
+        self.img_paths = img_paths
+        self.processor = processor
+        self.transform = transform
+    
+    def __len__(self):
+        return len(self.img_paths)
+    
+    def __getitem__(self, idx):
+        img_path = self.img_paths[idx]
+        try:
+            # Load and convert image
+            image = Image.open(img_path).convert("RGB")
+            
+            # Apply transforms if provided
+            if self.transform:
+                image = self.transform(image)
+            
+            return {
+                'image': image,
+                'path': img_path,
+                'index': idx,
+                'success': True
+            }
+        except Exception as e:
+            # Return error information
+            return {
+                'image': None,
+                'path': img_path,
+                'index': idx,
+                'success': False,
+                'error': str(e)
+            }
+
+def collate_vlm_batch(batch):
+    """Custom collate function to handle failed image loads"""
+    successful_items = [item for item in batch if item['success']]
+    failed_items = [item for item in batch if not item['success']]
+    
+    if failed_items:
+        print(f"Failed to load {len(failed_items)} images in this batch")
+        for item in failed_items:
+            print(f"  - {item['path']}: {item['error']}")
+    
+    if not successful_items:
+        return None  # Skip this batch entirely
+    
+    images = [item['image'] for item in successful_items]
+    indices = [item['index'] for item in successful_items]
+    paths = [item['path'] for item in successful_items]
+    
+    return {
+        'images': images,
+        'indices': indices,
+        'paths': paths,
+        'batch_size': len(images)
+    }
 
 def density_based_parameters(embeddings, n_neighbors=15):
 		"""Determine parameters based on local density"""
@@ -2085,6 +2145,7 @@ def get_visual_based_annotation(
 		device_map=device,
 	)
 	model = torch.compile(model, mode="reduce-overhead")
+	print(model.parameters().__next__().dtype)
 	processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=vlm_model_name)
 	
 	print("Precomputing text embeddings...")
@@ -2113,52 +2174,93 @@ def get_visual_based_annotation(
 		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
 
 	img_paths = df['img_path'].tolist()
+
+	dataset = VLMImageDataset(img_paths, processor=processor)
+	dataloader = DataLoader(
+		dataset,
+		batch_size=batch_size,
+		num_workers=num_workers,
+		collate_fn=collate_vlm_batch,
+		pin_memory=torch.cuda.is_available(),
+		prefetch_factor=2,  # Prefetch 2 batches per worker
+		persistent_workers=True,  # Keep workers alive between epochs
+		drop_last=False,
+		shuffle=False  # Maintain order for result mapping
+	)
 	
-	combined_labels = []
-	img_path_batches = [img_paths[i:i+batch_size] for i in range(0, len(img_paths), batch_size)]
+	# Initialize results list
+	combined_labels = [[] for _ in range(len(img_paths))]
 	
-	for batch_idx, batch in enumerate(tqdm(img_path_batches, desc="Processing batched images")):
-		images = []
-		valid_indices = []
-		
-		# Load images with error handling
-		for i, pth in enumerate(batch):
-			try:
-				image = Image.open(pth).convert("RGB")
-				images.append(image)
-				valid_indices.append(i)
-			except Exception as e:
-				print(f"ERROR: failed to load image from {pth} => {e}")
-				# Add placeholder for failed images
-				combined_labels.append([])
-		
-		if not images:  # Skip if no valid images in batch
+	# Process batches
+	for batch_data in tqdm(dataloader, desc="Processing image batches"):
+		if batch_data is None:  # Skip failed batches
 			continue
 		
-		# Process only images (no text processing needed)
+		images = batch_data['images']
+		indices = batch_data['indices']
+		
+		# Process images with processor
 		image_inputs = processor(
 			images=images,
-			padding="max_length",
-			max_num_patches=4096,
 			return_tensors="pt",
 		).to(device)
 		
-		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=True):
 			image_embeddings = model.get_image_features(**image_inputs)
 			image_embeddings = image_embeddings / image_embeddings.norm(dim=-1, keepdim=True)
-			
-			# Compute similarities
 			similarities = image_embeddings @ text_embeddings.T
 		
-		# Process results for each valid image
-		for i, valid_idx in enumerate(valid_indices):
+		# Store results using original indices
+		for i, original_idx in enumerate(indices):
 			topk_probs, topk_indices = similarities[i].topk(topk)
 			topk_labels = [candidate_labels[idx] for idx in topk_indices]
-			combined_labels.append(topk_labels)
+			combined_labels[original_idx] = topk_labels
+
+	# combined_labels = []
+	# img_path_batches = [img_paths[i:i+batch_size] for i in range(0, len(img_paths), batch_size)]
+
+	# for batch_idx, batch in enumerate(tqdm(img_path_batches, desc="Processing batched images")):
+	# 	images = []
+	# 	valid_indices = []
 		
-		# Memory cleanup every few batches
-		if batch_idx % 10 == 0:
-			torch.cuda.empty_cache()
+	# 	# Load images with error handling
+	# 	for i, pth in enumerate(batch):
+	# 		try:
+	# 			image = Image.open(pth).convert("RGB")
+	# 			images.append(image)
+	# 			valid_indices.append(i)
+	# 		except Exception as e:
+	# 			print(f"ERROR: failed to load image from {pth} => {e}")
+	# 			# Add placeholder for failed images
+	# 			combined_labels.append([])
+		
+	# 	if not images:  # Skip if no valid images in batch
+	# 		continue
+		
+	# 	# Process only images (no text processing needed)
+	# 	image_inputs = processor(
+	# 		images=images,
+	# 		padding="max_length",
+	# 		max_num_patches=4096,
+	# 		return_tensors="pt",
+	# 	).to(device)
+		
+	# 	with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+	# 		image_embeddings = model.get_image_features(**image_inputs)
+	# 		image_embeddings = image_embeddings / image_embeddings.norm(dim=-1, keepdim=True)
+			
+	# 		# Compute similarities
+	# 		similarities = image_embeddings @ text_embeddings.T
+		
+	# 	# Process results for each valid image
+	# 	for i, valid_idx in enumerate(valid_indices):
+	# 		topk_probs, topk_indices = similarities[i].topk(topk)
+	# 		topk_labels = [candidate_labels[idx] for idx in topk_indices]
+	# 		combined_labels.append(topk_labels)
+		
+	# 	# Memory cleanup every few batches
+	# 	if batch_idx % 10 == 0:
+	# 		torch.cuda.empty_cache()
 	
 	df['visual_based_labels'] = combined_labels
 	df.to_csv(metadata_fpth, index=False)
@@ -2195,7 +2297,7 @@ def main():
 	parser = argparse.ArgumentParser(description="Multi-label annotation for Historical Archives Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--use_parallel", '-parallel', action="store_true")
-	parser.add_argument("--num_workers", '-nw', type=int, default=10, help="Number of workers for parallel processing")
+	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.25, help="Relevance threshold for textual-based annotation")
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=64)
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=4, help="Batch size for vision processing")

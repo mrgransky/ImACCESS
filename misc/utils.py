@@ -40,15 +40,18 @@ from scipy.cluster.hierarchy import dendrogram, linkage
 from sklearn.neighbors import NearestNeighbors
 import hashlib
 from torch.cuda import get_device_properties, memory_allocated
-
+from torch.utils.data import Dataset, DataLoader
 from kneed import KneeLocator
 from keybert import KeyBERT
-os.environ['TF_ENABLE_ONEDNN_OPTS']='0'
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=FutureWarning)
+# Suppress logging warnings
+os.environ['TF_ENABLE_ONEDNN_OPTS']='0'
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["GRPC_VERBOSITY"] = "ERROR"
+os.environ["GLOG_minloglevel"] = "2"
+
 
 from skimage.filters.rank import entropy
 from skimage.morphology import disk

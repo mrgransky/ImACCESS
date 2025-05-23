@@ -611,8 +611,8 @@ model = AutoModel.from_pretrained(
 	device_map=device,
 	# attn_implementation="sdpa",
 )
-processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=ckpt)
 print(model.parameters().__next__().dtype)
+processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=ckpt)
 
 for i, pth in enumerate(paths):
 	print(f"Processing image {i+1}/{len(paths)}: {pth}")
