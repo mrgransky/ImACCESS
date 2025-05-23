@@ -665,6 +665,13 @@ ckpt = "google/siglip2-so400m-patch16-naflex"
 # ckpt = "kakaobrain/align-base"
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Loading {ckpt} in {device}...")
+model = AutoModel.from_pretrained(
+	pretrained_model_name_or_path=ckpt, 
+	# torch_dtype=torch.float16,
+	device_map=device,
+	# attn_implementation="sdpa",
+)
+processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=ckpt)
 
 for i, url in enumerate(urls):
 	print(f"Processing URL {i+1}/{len(urls)}: {url}")
@@ -674,13 +681,6 @@ for i, url in enumerate(urls):
 		print(f"ERROR: failed to load image from {url} => {e}")
 		continue
 	
-	model = AutoModel.from_pretrained(
-		pretrained_model_name_or_path=ckpt, 
-		# torch_dtype=torch.float16,
-		device_map=device,
-		# attn_implementation="sdpa",
-	)
-	processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=ckpt)
 	inputs = processor(
 		text=texts, 
 		images=image, 
@@ -690,9 +690,9 @@ for i, url in enumerate(urls):
 		return_tensors="pt",
 	).to(device)
 
-	with torch.no_grad():
+	with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 		outputs = model(**inputs)
-
+	torch.cuda.empty_cache()
 	logits_per_image = outputs.logits_per_image
 	probs = torch.sigmoid(logits_per_image)
 	# print(probs.shape, type(probs), probs.dtype, probs.device)
@@ -703,12 +703,6 @@ for i, url in enumerate(urls):
 	for i, idx in enumerate(topk_indices):
 		print(f"{candidate_labels[idx]:<30}{topk_probs[i].item():.5f}")
 
-	# Check available GPU memory if using CUDA
-	if torch.cuda.is_available():
-		gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
-		print(f"Total GPU memory: {gpu_memory:.1f} GB")
-		# Clear cache before processing
-		torch.cuda.empty_cache()
 	print("-" * 100)
 
 # # zero shot classification:
