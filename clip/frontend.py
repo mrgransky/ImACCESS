@@ -539,34 +539,48 @@ from misc.utils import *
 from misc.visualize import *
 
 paths = [
-	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2457/default.jpg",
-	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2752/default.jpg",
-	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-129040",
-	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-165758",
-	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/209/default.jpg",
-	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40750",
-	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/219/default.jpg",
-	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-66759",
-	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-69135",
-	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40652",
-	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-153539",
-	"https://s1.cdn.autoevolution.com/images/gallery/MERCEDESBENZG4-W31--2596_8.jpg",
-	"https://media.cnn.com/api/v1/images/stellar/prod/180207010106-military-parades-us-new-york-1946.jpg",
-	"https://truck-encyclopedia.com/ww1/img/photos/German_WWI_armoured_car_destroyed.jpg",
-	"https://truck-encyclopedia.com/ww1/img/photos/Dart-CC4-production.jpg",
-	"https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/British_wounded_Bernafay_Wood_19_July_1916.jpg/2157px-British_wounded_Bernafay_Wood_19_July_1916.jpg",
-	"https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/LIAZ_MT.jpg/640px-LIAZ_MT.jpg",
-	"https://truck-encyclopedia.com/ww2/us/photos/Dodge_T-203_VF-407_Ambulance_12ton-serie.jpg",
-	"https://truck-encyclopedia.com/ww2/italy/Autocarretta-35.png",
+	"https://digitalcollections.smu.edu/digital/api/singleitem/image/stn/1014/default.jpg",
+	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/3338/default.jpg",
+	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/117/default.jpg",
+	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/292/default.jpg",
+	"https://pbs.twimg.com/media/GriUYMJboAEPvMt?format=jpg&name=large",
+	"https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Norwegian_training_ship_KNM_Haakon_VII_%28A537%29_off_Washington_D.C._%28USA%29%2C_on_9_March_1970_%28K-81807%29.jpg/2279px-Norwegian_training_ship_KNM_Haakon_VII_%28A537%29_off_Washington_D.C._%28USA%29%2C_on_9_March_1970_%28K-81807%29.jpg",
+	"https://upload.wikimedia.org/wikipedia/commons/9/9e/US_Navy_050822-N-6264C-145_A_combined_U.S._Navy_and_Philippine_Navy_task_group_underway_during_the_at-sea_phase_of_exercise_Cooperation_Afloat_Readiness_and_Training_%28CARAT%29_in_the_Philippines.jpg",
+	"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/USS_Valley_Forge_%28CVS-45%29_underway_with_Task_Group_Alfa%2C_in_1959_%28USN_1043094%29.jpg/2104px-USS_Valley_Forge_%28CVS-45%29_underway_with_Task_Group_Alfa%2C_in_1959_%28USN_1043094%29.jpg",
+	"https://upload.wikimedia.org/wikipedia/commons/9/9b/French_soldiers_in_the_Franco-Prussian_War_1870-71.jpg",
+	"https://upload.wikimedia.org/wikipedia/commons/1/1b/British_64_Pounder_Rifled_Muzzle-Loaded_%28RML%29_Gun_on_Moncrieff_disappearing_mount%2C_at_Scaur_Hill_Fort%2C_Bermuda.jpg",
+	"https://upload.wikimedia.org/wikipedia/commons/5/53/Komsomolets_armored_tractor_helsinki_2.jpg",
+	"https://upload.wikimedia.org/wikipedia/commons/4/48/Bundesarchiv_Bild_101I-783-0109-19%2C_Nordafrika%2C_Zugkraftwagen_mit_Flak_%28cropped%29.jpg",
+	"https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/Tatra_T81.jpg/640px-Tatra_T81.jpg",
+	"https://upload.wikimedia.org/wikipedia/commons/b/ba/Bundesarchiv_Bild_101I-203-1696-25%2C_Albanien%2C_Raupenschlepper_Ost_mit_Kanone.jpg",
+	# "https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2457/default.jpg",
+	# "https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2752/default.jpg",
+	# "https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-129040",
+	# "https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-165758",
+	# "https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/209/default.jpg",
+	# "https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40750",
+	# "https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/219/default.jpg",
+	# "https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-66759",
+	# "https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-69135",
+	# "https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40652",
+	# "https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-153539",
+	# "https://s1.cdn.autoevolution.com/images/gallery/MERCEDESBENZG4-W31--2596_8.jpg",
+	# "https://media.cnn.com/api/v1/images/stellar/prod/180207010106-military-parades-us-new-york-1946.jpg",
+	# "https://truck-encyclopedia.com/ww1/img/photos/German_WWI_armoured_car_destroyed.jpg",
+	# "https://truck-encyclopedia.com/ww1/img/photos/Dart-CC4-production.jpg",
+	# "https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/British_wounded_Bernafay_Wood_19_July_1916.jpg/2157px-British_wounded_Bernafay_Wood_19_July_1916.jpg",
+	# "https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/LIAZ_MT.jpg/640px-LIAZ_MT.jpg",
+	# "https://truck-encyclopedia.com/ww2/us/photos/Dodge_T-203_VF-407_Ambulance_12ton-serie.jpg",
+	# "https://truck-encyclopedia.com/ww2/italy/Autocarretta-35.png",
 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/270/default.jpg",
 ]
 
 
 df = pd.read_csv(filepath_or_buffer="/home/farid/datasets/WW_DATASETs/WW_VEHICLES/metadata.csv")
 # paths = df["img_url"].values.tolist()
-paths = df["img_path"].values.tolist()
+# paths = df["img_path"].values.tolist()
 
-topk = 10
+topk = 5
 print(f"parent dir: {parent_dir}")
 print(f"current dir: {current_dir}")
 CATEGORIES_FILE = os.path.join(parent_dir, "misc", "categories.json")

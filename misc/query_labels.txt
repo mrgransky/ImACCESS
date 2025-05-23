@@ -32,6 +32,7 @@ naval training
 naval ship
 naval vessel
 naval warship
+Naval mine
 guided missile
 ballistic missile
 red cross
@@ -89,6 +90,7 @@ Air bomb
 air raid
 air strike
 air attack
+Air assault
 Flag Raising
 Manhattan Project
 Eastern Front
@@ -98,6 +100,10 @@ surge tank
 Water Tank
 soviet union
 Naval Officer
+halftrack vehicle
+half track vehicle
+half-track vehicle
+military vehicle
 army vehicle
 Aerial bomb
 flying bomb
@@ -107,7 +113,6 @@ Army Base
 Army hospital
 military base
 military leader
-military vehicle
 military unit
 military museum
 military men
@@ -240,10 +245,10 @@ locomotive
 railway
 railroad
 captain
-Minesweeper
+Minesweeper vessel
+Minesweeper ship
 Ceremony
 Celebration
-Halftrack
 Kriegsmarine
 ussr
 blitz
