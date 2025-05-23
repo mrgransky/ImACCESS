@@ -11,7 +11,8 @@
 		"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery",
 		"cannon", "anti-tank gun", "grenade", "landmine", "torpedo", "naval mine", "minesweeper vessel",
 		"bunker", "gun emplacement", "observation post", "barbed wire", "trenches",
-		"fortification", "coastal defense", "minefield", "castle", "tower", "fortress",
+		"fortification", "coastal defense", "tank storage",
+		"minefield", "castle", "tower", "fortress",
 		"flag", "military insignia",
 		"medal", "military helmet", "gas mask",
 		"military uniform", "backpack", "entrenching tool", "binoculars", "field telephone",
@@ -22,8 +23,8 @@
 		"wheelbarrow", "leather apron", "blood pressure monitor",
 		"medical chart",
 		"museum", "pavilion structure",
-		"market stall", "monument", "statue", "palace garden",
-		"reindeer", "horse",
+		"market stall", "salesperson", "monument", "statue", "palace garden",
+		"reindeer", "horse", "animal",
 		"wreck", "debris",
 		"collapsed bridge",
 		"casualties", "prisoners", "mass atrocities", "genocide", "war crimes", "forced displacement",
@@ -40,7 +41,7 @@
 		"urban construction", "industrial site", "railroad station", "ferry dock",
 		"harbor port", "bathing area", "palace courtyard",
 		"library", "urban plaza", "cathedral",
-		"palace grounds", "assembly line", "ussr", "soviet union",
+		"palace grounds", "assembly line",
 		"wreckage site", "battle damage", "disaster area", "demolished building", "shipwreck", "plane wreck"
 	],
 	"activity_categories": [
@@ -55,7 +56,7 @@
 		"officer briefing", "civilian interaction", "handshake", "reading",
 		"resting", "writing", "smoking", "conversation", "singing",
 		"tunnel digging", "restoration", "railway maintenance", "wood stacking",
-		"bathing", "portrait", "museum curation",
+		"bathing", "portrait", "photoshooting",
 		"farming harvest", "exhibition",
 		"ferry operation", "train operation", "freight loading",
 		"marine salvage", "demolition", "repair"

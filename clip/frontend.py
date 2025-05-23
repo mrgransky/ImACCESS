@@ -539,6 +539,7 @@ from misc.utils import *
 from misc.visualize import *
 
 paths = [
+	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/259/default.jpg",
 	"https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Hercules.propeller.arp.jpg/1470px-Hercules.propeller.arp.jpg",
 	"https://upload.wikimedia.org/wikipedia/commons/5/53/Airbus_A400M_EC-404_ILA_2012_11_%28cropped2%29.jpg",
 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/stn/1014/default.jpg",
