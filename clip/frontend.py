@@ -665,6 +665,8 @@ ckpt = "google/siglip2-so400m-patch16-naflex"
 # ckpt = "kakaobrain/align-base"
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Loading {ckpt} in {device}...")
+print(f"Total GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
+print(f"Available GPU memory: {torch.cuda.mem_get_info()[0] / 1024**3:.2f} GB")
 model = AutoModel.from_pretrained(
 	pretrained_model_name_or_path=ckpt, 
 	# torch_dtype=torch.float16,
