@@ -2,7 +2,8 @@ import os
 import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
-sys.path.insert(0, parent_dir)
+project_dir = os.path.dirname(parent_dir)
+sys.path.insert(0, project_dir)
 from misc.utils import *
 from misc.visualize import *
 
@@ -33,7 +34,7 @@ finna_api_base_url: str = "https://api.finna.fi/v1/search"
 START_DATE = args.start_date
 END_DATE = args.end_date
 
-meaningless_words_fpth = os.path.join(parent_dir, 'misc', 'meaningless_words.txt')
+meaningless_words_fpth = os.path.join(project_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
 STOPWORDS = list()
 with open(meaningless_words_fpth, 'r') as file_:
@@ -181,7 +182,7 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 	return df
 
 def main():
-	with open(os.path.join(parent_dir, 'misc', 'query_labels_FI.txt'), 'r') as file_:
+	with open(os.path.join(project_dir, 'misc', 'query_labels_FI.txt'), 'r') as file_:
 		all_label_tags = [line.strip().lower() for line in file_]
 	print(type(all_label_tags), len(all_label_tags))
 	all_label_tags = all_label_tags[:136]
@@ -217,7 +218,7 @@ def main():
 	# print(dfs[0])
 	sa_kuva_df_merged_raw = pd.concat(dfs, ignore_index=True)
 
-	json_file_path = os.path.join(parent_dir, 'misc', 'generalized_labels.json')
+	json_file_path = os.path.join(project_dir, 'misc', 'generalized_labels.json')
 
 	if os.path.exists(json_file_path):
 		with open(json_file_path, 'r') as file_:

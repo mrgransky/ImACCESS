@@ -78,6 +78,8 @@ import glob
 import psutil  # For memory usage monitoring
 import tabulate
 import ast
+import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from natsort import natsorted
 from requests.adapters import HTTPAdapter
@@ -104,6 +106,22 @@ nltk.download(
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
+
+def load_categories(file_path: str):
+		print(f"Loading categories from {file_path}")
+		try:
+				with open(file_path, 'r') as file:
+						categories = json.load(file)
+				return categories['object_categories'], categories['scene_categories'], categories['activity_categories']
+		except FileNotFoundError:
+				print("File not found.")
+				return [], [], []  # Return empty lists instead of None
+		except json.JSONDecodeError as e:
+				print(f"Invalid JSON format: {e}")
+				return [], [], []  # Return empty lists instead of None
+		except KeyError as e:
+				print(f"Missing key in JSON: {e}")
+				return [], [], []  # Return empty lists instead of None	
 
 def is_english(
 		text: str, 

@@ -2,15 +2,12 @@ import os
 import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
-sys.path.insert(0, parent_dir)
+project_dir = os.path.dirname(parent_dir)
+sys.path.insert(0, project_dir)
+
 from misc.utils import *
 from misc.visualize import *
-import httpx
-import re
-import json
-from bs4 import BeautifulSoup
-from typing import Dict
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
 
 # local:
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 --img_mean_std
@@ -42,7 +39,7 @@ CUSTOMIZED_COLLECTIONS_STR: str = "!".join(CUSTOMIZED_COLLECTIONS)
 FIGURE_SIZE = (12, 9)
 DPI = 350
 
-meaningless_words_fpth = os.path.join(parent_dir, 'misc', 'meaningless_words.txt')
+meaningless_words_fpth = os.path.join(project_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
 STOPWORDS = list()
 with open(meaningless_words_fpth, 'r') as file_:
@@ -284,7 +281,7 @@ def scrape_item_metadata(doc_url: str) -> Dict:
 
 @measure_execution_time
 def main():
-	with open(os.path.join(parent_dir, 'misc', 'query_labels.txt'), 'r') as file_:
+	with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 		all_label_tags = list(set([line.strip() for line in file_]))
 	print(type(all_label_tags), len(all_label_tags))
 	print(f"{len(all_label_tags)} Query phrases are being processed, please be patient...")
@@ -313,7 +310,7 @@ def main():
 	print(f"Concatinated dfs: {smu_df_merged_raw.shape}")
 
 	print(f"<!> Replacing labels with super classes")
-	json_file_path = os.path.join(parent_dir, 'misc', 'super_labels.json')
+	json_file_path = os.path.join(project_dir, 'misc', 'super_labels.json')
 	if os.path.exists(json_file_path):
 		with open(json_file_path, 'r') as file_:
 			replacement_dict = json.load(file_)

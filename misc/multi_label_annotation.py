@@ -68,98 +68,6 @@ RELEVANT_ENTITY_TYPES = {
 	'TIME',
 }
 
-object_categories = [
-	# Military Vehicles
-	"armoured fighting vehicle", "armoured vehicle", "utility vehicle", "motorcycle",
-	"half-track", "armoured personnel carrier",
-	# "armoured train",
-	"jeep", "military truck", "supply truck", "artillery tractor", "amphibious vehicle",
-	# Aircraft
-	"military aircraft", "fighter aircraft", "bomber aircraft", "reconnaissance aircraft",
-	"seaplane", "biplane", "monoplane",
-	# Naval Vessels
-	"submarine", "destroyer", "cruiser", "battleship", "aircraft carrier",
-	"corvette", "minesweeper", "landing craft", "hospital ship", "troop transport", "tugboat",
-	# Military Personnel
-	"soldier", "infantry", "officer", "pilot", "sailor", "marine", "medical care", "nurse",
-	# Weapons
-	"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery",
-	"cannon", "anti-tank gun", "grenade", "landmine", "torpedo",
-	# Military Infrastructure
-	"bunker", "gun emplacement", "observation post", "barbed wire", "trenches",
-	"fortification", "coastal defense", "minefield",
-	# Military Symbols
-	"military flag", "military insignia",
-	"medal", "military helmet", "gas mask",
-	# Military Equipment
-	"military uniform", "backpack", "entrenching tool", "binoculars", "field telephone",
-	"radio equipment", "parachute", "jerry can", "stretcher",
-	# Infrastructure
-	"construction crane", "tunnel slab", "railway track", "locomotive wheel", "bridge", "dam", "tunnel",
-	"train car", "ferry slip", "locomotive engine", "railway signal", "construction site", "aircraft engine",
-	# Civilian Objects
-	"wheelbarrow", "leather apron", "signature document", "blood pressure monitor",
-	"medical chart",
-	# Cultural
-	"museum", "pavilion structure",
-	"market stall", "religious monument", "basilica statue", "palace garden", "historical plaque",
-	# Animals
-	"reindeer", "horse", 
-	# Damaged Equipment and Infrastructure
-	"wreck", "debris", "damaged vehicle", "damaged aircraft", "damaged ship",
-	"ruined building", "collapsed bridge"
-	# Add more categories as needed
-	"casualties", "prisoners", "mass atrocities", "war crimes",
-]
-
-scene_categories = [
-	# Military Theaters
-	"coastline", "city ruins", "battlefield", "military camp",
-	# Terrain
-	"desert", "forest", "winter forest", "urban area", "mountain", "mountain valley",
-	"field", "rural farmland", "snow-covered field", "ocean", "coastal waters",
-	"river", "river crossing", "bridge", "lake shore", "coastal landscape",
-	# Military Settings
-	"hospital", "cemetery", "aircraft factory",
-	"military depot", "dry dock",
-	# Military Infrastructure
-	"airfield", "naval base", "army barracks", "coastal defense",
-	# Civilian & Cultural
-	"urban construction", "industrial site", "railroad station", "ferry dock",
-	"harbor port", "bathing area", "palace courtyard",
-	"historical plaza", "library hall", "urban plaza", "cathedral",
-	"palace grounds",
-	# Damaged Scenes
-	"wreckage site", "battle damage", "disaster area", "ruined building", "shipwreck", "plane wreck"
-]
-
-activity_categories = [
-	# Combat
-	"fighting", "tank battle", "infantry assault", "naval engagement", "barrage",
-	"firing weapon", "bombing",
-	# Movement
-	"driving", "troop transport", "marching", "reconnaissance flight", "river crossing",
-	# Military Operations
-	"digging trenches", "fortification",
-	# Logistics
-	"loading equipment", "loading ammunition", "evacuating casualties", "aircraft maintenance",
-	# Military Life
-	"training", "receiving briefing", "standing guard", "medical treatment",
-	"distributing supplies",
-	# Ceremonial
-	"military parade", "flag raising", "ceremonial speech", "ceremony",
-	"officer briefing", "civilian interaction", "hand shaking", "reading", "resting", "writing", "smoking",
-	# Civilian & Cultural
-	"tunnel digging", "restoration", "railway maintenance", "wood stacking",
-	"bathing", "portrait", "museum curation",
-	"signature documentation",
-	"farming harvest", "exhibition",
-	# Transport
-	"ferry operation", "train operation", "freight loading",
-	# Damage-Related Activities
-	"marine salvage", "demolition", "repair"
-]
-
 def density_based_parameters(embeddings, n_neighbors=15):
 		"""Determine parameters based on local density"""
 		# Compute nearest neighbors distances
@@ -2144,40 +2052,53 @@ def get_textual_based_annotation(
 
 def get_visual_based_annotation(
 		csv_file: str,
+		st_model_name: str,
 		vlm_model_name: str,
+		batch_size: int,
 		device: str,
+		num_workers: int,
 		verbose: bool,
 		metadata_fpth: str,
-):
+		topk: int=5,
+	):
 	if verbose:
-		print(f"Automatic label extraction from image data".center(160, "-"))
+		print(f"Semi-Supervised label extraction from image data (using VLM) batch_size: {batch_size}".center(160, "-"))
 		print(f"Loading metadata from {csv_file}...")
 	visual_based_annotation_start_time = time.time()
-	dataset_dir = os.path.dirname(csv_file)
-	df = pd.read_csv(csv_file)
+	CATEGORIES_FILE = "categories.json"
+	object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)
+	candidate_labels = list(set(object_categories + scene_categories + activity_categories))
+	texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
 	
+	total_gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3 # GB
+	available_gpu_memory = torch.cuda.mem_get_info()[0] / 1024**3 # GB
+	print(f"Total GPU memory: {total_gpu_memory:.2f} GB")
+	print(f"Available GPU memory: {available_gpu_memory:.2f} GB")
 	model = AutoModel.from_pretrained(
 		pretrained_model_name_or_path=vlm_model_name, 
-		torch_dtype=torch.float16,
+		torch_dtype=torch.float16 if available_gpu_memory < 10 else torch.float32,
 		device_map=device,
 		# attn_implementation="sdpa",
 	)
-	processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=ckpt)
+	processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=vlm_model_name)
+	print(model.parameters().__next__().dtype)
+
+	df = pd.read_csv(csv_file)
 	img_paths = df['img_path'].tolist()
-	for i, url in enumerate(urls):
-		print(f"Processing URL {i+1}/{len(urls)}: {url}")
+	combined_labels = list()
+	for i, pth in tqdm(enumerate(img_paths), total=len(img_paths), desc="Processing Images"):
+		# print(f"Processing image {i+1}/{len(img_paths)}: {pth}")
 		try:
-			image = Image.open(requests.get(url, stream=True).raw).convert("RGB")
+			image = Image.open(pth).convert("RGB")
 		except Exception as e:
-			print(f"ERROR: failed to load image from {url} => {e}")
+			print(f"ERROR: failed to load image from {pth} => {e}")
 			continue
-		
 		inputs = processor(
-			text=texts, 
-			images=image, 
-			padding="max_length", 
+			text=texts,
+			images=image,
+			padding="max_length",
 			max_num_patches=4096,
-			max_length=64, 
+			max_length=64,
 			return_tensors="pt",
 		).to(device)
 
@@ -2186,16 +2107,20 @@ def get_visual_based_annotation(
 		torch.cuda.empty_cache()
 		logits_per_image = outputs.logits_per_image
 		probs = torch.sigmoid(logits_per_image)
-		# print(probs.shape, type(probs), probs.dtype, probs.device)
 		topk_probs, topk_indices = probs[0].topk(topk)
-		print("="*40)
-		print(f"Top-{topk} Predictions:")
-		print("="*40)
-		for i, idx in enumerate(topk_indices):
-			print(f"{candidate_labels[idx]:<30}{topk_probs[i].item():.5f}")
-
-		print("-" * 100)
-
+		topk_labels = [candidate_labels[idx] for idx in topk_indices]
+		combined_labels.append(topk_labels)
+		# print("="*40)
+		# print(f"Top-{topk} Predictions:")
+		# print("="*40)
+		# for i, idx in enumerate(topk_indices):
+		# 	print(f"{candidate_labels[idx]:<30}{topk_probs[i].item():.5f}")
+		# print("-" * 100)
+	# print(f"Generated {len(combined_labels)} visual-based labels")
+	df['visual_based_labels'] = combined_labels
+	df.to_csv(metadata_fpth, index=False)
+	print(f"Visual-based annotation Elapsed time: {time.time() - visual_based_annotation_start_time:.2f} sec".center(160, " "))
+	return combined_labels
 
 def process_text_chunk(nlp, chunk):
 	return [extract_named_entities(nlp=nlp, text=text) for text in chunk]
@@ -2231,7 +2156,7 @@ def main():
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=64)
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=64, help="Batch size for vision processing")
 	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2"], help="Sentence-transformer model name")
-	parser.add_argument("--vlm_model_name", '-vlm', type=str, default="kakaobrain/align-base", choices=["kakaobrain/align-base", "google/siglip2-so400m-patch16-naflex"], help="Vision-Language model name")
+	parser.add_argument("--vlm_model_name", '-vlm', type=str, default="google/siglip2-so400m-patch16-naflex", choices=["kakaobrain/align-base", "google/siglip2-so400m-patch16-naflex"], help="Vision-Language model name")
 	parser.add_argument("--ner_model_name", '-ner', type=str, default="Babelscape/wikineural-multilingual-ner", choices=["dslim/bert-large-NER", "dslim/bert-base-NER", "Babelscape/wikineural-multilingual-ner"], help="NER model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 

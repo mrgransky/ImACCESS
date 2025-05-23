@@ -2,7 +2,8 @@ import os
 import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
-sys.path.insert(0, parent_dir)
+project_dir = os.path.dirname(parent_dir)
+sys.path.insert(0, project_dir)
 from misc.utils import *
 from misc.visualize import *
 
@@ -27,7 +28,7 @@ parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='V
 args, unknown = parser.parse_known_args()
 print_args_table(args=args, parser=parser)
 
-meaningless_words_fpth = os.path.join(parent_dir, 'misc', 'meaningless_words.txt')
+meaningless_words_fpth = os.path.join(project_dir, 'misc', 'meaningless_words.txt')
 # STOPWORDS = nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())
 STOPWORDS = list()
 with open(meaningless_words_fpth, 'r') as file_:

@@ -529,108 +529,16 @@ from visualize import *
 # print("\nLogits info:")
 # print(f"Type: {type(logits)}, Shape: {logits.shape}, Dtype: {logits.dtype}, Device: {logits.device}")
 
+import os
+import sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
 
-import torch
-from transformers import pipeline
-from transformers import AutoModel, AutoProcessor
-from io import BytesIO
-from PIL import Image
-import pandas as pd
+from misc.utils import *
+from misc.visualize import *
 
-object_categories = [
-	# Military Vehicles
-	"armoured fighting vehicle", "utility vehicle", "motorcycle",
-	"half-track", "armoured personnel carrier", "ambulance",
-	# "armoured train",
-	"jeep", "military truck", "supply truck", "artillery tractor", "amphibious vehicle",
-	# Aircraft
-	"military aircraft", "fighter aircraft", "bomber aircraft", "reconnaissance aircraft",
-	"seaplane", "biplane", "monoplane",
-	# Naval Vessels
-	"submarine", "destroyer", "cruiser", "battleship", "aircraft carrier",
-	"corvette", "minesweeper", "landing craft", "hospital ship", "troop transport", "tugboat",
-	# Military Personnel
-	"soldier", "infantry", "officer", "pilot", "sailor", "marine", "medical care", "nurse",
-	# Weapons
-	"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery",
-	"cannon", "anti-tank gun", "grenade", "landmine", "torpedo",
-	# Military Infrastructure
-	"bunker", "gun emplacement", "observation post", "barbed wire", "trenches",
-	"fortification", "coastal defense", "minefield",
-	# Military Symbols
-	"military flag", "military insignia",
-	"medal", "military helmet", "gas mask",
-	# Military Equipment
-	"military uniform", "backpack", "entrenching tool", "binoculars", "field telephone",
-	"radio equipment", "parachute", "jerry can", "stretcher",
-	# Infrastructure
-	"construction crane", "tunnel slab", "railway track", "locomotive wheel", "bridge", "dam", "tunnel",
-	"train car", "ferry slip", "locomotive engine", "railway signal", "construction site", "aircraft engine",
-	# Civilian Objects
-	"wheelbarrow", "leather apron", "blood pressure monitor",
-	"medical chart",
-	# Cultural
-	"museum", "pavilion structure",
-	"market stall", "religious monument", "basilica statue", "palace garden", "historical plaque",
-	# Animals
-	"reindeer", "horse", 
-	# Damaged Equipment and Infrastructure
-	"wreck", "debris", "damaged vehicle", "damaged aircraft", "damaged ship",
-	"ruined building", "collapsed bridge"
-	# Add more categories as needed
-	"casualties", "prisoners", "mass atrocities", "genocide", "war crimes", "refugee", "forced displacement",
-	"maintenance worker",
-]
-
-scene_categories = [
-	# Military Theaters
-	"coastline", "city ruins", "battlefield", "military camp",
-	# Terrain
-	"desert", "forest", "winter forest", "urban area", "mountain", "mountain valley",
-	"field", "rural farmland", "snow field", "ocean", "coastal waters",
-	"river", "river crossing", "bridge", "lake shore", "coastal landscape",
-	# Military Settings
-	"hospital", "cemetery", "aircraft factory",
-	"military depot", "dry dock",
-	# Military Infrastructure
-	"airfield", "naval base", "army barracks", "coastal defense",
-	# Civilian & Cultural
-	"urban construction", "industrial site", "railroad station", "ferry dock",
-	"harbor port", "bathing area", "palace courtyard",
-	"historical plaza", "library hall", "urban plaza", "cathedral",
-	"palace grounds",
-	# Damaged Scenes
-	"wreckage site", "battle damage", "disaster area", "ruined building", "shipwreck", "plane wreck"
-]
-
-activity_categories = [
-	# Combat
-	"fighting", "tank battle", "infantry assault", "naval engagement", "barrage",
-	"firing weapon", "bombing",
-	# Movement
-	"driving", "troop transport", "marching", "reconnaissance flight", "river crossing",
-	# Military Operations
-	"digging trenches", "fortification",
-	# Logistics
-	"loading equipment", "loading ammunition", "evacuating casualties", "aircraft maintenance",
-	# Military Life
-	"training", "receiving briefing", "standing guard", "medical treatment",
-	"distributing supplies",
-	# Ceremonial
-	"military parade", "flag raising", "ceremonial speech", "ceremony",
-	"officer briefing", "civilian interaction", "hand shaking", "reading", 
-	"resting", "writing", "smoking", "conversation", "singing",
-	# Civilian & Cultural
-	"tunnel digging", "restoration", "railway maintenance", "wood stacking",
-	"bathing", "portrait", "museum curation",
-	"farming harvest", "exhibition",
-	# Transport
-	"ferry operation", "train operation", "freight loading",
-	# Damage-Related Activities
-	"marine salvage", "demolition", "repair"
-]
-
-urls = [
+paths = [
 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2457/default.jpg",
 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2752/default.jpg",
 	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-129040",
@@ -653,7 +561,17 @@ urls = [
 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/270/default.jpg",
 ]
 
-topk = 5
+
+df = pd.read_csv(filepath_or_buffer="/home/farid/datasets/WW_DATASETs/WW_VEHICLES/metadata.csv")
+# paths = df["img_url"].values.tolist()
+paths = df["img_path"].values.tolist()
+
+topk = 10
+print(f"parent dir: {parent_dir}")
+print(f"current dir: {current_dir}")
+CATEGORIES_FILE = os.path.join(parent_dir, "misc", "categories.json")
+print(f"CATEGORIES_FILE: {CATEGORIES_FILE}")
+object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)	
 candidate_labels = list(set(object_categories + scene_categories + activity_categories))
 texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
 
@@ -679,12 +597,15 @@ model = AutoModel.from_pretrained(
 processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=ckpt)
 print(model.parameters().__next__().dtype)
 
-for i, url in enumerate(urls):
-	print(f"Processing URL {i+1}/{len(urls)}: {url}")
+for i, pth in enumerate(paths):
+	print(f"Processing image {i+1}/{len(paths)}: {pth}")
 	try:
-		image = Image.open(requests.get(url, stream=True).raw).convert("RGB")
+		if urlparse(pth).scheme in ['http', 'https']:
+			image = Image.open(requests.get(pth, stream=True).raw).convert("RGB")
+		else:
+			image = Image.open(pth).convert("RGB")
 	except Exception as e:
-		print(f"ERROR: failed to load image from {url} => {e}")
+		print(f"ERROR: failed to load image from {pth} => {e}")
 		continue
 	
 	inputs = processor(
@@ -703,6 +624,8 @@ for i, url in enumerate(urls):
 	probs = torch.sigmoid(logits_per_image)
 	# print(probs.shape, type(probs), probs.dtype, probs.device)
 	topk_probs, topk_indices = probs[0].topk(topk)
+	print(type(topk_probs), topk_probs.shape, topk_probs.dtype, topk_probs.device)
+	print(type(topk_indices), topk_indices.shape, topk_indices.dtype, topk_indices.device)
 	print("="*40)
 	print(f"Top-{topk} Predictions:")
 	print("="*40)
@@ -717,10 +640,10 @@ for i, url in enumerate(urls):
 
 # # df = pd.read_csv(filepath_or_buffer="/home/farid/datasets/WW_DATASETs/WW_VEHICLES/metadata.csv")
 # # print(df.shape)
-# # urls = df["img_url"].values.tolist()
-# print(f"Loaded {len(urls)} urls")
-# for i, url in enumerate(urls):
-# 	print(f"Processing URL {i+1}/{len(urls)}: {url}")
+# # paths = df["img_url"].values.tolist()
+# print(f"Loaded {len(paths)} paths")
+# for i, url in enumerate(paths):
+# 	print(f"Processing URL {i+1}/{len(paths)}: {url}")
 # 	try:
 # 		image = Image.open(requests.get(url, stream=True).raw).convert("RGB")
 # 	except Exception as e:
