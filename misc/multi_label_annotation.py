@@ -1,7 +1,7 @@
 from utils import *
 
 # how to run[Pouta]:
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 50 -tbs 512 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 50 -tbs 512 -vbs 128 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31/metadata.csv -d "cuda:1" -nw 50 -tbs 256 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_NA.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 50 -tbs 512 -vbs 512 -vth 0.3 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -d "cuda:3" -nw 50 -tbs 512 -vbs 512 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_HISTORY_X4.out &
@@ -67,6 +67,34 @@ RELEVANT_ENTITY_TYPES = {
 	'DATE',
 	'TIME',
 }
+
+from torch.utils.data import Dataset, DataLoader
+
+class ImageDataset(Dataset):
+    def __init__(self, img_paths, processor, texts, device):
+        self.img_paths = img_paths
+        self.processor = processor
+        self.texts = texts
+        self.device = device
+
+    def __len__(self):
+        return len(self.img_paths)
+
+    def __getitem__(self, idx):
+        try:
+            image = Image.open(self.img_paths[idx]).convert("RGB")
+            inputs = self.processor(
+                text=self.texts,
+                images=image,
+                padding="max_length",
+                max_num_patches=4096,
+                max_length=64,
+                return_tensors="pt",
+            ).to(self.device)
+            return inputs
+        except Exception as e:
+            print(f"ERROR: failed to load image from {self.img_paths[idx]} => {e}")
+            return None
 
 def density_based_parameters(embeddings, n_neighbors=15):
 		"""Determine parameters based on local density"""
@@ -2075,7 +2103,7 @@ def get_visual_based_annotation(
 	print(f"Available GPU memory: {available_gpu_memory:.2f} GB ({gpu_name})")
 	model = AutoModel.from_pretrained(
 		pretrained_model_name_or_path=vlm_model_name, 
-		torch_dtype=torch.float16 if available_gpu_memory < 10 else torch.float32,
+		torch_dtype=torch.float16 if available_gpu_memory < 7 else torch.float32,
 		device_map=device,
 	)
 	processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=vlm_model_name)
@@ -2098,18 +2126,22 @@ def get_visual_based_annotation(
 	if verbose:
 		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
 
-
 	img_paths = df['img_path'].tolist()
-	combined_labels = list()
-	for i, pth in tqdm(enumerate(img_paths), total=len(img_paths), desc="Processing Images"):
-		try:
-			image = Image.open(pth).convert("RGB")
-		except Exception as e:
-			print(f"ERROR: failed to load image from {pth} => {e}")
-			continue
+	combined_labels = []
+	img_path_batches = [img_paths[i:i+batch_size] for i in range(0, len(img_paths), batch_size)]
+
+	for batch in tqdm(img_path_batches, desc="Processing Image Batches"):
+		images = []
+		for pth in batch:
+			try:
+				image = Image.open(pth).convert("RGB")
+				images.append(image)
+			except Exception as e:
+				print(f"ERROR: failed to load image from {pth} => {e}")
+		
 		inputs = processor(
 			text=texts,
-			images=image,
+			images=images,
 			padding="max_length",
 			max_num_patches=4096,
 			max_length=64,
@@ -2117,12 +2149,42 @@ def get_visual_based_annotation(
 		).to(device)
 		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 			outputs = model(**inputs)
+
 		torch.cuda.empty_cache()
-		logits_per_image = outputs.logits_per_image
-		probs = torch.sigmoid(logits_per_image)
-		topk_probs, topk_indices = probs[0].topk(topk)
-		topk_labels = [candidate_labels[idx] for idx in topk_indices]
-		combined_labels.append(topk_labels)
+
+		# Process outputs for each image in the batch
+		for i in range(len(batch)):
+			logits_per_image = outputs.logits_per_image[i]
+			probs = torch.sigmoid(logits_per_image)
+			topk_probs, topk_indices = probs.topk(topk)
+			topk_labels = [candidate_labels[idx] for idx in topk_indices]
+			combined_labels.append(topk_labels)
+
+
+
+	# for i, pth in tqdm(enumerate(img_paths), total=len(img_paths), desc="Processing Images"):
+	# 	try:
+	# 		image = Image.open(pth).convert("RGB")
+	# 	except Exception as e:
+	# 		print(f"ERROR: failed to load image from {pth} => {e}")
+	# 		continue
+	# 	inputs = processor(
+	# 		text=texts,
+	# 		images=image,
+	# 		padding="max_length",
+	# 		max_num_patches=4096,
+	# 		max_length=64,
+	# 		return_tensors="pt",
+	# 	).to(device)
+	# 	with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+	# 		outputs = model(**inputs)
+	# 	torch.cuda.empty_cache()
+	# 	logits_per_image = outputs.logits_per_image
+	# 	probs = torch.sigmoid(logits_per_image)
+	# 	topk_probs, topk_indices = probs[0].topk(topk)
+	# 	topk_labels = [candidate_labels[idx] for idx in topk_indices]
+	# 	combined_labels.append(topk_labels)
+
 	df['visual_based_labels'] = combined_labels
 	df.to_csv(metadata_fpth, index=False)
 	print(f"Visual-based annotation Elapsed time: {time.time() - visual_based_annotation_start_time:.2f} sec".center(160, " "))
@@ -2160,7 +2222,7 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=10, help="Number of workers for parallel processing")
 	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.25, help="Relevance threshold for textual-based annotation")
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=64)
-	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=64, help="Batch size for vision processing")
+	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=8, help="Batch size for vision processing")
 	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2"], help="Sentence-transformer model name")
 	parser.add_argument("--vlm_model_name", '-vlm', type=str, default="google/siglip2-so400m-patch16-naflex", choices=["kakaobrain/align-base", "google/siglip2-so400m-patch16-naflex"], help="Vision-Language model name")
 	parser.add_argument("--ner_model_name", '-ner', type=str, default="Babelscape/wikineural-multilingual-ner", choices=["dslim/bert-large-NER", "dslim/bert-base-NER", "Babelscape/wikineural-multilingual-ner"], help="NER model name")
