@@ -555,25 +555,26 @@ paths = [
 	"https://upload.wikimedia.org/wikipedia/commons/4/48/Bundesarchiv_Bild_101I-783-0109-19%2C_Nordafrika%2C_Zugkraftwagen_mit_Flak_%28cropped%29.jpg",
 	"https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/Tatra_T81.jpg/640px-Tatra_T81.jpg",
 	"https://upload.wikimedia.org/wikipedia/commons/b/ba/Bundesarchiv_Bild_101I-203-1696-25%2C_Albanien%2C_Raupenschlepper_Ost_mit_Kanone.jpg",
-	# "https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2457/default.jpg",
-	# "https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2752/default.jpg",
-	# "https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-129040",
-	# "https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-165758",
-	# "https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/209/default.jpg",
-	# "https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40750",
-	# "https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/219/default.jpg",
-	# "https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-66759",
-	# "https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-69135",
-	# "https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40652",
-	# "https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-153539",
-	# "https://s1.cdn.autoevolution.com/images/gallery/MERCEDESBENZG4-W31--2596_8.jpg",
-	# "https://media.cnn.com/api/v1/images/stellar/prod/180207010106-military-parades-us-new-york-1946.jpg",
-	# "https://truck-encyclopedia.com/ww1/img/photos/German_WWI_armoured_car_destroyed.jpg",
-	# "https://truck-encyclopedia.com/ww1/img/photos/Dart-CC4-production.jpg",
-	# "https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/British_wounded_Bernafay_Wood_19_July_1916.jpg/2157px-British_wounded_Bernafay_Wood_19_July_1916.jpg",
-	# "https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/LIAZ_MT.jpg/640px-LIAZ_MT.jpg",
-	# "https://truck-encyclopedia.com/ww2/us/photos/Dodge_T-203_VF-407_Ambulance_12ton-serie.jpg",
-	# "https://truck-encyclopedia.com/ww2/italy/Autocarretta-35.png",
+	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2457/default.jpg",
+	"https://i.pinimg.com/564x/eb/1c/49/eb1c49ba56173d282bd6f37914b9f5a1.jpg",
+	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2752/default.jpg",
+	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-129040",
+	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-165758",
+	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/209/default.jpg",
+	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40750",
+	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/219/default.jpg",
+	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-66759",
+	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-69135",
+	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40652",
+	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-153539",
+	"https://s1.cdn.autoevolution.com/images/gallery/MERCEDESBENZG4-W31--2596_8.jpg",
+	"https://media.cnn.com/api/v1/images/stellar/prod/180207010106-military-parades-us-new-york-1946.jpg",
+	"https://truck-encyclopedia.com/ww1/img/photos/German_WWI_armoured_car_destroyed.jpg",
+	"https://truck-encyclopedia.com/ww1/img/photos/Dart-CC4-production.jpg",
+	"https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/British_wounded_Bernafay_Wood_19_July_1916.jpg/2157px-British_wounded_Bernafay_Wood_19_July_1916.jpg",
+	"https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/LIAZ_MT.jpg/640px-LIAZ_MT.jpg",
+	"https://truck-encyclopedia.com/ww2/us/photos/Dodge_T-203_VF-407_Ambulance_12ton-serie.jpg",
+	"https://truck-encyclopedia.com/ww2/italy/Autocarretta-35.png",
 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/270/default.jpg",
 ]
 
@@ -640,8 +641,8 @@ for i, pth in enumerate(paths):
 	probs = torch.sigmoid(logits_per_image)
 	# print(probs.shape, type(probs), probs.dtype, probs.device)
 	topk_probs, topk_indices = probs[0].topk(topk)
-	print(type(topk_probs), topk_probs.shape, topk_probs.dtype, topk_probs.device)
-	print(type(topk_indices), topk_indices.shape, topk_indices.dtype, topk_indices.device)
+	# print(type(topk_probs), topk_probs.shape, topk_probs.dtype, topk_probs.device)
+	# print(type(topk_indices), topk_indices.shape, topk_indices.dtype, topk_indices.device)
 	print("="*40)
 	print(f"Top-{topk} Predictions:")
 	print("="*40)

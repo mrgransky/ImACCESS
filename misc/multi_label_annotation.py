@@ -2063,31 +2063,45 @@ def get_visual_based_annotation(
 	):
 	if verbose:
 		print(f"Semi-Supervised label extraction from image data (using VLM) batch_size: {batch_size}".center(160, "-"))
-		print(f"Loading metadata from {csv_file}...")
 	visual_based_annotation_start_time = time.time()
 	CATEGORIES_FILE = "categories.json"
 	object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)
 	candidate_labels = list(set(object_categories + scene_categories + activity_categories))
 	texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
-	
+	gpu_name = torch.cuda.get_device_name(device)
 	total_gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3 # GB
 	available_gpu_memory = torch.cuda.mem_get_info()[0] / 1024**3 # GB
-	print(f"Total GPU memory: {total_gpu_memory:.2f} GB")
-	print(f"Available GPU memory: {available_gpu_memory:.2f} GB")
+	print(f"Total GPU memory: {total_gpu_memory:.2f} GB ({gpu_name})")
+	print(f"Available GPU memory: {available_gpu_memory:.2f} GB ({gpu_name})")
 	model = AutoModel.from_pretrained(
 		pretrained_model_name_or_path=vlm_model_name, 
 		torch_dtype=torch.float16 if available_gpu_memory < 10 else torch.float32,
 		device_map=device,
-		# attn_implementation="sdpa",
 	)
 	processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=vlm_model_name)
 	print(model.parameters().__next__().dtype)
 
-	df = pd.read_csv(csv_file)
+	if verbose:
+		print(f"Loading metadata from {csv_file}...")
+	dtypes = {
+		'doc_id': str, 'id': str, 'label': str, 'title': str,
+		'description': str, 'img_url': str, 'enriched_document_description': str,
+		'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
+		'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+	}
+	df = pd.read_csv(
+		filepath_or_buffer=csv_file,
+		on_bad_lines='skip',
+		dtype=dtypes,
+		low_memory=False,
+	)
+	if verbose:
+		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
+
+
 	img_paths = df['img_path'].tolist()
 	combined_labels = list()
 	for i, pth in tqdm(enumerate(img_paths), total=len(img_paths), desc="Processing Images"):
-		# print(f"Processing image {i+1}/{len(img_paths)}: {pth}")
 		try:
 			image = Image.open(pth).convert("RGB")
 		except Exception as e:
@@ -2101,7 +2115,6 @@ def get_visual_based_annotation(
 			max_length=64,
 			return_tensors="pt",
 		).to(device)
-
 		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 			outputs = model(**inputs)
 		torch.cuda.empty_cache()
@@ -2110,13 +2123,6 @@ def get_visual_based_annotation(
 		topk_probs, topk_indices = probs[0].topk(topk)
 		topk_labels = [candidate_labels[idx] for idx in topk_indices]
 		combined_labels.append(topk_labels)
-		# print("="*40)
-		# print(f"Top-{topk} Predictions:")
-		# print("="*40)
-		# for i, idx in enumerate(topk_indices):
-		# 	print(f"{candidate_labels[idx]:<30}{topk_probs[i].item():.5f}")
-		# print("-" * 100)
-	# print(f"Generated {len(combined_labels)} visual-based labels")
 	df['visual_based_labels'] = combined_labels
 	df.to_csv(metadata_fpth, index=False)
 	print(f"Visual-based annotation Elapsed time: {time.time() - visual_based_annotation_start_time:.2f} sec".center(160, " "))
