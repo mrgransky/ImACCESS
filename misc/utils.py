@@ -108,20 +108,20 @@ HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 
 def load_categories(file_path: str):
-		print(f"Loading categories from {file_path}")
-		try:
-				with open(file_path, 'r') as file:
-						categories = json.load(file)
-				return categories['object_categories'], categories['scene_categories'], categories['activity_categories']
-		except FileNotFoundError:
-				print("File not found.")
-				return [], [], []  # Return empty lists instead of None
-		except json.JSONDecodeError as e:
-				print(f"Invalid JSON format: {e}")
-				return [], [], []  # Return empty lists instead of None
-		except KeyError as e:
-				print(f"Missing key in JSON: {e}")
-				return [], [], []  # Return empty lists instead of None	
+	print(f"Loading categories from {file_path}")
+	try:
+		with open(file_path, 'r') as file:
+			categories = json.load(file)
+		return categories['object_categories'], categories['scene_categories'], categories['activity_categories']
+	except FileNotFoundError:
+		print("File not found.")
+		return [], [], []  # Return empty lists instead of None
+	except json.JSONDecodeError as e:
+		print(f"Invalid JSON format: {e}")
+		return [], [], []  # Return empty lists instead of None
+	except KeyError as e:
+		print(f"Missing key in JSON: {e}")
+		return [], [], []  # Return empty lists instead of None	
 
 def is_english(
 		text: str, 
@@ -179,16 +179,24 @@ def print_args_table(args, parser):
 		table_data.append([key, value, arg_type])
 	print(tabulate.tabulate(table_data, headers=['Argument', 'Value', 'Type'], tablefmt='orgtbl'))
 
-def set_seeds(seed:int=42, debug:bool=False):
-	random.seed(seed)
-	np.random.seed(seed)
-	torch.manual_seed(seed)
-	if torch.cuda.is_available():
-		torch.cuda.manual_seed(seed)
-		torch.cuda.manual_seed_all(seed)
-		if debug: # slows down training but ensures reproducibility
-			torch.backends.cudnn.deterministic = True
-			torch.backends.cudnn.benchmark = False
+def set_seeds(seed: int = 42, debug: bool = False, enable_optimizations: bool = True):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    
+    if debug:  # slows down training but ensures reproducibility
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        # Disable optimizations for debug mode
+        torch.backends.cuda.matmul.allow_tf32 = False
+    elif enable_optimizations:  # Enable optimizations for performance
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cuda.matmul.allow_tf32 = True
+        # Additional optimizations
+        torch.backends.cudnn.allow_tf32 = True
 
 def format_elapsed_time(seconds):
 	"""
