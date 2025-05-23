@@ -665,15 +665,19 @@ ckpt = "google/siglip2-so400m-patch16-naflex"
 # ckpt = "kakaobrain/align-base"
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Loading {ckpt} in {device}...")
-print(f"Total GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
-print(f"Available GPU memory: {torch.cuda.mem_get_info()[0] / 1024**3:.2f} GB")
+total_gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3 # GB
+available_gpu_memory = torch.cuda.mem_get_info()[0] / 1024**3 # GB
+print(f"Total GPU memory: {total_gpu_memory:.2f} GB")
+print(f"Available GPU memory: {available_gpu_memory:.2f} GB")
+
 model = AutoModel.from_pretrained(
 	pretrained_model_name_or_path=ckpt, 
-	# torch_dtype=torch.float16,
+	torch_dtype=torch.float16 if available_gpu_memory < 10 else torch.float32,
 	device_map=device,
 	# attn_implementation="sdpa",
 )
 processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=ckpt)
+print(model.parameters().__next__().dtype)
 
 for i, url in enumerate(urls):
 	print(f"Processing URL {i+1}/{len(urls)}: {url}")
