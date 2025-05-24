@@ -1812,8 +1812,10 @@ def batch_filter_by_relevance(
 			# Dynamically adjust batch size based on GPU memory
 			adjusted_batch_size = get_safe_batch_size(batch_size, batch_texts, batch_labels_list)
 			if verbose and is_cuda and adjusted_batch_size != batch_size:
-					print(f"Adjusted batch_size to {adjusted_batch_size} due to GPU memory constraints "
-								f"(free: {torch.cuda.memory_allocated(device)/1024**2:.2f} MiB)")
+				print(
+					f"Adjusted batch_size to {adjusted_batch_size} due to GPU memory constraints "
+					f"(free: {torch.cuda.memory_allocated(device)/1024**2:.2f} MiB)"
+				)
 			# Encode batch texts with retries
 			text_embeddings = None
 			current_batch_size = adjusted_batch_size
