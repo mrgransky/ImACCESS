@@ -630,7 +630,7 @@ for i, pth in enumerate(paths):
 		images=image, 
 		padding="max_length", 
 		max_num_patches=4096,
-		max_length=64, 
+		max_length=64, # = max_position_embeddings
 		return_tensors="pt",
 	).to(device)
 
