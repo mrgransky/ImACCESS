@@ -579,7 +579,6 @@ paths = [
 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/270/default.jpg",
 ]
 
-
 df = pd.read_csv(filepath_or_buffer="/home/farid/datasets/WW_DATASETs/WW_VEHICLES/metadata.csv")
 # paths = df["img_url"].values.tolist()
 # paths = df["img_path"].values.tolist()
