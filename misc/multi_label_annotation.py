@@ -2119,7 +2119,7 @@ def get_visual_based_annotation(
 		num_workers: int,
 		verbose: bool,
 		metadata_fpth: str,
-		topk: int = 5,
+		topk: int = 3,
 	):
 	if verbose:
 		print(f"Semi-Supervised label extraction from image data (using VLM) batch_size: {batch_size}".center(160, "-"))
