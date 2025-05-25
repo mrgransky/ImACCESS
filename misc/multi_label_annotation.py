@@ -70,63 +70,63 @@ RELEVANT_ENTITY_TYPES = {
 }
 
 class VLMImageDataset(Dataset):
-    def __init__(self, img_paths, processor=None, transform=None):
-        self.img_paths = img_paths
-        self.processor = processor
-        self.transform = transform
-    
-    def __len__(self):
-        return len(self.img_paths)
-    
-    def __getitem__(self, idx):
-        img_path = self.img_paths[idx]
-        try:
-            # Load and convert image
-            image = Image.open(img_path).convert("RGB")
-            
-            # Apply transforms if provided
-            if self.transform:
-                image = self.transform(image)
-            
-            return {
-                'image': image,
-                'path': img_path,
-                'index': idx,
-                'success': True
-            }
-        except Exception as e:
-            # Return error information
-            return {
-                'image': None,
-                'path': img_path,
-                'index': idx,
-                'success': False,
-                'error': str(e)
-            }
+		def __init__(self, img_paths, processor=None, transform=None):
+				self.img_paths = img_paths
+				self.processor = processor
+				self.transform = transform
+		
+		def __len__(self):
+				return len(self.img_paths)
+		
+		def __getitem__(self, idx):
+				img_path = self.img_paths[idx]
+				try:
+						# Load and convert image
+						image = Image.open(img_path).convert("RGB")
+						
+						# Apply transforms if provided
+						if self.transform:
+								image = self.transform(image)
+						
+						return {
+								'image': image,
+								'path': img_path,
+								'index': idx,
+								'success': True
+						}
+				except Exception as e:
+						# Return error information
+						return {
+								'image': None,
+								'path': img_path,
+								'index': idx,
+								'success': False,
+								'error': str(e)
+						}
 
 def collate_vlm_batch(batch):
-    """Custom collate function to handle failed image loads"""
-    successful_items = [item for item in batch if item['success']]
-    failed_items = [item for item in batch if not item['success']]
-    
-    if failed_items:
-        print(f"Failed to load {len(failed_items)} images in this batch")
-        for item in failed_items:
-            print(f"  - {item['path']}: {item['error']}")
-    
-    if not successful_items:
-        return None  # Skip this batch entirely
-    
-    images = [item['image'] for item in successful_items]
-    indices = [item['index'] for item in successful_items]
-    paths = [item['path'] for item in successful_items]
-    
-    return {
-        'images': images,
-        'indices': indices,
-        'paths': paths,
-        'batch_size': len(images)
-    }
+		"""Custom collate function to handle failed image loads"""
+		successful_items = [item for item in batch if item['success']]
+		failed_items = [item for item in batch if not item['success']]
+		
+		if failed_items:
+				print(f"Failed to load {len(failed_items)} images in this batch")
+				for item in failed_items:
+						print(f"  - {item['path']}: {item['error']}")
+		
+		if not successful_items:
+				return None  # Skip this batch entirely
+		
+		images = [item['image'] for item in successful_items]
+		indices = [item['index'] for item in successful_items]
+		paths = [item['path'] for item in successful_items]
+		
+		return {
+				'images': images,
+				'indices': indices,
+				'paths': paths,
+				'batch_size': len(images)
+		}
 
 def density_based_parameters(embeddings, n_neighbors=15):
 		"""Determine parameters based on local density"""
@@ -1755,6 +1755,67 @@ def combine_and_clean_labels(ner_labels, keywords, topic_labels, user_query, tex
 		return sorted(set(final_labels))
 
 def batch_filter_by_relevance(
+		sent_model: SentenceTransformer,
+		texts: List[str],
+		all_labels_list: List[List[str]],
+		threshold: float,
+		batch_size: int,
+):
+		"""Memory-efficient relevance filtering with adaptive batching"""
+		
+		results = []
+		
+		# Pre-encode all texts once
+		print("Pre-encoding texts...")
+		try:
+				text_embeddings = sent_model.encode(
+						texts, 
+						batch_size=batch_size,
+						show_progress_bar=False,
+						convert_to_numpy=True
+				)
+		except torch.cuda.OutOfMemoryError:
+				# Fallback to smaller batches
+				text_embeddings = []
+				for i in tqdm(range(0, len(texts), batch_size // 2), desc="Encoding texts (small batches)"):
+						batch = texts[i:i + batch_size // 2]
+						batch_emb = sent_model.encode(batch, convert_to_numpy=True, show_progress_bar=False)
+						text_embeddings.extend(batch_emb)
+				text_embeddings = np.array(text_embeddings)
+		
+		# Process labels efficiently
+		for i, (text_emb, labels) in enumerate(tqdm(zip(text_embeddings, all_labels_list), total=len(texts), desc="Filtering labels")):
+				if not labels:
+						results.append([])
+						continue
+				
+				# Dynamic batch size based on number of labels
+				label_batch_size = min(len(labels), batch_size)
+				if len(labels) > 100:  # Large label sets
+						label_batch_size = batch_size // 4
+				
+				try:
+						label_embeddings = sent_model.encode(
+								labels, 
+								batch_size=label_batch_size,
+								show_progress_bar=False,
+								convert_to_numpy=True
+						)
+						
+						similarities = np.dot(label_embeddings, text_emb) / (
+								np.linalg.norm(label_embeddings, axis=1) * np.linalg.norm(text_emb) + 1e-8
+						)
+						
+						relevant_indices = np.where(similarities > threshold)[0]
+						results.append([labels[idx] for idx in relevant_indices])
+						
+				except Exception as e:
+						print(f"Error processing labels for text {i}: {e}")
+						results.append([])
+		
+		return results
+
+def batch_filter_by_relevance_old(
 		sent_model: SentenceTransformer,
 		texts: list,
 		all_labels_list: list[list[str]],
