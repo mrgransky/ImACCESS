@@ -2207,7 +2207,8 @@ def get_visual_based_annotation(
 		torch_dtype=torch.float16 if available_gpu_memory < 7 else torch.float32,
 		device_map=device,
 	)
-	model = torch.compile(model, mode="reduce-overhead")
+	if available_gpu_memory > 7:
+		model = torch.compile(model, mode="reduce-overhead")
 	print(model.parameters().__next__().dtype)
 	processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=vlm_model_name)
 	
@@ -2237,95 +2238,113 @@ def get_visual_based_annotation(
 
 	img_paths = df['img_path'].tolist()
 
-	dataset = HistoricalArchives(img_paths, processor=processor)
-	dataloader = DataLoader(
-		dataset,
-		batch_size=batch_size,
-		num_workers=num_workers,
-		collate_fn=collate_vlm_batch,
-		pin_memory=torch.cuda.is_available(),
-		prefetch_factor=2,  # Prefetch 2 batches per worker
-		persistent_workers=True,  # Keep workers alive between epochs
-		drop_last=False,
-		shuffle=False  # Maintain order for result mapping
-	)
+	# dataset = HistoricalArchives(img_paths, processor=processor)
+	# dataloader = DataLoader(
+	# 	dataset,
+	# 	batch_size=batch_size,
+	# 	num_workers=num_workers,
+	# 	collate_fn=collate_vlm_batch,
+	# 	pin_memory=torch.cuda.is_available(),
+	# 	prefetch_factor=2,  # Prefetch 2 batches per worker
+	# 	persistent_workers=True,  # Keep workers alive between epochs
+	# 	drop_last=False,
+	# 	shuffle=False  # Maintain order for result mapping
+	# )
 	
-	# Initialize results list
-	combined_labels = [[] for _ in range(len(img_paths))]
 	
-	# Process batches
-	for batch_data in tqdm(dataloader, desc="Processing image batches"):
-		if batch_data is None:  # Skip failed batches
-			continue
-		
-		images = batch_data['images']
-		indices = batch_data['indices']
-		
-		# Process images with processor
-		image_inputs = processor(
-			images=images,
-			return_tensors="pt",
-		).to(device)
-		
-		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=True):
-			image_embeddings = model.get_image_features(**image_inputs)
-			image_embeddings = image_embeddings / image_embeddings.norm(dim=-1, keepdim=True)
-			similarities = image_embeddings @ text_embeddings.T
-		
-		# Store results using original indices
-		for i, original_idx in enumerate(indices):
-			topk_probs, topk_indices = similarities[i].topk(topk)
-			topk_labels = [candidate_labels[idx] for idx in topk_indices]
-			combined_labels[original_idx] = topk_labels
-
-	# combined_labels = []
-	# img_path_batches = [img_paths[i:i+batch_size] for i in range(0, len(img_paths), batch_size)]
-
-	# for batch_idx, batch in enumerate(tqdm(img_path_batches, desc="Processing batched images")):
-	# 	images = []
-	# 	valid_indices = []
-		
-	# 	# Load images with error handling
-	# 	for i, pth in enumerate(batch):
-	# 		try:
-	# 			image = Image.open(pth).convert("RGB")
-	# 			images.append(image)
-	# 			valid_indices.append(i)
-	# 		except Exception as e:
-	# 			print(f"ERROR: failed to load image from {pth} => {e}")
-	# 			# Add placeholder for failed images
-	# 			combined_labels.append([])
-		
-	# 	if not images:  # Skip if no valid images in batch
+	# # Process batches
+	# for batch_data in tqdm(dataloader, desc="Processing image batches"):
+	# 	if batch_data is None:  # Skip failed batches
 	# 		continue
 		
-	# 	# Process only images (no text processing needed)
+	# 	images = batch_data['images']
+	# 	indices = batch_data['indices']
+		
+	# 	# Process images with processor
 	# 	image_inputs = processor(
 	# 		images=images,
-	# 		padding="max_length",
-	# 		max_num_patches=4096,
 	# 		return_tensors="pt",
 	# 	).to(device)
 		
-	# 	with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+	# 	with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=True):
 	# 		image_embeddings = model.get_image_features(**image_inputs)
 	# 		image_embeddings = image_embeddings / image_embeddings.norm(dim=-1, keepdim=True)
-			
-	# 		# Compute similarities
 	# 		similarities = image_embeddings @ text_embeddings.T
 		
-	# 	# Process results for each valid image
-	# 	for i, valid_idx in enumerate(valid_indices):
+	# 	# Store results using original indices
+	# 	for i, original_idx in enumerate(indices):
 	# 		topk_probs, topk_indices = similarities[i].topk(topk)
 	# 		topk_labels = [candidate_labels[idx] for idx in topk_indices]
-	# 		combined_labels.append(topk_labels)
+	# 		combined_labels[original_idx] = topk_labels
+
+	combined_labels = [[] for _ in range(len(img_paths))]
+	img_path_batches = [img_paths[i:i+batch_size] for i in range(0, len(img_paths), batch_size)]
+
+	for batch_idx, batch in enumerate(tqdm(img_path_batches, desc="Processing batched images")):
+		batch_start_idx = batch_idx * batch_size  # ✅ Track global starting index
 		
-	# 	# Memory cleanup every few batches
-	# 	if batch_idx % 10 == 0:
-	# 		torch.cuda.empty_cache()
-	
+		images = []
+		valid_global_indices = []  # ✅ Store global indices, not batch-local
+		
+		# Load images with proper index tracking
+		for local_i, pth in enumerate(batch):
+			global_idx = batch_start_idx + local_i  # ✅ Calculate global index
+			
+			try:
+				if os.path.exists(pth):
+					image = Image.open(pth).convert("RGB")
+					images.append(image)
+					valid_global_indices.append(global_idx)  # ✅ Store global index
+				else:
+					combined_labels[global_idx] = []  # ✅ Empty result for missing file
+			except Exception as e:
+				print(f"ERROR: failed to load image from {pth} => {e}")
+				combined_labels[global_idx] = []  # ✅ Empty result for failed load
+		
+		# Skip if no valid images in batch
+		if not images:
+				continue
+		
+		try:
+				# Process batch
+				image_inputs = processor(
+						images=images,
+						padding="max_length",
+						max_num_patches=4096,
+						return_tensors="pt",
+				).to(device)
+				
+				with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+						image_embeddings = model.get_image_features(**image_inputs)
+						image_embeddings = image_embeddings / image_embeddings.norm(dim=-1, keepdim=True)
+						
+						# Compute similarities
+						similarities = image_embeddings @ text_embeddings.T
+				
+				# ✅ Process results with correct indexing
+				for processed_idx, global_idx in enumerate(valid_global_indices):
+						topk_probs, topk_indices = similarities[processed_idx].topk(topk)
+						topk_labels = [candidate_labels[idx] for idx in topk_indices]
+						combined_labels[global_idx] = topk_labels  # ✅ Assign to correct global position
+				
+				# Cleanup
+				del image_inputs, image_embeddings, similarities
+				
+		except Exception as e:
+				print(f"ERROR: failed to process batch {batch_start_idx}-{batch_start_idx + len(batch)}: {e}")
+				# Assign empty results for failed batch
+				for global_idx in valid_global_indices:
+						if not combined_labels[global_idx]:  # Only if not already assigned
+								combined_labels[global_idx] = []
+		
+		# Memory cleanup every few batches
+		if batch_idx % 10 == 0:
+				torch.cuda.empty_cache()
+
+
 	df['visual_based_labels'] = combined_labels
 	df.to_csv(metadata_fpth, index=False)
+	print(f"✅ Processed {len(img_paths)} images, generated {sum(1 for labels in combined_labels if labels)} valid results")
 	
 	print(f"Visual-based annotation Elapsed time: {time.time() - visual_based_annotation_start_time:.2f} sec".center(160, " "))
 	return combined_labels
