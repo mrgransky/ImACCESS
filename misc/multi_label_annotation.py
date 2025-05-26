@@ -226,7 +226,7 @@ def extract_named_entities(
 		]
 		return list(set(entities + meaningful_bigrams))
 	except Exception as e:
-		print(f"NER error: {e}")
+		print(f"<!> NER error: {e} {text[:200]}") 
 		return []
 
 def extract_named_entities_old(
@@ -235,6 +235,9 @@ def extract_named_entities_old(
 		ft_model: fasttext.FastText._FastText,
 		confidence_threshold: float = 0.7
 	):
+	if not text or not isinstance(text, str):
+		return []
+
 	if not is_english(text=text, ft_model=ft_model):
 		return []
 	
@@ -1156,6 +1159,7 @@ def get_textual_based_annotation(
 		device=device,
 		batch_size=batch_size,
 	)
+
 	dtypes = {
 			'doc_id': str, 'id': str, 'label': str, 'title': str,
 			'description': str, 'img_url': str, 'enriched_document_description': str,
@@ -1194,7 +1198,6 @@ def get_textual_based_annotation(
 	english_texts = english_df['content'].tolist()
 	english_queries = [user_queries[i] for i in english_indices]
 	per_image_labels = [[] for _ in range(num_samples)]
-
 
 	if len(english_texts) > 0:
 		# Step 1: Topic Modeling
