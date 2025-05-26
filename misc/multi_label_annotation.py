@@ -104,7 +104,13 @@ def extract_semantic_topics(
 		stop_words=list(CUSTOM_STOPWORDS),
 	)
 	ctfidf_model = ClassTfidfTransformer(reduce_frequent_words=True)
-	representation_model = KeyBERTInspired()
+
+	representation_model = {
+		"KeyBERT": KeyBERTInspired(),
+		"MMR": MaximalMarginalRelevance(diversity=0.5),
+		# prefer nouns and adjectives
+		"POS": PartOfSpeech("en_core_web_sm", pos_patterns=[[{"POS": "NOUN"}, {"POS": "ADJ"}]])
+	}
 
 	print(f"Creating BERTopic model for {len(texts)} texts...")
 	topic_model = BERTopic(
@@ -112,8 +118,10 @@ def extract_semantic_topics(
 		vectorizer_model=vectorizer_model,
 		ctfidf_model=ctfidf_model,
 		representation_model=representation_model,
-		min_topic_size=10,
-		nr_topics="auto"
+		min_topic_size=max(5, min(15, len(texts)//1000)),
+		calculate_probabilities=True,
+		nr_topics="auto",
+		verbose=True,
 	)
 	
 	topics, probs = topic_model.fit_transform(texts)
@@ -122,17 +130,19 @@ def extract_semantic_topics(
 	print(topic_info)
 	print(f"Unique Topic IDs: {topic_info['Topic'].unique()}")
 
-	flat_topics = set()
-	topic_lists = []
-	
+	filtered_topics = []
 	for topic_id in topic_info['Topic'].unique():
 		if topic_id == -1:  # Skip outlier topic
 			continue
-		topic_words = [word for word, _ in topic_model.get_topic(topic_id)]
-		topic_lists.append(topic_words[:15])  # Top 15 words per topic
-		flat_topics.update(topic_words[:15])
-	
-	return topic_lists, flat_topics
+		topic_words = [
+			word 
+			for word, score in topic_model.get_topic(topic_id) 
+			if is_likely_english_term(word) and score > 0.05
+		]
+		if topic_words:
+			filtered_topics.append(topic_words[:15])
+	flat_topics = set(word for topic in filtered_topics for word in topic)
+	return filtered_topics, flat_topics
 
 def clean_labels(labels):
 		cleaned = set()
@@ -210,42 +220,6 @@ def extract_named_entities(
 		except Exception as e:
 				print(f"NER error: {e}")
 				return []
-
-def extract_named_entities_old(
-		nlp: pipeline, 
-		text: str, 
-		ft_model: fasttext.FastText._FastText
-	):
-	if not is_english(text=text, ft_model=ft_model):
-		return []
-	try:
-		ner_results = nlp(text)
-		entities = []
-		for entity in ner_results:
-			if entity["entity_group"] in RELEVANT_ENTITY_TYPES and entity["word"].isalpha():
-				# Clean and normalize entity text
-				entity_text = re.sub(r'[^\w\s\-]', '', entity["word"].lower()).strip()
-				if (
-					entity_text 
-					and len(entity_text) > 2 
-					and entity_text not in CUSTOM_STOPWORDS 
-					# and all(ord(char) < 128 for char in entity_text)
-				):
-					entities.append(entity_text)
-		# Also extract multi-word phrases that might be significant
-		tokens = [
-			word.lower() for word in text.split() 
-			if word.isalpha() and len(word) > 2 
-			and word.lower() not in CUSTOM_STOPWORDS
-			# and all(ord(char) < 128 for char in word)
-		]
-
-		# Return unique list of entities and tokens
-		return list(set(entities + tokens))
-	except Exception as e:
-		print(f"NER error: {e}")
-		print(f"Text: {text}")
-		return []
 
 def filter_metadata_terms(labels):
 	metadata_fragments = [
@@ -691,89 +665,89 @@ def combine_and_clean_labels(
 		text: str, 
 		sent_model: SentenceTransformer,
 		relevance_threshold: float = 0.35
-):
-		"""Improved label combination with semantic grouping and better deduplication"""
+	):
+	
+	# Parse user query more robustly
+	user_terms = []
+	if user_query and isinstance(user_query, str):
+		try:
+			if user_query.startswith('[') and user_query.endswith(']'):
+				parsed = ast.literal_eval(user_query)
+				user_terms = [str(term).strip().lower() for term in parsed if str(term).strip()]
+			else:
+				# Split on common delimiters
+				user_terms = [term.strip().lower() for term in re.split(r'[,;|]', user_query) if term.strip()]
+		except:
+			user_terms = [user_query.strip().lower()]
+	
+	# Combine all label sources with weights
+	weighted_labels = []
+	
+	# Higher weight for user queries (most reliable)
+	for term in user_terms:
+		if term and len(term) > 2 and term not in CUSTOM_STOPWORDS:
+			weighted_labels.append((term, 1.0, 'user'))
+	
+	# Medium weight for NER (reliable entities)
+	for label in ner_labels:
+		if label and len(label) > 2:
+			weighted_labels.append((label, 0.8, 'ner'))
+	
+	# Lower weight for keywords and topics
+	for label in keywords:
+		if label and len(label) > 2:
+			weighted_labels.append((label, 0.6, 'keyword'))
+	
+	for label in topic_labels:
+		if label and len(label) > 2:
+			weighted_labels.append((label, 0.4, 'topic'))
+	
+	if not weighted_labels:
+		return []
+	
+	# Semantic clustering to group similar labels
+	labels_only = [label for label, _, _ in weighted_labels]
+	label_embeddings = sent_model.encode(labels_only, show_progress_bar=False)
+	text_embedding = sent_model.encode(text, show_progress_bar=False)
+	
+	# Calculate relevance to original text
+	relevance_scores = np.dot(label_embeddings, text_embedding) / (np.linalg.norm(label_embeddings, axis=1) * np.linalg.norm(text_embedding) + 1e-8)
+	
+	# Filter by relevance and deduplicate semantically
+	final_labels = []
+	used_embeddings = []
+	
+	# Sort by combined score (weight * relevance)
+	combined_scores = [
+		(label, weight * relevance_scores[i], source) 
+		for i, (label, weight, source) in enumerate(weighted_labels)
+	]
+	combined_scores.sort(key=lambda x: x[1], reverse=True)
+	
+	for label, score, source in combined_scores:
+		if score < relevance_threshold:
+			continue
+
+		# Check semantic similarity with already selected labels
+		label_emb = sent_model.encode(label, show_progress_bar=False)
+		is_redundant = False
 		
-		# Parse user query more robustly
-		user_terms = []
-		if user_query and isinstance(user_query, str):
-				try:
-						# Try parsing as list first
-						if user_query.startswith('[') and user_query.endswith(']'):
-								parsed = ast.literal_eval(user_query)
-								user_terms = [str(term).strip().lower() for term in parsed if str(term).strip()]
-						else:
-								# Split on common delimiters
-								user_terms = [term.strip().lower() for term in re.split(r'[,;|]', user_query) if term.strip()]
-				except:
-						user_terms = [user_query.strip().lower()]
+		for used_emb in used_embeddings:
+			similarity = np.dot(label_emb, used_emb) / (
+					np.linalg.norm(label_emb) * np.linalg.norm(used_emb) + 1e-8
+			)
+			if similarity > 0.85:  # High similarity threshold
+				is_redundant = True
+				break
 		
-		# Combine all label sources with weights
-		weighted_labels = []
-		
-		# Higher weight for user queries (most reliable)
-		for term in user_terms:
-				if term and len(term) > 2 and term not in CUSTOM_STOPWORDS:
-						weighted_labels.append((term, 1.0, 'user'))
-		
-		# Medium weight for NER (reliable entities)
-		for label in ner_labels:
-				if label and len(label) > 2:
-						weighted_labels.append((label, 0.8, 'ner'))
-		
-		# Lower weight for keywords and topics
-		for label in keywords:
-				if label and len(label) > 2:
-						weighted_labels.append((label, 0.6, 'keyword'))
-		
-		for label in topic_labels:
-				if label and len(label) > 2:
-						weighted_labels.append((label, 0.4, 'topic'))
-		
-		if not weighted_labels:
-				return []
-		
-		# Semantic clustering to group similar labels
-		labels_only = [label for label, _, _ in weighted_labels]
-		label_embeddings = sent_model.encode(labels_only, show_progress_bar=False)
-		text_embedding = sent_model.encode(text, show_progress_bar=False)
-		
-		# Calculate relevance to original text
-		relevance_scores = np.dot(label_embeddings, text_embedding) / (np.linalg.norm(label_embeddings, axis=1) * np.linalg.norm(text_embedding) + 1e-8)
-		
-		# Filter by relevance and deduplicate semantically
-		final_labels = []
-		used_embeddings = []
-		
-		# Sort by combined score (weight * relevance)
-		combined_scores = [(label, weight * relevance_scores[i], source) 
-											for i, (label, weight, source) in enumerate(weighted_labels)]
-		combined_scores.sort(key=lambda x: x[1], reverse=True)
-		
-		for label, score, source in combined_scores:
-				if score < relevance_threshold:
-						continue
-						
-				# Check semantic similarity with already selected labels
-				label_emb = sent_model.encode(label, show_progress_bar=False)
-				is_redundant = False
-				
-				for used_emb in used_embeddings:
-						similarity = np.dot(label_emb, used_emb) / (
-								np.linalg.norm(label_emb) * np.linalg.norm(used_emb) + 1e-8
-						)
-						if similarity > 0.85:  # High similarity threshold
-								is_redundant = True
-								break
-				
-				if not is_redundant:
-						final_labels.append(label)
-						used_embeddings.append(label_emb)
-						
-				if len(final_labels) >= 10:  # Limit number of labels
-						break
-		
-		return final_labels
+		if not is_redundant:
+			final_labels.append(label)
+			used_embeddings.append(label_emb)
+			
+		if len(final_labels) >= 10:  # Limit number of labels
+			break
+	
+	return final_labels
 
 def combine_and_clean_labels_old(ner_labels, keywords, topic_labels, user_query, text, sent_model, min_threshold=0.4, max_threshold=0.7):
 		"""
