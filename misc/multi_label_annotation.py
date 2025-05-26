@@ -69,7 +69,7 @@ RELEVANT_ENTITY_TYPES = {
 	'TIME',
 }
 
-class VLMImageDataset(Dataset):
+class HistoricalArchives(Dataset):
 		def __init__(self, img_paths, processor=None, transform=None):
 				self.img_paths = img_paths
 				self.processor = processor
@@ -2237,7 +2237,7 @@ def get_visual_based_annotation(
 
 	img_paths = df['img_path'].tolist()
 
-	dataset = VLMImageDataset(img_paths, processor=processor)
+	dataset = HistoricalArchives(img_paths, processor=processor)
 	dataloader = DataLoader(
 		dataset,
 		batch_size=batch_size,
