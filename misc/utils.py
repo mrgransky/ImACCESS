@@ -46,7 +46,7 @@ from keybert import KeyBERT
 from rake_nltk import Rake
 from bertopic import BERTopic
 from bertopic.vectorizers import ClassTfidfTransformer
-from bertopic.representation import KeyBERTInspired
+from bertopic.representation import KeyBERTInspired, MaximalMarginalRelevance, PartOfSpeech
 
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
