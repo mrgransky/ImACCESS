@@ -173,11 +173,14 @@ def clean_labels(labels):
 		return sorted(cleaned)
 
 def extract_named_entities(
-		nlp, 
-		text, 
-		ft_model, 
-		confidence_threshold=0.7
+		nlp: pipeline,
+		text: str, 
+		ft_model: fasttext.FastText._FastText,
+		confidence_threshold: float =0.7,
 	):
+	if not text or not isinstance(text, str):
+		return []
+
 	if not is_english(text=text, ft_model=ft_model):
 		return []
 	try:
@@ -222,13 +225,12 @@ def extract_named_entities(
 			and len(tokens[i]) > 2 and len(tokens[i+1]) > 2
 		]
 		return list(set(entities + meaningful_bigrams))
-	
 	except Exception as e:
 		print(f"NER error: {e}")
 		return []
 
 def extract_named_entities_old(
-		nlp: pipeline, 
+		nlp: pipeline,
 		text: str, 
 		ft_model: fasttext.FastText._FastText,
 		confidence_threshold: float = 0.7
@@ -1267,8 +1269,6 @@ def get_textual_based_annotation(
 				text=text, 
 				sent_model=sent_model, 
 				relevance_threshold=relevance_threshold,
-				# min_threshold=0.4,
-				# max_threshold=0.7,
 			)
 			per_image_combined_labels.append(cleaned_labels)
 		print(f"Label combination and cleaning done in {time.time() - t0:.3f} sec")
