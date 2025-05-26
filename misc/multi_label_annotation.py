@@ -173,61 +173,69 @@ def clean_labels(labels):
 		return sorted(cleaned)
 
 def extract_named_entities(
-		nlp: pipeline,
+		nlp: pipeline,  # HuggingFace NER pipeline
 		text: str, 
 		ft_model: fasttext.FastText._FastText,
-		confidence_threshold: float =0.7,
-	):
-	if not text or not isinstance(text, str):
-		return []
+		confidence_threshold: float = 0.7,
+):
+		if not text or not isinstance(text, str):
+				return []
 
-	if not is_english(text=text, ft_model=ft_model):
-		return []
-	try:
-		ner_results = nlp(text)
-		entities = []
-		current_entity = []
-		current_type = None
-		
-		for entity in ner_results:
-			if entity.get("score", 0) < confidence_threshold:
-				continue
-					
-			if entity["entity_group"] in RELEVANT_ENTITY_TYPES:
-				# Handle multi-word entities
-				if current_type == entity["entity_group"]:
-					current_entity.append(entity["word"])
-				else:
-					if current_entity:
+		if not is_english(text=text, ft_model=ft_model):
+				return []
+
+		try:
+				# NER Processing
+				ner_results = nlp(text)
+				entities = []
+				current_entity = []
+				current_type = None
+				
+				for entity in ner_results:
+						if entity.get("score", 0) < confidence_threshold:
+								continue
+										
+						if entity["entity_group"] in RELEVANT_ENTITY_TYPES:
+								# Handle multi-word entities
+								if current_type == entity["entity_group"]:
+										current_entity.append(entity["word"])
+								else:
+										if current_entity:
+												full_entity = " ".join(current_entity).strip()
+												if len(full_entity) > 2:
+														normalized = full_entity if full_entity[0].isupper() else full_entity.lower()
+														entities.append(normalized)
+										current_entity = [entity["word"]]
+										current_type = entity["entity_group"]
+				
+				# Add the last entity
+				if current_entity:
 						full_entity = " ".join(current_entity).strip()
 						if len(full_entity) > 2:
-							# Preserve casing for proper nouns
-							normalized = full_entity if full_entity[0].isupper() else full_entity.lower()
-							entities.append(normalized)
-					current_entity = [entity["word"]]
-					current_type = entity["entity_group"]
-		
-		# Add the last entity
-		if current_entity:
-			full_entity = " ".join(current_entity).strip()
-			if len(full_entity) > 2:
-				normalized = full_entity if full_entity[0].isupper() else full_entity.lower()
-				entities.append(normalized)
-		
-		# Add meaningful bigrams from remaining text
-		doc = nlp.tokenizer(text)
-		tokens = [token.text.lower() for token in doc if token.text.lower() not in CUSTOM_STOPWORDS]
-		meaningful_bigrams = [
-			f"{tokens[i]} {tokens[i+1]}" 
-			for i in range(len(tokens)-1) 
-			if tokens[i] not in CUSTOM_STOPWORDS 
-			and tokens[i+1] not in CUSTOM_STOPWORDS
-			and len(tokens[i]) > 2 and len(tokens[i+1]) > 2
-		]
-		return list(set(entities + meaningful_bigrams))
-	except Exception as e:
-		print(f"<!> NER error: {e} {text[:200]}") 
-		return []
+								normalized = full_entity if full_entity[0].isupper() else full_entity.lower()
+								entities.append(normalized)
+
+				# Bigram Extraction with HuggingFace-compatible tokenization
+				try:
+						# Use the pipeline's tokenizer directly
+						tokens = nlp.tokenizer.tokenize(text)
+						tokens = [token.lower() for token in tokens 
+										 if token.lower() not in CUSTOM_STOPWORDS and len(token) > 2]
+						
+						meaningful_bigrams = [
+								f"{tokens[i]} {tokens[i+1]}" 
+								for i in range(len(tokens)-1) 
+								if tokens[i] not in CUSTOM_STOPWORDS 
+								and tokens[i+1] not in CUSTOM_STOPWORDS
+								and len(tokens[i]) > 2 and len(tokens[i+1]) > 2
+						]
+						return list(set(entities + meaningful_bigrams))
+				except Exception as tokenize_error:
+						print(f"Tokenization warning: {tokenize_error}")
+						return list(set(entities))  # Fallback to just entities
+		except Exception as e:
+				print(f"<!> NER processing error: {str(e)[:200]}")  # Truncate long errors
+				return []
 
 def extract_named_entities_old(
 		nlp: pipeline,
@@ -276,10 +284,9 @@ def extract_named_entities_old(
 							entities.append(bigram)
 			
 			return list(set(entities))
-			
 	except Exception as e:
-			print(f"NER error: {e}")
-			return []
+		print(f"NER error: {e} {text}")
+		return []
 
 def filter_metadata_terms(labels):
 	metadata_fragments = [
