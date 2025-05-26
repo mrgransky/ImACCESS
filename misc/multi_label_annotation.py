@@ -1,6 +1,5 @@
 from utils import *
 torch.set_grad_enabled(False)
-from rake_nltk import Rake
 
 # how to run[Pouta]:
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata.csv -d "cuda:1" -nw 8 -tbs 512 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_SMU.out &
@@ -239,6 +238,51 @@ def is_likely_english_term(term):
 	return term.lower() in common_english_words
 
 def extract_semantic_topics(
+		sent_model: SentenceTransformer,
+		ft_model: fasttext.FastText._FastText,
+		texts: List[str],
+		dataset_dir: str,
+		num_workers: int,
+		enable_visualizations: bool = False,
+	) -> Tuple[List[List[str]], Set[str]]:
+	
+	# Create BERTopic model with better components
+	vectorizer_model = CountVectorizer(
+		ngram_range=(1, 3),
+		stop_words=list(CUSTOM_STOPWORDS),
+		# min_df=3,
+		# max_df=0.7
+	)
+	ctfidf_model = ClassTfidfTransformer(reduce_frequent_words=True)
+	representation_model = KeyBERTInspired()
+
+	print(f"Creating BERTopic model for {len(texts)} texts...")
+	topic_model = BERTopic(
+		embedding_model=sent_model,
+		vectorizer_model=vectorizer_model,
+		ctfidf_model=ctfidf_model,
+		representation_model=representation_model,
+		min_topic_size=10,
+		nr_topics="auto"
+	)
+	
+	topics, probs = topic_model.fit_transform(texts)
+	topic_info = topic_model.get_topic_info()
+	
+	# Extract topic words more efficiently
+	flat_topics = set()
+	topic_lists = []
+	
+	for topic_id in topic_info['Topic'].unique():
+		if topic_id == -1:  # Skip outlier topic
+			continue
+		topic_words = [word for word, _ in topic_model.get_topic(topic_id)]
+		topic_lists.append(topic_words[:15])  # Top 15 words per topic
+		flat_topics.update(topic_words[:15])
+	
+	return topic_lists, flat_topics
+
+def extract_semantic_topics_old(
 		sent_model: SentenceTransformer,
 		ft_model: fasttext.FastText._FastText,
 		texts: List[str],
@@ -1922,10 +1966,15 @@ def deduplicate_labels(labels):
 		
 		return sorted(deduplicated)
 
-def get_keywords(text: str, sent_model: SentenceTransformer, kw_model: KeyBERT, rake: Rake):
+def get_keywords(
+		text: str, 
+		sent_model: SentenceTransformer, 
+		rake: Rake,
+	):
 	rake.extract_keywords_from_text(text)
 	ranked_phrases = rake.get_ranked_phrases()
-	
+
+	kw_model = KeyBERT(model=sent_model)	
 	keybert_keywords = kw_model.extract_keywords(
 		text,
 		keyphrase_ngram_range=(1, 3),
@@ -1984,8 +2033,8 @@ def get_textual_based_annotation(
 	
 	if verbose:
 		print(f"Loading sentence-transformer model: {st_model_name}...")
+
 	sent_model = SentenceTransformer(model_name_or_path=st_model_name, device=device)
-	
 	ft_model = fasttext.load_model(FastText_Language_Identification)
 	
 	if verbose:
@@ -2037,6 +2086,7 @@ def get_textual_based_annotation(
 	english_queries = [user_queries[i] for i in english_indices]
 	per_image_labels = [[] for _ in range(num_samples)]
 
+
 	if len(english_texts) > 0:
 		# Step 1: Topic Modeling
 		print("Topic Modeling".center(160, "-"))
@@ -2074,7 +2124,6 @@ def get_textual_based_annotation(
 		print("Extracting keywords per image using KeyBERT...")
 		t0 = time.time()
 		per_image_keywords = []
-		kw_model = KeyBERT(model=sent_model)
 		rake = Rake(
 			stopwords=list(CUSTOM_STOPWORDS),
 			min_length=1,
@@ -2085,7 +2134,7 @@ def get_textual_based_annotation(
 			if not is_english(text, ft_model):
 				per_image_keywords.append([])
 				continue
-			keywords = get_keywords(text, sent_model, kw_model, rake)
+			keywords = get_keywords(text, sent_model, rake)
 			per_image_keywords.append(keywords)
 		print(f"Keyword extraction done in {time.time() - t0:.1f} sec")
 
@@ -2177,10 +2226,11 @@ def get_textual_based_annotation(
 	return per_image_labels
 
 def custom_collate_fn(batch):
-		"""Handles batches where some images may be None"""
-		indices = [item[0] for item in batch]
-		images = [item[1] for item in batch if item[1] is not None]
-		return indices, images
+	valid_items = [(idx, img) for idx, img in batch if img is not None]
+	if not valid_items:
+		return [], []	
+	indices, images = zip(*valid_items)
+	return list(indices), list(images)
 
 class HistoricalArchives(Dataset):
 	def __init__(self, img_paths):
@@ -2218,8 +2268,6 @@ def get_visual_based_annotation(
 	candidate_labels = list(set(object_categories + scene_categories + activity_categories))
 	texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
 	
-	# Setup device and memory info
-	device = torch.device(device)
 	gpu_name = torch.cuda.get_device_name(device)
 	total_gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3 # GB
 	available_gpu_memory = torch.cuda.mem_get_info()[0] / 1024**3 # GB
@@ -2266,10 +2314,13 @@ def get_visual_based_annotation(
 		num_workers=num_workers,
 		pin_memory=torch.cuda.is_available(),
 		persistent_workers=True if num_workers > 1 else False,
+		prefetch_factor=2, # better overlap
+		drop_last=False,  # Explicitly set to process all data
 		collate_fn=custom_collate_fn
 	)
-	print(f"Processing {len(img_paths)} images in batches of {batch_size}...")
-	for batch_indices, images in tqdm(dataloader, desc="Processing images", total=len(img_paths)):
+
+	print(f"Processing {len(img_paths)} images in {batch_size} batches...")
+	for batch_idx, (batch_indices, images) in enumerate(tqdm(dataloader, desc="Processing images")):
 		if not images:
 			continue
 		try:
@@ -2288,8 +2339,11 @@ def get_visual_based_annotation(
 				for processed_idx, global_idx in enumerate(batch_indices[:len(images)]):
 					topk_probs, topk_indices = similarities[processed_idx].topk(topk)
 					combined_labels[global_idx] = [candidate_labels[idx] for idx in topk_indices]
+			if batch_idx % 20 == 0:
+				torch.cuda.empty_cache()
 		except Exception as e:
 			print(f"ERROR: failed to process batch {batch_indices[0]}-{batch_indices[-1]}: {e}")
+			torch.cuda.empty_cache()
 	
 	df['visual_based_labels'] = combined_labels
 	df.to_csv(metadata_fpth, index=False)
@@ -2330,7 +2384,7 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=6, help="Number of workers for parallel processing")
 	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.25, help="Relevance threshold for textual-based annotation")
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=64)
-	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=4, help="Batch size for vision processing")
+	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=8, help="Batch size for vision processing")
 	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2"], help="Sentence-transformer model name")
 	parser.add_argument("--vlm_model_name", '-vlm', type=str, default="google/siglip2-so400m-patch16-naflex", choices=["kakaobrain/align-base", "google/siglip2-so400m-patch16-naflex"], help="Vision-Language model name")
 	parser.add_argument("--ner_model_name", '-ner', type=str, default="Babelscape/wikineural-multilingual-ner", choices=["dslim/bert-large-NER", "dslim/bert-base-NER", "Babelscape/wikineural-multilingual-ner"], help="NER model name")
