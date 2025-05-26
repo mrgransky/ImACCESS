@@ -173,69 +173,66 @@ def clean_labels(labels):
 		return sorted(cleaned)
 
 def extract_named_entities(
-		nlp: pipeline,  # HuggingFace NER pipeline
+		nlp: pipeline,
 		text: str, 
 		ft_model: fasttext.FastText._FastText,
 		confidence_threshold: float = 0.7,
-):
-		if not text or not isinstance(text, str):
-				return []
-
-		if not is_english(text=text, ft_model=ft_model):
-				return []
-
-		try:
-				# NER Processing
-				ner_results = nlp(text)
-				entities = []
-				current_entity = []
-				current_type = None
-				
-				for entity in ner_results:
-						if entity.get("score", 0) < confidence_threshold:
-								continue
-										
-						if entity["entity_group"] in RELEVANT_ENTITY_TYPES:
-								# Handle multi-word entities
-								if current_type == entity["entity_group"]:
-										current_entity.append(entity["word"])
-								else:
-										if current_entity:
-												full_entity = " ".join(current_entity).strip()
-												if len(full_entity) > 2:
-														normalized = full_entity if full_entity[0].isupper() else full_entity.lower()
-														entities.append(normalized)
-										current_entity = [entity["word"]]
-										current_type = entity["entity_group"]
-				
-				# Add the last entity
-				if current_entity:
+	):
+	if not text or not isinstance(text, str):
+		return []
+	if not is_english(text=text, ft_model=ft_model):
+		return []
+	try:
+		ner_results = nlp(text)
+		entities = []
+		current_entity = []
+		current_type = None
+		
+		for entity in ner_results:
+			if entity.get("score", 0) < confidence_threshold:
+				continue
+			if entity["entity_group"] in RELEVANT_ENTITY_TYPES:
+				# Handle multi-word entities
+				if current_type == entity["entity_group"]:
+					current_entity.append(entity["word"])
+				else:
+					if current_entity:
 						full_entity = " ".join(current_entity).strip()
 						if len(full_entity) > 2:
-								normalized = full_entity if full_entity[0].isupper() else full_entity.lower()
-								entities.append(normalized)
-
-				# Bigram Extraction with HuggingFace-compatible tokenization
-				try:
-						# Use the pipeline's tokenizer directly
-						tokens = nlp.tokenizer.tokenize(text)
-						tokens = [token.lower() for token in tokens 
-										 if token.lower() not in CUSTOM_STOPWORDS and len(token) > 2]
-						
-						meaningful_bigrams = [
-								f"{tokens[i]} {tokens[i+1]}" 
-								for i in range(len(tokens)-1) 
-								if tokens[i] not in CUSTOM_STOPWORDS 
-								and tokens[i+1] not in CUSTOM_STOPWORDS
-								and len(tokens[i]) > 2 and len(tokens[i+1]) > 2
-						]
-						return list(set(entities + meaningful_bigrams))
-				except Exception as tokenize_error:
-						print(f"Tokenization warning: {tokenize_error}")
-						return list(set(entities))  # Fallback to just entities
-		except Exception as e:
-				print(f"<!> NER processing error: {str(e)[:200]}")  # Truncate long errors
-				return []
+							normalized = full_entity if full_entity[0].isupper() else full_entity.lower()
+							entities.append(normalized)
+					current_entity = [entity["word"]]
+					current_type = entity["entity_group"]
+		
+		# Add the last entity
+		if current_entity:
+			full_entity = " ".join(current_entity).strip()
+			if len(full_entity) > 2:
+				normalized = full_entity if full_entity[0].isupper() else full_entity.lower()
+				entities.append(normalized)
+		# Bigram Extraction with HuggingFace-compatible tokenization
+		try:
+			# Use the pipeline's tokenizer directly
+			tokens = nlp.tokenizer.tokenize(text)
+			tokens = [
+				token.lower()
+				for token in tokens 
+				if token.lower() not in CUSTOM_STOPWORDS and len(token) > 2
+			]
+			meaningful_bigrams = [
+				f"{tokens[i]} {tokens[i+1]}" 
+				for i in range(len(tokens)-1) 
+				if tokens[i] not in CUSTOM_STOPWORDS 
+				and tokens[i+1] not in CUSTOM_STOPWORDS
+				and len(tokens[i]) > 2 and len(tokens[i+1]) > 2
+			]
+			return list(set(entities + meaningful_bigrams))
+		except Exception as tokenize_error:
+			print(f"Tokenization warning: {tokenize_error}")
+			return list(set(entities))  # Fallback to just entities
+	except Exception as e:
+		print(f"<!> NER processing error: {str(e)[:200]}")  # Truncate long errors
+		return []
 
 def extract_named_entities_old(
 		nlp: pipeline,
@@ -866,15 +863,31 @@ def perform_semantic_clustering(
 		min_cluster_size: int = 2,
 		min_samples: int = 1
 	) -> np.ndarray:
-	"""Perform HDBSCAN clustering with optimized parameters"""
-	clusterer = hdbscan.HDBSCAN(
-		min_cluster_size=min_cluster_size,
-		min_samples=min_samples,
-		metric='cosine',
-		cluster_selection_method='eom',
-		prediction_data=True
-	)
-	return clusterer.fit_predict(embeddings)
+	# Normalize embeddings
+	embeddings = normalize(embeddings, norm='l2', axis=1)
+	
+	# Adjust parameters based on input size
+	n_samples = len(embeddings)
+	min_cluster_size = min(min_cluster_size, max(2, n_samples // 5))
+	min_samples = min(min_samples, max(1, n_samples // 10))
+	
+	# Handle edge cases
+	if n_samples <= 2:
+		return np.zeros(n_samples, dtype=int)  # All in one cluster
+	
+	try:
+		clusterer = hdbscan.HDBSCAN(
+			min_cluster_size=min_cluster_size,
+			min_samples=min_samples,
+			metric='euclidean',
+			cluster_selection_method='eom',
+			prediction_data=True,
+			gen_min_span_tree=False  # Disable for small datasets
+		)
+		return clusterer.fit_predict(embeddings)
+	except Exception as e:
+		print(f"Clustering warning: {str(e)[:200]}")
+		return np.zeros(n_samples, dtype=int)  # Fallback: all noise
 
 def process_clusters(
 		clusters: np.ndarray,
@@ -929,24 +942,24 @@ def handle_noise_labels(
 		min_similarity: float,
 		max_noise_labels: int = 2
 ) -> List[str]:
-		"""Process noise labels that didn't cluster well"""
-		noise_indices = np.where(clusters == -1)[0]
-		if not noise_indices:
+		noise_mask = (clusters == -1)
+		if not noise_mask.any():
 				return []
 		
-		noise_labels = [label_texts[i] for i in noise_indices]
-		noise_embs = np.array([embeddings[i] for i in noise_indices])
+		noise_labels = [label for label, mask in zip(label_texts, noise_mask) if mask]
+		noise_embs = embeddings[noise_mask]
 		
-		# Calculate similarities to document
+		# Normalized cosine similarity
 		sims = np.dot(noise_embs, text_emb) / (
 				np.linalg.norm(noise_embs, axis=1) * np.linalg.norm(text_emb) + 1e-8
 		)
 		
-		# Filter and select top noise labels
-		valid = [(sim, label) for sim, label in zip(sims, noise_labels) if sim > min_similarity]
-		valid.sort(reverse=True)
-		
-		return [label for sim, label in valid[:max_noise_labels]]
+		# Get top labels meeting threshold
+		top_indices = np.argsort(sims)[-max_noise_labels:][::-1]
+		return [
+				noise_labels[i] for i in top_indices
+				if sims[i] > min_similarity
+		]
 
 def apply_final_filters(
 		candidates: List[str],
@@ -1096,7 +1109,7 @@ def get_keywords(
 		stop_words=list(CUSTOM_STOPWORDS),
 		top_n=20,
 		use_mmr=True,  # Use Maximal Marginal Relevance for diversity
-		diversity=0.6,
+		diversity=0.7,
 	)
 	
 	# Combine and rank by relevance to text
@@ -1375,7 +1388,7 @@ def get_visual_based_annotation(
 		topk: int = 3,
 	):
 	if verbose:
-		print(f"Semi-Supervised label extraction from image data (using VLM) batch_size: {batch_size}".center(160, "-"))
+		print(f"Semi-Supervised visual-based annotation (using VLM) batch_size: {batch_size} num_workers: {num_workers}".center(160, "-"))
 	
 	visual_based_annotation_start_time = time.time()
 	
@@ -1430,7 +1443,7 @@ def get_visual_based_annotation(
 		batch_size=batch_size, 
 		num_workers=num_workers,
 		pin_memory=torch.cuda.is_available(),
-		persistent_workers=True if num_workers > 1 else False,
+		persistent_workers=num_workers>1,
 		prefetch_factor=2, # better overlap
 		drop_last=False,  # Explicitly set to process all data
 		collate_fn=custom_collate_fn
@@ -1447,7 +1460,7 @@ def get_visual_based_annotation(
 					padding="max_length",
 					max_num_patches=4096,
 					return_tensors="pt",
-				).to(device)
+				).to(device, non_blocking=True)
 				
 				image_embeddings = model.get_image_features(**image_inputs)
 				image_embeddings = image_embeddings / image_embeddings.norm(dim=-1, keepdim=True)
@@ -1498,10 +1511,10 @@ def main():
 	parser = argparse.ArgumentParser(description="Multi-label annotation for Historical Archives Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--use_parallel", '-parallel', action="store_true")
-	parser.add_argument("--num_workers", '-nw', type=int, default=6, help="Number of workers for parallel processing")
+	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.25, help="Relevance threshold for textual-based annotation")
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=64)
-	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=8, help="Batch size for vision processing")
+	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=4, help="Batch size for vision processing")
 	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2"], help="Sentence-transformer model name")
 	parser.add_argument("--vlm_model_name", '-vlm', type=str, default="google/siglip2-so400m-patch16-naflex", choices=["kakaobrain/align-base", "google/siglip2-so400m-patch16-naflex"], help="Vision-Language model name")
 	parser.add_argument("--ner_model_name", '-ner', type=str, default="Babelscape/wikineural-multilingual-ner", choices=["dslim/bert-large-NER", "dslim/bert-base-NER", "Babelscape/wikineural-multilingual-ner"], help="NER model name")

@@ -28,6 +28,7 @@ import argparse
 import umap
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+from sklearn.preprocessing import normalize
 import seaborn as sns
 from wordcloud import WordCloud
 from typing import List, Dict, Set, Tuple, Union, Callable, Optional
