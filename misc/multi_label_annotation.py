@@ -69,65 +69,6 @@ RELEVANT_ENTITY_TYPES = {
 	'TIME',
 }
 
-class HistoricalArchives(Dataset):
-		def __init__(self, img_paths, processor=None, transform=None):
-				self.img_paths = img_paths
-				self.processor = processor
-				self.transform = transform
-		
-		def __len__(self):
-				return len(self.img_paths)
-		
-		def __getitem__(self, idx):
-				img_path = self.img_paths[idx]
-				try:
-						# Load and convert image
-						image = Image.open(img_path).convert("RGB")
-						
-						# Apply transforms if provided
-						if self.transform:
-								image = self.transform(image)
-						
-						return {
-								'image': image,
-								'path': img_path,
-								'index': idx,
-								'success': True
-						}
-				except Exception as e:
-						# Return error information
-						return {
-								'image': None,
-								'path': img_path,
-								'index': idx,
-								'success': False,
-								'error': str(e)
-						}
-
-def collate_vlm_batch(batch):
-		"""Custom collate function to handle failed image loads"""
-		successful_items = [item for item in batch if item['success']]
-		failed_items = [item for item in batch if not item['success']]
-		
-		if failed_items:
-				print(f"Failed to load {len(failed_items)} images in this batch")
-				for item in failed_items:
-						print(f"  - {item['path']}: {item['error']}")
-		
-		if not successful_items:
-				return None  # Skip this batch entirely
-		
-		images = [item['image'] for item in successful_items]
-		indices = [item['index'] for item in successful_items]
-		paths = [item['path'] for item in successful_items]
-		
-		return {
-				'images': images,
-				'indices': indices,
-				'paths': paths,
-				'batch_size': len(images)
-		}
-
 def density_based_parameters(embeddings, n_neighbors=15):
 		"""Determine parameters based on local density"""
 		# Compute nearest neighbors distances
@@ -2237,45 +2178,6 @@ def get_visual_based_annotation(
 		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
 
 	img_paths = df['img_path'].tolist()
-
-	# dataset = HistoricalArchives(img_paths, processor=processor)
-	# dataloader = DataLoader(
-	# 	dataset,
-	# 	batch_size=batch_size,
-	# 	num_workers=num_workers,
-	# 	collate_fn=collate_vlm_batch,
-	# 	pin_memory=torch.cuda.is_available(),
-	# 	prefetch_factor=2,  # Prefetch 2 batches per worker
-	# 	persistent_workers=True,  # Keep workers alive between epochs
-	# 	drop_last=False,
-	# 	shuffle=False  # Maintain order for result mapping
-	# )
-	
-	
-	# # Process batches
-	# for batch_data in tqdm(dataloader, desc="Processing image batches"):
-	# 	if batch_data is None:  # Skip failed batches
-	# 		continue
-		
-	# 	images = batch_data['images']
-	# 	indices = batch_data['indices']
-		
-	# 	# Process images with processor
-	# 	image_inputs = processor(
-	# 		images=images,
-	# 		return_tensors="pt",
-	# 	).to(device)
-		
-	# 	with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=True):
-	# 		image_embeddings = model.get_image_features(**image_inputs)
-	# 		image_embeddings = image_embeddings / image_embeddings.norm(dim=-1, keepdim=True)
-	# 		similarities = image_embeddings @ text_embeddings.T
-		
-	# 	# Store results using original indices
-	# 	for i, original_idx in enumerate(indices):
-	# 		topk_probs, topk_indices = similarities[i].topk(topk)
-	# 		topk_labels = [candidate_labels[idx] for idx in topk_indices]
-	# 		combined_labels[original_idx] = topk_labels
 
 	combined_labels = [[] for _ in range(len(img_paths))]
 	img_path_batches = [img_paths[i:i+batch_size] for i in range(0, len(img_paths), batch_size)]
