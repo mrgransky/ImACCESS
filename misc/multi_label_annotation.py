@@ -2,7 +2,7 @@ from utils import *
 
 # how to run[Pouta]:
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata.csv -d "cuda:1" -nw 50 -tbs 512 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_SMU.out &
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 50 -tbs 512 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 16 -tbs 512 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31/metadata.csv -d "cuda:1" -nw 16 -tbs 256 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_NA.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 50 -tbs 512 -vbs 32 -vth 0.3 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -d "cuda:3" -nw 50 -tbs 512 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_HISTORY_X4.out &
@@ -1126,6 +1126,55 @@ def clean_labels(labels):
 def extract_named_entities(
 		nlp: pipeline, 
 		text: str, 
+		ft_model: fasttext.FastText._FastText,
+		confidence_threshold: float = 0.7
+):
+		if not is_english(text=text, ft_model=ft_model):
+				return []
+		
+		try:
+				ner_results = nlp(text)
+				entities = []
+				
+				for entity in ner_results:
+						# Filter by confidence score
+						if entity.get("score", 0) < confidence_threshold:
+								continue
+								
+						if entity["entity_group"] in RELEVANT_ENTITY_TYPES:
+								entity_text = entity["word"].strip()
+								
+								# Better entity normalization
+								if len(entity_text) > 2 and entity_text.isalpha():
+										# Preserve proper nouns (capitalized entities)
+										if entity_text[0].isupper():
+												normalized = entity_text.lower()
+										else:
+												normalized = entity_text.lower()
+										
+										if (normalized not in CUSTOM_STOPWORDS and 
+												not normalized.isdigit() and
+												len(normalized) >= 3):
+												entities.append(normalized)
+				
+				# Add multi-word entities (phrases that appear as complete units)
+				doc_words = text.lower().split()
+				for i in range(len(doc_words) - 1):
+						bigram = f"{doc_words[i]} {doc_words[i+1]}"
+						if (doc_words[i] not in CUSTOM_STOPWORDS and 
+								doc_words[i+1] not in CUSTOM_STOPWORDS and
+								len(doc_words[i]) > 2 and len(doc_words[i+1]) > 2):
+								entities.append(bigram)
+				
+				return list(set(entities))
+				
+		except Exception as e:
+				print(f"NER error: {e}")
+				return []
+
+def extract_named_entities_old(
+		nlp: pipeline, 
+		text: str, 
 		ft_model: fasttext.FastText._FastText
 	):
 	# Skip if text is not primarily English
@@ -1607,7 +1656,99 @@ def process_category_batch(
 
 		return batch_results, batch_scores
 
-def combine_and_clean_labels(ner_labels, keywords, topic_labels, user_query, text, sent_model, min_threshold=0.4, max_threshold=0.7):
+def combine_and_clean_labels(
+		ner_labels: List[str], 
+		keywords: List[str], 
+		topic_labels: List[str], 
+		user_query: str, 
+		text: str, 
+		sent_model: SentenceTransformer,
+		relevance_threshold: float = 0.35
+):
+		"""Improved label combination with semantic grouping and better deduplication"""
+		
+		# Parse user query more robustly
+		user_terms = []
+		if user_query and isinstance(user_query, str):
+				try:
+						# Try parsing as list first
+						if user_query.startswith('[') and user_query.endswith(']'):
+								parsed = ast.literal_eval(user_query)
+								user_terms = [str(term).strip().lower() for term in parsed if str(term).strip()]
+						else:
+								# Split on common delimiters
+								user_terms = [term.strip().lower() for term in re.split(r'[,;|]', user_query) if term.strip()]
+				except:
+						user_terms = [user_query.strip().lower()]
+		
+		# Combine all label sources with weights
+		weighted_labels = []
+		
+		# Higher weight for user queries (most reliable)
+		for term in user_terms:
+				if term and len(term) > 2 and term not in CUSTOM_STOPWORDS:
+						weighted_labels.append((term, 1.0, 'user'))
+		
+		# Medium weight for NER (reliable entities)
+		for label in ner_labels:
+				if label and len(label) > 2:
+						weighted_labels.append((label, 0.8, 'ner'))
+		
+		# Lower weight for keywords and topics
+		for label in keywords:
+				if label and len(label) > 2:
+						weighted_labels.append((label, 0.6, 'keyword'))
+		
+		for label in topic_labels:
+				if label and len(label) > 2:
+						weighted_labels.append((label, 0.4, 'topic'))
+		
+		if not weighted_labels:
+				return []
+		
+		# Semantic clustering to group similar labels
+		labels_only = [label for label, _, _ in weighted_labels]
+		label_embeddings = sent_model.encode(labels_only, show_progress_bar=False)
+		text_embedding = sent_model.encode(text, show_progress_bar=False)
+		
+		# Calculate relevance to original text
+		relevance_scores = np.dot(label_embeddings, text_embedding) / (np.linalg.norm(label_embeddings, axis=1) * np.linalg.norm(text_embedding) + 1e-8)
+		
+		# Filter by relevance and deduplicate semantically
+		final_labels = []
+		used_embeddings = []
+		
+		# Sort by combined score (weight * relevance)
+		combined_scores = [(label, weight * relevance_scores[i], source) 
+											for i, (label, weight, source) in enumerate(weighted_labels)]
+		combined_scores.sort(key=lambda x: x[1], reverse=True)
+		
+		for label, score, source in combined_scores:
+				if score < relevance_threshold:
+						continue
+						
+				# Check semantic similarity with already selected labels
+				label_emb = sent_model.encode(label, show_progress_bar=False)
+				is_redundant = False
+				
+				for used_emb in used_embeddings:
+						similarity = np.dot(label_emb, used_emb) / (
+								np.linalg.norm(label_emb) * np.linalg.norm(used_emb) + 1e-8
+						)
+						if similarity > 0.85:  # High similarity threshold
+								is_redundant = True
+								break
+				
+				if not is_redundant:
+						final_labels.append(label)
+						used_embeddings.append(label_emb)
+						
+				if len(final_labels) >= 10:  # Limit number of labels
+						break
+		
+		return final_labels
+
+def combine_and_clean_labels_old(ner_labels, keywords, topic_labels, user_query, text, sent_model, min_threshold=0.4, max_threshold=0.7):
 		"""
 		Combine labels from NER, keywords, topics, and user_query, splitting concatenated phrases and ensuring coherence.
 		
@@ -1755,130 +1896,6 @@ def batch_filter_by_relevance(
 						results.append([])
 		
 		return results
-
-def batch_filter_by_relevance_old(
-		sent_model: SentenceTransformer,
-		texts: list,
-		all_labels_list: list[list[str]],
-		threshold: float,
-		batch_size: int,
-		verbose: bool = True
-	):
-	"""
-	Filter labels by relevance to their corresponding texts, dynamically adjusting batch size based on GPU memory.
-	
-	Args:
-			sent_model: SentenceTransformer model
-			texts: List of texts
-			all_labels_list: List of label lists
-			threshold: Relevance threshold
-			batch_size: Initial batch size for processing
-			verbose: Boolean for logging
-	
-	Returns:
-			List of filtered label lists
-	"""
-	results = []
-	total = len(texts)
-	
-	# Check if using GPU
-	device = torch.device(sent_model.device)
-	is_cuda = device.type == 'cuda'
-	if is_cuda and verbose:
-			print(f"Using GPU: {device}, Initial batch_size: {batch_size}")
-	# Function to estimate safe batch size based on GPU memory
-	def get_safe_batch_size(initial_batch_size, texts, labels_list):
-			if not is_cuda:
-					return min(initial_batch_size, 32)  # Default for CPU
-			
-			total_memory = torch.cuda.get_device_properties(device).total_memory
-			free_memory = total_memory - torch.cuda.memory_allocated(device)
-			# Estimate memory per text (conservative estimate: 2 MiB per text for encoding)
-			memory_per_text = 2 * 1024 * 1024  # 2 MiB
-			# Account for labels (assume average 5 labels per text, 0.5 MiB per label)
-			avg_labels = sum(len(labels) for labels in labels_list) / len(labels_list) if labels_list else 5
-			memory_per_label = 0.5 * 1024 * 1024  # 0.5 MiB
-			# Total memory per sample (text + labels)
-			memory_per_sample = memory_per_text + avg_labels * memory_per_label
-			# Reserve 20% of free memory for safety
-			safe_memory = free_memory * 0.8
-			# Calculate safe batch size
-			safe_batch_size = max(1, int(safe_memory // memory_per_sample))
-			# Cap at initial batch size or a reasonable maximum
-			return min(initial_batch_size, safe_batch_size, 64)
-	for batch_start in range(0, total, batch_size):
-			batch_end = min(batch_start + batch_size, total)
-			batch_texts = texts[batch_start:batch_end]
-			batch_labels_list = all_labels_list[batch_start:batch_end]
-			
-			# Dynamically adjust batch size based on GPU memory
-			adjusted_batch_size = get_safe_batch_size(batch_size, batch_texts, batch_labels_list)
-			if verbose and is_cuda and adjusted_batch_size != batch_size:
-				print(
-					f"Adjusted batch_size to {adjusted_batch_size} due to GPU memory constraints "
-					f"(free: {torch.cuda.memory_allocated(device)/1024**2:.2f} MiB)"
-				)
-			# Encode batch texts with retries
-			text_embeddings = None
-			current_batch_size = adjusted_batch_size
-			retries = 3
-			while retries > 0 and text_embeddings is None:
-					try:
-							text_embeddings = sent_model.encode(
-									batch_texts,
-									show_progress_bar=False,
-									batch_size=current_batch_size,
-									convert_to_numpy=True
-							)
-					except torch.cuda.OutOfMemoryError as e:
-							if verbose:
-									print(f"CUDA OOM error with batch_size={current_batch_size}: {e}. Retrying with smaller batch...")
-							current_batch_size = max(1, current_batch_size // 2)
-							retries -= 1
-							if retries == 0:
-									print("Failed to encode batch after retries. Skipping batch.")
-									results.extend([[] for _ in range(len(batch_texts))])
-									continue
-			
-			if text_embeddings is None:
-					continue
-			batch_results = []
-			for i, (text_emb, labels) in enumerate(zip(text_embeddings, batch_labels_list)):
-					if not labels:
-							batch_results.append([])
-							continue
-					# Encode labels with retry mechanism
-					label_embeddings = None
-					current_label_batch_size = adjusted_batch_size
-					retries = 3
-					while retries > 0 and label_embeddings is None:
-							try:
-									label_embeddings = sent_model.encode(
-											labels,
-											show_progress_bar=False,
-											batch_size=current_label_batch_size,
-											convert_to_numpy=True
-									)
-							except torch.cuda.OutOfMemoryError as e:
-									if verbose:
-											print(f"CUDA OOM error for labels with batch_size={current_label_batch_size}: {e}. Retrying with smaller batch...")
-									current_label_batch_size = max(1, current_label_batch_size // 2)
-									retries -= 1
-									if retries == 0:
-											print("Failed to encode labels after retries. Skipping labels.")
-											batch_results.append([])
-											break
-					
-					if label_embeddings is None:
-							continue
-					similarities = np.dot(label_embeddings, text_emb) / (
-							np.linalg.norm(label_embeddings, axis=1) * np.linalg.norm(text_emb) + 1e-8
-					)
-					relevant_indices = np.where(similarities > threshold)[0]
-					batch_results.append([labels[idx] for idx in relevant_indices])
-			
-			results.extend(batch_results)
-	return results
 
 def deduplicate_labels(labels):
 		"""
@@ -2054,7 +2071,17 @@ def get_textual_based_annotation(
 			t0 = time.time()
 			per_image_combined_labels = []
 			for text, query, ner, keywords, topics in tqdm(zip(english_texts, english_queries, per_image_ner_labels, per_image_keywords, per_image_topic_labels), total=len(english_texts), desc="Label Combination"):
-					cleaned_labels = combine_and_clean_labels(ner, keywords, topics, query, text, sent_model, min_threshold=0.4, max_threshold=0.7)
+					cleaned_labels = combine_and_clean_labels(
+						ner_labels=ner, 
+						keywords=keywords, 
+						topic_labels=topics, 
+						user_query=query, 
+						text=text, 
+						sent_model=sent_model, 
+						relevance_threshold=relevance_threshold,
+						# min_threshold=0.4,
+						# max_threshold=0.7,
+					)
 					per_image_combined_labels.append(cleaned_labels)
 			print(f"Label combination and cleaning done in {time.time() - t0:.3f} sec")
 			# Step 6: Filter by relevance
@@ -2114,9 +2141,136 @@ def get_textual_based_annotation(
 	
 	return per_image_labels
 
+def custom_collate_fn(batch):
+    """Handles batches where some images may be None"""
+    indices = [item[0] for item in batch]
+    images = [item[1] for item in batch if item[1] is not None]
+    return indices, images
+
+# Disable gradient calculation globally at start
+torch.set_grad_enabled(False)
+
+class HistoricalArchives(Dataset):
+	def __init__(self, img_paths):
+		self.img_paths = img_paths
+			
+	def __len__(self):
+		return len(self.img_paths)
+			
+	def __getitem__(self, idx):
+		try:
+			img = Image.open(self.img_paths[idx]).convert("RGB")
+			return idx, img
+		except Exception as e:
+			print(f"Error loading image {self.img_paths[idx]}: {e}")
+			return idx, None
+
 def get_visual_based_annotation(
 		csv_file: str,
-		st_model_name: str,
+		vlm_model_name: str,
+		batch_size: int,
+		device: str,
+		num_workers: int,
+		verbose: bool,
+		metadata_fpth: str,
+		topk: int = 3,
+	):
+	if verbose:
+		print(f"Semi-Supervised label extraction from image data (using VLM) batch_size: {batch_size}".center(160, "-"))
+	
+	visual_based_annotation_start_time = time.time()
+	
+	# Load categories
+	CATEGORIES_FILE = "categories.json"
+	object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)
+	candidate_labels = list(set(object_categories + scene_categories + activity_categories))
+	texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
+	
+	# Setup device and memory info
+	device = torch.device(device)
+	gpu_name = torch.cuda.get_device_name(device)
+	total_gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3 # GB
+	available_gpu_memory = torch.cuda.mem_get_info()[0] / 1024**3 # GB
+	print(f"Total GPU memory: {total_gpu_memory:.2f} GB ({gpu_name})")
+	print(f"Available GPU memory: {available_gpu_memory:.2f} GB ({gpu_name})")
+	
+	# Setup model with optimizations
+	torch.set_grad_enabled(False)
+	model = AutoModel.from_pretrained(
+		pretrained_model_name_or_path=vlm_model_name,
+		torch_dtype=torch.float16 if available_gpu_memory < 7 else torch.float32,
+		device_map=device,
+	).eval()
+	
+	model = torch.compile(model, mode="max-autotune")
+	
+	processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=vlm_model_name)
+	
+	# Precompute text embeddings
+	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+		text_inputs = processor(
+			text=texts,
+			padding="max_length",
+			max_length=64,
+			return_tensors="pt",
+		).to(device)
+		text_embeddings = model.get_text_features(**text_inputs)
+		text_embeddings = text_embeddings / text_embeddings.norm(dim=-1, keepdim=True)
+	
+	# Load dataframe
+	dtypes = {
+		'doc_id': str, 'id': str, 'label': str, 'title': str,
+		'description': str, 'img_url': str, 'enriched_document_description': str,
+		'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
+		'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+	}
+	df = pd.read_csv(csv_file, on_bad_lines='skip', dtype=dtypes, low_memory=False)
+	img_paths = df['img_path'].tolist()
+	combined_labels = [[] for _ in range(len(img_paths))]
+	
+	# Process images using DataLoader
+	dataset = HistoricalArchives(img_paths)
+	dataloader = DataLoader(
+		dataset,
+		batch_size=batch_size, 
+		num_workers=num_workers,
+		pin_memory=torch.cuda.is_available(),
+		persistent_workers=True if num_workers > 1 else False,
+		collate_fn=custom_collate_fn
+	)
+	print(f"Processing {len(img_paths)} images in batches of {batch_size}...")
+	for batch_indices, images in tqdm(dataloader, desc="Processing images", total=len(img_paths)):
+		if not images:
+			continue
+				
+		try:
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				image_inputs = processor(
+					images=images,
+					padding="max_length",
+					max_num_patches=4096,
+					return_tensors="pt",
+				).to(device)
+				
+				image_embeddings = model.get_image_features(**image_inputs)
+				image_embeddings = image_embeddings / image_embeddings.norm(dim=-1, keepdim=True)
+				similarities = image_embeddings @ text_embeddings.T
+				
+				for processed_idx, global_idx in enumerate(batch_indices[:len(images)]):
+					topk_probs, topk_indices = similarities[processed_idx].topk(topk)
+					combined_labels[global_idx] = [candidate_labels[idx] for idx in topk_indices]
+		except Exception as e:
+			print(f"ERROR: failed to process batch {batch_indices[0]}-{batch_indices[-1]}: {e}")
+	
+	df['visual_based_labels'] = combined_labels
+	df.to_csv(metadata_fpth, index=False)
+	
+	print(f"Processed {len(img_paths)} images, generated {sum(1 for labels in combined_labels if labels)} valid results")
+	print(f"Visual-based annotation Elapsed time: {time.time() - visual_based_annotation_start_time:.2f} sec".center(160, " "))
+	return combined_labels
+
+def get_visual_based_annotation_old(
+		csv_file: str,
 		vlm_model_name: str,
 		batch_size: int,
 		device: str,
@@ -2143,11 +2297,12 @@ def get_visual_based_annotation(
 	print(f"Available GPU memory: {available_gpu_memory:.2f} GB ({gpu_name})")
 
 	# Setup model
+	torch.set_grad_enabled(False)
 	model = AutoModel.from_pretrained(
 		pretrained_model_name_or_path=vlm_model_name,
 		torch_dtype=torch.float16 if available_gpu_memory < 7 else torch.float32,
 		device_map=device,
-	)
+	).eval()
 	if available_gpu_memory > 7:
 		model = torch.compile(model, mode="reduce-overhead")
 	print(model.parameters().__next__().dtype)
@@ -2180,74 +2335,68 @@ def get_visual_based_annotation(
 	img_paths = df['img_path'].tolist()
 
 	combined_labels = [[] for _ in range(len(img_paths))]
+
 	img_path_batches = [img_paths[i:i+batch_size] for i in range(0, len(img_paths), batch_size)]
 
 	for batch_idx, batch in enumerate(tqdm(img_path_batches, desc="Processing batched images")):
-		batch_start_idx = batch_idx * batch_size  # ✅ Track global starting index
+		batch_start_idx = batch_idx * batch_size
 		
 		images = []
-		valid_global_indices = []  # ✅ Store global indices, not batch-local
+		valid_global_indices = []
 		
 		# Load images with proper index tracking
 		for local_i, pth in enumerate(batch):
-			global_idx = batch_start_idx + local_i  # ✅ Calculate global index
+			global_idx = batch_start_idx + local_i
 			
 			try:
 				if os.path.exists(pth):
 					image = Image.open(pth).convert("RGB")
 					images.append(image)
-					valid_global_indices.append(global_idx)  # ✅ Store global index
+					valid_global_indices.append(global_idx)
 				else:
-					combined_labels[global_idx] = []  # ✅ Empty result for missing file
+					combined_labels[global_idx] = []
 			except Exception as e:
 				print(f"ERROR: failed to load image from {pth} => {e}")
-				combined_labels[global_idx] = []  # ✅ Empty result for failed load
+				combined_labels[global_idx] = []
 		
 		# Skip if no valid images in batch
 		if not images:
-				continue
+			continue
 		
 		try:
-				# Process batch
-				image_inputs = processor(
-						images=images,
-						padding="max_length",
-						max_num_patches=4096,
-						return_tensors="pt",
-				).to(device)
-				
-				with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-						image_embeddings = model.get_image_features(**image_inputs)
-						image_embeddings = image_embeddings / image_embeddings.norm(dim=-1, keepdim=True)
-						
-						# Compute similarities
-						similarities = image_embeddings @ text_embeddings.T
-				
-				# ✅ Process results with correct indexing
-				for processed_idx, global_idx in enumerate(valid_global_indices):
-						topk_probs, topk_indices = similarities[processed_idx].topk(topk)
-						topk_labels = [candidate_labels[idx] for idx in topk_indices]
-						combined_labels[global_idx] = topk_labels  # ✅ Assign to correct global position
-				
-				# Cleanup
-				del image_inputs, image_embeddings, similarities
-				
+			# Process batch
+			image_inputs = processor(
+				images=images,
+				padding="max_length",
+				max_num_patches=4096,
+				return_tensors="pt",
+			).to(device)
+			
+			with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				image_embeddings = model.get_image_features(**image_inputs)
+				image_embeddings = image_embeddings / image_embeddings.norm(dim=-1, keepdim=True)
+				similarities = image_embeddings @ text_embeddings.T
+			
+			for processed_idx, global_idx in enumerate(valid_global_indices):
+				topk_probs, topk_indices = similarities[processed_idx].topk(topk)
+				topk_labels = [candidate_labels[idx] for idx in topk_indices]
+				combined_labels[global_idx] = topk_labels
+			
+			del image_inputs, image_embeddings, similarities
 		except Exception as e:
-				print(f"ERROR: failed to process batch {batch_start_idx}-{batch_start_idx + len(batch)}: {e}")
-				# Assign empty results for failed batch
-				for global_idx in valid_global_indices:
-						if not combined_labels[global_idx]:  # Only if not already assigned
-								combined_labels[global_idx] = []
+			print(f"ERROR: failed to process batch {batch_start_idx}-{batch_start_idx + len(batch)}: {e}")
+			# Assign empty results for failed batch
+			for global_idx in valid_global_indices:
+				if not combined_labels[global_idx]:  # Only if not already assigned
+					combined_labels[global_idx] = []
 		
 		# Memory cleanup every few batches
 		if batch_idx % 10 == 0:
-				torch.cuda.empty_cache()
-
+			torch.cuda.empty_cache()
 
 	df['visual_based_labels'] = combined_labels
 	df.to_csv(metadata_fpth, index=False)
-	print(f"✅ Processed {len(img_paths)} images, generated {sum(1 for labels in combined_labels if labels)} valid results")
-	
+	print(f"Processed {len(img_paths)} images, generated {sum(1 for labels in combined_labels if labels)} valid results")
 	print(f"Visual-based annotation Elapsed time: {time.time() - visual_based_annotation_start_time:.2f} sec".center(160, " "))
 	return combined_labels
 
@@ -2263,15 +2412,15 @@ def parallel_relevance_filtering(texts, all_labels, n_processes=None):
 	chunks = []
 	
 	for i in range(0, total_docs, chunk_size):
-			end_idx = min(i + chunk_size, total_docs)
-			chunks.append((i, end_idx, texts[i:end_idx], all_labels[i:end_idx]))
+		end_idx = min(i + chunk_size, total_docs)
+		chunks.append((i, end_idx, texts[i:end_idx], all_labels[i:end_idx]))
 	
 	with multiprocessing.Pool(processes=n_processes) as pool:
-			chunk_results = pool.map(process_document_chunk, chunks)
+		chunk_results = pool.map(process_document_chunk, chunks)
 	
 	all_results = []
 	for chunk in chunk_results:
-			all_results.extend(chunk)
+		all_results.extend(chunk)
 	
 	return all_results
 
@@ -2350,7 +2499,6 @@ def main():
 	else:
 		visual_based_labels = get_visual_based_annotation(
 			csv_file=args.csv_file,
-			st_model_name=args.sentence_model_name,
 			vlm_model_name=args.vlm_model_name,
 			batch_size=args.vision_batch_size,
 			device=args.device,
