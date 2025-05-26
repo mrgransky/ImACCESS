@@ -5,8 +5,8 @@ torch.set_grad_enabled(False)
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata.csv -d "cuda:1" -nw 16 -tbs 512 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_SMU.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 24 -tbs 512 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31/metadata.csv -d "cuda:1" -nw 16 -tbs 256 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_NA.out &
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 20 -tbs 512 -vbs 32 -vth 0.3 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -d "cuda:3" -nw 20 -tbs 512 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_HISTORY_X4.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 20 -tbs 256 -vbs 32 -vth 0.3 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -d "cuda:3" -nw 20 -tbs 256 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_HISTORY_X4.out &
 
 # Make language detection deterministic
 DetectorFactory.seed = 42
@@ -1006,65 +1006,141 @@ def apply_final_filters(
 		return filtered
 
 def batch_filter_by_relevance(
+    sent_model: SentenceTransformer,
+    texts: List[str],
+    all_labels_list: List[List[str]],
+    threshold: float,
+    batch_size: int,
+    max_retries: int = 3
+) -> List[List[str]]:
+    results = []
+    if not texts or not all_labels_list:
+        return results
+    
+    # Initialize with conservative batch sizes
+    text_batch_size = max(1, min(batch_size, 8))
+    label_batch_size = max(1, min(batch_size // 2, 16))
+    
+    # Memory optimization flags
+    torch.backends.cuda.enable_flash_sdp(True)  # Enable flash attention if available
+    torch.backends.cuda.enable_mem_efficient_sdp(True)
+    
+    def safe_encode(items, is_labels=False):
+        """Helper function with automatic batch size reduction"""
+        current_batch_size = label_batch_size if is_labels else text_batch_size
+        for attempt in range(max_retries):
+            try:
+                return sent_model.encode(
+                    items,
+                    batch_size=current_batch_size,
+                    show_progress_bar=False,
+                    convert_to_numpy=True,
+                    convert_to_tensor=False,
+                    device='cuda' if not is_labels else 'cpu'  # Labels can often be processed on CPU
+                )
+            except torch.cuda.OutOfMemoryError:
+                if attempt == max_retries - 1:
+                    raise
+                current_batch_size = max(1, current_batch_size // 2)
+                print(f"Reducing {'label' if is_labels else 'text'} batch size to {current_batch_size}")
+                torch.cuda.empty_cache()
+    
+    # Process texts in optimized batches
+    text_embeddings = []
+    for i in tqdm(range(0, len(texts), text_batch_size), desc="Encoding texts"):
+        batch = texts[i:i + text_batch_size]
+        try:
+            batch_emb = safe_encode(batch)
+            text_embeddings.extend(batch_emb)
+        except Exception as e:
+            print(f"Error encoding text batch {i}-{i+text_batch_size}: {str(e)[:200]}")
+            text_embeddings.extend([np.zeros(sent_model.get_sentence_embedding_dimension())] * len(batch))
+    text_embeddings = np.array(text_embeddings)
+    
+    # Process labels with memory awareness
+    for i, (text_emb, labels) in enumerate(tqdm(zip(text_embeddings, all_labels_list), total=len(texts), desc="Filtering labels")):
+        if not labels:
+            results.append([])
+            continue
+        
+        try:
+            # Dynamic batch size based on label count and length
+            avg_label_len = sum(len(l) for l in labels) / len(labels)
+            dynamic_batch_size = max(1, min(
+                label_batch_size,
+                int(512 / avg_label_len) if avg_label_len > 0 else label_batch_size
+            ))
+            
+            label_embeddings = safe_encode(labels, is_labels=True)
+            
+            # Efficient similarity calculation
+            text_emb_norm = text_emb / (np.linalg.norm(text_emb) + 1e-8)
+            label_emb_norm = label_embeddings / (np.linalg.norm(label_embeddings, axis=1, keepdims=True) + 1e-8)
+            similarities = np.dot(label_emb_norm, text_emb_norm)
+            
+            relevant_indices = np.where(similarities > threshold)[0]
+            results.append([labels[idx] for idx in relevant_indices])
+            
+            # Periodic memory cleanup
+            if i % 100 == 0:
+                torch.cuda.empty_cache()
+                
+        except Exception as e:
+            print(f"Error processing labels for text {i}: {str(e)[:200]}")
+            results.append([])
+    
+    return results
+
+def batch_filter_by_relevance_old(
 		sent_model: SentenceTransformer,
 		texts: List[str],
 		all_labels_list: List[List[str]],
 		threshold: float,
 		batch_size: int,
-):
-		"""Memory-efficient relevance filtering with adaptive batching"""
+	):
+	results = []
+	print("Pre-encoding texts embeddings...")
+	try:
+		text_embeddings = sent_model.encode(
+			texts, 
+			batch_size=batch_size,
+			show_progress_bar=False,
+			convert_to_numpy=True
+		)
+	except torch.cuda.OutOfMemoryError:
+		print("CUDA Out of Memory. Fallback to smaller batches for text encoding...")
+		text_embeddings = []
+		for i in tqdm(range(0, len(texts), batch_size // 2), desc="Encoding texts (small batches)"):
+			batch = texts[i:i + batch_size // 2]
+			batch_emb = sent_model.encode(batch, convert_to_numpy=True, show_progress_bar=False)
+			text_embeddings.extend(batch_emb)
+		text_embeddings = np.array(text_embeddings)
+	
+	# Process labels efficiently
+	for i, (text_emb, labels) in enumerate(tqdm(zip(text_embeddings, all_labels_list), total=len(texts), desc="Filtering labels")):
+		if not labels:
+			results.append([])
+			continue
 		
-		results = []
+		# Dynamic batch size based on number of labels
+		label_batch_size = min(len(labels), batch_size)
+		if len(labels) > 100:  # Large label sets
+			label_batch_size = batch_size // 4
 		
-		# Pre-encode all texts once
-		print("Pre-encoding texts...")
 		try:
-				text_embeddings = sent_model.encode(
-						texts, 
-						batch_size=batch_size,
-						show_progress_bar=False,
-						convert_to_numpy=True
-				)
-		except torch.cuda.OutOfMemoryError:
-				# Fallback to smaller batches
-				text_embeddings = []
-				for i in tqdm(range(0, len(texts), batch_size // 2), desc="Encoding texts (small batches)"):
-						batch = texts[i:i + batch_size // 2]
-						batch_emb = sent_model.encode(batch, convert_to_numpy=True, show_progress_bar=False)
-						text_embeddings.extend(batch_emb)
-				text_embeddings = np.array(text_embeddings)
-		
-		# Process labels efficiently
-		for i, (text_emb, labels) in enumerate(tqdm(zip(text_embeddings, all_labels_list), total=len(texts), desc="Filtering labels")):
-				if not labels:
-						results.append([])
-						continue
-				
-				# Dynamic batch size based on number of labels
-				label_batch_size = min(len(labels), batch_size)
-				if len(labels) > 100:  # Large label sets
-						label_batch_size = batch_size // 4
-				
-				try:
-						label_embeddings = sent_model.encode(
-								labels, 
-								batch_size=label_batch_size,
-								show_progress_bar=False,
-								convert_to_numpy=True
-						)
-						
-						similarities = np.dot(label_embeddings, text_emb) / (
-								np.linalg.norm(label_embeddings, axis=1) * np.linalg.norm(text_emb) + 1e-8
-						)
-						
-						relevant_indices = np.where(similarities > threshold)[0]
-						results.append([labels[idx] for idx in relevant_indices])
-						
-				except Exception as e:
-						print(f"Error processing labels for text {i}: {e}")
-						results.append([])
-		
-		return results
+			label_embeddings = sent_model.encode(
+				labels, 
+				batch_size=label_batch_size,
+				show_progress_bar=False,
+				convert_to_numpy=True
+			)
+			similarities = np.dot(label_embeddings, text_emb) / (np.linalg.norm(label_embeddings, axis=1) * np.linalg.norm(text_emb) + 1e-8)			
+			relevant_indices = np.where(similarities > threshold)[0]
+			results.append([labels[idx] for idx in relevant_indices])
+		except Exception as e:
+			print(f"Error processing labels for text {i}: {e}")
+			results.append([])
+	return results
 
 def deduplicate_labels(labels):
 		"""
