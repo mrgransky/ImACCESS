@@ -111,14 +111,14 @@ def extract_semantic_topics(
 		# prefer nouns and adjectives
 		"POS": PartOfSpeech("en_core_web_sm", pos_patterns=[[{"POS": "NOUN"}, {"POS": "ADJ"}]])
 	}
-
-	print(f"Creating BERTopic model for {len(texts)} texts...")
+	min_topic_size = max(5, min(15, len(texts)//1000))
+	print(f"Creating BERTopic model for {len(texts)} texts => min_topic_size: {min_topic_size}")
 	topic_model = BERTopic(
 		embedding_model=sent_model,
 		vectorizer_model=vectorizer_model,
 		ctfidf_model=ctfidf_model,
 		representation_model=representation_model,
-		min_topic_size=max(5, min(15, len(texts)//1000)),
+		min_topic_size=min_topic_size,
 		calculate_probabilities=True,
 		nr_topics="auto",
 		verbose=True,
