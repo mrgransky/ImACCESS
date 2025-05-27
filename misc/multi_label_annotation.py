@@ -967,7 +967,7 @@ def get_textual_based_annotation(
         batch_size=min(32, len(candidate_labels)),  # Smaller batch for labels
         convert_to_tensor=True,
         normalize_embeddings=True,
-        show_progress_bar=verbose
+        show_progress_bar=False,
     )
     
     # Load dataframe with optimized settings
@@ -986,7 +986,9 @@ def get_textual_based_annotation(
         dtype=dtypes,
         low_memory=True
     )
-    
+    if verbose:
+        print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
+
     # Initialize results columns
     df['textual_based_labels'] = None
     df['textual_based_scores'] = None
