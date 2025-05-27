@@ -42,6 +42,7 @@ from sklearn.neighbors import NearestNeighbors
 import hashlib
 from torch.cuda import get_device_properties, memory_allocated
 from torch.utils.data import Dataset, DataLoader
+import torch.nn.functional as F
 from kneed import KneeLocator
 from keybert import KeyBERT
 from rake_nltk import Rake
@@ -52,12 +53,18 @@ from bertopic.representation import KeyBERTInspired, MaximalMarginalRelevance, P
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings(
+	"ignore",
+	message=".*flash_attn.*",
+	category=UserWarning,
+	module="transformers"
+)
 # Suppress logging warnings
 os.environ['TF_ENABLE_ONEDNN_OPTS']='0'
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["GRPC_VERBOSITY"] = "ERROR"
 os.environ["GLOG_minloglevel"] = "2"
-
+os.environ["TRANSFORMERS_QUIET"] = "1"
 
 from skimage.filters.rank import entropy
 from skimage.morphology import disk
@@ -361,50 +368,50 @@ def get_ip_info():
 	except requests.exceptions.RequestException as e:
 		print(f"Error: {e}")
 
-def clean_(text:str, sw:list):
-	if not text:
-		return
-	# print(text)
-	# text = re.sub(r'[^a-zA-Z\s]', ' ', text) # Remove special characters and digits
-	# text = re.sub(r'[";=&#<>_\-\+\^\.\$\[\]]', " ", text)
-	# text = re.sub(r'[!"#$%&\'()*+,-./:;<=>?@\[\]^_`{|}~]', ' ', text) # remove all punctuation marks except periods and commas,
-	text = re.sub(r"[^\w\s'-]", " ", text) # remove all punctuation marks, including periods and commas,
-	words = nltk.tokenize.word_tokenize(text) # Tokenize the text into words
-	# Filter out stopwords and words with fewer than 3 characters
-	words = [
-		word.lower() 
-		for word in words 
-		if word.lower() not in sw
-		and len(word) >= 2
-	]
-	text = ' '.join(words) # Join the words back into a string
-	text = re.sub(r'\boriginal caption\b', ' ', text)
-	text = re.sub(r'\bphoto shows\b', ' ', text)
-	text = re.sub(r'\bfile record\b', ' ', text)
-	text = re.sub(r'\boriginal field number\b', ' ', text)
-	# text = re.sub(r'\bdate taken\b', ' ', text)
-	# text = re.sub(r'\bdate\b', ' ', text)
-	# text = re.sub(r'\bdistrict\b', ' ', text)
-	text = re.sub(r'\bobtained\b', ' ', text)
-	text = re.sub(r'\bfile record\b', ' ', text)
-	text = re.sub(r'\bcaption\b', ' ', text)
-	text = re.sub(r'\bunidentified\b', ' ', text)
-	text = re.sub(r'\bunnumbered\b', ' ', text)
-	text = re.sub(r'\buntitled\b', ' ', text)
-	text = re.sub(r'\bfotografie\b', ' ', text)
-	text = re.sub(r'\bfotografen\b', ' ', text)
-	text = re.sub(r'\bphotograph\b', ' ', text)
-	text = re.sub(r'\bphotographer\b', ' ', text)
-	text = re.sub(r'\bphotography\b', ' ', text)
-	text = re.sub(r'\bfotoalbum\b', ' ', text)
-	text = re.sub(r'\bphoto\b', ' ', text)
-	text = re.sub(r'\bgallery\b', ' ', text)
-	text = re.sub(r"\bpart \d+\b|\bpart\b", " ", text)
-	text = re.sub(r'\bfoto\b', ' ', text)
-	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
-	if len(text) == 0:
-		return None
-	return text
+# def clean_(text:str, sw:list):
+# 	if not text:
+# 		return
+# 	# print(text)
+# 	# text = re.sub(r'[^a-zA-Z\s]', ' ', text) # Remove special characters and digits
+# 	# text = re.sub(r'[";=&#<>_\-\+\^\.\$\[\]]', " ", text)
+# 	# text = re.sub(r'[!"#$%&\'()*+,-./:;<=>?@\[\]^_`{|}~]', ' ', text) # remove all punctuation marks except periods and commas,
+# 	text = re.sub(r"[^\w\s'-]", " ", text) # remove all punctuation marks, including periods and commas,
+# 	words = nltk.tokenize.word_tokenize(text) # Tokenize the text into words
+# 	# Filter out stopwords and words with fewer than 3 characters
+# 	words = [
+# 		word.lower() 
+# 		for word in words 
+# 		if word.lower() not in sw
+# 		and len(word) >= 2
+# 	]
+# 	text = ' '.join(words) # Join the words back into a string
+# 	text = re.sub(r'\boriginal caption\b', ' ', text)
+# 	text = re.sub(r'\bphoto shows\b', ' ', text)
+# 	text = re.sub(r'\bfile record\b', ' ', text)
+# 	text = re.sub(r'\boriginal field number\b', ' ', text)
+# 	# text = re.sub(r'\bdate taken\b', ' ', text)
+# 	# text = re.sub(r'\bdate\b', ' ', text)
+# 	# text = re.sub(r'\bdistrict\b', ' ', text)
+# 	text = re.sub(r'\bobtained\b', ' ', text)
+# 	text = re.sub(r'\bfile record\b', ' ', text)
+# 	text = re.sub(r'\bcaption\b', ' ', text)
+# 	text = re.sub(r'\bunidentified\b', ' ', text)
+# 	text = re.sub(r'\bunnumbered\b', ' ', text)
+# 	text = re.sub(r'\buntitled\b', ' ', text)
+# 	text = re.sub(r'\bfotografie\b', ' ', text)
+# 	text = re.sub(r'\bfotografen\b', ' ', text)
+# 	text = re.sub(r'\bphotograph\b', ' ', text)
+# 	text = re.sub(r'\bphotographer\b', ' ', text)
+# 	text = re.sub(r'\bphotography\b', ' ', text)
+# 	text = re.sub(r'\bfotoalbum\b', ' ', text)
+# 	text = re.sub(r'\bphoto\b', ' ', text)
+# 	text = re.sub(r'\bgallery\b', ' ', text)
+# 	text = re.sub(r"\bpart \d+\b|\bpart\b", " ", text)
+# 	text = re.sub(r'\bfoto\b', ' ', text)
+# 	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
+# 	if len(text) == 0:
+# 		return None
+# 	return text
 
 # def clean_text(text):
 # 		"""Clean text by removing special characters and excess whitespace"""
