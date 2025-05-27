@@ -1,6 +1,5 @@
 from utils import *
 torch.set_grad_enabled(False)
-from fuzzywuzzy import fuzz
 
 # how to run[Pouta]:
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata.csv -d "cuda:1" -nw 16 -tbs 512 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_SMU.out &
