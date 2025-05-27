@@ -920,164 +920,159 @@ def get_visual_based_annotation(
 	return combined_labels
 
 def get_textual_based_annotation(
-    csv_file: str, 
-    num_workers: int,
-    batch_size: int,
-    relevance_threshold: float,
-    metadata_fpth: str,
-    device: str,
-    st_model_name: str,
-    ner_model_name: str,
-    topk: int = 3,
-    verbose: bool = True,
-    use_parallel: bool = False,
-):
-    """Optimized textual annotation with robust memory management"""
-    # Setup environment for better memory management
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-    torch.backends.cuda.enable_flash_sdp(True)
-    torch.backends.cuda.enable_mem_efficient_sdp(True)
-    
-    if verbose:
-        print(f"Semi-Supervised textual-based annotation batch_size: {batch_size} num_workers: {num_workers}".center(160, "-"))
-    
-    start_time = time.time()
-    
-    # Load model with memory optimizations
-    if verbose:
-        print(f"Loading sentence-transformer model: {st_model_name}...")
-    sent_model = SentenceTransformer(
-        model_name_or_path=st_model_name,
-        device=device,
-        trust_remote_code=True
-    )
-    sent_model.eval()
-    torch.set_grad_enabled(False)
-    
-    # Load categories
-    CATEGORIES_FILE = "categories.json"
-    object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)
-    candidate_labels = list(set(object_categories + scene_categories + activity_categories))
-    
-    # Pre-compute label embeddings once
-    if verbose:
-        print("Pre-computing label embeddings...")
-    label_embs = sent_model.encode(
-        candidate_labels,
-        batch_size=min(32, len(candidate_labels)),  # Smaller batch for labels
-        convert_to_tensor=True,
-        normalize_embeddings=True,
-        show_progress_bar=False,
-    )
-    
-    # Load dataframe with optimized settings
-    if verbose:
-        print(f"Loading dataframe: {csv_file}...")
-    dtypes = {
-        'doc_id': str, 'id': str, 'label': str, 'title': str,
-        'description': str, 'img_url': str, 'enriched_document_description': str,
-        'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
-        'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
-        'user_query': str,
-    }
-    df = pd.read_csv(
-        filepath_or_buffer=csv_file,
-        on_bad_lines='skip',
-        dtype=dtypes,
-        low_memory=True
-    )
-    if verbose:
-        print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
+		csv_file: str, 
+		num_workers: int,
+		batch_size: int,
+		relevance_threshold: float,
+		metadata_fpth: str,
+		device: str,
+		st_model_name: str,
+		ner_model_name: str,
+		topk: int = 3,
+		verbose: bool = True,
+		use_parallel: bool = False,
+	):
+	os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+	torch.backends.cuda.enable_flash_sdp(True)
+	torch.backends.cuda.enable_mem_efficient_sdp(True)
+	
+	if verbose:
+			print(f"Semi-Supervised textual-based annotation batch_size: {batch_size} num_workers: {num_workers}".center(160, "-"))
+	
+	start_time = time.time()
+	
+	# Load model with memory optimizations
+	if verbose:
+			print(f"Loading sentence-transformer model: {st_model_name}...")
+	sent_model = SentenceTransformer(
+			model_name_or_path=st_model_name,
+			device=device,
+			trust_remote_code=True
+	)
+	sent_model.eval()
+	torch.set_grad_enabled(False)
+	
+	# Load categories
+	CATEGORIES_FILE = "categories.json"
+	object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)
+	candidate_labels = list(set(object_categories + scene_categories + activity_categories))
+	
+	# Pre-compute label embeddings once
+	if verbose:
+		print("Pre-computing label embeddings...")
+	t0 = time.time()
+	label_embs = sent_model.encode(
+		candidate_labels,
+		batch_size=min(32, len(candidate_labels)),  # Smaller batch for labels
+		convert_to_tensor=True,
+		normalize_embeddings=True,
+		show_progress_bar=False,
+	)
+	if verbose:
+		print(f"Label embeddings computed in {time.time() - t0:.2f} sec")
+	
+	if verbose:
+		print(f"Loading dataframe: {csv_file}...")
+	dtypes = {
+		'doc_id': str, 'id': str, 'label': str, 'title': str,
+		'description': str, 'img_url': str, 'enriched_document_description': str,
+		'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
+		'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+		'user_query': str,
+	}
+	df = pd.read_csv(
+		filepath_or_buffer=csv_file,
+		on_bad_lines='skip',
+		dtype=dtypes,
+		low_memory=True
+	)
+	if verbose:
+		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
+	
+	df['textual_based_labels'] = None
+	df['textual_based_scores'] = None
+	
+	chunk_size = min(1000, len(df))  # Process in chunks of max 1000 samples, but not more than the number of samples in the dataframe
+	if verbose:
+		print(f"Processing {len(df)} samples with {len(candidate_labels)} candidate labels in {chunk_size} chunks...")
 
-    # Initialize results columns
-    df['textual_based_labels'] = None
-    df['textual_based_scores'] = None
-    
-    if verbose:
-        print(f"Processing {len(df)} samples with {len(candidate_labels)} candidate labels...")
-    
-    # Process in smaller chunks with memory cleanup
-    chunk_size = min(1000, len(df))  # Process in chunks of max 1000 samples
-    for chunk_start in tqdm(range(0, len(df), chunk_size), desc="Processing documents"):
-        chunk_end = min(chunk_start + chunk_size, len(df))
-        chunk_df = df.iloc[chunk_start:chunk_end]
-        
-        # Process texts in smaller batches within the chunk
-        text_batch_size = min(8, batch_size)  # Reduced batch size for text encoding
-        text_embs = []
-        
-        for i in range(0, len(chunk_df), text_batch_size):
-            batch_texts = chunk_df['enriched_document_description'].fillna('').iloc[i:i+text_batch_size].tolist()
-            try:
-                batch_embs = sent_model.encode(
-                    batch_texts,
-                    batch_size=text_batch_size,
-                    convert_to_tensor=True,
-                    normalize_embeddings=True,
-                    show_progress_bar=False
-                )
-                text_embs.append(batch_embs)
-                torch.cuda.empty_cache()
-            except torch.cuda.OutOfMemoryError:
-                # Reduce batch size and retry
-                text_batch_size = max(1, text_batch_size // 2)
-                print(f"Reducing text batch size to {text_batch_size} due to OOM")
-                continue
-        
-        if not text_embs:
-            continue
-            
-        text_embs = torch.cat(text_embs)
-        
-        # Compute similarities in smaller batches
-        sim_batch_size = min(32, batch_size * 2)  # Larger batch for matrix ops
-        cosine_scores = []
-        
-        for i in range(0, len(text_embs), sim_batch_size):
-            batch_sims = util.cos_sim(
-                text_embs[i:i+sim_batch_size],
-                label_embs
-            )
-            cosine_scores.append(batch_sims)
-            torch.cuda.empty_cache()
-        
-        cosine_scores = torch.cat(cosine_scores)
-        
-        # Get top-k results
-        topk_scores, topk_indices = torch.topk(cosine_scores, k=topk, dim=1)
-        
-        # Store results
-        for i in range(len(chunk_df)):
-            idx = chunk_start + i
-            labels = [candidate_labels[j] for j in topk_indices[i]]
-            scores = [round(s.item(), 4) for s in topk_scores[i]]
-            df.at[idx, 'textual_based_labels'] = labels
-            df.at[idx, 'textual_based_scores'] = scores
-        
-        # Clear memory between chunks
-        del text_embs, cosine_scores, topk_scores, topk_indices
-        torch.cuda.empty_cache()
-    
-    # Save results incrementally
-    if verbose:
-        print(f"Saving results to {metadata_fpth}...")
-    df.to_csv(metadata_fpth, index=False)
-    
-    try:
-        df.to_excel(metadata_fpth.replace(".csv", ".xlsx"), index=False)
-    except Exception as e:
-        print(f"Failed to write Excel file: {e}")
-    
-    if verbose:
-        print(f"Completed in {time.time() - start_time:.2f} seconds")
-        print("\nSample results:")
-        for i in range(min(5, len(df))):
-            print(f"\nSample {i+1}:")
-            print("Text:", df.iloc[i]['enriched_document_description'][:200] + "...")
-            print("Top Labels:", df.iloc[i]['textual_based_labels'])
-            print("Scores:", df.iloc[i]['textual_based_scores'])
-    
-    return df['textual_based_labels'].tolist()
+	for chunk_start in tqdm(range(0, len(df), chunk_size), desc="Processing documents"):
+		chunk_end = min(chunk_start + chunk_size, len(df))
+		chunk_df = df.iloc[chunk_start:chunk_end]
+		
+		# Process texts in smaller batches within the chunk
+		text_batch_size = min(8, batch_size)  # Reduced batch size for text encoding
+		text_embs = []
+		
+		for i in range(0, len(chunk_df), text_batch_size):
+			batch_texts = chunk_df['enriched_document_description'].fillna('').iloc[i:i+text_batch_size].tolist()
+			try:
+				batch_embs = sent_model.encode(
+					batch_texts,
+					batch_size=text_batch_size,
+					convert_to_tensor=True,
+					normalize_embeddings=True,
+					show_progress_bar=False
+				)
+				text_embs.append(batch_embs)
+				torch.cuda.empty_cache()
+			except torch.cuda.OutOfMemoryError:
+				# Reduce batch size and retry
+				text_batch_size = max(1, text_batch_size // 2)
+				print(f"Reducing text batch size to {text_batch_size} due to OOM")
+				continue
+		
+		if not text_embs:
+			continue
+				
+		text_embs = torch.cat(text_embs)
+		
+		# Compute similarities in smaller batches
+		sim_batch_size = min(32, batch_size * 2)  # Larger batch for matrix ops
+		cosine_scores = []
+		
+		for i in range(0, len(text_embs), sim_batch_size):
+			batch_sims = util.cos_sim(
+				text_embs[i:i+sim_batch_size],
+				label_embs
+			)
+			cosine_scores.append(batch_sims)
+			torch.cuda.empty_cache()
+		
+		cosine_scores = torch.cat(cosine_scores)
+		
+		# Get top-k results
+		topk_scores, topk_indices = torch.topk(cosine_scores, k=topk, dim=1)
+		
+		# Store results
+		for i in range(len(chunk_df)):
+			idx = chunk_start + i
+			labels = [candidate_labels[j] for j in topk_indices[i]]
+			scores = [round(s.item(), 4) for s in topk_scores[i]]
+			df.at[idx, 'textual_based_labels'] = labels
+			df.at[idx, 'textual_based_scores'] = scores
+		
+		# Clear memory between chunks
+		del text_embs, cosine_scores, topk_scores, topk_indices
+		torch.cuda.empty_cache()
+	
+	df.to_csv(metadata_fpth, index=False)
+	
+	try:
+		df.to_excel(metadata_fpth.replace(".csv", ".xlsx"), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
+	
+	if verbose:
+		print(f"Completed in {time.time() - start_time:.2f} seconds")
+		print("\nSample results:")
+		for i in range(min(5, len(df))):
+			print(f"\nSample {i+1}:")
+			print("Text:", df.iloc[i]['enriched_document_description'][:200] + "...")
+			print("Top Labels:", df.iloc[i]['textual_based_labels'])
+			print("Scores:", df.iloc[i]['textual_based_scores'])
+	
+	return df['textual_based_labels'].tolist()
 
 def get_textual_based_annotation_old(
 		csv_file: str, 

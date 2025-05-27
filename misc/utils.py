@@ -123,6 +123,12 @@ nltk.download(
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 
+def print_gpu_memory():
+	print(
+		f"Allocated: {torch.cuda.memory_allocated()/1024**3:.2f}GB, "
+		f"Reserved: {torch.cuda.memory_reserved()/1024**3:.2f}GB"
+	)
+
 def load_categories(file_path: str):
 	print(f"Loading categories from {file_path}")
 	try:
@@ -196,23 +202,23 @@ def print_args_table(args, parser):
 	print(tabulate.tabulate(table_data, headers=['Argument', 'Value', 'Type'], tablefmt='orgtbl'))
 
 def set_seeds(seed: int = 42, debug: bool = False, enable_optimizations: bool = True):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-    
-    if debug:  # slows down training but ensures reproducibility
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-        # Disable optimizations for debug mode
-        torch.backends.cuda.matmul.allow_tf32 = False
-    elif enable_optimizations:  # Enable optimizations for performance
-        torch.backends.cudnn.benchmark = True
-        torch.backends.cuda.matmul.allow_tf32 = True
-        # Additional optimizations
-        torch.backends.cudnn.allow_tf32 = True
+		random.seed(seed)
+		np.random.seed(seed)
+		torch.manual_seed(seed)
+		if torch.cuda.is_available():
+				torch.cuda.manual_seed(seed)
+				torch.cuda.manual_seed_all(seed)
+		
+		if debug:  # slows down training but ensures reproducibility
+				torch.backends.cudnn.deterministic = True
+				torch.backends.cudnn.benchmark = False
+				# Disable optimizations for debug mode
+				torch.backends.cuda.matmul.allow_tf32 = False
+		elif enable_optimizations:  # Enable optimizations for performance
+				torch.backends.cudnn.benchmark = True
+				torch.backends.cuda.matmul.allow_tf32 = True
+				# Additional optimizations
+				torch.backends.cudnn.allow_tf32 = True
 
 def format_elapsed_time(seconds):
 	"""
