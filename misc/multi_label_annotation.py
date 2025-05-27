@@ -5,7 +5,7 @@ torch.set_grad_enabled(False)
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata.csv -d "cuda:1" -nw 16 -tbs 512 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_SMU.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata.csv -d "cuda:0" -nw 24 -tbs 512 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31/metadata.csv -d "cuda:1" -nw 16 -tbs 256 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_NA.out &
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 20 -tbs 256 -vbs 32 -vth 0.3 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata.csv -d "cuda:2" -nw 20 -tbs 512 -vbs 32 -vth 0.3 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.out &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata.csv -d "cuda:3" -nw 20 -tbs 256 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_HISTORY_X4.out &
 
 # Make language detection deterministic
@@ -178,12 +178,13 @@ def extract_named_entities(
 		ft_model: fasttext.FastText._FastText,
 		confidence_threshold: float = 0.7,
 	):
-	if not text or not isinstance(text, str):
+	if not text or not isinstance(text, str) or len(text) < 5:
 		return []
 	if not is_english(text=text, ft_model=ft_model):
 		return []
 	try:
 		ner_results = nlp(text)
+		print(f"NER results: {type(ner_results)} {ner_results}")
 		entities = []
 		current_entity = []
 		current_type = None
@@ -231,58 +232,7 @@ def extract_named_entities(
 			print(f"Tokenization warning: {tokenize_error}")
 			return list(set(entities))  # Fallback to just entities
 	except Exception as e:
-		print(f"<!> NER processing error: {str(e)[:200]}")  # Truncate long errors
-		return []
-
-def extract_named_entities_old(
-		nlp: pipeline,
-		text: str, 
-		ft_model: fasttext.FastText._FastText,
-		confidence_threshold: float = 0.7
-	):
-	if not text or not isinstance(text, str):
-		return []
-
-	if not is_english(text=text, ft_model=ft_model):
-		return []
-	
-	try:
-			ner_results = nlp(text)
-			entities = []
-			
-			for entity in ner_results:
-					# Filter by confidence score
-					if entity.get("score", 0) < confidence_threshold:
-							continue
-							
-					if entity["entity_group"] in RELEVANT_ENTITY_TYPES:
-							entity_text = entity["word"].strip()
-							
-							# Better entity normalization
-							if len(entity_text) > 2 and entity_text.isalpha():
-									# Preserve proper nouns (capitalized entities)
-									if entity_text[0].isupper():
-											normalized = entity_text.lower()
-									else:
-											normalized = entity_text.lower()
-									
-									if (normalized not in CUSTOM_STOPWORDS and 
-											not normalized.isdigit() and
-											len(normalized) >= 3):
-											entities.append(normalized)
-			
-			# Add multi-word entities (phrases that appear as complete units)
-			doc_words = text.lower().split()
-			for i in range(len(doc_words) - 1):
-					bigram = f"{doc_words[i]} {doc_words[i+1]}"
-					if (doc_words[i] not in CUSTOM_STOPWORDS and 
-							doc_words[i+1] not in CUSTOM_STOPWORDS and
-							len(doc_words[i]) > 2 and len(doc_words[i+1]) > 2):
-							entities.append(bigram)
-			
-			return list(set(entities))
-	except Exception as e:
-		print(f"NER error: {e} {text}")
+		print(f"<!> NER processing error: {e}")
 		return []
 
 def filter_metadata_terms(labels):
@@ -515,212 +465,6 @@ def is_year_compatible(category, year):
 										return False
 		return True
 
-def post_process_labels(labels, text_description, sent_model, doc_year, vlm_scores, max_labels=10, similarity_threshold=0.8):
-		"""
-		Post-process visual labels to remove duplicates, validate temporally, and rank by relevance.
-		
-		Args:
-				labels: List of labels
-				text_description: String enriched document description
-				sent_model: SentenceTransformer model
-				doc_year: Float or int document year
-				vlm_scores: List of VLM similarity scores
-				max_labels: Maximum number of labels to retain
-				similarity_threshold: Cosine similarity threshold for deduplication
-		
-		Returns:
-				List of processed labels
-		"""
-		if not labels:
-				return []
-		
-		# Validate vlm_scores length
-		if len(vlm_scores) != len(labels):
-				vlm_scores = vlm_scores + [0.0] * (len(labels) - len(vlm_scores)) if len(vlm_scores) < len(labels) else vlm_scores[:len(labels)]
-		
-		# Encode labels and text
-		label_embs = sent_model.encode(labels, show_progress_bar=False, convert_to_numpy=True)
-		text_emb = sent_model.encode(text_description, show_progress_bar=False, convert_to_numpy=True)
-		
-		# Deduplicate based on semantic similarity
-		deduplicated = []
-		for i, (label, score) in enumerate(zip(labels, vlm_scores)):
-				is_redundant = False
-				for kept_label, kept_emb, _ in deduplicated:
-						sim = np.dot(label_embs[i], kept_emb) / (np.linalg.norm(label_embs[i]) * np.linalg.norm(kept_emb) + 1e-8)
-						if sim > similarity_threshold:
-								is_redundant = True
-								break
-				if not is_redundant:
-						deduplicated.append((label, label_embs[i], score))
-		
-		# Temporal validation
-		validated = [
-				(label, emb, score)
-				for label, emb, score in deduplicated
-				if is_year_compatible(label, doc_year)
-		]
-		
-		# Rank by combined VLM and text similarity
-		if validated:
-				text_sims = np.dot(np.array([emb for _, emb, _ in validated]), text_emb) / (
-						np.linalg.norm([emb for _, emb, _ in validated], axis=1) * np.linalg.norm(text_emb) + 1e-8
-				)
-				combined_scores = [0.6 * vlm_score + 0.4 * text_sim for vlm_score, text_sim in zip(
-						[score for _, _, score in validated], text_sims
-				)]
-				ranked = [label for _, label in sorted(zip(combined_scores, [label for label, _, _ in validated]), reverse=True)]
-				return ranked[:max_labels]
-		
-		return []
-
-def process_category_batch(
-		batch_paths, batch_descriptions, batch_indices, df, categories, prompt_embeds,
-		category_type, sent_model, processor, model, device, verbose, base_thresholds, sub_batch_size
-):
-		"""
-		Process a batch of images for a specific category type with adaptive thresholding and sparse metadata handling.
-		
-		Args:
-				batch_paths: List of image file paths
-				batch_descriptions: List of enriched document descriptions
-				batch_indices: List of global indices for the batch
-				df: DataFrame with metadata
-				categories: List of category strings
-				prompt_embeds: Pre-computed prompt embeddings
-				category_type: String ('object', 'scene', 'era', 'activity')
-				sent_model: SentenceTransformer model
-				processor: ALIGN processor
-				model: ALIGN model
-				device: Torch device
-				verbose: Bool for logging
-				base_thresholds: Dict of base thresholds per category type
-				sub_batch_size: Size of sub-batches for GPU memory management
-		
-		Returns:
-				batch_results: List of lists of selected categories
-				batch_scores: List of lists of VLM scores
-		"""
-		valid_images = []
-		valid_indices = []
-		valid_descriptions = []
-		failed_images = []
-
-		# Handle sparse metadata with fallback to title
-		user_queries = df['user_query'].fillna('').iloc[batch_indices].tolist() if 'user_query' in df.columns else [''] * len(batch_indices)
-		titles = df['title'].fillna('').iloc[batch_indices].tolist() if 'title' in df.columns else [''] * len(batch_indices)
-
-		# Validate images and descriptions
-		for i, path in enumerate(batch_paths):
-			try:
-				if os.path.exists(path):
-					img = Image.open(path).convert('RGB')
-					desc = batch_descriptions[i].strip()
-					if not desc and user_queries[i].strip():
-						desc = user_queries[i]
-					if not desc and titles[i].strip():
-						desc = titles[i]
-					if len(desc.strip()) < 10:
-						desc = ""  # Treat as sparse
-					valid_images.append(img)
-					valid_indices.append(i)
-					valid_descriptions.append(desc)
-				else:
-					failed_images.append(path)
-			except Exception as e:
-				failed_images.append(path)
-				if verbose:
-					print(f"Error loading image {path}: {e}")
-
-		if not valid_images:
-			if verbose and failed_images:
-				print(f"Failed to load {len(failed_images)} images in batch")
-			return [[] for _ in range(len(batch_paths))], [[] for _ in range(len(batch_paths))]
-
-		# Add dynamic categories from user_query
-		extended_categories = categories.copy()
-		new_queries = []
-		for query in user_queries:
-			if isinstance(query, str) and query.strip() and query not in extended_categories:
-				# extended_categories.append(query)
-				# new_queries.append(query)
-				try:
-					# Try to parse as a list
-					parsed_query = ast.literal_eval(query) if query.startswith('[') and query.endswith(']') else [query]
-					for q in parsed_query:
-						if isinstance(q, str) and q.strip() and q not in extended_categories:
-							extended_categories.append(q)
-							new_queries.append(q)
-				except (ValueError, SyntaxError):
-					# Treat as single string if parsing fails
-					if query not in extended_categories:
-						extended_categories.append(query)
-						new_queries.append(query)
-
-		# Update prompt embeddings
-		extended_prompt_embeds = prompt_embeds
-		if new_queries:
-			new_prompts = [f"a photo of {q}" for q in new_queries]
-			new_embeds = sent_model.encode(new_prompts, device=device, convert_to_tensor=True, show_progress_bar=False)
-			extended_prompt_embeds = torch.cat([prompt_embeds, new_embeds], dim=0)
-
-		# Compute text similarities
-		text_prompts = [f"a photo of {cat}" for cat in extended_categories]
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			text_embeds = sent_model.encode(valid_descriptions, device=device, convert_to_tensor=True, show_progress_bar=False)
-			text_similarities = torch.mm(extended_prompt_embeds, text_embeds.T).cpu().numpy()
-			prompt_norms = torch.norm(extended_prompt_embeds, dim=1, keepdim=True)
-			text_norms = torch.norm(text_embeds, dim=1, keepdim=True)
-			text_similarities = text_similarities / (torch.mm(prompt_norms, text_norms.T).cpu().numpy() + 1e-8)
-			model.eval()
-			batch_results = [[] for _ in range(len(batch_paths))]
-			batch_scores = [[] for _ in range(len(batch_paths))]
-			# Process sub-batches
-			for sub_idx in range(0, len(valid_images), sub_batch_size):
-				sub_end = min(sub_idx + sub_batch_size, len(valid_images))
-				sub_images = valid_images[sub_idx:sub_end]
-				sub_valid_indices = valid_indices[sub_idx:sub_end]
-				inputs = processor(
-					text=text_prompts,
-					images=sub_images,
-					padding="max_length",
-					return_tensors="pt",
-				).to(device)
-				outputs = model(**inputs)
-				image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
-				vlm_embeds = outputs.text_embeds / outputs.text_embeds.norm(dim=-1, keepdim=True)
-				vlm_similarity = (100.0 * image_embeds @ vlm_embeds.T).softmax(dim=-1).cpu().numpy()
-				threshold = base_thresholds[category_type]
-				for i, img_idx in enumerate(range(sub_idx, sub_end)):
-					batch_idx = sub_valid_indices[i]
-					local_img_idx = img_idx - sub_idx
-					# Entropy-based threshold adjustment
-					img = sub_images[i]
-					img_array = np.array(img.convert('L'))
-					img_array = resize(img_array, (128, 128), anti_aliasing=True, preserve_range=True).astype(np.uint8)
-					entropy = shannon_entropy(img_array)
-					complexity_factor = max(0.7, 1.0 - 0.15 * (entropy / 8.0))
-					adaptive_threshold = max(0.15, threshold * complexity_factor)
-					is_sparse = not valid_descriptions[img_idx].strip()
-					for cat_idx, cat in enumerate(extended_categories):
-						# Moved text_score computation inside the loop
-						text_score = text_similarities[cat_idx, img_idx]
-						adjusted_threshold = adaptive_threshold
-						if text_score > 0.5:
-							adjusted_threshold *= 0.8
-						elif text_score < 0.1:
-							adjusted_threshold *= 1.2
-						vlm_score = vlm_similarity[local_img_idx, cat_idx]
-						combined_score = (
-							0.5 * vlm_score + 0.5 * text_score if is_sparse
-							else vlm_score * (0.8 + 0.2 * text_score)
-						)
-						if combined_score > adjusted_threshold:
-							batch_results[batch_idx].append(cat)
-							batch_scores[batch_idx].append(vlm_score)
-
-		return batch_results, batch_scores
-
 def combine_and_clean_labels(
 		ner_labels: List[str],
 		keywords: List[str],
@@ -784,25 +528,24 @@ def combine_and_clean_labels(
 	)
 
 def parse_user_query(user_query: Union[str, None]) -> List[str]:
-		"""Advanced parsing of user query with multiple format support"""
-		if not user_query or not isinstance(user_query, str):
-				return []
+	if not user_query or not isinstance(user_query, str):
+		return []
+	
+	try:
+		# Try JSON parsing first
+		if user_query.strip().startswith('['):
+			parsed = json.loads(user_query.replace("'", '"'))
+			return [str(t).strip() for t in parsed if str(t).strip()]
 		
-		try:
-				# Try JSON parsing first
-				if user_query.strip().startswith('['):
-						parsed = json.loads(user_query.replace("'", '"'))
-						return [str(t).strip() for t in parsed if str(t).strip()]
-				
-				# Try common delimiters
-				for delim in [';', '|', ',', '\n']:
-						if delim in user_query:
-								return [t.strip() for t in user_query.split(delim) if t.strip()]
-								
-				# Fallback to single term
-				return [user_query.strip()]
-		except:
-				return [user_query.strip()]
+		# Try common delimiters
+		for delim in [';', '|', ',', '\n']:
+			if delim in user_query:
+				return [t.strip() for t in user_query.split(delim) if t.strip()]
+						
+		# Fallback to single term
+		return [user_query.strip()]
+	except:
+		return [user_query.strip()]
 
 def collect_weighted_labels(
 		user_terms: List[str],
@@ -1593,7 +1336,7 @@ def main():
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=4, help="Batch size for vision processing")
 	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2"], help="Sentence-transformer model name")
 	parser.add_argument("--vlm_model_name", '-vlm', type=str, default="google/siglip2-so400m-patch16-naflex", choices=["kakaobrain/align-base", "google/siglip2-so400m-patch16-naflex"], help="Vision-Language model name")
-	parser.add_argument("--ner_model_name", '-ner', type=str, default="Babelscape/wikineural-multilingual-ner", choices=["dslim/bert-large-NER", "dslim/bert-base-NER", "Babelscape/wikineural-multilingual-ner"], help="NER model name")
+	parser.add_argument("--ner_model_name", '-ner', type=str, default="dslim/bert-large-NER", choices=["dslim/bert-large-NER", "dslim/bert-base-NER", "Babelscape/wikineural-multilingual-ner"], help="NER model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 
 	args, unknown = parser.parse_known_args()
