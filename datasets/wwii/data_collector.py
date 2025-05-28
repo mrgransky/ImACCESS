@@ -57,6 +57,12 @@ img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
 FIGURE_SIZE = (12, 9)
 DPI = 350
+# Define regex pattern for WWII years: 1939–1945
+YEAR_PATTERN = re.compile(r'\b(19[3][9]|[1][9]4[0-5])\b')
+
+def extract_year(text):
+	match = YEAR_PATTERN.search(str(text))
+	return match.group(1) if match else None
 
 def extract_url_info(url:str)-> Dict:
 	"""
@@ -162,12 +168,30 @@ def get_dframe(
 			continue
 		parent_a = img_tag.find_parent('a')
 		doc_title = img_tag.get("alt")
-		# doc_title = parent_a.get('title') if parent_a else img_tag.get('alt')
 		img_url = img_url.replace("_cache/", "") # Remove "_cache/" from the URL
 		img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url) # Remove the thumbnail size from the end of the URL
 		filename = os.path.basename(img_url)
 		img_fpath = os.path.join(IMAGE_DIR, filename)
 		specific_doc_url = urljoin(doc_url, parent_a.get('href')) if parent_a and parent_a.get('href') else doc_url
+
+		# Attempt to extract date from multiple sources
+		date_sources = [
+			doc_title,
+			specific_doc_url,
+			img_url,
+			filename,
+			doc_description,  # assuming it's still accessible here
+		]
+		
+		# Try extracting year from all sources
+		extracted_year = None
+		for src in date_sources:
+			if src:
+				year = extract_year(src)
+				if year:
+					extracted_year = year
+					break
+
 		if not os.path.exists(img_fpath):
 			try:
 				img_response = requests.get(img_url)
@@ -187,7 +211,7 @@ def get_dframe(
 			'country': doc_url_info.get("country"),
 			'user_query': [user_query] if user_query and len(user_query) > 0 else None,
 			'label': (doc_url_info.get("main_label") or "") + " " + (doc_url_info.get("type") or ""),
-			'date': None,
+			'date': extracted_year,
 			'img_path': os.path.join(IMAGE_DIR, filename),
 		}
 		data.append(row)
