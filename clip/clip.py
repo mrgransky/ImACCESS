@@ -2,9 +2,8 @@ import hashlib
 import os
 import urllib
 import warnings
-from packaging import version
 from typing import Union, List, Tuple, Callable, Optional, Dict
-
+from packaging import version
 import torch
 from PIL import Image
 from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
@@ -18,9 +17,6 @@ try:
 	BICUBIC = InterpolationMode.BICUBIC
 except ImportError:
 	BICUBIC = Image.BICUBIC
-
-if version.parse(torch.__version__) < version.parse("1.7.1"):
-	warnings.warn("PyTorch version 1.7.1 or higher is recommended")
 
 __all__ = ["available_models", "load", "tokenize"]
 _tokenizer = _Tokenizer()
@@ -378,7 +374,6 @@ def tokenize(
 		Returns
 		-------
 		A two-dimensional tensor containing the resulting tokens, shape = [number of input strings, context_length].
-		We return LongTensor when torch version is <1.8.0, since older index_select requires indices to be long.
 	"""
 	if isinstance(texts, str):
 		texts = [texts]

@@ -18,6 +18,7 @@ from transformers import AutoModel, AutoProcessor
 from sentence_transformers import SentenceTransformer, util
 from langdetect import detect, DetectorFactory
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+from sklearn.preprocessing import normalize, MultiLabelBinarizer
 import matplotlib.pyplot as plt
 import nltk
 from tqdm import tqdm
@@ -28,7 +29,6 @@ import argparse
 import umap
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
-from sklearn.preprocessing import normalize
 import seaborn as sns
 from wordcloud import WordCloud
 from typing import List, Dict, Set, Tuple, Union, Callable, Optional
@@ -247,7 +247,12 @@ def measure_execution_time(func):
 		return result
 	return wrapper
 
-def get_stratified_split(df:pd.DataFrame, val_split_pct:float, seed:int=42,):
+def get_stratified_split(
+		df:pd.DataFrame, 
+		val_split_pct:float, 
+		seed:int=42,
+	):
+	print(f"Stratified Splitting [Single-label dataset]".center(150, "-"))
 	set_seeds(seed=seed, debug=False)
 	# Count the occurrences of each label
 	label_counts = df['label'].value_counts()
@@ -267,7 +272,249 @@ def get_stratified_split(df:pd.DataFrame, val_split_pct:float, seed:int=42,):
 		stratify=df_filtered['label'],
 		random_state=seed,
 	)
+	return train_df, val_df
 
+def get_multi_label_stratified_split(
+		df: pd.DataFrame,
+		val_split_pct: float,
+		seed: int = 42,
+		label_col: str = 'multimodal_labels',
+		# min_label_freq: int = 2 # Removed as per analysis, handled by IterativeStratification
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+		"""
+		Splits a multi-labeled dataset into train and validation sets in a stratified manner.
+		Uses IterativeStratification from skmultilearn to preserve label distributions.
+
+		Args:
+				df (pd.DataFrame): The input DataFrame.
+				val_split_pct (float): Percentage of data for the validation set (e.g., 0.2).
+				seed (int, optional): Random seed for reproducibility. Defaults to 42.
+				label_col (str, optional): Name of the column containing multi-labels
+																	 (expected to be string representations of lists).
+																	 Defaults to 'multimodal_labels'.
+				# min_label_freq: Removed. IterativeStratification handles singletons.
+
+		Returns:
+				Tuple[pd.DataFrame, pd.DataFrame]: A tuple containing train_df and val_df.
+
+		Raises:
+				ValueError: If label column is not found, cannot be parsed, or sets become empty.
+		"""
+		print(f"Stratified Splitting [Multi-label dataset]".center(150, "-"))
+		set_seeds(seed=seed, debug=False)
+
+		df_copy = df.copy() # Work on a copy to avoid modifying the original df
+
+		# --- 1. Robust Label Parsing using ast.literal_eval ---
+		print(f"Parsing '{label_col}' column...")
+		if label_col not in df_copy.columns:
+			raise ValueError(f"Label column '{label_col}' not found in the DataFrame.")
+
+		def parse_label(x):
+			if isinstance(x, str): # Only apply literal_eval if it's a string
+					try:
+							return ast.literal_eval(x)
+					except (ValueError, SyntaxError) as e:
+							# Raise an error if a string cannot be parsed, as it's unexpected
+							raise ValueError(f"Malformed string found in '{label_col}': '{x}'. Error: {e}")
+			elif isinstance(x, list): # If it's already a list, return it as is
+					return x
+			else:
+					# Handle other unexpected types, or raise an error
+					print(f"Warning: Unexpected type '{type(x)}' found in '{label_col}': {x}. Trying to convert to empty list.")
+					return [] # Or raise ValueError("Unsupported type in label column")
+
+		try:
+				df_copy[label_col] = df_copy[label_col].apply(parse_label)
+				print(f"Successfully processed '{label_col}' column.")
+		except ValueError as e: # Catch the specific ValueError from parse_label
+				raise ValueError(f"Error parsing multi-label column '{label_col}'. "
+												 f"Ensure it contains valid string representations of lists. Error: {e}")
+		except Exception as e: # Catch any other unexpected errors during apply
+				raise ValueError(f"Unexpected error during parsing of '{label_col}': {e}")
+
+		# --- 2. Remove rows with empty label lists (if any became empty after parsing) ---
+		df_filtered = df_copy[df_copy[label_col].apply(len) > 0]
+		initial_rows = len(df_copy)
+		final_rows = len(df_filtered)
+
+		if final_rows == 0:
+				raise ValueError("No samples with non-empty label lists remain after parsing and initial filtering.")
+		if initial_rows != final_rows:
+				print(f"Removed {initial_rows - final_rows} rows with empty label lists.")
+		print(f"DataFrame shape after filtering empty label lists: {df_filtered.shape}")
+
+		# --- 3. Binarize Labels ---
+		mlb = MultiLabelBinarizer()
+		label_matrix = mlb.fit_transform(df_filtered[label_col])
+		unique_labels = mlb.classes_
+
+		if len(unique_labels) == 0:
+				raise ValueError("No unique labels found after processing. Cannot perform stratification.")
+
+		print(f">> Found {len(unique_labels)} unique labels:\n{unique_labels.tolist()[:10]}...") # Show first 10
+
+		# --- 4. Perform Iterative Stratification ---
+		try:
+				from skmultilearn.model_selection import iterative_train_test_split
+				print("\nAttempting multi-label stratification using skmultilearn.iterative_train_test_split...")
+
+				# X is a dummy feature matrix (can be indices or just a range)
+				# y is the binarized label matrix
+				X_indices = np.arange(len(df_filtered)).reshape(-1, 1)
+				
+				# iterative_train_test_split returns (X_train, y_train, X_val, y_val)
+				X_train_idx, y_train_labels, X_val_idx, y_val_labels = iterative_train_test_split(
+						X_indices, label_matrix, test_size=val_split_pct
+				)
+
+				# Convert back to original DataFrame indices
+				train_original_indices = df_filtered.iloc[X_train_idx.flatten()].index.values
+				val_original_indices = df_filtered.iloc[X_val_idx.flatten()].index.values
+				
+				train_df = df_filtered.loc[train_original_indices].reset_index(drop=True)
+				val_df = df_filtered.loc[val_original_indices].reset_index(drop=True)
+
+		except ImportError:
+				print("\nWarning: skmultilearn not installed. Falling back to non-stratified random split (sklearn.model_selection.train_test_split).")
+				print("This split will NOT be stratified for multi-label data.")
+				
+				from sklearn.model_selection import train_test_split
+				train_df, val_df = train_test_split(
+						df_filtered,
+						test_size=val_split_pct,
+						shuffle=True, # Always shuffle for random split
+						random_state=seed
+				)
+				train_df = train_df.reset_index(drop=True)
+				val_df = val_df.reset_index(drop=True)
+		except Exception as e:
+				print(f"\nError during iterative_train_test_split: {e}")
+				print("Falling back to non-stratified random split (sklearn.model_selection.train_test_split).")
+				from sklearn.model_selection import train_test_split
+				train_df, val_df = train_test_split(
+						df_filtered,
+						test_size=val_split_pct,
+						shuffle=True,
+						random_state=seed
+				)
+				train_df = train_df.reset_index(drop=True)
+				val_df = val_df.reset_index(drop=True)
+
+
+		# --- 5. Verify Split and Print Distributions ---
+		if train_df.empty or val_df.empty:
+				raise ValueError("Train or validation set is empty after splitting. Adjust val_split_pct or check data.")
+
+		print(f"\n>> Original Filtered Data: {df_filtered.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
+
+		# Print label distribution for verification
+		print("\nTrain Label Distribution (Top 20):")
+		train_label_counts = Counter([label for labels in train_df[label_col] for label in labels])
+		train_label_df = pd.DataFrame(train_label_counts.items(), columns=['Label', 'Count']).sort_values(by='Count', ascending=False)
+		print(train_label_df.head(20).to_string())
+
+		print("\nValidation Label Distribution (Top 20):")
+		val_label_counts = Counter([label for labels in val_df[label_col] for label in labels])
+		val_label_df = pd.DataFrame(val_label_counts.items(), columns=['Label', 'Count']).sort_values(by='Count', ascending=False)
+		print(val_label_df.head(20).to_string())
+		print("-" * 150 + "\n")
+
+		return train_df, val_df
+
+def get_multi_label_stratified_split_old(
+		df: pd.DataFrame,
+		val_split_pct: float,
+		seed: int = 42,
+		label_col: str = 'multimodal_labels',
+		min_label_freq: int = 2
+	) -> Tuple[pd.DataFrame, pd.DataFrame]:
+	print(f"Stratified Splitting [Multi-label dataset]".center(150, "-"))
+	set_seeds(seed=seed, debug=False)
+	
+	# Convert string representations of lists to actual lists if needed
+	def parse_label_list(label):
+		if isinstance(label, str):
+			# Remove square brackets and split by comma
+			label = label.strip('[]').replace("'", "").split(', ')
+			label = [l.strip() for l in label if l.strip()]
+		return label if isinstance(label, list) else []
+	
+	df = df.copy()
+	df[label_col] = df[label_col].apply(parse_label_list)
+	
+	# Remove rows with empty label lists
+	df_filtered = df[df[label_col].apply(len) > 0]
+	if df_filtered.empty:
+		raise ValueError("No samples with non-empty label lists.")
+	
+	# Count label frequencies
+	label_counts = Counter()
+	for labels in df_filtered[label_col]:
+		for label in labels:
+			label_counts[label] += 1
+	
+	# Filter out labels with frequency < min_label_freq
+	labels_to_drop = [label for label, count in label_counts.items() if count < min_label_freq]
+	if labels_to_drop:
+		print(f"Removing {len(labels_to_drop)} labels with frequency < {min_label_freq}:\n{labels_to_drop}")
+		df_filtered = df_filtered[
+			df_filtered[label_col].apply(
+				lambda x: not any(label in x for label in labels_to_drop)
+			)
+		]
+	if df_filtered.empty or df_filtered[label_col].apply(len).sum() == 0:
+		raise ValueError("No samples remain after filtering low-frequency labels.")
+	
+	# Create binary label matrix
+	mlb = MultiLabelBinarizer()
+	label_matrix = mlb.fit_transform(df_filtered[label_col])
+	unique_labels = mlb.classes_
+	print(f">> Found {len(unique_labels)} unique labels out of {len(label_counts)} labels:\n{unique_labels.tolist()}")
+	
+	try:
+		# Use iterative stratification for multi-label data
+		from skmultilearn.model_selection import iterative_train_test_split
+		X = df_filtered.index.values.reshape(-1, 1)  # Dummy feature matrix (indices)
+		y = label_matrix
+		X_train, y_train, X_val, y_val = iterative_train_test_split(
+			X, y, test_size=val_split_pct
+		)
+		
+		# Convert indices back to DataFrames
+		train_indices = X_train.flatten()
+		val_indices = X_val.flatten()
+		train_df = df_filtered.loc[train_indices].reset_index(drop=True)
+		val_df = df_filtered.loc[val_indices].reset_index(drop=True)
+			
+	except ImportError:
+		print("scikit-multilearn not installed. Using approximate stratification...")
+		# Fallback: Sample based on label frequencies
+		label_freq = {label: count / len(df_filtered) for label, count in label_counts.items()}
+		train_indices = []
+		val_indices = []
+		
+		for idx, labels in df_filtered[label_col].items():
+			# Approximate probability of being in validation set
+			prob_val = val_split_pct
+			for label in labels:
+				prob_val *= label_freq[label]
+			if random.random() < prob_val:
+				val_indices.append(idx)
+			else:
+				train_indices.append(idx)
+		
+		train_df = df_filtered.loc[train_indices].reset_index(drop=True)
+		val_df = df_filtered.loc[val_indices].reset_index(drop=True)
+	
+	# Verify split
+	if train_df.empty or val_df.empty:
+		raise ValueError("Train or validation set is empty after splitting.")
+	
+	print(f"\n>> df_filtered: {df_filtered.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
+	print(f"\nTrain label distribution:\n{Counter([label for labels in train_df[label_col] for label in labels])}")
+	print(f"\nVal label distribution:\n{Counter([label for labels in val_df[label_col] for label in labels])}")
+	
 	return train_df, val_df
 
 def download_image(row, session, image_dir, total_rows, retries=2, backoff_factor=0.5):
@@ -373,72 +620,6 @@ def get_ip_info():
 		print("-"*170)
 	except requests.exceptions.RequestException as e:
 		print(f"Error: {e}")
-
-# def clean_(text:str, sw:list):
-# 	if not text:
-# 		return
-# 	# print(text)
-# 	# text = re.sub(r'[^a-zA-Z\s]', ' ', text) # Remove special characters and digits
-# 	# text = re.sub(r'[";=&#<>_\-\+\^\.\$\[\]]', " ", text)
-# 	# text = re.sub(r'[!"#$%&\'()*+,-./:;<=>?@\[\]^_`{|}~]', ' ', text) # remove all punctuation marks except periods and commas,
-# 	text = re.sub(r"[^\w\s'-]", " ", text) # remove all punctuation marks, including periods and commas,
-# 	words = nltk.tokenize.word_tokenize(text) # Tokenize the text into words
-# 	# Filter out stopwords and words with fewer than 3 characters
-# 	words = [
-# 		word.lower() 
-# 		for word in words 
-# 		if word.lower() not in sw
-# 		and len(word) >= 2
-# 	]
-# 	text = ' '.join(words) # Join the words back into a string
-# 	text = re.sub(r'\boriginal caption\b', ' ', text)
-# 	text = re.sub(r'\bphoto shows\b', ' ', text)
-# 	text = re.sub(r'\bfile record\b', ' ', text)
-# 	text = re.sub(r'\boriginal field number\b', ' ', text)
-# 	# text = re.sub(r'\bdate taken\b', ' ', text)
-# 	# text = re.sub(r'\bdate\b', ' ', text)
-# 	# text = re.sub(r'\bdistrict\b', ' ', text)
-# 	text = re.sub(r'\bobtained\b', ' ', text)
-# 	text = re.sub(r'\bfile record\b', ' ', text)
-# 	text = re.sub(r'\bcaption\b', ' ', text)
-# 	text = re.sub(r'\bunidentified\b', ' ', text)
-# 	text = re.sub(r'\bunnumbered\b', ' ', text)
-# 	text = re.sub(r'\buntitled\b', ' ', text)
-# 	text = re.sub(r'\bfotografie\b', ' ', text)
-# 	text = re.sub(r'\bfotografen\b', ' ', text)
-# 	text = re.sub(r'\bphotograph\b', ' ', text)
-# 	text = re.sub(r'\bphotographer\b', ' ', text)
-# 	text = re.sub(r'\bphotography\b', ' ', text)
-# 	text = re.sub(r'\bfotoalbum\b', ' ', text)
-# 	text = re.sub(r'\bphoto\b', ' ', text)
-# 	text = re.sub(r'\bgallery\b', ' ', text)
-# 	text = re.sub(r"\bpart \d+\b|\bpart\b", " ", text)
-# 	text = re.sub(r'\bfoto\b', ' ', text)
-# 	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
-# 	if len(text) == 0:
-# 		return None
-# 	return text
-
-# def clean_text(text):
-# 		"""Clean text by removing special characters and excess whitespace"""
-# 		if not isinstance(text, str):
-# 				return ""
-		
-# 		# Apply all metadata pattern removals
-# 		for pattern in METADATA_PATTERNS:
-# 				text = re.sub(pattern, '', text)
-
-# 		# Replace specific patterns often found in metadata
-# 		text = re.sub(r'\[\{.*?\}\]', '', text)  # Remove JSON-like structures
-# 		text = re.sub(r'http\S+', '', text)      # Remove URLs
-# 		text = re.sub(r'\d+\.\d+', '', text)     # Remove floating point numbers
-# 		# Remove non-alphanumeric characters but keep spaces
-# 		text = re.sub(r'[^\w\s]', ' ', text)
-# 		# Replace multiple spaces with a single space
-# 		text = re.sub(r'\s+', ' ', text)
-# 		text = text.strip().lower()
-
-# 		return text
 
 def process_rgb_image(image_path: str, transform: T.Compose):
 	# logging.info(f"Processing: {image_path}")

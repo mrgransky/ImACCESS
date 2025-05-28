@@ -128,26 +128,38 @@ def get_dframe(
 	except Exception as e:
 		print(f"Failed to retrieve doc_url or parse content: {e}")
 		return None
-	# header = clean_(text=header, sw=STOPWORDS)
 
 	header = header + " " + (doc_url_info.get("country") or "") + " " + (doc_url_info.get("main_label") or "") + " " + (doc_url_info.get("type") or "")
-	print(f"Doc header: {header}")
-	filtered_descriptions_list = [
-		t.text 
-		for t in descriptions 
-		if t.text
-		and t.parent.get('class')==['eazyest-gallery'] 
-		and t.parent.get('class')!=['textwidget']
-	]
-	filtered_descriptions = " ".join(filtered_descriptions_list)
-	filtered_descriptions = re.sub(
-		pattern=r"Bibliography:|Specifications:|Variants:",
-		repl=" ",
-		string=filtered_descriptions,
-	)
-	doc_description = re.sub(r'\s+', ' ', filtered_descriptions).strip()
-	# doc_description = clean_(text=header + " " + doc_description, sw=STOPWORDS,)
-	doc_description = header + " " + doc_description
+	print(f"Doc header:\n{header}")
+
+	# filtered_descriptions_list = [
+	# 	t.text 
+	# 	for t in descriptions 
+	# 	if t.text
+	# 	and t.parent.get('class')==['eazyest-gallery'] 
+	# 	and t.parent.get('class')!=['textwidget']
+	# ]
+	# filtered_descriptions = " ".join(filtered_descriptions_list)
+	# filtered_descriptions = re.sub(
+	# 	pattern=r"Bibliography:|Specifications:|Variants:",
+	# 	repl=" ",
+	# 	string=filtered_descriptions,
+	# )
+	# doc_description = re.sub(r'\s+', ' ', filtered_descriptions).strip()
+	# doc_description = header + " " + doc_description
+
+	# Extract caption as doc_description
+	caption_element = soup.find('div', class_='entry-caption')
+	if caption_element:
+		doc_description = caption_element.get_text(strip=True)
+		doc_description = re.sub(r'\s+', ' ', doc_description).strip()
+	else:
+		doc_description = None
+
+	if doc_description and header not in doc_description:
+			doc_description = header + " " + doc_description
+	elif not doc_description:
+			doc_description = header
 	print(f"\nDoc Description:\n{doc_description}\n")
 	
 	print(f"Found {len(hits)} Document(s) => Extracting information [might take a while]")
