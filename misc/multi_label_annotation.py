@@ -1066,12 +1066,38 @@ def get_textual_based_annotation(
 	if verbose:
 		print(f"Completed in {time.time() - start_time:.2f} seconds")
 		print("\nSample results:")
-		for i in range(min(5, len(df))):
-			print(f"\nSample {i+1}:")
-			print("Text:", df.iloc[i]['enriched_document_description'][:200] + "...")
-			print("Top Labels:", df.iloc[i]['textual_based_labels'])
-			print("Scores:", df.iloc[i]['textual_based_scores'])
-	
+		
+		# Find first 5 valid samples with non-null descriptions and labels
+		samples_displayed = 0
+		for i in range(len(df)):
+			# Safely get description (handle NaN/None)
+			desc = df.iloc[i]['enriched_document_description']
+			if pd.isna(desc):
+					continue
+					
+			# Safely get labels (handle NaN/None)
+			labels = df.iloc[i]['textual_based_labels']
+			if pd.isna(labels) or not isinstance(labels, list) or not labels:
+					continue
+					
+			# Convert description to string and truncate
+			desc_str = str(desc)
+			print(f"\nSample {samples_displayed + 1}:")
+			print("Text:", desc_str[:200] + ("..." if len(desc_str) > 200 else ""))
+			print("Top Labels:", labels)
+			
+			# Safely get scores (handle NaN/None)
+			scores = df.iloc[i]['textual_based_scores']
+			if pd.isna(scores) or not isinstance(scores, list):
+					print("Scores: [not available]")
+			else:
+					print("Scores:", scores)
+			
+			samples_displayed += 1
+			if samples_displayed >= 5:
+					break
+
+
 	return df['textual_based_labels'].tolist()
 
 def get_textual_based_annotation_old(
