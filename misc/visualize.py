@@ -86,8 +86,6 @@ def perform_multilabel_eda(
     df.info()
     print("\n--- Missing Values ---")
     print(df.isnull().sum())
-    print("\n--- First 5 rows of the DataFrame (After initial load) ---")
-    print(df.head())
     print("-" * 40 + "\n")
 
     # --- 3. Preprocessing Label Columns ---

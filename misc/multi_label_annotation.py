@@ -450,7 +450,7 @@ def get_textual_based_annotation(
 	t0 = time.time()
 	label_embs = sent_model.encode(
 		candidate_labels,
-		batch_size=min(32, len(candidate_labels)),
+		batch_size=min(batch_size, len(candidate_labels)),
 		convert_to_tensor=True,
 		normalize_embeddings=True,
 		show_progress_bar=False,
@@ -504,7 +504,7 @@ def get_textual_based_annotation(
 			continue
 		
 		# Process texts in smaller batches
-		text_batch_size = min(8, batch_size)
+		text_batch_size = min(16, batch_size)
 		text_embs = []
 		
 		for i in range(0, len(texts_to_process), text_batch_size):
@@ -575,7 +575,7 @@ def main():
 	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.3, help="Relevance threshold for textual-based annotation")
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=128, help="Batch size for textual processing")
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=4, help="Batch size for vision processing")
-	parser.add_argument("--sentence_model_name", '-smn', type=str, default="jinaai/jina-embeddings-v3", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2", "jinaai/jina-embeddings-v3"], help="Sentence-transformer model name")
+	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-MiniLM-L12-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2", "jinaai/jina-embeddings-v3", "paraphrase-multilingual-MiniLM-L12-v2"], help="Sentence-transformer model name")
 	parser.add_argument("--vlm_model_name", '-vlm', type=str, default="google/siglip2-so400m-patch16-naflex", choices=["kakaobrain/align-base", "google/siglip2-so400m-patch16-naflex"], help="Vision-Language model name")
 	parser.add_argument("--ner_model_name", '-ner', type=str, default="dslim/bert-large-NER", choices=["dslim/bert-large-NER", "dslim/bert-base-NER", "Babelscape/wikineural-multilingual-ner"], help="NER model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
