@@ -13,7 +13,9 @@ def get_textual_based_annotation(
 		top_k: int,
 		batch_size: int,
 	):
-
+	start_time = time.time()
+	dataset_dir = os.path.dirname(csv_file)
+	output_csv = os.path.join(dataset_dir, "metadata_textual_based_labels.csv")
 	# Load dataframe
 	dtypes = {
 		'doc_id': str, 'id': str, 'label': str, 'title': str,
