@@ -529,151 +529,225 @@ from visualize import *
 # print("\nLogits info:")
 # print(f"Type: {type(logits)}, Shape: {logits.shape}, Dtype: {logits.dtype}, Device: {logits.device}")
 
-import os
-import sys
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-sys.path.insert(0, parent_dir)
+# import os
+# import sys
+# current_dir = os.path.dirname(os.path.abspath(__file__))
+# parent_dir = os.path.dirname(current_dir)
+# sys.path.insert(0, parent_dir)
 
-from misc.utils import *
-from misc.visualize import *
+# from misc.utils import *
+# from misc.visualize import *
 
-paths = [
-	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/259/default.jpg",
-	"https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Hercules.propeller.arp.jpg/1470px-Hercules.propeller.arp.jpg",
-	"https://upload.wikimedia.org/wikipedia/commons/5/53/Airbus_A400M_EC-404_ILA_2012_11_%28cropped2%29.jpg",
-	"https://digitalcollections.smu.edu/digital/api/singleitem/image/stn/1014/default.jpg",
-	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/3338/default.jpg",
-	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/117/default.jpg",
-	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/292/default.jpg",
-	"https://pbs.twimg.com/media/GriUYMJboAEPvMt?format=jpg&name=large",
-	"https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Norwegian_training_ship_KNM_Haakon_VII_%28A537%29_off_Washington_D.C._%28USA%29%2C_on_9_March_1970_%28K-81807%29.jpg/2279px-Norwegian_training_ship_KNM_Haakon_VII_%28A537%29_off_Washington_D.C._%28USA%29%2C_on_9_March_1970_%28K-81807%29.jpg",
-	"https://upload.wikimedia.org/wikipedia/commons/9/9e/US_Navy_050822-N-6264C-145_A_combined_U.S._Navy_and_Philippine_Navy_task_group_underway_during_the_at-sea_phase_of_exercise_Cooperation_Afloat_Readiness_and_Training_%28CARAT%29_in_the_Philippines.jpg",
-	"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/USS_Valley_Forge_%28CVS-45%29_underway_with_Task_Group_Alfa%2C_in_1959_%28USN_1043094%29.jpg/2104px-USS_Valley_Forge_%28CVS-45%29_underway_with_Task_Group_Alfa%2C_in_1959_%28USN_1043094%29.jpg",
-	"https://upload.wikimedia.org/wikipedia/commons/9/9b/French_soldiers_in_the_Franco-Prussian_War_1870-71.jpg",
-	"https://upload.wikimedia.org/wikipedia/commons/1/1b/British_64_Pounder_Rifled_Muzzle-Loaded_%28RML%29_Gun_on_Moncrieff_disappearing_mount%2C_at_Scaur_Hill_Fort%2C_Bermuda.jpg",
-	"https://upload.wikimedia.org/wikipedia/commons/5/53/Komsomolets_armored_tractor_helsinki_2.jpg",
-	"https://upload.wikimedia.org/wikipedia/commons/4/48/Bundesarchiv_Bild_101I-783-0109-19%2C_Nordafrika%2C_Zugkraftwagen_mit_Flak_%28cropped%29.jpg",
-	"https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/Tatra_T81.jpg/640px-Tatra_T81.jpg",
-	"https://upload.wikimedia.org/wikipedia/commons/b/ba/Bundesarchiv_Bild_101I-203-1696-25%2C_Albanien%2C_Raupenschlepper_Ost_mit_Kanone.jpg",
-	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2457/default.jpg",
-	"https://i.pinimg.com/564x/eb/1c/49/eb1c49ba56173d282bd6f37914b9f5a1.jpg",
-	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2752/default.jpg",
-	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-129040",
-	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-165758",
-	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/209/default.jpg",
-	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40750",
-	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/219/default.jpg",
-	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-66759",
-	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-69135",
-	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40652",
-	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-153539",
-	"https://s1.cdn.autoevolution.com/images/gallery/MERCEDESBENZG4-W31--2596_8.jpg",
-	"https://media.cnn.com/api/v1/images/stellar/prod/180207010106-military-parades-us-new-york-1946.jpg",
-	"https://truck-encyclopedia.com/ww1/img/photos/German_WWI_armoured_car_destroyed.jpg",
-	"https://truck-encyclopedia.com/ww1/img/photos/Dart-CC4-production.jpg",
-	"https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/British_wounded_Bernafay_Wood_19_July_1916.jpg/2157px-British_wounded_Bernafay_Wood_19_July_1916.jpg",
-	"https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/LIAZ_MT.jpg/640px-LIAZ_MT.jpg",
-	"https://truck-encyclopedia.com/ww2/us/photos/Dodge_T-203_VF-407_Ambulance_12ton-serie.jpg",
-	"https://truck-encyclopedia.com/ww2/italy/Autocarretta-35.png",
-	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/270/default.jpg",
-]
+# paths = [
+# 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/259/default.jpg",
+# 	"https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Hercules.propeller.arp.jpg/1470px-Hercules.propeller.arp.jpg",
+# 	"https://upload.wikimedia.org/wikipedia/commons/5/53/Airbus_A400M_EC-404_ILA_2012_11_%28cropped2%29.jpg",
+# 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/stn/1014/default.jpg",
+# 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/3338/default.jpg",
+# 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/117/default.jpg",
+# 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/292/default.jpg",
+# 	"https://pbs.twimg.com/media/GriUYMJboAEPvMt?format=jpg&name=large",
+# 	"https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Norwegian_training_ship_KNM_Haakon_VII_%28A537%29_off_Washington_D.C._%28USA%29%2C_on_9_March_1970_%28K-81807%29.jpg/2279px-Norwegian_training_ship_KNM_Haakon_VII_%28A537%29_off_Washington_D.C._%28USA%29%2C_on_9_March_1970_%28K-81807%29.jpg",
+# 	"https://upload.wikimedia.org/wikipedia/commons/9/9e/US_Navy_050822-N-6264C-145_A_combined_U.S._Navy_and_Philippine_Navy_task_group_underway_during_the_at-sea_phase_of_exercise_Cooperation_Afloat_Readiness_and_Training_%28CARAT%29_in_the_Philippines.jpg",
+# 	"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/USS_Valley_Forge_%28CVS-45%29_underway_with_Task_Group_Alfa%2C_in_1959_%28USN_1043094%29.jpg/2104px-USS_Valley_Forge_%28CVS-45%29_underway_with_Task_Group_Alfa%2C_in_1959_%28USN_1043094%29.jpg",
+# 	"https://upload.wikimedia.org/wikipedia/commons/9/9b/French_soldiers_in_the_Franco-Prussian_War_1870-71.jpg",
+# 	"https://upload.wikimedia.org/wikipedia/commons/1/1b/British_64_Pounder_Rifled_Muzzle-Loaded_%28RML%29_Gun_on_Moncrieff_disappearing_mount%2C_at_Scaur_Hill_Fort%2C_Bermuda.jpg",
+# 	"https://upload.wikimedia.org/wikipedia/commons/5/53/Komsomolets_armored_tractor_helsinki_2.jpg",
+# 	"https://upload.wikimedia.org/wikipedia/commons/4/48/Bundesarchiv_Bild_101I-783-0109-19%2C_Nordafrika%2C_Zugkraftwagen_mit_Flak_%28cropped%29.jpg",
+# 	"https://upload.wikimedia.org/wikipedia/commons/thumb/f/f2/Tatra_T81.jpg/640px-Tatra_T81.jpg",
+# 	"https://upload.wikimedia.org/wikipedia/commons/b/ba/Bundesarchiv_Bild_101I-203-1696-25%2C_Albanien%2C_Raupenschlepper_Ost_mit_Kanone.jpg",
+# 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2457/default.jpg",
+# 	"https://i.pinimg.com/564x/eb/1c/49/eb1c49ba56173d282bd6f37914b9f5a1.jpg",
+# 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/2752/default.jpg",
+# 	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-129040",
+# 	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-165758",
+# 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/209/default.jpg",
+# 	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40750",
+# 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/ryr/219/default.jpg",
+# 	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-66759",
+# 	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-69135",
+# 	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-40652",
+# 	"https://www.finna.fi/Cover/Show?source=Solr&id=sa-kuva.sa-kuva-153539",
+# 	"https://s1.cdn.autoevolution.com/images/gallery/MERCEDESBENZG4-W31--2596_8.jpg",
+# 	"https://media.cnn.com/api/v1/images/stellar/prod/180207010106-military-parades-us-new-york-1946.jpg",
+# 	"https://truck-encyclopedia.com/ww1/img/photos/German_WWI_armoured_car_destroyed.jpg",
+# 	"https://truck-encyclopedia.com/ww1/img/photos/Dart-CC4-production.jpg",
+# 	"https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/British_wounded_Bernafay_Wood_19_July_1916.jpg/2157px-British_wounded_Bernafay_Wood_19_July_1916.jpg",
+# 	"https://upload.wikimedia.org/wikipedia/commons/thumb/5/52/LIAZ_MT.jpg/640px-LIAZ_MT.jpg",
+# 	"https://truck-encyclopedia.com/ww2/us/photos/Dodge_T-203_VF-407_Ambulance_12ton-serie.jpg",
+# 	"https://truck-encyclopedia.com/ww2/italy/Autocarretta-35.png",
+# 	"https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/270/default.jpg",
+# ]
 
-df = pd.read_csv(filepath_or_buffer="/home/farid/datasets/WW_DATASETs/WW_VEHICLES/metadata.csv")
-# paths = df["img_url"].values.tolist()
-# paths = df["img_path"].values.tolist()
-
-topk = 5
-print(f"parent dir: {parent_dir}")
-print(f"current dir: {current_dir}")
-CATEGORIES_FILE = os.path.join(parent_dir, "misc", "categories.json")
-print(f"CATEGORIES_FILE: {CATEGORIES_FILE}")
-object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)	
-candidate_labels = list(set(object_categories + scene_categories + activity_categories))
-texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
-
-# load pipeline
-# ckpt = "google/siglip2-base-patch16-224"
-# ckpt = "google/siglip2-base-patch16-384"
-# ckpt = "google/siglip2-so400m-patch14-384"
-ckpt = "google/siglip2-so400m-patch16-naflex"
-# ckpt = "kakaobrain/align-base"
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print(f"Loading {ckpt} in {device}...")
-total_gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3 # GB
-available_gpu_memory = torch.cuda.mem_get_info()[0] / 1024**3 # GB
-print(f"Total GPU memory: {total_gpu_memory:.2f} GB")
-print(f"Available GPU memory: {available_gpu_memory:.2f} GB")
-
-model = AutoModel.from_pretrained(
-	pretrained_model_name_or_path=ckpt, 
-	torch_dtype=torch.float16 if available_gpu_memory < 10 else torch.float32,
-	device_map=device,
-	# attn_implementation="sdpa",
-)
-print(model.parameters().__next__().dtype)
-processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=ckpt)
-
-for i, pth in enumerate(paths):
-	print(f"Processing image {i+1}/{len(paths)}: {pth}")
-	try:
-		if urlparse(pth).scheme in ['http', 'https']:
-			image = Image.open(requests.get(pth, stream=True).raw).convert("RGB")
-		else:
-			image = Image.open(pth).convert("RGB")
-	except Exception as e:
-		print(f"ERROR: failed to load image from {pth} => {e}")
-		continue
-	
-	inputs = processor(
-		text=texts, 
-		images=image, 
-		padding="max_length", 
-		max_num_patches=4096,
-		max_length=64, # = max_position_embeddings
-		return_tensors="pt",
-	).to(device)
-
-	with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-		outputs = model(**inputs)
-	torch.cuda.empty_cache()
-	logits_per_image = outputs.logits_per_image
-	probs = torch.sigmoid(logits_per_image)
-	# print(probs.shape, type(probs), probs.dtype, probs.device)
-	topk_probs, topk_indices = probs[0].topk(topk)
-	# print(type(topk_probs), topk_probs.shape, topk_probs.dtype, topk_probs.device)
-	# print(type(topk_indices), topk_indices.shape, topk_indices.dtype, topk_indices.device)
-	print("="*40)
-	print(f"Top-{topk} Predictions:")
-	print("="*40)
-	for i, idx in enumerate(topk_indices):
-		print(f"{candidate_labels[idx]:<30}{topk_probs[i].item():.5f}")
-
-	print("-" * 100)
-
-# # zero shot classification:
-# image_classifier = pipeline(model=ckpt, task="zero-shot-image-classification", device=device)
-# labels_list = list(set(object_categories + scene_categories + activity_categories))
-
-# # df = pd.read_csv(filepath_or_buffer="/home/farid/datasets/WW_DATASETs/WW_VEHICLES/metadata.csv")
-# # print(df.shape)
+# df = pd.read_csv(filepath_or_buffer="/home/farid/datasets/WW_DATASETs/WW_VEHICLES/metadata.csv")
 # # paths = df["img_url"].values.tolist()
-# print(f"Loaded {len(paths)} paths")
-# for i, url in enumerate(paths):
-# 	print(f"Processing URL {i+1}/{len(paths)}: {url}")
-# 	try:
-# 		image = Image.open(requests.get(url, stream=True).raw).convert("RGB")
-# 	except Exception as e:
-# 		print(f"ERROR: failed to load image from {url} => {e}")
-# 		continue
+# # paths = df["img_path"].values.tolist()
 
-# 	outputs = image_classifier(image, candidate_labels=labels_list)
-# 	sorted_outputs = sorted(outputs, key=lambda x: x['score'], reverse=True)
-# 	nonzero_sorted_outputs = [elem for elem in sorted_outputs if elem['score'] > 0]
-# 	topk = min(topk, len(nonzero_sorted_outputs))
-# 	topk_sorted_outputs = nonzero_sorted_outputs[:topk]
-# 	print(f"Label probabilities (sorted by score): {len(topk_sorted_outputs)}")
-# 	print()
-# 	for idx, elem in enumerate(topk_sorted_outputs):
-# 		print(f'{elem.get("label"):<30}: {elem.get("score"):>8.5f}')
-# 	print("-" * 150)
+# topk = 5
+# print(f"parent dir: {parent_dir}")
+# print(f"current dir: {current_dir}")
+# CATEGORIES_FILE = os.path.join(parent_dir, "misc", "categories.json")
+# print(f"CATEGORIES_FILE: {CATEGORIES_FILE}")
+# object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)	
+# candidate_labels = list(set(object_categories + scene_categories + activity_categories))
+# texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
+
+# # load pipeline
+# # ckpt = "google/siglip2-base-patch16-224"
+# # ckpt = "google/siglip2-base-patch16-384"
+# # ckpt = "google/siglip2-so400m-patch14-384"
+# ckpt = "google/siglip2-so400m-patch16-naflex"
+# # ckpt = "kakaobrain/align-base"
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# print(f"Loading {ckpt} in {device}...")
+# total_gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3 # GB
+# available_gpu_memory = torch.cuda.mem_get_info()[0] / 1024**3 # GB
+# print(f"Total GPU memory: {total_gpu_memory:.2f} GB")
+# print(f"Available GPU memory: {available_gpu_memory:.2f} GB")
+
+# model = AutoModel.from_pretrained(
+# 	pretrained_model_name_or_path=ckpt, 
+# 	torch_dtype=torch.float16 if available_gpu_memory < 10 else torch.float32,
+# 	device_map=device,
+# 	# attn_implementation="sdpa",
+# )
+# print(model.parameters().__next__().dtype)
+# processor = AutoProcessor.from_pretrained(pretrained_model_name_or_path=ckpt)
+
+# for i, pth in enumerate(paths):
+# 	print(f"Processing image {i+1}/{len(paths)}: {pth}")
+# 	try:
+# 		if urlparse(pth).scheme in ['http', 'https']:
+# 			image = Image.open(requests.get(pth, stream=True).raw).convert("RGB")
+# 		else:
+# 			image = Image.open(pth).convert("RGB")
+# 	except Exception as e:
+# 		print(f"ERROR: failed to load image from {pth} => {e}")
+# 		continue
+	
+# 	inputs = processor(
+# 		text=texts, 
+# 		images=image, 
+# 		padding="max_length", 
+# 		max_num_patches=4096,
+# 		max_length=64, # = max_position_embeddings
+# 		return_tensors="pt",
+# 	).to(device)
+
+# 	with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+# 		outputs = model(**inputs)
+# 	torch.cuda.empty_cache()
+# 	logits_per_image = outputs.logits_per_image
+# 	probs = torch.sigmoid(logits_per_image)
+# 	# print(probs.shape, type(probs), probs.dtype, probs.device)
+# 	topk_probs, topk_indices = probs[0].topk(topk)
+# 	# print(type(topk_probs), topk_probs.shape, topk_probs.dtype, topk_probs.device)
+# 	# print(type(topk_indices), topk_indices.shape, topk_indices.dtype, topk_indices.device)
+# 	print("="*40)
+# 	print(f"Top-{topk} Predictions:")
+# 	print("="*40)
+# 	for i, idx in enumerate(topk_indices):
+# 		print(f"{candidate_labels[idx]:<30}{topk_probs[i].item():.5f}")
+
+# 	print("-" * 100)
+
+# # # zero shot classification:
+# # image_classifier = pipeline(model=ckpt, task="zero-shot-image-classification", device=device)
+# # labels_list = list(set(object_categories + scene_categories + activity_categories))
+
+# # # df = pd.read_csv(filepath_or_buffer="/home/farid/datasets/WW_DATASETs/WW_VEHICLES/metadata.csv")
+# # # print(df.shape)
+# # # paths = df["img_url"].values.tolist()
+# # print(f"Loaded {len(paths)} paths")
+# # for i, url in enumerate(paths):
+# # 	print(f"Processing URL {i+1}/{len(paths)}: {url}")
+# # 	try:
+# # 		image = Image.open(requests.get(url, stream=True).raw).convert("RGB")
+# # 	except Exception as e:
+# # 		print(f"ERROR: failed to load image from {url} => {e}")
+# # 		continue
+
+# # 	outputs = image_classifier(image, candidate_labels=labels_list)
+# # 	sorted_outputs = sorted(outputs, key=lambda x: x['score'], reverse=True)
+# # 	nonzero_sorted_outputs = [elem for elem in sorted_outputs if elem['score'] > 0]
+# # 	topk = min(topk, len(nonzero_sorted_outputs))
+# # 	topk_sorted_outputs = nonzero_sorted_outputs[:topk]
+# # 	print(f"Label probabilities (sorted by score): {len(topk_sorted_outputs)}")
+# # 	print()
+# # 	for idx, elem in enumerate(topk_sorted_outputs):
+# # 		print(f'{elem.get("label"):<30}: {elem.get("score"):>8.5f}')
+# # 	print("-" * 150)
+
+def combine_and_deduplicate_text(text1: str, text2: str) -> str:
+    """
+    Combines two text strings, tokenizes them, removes duplicates, and returns
+    a single, space-separated string of unique words.
+    Handles None/empty strings gracefully.
+
+    Example:
+    text1 = "Semovente da 75/18 8"
+    text2 = "da 75/18 italy spg 75-18"
+    Output: "semovente da 75/18 8 italy spg 75-18"
+    """
+    # Ensure inputs are strings and handle None
+    text1 = str(text1) if text1 is not None else ""
+    text2 = str(text2) if text2 is not None else ""
+
+    if not text1 and not text2:
+        return ""
+
+    # Helper to normalize and tokenize a single string
+    def normalize_and_tokenize(text_str):
+        if not text_str:
+            return []
+        # Convert to lowercase
+        text_str = text_str.lower()
+        # Remove punctuation, but keep hyphens if they are part of a word (e.g., "75-18")
+        text_str = re.sub(r'[^\w\s-]', '', text_str)
+        # Normalize multiple spaces to a single space and strip leading/trailing
+        text_str = re.sub(r'\s+', ' ', text_str).strip()
+        return text_str.split()
+
+    # Get tokens from both texts
+    tokens1 = normalize_and_tokenize(text1)
+    tokens2 = normalize_and_tokenize(text2)
+
+    # Combine tokens and keep only unique ones, preserving the order of first appearance
+    combined_tokens_ordered_unique = []
+    seen_tokens = set()
+    for token in tokens1 + tokens2:
+        if token not in seen_tokens:
+            combined_tokens_ordered_unique.append(token)
+            seen_tokens.add(token)
+
+    return " ".join(combined_tokens_ordered_unique).strip()
+
+# --- Demonstration of the cleaning function (not part of the main get_dframe call) ---
+print("\n--- Testing combine_and_deduplicate_text function ---")
+title_example = "Semovente da 75/18 8"
+description_example = "da 75/18 italy spg 75-18"
+cleaned_description = combine_and_deduplicate_text(title_example, description_example)
+print(f"Original Title: '{title_example}'")
+print(f"Original Description: '{description_example}'")
+print(f"Cleaned Enriched Description: '{cleaned_description}'")
+
+title_example_2 = "The Great Wall of China"
+description_example_2 = "Wall of China, ancient fortifications, history, architecture."
+cleaned_description_2 = combine_and_deduplicate_text(title_example_2, description_example_2)
+print(f"\nOriginal Title: '{title_example_2}'")
+print(f"Original Description: '{description_example_2}'")
+print(f"Cleaned Enriched Description: '{cleaned_description_2}'")
+
+title_example_3 = "Train Station in the City"
+description_example_3 = "A busy train station located in the heart of the city."
+cleaned_description_3 = combine_and_deduplicate_text(title_example_3, description_example_3)
+print(f"\nOriginal Title: '{title_example_3}'")
+print(f"Original Description: '{description_example_3}'")
+print(f"Cleaned Enriched Description: '{cleaned_description_3}'")
+
+title_example_4 = "Column of Semovente da 47/32 1943"
+description_example_4 = "L40 da 47/32 italy spg l40"
+cleaned_description_4 = combine_and_deduplicate_text(title_example_4, description_example_4)
+print(f"\nOriginal Title: '{title_example_4}'")
+print(f"Original Description: '{description_example_4}'")
+print(f"Cleaned Enriched Description: '{cleaned_description_4}'")

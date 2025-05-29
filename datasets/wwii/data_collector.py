@@ -64,6 +64,11 @@ def extract_year(text):
 	match = YEAR_PATTERN.search(str(text))
 	return match.group(1) if match else None
 
+def clean_description(text):
+	seen = set()
+	words = re.findall(r'\b[a-zA-Z0-9][a-zA-Z0-9\-]*\b', text.lower())
+	return " ".join([w for w in words if len(w) > 1 and not (w in seen or seen.add(w))])
+
 def extract_url_info(url:str)-> Dict:
 	"""
 	Extracts information from a given URL.
@@ -135,12 +140,11 @@ def get_dframe(
 		print(f"Failed to retrieve doc_url or parse content: {e}")
 		return None
 
-	# header = header + " " + (doc_url_info.get("country") or "") + " " + (doc_url_info.get("main_label") or "") + " " + (doc_url_info.get("type") or "")
 	parts = [
 		header,
 		(doc_url_info.get("country") or "").strip(),
 		(doc_url_info.get("main_label") or "").strip(),
-		(doc_url_info.get("type") or "").strip(),  # <-- Fixed here
+		(doc_url_info.get("type") or "").strip(),
 	]
 	header = " ".join(filter(None, parts))
 	print(f"Doc header:\n{header}")
@@ -151,11 +155,11 @@ def get_dframe(
 		doc_description = caption_element.get_text(strip=True)
 		doc_description = re.sub(r'\s+', ' ', doc_description).strip()
 	else:
-		doc_description = None
+		doc_description = ""
 
-	if doc_description and header not in doc_description:
+	if doc_description.lower() and header.lower() not in doc_description.lower():
 		doc_description = header + " " + doc_description
-	elif not doc_description:
+	elif not doc_description.strip():
 		doc_description = header
 	print(f"\nDoc Description:\n{doc_description}\n")
 	
@@ -168,6 +172,7 @@ def get_dframe(
 			continue
 		parent_a = img_tag.find_parent('a')
 		doc_title = img_tag.get("alt")
+		doc_title = doc_title if doc_title != "Folder Icon" else None
 		img_url = img_url.replace("_cache/", "") # Remove "_cache/" from the URL
 		img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url) # Remove the thumbnail size from the end of the URL
 		filename = os.path.basename(img_url)
@@ -201,13 +206,18 @@ def get_dframe(
 			except Exception as e:
 				print(f"Failed to download {img_url}: {e}")
 				continue
+		enriched_document_description = user_query + " " + (doc_title or '') + " " + (doc_description or '')
+		print(f"[before] enriched_document_description: {enriched_document_description}")
+		# enriched_document_description = " ".join(list(set(enriched_document_description.lower().split())))
+		enriched_document_description = clean_description(enriched_document_description)
+		print(f"[after] enriched_document_description: {enriched_document_description}")
 		row = {
 			'id': filename,
 			'doc_url': specific_doc_url,
 			'img_url': img_url,
 			'title': doc_title,
 			'description': doc_description,
-			'enriched_document_description': (doc_title or '') + " " + (doc_description or ''),
+			'enriched_document_description': enriched_document_description,
 			'country': doc_url_info.get("country"),
 			'user_query': [user_query] if user_query and len(user_query) > 0 else None,
 			'label': (doc_url_info.get("main_label") or "") + " " + (doc_url_info.get("type") or ""),

@@ -41,7 +41,6 @@ if FastText_Language_Identification not in os.listdir():
 	url = f"https://dl.fbaipublicfiles.com/fasttext/supervised-models/{FastText_Language_Identification}"
 	urllib.request.urlretrieve(url, FastText_Language_Identification)
 
-# Semantic categories for organization
 SEMANTIC_CATEGORIES = {
 	'military': ['military', 'army', 'navy', 'air force', 'soldier', 'officer', 'troop', 'regiment', 'division', 'corps', 'battalion', 'brigade'],
 	'political': ['government', 'parliament', 'president', 'prime minister', 'minister', 'official', 'politician', 'leader'],

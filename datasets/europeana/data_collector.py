@@ -197,9 +197,6 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 			'title': title_en,
 			'description': description_en,
 			'enriched_document_description': enriched_document_description,
-			# 'title': doc_title,
-			# 'description': doc_description,
-			# 'enriched_document_description': (doc_title or '') + " " + (doc_description or ''),
 			'img_url': image_url,
 			"doc_url": doc_url,
 			'raw_doc_date': raw_doc_date,
@@ -216,7 +213,6 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 	# Filter the DataFrame based on the validity check
 	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=START_DATE, end_date=END_DATE))]
 
-	# df = df.drop(['raw_doc_date', 'doc_year'], axis=1)
 	print()
 	print(f"DF: {df.shape} {list(df.columns)}")
 	print(f"Elapsed_t: {time.time()-df_st_time:.1f} sec".center(160, "-"))
