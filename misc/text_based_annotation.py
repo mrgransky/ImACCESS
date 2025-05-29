@@ -80,7 +80,7 @@ def get_textual_based_annotation(
 	
 	# Show some sample results
 	print("\nSample results:")
-	for i in range(min(15, len(df))):
+	for i in range(min(50, len(df))):
 		print(f"\nSample {i+1}:")
 		print("Text:", df.iloc[i]['enriched_document_description'])
 		print("Top Labels:", df.iloc[i]['textual_based_labels'])
