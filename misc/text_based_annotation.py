@@ -90,11 +90,11 @@ def get_textual_based_annotation(
 	return per_image_labels
 
 if __name__ == "__main__":
-	parser = argparse.ArgumentParser(description="Multi-label annotation for Historical Archives Dataset")
+	parser = argparse.ArgumentParser(description="Textual-label annotation for Historical Archives Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=128, help="Batch size for textual processing")
-	parser.add_argument("--sentence_model_name", '-smn', type=str, default="intfloat/e5-mistral-7b-instruct", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2", "jinaai/jina-embeddings-v3", "intfloat/e5-mistral-7b-instruct"], help="Sentence-transformer model name")
+	parser.add_argument("--sentence_model_name", '-smn', type=str, default="intfloat/e5-base-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2", "jinaai/jina-embeddings-v3", "intfloat/e5-base-v2"], help="Sentence-transformer model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	parser.add_argument("--topk", '-k', type=int, default=10, help="Number of top labels to return")
 
@@ -102,7 +102,6 @@ if __name__ == "__main__":
 	args.device = torch.device(args.device)
 	print_args_table(args=args, parser=parser)
 	
-	# Load model and labels
 	print(f"Loading model: {args.sentence_model_name}...")
 	sent_model = SentenceTransformer(
 		model_name_or_path=args.sentence_model_name, 
