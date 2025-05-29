@@ -4,10 +4,10 @@
 		"armoured fighting vehicle", "utility vehicle", "motorcycle", "bicycle",
 		"half-tracked vehicle", "armoured personnel carrier", "ambulance",
 		"jeep", "military truck", "artillery tractor", "amphibious vehicle",
-		"bomber aircraft", "reconnaissance aircraft", "aircraft factory",
-		"squadron", "helicopter",
+		"combat aircraft", "reconnaissance aircraft", "aircraft factory",
+		"squadron", "helicopter", "military aircraft", "cockpit",
 		"floatplane", "biplane", "monoplane",
-		"submarine", "destroyer", "aircraft carrier", "naval air station",
+		"submarine", "aircraft carrier", "naval air station",
 		"naval vessel", "landing craft",
 		"soldier", "infantry", "political figure", "officer", "pilot", "sailor", "marine", "nurse",
 		"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery", "flamethrower",
@@ -15,7 +15,7 @@
 		"bunker", "gun emplacement", "observation post", "barbed wire", "trenches",
 		"fortification", "tank storage", "wagon", "pitchfork",
 		"minefield", "castle", "tower", "fortress", "church", "hotel", "condominium",
-		"flag", "military insignia", "shelter",
+		"flag", "military rank insignia", "shelter",
 		"medal", "helmet", "gas mask", "sword", "shield",
 		"military uniform", "backpack", "entrenching tool", "binoculars", "telephone", "headset", "typewriter",
 		"radio equipment", "parachute",
@@ -46,7 +46,7 @@
 		"harbor", "port", "bathing area", "steaming", "smoking cigarettes", "volcanic eruption",
 		"library", "urban plaza", "cathedral", "funeral",
 		"assembly line", "signpost", "aerial view", "street view", "skyscraper", "restaurant", "lounge", "residential area",
-		"wreckage site", "shipwreck", "plane wreck"
+		"wreckage site", "shipwreck", "plane wreck", "demolished area"
 	],
 	"activity_categories": [
 		"fighting", "infantry assault", "naval engagement", "barrage",
@@ -63,6 +63,6 @@
 		"drilling", "restoration", "docking",
 		"portrait", "photoshooting", "modeling", "cooking", "typing", "socializing",
 		"farming harvest", "harvesting",
-		"marine salvage", "demolition", "repairing", "refueling"
+		"marine salvage", "repairing", "refueling"
 	]
 }
