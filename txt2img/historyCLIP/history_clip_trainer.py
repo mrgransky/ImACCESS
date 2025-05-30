@@ -103,7 +103,7 @@ def main():
 			dataset_name = os.path.basename(args.dataset_dir)
 			arch_name = args.model_architecture.replace('/', '').replace('@', '_')
 			log_file_base_name = (
-				f"{dataset_name}_"
+				f"{dataset_name}_{args.dataset_type}_"
 				f"{args.mode}_"
 				f"{args.finetune_strategy}_"
 				f"{arch_name}_"
@@ -116,7 +116,7 @@ def main():
 			)
 
 			if args.finetune_strategy == "pretrain":
-				log_file_base_name = f"{dataset_name}_{args.mode}_{arch_name}_logs"
+				log_file_base_name = f"{dataset_name}_{args.dataset_type}_{args.mode}_{arch_name}_logs"
 
 			if args.finetune_strategy == "lora":
 				log_file_base_name += f"_lora_rank_{args.lora_rank}_lora_alpha_{args.lora_alpha}_lora_dropout_{args.lora_dropout}"
@@ -133,7 +133,7 @@ def main():
 		set_seeds(seed=42)
 		# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 		print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
-		RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"results")
+		RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"results_{args.dataset_type}")
 		os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 
 		print(f">> CLIP Model Architecture: {args.model_architecture}...")
