@@ -596,7 +596,7 @@ def get_validation_metrics(
 
 def compute_full_set_metrics_from_cache(
     i2t_similarity: torch.Tensor,        # [num_samples, num_classes]
-    t2i_similarity: torch.Tensor,           # [num_classes, num_samples]
+    t2i_similarity: torch.Tensor,        # [num_classes, num_samples]
     labels: torch.Tensor,                # [num_samples, num_classes]
     n_classes: int,
     topK_values: List[int],
@@ -629,14 +629,18 @@ def compute_full_set_metrics_from_cache(
         i2t_probs = torch.sigmoid(i2t_similarity)
         label_sparsity = labels.float().mean().item()
         print(f"DEBUG: label_sparsity={label_sparsity}")
-        i2t_preds = (i2t_probs > 0.7).float()  # Adjusted threshold
+        k = max(1, int(label_sparsity * n_classes))  # Top-k predictions
+        topk_indices = i2t_probs.topk(k, dim=1)[1]
+        i2t_preds = torch.zeros_like(i2t_probs).scatter_(1, topk_indices, 1.0)
         print(f"DEBUG: i2t_probs.shape={i2t_probs.shape}, sample={i2t_probs[0, :5]}")
         print(f"DEBUG: i2t_preds.shape={i2t_preds.shape}, sample={i2t_preds[0, :5]}")
         img2txt_correct = (i2t_preds == labels).all(dim=1)
         img2txt_acc = img2txt_correct.float().mean().item()
         hamming_loss = (i2t_preds != labels).float().mean().item()
         partial_acc = (i2t_preds == labels).float().mean(dim=1).mean().item()
-        print(f"DEBUG: img2txt_acc={img2txt_acc}, hamming_loss={hamming_loss}, partial_acc={partial_acc}")
+        from sklearn.metrics import f1_score
+        f1 = f1_score(labels.cpu().numpy(), i2t_preds.cpu().numpy(), average='weighted')
+        print(f"DEBUG: img2txt_acc={img2txt_acc}, hamming_loss={hamming_loss}, partial_acc={partial_acc}, f1_score={f1}")
 
         img2txt_topk_acc = {}
         for k in valid_k_values:
@@ -650,7 +654,8 @@ def compute_full_set_metrics_from_cache(
         img2txt_acc = (img2txt_preds == labels).float().mean().item()
         hamming_loss = None
         partial_acc = None
-        print(f"DEBUG: img2txt_probs.shape={img2txt_probs.shape}, img2txt_acc={img2txt_acc}")
+        f1 = None
+        print(f"DEBUG: img2txt_preds.shape={img2txt_preds.shape}, img2txt_acc={img2txt_acc}")
 
         img2txt_topk_acc = {}
         for k in valid_k_values:
@@ -723,7 +728,8 @@ def compute_full_set_metrics_from_cache(
         "mean_reciprocal_rank": float(img2txt_mrr),
         "cosine_similarity": float(cos_sim),
         "hamming_loss": float(hamming_loss) if hamming_loss is not None else None,
-        "partial_acc": float(partial_acc) if partial_acc is not None else None
+        "partial_acc": float(partial_acc) if partial_acc is not None else None,
+        "f1_score": float(f1) if f1 is not None else None
     }
 
 def evaluate_best_model(
