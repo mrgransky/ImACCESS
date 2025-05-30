@@ -227,305 +227,898 @@ def compute_ap(
 			return sum(precisions) / min(R, K)
 	return 0.0
 
+from utils import *
+from model import get_lora_clip
+from visualize import plot_loss_accuracy_metrics, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics
+import torch
+import torch.nn.functional as F
+import numpy as np
+import json
+import os
+from typing import List, Dict, Optional, Tuple
+from torch.utils.data import DataLoader
+
 def compute_retrieval_metrics_from_similarity(
-		similarity_matrix: torch.Tensor,
-		query_labels: torch.Tensor,
-		candidate_labels: torch.Tensor,
-		topK_values: List[int],
-		mode: str = "Image-to-Text",
-		class_counts: Optional[torch.Tensor] = None,
-		max_k: Optional[int] = None,
-		cache_dir: str = None,
-		cache_key: str = None,
-		is_training: bool = False,
-		verbose: bool = True,
+    similarity_matrix: torch.Tensor,  # [num_queries, num_candidates]
+    query_labels: torch.Tensor,       # [num_queries] or [num_queries, num_classes]
+    candidate_labels: torch.Tensor,   # [num_candidates] or [num_candidates, num_classes]
+    topK_values: List[int],
+    mode: str = "Image-to-Text",
+    class_counts: Optional[torch.Tensor] = None,
+    max_k: Optional[int] = None,
+    cache_dir: str = None,
+    cache_key: str = None,
+    is_training: bool = False,
+    verbose: bool = True,
 ) -> Dict:
-		num_queries, num_candidates = similarity_matrix.shape
-		device = similarity_matrix.device
-		
-		# Check cache only if not training
-		cache_file = None
-		if cache_dir and cache_key and not is_training:
-				cache_file = os.path.join(cache_dir, f"{cache_key}_retrieval_metrics.json")
-				if os.path.exists(cache_file):
-						try:
-								if verbose:
-										print(f"Loading cached retrieval metrics from {cache_file}")
-								with open(cache_file, 'r') as f:
-										return json.load(f)
-						except Exception as e:
-								print(f"Error loading cache: {e}. Computing metrics.")
-		
-		if verbose:
-				print(f"Computing retrieval metrics for {mode} (cache skipped: is_training={is_training})")
-		
-		if max_k is not None:
-				valid_K_values = [K for K in topK_values if K <= max_k]
-		else:
-				valid_K_values = topK_values
-		
-		metrics = {"mP": {}, "mAP": {}, "Recall": {}}
-		
-		all_sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
-		
-		for K in valid_K_values:
-				top_k_indices = all_sorted_indices[:, :K]
-				retrieved_labels = candidate_labels[top_k_indices]
-				true_labels_expanded = query_labels.unsqueeze(1).expand(-1, K)
-				correct_mask = (retrieved_labels == true_labels_expanded)
-				
-				metrics["mP"][str(K)] = correct_mask.float().mean(dim=1).mean().item()
-				
-				if mode == "Image-to-Text":
-						metrics["Recall"][str(K)] = correct_mask.any(dim=1).float().mean().item()
-				else:
-						relevant_counts = class_counts[query_labels]
-						metrics["Recall"][str(K)] = (correct_mask.sum(dim=1) / relevant_counts.clamp(min=1)).mean().item()
-				
-				# Vectorized AP
-				positions = torch.arange(1, K + 1, device=device).float().unsqueeze(0).expand(num_queries, K)
-				cumulative_correct = correct_mask.float().cumsum(dim=1)
-				precisions = cumulative_correct / positions
-				ap = (precisions * correct_mask.float()).sum(dim=1) / correct_mask.sum(dim=1).clamp(min=1)
-				metrics["mAP"][str(K)] = ap.nanmean().item()
-		
-		# Save to cache only if not training
-		if cache_dir and cache_key and not is_training:
-				try:
-						os.makedirs(cache_dir, exist_ok=True)
-						with open(cache_file, 'w') as f:
-								json.dump(metrics, f)
-						if verbose:
-								print(f"Saved metrics to {cache_file}")
-				except Exception as e:
-						print(f"Warning: Failed to save cache {e}")
-		
-		return metrics
+    """
+    Compute retrieval metrics (mP, mAP, Recall) for image-to-text or text-to-image tasks.
+    Supports both single-label (1D labels) and multi-label (2D binary vectors) datasets.
+
+    Args:
+        similarity_matrix: Similarity scores between queries and candidates.
+        query_labels: Ground truth labels for queries (1D for single-label, 2D for multi-label).
+        candidate_labels: Ground truth labels for candidates (1D or 2D).
+        topK_values: List of K values for top-K metrics.
+        mode: "Image-to-Text" or "Text-to-Image".
+        class_counts: Number of samples per class (single-label only, None for multi-label).
+        max_k: Maximum K value to consider.
+        cache_dir: Directory to store cached metrics.
+        cache_key: Cache file identifier.
+        is_training: If True, skip caching.
+        verbose: If True, print progress messages.
+
+    Returns:
+        Dictionary containing mP, mAP, and Recall for each K value.
+    """
+    print(f"DEBUG: Entering compute_retrieval_metrics_from_similarity (mode={mode})")
+    num_queries, num_candidates = similarity_matrix.shape
+    device = similarity_matrix.device
+    print(f"DEBUG: similarity_matrix.shape={similarity_matrix.shape}")
+    print(f"DEBUG: query_labels.shape={query_labels.shape}, sample={query_labels[:5]}")
+    print(f"DEBUG: candidate_labels.shape={candidate_labels.shape}, sample={candidate_labels[:5]}")
+    print(f"DEBUG: class_counts={'None' if class_counts is None else class_counts.shape}")
+
+    # Determine multi-label based on candidate_labels for text-to-image, query_labels for image-to-text
+    is_multi_label = len(candidate_labels.shape) == 2 if mode == "Text-to-Image" else len(query_labels.shape) == 2
+    print(f"DEBUG: is_multi_label={is_multi_label}")
+
+    # Check cache if not training
+    cache_file = None
+    if cache_dir and cache_key and not is_training:
+        cache_file = os.path.join(cache_dir, f"{cache_key}_retrieval_metrics.json")
+        if os.path.exists(cache_file):
+            try:
+                if verbose:
+                    print(f"Loading cached retrieval metrics from {cache_file}")
+                with open(cache_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"Error loading cache: {e}. Computing metrics.")
+
+    if verbose:
+        print(f"Computing retrieval metrics for {mode} (cache skipped: is_training={is_training})")
+
+    valid_K_values = [K for K in topK_values if K <= (max_k or num_candidates)]
+    print(f"DEBUG: valid_K_values={valid_K_values}")
+
+    metrics = {"mP": {}, "mAP": {}, "Recall": {}}
+    all_sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
+    print(f"DEBUG: all_sorted_indices.shape={all_sorted_indices.shape}, sample={all_sorted_indices[0, :5]}")
+
+    for K in valid_K_values:
+        print(f"DEBUG: Processing K={K}")
+        top_k_indices = all_sorted_indices[:, :K]  # [num_queries, K]
+        print(f"DEBUG: top_k_indices.shape={top_k_indices.shape}, sample={top_k_indices[0]}")
+
+        if is_multi_label:
+            # Multi-label: Check if retrieved labels are in true labels
+            if mode == "Image-to-Text":
+                # For each query, check if retrieved class indices are true positives
+                full_correct_mask = torch.zeros(num_queries, num_candidates, device=device, dtype=torch.bool)
+                for i in range(num_queries):
+                    true_label_indices = torch.where(query_labels[i] == 1)[0]  # True class indices
+                    full_correct_mask[i] = torch.isin(torch.arange(num_candidates, device=device), true_label_indices)
+                print(f"DEBUG: Image-to-Text: full_correct_mask.shape={full_correct_mask.shape}, sample={full_correct_mask[0, :5]}")
+            else:  # Text-to-Image
+                # For each class query, check if retrieved samples have the class
+                full_correct_mask = torch.zeros(num_queries, num_candidates, device=device, dtype=torch.bool)
+                for i in range(num_queries):
+                    class_idx = query_labels[i]  # Class being queried
+                    full_correct_mask[i] = candidate_labels[:, class_idx]  # [num_candidates]
+                print(f"DEBUG: Text-to-Image: full_correct_mask.shape={full_correct_mask.shape}, sample={full_correct_mask[0, :5]}")
+
+            # Restrict correct_mask to top-K indices
+            correct_mask = torch.zeros(num_queries, K, device=device, dtype=torch.bool)
+            for i in range(num_queries):
+                correct_mask[i] = full_correct_mask[i, top_k_indices[i]]
+            print(f"DEBUG: correct_mask.shape={correct_mask.shape}, sample={correct_mask[0]}")
+        else:
+            # Single-label: Check if true label is in top-K
+            retrieved_labels = candidate_labels[top_k_indices]  # [num_queries, K]
+            true_labels_expanded = query_labels.unsqueeze(1).expand(-1, K)  # [num_queries, K]
+            correct_mask = (retrieved_labels == true_labels_expanded)  # [num_queries, K]
+            print(f"DEBUG: Single-label: correct_mask.shape={correct_mask.shape}, sample={correct_mask[0]}")
+
+        metrics["mP"][str(K)] = correct_mask.float().mean(dim=1).mean().item()
+        print(f"DEBUG: mP[K={K}]={metrics['mP'][str(K)]}")
+
+        if mode == "Image-to-Text":
+            metrics["Recall"][str(K)] = correct_mask.any(dim=1).float().mean().item()
+            print(f"DEBUG: Image-to-Text Recall[K={K}]={metrics['Recall'][str(K)]}")
+        else:  # Text-to-Image
+            if is_multi_label:
+                relevant_counts = torch.sum(candidate_labels, dim=0)  # [num_classes]
+                print(f"DEBUG: Text-to-Image relevant_counts.shape={relevant_counts.shape}, sample={relevant_counts[:5]}")
+                if (relevant_counts == 0).any():
+                    print("Warning: Some classes have no positive samples, affecting recall calculation.")
+                relevant_counts = relevant_counts[query_labels]  # [num_queries]
+                metrics["Recall"][str(K)] = (correct_mask.sum(dim=1) / relevant_counts.clamp(min=1)).mean().item()
+                print(f"DEBUG: Text-to-Image Multi-label Recall[K={K}]={metrics['Recall'][str(K)]}")
+            else:
+                if class_counts is None:
+                    raise ValueError("class_counts must be provided for single-label text-to-image recall")
+                relevant_counts = class_counts[query_labels]
+                metrics["Recall"][str(K)] = (correct_mask.sum(dim=1) / relevant_counts.clamp(min=1)).mean().item()
+                print(f"DEBUG: Text-to-Image Single-label Recall[K={K}]={metrics['Recall'][str(K)]}")
+
+        # Vectorized AP
+        positions = torch.arange(1, K + 1, device=device).float().unsqueeze(0).expand(num_queries, K)
+        print(f"DEBUG: positions.shape={positions.shape}")
+        cumulative_correct = correct_mask.float().cumsum(dim=1)
+        print(f"DEBUG: cumulative_correct.shape={cumulative_correct.shape}")
+        precisions = cumulative_correct / positions
+        ap = (precisions * correct_mask.float()).sum(dim=1) / correct_mask.sum(dim=1).clamp(min=1)
+        metrics["mAP"][str(K)] = ap.nanmean().item()
+        print(f"DEBUG: mAP[K={K}]={metrics['mAP'][str(K)]}")
+
+    # Save to cache if not training
+    if cache_dir and cache_key and not is_training:
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+            with open(cache_file, 'w') as f:
+                json.dump(metrics, f)
+            if verbose:
+                print(f"Saved metrics to {cache_file}")
+        except Exception as e:
+            print(f"Warning: Failed to save cache {e}")
+
+    print(f"DEBUG: Exiting compute_retrieval_metrics_from_similarity with metrics={metrics}")
+    return metrics
 
 @torch.no_grad()
 def get_validation_metrics(
-		model: torch.nn.Module,
-		validation_loader: torch.utils.data.DataLoader,
-		criterion: torch.nn.Module,
-		device: torch.device,
-		topK_values: List[int],
-		cache_dir: str,
-		finetune_strategy: str = None,
-		chunk_size: int = 1024,
-		verbose: bool = True,
-		max_in_batch_samples: Optional[int] = None,
-		force_recompute: bool = False,
-		embeddings_cache: tuple = None,
-		lora_params: Optional[Dict] = None,
-		is_training: bool = False,
-		model_hash: str = None,
+    model: torch.nn.Module,
+    validation_loader: torch.utils.data.DataLoader,
+    criterion: torch.nn.Module,
+    device: torch.device,
+    topK_values: List[int],
+    cache_dir: str,
+    finetune_strategy: str = None,
+    chunk_size: int = 1024,
+    verbose: bool = True,
+    max_in_batch_samples: Optional[int] = None,
+    force_recompute: bool = False,
+    embeddings_cache: tuple = None,
+    lora_params: Optional[Dict] = None,
+    is_training: bool = False,
+    model_hash: str = None,
 ) -> Dict:
-		model.eval()
-		torch.cuda.empty_cache()
-		start_time = time.time()
+    """
+    Compute validation metrics, including in-batch and full-set metrics, for single-label or multi-label datasets.
+    Handles embedding computation or loading from cache, ensuring correct label shapes.
 
-		if finetune_strategy is None:
-				finetune_strategy = "pretrained"
+    Args:
+        model: CLIP model for evaluation.
+        validation_loader: DataLoader for validation data.
+        criterion: Loss function (e.g., CrossEntropyLoss).
+        device: Computation device (cuda or cpu).
+        topK_values: List of K values for top-K metrics.
+        cache_dir: Directory to store cached embeddings.
+        finetune_strategy: Strategy name (e.g., "full", "lora").
+        chunk_size: Chunk size for processing (unused here).
+        verbose: If True, print progress messages.
+        max_in_batch_samples: Max samples for in-batch metrics.
+        force_recompute: If True, recompute embeddings.
+        embeddings_cache: Precomputed embeddings (optional).
+        lora_params: LoRA parameters (if applicable).
+        is_training: If True, skip caching.
+        model_hash: Model hash for cache file naming.
 
-		model_class_name = model.__class__.__name__
-		model_arch_name = getattr(model, 'name', 'unknown_arch')
-		dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
-		num_workers = getattr(validation_loader, 'num_workers', 'unknown_num_workers')
+    Returns:
+        Dictionary containing in-batch, full-set, and retrieval metrics.
+    """
+    print("DEBUG: Entering get_validation_metrics")
+    model.eval()
+    torch.cuda.empty_cache()
+    start_time = time.time()
 
-		try:
-				class_names = validation_loader.dataset.dataset.classes
-		except AttributeError:
-				class_names = validation_loader.dataset.unique_labels
+    if finetune_strategy is None:
+        finetune_strategy = "pretrained"
 
-		n_classes = len(class_names)
+    model_class_name = model.__class__.__name__
+    model_arch_name = getattr(model, 'name', 'unknown_arch')
+    dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
+    num_workers = getattr(validation_loader, 'num_workers', 'unknown_num_workers')
 
-		cache_file = os.path.join(
-				cache_dir,
-				f"{dataset_name}_{finetune_strategy}_bs_{validation_loader.batch_size}_nw_{num_workers}_{model_class_name}_{re.sub(r'[/@]', '_', model_arch_name)}_validation_embeddings.pt"
-		)
-		if model_hash:
-				cache_file = cache_file.replace(".pt", f"_{model_hash}.pt")
+    try:
+        class_names = validation_loader.dataset.dataset.classes
+    except AttributeError:
+        class_names = validation_loader.dataset.unique_labels
 
-		# Step 1: In-batch metrics (small subset)
-		in_batch_metrics = None
-		if max_in_batch_samples is not None:
-				if verbose:
-						print(f"Computing in-batch metrics with {max_in_batch_samples} samples...")
-				in_batch_metrics = compute_direct_in_batch_metrics(
-						model=model,
-						validation_loader=validation_loader,
-						criterion=criterion,
-						device=device,
-						topK_values=topK_values,
-						max_samples=max_in_batch_samples
-				)
+    n_classes = len(class_names)
+    print(f"DEBUG: n_classes={n_classes}")
 
-		# Step 2: Load or compute embeddings
-		cache_loaded = False
-		if not is_training and embeddings_cache is not None:
-				all_image_embeds, _ = embeddings_cache
-				all_labels = torch.tensor(
-						[validation_loader.dataset.labels_int[i] for i in range(len(validation_loader.dataset))],
-						device='cpu'
-				)
-				cache_loaded = True
-				if verbose:
-						print("Loaded embeddings from provided cache.")
-		elif not is_training and os.path.exists(cache_file) and not force_recompute:
-				if verbose:
-						print(f"Loading cached embeddings from {cache_file}")
-				cached = torch.load(cache_file, map_location='cpu')
-				all_image_embeds = cached['image_embeds']
-				all_labels = cached['labels']
-				cache_loaded = True
+    cache_file = os.path.join(
+        cache_dir,
+        f"{dataset_name}_{finetune_strategy}_bs_{validation_loader.batch_size}_nw_{num_workers}_{model_class_name}_{re.sub(r'[/@]', '_', model_arch_name)}_validation_embeddings.pt"
+    )
+    if model_hash:
+        cache_file = cache_file.replace(".pt", f"_{model_hash}.pt")
+    print(f"DEBUG: cache_file={cache_file}")
 
-		if not cache_loaded or is_training:
-				if verbose:
-						print("Computing embeddings from scratch...")
-				all_image_embeds = []
-				all_labels = []
+    # Step 1: In-batch metrics
+    in_batch_metrics = None
+    if max_in_batch_samples is not None:
+        if verbose:
+            print(f"Computing in-batch metrics with {max_in_batch_samples} samples...")
+        in_batch_metrics = compute_direct_in_batch_metrics(
+            model=model,
+            validation_loader=validation_loader,
+            criterion=criterion,
+            device=device,
+            topK_values=topK_values,
+            max_samples=max_in_batch_samples
+        )
 
-				model = model.to(device)
-				model.eval()
+    # Step 2: Load or compute embeddings
+    cache_loaded = False
+    num_samples = len(validation_loader.dataset)
+    print(f"DEBUG: num_samples={num_samples}")
+    if not is_training and embeddings_cache is not None:
+        all_image_embeds, _ = embeddings_cache
+        # Pre-allocate labels tensor based on label type
+        if isinstance(validation_loader.dataset.labels_int[0], (int, np.integer)):
+            all_labels = torch.zeros(num_samples, dtype=torch.float32)
+            for i in range(num_samples):
+                all_labels[i] = validation_loader.dataset.labels_int[i]
+        else:  # Multi-label
+            num_classes = len(validation_loader.dataset.labels_int[0])
+            all_labels = torch.zeros(num_samples, num_classes, dtype=torch.float32)
+            for i in range(num_samples):
+                all_labels[i] = torch.tensor(validation_loader.dataset.labels_int[i], dtype=torch.float32)
+        all_labels = all_labels.to(device)
+        cache_loaded = True
+        if verbose:
+            print("Loaded embeddings from provided cache.")
+    elif not is_training and os.path.exists(cache_file) and not force_recompute:
+        if verbose:
+            print(f"Loading cached embeddings from {cache_file}")
+        cached = torch.load(cache_file, map_location='cpu')
+        all_image_embeds = cached['image_embeds']
+        all_labels = cached['labels']
+        expected_shape = (num_samples, n_classes) if isinstance(validation_loader.dataset.labels_int[0], (list, np.ndarray)) else (num_samples,)
+        if all_labels.shape != expected_shape:
+            print(f"Warning: Cache file {cache_file} has incompatible label shape {all_labels.shape}, expected {expected_shape}. Recomputing embeddings.")
+            cache_loaded = False
+        else:
+            cache_loaded = True
+    if not cache_loaded:
+        if verbose:
+            print("Computing embeddings from scratch...")
+        all_image_embeds = []
+        all_labels = []
 
-				for images, _, labels_indices in tqdm(validation_loader, desc="Encoding images"):
-						images = images.to(device, non_blocking=True)
-						with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
-								image_embeds = model.encode_image(images)
-						image_embeds = F.normalize(image_embeds.float(), dim=-1)  # Ensure float32 after normalization
-						all_image_embeds.append(image_embeds.cpu())
-						all_labels.extend(labels_indices.cpu().tolist())
+        model = model.to(device)
+        model.eval()
 
-				all_image_embeds = torch.cat(all_image_embeds, dim=0)
-				all_labels = torch.tensor(all_labels, device='cpu')
+        for images, _, labels_indices in tqdm(validation_loader, desc="Encoding images"):
+            images = images.to(device, non_blocking=True)
+            with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
+                image_embeds = model.encode_image(images)
+            image_embeds = F.normalize(image_embeds.float(), dim=-1)
+            all_image_embeds.append(image_embeds.cpu())
+            all_labels.append(labels_indices.cpu())
 
-				if not is_training:
-						os.makedirs(cache_dir, exist_ok=True)
-						torch.save({'image_embeds': all_image_embeds, 'labels': all_labels}, cache_file)
-						if verbose:
-								print(f"Saved embeddings to {cache_file}")
+        all_image_embeds = torch.cat(all_image_embeds, dim=0)
+        all_labels = torch.cat(all_labels, dim=0)
 
-		# Step 3: Compute text embeddings
-		text_inputs = clip.tokenize(class_names).to(device)
-		with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
-				class_text_embeds = model.encode_text(text_inputs)
-		class_text_embeds = F.normalize(class_text_embeds.float(), dim=-1).cpu()  # Ensure float32 after normalization
+        if not is_training:
+            os.makedirs(cache_dir, exist_ok=True)
+            torch.save({'image_embeds': all_image_embeds, 'labels': all_labels}, cache_file)
+            if verbose:
+                print(f"Saved embeddings to {cache_file}")
 
-		# Step 4: Compute similarity matrices
-		device_image_embeds = all_image_embeds.to(device).float()
-		device_class_text_embeds = class_text_embeds.to(device).float()
-		device_labels = all_labels.to(device)
+    print(f"DEBUG: all_image_embeds.shape={all_image_embeds.shape}")
+    print(f"DEBUG: all_labels.shape={all_labels.shape}, sample={all_labels[0, :5]}")
 
-		i2t_similarity = device_image_embeds @ device_class_text_embeds.T
-		t2i_similarity = device_class_text_embeds @ device_image_embeds.T
+    # Step 3: Compute text embeddings
+    text_inputs = clip.tokenize(class_names).to(device)
+    with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
+        class_text_embeds = model.encode_text(text_inputs)
+    class_text_embeds = F.normalize(class_text_embeds.float(), dim=-1)
 
-		# Step 5: Full-set metrics
-		full_metrics = compute_full_set_metrics_from_cache(
-				i2t_similarity=i2t_similarity,
-				t2i_similarity=t2i_similarity,
-				labels=device_labels,
-				n_classes=n_classes,
-				topK_values=topK_values,
-				device=device
-		)
+    print(f"DEBUG: class_text_embeds.shape={class_text_embeds.shape}")
 
-		# Step 6: Retrieval metrics
-		cache_key_base = f"{dataset_name}_{finetune_strategy}_{model_class_name}_{re.sub(r'[/@]', '_', model_arch_name)}"
-		if lora_params:
-				cache_key_base += f"_lora_rank_{lora_params['lora_rank']}_lora_alpha_{lora_params['lora_alpha']}_lora_dropout_{lora_params['lora_dropout']}"
+    # Step 4: Compute similarity matrices
+    device_image_embeds = all_image_embeds.to(device).float()
+    device_class_text_embeds = class_text_embeds.to(device).float()
+    device_labels = all_labels.to(device)
 
-		img2txt_metrics = compute_retrieval_metrics_from_similarity(
-				similarity_matrix=i2t_similarity,
-				query_labels=device_labels,
-				candidate_labels=torch.arange(n_classes, device=device),
-				topK_values=topK_values,
-				mode="Image-to-Text",
-				cache_dir=cache_dir,
-				cache_key=f"{cache_key_base}_img2txt",
-				is_training=is_training,
-				verbose=verbose,
-		)
+    i2t_similarity = device_image_embeds @ device_class_text_embeds.T
+    t2i_similarity = device_class_text_embeds @ device_image_embeds.T
+    print(f"DEBUG: i2t_similarity.shape={i2t_similarity.shape}")
+    print(f"DEBUG: t2i_similarity.shape={t2i_similarity.shape}")
 
-		class_counts = torch.bincount(device_labels, minlength=n_classes)
-		txt2img_metrics = compute_retrieval_metrics_from_similarity(
-				similarity_matrix=t2i_similarity,
-				query_labels=torch.arange(n_classes, device=device),
-				candidate_labels=device_labels,
-				topK_values=topK_values,
-				mode="Text-to-Image",
-				class_counts=class_counts,
-				cache_dir=cache_dir,
-				cache_key=f"{cache_key_base}_txt2img",
-				is_training=is_training,
-				verbose=verbose,
-		)
+    # Step 5: Full-set metrics
+    full_metrics = compute_full_set_metrics_from_cache(
+        i2t_similarity=i2t_similarity,
+        t2i_similarity=t2i_similarity,
+        labels=device_labels,
+        n_classes=n_classes,
+        topK_values=topK_values,
+        device=device,
+        device_image_embeds=device_image_embeds,
+        device_class_text_embeds=device_class_text_embeds
+    )
 
-		if verbose:
-				print(f"Validation evaluation completed in {time.time() - start_time:.2f} sec")
+    # Step 6: Retrieval metrics
+    cache_key_base = f"{dataset_name}_{finetune_strategy}_{model_class_name}_{re.sub(r'[/@]', '_', model_arch_name)}"
+    if lora_params:
+        cache_key_base += f"_lora_rank_{lora_params['lora_rank']}_lora_alpha_{lora_params['lora_alpha']}_lora_dropout_{lora_params['lora_dropout']}"
 
-		return {
-				"in_batch_metrics": in_batch_metrics,
-				"full_metrics": full_metrics,
-				"img2txt_metrics": img2txt_metrics,
-				"txt2img_metrics": txt2img_metrics
-		}
+    img2txt_metrics = compute_retrieval_metrics_from_similarity(
+        similarity_matrix=i2t_similarity,
+        query_labels=device_labels,
+        candidate_labels=torch.arange(n_classes, device=device),
+        topK_values=topK_values,
+        mode="Image-to-Text",
+        cache_dir=cache_dir,
+        cache_key=f"{cache_key_base}_img2txt",
+        is_training=is_training,
+        verbose=verbose,
+    )
+
+    class_counts = torch.bincount(device_labels, minlength=n_classes) if len(device_labels.shape) == 1 else None
+    print(f"DEBUG: class_counts={'None' if class_counts is None else class_counts.shape}")
+    txt2img_metrics = compute_retrieval_metrics_from_similarity(
+        similarity_matrix=t2i_similarity,
+        query_labels=torch.arange(n_classes, device=device),
+        candidate_labels=device_labels,
+        topK_values=topK_values,
+        mode="Text-to-Image",
+        class_counts=class_counts,
+        cache_dir=cache_dir,
+        cache_key=f"{cache_key_base}_txt2img",
+        is_training=is_training,
+        verbose=verbose,
+    )
+
+    if verbose:
+        print(f"Validation evaluation completed in {time.time() - start_time:.2f} sec")
+
+    print("DEBUG: Exiting get_validation_metrics")
+    return {
+        "in_batch_metrics": in_batch_metrics,
+        "full_metrics": full_metrics,
+        "img2txt_metrics": img2txt_metrics,
+        "txt2img_metrics": txt2img_metrics
+    }
 
 def compute_full_set_metrics_from_cache(
-		i2t_similarity: torch.Tensor,
-		t2i_similarity: torch.Tensor,
-		labels: torch.Tensor,
-		n_classes: int,
-		topK_values: List[int],
-		device: str
-	) -> Dict:
-	# Filter valid K values
-	valid_k_values = [k for k in topK_values if k <= n_classes]
-	
-	# Image-to-text accuracy metrics
-	img2txt_preds = torch.argmax(i2t_similarity, dim=1)
-	img2txt_acc = (img2txt_preds == labels).float().mean().item()
-	
-	# Image-to-text top-K accuracy
-	img2txt_topk_acc = {}
-	for k in valid_k_values:
-			topk_indices = i2t_similarity.topk(k, dim=1)[1]
-			correct = (topk_indices == labels.unsqueeze(1)).any(dim=1)
-			img2txt_topk_acc[k] = correct.float().mean().item()
-	
-	# Text-to-image top-K accuracy
-	txt2img_topk_acc = {}
-	for k in topK_values:
-			class_correct = 0
-			effective_k = min(k, i2t_similarity.size(0))
-			
-			topk_indices = t2i_similarity.topk(effective_k, dim=1)[1]
-			for class_idx in range(n_classes):
-					retrieved_labels = labels[topk_indices[class_idx]]
-					if class_idx in retrieved_labels:
-							class_correct += 1
-			
-			txt2img_topk_acc[k] = class_correct / n_classes
-	
-	# Set top-1 text-to-image accuracy
-	txt2img_acc = txt2img_topk_acc.get(1, 0.0)
-	
-	# Compute MRR (Mean Reciprocal Rank)
-	ranks = i2t_similarity.argsort(dim=1, descending=True)
-	rr_indices = ranks.eq(labels.view(-1, 1)).nonzero(as_tuple=True)[1] + 1
-	img2txt_mrr = (1.0 / rr_indices.float()).mean().item()
-	
-	# Compute cosine similarity (between corresponding image-text pairs)
-	# We don't have direct pairs in this context, so using MRR as substitute
-	
-	# Return metrics in the expected format
-	return {
-		"img2txt_acc": float(img2txt_acc),
-		"txt2img_acc": float(txt2img_acc),
-		"img2txt_topk_acc": {str(k): float(v) for k, v in img2txt_topk_acc.items()},
-		"txt2img_topk_acc": {str(k): float(v) for k, v in txt2img_topk_acc.items()},
-		"mean_reciprocal_rank": float(img2txt_mrr),
-		"cosine_similarity": 0.0  # Using placeholder since we don't have direct pairs
-	}
+    i2t_similarity: torch.Tensor,        # [num_samples, num_classes]
+    t2i_similarity: torch.Tensor,        # [num_classes, num_samples]
+    labels: torch.Tensor,                # [num_samples] or [num_samples, num_classes]
+    n_classes: int,
+    topK_values: List[int],
+    device: str,
+    device_image_embeds: torch.Tensor,   # [num_samples, embed_dim]
+    device_class_text_embeds: torch.Tensor  # [num_classes, embed_dim]
+) -> Dict:
+    """
+    Compute full-set metrics (accuracy, top-K, MRR, Hamming loss, partial accuracy) for single-label or multi-label datasets.
+
+    Args:
+        i2t_similarity: Image-to-text similarity scores.
+        t2i_similarity: Text-to-image similarity scores.
+        labels: Ground truth labels (1D for single-label, 2D for multi-label).
+        n_classes: Number of classes.
+        topK_values: List of K values for top-K metrics.
+        device: Computation device.
+        device_image_embeds: Normalized image embeddings.
+        device_class_text_embeds: Normalized text embeddings for classes.
+
+    Returns:
+        Dictionary containing accuracy, top-K, MRR, Hamming loss, partial accuracy, and cosine similarity.
+    """
+    print("DEBUG: Entering compute_full_set_metrics_from_cache")
+    num_samples = i2t_similarity.shape[0]
+    print(f"DEBUG: num_samples={num_samples}, n_classes={n_classes}")
+    print(f"DEBUG: i2t_similarity.shape={i2t_similarity.shape}")
+    print(f"DEBUG: t2i_similarity.shape={t2i_similarity.shape}")
+    print(f"DEBUG: labels.shape={labels.shape}, sample={labels[0, :5]}")
+    print(f"DEBUG: device_image_embeds.shape={device_image_embeds.shape}")
+    print(f"DEBUG: device_class_text_embeds.shape={device_class_text_embeds.shape}")
+
+    # Detect label format
+    is_multi_label = len(labels.shape) == 2 and labels.shape[1] == n_classes
+    print(f"DEBUG: is_multi_label={is_multi_label}")
+    if is_multi_label:
+        assert labels.shape == (num_samples, n_classes), \
+            f"Multi-label shape {labels.shape} must be [{num_samples}, {n_classes}]"
+    else:
+        assert labels.shape == (num_samples,), \
+            f"Single-label shape {labels.shape} must be [{num_samples}]"
+
+    # Filter valid K values
+    valid_k_values = [k for k in topK_values if k <= n_classes]
+    print(f"DEBUG: valid_k_values={valid_k_values}")
+
+    if is_multi_label:
+        # Multi-label: Image-to-text predictions
+        i2t_probs = torch.sigmoid(i2t_similarity)  # [num_samples, num_classes]
+        i2t_preds = (i2t_probs > 0.5).float()     # Binary predictions
+        print(f"DEBUG: i2t_probs.shape={i2t_probs.shape}, sample={i2t_probs[0, :5]}")
+        print(f"DEBUG: i2t_preds.shape={i2t_preds.shape}, sample={i2t_preds[0, :5]}")
+        img2txt_correct = (i2t_preds == labels).all(dim=1)
+        img2txt_acc = img2txt_correct.float().mean().item()
+        hamming_loss = (i2t_preds != labels).float().mean().item()
+        partial_acc = (i2t_preds == labels).float().mean(dim=1).mean().item()
+        print(f"DEBUG: img2txt_acc={img2txt_acc}, hamming_loss={hamming_loss}, partial_acc={partial_acc}")
+
+        # Top-K accuracy
+        img2txt_topk_acc = {}
+        for k in valid_k_values:
+            topk_indices = i2t_similarity.topk(k, dim=1)[1]
+            topk_preds = torch.zeros_like(i2t_probs).scatter_(1, topk_indices, 1.0)
+            correct = ((topk_preds >= labels).all(dim=1)).float().mean().item()
+            img2txt_topk_acc[k] = correct
+            print(f"DEBUG: img2txt_topk_acc[K={k}]={correct}")
+    else:
+        # Single-label: Image-to-text predictions
+        img2txt_preds = torch.argmax(i2t_similarity, dim=1)
+        img2txt_acc = (img2txt_preds == labels).float().mean().item()
+        hamming_loss = None
+        partial_acc = None
+        print(f"DEBUG: img2txt_preds.shape={img2txt_preds.shape}, img2txt_acc={img2txt_acc}")
+
+        # Top-K accuracy
+        img2txt_topk_acc = {}
+        for k in valid_k_values:
+            topk_indices = i2t_similarity.topk(k, dim=1)[1]
+            correct = (topk_indices == labels.unsqueeze(1)).any(dim=1)
+            img2txt_topk_acc[k] = correct.float().mean().item()
+            print(f"DEBUG: img2txt_topk_acc[K={k}]={correct}")
+
+    # Text-to-image top-K accuracy
+    txt2img_topk_acc = {}
+    for k in topK_values:
+        effective_k = min(k, num_samples)
+        topk_indices = t2i_similarity.topk(effective_k, dim=1)[1]
+        class_correct = 0
+        for class_idx in range(n_classes):
+            retrieved_sample_indices = topk_indices[class_idx]
+            if is_multi_label:
+                retrieved_labels = labels[retrieved_sample_indices]
+                if retrieved_labels[:, class_idx].any():
+                    class_correct += 1
+            else:
+                retrieved_labels = labels[retrieved_sample_indices]
+                if class_idx in retrieved_labels:
+                    class_correct += 1
+        txt2img_topk_acc[k] = class_correct / n_classes
+        print(f"DEBUG: txt2img_topk_acc[K={k}]={txt2img_topk_acc[k]}")
+
+    # Set top-1 text-to-image accuracy
+    txt2img_acc = txt2img_topk_acc.get(1, 0.0)
+    print(f"DEBUG: txt2img_acc={txt2img_acc}")
+
+    # MRR
+    ranks = i2t_similarity.argsort(dim=-1, descending=True)
+    print(f"DEBUG: ranks.shape={ranks.shape}")
+    if is_multi_label:
+        mrr = 0.0
+        for i in range(num_samples):
+            true_labels = torch.where(labels[i] == 1)[0]
+            if len(true_labels) == 0:
+                continue
+            for rank, pred_idx in enumerate(ranks[i]):
+                if pred_idx in true_labels:
+                    mrr += 1.0 / (rank + 1)
+                    break
+        img2txt_mrr = mrr / num_samples if num_samples > 0 else 0.0
+        print(f"DEBUG: Multi-label img2txt_mrr={img2txt_mrr}")
+    else:
+        rr_indices = ranks.eq(labels.view(-1, 1)).nonzero(as_tuple=True)[1] + 1
+        img2txt_mrr = (1.0 / rr_indices.float()).mean().item()
+        print(f"DEBUG: Single-label img2txt_mrr={img2txt_mrr}")
+
+    # Cosine similarity between corresponding image and text embeddings
+    if is_multi_label:
+        # Average text embeddings for positive labels
+        text_embeds = torch.zeros(num_samples, device_class_text_embeds.shape[1], device=device)
+        for i in range(num_samples):
+            positive_indices = torch.where(labels[i] == 1)[0]
+            if positive_indices.numel() > 0:
+                text_embeds[i] = device_class_text_embeds[positive_indices].mean(dim=0)
+            else:
+                text_embeds[i] = device_class_text_embeds.mean(dim=0)  # Fallback
+        print(f"DEBUG: Multi-label text_embeds.shape={text_embeds.shape}")
+    else:
+        text_embeds = device_class_text_embeds[labels]  # [num_samples, embed_dim]
+        print(f"DEBUG: Single-label text_embeds.shape={text_embeds.shape}")
+    cos_sim = F.cosine_similarity(device_image_embeds, text_embeds, dim=1).mean().item()
+    print(f"DEBUG: cos_sim={cos_sim}")
+
+    print("DEBUG: Exiting compute_full_set_metrics_from_cache")
+    return {
+        "img2txt_acc": float(img2txt_acc),
+        "txt2img_acc": float(txt2img_acc),
+        "img2txt_topk_acc": {str(k): float(v) for k, v in img2txt_topk_acc.items()},
+        "txt2img_topk_acc": {str(k): float(v) for k, v in txt2img_topk_acc.items()},
+        "mean_reciprocal_rank": float(img2txt_mrr),
+        "cosine_similarity": float(cos_sim),
+        "hamming_loss": float(hamming_loss) if hamming_loss is not None else None,
+        "partial_acc": float(partial_acc) if partial_acc is not None else None
+    }
+
+# def compute_retrieval_metrics_from_similarity(
+#     similarity_matrix: torch.Tensor,
+#     query_labels: torch.Tensor,  # [num_queries] or [num_queries, num_classes]
+#     candidate_labels: torch.Tensor,  # [num_candidates] or [num_candidates, num_classes]
+#     topK_values: List[int],
+#     mode: str = "Image-to-Text",
+#     class_counts: Optional[torch.Tensor] = None,
+#     max_k: Optional[int] = None,
+#     cache_dir: str = None,
+#     cache_key: str = None,
+#     is_training: bool = False,
+#     verbose: bool = True,
+# ) -> Dict:
+#     num_queries, num_candidates = similarity_matrix.shape
+#     device = similarity_matrix.device
+#     is_multi_label = len(query_labels.shape) == 2
+
+#     # Check cache only if not training
+#     cache_file = None
+#     if cache_dir and cache_key and not is_training:
+#         cache_file = os.path.join(cache_dir, f"{cache_key}_retrieval_metrics.json")
+#         if os.path.exists(cache_file):
+#             try:
+#                 if verbose:
+#                     print(f"Loading cached retrieval metrics from {cache_file}")
+#                 with open(cache_file, 'r') as f:
+#                     return json.load(f)
+#             except Exception as e:
+#                 print(f"Error loading cache: {e}. Computing metrics.")
+
+#     if verbose:
+#         print(f"Computing retrieval metrics for {mode} (cache skipped: is_training={is_training})")
+
+#     if max_k is not None:
+#         valid_K_values = [K for K in topK_values if K <= max_k]
+#     else:
+#         valid_K_values = topK_values
+
+#     metrics = {"mP": {}, "mAP": {}, "Recall": {}}
+
+#     all_sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
+
+#     for K in valid_K_values:
+#         top_k_indices = all_sorted_indices[:, :K]  # [num_queries, K]
+#         if is_multi_label:
+#             # Multi-label: Check if any true label is in top-K
+#             retrieved_labels = torch.zeros(num_queries, num_candidates, device=device)
+#             retrieved_labels.scatter_(1, top_k_indices, 1.0)  # [num_queries, num_candidates]
+#             correct_mask = (retrieved_labels.unsqueeze(2) * query_labels.unsqueeze(1)).sum(2).bool()  # [num_queries, num_candidates]
+#         else:
+#             retrieved_labels = candidate_labels[top_k_indices]  # [num_queries, K]
+#             true_labels_expanded = query_labels.unsqueeze(1).expand(-1, K)  # [num_queries, K]
+#             correct_mask = (retrieved_labels == true_labels_expanded)  # [num_queries, K]
+
+#         metrics["mP"][str(K)] = correct_mask.float().mean(dim=1).mean().item()
+
+#         if mode == "Image-to-Text":
+#             metrics["Recall"][str(K)] = correct_mask.any(dim=1).float().mean().item()
+#         else:
+#             if is_multi_label:
+#                 # Approximate recall for multi-label
+#                 relevant_counts = query_labels.sum(dim=1)  # [num_queries]
+#                 metrics["Recall"][str(K)] = (correct_mask.sum(dim=1) / relevant_counts.clamp(min=1)).mean().item()
+#             else:
+#                 relevant_counts = class_counts[query_labels]
+#                 metrics["Recall"][str(K)] = (correct_mask.sum(dim=1) / relevant_counts.clamp(min=1)).mean().item()
+
+#         # Vectorized AP
+#         positions = torch.arange(1, K + 1, device=device).float().unsqueeze(0).expand(num_queries, K)
+#         cumulative_correct = correct_mask.float().cumsum(dim=1)
+#         precisions = cumulative_correct / positions
+#         ap = (precisions * correct_mask.float()).sum(dim=1) / correct_mask.sum(dim=1).clamp(min=1)
+#         metrics["mAP"][str(K)] = ap.nanmean().item()
+
+#     # Save to cache only if not training
+#     if cache_dir and cache_key and not is_training:
+#         try:
+#             os.makedirs(cache_dir, exist_ok=True)
+#             with open(cache_file, 'w') as f:
+#                 json.dump(metrics, f)
+#             if verbose:
+#                 print(f"Saved metrics to {cache_file}")
+#         except Exception as e:
+#             print(f"Warning: Failed to save cache {e}")
+
+#     return metrics
+
+# @torch.no_grad()
+# def get_validation_metrics(
+#     model: torch.nn.Module,
+#     validation_loader: torch.utils.data.DataLoader,
+#     criterion: torch.nn.Module,
+#     device: torch.device,
+#     topK_values: List[int],
+#     cache_dir: str,
+#     finetune_strategy: str = None,
+#     chunk_size: int = 1024,
+#     verbose: bool = True,
+#     max_in_batch_samples: Optional[int] = None,
+#     force_recompute: bool = False,
+#     embeddings_cache: tuple = None,
+#     lora_params: Optional[Dict] = None,
+#     is_training: bool = False,
+#     model_hash: str = None,
+# ) -> Dict:
+#     model.eval()
+#     torch.cuda.empty_cache()
+#     start_time = time.time()
+
+#     if finetune_strategy is None:
+#         finetune_strategy = "pretrained"
+
+#     model_class_name = model.__class__.__name__
+#     model_arch_name = getattr(model, 'name', 'unknown_arch')
+#     dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
+#     num_workers = getattr(validation_loader, 'num_workers', 'unknown_num_workers')
+
+#     try:
+#         class_names = validation_loader.dataset.dataset.classes
+#     except AttributeError:
+#         class_names = validation_loader.dataset.unique_labels
+
+#     n_classes = len(class_names)
+
+#     cache_file = os.path.join(
+#         cache_dir,
+#         f"{dataset_name}_{finetune_strategy}_bs_{validation_loader.batch_size}_nw_{num_workers}_{model_class_name}_{re.sub(r'[/@]', '_', model_arch_name)}_validation_embeddings.pt"
+#     )
+#     if model_hash:
+#         cache_file = cache_file.replace(".pt", f"_{model_hash}.pt")
+
+#     # Step 1: In-batch metrics (small subset)
+#     in_batch_metrics = None
+#     if max_in_batch_samples is not None:
+#         if verbose:
+#             print(f"Computing in-batch metrics with {max_in_batch_samples} samples...")
+#         in_batch_metrics = compute_direct_in_batch_metrics(
+#             model=model,
+#             validation_loader=validation_loader,
+#             criterion=criterion,
+#             device=device,
+#             topK_values=topK_values,
+#             max_samples=max_in_batch_samples
+#         )
+
+#     # Step 2: Load or compute embeddings
+#     cache_loaded = False
+#     if not is_training and embeddings_cache is not None:
+#         all_image_embeds, _ = embeddings_cache
+#         # Handle both single-label (scalars) and multi-label (vectors)
+#         all_labels = torch.stack(
+#             [torch.tensor(validation_loader.dataset.labels_int[i], dtype=torch.float32)
+#              for i in range(len(validation_loader.dataset))],
+#             dim=0
+#         ).cpu()  # [num_samples] or [num_samples, num_classes]
+#         cache_loaded = True
+#         if verbose:
+#             print("Loaded embeddings from provided cache.")
+#     elif not is_training and os.path.exists(cache_file) and not force_recompute:
+#         if verbose:
+#             print(f"Loading cached embeddings from {cache_file}")
+#         cached = torch.load(cache_file, map_location='cpu')
+#         all_image_embeds = cached['image_embeds']
+#         all_labels = cached['labels']  # [num_samples] or [num_samples, num_classes]
+#         cache_loaded = True
+#     else:
+#         if verbose:
+#             print("Computing embeddings from scratch...")
+#         all_image_embeds = []
+#         all_labels = []
+
+#         model = model.to(device)
+#         model.eval()
+
+#         for images, _, labels_indices in tqdm(validation_loader, desc="Encoding images"):
+#             images = images.to(device, non_blocking=True)
+#             with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
+#                 image_embeds = model.encode_image(images)
+#             image_embeds = F.normalize(image_embeds.float(), dim=-1)
+#             all_image_embeds.append(image_embeds.cpu())
+#             all_labels.append(labels_indices.cpu())  # [batch_size] or [batch_size, num_classes]
+
+#         all_image_embeds = torch.cat(all_image_embeds, dim=0)
+#         all_labels = torch.cat(all_labels, dim=0)  # [num_samples] or [num_samples, num_classes]
+
+#         if not is_training:
+#             os.makedirs(cache_dir, exist_ok=True)
+#             torch.save({'image_embeds': all_image_embeds, 'labels': all_labels}, cache_file)
+#             if verbose:
+#                 print(f"Saved embeddings to {cache_file}")
+
+#     # Step 3: Compute text embeddings
+#     text_inputs = clip.tokenize(class_names).to(device)
+#     with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
+#         class_text_embeds = model.encode_text(text_inputs)
+#     class_text_embeds = F.normalize(class_text_embeds.float(), dim=-1).cpu()
+
+#     # Step 4: Compute similarity matrices
+#     device_image_embeds = all_image_embeds.to(device).float()
+#     device_class_text_embeds = class_text_embeds.to(device).float()
+#     device_labels = all_labels.to(device)
+
+#     i2t_similarity = device_image_embeds @ device_class_text_embeds.T
+#     t2i_similarity = device_class_text_embeds @ device_image_embeds.T
+
+#     # Step 5: Full-set metrics
+#     full_metrics = compute_full_set_metrics_from_cache(
+#         i2t_similarity=i2t_similarity,
+#         t2i_similarity=t2i_similarity,
+#         labels=device_labels,
+#         n_classes=n_classes,
+#         topK_values=topK_values,
+#         device=device
+#     )
+
+#     # Step 6: Retrieval metrics
+#     cache_key_base = f"{dataset_name}_{finetune_strategy}_{model_class_name}_{re.sub(r'[/@]', '_', model_arch_name)}"
+#     if lora_params:
+#         cache_key_base += f"_lora_rank_{lora_params['lora_rank']}_lora_alpha_{lora_params['lora_alpha']}_lora_dropout_{lora_params['lora_dropout']}"
+
+#     img2txt_metrics = compute_retrieval_metrics_from_similarity(
+#         similarity_matrix=i2t_similarity,
+#         query_labels=device_labels,
+#         candidate_labels=torch.arange(n_classes, device=device),
+#         topK_values=topK_values,
+#         mode="Image-to-Text",
+#         cache_dir=cache_dir,
+#         cache_key=f"{cache_key_base}_img2txt",
+#         is_training=is_training,
+#         verbose=verbose,
+#     )
+
+#     class_counts = torch.bincount(device_labels, minlength=n_classes) if len(device_labels.shape) == 1 else None
+#     txt2img_metrics = compute_retrieval_metrics_from_similarity(
+#         similarity_matrix=t2i_similarity,
+#         query_labels=torch.arange(n_classes, device=device),
+#         candidate_labels=device_labels,
+#         topK_values=topK_values,
+#         mode="Text-to-Image",
+#         class_counts=class_counts,
+#         cache_dir=cache_dir,
+#         cache_key=f"{cache_key_base}_txt2img",
+#         is_training=is_training,
+#         verbose=verbose,
+#     )
+
+#     if verbose:
+#         print(f"Validation evaluation completed in {time.time() - start_time:.2f} sec")
+
+#     return {
+#         "in_batch_metrics": in_batch_metrics,
+#         "full_metrics": full_metrics,
+#         "img2txt_metrics": img2txt_metrics,
+#         "txt2img_metrics": txt2img_metrics
+#     }
+
+# def compute_full_set_metrics_from_cache(
+#     i2t_similarity: torch.Tensor,  # [num_samples, num_classes]
+#     t2i_similarity: torch.Tensor,  # [num_classes, num_samples]
+#     labels: torch.Tensor,          # [num_samples] for single-label, [num_samples, num_classes] for multi-label
+#     n_classes: int,
+#     topK_values: List[int],
+#     device: str
+# ) -> Dict:
+#     num_samples = i2t_similarity.shape[0]
+    
+#     # Detect label format
+#     is_multi_label = len(labels.shape) == 2 and labels.shape[1] == n_classes
+#     if is_multi_label:
+#         assert labels.shape == (num_samples, n_classes), \
+#             f"Multi-label shape {labels.shape} must be [{num_samples}, {n_classes}]"
+#     else:
+#         assert labels.shape == (num_samples,), \
+#             f"Single-label shape {labels.shape} must be [{num_samples}]"
+    
+#     # Filter valid K values
+#     valid_k_values = [k for k in topK_values if k <= n_classes]
+
+#     if is_multi_label:
+#         # Multi-label: Image-to-text predictions
+#         i2t_probs = torch.sigmoid(i2t_similarity)  # [num_samples, num_classes]
+#         i2t_preds = (i2t_probs > 0.5).float()     # Binary predictions
+#         # Accuracy: fraction of samples where all labels are correctly predicted
+#         img2txt_correct = (i2t_preds == labels).all(dim=1)
+#         img2txt_acc = img2txt_correct.float().mean().item()
+
+#         # Top-K accuracy: check if top-K predictions include all true labels
+#         img2txt_topk_acc = {}
+#         for k in valid_k_values:
+#             topk_indices = i2t_similarity.topk(k, dim=1)[1]  # [num_samples, k]
+#             topk_preds = torch.zeros_like(i2t_probs).scatter_(1, topk_indices, 1.0)
+#             correct = ((topk_preds >= labels).all(dim=1)).float().mean().item()
+#             img2txt_topk_acc[k] = correct
+#     else:
+#         # Single-label: Image-to-text predictions
+#         img2txt_preds = torch.argmax(i2t_similarity, dim=1)  # [num_samples]
+#         img2txt_acc = (img2txt_preds == labels).float().mean().item()
+
+#         # Top-K accuracy
+#         img2txt_topk_acc = {}
+#         for k in valid_k_values:
+#             topk_indices = i2t_similarity.topk(k, dim=1)[1]  # [num_samples, k]
+#             correct = (topk_indices == labels.unsqueeze(1)).any(dim=1)
+#             img2txt_topk_acc[k] = correct.float().mean().item()
+
+#     # Text-to-image top-K accuracy (works for both single and multi-label)
+#     txt2img_topk_acc = {}
+#     for k in topK_values:
+#         effective_k = min(k, num_samples)
+#         topk_indices = t2i_similarity.topk(effective_k, dim=1)[1]  # [num_classes, k]
+#         class_correct = 0
+#         for class_idx in range(n_classes):
+#             retrieved_sample_indices = topk_indices[class_idx]
+#             if is_multi_label:
+#                 # Check if class_idx is in true labels of any retrieved sample
+#                 retrieved_labels = labels[retrieved_sample_indices]  # [k, num_classes]
+#                 if retrieved_labels[:, class_idx].any():
+#                     class_correct += 1
+#             else:
+#                 # Check if class_idx matches any retrieved sample's label
+#                 retrieved_labels = labels[retrieved_sample_indices]
+#                 if class_idx in retrieved_labels:
+#                     class_correct += 1
+#         txt2img_topk_acc[k] = class_correct / n_classes
+
+#     # Set top-1 text-to-image accuracy
+#     txt2img_acc = txt2img_topk_acc.get(1, 0.0)
+
+#     # MRR (Mean Reciprocal Rank)
+#     ranks = i2t_similarity.argsort(dim=-1, descending=True)
+#     if is_multi_label:
+#         mrr = 0.0
+#         for i in range(num_samples):
+#             true_labels = torch.where(labels[i] == 1)[0]
+#             if len(true_labels) == 0:
+#                 continue
+#             # Find the rank of the first true label
+#             for rank, pred_idx in enumerate(ranks[i]):
+#                 if pred_idx in true_labels:
+#                     mrr += 1.0 / (rank + 1)
+#                     break
+#         img2txt_mrr = mrr / num_samples if num_samples > 0 else 0.0
+#     else:
+#         rr_indices = ranks.eq(labels.view(-1, 1)).nonzero(as_tuple=True)[1] + 1
+#         img2txt_mrr = (1.0 / rr_indices.float()).mean().item()
+
+#     # Cosine similarity (placeholder, as in original)
+#     cos_sim = 0.0
+
+#     return {
+#         "img2txt_acc": float(img2txt_acc),
+#         "txt2img_acc": float(txt2img_acc),
+#         "img2txt_topk_acc": {str(k): float(v) for k, v in img2txt_topk_acc.items()},
+#         "txt2img_topk_acc": {str(k): float(v) for k, v in txt2img_topk_acc.items()},
+#         "mean_reciprocal_rank": float(img2txt_mrr),
+#         "cosine_similarity": float(cos_sim)
+#     }
 
 def evaluate_best_model(
 		model,

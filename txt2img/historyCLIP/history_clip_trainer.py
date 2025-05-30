@@ -1,14 +1,27 @@
+# import os
+# import sys
+# current_dir = os.path.dirname(os.path.abspath(__file__))
+# parent_dir = os.path.dirname(current_dir)
+# project_dir = os.path.dirname(parent_dir)
+# sys.path.insert(0, project_dir)
+
+# from misc.visualize import *
+
+
+
 import os
 import sys
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
 IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
 CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
 sys.path.insert(0, CLIP_DIR)
-
 from utils import *
-from historical_dataset_loader import get_dataloaders
 from trainer import train, pretrain, full_finetune, lora_finetune, progressive_finetune, evaluate_best_model
 from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics, plot_comparison_metrics_merged, plot_comparison_metrics_split
+
+
+from historical_dataset_loader import get_single_label_dataloaders, get_multi_label_dataloaders
+
 
 # $ python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=10))))"
 
@@ -52,6 +65,7 @@ from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics, 
 def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
+	parser.add_argument('--dataset_type', '-dt', type=str, choices=['single_label', 'multi_label'], default='single_label', help='Dataset type (single_label/multi_label)')
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=16, help='Number of CPUs [def: max cpus]')
 	parser.add_argument('--epochs', '-e', type=int, default=11, help='Number of epochs')
@@ -139,14 +153,23 @@ def main():
 		model_name = model.__class__.__name__
 		print(f"Loaded {model_name} {model.name} in {args.device}")
 		
-		train_loader, validation_loader = get_dataloaders(
-			dataset_dir=args.dataset_dir,
-			sampling=args.sampling,
-			batch_size=args.batch_size,
-			num_workers=args.num_workers,
-			input_resolution=model_config["image_resolution"],
-			memory_threshold_gib=999.0, # GiB
-		)
+		if args.dataset_type == "single_label":
+			train_loader, validation_loader = get_single_label_dataloaders(
+				dataset_dir=args.dataset_dir,
+				batch_size=args.batch_size,
+				num_workers=args.num_workers,
+				input_resolution=model_config["image_resolution"],
+				memory_threshold_gib=999.0, # GiB
+			)
+		elif args.dataset_type == "multi_label":
+			train_loader, validation_loader = get_multi_label_dataloaders(
+				dataset_dir=args.dataset_dir,
+				batch_size=args.batch_size,
+				num_workers=args.num_workers,
+				input_resolution=model_config["image_resolution"],
+				memory_threshold_gib=999.0,
+			)
+
 		print_loader_info(loader=train_loader, batch_size=args.batch_size)
 		print_loader_info(loader=validation_loader, batch_size=args.batch_size)
 		# visualize_(dataloader=validation_loader, batches=4, num_samples=7)

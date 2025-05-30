@@ -446,7 +446,7 @@ def get_textual_based_annotation(
 	
 	# Pre-compute label embeddings once
 	if verbose:
-		print("Pre-computing label embeddings...")
+		print(f"Pre-computing embeddings for {len(candidate_labels)} pre-defined labels...")
 	t0 = time.time()
 	label_embs = sent_model.encode(
 		candidate_labels,
@@ -456,7 +456,7 @@ def get_textual_based_annotation(
 		show_progress_bar=False,
 	)
 	if verbose:
-		print(f"Label embeddings computed in {time.time() - t0:.2f} sec")
+		print(f"Label embeddings: {type(label_embs)} {label_embs.shape} computed in {time.time() - t0:.2f} sec")
 	
 	# Load dataframe
 	if verbose:
@@ -477,10 +477,10 @@ def get_textual_based_annotation(
 	if verbose:
 		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
 	
-	# Initialize results columns with empty lists
-	df['textual_based_labels'] = [[] for _ in range(len(df))]
-	df['textual_based_scores'] = [[] for _ in range(len(df))]
-	
+	# Initialize results columns with None	
+	df['textual_based_labels'] = None
+	df['textual_based_scores'] = None
+
 	# Process in chunks with memory management
 	chunk_size = min(1000, len(df))
 	if verbose:
@@ -562,6 +562,11 @@ def get_textual_based_annotation(
 		torch.cuda.empty_cache()
 	
 	df.to_csv(metadata_fpth, index=False)
+
+	try:
+		df.to_excel(metadata_fpth.replace('.csv', '.xlsx'), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
 	
 	print(f"Textual-based annotation completed in {time.time() - start_time:.2f} seconds")
 	return df['textual_based_labels'].tolist()
