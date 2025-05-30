@@ -91,7 +91,7 @@ def main():
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
-
+	args.dataset_dir = os.path.normpath(args.dataset_dir)
 	# Original stdout/stderr
 	original_stdout = sys.stdout
 	original_stderr = sys.stderr
