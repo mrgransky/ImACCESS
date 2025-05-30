@@ -547,8 +547,8 @@ def get_validation_metrics(
         n_classes=n_classes,
         topK_values=topK_values,
         device=device,
-        device_image_embeds=device_image_embeds,
-        device_class_text_embeds=device_class_text_embeds
+				device_image_encodes=device_image_embeds,
+        device_class_text_encodes=device_class_text_embeds
     )
 
     # Step 6: Retrieval metrics

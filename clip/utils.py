@@ -40,7 +40,7 @@ import matplotlib.ticker as ticker
 
 from PIL import Image, ImageDraw, ImageFont
 from typing import Tuple, Union, List, Dict, Any, Optional
-from sklearn.metrics import precision_recall_curve, roc_curve, auc
+from sklearn.metrics import precision_recall_curve, roc_curve, auc, f1_score
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics.pairwise import cosine_similarity
 from tqdm import tqdm
