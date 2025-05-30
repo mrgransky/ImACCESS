@@ -2802,6 +2802,8 @@ def full_finetune(
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__  # CIFAR10, ImageNet, etc.
 	except AttributeError as e:
 		dataset_name = validation_loader.dataset.dataset_name
+	print(f"Dataset name: {dataset_name}")
+
 	os.makedirs(results_dir, exist_ok=True)
 	mode = inspect.stack()[0].function
 	mode = re.sub(r'_finetune', '', mode)
