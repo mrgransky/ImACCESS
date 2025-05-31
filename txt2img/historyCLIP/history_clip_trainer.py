@@ -1,14 +1,3 @@
-# import os
-# import sys
-# current_dir = os.path.dirname(os.path.abspath(__file__))
-# parent_dir = os.path.dirname(current_dir)
-# project_dir = os.path.dirname(parent_dir)
-# sys.path.insert(0, project_dir)
-
-# from misc.visualize import *
-
-
-
 import os
 import sys
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
@@ -16,16 +5,15 @@ IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
 CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
 sys.path.insert(0, CLIP_DIR)
 from utils import *
-from trainer import train, pretrain, full_finetune, lora_finetune, progressive_finetune, evaluate_best_model
+from trainer import train, pretrain, full_finetune_single_label, lora_finetune_single_label, progressive_finetune_single_label, full_finetune_multi_label
 from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics, plot_comparison_metrics_merged, plot_comparison_metrics_split
-
-
 from historical_dataset_loader import get_single_label_dataloaders, get_multi_label_dataloaders
 
 
 # $ python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=10))))"
 
 # run in local:
+# $ python history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 3 -m finetune -fts full -dt multi_label
 # $ nohup python -u history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -m finetune -fts progressive -a "ViT-B/32" > logs/europeana_ft_progressive.txt &
 
 # Pouta:
@@ -152,23 +140,17 @@ def main():
 		model.name = args.model_architecture  # Custom attribute to store model name
 		model_name = model.__class__.__name__
 		print(f"Loaded {model_name} {model.name} in {args.device}")
-		
-		if args.dataset_type == "single_label":
-			train_loader, validation_loader = get_single_label_dataloaders(
-				dataset_dir=args.dataset_dir,
-				batch_size=args.batch_size,
-				num_workers=args.num_workers,
-				input_resolution=model_config["image_resolution"],
-				memory_threshold_gib=999.0, # GiB
-			)
-		elif args.dataset_type == "multi_label":
-			train_loader, validation_loader = get_multi_label_dataloaders(
-				dataset_dir=args.dataset_dir,
-				batch_size=args.batch_size,
-				num_workers=args.num_workers,
-				input_resolution=model_config["image_resolution"],
-				memory_threshold_gib=999.0,
-			)
+		dataset_functions = {
+			'single_label': get_single_label_dataloaders,
+			'multi_label': get_multi_label_dataloaders
+		}
+		train_loader, validation_loader = dataset_functions[args.dataset_type](
+			dataset_dir=args.dataset_dir,
+			batch_size=args.batch_size,
+			num_workers=args.num_workers,
+			input_resolution=model_config["image_resolution"],
+			memory_threshold_gib=999.0,
+		)
 
 		print_loader_info(loader=train_loader, batch_size=args.batch_size)
 		print_loader_info(loader=validation_loader, batch_size=args.batch_size)
@@ -181,67 +163,34 @@ def main():
 			min_window=5,
 			max_window=20,
 		)
-
+		finetune_functions = {
+			'single_label': {
+				'full': full_finetune_single_label,
+				'lora': lora_finetune_single_label,
+				'progressive': progressive_finetune_single_label,
+			},
+			'multi_label': {
+				'full': full_finetune_multi_label
+			}
+		}
 		if args.mode == "finetune":
-			if args.finetune_strategy == "full":
-				full_finetune(
-					model=model,
-					train_loader=train_loader,
-					validation_loader=validation_loader,
-					num_epochs=args.epochs,
-					print_every=args.print_every,
-					learning_rate=args.learning_rate,
-					weight_decay=args.weight_decay,
-					device=args.device,
-					results_dir=RESULT_DIRECTORY,
-					window_size=window_size, 									# early stopping & progressive unfreezing
-					patience=args.patience, 									# early stopping
-					min_delta=args.minimum_delta, 						# early stopping & progressive unfreezing
-					cumulative_delta=args.cumulative_delta, 	# early stopping
-					minimum_epochs=args.minimum_epochs, 			# early stopping
-					topk_values=args.topK_values,
-				)
-			elif args.finetune_strategy == "lora":
-				lora_finetune(
-					model=model,
-					train_loader=train_loader,
-					validation_loader=validation_loader,
-					num_epochs=args.epochs,
-					print_every=args.print_every,
-					learning_rate=args.learning_rate,
-					weight_decay=args.weight_decay,
-					device=args.device,
-					results_dir=RESULT_DIRECTORY,
-					window_size=window_size, 									# early stopping & progressive unfreezing
-					lora_rank=args.lora_rank,
-					lora_alpha=args.lora_alpha,
-					lora_dropout=args.lora_dropout,
-					patience=args.patience, 									# early stopping	& progressive unfreezing
-					min_delta=args.minimum_delta, 						# early stopping & progressive unfreezing
-					cumulative_delta=args.cumulative_delta, 	# early stopping
-					minimum_epochs=args.minimum_epochs, 			# early stopping
-					topk_values=args.topK_values,
-				)
-			elif args.finetune_strategy == 'progressive':
-				progressive_finetune(
-					model=model,
-					train_loader=train_loader,
-					validation_loader=validation_loader,
-					num_epochs=args.epochs,
-					print_every=args.print_every,
-					initial_learning_rate=args.learning_rate,
-					initial_weight_decay=args.weight_decay,
-					device=args.device,
-					results_dir=RESULT_DIRECTORY,
-					window_size=window_size, 									# early stopping & progressive unfreezing
-					patience=args.patience, 									# early stopping
-					min_delta=args.minimum_delta, 						# early stopping
-					cumulative_delta=args.cumulative_delta, 	# early stopping
-					minimum_epochs=args.minimum_epochs, 			# early stopping
-					topk_values=args.topK_values,
-				)
-			else:
-				raise ValueError(f"Invalid mode: {args.mode}! Choose between 'full', 'lora', 'progressive'!")
+			finetune_functions[args.dataset_type][args.finetune_strategy](
+				model=model,
+				train_loader=train_loader,
+				validation_loader=validation_loader,
+				num_epochs=args.epochs,
+				print_every=args.print_every,
+				learning_rate=args.learning_rate,
+				weight_decay=args.weight_decay,
+				device=args.device,
+				results_dir=RESULT_DIRECTORY,
+				window_size=window_size,
+				patience=args.patience,
+				min_delta=args.minimum_delta,
+				cumulative_delta=args.cumulative_delta,
+				minimum_epochs=args.minimum_epochs,
+				topk_values=args.topK_values,
+			)
 		elif args.mode == "train":
 			train(
 				model=model,

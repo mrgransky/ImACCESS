@@ -42,12 +42,12 @@ import hashlib
 from torch.cuda import get_device_properties, memory_allocated
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
-from kneed import KneeLocator
-from keybert import KeyBERT
-from rake_nltk import Rake
-from bertopic import BERTopic
-from bertopic.vectorizers import ClassTfidfTransformer
-from bertopic.representation import KeyBERTInspired, MaximalMarginalRelevance, PartOfSpeech
+# from kneed import KneeLocator
+# from keybert import KeyBERT
+# from rake_nltk import Rake
+# from bertopic import BERTopic
+# from bertopic.vectorizers import ClassTfidfTransformer
+# from bertopic.representation import KeyBERTInspired, MaximalMarginalRelevance, PartOfSpeech
 
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
