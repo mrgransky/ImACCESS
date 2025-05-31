@@ -131,7 +131,7 @@ def compute_direct_in_batch_metrics(
 								with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 										logits_per_image, logits_per_text = model(images, tokenized_labels)
 										
-										ground_truth = torch.arange(batch_size, device=device)
+										ground_truth = torch.arange(start=0, end=batch_size, device=device)
 										
 										loss_img = criterion(logits_per_image, ground_truth)
 										loss_txt = criterion(logits_per_text, ground_truth)
@@ -2228,7 +2228,7 @@ def progressive_finetune(
 				optimizer.zero_grad(set_to_none=True)
 				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 					logits_per_image, logits_per_text = model(images, tokenized_labels)
-					ground_truth = torch.arange(len(images), dtype=torch.long, device=device)
+					ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
 					loss_img = criterion(logits_per_image, ground_truth)
 					loss_txt = criterion(logits_per_text, ground_truth)
 					batch_loss = 0.5 * (loss_img + loss_txt)

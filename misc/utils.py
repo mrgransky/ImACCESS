@@ -34,8 +34,6 @@ from wordcloud import WordCloud
 from typing import Tuple, Union, List, Dict, Any, Optional, Callable
 
 import hdbscan
-# import plotly.express as px
-# import plotly.graph_objects as go
 import networkx as nx
 from sklearn.metrics import silhouette_score
 from scipy.cluster.hierarchy import dendrogram, linkage
