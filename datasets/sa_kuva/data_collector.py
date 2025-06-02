@@ -18,7 +18,8 @@ parser.add_argument('--img_mean_std', type=bool, default=False, help='Image mean
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
-print(args)
+args.dataset_dir = os.path.normpath(args.dataset_dir)
+print_args_table(args=args, parser=parser)
 
 # run in local laptop:
 # $ python data_collector.py --dataset_dir $PWD --start_date 1939-09-01 --end_date 1945-09-02

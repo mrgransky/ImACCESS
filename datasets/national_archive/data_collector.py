@@ -20,6 +20,7 @@ parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='V
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
+args.dataset_dir = os.path.normpath(args.dataset_dir)
 print_args_table(args=args, parser=parser)
 
 # run in local laptop:

@@ -122,6 +122,51 @@ nltk.download(
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 
+def clean_(text:str, sw:list):
+	if not text:
+		return
+	# print(text)
+	# text = re.sub(r'[^a-zA-Z\s]', ' ', text) # Remove special characters and digits
+	# text = re.sub(r'[";=&#<>_\-\+\^\.\$\[\]]', " ", text)
+	# text = re.sub(r'[!"#$%&\'()*+,-./:;<=>?@\[\]^_`{|}~]', ' ', text) # remove all punctuation marks except periods and commas,
+	text = re.sub(r"[^\w\s'-]", " ", text) # remove all punctuation marks, including periods and commas,
+	words = nltk.tokenize.word_tokenize(text) # Tokenize the text into words
+	# Filter out stopwords and words with fewer than 3 characters
+	words = [
+		word.lower() 
+		for word in words 
+		if word.lower() not in sw
+		and len(word) >= 2
+	]
+	text = ' '.join(words) # Join the words back into a string
+	text = re.sub(r'\boriginal caption\b', ' ', text)
+	text = re.sub(r'\bphoto shows\b', ' ', text)
+	text = re.sub(r'\bfile record\b', ' ', text)
+	text = re.sub(r'\boriginal field number\b', ' ', text)
+	# text = re.sub(r'\bdate taken\b', ' ', text)
+	# text = re.sub(r'\bdate\b', ' ', text)
+	# text = re.sub(r'\bdistrict\b', ' ', text)
+	text = re.sub(r'\bobtained\b', ' ', text)
+	text = re.sub(r'\bfile record\b', ' ', text)
+	text = re.sub(r'\bcaption\b', ' ', text)
+	text = re.sub(r'\bunidentified\b', ' ', text)
+	text = re.sub(r'\bunnumbered\b', ' ', text)
+	text = re.sub(r'\buntitled\b', ' ', text)
+	text = re.sub(r'\bfotografie\b', ' ', text)
+	text = re.sub(r'\bfotografen\b', ' ', text)
+	text = re.sub(r'\bphotograph\b', ' ', text)
+	text = re.sub(r'\bphotographer\b', ' ', text)
+	text = re.sub(r'\bphotography\b', ' ', text)
+	text = re.sub(r'\bfotoalbum\b', ' ', text)
+	text = re.sub(r'\bphoto\b', ' ', text)
+	text = re.sub(r'\bgallery\b', ' ', text)
+	text = re.sub(r"\bpart \d+\b|\bpart\b", " ", text)
+	text = re.sub(r'\bfoto\b', ' ', text)
+	text = re.sub(r'\s+', ' ', text).strip() # Normalize whitespace
+	if len(text) == 0:
+		return None
+	return text
+
 def print_gpu_memory():
 	print(
 		f"Allocated: {torch.cuda.memory_allocated()/1024**3:.2f}GB, "
