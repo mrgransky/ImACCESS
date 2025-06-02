@@ -28,6 +28,7 @@ parser.add_argument('--img_mean_std', action='store_true', help='calculate image
 parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='Validation Split Percentage')
 
 args, unknown = parser.parse_known_args()
+args.dataset_dir = os.path.normpath(args.dataset_dir)
 print_args_table(args=args, parser=parser)
 
 SMU_BASE_URL:str = "https://digitalcollections.smu.edu/digital"
