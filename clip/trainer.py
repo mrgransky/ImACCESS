@@ -1,6 +1,12 @@
 from utils import *
 from model import get_lora_clip
-from visualize import plot_loss_accuracy_metrics, plot_retrieval_metrics_best_model, plot_retrieval_metrics_per_epoch, plot_all_pretrain_metrics
+from visualize import (
+	plot_loss_accuracy_metrics, 
+	plot_retrieval_metrics_best_model, 
+	plot_retrieval_metrics_per_epoch, 
+	plot_all_pretrain_metrics,
+	plot_multilabel_loss_breakdown,
+)
 
 def cleanup_embedding_cache(
 		dataset_name: str,
@@ -3794,6 +3800,1109 @@ def full_finetune_multi_label(
 			text_to_image_metrics=final_txt2img_metrics,
 			fname=plot_paths["retrieval_best"],
 	)
+	return final_metrics_in_batch, final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+
+def progressive_finetune_multi_label(
+		model: torch.nn.Module,
+		train_loader: DataLoader,
+		validation_loader: DataLoader,
+		num_epochs: int,
+		print_every: int,
+		learning_rate: float,
+		weight_decay: float,
+		device: str,
+		results_dir: str,
+		window_size: int = 10,
+		patience: int = 10,
+		min_delta: float = 1e-4,  # Make slightly less sensitive than default
+		cumulative_delta: float = 5e-3,  # Keep cumulative check reasonable
+		minimum_epochs: int = 20,  # Minimum epochs before ANY early stop
+		min_epochs_per_phase: int = 5,  # Minimum epochs within a phase before transition check
+		volatility_threshold: float = 15.0,  # Allow slightly more volatility
+		slope_threshold: float = 1e-4,  # Allow very slightly positive slope before stopping/transitioning
+		pairwise_imp_threshold: float = 1e-4,  # Stricter requirement for pairwise improvement
+		accuracy_plateau_threshold: float = 5e-4,  # For phase transition based on accuracy
+		min_phases_before_stopping: int = 3,  # Ensure significant unfreezing before global stop
+		topk_values: list[int] = [1, 5, 10],
+		layer_groups_to_unfreeze: list[str] = ['visual_transformer', 'text_transformer', 'projections'],  # Focus on key layers
+		unfreeze_percentages: Optional[List[float]] = None,  # Allow passing custom percentages
+		loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
+		temperature: float = 0.07,  # Temperature for contrastive learning
+		label_smoothing: float = 0.0,  # Label smoothing for multi-label
+	):
+	"""
+	Progressive fine-tuning for multi-label CLIP classification.
+	
+	This function combines progressive layer unfreezing with multi-label classification,
+	gradually unfreezing layers in phases while monitoring both loss and accuracy plateaus
+	for optimal phase transitions.
+	
+	Key differences from single-label progressive version:
+	1. Uses BCEWithLogitsLoss instead of CrossEntropyLoss
+	2. Handles bidirectional multi-label targets (I2T and T2I)
+	3. Pre-encodes class embeddings for efficiency
+	4. Uses multi-label specific loss computation and validation
+	5. Enhanced phase transition logic considering multi-label metrics
+	6. Proper multi-label evaluation metrics throughout training
+	
+	Args:
+			model: CLIP model to progressively fine-tune
+			train_loader: Training DataLoader (must provide multi-label vectors)
+			validation_loader: Validation DataLoader  
+			num_epochs: Maximum number of training epochs
+			print_every: Print loss every N batches
+			learning_rate: Initial learning rate (will be dynamically adjusted)
+			weight_decay: Initial weight decay (will be dynamically adjusted)
+			device: Training device (cuda/cpu)
+			results_dir: Directory to save results
+			window_size: Window size for early stopping and phase transition
+			patience: Early stopping patience
+			min_delta: Minimum change for improvement detection
+			cumulative_delta: Cumulative delta for early stopping
+			minimum_epochs: Minimum epochs before ANY early stop
+			min_epochs_per_phase: Minimum epochs within a phase before transition check
+			volatility_threshold: Volatility threshold for phase transitions
+			slope_threshold: Slope threshold for phase transitions
+			pairwise_imp_threshold: Pairwise improvement threshold
+			accuracy_plateau_threshold: Accuracy plateau threshold for phase transitions
+			min_phases_before_stopping: Minimum phases before global early stopping
+			topk_values: K values for evaluation metrics
+			layer_groups_to_unfreeze: Layer groups to progressively unfreeze
+			unfreeze_percentages: Custom unfreezing schedule (optional)
+			loss_weights: Optional weights for I2T and T2I losses
+			temperature: Temperature scaling for similarities
+			label_smoothing: Label smoothing factor (0.0 = no smoothing)
+	"""
+	
+	# Set default loss weights
+	if loss_weights is None:
+		loss_weights = {"i2t": 0.5, "t2i": 0.5}
+	
+	initial_learning_rate = learning_rate
+	initial_weight_decay = weight_decay
+
+	early_stopping = EarlyStopping(
+		patience=patience,
+		min_delta=min_delta,
+		cumulative_delta=cumulative_delta,
+		window_size=window_size,
+		mode='min',  # Monitoring validation loss
+		min_epochs=minimum_epochs,
+		restore_best_weights=True,
+		volatility_threshold=volatility_threshold,
+		slope_threshold=slope_threshold,  # Positive slope is bad for loss
+		pairwise_imp_threshold=pairwise_imp_threshold,
+		min_phases_before_stopping=min_phases_before_stopping,
+	)
+
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	except:
+		dataset_name = validation_loader.dataset.dataset_name
+
+	mode = inspect.stack()[0].function
+	mode = re.sub(r'_finetune', '', mode)
+
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_name = model.__class__.__name__
+	print(f"{mode} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
+		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+
+	# Get dataset information
+	try:
+		num_classes = len(validation_loader.dataset.unique_labels)
+		class_names = validation_loader.dataset.unique_labels
+	except AttributeError:
+		num_classes = len(validation_loader.dataset.dataset.classes)
+		class_names = validation_loader.dataset.dataset.classes
+	print(f"Multi-label progressive fine-tuning: {num_classes} classes")
+	print(f"Class names sample: {class_names[:5]}...")
+
+	# Find dropout value
+	dropout_val = 0.0
+	for name, module in model.named_modules():
+		if isinstance(module, torch.nn.Dropout):
+			dropout_val = module.p
+			break
+
+	# Inspect the model for dropout layers
+	dropout_values = []
+	for name, module in model.named_modules():
+		if isinstance(module, torch.nn.Dropout):
+			dropout_values.append((name, module.p))
+
+	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
+	print(f"\nNon-zero dropout detected in base {model.__class__.__name__} {model.name} during {mode} fine-tuning:")
+	print(non_zero_dropouts)
+	print()
+
+	# Determine unfreeze schedule percentages
+	if unfreeze_percentages is None:
+		unfreeze_percentages = get_unfreeze_pcts_hybrid(
+			model=model,
+			train_loader=train_loader,
+			min_phases=max(4, min_phases_before_stopping + 1),  # Ensure enough phases
+			max_phases=15,  # Cap the number of phases
+		)
+
+	# Get the detailed layer unfreeze schedule
+	unfreeze_schedule = get_unfreeze_schedule(
+		model=model,
+		unfreeze_percentages=unfreeze_percentages,
+		layer_groups_to_unfreeze=layer_groups_to_unfreeze,
+	)
+
+	max_phases = len(unfreeze_schedule)
+
+	# Use BCEWithLogitsLoss for multi-label classification
+	if label_smoothing > 0:
+		print(f"Using label smoothing: {label_smoothing}")
+		criterion = LabelSmoothingBCELoss(smoothing=label_smoothing)
+	else:
+		criterion = torch.nn.BCEWithLogitsLoss()
+	print(f"Using {criterion.__class__.__name__} for multi-label classification")
+
+	# Pre-encode all class texts (for efficiency)
+	print(f"Pre-encoding {num_classes} class texts...")
+	all_class_texts = clip.tokenize(class_names).to(device)
+	with torch.no_grad():
+		model.eval()
+		all_class_embeds = model.encode_text(all_class_texts)
+		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+	model.train()
+
+	optimizer = AdamW(
+		params=filter(lambda p: p.requires_grad, model.parameters()),  # Initially might be empty if phase 0 has no unfrozen layers
+		lr=initial_learning_rate,
+		betas=(0.9, 0.98),
+		eps=1e-6,
+		weight_decay=initial_weight_decay,
+	)
+
+	scheduler = torch.optim.lr_scheduler.OneCycleLR(
+		optimizer=optimizer,
+		max_lr=initial_learning_rate,
+		steps_per_epoch=len(train_loader),
+		epochs=num_epochs,
+		pct_start=0.1,  # Standard pct_start
+		anneal_strategy='cos'  # Cosine annealing
+	)
+	print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
+	print(f"Using {criterion.__class__.__name__} as the loss function")
+
+	scaler = torch.amp.GradScaler(device=device)  # For mixed precision
+	print(f"Using {scaler.__class__.__name__} for mixed precision training")
+
+	mdl_fpth = os.path.join(
+		results_dir,
+		f"{mode}_"
+		f"{model_arch}_"
+		f"{optimizer.__class__.__name__}_"
+		f"{scheduler.__class__.__name__}_"
+		f"{criterion.__class__.__name__}_"
+		f"{scaler.__class__.__name__}_"
+		f"ieps_{num_epochs}_"
+		f"dropout_{dropout_val}_"
+		f"ilr_{initial_learning_rate:.1e}_"
+		f"iwd_{initial_weight_decay:.1e}_"
+		f"temp_{temperature}_"
+		f"bs_{train_loader.batch_size}_"
+		f"best_model.pth"
+	)
+	print(f"Best model will be saved in: {mdl_fpth}")
+
+	current_phase = 0
+	epochs_in_current_phase = 0
+	training_losses = []  # History of average training loss per epoch
+	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}  # Multi-label loss breakdown
+	img2txt_metrics_all_epochs = list()
+	txt2img_metrics_all_epochs = list()
+	in_batch_loss_acc_metrics_all_epochs = list()  # History of [in-batch] validation metrics dicts per epoch
+	full_val_loss_acc_metrics_all_epochs = list()  # History of [full] validation metrics dicts per epoch
+	best_val_loss = None  # Track the absolute best validation loss
+	layer_cache = {}  # Cache for layer status (optional, used by get_status)
+	last_lr = initial_learning_rate  # Track current LR
+	last_wd = initial_weight_decay  # Track current WD
+	phase_just_changed = False  # Flag to signal optimizer refresh needed
+
+	# --- Main Training Loop ---
+	train_start_time = time.time()
+
+	for epoch in range(num_epochs):
+		epoch_start_time = time.time()
+		print(f"\n=== Epoch {epoch+1}/{num_epochs} Phase {current_phase} current LR: {last_lr:.3e} current WD: {last_wd:.3e}) ===")
+		torch.cuda.empty_cache()
+		
+		# --- Phase Transition Check ---
+		# Check only if enough epochs *overall* and *within the phase* have passed,
+		# and if we are not already in the last phase.
+		if (epoch >= minimum_epochs and  # Overall min epochs check
+			epochs_in_current_phase >= min_epochs_per_phase and
+			current_phase < max_phases - 1 and
+			len(early_stopping.value_history) >= window_size):
+			print(f"Checking for phase transition (Epochs in phase: {epochs_in_current_phase})")
+
+			val_losses = early_stopping.value_history
+			
+			# For multi-label, we can use average accuracy across I2T and T2I
+			val_accs_in_batch = []
+			for m in in_batch_loss_acc_metrics_all_epochs:
+				i2t_acc = m.get('img2txt_acc', 0.0)
+				t2i_acc = m.get('txt2img_acc', 0.0)
+				avg_acc = (i2t_acc + t2i_acc) / 2.0
+				val_accs_in_batch.append(avg_acc)
+
+			should_trans = should_transition_phase(
+				losses=val_losses,
+				window=window_size,
+				best_loss=early_stopping.get_best_score(),  # Use best score from early stopping state
+				best_loss_threshold=min_delta,  # Use min_delta for closeness check
+				volatility_threshold=volatility_threshold,
+				slope_threshold=slope_threshold,  # Use positive threshold for worsening loss
+				pairwise_imp_threshold=pairwise_imp_threshold,
+				accuracies=val_accs_in_batch,  # Pass average accuracy for multi-label
+				accuracy_plateau_threshold=accuracy_plateau_threshold,
+			)
+			
+			if should_trans:
+				current_phase, last_lr, last_wd = handle_phase_transition(
+					current_phase=current_phase,
+					initial_lr=initial_learning_rate,
+					initial_wd=initial_weight_decay,
+					max_phases=max_phases,
+					window_size=window_size,
+					current_loss=val_losses[-1],
+					best_loss=early_stopping.get_best_score(),
+				)
+				epochs_in_current_phase = 0  # Reset phase epoch counter
+				early_stopping.reset()  # <<< CRITICAL: Reset early stopping state for the new phase
+				print(f"Transitioned to Phase {current_phase}. Early stopping reset.")
+
+				phase_just_changed = True  # Signal that optimizer needs refresh after unfreeze
+				print(f"Phase transition triggered. Optimizer/Scheduler refresh pending after unfreeze.")
+				print(f"Current Phase: {current_phase}")
+
+		# --- Unfreeze Layers for Current Phase ---
+		print(f"Applying unfreeze strategy for Phase {current_phase}...")
+		# Ensure layers are correctly frozen/unfrozen *before* optimizer step
+		unfreeze_layers(
+			model=model,
+			strategy=unfreeze_schedule,
+			phase=current_phase,
+			cache=layer_cache,
+		)
+		
+		if phase_just_changed or epoch == 0:
+			print("Refreshing optimizer parameter groups...")
+			optimizer.param_groups.clear()
+			optimizer.add_param_group(
+				{
+					'params': [p for p in model.parameters() if p.requires_grad],
+					'lr': last_lr,  # Use the new LR
+					'weight_decay': last_wd,  # Use the new WD
+				}
+			)
+			print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e}, WD set to {last_wd:.3e}.")
+			print("Re-initializing OneCycleLR scheduler for new phase/start...")
+			steps_per_epoch = len(train_loader)
+			# Schedule over remaining epochs (more adaptive)
+			# max: Ensure scheduler_epochs is at least 1
+			scheduler_epochs = max(1, num_epochs - epoch)
+			scheduler = torch.optim.lr_scheduler.OneCycleLR(
+				optimizer=optimizer,
+				max_lr=last_lr,  # Use the new LR as the peak for the new cycle
+				steps_per_epoch=steps_per_epoch,
+				epochs=scheduler_epochs,
+				pct_start=0.1,  # Consider if this needs adjustment in later phases
+				anneal_strategy='cos',
+				# last_epoch = -1 # Ensures it starts fresh
+			)
+			print(f"Scheduler re-initialized with max_lr={last_lr:.3e} for {scheduler_epochs} epochs.")
+			phase_just_changed = False  # Reset the flag
+
+		# --- Training Epoch ---
+		model.train()
+		epoch_train_loss_total = 0.0
+		epoch_train_loss_i2t = 0.0
+		epoch_train_loss_t2i = 0.0
+		num_train_batches = len(train_loader)
+		num_processed_batches = 0
+		
+		trainable_params_exist = any(p.requires_grad for p in model.parameters())
+		if not trainable_params_exist:
+			print("Warning: No trainable parameters found for the current phase. Skipping training steps.")
+		else:
+			for bidx, batch_data in enumerate(train_loader):
+				if len(batch_data) == 3:
+					images, _, label_vectors = batch_data  # Ignore tokenized_labels, use pre-encoded
+				else:
+					raise ValueError(f"Expected 3 items from DataLoader, got {len(batch_data)}")
+				
+				batch_size = images.size(0)
+				images = images.to(device, non_blocking=True)
+				label_vectors = label_vectors.to(device, non_blocking=True).float()
+				
+				# Validate label_vectors shape
+				if label_vectors.shape != (batch_size, num_classes):
+					raise ValueError(f"Label vectors shape {label_vectors.shape} doesn't match expected ({batch_size}, {num_classes})")
+
+				optimizer.zero_grad(set_to_none=True)
+				
+				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+					# Multi-label contrastive loss computation
+					total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
+						model=model,
+						images=images,
+						all_class_embeds=all_class_embeds,
+						label_vectors=label_vectors,
+						criterion=criterion,
+						temperature=temperature,
+						loss_weights=loss_weights
+					)
+				
+				if torch.isnan(total_loss):
+					print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
+					continue  # Skip optimizer step if loss is NaN
+				
+				scaler.scale(total_loss).backward()
+				scaler.unscale_(optimizer)  # Unscale before clipping
+				torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+				scaler.step(optimizer)
+				scaler.update()
+				scheduler.step()  # Step the scheduler
+				
+				# Track losses
+				batch_loss_total = total_loss.item()
+				batch_loss_i2t = loss_i2t.item()
+				batch_loss_t2i = loss_t2i.item()
+				
+				epoch_train_loss_total += batch_loss_total
+				epoch_train_loss_i2t += batch_loss_i2t
+				epoch_train_loss_t2i += batch_loss_t2i
+				num_processed_batches += 1
+
+				if bidx % print_every == 0:
+					print(
+						f"\tBatch [{bidx+1}/{num_train_batches}] "
+						f"Total Loss: {batch_loss_total:.6f} "
+						f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
+					)
+				elif bidx == num_train_batches - 1 and batch_loss_total > 0:
+					print(
+						f"\tBatch [{bidx+1}/{num_train_batches}] "
+						f"Total Loss: {batch_loss_total:.6f} "
+						f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
+					)
+
+		# Calculate average losses
+		avg_total_loss = epoch_train_loss_total / num_processed_batches if num_processed_batches > 0 and trainable_params_exist else 0.0
+		avg_i2t_loss = epoch_train_loss_i2t / num_processed_batches if num_processed_batches > 0 and trainable_params_exist else 0.0
+		avg_t2i_loss = epoch_train_loss_t2i / num_processed_batches if num_processed_batches > 0 and trainable_params_exist else 0.0
+		
+		training_losses.append(avg_total_loss)
+		training_losses_breakdown["total"].append(avg_total_loss)
+		training_losses_breakdown["i2t"].append(avg_i2t_loss)
+		training_losses_breakdown["t2i"].append(avg_t2i_loss)
+
+		# --- Validation ---
+		print(f"Epoch: {epoch+1} validation...")
+
+		# Compute validation loss using the same multi-label loss function
+		current_val_loss = compute_multilabel_validation_loss(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			device=device,
+			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
+			temperature=temperature,
+			max_batches=10
+		)
+
+		# Get comprehensive validation metrics
+		validation_results = get_validation_metrics(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,  # Now uses BCEWithLogitsLoss
+			device=device,
+			topK_values=topk_values,
+			finetune_strategy=mode,
+			cache_dir=results_dir,
+			verbose=True,
+			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+			is_training=True,
+			model_hash=get_model_hash(model),
+			temperature=temperature,
+		)
+		
+		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
+		in_batch_loss_acc_metrics_per_epoch["val_loss"] = current_val_loss  # Use computed validation loss
+		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
+		retrieval_metrics_per_epoch = {
+			"img2txt": validation_results["img2txt_metrics"],
+			"txt2img": validation_results["txt2img_metrics"]
+		}
+
+		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
+		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
+		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
+		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
+		
+		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
+
+		print(
+			f'@ Epoch {epoch + 1}:\n'
+			f'\t[LOSS] {mode}:\n'
+			f'\t  Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f})\n'
+			f'\t  Validation: {current_val_loss:.6f}\n'
+			f'\tMulti-label Progressive Validation Metrics:\n'
+			f'\t  In-batch Top-K Accuracy:\n'
+			f'\t    [Image→Text]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t    [Text→Image]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
+			f'\t  Full Validation Set:\n'
+			f'\t    [Image→Text]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t    [Text→Image]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+		)
+		
+		# Print multi-label specific metrics if available
+		if full_val_loss_acc_metrics_per_epoch.get("hamming_loss") is not None:
+			print(f'\t  Multi-label Metrics:')
+			print(f'\t    Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
+			print(f'\t    Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
+			print(f'\t    F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
+
+		print(f"Retrieval Metrics:")
+		print(
+			f"  Image-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A'):.3f}, "
+			f"Recall@10={retrieval_metrics_per_epoch['img2txt'].get('Recall', {}).get('10', 'N/A'):.3f}"
+		)
+		print(
+			f"  Text-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A'):.3f}, "
+			f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A'):.3f}"
+		)
+
+		# --- Checkpointing Best Model ---
+		best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
+			model=model,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			current_val_loss=current_val_loss,
+			best_val_loss=best_val_loss,
+			early_stopping=early_stopping,
+			checkpoint_path=mdl_fpth,
+			epoch=epoch,
+			current_phase=current_phase,
+			img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
+			txt2img_metrics=retrieval_metrics_per_epoch["txt2img"],
+		)
+
+		# --- Early Stopping Check ---
+		if early_stopping.should_stop(
+			current_value=current_val_loss,
+			model=model,
+			epoch=epoch,
+			current_phase=current_phase
+		):
+			print(f"--- Training stopped early at epoch {epoch+1} ---")
+			break  # Exit the main training loop
+
+		# --- End of Epoch ---
+		epochs_in_current_phase += 1
+		epoch_duration = time.time() - epoch_start_time
+		print(f"Epoch {epoch+1} Duration: {epoch_duration:.2f}s")
+		if epoch+1 > minimum_epochs: 
+			print(f"EarlyStopping Status:\n{json.dumps(early_stopping.get_status(), indent=2, ensure_ascii=False)}")
+		print("-" * 80)
+
+	# --- End of Training ---
+	total_training_time = time.time() - train_start_time
+	print(f"\n--- Training Finished ---")
+	print(f"Total Epochs Run: {epoch + 1}")
+	print(f"Final Phase Reached: {current_phase}")
+	print(f"Best Validation Loss Achieved: {early_stopping.get_best_score()} @ Epoch {early_stopping.get_best_epoch() + 1}")
+	print(f"Total Training Time: {total_training_time:.2f}s")
+
+	# Final evaluation with best model
+	evaluation_results = evaluate_best_model(
+		model=model,
+		validation_loader=validation_loader,
+		criterion=criterion,
+		early_stopping=early_stopping,
+		checkpoint_path=mdl_fpth,
+		finetune_strategy=mode,
+		device=device,
+		cache_dir=results_dir,
+		topk_values=topk_values,
+		verbose=True,
+		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+	)
+
+	# Access individual metrics as needed
+	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
+	final_metrics_full = evaluation_results["full_metrics"]
+	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
+	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
+
+	model_source = evaluation_results["model_loaded_from"]
+	print(f"Final evaluation used model weights from: {model_source}")
+
+	print("\nGenerating result plots...")
+	actual_trained_epochs = len(training_losses)
+	file_base_name = (
+		f"{dataset_name}_"
+		f"{mode}_"
+		f"{model_name}_"
+		f"{model_arch}_"
+		f"last_phase_{current_phase}_"
+		f"ep_{actual_trained_epochs}_"
+		f"bs_{train_loader.batch_size}_"
+		f"dropout_{dropout_val}_"
+		f"temp_{temperature}_"
+		f"ilr_{initial_learning_rate:.1e}_"
+		f"iwd_{initial_weight_decay:.1e}"
+	)
+	if last_lr is not None:
+		file_base_name += f"_final_lr_{last_lr:.1e}"
+
+	if last_wd is not None:
+		file_base_name += f"_final_wd_{last_wd:.1e}"
+
+	mdl_fpth = get_updated_model_name(
+		original_path=mdl_fpth,
+		actual_epochs=actual_trained_epochs,
+		additional_info={
+			'last_phase': current_phase,
+			'flr': last_lr,
+			'fwd': last_wd
+		}
+	)
+	print(f"Best model will be renamed to: {mdl_fpth}")
+
+	plot_paths = {
+		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+		"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
+		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+	}
+
+	# Plot training loss breakdown (specific to multi-label)
+	plot_multilabel_loss_breakdown(
+		training_losses_breakdown=training_losses_breakdown,
+		filepath=plot_paths["losses_breakdown"]
+	)
+
+	plot_loss_accuracy_metrics(
+		dataset_name=dataset_name,
+		train_losses=training_losses,
+		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+		in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+		full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+		full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+		losses_file_path=plot_paths["losses"],
+		in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
+		in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
+		full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
+		full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
+	)
+
+	plot_retrieval_metrics_per_epoch(
+		dataset_name=dataset_name,
+		image_to_text_metrics_list=img2txt_metrics_all_epochs,
+		text_to_image_metrics_list=txt2img_metrics_all_epochs,
+		fname=plot_paths["retrieval_per_epoch"],
+	)
+
+	plot_retrieval_metrics_best_model(
+		dataset_name=dataset_name,
+		image_to_text_metrics=final_img2txt_metrics,
+		text_to_image_metrics=final_txt2img_metrics,
+		fname=plot_paths["retrieval_best"],
+	)
+
+	return final_metrics_in_batch, final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+
+def lora_finetune_multi_label(
+		model: torch.nn.Module,
+		train_loader: DataLoader,
+		validation_loader: DataLoader,
+		num_epochs: int,
+		print_every: int,
+		learning_rate: float,
+		weight_decay: float,
+		device: str,
+		results_dir: str,
+		window_size: int,
+		lora_rank: int,
+		lora_alpha: float,
+		lora_dropout: float,
+		patience: int = 10,
+		min_delta: float = 1e-4,
+		cumulative_delta: float = 5e-3,
+		minimum_epochs: int = 20,
+		topk_values: List[int] = [1, 5, 10, 15, 20],
+		loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
+		temperature: float = 0.07,  # Temperature for contrastive learning
+		label_smoothing: float = 0.0,  # Label smoothing for multi-label
+	):
+	"""
+	LoRA fine-tuning for multi-label CLIP classification.
+	
+	Key differences from single-label LoRA version:
+	1. Uses BCEWithLogitsLoss instead of CrossEntropyLoss
+	2. Handles bidirectional multi-label targets (I2T and T2I)
+	3. Pre-encodes class embeddings for efficiency
+	4. Uses multi-label specific loss computation
+	5. Proper multi-label evaluation metrics
+	
+	Args:
+			model: CLIP model to fine-tune with LoRA
+			train_loader: Training DataLoader (must provide multi-label vectors)
+			validation_loader: Validation DataLoader  
+			num_epochs: Number of training epochs
+			print_every: Print loss every N batches
+			learning_rate: Learning rate for LoRA parameters
+			weight_decay: Weight decay for regularization
+			device: Training device (cuda/cpu)
+			results_dir: Directory to save results
+			window_size: Window size for early stopping
+			lora_rank: LoRA rank parameter
+			lora_alpha: LoRA alpha parameter
+			lora_dropout: LoRA dropout parameter
+			patience: Early stopping patience
+			min_delta: Minimum change for improvement
+			cumulative_delta: Cumulative delta for early stopping
+			minimum_epochs: Minimum epochs before early stopping
+			topk_values: K values for evaluation metrics
+			loss_weights: Optional weights for I2T and T2I losses
+			temperature: Temperature scaling for similarities
+			label_smoothing: Label smoothing factor (0.0 = no smoothing)
+	"""
+	
+	# Set default loss weights
+	if loss_weights is None:
+		loss_weights = {"i2t": 0.5, "t2i": 0.5}
+	
+	# Inspect the model for dropout layers and validate for LoRA
+	dropout_values = []
+	for name, module in model.named_modules():
+		if isinstance(module, torch.nn.Dropout):
+			dropout_values.append((name, module.p))
+
+	# Check for non-zero dropout in the base model
+	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
+	if non_zero_dropouts:
+		dropout_info = ", ".join([f"{name}: p={p}" for name, p in non_zero_dropouts])
+		assert False, (
+			f"\nNon-zero dropout detected in base {model.__class__.__name__} {model.name} during LoRA fine-tuning:"
+			f"\n{dropout_info}\n"
+			"This adds stochasticity and noise to the frozen base model, which is unconventional for LoRA practices.\n"
+			"Fix: Set dropout=0.0 in clip.load() to enforce a deterministic base model behavior during LoRA fine-tuning "
+			"which gives you more control over LoRA-specific regularization without affecting the base model.\n"
+		)
+
+	early_stopping = EarlyStopping(
+		patience=patience,
+		min_delta=min_delta,
+		cumulative_delta=cumulative_delta,
+		window_size=window_size,
+		mode='min',  # Monitoring validation loss
+		min_epochs=minimum_epochs,
+		restore_best_weights=True,
+	)
+
+	# Dataset and directory setup
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	except AttributeError:
+		dataset_name = validation_loader.dataset.dataset_name
+
+	mode = inspect.stack()[0].function
+	mode = re.sub(r'_finetune', '', mode)
+
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_name = model.__class__.__name__
+
+	print(f"{mode} | Rank: {lora_rank} | Alpha: {lora_alpha} | Dropout: {lora_dropout} | {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # GB
+		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+
+	# Get dataset information
+	try:
+		num_classes = len(validation_loader.dataset.unique_labels)
+		class_names = validation_loader.dataset.unique_labels
+	except AttributeError:
+		num_classes = len(validation_loader.dataset.dataset.classes)
+		class_names = validation_loader.dataset.dataset.classes
+	print(f"Multi-label LoRA fine-tuning: {num_classes} classes")
+	print(f"Class names sample: {class_names[:5]}...")
+
+	# Apply LoRA to the model
+	model = get_lora_clip(
+		clip_model=model,
+		lora_rank=lora_rank,
+		lora_alpha=lora_alpha,
+		lora_dropout=lora_dropout
+	)
+	model.to(device)
+	get_parameters_info(model=model, mode=mode)
+
+	# Use BCEWithLogitsLoss for multi-label classification
+	if label_smoothing > 0:
+		print(f"Using label smoothing: {label_smoothing}")
+		criterion = LabelSmoothingBCELoss(smoothing=label_smoothing)
+	else:
+		criterion = torch.nn.BCEWithLogitsLoss()
+	print(f"Using {criterion.__class__.__name__} for multi-label classification")
+
+	# Pre-encode all class texts (for efficiency)
+	print(f"Pre-encoding {num_classes} class texts...")
+	all_class_texts = clip.tokenize(class_names).to(device)
+	with torch.no_grad():
+		model.eval()
+		all_class_embeds = model.encode_text(all_class_texts)
+		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+	model.train()
+
+	optimizer = AdamW(
+		params=[p for p in model.parameters() if p.requires_grad],
+		lr=learning_rate,
+		betas=(0.9, 0.98),
+		eps=1e-6,
+		weight_decay=weight_decay,
+	)
+
+	scheduler = lr_scheduler.OneCycleLR(
+		optimizer=optimizer,
+		max_lr=learning_rate,
+		steps_per_epoch=len(train_loader),
+		epochs=num_epochs,
+		pct_start=0.1,
+		anneal_strategy='cos',
+	)
+
+	scaler = torch.amp.GradScaler(device=device)
+
+	mdl_fpth = os.path.join(
+		results_dir,
+		f"{mode}_"
+		f"{model_arch}_"
+		f"{optimizer.__class__.__name__}_"
+		f"{scheduler.__class__.__name__}_"
+		f"{criterion.__class__.__name__}_"
+		f"{scaler.__class__.__name__}_"
+		f"ieps_{num_epochs}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"lor_{lora_rank}_"
+		f"loa_{lora_alpha}_"
+		f"lod_{lora_dropout}_"
+		f"temp_{temperature}_"
+		f"bs_{train_loader.batch_size}_"
+		f"best_model.pth"
+	)
+
+	training_losses = []
+	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
+	img2txt_metrics_all_epochs = []
+	txt2img_metrics_all_epochs = []
+	in_batch_loss_acc_metrics_all_epochs = []
+	full_val_loss_acc_metrics_all_epochs = []
+	train_start_time = time.time()
+	best_val_loss = float('inf')
+	final_img2txt_metrics = None
+	final_txt2img_metrics = None
+
+	for epoch in range(num_epochs):
+		torch.cuda.empty_cache()
+		model.train()
+		print(f"Epoch [{epoch + 1}/{num_epochs}]")
+		
+		epoch_loss_total = 0.0
+		epoch_loss_i2t = 0.0
+		epoch_loss_t2i = 0.0
+		num_batches = 0
+		
+		for bidx, batch_data in enumerate(train_loader):
+			if len(batch_data) == 3:
+				images, _, label_vectors = batch_data  # Ignore tokenized_labels, use pre-encoded
+			else:
+				raise ValueError(f"Expected 3 items from DataLoader, got {len(batch_data)}")
+			
+			batch_size = images.size(0)
+			images = images.to(device, non_blocking=True)
+			label_vectors = label_vectors.to(device, non_blocking=True).float()
+			
+			# Validate label_vectors shape
+			if label_vectors.shape != (batch_size, num_classes):
+				raise ValueError(f"Label vectors shape {label_vectors.shape} doesn't match expected ({batch_size}, {num_classes})")
+
+			optimizer.zero_grad(set_to_none=True)
+			
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				# Multi-label contrastive loss computation
+				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
+					model=model,
+					images=images,
+					all_class_embeds=all_class_embeds,
+					label_vectors=label_vectors,
+					criterion=criterion,
+					temperature=temperature,
+					loss_weights=loss_weights
+				)
+			
+			# Check for NaN loss
+			if torch.isnan(total_loss):
+				print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
+				continue
+			
+			scaler.scale(total_loss).backward()
+			scaler.unscale_(optimizer)
+			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			scaler.step(optimizer)
+			scaler.update()
+			scheduler.step()
+			
+			# Track losses
+			batch_loss_total = total_loss.item()
+			batch_loss_i2t = loss_i2t.item()
+			batch_loss_t2i = loss_t2i.item()
+			
+			epoch_loss_total += batch_loss_total
+			epoch_loss_i2t += batch_loss_i2t
+			epoch_loss_t2i += batch_loss_t2i
+			num_batches += 1
+			
+			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+				print(
+					f"\t\tBatch [{bidx + 1}/{len(train_loader)}] "
+					f"Total Loss: {batch_loss_total:.6f} "
+					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
+				)
+		
+		# Calculate average losses
+		avg_total_loss = epoch_loss_total / num_batches if num_batches > 0 else 0.0
+		avg_i2t_loss = epoch_loss_i2t / num_batches if num_batches > 0 else 0.0
+		avg_t2i_loss = epoch_loss_t2i / num_batches if num_batches > 0 else 0.0
+		
+		training_losses.append(avg_total_loss)
+		training_losses_breakdown["total"].append(avg_total_loss)
+		training_losses_breakdown["i2t"].append(avg_i2t_loss)
+		training_losses_breakdown["t2i"].append(avg_t2i_loss)
+
+		print(f">> Validation for epoch {epoch+1}...")
+		
+		# Compute validation loss using the same multi-label loss function
+		current_val_loss = compute_multilabel_validation_loss(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			device=device,
+			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
+			temperature=temperature,
+			max_batches=10
+		)
+
+		# Get comprehensive validation metrics
+		validation_results = get_validation_metrics(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,  # Now uses BCEWithLogitsLoss
+			device=device,
+			topK_values=topk_values,
+			finetune_strategy=mode,
+			cache_dir=results_dir,
+			verbose=True,
+			lora_params={
+				"lora_rank": lora_rank,
+				"lora_alpha": lora_alpha,
+				"lora_dropout": lora_dropout,
+			},
+			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+			is_training=True,
+			model_hash=get_model_hash(model),
+			temperature=temperature,
+		)
+		
+		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
+		in_batch_loss_acc_metrics_per_epoch["val_loss"] = current_val_loss  # Use computed validation loss
+		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
+		retrieval_metrics_per_epoch = {
+			"img2txt": validation_results["img2txt_metrics"],
+			"txt2img": validation_results["txt2img_metrics"]
+		}
+
+		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
+		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
+		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
+		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
+		
+		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
+
+		print(
+			f'@ Epoch {epoch + 1}:\n'
+			f'\t[LOSS] {mode}:\n'
+			f'\t  Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f})\n'
+			f'\t  Validation: {current_val_loss:.6f}\n'
+			f'\tMulti-label LoRA Validation Metrics:\n'
+			f'\t  In-batch Top-K Accuracy:\n'
+			f'\t    [Image→Text]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t    [Text→Image]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
+			f'\t  Full Validation Set:\n'
+			f'\t    [Image→Text]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t    [Text→Image]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+		)
+		
+		# Print multi-label specific metrics if available
+		if full_val_loss_acc_metrics_per_epoch.get("hamming_loss") is not None:
+			print(f'\t  Multi-label Metrics:')
+			print(f'\t    Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
+			print(f'\t    Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
+			print(f'\t    F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
+
+		print(f"Retrieval Metrics:")
+		print(
+			f"  Image-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A'):.3f}, "
+			f"Recall@10={retrieval_metrics_per_epoch['img2txt'].get('Recall', {}).get('10', 'N/A'):.3f}"
+		)
+		print(
+			f"  Text-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A'):.3f}, "
+			f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A'):.3f}"
+		)
+
+		# Use unified checkpointing function
+		best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
+			model=model,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			current_val_loss=current_val_loss,
+			best_val_loss=best_val_loss,
+			early_stopping=early_stopping,
+			checkpoint_path=mdl_fpth,
+			epoch=epoch,
+			img2txt_metrics=retrieval_metrics_per_epoch.get("img2txt"),
+			txt2img_metrics=retrieval_metrics_per_epoch.get("txt2img")
+		)
+
+		# Early stopping check
+		if early_stopping.should_stop(
+			current_value=current_val_loss,
+			model=model,
+			epoch=epoch,
+		):
+			print(f"\nEarly stopping triggered at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
+			break
+
+		print("-" * 140)
+	
+	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+
+	# Final evaluation with best model
+	evaluation_results = evaluate_best_model(
+		model=model,
+		validation_loader=validation_loader,
+		criterion=criterion,
+		early_stopping=early_stopping,
+		checkpoint_path=mdl_fpth,
+		finetune_strategy=mode,
+		device=device,
+		cache_dir=results_dir,
+		topk_values=topk_values,
+		verbose=True,
+		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+	)
+
+	# Access individual metrics
+	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
+	final_metrics_full = evaluation_results["full_metrics"]
+	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
+	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
+	model_source = evaluation_results["model_loaded_from"]
+	print(f"Final evaluation used model weights from: {model_source}")
+	
+	print("--- Final Metrics [In-batch Validation] ---")
+	print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
+	print("--- Final Metrics [Full Validation Set] ---")
+	print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
+	print("--- Image-to-Text Retrieval ---")
+	print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
+	print("--- Text-to-Image Retrieval ---")
+	print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+
+	print("\nGenerating result plots...")
+	actual_trained_epochs = len(training_losses)
+	file_base_name = (
+		f"{dataset_name}_"
+		f"{mode}_"
+		f"{model_name}_"
+		f"{model_arch}_"
+		f"ep_{actual_trained_epochs}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"temp_{temperature}_"
+		f"bs_{train_loader.batch_size}_"
+		f"lora_rank_{lora_rank}_"
+		f"lora_alpha_{lora_alpha}_"
+		f"lora_dropout_{lora_dropout}"
+	)
+	
+	mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
+	print(f"Best model will be renamed to: {mdl_fpth}")
+
+	plot_paths = {
+		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+		"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
+		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+	}
+
+	# Plot training loss breakdown (specific to multi-label)
+	plot_multilabel_loss_breakdown(
+		training_losses_breakdown=training_losses_breakdown,
+		filepath=plot_paths["losses_breakdown"]
+	)
+
+	plot_loss_accuracy_metrics(
+		dataset_name=dataset_name,
+		train_losses=training_losses,
+		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+		in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+		in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+		full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+		full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+		losses_file_path=plot_paths["losses"],
+		in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
+		in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
+		full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
+		full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
+	)
+
+	plot_retrieval_metrics_per_epoch(
+		dataset_name=dataset_name,
+		image_to_text_metrics_list=img2txt_metrics_all_epochs,
+		text_to_image_metrics_list=txt2img_metrics_all_epochs,
+		fname=plot_paths["retrieval_per_epoch"],
+	)
+
+	plot_retrieval_metrics_best_model(
+		dataset_name=dataset_name,
+		image_to_text_metrics=final_img2txt_metrics,
+		text_to_image_metrics=final_txt2img_metrics,
+		fname=plot_paths["retrieval_best"],
+	)
+
 	return final_metrics_in_batch, final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
 def compute_multilabel_contrastive_loss(

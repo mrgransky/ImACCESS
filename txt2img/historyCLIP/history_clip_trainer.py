@@ -5,7 +5,15 @@ IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
 CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
 sys.path.insert(0, CLIP_DIR)
 from utils import *
-from trainer import train, pretrain, full_finetune_single_label, lora_finetune_single_label, progressive_finetune_single_label, full_finetune_multi_label
+from trainer import (
+	train, pretrain, 
+	full_finetune_single_label, 
+	lora_finetune_single_label, 
+	progressive_finetune_single_label, 
+	full_finetune_multi_label,
+	lora_finetune_multi_label,
+	progressive_finetune_multi_label,
+)
 from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics, plot_comparison_metrics_merged, plot_comparison_metrics_split
 from historical_dataset_loader import get_single_label_dataloaders, get_multi_label_dataloaders
 
@@ -169,7 +177,9 @@ def main():
 				'progressive': progressive_finetune_single_label,
 			},
 			'multi_label': {
-				'full': full_finetune_multi_label
+				'full': full_finetune_multi_label,
+				'lora': lora_finetune_multi_label,
+				'progressive': progressive_finetune_multi_label,
 			}
 		}
 		if args.mode == "finetune":
