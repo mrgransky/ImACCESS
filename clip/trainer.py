@@ -693,150 +693,150 @@ def compute_retrieval_metrics_from_similarity(
 		cache_dir: str = None,
 		cache_key: str = None,
 		is_training: bool = False,
-		verbose: bool = True,
+		verbose: bool = False,
 		chunk_size: int = 1000,
-) -> Dict:
-		"""
-		Compute retrieval metrics (mP, mAP, Recall) with memory optimization and proper multi-label support.
-		
-		Args:
-				similarity_matrix: [num_queries, num_candidates]
-				query_labels: [num_queries] for single-label or [num_queries, num_classes] for multi-label
-				candidate_labels: [num_candidates] for single-label or [num_candidates, num_classes] for multi-label  
-				topK_values: List of K values for evaluation
-				mode: "Image-to-Text" or "Text-to-Image"
-				class_counts: Number of samples per class (for single-label recall)
-				max_k: Maximum K to consider
-				cache_dir: Cache directory
-				cache_key: Cache identifier
-				is_training: Skip caching if True
-				verbose: Print progress
-				chunk_size: Chunk size for memory optimization
-				
-		Returns:
-				Dictionary with mP, mAP, and Recall metrics
-		"""
-		if verbose:
-				print(f"Computing retrieval metrics for {mode}")
-		
-		num_queries, num_candidates = similarity_matrix.shape
-		device = similarity_matrix.device
-		
-		# Validate inputs
-		if query_labels.dim() not in [1, 2] or candidate_labels.dim() not in [1, 2]:
-				raise ValueError("Labels must be 1D (single-label) or 2D (multi-label)")
-		
-		# Determine if multi-label based on labels dimensionality
-		is_multi_label = (
-				len(candidate_labels.shape) == 2 if mode == "Text-to-Image" 
-				else len(query_labels.shape) == 2
-		)
-		
-		if verbose:
-				print(f"Dataset type: {'Multi-label' if is_multi_label else 'Single-label'}")
-				print(f"Similarity matrix shape: {similarity_matrix.shape}")
-				print(f"Query labels shape: {query_labels.shape}")
-				print(f"Candidate labels shape: {candidate_labels.shape}")
-		
-		# Check cache
-		cache_file = None
-		if cache_dir and cache_key and not is_training:
-				cache_file = os.path.join(cache_dir, f"{cache_key}_retrieval_metrics.json")
-				if os.path.exists(cache_file):
-						try:
-								if verbose:
-										print(f"Loading cached metrics from {cache_file}")
-								with open(cache_file, 'r') as f:
-										return json.load(f)
-						except Exception as e:
-								if verbose:
-										print(f"Cache loading failed: {e}. Computing metrics.")
-		
-		# Validate and filter K values
-		valid_K_values = [K for K in topK_values if K <= (max_k or num_candidates)]
-		if not valid_K_values:
-				raise ValueError("No valid K values provided")
-		
-		# Get top-K indices for all queries (memory efficient)
-		if verbose:
-				print("Computing similarity rankings...")
-		
-		all_sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
-		
-		metrics = {"mP": {}, "mAP": {}, "Recall": {}}
-		
-		# Process each K value
-		for K in valid_K_values:
+	) -> Dict:
+	"""
+	Compute retrieval metrics (mP, mAP, Recall) with memory optimization and proper multi-label support.
+	
+	Args:
+			similarity_matrix: [num_queries, num_candidates]
+			query_labels: [num_queries] for single-label or [num_queries, num_classes] for multi-label
+			candidate_labels: [num_candidates] for single-label or [num_candidates, num_classes] for multi-label  
+			topK_values: List of K values for evaluation
+			mode: "Image-to-Text" or "Text-to-Image"
+			class_counts: Number of samples per class (for single-label recall)
+			max_k: Maximum K to consider
+			cache_dir: Cache directory
+			cache_key: Cache identifier
+			is_training: Skip caching if True
+			verbose: Print progress
+			chunk_size: Chunk size for memory optimization
+			
+	Returns:
+			Dictionary with mP, mAP, and Recall metrics
+	"""
+	if verbose:
+		print(f"Computing retrieval metrics (mP, mAP, Recall) for {mode}")
+	
+	num_queries, num_candidates = similarity_matrix.shape
+	device = similarity_matrix.device
+	
+	# Validate inputs
+	if query_labels.dim() not in [1, 2] or candidate_labels.dim() not in [1, 2]:
+		raise ValueError("Labels must be 1D (single-label) or 2D (multi-label)")
+	
+	# Determine if multi-label based on labels dimensionality
+	is_multi_label = (
+		len(candidate_labels.shape) == 2 if mode == "Text-to-Image" 
+		else len(query_labels.shape) == 2
+	)
+	
+	if verbose:
+		print(f"Dataset type: {'Multi-label' if is_multi_label else 'Single-label'}")
+		print(f"Similarity matrix shape: {similarity_matrix.shape}")
+		print(f"Query labels shape: {query_labels.shape}")
+		print(f"Candidate labels shape: {candidate_labels.shape}")
+	
+	# Check cache
+	cache_file = None
+	if cache_dir and cache_key and not is_training:
+		cache_file = os.path.join(cache_dir, f"{cache_key}_retrieval_metrics.json")
+		if os.path.exists(cache_file):
+			try:
 				if verbose:
-						print(f"Processing K={K}")
-				
-				# Get top-K indices
-				top_k_indices = all_sorted_indices[:, :K]
-				
-				# Compute correctness mask based on dataset type
-				if is_multi_label:
-						correct_mask = compute_multilabel_correctness(
-								top_k_indices, query_labels, candidate_labels, mode, K, chunk_size
-						)
-				else:
-						correct_mask = compute_singlelabel_correctness(
-								top_k_indices, query_labels, candidate_labels, K
-						)
-				
-				# Compute metrics
-				metrics["mP"][str(K)] = correct_mask.float().mean().item()
-				
-				# Compute Recall
-				if mode == "Image-to-Text":
-						metrics["Recall"][str(K)] = correct_mask.any(dim=1).float().mean().item()
-				else:  # Text-to-Image
-						if is_multi_label:
-								# For multi-label: recall = retrieved_relevant / total_relevant
-								num_classes = candidate_labels.shape[1]
-								relevant_counts = torch.sum(candidate_labels, dim=0)  # [num_classes]
-								
-								total_recall = 0.0
-								valid_classes = 0
-								
-								for class_idx in range(num_classes):
-										if relevant_counts[class_idx] > 0:
-												class_retrieved = correct_mask[class_idx].sum().item()
-												class_recall = class_retrieved / relevant_counts[class_idx].item()
-												total_recall += class_recall
-												valid_classes += 1
-								
-								metrics["Recall"][str(K)] = total_recall / max(1, valid_classes)
-						else:
-								# Single-label: use class counts
-								if class_counts is None:
-										raise ValueError("class_counts required for single-label text-to-image")
-								
-								relevant_counts = class_counts[query_labels]
-								recalled = correct_mask.sum(dim=1).float()
-								metrics["Recall"][str(K)] = (recalled / relevant_counts.clamp(min=1)).mean().item()
-				
-				# Compute mAP (vectorized)
-				positions = torch.arange(1, K + 1, device=device).float().unsqueeze(0)
-				cumulative_correct = correct_mask.float().cumsum(dim=1)
-				precisions = cumulative_correct / positions
-				
-				# AP = sum(precision * relevance) / num_relevant
-				ap_scores = (precisions * correct_mask.float()).sum(dim=1) / correct_mask.sum(dim=1).clamp(min=1)
-				metrics["mAP"][str(K)] = ap_scores.nanmean().item()
+					print(f"Loading cached metrics from {cache_file}")
+				with open(cache_file, 'r') as f:
+					return json.load(f)
+			except Exception as e:
+				if verbose:
+					print(f"Cache loading failed: {e}. Computing metrics.")
+	
+	# Validate and filter K values
+	valid_K_values = [K for K in topK_values if K <= (max_k or num_candidates)]
+	if not valid_K_values:
+		raise ValueError("No valid K values provided")
+	
+	# Get top-K indices for all queries (memory efficient)
+	all_sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
+	
+	metrics = {"mP": {}, "mAP": {}, "Recall": {}}
+	
+	for K in valid_K_values:
+		top_k_indices = all_sorted_indices[:, :K]
 		
-		# Save cache
-		if cache_file and not is_training:
-				try:
-						os.makedirs(cache_dir, exist_ok=True)
-						with open(cache_file, 'w') as f:
-								json.dump(metrics, f)
-						if verbose:
-								print(f"Cached metrics to {cache_file}")
-				except Exception as e:
-						if verbose:
-								print(f"Cache saving failed: {e}")
+		# Compute correctness mask based on dataset type
+		if is_multi_label:
+			correct_mask = compute_multilabel_correctness(
+				top_k_indices, 
+				query_labels, 
+				candidate_labels, 
+				mode, 
+				K, 
+				chunk_size,
+			)
+		else:
+			correct_mask = compute_singlelabel_correctness(
+				top_k_indices, 
+				query_labels, 
+				candidate_labels, 
+				K,
+			)
 		
-		return metrics
+		# Compute metrics
+		metrics["mP"][str(K)] = correct_mask.float().mean().item()
+		
+		# Compute Recall
+		if mode == "Image-to-Text":
+			metrics["Recall"][str(K)] = correct_mask.any(dim=1).float().mean().item()
+		else:  # Text-to-Image
+			if is_multi_label:
+				# For multi-label: recall = retrieved_relevant / total_relevant
+				num_classes = candidate_labels.shape[1]
+				relevant_counts = torch.sum(candidate_labels, dim=0)  # [num_classes]
+				
+				total_recall = 0.0
+				valid_classes = 0
+				
+				for class_idx in range(num_classes):
+					if relevant_counts[class_idx] > 0:
+						class_retrieved = correct_mask[class_idx].sum().item()
+						class_recall = class_retrieved / relevant_counts[class_idx].item()
+						total_recall += class_recall
+						valid_classes += 1
+				
+				metrics["Recall"][str(K)] = total_recall / max(1, valid_classes)
+			else:
+				# Single-label: use class counts
+				if class_counts is None:
+					raise ValueError("class_counts required for single-label text-to-image")
+				
+				relevant_counts = class_counts[query_labels]
+				recalled = correct_mask.sum(dim=1).float()
+				metrics["Recall"][str(K)] = (recalled / relevant_counts.clamp(min=1)).mean().item()
+		
+		# Compute mAP (vectorized)
+		positions = torch.arange(1, K + 1, device=device).float().unsqueeze(0)
+		cumulative_correct = correct_mask.float().cumsum(dim=1)
+		precisions = cumulative_correct / positions
+		
+		# AP = sum(precision * relevance) / num_relevant
+		ap_scores = (precisions * correct_mask.float()).sum(dim=1) / correct_mask.sum(dim=1).clamp(min=1)
+		metrics["mAP"][str(K)] = ap_scores.nanmean().item()
+	
+	# Save cache
+	if cache_file and not is_training:
+		try:
+			os.makedirs(cache_dir, exist_ok=True)
+			with open(cache_file, 'w') as f:
+				json.dump(metrics, f)
+			if verbose:
+				print(f"Cached metrics to {cache_file}")
+		except Exception as e:
+			if verbose:
+				print(f"Cache saving failed: {e}")
+	
+	return metrics
 
 def compute_multilabel_correctness(
 		top_k_indices: torch.Tensor,
@@ -3659,40 +3659,37 @@ def full_finetune_multi_label(
 			full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
 			img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
 			txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
-			
 			current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
 			print(
-					f'@ Epoch {epoch + 1}:\n'
-					f'\t[LOSS] {mode}:\n'
-					f'\t  Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f})\n'
-					f'\t  Validation: {current_val_loss:.6f}\n'
-					f'\tMulti-label Validation Metrics:\n'
-					f'\t  In-batch Top-K Accuracy:\n'
-					f'\t    [Image→Text]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-					f'\t    [Text→Image]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
-					f'\t  Full Validation Set:\n'
-					f'\t    [Image→Text]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-					f'\t    [Text→Image]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+				f'@ Epoch {epoch + 1}:\n'
+				f'\t[LOSS] {mode}:\n'
+				f'\t\tTraining - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f})\n'
+				f'\t\tValidation: {current_val_loss:.6f}\n'
+				f'\tMulti-label Validation Metrics:\n'
+				f'\t\tIn-batch Top-K Accuracy:\n'
+				f'\t\t\t[Image→Text]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+				f'\t\t\t[Text→Image]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
+				f'\t\tFull Validation Set:\n'
+				f'\t\t\t[Image→Text]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+				f'\t\t\t[Text→Image]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 			)
-			
-			# Print multi-label specific metrics if available
+
 			if full_val_loss_acc_metrics_per_epoch.get("hamming_loss") is not None:
-				print(f'\t  Multi-label Metrics:')
-				print(f'\t    Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
-				print(f'\t    Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
-				print(f'\t    F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
-			print(f"Retrieval Metrics:")
+				print(f'\tMulti-label Metrics:')
+				print(f'\t\tHamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
+				print(f'\t\tPartial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
+				print(f'\t\tF1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
+			
+			print(f"\tRetrieval Metrics:")
 			print(
-				f"  Image-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A'):.3f}, "
+				f"\t\tImage-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A'):.3f}, "
 				f"Recall@10={retrieval_metrics_per_epoch['img2txt'].get('Recall', {}).get('10', 'N/A'):.3f}"
 			)
 			print(
-				f"  Text-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A'):.3f}, "
+				f"\t\tText-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A'):.3f}, "
 				f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A'):.3f}"
 			)
-			# ================================
-			# CHECKPOINTING: Same as before
-			# ================================
+
 			best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
 				model=model,
 				optimizer=optimizer,
@@ -3705,9 +3702,7 @@ def full_finetune_multi_label(
 				img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
 				txt2img_metrics=retrieval_metrics_per_epoch["txt2img"]
 			)
-			# ================================
-			# EARLY STOPPING: Same as before
-			# ================================
+
 			if early_stopping.should_stop(
 				current_value=current_val_loss,
 				model=model,
@@ -3717,21 +3712,22 @@ def full_finetune_multi_label(
 				break
 			print("-" * 140)
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+
 	# ================================
-	# FINAL EVALUATION: Same as before
+	# FINAL EVALUATION
 	# ================================
 	evaluation_results = evaluate_best_model(
-			model=model,
-			validation_loader=validation_loader,
-			criterion=criterion,
-			early_stopping=early_stopping,
-			checkpoint_path=mdl_fpth,
-			finetune_strategy=mode,
-			device=device,
-			cache_dir=results_dir,
-			topk_values=topk_values,
-			verbose=True,
-			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+		model=model,
+		validation_loader=validation_loader,
+		criterion=criterion,
+		early_stopping=early_stopping,
+		checkpoint_path=mdl_fpth,
+		finetune_strategy=mode,
+		device=device,
+		cache_dir=results_dir,
+		topk_values=topk_values,
+		verbose=True,
+		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 	)
 	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
 	final_metrics_full = evaluation_results["full_metrics"]
@@ -3742,16 +3738,16 @@ def full_finetune_multi_label(
 	print("\nGenerating result plots...")
 	actual_trained_epochs = len(training_losses)
 	file_base_name = (
-			f"{dataset_name}_"
-			f"{mode}_"
-			f"{model_name}_"
-			f"{model_arch}_"
-			f"ep_{actual_trained_epochs}_"
-			f"lr_{learning_rate:.1e}_"
-			f"wd_{weight_decay:.1e}_"
-			f"temp_{temperature}_"
-			f"bs_{train_loader.batch_size}_"
-			f"dropout_{dropout_val}"
+		f"{dataset_name}_"
+		f"{mode}_"
+		f"{model_name}_"
+		f"{model_arch}_"
+		f"ep_{actual_trained_epochs}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"temp_{temperature}_"
+		f"bs_{train_loader.batch_size}_"
+		f"dropout_{dropout_val}"
 	)
 	
 	mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
@@ -3760,14 +3756,14 @@ def full_finetune_multi_label(
 	# PLOTTING: Enhanced for multi-label
 	# ================================
 	plot_paths = {
-			"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-			"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
-			"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
-			"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
-			"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
-			"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
-			"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-			"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+		"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
+		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 	}
 	# Plot training loss breakdown
 	plot_multilabel_loss_breakdown(
@@ -3830,50 +3826,6 @@ def progressive_finetune_multi_label(
 		temperature: float = 0.07,  # Temperature for contrastive learning
 		label_smoothing: float = 0.0,  # Label smoothing for multi-label
 	):
-	"""
-	Progressive fine-tuning for multi-label CLIP classification.
-	
-	This function combines progressive layer unfreezing with multi-label classification,
-	gradually unfreezing layers in phases while monitoring both loss and accuracy plateaus
-	for optimal phase transitions.
-	
-	Key differences from single-label progressive version:
-	1. Uses BCEWithLogitsLoss instead of CrossEntropyLoss
-	2. Handles bidirectional multi-label targets (I2T and T2I)
-	3. Pre-encodes class embeddings for efficiency
-	4. Uses multi-label specific loss computation and validation
-	5. Enhanced phase transition logic considering multi-label metrics
-	6. Proper multi-label evaluation metrics throughout training
-	
-	Args:
-			model: CLIP model to progressively fine-tune
-			train_loader: Training DataLoader (must provide multi-label vectors)
-			validation_loader: Validation DataLoader  
-			num_epochs: Maximum number of training epochs
-			print_every: Print loss every N batches
-			learning_rate: Initial learning rate (will be dynamically adjusted)
-			weight_decay: Initial weight decay (will be dynamically adjusted)
-			device: Training device (cuda/cpu)
-			results_dir: Directory to save results
-			window_size: Window size for early stopping and phase transition
-			patience: Early stopping patience
-			min_delta: Minimum change for improvement detection
-			cumulative_delta: Cumulative delta for early stopping
-			minimum_epochs: Minimum epochs before ANY early stop
-			min_epochs_per_phase: Minimum epochs within a phase before transition check
-			volatility_threshold: Volatility threshold for phase transitions
-			slope_threshold: Slope threshold for phase transitions
-			pairwise_imp_threshold: Pairwise improvement threshold
-			accuracy_plateau_threshold: Accuracy plateau threshold for phase transitions
-			min_phases_before_stopping: Minimum phases before global early stopping
-			topk_values: K values for evaluation metrics
-			layer_groups_to_unfreeze: Layer groups to progressively unfreeze
-			unfreeze_percentages: Custom unfreezing schedule (optional)
-			loss_weights: Optional weights for I2T and T2I losses
-			temperature: Temperature scaling for similarities
-			label_smoothing: Label smoothing factor (0.0 = no smoothing)
-	"""
-	
 	# Set default loss weights
 	if loss_weights is None:
 		loss_weights = {"i2t": 0.5, "t2i": 0.5}
@@ -3908,7 +3860,7 @@ def progressive_finetune_multi_label(
 	print(f"{mode} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
-		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
+		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3) # GB
 		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
 	# Get dataset information
@@ -4255,35 +4207,33 @@ def progressive_finetune_multi_label(
 		print(
 			f'@ Epoch {epoch + 1}:\n'
 			f'\t[LOSS] {mode}:\n'
-			f'\t  Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f})\n'
-			f'\t  Validation: {current_val_loss:.6f}\n'
-			f'\tMulti-label Progressive Validation Metrics:\n'
-			f'\t  In-batch Top-K Accuracy:\n'
-			f'\t    [Image→Text]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-			f'\t    [Text→Image]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
-			f'\t  Full Validation Set:\n'
-			f'\t    [Image→Text]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-			f'\t    [Text→Image]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+			f'\t\tTraining - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f})\n'
+			f'\t\tValidation: {current_val_loss:.6f}\n'
+			f'\tMulti-label Validation Metrics:\n'
+			f'\t\tIn-batch Top-K Accuracy:\n'
+			f'\t\t\t[Image→Text]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t\t\t[Text→Image]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
+			f'\t\tFull Validation Set:\n'
+			f'\t\t\t[Image→Text]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t\t\t[Text→Image]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
-		
-		# Print multi-label specific metrics if available
-		if full_val_loss_acc_metrics_per_epoch.get("hamming_loss") is not None:
-			print(f'\t  Multi-label Metrics:')
-			print(f'\t    Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
-			print(f'\t    Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
-			print(f'\t    F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
 
-		print(f"Retrieval Metrics:")
+		if full_val_loss_acc_metrics_per_epoch.get("hamming_loss") is not None:
+			print(f'\tMulti-label Metrics:')
+			print(f'\t\tHamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
+			print(f'\t\tPartial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
+			print(f'\t\tF1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
+		
+		print(f"\tRetrieval Metrics:")
 		print(
-			f"  Image-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A'):.3f}, "
+			f"\t\tImage-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A'):.3f}, "
 			f"Recall@10={retrieval_metrics_per_epoch['img2txt'].get('Recall', {}).get('10', 'N/A'):.3f}"
 		)
 		print(
-			f"  Text-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A'):.3f}, "
+			f"\t\tText-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A'):.3f}, "
 			f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A'):.3f}"
 		)
 
-		# --- Checkpointing Best Model ---
 		best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
 			model=model,
 			optimizer=optimizer,
@@ -4442,6 +4392,7 @@ def lora_finetune_multi_label(
 		lora_rank: int,
 		lora_alpha: float,
 		lora_dropout: float,
+		verbose: bool = True,
 		patience: int = 10,
 		min_delta: float = 1e-4,
 		cumulative_delta: float = 5e-3,
@@ -4750,35 +4701,33 @@ def lora_finetune_multi_label(
 		print(
 			f'@ Epoch {epoch + 1}:\n'
 			f'\t[LOSS] {mode}:\n'
-			f'\t  Training - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f})\n'
-			f'\t  Validation: {current_val_loss:.6f}\n'
-			f'\tMulti-label LoRA Validation Metrics:\n'
-			f'\t  In-batch Top-K Accuracy:\n'
-			f'\t    [Image→Text]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-			f'\t    [Text→Image]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
-			f'\t  Full Validation Set:\n'
-			f'\t    [Image→Text]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-			f'\t    [Text→Image]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+			f'\t\tTraining - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f})\n'
+			f'\t\tValidation: {current_val_loss:.6f}\n'
+			f'\tMulti-label Validation Metrics:\n'
+			f'\t\tIn-batch Top-K Accuracy:\n'
+			f'\t\t\t[Image→Text]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t\t\t[Text→Image]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
+			f'\t\tFull Validation Set:\n'
+			f'\t\t\t[Image→Text]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t\t\t[Text→Image]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
 		
-		# Print multi-label specific metrics if available
 		if full_val_loss_acc_metrics_per_epoch.get("hamming_loss") is not None:
-			print(f'\t  Multi-label Metrics:')
-			print(f'\t    Hamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
-			print(f'\t    Partial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
-			print(f'\t    F1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
-
-		print(f"Retrieval Metrics:")
+			print(f'\tMulti-label Metrics:')
+			print(f'\t\tHamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
+			print(f'\t\tPartial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
+			print(f'\t\tF1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
+		
+		print(f"\tRetrieval Metrics:")
 		print(
-			f"  Image-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A'):.3f}, "
+			f"\t\tImage-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A'):.3f}, "
 			f"Recall@10={retrieval_metrics_per_epoch['img2txt'].get('Recall', {}).get('10', 'N/A'):.3f}"
 		)
 		print(
-			f"  Text-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A'):.3f}, "
+			f"\t\tText-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A'):.3f}, "
 			f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A'):.3f}"
 		)
 
-		# Use unified checkpointing function
 		best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
 			model=model,
 			optimizer=optimizer,
@@ -4792,7 +4741,6 @@ def lora_finetune_multi_label(
 			txt2img_metrics=retrieval_metrics_per_epoch.get("txt2img")
 		)
 
-		# Early stopping check
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
 			model=model,
@@ -4805,7 +4753,6 @@ def lora_finetune_multi_label(
 	
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
-	# Final evaluation with best model
 	evaluation_results = evaluate_best_model(
 		model=model,
 		validation_loader=validation_loader,
@@ -4816,7 +4763,7 @@ def lora_finetune_multi_label(
 		device=device,
 		cache_dir=results_dir,
 		topk_values=topk_values,
-		verbose=True,
+		verbose=verbose,
 		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 	)
 
@@ -4826,16 +4773,17 @@ def lora_finetune_multi_label(
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
 	model_source = evaluation_results["model_loaded_from"]
-	print(f"Final evaluation used model weights from: {model_source}")
-	
-	print("--- Final Metrics [In-batch Validation] ---")
-	print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
-	print("--- Final Metrics [Full Validation Set] ---")
-	print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-	print("--- Image-to-Text Retrieval ---")
-	print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-	print("--- Text-to-Image Retrieval ---")
-	print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+
+	if verbose:
+		print(f"Final evaluation used model weights from: {model_source}")
+		print("--- Final Metrics [In-batch Validation] ---")
+		print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
+		print("--- Final Metrics [Full Validation Set] ---")
+		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
+		print("--- Image-to-Text Retrieval ---")
+		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
+		print("--- Text-to-Image Retrieval ---")
+		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
 
 	print("\nGenerating result plots...")
 	actual_trained_epochs = len(training_losses)
@@ -4973,9 +4921,6 @@ def compute_multilabel_contrastive_loss(
 	return total_loss, loss_i2t, loss_t2i
 
 class LabelSmoothingBCELoss(torch.nn.Module):
-	"""
-	Binary Cross Entropy Loss with Label Smoothing for multi-label classification.
-	"""
 	def __init__(self, smoothing: float = 0.1):
 		super().__init__()
 		self.smoothing = smoothing
