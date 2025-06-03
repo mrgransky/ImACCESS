@@ -1,10 +1,21 @@
-import sys
+# import sys
+# import os
+# current_dir = os.path.dirname(os.path.abspath(__file__))
+# parent_dir = os.path.dirname(current_dir)
+# sys.path.insert(0, parent_dir)
+# from misc.utils import *
+# from misc.visualize import *
+
 import os
+import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
-sys.path.insert(0, parent_dir)
+project_dir = os.path.dirname(parent_dir)
+sys.path.insert(0, project_dir)
+
 from misc.utils import *
 from misc.visualize import *
+
 
 # how to run:
 # $ python merge_datasets.py
