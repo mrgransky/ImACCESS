@@ -594,11 +594,21 @@ def main():
 	text_output_path = os.path.join(DATASET_DIRECTORY, "metadata_textual_based_labels.csv")
 	vision_output_path = os.path.join(DATASET_DIRECTORY, "metadata_visual_based_labels.csv")
 	combined_output_path = os.path.join(DATASET_DIRECTORY, "metadata_multimodal.csv")
+	dtypes = {
+		'doc_id': str, 'id': str, 'label': str, 'title': str,
+		'description': str, 'img_url': str, 'enriched_document_description': str,
+		'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
+		'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+	}
 	
-
 	if os.path.exists(text_output_path):
-		print(f"Found existing textual-based labels at {text_output_path}. Loading...")
-		text_df = pd.read_csv(text_output_path)
+		print(f"Found existing textual-based labels at {text_output_path} Loading...")
+		text_df = pd.read_csv(
+			filepath_or_buffer=text_output_path,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
 		textual_based_labels = []
 		for label_str in text_df['textual_based_labels']:
 			if pd.isna(label_str) or label_str == '[]' or not label_str:
@@ -626,8 +636,13 @@ def main():
 		)
 
 	if os.path.exists(vision_output_path):
-		print(f"Found existing visual-based labels at {vision_output_path}. Loading...")
-		vision_df = pd.read_csv(vision_output_path)
+		print(f"Found existing visual-based labels at {vision_output_path} Loading...")
+		vision_df = pd.read_csv(
+			filepath_or_buffer=vision_output_path,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
 		visual_based_labels = []
 		for label_str in vision_df['visual_based_labels']:
 			if pd.isna(label_str) or label_str == '[]' or not label_str:
@@ -654,7 +669,7 @@ def main():
 	assert len(textual_based_labels) == len(visual_based_labels), "Label lists must have same length"
 	
 	if os.path.exists(combined_output_path):
-		print(f"Found existing combined labels at {combined_output_path}.")
+		print(f"Found existing combined labels at {combined_output_path} Loading...")
 		recompute = input("Do you want to recompute the combined labels? (y/n): ").lower() == 'y'
 		if not recompute:
 			print("Using existing combined labels.")
