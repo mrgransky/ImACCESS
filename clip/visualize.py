@@ -1,5 +1,29 @@
 from utils import *
 
+def plot_multilabel_loss_breakdown(
+		training_losses_breakdown: Dict[str, List[float]], 
+		filepath: str,
+		figure_size=(12, 8),
+		DPI: int = 300,
+	):
+	plt.figure(figsize=figure_size)
+	
+	epochs = range(1, len(training_losses_breakdown["total"]) + 1)
+	
+	plt.plot(epochs, training_losses_breakdown["total"], 'b-', label='Total', linewidth=1.1)
+	plt.plot(epochs, training_losses_breakdown["i2t"], 'g--', label='Image→Text', linewidth=2.0)
+	plt.plot(epochs, training_losses_breakdown["t2i"], 'r--', label='Text→Image', linewidth=2.0)
+	
+	plt.xlabel('Epoch')
+	plt.ylabel('Loss')
+	plt.title('Multi-label Training Loss Breakdown')
+	plt.legend(title='Loss Components', fontsize=10, title_fontsize=12, loc='upper right')
+	plt.grid(True, alpha=0.3)
+	plt.tight_layout()
+	
+	plt.savefig(filepath, dpi=DPI, bbox_inches='tight')
+	plt.close()	
+
 def plot_image_to_texts_separate_horizontal_bars(
         models: dict,
         validation_loader: DataLoader,
