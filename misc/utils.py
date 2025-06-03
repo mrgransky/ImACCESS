@@ -420,7 +420,7 @@ def get_multi_label_stratified_split(
 				val_df = df_filtered.loc[val_original_indices].reset_index(drop=True)
 
 		except ImportError:
-				print("\nWarning: skmultilearn not installed. Falling back to non-stratified random split (sklearn.model_selection.train_test_split).")
+				print("\n<!> Warning: skmultilearn not installed. Falling back to non-stratified random split (sklearn.model_selection.train_test_split).")
 				print("This split will NOT be stratified for multi-label data.")
 				
 				from sklearn.model_selection import train_test_split
