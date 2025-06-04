@@ -2485,7 +2485,7 @@ def perform_multilabel_eda(
 		all_individual_labels = [label for sublist in df[label_column] for label in sublist]
 		unique_labels = sorted(list(set(all_individual_labels)))
 
-		print("--- Multi-label Statistics (Main Column: '{label_column}') ---")
+		print(f"--- Multi-label Statistics (Main Column: {label_column}) ---")
 		print(f"Total number of samples with valid '{label_column}': {len(df)}")
 		print(f"Total number of unique labels across the dataset (from '{label_column}'): {len(unique_labels)}")
 		print(f"Example unique labels (first 10): {unique_labels[:10]}")
@@ -2493,7 +2493,7 @@ def perform_multilabel_eda(
 
 		# --- 5. Label Cardinality (Number of labels per sample) ---
 		df['label_cardinality'] = df[label_column].apply(len)
-		print("--- Label Cardinality Statistics (Main Column: '{label_column}') ---")
+		print(f"--- Label Cardinality Statistics (Main Column: {label_column}) ---")
 		print(df['label_cardinality'].describe())
 		print("-" * 40 + "\n")
 
@@ -2516,9 +2516,9 @@ def perform_multilabel_eda(
 		label_counts = Counter(all_individual_labels)
 		label_counts_df = pd.DataFrame(label_counts.items(), columns=['Label', 'Count']).sort_values(by='Count', ascending=False)
 
-		print("--- Top 20 Most Frequent Labels (Main Column: '{label_column}') ---")
+		print(f"--- Top 20 Most Frequent Labels (Main Column: {label_column}) ---")
 		print(label_counts_df.head(20))
-		print("\n--- Bottom 20 Least Frequent Labels (Main Column: '{label_column}') ---")
+		print(f"\n--- Bottom 20 Least Frequent Labels (Main Column: {label_column}) ---")
 		print(label_counts_df.tail(20))
 
 		singleton_labels = label_counts_df[label_counts_df['Count'] == 1]
@@ -2541,7 +2541,7 @@ def perform_multilabel_eda(
 				dpi=DPI,
 				bbox_inches='tight',
 		)
-		plt.close() # Close the plot
+		plt.close()
 
 		# New Visualization: Full Distribution of Label Frequencies
 		plt.figure(figsize=(10, 6))
@@ -2567,7 +2567,7 @@ def perform_multilabel_eda(
 		unique_label_sets_df = pd.DataFrame(unique_label_sets.items(), columns=['Label Set', 'Count']).sort_values(by='Count', ascending=False)
 
 		print(f"Total number of unique label combinations: {len(unique_label_sets)}")
-		print(f"Top 10 Most Frequent Label Combinations (from '{label_column}'):")
+		print(f"Top 10 Most Frequent Label Combinations (Main Column: {label_column}):")
 		print(unique_label_sets_df.head(10))
 
 		if len(unique_label_sets) > 0:
