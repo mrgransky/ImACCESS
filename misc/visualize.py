@@ -2571,24 +2571,20 @@ def perform_multilabel_eda(
 		print(unique_label_sets_df.head(10))
 
 		if len(unique_label_sets) > 0:
-				plt.figure(figsize=(12, 8))
-				# Plot top N unique combinations or all if less than N
-				top_n_combinations = unique_label_sets_df.head(min(20, len(unique_label_sets)))
-
-				# FIX: Convert tuple Label Sets to readable strings for plotting
-				top_n_combinations['Label Set String'] = top_n_combinations['Label Set'].apply(lambda x: ', '.join(x))
-
-				sns.barplot(x='Count', y='Label Set String', data=top_n_combinations, palette='magma')
-				plt.title(f'Top {len(top_n_combinations)} Most Frequent Unique Label Combinations')
-				plt.xlabel('Number of Samples')
-				plt.ylabel('Label Combination')
-				plt.tight_layout()
-				plt.savefig(
-						fname=os.path.join(output_dir, f"{label_column}_top_unique_label_combinations.png"),
-						dpi=DPI,
-						bbox_inches='tight',
-				)
-				plt.close() # Close the plot
+			plt.figure(figsize=(12, 8))
+			top_n_combinations = unique_label_sets_df.head(min(20, len(unique_label_sets))).copy()
+			top_n_combinations['Label Set String'] = top_n_combinations['Label Set'].apply(lambda x: ', '.join(x))
+			sns.barplot(x='Count', y='Label Set String', data=top_n_combinations, palette='magma')
+			plt.title(f'Top {len(top_n_combinations)} Most Frequent Unique Label Combinations')
+			plt.xlabel('Number of Samples')
+			plt.ylabel('Label Combination')
+			plt.tight_layout()
+			plt.savefig(
+				fname=os.path.join(output_dir, f"{label_column}_top_unique_label_combinations.png"),
+				dpi=DPI,
+				bbox_inches='tight',
+			)
+			plt.close() # Close the plot
 		print("-" * 40 + "\n")
 
 		# --- 8. Label Correlation Matrix (Jaccard Similarity) ---
