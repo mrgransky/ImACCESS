@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=multi_label_annotation_textual_visual
+#SBATCH --job-name=multi_label_annotation
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -44,7 +44,7 @@ python -u multi_label_annotation.py \
   --csv_file ${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata.csv \
   --num_workers $SLURM_CPUS_PER_TASK \
   --text_batch_size 1024 \
-  --vision_batch_size 512 \
+  --vision_batch_size 32 \
   --relevance_threshold 0.25 \
   --vision_threshold 0.20 \
 

@@ -415,14 +415,11 @@ def get_textual_based_annotation(
 		csv_file: str, 
 		num_workers: int,
 		batch_size: int,
-		relevance_threshold: float,
 		metadata_fpth: str,
 		device: str,
 		st_model_name: str,
-		ner_model_name: str,
 		topk: int = 3,
 		verbose: bool = True,
-		use_parallel: bool = False,
 	):
 	if verbose:
 		print(f"Semi-Supervised textual-based annotation batch_size: {batch_size} num_workers: {num_workers}".center(160, "-"))
@@ -575,14 +572,11 @@ def get_textual_based_annotation(
 def main():
 	parser = argparse.ArgumentParser(description="Multi-label annotation for Historical Archives Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
-	parser.add_argument("--use_parallel", '-parallel', action="store_true")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
-	parser.add_argument("--relevance_threshold", '-rth', type=float, default=0.3, help="Relevance threshold for textual-based annotation")
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=128, help="Batch size for textual processing")
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=4, help="Batch size for vision processing")
 	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-MiniLM-L12-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2", "jinaai/jina-embeddings-v3", "paraphrase-multilingual-MiniLM-L12-v2"], help="Sentence-transformer model name")
 	parser.add_argument("--vlm_model_name", '-vlm', type=str, default="google/siglip2-so400m-patch16-naflex", choices=["kakaobrain/align-base", "google/siglip2-so400m-patch16-naflex"], help="Vision-Language model name")
-	parser.add_argument("--ner_model_name", '-ner', type=str, default="dslim/bert-large-NER", choices=["dslim/bert-large-NER", "dslim/bert-base-NER", "Babelscape/wikineural-multilingual-ner"], help="NER model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 
 	args, unknown = parser.parse_known_args()
@@ -624,12 +618,9 @@ def main():
 	else:
 		textual_based_labels = get_textual_based_annotation(
 			csv_file=args.csv_file,
-			use_parallel=args.use_parallel,
 			num_workers=args.num_workers,
 			batch_size=args.text_batch_size,
-			relevance_threshold=args.relevance_threshold,
 			st_model_name=args.sentence_model_name,
-			ner_model_name=args.ner_model_name,
 			metadata_fpth=text_output_path,
 			device=args.device,
 			verbose=True,
