@@ -11,7 +11,7 @@
 #SBATCH --mem=64G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
-#SBATCH --array=4
+#SBATCH --array=0-4
 #SBATCH --gres=gpu:v100:1
 
 set -euo pipefail
@@ -44,7 +44,7 @@ python -u multi_label_annotation.py \
   --csv_file ${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata.csv \
   --num_workers $SLURM_CPUS_PER_TASK \
   --text_batch_size 1024 \
-  --vision_batch_size 32 \
+  --vision_batch_size 128 \
   --relevance_threshold 0.25 \
   --vision_threshold 0.20 \
 
