@@ -2434,47 +2434,47 @@ def perform_multilabel_eda(
 		# --- 3. Preprocessing Label Columns ---
 		label_columns_to_parse = [label_column, 'textual_based_labels', 'visual_based_labels']
 		processed_dfs = {} # Store processed dataframes for comparison
+		df_for_parsing_and_filtering = df.copy()
 
 		for col in label_columns_to_parse:
-				print(f"--- Parsing '{col}' column ---")
-				if col not in df.columns:
-						print(f"Warning: Label column '{col}' not found in the DataFrame. Skipping.\n")
-						continue
-
-				if not df.empty and isinstance(df[col].iloc[0], str):
-						try:
-								df[col] = df[col].apply(ast.literal_eval)
-								print(f"Successfully parsed '{col}' column from string to list.\n")
-						except (ValueError, SyntaxError) as e:
-								print(f"Error: Could not parse '{col}' column. "
-											f"Ensure it contains valid string representations of lists. Error: {e}")
-								continue # For comparison, we can still proceed with other columns even if one fails
-				elif not df.empty:
-						print(f"'{col}' column is already in list format or not a string. No parsing needed.\n")
-				else:
-						print(f"DataFrame is empty, cannot proceed with '{col}' label parsing.\n")
-						continue
-
-				# Filter out rows with empty label lists for the current column
-				initial_len_col = len(df)
-				df_filtered_col = df[df[col].apply(len) > 0].copy()
-				if len(df_filtered_col) == 0:
-						print(f"No samples with valid labels found in '{col}' after parsing/filtering. Skipping further analysis for this column.\n")
-						continue
-				if initial_len_col != len(df_filtered_col):
-						print(f"Removed {initial_len_col - len(df_filtered_col)} rows with empty label lists for column '{col}'.")
-						# Note: We are not modifying the original df here,
-						# but creating a filtered df for specific column analysis.
-				processed_dfs[col] = df_filtered_col # Store the filtered dataframe for this column
+			print(f"--- Parsing '{col}' column ---")
+			if col not in df_for_parsing_and_filtering.columns:
+				print(f"Warning: Label column '{col}' not found in the DataFrame. Skipping.\n")
+				continue
+			current_col_series = df_for_parsing_and_filtering[col]
+			first_valid_item = current_col_series.dropna().iloc[0] if not current_col_series.dropna().empty else None
+			if first_valid_item is not None and isinstance(first_valid_item, str):
+				print(f"Attempting to parse string representations in '{col}' column...")
+				try:
+					parsed_series = current_col_series.apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x)
+					df_for_parsing_and_filtering[col] = parsed_series # Update the column in our working df
+					print(f"Successfully parsed string representations in '{col}' column.\n")
+				except (ValueError, SyntaxError) as e:
+					print(
+						f"Error: Could not parse some string values in '{col}' column. "
+						f"Ensure they are valid string representations of lists. Error: {e}"
+					)
+			elif first_valid_item is not None: # Not a string, but not all NaNs
+				print(f"'{col}' column's first valid item is of type {type(first_valid_item)}. Assuming list-like or compatible. No string parsing attempted.\n")
+			else:
+				print(f"'{col}' column is empty or all NaNs. No string parsing possible.\n")
+			
+			temp_series_for_filtering = df_for_parsing_and_filtering[col].copy()
+			temp_series_for_filtering = temp_series_for_filtering.apply(lambda x: [] if pd.isna(x) and not isinstance(x, (list, tuple)) else x)
+			valid_entries_mask = temp_series_for_filtering.apply(lambda x: isinstance(x, (list, tuple)) and len(x) > 0)
+			df_filtered_for_this_col = df[valid_entries_mask].copy() # Filter original df rows
+			if len(df_filtered_for_this_col) == 0:
+				print(f"No samples with valid (non-empty list) labels found in '{col}' after parsing/filtering. Skipping further analysis for this column.\n")
+				continue
+			print(f"For column '{col}', retained {len(df_filtered_for_this_col)} rows with non-empty label lists out of {len(df)} original rows.")
+			processed_dfs[col] = df_filtered_for_this_col.copy()
+			processed_dfs[col][col] = df_for_parsing_and_filtering.loc[valid_entries_mask, col]
 
 		# Use the main label_column's filtered DataFrame for overall stats
 		if label_column not in processed_dfs:
-				print(f"Main label column '{label_column}' could not be processed or is empty. Exiting EDA.")
-				return
-
-		df = processed_dfs[label_column].copy() # Ensure df is the filtered one for the main label column
-
-
+			print(f"Main label column '{label_column}' could not be processed or is empty. Exiting EDA.")
+			return
+		df = processed_dfs[label_column].copy()
 		# --- 4. Multi-label Statistics (for main label_column) ---
 		all_individual_labels = [label for sublist in df[label_column] for label in sublist]
 		unique_labels = sorted(list(set(all_individual_labels)))
