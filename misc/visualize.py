@@ -2461,7 +2461,9 @@ def perform_multilabel_eda(
 			
 			temp_series_for_filtering = df_for_parsing_and_filtering[col].copy()
 			def clean_value(val):
-				if pd.isna(val) and not isinstance(val, (list, tuple)):
+				if isinstance(val, (list, tuple)):
+					return val
+				if pd.isna(val):
 					return []
 				return val
 			temp_series_for_filtering = temp_series_for_filtering.apply(clean_value)
