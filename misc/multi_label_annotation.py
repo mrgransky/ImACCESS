@@ -559,6 +559,8 @@ def get_textual_based_annotation(
 		del text_embs, cosine_scores, topk_scores, topk_indices
 		torch.cuda.empty_cache()
 	
+	if verbose:
+		print(f"Saving results to {metadata_fpth}...")
 	df.to_csv(metadata_fpth, index=False)
 
 	try:
