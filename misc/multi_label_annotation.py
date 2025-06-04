@@ -17,6 +17,14 @@ torch.set_grad_enabled(False)
 # Make language detection deterministic
 DetectorFactory.seed = 42
 
+dtypes = {
+	'doc_id': str, 'id': str, 'label': str, 'title': str,
+	'description': str, 'img_url': str, 'enriched_document_description': str,
+	'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
+	'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+	'user_query': str, 'country': str,
+}
+
 # Custom stopwords and metadata patterns
 CUSTOM_STOPWORDS = ENGLISH_STOP_WORDS.union(
 	{
@@ -357,14 +365,12 @@ def get_visual_based_annotation(
 		text_embeddings = model.get_text_features(**text_inputs)
 		text_embeddings = text_embeddings / text_embeddings.norm(dim=-1, keepdim=True)
 	
-	# Load dataframe
-	dtypes = {
-		'doc_id': str, 'id': str, 'label': str, 'title': str,
-		'description': str, 'img_url': str, 'enriched_document_description': str,
-		'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
-		'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
-	}
-	df = pd.read_csv(csv_file, on_bad_lines='skip', dtype=dtypes, low_memory=False)
+	df = pd.read_csv(
+		filepath_or_buffer=csv_file, 
+		on_bad_lines='skip', 
+		dtype=dtypes, 
+		low_memory=False,
+	)
 	img_paths = df['img_path'].tolist()
 	combined_labels = [[] for _ in range(len(img_paths))]
 	
@@ -458,21 +464,13 @@ def get_textual_based_annotation(
 	if verbose:
 		print(f"Label embeddings: {type(label_embs)} {label_embs.shape} computed in {time.time() - t0:.2f} sec")
 	
-	# Load dataframe
 	if verbose:
 		print(f"Loading dataframe: {csv_file}...")
-	dtypes = {
-		'doc_id': str, 'id': str, 'label': str, 'title': str,
-		'description': str, 'img_url': str, 'enriched_document_description': str,
-		'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
-		'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
-		'user_query': str,
-	}
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
 		on_bad_lines='skip',
 		dtype=dtypes,
-		low_memory=True
+		low_memory=False,
 	)
 	if verbose:
 		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
@@ -595,7 +593,7 @@ def main():
 		'doc_id': str, 'id': str, 'label': str, 'title': str,
 		'description': str, 'img_url': str, 'enriched_document_description': str,
 		'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
-		'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+		'img_path': str, 'doc_date': str, 'dataset': str, 'date': str, 'country': str,
 	}
 	
 	if os.path.exists(text_output_path):
