@@ -330,8 +330,11 @@ def get_visual_based_annotation(
 	gpu_name = torch.cuda.get_device_name(device)
 	total_gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3 # GB
 	available_gpu_memory = torch.cuda.mem_get_info()[0] / 1024**3 # GB
-	print(f"Total GPU memory: {total_gpu_memory:.2f} GB ({gpu_name})")
-	print(f"Available GPU memory: {available_gpu_memory:.2f} GB ({gpu_name})")
+	print(
+		f"GPU: {gpu_name} "
+		f"[Memory] Total: {total_gpu_memory:.2f} GB "
+		f"Available: {available_gpu_memory:.2f} GB"
+	)
 	
 	model = AutoModel.from_pretrained(
 		pretrained_model_name_or_path=vlm_model_name,
