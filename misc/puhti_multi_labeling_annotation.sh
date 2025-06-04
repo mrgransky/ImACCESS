@@ -43,7 +43,7 @@ DATASETS=(
 python -u multi_label_annotation.py \
   --csv_file ${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata.csv \
   --num_workers $SLURM_CPUS_PER_TASK \
-  --text_batch_size 1024 \
+  --text_batch_size 2048 \
   --vision_batch_size 64 \
   --relevance_threshold 0.25 \
   --vision_threshold 0.20 \
