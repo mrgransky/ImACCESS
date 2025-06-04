@@ -7,11 +7,11 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=40
+#SBATCH --cpus-per-task=10
 #SBATCH --mem=373G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
-#SBATCH --array=0-1,4
+#SBATCH --array=0-1
 #SBATCH --gres=gpu:v100:1
 
 set -euo pipefail
@@ -44,7 +44,7 @@ python -u multi_label_annotation.py \
   --csv_file ${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata.csv \
   --num_workers $SLURM_CPUS_PER_TASK \
   --text_batch_size 2048 \
-  --vision_batch_size 64 \
+  --vision_batch_size 32 \
   --relevance_threshold 0.25 \
   --vision_threshold 0.20 \
 
