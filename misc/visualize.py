@@ -2460,7 +2460,11 @@ def perform_multilabel_eda(
 				print(f"'{col}' column is empty or all NaNs. No string parsing possible.\n")
 			
 			temp_series_for_filtering = df_for_parsing_and_filtering[col].copy()
-			temp_series_for_filtering = temp_series_for_filtering.apply(lambda x: [] if pd.isna(x) and not isinstance(x, (list, tuple)) else x)
+			def clean_value(val):
+				if pd.isna(val) and not isinstance(val, (list, tuple)):
+					return []
+				return val
+			temp_series_for_filtering = temp_series_for_filtering.apply(clean_value)
 			valid_entries_mask = temp_series_for_filtering.apply(lambda x: isinstance(x, (list, tuple)) and len(x) > 0)
 			df_filtered_for_this_col = df[valid_entries_mask].copy() # Filter original df rows
 			if len(df_filtered_for_this_col) == 0:
