@@ -682,7 +682,7 @@ def main():
 			print(f"Loaded {len(combined_labels)} combined labels")
 			return combined_labels
 
-	print("Co-annotating textual and visual labels".center(160, "-"))
+	print("Merging textual and visual labels".center(160, "-"))
 	combined_labels = []
 	empty_count = 0
 	
@@ -726,16 +726,18 @@ def main():
 	df['visual_based_labels'] = [labels if labels else None for labels in visual_based_labels]
 	df['multimodal_labels'] = [labels if labels else None for labels in combined_labels]
 	
+	print(f"Saving results to {combined_output_path}...")
 	df.to_csv(combined_output_path, index=False)
-
-	perform_multilabel_eda(data_path=combined_output_path, label_column='multimodal_labels')
-
 	try:
 		df.to_excel(combined_output_path.replace('.csv', '.xlsx'), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	# stratified split train/val
+	perform_multilabel_eda(
+		data_path=combined_output_path, 
+		label_column='multimodal_labels',
+	)
+
 	train_df, val_df = get_multi_label_stratified_split(
 		df=df,
 		val_split_pct=0.35,

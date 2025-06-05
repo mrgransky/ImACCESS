@@ -2387,13 +2387,11 @@ def perform_multilabel_eda(
 		n_top_labels_co_occurrence: int = 15,
 		DPI: int = 200,
 	) -> None:
+		print(f"Multi-label EDA for {data_path} (column: {label_column})".center(160, "-"))
+		eda_st = time.time()
 		dataset_dir = os.path.dirname(data_path)
 		output_dir = os.path.join(dataset_dir, "outputs")
 		os.makedirs(output_dir, exist_ok=True) # Ensure outputs directory exists
-
-
-		print(f"--- Starting Multi-label EDA for '{data_path}' ---")
-		print(f"Focusing on label column: '{label_column}'\n")
 
 		# --- 1. Load Data ---
 		if not os.path.exists(data_path):
@@ -2789,7 +2787,7 @@ def perform_multilabel_eda(
 			print("Neither 'doc_date' nor 'raw_doc_date' column found. Skipping temporal analysis.")
 		print("-" * 40 + "\n")
 
-		print("--- EDA Complete ---")
+		print(f"EDA Elapsed_t: {time.time()-eda_st:.3f} sec".center(160, "-"))
 
 
 
