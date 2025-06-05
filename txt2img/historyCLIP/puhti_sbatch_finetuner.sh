@@ -7,8 +7,8 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=56G
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=64G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=0-11 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
