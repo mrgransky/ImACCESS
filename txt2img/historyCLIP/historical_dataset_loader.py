@@ -1,6 +1,6 @@
 from utils import *
 
-dtypes = {
+dtypes={
 	'doc_id': str,
 	'id': str,
 	'label': str,
@@ -16,6 +16,9 @@ dtypes = {
 	'dataset': str,
 	'date': str,
 	'country': str,
+	'textual_based_labels': str,
+	'visual_based_labels': str,
+	'multimodal_labels': str,
 }
 
 def _convert_image_to_rgb(image: Image) -> Image:
@@ -250,22 +253,22 @@ def get_multi_label_datasets(ddir: str, seed: int = 42):
 	metadata_fpth = os.path.join(ddir, "metadata_multimodal.csv")
 	print(f"Loading multi-label dataset: {metadata_fpth}")
 	
-	dtypes = {
-			'img_url': str,
-			'id': str,
-			'title': str,
-			'description': str,
-			'user_query': str,
-			'enriched_document_description': str,
-			'raw_doc_date': str,
-			'doc_url': str,
-			'img_path': str,
-			'doc_date': str,
-			'label': str,
-			'textual_based_labels': str,
-			'visual_based_labels': str,
-			'multimodal_labels': str,
-	}
+	# dtypes = {
+	# 		'img_url': str,
+	# 		'id': str,
+	# 		'title': str,
+	# 		'description': str,
+	# 		'user_query': str,
+	# 		'enriched_document_description': str,
+	# 		'raw_doc_date': str,
+	# 		'doc_url': str,
+	# 		'img_path': str,
+	# 		'doc_date': str,
+	# 		'label': str,
+	# 		'textual_based_labels': str,
+	# 		'visual_based_labels': str,
+	# 		'multimodal_labels': str,
+	# }
 	
 	df = pd.read_csv(
 			filepath_or_buffer=metadata_fpth, 
