@@ -600,6 +600,7 @@ def main():
 	
 	if os.path.exists(text_output_path):
 		print(f"Found existing textual-based labels at {text_output_path} Loading...")
+		t0 = time.time()
 		text_df = pd.read_csv(
 			filepath_or_buffer=text_output_path,
 			on_bad_lines='skip',
@@ -616,8 +617,7 @@ def main():
 					textual_based_labels.append(labels if labels else [])
 				except:
 					textual_based_labels.append([])
-		
-		print(f"Loaded {len(textual_based_labels)} textual-based labels")
+		print(f"Loaded {len(textual_based_labels)} textual-based labels in {time.time() - t0:.2f} sec")
 	else:
 		textual_based_labels = get_textual_based_annotation(
 			csv_file=args.csv_file,
@@ -631,6 +631,7 @@ def main():
 
 	if os.path.exists(vision_output_path):
 		print(f"Found existing visual-based labels at {vision_output_path} Loading...")
+		t0 = time.time()
 		vision_df = pd.read_csv(
 			filepath_or_buffer=vision_output_path,
 			on_bad_lines='skip',
@@ -648,7 +649,7 @@ def main():
 				except:
 					visual_based_labels.append([])
 		
-		print(f"Loaded {len(visual_based_labels)} visual-based labels")
+		print(f"Loaded {len(visual_based_labels)} visual-based labels in {time.time() - t0:.2f} sec")
 	else:
 		visual_based_labels = get_visual_based_annotation(
 			csv_file=args.csv_file,
@@ -681,7 +682,7 @@ def main():
 			print(f"Loaded {len(combined_labels)} combined labels")
 			return combined_labels
 
-	print("Merging text and vision annotations...")
+	print("Co-annotating textual and visual labels".center(160, "-"))
 	combined_labels = []
 	empty_count = 0
 	
@@ -713,7 +714,12 @@ def main():
 	
 	print(f"Created {len(combined_labels)} combined labels ({empty_count} empty entries)")
 	
-	df = pd.read_csv(args.csv_file)
+	df = pd.read_csv(
+		filepath_or_buffer=args.csv_file,
+		on_bad_lines='skip',
+		dtype=dtypes,
+		low_memory=False,
+	)
 	
 	# Convert empty lists to None for better CSV representation
 	df['textual_based_labels'] = [labels if labels else None for labels in textual_based_labels]

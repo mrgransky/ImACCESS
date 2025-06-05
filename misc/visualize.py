@@ -2625,7 +2625,7 @@ def perform_multilabel_eda(
 
 
 		# --- 9. Comparison of Label Sources ---
-		print("--- Comparison of Label Sources: textual_based_labels vs. visual_based_labels vs. multimodal_labels ---")
+		print("Label Sources Comparison: textual_based_labels vs. visual_based_labels vs. multimodal_labels".center(160, "-"))
 
 		source_cols = {
 				'textual_based': 'textual_based_labels',
