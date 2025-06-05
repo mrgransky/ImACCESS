@@ -298,10 +298,6 @@ def main():
 	pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
 	pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
 	print(f">> Pretrained model metrics computed successfully. [for Quantitative Analysis]")
-	# print(f"pretrained_img2txt_dict:")
-	# print(json.dumps(pretrained_img2txt_dict, indent=4, ensure_ascii=False))
-	# print(f"pretrained_txt2img_dict:")
-	# print(json.dumps(pretrained_txt2img_dict, indent=4, ensure_ascii=False))
 
 	plot_comparison_metrics_split(
 		dataset_name=validation_loader.name,
