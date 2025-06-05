@@ -22,6 +22,19 @@ import seaborn as sns
 import ast
 from typing import Tuple, Union, List, Dict, Any, Optional
 
+dtypes = {
+	'doc_id': str, 'id': str, 'label': str, 'title': str,
+	'description': str, 'img_url': str, 'enriched_document_description': str,
+	'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
+	'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+	'user_query': str, 'country': str,
+}
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', 1000)
+pd.set_option('display.max_rows', 100)
+sns.set_style("whitegrid")
+
+
 def plot_image_to_texts_separate_horizontal_bars(
 				models: dict,
 				validation_loader: DataLoader,
@@ -2373,56 +2386,31 @@ def perform_multilabel_eda(
 		n_top_labels_plot: int = 30,
 		n_top_labels_co_occurrence: int = 15,
 		DPI: int = 200,
-) -> None:
-		"""
-		Performs comprehensive exploratory data analysis on a multi-label dataset,
-		focusing on label distribution, cardinality, co-occurrence, unique label sets,
-		and comparison of different label sources. All generated figures are saved
-		to an 'outputs' directory within the dataset's parent directory and are not displayed.
-
-		Args:
-				data_path (str): The path to the CSV file containing the dataset.
-				label_column (str, optional): The name of the column containing multi-labels.
-																			 This column is expected to contain string
-																			 representations of Python lists (e.g., "['tag1', 'tag2']").
-																			 Defaults to 'multimodal_labels'.
-				n_top_labels_plot (int, optional): The number of top most frequent labels
-																					 to display in the bar plot. Defaults to 30.
-				n_top_labels_co_occurrence (int, optional): The number of top labels
-																									to include in the co-occurrence heatmap.
-																									Defaults to 15.
-				DPI (int, optional): Dots per inch for saved figures. Higher DPI means better quality images.
-														 Defaults to 200.
-		Returns:
-				None: Prints statistical summaries and saves plots.
-		"""
-
+	) -> None:
 		dataset_dir = os.path.dirname(data_path)
 		output_dir = os.path.join(dataset_dir, "outputs")
 		os.makedirs(output_dir, exist_ok=True) # Ensure outputs directory exists
 
-		# Set display options for pandas
-		pd.set_option('display.max_columns', None)
-		pd.set_option('display.width', 1000)
-		pd.set_option('display.max_rows', 100)
-
-		# Set plotting style
-		sns.set_style("whitegrid")
 
 		print(f"--- Starting Multi-label EDA for '{data_path}' ---")
 		print(f"Focusing on label column: '{label_column}'\n")
 
 		# --- 1. Load Data ---
 		if not os.path.exists(data_path):
-				print(f"Error: Dataset not found at '{data_path}'. Please check the path.")
-				return
+			print(f"Error: Dataset not found at '{data_path}'. Please check the path.")
+			return
 
 		try:
-				df = pd.read_csv(data_path)
-				print(f"Dataset loaded successfully. Shape: {df.shape}\n")
+			df = pd.read_csv(
+				filepath_or_buffer=data_path, 
+				on_bad_lines='skip', 
+				dtype=dtypes, 
+				low_memory=False,
+			)
+			print(f"Dataset {type(df)} loaded successfully. Shape: {df.shape}\n")
 		except Exception as e:
-				print(f"Error loading dataset from '{data_path}': {e}")
-				return
+			print(f"Error loading dataset from '{data_path}': {e}")
+			return
 
 		# --- 2. Basic Data Information ---
 		print("--- Basic DataFrame Info ---")
@@ -2506,11 +2494,11 @@ def perform_multilabel_eda(
 		plt.grid(axis='y', linestyle='--', alpha=0.7)
 		plt.tight_layout()
 		plt.savefig(
-				fname=os.path.join(output_dir, f"{label_column}_label_cardinality_distribution.png"),
-				dpi=DPI,
-				bbox_inches='tight',
+			fname=os.path.join(output_dir, f"{label_column}_label_cardinality_distribution.png"),
+			dpi=DPI,
+			bbox_inches='tight',
 		)
-		plt.close() # Close the plot to free memory and prevent display
+		plt.close()
 
 		# --- 6. Label Frequency (Distribution of each label) ---
 		label_counts = Counter(all_individual_labels)
@@ -2557,7 +2545,7 @@ def perform_multilabel_eda(
 				dpi=DPI,
 				bbox_inches='tight',
 		)
-		plt.close() # Close the plot
+		plt.close() 
 
 		# --- 7. Unique Label Combinations ---
 		print("--- Unique Label Set Combinations ---")
@@ -2584,7 +2572,7 @@ def perform_multilabel_eda(
 				dpi=DPI,
 				bbox_inches='tight',
 			)
-			plt.close() # Close the plot
+			plt.close() 
 		print("-" * 40 + "\n")
 
 		# --- 8. Label Correlation Matrix (Jaccard Similarity) ---
@@ -2630,7 +2618,7 @@ def perform_multilabel_eda(
 						dpi=DPI,
 						bbox_inches='tight',
 				)
-				plt.close() # Close the plot
+				plt.close() 
 		else:
 				print("Not enough unique labels to display Jaccard similarity matrix (need at least 2).")
 		print("-" * 40 + "\n")
@@ -2700,13 +2688,17 @@ def perform_multilabel_eda(
 			dpi=DPI,
 			bbox_inches='tight',
 		)
-		plt.close() # Close the plot
+		plt.close() 
 		print("-" * 40 + "\n")
 
 		# --- 10. Temporal Analysis (doc_date) ---
 		print("--- Temporal Analysis (doc_date) ---")
-		# Ensure original df is used for temporal analysis before any filtering related to labels
-		original_df = pd.read_csv(data_path) # Reload to get original state for date columns
+		original_df = pd.read_csv(
+			filepath_or_buffer=data_path, 
+			on_bad_lines='skip', 
+			dtype=dtypes, 
+			low_memory=False,
+		)
 
 		date_column_to_use = None
 		if 'raw_doc_date' in original_df.columns:
@@ -2767,7 +2759,7 @@ def perform_multilabel_eda(
 						dpi=DPI,
 						bbox_inches='tight',
 					)
-					plt.close() # Close the plot
+					plt.close() 
 					if label_column in df_valid_dates.columns and isinstance(df_valid_dates[label_column].iloc[0], list): # Check if it's list after parsing
 						df_valid_dates['label_cardinality'] = df_valid_dates[label_column].apply(len)
 						avg_cardinality_by_year = df_valid_dates.groupby('year')['label_cardinality'].mean().reset_index()
@@ -2784,7 +2776,7 @@ def perform_multilabel_eda(
 								dpi=DPI,
 								bbox_inches='tight',
 							)
-							plt.close() # Close the plot
+							plt.close() 
 					elif label_column not in df_valid_dates.columns:
 						print(f"'{label_column}' column not available in date-filtered data for cardinality over time.")
 					else:
