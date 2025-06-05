@@ -30,6 +30,7 @@ import multiprocessing
 import glob
 import psutil
 import ast
+import shutil
 from sklearn.preprocessing import MultiLabelBinarizer
 
 import torchvision.transforms as T
@@ -58,6 +59,18 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
+
+def cleanup_old_temp_dirs():
+	
+	temp_dirs = glob.glob("/tmp/pymp-*")
+	for temp_dir in temp_dirs:
+		try:
+			shutil.rmtree(temp_dir, ignore_errors=True)
+		except:
+			pass
+	if temp_dirs:
+		print(f"Cleaned up {len(temp_dirs)} old temp directories")
+
 
 def get_head_torso_tail_sample_all(
 				metadata_path, 
@@ -187,14 +200,13 @@ def get_head_torso_tail_sample_all(
 		
 		return i2t_queries, t2i_queries
 
-def get_head_torso_tail_sample(
+def get_single_label_head_torso_tail_samples(
 		metadata_path, 
 		metadata_train_path, 
 		metadata_val_path, 
 		num_samples_per_segment=5,
 		head_threshold = 5000, # Labels with frequency > 5000
 		tail_threshold = 1000  # Labels with frequency < 1000
-
 	):
 	print(f"--- Analyzing Label Distribution from {metadata_path} ---")
 	# 1. Load DataFrames

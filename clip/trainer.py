@@ -904,7 +904,7 @@ def compute_singlelabel_correctness(
 @torch.no_grad()
 def get_validation_metrics(
 		model: torch.nn.Module,
-		validation_loader: torch.utils.data.DataLoader,
+		validation_loader: DataLoader,
 		criterion: torch.nn.Module,
 		device: torch.device,
 		topK_values: List[int],
@@ -920,9 +920,6 @@ def get_validation_metrics(
 		model_hash: str = None,
 		temperature: float = 0.07,
 ) -> Dict:
-		"""
-		Compute comprehensive validation metrics with proper single/multi-label support and memory optimization.
-		"""
 		if verbose:
 			print("Computing validation metrics...")
 		
@@ -978,38 +975,38 @@ def get_validation_metrics(
 		
 		# Try to use provided cache first
 		if not is_training and embeddings_cache is not None:
-				all_image_embeds, _ = embeddings_cache
-				all_labels = _prepare_labels_tensor(validation_loader, num_samples, n_classes, device)
-				cache_loaded = True
-				if verbose:
-						print("Using provided embeddings cache")
+			all_image_embeds, _ = embeddings_cache
+			all_labels = _prepare_labels_tensor(validation_loader, num_samples, n_classes, device)
+			cache_loaded = True
+			if verbose:
+				print("Using provided embeddings cache")
 		
 		# Try to load from file cache
 		elif not is_training and os.path.exists(cache_file) and not force_recompute:
+			if verbose:
+				print(f"Loading cached embeddings from {cache_file}")
+			try:
+				cached = torch.load(cache_file, map_location='cpu')
+				all_image_embeds = cached['image_embeds']
+				cached_labels = cached['labels']
+				
+				# Validate cache compatibility
+				expected_labels = _prepare_labels_tensor(validation_loader, num_samples, n_classes, device)
+				
+				if _validate_cache_compatibility(cached_labels, expected_labels):
+					all_labels = cached_labels.to(device)
+					cache_loaded = True
+					if verbose:
+						print("Cache validation successful")
+				else:
+					if verbose:
+						print("Cache incompatible, recomputing...")
+					cache_loaded = False
+							
+			except Exception as e:
 				if verbose:
-						print(f"Loading cached embeddings from {cache_file}")
-				try:
-						cached = torch.load(cache_file, map_location='cpu')
-						all_image_embeds = cached['image_embeds']
-						cached_labels = cached['labels']
-						
-						# Validate cache compatibility
-						expected_labels = _prepare_labels_tensor(validation_loader, num_samples, n_classes, device)
-						
-						if _validate_cache_compatibility(cached_labels, expected_labels):
-								all_labels = cached_labels.to(device)
-								cache_loaded = True
-								if verbose:
-										print("Cache validation successful")
-						else:
-								if verbose:
-										print("Cache incompatible, recomputing...")
-								cache_loaded = False
-								
-				except Exception as e:
-						if verbose:
-								print(f"Cache loading failed: {e}. Recomputing...")
-						cache_loaded = False
+					print(f"Cache loading failed: {e}. Recomputing...")
+				cache_loaded = False
 		
 		# Compute embeddings if not cached
 		if not cache_loaded:

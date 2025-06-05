@@ -63,9 +63,9 @@ def main():
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
 	parser.add_argument('--dataset_type', '-dt', type=str, choices=['single_label', 'multi_label'], default='single_label', help='Dataset type (single_label/multi_label)')
 	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
-	parser.add_argument('--num_workers', '-nw', type=int, default=8, help='Number of CPUs [def: max cpus]')
+	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs [def: max cpus]')
 	parser.add_argument('--epochs', '-e', type=int, default=3, help='Number of epochs')
-	parser.add_argument('--batch_size', '-bs', type=int, default=32, help='Batch size for training')
+	parser.add_argument('--batch_size', '-bs', type=int, default=16, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--print_every', type=int, default=10, help='Print loss')
@@ -285,5 +285,5 @@ def main():
 			log_file.close()
 
 if __name__ == "__main__":
-	multiprocessing.set_start_method('spawn', force=True)
+	cleanup_old_temp_dirs()
 	main()

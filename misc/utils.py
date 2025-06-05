@@ -87,6 +87,7 @@ from PIL import Image, ImageDraw, ImageOps, ImageFilter
 from functools import cache, partial
 from urllib.parse import urlparse, unquote, quote_plus, urljoin
 from sklearn.model_selection import train_test_split
+from skmultilearn.model_selection import iterative_train_test_split
 from tqdm import tqdm
 from datetime import timedelta
 import glob
@@ -325,26 +326,8 @@ def get_multi_label_stratified_split(
 		label_col: str = 'multimodal_labels',
 		# min_label_freq: int = 2 # Removed as per analysis, handled by IterativeStratification
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-		"""
-		Splits a multi-labeled dataset into train and validation sets in a stratified manner.
-		Uses IterativeStratification from skmultilearn to preserve label distributions.
-
-		Args:
-				df (pd.DataFrame): The input DataFrame.
-				val_split_pct (float): Percentage of data for the validation set (e.g., 0.2).
-				seed (int, optional): Random seed for reproducibility. Defaults to 42.
-				label_col (str, optional): Name of the column containing multi-labels
-																	 (expected to be string representations of lists).
-																	 Defaults to 'multimodal_labels'.
-				# min_label_freq: Removed. IterativeStratification handles singletons.
-
-		Returns:
-				Tuple[pd.DataFrame, pd.DataFrame]: A tuple containing train_df and val_df.
-
-		Raises:
-				ValueError: If label column is not found, cannot be parsed, or sets become empty.
-		"""
 		print(f"Stratified Splitting [Multi-label dataset]".center(150, "-"))
+		t_st = time.time()
 		set_seeds(seed=seed, debug=False)
 
 		df_copy = df.copy() # Work on a copy to avoid modifying the original df
@@ -399,56 +382,26 @@ def get_multi_label_stratified_split(
 		print(f">> Found {len(unique_labels)} unique labels:\n{unique_labels.tolist()[:10]}...") # Show first 10
 
 		# --- 4. Perform Iterative Stratification ---
-		try:
-				from skmultilearn.model_selection import iterative_train_test_split
-				print("\nAttempting multi-label stratification using skmultilearn.iterative_train_test_split...")
-
-				# X is a dummy feature matrix (can be indices or just a range)
-				# y is the binarized label matrix
-				X_indices = np.arange(len(df_filtered)).reshape(-1, 1)
-				
-				# iterative_train_test_split returns (X_train, y_train, X_val, y_val)
-				X_train_idx, y_train_labels, X_val_idx, y_val_labels = iterative_train_test_split(
-						X_indices, label_matrix, test_size=val_split_pct
-				)
-
-				# Convert back to original DataFrame indices
-				train_original_indices = df_filtered.iloc[X_train_idx.flatten()].index.values
-				val_original_indices = df_filtered.iloc[X_val_idx.flatten()].index.values
-				
-				train_df = df_filtered.loc[train_original_indices].reset_index(drop=True)
-				val_df = df_filtered.loc[val_original_indices].reset_index(drop=True)
-
-		except ImportError:
-				print("\n<!> Warning: skmultilearn not installed. Falling back to non-stratified random split (sklearn.model_selection.train_test_split).")
-				print("This split will NOT be stratified for multi-label data.")
-				
-				from sklearn.model_selection import train_test_split
-				train_df, val_df = train_test_split(
-						df_filtered,
-						test_size=val_split_pct,
-						shuffle=True, # Always shuffle for random split
-						random_state=seed
-				)
-				train_df = train_df.reset_index(drop=True)
-				val_df = val_df.reset_index(drop=True)
-		except Exception as e:
-				print(f"\nError during iterative_train_test_split: {e}")
-				print("Falling back to non-stratified random split (sklearn.model_selection.train_test_split).")
-				from sklearn.model_selection import train_test_split
-				train_df, val_df = train_test_split(
-						df_filtered,
-						test_size=val_split_pct,
-						shuffle=True,
-						random_state=seed
-				)
-				train_df = train_df.reset_index(drop=True)
-				val_df = val_df.reset_index(drop=True)
-
+		print("Multi-label stratification using Iterative Stratification...")
+		# X is a dummy feature matrix (can be indices or just a range)
+		# y is the binarized label matrix
+		X_indices = np.arange(len(df_filtered)).reshape(-1, 1)
+		
+		# iterative_train_test_split returns (X_train, y_train, X_val, y_val)
+		X_train_idx, y_train_labels, X_val_idx, y_val_labels = iterative_train_test_split(
+			X_indices, 
+			label_matrix, 
+			test_size=val_split_pct,
+		)
+		# Convert back to original DataFrame indices
+		train_original_indices = df_filtered.iloc[X_train_idx.flatten()].index.values
+		val_original_indices = df_filtered.iloc[X_val_idx.flatten()].index.values
+		train_df = df_filtered.loc[train_original_indices].reset_index(drop=True)
+		val_df = df_filtered.loc[val_original_indices].reset_index(drop=True)
 
 		# --- 5. Verify Split and Print Distributions ---
 		if train_df.empty or val_df.empty:
-				raise ValueError("Train or validation set is empty after splitting. Adjust val_split_pct or check data.")
+			raise ValueError("Train or validation set is empty after splitting. Adjust val_split_pct or check data.")
 
 		print(f"\n>> Original Filtered Data: {df_filtered.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
 
@@ -462,104 +415,8 @@ def get_multi_label_stratified_split(
 		val_label_counts = Counter([label for labels in val_df[label_col] for label in labels])
 		val_label_df = pd.DataFrame(val_label_counts.items(), columns=['Label', 'Count']).sort_values(by='Count', ascending=False)
 		print(val_label_df.head(20).to_string())
-		print("-" * 150 + "\n")
-
+		print(f"Stratified Splitting Elapsed Time: {time.time()-t_st:.3f} sec".center(160, "-"))
 		return train_df, val_df
-
-def get_multi_label_stratified_split_old(
-		df: pd.DataFrame,
-		val_split_pct: float,
-		seed: int = 42,
-		label_col: str = 'multimodal_labels',
-		min_label_freq: int = 2
-	) -> Tuple[pd.DataFrame, pd.DataFrame]:
-	print(f"Stratified Splitting [Multi-label dataset]".center(150, "-"))
-	set_seeds(seed=seed, debug=False)
-	
-	# Convert string representations of lists to actual lists if needed
-	def parse_label_list(label):
-		if isinstance(label, str):
-			# Remove square brackets and split by comma
-			label = label.strip('[]').replace("'", "").split(', ')
-			label = [l.strip() for l in label if l.strip()]
-		return label if isinstance(label, list) else []
-	
-	df = df.copy()
-	df[label_col] = df[label_col].apply(parse_label_list)
-	
-	# Remove rows with empty label lists
-	df_filtered = df[df[label_col].apply(len) > 0]
-	if df_filtered.empty:
-		raise ValueError("No samples with non-empty label lists.")
-	
-	# Count label frequencies
-	label_counts = Counter()
-	for labels in df_filtered[label_col]:
-		for label in labels:
-			label_counts[label] += 1
-	
-	# Filter out labels with frequency < min_label_freq
-	labels_to_drop = [label for label, count in label_counts.items() if count < min_label_freq]
-	if labels_to_drop:
-		print(f"Removing {len(labels_to_drop)} labels with frequency < {min_label_freq}:\n{labels_to_drop}")
-		df_filtered = df_filtered[
-			df_filtered[label_col].apply(
-				lambda x: not any(label in x for label in labels_to_drop)
-			)
-		]
-	if df_filtered.empty or df_filtered[label_col].apply(len).sum() == 0:
-		raise ValueError("No samples remain after filtering low-frequency labels.")
-	
-	# Create binary label matrix
-	mlb = MultiLabelBinarizer()
-	label_matrix = mlb.fit_transform(df_filtered[label_col])
-	unique_labels = mlb.classes_
-	print(f">> Found {len(unique_labels)} unique labels out of {len(label_counts)} labels:\n{unique_labels.tolist()}")
-	
-	try:
-		# Use iterative stratification for multi-label data
-		from skmultilearn.model_selection import iterative_train_test_split
-		X = df_filtered.index.values.reshape(-1, 1)  # Dummy feature matrix (indices)
-		y = label_matrix
-		X_train, y_train, X_val, y_val = iterative_train_test_split(
-			X, y, test_size=val_split_pct
-		)
-		
-		# Convert indices back to DataFrames
-		train_indices = X_train.flatten()
-		val_indices = X_val.flatten()
-		train_df = df_filtered.loc[train_indices].reset_index(drop=True)
-		val_df = df_filtered.loc[val_indices].reset_index(drop=True)
-			
-	except ImportError:
-		print("scikit-multilearn not installed. Using approximate stratification...")
-		# Fallback: Sample based on label frequencies
-		label_freq = {label: count / len(df_filtered) for label, count in label_counts.items()}
-		train_indices = []
-		val_indices = []
-		
-		for idx, labels in df_filtered[label_col].items():
-			# Approximate probability of being in validation set
-			prob_val = val_split_pct
-			for label in labels:
-				prob_val *= label_freq[label]
-			if random.random() < prob_val:
-				val_indices.append(idx)
-			else:
-				train_indices.append(idx)
-		
-		train_df = df_filtered.loc[train_indices].reset_index(drop=True)
-		val_df = df_filtered.loc[val_indices].reset_index(drop=True)
-	
-	# Verify split
-	if train_df.empty or val_df.empty:
-		raise ValueError("Train or validation set is empty after splitting.")
-	
-	print(f"\n>> df_filtered: {df_filtered.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
-	print(f"\nTrain label distribution:\n{Counter([label for labels in train_df[label_col] for label in labels])}")
-	print(f"\nVal label distribution:\n{Counter([label for labels in val_df[label_col] for label in labels])}")
-	
-	return train_df, val_df
 
 def download_image(row, session, image_dir, total_rows, retries=2, backoff_factor=0.5):
 	t0 = time.time()
