@@ -1,6 +1,7 @@
 #!/bin/bash
+
 #SBATCH --account=project_2009043
-#SBATCH --job-name=historyX4_finetune_strategy_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --job-name=historyX4_single_label_finetune_strategy_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -44,6 +45,11 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
+DATASET_TYPE=(
+	"single_label"
+	"multi_label"
+)
+
 MODEL_ARCHITECTURES=(
 	"ViT-L/14@336px"
 	"ViT-L/14"
@@ -55,7 +61,7 @@ NUM_DATASETS=${#DATASETS[@]} # Number of datasets
 NUM_STRATEGIES=${#FINETUNE_STRATEGIES[@]} # Number of fine-tune strategies
 NUM_ARCHITECTURES=${#MODEL_ARCHITECTURES[@]} # Number of model architectures
 
-# Approach 2: dataset × strategy × architecture
+# dataset × strategy × architecture
 ### 0-11:  dataset[0] with all strategy×architecture [H4]
 ### 12-23: dataset[1] with all strategy×architecture [NA]
 ### 24-35: dataset[2] with all strategy×architecture [EU]
@@ -131,17 +137,20 @@ ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 
 # For larger models (ViT-L/14 and ViT-L/14@336px), reduce batch size
 if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-		# Further reduce batch size for HISTORY_X4 dataset due to its size
-		if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
-				ADJUSTED_BATCH_SIZE=16  # Very conservative batch size for large model + large dataset
-		else
-				ADJUSTED_BATCH_SIZE=32 # Reduced batch size for large models with other datasets
-		fi
+	# Further reduce batch size for HISTORY_X4 dataset due to its size
+	if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
+		ADJUSTED_BATCH_SIZE=16  # Very conservative batch size for large model + large dataset
+	else
+		ADJUSTED_BATCH_SIZE=32 # Reduced batch size for large models with other datasets
+	fi
 fi
+
 echo "BATCH SIZE: [DEFAULT]: ${BATCH_SIZES[$dataset_index]} ADJUSTED: ${ADJUSTED_BATCH_SIZE}"
 echo "Starting history_clip_trainer.py for task $SLURM_ARRAY_TASK_ID"
+
 python -u history_clip_trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \
+	--dataset_type "${DATASET_TYPE[0]}" \
 	--epochs "${EPOCHS[$dataset_index]}" \
 	--num_workers "$SLURM_CPUS_PER_TASK" \
 	--print_every "${PRINT_FREQUENCIES[$dataset_index]}" \
