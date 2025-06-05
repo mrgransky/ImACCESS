@@ -1,5 +1,23 @@
 from utils import *
 
+dtypes = {
+	'doc_id': str,
+	'id': str,
+	'label': str,
+	'title': str,
+	'description': str,
+	'img_url': str,
+	'label_title_description': str,
+	'raw_doc_date': str,
+	'doc_year': float,
+	'doc_url': str,
+	'img_path': str,
+	'doc_date': str,
+	'dataset': str,
+	'date': str,
+	'country': str,
+}
+
 def _convert_image_to_rgb(image: Image) -> Image:
 	return image.convert("RGB")
 
@@ -46,27 +64,11 @@ def get_single_label_datasets(ddir: str, seed:int=42,):
 	# 	print(df[col].apply(type).value_counts())
 	# 	print("-" * 50)
 	############################################################################
-	dtypes = {
-		'doc_id': str,
-		'id': str,
-		'label': str,
-		'title': str,
-		'description': str,
-		'img_url': str,
-		'label_title_description': str,
-		'raw_doc_date': str,  # Adjust based on actual data
-		'doc_year': float,    # Adjust based on actual data
-		'doc_url': str,
-		'img_path': str,
-		'doc_date': str,      # Adjust based on actual data
-		'dataset': str,
-		'date': str,          # Adjust based on actual data
-	}
 	df = pd.read_csv(
 		filepath_or_buffer=metadata_fpth, 
 		on_bad_lines='skip',
 		dtype=dtypes, 
-		low_memory=True,
+		low_memory=False,
 	)
 	print(f"FULL Dataset {type(df)} {df.shape}")
 	metadata_train_fpth = os.path.join(ddir, "metadata_train.csv")
@@ -269,7 +271,7 @@ def get_multi_label_datasets(ddir: str, seed: int = 42):
 			filepath_or_buffer=metadata_fpth, 
 			on_bad_lines='skip',
 			dtype=dtypes, 
-			low_memory=True,
+			low_memory=False,
 	)
 	print(f"FULL Multi-label Dataset {type(df)} {df.shape}")
 	
