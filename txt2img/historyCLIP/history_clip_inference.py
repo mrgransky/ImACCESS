@@ -326,6 +326,4 @@ def main():
 
 if __name__ == "__main__":
 	multiprocessing.set_start_method('spawn')
-	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
 	main()
-	print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
