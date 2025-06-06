@@ -665,93 +665,104 @@ def main():
 	
 	if os.path.exists(combined_output_path):
 		print(f"Found existing combined labels at {combined_output_path} Loading...")
-		recompute = input("Do you want to recompute the combined labels? (y/n): ").lower() == 'y'
-		if not recompute:
-			print("Using existing combined labels.")
-			combined_df = pd.read_csv(combined_output_path)
-			combined_labels = []
-			for label_str in combined_df['multimodal_labels']:
-				if pd.isna(label_str) or label_str == '[]' or not label_str:
-					combined_labels.append([])
-				else:
-					try:
-						labels = eval(label_str)
-						combined_labels.append(labels if labels else [])
-					except:
-						combined_labels.append([])				
-			print(f"Loaded {len(combined_labels)} combined labels")
-			return combined_labels
+		print("Using existing combined labels.")
+		combined_df = pd.read_csv(
+			filepath_or_buffer=combined_output_path,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
+		combined_labels = []
+		for label_str in combined_df['multimodal_labels']:
+			if pd.isna(label_str) or label_str == '[]' or not label_str:
+				combined_labels.append([])
+			else:
+				try:
+					labels = eval(label_str)
+					combined_labels.append(labels if labels else [])
+				except:
+					combined_labels.append([])				
+		print(f"Loaded {len(combined_labels)} combined labels")
+		# return combined_labels
+	else:
+		print("Merging textual and visual labels".center(160, "-"))
+		combined_labels = []
+		empty_count = 0	
+		for text_labels, vision_labels in zip(textual_based_labels, visual_based_labels):
+			if not text_labels and not vision_labels:
+				combined_labels.append([])
+				empty_count += 1
+				continue
+					
+			# Ensure both are lists before combining
+			if not isinstance(text_labels, list):
+				text_labels = []
+			if not isinstance(vision_labels, list):
+				vision_labels = []
+					
+			# Combine all labels
+			all_labels = list(set(text_labels + vision_labels))
+			
+			# Clean and filter
+			all_labels = clean_(all_labels)
+			all_labels = filter_metadata_terms(all_labels)
+			all_labels = deduplicate_labels(all_labels)
+			
+			# Add semantic categories
+			categorized = assign_semantic_categories(all_labels)
+			final_labels = sorted(set(all_labels + categorized))
+			
+			combined_labels.append(final_labels)
+		
+		print(f"Created {len(combined_labels)} combined labels ({empty_count} empty entries)")
+	
+	
+	
+	if not os.path.exists(combined_output_path):
+		df = pd.read_csv(
+			filepath_or_buffer=args.csv_file,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
 
-	print("Merging textual and visual labels".center(160, "-"))
-	combined_labels = []
-	empty_count = 0
-	
-	for text_labels, vision_labels in zip(textual_based_labels, visual_based_labels):
-		if not text_labels and not vision_labels:
-			combined_labels.append([])
-			empty_count += 1
-			continue
-				
-		# Ensure both are lists before combining
-		if not isinstance(text_labels, list):
-			text_labels = []
-		if not isinstance(vision_labels, list):
-			vision_labels = []
-				
-		# Combine all labels
-		all_labels = list(set(text_labels + vision_labels))
-		
-		# Clean and filter
-		all_labels = clean_(all_labels)
-		all_labels = filter_metadata_terms(all_labels)
-		all_labels = deduplicate_labels(all_labels)
-		
-		# Add semantic categories
-		categorized = assign_semantic_categories(all_labels)
-		final_labels = sorted(set(all_labels + categorized))
-		
-		combined_labels.append(final_labels)
-	
-	print(f"Created {len(combined_labels)} combined labels ({empty_count} empty entries)")
-	
-	df = pd.read_csv(
-		filepath_or_buffer=args.csv_file,
-		on_bad_lines='skip',
-		dtype=dtypes,
-		low_memory=False,
-	)
-	
-	# Convert empty lists to None for better CSV representation
-	df['textual_based_labels'] = [labels if labels else None for labels in textual_based_labels]
-	df['visual_based_labels'] = [labels if labels else None for labels in visual_based_labels]
-	df['multimodal_labels'] = [labels if labels else None for labels in combined_labels]
-	
-	print(f"Saving results to {combined_output_path}...")
-	df.to_csv(combined_output_path, index=False)
-	try:
-		df.to_excel(combined_output_path.replace('.csv', '.xlsx'), index=False)
-	except Exception as e:
-		print(f"Failed to write Excel file: {e}")
+		df['textual_based_labels'] = [labels if labels else None for labels in textual_based_labels]
+		df['visual_based_labels'] = [labels if labels else None for labels in visual_based_labels]
+		df['multimodal_labels'] = [labels if labels else None for labels in combined_labels]
+
+		print(f"Saving dataframe to {combined_output_path}...")
+		df.to_csv(combined_output_path, index=False)
+		try:
+			df.to_excel(combined_output_path.replace('.csv', '.xlsx'), index=False)
+		except Exception as e:
+			print(f"Failed to write Excel file: {e}")
 
 	perform_multilabel_eda(
 		data_path=combined_output_path, 
 		label_column='multimodal_labels',
 	)
 
-	train_df, val_df = get_multi_label_stratified_split(
-		df=df,
-		val_split_pct=0.35,
-		seed=42,
-		label_col='multimodal_labels'
-	)
+	train_df_fpth = combined_output_path.replace('.csv', '_train.csv')
+	val_df_fpth = combined_output_path.replace('.csv', '_val.csv')
+	try:
+		train_df = load_pickle(fpath=train_df_fpth)
+		val_df = load_pickle(fpath=val_df_fpth)
+	except Exception as e:
+		print(f"{e}")
+		train_df, val_df = get_multi_label_stratified_split(
+			df=df,
+			val_split_pct=0.35,
+			seed=42,
+			label_col='multimodal_labels'
+		)
+		save_pickle(pkl=train_df, fname=train_df_fpth,)
+		save_pickle(pkl=val_df, fname=val_df_fpth,)
+
 	print("\n--- Split Results ---")
 	print(f"Train set shape: {train_df.shape}")
 	print(f"Validation set shape: {val_df.shape}")
 
-	train_df.to_csv(combined_output_path.replace('.csv', '_train.csv'), index=False)
-	val_df.to_csv(combined_output_path.replace('.csv', '_val.csv'), index=False)
-
-	return combined_labels
+	# return combined_labels
 
 if __name__ == "__main__":
 	multiprocessing.set_start_method('spawn', force=True)
