@@ -766,7 +766,7 @@ def main():
 		train_df.to_csv(train_df_fpth, index=False)
 		val_df.to_csv(val_df_fpth, index=False)
 
-	print("\n--- Split Results ---")
+	print("Multi-label Stratified Split Results:")
 	print(f"Train set shape: {train_df.shape}")
 	print(f"Validation set shape: {val_df.shape}")
 

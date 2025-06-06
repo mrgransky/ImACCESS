@@ -2386,7 +2386,7 @@ def perform_multilabel_eda(
 		n_top_labels_plot: int = 30,
 		n_top_labels_co_occurrence: int = 15,
 		DPI: int = 200,
-	) -> None:
+	):
 		print(f"Multi-label EDA for {data_path} (column: {label_column})".center(160, "-"))
 		eda_st = time.time()
 		dataset_dir = os.path.dirname(data_path)
