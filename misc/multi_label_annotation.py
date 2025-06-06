@@ -716,8 +716,6 @@ def main():
 		
 		print(f"Created {len(combined_labels)} combined labels ({empty_count} empty entries)")
 	
-	
-	
 	if not os.path.exists(combined_output_path):
 		df = pd.read_csv(
 			filepath_or_buffer=args.csv_file,
@@ -745,18 +743,28 @@ def main():
 	train_df_fpth = combined_output_path.replace('.csv', '_train.csv')
 	val_df_fpth = combined_output_path.replace('.csv', '_val.csv')
 	try:
-		train_df = load_pickle(fpath=train_df_fpth)
-		val_df = load_pickle(fpath=val_df_fpth)
+		train_df = pd.read_csv(
+			filepath_or_buffer=train_df_fpth,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
+		val_df = pd.read_csv(
+			filepath_or_buffer=val_df_fpth,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
 	except Exception as e:
-		print(f"{e}")
+		print(f"<!> {e}")
 		train_df, val_df = get_multi_label_stratified_split(
 			df=df,
 			val_split_pct=0.35,
 			seed=42,
 			label_col='multimodal_labels'
 		)
-		save_pickle(pkl=train_df, fname=train_df_fpth,)
-		save_pickle(pkl=val_df, fname=val_df_fpth,)
+		train_df.to_csv(train_df_fpth, index=False)
+		val_df.to_csv(val_df_fpth, index=False)
 
 	print("\n--- Split Results ---")
 	print(f"Train set shape: {train_df.shape}")
