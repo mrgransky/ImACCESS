@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
@@ -46,98 +47,92 @@ def evaluate_pretrained_clip_multilabel(
 		device: str,
 		topk_values: List[int],
 		verbose: bool = True,
-		embeddings_cache: tuple = None,
-):
-		"""
-		Multi-label baseline evaluation for pre-trained CLIP.
-		Only used when dataset_type == 'multi_label'
-		"""
-		if verbose:
-				print("Evaluating pre-trained CLIP for multi-label classification...")
-		
-		model.eval()
-		
-		# Get class information
-		try:
-				class_names = validation_loader.dataset.unique_labels
-				num_classes = len(class_names)
-		except AttributeError:
-				class_names = validation_loader.dataset.dataset.classes
-				num_classes = len(class_names)
-		
-		if verbose:
-				print(f"Multi-label evaluation: {num_classes} classes")
-		
-		# Use embeddings cache if available
-		if embeddings_cache is not None:
-				all_image_embeds, all_labels = embeddings_cache
-				all_image_embeds = all_image_embeds.to(device).float()
-				all_labels = all_labels.to(device)
-				if verbose:
-						print("Using cached embeddings for evaluation")
-		else:
-				# Compute embeddings from scratch
-				if verbose:
-						print("Computing embeddings from scratch...")
-				all_image_embeds, all_labels = _compute_image_embeddings_multilabel(
-						model, validation_loader, device, verbose
-				)
-		
-		# Pre-encode all class texts
-		all_class_texts = clip.tokenize(class_names).to(device)
-		with torch.no_grad():
-				all_class_embeds = model.encode_text(all_class_texts)
-				all_class_embeds = F.normalize(all_class_embeds, dim=-1)
-		
-		# Compute similarities [num_samples, num_classes]
-		with torch.no_grad():
-				similarities = torch.matmul(all_image_embeds, all_class_embeds.T)
-				probabilities = torch.sigmoid(similarities)
-		
-		# Find optimal threshold
-		if verbose:
-				print("Finding optimal threshold for multi-label classification...")
-		
-		optimal_threshold = _find_optimal_multilabel_threshold(
-				probabilities, all_labels, validation_split=0.2, verbose=verbose
-		)
-		
-		# Apply threshold to get predictions
-		predictions = (probabilities > optimal_threshold).float()
-		
-		# Compute multi-label metrics
-		metrics = _compute_multilabel_baseline_metrics(
-				predictions, all_labels, similarities, class_names, topk_values, device
-		)
-		
-		if verbose:
-				print(f"Optimal threshold: {optimal_threshold:.4f}")
-				print(f"Baseline metrics computed for {num_classes} classes")
-		
-		return metrics
+	):
+	if verbose:
+		print(f"Evaluating pre-trained {model.__class__.__name__} {model.name} Multi-label classification...")
+	
+	model.eval()
+	
+	try:
+		class_names = validation_loader.dataset.unique_labels
+		num_classes = len(class_names)
+	except AttributeError:
+		class_names = validation_loader.dataset.dataset.classes
+		num_classes = len(class_names)
+	
+	if verbose:
+		print(f"Multi-label evaluation: {num_classes} classes")
+	
+	all_image_embeds, all_labels = _compute_image_embeddings_multilabel(
+		model,
+		validation_loader,
+		device,
+		verbose,
+	)
+	
+	# Pre-encode all class texts
+	all_class_texts = clip.tokenize(class_names).to(device)
+	with torch.no_grad():
+		all_class_embeds = model.encode_text(all_class_texts)
+		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+	
+	# Compute similarities [num_samples, num_classes]
+	with torch.no_grad():
+		similarities = torch.matmul(all_image_embeds, all_class_embeds.T)
+		probabilities = torch.sigmoid(similarities)
+	
+	# Find optimal threshold
+	if verbose:
+		print("Finding optimal threshold for multi-label classification...")
+	
+	optimal_threshold = _find_optimal_multilabel_threshold(
+		probabilities, 
+		all_labels, 
+		validation_split=0.2, 
+		verbose=verbose
+	)
+	
+	# Apply threshold to get predictions
+	predictions = (probabilities > optimal_threshold).float()
+	
+	# Compute multi-label metrics
+	metrics = _compute_multilabel_baseline_metrics(
+		predictions, 
+		all_labels, 
+		similarities, 
+		class_names, 
+		topk_values, 
+		device
+	)
+	
+	if verbose:
+		print(f"Optimal threshold: {optimal_threshold:.4f}")
+		print(f"Baseline metrics computed for {num_classes} classes")
+		print(json.dumps(metrics, ensure_ascii=False, indent=4))
+	
+	return metrics
 
 def _compute_image_embeddings_multilabel(model, validation_loader, device, verbose):
-		"""Helper function for multi-label embedding computation."""
-		all_image_embeds = []
-		all_labels = []
+	all_image_embeds = []
+	all_labels = []
+	
+	model.eval()
+	iterator = tqdm(validation_loader, desc="Encoding images") if verbose else validation_loader
+	
+	for images, _, labels in iterator:
+		images = images.to(device, non_blocking=True)
 		
-		model.eval()
-		iterator = tqdm(validation_loader, desc="Encoding images") if verbose else validation_loader
+		with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
+			image_embeds = model.encode_image(images)
 		
-		for images, _, labels in iterator:
-				images = images.to(device, non_blocking=True)
-				
-				with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
-						image_embeds = model.encode_image(images)
-				
-				image_embeds = F.normalize(image_embeds.float(), dim=-1)
-				all_image_embeds.append(image_embeds.cpu())
-				all_labels.append(labels.cpu())
-		
-		all_image_embeds = torch.cat(all_image_embeds, dim=0)
-		all_labels = torch.cat(all_labels, dim=0)
-		
-		return all_image_embeds.to(device), all_labels.to(device)
+		image_embeds = F.normalize(image_embeds.float(), dim=-1)
+		all_image_embeds.append(image_embeds.cpu())
+		all_labels.append(labels.cpu())
+	
+	all_image_embeds = torch.cat(all_image_embeds, dim=0)
+	all_labels = torch.cat(all_labels, dim=0)
+	
+	return all_image_embeds.to(device), all_labels.to(device)
 
 def _find_optimal_multilabel_threshold(
 		probabilities: torch.Tensor, 
@@ -200,65 +195,63 @@ def _compute_multilabel_baseline_metrics(
 		class_names: List[str],
 		topk_values: List[int],
 		device: str
-) -> Dict:
-		"""Compute comprehensive multi-label baseline metrics."""
-		try:
-				from sklearn.metrics import hamming_loss, f1_score
-				
-				# Basic multi-label metrics
-				hamming = hamming_loss(labels.cpu().numpy(), predictions.cpu().numpy())
-				
-				# F1 Score
-				f1 = f1_score(
-						labels.cpu().numpy(), 
-						predictions.cpu().numpy(), 
-						average='weighted',
-						zero_division=0
-				)
-		except ImportError:
-				print("Warning: sklearn not available, using basic metrics only")
-				hamming = ((predictions != labels).float().sum() / (labels.shape[0] * labels.shape[1])).item()
-				f1 = 0.0
-		
-		# Exact match accuracy (all labels must match)
-		exact_match = (predictions == labels).all(dim=1).float().mean().item()
-		
-		# Partial accuracy (at least one correct prediction)
-		partial_acc = ((predictions * labels).sum(dim=1) > 0).float().mean().item()
-		
-		# Top-K metrics
-		topk_metrics = {}
-		for k in topk_values:
-				if k <= len(class_names):
-						topk_indices = similarities.topk(k, dim=1)[1]
-						topk_preds = torch.zeros_like(similarities).scatter_(1, topk_indices, 1.0)
-						
-						# Subset accuracy: all true labels are in top-k
-						subset_acc = (labels <= topk_preds).all(dim=1).float().mean().item()
-						topk_metrics[str(k)] = subset_acc
-		
-		# Average cosine similarity with true labels
-		num_samples, num_classes = similarities.shape
-		matched_similarities = []
-		
-		for i in range(num_samples):
-				true_indices = torch.where(labels[i] == 1)[0]
-				if len(true_indices) > 0:
-						# Average similarity to all true classes
-						avg_sim = similarities[i, true_indices].mean().item()
-						matched_similarities.append(avg_sim)
-		
-		avg_cosine_sim = np.mean(matched_similarities) if matched_similarities else 0.0
-		
-		return {
-				"hamming_loss": float(hamming),
-				"exact_match_acc": float(exact_match),
-				"partial_acc": float(partial_acc),
-				"f1_score": float(f1),
-				"topk_acc": topk_metrics,
-				"cosine_similarity": float(avg_cosine_sim),
-				"baseline_type": "similarity_threshold"
-		}
+	) -> Dict:
+	try:
+			
+			# Basic multi-label metrics
+			hamming = hamming_loss(labels.cpu().numpy(), predictions.cpu().numpy())
+			
+			# F1 Score
+			f1 = f1_score(
+					labels.cpu().numpy(), 
+					predictions.cpu().numpy(), 
+					average='weighted',
+					zero_division=0
+			)
+	except ImportError:
+			print("Warning: sklearn not available, using basic metrics only")
+			hamming = ((predictions != labels).float().sum() / (labels.shape[0] * labels.shape[1])).item()
+			f1 = 0.0
+	
+	# Exact match accuracy (all labels must match)
+	exact_match = (predictions == labels).all(dim=1).float().mean().item()
+	
+	# Partial accuracy (at least one correct prediction)
+	partial_acc = ((predictions * labels).sum(dim=1) > 0).float().mean().item()
+	
+	# Top-K metrics
+	topk_metrics = {}
+	for k in topk_values:
+			if k <= len(class_names):
+					topk_indices = similarities.topk(k, dim=1)[1]
+					topk_preds = torch.zeros_like(similarities).scatter_(1, topk_indices, 1.0)
+					
+					# Subset accuracy: all true labels are in top-k
+					subset_acc = (labels <= topk_preds).all(dim=1).float().mean().item()
+					topk_metrics[str(k)] = subset_acc
+	
+	# Average cosine similarity with true labels
+	num_samples, num_classes = similarities.shape
+	matched_similarities = []
+	
+	for i in range(num_samples):
+			true_indices = torch.where(labels[i] == 1)[0]
+			if len(true_indices) > 0:
+					# Average similarity to all true classes
+					avg_sim = similarities[i, true_indices].mean().item()
+					matched_similarities.append(avg_sim)
+	
+	avg_cosine_sim = np.mean(matched_similarities) if matched_similarities else 0.0
+	
+	return {
+			"hamming_loss": float(hamming),
+			"exact_match_acc": float(exact_match),
+			"partial_acc": float(partial_acc),
+			"f1_score": float(f1),
+			"topk_acc": topk_metrics,
+			"cosine_similarity": float(avg_cosine_sim),
+			"baseline_type": "similarity_threshold"
+	}
 
 def get_multi_label_head_torso_tail_samples(
 		metadata_path: str,
@@ -431,7 +424,7 @@ def main():
 				metadata_path=os.path.join(args.dataset_dir, "metadata_multimodal.csv"),
 				metadata_train_path=os.path.join(args.dataset_dir, "metadata_multimodal_train.csv"),
 				metadata_val_path=os.path.join(args.dataset_dir, "metadata_multimodal_val.csv"),
-				num_samples_per_segment=5,
+				num_samples_per_segment=2,
 			)
 			if i2t_samples and t2i_samples:
 				QUERY_IMAGES = [sample['image_path'] for sample in i2t_samples]
@@ -443,7 +436,7 @@ def main():
 				metadata_path=os.path.join(args.dataset_dir, "metadata.csv"),
 				metadata_train_path=os.path.join(args.dataset_dir, "metadata_train.csv"),
 				metadata_val_path=os.path.join(args.dataset_dir, "metadata_val.csv"),
-				num_samples_per_segment=10,
+				num_samples_per_segment=5,
 			)
 			if i2t_samples and t2i_samples:
 				QUERY_IMAGES = [sample['image_path'] for sample in i2t_samples]
@@ -454,9 +447,10 @@ def main():
 		QUERY_IMAGES = [args.query_image]
 		QUERY_LABELS = [args.query_label]
 
+	print("QUERY IMAGES & LABELS".center(160, "-"))
 	print(len(QUERY_IMAGES), QUERY_IMAGES)
-	print()
 	print(len(QUERY_LABELS), QUERY_LABELS)
+	print("QUERY IMAGES & LABELS".center(160, "-"))
 
 	# for all finetuned models(+ pre-trained):
 	finetuned_checkpoint_paths = {
@@ -464,10 +458,8 @@ def main():
 		"lora": args.lora_checkpoint,
 		"progressive": args.progressive_checkpoint,
 	}
+	print(f">> Loading {len(finetuned_checkpoint_paths)} Fine-tuned Models [takes a while]...")
 	print(json.dumps(finetuned_checkpoint_paths, indent=4, ensure_ascii=False))
-
-	# Load Fine-tuned Models
-	print("Loading Fine-tuned Models [takes a while]...")
 	ft_start = time.time()
 	fine_tuned_models = {}
 	finetuned_img2txt_dict = {args.model_architecture: {}}
@@ -489,10 +481,10 @@ def main():
 			checkpoint = torch.load(ft_path, map_location=args.device)
 			model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)
 			fine_tuned_models[ft_name] = model
-	print(f"Fine-tuned Models loaded in {time.time() - ft_start:.5f} sec")
+	print(f">> {len(fine_tuned_models)} Fine-tuned Models loaded in {time.time() - ft_start:.5f} sec")
 	models_to_plot.update(fine_tuned_models)
 
-	print("Computing Model Embeddings [sequentially]...")
+	print("Computing Model Embeddings".center(160, "-"))
 	mdl_emb_start = time.time()
 	embeddings_cache = {}
 	for strategy, model in models_to_plot.items():
@@ -507,11 +499,13 @@ def main():
 			lora_dropout=args.lora_dropout if strategy == "lora" else None,
 		)
 		embeddings_cache[strategy] = (embeddings, paths)
-	print(f"Model Embeddings computed in {time.time() - mdl_emb_start:.5f} sec")
+	print(f"Model Embeddings computed in {time.time() - mdl_emb_start:.5f} sec".center(160, " "))
 
-	# Evaluate fine-tuned models
+	print(f"Evaluating {len(fine_tuned_models)} Fine-tuned Models".center(160, "-"))
+	ft_eval_start = time.time()
 	for ft_name, ft_path in finetuned_checkpoint_paths.items():
 		if ft_name in fine_tuned_models:
+			print(f"\n>> Fine-tuning strategy: {ft_name}")
 			evaluation_results = evaluate_best_model(
 				model=fine_tuned_models[ft_name],
 				validation_loader=validation_loader,
@@ -534,6 +528,7 @@ def main():
 			)
 			finetuned_img2txt_dict[args.model_architecture][ft_name] = evaluation_results["img2txt_metrics"]
 			finetuned_txt2img_dict[args.model_architecture][ft_name] = evaluation_results["txt2img_metrics"]
+	print(f"{len(fine_tuned_models)} Fine-tuned Models evaluated in {time.time() - ft_eval_start:.5f} sec".center(160, "-"))
 
 	####################################### Qualitative Analysis #######################################
 	print(f"Qualitative Analysis".center(160, " "))
@@ -608,16 +603,24 @@ def main():
 	print(f">> Computing metrics for pretrained {args.model_architecture}...")
 	pretrained_img2txt_dict = {args.model_architecture: {}}
 	pretrained_txt2img_dict = {args.model_architecture: {}}
-	pretrained_img2txt, pretrained_txt2img = pretrain(
-		model=pretrained_model,
-		validation_loader=validation_loader,
-		results_dir=RESULT_DIRECTORY,
-		cache_dir=CACHE_DIRECTORY,
-		device=args.device,
-		topk_values=args.topK_values,
-		verbose=False,
-		embeddings_cache=embeddings_cache["pretrained"],
-	)
+	if args.dataset_type == "multi_label":
+		baseline_metrics = evaluate_pretrained_clip_multilabel(
+				model=pretrained_model,
+				validation_loader=validation_loader,
+				device=args.device,
+				topk_values=args.topK_values,
+		)
+	else:
+		pretrained_img2txt, pretrained_txt2img = pretrain(
+			model=pretrained_model,
+			validation_loader=validation_loader,
+			results_dir=RESULT_DIRECTORY,
+			cache_dir=CACHE_DIRECTORY,
+			device=args.device,
+			topk_values=args.topK_values,
+			verbose=False,
+			embeddings_cache=embeddings_cache["pretrained"],
+		)
 	pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
 	pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
 	print(f">> Pretrained model metrics computed successfully. [for Quantitative Analysis]")

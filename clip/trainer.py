@@ -1010,34 +1010,37 @@ def get_validation_metrics(
 		
 		# Compute embeddings if not cached
 		if not cache_loaded:
-				if verbose:
-						print("Computing embeddings from scratch...")
-				
-				all_image_embeds, all_labels = _compute_image_embeddings(
-						model, validation_loader, device, verbose
-				)
-				
-				# Save to cache if not training
-				if not is_training:
-						try:
-								os.makedirs(cache_dir, exist_ok=True)
-								torch.save({
-										'image_embeds': all_image_embeds.cpu(),
-										'labels': all_labels.cpu()
-								}, cache_file)
-								if verbose:
-										print(f"Saved embeddings to cache: {cache_file}")
-						except Exception as e:
-								if verbose:
-										print(f"Cache saving failed: {e}")
+			if verbose:
+				print("Computing embeddings from scratch...")
+			
+			all_image_embeds, all_labels = _compute_image_embeddings(
+				model, 
+				validation_loader, 
+				device, 
+				verbose
+			)
+			
+			# Save to cache if not training
+			if not is_training:
+				try:
+					os.makedirs(cache_dir, exist_ok=True)
+					torch.save({
+						'image_embeds': all_image_embeds.cpu(),
+						'labels': all_labels.cpu()
+					}, cache_file)
+					if verbose:
+						print(f"Saved embeddings to cache: {cache_file}")
+				except Exception as e:
+					if verbose:
+						print(f"Cache saving failed: {e}")
 		
 		# Step 3: Compute text embeddings
 		if verbose:
-				print("Computing text embeddings...")
+			print("Computing text embeddings...")
 		
 		text_inputs = clip.tokenize(class_names).to(device)
 		with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
-				class_text_embeds = model.encode_text(text_inputs)
+			class_text_embeds = model.encode_text(text_inputs)
 		class_text_embeds = F.normalize(class_text_embeds.float(), dim=-1)
 		
 		# Move to device and ensure proper types
@@ -1047,13 +1050,17 @@ def get_validation_metrics(
 		
 		# Step 4: Compute similarity matrices (chunked for memory efficiency)
 		if verbose:
-				print("Computing similarity matrices...")
+			print("Computing similarity matrices...")
 		
 		i2t_similarity = chunked_similarity_computation(
-				device_image_embeds, device_class_text_embeds, chunk_size=chunk_size
+			device_image_embeds, 
+			device_class_text_embeds, 
+			chunk_size=chunk_size
 		)
 		t2i_similarity = chunked_similarity_computation(
-				device_class_text_embeds, device_image_embeds, chunk_size=chunk_size
+			device_class_text_embeds, 
+			device_image_embeds, 
+			chunk_size=chunk_size
 		)
 		
 		# Step 5: Compute full-set metrics
@@ -1227,17 +1234,88 @@ def _prepare_labels_tensor(
 		n_classes: int, 
 		device: str,
 	) -> torch.Tensor:
-	sample_label = validation_loader.dataset.labels_int[0]
-	if isinstance(sample_label, (int, np.integer)):
-		# Single-label: use long dtype for proper indexing
-		all_labels = torch.zeros(num_samples, dtype=torch.long)
-		for i in range(num_samples):
-			all_labels[i] = validation_loader.dataset.labels_int[i]
-	else:
-		# Multi-label: use float for binary labels
+	"""
+	Prepare labels tensor for validation metrics computation.
+	Handles both single-label and multi-label datasets.
+	"""
+	dataset = validation_loader.dataset
+	
+	# Detect dataset type by checking for multi-label specific attributes
+	# is_multi_label = (
+	# 	hasattr(dataset, 'label_dict') or 
+	# 	hasattr(dataset, '_num_classes') or
+	# 	'MultiLabel' in dataset.__class__.__name__
+	# )
+	is_multi_label = (
+		(hasattr(dataset, 'label_dict') 
+	 and dataset.label_dict is not None) 
+	 or 'MultiLabel' in dataset.__class__.__name__
+	) and not hasattr(dataset, 'labels_int')
+
+	if is_multi_label:
+		# Multi-label dataset - create label vectors [num_samples, num_classes]
 		all_labels = torch.zeros(num_samples, n_classes, dtype=torch.float32)
+		
 		for i in range(num_samples):
-			all_labels[i] = torch.tensor(validation_loader.dataset.labels_int[i], dtype=torch.float32)
+			try:
+				# Method 1: Use pre-computed label vectors from DataFrame
+				if hasattr(dataset, 'data_frame') and 'label_vector' in dataset.data_frame.columns:
+					label_vector = dataset.data_frame.iloc[i]['label_vector']
+					if isinstance(label_vector, np.ndarray):
+						all_labels[i] = torch.tensor(label_vector, dtype=torch.float32)
+					elif isinstance(label_vector, torch.Tensor):
+						all_labels[i] = label_vector.clone().detach().float()
+					else:
+						# Fallback to method 2
+						raise ValueError("Invalid label_vector type")
+				
+				# Method 2: Get from dataset's __getitem__ method
+				elif hasattr(dataset, '__getitem__'):
+					try:
+						_, _, label_vector = dataset[i]
+						if isinstance(label_vector, torch.Tensor) and label_vector.shape == (n_classes,):
+							all_labels[i] = label_vector.float()
+						else:
+							raise ValueError("Invalid label vector from __getitem__")
+					except:
+						# Fallback to method 3
+						raise ValueError("Could not get label from __getitem__")
+				
+				# Method 3: Parse from string representation (fallback)
+				else:
+					if hasattr(dataset, 'labels') and hasattr(dataset, 'label_dict'):
+						labels_str = dataset.labels[i]
+						import ast
+						labels = ast.literal_eval(labels_str)
+						for label in labels:
+							if label in dataset.label_dict:
+								all_labels[i][dataset.label_dict[label]] = 1.0
+					else:
+						raise ValueError("Cannot extract labels from multi-label dataset")
+						
+			except Exception as e:
+				print(f"Warning: Error processing sample {i}: {e}")
+				# Leave as zeros for this sample
+				continue
+	
+	else:
+		# Single-label dataset - use integer labels [num_samples]
+		if not hasattr(dataset, 'labels_int'):
+			raise AttributeError(
+				f"Single-label dataset {type(dataset)} missing 'labels_int' attribute. "
+				"This attribute should contain integer class indices."
+			)
+		
+		# Validate first sample to determine tensor type
+		sample_label = dataset.labels_int[0]
+		if isinstance(sample_label, (int, np.integer)):
+			# Single-label: use long dtype for proper indexing
+			all_labels = torch.zeros(num_samples, dtype=torch.long)
+			for i in range(num_samples):
+				all_labels[i] = dataset.labels_int[i]
+		else:
+			raise ValueError(f"Unexpected label type in single-label dataset: {type(sample_label)}")
+	
 	return all_labels.to(device)
 
 def _validate_cache_compatibility(cached_labels: torch.Tensor, expected_labels: torch.Tensor) -> bool:
@@ -1249,29 +1327,28 @@ def _validate_cache_compatibility(cached_labels: torch.Tensor, expected_labels: 
 		return True
 
 def _compute_image_embeddings(model, validation_loader, device, verbose):
-		"""Compute image embeddings for all validation samples."""
-		all_image_embeds = []
-		all_labels = []
+	all_image_embeds = []
+	all_labels = []
+	
+	model = model.to(device)
+	model.eval()
+	
+	iterator = tqdm(validation_loader, desc="Encoding images") if verbose else validation_loader
+	
+	for images, _, labels_indices in iterator:
+		images = images.to(device, non_blocking=True)
 		
-		model = model.to(device)
-		model.eval()
+		with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
+			image_embeds = model.encode_image(images)
 		
-		iterator = tqdm(validation_loader, desc="Encoding images") if verbose else validation_loader
-		
-		for images, _, labels_indices in iterator:
-				images = images.to(device, non_blocking=True)
-				
-				with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
-						image_embeds = model.encode_image(images)
-				
-				image_embeds = F.normalize(image_embeds.float(), dim=-1)
-				all_image_embeds.append(image_embeds.cpu())
-				all_labels.append(labels_indices.cpu())
-		
-		all_image_embeds = torch.cat(all_image_embeds, dim=0)
-		all_labels = torch.cat(all_labels, dim=0)
-		
-		return all_image_embeds, all_labels
+		image_embeds = F.normalize(image_embeds.float(), dim=-1)
+		all_image_embeds.append(image_embeds.cpu())
+		all_labels.append(labels_indices.cpu())
+	
+	all_image_embeds = torch.cat(all_image_embeds, dim=0)
+	all_labels = torch.cat(all_labels, dim=0)
+	
+	return all_image_embeds, all_labels
 
 def _compute_multilabel_i2t_accuracy(i2t_similarity, labels, valid_k_values, n_classes):
 		"""Compute image-to-text accuracy for multi-label datasets."""
@@ -1379,7 +1456,7 @@ def evaluate_best_model(
 	
 	if os.path.exists(checkpoint_path):
 		if verbose:
-			print(f"\nLoading best model weights from {checkpoint_path} for final evaluation...")
+			print(f"Loading best model weights {checkpoint_path} for final evaluation...")
 		try:
 			checkpoint = torch.load(checkpoint_path, map_location=device)
 			if 'model_state_dict' in checkpoint:
@@ -1418,7 +1495,7 @@ def evaluate_best_model(
 	model.eval()
 	
 	if verbose:
-		print("\nPerforming final evaluation on the best model...")
+		print("Performing final evaluation on the best model...")
 	
 	validation_results = get_validation_metrics(
 		model=model,

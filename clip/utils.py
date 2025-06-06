@@ -31,7 +31,6 @@ import glob
 import psutil
 import ast
 import shutil
-from sklearn.preprocessing import MultiLabelBinarizer
 
 import torchvision.transforms as T
 import torch.nn.functional as F
@@ -41,9 +40,12 @@ import matplotlib.ticker as ticker
 
 from PIL import Image, ImageDraw, ImageFont
 from typing import Tuple, Union, List, Dict, Any, Optional
-from sklearn.metrics import precision_recall_curve, roc_curve, auc, f1_score
+
+from sklearn.metrics import precision_recall_curve, roc_curve, auc, f1_score, hamming_loss
+from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics.pairwise import cosine_similarity
+
 from tqdm import tqdm
 from collections import defaultdict
 import logging
@@ -70,7 +72,6 @@ def cleanup_old_temp_dirs():
 			pass
 	if temp_dirs:
 		print(f"Cleaned up {len(temp_dirs)} old temp directories")
-
 
 def get_head_torso_tail_sample_all(
 				metadata_path, 
@@ -362,86 +363,46 @@ def compute_model_embeddings(
 	paths = []
 	dataset_name = getattr(loader, 'name', 'unknown_dataset')
 	
-	# Construct cache file name
 	cache_file_name = (
-			f"{dataset_name}_"
-			f"{strategy}_"
-			f"{model.__class__.__name__}_"
-			f"{re.sub(r'[/@]', '_', model.name)}_"
-	)
-	if strategy == "lora" and lora_rank is not None and lora_alpha is not None and lora_dropout is not None:
-			cache_file_name += (
-					f"lora_rank_{lora_rank}_"
-					f"lora_alpha_{lora_alpha}_"
-					f"lora_dropout_{lora_dropout}_"
-			)
-	cache_file_name += "embeddings.pt"
-	cache_file = os.path.join(cache_dir, cache_file_name)
-	
-	# Load from cache if available
-	if os.path.exists(cache_file):
-			data = torch.load(
-					f=cache_file,
-					map_location=device,
-					mmap=True  # Memory-mapping for faster loading
-			)
-			return data['embeddings'], data['image_paths']
-	
-	print(f"\tStrategy: {strategy}")
-	for batch_idx, (images, _, _) in enumerate(tqdm(loader, desc=f"Processing {strategy}")):
-			images = images.to(device, non_blocking=True)
-			with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=True):
-					features = model.encode_image(images)
-					features /= features.norm(dim=-1, keepdim=True)
-			embeddings.append(features.cpu())  # Save to CPU for portability
-			paths.extend([f"batch_{batch_idx}_img_{i}" for i in range(len(images))])
-	
-	embeddings = torch.cat(embeddings, dim=0)
-	torch.save({'embeddings': embeddings, 'image_paths': paths}, cache_file)
-	return embeddings.to(device), paths
-
-def compute_model_embeddings_old(
-		strategy, 
-		model, 
-		loader, 
-		device, 
-		cache_dir,
-	):
-	model.eval()
-	embeddings = []
-	paths = []
-	dataset_name = getattr(loader, 'name', 'unknown_dataset')
-	cache_file = os.path.join(
-		cache_dir, 
 		f"{dataset_name}_"
 		f"{strategy}_"
 		f"{model.__class__.__name__}_"
 		f"{re.sub(r'[/@]', '_', model.name)}_"
-		f"embeddings.pt"
 	)
-
+	if strategy == "lora" and lora_rank is not None and lora_alpha is not None and lora_dropout is not None:
+		cache_file_name += (
+			f"lora_rank_{lora_rank}_"
+			f"lora_alpha_{lora_alpha}_"
+			f"lora_dropout_{lora_dropout}_"
+		)
+	cache_file_name += "embeddings.pt"
+	cache_file = os.path.join(cache_dir, cache_file_name)
+	
 	if os.path.exists(cache_file):
 		data = torch.load(
-			f=cache_file, 
-			map_location=device, 
-			mmap=True, # Memory-mapping for faster loading
+			f=cache_file,
+			map_location=device,
+			mmap=True  # Memory-mapping for faster loading
 		)
 		return data['embeddings'], data['image_paths']
 	
-	print(f"\tStrategy: {strategy}")
 	for batch_idx, (images, _, _) in enumerate(tqdm(loader, desc=f"Processing {strategy}")):
 		images = images.to(device, non_blocking=True)
 		with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=True):
 			features = model.encode_image(images)
 			features /= features.norm(dim=-1, keepdim=True)
-		embeddings.append(features.cpu())  # Still save to CPU for portability
+		embeddings.append(features.cpu())  # Save to CPU for portability
 		paths.extend([f"batch_{batch_idx}_img_{i}" for i in range(len(images))])
 	
 	embeddings = torch.cat(embeddings, dim=0)
 	torch.save({'embeddings': embeddings, 'image_paths': paths}, cache_file)
 	return embeddings.to(device), paths
 
-def get_updated_model_name(original_path:str, actual_epochs:int, additional_info: dict=None) -> str:
+def get_updated_model_name(
+		original_path:str, 
+		actual_epochs:int, 
+		additional_info: dict=None
+	) -> str:
 	if not os.path.exists(original_path):
 		print(f"Warning: Original model file not found at {original_path}")
 		return original_path
