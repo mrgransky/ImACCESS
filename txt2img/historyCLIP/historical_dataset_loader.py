@@ -252,33 +252,14 @@ class HistoricalArchivesSingleLabelDataset(Dataset):
 def get_multi_label_datasets(ddir: str, seed: int = 42):
 	metadata_fpth = os.path.join(ddir, "metadata_multimodal.csv")
 	print(f"Loading multi-label dataset: {metadata_fpth}")
-	
-	# dtypes = {
-	# 		'img_url': str,
-	# 		'id': str,
-	# 		'title': str,
-	# 		'description': str,
-	# 		'user_query': str,
-	# 		'enriched_document_description': str,
-	# 		'raw_doc_date': str,
-	# 		'doc_url': str,
-	# 		'img_path': str,
-	# 		'doc_date': str,
-	# 		'label': str,
-	# 		'textual_based_labels': str,
-	# 		'visual_based_labels': str,
-	# 		'multimodal_labels': str,
-	# }
-	
 	df = pd.read_csv(
-			filepath_or_buffer=metadata_fpth, 
-			on_bad_lines='skip',
-			dtype=dtypes, 
-			low_memory=False,
+		filepath_or_buffer=metadata_fpth, 
+		on_bad_lines='skip',
+		dtype=dtypes, 
+		low_memory=False,
 	)
 	print(f"FULL Multi-label Dataset {type(df)} {df.shape}")
 	
-	# Split into train and validation
 	metadata_train_fpth = os.path.join(ddir, "metadata_multimodal_train.csv")
 	metadata_val_fpth = os.path.join(ddir, "metadata_multimodal_val.csv")
 	
@@ -343,12 +324,12 @@ def get_multi_label_dataloaders(
 	preprocess = get_preprocess(dataset_dir=dataset_dir, input_resolution=input_resolution)
 	
 	train_dataset = HistoricalArchivesMultiLabelDataset(
-			dataset_name=dataset_name,
-			train=True,
-			data_frame=train_dataset.sort_values(by="img_path").reset_index(drop=True),
-			transform=preprocess,
-			memory_threshold_gib=memory_threshold_gib,
-			label_dict=label_dict,
+		dataset_name=dataset_name,
+		train=True,
+		data_frame=train_dataset.sort_values(by="img_path").reset_index(drop=True),
+		transform=preprocess,
+		memory_threshold_gib=memory_threshold_gib,
+		label_dict=label_dict,
 	)
 	
 	print(train_dataset)

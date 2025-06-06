@@ -34,7 +34,7 @@ from visualize import (
 # $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/full_single_label_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_16_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_32_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/progressive_single_label_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_bs_32_best_model_last_phase_1_flr_6.9e-06_fwd_0.010306122448979592.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/lora_single_label_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_18_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_bs_32_best_model.pth
 
 # Multi-label:
-# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/full_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_dropout_0.0_lr_1.0e-05_wd_1.0e-02_temp_0.07_bs_16_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/progressive_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_temp_0.07_bs_16_best_model_last_phase_1_flr_5.6e-06_fwd_0.010306122448979592.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/lora_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_temp_0.07_bs_16_best_model.pth
+# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -dt multi_label -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/full_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_dropout_0.0_lr_1.0e-05_wd_1.0e-02_temp_0.07_bs_16_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/progressive_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_temp_0.07_bs_16_best_model_last_phase_1_flr_5.6e-06_fwd_0.010306122448979592.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/lora_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_temp_0.07_bs_16_best_model.pth
 # ################ Local ################ 
 
 # # run in pouta for all fine-tuned models:
@@ -340,10 +340,10 @@ def main():
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
 	parser.add_argument('--dataset_type', '-dt', type=str, choices=['single_label', 'multi_label'], default='single_label', help='Dataset type (single_label/multi_label)')
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
-	parser.add_argument('--num_workers', '-nw', type=int, default=8, help='Number of CPUs [def: max cpus]')
+	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs [def: max cpus]')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
-	parser.add_argument('--batch_size', '-bs', type=int, default=128, help='Batch size for training')
+	parser.add_argument('--batch_size', '-bs', type=int, default=16, help='Batch size for training')
 	parser.add_argument('--query_image', '-qi', type=str, default=None, help='image path for zero shot classification')
 	parser.add_argument('--query_label', '-ql', type=str, default=None, help='image path for zero shot classification')
 	parser.add_argument('--topK', '-k', type=int, default=3, help='TopK results')
@@ -648,5 +648,5 @@ def main():
 	####################################### Quantitative Analysis #######################################
 
 if __name__ == "__main__":
-	multiprocessing.set_start_method('spawn')
+	# multiprocessing.set_start_method('spawn')
 	main()

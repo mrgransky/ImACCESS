@@ -906,7 +906,7 @@ def get_validation_metrics(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
 		criterion: torch.nn.Module,
-		device: torch.device,
+		device: str,
 		topK_values: List[int],
 		cache_dir: str,
 		finetune_strategy: str = None,
@@ -1221,22 +1221,24 @@ def compute_full_set_metrics_from_cache(
 				"f1_score": float(f1_score_val) if f1_score_val is not None else None,
 		}
 
-def _prepare_labels_tensor(validation_loader, num_samples: int, n_classes: int, device) -> torch.Tensor:
-		"""Prepare labels tensor with correct dtype and shape."""
-		sample_label = validation_loader.dataset.labels_int[0]
-		
-		if isinstance(sample_label, (int, np.integer)):
-				# Single-label: use long dtype for proper indexing
-				all_labels = torch.zeros(num_samples, dtype=torch.long)
-				for i in range(num_samples):
-						all_labels[i] = validation_loader.dataset.labels_int[i]
-		else:
-				# Multi-label: use float for binary labels
-				all_labels = torch.zeros(num_samples, n_classes, dtype=torch.float32)
-				for i in range(num_samples):
-						all_labels[i] = torch.tensor(validation_loader.dataset.labels_int[i], dtype=torch.float32)
-		
-		return all_labels.to(device)
+def _prepare_labels_tensor(
+		validation_loader: DataLoader, 
+		num_samples: int, 
+		n_classes: int, 
+		device: str,
+	) -> torch.Tensor:
+	sample_label = validation_loader.dataset.labels_int[0]
+	if isinstance(sample_label, (int, np.integer)):
+		# Single-label: use long dtype for proper indexing
+		all_labels = torch.zeros(num_samples, dtype=torch.long)
+		for i in range(num_samples):
+			all_labels[i] = validation_loader.dataset.labels_int[i]
+	else:
+		# Multi-label: use float for binary labels
+		all_labels = torch.zeros(num_samples, n_classes, dtype=torch.float32)
+		for i in range(num_samples):
+			all_labels[i] = torch.tensor(validation_loader.dataset.labels_int[i], dtype=torch.float32)
+	return all_labels.to(device)
 
 def _validate_cache_compatibility(cached_labels: torch.Tensor, expected_labels: torch.Tensor) -> bool:
 		"""Validate that cached labels are compatible with expected format."""
