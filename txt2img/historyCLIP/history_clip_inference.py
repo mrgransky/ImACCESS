@@ -31,10 +31,10 @@ from visualize import (
 # ################ Local ################ 
 # All fine-tuned models (head, torso, tail) 
 # Single-label:
-# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/full_single_label_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_3_actual_eps_3_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_32_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/progressive_single_label_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_3_actual_eps_3_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_bs_32_best_model_last_phase_0_flr_1.0e-05_fwd_0.01.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/lora_single_label_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_3_actual_eps_3_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_bs_32_best_model.pth
+# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/full_single_label_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_16_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_32_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/progressive_single_label_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_bs_32_best_model_last_phase_1_flr_6.9e-06_fwd_0.010306122448979592.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/lora_single_label_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_18_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_bs_32_best_model.pth
 
 # Multi-label:
-# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/full_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_3_actual_eps_3_dropout_0.0_lr_1.0e-05_wd_1.0e-02_temp_0.07_bs_32_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/progressive_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_3_actual_eps_3_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_temp_0.07_bs_32_best_model_last_phase_0_flr_1.0e-05_fwd_0.01.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/lora_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_3_actual_eps_3_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_temp_0.07_bs_32_best_model.pth
+# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/full_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_dropout_0.0_lr_1.0e-05_wd_1.0e-02_temp_0.07_bs_16_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/progressive_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_temp_0.07_bs_16_best_model_last_phase_1_flr_5.6e-06_fwd_0.010306122448979592.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/lora_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_temp_0.07_bs_16_best_model.pth
 # ################ Local ################ 
 
 # # run in pouta for all fine-tuned models:
@@ -356,7 +356,7 @@ def main():
 	args.device = torch.device(args.device)
 	print_args_table(args=args, parser=parser)
 	set_seeds(seed=42)
-	RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"results")
+	RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"results_{args.dataset_type}")
 	CACHE_DIRECTORY = os.path.join(RESULT_DIRECTORY, "inference_cache")
 	os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 	os.makedirs(CACHE_DIRECTORY, exist_ok=True)

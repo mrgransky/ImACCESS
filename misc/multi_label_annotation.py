@@ -683,7 +683,6 @@ def main():
 				except:
 					combined_labels.append([])				
 		print(f"Loaded {len(combined_labels)} combined labels")
-		# return combined_labels
 	else:
 		print("Merging textual and visual labels".center(160, "-"))
 		combined_labels = []
@@ -769,8 +768,6 @@ def main():
 	print("Multi-label Stratified Split Results:")
 	print(f"Train set shape: {train_df.shape}")
 	print(f"Validation set shape: {val_df.shape}")
-
-	# return combined_labels
 
 if __name__ == "__main__":
 	multiprocessing.set_start_method('spawn', force=True)
