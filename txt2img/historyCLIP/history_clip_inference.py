@@ -41,18 +41,151 @@ from visualize import (
 # # run in pouta for all fine-tuned models:
 # $ nohup python -u history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -nw 32 --device "cuda:2" -k 5 -bs 256 -fcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_23_dropout_0.1_lr_5.0e-06_wd_1.0e-02_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_84_dropout_0.1_ilr_5.0e-06_iwd_1.0e-02_bs_64_best_model_last_phase_3_flr_2.3e-06_fwd_0.012021761646381529.pth -lcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_26_lr_5.0e-06_wd_1.0e-02_lor_64_loa_128.0_lod_0.05_bs_64_best_model.pth > /media/volume/ImACCESS/trash/history_clip_inference.txt &
 
-def evaluate_pretrained_clip_multilabel(
-		model: torch.nn.Module,
-		validation_loader: DataLoader,
-		device: str,
-		topk_values: List[int],
-		verbose: bool = True,
-	):
-	if verbose:
-		print(f"Evaluating pre-trained {model.__class__.__name__} {model.name} Multi-label classification...")
+def _compute_similarities_chunked(
+		image_embeds: torch.Tensor,
+		class_embeds: torch.Tensor,
+		chunk_size: int = 100,
+		device: str = "cuda"
+	) -> torch.Tensor:
+	num_images = image_embeds.size(0)
+	num_classes = class_embeds.size(0)
+	
+	# Pre-allocate result tensor on CPU to save GPU memory
+	similarities = torch.zeros(num_images, num_classes, dtype=torch.float32)
+	
+	for i in range(0, num_images, chunk_size):
+		end_i = min(i + chunk_size, num_images)
+		
+		# Move only the current chunk to GPU
+		img_chunk = image_embeds[i:end_i].to(device)
+		
+		# Compute similarity for this chunk
+		with torch.no_grad():
+			chunk_sim = torch.matmul(img_chunk, class_embeds.T)
+		
+		# Store result on CPU
+		similarities[i:end_i] = chunk_sim.cpu()
+		
+		# Clean up GPU memory
+		del img_chunk, chunk_sim
+		torch.cuda.empty_cache()
+	
+	return similarities.to(device)
+
+def _compute_image_embeddings_multilabel(
+		model, 
+		validation_loader, 
+		device, 
+		verbose,
+		max_samples: int = None
+):
+	"""Memory-efficient image embedding computation for multi-label datasets."""
+	all_image_embeds = []
+	all_labels = []
+	processed_samples = 0
 	
 	model.eval()
+	iterator = tqdm(validation_loader, desc="Encoding images") if verbose else validation_loader
 	
+	for batch_idx, (images, _, labels) in enumerate(iterator):
+		# Check if we've processed enough samples
+		if max_samples and processed_samples >= max_samples:
+			break
+		
+		# Adjust batch size if we're near the limit
+		if max_samples and processed_samples + images.size(0) > max_samples:
+			remaining = max_samples - processed_samples
+			images = images[:remaining]
+			labels = labels[:remaining]
+		
+		images = images.to(device, non_blocking=True)
+		
+		# Clear cache before processing each batch
+		torch.cuda.empty_cache()
+		
+		try:
+			with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
+				with torch.no_grad():  # Ensure no gradients
+					image_embeds = model.encode_image(images)
+			
+			image_embeds = F.normalize(image_embeds.float(), dim=-1)
+			
+			# Move to CPU immediately to free GPU memory
+			all_image_embeds.append(image_embeds.cpu())
+			all_labels.append(labels.cpu())
+			
+			processed_samples += images.size(0)
+			
+			# Clear GPU memory after each batch
+			del images, image_embeds
+			torch.cuda.empty_cache()
+			
+		except torch.cuda.OutOfMemoryError:
+			print(f"OOM at batch {batch_idx}, reducing batch size...")
+			# Try with smaller chunks
+			batch_size = images.size(0)
+			chunk_size = max(1, batch_size // 2)
+			
+			for i in range(0, batch_size, chunk_size):
+				end_idx = min(i + chunk_size, batch_size)
+				img_chunk = images[i:end_idx].to(device, non_blocking=True)
+				label_chunk = labels[i:end_idx]
+				
+				torch.cuda.empty_cache()
+				
+				with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
+					with torch.no_grad():
+						chunk_embeds = model.encode_image(img_chunk)
+				
+				chunk_embeds = F.normalize(chunk_embeds.float(), dim=-1)
+				all_image_embeds.append(chunk_embeds.cpu())
+				all_labels.append(label_chunk.cpu())
+				
+				processed_samples += img_chunk.size(0)
+				
+				del img_chunk, chunk_embeds
+				torch.cuda.empty_cache()
+			
+			del images
+			torch.cuda.empty_cache()
+	
+	# Concatenate all embeddings
+	all_image_embeds = torch.cat(all_image_embeds, dim=0)
+	all_labels = torch.cat(all_labels, dim=0)
+	
+	if verbose:
+		print(f"Processed {processed_samples} samples, embedding shape: {all_image_embeds.shape}")
+	
+	return all_image_embeds.to(device), all_labels.to(device)
+
+def pretrain_multilabel(
+		model: torch.nn.Module,
+		validation_loader: DataLoader,
+		device: torch.device,
+		results_dir: str,
+		cache_dir: str = None,
+		topk_values: List[int] = [1, 3, 5],
+		verbose: bool = True,
+		max_samples: int = None,
+) -> Tuple[Dict, Dict]:
+	"""
+	Multi-label version of pretrain() that returns compatible metrics for plotting.
+	Returns img2txt_metrics and txt2img_metrics in the same format as single-label.
+	"""
+	model_name = model.__class__.__name__
+	model_arch = re.sub(r"[/@]", "_", model.name)
+	if cache_dir is None:
+		cache_dir = results_dir
+	
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	except:
+		dataset_name = validation_loader.dataset.dataset_name
+	
+	if verbose:
+		print(f"Pretrain Multi-label Evaluation {dataset_name} {model_name} - {model_arch} {device}".center(170, "-"))
+
+	# Get class information
 	try:
 		class_names = validation_loader.dataset.unique_labels
 		num_classes = len(class_names)
@@ -63,11 +196,13 @@ def evaluate_pretrained_clip_multilabel(
 	if verbose:
 		print(f"Multi-label evaluation: {num_classes} classes")
 	
+	# Use the memory-efficient embedding computation
 	all_image_embeds, all_labels = _compute_image_embeddings_multilabel(
 		model,
 		validation_loader,
 		device,
 		verbose,
+		max_samples=max_samples,
 	)
 	
 	# Pre-encode all class texts
@@ -76,182 +211,200 @@ def evaluate_pretrained_clip_multilabel(
 		all_class_embeds = model.encode_text(all_class_texts)
 		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
 	
-	# Compute similarities [num_samples, num_classes]
-	with torch.no_grad():
-		similarities = torch.matmul(all_image_embeds, all_class_embeds.T)
-		probabilities = torch.sigmoid(similarities)
+	# Clear cache before similarity computation
+	torch.cuda.empty_cache()
 	
-	# Find optimal threshold
-	if verbose:
-		print("Finding optimal threshold for multi-label classification...")
+	# Compute similarities in chunks
+	i2t_similarities = _compute_similarities_chunked(
+		all_image_embeds, 
+		all_class_embeds, 
+		chunk_size=100,
+		device=device
+	)
 	
-	optimal_threshold = _find_optimal_multilabel_threshold(
-		probabilities, 
-		all_labels, 
-		validation_split=0.2, 
+	t2i_similarities = _compute_similarities_chunked(
+		all_class_embeds,
+		all_image_embeds, 
+		chunk_size=100,
+		device=device
+	)
+	
+	# Compute retrieval metrics compatible with plotting functions
+	img2txt_metrics = _compute_multilabel_retrieval_metrics(
+		similarity_matrix=i2t_similarities,
+		query_labels=all_labels,
+		candidate_labels=torch.arange(num_classes, device=device),
+		topK_values=topk_values,
+		mode="Image-to-Text",
 		verbose=verbose
 	)
 	
-	# Apply threshold to get predictions
-	predictions = (probabilities > optimal_threshold).float()
-	
-	# Compute multi-label metrics
-	metrics = _compute_multilabel_baseline_metrics(
-		predictions, 
-		all_labels, 
-		similarities, 
-		class_names, 
-		topk_values, 
-		device
+	txt2img_metrics = _compute_multilabel_retrieval_metrics(
+		similarity_matrix=t2i_similarities,
+		query_labels=torch.arange(num_classes, device=device),
+		candidate_labels=all_labels,
+		topK_values=topk_values,
+		mode="Text-to-Image",
+		verbose=verbose
 	)
 	
 	if verbose:
-		print(f"Optimal threshold: {optimal_threshold:.4f}")
-		print(f"Baseline metrics computed for {num_classes} classes")
-		print(json.dumps(metrics, ensure_ascii=False, indent=4))
+		print("Image to Text Metrics: ")
+		print(json.dumps(img2txt_metrics, indent=2, ensure_ascii=False))
+		print("Text to Image Metrics: ")
+		print(json.dumps(txt2img_metrics, indent=2, ensure_ascii=False))
+
+	# Create plot
+	retrieval_metrics_best_model_fpth = os.path.join(
+		results_dir, 
+		f"{dataset_name}_pretrained_{model_name}_{model_arch}_retrieval_metrics_img2txt_txt2img.png"
+	)
+	
+	# Import plotting function (assuming it exists)
+	try:
+		from visualize import plot_retrieval_metrics_best_model
+		plot_retrieval_metrics_best_model(
+			dataset_name=dataset_name,
+			image_to_text_metrics=img2txt_metrics,
+			text_to_image_metrics=txt2img_metrics,
+			fname=retrieval_metrics_best_model_fpth,
+			best_model_name=f"Pretrained {model_name} {model_arch}",
+		)
+	except ImportError:
+		print("Warning: Could not import plotting function")
+
+	return img2txt_metrics, txt2img_metrics
+
+def _compute_multilabel_retrieval_metrics(
+		similarity_matrix: torch.Tensor,
+		query_labels: torch.Tensor,
+		candidate_labels: torch.Tensor,
+		topK_values: List[int],
+		mode: str = "Image-to-Text",
+		verbose: bool = True
+) -> Dict:
+	"""
+	Compute retrieval metrics for multi-label classification that are compatible 
+	with the plotting functions (mP, mAP, Recall).
+	"""
+	if verbose:
+		print(f"Computing retrieval metrics for {mode}")
+	
+	metrics = {"mP": {}, "mAP": {}, "Recall": {}}
+	
+	num_queries, num_candidates = similarity_matrix.shape
+	device = similarity_matrix.device
+	
+	# Get top-K indices for all queries
+	all_sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
+	
+	for K in topK_values:
+		if K > num_candidates:
+			continue
+			
+		top_k_indices = all_sorted_indices[:, :K]
+		
+		# Compute correctness mask for multi-label
+		if mode == "Image-to-Text":
+			# query_labels: [num_images, num_classes], candidate_labels: [num_classes]
+			correct_mask = _compute_multilabel_i2t_correctness(
+				top_k_indices, query_labels, K
+			)
+		else:  # Text-to-Image
+			# query_labels: [num_classes], candidate_labels: [num_images, num_classes]
+			correct_mask = _compute_multilabel_t2i_correctness(
+				top_k_indices, candidate_labels, K
+			)
+		
+		# Compute metrics
+		# mP: Mean Precision - average precision across all queries
+		metrics["mP"][str(K)] = correct_mask.float().mean().item()
+		
+		# Recall: Fraction of queries that retrieved at least one relevant item
+		metrics["Recall"][str(K)] = correct_mask.any(dim=1).float().mean().item()
+		
+		# mAP: Mean Average Precision
+		ap_scores = []
+		for i in range(num_queries):
+			relevant_mask = correct_mask[i]
+			if relevant_mask.any():
+				# Calculate AP for this query
+				relevant_positions = torch.where(relevant_mask)[0].float() + 1  # 1-indexed
+				precisions = torch.arange(1, len(relevant_positions) + 1, device=device).float() / relevant_positions
+				ap = precisions.mean().item()
+			else:
+				ap = 0.0
+			ap_scores.append(ap)
+		
+		metrics["mAP"][str(K)] = np.mean(ap_scores)
 	
 	return metrics
 
-def _compute_image_embeddings_multilabel(model, validation_loader, device, verbose):
-	all_image_embeds = []
-	all_labels = []
+def _compute_multilabel_i2t_correctness(
+		top_k_indices: torch.Tensor,
+		query_labels: torch.Tensor,
+		K: int
+) -> torch.Tensor:
+	"""
+	Compute correctness mask for Image-to-Text multi-label retrieval.
 	
-	model.eval()
-	iterator = tqdm(validation_loader, desc="Encoding images") if verbose else validation_loader
-	
-	for images, _, labels in iterator:
-		images = images.to(device, non_blocking=True)
+	Args:
+		top_k_indices: [num_images, K] - top K class indices for each image
+		query_labels: [num_images, num_classes] - multi-hot labels for each image
+		K: number of top retrievals
 		
-		with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
-			image_embeds = model.encode_image(images)
+	Returns:
+		correct_mask: [num_images, K] - binary mask indicating correct retrievals
+	"""
+	num_images = top_k_indices.shape[0]
+	device = top_k_indices.device
+	
+	correct_mask = torch.zeros(num_images, K, device=device, dtype=torch.bool)
+	
+	for i in range(num_images):
+		# Get true class indices for this image
+		true_class_indices = torch.where(query_labels[i] == 1)[0]
 		
-		image_embeds = F.normalize(image_embeds.float(), dim=-1)
-		all_image_embeds.append(image_embeds.cpu())
-		all_labels.append(labels.cpu())
+		if len(true_class_indices) > 0:
+			# Check which of the top-K retrieved classes are correct
+			retrieved_classes = top_k_indices[i]  # [K]
+			correct_retrievals = torch.isin(retrieved_classes, true_class_indices)
+			correct_mask[i] = correct_retrievals
 	
-	all_image_embeds = torch.cat(all_image_embeds, dim=0)
-	all_labels = torch.cat(all_labels, dim=0)
-	
-	return all_image_embeds.to(device), all_labels.to(device)
+	return correct_mask
 
-def _find_optimal_multilabel_threshold(
-		probabilities: torch.Tensor, 
-		labels: torch.Tensor, 
-		validation_split: float = 0.2,
-		verbose: bool = True
-) -> float:
-		"""Find optimal threshold for multi-label classification."""
-		try:
-				from sklearn.metrics import f1_score
-		except ImportError:
-				print("Warning: sklearn not available, using frequency-based threshold")
-				sparsity = labels.float().mean().item()
-				return max(0.1, min(0.9, sparsity))
-		
-		num_samples = probabilities.shape[0]
-		val_size = int(num_samples * validation_split)
-		
-		if val_size < 10:
-				# Fallback: use label frequency as threshold
-				sparsity = labels.float().mean().item()
-				threshold = max(0.1, min(0.9, sparsity))
-				if verbose:
-						print(f"Using frequency-based threshold: {threshold:.4f}")
-				return threshold
-		
-		# Split data for threshold validation
-		val_probs = probabilities[:val_size]
-		val_labels = labels[:val_size]
-		
-		best_threshold = 0.5
-		best_f1 = 0.0
-		
-		# Test different thresholds
-		thresholds = torch.linspace(0.05, 0.95, 19)
-		for threshold in thresholds:
-				predictions = (val_probs > threshold).float()
-				try:
-						f1 = f1_score(
-								val_labels.cpu().numpy(), 
-								predictions.cpu().numpy(), 
-								average='weighted',
-								zero_division=0
-						)
-						if f1 > best_f1:
-								best_f1 = f1
-								best_threshold = threshold.item()
-				except:
-						continue
-		
-		if verbose:
-				print(f"Best F1: {best_f1:.4f} at threshold: {best_threshold:.4f}")
-		
-		return best_threshold
-
-def _compute_multilabel_baseline_metrics(
-		predictions: torch.Tensor,
-		labels: torch.Tensor, 
-		similarities: torch.Tensor,
-		class_names: List[str],
-		topk_values: List[int],
-		device: str
-	) -> Dict:
-	try:
-			
-			# Basic multi-label metrics
-			hamming = hamming_loss(labels.cpu().numpy(), predictions.cpu().numpy())
-			
-			# F1 Score
-			f1 = f1_score(
-					labels.cpu().numpy(), 
-					predictions.cpu().numpy(), 
-					average='weighted',
-					zero_division=0
-			)
-	except ImportError:
-			print("Warning: sklearn not available, using basic metrics only")
-			hamming = ((predictions != labels).float().sum() / (labels.shape[0] * labels.shape[1])).item()
-			f1 = 0.0
+def _compute_multilabel_t2i_correctness(
+		top_k_indices: torch.Tensor,
+		candidate_labels: torch.Tensor,
+		K: int
+) -> torch.Tensor:
+	"""
+	Compute correctness mask for Text-to-Image multi-label retrieval.
 	
-	# Exact match accuracy (all labels must match)
-	exact_match = (predictions == labels).all(dim=1).float().mean().item()
+	Args:
+		top_k_indices: [num_classes, K] - top K image indices for each class
+		candidate_labels: [num_images, num_classes] - multi-hot labels for each image
+		K: number of top retrievals
+		
+	Returns:
+		correct_mask: [num_classes, K] - binary mask indicating correct retrievals
+	"""
+	num_classes = top_k_indices.shape[0]
+	device = top_k_indices.device
 	
-	# Partial accuracy (at least one correct prediction)
-	partial_acc = ((predictions * labels).sum(dim=1) > 0).float().mean().item()
+	correct_mask = torch.zeros(num_classes, K, device=device, dtype=torch.bool)
 	
-	# Top-K metrics
-	topk_metrics = {}
-	for k in topk_values:
-			if k <= len(class_names):
-					topk_indices = similarities.topk(k, dim=1)[1]
-					topk_preds = torch.zeros_like(similarities).scatter_(1, topk_indices, 1.0)
-					
-					# Subset accuracy: all true labels are in top-k
-					subset_acc = (labels <= topk_preds).all(dim=1).float().mean().item()
-					topk_metrics[str(k)] = subset_acc
+	for class_idx in range(num_classes):
+		# Get images that have this class
+		images_with_class = torch.where(candidate_labels[:, class_idx] == 1)[0]
+		
+		if len(images_with_class) > 0:
+			# Check which of the top-K retrieved images actually have this class
+			retrieved_images = top_k_indices[class_idx]  # [K]
+			correct_retrievals = torch.isin(retrieved_images, images_with_class)
+			correct_mask[class_idx] = correct_retrievals
 	
-	# Average cosine similarity with true labels
-	num_samples, num_classes = similarities.shape
-	matched_similarities = []
-	
-	for i in range(num_samples):
-			true_indices = torch.where(labels[i] == 1)[0]
-			if len(true_indices) > 0:
-					# Average similarity to all true classes
-					avg_sim = similarities[i, true_indices].mean().item()
-					matched_similarities.append(avg_sim)
-	
-	avg_cosine_sim = np.mean(matched_similarities) if matched_similarities else 0.0
-	
-	return {
-			"hamming_loss": float(hamming),
-			"exact_match_acc": float(exact_match),
-			"partial_acc": float(partial_acc),
-			"f1_score": float(f1),
-			"topk_acc": topk_metrics,
-			"cosine_similarity": float(avg_cosine_sim),
-			"baseline_type": "similarity_threshold"
-	}
+	return correct_mask
 
 def get_multi_label_head_torso_tail_samples(
 		metadata_path: str,
@@ -604,12 +757,19 @@ def main():
 	pretrained_img2txt_dict = {args.model_architecture: {}}
 	pretrained_txt2img_dict = {args.model_architecture: {}}
 	if args.dataset_type == "multi_label":
-		baseline_metrics = evaluate_pretrained_clip_multilabel(
-				model=pretrained_model,
-				validation_loader=validation_loader,
-				device=args.device,
-				topk_values=args.topK_values,
+		max_eval_samples = min(500, len(validation_loader.dataset))
+		pretrained_img2txt, pretrained_txt2img = pretrain_multilabel(
+			model=pretrained_model,
+			validation_loader=validation_loader,
+			device=args.device,
+			results_dir=RESULT_DIRECTORY,
+			cache_dir=CACHE_DIRECTORY,
+			topk_values=args.topK_values,
+			verbose=True,
+			max_samples=max_eval_samples,
 		)
+		pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
+		pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
 	else:
 		pretrained_img2txt, pretrained_txt2img = pretrain(
 			model=pretrained_model,
@@ -621,8 +781,8 @@ def main():
 			verbose=False,
 			embeddings_cache=embeddings_cache["pretrained"],
 		)
-	pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
-	pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
+		pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
+		pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
 	print(f">> Pretrained model metrics computed successfully. [for Quantitative Analysis]")
 
 	plot_comparison_metrics_split(
