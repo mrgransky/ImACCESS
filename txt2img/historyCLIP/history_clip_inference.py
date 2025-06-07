@@ -1,4 +1,3 @@
-import json
 import os
 import sys
 HOME, USER = os.getenv('HOME'), os.getenv('USER')
@@ -190,7 +189,8 @@ def pretrain_multilabel(
 	
 	# Clear cache before similarity computation
 	torch.cuda.empty_cache()
-	
+	if verbose:
+		print(f"Computing Image-to-Text similarities with temperature={temperature}")
 	# Compute similarities in chunks
 	i2t_similarities = _compute_similarities_chunked(
 		all_image_embeds, 
@@ -199,7 +199,8 @@ def pretrain_multilabel(
 		device=device,
 		temperature=temperature
 	)
-	
+	if verbose:
+		print(f"Computing Text-to-Image similarities with temperature={temperature}")
 	t2i_similarities = _compute_similarities_chunked(
 		all_class_embeds,
 		all_image_embeds, 
@@ -323,33 +324,19 @@ def _compute_multilabel_i2t_correctness(
 		top_k_indices: torch.Tensor,
 		query_labels: torch.Tensor,
 		K: int
-) -> torch.Tensor:
-	"""
-	Compute correctness mask for Image-to-Text multi-label retrieval.
-	
-	Args:
-		top_k_indices: [num_images, K] - top K class indices for each image
-		query_labels: [num_images, num_classes] - multi-hot labels for each image
-		K: number of top retrievals
-		
-	Returns:
-		correct_mask: [num_images, K] - binary mask indicating correct retrievals
-	"""
+	) -> torch.Tensor:
 	num_images = top_k_indices.shape[0]
 	device = top_k_indices.device
-	
 	correct_mask = torch.zeros(num_images, K, device=device, dtype=torch.bool)
-	
+
 	for i in range(num_images):
-		# Get true class indices for this image
 		true_class_indices = torch.where(query_labels[i] == 1)[0]
-		
+
 		if len(true_class_indices) > 0:
-			# Check which of the top-K retrieved classes are correct
-			retrieved_classes = top_k_indices[i]  # [K]
+			retrieved_classes = top_k_indices[i]
 			correct_retrievals = torch.isin(retrieved_classes, true_class_indices)
 			correct_mask[i] = correct_retrievals
-	
+
 	return correct_mask
 
 def _compute_multilabel_t2i_correctness(
@@ -402,7 +389,7 @@ def main():
 	parser.add_argument('--lora_checkpoint', '-lcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
 	parser.add_argument('--progressive_checkpoint', '-pcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
 	parser.add_argument('--topK_values', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
-	parser.add_argument('--temperature', '-t', type=float, default=None, help='Temperature for evaluation')
+	parser.add_argument('--temperature', '-t', type=float, default=0.07, help='Temperature for evaluation')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
