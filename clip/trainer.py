@@ -135,13 +135,6 @@ def compute_multilabel_inbatch_metrics(
 		max_samples: int = 384,
 		temperature: float = 0.07
 	) -> Dict:
-	"""
-	Compute in-batch metrics specifically for multi-label classification.
-	
-	This computes Top-K accuracy in the context of multi-label, where:
-	- For Image→Text: How many of the top-K predicted classes are actually present in the ground truth
-	- For Text→Image: How many of the top-K retrieved images contain the query class
-	"""
 	model.eval()
 	
 	# Get class embeddings
@@ -546,39 +539,30 @@ def get_optimal_threshold_multilabel(
 def chunked_similarity_computation(
 		query_embeddings: torch.Tensor,
 		candidate_embeddings: torch.Tensor,
-		chunk_size: int = 1000
-) -> torch.Tensor:
-		"""
-		Compute similarity matrix in chunks to avoid memory issues.
+		chunk_size: int = 1000,
+		temperature: float = 0.07
+	) -> torch.Tensor:
+	num_queries = query_embeddings.shape[0]
+	num_candidates = candidate_embeddings.shape[0]
+	device = query_embeddings.device
+	
+	# Pre-allocate result tensor
+	similarity_matrix = torch.zeros(
+		num_queries, 
+		num_candidates, 
+		device=device, 
+		dtype=torch.float32
+	)
+	
+	for i in range(0, num_queries, chunk_size):
+		end_i = min(i + chunk_size, num_queries)
+		query_chunk = query_embeddings[i:end_i]
 		
-		Args:
-				query_embeddings: [num_queries, embed_dim]
-				candidate_embeddings: [num_candidates, embed_dim]
-				chunk_size: Size of chunks to process
-				
-		Returns:
-				Similarity matrix [num_queries, num_candidates]
-		"""
-		num_queries = query_embeddings.shape[0]
-		num_candidates = candidate_embeddings.shape[0]
-		device = query_embeddings.device
-		
-		# Pre-allocate result tensor
-		similarity_matrix = torch.zeros(
-				num_queries, num_candidates, 
-				device=device, dtype=torch.float32
-		)
-		
-		# Process in chunks
-		for i in range(0, num_queries, chunk_size):
-				end_i = min(i + chunk_size, num_queries)
-				query_chunk = query_embeddings[i:end_i]
-				
-				# Compute similarity for this chunk
-				chunk_similarities = torch.mm(query_chunk, candidate_embeddings.T)
-				similarity_matrix[i:end_i] = chunk_similarities
-		
-		return similarity_matrix
+		# Compute similarity for this chunk
+		chunk_similarities = torch.mm(query_chunk, candidate_embeddings.T) / temperature
+		similarity_matrix[i:end_i] = chunk_similarities
+	
+	return similarity_matrix
 
 def compute_multilabel_mrr(
 		similarity_matrix: torch.Tensor,
@@ -1026,12 +1010,14 @@ def get_validation_metrics(
 	i2t_similarity = chunked_similarity_computation(
 		device_image_embeds, 
 		device_class_text_embeds, 
-		chunk_size=chunk_size
+		chunk_size=chunk_size,
+		temperature=temperature
 	)
 	t2i_similarity = chunked_similarity_computation(
 		device_class_text_embeds, 
 		device_image_embeds, 
-		chunk_size=chunk_size
+		chunk_size=chunk_size,
+		temperature=temperature
 	)
 	
 	# Step 5: Compute full-set metrics
@@ -1421,10 +1407,14 @@ def evaluate_best_model(
 		embeddings_cache=None,
 		max_in_batch_samples: int = 384,
 		lora_params = None,
+		temperature: float = 0.07,
 	):
 	model_source = "current"
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
-	
+	if verbose:
+		print(f"Evaluating best model on {dataset_name} {finetune_strategy} criterion: {criterion.__class__.__name__}")
+
+
 	if os.path.exists(checkpoint_path):
 		if verbose:
 			print(f"Loading best model weights {checkpoint_path} for final evaluation...")

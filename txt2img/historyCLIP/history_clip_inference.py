@@ -45,13 +45,14 @@ def _compute_similarities_chunked(
 		image_embeds: torch.Tensor,
 		class_embeds: torch.Tensor,
 		chunk_size: int = 100,
-		device: str = "cuda"
+		device: str = "cuda",
+		temperature: float = 0.07
 	) -> torch.Tensor:
 	num_images = image_embeds.size(0)
 	num_classes = class_embeds.size(0)
 	
 	# Pre-allocate result tensor on CPU to save GPU memory
-	similarities = torch.zeros(num_images, num_classes, dtype=torch.float32)
+	similarities = torch.zeros(num_images, num_classes, dtype=torch.float32, device=device,)
 	
 	for i in range(0, num_images, chunk_size):
 		end_i = min(i + chunk_size, num_images)
@@ -61,7 +62,7 @@ def _compute_similarities_chunked(
 		
 		# Compute similarity for this chunk
 		with torch.no_grad():
-			chunk_sim = torch.matmul(img_chunk, class_embeds.T)
+			chunk_sim = torch.matmul(img_chunk, class_embeds.T) / temperature
 		
 		# Store result on CPU
 		similarities[i:end_i] = chunk_sim.cpu()
@@ -70,7 +71,7 @@ def _compute_similarities_chunked(
 		del img_chunk, chunk_sim
 		torch.cuda.empty_cache()
 	
-	return similarities.to(device)
+	return similarities.to(device, non_blocking=True)
 
 def _compute_image_embeddings_multilabel(
 		model, 
@@ -78,8 +79,7 @@ def _compute_image_embeddings_multilabel(
 		device, 
 		verbose,
 		max_samples: int = None
-):
-	"""Memory-efficient image embedding computation for multi-label datasets."""
+	):
 	all_image_embeds = []
 	all_labels = []
 	processed_samples = 0
@@ -99,64 +99,44 @@ def _compute_image_embeddings_multilabel(
 			labels = labels[:remaining]
 		
 		images = images.to(device, non_blocking=True)
-		
-		# Clear cache before processing each batch
 		torch.cuda.empty_cache()
 		
 		try:
 			with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
-				with torch.no_grad():  # Ensure no gradients
+				with torch.no_grad():
 					image_embeds = model.encode_image(images)
-			
 			image_embeds = F.normalize(image_embeds.float(), dim=-1)
-			
 			# Move to CPU immediately to free GPU memory
 			all_image_embeds.append(image_embeds.cpu())
 			all_labels.append(labels.cpu())
-			
-			processed_samples += images.size(0)
-			
-			# Clear GPU memory after each batch
+			processed_samples += images.size(0)			
 			del images, image_embeds
 			torch.cuda.empty_cache()
-			
 		except torch.cuda.OutOfMemoryError:
 			print(f"OOM at batch {batch_idx}, reducing batch size...")
-			# Try with smaller chunks
 			batch_size = images.size(0)
 			chunk_size = max(1, batch_size // 2)
-			
 			for i in range(0, batch_size, chunk_size):
 				end_idx = min(i + chunk_size, batch_size)
 				img_chunk = images[i:end_idx].to(device, non_blocking=True)
-				label_chunk = labels[i:end_idx]
-				
+				label_chunk = labels[i:end_idx]				
 				torch.cuda.empty_cache()
-				
 				with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
 					with torch.no_grad():
 						chunk_embeds = model.encode_image(img_chunk)
-				
 				chunk_embeds = F.normalize(chunk_embeds.float(), dim=-1)
 				all_image_embeds.append(chunk_embeds.cpu())
 				all_labels.append(label_chunk.cpu())
-				
 				processed_samples += img_chunk.size(0)
-				
 				del img_chunk, chunk_embeds
 				torch.cuda.empty_cache()
-			
 			del images
-			torch.cuda.empty_cache()
-	
-	# Concatenate all embeddings
+			torch.cuda.empty_cache()	
 	all_image_embeds = torch.cat(all_image_embeds, dim=0)
 	all_labels = torch.cat(all_labels, dim=0)
-	
 	if verbose:
 		print(f"Processed {processed_samples} samples, embedding shape: {all_image_embeds.shape}")
-	
-	return all_image_embeds.to(device), all_labels.to(device)
+	return all_image_embeds.to(device, non_blocking=True), all_labels.to(device, non_blocking=True)
 
 def pretrain_multilabel(
 		model: torch.nn.Module,
@@ -167,11 +147,8 @@ def pretrain_multilabel(
 		topk_values: List[int] = [1, 3, 5],
 		verbose: bool = True,
 		max_samples: int = None,
-) -> Tuple[Dict, Dict]:
-	"""
-	Multi-label version of pretrain() that returns compatible metrics for plotting.
-	Returns img2txt_metrics and txt2img_metrics in the same format as single-label.
-	"""
+		temperature: float = 0.07
+	) -> Tuple[Dict, Dict]:
 	model_name = model.__class__.__name__
 	model_arch = re.sub(r"[/@]", "_", model.name)
 	if cache_dir is None:
@@ -206,7 +183,7 @@ def pretrain_multilabel(
 	)
 	
 	# Pre-encode all class texts
-	all_class_texts = clip.tokenize(class_names).to(device)
+	all_class_texts = clip.tokenize(class_names).to(device, non_blocking=True)
 	with torch.no_grad():
 		all_class_embeds = model.encode_text(all_class_texts)
 		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
@@ -219,14 +196,16 @@ def pretrain_multilabel(
 		all_image_embeds, 
 		all_class_embeds, 
 		chunk_size=100,
-		device=device
+		device=device,
+		temperature=temperature
 	)
 	
 	t2i_similarities = _compute_similarities_chunked(
 		all_class_embeds,
 		all_image_embeds, 
 		chunk_size=100,
-		device=device
+		device=device,
+		temperature=temperature
 	)
 	
 	# Compute retrieval metrics compatible with plotting functions
@@ -423,6 +402,7 @@ def main():
 	parser.add_argument('--lora_checkpoint', '-lcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
 	parser.add_argument('--progressive_checkpoint', '-pcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
 	parser.add_argument('--topK_values', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
+	parser.add_argument('--temperature', '-t', type=float, default=None, help='Temperature for evaluation')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
@@ -465,6 +445,10 @@ def main():
 	pretrained_model.name = args.model_architecture # ViT-B/32
 	pretrained_model_arch = re.sub(r'[/@]', '-', args.model_architecture)
 
+	print(f"Temperature used in training: 0.07")
+	print(f"Temperature used in evaluation: {getattr(args, 'temperature', 'Not set')}")
+
+
 	if not all(pretrained_model_arch in checkpoint for checkpoint in [args.full_checkpoint, args.lora_checkpoint, args.progressive_checkpoint]):
 		raise ValueError("Checkpoint path does not match the assigned model architecture!")
 
@@ -490,10 +474,56 @@ def main():
 	print_loader_info(loader=train_loader, batch_size=args.batch_size)
 	print_loader_info(loader=validation_loader, batch_size=args.batch_size)
 
+
+	print("\n" + "="*80)
+	print("DEBUGGING: Multi-label Ground Truth Extraction")
+	print("="*80)
+	
+	# Check if ground truth extraction is correct
+	for sample in validation_loader:
+			images, _, labels = sample
+			print(f"Batch size: {images.shape[0]}")
+			print(f"Image shape: {images.shape}")
+			print(f"Label shape: {labels.shape}")  # Should be [batch_size, num_classes]
+			print(f"Labels dtype: {labels.dtype}")
+			print(f"Sample labels for first image: {labels[0]}")  # Should show multiple 1s for multi-label
+			print(f"Number of positive labels in first sample: {labels[0].sum().item()}")
+			print(f"Non-zero label indices: {torch.where(labels[0] == 1)[0].tolist()}")
+			
+			# Also check a few more samples in the batch
+			if images.shape[0] > 1:
+					print(f"Sample labels for second image: {labels[1]}")
+					print(f"Number of positive labels in second sample: {labels[1].sum().item()}")
+			
+			break  # Only check first batch
+	
+	print("="*80)
+	print("END DEBUGGING")
+	print("="*80 + "\n")
+
+
 	customized_preprocess = get_preprocess(
 		dataset_dir=args.dataset_dir, 
 		input_resolution=model_config["image_resolution"],
 	)
+
+	print("\n" + "="*80)
+	print("DEBUGGING: Text Embeddings")
+	print("="*80)
+
+	# Test text encoding with pretrained model
+	test_labels = ['railroad', 'cannon', 'mountain']
+	test_texts = clip.tokenize(test_labels).to(args.device)
+	with torch.no_grad():
+			text_embeds = pretrained_model.encode_text(test_texts)
+			text_embeds = F.normalize(text_embeds, dim=-1)
+			
+	print(f"Text embeddings shape: {text_embeds.shape}")
+	print(f"Text embeddings norm: {text_embeds.norm(dim=-1)}")  # Should be ~1.0
+	print(f"Text similarity matrix:\n{torch.mm(text_embeds, text_embeds.T)}")  # Should show reasonable similarities
+
+	print("="*80 + "\n")
+
 
 	# Systematic selection of samples from validation set: Head, Torso, Tail
 	if args.query_image is None or args.query_label is None:
@@ -604,6 +634,7 @@ def main():
 					"lora_alpha": args.lora_alpha,
 					"lora_dropout": args.lora_dropout,
 				} if ft_name == "lora" else None,
+				temperature=args.temperature,
 			)
 			finetuned_img2txt_dict[args.model_architecture][ft_name] = evaluation_results["img2txt_metrics"]
 			finetuned_txt2img_dict[args.model_architecture][ft_name] = evaluation_results["txt2img_metrics"]
@@ -693,6 +724,7 @@ def main():
 			topk_values=args.topK_values,
 			verbose=True,
 			max_samples=max_eval_samples,
+			temperature=args.temperature,
 		)
 		pretrained_img2txt_dict[args.model_architecture] = pretrained_img2txt
 		pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
