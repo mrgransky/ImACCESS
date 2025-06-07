@@ -39,35 +39,6 @@ def cleanup_embedding_cache(
 	else:
 			print(f"No cache files found for {base_name}*.pt")
 
-def cleanup_embedding_cache_old(
-		dataset_name: str,
-		cache_dir: str,
-		finetune_strategy: str, 
-		batch_size: int, 
-		model_name: str, 
-		model_arch: str,
-		num_workers: int,
-	):
-
-	cache_file = os.path.join(
-		cache_dir,
-		f"{dataset_name}_"
-		f"{finetune_strategy}_"
-		f"bs_{batch_size}_"
-		f"nw_{num_workers}_"
-		f"{model_name}_"
-		f"{re.sub(r'[/@]', '_', model_arch)}_"
-		f"validation_embeddings.pt"
-	)	
-	if os.path.exists(cache_file):
-		try:
-			os.remove(cache_file)
-			print(f"Successfully removed cache file: {cache_file}")
-		except Exception as e:
-			print(f"Warning: Failed to remove cache file {cache_file}: {e}")
-	else:
-		print(f"Cache file: {cache_file} does not exist. No cleanup.")
-
 def get_model_hash(model: torch.nn.Module) -> str:
 		"""
 		Generate a hash of model parameters to detect when model weights have changed.
