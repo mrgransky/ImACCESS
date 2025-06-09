@@ -366,7 +366,7 @@ def is_virtual_machine(verbose: bool = False) -> bool:
     return False
 
 def get_cache_size(
-		image_estimate_mb: float = 5.0,
+		image_estimate_mb: float = 7.0,
 		max_cap_gb: float = 6.0,
 		min_cache_items: int = 64,
 		verbose: bool = True
@@ -388,9 +388,9 @@ def get_cache_size(
 	if mode == "low":
 		usage_ratio = 0.02
 	elif mode == "medium":
-		usage_ratio = 0.08
+		usage_ratio = 0.06
 	elif mode == "high":
-		usage_ratio = 0.09
+		usage_ratio = 0.07
 	elif mode == "auto":
 		if total_gb <= 8:
 			usage_ratio = 0.02  # Laptop
@@ -403,6 +403,7 @@ def get_cache_size(
 
 	print(f">> Usage ratio: {usage_ratio:.2f} => available_gb * usage_ratio: {available_gb * usage_ratio:.2f} GiB | max_cap_gb: {max_cap_gb:.2f} GiB")
 	cache_budget_gb = min(available_gb * usage_ratio, max_cap_gb)
+	print(f">> cache_budget_gb: {cache_budget_gb:.2f} GiB")
 	cache_items = int((cache_budget_gb * 1024) / image_estimate_mb)
 	cache_items = max(min_cache_items, cache_items)
 	if verbose:

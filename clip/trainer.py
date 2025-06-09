@@ -2048,6 +2048,7 @@ def get_unfreeze_schedule(
 		unfreeze_percentages: List[float] = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], # Start at 0% unfrozen, increase to 100%
 		layer_groups_to_unfreeze: List[str] = ['visual_frontend', 'visual_transformer', 'text_frontend', 'text_transformer', 'projections'],
 		max_trainable_params: Optional[int] = None,
+		verbose: bool = True,
 	) -> Dict[int, List[str]]:
 
 	# Validate input
@@ -2092,8 +2093,9 @@ def get_unfreeze_schedule(
 			)
 		)
 
-	print(create_layer_table(total_v_layers, "Visual"))
-	print(create_layer_table(total_t_layers, "Text"))
+	if verbose:
+		print(create_layer_table(total_v_layers, "Visual"))
+		print(create_layer_table(total_t_layers, "Text"))
 
 	schedule = {}
 	all_transformer_layers = selected_groups.get('visual_transformer', []) + selected_groups.get('text_transformer', [])
@@ -2115,9 +2117,11 @@ def get_unfreeze_schedule(
 
 		print(f"Phase {phase} (unfreeze_pct={unfreeze_pct}): {len(layers_to_unfreeze)} layers to unfreeze")
 
-	print(f"\nUnfreeze Schedule contains {len(schedule)} different phases:\n{[f'phase {phase}: {len(layers)} layers' for phase, layers in schedule.items()]}\n")
-	print(json.dumps(schedule, indent=2, ensure_ascii=False))
-	print("-"*50)
+	if verbose:
+		print(f"\nUnfreeze Schedule contains {len(schedule)} different phases:\n{[f'phase {phase}: {len(layers)} layers' for phase, layers in schedule.items()]}\n")
+		# print(json.dumps(schedule, indent=2, ensure_ascii=False))
+		print("-"*160)
+
 	return schedule
 
 def should_transition_phase(
@@ -3896,7 +3900,6 @@ def progressive_finetune_multi_label(
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3) # GB
 		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-	# Get dataset information
 	try:
 		num_classes = len(validation_loader.dataset.unique_labels)
 		class_names = validation_loader.dataset.unique_labels
@@ -3904,7 +3907,7 @@ def progressive_finetune_multi_label(
 		num_classes = len(validation_loader.dataset.dataset.classes)
 		class_names = validation_loader.dataset.dataset.classes
 	print(f"Multi-label progressive fine-tuning: {num_classes} classes")
-	print(f"Class names sample: {class_names[:5]}...")
+	print(f"Class names sample:\n{class_names}")
 
 	# Find dropout value
 	dropout_val = 0.0
