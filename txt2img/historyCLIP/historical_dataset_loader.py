@@ -434,9 +434,8 @@ def get_multi_label_dataloaders(
 		train=True,
 		data_frame=train_dataset.sort_values(by="img_path").reset_index(drop=True),
 		transform=preprocess,
-		# memory_threshold_gib=memory_threshold_gib,
 		label_dict=label_dict,
-		cache_size=cache_size,
+		cache_size=int(cache_size * 0.7),
 	)
 	
 	print(train_dataset)
@@ -458,9 +457,8 @@ def get_multi_label_dataloaders(
 			train=False,
 			data_frame=val_dataset.sort_values(by="img_path").reset_index(drop=True),
 			transform=preprocess,
-			# memory_threshold_gib=memory_threshold_gib,
 			label_dict=label_dict,
-			cache_size=cache_size,
+			cache_size=int(cache_size * 0.3), # Allocate less cache to validation set,
 	)
 	
 	print(validation_dataset)
@@ -499,8 +497,11 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 		self._num_classes = len(label_dict)
 		self.transform = transform
 		self.text_augmentation = text_augmentation
-		self._load_image = lru_cache(maxsize=cache_size)(self._load_image_base)
-		print(f"LRU cache enabled for image loading with maxsize={cache_size} for {self.dataset_name}")
+
+		self._load_image = lru_cache(maxsize=cache_size)(self.__class__._load_image_base)
+		print(f"LRU cache enabled on {self.dataset_name} with maxsize={cache_size}.")
+		self._load_image.cache_clear()
+
 		self.text_cache = [None] * len(self.data_frame)
 		self._preload_texts()
 
@@ -512,9 +513,12 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 	def _load_image_base(img_path: str) -> Image.Image:
 		return Image.open(img_path).convert("RGB")
 
+	def get_cache_info(self):
+		return self._load_image.cache_info()
+
 	def _preload_texts(self):
 		print(f"Preprocessing texts for {self.dataset_name}...")
-		for idx in tqdm(range(len(self.labels)), desc="Tokenizing texts"):
+		for idx in tqdm(range(len(self.labels)), desc="Tokenizing texts for " + self.dataset_name):
 			self.text_cache[idx] = self._tokenize_labels(self.labels[idx])
 
 	def _tokenize_labels(self, labels_str):
@@ -556,8 +560,9 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 		split = 'Train' if self.train else 'Validation'
 		try:
 			cache_info = self._load_image.cache_info()
+			max_size = self._load_image.cache_parameters()['maxsize']
 			cache_str = (
-				f"Image Cache (LRU): Maxsize={cache_info.maxsize}, "
+				f"Image Cache (LRU): Maxsize={max_size}, "
 				f"CurrentSize={cache_info.currsize}, Hits={cache_info.hits}, Misses={cache_info.misses}"
 			)
 		except AttributeError:
@@ -585,22 +590,21 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 			return None
 
 def custom_collate_fn(batch):
-	"""
-	Returns tuple format compatible with existing training code
-	Handles batches where some samples may be None due to loading errors
-	"""
-	# Filter out None samples
+	# 1. Filter out all the None items which were returned by __getitem__ on error.
 	valid_samples = [item for item in batch if item is not None]
 	
+	# 2. If the entire batch failed, return empty tensors to avoid crashing the training loop.
 	if not valid_samples:
 		# Return empty tensors with correct structure if entire batch fails
 		return torch.empty(0), torch.empty(0), torch.empty(0)
+
+	# 3. Use the standard PyTorch collate function on the now-filtered list of valid samples.
+	return torch.utils.data.dataloader.default_collate(valid_samples)	
+	# # Standard collate for valid samples - returns tuple format
+	# images, texts, labels = zip(*valid_samples)
 	
-	# Standard collate for valid samples - returns tuple format
-	images, texts, labels = zip(*valid_samples)
-	
-	return (
-		torch.stack(images),    # Shape: [batch_size, channels, height, width]
-		torch.stack(texts),     # Shape: [batch_size, sequence_length] 
-		torch.stack(labels)     # Shape: [batch_size, num_classes]
-	)
+	# return (
+	# 	torch.stack(images),    # Shape: [batch_size, channels, height, width]
+	# 	torch.stack(texts),     # Shape: [batch_size, sequence_length] 
+	# 	torch.stack(labels)     # Shape: [batch_size, num_classes]
+	# )

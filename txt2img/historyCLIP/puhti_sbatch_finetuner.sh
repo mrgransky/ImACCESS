@@ -7,7 +7,7 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=40
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=373G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
@@ -166,8 +166,9 @@ python -u history_clip_trainer.py \
 	--sampling "${SAMPLINGS[1]}" \
 	--dropout "${DROPOUT}" \
 	--minimum_epochs "${MIN_EPOCHS}" \
-	--cache_size "${CACHE_SIZES[$dataset_index]}" \
-	--model_architecture "${MODEL_ARCHITECTURES[$architecture_index]}"
+	--model_architecture "${MODEL_ARCHITECTURES[$architecture_index]}" \
+	# --cache_size "${CACHE_SIZES[$dataset_index]}" \
+
 
 done_txt="$user finished Slurm job: $(date)"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
