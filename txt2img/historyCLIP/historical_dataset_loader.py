@@ -1,6 +1,8 @@
 from utils import *
 from functools import lru_cache
 import platform
+import subprocess
+
 dtypes={
 	'doc_id': str,
 	'id': str,
@@ -311,8 +313,9 @@ def get_multi_label_datasets(ddir: str, seed: int = 42):
 	
 	return df_train, df_val, label_dict
 
+
 def is_virtual_machine(verbose: bool = False) -> bool:
-    vm_keywords = ['kvm', 'virtualbox', 'vmware', 'hyper-v', 'qemu', 'xen', 'bhyve', 'parallels', 'bochs']
+    vm_keywords = ['kvm', 'virtualbox', 'vmware', 'hyper-v', 'qemu', 'xen', 'bhyve', 'parallels', 'bochs', 'google', 'amazon', 'azure', 'digitalocean']
 
     def check_file(path):
         try:
@@ -324,27 +327,42 @@ def is_virtual_machine(verbose: bool = False) -> bool:
             pass
         return False
 
-    # SLURM-based cluster nodes
+    def check_systemd_detect_virt():
+        try:
+            result = subprocess.run(
+                ["systemd-detect-virt"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            return result.stdout.strip().lower() not in ("", "none")
+        except Exception:
+            return False
+
+    # Check SLURM (HPC cluster)
     if "SLURM_JOB_ID" in os.environ or "SLURM_NODELIST" in os.environ:
-        if verbose: print("[VM DETECTED] Running inside SLURM HPC environment.")
+        if verbose:
+            print("[VM DETECTED] SLURM HPC environment.")
         return True
 
+    # Check typical Linux virtualization indicators
     if platform.system() == "Linux":
-        results = {
+        dmi_hits = {
             "product_name": check_file("/sys/devices/virtual/dmi/id/product_name"),
             "sys_vendor": check_file("/sys/devices/virtual/dmi/id/sys_vendor"),
             "cpuinfo": check_file("/proc/cpuinfo"),
         }
-        if verbose:
-            print(f"[VM Check] Linux DMI results: {results}")
-        return any(results.values())
+        systemd_result = check_systemd_detect_virt()
 
-    elif platform.system() == "Windows":
-        info = platform.uname()
-        detected = any(keyword in info.system.lower() or keyword in info.node.lower() for keyword in vm_keywords)
         if verbose:
-            print(f"[VM Check] Windows platform.uname(): {info}")
-        return detected
+            print(f"[VM Check] DMI hits: {dmi_hits}, systemd-detect-virt: {systemd_result}")
+
+        return any(dmi_hits.values()) or systemd_result
+
+    # Check for known VM indicators on Windows
+    if platform.system() == "Windows":
+        info = platform.uname()
+        return any(keyword in info.node.lower() or keyword in info.system.lower() for keyword in vm_keywords)
 
     return False
 
