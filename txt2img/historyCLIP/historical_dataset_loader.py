@@ -366,7 +366,7 @@ def is_virtual_machine(verbose: bool = False) -> bool:
     return False
 
 def get_cache_size(
-		image_estimate_mb: float = 2.0,
+		image_estimate_mb: float = 3.0,
 		max_cap_gb: float = 8.0,
 		min_cache_items: int = 64,
 		verbose: bool = True
@@ -378,33 +378,34 @@ def get_cache_size(
 	elif is_virtual_machine(verbose=True):
 		mode = "medium"
 	else:
-			mode = "auto"
+		mode = "auto"
 
 	available_gb = psutil.virtual_memory().available / 1024**3
 	total_gb = psutil.virtual_memory().total / 1024**3
 	if verbose:
-			print(f">> {platform.system()} {platform.uname().node} [mode: {mode}] Available RAM: {available_gb:.2f} GiB | Total: {total_gb:.2f} GiB")
-	# Adjust based on platform (auto-scales)
+		print(f">> {platform.system()} {platform.uname().node} [mode: {mode}] Available RAM: {available_gb:.2f} GiB | Total: {total_gb:.2f} GiB")
+	
 	if mode == "low":
-			usage_ratio = 0.02
+		usage_ratio = 0.02
 	elif mode == "medium":
-			usage_ratio = 0.08
+		usage_ratio = 0.08
 	elif mode == "high":
-			usage_ratio = 0.15
+		usage_ratio = 0.10
 	elif mode == "auto":
-			if total_gb <= 8:
-					usage_ratio = 0.02  # Laptop
-			elif total_gb <= 32:
-					usage_ratio = 0.05  # VM or dev machine
-			else:
-					usage_ratio = 0.10  # HPC or SLURM
+		if total_gb <= 8:
+			usage_ratio = 0.02  # Laptop
+		elif total_gb <= 32:
+			usage_ratio = 0.05  # VM or dev machine
+		else:
+			usage_ratio = 0.09  # HPC or SLURM
 	else:
-			raise ValueError(f"Unknown mode '{mode}'. Use auto, low, medium, or high.")
+		raise ValueError(f"Unknown mode '{mode}'. Use auto, low, medium, or high.")
+	print(f">> Usage ratio: {usage_ratio:.2f} => {available_gb * usage_ratio:.2f} GiB | max_cap_gb: {max_cap_gb:.2f} GiB")
 	cache_budget_gb = min(available_gb * usage_ratio, max_cap_gb)
 	cache_items = int((cache_budget_gb * 1024) / image_estimate_mb)
 	cache_items = max(min_cache_items, cache_items)
 	if verbose:
-			print(f">> Cache budget: {cache_budget_gb:.2f} GiB → {cache_items} images (est. {image_estimate_mb:.1f} MB/item)")
+		print(f">> Cache budget: {cache_budget_gb:.2f} GiB → cache contains {cache_items} images (est. {image_estimate_mb:.1f} MB/item)")
 	
 	return cache_items
 
