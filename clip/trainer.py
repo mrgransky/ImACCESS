@@ -134,14 +134,13 @@ def compute_multilabel_inbatch_metrics(
 	) -> Dict:
 	model.eval()
 	
-	# Get class embeddings
 	try:
-			class_names = validation_loader.dataset.unique_labels
+		class_names = validation_loader.dataset.unique_labels
 	except:
-			try:
-					class_names = validation_loader.dataset.dataset.classes
-			except:
-					raise ValueError("Could not extract class names from validation loader")
+		try:
+			class_names = validation_loader.dataset.dataset.classes
+		except:
+			raise ValueError("Could not extract class names from validation loader")
 	
 	all_class_texts = clip.tokenize(class_names).to(device)
 	with torch.no_grad():
