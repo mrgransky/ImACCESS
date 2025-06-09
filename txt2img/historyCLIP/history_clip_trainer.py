@@ -84,6 +84,7 @@ def main():
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 	parser.add_argument('--log_dir', type=str, default=None, help='Directory to store log files (if not specified, logs will go to stdout)')
 	parser.add_argument('--checkpoint_path', '-cp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
+	parser.add_argument('--cache_size', '-cs', type=int, default=None, help='Cache size for dataloader (in number of samples)')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
@@ -157,7 +158,7 @@ def main():
 			batch_size=args.batch_size,
 			num_workers=args.num_workers,
 			input_resolution=model_config["image_resolution"],
-			memory_threshold_gib=999.0,
+			cache_size=args.cache_size,
 		)
 		print_loader_info(loader=train_loader, batch_size=args.batch_size)
 		print_loader_info(loader=validation_loader, batch_size=args.batch_size)

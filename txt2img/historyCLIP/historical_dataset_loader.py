@@ -369,8 +369,13 @@ def get_cache_size(
 		image_estimate_mb: float = 7.0,
 		max_cap_gb: float = 6.0,
 		min_cache_items: int = 64,
+		user_defined_cache_items: int = None,
 		verbose: bool = True
 	) -> int:
+	if user_defined_cache_items is not None:
+		cache_items = user_defined_cache_items
+		return cache_items
+
 	if "SLURM_JOB_ID" in os.environ or "SLURM_NODELIST" in os.environ:
 		mode = "high"
 	elif platform.system() == "Linux" and "WSL" in platform.release():
@@ -388,9 +393,9 @@ def get_cache_size(
 	if mode == "low":
 		usage_ratio = 0.02
 	elif mode == "medium":
-		usage_ratio = 0.06
+		usage_ratio = 0.04
 	elif mode == "high":
-		usage_ratio = 0.07
+		usage_ratio = 0.05
 	elif mode == "auto":
 		if total_gb <= 8:
 			usage_ratio = 0.02  # Laptop
@@ -416,14 +421,13 @@ def get_multi_label_dataloaders(
 		batch_size: int,
 		num_workers: int,
 		input_resolution: int,
-		memory_threshold_gib: float = 500.0,
 		cache_size: int = None,  # Auto-detect if None
 	) -> Tuple[DataLoader, DataLoader]:
 	dataset_name = os.path.basename(dataset_dir)
 	print(f"Creating multi-label dataloaders for {dataset_name}...")
 	
 	if cache_size is None:
-		cache_size = get_cache_size()
+		cache_size = get_cache_size(user_defined_cache_items=cache_size)
 		print(f"Auto-detected LRU cache size: {cache_size}")
 	# return
 	train_dataset, val_dataset, label_dict = get_multi_label_datasets(ddir=dataset_dir)

@@ -92,6 +92,7 @@ PRINT_FREQUENCIES=(500 500 50 50 10)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 # EARLY_STOPPING_MIN_EPOCHS=(25 25 20 20 10)
 BASE_MIN_EPOCHS=(25 25 17 17 12)  # History_X4, National Archive, Europeana, WWII, SMU
+CACHE_SIZES=(500 1000 1000 1000 1000)  # History_X4, National Archive, Europeana, WWII, SMU
 
 # Adjust min_epochs based on strategy
 strategy="${FINETUNE_STRATEGIES[$strategy_index]}"
@@ -165,6 +166,7 @@ python -u history_clip_trainer.py \
 	--sampling "${SAMPLINGS[1]}" \
 	--dropout "${DROPOUT}" \
 	--minimum_epochs "${MIN_EPOCHS}" \
+	--cache_size "${CACHE_SIZES[$dataset_index]}" \
 	--model_architecture "${MODEL_ARCHITECTURES[$architecture_index]}"
 
 done_txt="$user finished Slurm job: $(date)"
