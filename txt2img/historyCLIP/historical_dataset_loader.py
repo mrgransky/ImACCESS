@@ -313,7 +313,6 @@ def get_multi_label_datasets(ddir: str, seed: int = 42):
 	
 	return df_train, df_val, label_dict
 
-
 def is_virtual_machine(verbose: bool = False) -> bool:
     vm_keywords = ['kvm', 'virtualbox', 'vmware', 'hyper-v', 'qemu', 'xen', 'bhyve', 'parallels', 'bochs', 'google', 'amazon', 'azure', 'digitalocean']
 
@@ -384,7 +383,7 @@ def get_cache_size(
 	available_gb = psutil.virtual_memory().available / 1024**3
 	total_gb = psutil.virtual_memory().total / 1024**3
 	if verbose:
-			print(f">> [{mode}] Available RAM: {available_gb:.2f} GiB | Total: {total_gb:.2f} GiB")
+			print(f">> {platform.system()} {platform.uname().node} [mode: {mode}] Available RAM: {available_gb:.2f} GiB | Total: {total_gb:.2f} GiB")
 	# Adjust based on platform (auto-scales)
 	if mode == "low":
 			usage_ratio = 0.02
