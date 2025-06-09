@@ -701,7 +701,8 @@ def main():
 	pretrained_img2txt_dict = {args.model_architecture: {}}
 	pretrained_txt2img_dict = {args.model_architecture: {}}
 	if args.dataset_type == "multi_label":
-		max_eval_samples = min(500, len(validation_loader.dataset))
+		# max_eval_samples = min(500, len(validation_loader.dataset))
+		max_eval_samples = len(validation_loader.dataset)
 		pretrained_img2txt, pretrained_txt2img = pretrain_multilabel(
 			model=pretrained_model,
 			validation_loader=validation_loader,

@@ -396,8 +396,9 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 		
 		# Preload if memory allows
 		available_memory_gib = psutil.virtual_memory().available / (1024 ** 3)
+		print(f"Available memory: {available_memory_gib:.2f} GiB ({memory_threshold_gib} GiB threshold)")
 		if available_memory_gib >= memory_threshold_gib:
-			print(f"Available memory ({available_memory_gib:.2f} GiB) exceeds threshold. Preloading...")
+			print(f"Available memory ({available_memory_gib:.2f} GiB) >= threshold: ({memory_threshold_gib} GiB). Preloading...")
 			self.image_cache = self._preload_images()
 			self._preload_texts()  # Cache tokenized texts
 	

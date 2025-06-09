@@ -66,22 +66,15 @@ def compute_multilabel_validation_loss(
 		criterion: torch.nn.Module,
 		device: str,
 		temperature: float = 0.07,
-		max_batches: int = 10,
+		max_batches: int = None,
 		all_class_embeds: torch.Tensor = None,
 	) -> float:
-	"""
-	Compute actual validation loss for multi-label CLIP model.
-	
-	This function computes the same loss used during training (multi-label contrastive loss)
-	on the validation set to provide meaningful validation loss values.
-	"""
 	model.eval()
 	total_loss = 0.0
 	total_samples = 0
 	
-	# Get class embeddings (either use provided or compute them)
+	# Get class embeddings
 	if all_class_embeds is None:
-		# Get class names and encode them
 		try:
 			class_names = validation_loader.dataset.unique_labels
 		except:
@@ -90,17 +83,20 @@ def compute_multilabel_validation_loss(
 			except:
 				raise ValueError("Could not extract class names from validation loader")
 		
-		all_class_texts = clip.tokenize(class_names).to(device)
+		all_class_texts = clip.tokenize(class_names).to(device, non_blocking=True)
 		with torch.no_grad():
 			all_class_embeds = model.encode_text(all_class_texts)
 			all_class_embeds = F.normalize(all_class_embeds, dim=-1)
-
+	
 	with torch.no_grad():
 		for batch_idx, (images, _, label_vectors) in enumerate(validation_loader):
-			if batch_idx >= max_batches:  # Limit for computational efficiency
-				break
-					
+			if max_batches and batch_idx >= max_batches:
+					break
+			
 			batch_size = images.size(0)
+			if batch_size == 0:  # Skip empty batches
+				continue
+					
 			images = images.to(device, non_blocking=True)
 			label_vectors = label_vectors.to(device, non_blocking=True).float()
 			
@@ -108,18 +104,19 @@ def compute_multilabel_validation_loss(
 			image_embeds = model.encode_image(images)
 			image_embeds = F.normalize(image_embeds, dim=-1)
 			
-			# Compute similarities (same as training)
+			# Compute similarities
 			i2t_similarities = torch.matmul(image_embeds, all_class_embeds.T) / temperature
 			t2i_similarities = torch.matmul(all_class_embeds, image_embeds.T) / temperature
 			
-			# Compute losses (same as training)
-			i2t_targets = label_vectors.float()
-			t2i_targets = label_vectors.T.float()
+			# Compute losses
+			i2t_targets = label_vectors
+			t2i_targets = label_vectors.T
 			
 			loss_i2t = criterion(i2t_similarities, i2t_targets)
 			loss_t2i = criterion(t2i_similarities, t2i_targets)
 			batch_loss = 0.5 * (loss_i2t + loss_t2i)
 			
+			# Correct accumulation
 			total_loss += batch_loss.item() * batch_size
 			total_samples += batch_size
 	

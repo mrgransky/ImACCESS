@@ -11,7 +11,7 @@
 #SBATCH --mem=128G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=4-5#0-11 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --array=8,10-11 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
