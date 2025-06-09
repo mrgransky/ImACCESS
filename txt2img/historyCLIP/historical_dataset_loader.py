@@ -369,12 +369,8 @@ def get_cache_size(
 		image_estimate_mb: float = 7.0,
 		max_cap_gb: float = 6.0,
 		min_cache_items: int = 64,
-		user_defined_cache_items: int = None,
 		verbose: bool = True
 	) -> int:
-	if user_defined_cache_items is not None:
-		cache_items = user_defined_cache_items
-		return cache_items
 
 	if "SLURM_JOB_ID" in os.environ or "SLURM_NODELIST" in os.environ:
 		mode = "high"
@@ -427,7 +423,7 @@ def get_multi_label_dataloaders(
 	print(f"Creating multi-label dataloaders for {dataset_name}...")
 	
 	if cache_size is None:
-		cache_size = get_cache_size(user_defined_cache_items=cache_size)
+		cache_size = get_cache_size()
 		print(f"Auto-detected LRU cache size: {cache_size}")
 	# return
 	train_dataset, val_dataset, label_dict = get_multi_label_datasets(ddir=dataset_dir)
@@ -504,13 +500,12 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 		self.transform = transform
 		self.text_augmentation = text_augmentation
 		self._load_image = lru_cache(maxsize=cache_size)(self._load_image_base)
-		print(f"LRU cache enabled for image loading with maxsize={cache_size}")
+		print(f"LRU cache enabled for image loading with maxsize={cache_size} for {self.dataset_name}")
 		self.text_cache = [None] * len(self.data_frame)
 		self._preload_texts()
 
 	@property
 	def unique_labels(self):
-		"""Return sorted list of all possible class names"""
 		return sorted(self.label_dict.keys()) if self.label_dict else []
 
 	@staticmethod
@@ -576,10 +571,6 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 		)
 
 	def __getitem__(self, idx: int):
-		"""
-		- Uses LRU cached image loading
-		- Returns None on any loading error (graceful handling)
-		"""
 		try:
 			image_path = self.images[idx]
 			image = self._load_image(image_path)

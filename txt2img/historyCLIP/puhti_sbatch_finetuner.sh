@@ -7,7 +7,7 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=40
 #SBATCH --mem=373G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
@@ -88,11 +88,11 @@ LORA_RANKS=(64 64 64 64 64)
 LORA_ALPHAS=(128.0 128.0 128.0 128.0 128.0) # 2x rank
 LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 BATCH_SIZES=(64 64 64 64 64)
-PRINT_FREQUENCIES=(500 500 50 50 10)
+PRINT_FREQUENCIES=(1000 500 50 50 10)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 # EARLY_STOPPING_MIN_EPOCHS=(25 25 20 20 10)
 BASE_MIN_EPOCHS=(25 25 17 17 12)  # History_X4, National Archive, Europeana, WWII, SMU
-CACHE_SIZES=(500 1000 1000 1000 1000)  # History_X4, National Archive, Europeana, WWII, SMU
+CACHE_SIZES=(512 512 1000 1000 1000)  # History_X4, National Archive, Europeana, WWII, SMU
 
 # Adjust min_epochs based on strategy
 strategy="${FINETUNE_STRATEGIES[$strategy_index]}"

@@ -3499,7 +3499,6 @@ def full_finetune_multi_label(
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
 		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 	
-	# Get dataset information
 	try:
 		num_classes = len(validation_loader.dataset.unique_labels)
 		class_names = validation_loader.dataset.unique_labels
@@ -3507,7 +3506,7 @@ def full_finetune_multi_label(
 		num_classes = len(validation_loader.dataset.dataset.classes)
 		class_names = validation_loader.dataset.dataset.classes
 	print(f"Multi-label dataset: {num_classes} classes")
-	print(f"Class names sample: {class_names[:5]}...")
+	# print(f"Class names sample: {class_names[:5]}...")
 	
 	# Extract dropout value from the model (if any)
 	dropout_val = 0.0
@@ -3907,7 +3906,7 @@ def progressive_finetune_multi_label(
 		num_classes = len(validation_loader.dataset.dataset.classes)
 		class_names = validation_loader.dataset.dataset.classes
 	print(f"Multi-label progressive fine-tuning: {num_classes} classes")
-	print(f"Class names sample:\n{class_names}")
+	# print(f"Class names sample:\n{class_names}")
 
 	# Find dropout value
 	dropout_val = 0.0
@@ -4504,7 +4503,6 @@ def lora_finetune_multi_label(
 		restore_best_weights=True,
 	)
 
-	# Dataset and directory setup
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
 	except AttributeError:
@@ -4530,7 +4528,7 @@ def lora_finetune_multi_label(
 		num_classes = len(validation_loader.dataset.dataset.classes)
 		class_names = validation_loader.dataset.dataset.classes
 	print(f"Multi-label LoRA fine-tuning: {num_classes} classes")
-	print(f"Class names sample: {class_names[:5]}...")
+	# print(f"Class names sample: {class_names[:5]}...")
 
 	# Apply LoRA to the model
 	model = get_lora_clip(
