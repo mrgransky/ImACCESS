@@ -7,11 +7,11 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=40
+#SBATCH --cpus-per-task=10
 #SBATCH --mem=373G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=8 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --array=8,10-11 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
