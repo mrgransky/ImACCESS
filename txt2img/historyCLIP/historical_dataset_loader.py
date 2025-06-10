@@ -500,9 +500,9 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 		self._num_classes = len(label_dict)
 		self.transform = transform
 		self.text_augmentation = text_augmentation
-
+		self.split = 'Train' if self.train else 'Validation'
 		self._load_image = lru_cache(maxsize=cache_size)(self.__class__._load_image_base)
-		print(f"LRU cache enabled on {self.dataset_name} with maxsize={cache_size}.")
+		print(f"LRU caching for {self.dataset_name}_{self.split} cache_size: {cache_size}")
 		self._load_image.cache_clear()
 
 		self.text_cache = [None] * len(self.data_frame)
@@ -560,7 +560,6 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 			
 	def __repr__(self):
 		transform_str = f"Transform: {self.transform}\n" if self.transform else ""
-		split = 'Train' if self.train else 'Validation'
 		try:
 			cache_info = self._load_image.cache_info()
 			max_size = self._load_image.cache_parameters()['maxsize']
@@ -572,7 +571,7 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 			cache_str = "Image Cache (LRU): Not yet used"
 		return (
 			f"{self.dataset_name}\n"
-			f"\tSplit: {split} ({self.data_frame.shape[0]} samples)\n"
+			f"\tSplit: {self.split} ({self.data_frame.shape[0]} samples)\n"
 			f"\tNum classes: {self._num_classes}\n"
 			f"\t{cache_str}\n"
 			f"{transform_str}"
