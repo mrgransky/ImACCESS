@@ -2607,7 +2607,7 @@ def full_finetune_single_label(
 		):
 			print(f"\nEarly stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score()}")
 			break
-		print(f"Epoch {epoch+1} Duration[Train+Validation]: {time.time() - train_and_val_st_time:.2f}s".center(170, "-"))
+		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f}s".center(170, "-"))
 	
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
@@ -3393,7 +3393,7 @@ def lora_finetune_single_label(
 			print(f"\nEarly stopping triggered at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
 			break
 
-		print(f"Epoch {epoch+1} Duration[Train+Validation]: {time.time() - train_and_val_st_time:.2f}s".center(170, "-"))
+		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f}s".center(170, "-"))
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
 	evaluation_results = evaluate_best_model(
@@ -3820,7 +3820,7 @@ def full_finetune_multi_label(
 			):
 				print(f"\nEarly stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score()}")
 				break
-			print(f"Epoch {epoch+1} Duration[Train+Validation]: {time.time() - train_and_val_st_time:.2f}s".center(170, "-"))
+			print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f}s".center(170, "-"))
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
 	# ================================
@@ -4859,7 +4859,7 @@ def lora_finetune_multi_label(
 			print(f"\nEarly stopping triggered at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
 			break
 
-		print(f"Epoch {epoch+1} Duration[Train+Validation]: {time.time() - train_and_val_st_time:.2f}s".center(170, "-"))
+		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f}s".center(170, "-"))
 	
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 

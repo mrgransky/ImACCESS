@@ -314,214 +314,115 @@ def get_multi_label_datasets(ddir: str, seed: int = 42):
 	
 	return df_train, df_val, label_dict
 
-def is_virtual_machine(verbose: bool = False) -> bool:
-		vm_keywords = ['kvm', 'virtualbox', 'vmware', 'hyper-v', 'qemu', 'xen', 'bhyve', 'parallels', 'bochs', 'google', 'amazon', 'azure', 'digitalocean']
-
-		def check_file(path):
-				try:
-						if os.path.exists(path):
-								with open(path, "r") as f:
-										content = f.read().lower()
-										return any(keyword in content for keyword in vm_keywords)
-				except Exception:
-						pass
-				return False
-
-		def check_systemd_detect_virt():
-				try:
-						result = subprocess.run(
-								["systemd-detect-virt"],
-								stdout=subprocess.PIPE,
-								stderr=subprocess.DEVNULL,
-								text=True,
-						)
-						return result.stdout.strip().lower() not in ("", "none")
-				except Exception:
-						return False
-
-		# Check SLURM (HPC cluster)
-		if "SLURM_JOB_ID" in os.environ or "SLURM_NODELIST" in os.environ:
-				if verbose:
-						print("[VM DETECTED] SLURM HPC environment.")
-				return True
-
-		# Check typical Linux virtualization indicators
-		if platform.system() == "Linux":
-				dmi_hits = {
-						"product_name": check_file("/sys/devices/virtual/dmi/id/product_name"),
-						"sys_vendor": check_file("/sys/devices/virtual/dmi/id/sys_vendor"),
-						"cpuinfo": check_file("/proc/cpuinfo"),
-				}
-				systemd_result = check_systemd_detect_virt()
-
-				if verbose:
-						print(f"[VM Check] DMI hits: {dmi_hits}, systemd-detect-virt: {systemd_result}")
-
-				return any(dmi_hits.values()) or systemd_result
-
-		# Check for known VM indicators on Windows
-		if platform.system() == "Windows":
-				info = platform.uname()
-				return any(keyword in info.node.lower() or keyword in info.system.lower() for keyword in vm_keywords)
-
-		return False
-
-def get_cache_size_old(
-		image_estimate_mb: float = 7.0,
-		max_cap_gb: float = 4.0,
-		min_cache_items: int = 64,
-		verbose: bool = True
-	) -> int:
-
-	if "SLURM_JOB_ID" in os.environ or "SLURM_NODELIST" in os.environ:
-		mode = "high"
-	elif platform.system() == "Linux" and "WSL" in platform.release():
-		mode = "low"  # WSL may share memory with host
-	elif is_virtual_machine(verbose=True):
-		mode = "medium"
-	else:
-		mode = "auto"
-
-	available_gb = psutil.virtual_memory().available / 1024**3
-	total_gb = psutil.virtual_memory().total / 1024**3
-	if verbose:
-		print(f">> {platform.system()} {platform.uname().node} [mode: {mode}] Available RAM: {available_gb:.2f} GiB | Total: {total_gb:.2f} GiB")
-	
-	if mode == "low":
-		usage_ratio = 0.01
-	elif mode == "medium":
-		usage_ratio = 0.02
-	elif mode == "high":
-		usage_ratio = 0.03
-	elif mode == "auto":
-		if total_gb <= 8:
-			usage_ratio = 0.01  # Laptop
-		elif total_gb <= 32:
-			usage_ratio = 0.02  # VM or dev machine
-		else:
-			usage_ratio = 0.03  # HPC or SLURM
-	else:
-		raise ValueError(f"Unknown mode '{mode}'. Use auto, low, medium, or high.")
-
-	print(f">> Usage ratio: {usage_ratio:.2f} => available_gb * usage_ratio: {available_gb * usage_ratio:.2f} GiB | max_cap_gb: {max_cap_gb:.2f} GiB")
-	cache_budget_gb = min(available_gb * usage_ratio, max_cap_gb)
-	print(f">> cache_budget_gb: {cache_budget_gb:.2f} GiB")
-	cache_items = int((cache_budget_gb * 1024) / image_estimate_mb)
-	cache_items = max(min_cache_items, cache_items)
-	if verbose:
-		print(f">> Cache budget: {cache_budget_gb:.2f} GiB → cache contains {cache_items} images (est. {image_estimate_mb:.1f} MB/item)")
-	
-	return cache_items
-
 def detect_environment() -> dict:
-    """Detect system environment for cache optimization."""
-    memory = psutil.virtual_memory()
-    total_gb = memory.total / (1024**3)
-    available_gb = memory.available / (1024**3)
-    
-    # Environment detection
-    is_hpc = any(env in os.environ for env in ['SLURM_JOB_ID', 'PBS_JOBID', 'SGE_TASK_ID'])
-    is_laptop = total_gb <= 32 and not is_hpc
-    is_workstation = total_gb > 32 and not is_hpc
-    
-    # Memory pressure
-    memory_pressure = "high" if memory.percent > 80 else "medium" if memory.percent > 60 else "low"
-    
-    return {
-        "total_gb": total_gb,
-        "available_gb": available_gb,
-        "is_hpc": is_hpc,
-        "is_laptop": is_laptop,
-        "is_workstation": is_workstation,
-        "memory_pressure": memory_pressure
-    }
+		"""Detect system environment for cache optimization."""
+		memory = psutil.virtual_memory()
+		total_gb = memory.total / (1024**3)
+		available_gb = memory.available / (1024**3)
+		
+		# Environment detection
+		is_hpc = any(env in os.environ for env in ['SLURM_JOB_ID', 'PBS_JOBID', 'SGE_TASK_ID'])
+		is_laptop = total_gb <= 32 and not is_hpc
+		is_workstation = total_gb > 32 and not is_hpc
+		
+		# Memory pressure
+		memory_pressure = "high" if memory.percent > 80 else "medium" if memory.percent > 60 else "low"
+		
+		return {
+				"total_gb": total_gb,
+				"available_gb": available_gb,
+				"is_hpc": is_hpc,
+				"is_laptop": is_laptop,
+				"is_workstation": is_workstation,
+				"memory_pressure": memory_pressure
+		}
 
 def get_cache_strategy(env: dict) -> dict:
-    """Determine cache strategy based on environment."""
-    if env["is_hpc"]:
-        return {"memory_ratio": 0.4, "target_coverage": 0.8}
-    elif env["is_workstation"]:
-        return {"memory_ratio": 0.25, "target_coverage": 0.6}
-    elif env["is_laptop"]:
-        return {"memory_ratio": 0.15, "target_coverage": 0.4}
-    else:
-        return {"memory_ratio": 0.2, "target_coverage": 0.5}
+	"""Determine cache strategy based on environment."""
+	if env["is_hpc"]:
+		return {"memory_ratio": 0.4, "target_coverage": 0.8}
+	elif env["is_workstation"]:
+		return {"memory_ratio": 0.25, "target_coverage": 0.6}
+	elif env["is_laptop"]:
+		return {"memory_ratio": 0.15, "target_coverage": 0.4}
+	else:
+		return {"memory_ratio": 0.2, "target_coverage": 0.5}
 
 def get_cache_size(
-    dataset_size: int,
-    image_estimate_mb: float = 7.0,
-    safety_factor: float = 0.8,
-    verbose: bool = True
-) -> int:
-    """
-    Calculate optimal cache size based on system environment and dataset.
-    
-    Args:
-        dataset_size: Number of images in dataset
-        image_estimate_mb: Estimated size per image in MB
-        safety_factor: Safety margin (0.8 = use 80% of calculated safe memory)
-        verbose: Print analysis
-        
-    Returns:
-        Optimal cache size (number of images)
-    """
-    env = detect_environment()
-    strategy = get_cache_strategy(env)
-    
-    # Adjust available memory for pressure
-    available_gb = env["available_gb"]
-    if env["memory_pressure"] == "high":
-        available_gb *= 0.5
-    elif env["memory_pressure"] == "medium":
-        available_gb *= 0.7
-    
-    # Calculate memory-based limit
-    usable_memory_gb = available_gb * strategy["memory_ratio"] * safety_factor
-    memory_based_size = int((usable_memory_gb * 1024) / image_estimate_mb)
-    
-    # Calculate coverage-based limit
-    target_coverage = strategy["target_coverage"]
-    
-    # Adjust coverage for dataset size
-    if dataset_size < 1000:
-        target_coverage = min(1.0, target_coverage * 1.5)
-    elif dataset_size > 100000:
-        target_coverage = max(0.1, target_coverage * 0.5)
-    
-    coverage_based_size = int(dataset_size * target_coverage)
-    
-    # Take minimum of both constraints
-    cache_size = min(memory_based_size, coverage_based_size)
-    
-    # Apply bounds
-    cache_size = max(100, min(cache_size, dataset_size))
-    
-    if verbose:
-        actual_coverage = cache_size / dataset_size * 100
-        actual_memory = (cache_size * image_estimate_mb) / 1024
-        
-        env_type = "HPC" if env["is_hpc"] else "Workstation" if env["is_workstation"] else "Laptop"
-        
-        print(f"🚀 Optimized Cache Analysis:")
-        print(f"   Environment: {env_type}")
-        print(f"   Available memory: {env['available_gb']:.1f}GB")
-        print(f"   Dataset size: {dataset_size:,} images")
-        print(f"   Cache size: {cache_size:,} images ({actual_coverage:.1f}% coverage)")
-        print(f"   Memory usage: {actual_memory:.1f}GB")
-        
-        # Expected speedup estimate
-        if actual_coverage >= 70:
-            speedup = "60-80% faster"
-        elif actual_coverage >= 50:
-            speedup = "40-60% faster"
-        elif actual_coverage >= 30:
-            speedup = "20-40% faster"
-        else:
-            speedup = "10-20% faster"
-        
-        print(f"   Expected speedup: {speedup} (after epoch 1)")
-    
-    return cache_size
+		dataset_size: int,
+		image_estimate_mb: float = 7.0,
+		safety_factor: float = 0.8,
+		verbose: bool = True
+	) -> int:
+	"""
+	Calculate optimal cache size based on system environment and dataset.
+	
+	Args:
+			dataset_size: Number of images in dataset
+			image_estimate_mb: Estimated size per image in MB
+			safety_factor: Safety margin (0.8 = use 80% of calculated safe memory)
+			verbose: Print analysis
+			
+	Returns:
+			Optimal cache size (number of images)
+	"""
+	env = detect_environment()
+	strategy = get_cache_strategy(env)
+	
+	# Adjust available memory for pressure
+	available_gb = env["available_gb"]
+	if env["memory_pressure"] == "high":
+			available_gb *= 0.5
+	elif env["memory_pressure"] == "medium":
+			available_gb *= 0.7
+	
+	# Calculate memory-based limit
+	usable_memory_gb = available_gb * strategy["memory_ratio"] * safety_factor
+	memory_based_size = int((usable_memory_gb * 1024) / image_estimate_mb)
+	
+	# Calculate coverage-based limit
+	target_coverage = strategy["target_coverage"]
+	
+	# Adjust coverage for dataset size
+	if dataset_size < 1000:
+		target_coverage = min(1.0, target_coverage * 1.5)
+	elif dataset_size > 100000:
+		target_coverage = max(0.1, target_coverage * 0.5)
+	
+	coverage_based_size = int(dataset_size * target_coverage)
+	
+	# Take minimum of both constraints
+	cache_size = min(memory_based_size, coverage_based_size)
+	
+	# Apply bounds
+	cache_size = max(100, min(cache_size, dataset_size))
+	
+	if verbose:
+		actual_coverage = cache_size / dataset_size * 100
+		actual_memory = (cache_size * image_estimate_mb) / 1024
+		
+		env_type = "HPC" if env["is_hpc"] else "Workstation" if env["is_workstation"] else "Laptop"
+		
+		print(f"🚀 Optimized Cache Analysis:")
+		print(f"   Environment: {env_type}")
+		print(f"   Available memory: {env['available_gb']:.1f}GB")
+		print(f"   Dataset size: {dataset_size:,} images")
+		print(f"   Cache size: {cache_size:,} images ({actual_coverage:.1f}% coverage)")
+		print(f"   Memory usage: {actual_memory:.1f}GB")
+		
+		# Expected speedup estimate
+		if actual_coverage >= 70:
+			speedup = "60-80% faster"
+		elif actual_coverage >= 50:
+			speedup = "40-60% faster"
+		elif actual_coverage >= 30:
+			speedup = "20-40% faster"
+		else:
+			speedup = "10-20% faster"
+		
+		print(f"   Expected speedup: {speedup} (after epoch 1)")
+	
+	return cache_size
 
 def get_multi_label_dataloaders(
 		dataset_dir: str,
