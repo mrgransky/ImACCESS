@@ -367,7 +367,7 @@ def is_virtual_machine(verbose: bool = False) -> bool:
 
 def get_cache_size(
 		image_estimate_mb: float = 7.0,
-		max_cap_gb: float = 6.0,
+		max_cap_gb: float = 4.0,
 		min_cache_items: int = 64,
 		verbose: bool = True
 	) -> int:
@@ -387,18 +387,18 @@ def get_cache_size(
 		print(f">> {platform.system()} {platform.uname().node} [mode: {mode}] Available RAM: {available_gb:.2f} GiB | Total: {total_gb:.2f} GiB")
 	
 	if mode == "low":
-		usage_ratio = 0.02
+		usage_ratio = 0.01
 	elif mode == "medium":
-		usage_ratio = 0.04
+		usage_ratio = 0.02
 	elif mode == "high":
-		usage_ratio = 0.05
+		usage_ratio = 0.03
 	elif mode == "auto":
 		if total_gb <= 8:
-			usage_ratio = 0.02  # Laptop
+			usage_ratio = 0.01  # Laptop
 		elif total_gb <= 32:
-			usage_ratio = 0.05  # VM or dev machine
+			usage_ratio = 0.02  # VM or dev machine
 		else:
-			usage_ratio = 0.08  # HPC or SLURM
+			usage_ratio = 0.03  # HPC or SLURM
 	else:
 		raise ValueError(f"Unknown mode '{mode}'. Use auto, low, medium, or high.")
 
@@ -425,17 +425,20 @@ def get_multi_label_dataloaders(
 	if cache_size is None:
 		cache_size = get_cache_size()
 		print(f"Auto-detected LRU cache size: {cache_size}")
-	# return
+
 	train_dataset, val_dataset, label_dict = get_multi_label_datasets(ddir=dataset_dir)
 	preprocess = get_preprocess(dataset_dir=dataset_dir, input_resolution=input_resolution)
 	
+	total_samples = len(train_dataset) + len(val_dataset)
+	cache_multiplier = 0.6 if total_samples > 150000 else 0.8
+
 	train_dataset = HistoricalArchivesMultiLabelDataset(
 		dataset_name=dataset_name,
 		train=True,
 		data_frame=train_dataset.sort_values(by="img_path").reset_index(drop=True),
 		transform=preprocess,
 		label_dict=label_dict,
-		cache_size=int(cache_size * 0.7),
+		cache_size=int(cache_size * cache_multiplier),
 	)
 	
 	print(train_dataset)
@@ -445,9 +448,9 @@ def get_multi_label_dataloaders(
 			batch_size=batch_size,
 			shuffle=True,
 			pin_memory=torch.cuda.is_available(),
-			persistent_workers=(num_workers > 0),
 			num_workers=num_workers,
-			prefetch_factor=2,
+			prefetch_factor=1,
+			persistent_workers=(num_workers > 0 and os.environ.get('USER') != "farid"),
 			collate_fn=custom_collate_fn,
 	)
 	train_loader.name = f"{dataset_name.lower()}_multilabel_train".upper()
@@ -458,7 +461,7 @@ def get_multi_label_dataloaders(
 			data_frame=val_dataset.sort_values(by="img_path").reset_index(drop=True),
 			transform=preprocess,
 			label_dict=label_dict,
-			cache_size=int(cache_size * 0.3), # Allocate less cache to validation set,
+			cache_size=int(cache_size * (1.0 - cache_multiplier)), # Allocate less cache to validation set,
 	)
 	
 	print(validation_dataset)
@@ -469,9 +472,9 @@ def get_multi_label_dataloaders(
 			shuffle=False,
 			pin_memory=torch.cuda.is_available(),
 			num_workers=num_workers,
-			prefetch_factor=2,
-			collate_fn=custom_collate_fn,
+			prefetch_factor=1,
 			persistent_workers=(num_workers > 0 and os.environ.get('USER') != "farid"),
+			collate_fn=custom_collate_fn,
 	)
 	val_loader.name = f"{dataset_name.lower()}_multilabel_validation".upper()
 	
