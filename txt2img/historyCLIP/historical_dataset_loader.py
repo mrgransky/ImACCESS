@@ -2,6 +2,7 @@ from utils import *
 from functools import lru_cache
 import platform
 import subprocess
+import gc
 
 dtypes={
 	'doc_id': str,
@@ -314,56 +315,56 @@ def get_multi_label_datasets(ddir: str, seed: int = 42):
 	return df_train, df_val, label_dict
 
 def is_virtual_machine(verbose: bool = False) -> bool:
-    vm_keywords = ['kvm', 'virtualbox', 'vmware', 'hyper-v', 'qemu', 'xen', 'bhyve', 'parallels', 'bochs', 'google', 'amazon', 'azure', 'digitalocean']
+		vm_keywords = ['kvm', 'virtualbox', 'vmware', 'hyper-v', 'qemu', 'xen', 'bhyve', 'parallels', 'bochs', 'google', 'amazon', 'azure', 'digitalocean']
 
-    def check_file(path):
-        try:
-            if os.path.exists(path):
-                with open(path, "r") as f:
-                    content = f.read().lower()
-                    return any(keyword in content for keyword in vm_keywords)
-        except Exception:
-            pass
-        return False
+		def check_file(path):
+				try:
+						if os.path.exists(path):
+								with open(path, "r") as f:
+										content = f.read().lower()
+										return any(keyword in content for keyword in vm_keywords)
+				except Exception:
+						pass
+				return False
 
-    def check_systemd_detect_virt():
-        try:
-            result = subprocess.run(
-                ["systemd-detect-virt"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-            )
-            return result.stdout.strip().lower() not in ("", "none")
-        except Exception:
-            return False
+		def check_systemd_detect_virt():
+				try:
+						result = subprocess.run(
+								["systemd-detect-virt"],
+								stdout=subprocess.PIPE,
+								stderr=subprocess.DEVNULL,
+								text=True,
+						)
+						return result.stdout.strip().lower() not in ("", "none")
+				except Exception:
+						return False
 
-    # Check SLURM (HPC cluster)
-    if "SLURM_JOB_ID" in os.environ or "SLURM_NODELIST" in os.environ:
-        if verbose:
-            print("[VM DETECTED] SLURM HPC environment.")
-        return True
+		# Check SLURM (HPC cluster)
+		if "SLURM_JOB_ID" in os.environ or "SLURM_NODELIST" in os.environ:
+				if verbose:
+						print("[VM DETECTED] SLURM HPC environment.")
+				return True
 
-    # Check typical Linux virtualization indicators
-    if platform.system() == "Linux":
-        dmi_hits = {
-            "product_name": check_file("/sys/devices/virtual/dmi/id/product_name"),
-            "sys_vendor": check_file("/sys/devices/virtual/dmi/id/sys_vendor"),
-            "cpuinfo": check_file("/proc/cpuinfo"),
-        }
-        systemd_result = check_systemd_detect_virt()
+		# Check typical Linux virtualization indicators
+		if platform.system() == "Linux":
+				dmi_hits = {
+						"product_name": check_file("/sys/devices/virtual/dmi/id/product_name"),
+						"sys_vendor": check_file("/sys/devices/virtual/dmi/id/sys_vendor"),
+						"cpuinfo": check_file("/proc/cpuinfo"),
+				}
+				systemd_result = check_systemd_detect_virt()
 
-        if verbose:
-            print(f"[VM Check] DMI hits: {dmi_hits}, systemd-detect-virt: {systemd_result}")
+				if verbose:
+						print(f"[VM Check] DMI hits: {dmi_hits}, systemd-detect-virt: {systemd_result}")
 
-        return any(dmi_hits.values()) or systemd_result
+				return any(dmi_hits.values()) or systemd_result
 
-    # Check for known VM indicators on Windows
-    if platform.system() == "Windows":
-        info = platform.uname()
-        return any(keyword in info.node.lower() or keyword in info.system.lower() for keyword in vm_keywords)
+		# Check for known VM indicators on Windows
+		if platform.system() == "Windows":
+				info = platform.uname()
+				return any(keyword in info.node.lower() or keyword in info.system.lower() for keyword in vm_keywords)
 
-    return False
+		return False
 
 def get_cache_size(
 		image_estimate_mb: float = 7.0,
@@ -481,115 +482,341 @@ def get_multi_label_dataloaders(
 	return train_loader, val_loader
 
 class HistoricalArchivesMultiLabelDataset(Dataset):
-	def __init__(
-			self,
-			dataset_name: str,
-			train: bool,
-			data_frame: pd.DataFrame,
-			transform,
-			label_dict: dict,
-			text_augmentation: bool = True,
-			cache_size: int = 10000
+		def __init__(
+				self,
+				dataset_name: str,
+				train: bool,
+				data_frame: pd.DataFrame,
+				transform,
+				label_dict: dict,
+				text_augmentation: bool = True,
+				cache_size: int = 1000,  # REDUCED default size
 		):
-		self.dataset_name = dataset_name
-		self.train = train
-		self.data_frame = data_frame
-		self.images = self.data_frame["img_path"].values
-		self.labels = self.data_frame["multimodal_labels"].values
-		self.label_dict = label_dict
-		self._num_classes = len(label_dict)
-		self.transform = transform
-		self.text_augmentation = text_augmentation
-		self.split = 'Train' if self.train else 'Validation'
-		self._load_image = lru_cache(maxsize=cache_size)(self.__class__._load_image_base)
-		print(f"LRU caching for {self.dataset_name}_{self.split} cache_size: {cache_size}")
-		self._load_image.cache_clear()
+				self.dataset_name = dataset_name
+				self.train = train
+				self.data_frame = data_frame
+				self.images = self.data_frame["img_path"].values
+				self.labels = self.data_frame["multimodal_labels"].values
+				self.label_dict = label_dict
+				self._num_classes = len(label_dict)
+				self.transform = transform
+				self.text_augmentation = text_augmentation
+				self.split = 'Train' if self.train else 'Validation'
+				
+				# CRITICAL FIX 1: Auto-detect if caching is safe
+				enable_cache = self._should_enable_cache(cache_size)
+				
+				self.cache_enabled = enable_cache
+				
+				if self.cache_enabled:
+						# CRITICAL FIX 2: Use global function, not instance method
+						self._load_image = self._get_cached_loader(cache_size)
+						print(f"🟢 LRU caching ENABLED for {self.dataset_name}_{self.split} with cache_size: {cache_size}")
+				else:
+						self._load_image = self._load_image_no_cache
+						print(f"🔴 LRU caching DISABLED for {self.dataset_name}_{self.split} (insufficient memory)")
+				
+				# Pre-load texts (small memory footprint)
+				self.text_cache = [None] * len(self.data_frame)
+				self._preload_texts()
+				
+				# CRITICAL FIX 3: Monitor memory usage
+				self._monitor_memory()
 
-		self.text_cache = [None] * len(self.data_frame)
-		self._preload_texts()
+		def _should_enable_cache(self, cache_size: int) -> bool:
+				"""Determine if caching is safe based on available memory."""
+				try:
+						memory = psutil.virtual_memory()
+						available_gb = memory.available / (1024**3)
+						
+						# Estimate cache memory usage (conservative: 10MB per image)
+						estimated_cache_gb = (cache_size * 10) / 1024
+						
+						# Only enable cache if it uses less than 25% of available memory
+						safe_threshold = available_gb * 0.25
+						
+						print(f"Memory check: Available={available_gb:.1f}GB, "
+									f"Estimated cache={estimated_cache_gb:.1f}GB, "
+									f"Threshold={safe_threshold:.1f}GB")
+						
+						return estimated_cache_gb < safe_threshold
+						
+				except Exception:
+						# If we can't check memory, disable caching to be safe
+						return False
 
-	@property
-	def unique_labels(self):
-		return sorted(self.label_dict.keys()) if self.label_dict else []
+		def _get_cached_loader(self, cache_size: int):
+				"""Create a properly configured cached loader."""
+				
+				@lru_cache(maxsize=cache_size)
+				def load_and_transform_image(img_path: str) -> torch.Tensor:
+						"""Load image and apply transform, cache the result."""
+						try:
+								# CRITICAL FIX 4: Cache transformed tensors, not PIL images
+								with Image.open(img_path) as image:
+										image = image.convert("RGB")
+										# Apply transform and return tensor
+										if self.transform:
+												tensor = self.transform(image)
+										else:
+												tensor = T.ToTensor()(image)
+										return tensor
+										
+						except Exception as e:
+								print(f"Error loading {img_path}: {e}")
+								# Return black image tensor
+								return torch.zeros(3, 224, 224, dtype=torch.float32)
+				
+				return load_and_transform_image
 
-	@staticmethod
-	def _load_image_base(img_path: str) -> Image.Image:
-		return Image.open(img_path).convert("RGB")
+		def _load_image_no_cache(self, img_path: str) -> torch.Tensor:
+				"""Load image without caching."""
+				try:
+						with Image.open(img_path) as image:
+								image = image.convert("RGB")
+								if self.transform:
+										return self.transform(image)
+								else:
+										return T.ToTensor()(image)
+				except Exception as e:
+						print(f"Error loading {img_path}: {e}")
+						return torch.zeros(3, 224, 224, dtype=torch.float32)
 
-	def get_cache_info(self):
-		return self._load_image.cache_info()
+		def _monitor_memory(self):
+				"""Monitor memory usage and provide warnings."""
+				try:
+						memory = psutil.virtual_memory()
+						if memory.percent > 80:
+								print(f"⚠️  WARNING: High memory usage ({memory.percent:.1f}%)")
+								if self.cache_enabled:
+										print("   Consider disabling cache or reducing cache_size")
+				except:
+						pass
 
-	def _preload_texts(self):
-		print(f"Preprocessing texts for {self.dataset_name}...")
-		for idx in tqdm(range(len(self.labels)), desc="Tokenizing texts for " + self.dataset_name):
-			self.text_cache[idx] = self._tokenize_labels(self.labels[idx])
+		@property
+		def unique_labels(self):
+				return sorted(self.label_dict.keys()) if self.label_dict else []
 
-	def _tokenize_labels(self, labels_str):
-		try:
-			labels = ast.literal_eval(labels_str)
-			text_desc = self._create_text_description(labels)
-			return clip.tokenize(text_desc).squeeze(0)
-		except (ValueError, SyntaxError):
-			return clip.tokenize("").squeeze(0)
+		def get_cache_info(self):
+				"""Get cache information safely."""
+				if self.cache_enabled and hasattr(self._load_image, 'cache_info'):
+						return self._load_image.cache_info()
+				else:
+						return None
 
-	def _create_text_description(self, labels: list) -> str:
-		if not labels: 
-			return ""
-		if not self.train or not self.text_augmentation: 
-			return " ".join(labels)
-		if len(labels) == 1: 
-			return labels[0]
-		if len(labels) == 2: 
-			return f"{labels[0]} and {labels[1]}"
-		np.random.shuffle(labels)
-		return ", ".join(labels[:-1]) + f", and {labels[-1]}"
+		def clear_cache(self):
+				"""Clear cache and force garbage collection."""
+				if self.cache_enabled and hasattr(self._load_image, 'cache_clear'):
+						self._load_image.cache_clear()
+				
+				# Force garbage collection
+				gc.collect()
+				if torch.cuda.is_available():
+						torch.cuda.empty_cache()
+				
+				print(f"Cache cleared for {self.dataset_name}_{self.split}")
 
-	def _get_label_vector(self, labels_str: str) -> torch.Tensor:
-		vector = torch.zeros(self._num_classes, dtype=torch.float32)
-		try:
-			labels = ast.literal_eval(labels_str)
-			for label in labels:
-				if label in self.label_dict:
-					vector[self.label_dict[label]] = 1.0
-		except (ValueError, SyntaxError):
-			pass
-		return vector
+		def _preload_texts(self):
+				print(f"Preprocessing texts for {self.dataset_name}...")
+				for idx in tqdm(range(len(self.labels)), desc=f"Tokenizing texts for {self.dataset_name}"):
+						self.text_cache[idx] = self._tokenize_labels(self.labels[idx])
 
-	def __len__(self):
-		return len(self.data_frame)
+		def _tokenize_labels(self, labels_str):
+				try:
+						labels = ast.literal_eval(labels_str)
+						text_desc = self._create_text_description(labels)
+						return clip.tokenize(text_desc).squeeze(0)
+				except (ValueError, SyntaxError):
+						return clip.tokenize("").squeeze(0)
+
+		def _create_text_description(self, labels: list) -> str:
+				if not labels:
+						return ""
+				if not self.train or not self.text_augmentation:
+						return " ".join(labels)
+				if len(labels) == 1:
+						return labels[0]
+				if len(labels) == 2:
+						return f"{labels[0]} and {labels[1]}"
+				np.random.shuffle(labels)
+				return ", ".join(labels[:-1]) + f", and {labels[-1]}"
+
+		def _get_label_vector(self, labels_str: str) -> torch.Tensor:
+				vector = torch.zeros(self._num_classes, dtype=torch.float32)
+				try:
+						labels = ast.literal_eval(labels_str)
+						for label in labels:
+								if label in self.label_dict:
+										vector[self.label_dict[label]] = 1.0
+				except (ValueError, SyntaxError):
+						pass
+				return vector
+
+		def __len__(self):
+				return len(self.data_frame)
+
+		def __repr__(self):
+				transform_str = f"Transform: {self.transform}\n" if self.transform else ""
+				
+				if self.cache_enabled:
+						try:
+								cache_info = self.get_cache_info()
+								if cache_info:
+										cache_str = (
+												f"Image Cache (LRU): ENABLED - "
+												f"Size={cache_info.currsize}/{cache_info.maxsize}, "
+												f"Hits={cache_info.hits}, Misses={cache_info.misses}, "
+												f"Hit Rate={cache_info.hits/(cache_info.hits + cache_info.misses)*100:.1f}%" 
+												if (cache_info.hits + cache_info.misses) > 0 else "Hit Rate=0%"
+										)
+								else:
+										cache_str = "Image Cache (LRU): ENABLED but not yet used"
+						except Exception:
+								cache_str = "Image Cache (LRU): ENABLED"
+				else:
+						cache_str = "Image Cache (LRU): DISABLED (streaming mode)"
+
+				return (
+						f"{self.dataset_name}\n"
+						f"\tSplit: {self.split} ({self.data_frame.shape[0]} samples)\n"
+						f"\tNum classes: {self._num_classes}\n"
+						f"\t{cache_str}\n"
+						f"{transform_str}"
+				)
+
+		def __getitem__(self, idx: int):
+				try:
+						image_path = self.images[idx]
+						
+						# CRITICAL FIX 5: Load transformed tensor directly
+						image_tensor = self._load_image(image_path)
+						
+						tokenized_text = self.text_cache[idx]
+						label_vector = self._get_label_vector(self.labels[idx])
+						
+						return image_tensor, tokenized_text, label_vector
+						
+				except Exception as e:
+						print(f"WARNING: Skipping sample {idx} due to error: {e} | Path: {self.images[idx]}")
+						return None
+
+		def __del__(self):
+				"""Cleanup on deletion."""
+				try:
+						self.clear_cache()
+				except:
+						pass
+
+# class HistoricalArchivesMultiLabelDataset(Dataset):
+# 	def __init__(
+# 			self,
+# 			dataset_name: str,
+# 			train: bool,
+# 			data_frame: pd.DataFrame,
+# 			transform,
+# 			label_dict: dict,
+# 			text_augmentation: bool = True,
+# 			cache_size: int = 10000
+# 		):
+# 		self.dataset_name = dataset_name
+# 		self.train = train
+# 		self.data_frame = data_frame
+# 		self.images = self.data_frame["img_path"].values
+# 		self.labels = self.data_frame["multimodal_labels"].values
+# 		self.label_dict = label_dict
+# 		self._num_classes = len(label_dict)
+# 		self.transform = transform
+# 		self.text_augmentation = text_augmentation
+# 		self.split = 'Train' if self.train else 'Validation'
+# 		self._load_image = lru_cache(maxsize=cache_size)(self.__class__._load_image_base)
+# 		print(f"<=> LRU caching for {self.dataset_name}_{self.split} with cache_size: {cache_size}")
+# 		self._load_image.cache_clear()
+
+# 		self.text_cache = [None] * len(self.data_frame)
+# 		self._preload_texts()
+
+# 	@property
+# 	def unique_labels(self):
+# 		return sorted(self.label_dict.keys()) if self.label_dict else []
+
+# 	@staticmethod
+# 	def _load_image_base(img_path: str) -> Image.Image:
+# 		return Image.open(img_path).convert("RGB")
+
+# 	def get_cache_info(self):
+# 		return self._load_image.cache_info()
+
+# 	def _preload_texts(self):
+# 		print(f"Preprocessing texts for {self.dataset_name}...")
+# 		for idx in tqdm(range(len(self.labels)), desc="Tokenizing texts for " + self.dataset_name):
+# 			self.text_cache[idx] = self._tokenize_labels(self.labels[idx])
+
+# 	def _tokenize_labels(self, labels_str):
+# 		try:
+# 			labels = ast.literal_eval(labels_str)
+# 			text_desc = self._create_text_description(labels)
+# 			return clip.tokenize(text_desc).squeeze(0)
+# 		except (ValueError, SyntaxError):
+# 			return clip.tokenize("").squeeze(0)
+
+# 	def _create_text_description(self, labels: list) -> str:
+# 		if not labels: 
+# 			return ""
+# 		if not self.train or not self.text_augmentation: 
+# 			return " ".join(labels)
+# 		if len(labels) == 1: 
+# 			return labels[0]
+# 		if len(labels) == 2: 
+# 			return f"{labels[0]} and {labels[1]}"
+# 		np.random.shuffle(labels)
+# 		return ", ".join(labels[:-1]) + f", and {labels[-1]}"
+
+# 	def _get_label_vector(self, labels_str: str) -> torch.Tensor:
+# 		vector = torch.zeros(self._num_classes, dtype=torch.float32)
+# 		try:
+# 			labels = ast.literal_eval(labels_str)
+# 			for label in labels:
+# 				if label in self.label_dict:
+# 					vector[self.label_dict[label]] = 1.0
+# 		except (ValueError, SyntaxError):
+# 			pass
+# 		return vector
+
+# 	def __len__(self):
+# 		return len(self.data_frame)
 			
-	def __repr__(self):
-		transform_str = f"Transform: {self.transform}\n" if self.transform else ""
-		try:
-			cache_info = self._load_image.cache_info()
-			max_size = self._load_image.cache_parameters()['maxsize']
-			cache_str = (
-				f"Image Cache (LRU): Maxsize={max_size}, "
-				f"CurrentSize={cache_info.currsize}, Hits={cache_info.hits}, Misses={cache_info.misses}"
-			)
-		except AttributeError:
-			cache_str = "Image Cache (LRU): Not yet used"
-		return (
-			f"{self.dataset_name}\n"
-			f"\tSplit: {self.split} ({self.data_frame.shape[0]} samples)\n"
-			f"\tNum classes: {self._num_classes}\n"
-			f"\t{cache_str}\n"
-			f"{transform_str}"
-		)
+# 	def __repr__(self):
+# 		transform_str = f"Transform: {self.transform}\n" if self.transform else ""
+# 		try:
+# 			cache_info = self._load_image.cache_info()
+# 			max_size = self._load_image.cache_parameters()['maxsize']
+# 			cache_str = (
+# 				f"Image Cache (LRU): Maxsize={max_size}, "
+# 				f"CurrentSize={cache_info.currsize}, Hits={cache_info.hits}, Misses={cache_info.misses}"
+# 			)
+# 		except AttributeError:
+# 			cache_str = "Image Cache (LRU): Not yet used"
+# 		return (
+# 			f"{self.dataset_name}\n"
+# 			f"\tSplit: {self.split} ({self.data_frame.shape[0]} samples)\n"
+# 			f"\tNum classes: {self._num_classes}\n"
+# 			f"\t{cache_str}\n"
+# 			f"{transform_str}"
+# 		)
 
-	def __getitem__(self, idx: int):
-		try:
-			image_path = self.images[idx]
-			image = self._load_image(image_path)
+# 	def __getitem__(self, idx: int):
+# 		try:
+# 			image_path = self.images[idx]
+# 			image = self._load_image(image_path)
 			
-			tokenized_text = self.text_cache[idx]
-			label_vector = self._get_label_vector(self.labels[idx])
-			image_tensor = self.transform(image)
+# 			tokenized_text = self.text_cache[idx]
+# 			label_vector = self._get_label_vector(self.labels[idx])
+# 			image_tensor = self.transform(image)
 			
-			return image_tensor, tokenized_text, label_vector
-		except Exception as e:
-			print(f"WARNING: Skipping sample {idx} due to error: {e} | Path: {self.images[idx]}")
-			return None
+# 			return image_tensor, tokenized_text, label_vector
+# 		except Exception as e:
+# 			print(f"WARNING: Skipping sample {idx} due to error: {e} | Path: {self.images[idx]}")
+# 			return None
 
 def custom_collate_fn(batch):
 	# 1. Filter out all the None items which were returned by __getitem__ on error.

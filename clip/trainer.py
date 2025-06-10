@@ -2509,8 +2509,9 @@ def full_finetune_single_label(
 	final_txt2img_metrics = None
 
 	for epoch in range(num_epochs):
-		torch.cuda.empty_cache()  # Clear GPU memory cache
-		model.train()  # Enable dropout and training mode
+		train_and_val_st_time = time.time()
+		torch.cuda.empty_cache()
+		model.train()
 		print(f"Epoch [{epoch + 1}/{num_epochs}]")
 		epoch_loss = 0.0
 		for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
@@ -2606,7 +2607,7 @@ def full_finetune_single_label(
 		):
 			print(f"\nEarly stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score()}")
 			break
-		print("-" * 140)
+		print(f"Epoch {epoch+1} Duration[Train+Validation]: {time.time() - train_and_val_st_time:.2f}s")
 	
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
@@ -3293,6 +3294,7 @@ def lora_finetune_single_label(
 	full_val_loss_acc_metrics_all_epochs = []
 
 	for epoch in range(num_epochs):
+		train_and_val_st_time = time.time()
 		torch.cuda.empty_cache()
 		model.train()
 		print(f"Epoch [{epoch + 1}/{num_epochs}]")
@@ -3391,7 +3393,7 @@ def lora_finetune_single_label(
 			print(f"\nEarly stopping triggered at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
 			break
 
-		print("-" * 140)
+		print(f"Epoch {epoch+1} Duration[Train+Validation]: {time.time() - train_and_val_st_time:.2f}s")
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
 	evaluation_results = evaluate_best_model(
@@ -3662,6 +3664,7 @@ def full_finetune_multi_label(
 	final_img2txt_metrics = None
 	final_txt2img_metrics = None
 	for epoch in range(num_epochs):
+			train_and_val_st_time = time.time()
 			torch.cuda.empty_cache()
 			model.train()
 			print(f"Epoch [{epoch + 1}/{num_epochs}]")
@@ -3720,15 +3723,16 @@ def full_finetune_multi_label(
 						f"Total Loss: {batch_loss_total:.6f} "
 						f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
 					)
-			# Calculate average losses
+
 			avg_total_loss = epoch_loss_total / num_batches if num_batches > 0 else 0.0
 			avg_i2t_loss = epoch_loss_i2t / num_batches if num_batches > 0 else 0.0
 			avg_t2i_loss = epoch_loss_t2i / num_batches if num_batches > 0 else 0.0
-			
+
 			training_losses.append(avg_total_loss)
 			training_losses_breakdown["total"].append(avg_total_loss)
 			training_losses_breakdown["i2t"].append(avg_i2t_loss)
 			training_losses_breakdown["t2i"].append(avg_t2i_loss)
+
 			print(f">> Validation for epoch {epoch+1}...")
 			current_val_loss = compute_multilabel_validation_loss(
 				model=model,
@@ -3816,7 +3820,7 @@ def full_finetune_multi_label(
 			):
 				print(f"\nEarly stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score()}")
 				break
-			print("-" * 140)
+			print(f"Epoch {epoch+1} Duration[Train+Validation]: {time.time() - train_and_val_st_time:.2f}s")
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
 	# ================================
@@ -4367,6 +4371,7 @@ def progressive_finetune_multi_label(
 		epochs_in_current_phase += 1
 		epoch_duration = time.time() - epoch_start_time
 		print(f"Epoch {epoch+1} Duration: {epoch_duration:.2f}s")
+
 		if epoch+1 > minimum_epochs: 
 			print(f"EarlyStopping Status:\n{json.dumps(early_stopping.get_status(), indent=2, ensure_ascii=False)}")
 		print("-" * 80)
@@ -4677,6 +4682,7 @@ def lora_finetune_multi_label(
 	final_txt2img_metrics = None
 
 	for epoch in range(num_epochs):
+		train_and_val_st_time = time.time()
 		torch.cuda.empty_cache()
 		model.train()
 		print(f"Epoch [{epoch + 1}/{num_epochs}]")
@@ -4853,7 +4859,7 @@ def lora_finetune_multi_label(
 			print(f"\nEarly stopping triggered at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
 			break
 
-		print("-" * 140)
+		print(f"Epoch {epoch+1} Duration[Train+Validation]: {time.time() - train_and_val_st_time:.2f}s")
 	
 	print(f"Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
