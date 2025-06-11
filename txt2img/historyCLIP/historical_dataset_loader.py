@@ -656,7 +656,7 @@ def get_multi_label_dataloaders(
 	# Estimate memory per image
 	average_image_size_mb = get_estimated_image_size_mb(
 		image_paths=train_dataset["img_path"].values.tolist()+val_dataset["img_path"].values.tolist(),
-		sample_size=int(total_samples*0.1), # 10% of total samples
+		sample_size=int(total_samples*0.05) if total_samples > int(1e5) else 5000,
 	)
 	
 	# Determine cache size if not specified
