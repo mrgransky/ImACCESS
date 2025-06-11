@@ -689,6 +689,8 @@ class HistoricalArchivesMultiLabelDatasetWithCaching(Dataset):
 		except:
 			pass
 
+
+
 def custom_collate_fn(batch):
 	valid_samples = [item for item in batch if item is not None]
 	if not valid_samples:
@@ -706,7 +708,6 @@ def custom_collate_fn(batch):
 		# Fallback: if the structure is not unpackable, use default_collate
 		return torch.utils.data.dataloader.default_collate(valid_samples)
 
-
 class ImageCache:
 	def __init__(self, image_paths, cache_size, num_workers=4):
 		self.cache = {}
@@ -718,7 +719,6 @@ class ImageCache:
 			self._preload_images(num_workers)
 	
 	def _preload_images(self, num_workers):
-		"""Preload images using multiple threads."""
 		print(f"\nPreloading {self.cache_size} images using {num_workers} workers...")
 		
 		# For training, load random subset; for validation, load first N images
@@ -962,25 +962,26 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 def get_cache_size_v2(
 		dataset_size: int,
 		available_memory_gb: float,
+		image_resolution: int,  # Default image size
 		is_hpc: bool = False,
 		min_coverage: float = 0.15,  # Minimum 15% coverage to be worthwhile
-		max_memory_fraction: float = 0.25,  # Use max 25% of available memory
+		max_memory_fraction: float = 0.15,  # Use max 15% of available memory
 	) -> int:
-
-	# Estimate memory per image
-	img_size_mb = 1.0 # 1MB per image coonservative estimate
-	
-	# Calculate maximum cache size from memory
-	max_cache_from_memory = int((available_memory_gb * max_memory_fraction * 1024) / img_size_mb)
 	
 	# Calculate minimum cache size for effectiveness
 	min_cache_size = int(dataset_size * min_coverage)
+
+	# Estimate memory per image
+	img_size_mb = (image_resolution**2 * 3) / 1024**2 # RGB image (3 channels) in MB
+
+	# Calculate maximum cache size from memory
+	max_cache_from_memory = int((available_memory_gb * max_memory_fraction * 1024) / img_size_mb)
 	
 	# If we can't achieve minimum coverage, disable cache
 	if max_cache_from_memory < min_cache_size:
-			print(f"Cannot achieve minimum {min_coverage*100:.0f}% coverage with available memory.")
-			print(f"Would need {min_cache_size} images but can only fit {max_cache_from_memory}")
-			return 0
+		print(f"Cannot achieve minimum {min_coverage*100:.0f}% coverage with available memory.")
+		print(f"Would need {min_cache_size} images but can only fit {max_cache_from_memory}")
+		return 0
 	
 	# Target coverage based on environment
 	if is_hpc:
@@ -1032,12 +1033,13 @@ def get_multi_label_dataloaders(
 			cache_size = get_cache_size_v2(
 				dataset_size=total_samples,
 				available_memory_gb=available_gb,
-				is_hpc=is_hpc
+				is_hpc=is_hpc,
+				image_resolution=input_resolution,
 			)
 		
 		# Allocate cache between train/val
 		if cache_size > 0:
-			train_pct = 0.6
+			train_pct = 0.7
 			val_pct = 1 - train_pct
 			train_cache_size = int(cache_size * train_pct)
 			val_cache_size = cache_size - train_cache_size
@@ -1052,7 +1054,7 @@ def get_multi_label_dataloaders(
 			transform=preprocess,
 			label_dict=label_dict,
 			cache_size=train_cache_size,
-			cache_workers=num_workers,#min(4, num_workers) if num_workers > 0 else 4,
+			cache_workers=min(4, num_workers),
 		)
 		
 		print(train_dataset)
@@ -1064,7 +1066,7 @@ def get_multi_label_dataloaders(
 			transform=preprocess,
 			label_dict=label_dict,
 			cache_size=val_cache_size,
-			cache_workers=num_workers,#min(4, num_workers) if num_workers > 0 else 4,
+			cache_workers=min(4, num_workers),
 		)
 		
 		print(val_dataset)
