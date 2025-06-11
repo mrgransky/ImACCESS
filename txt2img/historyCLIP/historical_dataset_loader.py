@@ -986,7 +986,7 @@ def get_cache_size_v2(
 	if is_hpc:
 		target_coverage = 0.3  # 30% on HPC
 	else:
-		target_coverage = 0.4  # 50% on workstation
+		target_coverage = 0.4  # 40% on workstation
 	
 	target_cache_size = int(dataset_size * target_coverage)
 	
@@ -1037,32 +1037,32 @@ def get_multi_label_dataloaders(
 		
 		# Allocate cache between train/val
 		if cache_size > 0:
-				train_cache_size = int(cache_size * 0.7)  # 70% for training
-				val_cache_size = cache_size - train_cache_size
+			train_cache_size = int(cache_size * 0.6)
+			val_cache_size = cache_size - train_cache_size
 		else:
-				train_cache_size = val_cache_size = 0
-		
-		# Create datasets
+			train_cache_size = val_cache_size = 0
+		print(f">> Calculated cache size: {cache_size:,} (train: {train_cache_size:,}, val: {val_cache_size:,})")
+
 		train_dataset = HistoricalArchivesMultiLabelDataset(
-				dataset_name=dataset_name,
-				train=True,
-				data_frame=train_dataset.sort_values(by="img_path").reset_index(drop=True),
-				transform=preprocess,
-				label_dict=label_dict,
-				cache_size=train_cache_size,
-				cache_workers=num_workers,#min(4, num_workers) if num_workers > 0 else 4,
+			dataset_name=dataset_name,
+			train=True,
+			data_frame=train_dataset.sort_values(by="img_path").reset_index(drop=True),
+			transform=preprocess,
+			label_dict=label_dict,
+			cache_size=train_cache_size,
+			cache_workers=num_workers,#min(4, num_workers) if num_workers > 0 else 4,
 		)
 		
 		print(train_dataset)
 		
 		val_dataset = HistoricalArchivesMultiLabelDataset(
-				dataset_name=dataset_name,
-				train=False,
-				data_frame=val_dataset.sort_values(by="img_path").reset_index(drop=True),
-				transform=preprocess,
-				label_dict=label_dict,
-				cache_size=val_cache_size,
-				cache_workers=num_workers,#min(4, num_workers) if num_workers > 0 else 4,
+			dataset_name=dataset_name,
+			train=False,
+			data_frame=val_dataset.sort_values(by="img_path").reset_index(drop=True),
+			transform=preprocess,
+			label_dict=label_dict,
+			cache_size=val_cache_size,
+			cache_workers=num_workers,#min(4, num_workers) if num_workers > 0 else 4,
 		)
 		
 		print(val_dataset)
