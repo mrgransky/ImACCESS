@@ -596,7 +596,7 @@ def get_cache_size(
 		available_memory_gb: float,
 		average_image_size_mb: float,
 		is_hpc: bool = False,
-		min_desired_converage: float = 0.25,  # Minimum 25% coverage to be worthwhile
+		min_desired_converage: float = 0.15,  # Minimum 15% coverage to be worthwhile
 		max_memory_fraction: float = 0.35,  # Use max 35% of available memory
 	) -> int:
 	detected_platform = "HPC" if is_hpc else f"Workstation (Laptop/VM : {platform.system()})"
@@ -604,12 +604,12 @@ def get_cache_size(
 	min_desired_cache_size = int(dataset_size * min_desired_converage)
 
 	# Calculate maximum cache size from memory
-	max_cache_from_memory = int((available_memory_gb * max_memory_fraction * 1024) / average_image_size_mb)
+	max_allowed_cache_size = int((available_memory_gb * max_memory_fraction * 1024) / average_image_size_mb)
 	
 	# If we can't achieve minimum coverage, disable cache
-	if max_cache_from_memory < min_desired_cache_size:
+	if max_allowed_cache_size < min_desired_cache_size:
 		print(f"<!> Cannot achieve {min_desired_converage*100:.0f}% minimum coverage with available memory: {available_memory_gb:.1f}GB for {average_image_size_mb:.2f}MB image average size.")
-		print(f"\tComputed minimum cache size: {min_desired_cache_size:,} images! but {detected_platform} can only fit {max_cache_from_memory:,} images.")
+		print(f"\tComputed minimum desired cache size: {min_desired_cache_size:,} images! but {detected_platform} can only fit {max_allowed_cache_size:,} images.")
 		return 0
 	
 	# Target coverage based on environment
@@ -621,7 +621,7 @@ def get_cache_size(
 	target_cache_size = int(dataset_size * target_coverage)
 	
 	# Final cache size
-	cache_size = min(target_cache_size, max_cache_from_memory)
+	cache_size = min(target_cache_size, max_allowed_cache_size)
 	
 	actual_coverage = cache_size / dataset_size
 	actual_memory_gb = (cache_size * average_image_size_mb) / 1024
@@ -630,7 +630,7 @@ def get_cache_size(
 	print(f"\tDetected Environment: {detected_platform} (target coverage: {target_coverage*100:.1f}%)")
 	print(f"\tAvailable RAM memory: {available_memory_gb:.1f}GB => {max_memory_fraction*100:.0f}% Allocated => {available_memory_gb*max_memory_fraction:.1f}GB for cache")
 	print(f"\tMinimum desired cache size for effectiveness: {min_desired_cache_size:,} images ({min_desired_converage*100:.0f}% minimum desired coverage)")
-	print(f"\tMaximum nominal cache from memory: {max_cache_from_memory:,} images (considering image size: {average_image_size_mb:.2f}MB)")
+	print(f"\tMaximum allowed cache size [given available RAM memory]: {max_allowed_cache_size:,} images (considering image size: {average_image_size_mb:.2f}MB)")
 	print(f"\tDataset size: {dataset_size:,} images")
 	print(f"\tCache size: {cache_size:,} images ({actual_coverage*100:.1f}% actual coverage)")
 	print(f"\tMemory usage: {actual_memory_gb:.1f}GB")
@@ -651,13 +651,14 @@ def get_multi_label_dataloaders(
 	
 	train_dataset, val_dataset, label_dict = get_multi_label_datasets(ddir=dataset_dir)
 	preprocess = get_preprocess(dataset_dir=dataset_dir, input_resolution=input_resolution)
-	
+	total_samples = len(train_dataset) + len(val_dataset)
+
 	# Estimate memory per image
 	average_image_size_mb = get_estimated_image_size_mb(
 		image_paths=train_dataset["img_path"].values.tolist()+val_dataset["img_path"].values.tolist(),
-		sample_size=5000,
+		sample_size=int(total_samples*0.1), # 10% of total samples
 	)
-
+	
 	# Determine cache size if not specified
 	if cache_size is None:
 		memory = psutil.virtual_memory()
@@ -668,7 +669,6 @@ def get_multi_label_dataloaders(
 			f"Available RAM: {available_gb:.2f}GB => {average_image_size_mb:.2f}MB/image"
 		)
 		
-		total_samples = len(train_dataset) + len(val_dataset)
 		cache_size = get_cache_size(
 			dataset_size=total_samples,
 			available_memory_gb=available_gb,
