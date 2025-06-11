@@ -403,12 +403,12 @@ def get_cache_size(
 		
 		env_type = "HPC" if env["is_hpc"] else "Workstation" if env["is_workstation"] else "Laptop"
 		
-		print(f"\tOptimized Cache Analysis:")
-		print(f"\t\tEnvironment: {env_type}")
-		print(f"\t\tAvailable memory: {env['available_gb']:.1f}GB")
-		print(f"\t\tDataset size: {dataset_size:,} images")
-		print(f"\t\tCache size: {cache_size:,} images ({actual_coverage:.1f}% coverage)")
-		print(f"\t\tMemory usage: {actual_memory:.1f}GB")
+		print(f"\nOptimized Cache Analysis:")
+		print(f"\tEnvironment: {env_type}")
+		print(f"\tAvailable memory: {env['available_gb']:.1f}GB")
+		print(f"\tDataset size: {dataset_size:,} images")
+		print(f"\tCache size: {cache_size:,} images ({actual_coverage:.1f}% coverage)")
+		print(f"\tMemory usage: {actual_memory:.1f}GB")
 		
 		# Expected speedup estimate
 		if actual_coverage >= 70:
@@ -420,11 +420,11 @@ def get_cache_size(
 		else:
 			speedup = "10-20% faster"
 		
-		print(f"\t\tExpected speedup: {speedup} (after epoch 1)")
+		print(f"\tExpected speedup: {speedup} (after epoch 1)")
 	
 	return cache_size
 
-def get_multi_label_dataloaders(
+def get_multi_label_dataloaders_old(
 		dataset_dir: str,
 		batch_size: int,
 		num_workers: int,
@@ -690,24 +690,22 @@ class HistoricalArchivesMultiLabelDatasetWithCaching(Dataset):
 			pass
 
 def custom_collate_fn(batch):
-	# 1. Filter out all the None items which were returned by __getitem__ on error.
 	valid_samples = [item for item in batch if item is not None]
-	
-	# 2. If the entire batch failed, return empty tensors to avoid crashing the training loop.
 	if not valid_samples:
-		# Return empty tensors with correct structure if entire batch fails
 		return torch.empty(0), torch.empty(0), torch.empty(0)
-
-	# 3. Use the standard PyTorch collate function on the now-filtered list of valid samples.
-	return torch.utils.data.dataloader.default_collate(valid_samples)	
-	# # Standard collate for valid samples - returns tuple format
-	# images, texts, labels = zip(*valid_samples)
 	
-	# return (
-	# 	torch.stack(images),    # Shape: [batch_size, channels, height, width]
-	# 	torch.stack(texts),     # Shape: [batch_size, sequence_length] 
-	# 	torch.stack(labels)     # Shape: [batch_size, num_classes]
-	# )
+	# Use manual collation (recommended for simple, fixed-size tuples)
+	try:
+		images, texts, labels = zip(*valid_samples)
+		return (
+			torch.stack(images),
+			torch.stack(texts),
+			torch.stack(labels)
+		)
+	except ValueError:
+		# Fallback: if the structure is not unpackable, use default_collate
+		return torch.utils.data.dataloader.default_collate(valid_samples)
+
 
 class ImageCache:
 		"""A simple pre-loading cache that loads most frequent images into memory."""
@@ -1000,13 +998,13 @@ def get_cache_size_v2(
 		actual_coverage = cache_size / dataset_size
 		actual_memory_gb = (cache_size * img_size_mb) / 1024
 		
-		print(f"\tOptimized Cache Analysis:")
-		print(f"\t\tEnvironment: {'HPC' if is_hpc else 'Workstation'}")
-		print(f"\t\tAvailable memory: {available_memory_gb:.1f}GB")
-		print(f"\t\tDataset size: {dataset_size:,} images")
-		print(f"\t\tCache size: {cache_size:,} images ({actual_coverage*100:.1f}% coverage)")
-		print(f"\t\tMemory usage: {actual_memory_gb:.1f}GB")
-		print(f"\t\tExpected speedup: {int(actual_coverage * 100)}% faster (after warmup)")
+		print(f"\nOptimized Cache Analysis:")
+		print(f"\tEnvironment: {'HPC' if is_hpc else 'Workstation'}")
+		print(f"\tAvailable memory: {available_memory_gb:.1f}GB")
+		print(f"\tDataset size: {dataset_size:,} images")
+		print(f"\tCache size: {cache_size:,} images ({actual_coverage*100:.1f}% coverage)")
+		print(f"\tMemory usage: {actual_memory_gb:.1f}GB")
+		print(f"\tExpected speedup: {int(actual_coverage * 100)}% faster (after warmup)")
 		
 		return cache_size
 
