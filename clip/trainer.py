@@ -2975,7 +2975,7 @@ def progressive_finetune_single_label(
 		training_losses.append(avg_training_loss)
 
 		# --- Validation ---
-		print(f"Epoch: {epoch+1} validation...")
+		print(f">> Validating Epoch: {epoch+1} ...")
 
 		# all metrics in one using caching mechanism:
 		validation_results = get_validation_metrics(
@@ -4269,7 +4269,7 @@ def progressive_finetune_multi_label(
 		training_losses_breakdown["t2i"].append(avg_t2i_loss)
 
 		# --- Validation ---
-		print(f"Epoch: {epoch+1} validation...")
+		print(f">> Validating Epoch: {epoch+1} ...")
 
 		# Compute validation loss using the same multi-label loss function
 		current_val_loss = compute_multilabel_validation_loss(
