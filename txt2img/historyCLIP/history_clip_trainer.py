@@ -105,6 +105,7 @@ def main():
 				f"{args.finetune_strategy}_"
 				f"{arch_name}_"
 				f"bs_{args.batch_size}_"
+				f"nw_{args.num_workers}_"
 				f"ep_{args.epochs}_"
 				f"lr_{args.learning_rate}_"
 				f"wd_{args.weight_decay}_"
