@@ -930,35 +930,32 @@ def get_estimated_image_size_mb(
 		image_paths: Union[List[str], pd.Series],
 		sample_size: int = 100,
 	)-> float:
+
 	if not image_paths.any() if isinstance(image_paths, pd.Series) else not image_paths:
 		print("Warning: No image paths provided for estimation. Returning default estimate.")
 		return 7.0 # Default estimate of 7MB per image
+
 	actual_sample_size = min(sample_size, len(image_paths))
+
 	if actual_sample_size == 0:
 		print("Warning: image_paths list is empty. Returning default estimate.")
 		return 7.0 # Default estimate of 7MB per image
 
-	print(f"Estimating average image RAM size from a sample of {actual_sample_size} images...")
-	# Ensure we are sampling valid integer positions
-	if isinstance(image_paths, pd.Series):
-			# For series, sample_indices should be actual integer positions from 0 to len-1
-			indices_to_sample_from = range(len(image_paths))
-	else: # For lists
-			indices_to_sample_from = range(len(image_paths))
+	print(f"Estimating average image RAM size from {actual_sample_size} samples...")
 
+	if isinstance(image_paths, pd.Series):
+		indices_to_sample_from = range(len(image_paths))
+	else:
+		indices_to_sample_from = range(len(image_paths))
 
 	sampled_indices = random.sample(indices_to_sample_from, actual_sample_size)
 	total_bytes = 0
 	successfully_loaded = 0
 
-	# Correct way to define get_path_fn for iloc
 	if isinstance(image_paths, pd.Series):
-		# .iloc is an attribute for integer-location based indexing
 		get_path_fn = lambda integer_pos: image_paths.iloc[integer_pos]
 	else:
-		# For lists, standard indexing works
 		get_path_fn = lambda integer_pos: image_paths[integer_pos]
-
 
 	for i in tqdm(sampled_indices, desc="Sampling images for size estimation"):
 		img_path = get_path_fn(i)
@@ -968,15 +965,12 @@ def get_estimated_image_size_mb(
 			total_bytes += img_array.nbytes
 			successfully_loaded += 1
 		except FileNotFoundError:
-			if verbose:
-				print(f"Warning: Image not found at {img_path}, skipping for estimation.")
+			print(f"Warning: Image not found at {img_path}, skipping for estimation.")
 		except Exception as e:
-			if verbose:
-				print(f"Warning: Could not load or process image {img_path} for estimation: {e}, skipping.")
+			print(f"Warning: Could not load or process image {img_path} for estimation: {e}, skipping.")
 
 	if successfully_loaded == 0:
-		if verbose:
-			print("Warning: Failed to load any images from the sample. Returning default estimate.")
+		print("Warning: Failed to load any images from the sample. Returning default estimate.")
 		return 7.0  # Fallback default if no images could be loaded
 
 	average_bytes = total_bytes / successfully_loaded
