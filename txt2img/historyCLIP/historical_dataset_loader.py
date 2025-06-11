@@ -596,13 +596,13 @@ def get_cache_size(
 		average_image_size_mb: float,
 		is_hpc: bool = False,
 		min_desired_converage: float = 0.15,
-		max_memory_fraction: float = 0.60,
+		max_memory_fraction: float = 0.80,
 	) -> int:
 	detected_platform = "HPC" if is_hpc else f"{platform.system()} Workstation (Laptop/VM)"
 	# Calculate minimum desired cache size for effectiveness
 	min_desired_cache_size = int(dataset_size * min_desired_converage)
 
-	# Calculate maximum cache size from memory
+	# Calculate maximum allowed cache size from memory
 	max_allowed_cache_size = int((available_memory_gb * max_memory_fraction * 1024) / average_image_size_mb)
 	
 	# If we can't achieve minimum coverage, disable cache
