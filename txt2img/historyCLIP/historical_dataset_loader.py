@@ -314,380 +314,380 @@ def get_multi_label_datasets(ddir: str, seed: int = 42):
 	
 	return df_train, df_val, label_dict
 
-def detect_environment() -> dict:
-		"""Detect system environment for cache optimization."""
-		memory = psutil.virtual_memory()
-		total_gb = memory.total / (1024**3)
-		available_gb = memory.available / (1024**3)
+# def detect_environment() -> dict:
+# 		"""Detect system environment for cache optimization."""
+# 		memory = psutil.virtual_memory()
+# 		total_gb = memory.total / (1024**3)
+# 		available_gb = memory.available / (1024**3)
 		
-		# Environment detection
-		is_hpc = any(env in os.environ for env in ['SLURM_JOB_ID', 'PBS_JOBID', 'SGE_TASK_ID'])
-		is_laptop = total_gb <= 32 and not is_hpc
-		is_workstation = total_gb > 32 and not is_hpc
+# 		# Environment detection
+# 		is_hpc = any(env in os.environ for env in ['SLURM_JOB_ID', 'PBS_JOBID', 'SGE_TASK_ID'])
+# 		is_laptop = total_gb <= 32 and not is_hpc
+# 		is_workstation = total_gb > 32 and not is_hpc
 		
-		# Memory pressure
-		memory_pressure = "high" if memory.percent > 80 else "medium" if memory.percent > 60 else "low"
+# 		# Memory pressure
+# 		memory_pressure = "high" if memory.percent > 80 else "medium" if memory.percent > 60 else "low"
 		
-		return {
-				"total_gb": total_gb,
-				"available_gb": available_gb,
-				"is_hpc": is_hpc,
-				"is_laptop": is_laptop,
-				"is_workstation": is_workstation,
-				"memory_pressure": memory_pressure
-		}
+# 		return {
+# 				"total_gb": total_gb,
+# 				"available_gb": available_gb,
+# 				"is_hpc": is_hpc,
+# 				"is_laptop": is_laptop,
+# 				"is_workstation": is_workstation,
+# 				"memory_pressure": memory_pressure
+# 		}
 
-def get_cache_strategy(env: dict) -> dict:
-	"""Determine cache strategy based on environment."""
-	if env["is_hpc"]:
-		return {"memory_ratio": 0.4, "target_coverage": 0.8}
-	elif env["is_workstation"]:
-		return {"memory_ratio": 0.25, "target_coverage": 0.6}
-	elif env["is_laptop"]:
-		return {"memory_ratio": 0.15, "target_coverage": 0.4}
-	else:
-		return {"memory_ratio": 0.2, "target_coverage": 0.5}
+# def get_cache_strategy(env: dict) -> dict:
+# 	"""Determine cache strategy based on environment."""
+# 	if env["is_hpc"]:
+# 		return {"memory_ratio": 0.4, "target_coverage": 0.8}
+# 	elif env["is_workstation"]:
+# 		return {"memory_ratio": 0.25, "target_coverage": 0.6}
+# 	elif env["is_laptop"]:
+# 		return {"memory_ratio": 0.15, "target_coverage": 0.4}
+# 	else:
+# 		return {"memory_ratio": 0.2, "target_coverage": 0.5}
 
-def get_cache_size(
-		dataset_size: int,
-		image_estimate_mb: float = 7.0,
-		safety_factor: float = 0.8,
-		verbose: bool = True
-	) -> int:
-	"""
-	Calculate optimal cache size based on system environment and dataset.
+# def get_cache_size(
+# 		dataset_size: int,
+# 		image_estimate_mb: float = 7.0,
+# 		safety_factor: float = 0.8,
+# 		verbose: bool = True
+# 	) -> int:
+# 	"""
+# 	Calculate optimal cache size based on system environment and dataset.
 	
-	Args:
-			dataset_size: Number of images in dataset
-			image_estimate_mb: Estimated size per image in MB
-			safety_factor: Safety margin (0.8 = use 80% of calculated safe memory)
-			verbose: Print analysis
+# 	Args:
+# 			dataset_size: Number of images in dataset
+# 			image_estimate_mb: Estimated size per image in MB
+# 			safety_factor: Safety margin (0.8 = use 80% of calculated safe memory)
+# 			verbose: Print analysis
 			
-	Returns:
-			Optimal cache size (number of images)
-	"""
-	env = detect_environment()
-	strategy = get_cache_strategy(env)
+# 	Returns:
+# 			Optimal cache size (number of images)
+# 	"""
+# 	env = detect_environment()
+# 	strategy = get_cache_strategy(env)
 	
-	# Adjust available memory for pressure
-	available_gb = env["available_gb"]
-	if env["memory_pressure"] == "high":
-			available_gb *= 0.5
-	elif env["memory_pressure"] == "medium":
-			available_gb *= 0.7
+# 	# Adjust available memory for pressure
+# 	available_gb = env["available_gb"]
+# 	if env["memory_pressure"] == "high":
+# 			available_gb *= 0.5
+# 	elif env["memory_pressure"] == "medium":
+# 			available_gb *= 0.7
 	
-	# Calculate memory-based limit
-	usable_memory_gb = available_gb * strategy["memory_ratio"] * safety_factor
-	memory_based_size = int((usable_memory_gb * 1024) / image_estimate_mb)
+# 	# Calculate memory-based limit
+# 	usable_memory_gb = available_gb * strategy["memory_ratio"] * safety_factor
+# 	memory_based_size = int((usable_memory_gb * 1024) / image_estimate_mb)
 	
-	# Calculate coverage-based limit
-	target_coverage = strategy["target_coverage"]
+# 	# Calculate coverage-based limit
+# 	target_coverage = strategy["target_coverage"]
 	
-	# Adjust coverage for dataset size
-	if dataset_size < 1000:
-		target_coverage = min(1.0, target_coverage * 1.5)
-	elif dataset_size > 100000:
-		target_coverage = max(0.1, target_coverage * 0.5)
+# 	# Adjust coverage for dataset size
+# 	if dataset_size < 1000:
+# 		target_coverage = min(1.0, target_coverage * 1.5)
+# 	elif dataset_size > 100000:
+# 		target_coverage = max(0.1, target_coverage * 0.5)
 	
-	coverage_based_size = int(dataset_size * target_coverage)
+# 	coverage_based_size = int(dataset_size * target_coverage)
 	
-	# Take minimum of both constraints
-	cache_size = min(memory_based_size, coverage_based_size)
+# 	# Take minimum of both constraints
+# 	cache_size = min(memory_based_size, coverage_based_size)
 	
-	# Apply bounds
-	cache_size = max(100, min(cache_size, dataset_size))
+# 	# Apply bounds
+# 	cache_size = max(100, min(cache_size, dataset_size))
 	
-	if verbose:
-		actual_coverage = cache_size / dataset_size * 100
-		actual_memory = (cache_size * image_estimate_mb) / 1024
+# 	if verbose:
+# 		actual_coverage = cache_size / dataset_size * 100
+# 		actual_memory = (cache_size * image_estimate_mb) / 1024
 		
-		env_type = "HPC" if env["is_hpc"] else "Workstation" if env["is_workstation"] else "Laptop"
+# 		env_type = "HPC" if env["is_hpc"] else "Workstation" if env["is_workstation"] else "Laptop"
 		
-		print(f"\nOptimized Cache Analysis:")
-		print(f"\tEnvironment: {env_type}")
-		print(f"\tAvailable memory: {env['available_gb']:.1f}GB")
-		print(f"\tDataset size: {dataset_size:,} images")
-		print(f"\tCache size: {cache_size:,} images ({actual_coverage:.1f}% coverage)")
-		print(f"\tMemory usage: {actual_memory:.1f}GB")
+# 		print(f"\nOptimized Cache Analysis:")
+# 		print(f"\tEnvironment: {env_type}")
+# 		print(f"\tAvailable memory: {env['available_gb']:.1f}GB")
+# 		print(f"\tDataset size: {dataset_size:,} images")
+# 		print(f"\tCache size: {cache_size:,} images ({actual_coverage:.1f}% coverage)")
+# 		print(f"\tMemory usage: {actual_memory:.1f}GB")
 		
-		# Expected speedup estimate
-		if actual_coverage >= 70:
-			speedup = "60-80% faster"
-		elif actual_coverage >= 50:
-			speedup = "40-60% faster"
-		elif actual_coverage >= 30:
-			speedup = "20-40% faster"
-		else:
-			speedup = "10-20% faster"
+# 		# Expected speedup estimate
+# 		if actual_coverage >= 70:
+# 			speedup = "60-80% faster"
+# 		elif actual_coverage >= 50:
+# 			speedup = "40-60% faster"
+# 		elif actual_coverage >= 30:
+# 			speedup = "20-40% faster"
+# 		else:
+# 			speedup = "10-20% faster"
 		
-		print(f"\tExpected speedup: {speedup} (after epoch 1)")
+# 		print(f"\tExpected speedup: {speedup} (after epoch 1)")
 	
-	return cache_size
+# 	return cache_size
 
-def get_multi_label_dataloaders_old(
-		dataset_dir: str,
-		batch_size: int,
-		num_workers: int,
-		input_resolution: int,
-		cache_size: int = None,  # Auto-detect if None
-	) -> Tuple[DataLoader, DataLoader]:
-	dataset_name = os.path.basename(dataset_dir)
-	print(f"Creating multi-label dataloaders for {dataset_name}...")
-	train_dataset, val_dataset, label_dict = get_multi_label_datasets(ddir=dataset_dir)
-	preprocess = get_preprocess(dataset_dir=dataset_dir, input_resolution=input_resolution)
-	total_samples = len(train_dataset) + len(val_dataset)
+# def get_multi_label_dataloaders_old(
+# 		dataset_dir: str,
+# 		batch_size: int,
+# 		num_workers: int,
+# 		input_resolution: int,
+# 		cache_size: int = None,  # Auto-detect if None
+# 	) -> Tuple[DataLoader, DataLoader]:
+# 	dataset_name = os.path.basename(dataset_dir)
+# 	print(f"Creating multi-label dataloaders for {dataset_name}...")
+# 	train_dataset, val_dataset, label_dict = get_multi_label_datasets(ddir=dataset_dir)
+# 	preprocess = get_preprocess(dataset_dir=dataset_dir, input_resolution=input_resolution)
+# 	total_samples = len(train_dataset) + len(val_dataset)
 	
-	if cache_size is None:
-		cache_size = get_cache_size(dataset_size=total_samples, verbose=True)
-		print(f"Auto-detected LRU cache size: {cache_size}")
+# 	if cache_size is None:
+# 		cache_size = get_cache_size(dataset_size=total_samples, verbose=True)
+# 		print(f"Auto-detected LRU cache size: {cache_size}")
 
 	
-	cache_multiplier = 0.6 if total_samples > 150000 else 0.8
+# 	cache_multiplier = 0.6 if total_samples > 150000 else 0.8
 
-	train_dataset = HistoricalArchivesMultiLabelDataset(
-		dataset_name=dataset_name,
-		train=True,
-		data_frame=train_dataset.sort_values(by="img_path").reset_index(drop=True),
-		transform=preprocess,
-		label_dict=label_dict,
-		cache_size=int(cache_size * cache_multiplier),
-	)
+# 	train_dataset = HistoricalArchivesMultiLabelDataset(
+# 		dataset_name=dataset_name,
+# 		train=True,
+# 		data_frame=train_dataset.sort_values(by="img_path").reset_index(drop=True),
+# 		transform=preprocess,
+# 		label_dict=label_dict,
+# 		cache_size=int(cache_size * cache_multiplier),
+# 	)
 	
-	print(train_dataset)
+# 	print(train_dataset)
 	
-	train_loader = DataLoader(
-			dataset=train_dataset,
-			batch_size=batch_size,
-			shuffle=True,
-			pin_memory=torch.cuda.is_available(),
-			num_workers=num_workers,
-			prefetch_factor=1,
-			persistent_workers=(num_workers > 0 and os.environ.get('USER') != "farid"),
-			collate_fn=custom_collate_fn,
-	)
-	train_loader.name = f"{dataset_name.lower()}_multilabel_train".upper()
+# 	train_loader = DataLoader(
+# 			dataset=train_dataset,
+# 			batch_size=batch_size,
+# 			shuffle=True,
+# 			pin_memory=torch.cuda.is_available(),
+# 			num_workers=num_workers,
+# 			prefetch_factor=1,
+# 			persistent_workers=(num_workers > 0 and os.environ.get('USER') != "farid"),
+# 			collate_fn=custom_collate_fn,
+# 	)
+# 	train_loader.name = f"{dataset_name.lower()}_multilabel_train".upper()
 	
-	validation_dataset = HistoricalArchivesMultiLabelDataset(
-			dataset_name=dataset_name,
-			train=False,
-			data_frame=val_dataset.sort_values(by="img_path").reset_index(drop=True),
-			transform=preprocess,
-			label_dict=label_dict,
-			cache_size=int(cache_size * (1.0 - cache_multiplier)), # Allocate less cache to validation set,
-	)
+# 	validation_dataset = HistoricalArchivesMultiLabelDataset(
+# 			dataset_name=dataset_name,
+# 			train=False,
+# 			data_frame=val_dataset.sort_values(by="img_path").reset_index(drop=True),
+# 			transform=preprocess,
+# 			label_dict=label_dict,
+# 			cache_size=int(cache_size * (1.0 - cache_multiplier)), # Allocate less cache to validation set,
+# 	)
 	
-	print(validation_dataset)
+# 	print(validation_dataset)
 	
-	val_loader = DataLoader(
-			dataset=validation_dataset,
-			batch_size=batch_size,
-			shuffle=False,
-			pin_memory=torch.cuda.is_available(),
-			num_workers=num_workers,
-			prefetch_factor=1,
-			persistent_workers=(num_workers > 0 and os.environ.get('USER') != "farid"),
-			collate_fn=custom_collate_fn,
-	)
-	val_loader.name = f"{dataset_name.lower()}_multilabel_validation".upper()
+# 	val_loader = DataLoader(
+# 			dataset=validation_dataset,
+# 			batch_size=batch_size,
+# 			shuffle=False,
+# 			pin_memory=torch.cuda.is_available(),
+# 			num_workers=num_workers,
+# 			prefetch_factor=1,
+# 			persistent_workers=(num_workers > 0 and os.environ.get('USER') != "farid"),
+# 			collate_fn=custom_collate_fn,
+# 	)
+# 	val_loader.name = f"{dataset_name.lower()}_multilabel_validation".upper()
 	
-	return train_loader, val_loader
+# 	return train_loader, val_loader
 
-class HistoricalArchivesMultiLabelDatasetWithCaching(Dataset):
-	def __init__(
-			self,
-			dataset_name: str,
-			train: bool,
-			data_frame: pd.DataFrame,
-			transform,
-			label_dict: dict,
-			text_augmentation: bool = True,
-			cache_size: int = 1000,
-		):
-		self.dataset_name = dataset_name
-		self.train = train
-		self.data_frame = data_frame
-		self.images = self.data_frame["img_path"].values
-		self.labels = self.data_frame["multimodal_labels"].values
-		self.label_dict = label_dict
-		self._num_classes = len(label_dict)
-		self.transform = transform
-		self.text_augmentation = text_augmentation
-		self.split = 'Train' if self.train else 'Validation'
-		enable_cache = self._should_enable_cache(cache_size, verbose=True)		
-		self.cache_enabled = enable_cache		
-		if self.cache_enabled:
-			self._load_image = self._get_cached_loader(cache_size)
-			print(f"🟢 LRU caching ENABLED for {self.dataset_name}_{self.split} with cache_size: {cache_size}")
-		else:
-			self._load_image = self._load_image_no_cache
-			print(f"🔴 LRU caching DISABLED for {self.dataset_name}_{self.split} (insufficient memory)")
+# class HistoricalArchivesMultiLabelDatasetWithCaching(Dataset):
+# 	def __init__(
+# 			self,
+# 			dataset_name: str,
+# 			train: bool,
+# 			data_frame: pd.DataFrame,
+# 			transform,
+# 			label_dict: dict,
+# 			text_augmentation: bool = True,
+# 			cache_size: int = 1000,
+# 		):
+# 		self.dataset_name = dataset_name
+# 		self.train = train
+# 		self.data_frame = data_frame
+# 		self.images = self.data_frame["img_path"].values
+# 		self.labels = self.data_frame["multimodal_labels"].values
+# 		self.label_dict = label_dict
+# 		self._num_classes = len(label_dict)
+# 		self.transform = transform
+# 		self.text_augmentation = text_augmentation
+# 		self.split = 'Train' if self.train else 'Validation'
+# 		enable_cache = self._should_enable_cache(cache_size, verbose=True)		
+# 		self.cache_enabled = enable_cache		
+# 		if self.cache_enabled:
+# 			self._load_image = self._get_cached_loader(cache_size)
+# 			print(f"🟢 LRU caching ENABLED for {self.dataset_name}_{self.split} with cache_size: {cache_size}")
+# 		else:
+# 			self._load_image = self._load_image_no_cache
+# 			print(f"🔴 LRU caching DISABLED for {self.dataset_name}_{self.split} (insufficient memory)")
 		
-		self.text_cache = [None] * len(self.data_frame)
-		self._preload_texts()
-		self._monitor_memory()
+# 		self.text_cache = [None] * len(self.data_frame)
+# 		self._preload_texts()
+# 		self._monitor_memory()
 
-	def _should_enable_cache(self, cache_size: int, verbose: bool = False) -> bool:
-		try:
-			memory = psutil.virtual_memory()
-			available_gb = memory.available / (1024**3)
+# 	def _should_enable_cache(self, cache_size: int, verbose: bool = False) -> bool:
+# 		try:
+# 			memory = psutil.virtual_memory()
+# 			available_gb = memory.available / (1024**3)
 			
-			# Estimate cache memory usage (conservative: 10MB per image)
-			estimated_cache_gb = (cache_size * 10) / 1024
+# 			# Estimate cache memory usage (conservative: 10MB per image)
+# 			estimated_cache_gb = (cache_size * 10) / 1024
 			
-			# Only enable cache if it uses less than 25% of available memory
-			safe_threshold = available_gb * 0.25
+# 			# Only enable cache if it uses less than 25% of available memory
+# 			safe_threshold = available_gb * 0.25
 			
-			if verbose:
-				print(
-					f"Memory check: Available={available_gb:.1f}GB, "
-					f"Estimated cache={estimated_cache_gb:.1f}GB, "
-					f"Threshold={safe_threshold:.1f}GB"
-				)
-			return estimated_cache_gb < safe_threshold
-		except Exception:
-			return False
+# 			if verbose:
+# 				print(
+# 					f"Memory check: Available={available_gb:.1f}GB, "
+# 					f"Estimated cache={estimated_cache_gb:.1f}GB, "
+# 					f"Threshold={safe_threshold:.1f}GB"
+# 				)
+# 			return estimated_cache_gb < safe_threshold
+# 		except Exception:
+# 			return False
 
-	def _get_cached_loader(self, cache_size: int):
-		@lru_cache(maxsize=cache_size)
-		def load_and_transform_image(img_path: str) -> torch.Tensor:
-			try:
-				with Image.open(img_path) as image:
-					image = image.convert("RGB")
-					if self.transform:
-						tensor = self.transform(image)
-					else:
-						tensor = T.ToTensor()(image)
-					return tensor
-			except Exception as e:
-				print(f"Error loading {img_path}: {e}")
-				return torch.zeros(3, 224, 224, dtype=torch.float32)
-		return load_and_transform_image
+# 	def _get_cached_loader(self, cache_size: int):
+# 		@lru_cache(maxsize=cache_size)
+# 		def load_and_transform_image(img_path: str) -> torch.Tensor:
+# 			try:
+# 				with Image.open(img_path) as image:
+# 					image = image.convert("RGB")
+# 					if self.transform:
+# 						tensor = self.transform(image)
+# 					else:
+# 						tensor = T.ToTensor()(image)
+# 					return tensor
+# 			except Exception as e:
+# 				print(f"Error loading {img_path}: {e}")
+# 				return torch.zeros(3, 224, 224, dtype=torch.float32)
+# 		return load_and_transform_image
 
-	def _load_image_no_cache(self, img_path: str) -> torch.Tensor:
-		try:
-			with Image.open(img_path) as image:
-				image = image.convert("RGB")
-				if self.transform:
-					return self.transform(image)
-				else:
-					return T.ToTensor()(image)
-		except Exception as e:
-			print(f"Error loading {img_path}: {e}")
-			return torch.zeros(3, 224, 224, dtype=torch.float32)
+# 	def _load_image_no_cache(self, img_path: str) -> torch.Tensor:
+# 		try:
+# 			with Image.open(img_path) as image:
+# 				image = image.convert("RGB")
+# 				if self.transform:
+# 					return self.transform(image)
+# 				else:
+# 					return T.ToTensor()(image)
+# 		except Exception as e:
+# 			print(f"Error loading {img_path}: {e}")
+# 			return torch.zeros(3, 224, 224, dtype=torch.float32)
 
-	def _monitor_memory(self):
-		try:
-			memory = psutil.virtual_memory()
-			if memory.percent > 80:
-				print(f"⚠️  WARNING: High memory usage ({memory.percent:.1f}%)")
-				if self.cache_enabled:
-					print("   Consider disabling cache or reducing cache_size")
-		except:
-			pass
+# 	def _monitor_memory(self):
+# 		try:
+# 			memory = psutil.virtual_memory()
+# 			if memory.percent > 80:
+# 				print(f"⚠️  WARNING: High memory usage ({memory.percent:.1f}%)")
+# 				if self.cache_enabled:
+# 					print("   Consider disabling cache or reducing cache_size")
+# 		except:
+# 			pass
 
-	@property
-	def unique_labels(self):
-		return sorted(self.label_dict.keys()) if self.label_dict else []
-	def get_cache_info(self):
-		if self.cache_enabled and hasattr(self._load_image, 'cache_info'):
-			return self._load_image.cache_info()
-		else:
-			return None
+# 	@property
+# 	def unique_labels(self):
+# 		return sorted(self.label_dict.keys()) if self.label_dict else []
+# 	def get_cache_info(self):
+# 		if self.cache_enabled and hasattr(self._load_image, 'cache_info'):
+# 			return self._load_image.cache_info()
+# 		else:
+# 			return None
 
-	def clear_cache(self):
-		if self.cache_enabled and hasattr(self._load_image, 'cache_clear'):
-			self._load_image.cache_clear()
-		gc.collect()
-		if torch.cuda.is_available():
-			torch.cuda.empty_cache()		
-		print(f"Cache cleared for {self.dataset_name}_{self.split}")
+# 	def clear_cache(self):
+# 		if self.cache_enabled and hasattr(self._load_image, 'cache_clear'):
+# 			self._load_image.cache_clear()
+# 		gc.collect()
+# 		if torch.cuda.is_available():
+# 			torch.cuda.empty_cache()		
+# 		print(f"Cache cleared for {self.dataset_name}_{self.split}")
 
-	def _preload_texts(self):
-		print(f"Preprocessing texts for {self.dataset_name}...")
-		for idx in tqdm(range(len(self.labels)), desc=f"Text Tokenization for {self.dataset_name}"):
-			self.text_cache[idx] = self._tokenize_labels(self.labels[idx])
+# 	def _preload_texts(self):
+# 		print(f"Preprocessing texts for {self.dataset_name}...")
+# 		for idx in tqdm(range(len(self.labels)), desc=f"Text Tokenization for {self.dataset_name}"):
+# 			self.text_cache[idx] = self._tokenize_labels(self.labels[idx])
 
-	def _tokenize_labels(self, labels_str):
-		try:
-			labels = ast.literal_eval(labels_str)
-			text_desc = self._create_text_description(labels)
-			return clip.tokenize(text_desc).squeeze(0)
-		except (ValueError, SyntaxError):
-			return clip.tokenize("").squeeze(0)
+# 	def _tokenize_labels(self, labels_str):
+# 		try:
+# 			labels = ast.literal_eval(labels_str)
+# 			text_desc = self._create_text_description(labels)
+# 			return clip.tokenize(text_desc).squeeze(0)
+# 		except (ValueError, SyntaxError):
+# 			return clip.tokenize("").squeeze(0)
 
-	def _create_text_description(self, labels: list) -> str:
-		if not labels:
-			return ""
-		if not self.train or not self.text_augmentation:
-			return " ".join(labels)
-		if len(labels) == 1:
-			return labels[0]
-		if len(labels) == 2:
-			return f"{labels[0]} and {labels[1]}"
-		np.random.shuffle(labels)
-		return ", ".join(labels[:-1]) + f", and {labels[-1]}"
+# 	def _create_text_description(self, labels: list) -> str:
+# 		if not labels:
+# 			return ""
+# 		if not self.train or not self.text_augmentation:
+# 			return " ".join(labels)
+# 		if len(labels) == 1:
+# 			return labels[0]
+# 		if len(labels) == 2:
+# 			return f"{labels[0]} and {labels[1]}"
+# 		np.random.shuffle(labels)
+# 		return ", ".join(labels[:-1]) + f", and {labels[-1]}"
 
-	def _get_label_vector(self, labels_str: str) -> torch.Tensor:
-		vector = torch.zeros(self._num_classes, dtype=torch.float32)
-		try:
-			labels = ast.literal_eval(labels_str)
-			for label in labels:
-				if label in self.label_dict:
-					vector[self.label_dict[label]] = 1.0
-		except (ValueError, SyntaxError):
-			pass
-		return vector
+# 	def _get_label_vector(self, labels_str: str) -> torch.Tensor:
+# 		vector = torch.zeros(self._num_classes, dtype=torch.float32)
+# 		try:
+# 			labels = ast.literal_eval(labels_str)
+# 			for label in labels:
+# 				if label in self.label_dict:
+# 					vector[self.label_dict[label]] = 1.0
+# 		except (ValueError, SyntaxError):
+# 			pass
+# 		return vector
 
-	def __len__(self):
-		return len(self.data_frame)
+# 	def __len__(self):
+# 		return len(self.data_frame)
 
-	def __repr__(self):
-		transform_str = f"Transform: {self.transform}\n" if self.transform else ""
+# 	def __repr__(self):
+# 		transform_str = f"Transform: {self.transform}\n" if self.transform else ""
 		
-		if self.cache_enabled:
-			try:
-				cache_info = self.get_cache_info()
-				if cache_info:
-					cache_str = (
-						f"Image Cache (LRU): ENABLED - "
-						f"Size={cache_info.currsize}/{cache_info.maxsize}, "
-						f"Hits={cache_info.hits}, Misses={cache_info.misses}, "
-						f"Hit Rate={cache_info.hits/(cache_info.hits + cache_info.misses)*100:.1f}%" 
-						if (cache_info.hits + cache_info.misses) > 0 else "Hit Rate=0%"
-					)
-				else:
-					cache_str = "Image Cache (LRU): ENABLED but not yet used"
-			except Exception:
-				cache_str = "Image Cache (LRU): ENABLED"
-		else:
-			cache_str = "Image Cache (LRU): DISABLED (streaming mode)"
-		return (
-			f"{self.dataset_name}\n"
-			f"\tSplit: {self.split} ({self.data_frame.shape[0]} samples)\n"
-			f"\tNum classes: {self._num_classes}\n"
-			f"\t{cache_str}\n"
-			f"{transform_str}"
-		)
+# 		if self.cache_enabled:
+# 			try:
+# 				cache_info = self.get_cache_info()
+# 				if cache_info:
+# 					cache_str = (
+# 						f"Image Cache (LRU): ENABLED - "
+# 						f"Size={cache_info.currsize}/{cache_info.maxsize}, "
+# 						f"Hits={cache_info.hits}, Misses={cache_info.misses}, "
+# 						f"Hit Rate={cache_info.hits/(cache_info.hits + cache_info.misses)*100:.1f}%" 
+# 						if (cache_info.hits + cache_info.misses) > 0 else "Hit Rate=0%"
+# 					)
+# 				else:
+# 					cache_str = "Image Cache (LRU): ENABLED but not yet used"
+# 			except Exception:
+# 				cache_str = "Image Cache (LRU): ENABLED"
+# 		else:
+# 			cache_str = "Image Cache (LRU): DISABLED (streaming mode)"
+# 		return (
+# 			f"{self.dataset_name}\n"
+# 			f"\tSplit: {self.split} ({self.data_frame.shape[0]} samples)\n"
+# 			f"\tNum classes: {self._num_classes}\n"
+# 			f"\t{cache_str}\n"
+# 			f"{transform_str}"
+# 		)
 
-	def __getitem__(self, idx: int):
-		try:
-			image_path = self.images[idx]
+# 	def __getitem__(self, idx: int):
+# 		try:
+# 			image_path = self.images[idx]
 			
-			image_tensor = self._load_image(image_path)
+# 			image_tensor = self._load_image(image_path)
 			
-			tokenized_text = self.text_cache[idx]
-			label_vector = self._get_label_vector(self.labels[idx])
+# 			tokenized_text = self.text_cache[idx]
+# 			label_vector = self._get_label_vector(self.labels[idx])
 			
-			return image_tensor, tokenized_text, label_vector
-		except Exception as e:
-			print(f"WARNING: Skipping sample {idx} due to error: {e} | Path: {self.images[idx]}")
-			return None
+# 			return image_tensor, tokenized_text, label_vector
+# 		except Exception as e:
+# 			print(f"WARNING: Skipping sample {idx} due to error: {e} | Path: {self.images[idx]}")
+# 			return None
 
-	def __del__(self):
-		try:
-			self.clear_cache()
-		except:
-			pass
+# 	def __del__(self):
+# 		try:
+# 			self.clear_cache()
+# 		except:
+# 			pass
 
 
 
@@ -1081,7 +1081,7 @@ def get_multi_label_dataloaders(
 		transform=preprocess,
 		label_dict=label_dict,
 		cache_size=train_cache_size,
-		cache_workers=min(4, num_workers),
+		cache_workers=min(8, num_workers),
 	)
 	
 	print(train_dataset)
@@ -1093,7 +1093,7 @@ def get_multi_label_dataloaders(
 		transform=preprocess,
 		label_dict=label_dict,
 		cache_size=val_cache_size,
-		cache_workers=min(4, num_workers),
+		cache_workers=min(8, num_workers),
 	)
 	
 	print(val_dataset)
