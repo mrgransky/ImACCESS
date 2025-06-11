@@ -708,62 +708,62 @@ def custom_collate_fn(batch):
 
 
 class ImageCache:
-		def __init__(self, image_paths, cache_size, num_workers=4):
-			self.cache = {}
-			self.cache_size = cache_size
-			self.image_paths = image_paths
-			self.lock = threading.Lock()
-			
-			if cache_size > 0:
-				self._preload_images(num_workers)
+	def __init__(self, image_paths, cache_size, num_workers=4):
+		self.cache = {}
+		self.cache_size = cache_size
+		self.image_paths = image_paths
+		self.lock = threading.Lock()
 		
-		def _preload_images(self, num_workers):
-			"""Preload images using multiple threads."""
-			print(f"Preloading {self.cache_size} images using {num_workers} workers...")
-			
-			# For training, load random subset; for validation, load first N images
-			indices_to_load = np.random.choice(
-				len(self.image_paths), 
-				size=min(self.cache_size, len(self.image_paths)), 
-				replace=False
-			)
-			
-			def load_image(idx):
-				try:
-						img_path = self.image_paths[idx]
-						with Image.open(img_path) as img:
-								# Store as numpy array (more compact than PIL Image)
-								img_array = np.array(img.convert("RGB"), dtype=np.uint8)
-						return idx, img_array
-				except Exception as e:
-						print(f"Failed to load image at index {idx}: {e}")
-						return idx, None
-			
-			# Load images in parallel
-			with ThreadPoolExecutor(max_workers=num_workers) as executor:
-				futures = [executor.submit(load_image, idx) for idx in indices_to_load]
-				
-				with tqdm(total=len(indices_to_load), desc="Loading images") as pbar:
-					for future in as_completed(futures):
-						idx, img_array = future.result()
-						if img_array is not None:
-								with self.lock:
-										self.cache[idx] = img_array
-						pbar.update(1)
-			
-			print(f"Successfully cached {len(self.cache)} images")
+		if cache_size > 0:
+			self._preload_images(num_workers)
+	
+	def _preload_images(self, num_workers):
+		"""Preload images using multiple threads."""
+		print(f"\nPreloading {self.cache_size} images using {num_workers} workers...")
 		
-		def get(self, idx):
-			"""Get image from cache, returns None if not cached."""
-			with self.lock:
-					img_array = self.cache.get(idx)
+		# For training, load random subset; for validation, load first N images
+		indices_to_load = np.random.choice(
+			len(self.image_paths), 
+			size=min(self.cache_size, len(self.image_paths)), 
+			replace=False
+		)
+		
+		def load_image(idx):
+			try:
+				img_path = self.image_paths[idx]
+				with Image.open(img_path) as img:
+					# Store as numpy array (more compact than PIL Image)
+					img_array = np.array(img.convert("RGB"), dtype=np.uint8)
+				return idx, img_array
+			except Exception as e:
+				print(f"Failed to load image at index {idx}: {e}")
+				return idx, None
+		
+		# Load images in parallel
+		with ThreadPoolExecutor(max_workers=num_workers) as executor:
+			futures = [executor.submit(load_image, idx) for idx in indices_to_load]
+			
+			with tqdm(total=len(indices_to_load), desc="Loading images") as pbar:
+				for future in as_completed(futures):
+					idx, img_array = future.result()
 					if img_array is not None:
-							# Convert back to PIL Image
-							return Image.fromarray(img_array)
-					return None
+						with self.lock:
+							self.cache[idx] = img_array
+					pbar.update(1)
 		
-		def __len__(self):
-			return len(self.cache)
+		print(f"Successfully cached {len(self.cache)} images")
+	
+	def get(self, idx):
+		"""Get image from cache, returns None if not cached."""
+		with self.lock:
+				img_array = self.cache.get(idx)
+				if img_array is not None:
+						# Convert back to PIL Image
+						return Image.fromarray(img_array)
+				return None
+	
+	def __len__(self):
+		return len(self.cache)
 
 class HistoricalArchivesMultiLabelDataset(Dataset):
 		def __init__(
@@ -1037,11 +1037,13 @@ def get_multi_label_dataloaders(
 		
 		# Allocate cache between train/val
 		if cache_size > 0:
-			train_cache_size = int(cache_size * 0.6)
+			train_pct = 0.6
+			val_pct = 1 - train_pct
+			train_cache_size = int(cache_size * train_pct)
 			val_cache_size = cache_size - train_cache_size
 		else:
 			train_cache_size = val_cache_size = 0
-		print(f">> Calculated cache size: {cache_size:,} (train: {train_cache_size:,}, val: {val_cache_size:,})")
+		print(f">> Calculated cache size: {cache_size:,} (train[{train_pct*100:.0f}%]: {train_cache_size:,}, validation[{val_pct*100:.0f}%]: {val_cache_size:,})")
 
 		train_dataset = HistoricalArchivesMultiLabelDataset(
 			dataset_name=dataset_name,
