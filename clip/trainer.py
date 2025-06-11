@@ -1279,28 +1279,29 @@ def _validate_cache_compatibility(cached_labels: torch.Tensor, expected_labels: 
 				return False
 		return True
 
-def monitor_memory_usage(operation_name: str = "Operation", verbose: bool = True):
-		"""Monitor and log memory usage."""
-		if torch.cuda.is_available():
-				gpu_memory = torch.cuda.memory_allocated() / 1024**3  # GB
-				gpu_cached = torch.cuda.memory_reserved() / 1024**3   # GB
-		else:
-				gpu_memory = gpu_cached = 0
-		
-		cpu_memory = psutil.virtual_memory()
-		cpu_used_gb = (cpu_memory.total - cpu_memory.available) / 1024**3
-		cpu_percent = cpu_memory.percent
-		
-		if verbose:
-				print(f"[{operation_name}] Memory - CPU: {cpu_used_gb:.1f}GB ({cpu_percent:.1f}%), "
-							f"GPU: {gpu_memory:.1f}GB allocated, {gpu_cached:.1f}GB cached")
-		
-		# Warning if memory usage is too high
-		if cpu_percent > 90:
-				print(f"WARNING: High CPU memory usage ({cpu_percent:.1f}%)")
-				torch.cuda.empty_cache()
-				return True
-		return False
+def monitor_memory_usage(operation_name: str):
+	"""Monitor and log memory usage."""
+	if torch.cuda.is_available():
+		gpu_memory = torch.cuda.memory_allocated() / 1024**3  # GB
+		gpu_cached = torch.cuda.memory_reserved() / 1024**3   # GB
+	else:
+		gpu_memory = gpu_cached = 0
+	
+	cpu_memory = psutil.virtual_memory()
+	cpu_used_gb = (cpu_memory.total - cpu_memory.available) / 1024**3
+	cpu_percent = cpu_memory.percent
+	
+	
+	# Warning if memory usage is too high
+	if cpu_percent > 95:
+		print(
+			f"[{operation_name}] Memory - CPU: {cpu_used_gb:.1f}GB ({cpu_percent:.1f}%), "
+			f"GPU: {gpu_memory:.1f}GB allocated, {gpu_cached:.1f}GB cached"
+		)
+		print(f"WARNING: High CPU memory usage ({cpu_percent:.1f}%) => Clearing GPU cache...")
+		torch.cuda.empty_cache()
+		return True
+	return False
 
 def _compute_image_embeddings(model, validation_loader, device, verbose, max_batches=None):
 		"""Compute image embeddings with memory monitoring and chunking."""
@@ -1316,7 +1317,7 @@ def _compute_image_embeddings(model, validation_loader, device, verbose, max_bat
 		for images, _, labels_indices in iterator:
 				# Memory check every 10 batches
 				if batch_count % 10 == 0:
-						high_memory = monitor_memory_usage(f"Batch {batch_count}", verbose=False)
+						high_memory = monitor_memory_usage(operation_name=f"Batch {batch_count}")
 						if high_memory:
 								print(f"High memory detected at batch {batch_count}, clearing cache...")
 								torch.cuda.empty_cache()
@@ -3989,7 +3990,7 @@ def progressive_finetune_multi_label(
 			dropout_val = module.p
 			break
 
-	# Inspect the model for dropout layers
+	# dropout layers inspection:
 	dropout_values = []
 	for name, module in model.named_modules():
 		if isinstance(module, torch.nn.Dropout):
@@ -4356,6 +4357,16 @@ def progressive_finetune_multi_label(
 			img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
 			txt2img_metrics=retrieval_metrics_per_epoch["txt2img"],
 		)
+
+		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			cache_stats = train_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Train Cache Stats: {cache_stats}")
+
+		if hasattr(validation_loader.dataset, 'get_cache_stats'):
+			cache_stats = validation_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Validation Cache Stats: {cache_stats}")
 
 		# --- Early Stopping Check ---
 		if early_stopping.should_stop(

@@ -871,17 +871,17 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 				return sorted(self.label_dict.keys()) if self.label_dict else []
 		
 		def get_cache_stats(self):
-				"""Get cache statistics."""
-				if self.image_cache is not None:
-						total_requests = self.cache_hits + self.cache_misses
-						hit_rate = (self.cache_hits / total_requests * 100) if total_requests > 0 else 0
-						return {
-								"cache_size": len(self.image_cache),
-								"hits": self.cache_hits,
-								"misses": self.cache_misses,
-								"hit_rate": hit_rate
-						}
-				return None
+			"""Get cache statistics."""
+			if self.image_cache is not None:
+				total_requests = self.cache_hits + self.cache_misses
+				hit_rate = (self.cache_hits / total_requests * 100) if total_requests > 0 else 0
+				return {
+					"cache_size": len(self.image_cache),
+					"hits": self.cache_hits,
+					"misses": self.cache_misses,
+					"hit_rate": hit_rate
+				}
+			return None
 		
 		def __len__(self):
 				return len(self.data_frame)
