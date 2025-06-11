@@ -596,7 +596,7 @@ def get_cache_size(
 		average_image_size_mb: float,
 		is_hpc: bool = False,
 		min_desired_converage: float = 0.15,
-		max_memory_fraction: float = 0.80,
+		max_memory_fraction: float = 0.6,
 	) -> int:
 	detected_platform = "HPC" if is_hpc else f"{platform.system()} Workstation (Laptop/VM)"
 	# Calculate minimum desired cache size for effectiveness
@@ -659,7 +659,7 @@ def get_multi_label_dataloaders(
 	# Estimate memory per image
 	average_image_size_mb = get_estimated_image_size_mb(
 		image_paths=train_dataset["img_path"].values.tolist()+val_dataset["img_path"].values.tolist(),
-		sample_size=int(total_samples*0.01) if total_samples > int(1e5) else 5000,
+		sample_size=int(total_samples*0.1) if total_samples > int(1e5) else 5000,
 	)
 	
 	# Determine cache size if not specified
@@ -680,7 +680,7 @@ def get_multi_label_dataloaders(
 		)
 	
 	# Allocate cache between train/val
-	train_pct = 0.65
+	train_pct = 0.6
 	val_pct = 1.0 - train_pct
 
 	if cache_size > 0:
