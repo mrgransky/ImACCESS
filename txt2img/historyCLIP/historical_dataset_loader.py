@@ -1,7 +1,5 @@
 from utils import *
 
-
-
 dtypes={
 	'doc_id': str,
 	'id': str,
@@ -22,6 +20,12 @@ dtypes={
 	'visual_based_labels': str,
 	'multimodal_labels': str,
 }
+
+def round_up(n):
+	"""Round up a number to the nearest multiple of 10^(number of digits - 1)"""
+	num_digits = len(str(n))
+	multiple = 10 ** (num_digits - 1)
+	return math.ceil(n / multiple) * multiple
 
 def _convert_image_to_rgb(image: Image) -> Image:
 	return image.convert("RGB")
@@ -596,8 +600,8 @@ def get_cache_size(
 		available_memory_gb: float,
 		average_image_size_mb: float,
 		is_hpc: bool = False,
-		min_desired_converage: float = 0.15,  # Minimum 15% coverage to be worthwhile
-		max_memory_fraction: float = 0.35,  # Use max 35% of available memory
+		min_desired_converage: float = 0.20,  # Minimum 20% coverage to be worthwhile
+		max_memory_fraction: float = 0.45,  # Use max 35% of available memory
 	) -> int:
 	detected_platform = "HPC" if is_hpc else f"Workstation (Laptop/VM : {platform.system()})"
 	# Calculate minimum desired cache size for effectiveness
@@ -610,7 +614,9 @@ def get_cache_size(
 	if max_allowed_cache_size < min_desired_cache_size:
 		print(f"<!> Cannot achieve {min_desired_converage*100:.0f}% minimum coverage with available memory: {available_memory_gb:.1f}GB for {average_image_size_mb:.2f}MB image average size.")
 		print(f"\tComputed minimum desired cache size: {min_desired_cache_size:,} images! but {detected_platform} can only fit {max_allowed_cache_size:,} images.")
-		return 0
+		rounded_up_cache_size = round_up(n=max_allowed_cache_size)
+		print(f"\t=> rounded up to {rounded_up_cache_size:,} images.")
+		return rounded_up_cache_size
 	
 	# Target coverage based on environment
 	if is_hpc:
