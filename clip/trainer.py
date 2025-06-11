@@ -963,13 +963,15 @@ def get_validation_metrics(
 	if not cache_loaded:
 		if verbose:
 			print("Computing embeddings from scratch...")
-		
+		t0 = time.time()
 		all_image_embeds, all_labels = _compute_image_embeddings(
 			model, 
 			validation_loader, 
 			device, 
 			verbose
 		)
+		if verbose:
+			print(f"Embeddings computed in {time.time() - t0:.1f} sec")
 		
 		# Save to cache if not training
 		if not is_training:
@@ -1304,53 +1306,6 @@ def monitor_memory_usage(operation_name: str):
 	return False
 
 def _compute_image_embeddings(model, validation_loader, device, verbose, max_batches=None):
-		"""Compute image embeddings with memory monitoring and chunking."""
-		all_image_embeds = []
-		all_labels = []
-		
-		model = model.to(device)
-		model.eval()
-		
-		iterator = tqdm(validation_loader, desc="Encoding images") if verbose else validation_loader
-		
-		batch_count = 0
-		for images, _, labels_indices in iterator:
-				# Memory check every 10 batches
-				if batch_count % 10 == 0:
-						high_memory = monitor_memory_usage(operation_name=f"Batch {batch_count}")
-						if high_memory:
-								print(f"High memory detected at batch {batch_count}, clearing cache...")
-								torch.cuda.empty_cache()
-				
-				# Limit batches for memory management
-				if max_batches and batch_count >= max_batches:
-						print(f"Stopping at batch {batch_count} due to max_batches limit")
-						break
-						
-				images = images.to(device, non_blocking=True)
-				
-				with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
-						image_embeds = model.encode_image(images)
-				
-				image_embeds = F.normalize(image_embeds.float(), dim=-1)
-				all_image_embeds.append(image_embeds.cpu())
-				all_labels.append(labels_indices.cpu())
-				
-				batch_count += 1
-				
-				# Clear GPU cache periodically
-				if batch_count % 50 == 0:
-						torch.cuda.empty_cache()
-		
-		if not all_image_embeds:
-				raise RuntimeError("No image embeddings computed - all batches may have failed")
-		
-		all_image_embeds = torch.cat(all_image_embeds, dim=0)
-		all_labels = torch.cat(all_labels, dim=0)
-		
-		return all_image_embeds, all_labels
-
-def _compute_image_embeddings_old(model, validation_loader, device, verbose):
 	all_image_embeds = []
 	all_labels = []
 	
@@ -1359,7 +1314,20 @@ def _compute_image_embeddings_old(model, validation_loader, device, verbose):
 	
 	iterator = tqdm(validation_loader, desc="Encoding images") if verbose else validation_loader
 	
+	batch_count = 0
 	for images, _, labels_indices in iterator:
+		# Memory check every 10 batches
+		if batch_count % 10 == 0:
+			high_memory = monitor_memory_usage(operation_name=f"Batch {batch_count}")
+			if high_memory:
+				print(f"High memory detected at batch {batch_count}, clearing cache...")
+				torch.cuda.empty_cache()
+		
+		# Limit batches for memory management
+		if max_batches and batch_count >= max_batches:
+			print(f"Stopping at batch {batch_count} due to max_batches limit")
+			break
+			
 		images = images.to(device, non_blocking=True)
 		
 		with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
@@ -1368,6 +1336,15 @@ def _compute_image_embeddings_old(model, validation_loader, device, verbose):
 		image_embeds = F.normalize(image_embeds.float(), dim=-1)
 		all_image_embeds.append(image_embeds.cpu())
 		all_labels.append(labels_indices.cpu())
+		
+		batch_count += 1
+		
+		# Clear GPU cache periodically
+		if batch_count % 50 == 0:
+			torch.cuda.empty_cache()
+	
+	if not all_image_embeds:
+		raise RuntimeError("No image embeddings computed - all batches may have failed")
 	
 	all_image_embeds = torch.cat(all_image_embeds, dim=0)
 	all_labels = torch.cat(all_labels, dim=0)

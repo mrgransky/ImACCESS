@@ -926,10 +926,71 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 					torch.zeros(self._num_classes)  # No labels
 				)
 
+def get_estimated_image_size_mb(
+		image_paths: Union[List[str], pd.Series],
+		sample_size: int = 100,
+	)-> float:
+	if not image_paths.any() if isinstance(image_paths, pd.Series) else not image_paths:
+		print("Warning: No image paths provided for estimation. Returning default estimate.")
+		return 7.0 # Default estimate of 7MB per image
+	actual_sample_size = min(sample_size, len(image_paths))
+	if actual_sample_size == 0:
+		print("Warning: image_paths list is empty. Returning default estimate.")
+		return 7.0 # Default estimate of 7MB per image
+
+	print(f"Estimating average image RAM size from a sample of {actual_sample_size} images...")
+	# Ensure we are sampling valid integer positions
+	if isinstance(image_paths, pd.Series):
+			# For series, sample_indices should be actual integer positions from 0 to len-1
+			indices_to_sample_from = range(len(image_paths))
+	else: # For lists
+			indices_to_sample_from = range(len(image_paths))
+
+
+	sampled_indices = random.sample(indices_to_sample_from, actual_sample_size)
+	total_bytes = 0
+	successfully_loaded = 0
+
+	# Correct way to define get_path_fn for iloc
+	if isinstance(image_paths, pd.Series):
+		# .iloc is an attribute for integer-location based indexing
+		get_path_fn = lambda integer_pos: image_paths.iloc[integer_pos]
+	else:
+		# For lists, standard indexing works
+		get_path_fn = lambda integer_pos: image_paths[integer_pos]
+
+
+	for i in tqdm(sampled_indices, desc="Sampling images for size estimation"):
+		img_path = get_path_fn(i)
+		try:
+			with Image.open(img_path) as img:
+				img_array = np.array(img.convert("RGB"), dtype=np.uint8)
+			total_bytes += img_array.nbytes
+			successfully_loaded += 1
+		except FileNotFoundError:
+			if verbose:
+				print(f"Warning: Image not found at {img_path}, skipping for estimation.")
+		except Exception as e:
+			if verbose:
+				print(f"Warning: Could not load or process image {img_path} for estimation: {e}, skipping.")
+
+	if successfully_loaded == 0:
+		if verbose:
+			print("Warning: Failed to load any images from the sample. Returning default estimate.")
+		return 7.0  # Fallback default if no images could be loaded
+
+	average_bytes = total_bytes / successfully_loaded
+	average_mb = average_bytes / (1024**2)
+
+	print(f"Successfully loaded {successfully_loaded}/{actual_sample_size} sampled images.")
+	print(f"Estimated average raw image RAM size: {average_mb:.2f} MB")
+	
+	return average_mb
+
 def get_cache_size_v2(
 		dataset_size: int,
 		available_memory_gb: float,
-		image_resolution: int,  # Default image size
+		average_image_size_mb: float,
 		is_hpc: bool = False,
 		min_coverage: float = 0.15,  # Minimum 15% coverage to be worthwhile
 		max_memory_fraction: float = 0.15,  # Use max 15% of available memory
@@ -938,11 +999,8 @@ def get_cache_size_v2(
 	# Calculate minimum cache size for effectiveness
 	min_cache_size = int(dataset_size * min_coverage)
 
-	# Estimate memory per image
-	img_size_mb = (image_resolution**2 * 3) / 1024**2 # RGB image (3 channels) in MB
-
 	# Calculate maximum cache size from memory
-	max_cache_from_memory = int((available_memory_gb * max_memory_fraction * 1024) / img_size_mb)
+	max_cache_from_memory = int((available_memory_gb * max_memory_fraction * 1024) / average_image_size_mb)
 	
 	# If we can't achieve minimum coverage, disable cache
 	if max_cache_from_memory < min_cache_size:
@@ -962,12 +1020,13 @@ def get_cache_size_v2(
 	cache_size = min(target_cache_size, max_cache_from_memory)
 	
 	actual_coverage = cache_size / dataset_size
-	actual_memory_gb = (cache_size * img_size_mb) / 1024
+	actual_memory_gb = (cache_size * average_image_size_mb) / 1024
 	
 	print(f"\nCache Analysis:")
 	print(f"\tDetected Environment: {'HPC' if is_hpc else 'Workstation'} (target coverage: {target_coverage*100:.1f}%)")
 	print(f"\tAvailable RAM memory: {available_memory_gb:.1f}GB => {max_memory_fraction*100:.0f}% => {available_memory_gb*max_memory_fraction:.1f}GB for cache")
-	print(f"\tMax nominal cache from memory: {max_cache_from_memory:,} images (considering image size: {img_size_mb:.2f}MB)")
+	print(f"\tMinimum cache size for effectiveness: {min_cache_size:,} images ({min_coverage*100:.0f}% minimum coverage)")
+	print(f"\tMaximum nominal cache from memory: {max_cache_from_memory:,} images (considering image size: {average_image_size_mb:.2f}MB)")
 	print(f"\tDataset size: {dataset_size:,} images")
 	print(f"\tCache size: {cache_size:,} images ({actual_coverage*100:.1f}% actual coverage)")
 	print(f"\tMemory usage: {actual_memory_gb:.1f}GB")
@@ -989,6 +1048,12 @@ def get_multi_label_dataloaders(
 	train_dataset, val_dataset, label_dict = get_multi_label_datasets(ddir=dataset_dir)
 	preprocess = get_preprocess(dataset_dir=dataset_dir, input_resolution=input_resolution)
 	
+	# Estimate memory per image
+	average_image_size_mb = get_estimated_image_size_mb(
+		image_paths=train_dataset["img_path"].values.tolist()+val_dataset["img_path"].values.tolist(),
+		sample_size=5000,
+	)
+
 	# Determine cache size if not specified
 	if cache_size is None:
 		print(">> No cache size specified. Detecting environment for cache optimization...")
@@ -1000,8 +1065,8 @@ def get_multi_label_dataloaders(
 		cache_size = get_cache_size_v2(
 			dataset_size=total_samples,
 			available_memory_gb=available_gb,
+			average_image_size_mb=average_image_size_mb,
 			is_hpc=is_hpc,
-			image_resolution=input_resolution,
 		)
 	
 	# Allocate cache between train/val
