@@ -596,7 +596,7 @@ def get_cache_size(
 		average_image_size_mb: float,
 		is_hpc: bool = False,
 		min_desired_converage: float = 0.15,
-		max_memory_fraction: float = 0.6,
+		max_memory_fraction: float = 0.40,
 	) -> int:
 	detected_platform = "HPC" if is_hpc else f"{platform.system()} Workstation (Laptop/VM)"
 	# Calculate minimum desired cache size for effectiveness
@@ -648,7 +648,6 @@ def get_multi_label_dataloaders(
 		input_resolution: int,
 		cache_size: int = None,
 	) -> Tuple[DataLoader, DataLoader]:
-	"""Create multi-label dataloaders with improved caching."""
 	dataset_name = os.path.basename(dataset_dir)
 	print(f"Creating multi-label dataloaders for {dataset_name}...")
 	
@@ -662,7 +661,6 @@ def get_multi_label_dataloaders(
 		sample_size=int(total_samples*0.1) if total_samples > int(1e5) else 5000,
 	)
 	
-	# Determine cache size if not specified
 	if cache_size is None:
 		memory = psutil.virtual_memory()
 		available_gb = memory.available / (1024**3)
