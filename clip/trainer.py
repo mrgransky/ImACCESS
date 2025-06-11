@@ -3741,7 +3741,8 @@ def full_finetune_multi_label(
 			training_losses_breakdown["i2t"].append(avg_i2t_loss)
 			training_losses_breakdown["t2i"].append(avg_t2i_loss)
 
-			print(f">> Validation for epoch {epoch+1}...")
+			print(f">> Training completed in {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1}")
+
 			current_val_loss = compute_multilabel_validation_loss(
 				model=model,
 				validation_loader=validation_loader,

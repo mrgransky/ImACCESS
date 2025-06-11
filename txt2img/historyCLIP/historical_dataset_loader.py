@@ -1004,9 +1004,9 @@ def get_cache_size_v2(
 	
 	# Target coverage based on environment
 	if is_hpc:
-		target_coverage = 0.3  # 30% on HPC
+		target_coverage = 0.40
 	else:
-		target_coverage = 0.4  # 40% on workstation
+		target_coverage = 0.50
 	
 	target_cache_size = int(dataset_size * target_coverage)
 	
@@ -1050,7 +1050,7 @@ def get_multi_label_dataloaders(
 
 	# Determine cache size if not specified
 	if cache_size is None:
-		print(">> No cache size specified. Detecting environment for cache optimization...")
+		print(">> Obtaining optimal cache size...")
 		memory = psutil.virtual_memory()
 		available_gb = memory.available / (1024**3)
 		is_hpc = any(env in os.environ for env in ['SLURM_JOB_ID', 'PBS_JOBID'])
@@ -1064,7 +1064,7 @@ def get_multi_label_dataloaders(
 		)
 	
 	# Allocate cache between train/val
-	train_pct = 0.7
+	train_pct = 0.65
 	val_pct = 1.0 - train_pct
 
 	if cache_size > 0:
