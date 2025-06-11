@@ -1,8 +1,6 @@
 from utils import *
-from functools import lru_cache
-import gc
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
+
+
 
 dtypes={
 	'doc_id': str,
@@ -549,60 +547,49 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 					torch.zeros(self._num_classes)  # No labels
 				)
 
+def estimate_image_size_mb(path: str) -> float:
+	try:
+		with Image.open(path) as img:
+			w, h = img.size
+			# Assume RGB (3 channels), 1 byte/channel
+			return (w * h * 3) / (1024 ** 2)
+	except:
+		return None
+
 def get_estimated_image_size_mb(
 		image_paths: Union[List[str], pd.Series],
 		sample_size: int = 100,
-	)-> float:
+		num_workers: int = 8
+	) -> float:
 
-	if not image_paths.any() if isinstance(image_paths, pd.Series) else not image_paths:
+	if isinstance(image_paths, pd.Series):
+		image_paths = image_paths.dropna().tolist()
+
+	if not image_paths:
 		print("Warning: No image paths provided for estimation. Returning default estimate.")
-		return 7.0 # Default estimate of 7MB per image
+		return 7.0
 
 	actual_sample_size = min(sample_size, len(image_paths))
-
-	if actual_sample_size == 0:
-		print("Warning: image_paths list is empty. Returning default estimate.")
-		return 7.0 # Default estimate of 7MB per image
-
 	print(f"Estimating average image RAM size from {actual_sample_size} samples...")
+
+	sample_paths = random.sample(image_paths, actual_sample_size)
+
 	t0 = time.time()
-	if isinstance(image_paths, pd.Series):
-		indices_to_sample_from = range(len(image_paths))
-	else:
-		indices_to_sample_from = range(len(image_paths))
+	sizes = []
 
-	sampled_indices = random.sample(indices_to_sample_from, actual_sample_size)
-	total_bytes = 0
-	successfully_loaded = 0
+	with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+		for size in tqdm(executor.map(estimate_image_size_mb, sample_paths), total=actual_sample_size):
+			if size is not None:
+				sizes.append(size)
 
-	if isinstance(image_paths, pd.Series):
-		get_path_fn = lambda integer_pos: image_paths.iloc[integer_pos]
-	else:
-		get_path_fn = lambda integer_pos: image_paths[integer_pos]
+	if not sizes:
+		print("Warning: Failed to estimate any image sizes. Using fallback estimate.")
+		return 7.0
 
-	for i in tqdm(sampled_indices, desc="Sampling images for size estimation"):
-		img_path = get_path_fn(i)
-		try:
-			with Image.open(img_path) as img:
-				img_array = np.array(img.convert("RGB"), dtype=np.uint8)
-			total_bytes += img_array.nbytes
-			successfully_loaded += 1
-		except FileNotFoundError:
-			print(f"Warning: Image not found at {img_path}, skipping for estimation.")
-		except Exception as e:
-			print(f"Warning: Could not load or process image {img_path} for estimation: {e}, skipping.")
-
-	if successfully_loaded == 0:
-		print("Warning: Failed to load any images from the sample. Returning default estimate.")
-		return 7.0  # Fallback default if no images could be loaded
-
-	average_bytes = total_bytes / successfully_loaded
-	average_mb = average_bytes / (1024**2)
-
-	print(f"Successfully loaded {successfully_loaded}/{actual_sample_size} sampled images.")
-	print(f"Estimated average raw image RAM size: {average_mb:.2f} MB | Elapsed time: {time.time() - t0:.2f} sec")
-	
-	return average_mb
+	avg_mb = sum(sizes) / len(sizes)
+	print(f"Successfully estimated {len(sizes)}/{actual_sample_size} images.")
+	print(f"Estimated avg image RAM size: {avg_mb:.2f} MB | Elapsed: {time.time() - t0:.2f} sec")
+	return avg_mb
 
 def get_cache_size(
 		dataset_size: int,
@@ -612,7 +599,7 @@ def get_cache_size(
 		min_coverage: float = 0.25,  # Minimum 25% coverage to be worthwhile
 		max_memory_fraction: float = 0.20,  # Use max 20% of available memory
 	) -> int:
-	
+	detected_platform = "HPC" if is_hpc else f"Workstation (Laptop/VM : {platform.system()})"
 	# Calculate minimum cache size for effectiveness
 	min_cache_size = int(dataset_size * min_coverage)
 
@@ -621,8 +608,8 @@ def get_cache_size(
 	
 	# If we can't achieve minimum coverage, disable cache
 	if max_cache_from_memory < min_cache_size:
-		print(f"<!> Cannot achieve  {min_coverage*100:.0f}% minimum coverage with available memory: {available_memory_gb:.1f}GB for {average_image_size_mb:.2f}MB image average size.")
-		print(f"\tWould need {min_cache_size:,} images but can only fit {max_cache_from_memory:,}")
+		print(f"<!> Cannot achieve {min_coverage*100:.0f}% minimum coverage with available memory: {available_memory_gb:.1f}GB for {average_image_size_mb:.2f}MB image average size.")
+		print(f"\tComputed minimum cache size: {min_cache_size:,} images! but {detected_platform} can only fit {max_cache_from_memory:,} images.")
 		return 0
 	
 	# Target coverage based on environment
@@ -640,7 +627,7 @@ def get_cache_size(
 	actual_memory_gb = (cache_size * average_image_size_mb) / 1024
 	
 	print(f"\nCache Analysis:")
-	print(f"\tDetected Environment: {'HPC' if is_hpc else 'Workstation'} (target coverage: {target_coverage*100:.1f}%)")
+	print(f"\tDetected Environment: {detected_platform} (target coverage: {target_coverage*100:.1f}%)")
 	print(f"\tAvailable RAM memory: {available_memory_gb:.1f}GB => {max_memory_fraction*100:.0f}% Allocated => {available_memory_gb*max_memory_fraction:.1f}GB for cache")
 	print(f"\tMinimum cache size for effectiveness: {min_cache_size:,} images ({min_coverage*100:.0f}% minimum coverage)")
 	print(f"\tMaximum nominal cache from memory: {max_cache_from_memory:,} images (considering image size: {average_image_size_mb:.2f}MB)")
