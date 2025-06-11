@@ -708,62 +708,62 @@ def custom_collate_fn(batch):
 
 
 class ImageCache:
-		"""A simple pre-loading cache that loads most frequent images into memory."""
-		
 		def __init__(self, image_paths, cache_size, num_workers=4):
-				self.cache = {}
-				self.cache_size = cache_size
-				self.image_paths = image_paths
-				self.lock = threading.Lock()
-				
-				if cache_size > 0:
-						self._preload_images(num_workers)
+			self.cache = {}
+			self.cache_size = cache_size
+			self.image_paths = image_paths
+			self.lock = threading.Lock()
+			
+			if cache_size > 0:
+				self._preload_images(num_workers)
 		
 		def _preload_images(self, num_workers):
-				"""Preload images using multiple threads."""
-				print(f"Preloading {self.cache_size} images using {num_workers} workers...")
+			"""Preload images using multiple threads."""
+			print(f"Preloading {self.cache_size} images using {num_workers} workers...")
+			
+			# For training, load random subset; for validation, load first N images
+			indices_to_load = np.random.choice(
+				len(self.image_paths), 
+				size=min(self.cache_size, len(self.image_paths)), 
+				replace=False
+			)
+			
+			def load_image(idx):
+				try:
+						img_path = self.image_paths[idx]
+						with Image.open(img_path) as img:
+								# Store as numpy array (more compact than PIL Image)
+								img_array = np.array(img.convert("RGB"), dtype=np.uint8)
+						return idx, img_array
+				except Exception as e:
+						print(f"Failed to load image at index {idx}: {e}")
+						return idx, None
+			
+			# Load images in parallel
+			with ThreadPoolExecutor(max_workers=num_workers) as executor:
+				futures = [executor.submit(load_image, idx) for idx in indices_to_load]
 				
-				# For training, load random subset; for validation, load first N images
-				indices_to_load = np.random.choice(len(self.image_paths), 
-																				 size=min(self.cache_size, len(self.image_paths)), 
-																				 replace=False)
-				
-				def load_image(idx):
-						try:
-								img_path = self.image_paths[idx]
-								with Image.open(img_path) as img:
-										# Store as numpy array (more compact than PIL Image)
-										img_array = np.array(img.convert("RGB"), dtype=np.uint8)
-								return idx, img_array
-						except Exception as e:
-								print(f"Failed to load image at index {idx}: {e}")
-								return idx, None
-				
-				# Load images in parallel
-				with ThreadPoolExecutor(max_workers=num_workers) as executor:
-						futures = [executor.submit(load_image, idx) for idx in indices_to_load]
-						
-						with tqdm(total=len(indices_to_load), desc="Loading images") as pbar:
-								for future in as_completed(futures):
-										idx, img_array = future.result()
-										if img_array is not None:
-												with self.lock:
-														self.cache[idx] = img_array
-										pbar.update(1)
-				
-				print(f"Successfully cached {len(self.cache)} images")
+				with tqdm(total=len(indices_to_load), desc="Loading images") as pbar:
+					for future in as_completed(futures):
+						idx, img_array = future.result()
+						if img_array is not None:
+								with self.lock:
+										self.cache[idx] = img_array
+						pbar.update(1)
+			
+			print(f"Successfully cached {len(self.cache)} images")
 		
 		def get(self, idx):
-				"""Get image from cache, returns None if not cached."""
-				with self.lock:
-						img_array = self.cache.get(idx)
-						if img_array is not None:
-								# Convert back to PIL Image
-								return Image.fromarray(img_array)
-						return None
+			"""Get image from cache, returns None if not cached."""
+			with self.lock:
+					img_array = self.cache.get(idx)
+					if img_array is not None:
+							# Convert back to PIL Image
+							return Image.fromarray(img_array)
+					return None
 		
 		def __len__(self):
-				return len(self.cache)
+			return len(self.cache)
 
 class HistoricalArchivesMultiLabelDataset(Dataset):
 		def __init__(
@@ -794,9 +794,9 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 				# Initialize cache
 				if self.cache_size > 0:
 						self.image_cache = ImageCache(
-								self.images, 
-								self.cache_size, 
-								num_workers=cache_workers
+							self.images,
+							self.cache_size,
+							num_workers=cache_workers
 						)
 						self.cache_hits = 0
 						self.cache_misses = 0
@@ -960,53 +960,52 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 						)
 
 def get_cache_size_v2(
-				dataset_size: int,
-				available_memory_gb: float,
-				is_hpc: bool = False,
-				min_coverage: float = 0.15,  # Minimum 15% coverage to be worthwhile
-				max_memory_fraction: float = 0.25,  # Use max 25% of available memory
-		) -> int:
-		"""
-		Calculate optimal cache size with minimum coverage threshold.
-		"""
-		# Estimate memory per image (RGB 336x336 as uint8 ≈ 0.33 MB)
-		img_size_mb = 0.33
-		
-		# Calculate maximum cache size from memory
-		max_cache_from_memory = int((available_memory_gb * max_memory_fraction * 1024) / img_size_mb)
-		
-		# Calculate minimum cache size for effectiveness
-		min_cache_size = int(dataset_size * min_coverage)
-		
-		# If we can't achieve minimum coverage, disable cache
-		if max_cache_from_memory < min_cache_size:
-				print(f"Cannot achieve minimum {min_coverage*100:.0f}% coverage with available memory.")
-				print(f"Would need {min_cache_size} images but can only fit {max_cache_from_memory}")
-				return 0
-		
-		# Target coverage based on environment
-		if is_hpc:
-				target_coverage = 0.3  # 30% on HPC
-		else:
-				target_coverage = 0.5  # 50% on workstation
-		
-		target_cache_size = int(dataset_size * target_coverage)
-		
-		# Final cache size
-		cache_size = min(target_cache_size, max_cache_from_memory)
-		
-		actual_coverage = cache_size / dataset_size
-		actual_memory_gb = (cache_size * img_size_mb) / 1024
-		
-		print(f"\nOptimized Cache Analysis:")
-		print(f"\tEnvironment: {'HPC' if is_hpc else 'Workstation'}")
-		print(f"\tAvailable memory: {available_memory_gb:.1f}GB")
-		print(f"\tDataset size: {dataset_size:,} images")
-		print(f"\tCache size: {cache_size:,} images ({actual_coverage*100:.1f}% coverage)")
-		print(f"\tMemory usage: {actual_memory_gb:.1f}GB")
-		print(f"\tExpected speedup: {int(actual_coverage * 100)}% faster (after warmup)")
-		
-		return cache_size
+		dataset_size: int,
+		available_memory_gb: float,
+		is_hpc: bool = False,
+		min_coverage: float = 0.15,  # Minimum 15% coverage to be worthwhile
+		max_memory_fraction: float = 0.25,  # Use max 25% of available memory
+	) -> int:
+
+	# Estimate memory per image
+	img_size_mb = 1.0 # 1MB per image coonservative estimate
+	
+	# Calculate maximum cache size from memory
+	max_cache_from_memory = int((available_memory_gb * max_memory_fraction * 1024) / img_size_mb)
+	
+	# Calculate minimum cache size for effectiveness
+	min_cache_size = int(dataset_size * min_coverage)
+	
+	# If we can't achieve minimum coverage, disable cache
+	if max_cache_from_memory < min_cache_size:
+			print(f"Cannot achieve minimum {min_coverage*100:.0f}% coverage with available memory.")
+			print(f"Would need {min_cache_size} images but can only fit {max_cache_from_memory}")
+			return 0
+	
+	# Target coverage based on environment
+	if is_hpc:
+		target_coverage = 0.3  # 30% on HPC
+	else:
+		target_coverage = 0.4  # 50% on workstation
+	
+	target_cache_size = int(dataset_size * target_coverage)
+	
+	# Final cache size
+	cache_size = min(target_cache_size, max_cache_from_memory)
+	
+	actual_coverage = cache_size / dataset_size
+	actual_memory_gb = (cache_size * img_size_mb) / 1024
+	
+	print(f"\nCache Analysis:")
+	print(f"\tDetected Environment: {'HPC' if is_hpc else 'Workstation'} (target coverage: {target_coverage*100:.1f}%)")
+	print(f"\tAvailable RAM memory: {available_memory_gb:.1f}GB => {max_memory_fraction*100:.0f}% => {available_memory_gb*max_memory_fraction:.1f}GB for cache")
+	print(f"\tMax nominal cache from memory: {max_cache_from_memory:,} images (considering image size: {img_size_mb:.2f}MB)")
+	print(f"\tDataset size: {dataset_size:,} images")
+	print(f"\tCache size: {cache_size:,} images ({actual_coverage*100:.1f}% actual coverage)")
+	print(f"\tMemory usage: {actual_memory_gb:.1f}GB")
+	print(f"\tExpected speedup: {int(actual_coverage * 100)}% faster (after warmup)")
+	
+	return cache_size
 
 def get_multi_label_dataloaders(
 				dataset_dir: str,
@@ -1024,16 +1023,17 @@ def get_multi_label_dataloaders(
 		
 		# Determine cache size if not specified
 		if cache_size is None:
-				memory = psutil.virtual_memory()
-				available_gb = memory.available / (1024**3)
-				is_hpc = any(env in os.environ for env in ['SLURM_JOB_ID', 'PBS_JOBID'])
-				
-				total_samples = len(train_dataset) + len(val_dataset)
-				cache_size = get_cache_size_v2(
-						dataset_size=total_samples,
-						available_memory_gb=available_gb,
-						is_hpc=is_hpc
-				)
+			print(">> No cache size specified. Detecting environment for cache optimization...")
+			memory = psutil.virtual_memory()
+			available_gb = memory.available / (1024**3)
+			is_hpc = any(env in os.environ for env in ['SLURM_JOB_ID', 'PBS_JOBID'])
+			
+			total_samples = len(train_dataset) + len(val_dataset)
+			cache_size = get_cache_size_v2(
+				dataset_size=total_samples,
+				available_memory_gb=available_gb,
+				is_hpc=is_hpc
+			)
 		
 		# Allocate cache between train/val
 		if cache_size > 0:
