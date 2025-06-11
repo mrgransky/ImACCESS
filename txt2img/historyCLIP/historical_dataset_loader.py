@@ -21,11 +21,6 @@ dtypes={
 	'multimodal_labels': str,
 }
 
-def round_up(n):
-	"""Round up a number to the nearest multiple of 10^(number of digits - 1)"""
-	num_digits = len(str(n))
-	multiple = 10 ** (num_digits - 1)
-	return math.ceil(n / multiple) * multiple
 
 def _convert_image_to_rgb(image: Image) -> Image:
 	return image.convert("RGB")
@@ -614,9 +609,11 @@ def get_cache_size(
 	if max_allowed_cache_size < min_desired_cache_size:
 		print(f"<!> Cannot achieve {min_desired_converage*100:.0f}% minimum coverage with available memory: {available_memory_gb:.1f}GB for {average_image_size_mb:.2f}MB image average size.")
 		print(f"\tComputed minimum desired cache size: {min_desired_cache_size:,} images! but {detected_platform} can only fit {max_allowed_cache_size:,} images.")
-		rounded_up_cache_size = round_up(n=max_allowed_cache_size)
+		rounded_up_cache_size = round_up(num=max_allowed_cache_size)
 		print(f"\t=> rounded up to {rounded_up_cache_size:,} images.")
 		return rounded_up_cache_size
+		# print(f"\t=> using cache size: {max_allowed_cache_size:,}")
+		# return max_allowed_cache_size
 	
 	# Target coverage based on environment
 	if is_hpc:

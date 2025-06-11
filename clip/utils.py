@@ -68,6 +68,30 @@ logger = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
+def round_up(num: int) -> int:
+	if num == 0:
+		return 0
+	
+	num_str = str(num)
+	num_digits = len(num_str)
+	
+	# For single digit, round up to 10
+	if num_digits == 1:
+		return 10
+	
+	# For 3-digit numbers starting with 1, round to next hundred
+	if num_digits == 3 and num_str[0] == '1':
+		return 200
+	
+	# For numbers starting with 1 and more than 3 digits, use second-most significant
+	if num_str[0] == '1' and num_digits > 3:
+		base = 10 ** (num_digits - 2)
+		return ((num - 1) // base + 1) * base
+	else:
+		# For other cases, use the most significant digit position
+		base = 10 ** (num_digits - 1)
+		return ((num - 1) // base + 1) * base
+
 def cleanup_old_temp_dirs():
 	
 	temp_dirs = glob.glob("/tmp/pymp-*")
