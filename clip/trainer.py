@@ -2572,6 +2572,17 @@ def full_finetune_single_label(
 			img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
 			txt2img_metrics=retrieval_metrics_per_epoch["txt2img"]
 		)
+		print(f"#"*100)
+		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			cache_stats = train_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Train Cache Stats: {cache_stats}")
+
+		if hasattr(validation_loader.dataset, 'get_cache_stats'):
+			cache_stats = validation_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Validation Cache Stats: {cache_stats}")
+		print(f"#"*100)
 
 		# --- Early Stopping Check ---
 		if early_stopping.should_stop(
@@ -2949,7 +2960,7 @@ def progressive_finetune_single_label(
 		training_losses.append(avg_training_loss)
 
 		# --- Validation ---
-		print(f">> Validating Epoch: {epoch+1}")
+		print(f">> Training Completed in {time.time() - epoch_start_time:.2f} sec. Validating Epoch: {epoch+1}")
 
 		# all metrics in one using caching mechanism:
 		validation_results = get_validation_metrics(
@@ -3010,7 +3021,18 @@ def progressive_finetune_single_label(
 			txt2img_metrics=retrieval_metrics_per_epoch["txt2img"],
 		)
 
-		# --- Early Stopping Check ---
+		print(f"#"*100)
+		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			cache_stats = train_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Train Cache Stats: {cache_stats}")
+
+		if hasattr(validation_loader.dataset, 'get_cache_stats'):
+			cache_stats = validation_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Validation Cache Stats: {cache_stats}")
+		print(f"#"*100)
+
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
 			model=model,
@@ -3358,6 +3380,18 @@ def lora_finetune_single_label(
 			img2txt_metrics=retrieval_metrics_per_epoch.get("img2txt"),
 			txt2img_metrics=retrieval_metrics_per_epoch.get("txt2img")
 		)
+
+		print(f"#"*100)
+		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			cache_stats = train_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Train Cache Stats: {cache_stats}")
+
+		if hasattr(validation_loader.dataset, 'get_cache_stats'):
+			cache_stats = validation_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Validation Cache Stats: {cache_stats}")
+		print(f"#"*100)
 
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -3786,6 +3820,18 @@ def full_finetune_multi_label(
 				img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
 				txt2img_metrics=retrieval_metrics_per_epoch["txt2img"]
 			)
+
+			print(f"#"*100)
+			if hasattr(train_loader.dataset, 'get_cache_stats'):
+				cache_stats = train_loader.dataset.get_cache_stats()
+				if cache_stats is not None:
+					print(f"Train Cache Stats: {cache_stats}")
+
+			if hasattr(validation_loader.dataset, 'get_cache_stats'):
+				cache_stats = validation_loader.dataset.get_cache_stats()
+				if cache_stats is not None:
+					print(f"Validation Cache Stats: {cache_stats}")
+			print(f"#"*100)
 
 			if early_stopping.should_stop(
 				current_value=current_val_loss,
@@ -4243,7 +4289,7 @@ def progressive_finetune_multi_label(
 		training_losses_breakdown["t2i"].append(avg_t2i_loss)
 
 		# --- Validation ---
-		print(f">> Validating Epoch: {epoch+1}")
+		print(f">> Training Completed in {time.time() - epoch_start_time:.2f} sec. Validating Epoch: {epoch+1}")
 
 		# Compute validation loss using the same multi-label loss function
 		current_val_loss = compute_multilabel_validation_loss(
@@ -4331,6 +4377,7 @@ def progressive_finetune_multi_label(
 			txt2img_metrics=retrieval_metrics_per_epoch["txt2img"],
 		)
 
+		print(f"#"*100)
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
@@ -4340,8 +4387,8 @@ def progressive_finetune_multi_label(
 			cache_stats = validation_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
 				print(f"Validation Cache Stats: {cache_stats}")
+		print(f"#"*100)
 
-		# --- Early Stopping Check ---
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
 			model=model,
@@ -4835,6 +4882,19 @@ def lora_finetune_multi_label(
 			txt2img_metrics=retrieval_metrics_per_epoch.get("txt2img")
 		)
 
+		print(f"#"*100)
+		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			cache_stats = train_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Train Cache Stats: {cache_stats}")
+
+		if hasattr(validation_loader.dataset, 'get_cache_stats'):
+			cache_stats = validation_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Validation Cache Stats: {cache_stats}")
+		print(f"#"*100)
+
+
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
 			model=model,
@@ -5218,6 +5278,18 @@ def train(
 			img2txt_metrics=img2txt_metrics,
 			txt2img_metrics=txt2img_metrics
 		)
+
+		print(f"#"*100)
+		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			cache_stats = train_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Train Cache Stats: {cache_stats}")
+
+		if hasattr(validation_loader.dataset, 'get_cache_stats'):
+			cache_stats = validation_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Validation Cache Stats: {cache_stats}")
+		print(f"#"*100)
 
 		# Early stopping check
 		if early_stopping.should_stop(
