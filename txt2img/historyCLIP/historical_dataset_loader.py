@@ -664,10 +664,12 @@ def get_multi_label_dataloaders(
 	if cache_size is None:
 		memory = psutil.virtual_memory()
 		available_gb = memory.available / (1024**3)
+		total_gb = memory.total / (1024**3)
 		is_hpc = any(env in os.environ for env in ['SLURM_JOB_ID', 'PBS_JOBID'])
 		print(
 			f">> Obtaining optimal cache size for multi-label dataloader. "
-			f"Available RAM: {available_gb:.2f}GB => {average_image_size_mb:.2f}MB/image"
+			f"Total RAM memory: {total_gb:.2f}GB | "
+			f"Available RAM memory: {available_gb:.2f}GB => {average_image_size_mb:.2f}MB/image"
 		)
 		
 		cache_size = get_cache_size(
