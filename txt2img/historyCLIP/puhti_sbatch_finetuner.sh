@@ -87,12 +87,12 @@ EPOCHS=(110 100 150 150 150)
 LORA_RANKS=(64 64 64 64 64)
 LORA_ALPHAS=(128.0 128.0 128.0 128.0 128.0) # 2x rank
 LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
-BATCH_SIZES=(64 64 64 64 64)
+BATCH_SIZES=(512 64 64 64 64)
 PRINT_FREQUENCIES=(1000 500 50 50 10)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 # EARLY_STOPPING_MIN_EPOCHS=(25 25 20 20 10)
 BASE_MIN_EPOCHS=(25 25 17 17 12)  # History_X4, National Archive, Europeana, WWII, SMU
-CACHE_SIZES=(512 512 1000 1000 1000)  # History_X4, National Archive, Europeana, WWII, SMU
+CACHE_SIZES=(1024 512 1000 1000 1000)  # History_X4, National Archive, Europeana, WWII, SMU
 
 # Adjust min_epochs based on strategy
 strategy="${FINETUNE_STRATEGIES[$strategy_index]}"
@@ -140,9 +140,9 @@ ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
 	# Further reduce batch size for HISTORY_X4 dataset due to its size
 	if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
-		ADJUSTED_BATCH_SIZE=16  # Very conservative batch size for large model + large dataset
+		ADJUSTED_BATCH_SIZE=512  # Very conservative batch size for large model + large dataset
 	else
-		ADJUSTED_BATCH_SIZE=32 # Reduced batch size for large models with other datasets
+		ADJUSTED_BATCH_SIZE=256 # Reduced batch size for large models with other datasets
 	fi
 fi
 

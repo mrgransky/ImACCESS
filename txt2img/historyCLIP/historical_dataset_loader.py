@@ -697,7 +697,7 @@ def get_multi_label_dataloaders(
 		transform=preprocess,
 		label_dict=label_dict,
 		cache_size=train_cache_size,
-		cache_workers=min(8, num_workers),
+		cache_workers=min(4, num_workers),
 	)
 	
 	print(train_dataset)
@@ -709,7 +709,7 @@ def get_multi_label_dataloaders(
 		transform=preprocess,
 		label_dict=label_dict,
 		cache_size=val_cache_size,
-		cache_workers=min(8, num_workers),
+		cache_workers=min(4, num_workers),
 	)
 	
 	print(val_dataset)
