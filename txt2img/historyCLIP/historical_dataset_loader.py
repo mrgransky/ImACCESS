@@ -891,13 +891,12 @@ def get_multi_label_dataloaders(
 	train_df, val_df, label_dict = get_multi_label_datasets(ddir=dataset_dir)
 	preprocess = get_preprocess(dataset_dir=dataset_dir, input_resolution=input_resolution)
 	total_samples = len(train_df) + len(val_df)
-	cache_size = min(cache_size, int(total_samples*0.50))
+	cache_size = min(cache_size, int(total_samples*0.70))
 	train_pct = 0.70
 	val_pct = 1.0 - train_pct
 	train_cache_size = int(cache_size * train_pct)
 	val_cache_size = int(cache_size * val_pct)
 	print(f">> Total Samples: {total_samples:,} | Total cache size: {cache_size:,} Distributed (train[{train_pct*100:.0f}%]: {train_cache_size:,}, validation[{val_pct*100:.0f}%]: {val_cache_size:,})")
-
 
 	# --- 2. Create the full dataset instances with LRU caching ---
 	train_dataset = HistoricalArchivesMultiLabelDataset(

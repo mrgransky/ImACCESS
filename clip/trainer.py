@@ -1300,7 +1300,6 @@ def monitor_memory_usage(operation_name: str):
 		return True
 	return False
 
-
 def _compute_image_embeddings(model, validation_loader, device, verbose, max_batches=None):
 	all_image_embeds, all_labels = [], []
 	model = model.to(device)
