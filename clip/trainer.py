@@ -1290,13 +1290,13 @@ def monitor_memory_usage(operation_name: str):
 	cpu_memory = psutil.virtual_memory()
 	cpu_used_gb = (cpu_memory.total - cpu_memory.available) / 1024**3
 	cpu_percent = cpu_memory.percent
-	if cpu_percent > 95:
+	if cpu_percent > 90:
 		print(
-			f"[{operation_name}] Memory - CPU: {cpu_used_gb:.1f}GB ({cpu_percent:.1f}%), "
+			f"[{operation_name}] Memory - CPU Usage: {cpu_used_gb:.1f}GB ({cpu_percent:.1f}%), "
 			f"GPU: {gpu_memory:.1f}GB allocated, {gpu_cached:.1f}GB cached"
 		)
 		print(f"WARNING: High CPU usage ({cpu_percent:.1f}%) → Clearing GPU cache...")
-		torch.cuda.empty_cache()
+		# torch.cuda.empty_cache()
 		return True
 	return False
 
@@ -1315,7 +1315,7 @@ def _compute_image_embeddings(model, validation_loader, device, verbose, max_bat
 				print(f"Stopping at batch {batch_count} due to max_batches limit")
 				break
 
-			if batch_count % 10 == 0:
+			if batch_count % 50 == 0:
 				high_mem = monitor_memory_usage(operation_name=f"Batch {batch_count}")
 				if high_mem:
 					torch.cuda.empty_cache()
