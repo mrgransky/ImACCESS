@@ -882,7 +882,7 @@ def get_multi_label_dataloaders(
 		batch_size: int,
 		num_workers: int,
 		input_resolution: int,
-		cache_size: int = 50000,
+		cache_size: int = int(1e5),
 	):
 	dataset_name = os.path.basename(dataset_dir)
 	print(f"Creating multi-label dataloaders for {dataset_name}...")
