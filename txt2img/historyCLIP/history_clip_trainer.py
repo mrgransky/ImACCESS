@@ -159,7 +159,7 @@ def main():
 			batch_size=args.batch_size,
 			num_workers=args.num_workers,
 			input_resolution=model_config["image_resolution"],
-			cache_size=args.cache_size,
+			# cache_size=args.cache_size,
 		)
 		print_loader_info(loader=train_loader, batch_size=args.batch_size)
 		print_loader_info(loader=validation_loader, batch_size=args.batch_size)
