@@ -1,10 +1,15 @@
 import os
 import csv
+import json
 import re
 import time
 import requests
+from PIL import Image
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
+import pandas as pd
+import shutil
+from tqdm import tqdm
 
 # List of URLs to scrape
 URLS = [
@@ -20,9 +25,11 @@ URLS = [
 ]
 
 DATASET_DIRECTORY = "/home/farid/datasets/WW_DATASETs/WW_VEHICLES"
-IMAGE_DOWNLOAD_DIR = os.path.join(DATASET_DIRECTORY, "images")
+THUMBNAIL_DIRECTORY = os.path.join(DATASET_DIRECTORY, "thumbnails")
+IMAGE_DIRECTORY = os.path.join(DATASET_DIRECTORY, "images")
 os.makedirs(DATASET_DIRECTORY, exist_ok=True)
-os.makedirs(IMAGE_DOWNLOAD_DIR, exist_ok=True)
+os.makedirs(IMAGE_DIRECTORY, exist_ok=True)
+os.makedirs(THUMBNAIL_DIRECTORY, exist_ok=True)
 
 CSV_FILENAME = os.path.join(DATASET_DIRECTORY, "metadata.csv")
 
@@ -48,7 +55,12 @@ HEADERS = {
 		)
 }
 
-def download_image(img_url, folder=IMAGE_DOWNLOAD_DIR, max_retries=3, delay=3):
+def download_image(
+		img_url, 
+		folder,
+		max_retries=3, 
+		delay=3
+	):
 	filename = os.path.basename(urlparse(img_url).path)
 	filepath = os.path.join(folder, filename)
 	
@@ -102,7 +114,13 @@ def clean_text(text):
 	text = re.sub(r'\s+', ' ', text.strip())
 	return text[:200]  # Limit to 200 characters
 
-def extract_metadata_and_images(html_content, base_url, event, country, downloaded_ids_global):
+def extract_metadata_and_images(
+		html_content, 
+		base_url, 
+		event, 
+		country, 
+		downloaded_ids_global
+	):
 	soup = BeautifulSoup(html_content, "html.parser")
 	data = []
 	content_div = soup.find("div", class_="content")
@@ -155,11 +173,19 @@ def extract_metadata_and_images(html_content, base_url, event, country, download
 				description = parent_text
 				print(f"Using parent text description for {img_id}: {description}")
 		# Download image (or skip if already exists)
-		local_img_path = download_image(img_url)
+		local_img_path = download_image(
+			img_url=img_url,
+			folder=IMAGE_DIRECTORY,
+		)
 		if not local_img_path:
 			print(f"Skipping metadata for missing image: {img_url}")
 			continue
 		downloaded_ids_global.add(img_id)
+		
+		# Define thumbnail path (to be populated later)
+		thumbnail_filename = os.path.basename(local_img_path)
+		thumbnail_path = os.path.join(THUMBNAIL_DIRECTORY, thumbnail_filename)
+
 		# Combine label, title, and description
 		enriched_document_description = " ".join(filter(None, [label, title, description])).strip()
 		data.append({
@@ -172,39 +198,108 @@ def extract_metadata_and_images(html_content, base_url, event, country, download
 			"img_url": img_url,
 			"enriched_document_description": enriched_document_description or "",  # Empty string if all are empty
 			"event": event or "",  # Empty string if no event
+			"thumbnail_path": thumbnail_path,
 		})
 	return data
 
-def save_to_csv(data, filename=CSV_FILENAME):
-	fieldnames = ["id", "label", "title", "country", "description", "img_path", "img_url", "enriched_document_description", "event"]
-	with open(filename, mode="w", newline="", encoding="utf-8") as csvfile:
-		writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-		writer.writeheader()
-		for row in data:
-			writer.writerow(row)
-	print(f"Saved {len(data)} entries to {filename}")
+def save_metadata(data, filename):
+		"""
+		Save metadata to CSV and Excel files using pandas.
+		
+		Args:
+				data: List of dictionaries containing metadata.
+				filename: Base filename for CSV (Excel will use .xlsx extension).
+		"""
+		if not data:
+				print("No data to save.")
+				return
+		
+		# Convert list of dicts to DataFrame
+		df = pd.DataFrame(data)
+		
+		# Save to CSV
+		csv_path = filename
+		df.to_csv(csv_path, index=False, encoding='utf-8')
+		print(f"Saved {len(df)} entries to {csv_path}")
+		
+		# Save to Excel
+		excel_path = os.path.splitext(filename)[0] + '.xlsx'
+		try:
+				df.to_excel(excel_path, index=False, engine='openpyxl')
+				print(f"Saved {len(df)} entries to {excel_path}")
+		except Exception as e:
+				print(f"Failed to save Excel file {excel_path}: {e}")
 
-def main():
-	all_data = []
-	downloaded_ids_global = set()  # Global set to track downloaded images
-	for url in URLS:
-		print(f"\nProcessing {url} ...")
-		event, country = infer_event_and_country(url)
-		if not event:
-			print(f"Could not infer event from URL: {url}")
+def create_thumbnail(
+		dataset_metadata: list[dict], 
+		size=(500, 500), 
+		large_image_threshold_mb=2.0,
+	):
+	print(f"Creating thumbnails for {len(dataset_metadata)} images...")
+	large_image_threshold_bytes = large_image_threshold_mb * 1024 * 1024
+	for data in tqdm(dataset_metadata, desc="Creating thumbnails"):
+		img_path = data.get("img_path")
+		thumbnail_path = data.get("thumbnail_path")
+		if not img_path or not os.path.exists(img_path):
+			print(f"Skipping thumbnail for missing image: {img_path}")
+			continue
+		if os.path.exists(thumbnail_path):
+			print(f"Thumbnail already exists: {thumbnail_path}")
 			continue
 		try:
-			response = requests.get(url, headers=HEADERS, timeout=10)
-			response.raise_for_status()
-			html_content = response.text
+			file_size_bytes = os.path.getsize(img_path)
+			is_large = file_size_bytes > large_image_threshold_bytes
+			with Image.open(img_path).convert("RGB") as img:
+				if is_large:
+					print(f"Creating thumbnail for large image ({file_size_bytes / 1024 / 1024:.2f} MB): {img_path}")
+					# Create thumbnail
+					img.thumbnail(size, resample=Image.Resampling.LANCZOS)
+					img.save(
+						fp=thumbnail_path,
+						format="JPEG",
+						quality=100,
+						optimize=True,
+						progressive=True,
+					)
+					print(f"Created thumbnail: {thumbnail_path}")
+				else:
+					shutil.copy2(img_path, thumbnail_path)
 		except Exception as e:
-			print(f"Failed to download page {url}: {e}")
-			continue
-		data = extract_metadata_and_images(html_content, url, event, country, downloaded_ids_global)
-		all_data.extend(data)
-		print(f"Extracted {len(data)} entries from {url}")
-	save_to_csv(all_data)
-	print(f"\nDone. Total images downloaded and metadata saved: {len(all_data)}")
+			print(f"Failed to create thumbnail for {img_path}: {e}")
 
+def main():
+	if not os.path.exists(CSV_FILENAME):
+		print(f"CSV file {CSV_FILENAME} does not exist. Creating it...")
+		dataset_metadata = []
+		downloaded_ids_global = set()  # Global set to track downloaded images
+		for url in URLS:
+			print(f"\nProcessing {url} ...")
+			event, country = infer_event_and_country(url)
+			if not event:
+				print(f"Could not infer event from URL: {url}")
+				continue
+			try:
+				response = requests.get(url, headers=HEADERS, timeout=10)
+				response.raise_for_status()
+				html_content = response.text
+			except Exception as e:
+				print(f"Failed to download page {url}: {e}")
+				continue
+			data = extract_metadata_and_images(html_content, url, event, country, downloaded_ids_global)
+			dataset_metadata.extend(data)
+			print(f"Extracted {len(data)} entries from {url}")
+		save_metadata(dataset_metadata, CSV_FILENAME)
+		print(f"\nDone. Total images downloaded and metadata saved: {len(dataset_metadata)}")
+	else:
+		print(f"Loading {CSV_FILENAME}...")
+		df = pd.read_csv(CSV_FILENAME, encoding='utf-8')
+		dataset_metadata = df.to_dict(orient='records')
+		print(f"Loaded {type(df)} {df.shape} with {len(dataset_metadata)} entries from {CSV_FILENAME}")
+
+	print(json.dumps(dataset_metadata[0], indent=2, ensure_ascii=False))
+
+	# Creating Thumbnails
+	create_thumbnail(dataset_metadata=dataset_metadata)
+	
 if __name__ == "__main__":
-		main()
+	main()

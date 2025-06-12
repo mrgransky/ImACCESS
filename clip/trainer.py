@@ -3044,11 +3044,9 @@ def progressive_finetune_single_label(
 
 		# --- End of Epoch ---
 		epochs_in_current_phase += 1
-		epoch_duration = time.time() - epoch_start_time
-		print(f"Epoch {epoch+1} Duration: {epoch_duration:.2f}s")
 		if epoch+1 > minimum_epochs: 
 			print(f"EarlyStopping Status:\n{json.dumps(early_stopping.get_status(), indent=2, ensure_ascii=False)}")
-		print("-" * 80)
+		print(f"Epoch {epoch+1} Elapsed_t: {time.time() - epoch_start_time:.2f} s".center(170, "-"))
 
 	# --- End of Training ---
 	total_training_time = time.time() - train_start_time
@@ -4401,12 +4399,10 @@ def progressive_finetune_multi_label(
 
 		# --- End of Epoch ---
 		epochs_in_current_phase += 1
-		epoch_duration = time.time() - epoch_start_time
-		print(f"Epoch {epoch+1} Duration: {epoch_duration:.2f}s")
 
 		if epoch+1 > minimum_epochs: 
 			print(f"EarlyStopping Status:\n{json.dumps(early_stopping.get_status(), indent=2, ensure_ascii=False)}")
-		print("-" * 80)
+		print(f"Epoch {epoch+1} Elapsed_t: {time.time()-epoch_start_time:.2f} sec".center(170, "-"))
 
 	# --- End of Training ---
 	total_training_time = time.time() - train_start_time

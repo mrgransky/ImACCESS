@@ -55,7 +55,7 @@ from historical_dataset_loader import get_single_label_dataloaders, get_multi_la
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 50 -nw 50 -dv "cuda:2" -m finetune -fts progressive -dt multi_label -a "ViT-B/32" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 32 -e 150 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 12 -dv "cuda:1" -m finetune -fts progressive -dt multi_label -a "ViT-B/32" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 32 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 -dv "cuda:0" -m finetune -fts progressive -dt multi_label -a "ViT-L/14" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 256 -e 150 -lr 5e-6 -wd 1e-2 --print_every 1000 -nw 32 -dv "cuda:3" -m finetune -fts progressive -dt multi_label -a "ViT-L/14@336px" -do 0.1 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 256 -e 150 -lr 5e-6 -wd 1e-2 --print_every 100 -nw 32 -dv "cuda:3" -m finetune -fts progressive -dt multi_label -a "ViT-L/14@336px" -do 0.1 --log_dir /media/volume/ImACCESS/trash &
 
 @measure_execution_time
 def main():
@@ -84,7 +84,7 @@ def main():
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 	parser.add_argument('--log_dir', type=str, default=None, help='Directory to store log files (if not specified, logs will go to stdout)')
-	parser.add_argument('--checkpoint_path', '-cp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
+	# parser.add_argument('--checkpoint_path', '-cp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
