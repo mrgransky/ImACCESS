@@ -928,7 +928,7 @@ def get_multi_label_dataloaders(
 	# --- 4. Create the DataLoader instances using the custom collate function ---
 	common_loader_args = {
 		'batch_size': batch_size,
-		'num_workers': num_workers,
+		'num_workers': min(num_workers, 4),
 		'pin_memory': torch.cuda.is_available(),
 		'persistent_workers': (num_workers > 0),
 		'collate_fn': custom_collate_fn # Use the robust collate function
