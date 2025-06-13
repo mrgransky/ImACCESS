@@ -12,9 +12,7 @@
 #SBATCH --partition=large
 #SBATCH --time=00-19:00:00
 
-set -e
-set -u
-set -o pipefail
+set -euo pipefail
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')

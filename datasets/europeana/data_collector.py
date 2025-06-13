@@ -38,7 +38,7 @@ print_args_table(args=args, parser=parser)
 
 # run in Pouta:
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 40 --img_mean_std > /media/volume/ImACCESS/trash/europeana_dl.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 40 --img_mean_std --enable_thumbnailing > /media/volume/ImACCESS/trash/europeana_dl.out &
 
 START_DATE = args.start_date
 END_DATE = args.end_date

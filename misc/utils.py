@@ -42,6 +42,9 @@ import hashlib
 from torch.cuda import get_device_properties, memory_allocated
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 # from kneed import KneeLocator
 # from keybert import KeyBERT
 # from rake_nltk import Rake
@@ -442,7 +445,7 @@ def _process_image_for_storage(
 	# If image is already small, just convert to JPEG and return
 	if file_size_bytes <= large_image_threshold_bytes:
 		if verbose:
-			print(f"\t(<= {large_image_threshold_mb} MB, {file_size_bytes / 1024 / 1024:.2f} MB) stored unchanged.")
+			print(f"\timage size: {file_size_bytes / 1024 / 1024:.2f} <= (threshold: {large_image_threshold_mb} MB) => stored unchanged.")
 		return True
 
 	try:
@@ -512,12 +515,108 @@ def download_image(
 	image_id = row['id']
 	image_path = os.path.join(image_dir, f"{image_id}.jpg")
 
+	# --- Step 1: Check if image already exists ---
+	if os.path.exists(image_path):
+			try:
+					with Image.open(image_path) as img:
+							img.verify()
+					if enable_thumbnailing:
+							if not _process_image_for_storage(
+									img_path=image_path, 
+									target_size=thumbnail_size, 
+									large_image_threshold_mb=large_image_threshold_mb, 
+									verbose=True
+							):
+									print(f"Existing image {image_path} valid but re-processing failed. Re-downloading...")
+							else:
+									print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150} (Skipping existing & processed) {time.time()-t0:.1f} s")
+									return True
+					else:
+							print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150} (Skipping existing raw) {time.time()-t0:.1f} s")
+							return True
+			except (IOError, SyntaxError, Image.DecompressionBombError) as e:
+					print(f"Existing image {image_path} is invalid: {e}, re-downloading...")
+					os.remove(image_path)
+			except Exception as e:
+					print(f"Unexpected error checking {image_path}: {e}")
+					os.remove(image_path)
+
+	# --- Step 2: Attempt download ---
+	attempt = 0
+	while attempt < retries:
+			try:
+					# Try with SSL verification
+					response = session.get(image_url, timeout=download_timeout)
+					response.raise_for_status()
+			except requests.exceptions.SSLError as ssl_err:
+					print(f"[{rIdx}/{total_rows}] SSL error. Retrying without verification: {ssl_err}")
+					try:
+							response = session.get(image_url, timeout=download_timeout, verify=False)
+							response.raise_for_status()
+					except Exception as fallback_err:
+							print(f"[{rIdx}/{total_rows}] Retry without verification failed: {fallback_err}")
+							attempt += 1
+							time.sleep(backoff_factor * (2 ** attempt))
+							continue  # Retry loop
+			except (RequestException, IOError) as e:
+					attempt += 1
+					print(f"<!> [{rIdx}/{total_rows}] Downloading {image_url} Failed: {e}, retrying ({attempt}/{retries})")
+					time.sleep(backoff_factor * (2 ** attempt))
+					continue
+			try:
+					with open(image_path, 'wb') as f:
+							f.write(response.content)
+					with Image.open(image_path) as img:
+							img.verify()
+					if not _process_image_for_storage(
+							img_path=image_path, 
+							target_size=thumbnail_size, 
+							large_image_threshold_mb=large_image_threshold_mb, 
+							verbose=True
+					):
+							raise ValueError(f"Failed to process image {image_id} after download.")
+					print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150}{time.time()-t0:.1f} s")
+					return True
+			except (SyntaxError, Image.DecompressionBombError, ValueError) as e:
+					print(f"[{rIdx}/{total_rows}] Downloaded image {image_id} is invalid: {e}")
+					break
+			except Exception as e:
+					print(f"[{rIdx}/{total_rows}] Unexpected error after download: {e}")
+					attempt += 1
+					time.sleep(backoff_factor * (2 ** attempt))
+
+	# --- Step 3: Clean up if failed ---
+	if os.path.exists(image_path):
+			print(f"removing broken img: {image_path}")
+			os.remove(image_path)
+	print(f"[{rIdx}/{total_rows}] Failed downloading {image_id} after {retries} attempts.")
+
+	return False
+
+def download_image_old(
+		row,
+		session, 
+		image_dir, 
+		total_rows,
+		retries=2, 
+		backoff_factor=0.5,
+		download_timeout=20,
+		enable_thumbnailing: bool = False,
+		thumbnail_size: tuple = (500, 500),
+		large_image_threshold_mb: float = 2.0,
+	):
+	t0 = time.time()
+	rIdx = row.name
+	image_url = row['img_url']
+	image_id = row['id']
+	image_path = os.path.join(image_dir, f"{image_id}.jpg")
+
 	# --- Step 1: Check if image already exists, is valid, and (if applicable) processed ---
 	if os.path.exists(image_path):
 		try:
 			# Verify if the existing image can be opened
 			with Image.open(image_path) as img:
-				img.verify()			
+				img.verify()
 			# If processing is enabled, attempt to process/re-process the existing image
 			if enable_thumbnailing:
 				if not _process_image_for_storage(img_path=image_path, target_size=thumbnail_size, large_image_threshold_mb=large_image_threshold_mb, verbose=True):
@@ -542,7 +641,7 @@ def download_image(
 	attempt = 0  # Retry mechanism
 	while attempt < retries:
 		try:
-			response = session.get(image_url, timeout=download_timeout, verify=certifi.where())
+			response = session.get(image_url, timeout=download_timeout)
 			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
 			
 			# Save the image to the directory
@@ -559,8 +658,14 @@ def download_image(
 
 			print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150}{time.time()-t0:.1f} s")
 			return True  # Image downloaded and verified successfully
-		except requests.exceptions.SSLError as e:
-			print(f"[{rIdx}/{total_rows}] SSL verification failed for downloading {image_url}: {e}")
+		except requests.exceptions.SSLError as ssl_err:
+			print(f"[{rIdx}/{total_rows}] SSL error. Retrying without verification: {ssl_err}")
+			try:
+				response = session.get(image_url, timeout=download_timeout, verify=False)
+				response.raise_for_status()
+			except Exception as e:
+				print(f"[{rIdx}/{total_rows}] Retry without verification failed: {e}")
+				raise e
 		except (RequestException, IOError) as e:
 			attempt += 1
 			print(f"<!> [{rIdx}/{total_rows}] Downloading {image_url} Failed: {e}, retrying ({attempt}/{retries})")
