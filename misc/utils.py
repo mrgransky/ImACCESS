@@ -32,7 +32,7 @@ from sklearn.manifold import TSNE
 import seaborn as sns
 from wordcloud import WordCloud
 from typing import Tuple, Union, List, Dict, Any, Optional, Callable
-
+import certifi
 import hdbscan
 import networkx as nx
 from sklearn.metrics import silhouette_score
@@ -542,7 +542,7 @@ def download_image(
 	attempt = 0  # Retry mechanism
 	while attempt < retries:
 		try:
-			response = session.get(image_url, timeout=download_timeout)
+			response = session.get(image_url, timeout=download_timeout, verify=certifi.where())
 			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
 			
 			# Save the image to the directory
@@ -559,6 +559,8 @@ def download_image(
 
 			print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150}{time.time()-t0:.1f} s")
 			return True  # Image downloaded and verified successfully
+		except requests.exceptions.SSLError as e:
+			print(f"[{rIdx}/{total_rows}] SSL verification failed for downloading {image_url}: {e}")
 		except (RequestException, IOError) as e:
 			attempt += 1
 			print(f"<!> [{rIdx}/{total_rows}] Downloading {image_url} Failed: {e}, retrying ({attempt}/{retries})")
