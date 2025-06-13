@@ -41,6 +41,7 @@ python -u data_collector.py \
 	--num_worker $num_workers \
 	--historgram_bin 60 \
 	--img_mean_std \
+	--enable_thumbnailing \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
