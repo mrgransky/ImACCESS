@@ -260,12 +260,13 @@ from PIL import Image
 import os
 
 #Open the image
-image_fpath = "/home/farid/datasets/WW_DATASETs/NATIONAL_ARCHIVE_1933-01-01_1933-01-05/images/7018223.jpg"
+# image_fpath = "/home/farid/datasets/WW_DATASETs/NATIONAL_ARCHIVE_1933-01-01_1933-01-05/images/7018223.jpg"
+image_fpath = "/home/farid/datasets/WW_DATASETs/WW_VEHICLES/images/ww1-us-lorry.jpg"
 image = Image.open(image_fpath).convert("RGB")
 # image_fname = image.filename
-print(os.path.basename(image_fpath), image.size, image.mode)
+print(os.path.basename(image_fpath), image.size, image.mode, os.path.getsize(image_fpath) / 1024 / 1024, "MB")
 #Define the thumbnail size as a tuple (width, height)
-thumbnail_size = (1000, 1000)
+thumbnail_size = (int(1e3), int(1e3))
 
 #Create a thumbnail
 image.thumbnail(thumbnail_size, resample=Image.Resampling.LANCZOS )
