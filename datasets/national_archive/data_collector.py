@@ -43,7 +43,7 @@ print_args_table(args=args, parser=parser)
 
 # WWII (with threshold)
 # $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 12 --img_mean_std --enable_thumbnailing
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 12 --img_mean_std --enable_thumbnailing > /media/volume/ImACCESS/trash/na_dl.out &
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 12 --img_mean_std --enable_thumbnailing > /media/volume/ImACCESS/trash/na_dl.out &
 
 na_api_base_url: str = "https://catalog.archives.gov/proxy/records/search"
 START_DATE = args.start_date
