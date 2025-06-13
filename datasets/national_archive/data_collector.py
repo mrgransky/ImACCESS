@@ -10,8 +10,8 @@ from misc.visualize import *
 dataset_name = "NATIONAL_ARCHIVE".upper()
 parser = argparse.ArgumentParser(description=f"U.S. National Archive Dataset")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
-parser.add_argument('--start_date', '-sdt', type=str, default="1933-01-01", help='Start Date')
-parser.add_argument('--end_date', '-edt', type=str, default="1933-01-02", help='End Date')
+parser.add_argument('--start_date', '-sdt', type=str, default="1900-01-01", help='Start Date')
+parser.add_argument('--end_date', '-edt', type=str, default="1970-12-31", help='End Date')
 parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of CPUs')
 parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_size')
 parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histogram Bins')
@@ -42,8 +42,8 @@ print_args_table(args=args, parser=parser)
 # run in Pouta:
 
 # WWII (with threshold)
-# $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs --start_date 1930-01-01 --end_date 1955-12-31
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1930-01-01 -edt 1955-12-31 -nw 40 --img_mean_std > /media/volume/ImACCESS/trash/na_dl.out &
+# $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 12 --img_mean_std --enable_thumbnailing
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 12 --img_mean_std --enable_thumbnailing > /media/volume/ImACCESS/trash/na_dl.out &
 
 na_api_base_url: str = "https://catalog.archives.gov/proxy/records/search"
 START_DATE = args.start_date
