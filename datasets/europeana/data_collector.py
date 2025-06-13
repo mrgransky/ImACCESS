@@ -19,11 +19,14 @@ parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colle
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', '-sdt', type=str, default="1900-01-01", help='Dataset DIR')
 parser.add_argument('--end_date', '-edt', type=str, default="1970-12-31", help='Dataset DIR')
-parser.add_argument('--num_workers', '-nw', type=int, default=16, help='Number of CPUs')
+parser.add_argument('--num_workers', '-nw', type=int, default=12, help='Number of CPUs')
 parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_size')
 parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histogram Bins')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='Validation Split Percentage')
+parser.add_argument('--enable_thumbnailing', action='store_true', help='Enable image thumbnailing')
+parser.add_argument('--thumbnail_size', type=int, default=1000, help='Thumbnail size (width/height in pixels)')
+parser.add_argument('--large_image_threshold_mb', type=float, default=1.0, help='Large image threshold in MB')
 
 args, unknown = parser.parse_known_args()
 args.dataset_dir = os.path.normpath(args.dataset_dir)
@@ -31,7 +34,7 @@ print_args_table(args=args, parser=parser)
 
 # run in local laptop:
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std > logs/europeana_img_dl.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std --enable_thumbnailing > logs/europeana_img_dl.out &
 
 # run in Pouta:
 # $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
@@ -324,6 +327,9 @@ def main():
 		df=grouped,
 		image_dir=IMAGE_DIR,
 		nw=args.num_workers,
+		enable_thumbnailing=args.enable_thumbnailing,
+		thumbnail_size=args.thumbnail_size,
+		large_image_threshold_mb=args.large_image_threshold_mb,
 	)
 	############################## aggregating user_query to list ##############################
 

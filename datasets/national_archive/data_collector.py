@@ -17,6 +17,9 @@ parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_si
 parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histogram Bins')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='Validation Split Percentage')
+parser.add_argument('--enable_thumbnailing', action='store_true', help='Enable image thumbnailing')
+parser.add_argument('--thumbnail_size', type=int, default=1000, help='Thumbnail size (width/height in pixels)')
+parser.add_argument('--large_image_threshold_mb', type=float, default=1.0, help='Large image threshold in MB')
 
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
@@ -27,8 +30,10 @@ print_args_table(args=args, parser=parser)
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-10
 
 ########################## --start_date 1933-01-01 --end_date 1933-01-02 ##########################
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-05 --num_workers 8 --img_mean_std > logs/na_image_download.out &
-# $ nohup python -u data_collector.py -ddir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-02 --num_workers 8 --img_mean_std > logs/na_image_download.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs --start_date 1935-01-01 --end_date 1935-01-05 --num_workers 8 --img_mean_std --enable_thumbnailing > logs/na_image_download.out &
+
+# saving into external hard drive:
+# $ nohup python -u data_collector.py -ddir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1935-01-01 --end_date 1935-01-02 --num_workers 8 --enable_thumbnailing --img_mean_std > logs/na_image_download.out &
 
 ########################## --start_date 1914-01-01 --end_date 1946-12-31 ##########################
 # $ nohup python -u data_collector.py -ddir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1914-01-01 --end_date 1946-12-31 --num_workers 2 > logs/na_image_download.out &
@@ -366,6 +371,9 @@ def main():
 		df=grouped,
 		image_dir=IMAGE_DIRECTORY,
 		nw=args.num_workers,
+		enable_thumbnailing=args.enable_thumbnailing,
+		thumbnail_size=args.thumbnail_size,
+		large_image_threshold_mb=args.large_image_threshold_mb,
 	)
 	############################## aggregating user_query to list ##############################
 

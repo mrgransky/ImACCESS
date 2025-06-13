@@ -107,6 +107,7 @@ warnings.filterwarnings('ignore', category=DeprecationWarning, message="invalid 
 
 nltk_modules = [
 	'punkt',
+	'punkt_tab',
 	'wordnet',
 	'averaged_perceptron_tagger', 
 	'omw-1.4',
@@ -246,24 +247,30 @@ def print_args_table(args, parser):
 		table_data.append([key, value, arg_type])
 	print(tabulate.tabulate(table_data, headers=['Argument', 'Value', 'Type'], tablefmt='orgtbl'))
 
-def set_seeds(seed: int = 42, debug: bool = False, enable_optimizations: bool = True):
-		random.seed(seed)
-		np.random.seed(seed)
-		torch.manual_seed(seed)
-		if torch.cuda.is_available():
-				torch.cuda.manual_seed(seed)
-				torch.cuda.manual_seed_all(seed)
-		
-		if debug:  # slows down training but ensures reproducibility
-				torch.backends.cudnn.deterministic = True
-				torch.backends.cudnn.benchmark = False
-				# Disable optimizations for debug mode
-				torch.backends.cuda.matmul.allow_tf32 = False
-		elif enable_optimizations:  # Enable optimizations for performance
-				torch.backends.cudnn.benchmark = True
-				torch.backends.cuda.matmul.allow_tf32 = True
-				# Additional optimizations
-				torch.backends.cudnn.allow_tf32 = True
+def set_seeds(
+		seed: int=42,
+		debug: bool=False,
+		enable_optimizations: bool=True
+	):
+	random.seed(seed)
+	np.random.seed(seed)
+	torch.manual_seed(seed)
+	if torch.cuda.is_available():
+		torch.cuda.manual_seed(seed)
+		torch.cuda.manual_seed_all(seed)
+	
+	if debug:  # slows down training but ensures reproducibility
+		torch.backends.cudnn.deterministic = True
+		torch.backends.cudnn.benchmark = False
+		# Disable optimizations for debug mode
+		torch.backends.cuda.matmul.allow_tf32 = False
+		print(f"Seeds set to {seed}")
+	elif enable_optimizations:  # Enable optimizations for performance
+		torch.backends.cudnn.benchmark = True
+		torch.backends.cuda.matmul.allow_tf32 = True
+		# Additional optimizations
+		torch.backends.cudnn.allow_tf32 = True
+		print(f"Seeds set to {seed}")
 
 def format_elapsed_time(seconds):
 	"""
@@ -418,66 +425,211 @@ def get_multi_label_stratified_split(
 		print(f"Stratified Splitting Elapsed Time: {time.time()-t_st:.3f} sec".center(160, "-"))
 		return train_df, val_df
 
-def download_image(row, session, image_dir, total_rows, retries=2, backoff_factor=0.5):
+def _process_image_for_storage(
+		img_path: str,
+		target_size: tuple,
+		large_image_threshold_mb: float,
+		verbose: bool=False
+	) -> bool:
+	if not os.path.exists(img_path):
+		if verbose:
+			print(f"Image file not found for processing: {img_path}")
+		return False
+
+	file_size_bytes = os.path.getsize(img_path)
+	large_image_threshold_bytes = large_image_threshold_mb * 1024 * 1024
+
+	# If image is already small, just convert to JPEG and return
+	if file_size_bytes <= large_image_threshold_bytes:
+		if verbose:
+			print(f"\t(<= {large_image_threshold_mb} MB, {file_size_bytes / 1024 / 1024:.2f} MB) stored unchanged.")
+		return True
+
+	try:
+		with Image.open(img_path) as img:
+			img = img.convert("RGB")
+			original_size = img.size
+			if file_size_bytes > large_image_threshold_bytes:
+				# Only thumbnail if current dimensions are larger than target size
+				if img.size[0] > target_size[0] or img.size[1] > target_size[1]:
+					if verbose:
+						print(
+							f"\tCreating thumbnail"
+							f"(Original dimensions: {original_size[0]}x{original_size[1]}, "
+							f"File size: {file_size_bytes / 1024 / 1024:.2f} MB)"
+						)
+					img.thumbnail(target_size, resample=Image.Resampling.LANCZOS)
+					action_taken = "Thumbnailed"
+				else:
+					if verbose:
+						print(f"Large image {os.path.basename(img_path)} within target_size {target_size}. Converting to JPEG.")
+					action_taken = "only JPEG-ified"
+			img.save(
+				fp=img_path, # Overwrite the original file
+				format="JPEG",
+				quality=100,
+				optimize=True,
+				progressive=True,
+			)
+			new_file_size_bytes = os.path.getsize(img_path)
+			if verbose:
+				print(
+					f"\t{action_taken}"
+					f"(New size: {img.size[0]}x{img.size[1]}, "
+					f"New file size: {new_file_size_bytes / 1024 / 1024:.2f} MB)."
+				)
+		with Image.open(img_path) as img:
+			img.verify()
+		return True
+	except (IOError, SyntaxError, Image.DecompressionBombError) as e:
+		if verbose:
+			print(f"Error processing image {img_path} for thumbnail/optimization: {e}")
+		if os.path.exists(img_path):
+			os.remove(img_path)
+		return False
+	except Exception as e:
+		if verbose:
+			print(f"An unexpected error occurred during image processing for {img_path}: {e}")
+		if os.path.exists(img_path):
+			os.remove(img_path)
+		return False
+
+def download_image(
+		row,
+		session, 
+		image_dir, 
+		total_rows,
+		retries=2, 
+		backoff_factor=0.5,
+		download_timeout=20,
+		enable_thumbnailing: bool = False,
+		thumbnail_size: tuple = (500, 500),
+		large_image_threshold_mb: float = 2.0,
+	):
 	t0 = time.time()
 	rIdx = row.name
-	url = row['img_url']
-	img_extension = get_extension(url=url)
-	image_name = row['id']
-	image_path = os.path.join(image_dir, f"{image_name}.jpg")
-	# image_path = os.path.join(image_dir, f"{image_name}.{img_extension}")
+	image_url = row['img_url']
+	image_id = row['id']
+	image_path = os.path.join(image_dir, f"{image_id}.jpg")
+
+	# --- Step 1: Check if image already exists, is valid, and (if applicable) processed ---
 	if os.path.exists(image_path):
 		try:
 			# Verify if the existing image can be opened
 			with Image.open(image_path) as img:
-				img.verify()
-			return True  # Image already exists and is valid, => skipping
-		except (IOError, SyntaxError) as e:
-			print(f"Existing image {image_path} is invalid: {e}, re-downloading...")
+				img.verify()			
+			# If processing is enabled, attempt to process/re-process the existing image
+			if enable_thumbnailing:
+				if not _process_image_for_storage(img_path=image_path, target_size=thumbnail_size, large_image_threshold_mb=large_image_threshold_mb, verbose=True):
+					print(f"Existing image {image_path} seems valid but re-processing failed. Re-downloading...")
+				else:
+					print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150} (Skipping existing & processed) {time.time()-t0:.1f} s")
+					return True # Existing image is good
+			else: # If thumbnailing is NOT enabled, just check validity
+				print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150} (Skipping existing raw) {time.time()-t0:.1f} s")
+				return True # Existing image is good
+		except (IOError, SyntaxError, Image.DecompressionBombError) as e:
+			print(f"Existing image {image_path} is invalid/corrupt: {e}, re-downloading...")
+			if os.path.exists(image_path): # Remove the broken file
+				os.remove(image_path)
+		except Exception as e:
+			print(f"Unexpected error while checking existing image {image_path}: {e}")
+			if os.path.exists(image_path): # Remove the broken file
+				os.remove(image_path)
+
+
+	 # --- Step 2: Download the image ---
 	attempt = 0  # Retry mechanism
 	while attempt < retries:
 		try:
-			response = session.get(url, timeout=20)
+			response = session.get(image_url, timeout=download_timeout)
 			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
-			with open(image_path, 'wb') as f:  # Save the image to the directory
+			
+			# Save the image to the directory
+			with open(image_path, 'wb') as f:
 				f.write(response.content)
+
 			# Verify if the downloaded image can be opened
 			with Image.open(image_path) as img:
 				img.verify()
-			print(f"{rIdx:<10}/ {total_rows:<10}{image_name:<150}{time.time()-t0:.1f} s")
+
+			# --- Step 3: Conditionally process (thumbnail/optimize) if enabled ---
+			if not _process_image_for_storage(img_path=image_path, target_size=thumbnail_size, large_image_threshold_mb=large_image_threshold_mb, verbose=True):
+				raise ValueError(f"Failed to process image {image_id} after download.")
+
+			print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150}{time.time()-t0:.1f} s")
 			return True  # Image downloaded and verified successfully
 		except (RequestException, IOError) as e:
 			attempt += 1
-			print(f"[{rIdx}/{total_rows}] Failed Downloading {url} : {e}, retrying ({attempt}/{retries})")
+			print(f"<!> [{rIdx}/{total_rows}] Downloading {image_url} Failed: {e}, retrying ({attempt}/{retries})")
+
+			if os.path.exists(image_path):
+				print(f"removing broken img: {image_path}")
+				os.remove(image_path)
+
 			time.sleep(backoff_factor * (2 ** attempt))  # Exponential backoff
-		except (SyntaxError, Image.DecompressionBombError) as e:
-			print(f"[{rIdx}/{total_rows}] Downloaded image {image_name} is invalid: {e}")
+		except (SyntaxError, Image.DecompressionBombError, ValueError) as e:
+			print(f"[{rIdx}/{total_rows}] Downloaded image {image_id} is invalid: {e}")
 			break  # No need to retry if the image is invalid
+
+	# --- Step 4: Clean up if all attempts failed ---
 	if os.path.exists(image_path):
 		print(f"removing broken img: {image_path}")
 		os.remove(image_path)  # Remove invalid image file
-	print(f"[{rIdx}/{total_rows}] Failed downloading {image_name} after {retries} attempts.")
+
+	print(f"[{rIdx}/{total_rows}] Failed downloading {image_id} after {retries} attempts.")
+
 	return False  # Indicate failed download
 
-def get_synchronized_df_img(df, image_dir:str="path/2/img_dir", nw: int=8):
-	print(f"Synchronizing merged_df(raw) & images of {df.shape[0]} records using {nw} CPUs...")
+def get_synchronized_df_img(
+		df:pd.DataFrame, 
+		image_dir:str, 
+		nw: int,
+		thumbnail_size: tuple=(1000, 1000),
+		large_image_threshold_mb: float=2.0,
+		enable_thumbnailing: bool=False,
+	):
+	print(f"Synchronizing {df.shape[0]} images using {nw} CPUs...")
+	if enable_thumbnailing:
+		print(f"Image processing enabled: images > {large_image_threshold_mb} MB will be thumbnailed to {thumbnail_size}.")
+	else:
+		print("Image processing disabled: raw images will be downloaded as is.")
+
 	successful_rows = [] # List to keep track of successful downloads
 	with requests.Session() as session:
 		with ThreadPoolExecutor(max_workers=nw) as executor:
-			futures = {executor.submit(download_image, row, session, image_dir, df.shape[0]): idx for idx, row in df.iterrows()}
+			futures = {
+				executor.submit(
+					download_image, 
+					row=row, 
+					session=session, 
+					image_dir=image_dir, 
+					total_rows=df.shape[0],
+					retries=2, 
+					backoff_factor=0.5,
+					download_timeout=20,
+					enable_thumbnailing=enable_thumbnailing,
+					thumbnail_size=thumbnail_size,
+					large_image_threshold_mb=large_image_threshold_mb,
+				): idx for idx, row in df.iterrows()
+			}
 			for future in as_completed(futures):
+				original_df_idx = futures[future]
 				try:
-					success = future.result() # Get result (True or False) from download_image
+					success = future.result() # (True/False) from download_image
 					if success:
-						successful_rows.append(futures[future]) # Keep track of successfully downloaded rows
+						successful_rows.append(original_df_idx) # Keep track of successfully downloaded rows
 				except Exception as e:
-					print(f"Unexpected error: {e}")
+					print(f"Unexpected error: {e} for {original_df_idx}")
+	print(f"Total successful downloads: {len(successful_rows)}/{df.shape[0]}.")
+
 	print(f"cleaning {type(df)} {df.shape} with {len(successful_rows)} succeeded downloaded images [functional URL]...")
-	df_cleaned = df.loc[successful_rows] # keep only the successfully downloaded rows
-	print(f"Total images downloaded successfully: {len(successful_rows)} out of {df.shape[0]}")
+	df_cleaned = df.loc[successful_rows].copy() # keep only the successfully downloaded rows
 	print(f"df_cleaned: {df_cleaned.shape}")
-	img_dir_size = sum(os.path.getsize(os.path.join(image_dir, f)) for f in os.listdir(image_dir) if os.path.isfile(os.path.join(image_dir, f))) * 1e-9  # GB
-	print(f"{image_dir} contains {len(os.listdir(image_dir))} file(s) with total size: {img_dir_size:.2f} GB")
+
+	actual_files_in_dir = [f for f in os.listdir(image_dir) if os.path.isfile(os.path.join(image_dir, f))]
+	img_dir_size = sum(os.path.getsize(os.path.join(image_dir, f)) for f in actual_files_in_dir) * 1e-9  # GB
+	print(f"{image_dir} contains {len(actual_files_in_dir)} file(s) with total size: {img_dir_size:.2f} GB")
 	return df_cleaned
 
 def get_extension(url: str="www.example.com/some_/path/to/file.jpg"):
