@@ -648,7 +648,6 @@ def download_image_old(
 			with open(image_path, 'wb') as f:
 				f.write(response.content)
 
-			# Verify if the downloaded image can be opened
 			with Image.open(image_path) as img:
 				img.verify()
 
