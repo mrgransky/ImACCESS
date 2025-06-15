@@ -127,6 +127,13 @@ nltk.download(
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 
+def parse_tuple(s):
+    try:
+        # Convert the string to a tuple
+        return ast.literal_eval(s)
+    except (ValueError, SyntaxError):
+        raise argparse.ArgumentTypeError(f"Invalid tuple format: {s}")
+
 def clean_(text:str, sw:list):
 	if not text:
 		return
@@ -448,6 +455,18 @@ def _process_image_for_storage(
 			print(f"\timage size: {file_size_bytes / 1024 / 1024:.2f} <= (threshold: {large_image_threshold_mb} MB) => stored unchanged.")
 		return True
 
+	if not isinstance(target_size, (tuple, list)) or len(target_size) != 2:
+		if verbose:
+			print(f"Invalid target_size: {target_size}. Must be a tuple/list of 2 integers.")
+		raise ValueError(f"Invalid target_size: {target_size}. Must be a tuple/list of 2 integers.")
+
+	try:
+		target_size = (int(target_size[0]), int(target_size[1]))
+	except (ValueError, TypeError) as e:
+		if verbose:
+			print(f"Invalid target_size: {target_size}. Must be a tuple/list of 2 integers. Error: {e}")
+		raise ValueError(f"Invalid target_size: {target_size}. Must be a tuple/list of 2 integers.") from e
+
 	try:
 		with Image.open(img_path) as img:
 			img = img.convert("RGB")
@@ -459,7 +478,8 @@ def _process_image_for_storage(
 						print(
 							f"\tCreating thumbnail"
 							f"(Original dimensions: {original_size[0]}x{original_size[1]}, "
-							f"File size: {file_size_bytes / 1024 / 1024:.2f} MB)"
+							f"File size: {file_size_bytes / 1024 / 1024:.2f} MB) "
+							f"=> Target size: {target_size})"
 						)
 					img.thumbnail(target_size, resample=Image.Resampling.LANCZOS)
 					action_taken = "Thumbnailed"
@@ -494,6 +514,10 @@ def _process_image_for_storage(
 		if verbose:
 			print(f"An unexpected error occurred during image processing for {img_path}: {e}")
 		if os.path.exists(img_path):
+			try:
+				os.remove(img_path)
+			except OSError as remove_error:
+				print(f"Failed to remove corrupted image {img_path}: {remove_error}")
 			os.remove(img_path)
 		return False
 
@@ -592,100 +616,6 @@ def download_image(
 	print(f"[{rIdx}/{total_rows}] Failed downloading {image_id} after {retries} attempts.")
 
 	return False
-
-def download_image_old(
-		row,
-		session, 
-		image_dir, 
-		total_rows,
-		retries=2, 
-		backoff_factor=0.5,
-		download_timeout=20,
-		enable_thumbnailing: bool = False,
-		thumbnail_size: tuple = (500, 500),
-		large_image_threshold_mb: float = 2.0,
-	):
-	t0 = time.time()
-	rIdx = row.name
-	image_url = row['img_url']
-	image_id = row['id']
-	image_path = os.path.join(image_dir, f"{image_id}.jpg")
-
-	# --- Step 1: Check if image already exists, is valid, and (if applicable) processed ---
-	if os.path.exists(image_path):
-		try:
-			# Verify if the existing image can be opened
-			with Image.open(image_path) as img:
-				img.verify()
-			# If processing is enabled, attempt to process/re-process the existing image
-			if enable_thumbnailing:
-				if not _process_image_for_storage(img_path=image_path, target_size=thumbnail_size, large_image_threshold_mb=large_image_threshold_mb, verbose=True):
-					print(f"Existing image {image_path} seems valid but re-processing failed. Re-downloading...")
-				else:
-					print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150} (Skipping existing & processed) {time.time()-t0:.1f} s")
-					return True # Existing image is good
-			else: # If thumbnailing is NOT enabled, just check validity
-				print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150} (Skipping existing raw) {time.time()-t0:.1f} s")
-				return True # Existing image is good
-		except (IOError, SyntaxError, Image.DecompressionBombError) as e:
-			print(f"Existing image {image_path} is invalid/corrupt: {e}, re-downloading...")
-			if os.path.exists(image_path): # Remove the broken file
-				os.remove(image_path)
-		except Exception as e:
-			print(f"Unexpected error while checking existing image {image_path}: {e}")
-			if os.path.exists(image_path): # Remove the broken file
-				os.remove(image_path)
-
-
-	 # --- Step 2: Download the image ---
-	attempt = 0  # Retry mechanism
-	while attempt < retries:
-		try:
-			response = session.get(image_url, timeout=download_timeout)
-			response.raise_for_status()  # Raise an error for bad responses (e.g., 404 or 500)
-			
-			# Save the image to the directory
-			with open(image_path, 'wb') as f:
-				f.write(response.content)
-
-			with Image.open(image_path) as img:
-				img.verify()
-
-			# --- Step 3: Conditionally process (thumbnail/optimize) if enabled ---
-			if not _process_image_for_storage(img_path=image_path, target_size=thumbnail_size, large_image_threshold_mb=large_image_threshold_mb, verbose=True):
-				raise ValueError(f"Failed to process image {image_id} after download.")
-
-			print(f"{rIdx:<10}/ {total_rows:<10}{image_id:<150}{time.time()-t0:.1f} s")
-			return True  # Image downloaded and verified successfully
-		except requests.exceptions.SSLError as ssl_err:
-			print(f"[{rIdx}/{total_rows}] SSL error. Retrying without verification: {ssl_err}")
-			try:
-				response = session.get(image_url, timeout=download_timeout, verify=False)
-				response.raise_for_status()
-			except Exception as e:
-				print(f"[{rIdx}/{total_rows}] Retry without verification failed: {e}")
-				raise e
-		except (RequestException, IOError) as e:
-			attempt += 1
-			print(f"<!> [{rIdx}/{total_rows}] Downloading {image_url} Failed: {e}, retrying ({attempt}/{retries})")
-
-			if os.path.exists(image_path):
-				print(f"removing broken img: {image_path}")
-				os.remove(image_path)
-
-			time.sleep(backoff_factor * (2 ** attempt))  # Exponential backoff
-		except (SyntaxError, Image.DecompressionBombError, ValueError) as e:
-			print(f"[{rIdx}/{total_rows}] Downloaded image {image_id} is invalid: {e}")
-			break  # No need to retry if the image is invalid
-
-	# --- Step 4: Clean up if all attempts failed ---
-	if os.path.exists(image_path):
-		print(f"removing broken img: {image_path}")
-		os.remove(image_path)  # Remove invalid image file
-
-	print(f"[{rIdx}/{total_rows}] Failed downloading {image_id} after {retries} attempts.")
-
-	return False  # Indicate failed download
 
 def get_synchronized_df_img(
 		df:pd.DataFrame, 

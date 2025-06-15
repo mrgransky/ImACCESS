@@ -15,6 +15,7 @@ if FastText_Language_Identification not in os.listdir():
 	urllib.request.urlretrieve(url, FastText_Language_Identification)
 ft_model = fasttext.load_model(FastText_Language_Identification)
 dataset_name: str = "europeana".upper()
+
 parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colletion")
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', '-sdt', type=str, default="1900-01-01", help='Dataset DIR')
@@ -25,7 +26,7 @@ parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histo
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
 parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='Validation Split Percentage')
 parser.add_argument('--enable_thumbnailing', action='store_true', help='Enable image thumbnailing')
-parser.add_argument('--thumbnail_size', type=int, default=1000, help='Thumbnail size (width/height in pixels)')
+parser.add_argument('--thumbnail_size', type=parse_tuple, default=(1000, 1000), help='Thumbnail size (width, height) in pixels')
 parser.add_argument('--large_image_threshold_mb', type=float, default=1.0, help='Large image threshold in MB')
 
 args, unknown = parser.parse_known_args()
