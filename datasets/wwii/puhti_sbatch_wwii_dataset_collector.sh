@@ -31,7 +31,7 @@ echo "$SLURM_SUBMIT_HOST conda env from tykky module..."
 ddir="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 st_dt="1939-09-01"
 end_dt="1945-09-02"
-num_workers=$((SLURM_CPUS_PER_TASK - 1))  # reserve 2 CPUs for the main process and other overheads
+num_workers=$((SLURM_CPUS_PER_TASK - 1))
 
 python -u data_collector.py \
 	--dataset_dir $ddir \
