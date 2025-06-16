@@ -44,7 +44,8 @@
 		"aerodrome", "naval base", "army barracks", "coastal defense", "warship", "land warfare", "naval warfare",
 		"industrial site", "railroad station", "facility",
 		"harbor", "port", "bathing area", "steaming", "smoking cigarettes", "volcanic eruption",
-		"library", "urban plaza", "cathedral", "funeral",
+		"library", "urban plaza", "cathedral", "funeral", 
+		"animal-powered transport", "sled-pulling harness",
 		"assembly line", "signpost", "aerial view", "street view", "skyscraper", "restaurant", "lounge", "residential area",
 		"wreckage site", "shipwreck", "plane wreck", "demolished area"
 	],
