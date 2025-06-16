@@ -290,6 +290,9 @@ def main():
 	# 	df=europeana_df_merged_raw,
 	# 	image_dir=IMAGE_DIR,
 	# 	nw=args.num_workers,
+	# enable_thumbnailing=args.enable_thumbnailing,
+	# thumbnail_size=args.thumbnail_size,
+	# large_image_threshold_mb=args.large_image_threshold_mb,
 	# )
 	############################## Dropping duplicated img_url ##############################
 
@@ -334,8 +337,11 @@ def main():
 	)
 	############################## aggregating user_query to list ##############################
 
-
-	label_dirstribution_fname = os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_label_distribution_{europeana_df.shape[0]}_x_{europeana_df.shape[1]}.png")
+	label_dirstribution_fname = os.path.join(
+		OUTPUT_DIRECTORY, 
+		f"{dataset_name}_label_distribution_{europeana_df.shape[0]}_x_{europeana_df.shape[1]}.png"
+	)
+	
 	plot_label_distribution(
 		df=europeana_df,
 		dname=dataset_name,
