@@ -488,6 +488,9 @@ def main():
 				df=df,
 				dname=f"{dataset_name}_{version_name}",
 				fpth=plot_label_distribution_fname,
+				FIGURE_SIZE=(14, 8),
+				DPI=DPI,
+				label_column='label',
 			)
 
 		if not is_multi_label:
