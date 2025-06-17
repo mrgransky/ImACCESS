@@ -56,8 +56,8 @@ STOPWORDS.extend(customized_meaningless_words)
 STOPWORDS = set(STOPWORDS)
 # print(STOPWORDS, type(STOPWORDS))
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
-# europeana_api_key: str = "plaction"
-europeana_api_key: str = "api2demo"
+europeana_api_key: str = "plaction"
+# europeana_api_key: str = "api2demo"
 # europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
@@ -397,6 +397,9 @@ def main():
 				df=df,
 				dname=f"{dataset_name}_{version_name}",
 				fpth=plot_label_distribution_fname,
+				FIGURE_SIZE=(14, 8),
+				DPI=DPI,
+				label_column='label',
 			)
 
 		if not is_multi_label:

@@ -8,7 +8,6 @@ sys.path.insert(0, project_dir)
 from misc.utils import *
 from misc.visualize import *
 
-
 # local:
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 --img_mean_std
 # $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std --enable_thumbnailing > logs/smu_dataset_collection.out &
