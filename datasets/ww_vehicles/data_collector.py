@@ -10,6 +10,8 @@ from urllib.parse import urljoin, urlparse
 import pandas as pd
 import shutil
 from tqdm import tqdm
+import shutil
+
 
 # List of URLs to scrape
 URLS = [
@@ -25,23 +27,24 @@ URLS = [
 ]
 
 DATASET_DIRECTORY = "/home/farid/datasets/WW_DATASETs/WW_VEHICLES"
-THUMBNAIL_DIRECTORY = os.path.join(DATASET_DIRECTORY, "thumbnails")
 IMAGE_DIRECTORY = os.path.join(DATASET_DIRECTORY, "images")
+THUMBNAIL_DIRECTORY = os.path.join(DATASET_DIRECTORY, "thumbnails")
+os.makedirs(THUMBNAIL_DIRECTORY, exist_ok=True)
 os.makedirs(DATASET_DIRECTORY, exist_ok=True)
 os.makedirs(IMAGE_DIRECTORY, exist_ok=True)
-os.makedirs(THUMBNAIL_DIRECTORY, exist_ok=True)
 
-CSV_FILENAME = os.path.join(DATASET_DIRECTORY, "metadata.csv")
+SINGLE_LABEL_CSV_FILENAME = os.path.join(DATASET_DIRECTORY, "metadata_single_label.csv")
+MULTI_LABEL_CSV_FILENAME = os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv")
 
 # Known flag images to exclude
 FLAG_FILENAMES = {
-		"gb_r.gif", "france_r.jpg", "russ_r.jpg", "usa_r.jpg", "italy_r.jpg",
-		"jap_r.jpg", "belgium_r.jpg", "axis_r.jpg", "all_imperial_r.jpg",
-		"austriahun_r.gif", "turkey_r.jpg", "allies_r.jpg", "unitedkingdom_r.jpg",
-		"canada_r.jpg", "poland_r.jpg", "soviet_r.jpg", "czech_r.jpg",
-		"nazi_r.jpg", "china_r.jpg", "east-germany_r.jpg", "west-germany_r.jpg",
-		"uk_r.jpg", "uk_r.gif", "jp_r.jpg", "ussr_r.jpg", "germany_r.jpg",
-		"challenge-coins.jpg", "italww2_r.jpg", "wehrmacht_structure_1939-1945.png",
+	"gb_r.gif", "france_r.jpg", "russ_r.jpg", "usa_r.jpg", "italy_r.jpg",
+	"jap_r.jpg", "belgium_r.jpg", "axis_r.jpg", "all_imperial_r.jpg",
+	"austriahun_r.gif", "turkey_r.jpg", "allies_r.jpg", "unitedkingdom_r.jpg",
+	"canada_r.jpg", "poland_r.jpg", "soviet_r.jpg", "czech_r.jpg",
+	"nazi_r.jpg", "china_r.jpg", "east-germany_r.jpg", "west-germany_r.jpg",
+	"uk_r.jpg", "uk_r.gif", "jp_r.jpg", "ussr_r.jpg", "germany_r.jpg",
+	"challenge-coins.jpg", "italww2_r.jpg", "wehrmacht_structure_1939-1945.png",
 }
 
 SLIDE_PATTERN = re.compile(r"slide\d+\.jpg", re.IGNORECASE)
@@ -203,39 +206,33 @@ def extract_metadata_and_images(
 	return data
 
 def save_metadata(data, filename):
-		"""
-		Save metadata to CSV and Excel files using pandas.
-		
-		Args:
-				data: List of dictionaries containing metadata.
-				filename: Base filename for CSV (Excel will use .xlsx extension).
-		"""
-		if not data:
-				print("No data to save.")
-				return
-		
-		# Convert list of dicts to DataFrame
-		df = pd.DataFrame(data)
-		
-		# Save to CSV
-		csv_path = filename
-		df.to_csv(csv_path, index=False, encoding='utf-8')
-		print(f"Saved {len(df)} entries to {csv_path}")
-		
-		# Save to Excel
-		excel_path = os.path.splitext(filename)[0] + '.xlsx'
-		try:
-				df.to_excel(excel_path, index=False, engine='openpyxl')
-				print(f"Saved {len(df)} entries to {excel_path}")
-		except Exception as e:
-				print(f"Failed to save Excel file {excel_path}: {e}")
+	if not data:
+		print("No data to save.")
+		return
+	
+	# Convert list of dicts to DataFrame
+	df = pd.DataFrame(data)
+	
+	# Save to CSV
+	csv_path = filename
+	df.to_csv(csv_path, index=False, encoding='utf-8')
+	print(f"Saved {len(df)} entries to {csv_path}")
+	
+	# Save to Excel
+	excel_path = os.path.splitext(filename)[0] + '.xlsx'
+	try:
+		df.to_excel(excel_path, index=False, engine='openpyxl')
+		print(f"Saved {len(df)} entries to {excel_path}")
+	except Exception as e:
+		print(f"Failed to save Excel file {excel_path}: {e}")
 
 def create_thumbnail(
-		dataset_metadata: list[dict], 
+		dataset_metadata: list[dict],
 		size=(500, 500), 
 		large_image_threshold_mb=2.0,
 	):
 	print(f"Creating thumbnails for {len(dataset_metadata)} images...")
+
 	large_image_threshold_bytes = large_image_threshold_mb * 1024 * 1024
 	for data in tqdm(dataset_metadata, desc="Creating thumbnails"):
 		img_path = data.get("img_path")
@@ -268,8 +265,8 @@ def create_thumbnail(
 			print(f"Failed to create thumbnail for {img_path}: {e}")
 
 def main():
-	if not os.path.exists(CSV_FILENAME):
-		print(f"CSV file {CSV_FILENAME} does not exist. Creating it...")
+	if not os.path.exists(SINGLE_LABEL_CSV_FILENAME):
+		print(f"CSV file {SINGLE_LABEL_CSV_FILENAME} does not exist. Creating it...")
 		dataset_metadata = []
 		downloaded_ids_global = set()  # Global set to track downloaded images
 		for url in URLS:
@@ -288,18 +285,19 @@ def main():
 			data = extract_metadata_and_images(html_content, url, event, country, downloaded_ids_global)
 			dataset_metadata.extend(data)
 			print(f"Extracted {len(data)} entries from {url}")
-		save_metadata(dataset_metadata, CSV_FILENAME)
+		save_metadata(dataset_metadata, SINGLE_LABEL_CSV_FILENAME)
 		print(f"\nDone. Total images downloaded and metadata saved: {len(dataset_metadata)}")
 	else:
-		print(f"Loading {CSV_FILENAME}...")
-		df = pd.read_csv(CSV_FILENAME, encoding='utf-8')
+		print(f"Loading {SINGLE_LABEL_CSV_FILENAME}...")
+		df = pd.read_csv(SINGLE_LABEL_CSV_FILENAME, encoding='utf-8')
 		dataset_metadata = df.to_dict(orient='records')
-		print(f"Loaded {type(df)} {df.shape} with {len(dataset_metadata)} entries from {CSV_FILENAME}")
-
+		print(f"Loaded {type(df)} {df.shape} with {len(dataset_metadata)} entries from {SINGLE_LABEL_CSV_FILENAME}")
+	shutil.copy(SINGLE_LABEL_CSV_FILENAME, MULTI_LABEL_CSV_FILENAME)
+	shutil.copy(SINGLE_LABEL_CSV_FILENAME.replace('.csv', '.xlsx'), MULTI_LABEL_CSV_FILENAME.replace('.csv', '.xlsx'))
 	print(json.dumps(dataset_metadata[0], indent=2, ensure_ascii=False))
 
-	# Creating Thumbnails
-	create_thumbnail(dataset_metadata=dataset_metadata)
+	# # Creating Thumbnails
+	# create_thumbnail(dataset_metadata=dataset_metadata)
 	
 if __name__ == "__main__":
 	main()

@@ -28,6 +28,7 @@ parser.add_argument('--val_split_pct', '-vsp', type=float, default=0.35, help='V
 parser.add_argument('--enable_thumbnailing', action='store_true', help='Enable image thumbnailing')
 parser.add_argument('--thumbnail_size', type=parse_tuple, default=(1000, 1000), help='Thumbnail size (width, height) in pixels')
 parser.add_argument('--large_image_threshold_mb', type=float, default=1.0, help='Large image threshold in MB')
+parser.add_argument('--seed', '-s', type=int, default=42, help='Random seed')
 
 args, unknown = parser.parse_known_args()
 args.dataset_dir = os.path.normpath(args.dataset_dir)
@@ -67,15 +68,12 @@ headers = {
 }
 
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
-os.makedirs(DATASET_DIRECTORY, exist_ok=True)
-
-IMAGE_DIR = os.path.join(DATASET_DIRECTORY, "images")
-os.makedirs(IMAGE_DIR, exist_ok=True)
-
+IMAGE_DIRECTORY = os.path.join(DATASET_DIRECTORY, "images")
 HITs_DIR = os.path.join(DATASET_DIRECTORY, "hits")
-os.makedirs(HITs_DIR, exist_ok=True)
-
 OUTPUT_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
+os.makedirs(DATASET_DIRECTORY, exist_ok=True)
+os.makedirs(IMAGE_DIRECTORY, exist_ok=True)
+os.makedirs(HITs_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
@@ -207,7 +205,7 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 			'raw_doc_date': raw_doc_date,
 			'doc_year': doc_year,
 			'country': doc.get("country")[0],
-			'img_path': f"{os.path.join(IMAGE_DIR, str(doc_id) + '.jpg')}"
+			'img_path': f"{os.path.join(IMAGE_DIRECTORY, str(doc_id) + '.jpg')}"
 		}
 		data.append(row)
 	df = pd.DataFrame(data)
@@ -225,6 +223,7 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 
 @measure_execution_time
 def main():
+	set_seeds(seed=args.seed, debug=False)
 	with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 		all_label_tags = list(set([line.strip() for line in file_]))
 	print(type(all_label_tags), len(all_label_tags))
@@ -256,49 +255,56 @@ def main():
 			if df is not None:
 				dfs.append(df)
 
-	print(f"Concatinating {len(dfs)} dfs...")
-	europeana_df_merged_raw = pd.concat(dfs, ignore_index=True)
+	print(f">> Concatinating {len(dfs)} dfs")
+	df_merged_raw = pd.concat(dfs, ignore_index=True)
+	print(f">> Concatinated dfs: {df_merged_raw.shape}")
+
+	print(f"<!> Replacing labels with super classes")
 	json_file_path = os.path.join(project_dir, 'misc', 'super_labels.json')
 	if os.path.exists(json_file_path):
 		with open(json_file_path, 'r') as file_:
 			replacement_dict = json.load(file_)
 	else:
 		print(f"Error: {json_file_path} does not exist.")
+		replacement_dict = {}
 
-	print(f"pre-processing merged {type(europeana_df_merged_raw)} {europeana_df_merged_raw.shape}")
-	print(f"Handling user_query...")
-	europeana_df_merged_raw['label'] = europeana_df_merged_raw['user_query'].replace(replacement_dict)
-	print(f"Handling img_url with None...")
+	unq_labels = set(replacement_dict.values())
+	print(f">> {len(unq_labels)} Unique Label(s):\n{unq_labels}")
 
-	print(f"img_url with None: {europeana_df_merged_raw['img_url'].isna().sum()}")
-	europeana_df_merged_raw = europeana_df_merged_raw.dropna(subset=['img_url'])
+	print(f">> Pre-processing raw merged {type(df_merged_raw)} {df_merged_raw.shape}")
 
-	############################## Dropping duplicated img_url ##############################
+	print(f">> Merging user_query to label with umbrella terms from {json_file_path}")
+	df_merged_raw['label'] = df_merged_raw['user_query'].replace(replacement_dict)
+	print(f">> Found {df_merged_raw['img_url'].isna().sum()} None img_url / {df_merged_raw.shape[0]} total samples")
+	df_merged_raw = df_merged_raw.dropna(subset=['img_url'])
+
+	# ############################# Dropping duplicated img_url ##############################
+	# print("\n1. Creating SINGLE-LABEL version (dropping duplicates)...")
 	# print(f"Handling img_url with duplicate...")
-	# print(f"img_url with duplicate: {europeana_df_merged_raw['img_url'].duplicated().sum()}")
-	# europeana_df_merged_raw = europeana_df_merged_raw.drop_duplicates(subset=['img_url'])
-	# print(f"img_url with duplicate: {europeana_df_merged_raw['img_url'].duplicated().sum()}")
-	# print(f"Processed europeana_df_merged_raw: {europeana_df_merged_raw.shape}")
-	# print(europeana_df_merged_raw.head(20))
-	# europeana_df_merged_raw.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
+	# print(f"img_url duplicates before removal: {df_merged_raw['img_url'].duplicated().sum()}")
+	# single_label_df = df_merged_raw.drop_duplicates(subset=['img_url'])
+	# print(f"img_url duplicates after removal: {single_label_df['img_url'].duplicated().sum()}")
+	# print(f"Single-label dataset shape: {single_label_df.shape}")
+
+	# single_label_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_single_label_raw.csv"), index=False)
 	# try:
-	# 	europeana_df_merged_raw.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
+	# 	single_label_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_single_label_raw.xlsx"), index=False)
 	# except Exception as e:
 	# 	print(f"Failed to write Excel file: {e}")
 
-	# europeana_df = get_synchronized_df_img(
-	# 	df=europeana_df_merged_raw,
-	# 	image_dir=IMAGE_DIR,
+	# single_label_final_df = get_synchronized_df_img(
+	# 	df=single_label_df,
+	# 	image_dir=IMAGE_DIRECTORY,
 	# 	nw=args.num_workers,
-	# enable_thumbnailing=args.enable_thumbnailing,
-	# thumbnail_size=args.thumbnail_size,
-	# large_image_threshold_mb=args.large_image_threshold_mb,
+	# 	enable_thumbnailing=args.enable_thumbnailing,
+	# 	thumbnail_size=args.thumbnail_size,
+	# 	large_image_threshold_mb=args.large_image_threshold_mb,
 	# )
-	############################## Dropping duplicated img_url ##############################
+	# ############################# Dropping duplicated img_url ##############################
 
 	############################## aggregating user_query to list ##############################
-	print(f"Handling img_url duplicates and aggregating user_query...")
-	grouped = europeana_df_merged_raw.groupby('img_url').agg(
+	print(f"\n1. Creating MULTI-LABEL version (aggregating user_query) from raw data: {df_merged_raw.shape}...")
+	grouped = df_merged_raw.groupby('img_url').agg(
 		{
 			'id': 'first',
 			'doc_id': 'first',
@@ -314,22 +320,21 @@ def main():
 			'country': 'first',
 		}
 	).reset_index()
-	grouped['label'] = grouped['user_query'].apply(lambda x: replacement_dict.get(x[0], x[0]))
 
 	# Map user_query to labels using replacement_dict
 	grouped['label'] = grouped['user_query'].apply(lambda x: replacement_dict.get(x[0], x[0]))
-	print(f"Processed europeana_df_merged_raw: {grouped.shape}")
-	print(grouped.head(20))
-	grouped.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_raw.csv"), index=False)
+	print(f"Multi-label dataset shape: {grouped.shape}")
+	grouped.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_multi_label_raw.csv"), index=False)
 
 	try:
-		grouped.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_raw.xlsx"), index=False)
+		grouped.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_multi_label_raw.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	europeana_df = get_synchronized_df_img(
+	print("\n2. Processing images (using multi-label dataset as reference)...")
+	multi_label_final_df = get_synchronized_df_img(
 		df=grouped,
-		image_dir=IMAGE_DIR,
+		image_dir=IMAGE_DIRECTORY,
 		nw=args.num_workers,
 		enable_thumbnailing=args.enable_thumbnailing,
 		thumbnail_size=args.thumbnail_size,
@@ -337,46 +342,110 @@ def main():
 	)
 	############################## aggregating user_query to list ##############################
 
-	label_dirstribution_fname = os.path.join(
-		OUTPUT_DIRECTORY, 
-		f"{dataset_name}_label_distribution_{europeana_df.shape[0]}_x_{europeana_df.shape[1]}.png"
-	)
+	print("\n3. Creating SINGLE-LABEL version (from successfully downloaded images)...")
+	single_label_final_df = multi_label_final_df.copy()
+	single_label_columns_to_keep = [
+		col 
+		for col in single_label_final_df.columns 
+		if col not in ['multi_labels', 'user_query']
+	]
+	single_label_final_df = single_label_final_df[single_label_columns_to_keep].copy()
 	
-	plot_label_distribution(
-		df=europeana_df,
-		dname=dataset_name,
-		fpth=label_dirstribution_fname,
-		)
+	print(f"Single-label dataset shape: {single_label_final_df.shape}")
 	
-	europeana_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
+	# Save single-label raw metadata (before image sync)
+	single_label_raw_df = grouped[single_label_columns_to_keep].copy()
+	single_label_raw_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_single_label_raw.csv"), index=False)
 	try:
-		europeana_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
+		single_label_raw_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_single_label_raw.xlsx"), index=False)
 	except Exception as e:
-		print(f"Failed to write Excel file: {e}")
+		print(f"Failed to write single-label Excel file: {e}")
+	
+	print("\nSaving final single-label dataset...")
+	single_label_final_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_single_label.csv"), index=False)
+	try:
+		single_label_final_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_single_label.xlsx"), index=False)
+	except Exception as e:
+		print(f"Failed to write final single-label Excel file: {e}")
+	
+	print("Saving final multi-label dataset...")
+	multi_label_final_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv"), index=False)
+	try:
+		multi_label_final_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_multi_label.xlsx"), index=False)
+	except Exception as e:
+		print(f"Failed to write final multi-label Excel file: {e}")
+	
+	def process_dataset_version(df, version_name, is_multi_label=False):
+		"""Process a dataset version with visualizations and splits"""
+		print(f"\n--- Processing {version_name} dataset ---")
+		
+		if is_multi_label:
+			# For multi-label, we need special handling
+			plot_label_distribution_fname = os.path.join(
+				OUTPUT_DIRECTORY, 
+				f"{dataset_name}_{version_name}_label_distribution_{df.shape[0]}_x_{df.shape[1]}.png"
+			)
+			# You might want to create a special multi-label visualization here
+			print(f"Multi-label visualization needs special handling - skipping for now")
+		else:
+			# Single-label visualization
+			plot_label_distribution_fname = os.path.join(
+				OUTPUT_DIRECTORY, 
+				f"{dataset_name}_{version_name}_label_distribution_{df.shape[0]}_x_{df.shape[1]}.png"
+			)
+			plot_label_distribution(
+				df=df,
+				dname=f"{dataset_name}_{version_name}",
+				fpth=plot_label_distribution_fname,
+			)
 
-	# stratified splitting:
-	train_df, val_df = get_stratified_split(df=europeana_df, val_split_pct=args.val_split_pct,)
-	train_df.to_csv(os.path.join(DATASET_DIRECTORY, 'metadata_train.csv'), index=False)
-	val_df.to_csv(os.path.join(DATASET_DIRECTORY, 'metadata_val.csv'), index=False)
-
-	plot_train_val_label_distribution(
-		train_df=train_df,
-		val_df=val_df,
-		dataset_name=dataset_name,
-		OUTPUT_DIRECTORY=OUTPUT_DIRECTORY,
-		VAL_SPLIT_PCT=args.val_split_pct,
-		fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_simple_random_split_stratified_label_distribution_train_val_{args.val_split_pct}_pct.png'),
-		FIGURE_SIZE=(14, 8),
-		DPI=DPI,
-	)
-
-	plot_year_distribution(
-		df=europeana_df,
-		dname=dataset_name,
-		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_year_distribution_{europeana_df.shape[0]}_samples.png"),
-		BINs=args.historgram_bin,
+		if not is_multi_label:
+			# Single-label stratified split
+			train_df, val_df = get_stratified_split(
+				df=df, 
+				val_split_pct=args.val_split_pct,
+				label_col='label'
+			)
+			# Save train/val splits
+			train_df.to_csv(os.path.join(DATASET_DIRECTORY, f'metadata_{version_name}_train.csv'), index=False)
+			val_df.to_csv(os.path.join(DATASET_DIRECTORY, f'metadata_{version_name}_val.csv'), index=False)
+		else:
+			print(f"Multi-label stratified split not implemented yet!")
+		
+		# Train/val distribution plot
+		if not is_multi_label:  # Only for single-label for now
+			plot_train_val_label_distribution(
+				train_df=train_df,
+				val_df=val_df,
+				dataset_name=f"{dataset_name}_{version_name}",
+				OUTPUT_DIRECTORY=OUTPUT_DIRECTORY,
+				VAL_SPLIT_PCT=args.val_split_pct,
+				fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_{version_name}_stratified_label_distribution_train_val_{args.val_split_pct}_pct.png'),
+				FIGURE_SIZE=(14, 8),
+				DPI=DPI,
+			)
+		
+		# Year distribution plot
+		plot_year_distribution(
+			df=df,
+			dname=f"{dataset_name}_{version_name}",
+			fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_{version_name}_year_distribution_{df.shape[0]}_samples.png"),
+			BINs=args.historgram_bin,
+		)
+		print(f"{version_name} dataset processing complete!")
+		
+	process_dataset_version(
+		df=single_label_final_df, 
+		version_name="single_label", 
+		is_multi_label=False
 	)
 	
+	process_dataset_version(
+		df=multi_label_final_df, 
+		version_name="multi_label", 
+		is_multi_label=True
+	)
+
 	if args.img_mean_std:
 		try:
 			img_rgb_mean = load_pickle(fpath=img_rgb_mean_fpth) 
@@ -391,6 +460,23 @@ def main():
 				img_rgb_std_fpth=img_rgb_std_fpth,
 			)
 		print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
+
+	print("\nDATASET CREATION SUMMARY\n")
+	print("-"*100)
+	print(f"Single-label dataset: {single_label_final_df.shape}: {single_label_final_df['label'].nunique()} unique labels")
+	print(list(single_label_final_df.columns))
+	print(single_label_final_df['label'].value_counts().sort_values(ascending=False))
+	print("-"*100)
+
+	print(f"Multi-label dataset: {multi_label_final_df.shape}")
+	print(list(multi_label_final_df.columns))
+	print("-"*100)
+
+	print(f"Unique images downloaded: {len(os.listdir(IMAGE_DIRECTORY))} files")
+	print(f"Files created in {DATASET_DIRECTORY}:")
+	for file in sorted(os.listdir(DATASET_DIRECTORY)):
+		if file.endswith(('.csv', '.xlsx')):
+			print(f"\t- {file}")
 
 def test():
 	query = "RESERVOIR"

@@ -2954,11 +2954,12 @@ def plot_train_val_label_distribution(
 		FIGURE_SIZE: tuple = (12, 8),
 		VAL_SPLIT_PCT: float = 0.2,
 		fname: str = "simple_random_split_stratified_label_distribution_train_val.png",
+		label_column: str = 'label',
 	):
 	# Visualize label distribution in training and validation sets
 	plt.figure(figsize=FIGURE_SIZE)
-	train_df['label'].value_counts().plot(kind='bar', color='blue', alpha=0.6, label=f'Train {1-VAL_SPLIT_PCT}')
-	val_df['label'].value_counts().plot(kind='bar', color='red', alpha=0.9, label=f'Validation {VAL_SPLIT_PCT}')
+	train_df[label_column].value_counts().plot(kind='bar', color='blue', alpha=0.6, label=f'Train {1-VAL_SPLIT_PCT}')
+	val_df[label_column].value_counts().plot(kind='bar', color='red', alpha=0.9, label=f'Validation {VAL_SPLIT_PCT}')
 	plt.title(
 		f'{dataset_name} Stratified Label Distribution (Total samples: {train_df.shape[0]+val_df.shape[0]})\n'
 		f'Train: {train_df.shape[0]} | Validation: {val_df.shape[0]}', 
@@ -3458,12 +3459,13 @@ def plot_label_distribution(
 		df: pd.DataFrame,
 		dname: str,
 		fpth: str,
-		FIGURE_SIZE: tuple = (14, 8),
-		DPI: int = 200,
+		label_column: str,
+		FIGURE_SIZE: tuple,
+		DPI: int,
 		top_n: int = None  # Option to show only top N labels
 	):
 
-	label_counts = df['label'].value_counts()
+	label_counts = df[label_column].value_counts()
 	
 	# Handle large number of labels
 	if top_n and len(label_counts) > top_n:

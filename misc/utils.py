@@ -128,11 +128,11 @@ HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 
 def parse_tuple(s):
-    try:
-        # Convert the string to a tuple
-        return ast.literal_eval(s)
-    except (ValueError, SyntaxError):
-        raise argparse.ArgumentTypeError(f"Invalid tuple format: {s}")
+	try:
+		# Convert the string to a tuple
+		return ast.literal_eval(s)
+	except (ValueError, SyntaxError):
+		raise argparse.ArgumentTypeError(f"Invalid tuple format: {s}")
 
 def clean_(text:str, sw:list):
 	if not text:
@@ -313,17 +313,17 @@ def get_stratified_split(
 		df:pd.DataFrame, 
 		val_split_pct:float, 
 		seed:int=42,
+		label_col: str = 'label',
 	):
 	print(f"Stratified Splitting [Single-label dataset]".center(150, "-"))
-	set_seeds(seed=seed, debug=False)
 	# Count the occurrences of each label
-	label_counts = df['label'].value_counts()
+	label_counts = df[label_col].value_counts()
 	labels_to_drop = label_counts[label_counts == 1].index
 	# Filter out rows with labels that appear only once
-	df_filtered = df[~df['label'].isin(labels_to_drop)]
+	df_filtered = df[~df[label_col].isin(labels_to_drop)]
 
 	# Check if df_filtered is not empty
-	if df_filtered.empty or df_filtered['label'].nunique() == 0:
+	if df_filtered.empty or df_filtered[label_col].nunique() == 0:
 		raise ValueError("No labels with more than one occurrence. Stratified sampling cannot be performed.")
 
 	# stratified splitting
@@ -331,7 +331,7 @@ def get_stratified_split(
 		df_filtered,
 		test_size=val_split_pct,
 		shuffle=True, 
-		stratify=df_filtered['label'],
+		stratify=df_filtered[label_col],
 		random_state=seed,
 	)
 	return train_df, val_df
@@ -341,99 +341,92 @@ def get_multi_label_stratified_split(
 		val_split_pct: float,
 		seed: int = 42,
 		label_col: str = 'multimodal_labels',
-		# min_label_freq: int = 2 # Removed as per analysis, handled by IterativeStratification
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-		print(f"Stratified Splitting [Multi-label dataset]".center(150, "-"))
-		t_st = time.time()
-		set_seeds(seed=seed, debug=False)
+	) -> Tuple[pd.DataFrame, pd.DataFrame]:
+	print(f"Stratified Splitting [Multi-label dataset]".center(150, "-"))
+	t_st = time.time()
+	df_copy = df.copy()
 
-		df_copy = df.copy() # Work on a copy to avoid modifying the original df
+	# --- 1. Robust Label Parsing using ast.literal_eval ---
+	print(f"Parsing '{label_col}' column...")
+	if label_col not in df_copy.columns:
+		raise ValueError(f"Label column '{label_col}' not found in the DataFrame.")
 
-		# --- 1. Robust Label Parsing using ast.literal_eval ---
-		print(f"Parsing '{label_col}' column...")
-		if label_col not in df_copy.columns:
-			raise ValueError(f"Label column '{label_col}' not found in the DataFrame.")
-
-		def parse_label(x):
-			if isinstance(x, str): # Only apply literal_eval if it's a string
-					try:
-							return ast.literal_eval(x)
-					except (ValueError, SyntaxError) as e:
-							# Raise an error if a string cannot be parsed, as it's unexpected
-							raise ValueError(f"Malformed string found in '{label_col}': '{x}'. Error: {e}")
-			elif isinstance(x, list): # If it's already a list, return it as is
-					return x
-			else:
-					# Handle other unexpected types, or raise an error
-					print(f"Warning: Unexpected type '{type(x)}' found in '{label_col}': {x}. Trying to convert to empty list.")
-					return [] # Or raise ValueError("Unsupported type in label column")
-
-		try:
-				df_copy[label_col] = df_copy[label_col].apply(parse_label)
-				print(f"Successfully processed '{label_col}' column.")
-		except ValueError as e: # Catch the specific ValueError from parse_label
-				raise ValueError(f"Error parsing multi-label column '{label_col}'. "
-												 f"Ensure it contains valid string representations of lists. Error: {e}")
-		except Exception as e: # Catch any other unexpected errors during apply
-				raise ValueError(f"Unexpected error during parsing of '{label_col}': {e}")
-
-		# --- 2. Remove rows with empty label lists (if any became empty after parsing) ---
-		df_filtered = df_copy[df_copy[label_col].apply(len) > 0]
-		initial_rows = len(df_copy)
-		final_rows = len(df_filtered)
-
-		if final_rows == 0:
-				raise ValueError("No samples with non-empty label lists remain after parsing and initial filtering.")
-		if initial_rows != final_rows:
-				print(f"Removed {initial_rows - final_rows} rows with empty label lists.")
-		print(f"DataFrame shape after filtering empty label lists: {df_filtered.shape}")
-
-		# --- 3. Binarize Labels ---
-		mlb = MultiLabelBinarizer()
-		label_matrix = mlb.fit_transform(df_filtered[label_col])
-		unique_labels = mlb.classes_
-
-		if len(unique_labels) == 0:
-				raise ValueError("No unique labels found after processing. Cannot perform stratification.")
-
-		print(f">> Found {len(unique_labels)} unique labels:\n{unique_labels.tolist()[:10]}...") # Show first 10
-
-		# --- 4. Perform Iterative Stratification ---
-		print("Multi-label stratification using Iterative Stratification...")
-		# X is a dummy feature matrix (can be indices or just a range)
-		# y is the binarized label matrix
-		X_indices = np.arange(len(df_filtered)).reshape(-1, 1)
-		
-		# iterative_train_test_split returns (X_train, y_train, X_val, y_val)
-		X_train_idx, y_train_labels, X_val_idx, y_val_labels = iterative_train_test_split(
-			X_indices, 
-			label_matrix, 
-			test_size=val_split_pct,
+	def parse_label(x):
+		if isinstance(x, str): # Only apply literal_eval if it's a string
+			try:
+				return ast.literal_eval(x)
+			except (ValueError, SyntaxError) as e:
+				# Raise an error if a string cannot be parsed, as it's unexpected
+				raise ValueError(f"Malformed string found in '{label_col}': '{x}'. Error: {e}")
+		elif isinstance(x, list): # If it's already a list, return it as is
+			return x
+		else:
+			# Handle other unexpected types, or raise an error
+			print(f"Warning: Unexpected type '{type(x)}' found in '{label_col}': {x}. Trying to convert to empty list.")
+			return [] # Or raise ValueError("Unsupported type in label column")
+	try:
+		df_copy[label_col] = df_copy[label_col].apply(parse_label)
+		print(f"Successfully processed '{label_col}' column.")
+	except ValueError as e: # Catch the specific ValueError from parse_label
+		raise ValueError(
+			f"Error parsing multi-label column '{label_col}'. "
+			f"Ensure it contains valid string representations of lists. Error: {e}"
 		)
-		# Convert back to original DataFrame indices
-		train_original_indices = df_filtered.iloc[X_train_idx.flatten()].index.values
-		val_original_indices = df_filtered.iloc[X_val_idx.flatten()].index.values
-		train_df = df_filtered.loc[train_original_indices].reset_index(drop=True)
-		val_df = df_filtered.loc[val_original_indices].reset_index(drop=True)
+	except Exception as e: # Catch any other unexpected errors during apply
+		raise ValueError(f"Unexpected error during parsing of '{label_col}': {e}")
 
-		# --- 5. Verify Split and Print Distributions ---
-		if train_df.empty or val_df.empty:
-			raise ValueError("Train or validation set is empty after splitting. Adjust val_split_pct or check data.")
+	# --- 2. Remove rows with empty label lists (if any became empty after parsing) ---
+	df_filtered = df_copy[df_copy[label_col].apply(len) > 0]
+	initial_rows = len(df_copy)
+	final_rows = len(df_filtered)
+	if final_rows == 0:
+		raise ValueError("No samples with non-empty label lists remain after parsing and initial filtering.")
+	if initial_rows != final_rows:
+		print(f"Removed {initial_rows - final_rows} rows with empty label lists.")
+	print(f"DataFrame shape after filtering empty label lists: {df_filtered.shape}")
 
-		print(f"\n>> Original Filtered Data: {df_filtered.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
+	# --- 3. Binarize Labels ---
+	mlb = MultiLabelBinarizer()
+	label_matrix = mlb.fit_transform(df_filtered[label_col])
+	unique_labels = mlb.classes_
+	if len(unique_labels) == 0:
+		raise ValueError("No unique labels found after processing. Cannot perform stratification.")
+	print(f">> Found {len(unique_labels)} unique labels:\n{unique_labels.tolist()[:10]}...") # Show first 10
+	
+	# --- 4. Perform Iterative Stratification ---
+	print("Multi-label stratification using Iterative Stratification...")
+	# X is a dummy feature matrix (can be indices or just a range)
+	# y is the binarized label matrix
+	X_indices = np.arange(len(df_filtered)).reshape(-1, 1)
+	
+	# iterative_train_test_split returns (X_train, y_train, X_val, y_val)
+	X_train_idx, y_train_labels, X_val_idx, y_val_labels = iterative_train_test_split(
+		X_indices, 
+		label_matrix, 
+		test_size=val_split_pct,
+	)
+	# Convert back to original DataFrame indices
+	train_original_indices = df_filtered.iloc[X_train_idx.flatten()].index.values
+	val_original_indices = df_filtered.iloc[X_val_idx.flatten()].index.values
+	train_df = df_filtered.loc[train_original_indices].reset_index(drop=True)
+	val_df = df_filtered.loc[val_original_indices].reset_index(drop=True)
+	
+	# --- 5. Verify Split and Print Distributions ---
+	if train_df.empty or val_df.empty:
+		raise ValueError("Train or validation set is empty after splitting. Adjust val_split_pct or check data.")
+	print(f"\n>> Original Filtered Data: {df_filtered.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
 
-		# Print label distribution for verification
-		print("\nTrain Label Distribution (Top 20):")
-		train_label_counts = Counter([label for labels in train_df[label_col] for label in labels])
-		train_label_df = pd.DataFrame(train_label_counts.items(), columns=['Label', 'Count']).sort_values(by='Count', ascending=False)
-		print(train_label_df.head(20).to_string())
-
-		print("\nValidation Label Distribution (Top 20):")
-		val_label_counts = Counter([label for labels in val_df[label_col] for label in labels])
-		val_label_df = pd.DataFrame(val_label_counts.items(), columns=['Label', 'Count']).sort_values(by='Count', ascending=False)
-		print(val_label_df.head(20).to_string())
-		print(f"Stratified Splitting Elapsed Time: {time.time()-t_st:.3f} sec".center(160, "-"))
-		return train_df, val_df
+	print("\nTrain Label Distribution (Top 20):")
+	train_label_counts = Counter([label for labels in train_df[label_col] for label in labels])
+	train_label_df = pd.DataFrame(train_label_counts.items(), columns=['Label', 'Count']).sort_values(by='Count', ascending=False)
+	print(train_label_df.head(20).to_string())
+	print("\nValidation Label Distribution (Top 20):")
+	val_label_counts = Counter([label for labels in val_df[label_col] for label in labels])
+	val_label_df = pd.DataFrame(val_label_counts.items(), columns=['Label', 'Count']).sort_values(by='Count', ascending=False)
+	print(val_label_df.head(20).to_string())
+	print(f"Stratified Splitting Elapsed Time: {time.time()-t_st:.3f} sec".center(160, "-"))
+	
+	return train_df, val_df
 
 def _process_image_for_storage(
 		img_path: str,

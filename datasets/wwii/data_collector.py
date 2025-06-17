@@ -8,7 +8,7 @@ from misc.utils import *
 from misc.visualize import *
 
 # how to run in local:
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs --img_mean_std > logs/wwii_image_download.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std > logs/wwii_image_download.out &
 
 # run in Pouta:
 # $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colle
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', '-sdt', type=str, default="1939-09-01", help='Start Date')
 parser.add_argument('--end_date', '-edt', type=str, default="1945-09-02", help='End Date')
-parser.add_argument('--num_workers', '-nw', type=int, default=12, help='Number of CPUs')
+parser.add_argument('--num_workers', '-nw', type=int, default=8, help='Number of CPUs')
 parser.add_argument('--batch_size', '-bs', type=int, default=128, help='batch_size')
 parser.add_argument('--historgram_bin', '-hb', type=int, default=60, help='Histogram Bins')
 parser.add_argument('--img_mean_std', action='store_true', help='calculate image mean & std')
@@ -104,7 +104,15 @@ def get_dframe(
 		doc_url: str, 
 		user_query: str,
 	) -> pd.DataFrame:
+
 	print(f">> Extracting DF for label[{doc_idx}]: « {user_query} » from {doc_url}")
+
+	#################################################
+	#TODO: modification required for user_query
+	if len(user_query) < 3:
+		return None
+	#################################################
+
 	qv_processed = re.sub(
 		pattern=" ", 
 		repl="_", 
@@ -220,8 +228,9 @@ def get_dframe(
 			'description': doc_description,
 			'enriched_document_description': enriched_document_description,
 			'country': doc_url_info.get("country"),
-			'user_query': [user_query] if user_query and len(user_query) > 0 else None,
-			'label': (doc_url_info.get("main_label") or "") + " " + (doc_url_info.get("type") or ""),
+			'label': user_query,
+			# 'user_query': [user_query] if user_query and len(user_query) > 0 else None,
+			# 'label': (doc_url_info.get("main_label") or "") + " " + (doc_url_info.get("type") or ""),
 			'date': extracted_year,
 			'img_path': os.path.join(IMAGE_DIR, filename),
 		}
@@ -683,17 +692,27 @@ def main():
 		df=wwii_df,
 		dname=dataset_name,
 		fpth=label_dirstribution_fname,
+		FIGURE_SIZE=(14, 8),
+		DPI=260,
+		label_column='label',
 	)
 
-	wwii_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata.csv"), index=False)
+	wwii_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_single_label.csv"), index=False)
+	wwii_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv"), index=False)
 	try:
-		wwii_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata.xlsx"), index=False)
+		wwii_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_single_label.xlsx"), index=False)
+		wwii_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_multi_label.xlsx"), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
 
-	train_df, val_df = get_stratified_split(df=wwii_df, val_split_pct=args.val_split_pct,)
-	train_df.to_csv(os.path.join(DATASET_DIRECTORY, 'metadata_train.csv'), index=False)
-	val_df.to_csv(os.path.join(DATASET_DIRECTORY, 'metadata_val.csv'), index=False)
+	# stratified splitting [single-label]:
+	train_df, val_df = get_stratified_split(
+		df=wwii_df, 
+		val_split_pct=args.val_split_pct,
+		label_col='label',
+	)
+	train_df.to_csv(os.path.join(DATASET_DIRECTORY, 'metadata_single_label_train.csv'), index=False)
+	val_df.to_csv(os.path.join(DATASET_DIRECTORY, 'metadata_single_label_val.csv'), index=False)
 
 	plot_train_val_label_distribution(
 		train_df=train_df,
@@ -704,6 +723,7 @@ def main():
 		fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_simple_random_split_stratified_label_distribution_train_val_{args.val_split_pct}_pct.png'),
 		FIGURE_SIZE=(14, 8),
 		DPI=DPI,
+		label_column='label',
 	)
 
 	if args.img_mean_std:
