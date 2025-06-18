@@ -94,7 +94,7 @@ print(list(merged_single_label_df.columns), merged_single_label_df.shape)
 merged_single_label_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'), index=False)
 
 try:
-	merged_df.to_excel(os.path.join(HISTORY_XN_DIRECTORY, "metadata.xlsx"), index=False)
+	merged_single_label_df.to_excel(os.path.join(HISTORY_XN_DIRECTORY, "metadata_single_label.xlsx"), index=False)
 except Exception as e:
 	print(f"Failed to write Excel file: {e}")
 
