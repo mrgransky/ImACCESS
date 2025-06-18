@@ -91,8 +91,12 @@ for i, dataset_path in enumerate(DATASETS):
 print(f"merging {len(single_label_dfs)} [single-label] dataframe(s) to create {dataset_name} dataset...")
 merged_single_label_df = pd.concat(single_label_dfs, ignore_index=True)
 print(list(merged_single_label_df.columns), merged_single_label_df.shape)
-merged_single_label_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'), index=False)
 
+num_unique_labels_single_label = merged_single_label_df['label'].nunique()
+print(f"Total number of unique labels [single-label]: {num_unique_labels_single_label}")
+
+print(f"Saving {len(single_label_dfs)} merged single-label dataset to {HISTORY_XN_DIRECTORY}")
+merged_single_label_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'), index=False)
 try:
 	merged_single_label_df.to_excel(os.path.join(HISTORY_XN_DIRECTORY, "metadata_single_label.xlsx"), index=False)
 except Exception as e:
@@ -101,7 +105,7 @@ except Exception as e:
 plot_label_distribution(
 	df=merged_single_label_df,
 	dname=dataset_name,
-	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_all_labels_distribution.png'),
+	fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_dataset_{num_unique_labels_single_label}_labels_distribution.png"),
 	FIGURE_SIZE=(14, 8),
 	DPI=DPI,
 	label_column='label',
@@ -109,7 +113,7 @@ plot_label_distribution(
 
 plot_label_distribution_pie_chart(
 	df=merged_single_label_df,
-	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_all_labels_distribution_pie_chart_{merged_single_label_df.shape[0]}_samples.png'),
+	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_{num_unique_labels_single_label}_labels_distribution_pie_chart_{merged_single_label_df.shape[0]}_samples.png'),
 	figure_size=(7, 11),
 	DPI=DPI,
 )
@@ -118,7 +122,7 @@ plot_grouped_bar_chart(
 	merged_df=merged_single_label_df,
 	DPI=DPI,
 	FIGURE_SIZE=(16, 8),
-	fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_labels_x_{merged_single_label_df['label'].value_counts().shape[0]}_freq_x_{len(single_label_dfs)}_datasets_grouped_bar_chart.png")
+	fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_dataset_labels_x_{num_unique_labels_single_label}_freq_x_{len(single_label_dfs)}_datasets_grouped_bar_chart.png")
 )
 
 print(f"Stratified Splitting".center(150, "-"))
@@ -142,7 +146,7 @@ plot_train_val_label_distribution(
 	dataset_name=dataset_name,
 	OUTPUT_DIRECTORY=OUTPUT_DIRECTORY,
 	VAL_SPLIT_PCT=VAL_SPLIT_PCT,
-	fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_simple_random_split_stratified_label_distribution_train_val.png'),
+	fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_simple_random_split_stratified_label_distribution_train_val.png'),
 	FIGURE_SIZE=(14, 8),
 	DPI=DPI,
 )
