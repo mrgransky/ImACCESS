@@ -160,7 +160,7 @@ plot_year_distribution(
 
 create_distribution_plot_with_long_tail_analysis(
 	df=merged_single_label_df,
-	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_all_labels_long_tailed_distribution.png'),
+	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_{num_unique_labels_single_label}_labels_long_tailed_distribution.png'),
 )
 
 img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
