@@ -571,7 +571,7 @@ def main():
 			)
 		print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
 
-	print("\nDATASET CREATION SUMMARY\n")
+	print("\nDATASET CREATION SUMMARY")
 	print("-"*100)
 	print(f"Single-label dataset: {single_label_final_df.shape}: {single_label_final_df['label'].nunique()} unique labels")
 	print(list(single_label_final_df.columns))

@@ -34,7 +34,6 @@ pd.set_option('display.width', 1000)
 pd.set_option('display.max_rows', 100)
 sns.set_style("whitegrid")
 
-
 def plot_image_to_texts_separate_horizontal_bars(
 				models: dict,
 				validation_loader: DataLoader,
@@ -2788,8 +2787,6 @@ def perform_multilabel_eda(
 		print("-" * 40 + "\n")
 
 		print(f"EDA Elapsed_t: {time.time()-eda_st:.3f} sec".center(160, "-"))
-
-
 
 def plot_label_distribution_pie_chart(
 		df: pd.DataFrame = None,
