@@ -3176,8 +3176,8 @@ def plot_year_distribution(
 def create_distribution_plot_with_long_tail_analysis(
 		df: pd.DataFrame,
 		fpth: str,
-		FIGURE_SIZE: tuple = (14, 9),
-		DPI: int = 200,
+		FIGURE_SIZE: tuple,
+		DPI: int,
 		top_n: int = None,  # Option to show only top N labels
 		head_threshold: int = 5000,  # Labels with frequency > head_threshold
 		tail_threshold: int = 1000,   # Labels with frequency < tail_threshold
@@ -3196,17 +3196,16 @@ def create_distribution_plot_with_long_tail_analysis(
 	tail_labels = label_counts[label_counts < tail_threshold].index.tolist()
 	torso_labels = label_counts[(label_counts >= tail_threshold) & (label_counts <= head_threshold)].index.tolist()
 	segment_colors = {
-		'Head': '#00a87ee5',
-		'Torso': '#b99700',
-		'Tail': '#eb3e3e',
+		'Head': "#009670e4",
+		'Torso': "#d4ae02",
+		'Tail': "#ee4747",
 	}
-	# Create figure and primary axis
+
 	fig, ax = plt.subplots(
 		figsize=FIGURE_SIZE, 
 		facecolor='white', 
 	)
 	
-	# Plot with better styling
 	bars = label_counts.plot(
 		kind='bar',
 		ax=ax,
@@ -3351,19 +3350,19 @@ def create_distribution_plot_with_long_tail_analysis(
 			ax=ax_log,
 			color='#8a008a',
 			marker='o',
-			markerfacecolor='none',  # Remove marker fill
-			markeredgecolor='#8a008a',   # Set marker edge color
-			markersize=3,           # Optional: adjust marker size
+			markerfacecolor='none',  				# Remove marker fill
+			markeredgecolor='#8a008a',  # Set marker edge color
+			markersize=3,           				# Adjust marker size
 			linewidth=2.5,
 			alpha=0.9,
 			label='Logarithmic Scale'.capitalize(),
 			zorder=3,
 		)
 		ax_log.set_ylabel(
-				ylabel='Log Sample Frequency', 
-				color='#8a008a', 
-				fontsize=10, 
-				fontweight='bold',
+			ylabel='Log Sample Frequency', 
+			color='#8a008a', 
+			fontsize=10, 
+			fontweight='bold',
 		)
 		ax_log.tick_params(axis='y', colors='#8a008a')
 		ax_log.spines['right'].set_visible(True)

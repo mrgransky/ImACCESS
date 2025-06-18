@@ -28,10 +28,7 @@ from misc.visualize import *
 # $ nohup python -u merge_datasets.py > /scratch/project_2004072/ImACCESS/trash/logs/history_xN_merged_datasets.out &
 
 USER = os.getenv("USER")
-FIGURE_SIZE = (12, 9)
-DPI = 350
 BINs = 60
-
 VAL_SPLIT_PCT = 0.35
 DATASET_DIRECTORY = {
 	"farid": "/home/farid/datasets/WW_DATASETs",
@@ -106,8 +103,8 @@ plot_label_distribution(
 	df=merged_single_label_df,
 	dname=dataset_name,
 	fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_dataset_{num_unique_labels_single_label}_labels_distribution.png"),
-	FIGURE_SIZE=(14, 8),
-	DPI=DPI,
+	FIGURE_SIZE=(15,8),
+	DPI=400,
 	label_column='label',
 )
 
@@ -115,13 +112,13 @@ plot_label_distribution_pie_chart(
 	df=merged_single_label_df,
 	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_{num_unique_labels_single_label}_labels_distribution_pie_chart_{merged_single_label_df.shape[0]}_samples.png'),
 	figure_size=(7, 11),
-	DPI=DPI,
+	DPI=400,
 )
 
 plot_grouped_bar_chart(
 	merged_df=merged_single_label_df,
-	DPI=DPI,
-	FIGURE_SIZE=(16, 8),
+	FIGURE_SIZE=(15,8),
+	DPI=400,
 	fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_dataset_labels_x_{num_unique_labels_single_label}_freq_x_{len(single_label_dfs)}_datasets_grouped_bar_chart.png")
 )
 
@@ -147,8 +144,8 @@ plot_train_val_label_distribution(
 	OUTPUT_DIRECTORY=OUTPUT_DIRECTORY,
 	VAL_SPLIT_PCT=VAL_SPLIT_PCT,
 	fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_simple_random_split_stratified_label_distribution_train_val.png'),
-	FIGURE_SIZE=(14, 8),
-	DPI=DPI,
+	FIGURE_SIZE=(15,8),
+	DPI=400,
 )
 
 plot_year_distribution(
@@ -161,6 +158,8 @@ plot_year_distribution(
 create_distribution_plot_with_long_tail_analysis(
 	df=merged_single_label_df,
 	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_{num_unique_labels_single_label}_labels_long_tailed_distribution.png'),
+	FIGURE_SIZE=(15,8),
+	DPI=400,
 )
 
 img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
