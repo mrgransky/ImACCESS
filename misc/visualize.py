@@ -3274,35 +3274,35 @@ def create_distribution_plot_with_long_tail_analysis(
 			fontsize=12,
 			fontweight='bold',
 			color=segment_colors['Torso'],
-			bbox=dict(facecolor='white', alpha=segment_text_opacity, edgecolor='none', pad=2),
+			# bbox=dict(facecolor='white', alpha=segment_text_opacity, edgecolor='none', pad=2),
 			zorder=5,
 		)
 	
 	if tail_indices:
-			ax.axvspan(
-				min(tail_indices) - 0.4, 
-				max(tail_indices) + 0.4, 
-				alpha=segment_opacity, 
-				color=segment_colors['Tail'], 
-				# label='Tail'.upper()
-			)
-			ax.text(
-				np.mean(tail_indices), 
-				ymax * segment_text_yoffset,
-				f"TAIL\n({len(tail_labels)} labels)",
-				horizontalalignment='center',
-				verticalalignment='center',
-				fontsize=12,
-				fontweight='bold',
-				color=segment_colors['Tail'],
-				bbox=dict(
-					facecolor='white', 
-					alpha=0.5, 
-					edgecolor='none', 
-					pad=2,
-				),
-				zorder=5,
-			)
+		ax.axvspan(
+			min(tail_indices) - 0.4, 
+			max(tail_indices) + 0.4, 
+			alpha=segment_opacity, 
+			color=segment_colors['Tail'], 
+			# label='Tail'.upper()
+		)
+		ax.text(
+			np.mean(tail_indices), 
+			ymax * segment_text_yoffset,
+			f"TAIL\n({len(tail_labels)} labels)",
+			horizontalalignment='center',
+			verticalalignment='center',
+			fontsize=12,
+			fontweight='bold',
+			color=segment_colors['Tail'],
+			# bbox=dict(
+			# 	facecolor='white', 
+			# 	alpha=0.5, 
+			# 	edgecolor='none', 
+			# 	pad=2,
+			# ),
+			zorder=5,
+		)
 	
 	# Hide all spines initially
 	for spine in ax.spines.values():
