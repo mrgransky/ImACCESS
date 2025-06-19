@@ -3233,7 +3233,7 @@ def create_distribution_plot_with_long_tail_analysis(
 	ymax = label_counts.max() * 1.15  # Set maximum y-value for shading
 	
 	segment_opacity = 0.2
-	segment_text_yoffset = 1.05 if len(head_labels) < 5 else 1.0
+	segment_text_yoffset = 1.05 if len(head_labels) < 5 else 0.8
 	segment_text_opacity = 0.7
 
 	if head_indices:
