@@ -3230,10 +3230,10 @@ def create_distribution_plot_with_long_tail_analysis(
 	tail_indices.sort()
 	
 	# Add shaded areas if segments exist
-	ymax = label_counts.max() * 1.1  # Set maximum y-value for shading
+	ymax = label_counts.max() * 1.15  # Set maximum y-value for shading
 	
 	segment_opacity = 0.2
-	segment_text_yoffset = 1.045 if len(head_labels) < 5 else 1.0
+	segment_text_yoffset = 1.05 if len(head_labels) < 5 else 1.0
 	segment_text_opacity = 0.7
 
 	if head_indices:
@@ -3336,10 +3336,10 @@ def create_distribution_plot_with_long_tail_analysis(
 			bbox=dict(
 				facecolor='white',
 				edgecolor='none',
-				alpha=0.78,
+				alpha=0.8,
 				pad=0.5
 			),
-			zorder=5,
+			zorder=10,
 		)
 	
 	# Add a logarithmic scale option for highly imbalanced distributions
@@ -3417,7 +3417,7 @@ def create_distribution_plot_with_long_tail_analysis(
 
 	# Create custom legend elements
 	custom_lines = [
-		Line2D([0], [0], color="#00315393", lw=4),  # Linear scale
+		Line2D([0], [0], color="#00315393", lw=6),  # Linear scale
 		Line2D([0], [0], color='#8a008a', lw=2, marker='o', markersize=3, markerfacecolor='none', markeredgecolor='#8a008a')  # Logarithmic scale
 	]
 
