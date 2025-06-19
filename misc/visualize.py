@@ -3195,16 +3195,14 @@ def create_distribution_plot_with_long_tail_analysis(
 	head_labels = label_counts[label_counts > head_threshold].index.tolist()
 	tail_labels = label_counts[label_counts < tail_threshold].index.tolist()
 	torso_labels = label_counts[(label_counts >= tail_threshold) & (label_counts <= head_threshold)].index.tolist()
+
 	segment_colors = {
 		'Head': "#009670e4",
 		'Torso': "#d4ae02",
 		'Tail': "#ee4747",
 	}
 
-	fig, ax = plt.subplots(
-		figsize=FIGURE_SIZE, 
-		facecolor='white', 
-	)
+	fig, ax = plt.subplots(figsize=FIGURE_SIZE, facecolor='white', constrained_layout=True)
 	
 	bars = label_counts.plot(
 		kind='bar',
@@ -3217,6 +3215,8 @@ def create_distribution_plot_with_long_tail_analysis(
 		label='Linear Scale'.capitalize(),
 		zorder=2,
 	)
+	
+	ax.grid(False) # Remove grid lines
 	
 	# Create shaded regions for Head, Torso, and Tail
 	all_indices = np.arange(len(label_counts))
@@ -3235,6 +3235,7 @@ def create_distribution_plot_with_long_tail_analysis(
 	segment_opacity = 0.2
 	segment_text_yoffset = 1.045 if len(head_labels) < 5 else 1.0
 	segment_text_opacity = 0.7
+
 	if head_indices:
 		ax.axvspan(
 			min(head_indices) - 0.4, 
@@ -3374,6 +3375,7 @@ def create_distribution_plot_with_long_tail_analysis(
 		# Hide all spines for the logarithmic scale
 		for spine in ax_log.spines.values():
 			spine.set_visible(False)
+
 	ax.set_xlabel('')
 	ax.tick_params(axis='x', length=0, width=0, color='none', labelcolor='black', labelsize=12)
 	ax.tick_params(axis='y', color='black', labelcolor='black', labelsize=11)

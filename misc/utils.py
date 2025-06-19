@@ -726,6 +726,9 @@ def get_mean_std_rgb_img_multiprocessing(
 		img_rgb_std_fpth: str,
 	) -> Tuple[List[float], List[float]]:
 	
+	if os.path.exists(img_rgb_mean_fpth) and os.path.exists(img_rgb_std_fpth):
+		return load_pickle(fpath=img_rgb_mean_fpth), load_pickle(fpath=img_rgb_std_fpth)
+
 	# Validate input and prepare image paths
 	if isinstance(source, str):
 		# image_paths = [os.path.join(source, f) for f in os.listdir(source) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
