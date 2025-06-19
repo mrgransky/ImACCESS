@@ -3380,7 +3380,7 @@ def create_distribution_plot_with_long_tail_analysis(
 	ax.tick_params(axis='x', length=0, width=0, color='none', labelcolor='black', labelsize=12)
 	ax.tick_params(axis='y', color='black', labelcolor='black', labelsize=11)
 	ax.set_ylabel('Sample Frequency', fontsize=10, fontweight='bold')
-	# ax.set_ylim(0, label_counts.max() * 1.1)
+	ax.set_ylim(0, label_counts.max() * 1.15)
 	
 	# Add basic statistics for the distribution
 	imbalance_ratio = label_counts.max()/label_counts.min()
@@ -3440,7 +3440,6 @@ def create_distribution_plot_with_long_tail_analysis(
 	)
 	legend.set_zorder(100)
 
-	plt.tight_layout()
 	plt.savefig(fpth, dpi=DPI, bbox_inches='tight')
 	plt.close()
 	
