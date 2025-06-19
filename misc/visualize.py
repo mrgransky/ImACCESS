@@ -3253,7 +3253,7 @@ def create_distribution_plot_with_long_tail_analysis(
 			fontsize=12,
 			fontweight='bold',
 			color=segment_colors['Head'],
-			bbox=dict(facecolor='white', alpha=segment_text_opacity, edgecolor='none', pad=2),
+			# bbox=dict(facecolor='white', alpha=segment_text_opacity, edgecolor='none', pad=2),
 			zorder=5,
 		)
 	
@@ -3325,14 +3325,14 @@ def create_distribution_plot_with_long_tail_analysis(
 		text_color = segment_colors['Head'] if i in head_indices else (segment_colors['Torso'] if i in torso_indices else segment_colors['Tail'])
 		ax.text(
 			i, 
-			v + (v * 0.025),  # Adjust vertical position relative to bar height
+			v + (v * 0.02),  # Adjust vertical position relative to bar height
 			str(v), 
 			ha='center',
 			fontsize=9,
 			fontweight='bold',
-			alpha=0.8,
+			alpha=0.85,
 			color=text_color,
-			rotation=70,
+			rotation=75,
 			# bbox=dict(
 			# 	# facecolor='white',
 			# 	# edgecolor='none',
