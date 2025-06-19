@@ -3207,12 +3207,12 @@ def create_distribution_plot_with_long_tail_analysis(
 	bars = label_counts.plot(
 		kind='bar',
 		ax=ax,
-		color="#00315393",
+		color="#193C6992",
 		width=0.7,
 		edgecolor='white',
 		linewidth=0.8,
-		alpha=0.65,
-		label='Linear Scale'.capitalize(),
+		alpha=0.75,
+		label='Linear'.capitalize(),
 		zorder=2,
 	)
 	
@@ -3233,7 +3233,7 @@ def create_distribution_plot_with_long_tail_analysis(
 	ymax = label_counts.max() * 1.11  # Set maximum y-value for shading
 	
 	segment_opacity = 0.2
-	segment_text_yoffset = 1.05 if len(head_labels) < 5 else 1.0
+	segment_text_yoffset = 1.1 if len(head_labels) < 5 else 1.0
 	segment_text_opacity = 0.7
 
 	if head_indices:
@@ -3325,21 +3325,21 @@ def create_distribution_plot_with_long_tail_analysis(
 		text_color = segment_colors['Head'] if i in head_indices else (segment_colors['Torso'] if i in torso_indices else segment_colors['Tail'])
 		ax.text(
 			i, 
-			v + (v * 0.04),  # Adjust vertical position relative to bar height
+			v + (v * 0.025),  # Adjust vertical position relative to bar height
 			str(v), 
 			ha='center',
-			fontsize=8,
+			fontsize=9,
 			fontweight='bold',
 			alpha=0.8,
 			color=text_color,
-			rotation=75,
-			bbox=dict(
-				facecolor='white',
-				edgecolor='none',
-				alpha=0.8,
-				pad=0.5
-			),
-			zorder=10,
+			rotation=70,
+			# bbox=dict(
+			# 	# facecolor='white',
+			# 	# edgecolor='none',
+			# 	alpha=0.8,
+			# 	# pad=0.5
+			# ),
+			zorder=5,
 		)
 	
 	# Add a logarithmic scale option for highly imbalanced distributions
@@ -3355,9 +3355,9 @@ def create_distribution_plot_with_long_tail_analysis(
 			markeredgecolor='#8a008a',  # Set marker edge color
 			markersize=3,           				# Adjust marker size
 			linewidth=2.5,
-			alpha=0.9,
-			label='Logarithmic Scale'.capitalize(),
-			zorder=3,
+			alpha=0.75,
+			label='Logarithmic'.capitalize(),
+			zorder=2,
 		)
 		ax_log.set_ylabel(
 			ylabel='Log Sample Frequency', 
@@ -3380,7 +3380,7 @@ def create_distribution_plot_with_long_tail_analysis(
 	ax.tick_params(axis='x', length=0, width=0, color='none', labelcolor='black', labelsize=12)
 	ax.tick_params(axis='y', color='black', labelcolor='black', labelsize=11)
 	ax.set_ylabel('Sample Frequency', fontsize=10, fontweight='bold')
-	ax.set_ylim(0, label_counts.max() * 1.15)
+	ax.set_ylim(0, label_counts.max() * 1.17)
 	
 	# Add basic statistics for the distribution
 	imbalance_ratio = label_counts.max()/label_counts.min()
