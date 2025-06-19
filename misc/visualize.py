@@ -3325,7 +3325,7 @@ def create_distribution_plot_with_long_tail_analysis(
 		text_color = segment_colors['Head'] if i in head_indices else (segment_colors['Torso'] if i in torso_indices else segment_colors['Tail'])
 		ax.text(
 			i, 
-			v + (v * 0.02),  # Adjust vertical position relative to bar height
+			v + (v * 0.015),  # Adjust vertical position relative to bar height
 			str(v), 
 			ha='center',
 			fontsize=9,
@@ -3353,9 +3353,9 @@ def create_distribution_plot_with_long_tail_analysis(
 			marker='o',
 			markerfacecolor='none',  				# Remove marker fill
 			markeredgecolor='#8a008a',  # Set marker edge color
-			markersize=3,           				# Adjust marker size
-			linewidth=2.5,
-			alpha=0.75,
+			markersize=2,          				# Adjust marker size
+			linewidth=2.0,
+			alpha=0.6,
 			label='Logarithmic'.capitalize(),
 			zorder=2,
 		)
@@ -3370,7 +3370,7 @@ def create_distribution_plot_with_long_tail_analysis(
 		ax_log.spines['right'].set_color('#8a008a')
 		ax_log.spines['right'].set_linewidth(1.0)
 		ax_log.spines['right'].set_alpha(0.7)
-		ax_log.grid(axis='y', alpha=0.3, linestyle='--', color='#727272', zorder=0)
+		ax_log.grid(axis='y', alpha=0.3, linestyle='--', color="#616161", zorder=0)
 
 		# Hide all spines for the logarithmic scale
 		for spine in ax_log.spines.values():

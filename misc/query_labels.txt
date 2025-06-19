@@ -2,8 +2,8 @@ Pearl Harbor attack
 armored personnel carrier
 infantry fighting vehicle
 allied air attack
-anti tank gun
-anti tank weapon
+anti personnel mine
+anti-personnel mine
 self propelled gun
 self propelled artillery
 armored fighting vehicle
@@ -32,7 +32,7 @@ naval training
 naval ship
 naval vessel
 naval warship
-Naval mine
+naval mine
 guided missile
 ballistic missile
 red cross
@@ -61,6 +61,7 @@ light bomber
 fighter bomber
 strike fighter
 american tank
+rifle grenade
 german tank
 french tank
 english tank
@@ -157,9 +158,7 @@ Mortar gun
 volley gun
 field gun
 mountain gun
-anti tank mine
-antitank gun
-antitank weapon
+land mine
 memorial day
 Decoration Day
 National Day
@@ -168,10 +167,14 @@ light house
 half track
 ground forces
 infantry weapon
+explosive weapon
 V-E Day
 V-J Day
+anti tank
+anti-tank
 watch tower
 watchtower
+antitank
 fortification
 accident
 Wreck
@@ -203,8 +206,9 @@ cemetery
 graveyard
 explosion
 Artillery
-Grenade
-Rifle
+grenade
+firearm
+rifle
 knives
 bayonet
 flamethrower
@@ -255,4 +259,5 @@ blitz
 banishment
 aviator
 pilot
+landmine
 marines
