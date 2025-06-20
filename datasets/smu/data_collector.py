@@ -589,10 +589,6 @@ def main():
 			print(f"\t- {file}")
 
 
-
-
-
-
 def test_on_search_(query="shovel", start_date="1900-01-01", end_date="1970-12-31"):
 	START_DATE = re.sub("-", "", start_date) # modified date: 19140101
 	END_DATE = re.sub("-", "", end_date) # modiifed date: 19140102
