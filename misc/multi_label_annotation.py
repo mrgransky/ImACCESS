@@ -587,10 +587,9 @@ def main():
 	print_args_table(args=args, parser=parser)
 
 	set_seeds(seed=42)
-	DATASET_DIRECTORY = os.path.dirname(args.csv_file)
-	text_output_path = os.path.join(DATASET_DIRECTORY, "metadata_textual_based_labels.csv")
-	vision_output_path = os.path.join(DATASET_DIRECTORY, "metadata_visual_based_labels.csv")
-	combined_output_path = os.path.join(DATASET_DIRECTORY, "metadata_multimodal.csv")
+	text_output_path = args.csv_file.replace('.csv', '_textual_based_labels.csv')
+	vision_output_path = args.csv_file.replace('.csv', '_visual_based_labels.csv')
+	combined_output_path = args.csv_file.replace('.csv', '_multimodal.csv')
 	dtypes = {
 		'doc_id': str, 'id': str, 'label': str, 'title': str,
 		'description': str, 'img_url': str, 'enriched_document_description': str,
