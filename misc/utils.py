@@ -577,7 +577,7 @@ def download_image(
 							continue  # Retry loop
 			except (RequestException, IOError) as e:
 					attempt += 1
-					print(f"<!> [{rIdx}/{total_rows}] Downloading {image_url} Failed: {e}, retrying ({attempt}/{retries})")
+					print(f"<!> [{rIdx}/{total_rows}] {e}, retrying ({attempt}/{retries})")
 					time.sleep(backoff_factor * (2 ** attempt))
 					continue
 			try:
