@@ -94,6 +94,9 @@ print(f"Total number of unique labels [single-label]: {num_unique_labels_single_
 
 print(f"Saving {len(single_label_dfs)} merged single-label dataset to {HISTORY_XN_DIRECTORY}")
 merged_single_label_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'), index=False)
+merged_multi_label_df = merged_single_label_df.copy()
+merged_multi_label_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_multi_label.csv'), index=False)
+
 try:
 	merged_single_label_df.to_excel(os.path.join(HISTORY_XN_DIRECTORY, "metadata_single_label.xlsx"), index=False)
 except Exception as e:
