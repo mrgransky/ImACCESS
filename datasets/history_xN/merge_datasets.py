@@ -25,7 +25,7 @@ from misc.visualize import *
 # $ nohup python -u merge_datasets.py > /media/volume/ImACCESS/trash/history_xN_merged_datasets.out &
 
 # run in puhti:
-# $ nohup python -u merge_datasets.py > /scratch/project_2004072/ImACCESS/trash/logs/history_xN_merged_datasets.out &
+# $ nohup python -u merge_datasets.py > /scratch/project_2004072/ImACCESS/trash/history_xN_merged_datasets.out &
 
 USER = os.getenv("USER")
 BINs = 60
