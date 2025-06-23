@@ -251,7 +251,7 @@ class HistoricalArchivesSingleLabelDataset(Dataset):
 		return image_tensor, tokenized_label_tensor, doc_label_int
 
 def get_multi_label_datasets(ddir: str, seed: int = 42):
-	metadata_fpth = os.path.join(ddir, "metadata_multimodal.csv")
+	metadata_fpth = os.path.join(ddir, "metadata_multi_label_multimodal.csv")
 	print(f"Loading multi-label dataset: {metadata_fpth}")
 	df = pd.read_csv(
 		filepath_or_buffer=metadata_fpth, 
@@ -261,9 +261,12 @@ def get_multi_label_datasets(ddir: str, seed: int = 42):
 	)
 	print(f"FULL Multi-label Dataset {type(df)} {df.shape}")
 	
-	metadata_train_fpth = os.path.join(ddir, "metadata_multimodal_train.csv")
-	metadata_val_fpth = os.path.join(ddir, "metadata_multimodal_val.csv")
-	
+	# metadata_train_fpth = os.path.join(ddir, "metadata_multimodal_train.csv")
+	# metadata_val_fpth = os.path.join(ddir, "metadata_multimodal_val.csv")
+
+	metadata_train_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_train.csv'))
+	metadata_val_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_val.csv'))
+
 	print(f"Loading multi-label training dataset: {metadata_train_fpth}")
 	df_train = pd.read_csv(
 			filepath_or_buffer=metadata_train_fpth, 
@@ -742,11 +745,6 @@ def get_multi_label_dataloaders_with_caching(
 	
 	return train_loader, val_loader
 
-
-# ==============================================================================
-# 2. THE REWRITTEN, HIGH-PERFORMANCE DATASET CLASS
-#    This completely replaces your old HistoricalArchivesMultiLabelDataset.
-# ==============================================================================
 class HistoricalArchivesMultiLabelDataset(Dataset):
 		"""
 		A robust and high-performance Dataset class for multi-label archives.
@@ -872,11 +870,6 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 						f"{transform_str}"
 				)
 
-
-# ==============================================================================
-# 3. THE REWRITTEN DATALOADER CREATION FUNCTION
-#    This replaces your old get_multi_label_dataloaders and its complex estimation.
-# ==============================================================================
 def get_multi_label_dataloaders(
 		dataset_dir: str,
 		batch_size: int,
@@ -896,7 +889,10 @@ def get_multi_label_dataloaders(
 	val_pct = 1.0 - train_pct
 	train_cache_size = int(cache_size * train_pct)
 	val_cache_size = int(cache_size * val_pct)
-	print(f">> Total Samples: {total_samples:,} | Total cache size: {cache_size:,} Distributed (train[{train_pct*100:.0f}%]: {train_cache_size:,}, validation[{val_pct*100:.0f}%]: {val_cache_size:,})")
+	print(
+		f">> Total Samples: {total_samples:,} | Total cache size: {cache_size:,} "
+		f"Distributed (train[{train_pct*100:.0f}%]: {train_cache_size:,}, validation[{val_pct*100:.0f}%]: {val_cache_size:,})"
+	)
 
 	# --- 2. Create the full dataset instances with LRU caching ---
 	train_dataset = HistoricalArchivesMultiLabelDataset(
@@ -950,5 +946,3 @@ def get_multi_label_dataloaders(
 	# 	full_val_loader, 
 	# 	quick_val_loader
 	# )
-
-# --- END OF REWRITTEN CODE ---
