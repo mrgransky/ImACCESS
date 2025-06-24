@@ -82,15 +82,14 @@ fi
 
 INIT_LRS=(5.0e-06 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 INIT_WDS=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
-DROPOUTS=(0.15 0.1 0.05 0.05 0.05)
-EPOCHS=(110 100 150 150 150)
+DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
+EPOCHS=(90 100 150 150 150)
 LORA_RANKS=(64 64 64 64 64)
 LORA_ALPHAS=(128.0 128.0 128.0 128.0 128.0) # 2x rank
 LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 BATCH_SIZES=(512 64 64 64 64)
-PRINT_FREQUENCIES=(1000 500 50 50 10)
+PRINT_FREQUENCIES=(500 500 50 50 10)
 SAMPLINGS=("kfold_stratified" "stratified_random")
-# EARLY_STOPPING_MIN_EPOCHS=(25 25 20 20 10)
 BASE_MIN_EPOCHS=(25 25 17 17 12)  # History_X4, National Archive, Europeana, WWII, SMU
 CACHE_SIZES=(1024 512 1000 1000 1000)  # History_X4, National Archive, Europeana, WWII, SMU
 
@@ -130,24 +129,23 @@ echo "EPOCHS: ${EPOCHS[$dataset_index]}"
 echo "INITIAL LEARNING RATE: ${INIT_LRS[$dataset_index]}"
 echo "INITIAL WEIGHT DECAY: ${INIT_WDS[$dataset_index]}"
 echo "DROPOUT: ${DROPOUT}"
-# echo "EARLY_STOPPING_MIN_EPOCHS: ${EARLY_STOPPING_MIN_EPOCHS[$strategy_index]}"
 echo "EARLY_STOPPING_MIN_EPOCHS: ${MIN_EPOCHS}"
 
-# Dynamically adjust batch size based on model architecture and dataset
+# Dynamically adjust batch size based on dataset and model architecture
 ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 
-# For larger models (ViT-L/14 and ViT-L/14@336px), reduce batch size
-if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-	# Further reduce batch size for HISTORY_X4 dataset due to its size
-	if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
-		ADJUSTED_BATCH_SIZE=512  # Very conservative batch size for large model + large dataset
+if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
+	if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
+		ADJUSTED_BATCH_SIZE=128
 	else
-		ADJUSTED_BATCH_SIZE=256 # Reduced batch size for large models with other datasets
+		ADJUSTED_BATCH_SIZE=256
 	fi
+elif [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
+	ADJUSTED_BATCH_SIZE=256
 fi
 
-echo "BATCH SIZE: [DEFAULT]: ${BATCH_SIZES[$dataset_index]} ADJUSTED: ${ADJUSTED_BATCH_SIZE}"
-echo "Starting history_clip_trainer.py for task $SLURM_ARRAY_TASK_ID"
+echo "BATCH SIZE: [DEFAULT]: ${BATCH_SIZES[$dataset_index]} [ADJUSTED]: ${ADJUSTED_BATCH_SIZE}"
+echo "Starting history_clip_trainer.py for dataset: $SLURM_ARRAY_TASK_ID"
 
 python -u history_clip_trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \
