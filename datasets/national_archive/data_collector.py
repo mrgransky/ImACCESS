@@ -30,7 +30,7 @@ print_args_table(args=args, parser=parser)
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-10
 
 ########################## --start_date 1933-01-01 --end_date 1933-01-02 ##########################
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs --start_date 1935-01-01 --end_date 1935-01-02 --num_workers 8 --img_mean_std --enable_thumbnailing > logs/na_image_download.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs --start_date 1900-01-01 --end_date 1970-12-31 --num_workers 4 --img_mean_std --enable_thumbnailing > logs/na_image_download.out &
 
 # saving into external hard drive:
 # $ nohup python -u data_collector.py -ddir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1935-01-01 --end_date 1935-01-02 --num_workers 8 --enable_thumbnailing --img_mean_std > logs/na_image_download.out &

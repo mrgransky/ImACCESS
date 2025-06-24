@@ -2571,8 +2571,8 @@ def full_finetune_single_label(
 			img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
 			txt2img_metrics=retrieval_metrics_per_epoch["txt2img"]
 		)
-		print(f"#"*100)
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
 				print(f"Train Cache Stats: {cache_stats}")
@@ -2581,7 +2581,7 @@ def full_finetune_single_label(
 			cache_stats = validation_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
 				print(f"Validation Cache Stats: {cache_stats}")
-		print(f"#"*100)
+			print(f"#"*100)
 
 		# --- Early Stopping Check ---
 		if early_stopping.should_stop(
