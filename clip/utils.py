@@ -235,43 +235,43 @@ def get_single_label_head_torso_tail_samples(
 	# Sample for I2T (Query Image -> Text Labels)
 	print("\n--- I2T Query Samples (Image Path + GT Label) ---")
 	for segment_name, segment_labels in segments.items():
-			if not segment_labels:
-					print(f"No {segment_name} labels in validation set. Skipping I2T sampling for this segment.")
-					continue
-			# Sample *labels* from the segment that are in the validation set
-			labels_to_sample_from = random.sample(segment_labels, min(num_samples_per_segment, len(segment_labels)))
-			print(f"\nSelected {min(num_samples_per_segment, len(segment_labels))} {segment_name} labels for I2T image sampling:")
-			for label in labels_to_sample_from:
-					# Get all images with this label in the validation set
-					images_for_label = df_val[df_val['label'] == label]['img_path'].tolist()
-					if images_for_label:
-							# Sample one image path for this label
-							sampled_img_path = random.choice(images_for_label)
-							i2t_queries.append({'image_path': sampled_img_path, 'label': label, 'segment': segment_name})
-							print(f"- Label: '{label}' ({len(images_for_label)} samples in val) -> Image: {sampled_img_path}")
-					else:
-							 print(f"- Warning: No images found for label '{label}' in the validation set for I2T query.")
+		if not segment_labels:
+			print(f"No {segment_name} labels in validation set. Skipping I2T sampling for this segment.")
+			continue
+		# Sample *labels* from the segment that are in the validation set
+		labels_to_sample_from = random.sample(segment_labels, min(num_samples_per_segment, len(segment_labels)))
+		print(f"\nSelected {min(num_samples_per_segment, len(segment_labels))} {segment_name} labels for I2T image sampling:")
+		for label in labels_to_sample_from:
+			# Get all images with this label in the validation set
+			images_for_label = df_val[df_val['label'] == label]['img_path'].tolist()
+			if images_for_label:
+				# Sample one image path for this label
+				sampled_img_path = random.choice(images_for_label)
+				i2t_queries.append({'image_path': sampled_img_path, 'label': label, 'segment': segment_name})
+				print(f"- Label: '{label}' ({len(images_for_label)} samples in val) -> Image: {sampled_img_path}")
+			else:
+				print(f"- Warning: No images found for label '{label}' in the validation set for I2T query.")
 	# Sample for T2I (Query Label -> Images)
 	print("\n--- T2I Query Samples (Label String) ---")
 	for segment_name, segment_labels in segments.items():
-			if not segment_labels:
-					print(f"No {segment_name} labels in validation set. Skipping T2I sampling for this segment.")
-					continue
-			# Sample *label strings* from the segment that are in the validation set
-			labels_to_sample = random.sample(segment_labels, min(num_samples_per_segment, len(segment_labels)))
-			print(f"\nSelected {min(num_samples_per_segment, len(segment_labels))} {segment_name} labels for T2I query:")
-			for label in labels_to_sample:
-				# Check if the label actually exists in the validation set (should be true if sampled from segment_labels_in_val)
-				# And ideally, check if there's at least one image for it in the validation set
-				if label in df_val['label'].values:
-						images_for_label = df_val[df_val['label'] == label]['img_path'].tolist()
-						if images_for_label:
-							t2i_queries.append({'label': label, 'segment': segment_name})
-							print(f"- Label: '{label}' ({len(images_for_label)} samples in val)")
-						else:
-							print(f"- Warning: Label '{label}' found in val labels, but no images. Skipping T2I query.")
+		if not segment_labels:
+			print(f"No {segment_name} labels in validation set. Skipping T2I sampling for this segment.")
+			continue
+		# Sample *label strings* from the segment that are in the validation set
+		labels_to_sample = random.sample(segment_labels, min(num_samples_per_segment, len(segment_labels)))
+		print(f"\nSelected {min(num_samples_per_segment, len(segment_labels))} {segment_name} labels for T2I query:")
+		for label in labels_to_sample:
+			# Check if the label actually exists in the validation set (should be true if sampled from segment_labels_in_val)
+			# And ideally, check if there's at least one image for it in the validation set
+			if label in df_val['label'].values:
+				images_for_label = df_val[df_val['label'] == label]['img_path'].tolist()
+				if images_for_label:
+					t2i_queries.append({'label': label, 'segment': segment_name})
+					print(f"- Label: '{label}' ({len(images_for_label)} samples in val)")
 				else:
-						 print(f"- Warning: Label '{label}' not found in validation set for T2I query. Skipping.") # Should not happen with segment_labels_in_val
+					print(f"- Warning: Label '{label}' found in val labels, but no images. Skipping T2I query.")
+			else:
+				print(f"- Warning: Label '{label}' not found in validation set for T2I query. Skipping.") # Should not happen with segment_labels_in_val
 	return i2t_queries, t2i_queries
 
 def get_lora_params(path_string: str) -> dict:
@@ -398,14 +398,13 @@ def get_updated_model_name(
 		print(f"File already contains actual epochs information: {filename}")
 		return original_path
 	
-	# Replace 'ieps_X' with 'ieps_X_actual_eps_Y'
 	if "ieps_" in filename:
 		pattern = r"(ieps_\d+)"
-		replacement = f"\\1_actual_eps_{actual_epochs}"
+		replacement = f"\\1_aeps_{actual_epochs}"
 		new_filename = re.sub(pattern, replacement, filename)
 	else:
 		base, ext = os.path.splitext(filename)
-		new_filename = f"{base}_actual_eps_{actual_epochs}{ext}"
+		new_filename = f"{base}_aeps_{actual_epochs}{ext}"
 	
 	# Add any additional information to the filename
 	if additional_info:
@@ -466,7 +465,7 @@ def get_adaptive_window_size(
 		)
 	)
 	
-	print(f"Adaptive window: {window} | Samples: {n_samples} | Classes: {n_classes}")
+	print(f"Adaptive window: {window} | Samples: {n_samples} | Labels: {n_classes}")
 	return window
 
 def get_model_directory(path):
@@ -595,7 +594,7 @@ def print_loader_info(loader, batch_size):
 				f"\tSamples per batch (total batches: {batch_size}): {per_batch_samples}\n"
 				f"\tSamples in last batch: {last_batch_samples}\n"
 				f"\tTotal samples: {loader_num_samples} (calculated: {total_samples_calc} = {per_batch_samples} x {batch_size} + {last_batch_samples})\n"
-				f"\tUnique classes: {n_classes}\n"
+				f"\tUnique Label(s): {n_classes}\n"
 		)
 
 def log_gpu_memory(device):

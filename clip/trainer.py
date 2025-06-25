@@ -871,8 +871,9 @@ def get_validation_metrics(
 		model_hash: str = None,
 		temperature: float = 0.07,
 	) -> Dict:
+
 	if verbose:
-		print("Computing validation metrics...")
+		print("Computing validation metrics (in-batch, full-set, retrieval)...")
 	
 	model.eval()
 	torch.cuda.empty_cache()
@@ -895,7 +896,7 @@ def get_validation_metrics(
 	num_samples = len(validation_loader.dataset)
 	
 	if verbose:
-		print(f"Dataset: {dataset_name}, Classes: {n_classes}, Samples: {num_samples}")
+		print(f"Dataset: {dataset_name}, Label(s): {n_classes}, Samples: {num_samples}")
 	
 	cache_file = os.path.join(
 		cache_dir,
@@ -2389,7 +2390,7 @@ def full_finetune_single_label(
 
 	os.makedirs(results_dir, exist_ok=True)
 	mode = inspect.stack()[0].function
-	mode = re.sub(r'_finetune', '', mode)
+	mode = re.sub(r'_finetune_single_label', '', mode)
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
 
@@ -2631,7 +2632,10 @@ def full_finetune_single_label(
 		f"bs_{train_loader.batch_size}_"
 		f"dropout_{dropout_val}"
 	)
-	mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
+	mdl_fpth = get_updated_model_name(
+		original_path=mdl_fpth, 
+		actual_epochs=actual_trained_epochs
+	)
 	print(f"Best model will be renamed to: {mdl_fpth}")
 
 	plot_paths = {
@@ -2729,7 +2733,7 @@ def progressive_finetune_single_label(
 		dataset_name = validation_loader.dataset.dataset_name
 
 	mode = inspect.stack()[0].function
-	mode = re.sub(r'_finetune', '', mode)
+	mode = re.sub(r'_finetune_single_label', '', mode)
 
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
@@ -3212,7 +3216,7 @@ def lora_finetune_single_label(
 		dataset_name = validation_loader.dataset.dataset_name
 
 	mode = inspect.stack()[0].function
-	mode = re.sub(r'_finetune', '', mode)
+	mode = re.sub(r'_finetune_single_label', '', mode)
 
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
@@ -3565,7 +3569,7 @@ def full_finetune_multi_label(
 		dataset_name = validation_loader.dataset.dataset_name
 	os.makedirs(results_dir, exist_ok=True)
 	mode = inspect.stack()[0].function
-	mode = re.sub(r'_finetune', '', mode)
+	mode = re.sub(r'_finetune_multi_label', '', mode)
 
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
@@ -3878,7 +3882,10 @@ def full_finetune_multi_label(
 		f"dropout_{dropout_val}"
 	)
 	
-	mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
+	mdl_fpth = get_updated_model_name(
+		original_path=mdl_fpth, 
+		actual_epochs=actual_trained_epochs
+	)
 	print(f"Best model will be renamed to: {mdl_fpth}")
 	# ================================
 	# PLOTTING: Enhanced for multi-label
@@ -3981,7 +3988,7 @@ def progressive_finetune_multi_label(
 		dataset_name = validation_loader.dataset.dataset_name
 
 	mode = inspect.stack()[0].function
-	mode = re.sub(r'_finetune', '', mode)
+	mode = re.sub(r'_finetune_multi_label', '', mode)
 
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
@@ -4611,7 +4618,7 @@ def lora_finetune_multi_label(
 		dataset_name = validation_loader.dataset.dataset_name
 
 	mode = inspect.stack()[0].function
-	mode = re.sub(r'_finetune', '', mode)
+	mode = re.sub(r'_finetune_multi_label', '', mode)
 
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
@@ -4952,7 +4959,10 @@ def lora_finetune_multi_label(
 		f"lora_dropout_{lora_dropout}"
 	)
 	
-	mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
+	mdl_fpth = get_updated_model_name(
+		original_path=mdl_fpth, 
+		actual_epochs=actual_trained_epochs
+	)
 	print(f"Best model will be renamed to: {mdl_fpth}")
 
 	plot_paths = {
@@ -5124,7 +5134,6 @@ def train(
 		dataset_name = validation_loader.dataset.dataset_name #
 	os.makedirs(results_dir, exist_ok=True)
 	mode = inspect.stack()[0].function
-	mode = re.sub(r'_finetune', '', mode)
 	
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__

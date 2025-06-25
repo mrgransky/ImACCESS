@@ -1,14 +1,14 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=historyX4_multi_label_finetune_strategy_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --job-name=historyX4_single_label_finetune_strategy_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --mem=373G
+#SBATCH --mem=256G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=0-11 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -136,12 +136,12 @@ ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 
 if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
 	if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-		ADJUSTED_BATCH_SIZE=128
+		ADJUSTED_BATCH_SIZE=32
 	else
-		ADJUSTED_BATCH_SIZE=256
+		ADJUSTED_BATCH_SIZE=128
 	fi
 elif [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-	ADJUSTED_BATCH_SIZE=256
+	ADJUSTED_BATCH_SIZE=64
 fi
 
 echo "BATCH SIZE: [DEFAULT]: ${BATCH_SIZES[$dataset_index]} [ADJUSTED]: ${ADJUSTED_BATCH_SIZE}"
@@ -149,7 +149,7 @@ echo "Starting history_clip_trainer.py for dataset: $SLURM_ARRAY_TASK_ID"
 
 python -u history_clip_trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \
-	--dataset_type "${DATASET_TYPE[1]}" \
+	--dataset_type "${DATASET_TYPE[0]}" \
 	--epochs "${EPOCHS[$dataset_index]}" \
 	--num_workers "$SLURM_CPUS_PER_TASK" \
 	--print_every "${PRINT_FREQUENCIES[$dataset_index]}" \

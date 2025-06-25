@@ -58,8 +58,8 @@ def get_preprocess(dataset_dir: str, input_resolution: int) -> T.Compose:
 	return preprocess
 
 def get_single_label_datasets(ddir: str, seed:int=42,):
-	metadata_fpth = os.path.join(ddir, "metadata.csv")
-	print(f"Loading dataset: {metadata_fpth}")
+	metadata_fpth = os.path.join(ddir, "metadata_single_label.csv")
+	print(f"Loading single-label dataset: {metadata_fpth}")
 	############################################################################
 	# debugging types of columns
 	# df = pd.read_csv(filepath_or_buffer=metadata_fpth, on_bad_lines='skip')
@@ -74,23 +74,26 @@ def get_single_label_datasets(ddir: str, seed:int=42,):
 		dtype=dtypes, 
 		low_memory=False,
 	)
-	print(f"FULL Dataset {type(df)} {df.shape}")
-	metadata_train_fpth = os.path.join(ddir, "metadata_train.csv")
-	metadata_val_fpth = os.path.join(ddir, "metadata_val.csv")
-	print(f"Loading training dataset: {metadata_train_fpth}")
+	print(f"FULL {type(df)}: {list(df.columns)} {df.shape}")
+
+	metadata_train_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_train.csv'))
+	metadata_val_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_val.csv'))
+	print(f"Loading training single-label dataset: {metadata_train_fpth}")
 	df_train = pd.read_csv(
 		filepath_or_buffer=metadata_train_fpth, 
 		on_bad_lines='skip',
 		dtype=dtypes, 
 		low_memory=True,
 	)
-	print(f"Loading validation dataset: {metadata_val_fpth}")
+	print(f"Loading validation single-label dataset: {metadata_val_fpth}")
 	df_val = pd.read_csv(
 		filepath_or_buffer=metadata_val_fpth,
 		on_bad_lines='skip',
 		dtype=dtypes, 
 		low_memory=True,
 	)
+	print(f"TRAIN {type(df_train)}: {list(df_train.columns)} {df_train.shape}")
+	print(f"VAL {type(df_val)}: {list(df_val.columns)} {df_val.shape}")
 	# # ######################################################################################
 	# Create deterministic label mapping from all data
 	all_labels = sorted(set(df_train["label"].unique()) | set(df_val["label"].unique()))
