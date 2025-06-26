@@ -1696,7 +1696,6 @@ class EarlyStopping:
 		self.pairwise_imp_threshold = pairwise_imp_threshold
 		self.min_phases_before_stopping = min_phases_before_stopping
 		self.sign = 1 if mode == 'min' else -1 # Multiplier for improvement calculation
-		self.reset() # set up the initial internal state variables
 		print("="*100)
 		print(
 			f"EarlyStopping [initial] Configuration:\n"
@@ -1711,10 +1710,11 @@ class EarlyStopping:
 			f"\tPairwiseImpThreshold={pairwise_imp_threshold}\n"
 			f"\tRestoreBestWeights={restore_best_weights}"
 		)
+		self.reset() # set up the initial internal state variables
 		print("="*100)
 
 	def reset(self):
-		print("--- EarlyStopping state reset, Essential for starting fresh or resetting between training phases ---")
+		print("Resetting EarlyStopping state, Essential for starting fresh or resetting between training phases".center(100, "-"))
 		# Best score (metric value) observed so far
 		self.best_score = None
 		# state_dict of the model when best_score was achieved (if restore_best_weights is True)
