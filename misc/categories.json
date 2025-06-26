@@ -9,7 +9,7 @@
 		"floatplane", "biplane", "monoplane",
 		"submarine", "aircraft carrier", "naval air station",
 		"naval vessel", "landing craft",
-		"soldier", "infantry", "political figure", "officer", "pilot", "sailor", "marine", "nurse",
+		"soldier", "infantry", "political figure", "officer", "pilot", "astronaut", "sailor", "marine", "nurse",
 		"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery", "flamethrower",
 		"cannon", "anti-tank gun", "grenade", "landmine", "torpedo", "naval mine", "minesweeper vessel",
 		"bunker", "gun emplacement", "military observation post", "barbed wire", "trenches",
@@ -37,7 +37,7 @@
 	"scene_categories": [
 		"coastline", "city ruins", "battlefield", "military camp",
 		"desert", "forest", "winter forest", "urban area", "mountain", "mountain valley",
-		"farmhouse", "farmland", "snow field",
+		"farmhouse", "farmland", "snow field", "boundary marker",
 		"river", "railway crossing", "lake shore", "beach",
 		"hospital", "health clinic", "cemetery", "air strike", "ranch",
 		"depot", "dry dock", "power plant", "warehouse",

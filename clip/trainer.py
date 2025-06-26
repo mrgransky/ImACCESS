@@ -1697,15 +1697,21 @@ class EarlyStopping:
 		self.min_phases_before_stopping = min_phases_before_stopping
 		self.sign = 1 if mode == 'min' else -1 # Multiplier for improvement calculation
 		self.reset() # set up the initial internal state variables
+		print("="*100)
 		print(
-			f"EarlyStopping Initialized: "
-			f"Patience={patience}, "
-			f"MinDelta={min_delta}, "
-			f"CumulativeDelta={cumulative_delta}, "
-			f"Window={window_size}, "
-			f"MinEpochs={min_epochs}, "
-			f"MinPhases={min_phases_before_stopping} (if applicable)"
+			f"EarlyStopping [initial] Configuration:\n"
+			f"\tPatience={patience}\n"
+			f"\tMinDelta={min_delta}\n"
+			f"\tCumulativeDelta={cumulative_delta}\n"
+			f"\tWindowSize={window_size}\n"
+			f"\tMinEpochs={min_epochs}\n"
+			f"\tMinPhases={min_phases_before_stopping} (if applicable)\n"
+			f"\tVolatilityThreshold={volatility_threshold}\n"
+			f"\tSlopeThreshold={slope_threshold}\n"
+			f"\tPairwiseImpThreshold={pairwise_imp_threshold}\n"
+			f"\tRestoreBestWeights={restore_best_weights}"
 		)
+		print("="*100)
 
 	def reset(self):
 		print("--- EarlyStopping state reset, Essential for starting fresh or resetting between training phases ---")
@@ -1762,7 +1768,7 @@ class EarlyStopping:
 		# --- Initial Checks ---
 		# 1. Minimum Epochs Check: Don't stop if fewer than min_epochs have run.
 		if epoch < self.min_epochs:
-			print(f"Skipping early stopping check (epoch {epoch+1} < min_epochs {self.min_epochs})")
+			print(f"Skipping early stopping! (epoch {epoch+1} <= min_epochs {self.min_epochs})")
 			return False # Continue training
 
 		# --- Improvement Tracking ---

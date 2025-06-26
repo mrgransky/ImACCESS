@@ -81,6 +81,9 @@ useless_collection_terms = [
 	"Indexes to Aerial Photography",
 	"Illustrative Material Published By The Government Printing Office and other Government Agencies",
 	"Field Artillery Units and Revolutionary War Artillerymen",
+	"Five Civilized Tribes Section 2 (1)",
+	"Reasons Why Okmulgee is an Ideal Location for Hospital",
+	"Revolutionary War Pension and Bounty-Land-Warrant",
 ]
 os.makedirs(os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}"), exist_ok=True)
 DATASET_DIRECTORY = os.path.join(args.dataset_dir, f"{dataset_name}_{START_DATE}_{END_DATE}")
@@ -224,8 +227,11 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 			"layout" not in doc_title.lower(),
 			"postcard" not in doc_title.lower(),
 			"table:" not in doc_title.lower(),
+			"reasons why" not in doc_title.lower(),
+			"we can do it!" not in doc_title.lower(),
 			"traffic statistics:" not in doc_title.lower(),
-			"sketch" not in doc_title,
+			"sketch" not in doc_title.lower(),
+			"painting" not in doc_title.lower(),
 		] if doc_title is not None else []
 
 		useless_description_terms = [
@@ -234,6 +240,9 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 			"sketch of" not in doc_description.lower(),
 			"newspaper" not in doc_description.lower(),
 			"sketch" not in doc_description.lower(),
+			"report" not in doc_description.lower(),
+			"attachment" not in doc_description.lower(),
+			"illustrated family record" not in doc_description.lower(),
 		] if doc_description is not None else []
 
 		if (

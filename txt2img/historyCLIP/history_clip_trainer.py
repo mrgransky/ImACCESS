@@ -76,10 +76,10 @@ def main():
 	parser.add_argument('--lora_rank', '-lor', type=int, default=None, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', '-loa', type=float, default=None, help='LoRA alpha (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_dropout', '-lod', type=float, default=None, help='LoRA dropout (used if finetune_strategy=lora)')
+	parser.add_argument('--minimum_epochs', '-mep', type=int, default=15, help='Early stopping minimum epochs')
 	parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
-	parser.add_argument('--minimum_epochs', '-mep', type=int, default=15, help='Early stopping minimum epochs')
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
@@ -170,7 +170,7 @@ def main():
 		window_size = get_adaptive_window_size(
 			loader=train_loader,
 			min_window=5,
-			max_window=20,
+			max_window=min(args.minimum_epochs, 20),
 		)
 		finetune_functions = {
 			'single_label': {
