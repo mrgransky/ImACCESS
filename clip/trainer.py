@@ -1714,7 +1714,7 @@ class EarlyStopping:
 		print("="*100)
 
 	def reset(self):
-		print("Resetting EarlyStopping state, Essential for starting fresh or resetting between training phases".center(100, "-"))
+		print(">> Resetting EarlyStopping state, Essential for starting fresh or resetting between training phases")
 		# Best score (metric value) observed so far
 		self.best_score = None
 		# state_dict of the model when best_score was achieved (if restore_best_weights is True)
@@ -2392,11 +2392,10 @@ def full_finetune_single_label(
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__  # CIFAR10, ImageNet, etc.
 	except AttributeError as e:
 		dataset_name = validation_loader.dataset.dataset_name
-	print(f"Dataset name: {dataset_name}")
 
-	os.makedirs(results_dir, exist_ok=True)
 	mode = inspect.stack()[0].function
 	mode = re.sub(r'_finetune_single_label', '', mode)
+
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
 
@@ -3565,15 +3564,16 @@ def full_finetune_multi_label(
 		min_delta=min_delta,
 		cumulative_delta=cumulative_delta,
 		window_size=window_size,
-		mode='min',  # Monitoring validation loss
+		mode='min', # Monitoring validation loss
 		min_epochs=minimum_epochs,
 		restore_best_weights=True,
 	)
+
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
-	os.makedirs(results_dir, exist_ok=True)
+
 	mode = inspect.stack()[0].function
 	mode = re.sub(r'_finetune_multi_label', '', mode)
 
@@ -5137,10 +5137,9 @@ def train(
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__ # CIFAR10, ImageNet, etc.
 	except AttributeError as e:
-		dataset_name = validation_loader.dataset.dataset_name #
-	os.makedirs(results_dir, exist_ok=True)
-	mode = inspect.stack()[0].function
-	
+		dataset_name = validation_loader.dataset.dataset_name
+
+	mode = inspect.stack()[0].function	
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
 	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) | batch_size: {train_loader.batch_size} | {type(device)} {device}".center(160, "-"))
