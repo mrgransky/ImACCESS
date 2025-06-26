@@ -1679,7 +1679,7 @@ class EarlyStopping:
 			min_epochs: int = 5,           				# Minimum total epochs before stopping can EVER occur
 			restore_best_weights: bool = True, 		# Load best weights back when stopping?
 			volatility_threshold: float = 10.0, 	# Stop if % volatility in window exceeds this
-			slope_threshold: float = 0.0,  				# Stop if slope worsens beyond this threshold (e.g., >0 for loss)
+			slope_threshold: float = 0.0,  				# Stop if slope worsens beyond this threshold (e.g., > 0 for loss)
 			pairwise_imp_threshold: float = 5e-3, # Stop if avg improvement between adjacent epochs is below this
 			min_phases_before_stopping: int = 3, 	# Minimum training phases to complete before stopping
 		):
