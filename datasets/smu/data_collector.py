@@ -103,6 +103,7 @@ FIELD_KEY_MAP = {
 	"boxfol": "box_folder",
 	"relate": "related_resources"
 }
+REDUNDANT_KEYWORDS = {"World War 2", "World War II", "WW2"}
 
 def get_doc_year(raw_doc_date):
 	# if not pd.isna(raw_doc_date): # Check if raw_doc_date is missing (None or NaN)
@@ -175,7 +176,6 @@ def check_url_status(url: str) -> bool:
 		return False
 
 def get_dframe(query: str="query", start_date:str="1900-01-01", end_date:str="1970-12-31", df_file_path: str="df_file.gz"):
-	# get data firt:
 	query_all_hits = get_data(
 		start_date=args.start_date,
 		end_date=args.end_date,
@@ -197,21 +197,29 @@ def get_dframe(query: str="query", start_date:str="1900-01-01", end_date:str="19
 		doc_link = doc.get("itemLink") # /singleitem/collection/ryr/id/2479
 		doc_page_url = f"{SMU_BASE_URL}/collection/{doc.get('collectionAlias')}/id/{doc.get('itemId')}"
 		doc_img_link = f"{SMU_BASE_URL}/api/singleitem/image/{doc_collection}/{doc_id}/default.jpg"
-		
+
 		# doc_title = clean_(text=doc.get("title"), sw=STOPWORDS)# doc.get("title")
 		doc_title = doc.get("title")
 		doc_detailed_metadata = scrape_item_metadata(doc_url=doc_page_url)
 		doc_description = doc_detailed_metadata.get("description", None)
-		doc_keywords = doc_detailed_metadata.get("keywords", None)
-		
+		doc_raw_keywords = doc_detailed_metadata.get("keywords", None)
+
+		doc_cleaned_keywords = None
+		if doc_raw_keywords:
+			keyword_list = [kw.strip() for kw in doc_raw_keywords.split(";") if kw.strip()] # Split the keywords into a list
+			cleaned_keyword_list = [kw for kw in keyword_list if kw not in REDUNDANT_KEYWORDS] # Exclude redundant terms
+			doc_cleaned_keywords = "; ".join(cleaned_keyword_list) if cleaned_keyword_list else None # Join the cleaned keywords back into a string
+
 		row = {
 			'id': doc_combined_identifier,
 			'doc_url': doc_page_url,
 			'user_query': query,
 			'title': doc_title,
 			'description': doc_description,
-			'keywords': doc_keywords,
-			'enriched_document_description': (doc_title or '') + " " + (doc_keywords or '') + " " + (doc_description or ''),
+			# 'keywords': doc_raw_keywords,
+			# 'enriched_document_description': (doc_title or '') + " " + (doc_raw_keywords or '') + " " + (doc_description or ''),
+			'keywords': doc_cleaned_keywords,
+			'enriched_document_description': " ".join(filter(None, [doc_title, doc_cleaned_keywords, doc_description])).strip(),
 			'raw_doc_date': doc_date,
 			'img_path': f"{os.path.join(IMAGE_DIRECTORY, str(doc_combined_identifier) + '.jpg')}",
 			'img_url': doc_img_link
@@ -266,21 +274,20 @@ def extract_initial_state_json(html: str) -> Dict:
 			raise e
 
 def scrape_item_metadata(doc_url: str) -> Dict:
-	"""Scrape metadata from an SMU document page."""
 	try:
-			html = fetch_html(doc_url)
-			data = extract_initial_state_json(html)
-			metadata = {}
-			fields = data.get("item", {}).get("item", {}).get("fields", [])
-			for field in fields:
-					key = FIELD_KEY_MAP.get(field.get("key", "").strip().lower().replace(" ", "_"), "")
-					value = field.get("value", "").strip()
-					if key:
-							metadata[key] = value
-			return metadata
+		html = fetch_html(doc_url)
+		data = extract_initial_state_json(html)
+		metadata = {}
+		fields = data.get("item", {}).get("item", {}).get("fields", [])
+		for field in fields:
+			key = FIELD_KEY_MAP.get(field.get("key", "").strip().lower().replace(" ", "_"), "")
+			value = field.get("value", "").strip()
+			if key:
+				metadata[key] = value
+		return metadata
 	except Exception as e:
-			print(f"[ERROR] Failed to scrape metadata from {doc_url}: {e}")
-			return {}
+		print(f"<!> [ERROR] Failed to scrape metadata from {doc_url}: {e}")
+		return {}
 
 @measure_execution_time
 def main():
@@ -587,7 +594,6 @@ def main():
 	for file in sorted(os.listdir(DATASET_DIRECTORY)):
 		if file.endswith(('.csv', '.xlsx')):
 			print(f"\t- {file}")
-
 
 def test_on_search_(query="shovel", start_date="1900-01-01", end_date="1970-12-31"):
 	START_DATE = re.sub("-", "", start_date) # modified date: 19140101
