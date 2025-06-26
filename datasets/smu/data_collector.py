@@ -216,8 +216,6 @@ def get_dframe(query: str="query", start_date:str="1900-01-01", end_date:str="19
 			'user_query': query,
 			'title': doc_title,
 			'description': doc_description,
-			# 'keywords': doc_raw_keywords,
-			# 'enriched_document_description': (doc_title or '') + " " + (doc_raw_keywords or '') + " " + (doc_description or ''),
 			'keywords': doc_cleaned_keywords,
 			'enriched_document_description': " ".join(filter(None, [doc_title, doc_cleaned_keywords, doc_description])).strip(),
 			'raw_doc_date': doc_date,
