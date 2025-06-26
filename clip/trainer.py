@@ -1704,7 +1704,7 @@ class EarlyStopping:
 			f"\tCumulativeDelta={cumulative_delta}\n"
 			f"\tWindowSize={window_size}\n"
 			f"\tMinEpochs={min_epochs}\n"
-			f"\tMinPhases={min_phases_before_stopping} (if applicable)\n"
+			f"\tMinPhases={min_phases_before_stopping} (only for progressive finetuning)\n"
 			f"\tVolatilityThreshold={volatility_threshold}\n"
 			f"\tSlopeThreshold={slope_threshold}\n"
 			f"\tPairwiseImpThreshold={pairwise_imp_threshold}\n"
@@ -2376,6 +2376,10 @@ def full_finetune_single_label(
 		cumulative_delta: float = 5e-3,
 		minimum_epochs: int = 20,
 		topk_values: List[int] = [1, 5, 10, 15, 20],
+		volatility_threshold: float = 15.0,
+		slope_threshold: float = 1e-4, 
+		pairwise_imp_threshold: float = 1e-4,
+		min_phases_before_stopping: int = 1,  # Not really needed for full finetune, but for consistency
 	):
 
 	early_stopping = EarlyStopping(
@@ -2386,6 +2390,10 @@ def full_finetune_single_label(
 		mode='min', # Monitoring validation loss
 		min_epochs=minimum_epochs,
 		restore_best_weights=True,
+		volatility_threshold=volatility_threshold,
+		slope_threshold=slope_threshold, # Positive slope is bad for loss
+		pairwise_imp_threshold=pairwise_imp_threshold,
+		min_phases_before_stopping=min_phases_before_stopping,
 	)
 
 	try:
@@ -3029,8 +3037,8 @@ def progressive_finetune_single_label(
 			txt2img_metrics=retrieval_metrics_per_epoch["txt2img"],
 		)
 
-		print(f"#"*100)
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
 				print(f"Train Cache Stats: {cache_stats}")
@@ -3039,7 +3047,7 @@ def progressive_finetune_single_label(
 			cache_stats = validation_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
 				print(f"Validation Cache Stats: {cache_stats}")
-		print(f"#"*100)
+			print(f"#"*100)
 
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -3184,6 +3192,10 @@ def lora_finetune_single_label(
 		cumulative_delta: float = 5e-3,
 		minimum_epochs: int = 20,
 		topk_values: List[int] = [1, 5, 10, 15, 20],
+		volatility_threshold: float = 15.0,
+		slope_threshold: float = 1e-4, 
+		pairwise_imp_threshold: float = 1e-4,
+		min_phases_before_stopping: int = 1,  # Not really needed for LoRA finetune, but for consistency
 	):
 
 	# Inspect the model for dropout layers
@@ -3212,6 +3224,10 @@ def lora_finetune_single_label(
 		mode='min', # Monitoring validation loss
 		min_epochs=minimum_epochs,
 		restore_best_weights=True,
+		volatility_threshold=volatility_threshold,
+		slope_threshold=slope_threshold, # Positive slope is bad for loss
+		pairwise_imp_threshold=pairwise_imp_threshold,
+		min_phases_before_stopping=min_phases_before_stopping,
 	)
 
 	# Dataset and directory setup (same as finetune())
@@ -3387,8 +3403,8 @@ def lora_finetune_single_label(
 			txt2img_metrics=retrieval_metrics_per_epoch.get("txt2img")
 		)
 
-		print(f"#"*100)
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
 				print(f"Train Cache Stats: {cache_stats}")
@@ -3397,7 +3413,7 @@ def lora_finetune_single_label(
 			cache_stats = validation_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
 				print(f"Validation Cache Stats: {cache_stats}")
-		print(f"#"*100)
+			print(f"#"*100)
 
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -3524,6 +3540,10 @@ def full_finetune_multi_label(
 		loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
 		temperature: float = 0.07,  # Temperature for contrastive learning
 		label_smoothing: float = 0.0,  # Label smoothing for multi-label
+		volatility_threshold: float = 15.0,
+		slope_threshold: float = 1e-4, 
+		pairwise_imp_threshold: float = 1e-4,
+		min_phases_before_stopping: int = 1,  # Not really needed for full finetune, but for consistency
 	):
 	"""
 	Full fine-tuning for multi-label CLIP classification.
@@ -3567,6 +3587,10 @@ def full_finetune_multi_label(
 		mode='min', # Monitoring validation loss
 		min_epochs=minimum_epochs,
 		restore_best_weights=True,
+		volatility_threshold=volatility_threshold,
+		slope_threshold=slope_threshold,
+		pairwise_imp_threshold=pairwise_imp_threshold,
+		min_phases_before_stopping=min_phases_before_stopping,
 	)
 
 	try:
@@ -3829,8 +3853,8 @@ def full_finetune_multi_label(
 				txt2img_metrics=retrieval_metrics_per_epoch["txt2img"]
 			)
 
-			print(f"#"*100)
 			if hasattr(train_loader.dataset, 'get_cache_stats'):
+				print(f"#"*100)
 				cache_stats = train_loader.dataset.get_cache_stats()
 				if cache_stats is not None:
 					print(f"Train Cache Stats: {cache_stats}")
@@ -3839,7 +3863,7 @@ def full_finetune_multi_label(
 				cache_stats = validation_loader.dataset.get_cache_stats()
 				if cache_stats is not None:
 					print(f"Validation Cache Stats: {cache_stats}")
-			print(f"#"*100)
+				print(f"#"*100)
 
 			if early_stopping.should_stop(
 				current_value=current_val_loss,
@@ -4551,6 +4575,10 @@ def lora_finetune_multi_label(
 		loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
 		temperature: float = 0.07,  # Temperature for contrastive learning
 		label_smoothing: float = 0.0,  # Label smoothing for multi-label
+		volatility_threshold: float = 15.0,
+		slope_threshold: float = 1e-4, 
+		pairwise_imp_threshold: float = 1e-4,
+		min_phases_before_stopping: int = 1,  # Not really needed for LoRA finetune, but for consistency
 	):
 	"""
 	LoRA fine-tuning for multi-label CLIP classification.
@@ -4616,6 +4644,10 @@ def lora_finetune_multi_label(
 		mode='min',  # Monitoring validation loss
 		min_epochs=minimum_epochs,
 		restore_best_weights=True,
+		volatility_threshold=volatility_threshold,
+		slope_threshold=slope_threshold,  # Positive slope is bad for loss
+		pairwise_imp_threshold=pairwise_imp_threshold,
+		min_phases_before_stopping=min_phases_before_stopping,
 	)
 
 	try:
@@ -4891,8 +4923,8 @@ def lora_finetune_multi_label(
 			txt2img_metrics=retrieval_metrics_per_epoch.get("txt2img")
 		)
 
-		print(f"#"*100)
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
 				print(f"Train Cache Stats: {cache_stats}")
@@ -4901,7 +4933,7 @@ def lora_finetune_multi_label(
 			cache_stats = validation_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
 				print(f"Validation Cache Stats: {cache_stats}")
-		print(f"#"*100)
+			print(f"#"*100)
 
 
 		if early_stopping.should_stop(
@@ -5289,8 +5321,8 @@ def train(
 			txt2img_metrics=txt2img_metrics
 		)
 
-		print(f"#"*100)
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
 				print(f"Train Cache Stats: {cache_stats}")
@@ -5299,7 +5331,7 @@ def train(
 			cache_stats = validation_loader.dataset.get_cache_stats()
 			if cache_stats is not None:
 				print(f"Validation Cache Stats: {cache_stats}")
-		print(f"#"*100)
+			print(f"#"*100)
 
 		# Early stopping check
 		if early_stopping.should_stop(
