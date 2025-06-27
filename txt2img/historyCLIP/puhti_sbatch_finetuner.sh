@@ -149,10 +149,11 @@ echo "DROPOUT: ${DROPOUT}"
 echo "EARLY_STOPPING_MIN_EPOCHS: ${EARLY_STOPPING_MIN_EPOCHS}"
 echo "BATCH SIZE: [DEFAULT]: ${BATCH_SIZES[$dataset_index]} [ADJUSTED]: ${ADJUSTED_BATCH_SIZE}"
 
-echo ">> Starting history_clip_trainer.py for dataset: $SLURM_ARRAY_TASK_ID"
+echo ">> Starting history_clip_trainer.py for dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$dataset_index]} type: ${DATASET_TYPE[1]}"
+
 python -u history_clip_trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \
-	--dataset_type "${DATASET_TYPE[0]}" \
+	--dataset_type "${DATASET_TYPE[1]}" \
 	--epochs "${EPOCHS[$dataset_index]}" \
 	--num_workers "$SLURM_CPUS_PER_TASK" \
 	--print_every "${PRINT_FREQUENCIES[$dataset_index]}" \
