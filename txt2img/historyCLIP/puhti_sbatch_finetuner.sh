@@ -11,7 +11,7 @@
 #SBATCH --mem=373G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=0,4,8 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --array=0-11 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
@@ -93,7 +93,7 @@ LORA_RANKS=(64 64 64 64 64)
 LORA_ALPHAS=(128.0 128.0 128.0 128.0 128.0) # 2x rank
 LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 BATCH_SIZES=(512 64 64 64 64)
-PRINT_FREQUENCIES=(500 500 50 50 10)
+PRINT_FREQUENCIES=(1000 1000 50 50 10)
 INIT_EARLY_STOPPING_MIN_EPOCHS=(11 25 17 17 12)  # History_X4, National Archive, Europeana, WWII, SMU
 EARLY_STOPPING_PATIENCE=(5 5 5 5 5)  # History_X4, National Archive, Europeana, WWII, SMU
 CACHE_SIZES=(1024 512 1000 1000 1000)  # History_X4, National Archive, Europeana, WWII, SMU
@@ -126,7 +126,7 @@ fi
 ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
 	if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-		ADJUSTED_BATCH_SIZE=64
+		ADJUSTED_BATCH_SIZE=32
 	else
 		ADJUSTED_BATCH_SIZE=128
 	fi
@@ -149,7 +149,7 @@ echo "DROPOUT: ${DROPOUT}"
 echo "EARLY_STOPPING_MIN_EPOCHS: ${EARLY_STOPPING_MIN_EPOCHS}"
 echo "BATCH SIZE: [DEFAULT]: ${BATCH_SIZES[$dataset_index]} [ADJUSTED]: ${ADJUSTED_BATCH_SIZE}"
 
-echo ">> Starting history_clip_trainer.py for dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$dataset_index]} type: ${DATASET_TYPE[1]}"
+echo ">> Starting history_clip_trainer.py for (${DATASET_TYPE[1]}) dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$dataset_index]}"
 
 python -u history_clip_trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \

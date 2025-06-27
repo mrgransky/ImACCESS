@@ -1291,13 +1291,12 @@ def monitor_memory_usage(operation_name: str):
 	cpu_memory = psutil.virtual_memory()
 	cpu_used_gb = (cpu_memory.total - cpu_memory.available) / 1024**3
 	cpu_percent = cpu_memory.percent
-	if cpu_percent > 90:
+	if cpu_percent > 96:
 		print(
 			f"[{operation_name}] Memory - CPU Usage: {cpu_used_gb:.1f}GB ({cpu_percent:.1f}%), "
 			f"GPU: {gpu_memory:.1f}GB allocated, {gpu_cached:.1f}GB cached"
 		)
 		print(f"WARNING: High CPU usage ({cpu_percent:.1f}%) → Clearing GPU cache...")
-		# torch.cuda.empty_cache()
 		return True
 	return False
 
@@ -1825,7 +1824,7 @@ class EarlyStopping:
 		# ensures positive values mean improvement regardless of 'min' or 'max' mode.
 		pairwise_diffs = [(last_window[i] - last_window[i+1]) * self.sign for i in range(len(last_window)-1)]
 		pairwise_imp_avg = np.mean(pairwise_diffs) if pairwise_diffs else 0.0
-		print(f"\tAvg Pairwise Improvement over window: {pairwise_imp_avg:.5f} (Threshold: < {self.pairwise_imp_threshold})")
+		print(f"\tAvg Pairwise Improvement over window: {pairwise_imp_avg} (Threshold: < {self.pairwise_imp_threshold})")
 		# d) Closeness to Best: Check if the current value is already very close to the best score.
 		close_to_best = abs(current_value - self.best_score) < self.min_delta if self.best_score is not None else False
 		print(f"\tClose to best score ({self.best_score:.6f}): {close_to_best}")
@@ -1865,7 +1864,10 @@ class EarlyStopping:
 		# Reason 5: Lack of significant cumulative improvement over the window
 		# Stop if the total improvement over the whole window is below the threshold.
 		if cumulative_improvement_abs < self.cumulative_delta:
-			stop_reason.append(f"Low cumulative improvement ({cumulative_improvement_abs:.5f})")
+			stop_reason.append(
+				f"Low cumulative improvement: {cumulative_improvement_abs} "
+				f"(MUST BE less than cumulative_delta threshold ({self.cumulative_delta}))"
+			)
 
 		# --- Final Decision ---
 		should_trigger_stop = bool(stop_reason)
@@ -1876,7 +1878,7 @@ class EarlyStopping:
 			# Apply phase check ONLY if current_phase is provided
 			phase_constraint_met = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
 			if phase_constraint_met:
-				print(f"EARLY STOPPING TRIGGERED: {reason_str}")
+				print(f"<!> EARLY STOPPING TRIGGERED:\n\t{reason_str}")
 				should_really_stop = True
 			else: # Phase constraint is active and not met
 				print(f"\tStopping condition met ({reason_str}), but delaying stop (Phase {current_phase} < {self.min_phases_before_stopping})")

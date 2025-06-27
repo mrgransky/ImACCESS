@@ -440,8 +440,8 @@ def get_cache_size(
 		available_memory_gb: float,
 		average_image_size_mb: float,
 		is_hpc: bool = False,
-		min_desired_converage: float = 0.25,
-		max_memory_fraction: float = 0.60,
+		min_desired_converage: float = 0.20,
+		max_memory_fraction: float = 0.55,
 	) -> int:
 	detected_platform = "HPC" if is_hpc else f"{platform.system()} Workstation (Laptop/VM)"
 	# Calculate minimum desired cache size for effectiveness
@@ -460,22 +460,22 @@ def get_cache_size(
 		# print(f"\t=> using cache size: {max_allowed_cache_size:,}")
 		# return max_allowed_cache_size
 	
-	# Target coverage based on environment
+	# Desired target coverage based on environment
 	if is_hpc:
-		target_coverage = 0.70
+		desired_target_coverage = 0.75
 	else:
-		target_coverage = 0.60
+		desired_target_coverage = 0.65
 	
-	target_cache_size = int(dataset_size * target_coverage)
+	desired_target_cache_size = int(dataset_size * desired_target_coverage)
 	
 	# Final cache size
-	cache_size = min(target_cache_size, max_allowed_cache_size)
+	cache_size = min(desired_target_cache_size, max_allowed_cache_size)
 	
 	actual_coverage = cache_size / dataset_size
 	actual_memory_gb = (cache_size * average_image_size_mb) / 1024
 	
 	print(f"\nCache Analysis:")
-	print(f"\tDetected Environment: {detected_platform} (target coverage: {target_coverage*100:.1f}%)")
+	print(f"\tDetected Environment: {detected_platform} (desired target coverage: {desired_target_coverage*100:.1f}%) => desired target cache size: {desired_target_cache_size:,} images")
 	print(f"\tAvailable RAM memory: {available_memory_gb:.1f}GB => {max_memory_fraction*100:.0f}% Allocated => {available_memory_gb*max_memory_fraction:.1f}GB for cache")
 	print(f"\tMinimum desired cache size for effectiveness: {min_desired_cache_size:,} images ({min_desired_converage*100:.0f}% minimum desired coverage)")
 	print(f"\tMaximum allowed cache size [given available RAM memory]: {max_allowed_cache_size:,} images (considering image size: {average_image_size_mb:.2f}MB)")

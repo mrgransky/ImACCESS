@@ -185,91 +185,91 @@ def deduplicate_labels(labels: List[str]) -> List[str]:
 	
 	return sorted(deduplicated)
 
-def batch_filter_by_relevance(
-		sent_model: SentenceTransformer,
-		texts: List[str],
-		all_labels_list: List[List[str]],
-		threshold: float,
-		batch_size: int,
-		max_retries: int = 3
-) -> List[List[str]]:
-		results = []
-		if not texts or not all_labels_list:
-				return results
+# def batch_filter_by_relevance(
+# 		sent_model: SentenceTransformer,
+# 		texts: List[str],
+# 		all_labels_list: List[List[str]],
+# 		threshold: float,
+# 		batch_size: int,
+# 		max_retries: int = 3
+# ) -> List[List[str]]:
+# 		results = []
+# 		if not texts or not all_labels_list:
+# 				return results
 		
-		# Initialize with conservative batch sizes
-		text_batch_size = max(1, min(batch_size, 8))
-		label_batch_size = max(1, min(batch_size // 2, 16))
+# 		# Initialize with conservative batch sizes
+# 		text_batch_size = max(1, min(batch_size, 8))
+# 		label_batch_size = max(1, min(batch_size // 2, 16))
 		
-		# Memory optimization flags
-		torch.backends.cuda.enable_flash_sdp(True)  # Enable flash attention if available
-		torch.backends.cuda.enable_mem_efficient_sdp(True)
+# 		# Memory optimization flags
+# 		torch.backends.cuda.enable_flash_sdp(True)  # Enable flash attention if available
+# 		torch.backends.cuda.enable_mem_efficient_sdp(True)
 		
-		def safe_encode(items, is_labels=False):
-				"""Helper function with automatic batch size reduction"""
-				current_batch_size = label_batch_size if is_labels else text_batch_size
-				for attempt in range(max_retries):
-						try:
-								return sent_model.encode(
-										items,
-										batch_size=current_batch_size,
-										show_progress_bar=False,
-										convert_to_numpy=True,
-										convert_to_tensor=False,
-										device='cuda' if not is_labels else 'cpu'  # Labels can often be processed on CPU
-								)
-						except torch.cuda.OutOfMemoryError:
-								if attempt == max_retries - 1:
-										raise
-								current_batch_size = max(1, current_batch_size // 2)
-								print(f"Reducing {'label' if is_labels else 'text'} batch size to {current_batch_size}")
-								torch.cuda.empty_cache()
+# 		def safe_encode(items, is_labels=False):
+# 				"""Helper function with automatic batch size reduction"""
+# 				current_batch_size = label_batch_size if is_labels else text_batch_size
+# 				for attempt in range(max_retries):
+# 						try:
+# 								return sent_model.encode(
+# 										items,
+# 										batch_size=current_batch_size,
+# 										show_progress_bar=False,
+# 										convert_to_numpy=True,
+# 										convert_to_tensor=False,
+# 										device='cuda' if not is_labels else 'cpu'  # Labels can often be processed on CPU
+# 								)
+# 						except torch.cuda.OutOfMemoryError:
+# 								if attempt == max_retries - 1:
+# 										raise
+# 								current_batch_size = max(1, current_batch_size // 2)
+# 								print(f"Reducing {'label' if is_labels else 'text'} batch size to {current_batch_size}")
+# 								torch.cuda.empty_cache()
 		
-		# Process texts in optimized batches
-		text_embeddings = []
-		for i in tqdm(range(0, len(texts), text_batch_size), desc="Encoding texts"):
-				batch = texts[i:i + text_batch_size]
-				try:
-						batch_emb = safe_encode(batch)
-						text_embeddings.extend(batch_emb)
-				except Exception as e:
-						print(f"Error encoding text batch {i}-{i+text_batch_size}: {str(e)[:200]}")
-						text_embeddings.extend([np.zeros(sent_model.get_sentence_embedding_dimension())] * len(batch))
-		text_embeddings = np.array(text_embeddings)
+# 		# Process texts in optimized batches
+# 		text_embeddings = []
+# 		for i in tqdm(range(0, len(texts), text_batch_size), desc="Encoding texts"):
+# 				batch = texts[i:i + text_batch_size]
+# 				try:
+# 						batch_emb = safe_encode(batch)
+# 						text_embeddings.extend(batch_emb)
+# 				except Exception as e:
+# 						print(f"Error encoding text batch {i}-{i+text_batch_size}: {str(e)[:200]}")
+# 						text_embeddings.extend([np.zeros(sent_model.get_sentence_embedding_dimension())] * len(batch))
+# 		text_embeddings = np.array(text_embeddings)
 		
-		# Process labels with memory awareness
-		for i, (text_emb, labels) in enumerate(tqdm(zip(text_embeddings, all_labels_list), total=len(texts), desc="Filtering labels")):
-				if not labels:
-						results.append([])
-						continue
+# 		# Process labels with memory awareness
+# 		for i, (text_emb, labels) in enumerate(tqdm(zip(text_embeddings, all_labels_list), total=len(texts), desc="Filtering labels")):
+# 				if not labels:
+# 						results.append([])
+# 						continue
 				
-				try:
-						# Dynamic batch size based on label count and length
-						avg_label_len = sum(len(l) for l in labels) / len(labels)
-						dynamic_batch_size = max(1, min(
-								label_batch_size,
-								int(512 / avg_label_len) if avg_label_len > 0 else label_batch_size
-						))
+# 				try:
+# 						# Dynamic batch size based on label count and length
+# 						avg_label_len = sum(len(l) for l in labels) / len(labels)
+# 						dynamic_batch_size = max(1, min(
+# 								label_batch_size,
+# 								int(512 / avg_label_len) if avg_label_len > 0 else label_batch_size
+# 						))
 						
-						label_embeddings = safe_encode(labels, is_labels=True)
+# 						label_embeddings = safe_encode(labels, is_labels=True)
 						
-						# Efficient similarity calculation
-						text_emb_norm = text_emb / (np.linalg.norm(text_emb) + 1e-8)
-						label_emb_norm = label_embeddings / (np.linalg.norm(label_embeddings, axis=1, keepdims=True) + 1e-8)
-						similarities = np.dot(label_emb_norm, text_emb_norm)
+# 						# Efficient similarity calculation
+# 						text_emb_norm = text_emb / (np.linalg.norm(text_emb) + 1e-8)
+# 						label_emb_norm = label_embeddings / (np.linalg.norm(label_embeddings, axis=1, keepdims=True) + 1e-8)
+# 						similarities = np.dot(label_emb_norm, text_emb_norm)
 						
-						relevant_indices = np.where(similarities > threshold)[0]
-						results.append([labels[idx] for idx in relevant_indices])
+# 						relevant_indices = np.where(similarities > threshold)[0]
+# 						results.append([labels[idx] for idx in relevant_indices])
 						
-						# Periodic memory cleanup
-						if i % 100 == 0:
-								torch.cuda.empty_cache()
+# 						# Periodic memory cleanup
+# 						if i % 100 == 0:
+# 								torch.cuda.empty_cache()
 								
-				except Exception as e:
-						print(f"Error processing labels for text {i}: {str(e)[:200]}")
-						results.append([])
+# 				except Exception as e:
+# 						print(f"Error processing labels for text {i}: {str(e)[:200]}")
+# 						results.append([])
 		
-		return results
+# 		return results
 
 def preprocess_text(text: str) -> str:
 	if not text or not isinstance(text, str):
@@ -430,42 +430,51 @@ def get_textual_based_annotation(
 		topk: int = 3,
 		verbose: bool = True,
 	):
+
+	t = torch.cuda.get_device_properties(device=device).total_memory
+	r = torch.cuda.memory_reserved(device=device)
+	a = torch.cuda.memory_allocated(device=device)
+	f = r-a  # free inside reserved
 	if verbose:
-		print(f"Semi-Supervised textual-based annotation batch_size: {batch_size} num_workers: {num_workers}".center(160, "-"))
-	
+		print(f"Semi-Supervised textual-based annotation batch_size: {batch_size}".center(160, "-"))
+		print(f"GPU[{device}] Memory: Total: {t/1024**3:.2f} GB Reserved: {r/1024**3:.2f} GB Allocated: {a/1024**3:.2f} GB Free: {f/1024**3:.2f} GB".center(160, " "))
+	device = 'cpu' if t/1024**3 < 6 else device
 	start_time = time.time()
-	
+
+	# Load categories
+	CATEGORIES_FILE = "categories.json"
+	object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)
+	candidate_labels = list(set(object_categories + scene_categories + activity_categories))
+
 	# Load model with memory optimizations
 	if verbose:
-		print(f"Loading sentence-transformer model: {st_model_name}...")
+		print(f"Loading sentence-transformer model: {st_model_name} in device: {device} with num_workers: {num_workers}...")
+	torch.cuda.empty_cache()
 	sent_model = SentenceTransformer(
 		model_name_or_path=st_model_name,
 		device=device,
 		trust_remote_code=True
 	)
 	sent_model.eval()
-	
-	# Load categories
-	CATEGORIES_FILE = "categories.json"
-	object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)
-	candidate_labels = list(set(object_categories + scene_categories + activity_categories))
-	
+		
 	# Pre-compute label embeddings once
 	if verbose:
-		print(f"Pre-computing embeddings for {len(candidate_labels)} pre-defined labels...")
+		print(f"Pre-computing embeddings for {len(candidate_labels)} pre-defined labels: device: {device} using batch_size: {min(batch_size, len(candidate_labels))}...")
 	t0 = time.time()
 	label_embs = sent_model.encode(
-		candidate_labels,
+		sentences=candidate_labels,
 		batch_size=min(batch_size, len(candidate_labels)),
+		device=device,
 		convert_to_tensor=True,
 		normalize_embeddings=True,
 		show_progress_bar=False,
+		task='retrieval',
 	)
 	if verbose:
-		print(f"Label embeddings: {type(label_embs)} {label_embs.shape} computed in {time.time() - t0:.2f} sec")
+		print(f"Label embeddings: {type(label_embs)} {label_embs.shape} computed in {time.time() - t0:.2f} s".center(160, " "))
 	
 	if verbose:
-		print(f"Loading dataframe: {csv_file}...")
+		print(f"Loading dataframe: {csv_file}")
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
 		on_bad_lines='skip',
@@ -480,7 +489,7 @@ def get_textual_based_annotation(
 	df['textual_based_scores'] = None
 
 	# Process in chunks with memory management
-	chunk_size = min(1000, len(df))
+	chunk_size = min(2000, len(df))
 	if verbose:
 		print(f"Processing {len(df)} samples with {len(candidate_labels)} candidate labels in {chunk_size} chunks...")
 	for chunk_start in tqdm(range(0, len(df), chunk_size), desc="Processing documents"):
@@ -502,18 +511,20 @@ def get_textual_based_annotation(
 			continue
 		
 		# Process texts in smaller batches
-		text_batch_size = min(16, batch_size)
+		text_batch_size = min(64, batch_size)
 		text_embs = []
 		
 		for i in range(0, len(texts_to_process), text_batch_size):
 			batch_texts = texts_to_process[i:i+text_batch_size]
 			try:
 				batch_embs = sent_model.encode(
-					batch_texts,
+					sentences=batch_texts,
 					batch_size=text_batch_size,
+					device=device,
 					convert_to_tensor=True,
 					normalize_embeddings=True,
-					show_progress_bar=False
+					show_progress_bar=False,
+					task='retrieval',
 				)
 				text_embs.append(batch_embs)
 				torch.cuda.empty_cache()
@@ -576,10 +587,10 @@ def main():
 	parser = argparse.ArgumentParser(description="Multi-label annotation for Historical Archives Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
-	parser.add_argument("--text_batch_size", '-tbs', type=int, default=128, help="Batch size for textual processing")
+	parser.add_argument("--text_batch_size", '-tbs', type=int, default=256, help="Batch size for textual processing")
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=4, help="Batch size for vision processing")
 	# parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-MiniLM-L12-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2", "jinaai/jina-embeddings-v3", "paraphrase-multilingual-MiniLM-L12-v2"], help="Sentence-transformer model name")
-	parser.add_argument("--sentence_model_name", '-smn', type=str, default="ibm-granite/granite-embedding-125m-english", help="Sentence-transformer model name")
+	parser.add_argument("--sentence_model_name", '-smn', type=str, default="jinaai/jina-embeddings-v4", help="Sentence-transformer model name")
 	parser.add_argument("--vlm_model_name", '-vlm', type=str, default="google/siglip2-so400m-patch16-naflex", choices=["kakaobrain/align-base", "google/siglip2-so400m-patch16-naflex"], help="Vision-Language model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 
