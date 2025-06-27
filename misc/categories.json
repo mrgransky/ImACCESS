@@ -2,7 +2,7 @@
 {
 	"object_categories": [
 		"armoured fighting vehicle", "utility vehicle", "motorcycle", "bicycle",
-		"half-tracked vehicle", "armoured personnel carrier", "ambulance",
+		"half-tracked vehicle", "armoured personnel carrier", "ambulance", "red cross",
 		"jeep", "military truck", "artillery tractor", "amphibious vehicle",
 		"combat aircraft", "reconnaissance aircraft", "aircraft factory",
 		"squadron", "helicopter", "military aircraft", "cockpit",
@@ -11,7 +11,7 @@
 		"naval vessel", "landing craft",
 		"soldier", "infantry", "political figure", "officer", "pilot", "astronaut", "sailor", "marine",
 		"rifle", "machine gun", "pistol", "bayonet", "mortar", "artillery", "flamethrower",
-		"cannon", "anti-tank gun", "grenade", "landmine", "torpedo", "naval mine", "minesweeper vessel",
+		"cannon", "anti-tank", "anti-aircraft", "explosive weapon", "minesweeper vessel",
 		"bunker", "gun emplacement", "military observation post", "barbed wire", "trenches",
 		"fortification", "tank storage", "wagon", "pitchfork",
 		"minefield", "castle", "tower", "fortress", "church", "hotel", "condominium",
@@ -40,7 +40,7 @@
 		"desert", "forest", "winter forest", "urban area", "mountain", "mountain valley",
 		"farmhouse", "farmland", "snow field", "boundary marker",
 		"river", "railway crossing", "lake shore", "beach",
-		"hospital", "health clinic", "cemetery", "air strike", "ranch",
+		"hospital", "clinic", "cemetery", "air strike", "ranch",
 		"depot", "dry dock", "power plant", "warehouse",
 		"aerodrome", "naval base", "army barracks", "coastal defense", 
 		"warship", "land warfare", "naval warfare",
@@ -49,10 +49,10 @@
 		"library", "urban plaza", "cathedral", "funeral", 
 		"animal-powered transport", "sled-pulling harness",
 		"assembly line", "signpost", "aerial view", "street view", "skyscraper", "restaurant", "lounge", "residential area",
-		"wreckage site", "shipwreck", "plane wreck", "demolished area"
+		"wreckage site", "shipwreck", "plane wreck", "demolished area", "damaged building"
 	],
 	"activity_categories": [
-		"fighting", "infantry assault", "naval engagement", "barrage",
+		"infantry assault", "naval engagement", "barrage",
 		"firing weapon", "bombing",
 		"driving", "troop transport", "freight transport", "airfreight", "package transport", "marching", "river crossing",
 		"digging", "on the phone", "cleaning", "sewing", "drinking",

@@ -422,12 +422,12 @@ def get_visual_based_annotation(
 
 def get_textual_based_annotation(
 		csv_file: str, 
-		num_workers: int,
 		batch_size: int,
 		metadata_fpth: str,
 		device: str,
 		st_model_name: str,
-		topk: int = 3,
+		threshold: float = 0.35,
+		topk: int = 10,
 		verbose: bool = True,
 	):
 
@@ -438,7 +438,7 @@ def get_textual_based_annotation(
 	if verbose:
 		print(f"Semi-Supervised textual-based annotation batch_size: {batch_size}".center(160, "-"))
 		print(f"GPU[{device}] Memory: Total: {t/1024**3:.2f} GB Reserved: {r/1024**3:.2f} GB Allocated: {a/1024**3:.2f} GB Free: {f/1024**3:.2f} GB".center(160, " "))
-	device = 'cpu' if t/1024**3 < 6 else device
+	# device = 'cpu' if t/1024**3 < 6 else device
 	start_time = time.time()
 
 	# Load categories
@@ -448,7 +448,7 @@ def get_textual_based_annotation(
 
 	# Load model with memory optimizations
 	if verbose:
-		print(f"Loading sentence-transformer model: {st_model_name} in device: {device} with num_workers: {num_workers}...")
+		print(f"Loading sentence-transformer model: {st_model_name} in device: {device}...")
 	torch.cuda.empty_cache()
 	sent_model = SentenceTransformer(
 		model_name_or_path=st_model_name,
@@ -468,7 +468,7 @@ def get_textual_based_annotation(
 		convert_to_tensor=True,
 		normalize_embeddings=True,
 		show_progress_bar=False,
-		task='retrieval',
+		# task='retrieval',
 	)
 	if verbose:
 		print(f"Label embeddings: {type(label_embs)} {label_embs.shape} computed in {time.time() - t0:.2f} s".center(160, " "))
@@ -489,7 +489,7 @@ def get_textual_based_annotation(
 	df['textual_based_scores'] = None
 
 	# Process in chunks with memory management
-	chunk_size = min(2000, len(df))
+	chunk_size = min(500, len(df))
 	if verbose:
 		print(f"Processing {len(df)} samples with {len(candidate_labels)} candidate labels in {chunk_size} chunks...")
 	for chunk_start in tqdm(range(0, len(df), chunk_size), desc="Processing documents"):
@@ -524,7 +524,7 @@ def get_textual_based_annotation(
 					convert_to_tensor=True,
 					normalize_embeddings=True,
 					show_progress_bar=False,
-					task='retrieval',
+					# task='retrieval',
 				)
 				text_embs.append(batch_embs)
 				torch.cuda.empty_cache()
@@ -555,18 +555,41 @@ def get_textual_based_annotation(
 		# Get top-k results with bounds checking
 		topk_scores, topk_indices = torch.topk(cosine_scores, k=min(topk, len(candidate_labels)), dim=1)
 		
-		# Store results only for valid indices
+		# # Store results only for valid indices
+		# for i, original_idx in enumerate(valid_indices):
+		# 	try:
+		# 		labels = [candidate_labels[j] for j in topk_indices[i] if j < len(candidate_labels)]
+		# 		scores = [round(s.item(), 4) for s in topk_scores[i]][:len(labels)]
+		# 		df.at[original_idx, 'textual_based_labels'] = labels
+		# 		df.at[original_idx, 'textual_based_scores'] = scores
+		# 	except Exception as e:
+		# 		print(f"Error processing sample {original_idx}: {str(e)[:200]}")
+		# 		df.at[original_idx, 'textual_based_labels'] = []
+		# 		df.at[original_idx, 'textual_based_scores'] = []
+		
 		for i, original_idx in enumerate(valid_indices):
 			try:
-				labels = [candidate_labels[j] for j in topk_indices[i] if j < len(candidate_labels)]
-				scores = [round(s.item(), 4) for s in topk_scores[i]][:len(labels)]
-				df.at[original_idx, 'textual_based_labels'] = labels
-				df.at[original_idx, 'textual_based_scores'] = scores
+				labels = []
+				scores = []
+				for j, score in zip(topk_indices[i], topk_scores[i]):
+					s = score.item()
+					if s >= threshold:
+						labels.append(candidate_labels[j])
+						scores.append(round(s, 4))
+				
+				if labels:
+					df.at[original_idx, 'textual_based_labels'] = labels
+					df.at[original_idx, 'textual_based_scores'] = scores
+				else:
+					df.at[original_idx, 'textual_based_labels'] = None
+					df.at[original_idx, 'textual_based_scores'] = None
+
 			except Exception as e:
 				print(f"Error processing sample {original_idx}: {str(e)[:200]}")
-				df.at[original_idx, 'textual_based_labels'] = []
-				df.at[original_idx, 'textual_based_scores'] = []
-		
+				df.at[original_idx, 'textual_based_labels'] = None
+				df.at[original_idx, 'textual_based_scores'] = None
+
+
 		del text_embs, cosine_scores, topk_scores, topk_indices
 		torch.cuda.empty_cache()
 	
@@ -589,8 +612,9 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	parser.add_argument("--text_batch_size", '-tbs', type=int, default=256, help="Batch size for textual processing")
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=4, help="Batch size for vision processing")
+	parser.add_argument("--text_relevance_threshold", '-rth', type=float, default=0.4, help="Relevance threshold for textual-based labels")
 	# parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-MiniLM-L12-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2", "jinaai/jina-embeddings-v3", "paraphrase-multilingual-MiniLM-L12-v2"], help="Sentence-transformer model name")
-	parser.add_argument("--sentence_model_name", '-smn', type=str, default="jinaai/jina-embeddings-v4", help="Sentence-transformer model name")
+	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", help="Sentence-transformer model name")
 	parser.add_argument("--vlm_model_name", '-vlm', type=str, default="google/siglip2-so400m-patch16-naflex", choices=["kakaobrain/align-base", "google/siglip2-so400m-patch16-naflex"], help="Vision-Language model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 
@@ -632,10 +656,10 @@ def main():
 	else:
 		textual_based_labels = get_textual_based_annotation(
 			csv_file=args.csv_file,
-			num_workers=args.num_workers,
 			batch_size=args.text_batch_size,
 			st_model_name=args.sentence_model_name,
 			metadata_fpth=text_output_path,
+			threshold=args.text_relevance_threshold,
 			device=args.device,
 			verbose=True,
 		)
