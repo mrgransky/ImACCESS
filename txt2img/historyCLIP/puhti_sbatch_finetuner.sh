@@ -11,7 +11,7 @@
 #SBATCH --mem=373G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=0-11 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --array=0,4,8 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
@@ -126,7 +126,7 @@ fi
 ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
 	if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-		ADJUSTED_BATCH_SIZE=32
+		ADJUSTED_BATCH_SIZE=64
 	else
 		ADJUSTED_BATCH_SIZE=128
 	fi

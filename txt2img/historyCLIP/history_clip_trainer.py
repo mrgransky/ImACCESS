@@ -55,7 +55,7 @@ from historical_dataset_loader import get_single_label_dataloaders, get_multi_la
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 50 -nw 50 -dv "cuda:2" -m finetune -fts progressive -dt multi_label -a "ViT-B/32" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 32 -e 150 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 12 -dv "cuda:1" -m finetune -fts progressive -dt multi_label -a "ViT-B/32" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 32 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 -dv "cuda:0" -m finetune -fts progressive -dt multi_label -a "ViT-L/14" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 64 -e 100 -mep 11 -pat 5 -lr 5e-5 -wd 1e-2 -nw 32 -dv "cuda:3" -m finetune -fts progressive -dt multi_label -a "ViT-L/14@336px" -do 0.1 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 128 -e 100 -mep 11 -pat 5 -lr 5e-5 -wd 1e-2 -nw 32 -dv "cuda:3" -m finetune -fts progressive -dt multi_label -a "ViT-L/14@336px" -do 0.1 --log_dir /media/volume/ImACCESS/trash &
 
 @measure_execution_time
 def main():
@@ -76,7 +76,7 @@ def main():
 	parser.add_argument('--lora_rank', '-lor', type=int, default=None, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', '-loa', type=float, default=None, help='LoRA alpha (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_dropout', '-lod', type=float, default=None, help='LoRA dropout (used if finetune_strategy=lora)')
-	parser.add_argument('--minimum_epochs', '-mep', type=int, default=15, help='Early stopping minimum epochs')
+	parser.add_argument('--minimum_epochs', '-mep', type=int, default=11, help='Early stopping minimum epochs')
 	parser.add_argument('--patience', '-pat', type=int, default=10, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')

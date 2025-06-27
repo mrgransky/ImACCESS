@@ -440,8 +440,8 @@ def get_cache_size(
 		available_memory_gb: float,
 		average_image_size_mb: float,
 		is_hpc: bool = False,
-		min_desired_converage: float = 0.15,
-		max_memory_fraction: float = 0.40,
+		min_desired_converage: float = 0.25,
+		max_memory_fraction: float = 0.60,
 	) -> int:
 	detected_platform = "HPC" if is_hpc else f"{platform.system()} Workstation (Laptop/VM)"
 	# Calculate minimum desired cache size for effectiveness
@@ -462,9 +462,9 @@ def get_cache_size(
 	
 	# Target coverage based on environment
 	if is_hpc:
-		target_coverage = 0.40
+		target_coverage = 0.70
 	else:
-		target_coverage = 0.50
+		target_coverage = 0.60
 	
 	target_cache_size = int(dataset_size * target_coverage)
 	
@@ -486,7 +486,7 @@ def get_cache_size(
 	
 	return cache_size
 
-class HistoricalArchivesMultiLabelDatasetWithCaching(Dataset):
+class HistoricalArchivesMultiLabelDataset(Dataset):
 		def __init__(
 				self,
 				dataset_name: str,
@@ -648,7 +648,7 @@ class HistoricalArchivesMultiLabelDatasetWithCaching(Dataset):
 					torch.zeros(self._num_classes)  # No labels
 				)
 
-def get_multi_label_dataloaders_with_caching(
+def get_multi_label_dataloaders(
 		dataset_dir: str,
 		batch_size: int,
 		num_workers: int,
@@ -674,9 +674,9 @@ def get_multi_label_dataloaders_with_caching(
 		total_gb = memory.total / (1024**3)
 		is_hpc = any(env in os.environ for env in ['SLURM_JOB_ID', 'PBS_JOBID'])
 		print(
-			f">> Obtaining optimal cache size for multi-label dataloader. "
-			f"Total RAM memory: {total_gb:.2f}GB | "
-			f"Available RAM memory: {available_gb:.2f}GB => {average_image_size_mb:.2f}MB/image"
+			f"\n>> Obtaining optimal cache size for multi-label dataloader with a total of {total_samples:,} samples:\n"
+			f"\tRAM memory [Total]: {total_gb:.2f}GB [Available]: {available_gb:.2f}GB\n"
+			f"\tEstimated image size: {average_image_size_mb:.2f}MB/image"
 		)
 		
 		cache_size = get_cache_size(
@@ -748,7 +748,7 @@ def get_multi_label_dataloaders_with_caching(
 	
 	return train_loader, val_loader
 
-class HistoricalArchivesMultiLabelDataset(Dataset):
+class HistoricalArchivesMultiLabelDatasetWithManualCaching(Dataset):
 		"""
 		A robust and high-performance Dataset class for multi-label archives.
 		This implementation combines LRU caching for performance with graceful
@@ -821,8 +821,6 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 						# print(f"WARNING: Skipping sample {idx} due to error: {e} | Path: {self.images[idx]}")
 						return None
 						
-		# --- The following helper methods are preserved from your original class ---
-		
 		def _preload_texts(self):
 				print(f"Preprocessing texts for {self.dataset_name}...")
 				for idx in tqdm(range(len(self.labels)), desc=f"Tokenizing texts for {self.dataset_name}"):
@@ -873,12 +871,12 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 						f"{transform_str}"
 				)
 
-def get_multi_label_dataloaders(
+def get_multi_label_dataloaders_with_manual_caching(
 		dataset_dir: str,
 		batch_size: int,
 		num_workers: int,
 		input_resolution: int,
-		cache_size: int = int(1e4),
+		cache_size: int = int(5e4),
 	):
 	dataset_name = os.path.basename(dataset_dir)
 	print(f"Creating multi-label dataloaders for {dataset_name}...")
@@ -887,14 +885,15 @@ def get_multi_label_dataloaders(
 	train_df, val_df, label_dict = get_multi_label_datasets(ddir=dataset_dir)
 	preprocess = get_preprocess(dataset_dir=dataset_dir, input_resolution=input_resolution)
 	total_samples = len(train_df) + len(val_df)
-	cache_size = min(cache_size, int(total_samples*0.70))
-	train_pct = 0.70
+	cache_size = min(cache_size, int(total_samples*0.60))
+	train_pct = 0.60
 	val_pct = 1.0 - train_pct
 	train_cache_size = int(cache_size * train_pct)
 	val_cache_size = int(cache_size * val_pct)
 	print(
-		f">> Total Samples: {total_samples:,} | Total cache size: {cache_size:,} "
-		f"Distributed (train[{train_pct*100:.0f}%]: {train_cache_size:,}, validation[{val_pct*100:.0f}%]: {val_cache_size:,})"
+		f">> Total Samples: {total_samples:,} | Total cache size: {cache_size:,} => "
+		f"train[{train_pct*100:.0f}%]: {train_cache_size:,}, "
+		f"validation[{val_pct*100:.0f}%]: {val_cache_size:,}"
 	)
 
 	# --- 2. Create the full dataset instances with LRU caching ---
