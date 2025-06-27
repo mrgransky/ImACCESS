@@ -96,6 +96,8 @@ BATCH_SIZES=(512 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 10)
 INIT_EARLY_STOPPING_MIN_EPOCHS=(11 25 17 17 12)  # History_X4, National Archive, Europeana, WWII, SMU
 EARLY_STOPPING_PATIENCE=(5 5 5 5 5)  # History_X4, National Archive, Europeana, WWII, SMU
+EARLY_STOPPING_MIN_DELTA=(5e-4 1e-4 1e-4 1e-4 1e-4)  # History_X4, National Archive, Europeana, WWII, SMU
+EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)  # History_X4, National Archive, Europeana, WWII, SMU
 CACHE_SIZES=(1024 512 1000 1000 1000)  # History_X4, National Archive, Europeana, WWII, SMU
 
 # Adjust early stopping minimum epochs based on strategy
@@ -170,6 +172,8 @@ python -u history_clip_trainer.py \
 	--minimum_epochs "${EARLY_STOPPING_MIN_EPOCHS}" \
 	--patience "${EARLY_STOPPING_PATIENCE[$dataset_index]}" \
 	--model_architecture "${MODEL_ARCHITECTURES[$architecture_index]}" \
+	--minimum_delta "${EARLY_STOPPING_MIN_DELTA[$dataset_index]}" \
+	--cumulative_delta "${EARLY_STOPPING_CUMULATIVE_DELTA[$dataset_index]}" \
 	# --cache_size "${CACHE_SIZES[$dataset_index]}" \
 
 
