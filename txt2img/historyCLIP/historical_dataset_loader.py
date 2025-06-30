@@ -441,7 +441,7 @@ def get_cache_size(
 		average_image_size_mb: float,
 		is_hpc: bool = False,
 		min_desired_converage: float = 0.20,
-		max_memory_fraction: float = 0.55,
+		max_memory_fraction: float = 0.50,
 	) -> int:
 	detected_platform = "HPC" if is_hpc else f"{platform.system()} Workstation (Laptop/VM)"
 	# Calculate minimum desired cache size for effectiveness

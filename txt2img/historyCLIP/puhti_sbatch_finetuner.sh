@@ -1,7 +1,7 @@
 #!/bin/bash
 
-#SBATCH --account=project_2014707
-#SBATCH --job-name=historyX4_multi_label_finetune_strategy_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --account=project_2009043
+#SBATCH --job-name=historyX4_single_label_finetune_strategy_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -11,7 +11,7 @@
 #SBATCH --mem=373G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=0,4,8 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --array=8 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
@@ -85,18 +85,18 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 	exit 1
 fi
 
-INIT_LRS=(5.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+INIT_LRS=(5.0e-06 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 INIT_WDS=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
-DROPOUTS=(0.05 0.1 0.05 0.05 0.05)
-EPOCHS=(100 100 150 150 150)
+DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
+EPOCHS=(90 100 150 150 150)
 LORA_RANKS=(64 64 64 64 64)
 LORA_ALPHAS=(128.0 128.0 128.0 128.0 128.0) # 2x rank
 LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 BATCH_SIZES=(512 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 10)
 INIT_EARLY_STOPPING_MIN_EPOCHS=(11 25 17 17 12)  # History_X4, National Archive, Europeana, WWII, SMU
-EARLY_STOPPING_PATIENCE=(5 5 5 5 5)  # History_X4, National Archive, Europeana, WWII, SMU
-EARLY_STOPPING_MIN_DELTA=(5e-4 1e-4 1e-4 1e-4 1e-4)  # History_X4, National Archive, Europeana, WWII, SMU
+EARLY_STOPPING_PATIENCE=(10 5 5 5 5)  # History_X4, National Archive, Europeana, WWII, SMU
+EARLY_STOPPING_MIN_DELTA=(1e-4 1e-4 1e-4 1e-4 1e-4)  # History_X4, National Archive, Europeana, WWII, SMU
 EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)  # History_X4, National Archive, Europeana, WWII, SMU
 CACHE_SIZES=(1024 512 1000 1000 1000)  # History_X4, National Archive, Europeana, WWII, SMU
 
@@ -155,7 +155,7 @@ echo ">> Starting history_clip_trainer.py for (${DATASET_TYPE[1]}) dataset[$SLUR
 
 python -u history_clip_trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \
-	--dataset_type "${DATASET_TYPE[1]}" \
+	--dataset_type "${DATASET_TYPE[0]}" \
 	--epochs "${EPOCHS[$dataset_index]}" \
 	--num_workers "$SLURM_CPUS_PER_TASK" \
 	--print_every "${PRINT_FREQUENCIES[$dataset_index]}" \
