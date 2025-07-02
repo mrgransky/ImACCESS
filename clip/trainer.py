@@ -1762,7 +1762,7 @@ class EarlyStopping:
 		self.value_history.append(current_value)
 		phase_info = f", Phase {current_phase}" if current_phase is not None else ""
 		print(f"\n--- EarlyStopping Check (Epoch {epoch+1}{phase_info}) ---")
-		print(f"Current Validation Loss: {current_value}")
+		print(f"Current validation loss: {current_value}")
 
 		# --- Initial Checks ---
 		# 1. Minimum Epochs Check: Don't stop if fewer than min_epochs have run.
@@ -1787,7 +1787,7 @@ class EarlyStopping:
 		else:
 			self.counter += 1                       # Increment the patience counter
 			self.improvement_history.append(False)  # Record lack of improvement
-			print(f"\tNo improvement detected. Best: {self.best_score:.6f}. Patience counter: {self.counter}/{self.patience}")
+			print(f"\tNo improvement detected. Best score: {self.best_score}. Patience: {self.counter}/{self.patience}")
 
 		# --- Window-Based Metric Calculation ---
 		# 3. Check if enough history exists for window-based calculations.
@@ -1815,16 +1815,16 @@ class EarlyStopping:
 		# Calculate metrics over the window:
 		# a) Slope Check
 		slope = compute_slope(last_window) # Use global function
-		print(f"\tSlope over window: {slope:.5f} (Threshold: > {self.slope_threshold})")
+		print(f"\tSlope over {self.window_size} window: {slope} (Thresh > {self.slope_threshold})")
 		# b) Volatility Check
 		volatility = self.compute_volatility(last_window)
-		print(f"\tVolatility over window: {volatility:.2f}% (Threshold: >= {self.volatility_threshold}%)")
+		print(f"\tVolatility over {self.window_size} window: {volatility:.2f}% (Thresh >= {self.volatility_threshold}%)")
 		# c) Average Pairwise Improvement: Calculate the average change between adjacent epochs.
 		# (last_window[i] - last_window[i+1]) * self.sign
 		# ensures positive values mean improvement regardless of 'min' or 'max' mode.
 		pairwise_diffs = [(last_window[i] - last_window[i+1]) * self.sign for i in range(len(last_window)-1)]
 		pairwise_imp_avg = np.mean(pairwise_diffs) if pairwise_diffs else 0.0
-		print(f"\tAvg Pairwise Improvement over window: {pairwise_imp_avg} (Threshold: < {self.pairwise_imp_threshold})")
+		print(f"\tAvg Pairwise Improvement over {self.window_size} window: {pairwise_imp_avg} (Thresh < {self.pairwise_imp_threshold})")
 		# d) Closeness to Best: Check if the current value is already very close to the best score.
 		close_to_best = abs(current_value - self.best_score) < self.min_delta if self.best_score is not None else False
 		print(f"\tClose to best score ({self.best_score:.6f}): {close_to_best}")
@@ -1834,7 +1834,7 @@ class EarlyStopping:
 		# Calculate improvement based on mode, then take absolute value for threshold check
 		cumulative_improvement_signed = (window_start_value - window_end_value) * self.sign
 		cumulative_improvement_abs = abs(cumulative_improvement_signed)
-		print(f"\tCumulative Improvement over window: {cumulative_improvement_signed} (Threshold for lack of improvement: < {self.cumulative_delta})")
+		print(f"\tCumulative Improvement over {self.window_size} window: {cumulative_improvement_signed} (Thresh for lack of improvement: < {self.cumulative_delta})")
 		# ----- Combine Stopping Criteria -----
 		# 4. Check if any stopping conditions are met.
 		stop_reason = []
@@ -1881,7 +1881,10 @@ class EarlyStopping:
 				print(f"<!> EARLY STOPPING TRIGGERED:\n\t{reason_str}")
 				should_really_stop = True
 			else: # Phase constraint is active and not met
-				print(f"\tStopping condition met ({reason_str}), but delaying stop (Phase {current_phase} < {self.min_phases_before_stopping})")
+				print(
+					f"\tEarly stopping condition:\n"
+					f"\t\t({reason_str}), "
+					f"\t\t\tbut delaying stopping until minimum phases are reached (Phase {current_phase} < {self.min_phases_before_stopping})")
 		else:
 			print("\tNo stopping conditions met.")
 
@@ -1906,7 +1909,7 @@ class EarlyStopping:
 		status = {
 			"best_score": self.best_score,
 			"best_epoch": self.best_epoch + 1 if self.best_score is not None else 0,
-			"patience_counter": self.counter,
+			f"patience_counter(out of {self.patience})": self.counter,
 			"value_history_len": len(self.value_history)
 		}
 		if len(self.value_history) >= self.window_size:
@@ -2221,7 +2224,7 @@ def should_transition_phase(
 	close_to_best = best_loss is not None and abs(current_loss - best_loss) < best_loss_threshold
 
 	print(f"Loss Window: {last_window_losses}")
-	print(f"Current Loss: {current_loss:.6f} | Best Loss: {best_loss if best_loss is not None else 'N/A'} | Close: {close_to_best} (Thresh: {best_loss_threshold})")
+	print(f"Current Loss: {current_loss} | Best Loss: {best_loss if best_loss is not None else 'N/A'} | Close: {close_to_best} (Thresh: {best_loss_threshold})")
 	print(f"Loss Volatility: {loss_volatility:.2f}% (Thresh: >= {volatility_threshold}%)")
 	print(f"Loss Slope: {loss_slope:.5f} (Thresh: > {slope_threshold})")
 	print(f"Avg Pairwise Loss Improvement: {loss_pairwise_imp_avg:.5f} (Thresh: < {pairwise_imp_threshold})")
@@ -2272,6 +2275,7 @@ def should_transition_phase(
 		print(f"==>> PHASE TRANSITION RECOMMENDED: {', '.join(reasons)}")
 	else:
 		print("==>> No phase transition needed: Stable progress or close to best.")
+	print("-"*160)
 	return transition
 
 def handle_phase_transition(
@@ -2864,7 +2868,7 @@ def progressive_finetune_single_label(
 			epochs_in_current_phase >= min_epochs_per_phase and
 			current_phase < max_phases - 1 and
 			len(early_stopping.value_history) >= window_size):
-			print(f"Checking for phase transition (Epochs in phase: {epochs_in_current_phase})")
+			print(f"Checking for phase transition ({epochs_in_current_phase} elapsed epochs in phase: {current_phase})")
 
 		val_losses = early_stopping.value_history
 		val_accs_in_batch = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in in_batch_loss_acc_metrics_all_epochs]

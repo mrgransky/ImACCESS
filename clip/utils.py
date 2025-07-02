@@ -185,15 +185,16 @@ def get_single_label_head_torso_tail_samples(
 		head_threshold = 5000, # Labels with frequency > 5000
 		tail_threshold = 1000  # Labels with frequency < 1000
 	):
-	print(f"--- Analyzing Label Distribution from {metadata_path} ---")
+	print(f"Analyzing Label Distribution from {metadata_path}")
+
 	# 1. Load DataFrames
 	try:
-			df_full = pd.read_csv(metadata_path)
-			df_train = pd.read_csv(metadata_train_path)
-			df_val = pd.read_csv(metadata_val_path)
+		df_full = pd.read_csv(metadata_path)
+		df_train = pd.read_csv(metadata_train_path)
+		df_val = pd.read_csv(metadata_val_path)
 	except FileNotFoundError as e:
-			print(f"Error loading metadata files: {e}")
-			return None, None
+		print(f"Error loading metadata files: {e}")
+		return None, None
 	# Use the 'label' column for string labels as used in plotting and potentially queries
 	# Use 'label_int' for analysis requiring unique integer counts if necessary,
 	# but counts based on string labels from the full dataset match Figure 2.

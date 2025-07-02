@@ -31,7 +31,7 @@ from visualize import (
 # ################ Local ################ 
 # All fine-tuned models (head, torso, tail) 
 # Single-label:
-# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/full_single_label_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_16_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_32_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/progressive_single_label_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_bs_32_best_model_last_phase_1_flr_6.9e-06_fwd_0.010306122448979592.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/lora_single_label_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_25_actual_eps_18_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_bs_32_best_model.pth
+# $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_30_aeps_12_dropout_0.0_lr_1.0e-05_wd_1.0e-02_bs_8_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_30_aeps_30_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_bs_8_best_model_last_phase_2_flr_8.8e-06_fwd_0.011085376063548084.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_single_label/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_30_aeps_12_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_bs_8_best_model.pth -dt single_label
 
 # Multi-label:
 # $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -dt multi_label -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/full_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_dropout_0.0_lr_1.0e-05_wd_1.0e-02_temp_0.07_bs_16_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/progressive_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_temp_0.07_bs_16_best_model_last_phase_1_flr_5.6e-06_fwd_0.010306122448979592.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/lora_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_temp_0.07_bs_16_best_model.pth
@@ -517,9 +517,9 @@ def main():
 		print("Selecting samples from validation set...")
 		if args.dataset_type == "multi_label":
 			i2t_samples, t2i_samples = get_multi_label_head_torso_tail_samples(
-				metadata_path=os.path.join(args.dataset_dir, "metadata_multimodal.csv"),
-				metadata_train_path=os.path.join(args.dataset_dir, "metadata_multimodal_train.csv"),
-				metadata_val_path=os.path.join(args.dataset_dir, "metadata_multimodal_val.csv"),
+				metadata_path=os.path.join(args.dataset_dir, "metadata_multi_label_multimodal.csv"),
+				metadata_train_path=os.path.join(args.dataset_dir, "metadata_multi_label_multimodal_train.csv"),
+				metadata_val_path=os.path.join(args.dataset_dir, "metadata_multi_label_multimodal_val.csv"),
 				num_samples_per_segment=2,
 			)
 			if i2t_samples and t2i_samples:
@@ -529,9 +529,11 @@ def main():
 				raise ValueError("No multi-label samples selected!")
 		else:
 			i2t_samples, t2i_samples = get_single_label_head_torso_tail_samples(
-				metadata_path=os.path.join(args.dataset_dir, "metadata.csv"),
-				metadata_train_path=os.path.join(args.dataset_dir, "metadata_train.csv"),
-				metadata_val_path=os.path.join(args.dataset_dir, "metadata_val.csv"),
+				metadata_path=os.path.join(args.dataset_dir, "metadata_single_label.csv"),
+				metadata_train_path=os.path.join(args.dataset_dir, "metadata_single_label_train.csv"),
+				metadata_val_path=os.path.join(args.dataset_dir, "metadata_single_label_val.csv"),
+				# metadata_train_path=os.path.join(args.dataset_dir, "metadata_train.csv"),
+				# metadata_val_path=os.path.join(args.dataset_dir, "metadata_val.csv"),
 				num_samples_per_segment=5,
 			)
 			if i2t_samples and t2i_samples:

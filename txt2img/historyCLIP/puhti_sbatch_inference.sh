@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=quantitative_qualitative_evaluation_historyCLIP_dataset_x
+#SBATCH --job-name=single_label_quantitative_qualitative_evaluation_historyCLIP_dataset_x
 #####SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a.out # only for testing different img & lbl
 #SBATCH --mail-user=farid.alijani@gmail.com
@@ -58,10 +58,10 @@ LORA_DROPOUTS=(0.05 0.05 0.05 0.05 0.05)
 BATCH_SIZES=(64 64 64 64 64)
 SAMPLINGS=("kfold_stratified" "stratified_random")
 MODEL_ARCHITECTURES=(
-	"ViT-L/14@336px" # 0-4
-	"ViT-L/14" # 5-9
-	"ViT-B/32" # 10-14
-	"ViT-B/16" # 15-19
+	"ViT-L/14@336px" 	# 0-4
+	"ViT-L/14" 				# 5-9
+	"ViT-B/32" 				# 10-14
+	"ViT-B/16" 				# 15-19
 )
 
 # Hardcoded actual epochs for HISTORY_X4 per architecture
