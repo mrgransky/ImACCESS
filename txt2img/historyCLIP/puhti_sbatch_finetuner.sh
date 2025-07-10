@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=40
-#SBATCH --mem=373G
+#SBATCH --mem=128G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=0-11 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -87,15 +87,15 @@ fi
 
 INIT_LRS=(5.0e-06 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 INIT_WDS=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
-DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
-EPOCHS=(100 100 150 150 150)
+DROPOUTS=(0.15 0.1 0.05 0.05 0.05)
+EPOCHS=(110 100 150 150 150)
 LORA_RANKS=(64 64 64 64 64)
 LORA_ALPHAS=(128.0 128.0 128.0 128.0 128.0) # 2x rank
-LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
+LORA_DROPOUTS=(0.15 0.1 0.05 0.05 0.05)
 BATCH_SIZES=(512 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 10)
-INIT_EARLY_STOPPING_MIN_EPOCHS=(11 25 17 17 12)  # History_X4, National Archive, Europeana, WWII, SMU
-EARLY_STOPPING_PATIENCE=(5 5 5 5 5)  # History_X4, National Archive, Europeana, WWII, SMU
+INIT_EARLY_STOPPING_MIN_EPOCHS=(15 25 17 17 12)  # History_X4, National Archive, Europeana, WWII, SMU
+EARLY_STOPPING_PATIENCE=(7 5 5 5 5)  # History_X4, National Archive, Europeana, WWII, SMU
 EARLY_STOPPING_MIN_DELTA=(1e-4 1e-4 1e-4 1e-4 1e-4)  # History_X4, National Archive, Europeana, WWII, SMU
 EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)  # History_X4, National Archive, Europeana, WWII, SMU
 CACHE_SIZES=(1024 512 1000 1000 1000)  # History_X4, National Archive, Europeana, WWII, SMU
