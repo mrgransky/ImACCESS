@@ -1,14 +1,14 @@
 #!/bin/bash
 
 #SBATCH --account=project_2009043
-#SBATCH --job-name=historyX4_single_label_finetune_strategy_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --job-name=historyX4_multi_label_finetune_strategy_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=40
-#SBATCH --mem=128G
+#SBATCH --mem=373G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=0-11 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -155,7 +155,7 @@ echo ">> Starting history_clip_trainer.py for (${DATASET_TYPE[1]}) dataset[$SLUR
 
 python -u history_clip_trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \
-	--dataset_type "${DATASET_TYPE[0]}" \
+	--dataset_type "${DATASET_TYPE[1]}" \
 	--epochs "${EPOCHS[$dataset_index]}" \
 	--num_workers "$SLURM_CPUS_PER_TASK" \
 	--print_every "${PRINT_FREQUENCIES[$dataset_index]}" \
