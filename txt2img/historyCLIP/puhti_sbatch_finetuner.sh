@@ -11,7 +11,7 @@
 #SBATCH --mem=373G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=0-11 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --array=0-11 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!! # 0-11:  dataset[0] with all strategy×architecture [H4]
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
@@ -94,11 +94,11 @@ LORA_ALPHAS=(128.0 128.0 128.0 128.0 128.0) # 2x rank
 LORA_DROPOUTS=(0.15 0.1 0.05 0.05 0.05)
 BATCH_SIZES=(512 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 10)
-INIT_EARLY_STOPPING_MIN_EPOCHS=(15 25 17 17 12)  # History_X4, National Archive, Europeana, WWII, SMU
-EARLY_STOPPING_PATIENCE=(7 5 5 5 5)  # History_X4, National Archive, Europeana, WWII, SMU
-EARLY_STOPPING_MIN_DELTA=(1e-4 1e-4 1e-4 1e-4 1e-4)  # History_X4, National Archive, Europeana, WWII, SMU
-EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)  # History_X4, National Archive, Europeana, WWII, SMU
-CACHE_SIZES=(1024 512 1000 1000 1000)  # History_X4, National Archive, Europeana, WWII, SMU
+INIT_EARLY_STOPPING_MIN_EPOCHS=(15 25 17 17 12)  # H4, NA, EU, WWII, SMU
+EARLY_STOPPING_PATIENCE=(7 5 5 5 5)  # H4, NA, EU, WWII, SMU
+EARLY_STOPPING_MIN_DELTA=(1e-4 1e-4 1e-4 1e-4 1e-4)  # H4, NA, EU, WWII, SMU
+EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)  # H4, NA, EU, WWII, SMU
+CACHE_SIZES=(1024 512 1000 1000 1000)  # H4, NA, EU, WWII, SMU
 
 # Adjust early stopping minimum epochs based on strategy
 strategy="${FINETUNE_STRATEGIES[$strategy_index]}"
@@ -111,7 +111,7 @@ case $strategy in
 		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs + 5))  # Higher for LoRA
 		;;
 	"progressive")
-		EARLY_STOPPING_MIN_EPOCHS=$initial_early_stopping_minimum_epochs          # Base for Progressive
+		EARLY_STOPPING_MIN_EPOCHS=$initial_early_stopping_minimum_epochs          # Original for Progressive
 		;;
 esac
 EARLY_STOPPING_MIN_EPOCHS=$((EARLY_STOPPING_MIN_EPOCHS < 5 ? 5 : EARLY_STOPPING_MIN_EPOCHS))  # Ensure minimum of 5
