@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2014707
-#SBATCH --job-name=historyX4_multi_label_finetune_strategy_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#SBATCH --job-name=historyX4_multi_label_2nd_finetune_strategy_x_arch # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -87,17 +87,17 @@ fi
 
 INIT_LRS=(5.0e-06 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 INIT_WDS=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
-DROPOUTS=(0.15 0.1 0.05 0.05 0.05)
-EPOCHS=(110 100 150 150 150)
+DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
+EPOCHS=(100 100 150 150 150)
 LORA_RANKS=(64 64 64 64 64)
 LORA_ALPHAS=(128.0 128.0 128.0 128.0 128.0) # 2x rank
-LORA_DROPOUTS=(0.15 0.1 0.05 0.05 0.05)
+LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 BATCH_SIZES=(512 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 10)
 INIT_EARLY_STOPPING_MIN_EPOCHS=(15 25 17 17 12)  # H4, NA, EU, WWII, SMU
-EARLY_STOPPING_PATIENCE=(7 5 5 5 5)  # H4, NA, EU, WWII, SMU
-EARLY_STOPPING_MIN_DELTA=(1e-4 1e-4 1e-4 1e-4 1e-4)  # H4, NA, EU, WWII, SMU
-EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)  # H4, NA, EU, WWII, SMU
+EARLY_STOPPING_PATIENCE=(3 5 5 5 5)  # H4, NA, EU, WWII, SMU
+EARLY_STOPPING_MIN_DELTA=(5e-4 1e-4 1e-4 1e-4 1e-4)  # H4, NA, EU, WWII, SMU
+EARLY_STOPPING_CUMULATIVE_DELTA=(5e-2 5e-3 5e-3 5e-3 5e-3)  # H4, NA, EU, WWII, SMU
 CACHE_SIZES=(1024 512 1000 1000 1000)  # H4, NA, EU, WWII, SMU
 
 # Adjust early stopping minimum epochs based on strategy

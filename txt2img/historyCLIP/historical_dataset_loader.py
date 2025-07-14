@@ -414,7 +414,7 @@ def get_estimated_image_size_mb(
 		return 7.0
 
 	actual_sample_size = min(sample_size, len(image_paths))
-	print(f"Estimating average image RAM size from {actual_sample_size} samples...")
+	print(f"Estimating average image RAM size from {actual_sample_size} samples out of {len(image_paths)} total images...")
 
 	sample_paths = random.sample(image_paths, actual_sample_size)
 

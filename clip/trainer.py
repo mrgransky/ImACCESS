@@ -1767,27 +1767,31 @@ class EarlyStopping:
 		# --- Initial Checks ---
 		# 1. Minimum Epochs Check: Don't stop if fewer than min_epochs have run.
 		if epoch < self.min_epochs:
-			print(f"Skipping early stopping! (epoch {epoch+1} <= min_epochs {self.min_epochs})")
+			print(f"Skipping early stopping (epoch {epoch+1} <= min_epochs {self.min_epochs})")
 			return False # Continue training
 
 		# --- Improvement Tracking ---
 		# 2. Check if the current value is an improvement over the best score seen so far.
 		improved = self.is_improvement(current_value)
 		if improved:
-			print(f"\tImprovement detected! Best: {self.best_score if self.best_score is not None else 'N/A'} -> {current_value} (delta: {self.min_delta})")
+			print(
+				f"\tImprovement! best: {self.best_score if self.best_score is not None else 'N/A'} "
+				f"current: {current_value} (Thresh: {self.min_delta})"
+			)
 			self.best_score = current_value         # Update the best score
 			self.best_epoch = epoch                 # Record the epoch number of this best score
 			self.stopped_epoch = epoch              # Update the epoch where improvement last happened
 			self.counter = 0                        # Reset the patience counter
 			self.improvement_history.append(True)   # Record improvement in history
 			if self.restore_best_weights:
-				print("\tSaving best model weights...")
-				# Use CPU state_dict to save memory if possible, clone to avoid issues
 				self.best_weights = {k: v.clone().cpu().detach() for k, v in model.state_dict().items()}
 		else:
 			self.counter += 1                       # Increment the patience counter
 			self.improvement_history.append(False)  # Record lack of improvement
-			print(f"\tNo improvement detected. Best score: {self.best_score}. Patience: {self.counter}/{self.patience}")
+			print(
+				f"\tNO improvement! Best: {self.best_score} "
+				f"Patience: {self.counter}/{self.patience}"
+			)
 
 		# --- Window-Based Metric Calculation ---
 		# 3. Check if enough history exists for window-based calculations.
@@ -1804,7 +1808,10 @@ class EarlyStopping:
 					print(f"\tPatience ({self.counter}/{self.patience}) exceeded, but delaying stop (Phase {current_phase} < {self.min_phases_before_stopping})")
 					return False
 			if self.counter >= self.patience and current_phase >= self.min_phases_before_stopping:
-				print(f"EARLY STOPPING TRIGGERED (Phase {current_phase} >= {self.min_phases_before_stopping}): Patience ({self.counter}/{self.patience}) exceeded.")
+				print(
+					f"EARLY STOPPING TRIGGERED (Phase {current_phase} >= {self.min_phases_before_stopping}): "
+					f"Patience ({self.counter}/{self.patience}) exceeded."
+				)
 				return True
 			return False # Not enough history for other checks, and patience/phase condition not met
 
@@ -1813,28 +1820,38 @@ class EarlyStopping:
 		print(f"\tWindow ({self.window_size} epochs): {last_window}")
 
 		# Calculate metrics over the window:
+		
 		# a) Slope Check
 		slope = compute_slope(last_window) # Use global function
 		print(f"\tSlope over {self.window_size} window: {slope} (Thresh > {self.slope_threshold})")
+		
 		# b) Volatility Check
 		volatility = self.compute_volatility(last_window)
 		print(f"\tVolatility over {self.window_size} window: {volatility:.2f}% (Thresh >= {self.volatility_threshold}%)")
+		
 		# c) Average Pairwise Improvement: Calculate the average change between adjacent epochs.
 		# (last_window[i] - last_window[i+1]) * self.sign
 		# ensures positive values mean improvement regardless of 'min' or 'max' mode.
 		pairwise_diffs = [(last_window[i] - last_window[i+1]) * self.sign for i in range(len(last_window)-1)]
 		pairwise_imp_avg = np.mean(pairwise_diffs) if pairwise_diffs else 0.0
 		print(f"\tAvg Pairwise Improvement over {self.window_size} window: {pairwise_imp_avg} (Thresh < {self.pairwise_imp_threshold})")
+		
 		# d) Closeness to Best: Check if the current value is already very close to the best score.
 		close_to_best = abs(current_value - self.best_score) < self.min_delta if self.best_score is not None else False
-		print(f"\tClose to best score ({self.best_score:.6f}): {close_to_best}")
+		print(f"\tClose to best score ({self.best_score}): {close_to_best}")
+		
 		# e) Cumulative Improvement: Check Check total improvement from the start to the end of the window.
 		window_start_value = self.value_history[-self.window_size]
 		window_end_value = self.value_history[-1]
+		
 		# Calculate improvement based on mode, then take absolute value for threshold check
 		cumulative_improvement_signed = (window_start_value - window_end_value) * self.sign
 		cumulative_improvement_abs = abs(cumulative_improvement_signed)
-		print(f"\tCumulative Improvement over {self.window_size} window: {cumulative_improvement_signed} (Thresh for lack of improvement: < {self.cumulative_delta})")
+		print(
+			f"\tCumulative Improvement over {self.window_size} windows: "
+			f"{cumulative_improvement_signed} (Thresh for lack of improvement: < {self.cumulative_delta})"
+		)
+		
 		# ----- Combine Stopping Criteria -----
 		# 4. Check if any stopping conditions are met.
 		stop_reason = []
@@ -1883,8 +1900,9 @@ class EarlyStopping:
 			else: # Phase constraint is active and not met
 				print(
 					f"\tEarly stopping condition:\n"
-					f"\t\t({reason_str}), "
-					f"\t\t\tbut delaying stopping until minimum phases are reached (Phase {current_phase} < {self.min_phases_before_stopping})")
+					f"\t\t({reason_str}) "
+					f"but delaying stopping until minimum phases are reached (Phase {current_phase} < {self.min_phases_before_stopping})"
+				)
 		else:
 			print("\tNo stopping conditions met.")
 
@@ -2272,7 +2290,7 @@ def should_transition_phase(
 		reasons.append("Accuracy plateau detected")
 
 	if transition:
-		print(f"==>> PHASE TRANSITION RECOMMENDED: {', '.join(reasons)}")
+		print(f"\n==>> PHASE TRANSITION RECOMMENDED: {', '.join(reasons)}")
 	else:
 		print("==>> No phase transition needed: Stable progress or close to best.")
 	print("-"*160)
@@ -2343,10 +2361,11 @@ def get_unfreeze_pcts_hybrid(
 		min_phases: int,
 		max_phases: int,
 	):
-
+	print(f"\nDetermining unfreeze schedule percentages (min: {min_phases}, max: {max_phases})...")
 	vis_nblocks, txt_nblocks = get_num_transformer_blocks(model=model)
 	total_transformer_layers = vis_nblocks + txt_nblocks
 	layers_per_phase = 2 # Unfreezing 1 layer per modality per phase
+
 	baseline_phases = total_transformer_layers // layers_per_phase + 1
 	print(f"Baseline Phases (with total_transformer_layers: {total_transformer_layers}): {baseline_phases}")
 	dataset_size = len(train_loader.dataset)
@@ -2591,6 +2610,7 @@ def full_finetune_single_label(
 			img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
 			txt2img_metrics=retrieval_metrics_per_epoch["txt2img"]
 		)
+
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
@@ -2785,7 +2805,7 @@ def progressive_finetune_single_label(
 		unfreeze_percentages = get_unfreeze_pcts_hybrid(
 			model=model,
 			train_loader=train_loader,
-			min_phases=max(4, min_phases_before_stopping + 1), # Ensure enough phases
+			min_phases=max(5, min_phases_before_stopping + 1), # Ensure enough phases
 			max_phases=15, # Cap the number of phases
 		)
 
@@ -2859,7 +2879,7 @@ def progressive_finetune_single_label(
 
 	for epoch in range(num_epochs):
 		epoch_start_time = time.time()
-		print(f"\n=== Epoch {epoch+1}/{num_epochs} Phase {current_phase} current LR: {last_lr:.3e} current WD: {last_wd:.3e}) ===")
+		print(f"Epoch {epoch+1}/{num_epochs} Phase {current_phase}/{max_phases} current LR: {last_lr:.3e} current WD: {last_wd:.3e})")
 		torch.cuda.empty_cache()
 		# --- Phase Transition Check ---
 		# Check only if enough epochs *overall* and *within the phase* have passed,
@@ -2868,7 +2888,7 @@ def progressive_finetune_single_label(
 			epochs_in_current_phase >= min_epochs_per_phase and
 			current_phase < max_phases - 1 and
 			len(early_stopping.value_history) >= window_size):
-			print(f"Checking for phase transition ({epochs_in_current_phase} elapsed epochs in phase: {current_phase})")
+			print(f"Checking phase transition ({epochs_in_current_phase} elapsed epochs in phase {current_phase})")
 
 		val_losses = early_stopping.value_history
 		val_accs_in_batch = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in in_batch_loss_acc_metrics_all_epochs]
@@ -4066,7 +4086,7 @@ def progressive_finetune_multi_label(
 		unfreeze_percentages = get_unfreeze_pcts_hybrid(
 			model=model,
 			train_loader=train_loader,
-			min_phases=max(4, min_phases_before_stopping + 1),  # Ensure enough phases
+			min_phases=max(5, min_phases_before_stopping + 1),  # Ensure enough phases
 			max_phases=15,  # Cap the number of phases
 		)
 
@@ -4155,7 +4175,7 @@ def progressive_finetune_multi_label(
 
 	for epoch in range(num_epochs):
 		epoch_start_time = time.time()
-		print(f"\n=== Epoch {epoch+1}/{num_epochs} Phase {current_phase} current LR: {last_lr:.3e} current WD: {last_wd:.3e}) ===")
+		print(f"Epoch {epoch+1}/{num_epochs} Phase {current_phase}/{max_phases} current LR: {last_lr:.3e} current WD: {last_wd:.3e}")
 		torch.cuda.empty_cache()
 		
 		# --- Phase Transition Check ---
@@ -4165,7 +4185,7 @@ def progressive_finetune_multi_label(
 			epochs_in_current_phase >= min_epochs_per_phase and
 			current_phase < max_phases - 1 and
 			len(early_stopping.value_history) >= window_size):
-			print(f"Checking for phase transition (Epochs in phase: {epochs_in_current_phase})")
+			print(f"Checking phase transition ({epochs_in_current_phase} elapsed epochs in phase {current_phase})")
 
 			val_losses = early_stopping.value_history
 			
