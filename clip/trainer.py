@@ -2361,16 +2361,18 @@ def get_unfreeze_pcts_hybrid(
 		min_phases: int,
 		max_phases: int,
 	):
-	print(f"\nDetermining unfreeze schedule percentages (min: {min_phases}, max: {max_phases})...")
+	print(f"Determining unfreeze schedule percentages (min: {min_phases}, max: {max_phases})...")
 	vis_nblocks, txt_nblocks = get_num_transformer_blocks(model=model)
 	total_transformer_layers = vis_nblocks + txt_nblocks
 	layers_per_phase = 2 # Unfreezing 1 layer per modality per phase
 
 	baseline_phases = total_transformer_layers // layers_per_phase + 1
-	print(f"Baseline Phases (with total_transformer_layers: {total_transformer_layers}): {baseline_phases}")
+	print(f"Baseline Phases (with total_transformer_layers: {total_transformer_layers}) => {baseline_phases} phases")
+
 	dataset_size = len(train_loader.dataset)
 	dataset_phases = int(5 + np.log10(dataset_size))
-	print(f"Dataset Size: {dataset_size}: Phases: {dataset_phases}")
+	print(f"Dataset size: {dataset_size} => obtained phases: {dataset_phases}")
+
 	num_phases = max(
 		min_phases,
 		min(
@@ -2381,6 +2383,7 @@ def get_unfreeze_pcts_hybrid(
 			)
 		)
 	)
+	print(f"Number of Phases: {num_phases}")
 	unfreeze_pcts = np.linspace(0, 1, num_phases).tolist()
 	print(f"Unfreeze Schedule contains {len(unfreeze_pcts)} different phases:\n{unfreeze_pcts}")
 	return unfreeze_pcts
@@ -2805,8 +2808,8 @@ def progressive_finetune_single_label(
 		unfreeze_percentages = get_unfreeze_pcts_hybrid(
 			model=model,
 			train_loader=train_loader,
-			min_phases=max(5, min_phases_before_stopping + 1), # Ensure enough phases
-			max_phases=15, # Cap the number of phases
+			min_phases=min_phases_before_stopping + 1, # Ensure enough phases
+			max_phases=8, # Cap the number of phases
 		)
 
 	# Get the detailed layer unfreeze schedule
