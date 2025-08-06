@@ -2385,7 +2385,7 @@ def perform_multilabel_eda(
 		n_top_labels_plot: int = 30,
 		n_top_labels_co_occurrence: int = 15,
 		DPI: int = 200,
-	):
+):
 		print(f"Multi-label EDA for {data_path} (column: {label_column})".center(160, "-"))
 		eda_st = time.time()
 		dataset_dir = os.path.dirname(data_path)
@@ -2394,20 +2394,19 @@ def perform_multilabel_eda(
 
 		# --- 1. Load Data ---
 		if not os.path.exists(data_path):
-			print(f"Error: Dataset not found at '{data_path}'. Please check the path.")
-			return
+				print(f"Error: Dataset not found at '{data_path}'. Please check the path.")
+				return
 
 		try:
-			df = pd.read_csv(
-				filepath_or_buffer=data_path, 
-				on_bad_lines='skip', 
-				dtype=dtypes, 
-				low_memory=False,
-			)
-			print(f"Dataset {type(df)} loaded successfully. Shape: {df.shape}\n")
+				df = pd.read_csv(
+						filepath_or_buffer=data_path,
+						on_bad_lines='skip',
+						low_memory=False,
+				)
+				print(f"Dataset {type(df)} loaded successfully. Shape: {df.shape}\n")
 		except Exception as e:
-			print(f"Error loading dataset from '{data_path}': {e}")
-			return
+				print(f"Error loading dataset from '{data_path}': {e}")
+				return
 
 		# --- 2. Basic Data Information ---
 		print("--- Basic DataFrame Info ---")
@@ -2422,54 +2421,61 @@ def perform_multilabel_eda(
 		df_for_parsing_and_filtering = df.copy()
 
 		for col in label_columns_to_parse:
-			print(f"--- Parsing '{col}' column ---")
-			if col not in df_for_parsing_and_filtering.columns:
-				print(f"Warning: Label column '{col}' not found in the DataFrame. Skipping.\n")
-				continue
-			current_col_series = df_for_parsing_and_filtering[col]
-			first_valid_item = current_col_series.dropna().iloc[0] if not current_col_series.dropna().empty else None
-			if first_valid_item is not None and isinstance(first_valid_item, str):
-				print(f"Attempting to parse string representations in '{col}' column...")
-				try:
-					parsed_series = current_col_series.apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x)
-					df_for_parsing_and_filtering[col] = parsed_series # Update the column in our working df
-					print(f"Successfully parsed string representations in '{col}' column.\n")
-				except (ValueError, SyntaxError) as e:
-					print(
-						f"Error: Could not parse some string values in '{col}' column. "
-						f"Ensure they are valid string representations of lists. Error: {e}"
-					)
-			elif first_valid_item is not None: # Not a string, but not all NaNs
-				print(f"'{col}' column's first valid item is of type {type(first_valid_item)}. Assuming list-like or compatible. No string parsing attempted.\n")
-			else:
-				print(f"'{col}' column is empty or all NaNs. No string parsing possible.\n")
-			
-			temp_series_for_filtering = df_for_parsing_and_filtering[col].copy()
-			def clean_value(val):
-				if isinstance(val, (list, tuple)):
-					return val
-				if pd.isna(val):
-					return []
-				return val
-			temp_series_for_filtering = temp_series_for_filtering.apply(clean_value)
-			valid_entries_mask = temp_series_for_filtering.apply(lambda x: isinstance(x, (list, tuple)) and len(x) > 0)
-			df_filtered_for_this_col = df[valid_entries_mask].copy() # Filter original df rows
-			if len(df_filtered_for_this_col) == 0:
-				print(f"No samples with valid (non-empty list) labels found in '{col}' after parsing/filtering. Skipping further analysis for this column.\n")
-				continue
-			print(f"For column '{col}', retained {len(df_filtered_for_this_col)} rows with non-empty label lists out of {len(df)} original rows.")
-			processed_dfs[col] = df_filtered_for_this_col.copy()
-			processed_dfs[col][col] = df_for_parsing_and_filtering.loc[valid_entries_mask, col]
+				print(f"--- Parsing '{col}' column ---")
+				if col not in df_for_parsing_and_filtering.columns:
+						print(f"Warning: Label column '{col}' not found in the DataFrame. Skipping.\n")
+						continue
+
+				current_col_series = df_for_parsing_and_filtering[col]
+				first_valid_item = current_col_series.dropna().iloc[0] if not current_col_series.dropna().empty else None
+
+				if first_valid_item is not None and isinstance(first_valid_item, str):
+						print(f"Attempting to parse string representations in '{col}' column...")
+						try:
+								parsed_series = current_col_series.apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x)
+								df_for_parsing_and_filtering[col] = parsed_series # Update the column in our working df
+								print(f"Successfully parsed string representations in '{col}' column.\n")
+						except (ValueError, SyntaxError) as e:
+								print(
+										f"Error: Could not parse some string values in '{col}' column. "
+										f"Ensure they are valid string representations of lists. Error: {e}"
+								)
+				elif first_valid_item is not None: # Not a string, but not all NaNs
+						print(f"'{col}' column's first valid item is of type {type(first_valid_item)}. Assuming list-like or compatible. No string parsing attempted.\n")
+				else:
+						print(f"'{col}' column is empty or all NaNs. No string parsing possible.\n")
+
+				temp_series_for_filtering = df_for_parsing_and_filtering[col].copy()
+
+				def clean_value(val):
+						if isinstance(val, (list, tuple)):
+								return val
+						if pd.isna(val):
+								return []
+						return val
+
+				temp_series_for_filtering = temp_series_for_filtering.apply(clean_value)
+				valid_entries_mask = temp_series_for_filtering.apply(lambda x: isinstance(x, (list, tuple)) and len(x) > 0)
+				df_filtered_for_this_col = df[valid_entries_mask].copy() # Filter original df rows
+
+				if len(df_filtered_for_this_col) == 0:
+						print(f"No samples with valid (non-empty list) labels found in '{col}' after parsing/filtering. Skipping further analysis for this column.\n")
+						continue
+
+				print(f"For column '{col}', retained {len(df_filtered_for_this_col)} rows with non-empty label lists out of {len(df)} original rows.")
+				processed_dfs[col] = df_filtered_for_this_col.copy()
+				processed_dfs[col][col] = df_for_parsing_and_filtering.loc[valid_entries_mask, col]
 
 		# Use the main label_column's filtered DataFrame for overall stats
 		if label_column not in processed_dfs:
-			print(f"Main label column '{label_column}' could not be processed or is empty. Exiting EDA.")
-			return
+				print(f"Main label column '{label_column}' could not be processed or is empty. Exiting EDA.")
+				return
+
 		df = processed_dfs[label_column].copy()
+
 		# --- 4. Multi-label Statistics (for main label_column) ---
 		all_individual_labels = [label for sublist in df[label_column] for label in sublist]
 		unique_labels = sorted(list(set(all_individual_labels)))
-
 		print(f"--- Multi-label Statistics (Main Column: {label_column}) ---")
 		print(f"Total number of samples with valid '{label_column}': {len(df)}")
 		print(f"Total number of unique labels across the dataset (from '{label_column}'): {len(unique_labels)}")
@@ -2491,16 +2497,15 @@ def perform_multilabel_eda(
 		plt.grid(axis='y', linestyle='--', alpha=0.7)
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{label_column}_label_cardinality_distribution.png"),
-			dpi=DPI,
-			bbox_inches='tight',
+				fname=os.path.join(output_dir, f"{label_column}_label_cardinality_distribution.png"),
+				dpi=DPI,
+				bbox_inches='tight',
 		)
 		plt.close()
 
 		# --- 6. Label Frequency (Distribution of each label) ---
 		label_counts = Counter(all_individual_labels)
 		label_counts_df = pd.DataFrame(label_counts.items(), columns=['Label', 'Count']).sort_values(by='Count', ascending=False)
-
 		print(f"--- Top 20 Most Frequent Labels (Main Column: {label_column}) ---")
 		print(label_counts_df.head(20))
 		print(f"\n--- Bottom 20 Least Frequent Labels (Main Column: {label_column}) ---")
@@ -2542,7 +2547,7 @@ def perform_multilabel_eda(
 				dpi=DPI,
 				bbox_inches='tight',
 		)
-		plt.close() 
+		plt.close()
 
 		# --- 7. Unique Label Combinations ---
 		print("--- Unique Label Set Combinations ---")
@@ -2550,31 +2555,30 @@ def perform_multilabel_eda(
 		label_sets = df[label_column].apply(lambda x: tuple(sorted(x)))
 		unique_label_sets = Counter(label_sets)
 		unique_label_sets_df = pd.DataFrame(unique_label_sets.items(), columns=['Label Set', 'Count']).sort_values(by='Count', ascending=False)
-
 		print(f"Total number of unique label combinations: {len(unique_label_sets)}")
 		print(f"Top 10 Most Frequent Label Combinations (Main Column: {label_column}):")
 		print(unique_label_sets_df.head(10))
 
 		if len(unique_label_sets) > 0:
-			plt.figure(figsize=(12, 8))
-			top_n_combinations = unique_label_sets_df.head(min(20, len(unique_label_sets))).copy()
-			top_n_combinations['Label Set String'] = top_n_combinations['Label Set'].apply(lambda x: ', '.join(x))
-			sns.barplot(x='Count', y='Label Set String', data=top_n_combinations, palette='magma')
-			plt.title(f'Top {len(top_n_combinations)} Most Frequent Unique Label Combinations')
-			plt.xlabel('Number of Samples')
-			plt.ylabel('Label Combination')
-			plt.tight_layout()
-			plt.savefig(
-				fname=os.path.join(output_dir, f"{label_column}_top_unique_label_combinations.png"),
-				dpi=DPI,
-				bbox_inches='tight',
-			)
-			plt.close() 
+				plt.figure(figsize=(12, 8))
+				top_n_combinations = unique_label_sets_df.head(min(20, len(unique_label_sets))).copy()
+				top_n_combinations['Label Set String'] = top_n_combinations['Label Set'].apply(lambda x: ', '.join(x))
+				sns.barplot(x='Count', y='Label Set String', data=top_n_combinations, palette='magma')
+				plt.title(f'Top {len(top_n_combinations)} Most Frequent Unique Label Combinations')
+				plt.xlabel('Number of Samples')
+				plt.ylabel('Label Combination')
+				plt.tight_layout()
+				plt.savefig(
+						fname=os.path.join(output_dir, f"{label_column}_top_unique_label_combinations.png"),
+						dpi=DPI,
+						bbox_inches='tight',
+				)
+				plt.close()
+
 		print("-" * 40 + "\n")
 
 		# --- 8. Label Correlation Matrix (Jaccard Similarity) ---
 		print(f"--- Label Correlation Matrix (Jaccard Similarity) for Top {n_top_labels_co_occurrence} Labels ---")
-
 		if n_top_labels_co_occurrence > len(unique_labels):
 				print(f"Warning: n_top_labels_co_occurrence ({n_top_labels_co_occurrence}) is greater than "
 							f"the total unique labels ({len(unique_labels)}). Adjusting to total unique labels.")
@@ -2584,11 +2588,9 @@ def perform_multilabel_eda(
 				mlb = MultiLabelBinarizer(classes=unique_labels)
 				y_binarized = mlb.fit_transform(df[label_column])
 				labels_in_order = mlb.classes_
-
 				# Get indices of top N labels for the subset
 				top_labels_for_correlation = label_counts_df['Label'].head(n_top_labels_co_occurrence).tolist()
 				top_label_indices = [list(labels_in_order).index(lab) for lab in top_labels_for_correlation]
-
 				# Calculate Jaccard Similarity Matrix
 				jaccard_matrix = np.zeros((n_top_labels_co_occurrence, n_top_labels_co_occurrence))
 				for i, lab1_idx in enumerate(top_label_indices):
@@ -2602,7 +2604,6 @@ def perform_multilabel_eda(
 										jaccard_matrix[i, j] = intersection / union if union != 0 else 0.0
 
 				jaccard_df = pd.DataFrame(jaccard_matrix, index=top_labels_for_correlation, columns=top_labels_for_correlation)
-
 				plt.figure(figsize=(15, 12))
 				sns.heatmap(jaccard_df, annot=True, fmt=".2f", cmap='Blues', linewidths=.5, linecolor='gray',
 										cbar_kws={'label': 'Jaccard Similarity'})
@@ -2615,21 +2616,19 @@ def perform_multilabel_eda(
 						dpi=DPI,
 						bbox_inches='tight',
 				)
-				plt.close() 
+				plt.close()
 		else:
 				print("Not enough unique labels to display Jaccard similarity matrix (need at least 2).")
-		print("-" * 40 + "\n")
 
+		print("-" * 40 + "\n")
 
 		# --- 9. Comparison of Label Sources ---
 		print("Label Sources Comparison: textual_based_labels vs. visual_based_labels vs. multimodal_labels".center(160, "-"))
-
 		source_cols = {
 				'textual_based': 'textual_based_labels',
 				'visual_based': 'visual_based_labels',
 				'multimodal': 'multimodal_labels'
 		}
-
 		unique_labels_by_source = {}
 		for key, col_name in source_cols.items():
 				if col_name in processed_dfs:
@@ -2667,13 +2666,26 @@ def perform_multilabel_eda(
 
 		# Visualization: Overlap using a bar chart
 		overlap_data = {
-				'Category': ['All Three', 'Textual & Visual', 'Textual & Multimodal', 'Visual & Multimodal',
-										 'Unique Textual', 'Unique Visual', 'Unique Multimodal'],
-				'Count': [len(all_three_overlap), len(text_visual_overlap), len(text_multimodal_overlap),
-									len(visual_multimodal_overlap), len(unique_to_text), len(unique_to_visual), len(unique_to_multimodal)]
+			'Category': [
+				'All Three', 
+				'Textual & Visual', 
+				'Textual & Multimodal', 
+				'Visual & Multimodal',
+				'Unique Textual', 
+				'Unique Visual', 
+				'Unique Multimodal'
+			],
+			'Count': [
+				len(all_three_overlap), 
+				len(text_visual_overlap), 
+				len(text_multimodal_overlap),
+				len(visual_multimodal_overlap),
+				len(unique_to_text),
+				len(unique_to_visual),
+				len(unique_to_multimodal)
+			]
 		}
 		overlap_df = pd.DataFrame(overlap_data)
-
 		plt.figure(figsize=(12, 7))
 		sns.barplot(x='Count', y='Category', data=overlap_df, palette='pastel')
 		plt.title('Overlap and Uniqueness of Labels from Different Sources')
@@ -2681,110 +2693,11 @@ def perform_multilabel_eda(
 		plt.ylabel('Label Set')
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, "label_source_overlap_uniqueness.png"),
-			dpi=DPI,
-			bbox_inches='tight',
+				fname=os.path.join(output_dir, "label_source_overlap_uniqueness.png"),
+				dpi=DPI,
+				bbox_inches='tight',
 		)
-		plt.close() 
-		print("-" * 40 + "\n")
-
-		# --- 10. Temporal Analysis (doc_date) ---
-		print("--- Temporal Analysis (doc_date) ---")
-		original_df = pd.read_csv(
-			filepath_or_buffer=data_path, 
-			on_bad_lines='skip', 
-			dtype=dtypes, 
-			low_memory=False,
-		)
-
-		date_column_to_use = None
-		if 'raw_doc_date' in original_df.columns:
-			date_column_to_use = 'raw_doc_date'
-		elif 'doc_date' in original_df.columns:
-			date_column_to_use = 'doc_date'
-
-		if date_column_to_use:
-			print(f"Attempting to parse dates from column: '{date_column_to_use}'")
-			original_df['parsed_date'] = pd.NaT # Initialize as NaT (Not a Time)
-			# Attempt to parse directly as datetime first (handles full dates like 'YYYY-MM-DD', 'YYYY/MM/DD', etc.)
-			# The `infer_datetime_format=True` can speed things up if formats are consistent.
-			# `errors='coerce'` will turn unparseable dates into NaT.
-			original_df['parsed_date'] = pd.to_datetime(original_df[date_column_to_use], errors='coerce', infer_datetime_format=True)
-			# Fallback for 'YYYY' or 'YYYY.0' style years if direct parsing failed for some/all
-			# This will only apply to rows where 'parsed_date' is still NaT
-			# and the original value in date_column_to_use might be a year.
-			for index, row in original_df.loc[original_df['parsed_date'].isnull()].iterrows():
-				val = row[date_column_to_use]
-				if pd.notnull(val):
-					try:
-						# Try to convert to float then int (for 'YYYY.0') then to datetime
-						year_str = str(int(float(str(val)))) # Handles "YYYY.0" and "YYYY"
-						original_df.loc[index, 'parsed_date'] = pd.to_datetime(year_str, format='%Y', errors='coerce')
-					except ValueError:
-						# If it's not a simple year format, keep it as NaT from the previous attempt
-						pass # original_df.loc[index, 'parsed_date'] remains NaT
-			df_valid_dates = original_df.dropna(subset=['parsed_date']).copy()
-			# Re-parse labels for temporal analysis if needed, ensuring they're lists
-			# This part needs to be careful if df_valid_dates is empty
-			if not df_valid_dates.empty:
-				for col in label_columns_to_parse:
-					if col in df_valid_dates.columns:
-						# Check if the first non-null value is a string before applying ast.literal_eval
-						first_valid_value = df_valid_dates[col].dropna().iloc[0] if not df_valid_dates[col].dropna().empty else None
-						if isinstance(first_valid_value, str):
-							try:
-								df_valid_dates[col] = df_valid_dates[col].apply(
-									lambda x: ast.literal_eval(x) if pd.notnull(x) and isinstance(x, str) else x
-								)
-							except Exception as e:
-								print(f"Warning: Could not parse column {col} in df_valid_dates: {e}")
-			if not df_valid_dates.empty:
-				df_valid_dates['year'] = df_valid_dates['parsed_date'].dt.year
-				print(f"Date range: {df_valid_dates['year'].min()} - {df_valid_dates['year'].max()}")
-				# Ensure min and max are valid numbers before creating range for bins
-				min_year = df_valid_dates['year'].min()
-				max_year = df_valid_dates['year'].max()
-				if pd.notnull(min_year) and pd.notnull(max_year) and min_year <= max_year :
-					plt.figure(figsize=(12, 6))
-					sns.histplot(df_valid_dates['year'], bins=range(int(min_year), int(max_year) + 2), kde=False, color='lightgreen')
-					plt.title('Distribution of Documents by Year')
-					plt.xlabel('Year')
-					plt.ylabel('Number of Documents')
-					plt.tight_layout()
-					plt.savefig(
-						fname=os.path.join(output_dir, "document_year_distribution.png"),
-						dpi=DPI,
-						bbox_inches='tight',
-					)
-					plt.close() 
-					if label_column in df_valid_dates.columns and isinstance(df_valid_dates[label_column].iloc[0], list): # Check if it's list after parsing
-						df_valid_dates['label_cardinality'] = df_valid_dates[label_column].apply(len)
-						avg_cardinality_by_year = df_valid_dates.groupby('year')['label_cardinality'].mean().reset_index()
-						if not avg_cardinality_by_year.empty:
-							plt.figure(figsize=(12, 6))
-							sns.lineplot(x='year', y='label_cardinality', data=avg_cardinality_by_year, marker='o', color='purple')
-							plt.title(f'Average Label Cardinality by Year (for "{label_column}")')
-							plt.xlabel('Year')
-							plt.ylabel('Average Number of Labels per Document')
-							plt.grid(axis='y', linestyle='--', alpha=0.7)
-							plt.tight_layout()
-							plt.savefig(
-								fname=os.path.join(output_dir, f"{label_column}_avg_cardinality_by_year.png"),
-								dpi=DPI,
-								bbox_inches='tight',
-							)
-							plt.close() 
-					elif label_column not in df_valid_dates.columns:
-						print(f"'{label_column}' column not available in date-filtered data for cardinality over time.")
-					else:
-						print(f"'{label_column}' column in date-filtered data is not in list format. Skipping cardinality over time.")
-				else:
-					print("Could not determine valid year range for document distribution plot.")
-			else:
-				print("No valid dates found for temporal analysis after parsing.")
-		else:
-			print("Neither 'doc_date' nor 'raw_doc_date' column found. Skipping temporal analysis.")
-		print("-" * 40 + "\n")
+		plt.close()
 
 		print(f"EDA Elapsed_t: {time.time()-eda_st:.3f} sec".center(160, "-"))
 

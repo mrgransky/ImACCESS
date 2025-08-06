@@ -2467,12 +2467,21 @@ def full_finetune_single_label(
 
 	get_parameters_info(model=model, mode=mode)
 
-	optimizer = AdamW(
+	# optimizer = AdamW(
+	# 	params=[p for p in model.parameters() if p.requires_grad],
+	# 	lr=learning_rate,
+	# 	betas=(0.9, 0.98),
+	# 	eps=1e-6,
+	# 	weight_decay=weight_decay,
+	# )
+
+	optimizer = LAMB(
 		params=[p for p in model.parameters() if p.requires_grad],
 		lr=learning_rate,
-		betas=(0.9, 0.98),
+		betas=(0.9, 0.999),  # Typical beta values for LAMB
 		eps=1e-6,
 		weight_decay=weight_decay,
+		adam=False  # Set to True if you want LAMB to behave like Adam
 	)
 
 	scheduler = lr_scheduler.OneCycleLR(
@@ -2534,7 +2543,7 @@ def full_finetune_single_label(
 			images = images.to(device, non_blocking=True)
 			tokenized_labels = tokenized_labels.to(device, non_blocking=True)
 
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()): # Automatic Mixed Precision (AMP)
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 				logits_per_image, logits_per_text = model(images, tokenized_labels)
 				ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
 				loss_img = criterion(logits_per_image, ground_truth)
@@ -2545,12 +2554,39 @@ def full_finetune_single_label(
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)  # Stabilize training
 			scaler.step(optimizer)
 			scaler.update()
-			scheduler.step()  # Update learning rate
+			scheduler.step() # Update learning rate
 
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
-
+				trust_stats = optimizer.get_trust_ratio_stats()
+				if trust_stats:
+					print("\t\tTrust Ratio Stats:")
+					print(f"\t\t\tMean: {trust_stats['mean']:.4f}")
+					print(f"\t\t\tMedian: {trust_stats['median']:.4f}")
+					print(f"\t\t\tRange: [{trust_stats['min']:.4f}, {trust_stats['max']:.4f}]")
+					print(f"\t\t\tStd: {trust_stats['std']:.4f}")
+					
+					# Optionally log extreme values
+					if trust_stats['min'] < 0.5 or trust_stats['max'] > 2.0:
+						print("\t\t\tWarning: Extreme trust ratios detected!")
+						# Log individual layers with extreme ratios
+						extreme_layers = [
+							(x['name'], x['trust_ratio']) 
+							for x in optimizer.trust_ratios 
+							if x['trust_ratio'] < 0.5 or x['trust_ratio'] > 2.0
+						]
+						for name, ratio in extreme_layers[:5]:  # Limit to top 5
+							print(f"\t\t\t\tLayer: {name[:50]}...: {ratio:.4f}")
 			epoch_loss += total_loss.item()
+
+		trust_stats = optimizer.get_trust_ratio_stats()
+		if trust_stats:
+			print("\nEpoch Trust Ratio Summary:")
+			print(f"\tMean: {trust_stats['mean']:.4f}")
+			print(f"\tMedian: {trust_stats['median']:.4f}")
+			print(f"\t5th percentile: {trust_stats['percentiles']['5th']:.4f}")
+			print(f"\t95th percentile: {trust_stats['percentiles']['95th']:.4f}")
+			print(f"\tStandard deviation: {trust_stats['std']:.4f}")
 
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)

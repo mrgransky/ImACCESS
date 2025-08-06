@@ -6,6 +6,142 @@ import torch
 import copy
 import torch.nn.functional as F
 from torch import nn
+from torch.optim import Optimizer
+
+class LAMB(Optimizer):
+		"""
+		Enhanced LAMB optimizer with trust ratio tracking
+		"""
+		
+		def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-6,
+								 weight_decay=0.01, adam=False):
+				if not 0.0 <= lr:
+						raise ValueError("Invalid learning rate: {}".format(lr))
+				if not 0.0 <= eps:
+						raise ValueError("Invalid epsilon value: {}".format(eps))
+				if not 0.0 <= betas[0] < 1.0:
+						raise ValueError("Invalid beta parameter at index 0: {}".format(betas[0]))
+				if not 0.0 <= betas[1] < 1.0:
+						raise ValueError("Invalid beta parameter at index 1: {}".format(betas[1]))
+				defaults = dict(lr=lr, betas=betas, eps=eps,
+												weight_decay=weight_decay, adam=adam)
+				super(LAMB, self).__init__(params, defaults)
+				
+				# Initialize trust ratio tracking
+				self.trust_ratios = []
+				self.layer_names = []
+				self._init_layer_names(params)
+
+		def _init_layer_names(self, params):
+				"""Initialize human-readable layer names for tracking"""
+				for group in self.param_groups:
+						for p in group['params']:
+								param_name = self._get_param_name(p)
+								self.layer_names.append(param_name)
+		
+		def _get_param_name(self, p):
+				"""Helper to get parameter name for logging"""
+				for name, param in self.named_params:
+						if param is p:
+								return name
+				return str(id(p))
+		
+		@property
+		def named_params(self):
+				"""Generator for parameter names and objects"""
+				for group in self.param_groups:
+						for p in group['params']:
+								yield self._get_param_name(p), p
+
+		def step(self, closure=None):
+				loss = None
+				if closure is not None:
+						loss = closure()
+
+				self.trust_ratios = []  # Reset each step
+				
+				for group in self.param_groups:
+						for p in group['params']:
+								if p.grad is None:
+										continue
+								grad = p.grad.data
+								if grad.is_sparse:
+										raise RuntimeError('LAMB does not support sparse gradients.')
+
+								state = self.state[p]
+
+								# State initialization
+								if len(state) == 0:
+										state['step'] = 0
+										state['exp_avg'] = torch.zeros_like(p.data)
+										state['exp_avg_sq'] = torch.zeros_like(p.data)
+
+								exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
+								beta1, beta2 = group['betas']
+
+								state['step'] += 1
+
+								# Decay the first and second moment running average coefficient
+								exp_avg.mul_(beta1).add_(1 - beta1, grad)
+								exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
+
+								denom = exp_avg_sq.sqrt().add_(group['eps'])
+
+								bias_correction1 = 1 - beta1 ** state['step']
+								bias_correction2 = 1 - beta2 ** state['step']
+								step_size = group['lr'] * math.sqrt(bias_correction2) / bias_correction1
+
+								adam_step = exp_avg / denom
+
+								if group['weight_decay'] != 0:
+										adam_step.add_(group['weight_decay'], p.data)
+
+								weight_norm = p.data.pow(2).sum().sqrt().clamp(0, 10)
+								adam_norm = adam_step.pow(2).sum().sqrt()
+								if weight_norm == 0 or adam_norm == 0:
+										trust_ratio = 1
+								else:
+										trust_ratio = weight_norm / adam_norm
+								
+								state['weight_norm'] = weight_norm.item()
+								state['adam_norm'] = adam_norm.item()
+								state['trust_ratio'] = trust_ratio
+								
+								# Store trust ratio for logging
+								param_name = self._get_param_name(p)
+								self.trust_ratios.append({
+										'name': param_name,
+										'trust_ratio': trust_ratio,
+										'weight_norm': weight_norm.item(),
+										'adam_norm': adam_norm.item()
+								})
+
+								if group['adam']:
+										trust_ratio = 1
+
+								p.data.add_(-step_size * trust_ratio, adam_step)
+
+				return loss
+
+		def get_trust_ratio_stats(self):
+				"""Return statistics about trust ratios across all layers"""
+				if not self.trust_ratios:
+						return None
+						
+				ratios = [x['trust_ratio'] for x in self.trust_ratios]
+				return {
+						'mean': float(np.mean(ratios)),
+						'median': float(np.median(ratios)),
+						'min': float(np.min(ratios)),
+						'max': float(np.max(ratios)),
+						'std': float(np.std(ratios)),
+						'percentiles': {
+								'5th': float(np.percentile(ratios, 5)),
+								'25th': float(np.percentile(ratios, 25)),
+								'75th': float(np.percentile(ratios, 75)),
+								'95th': float(np.percentile(ratios, 95))
+						}
+				}
 
 class LoRALinear(nn.Module):
 	def __init__(
