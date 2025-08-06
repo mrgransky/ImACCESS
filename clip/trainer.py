@@ -2581,12 +2581,12 @@ def full_finetune_single_label(
 							if x['trust_ratio'] < 0.5 or x['trust_ratio'] > 2.0
 						]
 						for name, ratio in extreme_layers[:5]:  # Limit to top 5
-							print(f"\t\t\t\tLayer: {name[:50]}...: {ratio:.4f}")
+							print(f"\t\t\t\tLayer: {name}: {ratio:.4f}")
 			epoch_loss += total_loss.item()
 
 		trust_stats = optimizer.get_trust_ratio_stats()
 		if trust_stats:
-			print("\nEpoch Trust Ratio Summary:")
+			print(f"\nEpoch {epoch}: Trust Ratio Summary:")
 			print(f"\tMean: {trust_stats['mean']:.4f}")
 			print(f"\tMedian: {trust_stats['median']:.4f}")
 			print(f"\t5th percentile: {trust_stats['percentiles']['5th']:.4f}")

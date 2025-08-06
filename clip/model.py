@@ -10,7 +10,7 @@ from torch.optim import Optimizer
 
 class LAMB(Optimizer):
     """
-    Fixed LAMB optimizer implementation without recursion
+    LAMB optimizer using PyTorch statistical functions for CUDA compatibility
     """
     
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-6,
@@ -103,12 +103,12 @@ class LAMB(Optimizer):
                 weight_norm = p.data.pow(2).sum().sqrt().clamp(0, 10)
                 adam_norm = adam_step.pow(2).sum().sqrt()
                 if weight_norm == 0 or adam_norm == 0:
-                    trust_ratio = 1
+                    trust_ratio = torch.tensor(1.0, device=p.device)
                 else:
                     trust_ratio = weight_norm / adam_norm
                 
-                state['weight_norm'] = weight_norm.item()
-                state['adam_norm'] = adam_norm.item()
+                state['weight_norm'] = weight_norm
+                state['adam_norm'] = adam_norm
                 state['trust_ratio'] = trust_ratio
                 
                 # Store trust ratio for logging
@@ -116,8 +116,8 @@ class LAMB(Optimizer):
                 self.trust_ratios.append({
                     'name': param_name,
                     'trust_ratio': trust_ratio,
-                    'weight_norm': weight_norm.item(),
-                    'adam_norm': adam_norm.item()
+                    'weight_norm': weight_norm,
+                    'adam_norm': adam_norm
                 })
 
                 if group['adam']:
@@ -128,22 +128,25 @@ class LAMB(Optimizer):
         return loss
 
     def get_trust_ratio_stats(self):
-        """Return statistics about trust ratios across all layers"""
+        """Return statistics about trust ratios across all layers using PyTorch"""
         if not self.trust_ratios:
             return None
             
-        ratios = [x['trust_ratio'] for x in self.trust_ratios]
+        # Collect all trust ratios into a single tensor
+        trust_ratios = torch.stack([x['trust_ratio'] for x in self.trust_ratios])
+        
+        # Calculate statistics using PyTorch
         return {
-            'mean': float(np.mean(ratios)),
-            'median': float(np.median(ratios)),
-            'min': float(np.min(ratios)),
-            'max': float(np.max(ratios)),
-            'std': float(np.std(ratios)),
+            'mean': trust_ratios.mean().item(),
+            'median': trust_ratios.median().item(),
+            'min': trust_ratios.min().item(),
+            'max': trust_ratios.max().item(),
+            'std': trust_ratios.std().item(),
             'percentiles': {
-                '5th': float(np.percentile(ratios, 5)),
-                '25th': float(np.percentile(ratios, 25)),
-                '75th': float(np.percentile(ratios, 75)),
-                '95th': float(np.percentile(ratios, 95))
+                '5th': torch.quantile(trust_ratios, 0.05).item(),
+                '25th': torch.quantile(trust_ratios, 0.25).item(),
+                '75th': torch.quantile(trust_ratios, 0.75).item(),
+                '95th': torch.quantile(trust_ratios, 0.95).item()
             }
         }
 
