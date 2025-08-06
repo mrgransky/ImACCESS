@@ -8,137 +8,210 @@ import torch.nn.functional as F
 from torch import nn
 from torch.optim import Optimizer
 
+import torch
+import math
+import numpy as np
+from torch.optim import Optimizer
+
 class LAMB(Optimizer):
-		def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-6,
-								 weight_decay=0.01, adam=False, clamp_trust=(0.1, 10)):
-				if not 0.0 <= lr:
-						raise ValueError("Invalid learning rate: {}".format(lr))
-				if not 0.0 <= eps:
-						raise ValueError("Invalid epsilon value: {}".format(eps))
-				if not 0.0 <= betas[0] < 1.0:
-						raise ValueError("Invalid beta parameter at index 0: {}".format(betas[0]))
-				if not 0.0 <= betas[1] < 1.0:
-						raise ValueError("Invalid beta parameter at index 1: {}".format(betas[1]))
-						
-				defaults = dict(lr=lr, betas=betas, eps=eps,
-											 weight_decay=weight_decay, adam=adam,
-											 clamp_trust=clamp_trust)
-				super(LAMB, self).__init__(params, defaults)
-				
-				# Initialize trust ratio tracking
-				self.trust_ratios = []
-				self.param_names = {}
-				self._init_param_names()
+    """
+    Layer-wise Adaptive Moments optimizer with improved stability through:
+    - Layer-specific trust ratio clamping
+    - Conservative norm bounds
+    - Enhanced diagnostics
+    - Dynamic adjustments
+    """
+    
+    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-6,
+                 weight_decay=0.01, adam=False, clamp_trust=(0.5, 5.0),
+                 layer_wise_clamping=True):
+        # Validate parameters
+        if not 0.0 <= lr:
+            raise ValueError(f"Invalid learning rate: {lr}")
+        if not 0.0 <= eps:
+            raise ValueError(f"Invalid epsilon value: {eps}")
+        if not 0.0 <= betas[0] < 1.0:
+            raise ValueError(f"Invalid beta parameter at index 0: {betas[0]}")
+        if not 0.0 <= betas[1] < 1.0:
+            raise ValueError(f"Invalid beta parameter at index 1: {betas[1]}")
+            
+        defaults = dict(
+            lr=lr, betas=betas, eps=eps,
+            weight_decay=weight_decay, adam=adam,
+            clamp_trust=clamp_trust,
+            layer_wise_clamping=layer_wise_clamping
+        )
+        super(LAMB, self).__init__(params, defaults)
+        
+        # Initialize tracking
+        self.trust_ratios = []
+        self.param_names = {}
+        self._init_param_names()
 
-		def _init_param_names(self):
-				"""Initialize parameter names by walking through model parameters"""
-				param_dict = {}
-				for group in self.param_groups:
-						for i, p in enumerate(group['params']):
-								param_dict[id(p)] = f"param_group_{i}"
-				
-				try:
-						model = next(iter(self.param_groups[0]['params'])).__dict__.get('_module', None)
-						if model:
-								for name, param in model.named_parameters():
-										param_dict[id(param)] = name
-				except:
-						pass
-						
-				self.param_names = param_dict
+    def _init_param_names(self):
+        """Initialize human-readable parameter names"""
+        param_dict = {}
+        for group in self.param_groups:
+            for i, p in enumerate(group['params']):
+                param_dict[id(p)] = f"param_group_{i}"
+        
+        try:
+            model = next(iter(self.param_groups[0]['params'])).__dict__.get('_module', None)
+            if model:
+                for name, param in model.named_parameters():
+                    param_dict[id(param)] = name
+        except:
+            pass
+            
+        self.param_names = param_dict
 
-		def _get_param_name(self, p):
-				"""Get parameter name from our dictionary"""
-				return self.param_names.get(id(p), str(id(p)))
+    def _get_param_name(self, p):
+        """Get parameter name from our dictionary"""
+        return self.param_names.get(id(p), str(id(p)))
 
-		def step(self, closure=None):
-				loss = None
-				if closure is not None:
-						loss = closure()
+    def _get_layer_specific_clamp(self, param_name):
+        """Return layer-specific clamping values"""
+        if 'positional_embedding' in param_name or 'class_embedding' in param_name:
+            return (0.8, 3.0)  # Tighter range for embeddings
+        elif 'logit_scale' in param_name:
+            return (1.0, 5.0)
+        elif 'ln_' in param_name or 'norm' in param_name:  # Normalization layers
+            return (0.5, 2.0)
+        elif 'proj' in param_name:  # Projection layers
+            return (0.8, 4.0)
+        return None  # Use default for other layers
 
-				self.trust_ratios = []
-				
-				for group in self.param_groups:
-						clamp_min, clamp_max = group['clamp_trust']
-						
-						for p in group['params']:
-								if p.grad is None:
-										continue
-										
-								grad = p.grad.data
-								if grad.is_sparse:
-										raise RuntimeError('LAMB does not support sparse gradients.')
+    def step(self, closure=None):
+        """Performs a single optimization step"""
+        loss = None
+        if closure is not None:
+            loss = closure()
 
-								state = self.state[p]
-								
-								if len(state) == 0:
-										state['step'] = 0
-										state['exp_avg'] = torch.zeros_like(p.data)
-										state['exp_avg_sq'] = torch.zeros_like(p.data)
+        self.trust_ratios = []  # Reset tracking
+        
+        for group in self.param_groups:
+            default_clamp = group['clamp_trust']
+            layer_wise = group['layer_wise_clamping']
+            
+            for p in group['params']:
+                if p.grad is None:
+                    continue
+                    
+                grad = p.grad.data
+                if grad.is_sparse:
+                    raise RuntimeError('LAMB does not support sparse gradients')
 
-								exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
-								beta1, beta2 = group['betas']
+                state = self.state[p]
+                
+                # Initialize state
+                if len(state) == 0:
+                    state['step'] = 0
+                    state['exp_avg'] = torch.zeros_like(p.data)
+                    state['exp_avg_sq'] = torch.zeros_like(p.data)
 
-								state['step'] += 1
+                exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
+                beta1, beta2 = group['betas']
 
-								exp_avg.mul_(beta1).add_(grad, alpha=1-beta1)
-								exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1-beta2)
+                state['step'] += 1
 
-								denom = exp_avg_sq.sqrt().add_(group['eps'])
+                # Update moments
+                exp_avg.mul_(beta1).add_(grad, alpha=1-beta1)
+                exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1-beta2)
 
-								bias_correction1 = 1 - beta1 ** state['step']
-								bias_correction2 = 1 - beta2 ** state['step']
-								step_size = group['lr'] * math.sqrt(bias_correction2) / bias_correction1
+                denom = exp_avg_sq.sqrt().add_(group['eps'])
 
-								adam_step = exp_avg / denom
+                # Bias correction
+                bias_correction1 = 1 - beta1 ** state['step']
+                bias_correction2 = 1 - beta2 ** state['step']
+                step_size = group['lr'] * math.sqrt(bias_correction2) / bias_correction1
 
-								if group['weight_decay'] != 0:
-										adam_step.add_(p.data, alpha=group['weight_decay'])
+                adam_step = exp_avg / denom
 
-								weight_norm = p.data.norm(2).clamp_(1e-8, 10)
-								adam_norm = adam_step.norm(2).clamp_(1e-8, 10)
-								trust_ratio = (weight_norm / adam_norm).clamp_(clamp_min, clamp_max)
-								
-								state['weight_norm'] = weight_norm
-								state['adam_norm'] = adam_norm
-								state['trust_ratio'] = trust_ratio
-								
-								param_name = self._get_param_name(p)
-								self.trust_ratios.append({
-										'name': param_name,
-										'trust_ratio': trust_ratio,
-										'weight_norm': weight_norm,
-										'adam_norm': adam_norm
-								})
+                # Weight decay
+                if group['weight_decay'] != 0:
+                    adam_step.add_(p.data, alpha=group['weight_decay'])
 
-								p.data.add_(adam_step, alpha=-step_size * trust_ratio)
+                # Calculate norms with conservative bounds
+                weight_norm = p.data.norm(2).clamp_(1e-6, 5.0)
+                adam_norm = adam_step.norm(2).clamp_(1e-6, 5.0)
+                
+                # Determine clamping bounds
+                param_name = self._get_param_name(p)
+                if layer_wise:
+                    layer_clamp = self._get_layer_specific_clamp(param_name)
+                    clamp_min, clamp_max = layer_clamp if layer_clamp else default_clamp
+                else:
+                    clamp_min, clamp_max = default_clamp
+                
+                # Calculate and clamp trust ratio
+                trust_ratio = (weight_norm / adam_norm).clamp_(clamp_min, clamp_max)
+                
+                # Store tracking information
+                state['weight_norm'] = weight_norm
+                state['adam_norm'] = adam_norm
+                state['trust_ratio'] = trust_ratio
+                
+                self.trust_ratios.append({
+                    'name': param_name,
+                    'trust_ratio': trust_ratio,
+                    'weight_norm': weight_norm,
+                    'adam_norm': adam_norm,
+                    'clamp_min': clamp_min,
+                    'clamp_max': clamp_max,
+                    'lr': group['lr']
+                })
 
-				return loss
+                # Apply update
+                p.data.add_(adam_step, alpha=-step_size * trust_ratio)
 
-		def get_trust_ratio_stats(self):
-			"""Return statistics about trust ratios across all layers"""
-			if not self.trust_ratios:
-				return None
-			try:
-				trust_ratios = torch.stack([x['trust_ratio'] for x in self.trust_ratios])
-				ratios_cpu = trust_ratios.cpu().numpy()  # Convert to numpy array on CPU
-				
-				return {
-					'mean': float(np.mean(ratios_cpu)),
-					'median': float(np.median(ratios_cpu)),
-					'min': float(np.min(ratios_cpu)),
-					'max': float(np.max(ratios_cpu)),
-					'std': float(np.std(ratios_cpu)),
-					'percentiles': {
-						'5th': float(np.percentile(ratios_cpu, 5)),
-						'25th': float(np.percentile(ratios_cpu, 25)),
-						'75th': float(np.percentile(ratios_cpu, 75)),
-						'95th': float(np.percentile(ratios_cpu, 95))
-					}
-				}
-			except Exception as e:
-				print(f"Error calculating trust ratio stats: {e}")
-				return None
+        return loss
+
+    def get_trust_ratio_stats(self):
+        """Returns comprehensive trust ratio statistics"""
+        if not self.trust_ratios:
+            return None
+            
+        try:
+            # Convert to numpy for statistics
+            ratios = np.array([x['trust_ratio'].item() for x in self.trust_ratios])
+            
+            # Identify problematic layers
+            problematic = []
+            for tr in self.trust_ratios:
+                ratio = tr['trust_ratio'].item()
+                if (ratio <= tr['clamp_min'] * 1.1 or 
+                    ratio >= tr['clamp_max'] * 0.9):
+                    problematic.append((
+                        tr['name'], 
+                        round(ratio, 4),
+                        round(tr['clamp_min'], 2),
+                        round(tr['clamp_max'], 2),
+                        f"{tr['lr']:.1e}"
+                    ))
+            
+            # Calculate basic statistics
+            stats = {
+                'mean': float(np.mean(ratios)),
+                'median': float(np.median(ratios)),
+                'min': float(np.min(ratios)),
+                'max': float(np.max(ratios)),
+                'std': float(np.std(ratios)),
+                'percentiles': {
+                    '5th': float(np.percentile(ratios, 5)),
+                    '25th': float(np.percentile(ratios, 25)),
+                    '75th': float(np.percentile(ratios, 75)),
+                    '95th': float(np.percentile(ratios, 95))
+                },
+                'problematic_layers': problematic[:5],  # Show top 5 problematic
+                'clamp_violations': len(problematic),
+                'total_layers': len(self.trust_ratios)
+            }
+            
+            return stats
+            
+        except Exception as e:
+            print(f"Error calculating trust ratio stats: {str(e)}")
+            return None
 
 class LoRALinear(nn.Module):
 	def __init__(

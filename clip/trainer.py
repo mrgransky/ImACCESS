@@ -2485,7 +2485,8 @@ def full_finetune_single_label(
 		betas=(0.9, 0.999),  # Typical beta values for LAMB
 		eps=1e-6,
 		weight_decay=weight_decay,
-		clamp_trust=(0.1, 10)  # Customizable clamping range
+		clamp_trust=(0.5, 5.0),  # Tighter default bounds
+		layer_wise_clamping=True  # Enable adaptive clamping
 	)
 	optimizer.param_names = param_names
 
@@ -2569,8 +2570,13 @@ def full_finetune_single_label(
 					print(f"\t\t\tMean: {trust_stats['mean']:.4f}")
 					print(f"\t\t\tMedian: {trust_stats['median']:.4f}")
 					print(f"\t\t\tRange: [{trust_stats['min']:.4f}, {trust_stats['max']:.4f}]")
+					print(f"\t\t\tClamp Violations: {stats['clamp_violations']}/{stats['total_layers']}")
 					print(f"\t\t\tStd: {trust_stats['std']:.4f}")
-					
+					if stats['clamp_violations'] > 0:
+						print("\nProblematic Layers:")
+						for layer in stats['problematic_layers']:
+							print(f"  {layer[0]:<30} ratio: {layer[1]:<6} bounds: [{layer[2]}, {layer[3]}] lr: {layer[4]}")
+
 					# Optionally log extreme values
 					if trust_stats['min'] < 0.2 or trust_stats['max'] > 5.0:
 						print("\t\t\tWarning: Approaching trust ratio limits!")
