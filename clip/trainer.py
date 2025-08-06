@@ -2475,6 +2475,10 @@ def full_finetune_single_label(
 	# 	weight_decay=weight_decay,
 	# )
 
+	param_names = {}
+	for name, param in model.named_parameters():
+		param_names[id(param)] = name
+
 	optimizer = LAMB(
 		params=[p for p in model.parameters() if p.requires_grad],
 		lr=learning_rate,
@@ -2483,6 +2487,7 @@ def full_finetune_single_label(
 		weight_decay=weight_decay,
 		adam=False  # Set to True if you want LAMB to behave like Adam
 	)
+	optimizer.param_names = param_names
 
 	scheduler = lr_scheduler.OneCycleLR(
 		optimizer=optimizer,
