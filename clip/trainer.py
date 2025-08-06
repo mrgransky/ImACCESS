@@ -2486,7 +2486,8 @@ def full_finetune_single_label(
 		eps=1e-6,
 		weight_decay=weight_decay,
 		clamp_trust=(0.5, 5.0),  # Tighter default bounds
-		layer_wise_clamping=True  # Enable adaptive clamping
+		warmup_steps=2000,  # Gradual warmup
+		grad_clip=1.0  # Gradient clipping
 	)
 	optimizer.param_names = param_names
 
@@ -2566,28 +2567,14 @@ def full_finetune_single_label(
 				print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
 				trust_stats = optimizer.get_trust_ratio_stats()
 				if trust_stats:
-					print("\t\tTrust Ratio Stats:")
-					print(f"\t\t\tMean: {trust_stats['mean']:.4f}")
-					print(f"\t\t\tMedian: {trust_stats['median']:.4f}")
-					print(f"\t\t\tRange: [{trust_stats['min']:.4f}, {trust_stats['max']:.4f}]")
-					print(f"\t\t\tClamp Violations: {trust_stats['clamp_violations']}/{trust_stats['total_layers']}")
-					print(f"\t\t\tStd: {trust_stats['std']:.4f}")
-					if trust_stats['clamp_violations'] > 0:
-						print("\nProblematic Layers:")
-						for layer in trust_stats['problematic_layers']:
-							print(f"  {layer[0]:<30} ratio: {layer[1]:<6} bounds: [{layer[2]}, {layer[3]}] lr: {layer[4]}")
+					print(f"Trust Ratios (clamped): {trust_stats['mean']:.2f} ± {trust_stats['std']:.2f}")
+					print(f"Raw Ratios: {trust_stats['raw_mean']:.2f} median {trust_stats['raw_median']:.2f}")
+					print(f"Clamp Violations: {trust_stats['clamp_violations']}/{trust_stats['total_layers']}")
+					if trust_stats['clamp_violations'] > trust_stats['total_layers'] * 0.3:
+						print("High clamp violations - consider adjusting learning rate")
+						for pg in optimizer.param_groups:
+							pg['lr'] *= 0.8  # Reduce learning rate
 
-					# Optionally log extreme values
-					if trust_stats['min'] < 0.2 or trust_stats['max'] > 5.0:
-						print("\t\t\tWarning: Approaching trust ratio limits!")
-						# Log individual layers with extreme ratios
-						extreme_layers = [
-							(x['name'], x['trust_ratio']) 
-							for x in optimizer.trust_ratios 
-							if x['trust_ratio'] < 0.5 or x['trust_ratio'] > 2.0
-						]
-						for name, ratio in extreme_layers[:5]:  # Limit to top 5
-							print(f"\t\t\t\tLayer: {name}: {ratio:.4f}")
 			epoch_loss += total_loss.item()
 
 		trust_stats = optimizer.get_trust_ratio_stats()
@@ -2598,6 +2585,7 @@ def full_finetune_single_label(
 			print(f"\t5th percentile: {trust_stats['percentiles']['5th']:.4f}")
 			print(f"\t95th percentile: {trust_stats['percentiles']['95th']:.4f}")
 			print(f"\tStandard deviation: {trust_stats['std']:.4f}")
+			print("-"*70)
 
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
