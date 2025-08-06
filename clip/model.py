@@ -9,146 +9,136 @@ from torch import nn
 from torch.optim import Optimizer
 
 class LAMB(Optimizer):
-    """
-    LAMB optimizer using PyTorch statistical functions for CUDA compatibility
-    """
-    
-    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-6,
-                 weight_decay=0.01, adam=False):
-        if not 0.0 <= lr:
-            raise ValueError("Invalid learning rate: {}".format(lr))
-        if not 0.0 <= eps:
-            raise ValueError("Invalid epsilon value: {}".format(eps))
-        if not 0.0 <= betas[0] < 1.0:
-            raise ValueError("Invalid beta parameter at index 0: {}".format(betas[0]))
-        if not 0.0 <= betas[1] < 1.0:
-            raise ValueError("Invalid beta parameter at index 1: {}".format(betas[1]))
-            
-        defaults = dict(lr=lr, betas=betas, eps=eps,
-                       weight_decay=weight_decay, adam=adam)
-        super(LAMB, self).__init__(params, defaults)
-        
-        # Initialize trust ratio tracking
-        self.trust_ratios = []
-        self.param_names = {}
-        self._init_param_names()
+		def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-6,
+								 weight_decay=0.01, adam=False, clamp_trust=(0.1, 10)):
+				if not 0.0 <= lr:
+						raise ValueError("Invalid learning rate: {}".format(lr))
+				if not 0.0 <= eps:
+						raise ValueError("Invalid epsilon value: {}".format(eps))
+				if not 0.0 <= betas[0] < 1.0:
+						raise ValueError("Invalid beta parameter at index 0: {}".format(betas[0]))
+				if not 0.0 <= betas[1] < 1.0:
+						raise ValueError("Invalid beta parameter at index 1: {}".format(betas[1]))
+						
+				defaults = dict(lr=lr, betas=betas, eps=eps,
+											 weight_decay=weight_decay, adam=adam,
+											 clamp_trust=clamp_trust)
+				super(LAMB, self).__init__(params, defaults)
+				
+				# Initialize trust ratio tracking
+				self.trust_ratios = []
+				self.param_names = {}
+				self._init_param_names()
 
-    def _init_param_names(self):
-        """Initialize parameter names by walking through model parameters"""
-        param_dict = {}
-        for group in self.param_groups:
-            for i, p in enumerate(group['params']):
-                # Create a unique identifier for each parameter
-                param_dict[id(p)] = f"param_group_{i}"
-        
-        # Now try to get actual names from the model if possible
-        try:
-            # This assumes the parameters come from a model with named_parameters()
-            model = next(iter(self.param_groups[0]['params'])).__dict__.get('_module', None)
-            if model:
-                for name, param in model.named_parameters():
-                    param_dict[id(param)] = name
-        except:
-            pass
-            
-        self.param_names = param_dict
+		def _init_param_names(self):
+				"""Initialize parameter names by walking through model parameters"""
+				param_dict = {}
+				for group in self.param_groups:
+						for i, p in enumerate(group['params']):
+								param_dict[id(p)] = f"param_group_{i}"
+				
+				try:
+						model = next(iter(self.param_groups[0]['params'])).__dict__.get('_module', None)
+						if model:
+								for name, param in model.named_parameters():
+										param_dict[id(param)] = name
+				except:
+						pass
+						
+				self.param_names = param_dict
 
-    def _get_param_name(self, p):
-        """Get parameter name from our dictionary"""
-        return self.param_names.get(id(p), str(id(p)))
+		def _get_param_name(self, p):
+				"""Get parameter name from our dictionary"""
+				return self.param_names.get(id(p), str(id(p)))
 
-    def step(self, closure=None):
-        loss = None
-        if closure is not None:
-            loss = closure()
+		def step(self, closure=None):
+				loss = None
+				if closure is not None:
+						loss = closure()
 
-        self.trust_ratios = []  # Reset each step
-        
-        for group in self.param_groups:
-            for p in group['params']:
-                if p.grad is None:
-                    continue
-                grad = p.grad.data
-                if grad.is_sparse:
-                    raise RuntimeError('LAMB does not support sparse gradients.')
+				self.trust_ratios = []
+				
+				for group in self.param_groups:
+						clamp_min, clamp_max = group['clamp_trust']
+						
+						for p in group['params']:
+								if p.grad is None:
+										continue
+										
+								grad = p.grad.data
+								if grad.is_sparse:
+										raise RuntimeError('LAMB does not support sparse gradients.')
 
-                state = self.state[p]
+								state = self.state[p]
+								
+								if len(state) == 0:
+										state['step'] = 0
+										state['exp_avg'] = torch.zeros_like(p.data)
+										state['exp_avg_sq'] = torch.zeros_like(p.data)
 
-                # State initialization
-                if len(state) == 0:
-                    state['step'] = 0
-                    state['exp_avg'] = torch.zeros_like(p.data)
-                    state['exp_avg_sq'] = torch.zeros_like(p.data)
+								exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
+								beta1, beta2 = group['betas']
 
-                exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
-                beta1, beta2 = group['betas']
+								state['step'] += 1
 
-                state['step'] += 1
+								exp_avg.mul_(beta1).add_(grad, alpha=1-beta1)
+								exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1-beta2)
 
-                # Decay the first and second moment running average coefficient
-                exp_avg.mul_(beta1).add_(1 - beta1, grad)
-                exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
+								denom = exp_avg_sq.sqrt().add_(group['eps'])
 
-                denom = exp_avg_sq.sqrt().add_(group['eps'])
+								bias_correction1 = 1 - beta1 ** state['step']
+								bias_correction2 = 1 - beta2 ** state['step']
+								step_size = group['lr'] * math.sqrt(bias_correction2) / bias_correction1
 
-                bias_correction1 = 1 - beta1 ** state['step']
-                bias_correction2 = 1 - beta2 ** state['step']
-                step_size = group['lr'] * math.sqrt(bias_correction2) / bias_correction1
+								adam_step = exp_avg / denom
 
-                adam_step = exp_avg / denom
+								if group['weight_decay'] != 0:
+										adam_step.add_(p.data, alpha=group['weight_decay'])
 
-                if group['weight_decay'] != 0:
-                    adam_step.add_(group['weight_decay'], p.data)
+								weight_norm = p.data.norm(2).clamp_(1e-8, 10)
+								adam_norm = adam_step.norm(2).clamp_(1e-8, 10)
+								trust_ratio = (weight_norm / adam_norm).clamp_(clamp_min, clamp_max)
+								
+								state['weight_norm'] = weight_norm
+								state['adam_norm'] = adam_norm
+								state['trust_ratio'] = trust_ratio
+								
+								param_name = self._get_param_name(p)
+								self.trust_ratios.append({
+										'name': param_name,
+										'trust_ratio': trust_ratio,
+										'weight_norm': weight_norm,
+										'adam_norm': adam_norm
+								})
 
-                weight_norm = p.data.pow(2).sum().sqrt().clamp(0, 10)
-                adam_norm = adam_step.pow(2).sum().sqrt()
-                if weight_norm == 0 or adam_norm == 0:
-                    trust_ratio = torch.tensor(1.0, device=p.device)
-                else:
-                    trust_ratio = weight_norm / adam_norm
-                
-                state['weight_norm'] = weight_norm
-                state['adam_norm'] = adam_norm
-                state['trust_ratio'] = trust_ratio
-                
-                # Store trust ratio for logging
-                param_name = self._get_param_name(p)
-                self.trust_ratios.append({
-                    'name': param_name,
-                    'trust_ratio': trust_ratio,
-                    'weight_norm': weight_norm,
-                    'adam_norm': adam_norm
-                })
+								p.data.add_(adam_step, alpha=-step_size * trust_ratio)
 
-                if group['adam']:
-                    trust_ratio = 1
+				return loss
 
-                p.data.add_(-step_size * trust_ratio, adam_step)
-
-        return loss
-
-    def get_trust_ratio_stats(self):
-        """Return statistics about trust ratios across all layers using PyTorch"""
-        if not self.trust_ratios:
-            return None
-            
-        # Collect all trust ratios into a single tensor
-        trust_ratios = torch.stack([x['trust_ratio'] for x in self.trust_ratios])
-        
-        # Calculate statistics using PyTorch
-        return {
-            'mean': trust_ratios.mean().item(),
-            'median': trust_ratios.median().item(),
-            'min': trust_ratios.min().item(),
-            'max': trust_ratios.max().item(),
-            'std': trust_ratios.std().item(),
-            'percentiles': {
-                '5th': torch.quantile(trust_ratios, 0.05).item(),
-                '25th': torch.quantile(trust_ratios, 0.25).item(),
-                '75th': torch.quantile(trust_ratios, 0.75).item(),
-                '95th': torch.quantile(trust_ratios, 0.95).item()
-            }
-        }
+		def get_trust_ratio_stats(self):
+			"""Return statistics about trust ratios across all layers"""
+			if not self.trust_ratios:
+				return None
+			try:
+				trust_ratios = torch.stack([x['trust_ratio'] for x in self.trust_ratios])
+				ratios_cpu = trust_ratios.cpu().numpy()  # Convert to numpy array on CPU
+				
+				return {
+					'mean': float(np.mean(ratios_cpu)),
+					'median': float(np.median(ratios_cpu)),
+					'min': float(np.min(ratios_cpu)),
+					'max': float(np.max(ratios_cpu)),
+					'std': float(np.std(ratios_cpu)),
+					'percentiles': {
+						'5th': float(np.percentile(ratios_cpu, 5)),
+						'25th': float(np.percentile(ratios_cpu, 25)),
+						'75th': float(np.percentile(ratios_cpu, 75)),
+						'95th': float(np.percentile(ratios_cpu, 95))
+					}
+				}
+			except Exception as e:
+				print(f"Error calculating trust ratio stats: {e}")
+				return None
 
 class LoRALinear(nn.Module):
 	def __init__(

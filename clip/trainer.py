@@ -2485,7 +2485,7 @@ def full_finetune_single_label(
 		betas=(0.9, 0.999),  # Typical beta values for LAMB
 		eps=1e-6,
 		weight_decay=weight_decay,
-		adam=False  # Set to True if you want LAMB to behave like Adam
+		clamp_trust=(0.1, 10)  # Customizable clamping range
 	)
 	optimizer.param_names = param_names
 
@@ -2572,8 +2572,8 @@ def full_finetune_single_label(
 					print(f"\t\t\tStd: {trust_stats['std']:.4f}")
 					
 					# Optionally log extreme values
-					if trust_stats['min'] < 0.5 or trust_stats['max'] > 2.0:
-						print("\t\t\tWarning: Extreme trust ratios detected!")
+					if trust_stats['min'] < 0.2 or trust_stats['max'] > 5.0:
+						print("\t\t\tWarning: Approaching trust ratio limits!")
 						# Log individual layers with extreme ratios
 						extreme_layers = [
 							(x['name'], x['trust_ratio']) 
@@ -2586,7 +2586,7 @@ def full_finetune_single_label(
 
 		trust_stats = optimizer.get_trust_ratio_stats()
 		if trust_stats:
-			print(f"\nEpoch {epoch}: Trust Ratio Summary:")
+			print(f"\nEpoch {epoch+1}: Trust Ratio Summary:")
 			print(f"\tMean: {trust_stats['mean']:.4f}")
 			print(f"\tMedian: {trust_stats['median']:.4f}")
 			print(f"\t5th percentile: {trust_stats['percentiles']['5th']:.4f}")
