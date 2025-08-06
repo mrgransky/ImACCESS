@@ -2570,11 +2570,11 @@ def full_finetune_single_label(
 					print(f"\t\t\tMean: {trust_stats['mean']:.4f}")
 					print(f"\t\t\tMedian: {trust_stats['median']:.4f}")
 					print(f"\t\t\tRange: [{trust_stats['min']:.4f}, {trust_stats['max']:.4f}]")
-					print(f"\t\t\tClamp Violations: {stats['clamp_violations']}/{stats['total_layers']}")
+					print(f"\t\t\tClamp Violations: {trust_stats['clamp_violations']}/{trust_stats['total_layers']}")
 					print(f"\t\t\tStd: {trust_stats['std']:.4f}")
-					if stats['clamp_violations'] > 0:
+					if trust_stats['clamp_violations'] > 0:
 						print("\nProblematic Layers:")
-						for layer in stats['problematic_layers']:
+						for layer in trust_stats['problematic_layers']:
 							print(f"  {layer[0]:<30} ratio: {layer[1]:<6} bounds: [{layer[2]}, {layer[3]}] lr: {layer[4]}")
 
 					# Optionally log extreme values
