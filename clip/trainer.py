@@ -1,5 +1,5 @@
 from utils import *
-from model import get_lora_clip
+from model import get_lora_clip, LAMB
 from visualize import (
 	plot_loss_accuracy_metrics, 
 	plot_retrieval_metrics_best_model, 
