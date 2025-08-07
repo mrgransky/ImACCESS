@@ -179,6 +179,11 @@ def plot_phase_transition_analysis(
 		ncol=len(transitions)+5,
 	)
 	ax1.grid(True, alpha=0.5)
+
+	# Set y-axis limits with minimum of 0 and maximum with margin
+	max_loss = max(max(train_losses), max(val_losses))
+	margin = max_loss * 0.1  # 10% margin
+	ax1.set_ylim(0, max_loss + margin)
 	
 	# ================================
 	# 2. Learning Rate Evolution (top-right)
