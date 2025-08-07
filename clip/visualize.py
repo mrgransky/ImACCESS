@@ -44,8 +44,8 @@ def plot_phase_transition_analysis(
 	
 	# Color scheme
 	phase_colors = plt.cm.Set3(np.linspace(0, 1, max(phases) + 1))
-	transition_color = '#FF6B35'
-	early_stop_color = '#D32F2F'
+	transition_color = "#FD682C"
+	early_stop_color = "#1D0808"
 	best_model_color = "#D8BA10"
 	
 	# ================================
@@ -128,6 +128,7 @@ def plot_phase_transition_analysis(
 				bbox=dict(
 					boxstyle="round,pad=0.3", 
 					facecolor='white',
+					edgecolor='none',
 					alpha=0.8,
 				)
 			)
@@ -151,21 +152,20 @@ def plot_phase_transition_analysis(
 			x=early_stop_epoch, 
 			color=early_stop_color, 
 			linestyle=':',
-			linewidth=3,
+			linewidth=1.8,
 			alpha=0.9,
 			label='Early Stop', 
 			zorder=12
 		)
 		ax1.text(
 			early_stop_epoch + 0.5, 
-			max(val_losses) * 0.8, 
+			max(val_losses) * 1.1, 
 			'Early Stopping', 
 			rotation=90, 
-			va='bottom', 
-			ha='left', 
+			va='bottom',
+			ha='left',
 			fontsize=10,
 			color=early_stop_color, 
-			weight='bold', 
 		)
 	
 	ax1.set_xlabel('Epoch', fontsize=10)
