@@ -107,14 +107,14 @@ def plot_phase_transition_analysis(
 			if transition_epoch > 0:
 				prev_loss = val_losses[transition_epoch - 1]
 				change = ((prev_loss - transition_loss) / prev_loss) * 100
-				improvement_text = f"\n({change:+.1f}%)"
+				improvement_text = f"({change:+.1f}%)"
 			
 			# Alternate annotation positions to avoid overlap
-			y_offset = 0.95 - (i % 3) * 0.1
+			y_offset = 0.99 - (i % 3) * 0.1
 			ax1.annotate(
-				f'Phase Transition {i+1}{improvement_text}', 
+				f'Phase Transition {i+1} {improvement_text}', 
 				xy=(transition_epoch, max(val_losses) * y_offset),
-				xytext=(transition_epoch + 2, max(val_losses) * (y_offset + 0.03)),
+				xytext=(transition_epoch + 2, max(val_losses) * (y_offset + 0.08)),
 				arrowprops=dict(
 					arrowstyle='->', 
 					color=transition_color, 
