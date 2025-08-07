@@ -3173,8 +3173,6 @@ def progressive_finetune_single_label(
 
 	# --- End of Training ---
 	total_training_time = time.time() - train_start_time
-
-
 	print(f"\n--- Training Finished ---")
 	print(f"Total Epochs Run: {epoch + 1}")
 	print(f"Final Phase Reached: {current_phase}")
@@ -3251,6 +3249,7 @@ def progressive_finetune_single_label(
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 		"progressive_dynamics": os.path.join(results_dir, f"{file_base_name}_progressive_dynamics.png"),
+		"phase_analysis": os.path.join(results_dir, f"{file_base_name}_phase_analysis.png"),
 	}
 
 	training_history = collect_progressive_training_history(
@@ -3260,7 +3259,7 @@ def progressive_finetune_single_label(
 		weight_decays=weight_decays_history,
 		phases=phases_history,
 		phase_transitions=phase_transitions_epochs,
-		early_stop_epoch=epoch if early_stopping_triggered else None,
+		early_stop_epoch=epoch+1 if early_stopping_triggered else None,
 		best_epoch=early_stopping.best_epoch if hasattr(early_stopping, 'best_epoch') else None
 	)
 
@@ -3272,6 +3271,22 @@ def progressive_finetune_single_label(
 		dataset_name=dataset_name,
 		model_name=model_name
 	)
+	print(f"\nTraining Summary for {model_name} {model_arch}:")
+	print(f"  • Total phases used: {len(set(phases_history))}")
+	print(f"  • Phase transitions: {len(phase_transitions_epochs)}")
+	print(f"  • Early stopping: {'Yes' if early_stopping_triggered else 'No'}")
+	if phase_transitions_epochs:
+		print(f"  • Transition epochs: {phase_transitions_epochs}")	
+
+	analysis_results = plot_phase_transition_analysis(
+		training_history=training_history,
+		save_path=plot_paths["phase_analysis"],
+		dataset_name=dataset_name,
+		model_name=f"{model_name} {model_arch}"
+	)
+	print("✓ Phase transition analysis plot generated successfully")
+	print(f"Training improvement: {analysis_results['total_improvement']:.2f}%")
+	print(f"Most effective phase: Phase {analysis_results['best_phase']}")
 
 	plot_loss_accuracy_metrics(
 		dataset_name=dataset_name,
