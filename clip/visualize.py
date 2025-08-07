@@ -65,7 +65,7 @@ def plot_phase_transition_analysis(
 			ax1.axvspan(
 				start_epoch, 
 				end_epoch, 
-				alpha=0.35,
+				alpha=0.39,
 				color=phase_colors[phase], 
 				label=f'Phase {phase}'
 			)
@@ -110,28 +110,27 @@ def plot_phase_transition_analysis(
 			if transition_epoch > 0:
 				prev_loss = val_losses[transition_epoch - 1]
 				change = ((prev_loss - transition_loss) / prev_loss) * 100
-				improvement_text = f"\n({change:+.1f}%)"
+				improvement_text = f"\n{change:+.2f} %"
 			
-			print(f"Transition {i+1} at epoch {transition_epoch} with loss {transition_loss:.4f} and improvement {improvement_text}")
 			max_val_loss = max(val_losses)
 			max_train_loss = max(train_losses)
 			print(f"max_val_loss: {max_val_loss}, max_train_loss: {max_train_loss}")
-			y_position = max(max_val_loss, max_train_loss) * 0.9
+			y_position = min(max_val_loss, max_train_loss) * 0.75
 			print(f"y_position: {y_position}")
 			ax1.text(
-				transition_epoch + 0.5,
+				transition_epoch + 0.4,
 				y_position,
 				f'Phase Transition {i+1}{improvement_text}',
 				rotation=90,
-				fontsize=10,
+				fontsize=9,
 				ha='left',
 				va='bottom',
 				color=transition_color,
 				bbox=dict(
-					boxstyle="round,pad=0.3", 
+					boxstyle="round,pad=0.4",
 					edgecolor='none',
 					facecolor='none',
-					alpha=0.8,
+					alpha=0.85,
 				)
 			)
 
@@ -490,7 +489,8 @@ def plot_progressive_training_dynamics(
 		save_path: Path to save the plot
 		figsize: Figure size tuple
 	"""
-	print(json.dumps(training_history, indent=4, ensure_ascii=False))
+	# print(json.dumps(training_history, indent=4, ensure_ascii=False))
+
 	fig = plt.figure(figsize=figsize, facecolor='white')
 	gs = fig.add_gridspec(
 		4, 
