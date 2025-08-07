@@ -2408,6 +2408,7 @@ def full_finetune_single_label(
 		slope_threshold: float = 1e-4, 
 		pairwise_imp_threshold: float = 1e-4,
 		min_phases_before_stopping: int = 1,  # Not really needed for full finetune, but for consistency
+		use_lamb: bool = False,
 	):
 
 	early_stopping = EarlyStopping(
@@ -2467,29 +2468,27 @@ def full_finetune_single_label(
 
 	get_parameters_info(model=model, mode=mode)
 
-	# optimizer = AdamW(
-	# 	params=[p for p in model.parameters() if p.requires_grad],
-	# 	lr=learning_rate,
-	# 	betas=(0.9, 0.98),
-	# 	eps=1e-6,
-	# 	weight_decay=weight_decay,
-	# )
-
-	param_names = {}
-	for name, param in model.named_parameters():
-		param_names[id(param)] = name
-
-	optimizer = LAMB(
-		params=[p for p in model.parameters() if p.requires_grad],
-		lr=learning_rate,
-		betas=(0.9, 0.999),  # Typical beta values for LAMB
-		eps=1e-6,
-		weight_decay=weight_decay,
-		clamp_trust=(0.5, 5.0),  # Tighter default bounds
-		warmup_steps=2000,  # Gradual warmup
-		grad_clip=1.0  # Gradient clipping
-	)
-	optimizer.param_names = param_names
+	if use_lamb:
+		param_names = {id(p): n for n, p in model.named_parameters()}
+		optimizer = LAMB(
+			params=[p for p in model.parameters() if p.requires_grad],
+			lr=learning_rate,
+			betas=(0.9, 0.999),  # Typical beta values for LAMB
+			eps=1e-6,
+			weight_decay=weight_decay,
+			clamp_trust=(0.5, 5.0),  # Tighter default bounds
+			warmup_steps=2000,  # Gradual warmup
+			grad_clip=1.0  # Gradient clipping
+		)
+		optimizer.param_names = param_names
+	else:
+		optimizer = AdamW(
+			params=[p for p in model.parameters() if p.requires_grad],
+			lr=learning_rate,
+			betas=(0.9, 0.98),
+			eps=1e-6,
+			weight_decay=weight_decay,
+		)
 
 	scheduler = lr_scheduler.OneCycleLR(
 		optimizer=optimizer,
@@ -2527,6 +2526,7 @@ def full_finetune_single_label(
 		f"bs_{train_loader.batch_size}_"
 		f"best_model.pth"
 	)
+
 	print(f"Best model will be saved in: {mdl_fpth}")
 
 	training_losses = []
@@ -2565,6 +2565,8 @@ def full_finetune_single_label(
 
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
+
+			if hasattr(optimizer, 'get_trust_ratio_stats'):
 				trust_stats = optimizer.get_trust_ratio_stats()
 				if trust_stats:
 					print(f"Trust Ratios (clamped): {trust_stats['mean']:.2f} ± {trust_stats['std']:.2f}")
@@ -2577,15 +2579,16 @@ def full_finetune_single_label(
 
 			epoch_loss += total_loss.item()
 
-		trust_stats = optimizer.get_trust_ratio_stats()
-		if trust_stats:
-			print(f"\nEpoch {epoch+1}: Trust Ratio Summary:")
-			print(f"\tMean: {trust_stats['mean']:.4f}")
-			print(f"\tMedian: {trust_stats['median']:.4f}")
-			print(f"\t5th percentile: {trust_stats['percentiles']['5th']:.4f}")
-			print(f"\t95th percentile: {trust_stats['percentiles']['95th']:.4f}")
-			print(f"\tStandard deviation: {trust_stats['std']:.4f}")
-			print("-"*70)
+		if hasattr(optimizer, 'get_trust_ratio_stats'):
+			trust_stats = optimizer.get_trust_ratio_stats()
+			if trust_stats:
+				print(f"\nEpoch {epoch+1}: Trust Ratio Summary:")
+				print(f"\tMean: {trust_stats['mean']:.4f}")
+				print(f"\tMedian: {trust_stats['median']:.4f}")
+				print(f"\t5th percentile: {trust_stats['percentiles']['5th']:.4f}")
+				print(f"\t95th percentile: {trust_stats['percentiles']['95th']:.4f}")
+				print(f"\tStandard deviation: {trust_stats['std']:.4f}")
+				print("-"*70)
 
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
@@ -2698,9 +2701,14 @@ def full_finetune_single_label(
 
 	print("\nGenerating result plots...")
 	actual_trained_epochs = len(training_losses)
+
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
+		f"{optimizer.__class__.__name__}_"
+		f"{scheduler.__class__.__name__}_"
+		f"{criterion.__class__.__name__}_"
+		f"{scaler.__class__.__name__}_"
 		f"{model_name}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
@@ -2709,10 +2717,12 @@ def full_finetune_single_label(
 		f"bs_{train_loader.batch_size}_"
 		f"dropout_{dropout_val}"
 	)
+
 	mdl_fpth = get_updated_model_name(
 		original_path=mdl_fpth, 
 		actual_epochs=actual_trained_epochs
 	)
+
 	print(f"Best model will be renamed to: {mdl_fpth}")
 
 	plot_paths = {
@@ -2786,6 +2796,7 @@ def progressive_finetune_single_label(
 		topk_values: list[int] = [1, 5, 10],
 		layer_groups_to_unfreeze: list[str] = ['visual_transformer', 'text_transformer', 'projections'], # Focus on key layers
 		unfreeze_percentages: Optional[List[float]] = None, # Allow passing custom percentages
+		use_lamb: bool = False,
 	):
 	initial_learning_rate = learning_rate
 	initial_weight_decay = weight_decay
@@ -2856,13 +2867,23 @@ def progressive_finetune_single_label(
 
 	max_phases = len(unfreeze_schedule)
 
-	optimizer = AdamW(
-		params=filter(lambda p: p.requires_grad, model.parameters()), # Initially might be empty if phase 0 has no unfrozen layers
-		lr=initial_learning_rate,
-		betas=(0.9, 0.98),
-		eps=1e-6,
-		weight_decay=initial_weight_decay,
-	)
+	# Initialize optimizer
+	if use_lamb:
+		optimizer = LAMB(
+			params=filter(lambda p: p.requires_grad, model.parameters()), # Initially might be empty if phase 0 has no unfrozen layers
+			lr=initial_learning_rate,
+			betas=(0.9, 0.98),
+			eps=1e-6,
+			weight_decay=initial_weight_decay,
+		)
+	else:
+		optimizer = AdamW(
+			params=filter(lambda p: p.requires_grad, model.parameters()), # Initially might be empty if phase 0 has no unfrozen layers
+			lr=initial_learning_rate,
+			betas=(0.9, 0.98),
+			eps=1e-6,
+			weight_decay=initial_weight_decay,
+		)
 
 	scheduler = torch.optim.lr_scheduler.OneCycleLR(
 		optimizer=optimizer,
@@ -3164,6 +3185,10 @@ def progressive_finetune_single_label(
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
+		f"{optimizer.__class__.__name__}_"
+		f"{scheduler.__class__.__name__}_"
+		f"{criterion.__class__.__name__}_"
+		f"{scaler.__class__.__name__}_"
 		f"{model_name}_"
 		f"{model_arch}_"
 		f"last_phase_{current_phase}_"
@@ -3260,6 +3285,7 @@ def lora_finetune_single_label(
 		slope_threshold: float = 1e-4, 
 		pairwise_imp_threshold: float = 1e-4,
 		min_phases_before_stopping: int = 1,  # Not really needed for LoRA finetune, but for consistency
+		use_lamb: bool = False,
 	):
 
 	# Inspect the model for dropout layers
@@ -3325,13 +3351,22 @@ def lora_finetune_single_label(
 	model.to(device)
 	get_parameters_info(model=model, mode=mode)
 
-	optimizer = AdamW(
-		params=[p for p in model.parameters() if p.requires_grad],
-		lr=learning_rate,
-		betas=(0.9, 0.98),
-		eps=1e-6,
-		weight_decay=weight_decay,
-	)
+	if use_lamb:
+		optimizer = LAMB(
+			params=[p for p in model.parameters() if p.requires_grad],
+			lr=learning_rate,
+			betas=(0.9, 0.98),
+			eps=1e-6,
+			weight_decay=weight_decay,
+		)
+	else:
+		optimizer = AdamW(
+			params=[p for p in model.parameters() if p.requires_grad],
+			lr=learning_rate,
+			betas=(0.9, 0.98),
+			eps=1e-6,
+			weight_decay=weight_decay,
+		)
 
 	scheduler = lr_scheduler.OneCycleLR(
 		optimizer=optimizer,
@@ -3524,9 +3559,14 @@ def lora_finetune_single_label(
 
 	print("\nGenerating result plots...")
 	actual_trained_epochs = len(training_losses)
+
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
+		f"{optimizer.__class__.__name__}_"
+		f"{scheduler.__class__.__name__}_"
+		f"{criterion.__class__.__name__}_"
+		f"{scaler.__class__.__name__}_"
 		f"{model_name}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
@@ -3537,7 +3577,9 @@ def lora_finetune_single_label(
 		f"lora_alpha_{lora_alpha}_"
 		f"lora_dropout_{lora_dropout}"
 	)
+	
 	mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
+	
 	print(f"Best model will be renamed to: {mdl_fpth}")
 
 	plot_paths = {
@@ -3608,6 +3650,7 @@ def full_finetune_multi_label(
 		slope_threshold: float = 1e-4, 
 		pairwise_imp_threshold: float = 1e-4,
 		min_phases_before_stopping: int = 1,  # Not really needed for full finetune, but for consistency
+		use_lamb: bool = False,
 	):
 	"""
 	Full fine-tuning for multi-label CLIP classification.
@@ -3667,7 +3710,7 @@ def full_finetune_multi_label(
 
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
-	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) | batch_size: {train_loader.batch_size} | {type(device)} {device}".center(160, "-"))
+	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
 
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
@@ -3694,6 +3737,7 @@ def full_finetune_multi_label(
 		if isinstance(module, torch.nn.Dropout):
 			dropout_values.append((name, module.p))
 	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
+
 	print(f"\nNon-zero dropout detected in base {model_name} {model_arch} during {mode}:")
 	print(non_zero_dropouts)
 	print()
@@ -3717,43 +3761,56 @@ def full_finetune_multi_label(
 			all_class_embeds = model.encode_text(all_class_texts)
 			all_class_embeds = F.normalize(all_class_embeds, dim=-1)
 	model.train()
-	optimizer = AdamW(
+
+	if use_lamb:
+		optimizer = LAMB(
 			params=[p for p in model.parameters() if p.requires_grad],
 			lr=learning_rate,
 			betas=(0.9, 0.98),
 			eps=1e-6,
 			weight_decay=weight_decay,
-	)
+		)
+	else:
+		optimizer = AdamW(
+			params=[p for p in model.parameters() if p.requires_grad],
+			lr=learning_rate,
+			betas=(0.9, 0.98),
+			eps=1e-6,
+			weight_decay=weight_decay,
+		)
+
 	scheduler = lr_scheduler.OneCycleLR(
-			optimizer=optimizer,
-			max_lr=learning_rate,
-			steps_per_epoch=len(train_loader),
-			epochs=num_epochs,
-			pct_start=0.1,
-			anneal_strategy='cos',
+		optimizer=optimizer,
+		max_lr=learning_rate,
+		steps_per_epoch=len(train_loader),
+		epochs=num_epochs,
+		pct_start=0.1,
+		anneal_strategy='cos',
 	)
+
 	scaler = torch.amp.GradScaler(
-			device=device,
-			init_scale=2**16,
-			growth_factor=2.0,
-			backoff_factor=0.5,
-			growth_interval=2000,
+		device=device,
+		init_scale=2**16,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
 	)
+
 	mdl_fpth = os.path.join(
-			results_dir,
-			f"{mode}_"
-			f"{model_arch}_"
-			f"{optimizer.__class__.__name__}_"
-			f"{scheduler.__class__.__name__}_"
-			f"{criterion.__class__.__name__}_"
-			f"{scaler.__class__.__name__}_"
-			f"ieps_{num_epochs}_"
-			f"dropout_{dropout_val}_"
-			f"lr_{learning_rate:.1e}_"
-			f"wd_{weight_decay:.1e}_"
-			f"temp_{temperature}_"
-			f"bs_{train_loader.batch_size}_"
-			f"best_model.pth"
+		results_dir,
+		f"{mode}_"
+		f"{model_arch}_"
+		f"{optimizer.__class__.__name__}_"
+		f"{scheduler.__class__.__name__}_"
+		f"{criterion.__class__.__name__}_"
+		f"{scaler.__class__.__name__}_"
+		f"ieps_{num_epochs}_"
+		f"dropout_{dropout_val}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"temp_{temperature}_"
+		f"bs_{train_loader.batch_size}_"
+		f"best_model.pth"
 	)
 	print(f"Best model will be saved in: {mdl_fpth}")
 	training_losses = []
@@ -3963,9 +4020,14 @@ def full_finetune_multi_label(
 	print(f"Final evaluation used model weights from: {model_source}")
 	print("\nGenerating result plots...")
 	actual_trained_epochs = len(training_losses)
+
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
+		f"{optimizer.__class__.__name__}_"
+		f"{scheduler.__class__.__name__}_"
+		f"{criterion.__class__.__name__}_"
+		f"{scaler.__class__.__name__}_"
 		f"{model_name}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
@@ -3981,6 +4043,7 @@ def full_finetune_multi_label(
 		actual_epochs=actual_trained_epochs
 	)
 	print(f"Best model will be renamed to: {mdl_fpth}")
+
 	# ================================
 	# PLOTTING: Enhanced for multi-label
 	# ================================
@@ -4054,6 +4117,7 @@ def progressive_finetune_multi_label(
 		loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
 		temperature: float = 0.07,  # Temperature for contrastive learning
 		label_smoothing: float = 0.0,  # Label smoothing for multi-label
+		use_lamb: bool = False,
 	):
 	# Set default loss weights
 	if loss_weights is None:
@@ -4152,15 +4216,24 @@ def progressive_finetune_multi_label(
 		model.eval()
 		all_class_embeds = model.encode_text(all_class_texts)
 		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
-	model.train()
 
-	optimizer = AdamW(
-		params=filter(lambda p: p.requires_grad, model.parameters()),  # Initially might be empty if phase 0 has no unfrozen layers
-		lr=initial_learning_rate,
-		betas=(0.9, 0.98),
-		eps=1e-6,
-		weight_decay=initial_weight_decay,
-	)
+	model.train()
+	if use_lamb:
+		optimizer = LAMB(
+			params=filter(lambda p: p.requires_grad, model.parameters()),  # Initially might be empty if phase 0 has no unfrozen layers
+			lr=initial_learning_rate,
+			betas=(0.9, 0.98),
+			eps=1e-6,
+			weight_decay=initial_weight_decay,
+		)
+	else:
+		optimizer = AdamW(
+			params=filter(lambda p: p.requires_grad, model.parameters()),  # Initially might be empty if phase 0 has no unfrozen layers
+			lr=initial_learning_rate,
+			betas=(0.9, 0.98),
+			eps=1e-6,
+			weight_decay=initial_weight_decay,
+		)
 
 	scheduler = torch.optim.lr_scheduler.OneCycleLR(
 		optimizer=optimizer,
@@ -4170,6 +4243,7 @@ def progressive_finetune_multi_label(
 		pct_start=0.1,  # Standard pct_start
 		anneal_strategy='cos'  # Cosine annealing
 	)
+
 	print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
 	print(f"Using {criterion.__class__.__name__} as the loss function")
 
@@ -4538,9 +4612,14 @@ def progressive_finetune_multi_label(
 
 	print("\nGenerating result plots...")
 	actual_trained_epochs = len(training_losses)
+
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
+		f"{optimizer.__class__.__name__}_"
+		f"{scheduler.__class__.__name__}_"
+		f"{criterion.__class__.__name__}_"
+		f"{scaler.__class__.__name__}_"
 		f"{model_name}_"
 		f"{model_arch}_"
 		f"last_phase_{current_phase}_"
@@ -4566,6 +4645,7 @@ def progressive_finetune_multi_label(
 			'fwd': last_wd
 		}
 	)
+
 	print(f"Best model will be renamed to: {mdl_fpth}")
 
 	plot_paths = {
@@ -4643,6 +4723,7 @@ def lora_finetune_multi_label(
 		slope_threshold: float = 1e-4, 
 		pairwise_imp_threshold: float = 1e-4,
 		min_phases_before_stopping: int = 1,  # Not really needed for LoRA finetune, but for consistency
+		use_lamb: bool = False,
 	):
 	"""
 	LoRA fine-tuning for multi-label CLIP classification.
@@ -4768,13 +4849,22 @@ def lora_finetune_multi_label(
 		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
 	model.train()
 
-	optimizer = AdamW(
-		params=[p for p in model.parameters() if p.requires_grad],
-		lr=learning_rate,
-		betas=(0.9, 0.98),
-		eps=1e-6,
-		weight_decay=weight_decay,
-	)
+	if use_lamb:
+		optimizer = LAMB(
+			params=[p for p in model.parameters() if p.requires_grad],
+			lr=learning_rate,
+			betas=(0.9, 0.98),
+			eps=1e-6,
+			weight_decay=weight_decay,
+		)
+	else:
+		optimizer = AdamW(
+			params=[p for p in model.parameters() if p.requires_grad],
+			lr=learning_rate,
+			betas=(0.9, 0.98),
+			eps=1e-6,
+			weight_decay=weight_decay,
+		)
 
 	scheduler = lr_scheduler.OneCycleLR(
 		optimizer=optimizer,
@@ -5046,9 +5136,14 @@ def lora_finetune_multi_label(
 
 	print("\nGenerating result plots...")
 	actual_trained_epochs = len(training_losses)
+
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
+		f"{optimizer.__class__.__name__}_"
+		f"{scheduler.__class__.__name__}_"
+		f"{criterion.__class__.__name__}_"
+		f"{scaler.__class__.__name__}_"
 		f"{model_name}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
@@ -5065,6 +5160,7 @@ def lora_finetune_multi_label(
 		original_path=mdl_fpth, 
 		actual_epochs=actual_trained_epochs
 	)
+
 	print(f"Best model will be renamed to: {mdl_fpth}")
 
 	plot_paths = {
@@ -5078,7 +5174,6 @@ def lora_finetune_multi_label(
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 	}
 
-	# Plot training loss breakdown (specific to multi-label)
 	plot_multilabel_loss_breakdown(
 		training_losses_breakdown=training_losses_breakdown,
 		filepath=plot_paths["losses_breakdown"]

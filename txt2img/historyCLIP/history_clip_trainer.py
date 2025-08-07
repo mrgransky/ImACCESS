@@ -33,11 +33,11 @@ from historical_dataset_loader import get_single_label_dataloaders, get_multi_la
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 16 -dv "cuda:0" --log_dir /media/volume/ImACCESS/trash &
 
 # finetune [full]:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 1024 -e 150 -lr 1e-3 -wd 1e-2 --print_every 10 -nw 16 -dv "cuda:0" -m finetune -fts full -dt multi_label -a "ViT-B/32" -do 0.05 -mep 10 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 256 -e 150 -lr 1e-3 -wd 1e-2 --print_every 10 -nw 16 -dv "cuda:0" -m finetune -fts full -dt multi_label -a "ViT-B/32" -do 0.05 -mep 10 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-6 -wd 1e-2 --print_every 200 -nw 12 -dv "cuda:0" -m finetune -fts full -dt multi_label -a "ViT-B/32" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 64 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 12 -dv "cuda:2" -m finetune -fts full -dt multi_label -a "ViT-B/32" -do 0.0 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 64 -e 100 -lr 5e-6 -wd 1e-2 --print_every 100 -nw 32 -dv "cuda:3" -m finetune -fts full -dt multi_label  -a "ViT-B/32" -do 0.0 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 64 -e 150 -lr 5e-6 -wd 1e-2 --print_every 750 -nw 50 -dv "cuda:1" -m finetune -fts full -dt multi_label -a "ViT-B/32" -do 0.1 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 256 -e 150 -lr 5e-4 -wd 1e-2 --print_every 750 -nw 50 -dv "cuda:1" -m finetune -fts full -dt single_label -a "ViT-B/32" -do 0.1 --log_dir /media/volume/ImACCESS/trash &
 
 # finetune [lora]: alpha = 2x rank
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-1 --print_every 50 -nw 16 -dv "cuda:1" -m finetune -fts lora -lor 8 -loa 16.0 -lod 0.05 -dt multi_label -a "ViT-B/32" -mep 10 --log_dir /media/volume/ImACCESS/trash &
@@ -84,6 +84,7 @@ def main():
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 	parser.add_argument('--log_dir', type=str, default=None, help='Directory to store log files (if not specified, logs will go to stdout)')
+	parser.add_argument('--use_lamb', '-lamb', action='store_true', help='Use LAMB optimizer instead of AdamW')
 	# parser.add_argument('--checkpoint_path', '-cp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
 
 	args, unknown = parser.parse_known_args()
@@ -201,6 +202,7 @@ def main():
 				cumulative_delta=args.cumulative_delta,
 				minimum_epochs=args.minimum_epochs,
 				topk_values=args.topK_values,
+				use_lamb=args.use_lamb,
 				**(
 					{
 						'lora_rank': args.lora_rank,
