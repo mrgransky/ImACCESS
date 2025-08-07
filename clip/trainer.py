@@ -3269,8 +3269,6 @@ def progressive_finetune_single_label(
 		unfreeze_schedule=unfreeze_schedule,
 		layer_groups=get_layer_groups(model),
 		save_path=plot_paths["progressive_dynamics"],
-		dataset_name=dataset_name,
-		model_name=model_name
 	)
 	print(f"\nTraining Summary for {model_name} {model_arch}:")
 	print(f"  • Total phases used: {len(set(phases_history))}")
@@ -3282,8 +3280,6 @@ def progressive_finetune_single_label(
 	analysis_results = plot_phase_transition_analysis(
 		training_history=training_history,
 		save_path=plot_paths["phase_analysis"],
-		dataset_name=dataset_name,
-		model_name=f"{model_name} {model_arch}"
 	)
 	print("✓ Phase transition analysis plot generated successfully")
 	print(f"Training improvement: {analysis_results['total_improvement']:.2f}%")
