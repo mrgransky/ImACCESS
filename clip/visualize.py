@@ -1,5 +1,344 @@
 from utils import *
 
+def plot_progressive_training_dynamics(
+				training_history: Dict,
+				unfreeze_schedule: Dict[int, List[str]],
+				layer_groups: Dict[str, List[str]],
+				save_path: str,
+				dataset_name: str = "Dataset",
+				model_name: str = "CLIP",
+				figsize: Tuple[int, int] = (20, 16)
+		):
+		"""
+		Plot comprehensive progressive training dynamics including:
+		- Training and validation losses
+		- Learning rate and weight decay evolution
+		- Layer unfreezing progression
+		- Phase transitions
+		- Early stopping events
+		
+		Args:
+				training_history: Dictionary containing training metrics per epoch:
+						{
+								'epochs': List[int],
+								'train_losses': List[float],
+								'val_losses': List[float],
+								'learning_rates': List[float],
+								'weight_decays': List[float],
+								'phases': List[int],
+								'phase_transitions': List[int],  # Epochs where phase transitions occurred
+								'early_stop_epoch': Optional[int],
+								'best_epoch': Optional[int]
+						}
+				unfreeze_schedule: Phase -> layers mapping from progressive training
+				layer_groups: Layer group definitions from get_layer_groups()
+				save_path: Path to save the plot
+				dataset_name: Name of dataset for plot title
+				model_name: Name of model for plot title
+				figsize: Figure size tuple
+		"""
+		
+		# Set up the plotting style
+		plt.style.use('seaborn-v0_8-darkgrid')
+		sns.set_palette("husl")
+		
+		# Create figure with subplots
+		fig = plt.figure(figsize=figsize, facecolor='white')
+		gs = fig.add_gridspec(4, 2, height_ratios=[2, 1.5, 1.5, 2], width_ratios=[3, 1], 
+													hspace=0.3, wspace=0.3)
+		
+		epochs = training_history['epochs']
+		train_losses = training_history['train_losses']
+		val_losses = training_history['val_losses']
+		learning_rates = training_history['learning_rates']
+		weight_decays = training_history['weight_decays']
+		phases = training_history['phases']
+		phase_transitions = training_history.get('phase_transitions', [])
+		early_stop_epoch = training_history.get('early_stop_epoch')
+		best_epoch = training_history.get('best_epoch')
+		
+		# Color scheme for phases
+		phase_colors = plt.cm.Set3(np.linspace(0, 1, max(phases) + 1))
+		
+		# ================================
+		# 1. Main Loss Plot (top-left, spans 2 columns)
+		# ================================
+		ax1 = fig.add_subplot(gs[0, :])
+		
+		# Plot losses with phase background coloring
+		for i, phase in enumerate(set(phases)):
+				phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
+				if phase_epochs:
+						start_epoch = min(phase_epochs)
+						end_epoch = max(phase_epochs)
+						ax1.axvspan(start_epoch, end_epoch, alpha=0.2, 
+											 color=phase_colors[phase], label=f'Phase {phase}')
+		
+		# Plot loss curves
+		line1 = ax1.plot(epochs, train_losses, 'b-', linewidth=2.5, 
+										 label='Training Loss', alpha=0.8)
+		line2 = ax1.plot(epochs, val_losses, 'r-', linewidth=2.5, 
+										 label='Validation Loss', alpha=0.8)
+		
+		# Mark phase transitions
+		for transition_epoch in phase_transitions:
+				ax1.axvline(x=transition_epoch, color='orange', linestyle='--', 
+									 linewidth=2, alpha=0.7)
+				ax1.annotate(f'Phase\nTransition', xy=(transition_epoch, max(val_losses)*0.9),
+										xytext=(transition_epoch+2, max(val_losses)*0.95),
+										arrowprops=dict(arrowstyle='->', color='orange', alpha=0.7),
+										fontsize=9, ha='left', color='orange', weight='bold')
+		
+		# Mark best epoch and early stopping
+		if best_epoch is not None:
+				best_loss = val_losses[best_epoch]
+				ax1.scatter([epochs[best_epoch]], [best_loss], color='gold', s=100, 
+									 marker='*', zorder=5, label='Best Model', edgecolor='black')
+		
+		if early_stop_epoch is not None:
+				ax1.axvline(x=early_stop_epoch, color='red', linestyle=':', 
+									 linewidth=3, alpha=0.8, label='Early Stop')
+		
+		ax1.set_xlabel('Epoch', fontsize=12, weight='bold')
+		ax1.set_ylabel('Loss', fontsize=12, weight='bold')
+		ax1.set_title(f'{model_name} Progressive Fine-tuning: Loss Evolution\n{dataset_name}', 
+									fontsize=14, weight='bold', pad=20)
+		ax1.legend(loc='upper right', fontsize=10)
+		ax1.grid(True, alpha=0.3)
+		
+		# ================================
+		# 2. Learning Rate Evolution (middle-left)
+		# ================================
+		ax2 = fig.add_subplot(gs[1, 0])
+		
+		# Color code by phase
+		for i in range(len(epochs)-1):
+				phase = phases[i]
+				ax2.plot([epochs[i], epochs[i+1]], [learning_rates[i], learning_rates[i+1]], 
+								color=phase_colors[phase], linewidth=2.5, alpha=0.8)
+		
+		# Mark phase transitions
+		for transition_epoch in phase_transitions:
+				ax2.axvline(x=transition_epoch, color='orange', linestyle='--', 
+									 linewidth=1.5, alpha=0.7)
+		
+		ax2.set_xlabel('Epoch', fontsize=11, weight='bold')
+		ax2.set_ylabel('Learning Rate', fontsize=11, weight='bold')
+		ax2.set_title('Learning Rate Adaptation', fontsize=12, weight='bold')
+		ax2.set_yscale('log')
+		ax2.grid(True, alpha=0.3)
+		
+		# ================================
+		# 3. Weight Decay Evolution (middle-right)
+		# ================================
+		ax3 = fig.add_subplot(gs[1, 1])
+		
+		# Color code by phase
+		for i in range(len(epochs)-1):
+				phase = phases[i]
+				ax3.plot([epochs[i], epochs[i+1]], [weight_decays[i], weight_decays[i+1]], 
+								color=phase_colors[phase], linewidth=2.5, alpha=0.8)
+		
+		# Mark phase transitions
+		for transition_epoch in phase_transitions:
+				ax3.axvline(x=transition_epoch, color='orange', linestyle='--', 
+									 linewidth=1.5, alpha=0.7)
+		
+		ax3.set_xlabel('Epoch', fontsize=11, weight='bold')
+		ax3.set_ylabel('Weight Decay', fontsize=11, weight='bold')
+		ax3.set_title('Weight Decay Adaptation', fontsize=12, weight='bold')
+		ax3.set_yscale('log')
+		ax3.grid(True, alpha=0.3)
+		
+		# ================================
+		# 4. Trainable Parameters Evolution (third row, left)
+		# ================================
+		ax4 = fig.add_subplot(gs[2, 0])
+		
+		# Calculate trainable parameters per phase
+		trainable_params_per_phase = []
+		total_params = sum(len(layers) for layers in layer_groups.values())
+		
+		for phase in range(max(phases) + 1):
+				if phase in unfreeze_schedule:
+						unfrozen_layers = len(unfreeze_schedule[phase])
+						trainable_params_per_phase.append(unfrozen_layers)
+				else:
+						trainable_params_per_phase.append(0)
+		
+		# Create step plot for parameter evolution
+		phase_epochs_dict = {}
+		for epoch, phase in zip(epochs, phases):
+				if phase not in phase_epochs_dict:
+						phase_epochs_dict[phase] = []
+				phase_epochs_dict[phase].append(epoch)
+		
+		for phase in sorted(phase_epochs_dict.keys()):
+				phase_epochs_list = phase_epochs_dict[phase]
+				param_count = trainable_params_per_phase[phase] if phase < len(trainable_params_per_phase) else 0
+				ax4.hlines(param_count, min(phase_epochs_list), max(phase_epochs_list), 
+									colors=phase_colors[phase], linewidth=4, alpha=0.8,
+									label=f'Phase {phase}')
+		
+		# Mark phase transitions
+		for transition_epoch in phase_transitions:
+				ax4.axvline(x=transition_epoch, color='orange', linestyle='--', 
+									 linewidth=1.5, alpha=0.7)
+		
+		ax4.set_xlabel('Epoch', fontsize=11, weight='bold')
+		ax4.set_ylabel('Trainable Layers', fontsize=11, weight='bold')
+		ax4.set_title('Layer Unfreezing Progression', fontsize=12, weight='bold')
+		ax4.set_ylim(0, total_params * 1.1)
+		ax4.grid(True, alpha=0.3)
+		
+		# ================================
+		# 5. Layer Group Unfreezing Heatmap (third row, right)
+		# ================================
+		ax5 = fig.add_subplot(gs[2, 1])
+		
+		# Create heatmap data: rows = layer groups, columns = phases
+		group_names = list(layer_groups.keys())
+		num_phases = max(phases) + 1
+		heatmap_data = np.zeros((len(group_names), num_phases))
+		
+		for phase_idx in range(num_phases):
+				if phase_idx in unfreeze_schedule:
+						unfrozen_layers = set(unfreeze_schedule[phase_idx])
+						for group_idx, (group_name, group_layers) in enumerate(layer_groups.items()):
+								# Calculate percentage of group layers unfrozen
+								group_unfrozen = len([layer for layer in group_layers if any(ul in layer for ul in unfrozen_layers)])
+								group_total = len(group_layers)
+								heatmap_data[group_idx, phase_idx] = group_unfrozen / max(group_total, 1)
+		
+		# Create custom colormap
+		colors = ['#f0f0f0', '#d0e7ff', '#4a90e2']
+		n_bins = 100
+		cmap = LinearSegmentedColormap.from_list('unfreezing', colors, N=n_bins)
+		
+		im = ax5.imshow(heatmap_data, cmap=cmap, aspect='auto', vmin=0, vmax=1)
+		
+		# Set ticks and labels
+		ax5.set_xticks(range(num_phases))
+		ax5.set_xticklabels([f'P{i}' for i in range(num_phases)], fontsize=9)
+		ax5.set_yticks(range(len(group_names)))
+		ax5.set_yticklabels([name.replace('_', '\n').title() for name in group_names], fontsize=9)
+		
+		ax5.set_xlabel('Phase', fontsize=11, weight='bold')
+		ax5.set_ylabel('Layer Groups', fontsize=11, weight='bold')
+		ax5.set_title('Layer Group\nUnfreezing Pattern', fontsize=12, weight='bold')
+		
+		# Add colorbar
+		cbar = plt.colorbar(im, ax=ax5, shrink=0.8)
+		cbar.set_label('Fraction Unfrozen', fontsize=10)
+		
+		# ================================
+		# 6. Training Statistics Summary (bottom row, spans 2 columns)
+		# ================================
+		ax6 = fig.add_subplot(gs[3, :])
+		ax6.axis('off')  # Turn off axis for text display
+		
+		# Calculate summary statistics
+		total_epochs = len(epochs)
+		num_phases = len(set(phases))
+		final_train_loss = train_losses[-1] if train_losses else 0
+		final_val_loss = val_losses[-1] if val_losses else 0
+		best_val_loss = min(val_losses) if val_losses else 0
+		improvement = ((val_losses[0] - best_val_loss) / val_losses[0] * 100) if val_losses and val_losses[0] > 0 else 0
+		
+		# Create summary text
+		summary_text = f"""
+		TRAINING SUMMARY:
+		• Total Epochs: {total_epochs}
+		• Number of Phases: {num_phases}
+		• Phase Transitions: {len(phase_transitions)}
+		• Final Training Loss: {final_train_loss:.6f}
+		• Final Validation Loss: {final_val_loss:.6f}
+		• Best Validation Loss: {best_val_loss:.6f}
+		• Total Improvement: {improvement:.2f}%
+		"""
+		
+		if early_stop_epoch:
+				summary_text += f"    • Early Stopped at Epoch: {early_stop_epoch}\n"
+		if best_epoch is not None:
+				summary_text += f"    • Best Model at Epoch: {epochs[best_epoch]}\n"
+		
+		# Add layer unfreezing summary
+		summary_text += "\n    LAYER UNFREEZING SCHEDULE:\n"
+		for phase, layers in unfreeze_schedule.items():
+				summary_text += f"    • Phase {phase}: {len(layers)} layers unfrozen\n"
+		
+		ax6.text(0.02, 0.95, summary_text, transform=ax6.transAxes, fontsize=11,
+						 verticalalignment='top', fontfamily='monospace',
+						 bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8))
+		
+		# Add phase legend
+		phase_patches = [mpatches.Patch(color=phase_colors[phase], label=f'Phase {phase}') 
+										for phase in sorted(set(phases))]
+		ax6.legend(handles=phase_patches, loc='center right', fontsize=10, 
+							title='Training Phases', title_fontsize=11)
+		
+		# ================================
+		# Final touches
+		# ================================
+		plt.suptitle(f'Progressive Fine-tuning Dynamics: {model_name} on {dataset_name}', 
+								 fontsize=16, weight='bold', y=0.98)
+		
+		# Save the plot
+		plt.savefig(
+			save_path, 
+			dpi=300, 
+			bbox_inches='tight', 
+			facecolor='white', 
+			edgecolor='none'
+		)
+		
+		print(f"Progressive training dynamics plot saved to: {save_path}")
+
+def collect_progressive_training_history(
+				training_losses: List[float],
+				in_batch_metrics_all_epochs: List[Dict],
+				learning_rates: List[float],
+				weight_decays: List[float],
+				phases: List[int],
+				phase_transitions: List[int],
+				early_stop_epoch: Optional[int] = None,
+				best_epoch: Optional[int] = None
+		) -> Dict:
+		"""
+		Collect training history data for progressive training visualization.
+		
+		This function should be called at the end of progressive training to gather
+		all the necessary data for visualization.
+		
+		Args:
+				training_losses: List of training losses per epoch
+				in_batch_metrics_all_epochs: List of validation metrics per epoch
+				learning_rates: List of learning rates per epoch
+				weight_decays: List of weight decays per epoch  
+				phases: List of phase numbers per epoch
+				phase_transitions: List of epochs where phase transitions occurred
+				early_stop_epoch: Epoch where early stopping occurred (if any)
+				best_epoch: Epoch with best validation performance
+		
+		Returns:
+				Dictionary containing all training history data
+		"""
+		
+		val_losses = [metrics.get('val_loss', 0.0) for metrics in in_batch_metrics_all_epochs]
+		epochs = list(range(len(training_losses)))
+		
+		return {
+				'epochs': epochs,
+				'train_losses': training_losses,
+				'val_losses': val_losses,
+				'learning_rates': learning_rates,
+				'weight_decays': weight_decays,
+				'phases': phases,
+				'phase_transitions': phase_transitions,
+				'early_stop_epoch': early_stop_epoch,
+				'best_epoch': best_epoch
+		}
+
 def plot_multilabel_loss_breakdown(
 		training_losses_breakdown: Dict[str, List[float]], 
 		filepath: str,

@@ -6,6 +6,8 @@ from visualize import (
 	plot_retrieval_metrics_per_epoch, 
 	plot_all_pretrain_metrics,
 	plot_multilabel_loss_breakdown,
+	collect_progressive_training_history,
+	plot_progressive_training_dynamics,
 )
 
 def cleanup_embedding_cache(
@@ -2814,6 +2816,7 @@ def progressive_finetune_single_label(
 		pairwise_imp_threshold=pairwise_imp_threshold,
 		min_phases_before_stopping=min_phases_before_stopping,
 	)
+	early_stopping_triggered = False
 
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__
@@ -2884,6 +2887,7 @@ def progressive_finetune_single_label(
 			eps=1e-6,
 			weight_decay=initial_weight_decay,
 		)
+	print(f"Using {optimizer.__class__.__name__} for optimization")
 
 	scheduler = torch.optim.lr_scheduler.OneCycleLR(
 		optimizer=optimizer,
@@ -2905,7 +2909,6 @@ def progressive_finetune_single_label(
 		results_dir,
 		# f"{dataset_name}_"
 		f"{mode}_"
-		# f"{model_name}_"
 		f"{model_arch}_"
 		f"{optimizer.__class__.__name__}_"
 		f"{scheduler.__class__.__name__}_"
@@ -2933,6 +2936,12 @@ def progressive_finetune_single_label(
 	last_wd = initial_weight_decay # Track current WD
 	phase_just_changed = False # Flag to signal optimizer refresh needed
 
+	# Initialize tracking lists
+	learning_rates_history = []
+	weight_decays_history = []
+	phases_history = []
+	phase_transitions_epochs = []
+
 	# --- Main Training Loop ---
 	train_start_time = time.time()
 
@@ -2940,47 +2949,60 @@ def progressive_finetune_single_label(
 		epoch_start_time = time.time()
 		print(f"Epoch {epoch+1}/{num_epochs} Phase {current_phase}/{max_phases} current LR: {last_lr:.3e} current WD: {last_wd:.3e})")
 		torch.cuda.empty_cache()
+
 		# --- Phase Transition Check ---
 		# Check only if enough epochs *overall* and *within the phase* have passed,
 		# and if we are not already in the last phase.
-		if (epoch >= minimum_epochs and # Overall min epochs check
+		if (
+			epoch >= minimum_epochs and
 			epochs_in_current_phase >= min_epochs_per_phase and
 			current_phase < max_phases - 1 and
-			len(early_stopping.value_history) >= window_size):
+			len(early_stopping.value_history) >= window_size
+		):
 			print(f"Checking phase transition ({epochs_in_current_phase} elapsed epochs in phase {current_phase})")
 
-		val_losses = early_stopping.value_history
-		val_accs_in_batch = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in in_batch_loss_acc_metrics_all_epochs]
-		val_accs_full = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in full_val_loss_acc_metrics_all_epochs]
+			#################
+			val_losses = early_stopping.value_history
+			val_accs_in_batch = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in in_batch_loss_acc_metrics_all_epochs]
+			val_accs_full = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in full_val_loss_acc_metrics_all_epochs]
 
-		should_trans = should_transition_phase(
-			losses=val_losses,
-			window=window_size,
-			best_loss=early_stopping.get_best_score(), # Use best score from early stopping state
-			best_loss_threshold=min_delta, # Use min_delta for closeness check
-			volatility_threshold=volatility_threshold,
-			slope_threshold=slope_threshold, # Use positive threshold for worsening loss
-			pairwise_imp_threshold=pairwise_imp_threshold,
-			# accuracies=val_accs, # Pass average accuracy
-			# accuracy_plateau_threshold=accuracy_plateau_threshold,
-		)
-		if should_trans:
-			current_phase, last_lr, last_wd = handle_phase_transition(
-				current_phase=current_phase,
-				initial_lr=initial_learning_rate,
-				initial_wd=initial_weight_decay,
-				max_phases=max_phases,
-				window_size=window_size,
-				current_loss=val_losses[-1],
-				best_loss=early_stopping.get_best_score(),
+			should_trans = should_transition_phase(
+				losses=val_losses,
+				window=window_size,
+				best_loss=early_stopping.get_best_score(), # Use best score from early stopping state
+				best_loss_threshold=min_delta, # Use min_delta for closeness check
+				volatility_threshold=volatility_threshold,
+				slope_threshold=slope_threshold, # Use positive threshold for worsening loss
+				pairwise_imp_threshold=pairwise_imp_threshold,
+				# accuracies=val_accs, # Pass average accuracy
+				# accuracy_plateau_threshold=accuracy_plateau_threshold,
 			)
-			epochs_in_current_phase = 0 # Reset phase epoch counter
-			early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
-			print(f"Transitioned to Phase {current_phase}. Early stopping reset.")
+			if should_trans:
+				phase_transitions_epochs.append(epoch)
+				current_phase, last_lr, last_wd = handle_phase_transition(
+					current_phase=current_phase,
+					initial_lr=initial_learning_rate,
+					initial_wd=initial_weight_decay,
+					max_phases=max_phases,
+					window_size=window_size,
+					current_loss=val_losses[-1],
+					best_loss=early_stopping.get_best_score(),
+				)
+				epochs_in_current_phase = 0 # Reset phase epoch counter
+				early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
+				print(f"Transitioned to Phase {current_phase}. Early stopping reset.")
 
-			phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
-			print(f"Phase transition triggered. Optimizer/Scheduler refresh pending after unfreeze.")
-			print(f"Current Phase: {current_phase}")
+				phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
+				print(f"Phase transition triggered. Optimizer/Scheduler refresh pending after unfreeze.")
+				print(f"Current Phase: {current_phase}")
+			#################
+
+
+		current_lr = optimizer.param_groups[0]['lr'] if optimizer.param_groups else last_lr
+		current_wd = optimizer.param_groups[0]['weight_decay'] if optimizer.param_groups else last_wd
+		learning_rates_history.append(current_lr)
+		weight_decays_history.append(current_wd)
+		phases_history.append(current_phase)
 
 		# --- Unfreeze Layers for Current Phase ---
 		print(f"Applying unfreeze strategy for Phase {current_phase}...")
@@ -3019,7 +3041,6 @@ def progressive_finetune_single_label(
 			print(f"Scheduler re-initialized with max_lr={last_lr:.3e} for {scheduler_epochs} epochs.")
 			phase_just_changed = False # Reset the flag
 
-		# --- Training Epoch ---
 		model.train()
 		epoch_train_loss = 0.0
 		num_train_batches = len(train_loader)
@@ -3060,7 +3081,6 @@ def progressive_finetune_single_label(
 		avg_training_loss = epoch_train_loss / num_train_batches if num_train_batches > 0 and trainable_params_exist else 0.0
 		training_losses.append(avg_training_loss)
 
-		# --- Validation ---
 		print(f">> Training Completed in {time.time() - epoch_start_time:.2f} sec. Validating Epoch: {epoch+1}")
 
 		# all metrics in one using caching mechanism:
@@ -3134,12 +3154,14 @@ def progressive_finetune_single_label(
 				print(f"Validation Cache Stats: {cache_stats}")
 			print(f"#"*100)
 
+
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
 			model=model,
 			epoch=epoch,
 			current_phase=current_phase
 		):
+			early_stopping_triggered = True
 			print(f"--- Training stopped early at epoch {epoch+1} ---")
 			break # Exit the main training loop
 
@@ -3151,6 +3173,8 @@ def progressive_finetune_single_label(
 
 	# --- End of Training ---
 	total_training_time = time.time() - train_start_time
+
+
 	print(f"\n--- Training Finished ---")
 	print(f"Total Epochs Run: {epoch + 1}")
 	print(f"Final Phase Reached: {current_phase}")
@@ -3182,6 +3206,7 @@ def progressive_finetune_single_label(
 
 	print("\nGenerating result plots...")
 	actual_trained_epochs = len(training_losses)
+
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
@@ -3225,7 +3250,28 @@ def progressive_finetune_single_label(
 		"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		"progressive_dynamics": os.path.join(results_dir, f"{file_base_name}_progressive_dynamics.png"),
 	}
+
+	training_history = collect_progressive_training_history(
+		training_losses=training_losses,
+		in_batch_metrics_all_epochs=in_batch_loss_acc_metrics_all_epochs,
+		learning_rates=learning_rates_history,
+		weight_decays=weight_decays_history,
+		phases=phases_history,
+		phase_transitions=phase_transitions_epochs,
+		early_stop_epoch=epoch if early_stopping_triggered else None,
+		best_epoch=early_stopping.best_epoch if hasattr(early_stopping, 'best_epoch') else None
+	)
+
+	plot_progressive_training_dynamics(
+		training_history=training_history,
+		unfreeze_schedule=unfreeze_schedule,
+		layer_groups=get_layer_groups(model),
+		save_path=plot_paths["progressive_dynamics"],
+		dataset_name=dataset_name,
+		model_name=model_name
+	)
 
 	plot_loss_accuracy_metrics(
 		dataset_name=dataset_name,

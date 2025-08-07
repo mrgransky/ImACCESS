@@ -29,6 +29,7 @@ dtypes = {
 	'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
 	'user_query': str, 'country': str,
 }
+
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 1000)
 pd.set_option('display.max_rows', 100)

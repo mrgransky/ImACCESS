@@ -43,7 +43,9 @@ import torchvision.transforms as T
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-# plt.style.use('seaborn-v0_8-whitegrid')  # Modern style for sleek look
+import matplotlib.patches as mpatches
+from matplotlib.colors import LinearSegmentedColormap
+import seaborn as sns
 
 from PIL import Image, ImageDraw, ImageFont
 from typing import Tuple, Union, List, Dict, Any, Optional
