@@ -112,14 +112,9 @@ def plot_phase_transition_analysis(
 				change = ((prev_loss - transition_loss) / prev_loss) * 100
 				improvement_text = f"\n{change:+.2f} %"
 			
-			max_val_loss = max(val_losses)
-			max_train_loss = max(train_losses)
-			print(f"max_val_loss: {max_val_loss}, max_train_loss: {max_train_loss}")
-			y_position = min(max_val_loss, max_train_loss) * 0.75
-			print(f"y_position: {y_position}")
 			ax1.text(
-				transition_epoch + 0.4,
-				y_position,
+				transition_epoch + 0.5,
+				max(val_losses) * 1.05,
 				f'Phase Transition {i+1}{improvement_text}',
 				rotation=90,
 				fontsize=9,
