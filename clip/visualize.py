@@ -114,8 +114,8 @@ def plot_phase_transition_analysis(
 			
 			ax1.text(
 				transition_epoch + 0.5,
-				max(val_losses) * 1.05,
-				f'Phase Transition {i+1}{improvement_text}',
+				max(val_losses) * 1.01,
+				f'Transition {i+1}{improvement_text}',
 				rotation=90,
 				fontsize=9,
 				ha='left',
@@ -155,7 +155,7 @@ def plot_phase_transition_analysis(
 		)
 		ax1.text(
 			early_stop_epoch + 0.5,
-			max(val_losses) * 1.05,
+			max(val_losses) * 1.01,
 			'Early Stopping', 
 			rotation=90, 
 			va='bottom',
@@ -177,8 +177,9 @@ def plot_phase_transition_analysis(
 
 	# Set y-axis limits with minimum of 0 and maximum with margin
 	max_loss = max(max(train_losses), max(val_losses))
-	margin = max_loss * 0.1  # 10% margin
-	ax1.set_ylim(0, max_loss + margin)
+	min_loss = min(min(train_losses), min(val_losses))
+	margin = max_loss * 0.25  # 25% margin
+	ax1.set_ylim(min_loss - margin, max_loss + margin)
 	
 	# ================================
 	# 2. Learning Rate Evolution (top-right)
