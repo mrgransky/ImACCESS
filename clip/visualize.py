@@ -20,8 +20,11 @@ def plot_phase_transition_analysis(
 		figsize: Figure size tuple
 	"""
 
+	print(json.dumps(training_history, indent=4, ensure_ascii=False))
+
 	# Extract data
 	epochs = training_history['epochs']
+	epochs = list(map(lambda x: x + 1, epochs)) # convert to 1-based indexing
 	train_losses = training_history['train_losses']
 	val_losses = training_history['val_losses']
 	learning_rates = training_history['learning_rates']
@@ -113,7 +116,7 @@ def plot_phase_transition_analysis(
 			max_val_loss = max(val_losses)
 			max_train_loss = max(train_losses)
 			print(f"max_val_loss: {max_val_loss}, max_train_loss: {max_train_loss}")
-			y_position = max(max_val_loss, max_train_loss) * 0.5
+			y_position = max(max_val_loss, max_train_loss) * 0.9
 			print(f"y_position: {y_position}")
 			ax1.text(
 				transition_epoch + 0.5,
@@ -127,7 +130,8 @@ def plot_phase_transition_analysis(
 				bbox=dict(
 					boxstyle="round,pad=0.3", 
 					edgecolor='none',
-					alpha=0.95,
+					facecolor='none',
+					alpha=0.8,
 				)
 			)
 
@@ -486,6 +490,7 @@ def plot_progressive_training_dynamics(
 		save_path: Path to save the plot
 		figsize: Figure size tuple
 	"""
+	print(json.dumps(training_history, indent=4, ensure_ascii=False))
 	fig = plt.figure(figsize=figsize, facecolor='white')
 	gs = fig.add_gridspec(
 		4, 
@@ -497,6 +502,7 @@ def plot_progressive_training_dynamics(
 	)
 	
 	epochs = training_history['epochs']
+	epochs = list(map(lambda x: x + 1, epochs)) # convert to 1-based indexing
 	train_losses = training_history['train_losses']
 	val_losses = training_history['val_losses']
 	learning_rates = training_history['learning_rates']
