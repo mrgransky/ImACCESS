@@ -1,359 +1,359 @@
 from utils import *
 
 def plot_phase_transition_analysis(
-        training_history: Dict,
-        save_path: str,
-        dataset_name: str = "Dataset",
-        model_name: str = "Model",
-        figsize: Tuple[int, int] = (18, 12)
-    ):
-    """
-    Create a comprehensive analysis of phase transitions and their impact on training.
-    
-    This plot provides detailed insights into:
-    1. Loss evolution with phase-specific analysis
-    2. Hyperparameter adaptation patterns
-    3. Training stability metrics
-    4. Phase efficiency analysis
-    
-    Args:
-        training_history: Dictionary containing training metrics per epoch
-        save_path: Path to save the plot
-        dataset_name: Name of dataset for plot title
-        model_name: Name of model for plot title
-        figsize: Figure size tuple
-    """
-    
-    # Set up the plotting style
-    plt.style.use('seaborn-v0_8-darkgrid')
-    sns.set_palette("husl")
-    
-    # Extract data
-    epochs = training_history['epochs']
-    train_losses = training_history['train_losses']
-    val_losses = training_history['val_losses']
-    learning_rates = training_history['learning_rates']
-    weight_decays = training_history['weight_decays']
-    phases = training_history['phases']
-    transitions = training_history.get('phase_transitions', [])
-    early_stop_epoch = training_history.get('early_stop_epoch')
-    best_epoch = training_history.get('best_epoch')
-    
-    # Create figure with custom layout
-    fig = plt.figure(figsize=figsize, facecolor='white')
-    gs = fig.add_gridspec(3, 3, height_ratios=[2, 1.5, 1.2], width_ratios=[2, 1, 1.2], 
-                          hspace=0.35, wspace=0.4)
-    
-    # Color scheme
-    phase_colors = plt.cm.Set3(np.linspace(0, 1, max(phases) + 1))
-    transition_color = '#FF6B35'
-    early_stop_color = '#D32F2F'
-    best_model_color = '#FFD700'
-    
-    # ================================
-    # 1. Main Loss Evolution Plot (top-left, spans 2 columns)
-    # ================================
-    ax1 = fig.add_subplot(gs[0, :2])
-    
-    # Add phase background shading
-    for phase in set(phases):
-        phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
-        if phase_epochs:
-            start_epoch = min(phase_epochs)
-            end_epoch = max(phase_epochs)
-            ax1.axvspan(start_epoch, end_epoch, alpha=0.15, 
-                       color=phase_colors[phase], label=f'Phase {phase}')
-    
-    # Plot loss curves with enhanced styling
-    train_line = ax1.plot(epochs, train_losses, 'b-', linewidth=2.5, 
-                         label='Training Loss', alpha=0.9, marker='o', markersize=3)
-    val_line = ax1.plot(epochs, val_losses, 'r-', linewidth=2.5, 
-                       label='Validation Loss', alpha=0.9, marker='s', markersize=3)
-    
-    # Mark phase transitions with enhanced annotations
-    for i, transition_epoch in enumerate(transitions):
-        ax1.axvline(x=transition_epoch, color=transition_color, linestyle='--', 
-                   linewidth=2.5, alpha=0.8, zorder=10)
-        
-        # Calculate loss change at transition
-        if transition_epoch < len(val_losses):
-            transition_loss = val_losses[transition_epoch]
-            improvement_text = ""
-            if transition_epoch > 0:
-                prev_loss = val_losses[transition_epoch - 1]
-                change = ((prev_loss - transition_loss) / prev_loss) * 100
-                improvement_text = f"\n({change:+.1f}%)"
-            
-            # Alternate annotation positions to avoid overlap
-            y_offset = 0.95 - (i % 3) * 0.1
-            ax1.annotate(f'Phase Transition {i+1}{improvement_text}', 
-                        xy=(transition_epoch, max(val_losses) * y_offset),
-                        xytext=(transition_epoch + 2, max(val_losses) * (y_offset + 0.03)),
-                        arrowprops=dict(arrowstyle='->', color=transition_color, 
-                                      alpha=0.8, lw=1.5),
-                        fontsize=9, ha='left', color=transition_color, 
-                        weight='bold', bbox=dict(boxstyle="round,pad=0.3", 
-                                               facecolor='white', alpha=0.8))
-    
-    # Mark best epoch and early stopping
-    if best_epoch is not None and best_epoch < len(epochs):
-        best_loss = val_losses[best_epoch]
-        ax1.scatter([epochs[best_epoch]], [best_loss], color=best_model_color, 
-                   s=150, marker='*', zorder=15, label='Best Model', 
-                   edgecolor='black', linewidth=2)
-    
-    if early_stop_epoch is not None:
-        ax1.axvline(x=early_stop_epoch, color=early_stop_color, linestyle=':', 
-                   linewidth=3, alpha=0.9, label='Early Stop', zorder=12)
-        ax1.text(early_stop_epoch + 0.5, max(val_losses) * 0.8, 
-                'Early\nStopping', rotation=90, va='bottom', ha='left',
-                color=early_stop_color, weight='bold', fontsize=10)
-    
-    ax1.set_xlabel('Epoch', fontsize=12, weight='bold')
-    ax1.set_ylabel('Loss', fontsize=12, weight='bold')
-    ax1.set_title(f'Loss Evolution with Phase Transitions\n{model_name} on {dataset_name}', 
-                  fontsize=13, weight='bold', pad=15)
-    ax1.legend(loc='upper right', fontsize=10, framealpha=0.9)
-    ax1.grid(True, alpha=0.4)
-    
-    # ================================
-    # 2. Learning Rate Evolution (top-right)
-    # ================================
-    ax2 = fig.add_subplot(gs[0, 2])
-    
-    # Plot learning rate with phase coloring
-    for i in range(len(epochs)-1):
-        phase = phases[i]
-        ax2.semilogy([epochs[i], epochs[i+1]], [learning_rates[i], learning_rates[i+1]], 
-                    color=phase_colors[phase], linewidth=3, alpha=0.8)
-    
-    # Mark transitions
-    for transition_epoch in transitions:
-        if transition_epoch < len(learning_rates):
-            ax2.axvline(x=transition_epoch, color=transition_color, 
-                       linestyle='--', linewidth=2, alpha=0.7)
-    
-    ax2.set_xlabel('Epoch', fontsize=11, weight='bold')
-    ax2.set_ylabel('Learning Rate (log)', fontsize=11, weight='bold')
-    ax2.set_title('LR Adaptation\nAcross Phases', fontsize=11, weight='bold')
-    ax2.grid(True, alpha=0.3)
-    
-    # ================================
-    # 3. Weight Decay Evolution (middle-left)
-    # ================================
-    ax3 = fig.add_subplot(gs[1, 0])
-    
-    # Plot weight decay with phase coloring
-    for i in range(len(epochs)-1):
-        phase = phases[i]
-        ax3.semilogy([epochs[i], epochs[i+1]], [weight_decays[i], weight_decays[i+1]], 
-                    color=phase_colors[phase], linewidth=3, alpha=0.8)
-    
-    # Mark transitions
-    for transition_epoch in transitions:
-        if transition_epoch < len(weight_decays):
-            ax3.axvline(x=transition_epoch, color=transition_color, 
-                       linestyle='--', linewidth=2, alpha=0.7)
-    
-    ax3.set_xlabel('Epoch', fontsize=11, weight='bold')
-    ax3.set_ylabel('Weight Decay (log)', fontsize=11, weight='bold')
-    ax3.set_title('Weight Decay\nAdaptation', fontsize=11, weight='bold')
-    ax3.grid(True, alpha=0.3)
-    
-    # ================================
-    # 4. Phase Duration and Efficiency Analysis (middle-center)
-    # ================================
-    ax4 = fig.add_subplot(gs[1, 1])
-    
-    # Calculate phase durations and improvements
-    phase_data = []
-    unique_phases = sorted(set(phases))
-    
-    for phase in unique_phases:
-        phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
-        duration = len(phase_epochs)
-        
-        # Calculate loss improvement in this phase
-        if phase_epochs:
-            start_idx = phase_epochs[0]
-            end_idx = phase_epochs[-1]
-            if start_idx < len(val_losses) and end_idx < len(val_losses):
-                start_loss = val_losses[start_idx]
-                end_loss = val_losses[end_idx]
-                improvement = ((start_loss - end_loss) / start_loss * 100) if start_loss > 0 else 0
-            else:
-                improvement = 0
-        else:
-            improvement = 0
-        
-        phase_data.append((phase, duration, improvement))
-    
-    phases_list, durations, improvements = zip(*phase_data) if phase_data else ([], [], [])
-    
-    # Create dual-axis plot
-    bars = ax4.bar(range(len(durations)), durations, 
-                   color=[phase_colors[p] for p in phases_list], alpha=0.7,
-                   edgecolor='black', linewidth=1)
-    
-    # Add improvement percentages
-    ax4_twin = ax4.twinx()
-    improvement_line = ax4_twin.plot(range(len(improvements)), improvements, 
-                                    'ro-', linewidth=2, markersize=6, 
-                                    label='Loss Improvement %')
-    
-    # Add value labels
-    for i, (bar, duration, improvement) in enumerate(zip(bars, durations, improvements)):
-        # Duration labels on bars
-        ax4.text(bar.get_x() + bar.get_width()/2., bar.get_height() + 0.2,
-                f'{duration}', ha='center', va='bottom', fontweight='bold', fontsize=9)
-        # Improvement labels
-        ax4_twin.text(i, improvement + 0.5, f'{improvement:.1f}%', 
-                     ha='center', va='bottom', fontweight='bold', 
-                     fontsize=8, color='darkred')
-    
-    ax4.set_xlabel('Phase', fontsize=11, weight='bold')
-    ax4.set_ylabel('Duration (Epochs)', fontsize=10, weight='bold', color='blue')
-    ax4_twin.set_ylabel('Loss Improvement (%)', fontsize=10, weight='bold', color='red')
-    ax4.set_title('Phase Efficiency\nAnalysis', fontsize=11, weight='bold')
-    
-    phase_labels = [f'P{p}' for p in phases_list]
-    ax4.set_xticks(range(len(phase_labels)))
-    ax4.set_xticklabels(phase_labels)
-    ax4.tick_params(axis='y', labelcolor='blue')
-    ax4_twin.tick_params(axis='y', labelcolor='red')
-    
-    # ================================
-    # 5. Hyperparameter Correlation Analysis (middle-right)
-    # ================================
-    ax5 = fig.add_subplot(gs[1, 2])
-    
-    # Normalize data for correlation plot
-    lr_norm = np.array(learning_rates) / max(learning_rates)
-    wd_norm = np.array(weight_decays) / max(weight_decays)
-    loss_norm = np.array(val_losses) / max(val_losses)
-    
-    ax5.plot(epochs, lr_norm, 'g-', linewidth=2, label='LR (norm)', alpha=0.8)
-    ax5.plot(epochs, wd_norm, 'm-', linewidth=2, label='WD (norm)', alpha=0.8)
-    ax5.plot(epochs, loss_norm, 'r-', linewidth=2, label='Val Loss (norm)', alpha=0.8)
-    
-    # Mark transitions
-    for transition_epoch in transitions:
-        ax5.axvline(x=transition_epoch, color=transition_color, 
-                   linestyle='--', linewidth=1.5, alpha=0.7)
-    
-    ax5.set_xlabel('Epoch', fontsize=11, weight='bold')
-    ax5.set_ylabel('Normalized Values', fontsize=11, weight='bold')
-    ax5.set_title('Hyperparameter\nCorrelations', fontsize=11, weight='bold')
-    ax5.legend(fontsize=9)
-    ax5.grid(True, alpha=0.3)
-    ax5.set_ylim(0, 1.1)
-    
-    # ================================
-    # 6. Training Statistics and Insights (bottom row)
-    # ================================
-    ax6 = fig.add_subplot(gs[2, :])
-    ax6.axis('off')
-    
-    # Calculate comprehensive statistics
-    total_epochs = len(epochs)
-    num_phases = len(set(phases))
-    total_improvement = ((val_losses[0] - min(val_losses)) / val_losses[0] * 100) if val_losses and val_losses[0] > 0 else 0
-    avg_phase_duration = np.mean(durations) if durations else 0
-    best_phase = phases_list[np.argmax(improvements)] if improvements else 0
-    
-    # Phase transition effectiveness
-    transition_improvements = []
-    for i, t_epoch in enumerate(transitions):
-        if t_epoch > 0 and t_epoch < len(val_losses) - 1:
-            before = val_losses[t_epoch - 1]
-            after = val_losses[t_epoch + 1] if t_epoch + 1 < len(val_losses) else val_losses[t_epoch]
-            improvement = ((before - after) / before * 100) if before > 0 else 0
-            transition_improvements.append(improvement)
-    
-    avg_transition_improvement = np.mean(transition_improvements) if transition_improvements else 0
-    
-    # Learning rate adaptation analysis
-    lr_changes = []
-    for t_epoch in transitions:
-        if t_epoch > 0 and t_epoch < len(learning_rates):
-            before_lr = learning_rates[t_epoch - 1]
-            after_lr = learning_rates[t_epoch]
-            change = ((after_lr - before_lr) / before_lr * 100) if before_lr > 0 else 0
-            lr_changes.append(change)
-    
-    # Create comprehensive summary
-    summary_text = f"""
-    COMPREHENSIVE TRAINING ANALYSIS:
-    
-    📊 OVERALL PERFORMANCE:
-    • Total Epochs: {total_epochs}
-    • Number of Phases: {num_phases}
-    • Total Loss Improvement: {total_improvement:.2f}%
-    • Training Status: {'Early Stopped' if early_stop_epoch else 'Completed'}
-    
-    🔄 PHASE TRANSITION ANALYSIS:
-    • Total Transitions: {len(transitions)}
-    • Average Phase Duration: {avg_phase_duration:.1f} epochs
-    • Most Effective Phase: Phase {best_phase}
-    • Avg Improvement per Transition: {avg_transition_improvement:.2f}%
-    
-    ⚙️ HYPERPARAMETER ADAPTATION:
-    • Initial Learning Rate: {learning_rates[0]:.2e}
-    • Final Learning Rate: {learning_rates[-1]:.2e}
-    • LR Reduction Factor: {(learning_rates[0]/learning_rates[-1]):.1f}x
-    • Weight Decay Range: {min(weight_decays):.2e} → {max(weight_decays):.2e}
-    """
-    
-    if transitions:
-        summary_text += f"\n    📈 TRANSITION EPOCHS: {transitions}"
-    
-    if best_epoch is not None:
-        summary_text += f"\n    🏆 Best Model: Epoch {epochs[best_epoch]} (Loss: {val_losses[best_epoch]:.4f})"
-    
-    # Phase-specific insights
-    phase_insights = "\n    🎯 PHASE INSIGHTS:\n"
-    for phase, duration, improvement in phase_data[:3]:  # Show top 3 phases
-        phase_insights += f"    • Phase {phase}: {duration} epochs, {improvement:.1f}% improvement\n"
-    
-    summary_text += phase_insights
-    
-    # Display summary with enhanced formatting
-    ax6.text(0.02, 0.95, summary_text, transform=ax6.transAxes, fontsize=10,
-             verticalalignment='top', fontfamily='monospace',
-             bbox=dict(boxstyle="round,pad=0.8", facecolor="#f0f8ff", 
-                      alpha=0.9, edgecolor='steelblue', linewidth=2))
-    
-    # Add phase legend in a more compact format
-    phase_patches = [mpatches.Patch(color=phase_colors[phase], alpha=0.7, 
-                                   label=f'Phase {phase}') for phase in sorted(set(phases))]
-    legend = ax6.legend(handles=phase_patches, loc='center right', fontsize=10, 
-                       title='Training Phases', title_fontsize=11, framealpha=0.9)
-    legend.get_frame().set_facecolor('#f5f5f5')
-    
-    # ================================
-    # Final touches
-    # ================================
-    plt.suptitle(f'Progressive Fine-tuning Phase Transition Analysis\n{model_name} on {dataset_name}', 
-                 fontsize=16, weight='bold', y=0.98)
-    
-    # Save the plot
-    plt.savefig(save_path, dpi=300, bbox_inches='tight', 
-                facecolor='white', edgecolor='none')
-    plt.show()
-    
-    print(f"Phase transition analysis plot saved to: {save_path}")
-    
-    # Return analysis results for further use
-    analysis_results = {
-        'total_improvement': total_improvement,
-        'num_transitions': len(transitions),
-        'avg_phase_duration': avg_phase_duration,
-        'best_phase': best_phase,
-        'transition_improvements': transition_improvements,
-        'lr_adaptation_factor': learning_rates[0]/learning_rates[-1] if learning_rates[-1] > 0 else 1.0
-    }
-    
-    return analysis_results
+				training_history: Dict,
+				save_path: str,
+				dataset_name: str = "Dataset",
+				model_name: str = "Model",
+				figsize: Tuple[int, int] = (18, 12)
+		):
+		"""
+		Create a comprehensive analysis of phase transitions and their impact on training.
+		
+		This plot provides detailed insights into:
+		1. Loss evolution with phase-specific analysis
+		2. Hyperparameter adaptation patterns
+		3. Training stability metrics
+		4. Phase efficiency analysis
+		
+		Args:
+				training_history: Dictionary containing training metrics per epoch
+				save_path: Path to save the plot
+				dataset_name: Name of dataset for plot title
+				model_name: Name of model for plot title
+				figsize: Figure size tuple
+		"""
+		
+		# Set up the plotting style
+		plt.style.use('seaborn-v0_8-darkgrid')
+		sns.set_palette("husl")
+		
+		# Extract data
+		epochs = training_history['epochs']
+		train_losses = training_history['train_losses']
+		val_losses = training_history['val_losses']
+		learning_rates = training_history['learning_rates']
+		weight_decays = training_history['weight_decays']
+		phases = training_history['phases']
+		transitions = training_history.get('phase_transitions', [])
+		early_stop_epoch = training_history.get('early_stop_epoch')
+		best_epoch = training_history.get('best_epoch')
+		
+		# Create figure with custom layout
+		fig = plt.figure(figsize=figsize, facecolor='white')
+		gs = fig.add_gridspec(3, 3, height_ratios=[2, 1.5, 1.2], width_ratios=[2, 1, 1.2], 
+													hspace=0.35, wspace=0.4)
+		
+		# Color scheme
+		phase_colors = plt.cm.Set3(np.linspace(0, 1, max(phases) + 1))
+		transition_color = '#FF6B35'
+		early_stop_color = '#D32F2F'
+		best_model_color = '#FFD700'
+		
+		# ================================
+		# 1. Main Loss Evolution Plot (top-left, spans 2 columns)
+		# ================================
+		ax1 = fig.add_subplot(gs[0, :2])
+		
+		# Add phase background shading
+		for phase in set(phases):
+				phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
+				if phase_epochs:
+						start_epoch = min(phase_epochs)
+						end_epoch = max(phase_epochs)
+						ax1.axvspan(start_epoch, end_epoch, alpha=0.15, 
+											 color=phase_colors[phase], label=f'Phase {phase}')
+		
+		# Plot loss curves with enhanced styling
+		train_line = ax1.plot(epochs, train_losses, 'b-', linewidth=2.5, 
+												 label='Training Loss', alpha=0.9, marker='o', markersize=3)
+		val_line = ax1.plot(epochs, val_losses, 'r-', linewidth=2.5, 
+											 label='Validation Loss', alpha=0.9, marker='s', markersize=3)
+		
+		# Mark phase transitions with enhanced annotations
+		for i, transition_epoch in enumerate(transitions):
+				ax1.axvline(x=transition_epoch, color=transition_color, linestyle='--', 
+									 linewidth=2.5, alpha=0.8, zorder=10)
+				
+				# Calculate loss change at transition
+				if transition_epoch < len(val_losses):
+						transition_loss = val_losses[transition_epoch]
+						improvement_text = ""
+						if transition_epoch > 0:
+								prev_loss = val_losses[transition_epoch - 1]
+								change = ((prev_loss - transition_loss) / prev_loss) * 100
+								improvement_text = f"\n({change:+.1f}%)"
+						
+						# Alternate annotation positions to avoid overlap
+						y_offset = 0.95 - (i % 3) * 0.1
+						ax1.annotate(f'Phase Transition {i+1}{improvement_text}', 
+												xy=(transition_epoch, max(val_losses) * y_offset),
+												xytext=(transition_epoch + 2, max(val_losses) * (y_offset + 0.03)),
+												arrowprops=dict(arrowstyle='->', color=transition_color, 
+																			alpha=0.8, lw=1.5),
+												fontsize=9, ha='left', color=transition_color, 
+												weight='bold', bbox=dict(boxstyle="round,pad=0.3", 
+																							 facecolor='white', alpha=0.8))
+		
+		# Mark best epoch and early stopping
+		if best_epoch is not None and best_epoch < len(epochs):
+				best_loss = val_losses[best_epoch]
+				ax1.scatter([epochs[best_epoch]], [best_loss], color=best_model_color, 
+									 s=150, marker='*', zorder=15, label='Best Model', 
+									 edgecolor='black', linewidth=2)
+		
+		if early_stop_epoch is not None:
+				ax1.axvline(x=early_stop_epoch, color=early_stop_color, linestyle=':', 
+									 linewidth=3, alpha=0.9, label='Early Stop', zorder=12)
+				ax1.text(early_stop_epoch + 0.5, max(val_losses) * 0.8, 
+								'Early\nStopping', rotation=90, va='bottom', ha='left',
+								color=early_stop_color, weight='bold', fontsize=10)
+		
+		ax1.set_xlabel('Epoch', fontsize=12, weight='bold')
+		ax1.set_ylabel('Loss', fontsize=12, weight='bold')
+		ax1.set_title(f'Loss Evolution with Phase Transitions\n{model_name} on {dataset_name}', 
+									fontsize=13, weight='bold', pad=15)
+		ax1.legend(loc='upper right', fontsize=10, framealpha=0.9)
+		ax1.grid(True, alpha=0.4)
+		
+		# ================================
+		# 2. Learning Rate Evolution (top-right)
+		# ================================
+		ax2 = fig.add_subplot(gs[0, 2])
+		
+		# Plot learning rate with phase coloring
+		for i in range(len(epochs)-1):
+				phase = phases[i]
+				ax2.semilogy([epochs[i], epochs[i+1]], [learning_rates[i], learning_rates[i+1]], 
+										color=phase_colors[phase], linewidth=3, alpha=0.8)
+		
+		# Mark transitions
+		for transition_epoch in transitions:
+				if transition_epoch < len(learning_rates):
+						ax2.axvline(x=transition_epoch, color=transition_color, 
+											 linestyle='--', linewidth=2, alpha=0.7)
+		
+		ax2.set_xlabel('Epoch', fontsize=11, weight='bold')
+		ax2.set_ylabel('Learning Rate (log)', fontsize=11, weight='bold')
+		ax2.set_title('LR Adaptation\nAcross Phases', fontsize=11, weight='bold')
+		ax2.grid(True, alpha=0.3)
+		
+		# ================================
+		# 3. Weight Decay Evolution (middle-left)
+		# ================================
+		ax3 = fig.add_subplot(gs[1, 0])
+		
+		# Plot weight decay with phase coloring
+		for i in range(len(epochs)-1):
+				phase = phases[i]
+				ax3.semilogy([epochs[i], epochs[i+1]], [weight_decays[i], weight_decays[i+1]], 
+										color=phase_colors[phase], linewidth=3, alpha=0.8)
+		
+		# Mark transitions
+		for transition_epoch in transitions:
+				if transition_epoch < len(weight_decays):
+						ax3.axvline(x=transition_epoch, color=transition_color, 
+											 linestyle='--', linewidth=2, alpha=0.7)
+		
+		ax3.set_xlabel('Epoch', fontsize=11, weight='bold')
+		ax3.set_ylabel('Weight Decay (log)', fontsize=11, weight='bold')
+		ax3.set_title('Weight Decay\nAdaptation', fontsize=11, weight='bold')
+		ax3.grid(True, alpha=0.3)
+		
+		# ================================
+		# 4. Phase Duration and Efficiency Analysis (middle-center)
+		# ================================
+		ax4 = fig.add_subplot(gs[1, 1])
+		
+		# Calculate phase durations and improvements
+		phase_data = []
+		unique_phases = sorted(set(phases))
+		
+		for phase in unique_phases:
+				phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
+				duration = len(phase_epochs)
+				
+				# Calculate loss improvement in this phase
+				if phase_epochs:
+						start_idx = phase_epochs[0]
+						end_idx = phase_epochs[-1]
+						if start_idx < len(val_losses) and end_idx < len(val_losses):
+								start_loss = val_losses[start_idx]
+								end_loss = val_losses[end_idx]
+								improvement = ((start_loss - end_loss) / start_loss * 100) if start_loss > 0 else 0
+						else:
+								improvement = 0
+				else:
+						improvement = 0
+				
+				phase_data.append((phase, duration, improvement))
+		
+		phases_list, durations, improvements = zip(*phase_data) if phase_data else ([], [], [])
+		
+		# Create dual-axis plot
+		bars = ax4.bar(range(len(durations)), durations, 
+									 color=[phase_colors[p] for p in phases_list], alpha=0.7,
+									 edgecolor='black', linewidth=1)
+		
+		# Add improvement percentages
+		ax4_twin = ax4.twinx()
+		improvement_line = ax4_twin.plot(range(len(improvements)), improvements, 
+																		'ro-', linewidth=2, markersize=6, 
+																		label='Loss Improvement %')
+		
+		# Add value labels
+		for i, (bar, duration, improvement) in enumerate(zip(bars, durations, improvements)):
+				# Duration labels on bars
+				ax4.text(bar.get_x() + bar.get_width()/2., bar.get_height() + 0.2,
+								f'{duration}', ha='center', va='bottom', fontweight='bold', fontsize=9)
+				# Improvement labels
+				ax4_twin.text(i, improvement + 0.5, f'{improvement:.1f}%', 
+										 ha='center', va='bottom', fontweight='bold', 
+										 fontsize=8, color='darkred')
+		
+		ax4.set_xlabel('Phase', fontsize=11, weight='bold')
+		ax4.set_ylabel('Duration (Epochs)', fontsize=10, weight='bold', color='blue')
+		ax4_twin.set_ylabel('Loss Improvement (%)', fontsize=10, weight='bold', color='red')
+		ax4.set_title('Phase Efficiency\nAnalysis', fontsize=11, weight='bold')
+		
+		phase_labels = [f'P{p}' for p in phases_list]
+		ax4.set_xticks(range(len(phase_labels)))
+		ax4.set_xticklabels(phase_labels)
+		ax4.tick_params(axis='y', labelcolor='blue')
+		ax4_twin.tick_params(axis='y', labelcolor='red')
+		
+		# ================================
+		# 5. Hyperparameter Correlation Analysis (middle-right)
+		# ================================
+		ax5 = fig.add_subplot(gs[1, 2])
+		
+		# Normalize data for correlation plot
+		lr_norm = np.array(learning_rates) / max(learning_rates)
+		wd_norm = np.array(weight_decays) / max(weight_decays)
+		loss_norm = np.array(val_losses) / max(val_losses)
+		
+		ax5.plot(epochs, lr_norm, 'g-', linewidth=2, label='LR (norm)', alpha=0.8)
+		ax5.plot(epochs, wd_norm, 'm-', linewidth=2, label='WD (norm)', alpha=0.8)
+		ax5.plot(epochs, loss_norm, 'r-', linewidth=2, label='Val Loss (norm)', alpha=0.8)
+		
+		# Mark transitions
+		for transition_epoch in transitions:
+				ax5.axvline(x=transition_epoch, color=transition_color, 
+									 linestyle='--', linewidth=1.5, alpha=0.7)
+		
+		ax5.set_xlabel('Epoch', fontsize=11, weight='bold')
+		ax5.set_ylabel('Normalized Values', fontsize=11, weight='bold')
+		ax5.set_title('Hyperparameter\nCorrelations', fontsize=11, weight='bold')
+		ax5.legend(fontsize=9)
+		ax5.grid(True, alpha=0.3)
+		ax5.set_ylim(0, 1.1)
+		
+		# ================================
+		# 6. Training Statistics and Insights (bottom row)
+		# ================================
+		ax6 = fig.add_subplot(gs[2, :])
+		ax6.axis('off')
+		
+		# Calculate comprehensive statistics
+		total_epochs = len(epochs)
+		num_phases = len(set(phases))
+		total_improvement = ((val_losses[0] - min(val_losses)) / val_losses[0] * 100) if val_losses and val_losses[0] > 0 else 0
+		avg_phase_duration = np.mean(durations) if durations else 0
+		best_phase = phases_list[np.argmax(improvements)] if improvements else 0
+		
+		# Phase transition effectiveness
+		transition_improvements = []
+		for i, t_epoch in enumerate(transitions):
+				if t_epoch > 0 and t_epoch < len(val_losses) - 1:
+						before = val_losses[t_epoch - 1]
+						after = val_losses[t_epoch + 1] if t_epoch + 1 < len(val_losses) else val_losses[t_epoch]
+						improvement = ((before - after) / before * 100) if before > 0 else 0
+						transition_improvements.append(improvement)
+		
+		avg_transition_improvement = np.mean(transition_improvements) if transition_improvements else 0
+		
+		# Learning rate adaptation analysis
+		lr_changes = []
+		for t_epoch in transitions:
+				if t_epoch > 0 and t_epoch < len(learning_rates):
+						before_lr = learning_rates[t_epoch - 1]
+						after_lr = learning_rates[t_epoch]
+						change = ((after_lr - before_lr) / before_lr * 100) if before_lr > 0 else 0
+						lr_changes.append(change)
+		
+		# Create comprehensive summary
+		summary_text = f"""
+		COMPREHENSIVE TRAINING ANALYSIS:
+		
+		📊 OVERALL PERFORMANCE:
+		• Total Epochs: {total_epochs}
+		• Number of Phases: {num_phases}
+		• Total Loss Improvement: {total_improvement:.2f}%
+		• Training Status: {'Early Stopped' if early_stop_epoch else 'Completed'}
+		
+		🔄 PHASE TRANSITION ANALYSIS:
+		• Total Transitions: {len(transitions)}
+		• Average Phase Duration: {avg_phase_duration:.1f} epochs
+		• Most Effective Phase: Phase {best_phase}
+		• Avg Improvement per Transition: {avg_transition_improvement:.2f}%
+		
+		⚙️ HYPERPARAMETER ADAPTATION:
+		• Initial Learning Rate: {learning_rates[0]:.2e}
+		• Final Learning Rate: {learning_rates[-1]:.2e}
+		• LR Reduction Factor: {(learning_rates[0]/learning_rates[-1]):.1f}x
+		• Weight Decay Range: {min(weight_decays):.2e} → {max(weight_decays):.2e}
+		"""
+		
+		if transitions:
+				summary_text += f"\n    📈 TRANSITION EPOCHS: {transitions}"
+		
+		if best_epoch is not None:
+				summary_text += f"\n    🏆 Best Model: Epoch {epochs[best_epoch]} (Loss: {val_losses[best_epoch]:.4f})"
+		
+		# Phase-specific insights
+		phase_insights = "\n    🎯 PHASE INSIGHTS:\n"
+		for phase, duration, improvement in phase_data[:3]:  # Show top 3 phases
+				phase_insights += f"    • Phase {phase}: {duration} epochs, {improvement:.1f}% improvement\n"
+		
+		summary_text += phase_insights
+		
+		# Display summary with enhanced formatting
+		ax6.text(0.02, 0.95, summary_text, transform=ax6.transAxes, fontsize=10,
+						 verticalalignment='top', fontfamily='monospace',
+						 bbox=dict(boxstyle="round,pad=0.8", facecolor="#f0f8ff", 
+											alpha=0.9, edgecolor='steelblue', linewidth=2))
+		
+		# Add phase legend in a more compact format
+		phase_patches = [mpatches.Patch(color=phase_colors[phase], alpha=0.7, 
+																	 label=f'Phase {phase}') for phase in sorted(set(phases))]
+		legend = ax6.legend(handles=phase_patches, loc='center right', fontsize=10, 
+											 title='Training Phases', title_fontsize=11, framealpha=0.9)
+		legend.get_frame().set_facecolor('#f5f5f5')
+		
+		# ================================
+		# Final touches
+		# ================================
+		plt.suptitle(f'Progressive Fine-tuning Phase Transition Analysis\n{model_name} on {dataset_name}', 
+								 fontsize=16, weight='bold', y=0.98)
+		
+		# Save the plot
+		plt.savefig(save_path, dpi=300, bbox_inches='tight', 
+								facecolor='white', edgecolor='none')
+		
+		print(f"Phase transition analysis plot saved to: {save_path}")
+		plt.close()
+		
+		# Return analysis results for further use
+		analysis_results = {
+				'total_improvement': total_improvement,
+				'num_transitions': len(transitions),
+				'avg_phase_duration': avg_phase_duration,
+				'best_phase': best_phase,
+				'transition_improvements': transition_improvements,
+				'lr_adaptation_factor': learning_rates[0]/learning_rates[-1] if learning_rates[-1] > 0 else 1.0
+		}
+		
+		return analysis_results
 
 def plot_progressive_training_dynamics(
 				training_history: Dict,
@@ -719,248 +719,248 @@ def plot_multilabel_loss_breakdown(
 	plt.close()	
 
 def plot_image_to_texts_separate_horizontal_bars(
-        models: dict,
-        validation_loader: DataLoader,
-        preprocess,
-        img_path: str,
-        topk: int,
-        device: str,
-        results_dir: str,
-        dpi: int = 250,
-    ):
-    dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
-    pretrained_model_arch = models.get("pretrained").name
-    print(f"{len(models)} strategies for {dataset_name} {pretrained_model_arch}")
-    
-    # Prepare labels
-    try:
-        labels = validation_loader.dataset.dataset.classes
-    except AttributeError:
-        labels = validation_loader.dataset.unique_labels
-    n_labels = len(labels)
-    if topk > n_labels:
-        print(f"ERROR: requested Top-{topk} labeling is greater than number of labels ({n_labels}) => EXIT...")
-        return
-    tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
-    
-    # Load and preprocess image
-    try:
-        img = Image.open(img_path).convert("RGB")
-    except FileNotFoundError:
-        try:
-            response = requests.get(img_path)
-            response.raise_for_status()
-            img = Image.open(BytesIO(response.content)).convert("RGB")
-        except requests.exceptions.RequestException as e:
-            print(f"ERROR: failed to load image from {img_path} => {e}")
-            return
-    image_tensor = preprocess(img).unsqueeze(0).to(device)
-    
-    # Check if img_path is in the validation set and get ground-truth label if available
-    ground_truth_label = None
-    validation_dataset = validation_loader.dataset
-    if hasattr(validation_dataset, 'data_frame') and 'img_path' in validation_dataset.data_frame.columns:
-        matching_rows = validation_dataset.data_frame[validation_dataset.data_frame['img_path'] == img_path]
-        if not matching_rows.empty:
-            ground_truth_label = matching_rows['label'].iloc[0]
-            print(f"Ground truth label for {img_path}: {ground_truth_label}")
-    
-    # Compute predictions for each model
-    model_predictions = {}
-    model_topk_labels = {}
-    model_topk_probs = {}
-    for model_name, model in models.items():
-        model.eval()
-        print(f"[Image-to-text(s)] {model_name} Zero-Shot Image Classification Query: {img_path}".center(200, " "))
-        t0 = time.time()
-        with torch.no_grad():
-            image_features = model.encode_image(image_tensor)
-            labels_features = model.encode_text(tokenized_labels_tensor)
-            image_features /= image_features.norm(dim=-1, keepdim=True)
-            labels_features /= labels_features.norm(dim=-1, keepdim=True)
-            similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
-        
-        # Store full probabilities for all labels
-        all_probs = similarities.squeeze().cpu().numpy()
-        model_predictions[model_name] = all_probs
-        
-        # Get top-k labels and probabilities for this model
-        topk_pred_probs, topk_pred_labels_idx = similarities.topk(topk, dim=-1)
-        topk_pred_probs = topk_pred_probs.squeeze().cpu().numpy()
-        topk_pred_indices = topk_pred_labels_idx.squeeze().cpu().numpy()
-        topk_pred_labels = [labels[i] for i in topk_pred_indices]
-        
-        # Sort by descending probability
-        sorted_indices = np.argsort(topk_pred_probs)[::-1]
-        model_topk_labels[model_name] = [topk_pred_labels[i] for i in sorted_indices]
-        model_topk_probs[model_name] = topk_pred_probs[sorted_indices]
-        print(f"Top-{topk} predicted labels for {model_name}: {model_topk_labels[model_name]}")
-        print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
-    
-    # IMPROVED LAYOUT CALCULATION
-    # Get image dimensions for dynamic sizing
-    img_width, img_height = img.size
-    aspect_ratio = img_height / img_width
-    
-    # Number of models to display
-    num_strategies = len(models)
-    
-    # Base the entire layout on the image aspect ratio
-    img_display_width = 4  # Base width for image in inches
-    img_display_height = img_display_width * aspect_ratio
-    
-    # Set model result panels to have identical height as the image
-    # Each model panel should have a fixed width ratio relative to the image
-    model_panel_width = 3.5  # Width for each model panel
-    
-    # Calculate total figure dimensions
-    fig_width = img_display_width + (model_panel_width * num_strategies)
-    fig_height = max(4, img_display_height)  # Ensure minimum height
-    
-    # Create figure
-    fig = plt.figure(figsize=(fig_width, fig_height), dpi=dpi)
-    
-    # Create grid with precise width ratios
-    # First column for image, remaining columns for models
-    width_ratios = [img_display_width] + [model_panel_width] * num_strategies
-    
-    # Create GridSpec with exact dimensions
-    gs = gridspec.GridSpec(
-        1, 
-        1 + num_strategies, 
-        width_ratios=width_ratios,
-        wspace=0.05  # Reduced whitespace between panels
-    )
-    
-    # Subplot 1: Query Image
-    ax0 = fig.add_subplot(gs[0])
-    ax0.imshow(img)
-    ax0.axis('off')
-    
-    # Add title with ground truth if available
-    title_text = f"Query Image\nGT: {ground_truth_label.capitalize()}" if ground_truth_label else "Query Image"
-    ax0.text(
-        0.5,  # x position (center)
-        -0.05,  # y position (just below the image)
-        title_text,
-        fontsize=10,
-        fontweight='bold',
-        ha='center',
-        va='top',
-        transform=ax0.transAxes  # Use axes coordinates
-    )
-    
-    # Define colors consistent with plot_comparison_metrics_split/merged
-    strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
-    pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
-    colors = [pretrained_colors.get(pretrained_model_arch, '#000000')] + list(strategy_colors.values())
-    print(f"colors: {colors}")
-    
-    # Subplots for each model
-    all_strategies = list(models.keys())
-    axes = []
-    
-    # Create subplots for models - ensuring dimensions are consistent
-    for model_idx in range(num_strategies):
-        ax = fig.add_subplot(gs[model_idx + 1])
-        axes.append(ax)
-    
-    # Create a list of handles for the legend
-    legend_handles = []
-    
-    # Plot data for each model
-    for model_idx, (model_name, ax) in enumerate(zip(all_strategies, axes)):
-        y_pos = np.arange(topk)
-        sorted_probs = model_topk_probs[model_name]
-        sorted_labels = model_topk_labels[model_name]
-        
-        # Plot horizontal bars and create a handle for the legend
-        bars = ax.barh(
-            y_pos,
-            sorted_probs,
-            height=0.5,
-            color=colors[model_idx],
-            edgecolor='white',
-            alpha=0.9,
-            label=f"CLIP {pretrained_model_arch}" if model_name == "pretrained" else model_name.upper()
-        )
-        legend_handles.append(bars)
-        
-        # Format axis appearance
-        ax.invert_yaxis()  # Highest probs on top
-        ax.set_yticks([])  # Hide y-axis ticks 
-        ax.set_yticklabels([])  # Empty labels
-        
-        # Set consistent x-axis limits and ticks
-        ax.set_xlim(0, 1)
-        ax.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
-        ax.set_xticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=8)
-        ax.grid(True, axis='x', linestyle='--', alpha=0.5, color='#888888')
-        
-        # Annotate bars with labels and probabilities
-        for i, (label, prob) in enumerate(zip(sorted_labels, sorted_probs)):
-            formatted_label = label.replace('_', ' ').title()
-            ax.text(
-                prob + 0.01 if prob < 0.5 else prob - 0.01,
-                i,
-                f"{formatted_label}\n({prob:.2f})",
-                va='center',
-                ha='right' if prob > 0.5 else 'left',
-                fontsize=8,
-                color='black',
-                fontweight='bold' if prob == max(sorted_probs) else 'normal',
-            )
-        
-        # Set border color
-        for spine in ax.spines.values():
-            spine.set_color('black')
-    
-    # Add a legend at the top of the figure
-    fig.legend(
-        legend_handles,
-        [handle.get_label() for handle in legend_handles],
-        fontsize=11,
-        loc='upper center',
-        ncol=len(legend_handles),
-        bbox_to_anchor=(0.5, 1.02),
-        bbox_transform=fig.transFigure,
-        frameon=True,
-        shadow=True,
-        fancybox=True,
-        edgecolor='black',
-        facecolor='white',
-    )
-    
-    # Add x-axis label
-    fig.text(
-        0.5,  # x position (center of figure)
-        0.02,  # y position (near bottom of figure)
-        "Probability",
-        ha='center',
-        va='center',
-        fontsize=12,
-        fontweight='bold'
-    )
-    
-    # IMPORTANT: Instead of tight_layout which can override our settings,
-    # use a more controlled approach
-    fig.subplots_adjust(top=0.85, bottom=0.1, left=0.05, right=0.95)
-    
-    # Save the figure
-    img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
-    file_name = os.path.join(
-        results_dir,
-        f'{dataset_name}_'
-        f'Top{topk}_labels_'
-        f'image_{img_hash}_'
-        f"{'gt_' + ground_truth_label.replace(' ', '-') + '_' if ground_truth_label else ''}"
-        f"{re.sub(r'[/@]', '-', pretrained_model_arch)}_"
-        f'separate_bar_image_to_text.png'
-    )
-    
-    plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
-    plt.close()
-    print(f"Saved visualization to: {file_name}")
+				models: dict,
+				validation_loader: DataLoader,
+				preprocess,
+				img_path: str,
+				topk: int,
+				device: str,
+				results_dir: str,
+				dpi: int = 250,
+		):
+		dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
+		pretrained_model_arch = models.get("pretrained").name
+		print(f"{len(models)} strategies for {dataset_name} {pretrained_model_arch}")
+		
+		# Prepare labels
+		try:
+				labels = validation_loader.dataset.dataset.classes
+		except AttributeError:
+				labels = validation_loader.dataset.unique_labels
+		n_labels = len(labels)
+		if topk > n_labels:
+				print(f"ERROR: requested Top-{topk} labeling is greater than number of labels ({n_labels}) => EXIT...")
+				return
+		tokenized_labels_tensor = clip.tokenize(texts=labels).to(device)
+		
+		# Load and preprocess image
+		try:
+				img = Image.open(img_path).convert("RGB")
+		except FileNotFoundError:
+				try:
+						response = requests.get(img_path)
+						response.raise_for_status()
+						img = Image.open(BytesIO(response.content)).convert("RGB")
+				except requests.exceptions.RequestException as e:
+						print(f"ERROR: failed to load image from {img_path} => {e}")
+						return
+		image_tensor = preprocess(img).unsqueeze(0).to(device)
+		
+		# Check if img_path is in the validation set and get ground-truth label if available
+		ground_truth_label = None
+		validation_dataset = validation_loader.dataset
+		if hasattr(validation_dataset, 'data_frame') and 'img_path' in validation_dataset.data_frame.columns:
+				matching_rows = validation_dataset.data_frame[validation_dataset.data_frame['img_path'] == img_path]
+				if not matching_rows.empty:
+						ground_truth_label = matching_rows['label'].iloc[0]
+						print(f"Ground truth label for {img_path}: {ground_truth_label}")
+		
+		# Compute predictions for each model
+		model_predictions = {}
+		model_topk_labels = {}
+		model_topk_probs = {}
+		for model_name, model in models.items():
+				model.eval()
+				print(f"[Image-to-text(s)] {model_name} Zero-Shot Image Classification Query: {img_path}".center(200, " "))
+				t0 = time.time()
+				with torch.no_grad():
+						image_features = model.encode_image(image_tensor)
+						labels_features = model.encode_text(tokenized_labels_tensor)
+						image_features /= image_features.norm(dim=-1, keepdim=True)
+						labels_features /= labels_features.norm(dim=-1, keepdim=True)
+						similarities = (100.0 * image_features @ labels_features.T).softmax(dim=-1)
+				
+				# Store full probabilities for all labels
+				all_probs = similarities.squeeze().cpu().numpy()
+				model_predictions[model_name] = all_probs
+				
+				# Get top-k labels and probabilities for this model
+				topk_pred_probs, topk_pred_labels_idx = similarities.topk(topk, dim=-1)
+				topk_pred_probs = topk_pred_probs.squeeze().cpu().numpy()
+				topk_pred_indices = topk_pred_labels_idx.squeeze().cpu().numpy()
+				topk_pred_labels = [labels[i] for i in topk_pred_indices]
+				
+				# Sort by descending probability
+				sorted_indices = np.argsort(topk_pred_probs)[::-1]
+				model_topk_labels[model_name] = [topk_pred_labels[i] for i in sorted_indices]
+				model_topk_probs[model_name] = topk_pred_probs[sorted_indices]
+				print(f"Top-{topk} predicted labels for {model_name}: {model_topk_labels[model_name]}")
+				print(f"Elapsed_t: {time.time()-t0:.3f} sec".center(160, "-"))
+		
+		# IMPROVED LAYOUT CALCULATION
+		# Get image dimensions for dynamic sizing
+		img_width, img_height = img.size
+		aspect_ratio = img_height / img_width
+		
+		# Number of models to display
+		num_strategies = len(models)
+		
+		# Base the entire layout on the image aspect ratio
+		img_display_width = 4  # Base width for image in inches
+		img_display_height = img_display_width * aspect_ratio
+		
+		# Set model result panels to have identical height as the image
+		# Each model panel should have a fixed width ratio relative to the image
+		model_panel_width = 3.5  # Width for each model panel
+		
+		# Calculate total figure dimensions
+		fig_width = img_display_width + (model_panel_width * num_strategies)
+		fig_height = max(4, img_display_height)  # Ensure minimum height
+		
+		# Create figure
+		fig = plt.figure(figsize=(fig_width, fig_height), dpi=dpi)
+		
+		# Create grid with precise width ratios
+		# First column for image, remaining columns for models
+		width_ratios = [img_display_width] + [model_panel_width] * num_strategies
+		
+		# Create GridSpec with exact dimensions
+		gs = gridspec.GridSpec(
+				1, 
+				1 + num_strategies, 
+				width_ratios=width_ratios,
+				wspace=0.05  # Reduced whitespace between panels
+		)
+		
+		# Subplot 1: Query Image
+		ax0 = fig.add_subplot(gs[0])
+		ax0.imshow(img)
+		ax0.axis('off')
+		
+		# Add title with ground truth if available
+		title_text = f"Query Image\nGT: {ground_truth_label.capitalize()}" if ground_truth_label else "Query Image"
+		ax0.text(
+				0.5,  # x position (center)
+				-0.05,  # y position (just below the image)
+				title_text,
+				fontsize=10,
+				fontweight='bold',
+				ha='center',
+				va='top',
+				transform=ax0.transAxes  # Use axes coordinates
+		)
+		
+		# Define colors consistent with plot_comparison_metrics_split/merged
+		strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
+		pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
+		colors = [pretrained_colors.get(pretrained_model_arch, '#000000')] + list(strategy_colors.values())
+		print(f"colors: {colors}")
+		
+		# Subplots for each model
+		all_strategies = list(models.keys())
+		axes = []
+		
+		# Create subplots for models - ensuring dimensions are consistent
+		for model_idx in range(num_strategies):
+				ax = fig.add_subplot(gs[model_idx + 1])
+				axes.append(ax)
+		
+		# Create a list of handles for the legend
+		legend_handles = []
+		
+		# Plot data for each model
+		for model_idx, (model_name, ax) in enumerate(zip(all_strategies, axes)):
+				y_pos = np.arange(topk)
+				sorted_probs = model_topk_probs[model_name]
+				sorted_labels = model_topk_labels[model_name]
+				
+				# Plot horizontal bars and create a handle for the legend
+				bars = ax.barh(
+						y_pos,
+						sorted_probs,
+						height=0.5,
+						color=colors[model_idx],
+						edgecolor='white',
+						alpha=0.9,
+						label=f"CLIP {pretrained_model_arch}" if model_name == "pretrained" else model_name.upper()
+				)
+				legend_handles.append(bars)
+				
+				# Format axis appearance
+				ax.invert_yaxis()  # Highest probs on top
+				ax.set_yticks([])  # Hide y-axis ticks 
+				ax.set_yticklabels([])  # Empty labels
+				
+				# Set consistent x-axis limits and ticks
+				ax.set_xlim(0, 1)
+				ax.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
+				ax.set_xticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=8)
+				ax.grid(True, axis='x', linestyle='--', alpha=0.5, color='#888888')
+				
+				# Annotate bars with labels and probabilities
+				for i, (label, prob) in enumerate(zip(sorted_labels, sorted_probs)):
+						formatted_label = label.replace('_', ' ').title()
+						ax.text(
+								prob + 0.01 if prob < 0.5 else prob - 0.01,
+								i,
+								f"{formatted_label}\n({prob:.2f})",
+								va='center',
+								ha='right' if prob > 0.5 else 'left',
+								fontsize=8,
+								color='black',
+								fontweight='bold' if prob == max(sorted_probs) else 'normal',
+						)
+				
+				# Set border color
+				for spine in ax.spines.values():
+						spine.set_color('black')
+		
+		# Add a legend at the top of the figure
+		fig.legend(
+				legend_handles,
+				[handle.get_label() for handle in legend_handles],
+				fontsize=11,
+				loc='upper center',
+				ncol=len(legend_handles),
+				bbox_to_anchor=(0.5, 1.02),
+				bbox_transform=fig.transFigure,
+				frameon=True,
+				shadow=True,
+				fancybox=True,
+				edgecolor='black',
+				facecolor='white',
+		)
+		
+		# Add x-axis label
+		fig.text(
+				0.5,  # x position (center of figure)
+				0.02,  # y position (near bottom of figure)
+				"Probability",
+				ha='center',
+				va='center',
+				fontsize=12,
+				fontweight='bold'
+		)
+		
+		# IMPORTANT: Instead of tight_layout which can override our settings,
+		# use a more controlled approach
+		fig.subplots_adjust(top=0.85, bottom=0.1, left=0.05, right=0.95)
+		
+		# Save the figure
+		img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
+		file_name = os.path.join(
+				results_dir,
+				f'{dataset_name}_'
+				f'Top{topk}_labels_'
+				f'image_{img_hash}_'
+				f"{'gt_' + ground_truth_label.replace(' ', '-') + '_' if ground_truth_label else ''}"
+				f"{re.sub(r'[/@]', '-', pretrained_model_arch)}_"
+				f'separate_bar_image_to_text.png'
+		)
+		
+		plt.savefig(file_name, bbox_inches='tight', dpi=dpi)
+		plt.close()
+		print(f"Saved visualization to: {file_name}")
 
 def plot_image_to_texts_stacked_horizontal_bar(
 		models: dict,
