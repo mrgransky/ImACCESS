@@ -8,6 +8,7 @@ from visualize import (
 	plot_multilabel_loss_breakdown,
 	collect_progressive_training_history,
 	plot_progressive_training_dynamics,
+	plot_phase_transition_analysis,
 )
 
 def cleanup_embedding_cache(
