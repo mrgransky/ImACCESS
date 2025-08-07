@@ -62,7 +62,7 @@ def plot_phase_transition_analysis(
 			ax1.axvspan(
 				start_epoch, 
 				end_epoch, 
-				alpha=0.15, 
+				alpha=0.35,
 				color=phase_colors[phase], 
 				label=f'Phase {phase}'
 			)
@@ -89,90 +89,48 @@ def plot_phase_transition_analysis(
 		markersize=1.8,
 	)
 	
-
-
 	# Mark phase transitions with enhanced annotations
+	print(transitions)
 	for i, transition_epoch in enumerate(transitions):
 		ax1.axvline(
 			x=transition_epoch, 
 			color=transition_color, 
 			linestyle='--', 
-			linewidth=2.5, 
-			alpha=0.8, 
+			linewidth=2.0,
+			alpha=0.75,
 			zorder=10,
 		)
 		
-		# Calculate loss change at transition
 		if transition_epoch < len(val_losses):
 			transition_loss = val_losses[transition_epoch]
 			improvement_text = ""
 			if transition_epoch > 0:
 				prev_loss = val_losses[transition_epoch - 1]
 				change = ((prev_loss - transition_loss) / prev_loss) * 100
-				improvement_text = f"({change:+.1f}%)"
+				improvement_text = f"\n({change:+.1f}%)"
 			
-			# Place rotated text without arrows
-			y_position = max(val_losses) * 0.95  # Fixed position near top
+			print(f"Transition {i+1} at epoch {transition_epoch} with loss {transition_loss:.4f} and improvement {improvement_text}")
+			max_val_loss = max(val_losses)
+			max_train_loss = max(train_losses)
+			print(f"max_val_loss: {max_val_loss}, max_train_loss: {max_train_loss}")
+			y_position = max(max_val_loss, max_train_loss) * 0.5
+			print(f"y_position: {y_position}")
 			ax1.text(
-				transition_epoch + 0.2,  # Slight offset from the line
+				transition_epoch + 0.5,
 				y_position,
-				f'Phase Transition {i+1} {improvement_text}',
-				rotation=90,  # 90-degree rotation
-				fontsize=8,
+				f'Phase Transition {i+1}{improvement_text}',
+				rotation=90,
+				fontsize=10,
 				ha='left',
 				va='bottom',
 				color=transition_color,
 				bbox=dict(
 					boxstyle="round,pad=0.3", 
-					facecolor='white',
 					edgecolor='none',
-					alpha=0.8,
+					alpha=0.95,
 				)
 			)
 
-	# # Mark phase transitions with enhanced annotations
-	# for i, transition_epoch in enumerate(transitions):
-	# 	ax1.axvline(
-	# 		x=transition_epoch, 
-	# 		color=transition_color, 
-	# 		linestyle='--', 
-	# 		linewidth=2.5, 
-	# 		alpha=0.8, 
-	# 		zorder=10,
-	# 	)
-		
-	# 	# Calculate loss change at transition
-	# 	if transition_epoch < len(val_losses):
-	# 		transition_loss = val_losses[transition_epoch]
-	# 		improvement_text = ""
-	# 		if transition_epoch > 0:
-	# 			prev_loss = val_losses[transition_epoch - 1]
-	# 			change = ((prev_loss - transition_loss) / prev_loss) * 100
-	# 			improvement_text = f"({change:+.1f}%)"
-			
-	# 		# Alternate annotation positions to avoid overlap
-	# 		y_offset = 0.99 - (i % 3) * 0.02
-	# 		ax1.annotate(
-	# 			f'Phase Transition {i+1} {improvement_text}', 
-	# 			xy=(transition_epoch, max(val_losses) * y_offset),
-	# 			xytext=(transition_epoch + 2, max(val_losses) * (y_offset + 0.08)),
-	# 			arrowprops=dict(
-	# 				arrowstyle='->', 
-	# 				color=transition_color, 
-	# 				alpha=0.8, 
-	# 				lw=1.5
-	# 			),
-	# 			fontsize=8, 
-	# 			ha='left', 
-	# 			color=transition_color, 
-	# 			bbox=dict(
-	# 				boxstyle="round,pad=0.3", 
-	# 				facecolor='white',
-	# 				edgecolor='none',
-	# 				alpha=0.8,
-	# 			)
-	# 		)
-	
 	if best_epoch is not None and best_epoch < len(epochs):
 		best_loss = val_losses[best_epoch]
 		ax1.scatter(
@@ -198,13 +156,13 @@ def plot_phase_transition_analysis(
 			zorder=12
 		)
 		ax1.text(
-			early_stop_epoch + 0.3, 
+			early_stop_epoch + 0.5,
 			max(val_losses) * 1.05,
 			'Early Stopping', 
 			rotation=90, 
 			va='bottom',
 			ha='left',
-			fontsize=8,
+			fontsize=10,
 			color=early_stop_color, 
 		)
 	
