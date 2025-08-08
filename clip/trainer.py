@@ -2904,27 +2904,40 @@ def progressive_finetune_single_label(
 	print(f"DEBUG: Scheduler initial LR: {scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else 'N/A'}")
 	print(f"DEBUG: Optimizer initial LR: {optimizer.param_groups[0]['lr']}")
 
-
-	# Test scheduler behavior (this will advance the scheduler, so create a copy)
-	test_optimizer = AdamW([torch.tensor([1.0], requires_grad=True)], lr=initial_learning_rate)
-	test_scheduler = torch.optim.lr_scheduler.OneCycleLR(
-			optimizer=test_optimizer,
-			max_lr=initial_learning_rate,
-			steps_per_epoch=len(train_loader),
-			epochs=num_epochs,
-			pct_start=0.1,
-			anneal_strategy='cos'
-	)
-	
-	dummy_lrs = []
-	for step in range(len(train_loader) * 10):  # First 10 epochs
-			dummy_lrs.append(test_scheduler.get_last_lr()[0])
-			test_scheduler.step()
-	print(f"First 10 steps LRs: {dummy_lrs[:10]}")
-	print(f"LR at epoch 1 end: {dummy_lrs[len(train_loader)-1]:.2e}")
-	print(f"LR at epoch 5 end: {dummy_lrs[5*len(train_loader)-1]:.2e}")
-	print(f"LR at epoch 10 end: {dummy_lrs[10*len(train_loader)-1]:.2e}")
-
+	try:
+		# Test scheduler behavior (this will advance the scheduler, so create a copy)
+		test_optimizer = AdamW([torch.tensor([1.0], requires_grad=True)], lr=initial_learning_rate)
+		test_scheduler = torch.optim.lr_scheduler.OneCycleLR(
+				optimizer=test_optimizer,
+				max_lr=initial_learning_rate,
+				steps_per_epoch=len(train_loader),
+				epochs=num_epochs,
+				pct_start=0.1,
+				anneal_strategy='cos'
+		)
+		
+		max_test_steps = len(train_loader) * num_epochs
+		test_steps = min(len(train_loader) * 10, max_test_steps)  # Don't exceed total steps
+		
+		dummy_lrs = []
+		for step in range(test_steps):
+				dummy_lrs.append(test_scheduler.get_last_lr()[0])
+				test_scheduler.step()
+		
+		# Safe reporting
+		print(f"First 10 steps LRs: {dummy_lrs[:10]}")
+		
+		if len(dummy_lrs) >= len(train_loader):
+				print(f"LR at epoch 1 end: {dummy_lrs[len(train_loader)-1]:.2e}")
+		
+		if len(dummy_lrs) >= 5 * len(train_loader):
+				print(f"LR at epoch 5 end: {dummy_lrs[5*len(train_loader)-1]:.2e}")
+		
+		if len(dummy_lrs) >= 10 * len(train_loader):
+				print(f"LR at epoch 10 end: {dummy_lrs[10*len(train_loader)-1]:.2e}")
+							
+	except Exception as e:
+		print(f"Scheduler test failed: {e}. Continuing with training...")
 
 
 	criterion = torch.nn.CrossEntropyLoss()
