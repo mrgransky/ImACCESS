@@ -20,7 +20,7 @@ def plot_phase_transition_analysis(
 		figsize: Figure size tuple
 	"""
 
-	print(json.dumps(training_history, indent=4, ensure_ascii=False))
+	# print(json.dumps(training_history, indent=4, ensure_ascii=False))
 
 	# Extract data
 	epochs = training_history['epochs']
@@ -47,7 +47,7 @@ def plot_phase_transition_analysis(
 	
 	# Color scheme
 	phase_colors = plt.cm.Set3(np.linspace(0, 1, max(phases) + 1))
-	transition_color = "#FC1010"
+	transition_color = "#E91111"
 	early_stop_color = "#1D0808"
 	best_model_color = "#D8BA10"
 	
@@ -85,7 +85,7 @@ def plot_phase_transition_analysis(
 	val_line = ax1.plot(
 		epochs, 
 		val_losses, 
-		color="#DB7C00",
+		color="#C77203",
 		linestyle='-',
 		linewidth=2.5, 
 		label='Validation Loss', 
@@ -808,49 +808,49 @@ def plot_progressive_training_dynamics(
 	plt.close()
 
 def collect_progressive_training_history(
-				training_losses: List[float],
-				in_batch_metrics_all_epochs: List[Dict],
-				learning_rates: List[float],
-				weight_decays: List[float],
-				phases: List[int],
-				phase_transitions: List[int],
-				early_stop_epoch: Optional[int] = None,
-				best_epoch: Optional[int] = None
-		) -> Dict:
-		"""
-		Collect training history data for progressive training visualization.
-		
-		This function should be called at the end of progressive training to gather
-		all the necessary data for visualization.
-		
-		Args:
-				training_losses: List of training losses per epoch
-				in_batch_metrics_all_epochs: List of validation metrics per epoch
-				learning_rates: List of learning rates per epoch
-				weight_decays: List of weight decays per epoch  
-				phases: List of phase numbers per epoch
-				phase_transitions: List of epochs where phase transitions occurred
-				early_stop_epoch: Epoch where early stopping occurred (if any)
-				best_epoch: Epoch with best validation performance
-		
-		Returns:
-				Dictionary containing all training history data
-		"""
-		
-		val_losses = [metrics.get('val_loss', 0.0) for metrics in in_batch_metrics_all_epochs]
-		epochs = list(range(len(training_losses)))
-		
-		return {
-				'epochs': epochs,
-				'train_losses': training_losses,
-				'val_losses': val_losses,
-				'learning_rates': learning_rates,
-				'weight_decays': weight_decays,
-				'phases': phases,
-				'phase_transitions': phase_transitions,
-				'early_stop_epoch': early_stop_epoch,
-				'best_epoch': best_epoch
-		}
+		training_losses: List[float],
+		in_batch_metrics_all_epochs: List[Dict],
+		learning_rates: List[float],
+		weight_decays: List[float],
+		phases: List[int],
+		phase_transitions: List[int],
+		early_stop_epoch: Optional[int] = None,
+		best_epoch: Optional[int] = None
+	) -> Dict:
+	"""
+	Collect training history data for progressive training visualization.
+	
+	This function should be called at the end of progressive training to gather
+	all the necessary data for visualization.
+	
+	Args:
+		training_losses: List of training losses per epoch
+		in_batch_metrics_all_epochs: List of validation metrics per epoch
+		learning_rates: List of learning rates per epoch
+		weight_decays: List of weight decays per epoch  
+		phases: List of phase numbers per epoch
+		phase_transitions: List of epochs where phase transitions occurred
+		early_stop_epoch: Epoch where early stopping occurred (if any)
+		best_epoch: Epoch with best validation performance
+	
+	Returns:
+		Dictionary containing all training history data
+	"""
+	
+	val_losses = [metrics.get('val_loss', 0.0) for metrics in in_batch_metrics_all_epochs]
+	epochs = list(range(len(training_losses)))
+	
+	return {
+		'epochs': epochs,
+		'train_losses': training_losses,
+		'val_losses': val_losses,
+		'learning_rates': learning_rates,
+		'weight_decays': weight_decays,
+		'phases': phases,
+		'phase_transitions': phase_transitions,
+		'early_stop_epoch': early_stop_epoch,
+		'best_epoch': best_epoch
+	}
 
 def plot_multilabel_loss_breakdown(
 		training_losses_breakdown: Dict[str, List[float]], 

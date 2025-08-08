@@ -2900,6 +2900,33 @@ def progressive_finetune_single_label(
 	)
 	print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
 
+	print(f"DEBUG: Initial configured LR: {learning_rate}")
+	print(f"DEBUG: Scheduler initial LR: {scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else 'N/A'}")
+	print(f"DEBUG: Optimizer initial LR: {optimizer.param_groups[0]['lr']}")
+
+
+	# Test scheduler behavior (this will advance the scheduler, so create a copy)
+	test_optimizer = AdamW([torch.tensor([1.0], requires_grad=True)], lr=initial_learning_rate)
+	test_scheduler = torch.optim.lr_scheduler.OneCycleLR(
+			optimizer=test_optimizer,
+			max_lr=initial_learning_rate,
+			steps_per_epoch=len(train_loader),
+			epochs=num_epochs,
+			pct_start=0.1,
+			anneal_strategy='cos'
+	)
+	
+	dummy_lrs = []
+	for step in range(len(train_loader) * 10):  # First 10 epochs
+			dummy_lrs.append(test_scheduler.get_last_lr()[0])
+			test_scheduler.step()
+	print(f"First 10 steps LRs: {dummy_lrs[:10]}")
+	print(f"LR at epoch 1 end: {dummy_lrs[len(train_loader)-1]:.2e}")
+	print(f"LR at epoch 5 end: {dummy_lrs[5*len(train_loader)-1]:.2e}")
+	print(f"LR at epoch 10 end: {dummy_lrs[10*len(train_loader)-1]:.2e}")
+
+
+
 	criterion = torch.nn.CrossEntropyLoss()
 	print(f"Using {criterion.__class__.__name__} as the loss function")
 
@@ -3004,6 +3031,16 @@ def progressive_finetune_single_label(
 		learning_rates_history.append(current_lr)
 		weight_decays_history.append(current_wd)
 		phases_history.append(current_phase)
+
+
+		# DEBUG LOGGING
+		if epoch <= 5 or epoch in phase_transitions_epochs:
+			print(f"DEBUG Epoch {epoch+1}: Current LR = {current_lr:.2e}, Phase = {current_phase}, Steps completed = {epoch * len(train_loader)}")
+				
+		# Additional debug for scheduler behavior
+		if epoch <= 2:  # First few epochs
+			print(f"DEBUG: Scheduler last LR: {scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else 'N/A':.2e}")
+				
 
 		# --- Unfreeze Layers for Current Phase ---
 		print(f"Applying unfreeze strategy for Phase {current_phase}...")
@@ -3165,6 +3202,10 @@ def progressive_finetune_single_label(
 			early_stopping_triggered = True
 			print(f"--- Training stopped early at epoch {epoch+1} ---")
 			break # Exit the main training loop
+
+		# After each training epoch, you might also want to log:
+		if epoch <= 5:
+			print(f"DEBUG: End of epoch {epoch+1}, LR after scheduler steps: {optimizer.param_groups[0]['lr']:.2e}")
 
 		# --- End of Epoch ---
 		epochs_in_current_phase += 1
