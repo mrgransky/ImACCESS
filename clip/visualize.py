@@ -47,7 +47,7 @@ def plot_phase_transition_analysis(
 	
 	# Color scheme
 	phase_colors = plt.cm.Set3(np.linspace(0, 1, max(phases) + 1))
-	transition_color = "#FD682C"
+	transition_color = "#FC1010"
 	early_stop_color = "#1D0808"
 	best_model_color = "#D8BA10"
 	
@@ -74,7 +74,8 @@ def plot_phase_transition_analysis(
 	train_line = ax1.plot(
 		epochs, 
 		train_losses, 
-		'b-', 
+		color="#0025FA",
+		linestyle='-',
 		linewidth=2.5, 
 		label='Training Loss', 
 		alpha=0.9, 
@@ -84,7 +85,8 @@ def plot_phase_transition_analysis(
 	val_line = ax1.plot(
 		epochs, 
 		val_losses, 
-		'r-', 
+		color="#DB7C00",
+		linestyle='-',
 		linewidth=2.5, 
 		label='Validation Loss', 
 		alpha=0.9, 
@@ -99,8 +101,8 @@ def plot_phase_transition_analysis(
 			x=transition_epoch, 
 			color=transition_color, 
 			linestyle='--', 
-			linewidth=2.0,
-			alpha=0.75,
+			linewidth=1.5,
+			alpha=0.8,
 			zorder=10,
 		)
 		
@@ -113,11 +115,11 @@ def plot_phase_transition_analysis(
 				improvement_text = f"\n{change:+.2f} %"
 			
 			ax1.text(
-				transition_epoch + 0.5,
-				max(val_losses) * 1.01,
+				transition_epoch + 0.6,
+				max(val_losses) * 1.02,
 				f'Transition {i+1}{improvement_text}',
 				rotation=90,
-				fontsize=9,
+				fontsize=10,
 				ha='left',
 				va='bottom',
 				color=transition_color,
@@ -125,7 +127,7 @@ def plot_phase_transition_analysis(
 					boxstyle="round,pad=0.4",
 					edgecolor='none',
 					facecolor='none',
-					alpha=0.85,
+					alpha=0.9,
 				)
 			)
 
