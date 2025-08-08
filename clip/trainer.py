@@ -3079,18 +3079,32 @@ def progressive_finetune_single_label(
 
 			print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e}, WD set to {last_wd:.3e}.")
 
-			print("Re-initializing OneCycleLR scheduler for new phase/start...")
-			# AMPLITUDE ADJUSTMENT: Adjust LR range based on current phase
-			if current_phase >= 2:
-				eta_min = last_lr * 0.1  # Higher minimum for later phases (less aggressive cycling)
-				print(f"Phase {current_phase}: Reducing LR amplitude, eta_min = {eta_min:.2e}")
+			print("Re-initializing scheduler for new phase/start...")
+			# ================================
+			# PHASE-AWARE SCHEDULER CONFIGURATION
+			# ================================
+					
+			# 1. Amplitude Adjustment based on phase
+			if current_phase >= 3:
+				eta_min = last_lr * 0.2   # Very conservative for final phases
+				cycle_description = "conservative"
+			elif current_phase >= 2:
+				eta_min = last_lr * 0.1   # Moderate cycling for mid phases
+				cycle_description = "moderate" 
 			else:
-				eta_min = last_lr * 0.01  # Lower minimum for early phases (more aggressive cycling)
-				print(f"Phase {current_phase}: Full LR amplitude, eta_min = {eta_min:.2e}")
-			remaining_epochs = num_epochs - epoch
-			T_0 = max(5, remaining_epochs // 4)  # 4 cycles per remaining training
-			print(f"Remaining epochs: {remaining_epochs} => T_0 = {T_0}")
+				eta_min = last_lr * 0.01  # Aggressive cycling for early phases
+				cycle_description = "aggressive"
 			
+			# 2. Adaptive cycle length based on remaining epochs and phase
+			remaining_epochs = num_epochs - epoch
+			if current_phase == 0:
+				T_0 = 15  # Longer cycles for initial learning
+			elif remaining_epochs < 20:
+				T_0 = max(3, remaining_epochs // 2)  # Shorter cycles for final phases
+			else:
+				T_0 = max(5, remaining_epochs // 3)  # Balanced cycles for mid phases
+			
+			# 3. Create phase-optimized scheduler
 			scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
 				optimizer=optimizer,
 				T_0=T_0,
@@ -3098,8 +3112,11 @@ def progressive_finetune_single_label(
 				eta_min=eta_min,
 				last_epoch=-1
 			)
-
-			print(f"Scheduler re-initialized for phase {current_phase}: T_0={T_0}, eta_min={eta_min:.2e}, max_lr={last_lr:.2e}")
+			
+			print(f"Phase {current_phase} scheduler: {cycle_description} cycling")
+			print(f"  ├─ T_0 = {T_0} epochs")
+			print(f"  ├─ LR range: {eta_min:.2e} → {last_lr:.2e}")
+			print(f"  └─ Amplitude ratio: {(last_lr/eta_min):.1f}x")
 
 			# scheduler = torch.optim.lr_scheduler.OneCycleLR(
 			# 	optimizer=optimizer,
