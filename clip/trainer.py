@@ -2891,7 +2891,7 @@ def progressive_finetune_single_label(
 
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
 		optimizer=optimizer,
-		T_0=15,																# Restart every 15 epochs
+		T_0=10,																# Restart every 10 epochs
 		T_mult=1,															# Keep same cycle length  
 		eta_min=initial_learning_rate * 0.01,	# 1% of initial LR
 		last_epoch=-1
@@ -3056,7 +3056,6 @@ def progressive_finetune_single_label(
 		# Additional debug for scheduler behavior
 		if epoch <= 2:  # First few epochs
 			print(f"DEBUG: Scheduler last LR: {scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else 'N/A':.2e}")
-				
 
 		# --- Unfreeze Layers for Current Phase ---
 		print(f"Applying unfreeze strategy for Phase {current_phase}...")
@@ -3077,17 +3076,30 @@ def progressive_finetune_single_label(
 					'weight_decay': last_wd, # Use the new WD
 				}
 			)
+
 			print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e}, WD set to {last_wd:.3e}.")
 
 			print("Re-initializing OneCycleLR scheduler for new phase/start...")
+			# AMPLITUDE ADJUSTMENT: Adjust LR range based on current phase
+			if current_phase >= 2:
+				eta_min = last_lr * 0.1  # Higher minimum for later phases (less aggressive cycling)
+				print(f"Phase {current_phase}: Reducing LR amplitude, eta_min = {eta_min:.2e}")
+			else:
+				eta_min = last_lr * 0.01  # Lower minimum for early phases (more aggressive cycling)
+				print(f"Phase {current_phase}: Full LR amplitude, eta_min = {eta_min:.2e}")
+			remaining_epochs = num_epochs - epoch
+			T_0 = max(5, remaining_epochs // 4)  # 4 cycles per remaining training
+			print(f"Remaining epochs: {remaining_epochs} => T_0 = {T_0}")
+			
 			scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
 				optimizer=optimizer,
-				T_0=max(10, (num_epochs - epoch) // 3),  # Adaptive to remaining epochs
+				T_0=T_0,
 				T_mult=1,
-				eta_min=last_lr * 0.01,
+				eta_min=eta_min,
 				last_epoch=-1
 			)
-			print(f"Scheduler re-initialized for phase {current_phase}, T_0={max(10, (num_epochs - epoch) // 3)}")
+
+			print(f"Scheduler re-initialized for phase {current_phase}: T_0={T_0}, eta_min={eta_min:.2e}, max_lr={last_lr:.2e}")
 
 			# scheduler = torch.optim.lr_scheduler.OneCycleLR(
 			# 	optimizer=optimizer,

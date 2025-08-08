@@ -39,7 +39,7 @@ def _plot_loss_evolution(
 		early_stop = training_history.get("early_stop_epoch")
 		best_epoch = training_history.get("best_epoch")
 
-		fig, ax = plt.subplots(figsize=(18, 12), facecolor="white")
+		fig, ax = plt.subplots(figsize=(18, 14), facecolor="white")
 
 		# ---- background shading per phase ---------------------------------
 		for phase in set(phases):
@@ -50,7 +50,7 @@ def _plot_loss_evolution(
 								phase_epochs.min(),
 								phase_epochs.max(),
 								color=phase_colors[phase],
-								alpha=0.25,
+								alpha=0.39,
 								label=f"Phase {phase}",
 						)
 
@@ -81,10 +81,10 @@ def _plot_loss_evolution(
 						before = val_losses[tr - 1] if tr > 0 else val_losses[tr]
 						after = val_losses[tr]
 						change = ((before - after) / before) * 100 if before > 0 else 0
-						txt = f"Transition {i+1} {change:+.1f}%"
+						txt = f"Transition {i+1} ({change:+.2f}%)"
 						ax.text(
-								tr + 0.5,
-								max(val_losses) * 1.02,
+								tr + 0.4,
+								max(val_losses) * 1.01,
 								txt,
 								rotation=90,
 								fontsize=9,
