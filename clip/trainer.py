@@ -9,6 +9,7 @@ from visualize import (
 	collect_progressive_training_history,
 	plot_progressive_training_dynamics,
 	plot_phase_transition_analysis,
+	plot_progressive_fine_tuning_report,
 )
 
 def cleanup_embedding_cache(
@@ -3314,6 +3315,7 @@ def progressive_finetune_single_label(
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 		"progressive_dynamics": os.path.join(results_dir, f"{file_base_name}_progressive_dynamics.png"),
 		"phase_analysis": os.path.join(results_dir, f"{file_base_name}_phase_analysis.png"),
+		"progressive_fine_tuning_report": os.path.join(results_dir, f"{file_base_name}_progressive_fine_tuning_report.png"),
 	}
 
 	training_history = collect_progressive_training_history(
@@ -3326,6 +3328,12 @@ def progressive_finetune_single_label(
 		early_stop_epoch=epoch+1 if early_stopping_triggered else None,
 		best_epoch=early_stopping.best_epoch if hasattr(early_stopping, 'best_epoch') else None
 	)
+	plot_progressive_fine_tuning_report(
+		training_history=training_history,
+		unfreeze_schedule=unfreeze_schedule,
+		layer_groups=get_layer_groups(model),
+		save_dir=results_dir,
+	)
 
 	plot_progressive_training_dynamics(
 		training_history=training_history,
@@ -3333,6 +3341,7 @@ def progressive_finetune_single_label(
 		layer_groups=get_layer_groups(model),
 		save_path=plot_paths["progressive_dynamics"],
 	)
+
 	print(f"\nTraining Summary for {model_name} {model_arch}:")
 	print(f"  • Total phases used: {len(set(phases_history))}")
 	print(f"  • Phase transitions: {len(phase_transitions_epochs)}")

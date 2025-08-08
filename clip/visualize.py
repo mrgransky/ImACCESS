@@ -1,5 +1,732 @@
 from utils import *
 
+# --------------------------------------------------------------
+#   Progressive Fine‑tuning reporting – one‑figure‑per‑chart API
+# --------------------------------------------------------------
+
+import json
+import os
+from typing import Dict, List, Tuple, Optional
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
+
+
+# ----------------------------------------------------------------------
+#   Helper – colour palette for phases (same for every chart)
+# ----------------------------------------------------------------------
+def _phase_cmap(num_phases: int) -> np.ndarray:
+    """Return an array of distinct colours for *num_phases* phases."""
+    return plt.cm.Set3(np.linspace(0, 1, max(num_phases, 1)))
+
+
+# ----------------------------------------------------------------------
+#   1️⃣  Loss evolution (rich version – includes background shading,
+#       best‑model star, early‑stop line, transition markers)
+# ----------------------------------------------------------------------
+def _plot_loss_evolution(
+    training_history: Dict,
+    phase_colors: np.ndarray,
+    save_dir: str,
+    suffix: str = "loss_evolution",
+) -> Tuple[plt.Figure, Dict]:
+    epochs = [e + 1 for e in training_history["epochs"]]
+    train_losses = training_history["train_losses"]
+    val_losses = training_history["val_losses"]
+    phases = training_history["phases"]
+    transitions = training_history.get("phase_transitions", [])
+    early_stop = training_history.get("early_stop_epoch")
+    best_epoch = training_history.get("best_epoch")
+
+    fig, ax = plt.subplots(figsize=(12, 6), facecolor="white")
+
+    # ---- background shading per phase ---------------------------------
+    for phase in set(phases):
+        mask = [p == phase for p in phases]
+        phase_epochs = np.array(epochs)[mask]
+        if phase_epochs.size:
+            ax.axvspan(
+                phase_epochs.min(),
+                phase_epochs.max(),
+                color=phase_colors[phase],
+                alpha=0.25,
+                label=f"Phase {phase}",
+            )
+
+    # ---- loss curves ---------------------------------------------------
+    ax.plot(
+        epochs,
+        train_losses,
+        color="#0025FA",
+        linewidth=2.5,
+        marker="o",
+        markersize=2,
+        label="Training loss",
+    )
+    ax.plot(
+        epochs,
+        val_losses,
+        color="#C77203",
+        linewidth=2.5,
+        marker="s",
+        markersize=2,
+        label="Validation loss",
+    )
+
+    # ---- transition markers ---------------------------------------------
+    for i, tr in enumerate(transitions):
+        ax.axvline(tr, color="#E91111", linestyle="--", linewidth=1.5, alpha=0.8, zorder=10)
+        if tr < len(val_losses):
+            before = val_losses[tr - 1] if tr > 0 else val_losses[tr]
+            after = val_losses[tr]
+            change = ((before - after) / before) * 100 if before > 0 else 0
+            txt = f"T{i+1}\n{change:+.1f}%"
+            ax.text(
+                tr + 0.4,
+                max(val_losses) * 1.02,
+                txt,
+                rotation=90,
+                fontsize=9,
+                color="#E91111",
+                ha="left",
+                va="bottom",
+            )
+
+    # ---- best model & early‑stop markers --------------------------------
+    if best_epoch is not None and best_epoch < len(epochs):
+        ax.scatter(
+            epochs[best_epoch],
+            val_losses[best_epoch],
+            s=150,
+            marker="*",
+            color="#D8BA10",
+            edgecolor="black",
+            linewidth=1.5,
+            zorder=15,
+            label="Best model",
+        )
+
+    if early_stop is not None:
+        ax.axvline(
+            early_stop,
+            color="#1D0808",
+            linestyle=":",
+            linewidth=2,
+            alpha=0.9,
+            label="Early stopping",
+        )
+        ax.text(
+            early_stop + 0.4,
+            max(val_losses) * 1.01,
+            "Early stop",
+            rotation=90,
+            fontsize=9,
+            color="#1D0808",
+            ha="left",
+            va="bottom",
+        )
+
+    # ---- axes & legend -------------------------------------------------
+    ax.set_xlabel("Epoch", fontsize=10)
+    ax.set_ylabel("Loss", fontsize=10)
+    ax.set_title("Loss Evolution with Phase Transitions", fontsize=12, weight="bold")
+    ax.grid(True, alpha=0.4)
+    ax.legend(loc="best", fontsize=9, ncol=len(transitions) + 5, frameon=False)
+
+    # ylim with a 25 % margin
+    y_max = max(max(train_losses), max(val_losses))
+    y_min = min(min(train_losses), min(val_losses))
+    margin = 0.25 * y_max
+    ax.set_ylim(y_min - margin, y_max + margin)
+
+    # ---- persist --------------------------------------------------------
+    fname = os.path.join(save_dir, f"{suffix}.png")
+    fig.savefig(fname, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+    # ---- return a tiny dict that downstream helpers may reuse ------------
+    return fig, {
+        "epochs": epochs,
+        "train_losses": train_losses,
+        "val_losses": val_losses,
+        "best_epoch": best_epoch,
+        "early_stop": early_stop,
+    }
+
+
+# ----------------------------------------------------------------------
+#   2️⃣  Learning‑rate evolution (log‑scale, colour‑coded by phase)
+# ----------------------------------------------------------------------
+def _plot_lr_evolution(
+    epochs: List[int],
+    learning_rates: List[float],
+    phases: List[int],
+    phase_colors: np.ndarray,
+    transitions: List[int],
+    save_dir: str,
+    suffix: str = "lr_evolution",
+) -> plt.Figure:
+    fig, ax = plt.subplots(figsize=(12, 4), facecolor="white")
+
+    for i in range(len(epochs) - 1):
+        p = phases[i]
+        ax.plot(
+            [epochs[i], epochs[i + 1]],
+            [learning_rates[i], learning_rates[i + 1]],
+            color=phase_colors[p],
+            linewidth=2.5,
+            alpha=0.8,
+        )
+
+    for tr in transitions:
+        ax.axvline(tr, color="#E91111", linestyle="--", linewidth=1.5, alpha=0.7)
+
+    ax.set_xlabel("Epoch", fontsize=10, weight="bold")
+    ax.set_ylabel("Learning Rate (log)", fontsize=10, weight="bold")
+    ax.set_title("Learning‑Rate Adaptation Across Phases", fontsize=12, weight="bold")
+    ax.set_yscale("log")
+    ax.grid(True, alpha=0.3)
+
+    fname = os.path.join(save_dir, f"{suffix}.png")
+    fig.savefig(fname, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return fig
+
+
+# ----------------------------------------------------------------------
+#   3️⃣  Weight‑decay evolution (log‑scale, colour‑coded by phase)
+# ----------------------------------------------------------------------
+def _plot_weight_decay_evolution(
+    epochs: List[int],
+    weight_decays: List[float],
+    phases: List[int],
+    phase_colors: np.ndarray,
+    transitions: List[int],
+    save_dir: str,
+    suffix: str = "weight_decay_evolution",
+) -> plt.Figure:
+    fig, ax = plt.subplots(figsize=(12, 4), facecolor="white")
+
+    for i in range(len(epochs) - 1):
+        p = phases[i]
+        ax.plot(
+            [epochs[i], epochs[i + 1]],
+            [weight_decays[i], weight_decays[i + 1]],
+            color=phase_colors[p],
+            linewidth=2.5,
+            alpha=0.8,
+        )
+
+    for tr in transitions:
+        ax.axvline(tr, color="#E91111", linestyle="--", linewidth=1.5, alpha=0.7)
+
+    ax.set_xlabel("Epoch", fontsize=10, weight="bold")
+    ax.set_ylabel("Weight Decay (log)", fontsize=10, weight="bold")
+    ax.set_title("Weight‑Decay Adaptation", fontsize=12, weight="bold")
+    ax.set_yscale("log")
+    ax.grid(True, alpha=0.3)
+
+    fname = os.path.join(save_dir, f"{suffix}.png")
+    fig.savefig(fname, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return fig
+
+
+# ----------------------------------------------------------------------
+#   4️⃣  Phase‑efficiency bar + line plot (duration & loss improvement)
+# ----------------------------------------------------------------------
+def _plot_phase_efficiency(
+    phases: List[int],
+    epochs: List[int],
+    val_losses: List[float],
+    phase_colors: np.ndarray,
+    save_dir: str,
+    suffix: str = "phase_efficiency",
+) -> plt.Figure:
+    # ----- compute per‑phase statistics ---------------------------------
+    uniq = sorted(set(phases))
+    durations = []
+    improvements = []
+    for ph in uniq:
+        idx = [i for i, p in enumerate(phases) if p == ph]
+        dur = len(idx)
+        durations.append(dur)
+
+        # improvement within the phase (first → last val loss)
+        start, end = idx[0], idx[-1]
+        start_l, end_l = val_losses[start], val_losses[end]
+        imp = ((start_l - end_l) / start_l * 100) if start_l > 0 else 0
+        improvements.append(imp)
+
+    # ----- figure -------------------------------------------------------
+    fig, ax1 = plt.subplots(figsize=(10, 5), facecolor="white")
+    bars = ax1.bar(
+        np.arange(len(uniq)),
+        durations,
+        color=[phase_colors[p] for p in uniq],
+        alpha=0.7,
+        edgecolor="black",
+    )
+    ax1.set_xlabel("Phase", fontsize=10, weight="bold")
+    ax1.set_ylabel("Duration (epochs)", color="tab:blue", fontsize=10, weight="bold")
+    ax1.set_title("Phase Efficiency Analysis", fontsize=12, weight="bold")
+    ax1.set_xticks(np.arange(len(uniq)))
+    ax1.set_xticklabels([f"P{p}" for p in uniq])
+    ax1.tick_params(axis="y", labelcolor="tab:blue")
+
+    # ----- overlay improvement line --------------------------------------
+    ax2 = ax1.twinx()
+    ax2.plot(
+        np.arange(len(uniq)),
+        improvements,
+        "ro-",
+        linewidth=2,
+        markersize=6,
+        label="Loss improvement %"
+    )
+    ax2.set_ylabel("Loss Improvement (%)", color="tab:red", fontsize=10, weight="bold")
+    ax2.tick_params(axis="y", labelcolor="tab:red")
+
+    # ----- annotate bars & line -----------------------------------------
+    for i, (b, dur, imp) in enumerate(zip(bars, durations, improvements)):
+        ax1.text(
+            b.get_x() + b.get_width() / 2,
+            b.get_height() + 0.2,
+            f"{dur}",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+        )
+        ax2.text(
+            i,
+            imp + 0.5,
+            f"{imp:.1f}%",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+            color="darkred",
+        )
+
+    fig.tight_layout()
+    fname = os.path.join(save_dir, f"{suffix}.png")
+    fig.savefig(fname, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return fig
+
+
+# ----------------------------------------------------------------------
+#   5️⃣  Hyper‑parameter correlation (normalised LR, WD, Val‑loss)
+# ----------------------------------------------------------------------
+def _plot_hyperparameter_correlation(
+    epochs: List[int],
+    learning_rates: List[float],
+    weight_decays: List[float],
+    val_losses: List[float],
+    transitions: List[int],
+    save_dir: str,
+    suffix: str = "hyperparameter_correlation",
+) -> plt.Figure:
+    # normalise to [0,1]
+    lr_n = np.array(learning_rates) / max(learning_rates)
+    wd_n = np.array(weight_decays) / max(weight_decays)
+    loss_n = np.array(val_losses) / max(val_losses)
+
+    fig, ax = plt.subplots(figsize=(12, 4), facecolor="white")
+    ax.plot(epochs, lr_n, "g-", linewidth=2, label="LR (norm)")
+    ax.plot(epochs, wd_n, "m-", linewidth=2, label="WD (norm)")
+    ax.plot(epochs, loss_n, "r-", linewidth=2, label="Val loss (norm)")
+
+    for tr in transitions:
+        ax.axvline(tr, color="#E91111", linestyle="--", linewidth=1.5, alpha=0.7)
+
+    ax.set_xlabel("Epoch", fontsize=10, weight="bold")
+    ax.set_ylabel("Normalised value", fontsize=10, weight="bold")
+    ax.set_title("Hyper‑parameter Correlations", fontsize=12, weight="bold")
+    ax.set_ylim(0, 1.1)
+    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize=9)
+
+    fname = os.path.join(save_dir, f"{suffix}.png")
+    fig.savefig(fname, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return fig
+
+
+# ----------------------------------------------------------------------
+#   6️⃣  Trainable‑layers progression (step‑style per phase)
+# ----------------------------------------------------------------------
+def _plot_trainable_layers_progression(
+    epochs: List[int],
+    phases: List[int],
+    unfreeze_schedule: Dict[int, List[str]],
+    layer_groups: Dict[str, List[str]],
+    phase_colors: np.ndarray,
+    transitions: List[int],
+    save_dir: str,
+    suffix: str = "trainable_layers_progression",
+) -> plt.Figure:
+    # ------------------------------------------------------------------
+    # 1️⃣  Determine the *true* number of phases
+    # ------------------------------------------------------------------
+    # Phases that actually occurred during training (from `phases`)
+    # and phases that are mentioned in the unfreeze schedule (might be
+    # ahead of the current training run, e.g. a future phase that will be
+    # unfrozen later).  We need the union of both sets.
+    phase_set = set(phases) | set(unfreeze_schedule.keys())
+    if not phase_set:                     # defensive – should never happen
+        raise ValueError("No phase information supplied.")
+    max_phase = max(phase_set)            # highest phase index that exists
+    n_phases = max_phase + 1               # length of the zero‑based array
+
+    # ------------------------------------------------------------------
+    # 2️⃣  Build the “how many layers are unfrozen” vector
+    # ------------------------------------------------------------------
+    unfrozen_per_phase = np.zeros(n_phases, dtype=int)
+    for ph, layers in unfreeze_schedule.items():
+        # if a phase appears in the schedule but not in the training run,
+        # we still store the information – the plot will simply show a
+        # horizontal line at the correct y‑value for that phase.
+        unfrozen_per_phase[ph] = len(layers)
+
+    # ------------------------------------------------------------------
+    # 3️⃣  Prepare a mapping phase → list of epoch numbers belonging to it
+    # ------------------------------------------------------------------
+    phase_to_epochs: Dict[int, List[int]] = {}
+    for ep, ph in zip(epochs, phases):
+        phase_to_epochs.setdefault(ph, []).append(ep)
+
+    # ------------------------------------------------------------------
+    # 4️⃣  Plot the step‑wise progression
+    # ------------------------------------------------------------------
+    fig, ax = plt.subplots(figsize=(12, 4), facecolor="white")
+
+    for ph, ep_list in phase_to_epochs.items():
+        # colour comes from the common palette (`phase_colors`); guard against
+        # an out‑of‑range index (possible when the palette was built only from
+        # `max(phases) + 1` before the fix).  If the colour is missing, fall back
+        # to a neutral gray.
+        colour = phase_colors[ph] if ph < len(phase_colors) else "#bbbbbb"
+        ax.hlines(
+            unfrozen_per_phase[ph],
+            min(ep_list),
+            max(ep_list),
+            colors=colour,
+            linewidth=4,
+            label=f"Phase {ph}",
+        )
+
+    # ------------------------------------------------------------------
+    # 5️⃣  Add transition markers, axes, legend, etc.
+    # ------------------------------------------------------------------
+    for tr in transitions:
+        ax.axvline(tr, color="#E91111", linestyle="--", linewidth=1.5, alpha=0.7)
+
+    ax.set_xlabel("Epoch", fontsize=10, weight="bold")
+    ax.set_ylabel("Trainable layers", fontsize=10, weight="bold")
+    ax.set_title("Layer Un‑freezing Progression", fontsize=12, weight="bold")
+
+    # Upper‑limit: total number of *individual* layers (not just groups)
+    total_groups = sum(len(g) for g in layer_groups.values())
+    ax.set_ylim(0, total_groups * 1.1)
+
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="best", fontsize=9, frameon=False)
+
+    # ------------------------------------------------------------------
+    # 6️⃣  Save & return
+    # ------------------------------------------------------------------
+    fname = os.path.join(save_dir, f"{suffix}.png")
+    fig.savefig(fname, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return fig
+
+# ----------------------------------------------------------------------
+#   7️⃣  Layer‑group un‑freezing heat‑map
+# ----------------------------------------------------------------------
+def _plot_unfreeze_heatmap(
+    unfreeze_schedule: Dict[int, List[str]],
+    layer_groups: Dict[str, List[str]],
+    max_phase: int,
+    save_dir: str,
+    suffix: str = "unfreeze_heatmap",
+) -> plt.Figure:
+    group_names = list(layer_groups.keys())
+    n_groups = len(group_names)
+
+    # heat‑map matrix: rows = groups, cols = phases
+    heat = np.zeros((n_groups, max_phase + 1))
+
+    for ph in range(max_phase + 1):
+        if ph not in unfreeze_schedule:
+            continue
+        unfrozen_set = set(unfreeze_schedule[ph])
+
+        for g_idx, (g_name, g_layers) in enumerate(layer_groups.items()):
+            # fraction of *that group's* layers that are unfrozen in this phase
+            n_total = len(g_layers)
+            n_unfrozen = sum(1 for l in g_layers if any(u in l for u in unfrozen_set))
+            heat[g_idx, ph] = n_unfrozen / max(n_total, 1)
+
+    # custom colormap (light → medium → dark blue)
+    cmap = LinearSegmentedColormap.from_list(
+        "unfreeze",
+        ["#f0f0f0", "#d0e7ff", "#4190eb"],
+        N=100,
+    )
+
+    fig, ax = plt.subplots(figsize=(12, 6), facecolor="white")
+    im = ax.imshow(heat, cmap=cmap, aspect="auto", vmin=0, vmax=1)
+
+    ax.set_xticks(np.arange(max_phase + 1))
+    ax.set_xticklabels([f"P{p}" for p in range(max_phase + 1)], fontsize=9)
+    ax.set_yticks(np.arange(n_groups))
+    ax.set_yticklabels(
+        [name.replace("_", "\n").title() for name in group_names],
+        fontsize=9,
+    )
+    ax.set_xlabel("Phase", fontsize=10, weight="bold")
+    ax.set_ylabel("Layer groups", fontsize=10, weight="bold")
+    ax.set_title("Layer‑Group Un‑freezing Pattern", fontsize=12, weight="bold")
+
+    cbar = fig.colorbar(im, ax=ax, shrink=0.8)
+    cbar.set_label("Fraction Unfrozen", fontsize=9)
+
+    fname = os.path.join(save_dir, f"{suffix}.png")
+    fig.savefig(fname, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return fig
+
+
+# ----------------------------------------------------------------------
+#   8️⃣  Training‑summary plain‑text file (useful for reports)
+# ----------------------------------------------------------------------
+def _write_training_summary(
+    training_history: Dict,
+    phase_colors: np.ndarray,
+    save_dir: str,
+    filename: str = "training_summary.txt",
+) -> None:
+    epochs = [e + 1 for e in training_history["epochs"]]
+    train_losses = training_history["train_losses"]
+    val_losses = training_history["val_losses"]
+    phases = training_history["phases"]
+    transitions = training_history.get("phase_transitions", [])
+    early_stop = training_history.get("early_stop_epoch")
+    best_epoch = training_history.get("best_epoch")
+
+    total_epochs = len(epochs)
+    num_phases = len(set(phases))
+    best_val = min(val_losses) if val_losses else np.nan
+    total_improvement = (
+        (val_losses[0] - best_val) / val_losses[0] * 100
+        if val_losses and val_losses[0] > 0
+        else 0
+    )
+    avg_phase_len = np.mean([len([p for p in phases if p == ph]) for ph in set(phases)])
+
+    # pick the most effective phase (largest % improvement)
+    # – same logic as in the original function
+    phase_stats = {}
+    for ph in set(phases):
+        idx = [i for i, p in enumerate(phases) if p == ph]
+        if not idx:
+            continue
+        imp = (
+            (val_losses[idx[0]] - val_losses[idx[-1]]) / val_losses[idx[0]] * 100
+            if val_losses[idx[0]] > 0
+            else 0
+        )
+        phase_stats[ph] = imp
+    best_phase = max(phase_stats, key=phase_stats.get) if phase_stats else -1
+
+    lines = [
+        "TRAINING SUMMARY",
+        f"  • Total epochs          : {total_epochs}",
+        f"  • Number of phases      : {num_phases}",
+        f"  • Phase transitions     : {len(transitions)}",
+        f"  • Avg. phase duration   : {avg_phase_len:.1f} epochs",
+        f"  • Best phase (most loss improvement) : Phase {best_phase}",
+        f"  • Total loss improvement: {total_improvement:.2f} %",
+        f"  • Final training loss   : {train_losses[-1]:.6f}",
+        f"  • Final validation loss : {val_losses[-1]:.6f}",
+        f"  • Best validation loss  : {best_val:.6f}",
+    ]
+
+    if early_stop:
+        lines.append(f"  • Early stopped at epoch: {early_stop}")
+    if best_epoch is not None:
+        lines.append(f"  • Best model epoch      : {epochs[best_epoch]} (val loss {val_losses[best_epoch]:.4f})")
+
+    txt = "\n".join(lines) + "\n"
+
+    os.makedirs(save_dir, exist_ok=True)
+    with open(os.path.join(save_dir, filename), "w", encoding="utf‑8") as fp:
+        fp.write(txt)
+
+
+# ----------------------------------------------------------------------
+#   Public API – one function that orchestrates everything
+# ----------------------------------------------------------------------
+def plot_progressive_fine_tuning_report(
+    training_history: Dict,
+    unfreeze_schedule: Dict[int, List[str]],
+    layer_groups: Dict[str, List[str]],
+    save_dir: str,
+    figsize: Tuple[int, int] = (12, 6),   # default figure size for individual charts
+) -> Dict[str, Optional[plt.Figure]]:
+    """
+    Produce a **complete set of visualisations** for a progressive fine‑tuning run.
+    
+    Each visualisation is saved as an independent PNG file inside *save_dir* and,
+    optionally, the corresponding Matplotlib ``Figure`` objects are returned
+    (useful for notebooks or further customisation).
+
+    Parameters
+    ----------
+    training_history:
+        Same structure that the two original functions expected.
+    unfreeze_schedule:
+        Mapping ``phase -> list_of_layer_names`` describing which layers become
+        trainable at every phase.
+    layer_groups:
+        Logical grouping of layers (e.g. ``{'stem': [...], 'blocks': [...], ...}``)
+        as returned by a user‑side ``get_layer_groups(model)`` helper.
+    save_dir:
+        Destination folder – will be created if it does not exist.
+    figsize:
+        Default figure size for each generated chart (width, height inches).
+
+    Returns
+    -------
+    dict
+        Keys are the chart identifiers (``'loss'``, ``'lr'``, ``'wd'`` …) and the
+        values are either the ``Figure`` objects or ``None`` (if the figure has
+        already been closed).  The function also writes a plain‑text
+        ``training_summary.txt`` file into *save_dir*.
+    """
+    os.makedirs(save_dir, exist_ok=True)
+
+    # --------------------------------------------------------------
+    # Common pieces used by many sub‑plots
+    # --------------------------------------------------------------
+    epochs = [e + 1 for e in training_history["epochs"]]
+    phases = training_history["phases"]
+    transitions = training_history.get("phase_transitions", [])
+    phase_colors = _phase_cmap(max(phases) + 1)
+
+    # --------------------------------------------------------------
+    # 1️⃣ Loss evolution (rich version)
+    # --------------------------------------------------------------
+    fig_loss, loss_meta = _plot_loss_evolution(
+        training_history=training_history,
+        phase_colors=phase_colors,
+        save_dir=save_dir,
+        suffix="loss_evolution",
+    )
+
+    # --------------------------------------------------------------
+    # 2️⃣ Learning‑rate evolution
+    # --------------------------------------------------------------
+    fig_lr = _plot_lr_evolution(
+        epochs=epochs,
+        learning_rates=training_history["learning_rates"],
+        phases=phases,
+        phase_colors=phase_colors,
+        transitions=transitions,
+        save_dir=save_dir,
+        suffix="learning_rate",
+    )
+
+    # --------------------------------------------------------------
+    # 3️⃣ Weight‑decay evolution
+    # --------------------------------------------------------------
+    fig_wd = _plot_weight_decay_evolution(
+        epochs=epochs,
+        weight_decays=training_history["weight_decays"],
+        phases=phases,
+        phase_colors=phase_colors,
+        transitions=transitions,
+        save_dir=save_dir,
+        suffix="weight_decay",
+    )
+
+    # --------------------------------------------------------------
+    # 4️⃣ Phase‑efficiency (duration + loss‑improvement)
+    # --------------------------------------------------------------
+    fig_phase_eff = _plot_phase_efficiency(
+        phases=phases,
+        epochs=epochs,
+        val_losses=training_history["val_losses"],
+        phase_colors=phase_colors,
+        save_dir=save_dir,
+        suffix="phase_efficiency",
+    )
+
+    # --------------------------------------------------------------
+    # 5️⃣ Hyper‑parameter correlation
+    # --------------------------------------------------------------
+    fig_corr = _plot_hyperparameter_correlation(
+        epochs=epochs,
+        learning_rates=training_history["learning_rates"],
+        weight_decays=training_history["weight_decays"],
+        val_losses=training_history["val_losses"],
+        transitions=transitions,
+        save_dir=save_dir,
+        suffix="hyperparameter_correlation",
+    )
+
+    # --------------------------------------------------------------
+    # 6️⃣ Trainable‑layers progression (step plot)
+    # --------------------------------------------------------------
+    fig_trainable = _plot_trainable_layers_progression(
+        epochs=epochs,
+        phases=phases,
+        unfreeze_schedule=unfreeze_schedule,
+        layer_groups=layer_groups,
+        phase_colors=phase_colors,
+        transitions=transitions,
+        save_dir=save_dir,
+        suffix="trainable_layers",
+    )
+
+    # --------------------------------------------------------------
+    # 7️⃣ Heat‑map of layer‑group un‑freezing
+    # --------------------------------------------------------------
+    fig_heat = _plot_unfreeze_heatmap(
+        unfreeze_schedule=unfreeze_schedule,
+        layer_groups=layer_groups,
+        max_phase=max(phases),
+        save_dir=save_dir,
+        suffix="unfreeze_heatmap",
+    )
+
+    # --------------------------------------------------------------
+    # 8️⃣ Plain‑text summary file
+    # --------------------------------------------------------------
+    _write_training_summary(
+        training_history=training_history,
+        phase_colors=phase_colors,
+        save_dir=save_dir,
+        filename="training_summary.txt",
+    )
+
+    # --------------------------------------------------------------
+    # Return a dictionary with all figures (might be handy in notebooks)
+    # --------------------------------------------------------------
+    return {
+        "loss": fig_loss,
+        "learning_rate": fig_lr,
+        "weight_decay": fig_wd,
+        "phase_efficiency": fig_phase_eff,
+        "hyperparameter_correlation": fig_corr,
+        "trainable_layers": fig_trainable,
+        "unfreeze_heatmap": fig_heat,
+    }
+
+
 def plot_phase_transition_analysis(
 		training_history: Dict,
 		save_path: str,
@@ -95,7 +822,6 @@ def plot_phase_transition_analysis(
 	)
 	
 	# Mark phase transitions with enhanced annotations
-	print(transitions)
 	for i, transition_epoch in enumerate(transitions):
 		ax1.axvline(
 			x=transition_epoch, 
