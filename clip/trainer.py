@@ -2798,7 +2798,6 @@ def progressive_finetune_single_label(
 		min_phases_before_stopping: int = 3, # Ensure significant unfreezing before global stop
 		topk_values: list[int] = [1, 5, 10],
 		layer_groups_to_unfreeze: list[str] = ['visual_transformer', 'text_transformer', 'projections'], # Focus on key layers
-		unfreeze_percentages: Optional[List[float]] = None, # Allow passing custom percentages
 		use_lamb: bool = False,
 	):
 	initial_learning_rate = learning_rate
@@ -2854,13 +2853,12 @@ def progressive_finetune_single_label(
 	print()
 
 	# Determine unfreeze schedule percentages
-	if unfreeze_percentages is None:
-		unfreeze_percentages = get_unfreeze_pcts_hybrid(
-			model=model,
-			train_loader=train_loader,
-			min_phases=min_phases_before_stopping + 1, # Ensure enough phases
-			max_phases=8, # Cap the number of phases
-		)
+	unfreeze_percentages = get_unfreeze_pcts_hybrid(
+		model=model,
+		train_loader=train_loader,
+		min_phases=min_phases_before_stopping + 1,
+		max_phases=8, # Cap the number of phases
+	)
 
 	# Get the detailed layer unfreeze schedule
 	unfreeze_schedule = get_unfreeze_schedule(
@@ -2890,14 +2888,22 @@ def progressive_finetune_single_label(
 		)
 	print(f"Using {optimizer.__class__.__name__} for optimization")
 
-	scheduler = torch.optim.lr_scheduler.OneCycleLR(
+	scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
 		optimizer=optimizer,
-		max_lr=initial_learning_rate,
-		steps_per_epoch=len(train_loader),
-		epochs=num_epochs,
-		pct_start=0.1, # Standard pct_start
-		anneal_strategy='cos' # Cosine annealing
+		T_0=15,																# Restart every 15 epochs
+		T_mult=1,															# Keep same cycle length  
+		eta_min=initial_learning_rate * 0.01,	# 1% of initial LR
+		last_epoch=-1
 	)
+
+	# scheduler = torch.optim.lr_scheduler.OneCycleLR(
+	# 	optimizer=optimizer,
+	# 	max_lr=initial_learning_rate,
+	# 	steps_per_epoch=len(train_loader),
+	# 	epochs=num_epochs,
+	# 	pct_start=0.1, # Standard pct_start
+	# 	anneal_strategy='cos' # Cosine annealing
+	# )
 	print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
 
 	print(f"DEBUG: Initial configured LR: {learning_rate}")
@@ -3002,7 +3008,6 @@ def progressive_finetune_single_label(
 		):
 			print(f"Checking phase transition ({epochs_in_current_phase} elapsed epochs in phase {current_phase})")
 
-			#################
 			val_losses = early_stopping.value_history
 			val_accs_in_batch = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in in_batch_loss_acc_metrics_all_epochs]
 			val_accs_full = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in full_val_loss_acc_metrics_all_epochs]
@@ -3072,21 +3077,28 @@ def progressive_finetune_single_label(
 				}
 			)
 			print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e}, WD set to {last_wd:.3e}.")
+
 			print("Re-initializing OneCycleLR scheduler for new phase/start...")
-			steps_per_epoch = len(train_loader)
-			# Schedule over remaining epochs (more adaptive)
-			# max: Ensure scheduler_epochs is at least 1
-			scheduler_epochs = max(1, num_epochs - epoch)
-			scheduler = torch.optim.lr_scheduler.OneCycleLR(
+			scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
 				optimizer=optimizer,
-				max_lr=last_lr, # Use the new LR as the peak for the new cycle
-				steps_per_epoch=steps_per_epoch,
-				epochs=scheduler_epochs,
-				pct_start=0.1, # Consider if this needs adjustment in later phases
-				anneal_strategy='cos',
-				# last_epoch = -1 # Ensures it starts fresh
+				T_0=max(10, (num_epochs - epoch) // 3),  # Adaptive to remaining epochs
+				T_mult=1,
+				eta_min=last_lr * 0.01,
+				last_epoch=-1
 			)
-			print(f"Scheduler re-initialized with max_lr={last_lr:.3e} for {scheduler_epochs} epochs.")
+			print(f"Scheduler re-initialized for phase {current_phase}, T_0={max(10, (num_epochs - epoch) // 3)}")
+
+			# scheduler = torch.optim.lr_scheduler.OneCycleLR(
+			# 	optimizer=optimizer,
+			# 	max_lr=last_lr, # Use the new LR as the peak for the new cycle
+			# 	steps_per_epoch=len(train_loader), # over remaining epochs (more adaptive)
+			# 	epochs=max(1, num_epochs - epoch), #max: Ensure scheduler_epochs is at least 1
+			# 	pct_start=0.1, # Consider if this needs adjustment in later phases
+			# 	anneal_strategy='cos',
+			# 	# last_epoch = -1 # Ensures it starts fresh
+			# )
+			# print(f"Scheduler re-initialized with max_lr={last_lr:.3e} for {max(1, num_epochs - epoch)} epochs.")
+
 			phase_just_changed = False # Reset the flag
 
 		model.train()
