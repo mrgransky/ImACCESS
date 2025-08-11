@@ -2786,17 +2786,17 @@ def progressive_finetune_single_label(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		window_size: int=10,
-		patience: int = 10,
-		min_delta: float = 1e-4, # Make slightly less sensitive than default
-		cumulative_delta: float = 5e-3, # Keep cumulative check reasonable
-		minimum_epochs: int = 20, # Minimum epochs before ANY early stop
-		min_epochs_per_phase: int = 5, # Minimum epochs within a phase before transition check
-		volatility_threshold: float = 15.0, # Allow slightly more volatility
-		slope_threshold: float = 1e-4, # Allow very slightly positive slope before stopping/transitioning
-		pairwise_imp_threshold: float = 1e-4, # Stricter requirement for pairwise improvement
-		accuracy_plateau_threshold: float = 5e-4, # For phase transition based on accuracy
-		min_phases_before_stopping: int = 3, # Ensure significant unfreezing before global stop
+		window_size: int = 10,											# Consider the last 10 epochs for cumulative trend
+		patience: int = 10,													# Wait for 10 epochs without improvement before stopping
+		min_delta: float = 1e-4,										# Make slightly less sensitive than default
+		cumulative_delta: float = 5e-3,							# Keep cumulative check reasonable
+		minimum_epochs: int = 20,										# Minimum epochs before ANY early stop
+		min_epochs_per_phase: int = 5,							# Minimum epochs within a phase before transition check
+		volatility_threshold: float = 15.0,					# Allow slightly more volatility
+		slope_threshold: float = 1e-4, 							# Allow very slightly positive slope before stopping/transitioning
+		pairwise_imp_threshold: float = 1e-4,				# Stricter requirement for pairwise improvement
+		accuracy_plateau_threshold: float = 5e-4,		# For phase transition based on accuracy
+		min_phases_before_stopping: int = 3,				# Ensure significant unfreezing before global stop
 		topk_values: list[int] = [1, 5, 10],
 		layer_groups_to_unfreeze: list[str] = ['visual_transformer', 'text_transformer', 'projections'], # Focus on key layers
 		use_lamb: bool = False,
@@ -2891,10 +2891,10 @@ def progressive_finetune_single_label(
 
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
 		optimizer=optimizer,
-		T_0=10,																# Restart every 10 epochs
-		T_mult=1,															# Keep same cycle length  
-		eta_min=initial_learning_rate * 0.01,	# 1% of initial LR
-		last_epoch=-1
+		T_0=10,																# 10 epochs before first restart
+		T_mult=1,															# A factor by which Ti increases after a restart. Default: 1.
+		eta_min=initial_learning_rate * 1e-2,	# 1% of initial LR
+		last_epoch=-1,												# index of the last epoch. Default: -1
 	)
 
 	# scheduler = torch.optim.lr_scheduler.OneCycleLR(
