@@ -878,7 +878,7 @@ def plot_phase_transition_analysis(
 		# Duration labels on bars
 		ax4.text(
 			bar.get_x() + bar.get_width()/2., 
-			bar.get_height() + 0.75,
+			bar.get_height() + 3,
 			f'{duration}', 
 			ha='center',
 			va='bottom',
