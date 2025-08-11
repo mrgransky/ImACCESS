@@ -878,7 +878,7 @@ def plot_phase_transition_analysis(
 		# Duration labels on bars
 		ax4.text(
 			bar.get_x() + bar.get_width()/2., 
-			bar.get_height() + 0.6,
+			bar.get_height() + 0.75,
 			f'{duration}', 
 			ha='center',
 			va='bottom',
@@ -889,7 +889,7 @@ def plot_phase_transition_analysis(
 		# Improvement labels
 		ax4_twin.text(
 			i, 
-			improvement + 0.5, 
+			improvement + 0.25,
 			f'{improvement:.2f}%',
 			ha='center',
 			va='bottom',
@@ -902,13 +902,13 @@ def plot_phase_transition_analysis(
 	ax4.set_ylabel('Duration (Epochs)', fontsize=8, weight='bold', color='#0004EC')
 	ax4_twin.set_ylabel('Loss Improvement (%)', fontsize=8, weight='bold', color="#F73100")
 	ax4.set_title('Phase Efficiency Analysis', fontsize=8, weight='bold')
-	ax4.spines['top'].set_visible(False)
-
+	
 	phase_labels = [f'P{p}' for p in phases_list]
 	ax4.set_xticks(range(len(phase_labels)))
 	ax4.set_xticklabels(phase_labels)
 	ax4.tick_params(axis='y', labelcolor='#0004EC')
 	ax4_twin.tick_params(axis='y', labelcolor="#F73100")
+	ax4.spines['top'].set_visible(False)
 	
 	# ================================
 	# 5. Hyperparameter Correlation Analysis (middle-right)
