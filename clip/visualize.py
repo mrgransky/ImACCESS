@@ -860,7 +860,7 @@ def plot_phase_transition_analysis(
 		color=[phase_colors[p] for p in phases_list], 
 		alpha=0.7,
 		edgecolor='black',
-		linewidth=1
+		linewidth=1,
 	)
 	
 	# Add improvement percentages
@@ -868,9 +868,9 @@ def plot_phase_transition_analysis(
 	improvement_line = ax4_twin.plot(
 		range(len(improvements)), 
 		improvements,
-		'ro-', 
-		linewidth=2, 
-		markersize=6,
+		'ro-',
+		linewidth=1.5,
+		markersize=3,
 		label='Loss Improvement %'
 	)
 	
@@ -878,35 +878,37 @@ def plot_phase_transition_analysis(
 		# Duration labels on bars
 		ax4.text(
 			bar.get_x() + bar.get_width()/2., 
-			bar.get_height() + 0.2,
+			bar.get_height() + 0.6,
 			f'{duration}', 
-			ha='center', 
-			va='bottom', 
-			fontweight='bold', 
-			fontsize=8
+			ha='center',
+			va='bottom',
+			fontweight='bold',
+			fontsize=8,
+			color='#0004EC',
 		)
 		# Improvement labels
 		ax4_twin.text(
 			i, 
 			improvement + 0.5, 
-			f'{improvement:.1f}%', 
+			f'{improvement:.2f}%',
 			ha='center',
 			va='bottom',
 			fontweight='bold',
 			fontsize=8,
-			color='darkred'
+			color="#F73100",
 		)
 	
 	ax4.set_xlabel('Phase', fontsize=8, weight='bold')
-	ax4.set_ylabel('Duration (Epochs)', fontsize=8, weight='bold', color='blue')
-	ax4_twin.set_ylabel('Loss Improvement (%)', fontsize=8, weight='bold', color='red')
+	ax4.set_ylabel('Duration (Epochs)', fontsize=8, weight='bold', color='#0004EC')
+	ax4_twin.set_ylabel('Loss Improvement (%)', fontsize=8, weight='bold', color="#F73100")
 	ax4.set_title('Phase Efficiency Analysis', fontsize=8, weight='bold')
-	
+	ax4.spines['top'].set_visible(False)
+
 	phase_labels = [f'P{p}' for p in phases_list]
 	ax4.set_xticks(range(len(phase_labels)))
 	ax4.set_xticklabels(phase_labels)
-	ax4.tick_params(axis='y', labelcolor='blue')
-	ax4_twin.tick_params(axis='y', labelcolor='red')
+	ax4.tick_params(axis='y', labelcolor='#0004EC')
+	ax4_twin.tick_params(axis='y', labelcolor="#F73100")
 	
 	# ================================
 	# 5. Hyperparameter Correlation Analysis (middle-right)
@@ -918,9 +920,9 @@ def plot_phase_transition_analysis(
 	wd_norm = np.array(weight_decays) / max(weight_decays)
 	loss_norm = np.array(val_losses) / max(val_losses)
 	
-	ax5.plot(epochs, lr_norm, 'g-', linewidth=2, label='LR (norm)', alpha=0.8)
-	ax5.plot(epochs, wd_norm, 'm-', linewidth=2, label='WD (norm)', alpha=0.8)
-	ax5.plot(epochs, loss_norm, 'r-', linewidth=2, label='Val Loss (norm)', alpha=0.8)
+	ax5.plot(epochs, lr_norm, 'g-', linewidth=1.2, label='LR', alpha=0.8)
+	ax5.plot(epochs, wd_norm, 'm-', linewidth=1.2, label='WD', alpha=0.8)
+	ax5.plot(epochs, loss_norm, 'r-', linewidth=1.2, label='Val Loss', alpha=0.8)
 	
 	# Mark transitions
 	for transition_epoch in transitions:
@@ -934,8 +936,17 @@ def plot_phase_transition_analysis(
 	
 	ax5.set_xlabel('Epoch', fontsize=8, weight='bold')
 	ax5.set_ylabel('Normalized Values', fontsize=8, weight='bold')
-	ax5.set_title('Hyperparameter Correlations', fontsize=8, weight='bold')
-	ax5.legend(fontsize=8)
+	ax5.set_title('Hyperparameter Correlations [normed]', fontsize=8, weight='bold')
+	ax5.legend(
+		fontsize=8,
+		loc='best',
+		ncol=3,
+		frameon=True,
+		fancybox=True,
+		shadow=True,
+		edgecolor='none',
+		facecolor='white',
+	)
 	ax5.grid(True, alpha=0.3)
 	ax5.set_ylim(0, 1.1)
 	
