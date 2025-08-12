@@ -878,7 +878,7 @@ def plot_phase_transition_analysis(
 		# Duration labels on bars
 		ax4.text(
 			bar.get_x() + bar.get_width()/2., 
-			bar.get_height() + 3,
+			bar.get_height() + 7,
 			f'{duration}', 
 			ha='center',
 			va='bottom',
@@ -908,6 +908,7 @@ def plot_phase_transition_analysis(
 	ax4.set_xticklabels(phase_labels)
 	ax4.tick_params(axis='y', labelcolor='#0004EC')
 	ax4_twin.tick_params(axis='y', labelcolor="#F73100")
+	ax4_twin.spines['top'].set_visible(False)
 	ax4.spines['top'].set_visible(False)
 	
 	# ================================

@@ -21,7 +21,7 @@ from historical_dataset_loader import get_single_label_dataloaders, get_multi_la
 # $ python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=10))))"
 
 # run in local:
-# $ python history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 35 -m finetune -fts progressive -dt multi_label
+# $ python history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 3 -m finetune -fts progressive -dt multi_label
 # $ nohup python -u history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -m finetune -fts progressive -a "ViT-B/32" > logs/europeana_ft_progressive.txt &
 
 # Pouta:
@@ -40,7 +40,7 @@ from historical_dataset_loader import get_single_label_dataloaders, get_multi_la
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 256 -e 150 -lr 5e-4 -wd 1e-2 --print_every 750 -nw 50 -dv "cuda:1" -m finetune -fts full -dt single_label -a "ViT-B/32" -do 0.1 --log_dir /media/volume/ImACCESS/trash &
 
 # finetune [lora]: alpha = 2x rank
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-1 --print_every 50 -nw 16 -dv "cuda:1" -m finetune -fts lora -lor 8 -loa 16.0 -lod 0.05 -dt multi_label -a "ViT-B/32" -mep 10 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -e 200 -lr 1e-5 -wd 1e-2 --print_every 50 -nw 16 -dv "cuda:1" -m finetune -fts lora -lor 8 -loa 16.0 -lod 0.05 -dt single_label -a "ViT-B/32" -mep 10 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 200 -nw 50 -dv "cuda:1" -m finetune -fts lora -lor 4 -loa 32.0 -lod 0.05 -dt multi_label -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 64 -e 150 -lr 1e-4 -wd 1e-1 --print_every 100 -nw 12 -dv "cuda:0" -m finetune -fts lora -lor 8 -loa 32.0 -lod 0.05 -dt multi_label -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 -dv "cuda:1" -m finetune  -fts lora -lor 4 -loa 32.0 -lod 0.0 -dt multi_label -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
