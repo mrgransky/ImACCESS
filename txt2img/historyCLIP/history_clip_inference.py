@@ -434,11 +434,12 @@ def main():
 	pretrained_model_name = pretrained_model.__class__.__name__ # CLIP
 	pretrained_model.name = args.model_architecture # ViT-B/32
 	pretrained_model_arch = re.sub(r'[/@]', '-', args.model_architecture)
+	print(f">> Pretrained model: {pretrained_model_name} {pretrained_model_arch}")
 
 	print(f"Temperature used in evaluation: {getattr(args, 'temperature', 'Not set')}")
 
 	if not all(pretrained_model_arch in checkpoint for checkpoint in [args.full_checkpoint, args.lora_checkpoint, args.progressive_checkpoint]):
-		raise ValueError(f"Checkpoint: {checkpoint} does not match the assigned model architecture!")
+		raise ValueError(f"Checkpoint path does not match the assigned model architecture!")
 
 	models_to_plot["pretrained"] = pretrained_model
 
