@@ -820,7 +820,7 @@ def plot_phase_transition_analysis(
 	
 	ax3.set_xlabel('Epoch', fontsize=8, weight='bold')
 	ax3.set_ylabel('Weight Decay (log)', fontsize=8, weight='bold')
-	ax3.set_title('Weight Decay Adaptation', fontsize=8, weight='bold')
+	ax3.set_title('Weight Decay Adaptation Across Phases', fontsize=8, weight='bold')
 	ax3.grid(True, alpha=0.3)
 	
 	# ================================
@@ -858,9 +858,9 @@ def plot_phase_transition_analysis(
 		range(len(durations)), 
 		durations,
 		color=[phase_colors[p] for p in phases_list], 
-		alpha=0.7,
-		edgecolor='black',
-		linewidth=1,
+		alpha=0.8,
+		# edgecolor='black',
+		# linewidth=1,
 	)
 	
 	# Add improvement percentages
@@ -869,8 +869,8 @@ def plot_phase_transition_analysis(
 		range(len(improvements)), 
 		improvements,
 		'ro-',
-		linewidth=1.5,
-		markersize=3,
+		linewidth=1.0,
+		markersize=2,
 		label='Loss Improvement %'
 	)
 	
