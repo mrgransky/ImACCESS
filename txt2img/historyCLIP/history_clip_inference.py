@@ -40,6 +40,9 @@ from visualize import (
 # # run in pouta for all fine-tuned models:
 # $ nohup python -u history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -nw 32 --device "cuda:2" -k 5 -bs 256 -fcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_23_dropout_0.1_lr_5.0e-06_wd_1.0e-02_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_84_dropout_0.1_ilr_5.0e-06_iwd_1.0e-02_bs_64_best_model_last_phase_3_flr_2.3e-06_fwd_0.012021761646381529.pth -lcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_26_lr_5.0e-06_wd_1.0e-02_lor_64_loa_128.0_lod_0.05_bs_64_best_model.pth > /media/volume/ImACCESS/trash/history_clip_inference.txt &
 
+# Puhti:
+# $ python history_clip_inference.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -dt multi_label -fcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/results_multi_label/full_ViT-L-14-336px_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_100_aeps_11_dropout_0.1_lr_1.0e-05_wd_1.0e-02_temp_0.07_bs_32_best_model.pth -lcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/results_multi_label/lora_ViT-L-14-336px_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_100_aeps_21_lr_1.0e-05_wd_1.0e-02_lor_64_loa_128.0_lod_0.1_temp_0.07_bs_32_best_model.pth -pcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/results_multi_label/progressive_ViT-L-14-336px_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_100_aeps_64_dropout_0.1_ilr_1.0e-05_iwd_1.0e-02_temp_0.07_bs_32_best_model_last_phase_3_flr_6.2e-06_fwd_0.011585038506618272.pth
+
 def _compute_similarities_chunked(
 		image_embeds: torch.Tensor,
 		class_embeds: torch.Tensor,
@@ -432,12 +435,10 @@ def main():
 	pretrained_model.name = args.model_architecture # ViT-B/32
 	pretrained_model_arch = re.sub(r'[/@]', '-', args.model_architecture)
 
-	print(f"Temperature used in training: 0.07")
 	print(f"Temperature used in evaluation: {getattr(args, 'temperature', 'Not set')}")
 
-
 	if not all(pretrained_model_arch in checkpoint for checkpoint in [args.full_checkpoint, args.lora_checkpoint, args.progressive_checkpoint]):
-		raise ValueError("Checkpoint path does not match the assigned model architecture!")
+		raise ValueError(f"Checkpoint: {checkpoint} does not match the assigned model architecture!")
 
 	models_to_plot["pretrained"] = pretrained_model
 

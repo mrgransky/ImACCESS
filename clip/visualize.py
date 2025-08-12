@@ -859,8 +859,6 @@ def plot_phase_transition_analysis(
 		durations,
 		color=[phase_colors[p] for p in phases_list], 
 		alpha=0.8,
-		# edgecolor='black',
-		# linewidth=1,
 	)
 	
 	# Add improvement percentages
