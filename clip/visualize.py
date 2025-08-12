@@ -744,7 +744,7 @@ def plot_phase_transition_analysis(
 	
 	ax1.set_xlabel('Epoch', fontsize=8)
 	ax1.set_ylabel('Loss', fontsize=8)
-	ax1.set_title(f'Loss Evolution with Phase Transitions', fontsize=8, weight='bold')
+	ax1.set_title(f'Learning Curve with Phase Transitions', fontsize=8, weight='bold')
 	ax1.legend(
 		loc='best', 
 		fontsize=8, 
@@ -878,7 +878,7 @@ def plot_phase_transition_analysis(
 		# Duration labels on bars
 		ax4.text(
 			bar.get_x() + bar.get_width()/2., 
-			bar.get_height() + 7,
+			bar.get_height() + 8,
 			f'{duration}', 
 			ha='center',
 			va='bottom',
@@ -889,7 +889,7 @@ def plot_phase_transition_analysis(
 		# Improvement labels
 		ax4_twin.text(
 			i, 
-			improvement + 0.25,
+			improvement + 0.3,
 			f'{improvement:.2f}%',
 			ha='center',
 			va='bottom',
@@ -1020,8 +1020,8 @@ def plot_phase_transition_analysis(
 	print(f"Phase transition analysis summary:\n{summary_text}\n")
 			
 	plt.suptitle(
-		f'Progressive Fine-tuning Phase Transition Analysis', 
-		fontsize=12,
+		f'Progressive Layer Unfreezing\nPhase Transition Analysis', 
+		fontsize=11,
 		weight='bold',
 	)
 	

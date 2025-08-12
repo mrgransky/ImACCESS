@@ -2963,11 +2963,15 @@ def progressive_finetune_single_label(
 		f"{criterion.__class__.__name__}_"
 		f"{scaler.__class__.__name__}_"
 		f"ieps_{num_epochs}_"
-		f"dropout_{dropout_val}_"
+		f"do_{dropout_val}_"
 		f"ilr_{initial_learning_rate:.1e}_"
 		f"iwd_{initial_weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
-		f"best_model.pth"
+		f"mep_{minimum_epochs}_"
+		f"pat_{patience}_"
+		f"mdelta_{min_delta:.1e}_"
+		f"cdelta_{cumulative_delta:.1e}_"
+		f"best.pth"
 	)
 	print(f"Best model will be saved in: {mdl_fpth}")
 
@@ -3308,24 +3312,28 @@ def progressive_finetune_single_label(
 		f"{scaler.__class__.__name__}_"
 		f"{model_name}_"
 		f"{model_arch}_"
-		f"last_phase_{current_phase}_"
+		f"mep_{minimum_epochs}_"
+		f"pat_{patience}_"
+		f"mdelta_{min_delta:.1e}_"
+		f"cdelta_{cumulative_delta:.1e}_"
+		f"fph_{current_phase}_"
 		f"ep_{actual_trained_epochs}_"
 		f"bs_{train_loader.batch_size}_"
-		f"dropout_{dropout_val}_"
+		f"do_{dropout_val}_"
 		f"ilr_{initial_learning_rate:.1e}_"
 		f"iwd_{initial_weight_decay:.1e}"
 	)
 	if last_lr is not None:
-		file_base_name += f"_final_lr_{last_lr:.1e}"
+		file_base_name += f"_flr_{last_lr:.1e}"
 
 	if last_wd is not None:
-		file_base_name += f"_final_wd_{last_wd:.1e}"
+		file_base_name += f"_fwd_{last_wd:.1e}"
 
 	mdl_fpth = get_updated_model_name(
 		original_path=mdl_fpth,
 		actual_epochs=actual_trained_epochs,
 		additional_info={
-			'last_phase': current_phase,
+			'fph': current_phase,
 			'flr': last_lr,
 			'fwd': last_wd
 		}
@@ -3334,17 +3342,17 @@ def progressive_finetune_single_label(
 
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
-		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
-		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
-		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
 		"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
 		"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
-		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-		"progressive_dynamics": os.path.join(results_dir, f"{file_base_name}_progressive_dynamics.png"),
-		"phase_analysis": os.path.join(results_dir, f"{file_base_name}_phase_analysis.png"),
-		"progressive_fine_tuning_report": os.path.join(results_dir, f"{file_base_name}_progressive_fine_tuning_report.png"),
+		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retr_per_epoch.png"),
+		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retr_best_model_per_k.png"),
+		"progressive_dynamics": os.path.join(results_dir, f"{file_base_name}_dynamics.png"),
+		"phase_analysis": os.path.join(results_dir, f"{file_base_name}_phases.png"),
+		"progressive_fine_tuning_report": os.path.join(results_dir, f"{file_base_name}_report.png"),
 	}
 
 	training_history = collect_progressive_training_history(
