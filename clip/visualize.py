@@ -760,7 +760,7 @@ def plot_phase_transition_analysis(
 	ax1.set_ylim(min_loss - margin, max_loss + margin)
 	
 	# ================================
-	# 2. Learning Rate Evolution (top-right)
+	# 2. Learning Rate Adaptation
 	# ================================
 	ax2 = fig.add_subplot(gs[1, :1])
 	
@@ -772,7 +772,7 @@ def plot_phase_transition_analysis(
 			[learning_rates[i], learning_rates[i+1]], 
 			color=phase_colors[phase], 
 			linewidth=3, 
-			alpha=0.8,
+			alpha=0.95,
 		)
 	
 	# Mark transitions
@@ -781,18 +781,17 @@ def plot_phase_transition_analysis(
 			ax2.axvline(
 				x=transition_epoch, 
 				color=transition_color, 
-				linestyle='--', 
-				linewidth=2, 
-				alpha=0.7
+				linewidth=2.5,
+				alpha=0.95,
 			)
 	
 	ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
 	ax2.set_ylabel('Learning Rate (log)', fontsize=8, weight='bold')
-	ax2.set_title('LR Adaptation Across Phases', fontsize=8, weight='bold')
+	ax2.set_title('Learning Rate Adaptation Across Phases', fontsize=8, weight='bold')
 	ax2.grid(True, alpha=0.3)
 	
 	# ================================
-	# 3. Weight Decay Evolution (middle-left)
+	# 3. Weight Decay Adaptation
 	# ================================
 	ax3 = fig.add_subplot(gs[1, 1:])
 	
@@ -876,7 +875,7 @@ def plot_phase_transition_analysis(
 		# Duration labels on bars
 		ax4.text(
 			bar.get_x() + bar.get_width()/2., 
-			bar.get_height() + 8,
+			bar.get_height() + 6,
 			f'{duration}', 
 			ha='center',
 			va='bottom',
