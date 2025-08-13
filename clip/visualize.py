@@ -1,17 +1,5 @@
 from utils import *
 
-# --------------------------------------------------------------
-#   Progressive Fine‑tuning reporting – one‑figure‑per‑chart API
-# --------------------------------------------------------------
-
-import json
-import os
-from typing import Dict, List, Tuple, Optional
-
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
-
 def _phase_cmap(num_phases: int) -> np.ndarray:
 	return plt.cm.Set3(np.linspace(0, 1, max(num_phases, 1)))
 
@@ -400,106 +388,56 @@ def _plot_trainable_layers_progression(
 		return fig
 
 def _plot_unfreeze_heatmap(
-    unfreeze_schedule: dict,
-    layer_groups: dict,
-    max_phase: int,
-    save_dir: str,
-    suffix: str = "unfreeze_heatmap_cud_sep",
-) -> plt.Figure:
-    group_names = list(layer_groups.keys())
-    n_groups = len(group_names)
-
-    # heat-map matrix
-    heat = np.zeros((n_groups, max_phase + 1))
-    for ph in range(max_phase + 1):
-        if ph not in unfreeze_schedule:
-            continue
-        unfrozen_set = set(unfreeze_schedule[ph])
-        for g_idx, (g_name, g_layers) in enumerate(layer_groups.items()):
-            n_total = len(g_layers)
-            n_unfrozen = sum(1 for l in g_layers if any(u in l for u in unfrozen_set))
-            heat[g_idx, ph] = n_unfrozen / max(n_total, 1)
-
-    # Color Universal Design friendly colormap (light → mid → dark blue)
-    cmap = LinearSegmentedColormap.from_list(
-        "cud_safe_blue",
-        [
-            (0.00, "#f0f0f0"),  # light gray
-            (0.25, "#c6dbef"),  # pale blue
-            (0.50, "#6baed6"),  # medium blue
-            (0.75, "#2171b5"),  # rich blue
-            (1.00, "#08306b"),  # deep navy
-        ],
-        N=256
-    )
-
-    fig, ax = plt.subplots(figsize=(12, 6), facecolor="white")
-    im = ax.imshow(heat, cmap=cmap, aspect="auto", vmin=0, vmax=1)
-
-    # Add vertical separators between phases
-    for p in range(1, max_phase + 1):
-        ax.axvline(p - 0.5, color="white", linewidth=1.2)
-
-    # Axes & labels
-    ax.set_xticks(np.arange(max_phase + 1))
-    ax.set_xticklabels([f"P{p}" for p in range(max_phase + 1)], fontsize=9)
-    ax.set_yticks(np.arange(n_groups))
-    ax.set_yticklabels([name.replace("_", "\n").title() for name in group_names], fontsize=9)
-    ax.set_xlabel("Phase", fontsize=10, weight="bold")
-    ax.set_ylabel("Layer groups", fontsize=10, weight="bold")
-    ax.set_title("Layer-Group Un-freezing Pattern", fontsize=14, weight="bold", pad=15)
-
-    # Colorbar
-    cbar = fig.colorbar(im, ax=ax, shrink=0.8)
-    cbar.set_label("Fraction Unfrozen", fontsize=10)
-    cbar.ax.tick_params(labelsize=8)
-
-    # Save
-    fname = os.path.join(save_dir, f"{suffix}.png")
-    fig.savefig(fname, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    return fig
-
-
-def _plot_unfreeze_heatmap_old(
-		unfreeze_schedule: Dict[int, List[str]],
-		layer_groups: Dict[str, List[str]],
+		unfreeze_schedule: dict,
+		layer_groups: dict,
 		max_phase: int,
 		save_dir: str,
-		suffix: str = "unfreeze_heatmap",
+		suffix: str = "unfreeze_heatmap_cud_sep",
 	) -> plt.Figure:
 	group_names = list(layer_groups.keys())
 	n_groups = len(group_names)
-	
-	# heat‑map matrix: rows = groups, cols = phases
+	# heat-map matrix
 	heat = np.zeros((n_groups, max_phase + 1))
 	for ph in range(max_phase + 1):
-		if ph not in unfreeze_schedule:
-			continue
-		unfrozen_set = set(unfreeze_schedule[ph])
-		for g_idx, (g_name, g_layers) in enumerate(layer_groups.items()):
-			# fraction of *that group's* layers that are unfrozen in this phase
-			n_total = len(g_layers)
-			n_unfrozen = sum(1 for l in g_layers if any(u in l for u in unfrozen_set))
-			heat[g_idx, ph] = n_unfrozen / max(n_total, 1)
-	
-	# custom colormap (light → medium → dark blue)
+			if ph not in unfreeze_schedule:
+					continue
+			unfrozen_set = set(unfreeze_schedule[ph])
+			for g_idx, (g_name, g_layers) in enumerate(layer_groups.items()):
+					n_total = len(g_layers)
+					n_unfrozen = sum(1 for l in g_layers if any(u in l for u in unfrozen_set))
+					heat[g_idx, ph] = n_unfrozen / max(n_total, 1)
+	# Color Universal Design friendly colormap (light → mid → dark blue)
 	cmap = LinearSegmentedColormap.from_list(
-		"unfreeze",
-		["#f0f0f0", "#d0e7ff", "#4190eb"],
-		N=100,
+			"cud_safe_blue",
+			[
+					(0.00, "#f0f0f0"),  # light gray
+					(0.25, "#c6dbef"),  # pale blue
+					(0.50, "#6baed6"),  # medium blue
+					(0.75, "#2171b5"),  # rich blue
+					(1.00, "#08306b"),  # deep navy
+			],
+			N=256
 	)
 	fig, ax = plt.subplots(figsize=(12, 6), facecolor="white")
 	im = ax.imshow(heat, cmap=cmap, aspect="auto", vmin=0, vmax=1)
+	
+	# Add vertical separators between phases
+	for p in range(1, max_phase + 1):
+		ax.axvline(p - 0.5, color="#FCB4B4", linewidth=1.2)
+	
+	# Axes & labels
 	ax.set_xticks(np.arange(max_phase + 1))
 	ax.set_xticklabels([f"P{p}" for p in range(max_phase + 1)], fontsize=9)
 	ax.set_yticks(np.arange(n_groups))
 	ax.set_yticklabels([name.replace("_", "\n").title() for name in group_names], fontsize=9)
 	ax.set_xlabel("Phase", fontsize=10, weight="bold")
 	ax.set_ylabel("Layer groups", fontsize=10, weight="bold")
-	ax.set_title("Layer‑Group Un‑freezing Pattern", fontsize=12, weight="bold")
+	ax.set_title("Layer-Group Un-freezing Pattern", fontsize=14, weight="bold", pad=15)
+	# Colorbar
 	cbar = fig.colorbar(im, ax=ax, shrink=0.8)
-	cbar.set_label("Fraction Unfrozen", fontsize=9)
+	cbar.set_label("Fraction Unfrozen", fontsize=10)
+	cbar.ax.tick_params(labelsize=8)
+	# Save
 	fname = os.path.join(save_dir, f"{suffix}.png")
 	fig.savefig(fname, dpi=300, bbox_inches="tight")
 	plt.close(fig)
@@ -844,7 +782,8 @@ def plot_phase_transition_analysis(
 				x=transition_epoch, 
 				color=transition_color, 
 				linewidth=2.5,
-				alpha=0.95,
+				alpha=0.55,
+				linestyle='--',
 			)
 	
 	ax2.set_xlabel('Epoch', fontsize=8, weight='bold')

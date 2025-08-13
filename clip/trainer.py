@@ -2528,7 +2528,7 @@ def full_finetune_single_label(
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
-		f"best_model.pth"
+		f"best.pth"
 	)
 
 	print(f"Best model will be saved in: {mdl_fpth}")
@@ -3564,7 +3564,7 @@ def lora_finetune_single_label(
 		f"loa_{lora_alpha}_"
 		f"lod_{lora_dropout}_"
 		f"bs_{train_loader.batch_size}_"
-		f"best_model.pth"
+		f"best.pth"
 	)
 
 	training_losses = []
@@ -3977,7 +3977,7 @@ def full_finetune_multi_label(
 		f"wd_{weight_decay:.1e}_"
 		f"temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_"
-		f"best_model.pth"
+		f"best.pth"
 	)
 	print(f"Best model will be saved in: {mdl_fpth}")
 	training_losses = []
@@ -4431,7 +4431,7 @@ def progressive_finetune_multi_label(
 		f"iwd_{initial_weight_decay:.1e}_"
 		f"temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_"
-		f"best_model.pth"
+		f"best.pth"
 	)
 	print(f"Best model will be saved in: {mdl_fpth}")
 
@@ -5060,7 +5060,7 @@ def lora_finetune_multi_label(
 		f"lod_{lora_dropout}_"
 		f"temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_"
-		f"best_model.pth"
+		f"best.pth"
 	)
 
 	training_losses = []
@@ -5562,7 +5562,7 @@ def train(
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
-		f"best_model.pth"
+		f"best.pth"
 	)
 	print(f"Best model will be saved in: {mdl_fpth}")
 
