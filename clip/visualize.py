@@ -6,8 +6,7 @@ def _phase_cmap(num_phases: int) -> np.ndarray:
 def _plot_loss_evolution(
 		training_history: Dict,
 		phase_colors: np.ndarray,
-		save_dir: str,
-		suffix: str = "loss_evolution",
+		save_path: str,
 	) -> Tuple[plt.Figure, Dict]:
 	epochs = [e + 1 for e in training_history["epochs"]]
 	train_losses = training_history["train_losses"]
@@ -108,8 +107,7 @@ def _plot_loss_evolution(
 	y_min = min(min(train_losses), min(val_losses))
 	margin = 0.25 * y_max
 	ax.set_ylim(y_min - margin, y_max + margin)
-	fname = os.path.join(save_dir, f"{suffix}.png")
-	fig.savefig(fname, dpi=300, bbox_inches="tight")
+	fig.savefig(save_path, dpi=300, bbox_inches="tight")
 	plt.close(fig)
 
 	return fig, {
@@ -126,8 +124,7 @@ def _plot_lr_evolution(
 		phases: List[int],
 		phase_colors: np.ndarray,
 		transitions: List[int],
-		save_dir: str,
-		suffix: str = "lr_evolution",
+		save_path: str,
 ) -> plt.Figure:
 		fig, ax = plt.subplots(figsize=(12, 4), facecolor="white")
 
@@ -150,8 +147,7 @@ def _plot_lr_evolution(
 		ax.set_yscale("log")
 		ax.grid(True, alpha=0.3)
 
-		fname = os.path.join(save_dir, f"{suffix}.png")
-		fig.savefig(fname, dpi=300, bbox_inches="tight")
+		fig.savefig(save_path, dpi=300, bbox_inches="tight")
 		plt.close(fig)
 		return fig
 
@@ -161,8 +157,7 @@ def _plot_weight_decay_evolution(
 		phases: List[int],
 		phase_colors: np.ndarray,
 		transitions: List[int],
-		save_dir: str,
-		suffix: str = "weight_decay_evolution",
+		save_path: str,
 ) -> plt.Figure:
 		fig, ax = plt.subplots(figsize=(12, 4), facecolor="white")
 
@@ -185,8 +180,7 @@ def _plot_weight_decay_evolution(
 		ax.set_yscale("log")
 		ax.grid(True, alpha=0.3)
 
-		fname = os.path.join(save_dir, f"{suffix}.png")
-		fig.savefig(fname, dpi=300, bbox_inches="tight")
+		fig.savefig(save_path, dpi=300, bbox_inches="tight")
 		plt.close(fig)
 		return fig
 
@@ -195,8 +189,7 @@ def _plot_phase_efficiency(
 		epochs: List[int],
 		val_losses: List[float],
 		phase_colors: np.ndarray,
-		save_dir: str,
-		suffix: str = "phase_efficiency",
+		save_path: str,
 	) -> plt.Figure:
 
 	# ----- compute per‑phase statistics ---------------------------------
@@ -262,8 +255,7 @@ def _plot_phase_efficiency(
 			color="darkred",
 		)
 	fig.tight_layout()
-	fname = os.path.join(save_dir, f"{suffix}.png")
-	fig.savefig(fname, dpi=300, bbox_inches="tight")
+	fig.savefig(save_path, dpi=300, bbox_inches="tight")
 	plt.close(fig)
 
 	return fig
@@ -274,8 +266,7 @@ def _plot_hyperparameter_correlation(
 		weight_decays: List[float],
 		val_losses: List[float],
 		transitions: List[int],
-		save_dir: str,
-		suffix: str = "hyperparameter_correlation",
+		save_path: str,
 	) -> plt.Figure:
 		# normalise to [0,1]
 		lr_n = np.array(learning_rates) / max(learning_rates)
@@ -297,8 +288,7 @@ def _plot_hyperparameter_correlation(
 		ax.grid(True, alpha=0.3)
 		ax.legend(fontsize=9, loc="best", ncol=3, frameon=True, fancybox=True, shadow=True, edgecolor="black", facecolor="white")
 
-		fname = os.path.join(save_dir, f"{suffix}.png")
-		fig.savefig(fname, dpi=300, bbox_inches="tight")
+		fig.savefig(save_path, dpi=300, bbox_inches="tight")
 		plt.close(fig)
 		return fig
 
@@ -309,8 +299,7 @@ def _plot_trainable_layers_progression(
 		layer_groups: Dict[str, List[str]],
 		phase_colors: np.ndarray,
 		transitions: List[int],
-		save_dir: str,
-		suffix: str = "trainable_layers_progression",
+		save_path: str,
 ) -> plt.Figure:
 		# ------------------------------------------------------------------
 		# 1️⃣  Determine the *true* number of phases
@@ -379,11 +368,7 @@ def _plot_trainable_layers_progression(
 		ax.grid(True, alpha=0.3)
 		ax.legend(loc="best", fontsize=9, frameon=False)
 
-		# ------------------------------------------------------------------
-		# 6️⃣  Save & return
-		# ------------------------------------------------------------------
-		fname = os.path.join(save_dir, f"{suffix}.png")
-		fig.savefig(fname, dpi=300, bbox_inches="tight")
+		fig.savefig(save_path, dpi=300, bbox_inches="tight")
 		plt.close(fig)
 		return fig
 
@@ -391,8 +376,7 @@ def _plot_unfreeze_heatmap(
 		unfreeze_schedule: dict,
 		layer_groups: dict,
 		max_phase: int,
-		save_dir: str,
-		suffix: str = "unfreeze_heatmap_cud_sep",
+		save_path: str,
 	) -> plt.Figure:
 	group_names = list(layer_groups.keys())
 	n_groups = len(group_names)
@@ -438,16 +422,14 @@ def _plot_unfreeze_heatmap(
 	cbar.set_label("Fraction Unfrozen", fontsize=10)
 	cbar.ax.tick_params(labelsize=8)
 	# Save
-	fname = os.path.join(save_dir, f"{suffix}.png")
-	fig.savefig(fname, dpi=300, bbox_inches="tight")
+	fig.savefig(save_path, dpi=300, bbox_inches="tight")
 	plt.close(fig)
 	return fig
 
 def _write_training_summary(
 		training_history: Dict,
 		phase_colors: np.ndarray,
-		save_dir: str,
-		filename: str = "training_summary.txt",
+		save_path: str,
 	) -> None:
 	epochs = [e + 1 for e in training_history["epochs"]]
 	train_losses = training_history["train_losses"]
@@ -496,18 +478,15 @@ def _write_training_summary(
 	if best_epoch is not None:
 		lines.append(f"  • Best model epoch      : {epochs[best_epoch]} (val loss {val_losses[best_epoch]:.4f})")
 	txt = "\n".join(lines) + "\n"
-	os.makedirs(save_dir, exist_ok=True)
-	with open(os.path.join(save_dir, filename), "w", encoding="utf‑8") as fp:
+	with open(save_path, "w", encoding="utf‑8") as fp:
 		fp.write(txt)
 
 def plot_progressive_fine_tuning_report(
 		training_history: Dict,
 		unfreeze_schedule: Dict[int, List[str]],
 		layer_groups: Dict[str, List[str]],
-		save_dir: str,
-		figsize: Tuple[int, int] = (12, 6),   # default figure size for individual charts
+		plot_paths: Dict[str, str],
 	) -> Dict[str, Optional[plt.Figure]]:
-	os.makedirs(save_dir, exist_ok=True)
 	epochs = [e + 1 for e in training_history["epochs"]]
 	phases = training_history["phases"]
 	transitions = training_history.get("phase_transitions", [])
@@ -515,8 +494,7 @@ def plot_progressive_fine_tuning_report(
 	fig_loss, loss_meta = _plot_loss_evolution(
 		training_history=training_history,
 		phase_colors=phase_colors,
-		save_dir=save_dir,
-		suffix="loss_evolution",
+		save_path=plot_paths["loss_evolution"],
 	)
 
 	fig_lr = _plot_lr_evolution(
@@ -525,8 +503,7 @@ def plot_progressive_fine_tuning_report(
 		phases=phases,
 		phase_colors=phase_colors,
 		transitions=transitions,
-		save_dir=save_dir,
-		suffix="learning_rate",
+		save_path=plot_paths["lr_evolution"],
 	)
 
 	fig_wd = _plot_weight_decay_evolution(
@@ -535,8 +512,7 @@ def plot_progressive_fine_tuning_report(
 		phases=phases,
 		phase_colors=phase_colors,
 		transitions=transitions,
-		save_dir=save_dir,
-		suffix="weight_decay",
+		save_path=plot_paths["wd_evolution"],
 	)
 
 	fig_phase_eff = _plot_phase_efficiency(
@@ -544,8 +520,7 @@ def plot_progressive_fine_tuning_report(
 		epochs=epochs,
 		val_losses=training_history["val_losses"],
 		phase_colors=phase_colors,
-		save_dir=save_dir,
-		suffix="phase_efficiency",
+		save_path=plot_paths["phase_efficiency"],
 	)
 
 	fig_corr = _plot_hyperparameter_correlation(
@@ -554,8 +529,7 @@ def plot_progressive_fine_tuning_report(
 		weight_decays=training_history["weight_decays"],
 		val_losses=training_history["val_losses"],
 		transitions=transitions,
-		save_dir=save_dir,
-		suffix="hyperparameter_correlation",
+		save_path=plot_paths["hyperparameter_correlation"],
 	)
 
 	fig_trainable = _plot_trainable_layers_progression(
@@ -565,24 +539,21 @@ def plot_progressive_fine_tuning_report(
 		layer_groups=layer_groups,
 		phase_colors=phase_colors,
 		transitions=transitions,
-		save_dir=save_dir,
-		suffix="trainable_layers",
+		save_path=plot_paths["trainable_layers"],
 	)
 
 	fig_heat = _plot_unfreeze_heatmap(
 		unfreeze_schedule=unfreeze_schedule,
 		layer_groups=layer_groups,
 		max_phase=max(phases),
-		save_dir=save_dir,
-		suffix="unfreeze_heatmap",
+		save_path=plot_paths["unfreeze_heatmap"],
 	)
 
-	# _write_training_summary(
-	# 	training_history=training_history,
-	# 	phase_colors=phase_colors,
-	# 	save_dir=save_dir,
-	# 	filename="training_summary.txt",
-	# )
+	_write_training_summary(
+		training_history=training_history,
+		phase_colors=phase_colors,
+		save_path=plot_paths["training_summary"],
+	)
 
 	return {
 		"loss": fig_loss,

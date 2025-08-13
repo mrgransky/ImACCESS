@@ -2562,7 +2562,6 @@ def progressive_finetune_single_label(
 	except Exception as e:
 		print(f"Scheduler test failed: {e}. Continuing with training...")
 
-
 	criterion = torch.nn.CrossEntropyLoss()
 	print(f"Using {criterion.__class__.__name__} as the loss function")
 
@@ -2587,6 +2586,10 @@ def progressive_finetune_single_label(
 		f"pat_{patience}_"
 		f"mdelta_{min_delta:.1e}_"
 		f"cdelta_{cumulative_delta:.1e}_"
+		f"vt_{volatility_threshold}_"
+		f"st_{slope_threshold:.1e}_"
+		f"pit_{pairwise_imp_threshold:.1e}_"
+		f"mpbs_{min_phases_before_stopping}_"
 		f"best.pth"
 	)
 	print(f"Best model will be saved in: {mdl_fpth}")
@@ -2968,7 +2971,14 @@ def progressive_finetune_single_label(
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retr_best_model_per_k.png"),
 		"progressive_dynamics": os.path.join(results_dir, f"{file_base_name}_dynamics.png"),
 		"phase_analysis": os.path.join(results_dir, f"{file_base_name}_phases.png"),
-		"progressive_fine_tuning_report": os.path.join(results_dir, f"{file_base_name}_report.png"),
+		"unfreeze_heatmap": os.path.join(results_dir, f"{file_base_name}_unfreeze_heatmap.png"),
+		"training_summary": os.path.join(results_dir, f"{file_base_name}_training_summary.txt"),
+		"loss_evolution": os.path.join(results_dir, f"{file_base_name}_loss_evolution.png"),
+		"lr_evolution": os.path.join(results_dir, f"{file_base_name}_lr_evol.png"),
+		"wd_evolution": os.path.join(results_dir, f"{file_base_name}_wd_evol.png"),
+		"phase_efficiency": os.path.join(results_dir, f"{file_base_name}_phase_eff.png"),
+		"hyperparameter_correlation": os.path.join(results_dir, f"{file_base_name}_hyp_param_corr.png"),
+		"trainable_layers": os.path.join(results_dir, f"{file_base_name}_train_lyrs.png"),
 	}
 
 	training_history = collect_progressive_training_history(
@@ -2981,11 +2991,12 @@ def progressive_finetune_single_label(
 		early_stop_epoch=epoch+1 if early_stopping_triggered else None,
 		best_epoch=early_stopping.best_epoch if hasattr(early_stopping, 'best_epoch') else None
 	)
+
 	plot_progressive_fine_tuning_report(
 		training_history=training_history,
 		unfreeze_schedule=unfreeze_schedule,
 		layer_groups=get_layer_groups(model),
-		save_dir=results_dir,
+		plot_paths=plot_paths,
 	)
 
 	plot_progressive_training_dynamics(
@@ -2999,6 +3010,7 @@ def progressive_finetune_single_label(
 	print(f"  • Total phases used: {len(set(phases_history))}")
 	print(f"  • Phase transitions: {len(phase_transitions_epochs)}")
 	print(f"  • Early stopping: {'Yes' if early_stopping_triggered else 'No'}")
+
 	if phase_transitions_epochs:
 		print(f"  • Transition epochs: {phase_transitions_epochs}")	
 
@@ -3006,7 +3018,7 @@ def progressive_finetune_single_label(
 		training_history=training_history,
 		save_path=plot_paths["phase_analysis"],
 	)
-	print("✓ Phase transition analysis plot generated successfully")
+
 	print(f"Training improvement: {analysis_results['total_improvement']:.2f}%")
 	print(f"Most effective phase: Phase {analysis_results['best_phase']}")
 
@@ -3177,10 +3189,18 @@ def full_finetune_single_label(
 		f"{criterion.__class__.__name__}_"
 		f"{scaler.__class__.__name__}_"
 		f"ieps_{num_epochs}_"
-		f"dropout_{dropout_val}_"
+		f"do_{dropout_val}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
+		f"mep_{minimum_epochs}_"
+		f"pat_{patience}_"
+		f"mdelta_{min_delta:.1e}_"
+		f"cdelta_{cumulative_delta:.1e}_"
+		f"vt_{volatility_threshold}_"
+		f"st_{slope_threshold:.1e}_"
+		f"pit_{pairwise_imp_threshold:.1e}_"
+		f"mpbs_{min_phases_before_stopping}_"
 		f"best.pth"
 	)
 
