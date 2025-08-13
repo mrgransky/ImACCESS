@@ -577,12 +577,12 @@ def plot_progressive_fine_tuning_report(
 		suffix="unfreeze_heatmap",
 	)
 
-	_write_training_summary(
-		training_history=training_history,
-		phase_colors=phase_colors,
-		save_dir=save_dir,
-		filename="training_summary.txt",
-	)
+	# _write_training_summary(
+	# 	training_history=training_history,
+	# 	phase_colors=phase_colors,
+	# 	save_dir=save_dir,
+	# 	filename="training_summary.txt",
+	# )
 
 	return {
 		"loss": fig_loss,
