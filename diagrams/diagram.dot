@@ -1,0 +1,46 @@
+digraph ProgressiveFineTuning {
+    // Layout settings
+    rankdir=LR;
+    bgcolor=""#ffffff"";
+    nodesep=1.2;
+    ranksep=1.8;
+    
+    // Default styles
+    node [fontname="Times New Roman", fontsize=30, style=filled, shape=box, width=2.5, height=1.5, fontcolor="#5a3030ff", fillcolor="#96d0ffff", penwidth=1];
+    edge [fontname="Times New Roman", fontsize=20, color=black, fontcolor=black, penwidth=2];
+    
+    // Nodes
+    start [label="START", shape=ellipse, fillcolor="#4CAF50", fontcolor="#ffffff", fontsize=35];
+    init [label="Initialization\nPhase=0, η₀, λ₀", fillcolor="#2196F3", fontcolor="#ffffff"];
+    train [label="1. TRAIN\nOne Epoch\non D_train", fillcolor="#2196F3", fontcolor="#ffffff"];
+    eval [label="2. EVALUATE\nCompute L_val", fillcolor="#2196F3", fontcolor="#ffffff"];
+    
+    phase_check [label="Phase Transition\nCheck?\n\nStagnation / Instability?", shape=diamond, fillcolor="#f89602ff", fontcolor=black, width=1.5, height=1.5];
+    
+    inc_phase [label="3a. INCREMENT Phase", fillcolor="#683747ff", fontcolor="#ffffff"];
+    adapt [label="3b. ADJUST\nη & λ", fillcolor="#683747ff", fontcolor="#ffffff"];
+    unfreeze [label="3c. UNFREEZE Layers", fillcolor="#683747ff", fontcolor="#ffffff"];
+    reinit [label="3d. RE-INIT\nOptimizer & Scheduler", fillcolor="#683747ff", fontcolor="#ffffff"];
+    reset [label="3e. RESET Early Stopper", fillcolor="#683747ff", fontcolor="#ffffff"];
+    
+    early_stop [label="Global Early\nStop?\n\nPatience\nExceeded?", shape=diamond, fillcolor="#FF5722", fontcolor="#ffffff", width=2, height=1.5];
+    
+    end [label="END\n\nFinal Evaluation\nLoad Best Model", shape=ellipse, fillcolor="#F44336", fontcolor="#ffffff", fontsize=30];
+    
+    // Connections
+    start -> init;
+    init -> train;
+    train -> eval;
+    eval -> phase_check;
+    
+    phase_check -> inc_phase [label="YES\n(Plateau Detected)", fontcolor="#774700ff", fontsize=30];
+    inc_phase -> adapt;
+    adapt -> unfreeze;
+    unfreeze -> reinit;
+    reinit -> reset;
+    reset -> early_stop;
+    
+    phase_check -> early_stop [label="NO\n(Stable)", fontcolor="#666666", fontsize=30];
+    early_stop -> train [label="NO\n(Continue)", fontcolor="#666666", fontsize=30];
+    early_stop -> end [label="YES\n(Stop)", fontcolor="#F44336", fontsize=30];
+}

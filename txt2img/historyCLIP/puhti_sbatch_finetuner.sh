@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2014707
-#SBATCH --job-name=historyX4_single_label_progressive
+#SBATCH --job-name=h4_sgl_lbl_prog
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -85,7 +85,7 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 	exit 1
 fi
 
-INIT_LRS=(1.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+INIT_LRS=(1.0e-06 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 INIT_WDS=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 EPOCHS=(100 100 150 150 150)
@@ -95,9 +95,9 @@ LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 BATCH_SIZES=(512 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 10)
 INIT_EARLY_STOPPING_MIN_EPOCHS=(10 25 17 17 12)  # H4, NA, EU, WWII, SMU
-EARLY_STOPPING_PATIENCE=(3 5 5 5 5)  # H4, NA, EU, WWII, SMU
-EARLY_STOPPING_MIN_DELTA=(5e-4 1e-4 1e-4 1e-4 1e-4)  # H4, NA, EU, WWII, SMU
-EARLY_STOPPING_CUMULATIVE_DELTA=(5e-2 5e-3 5e-3 5e-3 5e-3)  # H4, NA, EU, WWII, SMU
+EARLY_STOPPING_PATIENCE=(5 5 5 5 5)  # H4, NA, EU, WWII, SMU
+EARLY_STOPPING_MIN_DELTA=(1e-4 1e-4 1e-4 1e-4 1e-4)  # H4, NA, EU, WWII, SMU
+EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)  # H4, NA, EU, WWII, SMU
 CACHE_SIZES=(1024 512 1000 1000 1000)  # H4, NA, EU, WWII, SMU
 
 # Adjust early stopping minimum epochs based on strategy

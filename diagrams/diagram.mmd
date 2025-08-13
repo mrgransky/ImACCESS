@@ -1,0 +1,33 @@
+graph LR
+    %% Initialization
+    A(Start) --> B["<font size='15'>Initialize Model<br/>Phase=0, η₀, λ₀</font>"];
+
+    %% Main Training Loop Entry
+    B --> D["<font size='15'><b>1. Train one Epoch</b><br/>on D_train</font>"];
+    
+    %% Training & Evaluation Steps
+    D --> E["<font size='15'><b>2. Evaluate</b><br/>Compute L_val</font>"];
+    E --> F{"<div style='font-size: 20px; font-weight:bold; color: #b55a00;'>Phase Transition Check</div><font size='15'>Stagnation or Instability?</font>"};
+
+    %% Branch 1: Phase Transition Path
+    F -- "<font size='15'><b>Yes</b><br/>(Plateau Detected)</font>" --> J["<font size='15'><b>3a.</b><br/>Increment Phase</font>"];
+    J --> K["<font size='15'><b>3b.</b><br/>Adapt η & λ</font>"];
+    K --> L["<font size='15'><b>3c.</b><br/>Unfreeze Layers</font>"];
+    L --> M["<font size='15'><b>3d.</b><br/>Re-init Opt/Sched</font>"];
+    M --> N["<font size='15'><b>3e.</b><br/>Reset Stopper</font>"];
+    
+    %% Re-convergence Point
+    N --> H{"<div style='font-size: 40px; font-weight:bold; color: #a00;'>Global Early Stop?</div><font size='20'>Patience Exceeded?</font>"};
+
+    %% Branch 2: No Transition Path
+    F -- "<font size='15'>No<br/>(Stable Progress)</font>" --> H;
+
+    %% Final Decision & Loop/Exit
+    H -- "<font size='15'>No<br/>(Continue)</font>" --> D;
+    H -- "<font size='15'><b>Yes</b><br/>(Stop Training)</font>" --> Z(End: Final Evaluation<br/><font size='15'>Load Best Model</font>);
+
+    %% Styling
+    style A fill:#d4edda,stroke:#155724,stroke-width:2px
+    style Z fill:#f8d7da,stroke:#721c24,stroke-width:2px
+    style F stroke-width:2px,stroke:#b55a00
+    style H stroke-width:2px,stroke:#a00
