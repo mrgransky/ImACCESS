@@ -1609,7 +1609,7 @@ def checkpoint_best_model(
 	
 	# Case 2: Early stopping detects improvement
 	elif early_stopping.is_improvement(current_val_loss):
-		print(f"*** New Best Validation Loss Found: {current_val_loss:.6f} (Epoch {epoch+1}) ***")
+		print(f"\t>>>> New Best Validation Loss Found: {current_val_loss} @ Epoch {epoch+1}")
 		best_val_loss = current_val_loss
 		model_improved = True
 	
@@ -3248,7 +3248,7 @@ def full_finetune_single_label(
 					trust_stats = optimizer.get_trust_ratio_stats()
 					if trust_stats:
 						print(f"\t\tTrust Ratio Summary:")
-						print(f"\t\t{trust_stats}")
+						print(f"\t\t{trust_stats}\n")
 						optimizer.adaptive_lr_adjustment()
 
 						# Periodic visualization
@@ -3262,7 +3262,7 @@ def full_finetune_single_label(
 			if trust_stats:
 				print(f"\nEpoch {epoch+1}: Trust Ratio Summary:")
 				print(trust_stats)
-				print("-"*70)
+				print("-"*120)
 
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
