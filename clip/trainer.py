@@ -3154,7 +3154,7 @@ def full_finetune_single_label(
 			weight_decay=weight_decay,
 		)
 
-	scheduler = lr_scheduler.OneCycleLR(
+	scheduler = torch.optim.lr_scheduler.OneCycleLR(
 		optimizer=optimizer,
 		max_lr=learning_rate,
 		steps_per_epoch=len(train_loader),
@@ -3546,7 +3546,7 @@ def lora_finetune_single_label(
 			weight_decay=weight_decay,
 		)
 
-	scheduler = lr_scheduler.OneCycleLR(
+	scheduler = torch.optim.lr_scheduler.OneCycleLR(
 		optimizer=optimizer,
 		max_lr=learning_rate,
 		steps_per_epoch=len(train_loader),
@@ -3955,7 +3955,7 @@ def full_finetune_multi_label(
 			weight_decay=weight_decay,
 		)
 
-	scheduler = lr_scheduler.OneCycleLR(
+	scheduler = torch.optim.lr_scheduler.OneCycleLR(
 		optimizer=optimizer,
 		max_lr=learning_rate,
 		steps_per_epoch=len(train_loader),
@@ -5050,7 +5050,7 @@ def lora_finetune_multi_label(
 			weight_decay=weight_decay,
 		)
 
-	scheduler = lr_scheduler.OneCycleLR(
+	scheduler = torch.optim.lr_scheduler.OneCycleLR(
 		optimizer=optimizer,
 		max_lr=learning_rate,
 		steps_per_epoch=len(train_loader),
@@ -5547,7 +5547,7 @@ def train(
 		weight_decay=weight_decay,
 	)
 
-	scheduler = lr_scheduler.OneCycleLR(
+	scheduler = torch.optim.lr_scheduler.OneCycleLR(
 		optimizer=optimizer,
 		max_lr=learning_rate,
 		steps_per_epoch=len(train_loader),
