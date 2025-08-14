@@ -33,7 +33,7 @@ from historical_dataset_loader import get_single_label_dataloaders, get_multi_la
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 16 -dv "cuda:0" --log_dir /media/volume/ImACCESS/trash &
 
 # finetune [full]:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -e 200 -lr 1e-5 -wd 1e-2 --print_every 10 -nw 32 -dv "cuda:0" -m finetune -fts full -dt multi_label -a "ViT-B/32" -do 0.1 -mep 6 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -e 200 -lr 1e-5 -wd 1e-2 --print_every 10 -nw 32 -dv "cuda:0" -m finetune -fts full -dt single_label -a "ViT-B/32" -do 0.1 -mep 6 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-6 -wd 1e-2 --print_every 200 -nw 12 -dv "cuda:0" -m finetune -fts full -dt multi_label -a "ViT-B/32" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 64 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 12 -dv "cuda:2" -m finetune -fts full -dt multi_label -a "ViT-B/32" -do 0.0 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 64 -e 100 -lr 5e-6 -wd 1e-2 --print_every 100 -nw 32 -dv "cuda:3" -m finetune -fts full -dt multi_label  -a "ViT-B/32" -do 0.0 --log_dir /media/volume/ImACCESS/trash &
@@ -110,20 +110,22 @@ def main():
 				f"ep_{args.epochs}_"
 				f"mep_{args.minimum_epochs}_"
 				f"pat_{args.patience}_"
-				f"mdelta_{args.minimum_delta}_"
-				f"cdelta_{args.cumulative_delta}_"
-				f"lr_{args.learning_rate}_"
-				f"wd_{args.weight_decay}_"
+				f"mdelta_{args.minimum_delta:.1e}_"
+				f"cdelta_{args.cumulative_delta:.1e}_"
+				f"lr_{args.learning_rate:.1e}_"
+				f"wd_{args.weight_decay:.1e}_"
 				f"do_{args.dropout}_"
-				f"logs"
 			)
 
 			if args.finetune_strategy == "pretrain":
-				log_file_base_name = f"{dataset_name}_{args.dataset_type}_{args.mode}_{arch_name}_logs"
+				log_file_base_name = f"{dataset_name}_{args.dataset_type}_{args.mode}_{arch_name}"
 
 			if args.finetune_strategy == "lora":
-				log_file_base_name += f"_lora_rank_{args.lora_rank}_lora_alpha_{args.lora_alpha}_lora_dropout_{args.lora_dropout}"
+				log_file_base_name += f"_lor_{args.lora_rank}_loa_{args.lora_alpha}_lod_{args.lora_dropout}"
 			
+			if args.use_lamb:
+				log_file_base_name += "_lamb"
+
 			log_file_path = os.path.join(args.log_dir, f"{log_file_base_name}.txt")
 
 			log_file = open(log_file_path, 'w')

@@ -3141,13 +3141,14 @@ def full_finetune_single_label(
 		param_names = {id(p): n for n, p in model.named_parameters()}
 		optimizer = LAMB(
 			params=[p for p in model.parameters() if p.requires_grad],
+			# params=model.parameters(),
 			lr=learning_rate,
-			betas=(0.9, 0.999),  # Typical beta values for LAMB
-			eps=1e-6,
 			weight_decay=weight_decay,
-			clamp_trust=(0.5, 5.0),  # Tighter default bounds
-			warmup_steps=2000,  # Gradual warmup
-			grad_clip=1.0  # Gradient clipping
+			# eps=1e-6,
+			# betas=(0.9, 0.999),  # Typical beta values for LAMB
+			# clamp_trust=(0.5, 5.0),  # Tighter default bounds
+			# warmup_steps=2000,  # Gradual warmup
+			# grad_clip=1.0  # Gradient clipping
 		)
 		optimizer.param_names = param_names
 	else:
@@ -3243,16 +3244,16 @@ def full_finetune_single_label(
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
 
-			if hasattr(optimizer, 'get_trust_ratio_stats'):
-				trust_stats = optimizer.get_trust_ratio_stats()
-				if trust_stats:
-					print(f"Trust Ratios (clamped): {trust_stats['mean']:.2f} ± {trust_stats['std']:.2f}")
-					print(f"Raw Ratios: {trust_stats['raw_mean']:.2f} median {trust_stats['raw_median']:.2f}")
-					print(f"Clamp Violations: {trust_stats['clamp_violations']}/{trust_stats['total_layers']}")
-					if trust_stats['clamp_violations'] > trust_stats['total_layers'] * 0.3:
-						print("High clamp violations - consider adjusting learning rate")
-						for pg in optimizer.param_groups:
-							pg['lr'] *= 0.8  # Reduce learning rate
+				if hasattr(optimizer, 'get_trust_ratio_stats'):
+					trust_stats = optimizer.get_trust_ratio_stats()
+					if trust_stats:
+						print(f"\nBatch {bidx+1}: Trust Ratio Summary:")
+						print(trust_stats)
+						optimizer.adaptive_lr_adjustment()
+
+						# Periodic visualization
+						if epoch % 5 == 0:
+							optimizer.visualize_stats(save_path=os.path.join(results_dir, f"trust_ratio_epoch_{epoch}"))
 
 			epoch_loss += total_loss.item()
 
@@ -3260,11 +3261,7 @@ def full_finetune_single_label(
 			trust_stats = optimizer.get_trust_ratio_stats()
 			if trust_stats:
 				print(f"\nEpoch {epoch+1}: Trust Ratio Summary:")
-				print(f"\tMean: {trust_stats['mean']:.4f}")
-				print(f"\tMedian: {trust_stats['median']:.4f}")
-				print(f"\t5th percentile: {trust_stats['percentiles']['5th']:.4f}")
-				print(f"\t95th percentile: {trust_stats['percentiles']['95th']:.4f}")
-				print(f"\tStandard deviation: {trust_stats['std']:.4f}")
+				print(trust_stats)
 				print("-"*70)
 
 		avg_training_loss = epoch_loss / len(train_loader)

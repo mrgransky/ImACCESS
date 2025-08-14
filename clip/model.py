@@ -1,4 +1,4 @@
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from typing import Tuple, Union, List
 import numpy as np
 import math
@@ -7,8 +7,392 @@ import copy
 import torch.nn.functional as F
 from torch import nn
 from torch.optim import Optimizer
+import matplotlib.pyplot as plt
 
 class LAMB(Optimizer):
+		"""
+		Enhanced LAMB optimizer with:
+		- Advanced diagnostics and monitoring
+		- Dynamic trust ratio adjustment
+		- Extended warmup period
+		- Layer-specific learning rate adaptation
+		- Visualization capabilities
+		"""
+		
+		def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-6,
+								 weight_decay=0.01, adam=False, clamp_trust=(0.5, 5.0),
+								 warmup_steps=4000, grad_clip=0.8, stats_window=200):
+				
+				# Validation and initialization
+				if not 0.0 <= lr:
+						raise ValueError(f"Invalid learning rate: {lr}")
+				if not 0.0 <= eps:
+						raise ValueError(f"Invalid epsilon value: {eps}")
+				if not 0.0 <= betas[0] < 1.0:
+						raise ValueError(f"Invalid beta parameter at index 0: {betas[0]}")
+				if not 0.0 <= betas[1] < 1.0:
+						raise ValueError(f"Invalid beta parameter at index 1: {betas[1]}")
+
+				defaults = dict(
+						lr=lr, betas=betas, eps=eps,
+						weight_decay=weight_decay, adam=adam,
+						clamp_trust=clamp_trust,
+						warmup_steps=warmup_steps,
+						grad_clip=grad_clip,
+						current_step=0
+				)
+				super(LAMB, self).__init__(params, defaults)
+				
+				# Enhanced tracking
+				self.trust_ratios = []
+				self.historical_stats = []
+				self.layer_stats = defaultdict(list)
+				self.param_names = {}
+				self._init_param_names()
+				self.stats_window = stats_window
+				self.figures = {}
+
+		def _init_param_names(self):
+				"""Initialize comprehensive parameter tracking"""
+				param_dict = {}
+				for group in self.param_groups:
+						for i, p in enumerate(group['params']):
+								param_dict[id(p)] = f"param_group_{i}"
+				
+				try:
+						model = next(iter(self.param_groups[0]['params'])).__dict__.get('_module', None)
+						if model:
+								for name, param in model.named_parameters():
+										param_dict[id(param)] = name
+										# Initialize layer-specific tracking
+										self.layer_stats[name] = {
+												'trust_ratios': [],
+												'weight_norms': [],
+												'grad_norms': [],
+												'update_norms': []
+										}
+				except Exception:
+						pass
+						
+				self.param_names = param_dict
+
+		def _get_param_name(self, p):
+				"""Get parameter name with fallback"""
+				return self.param_names.get(id(p), f"param_{id(p)}")
+
+		def _get_layer_specific_clamp(self, param_name, current_step):
+				"""Dynamic clamping with extended adaptation period"""
+				progress = min(current_step / 20000, 1.0)  # Extended to 20k steps
+				
+				if 'positional_embedding' in param_name or 'class_embedding' in param_name:
+						return (0.8 + 0.5*progress, 3.0 + 3.0*progress)
+				elif 'ln_' in param_name or 'norm' in param_name:
+						return (0.7, 2.5)  # Slightly relaxed bounds
+				elif 'proj' in param_name:
+						return (1.0, 4.5)
+				elif 'logit_scale' in param_name:
+						return (1.2, 6.0)
+				else:
+						return (0.7 + 0.5*progress, 3.5 + 2.5*progress)
+
+		def step(self, closure=None):
+				loss = None
+				if closure is not None:
+						loss = closure()
+
+				self.trust_ratios = []
+				current_stats = {
+						'layer_types': defaultdict(list),
+						'global': {}
+				}
+				
+				for group in self.param_groups:
+						group['current_step'] += 1
+						current_step = group['current_step']
+						warmup_factor = min(current_step / group['warmup_steps'], 1.0)
+						
+						for p in group['params']:
+								if p.grad is None:
+										continue
+										
+								grad = p.grad.data
+								if grad.is_sparse:
+										raise RuntimeError('LAMB does not support sparse gradients')
+
+								state = self.state[p]
+								
+								# Initialize state
+								if len(state) == 0:
+										state['step'] = 0
+										state['exp_avg'] = torch.zeros_like(p.data)
+										state['exp_avg_sq'] = torch.zeros_like(p.data)
+										state['grad_norm'] = torch.zeros(1, device=p.device)
+										state['update_norm'] = torch.zeros(1, device=p.device)
+
+								exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
+								beta1, beta2 = group['betas']
+
+								state['step'] += 1
+
+								# Gradient clipping with monitoring
+								grad_norm = torch.norm(grad)
+								if group['grad_clip'] > 0 and grad_norm > group['grad_clip']:
+										grad.mul_(group['grad_clip'] / (grad_norm + 1e-6))
+								state['grad_norm'] = grad_norm
+
+								# Adaptive moment updates
+								current_beta1 = 1 - (1 - beta1) * warmup_factor
+								current_beta2 = 1 - (1 - beta2) * warmup_factor
+								
+								exp_avg.mul_(current_beta1).add_(grad, alpha=1-current_beta1)
+								exp_avg_sq.mul_(current_beta2).addcmul_(grad, grad, value=1-current_beta2)
+
+								denom = exp_avg_sq.sqrt().add_(group['eps'])
+
+								# Bias correction
+								bias_correction1 = 1 - current_beta1 ** state['step']
+								bias_correction2 = 1 - current_beta2 ** state['step']
+								step_size = group['lr'] * math.sqrt(bias_correction2) / bias_correction1
+
+								adam_step = exp_avg / denom
+
+								if group['weight_decay'] != 0:
+										adam_step.add_(p.data, alpha=group['weight_decay'])
+
+								# Norm calculations with stabilization
+								weight_norm = p.data.norm(2).clamp_(1e-6, 10.0)
+								adam_norm = adam_step.norm(2).clamp_(1e-6, 10.0)
+								
+								# Dynamic clamping
+								param_name = self._get_param_name(p)
+								clamp_min, clamp_max = self._get_layer_specific_clamp(param_name, current_step)
+								
+								# Trust ratio calculation
+								raw_ratio = weight_norm / (adam_norm + 1e-8)
+								trust_ratio = raw_ratio.clamp_(clamp_min, clamp_max)
+								
+								# Apply update and track update norm
+								update = -step_size * trust_ratio * adam_step
+								p.data.add_(update)
+								state['update_norm'] = torch.norm(update)
+								
+								# Comprehensive tracking
+								param_stats = {
+										'name': param_name, 
+										'trust_ratio': trust_ratio,
+										'raw_ratio': raw_ratio.item(),
+										'weight_norm': weight_norm.item(),
+										'adam_norm': adam_norm.item(),
+										'grad_norm': grad_norm.item(),
+										'update_norm': state['update_norm'].item(),
+										'clamp_min': clamp_min,
+										'clamp_max': clamp_max,
+										'lr': group['lr'] * warmup_factor,
+										'step': current_step
+								}
+								
+								self.trust_ratios.append(param_stats)
+								
+								# Layer-type specific tracking
+								layer_type = param_name.split('.')[-1]  # Get last component (e.g., 'weight', 'bias')
+								current_stats['layer_types'][layer_type].append(param_stats)
+								
+								# Individual layer tracking
+								if param_name in self.layer_stats:
+										self.layer_stats[param_name]['trust_ratios'].append(trust_ratio.item())
+										self.layer_stats[param_name]['weight_norms'].append(weight_norm.item())
+										self.layer_stats[param_name]['grad_norms'].append(grad_norm.item())
+										self.layer_stats[param_name]['update_norms'].append(state['update_norm'].item())
+
+				# Global statistics
+				if self.trust_ratios:
+						ratios = np.array([x['trust_ratio'].item() for x in self.trust_ratios])
+						current_stats['global'] = {
+								'mean': float(np.mean(ratios)),
+								'median': float(np.median(ratios)),
+								'min': float(np.min(ratios)),
+								'max': float(np.max(ratios)),
+								'std': float(np.std(ratios)),
+								'clamp_violations': sum(1 for x in self.trust_ratios 
+																			if x['trust_ratio'].item() in (x['clamp_min'], x['clamp_max'])),
+								'total_layers': len(self.trust_ratios)
+						}
+						
+				self.historical_stats.append(current_stats)
+				
+				# Maintain rolling window of stats
+				if len(self.historical_stats) > self.stats_window:
+						self.historical_stats.pop(0)
+						
+				return loss
+
+		def get_trust_ratio_stats(self):
+				"""Enhanced statistics with layer-type breakdown"""
+				if not self.trust_ratios:
+						return None
+						
+				try:
+						ratios = np.array([x['trust_ratio'].item() for x in self.trust_ratios])
+						raw_ratios = np.array([x['raw_ratio'] for x in self.trust_ratios])
+						
+						# Layer-type analysis
+						layer_type_stats = {}
+						for layer_type, stats in self.historical_stats[-1]['layer_types'].items():
+								type_ratios = np.array([x['trust_ratio'].item() for x in stats])
+								layer_type_stats[layer_type] = {
+										'mean': float(np.mean(type_ratios)),
+										'median': float(np.median(type_ratios)),
+										'count': len(type_ratios),
+										'violations': sum(1 for x in stats if x['trust_ratio'].item() in (x['clamp_min'], x['clamp_max']))
+								}
+						
+						# Problematic layer identification
+						problematic = []
+						for tr in self.trust_ratios:
+								ratio = tr['trust_ratio'].item()
+								layer_name = tr.get('name', f"<unknown_{id(tr)}>")
+								if (ratio <= tr['clamp_min'] * 1.1 or 
+										ratio >= tr['clamp_max'] * 0.9 or
+										abs(tr['raw_ratio'] - ratio) > 0.5):
+										problematic.append((
+												layer_name, 
+												round(ratio, 4),
+												round(tr['raw_ratio'], 4),
+												round(tr['clamp_min'], 2),
+												round(tr['clamp_max'], 2),
+												f"{tr['lr']:.1e}",
+												f"{tr['grad_norm']:.1e}"
+										))
+						
+						return {
+								'global': {
+										'mean': float(np.mean(ratios)),
+										'median': float(np.median(ratios)),
+										'min': float(np.min(ratios)),
+										'max': float(np.max(ratios)),
+										'std': float(np.std(ratios)),
+										'raw_mean': float(np.mean(raw_ratios)),
+										'raw_median': float(np.median(raw_ratios)),
+										'clamp_violations': sum(1 for x in self.trust_ratios if x['trust_ratio'].item() in (x['clamp_min'], x['clamp_max'])),
+										'total_layers': len(self.trust_ratios)
+								},
+								'layer_types': layer_type_stats,
+								'problematic_layers': problematic[:5],
+								'percentiles': {
+										'5th': float(np.percentile(ratios, 5)),
+										'25th': float(np.percentile(ratios, 25)),
+										'75th': float(np.percentile(ratios, 75)),
+										'95th': float(np.percentile(ratios, 95))
+								}
+						}
+				except Exception as e:
+						print(f"Error calculating trust ratio stats: {str(e)}")
+						return None
+
+		def visualize_stats(self, save_path=None):
+				"""Generate diagnostic visualizations"""
+				if not self.historical_stats:
+						return None
+						
+				try:
+						# Global trust ratio trend
+						plt.figure(figsize=(14, 10), tight_layout=True)
+						steps = [s['global'].get('step', i) 
+										for i, s in enumerate(self.historical_stats) 
+										if 'global' in s]
+						means = [s['global']['mean'] 
+										for s in self.historical_stats 
+										if 'global' in s]
+						plt.plot(steps, means, label='Mean Trust Ratio')
+						plt.title('Global Trust Ratio Trend')
+						plt.xlabel('Step')
+						plt.ylabel('Trust Ratio')
+						plt.grid(True)
+						self.figures['global_trend'] = plt.gcf()
+						if save_path:
+								plt.savefig(f"{save_path}_global_trend.png")
+						plt.close()
+
+						# Layer-type distribution
+						plt.figure(figsize=(14, 10), tight_layout=True)
+						latest_stats = self.historical_stats[-1]['layer_types']
+						types = sorted(latest_stats.keys())
+						# counts = [latest_stats[t]['count'] for t in types]
+						# means = [latest_stats[t]['mean'] for t in types]
+						def _mean_trust_ratio(stats_list):
+							if not stats_list:
+								return 0.0
+							ratios = [s['trust_ratio'].item() if isinstance(s['trust_ratio'], torch.Tensor) else float(s['trust_ratio']) for s in stats_list]
+							return float(np.mean(ratios))
+						means = [_mean_trust_ratio(latest_stats[t]) for t in types]
+						counts = [len(latest_stats[t]) for t in types]
+						
+						plt.bar(types, means, color='skyblue', edgecolor='black')
+						plt.title('Mean Trust Ratio by Layer Type')
+						plt.xticks(rotation=45)
+						plt.ylabel('Mean Trust Ratio')
+						plt.grid(True, axis='y')
+						self.figures['layer_type_dist'] = plt.gcf()
+						if save_path:
+								plt.savefig(f"{save_path}_layer_type_dist.png")
+						plt.close()
+
+						# Violation analysis
+						plt.figure(figsize=(14, 10), tight_layout=True)
+						violations = [s['global']['clamp_violations']/s['global']['total_layers'] for s in self.historical_stats if 'global' in s]
+						plt.plot(steps, violations)
+						plt.title('Clamp Violation Percentage')
+						plt.xlabel('Step')
+						plt.ylabel('Violation Percentage')
+						plt.grid(True)
+						self.figures['violation_trend'] = plt.gcf()
+						if save_path:
+								plt.savefig(f"{save_path}_violation_trend.png")
+						plt.close()
+
+						return self.figures
+				except Exception as e:
+						print(f"Error generating visualizations: {str(e)}")
+						return None
+
+		def adaptive_lr_adjustment(self):
+				"""Automatically adjust learning rates based on layer behavior"""
+				if not self.trust_ratios:
+						return False
+						
+				stats = self.get_trust_ratio_stats()
+				if not stats or 'global' not in stats:
+						return False
+						
+				# Global adjustment
+				violation_ratio = stats['global']['clamp_violations'] / stats['global']['total_layers']
+				if violation_ratio > 0.3:
+						# More gentle adjustment
+						reduction = 0.95  # 5% reduction
+						for group in self.param_groups:
+								group['lr'] *= reduction
+						return True
+						
+				# Layer-type specific adjustments
+				for layer_type, type_stats in stats['layer_types'].items():
+						type_violation = type_stats['violations'] / type_stats['count']
+						if type_violation > 0.4:
+								# Find params of this type and adjust their LR
+								for group in self.param_groups:
+										for p in group['params']:
+												param_name = self._get_param_name(p)
+												if param_name.endswith(layer_type):
+														if type_stats['mean'] > (group['clamp_trust'][0] + group['clamp_trust'][1])/2:
+																# Upper bound violations - reduce LR
+																group['lr'] *= 0.97
+														else:
+																# Lower bound violations - increase LR
+																group['lr'] *= 1.03
+						return True
+						
+				return False
+
+class LAMBBB(Optimizer):
 		"""
 		Enhanced LAMB optimizer with:
 		- Dynamic trust ratio adjustment
