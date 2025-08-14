@@ -1457,7 +1457,6 @@ def evaluate_best_model(
 	if verbose:
 		print(f"Evaluating best model on {dataset_name} {finetune_strategy} criterion: {criterion.__class__.__name__}")
 
-
 	if os.path.exists(checkpoint_path):
 		if verbose:
 			print(f"Loading best model weights {checkpoint_path} for final evaluation...")
@@ -1467,7 +1466,7 @@ def evaluate_best_model(
 				model.load_state_dict(checkpoint['model_state_dict'])
 				best_epoch = checkpoint.get('epoch', 'unknown')
 				if verbose:
-					print(f"Loaded weights from checkpoint (epoch {best_epoch+1}): best_val_loss:{checkpoint['best_val_loss']}")
+					print(f"Loaded weights from checkpoint (epoch {best_epoch+1}): best_val_loss: {checkpoint['best_val_loss']}")
 				model_source = "checkpoint"
 			elif isinstance(checkpoint, dict) and 'epoch' not in checkpoint:
 				model.load_state_dict(checkpoint)
@@ -1541,120 +1540,120 @@ def evaluate_best_model(
 		"model_loaded_from": model_source
 	}
 
-def checkpoint_best_model(
-		model,
-		optimizer,
-		scheduler,
-		current_val_loss,
-		best_val_loss,
-		early_stopping,
-		checkpoint_path,
-		epoch,
-		current_phase=None,
-		img2txt_metrics=None,
-		txt2img_metrics=None,
-	):
-	"""
-	Checkpoint the model when performance improves, with comprehensive state saving.
+# def checkpoint_best_model(
+# 		model,
+# 		optimizer,
+# 		scheduler,
+# 		current_val_loss,
+# 		best_val_loss,
+# 		early_stopping,
+# 		checkpoint_path,
+# 		epoch,
+# 		current_phase=None,
+# 		img2txt_metrics=None,
+# 		txt2img_metrics=None,
+# 	):
+# 	"""
+# 	Checkpoint the model when performance improves, with comprehensive state saving.
 	
-	This function evaluates whether the current model represents an improvement
-	over previous checkpoints and saves the model state if it does. It uses a
-	combination of early stopping criteria and direct validation loss comparison.
+# 	This function evaluates whether the current model represents an improvement
+# 	over previous checkpoints and saves the model state if it does. It uses a
+# 	combination of early stopping criteria and direct validation loss comparison.
 	
-	Args:
-			model: The model to checkpoint
-			optimizer: The optimizer used for training
-			scheduler: The learning rate scheduler
-			current_val_loss: The current validation loss
-			best_val_loss: The best validation loss observed so far (None if first evaluation)
-			early_stopping: The early stopping object used for tracking improvement
-			checkpoint_path: Path where the checkpoint should be saved
-			epoch: Current epoch number (0-indexed)
-			current_phase: Current phase number for progressive training (optional)
-			img2txt_metrics: Image-to-text retrieval metrics for current evaluation (optional)
-			txt2img_metrics: Text-to-image retrieval metrics for current evaluation (optional)
+# 	Args:
+# 			model: The model to checkpoint
+# 			optimizer: The optimizer used for training
+# 			scheduler: The learning rate scheduler
+# 			current_val_loss: The current validation loss
+# 			best_val_loss: The best validation loss observed so far (None if first evaluation)
+# 			early_stopping: The early stopping object used for tracking improvement
+# 			checkpoint_path: Path where the checkpoint should be saved
+# 			epoch: Current epoch number (0-indexed)
+# 			current_phase: Current phase number for progressive training (optional)
+# 			img2txt_metrics: Image-to-text retrieval metrics for current evaluation (optional)
+# 			txt2img_metrics: Text-to-image retrieval metrics for current evaluation (optional)
 	
-	Returns:
-			tuple: (
-					updated_best_val_loss: The new best validation loss after this check,
-					final_img2txt_metrics: Image-to-text metrics if model improved, unchanged otherwise,
-					final_txt2img_metrics: Text-to-image metrics if model improved, unchanged otherwise
-			)
-	"""
-	# Initialize return values - will remain unchanged unless model improves
-	final_img2txt_metrics = img2txt_metrics
-	final_txt2img_metrics = txt2img_metrics
+# 	Returns:
+# 			tuple: (
+# 					updated_best_val_loss: The new best validation loss after this check,
+# 					final_img2txt_metrics: Image-to-text metrics if model improved, unchanged otherwise,
+# 					final_txt2img_metrics: Text-to-image metrics if model improved, unchanged otherwise
+# 			)
+# 	"""
+# 	# Initialize return values - will remain unchanged unless model improves
+# 	final_img2txt_metrics = img2txt_metrics
+# 	final_txt2img_metrics = txt2img_metrics
 	
-	# Create baseline checkpoint dictionary (will be updated if needed)
-	checkpoint = {
-		"epoch": epoch,
-		"model_state_dict": model.state_dict(),
-		"optimizer_state_dict": optimizer.state_dict(),
-		"scheduler_state_dict": scheduler.state_dict(),
-		"best_val_loss": best_val_loss,
-	}
+# 	# Create baseline checkpoint dictionary (will be updated if needed)
+# 	checkpoint = {
+# 		"epoch": epoch,
+# 		"model_state_dict": model.state_dict(),
+# 		"optimizer_state_dict": optimizer.state_dict(),
+# 		"scheduler_state_dict": scheduler.state_dict(),
+# 		"best_val_loss": best_val_loss,
+# 	}
 	
-	# Add phase information if available (for progressive training)
-	if current_phase is not None:
-		checkpoint["phase"] = current_phase
+# 	# Add phase information if available (for progressive training)
+# 	if current_phase is not None:
+# 		checkpoint["phase"] = current_phase
 	
-	# --- Simplified Improvement Detection Logic ---
-	model_improved = False
+# 	# --- Simplified Improvement Detection Logic ---
+# 	model_improved = False
 	
-	# Case 1: First evaluation (no previous best)
-	if best_val_loss is None:
-		print(f"Initial best model (loss {current_val_loss:.5f})")
-		best_val_loss = current_val_loss
-		model_improved = True
+# 	# Case 1: First evaluation (no previous best)
+# 	if best_val_loss is None:
+# 		print(f"Initial best model (loss {current_val_loss:.5f})")
+# 		best_val_loss = current_val_loss
+# 		model_improved = True
 	
-	# Case 2: Early stopping detects improvement
-	elif early_stopping.is_improvement(current_val_loss):
-		print(f"\t>>>> New Best Validation Loss Found: {current_val_loss} @ Epoch {epoch+1}")
-		best_val_loss = current_val_loss
-		model_improved = True
+# 	# Case 2: Early stopping detects improvement
+# 	elif early_stopping.is_improvement(current_val_loss):
+# 		print(f"\t>>>> New Best Validation Loss Found: {current_val_loss} @ Epoch {epoch+1}")
+# 		best_val_loss = current_val_loss
+# 		model_improved = True
 	
-	# Case 3: Fallback - direct comparison with minimum delta
-	# This handles cases where early stopping might not be properly configured
-	elif current_val_loss < best_val_loss - early_stopping.min_delta:
-		print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
-		best_val_loss = current_val_loss
-		model_improved = True
+# 	# Case 3: Fallback - direct comparison with minimum delta
+# 	# This handles cases where early stopping might not be properly configured
+# 	elif current_val_loss < best_val_loss - early_stopping.min_delta:
+# 		print(f"New best model found (loss {current_val_loss:.5f} < {best_val_loss:.5f})")
+# 		best_val_loss = current_val_loss
+# 		model_improved = True
 	
-	# --- Save Improved Model ---
-	if model_improved:
-		# Cache best weights to avoid potential race condition
-		current_best_weights = None
-		if early_stopping.restore_best_weights and early_stopping.best_weights is not None:
-			# Make a reference copy to avoid potential race condition
-			current_best_weights = early_stopping.best_weights
+# 	# --- Save Improved Model ---
+# 	if model_improved:
+# 		# Cache best weights to avoid potential race condition
+# 		current_best_weights = None
+# 		if early_stopping.restore_best_weights and early_stopping.best_weights is not None:
+# 			# Make a reference copy to avoid potential race condition
+# 			current_best_weights = early_stopping.best_weights
 		
-		# Update the best validation loss in the checkpoint
-		checkpoint["best_val_loss"] = best_val_loss
+# 		# Update the best validation loss in the checkpoint
+# 		checkpoint["best_val_loss"] = best_val_loss
 		
-		# Determine which weights to save
-		if current_best_weights is not None:
-			# Use the weights cached by early stopping
-			checkpoint["model_state_dict"] = current_best_weights
-			best_epoch = getattr(early_stopping, 'best_epoch', 0)
-			print(f"Best model weights (from epoch {best_epoch+1}) saved to {checkpoint_path}")
-		else:
-			# Use current model weights
-			checkpoint["model_state_dict"] = model.state_dict()
-			print(f"Best model weights (current epoch {epoch+1}) saved to {checkpoint_path}")
+# 		# Determine which weights to save
+# 		if current_best_weights is not None:
+# 			# Use the weights cached by early stopping
+# 			checkpoint["model_state_dict"] = current_best_weights
+# 			best_epoch = getattr(early_stopping, 'best_epoch', 0)
+# 			print(f"Best model weights (from epoch {best_epoch+1}) saved to {checkpoint_path}")
+# 		else:
+# 			# Use current model weights
+# 			checkpoint["model_state_dict"] = model.state_dict()
+# 			print(f"Best model weights (current epoch {epoch+1}) saved to {checkpoint_path}")
 		
-		# Save the checkpoint
-		try:
-			torch.save(checkpoint, checkpoint_path)
-		except Exception as e:
-			print(f"Warning: Failed to save checkpoint to {checkpoint_path}: {e}")
+# 		# Save the checkpoint
+# 		try:
+# 			torch.save(checkpoint, checkpoint_path)
+# 		except Exception as e:
+# 			print(f"Warning: Failed to save checkpoint to {checkpoint_path}: {e}")
 		
-		# Update metrics return values if available
-		if img2txt_metrics is not None:
-			final_img2txt_metrics = img2txt_metrics
-		if txt2img_metrics is not None:
-			final_txt2img_metrics = txt2img_metrics
+# 		# Update metrics return values if available
+# 		if img2txt_metrics is not None:
+# 			final_img2txt_metrics = img2txt_metrics
+# 		if txt2img_metrics is not None:
+# 			final_txt2img_metrics = txt2img_metrics
 	
-	return best_val_loss, final_img2txt_metrics, final_txt2img_metrics
+# 	return best_val_loss, final_img2txt_metrics, final_txt2img_metrics
 
 def compute_slope(losses: List[float]) -> float:
 	"""Computes the slope of the best-fit line for a list of losses."""
@@ -2933,20 +2932,20 @@ def progressive_finetune_single_label(
 		print(f"Image-to-Text Retrieval: {retrieval_metrics_per_epoch['img2txt']}")
 		print(f"Text-to-Image Retrieval: {retrieval_metrics_per_epoch['txt2img']}")
 
-		# --- Checkpointing Best Model ---
-		best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
-			model=model,
-			optimizer=optimizer,
-			scheduler=scheduler,
-			current_val_loss=current_val_loss,
-			best_val_loss=best_val_loss,
-			early_stopping=early_stopping,
-			checkpoint_path=mdl_fpth,
-			epoch=epoch,
-			current_phase=current_phase,
-			img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
-			txt2img_metrics=retrieval_metrics_per_epoch["txt2img"],
-		)
+		# # --- Checkpointing Best Model ---
+		# best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
+		# 	model=model,
+		# 	optimizer=optimizer,
+		# 	scheduler=scheduler,
+		# 	current_val_loss=current_val_loss,
+		# 	best_val_loss=best_val_loss,
+		# 	early_stopping=early_stopping,
+		# 	checkpoint_path=mdl_fpth,
+		# 	epoch=epoch,
+		# 	current_phase=current_phase,
+		# 	img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
+		# 	txt2img_metrics=retrieval_metrics_per_epoch["txt2img"],
+		# )
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			print(f"#"*100)
@@ -2965,6 +2964,9 @@ def progressive_finetune_single_label(
 			current_value=current_val_loss,
 			model=model,
 			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
 			current_phase=current_phase
 		):
 			early_stopping_triggered = True
@@ -3398,20 +3400,6 @@ def full_finetune_single_label(
 		print(f"Image-to-Text Retrieval: {retrieval_metrics_per_epoch['img2txt']}")
 		print(f"Text-to-Image Retrieval: {retrieval_metrics_per_epoch['txt2img']}")
 
-		# # --- Checkpointing Best Model ---
-		# best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
-		# 	model=model,
-		# 	optimizer=optimizer,
-		# 	scheduler=scheduler,
-		# 	current_val_loss=current_val_loss,
-		# 	best_val_loss=best_val_loss,
-		# 	early_stopping=early_stopping,
-		# 	checkpoint_path=mdl_fpth,
-		# 	epoch=epoch,
-		# 	img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
-		# 	txt2img_metrics=retrieval_metrics_per_epoch["txt2img"]
-		# )
-
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			print(f"#"*100)
 			cache_stats = train_loader.dataset.get_cache_stats()
@@ -3433,7 +3421,10 @@ def full_finetune_single_label(
 			scheduler=scheduler,
 			checkpoint_path=mdl_fpth,
 		):
-			print(f"\nEarly stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score()}")
+			print(
+				f"\nEarly stopping at epoch {epoch + 1} "
+				f"with best loss: {early_stopping.get_best_score()} "
+				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
 			break
 
 		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(170, "-"))
@@ -3762,19 +3753,19 @@ def lora_finetune_single_label(
 		print(f"Image-to-Text Retrieval: {retrieval_metrics_per_epoch['img2txt']}")
 		print(f"Text-to-Image Retrieval: {retrieval_metrics_per_epoch['txt2img']}")
 
-		# Use our unified checkpointing function
-		best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
-			model=model,
-			optimizer=optimizer,
-			scheduler=scheduler,
-			current_val_loss=current_val_loss,
-			best_val_loss=best_val_loss,
-			early_stopping=early_stopping,
-			checkpoint_path=mdl_fpth,
-			epoch=epoch,
-			img2txt_metrics=retrieval_metrics_per_epoch.get("img2txt"),
-			txt2img_metrics=retrieval_metrics_per_epoch.get("txt2img")
-		)
+		# # Use our unified checkpointing function
+		# best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
+		# 	model=model,
+		# 	optimizer=optimizer,
+		# 	scheduler=scheduler,
+		# 	current_val_loss=current_val_loss,
+		# 	best_val_loss=best_val_loss,
+		# 	early_stopping=early_stopping,
+		# 	checkpoint_path=mdl_fpth,
+		# 	epoch=epoch,
+		# 	img2txt_metrics=retrieval_metrics_per_epoch.get("img2txt"),
+		# 	txt2img_metrics=retrieval_metrics_per_epoch.get("txt2img")
+		# )
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			print(f"#"*100)
@@ -3792,8 +3783,14 @@ def lora_finetune_single_label(
 			current_value=current_val_loss,
 			model=model,
 			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
 		):
-			print(f"\nEarly stopping triggered at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
+			print(
+				f"\nEarly stopping triggered at epoch {epoch + 1} "
+				f"with best loss: {early_stopping.get_best_score()} "
+				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
 			break
 
 		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(150, "="))
@@ -4241,18 +4238,18 @@ def full_finetune_multi_label(
 				f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A'):.3f}"
 			)
 
-			best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
-				model=model,
-				optimizer=optimizer,
-				scheduler=scheduler,
-				current_val_loss=current_val_loss,
-				best_val_loss=best_val_loss,
-				early_stopping=early_stopping,
-				checkpoint_path=mdl_fpth,
-				epoch=epoch,
-				img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
-				txt2img_metrics=retrieval_metrics_per_epoch["txt2img"]
-			)
+			# best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
+			# 	model=model,
+			# 	optimizer=optimizer,
+			# 	scheduler=scheduler,
+			# 	current_val_loss=current_val_loss,
+			# 	best_val_loss=best_val_loss,
+			# 	early_stopping=early_stopping,
+			# 	checkpoint_path=mdl_fpth,
+			# 	epoch=epoch,
+			# 	img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
+			# 	txt2img_metrics=retrieval_metrics_per_epoch["txt2img"]
+			# )
 
 			if hasattr(train_loader.dataset, 'get_cache_stats'):
 				print(f"#"*100)
@@ -4270,8 +4267,14 @@ def full_finetune_multi_label(
 				current_value=current_val_loss,
 				model=model,
 				epoch=epoch,
+				optimizer=optimizer,
+				scheduler=scheduler,
+				checkpoint_path=mdl_fpth,
 			):
-				print(f"\nEarly stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score()}")
+				print(
+					f"\nEarly stopping at epoch {epoch + 1} "
+					f"with best loss: {early_stopping.get_best_score()} "
+					f"obtained in epoch {early_stopping.get_best_epoch()+1}")
 				break
 			print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f}s".center(150, "="))
 	print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
@@ -4816,19 +4819,19 @@ def progressive_finetune_multi_label(
 			f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A'):.3f}"
 		)
 
-		best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
-			model=model,
-			optimizer=optimizer,
-			scheduler=scheduler,
-			current_val_loss=current_val_loss,
-			best_val_loss=best_val_loss,
-			early_stopping=early_stopping,
-			checkpoint_path=mdl_fpth,
-			epoch=epoch,
-			current_phase=current_phase,
-			img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
-			txt2img_metrics=retrieval_metrics_per_epoch["txt2img"],
-		)
+		# best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
+		# 	model=model,
+		# 	optimizer=optimizer,
+		# 	scheduler=scheduler,
+		# 	current_val_loss=current_val_loss,
+		# 	best_val_loss=best_val_loss,
+		# 	early_stopping=early_stopping,
+		# 	checkpoint_path=mdl_fpth,
+		# 	epoch=epoch,
+		# 	current_phase=current_phase,
+		# 	img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
+		# 	txt2img_metrics=retrieval_metrics_per_epoch["txt2img"],
+		# )
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			cache_stats = train_loader.dataset.get_cache_stats()
@@ -4846,6 +4849,9 @@ def progressive_finetune_multi_label(
 			current_value=current_val_loss,
 			model=model,
 			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
 			current_phase=current_phase
 		):
 			print(f"--- Training stopped early at epoch {epoch+1} ---")
@@ -5344,18 +5350,18 @@ def lora_finetune_multi_label(
 			f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A'):.3f}"
 		)
 
-		best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
-			model=model,
-			optimizer=optimizer,
-			scheduler=scheduler,
-			current_val_loss=current_val_loss,
-			best_val_loss=best_val_loss,
-			early_stopping=early_stopping,
-			checkpoint_path=mdl_fpth,
-			epoch=epoch,
-			img2txt_metrics=retrieval_metrics_per_epoch.get("img2txt"),
-			txt2img_metrics=retrieval_metrics_per_epoch.get("txt2img")
-		)
+		# best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
+		# 	model=model,
+		# 	optimizer=optimizer,
+		# 	scheduler=scheduler,
+		# 	current_val_loss=current_val_loss,
+		# 	best_val_loss=best_val_loss,
+		# 	early_stopping=early_stopping,
+		# 	checkpoint_path=mdl_fpth,
+		# 	epoch=epoch,
+		# 	img2txt_metrics=retrieval_metrics_per_epoch.get("img2txt"),
+		# 	txt2img_metrics=retrieval_metrics_per_epoch.get("txt2img")
+		# )
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			print(f"#"*100)
@@ -5369,13 +5375,18 @@ def lora_finetune_multi_label(
 				print(f"Validation Cache Stats: {cache_stats}")
 			print(f"#"*100)
 
-
 		if early_stopping.should_stop(
 			current_value=current_val_loss,
 			model=model,
 			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
 		):
-			print(f"\nEarly stopping triggered at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score():.5f}")
+			print(
+				f"\nEarly stopping triggered at epoch {epoch + 1} "
+				f"with best loss: {early_stopping.get_best_score()} "
+				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
 			break
 
 		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(150, "="))
@@ -5747,18 +5758,18 @@ def train(
 		# ############################## Early stopping ##############################
 		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
 
-		best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
-			model=model,
-			optimizer=optimizer,
-			scheduler=scheduler,
-			current_val_loss=current_val_loss,
-			best_val_loss=best_val_loss,
-			early_stopping=early_stopping,
-			checkpoint_path=mdl_fpth,
-			epoch=epoch,
-			img2txt_metrics=img2txt_metrics,
-			txt2img_metrics=txt2img_metrics
-		)
+		# best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
+		# 	model=model,
+		# 	optimizer=optimizer,
+		# 	scheduler=scheduler,
+		# 	current_val_loss=current_val_loss,
+		# 	best_val_loss=best_val_loss,
+		# 	early_stopping=early_stopping,
+		# 	checkpoint_path=mdl_fpth,
+		# 	epoch=epoch,
+		# 	img2txt_metrics=img2txt_metrics,
+		# 	txt2img_metrics=txt2img_metrics
+		# )
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			print(f"#"*100)
@@ -5777,8 +5788,14 @@ def train(
 			current_value=current_val_loss,
 			model=model,
 			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
 		):
-			print(f"\nEarly stopping at epoch {epoch+1}. Best loss: {early_stopping.get_best_score():.5f}")
+			print(
+				f"\nEarly stopping at epoch {epoch + 1} "
+				f"with best loss: {early_stopping.get_best_score()} "
+				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
 			break
 		# ############################## Early stopping ##############################
 		print("-"*170)
