@@ -1827,18 +1827,18 @@ class EarlyStopping:
 		
 		# a) Slope Check
 		slope = compute_slope(last_window) # Use global function
-		print(f"\tSlope over {self.window_size} window: {slope} (Thresh > {self.slope_threshold})")
+		print(f"\tSlope over {self.window_size} windows: {slope} (Threshold > {self.slope_threshold}) [+: Worsening, -: Improving]")
 		
 		# b) Volatility Check
 		volatility = self.compute_volatility(last_window)
-		print(f"\tVolatility over {self.window_size} window: {volatility:.2f}% (Thresh >= {self.volatility_threshold}%)")
+		print(f"\tVolatility over {self.window_size} windows: {volatility:.2f}% (Threshold >= {self.volatility_threshold}%)")
 		
 		# c) Average Pairwise Improvement: Calculate the average change between adjacent epochs.
 		# (last_window[i] - last_window[i+1]) * self.sign
 		# ensures positive values mean improvement regardless of 'min' or 'max' mode.
 		pairwise_diffs = [(last_window[i] - last_window[i+1]) * self.sign for i in range(len(last_window)-1)]
 		pairwise_imp_avg = np.mean(pairwise_diffs) if pairwise_diffs else 0.0
-		print(f"\tAvg Pairwise Improvement over {self.window_size} window: {pairwise_imp_avg} (Thresh < {self.pairwise_imp_threshold})")
+		print(f"\tAvg Pairwise Improvement over {self.window_size} windows: {pairwise_imp_avg} (Threshold < {self.pairwise_imp_threshold})")
 		
 		# d) Closeness to Best: Check if the current value is already very close to the best score.
 		close_to_best = abs(current_value - self.best_score) < self.min_delta if self.best_score is not None else False
@@ -1853,7 +1853,7 @@ class EarlyStopping:
 		cumulative_improvement_abs = abs(cumulative_improvement_signed)
 		print(
 			f"\tCumulative Improvement over {self.window_size} windows: "
-			f"{cumulative_improvement_signed} (Thresh for lack of improvement: < {self.cumulative_delta})"
+			f"{cumulative_improvement_signed} (Threshold for lack of improvement: < {self.cumulative_delta})"
 		)
 		
 		# ----- Combine Stopping Criteria -----
@@ -2496,7 +2496,7 @@ def progressive_finetune_single_label(
 			weight_decay=initial_weight_decay,
 		)
 	else:
-		optimizer = AdamW(
+		optimizer = torch.optim.AdamW(
 			params=filter(lambda p: p.requires_grad, model.parameters()), # Initially might be empty if phase 0 has no unfrozen layers
 			lr=initial_learning_rate,
 			betas=(0.9, 0.98),
@@ -2529,7 +2529,7 @@ def progressive_finetune_single_label(
 
 	try:
 		# Test scheduler behavior (this will advance the scheduler, so create a copy)
-		test_optimizer = AdamW([torch.tensor([1.0], requires_grad=True)], lr=initial_learning_rate)
+		test_optimizer = torch.optim.AdamW([torch.tensor([1.0], requires_grad=True)], lr=initial_learning_rate)
 		test_scheduler = torch.optim.lr_scheduler.OneCycleLR(
 				optimizer=test_optimizer,
 				max_lr=initial_learning_rate,
@@ -3141,18 +3141,12 @@ def full_finetune_single_label(
 		param_names = {id(p): n for n, p in model.named_parameters()}
 		optimizer = LAMB(
 			params=[p for p in model.parameters() if p.requires_grad],
-			# params=model.parameters(),
 			lr=learning_rate,
 			weight_decay=weight_decay,
-			# eps=1e-6,
-			# betas=(0.9, 0.999),  # Typical beta values for LAMB
-			# clamp_trust=(0.5, 5.0),  # Tighter default bounds
-			# warmup_steps=2000,  # Gradual warmup
-			# grad_clip=1.0  # Gradient clipping
 		)
 		optimizer.param_names = param_names
 	else:
-		optimizer = AdamW(
+		optimizer = torch.optim.AdamW(
 			params=[p for p in model.parameters() if p.requires_grad],
 			lr=learning_rate,
 			betas=(0.9, 0.98),
@@ -3201,7 +3195,7 @@ def full_finetune_single_label(
 		f"vt_{volatility_threshold}_"
 		f"st_{slope_threshold:.1e}_"
 		f"pit_{pairwise_imp_threshold:.1e}_"
-		f"mpbs_{min_phases_before_stopping}_"
+		# f"mpbs_{min_phases_before_stopping}_" # useful for progressive finetuning
 		f"best.pth"
 	)
 
@@ -3252,7 +3246,7 @@ def full_finetune_single_label(
 						optimizer.adaptive_lr_adjustment()
 
 						# Periodic visualization
-						if epoch % 5 == 0:
+						if epoch % 10 == 0:
 							optimizer.visualize_stats(save_path=os.path.join(results_dir, f"trust_ratio_epoch_{epoch}"))
 
 			epoch_loss += total_loss.item()
@@ -3544,7 +3538,7 @@ def lora_finetune_single_label(
 			weight_decay=weight_decay,
 		)
 	else:
-		optimizer = AdamW(
+		optimizer = torch.optim.AdamW(
 			params=[p for p in model.parameters() if p.requires_grad],
 			lr=learning_rate,
 			betas=(0.9, 0.98),
@@ -3908,9 +3902,7 @@ def full_finetune_multi_label(
 		num_classes = len(validation_loader.dataset.dataset.classes)
 		class_names = validation_loader.dataset.dataset.classes
 	print(f"Multi-label dataset: {num_classes} classes")
-	# print(f"Class names sample: {class_names[:5]}...")
 	
-	# Extract dropout value from the model (if any)
 	dropout_val = 0.0
 	for name, module in model.named_modules():
 		if isinstance(module, torch.nn.Dropout):
@@ -3925,9 +3917,11 @@ def full_finetune_multi_label(
 	print(f"\nNon-zero dropout detected in base {model_name} {model_arch} during {mode}:")
 	print(non_zero_dropouts)
 	print()
+
 	# Unfreeze all layers for full fine-tuning
 	for name, param in model.named_parameters():
-			param.requires_grad = True
+		param.requires_grad = True
+
 	get_parameters_info(model=model, mode=mode)
 
 	# NEW: Use BCEWithLogitsLoss for multi-label classification
@@ -3950,12 +3944,10 @@ def full_finetune_multi_label(
 		optimizer = LAMB(
 			params=[p for p in model.parameters() if p.requires_grad],
 			lr=learning_rate,
-			betas=(0.9, 0.98),
-			eps=1e-6,
 			weight_decay=weight_decay,
 		)
 	else:
-		optimizer = AdamW(
+		optimizer = torch.optim.AdamW(
 			params=[p for p in model.parameters() if p.requires_grad],
 			lr=learning_rate,
 			betas=(0.9, 0.98),
@@ -3994,6 +3986,14 @@ def full_finetune_multi_label(
 		f"wd_{weight_decay:.1e}_"
 		f"temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_"
+		f"mep_{minimum_epochs}_"
+		f"pat_{patience}_"
+		f"mdelta_{min_delta:.1e}_"
+		f"cdelta_{cumulative_delta:.1e}_"
+		f"vt_{volatility_threshold}_"
+		f"st_{slope_threshold:.1e}_"
+		f"pit_{pairwise_imp_threshold:.1e}_"
+		# f"mpbs_{min_phases_before_stopping}_" # useful for progressive finetuning
 		f"best.pth"
 	)
 	print(f"Best model will be saved in: {mdl_fpth}")
@@ -4411,7 +4411,7 @@ def progressive_finetune_multi_label(
 			weight_decay=initial_weight_decay,
 		)
 	else:
-		optimizer = AdamW(
+		optimizer = torch.optim.AdamW(
 			params=filter(lambda p: p.requires_grad, model.parameters()),  # Initially might be empty if phase 0 has no unfrozen layers
 			lr=initial_learning_rate,
 			betas=(0.9, 0.98),
@@ -5042,7 +5042,7 @@ def lora_finetune_multi_label(
 			weight_decay=weight_decay,
 		)
 	else:
-		optimizer = AdamW(
+		optimizer = torch.optim.AdamW(
 			params=[p for p in model.parameters() if p.requires_grad],
 			lr=learning_rate,
 			betas=(0.9, 0.98),
@@ -5539,7 +5539,7 @@ def train(
 
 	get_parameters_info(model=model, mode=mode)
 
-	optimizer = AdamW(
+	optimizer = torch.optim.AdamW(
 		params=[p for p in model.parameters() if p.requires_grad], # Only optimizes parameters that require gradients
 		lr=learning_rate,
 		betas=(0.9,0.98),
