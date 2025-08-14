@@ -3382,7 +3382,7 @@ def full_finetune_single_label(
 		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
 
 		print(
-			f'@ Epoch {epoch + 1}:\n'
+			f'Epoch {epoch + 1}:\n'
 			f'\t[LOSS] {mode}'
 			f'(Training): {avg_training_loss} '
 			f'Validation(in-batch): {in_batch_loss_acc_metrics_per_epoch["val_loss"]}\n'
@@ -3398,20 +3398,19 @@ def full_finetune_single_label(
 		print(f"Image-to-Text Retrieval: {retrieval_metrics_per_epoch['img2txt']}")
 		print(f"Text-to-Image Retrieval: {retrieval_metrics_per_epoch['txt2img']}")
 
-		
-		# --- Checkpointing Best Model ---
-		best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
-			model=model,
-			optimizer=optimizer,
-			scheduler=scheduler,
-			current_val_loss=current_val_loss,
-			best_val_loss=best_val_loss,
-			early_stopping=early_stopping,
-			checkpoint_path=mdl_fpth,
-			epoch=epoch,
-			img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
-			txt2img_metrics=retrieval_metrics_per_epoch["txt2img"]
-		)
+		# # --- Checkpointing Best Model ---
+		# best_val_loss, final_img2txt_metrics, final_txt2img_metrics = checkpoint_best_model(
+		# 	model=model,
+		# 	optimizer=optimizer,
+		# 	scheduler=scheduler,
+		# 	current_val_loss=current_val_loss,
+		# 	best_val_loss=best_val_loss,
+		# 	early_stopping=early_stopping,
+		# 	checkpoint_path=mdl_fpth,
+		# 	epoch=epoch,
+		# 	img2txt_metrics=retrieval_metrics_per_epoch["img2txt"],
+		# 	txt2img_metrics=retrieval_metrics_per_epoch["txt2img"]
+		# )
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			print(f"#"*100)
@@ -3430,9 +3429,13 @@ def full_finetune_single_label(
 			current_value=current_val_loss,
 			model=model,
 			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
 		):
 			print(f"\nEarly stopping at epoch {epoch + 1}. Best loss: {early_stopping.get_best_score()}")
 			break
+
 		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(170, "-"))
 	
 	print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
