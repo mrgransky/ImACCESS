@@ -3392,7 +3392,7 @@ def full_finetune_single_label(
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
-		f"dropout_{dropout_val}"
+		f"do_{dropout_val}"
 	)
 
 	mdl_fpth = get_updated_model_name(
@@ -3404,10 +3404,10 @@ def full_finetune_single_label(
 
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
-		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
-		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
-		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
 		"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
 		"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
@@ -3760,9 +3760,9 @@ def lora_finetune_single_label(
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
-		f"lora_rank_{lora_rank}_"
-		f"lora_alpha_{lora_alpha}_"
-		f"lora_dropout_{lora_dropout}"
+		f"lor_{lora_rank}_"
+		f"loa_{lora_alpha}_"
+		f"lod_{lora_dropout}"
 	)
 	
 	mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
@@ -3771,10 +3771,10 @@ def lora_finetune_single_label(
 
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
-		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
-		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
-		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
 		"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
 		"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
@@ -3992,7 +3992,7 @@ def full_finetune_multi_label(
 		f"{criterion.__class__.__name__}_"
 		f"{scaler.__class__.__name__}_"
 		f"ieps_{num_epochs}_"
-		f"dropout_{dropout_val}_"
+		f"do_{dropout_val}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"temp_{temperature}_"
@@ -4222,7 +4222,7 @@ def full_finetune_multi_label(
 		f"wd_{weight_decay:.1e}_"
 		f"temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_"
-		f"dropout_{dropout_val}"
+		f"do_{dropout_val}"
 	)
 	
 	mdl_fpth = get_updated_model_name(
@@ -4237,10 +4237,10 @@ def full_finetune_multi_label(
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
 		"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
-		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
-		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
-		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
-		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 	}
@@ -4434,8 +4434,8 @@ def progressive_finetune_multi_label(
 	print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
 	print(f"Using {criterion.__class__.__name__} as the loss function")
 
-	scaler = torch.amp.GradScaler(device=device)  # For mixed precision
-	print(f"Using {scaler.__class__.__name__} for mixed precision training")
+	scaler = torch.amp.GradScaler(device=device) # automatic mixed precision
+	print(f"Using {scaler.__class__.__name__} for automatic mixed precision training")
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -4446,7 +4446,7 @@ def progressive_finetune_multi_label(
 		f"{criterion.__class__.__name__}_"
 		f"{scaler.__class__.__name__}_"
 		f"ieps_{num_epochs}_"
-		f"dropout_{dropout_val}_"
+		f"do_{dropout_val}_"
 		f"ilr_{initial_learning_rate:.1e}_"
 		f"iwd_{initial_weight_decay:.1e}_"
 		f"temp_{temperature}_"
@@ -4812,7 +4812,7 @@ def progressive_finetune_multi_label(
 		f"last_phase_{current_phase}_"
 		f"ep_{actual_trained_epochs}_"
 		f"bs_{train_loader.batch_size}_"
-		f"dropout_{dropout_val}_"
+		f"do_{dropout_val}_"
 		f"temp_{temperature}_"
 		f"ilr_{initial_learning_rate:.1e}_"
 		f"iwd_{initial_weight_decay:.1e}"
@@ -4838,10 +4838,10 @@ def progressive_finetune_multi_label(
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
 		"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
-		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
-		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
-		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
-		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 	}
@@ -5338,9 +5338,9 @@ def lora_finetune_multi_label(
 		f"wd_{weight_decay:.1e}_"
 		f"temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_"
-		f"lora_rank_{lora_rank}_"
-		f"lora_alpha_{lora_alpha}_"
-		f"lora_dropout_{lora_dropout}"
+		f"lor_{lora_rank}_"
+		f"loa_{lora_alpha}_"
+		f"lod_{lora_dropout}"
 	)
 	
 	mdl_fpth = get_updated_model_name(
@@ -5353,10 +5353,10 @@ def lora_finetune_multi_label(
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
 		"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
-		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
-		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
-		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
-		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 	}
@@ -5700,15 +5700,15 @@ def train(
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
-		f"dropout_{dropout_val}"
+		f"do_{dropout_val}"
 	)
 
 	plot_paths = {
 		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_img2txt_accuracy.png"),
-		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_in_batch_topk_txt2img_accuracy.png"),
-		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_img2txt_accuracy.png"),
-		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_txt2img_accuracy.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
 		"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
 		"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
