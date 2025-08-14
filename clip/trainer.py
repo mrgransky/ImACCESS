@@ -3242,13 +3242,13 @@ def full_finetune_single_label(
 			scheduler.step() # Update learning rate
 
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-				print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
+				print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item()}")
 
 				if hasattr(optimizer, 'get_trust_ratio_stats'):
 					trust_stats = optimizer.get_trust_ratio_stats()
 					if trust_stats:
-						print(f"\nBatch {bidx+1}: Trust Ratio Summary:")
-						print(trust_stats)
+						print(f"\t\tTrust Ratio Summary:")
+						print(f"\t\t{trust_stats}")
 						optimizer.adaptive_lr_adjustment()
 
 						# Periodic visualization

@@ -114,11 +114,11 @@ def main():
 				f"cdelta_{args.cumulative_delta:.1e}_"
 				f"lr_{args.learning_rate:.1e}_"
 				f"wd_{args.weight_decay:.1e}_"
-				f"do_{args.dropout}_"
+				f"do_{args.dropout}"
 			)
 
 			if args.finetune_strategy == "pretrain":
-				log_file_base_name = f"{dataset_name}_{args.dataset_type}_{args.mode}_{arch_name}"
+				log_file_base_name = f"_{dataset_name}_{args.dataset_type}_{args.mode}_{arch_name}"
 
 			if args.finetune_strategy == "lora":
 				log_file_base_name += f"_lor_{args.lora_rank}_loa_{args.lora_alpha}_lod_{args.lora_dropout}"
