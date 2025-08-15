@@ -1719,7 +1719,7 @@ class EarlyStopping:
 		if volatility >= self.volatility_threshold:
 			stop_reason.append(f"High volatility ({volatility:.2f}%)")
 		is_worsening = (self.mode == 'min' and slope > self.slope_threshold) or \
-					   (self.mode == 'max' and slope < self.slope_threshold)
+						 (self.mode == 'max' and slope < self.slope_threshold)
 		if is_worsening:
 			stop_reason.append(f"Worsening slope ({slope:.5f})")
 		if pairwise_imp_avg < self.pairwise_imp_threshold and not close_to_best:
@@ -1772,380 +1772,6 @@ class EarlyStopping:
 
 	def get_best_epoch(self) -> int:
 		return self.best_epoch
-
-# class EarlyStopping:
-# 	def __init__(
-# 			self,
-# 			patience: int = 5,             				# How many epochs to wait for improvement before stopping
-# 			min_delta: float = 1e-3,       				# Minimum change needed to count as an improvement
-# 			cumulative_delta: float = 0.01,				# Minimum total improvement over window_size needed
-# 			window_size: int = 5,          				# How many recent epochs to consider for trend analysis
-# 			mode: str = 'min',             				# 'min' (decrease is better, e.g., loss) or 'max' (increase is better, e.g., accuracy)
-# 			min_epochs: int = 5,           				# Minimum total epochs before stopping can EVER occur
-# 			restore_best_weights: bool = True, 		# Load best weights back when stopping?
-# 			volatility_threshold: float = 10.0, 	# Stop if % volatility in window exceeds this
-# 			slope_threshold: float = 0.0,  				# Stop if slope worsens beyond this threshold (e.g., > 0 for loss)
-# 			pairwise_imp_threshold: float = 5e-3, # Stop if avg improvement between adjacent epochs is below this
-# 			min_phases_before_stopping: int = 3, 	# Minimum training phases to complete before stopping
-# 		):
-
-# 		self.patience = patience
-# 		self.min_delta = min_delta
-# 		self.cumulative_delta = cumulative_delta
-# 		self.window_size = window_size
-# 		self.mode = mode
-# 		self.min_epochs = min_epochs
-# 		self.restore_best_weights = restore_best_weights
-# 		self.volatility_threshold = volatility_threshold
-# 		self.slope_threshold = slope_threshold
-# 		self.pairwise_imp_threshold = pairwise_imp_threshold
-# 		self.min_phases_before_stopping = min_phases_before_stopping
-# 		self.sign = 1 if mode == 'min' else -1 # Multiplier for improvement calculation
-# 		print("="*100)
-# 		print(
-# 			f"EarlyStopping [initial] Configuration:\n"
-# 			f"\tPatience={patience}\n"
-# 			f"\tMinDelta={min_delta}\n"
-# 			f"\tCumulativeDelta={cumulative_delta}\n"
-# 			f"\tWindowSize={window_size}\n"
-# 			f"\tMinEpochs={min_epochs}\n"
-# 			f"\tMinPhases={min_phases_before_stopping} (only for progressive finetuning)\n"
-# 			f"\tVolatilityThreshold={volatility_threshold}\n"
-# 			f"\tSlopeThreshold={slope_threshold}\n"
-# 			f"\tPairwiseImpThreshold={pairwise_imp_threshold}\n"
-# 			f"\tRestoreBestWeights={restore_best_weights}"
-# 		)
-# 		self.reset() # set up the initial internal state variables
-# 		print("="*100)
-
-# 	def reset(self):
-# 		print(">> Resetting EarlyStopping state, Essential for starting fresh or resetting between training phases")
-# 		# Best score (metric value) observed so far
-# 		self.best_score = None
-# 		# state_dict of the model when best_score was achieved (if restore_best_weights is True)
-# 		self.best_weights = None
-# 		# Counter for consecutive epochs without improvement
-# 		self.counter = 0
-# 		# The epoch number when improvement was last observed
-# 		self.stopped_epoch = 0
-# 		# The epoch number when the absolute best_score was achieved
-# 		self.best_epoch = 0
-# 		# List storing the history of the monitored metric values (e.g., validation losses)
-# 		self.value_history = []
-# 		# List storing boolean flags indicating if improvement occurred in each epoch
-# 		self.improvement_history = []
-# 		# Track the current training phase (set by should_stop)
-# 		self.current_phase = 0
-
-# 	def compute_volatility(self, window: List[float]) -> float:
-# 		"""Computes the coefficient of variation (volatility) as a percentage."""
-# 		if not window or len(window) < 2:
-# 			return 0.0
-# 		mean_val = np.mean(window)
-# 		std_val = np.std(window)
-# 		return (std_val / abs(mean_val)) * 100 if mean_val != 0 else 0.0
-
-# 	def is_improvement(self, current_value: float) -> bool:
-# 		"""Checks if the current value is an improvement over the best score."""
-# 		# If no best_score exists yet (first epoch), it's always an improvement.
-# 		if self.best_score is None:
-# 			return True # First epoch is always an improvement
-# 		# Calculate improvement based on mode ('min' or 'max')
-# 		# - If mode='min' (sign=1): improvement = best_score - current_value. Positive if current < best.
-# 		# - If mode='max' (sign=-1): improvement = -(best_score - current_value) = current_value - best_score. Positive if current > best.
-# 		improvement = (self.best_score - current_value) * self.sign
-# 		return improvement > self.min_delta
-
-# 	# def should_stop(
-# 	# 		self,
-# 	# 		current_value: float,
-# 	# 		model: torch.nn.Module,
-# 	# 		epoch: int,
-# 	# 		current_phase: Optional[int] = None,
-# 	# 	) -> bool:
-
-# 	# 	# --- Update State ---
-# 	# 	self.value_history.append(current_value)
-# 	# 	phase_info = f", Phase {current_phase}" if current_phase is not None else ""
-# 	# 	print(f"\n--- EarlyStopping Check (Epoch {epoch+1}{phase_info}) ---")
-# 	# 	print(f"Current validation loss: {current_value}")
-
-# 	# 	# --- Initial Checks ---
-# 	# 	# 1. Minimum Epochs Check: Don't stop if fewer than min_epochs have run.
-# 	# 	if epoch < self.min_epochs:
-# 	# 		print(f"Skipping early stopping (epoch {epoch+1} <= min_epochs {self.min_epochs})")
-# 	# 		return False # Continue training
-
-# 	# 	# --- Improvement Tracking ---
-# 	# 	# 2. Check if the current value is an improvement over the best score seen so far.
-# 	# 	improved = self.is_improvement(current_value)
-# 	# 	if improved:
-# 	# 		print(
-# 	# 			f"\tImprovement! best: {self.best_score if self.best_score is not None else 'N/A'} "
-# 	# 			f"current: {current_value} (Thresh: {self.min_delta})"
-# 	# 		)
-# 	# 		self.best_score = current_value         # Update the best score
-# 	# 		self.best_epoch = epoch                 # Record the epoch number of this best score
-# 	# 		self.stopped_epoch = epoch              # Update the epoch where improvement last happened
-# 	# 		self.counter = 0                        # Reset the patience counter
-# 	# 		self.improvement_history.append(True)   # Record improvement in history
-
-# 	# 		if self.restore_best_weights:
-# 	# 			self.best_weights = {k: v.clone().cpu().detach() for k, v in model.state_dict().items()}
-# 	# 	else:
-# 	# 		self.counter += 1                       # Increment the patience counter
-# 	# 		self.improvement_history.append(False)  # Record lack of improvement
-# 	# 		print(
-# 	# 			f"\tNO improvement! Best: {self.best_score} "
-# 	# 			f"Patience: {self.counter}/{self.patience}"
-# 	# 		)
-
-# 	# 	# --- Window-Based Metric Calculation ---
-# 	# 	# 3. Check if enough history exists for window-based calculations.
-# 	# 	if len(self.value_history) < self.window_size:
-# 	# 		print(f"\tNot enough history ({len(self.value_history)} < {self.window_size}) for window-based checks.")
-# 	# 		# Even without window metrics, check if patience is exceeded *and* min phases are done.
-# 	# 		patience_exceeded = self.counter >= self.patience
-# 	# 		phase_constraint_met = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
-# 	# 		if patience_exceeded:
-# 	# 			if phase_constraint_met:
-# 	# 				print(f"EARLY STOPPING TRIGGERED (Phase {current_phase} >= {self.min_phases_before_stopping}): Patience ({self.counter}/{self.patience}) exceeded.")
-# 	# 				return True
-# 	# 			else:
-# 	# 				print(f"\tPatience ({self.counter}/{self.patience}) exceeded, but delaying stop (Phase {current_phase} < {self.min_phases_before_stopping})")
-# 	# 				return False
-# 	# 		if self.counter >= self.patience and current_phase >= self.min_phases_before_stopping:
-# 	# 			print(
-# 	# 				f"EARLY STOPPING TRIGGERED (Phase {current_phase} >= {self.min_phases_before_stopping}): "
-# 	# 				f"Patience ({self.counter}/{self.patience}) exceeded."
-# 	# 			)
-# 	# 			return True
-# 	# 		return False # Not enough history for other checks, and patience/phase condition not met
-
-# 	# 	# If enough history exists, proceed with window calculations:
-# 	# 	last_window = self.value_history[-self.window_size:]
-# 	# 	print(f"\tWindow ({self.window_size} epochs): {last_window}")
-
-# 	# 	# Calculate metrics over the window:
-		
-# 	# 	# a) Slope Check
-# 	# 	slope = compute_slope(last_window) # Use global function
-# 	# 	print(f"\tSlope over {self.window_size} windows: {slope} (Threshold > {self.slope_threshold}) [+: Worsening | -: Improving]")
-		
-# 	# 	# b) Volatility Check
-# 	# 	volatility = self.compute_volatility(last_window)
-# 	# 	print(f"\tVolatility over {self.window_size} windows: {volatility:.2f}% (Threshold >= {self.volatility_threshold}%)")
-		
-# 	# 	# c) Average Pairwise Improvement: Calculate the average change between adjacent epochs.
-# 	# 	# (last_window[i] - last_window[i+1]) * self.sign
-# 	# 	# ensures positive values mean improvement regardless of 'min' or 'max' mode.
-# 	# 	pairwise_diffs = [(last_window[i] - last_window[i+1]) * self.sign for i in range(len(last_window)-1)]
-# 	# 	pairwise_imp_avg = np.mean(pairwise_diffs) if pairwise_diffs else 0.0
-# 	# 	print(f"\tAvg Pairwise Improvement over {self.window_size} windows: {pairwise_imp_avg} (Threshold < {self.pairwise_imp_threshold})")
-		
-# 	# 	# d) Closeness to Best: Check if the current value is already very close to the best score.
-# 	# 	close_to_best = abs(current_value - self.best_score) < self.min_delta if self.best_score is not None else False
-# 	# 	print(f"\tClose to best score ({self.best_score}): {close_to_best}")
-		
-# 	# 	# e) Cumulative Improvement: Check Check total improvement from the start to the end of the window.
-# 	# 	window_start_value = self.value_history[-self.window_size]
-# 	# 	window_end_value = self.value_history[-1]
-		
-# 	# 	# Calculate improvement based on mode, then take absolute value for threshold check
-# 	# 	cumulative_improvement_signed = (window_start_value - window_end_value) * self.sign
-# 	# 	cumulative_improvement_abs = abs(cumulative_improvement_signed)
-# 	# 	print(
-# 	# 		f"\tCumulative Improvement over {self.window_size} windows: "
-# 	# 		f"{cumulative_improvement_signed} (Threshold for lack of improvement: < {self.cumulative_delta})"
-# 	# 	)
-		
-# 	# 	# ----- Combine Stopping Criteria -----
-# 	# 	# 4. Check if any stopping conditions are met.
-# 	# 	stop_reason = []
-# 	# 	# Reason 1: Patience exceeded
-# 	# 	if self.counter >= self.patience:
-# 	# 		stop_reason.append(f"Patience ({self.counter}/{self.patience})")
-# 	# 	# Reason 2: High Volatility indicates instability
-# 	# 	if volatility >= self.volatility_threshold:
-# 	# 		stop_reason.append(f"High volatility ({volatility:.2f}%)")
-# 	# 	# Reason 3: Worsening Trend (Slope)
-# 	# 	# Check if the slope is moving in the 'wrong' direction beyond the threshold.
-# 	# 	# The condition `(slope * self.sign) < (-self.slope_threshold * self.sign)` handles both 'min' and 'max' modes.
-# 	# 	# E.g., for 'min' mode (sign=1) & slope_threshold=0, this is `slope < 0`, which seems wrong.
-# 	# 	# Let's rethink: We want to stop if slope indicates worsening.
-# 	# 	# For 'min' mode (loss), worsening means slope > slope_threshold (e.g., > 0).
-# 	# 	# For 'max' mode (accuracy), worsening means slope < slope_threshold (e.g., < 0).
-# 	# 	# Let's simplify the condition:
-# 	# 	is_worsening = False
-# 	# 	if self.mode == 'min' and slope > self.slope_threshold: is_worsening = True
-# 	# 	elif self.mode == 'max' and slope < self.slope_threshold: is_worsening = True
-# 	# 	if is_worsening:
-# 	# 		stop_reason.append(f"Worsening slope ({slope:.5f})")
-# 	# 	# Reason 4: Stagnation (Low Pairwise Improvement AND Not Close to Best)
-# 	# 	# Stop if average improvement per step is low, unless we are already very near the best score found.
-# 	# 	if pairwise_imp_avg < self.pairwise_imp_threshold and not close_to_best:
-# 	# 		stop_reason.append(f"Low pairwise improvement ({pairwise_imp_avg:.5f}) & not close to best")
-# 	# 	# Reason 5: Lack of significant cumulative improvement over the window
-# 	# 	# Stop if the total improvement over the whole window is below the threshold.
-# 	# 	if cumulative_improvement_abs < self.cumulative_delta:
-# 	# 		stop_reason.append(
-# 	# 			f"Low cumulative improvement: {cumulative_improvement_abs} "
-# 	# 			f"(MUST BE less than cumulative_delta threshold ({self.cumulative_delta}))"
-# 	# 		)
-
-# 	# 	# --- Final Decision ---
-# 	# 	should_trigger_stop = bool(stop_reason)
-# 	# 	should_really_stop = False
-
-# 	# 	if should_trigger_stop:
-# 	# 		reason_str = ', '.join(stop_reason)
-# 	# 		# Apply phase check ONLY if current_phase is provided
-# 	# 		phase_constraint_met = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
-# 	# 		if phase_constraint_met:
-# 	# 			print(f"<!> EARLY STOPPING TRIGGERED:\n\t{reason_str}")
-# 	# 			should_really_stop = True
-# 	# 		else: # Phase constraint is active and not met
-# 	# 			print(
-# 	# 				f"\tEarly stopping condition:\n"
-# 	# 				f"\t\t({reason_str}) "
-# 	# 				f"but delaying stopping until minimum phases are reached (Phase {current_phase} < {self.min_phases_before_stopping})"
-# 	# 			)
-# 	# 	else:
-# 	# 		print("\tNo stopping conditions met.")
-
-# 	# 	# --- Restore Best Weights (if stopping) ---
-# 	# 	# 6. load the best saved weights back into the model.
-# 	# 	if should_really_stop and self.restore_best_weights:
-# 	# 		if self.best_weights is not None:
-# 	# 			try:
-# 	# 				# Get device from model's parameters instead of assuming model.device exists
-# 	# 				target_device = next(model.parameters()).device
-# 	# 				print(f"Restoring model weights from best epoch {self.best_epoch + 1} (score: {self.best_score})")
-# 	# 				# Load state dict, ensuring tensors are moved to the correct device
-# 	# 				model.load_state_dict({k: v.to(target_device) for k, v in self.best_weights.items()})
-# 	# 			except Exception as e:
-# 	# 				print(f"Error restoring model weights: {e}! Skipping weight restoration.")
-# 	# 		else:
-# 	# 			print("Warning: restore_best_weights is True, but no best weights were saved.")
-# 	# 	return should_really_stop
-
-# 	def should_stop(
-# 			self,
-# 			current_value: float,
-# 			model: torch.nn.Module,
-# 			optimizer: torch.optim.Optimizer,
-# 			scheduler,
-# 			epoch: int,
-# 			checkpoint_path: str,
-# 			current_phase: Optional[int] = None,
-# 		) -> bool:
-
-# 		self.model_improved_this_epoch = False # Reset flag at the start of each check
-# 		self.value_history.append(current_value)
-
-# 		phase_info = f", Phase {current_phase}" if current_phase is not None else ""
-# 		print(f"\n--- EarlyStopping Check (Epoch {epoch+1}{phase_info}) ---")
-# 		print(f"Current validation loss: {current_value}")
-
-# 		if epoch < self.min_epochs:
-# 			print(f"Skipping early stopping (epoch {epoch+1} <= min_epochs {self.min_epochs})")
-# 			return False
-# 		# Check for improvement
-# 		is_first_epoch = self.best_score is None
-# 		improvement = 0.0 if is_first_epoch else (self.best_score - current_value) * self.sign
-# 		improved = is_first_epoch or improvement > self.min_delta
-# 		if improved:
-# 			print(
-# 				f"\t>>>> New Best Model Found! Loss improved from "
-# 				f"{self.best_score if self.best_score is not None else 'N/A'} to {current_value} "
-# 				f"(improvement: {improvement} > min_delta: {self.min_delta})"
-# 			)
-# 			self.best_score = current_value
-# 			self.best_epoch = epoch
-# 			self.counter = 0
-# 			self.improvement_history.append(True)
-# 			self.model_improved_this_epoch = True
-# 			if self.restore_best_weights:
-# 				self.best_weights = {k: v.clone().cpu().detach() for k, v in model.state_dict().items()}
-# 			print(f"Saving new best model checkpoint (from epoch {self.best_epoch + 1}) to {checkpoint_path}")
-# 			checkpoint = {
-# 				"epoch": self.best_epoch,
-# 				"model_state_dict": self.best_weights if self.best_weights is not None else model.state_dict(),
-# 				"optimizer_state_dict": optimizer.state_dict(),
-# 				"scheduler_state_dict": scheduler.state_dict(),
-# 				"best_val_loss": self.best_score,
-# 			}
-# 			if current_phase is not None:
-# 				checkpoint["phase"] = current_phase
-# 			try:
-# 				torch.save(checkpoint, checkpoint_path)
-# 			except Exception as e:
-# 				print(f"Warning: Failed to save checkpoint to {checkpoint_path}: {e}")
-# 		else:
-# 			self.counter += 1
-# 			self.improvement_history.append(False)
-# 			print(
-# 				f"\tNO improvement! Best: {self.best_score} "
-# 				f"Patience: {self.counter}/{self.patience}"
-# 			)
-
-# 		# The rest of the logic for deciding when to STOP remains the same
-# 		if len(self.value_history) < self.window_size:
-# 			print(f"\tNot enough history ({len(self.value_history)} < {self.window_size}) for window-based checks.")
-# 			if self.counter >= self.patience:
-# 				print(f"EARLY STOPPING TRIGGERED: Patience ({self.counter}/{self.patience}) exceeded.")
-# 				return True
-# 			return False
-
-# 		# Window-based calculations...
-# 		last_window = self.value_history[-self.window_size:]
-# 		slope = compute_slope(last_window)
-# 		volatility = self.compute_volatility(last_window)
-# 		pairwise_diffs = [(last_window[i] - last_window[i+1]) * self.sign for i in range(len(last_window)-1)]
-# 		pairwise_imp_avg = np.mean(pairwise_diffs) if pairwise_diffs else 0.0
-
-# 		stop_reason = []
-# 		if self.counter >= self.patience:
-# 			stop_reason.append(f"Patience ({self.counter}/{self.patience})")
-# 		if volatility >= self.volatility_threshold:
-# 			stop_reason.append(f"High volatility ({volatility:.2f}%)")
-# 		if self.mode == 'min' and slope > self.slope_threshold:
-# 			stop_reason.append(f"Worsening slope ({slope:.5f})")
-# 		if pairwise_imp_avg < self.pairwise_imp_threshold:
-# 			stop_reason.append(f"Low pairwise improvement ({pairwise_imp_avg:.5f})")
-		
-# 		should_really_stop = bool(stop_reason)
-# 		if should_really_stop:
-# 			print(f"<!> EARLY STOPPING TRIGGERED:\n\t{', '.join(stop_reason)}")
-# 			if self.restore_best_weights and self.best_weights is not None:
-# 				target_device = next(model.parameters()).device
-# 				print(f"Restoring model weights from best epoch {self.best_epoch + 1} (score: {self.best_score})")
-# 				model.load_state_dict({k: v.to(target_device) for k, v in self.best_weights.items()})
-		
-# 		return should_really_stop
-
-# 	def get_status(self) -> Dict[str, Any]:
-# 		"""Returns the current status of the early stopper."""
-# 		status = {
-# 			"best_score": self.best_score,
-# 			"best_epoch": self.best_epoch + 1 if self.best_score is not None else 0,
-# 			f"patience_counter(out of {self.patience})": self.counter,
-# 			"value_history_len": len(self.value_history)
-# 		}
-# 		if len(self.value_history) >= self.window_size:
-# 			last_window = self.value_history[-self.window_size:]
-# 			status["volatility_window"] = self.compute_volatility(last_window)
-# 			status["slope_window"] = compute_slope(last_window)
-# 		else:
-# 			status["volatility_window"] = None
-# 			status["slope_window"] = None
-# 		return status
-
-# 	def get_best_score(self) -> Optional[float]:
-# 		return self.best_score
-
-# 	def get_best_epoch(self) -> int:
-# 		return self.best_epoch # 0-based
 
 def get_status(
 		model,
@@ -3972,6 +3598,488 @@ def lora_finetune_single_label(
 		fname=plot_paths["retrieval_best"],
 	)
 
+def linear_probe_finetune_single_label(
+		model: torch.nn.Module,
+		train_loader: DataLoader,
+		validation_loader: DataLoader,
+		num_epochs: int,
+		print_every: int,
+		learning_rate: float,
+		weight_decay: float,
+		device: str,
+		results_dir: str,
+		window_size: int,
+		patience: int = 10,
+		min_delta: float = 1e-4,
+		cumulative_delta: float = 5e-3,
+		minimum_epochs: int = 20,
+		topk_values: List[int] = [1, 5, 10, 15, 20],
+		volatility_threshold: float = 15.0,
+		slope_threshold: float = 1e-4,
+		pairwise_imp_threshold: float = 1e-4,
+		min_phases_before_stopping: int = 1,
+		use_lamb: bool = False,
+		probe_hidden_dim: int = None,  # Optional hidden layer for MLP probe
+		probe_dropout: float = 0.1,  # Dropout for probe
+):
+		"""
+		Linear Probing fine-tuning for CLIP model on single-label classification.
+		
+		This method:
+		1. Freezes all CLIP parameters (vision and text encoders)
+		2. Extracts features from the frozen CLIP model
+		3. Trains a linear classifier (or shallow MLP) on top of these features
+		
+		The probe can be:
+		- Simple linear layer: CLIP features -> num_classes
+		- Two-layer MLP: CLIP features -> hidden_dim -> num_classes (if probe_hidden_dim is specified)
+		
+		Args:
+				model: Pre-trained CLIP model
+				train_loader: Training DataLoader
+				validation_loader: Validation DataLoader
+				num_epochs: Number of training epochs
+				print_every: Print frequency
+				learning_rate: Learning rate for the probe
+				weight_decay: Weight decay for regularization
+				device: Training device
+				results_dir: Directory to save results
+				window_size: Window size for early stopping
+				patience: Early stopping patience
+				min_delta: Minimum improvement delta
+				cumulative_delta: Cumulative improvement delta
+				minimum_epochs: Minimum epochs before early stopping
+				topk_values: K values for top-k accuracy
+				volatility_threshold: Volatility threshold for early stopping
+				slope_threshold: Slope threshold for early stopping
+				pairwise_imp_threshold: Pairwise improvement threshold
+				min_phases_before_stopping: Not used in linear probing
+				use_lamb: Whether to use LAMB optimizer
+				probe_hidden_dim: Hidden dimension for MLP probe (None for linear probe)
+				probe_dropout: Dropout rate for probe
+		"""
+		
+		early_stopping = EarlyStopping(
+				patience=patience,
+				min_delta=min_delta,
+				cumulative_delta=cumulative_delta,
+				window_size=window_size,
+				mode='min',
+				min_epochs=minimum_epochs,
+				restore_best_weights=True,
+				volatility_threshold=volatility_threshold,
+				slope_threshold=slope_threshold,
+				pairwise_imp_threshold=pairwise_imp_threshold,
+				min_phases_before_stopping=min_phases_before_stopping,
+		)
+		
+		try:
+				dataset_name = validation_loader.dataset.dataset.__class__.__name__
+		except AttributeError:
+				dataset_name = validation_loader.dataset.dataset_name
+		
+		mode = "linear_probe"
+		model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
+		model_name = model.__class__.__name__
+		
+		print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) | batch_size: {train_loader.batch_size} | {type(device)} {device}".center(160, "-"))
+		if torch.cuda.is_available():
+				gpu_name = torch.cuda.get_device_name(device)
+				total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+				print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+		
+		# Get number of classes
+		try:
+				class_names = validation_loader.dataset.dataset.classes
+				num_classes = len(class_names)
+		except AttributeError:
+				class_names = validation_loader.dataset.unique_labels
+				num_classes = len(class_names)
+		
+		print(f"Number of classes: {num_classes}")
+		
+		# =====================================
+		# STEP 1: FREEZE ALL CLIP PARAMETERS
+		# =====================================
+		for param in model.parameters():
+				param.requires_grad = False
+		
+		# Get CLIP's output dimension
+		with torch.no_grad():
+				dummy_image = torch.randn(1, 3, 224, 224).to(device)
+				dummy_features = model.encode_image(dummy_image)
+				clip_dim = dummy_features.shape[-1]
+		
+		print(f"CLIP output dimension: {clip_dim}")
+		
+		# =====================================
+		# STEP 2: CREATE LINEAR PROBE
+		# =====================================
+		class LinearProbe(torch.nn.Module):
+				def __init__(self, input_dim, output_dim, hidden_dim=None, dropout=0.1):
+						super().__init__()
+						if hidden_dim is not None:
+								# Two-layer MLP probe
+								self.probe = torch.nn.Sequential(
+										torch.nn.Linear(input_dim, hidden_dim),
+										torch.nn.ReLU(),
+										torch.nn.Dropout(dropout),
+										torch.nn.Linear(hidden_dim, output_dim)
+								)
+								self.probe_type = "MLP"
+						else:
+								# Simple linear probe
+								self.probe = torch.nn.Linear(input_dim, output_dim)
+								self.probe_type = "Linear"
+				
+				def forward(self, x):
+						return self.probe(x)
+		
+		# Create probe model
+		probe = LinearProbe(
+				input_dim=clip_dim,
+				output_dim=num_classes,
+				hidden_dim=probe_hidden_dim,
+				dropout=probe_dropout
+		).to(device)
+		
+		probe_params = sum(p.numel() for p in probe.parameters())
+		print(f"Probe type: {probe.probe_type} | Probe parameters: {probe_params:,}")
+		
+		# Pre-encode all class texts for zero-shot initialization (optional but helpful)
+		print("Pre-encoding class texts for better initialization...")
+		all_class_texts = clip.tokenize(class_names).to(device, non_blocking=True)
+		with torch.no_grad():
+				model.eval()
+				all_class_embeds = model.encode_text(all_class_texts) # (num_classes, dim)
+				all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+		
+		# Initialize probe with zero-shot weights (optional but often helps)
+		if probe_hidden_dim is None:  # Only for pure linear probe (MLP probe is initialized with random weights)
+				with torch.no_grad():
+						probe.probe.weight.data = all_class_embeds.clone()
+						probe.probe.bias.data.zero_()
+				print("Initialized probe with zero-shot CLIP text embeddings")
+		else:
+				print("Probe initialized with random weights")
+				pass
+		print("Probe weight shape :", probe.probe.weight.shape)   # torch.Size([num_classes, 512])
+		print("Probe bias shape :", probe.probe.bias.shape)				# torch.Size([num_classes])
+		# =====================================
+		# STEP 3: SETUP TRAINING
+		# =====================================
+		
+		# Only optimize probe parameters
+		if use_lamb:
+				optimizer = LAMB(
+						params=probe.parameters(),
+						lr=learning_rate,
+						weight_decay=weight_decay,
+				)
+		else:
+				optimizer = torch.optim.AdamW(
+						params=probe.parameters(),
+						lr=learning_rate,
+						betas=(0.9, 0.999),
+						eps=1e-8,
+						weight_decay=weight_decay,
+				)
+		
+		scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+				optimizer=optimizer,
+				T_max=num_epochs,
+				eta_min=learning_rate * 0.01,
+		)
+		
+		criterion = torch.nn.CrossEntropyLoss()
+		scaler = torch.amp.GradScaler(device=device)
+		
+		# Model save path
+		mdl_fpth = os.path.join(
+				results_dir,
+				f"{mode}_"
+				f"{model_arch}_"
+				f"{optimizer.__class__.__name__}_"
+				f"{scheduler.__class__.__name__}_"
+				f"{criterion.__class__.__name__}_"
+				f"probe_{probe.probe_type}_"
+				f"hdim_{probe_hidden_dim}_"
+				f"pdrop_{probe_dropout}_"
+				f"ieps_{num_epochs}_"
+				f"lr_{learning_rate:.1e}_"
+				f"wd_{weight_decay:.1e}_"
+				f"bs_{train_loader.batch_size}_"
+				f"best.pth"
+		)
+		
+		print(f"Best model will be saved in: {mdl_fpth}")
+		
+		# =====================================
+		# STEP 4: EXTRACT AND CACHE FEATURES (OPTIONAL)
+		# =====================================
+		# For efficiency, we can pre-extract all features once
+		print("Extracting features from frozen CLIP model...")
+		
+		def extract_features(loader, model, device):
+				"""Extract features from frozen CLIP model"""
+				features = []
+				labels = []
+				
+				model.eval()
+				with torch.no_grad():
+						for images, _, label_indices in tqdm(loader, desc="Extracting features"):
+								images = images.to(device, non_blocking=True)
+								# Extract CLIP features
+								image_features = model.encode_image(images)
+								image_features = F.normalize(image_features, dim=-1)
+								
+								features.append(image_features.cpu())
+								labels.append(label_indices.cpu())
+				
+				return torch.cat(features, dim=0), torch.cat(labels, dim=0)
+		
+		# Extract features once (optional - can be skipped for online extraction)
+		train_features, train_labels = extract_features(train_loader, model, device)
+		val_features, val_labels = extract_features(validation_loader, model, device)
+		
+		print(f"Extracted features - Train: {train_features.shape}, Val: {val_features.shape}")
+		
+		# Create feature datasets
+		from torch.utils.data import TensorDataset
+		train_feature_dataset = TensorDataset(train_features, train_labels)
+		val_feature_dataset = TensorDataset(val_features, val_labels)
+		
+		# Create new dataloaders for features
+		train_feature_loader = DataLoader(
+				train_feature_dataset,
+				batch_size=train_loader.batch_size,
+				shuffle=True,
+				num_workers=0,  # Features are already in memory
+				pin_memory=False
+		)
+		
+		val_feature_loader = DataLoader(
+				val_feature_dataset,
+				batch_size=validation_loader.batch_size,
+				shuffle=False,
+				num_workers=0,
+				pin_memory=False
+		)
+		
+		# =====================================
+		# STEP 5: TRAINING LOOP
+		# =====================================
+		training_losses = []
+		img2txt_metrics_all_epochs = []
+		txt2img_metrics_all_epochs = []
+		in_batch_loss_acc_metrics_all_epochs = []
+		full_val_loss_acc_metrics_all_epochs = []
+		train_start_time = time.time()
+		
+		for epoch in range(num_epochs):
+				train_and_val_st_time = time.time()
+				torch.cuda.empty_cache()
+				
+				# Training
+				probe.train()
+				print(f"Epoch [{epoch + 1}/{num_epochs}]")
+				epoch_loss = 0.0
+				correct = 0
+				total = 0
+				
+				for bidx, (features, labels) in enumerate(train_feature_loader):
+						features = features.to(device, non_blocking=True)
+						labels = labels.to(device, non_blocking=True)
+						
+						optimizer.zero_grad()
+						
+						with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+								# Forward pass through probe only
+								logits = probe(features)
+								loss = criterion(logits, labels)
+						
+						scaler.scale(loss).backward()
+						torch.nn.utils.clip_grad_norm_(probe.parameters(), max_norm=1.0)
+						scaler.step(optimizer)
+						scaler.update()
+						
+						# Track accuracy
+						_, predicted = torch.max(logits.data, 1)
+						total += labels.size(0)
+						correct += (predicted == labels).sum().item()
+						
+						if bidx % print_every == 0 or bidx + 1 == len(train_feature_loader):
+								print(f"\t\tBatch [{bidx + 1}/{len(train_feature_loader)}] Loss: {loss.item():.6f}")
+						
+						epoch_loss += loss.item()
+				
+				avg_training_loss = epoch_loss / len(train_feature_loader)
+				train_accuracy = 100 * correct / total
+				training_losses.append(avg_training_loss)
+				
+				print(f"Training Loss: {avg_training_loss:.6f}, Training Accuracy: {train_accuracy:.2f}%")
+				
+				# Validation
+				probe.eval()
+				val_loss = 0.0
+				correct = 0
+				total = 0
+				
+				with torch.no_grad():
+						for features, labels in val_feature_loader:
+								features = features.to(device, non_blocking=True)
+								labels = labels.to(device, non_blocking=True)
+								
+								logits = probe(features)
+								loss = criterion(logits, labels)
+								
+								val_loss += loss.item()
+								
+								_, predicted = torch.max(logits.data, 1)
+								total += labels.size(0)
+								correct += (predicted == labels).sum().item()
+				
+				avg_val_loss = val_loss / len(val_feature_loader)
+				val_accuracy = 100 * correct / total
+				
+				print(f"Validation Loss: {avg_val_loss:.6f}, Validation Accuracy: {val_accuracy:.2f}%")
+				
+				# For compatibility with existing code, create metrics dict
+				in_batch_metrics = {
+						"val_loss": avg_val_loss,
+						"accuracy": val_accuracy / 100,  # Convert to fraction
+				}
+				in_batch_loss_acc_metrics_all_epochs.append(in_batch_metrics)
+				
+				# Update scheduler
+				scheduler.step()
+				
+				# Early stopping
+				if early_stopping.should_stop(
+						current_value=avg_val_loss,
+						model=probe,  # Save probe weights, not CLIP
+						epoch=epoch,
+						optimizer=optimizer,
+						scheduler=scheduler,
+						checkpoint_path=mdl_fpth,
+				):
+						print(f"\nEarly stopping at epoch {epoch + 1}")
+						break
+				
+				print(f"Epoch {epoch+1} Duration: {time.time() - train_and_val_st_time:.2f} sec".center(170, "-"))
+		
+		print(f"[{mode}] Total Training Time: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+		
+		# =====================================
+		# STEP 6: FINAL EVALUATION
+		# =====================================
+		# Load best probe weights
+		if os.path.exists(mdl_fpth):
+				print(f"Loading best probe weights from {mdl_fpth}")
+				checkpoint = torch.load(mdl_fpth, map_location=device)
+				if 'model_state_dict' in checkpoint:
+						probe.load_state_dict(checkpoint['model_state_dict'])
+				else:
+						probe.load_state_dict(checkpoint)
+		
+		# Create combined model for evaluation
+		class CLIPWithProbe(torch.nn.Module):
+				def __init__(self, clip_model, probe):
+						super().__init__()
+						self.clip = clip_model
+						self.probe = probe
+						# Copy necessary attributes from CLIP
+						self.visual = clip_model.visual
+						self.encode_image = clip_model.encode_image
+						self.encode_text = clip_model.encode_text
+						self.name = getattr(clip_model, 'name', 'unknown')
+				
+				def forward(self, images, texts):
+						# For compatibility with evaluation code
+						image_features = self.clip.encode_image(images)
+						image_features = F.normalize(image_features, dim=-1)
+						
+						# Get logits from probe
+						logits = self.probe(image_features)
+						
+						# For CLIP-style evaluation, we need to return image-text similarity
+						# We'll use the probe's logits as a proxy
+						batch_size = images.shape[0]
+						num_classes = logits.shape[1]
+						
+						# Create pseudo-similarity matrix
+						# This is a hack for compatibility - ideally evaluation should be adapted
+						if batch_size == num_classes:
+								return logits, logits.T
+						else:
+								# Pad or truncate to make square matrix
+								min_dim = min(batch_size, num_classes)
+								logits_per_image = logits[:min_dim, :min_dim]
+								logits_per_text = logits_per_image.T
+								return logits_per_image, logits_per_text
+		
+		# Combine CLIP and probe for evaluation
+		combined_model = CLIPWithProbe(model, probe)
+		
+		# Run evaluation with the combined model
+		evaluation_results = evaluate_best_model(
+				model=combined_model,
+				validation_loader=validation_loader,
+				criterion=criterion,
+				early_stopping=early_stopping,
+				checkpoint_path=mdl_fpth,
+				finetune_strategy=mode,
+				device=device,
+				cache_dir=results_dir,
+				topk_values=topk_values,
+				verbose=True,
+				max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+		)
+		
+		# Generate plots
+		actual_trained_epochs = len(training_losses)
+		
+		file_base_name = (
+				f"{dataset_name}_"
+				f"{mode}_"
+				f"{optimizer.__class__.__name__}_"
+				f"{scheduler.__class__.__name__}_"
+				f"{criterion.__class__.__name__}_"
+				f"{model_name}_"
+				f"{model_arch}_"
+				f"probe_{probe.probe_type}_"
+				f"ep_{actual_trained_epochs}_"
+				f"lr_{learning_rate:.1e}_"
+				f"wd_{weight_decay:.1e}_"
+				f"bs_{train_loader.batch_size}"
+		)
+		
+		# Update model path
+		mdl_fpth = get_updated_model_name(
+				original_path=mdl_fpth,
+				actual_epochs=actual_trained_epochs
+		)
+		
+		print(f"Best probe model saved as: {mdl_fpth}")
+		
+		# Print final summary
+		best_val_loss = early_stopping.get_best_score() or 0.0
+		print("\n" + "="*80)
+		print("LINEAR PROBE TRAINING SUMMARY")
+		print("="*80)
+		print(f"Method: {mode}")
+		print(f"Probe Type: {probe.probe_type}")
+		print(f"Probe Parameters: {probe_params:,}")
+		print(f"CLIP Parameters (frozen): {sum(p.numel() for p in model.parameters()):,}")
+		print(f"Total Epochs: {actual_trained_epochs}")
+		print(f"Best Validation Loss: {best_val_loss}")
+		print(f"Best Epoch: {early_stopping.get_best_epoch() + 1}")
+		print("="*80)
+
+
+
+		return in_batch_loss_acc_metrics_all_epochs
+
 def full_finetune_multi_label(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
@@ -5534,6 +5642,9 @@ def lora_finetune_multi_label(
 	)
 
 	return final_metrics_in_batch, final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
+
+def linear_probe_finetune_multi_label():
+	pass
 
 def compute_multilabel_contrastive_loss(
 		model: torch.nn.Module,

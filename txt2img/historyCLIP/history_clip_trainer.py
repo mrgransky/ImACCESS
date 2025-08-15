@@ -8,9 +8,11 @@ from utils import *
 from trainer import (
 	train, pretrain, 
 	full_finetune_single_label, 
+	linear_probe_finetune_single_label,
 	lora_finetune_single_label, 
 	progressive_finetune_single_label, 
 	full_finetune_multi_label,
+	linear_probe_finetune_multi_label,
 	lora_finetune_multi_label,
 	progressive_finetune_multi_label,
 )
@@ -51,7 +53,7 @@ from historical_dataset_loader import get_single_label_dataloaders, get_multi_la
 # $ for lr in $(python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=6))))"); do nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -e 150 -lr $lr -wd 1e-1 --print_every 50 -nw 50 -dv 'cuda:3' -m finetune -fts progressive -a 'ViT-B/32' -do 0.0 > /media/volume/ImACCESS/trash/smu_ft_progressive_lr_${lr}.txt & done
 
 # using one command:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 200 -bs 64 -lr 1e-5 -wd 1e-2 --print_every 12 -nw 32 -dv "cuda:2" -m finetune -fts progressive -dt multi_label -a "ViT-B/32" -do 0.1 -mep 6 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 200 -bs 256 -lr 1e-5 -wd 1e-2 --print_every 12 -nw 32 -dv "cuda:2" -m finetune -fts progressive -dt single_label -a "ViT-B/32" -do 0.1 -mep 10 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 50 -nw 50 -dv "cuda:2" -m finetune -fts progressive -dt multi_label -a "ViT-B/32" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 32 -e 150 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 12 -dv "cuda:1" -m finetune -fts progressive -dt multi_label -a "ViT-B/32" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 32 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 -dv "cuda:0" -m finetune -fts progressive -dt multi_label -a "ViT-L/14" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
@@ -63,16 +65,15 @@ def main():
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
 	parser.add_argument('--dataset_type', '-dt', type=str, choices=['single_label', 'multi_label'], default='single_label', help='Dataset type (single_label/multi_label)')
 	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
+	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain'], required=True, help='Choose mode (train/finetune/pretrain)')
+	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'linear_probe', 'lora', 'progressive'], default=None, help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
+	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--epochs', '-e', type=int, default=3, help='Number of epochs')
-	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs [def: max cpus]')
 	parser.add_argument('--batch_size', '-bs', type=int, default=8, help='Batch size for training')
-	parser.add_argument('--cache_size', '-cs', type=int, default=None, help='Cache size for dataloader (in number of samples)')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
-	parser.add_argument('--print_every', type=int, default=500, help='Print loss')
-	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
-	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain'], required=True, help='Choose mode (train/finetune/pretrain)')
-	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'lora', 'progressive'], default=None, help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
+	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
+	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs [def: max cpus]')
 	parser.add_argument('--lora_rank', '-lor', type=int, default=None, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', '-loa', type=float, default=None, help='LoRA alpha (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_dropout', '-lod', type=float, default=None, help='LoRA dropout (used if finetune_strategy=lora)')
@@ -80,12 +81,12 @@ def main():
 	parser.add_argument('--patience', '-pat', type=int, default=7, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
-	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
-	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
+	parser.add_argument('--cache_size', '-cs', type=int, default=None, help='Cache size for dataloader (in number of samples)')
 	parser.add_argument('--log_dir', type=str, default=None, help='Directory to store log files (if not specified, logs will go to stdout)')
 	parser.add_argument('--use_lamb', '-lamb', action='store_true', help='Use LAMB optimizer instead of AdamW')
-	# parser.add_argument('--checkpoint_path', '-cp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
+	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
+	parser.add_argument('--print_every', type=int, default=500, help='Print loss')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
@@ -182,11 +183,13 @@ def main():
 		finetune_functions = {
 			'single_label': {
 				'full': full_finetune_single_label,
+				'linear_probe': linear_probe_finetune_single_label,
 				'lora': lora_finetune_single_label,
 				'progressive': progressive_finetune_single_label,
 			},
 			'multi_label': {
 				'full': full_finetune_multi_label,
+				'linear_probe': linear_probe_finetune_multi_label,
 				'lora': lora_finetune_multi_label,
 				'progressive': progressive_finetune_multi_label,
 			}
