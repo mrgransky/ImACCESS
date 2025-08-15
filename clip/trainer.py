@@ -6010,7 +6010,7 @@ def linear_probe_finetune_multi_label(
         f"lr_{learning_rate:.1e}_"
         f"wd_{weight_decay:.1e}_"
         f"temp_{temperature}_"
-        f"bs_{train_loader.batch_size}_"
+        f"bs_{train_loader.batch_size}"
     )
     
     mdl_fpth = get_updated_model_name(
