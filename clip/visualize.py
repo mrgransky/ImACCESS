@@ -1415,6 +1415,39 @@ def plot_multilabel_loss_breakdown(
 		figure_size=(12, 8),
 		DPI: int = 300,
 	):
+	# Check data consistency
+	num_epochs = len(training_losses_breakdown.get("total", []))
+	for key in ["i2t", "t2i"]:
+			if len(training_losses_breakdown.get(key, [])) != num_epochs:
+					print(f"[Warning] '{key}' loss list length {len(training_losses_breakdown.get(key, []))} "
+								f"!= total loss length {num_epochs}. Padding with NaN.")
+					training_losses_breakdown[key] = (
+							training_losses_breakdown.get(key, []) +
+							[float('nan')] * (num_epochs - len(training_losses_breakdown.get(key, [])))
+					)
+	epochs = range(1, num_epochs + 1)
+	
+	plt.figure(figsize=figure_size)
+	plt.plot(epochs, training_losses_breakdown["total"], 'b-', label='Total', linewidth=1.1)
+	plt.plot(epochs, training_losses_breakdown["i2t"], 'g--', label='Image→Text', linewidth=2.0)
+	plt.plot(epochs, training_losses_breakdown["t2i"], 'r--', label='Text→Image', linewidth=2.0)
+	
+	plt.xlabel('Epoch')
+	plt.ylabel('Loss')
+	plt.title('Multi-label Training Loss Breakdown')
+	plt.legend(title='Loss Components', fontsize=10, title_fontsize=12, loc='upper right')
+	plt.grid(True, alpha=0.3)
+	plt.tight_layout()
+	
+	plt.savefig(filepath, dpi=DPI, bbox_inches='tight')
+	plt.close()
+
+def plot_multilabel_loss_breakdown_old(
+		training_losses_breakdown: Dict[str, List[float]], 
+		filepath: str,
+		figure_size=(12, 8),
+		DPI: int = 300,
+	):
 	plt.figure(figsize=figure_size)
 	
 	epochs = range(1, len(training_losses_breakdown["total"]) + 1)
