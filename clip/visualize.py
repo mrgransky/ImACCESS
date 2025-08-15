@@ -1410,71 +1410,66 @@ def collect_progressive_training_history(
 	}
 
 def plot_multilabel_loss_breakdown(
-		training_losses_breakdown: Dict[str, List[float]], 
+		training_losses_breakdown: Dict[str, List[float]],
 		filepath: str,
 		figure_size=(12, 8),
 		DPI: int = 300,
 	):
-	# --- Debug: Print loss lengths ---
-	print("\n[DEBUG] Loss list lengths before plotting:")
+	print(f"Plotting multi-label loss breakdown to {filepath}...")
+	print(training_losses_breakdown)
+	# --- Debug: Print loss lengths for verification ---
+	print("\n[Plotting] Loss list lengths before plotting:")
 	for key, loss_list in training_losses_breakdown.items():
 		if isinstance(loss_list, list):
-			print(f"  - {key:<8}: {len(loss_list)} values")
+			print(f"  - {key:<10}: {len(loss_list)} values")
 		else:
-			print(f"  - {key:<8}: Not a list (type={type(loss_list).__name__})")
+			print(f"  - {key:<10}: Not a list (type={type(loss_list).__name__})")
 
-	# Check data consistency
-	num_epochs = len(training_losses_breakdown.get("total", []))
-	for key in ["i2t", "t2i"]:
-		if len(training_losses_breakdown.get(key, [])) != num_epochs:
-			print(
-				f"[Warning] '{key}' loss list length {len(training_losses_breakdown.get(key, []))} "
-				f"!= total loss length {num_epochs}. Padding with NaN."
-			)
-			training_losses_breakdown[key] = (
-				training_losses_breakdown.get(key, []) +
-				[float('nan')] * (num_epochs - len(training_losses_breakdown.get(key, [])))
-			)
+	# Find the number of epochs from the longest valid list in the dictionary
+	num_epochs = 0
+	if training_losses_breakdown:
+		valid_lists = [v for v in training_losses_breakdown.values() if isinstance(v, list) and v]
+		if valid_lists:
+			num_epochs = max(len(v) for v in valid_lists)
+
+	if num_epochs == 0:
+		print("[Warning] No valid loss data to plot. Skipping plot generation.")
+		return
+
 	epochs = range(1, num_epochs + 1)
-	
 	plt.figure(figsize=figure_size)
-	plt.plot(epochs, training_losses_breakdown["total"], 'b-', label='Total', linewidth=1.1)
-	plt.plot(epochs, training_losses_breakdown["i2t"], 'g--', label='Image→Text', linewidth=2.0)
-	plt.plot(epochs, training_losses_breakdown["t2i"], 'r--', label='Text→Image', linewidth=2.0)
-	
-	plt.xlabel('Epoch')
-	plt.ylabel('Loss')
-	plt.title('Multi-label Training Loss Breakdown')
-	plt.legend(title='Loss Components', fontsize=10, title_fontsize=12, loc='upper right')
-	plt.grid(True, alpha=0.3)
-	plt.tight_layout()
-	
-	plt.savefig(filepath, dpi=DPI, bbox_inches='tight')
-	plt.close()
 
-def plot_multilabel_loss_breakdown_old(
-		training_losses_breakdown: Dict[str, List[float]], 
-		filepath: str,
-		figure_size=(12, 8),
-		DPI: int = 300,
-	):
-	plt.figure(figsize=figure_size)
-	
-	epochs = range(1, len(training_losses_breakdown["total"]) + 1)
-	
-	plt.plot(epochs, training_losses_breakdown["total"], 'b-', label='Total', linewidth=1.1)
-	plt.plot(epochs, training_losses_breakdown["i2t"], 'g--', label='Image→Text', linewidth=2.0)
-	plt.plot(epochs, training_losses_breakdown["t2i"], 'r--', label='Text→Image', linewidth=2.0)
-	
+	# Define plotting styles for known loss components for consistency
+	styles = {
+		"total": {'color': 'b', 'linestyle': '-', 'linewidth': 1.5, 'label': 'Total Loss'},
+		"i2t": {'color': 'g', 'linestyle': '--', 'linewidth': 2.0, 'label': 'Image→Text Loss'},
+		"t2i": {'color': 'r', 'linestyle': '--', 'linewidth': 2.0, 'label': 'Text→Image Loss'},
+	}
+
+	# Plot each loss component present in the dictionary
+	for key, loss_list in training_losses_breakdown.items():
+		if isinstance(loss_list, list) and len(loss_list) > 0:
+			# Pad with NaN if a list is shorter than the max number of epochs
+			padded_list = loss_list + [float('nan')] * (num_epochs - len(loss_list))
+
+			# Get style from the dictionary or use a default
+			plot_kwargs = styles.get(key, {'label': key.replace('_', ' ').title()})
+			plt.plot(epochs, padded_list, **plot_kwargs)
+
 	plt.xlabel('Epoch')
 	plt.ylabel('Loss')
-	plt.title('Multi-label Training Loss Breakdown')
+	plt.title('Training Loss Breakdown')
 	plt.legend(title='Loss Components', fontsize=10, title_fontsize=12, loc='upper right')
-	plt.grid(True, alpha=0.3)
+	plt.grid(True, which='both', linestyle='--', linewidth=0.5)
 	plt.tight_layout()
-	
-	plt.savefig(filepath, dpi=DPI, bbox_inches='tight')
-	plt.close()	
+
+	try:
+		plt.savefig(filepath, dpi=DPI, bbox_inches='tight')
+		print(f"Successfully saved loss breakdown plot to {filepath}")
+	except Exception as e:
+		print(f"Error saving plot to {filepath}: {e}")
+	finally:
+		plt.close()
 
 def plot_image_to_texts_separate_horizontal_bars(
 				models: dict,
@@ -3770,8 +3765,6 @@ def plot_loss_accuracy_metrics(
         fig.tight_layout()
         fig.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches="tight")
         plt.close(fig)
-
-
 
 def plot_loss_accuracy_metrics_old(
 		dataset_name: str,
