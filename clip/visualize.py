@@ -1415,16 +1415,26 @@ def plot_multilabel_loss_breakdown(
 		figure_size=(12, 8),
 		DPI: int = 300,
 	):
+	# --- Debug: Print loss lengths ---
+	print("\n[DEBUG] Loss list lengths before plotting:")
+	for key, loss_list in training_losses_breakdown.items():
+		if isinstance(loss_list, list):
+			print(f"  - {key:<8}: {len(loss_list)} values")
+		else:
+			print(f"  - {key:<8}: Not a list (type={type(loss_list).__name__})")
+
 	# Check data consistency
 	num_epochs = len(training_losses_breakdown.get("total", []))
 	for key in ["i2t", "t2i"]:
-			if len(training_losses_breakdown.get(key, [])) != num_epochs:
-					print(f"[Warning] '{key}' loss list length {len(training_losses_breakdown.get(key, []))} "
-								f"!= total loss length {num_epochs}. Padding with NaN.")
-					training_losses_breakdown[key] = (
-							training_losses_breakdown.get(key, []) +
-							[float('nan')] * (num_epochs - len(training_losses_breakdown.get(key, [])))
-					)
+		if len(training_losses_breakdown.get(key, [])) != num_epochs:
+			print(
+				f"[Warning] '{key}' loss list length {len(training_losses_breakdown.get(key, []))} "
+				f"!= total loss length {num_epochs}. Padding with NaN."
+			)
+			training_losses_breakdown[key] = (
+				training_losses_breakdown.get(key, []) +
+				[float('nan')] * (num_epochs - len(training_losses_breakdown.get(key, [])))
+			)
 	epochs = range(1, num_epochs + 1)
 	
 	plt.figure(figsize=figure_size)
