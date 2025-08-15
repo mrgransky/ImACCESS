@@ -3529,6 +3529,251 @@ def plot_retrieval_metrics_per_epoch(
 	plt.close(fig)
 
 def plot_loss_accuracy_metrics(
+    dataset_name: str,
+    train_losses: List[float],
+    val_losses: List[float],
+    in_batch_topk_val_accuracy_i2t_list: Optional[List[Dict[int, float]]] = None,
+    in_batch_topk_val_accuracy_t2i_list: Optional[List[Dict[int, float]]] = None,
+    full_topk_val_accuracy_i2t_list: Optional[List[Dict[int, float]]] = None,
+    full_topk_val_accuracy_t2i_list: Optional[List[Dict[int, float]]] = None,
+    mean_reciprocal_rank_list: Optional[List[float]] = None,
+    cosine_similarity_list: Optional[List[float]] = None,
+    losses_file_path: str = "losses.png",
+    in_batch_topk_val_acc_i2t_fpth: str = "in_batch_val_topk_accuracy_i2t.png",
+    in_batch_topk_val_acc_t2i_fpth: str = "in_batch_val_topk_accuracy_t2i.png",
+    full_topk_val_acc_i2t_fpth: str = "full_val_topk_accuracy_i2t.png",
+    full_topk_val_acc_t2i_fpth: str = "full_val_topk_accuracy_t2i.png",
+    mean_reciprocal_rank_file_path: str = "mean_reciprocal_rank.png",
+    cosine_similarity_file_path: str = "cosine_similarity.png",
+    DPI: int = 300,
+    figure_size: Tuple[int, int] = (10, 4),
+) -> None:
+    """
+    Plot training/validation loss curves and a variety of top‑K accuracy / ranking metrics.
+
+    The function is defensive:
+        * If a metric list is empty or its first element does not contain any keys,
+          the corresponding plot is silently skipped.
+        * Legend `ncol` is forced to be at least 1, so ``len(topk_values)==0`` no longer
+          triggers a ValueError.
+    """
+    num_epochs = len(train_losses)
+    if num_epochs <= 1:
+        # Nothing worth plotting
+        return
+
+    # -----------------------------------------------------------------
+    # Common helpers
+    # -----------------------------------------------------------------
+    epochs = np.arange(1, num_epochs + 1)
+
+    # For readability we show at most 20 x‑ticks
+    num_xticks = min(20, num_epochs)
+    selective_xticks = np.linspace(1, num_epochs, num_xticks, dtype=int)
+
+    colors = {
+        "train": "#1f77b4",
+        "val": "#ff7f0e",
+        "img2txt": "#2ca02c",
+        "txt2img": "#d62728",
+    }
+
+    def setup_plot(ax, xlabel="Epoch", ylabel=None, title=None):
+        ax.set_xlabel(xlabel, fontsize=12)
+        if ylabel:
+            ax.set_ylabel(ylabel, fontsize=12)
+        if title:
+            ax.set_title(title, fontsize=10, fontweight="bold")
+        ax.set_xlim(0, num_epochs + 1)
+        ax.set_xticks(selective_xticks)
+        ax.tick_params(axis="both", labelsize=10)
+        ax.grid(True, linestyle="--", alpha=0.7)
+        return ax
+
+    # -----------------------------------------------------------------
+    # 1️⃣  Loss curve
+    # -----------------------------------------------------------------
+    fig, ax = plt.subplots(figsize=figure_size)
+    ax.plot(
+        epochs,
+        train_losses,
+        color=colors["train"],
+        label="Training",
+        lw=1.5,
+        marker="o",
+        markersize=2,
+    )
+    ax.plot(
+        epochs,
+        val_losses,
+        color=colors["val"],
+        label="Validation",
+        lw=1.5,
+        marker="o",
+        markersize=2,
+    )
+    setup_plot(ax, ylabel="Loss", title=f"{dataset_name} Learning Curve (Loss)")
+    ax.legend(
+        fontsize=10,
+        loc="best",
+        frameon=True,
+        fancybox=True,
+        shadow=True,
+        facecolor="white",
+        edgecolor="black",
+    )
+    fig.tight_layout()
+    fig.savefig(losses_file_path, dpi=DPI, bbox_inches="tight")
+    plt.close(fig)
+
+    # -----------------------------------------------------------------
+    # Helper to plot any Top‑K metric (in‑batch or full)
+    # -----------------------------------------------------------------
+    def _plot_topk(
+        metric_list: List[Dict[int, float]],
+        fpath: str,
+        direction: str,
+        match_type: str,
+    ):
+        """
+        Parameters
+        ----------
+        metric_list : list of dict
+            One dict per epoch, mapping K → accuracy.
+        fpath : str
+            Where to save the figure.
+        direction : {"i2t", "t2i"}
+            Image‑to‑Text or Text‑to‑Image.
+        match_type : {"in‑batch", "full"}
+            Kind of retrieval evaluation.
+        """
+        if not metric_list:
+            return
+
+        # Defensive: make sure the first element actually has keys
+        first_elem = metric_list[0]
+        if not isinstance(first_elem, dict) or len(first_elem) == 0:
+            return
+
+        topk_values = sorted(first_elem.keys())
+        fig, ax = plt.subplots(figsize=figure_size)
+
+        for i, k in enumerate(topk_values):
+            acc_vals = [epoch_dict.get(k, np.nan) for epoch_dict in metric_list]
+            ax.plot(
+                epochs,
+                acc_vals,
+                label=f"Top-{k}",
+                lw=1.5,
+                marker="o",
+                markersize=2,
+                color=plt.cm.tab10(i % 10),
+            )
+
+        title = f"{dataset_name} {direction.upper()} Top‑K [{match_type}] Validation Accuracy"
+        setup_plot(ax, ylabel="Accuracy", title=title)
+        ax.set_ylim(-0.05, 1.05)
+
+        # ``ncol`` must be >= 1 – protect against empty ``topk_values``
+        ncol = max(1, len(topk_values))
+        ax.legend(
+            fontsize=9,
+            loc="best",
+            ncol=ncol,
+            frameon=True,
+            fancybox=True,
+            shadow=True,
+            facecolor="white",
+            edgecolor="black",
+        )
+        fig.tight_layout()
+        fig.savefig(fpath, dpi=DPI, bbox_inches="tight")
+        plt.close(fig)
+
+    # -----------------------------------------------------------------
+    # 2️⃣  Image‑to‑Text top‑K plots
+    # -----------------------------------------------------------------
+    _plot_topk(
+        in_batch_topk_val_accuracy_i2t_list,
+        in_batch_topk_val_acc_i2t_fpth,
+        direction="i2t",
+        match_type="in‑batch",
+    )
+    _plot_topk(
+        full_topk_val_accuracy_i2t_list,
+        full_topk_val_acc_i2t_fpth,
+        direction="i2t",
+        match_type="full",
+    )
+
+    # -----------------------------------------------------------------
+    # 3️⃣  Text‑to‑Image top‑K plots
+    # -----------------------------------------------------------------
+    _plot_topk(
+        in_batch_topk_val_accuracy_t2i_list,
+        in_batch_topk_val_acc_t2i_fpth,
+        direction="t2i",
+        match_type="in‑batch",
+    )
+    _plot_topk(
+        full_topk_val_accuracy_t2i_list,
+        full_topk_val_acc_t2i_fpth,
+        direction="t2i",
+        match_type="full",
+    )
+
+    # -----------------------------------------------------------------
+    # 4️⃣  Mean Reciprocal Rank (optional)
+    # -----------------------------------------------------------------
+    if mean_reciprocal_rank_list:
+        fig, ax = plt.subplots(figsize=figure_size)
+        ax.plot(
+            epochs,
+            mean_reciprocal_rank_list,
+            color="#9467bd",
+            label="MRR",
+            lw=1.5,
+            marker="o",
+            markersize=2,
+        )
+        setup_plot(
+            ax,
+            ylabel="Mean Reciprocal Rank",
+            title=f"{dataset_name} Mean Reciprocal Rank (Image‑to‑Text)",
+        )
+        ax.set_ylim(-0.05, 1.05)
+        ax.legend(fontsize=10, loc="best", frameon=True)
+        fig.tight_layout()
+        fig.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches="tight")
+        plt.close(fig)
+
+    # -----------------------------------------------------------------
+    # 5️⃣  Cosine Similarity (optional)
+    # -----------------------------------------------------------------
+    if cosine_similarity_list:
+        fig, ax = plt.subplots(figsize=figure_size)
+        ax.plot(
+            epochs,
+            cosine_similarity_list,
+            color="#17becf",
+            label="Cosine Similarity",
+            lw=1.5,
+            marker="o",
+            markersize=2,
+        )
+        setup_plot(
+            ax,
+            ylabel="Cosine Similarity",
+            title=f"{dataset_name} Cosine Similarity Between Embeddings",
+        )
+        ax.legend(fontsize=10, loc="best")
+        fig.tight_layout()
+        fig.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches="tight")
+        plt.close(fig)
+
+
+
+def plot_loss_accuracy_metrics_old(
 		dataset_name: str,
 		train_losses: List[float],
 		val_losses: List[float],

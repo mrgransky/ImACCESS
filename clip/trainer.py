@@ -3678,7 +3678,8 @@ def linear_probe_finetune_single_label(
 		except AttributeError:
 				dataset_name = validation_loader.dataset.dataset_name
 		
-		mode = "linear_probe"
+		mode = inspect.stack()[0].function
+		mode = re.sub(r'_finetune_single_label', '', mode)
 		model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 		model_name = model.__class__.__name__
 		
@@ -4035,8 +4036,24 @@ def linear_probe_finetune_single_label(
 				verbose=True,
 				max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 		)
-		
+
+		final_metrics_in_batch = evaluation_results["in_batch_metrics"]
+		final_metrics_full = evaluation_results["full_metrics"]
+		final_img2txt_metrics = evaluation_results["img2txt_metrics"]
+		final_txt2img_metrics = evaluation_results["txt2img_metrics"]
+
+		print(f"Final evaluation used model weights from: {evaluation_results['model_loaded_from']}")
+		print("--- Final Metrics [In-batch Validation] ---")
+		print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
+		print("--- Final Metrics [Full Validation Set] ---")
+		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
+		print("--- Image-to-Text Retrieval ---")
+		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
+		print("--- Text-to-Image Retrieval ---")
+		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+
 		# Generate plots
+		print("\nGenerating result plots...")
 		actual_trained_epochs = len(training_losses)
 		
 		file_base_name = (
@@ -4056,11 +4073,11 @@ def linear_probe_finetune_single_label(
 		
 		# Update model path
 		mdl_fpth = get_updated_model_name(
-				original_path=mdl_fpth,
-				actual_epochs=actual_trained_epochs
+			original_path=mdl_fpth,
+			actual_epochs=actual_trained_epochs
 		)
 		
-		print(f"Best probe model saved as: {mdl_fpth}")
+		print(f"Best model will be renamed to: {mdl_fpth}")
 		
 		# Print final summary
 		best_val_loss = early_stopping.get_best_score() or 0.0
@@ -4075,6 +4092,45 @@ def linear_probe_finetune_single_label(
 		print(f"Best Validation Loss: {best_val_loss}")
 		print(f"Best Epoch: {early_stopping.get_best_epoch() + 1}")
 		print("="*80)
+
+		plot_paths = {
+			"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+			"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+			"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+			"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+			"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+			"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+			"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		}
+
+		plot_loss_accuracy_metrics(
+			dataset_name=dataset_name,
+			train_losses=training_losses,
+			val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+			in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+			in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+			full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+			full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+			losses_file_path=plot_paths["losses"],
+			in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
+			in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
+			full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
+			full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
+		)
+		
+		plot_retrieval_metrics_per_epoch(
+			dataset_name=dataset_name,
+			image_to_text_metrics_list=img2txt_metrics_all_epochs,
+			text_to_image_metrics_list=txt2img_metrics_all_epochs,
+			fname=plot_paths["retrieval_per_epoch"],
+		)
+		
+		plot_retrieval_metrics_best_model(
+			dataset_name=dataset_name,
+			image_to_text_metrics=final_img2txt_metrics,
+			text_to_image_metrics=final_txt2img_metrics,
+			fname=plot_paths["retrieval_best"],
+		)
 
 
 
@@ -5701,7 +5757,8 @@ def linear_probe_finetune_multi_label(
 		except AttributeError:
 				dataset_name = validation_loader.dataset.dataset_name
 
-		mode = "linear_probe"
+		mode = inspect.stack()[0].function
+		mode = re.sub(r'_finetune_multi_label', '', mode)
 		model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 		model_name = model.__class__.__name__
 
