@@ -3022,7 +3022,7 @@ def progressive_finetune_single_label(
 		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
 
 		print(
-			f'@ Epoch {epoch + 1}:\n'
+			f'Epoch {epoch + 1}:\n'
 			f'\t[LOSS] {mode}'
 			f'(Training): {avg_training_loss} '
 			f'Validation(in-batch): {current_val_loss}\n'
@@ -3034,9 +3034,8 @@ def progressive_finetune_single_label(
 			f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
 			f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
-		print(f"Retrieval Metrics:\n")
-		print(f"Image-to-Text Retrieval: {retrieval_metrics_per_epoch['img2txt']}")
-		print(f"Text-to-Image Retrieval: {retrieval_metrics_per_epoch['txt2img']}")
+		print(f"Image-to-Text Retrieval:\n\t{retrieval_metrics_per_epoch['img2txt']}")
+		print(f"Text-to-Image Retrieval:\n\t{retrieval_metrics_per_epoch['txt2img']}")
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			print(f"#"*100)
@@ -3487,9 +3486,8 @@ def full_finetune_single_label(
 			f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
 			f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
-		print(f"Retrieval Metrics:\n")
-		print(f"Image-to-Text Retrieval: {retrieval_metrics_per_epoch['img2txt']}")
-		print(f"Text-to-Image Retrieval: {retrieval_metrics_per_epoch['txt2img']}")
+		print(f"Image-to-Text Retrieval:\n\t{retrieval_metrics_per_epoch['img2txt']}")
+		print(f"Text-to-Image Retrieval:\n\t{retrieval_metrics_per_epoch['txt2img']}")
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			print(f"#"*100)
@@ -3828,7 +3826,7 @@ def lora_finetune_single_label(
 		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
 
 		print(
-			f'@ Epoch {epoch + 1}:\n'
+			f'Epoch {epoch + 1}:\n'
 			f'\t[LOSS] {mode}'
 			f'(Training): {avg_training_loss} '
 			f'Validation(in-batch): {current_val_loss}\n'
@@ -3840,9 +3838,8 @@ def lora_finetune_single_label(
 			f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
 			f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
 		)
-		print(f"Retrieval Metrics:\n")
-		print(f"Image-to-Text Retrieval: {retrieval_metrics_per_epoch['img2txt']}")
-		print(f"Text-to-Image Retrieval: {retrieval_metrics_per_epoch['txt2img']}")
+		print(f"Image-to-Text Retrieval:\n\t{retrieval_metrics_per_epoch['img2txt']}")
+		print(f"Text-to-Image Retrieval:\n\t{retrieval_metrics_per_epoch['txt2img']}")
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			print(f"#"*100)
