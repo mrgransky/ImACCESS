@@ -4132,8 +4132,6 @@ def linear_probe_finetune_single_label(
 			fname=plot_paths["retrieval_best"],
 		)
 
-
-
 		return in_batch_loss_acc_metrics_all_epochs
 
 def full_finetune_multi_label(
@@ -4520,13 +4518,17 @@ def full_finetune_multi_label(
 		verbose=True,
 		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 	)
+
 	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
 	final_metrics_full = evaluation_results["full_metrics"]
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
 	model_source = evaluation_results["model_loaded_from"]
+
 	print(f"Final evaluation used model weights from: {model_source}")
+
 	print("\nGenerating result plots...")
+
 	actual_trained_epochs = len(training_losses)
 
 	file_base_name = (
@@ -4550,6 +4552,7 @@ def full_finetune_multi_label(
 		original_path=mdl_fpth, 
 		actual_epochs=actual_trained_epochs
 	)
+
 	print(f"Best model will be renamed to: {mdl_fpth}")
 
 	# ================================
@@ -4596,6 +4599,7 @@ def full_finetune_multi_label(
 			text_to_image_metrics=final_txt2img_metrics,
 			fname=plot_paths["retrieval_best"],
 	)
+
 	return final_metrics_in_batch, final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
 def progressive_finetune_multi_label(
@@ -6151,14 +6155,16 @@ def linear_probe_finetune_multi_label(
 		final_f1 = f1_score(final_labels.numpy(), final_preds.numpy(), average='weighted', zero_division=0)
 		final_exact = (final_preds == final_labels).all(dim=1).float().mean().item()
 		final_partial = (final_preds == final_labels).float().mean().item()
-		
+		best_val_loss = early_stopping.get_best_score() or 0.0
+
 		print("\n" + "="*80)
 		print("LINEAR PROBE MULTI-LABEL TRAINING SUMMARY")
 		print("="*80)
 		print(f"Probe Type: {probe_type}")
 		print(f"Probe Parameters: {probe_params:,}")
 		print(f"Total Epochs: {len(training_losses)}")
-		print(f"Best Val Loss: {early_stopping.get_best_score():.6f}")
+		print(f"Best Val Loss: {best_val_loss}")
+		print(f"Best Epoch: {early_stopping.get_best_epoch() + 1}")
 		print("-"*80)
 		print("Final Metrics:")
 		print(f"  Hamming Loss: {final_hamming:.4f}")
@@ -6167,13 +6173,111 @@ def linear_probe_finetune_multi_label(
 		print(f"  Partial Match: {final_partial:.4f}")
 		print("="*80)
 
-		# Save results
+		evaluation_results = evaluate_best_model(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			early_stopping=early_stopping,
+			checkpoint_path=mdl_fpth,
+			finetune_strategy=mode,
+			device=device,
+			cache_dir=results_dir,
+			topk_values=topk_values,
+			verbose=verbose,
+			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+		)
+
+		# Access individual metrics
+		final_metrics_in_batch = evaluation_results["in_batch_metrics"]
+		final_metrics_full = evaluation_results["full_metrics"]
+		final_img2txt_metrics = evaluation_results["img2txt_metrics"]
+		final_txt2img_metrics = evaluation_results["txt2img_metrics"]
+
+		if verbose:
+			print(f"Final evaluation used model weights from: {evaluation_results['model_loaded_from']}")
+			print("--- Final Metrics [In-batch Validation] ---")
+			print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
+			print("--- Final Metrics [Full Validation Set] ---")
+			print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
+			print("--- Image-to-Text Retrieval ---")
+			print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
+			print("--- Text-to-Image Retrieval ---")
+			print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+
+
+
+		print("\nGenerating result plots...")
 		actual_trained_epochs = len(training_losses)
+
+		file_base_name = (
+				f"{dataset_name}_"
+				f"{mode}_"
+				f"{optimizer.__class__.__name__}_"
+				f"{scheduler.__class__.__name__}_"
+				f"{criterion.__class__.__name__}_"
+				f"{scaler.__class__.__name__}_"
+				f"{model_name}_"
+				f"{model_arch}_"
+				f"ep_{actual_trained_epochs}_"
+				f"lr_{learning_rate:.1e}_"
+				f"wd_{weight_decay:.1e}_"
+				f"temp_{temperature}_"
+				f"bs_{train_loader.batch_size}"
+		)
+		
+		# Update model path
 		mdl_fpth = get_updated_model_name(
 				original_path=mdl_fpth, 
 				actual_epochs=actual_trained_epochs
 		)
-		print(f"Model saved as: {mdl_fpth}")
+		
+		print(f"Model renamed to: {mdl_fpth}")
+
+		# Plotting
+		plot_paths = {
+			"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+			"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
+			"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+			"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+			"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+			"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+			"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+			"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+		}
+
+		plot_multilabel_loss_breakdown(
+			training_losses_breakdown=training_losses_breakdown,
+			filepath=plot_paths["losses_breakdown"]
+		)
+
+		plot_loss_accuracy_metrics(
+			dataset_name=dataset_name,
+			train_losses=training_losses,
+			val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+			in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+			in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+			full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+			full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+			losses_file_path=plot_paths["losses"],
+			in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
+			in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
+			full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
+			full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
+		)
+
+		plot_retrieval_metrics_per_epoch(
+			dataset_name=dataset_name,
+			image_to_text_metrics_list=img2txt_metrics_all_epochs,
+			text_to_image_metrics_list=txt2img_metrics_all_epochs,
+			fname=plot_paths["retrieval_per_epoch"],
+		)
+
+		plot_retrieval_metrics_best_model(
+			dataset_name=dataset_name,
+			image_to_text_metrics=final_img2txt_metrics,
+			text_to_image_metrics=final_txt2img_metrics,
+			fname=plot_paths["retrieval_best"],
+		)
 
 		return in_batch_loss_acc_metrics_all_epochs
 
@@ -6510,7 +6614,7 @@ def linear_probe_finetune_multi_label_old(
 				verbose=verbose,
 				max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 		)
-		
+
 		# Access individual metrics
 		final_metrics_in_batch = evaluation_results["in_batch_metrics"]
 		final_metrics_full = evaluation_results["full_metrics"]
@@ -6518,15 +6622,15 @@ def linear_probe_finetune_multi_label_old(
 		final_txt2img_metrics = evaluation_results["txt2img_metrics"]
 
 		if verbose:
-				print(f"Final evaluation used model weights from: {evaluation_results['model_loaded_from']}")
-				print("--- Final Metrics [In-batch Validation] ---")
-				print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
-				print("--- Final Metrics [Full Validation Set] ---")
-				print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-				print("--- Image-to-Text Retrieval ---")
-				print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-				print("--- Text-to-Image Retrieval ---")
-				print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+			print(f"Final evaluation used model weights from: {evaluation_results['model_loaded_from']}")
+			print("--- Final Metrics [In-batch Validation] ---")
+			print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
+			print("--- Final Metrics [Full Validation Set] ---")
+			print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
+			print("--- Image-to-Text Retrieval ---")
+			print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
+			print("--- Text-to-Image Retrieval ---")
+			print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
 
 		print("\nGenerating result plots...")
 		actual_trained_epochs = len(training_losses)
@@ -6548,21 +6652,21 @@ def linear_probe_finetune_multi_label_old(
 		)
 		
 		mdl_fpth = get_updated_model_name(
-				original_path=mdl_fpth, 
-				actual_epochs=actual_trained_epochs
+			original_path=mdl_fpth, 
+			actual_epochs=actual_trained_epochs
 		)
 
 		print(f"Best model will be renamed to: {mdl_fpth}")
 
 		plot_paths = {
-				"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-				"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
-				"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
-				"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
-				"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-				"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-				"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-				"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+			"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+			"losses_breakdown": os.path.join(results_dir, f"{file_base_name}_losses_breakdown.png"),
+			"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+			"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+			"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+			"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+			"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+			"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 		}
 
 		plot_multilabel_loss_breakdown(
