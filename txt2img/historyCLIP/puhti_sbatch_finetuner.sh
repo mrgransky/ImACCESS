@@ -11,7 +11,7 @@
 #SBATCH --mem=373G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=0,4,8,12 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!! # 0-11:  dataset[0] with all strategy×architecture [H4]
+#SBATCH --array=12 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!! # 0-11:  dataset[0] with all strategy×architecture [H4]
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
@@ -95,7 +95,7 @@ LORA_ALPHAS=(128.0 128.0 128.0 128.0 128.0) # 2x rank
 LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 BATCH_SIZES=(512 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 10)
-INIT_EARLY_STOPPING_MIN_EPOCHS=(8 25 17 17 12)  # H4, NA, EU, WWII, SMU
+INIT_EARLY_STOPPING_MIN_EPOCHS=(9 25 17 17 12)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_PATIENCE=(3 5 5 5 5)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_MIN_DELTA=(1e-4 1e-4 1e-4 1e-4 1e-4)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)  # H4, NA, EU, WWII, SMU
@@ -111,15 +111,18 @@ case $strategy in
 	"lora")
 		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs + 3))  # Higher for LoRA
 		;;
+	"linear_probe")
+		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs - 4))  # Even lower for Linear Probe (fastest convergence)
+		;;
 	"progressive")
 		EARLY_STOPPING_MIN_EPOCHS=$initial_early_stopping_minimum_epochs          # Original for Progressive
 		;;
 esac
-EARLY_STOPPING_MIN_EPOCHS=$((EARLY_STOPPING_MIN_EPOCHS < 5 ? 5 : EARLY_STOPPING_MIN_EPOCHS))  # Ensure minimum of 5
+EARLY_STOPPING_MIN_EPOCHS=$((EARLY_STOPPING_MIN_EPOCHS < 3 ? 3 : EARLY_STOPPING_MIN_EPOCHS))  # Ensure minimum of 3
 
 # Set dropout based on strategy
-# Only full and progressive can have nonzero dropouts, lora must have zero dropouts
-if [ "${FINETUNE_STRATEGIES[$strategy_index]}" = "lora" ]; then
+# Only full and progressive can have nonzero dropouts, lora and linear_probe must have zero dropouts
+if [ "${FINETUNE_STRATEGIES[$strategy_index]}" = "lora" ] || [ "${FINETUNE_STRATEGIES[$strategy_index]}" = "linear_probe" ]; then
 	DROPOUT=0.0
 else
 	DROPOUT="${DROPOUTS[$dataset_index]}" # Use the original dropout for full and progressive
