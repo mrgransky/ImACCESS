@@ -534,8 +534,6 @@ def main():
 				metadata_path=os.path.join(args.dataset_dir, "metadata_single_label.csv"),
 				metadata_train_path=os.path.join(args.dataset_dir, "metadata_single_label_train.csv"),
 				metadata_val_path=os.path.join(args.dataset_dir, "metadata_single_label_val.csv"),
-				# metadata_train_path=os.path.join(args.dataset_dir, "metadata_train.csv"),
-				# metadata_val_path=os.path.join(args.dataset_dir, "metadata_val.csv"),
 				num_samples_per_segment=5,
 			)
 			if i2t_samples and t2i_samples:

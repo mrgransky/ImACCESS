@@ -196,9 +196,11 @@ def get_single_label_head_torso_tail_samples(
 	except FileNotFoundError as e:
 		print(f"Error loading metadata files: {e}")
 		return None, None
+
 	# Use the 'label' column for string labels as used in plotting and potentially queries
 	# Use 'label_int' for analysis requiring unique integer counts if necessary,
 	# but counts based on string labels from the full dataset match Figure 2.
+
 	# 2. In-depth Analysis of Head/Torso/Tail
 	label_counts_full = df_full['label'].value_counts()
 	total_unique_labels_full = len(label_counts_full)
@@ -206,6 +208,7 @@ def get_single_label_head_torso_tail_samples(
 	print(f"Label Counts (full dataset): \n{label_counts_full.head(10)}")
 	print("...")
 	print(f"{label_counts_full.tail(10)}")
+
 	head_labels = label_counts_full[label_counts_full > head_threshold].index.tolist()
 	tail_labels = label_counts_full[label_counts_full < tail_threshold].index.tolist()
 	torso_labels = label_counts_full[(label_counts_full >= tail_threshold) & (label_counts_full <= head_threshold)].index.tolist()
@@ -213,6 +216,7 @@ def get_single_label_head_torso_tail_samples(
 	print(f"Head Segment ({len(head_labels)} labels): {head_labels[:min(10, len(head_labels))]}...")
 	print(f"Torso Segment ({len(torso_labels)} labels): {torso_labels[:min(10, len(torso_labels))]}...")
 	print(f"Tail Segment ({len(tail_labels)} labels): {tail_labels[:min(10, len(tail_labels))]}...")
+
 	# 3. Select Samples from Validation Set
 	print(f"\n--- Selecting {num_samples_per_segment} Samples from Validation Set for Each Segment ---")
 	i2t_queries = []
@@ -226,14 +230,23 @@ def get_single_label_head_torso_tail_samples(
 	print(f"Head labels available in validation: {len(head_labels_in_val)}")
 	print(f"Torso labels available in validation: {len(torso_labels_in_val)}")
 	print(f"Tail labels available in validation: {len(tail_labels_in_val)}")
+	
 	# Check if enough labels/samples exist for sampling
-	if len(head_labels_in_val) < num_samples_per_segment or \
-		 len(torso_labels_in_val) < num_samples_per_segment or \
-		 len(tail_labels_in_val) < num_samples_per_segment:
-			print("\nWarning: Not enough unique labels available in validation for one or more segments to select the requested number of samples.")
-			# Adjust sampling if not enough labels, but we still need to try to get *some*
-			# We'll sample up to the number of available labels/samples
-	segments = {'Head': head_labels_in_val, 'Torso': torso_labels_in_val, 'Tail': tail_labels_in_val}
+	if (
+		len(head_labels_in_val) < num_samples_per_segment 
+		or len(torso_labels_in_val) < num_samples_per_segment
+		or len(tail_labels_in_val) < num_samples_per_segment
+	):
+		print("\nWarning: Not enough unique labels available in validation for one or more segments to select the requested number of samples.")
+		# Adjust sampling if not enough labels, but we still need to try to get *some*
+		# We'll sample up to the number of available labels/samples
+	
+	segments = {
+		'Head': head_labels_in_val, 
+		'Torso': torso_labels_in_val, 
+		'Tail': tail_labels_in_val
+	}
+
 	# Sample for I2T (Query Image -> Text Labels)
 	print("\n--- I2T Query Samples (Image Path + GT Label) ---")
 	for segment_name, segment_labels in segments.items():
@@ -253,6 +266,7 @@ def get_single_label_head_torso_tail_samples(
 				print(f"- Label: '{label}' ({len(images_for_label)} samples in val) -> Image: {sampled_img_path}")
 			else:
 				print(f"- Warning: No images found for label '{label}' in the validation set for I2T query.")
+
 	# Sample for T2I (Query Label -> Images)
 	print("\n--- T2I Query Samples (Label String) ---")
 	for segment_name, segment_labels in segments.items():
@@ -274,6 +288,7 @@ def get_single_label_head_torso_tail_samples(
 					print(f"- Warning: Label '{label}' found in val labels, but no images. Skipping T2I query.")
 			else:
 				print(f"- Warning: Label '{label}' not found in validation set for T2I query. Skipping.") # Should not happen with segment_labels_in_val
+
 	return i2t_queries, t2i_queries
 
 def get_lora_params(path_string: str) -> dict:
