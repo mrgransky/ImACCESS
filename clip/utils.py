@@ -289,6 +289,43 @@ def get_single_label_head_torso_tail_samples(
 			else:
 				print(f"- Warning: Label '{label}' not found in validation set for T2I query. Skipping.") # Should not happen with segment_labels_in_val
 
+
+	# ================================
+	# Create 3x3 Plot Grid
+	# ================================
+	fig, axes = plt.subplots(3, 3, figsize=(12, 10))
+	segment_colors = {"Head": "tab:red", "Torso": "tab:green", "Tail": "tab:blue"}
+	for row, segment_name in enumerate(["Head", "Torso", "Tail"]):
+		samples = i2t_queries[segment_name]
+		for col in range(3):
+			ax = axes[row, col]
+			ax.axis("off")
+			if col < len(samples):
+				sample = samples[col]
+				if os.path.exists(sample['image_path']):
+					img = mpimg.imread(sample['image_path'])
+					ax.imshow(img)
+				ax.set_title(f"GT: {sample['label']}", fontsize=8)
+			else:
+				ax.set_facecolor("lightgray")  # blank if no sample
+		
+		fig.text(
+			0.02, 
+			(2.5 - row) / 3.0,   # vertical alignment for rows
+			segment_name,
+			va="center",
+			ha="center",
+			rotation=90,
+			fontsize=14,
+			color=segment_colors[segment_name],
+			weight="bold"
+		)
+	
+	plt.tight_layout(rect=(0.05,0,1,1))
+	plt.savefig(save_path, dpi=300, bbox_inches="tight")
+	plt.close()
+	print(f"Saved 3x3 sample grid to {save_path}")
+
 	return i2t_queries, t2i_queries
 
 def get_lora_params(path_string: str) -> dict:
