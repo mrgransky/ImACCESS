@@ -3326,9 +3326,6 @@ def lora_finetune_single_label(
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3) # GB
 		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-	# for name, param in model.named_parameters():
-	# 	print(f"{name} => {param.shape} {param.requires_grad}")
-
 	# Apply LoRA to the model
 	model = get_lora_clip(
 		clip_model=model,
@@ -3385,6 +3382,13 @@ def lora_finetune_single_label(
 		f"loa_{lora_alpha}_"
 		f"lod_{lora_dropout}_"
 		f"bs_{train_loader.batch_size}_"
+		f"mep_{minimum_epochs}_"
+		f"pat_{patience}_"
+		f"mdelta_{min_delta:.1e}_"
+		f"cdelta_{cumulative_delta:.1e}_"
+		f"vt_{volatility_threshold}_"
+		f"st_{slope_threshold:.1e}_"
+		f"pit_{pairwise_imp_threshold:.1e}_"
 		f"best.pth"
 	)
 
