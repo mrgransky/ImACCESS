@@ -565,6 +565,180 @@ def plot_progressive_fine_tuning_report(
 		"unfreeze_heatmap": fig_heat,
 	}
 
+def plot_phase_transition_analysis_individual(
+		training_history: Dict,
+		save_path: str,
+		figsize: Tuple[int, int] = (16, 12)
+	):
+	# Extract data
+	epochs = [e + 1 for e in training_history['epochs']]  # 1-based indexing
+	train_losses = training_history['train_losses']
+	val_losses = training_history['val_losses']
+	learning_rates = training_history['learning_rates']
+	weight_decays = training_history['weight_decays']
+	phases = training_history['phases']
+	transitions = training_history.get('phase_transitions', [])
+	early_stop_epoch = training_history.get('early_stop_epoch')
+	best_epoch = training_history.get('best_epoch')
+	
+	# Color scheme
+	phase_colors = plt.cm.Set3(np.linspace(0, 1, max(phases) + 1))
+	transition_color = "#E91111"
+	early_stop_color = "#1D0808"
+	best_model_color = "#D8BA10"
+
+	# Helper to save figure with suffix
+	def save_fig(fig, suffix):
+		base, ext = os.path.splitext(save_path)
+		fig.savefig(f"{base}_{suffix}{ext}", dpi=300, bbox_inches='tight', facecolor='white')
+		plt.close(fig)
+	
+	# ============================================
+	# PLOT 1: Learning Curve with Phase Transitions
+	# ============================================
+	fig, ax1 = plt.subplots(figsize=figsize, facecolor='white')
+	max_loss = max(max(train_losses), max(val_losses))
+	min_loss = min(min(train_losses), min(val_losses))
+	margin = max_loss * 0.25
+	ax1.set_ylim(min_loss - margin, max_loss + margin)
+	ymin, ymax = ax1.get_ylim()
+	y_middle = (ymin + ymax) / 2.0
+	# Phase shading
+	for phase in set(phases):
+			phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
+			if phase_epochs:
+					ax1.axvspan(min(phase_epochs), max(phase_epochs), alpha=0.39, color=phase_colors[phase], label=f'Phase {phase}')
+	# Loss curves
+	ax1.plot(epochs, train_losses, color="#0025FA", linewidth=2.5, alpha=0.9, label="Training Loss")
+	ax1.plot(epochs, val_losses, color="#C77203", linewidth=2.5, alpha=0.9, label="Validation Loss")
+	# Transitions
+	for i, t_epoch in enumerate(transitions):
+		ax1.axvline(x=t_epoch, color=transition_color, linestyle="--", linewidth=1.5, alpha=0.8)
+		if t_epoch < len(val_losses):
+			prev_loss = val_losses[t_epoch - 1] if t_epoch > 0 else val_losses[t_epoch]
+			change = ((prev_loss - val_losses[t_epoch]) / prev_loss) * 100 if prev_loss > 0 else 0
+			ax1.text(t_epoch + 0.4, y_middle, f"Transition {i+1}\n{change:+.2f}%", rotation=90,
+							 va="center", ha="left", color=transition_color, fontsize=9)
+	# Best model / early stopping
+	if best_epoch is not None:
+			ax1.scatter([epochs[best_epoch]], [val_losses[best_epoch]], color=best_model_color, marker="*", s=150,
+									edgecolor="black", linewidth=1.5, zorder=15, label="Best Model")
+	if early_stop_epoch:
+			ax1.axvline(x=early_stop_epoch, color=early_stop_color, linestyle=":", linewidth=1.8, alpha=0.9)
+			ax1.text(early_stop_epoch + 0.5, y_middle, "Early Stopping", rotation=90, va="center",
+							 ha="left", color=early_stop_color, fontsize=9)
+	ax1.set_title("Learning Curve with Phase Transitions", fontsize=10, weight="bold")
+	ax1.set_xlabel("Epoch"); ax1.set_ylabel("Loss")
+	ax1.legend(fontsize=8)
+	ax1.grid(True, alpha=0.5)
+	save_fig(fig, "loss_evol")
+
+	# ============================================
+	# PLOT 2: Learning Rate Adaptation
+	# ============================================
+	fig, ax2 = plt.subplots(figsize=figsize, facecolor='white')
+	for i in range(len(epochs) - 1):
+			ax2.semilogy([epochs[i], epochs[i+1]], [learning_rates[i], learning_rates[i+1]],
+									 color=phase_colors[phases[i]], linewidth=3, alpha=0.9)
+	for t_epoch in transitions:
+			ax2.axvline(x=t_epoch, color=transition_color, linestyle="--", linewidth=2)
+	ax2.set_title("Learning Rate Adaptation Across Phases", fontsize=10, weight="bold")
+	ax2.set_xlabel("Epoch"); ax2.set_ylabel("Learning Rate (log)")
+	ax2.grid(True, alpha=0.3)
+	save_fig(fig, "lr_evol")
+
+	# ============================================
+	# PLOT 3: Weight Decay Adaptation
+	# ============================================
+	fig, ax3 = plt.subplots(figsize=figsize, facecolor='white')
+	for i in range(len(epochs) - 1):
+			ax3.semilogy([epochs[i], epochs[i+1]], [weight_decays[i], weight_decays[i+1]],
+									 color=phase_colors[phases[i]], linewidth=3, alpha=0.8)
+	for t_epoch in transitions:
+			ax3.axvline(x=t_epoch, color=transition_color, linestyle="--", linewidth=2)
+	ax3.set_title("Weight Decay Adaptation Across Phases", fontsize=10, weight="bold")
+	ax3.set_xlabel("Epoch"); ax3.set_ylabel("Weight Decay (log)")
+	ax3.grid(True, alpha=0.3)
+	save_fig(fig, "wd_evol")
+
+	# ============================================
+	# PLOT 4: Phase Efficiency Analysis
+	# ============================================
+	fig, ax4 = plt.subplots(figsize=figsize, facecolor='white')
+	loss_imp_color = "#F73100"
+	duration_color = "#0004EC"
+
+	unique_phases = sorted(set(phases))
+	phase_data = []
+	for phase in unique_phases:
+		phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
+		duration = len(phase_epochs)
+		if phase_epochs:
+			s_idx, e_idx = phase_epochs[0] - 1, phase_epochs[-1] - 1 # 0-based indexing
+			if 0 <= s_idx < len(val_losses) and 0 <= e_idx < len(val_losses):
+				improvement = ((val_losses[s_idx] - val_losses[e_idx]) / val_losses[s_idx] * 100) if val_losses[s_idx] > 0 else 0
+			else:
+				improvement = 0
+		else:
+			improvement = 0
+		phase_data.append((phase, duration, improvement))
+
+	phases_list, durations, improvements = zip(*phase_data)
+	bars = ax4.bar(range(len(durations)), durations, color=[phase_colors[p] for p in phases_list], alpha=0.8)
+	ax4_twin = ax4.twinx()
+	ax4_twin.plot(range(len(improvements)), improvements, "ro-", linewidth=1)
+	for i, (bar, imp) in enumerate(zip(bars, improvements)):
+		ax4.text(
+			bar.get_x() + bar.get_width()/2, 
+			bar.get_height() + 1, 
+			f"{int(bar.get_height())}", 
+			ha="center", 
+			fontsize=8, 
+			color=duration_color,
+			fontweight="bold",
+		)
+		ax4_twin.text(
+			i, 
+			imp + 0.2, 
+			f"{imp:.2f}%", 
+			ha="center", 
+			fontsize=10, 
+			color=loss_imp_color, 
+			fontweight="bold",
+		)
+
+	ax4.set_title("Phase Efficiency Analysis", fontsize=10, weight="bold")
+	ax4.set_xlabel("Phase")
+	ax4.set_ylabel("Duration (epochs)", color=duration_color)
+	ax4_twin.set_ylabel("Loss Improvement (%)", color=loss_imp_color)
+
+	# Match spine colors with their labels
+	ax4.spines['left'].set_color(duration_color)
+	ax4_twin.spines['right'].set_color(loss_imp_color)
+
+	# Hide the right and top spines for both axes
+	ax4.spines['top'].set_visible(False)
+	ax4_twin.spines['top'].set_visible(False)
+	save_fig(fig, "ph_eff")
+
+	# ============================================
+	# PLOT 5: Hyperparameter Correlations
+	# ============================================
+	fig, ax5 = plt.subplots(figsize=figsize, facecolor='white')
+	lr_norm = np.array(learning_rates) / max(learning_rates)
+	wd_norm = np.array(weight_decays) / max(weight_decays)
+	loss_norm = np.array(val_losses) / max(val_losses)
+	ax5.plot(epochs, lr_norm, "g-", label="LR")
+	ax5.plot(epochs, wd_norm, "m-", label="WD")
+	ax5.plot(epochs, loss_norm, "r-", label="Val Loss")
+	for t_epoch in transitions:
+			ax5.axvline(x=t_epoch, color=transition_color, linestyle="--", linewidth=1.5)
+	ax5.legend(fontsize=8); ax5.set_ylim(0, 1.1)
+	ax5.set_title("Hyperparameter Correlations [normed]", fontsize=10, weight="bold")
+	ax5.set_xlabel("Epoch"); ax5.set_ylabel("Normalized values")
+	ax5.grid(True, alpha=0.3)
+	save_fig(fig, "hp_corr")
+
 def plot_phase_transition_analysis(
 		training_history: Dict,
 		save_path: str,
@@ -600,10 +774,17 @@ def plot_phase_transition_analysis(
 	best_model_color = "#D8BA10"
 	
 	# ================================
-	# 1. Main Loss Evolution Plot (top-left, spans 2 columns)
+	# 1. Learning Curve with Phase Transitions
 	# ================================
 	ax1 = fig.add_subplot(gs[0, :])
-	
+	# Set y-axis limits with minimum of 0 and maximum with margin
+	max_loss = max(max(train_losses), max(val_losses))
+	min_loss = min(min(train_losses), min(val_losses))
+	margin = max_loss * 0.25  # 25% margin
+	ax1.set_ylim(min_loss - margin, max_loss + margin)
+	ymin, ymax = ax1.get_ylim()
+	y_middle = (ymin + ymax) / 2.0
+
 	# Add phase background shading
 	for phase in set(phases):
 		phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
@@ -662,13 +843,14 @@ def plot_phase_transition_analysis(
 				improvement_text = f"\n{change:+.2f} %"
 			
 			ax1.text(
-				transition_epoch + 0.6,
-				max(val_losses) * 1.02,
+				transition_epoch + 0.4,
+				# max(val_losses) * 1.02,
+				y_middle,
 				f'Transition {i+1}{improvement_text}',
 				rotation=90,
-				fontsize=10,
+				fontsize=9,
 				ha='left',
-				va='bottom',
+				va='center',
 				color=transition_color,
 				bbox=dict(
 					boxstyle="round,pad=0.4",
@@ -699,17 +881,18 @@ def plot_phase_transition_analysis(
 			linestyle=':',
 			linewidth=1.8,
 			alpha=0.9,
-			label='Early Stopping',
+			# label='Early Stopping',
 			zorder=12
 		)
 		ax1.text(
 			early_stop_epoch + 0.5,
-			max(val_losses) * 1.01,
+			# max(val_losses) * 1.01,
+			y_middle,
 			'Early Stopping', 
 			rotation=90, 
-			va='bottom',
 			ha='left',
-			fontsize=10,
+			va='center',
+			fontsize=9,
 			color=early_stop_color, 
 		)
 	
@@ -724,12 +907,6 @@ def plot_phase_transition_analysis(
 	)
 	ax1.grid(True, alpha=0.5)
 
-	# Set y-axis limits with minimum of 0 and maximum with margin
-	max_loss = max(max(train_losses), max(val_losses))
-	min_loss = min(min(train_losses), min(val_losses))
-	margin = max_loss * 0.25  # 25% margin
-	ax1.set_ylim(min_loss - margin, max_loss + margin)
-	
 	# ================================
 	# 2. Learning Rate Adaptation
 	# ================================
@@ -877,6 +1054,11 @@ def plot_phase_transition_analysis(
 	ax4.set_xticklabels(phase_labels)
 	ax4.tick_params(axis='y', labelcolor='#0004EC')
 	ax4_twin.tick_params(axis='y', labelcolor="#F73100")
+
+	# Match spine colors with their labels
+	ax4.spines['left'].set_color('#0004EC')
+	ax4_twin.spines['right'].set_color("#F73100")
+
 	ax4_twin.spines['top'].set_visible(False)
 	ax4.spines['top'].set_visible(False)
 	
@@ -3524,247 +3706,247 @@ def plot_retrieval_metrics_per_epoch(
 	plt.close(fig)
 
 def plot_loss_accuracy_metrics(
-    dataset_name: str,
-    train_losses: List[float],
-    val_losses: List[float],
-    in_batch_topk_val_accuracy_i2t_list: Optional[List[Dict[int, float]]] = None,
-    in_batch_topk_val_accuracy_t2i_list: Optional[List[Dict[int, float]]] = None,
-    full_topk_val_accuracy_i2t_list: Optional[List[Dict[int, float]]] = None,
-    full_topk_val_accuracy_t2i_list: Optional[List[Dict[int, float]]] = None,
-    mean_reciprocal_rank_list: Optional[List[float]] = None,
-    cosine_similarity_list: Optional[List[float]] = None,
-    losses_file_path: str = "losses.png",
-    in_batch_topk_val_acc_i2t_fpth: str = "in_batch_val_topk_accuracy_i2t.png",
-    in_batch_topk_val_acc_t2i_fpth: str = "in_batch_val_topk_accuracy_t2i.png",
-    full_topk_val_acc_i2t_fpth: str = "full_val_topk_accuracy_i2t.png",
-    full_topk_val_acc_t2i_fpth: str = "full_val_topk_accuracy_t2i.png",
-    mean_reciprocal_rank_file_path: str = "mean_reciprocal_rank.png",
-    cosine_similarity_file_path: str = "cosine_similarity.png",
-    DPI: int = 300,
-    figure_size: Tuple[int, int] = (10, 4),
+		dataset_name: str,
+		train_losses: List[float],
+		val_losses: List[float],
+		in_batch_topk_val_accuracy_i2t_list: Optional[List[Dict[int, float]]] = None,
+		in_batch_topk_val_accuracy_t2i_list: Optional[List[Dict[int, float]]] = None,
+		full_topk_val_accuracy_i2t_list: Optional[List[Dict[int, float]]] = None,
+		full_topk_val_accuracy_t2i_list: Optional[List[Dict[int, float]]] = None,
+		mean_reciprocal_rank_list: Optional[List[float]] = None,
+		cosine_similarity_list: Optional[List[float]] = None,
+		losses_file_path: str = "losses.png",
+		in_batch_topk_val_acc_i2t_fpth: str = "in_batch_val_topk_accuracy_i2t.png",
+		in_batch_topk_val_acc_t2i_fpth: str = "in_batch_val_topk_accuracy_t2i.png",
+		full_topk_val_acc_i2t_fpth: str = "full_val_topk_accuracy_i2t.png",
+		full_topk_val_acc_t2i_fpth: str = "full_val_topk_accuracy_t2i.png",
+		mean_reciprocal_rank_file_path: str = "mean_reciprocal_rank.png",
+		cosine_similarity_file_path: str = "cosine_similarity.png",
+		DPI: int = 300,
+		figure_size: Tuple[int, int] = (10, 4),
 ) -> None:
-    """
-    Plot training/validation loss curves and a variety of top‑K accuracy / ranking metrics.
+		"""
+		Plot training/validation loss curves and a variety of top‑K accuracy / ranking metrics.
 
-    The function is defensive:
-        * If a metric list is empty or its first element does not contain any keys,
-          the corresponding plot is silently skipped.
-        * Legend `ncol` is forced to be at least 1, so ``len(topk_values)==0`` no longer
-          triggers a ValueError.
-    """
-    num_epochs = len(train_losses)
-    if num_epochs <= 1:
-        # Nothing worth plotting
-        return
+		The function is defensive:
+				* If a metric list is empty or its first element does not contain any keys,
+					the corresponding plot is silently skipped.
+				* Legend `ncol` is forced to be at least 1, so ``len(topk_values)==0`` no longer
+					triggers a ValueError.
+		"""
+		num_epochs = len(train_losses)
+		if num_epochs <= 1:
+				# Nothing worth plotting
+				return
 
-    # -----------------------------------------------------------------
-    # Common helpers
-    # -----------------------------------------------------------------
-    epochs = np.arange(1, num_epochs + 1)
+		# -----------------------------------------------------------------
+		# Common helpers
+		# -----------------------------------------------------------------
+		epochs = np.arange(1, num_epochs + 1)
 
-    # For readability we show at most 20 x‑ticks
-    num_xticks = min(20, num_epochs)
-    selective_xticks = np.linspace(1, num_epochs, num_xticks, dtype=int)
+		# For readability we show at most 20 x‑ticks
+		num_xticks = min(20, num_epochs)
+		selective_xticks = np.linspace(1, num_epochs, num_xticks, dtype=int)
 
-    colors = {
-        "train": "#1f77b4",
-        "val": "#ff7f0e",
-        "img2txt": "#2ca02c",
-        "txt2img": "#d62728",
-    }
+		colors = {
+				"train": "#1f77b4",
+				"val": "#ff7f0e",
+				"img2txt": "#2ca02c",
+				"txt2img": "#d62728",
+		}
 
-    def setup_plot(ax, xlabel="Epoch", ylabel=None, title=None):
-        ax.set_xlabel(xlabel, fontsize=12)
-        if ylabel:
-            ax.set_ylabel(ylabel, fontsize=12)
-        if title:
-            ax.set_title(title, fontsize=10, fontweight="bold")
-        ax.set_xlim(0, num_epochs + 1)
-        ax.set_xticks(selective_xticks)
-        ax.tick_params(axis="both", labelsize=10)
-        ax.grid(True, linestyle="--", alpha=0.7)
-        return ax
+		def setup_plot(ax, xlabel="Epoch", ylabel=None, title=None):
+				ax.set_xlabel(xlabel, fontsize=12)
+				if ylabel:
+						ax.set_ylabel(ylabel, fontsize=12)
+				if title:
+						ax.set_title(title, fontsize=10, fontweight="bold")
+				ax.set_xlim(0, num_epochs + 1)
+				ax.set_xticks(selective_xticks)
+				ax.tick_params(axis="both", labelsize=10)
+				ax.grid(True, linestyle="--", alpha=0.7)
+				return ax
 
-    # -----------------------------------------------------------------
-    # 1️⃣  Loss curve
-    # -----------------------------------------------------------------
-    fig, ax = plt.subplots(figsize=figure_size)
-    ax.plot(
-        epochs,
-        train_losses,
-        color=colors["train"],
-        label="Training",
-        lw=1.5,
-        marker="o",
-        markersize=2,
-    )
-    ax.plot(
-        epochs,
-        val_losses,
-        color=colors["val"],
-        label="Validation",
-        lw=1.5,
-        marker="o",
-        markersize=2,
-    )
-    setup_plot(ax, ylabel="Loss", title=f"{dataset_name} Learning Curve (Loss)")
-    ax.legend(
-        fontsize=10,
-        loc="best",
-        frameon=True,
-        fancybox=True,
-        shadow=True,
-        facecolor="white",
-        edgecolor="black",
-    )
-    fig.tight_layout()
-    fig.savefig(losses_file_path, dpi=DPI, bbox_inches="tight")
-    plt.close(fig)
+		# -----------------------------------------------------------------
+		# 1️⃣  Loss curve
+		# -----------------------------------------------------------------
+		fig, ax = plt.subplots(figsize=figure_size)
+		ax.plot(
+				epochs,
+				train_losses,
+				color=colors["train"],
+				label="Training",
+				lw=1.5,
+				marker="o",
+				markersize=2,
+		)
+		ax.plot(
+				epochs,
+				val_losses,
+				color=colors["val"],
+				label="Validation",
+				lw=1.5,
+				marker="o",
+				markersize=2,
+		)
+		setup_plot(ax, ylabel="Loss", title=f"{dataset_name} Learning Curve (Loss)")
+		ax.legend(
+				fontsize=10,
+				loc="best",
+				frameon=True,
+				fancybox=True,
+				shadow=True,
+				facecolor="white",
+				edgecolor="black",
+		)
+		fig.tight_layout()
+		fig.savefig(losses_file_path, dpi=DPI, bbox_inches="tight")
+		plt.close(fig)
 
-    # -----------------------------------------------------------------
-    # Helper to plot any Top‑K metric (in‑batch or full)
-    # -----------------------------------------------------------------
-    def _plot_topk(
-        metric_list: List[Dict[int, float]],
-        fpath: str,
-        direction: str,
-        match_type: str,
-    ):
-        """
-        Parameters
-        ----------
-        metric_list : list of dict
-            One dict per epoch, mapping K → accuracy.
-        fpath : str
-            Where to save the figure.
-        direction : {"i2t", "t2i"}
-            Image‑to‑Text or Text‑to‑Image.
-        match_type : {"in‑batch", "full"}
-            Kind of retrieval evaluation.
-        """
-        if not metric_list:
-            return
+		# -----------------------------------------------------------------
+		# Helper to plot any Top‑K metric (in‑batch or full)
+		# -----------------------------------------------------------------
+		def _plot_topk(
+				metric_list: List[Dict[int, float]],
+				fpath: str,
+				direction: str,
+				match_type: str,
+		):
+				"""
+				Parameters
+				----------
+				metric_list : list of dict
+						One dict per epoch, mapping K → accuracy.
+				fpath : str
+						Where to save the figure.
+				direction : {"i2t", "t2i"}
+						Image‑to‑Text or Text‑to‑Image.
+				match_type : {"in‑batch", "full"}
+						Kind of retrieval evaluation.
+				"""
+				if not metric_list:
+						return
 
-        # Defensive: make sure the first element actually has keys
-        first_elem = metric_list[0]
-        if not isinstance(first_elem, dict) or len(first_elem) == 0:
-            return
+				# Defensive: make sure the first element actually has keys
+				first_elem = metric_list[0]
+				if not isinstance(first_elem, dict) or len(first_elem) == 0:
+						return
 
-        topk_values = sorted(first_elem.keys())
-        fig, ax = plt.subplots(figsize=figure_size)
+				topk_values = sorted(first_elem.keys())
+				fig, ax = plt.subplots(figsize=figure_size)
 
-        for i, k in enumerate(topk_values):
-            acc_vals = [epoch_dict.get(k, np.nan) for epoch_dict in metric_list]
-            ax.plot(
-                epochs,
-                acc_vals,
-                label=f"Top-{k}",
-                lw=1.5,
-                marker="o",
-                markersize=2,
-                color=plt.cm.tab10(i % 10),
-            )
+				for i, k in enumerate(topk_values):
+						acc_vals = [epoch_dict.get(k, np.nan) for epoch_dict in metric_list]
+						ax.plot(
+								epochs,
+								acc_vals,
+								label=f"Top-{k}",
+								lw=1.5,
+								marker="o",
+								markersize=2,
+								color=plt.cm.tab10(i % 10),
+						)
 
-        title = f"{dataset_name} {direction.upper()} Top‑K [{match_type}] Validation Accuracy"
-        setup_plot(ax, ylabel="Accuracy", title=title)
-        ax.set_ylim(-0.05, 1.05)
+				title = f"{dataset_name} {direction.upper()} Top‑K [{match_type}] Validation Accuracy"
+				setup_plot(ax, ylabel="Accuracy", title=title)
+				ax.set_ylim(-0.05, 1.05)
 
-        # ``ncol`` must be >= 1 – protect against empty ``topk_values``
-        ncol = max(1, len(topk_values))
-        ax.legend(
-            fontsize=9,
-            loc="best",
-            ncol=ncol,
-            frameon=True,
-            fancybox=True,
-            shadow=True,
-            facecolor="white",
-            edgecolor="black",
-        )
-        fig.tight_layout()
-        fig.savefig(fpath, dpi=DPI, bbox_inches="tight")
-        plt.close(fig)
+				# ``ncol`` must be >= 1 – protect against empty ``topk_values``
+				ncol = max(1, len(topk_values))
+				ax.legend(
+						fontsize=9,
+						loc="best",
+						ncol=ncol,
+						frameon=True,
+						fancybox=True,
+						shadow=True,
+						facecolor="white",
+						edgecolor="black",
+				)
+				fig.tight_layout()
+				fig.savefig(fpath, dpi=DPI, bbox_inches="tight")
+				plt.close(fig)
 
-    # -----------------------------------------------------------------
-    # 2️⃣  Image‑to‑Text top‑K plots
-    # -----------------------------------------------------------------
-    _plot_topk(
-        in_batch_topk_val_accuracy_i2t_list,
-        in_batch_topk_val_acc_i2t_fpth,
-        direction="i2t",
-        match_type="in‑batch",
-    )
-    _plot_topk(
-        full_topk_val_accuracy_i2t_list,
-        full_topk_val_acc_i2t_fpth,
-        direction="i2t",
-        match_type="full",
-    )
+		# -----------------------------------------------------------------
+		# 2️⃣  Image‑to‑Text top‑K plots
+		# -----------------------------------------------------------------
+		_plot_topk(
+				in_batch_topk_val_accuracy_i2t_list,
+				in_batch_topk_val_acc_i2t_fpth,
+				direction="i2t",
+				match_type="in‑batch",
+		)
+		_plot_topk(
+				full_topk_val_accuracy_i2t_list,
+				full_topk_val_acc_i2t_fpth,
+				direction="i2t",
+				match_type="full",
+		)
 
-    # -----------------------------------------------------------------
-    # 3️⃣  Text‑to‑Image top‑K plots
-    # -----------------------------------------------------------------
-    _plot_topk(
-        in_batch_topk_val_accuracy_t2i_list,
-        in_batch_topk_val_acc_t2i_fpth,
-        direction="t2i",
-        match_type="in‑batch",
-    )
-    _plot_topk(
-        full_topk_val_accuracy_t2i_list,
-        full_topk_val_acc_t2i_fpth,
-        direction="t2i",
-        match_type="full",
-    )
+		# -----------------------------------------------------------------
+		# 3️⃣  Text‑to‑Image top‑K plots
+		# -----------------------------------------------------------------
+		_plot_topk(
+				in_batch_topk_val_accuracy_t2i_list,
+				in_batch_topk_val_acc_t2i_fpth,
+				direction="t2i",
+				match_type="in‑batch",
+		)
+		_plot_topk(
+				full_topk_val_accuracy_t2i_list,
+				full_topk_val_acc_t2i_fpth,
+				direction="t2i",
+				match_type="full",
+		)
 
-    # -----------------------------------------------------------------
-    # 4️⃣  Mean Reciprocal Rank (optional)
-    # -----------------------------------------------------------------
-    if mean_reciprocal_rank_list:
-        fig, ax = plt.subplots(figsize=figure_size)
-        ax.plot(
-            epochs,
-            mean_reciprocal_rank_list,
-            color="#9467bd",
-            label="MRR",
-            lw=1.5,
-            marker="o",
-            markersize=2,
-        )
-        setup_plot(
-            ax,
-            ylabel="Mean Reciprocal Rank",
-            title=f"{dataset_name} Mean Reciprocal Rank (Image‑to‑Text)",
-        )
-        ax.set_ylim(-0.05, 1.05)
-        ax.legend(fontsize=10, loc="best", frameon=True)
-        fig.tight_layout()
-        fig.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches="tight")
-        plt.close(fig)
+		# -----------------------------------------------------------------
+		# 4️⃣  Mean Reciprocal Rank (optional)
+		# -----------------------------------------------------------------
+		if mean_reciprocal_rank_list:
+				fig, ax = plt.subplots(figsize=figure_size)
+				ax.plot(
+						epochs,
+						mean_reciprocal_rank_list,
+						color="#9467bd",
+						label="MRR",
+						lw=1.5,
+						marker="o",
+						markersize=2,
+				)
+				setup_plot(
+						ax,
+						ylabel="Mean Reciprocal Rank",
+						title=f"{dataset_name} Mean Reciprocal Rank (Image‑to‑Text)",
+				)
+				ax.set_ylim(-0.05, 1.05)
+				ax.legend(fontsize=10, loc="best", frameon=True)
+				fig.tight_layout()
+				fig.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches="tight")
+				plt.close(fig)
 
-    # -----------------------------------------------------------------
-    # 5️⃣  Cosine Similarity (optional)
-    # -----------------------------------------------------------------
-    if cosine_similarity_list:
-        fig, ax = plt.subplots(figsize=figure_size)
-        ax.plot(
-            epochs,
-            cosine_similarity_list,
-            color="#17becf",
-            label="Cosine Similarity",
-            lw=1.5,
-            marker="o",
-            markersize=2,
-        )
-        setup_plot(
-            ax,
-            ylabel="Cosine Similarity",
-            title=f"{dataset_name} Cosine Similarity Between Embeddings",
-        )
-        ax.legend(fontsize=10, loc="best")
-        fig.tight_layout()
-        fig.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches="tight")
-        plt.close(fig)
+		# -----------------------------------------------------------------
+		# 5️⃣  Cosine Similarity (optional)
+		# -----------------------------------------------------------------
+		if cosine_similarity_list:
+				fig, ax = plt.subplots(figsize=figure_size)
+				ax.plot(
+						epochs,
+						cosine_similarity_list,
+						color="#17becf",
+						label="Cosine Similarity",
+						lw=1.5,
+						marker="o",
+						markersize=2,
+				)
+				setup_plot(
+						ax,
+						ylabel="Cosine Similarity",
+						title=f"{dataset_name} Cosine Similarity Between Embeddings",
+				)
+				ax.legend(fontsize=10, loc="best")
+				fig.tight_layout()
+				fig.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches="tight")
+				plt.close(fig)
 
 def plot_loss_accuracy_metrics_old(
 		dataset_name: str,

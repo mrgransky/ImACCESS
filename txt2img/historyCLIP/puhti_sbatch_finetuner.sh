@@ -11,7 +11,7 @@
 #SBATCH --mem=373G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=0,4 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!! # 0-11:  dataset[0] with all strategy×architecture [H4]
+#SBATCH --array=0,4,8,12 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!! # 0-11:  dataset[0] with all strategy×architecture [H4]
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
@@ -50,28 +50,29 @@ DATASET_TYPE=(
 )
 
 FINETUNE_STRATEGIES=(
-	"full" 					# 0-3, 12-15, 24-27, 36-39, 48-51
-	"lora" 					# 4-7, 16-19, 28-31, 40-43, 52-55
-	"progressive" 	# 8-11, 20-23, 32-35, 44-47, 56-59
+	"full" 					# 0-3, 16-19, 32-35, 48-51, 64-67
+	"lora" 					# 4-7, 20-23, 36-39, 52-55, 68-71
+	"progressive" 	# 8-11, 24-27, 40-43, 56-59, 72-75
+	"linear_probe"	# 12-15, 28-31, 44-47, 60-63, 76-79
 )
 
 MODEL_ARCHITECTURES=(
-	"ViT-L/14@336px" 	# 0, 4, 8, 	12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56
-	"ViT-L/14"				# 1, 5, 9, 	13, 17, 21, 25, 29, 33, 37, 41, 45, 49, 53, 57
-	"ViT-B/32"				# 2, 6, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 50, 54, 58
-	"ViT-B/16"				# 3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59
+	"ViT-L/14@336px" 	# 0, 4, 8, 12,  16, 20, 24, 28,  32, 36, 40, 44,  48, 52, 56, 60,  64, 68, 72, 76
+	"ViT-L/14"				# 1, 5, 9, 13,  17, 21, 25, 29,  33, 37, 41, 45,  49, 53, 57, 61,  65, 69, 73, 77
+	"ViT-B/32"				# 2, 6, 10, 14, 18, 22, 26, 30,  34, 38, 42, 46,  50, 54, 58, 62,  66, 70, 74, 78
+	"ViT-B/16"				# 3, 7, 11, 15, 19, 23, 27, 31,  35, 39, 43, 47,  51, 55, 59, 63,  67, 71, 75, 79
 )
 
 NUM_DATASETS=${#DATASETS[@]} # Number of datasets
 NUM_STRATEGIES=${#FINETUNE_STRATEGIES[@]} # Number of fine-tune strategies
 NUM_ARCHITECTURES=${#MODEL_ARCHITECTURES[@]} # Number of model architectures
 
-# dataset × strategy × architecture
-### 0-11:  dataset[0] with all strategy×architecture [H4]
-### 12-23: dataset[1] with all strategy×architecture [NA]
-### 24-35: dataset[2] with all strategy×architecture [EU]
-### 36-47: dataset[3] with all strategy×architecture [WWII]
-### 48-59: dataset[4] with all strategy×architecture [SMU]
+# dataset × strategy × architecture (updated indexing)
+### 0-15:  dataset[0] with all strategy×architecture [H4]
+### 16-31: dataset[1] with all strategy×architecture [NA]
+### 32-47: dataset[2] with all strategy×architecture [EU]
+### 48-63: dataset[3] with all strategy×architecture [WWII]
+### 64-79: dataset[4] with all strategy×architecture [SMU]
 dataset_index=$((SLURM_ARRAY_TASK_ID / (NUM_STRATEGIES * NUM_ARCHITECTURES)))
 remainder=$((SLURM_ARRAY_TASK_ID % (NUM_STRATEGIES * NUM_ARCHITECTURES)))
 strategy_index=$((remainder / NUM_ARCHITECTURES))
@@ -85,17 +86,17 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 	exit 1
 fi
 
-INIT_LRS=(1.0e-06 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
-INIT_WDS=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
-DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
+INIT_LRS=(2.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+INIT_WDS=(5.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
+DROPOUTS=(0.2 0.1 0.05 0.05 0.05)
 EPOCHS=(100 100 150 150 150)
 LORA_RANKS=(64 64 64 64 64)
 LORA_ALPHAS=(128.0 128.0 128.0 128.0 128.0) # 2x rank
 LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 BATCH_SIZES=(512 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 10)
-INIT_EARLY_STOPPING_MIN_EPOCHS=(10 25 17 17 12)  # H4, NA, EU, WWII, SMU
-EARLY_STOPPING_PATIENCE=(5 5 5 5 5)  # H4, NA, EU, WWII, SMU
+INIT_EARLY_STOPPING_MIN_EPOCHS=(8 25 17 17 12)  # H4, NA, EU, WWII, SMU
+EARLY_STOPPING_PATIENCE=(3 5 5 5 5)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_MIN_DELTA=(1e-4 1e-4 1e-4 1e-4 1e-4)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)  # H4, NA, EU, WWII, SMU
 CACHE_SIZES=(1024 512 1000 1000 1000)  # H4, NA, EU, WWII, SMU
@@ -105,10 +106,10 @@ strategy="${FINETUNE_STRATEGIES[$strategy_index]}"
 initial_early_stopping_minimum_epochs="${INIT_EARLY_STOPPING_MIN_EPOCHS[$dataset_index]}"
 case $strategy in
 	"full")
-		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs - 5))  # Lower for Full
+		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs - 3))  # Lower for Full
 		;;
 	"lora")
-		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs + 5))  # Higher for LoRA
+		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs + 3))  # Higher for LoRA
 		;;
 	"progressive")
 		EARLY_STOPPING_MIN_EPOCHS=$initial_early_stopping_minimum_epochs          # Original for Progressive
@@ -150,8 +151,8 @@ echo "INITIAL WEIGHT DECAY: ${INIT_WDS[$dataset_index]}"
 echo "DROPOUT: ${DROPOUT}"
 echo "EARLY_STOPPING_MIN_EPOCHS: ${EARLY_STOPPING_MIN_EPOCHS}"
 echo "BATCH SIZE: [DEFAULT]: ${BATCH_SIZES[$dataset_index]} [ADJUSTED]: ${ADJUSTED_BATCH_SIZE}"
-echo ">> Starting history_clip_trainer.py for (${DATASET_TYPE[1]}) dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$dataset_index]}"
 
+echo ">> Starting history_clip_trainer.py for (${DATASET_TYPE[0]}) dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$dataset_index]}"
 python -u history_clip_trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \
 	--dataset_type "${DATASET_TYPE[0]}" \

@@ -9,6 +9,7 @@ from visualize import (
 	collect_progressive_training_history,
 	plot_progressive_training_dynamics,
 	plot_phase_transition_analysis,
+	plot_phase_transition_analysis_individual,
 	plot_progressive_fine_tuning_report,
 )
 
@@ -2819,9 +2820,9 @@ def progressive_finetune_single_label(
 	)
 
 	print(f"\nTraining Summary for {model_name} {model_arch}:")
-	print(f"  • Total phases used: {len(set(phases_history))}")
-	print(f"  • Phase transitions: {len(phase_transitions_epochs)}")
-	print(f"  • Early stopping: {'Yes' if early_stopping_triggered else 'No'}")
+	print(f"\tTotal phases used: {len(set(phases_history))}")
+	print(f"\tPhase transitions: {len(phase_transitions_epochs)}")
+	print(f"\tEarly stopping: {'Yes' if early_stopping_triggered else 'No'}")
 
 	if phase_transitions_epochs:
 		print(f"  • Transition epochs: {phase_transitions_epochs}")	
@@ -2830,6 +2831,12 @@ def progressive_finetune_single_label(
 		training_history=training_history,
 		save_path=plot_paths["phase_analysis"],
 	)
+
+	plot_phase_transition_analysis_individual(
+		training_history=training_history,
+		save_path=plot_paths["phase_analysis"],
+	)
+
 
 	print(f"Training improvement: {analysis_results['total_improvement']:.2f}%")
 	print(f"Most effective phase: Phase {analysis_results['best_phase']}")
