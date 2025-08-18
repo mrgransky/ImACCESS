@@ -4384,6 +4384,7 @@ def full_finetune_multi_label(
 				scaler.step(optimizer)
 				scaler.update()
 				scheduler.step()
+
 				# Track losses
 				batch_loss_total = total_loss.item()
 				batch_loss_i2t = loss_i2t.item()
@@ -6015,6 +6016,12 @@ def linear_probe_finetune_multi_label(
 						
 						# Track losses
 						batch_loss_total = loss.item()
+						
+
+
+
+
+
 						epoch_loss_total += batch_loss_total
 						num_batches += 1
 						
