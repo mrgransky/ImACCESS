@@ -3391,7 +3391,7 @@ def plot_single_labeled_head_torso_tail_samples(
 	# 1) Load metadata
 	try:
 		df_full = pd.read_csv(metadata_path, dtype=dtypes, low_memory=False, on_bad_lines='skip',)
-		_ = pd.read_csv(metadata_train_path, dtype=dtypes, low_memory=False, on_bad_lines='skip',)  # Not used here, but kept for parity
+		df_train = pd.read_csv(metadata_train_path, dtype=dtypes, low_memory=False, on_bad_lines='skip',)  # Not used here, but kept for parity
 		df_val = pd.read_csv(metadata_val_path, dtype=dtypes, low_memory=False, on_bad_lines='skip',)
 	except FileNotFoundError as e:
 		print(f"Error loading metadata files: {e}")
@@ -3399,23 +3399,23 @@ def plot_single_labeled_head_torso_tail_samples(
 	
 	# 2) Head / Torso / Tail segmentation from full dataset
 	label_counts_full = df_full['label'].value_counts()
-	print(f"Total unique labels in full dataset: {len(label_counts_full)}")
+	labels_in_train = set(df_train['label'].unique().tolist())
+	labels_in_val = set(df_val['label'].unique().tolist())
+
+	print(f"Total unique labels: FULL: {len(label_counts_full)} | TRAIN: {len(labels_in_train)} | VAL: {len(labels_in_val)}")
+
 
 	head_labels = label_counts_full[label_counts_full > head_threshold].index.tolist()
 	tail_labels = label_counts_full[label_counts_full < tail_threshold].index.tolist()
 	torso_labels = label_counts_full[(label_counts_full >= tail_threshold) & (label_counts_full <= head_threshold)].index.tolist()
 	# Restrict to labels present in validation set
-	labels_in_val = set(df_val['label'].unique().tolist())
-	print(f"Total unique labels in validation set: {len(labels_in_val)}")
+
 	segments = {
 		"Head": [lbl for lbl in head_labels if lbl in labels_in_val],
 		"Torso": [lbl for lbl in torso_labels if lbl in labels_in_val],
 		"Tail": [lbl for lbl in tail_labels if lbl in labels_in_val],
 	}
-	print(f"Head labels available in validation: {len(head_labels)}")
-	print(f"Torso labels available in validation: {len(torso_labels)}")
-	print(f"Tail labels available in validation: {len(tail_labels)}")
-
+	print(f"Head: {len(head_labels)} | Torso: {len(torso_labels)} | Tail: {len(tail_labels)}")
 
 	# 3) Sample up to 3 examples per segment for the grid
 	# We'll pick one image path per chosen label (if available)
