@@ -5,9 +5,12 @@ from scipy.stats import gaussian_kde, t
 from scipy import stats
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from PIL import Image, ImageDraw, ImageFont
+
 import seaborn as sns
 import inspect
 import time
+import random
 from collections import Counter
 from sklearn.preprocessing import MultiLabelBinarizer
 import os # For checking file existence
@@ -21,6 +24,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import ast
 from typing import Tuple, Union, List, Dict, Any, Optional
+Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
 dtypes = {
 	'doc_id': str, 'id': str, 'label': str, 'title': str,
@@ -3087,36 +3091,55 @@ def plot_year_distribution(
 	plt.savefig(fname=fpth, dpi=DPI, bbox_inches='tight')
 	plt.close()
 
-def create_distribution_plot_with_long_tail_analysis(
+def plot_long_tailed_distribution(
 		df: pd.DataFrame,
 		fpth: str,
-		FIGURE_SIZE: tuple,
-		DPI: int,
-		top_n: int = None,  # Option to show only top N labels
-		head_threshold: int = 5000,  # Labels with frequency > head_threshold
-		tail_threshold: int = 1000,   # Labels with frequency < tail_threshold
+		top_n: int=None,  # Option to show only top N labels
+		FIGURE_SIZE: tuple=(17, 9),
+		DPI: int=300,
+		head_threshold: int=5000,  # Labels with frequency > head_threshold
+		tail_threshold: int=1000,   # Labels with frequency < tail_threshold
 	):
 	label_counts = df['label'].value_counts().sort_values(ascending=False)
 	
 	# Handle large number of labels
 	if top_n and len(label_counts) > top_n:
-			top_labels = label_counts.head(top_n)
-			other_count = label_counts[top_n:].sum()
-			top_labels = pd.concat([top_labels, pd.Series([other_count], index=['Other'])])
-			label_counts = top_labels
+		top_labels = label_counts.head(top_n)
+		other_count = label_counts[top_n:].sum()
+		top_labels = pd.concat([top_labels, pd.Series([other_count], index=['Other'])])
+		label_counts = top_labels
 	
 	# Identify Head, Torso, and Tail segments
 	head_labels = label_counts[label_counts > head_threshold].index.tolist()
 	tail_labels = label_counts[label_counts < tail_threshold].index.tolist()
 	torso_labels = label_counts[(label_counts >= tail_threshold) & (label_counts <= head_threshold)].index.tolist()
 
-	segment_colors = {
-		'Head': "#009670e4",
-		'Torso': "#d4ae02",
-		'Tail': "#ee4747",
+	segment_specs = {
+		'Head': {
+			'color': "#009670e4",
+			'label': 'Head'.upper(),
+			'opacity': 0.2,
+			'fontsize': 16,
+		},
+		'Torso': {
+			'color': "#d4ae02",
+			'label': 'Torso'.upper(),
+			'opacity': 0.2,
+			'fontsize': 16,
+		},
+		'Tail': {
+			'color': "#ee4747",
+			'label': 'Tail'.upper(),
+			'opacity': 0.2,
+			'fontsize': 16,
+		},
 	}
 
-	fig, ax = plt.subplots(figsize=FIGURE_SIZE, facecolor='white', constrained_layout=True)
+	fig, ax = plt.subplots(
+		figsize=FIGURE_SIZE, 
+		facecolor='white', 
+		constrained_layout=True,
+	)
 	
 	bars = label_counts.plot(
 		kind='bar',
@@ -3146,7 +3169,6 @@ def create_distribution_plot_with_long_tail_analysis(
 	# Add shaded areas if segments exist
 	ymax = label_counts.max() * 1.11  # Set maximum y-value for shading
 	
-	segment_opacity = 0.2
 	segment_text_yoffset = 1.1 if len(head_labels) < 5 else 1.0
 	segment_text_opacity = 0.7
 
@@ -3154,20 +3176,18 @@ def create_distribution_plot_with_long_tail_analysis(
 		ax.axvspan(
 			min(head_indices) - 0.4, 
 			max(head_indices) + 0.4, 
-			alpha=segment_opacity, 
-			color=segment_colors['Head'], 
-			# label='Head'.upper()
+			alpha=segment_specs['Head']['opacity'],
+			color=segment_specs['Head']['color'],
 		)
 		ax.text(
 			np.mean(head_indices), 
 			ymax * segment_text_yoffset,
-			f"HEAD\n({len(head_labels)} labels)",
+			f"{segment_specs['Head']['label']}\n({len(head_labels)} labels)",
 			horizontalalignment='center',
 			verticalalignment='center',
-			fontsize=12,
+			fontsize=segment_specs['Head']['fontsize'],
 			fontweight='bold',
-			color=segment_colors['Head'],
-			# bbox=dict(facecolor='white', alpha=segment_text_opacity, edgecolor='none', pad=2),
+			color=segment_specs['Head']['color'],
 			zorder=5,
 		)
 	
@@ -3175,20 +3195,18 @@ def create_distribution_plot_with_long_tail_analysis(
 		ax.axvspan(
 			min(torso_indices) - 0.4, 
 			max(torso_indices) + 0.4, 
-			alpha=segment_opacity, 
-			color=segment_colors['Torso'], 
-			# label='Torso'.upper(),
+			alpha=segment_specs['Torso']['opacity'],
+			color=segment_specs['Torso']['color'],
 		)
 		ax.text(
 			np.mean(torso_indices), 
 			ymax * segment_text_yoffset, 
-			f"TORSO\n({len(torso_labels)} labels)",
+			f"{segment_specs['Torso']['label']}\n({len(torso_labels)} labels)",
 			horizontalalignment='center',
 			verticalalignment='center',
-			fontsize=12,
+			fontsize=segment_specs['Torso']['fontsize'],
 			fontweight='bold',
-			color=segment_colors['Torso'],
-			# bbox=dict(facecolor='white', alpha=segment_text_opacity, edgecolor='none', pad=2),
+			color=segment_specs['Torso']['color'],
 			zorder=5,
 		)
 	
@@ -3196,25 +3214,18 @@ def create_distribution_plot_with_long_tail_analysis(
 		ax.axvspan(
 			min(tail_indices) - 0.4, 
 			max(tail_indices) + 0.4, 
-			alpha=segment_opacity, 
-			color=segment_colors['Tail'], 
-			# label='Tail'.upper()
+			alpha=segment_specs['Tail']['opacity'],
+			color=segment_specs['Tail']['color'],
 		)
 		ax.text(
 			np.mean(tail_indices), 
 			ymax * segment_text_yoffset,
-			f"TAIL\n({len(tail_labels)} labels)",
+			f"{segment_specs['Tail']['label']}\n({len(tail_labels)} labels)",
 			horizontalalignment='center',
 			verticalalignment='center',
-			fontsize=12,
+			fontsize=segment_specs['Tail']['fontsize'],
 			fontweight='bold',
-			color=segment_colors['Tail'],
-			# bbox=dict(
-			# 	facecolor='white', 
-			# 	alpha=0.5, 
-			# 	edgecolor='none', 
-			# 	pad=2,
-			# ),
+			color=segment_specs['Tail']['color'],
 			zorder=5,
 		)
 	
@@ -3229,14 +3240,14 @@ def create_distribution_plot_with_long_tail_analysis(
 
 	# Enhance readability for large number of labels
 	if len(label_counts) > 20:
-		plt.xticks(rotation=90, fontsize=11)
+		plt.xticks(rotation=90, fontsize=15, fontweight='bold')
 	else:
 		plt.xticks(rotation=45, fontsize=9, ha='right')
-	plt.yticks(fontsize=9, rotation=90, va='center')
+	plt.yticks(fontsize=8, rotation=90, va='center', fontweight='bold')
 	
 	# Add value labels on top of bars
 	for i, v in enumerate(label_counts):
-		text_color = segment_colors['Head'] if i in head_indices else (segment_colors['Torso'] if i in torso_indices else segment_colors['Tail'])
+		text_color = segment_specs['Head']['color'] if i in head_indices else (segment_specs['Torso']['color'] if i in torso_indices else segment_specs['Tail']['color'])
 		ax.text(
 			i, 
 			v + (v * 0.015),  # Adjust vertical position relative to bar height
@@ -3247,12 +3258,6 @@ def create_distribution_plot_with_long_tail_analysis(
 			alpha=0.85,
 			color=text_color,
 			rotation=75,
-			# bbox=dict(
-			# 	# facecolor='white',
-			# 	# edgecolor='none',
-			# 	alpha=0.8,
-			# 	# pad=0.5
-			# ),
 			zorder=5,
 		)
 	
@@ -3276,7 +3281,7 @@ def create_distribution_plot_with_long_tail_analysis(
 		ax_log.set_ylabel(
 			ylabel='Log Sample Frequency', 
 			color='#8a008a', 
-			fontsize=10, 
+			fontsize=15,
 			fontweight='bold',
 		)
 		ax_log.tick_params(axis='y', colors='#8a008a')
@@ -3284,7 +3289,7 @@ def create_distribution_plot_with_long_tail_analysis(
 		ax_log.spines['right'].set_color('#8a008a')
 		ax_log.spines['right'].set_linewidth(1.0)
 		ax_log.spines['right'].set_alpha(0.7)
-		ax_log.grid(axis='y', alpha=0.3, linestyle='--', color="#616161", zorder=0)
+		ax_log.grid(axis='y', alpha=0.3, linestyle='--', color="#696969", zorder=0)
 
 		# Hide all spines for the logarithmic scale
 		for spine in ax_log.spines.values():
@@ -3293,7 +3298,7 @@ def create_distribution_plot_with_long_tail_analysis(
 	ax.set_xlabel('')
 	ax.tick_params(axis='x', length=0, width=0, color='none', labelcolor='black', labelsize=12)
 	ax.tick_params(axis='y', color='black', labelcolor='black', labelsize=11)
-	ax.set_ylabel('Sample Frequency', fontsize=10, fontweight='bold')
+	ax.set_ylabel('Sample Frequency', fontsize=15, fontweight='bold')
 	ax.set_ylim(0, label_counts.max() * 1.17)
 	
 	# Add basic statistics for the distribution
@@ -3315,24 +3320,24 @@ def create_distribution_plot_with_long_tail_analysis(
 	tail_percent = tail_count/total_samples*100 if total_samples > 0 else 0
 	
 	stats_text = (
-			f"Imbalance ratio: {imbalance_ratio:.1f}\n\n"
-			f"Label Statistics:\n"
-			f"    Median: {median_label_size:.0f}\n"
-			f"    Mean: {mean_label_size:.1f}\n"
-			f"    Standard deviation: {std_label_size:.1f}\n"
-			f"    Most frequent: {most_freq_label:.1f}%\n"
-			f"    Least frequent: {least_freq_label:.2f}%\n\n"
-			f"Segment Statistics:\n"
-			f"    Head: {len(head_labels)} labels, {head_count} samples ({head_percent:.1f}%)\n"
-			f"    Torso: {len(torso_labels)} labels, {torso_count} samples ({torso_percent:.1f}%)\n"
-			f"    Tail: {len(tail_labels)} labels, {tail_count} samples ({tail_percent:.1f}%)"
+		f"Imbalance ratio: {imbalance_ratio:.1f}\n\n"
+		f"Label Statistics:\n"
+		f"    Median: {median_label_size:.0f}\n"
+		f"    Mean: {mean_label_size:.1f}\n"
+		f"    Standard deviation: {std_label_size:.1f}\n"
+		f"    Most frequent: {most_freq_label:.1f}%\n"
+		f"    Least frequent: {least_freq_label:.2f}%\n\n"
+		f"Segment Statistics:\n"
+		f"    Head: {len(head_labels)} labels, {head_count} samples ({head_percent:.1f}%)\n"
+		f"    Torso: {len(torso_labels)} labels, {torso_count} samples ({torso_percent:.1f}%)\n"
+		f"    Tail: {len(tail_labels)} labels, {tail_count} samples ({tail_percent:.1f}%)"
 	)
 	print(f"stats_text:\n{stats_text}\n")
 
 	# Create custom legend elements
 	custom_lines = [
 		Line2D([0], [0], color="#00315393", lw=6),  # Linear scale
-		Line2D([0], [0], color='#8a008a', lw=2, marker='o', markersize=3, markerfacecolor='none', markeredgecolor='#8a008a')  # Logarithmic scale
+		Line2D([0], [0], color='#480264', lw=2, marker='o', markersize=3, markerfacecolor='none', markeredgecolor="#480264")  # Logarithmic scale
 	]
 
 	custom_labels = ['Linear', 'Logarithmic']
@@ -3343,13 +3348,13 @@ def create_distribution_plot_with_long_tail_analysis(
 			custom_labels, 
 			loc="best",
 			title='Label Distribution',
-			title_fontsize=14,
-			fontsize=12,
+			title_fontsize=15,
+			fontsize=13,
 			ncol=1,
 			frameon=True,
 			fancybox=True,
 			shadow=True,
-			edgecolor='black',
+			edgecolor='none',
 			facecolor='white',
 	)
 	legend.set_zorder(100)
@@ -3365,6 +3370,227 @@ def create_distribution_plot_with_long_tail_analysis(
 		'torso_count': torso_count,
 		'tail_count': tail_count,
 	}
+
+def plot_single_labeled_head_torso_tail_samples(
+		metadata_path,
+		metadata_train_path,
+		metadata_val_path,
+		save_path="head_torso_tail_grid.png",
+		head_threshold=5000,  # Labels with frequency > 5000
+		tail_threshold=1000,  # Labels with frequency < 1000
+		tile_img_h=256,  # Image area height per tile (excl. title text)
+		tile_w=256,  # Tile width (fixed so columns align perfectly)
+		title_h=26,  # Text area height at top of each tile ("GT: ...")
+		left_gutter=40,  # gutter for rotated row labels
+		bg_color="#ffffff",
+		scale_factor=3.5  # Parameter to scale the entire figure
+	):
+
+	print(f"Analyzing Label Distribution from {metadata_path}")
+
+	# 1) Load metadata
+	try:
+		df_full = pd.read_csv(metadata_path, dtype=dtypes, low_memory=False, on_bad_lines='skip',)
+		_ = pd.read_csv(metadata_train_path, dtype=dtypes, low_memory=False, on_bad_lines='skip',)  # Not used here, but kept for parity
+		df_val = pd.read_csv(metadata_val_path, dtype=dtypes, low_memory=False, on_bad_lines='skip',)
+	except FileNotFoundError as e:
+		print(f"Error loading metadata files: {e}")
+		return None, None
+	
+	# 2) Head / Torso / Tail segmentation from full dataset
+	label_counts_full = df_full['label'].value_counts()
+	print(f"Total unique labels in full dataset: {len(label_counts_full)}")
+
+	head_labels = label_counts_full[label_counts_full > head_threshold].index.tolist()
+	tail_labels = label_counts_full[label_counts_full < tail_threshold].index.tolist()
+	torso_labels = label_counts_full[(label_counts_full >= tail_threshold) & (label_counts_full <= head_threshold)].index.tolist()
+	# Restrict to labels present in validation set
+	labels_in_val = set(df_val['label'].unique().tolist())
+	print(f"Total unique labels in validation set: {len(labels_in_val)}")
+	segments = {
+		"Head": [lbl for lbl in head_labels if lbl in labels_in_val],
+		"Torso": [lbl for lbl in torso_labels if lbl in labels_in_val],
+		"Tail": [lbl for lbl in tail_labels if lbl in labels_in_val],
+	}
+	print(f"Head labels available in validation: {len(head_labels)}")
+	print(f"Torso labels available in validation: {len(torso_labels)}")
+	print(f"Tail labels available in validation: {len(tail_labels)}")
+
+
+	# 3) Sample up to 3 examples per segment for the grid
+	# We'll pick one image path per chosen label (if available)
+	i2t_queries = {seg: [] for seg in segments}
+	for segment_name, segment_labels in segments.items():
+		if not segment_labels:
+			continue
+		labels_to_sample = random.sample(segment_labels, min(3, len(segment_labels)))
+		for label in labels_to_sample:
+			imgs = df_val[df_val['label'] == label]['img_path'].tolist()
+			if imgs:
+				i2t_queries[segment_name].append({"image_path": random.choice(imgs), "label": label})
+	
+	t2i_queries = [{"label": it["label"], "segment": seg} for seg, lst in i2t_queries.items() for it in lst]
+
+	######################################
+	# 4) Build composite image (3x3) grid
+	######################################
+	rows = ["Head", "Torso", "Tail"]
+	n_cols = 3
+	
+	# Scale dimensions
+	scaled_tile_w = int(tile_w * scale_factor)
+	scaled_tile_img_h = int(tile_img_h * scale_factor)
+	scaled_title_h = int(title_h * scale_factor)
+	scaled_left_gutter = int(left_gutter * scale_factor)
+	tile_h_total = scaled_title_h + scaled_tile_img_h
+	canvas_w = scaled_left_gutter + n_cols * scaled_tile_w
+	canvas_h = len(rows) * tile_h_total
+	composite = Image.new("RGB", (canvas_w, canvas_h), color=bg_color)
+	draw = ImageDraw.Draw(composite)
+	
+	def load_font(name, size):
+		try:
+			return ImageFont.truetype(name, int(size * scale_factor))
+		except Exception:
+			try:
+				return ImageFont.truetype("DejaVuSans.ttf", int(size * scale_factor))
+			except Exception:
+				return ImageFont.load_default()
+	
+	title_font = load_font("DejaVuSansMono.ttf", 17)
+	row_font = load_font("DejaVuSans-Bold.ttf", 15)
+	segment_colors = {
+		'Head': "#009670e4",
+		'Torso': "#d4ae02",
+		'Tail': "#ee4747",
+	}
+	
+	# Helper to paste one tile at exact position with no gaps
+	def paste_tile(img_path, label, x0, y0):
+		# Make a clean tile background
+		tile = Image.new("RGB", (scaled_tile_w, tile_h_total), color=bg_color)
+		td = ImageDraw.Draw(tile)
+		# Draw title text centered in title area
+		gt_text = f"{label}"
+		if hasattr(title_font, "getbbox"):
+			tw, th = title_font.getbbox(gt_text)[2:]
+		else:
+			tw, th = title_font.getsize(gt_text)
+		td.text(
+			((scaled_tile_w - tw) // 2, max(0, (scaled_title_h - th) // 2)), 
+			gt_text, 
+			fill="#000000",
+			font=title_font,
+			stroke_width=2,
+			stroke_fill="#000000",
+		)
+		# Draw a subtle background for the title area
+		td.rectangle(
+			[(0, 0), (scaled_tile_w, scaled_title_h)], 
+			outline="#A8A8A8",
+			width=int(1 * scale_factor)
+		)
+		# Load image, preserve aspect, fit inside scaled_tile_w x scaled_tile_img_h
+		# Fallback to blank if missing/corrupted
+		try:
+			if img_path and os.path.exists(img_path):
+				img = Image.open(img_path).convert("RGB")
+			else:
+				img = Image.new("RGB", (scaled_tile_w, scaled_tile_img_h), color=(230, 230, 230))
+		except Exception:
+			img = Image.new("RGB", (scaled_tile_w, scaled_tile_img_h), color=(230, 230, 230))
+		# Resize to fit within (scaled_tile_w, scaled_tile_img_h), keeping aspect ratio
+		scale = min(scaled_tile_w / img.width, scaled_tile_img_h / img.height) if img.width and img.height else 1.0
+		new_w = max(1, int(img.width * scale))
+		new_h = max(1, int(img.height * scale))
+		img = img.resize((new_w, new_h), Image.LANCZOS)
+		# Paste centered in the image area
+		x_img = (scaled_tile_w - new_w) // 2
+		y_img = scaled_title_h + (scaled_tile_img_h - new_h) // 2
+		tile.paste(img, (x_img, y_img))
+		# Paste tile onto composite at exact pixel location (no spacing)
+		composite.paste(tile, (x0, y0))
+	
+	# Paste grid tiles
+	for r, segment_name in enumerate(rows):
+		samples = i2t_queries.get(segment_name, [])
+		for c in range(n_cols):
+			x0 = scaled_left_gutter + c * scaled_tile_w
+			y0 = r * tile_h_total
+			if c < len(samples):
+				paste_tile(samples[c]["image_path"], samples[c]["label"], x0, y0)
+			else:
+				# Blank tile (still zero spacing, just empty white background)
+				blank = Image.new("RGB", (scaled_tile_w, tile_h_total), color=bg_color)
+				composite.paste(blank, (x0, y0))
+	
+	# Draw rotated row label centered vertically in this row, inside left gutter
+	for r, segment_name in enumerate(rows):
+		row_center_y = r * tile_h_total + tile_h_total // 2
+		text = segment_name
+		color = segment_colors[segment_name]
+		
+		# Get text dimensions
+		if hasattr(row_font, "getbbox"):
+			bbox = row_font.getbbox(text)
+			tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+		else:
+			tw, th = row_font.getsize(text)
+		
+		print(f"Text '{text}': width={tw}, height={th}")
+		
+		# Create text image with enough padding
+		padding = 25
+		text_img = Image.new("RGBA", (tw + padding*3, th + padding*3), (255, 255, 255, 0))
+		td2 = ImageDraw.Draw(text_img)
+		td2.text(
+			(padding, padding), 
+			text.upper(), 
+			fill=color, 
+			font=row_font,
+			stroke_width=2,
+			stroke_fill=color,
+		)
+		
+		# Rotate the text image
+		text_rot = text_img.rotate(90, expand=1)
+		
+		# Calculate position to center the rotated text in the gutter
+		# After rotation, width becomes height and vice versa
+		tx = (scaled_left_gutter - text_rot.width) // 2
+		ty = row_center_y - text_rot.height // 2
+		
+		# Ensure we don't go negative
+		tx = max(5, tx)  # Keep small margin from edge
+		ty = max(0, ty)
+		
+		print(f"Positioning '{text}' at tx={tx}, ty={ty}, gutter_width={scaled_left_gutter}")
+		
+		# Add a semi-transparent background for better visibility
+		bg_padding = 10
+		bg_box = Image.new(
+			"RGBA", 
+			(text_rot.width + bg_padding*2, text_rot.height + bg_padding*2), 
+			(255, 255, 255, 180)
+		)
+		
+		# Paste background first, then text
+		composite.paste(bg_box, (tx - bg_padding, ty - bg_padding), bg_box)
+		composite.paste(text_rot, (tx, ty), text_rot)
+	
+	# Save the composite image
+	composite.save(save_path.replace(".png", ".jpg"), "JPEG", quality=100, dpi=(200, 200))
+	
+	print(f"Saved 3x3 sample grid to: {save_path}")
+	
+	# Also return queries similar to before (now organized by segment)
+	# Flatten i2t for backward compatibility if needed
+	flat_i2t = []
+	for seg, lst in i2t_queries.items():
+		for it in lst:
+			flat_i2t.append({"image_path": it["image_path"], "label": it["label"], "segment": seg})
+		
+	return flat_i2t, t2i_queries
 
 def plot_label_distribution(
 		df: pd.DataFrame,

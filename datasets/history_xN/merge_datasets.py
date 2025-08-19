@@ -26,7 +26,7 @@ from misc.visualize import *
 
 # run in puhti:
 # $ nohup python -u merge_datasets.py > /scratch/project_2004072/ImACCESS/trash/history_xN_merged_datasets.out &
-
+set_seeds(seed=42)
 USER = os.getenv("USER")
 BINs = 60
 VAL_SPLIT_PCT = 0.35
@@ -158,11 +158,20 @@ plot_year_distribution(
 	BINs=BINs,
 )
 
-create_distribution_plot_with_long_tail_analysis(
+plot_long_tailed_distribution(
 	df=merged_single_label_df,
 	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_{num_unique_labels_single_label}_labels_long_tailed_distribution.png'),
-	FIGURE_SIZE=(15,8),
-	DPI=400,
+	head_threshold=5000,
+	tail_threshold=1000,
+)
+
+plot_single_labeled_head_torso_tail_samples(
+	metadata_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'),
+	metadata_train_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'),
+	metadata_val_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'),
+	save_path=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_head_torso_tail_samples.png'),
+	head_threshold=5000,
+	tail_threshold=1000,
 )
 
 img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
