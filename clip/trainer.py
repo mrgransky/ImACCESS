@@ -3610,544 +3610,6 @@ def lora_finetune_single_label(
 		fname=plot_paths["retrieval_best"],
 	)
 
-def linear_probe_finetune_single_label(
-		model: torch.nn.Module,
-		train_loader: DataLoader,
-		validation_loader: DataLoader,
-		num_epochs: int,
-		print_every: int,
-		learning_rate: float,
-		weight_decay: float,
-		device: str,
-		results_dir: str,
-		window_size: int,
-		patience: int = 10,
-		min_delta: float = 1e-4,
-		cumulative_delta: float = 5e-3,
-		minimum_epochs: int = 20,
-		topk_values: List[int] = [1, 5, 10, 15, 20],
-		volatility_threshold: float = 15.0,
-		slope_threshold: float = 1e-4,
-		pairwise_imp_threshold: float = 1e-4,
-		min_phases_before_stopping: int = 1,
-		use_lamb: bool = False,
-		probe_hidden_dim: int = None,  # Optional hidden layer for MLP probe
-		probe_dropout: float = 0.1,  # Dropout for probe
-):
-		"""
-		Linear Probing fine-tuning for CLIP model on single-label classification.
-		
-		This method:
-		1. Freezes all CLIP parameters (vision and text encoders)
-		2. Extracts features from the frozen CLIP model
-		3. Trains a linear classifier (or shallow MLP) on top of these features
-		
-		The probe can be:
-		- Simple linear layer: CLIP features -> num_classes
-		- Two-layer MLP: CLIP features -> hidden_dim -> num_classes (if probe_hidden_dim is specified)
-		
-		Args:
-				model: Pre-trained CLIP model
-				train_loader: Training DataLoader
-				validation_loader: Validation DataLoader
-				num_epochs: Number of training epochs
-				print_every: Print frequency
-				learning_rate: Learning rate for the probe
-				weight_decay: Weight decay for regularization
-				device: Training device
-				results_dir: Directory to save results
-				window_size: Window size for early stopping
-				patience: Early stopping patience
-				min_delta: Minimum improvement delta
-				cumulative_delta: Cumulative improvement delta
-				minimum_epochs: Minimum epochs before early stopping
-				topk_values: K values for top-k accuracy
-				volatility_threshold: Volatility threshold for early stopping
-				slope_threshold: Slope threshold for early stopping
-				pairwise_imp_threshold: Pairwise improvement threshold
-				min_phases_before_stopping: Not used in linear probing
-				use_lamb: Whether to use LAMB optimizer
-				probe_hidden_dim: Hidden dimension for MLP probe (None for linear probe)
-				probe_dropout: Dropout rate for probe
-		"""
-		
-		early_stopping = EarlyStopping(
-				patience=patience,
-				min_delta=min_delta,
-				cumulative_delta=cumulative_delta,
-				window_size=window_size,
-				mode='min',
-				min_epochs=minimum_epochs,
-				restore_best_weights=True,
-				volatility_threshold=volatility_threshold,
-				slope_threshold=slope_threshold,
-				pairwise_imp_threshold=pairwise_imp_threshold,
-				min_phases_before_stopping=min_phases_before_stopping,
-		)
-		
-		try:
-				dataset_name = validation_loader.dataset.dataset.__class__.__name__
-		except AttributeError:
-				dataset_name = validation_loader.dataset.dataset_name
-		
-		mode = inspect.stack()[0].function
-		mode = re.sub(r'_finetune_single_label', '', mode)
-		model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
-		model_name = model.__class__.__name__
-		
-		print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) | batch_size: {train_loader.batch_size} | {type(device)} {device}".center(160, "-"))
-		if torch.cuda.is_available():
-				gpu_name = torch.cuda.get_device_name(device)
-				total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-				print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
-		
-		# Get number of classes
-		try:
-				class_names = validation_loader.dataset.dataset.classes
-				num_classes = len(class_names)
-		except AttributeError:
-				class_names = validation_loader.dataset.unique_labels
-				num_classes = len(class_names)
-		
-		print(f"Number of classes: {num_classes}")
-		
-		# =====================================
-		# STEP 1: FREEZE ALL CLIP PARAMETERS
-		# =====================================
-		for param in model.parameters():
-				param.requires_grad = False
-		
-		# Get CLIP's output dimension
-		with torch.no_grad():
-				dummy_image = torch.randn(1, 3, 224, 224).to(device)
-				dummy_features = model.encode_image(dummy_image)
-				clip_dim = dummy_features.shape[-1]
-		
-		print(f"CLIP output dimension: {clip_dim}")
-		
-		# =====================================
-		# STEP 2: CREATE LINEAR PROBE
-		# =====================================
-		class LinearProbe(torch.nn.Module):
-				def __init__(self, input_dim, output_dim, hidden_dim=None, dropout=0.1):
-						super().__init__()
-						if hidden_dim is not None:
-								# Two-layer MLP probe
-								self.probe = torch.nn.Sequential(
-										torch.nn.Linear(input_dim, hidden_dim),
-										torch.nn.ReLU(),
-										torch.nn.Dropout(dropout),
-										torch.nn.Linear(hidden_dim, output_dim)
-								)
-								self.probe_type = "MLP"
-						else:
-								# Simple linear probe
-								self.probe = torch.nn.Linear(input_dim, output_dim)
-								self.probe_type = "Linear"
-				
-				def forward(self, x):
-						return self.probe(x)
-		
-		# Create probe model
-		probe = LinearProbe(
-				input_dim=clip_dim,
-				output_dim=num_classes,
-				hidden_dim=probe_hidden_dim,
-				dropout=probe_dropout
-		).to(device)
-		
-		probe_params = sum(p.numel() for p in probe.parameters())
-		print(f"Probe type: {probe.probe_type} | Probe parameters: {probe_params:,}")
-		
-		# Pre-encode all class texts for zero-shot initialization (optional but helpful)
-		print("Pre-encoding class texts for better initialization...")
-		all_class_texts = clip.tokenize(class_names).to(device, non_blocking=True)
-		with torch.no_grad():
-				model.eval()
-				all_class_embeds = model.encode_text(all_class_texts) # (num_classes, dim)
-				all_class_embeds = F.normalize(all_class_embeds, dim=-1)
-		
-		# Initialize probe with zero-shot weights (optional but often helps)
-		if probe_hidden_dim is None:  # Only for pure linear probe (MLP probe is initialized with random weights)
-				with torch.no_grad():
-						probe.probe.weight.data = all_class_embeds.clone()
-						probe.probe.bias.data.zero_()
-				print("Initialized probe with zero-shot CLIP text embeddings")
-		else:
-				print("Probe initialized with random weights")
-				pass
-		print("Probe weight shape :", probe.probe.weight.shape)   # torch.Size([num_classes, 512])
-		print("Probe bias shape :", probe.probe.bias.shape)				# torch.Size([num_classes])
-		# =====================================
-		# STEP 3: SETUP TRAINING
-		# =====================================
-		
-		# Only optimize probe parameters
-		if use_lamb:
-				optimizer = LAMB(
-						params=probe.parameters(),
-						lr=learning_rate,
-						weight_decay=weight_decay,
-				)
-		else:
-				optimizer = torch.optim.AdamW(
-						params=probe.parameters(),
-						lr=learning_rate,
-						betas=(0.9, 0.999),
-						eps=1e-8,
-						weight_decay=weight_decay,
-				)
-		
-		scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-				optimizer=optimizer,
-				T_max=num_epochs,
-				eta_min=learning_rate * 0.01,
-		)
-		
-		criterion = torch.nn.CrossEntropyLoss()
-		scaler = torch.amp.GradScaler(device=device)
-		
-		# Model save path
-		mdl_fpth = os.path.join(
-				results_dir,
-				f"{mode}_"
-				f"{model_arch}_"
-				f"{optimizer.__class__.__name__}_"
-				f"{scheduler.__class__.__name__}_"
-				f"{criterion.__class__.__name__}_"
-				f"probe_{probe.probe_type}_"
-				f"hdim_{probe_hidden_dim}_"
-				f"pdrop_{probe_dropout}_"
-				f"ieps_{num_epochs}_"
-				f"lr_{learning_rate:.1e}_"
-				f"wd_{weight_decay:.1e}_"
-				f"bs_{train_loader.batch_size}_"
-				f"best.pth"
-		)
-		
-		print(f"Best model will be saved in: {mdl_fpth}")
-		
-		# =====================================
-		# STEP 4: EXTRACT AND CACHE FEATURES (OPTIONAL)
-		# =====================================
-		# For efficiency, we can pre-extract all features once
-		print("Extracting features from frozen CLIP model...")
-		
-		def extract_features(loader, model, device):
-				"""Extract features from frozen CLIP model"""
-				features = []
-				labels = []
-				
-				model.eval()
-				with torch.no_grad():
-						for images, _, label_indices in tqdm(loader, desc="Extracting features"):
-								images = images.to(device, non_blocking=True)
-								# Extract CLIP features
-								image_features = model.encode_image(images)
-								image_features = F.normalize(image_features, dim=-1)
-								
-								features.append(image_features.cpu())
-								labels.append(label_indices.cpu())
-				
-				return torch.cat(features, dim=0), torch.cat(labels, dim=0)
-		
-		# Extract features once (optional - can be skipped for online extraction)
-		train_features, train_labels = extract_features(train_loader, model, device)
-		val_features, val_labels = extract_features(validation_loader, model, device)
-		
-		print(f"Extracted features - Train: {train_features.shape}, Val: {val_features.shape}")
-		
-		# Create feature datasets
-		from torch.utils.data import TensorDataset
-		train_feature_dataset = TensorDataset(train_features, train_labels)
-		val_feature_dataset = TensorDataset(val_features, val_labels)
-		
-		# Create new dataloaders for features
-		train_feature_loader = DataLoader(
-				train_feature_dataset,
-				batch_size=train_loader.batch_size,
-				shuffle=True,
-				num_workers=0,  # Features are already in memory
-				pin_memory=False
-		)
-		
-		val_feature_loader = DataLoader(
-				val_feature_dataset,
-				batch_size=validation_loader.batch_size,
-				shuffle=False,
-				num_workers=0,
-				pin_memory=False
-		)
-		
-		# =====================================
-		# STEP 5: TRAINING LOOP
-		# =====================================
-		training_losses = []
-		img2txt_metrics_all_epochs = []
-		txt2img_metrics_all_epochs = []
-		in_batch_loss_acc_metrics_all_epochs = []
-		full_val_loss_acc_metrics_all_epochs = []
-		train_start_time = time.time()
-		i2t_losses = []          # image → text (loss_img)
-		t2i_losses = []          # text → image (loss_txt)
-		
-		for epoch in range(num_epochs):
-				train_and_val_st_time = time.time()
-				torch.cuda.empty_cache()
-				
-				# Training
-				probe.train()
-				print(f"Epoch [{epoch + 1}/{num_epochs}]")
-				epoch_loss = 0.0
-				correct = 0
-				total = 0
-				
-				for bidx, (features, labels) in enumerate(train_feature_loader):
-					features = features.to(device, non_blocking=True)
-					labels = labels.to(device, non_blocking=True)
-					
-					optimizer.zero_grad()
-					
-					with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-						# Forward pass through probe only
-						logits = probe(features)
-						loss = criterion(logits, labels)
-					
-					scaler.scale(loss).backward()
-					torch.nn.utils.clip_grad_norm_(probe.parameters(), max_norm=1.0)
-					scaler.step(optimizer)
-					scaler.update()
-					
-					# Track accuracy
-					_, predicted = torch.max(logits.data, 1)
-					total += labels.size(0)
-					correct += (predicted == labels).sum().item()
-					
-					if bidx % print_every == 0 or bidx + 1 == len(train_feature_loader):
-						print(f"\t\tBatch [{bidx + 1}/{len(train_feature_loader)}] Loss: {loss.item():.6f}")
-					
-					epoch_loss += loss.item()
-				
-				avg_training_loss = epoch_loss / len(train_feature_loader)
-				train_accuracy = 100 * correct / total
-				training_losses.append(avg_training_loss)
-				
-				print(f"Training Loss: {avg_training_loss:.6f}, Training Accuracy: {train_accuracy:.2f}%")
-				
-				# Validation
-				probe.eval()
-				val_loss = 0.0
-				correct = 0
-				total = 0
-				
-				with torch.no_grad():
-					for features, labels in val_feature_loader:
-						features = features.to(device, non_blocking=True)
-						labels = labels.to(device, non_blocking=True)
-						
-						logits = probe(features)
-						loss = criterion(logits, labels)
-						
-						val_loss += loss.item()
-						
-						_, predicted = torch.max(logits.data, 1)
-						total += labels.size(0)
-						correct += (predicted == labels).sum().item()
-				
-				avg_val_loss = val_loss / len(val_feature_loader)
-				val_accuracy = 100 * correct / total
-				
-				print(f"Validation Loss: {avg_val_loss:.6f}, Validation Accuracy: {val_accuracy:.2f}%")
-				
-				# For compatibility with existing code, create metrics dict
-				in_batch_metrics = {
-					"val_loss": avg_val_loss,
-					"accuracy": val_accuracy / 100,  # Convert to fraction
-				}
-				in_batch_loss_acc_metrics_all_epochs.append(in_batch_metrics)
-				
-				# Update scheduler
-				scheduler.step()
-				
-				# Early stopping
-				if early_stopping.should_stop(
-					current_value=avg_val_loss,
-					model=probe,  # Save probe weights, not CLIP
-					epoch=epoch,
-					optimizer=optimizer,
-					scheduler=scheduler,
-					checkpoint_path=mdl_fpth,
-				):
-					print(f"\nEarly stopping at epoch {epoch + 1}")
-					break
-				
-				print(f"Epoch {epoch+1} Duration: {time.time() - train_and_val_st_time:.2f} sec".center(170, "-"))
-		
-		print(f"[{mode}] Total Training Time: {time.time() - train_start_time:.1f} sec".center(170, "-"))
-		
-		# =====================================
-		# STEP 6: FINAL EVALUATION
-		# =====================================
-		# Load best probe weights
-		if os.path.exists(mdl_fpth):
-				print(f"Loading best probe weights from {mdl_fpth}")
-				checkpoint = torch.load(mdl_fpth, map_location=device)
-				if 'model_state_dict' in checkpoint:
-						probe.load_state_dict(checkpoint['model_state_dict'])
-				else:
-						probe.load_state_dict(checkpoint)
-		
-		# Create combined model for evaluation
-		class CLIPWithProbe(torch.nn.Module):
-				def __init__(self, clip_model, probe):
-						super().__init__()
-						self.clip = clip_model
-						self.probe = probe
-						# Copy necessary attributes from CLIP
-						self.visual = clip_model.visual
-						self.encode_image = clip_model.encode_image
-						self.encode_text = clip_model.encode_text
-						self.name = getattr(clip_model, 'name', 'unknown')
-				
-				def forward(self, images, texts):
-						# For compatibility with evaluation code
-						image_features = self.clip.encode_image(images)
-						image_features = F.normalize(image_features, dim=-1)
-						
-						# Get logits from probe
-						logits = self.probe(image_features)
-						
-						# For CLIP-style evaluation, we need to return image-text similarity
-						# We'll use the probe's logits as a proxy
-						batch_size = images.shape[0]
-						num_classes = logits.shape[1]
-						
-						# Create pseudo-similarity matrix
-						# This is a hack for compatibility - ideally evaluation should be adapted
-						if batch_size == num_classes:
-								return logits, logits.T
-						else:
-								# Pad or truncate to make square matrix
-								min_dim = min(batch_size, num_classes)
-								logits_per_image = logits[:min_dim, :min_dim]
-								logits_per_text = logits_per_image.T
-								return logits_per_image, logits_per_text
-		
-		# Combine CLIP and probe for evaluation
-		combined_model = CLIPWithProbe(model, probe)
-		
-		# Run evaluation with the combined model
-		evaluation_results = evaluate_best_model(
-				model=combined_model,
-				validation_loader=validation_loader,
-				criterion=criterion,
-				early_stopping=early_stopping,
-				checkpoint_path=mdl_fpth,
-				finetune_strategy=mode,
-				device=device,
-				cache_dir=results_dir,
-				topk_values=topk_values,
-				verbose=True,
-				max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
-		)
-
-		final_metrics_in_batch = evaluation_results["in_batch_metrics"]
-		final_metrics_full = evaluation_results["full_metrics"]
-		final_img2txt_metrics = evaluation_results["img2txt_metrics"]
-		final_txt2img_metrics = evaluation_results["txt2img_metrics"]
-
-		print(f"Final evaluation used model weights from: {evaluation_results['model_loaded_from']}")
-		print("--- Final Metrics [In-batch Validation] ---")
-		print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
-		print("--- Final Metrics [Full Validation Set] ---")
-		print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
-		print("--- Image-to-Text Retrieval ---")
-		print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
-		print("--- Text-to-Image Retrieval ---")
-		print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
-
-		# Generate plots
-		print("\nGenerating result plots...")
-		actual_trained_epochs = len(training_losses)
-		
-		file_base_name = (
-				f"{dataset_name}_"
-				f"{mode}_"
-				f"{optimizer.__class__.__name__}_"
-				f"{scheduler.__class__.__name__}_"
-				f"{criterion.__class__.__name__}_"
-				f"{model_name}_"
-				f"{model_arch}_"
-				f"probe_{probe.probe_type}_"
-				f"ep_{actual_trained_epochs}_"
-				f"lr_{learning_rate:.1e}_"
-				f"wd_{weight_decay:.1e}_"
-				f"bs_{train_loader.batch_size}"
-		)
-		
-		# Update model path
-		mdl_fpth = get_updated_model_name(
-			original_path=mdl_fpth,
-			actual_epochs=actual_trained_epochs
-		)
-		
-		print(f"Best model will be renamed to: {mdl_fpth}")
-		
-		# Print final summary
-		best_val_loss = early_stopping.get_best_score() or 0.0
-		print("\n" + "="*80)
-		print("LINEAR PROBE TRAINING SUMMARY")
-		print("="*80)
-		print(f"Method: {mode}")
-		print(f"Probe Type: {probe.probe_type}")
-		print(f"Probe Parameters: {probe_params:,}")
-		print(f"CLIP Parameters (frozen): {sum(p.numel() for p in model.parameters()):,}")
-		print(f"Total Epochs: {actual_trained_epochs}")
-		print(f"Best Validation Loss: {best_val_loss}")
-		print(f"Best Epoch: {early_stopping.get_best_epoch() + 1}")
-		print("="*80)
-
-		plot_paths = {
-			"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-			"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
-			"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
-			"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-			"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-			"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-			"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
-		}
-
-		plot_loss_accuracy_metrics(
-			dataset_name=dataset_name,
-			train_losses=training_losses,
-			val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-			in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-			in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-			full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-			full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-			losses_file_path=plot_paths["losses"],
-			in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
-			in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
-			full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
-			full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
-		)
-		
-		plot_retrieval_metrics_per_epoch(
-			dataset_name=dataset_name,
-			image_to_text_metrics_list=img2txt_metrics_all_epochs,
-			text_to_image_metrics_list=txt2img_metrics_all_epochs,
-			fname=plot_paths["retrieval_per_epoch"],
-		)
-		
-		plot_retrieval_metrics_best_model(
-			dataset_name=dataset_name,
-			image_to_text_metrics=final_img2txt_metrics,
-			text_to_image_metrics=final_txt2img_metrics,
-			fname=plot_paths["retrieval_best"],
-		)
-
-		return in_batch_loss_acc_metrics_all_epochs
-
 def full_finetune_multi_label(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
@@ -5718,6 +5180,738 @@ def lora_finetune_multi_label(
 
 	return final_metrics_in_batch, final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
+class LinearProbe(torch.nn.Module):
+		"""
+		A robust linear probe that automatically handles different ViT architectures
+		and resolves common issues like positional embedding mismatches.
+		"""
+		
+		def __init__(
+				self, 
+				clip_model: torch.nn.Module,
+				num_classes: int,
+				class_names: List[str],
+				device: torch.device,
+				hidden_dim: Optional[int] = None, 
+				dropout: float = 0.1,
+				zero_shot_init: bool = True,
+				target_resolution: Optional[int] = None,
+				verbose: bool = True
+		):
+				super().__init__()
+				
+				self.clip_model = clip_model
+				self.num_classes = num_classes
+				self.class_names = class_names
+				self.device = device
+				self.verbose = verbose
+				
+				# Step 1: Fix ViT positional embeddings if needed
+				self._fix_vit_positional_embeddings(target_resolution)
+				
+				# Step 2: Detect feature dimension
+				self.input_dim = self._detect_feature_dimension()
+				
+				# Step 3: Build probe architecture
+				if hidden_dim is not None:
+						# Two-layer MLP probe
+						self.probe = nn.Sequential(
+								nn.Linear(self.input_dim, hidden_dim),
+								nn.ReLU(),
+								nn.Dropout(dropout),
+								nn.Linear(hidden_dim, num_classes)
+						)
+						self.probe_type = "MLP"
+				else:
+						# Simple linear probe
+						self.probe = torch.nn.Linear(self.input_dim, num_classes)
+						self.probe_type = "Linear"
+				
+				# Step 4: Initialize probe weights
+				if zero_shot_init:
+						self._zero_shot_initialization()
+				
+				if self.verbose:
+						self._print_initialization_summary()
+		
+		def _fix_vit_positional_embeddings(self, target_resolution: Optional[int]):
+				"""Fix ViT positional embedding mismatches for different resolutions."""
+				if not hasattr(self.clip_model.visual, 'positional_embedding'):
+						if self.verbose:
+								print("Not a ViT model - skipping positional embedding fix")
+						return
+				
+				visual = self.clip_model.visual
+				
+				# Auto-detect target resolution if not provided
+				if target_resolution is None:
+						model_name = getattr(self.clip_model, 'name', '')
+						if '@336px' in model_name:
+								target_resolution = 336
+						elif 'L/14' in model_name:
+								target_resolution = 224  # Default for ViT-L/14
+						else:
+								target_resolution = getattr(visual, 'input_resolution', 224)
+				
+				# Get current configuration
+				patch_size = visual.conv1.kernel_size[0]
+				current_resolution = getattr(visual, 'input_resolution', 224)
+				current_grid_size = current_resolution // patch_size
+				target_grid_size = target_resolution // patch_size
+				
+				current_seq_len = visual.positional_embedding.shape[0]
+				expected_seq_len = target_grid_size * target_grid_size + 1  # +1 for class token
+				
+				if self.verbose:
+						print(f"ViT Positional Embedding Check:")
+						print(f"  Model: {getattr(self.clip_model, 'name', 'Unknown')}")
+						print(f"  Current: {current_resolution}px -> Target: {target_resolution}px")
+						print(f"  Patch size: {patch_size}px")
+						print(f"  Positional embeddings: {current_seq_len} -> {expected_seq_len}")
+				
+				if current_seq_len == expected_seq_len:
+						if self.verbose:
+								print("  ✓ Positional embedding size matches - no fix needed")
+						visual.input_resolution = target_resolution
+						return
+				
+				if self.verbose:
+						print("  ⚠ Size mismatch detected - applying interpolation fix...")
+				
+				# Apply interpolation fix
+				try:
+						with torch.no_grad():
+								new_pos_embed = self._interpolate_positional_embedding(
+										visual.positional_embedding,
+										current_grid_size,
+										target_grid_size
+								)
+								visual.positional_embedding.data = new_pos_embed
+								visual.input_resolution = target_resolution
+						
+						if self.verbose:
+								print(f"  ✓ Successfully fixed: {current_seq_len} -> {new_pos_embed.shape[0]} embeddings")
+								
+				except Exception as e:
+						if self.verbose:
+								print(f"  ✗ Fix failed: {e}")
+								print("  Continuing with original embeddings...")
+		
+		def _interpolate_positional_embedding(
+				self, 
+				pos_embed: torch.Tensor, 
+				old_grid_size: int, 
+				new_grid_size: int
+		) -> torch.Tensor:
+				"""Interpolate positional embeddings using bicubic interpolation."""
+				embed_dim = pos_embed.shape[-1]
+				
+				# Separate class token and spatial embeddings
+				cls_token = pos_embed[:1]  # [1, embed_dim]
+				spatial_pos = pos_embed[1:]  # [old_grid_size^2, embed_dim]
+				
+				# Validate spatial positions
+				if spatial_pos.shape[0] != old_grid_size * old_grid_size:
+						raise ValueError(f"Spatial positions {spatial_pos.shape[0]} != {old_grid_size}^2")
+				
+				# Reshape to 2D grid: [old_grid_size^2, embed_dim] -> [1, embed_dim, old_grid_size, old_grid_size]
+				spatial_pos_2d = spatial_pos.transpose(0, 1).reshape(
+						1, embed_dim, old_grid_size, old_grid_size
+				)
+				
+				# Interpolate to new size
+				spatial_pos_new = F.interpolate(
+						spatial_pos_2d,
+						size=(new_grid_size, new_grid_size),
+						mode='bicubic',
+						align_corners=False
+				)
+				
+				# Reshape back: [1, embed_dim, new_grid_size, new_grid_size] -> [new_grid_size^2, embed_dim]
+				spatial_pos_new = spatial_pos_new.reshape(
+						embed_dim, new_grid_size * new_grid_size
+				).transpose(0, 1)
+				
+				# Concatenate class token and spatial embeddings
+				new_pos_embed = torch.cat([cls_token, spatial_pos_new], dim=0)
+				
+				return new_pos_embed
+		
+		def _detect_feature_dimension(self) -> int:
+				"""Detect the feature dimension by running a test forward pass."""
+				if self.verbose:
+						print("Detecting CLIP feature dimension...")
+				
+				try:
+						# Get input resolution
+						if hasattr(self.clip_model.visual, 'input_resolution'):
+								resolution = self.clip_model.visual.input_resolution
+						else:
+								resolution = 224  # Default fallback
+						
+						# Test forward pass
+						dummy_image = torch.randn(1, 3, resolution, resolution).to(self.device)
+						
+						with torch.no_grad():
+								features = self.clip_model.encode_image(dummy_image)
+						
+						feature_dim = features.shape[-1]
+						
+						if self.verbose:
+								print(f"  ✓ Feature dimension: {feature_dim}")
+								print(f"  ✓ Test resolution: {resolution}px")
+						
+						return feature_dim
+						
+				except Exception as e:
+						if self.verbose:
+								print(f"  ✗ Feature detection failed: {e}")
+						raise RuntimeError(f"Cannot detect CLIP feature dimension: {e}")
+		
+		def _zero_shot_initialization(self):
+				"""Initialize probe with CLIP text embeddings."""
+				if self.verbose:
+						print("Initializing probe with zero-shot CLIP embeddings...")
+				
+				try:
+						# Tokenize class names
+						class_texts = clip.tokenize(self.class_names).to(self.device)
+						
+						# Get CLIP text embeddings
+						with torch.no_grad():
+								self.clip_model.eval()
+								class_embeds = self.clip_model.encode_text(class_texts)
+								class_embeds = F.normalize(class_embeds, dim=-1)
+						
+						# Initialize based on probe type
+						if self.probe_type == "Linear":
+								# Direct initialization for linear probe
+								with torch.no_grad():
+										self.probe.weight.data = class_embeds.clone()
+										self.probe.bias.data.zero_()
+								
+								if self.verbose:
+										print("  ✓ Linear probe initialized with text embeddings")
+						
+						elif self.probe_type == "MLP":
+								# Initialize final layer of MLP
+								final_layer = self.probe[-1]  # Last linear layer
+								
+								if class_embeds.shape[1] == final_layer.weight.shape[1]:
+										# Direct initialization if dimensions match
+										with torch.no_grad():
+												final_layer.weight.data = class_embeds.clone()
+												final_layer.bias.data.zero_()
+								else:
+										# Scaled initialization if dimensions don't match
+										text_norm = class_embeds.norm(dim=1).mean().item()
+										with torch.no_grad():
+												final_layer.weight.data.normal_(0, text_norm * 0.1)
+												final_layer.bias.data.zero_()
+								
+								if self.verbose:
+										print("  ✓ MLP final layer initialized")
+				
+				except Exception as e:
+						if self.verbose:
+								print(f"  ⚠ Zero-shot initialization failed: {e}")
+								print("  Using default random initialization")
+		
+		def _print_initialization_summary(self):
+				"""Print summary of probe initialization."""
+				probe_params = sum(p.numel() for p in self.probe.parameters())
+				clip_params = sum(p.numel() for p in self.clip_model.parameters())
+				
+				print(f"\nRobust Linear Probe Summary:")
+				print(f"  Model: {getattr(self.clip_model, 'name', 'Unknown CLIP')}")
+				print(f"  Probe Type: {self.probe_type}")
+				print(f"  Input Features: {self.input_dim}")
+				print(f"  Output Classes: {self.num_classes}")
+				print(f"  Probe Parameters: {probe_params:,}")
+				print(f"  CLIP Parameters (frozen): {clip_params:,}")
+				print(f"  Trainable Ratio: {probe_params/(probe_params + clip_params)*100:.4f}%")
+		
+		def forward(self, x):
+				"""Forward pass through the probe."""
+				return self.probe(x)
+
+def linear_probe_finetune_single_label(
+		model: torch.nn.Module,
+		train_loader,
+		validation_loader,
+		num_epochs: int,
+		print_every: int,
+		learning_rate: float,
+		weight_decay: float,
+		device: str,
+		results_dir: str,
+		window_size: int,
+		patience: int = 10,
+		min_delta: float = 1e-4,
+		cumulative_delta: float = 5e-3,
+		minimum_epochs: int = 20,
+		topk_values: List[int] = [1, 5, 10, 15, 20],
+		volatility_threshold: float = 15.0,
+		slope_threshold: float = 1e-4,
+		pairwise_imp_threshold: float = 1e-4,
+		min_phases_before_stopping: int = 1,
+		use_lamb: bool = False,
+		probe_hidden_dim: int = None,  # Optional hidden layer for MLP probe
+		probe_dropout: float = 0.1,  # Dropout for probe
+	):
+	"""
+	Enhanced Linear Probing fine-tuning with robust ViT support.
+	
+	This method:
+	1. Automatically fixes ViT positional embedding mismatches
+	2. Freezes all CLIP parameters (vision and text encoders)
+	3. Extracts features from the frozen CLIP model
+	4. Trains a linear classifier (or shallow MLP) on top of these features
+	
+	The probe can be:
+	- Simple linear layer: CLIP features -> num_classes
+	- Two-layer MLP: CLIP features -> hidden_dim -> num_classes (if probe_hidden_dim is specified)
+	"""
+	
+	early_stopping = EarlyStopping(
+			patience=patience,
+			min_delta=min_delta,
+			cumulative_delta=cumulative_delta,
+			window_size=window_size,
+			mode='min',
+			min_epochs=minimum_epochs,
+			restore_best_weights=True,
+			volatility_threshold=volatility_threshold,
+			slope_threshold=slope_threshold,
+			pairwise_imp_threshold=pairwise_imp_threshold,
+			min_phases_before_stopping=min_phases_before_stopping,
+	)
+	
+	try:
+			dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	except AttributeError:
+			dataset_name = validation_loader.dataset.dataset_name
+	
+	mode = inspect.stack()[0].function
+	mode = re.sub(r'_finetune_single_label', '', mode)
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_name = model.__class__.__name__
+	
+	print(f"{mode} {model_name} {model_arch} {dataset_name} {num_epochs} Epoch(s) | batch_size: {train_loader.batch_size} | {type(device)} {device}".center(160, "-"))
+	if torch.cuda.is_available():
+			gpu_name = torch.cuda.get_device_name(device)
+			total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+	
+	# Get number of classes
+	try:
+			class_names = validation_loader.dataset.dataset.classes
+			num_classes = len(class_names)
+	except AttributeError:
+			class_names = validation_loader.dataset.unique_labels
+			num_classes = len(class_names)
+	
+	print(f"Number of classes: {num_classes}")
+	
+	# =====================================
+	# STEP 1: FREEZE ALL CLIP PARAMETERS AND CREATE ROBUST PROBE
+	# =====================================
+	for param in model.parameters():
+			param.requires_grad = False
+	
+	# Create the robust linear probe that handles everything automatically
+	print("\nCreating robust linear probe...")
+	probe = LinearProbe(
+			clip_model=model,
+			num_classes=num_classes,
+			class_names=class_names,
+			device=torch.device(device),
+			hidden_dim=probe_hidden_dim,
+			dropout=probe_dropout,
+			zero_shot_init=True,
+			target_resolution=None,  # Auto-detect
+			verbose=True
+	).to(device)
+	
+	clip_dim = probe.input_dim  # Get the detected feature dimension
+	probe_params = sum(p.numel() for p in probe.parameters())
+	
+	print(f"CLIP output dimension: {clip_dim}")
+	print(f"Probe type: {probe.probe_type} | Probe parameters: {probe_params:,}")
+	
+	# Debug: Print probe architecture details
+	if probe.probe_type == "Linear":
+			print(f"Probe weight shape: {probe.probe.weight.shape}")
+			print(f"Probe bias shape: {probe.probe.bias.shape}")
+	else:
+			print(f"MLP Probe architecture: {probe.probe}")
+	
+	# =====================================
+	# STEP 2: SETUP TRAINING
+	# =====================================
+	
+	# Only optimize probe parameters
+	if use_lamb:
+			optimizer = LAMB(
+					params=probe.parameters(),
+					lr=learning_rate,
+					weight_decay=weight_decay,
+			)
+	else:
+			optimizer = torch.optim.AdamW(
+					params=probe.parameters(),
+					lr=learning_rate,
+					betas=(0.9, 0.999),
+					eps=1e-8,
+					weight_decay=weight_decay,
+			)
+	
+	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+			optimizer=optimizer,
+			T_max=num_epochs,
+			eta_min=learning_rate * 0.01,
+	)
+	
+	criterion = torch.nn.CrossEntropyLoss()
+	scaler = torch.amp.GradScaler(device=device)
+	
+	# Model save path
+	mdl_fpth = os.path.join(
+			results_dir,
+			f"{mode}_"
+			f"{model_arch}_"
+			f"{optimizer.__class__.__name__}_"
+			f"{scheduler.__class__.__name__}_"
+			f"{criterion.__class__.__name__}_"
+			f"probe_{probe.probe_type}_"
+			f"hdim_{probe_hidden_dim}_"
+			f"pdrop_{probe_dropout}_"
+			f"ieps_{num_epochs}_"
+			f"lr_{learning_rate:.1e}_"
+			f"wd_{weight_decay:.1e}_"
+			f"bs_{train_loader.batch_size}_"
+			f"best.pth"
+	)
+	
+	print(f"Best model will be saved in: {mdl_fpth}")
+	
+	# =====================================
+	# STEP 3: EXTRACT AND CACHE FEATURES (OPTIONAL)
+	# =====================================
+	# For efficiency, we can pre-extract all features once
+	print("Extracting features from frozen CLIP model...")
+	
+	def extract_features(loader, model, device):
+			"""Extract features from frozen CLIP model"""
+			features = []
+			labels = []
+			
+			model.eval()
+			with torch.no_grad():
+					for images, _, label_indices in tqdm(loader, desc="Extracting features"):
+							images = images.to(device, non_blocking=True)
+							# Extract CLIP features
+							image_features = model.encode_image(images)
+							image_features = F.normalize(image_features, dim=-1)
+							
+							features.append(image_features.cpu())
+							labels.append(label_indices.cpu())
+			
+			return torch.cat(features, dim=0), torch.cat(labels, dim=0)
+	
+	# Extract features once (optional - can be skipped for online extraction)
+	train_features, train_labels = extract_features(train_loader, model, device)
+	val_features, val_labels = extract_features(validation_loader, model, device)
+	
+	print(f"Extracted features - Train: {train_features.shape}, Val: {val_features.shape}")
+	
+	# Create feature datasets
+	from torch.utils.data import TensorDataset
+	train_feature_dataset = TensorDataset(train_features, train_labels)
+	val_feature_dataset = TensorDataset(val_features, val_labels)
+	
+	# Create new dataloaders for features
+	train_feature_loader = DataLoader(
+			train_feature_dataset,
+			batch_size=train_loader.batch_size,
+			shuffle=True,
+			num_workers=0,  # Features are already in memory
+			pin_memory=False
+	)
+	
+	val_feature_loader = DataLoader(
+			val_feature_dataset,
+			batch_size=validation_loader.batch_size,
+			shuffle=False,
+			num_workers=0,
+			pin_memory=False
+	)
+	
+	# =====================================
+	# STEP 4: TRAINING LOOP
+	# =====================================
+	training_losses = []
+	img2txt_metrics_all_epochs = []
+	txt2img_metrics_all_epochs = []
+	in_batch_loss_acc_metrics_all_epochs = []
+	full_val_loss_acc_metrics_all_epochs = []
+	train_start_time = time.time()
+	
+	for epoch in range(num_epochs):
+			train_and_val_st_time = time.time()
+			torch.cuda.empty_cache()
+			
+			# Training
+			probe.train()
+			print(f"Epoch [{epoch + 1}/{num_epochs}]")
+			epoch_loss = 0.0
+			correct = 0
+			total = 0
+			
+			for bidx, (features, labels) in enumerate(train_feature_loader):
+					features = features.to(device, non_blocking=True)
+					labels = labels.to(device, non_blocking=True)
+					
+					optimizer.zero_grad()
+					
+					with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+							# Forward pass through probe only
+							logits = probe(features)
+							loss = criterion(logits, labels)
+					
+					scaler.scale(loss).backward()
+					torch.nn.utils.clip_grad_norm_(probe.parameters(), max_norm=1.0)
+					scaler.step(optimizer)
+					scaler.update()
+					
+					# Track accuracy
+					_, predicted = torch.max(logits.data, 1)
+					total += labels.size(0)
+					correct += (predicted == labels).sum().item()
+					
+					if bidx % print_every == 0 or bidx + 1 == len(train_feature_loader):
+							print(f"\t\tBatch [{bidx + 1}/{len(train_feature_loader)}] Loss: {loss.item():.6f}")
+					
+					epoch_loss += loss.item()
+			
+			avg_training_loss = epoch_loss / len(train_feature_loader)
+			train_accuracy = 100 * correct / total
+			training_losses.append(avg_training_loss)
+			
+			print(f"Training Loss: {avg_training_loss:.6f}, Training Accuracy: {train_accuracy:.2f}%")
+			
+			# Validation
+			probe.eval()
+			val_loss = 0.0
+			correct = 0
+			total = 0
+			
+			with torch.no_grad():
+					for features, labels in val_feature_loader:
+							features = features.to(device, non_blocking=True)
+							labels = labels.to(device, non_blocking=True)
+							
+							logits = probe(features)
+							loss = criterion(logits, labels)
+							
+							val_loss += loss.item()
+							
+							_, predicted = torch.max(logits.data, 1)
+							total += labels.size(0)
+							correct += (predicted == labels).sum().item()
+			
+			avg_val_loss = val_loss / len(val_feature_loader)
+			val_accuracy = 100 * correct / total
+			
+			print(f"Validation Loss: {avg_val_loss:.6f}, Validation Accuracy: {val_accuracy:.2f}%")
+			
+			# For compatibility with existing code, create metrics dict
+			in_batch_metrics = {
+					"val_loss": avg_val_loss,
+					"accuracy": val_accuracy / 100,  # Convert to fraction
+			}
+			in_batch_loss_acc_metrics_all_epochs.append(in_batch_metrics)
+			
+			# Update scheduler
+			scheduler.step()
+			
+			# Early stopping
+			if early_stopping.should_stop(
+					current_value=avg_val_loss,
+					model=probe,  # Save probe weights, not CLIP
+					epoch=epoch,
+					optimizer=optimizer,
+					scheduler=scheduler,
+					checkpoint_path=mdl_fpth,
+			):
+					print(f"\nEarly stopping at epoch {epoch + 1}")
+					break
+			
+			print(f"Epoch {epoch+1} Duration: {time.time() - train_and_val_st_time:.2f} sec".center(170, "-"))
+	
+	print(f"[{mode}] Total Training Time: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+	
+	# Continue with the rest of your original code (evaluation, plotting, etc.)
+	# [Keep all the remaining parts of your original function unchanged]
+	
+	# =====================================
+	# STEP 5: FINAL EVALUATION
+	# =====================================
+	# Load best probe weights
+	if os.path.exists(mdl_fpth):
+			print(f"Loading best probe weights from {mdl_fpth}")
+			checkpoint = torch.load(mdl_fpth, map_location=device)
+			if 'model_state_dict' in checkpoint:
+					probe.load_state_dict(checkpoint['model_state_dict'])
+			else:
+					probe.load_state_dict(checkpoint)
+	
+	# Create combined model for evaluation
+	class CLIPWithProbe(torch.nn.Module):
+			def __init__(self, clip_model, probe):
+					super().__init__()
+					self.clip = clip_model
+					self.probe = probe
+					# Copy necessary attributes from CLIP
+					self.visual = clip_model.visual
+					self.encode_image = clip_model.encode_image
+					self.encode_text = clip_model.encode_text
+					self.name = getattr(clip_model, 'name', 'unknown')
+			
+			def forward(self, images, texts):
+					# For compatibility with evaluation code
+					image_features = self.clip.encode_image(images)
+					image_features = F.normalize(image_features, dim=-1)
+					
+					# Get logits from probe
+					logits = self.probe(image_features)
+					
+					# For CLIP-style evaluation, we need to return image-text similarity
+					# We'll use the probe's logits as a proxy
+					batch_size = images.shape[0]
+					num_classes = logits.shape[1]
+					
+					# Create pseudo-similarity matrix
+					# This is a hack for compatibility - ideally evaluation should be adapted
+					if batch_size == num_classes:
+							return logits, logits.T
+					else:
+							# Pad or truncate to make square matrix
+							min_dim = min(batch_size, num_classes)
+							logits_per_image = logits[:min_dim, :min_dim]
+							logits_per_text = logits_per_image.T
+							return logits_per_image, logits_per_text
+	
+	# Combine CLIP and probe for evaluation
+	combined_model = CLIPWithProbe(model, probe)
+	
+	# Run evaluation with the combined model
+	evaluation_results = evaluate_best_model(
+			model=combined_model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			early_stopping=early_stopping,
+			checkpoint_path=mdl_fpth,
+			finetune_strategy=mode,
+			device=device,
+			cache_dir=results_dir,
+			topk_values=topk_values,
+			verbose=True,
+			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+	)
+	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
+	final_metrics_full = evaluation_results["full_metrics"]
+	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
+	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
+	print(f"Final evaluation used model weights from: {evaluation_results['model_loaded_from']}")
+	print("--- Final Metrics [In-batch Validation] ---")
+	print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
+	print("--- Final Metrics [Full Validation Set] ---")
+	print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
+	print("--- Image-to-Text Retrieval ---")
+	print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
+	print("--- Text-to-Image Retrieval ---")
+	print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+	# Generate plots
+	print("\nGenerating result plots...")
+	actual_trained_epochs = len(training_losses)
+	
+	file_base_name = (
+			f"{dataset_name}_"
+			f"{mode}_"
+			f"{optimizer.__class__.__name__}_"
+			f"{scheduler.__class__.__name__}_"
+			f"{criterion.__class__.__name__}_"
+			f"{model_name}_"
+			f"{model_arch}_"
+			f"probe_{probe.probe_type}_"
+			f"ep_{actual_trained_epochs}_"
+			f"lr_{learning_rate:.1e}_"
+			f"wd_{weight_decay:.1e}_"
+			f"bs_{train_loader.batch_size}"
+	)
+	
+	# Update model path
+	mdl_fpth = get_updated_model_name(
+			original_path=mdl_fpth,
+			actual_epochs=actual_trained_epochs
+	)
+	
+	print(f"Best model will be renamed to: {mdl_fpth}")
+	
+	# Print final summary
+	best_val_loss = early_stopping.get_best_score() or 0.0
+	print("\n" + "="*80)
+	print("ENHANCED LINEAR PROBE TRAINING SUMMARY")
+	print("="*80)
+	print(f"Method: {mode}")
+	print(f"Model: {getattr(model, 'name', 'Unknown')}")
+	print(f"Probe Type: {probe.probe_type}")
+	print(f"Probe Parameters: {probe_params:,}")
+	print(f"CLIP Parameters (frozen): {sum(p.numel() for p in model.parameters()):,}")
+	print(f"Total Epochs: {actual_trained_epochs}")
+	print(f"Best Validation Loss: {best_val_loss}")
+	print(f"Best Epoch: {early_stopping.get_best_epoch() + 1}")
+	print("="*80)
+	plot_paths = {
+			"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+			"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+			"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+			"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+			"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+			"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+			"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+	}
+	plot_loss_accuracy_metrics(
+			dataset_name=dataset_name,
+			train_losses=training_losses,
+			val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+			in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+			in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+			full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+			full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+			losses_file_path=plot_paths["losses"],
+			in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
+			in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
+			full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
+			full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
+	)
+	
+	plot_retrieval_metrics_per_epoch(
+			dataset_name=dataset_name,
+			image_to_text_metrics_list=img2txt_metrics_all_epochs,
+			text_to_image_metrics_list=txt2img_metrics_all_epochs,
+			fname=plot_paths["retrieval_per_epoch"],
+	)
+	
+	plot_retrieval_metrics_best_model(
+			dataset_name=dataset_name,
+			image_to_text_metrics=final_img2txt_metrics,
+			text_to_image_metrics=final_txt2img_metrics,
+			fname=plot_paths["retrieval_best"],
+	)
+	return in_batch_loss_acc_metrics_all_epochs
+
 def linear_probe_finetune_multi_label(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
@@ -5798,13 +5992,13 @@ def linear_probe_finetune_multi_label(
 
 		# Freeze CLIP encoders
 		for param in model.parameters():
-				param.requires_grad = False
+			param.requires_grad = False
 
 		# Get CLIP's actual output dimension
 		with torch.no_grad():
-				dummy_image = torch.randn(1, 3, 224, 224).to(device)
-				dummy_features = model.encode_image(dummy_image)
-				embed_dim = dummy_features.shape[-1]
+			dummy_image = torch.randn(1, 3, 224, 224).to(device, non_blocking=True)
+			dummy_features = model.encode_image(dummy_image)
+			embed_dim = dummy_features.shape[-1]
 		print(f"CLIP embedding dimension: {embed_dim}")
 
 		# Create linear probe
