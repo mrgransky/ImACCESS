@@ -2425,9 +2425,9 @@ def plot_text_to_images(
 		dpi=200,
 		scale_factor=10.0,
 	):
-
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	img_hash = hashlib.sha256(query_text.encode()).hexdigest()[:8]
+	
 	if cache_dir is None:
 		cache_dir = results_dir
 	

@@ -2409,8 +2409,8 @@ def progressive_finetune_single_label(
 		f"bs_{train_loader.batch_size}_"
 		f"mep_{minimum_epochs}_"
 		f"pat_{patience}_"
-		f"mdelta_{min_delta:.1e}_"
-		f"cdelta_{cumulative_delta:.1e}_"
+		f"mdt_{min_delta:.1e}_"
+		f"cdt_{cumulative_delta:.1e}_"
 		f"vt_{volatility_threshold}_"
 		f"st_{slope_threshold:.1e}_"
 		f"pit_{pairwise_imp_threshold:.1e}_"
@@ -2746,8 +2746,8 @@ def progressive_finetune_single_label(
 		f"{model_arch}_"
 		f"mep_{minimum_epochs}_"
 		f"pat_{patience}_"
-		f"mdelta_{min_delta:.1e}_"
-		f"cdelta_{cumulative_delta:.1e}_"
+		f"mdt_{min_delta:.1e}_"
+		f"cdt_{cumulative_delta:.1e}_"
 		f"fph_{current_phase}_"
 		f"ep_{actual_trained_epochs}_"
 		f"bs_{train_loader.batch_size}_"
@@ -2770,6 +2770,7 @@ def progressive_finetune_single_label(
 			'fwd': last_wd
 		}
 	)
+
 	print(f"Best model will be renamed to: {mdl_fpth}")
 
 	plot_paths = {
@@ -2836,7 +2837,6 @@ def progressive_finetune_single_label(
 		training_history=training_history,
 		save_path=plot_paths["phase_analysis"],
 	)
-
 
 	print(f"Training improvement: {analysis_results['total_improvement']:.2f}%")
 	print(f"Most effective phase: Phase {analysis_results['best_phase']}")

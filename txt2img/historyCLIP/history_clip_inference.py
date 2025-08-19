@@ -535,6 +535,7 @@ def main():
 				metadata_train_path=os.path.join(args.dataset_dir, "metadata_single_label_train.csv"),
 				metadata_val_path=os.path.join(args.dataset_dir, "metadata_single_label_val.csv"),
 				num_samples_per_segment=5,
+				save_path=os.path.join(RESULT_DIRECTORY, "head_torso_tail_grid.png"),
 			)
 			if i2t_samples and t2i_samples:
 				QUERY_IMAGES = [sample['image_path'] for sample in i2t_samples]

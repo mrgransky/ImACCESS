@@ -41,6 +41,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import torchvision.transforms as T
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 import matplotlib.ticker as ticker
 import matplotlib.patches as mpatches
 from matplotlib.colors import LinearSegmentedColormap
@@ -179,154 +180,203 @@ def get_multi_label_head_torso_tail_samples(
 				return [], []
 
 def get_single_label_head_torso_tail_samples(
-		metadata_path, 
-		metadata_train_path, 
-		metadata_val_path, 
+		metadata_path,
+		metadata_train_path,
+		metadata_val_path,
 		num_samples_per_segment=5,
-		head_threshold = 5000, # Labels with frequency > 5000
-		tail_threshold = 1000  # Labels with frequency < 1000
+		head_threshold=5000,  # Labels with frequency > 5000
+		tail_threshold=1000,  # Labels with frequency < 1000
+		save_path="head_torso_tail_grid.png",
+		tile_img_h=256,  # Image area height per tile (excl. title text)
+		tile_w=256,  # Tile width (fixed so columns align perfectly)
+		title_h=26,  # Text area height at top of each tile ("GT: ...")
+		left_gutter=40,  # gutter for rotated row labels
+		bg_color="#ffffff",
+		scale_factor=4.0  # Parameter to scale the entire figure
 	):
 	print(f"Analyzing Label Distribution from {metadata_path}")
-
-	# 1. Load DataFrames
+	# 1) Load metadata
 	try:
-		df_full = pd.read_csv(metadata_path)
-		df_train = pd.read_csv(metadata_train_path)
-		df_val = pd.read_csv(metadata_val_path)
+			df_full = pd.read_csv(metadata_path)
+			_ = pd.read_csv(metadata_train_path)  # Not used here, but kept for parity
+			df_val = pd.read_csv(metadata_val_path)
 	except FileNotFoundError as e:
-		print(f"Error loading metadata files: {e}")
-		return None, None
-
-	# Use the 'label' column for string labels as used in plotting and potentially queries
-	# Use 'label_int' for analysis requiring unique integer counts if necessary,
-	# but counts based on string labels from the full dataset match Figure 2.
-
-	# 2. In-depth Analysis of Head/Torso/Tail
+			print(f"Error loading metadata files: {e}")
+			return None, None
+	
+	# 2) Head / Torso / Tail segmentation from full dataset
 	label_counts_full = df_full['label'].value_counts()
-	total_unique_labels_full = len(label_counts_full)
-	print(f"Total unique labels in full dataset: {total_unique_labels_full}")
-	print(f"Label Counts (full dataset): \n{label_counts_full.head(10)}")
-	print("...")
-	print(f"{label_counts_full.tail(10)}")
-
 	head_labels = label_counts_full[label_counts_full > head_threshold].index.tolist()
 	tail_labels = label_counts_full[label_counts_full < tail_threshold].index.tolist()
 	torso_labels = label_counts_full[(label_counts_full >= tail_threshold) & (label_counts_full <= head_threshold)].index.tolist()
-	print(f"\n--- Distribution Segments (based on full dataset frequency > {head_threshold} (Head), < {tail_threshold} (Tail)) ---")
-	print(f"Head Segment ({len(head_labels)} labels): {head_labels[:min(10, len(head_labels))]}...")
-	print(f"Torso Segment ({len(torso_labels)} labels): {torso_labels[:min(10, len(torso_labels))]}...")
-	print(f"Tail Segment ({len(tail_labels)} labels): {tail_labels[:min(10, len(tail_labels))]}...")
-
-	# 3. Select Samples from Validation Set
-	print(f"\n--- Selecting {num_samples_per_segment} Samples from Validation Set for Each Segment ---")
-	i2t_queries = []
-	t2i_queries = []
-	# Get labels actually present in the validation set
-	labels_in_val = df_val['label'].unique().tolist()
-	# Filter segment labels to include only those present in validation for sampling
-	head_labels_in_val = [lbl for lbl in head_labels if lbl in labels_in_val]
-	torso_labels_in_val = [lbl for lbl in torso_labels if lbl in labels_in_val]
-	tail_labels_in_val = [lbl for lbl in tail_labels if lbl in labels_in_val]
-	print(f"Head labels available in validation: {len(head_labels_in_val)}")
-	print(f"Torso labels available in validation: {len(torso_labels_in_val)}")
-	print(f"Tail labels available in validation: {len(tail_labels_in_val)}")
-	
-	# Check if enough labels/samples exist for sampling
-	if (
-		len(head_labels_in_val) < num_samples_per_segment 
-		or len(torso_labels_in_val) < num_samples_per_segment
-		or len(tail_labels_in_val) < num_samples_per_segment
-	):
-		print("\nWarning: Not enough unique labels available in validation for one or more segments to select the requested number of samples.")
-		# Adjust sampling if not enough labels, but we still need to try to get *some*
-		# We'll sample up to the number of available labels/samples
-	
+	# Restrict to labels present in validation set
+	labels_in_val = set(df_val['label'].unique().tolist())
 	segments = {
-		'Head': head_labels_in_val, 
-		'Torso': torso_labels_in_val, 
-		'Tail': tail_labels_in_val
+		"Head": [lbl for lbl in head_labels if lbl in labels_in_val],
+		"Torso": [lbl for lbl in torso_labels if lbl in labels_in_val],
+		"Tail": [lbl for lbl in tail_labels if lbl in labels_in_val],
 	}
-
-	# Sample for I2T (Query Image -> Text Labels)
-	print("\n--- I2T Query Samples (Image Path + GT Label) ---")
-	for segment_name, segment_labels in segments.items():
-		if not segment_labels:
-			print(f"No {segment_name} labels in validation set. Skipping I2T sampling for this segment.")
-			continue
-		# Sample *labels* from the segment that are in the validation set
-		labels_to_sample_from = random.sample(segment_labels, min(num_samples_per_segment, len(segment_labels)))
-		print(f"\nSelected {min(num_samples_per_segment, len(segment_labels))} {segment_name} labels for I2T image sampling:")
-		for label in labels_to_sample_from:
-			# Get all images with this label in the validation set
-			images_for_label = df_val[df_val['label'] == label]['img_path'].tolist()
-			if images_for_label:
-				# Sample one image path for this label
-				sampled_img_path = random.choice(images_for_label)
-				i2t_queries.append({'image_path': sampled_img_path, 'label': label, 'segment': segment_name})
-				print(f"- Label: '{label}' ({len(images_for_label)} samples in val) -> Image: {sampled_img_path}")
-			else:
-				print(f"- Warning: No images found for label '{label}' in the validation set for I2T query.")
-
-	# Sample for T2I (Query Label -> Images)
-	print("\n--- T2I Query Samples (Label String) ---")
-	for segment_name, segment_labels in segments.items():
-		if not segment_labels:
-			print(f"No {segment_name} labels in validation set. Skipping T2I sampling for this segment.")
-			continue
-		# Sample *label strings* from the segment that are in the validation set
-		labels_to_sample = random.sample(segment_labels, min(num_samples_per_segment, len(segment_labels)))
-		print(f"\nSelected {min(num_samples_per_segment, len(segment_labels))} {segment_name} labels for T2I query:")
-		for label in labels_to_sample:
-			# Check if the label actually exists in the validation set (should be true if sampled from segment_labels_in_val)
-			# And ideally, check if there's at least one image for it in the validation set
-			if label in df_val['label'].values:
-				images_for_label = df_val[df_val['label'] == label]['img_path'].tolist()
-				if images_for_label:
-					t2i_queries.append({'label': label, 'segment': segment_name})
-					print(f"- Label: '{label}' ({len(images_for_label)} samples in val)")
-				else:
-					print(f"- Warning: Label '{label}' found in val labels, but no images. Skipping T2I query.")
-			else:
-				print(f"- Warning: Label '{label}' not found in validation set for T2I query. Skipping.") # Should not happen with segment_labels_in_val
-
-
-	# ================================
-	# Create 3x3 Plot Grid
-	# ================================
-	fig, axes = plt.subplots(3, 3, figsize=(12, 10))
-	segment_colors = {"Head": "tab:red", "Torso": "tab:green", "Tail": "tab:blue"}
-	for row, segment_name in enumerate(["Head", "Torso", "Tail"]):
-		samples = i2t_queries[segment_name]
-		for col in range(3):
-			ax = axes[row, col]
-			ax.axis("off")
-			if col < len(samples):
-				sample = samples[col]
-				if os.path.exists(sample['image_path']):
-					img = mpimg.imread(sample['image_path'])
-					ax.imshow(img)
-				ax.set_title(f"GT: {sample['label']}", fontsize=8)
-			else:
-				ax.set_facecolor("lightgray")  # blank if no sample
-		
-		fig.text(
-			0.02, 
-			(2.5 - row) / 3.0,   # vertical alignment for rows
-			segment_name,
-			va="center",
-			ha="center",
-			rotation=90,
-			fontsize=14,
-			color=segment_colors[segment_name],
-			weight="bold"
-		)
 	
-	plt.tight_layout(rect=(0.05,0,1,1))
-	plt.savefig(save_path, dpi=300, bbox_inches="tight")
-	plt.close()
-	print(f"Saved 3x3 sample grid to {save_path}")
-
-	return i2t_queries, t2i_queries
+	# 3) Sample up to 3 examples per segment for the grid
+	# We'll pick one image path per chosen label (if available)
+	i2t_queries = {seg: [] for seg in segments}
+	for segment_name, segment_labels in segments.items():
+			if not segment_labels:
+					continue
+			labels_to_sample = random.sample(segment_labels, min(3, len(segment_labels)))
+			for label in labels_to_sample:
+					imgs = df_val[df_val['label'] == label]['img_path'].tolist()
+					if imgs:
+							i2t_queries[segment_name].append({"image_path": random.choice(imgs), "label": label})
+	
+	# 4) Build composite image with PIL (true zero spacing between tiles)
+	rows = ["Head", "Torso", "Tail"]
+	n_cols = 3
+	
+	# Scale dimensions
+	scaled_tile_w = int(tile_w * scale_factor)
+	scaled_tile_img_h = int(tile_img_h * scale_factor)
+	scaled_title_h = int(title_h * scale_factor)
+	scaled_left_gutter = int(left_gutter * scale_factor)  # Proper scaling without extra multiplier
+	tile_h_total = scaled_title_h + scaled_tile_img_h
+	canvas_w = scaled_left_gutter + n_cols * scaled_tile_w
+	canvas_h = len(rows) * tile_h_total
+	composite = Image.new("RGB", (canvas_w, canvas_h), color=bg_color)
+	draw = ImageDraw.Draw(composite)
+	
+	# Try to pick decent fonts; fall back gracefully
+	def load_font(name, size):
+			try:
+					return ImageFont.truetype(name, int(size * scale_factor))
+			except Exception:
+					try:
+							return ImageFont.truetype("DejaVuSans.ttf", int(size * scale_factor))
+					except Exception:
+							return ImageFont.load_default()
+	
+	title_font = load_font("DejaVuSansMono.ttf", 15)
+	row_font = load_font("DejaVuSans-Bold.ttf", 15)
+	segment_colors = {
+		"Head": "#009670", 
+		"Torso": "#d4ae02",
+		"Tail": "#ee4747",
+	}
+	
+	# Helper to paste one tile at exact position with no gaps
+	def paste_tile(img_path, label, x0, y0):
+			# Make a clean tile background
+			tile = Image.new("RGB", (scaled_tile_w, tile_h_total), color=bg_color)
+			td = ImageDraw.Draw(tile)
+			# Draw title text centered in title area
+			gt_text = f"{label}"
+			if hasattr(title_font, "getbbox"):
+				tw, th = title_font.getbbox(gt_text)[2:]
+			else:
+				tw, th = title_font.getsize(gt_text)
+			td.text(((scaled_tile_w - tw) // 2, max(0, (scaled_title_h - th) // 2)), gt_text, fill=(0, 0, 0), font=title_font)
+			# Draw a subtle background for the title area
+			td.rectangle([(0, 0), (scaled_tile_w, scaled_title_h)], outline=(200, 200, 200), width=int(1 * scale_factor))
+			# Load image, preserve aspect, fit inside scaled_tile_w x scaled_tile_img_h
+			# Fallback to blank if missing/corrupted
+			try:
+					if img_path and os.path.exists(img_path):
+							img = Image.open(img_path).convert("RGB")
+					else:
+							img = Image.new("RGB", (scaled_tile_w, scaled_tile_img_h), color=(230, 230, 230))
+			except Exception:
+					img = Image.new("RGB", (scaled_tile_w, scaled_tile_img_h), color=(230, 230, 230))
+			# Resize to fit within (scaled_tile_w, scaled_tile_img_h), keeping aspect ratio
+			scale = min(scaled_tile_w / img.width, scaled_tile_img_h / img.height) if img.width and img.height else 1.0
+			new_w = max(1, int(img.width * scale))
+			new_h = max(1, int(img.height * scale))
+			img = img.resize((new_w, new_h), Image.LANCZOS)
+			# Paste centered in the image area
+			x_img = (scaled_tile_w - new_w) // 2
+			y_img = scaled_title_h + (scaled_tile_img_h - new_h) // 2
+			tile.paste(img, (x_img, y_img))
+			# Paste tile onto composite at exact pixel location (no spacing)
+			composite.paste(tile, (x0, y0))
+	
+	# Paste grid tiles
+	for r, segment_name in enumerate(rows):
+		samples = i2t_queries.get(segment_name, [])
+		for c in range(n_cols):
+			x0 = scaled_left_gutter + c * scaled_tile_w
+			y0 = r * tile_h_total
+			if c < len(samples):
+				paste_tile(samples[c]["image_path"], samples[c]["label"], x0, y0)
+			else:
+				# Blank tile (still zero spacing, just empty white background)
+				blank = Image.new("RGB", (scaled_tile_w, tile_h_total), color=bg_color)
+				composite.paste(blank, (x0, y0))
+	
+	# Draw rotated row label centered vertically in this row, inside left gutter
+	for r, segment_name in enumerate(rows):
+		row_center_y = r * tile_h_total + tile_h_total // 2
+		text = segment_name
+		color = segment_colors[segment_name]
+		
+		# Get text dimensions
+		if hasattr(row_font, "getbbox"):
+			bbox = row_font.getbbox(text)
+			tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+		else:
+			tw, th = row_font.getsize(text)
+		
+		print(f"Text '{text}': width={tw}, height={th}")
+		
+		# Create text image with enough padding
+		padding = 25
+		text_img = Image.new("RGBA", (tw + padding*3, th + padding*3), (255, 255, 255, 0))
+		td2 = ImageDraw.Draw(text_img)
+		td2.text(
+			(padding, padding), 
+			text.upper(), 
+			fill=color, 
+			font=row_font,
+			stroke_width=2,
+			stroke_fill=color,
+		)
+		
+		# Rotate the text image
+		text_rot = text_img.rotate(90, expand=1)
+		
+		# Calculate position to center the rotated text in the gutter
+		# After rotation, width becomes height and vice versa
+		tx = (scaled_left_gutter - text_rot.width) // 2
+		ty = row_center_y - text_rot.height // 2
+		
+		# Ensure we don't go negative
+		tx = max(5, tx)  # Keep small margin from edge
+		ty = max(0, ty)
+		
+		print(f"Positioning '{text}' at tx={tx}, ty={ty}, gutter_width={scaled_left_gutter}")
+		
+		# Add a semi-transparent background for better visibility
+		bg_padding = 10
+		bg_box = Image.new(
+			"RGBA", 
+			(text_rot.width + bg_padding*2, text_rot.height + bg_padding*2), 
+			(255, 255, 255, 180)
+		)
+		
+		# Paste background first, then text
+		composite.paste(bg_box, (tx - bg_padding, ty - bg_padding), bg_box)
+		composite.paste(text_rot, (tx, ty), text_rot)
+	
+	# Save the composite image
+	composite.save(save_path, dpi=(300, 300))
+	print(f"Saved 3x3 sample grid to: {save_path}")
+	
+	# Also return queries similar to before (now organized by segment)
+	# Flatten i2t for backward compatibility if needed
+	flat_i2t = []
+	for seg, lst in i2t_queries.items():
+			for it in lst:
+					flat_i2t.append({"image_path": it["image_path"], "label": it["label"], "segment": seg})
+	# t2i kept minimal (not used in plot)
+	t2i_queries = [{"label": it["label"], "segment": seg} for seg, lst in i2t_queries.items() for it in lst]
+	return flat_i2t, t2i_queries
 
 def get_lora_params(path_string: str) -> dict:
 	params = {}
@@ -440,6 +490,7 @@ def get_updated_model_name(
 		actual_epochs:int, 
 		additional_info: dict=None
 	) -> str:
+
 	if not os.path.exists(original_path):
 		print(f"Warning: Original model file not found at {original_path}")
 		return original_path
@@ -448,7 +499,7 @@ def get_updated_model_name(
 	directory, filename = os.path.split(original_path)
 	
 	# Check if the filename already contains actual_epochs
-	if f"actual_epochs_{actual_epochs}" in filename:
+	if f"aeps_{actual_epochs}" in filename:
 		print(f"File already contains actual epochs information: {filename}")
 		return original_path
 	
@@ -465,8 +516,8 @@ def get_updated_model_name(
 		base, ext = os.path.splitext(new_filename)
 		for key, value in additional_info.items():
 			# Format numerical values with scientific notation if they're very small
-			if isinstance(value, float) and abs(value) < 0.01:
-				formatted_value = f"{value:.1e}"
+			if isinstance(value, float) and abs(value) < 0.1:
+				formatted_value = f"{value:.2e}"
 			else:
 				formatted_value = str(value)
 			base = f"{base}_{key}_{formatted_value}"
