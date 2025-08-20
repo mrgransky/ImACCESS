@@ -90,15 +90,28 @@ INIT_LRS=(2.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 INIT_WDS=(5.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 DROPOUTS=(0.2 0.1 0.05 0.05 0.05)
 EPOCHS=(100 100 150 150 150)
+
+# LoRA
 LORA_RANKS=(64 64 64 64 64)
 LORA_ALPHAS=(128.0 128.0 128.0 128.0 128.0) # 2x rank
 LORA_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
+
+# Linear probe
+PROBE_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
+
+# Progressive finetuning
+MIN_PHASES_BEFORE_STOPPING=(3 3 3 3 3)
+MIN_EPOCHS_PER_PHASE=(5 5 5 5 5)
+
 BATCH_SIZES=(512 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 10)
 INIT_EARLY_STOPPING_MIN_EPOCHS=(9 25 17 17 12)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_PATIENCE=(3 5 5 5 5)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_MIN_DELTA=(1e-4 1e-4 1e-4 1e-4 1e-4)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)  # H4, NA, EU, WWII, SMU
+VOLATILITY_THRESHOLDS=(15.0 15.0 15.0 15.0 15.0)  # H4, NA, EU, WWII, SMU
+SLOPE_THRESHOLDS=(1e-4 1e-4 1e-4 1e-4 1e-4)  # H4, NA, EU, WWII, SMU
+PAIRWISE_IMP_THRESHOLDS=(1e-4 1e-4 1e-4 1e-4 1e-4)  # H4, NA, EU, WWII, SMU
 CACHE_SIZES=(1024 512 1000 1000 1000)  # H4, NA, EU, WWII, SMU
 
 # Adjust early stopping minimum epochs based on strategy
@@ -159,24 +172,30 @@ echo ">> Starting history_clip_trainer.py for (${DATASET_TYPE[0]}) dataset[$SLUR
 python -u history_clip_trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \
 	--dataset_type "${DATASET_TYPE[0]}" \
-	--epochs "${EPOCHS[$dataset_index]}" \
-	--num_workers "$SLURM_CPUS_PER_TASK" \
-	--print_every "${PRINT_FREQUENCIES[$dataset_index]}" \
-	--batch_size "${ADJUSTED_BATCH_SIZE}" \
-	--learning_rate "${INIT_LRS[$dataset_index]}" \
-	--weight_decay "${INIT_WDS[$dataset_index]}" \
+	--model_architecture "${MODEL_ARCHITECTURES[$architecture_index]}" \
 	--mode "finetune" \
 	--finetune_strategy "${FINETUNE_STRATEGIES[$strategy_index]}" \
+	--epochs "${EPOCHS[$dataset_index]}" \
+	--num_workers "$SLURM_CPUS_PER_TASK" \
+	--batch_size "${ADJUSTED_BATCH_SIZE}" \
+	--dropout "${DROPOUT}" \
+	--learning_rate "${INIT_LRS[$dataset_index]}" \
+	--weight_decay "${INIT_WDS[$dataset_index]}" \
+	--minimum_epochs "${EARLY_STOPPING_MIN_EPOCHS}" \
+	--patience "${EARLY_STOPPING_PATIENCE[$dataset_index]}" \
+	--minimum_delta "${EARLY_STOPPING_MIN_DELTA[$dataset_index]}" \
+	--cumulative_delta "${EARLY_STOPPING_CUMULATIVE_DELTA[$dataset_index]}" \
+	--volatility_threshold "${VOLATILITY_THRESHOLDS[$dataset_index]}" \
+	--slope_threshold "${SLOPE_THRESHOLDS[$dataset_index]}" \
+	--pairwise_imp_threshold "${PAIRWISE_IMP_THRESHOLDS[$dataset_index]}" \
 	--lora_rank "${LORA_RANKS[$dataset_index]}" \
 	--lora_alpha "${LORA_ALPHAS[$dataset_index]}" \
 	--lora_dropout "${LORA_DROPOUTS[$dataset_index]}" \
+	--probe_dropout "${PROBE_DROPOUTS[$dataset_index]}" \
+	--min_phases_before_stopping "${MIN_PHASES_BEFORE_STOPPING[$dataset_index]}" \
+	--min_epochs_per_phase "${MIN_EPOCHS_PER_PHASE[$dataset_index]}" \
+	--print_every "${PRINT_FREQUENCIES[$dataset_index]}" \
 	--sampling "${SAMPLINGS[1]}" \
-	--dropout "${DROPOUT}" \
-	--minimum_epochs "${EARLY_STOPPING_MIN_EPOCHS}" \
-	--patience "${EARLY_STOPPING_PATIENCE[$dataset_index]}" \
-	--model_architecture "${MODEL_ARCHITECTURES[$architecture_index]}" \
-	--minimum_delta "${EARLY_STOPPING_MIN_DELTA[$dataset_index]}" \
-	--cumulative_delta "${EARLY_STOPPING_CUMULATIVE_DELTA[$dataset_index]}" \
 	# --cache_size "${CACHE_SIZES[$dataset_index]}" \
 
 

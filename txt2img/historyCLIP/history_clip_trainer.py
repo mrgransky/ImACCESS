@@ -111,8 +111,8 @@ def main():
 	log_file = None
 
 	if args.finetune_strategy == "progressive":
-		assert args.min_phases_before_stopping is not None, "min_phases_before_stopping must be specified for progressive finetuning"
-		assert args.min_epochs_per_phase is not None, "min_epochs_per_phase must be specified for progressive finetuning"
+		assert args.min_phases_before_stopping is not None, "min_phases_before_stopping must be specified for progressive finetuning (example: -mphbs 3)"
+		assert args.min_epochs_per_phase is not None, "min_epochs_per_phase must be specified for progressive finetuning (example: -mepph 5)"
 
 	if args.finetune_strategy == "lora":
 		assert args.lora_rank is not None, "lora_rank must be specified for lora finetuning"
@@ -120,7 +120,7 @@ def main():
 		assert args.lora_dropout is not None, "lora_dropout must be specified for lora finetuning"
 
 	if args.finetune_strategy == "linear_probe":
-		assert args.probe_dropout is not None, "probe_dropout must be specified for linear probe finetuning (example: --probe_dropout 0.1)"
+		assert args.probe_dropout is not None, "probe_dropout must be specified for linear probe finetuning (example: -pdo 0.1)"
 
 
 	try:
