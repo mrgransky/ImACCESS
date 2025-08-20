@@ -1479,7 +1479,7 @@ def evaluate_best_model(
 					print("Warning: Loaded file format not recognized as a model checkpoint.")
 		except Exception as e:
 			if verbose:
-				print(f"Error loading checkpoint: {e}")
+				print(f"<!> Error loading checkpoint:\n{e}")
 	
 	if model_source == "current" and early_stopping and early_stopping.restore_best_weights and early_stopping.best_weights is not None:
 		try:
