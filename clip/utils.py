@@ -70,6 +70,33 @@ logger = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
+def translate_state_dict_keys(state_dict, key_mapping):
+    """
+    Translate state dict keys to match current model structure.
+    
+    Args:
+        state_dict: The loaded state dictionary
+        key_mapping: Dict mapping old prefixes to new prefixes
+        
+    Returns:
+        Dict with translated keys
+        
+    Example:
+        key_mapping = {
+            'clip_model.': 'clip.',
+            'probe.clip_model.': 'clip.',
+        }
+    """
+    new_state_dict = {}
+    for old_key, value in state_dict.items():
+        new_key = old_key
+        for old_prefix, new_prefix in key_mapping.items():
+            if old_key.startswith(old_prefix):
+                new_key = old_key.replace(old_prefix, new_prefix, 1)
+                break
+        new_state_dict[new_key] = value
+    return new_state_dict
+
 def round_up(num: int) -> int:
 	if num == 0:
 		return 0
