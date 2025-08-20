@@ -2049,7 +2049,50 @@ def get_unfreeze_schedule(
 
 	return schedule
 
-# In trainer.py
+def log_grad_norms(model, phase, epoch, max_layers=10):
+		"""Log gradient norms of unfrozen layers for debugging."""
+		print(f"\n[DEBUG] Gradient Norms | Phase {phase} | Epoch {epoch}")
+		count = 0
+		for name, param in model.named_parameters():
+				if param.requires_grad and param.grad is not None:
+						grad_norm = param.grad.data.norm(2).item()
+						print(f"  {name}: {grad_norm:.4e}")
+						count += 1
+						if count >= max_layers:  # limit logs
+								print("  ... (truncated)")
+								break
+
+def classwise_accuracy_debug(preds, labels, phase, epoch, top_k=10):
+		"""Print classwise sample distribution + simple accuracy stats."""
+		preds_np = preds.cpu().numpy()
+		labels_np = labels.cpu().numpy()
+		counts = Counter(labels_np)
+		correct = Counter(preds_np[labels_np == preds_np])
+		print(f"\n[DEBUG] Classwise Stats | Phase {phase} | Epoch {epoch}")
+		print("  Most common classes:", counts.most_common(top_k))
+		print("  Correctly predicted (subset):", correct.most_common(top_k))
+
+def compute_embedding_drift(model, val_subset, pretrained_embeds, device, phase, epoch):
+	"""Compare embeddings at current phase vs pretrained embeddings."""
+	model.eval()
+	with torch.no_grad():
+		imgs = next(iter(val_subset)) # torch.Size([batch_size, channels, height, width ])
+		imgs = imgs.to(device)
+		new_embeds = model.encode_image(imgs)
+		new_embeds = F.normalize(new_embeds, dim=-1)
+		drift = F.cosine_similarity(new_embeds, pretrained_embeds[:new_embeds.size(0)].to(device), dim=-1)
+		mean_drift = 1 - drift.mean().item()
+	print(f"[DEBUG] Embedding Drift | Phase {phase} | Epoch {epoch}: {mean_drift:.4f}")
+	return mean_drift
+
+def log_retrieval_delta(metrics, prev_metrics, phase):
+		"""Log retrieval performance deltas per phase."""
+		if prev_metrics is None:
+				return
+		print(f"\n[DEBUG] Retrieval Δ after Phase {phase}")
+		for k in metrics["img2txt_metrics"]["mP"].keys():
+				delta = metrics["img2txt_metrics"]["mP"][k] - prev_metrics["img2txt_metrics"]["mP"][k]
+				print(f"  mP@{k}: {delta:+.4f}")
 
 def create_differential_optimizer_groups(
 		model: torch.nn.Module,
@@ -2512,6 +2555,25 @@ def progressive_finetune_single_label(
 	)
 	print(f"Best model will be saved in: {mdl_fpth}")
 
+	# --- SETUP FOR DEBUGGING HOOKS ---
+	print("\n--- Initializing Debugging Hooks ---")
+	# For embedding drift, get a fixed batch of validation data and original embeddings
+	val_subset_loader = DataLoader(validation_loader.dataset, batch_size=32, shuffle=False)
+	fixed_val_batch = next(iter(val_subset_loader))
+	with torch.no_grad():
+			model.eval()
+			initial_images, _, _ = fixed_val_batch
+			initial_images = initial_images.to(device)
+			pretrained_embeds = model.encode_image(initial_images)
+			pretrained_embeds = F.normalize(pretrained_embeds, dim=-1)
+	print("Cached initial embeddings for drift analysis.")
+
+	# For retrieval delta, initialize a holder for previous metrics
+	prev_validation_metrics = None
+	# --- END SETUP ---
+
+
+
 	current_phase = 0
 	epochs_in_current_phase = 0
 	training_losses = [] # History of average training loss per epoch
@@ -2723,6 +2785,12 @@ def progressive_finetune_single_label(
 				scaler.scale(batch_loss).backward()
 				scaler.unscale_(optimizer) # Unscale before clipping
 				torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+				# --- DEBUG HOOK: Log Gradient Norms ---
+				if bidx % print_every == 0:  # Or some other frequency
+					log_grad_norms(model, current_phase, epoch+1)
+				# --- END DEBUG HOOK ---
+
 				scaler.step(optimizer)
 				scaler.update()
 				scheduler.step() # Step the scheduler
@@ -2740,6 +2808,16 @@ def progressive_finetune_single_label(
 		training_losses.append(avg_training_loss)
 
 		print(f">> Training Completed in {time.time() - epoch_start_time:.2f} sec. Validating Epoch: {epoch+1}")
+		# --- DEBUG HOOK: Compute Embedding Drift ---
+		compute_embedding_drift(
+				model, 
+				fixed_val_batch, # Pass the fixed batch
+				pretrained_embeds, 
+				device, 
+				current_phase, 
+				epoch + 1
+		)
+		# --- END DEBUG HOOK ---		
 
 		# all metrics in one using caching mechanism:
 		validation_results = get_validation_metrics(
@@ -2755,8 +2833,10 @@ def progressive_finetune_single_label(
 			is_training=True,
 			model_hash=get_model_hash(model),
 		)
+
 		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
+
 		retrieval_metrics_per_epoch = {
 			"img2txt": validation_results["img2txt_metrics"],
 			"txt2img": validation_results["txt2img_metrics"]
@@ -2767,6 +2847,13 @@ def progressive_finetune_single_label(
 		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
 		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
 		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
+
+		#  --- DEBUG HOOK: Log Retrieval Delta ---
+		# Note: phase_just_changed is a flag you already have. We need to set it to True inside the transition logic
+		if phase_just_changed and prev_validation_metrics is not None:
+			log_retrieval_delta(validation_results, prev_validation_metrics, current_phase - 1)
+		prev_validation_metrics = validation_results
+		#  --- END DEBUG HOOK ---
 
 		print(
 			f'Epoch {epoch + 1}:\n'
