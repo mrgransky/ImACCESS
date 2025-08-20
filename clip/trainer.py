@@ -3634,6 +3634,7 @@ def linear_probe_finetune_single_label(
 		num_epochs: int,
 		learning_rate: float,
 		weight_decay: float,
+		probe_dropout: float,
 		device: str,
 		results_dir: str,
 		window_size: int,
@@ -3647,7 +3648,6 @@ def linear_probe_finetune_single_label(
 		pairwise_imp_threshold: float,
 		topk_values: List[int] = [1, 5, 10, 15, 20],
 		probe_hidden_dim: int = None,  # Optional hidden layer for MLP probe
-		probe_dropout: float = 0.0,  # Dropout for probe
 		use_lamb: bool = False,
 	):
 	"""
@@ -3663,7 +3663,25 @@ def linear_probe_finetune_single_label(
 	- Simple linear layer: CLIP features -> num_classes
 	- Two-layer MLP: CLIP features -> hidden_dim -> num_classes (if probe_hidden_dim is specified)
 	"""
-	
+
+	# Inspect the model for dropout layers
+	dropout_values = []
+	for name, module in model.named_modules():
+		if isinstance(module, torch.nn.Dropout):
+			dropout_values.append((name, module.p))
+
+	# Check for non-zero dropout in the base model
+	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
+	if non_zero_dropouts:
+		dropout_info = ", ".join([f"{name}: p={p}" for name, p in non_zero_dropouts])
+		assert False, (
+			f"\nNon-zero dropout detected in base {model.__class__.__name__} {model.name} during LoRA fine-tuning:"
+			f"\n{dropout_info}\n"
+			"This adds stochasticity and noise to the frozen base model, which is unconventional for LoRA practices.\n"
+			"Fix: Set dropout=0.0 in clip.load() to enforce a deterministic base model behavior during LoRA fine-tuning "
+			"which gives you more control over LoRA-specific regularization without affecting the base model.\n"
+		)
+
 	early_stopping = EarlyStopping(
 		patience=patience,
 		min_delta=min_delta,
@@ -3704,27 +3722,6 @@ def linear_probe_finetune_single_label(
 	
 	print(f"Number of Labels: {num_classes}")
 	
-
-	# Extract dropout value from the model (if any)
-	dropout_val = None
-	for name, module in model.named_modules():
-		if isinstance(module, torch.nn.Dropout):
-			dropout_val = module.p
-			break
-
-	if dropout_val is None:
-		dropout_val = 0.0  # Default to 0.0 if no Dropout layers are found
-
-	# Inspect the model for dropout layers
-	dropout_values = []
-	for name, module in model.named_modules():
-		if isinstance(module, torch.nn.Dropout):
-			dropout_values.append((name, module.p))
-
-	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
-	print(f"Non-zero dropout detected in base {model_name} {model_arch} during {mode}:")
-	print(non_zero_dropouts)
-
 	# =====================================
 	# STEP 1: FREEZE ALL CLIP PARAMETERS AND CREATE ROBUST PROBE
 	# =====================================
@@ -3784,7 +3781,7 @@ def linear_probe_finetune_single_label(
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
 		T_max=num_epochs,
-		eta_min=learning_rate * 0.01,
+		eta_min=learning_rate * 0.01, # 1% of initial LR
 	)
 	print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
 	
@@ -3802,7 +3799,6 @@ def linear_probe_finetune_single_label(
 		f"{scheduler.__class__.__name__}_"
 		f"{criterion.__class__.__name__}_"
 		f"{scaler.__class__.__name__}_"
-		f"do_{dropout_val}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"

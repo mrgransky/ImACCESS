@@ -91,6 +91,9 @@ def main():
 	parser.add_argument('--min_phases_before_stopping', '-mphbs', type=int, default=None, help='Minimum number of phases before stopping (used if finetune_strategy=progressive)')
 	parser.add_argument('--min_epochs_per_phase', '-mepph', type=int, default=None, help='Minimum number of epochs per phase (used if finetune_strategy=progressive)')
 
+	# Linear probe
+	parser.add_argument('--lp_dropout', '-lpdo', type=float, default=None, help='Linear probe dropout (used if finetune_strategy=linear_probe)')
+
 	# Common
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 	parser.add_argument('--cache_size', '-cs', type=int, default=None, help='Cache size for dataloader (in number of samples)')
@@ -115,6 +118,10 @@ def main():
 		assert args.lora_rank is not None, "lora_rank must be specified for lora finetuning"
 		assert args.lora_alpha is not None, "lora_alpha must be specified for lora finetuning"
 		assert args.lora_dropout is not None, "lora_dropout must be specified for lora finetuning"
+
+	if args.finetune_strategy == "linear_probe":
+		assert args.lp_dropout is not None, "lp_dropout must be specified for linear probe finetuning"
+
 
 	try:
 		if args.log_dir:
@@ -239,17 +246,24 @@ def main():
 				print_every=args.print_every,
 				use_lamb=args.use_lamb,
 				**(
-					{
-						'lora_rank': args.lora_rank,
-						'lora_alpha': args.lora_alpha,
-						'lora_dropout': args.lora_dropout
-					} if args.finetune_strategy == 'lora' else {}),
-					**(
+						{
+							'lora_rank': args.lora_rank,
+							'lora_alpha': args.lora_alpha,
+							'lora_dropout': args.lora_dropout
+						} if args.finetune_strategy == 'lora' else {}
+					),
+				**(
 						{
 							'min_phases_before_stopping': args.min_phases_before_stopping,
 							'min_epochs_per_phase': args.min_epochs_per_phase,
-						} if args.finetune_strategy == 'progressive' else {})
-				)
+						} if args.finetune_strategy == 'progressive' else {}
+						),
+				**(
+						{
+							'lp_dropout': args.lp_dropout,
+						} if args.finetune_strategy == 'linear_probe' else {}
+					)
+			)
 		elif args.mode == "train":
 			train(
 				model=model,
