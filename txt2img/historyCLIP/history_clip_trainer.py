@@ -92,7 +92,7 @@ def main():
 	parser.add_argument('--min_epochs_per_phase', '-mepph', type=int, default=None, help='Minimum number of epochs per phase (used if finetune_strategy=progressive)')
 
 	# Linear probe
-	parser.add_argument('--lp_dropout', '-lpdo', type=float, default=None, help='Linear probe dropout (used if finetune_strategy=linear_probe)')
+	parser.add_argument('--probe_dropout', '-pdo', type=float, default=None, help='Linear probe dropout (used if finetune_strategy=linear_probe)')
 
 	# Common
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
@@ -120,7 +120,7 @@ def main():
 		assert args.lora_dropout is not None, "lora_dropout must be specified for lora finetuning"
 
 	if args.finetune_strategy == "linear_probe":
-		assert args.lp_dropout is not None, "lp_dropout must be specified for linear probe finetuning"
+		assert args.probe_dropout is not None, "probe_dropout must be specified for linear probe finetuning (example: --probe_dropout 0.1)"
 
 
 	try:
@@ -260,7 +260,7 @@ def main():
 						),
 				**(
 						{
-							'lp_dropout': args.lp_dropout,
+							'probe_dropout': args.probe_dropout,
 						} if args.finetune_strategy == 'linear_probe' else {}
 					)
 			)
