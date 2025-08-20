@@ -82,13 +82,16 @@ def main():
 	parser.add_argument('--slope_threshold', '-slth', type=float, default=1e-4, help='Slope threshold for early stopping')
 	parser.add_argument('--pairwise_imp_threshold', '-pith', type=float, default=1e-4, help='Pairwise improvement threshold for early stopping')
 
+	# LoRA
 	parser.add_argument('--lora_rank', '-lor', type=int, default=None, help='LoRA rank (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_alpha', '-loa', type=float, default=None, help='LoRA alpha (used if finetune_strategy=lora)')
 	parser.add_argument('--lora_dropout', '-lod', type=float, default=None, help='LoRA dropout (used if finetune_strategy=lora)')
 
+	# Progressive
 	parser.add_argument('--min_phases_before_stopping', '-mphbs', type=int, default=None, help='Minimum number of phases before stopping (used if finetune_strategy=progressive)')
 	parser.add_argument('--min_epochs_per_phase', '-mepph', type=int, default=None, help='Minimum number of epochs per phase (used if finetune_strategy=progressive)')
 
+	# Common
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 	parser.add_argument('--cache_size', '-cs', type=int, default=None, help='Cache size for dataloader (in number of samples)')
 	parser.add_argument('--log_dir', type=str, default=None, help='Directory to store log files (if not specified, logs will go to stdout)')
