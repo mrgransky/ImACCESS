@@ -1942,6 +1942,7 @@ def get_layer_groups(model: torch.nn.Module) -> dict:
 
 	return layer_groups
 
+
 def unfreeze_layers(
 		model: torch.nn.Module,
 		strategy: Dict[int, List[str]],
@@ -2047,6 +2048,83 @@ def get_unfreeze_schedule(
 		print("-"*160)
 
 	return schedule
+
+# In trainer.py
+
+def create_differential_optimizer_groups(
+		model: torch.nn.Module,
+		base_lr: float,
+		base_wd: float,
+		optimizer_hyperparams: dict
+) -> List[Dict]:
+		"""
+		Creates parameter groups with different learning rates for discriminative fine-tuning.
+		"""
+		# --- FIX: Add ALL expected AdamW keys here ---
+		adamw_defaults = {
+				'lr': base_lr,
+				'weight_decay': base_wd,
+				'eps': optimizer_hyperparams.get('eps', 1e-8),  # Adjusted default to match AdamW
+				'betas': optimizer_hyperparams.get('betas', (0.9, 0.999)), # Adjusted default to match AdamW
+				'amsgrad': False,
+				'maximize': False,
+				'foreach': None,
+				'capturable': False,
+				'differentiable': False,
+				'fused': None,
+				'decoupled_weight_decay': True, # <-- THE CRITICAL ADDITION for AdamW
+		}
+		# --- END FIX ---
+		
+		param_groups = []
+		
+		lr_multipliers = {
+				'projections': 0.5,
+				'text_transformer': 0.1,
+				'visual_transformer': 0.1,
+				'text_frontend': 0.01,
+				'visual_frontend': 0.01,
+		}
+
+		layer_groups_map = get_layer_groups(model)
+		
+		print("\n--- Creating Optimizer Groups with Differential LRs ---")
+		
+		assigned_params = set()
+
+		for group_name, layer_prefixes in layer_groups_map.items():
+				group_params_list = []
+				for prefix in layer_prefixes:
+						for name, param in model.named_parameters():
+								if name.startswith(prefix) and param.requires_grad and param not in assigned_params:
+										group_params_list.append(param)
+										assigned_params.add(param)
+				
+				if group_params_list:
+						lr_multiplier = lr_multipliers.get(group_name, 0.1)
+						
+						group_dict = adamw_defaults.copy()
+						group_dict['params'] = group_params_list
+						group_dict['lr'] = base_lr * lr_multiplier
+						param_groups.append(group_dict)
+						
+						print(f"  - Group: '{group_name}'")
+						print(f"    - Parameters found: {len(group_params_list)}")
+						print(f"    - LR Multiplier: {lr_multiplier}x")
+						print(f"    - Final LR: {group_dict['lr']:.2e}")
+
+		remaining_params = [
+				p for p in model.parameters() if p.requires_grad and p not in assigned_params
+		]
+		if remaining_params:
+				print("  - Group: 'remaining_params' (unclassified)")
+				group_dict = adamw_defaults.copy()
+				group_dict['params'] = remaining_params
+				group_dict['lr'] = base_lr * 0.01
+				param_groups.append(group_dict)
+				
+		print("---------------------------------------------------\n")
+		return param_groups
 
 def should_transition_phase(
 		losses: List[float],
@@ -2314,9 +2392,7 @@ def progressive_finetune_single_label(
 	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
 	print(f"\nNon-zero dropout detected in base {model.__class__.__name__} {model.name} during {mode} fine-tuning:")
 	print(non_zero_dropouts)
-	print()
 
-	# Determine unfreeze schedule percentages
 	unfreeze_percentages = get_unfreeze_pcts_hybrid(
 		model=model,
 		train_loader=train_loader,
@@ -2324,7 +2400,6 @@ def progressive_finetune_single_label(
 		max_phases=8, # Cap the number of phases
 	)
 
-	# Get the detailed layer unfreeze schedule
 	unfreeze_schedule = get_unfreeze_schedule(
 		model=model,
 		unfreeze_percentages=unfreeze_percentages,
@@ -2332,25 +2407,53 @@ def progressive_finetune_single_label(
 	)
 
 	max_phases = len(unfreeze_schedule)
+	layer_cache = {} # Cache for layer status (optional, used by get_status)
 
-	# Initialize optimizer
+	# First, unfreeze layers for Phase 0 to correctly initialize the optimizer
+	unfreeze_layers(
+		model=model,
+		strategy=unfreeze_schedule,
+		phase=0,
+		cache=layer_cache,
+	)
+	
+	# Create initial parameter groups with differential LRs
+	initial_param_groups = create_differential_optimizer_groups(
+		model=model,
+		base_lr=initial_learning_rate,
+		base_wd=initial_weight_decay,
+		optimizer_hyperparams={
+			'betas': (0.9, 0.98),
+			'eps': 1e-6,
+		}
+	)
+
 	if use_lamb:
 		optimizer = LAMB(
-			params=filter(lambda p: p.requires_grad, model.parameters()), # Initially might be empty if phase 0 has no unfrozen layers
-			lr=initial_learning_rate,
-			betas=(0.9, 0.98),
-			eps=1e-6,
-			weight_decay=initial_weight_decay,
-		)
+			params=initial_param_groups)
 	else:
-		optimizer = torch.optim.AdamW(
-			params=filter(lambda p: p.requires_grad, model.parameters()), # Initially might be empty if phase 0 has no unfrozen layers
-			lr=initial_learning_rate,
-			betas=(0.9, 0.98),
-			eps=1e-6,
-			weight_decay=initial_weight_decay,
-		)
-	print(f"Using {optimizer.__class__.__name__} for optimization")
+		optimizer = torch.optim.AdamW(params=initial_param_groups)
+	print(f"Using {optimizer.__class__.__name__} with DIFFERENTIAL learning rates for optimization")
+
+
+
+	# if use_lamb:
+	# 	optimizer = LAMB(
+	# 		params=filter(lambda p: p.requires_grad, model.parameters()), # Initially might be empty if phase 0 has no unfrozen layers
+	# 		lr=initial_learning_rate,
+	# 		betas=(0.9, 0.98),
+	# 		eps=1e-6,
+	# 		weight_decay=initial_weight_decay,
+	# 	)
+	# else:
+	# 	optimizer = torch.optim.AdamW(
+	# 		params=filter(lambda p: p.requires_grad, model.parameters()), # Initially might be empty if phase 0 has no unfrozen layers
+	# 		lr=initial_learning_rate,
+	# 		betas=(0.9, 0.98),
+	# 		eps=1e-6,
+	# 		weight_decay=initial_weight_decay,
+	# 	)
+	# print(f"Using {optimizer.__class__.__name__} for optimization")
 
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
 		optimizer=optimizer,
@@ -2368,46 +2471,13 @@ def progressive_finetune_single_label(
 	# 	pct_start=0.1, # Standard pct_start
 	# 	anneal_strategy='cos' # Cosine annealing
 	# )
+
 	print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
 
 	print(f"DEBUG: Initial configured LR: {learning_rate}")
 	print(f"DEBUG: Scheduler initial LR: {scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else 'N/A'}")
 	print(f"DEBUG: Optimizer initial LR: {optimizer.param_groups[0]['lr']}")
 
-	try:
-		# Test scheduler behavior (this will advance the scheduler, so create a copy)
-		test_optimizer = torch.optim.AdamW([torch.tensor([1.0], requires_grad=True)], lr=initial_learning_rate)
-		test_scheduler = torch.optim.lr_scheduler.OneCycleLR(
-				optimizer=test_optimizer,
-				max_lr=initial_learning_rate,
-				steps_per_epoch=len(train_loader),
-				epochs=num_epochs,
-				pct_start=0.1,
-				anneal_strategy='cos'
-		)
-		
-		max_test_steps = len(train_loader) * num_epochs
-		test_steps = min(len(train_loader) * 10, max_test_steps)  # Don't exceed total steps
-		
-		dummy_lrs = []
-		for step in range(test_steps):
-				dummy_lrs.append(test_scheduler.get_last_lr()[0])
-				test_scheduler.step()
-		
-		# Safe reporting
-		print(f"First 10 steps LRs: {dummy_lrs[:10]}")
-		
-		if len(dummy_lrs) >= len(train_loader):
-				print(f"LR at epoch 1 end: {dummy_lrs[len(train_loader)-1]:.2e}")
-		
-		if len(dummy_lrs) >= 5 * len(train_loader):
-				print(f"LR at epoch 5 end: {dummy_lrs[5*len(train_loader)-1]:.2e}")
-		
-		if len(dummy_lrs) >= 10 * len(train_loader):
-				print(f"LR at epoch 10 end: {dummy_lrs[10*len(train_loader)-1]:.2e}")
-							
-	except Exception as e:
-		print(f"Scheduler test failed: {e}. Continuing with training...")
 
 	criterion = torch.nn.CrossEntropyLoss()
 	print(f"Using {criterion.__class__.__name__} as the loss function")
@@ -2450,7 +2520,7 @@ def progressive_finetune_single_label(
 	in_batch_loss_acc_metrics_all_epochs = list() # History of [in-batch] validation metrics dicts per epoch
 	full_val_loss_acc_metrics_all_epochs = list() # History of [full] validation metrics dicts per epoch
 	best_val_loss = None # Track the absolute best validation loss
-	layer_cache = {} # Cache for layer status (optional, used by get_status)
+	
 	last_lr = initial_learning_rate # Track current LR
 	last_wd = initial_weight_decay # Track current WD
 	phase_just_changed = False # Flag to signal optimizer refresh needed
@@ -2516,8 +2586,14 @@ def progressive_finetune_single_label(
 				print(f"Phase transition triggered. Optimizer/Scheduler refresh pending after unfreeze.")
 				print(f"Current Phase: {current_phase}")
 
-		current_lr = optimizer.param_groups[0]['lr'] if optimizer.param_groups else last_lr
+		# current_lr = optimizer.param_groups[0]['lr'] if optimizer.param_groups else last_lr
+		# Get current LR for logging (take the highest LR from param groups)
+		if optimizer.param_groups:
+			current_lr = max([pg['lr'] for pg in optimizer.param_groups])
+		else:
+			current_lr = last_lr
 		current_wd = optimizer.param_groups[0]['weight_decay'] if optimizer.param_groups else last_wd
+
 		learning_rates_history.append(current_lr)
 		weight_decays_history.append(current_wd)
 		phases_history.append(current_phase)
@@ -2540,17 +2616,36 @@ def progressive_finetune_single_label(
 			cache=layer_cache,
 		)
 		if phase_just_changed or epoch == 0:
-			print("Refreshing optimizer parameter groups...")
-			optimizer.param_groups.clear()
-			optimizer.add_param_group(
-				{
-					'params': [p for p in model.parameters() if p.requires_grad],
-					'lr': last_lr, # Use the new LR
-					'weight_decay': last_wd, # Use the new WD
-				}
+			# print("Refreshing optimizer parameter groups...")
+			# optimizer.param_groups.clear()
+			# optimizer.add_param_group(
+			# 	{
+			# 		'params': [p for p in model.parameters() if p.requires_grad],
+			# 		'lr': last_lr, # Use the new LR
+			# 		'weight_decay': last_wd, # Use the new WD
+			# 	}
+			# )
+			# print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e}, WD set to {last_wd:.3e}.")
+			print("Refreshing optimizer with DIFFERENTIAL learning rates...")
+			param_groups = create_differential_optimizer_groups(
+					model=model,
+					base_lr=last_lr,  # Use the new LR from handle_phase_transition as the base
+					base_wd=last_wd,
+					optimizer_hyperparams={
+						'betas': (0.9, 0.98),
+						'eps': 1e-6,
+					}
 			)
 
-			print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e}, WD set to {last_wd:.3e}.")
+			# Clear and update the optimizer's parameter groups
+			optimizer.param_groups.clear()
+			optimizer.param_groups.extend(param_groups)
+			
+			# --- HELPFUL DEBUGGING PRINT ---
+			print("Optimizer parameter groups refreshed. Current group LRs:")
+			for i, pg in enumerate(optimizer.param_groups):
+				print(f"  - Group {i}: LR = {pg['lr']:.2e}, Params = {len(pg['params'])}")
+
 
 			print("Re-initializing scheduler for new phase/start...")
 			# ================================
