@@ -143,7 +143,10 @@ def main():
 		os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 
 		print(f">> CLIP Model Architecture: {args.model_architecture}...")
-		model_config = get_config(architecture=args.model_architecture, dropout=args.dropout,)
+		model_config = get_config(
+			architecture=args.model_architecture, 
+			dropout=args.dropout,
+		)
 		print(json.dumps(model_config, indent=4, ensure_ascii=False))
 
 		model, _ = clip.load(
@@ -200,7 +203,6 @@ def main():
 				train_loader=train_loader,
 				validation_loader=validation_loader,
 				num_epochs=args.epochs,
-				print_every=args.print_every,
 				learning_rate=args.learning_rate,
 				weight_decay=args.weight_decay,
 				device=args.device,
@@ -211,6 +213,7 @@ def main():
 				cumulative_delta=args.cumulative_delta,
 				minimum_epochs=args.minimum_epochs,
 				topk_values=args.topK_values,
+				print_every=args.print_every,
 				use_lamb=args.use_lamb,
 				**(
 					{
