@@ -2227,17 +2227,17 @@ def progressive_finetune_single_label(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		window_size: int = 10,											# Consider the last 10 epochs for cumulative trend
-		patience: int = 10,													# Wait for 10 epochs without improvement before stopping
-		min_delta: float = 1e-4,										# Make slightly less sensitive than default
-		cumulative_delta: float = 5e-3,							# Keep cumulative check reasonable
-		minimum_epochs: int = 20,										# Minimum epochs before ANY early stop
-		min_epochs_per_phase: int = 5,							# Minimum epochs within a phase before transition check
-		volatility_threshold: float = 15.0,					# Allow slightly more volatility
-		slope_threshold: float = 1e-4, 							# Allow very slightly positive slope before stopping/transitioning
-		pairwise_imp_threshold: float = 1e-4,				# Stricter requirement for pairwise improvement
+		window_size: int,														# Consider the last 10 epochs for cumulative trend
+		patience: int,															# Wait for 10 epochs without improvement before stopping
+		min_delta: float,														# Make slightly less sensitive than default
+		cumulative_delta: float,										# Keep cumulative check reasonable
+		minimum_epochs: int,												# Minimum epochs before ANY early stop
+		min_epochs_per_phase: int,									# Minimum epochs within a phase before transition check
+		volatility_threshold: float,								# Allow slightly more volatility
+		slope_threshold: float, 										# Allow very slightly positive slope before stopping/transitioning
+		pairwise_imp_threshold: float,							# Stricter requirement for pairwise improvement
+		min_phases_before_stopping: int,						# Ensure significant unfreezing before global stop
 		accuracy_plateau_threshold: float = 5e-4,		# For phase transition based on accuracy
-		min_phases_before_stopping: int = 3,				# Ensure significant unfreezing before global stop
 		topk_values: list[int] = [1, 5, 10],
 		layer_groups_to_unfreeze: list[str] = ['visual_transformer', 'text_transformer', 'projections'], # Focus on key layers
 		use_lamb: bool = False,
@@ -2414,6 +2414,7 @@ def progressive_finetune_single_label(
 		f"vt_{volatility_threshold}_"
 		f"st_{slope_threshold:.1e}_"
 		f"pit_{pairwise_imp_threshold:.1e}_"
+		f"mepph_{min_epochs_per_phase}_"
 		f"mpbs_{min_phases_before_stopping}_"
 		f"best.pth"
 	)
@@ -2887,15 +2888,15 @@ def full_finetune_single_label(
 		device: str,
 		results_dir: str,
 		window_size: int,
-		patience: int = 10,
-		min_delta: float = 1e-4,
-		cumulative_delta: float = 5e-3,
-		minimum_epochs: int = 20,
-		topk_values: List[int] = [1, 5, 10, 15, 20],
-		volatility_threshold: float = 15.0,
-		slope_threshold: float = 1e-4, 
-		pairwise_imp_threshold: float = 1e-4,
+		patience: int,
+		min_delta: float,
+		cumulative_delta: float,
+		minimum_epochs: int,
+		volatility_threshold: float,
+		slope_threshold: float, 
+		pairwise_imp_threshold: float,
 		min_phases_before_stopping: int = 1,  # Not really needed for full finetune, but for consistency
+		topk_values: List[int] = [1, 5, 10, 15, 20],
 		use_lamb: bool = False,
 	):
 

@@ -23,7 +23,7 @@ from historical_dataset_loader import get_single_label_dataloaders, get_multi_la
 # $ python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=10))))"
 
 # run in local:
-# $ python history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 3 -m finetune -fts progressive -dt multi_label
+# $ python history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -m finetune -fts progressive -e 3 -mphbs 3 -mepph 5 -dt single_label
 # $ nohup python -u history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -m finetune -fts progressive -a "ViT-B/32" > logs/europeana_ft_progressive.txt &
 
 # Pouta:
@@ -64,23 +64,31 @@ def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
 	parser.add_argument('--dataset_type', '-dt', type=str, choices=['single_label', 'multi_label'], default='single_label', help='Dataset type (single_label/multi_label)')
-	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain'], required=True, help='Choose mode (train/finetune/pretrain)')
 	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'linear_probe', 'lora', 'progressive'], default=None, help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
+	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--epochs', '-e', type=int, default=3, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=8, help='Batch size for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
 	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs [def: max cpus]')
-	parser.add_argument('--lora_rank', '-lor', type=int, default=None, help='LoRA rank (used if finetune_strategy=lora)')
-	parser.add_argument('--lora_alpha', '-loa', type=float, default=None, help='LoRA alpha (used if finetune_strategy=lora)')
-	parser.add_argument('--lora_dropout', '-lod', type=float, default=None, help='LoRA dropout (used if finetune_strategy=lora)')
 	parser.add_argument('--minimum_epochs', '-mep', type=int, default=9, help='Early stopping minimum epochs')
 	parser.add_argument('--patience', '-pat', type=int, default=7, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
+	parser.add_argument('--volatility_threshold', '-vth', type=float, default=15.0, help='Volatility threshold for early stopping')
+	parser.add_argument('--slope_threshold', '-slth', type=float, default=1e-4, help='Slope threshold for early stopping')
+	parser.add_argument('--pairwise_imp_threshold', '-pith', type=float, default=1e-4, help='Pairwise improvement threshold for early stopping')
+
+	parser.add_argument('--lora_rank', '-lor', type=int, default=None, help='LoRA rank (used if finetune_strategy=lora)')
+	parser.add_argument('--lora_alpha', '-loa', type=float, default=None, help='LoRA alpha (used if finetune_strategy=lora)')
+	parser.add_argument('--lora_dropout', '-lod', type=float, default=None, help='LoRA dropout (used if finetune_strategy=lora)')
+
+	parser.add_argument('--min_phases_before_stopping', '-mphbs', type=int, default=None, help='Minimum number of phases before stopping (used if finetune_strategy=progressive)')
+	parser.add_argument('--min_epochs_per_phase', '-mepph', type=int, default=None, help='Minimum number of epochs per phase (used if finetune_strategy=progressive)')
+
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 	parser.add_argument('--cache_size', '-cs', type=int, default=None, help='Cache size for dataloader (in number of samples)')
 	parser.add_argument('--log_dir', type=str, default=None, help='Directory to store log files (if not specified, logs will go to stdout)')
@@ -95,6 +103,15 @@ def main():
 	original_stdout = sys.stdout
 	original_stderr = sys.stderr
 	log_file = None
+
+	if args.finetune_strategy == "progressive":
+		assert args.min_phases_before_stopping is not None, "min_phases_before_stopping must be specified for progressive finetuning"
+		assert args.min_epochs_per_phase is not None, "min_epochs_per_phase must be specified for progressive finetuning"
+
+	if args.finetune_strategy == "lora":
+		assert args.lora_rank is not None, "lora_rank must be specified for lora finetuning"
+		assert args.lora_alpha is not None, "lora_alpha must be specified for lora finetuning"
+		assert args.lora_dropout is not None, "lora_dropout must be specified for lora finetuning"
 
 	try:
 		if args.log_dir:
@@ -212,6 +229,9 @@ def main():
 				min_delta=args.minimum_delta,
 				cumulative_delta=args.cumulative_delta,
 				minimum_epochs=args.minimum_epochs,
+				volatility_threshold=args.volatility_threshold,
+				slope_threshold=args.slope_threshold,
+				pairwise_imp_threshold=args.pairwise_imp_threshold,
 				topk_values=args.topK_values,
 				print_every=args.print_every,
 				use_lamb=args.use_lamb,
@@ -220,7 +240,12 @@ def main():
 						'lora_rank': args.lora_rank,
 						'lora_alpha': args.lora_alpha,
 						'lora_dropout': args.lora_dropout
-					} if args.finetune_strategy == 'lora' else {})
+					} if args.finetune_strategy == 'lora' else {}),
+					**(
+						{
+							'min_phases_before_stopping': args.min_phases_before_stopping,
+							'min_epochs_per_phase': args.min_epochs_per_phase,
+						} if args.finetune_strategy == 'progressive' else {})
 				)
 		elif args.mode == "train":
 			train(
