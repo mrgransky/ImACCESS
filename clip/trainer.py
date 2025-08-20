@@ -2961,7 +2961,7 @@ def full_finetune_single_label(
 			break
 
 	if dropout_val is None:
-		dropout_val = 0.0  # Default to 0.0 if no Dropout layers are found (unlikely in your case)
+		dropout_val = 0.0  # Default to 0.0 if no Dropout layers are found
 
 	# Inspect the model for dropout layers
 	dropout_values = []
@@ -2972,7 +2972,6 @@ def full_finetune_single_label(
 	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
 	print(f"Non-zero dropout detected in base {model_name} {model_arch} during {mode}:")
 	print(non_zero_dropouts)
-	print("*"*100)
 
 	# Unfreeze all layers for full fine-tuning:
 	for name, param in model.named_parameters():
@@ -3703,14 +3702,37 @@ def linear_probe_finetune_single_label(
 		class_names = validation_loader.dataset.unique_labels
 		num_classes = len(class_names)
 	
-	print(f"Number of classes: {num_classes}")
+	print(f"Number of Labels: {num_classes}")
 	
+
+	# Extract dropout value from the model (if any)
+	dropout_val = None
+	for name, module in model.named_modules():
+		if isinstance(module, torch.nn.Dropout):
+			dropout_val = module.p
+			break
+
+	if dropout_val is None:
+		dropout_val = 0.0  # Default to 0.0 if no Dropout layers are found
+
+	# Inspect the model for dropout layers
+	dropout_values = []
+	for name, module in model.named_modules():
+		if isinstance(module, torch.nn.Dropout):
+			dropout_values.append((name, module.p))
+
+	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
+	print(f"Non-zero dropout detected in base {model_name} {model_arch} during {mode}:")
+	print(non_zero_dropouts)
+
 	# =====================================
 	# STEP 1: FREEZE ALL CLIP PARAMETERS AND CREATE ROBUST PROBE
 	# =====================================
 	for param in model.parameters():
 		param.requires_grad = False # Freeze all CLIP parameters
 	
+	get_parameters_info(model=model, mode=mode)
+
 	# Create the robust linear probe that handles everything automatically
 	print("\nCreating robust linear probe...")
 	probe = SingleLabelLinearProbe(
@@ -3780,13 +3802,14 @@ def linear_probe_finetune_single_label(
 		f"{scheduler.__class__.__name__}_"
 		f"{criterion.__class__.__name__}_"
 		f"{scaler.__class__.__name__}_"
-		f"probe_{probe.probe_type}_"
-		f"hdim_{probe_hidden_dim}_"
-		f"pdo_{probe_dropout}_"
+		f"do_{dropout_val}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
+		f"probe_{probe.probe_type}_"
+		f"hdim_{probe_hidden_dim}_"
+		f"pdo_{probe_dropout}_"
 		f"mep_{minimum_epochs}_"
 		f"pat_{patience}_"
 		f"mdt_{min_delta:.1e}_"
