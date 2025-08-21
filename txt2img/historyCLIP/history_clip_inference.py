@@ -631,7 +631,8 @@ def main():
 	print(f">> {len(fine_tuned_models)} Fine-tuned Models loaded in {time.time() - ft_start:.1f} sec")
 	models_to_plot.update(fine_tuned_models)
 
-	print("Computing Model Embeddings".center(160, "-"))
+	print(f"Computing {len(models_to_plot)} {type(models_to_plot)}  Model(s) Embeddings".center(160, "-"))
+
 	mdl_emb_start = time.time()
 	embeddings_cache = {}
 	for strategy, model in models_to_plot.items():
@@ -813,6 +814,7 @@ def main():
 		finetuned_txt2img_dict=finetuned_txt2img_dict,
 		model_name=args.model_architecture,
 		finetune_strategies=finetune_strategies,
+		models_dict=models_to_plot,
 		topK_values=args.topK_values,
 		results_dir=RESULT_DIRECTORY,
 	)

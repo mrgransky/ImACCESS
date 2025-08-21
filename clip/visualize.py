@@ -3219,6 +3219,7 @@ def plot_comparison_metrics_merged(
 		finetune_strategies: list,
 		results_dir: str,
 		topK_values: list,
+		models_dict: dict,
 		figure_size=(16, 8),
 		DPI: int = 200,
 	):
@@ -3581,13 +3582,14 @@ def plot_comparison_metrics_merged(
 		return param_counts
 
 	def efficiency_analysis():
-		"""Compare computational efficiency across strategies"""
+		"""Compare computational efficiency across strategies using actual parameter counts"""
 		print(f"\n{'='*80}")
-		print(f"COMPUTATIONAL EFFICIENCY ANALYSIS")
+		print(f"COMPUTATIONAL EFFICIENCY ANALYSIS (DYNAMIC PARAMETER COUNTING)")
 		print(f"{'='*80}")
 		
-		# Get model parameter counts
-		model_params = get_model_parameter_counts(models_dict, finetune_strategies)
+		# Get actual parameter counts from model instances
+		param_counts = get_model_parameter_counts(models_dict, finetune_strategies)
+		
 		if param_counts is None:
 			# Fallback to estimated values if no models provided
 			print("Falling back to estimated parameter counts...")
@@ -3601,19 +3603,62 @@ def plot_comparison_metrics_merged(
 				"RN50x16": 955375616,
 				"RN50x64": 3632465920,
 			}
-		total_params = model_params.get(model_name, 150000000)
+			total_params = model_params.get(model_name, 150000000)
+			
+			# Use estimated efficiency metrics
+			efficiency_metrics = {
+				"full": {"trainable_params": total_params, "relative_cost": 1.0, "memory_factor": 1.0},
+				"lora": {"trainable_params": int(total_params * 0.01), "relative_cost": 0.15, "memory_factor": 0.3},
+				"progressive": {"trainable_params": total_params, "relative_cost": 1.2, "memory_factor": 1.1},
+			}
+		else:
+			# Use actual parameter counts
+			efficiency_metrics = {}
+			for strategy in finetune_strategies:
+				strategy_key = strategy.lower()
+				if strategy_key in param_counts:
+					params_data = param_counts[strategy_key]
+					
+					# Estimate relative costs based on trainable parameter ratio
+					trainable_ratio = params_data['trainable_percentage'] / 100.0
+					
+					# Base relative costs on complexity
+					if strategy_key == "full":
+						relative_cost = 1.0
+						memory_factor = 1.0
+					elif strategy_key == "lora":
+						relative_cost = 0.1 + (trainable_ratio * 0.5)  # Base + scaling factor
+						memory_factor = 0.3 + (trainable_ratio * 0.4)
+					elif strategy_key == "progressive":
+						relative_cost = 1.0 + 0.3  # Overhead for phase management
+						memory_factor = 1.1
+					elif strategy_key == "probe":
+						relative_cost = 0.05  # Very minimal training
+						memory_factor = 0.1
+					else:
+						relative_cost = trainable_ratio
+						memory_factor = 0.5 + (trainable_ratio * 0.5)
+					
+					efficiency_metrics[strategy_key] = {
+						"trainable_params": params_data['trainable'],
+						"total_params": params_data['total'],
+						"relative_cost": relative_cost,
+						"memory_factor": memory_factor,
+						"trainable_percentage": params_data['trainable_percentage']
+					}
 		
-		efficiency_metrics = {
-			"Full": {"trainable_params": total_params, "relative_cost": 1.0, "memory_factor": 1.0},
-			"LoRA": {"trainable_params": int(total_params * 0.01), "relative_cost": 0.15, "memory_factor": 0.3},
-			"Progressive": {"trainable_params": total_params, "relative_cost": 1.2, "memory_factor": 1.1},
-		}
+		# Calculate and display efficiency metrics
+		print(f"\nEfficiency Analysis Results:")
+		print(f"{'-'*50}")
+		
+		efficiency_results = {}
 		
 		for strategy in finetune_strategies:
-			if strategy == "Probe" or strategy not in efficiency_metrics:
+			strategy_key = strategy.lower()
+			if strategy_key == "probe" or strategy_key not in efficiency_metrics:
 				continue
 			
-			metrics_data = efficiency_metrics[strategy]
+			metrics_data = efficiency_metrics[strategy_key]
 			
 			# Calculate overall average improvement
 			all_improvements = []
@@ -3624,15 +3669,68 @@ def plot_comparison_metrics_merged(
 			
 			if all_improvements:
 				avg_improvement = np.mean(all_improvements)
-				params_millions = metrics_data["trainable_params"] / 1e6
+				std_improvement = np.std(all_improvements)
+				trainable_params = metrics_data["trainable_params"]
+				total_params = metrics_data.get("total_params", trainable_params)
+				
+				params_millions = trainable_params / 1e6
+				total_params_millions = total_params / 1e6
+				
+				# Calculate efficiency scores
 				efficiency_score = avg_improvement / params_millions if params_millions > 0 else 0
+				cost_efficiency = avg_improvement / metrics_data["relative_cost"] if metrics_data["relative_cost"] > 0 else 0
+				
+				# Store results
+				efficiency_results[strategy] = {
+					'avg_improvement': avg_improvement,
+					'std_improvement': std_improvement,
+					'trainable_params_m': params_millions,
+					'total_params_m': total_params_millions,
+					'efficiency_score': efficiency_score,
+					'cost_efficiency': cost_efficiency,
+					'relative_cost': metrics_data["relative_cost"],
+					'memory_factor': metrics_data["memory_factor"],
+					'trainable_percentage': metrics_data.get("trainable_percentage", 100.0)
+				}
 				
 				print(f"\n{strategy.capitalize()} Fine-tuning:")
-				print(f"  Trainable parameters: {params_millions:.1f}M ({(metrics_data['trainable_params']/total_params)*100:.1f}% of total)")
+				print(f"  Total parameters: {total_params_millions:.1f}M")
+				print(f"  Trainable parameters: {params_millions:.1f}M ({metrics_data.get('trainable_percentage', 100.0):.1f}% of total)")
 				print(f"  Relative training cost: {metrics_data['relative_cost']:.2f}x")
 				print(f"  Memory overhead: {metrics_data['memory_factor']:.1f}x")
-				print(f"  Overall average improvement: {avg_improvement:+.2f}%")
-				print(f"  Performance/Parameter efficiency: {efficiency_score:.4f}%/M params")
+				print(f"  Overall average improvement: {avg_improvement:+.2f}% ± {std_improvement:.2f}%")
+				print(f"  Performance/Parameter efficiency: {efficiency_score:.4f}%/M trainable params")
+				print(f"  Performance/Cost efficiency: {cost_efficiency:.2f}%/cost unit")
+		
+		# Summary comparison
+		if len(efficiency_results) > 1:
+			print(f"\n{'='*50}")
+			print(f"EFFICIENCY RANKING SUMMARY")
+			print(f"{'='*50}")
+			
+			# Rank by different criteria
+			rankings = {
+				'Performance/Parameter': sorted(efficiency_results.items(), key=lambda x: x[1]['efficiency_score'], reverse=True),
+				'Performance/Cost': sorted(efficiency_results.items(), key=lambda x: x[1]['cost_efficiency'], reverse=True),
+				'Overall Performance': sorted(efficiency_results.items(), key=lambda x: x[1]['avg_improvement'], reverse=True),
+				'Parameter Efficiency': sorted(efficiency_results.items(), key=lambda x: x[1]['trainable_params_m'])
+			}
+			
+			for criterion, ranking in rankings.items():
+				print(f"\nBest {criterion}:")
+				for i, (strategy, data) in enumerate(ranking[:3], 1):
+					if criterion == 'Performance/Parameter':
+						value = f"{data['efficiency_score']:.4f}%/M"
+					elif criterion == 'Performance/Cost':
+						value = f"{data['cost_efficiency']:.2f}%/cost"
+					elif criterion == 'Overall Performance':
+						value = f"{data['avg_improvement']:+.2f}%"
+					else:  # Parameter Efficiency
+						value = f"{data['trainable_params_m']:.1f}M params"
+					
+					print(f"  {i}. {strategy.capitalize()}: {value}")
+		
+		return efficiency_results
 
 	def failure_mode_analysis():
 		"""Identify limitations and failure modes of each strategy"""
@@ -3729,8 +3827,6 @@ def plot_comparison_metrics_merged(
 		print("• Historical document retrieval: Progressive (handles domain shift well)")
 		print("• General-purpose applications: LoRA (maintains broader capabilities)")
 		print("• Content generation systems: Full fine-tuning (strong T2I performance)")
-
-
 
 	print(f"\n{'='*80}")
 	print(f"OVERALL PERFORMANCE SUMMARY [QUANTITATIVE ANALYSIS]")
