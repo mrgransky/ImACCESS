@@ -400,6 +400,7 @@ def main():
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
+	args.dataset_dir = os.path.normpath(args.dataset_dir)
 	print_args_table(args=args, parser=parser)
 	set_seeds(seed=42)
 	RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"results_{args.dataset_type}")
