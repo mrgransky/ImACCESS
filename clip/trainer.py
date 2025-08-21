@@ -4245,18 +4245,18 @@ def linear_probe_finetune_single_label(
 	actual_trained_epochs = len(training_losses)
 	
 	file_base_name = (
-			f"{dataset_name}_"
-			f"{mode}_"
-			f"{optimizer.__class__.__name__}_"
-			f"{scheduler.__class__.__name__}_"
-			f"{criterion.__class__.__name__}_"
-			f"{model_name}_"
-			f"{model_arch}_"
-			f"probe_{probe.probe_type}_"
-			f"ep_{actual_trained_epochs}_"
-			f"lr_{learning_rate:.1e}_"
-			f"wd_{weight_decay:.1e}_"
-			f"bs_{train_loader.batch_size}"
+		f"{dataset_name}_"
+		f"{mode}_"
+		f"{optimizer.__class__.__name__}_"
+		f"{scheduler.__class__.__name__}_"
+		f"{criterion.__class__.__name__}_"
+		f"{model_name}_"
+		f"{model_arch}_"
+		f"probe_{probe.probe_type}_"
+		f"ep_{actual_trained_epochs}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"bs_{train_loader.batch_size}"
 	)
 	
 	# Update model path

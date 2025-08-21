@@ -1,10 +1,11 @@
+from numpy import positive
 from utils import *
 
 strategy_colors = {
 	'full': "#012894", 
 	'lora': '#f58320be', 
 	'progressive': '#cc40df',
-	'probe': "#01C2A2",
+	'probe': "#00C468D3",
 }
 strategy_styles = {
 	'full': 's', 
@@ -18,9 +19,6 @@ pretrained_colors = {
 	'ViT-L/14': '#e377c2', 
 	'ViT-L/14@336px': '#696969'
 }
-# pretrained_model_arch = models.get("pretrained").name
-# colors = [pretrained_colors.get(pretrained_model_arch, '#000000')] + list(strategy_colors.values())
-
 
 def _phase_cmap(num_phases: int) -> np.ndarray:
 	return plt.cm.Set3(np.linspace(0, 1, max(num_phases, 1)))
@@ -2731,12 +2729,7 @@ def plot_comparison_metrics_split_table_annotation(
 				return
 		
 		model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
-		
-		# # Define colors and styles for the different strategies
-		# strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
-		# pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
-		# strategy_styles = {'full': 's', 'lora': '^', 'progressive': 'd'}  # Unique markers
-		
+				
 		# Key K points for table annotations
 		key_k_values = [1, 10, 20]
 		
@@ -2747,202 +2740,205 @@ def plot_comparison_metrics_split_table_annotation(
 				
 				# Process each metric (mP, mAP, Recall)
 				for metric in metrics:
-						# Create figure with adjusted size
-						fig, ax = plt.subplots(figsize=figure_size, constrained_layout=True)
-						
-						# Create filename for output
-						fname = f"{dataset_name}_{'_'.join(finetune_strategies)}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_{mode.replace('-', '_')}_{metric}_comparison.png"
-						file_path = os.path.join(results_dir, fname)
-						
-						# Check if metric exists in pretrained dictionary
-						if metric not in pretrained_dict.get(model_name, {}):
-								print(f"WARNING: Metric {metric} not found in pretrained_{mode.lower().replace('-', '_')}_dict for {model_name}")
-								continue
-								
-						# Get available k values across all dictionaries
-						k_values = sorted(
-								k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {})
+					# Create figure with adjusted size
+					fig, ax = plt.subplots(figsize=figure_size, constrained_layout=True)
+					
+					# Create filename for output
+					fname = (
+						f"{dataset_name}_"
+						f"{'_'.join(finetune_strategies)}_"
+						f"finetuned_vs_CLIP_"
+						f"{re.sub(r'[/@]', '-', model_name)}_"
+						f"{mode.replace('-', '_')}_"
+						f"{metric}_"
+						f"comparison.png")
+					file_path = os.path.join(results_dir, fname)
+					
+					# Check if metric exists in pretrained dictionary
+					if metric not in pretrained_dict.get(model_name, {}):
+							print(f"WARNING: Metric {metric} not found in pretrained_{mode.lower().replace('-', '_')}_dict for {model_name}")
+							continue
+							
+					# Get available k values across all dictionaries
+					k_values = sorted(
+							k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {})
+					)
+					
+					# Validate k values across all strategies
+					for strategy in finetune_strategies:
+							if strategy not in finetuned_dict.get(model_name, {}) or metric not in finetuned_dict.get(model_name, {}).get(strategy, {}):
+									print(f"WARNING: Metric {metric} not found in finetuned_{mode.lower().replace('-', '_')}_dict for {model_name}/{strategy}")
+									k_values = []  # Reset if any strategy is missing
+									break
+							k_values = sorted(
+									set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys())
+							)
+							
+					if not k_values:
+							print(f"WARNING: No matching K values found for {metric}")
+							continue
+					
+					# Store lines for legend
+					lines = []
+							
+					# Plot Pre-trained (dashed line)
+					pretrained_vals = [pretrained_dict[model_name][metric].get(str(k), float('nan')) for k in k_values]
+					pretrained_line, = ax.plot(
+							k_values,
+							pretrained_vals,
+							label=f"CLIP {model_name}",
+							color=pretrained_colors[model_name],
+							linestyle='--', 
+							marker='o',
+							linewidth=1.5,
+							markersize=4,
+							alpha=0.75,
+					)
+					lines.append(pretrained_line)
+					
+					# Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
+					strategy_lines = {}
+					for strategy in finetune_strategies:
+						finetuned_vals = [finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) for k in k_values]
+						line, = ax.plot(
+							k_values,
+							finetuned_vals,
+							label=f"{strategy.upper()}",
+							color=strategy_colors[strategy], 
+							linestyle='-', 
+							marker=strategy_styles[strategy],
+							linewidth=2.0, 
+							markersize=5,
 						)
+						lines.append(line)
+						strategy_lines[strategy] = finetuned_vals
+					
+					# Prepare data for table annotations at key K points
+					tables_data = {}
+					for k in key_k_values:
+						if k in k_values:
+							k_idx = k_values.index(k)
+							pre_val = pretrained_vals[k_idx]
+							
+							# Collect improvements for all strategies at this K
+							improvements = {}
+							for strategy in finetune_strategies:
+								if k_idx < len(strategy_lines[strategy]):
+									ft_val = strategy_lines[strategy][k_idx]
+									if pre_val != 0:
+										imp_pct = (ft_val - pre_val) / pre_val * 100
+										improvements[strategy] = (imp_pct, ft_val)
+							
+							# Sort strategies by improvement (descending)
+							sorted_strategies = sorted(improvements.items(), key=lambda x: x[1][0], reverse=True)
+							
+							# Store for later use
+							tables_data[k] = {
+								'improvements': improvements,
+								'sorted_strategies': sorted_strategies,
+								'best_strategy': sorted_strategies[0][0] if sorted_strategies else None,
+								'worst_strategy': sorted_strategies[-1][0] if sorted_strategies else None,
+								'best_val': sorted_strategies[0][1][1] if sorted_strategies else None,
+								'worst_val': sorted_strategies[-1][1][1] if sorted_strategies else None,
+							}
+					
+					# Add table annotations for each key K point
+					for k, data in tables_data.items():
+						if not data['sorted_strategies']:
+							continue
 						
-						# Validate k values across all strategies
-						for strategy in finetune_strategies:
-								if strategy not in finetuned_dict.get(model_name, {}) or metric not in finetuned_dict.get(model_name, {}).get(strategy, {}):
-										print(f"WARNING: Metric {metric} not found in finetuned_{mode.lower().replace('-', '_')}_dict for {model_name}/{strategy}")
-										k_values = []  # Reset if any strategy is missing
-										break
-								k_values = sorted(
-										set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys())
-								)
-								
-						if not k_values:
-								print(f"WARNING: No matching K values found for {metric}")
-								continue
+						# Create table text
+						table_text = f"K={k}:\n"
 						
-						# Store lines for legend
-						lines = []
-								
-						# Plot Pre-trained (dashed line)
-						pretrained_vals = [pretrained_dict[model_name][metric].get(str(k), float('nan')) for k in k_values]
-						pretrained_line, = ax.plot(
-								k_values,
-								pretrained_vals,
-								label=f"CLIP {model_name}",
-								color=pretrained_colors[model_name],
-								linestyle='--', 
-								marker='o',
-								linewidth=1.5,
-								markersize=4,
-								alpha=0.75,
+						ranking_labels = ["1)", "2)", "3)"][:len(data['sorted_strategies'])]
+						if len(data['sorted_strategies']) == 2:
+							ranking_labels = ["1)", "2)"]  # Only 2 strategies
+						
+						for (strategy, (imp, _)), rank in zip(data['sorted_strategies'], ranking_labels):
+							table_text += f"{rank} {strategy.upper()}: {imp:+.1f}%\n"  # Add each line to the table text
+							
+						if k == min(k_values):  # First K point (e.g., K=1)
+							# Check if there's more space above best or below worst
+							best_val = data['best_val']
+							worst_val = data['worst_val']
+							
+							# Calculate available space
+							space_above = 1.0 - best_val  # Space to top of plot
+							space_below = worst_val - 0.0  # Space to bottom of plot
+							
+							# Position based on available space
+							if space_above >= 0.2 or space_above > space_below:
+								# Place above the highest point
+								xy = (k, best_val)
+								xytext = (10, 20)  # Offset to upper right
+								va = 'bottom'
+							else:
+								# Place below the lowest point
+								xy = (k, worst_val)
+								xytext = (10, -20)  # Offset to lower right
+								va = 'top'
+						elif k == max(k_values):  # Last K point (e.g., K=20)
+							# Similar logic but offset to the left
+							best_val = data['best_val']
+							worst_val = data['worst_val']
+							
+							space_above = 1.0 - best_val
+							space_below = worst_val - 0.0
+							
+							if space_above >= 0.2 or space_above > space_below:
+								xy = (k, best_val)
+								xytext = (-10, 20)  # Offset to upper left
+								va = 'bottom'
+							else:
+								xy = (k, worst_val)
+								xytext = (-10, -20)  # Offset to lower left
+								va = 'top'
+						else:  # Middle K points (e.g., K=10)
+							# Try to position in middle of plot if possible
+							mid_y = (data['best_val'] + data['worst_val']) / 2
+							xy = (k, mid_y)
+							xytext = (0, 30 if mid_y < 0.5 else -30)  # Above if in lower half, below if in upper half
+							va = 'bottom' if mid_y < 0.5 else 'top'
+						
+						# Add the annotation table
+						ax.annotate(
+							table_text,
+							xy=xy,
+							xytext=xytext,
+							textcoords='offset points',
+							fontsize=8,
+							verticalalignment=va,
+							horizontalalignment='center',
+							bbox=dict(
+								boxstyle="round,pad=0.4",
+								facecolor='white',
+								edgecolor='gray',
+								alpha=0.9
+							),
+							zorder=10  # Ensure annotation is above other elements
 						)
-						lines.append(pretrained_line)
-						
-						# Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
-						strategy_lines = {}
-						for strategy in finetune_strategies:
-								finetuned_vals = [finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) for k in k_values]
-								line, = ax.plot(
-										k_values,
-										finetuned_vals,
-										label=f"{strategy.upper()}",
-										color=strategy_colors[strategy], 
-										linestyle='-', 
-										marker=strategy_styles[strategy],
-										linewidth=2.0, 
-										markersize=5,
-								)
-								lines.append(line)
-								strategy_lines[strategy] = finetuned_vals
-						
-						# Prepare data for table annotations at key K points
-						tables_data = {}
-						for k in key_k_values:
-								if k in k_values:
-										k_idx = k_values.index(k)
-										pre_val = pretrained_vals[k_idx]
-										
-										# Collect improvements for all strategies at this K
-										improvements = {}
-										for strategy in finetune_strategies:
-												if k_idx < len(strategy_lines[strategy]):
-														ft_val = strategy_lines[strategy][k_idx]
-														if pre_val != 0:
-																imp_pct = (ft_val - pre_val) / pre_val * 100
-																improvements[strategy] = (imp_pct, ft_val)
-										
-										# Sort strategies by improvement (descending)
-										sorted_strategies = sorted(improvements.items(), key=lambda x: x[1][0], reverse=True)
-										
-										# Store for later use
-										tables_data[k] = {
-												'improvements': improvements,
-												'sorted_strategies': sorted_strategies,
-												'best_strategy': sorted_strategies[0][0] if sorted_strategies else None,
-												'worst_strategy': sorted_strategies[-1][0] if sorted_strategies else None,
-												'best_val': sorted_strategies[0][1][1] if sorted_strategies else None,
-												'worst_val': sorted_strategies[-1][1][1] if sorted_strategies else None,
-										}
-						
-						# Add table annotations for each key K point
-						for k, data in tables_data.items():
-								if not data['sorted_strategies']:
-										continue
-								
-								# Create table text
-								table_text = f"K={k}:\n"
-								
-								ranking_labels = ["1)", "2)", "3)"][:len(data['sorted_strategies'])]
-								if len(data['sorted_strategies']) == 2:
-										ranking_labels = ["1)", "2)"]  # Only 2 strategies
-								
-								for (strategy, (imp, _)), rank in zip(data['sorted_strategies'], ranking_labels):
-										color_hex = strategy_colors[strategy]
-										table_text += f"{rank} {strategy.upper()}: {imp:+.1f}%\n"  # Add each line to the table text
-									
-								if k == min(k_values):  # First K point (e.g., K=1)
-										# Check if there's more space above best or below worst
-										best_val = data['best_val']
-										worst_val = data['worst_val']
-										
-										# Calculate available space
-										space_above = 1.0 - best_val  # Space to top of plot
-										space_below = worst_val - 0.0  # Space to bottom of plot
-										
-										# Position based on available space
-										if space_above >= 0.2 or space_above > space_below:
-												# Place above the highest point
-												xy = (k, best_val)
-												xytext = (10, 20)  # Offset to upper right
-												va = 'bottom'
-										else:
-												# Place below the lowest point
-												xy = (k, worst_val)
-												xytext = (10, -20)  # Offset to lower right
-												va = 'top'
-								
-								elif k == max(k_values):  # Last K point (e.g., K=20)
-										# Similar logic but offset to the left
-										best_val = data['best_val']
-										worst_val = data['worst_val']
-										
-										space_above = 1.0 - best_val
-										space_below = worst_val - 0.0
-										
-										if space_above >= 0.2 or space_above > space_below:
-												xy = (k, best_val)
-												xytext = (-10, 20)  # Offset to upper left
-												va = 'bottom'
-										else:
-												xy = (k, worst_val)
-												xytext = (-10, -20)  # Offset to lower left
-												va = 'top'
-								
-								else:  # Middle K points (e.g., K=10)
-										# Try to position in middle of plot if possible
-										mid_y = (data['best_val'] + data['worst_val']) / 2
-										xy = (k, mid_y)
-										xytext = (0, 30 if mid_y < 0.5 else -30)  # Above if in lower half, below if in upper half
-										va = 'bottom' if mid_y < 0.5 else 'top'
-								
-								# Add the annotation table
-								ax.annotate(
-										table_text,
-										xy=xy,
-										xytext=xytext,
-										textcoords='offset points',
-										fontsize=8,
-										verticalalignment=va,
-										horizontalalignment='center',
-										bbox=dict(
-												boxstyle="round,pad=0.4",
-												facecolor='white',
-												edgecolor='gray',
-												alpha=0.9
-										),
-										zorder=10  # Ensure annotation is above other elements
-								)
-						
-						# Format the plot
-						ax.set_title(
-								f"{metric}@K", 
-								fontsize=10, 
-								fontweight='bold',
-						)
-						ax.set_xlabel("K", fontsize=10, fontweight='bold')
-						ax.set_xticks(k_values)
-						ax.grid(True, linestyle='--', alpha=0.75)
-						ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
-						ax.set_yticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=10)
-						ax.set_ylim(-0.01, 1.01)
-						ax.tick_params(axis='both', labelsize=7)
-
-						# Set spine edge color to solid black
-						for spine in ax.spines.values():
-								spine.set_color('black')
-								spine.set_linewidth(0.7)
-								
-						plt.tight_layout()
-						plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
-						plt.close(fig)
+					
+					# Format the plot
+					ax.set_title(
+						f"{metric}@K", 
+						fontsize=10, 
+						fontweight='bold',
+					)
+					ax.set_xlabel("K", fontsize=10, fontweight='bold')
+					ax.set_xticks(k_values)
+					ax.grid(True, linestyle='--', alpha=0.75)
+					ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
+					ax.set_yticklabels(['0', '0.25', '0.5', '0.75', '1.0'], fontsize=10)
+					ax.set_ylim(-0.01, 1.01)
+					ax.tick_params(axis='both', labelsize=7)
+					# Set spine edge color to solid black
+					for spine in ax.spines.values():
+						spine.set_color('black')
+						spine.set_linewidth(0.7)
+							
+					plt.tight_layout()
+					plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
+					plt.close(fig)
 
 def plot_comparison_metrics_split(
 		dataset_name: str,
@@ -2973,17 +2969,14 @@ def plot_comparison_metrics_split(
 		return
 	
 	# Validate finetune_strategies
-	finetune_strategies = [s for s in finetune_strategies if s in ["full", "lora", "progressive"]][:3]  # Max 3
+	print(f"{len(finetune_strategies)} Finetune strategies: {finetune_strategies}")
+
 	if not finetune_strategies:
 		print("WARNING: No valid finetune strategies provided. Skipping...")
 		return
+
 	model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
-	
-	# # Define a professional color palette for fine-tuned strategies
-	# strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
-	# pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
-	# strategy_styles = {'full': 's', 'lora': '^', 'progressive': 'd'}  # Unique markers
-	
+		
 	for mode in modes:
 		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
 		finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
@@ -2992,7 +2985,15 @@ def plot_comparison_metrics_split(
 			fig, ax = plt.subplots(figsize=figure_size, constrained_layout=True)
 			
 			# Create filename for the output
-			fname = f"{dataset_name}_{'_'.join(finetune_strategies)}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_{mode.replace('-', '_')}_{metric}_comparison.png"
+			fname = (
+				f"{dataset_name}_"
+				f"{'_'.join(finetune_strategies)}_"
+				f"finetuned_vs_CLIP_"
+				f"{re.sub(r'[/@]', '-', model_name)}_"
+				f"{mode.replace('-', '_')}_"
+				f"{metric}_"
+				f"comparison.png"
+			)
 			file_path = os.path.join(results_dir, fname)
 			
 			# Check if metric exists in pretrained dictionary
@@ -3024,9 +3025,9 @@ def plot_comparison_metrics_split(
 				color=pretrained_colors[model_name],
 				linestyle='--', 
 				marker='o',
-				linewidth=2.0,
-				markersize=4,
-				alpha=0.75,
+				linewidth=3.5,
+				markersize=6,
+				alpha=0.95,
 			)
 			
 			# Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
@@ -3039,8 +3040,8 @@ def plot_comparison_metrics_split(
 					color=strategy_colors[strategy], 
 					linestyle='-', 
 					marker=strategy_styles[strategy],
-					linewidth=2.5,
-					markersize=5,
+					linewidth=1.1,
+					markersize=3,
 				)
 			
 			# Analyze plot data to place annotations intelligently
@@ -3052,7 +3053,10 @@ def plot_comparison_metrics_split(
 				if k in k_values:
 					k_idx = k_values.index(k)
 					pre_val = pretrained_vals[k_idx]
-					finetuned_vals_at_k = {strategy: finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) for strategy in finetune_strategies}
+					finetuned_vals_at_k = {
+						strategy: finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) 
+						for strategy in finetune_strategies
+					}
 					
 					# Calculate improvements
 					improvements = {}
@@ -3067,7 +3071,9 @@ def plot_comparison_metrics_split(
 						'worst': min(improvements.items(), key=lambda x: x[1][0]),
 						'all_values': [v[1] for v in improvements.values()]
 					}
-			
+			positive_pct_col = "#51b400ff"
+			negative_pct_col = "#c0003aff"
+
 			# Second pass: determine optimal annotation placement based on plot density
 			for k, data in annotation_positions.items():
 				best_strategy, (best_imp, best_val) = data['best']
@@ -3078,11 +3084,11 @@ def plot_comparison_metrics_split(
 				all_values.sort()  # Sort for easier gap analysis
 				
 				# For best annotation (typically placed above)
-				best_text_color = '#016e2bff' if best_imp >= 0 else 'red'
+				best_text_color = positive_pct_col if best_imp >= 0 else negative_pct_col
 				best_arrow_style = '<|-' if best_imp >= 0 else '-|>'
 				
 				# For worst annotation (typically placed below)
-				worst_text_color = '#016e2bff' if worst_imp >= 0 else 'red'
+				worst_text_color = positive_pct_col if worst_imp >= 0 else negative_pct_col
 				worst_arrow_style = '-|>' if worst_imp >= 0 else '<|-'
 				
 				# Calculate the overall range and spacing between values
@@ -3113,12 +3119,17 @@ def plot_comparison_metrics_split(
 					fontsize=12,
 					fontweight='bold',
 					color=best_text_color,
-					bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.1),
+					bbox=dict(
+						facecolor='#ffffff', 
+						edgecolor='none', 
+						alpha=0.7, 
+						pad=0.1
+					),
 					arrowprops=dict(
 						arrowstyle=best_arrow_style,
 						color=best_text_color,
 						shrinkA=0,
-						shrinkB=3, # 
+						shrinkB=3,
 						alpha=0.8,
 					)
 				)
@@ -3134,7 +3145,12 @@ def plot_comparison_metrics_split(
 						fontsize=12,
 						fontweight='bold',
 						color=worst_text_color,
-						bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.1),
+						bbox=dict(
+							facecolor='#ffffff', 
+							edgecolor='none', 
+							alpha=0.7, 
+							pad=0.1
+						),
 						arrowprops=dict(
 							arrowstyle=worst_arrow_style,
 							color=worst_text_color,
@@ -3972,288 +3988,3 @@ def plot_loss_accuracy_metrics(
 				fig.tight_layout()
 				fig.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches="tight")
 				plt.close(fig)
-
-def plot_loss_accuracy_metrics_old(
-		dataset_name: str,
-		train_losses: List[float],
-		val_losses: List[float],
-		in_batch_topk_val_accuracy_i2t_list: List[float],
-		in_batch_topk_val_accuracy_t2i_list: List[float],
-		full_topk_val_accuracy_i2t_list: List[float] = None,
-		full_topk_val_accuracy_t2i_list: List[float] = None,
-		mean_reciprocal_rank_list: List[float] = None,
-		cosine_similarity_list: List[float] = None,
-		losses_file_path: str = "losses.png",
-		in_batch_topk_val_acc_i2t_fpth: str = "in_batch_val_topk_accuracy_i2t.png",
-		in_batch_topk_val_acc_t2i_fpth: str = "in_batch_val_topk_accuracy_t2i.png",
-		full_topk_val_acc_i2t_fpth: str = "full_val_topk_accuracy_i2t.png",
-		full_topk_val_acc_t2i_fpth: str = "full_val_topk_accuracy_t2i.png",
-		mean_reciprocal_rank_file_path: str = "mean_reciprocal_rank.png",
-		cosine_similarity_file_path: str = "cosine_similarity.png",
-		DPI: int = 300,
-		figure_size: tuple = (10, 4),
-	):
-
-	num_epochs = len(train_losses)
-	if num_epochs <= 1:  # No plot if only one epoch
-		return
-			
-	# Setup common plotting configurations
-	epochs = np.arange(1, num_epochs + 1)
-	
-	# Create selective x-ticks for better readability
-	num_xticks = min(20, num_epochs)
-	selective_xticks = np.linspace(1, num_epochs, num_xticks, dtype=int)
-	
-	# Define a consistent color palette
-	colors = {
-		'train': '#1f77b4',
-		'val': '#ff7f0e',
-		'img2txt': '#2ca02c',
-		'txt2img': '#d62728'
-	}
-	
-	# Common plot settings function
-	def setup_plot(ax, xlabel='Epoch', ylabel=None, title=None):
-		ax.set_xlabel(xlabel, fontsize=12)
-		if ylabel:
-			ax.set_ylabel(ylabel, fontsize=12)
-		if title:
-			ax.set_title(title, fontsize=10, fontweight='bold')
-		ax.set_xlim(0, num_epochs + 1)
-		ax.set_xticks(selective_xticks)
-		ax.tick_params(axis='both', labelsize=10)
-		ax.grid(True, linestyle='--', alpha=0.7)
-		return ax
-	
-	# 1. Losses plot
-	fig, ax = plt.subplots(figsize=figure_size)
-	ax.plot(
-		epochs,
-		train_losses, 
-		color=colors['train'], 
-		label='Training', 
-		lw=1.5, 
-		marker='o', 
-		markersize=2,
-	)
-	ax.plot(
-		epochs,
-		val_losses,
-		color=colors['val'], 
-		label='Validation',
-		lw=1.5, 
-		marker='o', 
-		markersize=2,
-	)
-					
-	setup_plot(
-		ax, ylabel='Loss', 
-		title=f'{dataset_name} Learning Curve: (Loss)',
-	)
-	ax.legend(
-		fontsize=10, 
-		loc='best', 
-		frameon=True, 
-		fancybox=True,
-		shadow=True,
-		facecolor='white',
-		edgecolor='black',
-	)
-	fig.tight_layout()
-	fig.savefig(losses_file_path, dpi=DPI, bbox_inches='tight')
-	plt.close(fig)
-	
-	# 1. Image-to-Text Top-K[in-batch matching] Validation Accuracy plot
-	if in_batch_topk_val_accuracy_i2t_list:
-		topk_values = list(in_batch_topk_val_accuracy_i2t_list[0].keys())
-		fig, ax = plt.subplots(figsize=figure_size)
-		
-		for i, k in enumerate(topk_values):
-			accuracy_values = [epoch_data[k] for epoch_data in in_batch_topk_val_accuracy_i2t_list]
-			ax.plot(
-				epochs, 
-				accuracy_values, 
-				label=f'Top-{k}',
-				lw=1.5, 
-				marker='o', 
-				markersize=2, 
-				color=plt.cm.tab10(i),
-			)
-							 
-		setup_plot(
-			ax, 
-			ylabel='Accuracy', 
-			title=f'{dataset_name} Image-to-Text Top-K [in-batch matching] Validation Accuracy'
-		)
-		ax.set_ylim(-0.05, 1.05)
-		ax.legend(
-			fontsize=9, 
-			loc='best',
-			ncol=len(topk_values),
-			frameon=True, 
-			fancybox=True,
-			shadow=True,
-			facecolor='white',
-			edgecolor='black',
-		)
-		fig.tight_layout()
-		fig.savefig(in_batch_topk_val_acc_i2t_fpth, dpi=DPI, bbox_inches='tight')
-		plt.close(fig)
-
-	# 2. Image-to-Text Top-K[full matching] Validation Accuracy plot
-	if full_topk_val_accuracy_i2t_list:
-		topk_values = list(full_topk_val_accuracy_i2t_list[0].keys())
-		fig, ax = plt.subplots(figsize=figure_size)
-
-		for i, k in enumerate(topk_values):
-			accuracy_values = [epoch_data[k] for epoch_data in full_topk_val_accuracy_i2t_list]
-			ax.plot(
-				epochs,
-				accuracy_values,
-				label=f'Top-{k}',
-				lw=1.5,
-				marker='o',
-				markersize=2,
-				color=plt.cm.tab10(i),
-			)
-
-		setup_plot(
-			ax,
-			ylabel='Accuracy',
-			title=f'{dataset_name} Image-to-Text Top-K [full matching] Validation Accuracy'
-		)
-		ax.set_ylim(-0.05, 1.05)
-		ax.legend(
-			fontsize=9,
-			loc='best',
-			ncol=len(topk_values),
-			frameon=True,
-			fancybox=True,
-			shadow=True,
-			edgecolor='black',
-			facecolor='white',
-		)
-		fig.tight_layout()
-		fig.savefig(full_topk_val_acc_i2t_fpth, dpi=DPI, bbox_inches='tight')
-		plt.close(fig)
-
-	if full_topk_val_accuracy_t2i_list:
-		topk_values = list(full_topk_val_accuracy_t2i_list[0].keys())
-		fig, ax = plt.subplots(figsize=figure_size)
-		for i, k in enumerate(topk_values):
-			accuracy_values = [epoch_data[k] for epoch_data in full_topk_val_accuracy_t2i_list]
-			ax.plot(
-				epochs,
-				accuracy_values,
-				label=f'Top-{k}',
-				lw=1.5,
-				marker='o',
-				markersize=2,
-				color=plt.cm.tab10(i),
-			)
-
-		setup_plot(
-			ax,
-			ylabel='Accuracy',
-			title=f'{dataset_name} Text-to-Image Top-K [full matching] Validation Accuracy'
-		)
-		ax.set_ylim(-0.05, 1.05)
-		ax.legend(
-			fontsize=9,
-			loc='best',
-			ncol=len(topk_values),
-			frameon=True,
-			fancybox=True,
-			shadow=True,
-			edgecolor='black',
-			facecolor='white',
-		)
-		fig.tight_layout()
-		fig.savefig(full_topk_val_acc_t2i_fpth, dpi=DPI, bbox_inches='tight')
-		plt.close(fig)
-
-	# 3. Text-to-Image Top-K Accuracy plot
-	if in_batch_topk_val_accuracy_t2i_list:
-		topk_values = list(in_batch_topk_val_accuracy_t2i_list[0].keys())
-		fig, ax = plt.subplots(figsize=figure_size)
-		
-		for i, k in enumerate(topk_values):
-			accuracy_values = [epoch_data[k] for epoch_data in in_batch_topk_val_accuracy_t2i_list]
-			ax.plot(
-				epochs, 
-				accuracy_values, 
-				label=f'Top-{k}',
-				lw=1.5, 
-				marker='o', 
-				markersize=2, 
-				color=plt.cm.tab10(i),
-			)
-							 
-		setup_plot(
-			ax, 
-			ylabel='Accuracy', 
-			title=f'{dataset_name} Text-to-Image Top-K [in-batch matching] Validation Accuracy'
-		)
-		ax.set_ylim(-0.05, 1.05)
-		ax.legend(
-			fontsize=9, 
-			loc='best',
-			ncol=len(topk_values),
-			frameon=True, 
-			fancybox=True, 
-			shadow=True,
-			edgecolor='black',
-			facecolor='white',
-		)
-		fig.tight_layout()
-		fig.savefig(in_batch_topk_val_acc_t2i_fpth, dpi=DPI, bbox_inches='tight')
-		plt.close(fig)
-	
-	# 4. Mean Reciprocal Rank plot (if data provided)
-	if mean_reciprocal_rank_list and len(mean_reciprocal_rank_list) > 0:
-		fig, ax = plt.subplots(figsize=figure_size)
-		ax.plot(
-			epochs, 
-			mean_reciprocal_rank_list, 
-			color='#9467bd', 
-			label='MRR', 
-			lw=1.5, 
-			marker='o', 
-			markersize=2,
-		)
-						
-		setup_plot(
-			ax, 
-			ylabel='Mean Reciprocal Rank',
-			title=f'{dataset_name} Mean Reciprocal Rank (Image-to-Text)',
-		)
-		
-		ax.set_ylim(-0.05, 1.05)
-		ax.legend(fontsize=10, loc='best', frameon=True)
-		fig.tight_layout()
-		fig.savefig(mean_reciprocal_rank_file_path, dpi=DPI, bbox_inches='tight')
-		plt.close(fig)
-	
-	# 5. Cosine Similarity plot (if data provided)
-	if cosine_similarity_list and len(cosine_similarity_list) > 0:
-		fig, ax = plt.subplots(figsize=figure_size)
-		ax.plot(
-			epochs, 
-			cosine_similarity_list, 
-			color='#17becf',
-			label='Cosine Similarity', 
-			lw=1.5, 
-			marker='o', 
-			markersize=2,
-		)
-						
-		setup_plot(
-			ax, 
-			ylabel='Cosine Similarity',
-			title=f'{dataset_name} Cosine Similarity Between Embeddings'
-		)
-		ax.legend(fontsize=10, loc='best')
-		fig.tight_layout()
-		fig.savefig(cosine_similarity_file_path, dpi=DPI, bbox_inches='tight')
-		plt.close(fig)
