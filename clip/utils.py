@@ -605,7 +605,7 @@ def get_updated_model_name(
 		for key, value in additional_info.items():
 			# Format numerical values with scientific notation if they're very small
 			if isinstance(value, float) and abs(value) < 0.1:
-				formatted_value = f"{value:.2e}"
+				formatted_value = f"{value:.1e}"
 			else:
 				formatted_value = str(value)
 			base = f"{base}_{key}_{formatted_value}"

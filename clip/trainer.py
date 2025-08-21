@@ -2082,7 +2082,7 @@ def compute_embedding_drift(model, val_subset, pretrained_embeds, device, phase,
 		new_embeds = F.normalize(new_embeds, dim=-1)
 		drift = F.cosine_similarity(new_embeds, pretrained_embeds[:new_embeds.size(0)].to(device), dim=-1)
 		mean_drift = 1 - drift.mean().item()
-	print(f"[DEBUG] Embedding Drift | Phase {phase} | Epoch {epoch}: {mean_drift:.4f}")
+	print(f"[DEBUG] Embedding Drift | Phase {phase} | Epoch {epoch}: {mean_drift}")
 	return mean_drift
 
 def log_retrieval_delta(metrics, prev_metrics, phase):
@@ -2550,8 +2550,8 @@ def progressive_finetune_single_label(
 		f"st_{slope_threshold:.1e}_"
 		f"pit_{pairwise_imp_threshold:.1e}_"
 		f"mepph_{min_epochs_per_phase}_"
-		f"mpbs_{min_phases_before_stopping}_"
-		f"best.pth"
+		f"mpbs_{min_phases_before_stopping}"
+		f".pth"
 	)
 	print(f"Best model will be saved in: {mdl_fpth}")
 
@@ -2571,8 +2571,6 @@ def progressive_finetune_single_label(
 	# For retrieval delta, initialize a holder for previous metrics
 	prev_validation_metrics = None
 	# --- END SETUP ---
-
-
 
 	current_phase = 0
 	epochs_in_current_phase = 0
@@ -3216,8 +3214,8 @@ def full_finetune_single_label(
 		f"cdt_{cumulative_delta:.1e}_"
 		f"vt_{volatility_threshold}_"
 		f"st_{slope_threshold:.1e}_"
-		f"pit_{pairwise_imp_threshold:.1e}_"
-		f"best.pth"
+		f"pit_{pairwise_imp_threshold:.1e}"
+		f".pth"
 	)
 
 	print(f"Best model will be saved in: {mdl_fpth}")
@@ -3587,8 +3585,8 @@ def lora_finetune_single_label(
 		f"cdt_{cumulative_delta:.1e}_"
 		f"vt_{volatility_threshold}_"
 		f"st_{slope_threshold:.1e}_"
-		f"pit_{pairwise_imp_threshold:.1e}_"
-		f"best.pth"
+		f"pit_{pairwise_imp_threshold:.1e}"
+		f".pth"
 	)
 
 	training_losses = []
@@ -3809,7 +3807,7 @@ def lora_finetune_single_label(
 		fname=plot_paths["retrieval_best"],
 	)
 
-def linear_probe_finetune_single_label(
+def probe_finetune_single_label(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
 		validation_loader: DataLoader,
@@ -3993,8 +3991,8 @@ def linear_probe_finetune_single_label(
 		f"cdt_{cumulative_delta:.1e}_"
 		f"vt_{volatility_threshold}_"
 		f"st_{slope_threshold:.1e}_"
-		f"pit_{pairwise_imp_threshold:.1e}_"
-		f"best.pth"
+		f"pit_{pairwise_imp_threshold:.1e}"
+		f".pth"
 	)
 	
 	print(f"Best model will be saved in: {mdl_fpth}")
@@ -4507,9 +4505,8 @@ def full_finetune_multi_label(
 		f"cdelta_{cumulative_delta:.1e}_"
 		f"vt_{volatility_threshold}_"
 		f"st_{slope_threshold:.1e}_"
-		f"pit_{pairwise_imp_threshold:.1e}_"
-		# f"mpbs_{min_phases_before_stopping}_" # useful for progressive finetuning
-		f"best.pth"
+		f"pit_{pairwise_imp_threshold:.1e}"
+		f".pth"
 	)
 	print(f"Best model will be saved in: {mdl_fpth}")
 	training_losses = []
@@ -4963,7 +4960,16 @@ def progressive_finetune_multi_label(
 		f"iwd_{initial_weight_decay:.1e}_"
 		f"temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_"
-		f"best.pth"
+		f"mep_{minimum_epochs}_"
+		f"pat_{patience}_"
+		f"mdt_{min_delta:.1e}_"
+		f"cdt_{cumulative_delta:.1e}_"
+		f"vt_{volatility_threshold}_"
+		f"st_{slope_threshold:.1e}_"
+		f"pit_{pairwise_imp_threshold:.1e}_"
+		f"mepph_{min_epochs_per_phase}_"
+		f"mpbs_{min_phases_before_stopping}_"
+		f".pth"
 	)
 	print(f"Best model will be saved in: {mdl_fpth}")
 
@@ -5581,7 +5587,14 @@ def lora_finetune_multi_label(
 		f"lod_{lora_dropout}_"
 		f"temp_{temperature}_"
 		f"bs_{train_loader.batch_size}_"
-		f"best.pth"
+		f"mep_{minimum_epochs}_"
+		f"pat_{patience}_"
+		f"mdt_{min_delta:.1e}_"
+		f"cdt_{cumulative_delta:.1e}_"
+		f"vt_{volatility_threshold}_"
+		f"st_{slope_threshold:.1e}_"
+		f"pit_{pairwise_imp_threshold:.1e}"
+		f".pth"
 	)
 
 	training_losses = []
@@ -5890,7 +5903,7 @@ def lora_finetune_multi_label(
 
 	return final_metrics_in_batch, final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
-def linear_probe_finetune_multi_label(
+def probe_finetune_multi_label(
 		model: torch.nn.Module,
 		train_loader,
 		validation_loader,
@@ -6049,7 +6062,14 @@ def linear_probe_finetune_multi_label(
 				f"wd_{weight_decay:.1e}_"
 				f"temp_{temperature}_"
 				f"bs_{train_loader.batch_size}_"
-				f"best.pth"
+				f"mep_{minimum_epochs}_"
+				f"pat_{patience}_"
+				f"mdt_{min_delta:.1e}_"
+				f"cdt_{cumulative_delta:.1e}_"
+				f"vt_{volatility_threshold}_"
+				f"st_{slope_threshold:.1e}_"
+				f"pit_{pairwise_imp_threshold:.1e}"
+				f".pth"
 		)
 
 		# Optional: Cache features for efficiency
@@ -6637,8 +6657,8 @@ def train(
 		f"do_{dropout_val}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
-		f"bs_{train_loader.batch_size}_"
-		f"best.pth"
+		f"bs_{train_loader.batch_size}"
+		f".pth"
 	)
 	print(f"Best model will be saved in: {mdl_fpth}")
 

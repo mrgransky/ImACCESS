@@ -3390,10 +3390,7 @@ def plot_comparison_metrics_merged(
 		return improvements, absolute_improvements
 
 	def enhanced_statistical_analysis():
-		"""Enhanced analysis with statistical significance and effect sizes"""
-		print(f"\n{'='*100}")
-		print(f"ENHANCED QUANTITATIVE ANALYSIS WITH STATISTICAL SIGNIFICANCE")
-		print(f"{'='*100}")
+		print(f"ENHANCED QUANTITATIVE ANALYSIS WITH STATISTICAL SIGNIFICANCE".center(150, "="))
 		
 		results_summary = {}
 		
@@ -3407,8 +3404,8 @@ def plot_comparison_metrics_merged(
 				results_summary[mode][metric] = {}
 				
 				for strategy in finetune_strategies:
-					if strategy == "Probe":  # Skip probe as it's baseline
-						continue
+					# if strategy == "Probe":  # Skip probe as it's baseline
+					# 	continue
 					
 					improvements, abs_improvements = calculate_improvements(mode, metric, strategy)
 					
@@ -3445,13 +3442,13 @@ def plot_comparison_metrics_merged(
 							'max': max(improvements)
 						}
 						
-						print(f"  {strategy.capitalize()}:")
-						print(f"    Mean improvement: {mean_improvement:+.2f}% ± {std_improvement:.2f}%")
-						print(f"    Median improvement: {median_improvement:+.2f}%")
-						print(f"    Effect size: {effect_size:.3f}")
-						print(f"    Consistency: {consistency:.1f}% of K values improved")
-						print(f"    Range: [{min(improvements):+.2f}%, {max(improvements):+.2f}%]")
-						print(f"    Statistical significance: {'Yes' if is_significant else 'No'} (p={p_value:.4f})")
+						print(f"\t{strategy.capitalize()}:")
+						print(f"\t\tMean improvement: {mean_improvement:+.2f}% ± {std_improvement:.2f}%")
+						print(f"\t\tMedian improvement: {median_improvement:+.2f}%")
+						print(f"\t\tEffect size: {effect_size:.3f}")
+						print(f"\t\tConsistency: {consistency:.1f}% of K values improved")
+						print(f"\t\tRange: [{min(improvements):+.2f}%, {max(improvements):+.2f}%]")
+						print(f"\t\tStatistical significance: {'Yes' if is_significant else 'No'} (p={p_value:.4f})")
 		
 		return results_summary
 
@@ -3828,9 +3825,7 @@ def plot_comparison_metrics_merged(
 		print("• General-purpose applications: LoRA (maintains broader capabilities)")
 		print("• Content generation systems: Full fine-tuning (strong T2I performance)")
 
-	print(f"\n{'='*80}")
-	print(f"OVERALL PERFORMANCE SUMMARY [QUANTITATIVE ANALYSIS]")
-	print(f"{'='*80}")
+	print(f"OVERALL PERFORMANCE SUMMARY [QUANTITATIVE ANALYSIS]".center(160, "="))
 
 	for mode in modes:
 		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
@@ -3854,7 +3849,6 @@ def plot_comparison_metrics_merged(
 					if improvements:
 						avg_improvement = sum(improvements) / len(improvements)
 						print(f"  {metric} ({strategy.capitalize()}): Average improvement across all K values: {avg_improvement:+.2f}%")
-	print(f"\n{'='*80}")
 
 	results_summary = enhanced_statistical_analysis()
 	k_value_distribution_analysis()
@@ -3862,6 +3856,7 @@ def plot_comparison_metrics_merged(
 	efficiency_analysis()
 	failure_mode_analysis()
 	practical_recommendations()
+	print(f"{'='*80}\n")
 
 	return results_summary
 
