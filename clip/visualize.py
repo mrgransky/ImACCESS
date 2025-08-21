@@ -3524,22 +3524,84 @@ def plot_comparison_metrics_merged(
 				print(f"  Asymmetry ratio (T2I/I2T): {asymmetry_ratio:.2f}x")
 				print(f"  Directional bias: {'Text-to-Image favored' if asymmetry_ratio > 1.5 else 'Balanced' if 0.67 <= asymmetry_ratio <= 1.5 else 'Image-to-Text favored'}")
 
+	def get_model_parameter_counts(models_dict, finetune_strategies):
+		"""
+		Dynamically extract parameter counts from actual model instances
+		
+		Returns:
+			dict: Parameter counts for each strategy
+		"""
+		param_counts = {}
+		
+		if models_dict is None:
+			print("Warning: No model instances provided. Using estimated parameter counts.")
+			return None
+		
+		for strategy in finetune_strategies:
+			strategy_key = strategy.lower()
+			
+			if strategy_key not in models_dict:
+				print(f"Warning: Model for strategy '{strategy}' not found in models_dict")
+				continue
+			
+			model = models_dict[strategy_key]
+			
+			# Count total parameters
+			total_params = sum(p.numel() for p in model.parameters())
+			
+			# Count trainable parameters
+			trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+			
+			# Count frozen parameters
+			frozen_params = total_params - trainable_params
+			
+			param_counts[strategy] = {
+				'total': total_params,
+				'trainable': trainable_params,
+				'frozen': frozen_params,
+				'trainable_percentage': (trainable_params / total_params) * 100 if total_params > 0 else 0
+			}
+			
+			print(f"Model parameter analysis for {strategy.capitalize()}:")
+			print(f"  Total parameters: {total_params:,}")
+			print(f"  Trainable parameters: {trainable_params:,} ({param_counts[strategy]['trainable_percentage']:.2f}%)")
+			print(f"  Frozen parameters: {frozen_params:,}")
+		
+		# Also get pretrained model params for reference
+		if 'pretrained' in models_dict:
+			pretrained_model = models_dict['pretrained']
+			pretrained_total = sum(p.numel() for p in pretrained_model.parameters())
+			param_counts['pretrained'] = {
+				'total': pretrained_total,
+				'trainable': pretrained_total,  # All params trainable in original model
+				'frozen': 0,
+				'trainable_percentage': 100.0
+			}
+		
+		return param_counts
+
 	def efficiency_analysis():
 		"""Compare computational efficiency across strategies"""
 		print(f"\n{'='*80}")
 		print(f"COMPUTATIONAL EFFICIENCY ANALYSIS")
 		print(f"{'='*80}")
 		
-		# Model-specific parameter counts (example for ViT-B/32)
-		model_params = {
-			"ViT-B/32": 151277313,
-			"ViT-B/16": 149620737,
-			"ViT-L/14": 427616513,
-			"RN50": 102010368,
-			# Add more as needed
-		}
-		
-		total_params = model_params.get(model_name, 150000000)  # Default estimate
+		# Get model parameter counts
+		model_params = get_model_parameter_counts(models_dict, finetune_strategies)
+		if param_counts is None:
+			# Fallback to estimated values if no models provided
+			print("Falling back to estimated parameter counts...")
+			model_params = {
+				"ViT-B/32": 151277313,
+				"ViT-B/16": 149620737,
+				"ViT-L/14": 427616513,
+				"RN50": 102010368,
+				"RN101": 119547648,
+				"RN50x4": 319286272,
+				"RN50x16": 955375616,
+				"RN50x64": 3632465920,
+			}
+		total_params = model_params.get(model_name, 150000000)
 		
 		efficiency_metrics = {
 			"Full": {"trainable_params": total_params, "relative_cost": 1.0, "memory_factor": 1.0},
