@@ -436,6 +436,7 @@ def main():
 	print(f">> CLIP model configuration: {args.model_architecture}...")
 	model_config = get_config(architecture=args.model_architecture)
 	print(json.dumps(model_config, indent=4, ensure_ascii=False))
+
 	pretrained_model, pretrained_preprocess = clip.load(
 		name=args.model_architecture,
 		device=args.device,
@@ -588,6 +589,7 @@ def main():
 					lora_dropout=args.lora_dropout, 
 					verbose=False,
 				)
+			if 
 			model.to(args.device)
 			model = model.float()
 			model.name = args.model_architecture

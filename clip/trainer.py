@@ -3913,19 +3913,35 @@ def linear_probe_finetune_single_label(
 	get_parameters_info(model=model, mode=mode)
 
 	# Create the robust linear probe that handles everything automatically
-	print("\nCreating robust linear probe...")
-	probe = SingleLabelLinearProbe(
-		clip_model=model,
-		num_classes=num_classes,
-		class_names=class_names,
-		device=torch.device(device),
-		hidden_dim=probe_hidden_dim,
-		dropout=probe_dropout,
-		zero_shot_init=True,
-		target_resolution=None,  # Auto-detect
-		verbose=True
-	).to(device)
+	print("\nCreating probe model...")
+	# probe = SingleLabelLinearProbe(
+	# 	clip_model=model,
+	# 	num_classes=num_classes,
+	# 	class_names=class_names,
+	# 	device=torch.device(device),
+	# 	hidden_dim=probe_hidden_dim,
+	# 	dropout=probe_dropout,
+	# 	zero_shot_init=True,
+	# 	target_resolution=None,  # Auto-detect
+	# 	verbose=True
+	# ).to(device)
 	
+	probe = get_probe_clip(
+			clip_model=model,
+			validation_loader=validation_loader,
+			device=torch.device(device),
+			hidden_dim=256,  # Optional: creates MLP probe
+			dropout=0.1,
+			zero_shot_init=True,
+			verbose=True
+	)
+
+	# The function automatically returns either SingleLabelLinearProbe or MultiLabelProbe
+	# You can check the type if needed:
+	is_multilabel = isinstance(probe, MultiLabelProbe)
+	print(f"Multi-label dataset: {is_multilabel}")
+
+
 	clip_dim = probe.input_dim  # Get the detected feature dimension
 	probe_params = sum(p.numel() for p in probe.parameters())
 	
