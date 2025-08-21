@@ -11,7 +11,7 @@
 #SBATCH --mem=373G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=0,4,8,12 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!! # 0-11:  dataset[0] with all strategy×architecture [H4]
+#SBATCH --array=12 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!! # 0-11:  dataset[0] with all strategy×architecture [H4]
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
@@ -53,7 +53,7 @@ FINETUNE_STRATEGIES=(
 	"full" 					# 0-3, 16-19, 32-35, 48-51, 64-67
 	"lora" 					# 4-7, 20-23, 36-39, 52-55, 68-71
 	"progressive" 	# 8-11, 24-27, 40-43, 56-59, 72-75
-	"linear_probe"	# 12-15, 28-31, 44-47, 60-63, 76-79
+	"probe"					# 12-15, 28-31, 44-47, 60-63, 76-79
 )
 
 MODEL_ARCHITECTURES=(
