@@ -3028,9 +3028,9 @@ def plot_comparison_metrics_split(
 				color=pretrained_colors[model_name],
 				linestyle='--', 
 				marker='o',
-				linewidth=3.5,
-				markersize=6,
-				alpha=0.95,
+				linewidth=4.5,
+				markersize=6.5,
+				alpha=0.98,
 			)
 			
 			# Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
@@ -3045,6 +3045,7 @@ def plot_comparison_metrics_split(
 					marker=strategy_styles[strategy],
 					linewidth=2.0,
 					markersize=4,
+					alpha=0.75,
 				)
 			
 			# Analyze plot data to place annotations intelligently
