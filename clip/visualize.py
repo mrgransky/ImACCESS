@@ -599,6 +599,7 @@ def plot_phase_transition_analysis_individual(
 	learning_rates = training_history['learning_rates']
 	weight_decays = training_history['weight_decays']
 	phases = training_history['phases']
+	embedding_drifts = training_history['embedding_drifts']
 	transitions = training_history.get('phase_transitions', [])
 	early_stop_epoch = training_history.get('early_stop_epoch')
 	best_epoch = training_history.get('best_epoch')
@@ -660,12 +661,18 @@ def plot_phase_transition_analysis_individual(
 	# ============================================
 	fig, ax2 = plt.subplots(figsize=figsize, facecolor='white')
 	for i in range(len(epochs) - 1):
-			ax2.semilogy([epochs[i], epochs[i+1]], [learning_rates[i], learning_rates[i+1]],
-									 color=phase_colors[phases[i]], linewidth=3, alpha=0.9)
+		ax2.semilogy(
+			[epochs[i], epochs[i+1]], 
+			[learning_rates[i], learning_rates[i+1]],
+			color=phase_colors[phases[i]], 
+			linewidth=3, 
+			alpha=0.9
+		)
 	for t_epoch in transitions:
-			ax2.axvline(x=t_epoch, color=transition_color, linestyle="--", linewidth=2)
+		ax2.axvline(x=t_epoch, color=transition_color, linestyle="--", linewidth=2)
 	ax2.set_title("Learning Rate Adaptation Across Phases", fontsize=10, weight="bold")
-	ax2.set_xlabel("Epoch"); ax2.set_ylabel("Learning Rate (log)")
+	ax2.set_xlabel("Epoch")
+	ax2.set_ylabel("Learning Rate (log)")
 	ax2.grid(True, alpha=0.3)
 	save_fig(fig, "lr_evol")
 
@@ -674,12 +681,23 @@ def plot_phase_transition_analysis_individual(
 	# ============================================
 	fig, ax3 = plt.subplots(figsize=figsize, facecolor='white')
 	for i in range(len(epochs) - 1):
-			ax3.semilogy([epochs[i], epochs[i+1]], [weight_decays[i], weight_decays[i+1]],
-									 color=phase_colors[phases[i]], linewidth=3, alpha=0.8)
+		ax3.semilogy(
+			[epochs[i], epochs[i+1]], 
+			[weight_decays[i], weight_decays[i+1]],
+			color=phase_colors[phases[i]], 
+			linewidth=3, 
+			alpha=0.8
+		)
 	for t_epoch in transitions:
-			ax3.axvline(x=t_epoch, color=transition_color, linestyle="--", linewidth=2)
+		ax3.axvline(
+			x=t_epoch, 
+			color=transition_color, 
+			linestyle="--", 
+			linewidth=2
+		)
 	ax3.set_title("Weight Decay Adaptation Across Phases", fontsize=10, weight="bold")
-	ax3.set_xlabel("Epoch"); ax3.set_ylabel("Weight Decay (log)")
+	ax3.set_xlabel("Epoch") 
+	ax3.set_ylabel("Weight Decay (log)")
 	ax3.grid(True, alpha=0.3)
 	save_fig(fig, "wd_evol")
 
@@ -706,7 +724,12 @@ def plot_phase_transition_analysis_individual(
 		phase_data.append((phase, duration, improvement))
 
 	phases_list, durations, improvements = zip(*phase_data)
-	bars = ax4.bar(range(len(durations)), durations, color=[phase_colors[p] for p in phases_list], alpha=0.8)
+	bars = ax4.bar(
+		range(len(durations)), 
+		durations, 
+		color=[phase_colors[p] for p in phases_list], 
+		alpha=0.8
+	)
 	ax4_twin = ax4.twinx()
 	ax4_twin.plot(
 		range(len(improvements)),
@@ -762,12 +785,43 @@ def plot_phase_transition_analysis_individual(
 	ax5.plot(epochs, wd_norm, "m-", label="WD")
 	ax5.plot(epochs, loss_norm, "r-", label="Val Loss")
 	for t_epoch in transitions:
-			ax5.axvline(x=t_epoch, color=transition_color, linestyle="--", linewidth=1.5)
+		ax5.axvline(x=t_epoch, color=transition_color, linestyle="--", linewidth=1.5)
 	ax5.legend(fontsize=8); ax5.set_ylim(0, 1.1)
 	ax5.set_title("Hyperparameter Correlations [normed]", fontsize=10, weight="bold")
 	ax5.set_xlabel("Epoch"); ax5.set_ylabel("Normalized values")
 	ax5.grid(True, alpha=0.3)
 	save_fig(fig, "hp_corr")
+
+	# ============================================
+	# PLOT 6: Embedding Drift
+	# ============================================
+	fig, ax6 = plt.subplots(figsize=figsize, facecolor='white')
+	ax6.set_title('Embedding Drift from Pre-trained State', fontsize=10, weight='bold')
+	
+	for i in range(len(epochs) - 1):
+		phase_index = phases[i]
+		ax6.plot(
+			[epochs[i], epochs[i+1]], 
+			[embedding_drifts[i], embedding_drifts[i+1]], 
+			color=phase_colors[phase_index], 
+			linewidth=2.5,
+			alpha=0.9
+		)
+	
+	for transition_epoch in transitions:
+		ax6.axvline(
+			x=transition_epoch,
+			color=transition_color, 
+			linestyle='--', 
+			linewidth=1.5,
+			alpha=0.7
+		)
+	ax6.set_xlabel('Epoch', fontsize=8)
+	ax6.set_ylabel('Drift (1 - CosSim)', fontsize=8)
+	ax6.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+	ax6.set_ylim(bottom=0) # Drift cannot be negative
+	ax6.tick_params(axis='both', which='major', labelsize=8)
+	save_fig(fig, "emb_drift")
 
 def plot_phase_transition_analysis(
 		training_history: Dict,
@@ -1410,8 +1464,6 @@ def plot_progressive_training_dynamics(
 	# 3. Weight Decay Evolution (middle-right)
 	# ================================
 	ax3 = fig.add_subplot(gs[1, 1])
-	
-	# Color code by phase
 	for i in range(len(epochs)-1):
 		phase = phases[i]
 		ax3.plot(
@@ -1582,6 +1634,7 @@ def collect_progressive_training_history(
 		learning_rates: List[float],
 		weight_decays: List[float],
 		phases: List[int],
+		embedding_drifts: List[float],
 		phase_transitions: List[int],
 		early_stop_epoch: Optional[int] = None,
 		best_epoch: Optional[int] = None
@@ -1616,6 +1669,7 @@ def collect_progressive_training_history(
 		'learning_rates': learning_rates,
 		'weight_decays': weight_decays,
 		'phases': phases,
+		'embedding_drifts': embedding_drifts,
 		'phase_transitions': phase_transitions,
 		'early_stop_epoch': early_stop_epoch,
 		'best_epoch': best_epoch

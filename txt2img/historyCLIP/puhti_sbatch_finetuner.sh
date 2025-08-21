@@ -11,7 +11,7 @@
 #SBATCH --mem=373G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=8,12 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!! # 0-11:  dataset[0] with all strategy×architecture [H4]
+#SBATCH --array=0,4,8,12 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!! # 0-11:  dataset[0] with all strategy×architecture [H4]
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
@@ -86,9 +86,9 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 	exit 1
 fi
 
-INIT_LRS=(2.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
-INIT_WDS=(5.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
-DROPOUTS=(0.2 0.1 0.05 0.05 0.05)
+INIT_LRS=(6.0e-06 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+INIT_WDS=(2.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
+DROPOUTS=(0.15 0.1 0.05 0.05 0.05)
 EPOCHS=(100 100 150 150 150)
 
 # LoRA
@@ -105,7 +105,7 @@ MIN_EPOCHS_PER_PHASE=(5 5 5 5 5)
 
 BATCH_SIZES=(512 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 10)
-INIT_EARLY_STOPPING_MIN_EPOCHS=(9 25 17 17 12)  # H4, NA, EU, WWII, SMU
+INIT_EARLY_STOPPING_MIN_EPOCHS=(7 25 17 17 12)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_PATIENCE=(3 5 5 5 5)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_MIN_DELTA=(1e-4 1e-4 1e-4 1e-4 1e-4)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)  # H4, NA, EU, WWII, SMU

@@ -965,16 +965,15 @@ def get_validation_metrics(
 				print(f"Cache loading failed: {e}. Recomputing...")
 			cache_loaded = False
 	
-	# Compute embeddings if not cached
 	if not cache_loaded:
 		if verbose:
-			print("Computing embeddings from scratch...")
+			print("Computing embeddings from scratch [takes a while]...")
 		t0 = time.time()
 		all_image_embeds, all_labels = _compute_image_embeddings(
-			model, 
-			validation_loader, 
-			device, 
-			verbose
+			model=model, 
+			validation_loader=validation_loader, 
+			device=device,
+			# verbose=verbose, # too much verbosity
 		)
 		if verbose:
 			print(f"Embeddings computed in {time.time() - t0:.1f} sec")
@@ -1305,7 +1304,13 @@ def monitor_memory_usage(operation_name: str):
 		return True
 	return False
 
-def _compute_image_embeddings(model, validation_loader, device, verbose, max_batches=None):
+def _compute_image_embeddings(
+		model: torch.nn.Module,
+		validation_loader: DataLoader, 
+		device: torch.device, 
+		verbose: bool=False, 
+		max_batches=None,
+	):
 	all_image_embeds, all_labels = [], []
 	model = model.to(device)
 	model.eval()
@@ -2073,7 +2078,16 @@ def classwise_accuracy_debug(preds, labels, phase, epoch, top_k=10):
 		print("  Correctly predicted (subset):", correct.most_common(top_k))
 
 def compute_embedding_drift(model, val_subset, pretrained_embeds, device, phase, epoch):
-	"""Compare embeddings at current phase vs pretrained embeddings."""
+	"""
+	Embedding Drift = 1 - cosine_similarity, 
+	measures how far the current image embeddings have moved from their original, pre-trained positions. 
+	A value of 0.0 means no change, while a value of 1.0 means they are now orthogonal (completely different).
+	
+	In summary, the ideal Embedding Drift curve:
+		Starts near zero.
+		Shows small, controlled increases during early-to-mid phases that are inversely correlated with validation loss (drift goes up, loss goes down).
+		Plateaus in the later phases, indicating that the foundational knowledge is being preserved.
+	"""
 	model.eval()
 	with torch.no_grad():
 		imgs = next(iter(val_subset)) # torch.Size([batch_size, channels, height, width ])
@@ -2506,15 +2520,6 @@ def progressive_finetune_single_label(
 		last_epoch=-1,												# index of the last epoch. Default: -1
 	)
 
-	# scheduler = torch.optim.lr_scheduler.OneCycleLR(
-	# 	optimizer=optimizer,
-	# 	max_lr=initial_learning_rate,
-	# 	steps_per_epoch=len(train_loader),
-	# 	epochs=num_epochs,
-	# 	pct_start=0.1, # Standard pct_start
-	# 	anneal_strategy='cos' # Cosine annealing
-	# )
-
 	print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
 
 	print(f"DEBUG: Initial configured LR: {learning_rate}")
@@ -2592,7 +2597,8 @@ def progressive_finetune_single_label(
 	phase_transitions_epochs = []
 	i2t_losses = []          # image → text (loss_img)
 	t2i_losses = []          # text → image (loss_txt)
-
+	embedding_drift_history = []
+	
 	# --- Main Training Loop ---
 	train_start_time = time.time()
 
@@ -2806,16 +2812,16 @@ def progressive_finetune_single_label(
 		training_losses.append(avg_training_loss)
 
 		print(f">> Training Completed in {time.time() - epoch_start_time:.2f} sec. Validating Epoch: {epoch+1}")
-		# --- DEBUG HOOK: Compute Embedding Drift ---
-		compute_embedding_drift(
-				model, 
-				fixed_val_batch, # Pass the fixed batch
-				pretrained_embeds, 
-				device, 
-				current_phase, 
-				epoch + 1
+
+		drift_value = compute_embedding_drift(
+			model, 
+			fixed_val_batch, # Pass the fixed batch
+			pretrained_embeds, 
+			device, 
+			current_phase, 
+			epoch + 1
 		)
-		# --- END DEBUG HOOK ---		
+		embedding_drift_history.append(drift_value)
 
 		# all metrics in one using caching mechanism:
 		validation_results = get_validation_metrics(
@@ -3004,6 +3010,7 @@ def progressive_finetune_single_label(
 		learning_rates=learning_rates_history,
 		weight_decays=weight_decays_history,
 		phases=phases_history,
+		embedding_drifts=embedding_drift_history,
 		phase_transitions=phase_transitions_epochs,
 		early_stop_epoch=epoch+1 if early_stopping_triggered else None,
 		best_epoch=early_stopping.best_epoch if hasattr(early_stopping, 'best_epoch') else None
@@ -3029,7 +3036,7 @@ def progressive_finetune_single_label(
 	print(f"\tEarly stopping: {'Yes' if early_stopping_triggered else 'No'}")
 
 	if phase_transitions_epochs:
-		print(f"  • Transition epochs: {phase_transitions_epochs}")	
+		print(f"\t\tTransition epochs: {phase_transitions_epochs}")	
 
 	analysis_results = plot_phase_transition_analysis(
 		training_history=training_history,
