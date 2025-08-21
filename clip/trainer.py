@@ -1,5 +1,5 @@
 from utils import *
-from model import get_lora_clip, LAMB, SingleLabelLinearProbe, MultiLabelProbe
+from model import get_lora_clip, LAMB, SingleLabelLinearProbe, MultiLabelProbe, get_probe_clip
 from visualize import (
 	plot_loss_accuracy_metrics, 
 	plot_retrieval_metrics_best_model, 
@@ -3914,33 +3914,17 @@ def linear_probe_finetune_single_label(
 
 	# Create the robust linear probe that handles everything automatically
 	print("\nCreating probe model...")
-	# probe = SingleLabelLinearProbe(
-	# 	clip_model=model,
-	# 	num_classes=num_classes,
-	# 	class_names=class_names,
-	# 	device=torch.device(device),
-	# 	hidden_dim=probe_hidden_dim,
-	# 	dropout=probe_dropout,
-	# 	zero_shot_init=True,
-	# 	target_resolution=None,  # Auto-detect
-	# 	verbose=True
-	# ).to(device)
 	
 	probe = get_probe_clip(
 			clip_model=model,
 			validation_loader=validation_loader,
 			device=torch.device(device),
-			hidden_dim=256,  # Optional: creates MLP probe
-			dropout=0.1,
+			# hidden_dim=256,  # Optional: creates MLP probe
+			dropout=probe_dropout,
 			zero_shot_init=True,
 			verbose=True
 	)
-
-	# The function automatically returns either SingleLabelLinearProbe or MultiLabelProbe
-	# You can check the type if needed:
-	is_multilabel = isinstance(probe, MultiLabelProbe)
-	print(f"Multi-label dataset: {is_multilabel}")
-
+	print(f"Multi-label dataset: {isinstance(probe, MultiLabelProbe)}")
 
 	clip_dim = probe.input_dim  # Get the detected feature dimension
 	probe_params = sum(p.numel() for p in probe.parameters())
@@ -5989,23 +5973,21 @@ def linear_probe_finetune_multi_label(
 		for param in model.parameters():
 				param.requires_grad = False
 
-		# Create the robust multi-label linear probe that handles everything automatically
-		print("\nCreating robust multi-label linear probe...")
-		linear_probe = MultiLabelProbe(
-				clip_model=model,
-				num_classes=num_classes,
-				class_names=class_names,
-				device=torch.device(device),
-				hidden_dim=probe_hidden_dim,
-				dropout=probe_dropout,
-				zero_shot_init=True,
-				target_resolution=None,  # Auto-detect
-				verbose=True
-		).to(device)
+		print("\nCreating robust probe model...")
+		probe = get_probe_clip(
+			clip_model=model,
+			validation_loader=validation_loader,
+			device=torch.device(device),
+			# hidden_dim=256,  # Optional: creates MLP probe
+			dropout=probe_dropout,
+			zero_shot_init=True, # faster convergence
+			verbose=True
+		)
+		print(f"Multi-label dataset: {isinstance(probe, MultiLabelProbe)}")
 
-		embed_dim = linear_probe.input_dim  # Get the detected feature dimension
-		probe_params = sum(p.numel() for p in linear_probe.parameters())
-		probe_type = linear_probe.probe_type
+		embed_dim = probe.input_dim  # Get the detected feature dimension
+		probe_params = sum(p.numel() for p in probe.parameters())
+		probe_type = probe.probe_type
 
 		print(f"CLIP embedding dimension: {embed_dim}")
 		print(f"Probe type: {probe_type} | Parameters: {probe_params:,}")
@@ -6029,7 +6011,7 @@ def linear_probe_finetune_multi_label(
 		# Optimizer setup
 		if use_lamb:
 				optimizer = LAMB(
-						params=linear_probe.parameters(),
+						params=probe.parameters(),
 						lr=learning_rate,
 						betas=(0.9, 0.98),
 						eps=1e-6,
@@ -6037,7 +6019,7 @@ def linear_probe_finetune_multi_label(
 				)
 		else:
 				optimizer = torch.optim.AdamW(
-						params=linear_probe.parameters(),
+						params=probe.parameters(),
 						lr=learning_rate,
 						betas=(0.9, 0.98),
 						eps=1e-6,
@@ -6148,7 +6130,7 @@ def linear_probe_finetune_multi_label(
 		for epoch in range(num_epochs):
 				train_and_val_st_time = time.time()
 				torch.cuda.empty_cache()
-				linear_probe.train()
+				probe.train()
 
 				print(f"Epoch [{epoch + 1}/{num_epochs}]")
 				
@@ -6183,7 +6165,7 @@ def linear_probe_finetune_multi_label(
 						
 						with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 								# Linear probe forward (multi-label logits)
-								logits = linear_probe(image_embeds)
+								logits = probe(image_embeds)
 								
 								# Multi-label loss
 								loss = criterion(logits, label_vectors)
@@ -6195,7 +6177,7 @@ def linear_probe_finetune_multi_label(
 						
 						scaler.scale(loss).backward()
 						scaler.unscale_(optimizer)
-						torch.nn.utils.clip_grad_norm_(linear_probe.parameters(), max_norm=1.0)
+						torch.nn.utils.clip_grad_norm_(probe.parameters(), max_norm=1.0)
 						scaler.step(optimizer)
 						scaler.update()
 						scheduler.step()
@@ -6216,7 +6198,7 @@ def linear_probe_finetune_multi_label(
 				print(f">> Validating Epoch {epoch+1} ...")
 				
 				# Validation with probe
-				linear_probe.eval()
+				probe.eval()
 				val_loss = 0.0
 				val_preds = []
 				val_labels_list = []
@@ -6243,7 +6225,7 @@ def linear_probe_finetune_multi_label(
 										image_embeds = F.normalize(image_embeds, dim=-1)
 								
 								# Get predictions from probe
-								logits = linear_probe(image_embeds)
+								logits = probe(image_embeds)
 								loss = criterion(logits, label_vectors)
 								val_loss += loss.item()
 								
@@ -6282,7 +6264,7 @@ def linear_probe_finetune_multi_label(
 
 				if early_stopping.should_stop(
 						current_value=current_val_loss,
-						model=linear_probe,  # Save probe weights
+						model=probe,  # Save probe weights
 						epoch=epoch,
 						optimizer=optimizer,
 						scheduler=scheduler,
@@ -6300,13 +6282,13 @@ def linear_probe_finetune_multi_label(
 				print(f"Loading best probe weights from {mdl_fpth}")
 				checkpoint = torch.load(mdl_fpth, map_location=device)
 				if 'model_state_dict' in checkpoint:
-						linear_probe.load_state_dict(checkpoint['model_state_dict'])
+						probe.load_state_dict(checkpoint['model_state_dict'])
 				else:
-						linear_probe.load_state_dict(checkpoint)
+						probe.load_state_dict(checkpoint)
 
 		# Final evaluation
 		print("\nFinal Evaluation:")
-		linear_probe.eval()
+		probe.eval()
 		final_preds = []
 		final_labels = []
 		
@@ -6330,7 +6312,7 @@ def linear_probe_finetune_multi_label(
 								image_embeds = model.encode_image(images)
 								image_embeds = F.normalize(image_embeds, dim=-1)
 						
-						logits = linear_probe(image_embeds)
+						logits = probe(image_embeds)
 						probs = torch.sigmoid(logits)
 						preds = (probs > 0.5).float()
 						

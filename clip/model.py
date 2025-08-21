@@ -1,5 +1,5 @@
 from collections import OrderedDict, defaultdict
-from typing import Tuple, Union, List, Optional
+from typing import Tuple, Union, List, Optional, Dict
 import numpy as np
 import math
 import torch
@@ -7,6 +7,7 @@ import copy
 import torch.nn.functional as F
 from torch import nn
 from torch.optim import Optimizer
+from torch.utils.data import DataLoader
 
 class SingleLabelLinearProbe(torch.nn.Module):
 		"""
@@ -1647,7 +1648,7 @@ def get_probe_clip(
             zero_shot_init=zero_shot_init,
             target_resolution=target_resolution,
             verbose=verbose
-        )
+        ).to(device)
     else:
         if verbose:
             print(f"🎯 Creating SingleLabelLinearProbe for {num_classes} classes")
@@ -1664,7 +1665,7 @@ def get_probe_clip(
             zero_shot_init=zero_shot_init,
             target_resolution=target_resolution,
             verbose=verbose
-        )
+        ).to(device)
     
     if verbose:
         print("=" * 80)
@@ -1675,7 +1676,6 @@ def get_probe_clip(
         print("=" * 80)
     
     return probe
-
 
 def _detect_dataset_type(validation_loader: DataLoader, verbose: bool = True) -> Dict:
     """
@@ -1773,7 +1773,6 @@ def _detect_dataset_type(validation_loader: DataLoader, verbose: bool = True) ->
             print(f"   📐 Sample shapes: {sample_shapes}")
     
     return dataset_info
-
 
 def _extract_class_names(validation_loader: DataLoader, dataset_info: Dict, verbose: bool = True) -> List[str]:
     """

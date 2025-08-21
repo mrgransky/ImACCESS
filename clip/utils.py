@@ -71,31 +71,31 @@ logger = logging.getLogger(__name__)
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
 def translate_state_dict_keys(state_dict, key_mapping):
-    """
-    Translate state dict keys to match current model structure.
-    
-    Args:
-        state_dict: The loaded state dictionary
-        key_mapping: Dict mapping old prefixes to new prefixes
-        
-    Returns:
-        Dict with translated keys
-        
-    Example:
-        key_mapping = {
-            'clip_model.': 'clip.',
-            'probe.clip_model.': 'clip.',
-        }
-    """
-    new_state_dict = {}
-    for old_key, value in state_dict.items():
-        new_key = old_key
-        for old_prefix, new_prefix in key_mapping.items():
-            if old_key.startswith(old_prefix):
-                new_key = old_key.replace(old_prefix, new_prefix, 1)
-                break
-        new_state_dict[new_key] = value
-    return new_state_dict
+		"""
+		Translate state dict keys to match current model structure.
+		
+		Args:
+				state_dict: The loaded state dictionary
+				key_mapping: Dict mapping old prefixes to new prefixes
+				
+		Returns:
+				Dict with translated keys
+				
+		Example:
+				key_mapping = {
+						'clip_model.': 'clip.',
+						'probe.clip_model.': 'clip.',
+				}
+		"""
+		new_state_dict = {}
+		for old_key, value in state_dict.items():
+				new_key = old_key
+				for old_prefix, new_prefix in key_mapping.items():
+						if old_key.startswith(old_prefix):
+								new_key = old_key.replace(old_prefix, new_prefix, 1)
+								break
+				new_state_dict[new_key] = value
+		return new_state_dict
 
 def round_up(num: int) -> int:
 	if num == 0:
@@ -346,6 +346,62 @@ def get_lora_params(path_string: str) -> dict:
 	if "lora_dropout" not in params and lora_dropout_match_short:
 			params["lora_dropout"] = float(lora_dropout_match_short.group(1))
 	return params
+
+def get_probe_params(path_string: str) -> dict:
+		params = {}
+		
+		# Long convention: probe_dropout_(\d+\.\d+), max_epochs_(\d+), patience_(\d+), etc.
+		probe_dropout_long = re.search(r"_probe_dropout_(\d+\.\d+)", path_string)
+		max_epochs_long   = re.search(r"max_epochs_(\d+)", path_string)
+		patience_long     = re.search(r"patience_(\d+)", path_string)
+		
+		if probe_dropout_long:
+				params["probe_dropout"] = float(probe_dropout_long.group(1))
+		if max_epochs_long:
+				params["max_epochs"] = int(max_epochs_long.group(1))
+		if patience_long:
+				params["patience"] = int(patience_long.group(1))
+		
+		# Short convention: _pdo_(\d+\.\d+)_ , _mep_(\d+)_ , _pat_(\d+)_ , etc.
+		probe_dropout_short = re.search(r"_pdo_(\d+\.\d+)_", path_string)
+		max_epochs_short    = re.search(r"_mep_(\d+)_", path_string)
+		patience_short      = re.search(r"_pat_(\d+)_", path_string)
+		min_delta_short     = re.search(r"_mdt_(\d+\.\d+e?-?\d*)_", path_string)
+		cooldown_short      = re.search(r"_cdt_(\d+\.\d+e?-?\d*)_", path_string)
+		val_threshold_short = re.search(r"_vt_(\d+\.\d+)_", path_string)
+		stop_threshold_short= re.search(r"_st_(\d+\.\d+e?-?\d*)_", path_string)
+		pos_importance_short= re.search(r"_pit_(\d+\.\d+e?-?\d*)_", path_string)
+		lr_short            = re.search(r"_lr_(\d+\.\d+e?-?\d*)_", path_string)
+		wd_short            = re.search(r"_wd_(\d+\.\d+e?-?\d*)_", path_string)
+		bs_short            = re.search(r"_bs_(\d+)_", path_string)
+		hdim_short          = re.search(r"_hdim_([A-Za-z0-9]+)_", path_string)
+		
+		if "probe_dropout" not in params and probe_dropout_short:
+				params["probe_dropout"] = float(probe_dropout_short.group(1))
+		if "max_epochs" not in params and max_epochs_short:
+				params["max_epochs"] = int(max_epochs_short.group(1))
+		if "patience" not in params and patience_short:
+				params["patience"] = int(patience_short.group(1))
+		if min_delta_short:
+				params["min_delta"] = float(min_delta_short.group(1))
+		if cooldown_short:
+				params["cooldown"] = float(cooldown_short.group(1))
+		if val_threshold_short:
+				params["val_threshold"] = float(val_threshold_short.group(1))
+		if stop_threshold_short:
+				params["stop_threshold"] = float(stop_threshold_short.group(1))
+		if pos_importance_short:
+				params["pos_importance"] = float(pos_importance_short.group(1))
+		if lr_short:
+				params["learning_rate"] = float(lr_short.group(1))
+		if wd_short:
+				params["weight_decay"] = float(wd_short.group(1))
+		if bs_short:
+				params["batch_size"] = int(bs_short.group(1))
+		if hdim_short:
+				params["hidden_dim"] = None if hdim_short.group(1).lower() == "none" else int(hdim_short.group(1))
+		
+		return params
 
 def get_model_hash(model: torch.nn.Module) -> str:
 	hasher = hashlib.md5()

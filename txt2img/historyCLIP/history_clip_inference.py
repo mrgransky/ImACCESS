@@ -7,7 +7,7 @@ sys.path.insert(0, CLIP_DIR)
 
 from utils import *
 from historical_dataset_loader import get_single_label_dataloaders, get_multi_label_dataloaders, get_preprocess
-from model import get_lora_clip
+from model import get_lora_clip, get_probe_clip
 from trainer import pretrain, evaluate_best_model
 from visualize import (
 	plot_image_to_texts_stacked_horizontal_bar, 
@@ -419,6 +419,12 @@ def main():
 
 	if args.linear_probe_checkpoint is not None:
 		assert os.path.exists(args.linear_probe_checkpoint), f"linear_probe_checkpoint {args.linear_probe_checkpoint} does not exist!"
+		params = get_probe_params(args.linear_probe_checkpoint)
+		if params:
+			print(f">> {args.linear_probe_checkpoint}\n\tProbe parameters: {params}")
+			args.probe_dropout = params['probe_dropout']
+		else:
+			raise ValueError("Probe parameters not found in the provided checkpoint path!")
 
 	if args.lora_checkpoint is not None:
 		params = get_lora_params(args.lora_checkpoint)
@@ -589,7 +595,16 @@ def main():
 					lora_dropout=args.lora_dropout, 
 					verbose=False,
 				)
-			if 
+			if ft_name == "linear_probe":
+				model = get_probe_clip(
+					clip_model=model,
+					validation_loader=validation_loader,
+					device=args.device,
+					# hidden_dim=args.probe_hidden_dim, # Optional: creates MLP probe
+					dropout=args.probe_dropout,
+					zero_shot_init=False, # doesn't matter
+					verbose=False,
+				)
 			model.to(args.device)
 			model = model.float()
 			model.name = args.model_architecture
