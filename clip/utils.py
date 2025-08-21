@@ -14,6 +14,7 @@ import re
 import argparse
 import numpy as np
 import pandas as pd
+import scipy
 import gzip
 import pickle
 import dill

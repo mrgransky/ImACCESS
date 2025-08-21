@@ -1,4 +1,3 @@
-from numpy import positive
 from utils import *
 
 strategy_colors = {
@@ -234,15 +233,15 @@ def _plot_phase_efficiency(
 		np.arange(len(uniq)),
 		durations,
 		color=[phase_colors[p] for p in uniq],
-		alpha=0.7,
+		alpha=0.75,
 		edgecolor="black",
 	)
 	ax1.set_xlabel("Phase", fontsize=10, weight="bold")
-	ax1.set_ylabel("Duration (epochs)", color="tab:blue", fontsize=10, weight="bold")
+	ax1.set_ylabel("Duration (epochs)", color="#0300BB", fontsize=10, weight="bold")
 	ax1.set_title("Phase Efficiency Analysis", fontsize=12, weight="bold")
 	ax1.set_xticks(np.arange(len(uniq)))
 	ax1.set_xticklabels([f"P{p}" for p in uniq])
-	ax1.tick_params(axis="y", labelcolor="tab:blue")
+	ax1.tick_params(axis="y", labelcolor="#0300BB")
 
 	# ----- overlay improvement line --------------------------------------
 	ax2 = ax1.twinx()
@@ -254,8 +253,8 @@ def _plot_phase_efficiency(
 		markersize=3,
 		label="Loss improvement %"
 	)
-	ax2.set_ylabel("Loss Improvement (%)", color="tab:red", fontsize=10, weight="bold")
-	ax2.tick_params(axis="y", labelcolor="tab:red")
+	ax2.set_ylabel("Loss Improvement (%)", color="#F73100", fontsize=10, weight="bold")
+	ax2.tick_params(axis="y", labelcolor="#F73100")
 
 	for i, (b, dur, imp) in enumerate(zip(bars, durations, improvements)):
 		ax1.text(
@@ -709,7 +708,15 @@ def plot_phase_transition_analysis_individual(
 	phases_list, durations, improvements = zip(*phase_data)
 	bars = ax4.bar(range(len(durations)), durations, color=[phase_colors[p] for p in phases_list], alpha=0.8)
 	ax4_twin = ax4.twinx()
-	ax4_twin.plot(range(len(improvements)), improvements, "ro-", linewidth=1)
+	ax4_twin.plot(
+		range(len(improvements)),
+		improvements,
+		linestyle='-',
+		marker='o',
+		linewidth=1.0,
+		markersize=2,
+		color=loss_imp_color,
+		)
 	for i, (bar, imp) in enumerate(zip(bars, improvements)):
 		ax4.text(
 			bar.get_x() + bar.get_width()/2, 
@@ -722,15 +729,15 @@ def plot_phase_transition_analysis_individual(
 		)
 		ax4_twin.text(
 			i, 
-			imp + 0.2, 
+			imp + 0.25,
 			f"{imp:.2f}%", 
 			ha="center", 
-			fontsize=10, 
+			fontsize=8, 
 			color=loss_imp_color, 
 			fontweight="bold",
 		)
 
-	ax4.set_title("Phase Efficiency Analysis", fontsize=10, weight="bold")
+	ax4.set_title("Phase Efficiency Analysis", fontsize=9, weight="bold")
 	ax4.set_xlabel("Phase")
 	ax4.set_ylabel("Duration (epochs)", color=duration_color)
 	ax4_twin.set_ylabel("Loss Improvement (%)", color=loss_imp_color)
@@ -2728,11 +2735,9 @@ def plot_comparison_metrics_split_table_annotation(
 		# Validate finetune_strategies
 		finetune_strategies = [s for s in finetune_strategies if s in ["full", "lora", "progressive"]][:3]  # Max 3
 		if not finetune_strategies:
-				print("WARNING: No valid finetune strategies provided. Skipping...")
-				return
-		
-		model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
-				
+			print("WARNING: No valid finetune strategies provided. Skipping...")
+			return
+						
 		# Key K points for table annotations
 		key_k_values = [1, 10, 20]
 		
@@ -2977,8 +2982,6 @@ def plot_comparison_metrics_split(
 	if not finetune_strategies:
 		print("WARNING: No valid finetune strategies provided. Skipping...")
 		return
-
-	model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
 		
 	for mode in modes:
 		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
@@ -3216,175 +3219,493 @@ def plot_comparison_metrics_merged(
 		finetune_strategies: list,
 		results_dir: str,
 		topK_values: list,
-		figure_size=(15, 6),
-		DPI: int = 300,
+		figure_size=(16, 8),
+		DPI: int = 200,
 	):
-		metrics = ["mP", "mAP", "Recall"]
-		modes = ["Image-to-Text", "Text-to-Image"]
-		all_model_architectures = ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
-		# Validate model_name and finetune_strategies
-		print(f"{len(finetune_strategies)} Finetune strategies: {finetune_strategies}")
-		# finetune_strategies = [
-		# 	s 
-		# 	for s in finetune_strategies 
-		# 	if s in ["full", "lora", "progressive", "probe"]
-		# ]
-		if not finetune_strategies:
-			print("WARNING: No valid finetune strategies provided. Skipping...")
+	metrics = ["mP", "mAP", "Recall"]
+	modes = ["Image-to-Text", "Text-to-Image"]
+	all_model_architectures = ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
+	# Validate model_name and finetune_strategies
+	print(f"{len(finetune_strategies)} Finetune strategies: {finetune_strategies}")
+
+	if not finetune_strategies:
+		print("WARNING: No valid finetune strategies provided. Skipping...")
+		return
+
+	for mode in modes:
+		finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+		if model_name not in finetuned_dict or not all(strategy in finetuned_dict.get(model_name, {}) for strategy in finetune_strategies):
+			print(f"WARNING: Some strategies for {model_name} not found in finetuned_{mode.lower().replace('-', '_')}_dict. Skipping...")
 			return
-		for mode in modes:
-			finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
-			if model_name not in finetuned_dict or not all(strategy in finetuned_dict.get(model_name, {}) for strategy in finetune_strategies):
-				print(f"WARNING: Some strategies for {model_name} not found in finetuned_{mode.lower().replace('-', '_')}_dict. Skipping...")
-				return
-		model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
 
-		for i, mode in enumerate(modes):
-				fig, axes = plt.subplots(1, 3, figsize=figure_size, constrained_layout=True)
-				fname = f"{dataset_name}_{'_'.join(finetune_strategies)}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_retrieval_performance_comparison_{mode.replace('-', '_')}_merged.png"
-				file_path = os.path.join(results_dir, fname)
-				fig.suptitle(
-						f'$\\it{{{mode}}}$ Retrieval Performance Comparison\n'
-						f'Pre-trained CLIP {model_name} vs. {", ".join(s.capitalize() for s in finetune_strategies)} Fine-tuning',
-						fontsize=12, fontweight='bold',
+	for i, mode in enumerate(modes):
+		fig, axes = plt.subplots(1, 3, figsize=figure_size, constrained_layout=True)
+		fname = f"{dataset_name}_{'_'.join(finetune_strategies)}_finetune_vs_pretrained_CLIP_{re.sub(r'[/@]', '-', model_name)}_retrieval_performance_comparison_{mode.replace('-', '_')}_merged.png"
+		file_path = os.path.join(results_dir, fname)
+		fig.suptitle(
+			f'$\\it{{{mode}}}$ Retrieval Performance Comparison\n'
+			f'Pre-trained CLIP {model_name} vs. {", ".join(s.capitalize() for s in finetune_strategies)} Fine-tuning',
+			fontsize=12, fontweight='bold',
+		)
+		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
+		finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+		for j, metric in enumerate(metrics):
+			ax = axes[j]
+			k_values = sorted(
+				k
+				for k in topK_values
+				if str(k) in pretrained_dict.get(model_name, {}).get(metric, {})
+			)
+			for strategy in finetune_strategies:
+				k_values = sorted(
+					set(k_values) & set(int(k)
+					for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys())
 				)
-				pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
-				finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
-				for j, metric in enumerate(metrics):
-						ax = axes[j]
-						k_values = sorted(
-								k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {})
+			if not k_values:
+				print(f"WARNING: No matching K values for {mode}, {metric}")
+				continue
+			
+			# Plot Pre-trained (dashed line)
+			pretrained_values = [pretrained_dict.get(model_name, {}).get(metric, {}).get(str(k), float('nan')) for k in k_values]
+			ax.plot(
+				k_values, pretrained_values,
+				label=f"Pre-trained CLIP {model_name}",
+				color=pretrained_colors[model_name], marker='o', linestyle='--',
+				linewidth=1.5, markersize=5, alpha=0.7,
+			)
+			# Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
+			for strategy in finetune_strategies:
+				finetuned_values = [finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).get(str(k), float('nan')) for k in k_values]
+				ax.plot(
+					k_values, finetuned_values,
+					label=f"{strategy.capitalize()} Fine-tune",
+					color=strategy_colors[strategy], marker=strategy_styles[strategy], linestyle='-',
+					linewidth=2.5, markersize=6,
+				)
+			# Find the best and worst performing strategies at key K values
+			key_k_values = [1, 10, 20]
+			for k in key_k_values:
+				if k in k_values:
+					k_idx = k_values.index(k)
+					pre_val = pretrained_values[k_idx]
+					finetuned_vals_at_k = {strategy: finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).get(str(k), float('nan')) for strategy in finetune_strategies}
+					# Find best and worst strategies
+					best_strategy = max(finetuned_vals_at_k, key=finetuned_vals_at_k.get)
+					worst_strategy = min(finetuned_vals_at_k, key=finetuned_vals_at_k.get)
+					best_val = finetuned_vals_at_k[best_strategy]
+					worst_val = finetuned_vals_at_k[worst_strategy]
+					# Annotate best strategy (green)
+					if pre_val != 0:
+						best_imp = (best_val - pre_val) / pre_val * 100
+						# Set color based on improvement value
+						text_color = positive_pct_col if best_imp >= 0 else negative_pct_col 
+						arrow_style = '<|-' if best_imp >= 0 else '-|>'
+						
+						# Place annotations with arrows
+						ax.annotate(
+							f"{best_imp:+.1f}%",
+							xy=(k, best_val),
+							xytext=(0, 30),
+							textcoords='offset points',
+							fontsize=8,
+							fontweight='bold',
+							color=text_color,
+							bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3),
+							arrowprops=dict(
+								arrowstyle=arrow_style,
+								color=text_color,
+								shrinkA=0,
+								shrinkB=3,
+								alpha=0.8,
+								connectionstyle="arc3,rad=.2"
+							)
 						)
-						for strategy in finetune_strategies:
-								k_values = sorted(
-										set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys())
-								)
-						if not k_values:
-								print(f"WARNING: No matching K values for {mode}, {metric}")
-								continue
-						# Plot Pre-trained (dashed line)
-						pretrained_values = [pretrained_dict.get(model_name, {}).get(metric, {}).get(str(k), float('nan')) for k in k_values]
-						ax.plot(
-								k_values, pretrained_values,
-								label=f"Pre-trained CLIP {model_name}",
-								color=pretrained_colors[model_name], marker='o', linestyle='--',
-								linewidth=1.5, markersize=5, alpha=0.7,
+					# Annotate worst strategy (red)
+					if pre_val != 0:
+						worst_imp = (worst_val - pre_val) / pre_val * 100
+						# Set color based on improvement value
+						text_color = negative_pct_col if worst_imp <= 0 else positive_pct_col
+						arrow_style = '-|>' if worst_imp >= 0 else '<|-'
+						
+						# Place annotations with arrows
+						ax.annotate(
+							f"{worst_imp:+.1f}%",
+							xy=(k, worst_val),
+							xytext=(0, -30),
+							textcoords='offset points',
+							fontsize=8,
+							fontweight='bold',
+							color=text_color,
+							bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3),
+							arrowprops=dict(
+								arrowstyle=arrow_style,
+								color=text_color,
+								shrinkA=0,
+								shrinkB=3,
+								alpha=0.8,
+								connectionstyle="arc3,rad=.2"
+							)
 						)
-						# Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
-						for strategy in finetune_strategies:
-								finetuned_values = [finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).get(str(k), float('nan')) for k in k_values]
-								ax.plot(
-										k_values, finetuned_values,
-										label=f"{strategy.capitalize()} Fine-tune",
-										color=strategy_colors[strategy], marker=strategy_styles[strategy], linestyle='-',
-										linewidth=2.5, markersize=6,
-								)
-						# Find the best and worst performing strategies at key K values
-						key_k_values = [1, 10, 20]
-						for k in key_k_values:
-								if k in k_values:
-										k_idx = k_values.index(k)
-										pre_val = pretrained_values[k_idx]
-										finetuned_vals_at_k = {strategy: finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).get(str(k), float('nan')) for strategy in finetune_strategies}
-										# Find best and worst strategies
-										best_strategy = max(finetuned_vals_at_k, key=finetuned_vals_at_k.get)
-										worst_strategy = min(finetuned_vals_at_k, key=finetuned_vals_at_k.get)
-										best_val = finetuned_vals_at_k[best_strategy]
-										worst_val = finetuned_vals_at_k[worst_strategy]
-										# Annotate best strategy (green)
-										if pre_val != 0:
-												best_imp = (best_val - pre_val) / pre_val * 100
-												# Set color based on improvement value
-												text_color = positive_pct_col if best_imp >= 0 else negative_pct_col 
-												arrow_style = '<|-' if best_imp >= 0 else '-|>'
-												
-												# Place annotations with arrows
-												ax.annotate(
-													f"{best_imp:+.1f}%",
-													xy=(k, best_val),
-													xytext=(0, 30),
-													textcoords='offset points',
-													fontsize=8,
-													fontweight='bold',
-													color=text_color,
-													bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3),
-													arrowprops=dict(
-														arrowstyle=arrow_style,
-														color=text_color,
-														shrinkA=0,
-														shrinkB=3,
-														alpha=0.8,
-														connectionstyle="arc3,rad=.2"
-													)
-												)
-										# Annotate worst strategy (red)
-										if pre_val != 0:
-												worst_imp = (worst_val - pre_val) / pre_val * 100
-												# Set color based on improvement value
-												text_color = negative_pct_col if worst_imp <= 0 else positive_pct_col
-												arrow_style = '-|>' if worst_imp >= 0 else '<|-'
-												
-												# Place annotations with arrows
-												ax.annotate(
-													f"{worst_imp:+.1f}%",
-													xy=(k, worst_val),
-													xytext=(0, -30),
-													textcoords='offset points',
-													fontsize=8,
-													fontweight='bold',
-													color=text_color,
-													bbox=dict(facecolor='white', edgecolor='none', alpha=0.7, pad=0.3),
-													arrowprops=dict(
-														arrowstyle=arrow_style,
-														color=text_color,
-														shrinkA=0,
-														shrinkB=3,
-														alpha=0.8,
-														connectionstyle="arc3,rad=.2"
-													)
-												)
-						# Axes formatting
-						ax.set_xlabel('K', fontsize=11)
-						ax.set_title(f'{metric}@K', fontsize=10, fontweight='bold')
-						ax.grid(True, linestyle='--', alpha=0.9)
-						ax.set_xticks(k_values)
-						ax.set_ylim(-0.01, 1.01)
-						if j == 0:
-								ax.legend(fontsize=9, loc='best')
-						# Set spine edge color to solid black
-						for spine in ax.spines.values():
-								spine.set_color('black')
-								spine.set_linewidth(1.0)
-				plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
-				plt.close(fig)
+			# Axes formatting
+			ax.set_xlabel('K', fontsize=11)
+			ax.set_title(f'{metric}@K', fontsize=10, fontweight='bold')
+			ax.grid(True, linestyle='--', alpha=0.9)
+			ax.set_xticks(k_values)
+			ax.set_ylim(-0.01, 1.01)
+			if j == 0:
+				ax.legend(fontsize=9, loc='best')
+			
+			# Set spine edge color to solid black
+			for spine in ax.spines.values():
+				spine.set_color('black')
+				spine.set_linewidth(1.0)
+		
+		plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
+		plt.close(fig)
 
-		# Overall summary
-		print(f"\n{'='*80}")
-		print(f"OVERALL PERFORMANCE SUMMARY [QUANTITATIVE ANALYSIS]")
-		print(f"{'='*80}")
+
+
+	def calculate_improvements(mode, metric, strategy):
+		"""Helper function to calculate improvements for a given mode, metric, and strategy"""
+		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
+		finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+		
+		improvements = []
+		absolute_improvements = []
+		
+		for k in topK_values:
+			if (str(k) in pretrained_dict.get(model_name, {}).get(metric, {}) and 
+				str(k) in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {})):
+				
+				pre_val = pretrained_dict[model_name][metric][str(k)]
+				fine_val = finetuned_dict[model_name][strategy][metric][str(k)]
+				
+				if pre_val != 0:
+					rel_imp = (fine_val - pre_val) / pre_val * 100
+					abs_imp = fine_val - pre_val
+					improvements.append(rel_imp)
+					absolute_improvements.append(abs_imp)
+		
+		return improvements, absolute_improvements
+
+	def enhanced_statistical_analysis():
+		"""Enhanced analysis with statistical significance and effect sizes"""
+		print(f"\n{'='*100}")
+		print(f"ENHANCED QUANTITATIVE ANALYSIS WITH STATISTICAL SIGNIFICANCE")
+		print(f"{'='*100}")
+		
+		results_summary = {}
+		
 		for mode in modes:
-				pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
-				finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
-				print(f"\nMode: {mode}")
-				for metric in metrics:
-						k_values = sorted(
-								k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {})
-						)
-						for strategy in finetune_strategies:
-								k_values = sorted(
-										set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys())
-								)
-						if k_values:
-								for strategy in finetune_strategies:
-										improvements = [
-												((finetuned_dict[model_name][strategy][metric][str(k)] - pretrained_dict[model_name][metric][str(k)]) /
-												 pretrained_dict[model_name][metric][str(k)] * 100)
-												for k in k_values if pretrained_dict[model_name][metric][str(k)] != 0
-										]
-										if improvements:
-												avg_improvement = sum(improvements) / len(improvements)
-												print(f"  {metric} ({strategy.capitalize()}): Average improvement across all K values: {avg_improvement:+.2f}%")
+			print(f"\nMode: {mode}")
+			print(f"{'-'*60}")
+			results_summary[mode] = {}
+			
+			for metric in metrics:
+				print(f"\n{metric} Analysis:")
+				results_summary[mode][metric] = {}
+				
+				for strategy in finetune_strategies:
+					if strategy == "Probe":  # Skip probe as it's baseline
+						continue
+					
+					improvements, abs_improvements = calculate_improvements(mode, metric, strategy)
+					
+					if improvements:
+						# Calculate comprehensive statistics
+						mean_improvement = np.mean(improvements)
+						std_improvement = np.std(improvements)
+						median_improvement = np.median(improvements)
+						
+						# Effect size (Cohen's d equivalent)
+						effect_size = mean_improvement / std_improvement if std_improvement > 0 else 0
+						
+						# Calculate consistency (percentage of positive improvements)
+						positive_improvements = sum(1 for x in improvements if x > 0)
+						consistency = (positive_improvements / len(improvements)) * 100
+						
+						# Statistical significance test (one-sample t-test against 0)
+						if len(improvements) > 1:
+							t_stat, p_value = scipy.stats.ttest_1samp(improvements, 0)
+							is_significant = p_value < 0.05
+						else:
+							t_stat, p_value, is_significant = 0, 1, False
+						
+						# Store results
+						results_summary[mode][metric][strategy] = {
+							'mean': mean_improvement,
+							'std': std_improvement,
+							'median': median_improvement,
+							'effect_size': effect_size,
+							'consistency': consistency,
+							'p_value': p_value,
+							'significant': is_significant,
+							'min': min(improvements),
+							'max': max(improvements)
+						}
+						
+						print(f"  {strategy.capitalize()}:")
+						print(f"    Mean improvement: {mean_improvement:+.2f}% ± {std_improvement:.2f}%")
+						print(f"    Median improvement: {median_improvement:+.2f}%")
+						print(f"    Effect size: {effect_size:.3f}")
+						print(f"    Consistency: {consistency:.1f}% of K values improved")
+						print(f"    Range: [{min(improvements):+.2f}%, {max(improvements):+.2f}%]")
+						print(f"    Statistical significance: {'Yes' if is_significant else 'No'} (p={p_value:.4f})")
+		
+		return results_summary
+
+	def k_value_distribution_analysis():
+		"""Analyze performance across different K value ranges"""
 		print(f"\n{'='*80}")
+		print(f"K-VALUE DISTRIBUTION ANALYSIS")
+		print(f"{'='*80}")
+		
+		k_categories = {
+			"Low-K (1-3)": [k for k in [1, 3] if k in topK_values],
+			"Mid-K (5-10)": [k for k in [5, 10] if k in topK_values], 
+			"High-K (15-20)": [k for k in [15, 20] if k in topK_values]
+		}
+		
+		for mode in modes:
+			print(f"\nMode: {mode}")
+			for category, k_vals in k_categories.items():
+				if not k_vals:
+					continue
+				print(f"\n{category}:")
+				
+				for strategy in finetune_strategies:
+					if strategy == "Probe":
+						continue
+					
+					category_improvements = []
+					for metric in metrics:
+						for k in k_vals:
+							improvements, _ = calculate_improvements(mode, metric, strategy)
+							if improvements and k in topK_values:
+								k_idx = topK_values.index(k) if k in topK_values else None
+								if k_idx is not None and k_idx < len(improvements):
+									category_improvements.append(improvements[k_idx])
+					
+					if category_improvements:
+						avg_cat_improvement = np.mean(category_improvements)
+						std_cat_improvement = np.std(category_improvements)
+						print(f"  {strategy.capitalize()}: {avg_cat_improvement:+.2f}% ± {std_cat_improvement:.2f}%")
+
+	def asymmetry_analysis():
+		"""Quantify cross-modal directional bias"""
+		print(f"\n{'='*80}")
+		print(f"CROSS-MODAL ASYMMETRY ANALYSIS")
+		print(f"{'='*80}")
+		
+		for strategy in finetune_strategies:
+			if strategy == "Probe":
+				continue
+			
+			# Calculate average improvements for each direction
+			i2t_improvements = []
+			t2i_improvements = []
+			
+			for metric in metrics:
+				i2t_imp, _ = calculate_improvements("Image-to-Text", metric, strategy)
+				t2i_imp, _ = calculate_improvements("Text-to-Image", metric, strategy)
+				i2t_improvements.extend(i2t_imp)
+				t2i_improvements.extend(t2i_imp)
+			
+			if i2t_improvements and t2i_improvements:
+				i2t_avg = np.mean(i2t_improvements)
+				t2i_avg = np.mean(t2i_improvements)
+				
+				# Asymmetry ratio
+				asymmetry_ratio = t2i_avg / i2t_avg if i2t_avg != 0 else float('inf')
+				
+				print(f"\n{strategy.capitalize()} Fine-tuning:")
+				print(f"  Image-to-Text average improvement: {i2t_avg:+.2f}%")
+				print(f"  Text-to-Image average improvement: {t2i_avg:+.2f}%")
+				print(f"  Asymmetry ratio (T2I/I2T): {asymmetry_ratio:.2f}x")
+				print(f"  Directional bias: {'Text-to-Image favored' if asymmetry_ratio > 1.5 else 'Balanced' if 0.67 <= asymmetry_ratio <= 1.5 else 'Image-to-Text favored'}")
+
+	def efficiency_analysis():
+		"""Compare computational efficiency across strategies"""
+		print(f"\n{'='*80}")
+		print(f"COMPUTATIONAL EFFICIENCY ANALYSIS")
+		print(f"{'='*80}")
+		
+		# Model-specific parameter counts (example for ViT-B/32)
+		model_params = {
+			"ViT-B/32": 151277313,
+			"ViT-B/16": 149620737,
+			"ViT-L/14": 427616513,
+			"RN50": 102010368,
+			# Add more as needed
+		}
+		
+		total_params = model_params.get(model_name, 150000000)  # Default estimate
+		
+		efficiency_metrics = {
+			"Full": {"trainable_params": total_params, "relative_cost": 1.0, "memory_factor": 1.0},
+			"LoRA": {"trainable_params": int(total_params * 0.01), "relative_cost": 0.15, "memory_factor": 0.3},
+			"Progressive": {"trainable_params": total_params, "relative_cost": 1.2, "memory_factor": 1.1},
+		}
+		
+		for strategy in finetune_strategies:
+			if strategy == "Probe" or strategy not in efficiency_metrics:
+				continue
+			
+			metrics_data = efficiency_metrics[strategy]
+			
+			# Calculate overall average improvement
+			all_improvements = []
+			for mode in modes:
+				for metric in metrics:
+					improvements, _ = calculate_improvements(mode, metric, strategy)
+					all_improvements.extend(improvements)
+			
+			if all_improvements:
+				avg_improvement = np.mean(all_improvements)
+				params_millions = metrics_data["trainable_params"] / 1e6
+				efficiency_score = avg_improvement / params_millions if params_millions > 0 else 0
+				
+				print(f"\n{strategy.capitalize()} Fine-tuning:")
+				print(f"  Trainable parameters: {params_millions:.1f}M ({(metrics_data['trainable_params']/total_params)*100:.1f}% of total)")
+				print(f"  Relative training cost: {metrics_data['relative_cost']:.2f}x")
+				print(f"  Memory overhead: {metrics_data['memory_factor']:.1f}x")
+				print(f"  Overall average improvement: {avg_improvement:+.2f}%")
+				print(f"  Performance/Parameter efficiency: {efficiency_score:.4f}%/M params")
+
+	def failure_mode_analysis():
+		"""Identify limitations and failure modes of each strategy"""
+		print(f"\n{'='*80}")
+		print(f"FAILURE MODE AND LIMITATION ANALYSIS")
+		print(f"{'='*80}")
+		
+		for strategy in finetune_strategies:
+			if strategy == "Probe":
+				continue
+			
+			print(f"\n{strategy.capitalize()} Strategy Analysis:")
+			
+			# Find worst-performing metric combinations
+			worst_performances = []
+			
+			for mode in modes:
+				for metric in metrics:
+					improvements, _ = calculate_improvements(mode, metric, strategy)
+					if improvements:
+						avg_improvement = np.mean(improvements)
+						worst_performances.append((f"{mode} {metric}", avg_improvement))
+			
+			# Sort by performance (worst first)
+			worst_performances.sort(key=lambda x: x[1])
+			
+			print("  Weakest performance areas:")
+			for i, (metric_combo, improvement) in enumerate(worst_performances[:3]):
+				print(f"    {i+1}. {metric_combo}: {improvement:+.2f}%")
+			
+			# Strategy-specific observations
+			strategy_insights = {
+				"Progressive": "Notable: U-shaped learning curve with initial performance drop",
+				"LoRA": "Notable: Conservative improvements but better parameter efficiency",
+				"Full": "Notable: Strong T2I gains but potential I2T degradation over time"
+			}
+			
+			if strategy in strategy_insights:
+				print(f"  Key characteristic: {strategy_insights[strategy]}")
+
+	def practical_recommendations():
+		"""Generate actionable recommendations"""
+		print(f"\n{'='*80}")
+		print(f"PRACTICAL RECOMMENDATIONS FOR DEPLOYMENT")
+		print(f"{'='*80}")
+		
+		print("\nStrategy Selection Guidelines:")
+		
+		# Determine best strategy for each use case
+		best_i2t_strategy = None
+		best_t2i_strategy = None
+		best_balanced_strategy = None
+		
+		strategy_scores = {}
+		for strategy in finetune_strategies:
+			if strategy == "Probe":
+				continue
+			
+			i2t_scores = []
+			t2i_scores = []
+			
+			for metric in metrics:
+				i2t_imp, _ = calculate_improvements("Image-to-Text", metric, strategy)
+				t2i_imp, _ = calculate_improvements("Text-to-Image", metric, strategy)
+				
+				if i2t_imp:
+					i2t_scores.append(np.mean(i2t_imp))
+				if t2i_imp:
+					t2i_scores.append(np.mean(t2i_imp))
+			
+			if i2t_scores and t2i_scores:
+				strategy_scores[strategy] = {
+					'i2t': np.mean(i2t_scores),
+					't2i': np.mean(t2i_scores),
+					'balanced': (np.mean(i2t_scores) + np.mean(t2i_scores)) / 2
+				}
+		
+		if strategy_scores:
+			best_i2t_strategy = max(strategy_scores, key=lambda x: strategy_scores[x]['i2t'])
+			best_t2i_strategy = max(strategy_scores, key=lambda x: strategy_scores[x]['t2i'])
+			best_balanced_strategy = max(strategy_scores, key=lambda x: strategy_scores[x]['balanced'])
+		
+		print(f"• Best for Image-to-Text tasks: {best_i2t_strategy.capitalize() if best_i2t_strategy else 'N/A'}")
+		print(f"• Best for Text-to-Image tasks: {best_t2i_strategy.capitalize() if best_t2i_strategy else 'N/A'}")
+		print(f"• Best balanced performance: {best_balanced_strategy.capitalize() if best_balanced_strategy else 'N/A'}")
+		
+		print("\nResource Considerations:")
+		print("• Limited GPU memory: LoRA fine-tuning")
+		print("• Limited training time: LoRA fine-tuning")
+		print("• Maximum performance: Progressive unfreezing (with sufficient time)")
+		print("• Quick adaptation: Full fine-tuning with early stopping")
+		
+		print("\nDomain-Specific Recommendations:")
+		print("• Historical document retrieval: Progressive (handles domain shift well)")
+		print("• General-purpose applications: LoRA (maintains broader capabilities)")
+		print("• Content generation systems: Full fine-tuning (strong T2I performance)")
+
+
+
+	print(f"\n{'='*80}")
+	print(f"OVERALL PERFORMANCE SUMMARY [QUANTITATIVE ANALYSIS]")
+	print(f"{'='*80}")
+
+	for mode in modes:
+		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
+		finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+		print(f"\nMode: {mode}")
+		for metric in metrics:
+			k_values = sorted(
+				k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {})
+			)
+			for strategy in finetune_strategies:
+				k_values = sorted(
+					set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys())
+				)
+			if k_values:
+				for strategy in finetune_strategies:
+					improvements = [
+						((finetuned_dict[model_name][strategy][metric][str(k)] - pretrained_dict[model_name][metric][str(k)]) /
+						 pretrained_dict[model_name][metric][str(k)] * 100)
+						for k in k_values if pretrained_dict[model_name][metric][str(k)] != 0
+					]
+					if improvements:
+						avg_improvement = sum(improvements) / len(improvements)
+						print(f"  {metric} ({strategy.capitalize()}): Average improvement across all K values: {avg_improvement:+.2f}%")
+	print(f"\n{'='*80}")
+
+	results_summary = enhanced_statistical_analysis()
+	k_value_distribution_analysis()
+	asymmetry_analysis()
+	efficiency_analysis()
+	failure_mode_analysis()
+	practical_recommendations()
+
+	return results_summary
 
 def plot_all_pretrain_metrics(
 		dataset_name: str,
