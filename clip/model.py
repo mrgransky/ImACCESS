@@ -10,11 +10,6 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 class SingleLabelLinearProbe(torch.nn.Module):
-		"""
-		A robust linear probe that automatically handles different ViT architectures
-		and resolves common issues like positional embedding mismatches.
-		"""
-		
 		def __init__(
 				self, 
 				clip_model: torch.nn.Module,
@@ -261,263 +256,355 @@ class SingleLabelLinearProbe(torch.nn.Module):
 				print(f"  Trainable Ratio: {probe_params/(probe_params + clip_params)*100:.4f}%")
 		
 		def forward(self, x):
-				"""Forward pass through the probe."""
-				return self.probe(x)
+			return self.probe(x)
+		
+		def encode_image(self, images):
+			return self.clip_model.encode_image(images)
+		
+		def encode_text(self, text):
+			return self.clip_model.encode_text(text)
+		
+		def __repr__(self):
+			return f"RobustLinearProbe(num_classes={self.num_classes}, input_dim={self.input_dim}, probe_type={self.probe_type})"
+		
+		@property
+		def visual(self):
+			return self.clip_model.visual
+		
+		@property 
+		def transformer(self):
+				"""Delegate text transformer access"""
+				return self.clip_model.transformer
+		
+		@property
+		def token_embedding(self):
+				"""Delegate token embedding access"""
+				return self.clip_model.token_embedding
+		
+		@property
+		def positional_embedding(self):
+				"""Delegate positional embedding access"""
+				return self.clip_model.positional_embedding
+		
+		@property
+		def ln_final(self):
+				"""Delegate final layer norm access"""
+				return self.clip_model.ln_final
+		
+		@property
+		def text_projection(self):
+				"""Delegate text projection access"""
+				return self.clip_model.text_projection
+		
+		@property
+		def logit_scale(self):
+				"""Delegate logit scale access"""
+				return self.clip_model.logit_scale
+		
+		@property
+		def name(self):
+				"""Get model name from underlying CLIP model"""
+				return getattr(self.clip_model, 'name', 'LinearProbe')
+		
+		@name.setter
+		def name(self, value):
+				"""Set model name on underlying CLIP model"""
+				self.clip_model.name = value
+		
+		def __call__(self, images=None, text=None):
+				"""
+				Make the probe model callable like a regular CLIP model for compatibility.
+				This handles the case where the model is called with (images, text) during evaluation.
+				"""
+				if images is not None and text is not None:
+						# Standard CLIP forward pass for evaluation
+						return self.clip_model(images, text)
+				elif images is not None:
+						# Just encode images and return features
+						return self.encode_image(images)
+				elif text is not None:
+						# Just encode text and return features
+						return self.encode_text(text)
+				else:
+						raise ValueError("Must provide either images, text, or both")
+		
+		def parameters(self):
+				"""Override to return only probe parameters for training"""
+				return self.probe.parameters()
+		
+		def named_parameters(self, prefix='', recurse=True):
+				"""Override to return only probe parameters for training"""
+				return self.probe.named_parameters(prefix=prefix, recurse=recurse)
+		
+		def train(self, mode=True):
+				"""Override to only set probe to train mode, keep CLIP frozen"""
+				self.probe.train(mode)
+				self.clip_model.eval()  # Always keep CLIP in eval mode
+				return self
+		
+		def eval(self):
+				"""Set both probe and CLIP to eval mode"""
+				self.probe.eval()
+				self.clip_model.eval()
+				return self
+
+
+
 
 class MultiLabelProbe(torch.nn.Module):
-    """
-    A robust multi-label linear probe that automatically handles different ViT architectures
-    and resolves common issues like positional embedding mismatches.
-    """
-    
-    def __init__(
-        self, 
-        clip_model: torch.nn.Module,
-        num_classes: int,
-        class_names: List[str],
-        device: torch.device,
-        hidden_dim: Optional[int] = None, 
-        dropout: float = 0.1,
-        zero_shot_init: bool = True,
-        target_resolution: Optional[int] = None,
-        verbose: bool = True
-    ):
-        super().__init__()
-        
-        self.clip_model = clip_model
-        self.num_classes = num_classes
-        self.class_names = class_names
-        self.device = device
-        self.verbose = verbose
-        
-        # Step 1: Fix ViT positional embeddings if needed
-        self._fix_vit_positional_embeddings(target_resolution)
-        
-        # Step 2: Detect feature dimension
-        self.input_dim = self._detect_feature_dimension()
-        
-        # Step 3: Build probe architecture
-        if hidden_dim is not None:
-            # Two-layer MLP probe
-            self.probe = nn.Sequential(
-                nn.Linear(self.input_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_dim, num_classes)
-            )
-            self.probe_type = "MLP"
-        else:
-            # Simple linear probe
-            self.probe = torch.nn.Linear(self.input_dim, num_classes)
-            self.probe_type = "Linear"
-        
-        # Step 4: Initialize probe weights for multi-label
-        if zero_shot_init:
-            self._zero_shot_initialization_multilabel()
-        
-        if self.verbose:
-            self._print_initialization_summary()
-    
-    def _fix_vit_positional_embeddings(self, target_resolution: Optional[int]):
-        """Fix ViT positional embedding mismatches for different resolutions."""
-        if not hasattr(self.clip_model.visual, 'positional_embedding'):
-            if self.verbose:
-                print("Not a ViT model - skipping positional embedding fix")
-            return
-        
-        visual = self.clip_model.visual
-        
-        # Auto-detect target resolution if not provided
-        if target_resolution is None:
-            model_name = getattr(self.clip_model, 'name', '')
-            if '@336px' in model_name:
-                target_resolution = 336
-            elif 'L/14' in model_name:
-                target_resolution = 224  # Default for ViT-L/14
-            else:
-                target_resolution = getattr(visual, 'input_resolution', 224)
-        
-        # Get current configuration
-        patch_size = visual.conv1.kernel_size[0]
-        current_resolution = getattr(visual, 'input_resolution', 224)
-        current_grid_size = current_resolution // patch_size
-        target_grid_size = target_resolution // patch_size
-        
-        current_seq_len = visual.positional_embedding.shape[0]
-        expected_seq_len = target_grid_size * target_grid_size + 1  # +1 for class token
-        
-        if self.verbose:
-            print(f"Multi-label ViT Positional Embedding Check:")
-            print(f"  Model: {getattr(self.clip_model, 'name', 'Unknown')}")
-            print(f"  Current: {current_resolution}px -> Target: {target_resolution}px")
-            print(f"  Patch size: {patch_size}px")
-            print(f"  Positional embeddings: {current_seq_len} -> {expected_seq_len}")
-        
-        if current_seq_len == expected_seq_len:
-            if self.verbose:
-                print("  ✓ Positional embedding size matches - no fix needed")
-            visual.input_resolution = target_resolution
-            return
-        
-        if self.verbose:
-            print("  ⚠ Size mismatch detected - applying interpolation fix...")
-        
-        # Apply interpolation fix
-        try:
-            with torch.no_grad():
-                new_pos_embed = self._interpolate_positional_embedding(
-                    visual.positional_embedding,
-                    current_grid_size,
-                    target_grid_size
-                )
-                visual.positional_embedding.data = new_pos_embed
-                visual.input_resolution = target_resolution
-            
-            if self.verbose:
-                print(f"  ✓ Successfully fixed: {current_seq_len} -> {new_pos_embed.shape[0]} embeddings")
-                
-        except Exception as e:
-            if self.verbose:
-                print(f"  ✗ Fix failed: {e}")
-                print("  Continuing with original embeddings...")
-    
-    def _interpolate_positional_embedding(
-        self, 
-        pos_embed: torch.Tensor, 
-        old_grid_size: int, 
-        new_grid_size: int
-    ) -> torch.Tensor:
-        """Interpolate positional embeddings using bicubic interpolation."""
-        embed_dim = pos_embed.shape[-1]
-        
-        # Separate class token and spatial embeddings
-        cls_token = pos_embed[:1]  # [1, embed_dim]
-        spatial_pos = pos_embed[1:]  # [old_grid_size^2, embed_dim]
-        
-        # Validate spatial positions
-        if spatial_pos.shape[0] != old_grid_size * old_grid_size:
-            raise ValueError(f"Spatial positions {spatial_pos.shape[0]} != {old_grid_size}^2")
-        
-        # Reshape to 2D grid: [old_grid_size^2, embed_dim] -> [1, embed_dim, old_grid_size, old_grid_size]
-        spatial_pos_2d = spatial_pos.transpose(0, 1).reshape(
-            1, embed_dim, old_grid_size, old_grid_size
-        )
-        
-        # Interpolate to new size
-        spatial_pos_new = F.interpolate(
-            spatial_pos_2d,
-            size=(new_grid_size, new_grid_size),
-            mode='bicubic',
-            align_corners=False
-        )
-        
-        # Reshape back: [1, embed_dim, new_grid_size, new_grid_size] -> [new_grid_size^2, embed_dim]
-        spatial_pos_new = spatial_pos_new.reshape(
-            embed_dim, new_grid_size * new_grid_size
-        ).transpose(0, 1)
-        
-        # Concatenate class token and spatial embeddings
-        new_pos_embed = torch.cat([cls_token, spatial_pos_new], dim=0)
-        
-        return new_pos_embed
-    
-    def _detect_feature_dimension(self) -> int:
-        """Detect the feature dimension by running a test forward pass."""
-        if self.verbose:
-            print("Detecting CLIP feature dimension...")
-        
-        try:
-            # Get input resolution
-            if hasattr(self.clip_model.visual, 'input_resolution'):
-                resolution = self.clip_model.visual.input_resolution
-            else:
-                resolution = 224  # Default fallback
-            
-            # Test forward pass
-            dummy_image = torch.randn(1, 3, resolution, resolution).to(self.device)
-            
-            with torch.no_grad():
-                features = self.clip_model.encode_image(dummy_image)
-            
-            feature_dim = features.shape[-1]
-            
-            if self.verbose:
-                print(f"  ✓ Feature dimension: {feature_dim}")
-                print(f"  ✓ Test resolution: {resolution}px")
-            
-            return feature_dim
-            
-        except Exception as e:
-            if self.verbose:
-                print(f"  ✗ Feature detection failed: {e}")
-            raise RuntimeError(f"Cannot detect CLIP feature dimension: {e}")
-    
-    def _zero_shot_initialization_multilabel(self):
-        """Initialize probe with CLIP text embeddings for multi-label."""
-        if self.verbose:
-            print("Initializing multi-label probe with zero-shot CLIP embeddings...")
-        
-        try:
-            # Tokenize class names
-            class_texts = clip.tokenize(self.class_names).to(self.device)
-            
-            # Get CLIP text embeddings
-            with torch.no_grad():
-                self.clip_model.eval()
-                class_embeds = self.clip_model.encode_text(class_texts)
-                class_embeds = F.normalize(class_embeds, dim=-1)
-            
-            # Initialize based on probe type
-            if self.probe_type == "Linear":
-                # For multi-label, use scaled initialization (less aggressive than single-label)
-                with torch.no_grad():
-                    self.probe.weight.data = class_embeds.clone() * 0.1  # Scale down for multi-label
-                    self.probe.bias.data.zero_()
-                
-                if self.verbose:
-                    print("  ✓ Linear probe initialized with scaled text embeddings")
-            
-            elif self.probe_type == "MLP":
-                # Initialize final layer of MLP
-                final_layer = self.probe[-1]  # Last linear layer
-                
-                if class_embeds.shape[1] == final_layer.weight.shape[1]:
-                    # Direct initialization if dimensions match (scaled for multi-label)
-                    with torch.no_grad():
-                        final_layer.weight.data = class_embeds.clone() * 0.05  # Even more conservative
-                        final_layer.bias.data.zero_()
-                else:
-                    # Scaled initialization if dimensions don't match
-                    text_norm = class_embeds.norm(dim=1).mean().item()
-                    with torch.no_grad():
-                        final_layer.weight.data.normal_(0, text_norm * 0.05)  # Conservative for multi-label
-                        final_layer.bias.data.zero_()
-                
-                if self.verbose:
-                    print("  ✓ MLP final layer initialized for multi-label")
-        
-        except Exception as e:
-            if self.verbose:
-                print(f"  ⚠ Zero-shot initialization failed: {e}")
-                print("  Using default random initialization")
-    
-    def _print_initialization_summary(self):
-        """Print summary of probe initialization."""
-        probe_params = sum(p.numel() for p in self.probe.parameters())
-        clip_params = sum(p.numel() for p in self.clip_model.parameters())
-        
-        print(f"\nRobust Multi-label Linear Probe Summary:")
-        print(f"  Model: {getattr(self.clip_model, 'name', 'Unknown CLIP')}")
-        print(f"  Probe Type: {self.probe_type}")
-        print(f"  Input Features: {self.input_dim}")
-        print(f"  Output Classes: {self.num_classes}")
-        print(f"  Probe Parameters: {probe_params:,}")
-        print(f"  CLIP Parameters (frozen): {clip_params:,}")
-        print(f"  Trainable Ratio: {probe_params/(probe_params + clip_params)*100:.4f}%")
-    
-    def forward(self, x):
-        """Forward pass through the probe."""
-        return self.probe(x)
+		"""
+		A robust multi-label linear probe that automatically handles different ViT architectures
+		and resolves common issues like positional embedding mismatches.
+		"""
+		
+		def __init__(
+				self, 
+				clip_model: torch.nn.Module,
+				num_classes: int,
+				class_names: List[str],
+				device: torch.device,
+				hidden_dim: Optional[int] = None, 
+				dropout: float = 0.1,
+				zero_shot_init: bool = True,
+				target_resolution: Optional[int] = None,
+				verbose: bool = True
+		):
+				super().__init__()
+				
+				self.clip_model = clip_model
+				self.num_classes = num_classes
+				self.class_names = class_names
+				self.device = device
+				self.verbose = verbose
+				
+				# Step 1: Fix ViT positional embeddings if needed
+				self._fix_vit_positional_embeddings(target_resolution)
+				
+				# Step 2: Detect feature dimension
+				self.input_dim = self._detect_feature_dimension()
+				
+				# Step 3: Build probe architecture
+				if hidden_dim is not None:
+						# Two-layer MLP probe
+						self.probe = nn.Sequential(
+								nn.Linear(self.input_dim, hidden_dim),
+								nn.ReLU(),
+								nn.Dropout(dropout),
+								nn.Linear(hidden_dim, num_classes)
+						)
+						self.probe_type = "MLP"
+				else:
+						# Simple linear probe
+						self.probe = torch.nn.Linear(self.input_dim, num_classes)
+						self.probe_type = "Linear"
+				
+				# Step 4: Initialize probe weights for multi-label
+				if zero_shot_init:
+						self._zero_shot_initialization_multilabel()
+				
+				if self.verbose:
+						self._print_initialization_summary()
+		
+		def _fix_vit_positional_embeddings(self, target_resolution: Optional[int]):
+				"""Fix ViT positional embedding mismatches for different resolutions."""
+				if not hasattr(self.clip_model.visual, 'positional_embedding'):
+						if self.verbose:
+								print("Not a ViT model - skipping positional embedding fix")
+						return
+				
+				visual = self.clip_model.visual
+				
+				# Auto-detect target resolution if not provided
+				if target_resolution is None:
+						model_name = getattr(self.clip_model, 'name', '')
+						if '@336px' in model_name:
+								target_resolution = 336
+						elif 'L/14' in model_name:
+								target_resolution = 224  # Default for ViT-L/14
+						else:
+								target_resolution = getattr(visual, 'input_resolution', 224)
+				
+				# Get current configuration
+				patch_size = visual.conv1.kernel_size[0]
+				current_resolution = getattr(visual, 'input_resolution', 224)
+				current_grid_size = current_resolution // patch_size
+				target_grid_size = target_resolution // patch_size
+				
+				current_seq_len = visual.positional_embedding.shape[0]
+				expected_seq_len = target_grid_size * target_grid_size + 1  # +1 for class token
+				
+				if self.verbose:
+						print(f"Multi-label ViT Positional Embedding Check:")
+						print(f"  Model: {getattr(self.clip_model, 'name', 'Unknown')}")
+						print(f"  Current: {current_resolution}px -> Target: {target_resolution}px")
+						print(f"  Patch size: {patch_size}px")
+						print(f"  Positional embeddings: {current_seq_len} -> {expected_seq_len}")
+				
+				if current_seq_len == expected_seq_len:
+						if self.verbose:
+								print("  ✓ Positional embedding size matches - no fix needed")
+						visual.input_resolution = target_resolution
+						return
+				
+				if self.verbose:
+						print("  ⚠ Size mismatch detected - applying interpolation fix...")
+				
+				# Apply interpolation fix
+				try:
+						with torch.no_grad():
+								new_pos_embed = self._interpolate_positional_embedding(
+										visual.positional_embedding,
+										current_grid_size,
+										target_grid_size
+								)
+								visual.positional_embedding.data = new_pos_embed
+								visual.input_resolution = target_resolution
+						
+						if self.verbose:
+								print(f"  ✓ Successfully fixed: {current_seq_len} -> {new_pos_embed.shape[0]} embeddings")
+								
+				except Exception as e:
+						if self.verbose:
+								print(f"  ✗ Fix failed: {e}")
+								print("  Continuing with original embeddings...")
+		
+		def _interpolate_positional_embedding(
+				self, 
+				pos_embed: torch.Tensor, 
+				old_grid_size: int, 
+				new_grid_size: int
+		) -> torch.Tensor:
+				"""Interpolate positional embeddings using bicubic interpolation."""
+				embed_dim = pos_embed.shape[-1]
+				
+				# Separate class token and spatial embeddings
+				cls_token = pos_embed[:1]  # [1, embed_dim]
+				spatial_pos = pos_embed[1:]  # [old_grid_size^2, embed_dim]
+				
+				# Validate spatial positions
+				if spatial_pos.shape[0] != old_grid_size * old_grid_size:
+						raise ValueError(f"Spatial positions {spatial_pos.shape[0]} != {old_grid_size}^2")
+				
+				# Reshape to 2D grid: [old_grid_size^2, embed_dim] -> [1, embed_dim, old_grid_size, old_grid_size]
+				spatial_pos_2d = spatial_pos.transpose(0, 1).reshape(
+						1, embed_dim, old_grid_size, old_grid_size
+				)
+				
+				# Interpolate to new size
+				spatial_pos_new = F.interpolate(
+						spatial_pos_2d,
+						size=(new_grid_size, new_grid_size),
+						mode='bicubic',
+						align_corners=False
+				)
+				
+				# Reshape back: [1, embed_dim, new_grid_size, new_grid_size] -> [new_grid_size^2, embed_dim]
+				spatial_pos_new = spatial_pos_new.reshape(
+						embed_dim, new_grid_size * new_grid_size
+				).transpose(0, 1)
+				
+				# Concatenate class token and spatial embeddings
+				new_pos_embed = torch.cat([cls_token, spatial_pos_new], dim=0)
+				
+				return new_pos_embed
+		
+		def _detect_feature_dimension(self) -> int:
+				"""Detect the feature dimension by running a test forward pass."""
+				if self.verbose:
+						print("Detecting CLIP feature dimension...")
+				
+				try:
+						# Get input resolution
+						if hasattr(self.clip_model.visual, 'input_resolution'):
+								resolution = self.clip_model.visual.input_resolution
+						else:
+								resolution = 224  # Default fallback
+						
+						# Test forward pass
+						dummy_image = torch.randn(1, 3, resolution, resolution).to(self.device)
+						
+						with torch.no_grad():
+								features = self.clip_model.encode_image(dummy_image)
+						
+						feature_dim = features.shape[-1]
+						
+						if self.verbose:
+								print(f"  ✓ Feature dimension: {feature_dim}")
+								print(f"  ✓ Test resolution: {resolution}px")
+						
+						return feature_dim
+						
+				except Exception as e:
+						if self.verbose:
+								print(f"  ✗ Feature detection failed: {e}")
+						raise RuntimeError(f"Cannot detect CLIP feature dimension: {e}")
+		
+		def _zero_shot_initialization_multilabel(self):
+				"""Initialize probe with CLIP text embeddings for multi-label."""
+				if self.verbose:
+						print("Initializing multi-label probe with zero-shot CLIP embeddings...")
+				
+				try:
+						# Tokenize class names
+						class_texts = clip.tokenize(self.class_names).to(self.device)
+						
+						# Get CLIP text embeddings
+						with torch.no_grad():
+								self.clip_model.eval()
+								class_embeds = self.clip_model.encode_text(class_texts)
+								class_embeds = F.normalize(class_embeds, dim=-1)
+						
+						# Initialize based on probe type
+						if self.probe_type == "Linear":
+								# For multi-label, use scaled initialization (less aggressive than single-label)
+								with torch.no_grad():
+										self.probe.weight.data = class_embeds.clone() * 0.1  # Scale down for multi-label
+										self.probe.bias.data.zero_()
+								
+								if self.verbose:
+										print("  ✓ Linear probe initialized with scaled text embeddings")
+						
+						elif self.probe_type == "MLP":
+								# Initialize final layer of MLP
+								final_layer = self.probe[-1]  # Last linear layer
+								
+								if class_embeds.shape[1] == final_layer.weight.shape[1]:
+										# Direct initialization if dimensions match (scaled for multi-label)
+										with torch.no_grad():
+												final_layer.weight.data = class_embeds.clone() * 0.05  # Even more conservative
+												final_layer.bias.data.zero_()
+								else:
+										# Scaled initialization if dimensions don't match
+										text_norm = class_embeds.norm(dim=1).mean().item()
+										with torch.no_grad():
+												final_layer.weight.data.normal_(0, text_norm * 0.05)  # Conservative for multi-label
+												final_layer.bias.data.zero_()
+								
+								if self.verbose:
+										print("  ✓ MLP final layer initialized for multi-label")
+				
+				except Exception as e:
+						if self.verbose:
+								print(f"  ⚠ Zero-shot initialization failed: {e}")
+								print("  Using default random initialization")
+		
+		def _print_initialization_summary(self):
+				"""Print summary of probe initialization."""
+				probe_params = sum(p.numel() for p in self.probe.parameters())
+				clip_params = sum(p.numel() for p in self.clip_model.parameters())
+				
+				print(f"\nRobust Multi-label Linear Probe Summary:")
+				print(f"  Model: {getattr(self.clip_model, 'name', 'Unknown CLIP')}")
+				print(f"  Probe Type: {self.probe_type}")
+				print(f"  Input Features: {self.input_dim}")
+				print(f"  Output Classes: {self.num_classes}")
+				print(f"  Probe Parameters: {probe_params:,}")
+				print(f"  CLIP Parameters (frozen): {clip_params:,}")
+				print(f"  Trainable Ratio: {probe_params/(probe_params + clip_params)*100:.4f}%")
+		
+		def forward(self, x):
+				"""Forward pass through the probe."""
+				return self.probe(x)
 
 class LAMB(Optimizer):
 		"""
@@ -1590,267 +1677,267 @@ def get_lora_clip(
 	return model
 
 def get_probe_clip(
-    clip_model: torch.nn.Module,
-    validation_loader: DataLoader,
-    device: torch.device,
-    hidden_dim: Optional[int] = None,
-    dropout: float = 0.1,
-    zero_shot_init: bool = True,
-    target_resolution: Optional[int] = None,
-    verbose: bool = True
+		clip_model: torch.nn.Module,
+		validation_loader: DataLoader,
+		device: torch.device,
+		hidden_dim: Optional[int] = None,
+		dropout: float = 0.1,
+		zero_shot_init: bool = True,
+		target_resolution: Optional[int] = None,
+		verbose: bool = True
 ) -> Union[SingleLabelLinearProbe, MultiLabelProbe]:
-    """
-    Automatically detects dataset type and creates the appropriate linear probe for CLIP.
-    
-    Args:
-        clip_model: The CLIP model to create a probe for
-        validation_loader: DataLoader to detect dataset type and get class information
-        device: Device to place the probe on
-        hidden_dim: Optional hidden dimension for MLP probe (None = linear probe)
-        dropout: Dropout rate for the probe
-        zero_shot_init: Whether to initialize with CLIP text embeddings
-        target_resolution: Target image resolution (auto-detected if None)
-        verbose: Whether to print detailed information
-        
-    Returns:
-        Either SingleLabelLinearProbe or MultiLabelProbe instance
-        
-    Raises:
-        ValueError: If dataset type cannot be determined or class information is missing
-    """
-    
-    if verbose:
-        print("=" * 80)
-        print("AUTOMATIC LINEAR PROBE DETECTION AND CREATION")
-        print("=" * 80)
-    
-    # Step 1: Detect dataset type by inspecting the DataLoader
-    dataset_info = _detect_dataset_type(validation_loader, verbose)
-    
-    # Step 2: Extract class information
-    class_names = _extract_class_names(validation_loader, dataset_info, verbose)
-    num_classes = len(class_names)
-    
-    # Step 3: Create appropriate probe based on dataset type
-    if dataset_info['is_multilabel']:
-        if verbose:
-            print(f"🎯 Creating MultiLabelProbe for {num_classes} classes")
-            print(f"   Dataset: {dataset_info['dataset_name']}")
-            print(f"   Sample shape: {dataset_info['sample_shapes']}")
-        
-        probe = MultiLabelProbe(
-            clip_model=clip_model,
-            num_classes=num_classes,
-            class_names=class_names,
-            device=device,
-            hidden_dim=hidden_dim,
-            dropout=dropout,
-            zero_shot_init=zero_shot_init,
-            target_resolution=target_resolution,
-            verbose=verbose
-        ).to(device)
-    else:
-        if verbose:
-            print(f"🎯 Creating SingleLabelLinearProbe for {num_classes} classes")
-            print(f"   Dataset: {dataset_info['dataset_name']}")
-            print(f"   Sample shape: {dataset_info['sample_shapes']}")
-        
-        probe = SingleLabelLinearProbe(
-            clip_model=clip_model,
-            num_classes=num_classes,
-            class_names=class_names,
-            device=device,
-            hidden_dim=hidden_dim,
-            dropout=dropout,
-            zero_shot_init=zero_shot_init,
-            target_resolution=target_resolution,
-            verbose=verbose
-        ).to(device)
-    
-    if verbose:
-        print("=" * 80)
-        print(f"✅ Successfully created {probe.__class__.__name__}")
-        print(f"   Probe type: {probe.probe_type}")
-        print(f"   Input dimension: {probe.input_dim}")
-        print(f"   Output classes: {probe.num_classes}")
-        print("=" * 80)
-    
-    return probe
+		"""
+		Automatically detects dataset type and creates the appropriate linear probe for CLIP.
+		
+		Args:
+				clip_model: The CLIP model to create a probe for
+				validation_loader: DataLoader to detect dataset type and get class information
+				device: Device to place the probe on
+				hidden_dim: Optional hidden dimension for MLP probe (None = linear probe)
+				dropout: Dropout rate for the probe
+				zero_shot_init: Whether to initialize with CLIP text embeddings
+				target_resolution: Target image resolution (auto-detected if None)
+				verbose: Whether to print detailed information
+				
+		Returns:
+				Either SingleLabelLinearProbe or MultiLabelProbe instance
+				
+		Raises:
+				ValueError: If dataset type cannot be determined or class information is missing
+		"""
+		
+		if verbose:
+				print("=" * 80)
+				print("AUTOMATIC LINEAR PROBE DETECTION AND CREATION")
+				print("=" * 80)
+		
+		# Step 1: Detect dataset type by inspecting the DataLoader
+		dataset_info = _detect_dataset_type(validation_loader, verbose)
+		
+		# Step 2: Extract class information
+		class_names = _extract_class_names(validation_loader, dataset_info, verbose)
+		num_classes = len(class_names)
+		
+		# Step 3: Create appropriate probe based on dataset type
+		if dataset_info['is_multilabel']:
+				if verbose:
+						print(f"🎯 Creating MultiLabelProbe for {num_classes} classes")
+						print(f"   Dataset: {dataset_info['dataset_name']}")
+						print(f"   Sample shape: {dataset_info['sample_shapes']}")
+				
+				probe = MultiLabelProbe(
+						clip_model=clip_model,
+						num_classes=num_classes,
+						class_names=class_names,
+						device=device,
+						hidden_dim=hidden_dim,
+						dropout=dropout,
+						zero_shot_init=zero_shot_init,
+						target_resolution=target_resolution,
+						verbose=verbose
+				).to(device)
+		else:
+				if verbose:
+						print(f"🎯 Creating SingleLabelLinearProbe for {num_classes} classes")
+						print(f"   Dataset: {dataset_info['dataset_name']}")
+						print(f"   Sample shape: {dataset_info['sample_shapes']}")
+				
+				probe = SingleLabelLinearProbe(
+						clip_model=clip_model,
+						num_classes=num_classes,
+						class_names=class_names,
+						device=device,
+						hidden_dim=hidden_dim,
+						dropout=dropout,
+						zero_shot_init=zero_shot_init,
+						target_resolution=target_resolution,
+						verbose=verbose
+				).to(device)
+		
+		if verbose:
+				print("=" * 80)
+				print(f"✅ Successfully created {probe.__class__.__name__}")
+				print(f"   Probe type: {probe.probe_type}")
+				print(f"   Input dimension: {probe.input_dim}")
+				print(f"   Output classes: {probe.num_classes}")
+				print("=" * 80)
+		
+		return probe
 
 def _detect_dataset_type(validation_loader: DataLoader, verbose: bool = True) -> Dict:
-    """
-    Detect whether the dataset is single-label or multi-label by inspecting the DataLoader.
-    
-    Args:
-        validation_loader: DataLoader to inspect
-        verbose: Whether to print detection details
-        
-    Returns:
-        Dictionary containing dataset information
-    """
-    
-    if verbose:
-        print("🔍 Detecting dataset type...")
-    
-    # Get dataset reference
-    dataset = validation_loader.dataset
-    dataset_name = "Unknown"
-    
-    # Try to get dataset name
-    try:
-        if hasattr(dataset, 'dataset') and hasattr(dataset.dataset, '__class__'):
-            dataset_name = dataset.dataset.__class__.__name__
-        elif hasattr(dataset, 'dataset_name'):
-            dataset_name = dataset.dataset_name
-        elif hasattr(dataset, '__class__'):
-            dataset_name = dataset.__class__.__name__
-    except:
-        pass
-    
-    # Method 1: Check for multi-label specific attributes
-    is_multilabel = False
-    detection_method = "unknown"
-    
-    # Check for explicit multi-label indicators
-    if hasattr(dataset, 'label_dict') and dataset.label_dict is not None:
-        is_multilabel = True
-        detection_method = "label_dict_attribute"
-    elif 'MultiLabel' in dataset_name:
-        is_multilabel = True
-        detection_method = "class_name_pattern"
-    elif hasattr(dataset, '_num_classes') and not hasattr(dataset, 'labels_int'):
-        is_multilabel = True
-        detection_method = "_num_classes_without_labels_int"
-    
-    # Method 2: Inspect a sample from the DataLoader
-    try:
-        sample_batch = next(iter(validation_loader))
-        
-        if len(sample_batch) >= 3:
-            # Check the shape of the third element (labels)
-            labels = sample_batch[2]
-            
-            if len(labels.shape) == 2:  # [batch_size, num_classes]
-                is_multilabel = True
-                if detection_method == "unknown":
-                    detection_method = "label_tensor_shape_2d"
-            elif len(labels.shape) == 1:  # [batch_size]
-                is_multilabel = False
-                if detection_method == "unknown":
-                    detection_method = "label_tensor_shape_1d"
-        
-        sample_shapes = {
-            f"element_{i}": tuple(elem.shape) if hasattr(elem, 'shape') else type(elem)
-            for i, elem in enumerate(sample_batch)
-        }
-        
-    except Exception as e:
-        if verbose:
-            print(f"   ⚠️  Could not inspect sample batch: {e}")
-        sample_shapes = "unavailable"
-    
-    # Method 3: Check for unique_labels vs labels_int
-    if detection_method == "unknown":
-        if hasattr(dataset, 'unique_labels') and not hasattr(dataset, 'labels_int'):
-            is_multilabel = True
-            detection_method = "unique_labels_without_labels_int"
-        elif hasattr(dataset, 'labels_int'):
-            is_multilabel = False
-            detection_method = "labels_int_attribute"
-    
-    dataset_info = {
-        'is_multilabel': is_multilabel,
-        'dataset_name': dataset_name,
-        'detection_method': detection_method,
-        'sample_shapes': sample_shapes
-    }
-    
-    if verbose:
-        print(f"   📊 Dataset: {dataset_name}")
-        print(f"   🏷️  Type: {'Multi-label' if is_multilabel else 'Single-label'}")
-        print(f"   🔧 Detection method: {detection_method}")
-        if sample_shapes != "unavailable":
-            print(f"   📐 Sample shapes: {sample_shapes}")
-    
-    return dataset_info
+		"""
+		Detect whether the dataset is single-label or multi-label by inspecting the DataLoader.
+		
+		Args:
+				validation_loader: DataLoader to inspect
+				verbose: Whether to print detection details
+				
+		Returns:
+				Dictionary containing dataset information
+		"""
+		
+		if verbose:
+				print("🔍 Detecting dataset type...")
+		
+		# Get dataset reference
+		dataset = validation_loader.dataset
+		dataset_name = "Unknown"
+		
+		# Try to get dataset name
+		try:
+				if hasattr(dataset, 'dataset') and hasattr(dataset.dataset, '__class__'):
+						dataset_name = dataset.dataset.__class__.__name__
+				elif hasattr(dataset, 'dataset_name'):
+						dataset_name = dataset.dataset_name
+				elif hasattr(dataset, '__class__'):
+						dataset_name = dataset.__class__.__name__
+		except:
+				pass
+		
+		# Method 1: Check for multi-label specific attributes
+		is_multilabel = False
+		detection_method = "unknown"
+		
+		# Check for explicit multi-label indicators
+		if hasattr(dataset, 'label_dict') and dataset.label_dict is not None:
+				is_multilabel = True
+				detection_method = "label_dict_attribute"
+		elif 'MultiLabel' in dataset_name:
+				is_multilabel = True
+				detection_method = "class_name_pattern"
+		elif hasattr(dataset, '_num_classes') and not hasattr(dataset, 'labels_int'):
+				is_multilabel = True
+				detection_method = "_num_classes_without_labels_int"
+		
+		# Method 2: Inspect a sample from the DataLoader
+		try:
+				sample_batch = next(iter(validation_loader))
+				
+				if len(sample_batch) >= 3:
+						# Check the shape of the third element (labels)
+						labels = sample_batch[2]
+						
+						if len(labels.shape) == 2:  # [batch_size, num_classes]
+								is_multilabel = True
+								if detection_method == "unknown":
+										detection_method = "label_tensor_shape_2d"
+						elif len(labels.shape) == 1:  # [batch_size]
+								is_multilabel = False
+								if detection_method == "unknown":
+										detection_method = "label_tensor_shape_1d"
+				
+				sample_shapes = {
+						f"element_{i}": tuple(elem.shape) if hasattr(elem, 'shape') else type(elem)
+						for i, elem in enumerate(sample_batch)
+				}
+				
+		except Exception as e:
+				if verbose:
+						print(f"   ⚠️  Could not inspect sample batch: {e}")
+				sample_shapes = "unavailable"
+		
+		# Method 3: Check for unique_labels vs labels_int
+		if detection_method == "unknown":
+				if hasattr(dataset, 'unique_labels') and not hasattr(dataset, 'labels_int'):
+						is_multilabel = True
+						detection_method = "unique_labels_without_labels_int"
+				elif hasattr(dataset, 'labels_int'):
+						is_multilabel = False
+						detection_method = "labels_int_attribute"
+		
+		dataset_info = {
+				'is_multilabel': is_multilabel,
+				'dataset_name': dataset_name,
+				'detection_method': detection_method,
+				'sample_shapes': sample_shapes
+		}
+		
+		if verbose:
+				print(f"   📊 Dataset: {dataset_name}")
+				print(f"   🏷️  Type: {'Multi-label' if is_multilabel else 'Single-label'}")
+				print(f"   🔧 Detection method: {detection_method}")
+				if sample_shapes != "unavailable":
+						print(f"   📐 Sample shapes: {sample_shapes}")
+		
+		return dataset_info
 
 def _extract_class_names(validation_loader: DataLoader, dataset_info: Dict, verbose: bool = True) -> List[str]:
-    """
-    Extract class names from the dataset.
-    
-    Args:
-        validation_loader: DataLoader to extract class names from
-        dataset_info: Dataset information from _detect_dataset_type
-        verbose: Whether to print extraction details
-        
-    Returns:
-        List of class names
-        
-    Raises:
-        ValueError: If class names cannot be extracted
-    """
-    
-    if verbose:
-        print("📝 Extracting class names...")
-    
-    dataset = validation_loader.dataset
-    class_names = None
-    extraction_method = "unknown"
-    
-    # Method 1: Check for unique_labels (common in multi-label datasets)
-    if hasattr(dataset, 'unique_labels') and dataset.unique_labels is not None:
-        class_names = list(dataset.unique_labels)
-        extraction_method = "unique_labels_attribute"
-    
-    # Method 2: Check for classes attribute in nested dataset
-    elif hasattr(dataset, 'dataset') and hasattr(dataset.dataset, 'classes'):
-        class_names = list(dataset.dataset.classes)
-        extraction_method = "nested_dataset_classes"
-    
-    # Method 3: Check for classes attribute directly
-    elif hasattr(dataset, 'classes'):
-        class_names = list(dataset.classes)
-        extraction_method = "direct_classes_attribute"
-    
-    # Method 4: For multi-label, try to extract from label_dict
-    elif dataset_info['is_multilabel'] and hasattr(dataset, 'label_dict'):
-        if dataset.label_dict is not None:
-            # Sort by value to maintain consistent ordering
-            class_names = [k for k, v in sorted(dataset.label_dict.items(), key=lambda x: x[1])]
-            extraction_method = "label_dict_keys"
-    
-    # Method 5: Try to infer from data_frame if available
-    elif hasattr(dataset, 'data_frame') and hasattr(dataset.data_frame, 'columns'):
-        # Look for label-related columns
-        label_cols = [col for col in dataset.data_frame.columns if 'label' in col.lower()]
-        if label_cols:
-            # This is a fallback - might need manual verification
-            class_names = label_cols
-            extraction_method = "dataframe_label_columns"
-    
-    if class_names is None:
-        raise ValueError(
-            f"Could not extract class names from dataset '{dataset_info['dataset_name']}'. "
-            f"Please ensure the dataset has one of the following attributes: "
-            f"'unique_labels', 'classes', 'dataset.classes', or 'label_dict'"
-        )
-    
-    # Validate class names
-    if not isinstance(class_names, (list, tuple)):
-        raise ValueError(f"Class names must be a list or tuple, got {type(class_names)}")
-    
-    if len(class_names) == 0:
-        raise ValueError("No class names found - empty class list")
-    
-    # Convert to strings if necessary
-    class_names = [str(name) for name in class_names]
-    
-    if verbose:
-        print(f"   ✅ Extracted {len(class_names)} classes using method: {extraction_method}")
-        if len(class_names) <= 10:
-            print(f"   📋 Classes: {class_names}")
-        else:
-            print(f"   📋 Classes (first 5): {class_names[:5]}...")
-            print(f"   📋 Classes (last 5): ...{class_names[-5:]}")
-    
-    return class_names
+		"""
+		Extract class names from the dataset.
+		
+		Args:
+				validation_loader: DataLoader to extract class names from
+				dataset_info: Dataset information from _detect_dataset_type
+				verbose: Whether to print extraction details
+				
+		Returns:
+				List of class names
+				
+		Raises:
+				ValueError: If class names cannot be extracted
+		"""
+		
+		if verbose:
+				print("📝 Extracting class names...")
+		
+		dataset = validation_loader.dataset
+		class_names = None
+		extraction_method = "unknown"
+		
+		# Method 1: Check for unique_labels (common in multi-label datasets)
+		if hasattr(dataset, 'unique_labels') and dataset.unique_labels is not None:
+				class_names = list(dataset.unique_labels)
+				extraction_method = "unique_labels_attribute"
+		
+		# Method 2: Check for classes attribute in nested dataset
+		elif hasattr(dataset, 'dataset') and hasattr(dataset.dataset, 'classes'):
+				class_names = list(dataset.dataset.classes)
+				extraction_method = "nested_dataset_classes"
+		
+		# Method 3: Check for classes attribute directly
+		elif hasattr(dataset, 'classes'):
+				class_names = list(dataset.classes)
+				extraction_method = "direct_classes_attribute"
+		
+		# Method 4: For multi-label, try to extract from label_dict
+		elif dataset_info['is_multilabel'] and hasattr(dataset, 'label_dict'):
+				if dataset.label_dict is not None:
+						# Sort by value to maintain consistent ordering
+						class_names = [k for k, v in sorted(dataset.label_dict.items(), key=lambda x: x[1])]
+						extraction_method = "label_dict_keys"
+		
+		# Method 5: Try to infer from data_frame if available
+		elif hasattr(dataset, 'data_frame') and hasattr(dataset.data_frame, 'columns'):
+				# Look for label-related columns
+				label_cols = [col for col in dataset.data_frame.columns if 'label' in col.lower()]
+				if label_cols:
+						# This is a fallback - might need manual verification
+						class_names = label_cols
+						extraction_method = "dataframe_label_columns"
+		
+		if class_names is None:
+				raise ValueError(
+						f"Could not extract class names from dataset '{dataset_info['dataset_name']}'. "
+						f"Please ensure the dataset has one of the following attributes: "
+						f"'unique_labels', 'classes', 'dataset.classes', or 'label_dict'"
+				)
+		
+		# Validate class names
+		if not isinstance(class_names, (list, tuple)):
+				raise ValueError(f"Class names must be a list or tuple, got {type(class_names)}")
+		
+		if len(class_names) == 0:
+				raise ValueError("No class names found - empty class list")
+		
+		# Convert to strings if necessary
+		class_names = [str(name) for name in class_names]
+		
+		if verbose:
+				print(f"   ✅ Extracted {len(class_names)} classes using method: {extraction_method}")
+				if len(class_names) <= 10:
+						print(f"   📋 Classes: {class_names}")
+				else:
+						print(f"   📋 Classes (first 5): {class_names[:5]}...")
+						print(f"   📋 Classes (last 5): ...{class_names[-5:]}")
+		
+		return class_names

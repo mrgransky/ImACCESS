@@ -1,5 +1,27 @@
 from utils import *
 
+strategy_colors = {
+	'full': "#012894", 
+	'lora': '#f58320be', 
+	'progressive': '#cc40df',
+	'probe': "#01C2A2",
+}
+strategy_styles = {
+	'full': 's', 
+	'lora': '^', 
+	'progressive': 'd',
+	'probe': 'x',
+}
+pretrained_colors = {
+	'ViT-B/32': "#704646", 
+	'ViT-B/16': '#9467bd', 
+	'ViT-L/14': '#e377c2', 
+	'ViT-L/14@336px': '#696969'
+}
+# pretrained_model_arch = models.get("pretrained").name
+# colors = [pretrained_colors.get(pretrained_model_arch, '#000000')] + list(strategy_colors.values())
+
+
 def _phase_cmap(num_phases: int) -> np.ndarray:
 	return plt.cm.Set3(np.linspace(0, 1, max(num_phases, 1)))
 
@@ -1786,9 +1808,10 @@ def plot_image_to_texts_separate_horizontal_bars(
 		)
 		
 		# Define colors consistent with plot_comparison_metrics_split/merged
-		strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
-		pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
+		# strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
+		# pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
 		colors = [pretrained_colors.get(pretrained_model_arch, '#000000')] + list(strategy_colors.values())
+
 		print(f"colors: {colors}")
 		
 		# Subplots for each model
@@ -1977,11 +2000,11 @@ def plot_image_to_texts_stacked_horizontal_bar(
 	fig, ax = plt.subplots(figsize=figure_size, dpi=dpi)
 	bar_width = 0.21
 	y_pos = np.arange(num_labels)
-	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Green
-	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
+
 	pretrained_model_arch = models.get("pretrained").name
 	colors = [pretrained_colors.get(pretrained_model_arch, '#000000')] + list(strategy_colors.values())
 	print(f"colors: {colors}")
+
 	winning_model_per_label = np.argmax(plot_data, axis=1)
 
 	for model_idx, model_name in enumerate(all_strategies):
@@ -2127,8 +2150,8 @@ def plot_image_to_texts_pretrained(
 			f"{re.sub(r'[/@]', '-', best_pretrained_model_arch)}_pretrained_"
 			f'bar_image_to_text.png'
 	)
-	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Green
-	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
+	# strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Green
+	# pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
 
 	# Plot
 	fig = plt.figure(figsize=figure_size, dpi=dpi)
@@ -2181,8 +2204,8 @@ def plot_text_to_images_merged(
 	if cache_dir is None:
 		cache_dir = results_dir
 	
-	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}
-	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
+	# strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}
+	# pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
 	
 	pretrained_model_arch = models.get("pretrained").name
 	tokenized_query = clip.tokenize([query_text]).to(device)
@@ -2709,10 +2732,10 @@ def plot_comparison_metrics_split_table_annotation(
 		
 		model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
 		
-		# Define colors and styles for the different strategies
-		strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
-		pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
-		strategy_styles = {'full': 's', 'lora': '^', 'progressive': 'd'}  # Unique markers
+		# # Define colors and styles for the different strategies
+		# strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
+		# pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
+		# strategy_styles = {'full': 's', 'lora': '^', 'progressive': 'd'}  # Unique markers
 		
 		# Key K points for table annotations
 		key_k_values = [1, 10, 20]
@@ -2956,10 +2979,10 @@ def plot_comparison_metrics_split(
 		return
 	model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
 	
-	# Define a professional color palette for fine-tuned strategies
-	strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
-	pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
-	strategy_styles = {'full': 's', 'lora': '^', 'progressive': 'd'}  # Unique markers
+	# # Define a professional color palette for fine-tuned strategies
+	# strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Purple
+	# pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
+	# strategy_styles = {'full': 's', 'lora': '^', 'progressive': 'd'}  # Unique markers
 	
 	for mode in modes:
 		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
@@ -3182,19 +3205,21 @@ def plot_comparison_metrics_merged(
 		modes = ["Image-to-Text", "Text-to-Image"]
 		all_model_architectures = ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 		# Validate model_name and finetune_strategies
-		finetune_strategies = [s for s in finetune_strategies if s in ["full", "lora", "progressive"]][:3]  # Max 3
+		print(f"{len(finetune_strategies)} Finetune strategies: {finetune_strategies}")
+		# finetune_strategies = [
+		# 	s 
+		# 	for s in finetune_strategies 
+		# 	if s in ["full", "lora", "progressive", "probe"]
+		# ]
 		if not finetune_strategies:
-				print("WARNING: No valid finetune strategies provided. Skipping...")
-				return
+			print("WARNING: No valid finetune strategies provided. Skipping...")
+			return
 		for mode in modes:
-				finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
-				if model_name not in finetuned_dict or not all(strategy in finetuned_dict.get(model_name, {}) for strategy in finetune_strategies):
-						print(f"WARNING: Some strategies for {model_name} not found in finetuned_{mode.lower().replace('-', '_')}_dict. Skipping...")
-						return
+			finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+			if model_name not in finetuned_dict or not all(strategy in finetuned_dict.get(model_name, {}) for strategy in finetune_strategies):
+				print(f"WARNING: Some strategies for {model_name} not found in finetuned_{mode.lower().replace('-', '_')}_dict. Skipping...")
+				return
 		model_name_idx = all_model_architectures.index(model_name) if model_name in all_model_architectures else 0
-		strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Green
-		pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
-		strategy_styles = {'full': 's', 'lora': '^', 'progressive': 'd'}  # Unique markers
 
 		for i, mode in enumerate(modes):
 				fig, axes = plt.subplots(1, 3, figsize=figure_size, constrained_layout=True)

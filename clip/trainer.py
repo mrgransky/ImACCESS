@@ -3976,7 +3976,6 @@ def linear_probe_finetune_single_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{probe.probe_type.lower()}_probe_"
-		f"{mode}_"
 		f"{model_arch}_"
 		f"{optimizer.__class__.__name__}_"
 		f"{scheduler.__class__.__name__}_"

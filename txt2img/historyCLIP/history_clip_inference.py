@@ -388,8 +388,8 @@ def main():
 	# Checkpoints
 	parser.add_argument('--full_checkpoint', '-fcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison [full]')
 	parser.add_argument('--lora_checkpoint', '-lcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison [lora]')
-	parser.add_argument('--progressive_checkpoint', '-pcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison [progressive]')
-	parser.add_argument('--linear_probe_checkpoint', '-lpcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison [linear_probe]')
+	parser.add_argument('--progressive_checkpoint', '-prgcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison [progressive]')
+	parser.add_argument('--probe_checkpoint', '-prbcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison [probe]')
 
 	parser.add_argument('--query_image', '-qi', type=str, default=None, help='image path for zero shot classification')
 	parser.add_argument('--query_label', '-ql', type=str, default=None, help='image path for zero shot classification')
@@ -417,11 +417,11 @@ def main():
 	if args.progressive_checkpoint is not None:
 		assert os.path.exists(args.progressive_checkpoint), f"progressive_checkpoint {args.progressive_checkpoint} does not exist!"
 
-	if args.linear_probe_checkpoint is not None:
-		assert os.path.exists(args.linear_probe_checkpoint), f"linear_probe_checkpoint {args.linear_probe_checkpoint} does not exist!"
-		params = get_probe_params(args.linear_probe_checkpoint)
+	if args.probe_checkpoint is not None:
+		assert os.path.exists(args.probe_checkpoint), f"probe_checkpoint {args.probe_checkpoint} does not exist!"
+		params = get_probe_params(args.probe_checkpoint)
 		if params:
-			print(f">> {args.linear_probe_checkpoint}\n\tProbe parameters: {params}")
+			print(f">> {args.probe_checkpoint}\n\tProbe parameters: {params}")
 			args.probe_dropout = params['probe_dropout']
 		else:
 			raise ValueError("Probe parameters not found in the provided checkpoint path!")
@@ -574,7 +574,7 @@ def main():
 		"full": args.full_checkpoint,
 		"lora": args.lora_checkpoint,
 		"progressive": args.progressive_checkpoint,
-		"linear_probe": args.linear_probe_checkpoint,
+		"probe": args.probe_checkpoint,
 	}
 	print(f">> Loading {len(finetuned_checkpoint_paths)} Fine-tuned Models [takes a while]...")
 	print(json.dumps(finetuned_checkpoint_paths, indent=4, ensure_ascii=False))
@@ -601,7 +601,7 @@ def main():
 				checkpoint = torch.load(ft_path, map_location=args.device)
 				lora_model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)
 				fine_tuned_models[ft_name] = lora_model
-			elif ft_name == "linear_probe":
+			elif ft_name == "probe":
 				probe_model = get_probe_clip(
 					clip_model=model,
 					validation_loader=validation_loader,
@@ -753,6 +753,8 @@ def main():
 		finetune_strategies.append("lora")
 	if args.progressive_checkpoint is not None:
 		finetune_strategies.append("progressive")
+	if args.probe_checkpoint is not None:
+		finetune_strategies.append("probe")
 	if len(finetune_strategies) == 0:
 		raise ValueError("Please provide at least one checkpoint for comparison!")
 	print(f">> All available finetune strategies: {finetune_strategies}")
