@@ -124,7 +124,7 @@ case $strategy in
 	"lora")
 		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs + 3))  # Higher for LoRA
 		;;
-	"linear_probe")
+	"probe")
 		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs - 4))  # Even lower for Linear Probe (fastest convergence)
 		;;
 	"progressive")
@@ -134,8 +134,8 @@ esac
 EARLY_STOPPING_MIN_EPOCHS=$((EARLY_STOPPING_MIN_EPOCHS < 3 ? 3 : EARLY_STOPPING_MIN_EPOCHS))  # Ensure minimum of 3
 
 # Set dropout based on strategy
-# Only full and progressive can have nonzero dropouts, lora and linear_probe must have zero dropouts
-if [ "${FINETUNE_STRATEGIES[$strategy_index]}" = "lora" ] || [ "${FINETUNE_STRATEGIES[$strategy_index]}" = "linear_probe" ]; then
+# Only full and progressive can have nonzero dropouts, lora and probe must have zero dropouts
+if [ "${FINETUNE_STRATEGIES[$strategy_index]}" = "lora" ] || [ "${FINETUNE_STRATEGIES[$strategy_index]}" = "probe" ]; then
 	DROPOUT=0.0
 else
 	DROPOUT="${DROPOUTS[$dataset_index]}" # Use the original dropout for full and progressive
