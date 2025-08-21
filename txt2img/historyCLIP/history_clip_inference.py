@@ -380,19 +380,23 @@ def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
 	parser.add_argument('--dataset_type', '-dt', type=str, choices=['single_label', 'multi_label'], default='single_label', help='Dataset type (single_label/multi_label)')
+	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
+	parser.add_argument('--batch_size', '-bs', type=int, default=16, help='Batch size for training')
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs [def: max cpus]')
-	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
-	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
-	parser.add_argument('--batch_size', '-bs', type=int, default=16, help='Batch size for training')
+
+	# Checkpoints
+	parser.add_argument('--full_checkpoint', '-fcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison [full]')
+	parser.add_argument('--lora_checkpoint', '-lcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison [lora]')
+	parser.add_argument('--progressive_checkpoint', '-pcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison [progressive]')
+	parser.add_argument('--linear_probe_checkpoint', '-lpcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison [linear_probe]')
+
 	parser.add_argument('--query_image', '-qi', type=str, default=None, help='image path for zero shot classification')
 	parser.add_argument('--query_label', '-ql', type=str, default=None, help='image path for zero shot classification')
 	parser.add_argument('--topK', '-k', type=int, default=3, help='TopK results')
-	parser.add_argument('--full_checkpoint', '-fcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
-	parser.add_argument('--lora_checkpoint', '-lcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
-	parser.add_argument('--progressive_checkpoint', '-pcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison')
 	parser.add_argument('--topK_values', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 	parser.add_argument('--temperature', '-t', type=float, default=0.07, help='Temperature for evaluation')
+	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
@@ -405,10 +409,16 @@ def main():
 
 	if args.full_checkpoint is not None:
 		assert os.path.exists(args.full_checkpoint), f"full_checkpoint {args.full_checkpoint} does not exist!"
+
 	if args.lora_checkpoint is not None:
 		assert os.path.exists(args.lora_checkpoint), f"lora_checkpoint {args.lora_checkpoint} does not exist!"
+
 	if args.progressive_checkpoint is not None:
 		assert os.path.exists(args.progressive_checkpoint), f"progressive_checkpoint {args.progressive_checkpoint} does not exist!"
+
+	if args.linear_probe_checkpoint is not None:
+		assert os.path.exists(args.linear_probe_checkpoint), f"linear_probe_checkpoint {args.linear_probe_checkpoint} does not exist!"
+
 	if args.lora_checkpoint is not None:
 		params = get_lora_params(args.lora_checkpoint)
 		if params:
@@ -467,25 +477,25 @@ def main():
 	print("\n" + "="*80)
 	print("DEBUGGING: Multi-label Ground Truth Extraction")
 	print("="*80)
-	
+
 	# Check if ground truth extraction is correct
 	for sample in validation_loader:
-			images, _, labels = sample
-			print(f"Batch size: {images.shape[0]}")
-			print(f"Image shape: {images.shape}")
-			print(f"Label shape: {labels.shape}")  # Should be [batch_size, num_classes]
-			print(f"Labels dtype: {labels.dtype}")
-			print(f"Sample labels for first image: {labels[0]}")  # Should show multiple 1s for multi-label
-			print(f"Number of positive labels in first sample: {labels[0].sum().item()}")
-			print(f"Non-zero label indices: {torch.where(labels[0] == 1)[0].tolist()}")
-			
-			# Also check a few more samples in the batch
-			if images.shape[0] > 1:
-					print(f"Sample labels for second image: {labels[1]}")
-					print(f"Number of positive labels in second sample: {labels[1].sum().item()}")
-			
-			break  # Only check first batch
-	
+		images, _, labels = sample
+		print(f"Batch size: {images.shape[0]}")
+		print(f"Image shape: {images.shape}")
+		print(f"Label shape: {labels.shape}")  # Should be [batch_size, num_classes]
+		print(f"Labels dtype: {labels.dtype}")
+		print(f"Sample labels for first image: {labels[0]}")  # Should show multiple 1s for multi-label
+		print(f"Number of positive labels in first sample: {labels[0].sum().item()}")
+		print(f"Non-zero label indices: {torch.where(labels[0] == 1)[0].tolist()}")
+		
+		# Also check a few more samples in the batch
+		if images.shape[0] > 1:
+			print(f"Sample labels for second image: {labels[1]}")
+			print(f"Number of positive labels in second sample: {labels[1].sum().item()}")
+
+		break  # Only check first batch	
+
 	print("="*80)
 	print("END DEBUGGING")
 	print("="*80 + "\n")
@@ -556,9 +566,11 @@ def main():
 		"full": args.full_checkpoint,
 		"lora": args.lora_checkpoint,
 		"progressive": args.progressive_checkpoint,
+		"linear_probe": args.linear_probe_checkpoint,
 	}
 	print(f">> Loading {len(finetuned_checkpoint_paths)} Fine-tuned Models [takes a while]...")
 	print(json.dumps(finetuned_checkpoint_paths, indent=4, ensure_ascii=False))
+
 	ft_start = time.time()
 	fine_tuned_models = {}
 	finetuned_img2txt_dict = {args.model_architecture: {}}

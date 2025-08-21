@@ -3975,6 +3975,7 @@ def linear_probe_finetune_single_label(
 	
 	mdl_fpth = os.path.join(
 		results_dir,
+		f"{probe.probe_type.lower()}_probe_"
 		f"{mode}_"
 		f"{model_arch}_"
 		f"{optimizer.__class__.__name__}_"
@@ -3985,7 +3986,6 @@ def linear_probe_finetune_single_label(
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
-		f"probe_{probe.probe_type}_"
 		f"hdim_{probe_hidden_dim}_"
 		f"pdo_{probe_dropout}_"
 		f"mep_{minimum_epochs}_"
@@ -4212,17 +4212,21 @@ def linear_probe_finetune_single_label(
 	
 	# Run evaluation with the combined model
 	evaluation_results = evaluate_best_model(
-			model=combined_model,
-			validation_loader=validation_loader,
-			criterion=criterion,
-			early_stopping=early_stopping,
-			checkpoint_path=mdl_fpth,
-			finetune_strategy=mode,
-			device=device,
-			cache_dir=results_dir,
-			topk_values=topk_values,
-			verbose=True,
-			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+		model=combined_model,
+		validation_loader=validation_loader,
+		criterion=criterion,
+		early_stopping=early_stopping,
+		checkpoint_path=mdl_fpth,
+		finetune_strategy=mode,
+		device=device,
+		cache_dir=results_dir,
+		topk_values=topk_values,
+		verbose=True,
+		max_in_batch_samples=get_max_samples(
+			batch_size=validation_loader.batch_size, 
+			N=10, 
+			device=device
+		),
 	)
 	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
 	final_metrics_full = evaluation_results["full_metrics"]
