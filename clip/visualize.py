@@ -14,11 +14,14 @@ strategy_styles = {
 	'probe': 'x',
 }
 pretrained_colors = {
-	'ViT-B/32': "#704646", 
+	'ViT-B/32': "#725151", 
 	'ViT-B/16': '#9467bd', 
 	'ViT-L/14': '#e377c2', 
 	'ViT-L/14@336px': '#696969'
 }
+
+positive_pct_col = "#357402ff"
+negative_pct_col = "#c0003aff"
 
 def _phase_cmap(num_phases: int) -> np.ndarray:
 	return plt.cm.Set3(np.linspace(0, 1, max(num_phases, 1)))
@@ -2950,8 +2953,8 @@ def plot_comparison_metrics_split(
 		finetune_strategies: list,
 		results_dir: str,
 		topK_values: list,
-		figure_size=(9, 8),
-		DPI: int = 300,
+		figure_size=(11, 10),
+		DPI: int = 250,
 	):
 	metrics = ["mP", "mAP", "Recall"]
 	modes = ["Image-to-Text", "Text-to-Image"]
@@ -3040,8 +3043,8 @@ def plot_comparison_metrics_split(
 					color=strategy_colors[strategy], 
 					linestyle='-', 
 					marker=strategy_styles[strategy],
-					linewidth=1.1,
-					markersize=3,
+					linewidth=2.0,
+					markersize=4,
 				)
 			
 			# Analyze plot data to place annotations intelligently
@@ -3071,8 +3074,6 @@ def plot_comparison_metrics_split(
 						'worst': min(improvements.items(), key=lambda x: x[1][0]),
 						'all_values': [v[1] for v in improvements.values()]
 					}
-			positive_pct_col = "#51b400ff"
-			negative_pct_col = "#c0003aff"
 
 			# Second pass: determine optimal annotation placement based on plot density
 			for k, data in annotation_positions.items():
@@ -3181,8 +3182,8 @@ def plot_comparison_metrics_split(
 			y_min = min(min(pretrained_vals), min(finetuned_vals))
 			padding = (y_max - y_min) * 0.2
 			print(f"{metric}@K y_min: {y_min}, y_max: {y_max} padding: {padding}")
-			# ax.set_ylim(min(0, y_min - padding), max(1, y_max + padding))
-			ax.set_ylim(max(-0.02, y_min - padding), min(1.02, y_max + padding))
+			ax.set_ylim(min(0, y_min - padding), max(1, y_max + padding))
+			# ax.set_ylim(max(-0.02, y_min - padding), min(1.02, y_max + padding))
 			# ax.set_ylim(-0.01, 1.01)
 			ax.set_yticklabels([f'{y:.2f}' for y in ax.get_yticks()], fontsize=15)
 			
@@ -3293,7 +3294,7 @@ def plot_comparison_metrics_merged(
 										if pre_val != 0:
 												best_imp = (best_val - pre_val) / pre_val * 100
 												# Set color based on improvement value
-												text_color = '#016e2bff' if best_imp >= 0 else 'red'
+												text_color = positive_pct_col if best_imp >= 0 else negative_pct_col 
 												arrow_style = '<|-' if best_imp >= 0 else '-|>'
 												
 												# Place annotations with arrows
@@ -3319,7 +3320,7 @@ def plot_comparison_metrics_merged(
 										if pre_val != 0:
 												worst_imp = (worst_val - pre_val) / pre_val * 100
 												# Set color based on improvement value
-												text_color = 'red' if worst_imp <= 0 else '#016e2bff'
+												text_color = negative_pct_col if worst_imp <= 0 else positive_pct_col
 												arrow_style = '-|>' if worst_imp >= 0 else '<|-'
 												
 												# Place annotations with arrows
