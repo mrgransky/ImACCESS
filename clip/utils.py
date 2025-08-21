@@ -436,7 +436,93 @@ def get_max_samples(
 		print(f"Final Max Samples: {max_samples}")
 	return max_samples
 
+# CORRECT SOLUTION: Modify compute_model_embeddings() to handle different model types
+
 def compute_model_embeddings(
+    strategy,
+    model,
+    loader,
+    device,
+    cache_dir,
+    lora_rank=None,
+    lora_alpha=None,
+    lora_dropout=None
+):
+    """
+    Compute embeddings for different types of fine-tuned models.
+    This function now properly handles:
+    - Regular CLIP models (pretrained, full, progressive)
+    - LoRA models 
+    - Linear probe models
+    """
+    model.eval()
+    embeddings = []
+    paths = []
+    dataset_name = getattr(loader, 'name', 'unknown_dataset')
+    
+    cache_file_name = (
+        f"{dataset_name}_"
+        f"{strategy}_"
+        f"{model.__class__.__name__}_"
+        f"{re.sub(r'[/@]', '_', model.name)}_"
+    )
+    if strategy == "lora" and lora_rank is not None and lora_alpha is not None and lora_dropout is not None:
+        cache_file_name += (
+            f"lora_rank_{lora_rank}_"
+            f"lora_alpha_{lora_alpha}_"
+            f"lora_dropout_{lora_dropout}_"
+        )
+    cache_file_name += "embeddings.pt"
+    cache_file = os.path.join(cache_dir, cache_file_name)
+    
+    if os.path.exists(cache_file):
+        data = torch.load(
+            f=cache_file,
+            map_location=device,
+            mmap=True
+        )
+        return data['embeddings'], data['image_paths']
+    
+    # Determine how to extract embeddings based on model type
+    def get_image_embeddings(model, images):
+        """Extract image embeddings handling different model types"""
+        
+        # Check if this is a linear probe model
+        if hasattr(model, 'clip_model') and hasattr(model, 'probe'):
+            # This is a linear probe - use the frozen CLIP encoder
+            # This will show that linear probe produces same embeddings as pretrained
+            return model.clip_model.encode_image(images)
+            
+        # Check if this is a standard CLIP model (pretrained, full, progressive, LoRA)
+        elif hasattr(model, 'encode_image'):
+            # This is a regular CLIP model (could be modified by LoRA, full, progressive)
+            return model.encode_image(images)
+            
+        # Handle wrapper classes or other custom model types
+        elif hasattr(model, 'visual') and hasattr(model.visual, '__call__'):
+            # Fallback: try to use visual encoder directly
+            return model.visual(images)
+            
+        else:
+            raise AttributeError(
+                f"Model of type {type(model)} doesn't have a recognizable image encoding method. "
+                f"Expected 'encode_image' method or 'clip_model.encode_image' for probe models."
+            )
+    
+    for batch_idx, (images, _, _) in enumerate(tqdm(loader, desc=f"Processing {strategy}")):
+        images = images.to(device, non_blocking=True)
+        with torch.no_grad(), torch.amp.autocast(device_type=device.type, enabled=True):
+            # Use the appropriate embedding extraction method
+            features = get_image_embeddings(model, images)
+            features /= features.norm(dim=-1, keepdim=True)
+        embeddings.append(features.cpu())
+        paths.extend([f"batch_{batch_idx}_img_{i}" for i in range(len(images))])
+    
+    embeddings = torch.cat(embeddings, dim=0)
+    torch.save({'embeddings': embeddings, 'image_paths': paths}, cache_file)
+    return embeddings.to(device), paths
+
+def compute_model_embeddings_old(
 		strategy,
 		model,
 		loader,

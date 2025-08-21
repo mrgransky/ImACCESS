@@ -588,15 +588,21 @@ def main():
 			print(f"Loading {ft_name} model from {ft_path}", end="...")
 			model, _ = clip.load(name=args.model_architecture, device=args.device, download_root=get_model_directory(path=args.dataset_dir))
 			if ft_name == "lora":
-				model = get_lora_clip(
+				lora_model = get_lora_clip(
 					clip_model=model, 
 					lora_rank=args.lora_rank, 
 					lora_alpha=args.lora_alpha, 
 					lora_dropout=args.lora_dropout, 
 					verbose=False,
 				)
-			if ft_name == "linear_probe":
-				model = get_probe_clip(
+				lora_model.to(args.device)
+				lora_model = lora_model.float()
+				lora_model.name = args.model_architecture
+				checkpoint = torch.load(ft_path, map_location=args.device)
+				lora_model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)
+				fine_tuned_models[ft_name] = lora_model
+			elif ft_name == "linear_probe":
+				probe_model = get_probe_clip(
 					clip_model=model,
 					validation_loader=validation_loader,
 					device=args.device,
@@ -605,17 +611,24 @@ def main():
 					zero_shot_init=False, # doesn't matter
 					verbose=False,
 				)
-			model.to(args.device)
-			model = model.float()
-			model.name = args.model_architecture
-			checkpoint = torch.load(ft_path, map_location=args.device)
-			model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)
-			fine_tuned_models[ft_name] = model
+				probe_model.to(args.device)
+				probe_model = probe_model.float()
+				probe_model.name = args.model_architecture
+				checkpoint = torch.load(ft_path, map_location=args.device)
+				probe_model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)
+				fine_tuned_models[ft_name] = probe_model
+			else:
+				model.to(args.device)
+				model = model.float()
+				model.name = args.model_architecture
+				checkpoint = torch.load(ft_path, map_location=args.device)
+				model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)
+				fine_tuned_models[ft_name] = model
 			print("done!")
 		else:
 			print(f"Skipping {ft_name} as no valid checkpoint provided!")
 
-	print(f">> {len(fine_tuned_models)} Fine-tuned Models loaded in {time.time() - ft_start:.5f} sec")
+	print(f">> {len(fine_tuned_models)} Fine-tuned Models loaded in {time.time() - ft_start:.1f} sec")
 	models_to_plot.update(fine_tuned_models)
 
 	print("Computing Model Embeddings".center(160, "-"))
@@ -633,7 +646,16 @@ def main():
 			lora_dropout=args.lora_dropout if strategy == "lora" else None,
 		)
 		embeddings_cache[strategy] = (embeddings, paths)
-	print(f"Model Embeddings computed in {time.time() - mdl_emb_start:.5f} sec".center(160, " "))
+	print(f"Model Embeddings computed in {time.time() - mdl_emb_start:.1f} sec".center(160, " "))
+
+	print("\nEmbedding Similarity Analysis:")
+	pretrained_emb = embeddings_cache["pretrained"][0]
+	for strategy, (emb, _) in embeddings_cache.items():
+		if strategy != "pretrained":
+			# Compute cosine similarity between embeddings
+			similarity = F.cosine_similarity(pretrained_emb.flatten(), emb.flatten(), dim=0)
+			print(f"{strategy} vs pretrained similarity: {similarity:.4f}")
+			# Linear probe should have similarity ≈ 1.0, others should be < 1.0
 
 	print(f"Evaluating {len(fine_tuned_models)} Fine-tuned Models".center(160, "-"))
 	ft_eval_start = time.time()
