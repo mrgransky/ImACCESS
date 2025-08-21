@@ -268,8 +268,10 @@ def get_single_label_head_torso_tail_samples(
 		or len(tail_labels_in_val) < num_samples_per_segment
 	):
 		print("\nWarning: Not enough unique labels available in validation for one or more segments to select the requested number of samples.")
-		# Adjust sampling if not enough labels, but we still need to try to get *some*
-		# We'll sample up to the number of available labels/samples
+		print("Adjusting sampling to available labels...")
+		print("Please consider increasing the validation set size or adjusting the sampling strategy.")
+		print("Continuing with available labels...")
+		print(f"Head: {len(head_labels_in_val)} | Torso: {len(torso_labels_in_val)} | Tail: {len(tail_labels_in_val)}")
 	
 	segments = {
 		'Head': head_labels_in_val, 

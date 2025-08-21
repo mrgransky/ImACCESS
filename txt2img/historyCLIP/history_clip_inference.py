@@ -37,7 +37,7 @@ from visualize import (
 # $ python history_clip_inference.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -dt multi_label -fcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/full_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_dropout_0.0_lr_1.0e-05_wd_1.0e-02_temp_0.07_bs_16_best_model.pth -pcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/progressive_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_25_dropout_0.0_ilr_1.0e-05_iwd_1.0e-02_temp_0.07_bs_16_best_model_last_phase_1_flr_5.6e-06_fwd_0.010306122448979592.pth -lcp /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/results_multi_label/lora_multi_label_ViT-B-32_AdamW_OneCycleLR_BCEWithLogitsLoss_GradScaler_ieps_25_actual_eps_17_lr_1.0e-05_wd_1.0e-02_lor_8_loa_16.0_lod_0.05_temp_0.07_bs_16_best_model.pth
 # ################ Local ################ 
 
-# # run in pouta for all fine-tuned models:
+# # Pouta:
 # $ nohup python -u history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -nw 32 --device "cuda:2" -k 5 -bs 256 -fcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_23_dropout_0.1_lr_5.0e-06_wd_1.0e-02_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_84_dropout_0.1_ilr_5.0e-06_iwd_1.0e-02_bs_64_best_model_last_phase_3_flr_2.3e-06_fwd_0.012021761646381529.pth -lcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_26_lr_5.0e-06_wd_1.0e-02_lor_64_loa_128.0_lod_0.05_bs_64_best_model.pth > /media/volume/ImACCESS/trash/history_clip_inference.txt &
 
 # Puhti:
@@ -577,6 +577,7 @@ def main():
 	finetuned_txt2img_dict = {args.model_architecture: {}}
 	for ft_name, ft_path in finetuned_checkpoint_paths.items():
 		if ft_path and os.path.exists(ft_path):
+			print(f"Loading {ft_name} model from {ft_path}", end="...")
 			model, _ = clip.load(name=args.model_architecture, device=args.device, download_root=get_model_directory(path=args.dataset_dir))
 			if ft_name == "lora":
 				model = get_lora_clip(
@@ -592,6 +593,10 @@ def main():
 			checkpoint = torch.load(ft_path, map_location=args.device)
 			model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)
 			fine_tuned_models[ft_name] = model
+			print("done!")
+		else:
+			print(f"Skipping {ft_name} as no valid checkpoint provided!")
+
 	print(f">> {len(fine_tuned_models)} Fine-tuned Models loaded in {time.time() - ft_start:.5f} sec")
 	models_to_plot.update(fine_tuned_models)
 
