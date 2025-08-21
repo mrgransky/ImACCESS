@@ -332,7 +332,7 @@ def _plot_trainable_layers_progression(
 		# unfrozen later).  We need the union of both sets.
 		phase_set = set(phases) | set(unfreeze_schedule.keys())
 		if not phase_set:                     # defensive – should never happen
-				raise ValueError("No phase information supplied.")
+			raise ValueError("No phase information supplied.")
 		max_phase = max(phase_set)            # highest phase index that exists
 		n_phases = max_phase + 1               # length of the zero‑based array
 
@@ -341,10 +341,10 @@ def _plot_trainable_layers_progression(
 		# ------------------------------------------------------------------
 		unfrozen_per_phase = np.zeros(n_phases, dtype=int)
 		for ph, layers in unfreeze_schedule.items():
-				# if a phase appears in the schedule but not in the training run,
-				# we still store the information – the plot will simply show a
-				# horizontal line at the correct y‑value for that phase.
-				unfrozen_per_phase[ph] = len(layers)
+			# if a phase appears in the schedule but not in the training run,
+			# we still store the information – the plot will simply show a
+			# horizontal line at the correct y‑value for that phase.
+			unfrozen_per_phase[ph] = len(layers)
 
 		# ------------------------------------------------------------------
 		# 3️⃣  Prepare a mapping phase → list of epoch numbers belonging to it
@@ -377,7 +377,7 @@ def _plot_trainable_layers_progression(
 		# 5️⃣  Add transition markers, axes, legend, etc.
 		# ------------------------------------------------------------------
 		for tr in transitions:
-				ax.axvline(tr, color="#E91111", linestyle="--", linewidth=1.5, alpha=0.7)
+			ax.axvline(tr, color="#E91111", linestyle="--", linewidth=1.5, alpha=0.7)
 
 		ax.set_xlabel("Epoch", fontsize=10, weight="bold")
 		ax.set_ylabel("Trainable layers", fontsize=10, weight="bold")
@@ -626,14 +626,17 @@ def plot_phase_transition_analysis_individual(
 	ax1.set_ylim(min_loss - margin, max_loss + margin)
 	ymin, ymax = ax1.get_ylim()
 	y_middle = (ymin + ymax) / 2.0
+
 	# Phase shading
 	for phase in set(phases):
 			phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
 			if phase_epochs:
 					ax1.axvspan(min(phase_epochs), max(phase_epochs), alpha=0.39, color=phase_colors[phase], label=f'Phase {phase}')
+
 	# Loss curves
 	ax1.plot(epochs, train_losses, color="#0025FA", linewidth=2.5, alpha=0.9, label="Training Loss")
 	ax1.plot(epochs, val_losses, color="#C77203", linewidth=2.5, alpha=0.9, label="Validation Loss")
+
 	# Transitions
 	for i, t_epoch in enumerate(transitions):
 		ax1.axvline(x=t_epoch, color=transition_color, linestyle="--", linewidth=1.5, alpha=0.8)
@@ -786,10 +789,11 @@ def plot_phase_transition_analysis_individual(
 	ax5.plot(epochs, loss_norm, "r-", label="Val Loss")
 	for t_epoch in transitions:
 		ax5.axvline(x=t_epoch, color=transition_color, linestyle="--", linewidth=1.5)
-	ax5.legend(fontsize=8); ax5.set_ylim(0, 1.1)
 	ax5.set_title("Hyperparameter Correlations [normed]", fontsize=10, weight="bold")
 	ax5.set_xlabel("Epoch"); ax5.set_ylabel("Normalized values")
 	ax5.grid(True, alpha=0.3)
+	ax5.legend(loc="best", fontsize=8, ncol=3, frameon=False)
+	ax5.set_ylim(0, 1.1)
 	save_fig(fig, "hp_corr")
 
 	# ============================================
@@ -797,30 +801,40 @@ def plot_phase_transition_analysis_individual(
 	# ============================================
 	fig, ax6 = plt.subplots(figsize=figsize, facecolor='white')
 	ax6.set_title('Embedding Drift from Pre-trained State', fontsize=10, weight='bold')
-	
+	_seen_phases = set()
 	for i in range(len(epochs) - 1):
 		phase_index = phases[i]
+		label = f'Phase {phase_index}' if phase_index not in _seen_phases else None
+		_seen_phases.add(phase_index)
 		ax6.plot(
 			[epochs[i], epochs[i+1]], 
 			[embedding_drifts[i], embedding_drifts[i+1]], 
 			color=phase_colors[phase_index], 
 			linewidth=2.5,
-			alpha=0.9
+			marker='o', 
+			markersize=3,
+			alpha=0.9,
+			label=label, # Show label only once per phase
 		)
-	
+
+	_transition_label_shown = False
 	for transition_epoch in transitions:
+		label = 'Transition' if not _transition_label_shown else None
+		_transition_label_shown = True
 		ax6.axvline(
 			x=transition_epoch,
 			color=transition_color, 
 			linestyle='--', 
 			linewidth=1.5,
-			alpha=0.7
+			alpha=0.5,
+			label=label, # Show label only once
 		)
-	ax6.set_xlabel('Epoch', fontsize=8)
-	ax6.set_ylabel('Drift (1 - CosSim)', fontsize=8)
-	ax6.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+	ax6.set_xlabel('Epoch', fontsize=10, fontweight="bold")
+	ax6.set_ylabel('Drift (1 - CosSim)', fontsize=10, fontweight="bold")
+	ax6.grid(True, which='both', linestyle='--', linewidth=0.6, alpha=0.5)
 	ax6.set_ylim(bottom=0) # Drift cannot be negative
 	ax6.tick_params(axis='both', which='major', labelsize=8)
+	ax6.legend(loc="best", fontsize=9, frameon=False)
 	save_fig(fig, "emb_drift")
 
 def plot_phase_transition_analysis(
