@@ -324,7 +324,7 @@ class SingleLabelLinearProbe(torch.nn.Module):
 			
 			# Case 1: Called with a single positional argument (features or images)
 			if x is not None:
-					print(f"DEBUG: Probe called with tensor shape: {x.shape if hasattr(x, 'shape') else type(x)}")
+					# print(f"DEBUG: Probe called with tensor shape: {x.shape if hasattr(x, 'shape') else type(x)}")
 					if isinstance(x, torch.Tensor):
 							# Check if input looks like pre-extracted features
 							if len(x.shape) == 2 and x.shape[1] == self.input_dim:
