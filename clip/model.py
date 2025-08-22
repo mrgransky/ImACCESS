@@ -311,23 +311,49 @@ class SingleLabelLinearProbe(torch.nn.Module):
 				"""Set model name on underlying CLIP model"""
 				self.clip_model.name = value
 		
-		def __call__(self, images=None, text=None):
-				"""
-				Make the probe model callable like a regular CLIP model for compatibility.
-				This handles the case where the model is called with (images, text) during evaluation.
-				"""
-				if images is not None and text is not None:
-						# Standard CLIP forward pass for evaluation
-						return self.clip_model(images, text)
-				elif images is not None:
-						# Just encode images and return features
-						return self.encode_image(images)
-				elif text is not None:
-						# Just encode text and return features
-						return self.encode_text(text)
-				else:
-						raise ValueError("Must provide either images, text, or both")
-		
+		def __call__(self, x=None, images=None, text=None):
+			"""
+			Make the probe model callable like a regular CLIP model for compatibility.
+			
+			This method handles multiple calling patterns:
+			1. probe(features) - for training with pre-extracted features
+			2. probe(images=images, text=text) - for CLIP-style evaluation
+			3. probe(images=images) - for image encoding only
+			4. probe(text=text) - for text encoding only
+			"""
+			
+			# Case 1: Called with a single positional argument (features or images)
+			if x is not None:
+					print(f"DEBUG: Probe called with tensor shape: {x.shape if hasattr(x, 'shape') else type(x)}")
+					if isinstance(x, torch.Tensor):
+							# Check if input looks like pre-extracted features
+							if len(x.shape) == 2 and x.shape[1] == self.input_dim:
+									# This is already extracted CLIP features, pass to probe directly
+									return self.probe(x)
+							elif len(x.shape) == 4 and x.shape[1] == 3:  # Images: [batch, 3, H, W]
+									# This is raw images, encode them first then apply probe
+									features = self.encode_image(x)
+									features = F.normalize(features, dim=-1)
+									return self.probe(features)
+							else:
+									# Try to treat as features anyway (fallback)
+									return self.probe(x)
+					else:
+							raise ValueError(f"Unsupported input type: {type(x)}")
+			
+			# Case 2: Called with keyword arguments (CLIP-style)
+			elif images is not None and text is not None:
+					# Standard CLIP forward pass for evaluation
+					return self.clip_model(images, text)
+			elif images is not None:
+					# Just encode images and return features (not probe logits)
+					return self.encode_image(images)
+			elif text is not None:
+					# Just encode text and return features (not probe logits)
+					return self.encode_text(text)
+			else:
+					raise ValueError("Must provide either a tensor argument, or images, text, or both as keyword arguments")
+
 		def parameters(self):
 				"""Override to return only probe parameters for training"""
 				return self.probe.parameters()
@@ -347,9 +373,6 @@ class SingleLabelLinearProbe(torch.nn.Module):
 				self.probe.eval()
 				self.clip_model.eval()
 				return self
-
-
-
 
 class MultiLabelProbe(torch.nn.Module):
 		"""

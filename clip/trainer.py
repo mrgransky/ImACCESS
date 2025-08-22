@@ -3929,11 +3929,17 @@ def probe_finetune_single_label(
 			zero_shot_init=True,
 			verbose=True
 	)
-	print(f"Multi-label dataset: {isinstance(probe, MultiLabelProbe)}")
+	print(f"DEBUG: Probe created successfully")
+	print(f"Multi-label dataset? {isinstance(probe, MultiLabelProbe)}")
 
 	clip_dim = probe.input_dim  # Get the detected feature dimension
 	probe_params = sum(p.numel() for p in probe.parameters())
-	
+
+	print(f"DEBUG: Probe class: {probe.__class__.__name__}")
+	print(f"DEBUG: Probe input_dim: {probe.input_dim}")
+	print(f"DEBUG: Probe num_classes: {probe.num_classes}")
+
+
 	print(f"CLIP output dimension: {clip_dim}")
 	print(f"Probe type: {probe.probe_type} | Probe parameters: {probe_params:,}")
 	
@@ -4033,7 +4039,12 @@ def probe_finetune_single_label(
 	val_features, val_labels = extract_features(validation_loader, model, device)
 	
 	print(f"Extracted features - Train: {train_features.shape}, Val: {val_features.shape}")
-	
+	print(f"DEBUG: Extracted train features shape: {train_features.shape}")
+	print(f"DEBUG: Extracted val features shape: {val_features.shape}")
+	print(f"DEBUG: Train labels shape: {train_labels.shape}")
+	print(f"DEBUG: Val labels shape: {val_labels.shape}")	
+
+
 	# Create feature datasets
 	from torch.utils.data import TensorDataset
 	train_feature_dataset = TensorDataset(train_features, train_labels)
