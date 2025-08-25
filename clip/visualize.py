@@ -1203,7 +1203,7 @@ def plot_phase_transition_analysis(
 	# ================================
 	# 6. Training Statistics and Insights
 	# ================================
-	# Calculate comprehensive statistics
+
 	total_epochs = len(epochs)
 	num_phases = len(set(phases))
 	total_improvement = ((val_losses[0] - min(val_losses)) / val_losses[0] * 100) if val_losses and val_losses[0] > 0 else 0
@@ -1266,8 +1266,85 @@ def plot_phase_transition_analysis(
 	
 	summary_text += phase_insights
 	
-	print(f"Phase transition analysis summary:\n{summary_text}\n")
-			
+	print(f"{summary_text}")
+
+
+	# ================================
+	# 7. Training Statistics and Insights (ENHANCED)
+	# ================================
+
+	# --- Basic Stats ---
+	total_epochs = len(epochs)
+	num_phases = len(set(phases))
+	total_improvement = ((val_losses[0] - min(val_losses)) / val_losses[0] * 100) if val_losses and val_losses[0] > 0 else 0
+	avg_phase_duration = np.mean(durations) if durations else 0
+
+	# --- Advanced Analysis ---
+	final_train_loss = train_losses[-1]
+	final_val_loss = val_losses[-1]
+	best_val_loss = min(val_losses) if val_losses else 0.0
+
+	# 1. Loss Divergence (Overfitting Metric)
+	loss_divergence = ((final_val_loss - final_train_loss) / final_val_loss * 100) if final_val_loss > 0 else 0.0
+
+	# 2. Performance Delta (Overtraining Metric)
+	performance_delta = ((final_val_loss - best_val_loss) / best_val_loss * 100) if best_val_loss > 0 else 0.0
+
+	# 3. Best and Worst Phases
+	best_phase_idx = np.argmax(improvements) if improvements else 0
+	worst_phase_idx = np.argmin(improvements) if improvements else 0
+	most_effective_phase = f"Phase {phases_list[best_phase_idx]} ({improvements[best_phase_idx]:+.1f}%)"
+	least_effective_phase = f"Phase {phases_list[worst_phase_idx]} ({improvements[worst_phase_idx]:+.1f}%)"
+
+	# 4. Model Capacity at Best Epoch (Requires unfreeze_schedule to be passed)
+	# This part is conceptual. You'd need to pass `unfreeze_schedule` to this function
+	# or calculate it here. For now, we'll create a placeholder.
+	# In a real implementation, you'd find the phase of the best epoch and look up the number of layers.
+	best_model_phase = phases[best_epoch] if best_epoch is not None else -1
+	# This is a simplification; you'd need the real unfreeze schedule info here.
+	# For example: trainable_layers_at_best = len(unfreeze_schedule[best_model_phase])
+	trainable_info_at_best = f"(In Phase {best_model_phase})" # Placeholder
+
+	# --- Create Comprehensive Summary ---
+	summary_text = f"""
+		COMPREHENSIVE TRAINING ANALYSIS [ENHANCED]:
+
+		OVERALL PERFORMANCE:
+		• Total Epochs: {total_epochs}
+		• Number of Phases: {num_phases}
+		• Final Training Loss: {final_train_loss:.4f}
+		• Final Validation Loss: {final_val_loss:.4f}
+		• Best Validation Loss: {best_val_loss:.4f}
+		• Total Improvement (initial to best): {total_improvement:.2f}%
+		• Training Status: {'Early Stopped' if early_stop_epoch else 'Completed'}
+
+		DIAGNOSTICS:
+		• Loss Divergence (Final Train vs Val): {loss_divergence:.1f}% [>20% may indicate overfitting]
+		• Performance Delta (Best vs Final): {performance_delta:.1f}% [>5% may indicate overtraining]
+		• Best Model achieved at Epoch {best_epoch + 1 if best_epoch is not None else 'N/A'} {trainable_info_at_best}
+
+		PHASE TRANSITION ANALYSIS:
+		• Total Transitions: {len(transitions)}
+		• Average Phase Duration: {avg_phase_duration:.1f} epochs
+		• Most Effective Phase: {most_effective_phase}
+		• Least Effective Phase: {least_effective_phase} [Negative is catastrophic forgetting]
+
+		HYPERPARAMETER ADAPTATION:
+		• Learning Rate Range: {min(learning_rates):.2e} → {max(learning_rates):.2e}
+		• Weight Decay Range: {min(weight_decays):.2e} → {max(weight_decays):.2e}
+	"""
+
+	if transitions:
+		summary_text += f"\n    TRANSITION EPOCHS: {transitions}"
+
+	phase_insights = "\n    PHASE INSIGHTS (Duration & Improvement):\n"
+	for phase, duration, improvement in phase_data:
+		phase_insights += f"    • Phase {phase}: {duration} epochs, {improvement:+.1f}%\n"
+
+	summary_text += phase_insights
+
+	print(f"\n{summary_text}\n")
+
 	plt.suptitle(
 		f'Progressive Layer Unfreezing\nPhase Transition Analysis', 
 		fontsize=11,
@@ -1621,16 +1698,16 @@ def plot_progressive_training_dynamics(
 	"""
 	
 	if early_stop_epoch:
-		summary_text += f"    • Early Stopped at Epoch: {early_stop_epoch}\n"
+		summary_text += f"• Early Stopped at Epoch: {early_stop_epoch}\n"
 	if best_epoch is not None:
-		summary_text += f"    • Best Model at Epoch: {epochs[best_epoch]}\n"
+		summary_text += f"• Best Model at Epoch: {epochs[best_epoch]}\n"
 	
 	# Add layer unfreezing summary
-	summary_text += "\n    LAYER UNFREEZING SCHEDULE:\n"
+	summary_text += "LAYER UNFREEZING SCHEDULE:\n"
 	for phase, layers in unfreeze_schedule.items():
-		summary_text += f"    • Phase {phase}: {len(layers)} layers unfrozen\n"
-			
-	print(f"Training summary:\n{summary_text}\n")
+		summary_text += f"• Phase {phase}: {len(layers)} layers unfrozen\n"
+
+	print(f"{summary_text}")
 	
 	plt.suptitle(f'Progressive Fine-tuning Dynamics',fontsize=12, weight='bold')	
 	plt.savefig(

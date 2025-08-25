@@ -173,7 +173,7 @@ def main():
 		set_seeds(seed=42)
 		# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 		print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
-		RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"results_{args.dataset_type}")
+		RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{args.dataset_type}")
 		os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 
 		print(f">> CLIP Model Architecture: {args.model_architecture}...")
