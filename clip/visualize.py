@@ -1343,7 +1343,7 @@ def plot_phase_transition_analysis(
 
 	summary_text += phase_insights
 
-	print(f"\n{summary_text}\n")
+	print(f"{summary_text}")
 
 	plt.suptitle(
 		f'Progressive Layer Unfreezing\nPhase Transition Analysis', 
