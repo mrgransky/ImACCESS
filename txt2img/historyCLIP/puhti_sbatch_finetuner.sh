@@ -11,7 +11,7 @@
 #SBATCH --mem=373G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=8 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!! # 0-11:  dataset[0] with all strategy×architecture [H4]
+#SBATCH --array=0,4,12 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!! # 0-11:  dataset[0] with all strategy×architecture [H4]
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
