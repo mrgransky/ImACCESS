@@ -6,8 +6,10 @@ import torch
 import copy
 import torch.nn.functional as F
 from torch import nn
-from torch.optim import Optimizer
 from torch.utils.data import DataLoader
+
+def log(msg: str, *, level: str = "INFO") -> None:
+	print(f"[{level}] {msg}")
 
 class SingleLabelLinearProbe(torch.nn.Module):
 		def __init__(
@@ -629,7 +631,7 @@ class MultiLabelProbe(torch.nn.Module):
 				"""Forward pass through the probe."""
 				return self.probe(x)
 
-class LAMB(Optimizer):
+class LAMB(torch.optim.Optimizer):
 		"""
 		LAMB optimizer with:
 		- Advanced diagnostics and monitoring
@@ -1026,7 +1028,7 @@ class LAMB(Optimizer):
 						
 				return False
 
-class LoRALinear(nn.Module):
+class LoRALinear(torch.nn.Module):
 	def __init__(
 			self,
 			in_features: int,
@@ -1062,7 +1064,7 @@ class LoRALinear(nn.Module):
 		lora_combined = original_output + self.scale * lora_output
 		return lora_combined
 
-class Bottleneck(nn.Module):
+class Bottleneck(torch.nn.Module):
 		expansion = 4
 		def __init__(self, inplanes, planes, stride=1):
 				super().__init__()
@@ -1108,7 +1110,7 @@ class Bottleneck(nn.Module):
 				out = self.relu3(out)
 				return out
 
-class AttentionPool2d(nn.Module):
+class AttentionPool2d(torch.nn.Module):
 	def __init__(
 			self,
 			spacial_dim: int, 
@@ -1149,7 +1151,7 @@ class AttentionPool2d(nn.Module):
 		)
 		return x.squeeze(0)
 
-class ModifiedResNet(nn.Module):
+class ModifiedResNet(torch.nn.Module):
 	"""
 	A ResNet class that is similar to torchvision's but contains the following changes:
 	- There are now 3 "stem" convolutions as opposed to 1, with an average pool instead of a max pool.
@@ -1222,11 +1224,11 @@ class LayerNorm(nn.LayerNorm):
 		ret = super().forward(x.type(torch.float32))
 		return ret.type(orig_type)
 
-class QuickGELU(nn.Module):
+class QuickGELU(torch.nn.Module):
 	def forward(self, x: torch.Tensor):
 		return x * torch.sigmoid(1.702 * x)
 
-class ResidualAttentionBlock(nn.Module):
+class ResidualAttentionBlock(torch.nn.Module):
 	def __init__(
 			self,
 			d_model: int,
@@ -1259,7 +1261,7 @@ class ResidualAttentionBlock(nn.Module):
 		x = x + self.mlp(self.ln_2(x))
 		return x
 
-class Transformer(nn.Module):
+class Transformer(torch.nn.Module):
 	def __init__(
 			self,
 			width: int,
@@ -1285,7 +1287,7 @@ class Transformer(nn.Module):
 	def forward(self, x: torch.Tensor):
 		return self.resblocks(x)
 
-class VisionTransformer(nn.Module):
+class VisionTransformer(torch.nn.Module):
 	def __init__(
 			self,
 			input_resolution: int, 
@@ -1340,7 +1342,7 @@ class VisionTransformer(nn.Module):
 			x = self.dropout(x) # # Applied only during training (model.train() mode)
 		return x
 
-class CLIP(nn.Module):
+class CLIP(torch.nn.Module):
 	def __init__(
 			self,
 			embed_dim: int,
@@ -1475,7 +1477,7 @@ class CLIP(nn.Module):
 		# shape = [global_batch_size, global_batch_size]
 		return logits_per_image, logits_per_text
 
-def convert_weights(model: nn.Module):
+def convert_weights(model: torch.nn.Module):
 	"""Convert applicable model parameters to fp16"""
 	def _convert_weights_to_fp16(l):
 		if isinstance(l, (nn.Conv1d, nn.Conv2d, nn.Linear)):
@@ -1492,6 +1494,7 @@ def convert_weights(model: nn.Module):
 				attr = getattr(l, name)
 				if attr is not None:
 					attr.data = attr.data.half()
+	
 	model.apply(_convert_weights_to_fp16)
 
 def build_model(state_dict: dict, dropout: float):
@@ -1569,7 +1572,12 @@ def get_lora_clip(
 	replaced_modules = set()
 	
 	# Helper function to replace a linear layer
-	def replace_linear(parent, child_name, module, name_prefix):
+	def replace_linear(
+		parent: torch.nn.Module, 
+		child_name: str, 
+		module: torch.nn.Linear, 
+		name_prefix: str,
+	):
 		lora_layer = LoRALinear(
 			in_features=module.in_features,
 			out_features=module.out_features,
@@ -1582,16 +1590,20 @@ def get_lora_clip(
 		if module.bias is not None:
 			lora_layer.linear.bias.data.copy_(module.bias.data)
 		setattr(parent, child_name, lora_layer)
-		replaced_modules.add(f"{name_prefix}: {name}")
+		replaced_modules.add(f"{name_prefix}: {child_name}")
+		if verbose:
+			print(f"Replaced {name_prefix}: {child_name}")
 	################################################ Encoders ###############################################
 	################ process raw inputs into features, need adaptation for feature extraction ################
 
 	# Text encoder
 	for name, module in model.transformer.named_modules():
+		# Pure Linear layers
 		if isinstance(module, nn.Linear) and any(t in name.split(".")[-1] for t in target_text_modules):
 			parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
 			parent = model.transformer if parent_name == "" else model.transformer.get_submodule(parent_name)
 			replace_linear(parent, child_name, module, "Text")
+		# packed Q‑K‑V of MultiheadAttention
 		elif isinstance(module, nn.MultiheadAttention) and "in_proj" in target_text_modules:
 			lora_layer = LoRALinear(
 				in_features=module.embed_dim,
@@ -1601,19 +1613,33 @@ def get_lora_clip(
 				dropout=lora_dropout,
 				bias=True,
 			)
-			lora_layer.linear.weight.data.copy_(module.in_proj_weight.data)
-			lora_layer.linear.bias.data.copy_(module.in_proj_bias.data)
+			if lora_layer.linear.weight.shape != module.in_proj_weight.shape:
+				print(f"Shape mismatch for Text QKV: expected {module.in_proj_weight.shape}, got {lora_layer.linear.weight.shape}")
+				raise ValueError(f"LoRA rank {lora_rank} does not match module in_proj_weight shape {module.in_proj_weight.shape}")
+			
+			with torch.no_grad():
+				lora_layer.linear.weight.data.copy_(module.in_proj_weight.data)
+				lora_layer.linear.bias.data.copy_(module.in_proj_bias.data)
+
+			# Replace the original in_proj_weight and in_proj_bias with LoRA layers
 			module.in_proj_weight = lora_layer.linear.weight
 			module.in_proj_bias = lora_layer.linear.bias
 			module.register_module("lora_in_proj", lora_layer)
 			replaced_modules.add(f"Text: {name}.in_proj")
+			if verbose:
+				print(
+					f"Replaced Text: {name}.in_proj: {module.in_proj_weight.shape} --> "
+					f"Wrapped Text MultiheadAttention.{name}.in_proj with LoRA"
+				)
 
 	# Vision encoder
 	for name, module in model.visual.named_modules():
+		# Linear layers
 		if isinstance(module, nn.Linear) and any(t in name.split(".")[-1] for t in target_vision_modules):
 			parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
 			parent = model.visual if parent_name == "" else model.visual.get_submodule(parent_name)
 			replace_linear(parent, child_name, module, "Vision")
+		# Packed QKV of MultiheadAttention
 		elif isinstance(module, nn.MultiheadAttention) and "in_proj" in target_vision_modules:
 			lora_layer = LoRALinear(
 				in_features=module.embed_dim,
@@ -1623,28 +1649,48 @@ def get_lora_clip(
 				dropout=lora_dropout,
 				bias=True,
 			)
-			lora_layer.linear.weight.data.copy_(module.in_proj_weight.data)
-			lora_layer.linear.bias.data.copy_(module.in_proj_bias.data)
+			if lora_layer.linear.weight.shape != module.in_proj_weight.shape:
+				print(f"Shape mismatch for Vision QKV: expected {module.in_proj_weight.shape}, got {lora_layer.linear.weight.shape}")
+				raise ValueError(f"LoRA rank {lora_rank} does not match module in_proj_weight shape {module.in_proj_weight.shape}")
+
+			with torch.no_grad():
+				lora_layer.linear.weight.data.copy_(module.in_proj_weight.data)
+				lora_layer.linear.bias.data.copy_(module.in_proj_bias.data)
+
 			module.in_proj_weight = lora_layer.linear.weight
 			module.in_proj_bias = lora_layer.linear.bias
 			module.register_module("lora_in_proj", lora_layer)
 			replaced_modules.add(f"Vision: {name}.in_proj")
+			if verbose:
+				print(
+					f"Replaced Vision: {name}.in_proj: {module.in_proj_weight.shape} --> "
+					f"Wrapped Vision MultiheadAttention.{name}.in_proj with LoRA"
+				)
 	################################################ Encoders ###############################################
 
 	############################################## Projections ##############################################
 	################## align features into a shared space (need adaptation for alignment) ##################
 	# Text projection
 	if hasattr(model, "text_projection") and isinstance(model.text_projection, nn.Parameter):
+		in_dim = model.text_projection.size(0)
+		out_dim = model.text_projection.size(1)
 		lora_text_proj = LoRALinear(
-			in_features=model.text_projection.size(0),
-			out_features=model.text_projection.size(1),
+			in_features=in_dim,
+			out_features=out_dim,
 			rank=lora_rank,
 			alpha=lora_alpha,
 			dropout=lora_dropout,
 			bias=False,
 		)
-		lora_text_proj.linear.weight.data.copy_(model.text_projection.t().data)
+		if lora_text_proj.linear.weight.shape != (out_dim, in_dim):
+			print(f"Shape mismatch for Text projection: expected {(out_dim, in_dim)}, got {lora_text_proj.linear.weight.shape}")
+			raise ValueError(f"LoRA rank {lora_rank} does not match module text_projection shape {model.text_projection.shape}")
+	
+		with torch.no_grad():
+			lora_text_proj.linear.weight.data.copy_(model.text_projection.t().data)
+	
 		model.lora_text_projection = lora_text_proj
+	
 		def encode_text(self, text):
 			x = self.token_embedding(text).type(self.dtype)
 			x = x + self.positional_embedding.type(self.dtype)
@@ -1654,37 +1700,53 @@ def get_lora_clip(
 			x = self.ln_final(x)
 			x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)]
 			return self.lora_text_projection(x)
+
 		model.encode_text = encode_text.__get__(model, type(model))
 		replaced_modules.add("Text: text_projection")
+		if verbose:
+			print(f"Wrapped text_projection with LoRA")
 
 	# Visual projection (ViT)
 	if hasattr(model.visual, "proj") and isinstance(model.visual.proj, nn.Parameter):
+		in_dim = model.visual.proj.size(0)
+		out_dim = model.visual.proj.size(1)
 		lora_visual_proj = LoRALinear(
-			in_features=model.visual.proj.size(0),
-			out_features=model.visual.proj.size(1),
+			in_features=in_dim,
+			out_features=out_dim,
 			rank=lora_rank,
 			alpha=lora_alpha,
 			dropout=lora_dropout,
 			bias=False,
 		)
-		lora_visual_proj.linear.weight.data.copy_(model.visual.proj.t().data)
+		if lora_visual_proj.linear.weight.shape != (out_dim, in_dim):
+			print(f"Shape mismatch for Vision projection: expected {(out_dim, in_dim)}, got {lora_visual_proj.linear.weight.shape}")
+			raise ValueError(f"LoRA rank {lora_rank} does not match module visual.proj shape {model.visual.proj.shape}")
+		with torch.no_grad():
+			lora_visual_proj.linear.weight.data.copy_(model.visual.proj.t().data)
+
 		model.visual.lora_proj = lora_visual_proj
+	
 		def vit_forward(self, x: torch.Tensor):
 			x = self.conv1(x)
 			x = x.reshape(x.shape[0], x.shape[1], -1)
-			x = x.permute(0, 2, 1)
-			x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)
+			x = x.permute(0, 2, 1) # B, N, C
+			cls = self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device)
+			x = torch.cat([cls, x], dim=1)
 			x = x + self.positional_embedding.to(x.dtype)
 			x = self.dropout(x)
 			x = self.ln_pre(x)
-			x = x.permute(1, 0, 2)
+			x = x.permute(1, 0, 2) # N, B, C
 			x = self.transformer(x)
-			x = x.permute(1, 0, 2)
-			x = self.ln_post(x[:, 0, :])
-			x = self.lora_proj(x)
+			x = x.permute(1, 0, 2) # B, N, C
+			x = self.ln_post(x[:, 0, :]) # CLS token
+			x = self.lora_proj(x) # LoRA projection Head
 			return x
+
 		model.visual.forward = vit_forward.__get__(model.visual, type(model.visual))
 		replaced_modules.add("Vision: transformer.proj")
+
+		if verbose:
+			print(f"Wrapped visual.proj with LoRA")
 	############################################## Projections ##############################################
 
 	if verbose: 

@@ -23,6 +23,7 @@
 *.html
 models/
 
+backups/
 # Django
 wgui/db.sqlite3
 wgui/staticfiles/

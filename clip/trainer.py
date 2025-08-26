@@ -3568,7 +3568,8 @@ def lora_finetune_single_label(
 		clip_model=model,
 		lora_rank=lora_rank,
 		lora_alpha=lora_alpha,
-		lora_dropout=lora_dropout
+		lora_dropout=lora_dropout,
+		verbose=True,
 	)
 	model.to(device)
 	get_parameters_info(model=model, mode=mode)

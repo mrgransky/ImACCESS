@@ -1268,10 +1268,9 @@ def plot_phase_transition_analysis(
 	
 	print(f"{summary_text}")
 
-
-	# ================================
+	# ===============================================
 	# 7. Training Statistics and Insights (ENHANCED)
-	# ================================
+	# ===============================================
 
 	# --- Basic Stats ---
 	total_epochs = len(epochs)
