@@ -189,7 +189,7 @@ def plot_phase_transition_analysis_individual(
 	for i, (bar, imp) in enumerate(zip(bars, improvements)):
 		ax4_twin.text(
 			i,
-			1.05*imp if imp > 0 else 0.9*imp,
+			1.02*imp if imp > 0 else 0.9*imp,
 			f"{imp:.2f}%",
 			ha="center",
 			fontsize=8,
@@ -479,7 +479,7 @@ def plot_phase_transition_analysis(
 				linestyle='--',
 			)
 	
-	# ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
+	ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
 	ax2.set_ylabel('LR (log)', fontsize=8, weight='bold')
 	ax2.set_title('Learning Rate Adaptation Across Phases', fontsize=8, weight='bold')
 	ax2.grid(True, alpha=0.3)
@@ -511,7 +511,7 @@ def plot_phase_transition_analysis(
 				alpha=0.7
 			)
 	
-	ax3.set_xlabel('Epoch', fontsize=8, weight='bold')
+	# ax3.set_xlabel('Epoch', fontsize=8, weight='bold')
 	ax3.set_ylabel('WD (log)', fontsize=8, weight='bold')
 	ax3.set_title('Weight Decay Adaptation Across Phases', fontsize=8, weight='bold')
 	ax3.grid(True, alpha=0.3)
@@ -574,7 +574,7 @@ def plot_phase_transition_analysis(
 	for i, (bar, duration, improvement) in enumerate(zip(bars, durations, improvements)):
 		ax4_twin.text(
 			i, 
-			1.05*improvement if improvement > 0 else 0.9*improvement,
+			1.02*improvement if improvement > 0 else 0.9*improvement,
 			f'{improvement:.2f}%',
 			ha='center',
 			va='bottom',
