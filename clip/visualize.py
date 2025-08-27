@@ -42,7 +42,7 @@ def _plot_loss_evolution(
 	transitions = training_history.get("phase_transitions", [])
 	early_stop = training_history.get("early_stop_epoch")
 	best_epoch = training_history.get("best_epoch")
-	fig, ax = plt.subplots(figsize=(18, 14), facecolor="white")
+	fig, ax = plt.subplots(figsize=(11, 7), facecolor="white")
 	# ---- background shading per phase ---------------------------------
 	for phase in set(phases):
 			mask = [p == phase for p in phases]
@@ -746,37 +746,50 @@ def plot_phase_transition_analysis_individual(
 		color=loss_imp_color,
 		)
 	for i, (bar, imp) in enumerate(zip(bars, improvements)):
-		ax4.text(
-			bar.get_x() + bar.get_width()/2, 
-			bar.get_height() + 1, 
-			f"{int(bar.get_height())}", 
-			ha="center", 
-			fontsize=8, 
-			color=duration_color,
-			fontweight="bold",
-		)
+		# ax4.text(
+		# 	bar.get_x() + bar.get_width()/2, 
+		# 	bar.get_height() + 0,
+		# 	f"{int(bar.get_height())}", 
+		# 	ha="center", 
+		# 	fontsize=8, 
+		# 	color=duration_color,
+		# 	fontweight="bold",
+		# )
 		ax4_twin.text(
 			i, 
-			imp + 0.25,
+			imp + 0.0,
 			f"{imp:.2f}%", 
 			ha="center", 
 			fontsize=8, 
-			color=loss_imp_color, 
+			color=loss_imp_color,
 			fontweight="bold",
 		)
 
 	ax4.set_title("Phase Efficiency Analysis", fontsize=9, weight="bold")
 	ax4.set_xlabel("Phase")
 	ax4.set_ylabel("Epochs", color=duration_color)
+	ax4.set_xticks(range(len(phases_list)))
+	ax4.set_xticklabels([f"{p}" for p in phases_list])
+	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=8))
 	ax4_twin.set_ylabel("Loss Improvement (%)", color=loss_imp_color)
+	ax4_twin.yaxis.set_tick_params(labelsize=8)
 
 	# Match spine colors with their labels
 	ax4.spines['left'].set_color(duration_color)
 	ax4_twin.spines['right'].set_color(loss_imp_color)
 
 	# Hide the right and top spines for both axes
-	ax4.spines['top'].set_visible(False)
+	ax4.grid(True, alpha=0.5)
+	ax4.tick_params(axis='y', labelcolor='#0004EC')
+	ax4_twin.tick_params(axis='y', labelcolor="#F73100")
+
+	# Match spine colors with their labels
+	ax4.spines['left'].set_color('#0004EC')
+	ax4_twin.spines['right'].set_color("#F73100")
+
 	ax4_twin.spines['top'].set_visible(False)
+	ax4.spines['top'].set_visible(False)
+
 	save_fig(fig, "ph_eff")
 
 	# ============================================
@@ -1153,10 +1166,9 @@ def plot_phase_transition_analysis(
 	ax4.set_xticklabels(phase_labels)
 	ax4.set_xticks(range(len(phase_labels)))
 	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=8))
-
-	ax4.grid(True, alpha=0.5)
-	ax4.tick_params(axis='y', labelcolor='#0004EC')
-	ax4_twin.tick_params(axis='y', labelcolor="#F73100")
+	ax4.grid(axis='y', alpha=0.35, color='#888888')
+	ax4.tick_params(axis='y', labelcolor='#0004EC', labelsize=10)
+	ax4_twin.tick_params(axis='y', labelcolor="#F73100", labelsize=10)
 
 	# Match spine colors with their labels
 	ax4.spines['left'].set_color('#0004EC')
@@ -1165,12 +1177,12 @@ def plot_phase_transition_analysis(
 	ax4_twin.spines['top'].set_visible(False)
 	ax4.spines['top'].set_visible(False)
 	
-	# ================================
+	# ====================================
 	# 6. Training Statistics and Insights
-	# ================================
-
+	# ====================================
 	total_epochs = len(epochs)
 	num_phases = len(set(phases))
+
 	total_improvement = ((val_losses[0] - min(val_losses)) / val_losses[0] * 100) if val_losses and val_losses[0] > 0 else 0
 	avg_phase_duration = np.mean(durations) if durations else 0
 	best_phase = phases_list[np.argmax(improvements)] if improvements else 0
@@ -1274,28 +1286,28 @@ def plot_phase_transition_analysis(
 		COMPREHENSIVE TRAINING ANALYSIS [ENHANCED]:
 
 		OVERALL PERFORMANCE:
-		• Total Epochs: {total_epochs}
-		• Number of Phases: {num_phases}
-		• Final Training Loss: {final_train_loss:.4f}
-		• Final Validation Loss: {final_val_loss:.4f}
-		• Best Validation Loss: {best_val_loss:.4f}
-		• Total Improvement (initial to best): {total_improvement:.2f}%
-		• Training Status: {'Early Stopped' if early_stop_epoch else 'Completed'}
+			• Total Epochs: {total_epochs}
+			• Number of Phases: {num_phases}
+			• Final Training Loss: {final_train_loss:.4f}
+			• Final Validation Loss: {final_val_loss:.4f}
+			• Best Validation Loss: {best_val_loss:.4f}
+			• Total Improvement (initial to best): {total_improvement:.2f}%
+			• Training Status: {'Early Stopped' if early_stop_epoch else 'Completed'}
 
 		DIAGNOSTICS:
-		• Loss Divergence (Final Train vs Val): {loss_divergence:.1f}% [>20% may indicate overfitting]
-		• Performance Delta (Best vs Final): {performance_delta:.1f}% [>5% may indicate overtraining]
-		• Best Model achieved at Epoch {best_epoch + 1 if best_epoch is not None else 'N/A'} {trainable_info_at_best}
+			• Loss Divergence (Final Train vs Val): {loss_divergence:.1f}% [>20% may indicate overfitting]
+			• Performance Delta (Best vs Final): {performance_delta:.1f}% [>5% may indicate overtraining]
+			• Best Model achieved at Epoch {best_epoch + 1 if best_epoch is not None else 'N/A'} {trainable_info_at_best}
 
 		PHASE TRANSITION ANALYSIS:
-		• Total Transitions: {len(transitions)}
-		• Average Phase Duration: {avg_phase_duration:.1f} epochs
-		• Most Effective Phase: {most_effective_phase}
-		• Least Effective Phase: {least_effective_phase} [Negative is catastrophic forgetting]
+			• Total Transitions: {len(transitions)}
+			• Average Phase Duration: {avg_phase_duration:.1f} epochs
+			• Most Effective Phase: {most_effective_phase}
+			• Least Effective Phase: {least_effective_phase} [Negative is catastrophic forgetting]
 
 		HYPERPARAMETER ADAPTATION:
-		• Learning Rate Range: {min(learning_rates):.2e} → {max(learning_rates):.2e}
-		• Weight Decay Range: {min(weight_decays):.2e} → {max(weight_decays):.2e}
+			• Learning Rate Range: {min(learning_rates):.2e} → {max(learning_rates):.2e}
+			• Weight Decay Range: {min(weight_decays):.2e} → {max(weight_decays):.2e}
 	"""
 
 	if transitions:
