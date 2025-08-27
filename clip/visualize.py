@@ -701,8 +701,8 @@ def plot_phase_transition_analysis_individual(
 			linewidth=2
 		)
 	ax3.set_title("Weight Decay Adaptation Across Phases", fontsize=10, weight="bold")
-	ax3.set_xlabel("Epoch") 
-	ax3.set_ylabel("Weight Decay (log)")
+	ax3.set_xlabel("Epoch")
+	ax3.set_ylabel("Weight Decay (log)", fontsize=7)
 	ax3.grid(True, alpha=0.3)
 	save_fig(fig, "wd_evol")
 
