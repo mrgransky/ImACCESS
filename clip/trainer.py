@@ -2891,6 +2891,7 @@ def progressive_finetune_single_label(
 		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
 		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
 
+
 		#  --- DEBUG HOOK: Log Retrieval Delta ---
 		# Note: phase_just_changed is a flag you already have. We need to set it to True inside the transition logic
 		if phase_just_changed and prev_validation_metrics is not None:
@@ -3041,6 +3042,8 @@ def progressive_finetune_single_label(
 		"phase_efficiency": os.path.join(results_dir, f"{file_base_name}_phase_eff.png"),
 		"hyperparameter_correlation": os.path.join(results_dir, f"{file_base_name}_hyp_param_corr.png"),
 		"trainable_layers": os.path.join(results_dir, f"{file_base_name}_train_lyrs.png"),
+		"grad_norm": os.path.join(results_dir, f"{file_base_name}_grad_norm.png"),
+		"loss_volatility": os.path.join(results_dir, f"{file_base_name}_loss_volatility.png"),
 	}
 
 	training_history = collect_progressive_training_history(
@@ -3074,13 +3077,13 @@ def progressive_finetune_single_label(
 		save_path=plot_paths["phase_analysis"],
 	)
 
+	print(f"\tTraining improvement: {analysis_results['total_improvement']:.2f}%")
+	print(f"\tMost effective phase: Phase {analysis_results['best_phase']}")
+
 	plot_phase_transition_analysis_individual(
 		training_history=training_history,
 		save_path=plot_paths["phase_analysis"],
 	)
-
-	print(f"\tTraining improvement: {analysis_results['total_improvement']:.2f}%")
-	print(f"\tMost effective phase: Phase {analysis_results['best_phase']}")
 
 	plot_loss_accuracy_metrics(
 		dataset_name=dataset_name,
@@ -3090,15 +3093,11 @@ def progressive_finetune_single_label(
 		in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
 		full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
 		full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
-		# mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-		# cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
 		losses_file_path=plot_paths["losses"],
 		in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
 		in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
 		full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
 		full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
-		# mean_reciprocal_rank_file_path=plot_paths["mrr"],
-		# cosine_similarity_file_path=plot_paths["cs"],
 	)
 
 	plot_retrieval_metrics_per_epoch(

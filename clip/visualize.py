@@ -189,12 +189,15 @@ def plot_phase_transition_analysis_individual(
 	for i, (bar, imp) in enumerate(zip(bars, improvements)):
 		ax4_twin.text(
 			i,
-			1.05*imp if imp > 0 else 0.95*imp,
-			f"{imp:.2f}%", 
-			ha="center", 
-			fontsize=8, 
+			1.05*imp if imp > 0 else 0.9*imp,
+			f"{imp:.2f}%",
+			ha="center",
+			fontsize=8,
 			color=loss_imp_color,
 			fontweight="bold",
+			facecolor="white",
+			edgecolor="none",
+			alpha=0.8,
 		)
 
 	ax4.set_title("Phase Efficiency Analysis", fontsize=9, weight="bold")
@@ -574,13 +577,16 @@ def plot_phase_transition_analysis(
 	for i, (bar, duration, improvement) in enumerate(zip(bars, durations, improvements)):
 		ax4_twin.text(
 			i, 
-			1.05*improvement if improvement > 0 else 0.95*improvement,
+			1.05*improvement if improvement > 0 else 0.9*improvement,
 			f'{improvement:.2f}%',
 			ha='center',
 			va='bottom',
 			fontweight='bold',
 			fontsize=8,
 			color="#F73100",
+			facecolor='white',
+			edgecolor='none',
+			alpha=0.8,
 		)
 	
 	ax4.set_xlabel('Phase', fontsize=8, weight='bold')
@@ -3783,26 +3789,14 @@ def plot_loss_accuracy_metrics(
 		full_topk_val_acc_t2i_fpth: str = "full_val_topk_accuracy_t2i.png",
 		mean_reciprocal_rank_file_path: str = "mean_reciprocal_rank.png",
 		cosine_similarity_file_path: str = "cosine_similarity.png",
-		DPI: int = 300,
-		figure_size: Tuple[int, int] = (10, 4),
+		DPI: int = 200,
+		figure_size: Tuple[int, int] = (11, 6),
 ) -> None:
-		"""
-		Plot training/validation loss curves and a variety of top‑K accuracy / ranking metrics.
-
-		The function is defensive:
-				* If a metric list is empty or its first element does not contain any keys,
-					the corresponding plot is silently skipped.
-				* Legend `ncol` is forced to be at least 1, so ``len(topk_values)==0`` no longer
-					triggers a ValueError.
-		"""
+		
 		num_epochs = len(train_losses)
 		if num_epochs <= 1:
-				# Nothing worth plotting
-				return
+			return
 
-		# -----------------------------------------------------------------
-		# Common helpers
-		# -----------------------------------------------------------------
 		epochs = np.arange(1, num_epochs + 1)
 
 		# For readability we show at most 20 x‑ticks
@@ -3810,55 +3804,56 @@ def plot_loss_accuracy_metrics(
 		selective_xticks = np.linspace(1, num_epochs, num_xticks, dtype=int)
 
 		colors = {
-				"train": "#1f77b4",
-				"val": "#ff7f0e",
-				"img2txt": "#2ca02c",
-				"txt2img": "#d62728",
+			"train": "#1f77b4",
+			"val": "#c75f03",
+			"img2txt": "#2ca02c",
+			"txt2img": "#d62728",
 		}
 
 		def setup_plot(ax, xlabel="Epoch", ylabel=None, title=None):
-				ax.set_xlabel(xlabel, fontsize=12)
-				if ylabel:
-						ax.set_ylabel(ylabel, fontsize=12)
-				if title:
-						ax.set_title(title, fontsize=10, fontweight="bold")
-				ax.set_xlim(0, num_epochs + 1)
-				ax.set_xticks(selective_xticks)
-				ax.tick_params(axis="both", labelsize=10)
-				ax.grid(True, linestyle="--", alpha=0.7)
-				return ax
+			ax.set_xlabel(xlabel, fontsize=12)
+			if ylabel:
+				ax.set_ylabel(ylabel, fontsize=12)
+			if title:
+				ax.set_title(title, fontsize=10, fontweight="bold")
+			ax.set_xlim(0, num_epochs + 1)
+			ax.set_xticks(selective_xticks)
+			ax.tick_params(axis="both", labelsize=10)
+			ax.grid(True, linestyle="--", alpha=0.7)
+			
+			return ax
 
-		# -----------------------------------------------------------------
-		# 1️⃣  Loss curve
-		# -----------------------------------------------------------------
+		# ---------------
+		# 1️⃣ Loss curve
+		# ---------------
 		fig, ax = plt.subplots(figsize=figure_size)
 		ax.plot(
-				epochs,
-				train_losses,
-				color=colors["train"],
-				label="Training",
-				lw=1.5,
-				marker="o",
-				markersize=2,
+			epochs,
+			train_losses,
+			color=colors["train"],
+			label="Training",
+			lw=1.5,
+			marker="o",
+			markersize=2,
 		)
 		ax.plot(
-				epochs,
-				val_losses,
-				color=colors["val"],
-				label="Validation",
-				lw=1.5,
-				marker="o",
-				markersize=2,
+			epochs,
+			val_losses,
+			color=colors["val"],
+			label="Validation",
+			lw=1.5,
+			marker="o",
+			markersize=2,
 		)
 		setup_plot(ax, ylabel="Loss", title=f"{dataset_name} Learning Curve (Loss)")
 		ax.legend(
-				fontsize=10,
-				loc="best",
-				frameon=True,
-				fancybox=True,
-				shadow=True,
-				facecolor="white",
-				edgecolor="black",
+			fontsize=10,
+			loc="best",
+			frameon=True,
+			fancybox=True,
+			shadow=True,
+			facecolor="white",
+			edgecolor="black",
 		)
 		fig.tight_layout()
 		fig.savefig(losses_file_path, dpi=DPI, bbox_inches="tight")
