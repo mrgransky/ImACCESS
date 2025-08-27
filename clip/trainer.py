@@ -3111,7 +3111,7 @@ def progressive_finetune_single_label(
 		fname=plot_paths["retrieval_best"],
 	)
 
-	return in_batch_loss_acc_metrics_all_epochs # Return history for potential further analysis
+	return in_batch_loss_acc_metrics_all_epochs
 
 def full_finetune_single_label(
 		model: torch.nn.Module,

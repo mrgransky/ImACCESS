@@ -479,8 +479,8 @@ def plot_phase_transition_analysis(
 				linestyle='--',
 			)
 	
-	ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
-	ax2.set_ylabel('Learning Rate (log)', fontsize=8, weight='bold')
+	# ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
+	ax2.set_ylabel('LR (log)', fontsize=8, weight='bold')
 	ax2.set_title('Learning Rate Adaptation Across Phases', fontsize=8, weight='bold')
 	ax2.grid(True, alpha=0.3)
 	
@@ -512,7 +512,7 @@ def plot_phase_transition_analysis(
 			)
 	
 	ax3.set_xlabel('Epoch', fontsize=8, weight='bold')
-	ax3.set_ylabel('Weight Decay (log)', fontsize=8, weight='bold')
+	ax3.set_ylabel('WD (log)', fontsize=8, weight='bold')
 	ax3.set_title('Weight Decay Adaptation Across Phases', fontsize=8, weight='bold')
 	ax3.grid(True, alpha=0.3)
 	
