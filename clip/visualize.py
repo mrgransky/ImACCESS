@@ -163,10 +163,12 @@ def plot_phase_transition_analysis_individual(
 		phase_data.append((phase, duration, improvement))
 
 	phases_list, durations, improvements = zip(*phase_data)
-	print("\nPhase Data:")
+
+	print(f"--- {len(phases)} Phase(s) ({phases}) Data: {unique_phases} ---")
+	print(f"phase_data: {phase_data}")
 	print(f"phases_list: {phases_list}")
 	print(f"durations: {durations}")
-	print(f"improvements: {improvements}")
+	print(f"improvements: {improvements} => max: {max(improvements)} min: {min(improvements)}")
 
 	bars = ax4.bar(
 		range(len(durations)), 
@@ -185,18 +187,9 @@ def plot_phase_transition_analysis_individual(
 		color=loss_imp_color,
 		)
 	for i, (bar, imp) in enumerate(zip(bars, improvements)):
-		# ax4.text(
-		# 	bar.get_x() + bar.get_width()/2, 
-		# 	bar.get_height() + 0,
-		# 	f"{int(bar.get_height())}", 
-		# 	ha="center", 
-		# 	fontsize=8, 
-		# 	color=duration_color,
-		# 	fontweight="bold",
-		# )
 		ax4_twin.text(
 			i,
-			1.04*imp,
+			1.05*imp if imp > 0 else 0.95*imp,
 			f"{imp:.2f}%", 
 			ha="center", 
 			fontsize=8, 
@@ -205,12 +198,12 @@ def plot_phase_transition_analysis_individual(
 		)
 
 	ax4.set_title("Phase Efficiency Analysis", fontsize=9, weight="bold")
-	ax4.set_xlabel("Phase")
-	ax4.set_ylabel("Epochs", color=duration_color, fontsize=7)
+	ax4.set_xlabel("Phase", fontsize=7, weight="bold")
+	ax4.set_ylabel("Epochs", color=duration_color, fontsize=7, weight="bold")
 	ax4.set_xticks(range(len(phases_list)))
 	ax4.set_xticklabels([f"{p}" for p in phases_list])
-	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=8))
-	ax4_twin.set_ylabel("Loss Improvement (%)", color=loss_imp_color, fontsize=7)
+	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
+	ax4_twin.set_ylabel("Loss Improvement (%)", color=loss_imp_color, fontsize=7, weight="bold")
 	ax4_twin.yaxis.set_tick_params(labelsize=8)
 
 	# Match spine colors with their labels
@@ -218,13 +211,13 @@ def plot_phase_transition_analysis_individual(
 	ax4_twin.spines['right'].set_color(loss_imp_color)
 
 	# Hide the right and top spines for both axes
-	ax4.grid(True, alpha=0.5)
-	ax4.tick_params(axis='y', labelcolor='#0004EC')
-	ax4_twin.tick_params(axis='y', labelcolor="#F73100")
+	ax4.grid(axis='y', alpha=0.5)
+	ax4.tick_params(axis='y', labelcolor=duration_color)
+	ax4_twin.tick_params(axis='y', labelcolor=loss_imp_color)
 
 	# Match spine colors with their labels
-	ax4.spines['left'].set_color('#0004EC')
-	ax4_twin.spines['right'].set_color("#F73100")
+	ax4.spines['left'].set_color(duration_color)
+	ax4_twin.spines['right'].set_color(loss_imp_color)
 
 	ax4_twin.spines['top'].set_visible(False)
 	ax4.spines['top'].set_visible(False)
@@ -523,9 +516,9 @@ def plot_phase_transition_analysis(
 	ax3.set_title('Weight Decay Adaptation Across Phases', fontsize=8, weight='bold')
 	ax3.grid(True, alpha=0.3)
 	
-	# ================================
-	# 4. Phase Duration and Efficiency Analysis (middle-center)
-	# ================================
+	# ==========================================
+	# 4. Phase Duration and Efficiency Analysis
+	# ==========================================
 	ax4 = fig.add_subplot(gs[1:, :1])
 	
 	# Calculate phase durations and improvements
@@ -538,9 +531,9 @@ def plot_phase_transition_analysis(
 		
 		# Calculate loss improvement in this phase
 		if phase_epochs:
-			start_idx = phase_epochs[0]
-			end_idx = phase_epochs[-1]
-			if start_idx < len(val_losses) and end_idx < len(val_losses):
+			start_idx = phase_epochs[0] - 1          # convert to 0‑based
+			end_idx = phase_epochs[-1] - 1          # convert to 0‑based
+			if 0 <= start_idx < len(val_losses) and 0 <= end_idx < len(val_losses):
 				start_loss = val_losses[start_idx]
 				end_loss = val_losses[end_idx]
 				improvement = ((start_loss - end_loss) / start_loss * 100) if start_loss > 0 else 0
@@ -581,7 +574,7 @@ def plot_phase_transition_analysis(
 	for i, (bar, duration, improvement) in enumerate(zip(bars, durations, improvements)):
 		ax4_twin.text(
 			i, 
-			1.04*improvement,
+			1.05*improvement if improvement > 0 else 0.95*improvement,
 			f'{improvement:.2f}%',
 			ha='center',
 			va='bottom',
@@ -598,7 +591,7 @@ def plot_phase_transition_analysis(
 	phase_labels = [f'{p}' for p in phases_list]
 	ax4.set_xticklabels(phase_labels)
 	ax4.set_xticks(range(len(phase_labels)))
-	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=8))
+	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
 	ax4.grid(axis='y', alpha=0.35, color='#888888')
 
 	ax4.tick_params(axis='y', labelcolor='#0004EC', labelsize=10)
@@ -669,7 +662,7 @@ def plot_phase_transition_analysis(
 	# Phase-specific insights
 	phase_insights = "\n    PHASE INSIGHTS:\n"
 	for phase, duration, improvement in phase_data[:3]:  # Show top 3 phases
-		phase_insights += f"    • Phase {phase}: {duration} epochs, {improvement:.1f}% improvement\n"
+		phase_insights += f"    • Phase {phase}: {duration} epochs, {improvement:.2f}% improvement\n"
 	
 	summary_text += phase_insights
 	
