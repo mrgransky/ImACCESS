@@ -1011,7 +1011,7 @@ def plot_phase_transition_analysis(
 	# ================================
 	# 2. Learning Rate Adaptation
 	# ================================
-	ax2 = fig.add_subplot(gs[1, :1])
+	ax2 = fig.add_subplot(gs[2, 1:])
 	
 	# Plot learning rate with phase coloring
 	for i in range(len(epochs)-1):
@@ -1075,7 +1075,7 @@ def plot_phase_transition_analysis(
 	# ================================
 	# 4. Phase Duration and Efficiency Analysis (middle-center)
 	# ================================
-	ax4 = fig.add_subplot(gs[2, :1])
+	ax4 = fig.add_subplot(gs[1:, :1])
 	
 	# Calculate phase durations and improvements
 	phase_data = []
@@ -1125,7 +1125,7 @@ def plot_phase_transition_analysis(
 		# Duration labels on bars
 		ax4.text(
 			bar.get_x() + bar.get_width()/2., 
-			bar.get_height() + 2,
+			bar.get_height() + 0,
 			f'{duration}', 
 			ha='center',
 			va='bottom',
@@ -1136,7 +1136,7 @@ def plot_phase_transition_analysis(
 		# Improvement labels
 		ax4_twin.text(
 			i, 
-			improvement + 0.55,
+			improvement + 0.0,
 			f'{improvement:.2f}%',
 			ha='center',
 			va='bottom',
@@ -1163,45 +1163,45 @@ def plot_phase_transition_analysis(
 	ax4_twin.spines['top'].set_visible(False)
 	ax4.spines['top'].set_visible(False)
 	
-	# ================================
-	# 5. Hyperparameter Correlation Analysis (middle-right)
-	# ================================
-	ax5 = fig.add_subplot(gs[2, 1:])
+	# # ================================
+	# # 5. Hyperparameter Correlation Analysis (middle-right)
+	# # ================================
+	# ax5 = fig.add_subplot(gs[2, 1:])
 	
-	# Normalize data for correlation plot
-	lr_norm = np.array(learning_rates) / max(learning_rates)
-	wd_norm = np.array(weight_decays) / max(weight_decays)
-	loss_norm = np.array(val_losses) / max(val_losses)
+	# # Normalize data for correlation plot
+	# lr_norm = np.array(learning_rates) / max(learning_rates)
+	# wd_norm = np.array(weight_decays) / max(weight_decays)
+	# loss_norm = np.array(val_losses) / max(val_losses)
 	
-	ax5.plot(epochs, lr_norm, 'g-', linewidth=1.2, label='LR', alpha=0.8)
-	ax5.plot(epochs, wd_norm, 'm-', linewidth=1.2, label='WD', alpha=0.8)
-	ax5.plot(epochs, loss_norm, 'r-', linewidth=1.2, label='Val Loss', alpha=0.8)
+	# ax5.plot(epochs, lr_norm, 'g-', linewidth=1.2, label='LR', alpha=0.8)
+	# ax5.plot(epochs, wd_norm, 'm-', linewidth=1.2, label='WD', alpha=0.8)
+	# ax5.plot(epochs, loss_norm, 'r-', linewidth=1.2, label='Val Loss', alpha=0.8)
 	
-	# Mark transitions
-	for transition_epoch in transitions:
-		ax5.axvline(
-			x=transition_epoch, 
-			color=transition_color, 
-			linestyle='--', 
-			linewidth=1.5, 
-			alpha=0.7,
-		)
+	# # Mark transitions
+	# for transition_epoch in transitions:
+	# 	ax5.axvline(
+	# 		x=transition_epoch, 
+	# 		color=transition_color, 
+	# 		linestyle='--', 
+	# 		linewidth=1.5, 
+	# 		alpha=0.7,
+	# 	)
 	
-	ax5.set_xlabel('Epoch', fontsize=8, weight='bold')
-	ax5.set_ylabel('Normalized Values', fontsize=8, weight='bold')
-	ax5.set_title('Hyperparameter Correlations [normed]', fontsize=8, weight='bold')
-	ax5.legend(
-		fontsize=8,
-		loc='best',
-		ncol=3,
-		frameon=True,
-		fancybox=True,
-		shadow=True,
-		edgecolor='none',
-		facecolor='white',
-	)
-	ax5.grid(True, alpha=0.3)
-	ax5.set_ylim(0, 1.1)
+	# ax5.set_xlabel('Epoch', fontsize=8, weight='bold')
+	# ax5.set_ylabel('Normalized Values', fontsize=8, weight='bold')
+	# ax5.set_title('Hyperparameter Correlations [normed]', fontsize=8, weight='bold')
+	# ax5.legend(
+	# 	fontsize=8,
+	# 	loc='best',
+	# 	ncol=3,
+	# 	frameon=True,
+	# 	fancybox=True,
+	# 	shadow=True,
+	# 	edgecolor='none',
+	# 	facecolor='white',
+	# )
+	# ax5.grid(True, alpha=0.3)
+	# ax5.set_ylim(0, 1.1)
 	
 	# ================================
 	# 6. Training Statistics and Insights

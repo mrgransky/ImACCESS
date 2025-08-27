@@ -2478,8 +2478,13 @@ def progressive_finetune_single_label(
 			dropout_values.append((name, module.p))
 
 	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
-	print(f"\nNon-zero dropout detected in base {model.__class__.__name__} {model.name} during {mode} fine-tuning:")
-	print(non_zero_dropouts)
+	if non_zero_dropouts:
+		print(f"Non-zero dropout detected in {model_name} {model_arch}:")
+		for i, v in enumerate(non_zero_dropouts):
+			print(f"{i:02d} {v[0]:<60}p={v[1]}")
+		print("-"*100)
+	else:
+		print(f"No non-zero dropout detected in {model_name} {model_arch}")
 
 	unfreeze_percentages = get_unfreeze_pcts_hybrid(
 		model=model,
@@ -2566,10 +2571,10 @@ def progressive_finetune_single_label(
 		f"st_{slope_threshold:.1e}_"
 		f"pit_{pairwise_imp_threshold:.1e}_"
 		f"mepph_{min_epochs_per_phase}_"
-		f"mpbs_{min_phases_before_stopping}"
+		f"mphb4stp_{min_phases_before_stopping}"
 		f".pth"
 	)
-	print(f"Best model will be saved in: {mdl_fpth}")
+	# print(f"Best model will be saved in: {mdl_fpth}")
 
 	# --- DEBUGGING HOOKS ---
 	print("\n>> Initializing Debugging Hooks...")
@@ -2823,7 +2828,7 @@ def progressive_finetune_single_label(
 
 				scaler.scale(batch_loss).backward()
 				scaler.unscale_(optimizer) # Unscale before clipping
-				torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+				torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=1.0)
 
 				# --- DEBUG HOOK: Log Gradient Norms ---
 				if bidx % print_every == 0:  # Or some other frequency

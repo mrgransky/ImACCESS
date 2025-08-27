@@ -1382,6 +1382,7 @@ class CLIP(torch.nn.Module):
 					dropout=dropout,
 				)
 			################################ vision encoder ################################
+
 			################################ text encoder ################################
 			self.transformer = Transformer(
 				width=transformer_width,
