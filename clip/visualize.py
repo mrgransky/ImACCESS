@@ -22,6 +22,11 @@ pretrained_colors = {
 positive_pct_col = "#357402ff"
 negative_pct_col = "#c0003aff"
 
+transition_color = "#E91111"
+early_stop_color = "#1D0808"
+best_model_color = "#008528"
+
+
 def _phase_cmap(num_phases: int) -> np.ndarray:
 	return plt.cm.Set3(np.linspace(0, 1, max(num_phases, 1)))
 
@@ -237,7 +242,7 @@ def _plot_phase_efficiency(
 		edgecolor="black",
 	)
 	ax1.set_xlabel("Phase", fontsize=10, weight="bold")
-	ax1.set_ylabel("Duration (epochs)", color="#0300BB", fontsize=10, weight="bold")
+	ax1.set_ylabel("Epochs", color="#0300BB", fontsize=10, weight="bold")
 	ax1.set_title("Phase Efficiency Analysis", fontsize=12, weight="bold")
 	ax1.set_xticks(np.arange(len(uniq)))
 	ax1.set_xticklabels([f"P{p}" for p in uniq])
@@ -606,9 +611,6 @@ def plot_phase_transition_analysis_individual(
 	
 	# Color scheme
 	phase_colors = plt.cm.Set3(np.linspace(0, 1, max(phases) + 1))
-	transition_color = "#E91111"
-	early_stop_color = "#1D0808"
-	best_model_color = "#D8BA10"
 
 	# Helper to save figure with suffix
 	def save_fig(fig, suffix):
@@ -765,7 +767,7 @@ def plot_phase_transition_analysis_individual(
 
 	ax4.set_title("Phase Efficiency Analysis", fontsize=9, weight="bold")
 	ax4.set_xlabel("Phase")
-	ax4.set_ylabel("Duration (epochs)", color=duration_color)
+	ax4.set_ylabel("Epochs", color=duration_color)
 	ax4_twin.set_ylabel("Loss Improvement (%)", color=loss_imp_color)
 
 	# Match spine colors with their labels
@@ -867,9 +869,6 @@ def plot_phase_transition_analysis(
 	
 	# Color scheme
 	phase_colors = plt.cm.Set3(np.linspace(0, 1, max(phases) + 1))
-	transition_color = "#E91111"
-	early_stop_color = "#1D0808"
-	best_model_color = "#009400"
 	
 	# ================================
 	# 1. Learning Curve with Phase Transitions
@@ -967,7 +966,7 @@ def plot_phase_transition_analysis(
 			marker='*', 
 			zorder=15, 
 			label='Best',
-			edgecolor='black', 
+			edgecolor='#ffffff',
 			linewidth=1.5,
 		)
 	
@@ -1123,16 +1122,16 @@ def plot_phase_transition_analysis(
 	
 	for i, (bar, duration, improvement) in enumerate(zip(bars, durations, improvements)):
 		# Duration labels on bars
-		ax4.text(
-			bar.get_x() + bar.get_width()/2., 
-			bar.get_height() + 0,
-			f'{duration}', 
-			ha='center',
-			va='bottom',
-			fontweight='bold',
-			fontsize=8,
-			color='#0004EC',
-		)
+		# ax4.text(
+		# 	bar.get_x() + bar.get_width()/2., 
+		# 	bar.get_height() + 0,
+		# 	f'{duration}', 
+		# 	ha='center',
+		# 	va='bottom',
+		# 	fontweight='bold',
+		# 	fontsize=8,
+		# 	color='#0004EC',
+		# )
 		# Improvement labels
 		ax4_twin.text(
 			i, 
@@ -1146,13 +1145,15 @@ def plot_phase_transition_analysis(
 		)
 	
 	ax4.set_xlabel('Phase', fontsize=8, weight='bold')
-	ax4.set_ylabel('Duration (Epochs)', fontsize=8, weight='bold', color='#0004EC')
+	ax4.set_ylabel('Epochs', fontsize=8, weight='bold', color='#0004EC')
 	ax4_twin.set_ylabel('Loss Improvement (%)', fontsize=8, weight='bold', color="#F73100")
 	ax4.set_title('Phase Efficiency Analysis', fontsize=8, weight='bold')
 	
-	phase_labels = [f'P{p}' for p in phases_list]
-	ax4.set_xticks(range(len(phase_labels)))
+	phase_labels = [f'{p}' for p in phases_list]
 	ax4.set_xticklabels(phase_labels)
+	ax4.set_xticks(range(len(phase_labels)))
+	ax4.set_yticks(range(int(max(durations)) + 1))
+	ax4.grid(True, alpha=0.5)
 	ax4.tick_params(axis='y', labelcolor='#0004EC')
 	ax4_twin.tick_params(axis='y', labelcolor="#F73100")
 
