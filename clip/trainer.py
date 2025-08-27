@@ -2060,7 +2060,7 @@ def log_grad_norms(
 		model, 
 		phase, 
 		epoch,
-		max_layers=25
+		max_layers=11,
 	):
 	"""Log gradient norms of unfrozen layers for debugging."""
 	print(f"\n[DEBUG] Gradient Norms | Phase {phase} | Epoch {epoch}")

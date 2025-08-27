@@ -756,8 +756,8 @@ def plot_phase_transition_analysis_individual(
 		# 	fontweight="bold",
 		# )
 		ax4_twin.text(
-			i, 
-			imp + 0.0,
+			i,
+			1.04*imp,
 			f"{imp:.2f}%", 
 			ha="center", 
 			fontsize=8, 
@@ -1132,8 +1132,6 @@ def plot_phase_transition_analysis(
 		markersize=2,
 		label='Loss Improvement %'
 	)
-	imp_y_pos = ax4_twin.get_yticks()
-	print(f"imp_y_pos: {imp_y_pos}")
 	print(f"improvements: {improvements} => max: {max(improvements)} min: {min(improvements)}")
 	for i, (bar, duration, improvement) in enumerate(zip(bars, durations, improvements)):
 		# ax4.text(
@@ -1149,7 +1147,7 @@ def plot_phase_transition_analysis(
 
 		ax4_twin.text(
 			i, 
-			improvement + (1.03*max(improvements)), # 1.03 is a scaling factor
+			1.04*improvement,
 			f'{improvement:.2f}%',
 			ha='center',
 			va='bottom',
@@ -1210,25 +1208,21 @@ def plot_phase_transition_analysis(
 	
 	# Create comprehensive summary
 	summary_text = f"""
-	COMPREHENSIVE TRAINING ANALYSIS:
-	
-	OVERALL PERFORMANCE:
-	• Total Epochs: {total_epochs}
-	• Number of Phases: {num_phases}
-	• Total Loss Improvement: {total_improvement:.2f}%
-	• Training Status: {'Early Stopped' if early_stop_epoch else 'Completed'}
-	
-	PHASE TRANSITION ANALYSIS:
-	• Total Transitions: {len(transitions)}
-	• Average Phase Duration: {avg_phase_duration:.1f} epochs
-	• Most Effective Phase: Phase {best_phase}
-	• Avg Improvement per Transition: {avg_transition_improvement:.2f}%
-	
-	HYPERPARAMETER ADAPTATION:
-	• Initial Learning Rate: {learning_rates[0]:.2e}
-	• Final Learning Rate: {learning_rates[-1]:.2e}
-	• LR Reduction Factor: {(learning_rates[0]/learning_rates[-1]):.1f}x
-	• Weight Decay Range: {min(weight_decays):.2e} → {max(weight_decays):.2e}
+	COMPREHENSIVE TRAINING ANALYSIS [BASIC]:
+		OVERALL PERFORMANCE:
+		• Training Status: {'Early Stopped' if early_stop_epoch else 'Completed'}
+		
+		PHASE TRANSITION ANALYSIS:
+		• Total Transitions: {len(transitions)}
+		• Average Phase Duration: {avg_phase_duration:.1f} epochs
+		• Most Effective Phase: Phase {best_phase}
+		• Avg Improvement per Transition: {avg_transition_improvement:.2f}%
+		
+		HYPERPARAMETER ADAPTATION:
+		• Initial Learning Rate: {learning_rates[0]:.2e}
+		• Final Learning Rate: {learning_rates[-1]:.2e}
+		• LR Reduction Factor: {(learning_rates[0]/learning_rates[-1]):.1f}x
+		• WD Range: {min(weight_decays):.2e} → {max(weight_decays):.2e}
 	"""
 	
 	if transitions:
