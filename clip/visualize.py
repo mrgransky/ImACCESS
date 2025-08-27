@@ -1132,9 +1132,10 @@ def plot_phase_transition_analysis(
 		markersize=2,
 		label='Loss Improvement %'
 	)
-	
+	imp_y_pos = ax4_twin.get_yticks()
+	print(f"imp_y_pos: {imp_y_pos}")
+	print(f"improvements: {improvements} => max: {max(improvements)} min: {min(improvements)}")
 	for i, (bar, duration, improvement) in enumerate(zip(bars, durations, improvements)):
-		# Duration labels on bars
 		# ax4.text(
 		# 	bar.get_x() + bar.get_width()/2., 
 		# 	bar.get_height() + 0,
@@ -1145,10 +1146,10 @@ def plot_phase_transition_analysis(
 		# 	fontsize=8,
 		# 	color='#0004EC',
 		# )
-		# Improvement labels
+
 		ax4_twin.text(
 			i, 
-			improvement + 0.0,
+			improvement + (1.03*max(improvements)),
 			f'{improvement:.2f}%',
 			ha='center',
 			va='bottom',
@@ -1315,7 +1316,7 @@ def plot_phase_transition_analysis(
 
 	phase_insights = "\n    PHASE INSIGHTS (Duration & Improvement):\n"
 	for phase, duration, improvement in phase_data:
-		phase_insights += f"    • Phase {phase}: {duration} epochs, {improvement:+.1f}%\n"
+		phase_insights += f"    • Phase {phase}: {duration} epochs, {improvement:+.3f}%\n"
 
 	summary_text += phase_insights
 
