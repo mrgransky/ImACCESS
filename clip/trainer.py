@@ -2989,9 +2989,9 @@ def progressive_finetune_single_label(
 		f"{mode}_"
 		f"{optimizer.__class__.__name__}_"
 		f"{scheduler.__class__.__name__}_"
-		f"{criterion.__class__.__name__}_"
-		f"{scaler.__class__.__name__}_"
-		f"{model_name}_"
+		# f"{criterion.__class__.__name__}_"
+		# f"{scaler.__class__.__name__}_"
+		# f"{model_name}_"
 		f"{model_arch}_"
 		f"ilr_{initial_learning_rate:.1e}_"
 		f"iwd_{initial_weight_decay:.1e}_"
@@ -2999,6 +2999,11 @@ def progressive_finetune_single_label(
 		f"bs_{train_loader.batch_size}_"
 		f"do_{dropout_val}_"
 		f"mep_{minimum_epochs}_"
+		f"mepph_{min_epochs_per_phase}_"
+		f"mphb4stp_{min_phases_before_stopping}_"
+		f"vt_{volatility_threshold}_"
+		f"st_{slope_threshold:.1e}_"
+		f"pit_{pairwise_imp_threshold:.1e}_"
 		f"pat_{patience}_"
 		f"mdt_{min_delta:.1e}_"
 		f"cdt_{cumulative_delta:.1e}_"
@@ -3032,15 +3037,15 @@ def progressive_finetune_single_label(
 		"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retr_perEP.png"),
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retr_perK.png"),
-		"progressive_dynamics": os.path.join(results_dir, f"{file_base_name}_dynamics.png"),
-		"phase_analysis": os.path.join(results_dir, f"{file_base_name}_phases.png"),
-		"unfreeze_heatmap": os.path.join(results_dir, f"{file_base_name}_unfreeze_hmap.png"),
+		"progressive_dynamics": os.path.join(results_dir, f"{file_base_name}_dyn.png"),
+		"phase_analysis": os.path.join(results_dir, f"{file_base_name}_phs.png"),
+		"unfreeze_heatmap": os.path.join(results_dir, f"{file_base_name}_unf_hmap.png"),
 		"training_summary": os.path.join(results_dir, f"{file_base_name}_train_summary.txt"),
-		"loss_evolution": os.path.join(results_dir, f"{file_base_name}_loss_evolution.png"),
+		"loss_evolution": os.path.join(results_dir, f"{file_base_name}_loss_evol.png"),
 		"lr_evolution": os.path.join(results_dir, f"{file_base_name}_lr_evol.png"),
 		"wd_evolution": os.path.join(results_dir, f"{file_base_name}_wd_evol.png"),
-		"phase_efficiency": os.path.join(results_dir, f"{file_base_name}_phase_eff.png"),
-		"hyperparameter_correlation": os.path.join(results_dir, f"{file_base_name}_hyp_param_corr.png"),
+		"phase_efficiency": os.path.join(results_dir, f"{file_base_name}_ph_eff.png"),
+		"hyperparameter_correlation": os.path.join(results_dir, f"{file_base_name}_hypp_corr.png"),
 		"trainable_layers": os.path.join(results_dir, f"{file_base_name}_train_lyrs.png"),
 		"grad_norm": os.path.join(results_dir, f"{file_base_name}_grad_norm.png"),
 		"loss_volatility": os.path.join(results_dir, f"{file_base_name}_loss_volatility.png"),
