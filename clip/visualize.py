@@ -1152,7 +1152,8 @@ def plot_phase_transition_analysis(
 	phase_labels = [f'{p}' for p in phases_list]
 	ax4.set_xticklabels(phase_labels)
 	ax4.set_xticks(range(len(phase_labels)))
-	ax4.set_yticks(range(int(max(durations)) + 1))
+	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=8))
+
 	ax4.grid(True, alpha=0.5)
 	ax4.tick_params(axis='y', labelcolor='#0004EC')
 	ax4_twin.tick_params(axis='y', labelcolor="#F73100")
