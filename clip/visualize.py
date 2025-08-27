@@ -49,7 +49,7 @@ def plot_phase_transition_analysis_individual(
 	# Helper to save figure with suffix
 	def save_fig(fig, suffix):
 		base, ext = os.path.splitext(save_path)
-		fig.savefig(f"{base}_{suffix}{ext}", dpi=300, bbox_inches='tight', facecolor='white')
+		fig.savefig(f"{base}_{suffix}{ext}", dpi=200, bbox_inches='tight', facecolor='white')
 		plt.close(fig)
 	
 	# ============================================
@@ -93,7 +93,7 @@ def plot_phase_transition_analysis_individual(
 	ax1.set_xlabel("Epoch"); ax1.set_ylabel("Loss")
 	ax1.legend(fontsize=8)
 	ax1.grid(True, alpha=0.5)
-	save_fig(fig, "loss_evol")
+	save_fig(fig, "loss")
 
 	# ============================================
 	# PLOT 2: Learning Rate Adaptation

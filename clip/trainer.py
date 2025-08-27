@@ -2985,7 +2985,7 @@ def progressive_finetune_single_label(
 	actual_trained_epochs = len(training_losses)
 
 	file_base_name = (
-		f"{dataset_name}_"
+		# f"{dataset_name}_"
 		f"{mode}_"
 		f"{optimizer.__class__.__name__}_"
 		f"{scheduler.__class__.__name__}_"
