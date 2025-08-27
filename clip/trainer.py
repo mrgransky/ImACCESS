@@ -2356,7 +2356,7 @@ def handle_phase_transition(
 	# Calculate the total possible increase range
 	wd_increase_range = initial_wd * (max_wd_increase_factor - 1.0)
 
-	# Calculate the new weight decay based on linear progression
+	# new weight decay with step-like decreases [linear progression]
 	new_wd = initial_wd + (wd_increase_range * wd_phase_progress)
 
 	# Add a maximum cap (which is now redundant but kept for clarity)

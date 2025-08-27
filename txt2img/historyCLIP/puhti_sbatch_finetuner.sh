@@ -88,7 +88,7 @@ fi
 
 INIT_LRS=(2.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 INIT_WDS=(5.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
-DROPOUTS=(0.2 0.1 0.05 0.05 0.05)
+DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
 EPOCHS=(100 100 150 150 150)
 
 # LoRA
@@ -145,12 +145,12 @@ fi
 ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
 	if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-		ADJUSTED_BATCH_SIZE=32
+		ADJUSTED_BATCH_SIZE=64
 	else
-		ADJUSTED_BATCH_SIZE=128
+		ADJUSTED_BATCH_SIZE=256
 	fi
 elif [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-	ADJUSTED_BATCH_SIZE=64
+	ADJUSTED_BATCH_SIZE=128
 fi
 
 echo "=== CONFIGURATION ==="
