@@ -595,7 +595,7 @@ def plot_progressive_fine_tuning_report(
 def plot_phase_transition_analysis_individual(
 		training_history: Dict,
 		save_path: str,
-		figsize: Tuple[int, int] = (16, 12)
+		figsize: Tuple[int, int] = (11, 7)
 	):
 	# Extract data
 	epochs = [e + 1 for e in training_history['epochs']]  # 1-based indexing
