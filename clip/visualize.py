@@ -553,7 +553,8 @@ def plot_phase_transition_analysis(
 	
 	phases_list, durations, improvements = zip(*phase_data) if phase_data else ([], [], [])
 
-	print(f"--- Phase Data ---")
+	print(f"--- {len(phases)} Phase(s) ({phases}) Data: {unique_phases} ---")
+	print(f"phase_data: {phase_data}")
 	print(f"phases_list: {phases_list}")
 	print(f"durations: {durations}")
 	print(f"improvements: {improvements} => max: {max(improvements)} min: {min(improvements)}")
@@ -568,26 +569,16 @@ def plot_phase_transition_analysis(
 	
 	# Add improvement percentages
 	ax4_twin = ax4.twinx()
-	improvement_line = ax4_twin.plot(
+	ax4_twin.plot(
 		range(len(improvements)), 
 		improvements,
-		'ro-',
 		linewidth=1.0,
+		linestyle='-',
+		marker='o',
 		markersize=2,
-		label='Loss Improvement %'
+		color="#F73100",
 	)
 	for i, (bar, duration, improvement) in enumerate(zip(bars, durations, improvements)):
-		# ax4.text(
-		# 	bar.get_x() + bar.get_width()/2., 
-		# 	bar.get_height() + 0,
-		# 	f'{duration}', 
-		# 	ha='center',
-		# 	va='bottom',
-		# 	fontweight='bold',
-		# 	fontsize=8,
-		# 	color='#0004EC',
-		# )
-
 		ax4_twin.text(
 			i, 
 			1.04*improvement,
