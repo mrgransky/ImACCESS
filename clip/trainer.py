@@ -7,7 +7,6 @@ from visualize import (
 	plot_all_pretrain_metrics,
 	plot_multilabel_loss_breakdown,
 	collect_progressive_training_history,
-	plot_progressive_training_dynamics,
 	plot_phase_transition_analysis,
 	plot_phase_transition_analysis_individual,
 )
@@ -3061,13 +3060,6 @@ def progressive_finetune_single_label(
 		phase_transitions=phase_transitions_epochs,
 		early_stop_epoch=epoch+1 if early_stopping_triggered else None,
 		best_epoch=early_stopping.best_epoch if hasattr(early_stopping, 'best_epoch') else None
-	)
-
-	plot_progressive_training_dynamics(
-		training_history=training_history,
-		unfreeze_schedule=unfreeze_schedule,
-		layer_groups=get_layer_groups(model),
-		save_path=plot_paths["progressive_dynamics"],
 	)
 
 	print(f"\tTotal phases used: {len(set(phases_history))}")
