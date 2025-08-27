@@ -1149,7 +1149,7 @@ def plot_phase_transition_analysis(
 
 		ax4_twin.text(
 			i, 
-			improvement + (1.03*max(improvements)),
+			improvement + (1.03*max(improvements)), # 1.03 is a scaling factor
 			f'{improvement:.2f}%',
 			ha='center',
 			va='bottom',
