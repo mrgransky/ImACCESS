@@ -26,572 +26,6 @@ transition_color = "#E91111"
 early_stop_color = "#1D0808"
 best_model_color = "#008528"
 
-
-def _phase_cmap(num_phases: int) -> np.ndarray:
-	return plt.cm.Set3(np.linspace(0, 1, max(num_phases, 1)))
-
-def _plot_loss_evolution(
-		training_history: Dict,
-		phase_colors: np.ndarray,
-		save_path: str,
-	) -> Tuple[plt.Figure, Dict]:
-	epochs = [e + 1 for e in training_history["epochs"]]
-	train_losses = training_history["train_losses"]
-	val_losses = training_history["val_losses"]
-	phases = training_history["phases"]
-	transitions = training_history.get("phase_transitions", [])
-	early_stop = training_history.get("early_stop_epoch")
-	best_epoch = training_history.get("best_epoch")
-	fig, ax = plt.subplots(figsize=(11, 7), facecolor="white")
-	# ---- background shading per phase ---------------------------------
-	for phase in set(phases):
-			mask = [p == phase for p in phases]
-			phase_epochs = np.array(epochs)[mask]
-			if phase_epochs.size:
-					ax.axvspan(
-							phase_epochs.min(),
-							phase_epochs.max(),
-							color=phase_colors[phase],
-							alpha=0.39,
-							label=f"Phase {phase}",
-					)
-	# ---- loss curves ---------------------------------------------------
-	ax.plot(
-			epochs,
-			train_losses,
-			color="#0025FA",
-			linewidth=2.5,
-			marker="o",
-			markersize=2,
-			label="Training loss",
-	)
-	ax.plot(
-			epochs,
-			val_losses,
-			color="#C77203",
-			linewidth=2.5,
-			marker="s",
-			markersize=2,
-			label="Validation loss",
-	)
-	# ---- transition markers ---------------------------------------------
-	for i, tr in enumerate(transitions):
-			ax.axvline(tr, color="#E91111", linestyle="--", linewidth=1.5, alpha=0.8, zorder=10)
-			if tr < len(val_losses):
-					before = val_losses[tr - 1] if tr > 0 else val_losses[tr]
-					after = val_losses[tr]
-					change = ((before - after) / before) * 100 if before > 0 else 0
-					txt = f"Transition {i+1} ({change:+.2f}%)"
-					ax.text(
-							tr + 0.4,
-							max(val_losses) * 1.01,
-							txt,
-							rotation=90,
-							fontsize=9,
-							color="#E91111",
-							ha="left",
-							va="bottom",
-					)
-	# ---- best model & early‑stop markers --------------------------------
-	if best_epoch is not None and best_epoch < len(epochs):
-			ax.scatter(
-					epochs[best_epoch],
-					val_losses[best_epoch],
-					s=150,
-					marker="*",
-					color="#D8BA10",
-					edgecolor="black",
-					linewidth=1.5,
-					zorder=15,
-					label="Best model",
-			)
-	if early_stop is not None:
-			ax.axvline(
-					early_stop,
-					color="#1D0808",
-					linestyle=":",
-					linewidth=2,
-					alpha=0.9,
-					label="Early stopping",
-			)
-			ax.text(
-					early_stop + 0.4,
-					max(val_losses) * 1.01,
-					"Early stop",
-					rotation=90,
-					fontsize=9,
-					color="#1D0808",
-					ha="left",
-					va="bottom",
-			)
-	ax.set_xlabel("Epoch", fontsize=10)
-	ax.set_ylabel("Loss", fontsize=10)
-	ax.set_title("Loss Evolution with Phase Transitions", fontsize=12, weight="bold")
-	ax.grid(True, alpha=0.4)
-	ax.legend(loc="best", fontsize=9, ncol=len(transitions) + 5, frameon=False)
-	# ylim with a 25 % margin
-	y_max = max(max(train_losses), max(val_losses))
-	y_min = min(min(train_losses), min(val_losses))
-	margin = 0.25 * y_max
-	ax.set_ylim(y_min - margin, y_max + margin)
-	fig.savefig(save_path, dpi=300, bbox_inches="tight")
-	plt.close(fig)
-
-	return fig, {
-		"epochs": epochs,
-		"train_losses": train_losses,
-		"val_losses": val_losses,
-		"best_epoch": best_epoch,
-		"early_stop": early_stop,
-	}
-
-def _plot_lr_evolution(
-		epochs: List[int],
-		learning_rates: List[float],
-		phases: List[int],
-		phase_colors: np.ndarray,
-		transitions: List[int],
-		save_path: str,
-) -> plt.Figure:
-		fig, ax = plt.subplots(figsize=(12, 4), facecolor="white")
-
-		for i in range(len(epochs) - 1):
-				p = phases[i]
-				ax.plot(
-						[epochs[i], epochs[i + 1]],
-						[learning_rates[i], learning_rates[i + 1]],
-						color=phase_colors[p],
-						linewidth=2.5,
-						alpha=0.8,
-				)
-
-		for tr in transitions:
-				ax.axvline(tr, color="#E91111", linestyle="--", linewidth=1.5, alpha=0.7)
-
-		ax.set_xlabel("Epoch", fontsize=10, weight="bold")
-		ax.set_ylabel("Learning Rate (log)", fontsize=10, weight="bold")
-		ax.set_title("Learning‑Rate Adaptation Across Phases", fontsize=12, weight="bold")
-		ax.set_yscale("log")
-		ax.grid(True, alpha=0.3)
-
-		fig.savefig(save_path, dpi=300, bbox_inches="tight")
-		plt.close(fig)
-		return fig
-
-def _plot_weight_decay_evolution(
-		epochs: List[int],
-		weight_decays: List[float],
-		phases: List[int],
-		phase_colors: np.ndarray,
-		transitions: List[int],
-		save_path: str,
-) -> plt.Figure:
-		fig, ax = plt.subplots(figsize=(12, 4), facecolor="white")
-
-		for i in range(len(epochs) - 1):
-				p = phases[i]
-				ax.plot(
-						[epochs[i], epochs[i + 1]],
-						[weight_decays[i], weight_decays[i + 1]],
-						color=phase_colors[p],
-						linewidth=2.5,
-						alpha=0.8,
-				)
-
-		for tr in transitions:
-				ax.axvline(tr, color="#E91111", linestyle="--", linewidth=1.5, alpha=0.7)
-
-		ax.set_xlabel("Epoch", fontsize=10, weight="bold")
-		ax.set_ylabel("Weight Decay (log)", fontsize=10, weight="bold")
-		ax.set_title("Weight‑Decay Adaptation", fontsize=12, weight="bold")
-		ax.set_yscale("log")
-		ax.grid(True, alpha=0.3)
-
-		fig.savefig(save_path, dpi=300, bbox_inches="tight")
-		plt.close(fig)
-		return fig
-
-def _plot_phase_efficiency(
-		phases: List[int],
-		epochs: List[int],
-		val_losses: List[float],
-		phase_colors: np.ndarray,
-		save_path: str,
-	) -> plt.Figure:
-
-	# ----- compute per‑phase statistics ---------------------------------
-	uniq = sorted(set(phases))
-	durations = []
-	improvements = []
-	for ph in uniq:
-		idx = [i for i, p in enumerate(phases) if p == ph]
-		dur = len(idx)
-		durations.append(dur)
-		# improvement within the phase (first → last val loss)
-		start, end = idx[0], idx[-1]
-		start_l, end_l = val_losses[start], val_losses[end]
-		imp = ((start_l - end_l) / start_l * 100) if start_l > 0 else 0
-		improvements.append(imp)
-	
-	fig, ax1 = plt.subplots(figsize=(10, 7), facecolor="white")
-	bars = ax1.bar(
-		np.arange(len(uniq)),
-		durations,
-		color=[phase_colors[p] for p in uniq],
-		alpha=0.75,
-		edgecolor="black",
-	)
-	ax1.set_xlabel("Phase", fontsize=10, weight="bold")
-	ax1.set_ylabel("Epochs", color="#0300BB", fontsize=10, weight="bold")
-	ax1.set_title("Phase Efficiency Analysis", fontsize=12, weight="bold")
-	ax1.set_xticks(np.arange(len(uniq)))
-	ax1.set_xticklabels([f"P{p}" for p in uniq])
-	ax1.tick_params(axis="y", labelcolor="#0300BB")
-
-	# ----- overlay improvement line --------------------------------------
-	ax2 = ax1.twinx()
-	ax2.plot(
-		np.arange(len(uniq)),
-		improvements,
-		"ro-",
-		linewidth=1.2,
-		markersize=3,
-		label="Loss improvement %"
-	)
-	ax2.set_ylabel("Loss Improvement (%)", color="#F73100", fontsize=10, weight="bold")
-	ax2.tick_params(axis="y", labelcolor="#F73100")
-
-	for i, (b, dur, imp) in enumerate(zip(bars, durations, improvements)):
-		ax1.text(
-			b.get_x() + b.get_width() / 2,
-			b.get_height() + 0.2,
-			f"{dur}",
-			ha="center",
-			va="bottom",
-			fontsize=9,
-			fontweight="bold",
-		)
-		ax2.text(
-			i,
-			imp + 0.8,
-			f"{imp:.1f}%",
-			ha="center",
-			va="bottom",
-			fontsize=9,
-			fontweight="bold",
-			color="darkred",
-		)
-	fig.tight_layout()
-	fig.savefig(save_path, dpi=300, bbox_inches="tight")
-	plt.close(fig)
-
-	return fig
-
-def _plot_hyperparameter_correlation(
-		epochs: List[int],
-		learning_rates: List[float],
-		weight_decays: List[float],
-		val_losses: List[float],
-		transitions: List[int],
-		save_path: str,
-	) -> plt.Figure:
-		# normalise to [0,1]
-		lr_n = np.array(learning_rates) / max(learning_rates)
-		wd_n = np.array(weight_decays) / max(weight_decays)
-		loss_n = np.array(val_losses) / max(val_losses)
-
-		fig, ax = plt.subplots(figsize=(12, 4), facecolor="white")
-		ax.plot(epochs, lr_n, "g-", linewidth=2, label="LR (norm)")
-		ax.plot(epochs, wd_n, "m-", linewidth=2, label="WD (norm)")
-		ax.plot(epochs, loss_n, "r-", linewidth=2, label="Val loss (norm)")
-
-		for tr in transitions:
-			ax.axvline(tr, color="#E91111", linestyle="--", linewidth=1.5, alpha=0.7)
-
-		ax.set_xlabel("Epoch", fontsize=10, weight="bold")
-		ax.set_ylabel("Normalised value", fontsize=10, weight="bold")
-		ax.set_title("Hyper‑parameter Correlations", fontsize=12, weight="bold")
-		ax.set_ylim(0, 1.1)
-		ax.grid(True, alpha=0.3)
-		ax.legend(fontsize=9, loc="best", ncol=3, frameon=True, fancybox=True, shadow=True, edgecolor="black", facecolor="white")
-
-		fig.savefig(save_path, dpi=300, bbox_inches="tight")
-		plt.close(fig)
-		return fig
-
-def _plot_trainable_layers_progression(
-		epochs: List[int],
-		phases: List[int],
-		unfreeze_schedule: Dict[int, List[str]],
-		layer_groups: Dict[str, List[str]],
-		phase_colors: np.ndarray,
-		transitions: List[int],
-		save_path: str,
-) -> plt.Figure:
-		# ------------------------------------------------------------------
-		# 1️⃣  Determine the *true* number of phases
-		# ------------------------------------------------------------------
-		# Phases that actually occurred during training (from `phases`)
-		# and phases that are mentioned in the unfreeze schedule (might be
-		# ahead of the current training run, e.g. a future phase that will be
-		# unfrozen later).  We need the union of both sets.
-		phase_set = set(phases) | set(unfreeze_schedule.keys())
-		if not phase_set:                     # defensive – should never happen
-			raise ValueError("No phase information supplied.")
-		max_phase = max(phase_set)            # highest phase index that exists
-		n_phases = max_phase + 1               # length of the zero‑based array
-
-		# ------------------------------------------------------------------
-		# 2️⃣  Build the “how many layers are unfrozen” vector
-		# ------------------------------------------------------------------
-		unfrozen_per_phase = np.zeros(n_phases, dtype=int)
-		for ph, layers in unfreeze_schedule.items():
-			# if a phase appears in the schedule but not in the training run,
-			# we still store the information – the plot will simply show a
-			# horizontal line at the correct y‑value for that phase.
-			unfrozen_per_phase[ph] = len(layers)
-
-		# ------------------------------------------------------------------
-		# 3️⃣  Prepare a mapping phase → list of epoch numbers belonging to it
-		# ------------------------------------------------------------------
-		phase_to_epochs: Dict[int, List[int]] = {}
-		for ep, ph in zip(epochs, phases):
-				phase_to_epochs.setdefault(ph, []).append(ep)
-
-		# ------------------------------------------------------------------
-		# 4️⃣  Plot the step‑wise progression
-		# ------------------------------------------------------------------
-		fig, ax = plt.subplots(figsize=(12, 4), facecolor="white")
-
-		for ph, ep_list in phase_to_epochs.items():
-				# colour comes from the common palette (`phase_colors`); guard against
-				# an out‑of‑range index (possible when the palette was built only from
-				# `max(phases) + 1` before the fix).  If the colour is missing, fall back
-				# to a neutral gray.
-				colour = phase_colors[ph] if ph < len(phase_colors) else "#bbbbbb"
-				ax.hlines(
-						unfrozen_per_phase[ph],
-						min(ep_list),
-						max(ep_list),
-						colors=colour,
-						linewidth=4,
-						label=f"Phase {ph}",
-				)
-
-		# ------------------------------------------------------------------
-		# 5️⃣  Add transition markers, axes, legend, etc.
-		# ------------------------------------------------------------------
-		for tr in transitions:
-			ax.axvline(tr, color="#E91111", linestyle="--", linewidth=1.5, alpha=0.7)
-
-		ax.set_xlabel("Epoch", fontsize=10, weight="bold")
-		ax.set_ylabel("Trainable layers", fontsize=10, weight="bold")
-		ax.set_title("Layer Un‑freezing Progression", fontsize=12, weight="bold")
-
-		# Upper‑limit: total number of *individual* layers (not just groups)
-		total_groups = sum(len(g) for g in layer_groups.values())
-		ax.set_ylim(0, total_groups * 1.1)
-
-		ax.grid(True, alpha=0.3)
-		ax.legend(loc="best", fontsize=9, frameon=False)
-
-		fig.savefig(save_path, dpi=300, bbox_inches="tight")
-		plt.close(fig)
-		return fig
-
-def _plot_unfreeze_heatmap(
-		unfreeze_schedule: dict,
-		layer_groups: dict,
-		max_phase: int,
-		save_path: str,
-	) -> plt.Figure:
-	group_names = list(layer_groups.keys())
-	n_groups = len(group_names)
-	# heat-map matrix
-	heat = np.zeros((n_groups, max_phase + 1))
-	for ph in range(max_phase + 1):
-			if ph not in unfreeze_schedule:
-					continue
-			unfrozen_set = set(unfreeze_schedule[ph])
-			for g_idx, (g_name, g_layers) in enumerate(layer_groups.items()):
-					n_total = len(g_layers)
-					n_unfrozen = sum(1 for l in g_layers if any(u in l for u in unfrozen_set))
-					heat[g_idx, ph] = n_unfrozen / max(n_total, 1)
-	# Color Universal Design friendly colormap (light → mid → dark blue)
-	cmap = LinearSegmentedColormap.from_list(
-			"cud_safe_blue",
-			[
-					(0.00, "#f0f0f0"),  # light gray
-					(0.25, "#c6dbef"),  # pale blue
-					(0.50, "#6baed6"),  # medium blue
-					(0.75, "#2171b5"),  # rich blue
-					(1.00, "#08306b"),  # deep navy
-			],
-			N=256
-	)
-	fig, ax = plt.subplots(figsize=(12, 6), facecolor="white")
-	im = ax.imshow(heat, cmap=cmap, aspect="auto", vmin=0, vmax=1)
-	
-	# Add vertical separators between phases
-	for p in range(1, max_phase + 1):
-		ax.axvline(p - 0.5, color="#FCB4B4", linewidth=1.2)
-	
-	# Axes & labels
-	ax.set_xticks(np.arange(max_phase + 1))
-	ax.set_xticklabels([f"P{p}" for p in range(max_phase + 1)], fontsize=9)
-	ax.set_yticks(np.arange(n_groups))
-	ax.set_yticklabels([name.replace("_", "\n").title() for name in group_names], fontsize=9)
-	ax.set_xlabel("Phase", fontsize=10, weight="bold")
-	ax.set_ylabel("Layer groups", fontsize=10, weight="bold")
-	ax.set_title("Layer-Group Un-freezing Pattern", fontsize=14, weight="bold", pad=15)
-	# Colorbar
-	cbar = fig.colorbar(im, ax=ax, shrink=0.8)
-	cbar.set_label("Fraction Unfrozen", fontsize=10)
-	cbar.ax.tick_params(labelsize=8)
-	# Save
-	fig.savefig(save_path, dpi=300, bbox_inches="tight")
-	plt.close(fig)
-	return fig
-
-def _write_training_summary(
-		training_history: Dict,
-		phase_colors: np.ndarray,
-		save_path: str,
-	) -> None:
-	epochs = [e + 1 for e in training_history["epochs"]]
-	train_losses = training_history["train_losses"]
-	val_losses = training_history["val_losses"]
-	phases = training_history["phases"]
-	transitions = training_history.get("phase_transitions", [])
-	early_stop = training_history.get("early_stop_epoch")
-	best_epoch = training_history.get("best_epoch")
-	total_epochs = len(epochs)
-	num_phases = len(set(phases))
-	best_val = min(val_losses) if val_losses else np.nan
-	total_improvement = (
-		(val_losses[0] - best_val) / val_losses[0] * 100
-		if val_losses and val_losses[0] > 0
-		else 0
-	)
-	avg_phase_len = np.mean([len([p for p in phases if p == ph]) for ph in set(phases)])
-	# pick the most effective phase (largest % improvement)
-	# – same logic as in the original function
-	phase_stats = {}
-	for ph in set(phases):
-		idx = [i for i, p in enumerate(phases) if p == ph]
-		if not idx:
-			continue
-		imp = (
-			(val_losses[idx[0]] - val_losses[idx[-1]]) / val_losses[idx[0]] * 100
-			if val_losses[idx[0]] > 0
-			else 0
-		)
-		phase_stats[ph] = imp
-	best_phase = max(phase_stats, key=phase_stats.get) if phase_stats else -1
-	lines = [
-		"TRAINING SUMMARY",
-		f"  • Total epochs          : {total_epochs}",
-		f"  • Number of phases      : {num_phases}",
-		f"  • Phase transitions     : {len(transitions)}",
-		f"  • Avg. phase duration   : {avg_phase_len:.1f} epochs",
-		f"  • Best phase (most loss improvement) : Phase {best_phase}",
-		f"  • Total loss improvement: {total_improvement:.2f} %",
-		f"  • Final training loss   : {train_losses[-1]:.6f}",
-		f"  • Final validation loss : {val_losses[-1]:.6f}",
-		f"  • Best validation loss  : {best_val:.6f}",
-	]
-	if early_stop:
-		lines.append(f"  • Early stopped at epoch: {early_stop}")
-	if best_epoch is not None:
-		lines.append(f"  • Best model epoch      : {epochs[best_epoch]} (val loss {val_losses[best_epoch]:.4f})")
-	txt = "\n".join(lines) + "\n"
-	with open(save_path, "w", encoding="utf‑8") as fp:
-		fp.write(txt)
-
-def plot_progressive_fine_tuning_report(
-		training_history: Dict,
-		unfreeze_schedule: Dict[int, List[str]],
-		layer_groups: Dict[str, List[str]],
-		plot_paths: Dict[str, str],
-	) -> Dict[str, Optional[plt.Figure]]:
-	epochs = [e + 1 for e in training_history["epochs"]]
-	phases = training_history["phases"]
-	transitions = training_history.get("phase_transitions", [])
-	phase_colors = _phase_cmap(max(phases) + 1)
-	fig_loss, loss_meta = _plot_loss_evolution(
-		training_history=training_history,
-		phase_colors=phase_colors,
-		save_path=plot_paths["loss_evolution"],
-	)
-
-	fig_lr = _plot_lr_evolution(
-		epochs=epochs,
-		learning_rates=training_history["learning_rates"],
-		phases=phases,
-		phase_colors=phase_colors,
-		transitions=transitions,
-		save_path=plot_paths["lr_evolution"],
-	)
-
-	fig_wd = _plot_weight_decay_evolution(
-		epochs=epochs,
-		weight_decays=training_history["weight_decays"],
-		phases=phases,
-		phase_colors=phase_colors,
-		transitions=transitions,
-		save_path=plot_paths["wd_evolution"],
-	)
-
-	fig_phase_eff = _plot_phase_efficiency(
-		phases=phases,
-		epochs=epochs,
-		val_losses=training_history["val_losses"],
-		phase_colors=phase_colors,
-		save_path=plot_paths["phase_efficiency"],
-	)
-
-	fig_corr = _plot_hyperparameter_correlation(
-		epochs=epochs,
-		learning_rates=training_history["learning_rates"],
-		weight_decays=training_history["weight_decays"],
-		val_losses=training_history["val_losses"],
-		transitions=transitions,
-		save_path=plot_paths["hyperparameter_correlation"],
-	)
-
-	fig_trainable = _plot_trainable_layers_progression(
-		epochs=epochs,
-		phases=phases,
-		unfreeze_schedule=unfreeze_schedule,
-		layer_groups=layer_groups,
-		phase_colors=phase_colors,
-		transitions=transitions,
-		save_path=plot_paths["trainable_layers"],
-	)
-
-	fig_heat = _plot_unfreeze_heatmap(
-		unfreeze_schedule=unfreeze_schedule,
-		layer_groups=layer_groups,
-		max_phase=max(phases),
-		save_path=plot_paths["unfreeze_heatmap"],
-	)
-
-	_write_training_summary(
-		training_history=training_history,
-		phase_colors=phase_colors,
-		save_path=plot_paths["training_summary"],
-	)
-
-	return {
-		"loss": fig_loss,
-		"learning_rate": fig_lr,
-		"weight_decay": fig_wd,
-		"phase_efficiency": fig_phase_eff,
-		"hyperparameter_correlation": fig_corr,
-		"trainable_layers": fig_trainable,
-		"unfreeze_heatmap": fig_heat,
-	}
-
 def plot_phase_transition_analysis_individual(
 		training_history: Dict,
 		save_path: str,
@@ -729,6 +163,11 @@ def plot_phase_transition_analysis_individual(
 		phase_data.append((phase, duration, improvement))
 
 	phases_list, durations, improvements = zip(*phase_data)
+	print("\nPhase Data:")
+	print(f"phases_list: {phases_list}")
+	print(f"durations: {durations}")
+	print(f"improvements: {improvements}")
+
 	bars = ax4.bar(
 		range(len(durations)), 
 		durations, 
@@ -767,11 +206,11 @@ def plot_phase_transition_analysis_individual(
 
 	ax4.set_title("Phase Efficiency Analysis", fontsize=9, weight="bold")
 	ax4.set_xlabel("Phase")
-	ax4.set_ylabel("Epochs", color=duration_color)
+	ax4.set_ylabel("Epochs", color=duration_color, fontsize=7)
 	ax4.set_xticks(range(len(phases_list)))
 	ax4.set_xticklabels([f"{p}" for p in phases_list])
 	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=8))
-	ax4_twin.set_ylabel("Loss Improvement (%)", color=loss_imp_color)
+	ax4_twin.set_ylabel("Loss Improvement (%)", color=loss_imp_color, fontsize=7)
 	ax4_twin.yaxis.set_tick_params(labelsize=8)
 
 	# Match spine colors with their labels
@@ -1113,7 +552,12 @@ def plot_phase_transition_analysis(
 		phase_data.append((phase, duration, improvement))
 	
 	phases_list, durations, improvements = zip(*phase_data) if phase_data else ([], [], [])
-	
+
+	print(f"--- Phase Data ---")
+	print(f"phases_list: {phases_list}")
+	print(f"durations: {durations}")
+	print(f"improvements: {improvements} => max: {max(improvements)} min: {min(improvements)}")
+
 	# Create dual-axis plot
 	bars = ax4.bar(
 		range(len(durations)), 
@@ -1132,7 +576,6 @@ def plot_phase_transition_analysis(
 		markersize=2,
 		label='Loss Improvement %'
 	)
-	print(f"improvements: {improvements} => max: {max(improvements)} min: {min(improvements)}")
 	for i, (bar, duration, improvement) in enumerate(zip(bars, durations, improvements)):
 		# ax4.text(
 		# 	bar.get_x() + bar.get_width()/2., 
@@ -1166,6 +609,7 @@ def plot_phase_transition_analysis(
 	ax4.set_xticks(range(len(phase_labels)))
 	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=8))
 	ax4.grid(axis='y', alpha=0.35, color='#888888')
+
 	ax4.tick_params(axis='y', labelcolor='#0004EC', labelsize=10)
 	ax4_twin.tick_params(axis='y', labelcolor="#F73100", labelsize=10)
 
@@ -1678,7 +1122,7 @@ def plot_progressive_training_dynamics(
 	for phase, layers in unfreeze_schedule.items():
 		summary_text += f"• Phase {phase}: {len(layers)} layers unfrozen\n"
 
-	print(f"{summary_text}")
+	print(summary_text)
 	
 	plt.suptitle(f'Progressive Fine-tuning Dynamics',fontsize=12, weight='bold')	
 	plt.savefig(

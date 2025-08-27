@@ -10,7 +10,6 @@ from visualize import (
 	plot_progressive_training_dynamics,
 	plot_phase_transition_analysis,
 	plot_phase_transition_analysis_individual,
-	plot_progressive_fine_tuning_report,
 )
 
 def cleanup_embedding_cache(
@@ -3054,13 +3053,6 @@ def progressive_finetune_single_label(
 		phase_transitions=phase_transitions_epochs,
 		early_stop_epoch=epoch+1 if early_stopping_triggered else None,
 		best_epoch=early_stopping.best_epoch if hasattr(early_stopping, 'best_epoch') else None
-	)
-
-	plot_progressive_fine_tuning_report(
-		training_history=training_history,
-		unfreeze_schedule=unfreeze_schedule,
-		layer_groups=get_layer_groups(model),
-		plot_paths=plot_paths,
 	)
 
 	plot_progressive_training_dynamics(
