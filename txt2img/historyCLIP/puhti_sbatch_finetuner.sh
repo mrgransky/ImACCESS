@@ -8,10 +8,10 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=40
-#SBATCH --mem=373G
+#SBATCH --mem=128G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
-#SBATCH --array=0,4,8,12 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!! # 0-11:  dataset[0] with all strategy×architecture [H4]
+#SBATCH --array=8 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!! # 0-11:  dataset[0] with all strategy×architecture [H4]
 #SBATCH --time=03-00:00:00
 
 set -euo pipefail
@@ -101,7 +101,7 @@ PROBE_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 
 # Progressive finetuning
 MIN_PHASES_BEFORE_STOPPING=(3 3 3 3 3)
-MIN_EPOCHS_PER_PHASE=(5 5 5 5 5)
+MIN_EPOCHS_PER_PHASE=(3 5 5 5 5)
 
 BATCH_SIZES=(512 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 10)

@@ -799,7 +799,7 @@ def plot_phase_transition_analysis_individual(
 	# ============================================
 	# PLOT 6: Embedding Drift
 	# ============================================
-	fig, ax6 = plt.subplots(figsize=figsize, facecolor='white')
+	fig, ax6 = plt.subplots(figsize=(12, 8), facecolor='white')
 	ax6.set_title('Embedding Drift from Pre-trained State', fontsize=10, weight='bold')
 	_seen_phases = set()
 	for i in range(len(epochs) - 1):
@@ -869,7 +869,7 @@ def plot_phase_transition_analysis(
 	phase_colors = plt.cm.Set3(np.linspace(0, 1, max(phases) + 1))
 	transition_color = "#E91111"
 	early_stop_color = "#1D0808"
-	best_model_color = "#D8BA10"
+	best_model_color = "#009400"
 	
 	# ================================
 	# 1. Learning Curve with Phase Transitions
@@ -941,19 +941,18 @@ def plot_phase_transition_analysis(
 				improvement_text = f"\n{change:+.2f} %"
 			
 			ax1.text(
-				transition_epoch + 0.4,
-				# max(val_losses) * 1.02,
+				transition_epoch + 0.25,
 				y_middle,
 				f'Transition {i+1}{improvement_text}',
 				rotation=90,
-				fontsize=9,
+				fontsize=8,
 				ha='left',
 				va='center',
 				color=transition_color,
 				bbox=dict(
 					boxstyle="round,pad=0.4",
 					edgecolor='none',
-					facecolor='none',
+					facecolor='#ffffff',
 					alpha=0.9,
 				)
 			)
@@ -964,10 +963,10 @@ def plot_phase_transition_analysis(
 			[epochs[best_epoch]], 
 			[best_loss], 
 			color=best_model_color, 
-			s=150, 
+			s=125,
 			marker='*', 
 			zorder=15, 
-			label='Best Model', 
+			label='Best',
 			edgecolor='black', 
 			linewidth=1.5,
 		)
@@ -979,18 +978,16 @@ def plot_phase_transition_analysis(
 			linestyle=':',
 			linewidth=1.8,
 			alpha=0.9,
-			# label='Early Stopping',
 			zorder=12
 		)
 		ax1.text(
-			early_stop_epoch + 0.5,
-			# max(val_losses) * 1.01,
+			early_stop_epoch + 0.25,
 			y_middle,
 			'Early Stopping', 
 			rotation=90, 
 			ha='left',
 			va='center',
-			fontsize=9,
+			fontsize=8,
 			color=early_stop_color, 
 		)
 	
@@ -998,12 +995,18 @@ def plot_phase_transition_analysis(
 	ax1.set_ylabel('Loss', fontsize=8)
 	ax1.set_title(f'Learning Curve with Phase Transitions', fontsize=8, weight='bold')
 	ax1.legend(
-		loc='best', 
-		fontsize=8, 
+		loc='best',
+		fontsize=8,
+		frameon=False,
+		shadow=False,
+		fancybox=False,
 		edgecolor='none',
+		facecolor='none',
 		ncol=len(transitions)+5,
 	)
-	ax1.grid(True, alpha=0.5)
+	ax1.grid(True, alpha=0.75)
+	ax1.tick_params(axis='both', which='major', labelsize=8)
+	ax1.set_xlim(left=0, right=max(epochs)+2)
 
 	# ================================
 	# 2. Learning Rate Adaptation
@@ -1122,7 +1125,7 @@ def plot_phase_transition_analysis(
 		# Duration labels on bars
 		ax4.text(
 			bar.get_x() + bar.get_width()/2., 
-			bar.get_height() + 6,
+			bar.get_height() + 2,
 			f'{duration}', 
 			ha='center',
 			va='bottom',
@@ -1133,7 +1136,7 @@ def plot_phase_transition_analysis(
 		# Improvement labels
 		ax4_twin.text(
 			i, 
-			improvement + 0.3,
+			improvement + 0.55,
 			f'{improvement:.2f}%',
 			ha='center',
 			va='bottom',

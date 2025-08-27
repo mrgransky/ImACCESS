@@ -2256,10 +2256,14 @@ def should_transition_phase(
 	close_to_best = best_loss is not None and abs(current_loss - best_loss) < best_loss_threshold
 
 	print(f"Loss Window: {last_window_losses}")
-	print(f"Current Loss: {current_loss} | Best Loss: {best_loss if best_loss is not None else 'N/A'} | Close: {close_to_best} (Thresh: {best_loss_threshold})")
-	print(f"Loss Volatility: {loss_volatility:.2f}% (Thresh: >= {volatility_threshold}%)")
-	print(f"Loss Slope: {loss_slope:.5f} (Thresh: > {slope_threshold})")
-	print(f"Avg Pairwise Loss Improvement: {loss_pairwise_imp_avg:.5f} (Thresh: < {pairwise_imp_threshold})")
+	print(
+		f"Current Loss: {current_loss} | "
+		f"Best Loss: {best_loss if best_loss is not None else 'N/A'} | "
+		f"Close[{current_loss} - {best_loss} < {best_loss_threshold}] ? {close_to_best}"
+	)
+	print(f"Loss Volatility: {loss_volatility:.2f}% (Threshold: >= {volatility_threshold}%)")
+	print(f"Loss Slope: {loss_slope} (Thresh: > {slope_threshold}) [Positive: worsening, Negative: improving]")
+	print(f"Avg Pairwise Loss Improvement: {loss_pairwise_imp_avg} (Thresh: < {pairwise_imp_threshold})")
 
 	# --- Accuracy Analysis (Optional) ---
 	accuracy_plateau = False
@@ -2279,7 +2283,6 @@ def should_transition_phase(
 	else:
 		print("Accuracy data not provided, skipping accuracy plateau check.")
 
-	# --- Transition Logic ---
 	transition = False
 	reasons = []
 

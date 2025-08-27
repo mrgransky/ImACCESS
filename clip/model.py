@@ -8,9 +8,6 @@ import torch.nn.functional as F
 from torch import nn
 from torch.utils.data import DataLoader
 
-def log(msg: str, *, level: str = "INFO") -> None:
-	print(f"[{level}] {msg}")
-
 class SingleLabelLinearProbe(torch.nn.Module):
 		def __init__(
 				self, 
