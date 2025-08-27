@@ -195,9 +195,6 @@ def plot_phase_transition_analysis_individual(
 			fontsize=8,
 			color=loss_imp_color,
 			fontweight="bold",
-			facecolor="white",
-			edgecolor="none",
-			alpha=0.8,
 		)
 
 	ax4.set_title("Phase Efficiency Analysis", fontsize=9, weight="bold")
@@ -584,9 +581,6 @@ def plot_phase_transition_analysis(
 			fontweight='bold',
 			fontsize=8,
 			color="#F73100",
-			facecolor='white',
-			edgecolor='none',
-			alpha=0.8,
 		)
 	
 	ax4.set_xlabel('Phase', fontsize=8, weight='bold')
