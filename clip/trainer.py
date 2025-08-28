@@ -1872,15 +1872,6 @@ def compute_embedding_drift(model, val_subset, pretrained_embeds, device, phase,
 	print(f"[DEBUG] Embedding Drift | Phase {phase} | Epoch {epoch}: {mean_drift}")
 	return mean_drift
 
-def log_retrieval_delta(metrics, prev_metrics, phase):
-		"""Log retrieval performance deltas per phase."""
-		if prev_metrics is None:
-				return
-		print(f"\n[DEBUG] Retrieval Δ after Phase {phase}")
-		for k in metrics["img2txt_metrics"]["mP"].keys():
-				delta = metrics["img2txt_metrics"]["mP"][k] - prev_metrics["img2txt_metrics"]["mP"][k]
-				print(f"  mP@{k}: {delta:+.4f}")
-
 def create_differential_optimizer_groups(
 		model: torch.nn.Module,
 		base_lr: float,

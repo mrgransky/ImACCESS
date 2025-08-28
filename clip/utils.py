@@ -71,6 +71,16 @@ logger = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
+def log_retrieval_delta(metrics, prev_metrics, phase):
+	"""Log retrieval performance deltas per phase."""
+	if prev_metrics is None:
+		return
+	print(f"\n[DEBUG] Retrieval Δ after Phase {phase}")
+	
+	for k in metrics["img2txt_metrics"]["mP"].keys():
+		delta = metrics["img2txt_metrics"]["mP"][k] - prev_metrics["img2txt_metrics"]["mP"][k]
+		print(f"  mP@{k}: {delta:+.4f}")
+
 def compute_slope(losses: List[float]) -> float:
 	"""Computes the slope of the best-fit line for a list of losses."""
 	if len(losses) < 2: # Need at least two points for a slope
