@@ -7,9 +7,9 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=128
+#SBATCH --cpus-per-task=256
 #SBATCH --mem=478G
-#SBATCH --partition=gpusmall
+#SBATCH --partition=gpumedium
 #SBATCH --gres=gpu:a100:1
 #SBATCH --array=8 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!! # 0-11:  dataset[0] with all strategy×architecture [H4]
 #SBATCH --time=1-12:00:00
@@ -145,12 +145,12 @@ fi
 ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
 	if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-		ADJUSTED_BATCH_SIZE=128
+		ADJUSTED_BATCH_SIZE=256
 	else
 		ADJUSTED_BATCH_SIZE=512
 	fi
 elif [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-	ADJUSTED_BATCH_SIZE=256
+	ADJUSTED_BATCH_SIZE=1024
 fi
 
 echo "=== CONFIGURATION ==="

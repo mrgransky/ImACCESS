@@ -81,21 +81,6 @@ def log_retrieval_delta(metrics, prev_metrics, phase):
 		delta = metrics["img2txt_metrics"]["mP"][k] - prev_metrics["img2txt_metrics"]["mP"][k]
 		print(f"  mP@{k}: {delta:+.4f}")
 
-# def compute_slope(losses: List[float]) -> Optional[float]:
-# 	"""Computes the slope of the best-fit line for a list of losses."""
-# 	if len(losses) < 2: # Need at least two points for a slope
-# 		print("Warning: compute_slope called with less than 2 points. Returning None.")
-# 		return 0.0
-# 	x = np.arange(len(losses))
-# 	A = np.vstack([x, np.ones(len(x))]).T
-# 	try:
-# 		# Use least squares regression
-# 		m, _ = np.linalg.lstsq(A, np.array(losses), rcond=None)[0]
-# 		return m
-# 	except np.linalg.LinAlgError as e:
-# 		print(f"Warning: Least squares failed in compute_slope: {e}. Returning None.")
-# 		return 0.0
-
 def compute_slope(window: List[float]) -> float:
     """Linear regression slope of a 1‑D window."""
     if len(window) < 2:
