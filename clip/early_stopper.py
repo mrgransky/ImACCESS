@@ -1,22 +1,8 @@
 from utils import *
 
-# ----------------------------------------------------------------------
-# Helper utilities – they are the same as the ones you already used
-# ----------------------------------------------------------------------
-# def compute_slope(window: List[float]) -> float:
-#     """Linear regression slope of a 1‑D window."""
-#     if len(window) < 2:
-#         return 0.0
-#     x = np.arange(len(window))
-#     y = np.asarray(window)
-#     # slope = cov(x, y) / var(x)
-#     return np.cov(x, y, bias=True)[0, 1] / np.var(x)
-
-
 def simple_moving_average(data: np.ndarray, window: int) -> np.ndarray:
 		"""SMA – thin wrapper around pandas for speed."""
 		return pd.Series(data).rolling(window=window, min_periods=1).mean().values
-
 
 def exponential_moving_average(
 		data: np.ndarray, window: int, alpha: Optional[float] = None
@@ -30,46 +16,9 @@ def exponential_moving_average(
 				ema[i] = alpha * data[i] + (1 - alpha) * ema[i - 1]
 		return ema
 
-
-# ----------------------------------------------------------------------
-#  HybridEarlyStopping – the merged class
-# ----------------------------------------------------------------------
 class EarlyStopping:
-		"""
-		Early‑stopping that:
-
-		1. Tracks the **raw validation loss** (for checkpointing & exact best‑epoch).
-		2. Maintains an **EMA** of the validation loss (window = `ema_window`).
-		3. Computes the same high‑level signals that `LossAnalyzer` provides
-			 – best epoch based on EMA, over‑fitting gap, recent trend, and a
-			 textual recommendation.
-		4. Implements a **dynamic‑threshold** policy: when the EMA shows a
-			 shaky trend the internal patience / volatility / slope limits are
-			 *tightened only for the current epoch*.
-		5. Works exactly like the original EarlyStopping (same signature,
-			 same checkpoint saving, same restoration of the best raw weights).
-
-		Parameters
-		----------
-		patience               : int   – maximum epochs without improvement.
-		min_delta              : float – minimal absolute improvement to be counted.
-		cumulative_delta       : float – minimal cumulative improvement over the
-																			sliding window.
-		window_size            : int   – number of epochs used for the *raw* window
-																			statistics (slope, volatility, …).
-		ema_window             : int   – span of the EMA (default 10).  Larger → smoother.
-		mode                   : {"min","max"} – `"min"` for loss, `"max"` for metric.
-		min_epochs             : int   – epochs that must run before any stop is allowed.
-		restore_best_weights   : bool  – if True, reload the best raw checkpoint.
-		volatility_threshold   : float – max %‑std/mean allowed on the *raw* window.
-		slope_threshold        : float – maximum allowed slope on the *raw* window.
-		pairwise_imp_threshold : float – min average pair‑wise improvement.
-		min_phases_before_stopping : int – for progressive fine‑tuning.
-		dynamic_factor         : float – factor by which thresholds are tightened
-																			when EMA is shaky (default 0.5 → halve).
-		"""
 		# ------------------------------------------------------------------
-		#  Constructor – store everything and initialise state
+		#  Constructor – identical signature to your original EarlyStopping
 		# ------------------------------------------------------------------
 		def __init__(
 				self,
@@ -85,15 +34,15 @@ class EarlyStopping:
 				pairwise_imp_threshold: float = 5e-3,
 				min_phases_before_stopping: int = 3,
 				ema_window: int = 10,
+				ema_threshold: float = 1e-3,
 				dynamic_factor: float = 0.5,
 		):
 
-				# ---- user‑provided thresholds ---------------------------------
+				# ----- store user‑provided hyper‑parameters --------------------
 				self.patience = patience
 				self.min_delta = min_delta
 				self.cumulative_delta = cumulative_delta
 				self.window_size = window_size
-				self.ema_window = ema_window
 				self.mode = mode
 				self.min_epochs = min_epochs
 				self.restore_best_weights = restore_best_weights
@@ -102,22 +51,21 @@ class EarlyStopping:
 				self.pairwise_imp_threshold = pairwise_imp_threshold
 				self.min_phases_before_stopping = min_phases_before_stopping
 				self.dynamic_factor = dynamic_factor
+				self.ema_window = ema_window
+				self.ema_threshold = ema_threshold   # used for the high‑level recommendation
 
-				# sign used for minimisation / maximisation
 				self.sign = 1 if mode == "min" else -1
 
-				# ---- EMA specific parameters ----------------------------------
-				self.ema_alpha = 2.0 / (self.ema_window + 1)   # same convention as LossAnalyzer
-				self.ema_history: List[float] = []           # EMA of the validation loss
+				# ----- EMA specifics -----------------------------------------
+				self.ema_alpha = 2.0 / (ema_window + 1)
+				self.ema_history: List[float] = []   # EMA of validation loss
 
-				# ---- internal bookkeeping --------------------------------------
-				self.reset()
-
-				# ---- print a nice configuration --------------------------------
+				# ----- internal bookkeeping -----------------------------------
+				self.reset()                         # creates all lists & stores originals
 				self._print_configuration()
 
 		# ------------------------------------------------------------------
-		#  Helper – nice printing of the configuration
+		#  Pretty printing of the configuration (class name is dynamic)
 		# ------------------------------------------------------------------
 		def _print_configuration(self) -> None:
 				print("=" * 100)
@@ -127,13 +75,14 @@ class EarlyStopping:
 						f"\tMinDelta = {self.min_delta}\n"
 						f"\tCumulativeDelta = {self.cumulative_delta}\n"
 						f"\tWindowSize = {self.window_size}\n"
-						f"\tEMA window = {self.ema_window}\n"
 						f"\tMode = {self.mode}\n"
 						f"\tMinEpochs = {self.min_epochs}\n"
 						f"\tMinPhasesBeforeStopping = {self.min_phases_before_stopping}\n"
 						f"\tVolatilityThreshold = {self.volatility_threshold}\n"
 						f"\tSlopeThreshold = {self.slope_threshold}\n"
 						f"\tPairwiseImpThreshold = {self.pairwise_imp_threshold}\n"
+						f"\tEMA window = {self.ema_window}\n"
+						f"\tEMA recommendation threshold = {self.ema_threshold}\n"
 						f"\tDynamicFactor (tightening) = {self.dynamic_factor}\n"
 						f"\tRestoreBestWeights = {self.restore_best_weights}"
 				)
@@ -143,29 +92,31 @@ class EarlyStopping:
 		#  Reset – called at start and after each phase transition
 		# ------------------------------------------------------------------
 		def reset(self) -> None:
-				"""Reset all counters and histories (useful after a phase change)."""
-				print(">> Resetting HybridEarlyStopping state")
+				print(f">> Resetting {self.__class__.__name__} state")
 				self.best_score: Optional[float] = None
 				self.best_weights: Optional[Dict[str, torch.Tensor]] = None
 				self.best_epoch: int = 0
-				self.counter: int = 0           # patience counter (no‑improve epochs)
+				self.counter: int = 0          # patience counter (no‑improve epochs)
+
 				self.value_history: List[float] = []   # raw validation loss
-				self.ema_history = []           # EMA of validation loss
+				self.ema_history = []                 # EMA of validation loss
 				self.improvement_history: List[bool] = []
 				self.current_phase: int = 0
-				# Keep a copy of training loss (used for over‑fitting gap)
-				self.train_loss_history: List[float] = []
 
-				# Preserve original thresholds so we can restore after dynamic tightening
+				self.train_loss_history: List[float] = []   # optional – over‑fit gap
+
+				# Preserve the *original* thresholds – they are restored after every dynamic‑tightening step
 				self._orig_patience = self.patience
 				self._orig_vol_thresh = self.volatility_threshold
 				self._orig_slope_thresh = self.slope_threshold
 
+				# Helper flag used to avoid “flapping” when EMA stays shaky for several epochs
+				self._shaky_last = False
+
 		# ------------------------------------------------------------------
-		#  EMA update – called once per epoch before any decision making
+		#  EMA update – called once per epoch
 		# ------------------------------------------------------------------
 		def _update_ema(self, raw_val: float) -> None:
-				"""Append a new EMA value using the classic exponential smoothing."""
 				if not self.ema_history:
 						self.ema_history.append(raw_val)
 				else:
@@ -173,63 +124,61 @@ class EarlyStopping:
 						self.ema_history.append(self.ema_alpha * raw_val + (1 - self.ema_alpha) * prev)
 
 		# ------------------------------------------------------------------
-		#  Volatility – computed on any 1‑D window (raw or EMA)
+		#  Volatility helper (percentage)
 		# ------------------------------------------------------------------
 		@staticmethod
 		def _volatility(window: List[float]) -> float:
-				if len(window) < 2:
-						return 0.0
-				mean_val = np.mean(window)
-				std_val = np.std(window)
-				return (std_val / abs(mean_val)) * 100.0 if mean_val != 0 else 0.0
+			if len(window) < 2:
+				print(f"<!> Not enough data ({len(window)} < 2) to compute volatility.")
+				return 0.0
+			mean_val = np.mean(window)
+			std_val = np.std(window)
+			return (std_val / abs(mean_val)) * 100.0 if mean_val != 0 else 0.0
 
 		# ------------------------------------------------------------------
-		#  Helper – check whether the current raw loss is an improvement
+		#  Improvement test on the **raw** validation loss
 		# ------------------------------------------------------------------
 		def _is_improvement(self, cur_val: float) -> bool:
-				if self.best_score is None:
-						return True
-				improvement = (self.best_score - cur_val) * self.sign
-				return improvement > self.min_delta
+			if self.best_score is None:
+				return True
+			improvement = (self.best_score - cur_val) * self.sign
+			return improvement > self.min_delta
 
 		# ------------------------------------------------------------------
-		#  Dynamic‑threshold policy – tighten thresholds only for the *current*
-		#  epoch when the EMA signals a shaky trend.
+		#  Dynamic‑threshold policy – tighten thresholds for the *current* epoch
 		# ------------------------------------------------------------------
 		def _apply_dynamic_tightening(self, ema_slope: float, ema_vol: float) -> None:
-				"""
-				When the EMA shows a **positive slope** (loss going up) OR a
-				**high volatility** we shrink the counters to make stopping more
-				aggressive.  The factor `dynamic_factor` (default 0.5) controls
-				how strong the tightening is.
-				"""
-				# Conditions for “shaky” EMA
 				shaky = (ema_slope > self.slope_threshold) or (ema_vol > self.volatility_threshold)
 
 				if shaky:
-						# tighten patience (halve it, but never go below 1)
+						# Remember that we are in a shaky period (used to avoid flapping)
+						self._shaky_last = True
+
+						# Tighten thresholds (halve patience, shrink volatility, make slope stricter)
 						self.patience = max(1, int(self._orig_patience * self.dynamic_factor))
-						# lower allowed volatility (e.g. 30 % of original)
 						self.volatility_threshold = self._orig_vol_thresh * self.dynamic_factor
-						# raise slope requirement (make it harder to keep going)
-						self.slope_threshold = self._orig_slope_thresh * (1.0 + (1 - self.dynamic_factor))
-						print("\t[Dynamic] EMA shaky → tightening thresholds:")
+						# *Make the slope requirement stricter* – i.e. smaller allowed positive slope
+						self.slope_threshold = self._orig_slope_thresh * self.dynamic_factor
+
+						print("\t[Dynamic] EMA shaky → thresholds tightened for this epoch:")
 						print(
-								f"\t   patience → {self.patience}  "
-								f"volatility_thr → {self.volatility_threshold:.2f}%  "
-								f"slope_thr → {self.slope_threshold:.5f}"
+								f"\t   patience → {self.patience}   "
+								f"volatility_thr → {self.volatility_threshold:.2f}%   "
+								f"slope_thr → {self.slope_threshold:.5e}"
 						)
 				else:
-						# restore original thresholds for a calm EMA
-						self.patience = self._orig_patience
-						self.volatility_threshold = self._orig_vol_thresh
-						self.slope_threshold = self._orig_slope_thresh
+						# Only restore once we have seen a calm epoch after a shaky one
+						if self._shaky_last:
+								self.patience = self._orig_patience
+								self.volatility_threshold = self._orig_vol_thresh
+								self.slope_threshold = self._orig_slope_thresh
+								self._shaky_last = False
+								print("\t[Dynamic] EMA calm → thresholds restored to original values.")
 
 		# ------------------------------------------------------------------
-		#  Public accessors – same API you used before
+		#  Public getters (unchanged API)
 		# ------------------------------------------------------------------
 		def get_status(self) -> Dict[str, Any]:
-				"""Return a dictionary with the current internal state (useful for logging)."""
 				status = {
 						"best_score": self.best_score,
 						"best_epoch": self.best_epoch + 1 if self.best_score is not None else None,
@@ -238,9 +187,9 @@ class EarlyStopping:
 						"ema_history_len": len(self.ema_history),
 				}
 				if len(self.value_history) >= self.window_size:
-						window = self.value_history[-self.window_size :]
-						status["volatility_window"] = self._volatility(window)
-						status["slope_window"] = compute_slope(window)
+						win = self.value_history[-self.window_size :]
+						status["volatility_window"] = self._volatility(win)
+						status["slope_window"] = compute_slope(win)
 				else:
 						status["volatility_window"] = None
 						status["slope_window"] = None
@@ -265,51 +214,33 @@ class EarlyStopping:
 				checkpoint_path: str,
 				current_phase: Optional[int] = None,
 		) -> bool:
-				"""
-				Returns True if training should stop **after** this epoch.
-				All side‑effects (checkpoint saving, weight restoration) are performed
-				inside the method.
-				"""
+				"""Return True if training should stop *after* this epoch."""
 
 				# --------------------------------------------------------------
-				# 1️⃣  Record raw loss and update EMA
+				# 1️⃣  Record raw loss & EMA
 				# --------------------------------------------------------------
 				self.value_history.append(current_value)
 				self._update_ema(current_value)
 
-				# --------------------------------------------------------------
-				# 2️⃣  (Optional) record training loss for over‑fitting gap
-				# --------------------------------------------------------------
-				# If you happen to have a running average of training loss,
-				# feed it via `self.train_loss_history.append(train_loss_this_epoch)`.
-				# The fine‑tuning script can simply call:
-				#     early_stopper.train_loss_history.append(avg_training_loss)
-				# before the `should_stop` call.
-				# --------------------------------------------------------------
-
-				# --------------------------------------------------------------
-				# 3️⃣  Logging header
-				# --------------------------------------------------------------
 				phase_info = f", Phase {current_phase}" if current_phase is not None else ""
-				print(f"\n--- EarlyStopping Check (Epoch {epoch+1}{phase_info}) ---")
+				print(f"\n--- {self.__class__.__name__} Check (Epoch {epoch+1}{phase_info}) ---")
 				print(f"Raw validation loss: {current_value:.6f}")
-				print(f"EMA ({self.ema_window}) loss: {self.ema_history[-1]:.6f}")
+				print(f"EMA (window={self.ema_window}) loss: {self.ema_history[-1]:.6f}")
 
 				# --------------------------------------------------------------
-				# 4️⃣  Ignore everything before `min_epochs`
+				# 2️⃣  Respect min_epochs
 				# --------------------------------------------------------------
 				if epoch < self.min_epochs:
 						print(f"Skipping early‑stop (epoch {epoch+1} ≤ min_epochs {self.min_epochs})")
 						return False
 
 				# --------------------------------------------------------------
-				# 5️⃣  Update *best* checkpoint if we have an improvement
+				# 3️⃣  Update best checkpoint if we improved (raw loss)
 				# --------------------------------------------------------------
 				if self._is_improvement(current_value):
+						best_str = f"{self.best_score:.6f}" if self.best_score is not None else "N/A"
 						print(
-								f"\t>>> NEW BEST! loss improved from "
-								f"{self.best_score if self.best_score is not None else 'N/A'} "
-								f"to {current_value:.6f}"
+								f"\t>>> NEW BEST! loss improved from {best_str} to {current_value:.6f}"
 						)
 						self.best_score = current_value
 						self.best_epoch = epoch
@@ -317,13 +248,12 @@ class EarlyStopping:
 						self.improvement_history.append(True)
 
 						if self.restore_best_weights:
-								# store a CPU‑detached copy to avoid device mismatches later
 								self.best_weights = {
 										k: v.clone().cpu().detach() for k, v in model.state_dict().items()
 								}
 
-						# ---------- checkpoint saving ----------
-						checkpoint = {
+						# ---------- checkpoint ----------
+						ckpt = {
 								"epoch": self.best_epoch,
 								"model_state_dict": self.best_weights
 								if self.best_weights is not None
@@ -333,10 +263,9 @@ class EarlyStopping:
 								"best_val_loss": self.best_score,
 						}
 						if current_phase is not None:
-								checkpoint["phase"] = current_phase
-
+								ckpt["phase"] = current_phase
 						try:
-								torch.save(checkpoint, checkpoint_path)
+								torch.save(ckpt, checkpoint_path)
 								print(f"Saved new best checkpoint → {checkpoint_path}")
 						except Exception as exc:
 								print(f"⚠️  Failed to save checkpoint: {exc}")
@@ -345,35 +274,34 @@ class EarlyStopping:
 						# No improvement → increase patience counter
 						self.counter += 1
 						self.improvement_history.append(False)
+						best_str = f"{self.best_score:.6f}" if self.best_score is not None else "N/A"
 						print(
-								f"\tNo improvement. Best: {self.best_score:.6f} "
+								f"\tNo improvement. Best: {best_str} "
 								f"Patience: {self.counter}/{self.patience}"
 						)
 
 				# --------------------------------------------------------------
-				# 6️⃣  Compute window‑based statistics on the **raw** loss
+				# 4️⃣  Raw‑loss window statistics (need at least `window_size` points)
 				# --------------------------------------------------------------
 				if len(self.value_history) < self.window_size:
 						print(
 								f"\tInsufficient raw history ({len(self.value_history)}/{self.window_size}) "
 								"for window‑based checks."
 						)
-						# Even if we cannot compute a window yet we may still stop by patience.
 						if self.counter >= self.patience:
 								phase_ok = (current_phase is None) or (
 										current_phase >= self.min_phases_before_stopping
 								)
 								if phase_ok:
-										print(f"❗️ Patience exceeded → early stop.")
+										print("❗️ Patience exceeded → early stop.")
 										return True
 						return False
 
 				raw_window = self.value_history[-self.window_size :]
-
 				raw_slope = compute_slope(raw_window)
 				raw_volatility = self._volatility(raw_window)
 
-				# Pairwise improvement on the raw window (sign‑aware)
+				# Pairwise improvement (sign‑aware)
 				pairwise_diffs = [
 						(raw_window[i] - raw_window[i + 1]) * self.sign
 						for i in range(len(raw_window) - 1)
@@ -385,7 +313,7 @@ class EarlyStopping:
 				cum_imp_abs = abs(cum_imp_signed)
 
 				# --------------------------------------------------------------
-				# 7️⃣  Compute **EMA‑based** trend signals (used for dynamic tightening)
+				# 5️⃣  EMA‑based trend signals (used for dynamic tightening)
 				# --------------------------------------------------------------
 				if len(self.ema_history) >= self.ema_window:
 						ema_window_vals = self.ema_history[-self.ema_window :]
@@ -396,15 +324,14 @@ class EarlyStopping:
 						ema_vol = 0.0
 
 				# --------------------------------------------------------------
-				# 8️⃣  Dynamic‑threshold adjustment based on EMA trend
+				# 6️⃣  Apply the dynamic‑tightening policy
 				# --------------------------------------------------------------
 				self._apply_dynamic_tightening(ema_slope, ema_vol)
 
 				# --------------------------------------------------------------
-				# 9️⃣  Assemble stopping reasons (same logic as before, but now
-				#      thresholds may have been tightened for this epoch)
+				# 7️⃣  Assemble stop reasons (raw‑loss criteria + EMA recommendation)
 				# --------------------------------------------------------------
-				stop_reasons = []
+				stop_reasons: List[str] = []
 
 				if self.counter >= self.patience:
 						stop_reasons.append(f"Patience ({self.counter}/{self.patience})")
@@ -432,20 +359,20 @@ class EarlyStopping:
 						stop_reasons.append(f"Low cumulative improvement ({cum_imp_abs:.5e})")
 
 				# --------------------------------------------------------------
-				# 10️⃣  (Optional) add a *high‑level* recommendation derived
-				#      from the EMA *trend* itself – this mimics the
-				#      `LossAnalyzer.get_training_signals()` logic.
+				# 8️⃣  EMA‑based high‑level recommendation (mirrors LossAnalyzer)
 				# --------------------------------------------------------------
+				# Use a safe window length – at most the EMA length, at least 2 points
+				trend_len = min(10, len(self.ema_history))
 				recent_trend = (
-						np.mean(np.diff(self.ema_history[-10:])) if len(self.ema_history) >= 10 else 0.0
+						np.mean(np.diff(self.ema_history[-trend_len:])) if trend_len >= 2 else 0.0
 				)
-				if recent_trend > 0.001:  # loss increasing
+				if recent_trend > self.ema_threshold:
 						stop_reasons.append("EMA trend ↑ (recommend STOP)")
-				elif recent_trend > -0.001:  # flat
+				elif recent_trend > -self.ema_threshold:
 						stop_reasons.append("EMA trend ≈0 (recommend CAUTION)")
 
 				# --------------------------------------------------------------
-				# 11️⃣  Final decision – respect phase constraints
+				# 9️⃣  Final decision – respect phase constraints
 				# --------------------------------------------------------------
 				should_stop = bool(stop_reasons)
 				if should_stop:
@@ -455,19 +382,18 @@ class EarlyStopping:
 						if not phase_ok:
 								print(
 										f"\tStopping criteria met ({', '.join(stop_reasons)}) "
-										f"but waiting for phase ≥ {self.min_phases_before_stopping}"
+										f"but waiting for phase >= {self.min_phases_before_stopping}"
 								)
 								should_stop = False
 						else:
 								print("\n<!> EARLY STOPPING TRIGGERED:")
 								for r in stop_reasons:
 										print(f"\t • {r}")
-
 				else:
 						print("\tNo stopping condition satisfied this epoch.")
 
 				# --------------------------------------------------------------
-				# 12️⃣  Restore best weights if we really stop
+				# 10️⃣  Restore best raw weights if we really stop
 				# --------------------------------------------------------------
 				if should_stop and self.restore_best_weights:
 						if self.best_weights is not None:
@@ -485,18 +411,9 @@ class EarlyStopping:
 				return should_stop
 
 		# ------------------------------------------------------------------
-		#  Additional convenience – expose EMA‑based signals for reporting
+		#  EMA‑signal accessor (mirrors `LossAnalyzer.get_training_signals()`)
 		# ------------------------------------------------------------------
 		def get_ema_signals(self) -> Dict[str, Any]:
-				"""
-				Mimics `LossAnalyzer.get_training_signals()` but works on‑the‑fly.
-				Returns:
-						- best_epoch (minimum EMA loss)
-						- best_loss  (EMA value at that epoch)
-						- overfitting_gap (val_ema - train_ema)  (requires train loss history)
-						- recent_trend (mean diff of last 10 EMA points)
-						- recommendation (STOP / CAUTION / CONTINUE)
-				"""
 				ema_vals = np.asarray(self.ema_history)
 				if len(ema_vals) == 0:
 						return {}
@@ -505,7 +422,7 @@ class EarlyStopping:
 				best_epoch = best_idx + 1
 				best_loss = ema_vals[best_idx]
 
-				# over‑fitting gap – needs a training‑loss history; if missing we skip
+				# Over‑fitting gap (requires training‑loss history)
 				overfit_gap = None
 				if self.train_loss_history:
 						train_ema = exponential_moving_average(
@@ -513,18 +430,18 @@ class EarlyStopping:
 						)
 						overfit_gap = ema_vals[-1] - train_ema[-1]
 
-				# recent trend (mean first‑difference of the last 10 EMA points)
+				# Recent trend – same window length as the recommendation
+				trend_len = min(10, len(ema_vals))
 				recent_trend = (
-						np.mean(np.diff(ema_vals[-10:])) if len(ema_vals) >= 10 else 0.0
+						np.mean(np.diff(ema_vals[-trend_len:])) if trend_len >= 2 else 0.0
 				)
 
-				# textual recommendation (same logic as in `LossAnalyzer.get_training_signals`)
-				if recent_trend > 0.001:
-						recommendation = "STOP - Validation loss increasing"
-				elif recent_trend > -0.001:
-						recommendation = "CAUTION - Loss plateauing"
+				if recent_trend > self.ema_threshold:
+						recommendation = f"STOP - Validation loss increasing (trend={recent_trend:.5e}) > {self.ema_threshold:.5e}"
+				elif recent_trend > -self.ema_threshold:
+						recommendation = f"CAUTION - Loss plateauing (trend={recent_trend:.5e}) > -{self.ema_threshold:.5e}"
 				else:
-						recommendation = "CONTINUE - Still improving"
+						recommendation = f"CONTINUE - Still improving (trend={recent_trend:.5e}) < -{self.ema_threshold:.5e}"
 
 				return {
 						"best_epoch": best_epoch,

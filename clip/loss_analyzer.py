@@ -26,7 +26,7 @@ class LossAnalyzer:
 		fig, axes = plt.subplots(2, 3, figsize=(18, 10))
 		
 		# Training loss with moving averages
-		axes[0,0].plot(self.epochs, self.train_loss, alpha=0.3, label='Raw', color='gray')
+		axes[0,0].plot(self.epochs, self.train_loss, alpha=0.3, label='Raw', color="#393542")
 		for i, window in enumerate(windows):
 			sma = self.sma(self.train_loss, window)
 			ema = self.ema(self.train_loss, window)
@@ -37,16 +37,18 @@ class LossAnalyzer:
 		axes[0,0].legend()
 		axes[0,0].grid(True, alpha=0.3)
 		
-		axes[0,1].plot(self.epochs, self.train_loss, alpha=0.3, label='Raw', color='gray')
+		axes[0,1].plot(self.epochs, self.train_loss, alpha=0.3, label='Raw', color="#393542")
 		axes[0,1].set_title('Training Loss - EMA')
 		axes[0,1].legend()
 		axes[0,1].grid(True, alpha=0.3)
 		
 		# Validation loss with moving averages
-		axes[0,2].plot(self.epochs, self.val_loss, alpha=0.3, label='Raw', color='gray')
+		axes[0,2].plot(self.epochs, self.val_loss, alpha=0.3, label='Raw', color="#393542")
 		for window in windows:
 			sma = self.sma(self.val_loss, window)
-			axes[0,2].plot(self.epochs, sma, label=f'SMA-{window}', linewidth=2)
+			ema = self.ema(self.val_loss, window)
+			axes[0,2].plot(self.epochs, sma, linestyle='--', label=f'SMA-{window}', linewidth=2)
+			axes[0,2].plot(self.epochs, ema, linestyle='-', label=f'EMA-{window}', linewidth=2)
 		axes[0,2].set_title('Validation Loss - SMA')
 		axes[0,2].legend()
 		axes[0,2].grid(True, alpha=0.3)
@@ -57,14 +59,14 @@ class LossAnalyzer:
 		axes[1,0].plot(self.epochs, train_ema, label='Training EMA-10', linewidth=3)
 		axes[1,0].plot(self.epochs, val_ema, label='Validation EMA-10', linewidth=3)
 		axes[1,0].set_title('Smoothed Comparison')
-		axes[1,0].legend()
+		axes[1,0].legend(fontsize=7)
 		axes[1,0].grid(True, alpha=0.3)
 		
 		# Overfitting detection
 		gap = val_ema - train_ema
-		axes[1,1].plot(self.epochs, gap, color='purple', linewidth=2)
-		axes[1,1].axhline(y=0, color='black', linestyle='-', alpha=0.5)
-		axes[1,1].fill_between(self.epochs, gap, 0, where=(gap > 0), alpha=0.3, color='red')
+		axes[1,1].plot(self.epochs, gap, color="#000000", linewidth=2)
+		axes[1,1].axhline(y=0, color="#000000", linestyle='-', alpha=0.5)
+		axes[1,1].fill_between(self.epochs, gap, 0, where=(gap > 0), alpha=0.3, color="#FF0000")
 		axes[1,1].set_title('Overfitting Gap (Val - Train)')
 		axes[1,1].grid(True, alpha=0.3)
 		

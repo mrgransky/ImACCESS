@@ -2829,6 +2829,10 @@ def progressive_finetune_single_label(
 	signals = analyzer.get_training_signals()
 	print(f"\nTraining signals: {signals}\n")
 
+	signals = early_stopping.get_ema_signals()
+	print("EMA‑based signals:", signals)
+
+
 	plot_phase_transition_analysis_individual(
 		training_history=training_history,
 		save_path=plot_paths["phase_analysis"],
