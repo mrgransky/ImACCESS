@@ -1,6 +1,7 @@
 from utils import *
 from model import get_lora_clip, LAMB, SingleLabelLinearProbe, MultiLabelProbe, get_probe_clip
 from early_stopper import EarlyStopping
+from loss_analyzer import LossAnalyzer
 from visualize import (
 	plot_loss_accuracy_metrics, 
 	plot_retrieval_metrics_best_model, 
@@ -2788,6 +2789,7 @@ def progressive_finetune_single_label(
 		"trainable_layers": os.path.join(results_dir, f"{file_base_name}_train_lyrs.png"),
 		"grad_norm": os.path.join(results_dir, f"{file_base_name}_grad_norm.png"),
 		"loss_volatility": os.path.join(results_dir, f"{file_base_name}_loss_volatility.png"),
+		"loss_analyzer": os.path.join(results_dir, f"{file_base_name}_loss_sma_ema.png"),
 	}
 
 	training_history = collect_progressive_training_history(
@@ -2816,6 +2818,15 @@ def progressive_finetune_single_label(
 
 	print(f"\tTraining improvement: {analysis_results['total_improvement']:.2f}%")
 	print(f"\tMost effective phase: Phase {analysis_results['best_phase']}")
+
+	analyzer = LossAnalyzer(
+		epochs=training_history['epochs'], 
+		train_loss=training_history['train_losses'], 
+		val_loss=training_history['val_losses']
+	)
+	analyzer.plot_analysis(fpth=plot_paths["loss_analyzer"])
+	signals = analyzer.get_training_signals()
+	print(f"\nTraining signals: {signals}\n")
 
 	plot_phase_transition_analysis_individual(
 		training_history=training_history,
