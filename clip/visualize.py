@@ -29,7 +29,7 @@ best_model_color = "#008528"
 def plot_phase_transition_analysis_individual(
 		training_history: Dict,
 		save_path: str,
-		figsize: Tuple[int, int] = (11, 7)
+		figsize: Tuple[int, int] = (10, 6)
 	):
 	# Extract data
 	epochs = [e + 1 for e in training_history['epochs']]  # 1-based indexing
@@ -64,6 +64,7 @@ def plot_phase_transition_analysis_individual(
 	y_middle = (ymin + ymax) / 2.0
 
 	# Phase shading
+	unique_phases = sorted(set(phases))
 	for phase in set(phases):
 			phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
 			if phase_epochs:
@@ -81,19 +82,46 @@ def plot_phase_transition_analysis_individual(
 			change = ((prev_loss - val_losses[t_epoch]) / prev_loss) * 100 if prev_loss > 0 else 0
 			ax1.text(t_epoch + 0.4, y_middle, f"Transition {i+1}\n{change:+.2f}%", rotation=90,
 							 va="center", ha="left", color=transition_color, fontsize=9)
-	# Best model / early stopping
+
 	if best_epoch is not None:
-			ax1.scatter([epochs[best_epoch]], [val_losses[best_epoch]], color=best_model_color, marker="*", s=150,
-									edgecolor="black", linewidth=1.5, zorder=15, label="Best Model")
+		ax1.scatter(
+			[epochs[best_epoch]], 
+			[val_losses[best_epoch]], 
+			color=best_model_color, 
+			marker="*", 
+			s=150,
+			edgecolor="black", 
+			linewidth=1.5, 
+			zorder=15, 
+			label="Best",
+		)
+
 	if early_stop_epoch:
-			ax1.axvline(x=early_stop_epoch, color=early_stop_color, linestyle=":", linewidth=1.8, alpha=0.9)
-			ax1.text(early_stop_epoch + 0.5, y_middle, "Early Stopping", rotation=90, va="center",
-							 ha="left", color=early_stop_color, fontsize=9)
+		ax1.axvline(x=early_stop_epoch, color=early_stop_color, linestyle=":", linewidth=1.8, alpha=0.9)
+		ax1.text(
+			early_stop_epoch + 0.5, 
+			y_middle, 
+			"Early Stopping", 
+			rotation=90, 
+			va="center",
+			ha="left", 
+			color=early_stop_color, 
+			fontsize=9
+		)
 	ax1.set_title("Learning Curve with Phase Transitions", fontsize=10, weight="bold")
 	ax1.set_xlabel("Epoch"); ax1.set_ylabel("Loss")
-	ax1.legend(fontsize=8)
+	ax1.legend(
+		fontsize=8, 
+		loc="best",
+		ncol=len(unique_phases)+3,
+		frameon=False, 
+		shadow=False, 
+		fancybox=False, 
+		edgecolor="none", 
+		facecolor="none",		
+	)
 	ax1.grid(True, alpha=0.5)
-	save_fig(fig, "loss")
+	save_fig(fig, "learning_curve")
 
 	# ============================================
 	# PLOT 2: Learning Rate Adaptation

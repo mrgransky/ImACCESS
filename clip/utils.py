@@ -71,6 +71,40 @@ logger = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
+def compute_slope(losses: List[float]) -> float:
+	"""Computes the slope of the best-fit line for a list of losses."""
+	if len(losses) < 2: # Need at least two points for a slope
+		print("Warning: compute_slope called with less than 2 points. Returning 0.")
+		return 0.0
+	x = np.arange(len(losses))
+	A = np.vstack([x, np.ones(len(x))]).T
+	try:
+		# Use np.linalg.lstsq for linear regression
+		m, _ = np.linalg.lstsq(A, np.array(losses), rcond=None)[0]
+		return m
+	except np.linalg.LinAlgError:
+		print("Warning: Least squares failed in compute_slope, returning slope 0.")
+		return 0.0 # Handle potential numerical issues
+
+def get_warmup_lr(
+		current_step: int,
+		warmup_steps: int,
+		target_lrs: List[float]
+	) -> List[float]:
+	"""
+	Calculates the learning rate for a given step during a linear warm-up phase.
+	"""
+	if current_step >= warmup_steps:
+		return target_lrs  # Return the final target LRs after warm-up is done
+
+	# Calculate the warm-up factor (from 0 to 1)
+	warmup_factor = current_step / float(warmup_steps)
+	
+	# Linearly interpolate each LR in the list
+	warmed_up_lrs = [lr * warmup_factor for lr in target_lrs]
+	
+	return warmed_up_lrs
+
 def translate_state_dict_keys(state_dict, key_mapping):
 		"""
 		Translate state dict keys to match current model structure.
