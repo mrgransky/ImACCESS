@@ -1,11 +1,3 @@
-# import sys
-# import os
-# current_dir = os.path.dirname(os.path.abspath(__file__))
-# parent_dir = os.path.dirname(current_dir)
-# sys.path.insert(0, parent_dir)
-# from misc.utils import *
-# from misc.visualize import *
-
 import os
 import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -26,6 +18,7 @@ from misc.visualize import *
 
 # run in puhti:
 # $ nohup python -u merge_datasets.py > /scratch/project_2004072/ImACCESS/trash/history_xN_merged_datasets.out &
+
 set_seeds(seed=42)
 USER = os.getenv("USER")
 BINs = 60

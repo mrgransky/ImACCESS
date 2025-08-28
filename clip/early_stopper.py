@@ -414,42 +414,36 @@ class EarlyStopping:
 		#  EMA‑signal accessor (mirrors `LossAnalyzer.get_training_signals()`)
 		# ------------------------------------------------------------------
 		def get_ema_signals(self) -> Dict[str, Any]:
-				ema_vals = np.asarray(self.ema_history)
-				if len(ema_vals) == 0:
-						return {}
-
-				best_idx = np.argmin(ema_vals) if self.mode == "min" else np.argmax(ema_vals)
-				best_epoch = best_idx + 1
-				best_loss = ema_vals[best_idx]
-
-				# Over‑fitting gap (requires training‑loss history)
-				overfit_gap = None
-				if self.train_loss_history:
-						train_ema = exponential_moving_average(
-								np.asarray(self.train_loss_history), self.ema_window
-						)
-						overfit_gap = ema_vals[-1] - train_ema[-1]
-
-				# Recent trend – same window length as the recommendation
-				trend_len = min(10, len(ema_vals))
-				recent_trend = (
-						np.mean(np.diff(ema_vals[-trend_len:])) if trend_len >= 2 else 0.0
+			ema_vals = np.asarray(self.ema_history)
+			if len(ema_vals) == 0:
+				return {}
+			best_idx = np.argmin(ema_vals) if self.mode == "min" else np.argmax(ema_vals)
+			best_epoch = best_idx + 1
+			best_loss = ema_vals[best_idx]
+			# Over‑fitting gap (requires training‑loss history)
+			overfit_gap = None
+			if self.train_loss_history:
+				train_ema = exponential_moving_average(
+					data=np.asarray(self.train_loss_history), 
+					window=self.ema_window
 				)
-
-				if recent_trend > self.ema_threshold:
-						recommendation = f"STOP - Validation loss increasing (trend={recent_trend:.5e}) > {self.ema_threshold:.5e}"
-				elif recent_trend > -self.ema_threshold:
-						recommendation = f"CAUTION - Loss plateauing (trend={recent_trend:.5e}) > -{self.ema_threshold:.5e}"
-				else:
-						recommendation = f"CONTINUE - Still improving (trend={recent_trend:.5e}) < -{self.ema_threshold:.5e}"
-
-				return {
-						"best_epoch": best_epoch,
-						"best_loss": best_loss,
-						"overfitting_gap": overfit_gap,
-						"recent_trend": recent_trend,
-						"recommendation": recommendation,
-				}
+				overfit_gap = ema_vals[-1] - train_ema[-1]
+			# Recent trend – same window length as the recommendation
+			trend_len = min(10, len(ema_vals))
+			recent_trend = np.mean(np.diff(ema_vals[-trend_len:])) if trend_len >= 2 else 0.0
+			if recent_trend > self.ema_threshold:
+				recommendation = f"STOP - Validation loss increasing (trend={recent_trend}) > {self.ema_threshold}"
+			elif recent_trend > -self.ema_threshold:
+				recommendation = f"CAUTION - Loss plateauing (trend={recent_trend}) > -{self.ema_threshold}"
+			else:
+				recommendation = f"CONTINUE - Still improving (trend={recent_trend}) < -{self.ema_threshold}"
+			return {
+				"best_epoch": best_epoch,
+				"best_loss": best_loss,
+				"overfitting_gap": overfit_gap,
+				"recent_trend": recent_trend,
+				"recommendation": recommendation,
+			}
 
 
 class EarlyStoppingOld:

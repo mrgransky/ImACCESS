@@ -22,64 +22,181 @@ class LossAnalyzer:
 		
 		return ema
 	
-	def plot_analysis(self, windows=[5, 10, 20], fpth='loss_analysis.png'):
-		fig, axes = plt.subplots(2, 3, figsize=(18, 10))
-		
-		# Training loss with moving averages
-		axes[0,0].plot(self.epochs, self.train_loss, alpha=0.3, label='Raw', color="#393542")
+	def plot_analysis(self, windows=[5, 10, 20], fpth='loss_analysis.png', figsize=(10, 6)):
+		fpth = fpth.replace(".png", "")
+		cols = plt.cm.tab10(np.linspace(0, 1, len(windows) + 1))
+
+		# Plot 1: Training Loss - SMA
+		plt.figure(figsize=figsize)
+		plt.plot(self.epochs, self.train_loss, alpha=0.3, label='Raw', color="#493C66")
 		for i, window in enumerate(windows):
 			sma = self.sma(self.train_loss, window)
+			plt.plot(self.epochs, sma, label=f'SMA-{window}', linewidth=1, color=cols[i])
+		
+		plt.title('Training Loss - SMA')
+		plt.xlabel('Epochs')
+		plt.ylabel('Loss')
+		plt.legend()
+		plt.grid(True, alpha=0.3)
+		plt.savefig(f'{fpth}_train_sma.png', dpi=200, bbox_inches='tight')
+		plt.close()
+		
+		# Plot 2: Training Loss - EMA
+		plt.figure(figsize=figsize)
+		plt.plot(self.epochs, self.train_loss, alpha=0.3, label='Raw', color="#493C66")
+		for i, window in enumerate(windows):
 			ema = self.ema(self.train_loss, window)
-			axes[0,0].plot(self.epochs, sma, label=f'SMA-{window}', linewidth=2)
-			axes[0,1].plot(self.epochs, ema, label=f'EMA-{window}', linewidth=2)
+			plt.plot(self.epochs, ema, label=f'EMA-{window}', linewidth=1, color=cols[i])
 		
-		axes[0,0].set_title('Training Loss - SMA')
-		axes[0,0].legend()
-		axes[0,0].grid(True, alpha=0.3)
-		
-		axes[0,1].plot(self.epochs, self.train_loss, alpha=0.3, label='Raw', color="#393542")
-		axes[0,1].set_title('Training Loss - EMA')
-		axes[0,1].legend()
-		axes[0,1].grid(True, alpha=0.3)
-		
-		# Validation loss with moving averages
-		axes[0,2].plot(self.epochs, self.val_loss, alpha=0.3, label='Raw', color="#393542")
-		for window in windows:
+		plt.title('Training Loss - EMA')
+		plt.xlabel('Epochs')
+		plt.ylabel('Loss')
+		plt.legend()
+		plt.grid(True, alpha=0.3)
+		plt.savefig(f'{fpth}_train_ema.png', dpi=200, bbox_inches='tight')
+		plt.close()
+		# Plot 3: Validation Loss - SMA
+		plt.figure(figsize=figsize)
+		plt.plot(self.epochs, self.val_loss, alpha=0.3, label='Raw', color="#493C66")
+		for i, window in enumerate(windows):
 			sma = self.sma(self.val_loss, window)
-			ema = self.ema(self.val_loss, window)
-			axes[0,2].plot(self.epochs, sma, linestyle='--', label=f'SMA-{window}', linewidth=2)
-			axes[0,2].plot(self.epochs, ema, linestyle='-', label=f'EMA-{window}', linewidth=2)
-		axes[0,2].set_title('Validation Loss - SMA')
-		axes[0,2].legend()
-		axes[0,2].grid(True, alpha=0.3)
+			plt.plot(self.epochs, sma, linestyle='--', label=f'SMA-{window}', linewidth=2.5, color=cols[i])
 		
-		# Combined smooth view
+		plt.title('Validation Loss - SMA')
+		plt.xlabel('Epochs')
+		plt.ylabel('Loss')
+		plt.legend()
+		plt.grid(True, alpha=0.3)
+		plt.savefig(f'{fpth}_val_sma.png', dpi=200, bbox_inches='tight')
+		plt.close()
+		
+		# Plot 4: Validation Loss - EMA
+		plt.figure(figsize=figsize)
+		plt.plot(self.epochs, self.val_loss, alpha=0.3, label='Raw', color="#493C66")
+		for i, window in enumerate(windows):
+			ema = self.ema(self.val_loss, window)
+			plt.plot(self.epochs, ema, linestyle='-', label=f'EMA-{window}', linewidth=1, color=cols[i])
+		
+		plt.title('Validation Loss - EMA')
+		plt.xlabel('Epochs')
+		plt.ylabel('Loss')
+		plt.legend()
+		plt.grid(True, alpha=0.3)
+		plt.savefig(f'{fpth}_val_ema.png', dpi=200, bbox_inches='tight')
+		plt.close()
+		# Plot 5: Combined Smoothed Comparison
+		plt.figure(figsize=figsize)
 		train_ema = self.ema(self.train_loss, 10)
 		val_ema = self.ema(self.val_loss, 10)
-		axes[1,0].plot(self.epochs, train_ema, label='Training EMA-10', linewidth=3)
-		axes[1,0].plot(self.epochs, val_ema, label='Validation EMA-10', linewidth=3)
-		axes[1,0].set_title('Smoothed Comparison')
-		axes[1,0].legend(fontsize=7)
-		axes[1,0].grid(True, alpha=0.3)
+		plt.plot(self.epochs, train_ema, label='Training EMA-10', linewidth=2.5)
+		plt.plot(self.epochs, val_ema, label='Validation EMA-10', linewidth=2.5)
 		
-		# Overfitting detection
+		plt.title('Smoothed Comparison (EMA-10)')
+		plt.xlabel('Epochs')
+		plt.ylabel('Loss')
+		plt.legend()
+		plt.grid(True, alpha=0.3)
+		plt.savefig(f'{fpth}_smoothed_comparison.png', dpi=200, bbox_inches='tight')
+		plt.close()
+		
+		# Plot 6: Overfitting Detection
+		plt.figure(figsize=figsize)
 		gap = val_ema - train_ema
-		axes[1,1].plot(self.epochs, gap, color="#000000", linewidth=2)
-		axes[1,1].axhline(y=0, color="#000000", linestyle='-', alpha=0.5)
-		axes[1,1].fill_between(self.epochs, gap, 0, where=(gap > 0), alpha=0.3, color="#FF0000")
-		axes[1,1].set_title('Overfitting Gap (Val - Train)')
-		axes[1,1].grid(True, alpha=0.3)
+		plt.plot(self.epochs, gap, color="#000000", linewidth=1.5, label='Val - Train Gap')
+		plt.axhline(y=0, color="#000000", linestyle='-', alpha=0.5)
+		plt.fill_between(self.epochs, gap, 0, where=(gap > 0), alpha=0.3, color="#FF0000", label='Overfitting Zone')
 		
-		# Volatility analysis
+		plt.title('Overfitting Detection (Val - Train EMA-10)')
+		plt.xlabel('Epochs')
+		plt.ylabel('Loss Difference')
+		plt.legend()
+		plt.grid(True, alpha=0.3)
+		plt.savefig(f'{fpth}_overfitting_gap.png', dpi=200, bbox_inches='tight')
+		plt.close()
+		
+		# Plot 7: Volatility Analysis
+		plt.figure(figsize=figsize)
 		val_volatility = pd.Series(self.val_loss).rolling(window=10).std()
 		train_volatility = pd.Series(self.train_loss).rolling(window=10).std()
-		axes[1,2].plot(self.epochs, val_volatility, label='Val Volatility', linewidth=2)
-		axes[1,2].plot(self.epochs, train_volatility, label='Train Volatility', linewidth=2)
-		axes[1,2].set_title('Loss Volatility')
-		axes[1,2].legend()
-		axes[1,2].grid(True, alpha=0.3)
+		plt.plot(self.epochs, val_volatility, label='Val Volatility', linewidth=1.5)
+		plt.plot(self.epochs, train_volatility, label='Train Volatility', linewidth=1.5)
 		
-		plt.savefig(fpth, dpi=200, bbox_inches='tight')
+		plt.title('Loss Volatility Analysis')
+		plt.xlabel('Epochs')
+		plt.ylabel('Loss Volatility (Std Dev)')
+		plt.legend()
+		plt.grid(True, alpha=0.3)
+		plt.savefig(f'{fpth}_volatility.png', dpi=200, bbox_inches='tight')
+		plt.close()
+		
+		print(f"✅ All plots saved with base name: {fpth}_*.png")
+		print("Generated files:")
+		print(f"  - {fpth}_train_sma.png")
+		print(f"  - {fpth}_train_ema.png") 
+		print(f"  - {fpth}_val_sma.png")
+		print(f"  - {fpth}_val_ema.png")
+		print(f"  - {fpth}_smoothed_comparison.png")
+		print(f"  - {fpth}_overfitting_gap.png") 
+		print(f"  - {fpth}_volatility.png") 
+
+	# def plot_analysis(self, windows=[5, 10, 20], fpth='loss_analysis.png'):
+	# 	fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+	# 	cols = plt.cm.tab10(np.linspace(0, 1, len(windows) + 1))
+	# 	# Training loss with moving averages
+	# 	axes[0,0].plot(self.epochs, self.train_loss, alpha=0.3, label='Raw', color="#493C66")
+	# 	for i, window in enumerate(windows):
+	# 		sma = self.sma(self.train_loss, window)
+	# 		ema = self.ema(self.train_loss, window)
+	# 		axes[0,0].plot(self.epochs, sma, label=f'SMA-{window}', linewidth=1, color=cols[i])
+	# 		axes[0,1].plot(self.epochs, ema, label=f'EMA-{window}', linewidth=1, color=cols[i])
+		
+	# 	axes[0,0].set_title('Training Loss - SMA')
+	# 	axes[0,0].legend()
+	# 	axes[0,0].grid(True, alpha=0.3)
+		
+	# 	axes[0,1].plot(self.epochs, self.train_loss, alpha=0.3, label='Raw', color="#493C66")
+	# 	axes[0,1].set_title('Training Loss - EMA')
+	# 	axes[0,1].legend()
+	# 	axes[0,1].grid(True, alpha=0.3)
+		
+	# 	# Validation loss with moving averages
+	# 	axes[0,2].plot(self.epochs, self.val_loss, alpha=0.3, label='Raw', color="#493C66")
+	# 	for i, window in enumerate(windows):
+	# 		sma = self.sma(self.val_loss, window)
+	# 		ema = self.ema(self.val_loss, window)
+	# 		axes[0,2].plot(self.epochs, sma, linestyle='--', label=f'SMA-{window}', linewidth=2.5, color=cols[i])
+	# 		axes[0,2].plot(self.epochs, ema, linestyle='-', label=f'EMA-{window}', linewidth=1, color=cols[i])
+	# 	axes[0,2].set_title('Validation Loss - SMA')
+	# 	axes[0,2].legend()
+	# 	axes[0,2].grid(True, alpha=0.3)
+		
+	# 	# Combined smooth view
+	# 	train_ema = self.ema(self.train_loss, 10)
+	# 	val_ema = self.ema(self.val_loss, 10)
+	# 	axes[1,0].plot(self.epochs, train_ema, label='Training EMA-10', linewidth=2.5)
+	# 	axes[1,0].plot(self.epochs, val_ema, label='Validation EMA-10', linewidth=2.5)
+	# 	axes[1,0].set_title('Smoothed Comparison')
+	# 	axes[1,0].legend(fontsize=6, loc='best')
+	# 	axes[1,0].grid(True, alpha=0.3)
+		
+	# 	# Overfitting detection
+	# 	gap = val_ema - train_ema
+	# 	axes[1,1].plot(self.epochs, gap, color="#000000", linewidth=1.5)
+	# 	axes[1,1].axhline(y=0, color="#000000", linestyle='-', alpha=0.5)
+	# 	axes[1,1].fill_between(self.epochs, gap, 0, where=(gap > 0), alpha=0.3, color="#FF0000")
+	# 	axes[1,1].set_title('Overfitting Gap (Val - Train)')
+	# 	axes[1,1].grid(True, alpha=0.3)
+		
+	# 	# Volatility analysis
+	# 	val_volatility = pd.Series(self.val_loss).rolling(window=10).std()
+	# 	train_volatility = pd.Series(self.train_loss).rolling(window=10).std()
+	# 	axes[1,2].plot(self.epochs, val_volatility, label='Val Volatility', linewidth=1.5)
+	# 	axes[1,2].plot(self.epochs, train_volatility, label='Train Volatility', linewidth=1.5)
+	# 	axes[1,2].set_title('Loss Volatility')
+	# 	axes[1,2].legend()
+	# 	axes[1,2].grid(True, alpha=0.3)
+		
+	# 	plt.savefig(fpth, dpi=200, bbox_inches='tight')
 	
 	def get_training_signals(self, window=10, threshold=1e-3):
 		signals = {}
