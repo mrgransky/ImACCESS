@@ -2790,7 +2790,7 @@ def progressive_finetune_single_label(
 		"trainable_layers": os.path.join(results_dir, f"{file_base_name}_train_lyrs.png"),
 		"grad_norm": os.path.join(results_dir, f"{file_base_name}_grad_norm.png"),
 		"loss_volatility": os.path.join(results_dir, f"{file_base_name}_loss_volatility.png"),
-		"loss_analyzer": os.path.join(results_dir, f"{file_base_name}_loss_sma_ema.png"),
+		"loss_analyzer": os.path.join(results_dir, f"{file_base_name}_loss_analyzer.png"),
 	}
 
 	training_history = collect_progressive_training_history(
