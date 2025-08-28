@@ -81,20 +81,29 @@ def log_retrieval_delta(metrics, prev_metrics, phase):
 		delta = metrics["img2txt_metrics"]["mP"][k] - prev_metrics["img2txt_metrics"]["mP"][k]
 		print(f"  mP@{k}: {delta:+.4f}")
 
-def compute_slope(losses: List[float]) -> float:
-	"""Computes the slope of the best-fit line for a list of losses."""
-	if len(losses) < 2: # Need at least two points for a slope
-		print("Warning: compute_slope called with less than 2 points. Returning 0.")
-		return 0.0
-	x = np.arange(len(losses))
-	A = np.vstack([x, np.ones(len(x))]).T
-	try:
-		# Use np.linalg.lstsq for linear regression
-		m, _ = np.linalg.lstsq(A, np.array(losses), rcond=None)[0]
-		return m
-	except np.linalg.LinAlgError:
-		print("Warning: Least squares failed in compute_slope, returning slope 0.")
-		return 0.0 # Handle potential numerical issues
+# def compute_slope(losses: List[float]) -> Optional[float]:
+# 	"""Computes the slope of the best-fit line for a list of losses."""
+# 	if len(losses) < 2: # Need at least two points for a slope
+# 		print("Warning: compute_slope called with less than 2 points. Returning None.")
+# 		return 0.0
+# 	x = np.arange(len(losses))
+# 	A = np.vstack([x, np.ones(len(x))]).T
+# 	try:
+# 		# Use least squares regression
+# 		m, _ = np.linalg.lstsq(A, np.array(losses), rcond=None)[0]
+# 		return m
+# 	except np.linalg.LinAlgError as e:
+# 		print(f"Warning: Least squares failed in compute_slope: {e}. Returning None.")
+# 		return 0.0
+
+def compute_slope(window: List[float]) -> float:
+    """Linear regression slope of a 1‑D window."""
+    if len(window) < 2:
+        return 0.0
+    x = np.arange(len(window))
+    y = np.asarray(window)
+    # slope = cov(x, y) / var(x)
+    return np.cov(x, y, bias=True)[0, 1] / np.var(x)
 
 def get_warmup_lr(
 		current_step: int,

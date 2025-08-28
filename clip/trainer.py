@@ -1987,7 +1987,7 @@ def should_transition_phase(
 	#    - Fits a line to the losses in the window and gets the slope.
 	#    - Positive slope means loss is generally increasing (worsening).
 	#    - Negative slope means loss is generally decreasing (improving).
-	loss_slope = compute_slope(last_window_losses) # Use global function
+	loss_slope = compute_slope(window=last_window_losses) # Use global function
 
 	# Check Closeness to Best Loss:
 	#    - Determines if the current loss is already very near the absolute best loss ever recorded.
@@ -2589,6 +2589,8 @@ def progressive_finetune_single_label(
 
 		avg_training_loss = epoch_train_loss / num_train_batches if num_train_batches > 0 and trainable_params_exist else 0.0
 		training_losses.append(avg_training_loss)
+		if hasattr(early_stopping, "train_loss_history"):
+			early_stopping.train_loss_history.append(avg_training_loss)
 
 		print(f">> Training Completed in {time.time() - epoch_start_time:.2f} sec. Validating Epoch: {epoch+1}")
 
@@ -2630,7 +2632,6 @@ def progressive_finetune_single_label(
 		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
 		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
 		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
-
 
 		#  --- DEBUG HOOK: Log Retrieval Delta ---
 		# Note: phase_just_changed is a flag you already have. We need to set it to True inside the transition logic

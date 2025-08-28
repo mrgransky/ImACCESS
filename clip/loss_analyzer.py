@@ -79,37 +79,36 @@ class LossAnalyzer:
 		
 		plt.savefig(fpth, dpi=200, bbox_inches='tight')
 	
-	def get_training_signals(self):
+	def get_training_signals(self, window=10, threshold=1e-3):
 		signals = {}
 		
 		# Best epoch using EMA
-		val_ema = self.ema(self.val_loss, 10)
+		val_ema = self.ema(self.val_loss, window)
 		best_idx = np.argmin(val_ema)
 		signals['best_epoch'] = self.epochs[best_idx]
 		signals['best_loss'] = val_ema[best_idx]
 		
 		# Overfitting gap
-		train_ema = self.ema(self.train_loss, 10)
-		signals['overfitting_gap'] = val_ema[-1] - train_ema[-1]
+		train_ema = self.ema(self.train_loss, window)
+		signals['overfitting_gap'] = val_ema[-1] - train_ema[-1] # (positive = over‑fit)
 		
 		# Recent trend
-		recent_trend = np.mean(np.diff(val_ema[-10:]))
-		signals['recent_trend'] = recent_trend
+		recent_trend = np.mean(np.diff(val_ema[-window:]))
+		signals['recent_trend'] = recent_trend # (positive = improving)
 		
 		# Recommendations
-		if recent_trend > 0.001:
-			signals['recommendation'] = "STOP - Validation loss increasing"
-		elif recent_trend > -0.001:
-			signals['recommendation'] = "CAUTION - Loss plateauing"
+		if recent_trend > threshold:
+			signals['recommendation'] = f"STOP - Validation loss increasing ({recent_trend}) > {threshold}"
+		elif recent_trend > -threshold:
+			signals['recommendation'] = f"CAUTION - Loss plateauing ({recent_trend}) > -{threshold}"
 		else:
-			signals['recommendation'] = "CONTINUE - Still improving"
+			signals['recommendation'] = f"CONTINUE - Still improving ({recent_trend}) < {threshold}"
 				
 		return signals
 
 '''
-# Example usage:
-analyzer = LossAnalyzer()
-analyzer.load_data(epochs, train_loss, val_loss)
-analyzer.plot_analysis()
-signals = analyzer.get_training_signals()
+	# Example usage:
+	analyzer = LossAnalyzer(epochs, train_loss, val_loss)
+	analyzer.plot_analysis()
+	signals = analyzer.get_training_signals()
 '''
