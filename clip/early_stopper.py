@@ -436,7 +436,7 @@ class EarlyStopping:
 			elif recent_trend > -self.ema_threshold:
 				recommendation = f"CAUTION - Loss plateauing (trend={recent_trend}) > -{self.ema_threshold}"
 			else:
-				recommendation = f"CONTINUE - Still improving (trend={recent_trend}) < -{self.ema_threshold}"
+				recommendation = f"CONTINUE - Still improving (trend={recent_trend})"
 			return {
 				"best_epoch": best_epoch,
 				"best_loss": best_loss,
