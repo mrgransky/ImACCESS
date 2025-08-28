@@ -1,1 +1,2 @@
-# THIS is blank project TAU for ImACCESS
+# ImACCESS (TAU)
+Github Repo for ImACCESS project at Tampere University, Finland.
