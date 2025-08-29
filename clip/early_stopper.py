@@ -27,7 +27,7 @@ class EarlyStopping:
 				min_epochs: int = 5,
 				restore_best_weights: bool = True,
 				volatility_threshold: float = 10.0,
-				slope_threshold: float = 0.0,
+				slope_threshold: float = 1e-3,
 				pairwise_imp_threshold: float = 5e-3,
 				min_phases_before_stopping: Optional[int] = None,
 				ema_window: int = 10,
@@ -82,25 +82,26 @@ class EarlyStopping:
 			print("=" * 100)
 
 		def reset(self) -> None:
-				print(f">> Resetting {self.__class__.__name__} state")
-				self.best_score: Optional[float] = None
-				self.best_weights: Optional[Dict[str, torch.Tensor]] = None
-				self.best_epoch: int = 0
-				self.counter: int = 0          # patience counter (no‑improve epochs)
-
-				self.value_history: List[float] = []   # raw validation loss
-				self.ema_history = []                 # EMA of validation loss
-				self.improvement_history: List[bool] = []
-				self.current_phase: int = 0
-
-				self.train_loss_history: List[float] = []   # optional – over‑fit gap
-
-				# restored after every dynamic adaptation step
-				self._orig_patience = self.patience
-				self._orig_vol_thresh = self.volatility_threshold
-				self._orig_slope_thresh = self.slope_threshold
-
-				self._unstable_last = False
+			print(f">> Resetting {self.__class__.__name__} state")
+			self.best_score: Optional[float] = None
+			self.best_weights: Optional[Dict[str, torch.Tensor]] = None
+			self.best_epoch: int = 0
+			self.counter: int = 0          # patience counter (no‑improve epochs)
+			self.effective_patience: int = self.patience
+			
+			self.value_history: List[float] = []   # raw validation loss
+			self.ema_history = []                 # EMA of validation loss
+			self.improvement_history: List[bool] = []
+			self.train_loss_history: List[float] = []   # optional – over‑fit gap
+			
+			self.current_phase: int = 0
+			
+			# restored after every dynamic adaptation step
+			self._orig_patience = self.patience
+			self._orig_vol_thresh = self.volatility_threshold
+			self._orig_slope_thresh = self.slope_threshold
+			
+			self._unstable_last = False
 
 		def _update_ema(self, raw_val: float) -> None:
 				if not self.ema_history:
