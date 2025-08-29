@@ -28,9 +28,10 @@ best_model_color = "#008528"
 
 def plot_phase_transition_analysis_individual(
 		training_history: Dict,
-		save_path: str,
+		file_path: str,
 		figsize: Tuple[int, int] = (10, 6)
 	):
+	file_path = file_path.replace("_ph_anls.png", ".png")
 	# Extract data
 	epochs = [e + 1 for e in training_history['epochs']]  # 1-based indexing
 	train_losses = training_history['train_losses']
@@ -48,7 +49,7 @@ def plot_phase_transition_analysis_individual(
 
 	# Helper to save figure with suffix
 	def save_fig(fig, suffix):
-		base, ext = os.path.splitext(save_path)
+		base, ext = os.path.splitext(file_path)
 		fig.savefig(f"{base}_{suffix}{ext}", dpi=200, bbox_inches='tight', facecolor='white')
 		plt.close(fig)
 	
@@ -314,7 +315,7 @@ def plot_phase_transition_analysis_individual(
 
 def plot_phase_transition_analysis(
 		training_history: Dict,
-		save_path: str,
+		file_path: str,
 		figsize: Tuple[int, int] = (20, 10)
 	):
 	# Extract data
@@ -779,7 +780,7 @@ def plot_phase_transition_analysis(
 	)
 	
 	plt.savefig(
-		save_path, 
+		file_path, 
 		dpi=300, 
 		bbox_inches='tight', 
 		facecolor='white', 

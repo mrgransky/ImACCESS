@@ -2778,7 +2778,7 @@ def progressive_finetune_single_label(
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retr_perEP.png"),
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retr_perK.png"),
 		"progressive_dynamics": os.path.join(results_dir, f"{file_base_name}_dyn.png"),
-		"phase_analysis": os.path.join(results_dir, f"{file_base_name}_phase_analysis.png"),
+		"phase_analysis": os.path.join(results_dir, f"{file_base_name}_ph_anls.png"),
 		"unfreeze_heatmap": os.path.join(results_dir, f"{file_base_name}_unf_hmap.png"),
 		"training_summary": os.path.join(results_dir, f"{file_base_name}_train_summary.txt"),
 		"loss_evolution": os.path.join(results_dir, f"{file_base_name}_loss_evol.png"),
@@ -2788,7 +2788,7 @@ def progressive_finetune_single_label(
 		"hyperparameter_correlation": os.path.join(results_dir, f"{file_base_name}_hypp_corr.png"),
 		"trainable_layers": os.path.join(results_dir, f"{file_base_name}_train_lyrs.png"),
 		"grad_norm": os.path.join(results_dir, f"{file_base_name}_grad_norm.png"),
-		"loss_volatility": os.path.join(results_dir, f"{file_base_name}_loss_volatility.png"),
+		"loss_volatility": os.path.join(results_dir, f"{file_base_name}_loss_vol.png"),
 		"loss_analyzer": os.path.join(results_dir, f"{file_base_name}_loss_analyzer.png"),
 	}
 
@@ -2813,7 +2813,7 @@ def progressive_finetune_single_label(
 
 	analysis_results = plot_phase_transition_analysis(
 		training_history=training_history,
-		save_path=plot_paths["phase_analysis"],
+		file_path=plot_paths["phase_analysis"],
 	)
 
 	print(f"\tTraining improvement: {analysis_results['total_improvement']:.2f}%")
@@ -2830,7 +2830,7 @@ def progressive_finetune_single_label(
 
 	plot_phase_transition_analysis_individual(
 		training_history=training_history,
-		save_path=plot_paths["phase_analysis"],
+		file_path=plot_paths["phase_analysis"],
 	)
 
 	plot_loss_accuracy_metrics(

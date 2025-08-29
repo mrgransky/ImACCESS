@@ -25,7 +25,7 @@ class LossAnalyzer:
 		return ema
 	
 	def plot_analysis(self, windows=[5, 10, 20], fpth='loss_analysis.png', figsize=(10, 6)):
-		fpth = fpth.replace(".png", "")
+		fpth = fpth.replace("_loss_analyzer.png", "")
 		cols = plt.cm.tab10(np.linspace(0, 1, len(windows) + 1))
 
 		# Plot 1: Training Loss - SMA
