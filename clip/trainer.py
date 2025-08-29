@@ -2826,7 +2826,7 @@ def progressive_finetune_single_label(
 	)
 	analyzer.plot_analysis(fpth=plot_paths["loss_analyzer"])
 	signals = analyzer.get_training_signals()
-	print(f"\nTraining signals: {signals}\n")
+	print(f"\nEMA signal summary: {signals}\n")
 
 	plot_phase_transition_analysis_individual(
 		training_history=training_history,
