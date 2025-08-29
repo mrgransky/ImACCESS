@@ -29,7 +29,7 @@ class EarlyStopping:
 				volatility_threshold: float = 10.0,
 				slope_threshold: float = 0.0,
 				pairwise_imp_threshold: float = 5e-3,
-				min_phases_before_stopping: int = 3,
+				min_phases_before_stopping: Optional[int] = None,
 				ema_window: int = 10,
 				ema_threshold: float = 1e-3,
 				adaptation_factor: float = 0.5,
@@ -59,24 +59,26 @@ class EarlyStopping:
 				self._log_config()
 
 		def _log_config(self) -> None:
+			config_summary = f"""
+			Patience = {self.patience}
+			MinDelta = {self.min_delta}
+			CumulativeDelta = {self.cumulative_delta}
+			WindowSize = {self.window_size}
+			Mode = {self.mode}
+			MinEpochs = {self.min_epochs}
+			VolatilityThreshold = {self.volatility_threshold}
+			SlopeThreshold = {self.slope_threshold}
+			PairwiseImpThreshold = {self.pairwise_imp_threshold}
+			EMA window = {self.ema_window}
+			EMA recommendation threshold = {self.ema_threshold}
+			AdaptationFactor = {self.adaptation_factor} [1/factor = relaxation multiplier]
+			RestoreBestWeights = {self.restore_best_weights}
+			"""
+			if self.min_phases_before_stopping is not None:
+				config_summary += f"MinPhasesBeforeStopping = {self.min_phases_before_stopping}"
 			print("=" * 100)
-			print(
-				f"{self.__class__.__name__} [initial] Configuration:\n"
-				f"\tPatience = {self.patience}\n"
-				f"\tMinDelta = {self.min_delta}\n"
-				f"\tCumulativeDelta = {self.cumulative_delta}\n"
-				f"\tWindowSize = {self.window_size}\n"
-				f"\tMode = {self.mode}\n"
-				f"\tMinEpochs = {self.min_epochs}\n"
-				f"\tMinPhasesBeforeStopping = {self.min_phases_before_stopping} [only for progressive finetuning]\n"
-				f"\tVolatilityThreshold = {self.volatility_threshold}\n"
-				f"\tSlopeThreshold = {self.slope_threshold}\n"
-				f"\tPairwiseImpThreshold = {self.pairwise_imp_threshold}\n"
-				f"\tEMA window = {self.ema_window}\n"
-				f"\tEMA recommendation threshold = {self.ema_threshold}\n"
-				f"\tAdaptationFactor = {self.adaptation_factor} [1/factor = relaxation multiplier]\n"
-				f"\tRestoreBestWeights = {self.restore_best_weights}"
-			)
+			print(f"{self.__class__.__name__} [initial] Configuration")
+			print(config_summary)
 			print("=" * 100)
 
 		def reset(self) -> None:
@@ -238,16 +240,21 @@ class EarlyStopping:
 					f"Patience: {self.counter}/{self.patience}"
 				)
 
-			# 4 Raw‑loss window statistics (need at least `window_size` points)			
+			# 4 Check if we have enough history for window-based analysis
 			if len(self.value_history) < self.window_size:
-				print(
-					f"\tInsufficient raw history ({len(self.value_history)}/{self.window_size}) "
-					"for window‑based checks."
-				)
+				print(f"\tInsufficient history ({len(self.value_history)}/{self.window_size}) for window‑based checks")
 				if self.counter >= self.patience:
-					phase_ok = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
-					if phase_ok:
-						print("❗️ Patience exceeded → early stop.")
+					# Only check phase constraints if min_phases_before_stopping is set:
+					if self.min_phases_before_stopping is not None:
+						phase_ok =(current_phase is None) or (current_phase >= self.min_phases_before_stopping)
+						if phase_ok:
+							print(">> Patience exceeded → early stop.")
+							return True
+						else:
+							print(f"Patience exceeded but waiting for phase >= {self.min_phases_before_stopping}")
+							return False
+					else:
+						print(">> Patience exceeded → early stop.")
 						return True
 				return False
 			raw_window = self.value_history[-self.window_size :]
@@ -305,16 +312,22 @@ class EarlyStopping:
 			elif recent_trend > -self.ema_threshold:
 				stop_reasons.append("EMA trend ≈0 (recommend CAUTION)")
 			
-			# 9 Final decision – respect phase constraints
+			# 9 Final decision with phase constraints (if set)
 			should_stop = bool(stop_reasons)
 			if should_stop:
-				phase_ok = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
-				if not phase_ok:
-					print(
-						f"\tStopping criteria met ({', '.join(stop_reasons)}) "
-						f"but waiting for phase >= {self.min_phases_before_stopping}"
-					)
-					should_stop = False
+				# Only apply phase constraints if min_phases_before_stopping is set (progressive fine-tuning)
+				if self.min_phases_before_stopping is not None:
+					phase_ok = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
+					if not phase_ok:
+						print(
+							f"\tStopping criteria met ({', '.join(stop_reasons)}) "
+							f"but waiting for phase >= {self.min_phases_before_stopping}"
+						)
+						should_stop = False
+					else:
+						print("\n<!> EARLY STOPPING TRIGGERED:")
+						for r in stop_reasons:
+							print(f"\t • {r}")
 				else:
 					print("\n<!> EARLY STOPPING TRIGGERED:")
 					for r in stop_reasons:
@@ -322,7 +335,6 @@ class EarlyStopping:
 			else:
 				print("\tNo stopping condition satisfied this epoch.")
 			
-			# 10 Restore best raw weights if we really stop
 			if should_stop and self.restore_best_weights:
 				if self.best_weights is not None:
 					target_device = next(model.parameters()).device

@@ -2900,7 +2900,7 @@ def full_finetune_single_label(
 		volatility_threshold=volatility_threshold,
 		slope_threshold=slope_threshold, # Positive slope is bad for loss
 		pairwise_imp_threshold=pairwise_imp_threshold,
-		min_phases_before_stopping=1, # Not really needed for full finetune, but for consistency
+		# min_phases_before_stopping=1, # Not really needed for full finetune, but for consistency
 	)
 
 	try:
@@ -3289,7 +3289,7 @@ def lora_finetune_single_label(
 		volatility_threshold=volatility_threshold,
 		slope_threshold=slope_threshold, # Positive slope is bad for loss
 		pairwise_imp_threshold=pairwise_imp_threshold,
-		min_phases_before_stopping=1, # Not really needed for LoRA finetune, but for consistency
+		# min_phases_before_stopping=1, # Not really needed for LoRA finetune, but for consistency
 	)
 
 	# Dataset and directory setup (same as finetune())
@@ -3659,7 +3659,7 @@ def probe_finetune_single_label(
 		volatility_threshold=volatility_threshold,
 		slope_threshold=slope_threshold,
 		pairwise_imp_threshold=pairwise_imp_threshold,
-		min_phases_before_stopping=1, # Not really needed for linear probe, but for consistency
+		# min_phases_before_stopping=1, # Not really needed for linear probe, but for consistency
 	)
 	
 	try:
@@ -4137,7 +4137,6 @@ def full_finetune_multi_label(
 		volatility_threshold: float = 15.0,
 		slope_threshold: float = 1e-4, 
 		pairwise_imp_threshold: float = 1e-4,
-		min_phases_before_stopping: int = 1,  # Not really needed for full finetune, but for consistency
 		use_lamb: bool = False,
 	):
 	"""
@@ -4185,7 +4184,7 @@ def full_finetune_multi_label(
 		volatility_threshold=volatility_threshold,
 		slope_threshold=slope_threshold,
 		pairwise_imp_threshold=pairwise_imp_threshold,
-		min_phases_before_stopping=min_phases_before_stopping,
+		# min_phases_before_stopping=1,
 	)
 
 	try:
@@ -5213,7 +5212,6 @@ def lora_finetune_multi_label(
 		volatility_threshold: float = 15.0,
 		slope_threshold: float = 1e-4, 
 		pairwise_imp_threshold: float = 1e-4,
-		min_phases_before_stopping: int = 1,  # Not really needed for LoRA finetune, but for consistency
 		use_lamb: bool = False,
 	):
 	"""
@@ -5283,7 +5281,7 @@ def lora_finetune_multi_label(
 		volatility_threshold=volatility_threshold,
 		slope_threshold=slope_threshold,  # Positive slope is bad for loss
 		pairwise_imp_threshold=pairwise_imp_threshold,
-		min_phases_before_stopping=min_phases_before_stopping,
+		# min_phases_before_stopping=1,
 	)
 
 	try:
@@ -5723,7 +5721,6 @@ def probe_finetune_multi_label(
 		volatility_threshold: float = 15.0,
 		slope_threshold: float = 1e-4,
 		pairwise_imp_threshold: float = 1e-4,
-		min_phases_before_stopping: int = 1,
 		use_lamb: bool = False,
 		probe_hidden_dim: int = None,  # Optional: add hidden layer
 		probe_dropout: float = 0.1,
@@ -5748,7 +5745,7 @@ def probe_finetune_multi_label(
 				volatility_threshold=volatility_threshold,
 				slope_threshold=slope_threshold,
 				pairwise_imp_threshold=pairwise_imp_threshold,
-				min_phases_before_stopping=min_phases_before_stopping,
+				# min_phases_before_stopping=1,
 		)
 
 		try:
