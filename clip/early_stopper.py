@@ -68,25 +68,25 @@ class EarlyStopping:
 		#  Pretty printing of the configuration (class name is dynamic)
 		# ------------------------------------------------------------------
 		def _print_configuration(self) -> None:
-				print("=" * 100)
-				print(
-						f"{self.__class__.__name__} [initial] Configuration:\n"
-						f"\tPatience = {self.patience}\n"
-						f"\tMinDelta = {self.min_delta}\n"
-						f"\tCumulativeDelta = {self.cumulative_delta}\n"
-						f"\tWindowSize = {self.window_size}\n"
-						f"\tMode = {self.mode}\n"
-						f"\tMinEpochs = {self.min_epochs}\n"
-						f"\tMinPhasesBeforeStopping = {self.min_phases_before_stopping}\n"
-						f"\tVolatilityThreshold = {self.volatility_threshold}\n"
-						f"\tSlopeThreshold = {self.slope_threshold}\n"
-						f"\tPairwiseImpThreshold = {self.pairwise_imp_threshold}\n"
-						f"\tEMA window = {self.ema_window}\n"
-						f"\tEMA recommendation threshold = {self.ema_threshold}\n"
-						f"\tDynamicFactor (tightening) = {self.dynamic_factor}\n"
-						f"\tRestoreBestWeights = {self.restore_best_weights}"
-				)
-				print("=" * 100)
+			print("=" * 100)
+			print(
+				f"{self.__class__.__name__} [initial] Configuration:\n"
+				f"\tPatience = {self.patience}\n"
+				f"\tMinDelta = {self.min_delta}\n"
+				f"\tCumulativeDelta = {self.cumulative_delta}\n"
+				f"\tWindowSize = {self.window_size}\n"
+				f"\tMode = {self.mode}\n"
+				f"\tMinEpochs = {self.min_epochs}\n"
+				f"\tMinPhasesBeforeStopping = {self.min_phases_before_stopping} [only for progressive finetuning]\n"
+				f"\tVolatilityThreshold = {self.volatility_threshold}\n"
+				f"\tSlopeThreshold = {self.slope_threshold}\n"
+				f"\tPairwiseImpThreshold = {self.pairwise_imp_threshold}\n"
+				f"\tEMA window = {self.ema_window}\n"
+				f"\tEMA recommendation threshold = {self.ema_threshold}\n"
+				f"\tDynamicFactor (tightening) = {self.dynamic_factor}\n"
+				f"\tRestoreBestWeights = {self.restore_best_weights}"
+			)
+			print("=" * 100)
 
 		# ------------------------------------------------------------------
 		#  Reset – called at start and after each phase transition
@@ -148,32 +148,29 @@ class EarlyStopping:
 		#  Dynamic‑threshold policy – tighten thresholds for the *current* epoch
 		# ------------------------------------------------------------------
 		def _apply_dynamic_tightening(self, ema_slope: float, ema_vol: float) -> None:
-				shaky = (ema_slope > self.slope_threshold) or (ema_vol > self.volatility_threshold)
-
-				if shaky:
-						# Remember that we are in a shaky period (used to avoid flapping)
-						self._shaky_last = True
-
-						# Tighten thresholds (halve patience, shrink volatility, make slope stricter)
-						self.patience = max(1, int(self._orig_patience * self.dynamic_factor))
-						self.volatility_threshold = self._orig_vol_thresh * self.dynamic_factor
-						# *Make the slope requirement stricter* – i.e. smaller allowed positive slope
-						self.slope_threshold = self._orig_slope_thresh * self.dynamic_factor
-
-						print("\t[Dynamic] EMA shaky → thresholds tightened for this epoch:")
-						print(
-								f"\t   patience → {self.patience}   "
-								f"volatility_thr → {self.volatility_threshold:.2f}%   "
-								f"slope_thr → {self.slope_threshold:.5e}"
-						)
-				else:
-						# Only restore once we have seen a calm epoch after a shaky one
-						if self._shaky_last:
-								self.patience = self._orig_patience
-								self.volatility_threshold = self._orig_vol_thresh
-								self.slope_threshold = self._orig_slope_thresh
-								self._shaky_last = False
-								print("\t[Dynamic] EMA calm → thresholds restored to original values.")
+			shaky = (ema_slope > self.slope_threshold) or (ema_vol > self.volatility_threshold)
+			if shaky:
+				# Remember that we are in a shaky period (used to avoid flapping)
+				self._shaky_last = True
+				# Tighten thresholds (halve patience, shrink volatility, make slope stricter)
+				self.patience = max(1, int(self._orig_patience * self.dynamic_factor))
+				self.volatility_threshold = self._orig_vol_thresh * self.dynamic_factor
+				# *Make the slope requirement stricter* – i.e. smaller allowed positive slope
+				self.slope_threshold = self._orig_slope_thresh * self.dynamic_factor
+				print("\t[Dynamic] EMA shaky → thresholds tightened for this epoch:")
+				print(
+					f"\t   patience → {self.patience}   "
+					f"volatility_thr → {self.volatility_threshold:.2f}%   "
+					f"slope_thr → {self.slope_threshold:.5e}"
+				)
+			else:
+				# Only restore once we have seen a calm epoch after a shaky one
+				if self._shaky_last:
+					self.patience = self._orig_patience
+					self.volatility_threshold = self._orig_vol_thresh
+					self.slope_threshold = self._orig_slope_thresh
+					self._shaky_last = False
+					print("\t[Dynamic] EMA calm → thresholds restored to original values.")
 
 		# ------------------------------------------------------------------
 		#  Public getters (unchanged API)

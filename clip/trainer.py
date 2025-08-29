@@ -2726,7 +2726,7 @@ def progressive_finetune_single_label(
 
 	file_base_name = (
 		# f"{dataset_name}_"
-		# f"{mode}_"
+		f"{mode}_"
 		# f"{optimizer.__class__.__name__}_"
 		# f"{scheduler.__class__.__name__}_"
 		# f"{criterion.__class__.__name__}_"
@@ -3166,13 +3166,13 @@ def full_finetune_single_label(
 	actual_trained_epochs = len(training_losses)
 
 	file_base_name = (
-		f"{dataset_name}_"
+		# f"{dataset_name}_"
 		f"{mode}_"
-		f"{optimizer.__class__.__name__}_"
-		f"{scheduler.__class__.__name__}_"
-		f"{criterion.__class__.__name__}_"
-		f"{scaler.__class__.__name__}_"
-		f"{model_name}_"
+		# f"{optimizer.__class__.__name__}_"
+		# f"{scheduler.__class__.__name__}_"
+		# f"{criterion.__class__.__name__}_"
+		# f"{scaler.__class__.__name__}_"
+		# f"{model_name}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
@@ -3527,13 +3527,13 @@ def lora_finetune_single_label(
 	actual_trained_epochs = len(training_losses)
 
 	file_base_name = (
-		f"{dataset_name}_"
+		# f"{dataset_name}_"
 		f"{mode}_"
-		f"{optimizer.__class__.__name__}_"
-		f"{scheduler.__class__.__name__}_"
-		f"{criterion.__class__.__name__}_"
-		f"{scaler.__class__.__name__}_"
-		f"{model_name}_"
+		# f"{optimizer.__class__.__name__}_"
+		# f"{scheduler.__class__.__name__}_"
+		# f"{criterion.__class__.__name__}_"
+		# f"{scaler.__class__.__name__}_"
+		# f"{model_name}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
