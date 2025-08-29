@@ -2102,8 +2102,7 @@ def handle_phase_transition(
 	max_allowable_wd = initial_wd * max_wd_increase_factor
 	new_wd = min(new_wd, max_allowable_wd)
 
-	print(f"\n--- Phase Transition Occurred (Moving to Phase {next_phase}) ---")
-	print(f"Previous Phase: {current_phase}")
+	print(f">> Phase Transition Occurred (Moving to Phase {next_phase} from Previous Phase: {current_phase})")
 	print(f"Factors -> Loss Stability: {loss_stability_factor:.3f}, Window Factor: {window_factor:.3f}, Phase Factor: {phase_factor:.3f}")
 	print(f"Calculated New LR: {new_lr:.3e} (min allowable: {min_allowable_lr:.3e})")
 	print(f"WD Factors -> Phase Progress: {wd_phase_progress:.2f}, Dynamic Max Increase Factor: {max_wd_increase_factor:.2f}")

@@ -145,9 +145,9 @@ fi
 ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
 if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
 	if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-		ADJUSTED_BATCH_SIZE=128
+		ADJUSTED_BATCH_SIZE=32
 	else
-		ADJUSTED_BATCH_SIZE=512
+		ADJUSTED_BATCH_SIZE=128
 	fi
 elif [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
 	ADJUSTED_BATCH_SIZE=256
