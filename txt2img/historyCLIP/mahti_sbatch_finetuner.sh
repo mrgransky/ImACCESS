@@ -11,7 +11,7 @@
 #SBATCH --mem=478G
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1
-#SBATCH --array=0,4,8,12 # adjust job name!!!!!!!!!!!!!!!!!!!!!!!!!!!!! # 0-11:  dataset[0] with all strategy×architecture [H4]
+#SBATCH --array=0,4,8,12
 #SBATCH --time=1-12:00:00
 
 set -euo pipefail
@@ -86,7 +86,7 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 	exit 1
 fi
 
-INIT_LRS=(3.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+INIT_LRS=(4.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 INIT_WDS=(5.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
 EPOCHS=(100 100 150 150 150)
@@ -116,6 +116,10 @@ CACHE_SIZES=(1024 512 1000 1000 1000)  # H4, NA, EU, WWII, SMU
 
 # Adjust early stopping minimum epochs based on strategy
 strategy="${FINETUNE_STRATEGIES[$strategy_index]}"
+architecture="${MODEL_ARCHITECTURES[$architecture_index]}"
+
+
+
 initial_early_stopping_minimum_epochs="${INIT_EARLY_STOPPING_MIN_EPOCHS[$dataset_index]}"
 case $strategy in
 	"full")
@@ -141,17 +145,60 @@ else
 	DROPOUT="${DROPOUTS[$dataset_index]}" # Use the original dropout for full and progressive
 fi
 
-# Dynamically adjust batch size based on dataset and model architecture
-ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
+# Determine batch size based on strategy (simplified approach based on V100 experience)
+case $strategy in
+	"full"|"lora")
+		# Full and LoRA: Use batch size 32 (proven to work on V100 32GB)
+		ADJUSTED_BATCH_SIZE=32
+		;;
+	"progressive")
+		# Progressive: Memory efficient, can use larger batches
+		case $architecture in
+			"ViT-L/14@336px")
+				ADJUSTED_BATCH_SIZE=128  # Conservative for largest model
+				;;
+			"ViT-L/14")
+				ADJUSTED_BATCH_SIZE=256  # Higher batch size
+				;;
+			"ViT-B/32"|"ViT-B/16")
+				ADJUSTED_BATCH_SIZE=512 # Large batches for smaller models
+				;;
+		esac
+		;;
+	"probe")
+		# Linear probe: Most memory efficient (only trains classifier)
+		case $architecture in
+			"ViT-L/14@336px")
+				ADJUSTED_BATCH_SIZE=128 # Large batches work well
+				;;
+			"ViT-L/14")
+				ADJUSTED_BATCH_SIZE=192 # Very large batches
+				;;
+			"ViT-B/32"|"ViT-B/16")
+				ADJUSTED_BATCH_SIZE=256 # Maximum efficiency for smaller models
+				;;
+		esac
+		;;
+esac
+
+# Further adjust for HISTORY_X4 (largest dataset) - reduce by ~25%
 if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
-	if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-		ADJUSTED_BATCH_SIZE=64
-	else
-		ADJUSTED_BATCH_SIZE=512
-	fi
-elif [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
-	ADJUSTED_BATCH_SIZE=1024
+	ADJUSTED_BATCH_SIZE=$((ADJUSTED_BATCH_SIZE * 3 / 4))
+	# Ensure minimum batch size of 8
+	ADJUSTED_BATCH_SIZE=$((ADJUSTED_BATCH_SIZE < 8 ? 8 : ADJUSTED_BATCH_SIZE))
 fi
+
+# # Dynamically adjust batch size based on dataset and model architecture
+# ADJUSTED_BATCH_SIZE="${BATCH_SIZES[$dataset_index]}"
+# if [[ "${DATASETS[$dataset_index]}" == *"HISTORY_X4"* ]]; then
+# 	if [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
+# 		ADJUSTED_BATCH_SIZE=64
+# 	else
+# 		ADJUSTED_BATCH_SIZE=512
+# 	fi
+# elif [[ "${MODEL_ARCHITECTURES[$architecture_index]}" == *"ViT-L"* ]]; then
+# 	ADJUSTED_BATCH_SIZE=1024
+# fi
 
 echo "=== CONFIGURATION ==="
 echo "SLURM_ARRAY_TASK_ID: $SLURM_ARRAY_TASK_ID"
