@@ -275,7 +275,7 @@ def plot_phase_transition_analysis_individual(
 	# ============================================
 	# PLOT 6: Embedding Drift
 	# ============================================
-	fig, ax6 = plt.subplots(figsize=(12, 8), facecolor='white')
+	fig, ax6 = plt.subplots(figsize=figsize, facecolor='white')
 	ax6.set_title('Embedding Drift from Pre-trained State', fontsize=10, weight='bold')
 	_seen_phases = set()
 	for i in range(len(epochs) - 1):
