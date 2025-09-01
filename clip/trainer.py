@@ -1951,6 +1951,7 @@ def create_differential_optimizer_groups(
 		return param_groups
 
 def should_transition_phase(
+		current_phase: int,
 		losses: List[float],
 		window: int,
 		best_loss: Optional[float],
@@ -1962,7 +1963,7 @@ def should_transition_phase(
 		accuracy_plateau_threshold: float = 1e-3 # Threshold for accuracy stagnation
 	) -> bool:
 
-	print(f"\n--- Phase Transition Check (Window: {window}) ---")
+	print(f"Phase Transition Check over {window} windows @ Phase: {current_phase}".center(120, "-"))
 
 	if len(losses) < window:
 		print(f"<!> Insufficient loss data ({len(losses)} < {window}) for phase transition.")
@@ -2033,12 +2034,12 @@ def should_transition_phase(
 	# Reason 2: Loss trend is worsening (slope > threshold)
 	if loss_slope > slope_threshold:
 		transition = True
-		reasons.append(f"Worsening loss slope ({loss_slope:.5f})")
+		reasons.append(f"Worsening loss slope ({loss_slope})")
 
 	# Reason 3: Loss improvement has stagnated AND not close to best
 	if loss_pairwise_imp_avg < pairwise_imp_threshold and not close_to_best:
 		transition = True
-		reasons.append(f"Low loss improvement ({loss_pairwise_imp_avg:.5f}) & not close to best")
+		reasons.append(f"Low loss improvement ({loss_pairwise_imp_avg}) & not close to best")
 
 	# Reason 4: Accuracy has plateaued (if available)
 	if accuracy_plateau:
@@ -2046,10 +2047,10 @@ def should_transition_phase(
 		reasons.append("Accuracy plateau detected")
 
 	if transition:
-		print(f"\n==>> PHASE TRANSITION RECOMMENDED: {', '.join(reasons)}")
+		print(f"\n==>> PHASE TRANSITION RECOMMENDED from Phase: {current_phase}: {', '.join(reasons)}\n")
 	else:
-		print("==>> No phase transition needed: Stable progress or close to best.")
-	print("-"*160)
+		print(f"==>> No phase transition required: Stable progress or close to best. Continue with current phase: {current_phase}.")
+
 	return transition
 
 def handle_phase_transition(
@@ -2397,6 +2398,7 @@ def progressive_finetune_single_label(
 			val_accs_full = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in full_val_loss_acc_metrics_all_epochs]
 
 			should_trans = should_transition_phase(
+				current_phase=current_phase,
 				losses=val_losses,
 				window=window_size,
 				best_loss=early_stopping.get_best_score(), # Use best score from early stopping state
@@ -3361,10 +3363,10 @@ def lora_finetune_single_label(
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
+		f"bs_{train_loader.batch_size}_"
 		f"lor_{lora_rank}_"
 		f"loa_{lora_alpha}_"
 		f"lod_{lora_dropout}_"
-		f"bs_{train_loader.batch_size}_"
 		f"mep_{minimum_epochs}_"
 		f"pat_{patience}_"
 		f"mdt_{min_delta:.1e}_"
@@ -4811,6 +4813,7 @@ def progressive_finetune_multi_label(
 				val_accs_in_batch.append(avg_acc)
 
 			should_trans = should_transition_phase(
+				current_phase=current_phase,
 				losses=val_losses,
 				window=window_size,
 				best_loss=early_stopping.get_best_score(),  # Use best score from early stopping state

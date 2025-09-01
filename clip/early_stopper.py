@@ -299,15 +299,15 @@ class EarlyStopping:
 				worsening = (self.mode == "min" and raw_slope > self.slope_threshold) or \
 									 (self.mode == "max" and raw_slope < self.slope_threshold)
 				if worsening:
-						stop_reasons.append(f"Worsening slope ({raw_slope:.5e})")
+						stop_reasons.append(f"Worsening slope ({raw_slope})")
 				
 				close_to_best = (abs(current_value - self.best_score) < self.min_delta 
 												if self.best_score is not None else False)
 				if pairwise_improvement < self.pairwise_imp_threshold and not close_to_best:
-						stop_reasons.append(f"Low pairwise improvement ({pairwise_improvement:.5e})")
+						stop_reasons.append(f"Low pairwise improvement ({pairwise_improvement})")
 				
 				if cum_imp_abs < self.cumulative_delta:
-						stop_reasons.append(f"Low cumulative improvement ({cum_imp_abs:.5e})")
+						stop_reasons.append(f"Low cumulative improvement ({cum_imp_abs})")
 				
 				# EMA trend analysis (only add if clearly worsening)
 				if len(self.ema_history) >= 3:

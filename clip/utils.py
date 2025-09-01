@@ -87,7 +87,8 @@ def compute_slope(window: List[float]) -> float:
 	x = np.arange(len(window))
 	y = np.asarray(window)
 	# slope = cov(x, y) / var(x)
-	return np.cov(x, y, bias=True)[0, 1] / np.var(x)
+	var_x = np.var(x)
+	return np.cov(x, y, bias=True)[0, 1] / var_x
 
 def get_warmup_lr(
 		current_step: int,
