@@ -124,7 +124,7 @@ def build_arch_flowchart(
     ranksep: float = 1.8,
     nodesep: float = 1.8,
     node_fontsize: int = 12,
-) -> Digraph:
+	):
     """
     Create a GraphViz flow‑chart that mirrors the hierarchical structure
     of a ``torch.nn.Module``.
