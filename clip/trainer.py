@@ -10,9 +10,11 @@ from visualize import (
 	plot_multilabel_loss_breakdown,
 	collect_progressive_training_history,
 	plot_phase_transition_analysis,
-	plot_phase_transition_analysis_individual,
-	build_arch_flowchart
+	plot_phase_transition_analysis_individual
 )
+
+if USER == "farid":
+	from visualize import build_arch_flowchart
 
 def cleanup_embedding_cache(
 		dataset_name: str,
