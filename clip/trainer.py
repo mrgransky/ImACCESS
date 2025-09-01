@@ -2214,14 +2214,14 @@ def progressive_finetune_single_label(
 		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
 
-	build_arch_flowchart(
-		model,
-		filename=os.path.join(results_dir, f"{model_arch}_flowchart"),
-		format="png",      # you can also use "svg" for a vector image
-		view=False,         # opens the image automatically (optional)
-		rankdir="LR"       # top‑to‑bottom (feel free to try "LR")
-	)
-
+	if USER == "farid":
+		build_arch_flowchart(
+			model,
+			filename=os.path.join(results_dir, f"{model_arch}_flowchart"),
+			format="png",      # you can also use "svg" for a vector image
+			view=False,         # opens the image automatically (optional)
+			rankdir="LR"       # top‑to‑bottom (feel free to try "LR")
+		)
 
 	for n, m in model.named_modules():
 		print(f"{n:<60} {type(m).__name__:<50} Training: {m.training:<10} Weights Grad: {m.weight.requires_grad if hasattr(m, 'weight') else ''}")

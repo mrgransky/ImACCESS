@@ -71,6 +71,8 @@ logger = logging.getLogger(__name__)
 
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
+USER = os.getenv('USER')
+
 def log_retrieval_delta(metrics, prev_metrics, phase):
 	"""Log retrieval performance deltas per phase."""
 	if prev_metrics is None:
