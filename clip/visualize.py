@@ -26,7 +26,8 @@ transition_color = "#E91111"
 early_stop_color = "#1D0808"
 best_model_color = "#008528"
 
-from graphviz import Digraph
+if USER == "farid":
+	from graphviz import Digraph
 
 def _friendly_name(module: torch.nn.Module) -> str:
 		"""
