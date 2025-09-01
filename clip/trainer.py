@@ -1909,15 +1909,15 @@ def create_differential_optimizer_groups(
 		'capturable': False,
 		'differentiable': False,
 		'fused': None,
-		'decoupled_weight_decay': True, # <-- THE CRITICAL ADDITION for AdamW
+		'decoupled_weight_decay': True,
 	}
 	
 	param_groups = []
 	
 	lr_multipliers = {
 		'projections': 0.5,
-		'text_transformer': 0.02,
-		'visual_transformer': 0.02,
+		'text_transformer': 0.1,
+		'visual_transformer': 0.1,
 		'text_frontend': 0.01,
 		'visual_frontend': 0.01,
 	}
@@ -2471,11 +2471,11 @@ def progressive_finetune_single_label(
 
 		# DEBUG LOGGING
 		if epoch <= 5 or epoch in phase_transitions_epochs:
-			print(f"DEBUG Epoch {epoch+1}: Current LR = {current_lr:.2e}, Phase = {current_phase}, Steps completed = {epoch * len(train_loader)}")
+			print(f"Current LR: {current_lr} Phase: {current_phase}, Steps completed = {epoch * len(train_loader)}")
 				
 		# Additional debug for scheduler behavior
 		if epoch <= 2:  # First few epochs
-			print(f"DEBUG: Scheduler last LR: {scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else 'N/A':.2e}")
+			print(f"Scheduler last LR: {scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else 'N/A':.2e}")
 
 		# --- Unfreeze Layers for Current Phase ---
 		print(f"Applying unfreeze strategy for Phase {current_phase}...")

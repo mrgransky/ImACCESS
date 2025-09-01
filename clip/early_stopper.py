@@ -213,9 +213,9 @@ class EarlyStopping:
 				current_ema = self.ema_history[-1]
 				phase_info = f", Phase {current_phase}" if current_phase is not None else ""
 				
-				print(f"\n--- {self.__class__.__name__} Check (Epoch {epoch+1}{phase_info}) ---")
-				print(f"  Raw loss: {current_value:.6f} | EMA loss: {current_ema:.6f}")
-				print(f"  Counter: {self.counter}/{self.effective_patience} | Adaptation: {'ON' if self._adaptation_active else 'OFF'}")
+				print(f"\n{self.__class__.__name__} Check (Epoch {epoch+1}{phase_info})")
+				print(f"\tRaw loss: {current_value} | EMA loss: {current_ema}")
+				print(f"\tCounter: {self.counter}/{self.effective_patience} | Adaptation: {'ON' if self._adaptation_active else 'OFF'}")
 				
 				# 2. Respect min_epochs
 				if epoch < self.min_epochs:
