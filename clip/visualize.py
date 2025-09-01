@@ -81,7 +81,7 @@ def plot_phase_transition_analysis_individual(
 		if t_epoch < len(val_losses):
 			prev_loss = val_losses[t_epoch - 1] if t_epoch > 0 else val_losses[t_epoch]
 			change = ((prev_loss - val_losses[t_epoch]) / prev_loss) * 100 if prev_loss > 0 else 0
-			ax1.text(t_epoch + 0.4, y_middle, f"Transition {i+1}\n{change:+.2f}%", rotation=90,
+			ax1.text(t_epoch + 0.4, y_middle, f"T{i+1}\n{change:+.2f}%", rotation=90,
 							 va="center", ha="left", color=transition_color, fontsize=9)
 
 	if best_epoch is not None:
@@ -416,7 +416,7 @@ def plot_phase_transition_analysis(
 			ax1.text(
 				transition_epoch + 0.25,
 				y_middle,
-				f'Transition {i+1}{improvement_text}',
+				f'T{i+1}{improvement_text}',
 				rotation=90,
 				fontsize=8,
 				ha='left',

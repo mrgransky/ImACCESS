@@ -1878,77 +1878,72 @@ def create_differential_optimizer_groups(
 		base_lr: float,
 		base_wd: float,
 		optimizer_hyperparams: dict
-) -> List[Dict]:
-		"""
-		Creates parameter groups with different learning rates for discriminative fine-tuning.
-		"""
-		# --- FIX: Add ALL expected AdamW keys here ---
-		adamw_defaults = {
-				'lr': base_lr,
-				'weight_decay': base_wd,
-				'eps': optimizer_hyperparams.get('eps', 1e-8),  # Adjusted default to match AdamW
-				'betas': optimizer_hyperparams.get('betas', (0.9, 0.999)), # Adjusted default to match AdamW
-				'amsgrad': False,
-				'maximize': False,
-				'foreach': None,
-				'capturable': False,
-				'differentiable': False,
-				'fused': None,
-				'decoupled_weight_decay': True, # <-- THE CRITICAL ADDITION for AdamW
-		}
-		# --- END FIX ---
-		
-		param_groups = []
-		
-		lr_multipliers = {
-				'projections': 0.5,
-				'text_transformer': 0.1,
-				'visual_transformer': 0.1,
-				'text_frontend': 0.01,
-				'visual_frontend': 0.01,
-		}
+	) -> List[Dict]:
 
-		layer_groups_map = get_layer_groups(model)
-		
-		print("\n>> Creating Optimizer Groups with Differential LRs...")
-		
-		assigned_params = set()
+	adamw_defaults = {
+		'lr': base_lr,
+		'weight_decay': base_wd,
+		'eps': optimizer_hyperparams.get('eps', 1e-8),  # Adjusted default to match AdamW
+		'betas': optimizer_hyperparams.get('betas', (0.9, 0.999)), # Adjusted default to match AdamW
+		'amsgrad': False,
+		'maximize': False,
+		'foreach': None,
+		'capturable': False,
+		'differentiable': False,
+		'fused': None,
+		'decoupled_weight_decay': True, # <-- THE CRITICAL ADDITION for AdamW
+	}
+	
+	param_groups = []
+	
+	lr_multipliers = {
+		'projections': 0.5,
+		'text_transformer': 0.02,
+		'visual_transformer': 0.02,
+		'text_frontend': 0.01,
+		'visual_frontend': 0.01,
+	}
 
-		for group_name, layer_prefixes in layer_groups_map.items():
-			group_params_list = []
-			for prefix in layer_prefixes:
-				for name, param in model.named_parameters():
-					if name.startswith(prefix) and param.requires_grad and param not in assigned_params:
-						group_params_list.append(param)
-						assigned_params.add(param)
+	layer_groups_map = get_layer_groups(model)
+	
+	print("\n>> Creating Optimizer Groups with Differential LRs...")
+	
+	assigned_params = set()
+	for group_name, layer_prefixes in layer_groups_map.items():
+		group_params_list = []
+		for prefix in layer_prefixes:
+			for name, param in model.named_parameters():
+				if name.startswith(prefix) and param.requires_grad and param not in assigned_params:
+					group_params_list.append(param)
+					assigned_params.add(param)
+		
+		if group_params_list:
+			lr_multiplier = lr_multipliers.get(group_name, 0.1)
 			
-			if group_params_list:
-				lr_multiplier = lr_multipliers.get(group_name, 0.1)
-				
-				group_dict = adamw_defaults.copy()
-				group_dict['params'] = group_params_list
-				group_dict['lr'] = base_lr * lr_multiplier
-				param_groups.append(group_dict)
-				
-				print(f"\tGroup: '{group_name}'")
-				print(f"\t\tParameters found: {len(group_params_list)}")
-				print(f"\t\tLR Multiplier: {lr_multiplier}x")
-				print(f"\t\tFinal LR: {group_dict['lr']}")
-
-		remaining_params = [
-			p 
-			for p in model.parameters() 
-			if p.requires_grad and p not in assigned_params
-		]
-
-		if remaining_params:
-			print("  - Group: 'remaining_params' (unclassified)")
 			group_dict = adamw_defaults.copy()
-			group_dict['params'] = remaining_params
-			group_dict['lr'] = base_lr * 0.01
+			group_dict['params'] = group_params_list
+			group_dict['lr'] = base_lr * lr_multiplier
 			param_groups.append(group_dict)
+			
+			print(f"\tGroup: '{group_name}'")
+			print(f"\t\tParameters found: {len(group_params_list)}")
+			print(f"\t\tLR Multiplier: {lr_multiplier}x")
+			print(f"\t\tFinal LR: {group_dict['lr']}")
 
-		return param_groups
+	remaining_params = [
+		p 
+		for p in model.parameters() 
+		if p.requires_grad and p not in assigned_params
+	]
+
+	if remaining_params:
+		print("  - Group: 'remaining_params' (unclassified)")
+		group_dict = adamw_defaults.copy()
+		group_dict['params'] = remaining_params
+		group_dict['lr'] = base_lr * 0.01
+		param_groups.append(group_dict)
+
+	return param_groups
 
 def should_transition_phase(
 		current_phase: int,
@@ -2570,10 +2565,10 @@ def progressive_finetune_single_label(
 				scaler.unscale_(optimizer) # Unscale before clipping
 				torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=1.0)
 
-				# --- DEBUG HOOK: Log Gradient Norms ---
-				if bidx % print_every == 0:  # Or some other frequency
-					log_grad_norms(model, current_phase, epoch+1)
-				# --- END DEBUG HOOK ---
+				# # --- DEBUG HOOK: Log Gradient Norms ---
+				# if bidx % print_every == 0:  # Or some other frequency
+				# 	log_grad_norms(model, current_phase, epoch+1)
+				# # --- END DEBUG HOOK ---
 
 				scaler.step(optimizer)
 				scaler.update()
