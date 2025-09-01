@@ -477,8 +477,6 @@ def get_max_samples(
 		print(f"Final Max Samples: {max_samples}")
 	return max_samples
 
-# CORRECT SOLUTION: Modify compute_model_embeddings() to handle different model types
-
 def compute_model_embeddings(
 		strategy,
 		model,

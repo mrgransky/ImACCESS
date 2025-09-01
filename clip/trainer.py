@@ -1775,7 +1775,7 @@ def get_unfreeze_schedule(
 			f"\n{layer_type} Transformer Layer Unfreezing Schedule:\n"
 			+ tabulate.tabulate(
 				table_data,
-				headers=["#", "Phase Type", "Unfrozen Layers", "Percentage"],
+				headers=["#", "Phase Type", "Unfrozen Layers", "Unfrozen Percentage(%)"],
 				tablefmt="grid"
 			)
 		)

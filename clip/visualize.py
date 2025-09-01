@@ -50,150 +50,315 @@ def _friendly_name(module: torch.nn.Module) -> str:
 		return cls_name
 
 
-def _module_color(module: torch.nn.Module) -> str:
-		"""Pick a colour based on the type – makes the chart easier to read."""
-		if isinstance(module, torch.nn.Conv2d):
-				return "#AED6F1"   # light blue
-		if isinstance(module, torch.nn.Linear):
-				return "#A9DFBF"   # light green
-		if isinstance(module, torch.nn.MultiheadAttention):
-				return "#F9E79F"   # light yellow
-		if isinstance(module, torch.nn.LayerNorm):
-				return "#F5CBA7"   # light orange
-		if isinstance(module, torch.nn.Embedding):
-				return "#D7BDE2"   # light purple
-		if isinstance(module, torch.nn.Dropout):
-				return "#E6B0AA"   # light red
-		# default
-		return "#D5DBDB"       # light grey
+# -----------------------------------------------------------------
+# 1️⃣  Helpers – short, safe labels & colour per layer type
+# -----------------------------------------------------------------
+def _short_label(mod: torch.nn.Module, max_len: int = 120) -> str:
+    """
+    Return a concise, GraphViz‑safe label for *mod*.
+
+    • Shows the class name.
+    • For Conv2d / Linear / MultiheadAttention we also show the most
+      important dimensions (e.g. 3→768, k=32×32).
+    • Truncates anything longer than *max_len* characters.
+    • Escapes double‑quotes and turns real new‑lines into the literal “\\n”.
+    """
+    cls = mod.__class__.__name__
+
+    if isinstance(mod, torch.nn.Conv2d):
+        k = "×".join(map(str, mod.kernel_size))
+        s = "×".join(map(str, mod.stride))
+        txt = f"{cls}({mod.in_channels}→{mod.out_channels}, k={k}, s={s})"
+    elif isinstance(mod, torch.nn.Linear):
+        txt = f"{cls}({mod.in_features}→{mod.out_features})"
+    elif isinstance(mod, torch.nn.MultiheadAttention):
+        txt = f"{cls}(embed={mod.embed_dim}, heads={mod.num_heads})"
+    elif isinstance(mod, torch.nn.LayerNorm):
+        txt = f"{cls}({mod.normalized_shape[0]})"
+    elif isinstance(mod, torch.nn.Embedding):
+        txt = f"{cls}({mod.num_embeddings}→{mod.embedding_dim})"
+    elif isinstance(mod, torch.nn.Dropout):
+        txt = f"{cls}(p={mod.p})"
+    else:
+        # generic containers (Sequential, ModuleList, …)
+        txt = cls
+
+    # make it DOT‑safe
+    txt = txt.replace('"', r'\"')          # escape "
+    txt = txt.replace("\n", r"\n")        # literal "\n"
+    if len(txt) > max_len:
+        txt = txt[: max_len - 3] + "..."
+    return txt
 
 
+def _module_color(mod: torch.nn.Module) -> str:
+    """Pastel colour per layer type – helps the eye skim the graph."""
+    if isinstance(mod, torch.nn.Conv2d):
+        return "#AED6F1"   # light blue
+    if isinstance(mod, torch.nn.Linear):
+        return "#A9DFBF"   # light green
+    if isinstance(mod, torch.nn.MultiheadAttention):
+        return "#F9E79F"   # light yellow
+    if isinstance(mod, torch.nn.LayerNorm):
+        return "#F5CBA7"   # light orange
+    if isinstance(mod, torch.nn.Embedding):
+        return "#D7BDE2"   # light purple
+    if isinstance(mod, torch.nn.Dropout):
+        return "#E6B0AA"   # light red
+    return "#D5DBDB"       # default – light grey for generic containers
+
+
+# -----------------------------------------------------------------
+# 2️⃣  Main function (API unchanged – only label handling fixed)
+# -----------------------------------------------------------------
 def build_arch_flowchart(
-		model: torch.nn.Module,
-		*,
-		filename: str = "clip_arch_flowchart",
-		format: str = "png",
-		view: bool = False,
-		rankdir: str = "TB",   # TB = top‑to‑bottom (LR = left‑to‑right)
-		canvas_inches: Tuple[float, float] = (100, 100),
-		dpi: int = 250,
-		ranksep: float = 1.8,
-		nodesep: float = 1.8,
-		node_fontsize: int = 12,
-	) -> Digraph:
-		"""
-		Create a GraphViz flow‑chart that mirrors the hierarchical structure of a
-		``torch.nn.Module``.
+    model: torch.nn.Module,
+    *,
+    filename: str = "clip_arch_flowchart",
+    format: str = "png",
+    view: bool = False,
+    rankdir: str = "TB",                     # TB = top‑to‑bottom, LR = left‑to‑right
+    canvas_inches: Tuple[float, float] = (30, 30),
+    dpi: int = 250,
+    ranksep: float = 1.8,
+    nodesep: float = 1.8,
+    node_fontsize: int = 12,
+) -> Digraph:
+    """
+    Create a GraphViz flow‑chart that mirrors the hierarchical structure
+    of a ``torch.nn.Module``.
+    """
+    # --------------------------------------------------------------
+    # 1️⃣  Build a tree that mirrors the dotted module names
+    # --------------------------------------------------------------
+    tree: Dict[str, Any] = {}
+    module_lookup: Dict[str, torch.nn.Module] = {}
 
-		Parameters
-		----------
-		model : torch.nn.Module
-				The model you want to visualise.
-		filename : str, optional
-				Base name for the generated files (``.gv`` and the rendered image).
-		format : str, optional
-				Image format produced by GraphViz (png, svg, pdf, …).
-		view : bool, optional
-				If True, open the rendered image automatically (requires a viewer on your OS).
-		rankdir : {"TB", "LR"}, optional
-				Layout direction – ``TB`` (default) draws layers from top to bottom,
-				``LR`` draws from left to right.
+    for name, mod in model.named_modules():
+        parts = name.split(".") if name else []
+        cur = tree
+        for p in parts:
+            cur = cur.setdefault(p, {})
+        cur["__module__"] = mod
+        module_lookup[name] = mod
 
-		Returns
-		-------
-		graphviz.Digraph
-				The underlying `Digraph` object – you can further customise it if you wish.
-		"""
-		# ------------------------------------------------------------------ #
-		# 1️⃣  Build a tree that reflects the dot‑separated names
-		# ------------------------------------------------------------------ #
-		tree: Dict[str, Any] = {}          # nested dicts, leaves are the actual modules
-		module_lookup: Dict[str, torch.nn.Module] = {}   # name → module (for later styling)
+    # --------------------------------------------------------------
+    # 2️⃣  Initialise the Digraph (canvas size, fonts, etc.)
+    # --------------------------------------------------------------
+    graph = Digraph(
+        name=filename,
+        format=format,
+        graph_attr={
+            "rankdir": rankdir,
+            "splines": "ortho",
+            "bgcolor": "white",
+            "size": f"{canvas_inches[0]},{canvas_inches[1]}",   # inches
+            "dpi": str(dpi),
+            "ranksep": str(ranksep),
+            "nodesep": str(nodesep),
+        },
+        node_attr={
+            "shape": "box",
+            "style": "filled",
+            "fontsize": str(node_fontsize),
+            "fontname": "Helvetica",
+        },
+        edge_attr={"arrowhead": "none"},
+    )
 
-		for name, mod in model.named_modules():
-				parts = name.split(".") if name else []   # the root (model) has an empty name
-				cur = tree
-				for p in parts:
-						cur = cur.setdefault(p, {})
-				# Mark the leaf with the real module object
-				cur["__module__"] = mod
-				module_lookup[name] = mod
+    # --------------------------------------------------------------
+    # 3️⃣  Recursive helper that adds clusters and nodes
+    # --------------------------------------------------------------
+    def _add_subgraph(parent_name: str, subtree: Dict[str, Any], depth: int = 0):
+        """
+        parent_name – dotted name of the current container
+        subtree     – dict with children (and possibly "__module__")
+        """
+        cluster_id = (
+            f"cluster_{parent_name.replace('.', '_')}"
+            if parent_name
+            else "cluster_root"
+        )
+        with graph.subgraph(name=cluster_id) as c:
+            # Title of the cluster (last component of the dotted name,
+            # or the root class name for the top‑level cluster)
+            title = parent_name.split(".")[-1] if parent_name else model.__class__.__name__
+            c.attr(label=title, labelloc="t", fontsize="12", fontname="Helvetica-Bold")
 
-		# ------------------------------------------------------------------ #
-		# 2️⃣  Helper: recursively add sub‑graphs (clusters) to the Digraph
-		# ------------------------------------------------------------------ #
-		graph = Digraph(
-				name=filename,
-				format=format,
-				graph_attr={
-					"rankdir": rankdir, 
-					"splines": "ortho",
-					"bgcolor": "white",
-					"size": f"{canvas_inches[0]},{canvas_inches[1]}",  # inches
-					"dpi": str(dpi),
-					"ranksep": str(ranksep),  # vertical distance between layers
-					"nodesep": str(nodesep),  # horizontal distance between nodes
-				},
-				node_attr={
-					"shape": "box", 
-					"style": "filled", 
-					"fontsize": str(node_fontsize),
-				},
-				edge_attr={"arrowhead": "none"},
-		)
+            # ---- node for the *container itself* (only if it is NOT the root) ----
+            # The root node is unnecessary – the cluster title already shows it.
+            if parent_name and "__module__" in subtree:
+                mod = subtree["__module__"]
+                node_id = parent_name
+                c.node(
+                    node_id,
+                    label=_short_label(mod),
+                    fillcolor=_module_color(mod),
+                    tooltip=str(mod),
+                )
 
-		def _add_subgraph(parent_name: str, subtree: Dict[str, Any], depth: int = 0):
-				"""
-				*parent_name* is the dotted name of the current container (e.g. "visual.transformer").
-				*subtree* is the dict representing its children.
-				"""
-				# Give every container a unique cluster id – GraphViz expects it to start with "cluster"
-				cluster_id = f"cluster_{parent_name.replace('.', '_')}" if parent_name else "cluster_root"
-				with graph.subgraph(name=cluster_id) as c:
-						# A little title on the cluster – the part after the last dot (or the root name)
-						title = parent_name.split(".")[-1] if parent_name else model.__class__.__name__
-						c.attr(label=title, labelloc="t", fontsize="12", fontname="Helvetica-Bold")
+            # ---- walk over the children ---------------------------------------
+            for child_name, child_subtree in subtree.items():
+                if child_name == "__module__":
+                    continue
+                full_name = f"{parent_name}.{child_name}" if parent_name else child_name
 
-						# First, create a node for the container itself (if it is a real module)
-						if "__module__" in subtree:
-								mod = subtree["__module__"]
-								node_id = f"{parent_name}" if parent_name else "root"
-								label = f"{_friendly_name(mod)}"
-								c.node(node_id, label=label,
-											 fillcolor=_module_color(mod),
-											 tooltip=str(mod))
+                # Leaf node – a real nn.Module
+                if "__module__" in child_subtree:
+                    mod = child_subtree["__module__"]
+                    node_id = full_name
+                    graph.node(
+                        node_id,
+                        label=_short_label(mod),
+                        fillcolor=_module_color(mod),
+                        tooltip=str(mod),
+                    )
+                    # Edge from container (or from the root) to the leaf
+                    src = parent_name if parent_name else "root"
+                    graph.edge(src, node_id)
 
-						# Then recurse over real children
-						for child_name, child_subtree in subtree.items():
-								if child_name == "__module__":
-										continue
-								full_name = f"{parent_name}.{child_name}" if parent_name else child_name
-								# If the child itself is a leaf (has a module) we still make a node for it,
-								# otherwise it is just a container – we still need an edge from parent → child.
-								if "__module__" in child_subtree:
-										mod = child_subtree["__module__"]
-										node_id = full_name
-										label = f"{_friendly_name(mod)}"
-										graph.node(node_id, label=label,
-															 fillcolor=_module_color(mod),
-															 tooltip=str(mod))
-										# Edge from the container (or root) to the leaf
-										src = parent_name if parent_name else "root"
-										graph.edge(src, node_id)
-								# Recurse deeper (might contain further sub‑modules)
-								_add_subgraph(full_name, child_subtree, depth + 1)
+                # Recurse deeper – may be a sub‑container
+                _add_subgraph(full_name, child_subtree, depth + 1)
 
-		# ------------------------------------------------------------------ #
-		# 3️⃣  Build the chart
-		# ------------------------------------------------------------------ #
-		_add_subgraph(parent_name="", subtree=tree)
+    # --------------------------------------------------------------
+    # 4️⃣  Build the whole chart
+    # --------------------------------------------------------------
+    _add_subgraph(parent_name="", subtree=tree)
 
-		# ------------------------------------------------------------------ #
-		# 4️⃣  Render / optionally view
-		# ------------------------------------------------------------------ #
-		out_path = graph.render(filename=filename, cleanup=True, view=view)
-		print(f"✅ Flow‑chart written to {out_path}")
-		return graph
+    # --------------------------------------------------------------
+    # 5️⃣  Render the file
+    # --------------------------------------------------------------
+    out_path = graph.render(filename=filename, cleanup=True, view=view)
+    print(f"✅ Flow‑chart written to {out_path}")
+    return graph
+
+
+# def build_arch_flowchart(
+# 		model: torch.nn.Module,
+# 		*,
+# 		filename: str = "clip_arch_flowchart",
+# 		format: str = "png",
+# 		view: bool = False,
+# 		rankdir: str = "TB",   # TB = top‑to‑bottom (LR = left‑to‑right)
+# 		canvas_inches: Tuple[float, float] = (100, 100),
+# 		dpi: int = 250,
+# 		ranksep: float = 1.8,
+# 		nodesep: float = 1.8,
+# 		node_fontsize: int = 12,
+# 	) -> Digraph:
+# 		"""
+# 		Create a GraphViz flow‑chart that mirrors the hierarchical structure of a
+# 		``torch.nn.Module``.
+
+# 		Parameters
+# 		----------
+# 		model : torch.nn.Module
+# 				The model you want to visualise.
+# 		filename : str, optional
+# 				Base name for the generated files (``.gv`` and the rendered image).
+# 		format : str, optional
+# 				Image format produced by GraphViz (png, svg, pdf, …).
+# 		view : bool, optional
+# 				If True, open the rendered image automatically (requires a viewer on your OS).
+# 		rankdir : {"TB", "LR"}, optional
+# 				Layout direction – ``TB`` (default) draws layers from top to bottom,
+# 				``LR`` draws from left to right.
+
+# 		Returns
+# 		-------
+# 		graphviz.Digraph
+# 				The underlying `Digraph` object – you can further customise it if you wish.
+# 		"""
+# 		# ------------------------------------------------------------------ #
+# 		# 1️⃣  Build a tree that reflects the dot‑separated names
+# 		# ------------------------------------------------------------------ #
+# 		tree: Dict[str, Any] = {}          # nested dicts, leaves are the actual modules
+# 		module_lookup: Dict[str, torch.nn.Module] = {}   # name → module (for later styling)
+
+# 		for name, mod in model.named_modules():
+# 				parts = name.split(".") if name else []   # the root (model) has an empty name
+# 				cur = tree
+# 				for p in parts:
+# 						cur = cur.setdefault(p, {})
+# 				# Mark the leaf with the real module object
+# 				cur["__module__"] = mod
+# 				module_lookup[name] = mod
+
+# 		# ------------------------------------------------------------------ #
+# 		# 2️⃣  Helper: recursively add sub‑graphs (clusters) to the Digraph
+# 		# ------------------------------------------------------------------ #
+# 		graph = Digraph(
+# 				name=filename,
+# 				format=format,
+# 				graph_attr={
+# 					"rankdir": rankdir, 
+# 					"splines": "ortho",
+# 					"bgcolor": "white",
+# 					"size": f"{canvas_inches[0]},{canvas_inches[1]}",  # inches
+# 					"dpi": str(dpi),
+# 					"ranksep": str(ranksep),  # vertical distance between layers
+# 					"nodesep": str(nodesep),  # horizontal distance between nodes
+# 				},
+# 				node_attr={
+# 					"shape": "box", 
+# 					"style": "filled", 
+# 					"fontsize": str(node_fontsize),
+# 				},
+# 				edge_attr={"arrowhead": "none"},
+# 		)
+
+# 		def _add_subgraph(parent_name: str, subtree: Dict[str, Any], depth: int = 0):
+# 				"""
+# 				*parent_name* is the dotted name of the current container (e.g. "visual.transformer").
+# 				*subtree* is the dict representing its children.
+# 				"""
+# 				# Give every container a unique cluster id – GraphViz expects it to start with "cluster"
+# 				cluster_id = f"cluster_{parent_name.replace('.', '_')}" if parent_name else "cluster_root"
+# 				with graph.subgraph(name=cluster_id) as c:
+# 						# A little title on the cluster – the part after the last dot (or the root name)
+# 						title = parent_name.split(".")[-1] if parent_name else model.__class__.__name__
+# 						c.attr(label=title, labelloc="t", fontsize="12", fontname="Helvetica-Bold")
+
+# 						# First, create a node for the container itself (if it is a real module)
+# 						if "__module__" in subtree:
+# 								mod = subtree["__module__"]
+# 								node_id = f"{parent_name}" if parent_name else "root"
+# 								label = f"{_friendly_name(mod)}"
+# 								c.node(node_id, label=label,
+# 											 fillcolor=_module_color(mod),
+# 											 tooltip=str(mod))
+
+# 						# Then recurse over real children
+# 						for child_name, child_subtree in subtree.items():
+# 								if child_name == "__module__":
+# 										continue
+# 								full_name = f"{parent_name}.{child_name}" if parent_name else child_name
+# 								# If the child itself is a leaf (has a module) we still make a node for it,
+# 								# otherwise it is just a container – we still need an edge from parent → child.
+# 								if "__module__" in child_subtree:
+# 										mod = child_subtree["__module__"]
+# 										node_id = full_name
+# 										label = f"{_friendly_name(mod)}"
+# 										graph.node(node_id, label=label,
+# 															 fillcolor=_module_color(mod),
+# 															 tooltip=str(mod))
+# 										# Edge from the container (or root) to the leaf
+# 										src = parent_name if parent_name else "root"
+# 										graph.edge(src, node_id)
+# 								# Recurse deeper (might contain further sub‑modules)
+# 								_add_subgraph(full_name, child_subtree, depth + 1)
+
+# 		# ------------------------------------------------------------------ #
+# 		# 3️⃣  Build the chart
+# 		# ------------------------------------------------------------------ #
+# 		_add_subgraph(parent_name="", subtree=tree)
+
+# 		# ------------------------------------------------------------------ #
+# 		# 4️⃣  Render / optionally view
+# 		# ------------------------------------------------------------------ #
+# 		out_path = graph.render(filename=filename, cleanup=True, view=view)
+# 		print(f"✅ Flow‑chart written to {out_path}")
+# 		return graph
 
 
 def plot_phase_transition_analysis_individual(
