@@ -1698,11 +1698,20 @@ def get_layer_groups(model: torch.nn.Module) -> dict:
 		- Projection (Output Layers): final layers that map the transformer outputs to the shared embedding space and compute similarity scores.
 	"""
 
+	def hasattr_nested(obj, attr_string):
+		attrs = attr_string.split('.')
+		for attr in attrs:
+			if hasattr(obj, attr):
+				obj = getattr(obj, attr)
+			else:
+				return False
+		return True
+
 	layer_groups = {
 		'visual_frontend': [
-			'visual.conv1',  # patch embedding (ViT) or first conv layer (ResNet)
-			'visual.class_embedding' if is_vit else 'visual.bn1',  # CLS token for ViT, bn1 for ResNet
-			'visual.positional_embedding' if is_vit else 'visual.relu',  # positional embedding for ViT, relu for ResNet
+			'visual.conv1', # patch embedding (ViT) or first conv layer (ResNet)
+			'visual.class_embedding' if is_vit else 'visual.bn1', # CLS token for ViT, bn1 for ResNet
+			'visual.positional_embedding' if is_vit else 'visual.relu', # positional embedding for ViT, relu for ResNet
 		],
 		'visual_transformer': visual_blocks,
 		'text_frontend': [ # Converts tokenized text into embeddings (token_embedding) then adds positional information (positional_embedding).
@@ -1710,13 +1719,41 @@ def get_layer_groups(model: torch.nn.Module) -> dict:
 			'positional_embedding',
 		],
 		'text_transformer': text_blocks,
-		'projections': [
-			'visual.proj', # Projects visual transformer’s output (e.g., the CLS token embedding) into the shared space.
-			'visual.ln_post' if is_vit else 'visual.attnpool',  # ln_post for ViT, attnpool for ResNet
-			'text_projection', # Projects the text transformer’s output into the shared space.
-			'logit_scale', # learnable scalar that scales the cosine similarities between image and text embeddings during contrastive loss computation.
-		],
+		'projections': [], # Start with an empty list
+		# 'projections': [
+		# 	'visual.proj', # Projects visual transformer’s output (e.g., the CLS token embedding) into the shared space.
+		# 	'visual.ln_post' if is_vit else 'visual.attnpool',  # ln_post for ViT, attnpool for ResNet
+		# 	'text_projection', # Projects the text transformer’s output into the shared space.
+		# 	'logit_scale', # learnable scalar that scales the cosine similarities between image and text embeddings during contrastive loss computation.
+		# ],
 	}
+
+	# Conditionally add projection layers only if they
+	# exist in the model and are supported by the architecture
+	projection_candidates = {
+		'visual.proj': True, # Always check for this
+		'visual.ln_post': is_vit,
+		'visual.attnpool': is_resnet,
+		'text_projection': True,
+		'logit_scale': True,
+	}
+
+	for layer_name, should_check in projection_candidates.items():
+		if should_check and hasattr_nested(model, layer_name):
+			layer_groups['projections'].append(layer_name)
+
+	# Also filter frontend layers that might not exist in all models
+	layer_groups['visual_frontend'] = [
+		name 
+		for name in layer_groups['visual_frontend'] 
+		if hasattr_nested(model, name)
+	]
+
+	layer_groups['text_frontend'] = [
+		name 
+		for name in layer_groups['text_frontend'] 
+		if hasattr_nested(model, name)
+	]
 
 	return layer_groups
 
