@@ -1747,8 +1747,8 @@ def get_lora_clip(
 			print(f"Wrapped visual.proj with LoRA")
 	############################################## Projections ##############################################
 
-	if verbose: 
-		print("Applied LoRA to the following modules:")
+	if verbose:
+		print("\n><>< Applied LoRA to the following modules:")
 		for module in sorted(replaced_modules):
 			print(f" - {module}")
 

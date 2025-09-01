@@ -91,7 +91,7 @@ def available_models() -> List[str]:
 
 def load(
 		name: str,
-		device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", 
+		device: Union[str, torch.device], 
 		jit: bool = False, 
 		download_root: str = None,
 		dropout: float = 0.0,

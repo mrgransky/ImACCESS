@@ -11,6 +11,7 @@ from visualize import (
 	collect_progressive_training_history,
 	plot_phase_transition_analysis,
 	plot_phase_transition_analysis_individual,
+	build_arch_flowchart
 )
 
 def cleanup_embedding_cache(
@@ -1716,7 +1717,6 @@ def get_layer_groups(model: torch.nn.Module) -> dict:
 
 	return layer_groups
 
-
 def unfreeze_layers(
 		model: torch.nn.Module,
 		strategy: Dict[int, List[str]],
@@ -1744,11 +1744,13 @@ def unfreeze_layers(
 
 def get_unfreeze_schedule(
 		model: torch.nn.Module,
-		unfreeze_percentages: List[float] = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], # Start at 0% unfrozen, increase to 100%
-		layer_groups_to_unfreeze: List[str] = ['visual_frontend', 'visual_transformer', 'text_frontend', 'text_transformer', 'projections'],
-		max_trainable_params: Optional[int] = None,
-		verbose: bool = True,
+		unfreeze_percentages: List[float]=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0], # Start at 0% unfrozen, increase to 100%
+		layer_groups_to_unfreeze: List[str]=['visual_frontend', 'visual_transformer', 'text_frontend', 'text_transformer', 'projections'],
 	) -> Dict[int, List[str]]:
+
+	print(f"Getting unfreeze schedule for {model.name} for {len(unfreeze_percentages)} phases".center(120, "-"))
+	print(f"Layer groups to unfreeze: {layer_groups_to_unfreeze}")
+	print(f"Unfreeze percentages: {unfreeze_percentages}")
 
 	# Validate input
 	if not all(0.0 <= p <= 1.0 for p in unfreeze_percentages):
@@ -1756,20 +1758,6 @@ def get_unfreeze_schedule(
 
 	if not all(g in ['visual_frontend', 'visual_transformer', 'text_frontend', 'text_transformer', 'projections'] for g in layer_groups_to_unfreeze):
 		raise ValueError("Invalid layer group specified. Accepted: visual_frontend, visual_transformer, text_frontend, text_transformer, projections.")
-
-	layer_groups = get_layer_groups(model=model)
-	selected_groups = {group: layer_groups[group] for group in layer_groups_to_unfreeze if group in layer_groups}
-
-	if not selected_groups:
-		raise ValueError("No valid layer groups found for freezing.")
-
-	# Calculate total layers for visual and text components
-	total_v_layers = len(selected_groups.get('visual_transformer', []))
-	total_t_layers = len(selected_groups.get('text_transformer', []))
-	total_p_layers = len(selected_groups.get('projections', []))
-
-	if total_v_layers == 0 and total_t_layers == 0:
-		raise ValueError("No transformer blocks found in visual or text encoders. Cannot create unfreezing schedule.")
 
 	display_percentages = sorted(unfreeze_percentages)  # Ascending order for table
 	def create_layer_table(num_layers: int, layer_type: str) -> str:
@@ -1792,35 +1780,62 @@ def get_unfreeze_schedule(
 			)
 		)
 
-	if verbose:
-		print(create_layer_table(total_v_layers, "Visual"))
-		print(create_layer_table(total_t_layers, "Text"))
+	layer_groups = get_layer_groups(model=model)
+	print(f"\nLayer groups:\n{json.dumps(layer_groups, indent=2)}")
+
+	# Explicitly get all layer groups from the model definition
+	projections = layer_groups.get('projections', [])
+	visual_transformer = layer_groups.get('visual_transformer', [])
+	text_transformer = layer_groups.get('text_transformer', [])
+	visual_frontend = layer_groups.get('visual_frontend', [])
+	text_frontend = layer_groups.get('text_frontend', [])
+	
+	total_v_layers = len(visual_transformer)
+	total_t_layers = len(text_transformer)
+
+	if total_v_layers == 0 and total_t_layers == 0:
+		raise ValueError("No transformer blocks found in visual or text encoders. Cannot create unfreezing schedule.")
 
 	schedule = {}
-	all_transformer_layers = selected_groups.get('visual_transformer', []) + selected_groups.get('text_transformer', [])
-	base_layers = sum([selected_groups.get(group, []) for group in ['visual_frontend', 'text_frontend']], [])
 	for phase, unfreeze_pct in enumerate(unfreeze_percentages):
-		# Calculate number of layers to unfreeze
-		v_unfreeze_count = int(unfreeze_pct * total_v_layers)
-		t_unfreeze_count = int(unfreeze_pct * total_t_layers)
-		p_unfreeze_count = int(unfreeze_pct * total_p_layers)
+		# Start with an empty list for this phase's layers
+		layers_to_unfreeze_for_phase = []
+		
+		# 1. ALWAYS include projections if they are in the target groups
+		if 'projections' in layer_groups_to_unfreeze:
+			layers_to_unfreeze_for_phase.extend(projections)
+			
+		# 2. Add transformer layers based on percentage
+		if 'visual_transformer' in layer_groups_to_unfreeze:
+			v_unfreeze_count = int(unfreeze_pct * total_v_layers)
+			if v_unfreeze_count > 0:
+				layers_to_unfreeze_for_phase.extend(visual_transformer[-v_unfreeze_count:])
 
-		# Unfreeze from last to first to prioritize high-level feature adaptation
-		v_transformers_to_unfreeze = selected_groups.get('visual_transformer', [])[-v_unfreeze_count:] if v_unfreeze_count > 0 else []
-		t_transformers_to_unfreeze = selected_groups.get('text_transformer', [])[-t_unfreeze_count:] if t_unfreeze_count > 0 else []
-		projections_to_unfreeze = selected_groups.get('projections', []) # always unfrozen from Phase 0 to allow early adaptation of the output space.
+		if 'text_transformer' in layer_groups_to_unfreeze:
+			t_unfreeze_count = int(unfreeze_pct * total_t_layers)
+			if t_unfreeze_count > 0:
+				layers_to_unfreeze_for_phase.extend(text_transformer[-t_unfreeze_count:])
+				
+		# 3. Add frontend layers ONLY at the final phase (100%)
+		if unfreeze_pct == 1.0:
+			if 'visual_frontend' in layer_groups_to_unfreeze:
+				layers_to_unfreeze_for_phase.extend(visual_frontend)
+			if 'text_frontend' in layer_groups_to_unfreeze:
+				layers_to_unfreeze_for_phase.extend(text_frontend)
+		
+		# Use a set to remove duplicates (e.g., if a layer name is in multiple groups)
+		# and convert back to a sorted list for consistent ordering.
+		schedule[phase] = sorted(list(set(layers_to_unfreeze_for_phase)))
 
-		frontend_layers_to_unfreeze = base_layers if unfreeze_pct == 1.0 else []
-		layers_to_unfreeze = v_transformers_to_unfreeze + t_transformers_to_unfreeze + projections_to_unfreeze + frontend_layers_to_unfreeze
-		schedule[phase] = layers_to_unfreeze
+		# --- Enhanced Logging for verification ---
+		print(f"Phase {phase} (unfreeze_pct: {unfreeze_pct*100:.3f}%): {len(schedule[phase])} layers to unfreeze:")
+		for i, layer in enumerate(schedule[phase]):
+			print(f"\t{i:02d} {layer}")
 
-		print(f"Phase {phase} (unfreeze_pct={unfreeze_pct}): {len(layers_to_unfreeze)} layers to unfreeze")
+	print(create_layer_table(total_v_layers, "Visual"))
+	print(create_layer_table(total_t_layers, "Text"))
 
-	if verbose:
-		print(f"\nUnfreeze Schedule contains {len(schedule)} different phases:\n{[f'phase {phase}: {len(layers)} layers' for phase, layers in schedule.items()]}\n")
-		# print(json.dumps(schedule, indent=2, ensure_ascii=False))
-		print("-"*160)
-
+	print("-"*120)
 	return schedule
 
 def log_grad_norms(
@@ -2117,8 +2132,8 @@ def get_unfreeze_pcts_hybrid(
 	total_transformer_layers = vis_nblocks + txt_nblocks
 	layers_per_phase = 2 # Unfreezing 1 layer per modality per phase
 
-	baseline_phases = total_transformer_layers // layers_per_phase + 1
-	print(f"Baseline Phases (with total_transformer_layers: {total_transformer_layers}) => {baseline_phases} phases")
+	baseline_phases = (total_transformer_layers // layers_per_phase) + 1
+	print(f"Baseline Phases (with total_transformer_layers(vis: {vis_nblocks} + txt: {txt_nblocks}): {total_transformer_layers}) => {baseline_phases} phases")
 
 	dataset_size = len(train_loader.dataset)
 	dataset_phases = int(5 + np.log10(dataset_size))
@@ -2198,6 +2213,22 @@ def progressive_finetune_single_label(
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
 		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
+
+	build_arch_flowchart(
+		model,
+		filename=os.path.join(results_dir, f"{model_arch}_flowchart"),
+		format="png",      # you can also use "svg" for a vector image
+		view=False,         # opens the image automatically (optional)
+		rankdir="LR"       # top‑to‑bottom (feel free to try "LR")
+	)
+
+
+	for n, m in model.named_modules():
+		print(f"{n:<60} {type(m).__name__:<50} Training: {m.training:<10} Weights Grad: {m.weight.requires_grad if hasattr(m, 'weight') else ''}")
+		# print(n)
+		# print(m)
+		# print()
+	print("-"*100)
 	# Find dropout value
 	dropout_val = 0.0
 	for name, module in model.named_modules():
