@@ -202,10 +202,6 @@ class EarlyStopping:
 				checkpoint_path: str,
 				current_phase: Optional[int] = None,
 		) -> bool:
-				"""
-				Enhanced stopping decision with better logging and error handling
-				"""
-				
 				# 1. Record raw loss & EMA
 				self.value_history.append(current_value)
 				self._update_ema(current_value)
@@ -219,48 +215,48 @@ class EarlyStopping:
 				
 				# 2. Respect min_epochs
 				if epoch < self.min_epochs:
-						print(f"  Skipping check (epoch {epoch+1} ≤ min_epochs {self.min_epochs})")
-						return False
+					print(f"\tSkipping check (epoch {epoch+1} ≤ min_epochs {self.min_epochs})")
+					return False
 
 				# 3. Handle improvement
 				if self._is_improvement(current_value):
-						old_best = f"{self.best_score:.6f}" if self.best_score is not None else "N/A"
-						print(f"  >> NEW BEST! {old_best} → {current_value:.6f}")
-						
-						self.best_score = current_value
-						self.best_epoch = epoch
-						self.counter = 0
-						self.improvement_history.append(True)
-						
-						# Store best weights
-						if self.restore_best_weights:
-								self.best_weights = {k: v.clone().cpu().detach() for k, v in model.state_dict().items()}
-						
-						# Save checkpoint with better error handling
-						self._save_checkpoint(checkpoint_path, model, optimizer, scheduler, current_phase)
+					old_best = f"{self.best_score:.6f}" if self.best_score is not None else "N/A"
+					print(f"  >> NEW BEST! {old_best} → {current_value:.6f}")
+					
+					self.best_score = current_value
+					self.best_epoch = epoch
+					self.counter = 0
+					self.improvement_history.append(True)
+					
+					# Store best weights
+					if self.restore_best_weights:
+							self.best_weights = {k: v.clone().cpu().detach() for k, v in model.state_dict().items()}
+					
+					# Save checkpoint with better error handling
+					self._save_checkpoint(checkpoint_path, model, optimizer, scheduler, current_phase)
 				else:
-						self.counter += 1
-						self.improvement_history.append(False)
-						best_str = f"{self.best_score:.6f}" if self.best_score is not None else "N/A"
-						print(f"  No improvement. Best: {best_str}")
+					self.counter += 1
+					self.improvement_history.append(False)
+					best_str = f"{self.best_score:.6f}" if self.best_score is not None else "N/A"
+					print(f"  No improvement. Best: {best_str}")
 
 				# 4. Check if we have enough history for window-based analysis
 				if len(self.value_history) < self.window_size:
-						print(f"  Insufficient history ({len(self.value_history)}/{self.window_size}) for window checks")
-						if self.counter >= self.effective_patience:
-								# Only check phase constraints if min_phases_before_stopping is set
-								if self.min_phases_before_stopping is not None:
-										phase_ok = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
-										if phase_ok:
-												print("  Patience exceeded → early stop")
-												return True
-										else:
-												print(f"  Patience exceeded but waiting for phase >= {self.min_phases_before_stopping}")
-												return False
-								else:
-										print("  Patience exceeded → early stop")
-										return True
-						return False
+					print(f"  Insufficient history ({len(self.value_history)}/{self.window_size}) for window checks")
+					if self.counter >= self.effective_patience:
+						# Only check phase constraints if min_phases_before_stopping is set
+						if self.min_phases_before_stopping is not None:
+							phase_ok = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
+							if phase_ok:
+								print("  Patience exceeded → early stop")
+								return True
+							else:
+								print(f"  Patience exceeded but waiting for phase >= {self.min_phases_before_stopping}")
+								return False
+						else:
+							print("  Patience exceeded → early stop")
+							return True
+					return False
 
 				# 5. Compute window statistics
 				raw_window = self.value_history[-self.window_size:]
@@ -268,8 +264,10 @@ class EarlyStopping:
 				raw_volatility = self._volatility(raw_window)
 				
 				# Pairwise improvement analysis
-				pairwise_diffs = [(raw_window[i] - raw_window[i + 1]) * self.sign 
-												 for i in range(len(raw_window) - 1)]
+				pairwise_diffs = [
+					(raw_window[i] - raw_window[i + 1]) * self.sign 
+					for i in range(len(raw_window) - 1)
+				]
 				pairwise_improvement = np.mean(pairwise_diffs) if pairwise_diffs else 0.0
 				
 				# Cumulative improvement
@@ -278,12 +276,12 @@ class EarlyStopping:
 
 				# 6. EMA-based analysis and dynamic adaptation
 				if len(self.ema_history) >= self.ema_window:
-						ema_window_vals = self.ema_history[-self.ema_window:]
-						ema_slope = compute_slope(ema_window_vals)
-						ema_vol = self._volatility(ema_window_vals)
+					ema_window_vals = self.ema_history[-self.ema_window:]
+					ema_slope = compute_slope(ema_window_vals)
+					ema_vol = self._volatility(ema_window_vals)
 				else:
-						ema_slope = 0.0
-						ema_vol = 0.0
+					ema_slope = 0.0
+					ema_vol = 0.0
 
 				self._apply_dynamic_adaptation(ema_slope, ema_vol)
 
@@ -291,54 +289,55 @@ class EarlyStopping:
 				stop_reasons: List[str] = []
 				
 				if self.counter >= self.effective_patience:
-						stop_reasons.append(f"Patience ({self.counter}/{self.effective_patience})")
+					stop_reasons.append(f"Patience ({self.counter}/{self.effective_patience})")
 				
 				if raw_volatility >= self.volatility_threshold:
-						stop_reasons.append(f"High volatility ({raw_volatility:.2f}%)")
+					stop_reasons.append(f"High volatility ({raw_volatility:.2f}%)")
 				
-				worsening = (self.mode == "min" and raw_slope > self.slope_threshold) or \
-									 (self.mode == "max" and raw_slope < self.slope_threshold)
+				worsening = (self.mode == "min" and raw_slope > self.slope_threshold) or (self.mode == "max" and raw_slope < self.slope_threshold)
 				if worsening:
-						stop_reasons.append(f"Worsening slope ({raw_slope})")
+					stop_reasons.append(f"Worsening slope ({raw_slope})")
 				
-				close_to_best = (abs(current_value - self.best_score) < self.min_delta 
-												if self.best_score is not None else False)
+				close_to_best = (
+					abs(current_value - self.best_score) < self.min_delta 
+					if self.best_score is not None else False
+				)
 				if pairwise_improvement < self.pairwise_imp_threshold and not close_to_best:
-						stop_reasons.append(f"Low pairwise improvement ({pairwise_improvement})")
+					stop_reasons.append(f"Low pairwise improvement ({pairwise_improvement})")
 				
 				if cum_imp_abs < self.cumulative_delta:
-						stop_reasons.append(f"Low cumulative improvement ({cum_imp_abs})")
+					stop_reasons.append(f"Low cumulative improvement ({cum_imp_abs})")
 				
 				# EMA trend analysis (only add if clearly worsening)
 				if len(self.ema_history) >= 3:
-						trend_len = min(10, len(self.ema_history))
-						recent_trend = np.mean(np.diff(self.ema_history[-trend_len:])) if trend_len >= 2 else 0.0
-						if recent_trend > self.ema_threshold:
-								stop_reasons.append("EMA trend worsening")
+					trend_len = min(10, len(self.ema_history))
+					recent_trend = np.mean(np.diff(self.ema_history[-trend_len:])) if trend_len >= 2 else 0.0
+					if recent_trend > self.ema_threshold:
+						stop_reasons.append("EMA trend worsening")
 
 				# 8. Final decision with phase constraints
 				should_stop = bool(stop_reasons)
 				if should_stop:
-						# Only apply phase constraints if min_phases_before_stopping is set (progressive fine-tuning)
-						if self.min_phases_before_stopping is not None:
-								phase_ok = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
-								if not phase_ok:
-										print(f"  Stopping criteria met ({', '.join(stop_reasons)}) but waiting for phase >= {self.min_phases_before_stopping}")
-										should_stop = False
-								else:
-										print(f"  EARLY STOPPING TRIGGERED:")
-										for reason in stop_reasons:
-												print(f"    • {reason}")
+					# Only apply phase constraints if min_phases_before_stopping is set (progressive fine-tuning)
+					if self.min_phases_before_stopping is not None:
+						phase_ok = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
+						if not phase_ok:
+							print(f"  Stopping criteria met ({', '.join(stop_reasons)}) but waiting for phase >= {self.min_phases_before_stopping}")
+							should_stop = False
 						else:
-								print(f"  EARLY STOPPING TRIGGERED:")
-								for reason in stop_reasons:
-										print(f"    • {reason}")
+							print(f"  EARLY STOPPING TRIGGERED:")
+							for reason in stop_reasons:
+								print(f"    • {reason}")
+					else:
+						print(f"  EARLY STOPPING TRIGGERED:")
+						for reason in stop_reasons:
+							print(f"    • {reason}")
 				else:
-						print("  No stopping conditions met")
+					print("  No stopping conditions met")
 
 				# 9. Restore best weights if stopping
 				if should_stop and self.restore_best_weights:
-						self._restore_best_weights(model)
+					self._restore_best_weights(model)
 
 				return should_stop
 

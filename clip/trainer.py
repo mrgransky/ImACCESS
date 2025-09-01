@@ -1915,7 +1915,7 @@ def create_differential_optimizer_groups(
 	param_groups = []
 	
 	lr_multipliers = {
-		'projections': 0.5,
+		'projections': 1.0,
 		'text_transformer': 0.1,
 		'visual_transformer': 0.1,
 		'text_frontend': 0.01,
