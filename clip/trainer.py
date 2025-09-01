@@ -1915,9 +1915,9 @@ def create_differential_optimizer_groups(
 	param_groups = []
 	
 	lr_multipliers = {
-		'projections': 1.0,
-		'text_transformer': 0.1,
-		'visual_transformer': 0.1,
+		'projections': 0.5,
+		'text_transformer': 0.02,
+		'visual_transformer': 0.02,
 		'text_frontend': 0.01,
 		'visual_frontend': 0.01,
 	}
@@ -2060,9 +2060,9 @@ def should_transition_phase(
 		reasons.append("Accuracy plateau detected")
 
 	if transition:
-		print(f"\n==>> PHASE TRANSITION RECOMMENDED from Phase: {current_phase}: {', '.join(reasons)}\n")
+		print(f"\n==>> PHASE TRANSITION RECOMMENDED from Phase: {current_phase}:\n\t{', '.join(reasons)}\n")
 	else:
-		print(f"==>> No phase transition required: Stable progress or close to best. Continue with current phase: {current_phase}.")
+		print(f"==>> No phase transition required: Stable progress or close to best.\n\tContinue with current phase: {current_phase}.")
 
 	return transition
 
