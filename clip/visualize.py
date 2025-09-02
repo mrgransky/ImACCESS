@@ -22,7 +22,7 @@ pretrained_colors = {
 positive_pct_col = "#357402ff"
 negative_pct_col = "#c0003aff"
 
-transition_color = "#00B13B"
+transition_color = "#02882E"
 early_stop_color = "#1D0808"
 best_model_color = "#D2F700"
 train_loss_color = "#004BBB"
@@ -258,12 +258,27 @@ def plot_phase_transition_analysis_individual(
 
 	# Transitions
 	for i, t_epoch in enumerate(transitions):
-		ax1.axvline(x=t_epoch, color=transition_color, linestyle="--", linewidth=1.5, alpha=0.8)
+		ax1.axvline(
+			x=t_epoch, 
+			color=transition_color, 
+			linestyle="--", 
+			linewidth=1.5, 
+			alpha=0.65,
+			zorder=10,
+		)
 		if t_epoch < len(val_losses):
 			prev_loss = val_losses[t_epoch - 1] if t_epoch > 0 else val_losses[t_epoch]
 			change = ((prev_loss - val_losses[t_epoch]) / prev_loss) * 100 if prev_loss > 0 else 0
-			ax1.text(t_epoch + 0.4, y_middle, f"T{i+1} ({change:+.2f}%)", rotation=90,
-							 va="center", ha="left", color=transition_color, fontsize=9)
+			ax1.text(
+				t_epoch + 0.25,
+				y_middle,
+				f"T{i+1} ({change:+.2f}%)", 
+				rotation=90,
+				va="center", 
+				ha="left", 
+				color=transition_color, 
+				fontsize=9,
+			)
 
 	if best_epoch is not None:
 		ax1.scatter(
@@ -318,7 +333,14 @@ def plot_phase_transition_analysis_individual(
 			alpha=0.9
 		)
 	for t_epoch in transitions:
-		ax2.axvline(x=t_epoch, color=transition_color, linestyle="--", linewidth=2)
+		ax2.axvline(
+			x=t_epoch, 
+			color=transition_color, 
+			linestyle="--", 
+			linewidth=2,
+			alpha=0.8,
+			zorder=10,
+		)
 	ax2.set_title("Learning Rate Adaptation Across Phases", fontsize=10, weight="bold")
 	ax2.set_xlabel("Epoch")
 	ax2.set_ylabel("Learning Rate (log)")
@@ -342,7 +364,9 @@ def plot_phase_transition_analysis_individual(
 			x=t_epoch, 
 			color=transition_color, 
 			linestyle="--", 
-			linewidth=2
+			linewidth=2,
+			alpha=0.8,
+			zorder=10,
 		)
 	ax3.set_title("Weight Decay Adaptation Across Phases", fontsize=10, weight="bold")
 	ax3.set_xlabel("Epoch")
@@ -543,7 +567,7 @@ def plot_phase_transition_analysis(
 			ax1.axvspan(
 				start_epoch, 
 				end_epoch, 
-				alpha=0.39,
+				alpha=0.3,
 				color=phase_colors[phase], 
 				label=f'Phase {phase}'
 			)
