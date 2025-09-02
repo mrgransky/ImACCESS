@@ -8,10 +8,10 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
-#SBATCH --mem=164G
+#SBATCH --mem=128G
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1
-#SBATCH --array=8
+#SBATCH --array=0,4,12
 #SBATCH --time=1-12:00:00
 
 set -euo pipefail
