@@ -220,8 +220,8 @@ class EarlyStopping:
 
 				# 3. Handle improvement
 				if self._is_improvement(current_value):
-					old_best = f"{self.best_score:.6f}" if self.best_score is not None else "N/A"
-					print(f"  >> NEW BEST! {old_best} → {current_value:.6f}")
+					old_best = f"{self.best_score}" if self.best_score is not None else "N/A"
+					print(f"\tNew best! {old_best} → {current_value}")
 					
 					self.best_score = current_value
 					self.best_epoch = epoch
@@ -237,24 +237,24 @@ class EarlyStopping:
 				else:
 					self.counter += 1
 					self.improvement_history.append(False)
-					best_str = f"{self.best_score:.6f}" if self.best_score is not None else "N/A"
-					print(f"  No improvement. Best: {best_str}")
+					best_str = f"{self.best_score}" if self.best_score is not None else "N/A"
+					print(f"\tNo improvement detected. Best: {best_str}")
 
 				# 4. Check if we have enough history for window-based analysis
 				if len(self.value_history) < self.window_size:
-					print(f"  Insufficient history ({len(self.value_history)}/{self.window_size}) for window checks")
+					print(f"\tInsufficient history ({len(self.value_history)}/{self.window_size}) for window checks")
 					if self.counter >= self.effective_patience:
 						# Only check phase constraints if min_phases_before_stopping is set
 						if self.min_phases_before_stopping is not None:
 							phase_ok = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
 							if phase_ok:
-								print("  Patience exceeded → early stop")
+								print("\tPatience exceeded → early stop")
 								return True
 							else:
-								print(f"  Patience exceeded but waiting for phase >= {self.min_phases_before_stopping}")
+								print(f"\tPatience exceeded but waiting for phase >= {self.min_phases_before_stopping}")
 								return False
 						else:
-							print("  Patience exceeded → early stop")
+							print("\tPatience exceeded → early stop")
 							return True
 					return False
 
@@ -292,28 +292,28 @@ class EarlyStopping:
 					stop_reasons.append(f"Patience ({self.counter}/{self.effective_patience})")
 				
 				if raw_volatility >= self.volatility_threshold:
-					stop_reasons.append(f"High volatility ({raw_volatility:.2f}%)")
+					stop_reasons.append(f"High volatility ({raw_volatility:.2f}%) > {self.volatility_threshold}%")
 				
 				worsening = (self.mode == "min" and raw_slope > self.slope_threshold) or (self.mode == "max" and raw_slope < self.slope_threshold)
 				if worsening:
-					stop_reasons.append(f"Worsening slope ({raw_slope})")
+					stop_reasons.append(f"Worsening slope ({raw_slope}) > {self.slope_threshold}")
 				
 				close_to_best = (
 					abs(current_value - self.best_score) < self.min_delta 
 					if self.best_score is not None else False
 				)
 				if pairwise_improvement < self.pairwise_imp_threshold and not close_to_best:
-					stop_reasons.append(f"Low pairwise improvement ({pairwise_improvement})")
+					stop_reasons.append(f"Low pairwise improvement ({pairwise_improvement}) < {self.pairwise_imp_threshold}")
 				
 				if cum_imp_abs < self.cumulative_delta:
-					stop_reasons.append(f"Low cumulative improvement ({cum_imp_abs})")
+					stop_reasons.append(f"Low cumulative improvement ({cum_imp_abs}) < {self.cumulative_delta}")
 				
 				# EMA trend analysis (only add if clearly worsening)
 				if len(self.ema_history) >= 3:
 					trend_len = min(10, len(self.ema_history))
 					recent_trend = np.mean(np.diff(self.ema_history[-trend_len:])) if trend_len >= 2 else 0.0
 					if recent_trend > self.ema_threshold:
-						stop_reasons.append("EMA trend worsening")
+						stop_reasons.append(f"EMA trend worsening ({recent_trend}) > {self.ema_threshold} over {trend_len} epochs")
 
 				# 8. Final decision with phase constraints
 				should_stop = bool(stop_reasons)
@@ -366,7 +366,7 @@ class EarlyStopping:
 				if self.best_weights is not None:
 						target_device = next(model.parameters()).device
 						model.load_state_dict({k: v.to(target_device) for k, v in self.best_weights.items()})
-						print(f"  Restored best weights from epoch {self.best_epoch+1} (loss: {self.best_score:.6f})")
+						print(f"  Restored best weights from epoch {self.best_epoch+1} (loss: {self.best_score})")
 				else:
 						print("  Warning: No best weights stored - cannot restore")
 

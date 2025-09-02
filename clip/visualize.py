@@ -305,7 +305,7 @@ def plot_phase_transition_analysis_individual(
 			color=early_stop_color, 
 			fontsize=9
 		)
-	ax1.set_title("Learning Curve with Phase Transitions", fontsize=10, weight="bold")
+	ax1.set_title("Learning Curve [Loss] with Phase Transitions", fontsize=10, weight="bold")
 	ax1.set_xlabel("Epoch"); ax1.set_ylabel("Loss")
 	ax1.legend(
 		fontsize=8, 
@@ -668,7 +668,7 @@ def plot_phase_transition_analysis(
 	
 	ax1.set_xlabel('Epoch', fontsize=8)
 	ax1.set_ylabel('Loss', fontsize=8)
-	ax1.set_title(f'Learning Curve with Phase Transitions', fontsize=8, weight='bold')
+	ax1.set_title(f'Learning [Loss] Curve with Phase Transitions', fontsize=8, weight='bold')
 	ax1.legend(
 		loc='best',
 		fontsize=8,

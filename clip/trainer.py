@@ -2148,36 +2148,35 @@ def handle_phase_transition(
 	new_lr = last_lr * lr_decay_factor * loss_stability_factor
 	
 	# Safety net: ensure LR doesn't collapse to zero.
-	min_allowable_lr = initial_lr * 1e-3
+	min_lr_dec = 1e-3
+	min_allowable_lr = initial_lr * min_lr_dec
 	new_lr = max(new_lr, min_allowable_lr)
 
 	# --- 4. Calculate New Weight Decay (Compounding Increase) ---
 	# We increase WEIGHT DECAY based on phase progress.
 	# Early phases get a small bump, later phases get a large one.
 	wd_increase_factor = 1.0 + (phase_progress * 0.4) # Max increase of 40% per phase
-
-	# The new WD is the *previous* WD increased by our factors.
 	new_wd = last_wd * wd_increase_factor
 
 	# Safety net: cap the total weight decay.
-	max_allowable_wd = initial_wd * 10.0 # Don't let it exceed 10x the initial value
+	max_wd_inc = 10.0
+	max_allowable_wd = initial_wd * max_wd_inc # Don't let it exceed 10x the initial value
 	new_wd = min(new_wd, max_allowable_wd)
 
-	# --- 5. Enhanced Debugging Prints ---
-	print("\n" + "="*80)
+	print("="*100)
 	print(f"PHASE TRANSITION: {current_phase} -> {next_phase} (Progress: {phase_progress})")
-	print("-"*80)
+	print("-"*100)
 	print("[Learning Rate Calculation]")
 	print(f"  - Previous LR: {last_lr}")
 	print(f"  - Loss Stability Factor (1 / (current/best)): {loss_stability_factor}  (penalizes instability)")
 	print(f"  - Phase Decay Factor (1 - progress*0.25): {lr_decay_factor}")
 	print(f"  - New Calculated LR: {new_lr} (Min allowed: {min_allowable_lr})")
-	print("-"*80)
+	print("-"*100)
 	print("[Weight Decay Calculation]")
 	print(f"  - Previous WD: {last_wd}")
 	print(f"  - Phase Increase Factor (1 + progress*0.4): {wd_increase_factor}")
 	print(f"  - New Calculated WD: {new_wd} (Max allowed: {max_allowable_wd})")
-	print("="*80 + "\n")
+	print("="*100)
 
 	return next_phase, new_lr, new_wd
 
