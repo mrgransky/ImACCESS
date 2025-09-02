@@ -558,12 +558,19 @@ def plot_phase_transition_analysis(
 	ymin, ymax = ax1.get_ylim()
 	y_middle = (ymin + ymax) / 2.0
 
-	# Add phase background shading
-	for phase in set(phases):
+	# Add phase background shading	
+	unique_phases = sorted(set(phases))
+	for i, phase in enumerate(unique_phases):
 		phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
+		print(f"Phase {phase}: {phase_epochs}: min: {min(phase_epochs)} max: {max(phase_epochs)}")
 		if phase_epochs:
 			start_epoch = min(phase_epochs)
 			end_epoch = max(phase_epochs)
+			
+			# Extend to the next transition if it exists
+			if i < len(transitions) and transitions[i] <= len(epochs):
+				end_epoch = transitions[i]
+			
 			ax1.axvspan(
 				start_epoch, 
 				end_epoch, 
@@ -571,7 +578,7 @@ def plot_phase_transition_analysis(
 				color=phase_colors[phase], 
 				label=f'Phase {phase}'
 			)
-	
+
 	# Plot loss curves with enhanced styling
 	train_line = ax1.plot(
 		epochs, 
@@ -754,7 +761,7 @@ def plot_phase_transition_analysis(
 	
 	# Calculate phase durations and improvements
 	phase_data = []
-	unique_phases = sorted(set(phases))
+	# unique_phases = sorted(set(phases))
 	
 	for phase in unique_phases:
 		phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
