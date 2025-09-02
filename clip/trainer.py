@@ -1939,8 +1939,8 @@ def create_differential_optimizer_groups(
 	if lr_multipliers is None:
 		lr_multipliers = {
 			'projections': 0.5,
-			'text_transformer': 0.02,		# orig: 0.1
-			'visual_transformer': 0.02,	# orig: 0.1
+			'text_transformer': 0.1,		# orig: 0.1
+			'visual_transformer': 0.1,	# orig: 0.1
 			'text_frontend': 0.01,
 			'visual_frontend': 0.01,
 		}
@@ -1986,8 +1986,8 @@ def create_differential_optimizer_groups(
 			param_groups.append(group_dict)
 			
 			print(
-				f"Group: {group_name} : "
-				f"Parameters found: {len(group_params_list)} "
+				f"Group: {group_name:<25}"
+				f"Parameters: {len(group_params_list):<5}"
 				f"LR Multiplier: {lr_multiplier}x "
 				f"Final LR: {group_dict['lr']}"
 			)
@@ -2096,7 +2096,7 @@ def should_transition_phase(
 	# Reason 3: Loss improvement has stagnated AND not close to best
 	if loss_pairwise_imp_avg < pairwise_imp_threshold and not close_to_best:
 		transition = True
-		reasons.append(f"Low loss improvement ({loss_pairwise_imp_avg}) & not close to best")
+		reasons.append(f"<!> Low loss improvement: {loss_pairwise_imp_avg} < {pairwise_imp_threshold} & not close to best")
 
 	# Reason 4: Accuracy has plateaued (if available)
 	if accuracy_plateau:
@@ -2508,8 +2508,7 @@ def progressive_finetune_single_label(
 				print(f"Transitioned to Phase {current_phase}. Early stopping reset.")
 
 				phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
-				print(f"Phase transition triggered. Optimizer/Scheduler refresh pending after unfreeze.")
-				print(f"Current Phase: {current_phase}")
+				print(f"Phase transition triggered @ epoch {epoch+1} & current phase: {current_phase}. Optimizer/Scheduler refresh pending after unfreeze.")
 
 		# current_lr = optimizer.param_groups[0]['lr'] if optimizer.param_groups else last_lr
 		# Get current LR for logging (take the highest LR from param groups)

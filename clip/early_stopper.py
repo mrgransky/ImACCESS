@@ -139,32 +139,35 @@ class EarlyStopping:
 				return improvement > self.min_delta
 
 		def _apply_dynamic_adaptation(self, ema_slope: float, ema_vol: float) -> None:
-				"""
-				Apply immediate adaptation based on EMA stability:
-				- Unstable EMA: Relax thresholds (more patience)  
-				- Stable EMA: Restore original thresholds
-				"""
-				is_unstable = (ema_slope > self.slope_threshold) or (ema_vol > self.volatility_threshold)
+			"""
+			Apply immediate adaptation based on EMA stability:
+			- Unstable EMA: Relax thresholds (more patience)  
+			- Stable EMA: Restore original thresholds
+			"""
+			is_unstable = (ema_slope > self.slope_threshold) or (ema_vol > self.volatility_threshold)
+			
+			if is_unstable and not self._adaptation_active:
+				# Activate adaptation: relax thresholds
+				self._adaptation_active = True
+				patience_multiplier = 1.0 / self.adaptation_factor
+				self.effective_patience = min(self.max_patience, int(self._orig_patience * patience_multiplier))
+				self.volatility_threshold = self._orig_vol_thresh / self.adaptation_factor
+				self.slope_threshold = self._orig_slope_thresh / self.adaptation_factor
 				
-				if is_unstable and not self._adaptation_active:
-						# Activate adaptation: relax thresholds
-						self._adaptation_active = True
-						patience_multiplier = 1.0 / self.adaptation_factor
-						self.effective_patience = min(self.max_patience, int(self._orig_patience * patience_multiplier))
-						self.volatility_threshold = self._orig_vol_thresh / self.adaptation_factor
-						self.slope_threshold = self._orig_slope_thresh / self.adaptation_factor
-						
-						print(f"  [Adaptive] EMA unstable → thresholds RELAXED:")
-						print(f"    patience: {self._orig_patience} → {self.effective_patience} (↑{patience_multiplier:.1f}x)")
-						print(f"    volatility_thr: {self._orig_vol_thresh:.1f}% → {self.volatility_threshold:.1f}%")
-						
-				elif not is_unstable and self._adaptation_active:
-						# Deactivate adaptation: restore original thresholds
-						self._adaptation_active = False
-						self.effective_patience = self._orig_patience
-						self.volatility_threshold = self._orig_vol_thresh
-						self.slope_threshold = self._orig_slope_thresh
-						print("  [Adaptive] EMA stable → thresholds restored to original values")
+				print(f"\t[Adaptive] EMA unstable → thresholds RELAXED:")
+				print(f"\t\tpatience: {self._orig_patience} → {self.effective_patience} (↑{patience_multiplier:.1f}x)")
+				print(f"\t\tvolatility_thr: {self._orig_vol_thresh:.1f}% → {self.volatility_threshold:.1f}%")
+			elif not is_unstable and self._adaptation_active:
+				# Deactivate adaptation: restore original thresholds
+				self._adaptation_active = False
+				self.effective_patience = self._orig_patience
+				self.volatility_threshold = self._orig_vol_thresh
+				self.slope_threshold = self._orig_slope_thresh
+				print("\t[Adaptive] EMA stable → thresholds restored to original values")
+			else:
+				# No change
+				print("\t[Adaptive] No change in EMA stability")
+				pass
 
 		def get_status(self) -> Dict[str, Any]:
 				"""Enhanced status information"""
@@ -230,7 +233,7 @@ class EarlyStopping:
 					
 					# Store best weights
 					if self.restore_best_weights:
-							self.best_weights = {k: v.clone().cpu().detach() for k, v in model.state_dict().items()}
+						self.best_weights = {k: v.clone().cpu().detach() for k, v in model.state_dict().items()}
 					
 					# Save checkpoint with better error handling
 					self._save_checkpoint(checkpoint_path, model, optimizer, scheduler, current_phase)
@@ -322,7 +325,7 @@ class EarlyStopping:
 					if self.min_phases_before_stopping is not None:
 						phase_ok = (current_phase is None) or (current_phase >= self.min_phases_before_stopping)
 						if not phase_ok:
-							print(f"  Stopping criteria met ({', '.join(stop_reasons)}) but waiting for phase >= {self.min_phases_before_stopping}")
+							print(f"\tStopping criteria met ({', '.join(stop_reasons)}) but waiting for phase >= {self.min_phases_before_stopping}")
 							should_stop = False
 						else:
 							print(f"  EARLY STOPPING TRIGGERED:")
