@@ -22,12 +22,12 @@ pretrained_colors = {
 positive_pct_col = "#357402ff"
 negative_pct_col = "#c0003aff"
 
-transition_color = "#02882E"
+transition_color = "#003311"
 early_stop_color = "#1D0808"
-best_model_color = "#017545"
-train_loss_color = "#24039E"
-val_loss_color = "#6C009E"
-loss_imp_color = "#C55F00"
+best_model_color = "#C002A7"
+train_loss_color = "#0010F3"
+val_loss_color = "#C27E00"
+loss_imp_color = "#00C53B"
 duration_color = "#0104C9"
 
 if USER == "farid":
@@ -596,7 +596,7 @@ def plot_phase_transition_analysis(
 		ax1.axvspan(
 			start_epoch - 1e-4,  # Extend slightly before
 			end_epoch - 1e-4,    # End just before next phase starts
-			alpha=0.3,
+			alpha=0.25,
 			color=phase_colors[phase],
 			label=f'Phase {phase}',
 			zorder=0,
@@ -632,7 +632,7 @@ def plot_phase_transition_analysis(
 			x=transition_epoch, 
 			color=transition_color, 
 			linestyle='--', 
-			linewidth=1.5,
+			linewidth=3.0,
 			alpha=0.8,
 			zorder=10,
 		)
@@ -657,7 +657,7 @@ def plot_phase_transition_analysis(
 				bbox=dict(
 					boxstyle="round,pad=0.4",
 					edgecolor='none',
-					facecolor='#ffffff',
+					facecolor='#929090',
 					alpha=0.5,
 				)
 			)
