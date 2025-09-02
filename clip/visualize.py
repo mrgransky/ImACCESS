@@ -22,12 +22,12 @@ pretrained_colors = {
 positive_pct_col = "#357402ff"
 negative_pct_col = "#c0003aff"
 
-transition_color = "#003311"
+transition_color = "#00A336"
 early_stop_color = "#1D0808"
 best_model_color = "#C002A7"
 train_loss_color = "#0010F3"
 val_loss_color = "#C27E00"
-loss_imp_color = "#00C53B"
+loss_imp_color = "#004214"
 duration_color = "#0104C9"
 
 if USER == "farid":
@@ -286,8 +286,7 @@ def plot_phase_transition_analysis_individual(
 			[val_losses[best_epoch]], 
 			color=best_model_color, 
 			marker="*", 
-			s=125,
-			edgecolor="#929090",
+			s=150,
 			linewidth=1.5, 
 			zorder=15, 
 			label="Best",
@@ -657,7 +656,7 @@ def plot_phase_transition_analysis(
 				bbox=dict(
 					boxstyle="round,pad=0.4",
 					edgecolor='none',
-					facecolor='#929090',
+					facecolor="#C5C5C5",
 					alpha=0.5,
 				)
 			)
@@ -668,11 +667,10 @@ def plot_phase_transition_analysis(
 			[epochs[best_epoch]], 
 			[best_loss], 
 			color=best_model_color, 
-			s=125,
+			s=150,
 			marker='*', 
 			zorder=15, 
 			label='Best',
-			edgecolor="#929090",
 			linewidth=1.5,
 		)
 	
