@@ -1953,8 +1953,8 @@ def create_differential_optimizer_groups(
 	
 	lr_multipliers = {
 		'projections': 0.5,
-		'text_transformer': 0.02,
-		'visual_transformer': 0.02,
+		'text_transformer': 0.02,		# orig: 0.1
+		'visual_transformer': 0.02,	# orig: 0.1
 		'text_frontend': 0.01,
 		'visual_frontend': 0.01,
 	}

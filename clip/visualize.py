@@ -22,9 +22,13 @@ pretrained_colors = {
 positive_pct_col = "#357402ff"
 negative_pct_col = "#c0003aff"
 
-transition_color = "#E91111"
+transition_color = "#00B13B"
 early_stop_color = "#1D0808"
-best_model_color = "#008528"
+best_model_color = "#D2F700"
+train_loss_color = "#004BBB"
+val_loss_color = "#670196"
+loss_imp_color = "#995200"
+duration_color = "#0104C9"
 
 if USER == "farid":
 	from graphviz import Digraph
@@ -268,7 +272,7 @@ def plot_phase_transition_analysis_individual(
 			color=best_model_color, 
 			marker="*", 
 			s=150,
-			edgecolor="black", 
+			edgecolor=best_model_color,
 			linewidth=1.5, 
 			zorder=15, 
 			label="Best",
@@ -350,8 +354,6 @@ def plot_phase_transition_analysis_individual(
 	# PLOT 4: Phase Efficiency Analysis
 	# ============================================
 	fig, ax4 = plt.subplots(figsize=figsize, facecolor='white')
-	loss_imp_color = "#F73100"
-	duration_color = "#0004EC"
 
 	unique_phases = sorted(set(phases))
 	phase_data = []
@@ -550,24 +552,24 @@ def plot_phase_transition_analysis(
 	train_line = ax1.plot(
 		epochs, 
 		train_losses, 
-		color="#0025FA",
+		color=train_loss_color,
 		linestyle='-',
 		linewidth=2.5, 
-		label='Training Loss', 
+		label='Train',
 		alpha=0.9, 
 		marker='o', 
-		markersize=1.8,
+		markersize=2.5,
 	)
 	val_line = ax1.plot(
 		epochs, 
 		val_losses, 
-		color="#C77203",
+		color=val_loss_color,
 		linestyle='-',
 		linewidth=2.5, 
-		label='Validation Loss', 
+		label='Validation', 
 		alpha=0.9, 
-		marker='s', 
-		markersize=1.8,
+		marker='o',
+		markersize=2.5,
 	)
 	
 	# Mark phase transitions with enhanced annotations
@@ -602,7 +604,7 @@ def plot_phase_transition_analysis(
 					boxstyle="round,pad=0.4",
 					edgecolor='none',
 					facecolor='#ffffff',
-					alpha=0.9,
+					alpha=0.5,
 				)
 			)
 
@@ -612,12 +614,12 @@ def plot_phase_transition_analysis(
 			[epochs[best_epoch]], 
 			[best_loss], 
 			color=best_model_color, 
-			s=125,
+			s=150,
 			marker='*', 
 			zorder=15, 
 			label='Best',
-			edgecolor='#ffffff',
-			linewidth=1.5,
+			edgecolor=best_model_color,
+			linewidth=2.0,
 		)
 	
 	if early_stop_epoch is not None:
@@ -625,8 +627,8 @@ def plot_phase_transition_analysis(
 			x=early_stop_epoch, 
 			color=early_stop_color, 
 			linestyle=':',
-			linewidth=1.8,
-			alpha=0.9,
+			linewidth=1.5,
+			alpha=0.95,
 			zorder=12
 		)
 		ax1.text(
@@ -657,9 +659,9 @@ def plot_phase_transition_analysis(
 	ax1.tick_params(axis='both', which='major', labelsize=8)
 	ax1.set_xlim(left=0, right=max(epochs)+2)
 
-	# ================================
-	# 2. Learning Rate Adaptation
-	# ================================
+	# ========================
+	# Learning Rate Adaptation
+	# ========================
 	ax2 = fig.add_subplot(gs[2, 1:])
 	
 	# Plot learning rate with phase coloring
@@ -669,8 +671,8 @@ def plot_phase_transition_analysis(
 			[epochs[i], epochs[i+1]], 
 			[learning_rates[i], learning_rates[i+1]], 
 			color=phase_colors[phase], 
-			linewidth=3, 
-			alpha=0.95,
+			linewidth=2.5,
+			alpha=0.8,
 		)
 	
 	# Mark transitions
@@ -679,8 +681,8 @@ def plot_phase_transition_analysis(
 			ax2.axvline(
 				x=transition_epoch, 
 				color=transition_color, 
-				linewidth=2.5,
-				alpha=0.55,
+				linewidth=2.0,
+				alpha=0.6,
 				linestyle='--',
 			)
 	
@@ -689,21 +691,21 @@ def plot_phase_transition_analysis(
 	ax2.set_title('Learning Rate Adaptation Across Phases', fontsize=8, weight='bold')
 	ax2.grid(True, alpha=0.3)
 	
-	# ================================
+	# ==========================
 	# 3. Weight Decay Adaptation
-	# ================================
+	# ==========================
 	ax3 = fig.add_subplot(gs[1, 1:])
 	
 	# Plot weight decay with phase coloring
 	for i in range(len(epochs)-1):
-			phase = phases[i]
-			ax3.semilogy(
-				[epochs[i], epochs[i+1]], 
-				[weight_decays[i], weight_decays[i+1]], 
-				color=phase_colors[phase], 
-				linewidth=3, 
-				alpha=0.8
-			)
+		phase = phases[i]
+		ax3.semilogy(
+			[epochs[i], epochs[i+1]], 
+			[weight_decays[i], weight_decays[i+1]], 
+			color=phase_colors[phase], 
+			linewidth=2.5, 
+			alpha=0.8,
+		)
 	
 	# Mark transitions
 	for transition_epoch in transitions:
@@ -712,8 +714,8 @@ def plot_phase_transition_analysis(
 				x=transition_epoch, 
 				color=transition_color, 
 				linestyle='--', 
-				linewidth=2, 
-				alpha=0.7
+				linewidth=2.0,
+				alpha=0.6,
 			)
 	
 	# ax3.set_xlabel('Epoch', fontsize=8, weight='bold')
@@ -736,8 +738,8 @@ def plot_phase_transition_analysis(
 		
 		# Calculate loss improvement in this phase
 		if phase_epochs:
-			start_idx = phase_epochs[0] - 1          # convert to 0‑based
-			end_idx = phase_epochs[-1] - 1          # convert to 0‑based
+			start_idx = phase_epochs[0] - 1   # convert to 0‑based
+			end_idx = phase_epochs[-1] - 1    # convert to 0‑based
 			if 0 <= start_idx < len(val_losses) and 0 <= end_idx < len(val_losses):
 				start_loss = val_losses[start_idx]
 				end_loss = val_losses[end_idx]
@@ -751,18 +753,12 @@ def plot_phase_transition_analysis(
 	
 	phases_list, durations, improvements = zip(*phase_data) if phase_data else ([], [], [])
 
-	print(f"--- {len(phases)} Phase(s) ({phases}) Data: {unique_phases} ---")
-	print(f"phase_data: {phase_data}")
-	print(f"phases_list: {phases_list}")
-	print(f"durations: {durations}")
-	print(f"improvements: {improvements} => max: {max(improvements)} min: {min(improvements)}")
-
 	# Create dual-axis plot
 	bars = ax4.bar(
 		range(len(durations)), 
 		durations,
 		color=[phase_colors[p] for p in phases_list], 
-		alpha=0.8,
+		alpha=0.5,
 	)
 	
 	# Add improvement percentages
@@ -774,7 +770,7 @@ def plot_phase_transition_analysis(
 		linestyle='-',
 		marker='o',
 		markersize=2,
-		color="#F73100",
+		color=loss_imp_color,
 	)
 	for i, (bar, duration, improvement) in enumerate(zip(bars, durations, improvements)):
 		ax4_twin.text(
@@ -785,26 +781,26 @@ def plot_phase_transition_analysis(
 			va='bottom',
 			fontweight='bold',
 			fontsize=8,
-			color="#F73100",
+			color=loss_imp_color,
 		)
 	
 	ax4.set_xlabel('Phase', fontsize=8, weight='bold')
-	ax4.set_ylabel('Epochs', fontsize=8, weight='bold', color='#0004EC')
-	ax4_twin.set_ylabel('Loss Improvement (%)', fontsize=8, weight='bold', color="#F73100")
+	ax4.set_ylabel('Epochs', fontsize=8, weight='bold', color=duration_color)
+	ax4_twin.set_ylabel('Loss Improvement (%)', fontsize=8, weight='bold', color=loss_imp_color)
 	ax4.set_title('Phase Efficiency Analysis', fontsize=8, weight='bold')
 	
 	phase_labels = [f'{p}' for p in phases_list]
 	ax4.set_xticklabels(phase_labels)
 	ax4.set_xticks(range(len(phase_labels)))
 	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
-	ax4.grid(axis='y', alpha=0.35, color='#888888')
+	ax4.grid(axis='y', alpha=0.25, color="#A3A3A3")
 
-	ax4.tick_params(axis='y', labelcolor='#0004EC', labelsize=10)
-	ax4_twin.tick_params(axis='y', labelcolor="#F73100", labelsize=10)
+	ax4.tick_params(axis='y', labelcolor=duration_color, labelsize=10)
+	ax4_twin.tick_params(axis='y', labelcolor=loss_imp_color, labelsize=10)
 
 	# Match spine colors with their labels
-	ax4.spines['left'].set_color('#0004EC')
-	ax4_twin.spines['right'].set_color("#F73100")
+	ax4.spines['left'].set_color(duration_color)
+	ax4_twin.spines['right'].set_color(loss_imp_color)
 
 	ax4_twin.spines['top'].set_visible(False)
 	ax4.spines['top'].set_visible(False)
@@ -2085,7 +2081,7 @@ def plot_text_to_images(
 				draw.text(
 					(gt_x, gt_y),
 					gt_label,
-					fill="#0004EC",  # Different color to distinguish from score
+					fill="#0205B3",  # Different color to distinguish from score
 					font=gt_font
 				)
 			
