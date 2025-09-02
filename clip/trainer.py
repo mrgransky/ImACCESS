@@ -2512,14 +2512,6 @@ def progressive_finetune_single_label(
 				phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
 				print(f"Phase transition triggered @ epoch {epoch+1} & current phase: {current_phase}. Optimizer/Scheduler refresh pending after unfreeze.")
 
-		# # current_lr = optimizer.param_groups[0]['lr'] if optimizer.param_groups else last_lr
-		# # Get current LR for logging (take the highest LR from param groups)
-		# if optimizer.param_groups:
-		# 	current_lr = max([pg['lr'] for pg in optimizer.param_groups])
-		# else:
-		# 	current_lr = last_lr
-		# current_wd = optimizer.param_groups[0]['weight_decay'] if optimizer.param_groups else last_wd
-
 		if optimizer.param_groups and not phase_just_changed:
 			current_lr = max([pg['lr'] for pg in optimizer.param_groups])
 			current_wd = optimizer.param_groups[0]['weight_decay']
