@@ -631,8 +631,8 @@ def plot_phase_transition_analysis(
 			x=transition_epoch, 
 			color=transition_color, 
 			linestyle='--', 
-			linewidth=3.0,
-			alpha=0.8,
+			linewidth=2.0,
+			alpha=0.6,
 			zorder=10,
 		)
 		
@@ -657,7 +657,7 @@ def plot_phase_transition_analysis(
 					boxstyle="round,pad=0.4",
 					edgecolor='none',
 					facecolor="#C5C5C5",
-					alpha=0.5,
+					alpha=0.3,
 				)
 			)
 
@@ -704,7 +704,7 @@ def plot_phase_transition_analysis(
 		shadow=False,
 		fancybox=False,
 		edgecolor='none',
-		facecolor='none',
+		facecolor='#FFFFFF',
 		ncol=len(transitions)+5,
 	)
 	ax1.grid(True, alpha=0.5)
