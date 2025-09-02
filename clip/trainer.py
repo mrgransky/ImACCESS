@@ -2118,6 +2118,77 @@ def handle_phase_transition(
 		window_size: int,
 		current_loss: float,
 		best_loss: Optional[float],
+    last_lr: float, # Pass the LR from the previous phase
+    last_wd: float, # Pass the WD from the previous phase
+	) -> Tuple[int, float, float]:
+
+	# --- 1. Determine Next Phase and Progress ---
+	next_phase = current_phase + 1
+	# Phase progress as a value from 0.0 (start) to 1.0 (final phase)
+	phase_progress = next_phase / max(1, max_phases - 1)
+
+	# --- 2. Calculate Loss Stability Factor ( punish instability) ---
+	if best_loss is None or best_loss <= 0:
+		loss_stability_factor = 1.0 # Neutral at the very start
+	else:
+		# If current loss is worse than best, this factor will be > 1.0
+		# We will use its inverse to penalize the LR.
+		# Clamped for safety.
+		loss_ratio = current_loss / best_loss
+		loss_stability_factor = 1 / max(1.0, min(loss_ratio, 3.0)) # Penalizes if loss is up to 3x worse
+
+	# --- 3. Calculate New Learning Rate (Compounding Decay) ---
+	# We decay the LEARNING RATE based on how far we are into the training.
+	# Early phases have small decay, later phases have aggressive decay.
+	# This is a smoother version of the 0.75**progress logic.
+	lr_decay_factor = 1.0 - (phase_progress * 0.25) # Max decay of 25% per phase
+	
+	# The new base LR is the *previous* LR decayed by our factors.
+	# This creates a compounding effect, essential for late-stage fine-tuning.
+	new_lr = last_lr * lr_decay_factor * loss_stability_factor
+	
+	# Safety net: ensure LR doesn't collapse to zero.
+	min_allowable_lr = initial_lr * 1e-3
+	new_lr = max(new_lr, min_allowable_lr)
+
+	# --- 4. Calculate New Weight Decay (Compounding Increase) ---
+	# We increase WEIGHT DECAY based on phase progress.
+	# Early phases get a small bump, later phases get a large one.
+	wd_increase_factor = 1.0 + (phase_progress * 0.4) # Max increase of 40% per phase
+
+	# The new WD is the *previous* WD increased by our factors.
+	new_wd = last_wd * wd_increase_factor
+
+	# Safety net: cap the total weight decay.
+	max_allowable_wd = initial_wd * 10.0 # Don't let it exceed 10x the initial value
+	new_wd = min(new_wd, max_allowable_wd)
+
+	# --- 5. Enhanced Debugging Prints ---
+	print("\n" + "="*80)
+	print(f"PHASE TRANSITION: {current_phase} -> {next_phase} (Progress: {phase_progress:.2f})")
+	print("-"*80)
+	print("[Learning Rate Calculation]")
+	print(f"  - Previous LR: {last_lr:.3e}")
+	print(f"  - Loss Stability Factor (1 / (current/best)): {loss_stability_factor:.3f}  (penalizes instability)")
+	print(f"  - Phase Decay Factor (1 - progress*0.25): {lr_decay_factor:.3f}")
+	print(f"  - New Calculated LR: {new_lr:.3e} (Min allowed: {min_allowable_lr:.3e})")
+	print("-"*80)
+	print("[Weight Decay Calculation]")
+	print(f"  - Previous WD: {last_wd:.3e}")
+	print(f"  - Phase Increase Factor (1 + progress*0.4): {wd_increase_factor:.3f}")
+	print(f"  - New Calculated WD: {new_wd:.3e} (Max allowed: {max_allowable_wd:.3e})")
+	print("="*80 + "\n")
+
+	return next_phase, new_lr, new_wd
+
+def handle_phase_transition_old(
+		current_phase: int,
+		initial_lr: float,
+		initial_wd: float,
+		max_phases: int,
+		window_size: int,
+		current_loss: float,
+		best_loss: Optional[float],
 	) -> Tuple[int, float, float]:
 
 	# --- 1. Calculate Loss Stability Factor ---
@@ -2160,11 +2231,13 @@ def handle_phase_transition(
 	max_allowable_wd = initial_wd * max_wd_increase_factor
 	new_wd = min(new_wd, max_allowable_wd)
 
-	print(f">> Phase Transition Occurred (Moving to Phase {next_phase} from Previous Phase: {current_phase})")
-	print(f"Factors -> Loss Stability: {loss_stability_factor:.3f}, Window Factor: {window_factor:.3f}, Phase Factor: {phase_factor:.3f}")
-	print(f"Calculated New LR: {new_lr:.3e} (min allowable: {min_allowable_lr:.3e})")
-	print(f"WD Factors -> Phase Progress: {wd_phase_progress:.2f}, Dynamic Max Increase Factor: {max_wd_increase_factor:.2f}")
-	print(f"Calculated New WD: {new_wd:.3e} (initial: {initial_wd:.3e})")
+	print("="*100)
+	print(f"Phase Transition Occurred to Phase: {next_phase} from Previous Phase: {current_phase})")
+	print(f"Factors -> Loss Stability: {loss_stability_factor}, Window Factor: {window_factor}, Phase Factor: {phase_factor}")
+	print(f"=>\tNew LR: {new_lr} (min allowable: {min_allowable_lr})")
+	print(f"WD Factors -> Phase Progress: {wd_phase_progress}, Dynamic Max Increase Factor: {max_wd_increase_factor}")
+	print(f"=>\tNew WD: {new_wd} (initial: {initial_wd})")
+	print("="*100)
 
 	return next_phase, new_lr, new_wd
 
@@ -2488,6 +2561,8 @@ def progressive_finetune_single_label(
 					window_size=window_size,
 					current_loss=val_losses[-1],
 					best_loss=early_stopping.get_best_score(),
+					last_lr=last_lr,
+					last_wd=last_wd,
 				)
 				epochs_in_current_phase = 0 # Reset phase epoch counter
 				early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
@@ -4111,14 +4186,12 @@ def probe_finetune_single_label(
 	actual_trained_epochs = len(training_losses)
 	
 	file_base_name = (
-		f"{dataset_name}_"
-		f"{mode}_"
+		# f"{dataset_name}_"
+		f"{mode}_{probe.probe_type}_"
 		f"{optimizer.__class__.__name__}_"
 		f"{scheduler.__class__.__name__}_"
 		f"{criterion.__class__.__name__}_"
-		f"{model_name}_"
 		f"{model_arch}_"
-		f"probe_{probe.probe_type}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
