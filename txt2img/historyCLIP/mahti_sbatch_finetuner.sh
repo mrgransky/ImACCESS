@@ -2,16 +2,16 @@
 
 #SBATCH --account=project_2014707
 #SBATCH --job-name=h4_sgl_lbl
-#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
+#SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%c_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
-#SBATCH --mem=478G
+#SBATCH --mem=164G
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1
-#SBATCH --array=0,4,8,12
+#SBATCH --array=8
 #SBATCH --time=1-12:00:00
 
 set -euo pipefail

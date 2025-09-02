@@ -24,10 +24,10 @@ negative_pct_col = "#c0003aff"
 
 transition_color = "#02882E"
 early_stop_color = "#1D0808"
-best_model_color = "#004B2C"
-train_loss_color = "#004BBB"
-val_loss_color = "#670196"
-loss_imp_color = "#995200"
+best_model_color = "#017545"
+train_loss_color = "#24039E"
+val_loss_color = "#6C009E"
+loss_imp_color = "#C55F00"
 duration_color = "#0104C9"
 
 if USER == "farid":
@@ -286,8 +286,8 @@ def plot_phase_transition_analysis_individual(
 			[val_losses[best_epoch]], 
 			color=best_model_color, 
 			marker="*", 
-			s=150,
-			edgecolor=best_model_color,
+			s=125,
+			edgecolor="#929090",
 			linewidth=1.5, 
 			zorder=15, 
 			label="Best",
@@ -558,26 +558,49 @@ def plot_phase_transition_analysis(
 	ymin, ymax = ax1.get_ylim()
 	y_middle = (ymin + ymax) / 2.0
 
-	# Add phase background shading	
 	unique_phases = sorted(set(phases))
+
+	print(f"="*100)
+	print(f"{len(train_losses)} train losses: {train_losses}")
+	print(f"{len(val_losses)} val losses: {val_losses}")
+	print(f"{len(transitions)} Transitions: {transitions}")
+	print(f"{len(epochs)} Epochs: {epochs}")
+	print(f"{len(phases)} Phases: {phases}")
+	print(f"{len(unique_phases)} Unique Phases: {unique_phases}")
+	print(f"{len(weight_decays)} WDs: {weight_decays}")
+	print(f"{len(learning_rates)} LRs: {learning_rates}")
+	print(f"Best Epoch: {best_epoch}")
+	print(f"="*100)
+
+	# Sort phases chronologically and create continuous segments
+	phase_segments = []
 	for i, phase in enumerate(unique_phases):
 		phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
-		print(f"Phase {phase}: {phase_epochs}: min: {min(phase_epochs)} max: {max(phase_epochs)}")
 		if phase_epochs:
 			start_epoch = min(phase_epochs)
-			end_epoch = max(phase_epochs)
 			
-			# Extend to the next transition if it exists
-			if i < len(transitions) and transitions[i] <= len(epochs):
-				end_epoch = transitions[i]
+			# For the end epoch, extend to the next transition or final epoch
+			if i < len(unique_phases) - 1:  # Not the last phase
+				# Find the start of the next phase
+				next_phase = unique_phases[i + 1]
+				next_phase_epochs = [e for e, p in zip(epochs, phases) if p == next_phase]
+				end_epoch = min(next_phase_epochs) if next_phase_epochs else max(phase_epochs)
+			else:  # Last phase
+				end_epoch = max(phase_epochs) + 1  # Extend slightly past the last epoch
 			
-			ax1.axvspan(
-				start_epoch, 
-				end_epoch, 
-				alpha=0.3,
-				color=phase_colors[phase], 
-				label=f'Phase {phase}'
-			)
+			phase_segments.append((start_epoch, end_epoch, phase))
+
+	# Plot continuous segments
+	for start_epoch, end_epoch, phase in phase_segments:
+		print(f"Phase {phase}: {start_epoch} to {end_epoch}, color = {phase_colors[phase]}")
+		ax1.axvspan(
+			start_epoch - 1e-4,  # Extend slightly before
+			end_epoch - 1e-4,    # End just before next phase starts
+			alpha=0.3,
+			color=phase_colors[phase],
+			label=f'Phase {phase}',
+			zorder=0,
+		)
 
 	# Plot loss curves with enhanced styling
 	train_line = ax1.plot(
@@ -645,12 +668,12 @@ def plot_phase_transition_analysis(
 			[epochs[best_epoch]], 
 			[best_loss], 
 			color=best_model_color, 
-			s=150,
+			s=125,
 			marker='*', 
 			zorder=15, 
 			label='Best',
-			edgecolor=best_model_color,
-			linewidth=2.0,
+			edgecolor="#929090",
+			linewidth=1.5,
 		)
 	
 	if early_stop_epoch is not None:
@@ -686,83 +709,78 @@ def plot_phase_transition_analysis(
 		facecolor='none',
 		ncol=len(transitions)+5,
 	)
-	ax1.grid(True, alpha=0.75)
+	ax1.grid(True, alpha=0.5)
 	ax1.tick_params(axis='both', which='major', labelsize=8)
 	ax1.set_xlim(left=0, right=max(epochs)+2)
+
 
 	# ========================
 	# Learning Rate Adaptation
 	# ========================
 	ax2 = fig.add_subplot(gs[2, 1:])
-	
-	# Plot learning rate with phase coloring
-	for i in range(len(epochs)-1):
-		phase = phases[i]
-		ax2.semilogy(
-			[epochs[i], epochs[i+1]], 
-			[learning_rates[i], learning_rates[i+1]], 
-			color=phase_colors[phase], 
-			linewidth=2.5,
-			alpha=0.8,
-		)
-	
+
+	for i in range(len(epochs) - 1):
+			x0, x1 = epochs[i], epochs[i+1]
+			y0, y1 = learning_rates[i], learning_rates[i+1]
+			# Use the phase of the END of the interval → fixes the late color switch
+			phase_color = phase_colors[phases[i+1]]
+			# print(f"{i}: Epochs: {x0} to {x1}")
+			# print(f"Learning Rates: {y0} to {y1}")
+			# print(f"Phase: {phases[i+1]} Color: {phase_color}")
+			# print()
+
+			ax2.semilogy([x0, x1], [y0, y1],
+									color=phase_color,
+									linewidth=2.5, alpha=0.8)
+
 	# Mark transitions
 	for transition_epoch in transitions:
-		if transition_epoch < len(learning_rates):
-			ax2.axvline(
-				x=transition_epoch, 
-				color=transition_color, 
-				linewidth=2.0,
-				alpha=0.6,
-				linestyle='--',
-			)
-	
+			if transition_epoch < len(learning_rates):
+					ax2.axvline(x=transition_epoch,
+											color=transition_color,
+											linewidth=2.0, alpha=0.6, linestyle='--')
+
 	ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
 	ax2.set_ylabel('LR (log)', fontsize=8, weight='bold')
 	ax2.set_title('Learning Rate Adaptation Across Phases', fontsize=8, weight='bold')
 	ax2.grid(True, alpha=0.3)
-	
+
 	# ==========================
-	# 3. Weight Decay Adaptation
+	# Weight Decay Adaptation
 	# ==========================
 	ax3 = fig.add_subplot(gs[1, 1:])
-	
-	# Plot weight decay with phase coloring
-	for i in range(len(epochs)-1):
-		phase = phases[i]
-		ax3.semilogy(
-			[epochs[i], epochs[i+1]], 
-			[weight_decays[i], weight_decays[i+1]], 
-			color=phase_colors[phase], 
-			linewidth=2.5, 
-			alpha=0.8,
-		)
-	
+
+	for i in range(len(epochs) - 1):
+			x0, x1 = epochs[i], epochs[i+1]
+			y0, y1 = weight_decays[i], weight_decays[i+1]
+			phase_color = phase_colors[phases[i+1]]
+			# print(f"{i}: Epochs: {x0} to {x1}")
+			# print(f"Weight Decays: {y0} to {y1}")
+			# print(f"Phase: {phases[i+1]} Color: {phase_color}")
+			# print()
+
+			ax3.semilogy([x0, x1], [y0, y1],
+									color=phase_color,
+									linewidth=2.5, alpha=0.8)
+
 	# Mark transitions
 	for transition_epoch in transitions:
-		if transition_epoch < len(weight_decays):
-			ax3.axvline(
-				x=transition_epoch, 
-				color=transition_color, 
-				linestyle='--', 
-				linewidth=2.0,
-				alpha=0.6,
-			)
-	
-	# ax3.set_xlabel('Epoch', fontsize=8, weight='bold')
+			if transition_epoch < len(weight_decays):
+					ax3.axvline(x=transition_epoch,
+											color=transition_color,
+											linestyle='--', linewidth=2.0, alpha=0.6)
+
 	ax3.set_ylabel('WD (log)', fontsize=8, weight='bold')
 	ax3.set_title('Weight Decay Adaptation Across Phases', fontsize=8, weight='bold')
 	ax3.grid(True, alpha=0.3)
-	
+
 	# ==========================================
-	# 4. Phase Duration and Efficiency Analysis
+	# Phase Duration and Efficiency Analysis
 	# ==========================================
 	ax4 = fig.add_subplot(gs[1:, :1])
 	
 	# Calculate phase durations and improvements
-	phase_data = []
-	# unique_phases = sorted(set(phases))
-	
+	phase_data = []	
 	for phase in unique_phases:
 		phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
 		duration = len(phase_epochs)

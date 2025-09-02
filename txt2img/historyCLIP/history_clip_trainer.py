@@ -341,6 +341,16 @@ def main():
 		else:
 			raise ValueError(f"Invalid mode: {args.mode}. Choose between: 'pretrain', 'train', 'finetune', 'quantitative'!")
 
+		# Clean up any available JSON files before finishing
+		json_files = glob.glob(os.path.join(RESULT_DIRECTORY, "*.json"))
+		if json_files:
+			print(f"Cleaning up {len(json_files)} JSON file(s) from {RESULT_DIRECTORY}")
+			for json_file in json_files:
+				try:
+					os.remove(json_file)
+				except Exception as e:
+					print(f"Warning: Failed to remove {json_file}: {e}")
+
 		print(f"Finished: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ".center(160, " "))
 	finally:
 		if log_file:

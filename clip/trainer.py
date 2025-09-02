@@ -1939,8 +1939,8 @@ def create_differential_optimizer_groups(
 	if lr_multipliers is None:
 		lr_multipliers = {
 			'projections': 0.5,
-			'text_transformer': 0.1,		# orig: 0.1
-			'visual_transformer': 0.1,	# orig: 0.1
+			'text_transformer': 0.02,		# orig: 0.1
+			'visual_transformer': 0.02,	# orig: 0.1
 			'text_frontend': 0.01,
 			'visual_frontend': 0.01,
 		}
@@ -1986,9 +1986,9 @@ def create_differential_optimizer_groups(
 			param_groups.append(group_dict)
 			
 			print(
-				f"Group: {group_name:<25}"
+				f"{group_name:<22}"
 				f"Parameters: {len(group_params_list):<5}"
-				f"LR Multiplier: {lr_multiplier}x "
+				f"LR Multiplier: {lr_multiplier:<10}"
 				f"Final LR: {group_dict['lr']}"
 			)
 
@@ -2236,7 +2236,8 @@ def progressive_finetune_single_label(
 		accuracy_plateau_threshold: float = 5e-4,		# For phase transition based on accuracy
 		topk_values: list[int] = [1, 5, 10],
 		layer_groups_to_unfreeze: list[str] = ['visual_transformer', 'text_transformer', 'projections'], # Focus on key layers
-		use_lamb: bool = False,
+		use_lamb: bool=False,
+		verbose: bool=False,
 	):
 	initial_learning_rate = learning_rate
 	initial_weight_decay = weight_decay
@@ -2272,7 +2273,6 @@ def progressive_finetune_single_label(
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
 		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-
 	if USER == "farid":
 		build_arch_flowchart(
 			model,
@@ -2282,12 +2282,14 @@ def progressive_finetune_single_label(
 			rankdir="LR"       # top‑to‑bottom (feel free to try "LR")
 		)
 
-	for n, m in model.named_modules():
-		print(f"{n:<60} {type(m).__name__:<50} Training: {m.training:<10} Weights Grad: {m.weight.requires_grad if hasattr(m, 'weight') else ''}")
-		# print(n)
-		# print(m)
-		# print()
-	print("-"*100)
+	if verbose:
+		for n, m in model.named_modules():
+			print(f"{n:<60} {type(m).__name__:<50} Training: {m.training:<10} Weights Grad: {m.weight.requires_grad if hasattr(m, 'weight') else ''}")
+			# print(n)
+			# print(m)
+			# print()
+		print("-"*100)
+
 	# Find dropout value
 	dropout_val = 0.0
 	for name, module in model.named_modules():
@@ -2510,13 +2512,21 @@ def progressive_finetune_single_label(
 				phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
 				print(f"Phase transition triggered @ epoch {epoch+1} & current phase: {current_phase}. Optimizer/Scheduler refresh pending after unfreeze.")
 
-		# current_lr = optimizer.param_groups[0]['lr'] if optimizer.param_groups else last_lr
-		# Get current LR for logging (take the highest LR from param groups)
-		if optimizer.param_groups:
+		# # current_lr = optimizer.param_groups[0]['lr'] if optimizer.param_groups else last_lr
+		# # Get current LR for logging (take the highest LR from param groups)
+		# if optimizer.param_groups:
+		# 	current_lr = max([pg['lr'] for pg in optimizer.param_groups])
+		# else:
+		# 	current_lr = last_lr
+		# current_wd = optimizer.param_groups[0]['weight_decay'] if optimizer.param_groups else last_wd
+
+		if optimizer.param_groups and not phase_just_changed:
 			current_lr = max([pg['lr'] for pg in optimizer.param_groups])
+			current_wd = optimizer.param_groups[0]['weight_decay']
 		else:
+			# Use the updated values from handle_phase_transition
 			current_lr = last_lr
-		current_wd = optimizer.param_groups[0]['weight_decay'] if optimizer.param_groups else last_wd
+			current_wd = last_wd
 
 		learning_rates_history.append(current_lr)
 		weight_decays_history.append(current_wd)
