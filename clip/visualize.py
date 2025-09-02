@@ -24,7 +24,7 @@ negative_pct_col = "#c0003aff"
 
 transition_color = "#02882E"
 early_stop_color = "#1D0808"
-best_model_color = "#D2F700"
+best_model_color = "#004B2C"
 train_loss_color = "#004BBB"
 val_loss_color = "#670196"
 loss_imp_color = "#995200"

@@ -1985,10 +1985,12 @@ def create_differential_optimizer_groups(
 			group_dict['lr'] = base_lr * lr_multiplier
 			param_groups.append(group_dict)
 			
-			print(f"Group: '{group_name}'")
-			print(f"\tParameters found: {len(group_params_list)}")
-			print(f"\tLR Multiplier: {lr_multiplier}x")
-			print(f"\tFinal LR: {group_dict['lr']}")
+			print(
+				f"Group: {group_name} : "
+				f"Parameters found: {len(group_params_list)} "
+				f"LR Multiplier: {lr_multiplier}x "
+				f"Final LR: {group_dict['lr']}"
+			)
 
 	remaining_params = [
 		p 
