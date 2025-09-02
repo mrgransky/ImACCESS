@@ -1868,7 +1868,7 @@ def get_unfreeze_schedule(
 		schedule[phase] = sorted(list(set(layers_to_unfreeze_for_phase)))
 
 		# --- Enhanced Logging for verification ---
-		print(f"Phase {phase} (unfreeze_pct: {unfreeze_pct*100:.3f}%): {len(schedule[phase])} layers to unfreeze:")
+		print(f"Phase {phase} (unfreeze_pct: {unfreeze_pct*100:.2f}%): {len(schedule[phase])} layers to unfreeze:")
 		for i, layer in enumerate(schedule[phase]):
 			print(f"\t{i:02d} {layer}")
 
@@ -2165,79 +2165,19 @@ def handle_phase_transition(
 
 	# --- 5. Enhanced Debugging Prints ---
 	print("\n" + "="*80)
-	print(f"PHASE TRANSITION: {current_phase} -> {next_phase} (Progress: {phase_progress:.2f})")
+	print(f"PHASE TRANSITION: {current_phase} -> {next_phase} (Progress: {phase_progress})")
 	print("-"*80)
 	print("[Learning Rate Calculation]")
-	print(f"  - Previous LR: {last_lr:.3e}")
-	print(f"  - Loss Stability Factor (1 / (current/best)): {loss_stability_factor:.3f}  (penalizes instability)")
-	print(f"  - Phase Decay Factor (1 - progress*0.25): {lr_decay_factor:.3f}")
-	print(f"  - New Calculated LR: {new_lr:.3e} (Min allowed: {min_allowable_lr:.3e})")
+	print(f"  - Previous LR: {last_lr}")
+	print(f"  - Loss Stability Factor (1 / (current/best)): {loss_stability_factor}  (penalizes instability)")
+	print(f"  - Phase Decay Factor (1 - progress*0.25): {lr_decay_factor}")
+	print(f"  - New Calculated LR: {new_lr} (Min allowed: {min_allowable_lr})")
 	print("-"*80)
 	print("[Weight Decay Calculation]")
-	print(f"  - Previous WD: {last_wd:.3e}")
-	print(f"  - Phase Increase Factor (1 + progress*0.4): {wd_increase_factor:.3f}")
-	print(f"  - New Calculated WD: {new_wd:.3e} (Max allowed: {max_allowable_wd:.3e})")
+	print(f"  - Previous WD: {last_wd}")
+	print(f"  - Phase Increase Factor (1 + progress*0.4): {wd_increase_factor}")
+	print(f"  - New Calculated WD: {new_wd} (Max allowed: {max_allowable_wd})")
 	print("="*80 + "\n")
-
-	return next_phase, new_lr, new_wd
-
-def handle_phase_transition_old(
-		current_phase: int,
-		initial_lr: float,
-		initial_wd: float,
-		max_phases: int,
-		window_size: int,
-		current_loss: float,
-		best_loss: Optional[float],
-	) -> Tuple[int, float, float]:
-
-	# --- 1. Calculate Loss Stability Factor ---
-	if best_loss is None or best_loss <= 0:
-		loss_stability_factor = 1.0
-	else:
-		loss_stability_factor = min(max(0.5, current_loss / best_loss), 2.0)
-
-	# --- 2. Calculate Window Factor ---
-	window_factor = max(0.5, min(1.5, 10 / window_size))
-
-	# --- 3. Determine Next Phase Index and Phase Factor ---
-	next_phase = current_phase + 1
-	if next_phase >= max_phases:
-		next_phase = max_phases - 1
-		phase_factor = 0.1
-		print(f"<!> Already in final phase ({current_phase}). Applying fixed LR reduction.")
-	else:
-		phase_progress = next_phase / max(1, max_phases - 1)
-		phase_factor = 0.75 ** phase_progress
-
-	# --- 4. Calculate New Learning Rate ---
-	new_lr = initial_lr * phase_factor * loss_stability_factor * window_factor
-	min_allowable_lr = initial_lr * 1e-3
-	new_lr = max(new_lr, min_allowable_lr)
-
-	# --- 5. Calculate New Weight Decay with Dynamic Max Factor ---
-	wd_phase_progress = min(1.0, next_phase / max(1, max_phases - 1))
-
-	# Dynamically determine max_wd_increase_factor based on context
-	max_wd_increase_factor = 1.0 + (wd_phase_progress * 1.5) + ((1 - loss_stability_factor) * 1.0)
-
-	# Calculate the total possible increase range
-	wd_increase_range = initial_wd * (max_wd_increase_factor - 1.0)
-
-	# new weight decay with step-like decreases [linear progression]
-	new_wd = initial_wd + (wd_increase_range * wd_phase_progress)
-
-	# Add a maximum cap (which is now redundant but kept for clarity)
-	max_allowable_wd = initial_wd * max_wd_increase_factor
-	new_wd = min(new_wd, max_allowable_wd)
-
-	print("="*100)
-	print(f"Phase Transition Occurred to Phase: {next_phase} from Previous Phase: {current_phase})")
-	print(f"Factors -> Loss Stability: {loss_stability_factor}, Window Factor: {window_factor}, Phase Factor: {phase_factor}")
-	print(f"=>\tNew LR: {new_lr} (min allowable: {min_allowable_lr})")
-	print(f"WD Factors -> Phase Progress: {wd_phase_progress}, Dynamic Max Increase Factor: {max_wd_increase_factor}")
-	print(f"=>\tNew WD: {new_wd} (initial: {initial_wd})")
-	print("="*100)
 
 	return next_phase, new_lr, new_wd
 
@@ -2519,8 +2459,8 @@ def progressive_finetune_single_label(
 		print(
 			f"Epoch {epoch+1}/{num_epochs} "
 			f"Phase {current_phase}/{max_phases} "
-			f"current LR: {last_lr:.3e} "
-			f"current WD: {last_wd:.3e})"
+			f"current LR: {last_lr} "
+			f"current WD: {last_wd})"
 		)
 		torch.cuda.empty_cache()
 
@@ -4590,12 +4530,12 @@ def full_finetune_multi_label(
 			
 			print(f"\tRetrieval Metrics:")
 			print(
-				f"\t\tImage-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A'):.3f}, "
-				f"Recall@10={retrieval_metrics_per_epoch['img2txt'].get('Recall', {}).get('10', 'N/A'):.3f}"
+				f"\t\tImage-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A')}, "
+				f"Recall@10={retrieval_metrics_per_epoch['img2txt'].get('Recall', {}).get('10', 'N/A')}"
 			)
 			print(
-				f"\t\tText-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A'):.3f}, "
-				f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A'):.3f}"
+				f"\t\tText-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A')}, "
+				f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A')}"
 			)
 
 			if hasattr(train_loader.dataset, 'get_cache_stats'):
@@ -4932,7 +4872,7 @@ def progressive_finetune_multi_label(
 
 	for epoch in range(num_epochs):
 		epoch_start_time = time.time()
-		print(f"Epoch {epoch+1}/{num_epochs} Phase {current_phase}/{max_phases} current LR: {last_lr:.3e} current WD: {last_wd:.3e}")
+		print(f"Epoch {epoch+1}/{num_epochs} Phase {current_phase}/{max_phases} current LR: {last_lr} current WD: {last_wd}")
 		torch.cuda.empty_cache()
 		
 		# --- Phase Transition Check ---
@@ -5005,7 +4945,7 @@ def progressive_finetune_multi_label(
 					'weight_decay': last_wd,  # Use the new WD
 				}
 			)
-			print(f"Optimizer parameter groups refreshed. LR set to {last_lr:.3e}, WD set to {last_wd:.3e}.")
+			print(f"Optimizer parameter groups refreshed. LR set to {last_lr}, WD set to {last_wd}.")
 			print("Re-initializing OneCycleLR scheduler for new phase/start...")
 			steps_per_epoch = len(train_loader)
 			# Schedule over remaining epochs (more adaptive)
@@ -5020,7 +4960,7 @@ def progressive_finetune_multi_label(
 				anneal_strategy='cos',
 				# last_epoch = -1 # Ensures it starts fresh
 			)
-			print(f"Scheduler re-initialized with max_lr={last_lr:.3e} for {scheduler_epochs} epochs.")
+			print(f"Scheduler re-initialized with max_lr={last_lr} for {scheduler_epochs} epochs.")
 			phase_just_changed = False  # Reset the flag
 
 		# --- Training Epoch ---
@@ -5174,12 +5114,12 @@ def progressive_finetune_multi_label(
 		
 		print(f"\tRetrieval Metrics:")
 		print(
-			f"\t\tImage-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A'):.3f}, "
-			f"Recall@10={retrieval_metrics_per_epoch['img2txt'].get('Recall', {}).get('10', 'N/A'):.3f}"
+			f"\t\tImage-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A')}, "
+			f"Recall@10={retrieval_metrics_per_epoch['img2txt'].get('Recall', {}).get('10', 'N/A')}"
 		)
 		print(
-			f"\t\tText-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A'):.3f}, "
-			f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A'):.3f}"
+			f"\t\tText-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A')}, "
+			f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A')}"
 		)
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
@@ -5697,12 +5637,12 @@ def lora_finetune_multi_label(
 		
 		print(f"\tRetrieval Metrics:")
 		print(
-			f"\t\tImage-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A'):.3f}, "
-			f"Recall@10={retrieval_metrics_per_epoch['img2txt'].get('Recall', {}).get('10', 'N/A'):.3f}"
+			f"\t\tImage-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A')}, "
+			f"Recall@10={retrieval_metrics_per_epoch['img2txt'].get('Recall', {}).get('10', 'N/A')}"
 		)
 		print(
-			f"\t\tText-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A'):.3f}, "
-			f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A'):.3f}"
+			f"\t\tText-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A')}, "
+			f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A')}"
 		)
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
