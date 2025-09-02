@@ -1932,8 +1932,23 @@ def create_differential_optimizer_groups(
 		model: torch.nn.Module,
 		base_lr: float,
 		base_wd: float,
-		optimizer_hyperparams: dict
+		optimizer_hyperparams: dict,
+		lr_multipliers: dict=None,
 	) -> List[Dict]:
+
+	if lr_multipliers is None:
+		lr_multipliers = {
+			'projections': 0.5,
+			'text_transformer': 0.02,		# orig: 0.1
+			'visual_transformer': 0.02,	# orig: 0.1
+			'text_frontend': 0.01,
+			'visual_frontend': 0.01,
+		}
+
+	print("\n>> Creating Optimizer Groups with Differential LRs")
+	print(f"Base LR: {base_lr}")
+	print(f"Base WD: {base_wd}")
+	print(f"LR Multipliers:\n{json.dumps(lr_multipliers, indent=2)}")
 
 	adamw_defaults = {
 		'lr': base_lr,
@@ -1949,21 +1964,11 @@ def create_differential_optimizer_groups(
 		'decoupled_weight_decay': True,
 	}
 	
-	param_groups = []
-	
-	lr_multipliers = {
-		'projections': 0.5,
-		'text_transformer': 0.02,		# orig: 0.1
-		'visual_transformer': 0.02,	# orig: 0.1
-		'text_frontend': 0.01,
-		'visual_frontend': 0.01,
-	}
+	layer_groups_map = get_layer_groups(model)	
 
-	layer_groups_map = get_layer_groups(model)
-	
-	print("\n>> Creating Optimizer Groups with Differential LRs...")
-	
 	assigned_params = set()
+	param_groups = []
+
 	for group_name, layer_prefixes in layer_groups_map.items():
 		group_params_list = []
 		for prefix in layer_prefixes:
@@ -1980,10 +1985,10 @@ def create_differential_optimizer_groups(
 			group_dict['lr'] = base_lr * lr_multiplier
 			param_groups.append(group_dict)
 			
-			print(f"\tGroup: '{group_name}'")
-			print(f"\t\tParameters found: {len(group_params_list)}")
-			print(f"\t\tLR Multiplier: {lr_multiplier}x")
-			print(f"\t\tFinal LR: {group_dict['lr']}")
+			print(f"Group: '{group_name}'")
+			print(f"\tParameters found: {len(group_params_list)}")
+			print(f"\tLR Multiplier: {lr_multiplier}x")
+			print(f"\tFinal LR: {group_dict['lr']}")
 
 	remaining_params = [
 		p 
@@ -2323,15 +2328,12 @@ def progressive_finetune_single_label(
 		optimizer_hyperparams={
 			'betas': (0.9, 0.98),
 			'eps': 1e-6,
-		}
+		},
 	)
+	if use_lamb: optimizer = LAMB(params=initial_param_groups)
+	else: optimizer = torch.optim.AdamW(params=initial_param_groups)
 
-	if use_lamb:
-		optimizer = LAMB(
-			params=initial_param_groups)
-	else:
-		optimizer = torch.optim.AdamW(params=initial_param_groups)
-	print(f"Using {optimizer.__class__.__name__} with DIFFERENTIAL learning rates for optimization")
+	print(f"Using {optimizer.__class__.__name__} optimizer with DIFFERENTIAL LR")
 
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
 		optimizer=optimizer,
@@ -2346,7 +2348,6 @@ def progressive_finetune_single_label(
 	print(f"DEBUG: Initial configured LR: {learning_rate}")
 	print(f"DEBUG: Scheduler initial LR: {scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else 'N/A'}")
 	print(f"DEBUG: Optimizer initial LR: {optimizer.param_groups[0]['lr']}")
-
 
 	criterion = torch.nn.CrossEntropyLoss()
 	print(f"Using {criterion.__class__.__name__} as the loss function")
@@ -2532,7 +2533,7 @@ def progressive_finetune_single_label(
 				optimizer_hyperparams={
 					'betas': (0.9, 0.98),
 					'eps': 1e-6,
-				}
+				},
 			)
 
 			optimizer.param_groups.clear()
