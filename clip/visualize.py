@@ -624,24 +624,24 @@ def plot_phase_transition_analysis(
 	# Create phase segments using transition boundaries directly
 	phase_segments = []
 	for i, phase in enumerate(unique_phases):
-			if i == 0:
-					start_epoch = 1  # First epoch
-			else:
-					start_epoch = transitions[i-1] + 1  # First epoch after previous transition
-			
-			if i < len(transitions):
-					end_epoch = transitions[i]  # This transition ends the current phase
-			else:
-					end_epoch = max(epochs)  # Last epoch for final phase
-			
-			phase_segments.append((start_epoch, end_epoch, phase))
+		if i == 0:
+				start_epoch = 1  # First epoch
+		else:
+				start_epoch = transitions[i-1]# + 1  # First epoch after previous transition
+		
+		if i < len(transitions):
+				end_epoch = transitions[i]  # This transition ends the current phase
+		else:
+				end_epoch = max(epochs)  # Last epoch for final phase
+		
+		phase_segments.append((start_epoch, end_epoch, phase))
 
 	# Plot with exact boundaries
 	print(f"phase_segments: {phase_segments}")
 	for start_epoch, end_epoch, phase in phase_segments:
 			ax1.axvspan(
-					start_epoch - 0.5,
-					end_epoch + 0.5,
+					start_epoch,
+					end_epoch,
 					alpha=0.2,
 					color=phase_colors[phase],
 					label=f'Phase {phase}',
