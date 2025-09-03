@@ -528,7 +528,7 @@ def plot_phase_transition_analysis_individual(
 	ax5.plot(epochs, wd_norm, "m-", label="WD")
 	ax5.plot(epochs, loss_norm, "r-", label="Val Loss")
 	for t_epoch in transitions:
-		ax5.axvline(x=t_epoch, color=transition_color, linestyle="--", linewidth=1.5)
+		ax5.axvline(x=t_epoch, color=transition_color, linestyle=":", linewidth=1.5)
 	ax5.set_title("Hyperparameter Correlations [normed]", fontsize=10, weight="bold")
 	ax5.set_xlabel("Epoch"); ax5.set_ylabel("Normalized values")
 	ax5.grid(True, alpha=0.3)
@@ -564,7 +564,7 @@ def plot_phase_transition_analysis_individual(
 		ax6.axvline(
 			x=transition_epoch,
 			color=transition_color, 
-			linestyle='--', 
+			linestyle=':', 
 			linewidth=1.5,
 			alpha=0.5,
 			label=label, # Show label only once
@@ -625,28 +625,28 @@ def plot_phase_transition_analysis(
 	phase_segments = []
 	for i, phase in enumerate(unique_phases):
 		if i == 0:
-				start_epoch = 1  # First epoch
+			start_epoch = 1  # First epoch
 		else:
-				start_epoch = transitions[i-1]# + 1  # First epoch after previous transition
+			start_epoch = transitions[i-1]# + 1  # First epoch after previous transition
 		
 		if i < len(transitions):
-				end_epoch = transitions[i]  # This transition ends the current phase
+			end_epoch = transitions[i]  # This transition ends the current phase
 		else:
-				end_epoch = max(epochs)  # Last epoch for final phase
+			end_epoch = max(epochs)  # Last epoch for final phase
 		
 		phase_segments.append((start_epoch, end_epoch, phase))
 
 	# Plot with exact boundaries
 	print(f"phase_segments: {phase_segments}")
 	for start_epoch, end_epoch, phase in phase_segments:
-			ax1.axvspan(
-					start_epoch,
-					end_epoch,
-					alpha=0.2,
-					color=phase_colors[phase],
-					label=f'Phase {phase}',
-					zorder=0,
-			)
+		ax1.axvspan(
+			start_epoch,
+			end_epoch,
+			alpha=0.2,
+			color=phase_colors[phase],
+			label=f'Phase {phase}',
+			zorder=0,
+		)
 
 	# Plot loss curves with enhanced styling
 	train_line = ax1.plot(
@@ -674,12 +674,11 @@ def plot_phase_transition_analysis(
 	ymin, ymax = ax1.get_ylim()
 	y_middle = (ymin + ymax) / 2.0
 
-	# Mark phase transitions with enhanced annotations
 	for i, transition_epoch in enumerate(transitions):
 		ax1.axvline(
 			x=transition_epoch, 
 			color=transition_color, 
-			linestyle='--', 
+			linestyle=':',
 			linewidth=2.0,
 			alpha=0.6,
 			zorder=10,
@@ -761,18 +760,16 @@ def plot_phase_transition_analysis(
 	ax1.tick_params(axis='both', which='major', labelsize=8)
 	ax1.set_xlim(left=0, right=max(epochs)+2)
 
-
-
-	# ========================
+	# ===================================
 	# Hyperparameter Adaptation (LR + WD)
-	# ========================
+	# ===================================
 	ax2 = fig.add_subplot(gs[1:, 1:])
 
 	# Plot Learning Rate on primary axis
 	for i in range(len(epochs) - 1):
 		x0, x1 = epochs[i], epochs[i+1]
 		y0, y1 = learning_rates[i], learning_rates[i+1]
-		phase_color = phase_colors[phases[i]]  # Fixed the indexing issue
+		phase_color = phase_colors[phases[i+1]]
 		ax2.semilogy(
 			[x0, x1],
 			[y0, y1],
@@ -789,17 +786,16 @@ def plot_phase_transition_analysis(
 	for i in range(len(epochs) - 1):
 		x0, x1 = epochs[i], epochs[i+1]
 		y0, y1 = weight_decays[i], weight_decays[i+1]
-		phase_color = phase_colors[phases[i]]  # Fixed the indexing issue
+		phase_color = phase_colors[phases[i+1]]
 		ax2_twin.semilogy(
 			[x0, x1],
 			[y0, y1],
 			color=phase_color,
-			linewidth=2.5,
+			linewidth=1.5,
 			alpha=0.8,
 			linestyle='--'  # Different line style for distinction
 		)
 
-	# Mark transitions on both axes
 	for transition_epoch in transitions:
 		if transition_epoch < len(learning_rates):
 			ax2.axvline(
@@ -811,22 +807,14 @@ def plot_phase_transition_analysis(
 				zorder=10
 			)
 
-	# Labels and styling
 	ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
 	ax2.set_ylabel('LR (log)', fontsize=8, weight='bold')
 	ax2_twin.set_ylabel('WD (log)', fontsize=8, weight='bold')
-	ax2.set_title('Hyperparameter Adaptation Across Phases\nLearning Rate (—) & Weight Decay (--)', fontsize=8, weight='bold')
-
-	# Color-code the axis labels and spines
-	ax2.tick_params(axis='y', labelcolor='blue', labelsize=8)
-	ax2_twin.tick_params(axis='y', labelcolor='red', labelsize=8)
-	ax2.spines['left'].set_color('blue')
-	ax2_twin.spines['right'].set_color('red')
-
-	# Grid and legend
-	ax2.grid(True, alpha=0.3)
-
-	# Ensure both axes have the same x-limits
+	ax2.tick_params(axis='y', labelsize=8)
+	ax2_twin.tick_params(axis='y', labelsize=8)
+	ax2.set_title('Hyperparameter Adaptation Across Phases\nLearning Rate (—) Weight Decay (--)', fontsize=8, weight='bold')
+	ax2.grid(True, alpha=0.3, linestyle='-', color='#A3A3A3')
+	ax2_twin.grid(True, alpha=0.5, linestyle='--', color="#8A8A8A")
 	ax2.set_xlim(left=0, right=max(epochs)+1)
 	ax2_twin.set_xlim(left=0, right=max(epochs)+1)
 
