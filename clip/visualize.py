@@ -746,7 +746,7 @@ def plot_phase_transition_analysis(
 	ax1.set_xlabel('Epoch', fontsize=8)
 	ax1.set_ylabel('Loss', fontsize=8)
 	ax1.set_title(f'Learning [Loss] Curve with Phase Transitions', fontsize=8, weight='bold')
-	ax1.legend(
+	legend = ax1.legend(
 		loc='best',
 		fontsize=8,
 		frameon=False,
@@ -755,8 +755,8 @@ def plot_phase_transition_analysis(
 		edgecolor='none',
 		facecolor='#FFFFFF',
 		ncol=len(transitions)+5,
-		zorder=20,
 	)
+	legend.set_zorder(20)
 	ax1.grid(True, alpha=0.5)
 	ax1.tick_params(axis='both', which='major', labelsize=8)
 	ax1.set_xlim(left=0, right=max(epochs)+2)

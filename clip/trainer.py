@@ -2077,8 +2077,8 @@ def should_transition_phase(
 			print(f"Avg Pairwise Acc Improvement: {acc_pairwise_imp_avg:.5f} (Plateau Thresh: < {accuracy_plateau_threshold}) => Plateau: {accuracy_plateau}")
 		else:
 			print(f"<!> Insufficient accuracy data ({len(accuracies)} < {window}) for plateau check.")
-	else:
-		print("Accuracy data not provided, skipping accuracy plateau check.")
+	# else:
+	# 	print("Accuracy data not provided, skipping accuracy plateau check.")
 
 	transition = False
 	reasons = []
@@ -2461,7 +2461,7 @@ def progressive_finetune_single_label(
 			f"Epoch {epoch+1}/{num_epochs} "
 			f"Phase {current_phase}/{max_phases} "
 			f"current LR: {last_lr} "
-			f"current WD: {last_wd})"
+			f"current WD: {last_wd}"
 		)
 		torch.cuda.empty_cache()
 
