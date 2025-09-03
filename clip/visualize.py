@@ -33,6 +33,69 @@ duration_color = "#0104C9"
 if USER == "farid":
 	from graphviz import Digraph
 
+def calculate_advanced_phase_metrics(phase_epochs, val_losses, phase):
+    """Calculate comprehensive phase performance metrics."""
+    if not phase_epochs or len(phase_epochs) < 2:
+        return {}
+    
+    # Get phase loss values
+    phase_losses = [val_losses[e-1] for e in phase_epochs if 0 <= e-1 < len(val_losses)]
+    if len(phase_losses) < 2:
+        return {}
+    
+    # 1. Robust improvement (using moving averages to reduce noise)
+    window = min(3, len(phase_losses) // 3)
+    if window >= 1:
+        start_avg = np.mean(phase_losses[:window])
+        end_avg = np.mean(phase_losses[-window:])
+        robust_improvement = ((start_avg - end_avg) / start_avg * 100) if start_avg > 0 else 0
+    else:
+        robust_improvement = 0
+    
+    # 2. Learning efficiency (improvement per epoch)
+    duration = len(phase_losses)
+    efficiency = robust_improvement / duration if duration > 0 else 0
+    
+    # 3. Convergence quality (how consistent was the improvement?)
+    if len(phase_losses) > 2:
+        epochs_array = np.arange(len(phase_losses))
+        slope, intercept, r_value, _, _ = scipy.stats.linregress(epochs_array, phase_losses)
+        convergence_quality = r_value ** 2  # R² indicates trend consistency
+        learning_rate_metric = -slope  # Negative slope means improvement
+    else:
+        convergence_quality = 0
+        learning_rate_metric = 0
+    
+    # 4. Volatility (coefficient of variation for normalized comparison)
+    mean_loss = np.mean(phase_losses)
+    volatility = np.std(phase_losses) / mean_loss if mean_loss > 0 else 0
+    
+    # 5. Early vs late learning
+    mid_point = len(phase_losses) // 2
+    if mid_point > 0:
+        first_half_avg = np.mean(phase_losses[:mid_point])
+        second_half_avg = np.mean(phase_losses[mid_point:])
+        early_vs_late = ((first_half_avg - second_half_avg) / first_half_avg * 100) if first_half_avg > 0 else 0
+    else:
+        early_vs_late = 0
+    
+    # 6. Stability score (inverse of coefficient of variation)
+    stability = (1 / volatility) if volatility > 0 else 0
+    
+    return {
+        'robust_improvement': robust_improvement,
+        'efficiency': efficiency,
+        'convergence_quality': convergence_quality,
+        'volatility': volatility,
+        'learning_rate': learning_rate_metric,
+        'early_vs_late': early_vs_late,
+        'stability': stability,
+        'duration': duration,
+        'mean_loss': mean_loss,
+        'final_loss': phase_losses[-1],
+        'best_loss': min(phase_losses)
+    }
+
 def _short_label(mod: torch.nn.Module, max_len: int = 120) -> str:
     """
     Return a concise, GraphViz‑safe label for *mod*.
@@ -559,17 +622,17 @@ def plot_phase_transition_analysis(
 
 	unique_phases = sorted(set(phases))
 
-	print(f"="*100)
-	print(f"{len(train_losses)} train losses: {train_losses}")
-	print(f"{len(val_losses)} val losses: {val_losses}")
-	print(f"{len(transitions)} Transitions: {transitions}")
-	print(f"{len(epochs)} Epochs: {epochs}")
-	print(f"{len(phases)} Phases: {phases}")
-	print(f"{len(unique_phases)} Unique Phases: {unique_phases}")
-	print(f"{len(weight_decays)} WDs: {weight_decays}")
-	print(f"{len(learning_rates)} LRs: {learning_rates}")
-	print(f"Best Epoch: {best_epoch}")
-	print(f"="*100)
+	# print(f"="*100)
+	# print(f"{len(train_losses)} train losses: {train_losses}")
+	# print(f"{len(val_losses)} val losses: {val_losses}")
+	# print(f"{len(transitions)} Transitions: {transitions}")
+	# print(f"{len(epochs)} Epochs: {epochs}")
+	# print(f"{len(phases)} Phases: {phases}")
+	# print(f"{len(unique_phases)} Unique Phases: {unique_phases}")
+	# print(f"{len(weight_decays)} WDs: {weight_decays}")
+	# print(f"{len(learning_rates)} LRs: {learning_rates}")
+	# print(f"Best Epoch: {best_epoch}")
+	# print(f"="*100)
 
 	# Sort phases chronologically and create continuous segments
 	phase_segments = []
@@ -591,7 +654,7 @@ def plot_phase_transition_analysis(
 
 	# Plot continuous segments
 	for start_epoch, end_epoch, phase in phase_segments:
-		print(f"Phase {phase}: {start_epoch} to {end_epoch}, color = {phase_colors[phase]}")
+		# print(f"Phase {phase}: {start_epoch} to {end_epoch}, color = {phase_colors[phase]}")
 		ax1.axvspan(
 			start_epoch - 1e-4,  # Extend slightly before
 			end_epoch - 1e-4,    # End just before next phase starts
@@ -722,11 +785,6 @@ def plot_phase_transition_analysis(
 			y0, y1 = learning_rates[i], learning_rates[i+1]
 			# Use the phase of the END of the interval → fixes the late color switch
 			phase_color = phase_colors[phases[i+1]]
-			# print(f"{i}: Epochs: {x0} to {x1}")
-			# print(f"Learning Rates: {y0} to {y1}")
-			# print(f"Phase: {phases[i+1]} Color: {phase_color}")
-			# print()
-
 			ax2.semilogy([x0, x1], [y0, y1],
 									color=phase_color,
 									linewidth=2.5, alpha=0.8)
@@ -749,24 +807,27 @@ def plot_phase_transition_analysis(
 	ax3 = fig.add_subplot(gs[1, 1:])
 
 	for i in range(len(epochs) - 1):
-			x0, x1 = epochs[i], epochs[i+1]
-			y0, y1 = weight_decays[i], weight_decays[i+1]
-			phase_color = phase_colors[phases[i+1]]
-			# print(f"{i}: Epochs: {x0} to {x1}")
-			# print(f"Weight Decays: {y0} to {y1}")
-			# print(f"Phase: {phases[i+1]} Color: {phase_color}")
-			# print()
-
-			ax3.semilogy([x0, x1], [y0, y1],
-									color=phase_color,
-									linewidth=2.5, alpha=0.8)
+		x0, x1 = epochs[i], epochs[i+1]
+		y0, y1 = weight_decays[i], weight_decays[i+1]
+		phase_color = phase_colors[phases[i+1]]
+		ax3.semilogy(
+			[x0, x1],
+			[y0, y1],
+			color=phase_color,
+			linewidth=2.5, 
+			alpha=0.8
+		)
 
 	# Mark transitions
 	for transition_epoch in transitions:
-			if transition_epoch < len(weight_decays):
-					ax3.axvline(x=transition_epoch,
-											color=transition_color,
-											linestyle='--', linewidth=2.0, alpha=0.6)
+		if transition_epoch < len(weight_decays):
+			ax3.axvline(
+				x=transition_epoch,
+				color=transition_color,
+				linestyle='--',
+				linewidth=2.0,
+				alpha=0.6,
+			)
 
 	ax3.set_ylabel('WD (log)', fontsize=8, weight='bold')
 	ax3.set_title('Weight Decay Adaptation Across Phases', fontsize=8, weight='bold')
@@ -777,220 +838,119 @@ def plot_phase_transition_analysis(
 	# ==========================================
 	ax4 = fig.add_subplot(gs[1:, :1])
 	
-	# Calculate phase durations and improvements
-	phase_data = []	
+	# # Calculate phase durations and improvements
+	# phase_data = []	
+	# for phase in unique_phases:
+	# 	phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
+	# 	duration = len(phase_epochs)
+		
+	# 	# Calculate loss improvement in this phase (last - first)
+	# 	if phase_epochs:
+	# 		start_idx = phase_epochs[0] - 1   # convert to 0‑based
+	# 		end_idx = phase_epochs[-1] - 1    # convert to 0‑based
+	# 		if 0 <= start_idx < len(val_losses) and 0 <= end_idx < len(val_losses):
+	# 			start_loss = val_losses[start_idx]
+	# 			end_loss = val_losses[end_idx]
+	# 			improvement = ((start_loss - end_loss) / start_loss * 100) if start_loss > 0 else 0
+	# 		else:
+	# 			improvement = 0
+	# 	else:
+	# 		improvement = 0
+		
+	# 	phase_data.append((phase, duration, improvement))
+	
+	# phases_list, durations, improvements = zip(*phase_data) if phase_data else ([], [], [])
+
+	# # Create dual-axis plot
+	# bars = ax4.bar(
+	# 	range(len(durations)), 
+	# 	durations,
+	# 	color=[phase_colors[p] for p in phases_list], 
+	# 	alpha=0.5,
+	# )
+	
+	# # Add improvement percentages
+	# ax4_twin = ax4.twinx()
+	# ax4_twin.plot(
+	# 	range(len(improvements)), 
+	# 	improvements,
+	# 	linewidth=1.0,
+	# 	linestyle='-',
+	# 	marker='o',
+	# 	markersize=2,
+	# 	color=loss_imp_color,
+	# )
+	# for i, (bar, duration, improvement) in enumerate(zip(bars, durations, improvements)):
+	# 	ax4_twin.text(
+	# 		i, 
+	# 		1.02*improvement if improvement > 0 else 0.85*improvement,
+	# 		f'{improvement:.2f}%',
+	# 		ha='center',
+	# 		va='bottom',
+	# 		fontweight='bold',
+	# 		fontsize=8,
+	# 		color=loss_imp_color,
+	# 	)
+	
+	# ax4.set_xlabel('Phase', fontsize=8, weight='bold')
+	# ax4.set_ylabel('Epochs', fontsize=8, weight='bold', color=duration_color)
+	# ax4_twin.set_ylabel('Loss Improvement (%)', fontsize=8, weight='bold', color=loss_imp_color)
+	# ax4.set_title('Phase Efficiency Analysis', fontsize=8, weight='bold')
+	
+	# phase_labels = [f'{p}' for p in phases_list]
+	# ax4.set_xticklabels(phase_labels)
+	# ax4.set_xticks(range(len(phase_labels)))
+	# ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
+	# ax4.grid(axis='y', alpha=0.25, color="#A3A3A3")
+
+	# ax4.tick_params(axis='y', labelcolor=duration_color, labelsize=10)
+	# ax4_twin.tick_params(axis='y', labelcolor=loss_imp_color, labelsize=10)
+
+	# # Match spine colors with their labels
+	# ax4.spines['left'].set_color(duration_color)
+	# ax4_twin.spines['right'].set_color(loss_imp_color)
+
+	# ax4_twin.spines['top'].set_visible(False)
+	# ax4.spines['top'].set_visible(False)
+
+	# Updated phase analysis
+	phase_data = []
 	for phase in unique_phases:
-		phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
-		duration = len(phase_epochs)
-		
-		# Calculate loss improvement in this phase
-		if phase_epochs:
-			start_idx = phase_epochs[0] - 1   # convert to 0‑based
-			end_idx = phase_epochs[-1] - 1    # convert to 0‑based
-			if 0 <= start_idx < len(val_losses) and 0 <= end_idx < len(val_losses):
-				start_loss = val_losses[start_idx]
-				end_loss = val_losses[end_idx]
-				improvement = ((start_loss - end_loss) / start_loss * 100) if start_loss > 0 else 0
-			else:
-				improvement = 0
-		else:
-			improvement = 0
-		
-		phase_data.append((phase, duration, improvement))
-	
-	phases_list, durations, improvements = zip(*phase_data) if phase_data else ([], [], [])
+			phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
+			metrics = calculate_advanced_phase_metrics(phase_epochs, val_losses, phase)
+			if metrics:
+					phase_data.append((phase, metrics))
 
-	# Create dual-axis plot
-	bars = ax4.bar(
-		range(len(durations)), 
-		durations,
-		color=[phase_colors[p] for p in phases_list], 
-		alpha=0.5,
-	)
-	
-	# Add improvement percentages
-	ax4_twin = ax4.twinx()
-	ax4_twin.plot(
-		range(len(improvements)), 
-		improvements,
-		linewidth=1.0,
-		linestyle='-',
-		marker='o',
-		markersize=2,
-		color=loss_imp_color,
-	)
-	for i, (bar, duration, improvement) in enumerate(zip(bars, durations, improvements)):
-		ax4_twin.text(
-			i, 
-			1.02*improvement if improvement > 0 else 0.9*improvement,
-			f'{improvement:.2f}%',
-			ha='center',
-			va='bottom',
-			fontweight='bold',
-			fontsize=8,
-			color=loss_imp_color,
-		)
-	
-	ax4.set_xlabel('Phase', fontsize=8, weight='bold')
-	ax4.set_ylabel('Epochs', fontsize=8, weight='bold', color=duration_color)
-	ax4_twin.set_ylabel('Loss Improvement (%)', fontsize=8, weight='bold', color=loss_imp_color)
-	ax4.set_title('Phase Efficiency Analysis', fontsize=8, weight='bold')
-	
-	phase_labels = [f'{p}' for p in phases_list]
-	ax4.set_xticklabels(phase_labels)
-	ax4.set_xticks(range(len(phase_labels)))
-	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
-	ax4.grid(axis='y', alpha=0.25, color="#A3A3A3")
+	# Create more informative visualization
+	if phase_data:
+			phases_list = [p for p, _ in phase_data]
+			
+			# Choose primary metrics to display
+			durations = [m['duration'] for _, m in phase_data]
+			efficiencies = [m['efficiency'] for _, m in phase_data]  # Improvement per epoch
+			convergence_qualities = [m['convergence_quality'] for _, m in phase_data]  # How consistent
+			
+			# Main bars: duration
+			bars = ax4.bar(range(len(durations)), durations, 
+										color=[phase_colors[p] for p in phases_list], alpha=0.5)
+			
+			# Twin axis: efficiency (more meaningful than raw improvement)
+			ax4_twin = ax4.twinx()
+			line = ax4_twin.plot(range(len(efficiencies)), efficiencies,
+													linewidth=2.0, linestyle='-', marker='o', markersize=4,
+													color='red', label='Efficiency (% per epoch)')
+			
+			# Add convergence quality as scatter size or color intensity
+			for i, (duration, efficiency, convergence) in enumerate(zip(durations, efficiencies, convergence_qualities)):
+					# Text annotation with multiple metrics
+					ax4_twin.text(i, efficiency * 1.1 if efficiency > 0 else efficiency * 0.9,
+											f'{efficiency:.2f}%/ep\nR²={convergence:.2f}',
+											ha='center', va='bottom' if efficiency > 0 else 'top',
+											fontsize=7, color='red')
+			
+			ax4.set_ylabel('Duration (epochs)')
+			ax4_twin.set_ylabel('Learning Efficiency (% improvement per epoch)')
 
-	ax4.tick_params(axis='y', labelcolor=duration_color, labelsize=10)
-	ax4_twin.tick_params(axis='y', labelcolor=loss_imp_color, labelsize=10)
-
-	# Match spine colors with their labels
-	ax4.spines['left'].set_color(duration_color)
-	ax4_twin.spines['right'].set_color(loss_imp_color)
-
-	ax4_twin.spines['top'].set_visible(False)
-	ax4.spines['top'].set_visible(False)
-	
-	# ====================================
-	# 6. Training Statistics and Insights
-	# ====================================
-	total_epochs = len(epochs)
-	num_phases = len(set(phases))
-
-	total_improvement = ((val_losses[0] - min(val_losses)) / val_losses[0] * 100) if val_losses and val_losses[0] > 0 else 0
-	avg_phase_duration = np.mean(durations) if durations else 0
-	best_phase = phases_list[np.argmax(improvements)] if improvements else 0
-	
-	# Phase transition effectiveness
-	transition_improvements = []
-	for i, t_epoch in enumerate(transitions):
-		if t_epoch > 0 and t_epoch < len(val_losses) - 1:
-			before = val_losses[t_epoch - 1]
-			after = val_losses[t_epoch + 1] if t_epoch + 1 < len(val_losses) else val_losses[t_epoch]
-			improvement = ((before - after) / before * 100) if before > 0 else 0
-			transition_improvements.append(improvement)
-	
-	avg_transition_improvement = np.mean(transition_improvements) if transition_improvements else 0
-	
-	# Learning rate adaptation analysis
-	lr_changes = []
-	for t_epoch in transitions:
-		if t_epoch > 0 and t_epoch < len(learning_rates):
-			before_lr = learning_rates[t_epoch - 1]
-			after_lr = learning_rates[t_epoch]
-			change = ((after_lr - before_lr) / before_lr * 100) if before_lr > 0 else 0
-			lr_changes.append(change)
-	
-	# Create comprehensive summary
-	summary_text = f"""
-	COMPREHENSIVE TRAINING ANALYSIS [BASIC]:
-		OVERALL PERFORMANCE:
-		• Training Status: {'Early Stopped' if early_stop_epoch else 'Completed'}
-		
-		PHASE TRANSITION ANALYSIS:
-		• Total Transitions: {len(transitions)}
-		• Average Phase Duration: {avg_phase_duration:.1f} epochs
-		• Most Effective Phase: Phase {best_phase}
-		• Avg Improvement per Transition: {avg_transition_improvement:.2f}%
-		
-		HYPERPARAMETER ADAPTATION:
-		• Initial Learning Rate: {learning_rates[0]:.2e}
-		• Final Learning Rate: {learning_rates[-1]:.2e}
-		• LR Reduction Factor: {(learning_rates[0]/learning_rates[-1]):.1f}x
-		• WD Range: {min(weight_decays):.2e} → {max(weight_decays):.2e}
-	"""
-	
-	if transitions:
-		summary_text += f"\n    TRANSITION EPOCHS: {transitions}"
-	
-	if best_epoch is not None:
-		summary_text += f"\n    Best Model: Epoch {epochs[best_epoch]} (Loss: {val_losses[best_epoch]:.4f})"
-	
-	# Phase-specific insights
-	phase_insights = "\n    PHASE INSIGHTS:\n"
-	for phase, duration, improvement in phase_data[:3]:  # Show top 3 phases
-		phase_insights += f"    • Phase {phase}: {duration} epochs, {improvement:.2f}% improvement\n"
-	
-	summary_text += phase_insights
-	
-	print(f"{summary_text}")
-
-	# ===============================================
-	# 7. Training Statistics and Insights (ENHANCED)
-	# ===============================================
-
-	# --- Basic Stats ---
-	total_epochs = len(epochs)
-	num_phases = len(set(phases))
-	total_improvement = ((val_losses[0] - min(val_losses)) / val_losses[0] * 100) if val_losses and val_losses[0] > 0 else 0
-	avg_phase_duration = np.mean(durations) if durations else 0
-
-	# --- Advanced Analysis ---
-	final_train_loss = train_losses[-1]
-	final_val_loss = val_losses[-1]
-	best_val_loss = min(val_losses) if val_losses else 0.0
-
-	# 1. Loss Divergence (Overfitting Metric)
-	loss_divergence = ((final_val_loss - final_train_loss) / final_val_loss * 100) if final_val_loss > 0 else 0.0
-
-	# 2. Performance Delta (Overtraining Metric)
-	performance_delta = ((final_val_loss - best_val_loss) / best_val_loss * 100) if best_val_loss > 0 else 0.0
-
-	# 3. Best and Worst Phases
-	best_phase_idx = np.argmax(improvements) if improvements else 0
-	worst_phase_idx = np.argmin(improvements) if improvements else 0
-	most_effective_phase = f"Phase {phases_list[best_phase_idx]} ({improvements[best_phase_idx]:+.1f}%)"
-	least_effective_phase = f"Phase {phases_list[worst_phase_idx]} ({improvements[worst_phase_idx]:+.1f}%)"
-
-	# 4. Model Capacity at Best Epoch (Requires unfreeze_schedule to be passed)
-	# This part is conceptual. You'd need to pass `unfreeze_schedule` to this function
-	# or calculate it here. For now, we'll create a placeholder.
-	# In a real implementation, you'd find the phase of the best epoch and look up the number of layers.
-	best_model_phase = phases[best_epoch] if best_epoch is not None else -1
-	# This is a simplification; you'd need the real unfreeze schedule info here.
-	# For example: trainable_layers_at_best = len(unfreeze_schedule[best_model_phase])
-	trainable_info_at_best = f"(In Phase {best_model_phase})" # Placeholder
-
-	# --- Create Comprehensive Summary ---
-	summary_text = f"""
-		COMPREHENSIVE TRAINING ANALYSIS [ENHANCED]:
-
-		OVERALL PERFORMANCE:
-			• Total Epochs: {total_epochs}
-			• Number of Phases: {num_phases}
-			• Final Training Loss: {final_train_loss:.4f}
-			• Final Validation Loss: {final_val_loss:.4f}
-			• Best Validation Loss: {best_val_loss:.4f}
-			• Total Improvement (initial to best): {total_improvement:.2f}%
-			• Training Status: {'Early Stopped' if early_stop_epoch else 'Completed'}
-
-		DIAGNOSTICS:
-			• Loss Divergence (Final Train vs Val): {loss_divergence:.1f}% [>20% may indicate overfitting]
-			• Performance Delta (Best vs Final): {performance_delta:.1f}% [>5% may indicate overtraining]
-			• Best Model achieved at Epoch {best_epoch + 1 if best_epoch is not None else 'N/A'} {trainable_info_at_best}
-
-		PHASE TRANSITION ANALYSIS:
-			• Total Transitions: {len(transitions)}
-			• Average Phase Duration: {avg_phase_duration:.1f} epochs
-			• Most Effective Phase: {most_effective_phase}
-			• Least Effective Phase: {least_effective_phase} [Negative is catastrophic forgetting]
-
-		HYPERPARAMETER ADAPTATION:
-			• Learning Rate Range: {min(learning_rates):.2e} → {max(learning_rates):.2e}
-			• Weight Decay Range: {min(weight_decays):.2e} → {max(weight_decays):.2e}
-	"""
-
-	if transitions:
-		summary_text += f"\n    TRANSITION EPOCHS: {transitions}"
-
-	phase_insights = "\n    PHASE INSIGHTS (Duration & Improvement):\n"
-	for phase, duration, improvement in phase_data:
-		phase_insights += f"    • Phase {phase}: {duration} epochs, {improvement:+.3f}%\n"
-
-	summary_text += phase_insights
-
-	print(f"{summary_text}")
 
 	plt.suptitle(
 		f'Progressive Layer Unfreezing\nPhase Transition Analysis', 
@@ -1007,17 +967,317 @@ def plot_phase_transition_analysis(
 	)
 	
 	plt.close()
+
+	# # ====================================
+	# # 6. Training Statistics and Insights
+	# # ====================================
+	# total_epochs = len(epochs)
+	# num_phases = len(set(phases))
+
+	# total_improvement = ((val_losses[0] - min(val_losses)) / val_losses[0] * 100) if val_losses and val_losses[0] > 0 else 0
+	# avg_phase_duration = np.mean(durations) if durations else 0
+	# best_phase = phases_list[np.argmax(improvements)] if improvements else 0
 	
-	# Return analysis results for further use
+	# # Phase transition effectiveness
+	# transition_improvements = []
+	# for i, t_epoch in enumerate(transitions):
+	# 	if t_epoch > 0 and t_epoch < len(val_losses) - 1:
+	# 		before = val_losses[t_epoch - 1]
+	# 		after = val_losses[t_epoch + 1] if t_epoch + 1 < len(val_losses) else val_losses[t_epoch]
+	# 		improvement = ((before - after) / before * 100) if before > 0 else 0
+	# 		transition_improvements.append(improvement)
+	
+	# avg_transition_improvement = np.mean(transition_improvements) if transition_improvements else 0
+	
+	# # Learning rate adaptation analysis
+	# lr_changes = []
+	# for t_epoch in transitions:
+	# 	if t_epoch > 0 and t_epoch < len(learning_rates):
+	# 		before_lr = learning_rates[t_epoch - 1]
+	# 		after_lr = learning_rates[t_epoch]
+	# 		change = ((after_lr - before_lr) / before_lr * 100) if before_lr > 0 else 0
+	# 		lr_changes.append(change)
+	
+	# # Create comprehensive summary
+	# summary_text = f"""
+	# COMPREHENSIVE TRAINING ANALYSIS [BASIC]:
+	# 	OVERALL PERFORMANCE:
+	# 	• Training Status: {'Early Stopped' if early_stop_epoch else 'Completed'}
+		
+	# 	PHASE TRANSITION ANALYSIS:
+	# 	• Total Transitions: {len(transitions)}
+	# 	• Average Phase Duration: {avg_phase_duration:.1f} epochs
+	# 	• Most Effective Phase: Phase {best_phase}
+	# 	• Avg Improvement per Transition: {avg_transition_improvement:.2f}%
+		
+	# 	HYPERPARAMETER ADAPTATION:
+	# 	• Initial Learning Rate: {learning_rates[0]:.2e}
+	# 	• Final Learning Rate: {learning_rates[-1]:.2e}
+	# 	• LR Reduction Factor: {(learning_rates[0]/learning_rates[-1]):.1f}x
+	# 	• WD Range: {min(weight_decays):.2e} → {max(weight_decays):.2e}
+	# """
+	
+	# if transitions:
+	# 	summary_text += f"\n    TRANSITION EPOCHS: {transitions}"
+	
+	# if best_epoch is not None:
+	# 	summary_text += f"\n    Best Model: Epoch {epochs[best_epoch]} (Loss: {val_losses[best_epoch]:.4f})"
+	
+	# # Phase-specific insights
+	# phase_insights = "\n    PHASE INSIGHTS:\n"
+	# for phase, duration, improvement in phase_data[:3]:  # Show top 3 phases
+	# 	phase_insights += f"    • Phase {phase}: {duration} epochs, {improvement:.2f}% improvement\n"
+	
+	# summary_text += phase_insights
+	
+	# print(f"{summary_text}")
+
+	# # ===============================================
+	# # 7. Training Statistics and Insights (ENHANCED)
+	# # ===============================================
+
+	# # --- Basic Stats ---
+	# total_epochs = len(epochs)
+	# num_phases = len(set(phases))
+	# total_improvement = ((val_losses[0] - min(val_losses)) / val_losses[0] * 100) if val_losses and val_losses[0] > 0 else 0
+	# avg_phase_duration = np.mean(durations) if durations else 0
+
+	# # --- Advanced Analysis ---
+	# final_train_loss = train_losses[-1]
+	# final_val_loss = val_losses[-1]
+	# best_val_loss = min(val_losses) if val_losses else 0.0
+
+	# # 1. Loss Divergence (Overfitting Metric)
+	# loss_divergence = ((final_val_loss - final_train_loss) / final_val_loss * 100) if final_val_loss > 0 else 0.0
+
+	# # 2. Performance Delta (Overtraining Metric)
+	# performance_delta = ((final_val_loss - best_val_loss) / best_val_loss * 100) if best_val_loss > 0 else 0.0
+
+	# # 3. Best and Worst Phases
+	# best_phase_idx = np.argmax(improvements) if improvements else 0
+	# worst_phase_idx = np.argmin(improvements) if improvements else 0
+	# most_effective_phase = f"Phase {phases_list[best_phase_idx]} ({improvements[best_phase_idx]:+.1f}%)"
+	# least_effective_phase = f"Phase {phases_list[worst_phase_idx]} ({improvements[worst_phase_idx]:+.1f}%)"
+
+	# # 4. Model Capacity at Best Epoch (Requires unfreeze_schedule to be passed)
+	# # This part is conceptual. You'd need to pass `unfreeze_schedule` to this function
+	# # or calculate it here. For now, we'll create a placeholder.
+	# # In a real implementation, you'd find the phase of the best epoch and look up the number of layers.
+	# best_model_phase = phases[best_epoch] if best_epoch is not None else -1
+	# # This is a simplification; you'd need the real unfreeze schedule info here.
+	# # For example: trainable_layers_at_best = len(unfreeze_schedule[best_model_phase])
+	# trainable_info_at_best = f"(In Phase {best_model_phase})" # Placeholder
+
+	# # --- Create Comprehensive Summary ---
+	# summary_text = f"""
+	# 	COMPREHENSIVE TRAINING ANALYSIS [ENHANCED]:
+
+	# 	OVERALL PERFORMANCE:
+	# 		• Total Epochs: {total_epochs}
+	# 		• Number of Phases: {num_phases}
+	# 		• Final Training Loss: {final_train_loss:.4f}
+	# 		• Final Validation Loss: {final_val_loss:.4f}
+	# 		• Best Validation Loss: {best_val_loss:.4f}
+	# 		• Total Improvement (initial to best): {total_improvement:.2f}%
+	# 		• Training Status: {'Early Stopped' if early_stop_epoch else 'Completed'}
+
+	# 	DIAGNOSTICS:
+	# 		• Loss Divergence (Final Train vs Val): {loss_divergence:.1f}% [>20% may indicate overfitting]
+	# 		• Performance Delta (Best vs Final): {performance_delta:.1f}% [>5% may indicate overtraining]
+	# 		• Best Model achieved at Epoch {best_epoch + 1 if best_epoch is not None else 'N/A'} {trainable_info_at_best}
+
+	# 	PHASE TRANSITION ANALYSIS:
+	# 		• Total Transitions: {len(transitions)}
+	# 		• Average Phase Duration: {avg_phase_duration:.1f} epochs
+	# 		• Most Effective Phase: {most_effective_phase}
+	# 		• Least Effective Phase: {least_effective_phase} [Negative is catastrophic forgetting]
+
+	# 	HYPERPARAMETER ADAPTATION:
+	# 		• Learning Rate Range: {min(learning_rates):.2e} → {max(learning_rates):.2e}
+	# 		• Weight Decay Range: {min(weight_decays):.2e} → {max(weight_decays):.2e}
+	# """
+
+	# if transitions:
+	# 	summary_text += f"\n    TRANSITION EPOCHS: {transitions}"
+
+	# phase_insights = "\n    PHASE INSIGHTS (Duration & Improvement):\n"
+	# for phase, duration, improvement in phase_data:
+	# 	phase_insights += f"    • Phase {phase}: {duration} epochs, {improvement:+.3f}%\n"
+
+	# summary_text += phase_insights
+
+	# print(f"{summary_text}")
+
+	
+	# # Return analysis results for further use
+	# analysis_results = {
+	# 	'total_improvement': total_improvement,
+	# 	'num_transitions': len(transitions),
+	# 	'avg_phase_duration': avg_phase_duration,
+	# 	'best_phase': best_phase,
+	# 	'transition_improvements': transition_improvements,
+	# 	'lr_adaptation_factor': learning_rates[0]/learning_rates[-1] if learning_rates[-1] > 0 else 1.0
+	# }
+
+	# ====================================
+	# Enhanced Training Statistics and Insights
+	# ====================================
+	total_epochs = len(epochs)
+	num_phases = len(set(phases))
+
+	# Calculate advanced phase metrics
+	advanced_phase_data = []
+	for phase in unique_phases:
+			phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
+			metrics = calculate_advanced_phase_metrics(phase_epochs, val_losses, phase)
+			if metrics:
+					advanced_phase_data.append((phase, metrics))
+
+	# Basic performance metrics
+	total_improvement = ((val_losses[0] - min(val_losses)) / val_losses[0] * 100) if val_losses and val_losses[0] > 0 else 0
+	final_train_loss = train_losses[-1]
+	final_val_loss = val_losses[-1]
+	best_val_loss = min(val_losses) if val_losses else 0.0
+
+	# Advanced diagnostics
+	loss_divergence = ((final_val_loss - final_train_loss) / final_val_loss * 100) if final_val_loss > 0 else 0.0
+	performance_delta = ((final_val_loss - best_val_loss) / best_val_loss * 100) if best_val_loss > 0 else 0.0
+
+	# Phase effectiveness analysis using advanced metrics
+	if advanced_phase_data:
+			efficiencies = [m['efficiency'] for _, m in advanced_phase_data]
+			convergence_qualities = [m['convergence_quality'] for _, m in advanced_phase_data]
+			stabilities = [m['stability'] for _, m in advanced_phase_data]
+			
+			# Find most effective phase by efficiency
+			most_efficient_idx = np.argmax(efficiencies) if efficiencies else 0
+			least_efficient_idx = np.argmin(efficiencies) if efficiencies else 0
+			most_efficient_phase = f"Phase {advanced_phase_data[most_efficient_idx][0]} ({efficiencies[most_efficient_idx]:.3f}%/epoch)"
+			least_efficient_phase = f"Phase {advanced_phase_data[least_efficient_idx][0]} ({efficiencies[least_efficient_idx]:.3f}%/epoch)"
+			
+			# Find most stable phase
+			most_stable_idx = np.argmax(stabilities) if stabilities else 0
+			most_stable_phase = f"Phase {advanced_phase_data[most_stable_idx][0]} (Stability: {stabilities[most_stable_idx]:.2f})"
+			
+			avg_efficiency = np.mean(efficiencies) if efficiencies else 0
+			avg_convergence = np.mean(convergence_qualities) if convergence_qualities else 0
+	else:
+			most_efficient_phase = "N/A"
+			least_efficient_phase = "N/A"
+			most_stable_phase = "N/A"
+			avg_efficiency = 0
+			avg_convergence = 0
+
+	# Phase transition effectiveness (existing logic)
+	transition_improvements = []
+	for i, t_epoch in enumerate(transitions):
+			if t_epoch > 0 and t_epoch < len(val_losses) - 1:
+					before = val_losses[t_epoch - 1]
+					after = val_losses[t_epoch + 1] if t_epoch + 1 < len(val_losses) else val_losses[t_epoch]
+					improvement = ((before - after) / before * 100) if before > 0 else 0
+					transition_improvements.append(improvement)
+
+	avg_transition_improvement = np.mean(transition_improvements) if transition_improvements else 0
+
+	# Learning rate adaptation analysis
+	lr_changes = []
+	for t_epoch in transitions:
+			if t_epoch > 0 and t_epoch < len(learning_rates):
+					before_lr = learning_rates[t_epoch - 1]
+					after_lr = learning_rates[t_epoch]
+					change = ((after_lr - before_lr) / before_lr * 100) if before_lr > 0 else 0
+					lr_changes.append(change)
+
+	# Training efficiency metrics
+	if total_epochs > 0:
+			total_efficiency = total_improvement / total_epochs
+			time_to_best = (best_epoch + 1) if best_epoch is not None else total_epochs
+			efficiency_to_best = total_improvement / time_to_best if time_to_best > 0 else 0
+	else:
+			total_efficiency = 0
+			efficiency_to_best = 0
+
+	# Best model context
+	best_model_phase = phases[best_epoch] if best_epoch is not None else -1
+	trainable_info_at_best = f"(Phase {best_model_phase})"
+
+	# Generate comprehensive summary
+	summary_text = f"""
+	COMPREHENSIVE TRAINING ANALYSIS [ENHANCED]:
+
+	OVERALL PERFORMANCE:
+			• Total Epochs: {total_epochs}
+			• Number of Phases: {num_phases}
+			• Final Training Loss: {final_train_loss:.4f}
+			• Final Validation Loss: {final_val_loss:.4f}
+			• Best Validation Loss: {best_val_loss:.4f}
+			• Total Improvement: {total_improvement:.2f}%
+			• Overall Efficiency: {total_efficiency:.3f}% per epoch
+			• Efficiency to Best: {efficiency_to_best:.3f}% per epoch
+			• Training Status: {'Early Stopped' if early_stop_epoch else 'Completed'}
+
+	DIAGNOSTICS:
+			• Loss Divergence (Train vs Val): {loss_divergence:.1f}% {'[OVERFITTING RISK]' if loss_divergence > 20 else '[OK]'}
+			• Performance Delta (Best vs Final): {performance_delta:.1f}% {'[OVERTRAINING RISK]' if performance_delta > 5 else '[OK]'}
+			• Best Model: Epoch {best_epoch + 1 if best_epoch is not None else 'N/A'} {trainable_info_at_best}
+
+	PHASE EFFECTIVENESS ANALYSIS:
+			• Average Learning Efficiency: {avg_efficiency:.3f}% per epoch
+			• Average Convergence Quality (R²): {avg_convergence:.3f}
+			• Most Efficient Phase: {most_efficient_phase}
+			• Least Efficient Phase: {least_efficient_phase}
+			• Most Stable Phase: {most_stable_phase}
+
+	TRANSITION ANALYSIS:
+			• Total Transitions: {len(transitions)}
+			• Average Improvement per Transition: {avg_transition_improvement:.2f}%
+			• Transition Success Rate: {len([x for x in transition_improvements if x > 0])}/{len(transition_improvements)} positive
+
+	HYPERPARAMETER ADAPTATION:
+			• Learning Rate Range: {min(learning_rates):.2e} → {max(learning_rates):.2e}
+			• Weight Decay Range: {min(weight_decays):.2e} → {max(weight_decays):.2e}
+			• LR Reduction Factor: {(learning_rates[0]/learning_rates[-1]):.1f}x
+	"""
+
+	if transitions:
+			summary_text += f"\n    TRANSITION EPOCHS: {transitions}"
+
+	# Detailed phase insights
+	phase_insights = "\n    DETAILED PHASE ANALYSIS:\n"
+	for phase, metrics in advanced_phase_data:
+			phase_insights += (
+					f"    • Phase {phase}: {metrics['duration']} epochs\n"
+					f"      ├─ Efficiency: {metrics['efficiency']:+.3f}%/epoch\n"
+					f"      ├─ Robust Improvement: {metrics['robust_improvement']:+.2f}%\n"
+					f"      ├─ Convergence Quality (R²): {metrics['convergence_quality']:.3f}\n"
+					f"      ├─ Volatility (CV): {metrics['volatility']:.3f}\n"
+					f"      ├─ Early vs Late Learning: {metrics['early_vs_late']:+.2f}%\n"
+					f"      └─ Final Loss: {metrics['final_loss']:.4f}\n\n"
+			)
+
+	summary_text += phase_insights
+
+	print(summary_text)
+
+	# Updated analysis results for return
 	analysis_results = {
-		'total_improvement': total_improvement,
-		'num_transitions': len(transitions),
-		'avg_phase_duration': avg_phase_duration,
-		'best_phase': best_phase,
-		'transition_improvements': transition_improvements,
-		'lr_adaptation_factor': learning_rates[0]/learning_rates[-1] if learning_rates[-1] > 0 else 1.0
+			'total_improvement': total_improvement,
+			'total_efficiency': total_efficiency,
+			'efficiency_to_best': efficiency_to_best,
+			'num_transitions': len(transitions),
+			'most_efficient_phase': advanced_phase_data[most_efficient_idx][0] if advanced_phase_data else 0,
+			'avg_efficiency': avg_efficiency,
+			'avg_convergence_quality': avg_convergence,
+			'transition_improvements': transition_improvements,
+			'transition_success_rate': len([x for x in transition_improvements if x > 0]) / len(transition_improvements) if transition_improvements else 0,
+			'lr_adaptation_factor': learning_rates[0]/learning_rates[-1] if learning_rates[-1] > 0 else 1.0,
+			'loss_divergence': loss_divergence,
+			'performance_delta': performance_delta,
+			'advanced_phase_metrics': {p: m for p, m in advanced_phase_data}
 	}
-	
+
+
+
 	return analysis_results
 
 def collect_progressive_training_history(

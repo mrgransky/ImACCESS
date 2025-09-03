@@ -98,7 +98,7 @@ class LossAnalyzer:
 		plt.ylabel('Loss')
 		plt.legend()
 		plt.grid(True, alpha=0.3)
-		plt.savefig(f'{fpth}_smoothed_comparison.png', dpi=200, bbox_inches='tight')
+		plt.savefig(f'{fpth}_smoothed_comp.png', dpi=200, bbox_inches='tight')
 		plt.close()
 		
 		# Plot 6: Overfitting Detection
@@ -113,7 +113,7 @@ class LossAnalyzer:
 		plt.ylabel('Loss Difference')
 		plt.legend()
 		plt.grid(True, alpha=0.3)
-		plt.savefig(f'{fpth}_overfitting_gap.png', dpi=200, bbox_inches='tight')
+		plt.savefig(f'{fpth}_overfit_gap.png', dpi=200, bbox_inches='tight')
 		plt.close()
 		
 		# Plot 7: Volatility Analysis

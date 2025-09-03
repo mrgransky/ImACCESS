@@ -23,7 +23,7 @@ from historical_dataset_loader import get_single_label_dataloaders, get_multi_la
 # $ python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=10))))"
 
 # run in local:
-# $ python history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -m finetune -fts progressive -e 100 -mphbs 3 -mepph 5 -dt single_label -bs 128 -a "ViT-B/32"
+# $ python history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -m finetune -fts progressive -e 50 -mphbs 3 -mepph 5 -dt single_label -bs 128 -a "ViT-B/32"
 # $ nohup python -u history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -m finetune -fts progressive -a "ViT-B/32" > logs/europeana_ft_progressive.txt &
 
 # Pouta:

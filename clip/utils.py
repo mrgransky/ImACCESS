@@ -72,6 +72,8 @@ logger = logging.getLogger(__name__)
 Image.MAX_IMAGE_PIXELS = None # Disable DecompressionBombError
 
 USER = os.getenv('USER')
+CLUSTER = os.environ.get('SLURM_CLUSTER_NAME', "local")
+HOST = platform.node()
 
 def log_retrieval_delta(metrics, prev_metrics, phase):
 	"""Log retrieval performance deltas per phase."""

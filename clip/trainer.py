@@ -2271,7 +2271,7 @@ def progressive_finetune_single_label(
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
-		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+		print(f"{CLUSTER} | {HOST} | {gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
 	if USER == "farid":
 		build_arch_flowchart(
@@ -2813,6 +2813,7 @@ def progressive_finetune_single_label(
 	file_base_name = (
 		# f"{dataset_name}_"
 		f"{mode}_"
+		f"{CLUSTER}_"
 		# f"{optimizer.__class__.__name__}_"
 		# f"{scheduler.__class__.__name__}_"
 		# f"{criterion.__class__.__name__}_"
@@ -2890,10 +2891,6 @@ def progressive_finetune_single_label(
 		best_epoch=early_stopping.best_epoch if hasattr(early_stopping, 'best_epoch') else None
 	)
 
-	print(f"\tTotal phases used: {len(set(phases_history))}")
-	print(f"\tPhase transitions: {len(phase_transitions_epochs)}")
-	print(f"\tEarly stopping: {'Yes' if early_stopping_triggered else 'No'}")
-
 	if phase_transitions_epochs:
 		print(f"\t\tTransition epochs: {phase_transitions_epochs}")	
 
@@ -2901,9 +2898,6 @@ def progressive_finetune_single_label(
 		training_history=training_history,
 		file_path=plot_paths["phase_analysis"],
 	)
-
-	print(f"\tTraining improvement: {analysis_results['total_improvement']:.2f}%")
-	print(f"\tMost effective phase: Phase {analysis_results['best_phase']}")
 
 	analyzer = LossAnalyzer(
 		epochs=training_history['epochs'], 
