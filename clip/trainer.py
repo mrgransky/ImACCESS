@@ -2890,9 +2890,6 @@ def progressive_finetune_single_label(
 		best_epoch=early_stopping.best_epoch if hasattr(early_stopping, 'best_epoch') else None
 	)
 
-	if phase_transitions_epochs:
-		print(f"\t\tTransition epochs: {phase_transitions_epochs}")	
-
 	analysis_results = plot_phase_transition_analysis(
 		training_history=training_history,
 		file_path=plot_paths["phase_analysis"],

@@ -612,43 +612,70 @@ def plot_phase_transition_analysis(
 	# ================================
 	ax1 = fig.add_subplot(gs[0, :])
 	# Set y-axis limits with minimum of 0 and maximum with margin
-	max_loss = max(max(train_losses), max(val_losses))
-	min_loss = min(min(train_losses), min(val_losses))
-	margin = max_loss * 0.25  # 25% margin
-	ax1.set_ylim(min_loss - margin, max_loss + margin)
-	ymin, ymax = ax1.get_ylim()
-	y_middle = (ymin + ymax) / 2.0
+	# max_loss = max(max(train_losses), max(val_losses))
+	# min_loss = min(min(train_losses), min(val_losses))
+	# margin = max_loss * 0.25  # 25% margin
+	# ax1.set_ylim(min_loss - margin, max_loss + margin)
+	# ymin, ymax = ax1.get_ylim()
+	# y_middle = (ymin + ymax) / 2.0
 
 	unique_phases = sorted(set(phases))
 
-	# Sort phases chronologically and create continuous segments
+	# Create phase segments using transition boundaries directly
 	phase_segments = []
 	for i, phase in enumerate(unique_phases):
-		phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
-		if phase_epochs:
-			start_epoch = min(phase_epochs)
+			if i == 0:
+					start_epoch = 1  # First epoch
+			else:
+					start_epoch = transitions[i-1] + 1  # First epoch after previous transition
 			
-			# For the end epoch, extend to the next transition or final epoch
-			if i < len(unique_phases) - 1:  # Not the last phase
-				# Find the start of the next phase
-				next_phase = unique_phases[i + 1]
-				next_phase_epochs = [e for e, p in zip(epochs, phases) if p == next_phase]
-				end_epoch = min(next_phase_epochs) if next_phase_epochs else max(phase_epochs)
-			else:  # Last phase
-				end_epoch = max(phase_epochs) + 1  # Extend slightly past the last epoch
+			if i < len(transitions):
+					end_epoch = transitions[i]  # This transition ends the current phase
+			else:
+					end_epoch = max(epochs)  # Last epoch for final phase
 			
 			phase_segments.append((start_epoch, end_epoch, phase))
 
-	# Plot continuous segments
+	# Plot with exact boundaries
+	print(f"phase_segments: {phase_segments}")
 	for start_epoch, end_epoch, phase in phase_segments:
-		ax1.axvspan(
-			start_epoch - 1e-4,  # Extend slightly before
-			end_epoch - 1e-4,    # End just before next phase starts
-			alpha=0.25,
-			color=phase_colors[phase],
-			label=f'Phase {phase}',
-			zorder=0,
-		)
+			ax1.axvspan(
+					start_epoch - 0.5,
+					end_epoch + 0.5,
+					alpha=0.2,
+					color=phase_colors[phase],
+					label=f'Phase {phase}',
+					zorder=0,
+			)
+
+	# phase_segments = []
+	# for i, phase in enumerate(unique_phases):
+	# 	phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
+	# 	if phase_epochs:
+	# 		start_epoch = min(phase_epochs)
+			
+	# 		# For the end epoch, extend to the next transition or final epoch
+	# 		if i < len(unique_phases) - 1:  # Not the last phase
+	# 			# Find the start of the next phase
+	# 			next_phase = unique_phases[i + 1]
+	# 			next_phase_epochs = [e for e, p in zip(epochs, phases) if p == next_phase]
+	# 			end_epoch = min(next_phase_epochs) if next_phase_epochs else max(phase_epochs)
+	# 		else:  # Last phase
+	# 			end_epoch = max(phase_epochs) + 1  # Extend slightly past the last epoch
+			
+	# 		phase_segments.append((start_epoch, end_epoch, phase))
+
+	# # Plot continuous segments
+	# print(f"phase_segments: {phase_segments}")
+	# for start_epoch, end_epoch, phase in phase_segments:
+	# 	ax1.axvspan(
+	# 		start_epoch - 1e-4,  # Extend slightly before
+	# 		end_epoch - 1e-4,    # End just before next phase starts
+	# 		alpha=0.2,
+	# 		color=phase_colors[phase],
+	# 		label=f'Phase {phase}',
+	# 		zorder=0,
+	# 	)
 
 	# Plot loss curves with enhanced styling
 	train_line = ax1.plot(
@@ -673,7 +700,9 @@ def plot_phase_transition_analysis(
 		marker='o',
 		markersize=2.5,
 	)
-	
+	ymin, ymax = ax1.get_ylim()
+	y_middle = (ymin + ymax) / 2.0
+
 	# Mark phase transitions with enhanced annotations
 	for i, transition_epoch in enumerate(transitions):
 		ax1.axvline(
@@ -694,7 +723,7 @@ def plot_phase_transition_analysis(
 				improvement_text = f" ({change:+.2f}%)"
 			
 			ax1.text(
-				transition_epoch + 0.25,
+				transition_epoch + 0.2,
 				y_middle,
 				f'T{i+1}{improvement_text}',
 				rotation=90,
@@ -706,7 +735,7 @@ def plot_phase_transition_analysis(
 					boxstyle="round,pad=0.4",
 					edgecolor='none',
 					facecolor="#C5C5C5",
-					alpha=0.3,
+					alpha=0.5,
 				)
 			)
 
@@ -830,62 +859,6 @@ def plot_phase_transition_analysis(
 	# Phase Duration and Efficiency Analysis
 	# ==========================================
 	ax4 = fig.add_subplot(gs[1:, :1])
-	
-	# # Calculate phase durations and improvements
-	# phase_data = []	
-	# for phase in unique_phases:
-	# 	phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
-	# 	duration = len(phase_epochs)
-		
-	# 	# Calculate loss improvement in this phase (last - first)
-	# 	if phase_epochs:
-	# 		start_idx = phase_epochs[0] - 1   # convert to 0‑based
-	# 		end_idx = phase_epochs[-1] - 1    # convert to 0‑based
-	# 		if 0 <= start_idx < len(val_losses) and 0 <= end_idx < len(val_losses):
-	# 			start_loss = val_losses[start_idx]
-	# 			end_loss = val_losses[end_idx]
-	# 			improvement = ((start_loss - end_loss) / start_loss * 100) if start_loss > 0 else 0
-	# 		else:
-	# 			improvement = 0
-	# 	else:
-	# 		improvement = 0
-		
-	# 	phase_data.append((phase, duration, improvement))
-	
-	# phases_list, durations, improvements = zip(*phase_data) if phase_data else ([], [], [])
-
-	# # Create dual-axis plot
-	# bars = ax4.bar(
-	# 	range(len(durations)), 
-	# 	durations,
-	# 	color=[phase_colors[p] for p in phases_list], 
-	# 	alpha=0.5,
-	# )
-	
-	# # Add improvement percentages
-	# ax4_twin = ax4.twinx()
-	# ax4_twin.plot(
-	# 	range(len(improvements)), 
-	# 	improvements,
-	# 	linewidth=1.0,
-	# 	linestyle='-',
-	# 	marker='o',
-	# 	markersize=2,
-	# 	color=loss_imp_color,
-	# )
-	# for i, (bar, duration, improvement) in enumerate(zip(bars, durations, improvements)):
-	# 	ax4_twin.text(
-	# 		i, 
-	# 		1.02*improvement if improvement > 0 else 0.85*improvement,
-	# 		f'{improvement:.2f}%',
-	# 		ha='center',
-	# 		va='bottom',
-	# 		fontweight='bold',
-	# 		fontsize=8,
-	# 		color=loss_imp_color,
-	# 	)
-	
-	# Updated phase analysis
 	phase_data = []
 	for phase in unique_phases:
 		phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
