@@ -24,7 +24,7 @@ class LossAnalyzer:
 		
 		return ema
 	
-	def plot_analysis(self, windows=[5, 10, 20], fpth='loss_analysis.png', figsize=(10, 6)):
+	def plot_analysis(self, windows=[5, 10, 20], fpth='loss_analysis.png', figsize=(11, 7)):
 		fpth = fpth.replace("_loss_analyzer.png", "")
 		cols = plt.cm.tab10(np.linspace(0, 1, len(windows) + 1))
 
@@ -104,9 +104,13 @@ class LossAnalyzer:
 		# Plot 6: Overfitting Detection
 		plt.figure(figsize=figsize)
 		gap = val_ema - train_ema
+		print(f"Train EMA: {train_ema}\nVal EMA: {val_ema}\nGap: {gap}")
 		plt.plot(self.epochs, gap, color="#000000", linewidth=1.5, label='Val - Train Gap')
-		plt.axhline(y=0, color="#000000", linestyle='-', alpha=0.5)
-		plt.fill_between(self.epochs, gap, 0, where=(gap > 0), alpha=0.3, color="#FF0000", label='Overfitting Zone')
+		# plt.plot(self.epochs, np.zeros_like(gap), color="#000000", linewidth=1.5, linestyle='--', label='Zero Line')
+		plt.plot(self.epochs, val_ema, label='Validation EMA-10', linewidth=1.5, linestyle='--', color="#C77203")
+		plt.plot(self.epochs, train_ema, label='Training EMA-10', linewidth=1.5, linestyle='--', color="#0025FA")
+		plt.axhline(y=0, color="#838282", linestyle='-', alpha=0.5)
+		plt.fill_between(self.epochs, gap, 0, where=(gap > 0), alpha=0.3, color="#FD5C5C", label='Overfitting Zone')
 		
 		plt.title('Overfitting Detection (Val - Train EMA-10)')
 		plt.xlabel('Epochs')

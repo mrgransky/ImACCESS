@@ -60,7 +60,7 @@ from historical_dataset_loader import get_single_label_dataloaders, get_multi_la
 # $ for lr in $(python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=6))))"); do nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -e 150 -lr $lr -wd 1e-1 --print_every 50 -nw 50 -dv 'cuda:3' -m finetune -fts progressive -a 'ViT-B/32' -do 0.0 > /media/volume/ImACCESS/trash/smu_ft_progressive_lr_${lr}.txt & done
 
 # using one command:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 100 -bs 256 -lr 1e-5 -wd 1e-2 -nw 32 -dv "cuda:3" -m finetune -fts progressive -dt single_label -a "ViT-B/32" -do 0.0 -mep 7 -pat 3 -mepph 5 -mphbs 3 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 200 -bs 256 -lr 1e-5 -wd 1e-2 -nw 32 -dv "cuda:3" -m finetune -fts progressive -dt single_label -a "ViT-B/32" -do 0.0 -mep 7 -pat 3 -mepph 5 -mphbs 3 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 50 -nw 50 -dv "cuda:2" -m finetune -fts progressive -dt multi_label -a "ViT-B/32" -do 0.05 -mphbs 3 -mepph 5 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 32 -e 150 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 12 -dv "cuda:1" -m finetune -fts progressive -dt multi_label -a "ViT-B/32" -do 0.05 -mphbs 3 -mepph 5 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 32 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 -dv "cuda:0" -m finetune -fts progressive -dt multi_label -a "ViT-L/14" -do 0.05 -mphbs 3 -mepph 5 --log_dir /media/volume/ImACCESS/trash &
@@ -77,8 +77,8 @@ def main():
 	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--epochs', '-e', type=int, default=3, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=8, help='Batch size for training')
-	parser.add_argument('--learning_rate', '-lr', type=float, default=2e-4, help='small learning rate for better convergence [def: 1e-3]')
-	parser.add_argument('--weight_decay', '-wd', type=float, default=3e-2, help='Weight decay [def: 5e-4]')
+	parser.add_argument('--learning_rate', '-lr', type=float, default=3e-4, help='small learning rate for better convergence [def: 1e-3]')
+	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
 	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs [def: max cpus]')
 	parser.add_argument('--minimum_epochs', '-mep', type=int, default=7, help='Early stopping minimum epochs')
