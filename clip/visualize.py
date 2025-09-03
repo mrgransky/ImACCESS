@@ -457,12 +457,6 @@ def plot_phase_transition_analysis_individual(
 
 	phases_list, durations, improvements = zip(*phase_data)
 
-	print(f"Phase distribution over {len(phases)} Epochs: ({phases}) Data: {unique_phases}")
-	print(f"{len(phase_data)} Phase(s) data: {phase_data}")
-	print(f"phases_list: {phases_list}")
-	print(f"durations (epochs): {durations}")
-	print(f"improvements: {improvements} => max: {max(improvements)} min: {min(improvements)}")
-
 	bars = ax4.bar(
 		range(len(durations)), 
 		durations, 
@@ -774,8 +768,8 @@ def plot_phase_transition_analysis(
 			[x0, x1],
 			[y0, y1],
 			color=phase_color,
-			linewidth=1.0,
-			alpha=0.4,
+			linewidth=1.5,
+			alpha=0.5,
 			linestyle='-'
 		)
 

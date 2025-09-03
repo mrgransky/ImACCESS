@@ -1948,7 +1948,7 @@ def create_differential_optimizer_groups(
 	print("\n>> Creating Optimizer Groups with Differential LRs")
 	print(f"Base LR: {base_lr}")
 	print(f"Base WD: {base_wd}")
-	print(f"LR Multipliers:\n{json.dumps(lr_multipliers, indent=2)}")
+	# print(f"LR Multipliers:\n{json.dumps(lr_multipliers, indent=2)}")
 
 	adamw_defaults = {
 		'lr': base_lr,
