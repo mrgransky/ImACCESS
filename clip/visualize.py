@@ -648,35 +648,6 @@ def plot_phase_transition_analysis(
 					zorder=0,
 			)
 
-	# phase_segments = []
-	# for i, phase in enumerate(unique_phases):
-	# 	phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
-	# 	if phase_epochs:
-	# 		start_epoch = min(phase_epochs)
-			
-	# 		# For the end epoch, extend to the next transition or final epoch
-	# 		if i < len(unique_phases) - 1:  # Not the last phase
-	# 			# Find the start of the next phase
-	# 			next_phase = unique_phases[i + 1]
-	# 			next_phase_epochs = [e for e, p in zip(epochs, phases) if p == next_phase]
-	# 			end_epoch = min(next_phase_epochs) if next_phase_epochs else max(phase_epochs)
-	# 		else:  # Last phase
-	# 			end_epoch = max(phase_epochs) + 1  # Extend slightly past the last epoch
-			
-	# 		phase_segments.append((start_epoch, end_epoch, phase))
-
-	# # Plot continuous segments
-	# print(f"phase_segments: {phase_segments}")
-	# for start_epoch, end_epoch, phase in phase_segments:
-	# 	ax1.axvspan(
-	# 		start_epoch - 1e-4,  # Extend slightly before
-	# 		end_epoch - 1e-4,    # End just before next phase starts
-	# 		alpha=0.2,
-	# 		color=phase_colors[phase],
-	# 		label=f'Phase {phase}',
-	# 		zorder=0,
-	# 	)
-
 	# Plot loss curves with enhanced styling
 	train_line = ax1.plot(
 		epochs, 
@@ -790,24 +761,45 @@ def plot_phase_transition_analysis(
 	ax1.tick_params(axis='both', which='major', labelsize=8)
 	ax1.set_xlim(left=0, right=max(epochs)+2)
 
-	# ========================
-	# Learning Rate Adaptation
-	# ========================
-	ax2 = fig.add_subplot(gs[2, 1:])
 
+
+	# ========================
+	# Hyperparameter Adaptation (LR + WD)
+	# ========================
+	ax2 = fig.add_subplot(gs[1:, 1:])
+
+	# Plot Learning Rate on primary axis
 	for i in range(len(epochs) - 1):
 		x0, x1 = epochs[i], epochs[i+1]
 		y0, y1 = learning_rates[i], learning_rates[i+1]
-		# Use the phase of the END of the interval → fixes the late color switch
-		phase_color = phase_colors[phases[i+1]]
+		phase_color = phase_colors[phases[i]]  # Fixed the indexing issue
 		ax2.semilogy(
+			[x0, x1],
+			[y0, y1],
+			color=phase_color,
+			linewidth=1.0,
+			alpha=0.4,
+			linestyle='-'
+		)
+
+	# Create twin axis for Weight Decay
+	ax2_twin = ax2.twinx()
+
+	# Plot Weight Decay on secondary axis
+	for i in range(len(epochs) - 1):
+		x0, x1 = epochs[i], epochs[i+1]
+		y0, y1 = weight_decays[i], weight_decays[i+1]
+		phase_color = phase_colors[phases[i]]  # Fixed the indexing issue
+		ax2_twin.semilogy(
 			[x0, x1],
 			[y0, y1],
 			color=phase_color,
 			linewidth=2.5,
 			alpha=0.8,
+			linestyle='--'  # Different line style for distinction
 		)
 
+	# Mark transitions on both axes
 	for transition_epoch in transitions:
 		if transition_epoch < len(learning_rates):
 			ax2.axvline(
@@ -815,45 +807,93 @@ def plot_phase_transition_analysis(
 				color=transition_color,
 				linewidth=2.0,
 				alpha=0.6,
-				linestyle='--',
+				linestyle=':',
+				zorder=10
 			)
 
+	# Labels and styling
 	ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
 	ax2.set_ylabel('LR (log)', fontsize=8, weight='bold')
-	ax2.set_title('Learning Rate Adaptation Across Phases', fontsize=8, weight='bold')
+	ax2_twin.set_ylabel('WD (log)', fontsize=8, weight='bold')
+	ax2.set_title('Hyperparameter Adaptation Across Phases\nLearning Rate (—) & Weight Decay (--)', fontsize=8, weight='bold')
+
+	# Color-code the axis labels and spines
+	ax2.tick_params(axis='y', labelcolor='blue', labelsize=8)
+	ax2_twin.tick_params(axis='y', labelcolor='red', labelsize=8)
+	ax2.spines['left'].set_color('blue')
+	ax2_twin.spines['right'].set_color('red')
+
+	# Grid and legend
 	ax2.grid(True, alpha=0.3)
 
-	# ==========================
-	# Weight Decay Adaptation
-	# ==========================
-	ax3 = fig.add_subplot(gs[1, 1:])
+	# Ensure both axes have the same x-limits
+	ax2.set_xlim(left=0, right=max(epochs)+1)
+	ax2_twin.set_xlim(left=0, right=max(epochs)+1)
 
-	for i in range(len(epochs) - 1):
-		x0, x1 = epochs[i], epochs[i+1]
-		y0, y1 = weight_decays[i], weight_decays[i+1]
-		phase_color = phase_colors[phases[i+1]]
-		ax3.semilogy(
-			[x0, x1],
-			[y0, y1],
-			color=phase_color,
-			linewidth=2.5, 
-			alpha=0.8
-		)
+	# # ========================
+	# # Learning Rate Adaptation
+	# # ========================
+	# ax2 = fig.add_subplot(gs[2, 1:])
 
-	# Mark transitions
-	for transition_epoch in transitions:
-		if transition_epoch < len(weight_decays):
-			ax3.axvline(
-				x=transition_epoch,
-				color=transition_color,
-				linestyle='--',
-				linewidth=2.0,
-				alpha=0.6,
-			)
+	# for i in range(len(epochs) - 1):
+	# 	x0, x1 = epochs[i], epochs[i+1]
+	# 	y0, y1 = learning_rates[i], learning_rates[i+1]
+	# 	# Use the phase of the END of the interval → fixes the late color switch
+	# 	phase_color = phase_colors[phases[i+1]]
+	# 	ax2.semilogy(
+	# 		[x0, x1],
+	# 		[y0, y1],
+	# 		color=phase_color,
+	# 		linewidth=2.5,
+	# 		alpha=0.8,
+	# 	)
 
-	ax3.set_ylabel('WD (log)', fontsize=8, weight='bold')
-	ax3.set_title('Weight Decay Adaptation Across Phases', fontsize=8, weight='bold')
-	ax3.grid(True, alpha=0.3)
+	# for transition_epoch in transitions:
+	# 	if transition_epoch < len(learning_rates):
+	# 		ax2.axvline(
+	# 			x=transition_epoch,
+	# 			color=transition_color,
+	# 			linewidth=2.0,
+	# 			alpha=0.6,
+	# 			linestyle='--',
+	# 		)
+
+	# ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
+	# ax2.set_ylabel('LR (log)', fontsize=8, weight='bold')
+	# ax2.set_title('Learning Rate Adaptation Across Phases', fontsize=8, weight='bold')
+	# ax2.grid(True, alpha=0.3)
+
+	# # ==========================
+	# # Weight Decay Adaptation
+	# # ==========================
+	# ax3 = fig.add_subplot(gs[1, 1:])
+
+	# for i in range(len(epochs) - 1):
+	# 	x0, x1 = epochs[i], epochs[i+1]
+	# 	y0, y1 = weight_decays[i], weight_decays[i+1]
+	# 	phase_color = phase_colors[phases[i+1]]
+	# 	ax3.semilogy(
+	# 		[x0, x1],
+	# 		[y0, y1],
+	# 		color=phase_color,
+	# 		linewidth=2.5, 
+	# 		alpha=0.8
+	# 	)
+
+	# # Mark transitions
+	# for transition_epoch in transitions:
+	# 	if transition_epoch < len(weight_decays):
+	# 		ax3.axvline(
+	# 			x=transition_epoch,
+	# 			color=transition_color,
+	# 			linestyle='--',
+	# 			linewidth=2.0,
+	# 			alpha=0.6,
+	# 		)
+
+	# ax3.set_ylabel('WD (log)', fontsize=8, weight='bold')
+	# ax3.set_title('Weight Decay Adaptation Across Phases', fontsize=8, weight='bold')
+	# ax3.grid(True, alpha=0.3)
 
 	# ==========================================
 	# Phase Duration and Efficiency Analysis

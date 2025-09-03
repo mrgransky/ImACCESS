@@ -61,6 +61,7 @@ from collections import defaultdict
 import logging
 import warnings
 import matplotlib.gridspec as gridspec
+from matplotlib.lines import Line2D
 
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
