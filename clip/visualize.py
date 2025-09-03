@@ -774,27 +774,33 @@ def plot_phase_transition_analysis(
 	ax1.tick_params(axis='both', which='major', labelsize=8)
 	ax1.set_xlim(left=0, right=max(epochs)+2)
 
-
 	# ========================
 	# Learning Rate Adaptation
 	# ========================
 	ax2 = fig.add_subplot(gs[2, 1:])
 
 	for i in range(len(epochs) - 1):
-			x0, x1 = epochs[i], epochs[i+1]
-			y0, y1 = learning_rates[i], learning_rates[i+1]
-			# Use the phase of the END of the interval → fixes the late color switch
-			phase_color = phase_colors[phases[i+1]]
-			ax2.semilogy([x0, x1], [y0, y1],
-									color=phase_color,
-									linewidth=2.5, alpha=0.8)
+		x0, x1 = epochs[i], epochs[i+1]
+		y0, y1 = learning_rates[i], learning_rates[i+1]
+		# Use the phase of the END of the interval → fixes the late color switch
+		phase_color = phase_colors[phases[i+1]]
+		ax2.semilogy(
+			[x0, x1],
+			[y0, y1],
+			color=phase_color,
+			linewidth=2.5,
+			alpha=0.8,
+		)
 
-	# Mark transitions
 	for transition_epoch in transitions:
-			if transition_epoch < len(learning_rates):
-					ax2.axvline(x=transition_epoch,
-											color=transition_color,
-											linewidth=2.0, alpha=0.6, linestyle='--')
+		if transition_epoch < len(learning_rates):
+			ax2.axvline(
+				x=transition_epoch,
+				color=transition_color,
+				linewidth=2.0,
+				alpha=0.6,
+				linestyle='--',
+			)
 
 	ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
 	ax2.set_ylabel('LR (log)', fontsize=8, weight='bold')
@@ -892,26 +898,6 @@ def plot_phase_transition_analysis(
 	# 		color=loss_imp_color,
 	# 	)
 	
-	# ax4.set_xlabel('Phase', fontsize=8, weight='bold')
-	# ax4.set_ylabel('Epochs', fontsize=8, weight='bold', color=duration_color)
-	# ax4_twin.set_ylabel('Loss Improvement (%)', fontsize=8, weight='bold', color=loss_imp_color)
-	# ax4.set_title('Phase Efficiency Analysis', fontsize=8, weight='bold')
-	
-	# phase_labels = [f'{p}' for p in phases_list]
-	# ax4.set_xticklabels(phase_labels)
-	# ax4.set_xticks(range(len(phase_labels)))
-	# ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
-	# ax4.grid(axis='y', alpha=0.25, color="#A3A3A3")
-
-	# ax4.tick_params(axis='y', labelcolor=duration_color, labelsize=10)
-	# ax4_twin.tick_params(axis='y', labelcolor=loss_imp_color, labelsize=10)
-
-	# # Match spine colors with their labels
-	# ax4.spines['left'].set_color(duration_color)
-	# ax4_twin.spines['right'].set_color(loss_imp_color)
-
-	# ax4_twin.spines['top'].set_visible(False)
-	# ax4.spines['top'].set_visible(False)
 
 	# Updated phase analysis
 	phase_data = []
@@ -923,34 +909,66 @@ def plot_phase_transition_analysis(
 
 	# Create more informative visualization
 	if phase_data:
-			phases_list = [p for p, _ in phase_data]
-			
-			# Choose primary metrics to display
-			durations = [m['duration'] for _, m in phase_data]
-			efficiencies = [m['efficiency'] for _, m in phase_data]  # Improvement per epoch
-			convergence_qualities = [m['convergence_quality'] for _, m in phase_data]  # How consistent
-			
-			# Main bars: duration
-			bars = ax4.bar(range(len(durations)), durations, 
-										color=[phase_colors[p] for p in phases_list], alpha=0.5)
-			
-			# Twin axis: efficiency (more meaningful than raw improvement)
-			ax4_twin = ax4.twinx()
-			line = ax4_twin.plot(range(len(efficiencies)), efficiencies,
-													linewidth=2.0, linestyle='-', marker='o', markersize=4,
-													color='red', label='Efficiency (% per epoch)')
-			
-			# Add convergence quality as scatter size or color intensity
-			for i, (duration, efficiency, convergence) in enumerate(zip(durations, efficiencies, convergence_qualities)):
-					# Text annotation with multiple metrics
-					ax4_twin.text(i, efficiency * 1.1 if efficiency > 0 else efficiency * 0.9,
-											f'{efficiency:.2f}%/ep\nR²={convergence:.2f}',
-											ha='center', va='bottom' if efficiency > 0 else 'top',
-											fontsize=7, color='red')
-			
-			ax4.set_ylabel('Duration (epochs)')
-			ax4_twin.set_ylabel('Learning Efficiency (% improvement per epoch)')
+		phases_list = [p for p, _ in phase_data]
+		
+		# Choose primary metrics to display
+		durations = [m['duration'] for _, m in phase_data]
+		efficiencies = [m['efficiency'] for _, m in phase_data]  # Improvement per epoch
+		convergence_qualities = [m['convergence_quality'] for _, m in phase_data]  # How consistent
+		
+		# Main bars: duration
+		bars = ax4.bar(
+			range(len(durations)), 
+			durations, 
+			color=[phase_colors[p] for p in phases_list], 
+			alpha=0.5,
+		)
+		
+		# Twin axis: efficiency (more meaningful than raw improvement)
+		ax4_twin = ax4.twinx()
+		line = ax4_twin.plot(
+			range(len(efficiencies)),
+			efficiencies,
+			linewidth=2.0,
+			linestyle='-',
+			marker='o',
+			markersize=4,
+			color=loss_imp_color,
+			label='Efficiency (%/ep)',
+		)
+		
+		# Add convergence quality as scatter size or color intensity
+		for i, (duration, efficiency, convergence) in enumerate(zip(durations, efficiencies, convergence_qualities)):
+			ax4_twin.text(
+				i, 
+				efficiency * 1.02 if efficiency > 0 else efficiency * 0.85,
+				f'{efficiency:.2f}%/ep\nR²={convergence:.2f}',
+				ha='center', 
+				va='bottom' if efficiency > 0 else 'top',
+				fontsize=8,
+				color=loss_imp_color,
+			)
 
+	ax4.set_xlabel('Phase', fontsize=8, weight='bold')
+	ax4.set_ylabel('Epochs', fontsize=8, weight='bold', color=duration_color)
+	ax4_twin.set_ylabel('Learning Efficiency (%/ep)', fontsize=7, color=loss_imp_color)
+	ax4.set_title('Phase Efficiency Analysis', fontsize=8, weight='bold')
+	
+	phase_labels = [f'{p}' for p in phases_list]
+	ax4.set_xticklabels(phase_labels)
+	ax4.set_xticks(range(len(phase_labels)))
+	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
+	ax4.grid(axis='y', alpha=0.25, color="#A3A3A3")
+
+	ax4.tick_params(axis='y', labelcolor=duration_color, labelsize=10)
+	ax4_twin.tick_params(axis='y', labelcolor=loss_imp_color, labelsize=10)
+
+	# Match spine colors with their labels
+	ax4.spines['left'].set_color(duration_color)
+	ax4_twin.spines['right'].set_color(loss_imp_color)
+
+	ax4_twin.spines['top'].set_visible(False)
+	ax4.spines['top'].set_visible(False)
 
 	plt.suptitle(
 		f'Progressive Layer Unfreezing\nPhase Transition Analysis', 

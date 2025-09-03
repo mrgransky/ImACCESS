@@ -2677,8 +2677,6 @@ def progressive_finetune_single_label(
 		if hasattr(early_stopping, "train_loss_history"):
 			early_stopping.train_loss_history.append(avg_training_loss)
 
-		print(f">> Training Completed in {time.time() - epoch_start_time:.2f} sec. Validating Epoch: {epoch+1}")
-
 		drift_value = compute_embedding_drift(
 			model, 
 			fixed_val_batch, # Pass the fixed batch
@@ -2689,6 +2687,7 @@ def progressive_finetune_single_label(
 		)
 		embedding_drift_history.append(drift_value)
 
+		print(f">> Training Completed in {time.time() - epoch_start_time:.2f} s. Validating Epoch: {epoch+1}...")
 		# all metrics in one using caching mechanism:
 		validation_results = get_validation_metrics(
 			model=model,

@@ -82,7 +82,7 @@ def main():
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
 	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs [def: max cpus]')
 	parser.add_argument('--minimum_epochs', '-mep', type=int, default=7, help='Early stopping minimum epochs')
-	parser.add_argument('--patience', '-pat', type=int, default=5, help='Patience for early stopping')
+	parser.add_argument('--patience', '-pat', type=int, default=3, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
 	parser.add_argument('--volatility_threshold', '-vth', type=float, default=15.0, help='Volatility threshold for early stopping')
