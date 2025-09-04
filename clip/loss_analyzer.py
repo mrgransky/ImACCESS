@@ -57,6 +57,7 @@ class LossAnalyzer:
 		plt.grid(True, alpha=0.3)
 		plt.savefig(f'{fpth}_train_ema.png', dpi=200, bbox_inches='tight')
 		plt.close()
+
 		# Plot 3: Validation Loss - SMA
 		plt.figure(figsize=figsize)
 		plt.plot(self.epochs, self.val_loss, alpha=0.3, label='Raw', color="#493C66")
@@ -86,6 +87,7 @@ class LossAnalyzer:
 		plt.grid(True, alpha=0.3)
 		plt.savefig(f'{fpth}_val_ema.png', dpi=200, bbox_inches='tight')
 		plt.close()
+
 		# Plot 5: Combined Smoothed Comparison
 		plt.figure(figsize=figsize)
 		train_ema = self.ema(self.train_loss, 10)
@@ -104,7 +106,7 @@ class LossAnalyzer:
 		# Plot 6: Overfitting Detection
 		plt.figure(figsize=figsize)
 		gap = val_ema - train_ema
-		print(f"Train EMA: {train_ema}\nVal EMA: {val_ema}\nGap: {gap}")
+		# print(f"Train EMA: {train_ema}\nVal EMA: {val_ema}\nGap: {gap}")
 		plt.plot(self.epochs, gap, color="#000000", linewidth=1.5, label='Val - Train Gap')
 		# plt.plot(self.epochs, np.zeros_like(gap), color="#000000", linewidth=1.5, linestyle='--', label='Zero Line')
 		plt.plot(self.epochs, val_ema, label='Validation EMA-10', linewidth=1.5, linestyle='--', color="#C77203")
