@@ -1021,18 +1021,39 @@ def measure_execution_time(func):
 		return result
 	return wrapper
 
-def set_seeds(seed:int=42, debug:bool=False):
+# def set_seeds(seed:int=42, debug:bool=False):
+# 	random.seed(seed)
+# 	np.random.seed(seed)
+# 	torch.manual_seed(seed)
+# 	if torch.cuda.is_available():
+# 		torch.cuda.empty_cache()
+# 		torch.cuda.manual_seed(seed)
+# 		torch.cuda.manual_seed_all(seed)
+# 		if debug: # slows down training but ensures reproducibility
+# 			torch.backends.cudnn.deterministic = True
+# 			torch.backends.cudnn.benchmark = False
+# 			torch.use_deterministic_algorithms(True, warn_only=True)
+
+def set_seeds(seed: int = 42, debug: bool = False):
 	random.seed(seed)
 	np.random.seed(seed)
 	torch.manual_seed(seed)
+	
 	if torch.cuda.is_available():
 		torch.cuda.empty_cache()
 		torch.cuda.manual_seed(seed)
 		torch.cuda.manual_seed_all(seed)
-		if debug: # slows down training but ensures reproducibility
-			torch.backends.cudnn.deterministic = True
-			torch.backends.cudnn.benchmark = False
-			torch.use_deterministic_algorithms(True, warn_only=True)
+	
+	# Missing these critical settings:
+	torch.backends.cudnn.deterministic = True  # Should always be True for reproducibility
+	torch.backends.cudnn.benchmark = False     # Should always be False for reproducibility
+	
+	# Set environment variables for additional reproducibility
+	os.environ['PYTHONHASHSEED'] = str(seed)
+	os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'  # For CUDA operations
+	
+	if debug:
+		torch.use_deterministic_algorithms(True, warn_only=True)
 
 def get_config(architecture: str, dropout: float=0.0) -> dict:
 	configs = {

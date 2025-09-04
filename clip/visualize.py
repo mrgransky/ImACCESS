@@ -630,8 +630,6 @@ def plot_phase_transition_analysis(
 		
 		phase_segments.append((start_epoch, end_epoch, phase))
 
-	# Plot with exact boundaries
-	print(f"phase_segments: {phase_segments}")
 	for start_epoch, end_epoch, phase in phase_segments:
 		ax1.axvspan(
 			start_epoch,
