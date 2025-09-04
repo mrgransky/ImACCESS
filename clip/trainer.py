@@ -1829,9 +1829,9 @@ def create_differential_optimizer_groups(
 
 	if lr_multipliers is None:
 		lr_multipliers = {
-			'projections': 0.5,					# orig: 0.5 # Already trained - conservative
-			'text_transformer': 0.8,		# orig: 0.1 # New layers - full rate
-			'visual_transformer': 0.8,	# orig: 0.1 # New layers - full rate
+			'projections': 0.1,					# orig: 0.5 # Already trained - conservative
+			'text_transformer': 1.0,		# orig: 0.1 # New layers - full rate
+			'visual_transformer': 1.0,	# orig: 0.1 # New layers - full rate
 			'text_frontend': 0.01,
 			'visual_frontend': 0.01,
 		}
@@ -1900,6 +1900,7 @@ def create_differential_optimizer_groups(
 def should_transition_to_next_phase(
 		current_phase: int,
 		losses: List[float],
+		window: int,
 		best_loss: Optional[float],
 		best_loss_threshold: float,
 		volatility_threshold: float,
@@ -1907,7 +1908,6 @@ def should_transition_to_next_phase(
 		pairwise_imp_threshold: float,
 		accuracies: Optional[List[float]]=None, # Added optional accuracy list
 		accuracy_plateau_threshold: float=1e-3, # Threshold for accuracy stagnation
-		window: int=7,
 		plateau_threshold: float = 1e-2,				# 1% improvement threshold
 	) -> bool:
 	"""
@@ -1925,7 +1925,7 @@ def should_transition_to_next_phase(
 	
 	# Need minimum data and minimum time in current phase
 	if len(losses) < window:
-		print(f"Not enough data for transition: {len(losses)} epoch(s) (needs at least {window} epochs)")
+		print(f"<!> Insufficient loss data ({len(losses)} < {window}) for phase transition.")
 		return False
 	
 	# Simple plateau detection: compare recent average to older average
@@ -1948,7 +1948,9 @@ def should_transition_to_next_phase(
 	high_volatility = recent_cv > volatility_threshold  # X% coefficient of variation
 	
 	print(f"\n=== SIMPLE TRANSITION CHECK (Phase {current_phase}) ===")
-	print(f"Recent window ({window} epochs): {recent_window}")
+	print(f"{len(losses)} losses: {losses}")
+	print(f"\t>> min: {min(losses)} max: {max(losses)} range: {max(losses) - min(losses)} std: {np.std(losses)}")
+	print(f"Recent window ({len(recent_window)} epochs, requested {window}): {recent_window}")
 	print(f"Older average: {older_avg} → Recent average: {recent_avg}")
 	print(f"Improvement: {improvement} (threshold: {plateau_threshold})")
 	print(f"Volatility: {recent_cv:.2f}% (high if > {volatility_threshold}%)")
@@ -1973,50 +1975,23 @@ def should_transition_to_next_phase(
 	print("=" * 50)
 	return should_transition
 
-def should_transition_to_next_phase_minimal(
-		current_phase: int,
-		losses: List[float],
-		lookback: int = 10,
-		stagnation_epochs: int = 5,
-		min_epochs_in_phase: int = 8
-	) -> bool:
-	"""
-	Minimal transition logic: only transition after clear stagnation.
+def handle_phase_transition(
+		current_phase: int, 
+		initial_lr: float,
+		initial_wd: float,
+		max_phases: int,
+		current_loss: float,
+		best_loss: Optional[float],
+		last_lr: float, 
+		last_wd: float,
+	) -> Tuple[int, float, float]:
+	next_phase = current_phase + 1
 	
-	Args:
-		current_phase: Current phase number  
-		losses: Recent validation losses
-		lookback: How many epochs to look back for best loss
-		stagnation_epochs: How many epochs without improvement = stagnation
-		min_epochs_in_phase: Minimum time in phase before considering transition
-	"""
+	# Conservative adjustments only
+	new_lr = last_lr * 0.8  # 20% reduction
+	new_wd = last_wd * 1.1  # 10% increase
 	
-	if len(losses) < min_epochs_in_phase:
-		return False
-	
-	# Find best loss in recent history
-	recent_losses = losses[-lookback:]
-	best_recent_loss = min(recent_losses)
-	current_loss = losses[-1]
-	
-	# Count epochs since improvement
-	epochs_without_improvement = 0
-	for i in range(len(losses)-1, max(0, len(losses)-stagnation_epochs-1), -1):
-		if losses[i] >= best_recent_loss * 0.999:  # Within 0.1% of best
-			epochs_without_improvement += 1
-		else:
-			break
-	
-	is_stagnant = epochs_without_improvement >= stagnation_epochs
-	
-	print(f"\n=== MINIMAL TRANSITION CHECK (Phase {current_phase}) ===")
-	print(f"Best recent loss: {best_recent_loss:.4f}")
-	print(f"Current loss: {current_loss:.4f}")  
-	print(f"Epochs without improvement: {epochs_without_improvement}/{stagnation_epochs}")
-	print(f"Status: {'STAGNANT - TRANSITION' if is_stagnant else 'PROGRESSING - CONTINUE'}")
-	print("=" * 50)
-	
-	return is_stagnant
+	return next_phase, new_lr, new_wd
 
 def should_transition_to_next_phase_complex(
 		current_phase: int,
@@ -2121,12 +2096,11 @@ def should_transition_to_next_phase_complex(
 
 	return transition
 
-def handle_phase_transition(
+def handle_phase_transition_complex(
 		current_phase: int,
 		initial_lr: float,
 		initial_wd: float,
 		max_phases: int,
-		window_size: int,
 		current_loss: float,
 		best_loss: Optional[float],
     last_lr: float, # Pass the LR from the previous phase
@@ -2234,7 +2208,6 @@ def progressive_finetune_single_label(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		window_size: int,														# Consider the last 10 epochs for cumulative trend
 		patience: int,															# patience for epochs without improvement
 		min_delta: float,														# Make slightly less sensitive than default
 		cumulative_delta: float,										# Keep cumulative check reasonable
@@ -2252,6 +2225,7 @@ def progressive_finetune_single_label(
 	):
 	initial_learning_rate = learning_rate
 	initial_weight_decay = weight_decay
+	window_size = min_epochs_per_phase + 5
 
 	early_stopping = EarlyStopping(
 		patience=patience,
@@ -2474,12 +2448,10 @@ def progressive_finetune_single_label(
 		torch.cuda.empty_cache()
 
 		# --- Phase Transition Check ---
-		if (epochs_in_current_phase >= min_epochs_per_phase and current_phase < max_phases - 1 and len(early_stopping.value_history) >= window_size):
+		if (epochs_in_current_phase >= min_epochs_per_phase and current_phase < max_phases - 1):
 			print(f"Checking phase transition ({epochs_in_current_phase} elapsed epochs in phase {current_phase})")
 
 			val_losses = early_stopping.value_history
-			val_accs_in_batch = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in in_batch_loss_acc_metrics_all_epochs]
-			val_accs_full = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in full_val_loss_acc_metrics_all_epochs]
 
 			should_trans = should_transition_to_next_phase(
 				current_phase=current_phase,
@@ -2500,7 +2472,6 @@ def progressive_finetune_single_label(
 					initial_lr=initial_learning_rate,
 					initial_wd=initial_weight_decay,
 					max_phases=max_phases,
-					window_size=window_size,
 					current_loss=val_losses[-1],
 					best_loss=early_stopping.get_best_score(),
 					last_lr=last_lr,
@@ -2508,14 +2479,14 @@ def progressive_finetune_single_label(
 				)
 				epochs_in_current_phase = 0 # Reset phase epoch counter
 				early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
-				print(f"Transitioned to Phase {current_phase}. Early stopping reset.")
+				print(f"Transitioned to Phase {current_phase} @ epoch {epoch+1}: New LR: {last_lr}, New WD: {last_wd}")
 				phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
-				print(f"Phase transition triggered @ epoch {epoch+1} & current phase: {current_phase}. Optimizer/Scheduler refresh pending after unfreeze.")
+				print(f"Optimizer/Scheduler refresh pending after unfreeze...")
 			else:
 				print(f"Phase transition NOT triggered @ epoch {epoch+1} & current phase: {current_phase}.")
 		else:
 			print(f"No phase transition check needed @ epoch {epoch+1} & current phase: {current_phase}.")
-			print(f"Reason: Not enough epochs in current phase ({epochs_in_current_phase} < {min_epochs_per_phase}) or already in last phase ({current_phase} >= {max_phases - 1}) or not enough early stopping history ({len(early_stopping.value_history)} < {window_size}).")
+			print(f"Reason: Not enough epochs in current phase ({epochs_in_current_phase} < {min_epochs_per_phase}) or already in last phase ({current_phase} >= {max_phases - 1})")
 		
 		if optimizer.param_groups and not phase_just_changed:
 			current_lr = max([pg['lr'] for pg in optimizer.param_groups])
@@ -2575,9 +2546,8 @@ def progressive_finetune_single_label(
 			
 			# Store the target LRs that we want to reach after the warm-up
 			target_lrs_after_warmup = [pg['lr'] for pg in optimizer.param_groups]
-			
 			print(f"  ├─ Activating linear warm-up for {warmup_epochs} epochs ({warmup_steps_total} steps).")
-			print(f"  └─ Target LRs after warm-up: {[f'{lr:.2e}' for lr in target_lrs_after_warmup]}")
+			print(f"  └─ Target LRs after warm-up: {target_lrs_after_warmup}")
 
 			# 2. Configure the main scheduler to take over *after* the warm-up
 			if current_phase >= 3:
@@ -2950,7 +2920,7 @@ def full_finetune_single_label(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		window_size: int,
+		# window_size: int,
 		patience: int,
 		min_delta: float,
 		cumulative_delta: float,
@@ -2961,7 +2931,7 @@ def full_finetune_single_label(
 		topk_values: List[int] = [1, 5, 10, 15, 20],
 		use_lamb: bool = False,
 	):
-
+	window_size = minimum_epochs + 4
 	mode = inspect.stack()[0].function
 	mode = re.sub(r'_finetune_single_label', '', mode)
 
@@ -3321,7 +3291,7 @@ def lora_finetune_single_label(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		window_size: int,
+		# window_size: int,
 		lora_rank: int,
 		lora_alpha: float,
 		lora_dropout: float,
@@ -3335,7 +3305,7 @@ def lora_finetune_single_label(
 		topk_values: List[int] = [1, 5, 10, 15, 20],
 		use_lamb: bool = False,
 	):
-
+	window_size = minimum_epochs + 4
 	# Inspect the model for dropout layers
 	dropout_values = []
 	for name, module in model.named_modules():

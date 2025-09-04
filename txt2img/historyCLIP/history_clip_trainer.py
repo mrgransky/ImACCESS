@@ -212,12 +212,6 @@ def main():
 		# visualize_(dataloader=validation_loader, batches=4, num_samples=7)
 		# visualize_samples(validation_loader, validation_loader.dataset, num_samples=5)
 		
-		# Adaptive window size
-		window_size = get_adaptive_window_size(
-			loader=train_loader,
-			min_window=5,
-			max_window=min(args.minimum_epochs, 15),
-		)
 		finetune_functions = {
 			'single_label': {
 				'full': full_finetune_single_label,
@@ -242,7 +236,6 @@ def main():
 				weight_decay=args.weight_decay,
 				device=args.device,
 				results_dir=RESULT_DIRECTORY,
-				window_size=window_size,
 				patience=args.patience,
 				min_delta=args.minimum_delta,
 				cumulative_delta=args.cumulative_delta,
