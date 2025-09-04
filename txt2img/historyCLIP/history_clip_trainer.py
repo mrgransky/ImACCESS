@@ -87,7 +87,7 @@ def main():
 	parser.add_argument('--patience', '-pat', type=int, default=3, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
-	parser.add_argument('--volatility_threshold', '-vth', type=float, default=15.0, help='Volatility threshold for early stopping')
+	parser.add_argument('--volatility_threshold', '-vth', type=float, default=5.0, help='Volatility threshold for early stopping')
 	parser.add_argument('--slope_threshold', '-slth', type=float, default=1e-4, help='Slope threshold for early stopping')
 	parser.add_argument('--pairwise_imp_threshold', '-pith', type=float, default=1e-4, help='Pairwise improvement threshold for early stopping')
 

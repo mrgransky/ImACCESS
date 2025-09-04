@@ -1900,6 +1900,134 @@ def create_differential_optimizer_groups(
 def should_transition_to_next_phase(
 		current_phase: int,
 		losses: List[float],
+		best_loss: Optional[float],
+		best_loss_threshold: float,
+		volatility_threshold: float,
+		slope_threshold: float,
+		pairwise_imp_threshold: float,
+		accuracies: Optional[List[float]]=None, # Added optional accuracy list
+		accuracy_plateau_threshold: float=1e-3, # Threshold for accuracy stagnation
+		window: int=7,
+		plateau_threshold: float = 1.0,				# 1% improvement threshold
+		absolute_threshold: float = 0.01,     # Or 0.01 absolute loss improvement
+		min_epochs_in_phase: int = 10,
+	) -> bool:
+	"""
+	Simplified transition criteria focused on meaningful learning plateaus.
+	
+	Args:
+			current_phase: Current phase number
+			losses: List of recent validation losses
+			window: Number of epochs to consider for plateau detection
+			plateau_threshold: Minimum improvement percentage to avoid transition
+			min_epochs_in_phase: Minimum epochs before considering transition
+			
+	Returns:
+			Boolean indicating whether to transition to next phase
+	"""
+	
+	# Need minimum data and minimum time in current phase
+	if len(losses) < window or len(losses) < min_epochs_in_phase:
+		print(f"Not enough data for transition: {len(losses)} epochs (need {max(window, min_epochs_in_phase)})")
+		return False
+	
+	# Simple plateau detection: compare recent average to older average
+	recent_window = losses[-window:]
+	older_window = losses[-(window*2):-window] if len(losses) >= window*2 else losses[:-window]
+	
+	if not older_window:  # Fallback if not enough history
+		older_window = losses[:len(losses)//2]
+		recent_window = losses[len(losses)//2:]
+	
+	recent_avg = np.mean(recent_window)
+	older_avg = np.mean(older_window)
+	
+	# Calculate improvement percentage
+	improvement_pct = ((older_avg - recent_avg) / older_avg) * 100 if older_avg > 0 else 0
+	abs_improvement = older_avg - recent_avg
+
+	# Check for meaningful plateau
+	is_plateau = (improvement_pct < plateau_threshold) or (abs_improvement < absolute_threshold)
+	
+	# Simple volatility check - high volatility suggests instability
+	recent_std = np.std(recent_window)
+	recent_cv = (recent_std / abs(recent_avg)) * 100 if recent_avg != 0 else 0
+	high_volatility = recent_cv > volatility_threshold  # X% coefficient of variation
+	
+	print(f"\n=== SIMPLE TRANSITION CHECK (Phase {current_phase}) ===")
+	print(f"Recent window ({window} epochs): {recent_window}")
+	print(f"Older average: {older_avg:.4f} → Recent average: {recent_avg:.4f}")
+	print(f"Improvement: {improvement_pct:.2f}% (threshold: {plateau_threshold}%) | Absolute: {abs_improvement:.4f} (threshold: {absolute_threshold})")
+	print(f"Volatility: {recent_cv:.2f}% (high if > {volatility_threshold}%)")
+	print(f"Plateau: {is_plateau} (need {plateau_threshold}% OR {absolute_threshold} absolute)")
+	# Transition logic
+	should_transition = False
+	reasons = []
+	
+	if is_plateau and not high_volatility:
+		should_transition = True
+		reasons.append(f"Meaningful plateau detected ({improvement_pct:.2f}% < {plateau_threshold}% OR {abs_improvement:.4f} < {absolute_threshold})")
+	elif high_volatility:
+		reasons.append(f"High volatility ({recent_cv:.2f}%) - continuing current phase for stability")
+	else:
+		reasons.append(f"Still learning ({improvement_pct:.2f}% improvement)")
+	
+	if should_transition:
+		print(f"\t>>> TRANSITION RECOMMENDED: {', '.join(reasons)}")
+	else:
+		print(f"\t>>> CONTINUE CURRENT PHASE: {', '.join(reasons)}")
+	
+	print("=" * 50)
+	return should_transition
+
+def should_transition_to_next_phase_minimal(
+		current_phase: int,
+		losses: List[float],
+		lookback: int = 10,
+		stagnation_epochs: int = 5,
+		min_epochs_in_phase: int = 8
+	) -> bool:
+	"""
+	Minimal transition logic: only transition after clear stagnation.
+	
+	Args:
+		current_phase: Current phase number  
+		losses: Recent validation losses
+		lookback: How many epochs to look back for best loss
+		stagnation_epochs: How many epochs without improvement = stagnation
+		min_epochs_in_phase: Minimum time in phase before considering transition
+	"""
+	
+	if len(losses) < min_epochs_in_phase:
+		return False
+	
+	# Find best loss in recent history
+	recent_losses = losses[-lookback:]
+	best_recent_loss = min(recent_losses)
+	current_loss = losses[-1]
+	
+	# Count epochs since improvement
+	epochs_without_improvement = 0
+	for i in range(len(losses)-1, max(0, len(losses)-stagnation_epochs-1), -1):
+		if losses[i] >= best_recent_loss * 0.999:  # Within 0.1% of best
+			epochs_without_improvement += 1
+		else:
+			break
+	
+	is_stagnant = epochs_without_improvement >= stagnation_epochs
+	
+	print(f"\n=== MINIMAL TRANSITION CHECK (Phase {current_phase}) ===")
+	print(f"Best recent loss: {best_recent_loss:.4f}")
+	print(f"Current loss: {current_loss:.4f}")  
+	print(f"Epochs without improvement: {epochs_without_improvement}/{stagnation_epochs}")
+	print(f"Status: {'STAGNANT - TRANSITION' if is_stagnant else 'PROGRESSING - CONTINUE'}")
+	print("=" * 50)
+	
+	return is_stagnant
+
+def should_transition_to_next_phase_complex(
+		current_phase: int,
+		losses: List[float],
 		window: int,
 		best_loss: Optional[float],
 		best_loss_threshold: float,
