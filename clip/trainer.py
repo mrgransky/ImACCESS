@@ -1908,27 +1908,24 @@ def should_transition_to_next_phase(
 		accuracies: Optional[List[float]]=None, # Added optional accuracy list
 		accuracy_plateau_threshold: float=1e-3, # Threshold for accuracy stagnation
 		window: int=7,
-		plateau_threshold: float = 1.0,				# 1% improvement threshold
-		absolute_threshold: float = 0.01,     # Or 0.01 absolute loss improvement
-		min_epochs_in_phase: int = 10,
+		plateau_threshold: float = 1e-2,				# 1% improvement threshold
 	) -> bool:
 	"""
-	Simplified transition criteria focused on meaningful learning plateaus.
+	Transition logic: meaningful learning plateaus.
 	
 	Args:
 			current_phase: Current phase number
 			losses: List of recent validation losses
 			window: Number of epochs to consider for plateau detection
 			plateau_threshold: Minimum improvement percentage to avoid transition
-			min_epochs_in_phase: Minimum epochs before considering transition
 			
 	Returns:
 			Boolean indicating whether to transition to next phase
 	"""
 	
 	# Need minimum data and minimum time in current phase
-	if len(losses) < window or len(losses) < min_epochs_in_phase:
-		print(f"Not enough data for transition: {len(losses)} epochs (need {max(window, min_epochs_in_phase)})")
+	if len(losses) < window:
+		print(f"Not enough data for transition: {len(losses)} epoch(s) (needs at least {window} epochs)")
 		return False
 	
 	# Simple plateau detection: compare recent average to older average
@@ -1942,14 +1939,10 @@ def should_transition_to_next_phase(
 	recent_avg = np.mean(recent_window)
 	older_avg = np.mean(older_window)
 	
-	# Calculate improvement percentage
-	improvement_pct = ((older_avg - recent_avg) / older_avg) * 100 if older_avg > 0 else 0
-	abs_improvement = older_avg - recent_avg
+	improvement = (older_avg - recent_avg) / older_avg if older_avg > 0 else 0
+	is_plateau = improvement < plateau_threshold
 
-	# Check for meaningful plateau
-	is_plateau = (improvement_pct < plateau_threshold) or (abs_improvement < absolute_threshold)
-	
-	# Simple volatility check - high volatility suggests instability
+	# Simple volatility check - high volatility suggests instability (overshooting with spiking)
 	recent_std = np.std(recent_window)
 	recent_cv = (recent_std / abs(recent_avg)) * 100 if recent_avg != 0 else 0
 	high_volatility = recent_cv > volatility_threshold  # X% coefficient of variation
@@ -1957,20 +1950,20 @@ def should_transition_to_next_phase(
 	print(f"\n=== SIMPLE TRANSITION CHECK (Phase {current_phase}) ===")
 	print(f"Recent window ({window} epochs): {recent_window}")
 	print(f"Older average: {older_avg:.4f} → Recent average: {recent_avg:.4f}")
-	print(f"Improvement: {improvement_pct:.2f}% (threshold: {plateau_threshold}%) | Absolute: {abs_improvement:.4f} (threshold: {absolute_threshold})")
+	print(f"Improvement: {improvement:.2f} (threshold: {plateau_threshold})")
 	print(f"Volatility: {recent_cv:.2f}% (high if > {volatility_threshold}%)")
-	print(f"Plateau: {is_plateau} (need {plateau_threshold}% OR {absolute_threshold} absolute)")
+	print(f"Plateau: {is_plateau}")
+
 	# Transition logic
 	should_transition = False
 	reasons = []
-	
 	if is_plateau and not high_volatility:
 		should_transition = True
-		reasons.append(f"Meaningful plateau detected ({improvement_pct:.2f}% < {plateau_threshold}% OR {abs_improvement:.4f} < {absolute_threshold})")
+		reasons.append(f"Meaningful plateau detected ({improvement} < {plateau_threshold})")
 	elif high_volatility:
 		reasons.append(f"High volatility ({recent_cv:.2f}%) - continuing current phase for stability")
 	else:
-		reasons.append(f"Still learning ({improvement_pct:.2f}% improvement)")
+		reasons.append(f"Still learning ({improvement} improvement > threshold: {plateau_threshold})")
 	
 	if should_transition:
 		print(f"\t>>> TRANSITION RECOMMENDED: {', '.join(reasons)}")
@@ -2481,14 +2474,7 @@ def progressive_finetune_single_label(
 		torch.cuda.empty_cache()
 
 		# --- Phase Transition Check ---
-		# Check only if enough epochs *overall* and *within the phase* have passed,
-		# and if we are not already in the last phase.
-		if (
-			epoch >= minimum_epochs and
-			epochs_in_current_phase >= min_epochs_per_phase and
-			current_phase < max_phases - 1 and
-			len(early_stopping.value_history) >= window_size
-		):
+		if (epochs_in_current_phase >= min_epochs_per_phase and current_phase < max_phases - 1 and len(early_stopping.value_history) >= window_size):
 			print(f"Checking phase transition ({epochs_in_current_phase} elapsed epochs in phase {current_phase})")
 
 			val_losses = early_stopping.value_history
@@ -2523,10 +2509,14 @@ def progressive_finetune_single_label(
 				epochs_in_current_phase = 0 # Reset phase epoch counter
 				early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
 				print(f"Transitioned to Phase {current_phase}. Early stopping reset.")
-
 				phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
 				print(f"Phase transition triggered @ epoch {epoch+1} & current phase: {current_phase}. Optimizer/Scheduler refresh pending after unfreeze.")
-
+			else:
+				print(f"Phase transition NOT triggered @ epoch {epoch+1} & current phase: {current_phase}.")
+		else:
+			print(f"No phase transition check needed @ epoch {epoch+1} & current phase: {current_phase}.")
+			print(f"Reason: Not enough epochs in current phase ({epochs_in_current_phase} < {min_epochs_per_phase}) or already in last phase ({current_phase} >= {max_phases - 1}) or not enough early stopping history ({len(early_stopping.value_history)} < {window_size}).")
+		
 		if optimizer.param_groups and not phase_just_changed:
 			current_lr = max([pg['lr'] for pg in optimizer.param_groups])
 			current_wd = optimizer.param_groups[0]['weight_decay']
@@ -2668,11 +2658,6 @@ def progressive_finetune_single_label(
 				scaler.scale(batch_loss).backward()
 				scaler.unscale_(optimizer) # Unscale before clipping
 				torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=1.0)
-
-				# # --- DEBUG HOOK: Log Gradient Norms ---
-				# if bidx % print_every == 0:  # Or some other frequency
-				# 	log_grad_norms(model, current_phase, epoch+1)
-				# # --- END DEBUG HOOK ---
 
 				scaler.step(optimizer)
 				scaler.update()
