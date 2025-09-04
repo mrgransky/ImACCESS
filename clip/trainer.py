@@ -1539,7 +1539,9 @@ def get_status(
 	print("\nLayer Category Breakdown:")
 	print(tabulate.tabulate(category_stats, headers=["Category", "Frozen/Total (Percentage)"], tablefmt="pretty", colalign=("left", "left")))
 
-def get_num_transformer_blocks(model: torch.nn.Module) -> tuple:
+def get_num_transformer_blocks(
+		model: torch.nn.Module
+	) -> tuple:
 	if not hasattr(model, 'visual'):
 		raise ValueError(f"{model.__class__.__name__} ({model.name}) lacks 'visual' attribute.")
 
@@ -1550,7 +1552,7 @@ def get_num_transformer_blocks(model: torch.nn.Module) -> tuple:
 	is_vit = "ViT" in model.name
 	is_resnet = "RN" in model.name
 
-	# Count visual blocks
+	# Count visual transformer blocks
 	visual_blocks = 0
 	if is_vit:
 		if not hasattr(model.visual, 'transformer') or not hasattr(model.visual.transformer, 'resblocks'):
@@ -1575,7 +1577,9 @@ def get_num_transformer_blocks(model: torch.nn.Module) -> tuple:
 	# print(f">> {model.__class__.__name__} {model.name}: Visual Transformer blocks: {visual_blocks}, Text Transformer blocks: {text_blocks}")
 	return visual_blocks, text_blocks
 
-def get_layer_groups(model: torch.nn.Module) -> dict:
+def get_layer_groups(
+		model: torch.nn.Module
+	) -> dict:
 	vis_nblocks, txt_nblocks = get_num_transformer_blocks(model=model)
 
 	# Determine model type
@@ -1825,9 +1829,9 @@ def create_differential_optimizer_groups(
 
 	if lr_multipliers is None:
 		lr_multipliers = {
-			'projections': 0.1,					# orig: 0.5
-			'text_transformer': 1.0,		# orig: 0.1
-			'visual_transformer': 1.0,	# orig: 0.1
+			'projections': 0.1,					# orig: 0.5 # Already trained - conservative
+			'text_transformer': 1.0,		# orig: 0.1 # New layers - full rate
+			'visual_transformer': 1.0,	# orig: 0.1 # New layers - full rate
 			'text_frontend': 0.01,
 			'visual_frontend': 0.01,
 		}
