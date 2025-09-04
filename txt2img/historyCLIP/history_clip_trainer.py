@@ -83,7 +83,7 @@ def main():
 	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs [def: max cpus]')
 
 	# Early stopping
-	parser.add_argument('--minimum_epochs', '-mep', type=int, default=10, help='Early stopping minimum epochs')
+	parser.add_argument('--minimum_epochs', '-mep', type=int, default=7, help='Early stopping minimum epochs')
 	parser.add_argument('--patience', '-pat', type=int, default=3, help='Patience for early stopping')
 	parser.add_argument('--minimum_delta', '-mdelta', type=float, default=1e-4, help='Min delta for early stopping & progressive freezing [Platueau threshhold]')
 	parser.add_argument('--cumulative_delta', '-cdelta', type=float, default=5e-3, help='Cumulative delta for early stopping')
@@ -216,7 +216,7 @@ def main():
 		window_size = get_adaptive_window_size(
 			loader=train_loader,
 			min_window=5,
-			max_window=min(args.minimum_epochs, 20),
+			max_window=min(args.minimum_epochs, 15),
 		)
 		finetune_functions = {
 			'single_label': {

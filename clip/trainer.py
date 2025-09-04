@@ -1829,9 +1829,9 @@ def create_differential_optimizer_groups(
 
 	if lr_multipliers is None:
 		lr_multipliers = {
-			'projections': 0.1,					# orig: 0.5 # Already trained - conservative
-			'text_transformer': 1.0,		# orig: 0.1 # New layers - full rate
-			'visual_transformer': 1.0,	# orig: 0.1 # New layers - full rate
+			'projections': 0.5,					# orig: 0.5 # Already trained - conservative
+			'text_transformer': 0.8,		# orig: 0.1 # New layers - full rate
+			'visual_transformer': 0.8,	# orig: 0.1 # New layers - full rate
 			'text_frontend': 0.01,
 			'visual_frontend': 0.01,
 		}
@@ -1949,8 +1949,8 @@ def should_transition_to_next_phase(
 	
 	print(f"\n=== SIMPLE TRANSITION CHECK (Phase {current_phase}) ===")
 	print(f"Recent window ({window} epochs): {recent_window}")
-	print(f"Older average: {older_avg:.4f} → Recent average: {recent_avg:.4f}")
-	print(f"Improvement: {improvement:.2f} (threshold: {plateau_threshold})")
+	print(f"Older average: {older_avg} → Recent average: {recent_avg}")
+	print(f"Improvement: {improvement} (threshold: {plateau_threshold})")
 	print(f"Volatility: {recent_cv:.2f}% (high if > {volatility_threshold}%)")
 	print(f"Plateau: {is_plateau}")
 
