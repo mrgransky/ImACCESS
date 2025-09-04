@@ -17,58 +17,6 @@ from visualize import (
 if USER == "farid":
 	from visualize import build_arch_flowchart
 
-def cleanup_embedding_cache(
-		dataset_name: str,
-		cache_dir: str,
-		finetune_strategy: str,
-		batch_size: int,
-		model_name: str,
-		model_arch: str,
-		num_workers: int,
-	):
-	base_name = os.path.join(
-			cache_dir,
-			f"{dataset_name}_"
-			f"{finetune_strategy}_"
-			f"bs_{batch_size}_"
-			f"nw_{num_workers}_"
-			f"{model_name}_"
-			f"{re.sub(r'[/@]', '_', model_arch)}_"
-			f"validation_embeddings"
-	)
-	cache_files = glob.glob(f"{base_name}.pt") + glob.glob(f"{base_name}_*.pt")
-	if cache_files:
-			print(f"Found {len(cache_files)} cache file(s) to clean up.")
-			for cache_file in cache_files:
-					try:
-							os.remove(cache_file)
-							print(f"Successfully removed cache file: {cache_file}")
-					except Exception as e:
-							print(f"Warning: Failed to remove cache file {cache_file}: {e}")
-	else:
-			print(f"No cache files found for {base_name}*.pt")
-
-def get_model_hash(model: torch.nn.Module) -> str:
-		"""
-		Generate a hash of model parameters to detect when model weights have changed.
-		This is used to determine if cached embeddings need to be recomputed.
-		
-		Args:
-				model: The model to hash
-				
-		Returns:
-				String hash of model parameters
-		"""
-		hasher = hashlib.md5()
-		# Only hash a subset of parameters for efficiency on very large models
-		param_sample = []
-		for i, param in enumerate(model.parameters()):
-				if i % 10 == 0:  # Sample every 10th parameter
-						param_sample.append(param.data.cpu().numpy().mean())  # Just use the mean for speed
-		
-		hasher.update(str(param_sample).encode())
-		return hasher.hexdigest()
-
 def compute_multilabel_validation_loss(
 		model: torch.nn.Module,
 		validation_loader: DataLoader,
@@ -465,31 +413,6 @@ def compute_direct_in_batch_metrics(
 		"txt2img_topk_acc": txt2img_topk_acc,
 		"cosine_similarity": float(avg_cos_sim)
 	}
-
-def compute_ap(
-		i: int, 
-		correct_mask: torch.Tensor, 
-		query_labels: torch.Tensor, 
-		class_counts: Optional[torch.Tensor], 
-		mode: str, 
-		K: int,
-	) -> float:
-	correct = correct_mask[i]
-	if correct.any():
-		relevant_positions = torch.where(correct)[0]
-		precisions = []
-		cumulative_correct = 0
-		for pos in relevant_positions:
-			cumulative_correct += 1
-			precision_at_pos = cumulative_correct / (pos.item() + 1)
-			precisions.append(precision_at_pos)
-		if mode == "Image-to-Text":
-			R = 1
-		else:
-			R = class_counts[query_labels[i]].item()
-		if R > 0:
-			return sum(precisions) / min(R, K)
-	return 0.0
 
 def get_optimal_threshold_multilabel(
 		probs: torch.Tensor, 
@@ -1292,24 +1215,6 @@ def _validate_cache_compatibility(cached_labels: torch.Tensor, expected_labels: 
 				return False
 		return True
 
-def monitor_memory_usage(operation_name: str):
-	if torch.cuda.is_available():
-		gpu_memory = torch.cuda.memory_allocated() / 1024**3
-		gpu_cached = torch.cuda.memory_reserved() / 1024**3
-	else:
-		gpu_memory = gpu_cached = 0
-	cpu_memory = psutil.virtual_memory()
-	cpu_used_gb = (cpu_memory.total - cpu_memory.available) / 1024**3
-	cpu_percent = cpu_memory.percent
-	if cpu_percent > 96:
-		print(
-			f"[{operation_name}] Memory - CPU Usage: {cpu_used_gb:.1f}GB ({cpu_percent:.1f}%), "
-			f"GPU: {gpu_memory:.1f}GB allocated, {gpu_cached:.1f}GB cached"
-		)
-		print(f"WARNING: High CPU usage ({cpu_percent:.1f}%) → Clearing GPU cache...")
-		return True
-	return False
-
 def _compute_image_embeddings(
 		model: torch.nn.Module,
 		validation_loader: DataLoader, 
@@ -1938,9 +1843,9 @@ def create_differential_optimizer_groups(
 
 	if lr_multipliers is None:
 		lr_multipliers = {
-			'projections': 1.0,
-			'text_transformer': 0.9,		# orig: 0.1
-			'visual_transformer': 0.9,	# orig: 0.1
+			'projections': 0.1,					# orig: 0.5
+			'text_transformer': 1.0,		# orig: 0.1
+			'visual_transformer': 1.0,	# orig: 0.1
 			'text_frontend': 0.01,
 			'visual_frontend': 0.01,
 		}
@@ -2006,7 +1911,7 @@ def create_differential_optimizer_groups(
 
 	return param_groups
 
-def should_transition_phase(
+def should_transition_to_next_phase(
 		current_phase: int,
 		losses: List[float],
 		window: int,
@@ -2284,9 +2189,6 @@ def progressive_finetune_single_label(
 	if verbose:
 		for n, m in model.named_modules():
 			print(f"{n:<60} {type(m).__name__:<50} Training: {m.training:<10} Weights Grad: {m.weight.requires_grad if hasattr(m, 'weight') else ''}")
-			# print(n)
-			# print(m)
-			# print()
 		print("-"*100)
 
 	# Find dropout value
@@ -2479,7 +2381,7 @@ def progressive_finetune_single_label(
 			val_accs_in_batch = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in in_batch_loss_acc_metrics_all_epochs]
 			val_accs_full = [m.get('img2txt_acc', 0.0) + m.get('txt2img_acc', 0.0) / 2.0 for m in full_val_loss_acc_metrics_all_epochs]
 
-			should_trans = should_transition_phase(
+			should_trans = should_transition_to_next_phase(
 				current_phase=current_phase,
 				losses=val_losses,
 				window=window_size,
@@ -4883,7 +4785,7 @@ def progressive_finetune_multi_label(
 				avg_acc = (i2t_acc + t2i_acc) / 2.0
 				val_accs_in_batch.append(avg_acc)
 
-			should_trans = should_transition_phase(
+			should_trans = should_transition_to_next_phase(
 				current_phase=current_phase,
 				losses=val_losses,
 				window=window_size,

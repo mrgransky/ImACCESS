@@ -1021,19 +1021,6 @@ def measure_execution_time(func):
 		return result
 	return wrapper
 
-# def set_seeds(seed:int=42, debug:bool=False):
-# 	random.seed(seed)
-# 	np.random.seed(seed)
-# 	torch.manual_seed(seed)
-# 	if torch.cuda.is_available():
-# 		torch.cuda.empty_cache()
-# 		torch.cuda.manual_seed(seed)
-# 		torch.cuda.manual_seed_all(seed)
-# 		if debug: # slows down training but ensures reproducibility
-# 			torch.backends.cudnn.deterministic = True
-# 			torch.backends.cudnn.benchmark = False
-# 			torch.use_deterministic_algorithms(True, warn_only=True)
-
 def set_seeds(seed: int = 42, debug: bool = False):
 	random.seed(seed)
 	np.random.seed(seed)
@@ -1054,6 +1041,76 @@ def set_seeds(seed: int = 42, debug: bool = False):
 	
 	if debug:
 		torch.use_deterministic_algorithms(True, warn_only=True)
+
+def cleanup_embedding_cache(
+		dataset_name: str,
+		cache_dir: str,
+		finetune_strategy: str,
+		batch_size: int,
+		model_name: str,
+		model_arch: str,
+		num_workers: int,
+	):
+	base_name = os.path.join(
+			cache_dir,
+			f"{dataset_name}_"
+			f"{finetune_strategy}_"
+			f"bs_{batch_size}_"
+			f"nw_{num_workers}_"
+			f"{model_name}_"
+			f"{re.sub(r'[/@]', '_', model_arch)}_"
+			f"validation_embeddings"
+	)
+	cache_files = glob.glob(f"{base_name}.pt") + glob.glob(f"{base_name}_*.pt")
+	if cache_files:
+			print(f"Found {len(cache_files)} cache file(s) to clean up.")
+			for cache_file in cache_files:
+					try:
+							os.remove(cache_file)
+							print(f"Successfully removed cache file: {cache_file}")
+					except Exception as e:
+							print(f"Warning: Failed to remove cache file {cache_file}: {e}")
+	else:
+			print(f"No cache files found for {base_name}*.pt")
+
+def get_model_hash(model: torch.nn.Module) -> str:
+	"""
+	Generate a hash of model parameters to detect when model weights have changed.
+	This is used to determine if cached embeddings need to be recomputed.
+	
+	Args:
+			model: The model to hash
+			
+	Returns:
+			String hash of model parameters
+	"""
+	hasher = hashlib.md5()
+	# Only hash a subset of parameters for efficiency on very large models
+	param_sample = []
+	for i, param in enumerate(model.parameters()):
+			if i % 10 == 0:  # Sample every 10th parameter
+					param_sample.append(param.data.cpu().numpy().mean())  # Just use the mean for speed
+	
+	hasher.update(str(param_sample).encode())
+	return hasher.hexdigest()
+
+def monitor_memory_usage(operation_name: str):
+	if torch.cuda.is_available():
+		gpu_memory = torch.cuda.memory_allocated() / 1024**3
+		gpu_cached = torch.cuda.memory_reserved() / 1024**3
+	else:
+		gpu_memory = gpu_cached = 0
+	cpu_memory = psutil.virtual_memory()
+	cpu_used_gb = (cpu_memory.total - cpu_memory.available) / 1024**3
+	cpu_percent = cpu_memory.percent
+	if cpu_percent > 96:
+		print(
+			f"[{operation_name}] Memory - CPU Usage: {cpu_used_gb:.1f}GB ({cpu_percent:.1f}%), "
+			f"GPU: {gpu_memory:.1f}GB allocated, {gpu_cached:.1f}GB cached"
+		)
+		print(f"WARNING: High CPU usage ({cpu_percent:.1f}%) → Clearing GPU cache...")
+		return True
+	return False
 
 def get_config(architecture: str, dropout: float=0.0) -> dict:
 	configs = {

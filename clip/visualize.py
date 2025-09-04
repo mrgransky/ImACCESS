@@ -601,9 +601,9 @@ def plot_phase_transition_analysis(
 	
 	phase_colors = plt.cm.tab10(np.linspace(0, 1, max(phases) + 1))
 	
-	# ================================
+	# ========================================
 	# 1. Learning Curve with Phase Transitions
-	# ================================
+	# ========================================
 	ax1 = fig.add_subplot(gs[0, :])
 	# Set y-axis limits with minimum of 0 and maximum with margin
 	# max_loss = max(max(train_losses), max(val_losses))
