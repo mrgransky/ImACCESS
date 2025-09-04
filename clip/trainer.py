@@ -1783,44 +1783,26 @@ def get_unfreeze_schedule(
 	print("-"*120)
 	return schedule
 
-def log_grad_norms(
-		model, 
-		phase, 
-		epoch,
-		max_layers=11,
+def compute_embedding_drift(
+		model: torch.nn.Module, 
+		val_subset: torch.utils.data.DataLoader, 
+		pretrained_embeds: torch.Tensor, 
+		device: torch.device, 
+		phase: int, 
+		epoch: int,
 	):
-	"""Log gradient norms of unfrozen layers for debugging."""
-	print(f"\n[DEBUG] Gradient Norms | Phase {phase} | Epoch {epoch}")
-	count = 0
-	for name, param in model.named_parameters():
-		if param.requires_grad and param.grad is not None:
-			grad_norm = param.grad.data.norm(2).item()
-			print(f"\t{name}: {grad_norm}")
-			count += 1
-			if count >= max_layers:  # limit logs
-				print("\t... (truncated)")
-				break
-
-def classwise_accuracy_debug(preds, labels, phase, epoch, top_k=10):
-		"""Print classwise sample distribution + simple accuracy stats."""
-		preds_np = preds.cpu().numpy()
-		labels_np = labels.cpu().numpy()
-		counts = Counter(labels_np)
-		correct = Counter(preds_np[labels_np == preds_np])
-		print(f"\n[DEBUG] Classwise Stats | Phase {phase} | Epoch {epoch}")
-		print("  Most common classes:", counts.most_common(top_k))
-		print("  Correctly predicted (subset):", correct.most_common(top_k))
-
-def compute_embedding_drift(model, val_subset, pretrained_embeds, device, phase, epoch):
 	"""
 	Embedding Drift = 1 - cosine_similarity, 
-	measures how far the current image embeddings have moved from their original, pre-trained positions. 
-	A value of 0.0 means no change, while a value of 1.0 means they are now orthogonal (completely different).
+	measures how far the current image embeddings 
+	moved from their original, pre-trained positions. 
+	0.0: no change, 
+	1.0: they are now orthogonal (completely different).
 	
 	In summary, the ideal Embedding Drift curve:
 		Starts near zero.
-		Shows small, controlled increases during early-to-mid phases that are inversely correlated with validation loss (drift goes up, loss goes down).
-		Plateaus in the later phases, indicating that the foundational knowledge is being preserved.
+		Shows small, controlled increases during early-to-mid phases 
+		that are inversely correlated with validation loss (drift goes up, loss goes down).
+		Plateaus in later phases, indicating that the foundational knowledge is being preserved.
 	"""
 	model.eval()
 	with torch.no_grad():
