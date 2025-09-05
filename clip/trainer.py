@@ -1693,11 +1693,11 @@ def unfreeze_layers(
 
 def get_unfreeze_schedule(
 		model: torch.nn.Module,
-		max_phases: int,
+		num_phases: int,
 		layer_groups_to_unfreeze: List[str]=['visual_frontend', 'visual_transformer', 'text_frontend', 'text_transformer', 'projections'],
 	) -> Dict[int, List[str]]:
 
-	unfreeze_fractions = np.linspace(0, 1, max_phases).tolist()
+	unfreeze_fractions = np.linspace(0, 1, num_phases).tolist()
 	print(f"Getting unfreeze schedule for {model.name} for {len(unfreeze_fractions)} phases".center(120, "-"))
 	print(f"Layer groups to unfreeze: {layer_groups_to_unfreeze}")
 	print(f"Unfreeze fractions: {unfreeze_fractions}")
@@ -1967,11 +1967,6 @@ def should_transition_to_next_phase(
 
 def handle_phase_transition(
 		current_phase: int, 
-		initial_lr: float,
-		initial_wd: float,
-		max_phases: int,
-		current_loss: float,
-		best_loss: Optional[float],
 		last_lr: float, 
 		last_wd: float,
 	) -> Tuple[int, float, float]:
@@ -2003,11 +1998,16 @@ def progressive_finetune_single_label(
 		pairwise_imp_threshold: float,							# Stricter requirement for pairwise improvement
 		min_phases_before_stopping: int,						# Ensure significant unfreezing before global stop
 		accuracy_plateau_threshold: float = 5e-4,		# For phase transition based on accuracy
-		topk_values: list[int] = [1, 5, 10],
-		layer_groups_to_unfreeze: list[str] = ['visual_transformer', 'text_transformer', 'projections'], # Focus on key layers
+		topk_values: list[int]=None,
+		layer_groups_to_unfreeze: list[str]=None,
 		use_lamb: bool=False,
 		verbose: bool=False,
 	):
+	if layer_groups_to_unfreeze is None:
+		layer_groups_to_unfreeze = ['visual_transformer', 'text_transformer', 'projections'] # key layers
+	if topk_values is None:
+		topk_values = [1, 5, 10, 15, 20]
+
 	initial_learning_rate = learning_rate
 	initial_weight_decay = weight_decay
 	window_size = min_epochs_per_phase + 5
@@ -2079,10 +2079,10 @@ def progressive_finetune_single_label(
 	else:
 		print(f"No non-zero dropout detected in {model_name} {model_arch}")
 
-	max_phases = min_phases_before_stopping + 5
+	total_num_phases = min_phases_before_stopping + 5
 	unfreeze_schedule = get_unfreeze_schedule(
 		model=model,
-		max_phases=max_phases,
+		num_phases=total_num_phases,
 		layer_groups_to_unfreeze=layer_groups_to_unfreeze,
 	)
 
@@ -2210,19 +2210,19 @@ def progressive_finetune_single_label(
 	
 	# --- Main Training Loop ---
 	train_start_time = time.time()
-	print(f"Training for {num_epochs} epochs".center(170, "-"))
+	print(f"Training: {num_epochs} epochs, {total_num_phases} phases, {min_epochs_per_phase} min epochs per phase".center(170, "-"))
 	for epoch in range(num_epochs):
 		epoch_start_time = time.time()
 		print(
 			f"Epoch {epoch+1}/{num_epochs} "
-			f"Phase {current_phase}/{max_phases} "
+			f"Phase {current_phase}/{total_num_phases} "
 			f"current LR: {last_lr} "
 			f"current WD: {last_wd}"
 		)
 		torch.cuda.empty_cache()
 
 		# --- Phase Transition Check ---
-		if (epochs_in_current_phase >= min_epochs_per_phase and current_phase < max_phases - 1):
+		if (epochs_in_current_phase >= min_epochs_per_phase and current_phase < total_num_phases - 1):
 			val_losses = early_stopping.value_history
 
 			should_trans = should_transition_to_next_phase(
@@ -2241,11 +2241,6 @@ def progressive_finetune_single_label(
 				phase_transitions_epochs.append(epoch)
 				current_phase, last_lr, last_wd = handle_phase_transition(
 					current_phase=current_phase,
-					initial_lr=initial_learning_rate,
-					initial_wd=initial_weight_decay,
-					max_phases=max_phases,
-					current_loss=val_losses[-1],
-					best_loss=early_stopping.get_best_score(),
 					last_lr=last_lr,
 					last_wd=last_wd,
 				)
@@ -2258,7 +2253,7 @@ def progressive_finetune_single_label(
 				print(f"Phase transition NOT triggered @ epoch {epoch+1} & current phase: {current_phase}.")
 		else:
 			print(f"No phase transition check needed @ epoch {epoch+1} & current phase: {current_phase}.")
-			print(f"Reason: Not enough epochs in current phase ({epochs_in_current_phase} < {min_epochs_per_phase}) or already in last phase ({current_phase} >= {max_phases - 1})")
+			print(f"Reason: Not enough epochs in current phase ({epochs_in_current_phase} < {min_epochs_per_phase}) or already in last phase ({current_phase} >= {total_num_phases - 1})")
 
 		if optimizer.param_groups and not phase_just_changed:
 			current_lr = max([pg['lr'] for pg in optimizer.param_groups])
@@ -4482,10 +4477,10 @@ def progressive_finetune_multi_label(
 	print()
 
 	# Get the detailed layer unfreeze schedule
-	max_phases = min_phases_before_stopping + 1
+	total_num_phases = min_phases_before_stopping + 5
 	unfreeze_schedule = get_unfreeze_schedule(
 		model=model,
-		max_phases=max_phases,
+		num_phases=total_num_phases,
 		layer_groups_to_unfreeze=layer_groups_to_unfreeze,
 	)
 
@@ -4584,7 +4579,7 @@ def progressive_finetune_multi_label(
 
 	for epoch in range(num_epochs):
 		epoch_start_time = time.time()
-		print(f"Epoch {epoch+1}/{num_epochs} Phase {current_phase}/{max_phases} current LR: {last_lr} current WD: {last_wd}")
+		print(f"Epoch {epoch+1}/{num_epochs} Phase {current_phase}/{total_num_phases} current LR: {last_lr} current WD: {last_wd}")
 		torch.cuda.empty_cache()
 		
 		# --- Phase Transition Check ---
@@ -4592,7 +4587,7 @@ def progressive_finetune_multi_label(
 		# and if we are not already in the last phase.
 		if (epoch >= minimum_epochs and  # Overall min epochs check
 			epochs_in_current_phase >= min_epochs_per_phase and
-			current_phase < max_phases - 1 and
+			current_phase < total_num_phases - 1 and
 			len(early_stopping.value_history) >= window_size):
 			print(f"Checking phase transition ({epochs_in_current_phase} elapsed epochs in phase {current_phase})")
 
@@ -4622,12 +4617,8 @@ def progressive_finetune_multi_label(
 			if should_trans:
 				current_phase, last_lr, last_wd = handle_phase_transition(
 					current_phase=current_phase,
-					initial_lr=initial_learning_rate,
-					initial_wd=initial_weight_decay,
-					max_phases=max_phases,
-					window_size=window_size,
-					current_loss=val_losses[-1],
-					best_loss=early_stopping.get_best_score(),
+					last_lr=last_lr,
+					last_wd=last_wd,
 				)
 				epochs_in_current_phase = 0  # Reset phase epoch counter
 				early_stopping.reset()  # <<< CRITICAL: Reset early stopping state for the new phase
