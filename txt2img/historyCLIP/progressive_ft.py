@@ -141,26 +141,16 @@ def simplified_progressive_finetune(
 		results_dir: str,
 		
 		# Simplified parameters
-		num_phases: int = 4,  # Fewer phases for stability
-		min_epochs_per_phase: int = 10,  # Minimum epochs before considering transition
-		patience_factor: float = 1.5,  # Multiply base patience by this
-		transition_threshold: float = 0.001,  # Simple improvement threshold
+		num_phases: int = 4,
+		min_epochs_per_phase: int = 10,
+		patience_factor: float = 1.5,
+		transition_threshold: float = 0.001,
 		
 		# Optional parameters with defaults
 		layer_groups_to_unfreeze: List[str] = None,
 		topk_values: List[int] = None,
 		verbose: bool = True,
 	):
-	"""
-	Simplified progressive fine-tuning with minimal interacting systems.
-	
-	Key simplifications:
-	1. Single transition criterion (plateau detection)
-	2. Fixed learning rate schedule per phase
-	3. Simple early stopping
-	4. Clean phase transitions
-	5. Minimal hyperparameter interactions
-	"""
 	
 	if layer_groups_to_unfreeze is None:
 		layer_groups_to_unfreeze = ['projections', 'visual_transformer', 'text_transformer']
@@ -193,22 +183,32 @@ def simplified_progressive_finetune(
 	current_phase = 0
 	epochs_in_phase = 0
 	
-	# History tracking
+	# History tracking - WITH DEBUG PRINTS
 	training_history = {
 		'train_losses': [],
 		'val_losses': [],
 		'phases': [],
 		'phase_transitions': [],
-		'metrics_per_epoch': []
+		'metrics_per_epoch': [],
+		'learning_rates': [],
+		'weight_decays': [],
+		'optimizer_states': []
 	}
+	
+	print(f"DEBUG: Initialized training_history with keys: {list(training_history.keys())}")
 	
 	# Model file path
 	model_path = os.path.join(results_dir, f"{mode}_{model_arch}_phases_{num_phases}.pth")
 	
 	print(f"Training with {num_phases} phases, {min_epochs_per_phase} min epochs per phase")
 	
+	# Initialize optimizer and scheduler
+	optimizer = None
+	scheduler = None
+	
 	for epoch in range(num_epochs):
 		epoch_start = time.time()
+		
 		# Apply current phase unfreezing
 		if epochs_in_phase == 0:  # New phase started
 			apply_phase_unfreezing(model, unfreeze_schedule, current_phase)
@@ -232,11 +232,38 @@ def simplified_progressive_finetune(
 		val_metrics = validate_epoch(model, validation_loader, device, topk_values)
 		val_loss = val_metrics['val_loss']
 		
+		# TRACK HYPERPARAMETERS WITH DEBUG
+		if optimizer is not None:
+			current_lr = optimizer.param_groups[0]['lr']
+			current_wd = optimizer.param_groups[0]['weight_decay']
+			print(f"DEBUG: Epoch {epoch+1} - LR: {current_lr:.2e}, WD: {current_wd:.2e}")
+		else:
+			current_lr = learning_rate
+			current_wd = weight_decay
+			print(f"DEBUG: Epoch {epoch+1} - No optimizer yet, using defaults LR: {current_lr:.2e}, WD: {current_wd:.2e}")
+		
+		trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+		
 		# Update history
 		training_history['train_losses'].append(train_loss)
 		training_history['val_losses'].append(val_loss)
 		training_history['phases'].append(current_phase)
 		training_history['metrics_per_epoch'].append(val_metrics)
+		training_history['learning_rates'].append(current_lr)
+		training_history['weight_decays'].append(current_wd)
+		training_history['optimizer_states'].append({
+			'epoch': epoch,
+			'phase': current_phase,
+			'lr': current_lr,
+			'weight_decay': current_wd,
+			'trainable_params': trainable_params
+		})
+		
+		if epoch == 0:  # Debug first epoch
+			print(f"DEBUG: After epoch 0, learning_rates length: {len(training_history['learning_rates'])}")
+			print(f"DEBUG: After epoch 0, weight_decays length: {len(training_history['weight_decays'])}")
+			print(f"DEBUG: Learning rates so far: {training_history['learning_rates']}")
+			print(f"DEBUG: Weight decays so far: {training_history['weight_decays']}")
 		
 		epochs_in_phase += 1
 		
@@ -244,6 +271,8 @@ def simplified_progressive_finetune(
 			print(
 				f"Epoch {epoch+1:3d} | Phase {current_phase} | "
 				f"Train: {train_loss:.4f} | Val: {val_loss:.4f} | "
+				f"LR: {current_lr:.2e} | WD: {current_wd:.2e} | "
+				f"Params: {trainable_params:,} | "
 				f"Time: {time.time()-epoch_start:.1f}s"
 			)
 		
@@ -269,6 +298,11 @@ def simplified_progressive_finetune(
 			if verbose:
 				print(f"\n>>> TRANSITION TO PHASE {current_phase} @ Epoch {epoch+1}")
 	
+	# DEBUG: Check final training history
+	print(f"DEBUG: Final training_history keys: {list(training_history.keys())}")
+	print(f"DEBUG: Final learning_rates length: {len(training_history['learning_rates'])}")
+	print(f"DEBUG: Final weight_decays length: {len(training_history['weight_decays'])}")
+	
 	# Save final model
 	torch.save(
 		{
@@ -283,6 +317,8 @@ def simplified_progressive_finetune(
 	if verbose:
 		analyze_progressive_training(training_history, results_dir, model_arch)
 
+	# This should now work
+	print("DEBUG: About to call create_hyperparameter_evolution_plot...")
 	create_hyperparameter_evolution_plot(training_history, results_dir, model_arch)
 
 	return training_history
@@ -711,8 +747,8 @@ def main():
 	parser.add_argument('--batch_size', '-bs', type=int, default=128, help='Batch size for training')
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_epochs', '-ne', type=int, default=25, help='Number of epochs for training')
-	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='Learning rate for training')
-	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-4, help='Weight decay for training')
+	parser.add_argument('--learning_rate', '-lr', type=float, default=5e-5, help='Learning rate for training')
+	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay for training')
 	parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of workers for data loading')
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout probability')
 	parser.add_argument('--num_phases', '-np', type=int, default=8, help='Number of phases for progressive fine-tuning')
@@ -725,11 +761,12 @@ def main():
 
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))
 	print_args_table(args=args, parser=parser)
+	print(args)
 	set_seeds(seed=42)
 	RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{args.dataset_type}")
 	os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 
-	print(f">> CLIP Model Architecture: {args.model_architecture}...")
+	print(f">> CLIP {args.model_architecture} Architecture:")
 	model_config = get_config(
 		architecture=args.model_architecture, 
 		dropout=args.dropout,
