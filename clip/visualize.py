@@ -762,13 +762,12 @@ def plot_phase_transition_analysis(
 		x0, x1 = epochs[i], epochs[i+1]
 		y0, y1 = learning_rates[i], learning_rates[i+1]
 		phase_color = phase_colors[phases[i+1]]
-		# ax2.semilogy(
 		ax2.plot(
 			[x0, x1],
 			[y0, y1],
 			color=phase_color,
-			linewidth=1.5,
-			alpha=0.5,
+			linewidth=1.1,
+			alpha=0.4,
 			linestyle='-'
 		)
 
@@ -780,13 +779,12 @@ def plot_phase_transition_analysis(
 		x0, x1 = epochs[i], epochs[i+1]
 		y0, y1 = weight_decays[i], weight_decays[i+1]
 		phase_color = phase_colors[phases[i+1]]
-		# ax2_twin.semilogy(
 		ax2_twin.plot(
 			[x0, x1],
 			[y0, y1],
 			color=phase_color,
-			linewidth=1.5,
-			alpha=0.8,
+			linewidth=2.0,
+			alpha=0.5,
 			linestyle='--'  # Different line style for distinction
 		)
 
@@ -802,10 +800,10 @@ def plot_phase_transition_analysis(
 			)
 
 	ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
-	ax2.set_ylabel('LR (log)', fontsize=8, weight='bold')
-	ax2_twin.set_ylabel('WD (log)', fontsize=8, weight='bold')
-	ax2.tick_params(axis='y', labelsize=8)
-	ax2_twin.tick_params(axis='y', labelsize=8)
+	ax2.set_ylabel('LR', fontsize=7, weight='bold')
+	ax2_twin.set_ylabel('WD', fontsize=7, weight='bold')
+	ax2.tick_params(axis='y', labelsize=7)
+	ax2_twin.tick_params(axis='y', labelsize=7)
 	ax2.set_title('Hyperparameter Adaptation Across Phases\nLearning Rate (—) Weight Decay (--)', fontsize=8, weight='bold')
 	ax2.grid(True, alpha=0.3, linestyle='-', color='#A3A3A3')
 	ax2_twin.grid(True, alpha=0.5, linestyle='--', color="#8A8A8A")
