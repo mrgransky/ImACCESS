@@ -127,8 +127,6 @@ def create_hyperparameter_evolution_plot(training_history, results_dir, model_ar
 	plot_path = os.path.join(results_dir, f'hyperparameter_evolution_{model_arch}.png')
 	plt.savefig(plot_path, dpi=300, bbox_inches='tight')
 	plt.close()
-	
-	print(f"Hyperparameter evolution plot saved: {plot_path}")
 
 def simplified_progressive_finetune(
 		model: torch.nn.Module,
@@ -317,8 +315,6 @@ def simplified_progressive_finetune(
 	if verbose:
 		analyze_progressive_training(training_history, results_dir, model_arch)
 
-	# This should now work
-	print("DEBUG: About to call create_hyperparameter_evolution_plot...")
 	create_hyperparameter_evolution_plot(training_history, results_dir, model_arch)
 
 	return training_history
