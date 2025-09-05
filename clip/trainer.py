@@ -1697,23 +1697,22 @@ def get_unfreeze_schedule(
 		layer_groups_to_unfreeze: List[str]=['visual_frontend', 'visual_transformer', 'text_frontend', 'text_transformer', 'projections'],
 	) -> Dict[int, List[str]]:
 
-	unfreeze_percentages = np.linspace(0, 1, max_phases).tolist()
-	print(f"Getting unfreeze schedule for {model.name} for {len(unfreeze_percentages)} phases".center(120, "-"))
+	unfreeze_fractions = np.linspace(0, 1, max_phases).tolist()
+	print(f"Getting unfreeze schedule for {model.name} for {len(unfreeze_fractions)} phases".center(120, "-"))
 	print(f"Layer groups to unfreeze: {layer_groups_to_unfreeze}")
-	print(f"Unfreeze percentages: {unfreeze_percentages}")
+	print(f"Unfreeze fractions: {unfreeze_fractions}")
 	
 	
 	# Validate input
-	if not all(0.0 <= p <= 1.0 for p in unfreeze_percentages):
-		raise ValueError("Unfreeze percentages must be between 0.0 and 1.0.")
+	if not all(0.0 <= p <= 1.0 for p in unfreeze_fractions):
+		raise ValueError("Unfreeze fractions must be between 0.0 and 1.0.")
 
 	if not all(g in ['visual_frontend', 'visual_transformer', 'text_frontend', 'text_transformer', 'projections'] for g in layer_groups_to_unfreeze):
 		raise ValueError("Invalid layer group specified. Accepted: visual_frontend, visual_transformer, text_frontend, text_transformer, projections.")
 
-	display_percentages = sorted(unfreeze_percentages)  # Ascending order for table
 	def create_layer_table(num_layers: int, layer_type: str) -> str:
 		table_data = []
-		for i, pct in enumerate(display_percentages):
+		for i, pct in enumerate(unfreeze_fractions):
 			label = f"{int(pct * 100)}%" if pct != 0.0 and pct != 1.0 else ("None" if pct == 0.0 else "All")
 			table_data.append([
 				i,
@@ -1750,7 +1749,7 @@ def get_unfreeze_schedule(
 		raise ValueError("No transformer blocks found in visual or text encoders. Cannot create unfreezing schedule.")
 
 	schedule = {}
-	for phase, unfreeze_pct in enumerate(unfreeze_percentages):
+	for phase, unfreeze_pct in enumerate(unfreeze_fractions):
 		# Start with an empty list for this phase's layers
 		layers_to_unfreeze_for_phase = []
 		
@@ -2163,7 +2162,7 @@ def progressive_finetune_single_label(
 	# For embedding drift, get a fixed batch of validation data and original embeddings
 	val_subset_loader = DataLoader(
 		validation_loader.dataset, 
-		batch_size=32, 
+		batch_size=validation_loader.batch_size,
 		shuffle=False
 	)
 
@@ -2260,7 +2259,7 @@ def progressive_finetune_single_label(
 		else:
 			print(f"No phase transition check needed @ epoch {epoch+1} & current phase: {current_phase}.")
 			print(f"Reason: Not enough epochs in current phase ({epochs_in_current_phase} < {min_epochs_per_phase}) or already in last phase ({current_phase} >= {max_phases - 1})")
-		print(f"Has the phase changed? {phase_just_changed}")
+
 		if optimizer.param_groups and not phase_just_changed:
 			current_lr = max([pg['lr'] for pg in optimizer.param_groups])
 			current_wd = optimizer.param_groups[0]['weight_decay']
@@ -4413,7 +4412,6 @@ def progressive_finetune_multi_label(
 		min_phases_before_stopping: int = 3,  # Ensure significant unfreezing before global stop
 		topk_values: list[int] = [1, 5, 10],
 		layer_groups_to_unfreeze: list[str] = ['visual_transformer', 'text_transformer', 'projections'],  # Focus on key layers
-		unfreeze_percentages: Optional[List[float]] = None,  # Allow passing custom percentages
 		loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
 		temperature: float = 0.07,  # Temperature for contrastive learning
 		label_smoothing: float = 0.0,  # Label smoothing for multi-label
