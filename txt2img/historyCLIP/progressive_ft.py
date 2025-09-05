@@ -232,7 +232,7 @@ def should_transition_to_next_phase(
 		
 		is_plateau = improvement < transition_threshold
 		
-		print(f"  Transition check: improvement={improvement:.4f}, threshold={transition_threshold}, plateau={is_plateau}")
+		print(f"\tTransition check: improvement={improvement}, threshold={transition_threshold}, plateau={is_plateau}")
 		
 		return is_plateau
 
@@ -513,11 +513,6 @@ def get_layer_groups(
 	return layer_groups
 
 def analyze_progressive_training(training_history, results_dir, model_arch):
-		"""
-		Analyze and visualize progressive training results.
-		"""
-		import matplotlib.pyplot as plt
-		
 		epochs = range(len(training_history['train_losses']))
 		train_losses = training_history['train_losses']
 		val_losses = training_history['val_losses']
@@ -532,7 +527,7 @@ def analyze_progressive_training(training_history, results_dir, model_arch):
 		
 		# Mark phase transitions
 		for transition_epoch in transitions:
-				ax1.axvline(x=transition_epoch, color='red', linestyle='--', alpha=0.5)
+			ax1.axvline(x=transition_epoch, color='red', linestyle='--', alpha=0.5)
 		
 		ax1.set_xlabel('Epoch')
 		ax1.set_ylabel('Loss')
@@ -562,21 +557,23 @@ def analyze_progressive_training(training_history, results_dir, model_arch):
 		# Analyze phase performance
 		phase_performance = {}
 		for phase in range(max(phases) + 1):
-				phase_epochs = [i for i, p in enumerate(phases) if p == phase]
-				if phase_epochs:
-						phase_val_losses = [val_losses[i] for i in phase_epochs]
-						phase_performance[phase] = {
-								'epochs': len(phase_epochs),
-								'best_val_loss': min(phase_val_losses),
-								'final_val_loss': phase_val_losses[-1],
-								'improvement': phase_val_losses[0] - phase_val_losses[-1] if len(phase_val_losses) > 1 else 0
-						}
+			phase_epochs = [i for i, p in enumerate(phases) if p == phase]
+			if phase_epochs:
+				phase_val_losses = [val_losses[i] for i in phase_epochs]
+				phase_performance[phase] = {
+					'epochs': len(phase_epochs),
+					'best_val_loss': min(phase_val_losses),
+					'final_val_loss': phase_val_losses[-1],
+					'improvement': phase_val_losses[0] - phase_val_losses[-1] if len(phase_val_losses) > 1 else 0
+				}
 		
 		print("\nPhase Performance:")
 		for phase, perf in phase_performance.items():
-				print(f"  Phase {phase}: {perf['epochs']} epochs, "
-							f"best_val={perf['best_val_loss']:.4f}, "
-							f"improvement={perf['improvement']:.4f}")
+			print(
+				f"\tPhase {phase}: {perf['epochs']} epochs, "
+				f"best_val={perf['best_val_loss']:.4f}, "
+				f"improvement={perf['improvement']:.4f}"
+			)
 		
 		print("="*60)
 		
@@ -600,7 +597,10 @@ def main():
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
 	args.dataset_dir = os.path.normpath(args.dataset_dir)
-	
+	set_seeds(seed=42)
+	RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{args.dataset_type}")
+	os.makedirs(RESULT_DIRECTORY, exist_ok=True)
+
 	print(f">> CLIP Model Architecture: {args.model_architecture}...")
 	model_config = get_config(
 		architecture=args.model_architecture, 
@@ -642,7 +642,7 @@ def main():
 		learning_rate=args.learning_rate,
 		weight_decay=args.weight_decay,
 		device=args.device,
-		results_dir=args.dataset_dir,
+		results_dir=RESULT_DIRECTORY,
 		num_phases=args.num_phases,
 		min_epochs_per_phase=args.min_epochs_per_phase,
 		patience_factor=args.patience_factor,
