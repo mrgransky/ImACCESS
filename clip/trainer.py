@@ -1693,14 +1693,16 @@ def unfreeze_layers(
 
 def get_unfreeze_schedule(
 		model: torch.nn.Module,
-		unfreeze_percentages: List[float]=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0], # Start at 0% unfrozen, increase to 100%
+		max_phases: int,
 		layer_groups_to_unfreeze: List[str]=['visual_frontend', 'visual_transformer', 'text_frontend', 'text_transformer', 'projections'],
 	) -> Dict[int, List[str]]:
 
+	unfreeze_percentages = np.linspace(0, 1, max_phases).tolist()
 	print(f"Getting unfreeze schedule for {model.name} for {len(unfreeze_percentages)} phases".center(120, "-"))
 	print(f"Layer groups to unfreeze: {layer_groups_to_unfreeze}")
 	print(f"Unfreeze percentages: {unfreeze_percentages}")
-
+	
+	
 	# Validate input
 	if not all(0.0 <= p <= 1.0 for p in unfreeze_percentages):
 		raise ValueError("Unfreeze percentages must be between 0.0 and 1.0.")
@@ -1741,6 +1743,8 @@ def get_unfreeze_schedule(
 	
 	total_v_layers = len(visual_transformer)
 	total_t_layers = len(text_transformer)
+	print(f"Total visual transformer layers: {total_v_layers}")
+	print(f"Total text transformer layers: {total_t_layers}")
 
 	if total_v_layers == 0 and total_t_layers == 0:
 		raise ValueError("No transformer blocks found in visual or text encoders. Cannot create unfreezing schedule.")
@@ -1910,20 +1914,7 @@ def should_transition_to_next_phase(
 		accuracy_plateau_threshold: float=1e-3, # Threshold for accuracy stagnation
 		plateau_threshold: float = 1e-2,				# 1% improvement threshold
 	) -> bool:
-	"""
-	Transition logic: meaningful learning plateaus.
 	
-	Args:
-			current_phase: Current phase number
-			losses: List of recent validation losses
-			window: Number of epochs to consider for plateau detection
-			plateau_threshold: Minimum improvement percentage to avoid transition
-			
-	Returns:
-			Boolean indicating whether to transition to next phase
-	"""
-	
-	# Need minimum data and minimum time in current phase
 	if len(losses) < window:
 		print(f"<!> Insufficient loss data ({len(losses)} < {window}) for phase transition.")
 		return False
@@ -1992,211 +1983,6 @@ def handle_phase_transition(
 	new_wd = last_wd * 1.1  # 10% increase
 	
 	return next_phase, new_lr, new_wd
-
-def should_transition_to_next_phase_complex(
-		current_phase: int,
-		losses: List[float],
-		window: int,
-		best_loss: Optional[float],
-		best_loss_threshold: float,
-		volatility_threshold: float,
-		slope_threshold: float,
-		pairwise_imp_threshold: float,
-		accuracies: Optional[List[float]]=None, # Added optional accuracy list
-		accuracy_plateau_threshold: float = 1e-3 # Threshold for accuracy stagnation
-	) -> bool:
-
-	print(f"Phase Transition Check over {window} windows @ Phase: {current_phase}".center(120, "-"))
-
-	if len(losses) < window:
-		print(f"<!> Insufficient loss data ({len(losses)} < {window}) for phase transition.")
-		return False
-
-	# --- Loss Analysis ---
-	# Coefficient of Variation = (Standard Deviation / |Mean|) * 100
-	last_window_losses = losses[-window:]
-	current_loss = last_window_losses[-1]
-	mean_loss = np.mean(last_window_losses)
-	std_loss = np.std(last_window_losses)
-	loss_volatility = (std_loss / abs(mean_loss)) * 100 if mean_loss != 0 else 0.0
-
-	# Calculate Average Pairwise Loss Improvement:
-	#    - Computes the difference between each adjacent epoch's loss within the window.
-	#    - `loss[i] - loss[i+1]` means a positive value indicates loss DECREASED (improvement).
-	loss_pairwise_diffs = [last_window_losses[i] - last_window_losses[i+1] for i in range(len(last_window_losses)-1)]
-	#    - Average these differences to get the typical improvement per step in the window.
-	loss_pairwise_imp_avg = np.mean(loss_pairwise_diffs) if loss_pairwise_diffs else 0.0
-
-	# Calculate Loss Slope:
-	#    - Fits a line to the losses in the window and gets the slope.
-	#    - Positive slope means loss is generally increasing (worsening).
-	#    - Negative slope means loss is generally decreasing (improving).
-	loss_slope = compute_slope(window=last_window_losses) # Use global function
-
-	# Check Closeness to Best Loss:
-	#    - Determines if the current loss is already very near the absolute best loss ever recorded.
-	#    - Handles the case where best_loss might still be None (early in training).
-	close_to_best = best_loss is not None and abs(current_loss - best_loss) < best_loss_threshold
-
-	print(f"Loss Window: {last_window_losses}")
-	print(
-		f"Current Loss: {current_loss} | "
-		f"Best Loss: {best_loss if best_loss is not None else 'N/A'} | "
-		f"Close[{current_loss} - {best_loss} < {best_loss_threshold}] ? {close_to_best}"
-	)
-	print(f"Loss Volatility: {loss_volatility:.2f}% (Threshold: >= {volatility_threshold}%)")
-	print(f"Loss Slope: {loss_slope} (Thresh: > {slope_threshold}) [Positive: worsening, Negative: improving]")
-	print(f"Avg Pairwise Loss Improvement: {loss_pairwise_imp_avg} (Thresh: < {pairwise_imp_threshold})")
-
-	# --- Accuracy Analysis (Optional) ---
-	accuracy_plateau = False
-	if accuracies is not None:
-		if len(accuracies) >= window:
-			last_window_acc = accuracies[-window:]
-			# Calculate Average Pairwise Accuracy Improvement:
-			#     - `acc[i+1] - acc[i]` means a positive value indicates accuracy INCREASED (improvement).
-			acc_pairwise_diffs = [last_window_acc[i+1] - last_window_acc[i] for i in range(len(last_window_acc)-1)]
-			acc_pairwise_imp_avg = np.mean(acc_pairwise_diffs) if acc_pairwise_diffs else 0.0
-			# Determine Accuracy Plateau: If the average improvement is below the threshold, accuracy has likely stalled.
-			accuracy_plateau = acc_pairwise_imp_avg < accuracy_plateau_threshold
-			print(f"Accuracy Window: {last_window_acc}")
-			print(f"Avg Pairwise Acc Improvement: {acc_pairwise_imp_avg:.5f} (Plateau Thresh: < {accuracy_plateau_threshold}) => Plateau: {accuracy_plateau}")
-		else:
-			print(f"<!> Insufficient accuracy data ({len(accuracies)} < {window}) for plateau check.")
-	# else:
-	# 	print("Accuracy data not provided, skipping accuracy plateau check.")
-
-	transition = False
-	reasons = []
-
-	# Reason 1: Loss is highly volatile (unstable)
-	if loss_volatility >= volatility_threshold:
-		transition = True
-		reasons.append(f"High loss volatility ({loss_volatility:.2f}%)")
-
-	# Reason 2: Loss trend is worsening (slope > threshold)
-	if loss_slope > slope_threshold:
-		transition = True
-		reasons.append(f"Worsening loss slope ({loss_slope})")
-
-	# Reason 3: Loss improvement has stagnated AND not close to best
-	if loss_pairwise_imp_avg < pairwise_imp_threshold and not close_to_best:
-		transition = True
-		reasons.append(f"<!> Low loss improvement: {loss_pairwise_imp_avg} < {pairwise_imp_threshold} & not close to best")
-
-	# Reason 4: Accuracy has plateaued (if available)
-	if accuracy_plateau:
-		transition = True
-		reasons.append("Accuracy plateau detected")
-
-	if transition:
-		print(f"\n==>> PHASE TRANSITION RECOMMENDED from Phase: {current_phase}:\n\t{', '.join(reasons)}\n")
-	else:
-		print(f"==>> No phase transition required: Stable progress or close to best.\n\tContinue with current phase: {current_phase}.")
-
-	return transition
-
-def handle_phase_transition_complex(
-		current_phase: int,
-		initial_lr: float,
-		initial_wd: float,
-		max_phases: int,
-		current_loss: float,
-		best_loss: Optional[float],
-    last_lr: float, # Pass the LR from the previous phase
-    last_wd: float, # Pass the WD from the previous phase
-	) -> Tuple[int, float, float]:
-
-	# --- 1. Determine Next Phase and Progress ---
-	next_phase = current_phase + 1
-	# Phase progress as a value from 0.0 (start) to 1.0 (final phase)
-	phase_progress = next_phase / max(1, max_phases - 1)
-
-	# --- 2. Calculate Loss Stability Factor ( punish instability) ---
-	if best_loss is None or best_loss <= 0:
-		loss_stability_factor = 1.0 # Neutral at the very start
-	else:
-		# If current loss is worse than best, this factor will be > 1.0
-		# We will use its inverse to penalize the LR.
-		# Clamped for safety.
-		loss_ratio = current_loss / best_loss
-		loss_stability_factor = 1 / max(1.0, min(loss_ratio, 3.0)) # Penalizes if loss is up to 3x worse
-
-	# --- 3. Calculate New Learning Rate (Compounding Decay) ---
-	# We decay the LEARNING RATE based on how far we are into the training.
-	# Early phases have small decay, later phases have aggressive decay.
-	# This is a smoother version of the 0.75**progress logic.
-	lr_decay_factor = 1.0 - (phase_progress * 0.25) # Max decay of 25% per phase
-	
-	# The new base LR is the *previous* LR decayed by our factors.
-	# This creates a compounding effect, essential for late-stage fine-tuning.
-	new_lr = last_lr * lr_decay_factor * loss_stability_factor
-	
-	# Safety net: ensure LR doesn't collapse to zero.
-	min_lr_dec = 1e-3
-	min_allowable_lr = initial_lr * min_lr_dec
-	new_lr = max(new_lr, min_allowable_lr)
-
-	# --- 4. Calculate New Weight Decay (Compounding Increase) ---
-	# We increase WEIGHT DECAY based on phase progress.
-	# Early phases get a small bump, later phases get a large one.
-	wd_increase_factor = 1.0 + (phase_progress * 0.4) # Max increase of 40% per phase
-	new_wd = last_wd * wd_increase_factor
-
-	# Safety net: cap the total weight decay.
-	max_wd_inc = 10.0
-	max_allowable_wd = initial_wd * max_wd_inc # Don't let it exceed 10x the initial value
-	new_wd = min(new_wd, max_allowable_wd)
-
-	print("="*100)
-	print(f"PHASE TRANSITION: {current_phase} -> {next_phase} (Progress: {phase_progress})")
-	print("-"*100)
-	print("[Learning Rate Calculation]")
-	print(f"  - Previous LR: {last_lr}")
-	print(f"  - Loss Stability Factor (1 / (current/best)): {loss_stability_factor}  (penalizes instability)")
-	print(f"  - Phase Decay Factor (1 - progress*0.25): {lr_decay_factor}")
-	print(f"  - New Calculated LR: {new_lr} (Min allowed: {min_allowable_lr})")
-	print("-"*100)
-	print("[Weight Decay Calculation]")
-	print(f"  - Previous WD: {last_wd}")
-	print(f"  - Phase Increase Factor (1 + progress*0.4): {wd_increase_factor}")
-	print(f"  - New Calculated WD: {new_wd} (Max allowed: {max_allowable_wd})")
-	print("="*100)
-
-	return next_phase, new_lr, new_wd
-
-def get_unfreeze_pcts_hybrid(
-		model: torch.nn.Module,
-		train_loader: DataLoader,
-		min_phases: int,
-		max_phases: int,
-	):
-	print(f"Determining unfreeze schedule percentages (min: {min_phases}, max: {max_phases})...")
-	vis_nblocks, txt_nblocks = get_num_transformer_blocks(model=model)
-	total_transformer_layers = vis_nblocks + txt_nblocks
-	layers_per_phase = 2 # Unfreezing 1 layer per modality per phase
-
-	baseline_phases = (total_transformer_layers // layers_per_phase) + 1
-	print(f"Baseline Phases (with total_transformer_layers(vis: {vis_nblocks} + txt: {txt_nblocks}): {total_transformer_layers}) => {baseline_phases} phases")
-
-	dataset_size = len(train_loader.dataset)
-	dataset_phases = int(5 + np.log10(dataset_size))
-	print(f"Dataset size: {dataset_size} => obtained phases: {dataset_phases}")
-
-	num_phases = max(
-		min_phases,
-		min(
-			max_phases,
-			min(
-				baseline_phases,
-				dataset_phases,
-			)
-		)
-	)
-	print(f"Number of Phases: {num_phases}")
-	unfreeze_pcts = np.linspace(0, 1, num_phases).tolist()
-	print(f"Unfreeze Schedule contains {len(unfreeze_pcts)} different phases:\n{unfreeze_pcts}")
-	return unfreeze_pcts
 
 def progressive_finetune_single_label(
 		model: torch.nn.Module,
@@ -2294,20 +2080,13 @@ def progressive_finetune_single_label(
 	else:
 		print(f"No non-zero dropout detected in {model_name} {model_arch}")
 
-	unfreeze_percentages = get_unfreeze_pcts_hybrid(
-		model=model,
-		train_loader=train_loader,
-		min_phases=min_phases_before_stopping + 1,
-		max_phases=8, # Cap the number of phases
-	)
-
+	max_phases = min_phases_before_stopping + 5
 	unfreeze_schedule = get_unfreeze_schedule(
 		model=model,
-		unfreeze_percentages=unfreeze_percentages,
+		max_phases=max_phases,
 		layer_groups_to_unfreeze=layer_groups_to_unfreeze,
 	)
 
-	max_phases = len(unfreeze_schedule)
 	layer_cache = {} # Cache for layer status (optional, used by get_status)
 
 	# First, unfreeze layers for Phase 0 to correctly initialize the optimizer
@@ -2380,9 +2159,7 @@ def progressive_finetune_single_label(
 	)
 	# print(f"Best model will be saved in: {mdl_fpth}")
 
-	# --- DEBUGGING HOOKS ---
-	print("\n>> Initializing Debugging Hooks...")
-	
+	# --- DEBUGGING HOOKS ---	
 	# For embedding drift, get a fixed batch of validation data and original embeddings
 	val_subset_loader = DataLoader(
 		validation_loader.dataset, 
@@ -2398,8 +2175,6 @@ def progressive_finetune_single_label(
 		initial_images = initial_images.to(device)
 		pretrained_embeds = model.encode_image(initial_images)
 		pretrained_embeds = F.normalize(pretrained_embeds, dim=-1)
-
-	print("Cached initial embeddings for drift analysis.")
 	# --- DEBUGGING HOOKS ---
 	
 	# For retrieval delta, initialize a holder for previous metrics
@@ -2436,7 +2211,7 @@ def progressive_finetune_single_label(
 	
 	# --- Main Training Loop ---
 	train_start_time = time.time()
-
+	print(f"Training for {num_epochs} epochs".center(170, "-"))
 	for epoch in range(num_epochs):
 		epoch_start_time = time.time()
 		print(
@@ -2449,8 +2224,6 @@ def progressive_finetune_single_label(
 
 		# --- Phase Transition Check ---
 		if (epochs_in_current_phase >= min_epochs_per_phase and current_phase < max_phases - 1):
-			print(f"Checking phase transition ({epochs_in_current_phase} elapsed epochs in phase {current_phase})")
-
 			val_losses = early_stopping.value_history
 
 			should_trans = should_transition_to_next_phase(
@@ -2477,9 +2250,9 @@ def progressive_finetune_single_label(
 					last_lr=last_lr,
 					last_wd=last_wd,
 				)
+				print(f"Transitioned to Phase {current_phase} @ epoch {epoch+1}: New LR: {last_lr}, New WD: {last_wd}")
 				epochs_in_current_phase = 0 # Reset phase epoch counter
 				early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
-				print(f"Transitioned to Phase {current_phase} @ epoch {epoch+1}: New LR: {last_lr}, New WD: {last_wd}")
 				phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
 				print(f"Optimizer/Scheduler refresh pending after unfreeze...")
 			else:
@@ -2487,7 +2260,7 @@ def progressive_finetune_single_label(
 		else:
 			print(f"No phase transition check needed @ epoch {epoch+1} & current phase: {current_phase}.")
 			print(f"Reason: Not enough epochs in current phase ({epochs_in_current_phase} < {min_epochs_per_phase}) or already in last phase ({current_phase} >= {max_phases - 1})")
-		
+		print(f"Has the phase changed? {phase_just_changed}")
 		if optimizer.param_groups and not phase_just_changed:
 			current_lr = max([pg['lr'] for pg in optimizer.param_groups])
 			current_wd = optimizer.param_groups[0]['weight_decay']
@@ -2499,14 +2272,9 @@ def progressive_finetune_single_label(
 		learning_rates_history.append(current_lr)
 		weight_decays_history.append(current_wd)
 		phases_history.append(current_phase)
-
-		# DEBUG LOGGING
-		if epoch <= 5 or epoch in phase_transitions_epochs:
-			print(f"Current LR: {current_lr} Phase: {current_phase}, Steps completed = {epoch * len(train_loader)}")
-				
-		# Additional debug for scheduler behavior
-		if epoch <= 2:  # First few epochs
-			print(f"Scheduler last LR: {scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else 'N/A':.2e}")
+		print(f"DEBUG: last_lr: {last_lr}, current_lr: {current_lr} Equal: {last_lr == current_lr}")
+		print(f"DEBUG: optimizer.param_groups[lr]: {[pg['lr'] for pg in optimizer.param_groups]}")
+		print(f"DEBUG: last_wd: {last_wd}, current_wd: {current_wd} Equal: {last_wd == current_wd}")
 
 		# --- Unfreeze Layers for Current Phase ---
 		print(f"Applying unfreeze strategy for Phase {current_phase}...")
@@ -2521,7 +2289,7 @@ def progressive_finetune_single_label(
 			print("Refreshing optimizer with DIFFERENTIAL learning rates...")
 			param_groups = create_differential_optimizer_groups(
 				model=model,
-				base_lr=last_lr,  # new LR from handle_phase_transition as the base
+				base_lr=last_lr,
 				base_wd=last_wd,
 				optimizer_hyperparams={
 					'betas': (0.9, 0.98),
@@ -2534,7 +2302,7 @@ def progressive_finetune_single_label(
 			
 			print("Optimizer parameter groups refreshed. Current group LRs:")
 			for i, pg in enumerate(optimizer.param_groups):
-				print(f"\tGroup {i}: LR = {pg['lr']}, Params = {len(pg['params'])}")
+				print(f"\tGroup {i:<10} LR: {pg['lr']:<20} Params: {len(pg['params'])}")
 
 			print("Re-initializing scheduler for new phase/start...")
 
@@ -2722,36 +2490,32 @@ def progressive_finetune_single_label(
 				print(f"Validation Cache Stats: {cache_stats}")
 			print(f"#"*100)
 
-		if early_stopping.should_stop(
-			current_value=current_val_loss,
-			model=model,
-			epoch=epoch,
-			optimizer=optimizer,
-			scheduler=scheduler,
-			checkpoint_path=mdl_fpth,
-			current_phase=current_phase
+		if (
+			epoch+1 > minimum_epochs 
+			and early_stopping.should_stop(
+				current_value=current_val_loss,
+				model=model,
+				epoch=epoch,
+				optimizer=optimizer,
+				scheduler=scheduler,
+				checkpoint_path=mdl_fpth,
+				current_phase=current_phase
+			)
 		):
+			print(f"EarlyStopping Status:\n{json.dumps(early_stopping.get_status(), indent=2, ensure_ascii=False)}")
 			early_stopping_triggered = True
 			print(f"--- Training stopped early at epoch {epoch+1} ---")
 			break # Exit the main training loop
 
-		# After each training epoch, you might also want to log:
-		if epoch <= 5:
-			print(f"DEBUG: End of epoch {epoch+1}, LR after scheduler steps: {optimizer.param_groups[0]['lr']:.2e}")
-
 		# --- End of Epoch ---
 		epochs_in_current_phase += 1
-		if epoch+1 > minimum_epochs: 
-			print(f"EarlyStopping Status:\n{json.dumps(early_stopping.get_status(), indent=2, ensure_ascii=False)}")
 		print(f"Epoch {epoch+1} Elapsed_t: {time.time() - epoch_start_time:.2f} s".center(170, "-"))
 
 	# --- End of Training ---
 	total_training_time = time.time() - train_start_time
-	print(f"\n--- Training Finished ---")
-	print(f"Total Epochs Run: {epoch + 1}")
+	print(f"Training Finished Total Epochs Run: {epoch + 1} Elapsed_t: {total_training_time:.2f} s".center(170, "-"))
 	print(f"Final Phase Reached: {current_phase}")
 	print(f"Best Validation Loss Achieved: {early_stopping.get_best_score()} @ Epoch {early_stopping.get_best_epoch() + 1}")
-	print(f"Total Training Time: {total_training_time:.2f}s")
 
 	evaluation_results = evaluate_best_model(
 		model=model,
@@ -4719,23 +4483,13 @@ def progressive_finetune_multi_label(
 	print(non_zero_dropouts)
 	print()
 
-	# Determine unfreeze schedule percentages
-	if unfreeze_percentages is None:
-		unfreeze_percentages = get_unfreeze_pcts_hybrid(
-			model=model,
-			train_loader=train_loader,
-			min_phases=max(5, min_phases_before_stopping + 1),  # Ensure enough phases
-			max_phases=15,  # Cap the number of phases
-		)
-
 	# Get the detailed layer unfreeze schedule
+	max_phases = min_phases_before_stopping + 1
 	unfreeze_schedule = get_unfreeze_schedule(
 		model=model,
-		unfreeze_percentages=unfreeze_percentages,
+		max_phases=max_phases,
 		layer_groups_to_unfreeze=layer_groups_to_unfreeze,
 	)
-
-	max_phases = len(unfreeze_schedule)
 
 	# Use BCEWithLogitsLoss for multi-label classification
 	if label_smoothing > 0:

@@ -922,10 +922,10 @@ def plot_phase_transition_analysis(
 			ax4_twin.text(
 				i, 
 				efficiency * 1.02 if efficiency > 0 else efficiency * 0.85,
-				f'{efficiency:.2f} (R²={convergence:.2f})',
+				f'{efficiency:.3f} (R²: {convergence:.3f})',
 				ha='center', 
 				va='bottom' if efficiency > 0 else 'top',
-				fontsize=8,
+				fontsize=7,
 				color=loss_imp_color,
 			)
 
