@@ -762,7 +762,8 @@ def plot_phase_transition_analysis(
 		x0, x1 = epochs[i], epochs[i+1]
 		y0, y1 = learning_rates[i], learning_rates[i+1]
 		phase_color = phase_colors[phases[i+1]]
-		ax2.semilogy(
+		# ax2.semilogy(
+		ax2.plot(
 			[x0, x1],
 			[y0, y1],
 			color=phase_color,
@@ -779,7 +780,8 @@ def plot_phase_transition_analysis(
 		x0, x1 = epochs[i], epochs[i+1]
 		y0, y1 = weight_decays[i], weight_decays[i+1]
 		phase_color = phase_colors[phases[i+1]]
-		ax2_twin.semilogy(
+		# ax2_twin.semilogy(
+		ax2_twin.plot(
 			[x0, x1],
 			[y0, y1],
 			color=phase_color,
@@ -809,71 +811,6 @@ def plot_phase_transition_analysis(
 	ax2_twin.grid(True, alpha=0.5, linestyle='--', color="#8A8A8A")
 	ax2.set_xlim(left=0, right=max(epochs)+1)
 	ax2_twin.set_xlim(left=0, right=max(epochs)+1)
-
-	# # ========================
-	# # Learning Rate Adaptation
-	# # ========================
-	# ax2 = fig.add_subplot(gs[2, 1:])
-
-	# for i in range(len(epochs) - 1):
-	# 	x0, x1 = epochs[i], epochs[i+1]
-	# 	y0, y1 = learning_rates[i], learning_rates[i+1]
-	# 	# Use the phase of the END of the interval → fixes the late color switch
-	# 	phase_color = phase_colors[phases[i+1]]
-	# 	ax2.semilogy(
-	# 		[x0, x1],
-	# 		[y0, y1],
-	# 		color=phase_color,
-	# 		linewidth=2.5,
-	# 		alpha=0.8,
-	# 	)
-
-	# for transition_epoch in transitions:
-	# 	if transition_epoch < len(learning_rates):
-	# 		ax2.axvline(
-	# 			x=transition_epoch,
-	# 			color=transition_color,
-	# 			linewidth=2.0,
-	# 			alpha=0.6,
-	# 			linestyle='--',
-	# 		)
-
-	# ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
-	# ax2.set_ylabel('LR (log)', fontsize=8, weight='bold')
-	# ax2.set_title('Learning Rate Adaptation Across Phases', fontsize=8, weight='bold')
-	# ax2.grid(True, alpha=0.3)
-
-	# # ==========================
-	# # Weight Decay Adaptation
-	# # ==========================
-	# ax3 = fig.add_subplot(gs[1, 1:])
-
-	# for i in range(len(epochs) - 1):
-	# 	x0, x1 = epochs[i], epochs[i+1]
-	# 	y0, y1 = weight_decays[i], weight_decays[i+1]
-	# 	phase_color = phase_colors[phases[i+1]]
-	# 	ax3.semilogy(
-	# 		[x0, x1],
-	# 		[y0, y1],
-	# 		color=phase_color,
-	# 		linewidth=2.5, 
-	# 		alpha=0.8
-	# 	)
-
-	# # Mark transitions
-	# for transition_epoch in transitions:
-	# 	if transition_epoch < len(weight_decays):
-	# 		ax3.axvline(
-	# 			x=transition_epoch,
-	# 			color=transition_color,
-	# 			linestyle='--',
-	# 			linewidth=2.0,
-	# 			alpha=0.6,
-	# 		)
-
-	# ax3.set_ylabel('WD (log)', fontsize=8, weight='bold')
-	# ax3.set_title('Weight Decay Adaptation Across Phases', fontsize=8, weight='bold')
-	# ax3.grid(True, alpha=0.3)
 
 	# ==========================================
 	# Phase Duration and Efficiency Analysis

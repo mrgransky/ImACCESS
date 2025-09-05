@@ -163,7 +163,7 @@ def simplified_progressive_finetune(
 	print(f"{mode} | {model_arch} | {dataset_name} | {num_phases} phases".center(120, "-"))
 	
 	# Get unfreezing schedule
-	unfreeze_schedule = get_simplified_unfreeze_schedule(
+	unfreeze_schedule = get_unfreeze_schedule(
 		model=model,
 		num_phases=num_phases,
 		layer_groups=layer_groups_to_unfreeze
@@ -319,47 +319,6 @@ def simplified_progressive_finetune(
 
 	return training_history
 
-def get_simplified_unfreeze_schedule(model, num_phases, layer_groups):
-		"""
-		Create a simple, predictable unfreezing schedule.
-		"""
-		layer_groups_map = get_layer_groups(model)
-		
-		# Always start with projections only
-		schedule = {0: layer_groups_map['projections']}
-		
-		if num_phases == 1:
-				return schedule
-		
-		# Gradually add other groups
-		other_groups = [g for g in layer_groups if g != 'projections']
-		
-		for phase in range(1, num_phases):
-				layers_to_unfreeze = layer_groups_map['projections'].copy()
-				
-				# Add groups progressively
-				progress = phase / (num_phases - 1)  # 0 to 1
-				
-				for group in other_groups:
-						if group in layer_groups_map:
-								group_layers = layer_groups_map[group]
-								layers_to_add = int(len(group_layers) * progress)
-								
-								if group == 'visual_transformer':
-										# Unfreeze from the end (closer to output)
-										layers_to_unfreeze.extend(group_layers[-layers_to_add:])
-								elif group == 'text_transformer':
-										# Unfreeze from the end
-										layers_to_unfreeze.extend(group_layers[-layers_to_add:])
-								else:
-										# For other groups, add all at final phase
-										if phase == num_phases - 1:
-												layers_to_unfreeze.extend(group_layers)
-				
-				schedule[phase] = list(set(layers_to_unfreeze))  # Remove duplicates
-		
-		return schedule
-
 def should_transition_to_next_phase(
 		current_phase, epochs_in_phase, val_losses, 
 		min_epochs_per_phase, transition_threshold, num_phases
@@ -397,48 +356,42 @@ def should_transition_to_next_phase(
 		return is_plateau
 
 class SimpleEarlyStopping:
-		"""
-		Simplified early stopping with single criterion.
-		"""
-		def __init__(self, patience=10, min_delta=1e-4, mode='min'):
-				self.patience = patience
-				self.min_delta = min_delta
-				self.mode = mode
-				self.best_score = None
-				self.counter = 0
-				self.sign = 1 if mode == 'min' else -1
+	def __init__(self, patience=10, min_delta=1e-4, mode='min'):
+		self.patience = patience
+		self.min_delta = min_delta
+		self.mode = mode
+		self.best_score = None
+		self.counter = 0
+		self.sign = 1 if mode == 'min' else -1
+	
+	def should_stop(self, score, model=None, epoch=None):
+		score = score * self.sign
 		
-		def should_stop(self, score, model=None, epoch=None):
-				score = score * self.sign
-				
-				if self.best_score is None:
-						self.best_score = score
-						return False
-				
-				if score > self.best_score + self.min_delta:
-						self.best_score = score
-						self.counter = 0
-						return False
-				else:
-						self.counter += 1
-						return self.counter >= self.patience
+		if self.best_score is None:
+			self.best_score = score
+			return False
+		
+		if score > self.best_score + self.min_delta:
+			self.best_score = score
+			self.counter = 0
+			return False
+		else:
+			self.counter += 1
+			return self.counter >= self.patience
 
 def apply_phase_unfreezing(model, schedule, phase):
-		"""
-		Apply unfreezing for a specific phase.
-		"""
-		# Freeze all parameters first
-		for param in model.parameters():
-				param.requires_grad = False
-		
-		# Unfreeze specified layers
-		layers_to_unfreeze = schedule.get(phase, [])
-		
-		for name, param in model.named_parameters():
-				for layer_prefix in layers_to_unfreeze:
-						if name.startswith(layer_prefix):
-								param.requires_grad = True
-								break
+	# Freeze all parameters first
+	for param in model.parameters():
+		param.requires_grad = False
+	
+	# Unfreeze specified layers
+	layers_to_unfreeze = schedule.get(phase, [])
+	
+	for name, param in model.named_parameters():
+		for layer_prefix in layers_to_unfreeze:
+			if name.startswith(layer_prefix):
+				param.requires_grad = True
+				break
 
 def create_phase_optimizer(model, lr, wd):
 	trainable_params = [p for p in model.parameters() if p.requires_grad]
@@ -455,81 +408,73 @@ def create_phase_optimizer(model, lr, wd):
 	)
 
 def create_phase_scheduler(optimizer, remaining_epochs):
-		"""
-		Create a simple scheduler for the phase.
-		"""
-		return torch.optim.lr_scheduler.CosineAnnealingLR(
-				optimizer,
-				T_max=remaining_epochs,
-				eta_min=optimizer.param_groups[0]['lr'] * 0.01
-		)
+	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+		optimizer,
+		T_max=remaining_epochs,
+		eta_min=optimizer.param_groups[0]['lr'] * 0.01
+	)
+	return scheduler
 
 def train_epoch(model, train_loader, optimizer, scheduler, device):
-		"""
-		Simple training epoch.
-		"""
-		model.train()
-		total_loss = 0
-		num_batches = 0
+	model.train()
+	total_loss = 0
+	num_batches = 0
+	
+	criterion = torch.nn.CrossEntropyLoss()
+	scaler = torch.amp.GradScaler()
+	
+	for images, tokenized_labels, _ in train_loader:
+		images = images.to(device, non_blocking=True)
+		tokenized_labels = tokenized_labels.to(device, non_blocking=True)
 		
-		criterion = torch.nn.CrossEntropyLoss()
-		scaler = torch.amp.GradScaler()
+		optimizer.zero_grad()
 		
-		for images, tokenized_labels, _ in train_loader:
-				images = images.to(device, non_blocking=True)
-				tokenized_labels = tokenized_labels.to(device, non_blocking=True)
-				
-				optimizer.zero_grad()
-				
-				with torch.amp.autocast(device_type=device.type):
-						logits_per_image, logits_per_text = model(images, tokenized_labels)
-						ground_truth = torch.arange(len(images), device=device)
-						
-						loss_img = criterion(logits_per_image, ground_truth)
-						loss_txt = criterion(logits_per_text, ground_truth)
-						loss = 0.5 * (loss_img + loss_txt)
-				
-				scaler.scale(loss).backward()
-				scaler.unscale_(optimizer)
-				torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-				scaler.step(optimizer)
-				scaler.update()
-				
-				scheduler.step()
-				
-				total_loss += loss.item()
-				num_batches += 1
+		with torch.amp.autocast(device_type=device.type):
+			logits_per_image, logits_per_text = model(images, tokenized_labels)
+			ground_truth = torch.arange(len(images), device=device)
+			
+			loss_img = criterion(logits_per_image, ground_truth)
+			loss_txt = criterion(logits_per_text, ground_truth)
+			loss = 0.5 * (loss_img + loss_txt)
 		
-		return total_loss / num_batches if num_batches > 0 else 0.0
+		scaler.scale(loss).backward()
+		scaler.unscale_(optimizer)
+		torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+		scaler.step(optimizer)
+		scaler.update()
+		
+		scheduler.step()
+		
+		total_loss += loss.item()
+		num_batches += 1
+	
+	return total_loss / num_batches if num_batches > 0 else 0.0
 
 def validate_epoch(model, validation_loader, device, topk_values):
-		"""
-		Simple validation epoch.
-		"""
-		model.eval()
-		total_loss = 0
-		num_batches = 0
-		
-		criterion = torch.nn.CrossEntropyLoss()
-		
-		with torch.no_grad():
-				for images, tokenized_labels, _ in validation_loader:
-						images = images.to(device, non_blocking=True)
-						tokenized_labels = tokenized_labels.to(device, non_blocking=True)
-						
-						logits_per_image, logits_per_text = model(images, tokenized_labels)
-						ground_truth = torch.arange(len(images), device=device)
-						
-						loss_img = criterion(logits_per_image, ground_truth)
-						loss_txt = criterion(logits_per_text, ground_truth)
-						loss = 0.5 * (loss_img + loss_txt)
-						
-						total_loss += loss.item()
-						num_batches += 1
-		
-		return {
-				'val_loss': total_loss / num_batches if num_batches > 0 else 0.0
-		}
+	model.eval()
+	total_loss = 0
+	num_batches = 0
+	
+	criterion = torch.nn.CrossEntropyLoss()
+	
+	with torch.no_grad():
+		for images, tokenized_labels, _ in validation_loader:
+			images = images.to(device, non_blocking=True)
+			tokenized_labels = tokenized_labels.to(device, non_blocking=True)
+			
+			logits_per_image, logits_per_text = model(images, tokenized_labels)
+			ground_truth = torch.arange(len(images), device=device)
+			
+			loss_img = criterion(logits_per_image, ground_truth)
+			loss_txt = criterion(logits_per_text, ground_truth)
+			loss = 0.5 * (loss_img + loss_txt)
+			
+			total_loss += loss.item()
+			num_batches += 1
+	
+	return {
+		'val_loss': total_loss / num_batches if num_batches > 0 else 0.0
+	}
 
 def print_phase_status(model, layers_to_unfreeze):
 	total_params = sum(p.numel() for p in model.parameters())
@@ -733,21 +678,59 @@ def analyze_progressive_training(training_history, results_dir, model_arch):
 		)
 	
 	print("="*60)
+
+def get_unfreeze_schedule(model, num_phases, layer_groups):
+	layer_groups_map = get_layer_groups(model)
+	
+	# Always start with projections only
+	schedule = {0: layer_groups_map['projections']}
+	
+	if num_phases == 1:
+		return schedule
+	
+	# Gradually add other groups
+	other_groups = [g for g in layer_groups if g != 'projections']
+	
+	for phase in range(1, num_phases):
+		layers_to_unfreeze = layer_groups_map['projections'].copy()
 		
+		# Add groups progressively
+		progress = phase / (num_phases - 1)  # 0 to 1
+		
+		for group in other_groups:
+			if group in layer_groups_map:
+				group_layers = layer_groups_map[group]
+				layers_to_add = int(len(group_layers) * progress)
+				
+				if group == 'visual_transformer':
+					# Unfreeze from the end (closer to output)
+					layers_to_unfreeze.extend(group_layers[-layers_to_add:])
+				elif group == 'text_transformer':
+					# Unfreeze from the end
+					layers_to_unfreeze.extend(group_layers[-layers_to_add:])
+				else:
+					# For other groups, add all at final phase
+					if phase == num_phases - 1:
+						layers_to_unfreeze.extend(group_layers)
+		
+		schedule[phase] = list(set(layers_to_unfreeze))  # Remove duplicates
+	
+	return schedule
+
 def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
 	parser.add_argument('--dataset_type', '-dt', type=str, choices=['single_label', 'multi_label'], default='single_label', help='Dataset type (single_label/multi_label)')
 	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain'], default='finetune', help='Choose mode (train/finetune/pretrain)')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
-	parser.add_argument('--batch_size', '-bs', type=int, default=128, help='Batch size for training')
+	parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--num_epochs', '-ne', type=int, default=25, help='Number of epochs for training')
-	parser.add_argument('--learning_rate', '-lr', type=float, default=5e-5, help='Learning rate for training')
+	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='Learning rate for training')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay for training')
-	parser.add_argument('--num_workers', '-nw', type=int, default=10, help='Number of workers for data loading')
+	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of workers for data loading')
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout probability')
-	parser.add_argument('--num_phases', '-np', type=int, default=8, help='Number of phases for progressive fine-tuning')
+	parser.add_argument('--num_phases', '-np', type=int, default=6, help='Number of phases for progressive fine-tuning')
 	parser.add_argument('--min_epochs_per_phase', '-mep', type=int, default=10, help='Minimum epochs per phase')
 	parser.add_argument('--patience_factor', '-pf', type=float, default=1.5, help='Patience factor for early stopping')
 	parser.add_argument('--transition_threshold', '-tt', type=float, default=0.001, help='Transition threshold for phase change')
