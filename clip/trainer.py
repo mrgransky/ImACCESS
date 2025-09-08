@@ -2123,12 +2123,11 @@ def progressive_finetune_single_label(
 	if use_lamb: optimizer = LAMB(params=initial_param_groups)
 	else: optimizer = torch.optim.AdamW(params=initial_param_groups)
 
-	print(f"Using {optimizer.__class__.__name__} optimizer with DIFFERENTIAL LR")
+	print(f"Using {optimizer.__class__.__name__} optimizer")
 
-	scheduler = None
 	# scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
 	# 	optimizer=optimizer,
-	# 	T_0=10,																# 10 epochs before first restart
+	# 	T_0=min(10, num_epochs),							# 10 epochs before first restart
 	# 	T_mult=1,															# A factor by which Ti increases after a restart. Default: 1.
 	# 	eta_min=initial_learning_rate * 1e-2,	# 1% of initial LR
 	# 	last_epoch=-1,												# index of the last epoch. Default: -1
@@ -2136,9 +2135,9 @@ def progressive_finetune_single_label(
 
 	# print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
 
-	# print(f"DEBUG: Initial configured LR: {learning_rate}")
 	# print(f"DEBUG: Scheduler initial LR: {scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else 'N/A'}")
 	# print(f"DEBUG: Optimizer initial LR: {optimizer.param_groups[0]['lr']}")
+	scheduler = None
 
 	criterion = torch.nn.CrossEntropyLoss()
 	print(f"Using {criterion.__class__.__name__} as the loss function")
@@ -2224,37 +2223,41 @@ def progressive_finetune_single_label(
 	t2i_losses = []          # text → image (loss_txt)
 	embedding_drift_history = []
 	
-	# --- Main Training Loop ---
 	train_start_time = time.time()
 	print(f"Training: {num_epochs} epochs, {total_num_phases} phases, {min_epochs_per_phase} min epochs per phase".center(170, "-"))
 	for epoch in range(num_epochs):
 		epoch_start_time = time.time()
-		print(f"Epoch {epoch+1}/{num_epochs} Phase {current_phase}/{total_num_phases}")
 		torch.cuda.empty_cache()
 
-		if optimizer.param_groups and not phase_just_changed:
-			current_lr = optimizer.param_groups[0]['lr']
-			current_wd = optimizer.param_groups[0]['weight_decay']
-		else:
-			# Use the updated values from handle_phase_transition
-			current_lr = last_lr
-			current_wd = last_wd
-			print(f"No optimizer param groups and phase just changed: {phase_just_changed} => using defaults LR: {current_lr}, WD: {current_wd}")
+		# if optimizer.param_groups and not phase_just_changed:
+		# 	current_lr = optimizer.param_groups[0]['lr']
+		# 	current_wd = optimizer.param_groups[0]['weight_decay']
+		# else:
+		# 	# Use the updated values from handle_phase_transition
+		# 	current_lr = last_lr
+		# 	current_wd = last_wd
+		# 	print(f"No optimizer param groups and phase just changed: {phase_just_changed} => using defaults LR: {current_lr}, WD: {current_wd}")
+
+		current_lr = optimizer.param_groups[0]['lr'] if optimizer.param_groups else last_lr
+		current_wd = optimizer.param_groups[0]['weight_decay'] if optimizer.param_groups else last_wd
 
 		learning_rates_history.append(current_lr)
 		weight_decays_history.append(current_wd)
 		phases_history.append(current_phase)
-		print(f"current_lr: {current_lr} | current_wd: {current_wd}")
-		print(f"DEBUG: optimizer.param_groups[lr]: {[pg['lr'] for pg in optimizer.param_groups]}")
+		print(
+			f"Epoch {epoch+1}/{num_epochs} Phase {current_phase}/{total_num_phases} "
+			f"current_lr: {current_lr} | current_wd: {current_wd} | wamrup: {is_in_warmup} "
+			f"optimizer.param_groups[lr]: {[pg['lr'] for pg in optimizer.param_groups]}"
+		)
 
-		# --- Unfreeze Layers for Current Phase ---
 		unfreeze_layers(
 			model=model,
 			strategy=unfreeze_schedule,
 			phase=current_phase,
 			cache=layer_cache,
 		)
-		if phase_just_changed or epoch == 0:
+
+		if phase_just_changed or epochs_in_current_phase == 0:
 			optimizer.param_groups.clear()
 			print("Updating optimizer with new parameters")
 			new_param_groups = create_differential_optimizer_groups(
@@ -2323,64 +2326,54 @@ def progressive_finetune_single_label(
 		epoch_train_loss = 0.0
 		num_train_batches = len(train_loader)
 		trainable_params_exist = any(p.requires_grad for p in model.parameters())
-		if not trainable_params_exist:
-			print("Warning: No trainable parameters found for the current phase. Skipping training steps.")
-		else:
-			for bidx, batch_data in enumerate(train_loader):
-				images, tokenized_labels, _ = batch_data # Adjust unpacking as needed
-				images = images.to(device, non_blocking=True)
-				tokenized_labels = tokenized_labels.to(device, non_blocking=True)
-				optimizer.zero_grad(set_to_none=True)
-				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-					logits_per_image, logits_per_text = model(images, tokenized_labels)
-					ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
-					loss_img = criterion(logits_per_image, ground_truth)
-					loss_txt = criterion(logits_per_text, ground_truth)
-					batch_loss = 0.5 * (loss_img + loss_txt)
-				if torch.isnan(batch_loss):
-					print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
-					continue # Skip optimizer step if loss is NaN
 
-				# --- Learning rate management Apply warm-up or scheduler LR ---
-				if is_in_warmup:
-					print(f"Applying warm-up LR...")
-					warmed_up_lrs = get_warmup_lr(
-						current_step=warmup_steps_completed,
-						warmup_steps=warmup_steps_total,
-						target_lrs=target_lrs_after_warmup
-					)
-					print(f"{len(warmed_up_lrs)} warmed-up LRs: {warmed_up_lrs}")
+		for bidx, batch_data in enumerate(train_loader):
+			images, tokenized_labels, _ = batch_data # Adjust unpacking as needed
+			images = images.to(device, non_blocking=True)
+			tokenized_labels = tokenized_labels.to(device, non_blocking=True)
+			optimizer.zero_grad(set_to_none=True)
 
-					# Manually set the LR for each parameter group
-					for i, param_group in enumerate(optimizer.param_groups):
-						param_group['lr'] = warmed_up_lrs[i]
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				logits_per_image, logits_per_text = model(images, tokenized_labels)
+				ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
+				loss_img = criterion(logits_per_image, ground_truth)
+				loss_txt = criterion(logits_per_text, ground_truth)
+				batch_loss = 0.5 * (loss_img + loss_txt)
 
-					warmup_steps_completed += 1
+			if is_in_warmup:
+				print(f"Applying warm-up LR...")
+				warmed_up_lrs = get_warmup_lr(
+					current_step=warmup_steps_completed,
+					warmup_steps=warmup_steps_total,
+					target_lrs=target_lrs_after_warmup
+				)
+				print(f"{len(warmed_up_lrs)} warmed-up LRs: {warmed_up_lrs}")
+				# Manually set the LR for each parameter group
+				for i, param_group in enumerate(optimizer.param_groups):
+					param_group['lr'] = warmed_up_lrs[i]
+				warmup_steps_completed += 1
+				if warmup_steps_completed >= warmup_steps_total:
+					is_in_warmup = False
+					print(f"Warm-up complete. Main scheduler is now active.")
+			else:
+				scheduler.step() # Let the main scheduler control the LR
 
-					if warmup_steps_completed >= warmup_steps_total:
-						is_in_warmup = False
-						print("\n--- Warm-up complete. Main scheduler is now active. ---")
-				else:
-					# We are in the main scheduling phase
-					print(f"Main scheduler step...")
-					scheduler.step() # Let the main scheduler control the LR
+			scaler.scale(batch_loss).backward()
+			scaler.unscale_(optimizer) # Unscale before clipping
+			torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=1.0)
+			scaler.step(optimizer)
+			scaler.update()
 
-				scaler.scale(batch_loss).backward()
-				scaler.unscale_(optimizer) # Unscale before clipping
-				torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=1.0)
 
-				scaler.step(optimizer)
-				scaler.update()
+			batch_loss_item = batch_loss.item()
+			epoch_train_loss += batch_loss_item
 
-				batch_loss_item = batch_loss.item()
-				epoch_train_loss += batch_loss_item
-
-				if bidx % print_every == 0:
-					print(f"\tBatch [{bidx+1}/{num_train_batches}] Loss: {batch_loss_item}")
-				elif bidx == num_train_batches - 1 and batch_loss_item > 0:
-					print(f"\tBatch [{bidx+1}/{num_train_batches}] Loss: {batch_loss_item}")
-				else:
-					pass
+			if bidx % print_every == 0:
+				print(f"\tBatch [{bidx+1}/{num_train_batches}] Loss: {batch_loss_item}")
+			elif bidx == num_train_batches - 1 and batch_loss_item > 0:
+				print(f"\tBatch [{bidx+1}/{num_train_batches}] Loss: {batch_loss_item}")
+			else:
+				pass
 
 		avg_training_loss = epoch_train_loss / num_train_batches if num_train_batches > 0 and trainable_params_exist else 0.0
 		training_losses.append(avg_training_loss)
@@ -2498,9 +2491,7 @@ def progressive_finetune_single_label(
 			print(f"EarlyStopping Status:\n{json.dumps(early_stopping.get_status(), indent=2, ensure_ascii=False)}")
 			early_stopping_triggered = True
 			print(f"--- Training stopped early at epoch {epoch+1} ---")
-			break # Exit the main training loop
-
-		# --- End of Epoch ---
+			break
 		epochs_in_current_phase += 1
 		print(f"Epoch {epoch+1} Elapsed_t: {time.time() - epoch_start_time:.2f} s".center(170, "-"))
 
