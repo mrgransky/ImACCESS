@@ -1,14 +1,14 @@
 #!/bin/bash
 
 #SBATCH --account=project_2014707
-#SBATCH --job-name=h4_sgl_lbl_semi_simplified
+#SBATCH --job-name=h4_sgl_lbl_over_simplified
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=40
-#SBATCH --mem=96G
+#SBATCH --mem=196G
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:v100:1
 #SBATCH --array=8
@@ -89,7 +89,7 @@ fi
 INIT_LRS=(2.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 INIT_WDS=(5.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
-EPOCHS=(100 100 150 150 150)
+EPOCHS=(101 100 150 150 150)
 
 # LoRA
 LORA_RANKS=(64 64 64 64 64)
