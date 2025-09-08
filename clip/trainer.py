@@ -829,8 +829,8 @@ def get_validation_metrics(
 	n_classes = len(class_names)
 	num_samples = len(validation_loader.dataset)
 	
-	if verbose:
-		print(f"Dataset: {dataset_name}, Label(s): {n_classes}, Samples: {num_samples}")
+	# if verbose:
+	# 	print(f"Dataset: {dataset_name}, Label(s): {n_classes}, Samples: {num_samples}")
 	
 	cache_file = os.path.join(
 		cache_dir,
@@ -1981,14 +1981,17 @@ def should_transition_to_next_phase(
 
 def handle_phase_transition(
 		current_phase: int, 
-		last_lr: float, 
-		last_wd: float,
+		optimizer: torch.optim.Optimizer,
 	) -> Tuple[int, float, float]:
 	next_phase = current_phase + 1
 	
+	# Get ACTUAL current values from optimizer
+	current_lr = optimizer.param_groups[0]['lr']
+	current_wd = optimizer.param_groups[0]['weight_decay']
+
 	# Conservative adjustments only
-	new_lr = last_lr * 0.8  # 20% reduction
-	new_wd = last_wd * 1.1  # 10% increase
+	new_lr = current_lr * 0.8  # 20% reduction
+	new_wd = current_wd * 1.1  # 10% increase
 	
 	return next_phase, new_lr, new_wd
 
@@ -2102,7 +2105,7 @@ def progressive_finetune_single_label(
 
 	layer_cache = {} # Cache for layer status (optional, used by get_status)
 
-	# First, unfreeze layers for Phase 0 to correctly initialize the optimizer
+	# unfreeze layers for Phase 0 to correctly initialize the optimizer
 	unfreeze_layers(
 		model=model,
 		strategy=unfreeze_schedule,
@@ -2110,33 +2113,7 @@ def progressive_finetune_single_label(
 		cache=layer_cache,
 	)
 	
-	# Create initial parameter groups with differential LRs
-	initial_param_groups = create_differential_optimizer_groups(
-		model=model,
-		base_lr=initial_learning_rate,
-		base_wd=initial_weight_decay,
-		optimizer_hyperparams={
-			'betas': (0.9, 0.98),
-			'eps': 1e-6,
-		},
-	)
-	if use_lamb: optimizer = LAMB(params=initial_param_groups)
-	else: optimizer = torch.optim.AdamW(params=initial_param_groups)
-
-	print(f"Using {optimizer.__class__.__name__} optimizer")
-
-	# scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-	# 	optimizer=optimizer,
-	# 	T_0=min(10, num_epochs),							# 10 epochs before first restart
-	# 	T_mult=1,															# A factor by which Ti increases after a restart. Default: 1.
-	# 	eta_min=initial_learning_rate * 1e-2,	# 1% of initial LR
-	# 	last_epoch=-1,												# index of the last epoch. Default: -1
-	# )
-
-	# print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
-
-	# print(f"DEBUG: Scheduler initial LR: {scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else 'N/A'}")
-	# print(f"DEBUG: Optimizer initial LR: {optimizer.param_groups[0]['lr']}")
+	optimizer = None
 	scheduler = None
 
 	criterion = torch.nn.CrossEntropyLoss()
@@ -2150,8 +2127,8 @@ def progressive_finetune_single_label(
 		# f"{dataset_name}_"
 		f"{mode}_"
 		f"{model_arch}_"
-		f"{optimizer.__class__.__name__}_"
-		f"{scheduler.__class__.__name__}_"
+		# f"{optimizer.__class__.__name__}_"
+		# f"{scheduler.__class__.__name__}_"
 		# f"{criterion.__class__.__name__}_"
 		# f"{scaler.__class__.__name__}_"
 		f"ieps_{num_epochs}_"
@@ -2190,16 +2167,6 @@ def progressive_finetune_single_label(
 		pretrained_embeds = F.normalize(pretrained_embeds, dim=-1)
 	# --- DEBUGGING HOOKS ---
 	
-	# For retrieval delta, initialize a holder for previous metrics
-	prev_validation_metrics = None
-
-	# --- Warm-up state variables ---
-	is_in_warmup = False
-	warmup_steps_total = 0
-	warmup_steps_completed = 0
-	target_lrs_after_warmup = []
-	# --- Warm-up state variables ---
-
 	current_phase = 0
 	epochs_in_current_phase = 0
 	training_losses = []
@@ -2208,47 +2175,23 @@ def progressive_finetune_single_label(
 	txt2img_metrics_all_epochs = list()
 	in_batch_loss_acc_metrics_all_epochs = list() # History of [in-batch] validation metrics dicts per epoch
 	full_val_loss_acc_metrics_all_epochs = list() # History of [full] validation metrics dicts per epoch
-	best_val_loss = None # Track the absolute best validation loss
 	
 	last_lr = initial_learning_rate # Track current LR
 	last_wd = initial_weight_decay # Track current WD
-	phase_just_changed = False # Flag to signal optimizer refresh needed
 
 	# Initialize tracking lists
 	learning_rates_history = []
 	weight_decays_history = []
 	phases_history = []
 	phase_transitions_epochs = []
-	i2t_losses = []          # image → text (loss_img)
-	t2i_losses = []          # text → image (loss_txt)
 	embedding_drift_history = []
 	
 	train_start_time = time.time()
 	print(f"Training: {num_epochs} epochs, {total_num_phases} phases, {min_epochs_per_phase} min epochs per phase".center(170, "-"))
 	for epoch in range(num_epochs):
+		print(f"Epoch {epoch+1}/{num_epochs} Phase {current_phase}/{total_num_phases}")
 		epoch_start_time = time.time()
 		torch.cuda.empty_cache()
-
-		# if optimizer.param_groups and not phase_just_changed:
-		# 	current_lr = optimizer.param_groups[0]['lr']
-		# 	current_wd = optimizer.param_groups[0]['weight_decay']
-		# else:
-		# 	# Use the updated values from handle_phase_transition
-		# 	current_lr = last_lr
-		# 	current_wd = last_wd
-		# 	print(f"No optimizer param groups and phase just changed: {phase_just_changed} => using defaults LR: {current_lr}, WD: {current_wd}")
-
-		current_lr = optimizer.param_groups[0]['lr'] if optimizer.param_groups else last_lr
-		current_wd = optimizer.param_groups[0]['weight_decay'] if optimizer.param_groups else last_wd
-
-		learning_rates_history.append(current_lr)
-		weight_decays_history.append(current_wd)
-		phases_history.append(current_phase)
-		print(
-			f"Epoch {epoch+1}/{num_epochs} Phase {current_phase}/{total_num_phases} "
-			f"current_lr: {current_lr} | current_wd: {current_wd} | wamrup: {is_in_warmup} "
-			f"optimizer.param_groups[lr]: {[pg['lr'] for pg in optimizer.param_groups]}"
-		)
 
 		unfreeze_layers(
 			model=model,
@@ -2257,47 +2200,30 @@ def progressive_finetune_single_label(
 			cache=layer_cache,
 		)
 
-		if phase_just_changed or epochs_in_current_phase == 0:
-			optimizer.param_groups.clear()
-			print("Updating optimizer with new parameters")
-			new_param_groups = create_differential_optimizer_groups(
-				model=model,
-				base_lr=last_lr,
-				base_wd=last_wd,
-				optimizer_hyperparams={
-					'betas': (0.9, 0.98),
-					'eps': 1e-6,
-				},
+		if epochs_in_current_phase == 0:
+			# 1. Create optimizer for the current phase
+			trainable_params = [p for p in model.parameters() if p.requires_grad]
+			
+			if not trainable_params:
+				raise ValueError("No trainable parameters found!")
+			
+			optimizer = torch.optim.AdamW(
+				trainable_params,
+				lr=initial_learning_rate,
+				weight_decay=initial_weight_decay,
+				betas=(0.9, 0.98),
+				eps=1e-6
 			)
-
-			optimizer.param_groups.extend(new_param_groups)
-			
-			print("Optimizer parameter groups refreshed. Current group LRs:")
-			for i, pg in enumerate(optimizer.param_groups):
-				print(f"\tGroup {i:<10} LR: {pg['lr']:<20} Params: {len(pg['params'])}")
-
-			print("Re-initializing scheduler for new phase/start...")
-
-			# 1. Set up the warm-up phase
-			warmup_epochs = 2  # Warm up for 2 epochs at the start of each new phase
-			warmup_steps_total = warmup_epochs * len(train_loader)
-			warmup_steps_completed = 0
-			is_in_warmup = True
-			
-			# Store the target LRs that we want to reach after the warm-up
-			target_lrs_after_warmup = [pg['lr'] for pg in optimizer.param_groups]
-			print(f"  ├─ Activating linear warm-up for {warmup_epochs} epochs ({warmup_steps_total} steps).")
-			print(f"  └─ Target LRs after warm-up: {target_lrs_after_warmup}")
 
 			# 2. Configure the main scheduler to take over *after* the warm-up
 			if current_phase >= 3:
-				eta_min = last_lr * 0.2   # Very conservative for final phases
+				eta_min = optimizer.param_groups[0]['lr'] * 0.2   # Very conservative for final phases
 				cycle_description = "conservative"
 			elif current_phase >= 2:
-				eta_min = last_lr * 0.1   # Moderate cycling for mid phases
+				eta_min = optimizer.param_groups[0]['lr'] * 0.1   # Moderate cycling for mid phases
 				cycle_description = "moderate" 
 			else:
-				eta_min = last_lr * 0.01  # Aggressive cycling for early phases
+				eta_min = optimizer.param_groups[0]['lr'] * 0.01  # Aggressive cycling for early phases
 				cycle_description = "aggressive"
 			
 			# 3. Adaptive cycle length based on remaining epochs and phase
@@ -2315,12 +2241,11 @@ def progressive_finetune_single_label(
 				last_epoch=-1
 			)
 			
-			print(f"Phase {current_phase} scheduler: {cycle_description} cycling")
+			print(f"Phase {current_phase} scheduler with {cycle_description} cycling")
 			print(f"  ├─ T_0 = {T_0} epochs")
-			print(f"  ├─ LR range: {eta_min} → {last_lr}")
-			print(f"  ├─ Amplitude ratio: {(last_lr/eta_min)}x")
-			print(f"  └─ Main scheduler ({scheduler.__class__.__name__}) configured to take over after warm-up.")
-			phase_just_changed = False # Reset the flag
+			print(f"  ├─ LR range: {eta_min} → {optimizer.param_groups[0]['lr']}")
+			print(f"  ├─ Amplitude ratio: {(optimizer.param_groups[0]['lr']/eta_min)}x")
+			print(f"  └─ Main scheduler ({scheduler.__class__.__name__}) configured.")
 
 		model.train()
 		epoch_train_loss = 0.0
@@ -2340,30 +2265,13 @@ def progressive_finetune_single_label(
 				loss_txt = criterion(logits_per_text, ground_truth)
 				batch_loss = 0.5 * (loss_img + loss_txt)
 
-			if is_in_warmup:
-				print(f"Applying warm-up LR...")
-				warmed_up_lrs = get_warmup_lr(
-					current_step=warmup_steps_completed,
-					warmup_steps=warmup_steps_total,
-					target_lrs=target_lrs_after_warmup
-				)
-				print(f"{len(warmed_up_lrs)} warmed-up LRs: {warmed_up_lrs}")
-				# Manually set the LR for each parameter group
-				for i, param_group in enumerate(optimizer.param_groups):
-					param_group['lr'] = warmed_up_lrs[i]
-				warmup_steps_completed += 1
-				if warmup_steps_completed >= warmup_steps_total:
-					is_in_warmup = False
-					print(f"Warm-up complete. Main scheduler is now active.")
-			else:
-				scheduler.step() # Let the main scheduler control the LR
+			scheduler.step()
 
 			scaler.scale(batch_loss).backward()
 			scaler.unscale_(optimizer) # Unscale before clipping
 			torch.nn.utils.clip_grad_norm_(parameters=model.parameters(), max_norm=1.0)
 			scaler.step(optimizer)
 			scaler.update()
-
 
 			batch_loss_item = batch_loss.item()
 			epoch_train_loss += batch_loss_item
@@ -2390,8 +2298,6 @@ def progressive_finetune_single_label(
 		)
 		embedding_drift_history.append(drift_value)
 
-		print(f">> Training Completed in {time.time() - epoch_start_time:.2f} s. Validating Epoch: {epoch+1}...")
-		# all metrics in one using caching mechanism:
 		validation_results = get_validation_metrics(
 			model=model,
 			validation_loader=validation_loader,
@@ -2422,10 +2328,7 @@ def progressive_finetune_single_label(
 		validation_losses.append(current_val_loss)
 
 		print(
-			f'Epoch {epoch + 1}:\n'
-			f'\t[LOSS] {mode}'
-			f'(Training): {avg_training_loss} '
-			f'Validation(in-batch): {current_val_loss}\n'
+			f'\t[LOSS] Training: {avg_training_loss} Validation(in-batch): {current_val_loss}\n'
 			f'\tValidation Top-k Accuracy:\n'
 			f'\tIn-batch:\n'
 			f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
@@ -2449,6 +2352,17 @@ def progressive_finetune_single_label(
 				print(f"Validation Cache Stats: {cache_stats}")
 			print(f"#"*100)
 
+		current_lr = optimizer.param_groups[0]['lr']# if optimizer.param_groups else last_lr
+		current_wd = optimizer.param_groups[0]['weight_decay']# if optimizer.param_groups else last_wd
+
+		learning_rates_history.append(current_lr)
+		weight_decays_history.append(current_wd)
+		phases_history.append(current_phase)
+		print(
+			f"current_lr: {current_lr} | current_wd: {current_wd} "
+			f"optimizer.param_groups[lr]: {[pg['lr'] for pg in optimizer.param_groups]}"
+		)
+
 		should_trans = should_transition_to_next_phase(
 			current_phase=current_phase,
 			losses=validation_losses,
@@ -2466,17 +2380,13 @@ def progressive_finetune_single_label(
 		)
 		if should_trans:
 			phase_transitions_epochs.append(epoch)
-			current_phase, last_lr, last_wd = handle_phase_transition(
-				current_phase=current_phase,
-				last_lr=last_lr,
-				last_wd=last_wd,
-			)
-			print(f"Transitioned to Phase {current_phase} @ epoch {epoch+1}: New LR: {last_lr}, New WD: {last_wd}")
+			current_phase, last_lr, last_wd = handle_phase_transition(current_phase, optimizer)
+			print(f"Transition to Phase {current_phase} @ epoch {epoch+1}: New LR: {last_lr}, New WD: {last_wd}")
 			epochs_in_current_phase = 0 # Reset phase epoch counter
 			early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
-			phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
 			validation_losses = [] # Reset validation losses for the new phase
-			print(f"Optimizer/Scheduler refresh pending after unfreeze...")
+		else:
+			epochs_in_current_phase += 1
 
 		training_should_stop = early_stopping.should_stop(
 			current_value=current_val_loss,
@@ -2492,12 +2402,11 @@ def progressive_finetune_single_label(
 			early_stopping_triggered = True
 			print(f"--- Training stopped early at epoch {epoch+1} ---")
 			break
-		epochs_in_current_phase += 1
-		print(f"Epoch {epoch+1} Elapsed_t: {time.time() - epoch_start_time:.2f} s".center(170, "-"))
+		print(f"Epoch {epoch+1} total elapsed time: {time.time() - epoch_start_time:.1f} sec.".center(170, " "))
 
 	# --- End of Training ---
 	total_training_time = time.time() - train_start_time
-	print(f"Training Finished Total Epochs Run: {epoch + 1} Elapsed_t: {total_training_time:.2f} s".center(170, "-"))
+	print(f"Training Finished Total Epochs Run: {epoch + 1} Elapsed_t: {total_training_time:.1f} sec".center(170, "-"))
 	print(f"Final Phase Reached: {current_phase}")
 	print(f"Best Validation Loss Achieved: {early_stopping.get_best_score()} @ Epoch {early_stopping.get_best_epoch() + 1}")
 
