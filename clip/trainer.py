@@ -1983,16 +1983,9 @@ def handle_phase_transition(
 		current_phase: int, 
 		optimizer: torch.optim.Optimizer,
 	) -> Tuple[int, float, float]:
-	next_phase = current_phase + 1
-	
-	# Get ACTUAL current values from optimizer
-	current_lr = optimizer.param_groups[0]['lr']
-	current_wd = optimizer.param_groups[0]['weight_decay']
-
-	# Conservative adjustments only
-	new_lr = current_lr * 0.8  # 20% reduction
-	new_wd = current_wd * 1.1  # 10% increase
-	
+	next_phase = current_phase + 1	
+	new_lr = optimizer.param_groups[0]['lr'] * 0.8  # 20% reduction
+	new_wd = optimizer.param_groups[0]['weight_decay'] * 1.1  # 10% increase
 	return next_phase, new_lr, new_wd
 
 def progressive_finetune_single_label(
@@ -2352,17 +2345,6 @@ def progressive_finetune_single_label(
 				print(f"Validation Cache Stats: {cache_stats}")
 			print(f"#"*100)
 
-		current_lr = optimizer.param_groups[0]['lr']# if optimizer.param_groups else last_lr
-		current_wd = optimizer.param_groups[0]['weight_decay']# if optimizer.param_groups else last_wd
-
-		learning_rates_history.append(current_lr)
-		weight_decays_history.append(current_wd)
-		phases_history.append(current_phase)
-		print(
-			f"current_lr: {current_lr} | current_wd: {current_wd} "
-			f"optimizer.param_groups[lr]: {[pg['lr'] for pg in optimizer.param_groups]}"
-		)
-
 		should_trans = should_transition_to_next_phase(
 			current_phase=current_phase,
 			losses=validation_losses,
@@ -2387,6 +2369,10 @@ def progressive_finetune_single_label(
 			validation_losses = [] # Reset validation losses for the new phase
 		else:
 			epochs_in_current_phase += 1
+
+		phases_history.append(current_phase)
+		learning_rates_history.append(last_lr)
+		weight_decays_history.append(last_wd)
 
 		training_should_stop = early_stopping.should_stop(
 			current_value=current_val_loss,
