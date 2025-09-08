@@ -223,7 +223,7 @@ class EarlyStopping:
 				# 3. Handle improvement
 				if self._is_improvement(current_value):
 					old_best = f"{self.best_score}" if self.best_score is not None else "N/A"
-					print(f"\tNew best Found: {old_best} => {current_value}")
+					print(f"\tNew best Found: {current_value} | previous best: {old_best}")
 					
 					self.best_score = current_value
 					self.best_epoch = epoch
