@@ -192,10 +192,7 @@ def simplified_progressive_finetune(
 		'weight_decays': [],
 		'optimizer_states': []
 	}
-	
-	print(f"DEBUG: Initialized training_history with keys: {list(training_history.keys())}")
-	
-	# Model file path
+		
 	model_path = os.path.join(results_dir, f"{mode}_{model_arch}_phases_{num_phases}.pth")
 	
 	print(f"Training with {num_phases} phases, {min_epochs_per_phase} min epochs per phase")
@@ -234,11 +231,11 @@ def simplified_progressive_finetune(
 		if optimizer is not None:
 			current_lr = optimizer.param_groups[0]['lr']
 			current_wd = optimizer.param_groups[0]['weight_decay']
-			print(f"DEBUG: Epoch {epoch+1} - LR: {current_lr:.2e}, WD: {current_wd:.2e}")
+			print(f"DEBUG: Epoch {epoch+1} - LR: {current_lr}, WD: {current_wd}")
 		else:
 			current_lr = learning_rate
 			current_wd = weight_decay
-			print(f"DEBUG: Epoch {epoch+1} - No optimizer yet, using defaults LR: {current_lr:.2e}, WD: {current_wd:.2e}")
+			print(f"DEBUG: Epoch {epoch+1} - No optimizer yet, using defaults LR: {current_lr}, WD: {current_wd}")
 		
 		trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 		
@@ -268,8 +265,8 @@ def simplified_progressive_finetune(
 		if verbose:
 			print(
 				f"Epoch {epoch+1:3d} | Phase {current_phase} | "
-				f"Train: {train_loss:.4f} | Val: {val_loss:.4f} | "
-				f"LR: {current_lr:.2e} | WD: {current_wd:.2e} | "
+				f"Train: {train_loss:<25}Val: {val_loss:<25} | "
+				f"LR: {current_lr:<25}WD: {current_wd:<25} | "
 				f"Params: {trainable_params:,} | "
 				f"Time: {time.time()-epoch_start:.1f}s"
 			)
@@ -320,40 +317,41 @@ def simplified_progressive_finetune(
 	return training_history
 
 def should_transition_to_next_phase(
-		current_phase, epochs_in_phase, val_losses, 
-		min_epochs_per_phase, transition_threshold, num_phases
-):
-		"""
-		Simple plateau-based transition criterion.
-		"""
-		# Must meet minimum epochs requirement
-		if epochs_in_phase < min_epochs_per_phase:
-				return False
-		
-		# Don't transition from final phase
-		if current_phase >= num_phases - 1:
-				return False
-		
-		# Need enough history to detect plateau
-		window_size = min(5, min_epochs_per_phase)
-		if len(val_losses) < window_size:
-				return False
-		
-		# Check for plateau in validation loss
-		recent_losses = val_losses[-window_size:]
-		
-		# Simple improvement check
-		best_recent = min(recent_losses)
-		current_loss = recent_losses[-1]
-		
-		# Transition if no significant improvement
-		improvement = best_recent - current_loss
-		
-		is_plateau = improvement < transition_threshold
-		
-		print(f"\tTransition check: improvement={improvement}, threshold={transition_threshold}, plateau={is_plateau}")
-		
-		return is_plateau
+		current_phase, 
+		epochs_in_phase, 
+		val_losses, 
+		min_epochs_per_phase, 
+		transition_threshold, 
+		num_phases
+	):
+	# Must meet minimum epochs requirement
+	if epochs_in_phase < min_epochs_per_phase:
+		return False
+	
+	# Don't transition from final phase
+	if current_phase >= num_phases - 1:
+		return False
+	
+	# Need enough history to detect plateau
+	window_size = min(5, min_epochs_per_phase)
+	if len(val_losses) < window_size:
+		return False
+	
+	# Check for plateau in validation loss
+	recent_losses = val_losses[-window_size:]
+	
+	# Simple improvement check
+	best_recent = min(recent_losses)
+	current_loss = recent_losses[-1]
+	
+	# Transition if no significant improvement
+	improvement = best_recent - current_loss
+	
+	is_plateau = improvement < transition_threshold
+	
+	print(f"\tTransition check: improvement={improvement}, threshold={transition_threshold}, plateau={is_plateau}")
+	
+	return is_plateau
 
 class SimpleEarlyStopping:
 	def __init__(self, patience=10, min_delta=1e-4, mode='min'):

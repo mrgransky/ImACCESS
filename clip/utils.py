@@ -76,16 +76,6 @@ USER = os.getenv('USER')
 CLUSTER = os.environ.get('SLURM_CLUSTER_NAME', "local")
 HOST = platform.node()
 
-def log_retrieval_delta(metrics, prev_metrics, phase):
-	"""Log retrieval performance deltas per phase."""
-	if prev_metrics is None:
-		return
-	print(f"\n[DEBUG] Retrieval Δ after Phase {phase}")
-	
-	for k in metrics["img2txt_metrics"]["mP"].keys():
-		delta = metrics["img2txt_metrics"]["mP"][k] - prev_metrics["img2txt_metrics"]["mP"][k]
-		print(f"  mP@{k}: {delta:+.4f}")
-
 def compute_slope(window: List[float]) -> float:
 	if len(window) < 2:
 		return 0.0
@@ -100,13 +90,10 @@ def get_warmup_lr(
 		warmup_steps: int,
 		target_lrs: List[float]
 	) -> List[float]:
-	"""
-	Calculates the learning rate for a given step during a linear warm-up phase.
-	"""
 	if current_step >= warmup_steps:
 		return target_lrs  # Return the final target LRs after warm-up is done
 
-	# Calculate the warm-up factor (from 0 to 1)
+	# warm-up factor (0 to 1)
 	warmup_factor = current_step / float(warmup_steps)
 	
 	# Linearly interpolate each LR in the list

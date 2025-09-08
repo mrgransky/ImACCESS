@@ -1672,6 +1672,8 @@ def unfreeze_layers(
 		phase: int,
 		cache: Dict[int, List[str]],
 	):
+	print(f"Applying unfreeze strategy for Phase {phase}...")
+	
 	# 1. Get the layers to unfreeze at this phase
 	layers_to_unfreeze = strategy[phase]
 
@@ -1904,6 +1906,9 @@ def should_transition_to_next_phase(
 		current_phase: int,
 		losses: List[float],
 		window: int,
+		epochs_in_phase: int,
+		min_epochs_per_phase: int,
+		num_phases: int,
 		best_loss: Optional[float],
 		best_loss_threshold: float,
 		volatility_threshold: float,
@@ -1914,6 +1919,15 @@ def should_transition_to_next_phase(
 		plateau_threshold: float = 1e-2,				# 1% improvement threshold
 	) -> bool:
 	
+	# Must meet minimum epochs requirement
+	if epochs_in_phase < min_epochs_per_phase:
+		return False
+
+	# Don't transition from final phase
+	if current_phase >= num_phases - 1:
+		return False
+
+	# Need enough history to detect trends
 	if len(losses) < window:
 		print(f"<!> Insufficient loss data ({len(losses)} < {window}) for phase transition.")
 		return False
@@ -2011,6 +2025,7 @@ def progressive_finetune_single_label(
 	initial_learning_rate = learning_rate
 	initial_weight_decay = weight_decay
 	window_size = min_epochs_per_phase + 5
+	total_num_phases = min_phases_before_stopping + 5
 
 	early_stopping = EarlyStopping(
 		patience=patience,
@@ -2079,7 +2094,6 @@ def progressive_finetune_single_label(
 	else:
 		print(f"No non-zero dropout detected in {model_name} {model_arch}")
 
-	total_num_phases = min_phases_before_stopping + 5
 	unfreeze_schedule = get_unfreeze_schedule(
 		model=model,
 		num_phases=total_num_phases,
@@ -2111,19 +2125,20 @@ def progressive_finetune_single_label(
 
 	print(f"Using {optimizer.__class__.__name__} optimizer with DIFFERENTIAL LR")
 
-	scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-		optimizer=optimizer,
-		T_0=10,																# 10 epochs before first restart
-		T_mult=1,															# A factor by which Ti increases after a restart. Default: 1.
-		eta_min=initial_learning_rate * 1e-2,	# 1% of initial LR
-		last_epoch=-1,												# index of the last epoch. Default: -1
-	)
+	scheduler = None
+	# scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+	# 	optimizer=optimizer,
+	# 	T_0=10,																# 10 epochs before first restart
+	# 	T_mult=1,															# A factor by which Ti increases after a restart. Default: 1.
+	# 	eta_min=initial_learning_rate * 1e-2,	# 1% of initial LR
+	# 	last_epoch=-1,												# index of the last epoch. Default: -1
+	# )
 
-	print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
+	# print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
 
-	print(f"DEBUG: Initial configured LR: {learning_rate}")
-	print(f"DEBUG: Scheduler initial LR: {scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else 'N/A'}")
-	print(f"DEBUG: Optimizer initial LR: {optimizer.param_groups[0]['lr']}")
+	# print(f"DEBUG: Initial configured LR: {learning_rate}")
+	# print(f"DEBUG: Scheduler initial LR: {scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else 'N/A'}")
+	# print(f"DEBUG: Optimizer initial LR: {optimizer.param_groups[0]['lr']}")
 
 	criterion = torch.nn.CrossEntropyLoss()
 	print(f"Using {criterion.__class__.__name__} as the loss function")
@@ -2188,7 +2203,8 @@ def progressive_finetune_single_label(
 
 	current_phase = 0
 	epochs_in_current_phase = 0
-	training_losses = [] # History of average training loss per epoch
+	training_losses = []
+	validation_losses = []
 	img2txt_metrics_all_epochs = list()
 	txt2img_metrics_all_epochs = list()
 	in_batch_loss_acc_metrics_all_epochs = list() # History of [in-batch] validation metrics dicts per epoch
@@ -2213,66 +2229,25 @@ def progressive_finetune_single_label(
 	print(f"Training: {num_epochs} epochs, {total_num_phases} phases, {min_epochs_per_phase} min epochs per phase".center(170, "-"))
 	for epoch in range(num_epochs):
 		epoch_start_time = time.time()
-		print(
-			f"Epoch {epoch+1}/{num_epochs} "
-			f"Phase {current_phase}/{total_num_phases} "
-			f"current LR: {last_lr} "
-			f"current WD: {last_wd}"
-		)
+		print(f"Epoch {epoch+1}/{num_epochs} Phase {current_phase}/{total_num_phases}")
 		torch.cuda.empty_cache()
 
-		# --- Phase Transition Check ---
-		if (epochs_in_current_phase >= min_epochs_per_phase and current_phase < total_num_phases - 1):
-			val_losses = early_stopping.value_history
-
-			should_trans = should_transition_to_next_phase(
-				current_phase=current_phase,
-				losses=val_losses,
-				window=window_size,
-				best_loss=early_stopping.get_best_score(), # Use best score from early stopping state
-				best_loss_threshold=min_delta, # Use min_delta for closeness check
-				volatility_threshold=volatility_threshold,
-				slope_threshold=slope_threshold, # Use positive threshold for worsening loss
-				pairwise_imp_threshold=pairwise_imp_threshold,
-				# accuracies=val_accs, # Pass average accuracy
-				# accuracy_plateau_threshold=accuracy_plateau_threshold,
-			)
-			if should_trans:
-				phase_transitions_epochs.append(epoch)
-				current_phase, last_lr, last_wd = handle_phase_transition(
-					current_phase=current_phase,
-					last_lr=last_lr,
-					last_wd=last_wd,
-				)
-				print(f"Transitioned to Phase {current_phase} @ epoch {epoch+1}: New LR: {last_lr}, New WD: {last_wd}")
-				epochs_in_current_phase = 0 # Reset phase epoch counter
-				early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
-				phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
-				print(f"Optimizer/Scheduler refresh pending after unfreeze...")
-			else:
-				print(f"Phase transition NOT triggered @ epoch {epoch+1} & current phase: {current_phase}.")
-		else:
-			print(f"No phase transition check needed @ epoch {epoch+1} & current phase: {current_phase}.")
-			print(f"Reason: Not enough epochs in current phase ({epochs_in_current_phase} < {min_epochs_per_phase}) or already in last phase ({current_phase} >= {total_num_phases - 1})")
-
 		if optimizer.param_groups and not phase_just_changed:
-			current_lr = max([pg['lr'] for pg in optimizer.param_groups])
+			current_lr = optimizer.param_groups[0]['lr']
 			current_wd = optimizer.param_groups[0]['weight_decay']
 		else:
 			# Use the updated values from handle_phase_transition
 			current_lr = last_lr
 			current_wd = last_wd
+			print(f"No optimizer param groups and phase just changed: {phase_just_changed} => using defaults LR: {current_lr}, WD: {current_wd}")
 
 		learning_rates_history.append(current_lr)
 		weight_decays_history.append(current_wd)
 		phases_history.append(current_phase)
-		print(f"DEBUG: last_lr: {last_lr}, current_lr: {current_lr} Equal: {last_lr == current_lr}")
+		print(f"current_lr: {current_lr} | current_wd: {current_wd}")
 		print(f"DEBUG: optimizer.param_groups[lr]: {[pg['lr'] for pg in optimizer.param_groups]}")
-		print(f"DEBUG: last_wd: {last_wd}, current_wd: {current_wd} Equal: {last_wd == current_wd}")
 
 		# --- Unfreeze Layers for Current Phase ---
-		print(f"Applying unfreeze strategy for Phase {current_phase}...")
-		# Ensure layers are correctly frozen/unfrozen *before* optimizer step
 		unfreeze_layers(
 			model=model,
 			strategy=unfreeze_schedule,
@@ -2280,8 +2255,9 @@ def progressive_finetune_single_label(
 			cache=layer_cache,
 		)
 		if phase_just_changed or epoch == 0:
-			print("Refreshing optimizer with DIFFERENTIAL learning rates...")
-			param_groups = create_differential_optimizer_groups(
+			optimizer.param_groups.clear()
+			print("Updating optimizer with new parameters")
+			new_param_groups = create_differential_optimizer_groups(
 				model=model,
 				base_lr=last_lr,
 				base_wd=last_wd,
@@ -2291,8 +2267,7 @@ def progressive_finetune_single_label(
 				},
 			)
 
-			optimizer.param_groups.clear()
-			optimizer.param_groups.extend(param_groups)
+			optimizer.param_groups.extend(new_param_groups)
 			
 			print("Optimizer parameter groups refreshed. Current group LRs:")
 			for i, pg in enumerate(optimizer.param_groups):
@@ -2366,13 +2341,15 @@ def progressive_finetune_single_label(
 					print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
 					continue # Skip optimizer step if loss is NaN
 
-				# --- Apply warm-up or scheduler LR ---
+				# --- Learning rate management Apply warm-up or scheduler LR ---
 				if is_in_warmup:
+					print(f"Applying warm-up LR...")
 					warmed_up_lrs = get_warmup_lr(
-						warmup_steps_completed,
-						warmup_steps_total,
-						target_lrs_after_warmup
+						current_step=warmup_steps_completed,
+						warmup_steps=warmup_steps_total,
+						target_lrs=target_lrs_after_warmup
 					)
+					print(f"{len(warmed_up_lrs)} warmed-up LRs: {warmed_up_lrs}")
 
 					# Manually set the LR for each parameter group
 					for i, param_group in enumerate(optimizer.param_groups):
@@ -2385,6 +2362,7 @@ def progressive_finetune_single_label(
 						print("\n--- Warm-up complete. Main scheduler is now active. ---")
 				else:
 					# We are in the main scheduling phase
+					print(f"Main scheduler step...")
 					scheduler.step() # Let the main scheduler control the LR
 
 				scaler.scale(batch_loss).backward()
@@ -2448,13 +2426,7 @@ def progressive_finetune_single_label(
 		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
 		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
 		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
-
-		#  --- DEBUG HOOK: Log Retrieval Delta ---
-		# Note: phase_just_changed is a flag you already have. We need to set it to True inside the transition logic
-		if phase_just_changed and prev_validation_metrics is not None:
-			log_retrieval_delta(validation_results, prev_validation_metrics, current_phase - 1)
-		prev_validation_metrics = validation_results
-		#  --- END DEBUG HOOK ---
+		validation_losses.append(current_val_loss)
 
 		print(
 			f'Epoch {epoch + 1}:\n'
@@ -2484,18 +2456,45 @@ def progressive_finetune_single_label(
 				print(f"Validation Cache Stats: {cache_stats}")
 			print(f"#"*100)
 
-		if (
-			epoch+1 > minimum_epochs 
-			and early_stopping.should_stop(
-				current_value=current_val_loss,
-				model=model,
-				epoch=epoch,
-				optimizer=optimizer,
-				scheduler=scheduler,
-				checkpoint_path=mdl_fpth,
-				current_phase=current_phase
+		should_trans = should_transition_to_next_phase(
+			current_phase=current_phase,
+			losses=validation_losses,
+			window=window_size,
+			epochs_in_phase=epochs_in_current_phase,
+			min_epochs_per_phase=min_epochs_per_phase,
+			num_phases=total_num_phases,
+			best_loss=early_stopping.get_best_score(), # Use best score from early stopping state
+			best_loss_threshold=min_delta, # Use min_delta for closeness check
+			volatility_threshold=volatility_threshold,
+			slope_threshold=slope_threshold, # Use positive threshold for worsening loss
+			pairwise_imp_threshold=pairwise_imp_threshold,
+			# accuracies=val_accs, # Pass average accuracy
+			# accuracy_plateau_threshold=accuracy_plateau_threshold,
+		)
+		if should_trans:
+			phase_transitions_epochs.append(epoch)
+			current_phase, last_lr, last_wd = handle_phase_transition(
+				current_phase=current_phase,
+				last_lr=last_lr,
+				last_wd=last_wd,
 			)
-		):
+			print(f"Transitioned to Phase {current_phase} @ epoch {epoch+1}: New LR: {last_lr}, New WD: {last_wd}")
+			epochs_in_current_phase = 0 # Reset phase epoch counter
+			early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
+			phase_just_changed = True # Signal that optimizer needs refresh after unfreeze
+			validation_losses = [] # Reset validation losses for the new phase
+			print(f"Optimizer/Scheduler refresh pending after unfreeze...")
+
+		training_should_stop = early_stopping.should_stop(
+			current_value=current_val_loss,
+			model=model,
+			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
+			current_phase=current_phase
+		)
+		if training_should_stop:
 			print(f"EarlyStopping Status:\n{json.dumps(early_stopping.get_status(), indent=2, ensure_ascii=False)}")
 			early_stopping_triggered = True
 			print(f"--- Training stopped early at epoch {epoch+1} ---")

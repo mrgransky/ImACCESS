@@ -170,24 +170,23 @@ class EarlyStopping:
 				pass
 
 		def get_status(self) -> Dict[str, Any]:
-				"""Enhanced status information"""
-				status = {
-						"best_score": self.best_score,
-						"best_epoch": self.best_epoch + 1 if self.best_score is not None else None,
-						"patience_counter": self.counter,
-						"effective_patience": self.effective_patience,
-						"adaptation_active": self._adaptation_active,
-						"value_history_len": len(self.value_history),
-						"ema_history_len": len(self.ema_history),
-				}
-				
-				# Add window statistics if available
-				if len(self.value_history) >= self.window_size:
-						win = self.value_history[-self.window_size:]
-						status["volatility_window"] = self._volatility(win)
-						status["slope_window"] = compute_slope(win)
-				
-				return status
+			status = {
+				"best_score": self.best_score,
+				"best_epoch": self.best_epoch + 1 if self.best_score is not None else None,
+				"patience_counter": self.counter,
+				"effective_patience": self.effective_patience,
+				"adaptation_active": self._adaptation_active,
+				"value_history_len": len(self.value_history),
+				"ema_history_len": len(self.ema_history),
+			}
+			
+			# Add window statistics if available
+			if len(self.value_history) >= self.window_size:
+				win = self.value_history[-self.window_size:]
+				status["volatility_window"] = self._volatility(win)
+				status["slope_window"] = compute_slope(win)
+			
+			return status
 
 		def get_best_score(self) -> Optional[float]:
 				return self.best_score
@@ -224,7 +223,7 @@ class EarlyStopping:
 				# 3. Handle improvement
 				if self._is_improvement(current_value):
 					old_best = f"{self.best_score}" if self.best_score is not None else "N/A"
-					print(f"\tNew best! {old_best} → {current_value}")
+					print(f"\tNew best Found: {old_best} => {current_value}")
 					
 					self.best_score = current_value
 					self.best_epoch = epoch
@@ -260,6 +259,9 @@ class EarlyStopping:
 							print("\tPatience exceeded → early stop")
 							return True
 					return False
+				else:
+					print(f"\tSufficient history ({len(self.value_history)}/{self.window_size}) for window checks")
+					print(self.value_history)
 
 				# 5. Compute window statistics
 				raw_window = self.value_history[-self.window_size:]
