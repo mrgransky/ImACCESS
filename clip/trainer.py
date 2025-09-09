@@ -2123,13 +2123,13 @@ def progressive_finetune_single_label(
 			# 2. Configure the main scheduler to take over *after* the warm-up
 			# minimum LR to be X% of what PLANNED LR is for this phase: planned_next_lr * X 
 			if current_phase >= 3:
-				eta_min = planned_next_lr * 0.1   # Very conservative for final phases
+				eta_min = planned_next_lr * 0.01   # Very conservative for final phases
 				cycle_description = "conservative"
 			elif current_phase >= 2:
 				eta_min = planned_next_lr * 0.05   # Moderate cycling for mid phases
 				cycle_description = "moderate" 
 			else:
-				eta_min = planned_next_lr * 0.01  # Aggressive cycling for early phases
+				eta_min = planned_next_lr * 0.10  # Aggressive cycling for early phases
 				cycle_description = "aggressive"
 			# eta_min = planned_next_lr * 0.10 # 10% of planned_next_lr
 			# cycle_description = "simple"
