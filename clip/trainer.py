@@ -2210,7 +2210,7 @@ def progressive_finetune_single_label(
 			)
 
 			# 2. Configure the main scheduler to take over *after* the warm-up
-			# minimum LR to be X% of what PLANNED LR is for this phase: last_lr * X 
+			# minimum LR to be X% of what PLANNED LR is for this phase: planned_next_lr * X 
 			if current_phase >= 3:
 				eta_min = planned_next_lr * 0.2   # Very conservative for final phases
 				cycle_description = "conservative"
@@ -2459,19 +2459,14 @@ def progressive_finetune_single_label(
 		f"cdt_{cumulative_delta:.1e}_"
 		f"fph_{current_phase}"
 	)
-	if last_lr is not None:
-		file_base_name += f"_flr_{last_lr:.1e}"
-
-	if last_wd is not None:
-		file_base_name += f"_fwd_{last_wd:.1e}"
 
 	mdl_fpth = get_updated_model_name(
 		original_path=mdl_fpth,
 		actual_epochs=actual_trained_epochs,
 		additional_info={
 			'fph': current_phase,
-			'flr': last_lr,
-			'fwd': last_wd
+			'flr': planned_next_lr,
+			'fwd': planned_next_wd
 		}
 	)
 
