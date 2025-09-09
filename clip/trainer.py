@@ -114,7 +114,7 @@ def compute_multilabel_inbatch_metrics(
 	img2txt_total_possible = {k: 0 for k in topK_values}
 	txt2img_total_possible = {k: 0 for k in topK_values}
 	
-	cosine_similarities = []
+	cosine_similarities = list()
 	
 	with torch.no_grad():
 		for batch_idx, (images, _, label_vectors) in enumerate(validation_loader):
@@ -281,7 +281,7 @@ def compute_direct_in_batch_metrics(
 	total_txt2img_correct = 0
 	processed_batches = 0
 	total_samples = 0
-	cosine_similarities = []
+	cosine_similarities = list()
 	
 	# Get class information
 	try:
@@ -516,7 +516,7 @@ def compute_multilabel_mrr(
 		# Get sorted indices (highest similarity first)
 		sorted_indices = torch.argsort(similarity_matrix, dim=1, descending=True)
 		
-		reciprocal_ranks = []
+		reciprocal_ranks = list()
 		
 		if mode == "Image-to-Text":
 				# For each image query, find ranks of relevant text classes
@@ -526,7 +526,7 @@ def compute_multilabel_mrr(
 								continue
 						
 						# Find the rank of the highest-ranked relevant class
-						ranks_of_relevant = []
+						ranks_of_relevant = list()
 						for class_idx in true_class_indices:
 								# Find where this class appears in the sorted results
 								rank_positions = (sorted_indices[i] == class_idx).nonzero(as_tuple=True)[0]
@@ -553,7 +553,7 @@ def compute_multilabel_mrr(
 								continue
 						
 						# Find rank of highest-ranked relevant image
-						ranks_of_relevant = []
+						ranks_of_relevant = list()
 						for img_idx in relevant_images:
 								rank_positions = (sorted_indices[i] == img_idx).nonzero(as_tuple=True)[0]
 								if len(rank_positions) > 0:
@@ -1222,7 +1222,7 @@ def _compute_image_embeddings(
 		verbose: bool=False, 
 		max_batches=None,
 	):
-	all_image_embeds, all_labels = [], []
+	all_image_embeds, all_labels = list(), []
 	model = model.to(device)
 	model.eval()
 
@@ -1587,7 +1587,7 @@ def get_layer_groups(
 	is_resnet = "RN" in model.name
 
 	# Visual transformer or CNN blocks
-	visual_blocks = []
+	visual_blocks = list()
 	if is_vit and vis_nblocks > 0:
 		visual_blocks = [f'visual.transformer.resblocks.{i}' for i in range(vis_nblocks)]
 	elif is_resnet and vis_nblocks > 0:
@@ -1713,7 +1713,7 @@ def get_unfreeze_schedule(
 		raise ValueError("Invalid layer group specified. Accepted: visual_frontend, visual_transformer, text_frontend, text_transformer, projections.")
 
 	def create_layer_table(num_layers: int, layer_type: str) -> str:
-		table_data = []
+		table_data = list()
 		for i, pct in enumerate(unfreeze_fractions):
 			label = f"{int(pct * 100)}%" if pct != 0.0 and pct != 1.0 else ("None" if pct == 0.0 else "All")
 			table_data.append([
@@ -1753,7 +1753,7 @@ def get_unfreeze_schedule(
 	schedule = {}
 	for phase, unfreeze_pct in enumerate(unfreeze_fractions):
 		# Start with an empty list for this phase's layers
-		layers_to_unfreeze_for_phase = []
+		layers_to_unfreeze_for_phase = list()
 		
 		# 1. ALWAYS include projections if they are in the target groups
 		if 'projections' in layer_groups_to_unfreeze:
@@ -1862,10 +1862,10 @@ def create_differential_optimizer_groups(
 	layer_groups_map = get_layer_groups(model)	
 
 	assigned_params = set()
-	param_groups = []
+	param_groups = list()
 
 	for group_name, layer_prefixes in layer_groups_map.items():
-		group_params_list = []
+		group_params_list = list()
 		for prefix in layer_prefixes:
 			for name, param in model.named_parameters():
 				if name.startswith(prefix) and param.requires_grad and param not in assigned_params:
@@ -1962,7 +1962,7 @@ def should_transition_to_next_phase(
 
 	# Transition logic
 	should_transition = False
-	reasons = []
+	reasons = list()
 	if is_plateau and not high_volatility:
 		should_transition = True
 		reasons.append(f"Meaningful plateau detected ({improvement} < {plateau_threshold})")
@@ -2076,7 +2076,7 @@ def progressive_finetune_single_label(
 			break
 
 	# Inspect the model for dropout layers
-	dropout_values = []
+	dropout_values = list()
 	for name, module in model.named_modules():
 		if isinstance(module, torch.nn.Dropout):
 			dropout_values.append((name, module.p))
@@ -2120,8 +2120,6 @@ def progressive_finetune_single_label(
 		# f"{dataset_name}_"
 		f"{mode}_"
 		f"{model_arch}_"
-		# f"{optimizer.__class__.__name__}_"
-		# f"{scheduler.__class__.__name__}_"
 		# f"{criterion.__class__.__name__}_"
 		# f"{scaler.__class__.__name__}_"
 		f"ieps_{num_epochs}_"
@@ -2140,10 +2138,8 @@ def progressive_finetune_single_label(
 		f"mphb4stp_{min_phases_before_stopping}"
 		f".pth"
 	)
-	# print(f"Best model will be saved in: {mdl_fpth}")
 
-	# --- DEBUGGING HOOKS ---	
-	# For embedding drift, get a fixed batch of validation data and original embeddings
+	# Embedding drift: get a fixed batch of validation data and original embeddings
 	val_subset_loader = DataLoader(
 		validation_loader.dataset, 
 		batch_size=validation_loader.batch_size,
@@ -2158,12 +2154,11 @@ def progressive_finetune_single_label(
 		initial_images = initial_images.to(device)
 		pretrained_embeds = model.encode_image(initial_images)
 		pretrained_embeds = F.normalize(pretrained_embeds, dim=-1)
-	# --- DEBUGGING HOOKS ---
 	
 	current_phase = 0
 	epochs_in_current_phase = 0
-	training_losses = []
-	validation_losses = []
+	training_losses = list()
+	validation_losses = list()
 	img2txt_metrics_all_epochs = list()
 	txt2img_metrics_all_epochs = list()
 	in_batch_loss_acc_metrics_all_epochs = list() # History of [in-batch] validation metrics dicts per epoch
@@ -2172,12 +2167,11 @@ def progressive_finetune_single_label(
 	planned_next_lr = initial_learning_rate # What we PLAN to use in next phase initialization
 	planned_next_wd = initial_weight_decay # What we PLAN to use in next phase initialization
 
-	# Initialize tracking lists
-	learning_rates_history = []
-	weight_decays_history = []
-	phases_history = []
-	phase_transitions_epochs = []
-	embedding_drift_history = []
+	learning_rates_history = list()
+	weight_decays_history = list()
+	phases_history = list()
+	phase_transitions_epochs = list()
+	embedding_drift_history = list()
 	
 	train_start_time = time.time()
 	print(f"Training: {num_epochs} epochs, {total_num_phases} phases, {min_epochs_per_phase} min epochs per phase".center(170, "-"))
@@ -2381,7 +2375,7 @@ def progressive_finetune_single_label(
 			print(f"Transition to Phase {current_phase} @ epoch {epoch+1}: New planned LR: {planned_next_lr}, New WD: {planned_next_wd}")
 			epochs_in_current_phase = 0 # Reset phase epoch counter
 			early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
-			validation_losses = [] # Reset validation losses for the new phase
+			validation_losses = list() # Reset validation losses for the new phase
 		else:
 			epochs_in_current_phase += 1
 
@@ -2624,7 +2618,7 @@ def full_finetune_single_label(
 		dropout_val = 0.0  # Default to 0.0 if no Dropout layers are found
 
 	# Inspect the model for dropout layers
-	dropout_values = []
+	dropout_values = list()
 	for name, module in model.named_modules():
 		if isinstance(module, torch.nn.Dropout):
 			dropout_values.append((name, module.p))
@@ -2700,11 +2694,11 @@ def full_finetune_single_label(
 
 	print(f"Best model will be saved in: {mdl_fpth}")
 
-	training_losses = []
-	img2txt_metrics_all_epochs = []
-	txt2img_metrics_all_epochs = []
-	in_batch_loss_acc_metrics_all_epochs = []
-	full_val_loss_acc_metrics_all_epochs = []
+	training_losses = list()
+	img2txt_metrics_all_epochs = list()
+	txt2img_metrics_all_epochs = list()
+	in_batch_loss_acc_metrics_all_epochs = list()
+	full_val_loss_acc_metrics_all_epochs = list()
 	train_start_time = time.time()
 	best_val_loss = float('inf')
 	final_img2txt_metrics = None
@@ -2956,7 +2950,7 @@ def lora_finetune_single_label(
 	):
 	window_size = minimum_epochs + 4
 	# Inspect the model for dropout layers
-	dropout_values = []
+	dropout_values = list()
 	for name, module in model.named_modules():
 		if isinstance(module, torch.nn.Dropout):
 			dropout_values.append((name, module.p))
@@ -3070,15 +3064,15 @@ def lora_finetune_single_label(
 		f".pth"
 	)
 
-	training_losses = []
-	img2txt_metrics_all_epochs = []
-	txt2img_metrics_all_epochs = []
+	training_losses = list()
+	img2txt_metrics_all_epochs = list()
+	txt2img_metrics_all_epochs = list()
 	train_start_time = time.time()
 	best_val_loss = float('inf')
 	final_img2txt_metrics = None
 	final_txt2img_metrics = None
-	in_batch_loss_acc_metrics_all_epochs = []
-	full_val_loss_acc_metrics_all_epochs = []
+	in_batch_loss_acc_metrics_all_epochs = list()
+	full_val_loss_acc_metrics_all_epochs = list()
 
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
@@ -3326,7 +3320,7 @@ def probe_finetune_single_label(
 	"""
 
 	# Inspect the model for dropout layers
-	dropout_values = []
+	dropout_values = list()
 	for name, module in model.named_modules():
 		if isinstance(module, torch.nn.Dropout):
 			dropout_values.append((name, module.p))
@@ -3492,8 +3486,8 @@ def probe_finetune_single_label(
 	
 	def extract_features(loader, model, device):
 			"""Extract features from frozen CLIP model"""
-			features = []
-			labels = []
+			features = list()
+			labels = list()
 			
 			model.eval()
 			with torch.no_grad():
@@ -3544,11 +3538,11 @@ def probe_finetune_single_label(
 	# =====================================
 	# STEP 4: TRAINING LOOP
 	# =====================================
-	training_losses = []
-	img2txt_metrics_all_epochs = []
-	txt2img_metrics_all_epochs = []
-	in_batch_loss_acc_metrics_all_epochs = []
-	full_val_loss_acc_metrics_all_epochs = []
+	training_losses = list()
+	img2txt_metrics_all_epochs = list()
+	txt2img_metrics_all_epochs = list()
+	in_batch_loss_acc_metrics_all_epochs = list()
+	full_val_loss_acc_metrics_all_epochs = list()
 	train_start_time = time.time()
 	
 	for epoch in range(num_epochs):
@@ -3910,7 +3904,7 @@ def full_finetune_multi_label(
 		if isinstance(module, torch.nn.Dropout):
 			dropout_val = module.p
 			break
-	dropout_values = []
+	dropout_values = list()
 	for name, module in model.named_modules():
 		if isinstance(module, torch.nn.Dropout):
 			dropout_values.append((name, module.p))
@@ -3998,12 +3992,12 @@ def full_finetune_multi_label(
 		f".pth"
 	)
 	print(f"Best model will be saved in: {mdl_fpth}")
-	training_losses = []
+	training_losses = list()
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
-	img2txt_metrics_all_epochs = []
-	txt2img_metrics_all_epochs = []
-	in_batch_loss_acc_metrics_all_epochs = []
-	full_val_loss_acc_metrics_all_epochs = []
+	img2txt_metrics_all_epochs = list()
+	txt2img_metrics_all_epochs = list()
+	in_batch_loss_acc_metrics_all_epochs = list()
+	full_val_loss_acc_metrics_all_epochs = list()
 	train_start_time = time.time()
 	best_val_loss = float('inf')
 	final_img2txt_metrics = None
@@ -4357,7 +4351,7 @@ def progressive_finetune_multi_label(
 			break
 
 	# dropout layers inspection:
-	dropout_values = []
+	dropout_values = list()
 	for name, module in model.named_modules():
 		if isinstance(module, torch.nn.Dropout):
 			dropout_values.append((name, module.p))
@@ -4453,7 +4447,7 @@ def progressive_finetune_multi_label(
 
 	current_phase = 0
 	epochs_in_current_phase = 0
-	training_losses = []  # History of average training loss per epoch
+	training_losses = list()  # History of average training loss per epoch
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}  # Multi-label loss breakdown
 	img2txt_metrics_all_epochs = list()
 	txt2img_metrics_all_epochs = list()
@@ -4485,7 +4479,7 @@ def progressive_finetune_multi_label(
 			val_losses = early_stopping.value_history
 			
 			# For multi-label, we can use average accuracy across I2T and T2I
-			val_accs_in_batch = []
+			val_accs_in_batch = list()
 			for m in in_batch_loss_acc_metrics_all_epochs:
 				i2t_acc = m.get('img2txt_acc', 0.0)
 				t2i_acc = m.get('txt2img_acc', 0.0)
@@ -4932,7 +4926,7 @@ def lora_finetune_multi_label(
 		loss_weights = {"i2t": 0.5, "t2i": 0.5}
 	
 	# Inspect the model for dropout layers and validate for LoRA
-	dropout_values = []
+	dropout_values = list()
 	for name, module in model.named_modules():
 		if isinstance(module, torch.nn.Dropout):
 			dropout_values.append((name, module.p))
@@ -5071,12 +5065,12 @@ def lora_finetune_multi_label(
 		f".pth"
 	)
 
-	training_losses = []
+	training_losses = list()
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
-	img2txt_metrics_all_epochs = []
-	txt2img_metrics_all_epochs = []
-	in_batch_loss_acc_metrics_all_epochs = []
-	full_val_loss_acc_metrics_all_epochs = []
+	img2txt_metrics_all_epochs = list()
+	txt2img_metrics_all_epochs = list()
+	in_batch_loss_acc_metrics_all_epochs = list()
+	full_val_loss_acc_metrics_all_epochs = list()
 	train_start_time = time.time()
 	best_val_loss = float('inf')
 	final_img2txt_metrics = None
@@ -5553,8 +5547,8 @@ def probe_finetune_multi_label(
 				print("Pre-extracting features for efficient training...")
 				
 				# Extract training features
-				train_features = []
-				train_labels = []
+				train_features = list()
+				train_labels = list()
 				model.eval()
 				with torch.no_grad():
 						for batch_data in tqdm(train_loader, desc="Extracting train features"):
@@ -5573,8 +5567,8 @@ def probe_finetune_multi_label(
 				train_features_cache = (torch.cat(train_features, dim=0), torch.cat(train_labels, dim=0))
 				
 				# Extract validation features
-				val_features = []
-				val_labels = []
+				val_features = list()
+				val_labels = list()
 				with torch.no_grad():
 						for batch_data in tqdm(validation_loader, desc="Extracting val features"):
 								if len(batch_data) == 3:
@@ -5611,12 +5605,12 @@ def probe_finetune_multi_label(
 						num_workers=0
 				)
 
-		training_losses = []
+		training_losses = list()
 		training_losses_breakdown = {"total": []}
-		img2txt_metrics_all_epochs = []
-		txt2img_metrics_all_epochs = []
-		in_batch_loss_acc_metrics_all_epochs = []
-		full_val_loss_acc_metrics_all_epochs = []
+		img2txt_metrics_all_epochs = list()
+		txt2img_metrics_all_epochs = list()
+		in_batch_loss_acc_metrics_all_epochs = list()
+		full_val_loss_acc_metrics_all_epochs = list()
 		train_start_time = time.time()
 
 		for epoch in range(num_epochs):
@@ -5692,8 +5686,8 @@ def probe_finetune_multi_label(
 				# Validation with probe
 				probe.eval()
 				val_loss = 0.0
-				val_preds = []
-				val_labels_list = []
+				val_preds = list()
+				val_labels_list = list()
 				
 				with torch.no_grad():
 						data_loader = val_feature_loader if cache_features else validation_loader
@@ -5781,8 +5775,8 @@ def probe_finetune_multi_label(
 		# Final evaluation
 		print("\nFinal Evaluation:")
 		probe.eval()
-		final_preds = []
-		final_labels = []
+		final_preds = list()
+		final_labels = list()
 		
 		with torch.no_grad():
 				data_loader = val_feature_loader if cache_features else validation_loader
@@ -6135,10 +6129,10 @@ def train(
 	)
 	print(f"Best model will be saved in: {mdl_fpth}")
 
-	training_losses = []
-	img2txt_metrics_all_epochs = []
-	txt2img_metrics_all_epochs = []
-	in_batch_loss_acc_metrics_all_epochs = []
+	training_losses = list()
+	img2txt_metrics_all_epochs = list()
+	txt2img_metrics_all_epochs = list()
+	in_batch_loss_acc_metrics_all_epochs = list()
 	train_start_time = time.time()
 	# print(torch.cuda.memory_summary(device=device))
 	best_val_loss = float('inf')
