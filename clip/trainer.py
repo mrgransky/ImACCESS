@@ -2169,8 +2169,8 @@ def progressive_finetune_single_label(
 	in_batch_loss_acc_metrics_all_epochs = list() # History of [in-batch] validation metrics dicts per epoch
 	full_val_loss_acc_metrics_all_epochs = list() # History of [full] validation metrics dicts per epoch
 	
-	last_lr = initial_learning_rate # Track current LR
-	last_wd = initial_weight_decay # Track current WD
+	planned_next_lr = initial_learning_rate # What we PLAN to use in next phase initialization
+	planned_next_wd = initial_weight_decay # What we PLAN to use in next phase initialization
 
 	# Initialize tracking lists
 	learning_rates_history = []
@@ -2181,6 +2181,7 @@ def progressive_finetune_single_label(
 	
 	train_start_time = time.time()
 	print(f"Training: {num_epochs} epochs, {total_num_phases} phases, {min_epochs_per_phase} min epochs per phase".center(170, "-"))
+
 	for epoch in range(num_epochs):
 		print(f"Epoch {epoch+1}/{num_epochs} Phase {current_phase}/{total_num_phases}")
 		epoch_start_time = time.time()
@@ -2202,21 +2203,22 @@ def progressive_finetune_single_label(
 			
 			optimizer = torch.optim.AdamW(
 				trainable_params,
-				lr=initial_learning_rate,
-				weight_decay=initial_weight_decay,
+				lr=planned_next_lr, 					# Use planned LR as starting point
+				weight_decay=planned_next_wd,	# Use planned WD as starting point
 				betas=(0.9, 0.98),
 				eps=1e-6
 			)
 
 			# 2. Configure the main scheduler to take over *after* the warm-up
+			# minimum LR to be X% of what PLANNED LR is for this phase: last_lr * X 
 			if current_phase >= 3:
-				eta_min = optimizer.param_groups[0]['lr'] * 0.2   # Very conservative for final phases
+				eta_min = planned_next_lr * 0.2   # Very conservative for final phases
 				cycle_description = "conservative"
 			elif current_phase >= 2:
-				eta_min = optimizer.param_groups[0]['lr'] * 0.1   # Moderate cycling for mid phases
+				eta_min = planned_next_lr * 0.1   # Moderate cycling for mid phases
 				cycle_description = "moderate" 
 			else:
-				eta_min = optimizer.param_groups[0]['lr'] * 0.01  # Aggressive cycling for early phases
+				eta_min = planned_next_lr * 0.01  # Aggressive cycling for early phases
 				cycle_description = "aggressive"
 			
 			# 3. Adaptive cycle length based on remaining epochs and phase
@@ -2236,8 +2238,8 @@ def progressive_finetune_single_label(
 			
 			print(f"Phase {current_phase} scheduler with {cycle_description} cycling")
 			print(f"  ├─ T_0 = {T_0} epochs")
-			print(f"  ├─ LR range: {eta_min} → {optimizer.param_groups[0]['lr']}")
-			print(f"  ├─ Amplitude ratio: {(optimizer.param_groups[0]['lr']/eta_min)}x")
+			print(f"  ├─ LR: eta_min: {eta_min} ====>>> PLANNED: {planned_next_lr}")
+			print(f"  ├─ Amplitude ratio: {(planned_next_lr/eta_min)}x")
 			print(f"  └─ Main scheduler ({scheduler.__class__.__name__}) configured.")
 
 		model.train()
@@ -2280,6 +2282,19 @@ def progressive_finetune_single_label(
 		training_losses.append(avg_training_loss)
 		if hasattr(early_stopping, "train_loss_history"):
 			early_stopping.train_loss_history.append(avg_training_loss)
+
+		current_lr = optimizer.param_groups[0]['lr']
+		current_wd = optimizer.param_groups[0]['weight_decay']
+
+		learning_rates_history.append(current_lr)    # Record what was ACTUALLY used
+		weight_decays_history.append(current_wd)     # Record what was ACTUALLY used
+		phases_history.append(current_phase)         # Record current phase
+
+		print("="*100)
+		print(f"Epoch {epoch+1} current_phase: {current_phase} current_epochs_in_phase: {epochs_in_current_phase}")
+		print(f"[ACTUAL] current_lr: {current_lr} current_wd: {current_wd}")
+		print(f"[PLANNED] planned_next_lr: {planned_next_lr} planned_next_wd: {planned_next_wd}")
+		print("="*100)
 
 		drift_value = compute_embedding_drift(
 			model, 
@@ -2362,17 +2377,13 @@ def progressive_finetune_single_label(
 		)
 		if should_trans:
 			phase_transitions_epochs.append(epoch)
-			current_phase, last_lr, last_wd = handle_phase_transition(current_phase, optimizer)
-			print(f"Transition to Phase {current_phase} @ epoch {epoch+1}: New LR: {last_lr}, New WD: {last_wd}")
+			current_phase, planned_next_lr, planned_next_wd = handle_phase_transition(current_phase, optimizer)
+			print(f"Transition to Phase {current_phase} @ epoch {epoch+1}: New planned LR: {planned_next_lr}, New WD: {planned_next_wd}")
 			epochs_in_current_phase = 0 # Reset phase epoch counter
 			early_stopping.reset() # <<< CRITICAL: Reset early stopping state for the new phase
 			validation_losses = [] # Reset validation losses for the new phase
 		else:
 			epochs_in_current_phase += 1
-
-		phases_history.append(current_phase)
-		learning_rates_history.append(last_lr)
-		weight_decays_history.append(last_wd)
 
 		training_should_stop = early_stopping.should_stop(
 			current_value=current_val_loss,

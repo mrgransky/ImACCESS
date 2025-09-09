@@ -272,7 +272,7 @@ def build_arch_flowchart(
 def plot_phase_transition_analysis_individual(
 		training_history: Dict,
 		file_path: str,
-		figsize: Tuple[int, int] = (10, 6)
+		figsize: Tuple[int, int] = (13, 6)
 	):
 	file_path = file_path.replace("_ph_anls.png", ".png")
 	# Extract data
@@ -380,6 +380,66 @@ def plot_phase_transition_analysis_individual(
 	)
 	ax1.grid(True, alpha=0.5)
 	save_fig(fig, "learning_curve")
+
+
+	# ===================================
+	# Hyperparameter Adaptation (LR + WD)
+	# ===================================
+	fig, ax2 = plt.subplots(figsize=figsize, facecolor='white')
+
+	# Plot Learning Rate on primary axis
+	for i in range(len(epochs) - 1):
+		x0, x1 = epochs[i], epochs[i+1]
+		y0, y1 = learning_rates[i], learning_rates[i+1]
+		phase_color = phase_colors[phases[i+1]]
+		ax2.plot(
+			[x0, x1],
+			[y0, y1],
+			color=phase_color,
+			linewidth=1.1,
+			alpha=0.4,
+			linestyle='-'
+		)
+
+	# Create twin axis for Weight Decay
+	ax2_twin = ax2.twinx()
+
+	# Plot Weight Decay on secondary axis
+	for i in range(len(epochs) - 1):
+		x0, x1 = epochs[i], epochs[i+1]
+		y0, y1 = weight_decays[i], weight_decays[i+1]
+		phase_color = phase_colors[phases[i+1]]
+		ax2_twin.plot(
+			[x0, x1],
+			[y0, y1],
+			color=phase_color,
+			linewidth=2.0,
+			alpha=0.5,
+			linestyle='--'  # Different line style for distinction
+		)
+
+	for transition_epoch in transitions:
+		if transition_epoch < len(learning_rates):
+			ax2.axvline(
+				x=transition_epoch,
+				color=transition_color,
+				linewidth=2.0,
+				alpha=0.6,
+				linestyle=':',
+				zorder=10
+			)
+
+	ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
+	ax2.set_ylabel('LR', fontsize=7, weight='bold')
+	ax2_twin.set_ylabel('WD', fontsize=7, weight='bold')
+	ax2.tick_params(axis='y', labelsize=7)
+	ax2_twin.tick_params(axis='y', labelsize=7)
+	ax2.set_title('Hyperparameter Adaptation Across Phases\nLearning Rate (—) Weight Decay (--)', fontsize=8, weight='bold')
+	ax2.grid(True, alpha=0.3, linestyle='-', color='#A3A3A3')
+	ax2_twin.grid(True, alpha=0.5, linestyle='--', color="#8A8A8A")
+	ax2.set_xlim(left=0, right=max(epochs)+1)
+	ax2_twin.set_xlim(left=0, right=max(epochs)+1)
+	save_fig(fig, "hyperparam_evol")
 
 	# ============================================
 	# PLOT 2: Learning Rate Adaptation
