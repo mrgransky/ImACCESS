@@ -2123,10 +2123,10 @@ def progressive_finetune_single_label(
 			# 2. Configure the main scheduler to take over *after* the warm-up
 			# minimum LR to be X% of what PLANNED LR is for this phase: planned_next_lr * X 
 			if current_phase >= 3:
-				eta_min = planned_next_lr * 0.2   # Very conservative for final phases
+				eta_min = planned_next_lr * 0.1   # Very conservative for final phases
 				cycle_description = "conservative"
 			elif current_phase >= 2:
-				eta_min = planned_next_lr * 0.1   # Moderate cycling for mid phases
+				eta_min = planned_next_lr * 0.05   # Moderate cycling for mid phases
 				cycle_description = "moderate" 
 			else:
 				eta_min = planned_next_lr * 0.01  # Aggressive cycling for early phases
@@ -2160,7 +2160,7 @@ def progressive_finetune_single_label(
 			################################## CosineAnnealingWarmRestarts ##################################
 
 			################################## CosineAnnealingLR ##################################
-			estimated_epochs_in_phase = min_epochs_per_phase * 3 # 3x the minimum epochs
+			estimated_epochs_in_phase = min_epochs_per_phase * 4 # 4x the minimum epochs
 			total_training_steps = estimated_epochs_in_phase * batches_per_epoch
 			scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 				optimizer=optimizer,
