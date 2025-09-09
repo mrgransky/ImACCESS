@@ -124,12 +124,12 @@ class EarlyStopping:
 
 		@staticmethod
 		def _volatility(window: List[float]) -> float:
-				"""Coefficient of variation as percentage"""
-				if len(window) < 2:
-						return 0.0
-				mean_val = np.mean(window)
-				std_val = np.std(window)
-				return (std_val / abs(mean_val)) * 100.0 if mean_val != 0 else 0.0
+			"""Coefficient of variation as percentage"""
+			if len(window) < 2:
+				return 0.0
+			mean_val = np.mean(window)
+			std_val = np.std(window)
+			return (std_val / abs(mean_val)) * 100.0 if mean_val != 0 else 0.0
 
 		def _is_improvement(self, cur_val: float) -> bool:
 				"""Check if current value represents improvement"""

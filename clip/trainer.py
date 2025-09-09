@@ -1824,84 +1824,6 @@ def compute_embedding_drift(
 	print(f"[DEBUG] Embedding Drift | Phase {phase} | Epoch {epoch}: {mean_drift}")
 	return mean_drift
 
-def create_differential_optimizer_groups(
-		model: torch.nn.Module,
-		base_lr: float,
-		base_wd: float,
-		optimizer_hyperparams: dict,
-		lr_multipliers: dict=None,
-	) -> List[Dict]:
-
-	if lr_multipliers is None:
-		lr_multipliers = {
-			'projections': 0.1,					# orig: 0.5 # Already trained - conservative
-			'text_transformer': 1.0,		# orig: 0.1 # New layers - full rate
-			'visual_transformer': 1.0,	# orig: 0.1 # New layers - full rate
-			'text_frontend': 0.01,
-			'visual_frontend': 0.01,
-		}
-
-	print("\n>> Creating Optimizer Groups with Differential LRs")
-	print(f"Base LR: {base_lr:<20}Base WD: {base_wd}")
-	# print(f"LR Multipliers:\n{json.dumps(lr_multipliers, indent=2)}")
-
-	adamw_defaults = {
-		'lr': base_lr,
-		'weight_decay': base_wd,
-		'eps': optimizer_hyperparams.get('eps', 1e-8),  # Adjusted default to match AdamW
-		'betas': optimizer_hyperparams.get('betas', (0.9, 0.999)), # Adjusted default to match AdamW
-		'amsgrad': False,
-		'maximize': False,
-		'foreach': None,
-		'capturable': False,
-		'differentiable': False,
-		'fused': None,
-		'decoupled_weight_decay': True,
-	}
-	
-	layer_groups_map = get_layer_groups(model)	
-
-	assigned_params = set()
-	param_groups = list()
-
-	for group_name, layer_prefixes in layer_groups_map.items():
-		group_params_list = list()
-		for prefix in layer_prefixes:
-			for name, param in model.named_parameters():
-				if name.startswith(prefix) and param.requires_grad and param not in assigned_params:
-					group_params_list.append(param)
-					assigned_params.add(param)
-		
-		if group_params_list:
-			lr_multiplier = lr_multipliers.get(group_name, 0.1)
-			
-			group_dict = adamw_defaults.copy()
-			group_dict['params'] = group_params_list
-			group_dict['lr'] = base_lr * lr_multiplier
-			param_groups.append(group_dict)
-			
-			print(
-				f"{group_name:<22}"
-				f"Parameters: {len(group_params_list):<5}"
-				f"LR Multiplier: {lr_multiplier:<10}"
-				f"Final LR: {group_dict['lr']}"
-			)
-
-	remaining_params = [
-		p 
-		for p in model.parameters() 
-		if p.requires_grad and p not in assigned_params
-	]
-
-	if remaining_params:
-		print("  - Group: 'remaining_params' (unclassified)")
-		group_dict = adamw_defaults.copy()
-		group_dict['params'] = remaining_params
-		group_dict['lr'] = base_lr * 0.01
-		param_groups.append(group_dict)
-
-	return param_groups
-
 def should_transition_to_next_phase(
 		current_phase: int,
 		losses: List[float],
@@ -1932,33 +1854,51 @@ def should_transition_to_next_phase(
 		print(f"<!> Insufficient loss data ({len(losses)} < {window}) for phase transition.")
 		return False
 	
-	# Simple plateau detection: compare recent average to older average
+	# # Simple plateau detection: compare recent average to older average
 	recent_window = losses[-window:]
-	older_window = losses[-(window*2):-window] if len(losses) >= window*2 else losses[:-window]
+	# older_window = losses[-(window*2):-window] if len(losses) >= window*2 else losses[:-window]
 	
-	if not older_window:  # Fallback if not enough history
-		older_window = losses[:len(losses)//2]
-		recent_window = losses[len(losses)//2:]
+	# if not older_window:  # Fallback if not enough history
+	# 	older_window = losses[:len(losses)//2]
+	# 	recent_window = losses[len(losses)//2:]
 	
-	recent_avg = np.mean(recent_window)
-	older_avg = np.mean(older_window)
+	# recent_avg = np.mean(recent_window)
+	# older_avg = np.mean(older_window)
 	
-	improvement = (older_avg - recent_avg) / older_avg if older_avg > 0 else 0
-	is_plateau = improvement < plateau_threshold
+	# improvement_magnitude = (older_avg - recent_avg) / older_avg if older_avg > 0 else 0
+	# is_plateau = improvement_magnitude < plateau_threshold
 
-	# Simple volatility check - high volatility suggests instability (overshooting with spiking)
-	recent_std = np.std(recent_window)
-	recent_cv = (recent_std / abs(recent_avg)) * 100 if recent_avg != 0 else 0
-	high_volatility = recent_cv > volatility_threshold  # X% coefficient of variation
+	# # Simple volatility check - high volatility suggests instability (overshooting with spiking)
+	# recent_std = np.std(recent_window)
+	# recent_cv = (recent_std / abs(recent_avg)) * 100 if recent_avg != 0 else 0
+	# high_volatility = recent_cv > volatility_threshold  # X% coefficient of variation
 	
+	# --- METRIC CALCULATIONS ---
+	# 1. Volatility (Coefficient of Variation)
+	mean_loss = np.mean(recent_window)
+	std_loss = np.std(recent_window)
+	cv = (std_loss / mean_loss) * 100 if mean_loss != 0 else 0  # Volatility in %
+	high_volatility = cv > volatility_threshold
+
+	# 2. Trend Slope (using linear regression)
+	slope = np.polyfit(range(len(recent_window)), recent_window, deg=1)[0] # 1st degree polynomial (line) fit (negative = improving)
+	improvement_magnitude = abs(slope)
+	is_plateau = improvement_magnitude < plateau_threshold
+
+	# Additional contextual information
+	is_improving = slope < 0 and improvement_magnitude > plateau_threshold
+	is_worsening = slope > 0 and improvement_magnitude > plateau_threshold
+
+
 	print(f"\n=== SIMPLE TRANSITION CHECK (Phase {current_phase}) ===")
 	print(f"{len(losses)} losses: {losses}")
 	print(f"\t>> min: {min(losses)} max: {max(losses)} range: {max(losses) - min(losses)} std: {np.std(losses)}")
-	print(f"Recent window ({len(recent_window)} epochs, requested {window}): {recent_window}")
-	print(f"Older average: {older_avg} → Recent average: {recent_avg}")
-	print(f"Improvement: {improvement} (threshold: {plateau_threshold})")
-	print(f"Volatility: {recent_cv:.2f}% (high if > {volatility_threshold}%)")
-	print(f"Plateau: {is_plateau}")
+	print(
+		f"Improvement: {improvement_magnitude} (threshold: {plateau_threshold})\n"
+		f"  ├─ Trend: {'Improving' if is_improving else 'Worsening' if is_worsening else 'Stable'}\n"
+		f"  └─ Plateau: {is_plateau}"
+	)
+	print(f"Volatility: {cv:.2f}% (high if > {volatility_threshold}%)")
 
 	# Transition logic
 	should_transition = False
