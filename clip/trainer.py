@@ -1831,13 +1831,7 @@ def should_transition_to_next_phase(
 		epochs_in_phase: int,
 		min_epochs_per_phase: int,
 		num_phases: int,
-		best_loss: Optional[float],
-		best_loss_threshold: float,
 		volatility_threshold: float,
-		slope_threshold: float,
-		pairwise_imp_threshold: float,
-		accuracies: Optional[List[float]]=None, # Added optional accuracy list
-		accuracy_plateau_threshold: float=1e-3, # Threshold for accuracy stagnation
 		plateau_threshold: float = 1e-2,				# 1% improvement threshold
 	) -> bool:
 	
@@ -1854,24 +1848,7 @@ def should_transition_to_next_phase(
 		print(f"<!> Insufficient loss data ({len(losses)} < {window}) for phase transition.")
 		return False
 	
-	# # Simple plateau detection: compare recent average to older average
 	recent_window = losses[-window:]
-	# older_window = losses[-(window*2):-window] if len(losses) >= window*2 else losses[:-window]
-	
-	# if not older_window:  # Fallback if not enough history
-	# 	older_window = losses[:len(losses)//2]
-	# 	recent_window = losses[len(losses)//2:]
-	
-	# recent_avg = np.mean(recent_window)
-	# older_avg = np.mean(older_window)
-	
-	# improvement_magnitude = (older_avg - recent_avg) / older_avg if older_avg > 0 else 0
-	# is_plateau = improvement_magnitude < plateau_threshold
-
-	# # Simple volatility check - high volatility suggests instability (overshooting with spiking)
-	# recent_std = np.std(recent_window)
-	# recent_cv = (recent_std / abs(recent_avg)) * 100 if recent_avg != 0 else 0
-	# high_volatility = recent_cv > volatility_threshold  # X% coefficient of variation
 	
 	# --- METRIC CALCULATIONS ---
 	# 1. Volatility (Coefficient of Variation)
@@ -1889,11 +1866,12 @@ def should_transition_to_next_phase(
 	is_improving = slope < 0 and improvement_magnitude > plateau_threshold
 	is_worsening = slope > 0 and improvement_magnitude > plateau_threshold
 
-	print(f"\n=== SIMPLE TRANSITION CHECK (Phase {current_phase}) ===")
-	print(f"{len(losses)} losses: {losses}")
-	print(f"\t>> min: {min(losses)} max: {max(losses)} range: {max(losses) - min(losses)} std: {np.std(losses)}")
+	print("=" * 60)
+	print(f"TRANSITION CHECK @ Phase {current_phase}")
+	# print(f"{len(losses)} losses: {losses}")
+	# print(f"\t>> min: {min(losses)} max: {max(losses)} range: {max(losses) - min(losses)} std: {np.std(losses)}")
 	print(
-		f"Improvement: {improvement_magnitude} (threshold: {plateau_threshold})\n"
+		f"Improvement over last {window} losses: {improvement_magnitude} (threshold: {plateau_threshold})\n"
 		f"  ├─ Trend: {'Improving' if is_improving else 'Worsening' if is_worsening else 'Stable'}\n"
 		f"  └─ Plateau: {is_plateau}"
 	)
@@ -1914,8 +1892,7 @@ def should_transition_to_next_phase(
 		print(f"\t>>> TRANSITION RECOMMENDED: {', '.join(reasons)}")
 	else:
 		print(f"\t>>> CONTINUE CURRENT PHASE: {', '.join(reasons)}")
-	
-	print("=" * 50)
+	print("=" * 60)
 	return should_transition
 
 def handle_phase_transition(
@@ -2111,7 +2088,8 @@ def progressive_finetune_single_label(
 	phases_history = list()
 	phase_transitions_epochs = list()
 	embedding_drift_history = list()
-	
+	batches_per_epoch = len(train_loader)
+
 	train_start_time = time.time()
 	print(f"Training: {num_epochs} epochs, {total_num_phases} phases, {min_epochs_per_phase} min epochs per phase".center(170, "-"))
 
@@ -2160,21 +2138,39 @@ def progressive_finetune_single_label(
 			# elif remaining_epochs < 20: T_0 = max(3, remaining_epochs // 2)  	# Shorter cycles for final phases
 			# else: T_0 = max(5, remaining_epochs // 3)													# Balanced cycles for mid phases
 			
-			T_0 = 10 # 10 epochs
-			eta_min = planned_next_lr * 0.10 # 10% of planned_next_lr
-			cycle_description = "simple"
+			################################## CosineAnnealingWarmRestarts ##################################
+			# T_0 = 10 # 10 steps
+			# eta_min = planned_next_lr * 0.10 # 10% of planned_next_lr
+			# cycle_description = "simple"
 
-			# 4. Create phase-optimized scheduler
-			scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+			# # 4. Create phase-optimized scheduler
+			# scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+			# 	optimizer=optimizer,
+			# 	T_0=T_0,
+			# 	T_mult=1,
+			# 	eta_min=eta_min,
+			# 	last_epoch=-1
+			# )
+			
+			# print(f"Phase {current_phase} scheduler with {cycle_description} cycling")
+			# print(f"  ├─ T_0 = {T_0} epochs")
+			# print(f"  ├─ LR: eta_min: {eta_min} ====>>> PLANNED: {planned_next_lr}")
+			# print(f"  ├─ Amplitude ratio: {(planned_next_lr/eta_min)}x")
+			# print(f"  └─ Main scheduler ({scheduler.__class__.__name__}) configured.")
+			################################## CosineAnnealingWarmRestarts ##################################
+
+			################################## CosineAnnealingLR ##################################
+
+			remaining_epochs = num_epochs - epoch
+			total_training_steps = remaining_epochs * batches_per_epoch
+			eta_min = planned_next_lr * 0.10 # 10% of planned_next_lr
+			scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 				optimizer=optimizer,
-				T_0=T_0,
-				T_mult=1,
+				T_max=total_training_steps,
 				eta_min=eta_min,
 				last_epoch=-1
 			)
-			
-			print(f"Phase {current_phase} scheduler with {cycle_description} cycling")
-			print(f"  ├─ T_0 = {T_0} epochs")
+			print(f"Phase {current_phase} scheduler with {total_training_steps} steps")
 			print(f"  ├─ LR: eta_min: {eta_min} ====>>> PLANNED: {planned_next_lr}")
 			print(f"  ├─ Amplitude ratio: {(planned_next_lr/eta_min)}x")
 			print(f"  └─ Main scheduler ({scheduler.__class__.__name__}) configured.")
@@ -2304,13 +2300,7 @@ def progressive_finetune_single_label(
 			epochs_in_phase=epochs_in_current_phase,
 			min_epochs_per_phase=min_epochs_per_phase,
 			num_phases=total_num_phases,
-			best_loss=early_stopping.get_best_score(), # Use best score from early stopping state
-			best_loss_threshold=min_delta, # Use min_delta for closeness check
 			volatility_threshold=volatility_threshold,
-			slope_threshold=slope_threshold, # Use positive threshold for worsening loss
-			pairwise_imp_threshold=pairwise_imp_threshold,
-			# accuracies=val_accs, # Pass average accuracy
-			# accuracy_plateau_threshold=accuracy_plateau_threshold,
 		)
 		if should_trans:
 			phase_transitions_epochs.append(epoch)
