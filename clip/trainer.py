@@ -1889,7 +1889,6 @@ def should_transition_to_next_phase(
 	is_improving = slope < 0 and improvement_magnitude > plateau_threshold
 	is_worsening = slope > 0 and improvement_magnitude > plateau_threshold
 
-
 	print(f"\n=== SIMPLE TRANSITION CHECK (Phase {current_phase}) ===")
 	print(f"{len(losses)} losses: {losses}")
 	print(f"\t>> min: {min(losses)} max: {max(losses)} range: {max(losses) - min(losses)} std: {np.std(losses)}")
@@ -1905,11 +1904,11 @@ def should_transition_to_next_phase(
 	reasons = list()
 	if is_plateau and not high_volatility:
 		should_transition = True
-		reasons.append(f"Meaningful plateau detected ({improvement} < {plateau_threshold})")
+		reasons.append(f"Meaningful plateau detected ({improvement_magnitude} < {plateau_threshold})")
 	elif high_volatility:
-		reasons.append(f"High volatility ({recent_cv:.2f}%) - continuing current phase for stability")
+		reasons.append(f"High volatility ({cv:.2f}%) - continuing current phase for stability")
 	else:
-		reasons.append(f"Still learning ({improvement} improvement > threshold: {plateau_threshold})")
+		reasons.append(f"Still learning ({improvement_magnitude} improvement > threshold: {plateau_threshold})")
 	
 	if should_transition:
 		print(f"\t>>> TRANSITION RECOMMENDED: {', '.join(reasons)}")
