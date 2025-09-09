@@ -76,7 +76,7 @@ def main():
 	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--epochs', '-e', type=int, default=63, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=8, help='Batch size for training')
-	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='small learning rate for better convergence [def: 1e-3]')
+	parser.add_argument('--learning_rate', '-lr', type=float, default=5e-5, help='small learning rate for better convergence [def: 1e-3]')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
 	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs [def: max cpus]')

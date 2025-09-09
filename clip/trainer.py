@@ -1866,7 +1866,7 @@ def should_transition_to_next_phase(
 	is_improving = slope < 0 and improvement_magnitude > plateau_threshold
 	is_worsening = slope > 0 and improvement_magnitude > plateau_threshold
 
-	print("=" * 60)
+	print("=" * 120)
 	print(f"TRANSITION CHECK @ Phase {current_phase}")
 	# print(f"{len(losses)} losses: {losses}")
 	# print(f"\t>> min: {min(losses)} max: {max(losses)} range: {max(losses) - min(losses)} std: {np.std(losses)}")
@@ -1892,7 +1892,7 @@ def should_transition_to_next_phase(
 		print(f"\t>>> TRANSITION RECOMMENDED: {', '.join(reasons)}")
 	else:
 		print(f"\t>>> CONTINUE CURRENT PHASE: {', '.join(reasons)}")
-	print("=" * 60)
+	print("=" * 120)
 	return should_transition
 
 def handle_phase_transition(
@@ -2169,7 +2169,7 @@ def progressive_finetune_single_label(
 				eta_min=eta_min,
 				last_epoch=-1
 			)
-			print(f"Phase {current_phase} scheduler with {total_training_steps} steps [{remaining_epochs} epochs x {batches_per_epoch} batches/epoch]")
+			print(f"Phase {current_phase} scheduler with {total_training_steps} steps [{estimated_epochs_in_phase} epochs x {batches_per_epoch} batches/epoch]")
 			print(f"  ├─ LR: eta_min: {eta_min} ====>>> PLANNED: {planned_next_lr}")
 			print(f"  ├─ Amplitude ratio: {(planned_next_lr/eta_min)}x")
 			print(f"  └─ Main scheduler ({scheduler.__class__.__name__}) configured.")
