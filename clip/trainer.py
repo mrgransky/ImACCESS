@@ -2169,7 +2169,7 @@ def progressive_finetune_single_label(
 				last_epoch=-1
 			)
 			print(f"Phase {current_phase} scheduler {cycle_description} cycling")
-			print(f"  ├─ T_max = {total_training_steps} steps[{estimated_epochs_in_phase} epochs x {batches_per_epoch} batches/epoch]")
+			print(f"  ├─ T_max = {total_training_steps} steps [{estimated_epochs_in_phase} epochs x {batches_per_epoch} batches/epoch]")
 			print(f"  ├─ LR: eta_min: {eta_min} ====>>> PLANNED: {planned_next_lr}")
 			print(f"  ├─ Amplitude ratio: {(planned_next_lr/eta_min)}x")
 			print(f"  └─ Main scheduler ({scheduler.__class__.__name__}) configured.")
