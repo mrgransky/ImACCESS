@@ -2160,9 +2160,8 @@ def progressive_finetune_single_label(
 			################################## CosineAnnealingWarmRestarts ##################################
 
 			################################## CosineAnnealingLR ##################################
-
-			remaining_epochs = num_epochs - epoch
-			total_training_steps = remaining_epochs * batches_per_epoch
+			estimated_epochs_in_phase = min_epochs_per_phase * 3 # 3x the minimum epochs
+			total_training_steps = estimated_epochs_in_phase * batches_per_epoch
 			eta_min = planned_next_lr * 0.10 # 10% of planned_next_lr
 			scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 				optimizer=optimizer,
