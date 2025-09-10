@@ -102,6 +102,7 @@ PROBE_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 # Progressive finetuning
 MIN_PHASES_BEFORE_STOPPING=(3 3 3 3 3)
 MIN_EPOCHS_PER_PHASE=(5 5 5 5 5)
+TOTAL_NUM_PHASES=(8 4 4 4 4)
 
 BATCH_SIZES=(512 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 10)
@@ -234,6 +235,7 @@ python -u history_clip_trainer.py \
 	--probe_dropout "${PROBE_DROPOUTS[$dataset_index]}" \
 	--min_phases_before_stopping "${MIN_PHASES_BEFORE_STOPPING[$dataset_index]}" \
 	--min_epochs_per_phase "${MIN_EPOCHS_PER_PHASE[$dataset_index]}" \
+	--total_num_phases "${TOTAL_NUM_PHASES[$dataset_index]}" \
 	--print_every "${PRINT_FREQUENCIES[$dataset_index]}" \
 	--sampling "${SAMPLINGS[1]}" \
 	# --cache_size "${CACHE_SIZES[$dataset_index]}" \
