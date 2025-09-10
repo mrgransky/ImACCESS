@@ -1904,8 +1904,8 @@ def handle_phase_transition(
 		optimizer: torch.optim.Optimizer,
 	) -> Tuple[int, float, float]:
 	next_phase = current_phase + 1
-	new_lr = optimizer.param_groups[0]['lr'] * 1.0  # 0% reduction
-	new_wd = optimizer.param_groups[0]['weight_decay'] * 1.05  # 5% increase
+	new_lr = optimizer.param_groups[0]['lr'] * 1.0  # 0% reduction (no change)
+	new_wd = optimizer.param_groups[0]['weight_decay'] * 1.15  # 15% increase
 	return next_phase, new_lr, new_wd
 
 def progressive_finetune_single_label(

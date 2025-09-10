@@ -59,7 +59,7 @@ from historical_dataset_loader import get_single_label_dataloaders, get_multi_la
 # $ for lr in $(python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=6))))"); do nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -e 150 -lr $lr -wd 1e-1 --print_every 50 -nw 50 -dv 'cuda:3' -m finetune -fts progressive -a 'ViT-B/32' -do 0.0 > /media/volume/ImACCESS/trash/smu_ft_progressive_lr_${lr}.txt & done
 
 # using one command:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 200 -bs 256 -lr 1e-4 -wd 1e-2 -nw 32 -dv "cuda:3" -m finetune -fts progressive -dt single_label -a "ViT-B/32" -mep 7 -pat 3 -mepph 5 -mphbs 3 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 200 -bs 256 -lr 1e-4 -wd 1e-2 -nw 32 -dv "cuda:3" -m finetune -fts progressive -dt single_label -a "ViT-L/14@336px" -mep 7 -pat 3 -mepph 5 -mphbs 3 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 50 -nw 50 -dv "cuda:2" -m finetune -fts progressive -dt multi_label -a "ViT-B/32" -do 0.05 -mphbs 3 -mepph 5 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 32 -e 150 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 12 -dv "cuda:1" -m finetune -fts progressive -dt multi_label -a "ViT-B/32" -do 0.05 -mphbs 3 -mepph 5 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 32 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 -dv "cuda:0" -m finetune -fts progressive -dt multi_label -a "ViT-L/14" -do 0.05 -mphbs 3 -mepph 5 --log_dir /media/volume/ImACCESS/trash &
@@ -108,7 +108,7 @@ def main():
 	parser.add_argument('--log_dir', type=str, default=None, help='Directory to store log files (if not specified, logs will go to stdout)')
 	parser.add_argument('--use_lamb', '-lamb', action='store_true', help='Use LAMB optimizer instead of AdamW')
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
-	parser.add_argument('--print_every', type=int, default=100, help='Print loss')
+	parser.add_argument('--print_every', type=int, default=10, help='Print loss')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)

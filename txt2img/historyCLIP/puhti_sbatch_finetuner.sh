@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2014707
-#SBATCH --job-name=h4_sgl_lbl_over_simplified
+#SBATCH --job-name=h4_sgl_lbl_cosine_annealing
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -67,7 +67,7 @@ NUM_DATASETS=${#DATASETS[@]} # Number of datasets
 NUM_STRATEGIES=${#FINETUNE_STRATEGIES[@]} # Number of fine-tune strategies
 NUM_ARCHITECTURES=${#MODEL_ARCHITECTURES[@]} # Number of model architectures
 
-# dataset × strategy × architecture (updated indexing)
+# dataset × strategy × architecture
 ### 0-15:  dataset[0] with all strategy×architecture [H4]
 ### 16-31: dataset[1] with all strategy×architecture [NA]
 ### 32-47: dataset[2] with all strategy×architecture [EU]
@@ -105,7 +105,7 @@ MIN_EPOCHS_PER_PHASE=(3 5 5 5 5)
 
 BATCH_SIZES=(512 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 10)
-INIT_EARLY_STOPPING_MIN_EPOCHS=(7 25 17 17 12)  # H4, NA, EU, WWII, SMU
+EARLY_STOPPING_INIT_MIN_EPOCHS=(7 25 17 17 12)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_PATIENCE=(3 5 5 5 5)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_MIN_DELTA=(1e-4 1e-4 1e-4 1e-4 1e-4)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)  # H4, NA, EU, WWII, SMU
@@ -116,7 +116,7 @@ CACHE_SIZES=(1024 512 1000 1000 1000)  # H4, NA, EU, WWII, SMU
 
 # Adjust early stopping minimum epochs based on strategy
 strategy="${FINETUNE_STRATEGIES[$strategy_index]}"
-initial_early_stopping_minimum_epochs="${INIT_EARLY_STOPPING_MIN_EPOCHS[$dataset_index]}"
+initial_early_stopping_minimum_epochs="${EARLY_STOPPING_INIT_MIN_EPOCHS[$dataset_index]}"
 case $strategy in
 	"full")
 		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs - 3))  # Lower for Full

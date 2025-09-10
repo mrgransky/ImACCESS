@@ -1,14 +1,14 @@
 #!/bin/bash
 
 #SBATCH --account=project_2014707
-#SBATCH --job-name=h4_sgl_lbl_over_simplified
+#SBATCH --job-name=h4_sgl_lbl_cosine_annealing
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
-#SBATCH --mem=475G
+#SBATCH --mem=301G
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1
 #SBATCH --array=8
@@ -67,7 +67,7 @@ NUM_DATASETS=${#DATASETS[@]} # Number of datasets
 NUM_STRATEGIES=${#FINETUNE_STRATEGIES[@]} # Number of fine-tune strategies
 NUM_ARCHITECTURES=${#MODEL_ARCHITECTURES[@]} # Number of model architectures
 
-# dataset × strategy × architecture (updated indexing)
+# dataset × strategy × architecture
 ### 0-15:  dataset[0] with all strategy×architecture [H4]
 ### 16-31: dataset[1] with all strategy×architecture [NA]
 ### 32-47: dataset[2] with all strategy×architecture [EU]
@@ -89,7 +89,7 @@ fi
 INIT_LRS=(1.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 INIT_WDS=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
-EPOCHS=(101 100 150 150 150)
+EPOCHS=(100 100 150 150 150)
 
 # LoRA
 LORA_RANKS=(32 64 64 64 64)
@@ -101,24 +101,27 @@ PROBE_DROPOUTS=(0.1 0.1 0.05 0.05 0.05)
 
 # Progressive finetuning
 MIN_PHASES_BEFORE_STOPPING=(3 3 3 3 3)
-MIN_EPOCHS_PER_PHASE=(3 5 5 5 5)
+MIN_EPOCHS_PER_PHASE=(5 5 5 5 5)
 
 BATCH_SIZES=(512 64 64 64 64)
 PRINT_FREQUENCIES=(1000 1000 50 50 10)
-INIT_EARLY_STOPPING_MIN_EPOCHS=(7 25 17 17 12)  # H4, NA, EU, WWII, SMU
+
+EARLY_STOPPING_INIT_MIN_EPOCHS=(7 25 17 17 12)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_PATIENCE=(3 5 5 5 5)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_MIN_DELTA=(1e-4 1e-4 1e-4 1e-4 1e-4)  # H4, NA, EU, WWII, SMU
 EARLY_STOPPING_CUMULATIVE_DELTA=(5e-3 5e-3 5e-3 5e-3 5e-3)  # H4, NA, EU, WWII, SMU
+
 VOLATILITY_THRESHOLDS=(15.0 15.0 15.0 15.0 15.0)  # H4, NA, EU, WWII, SMU
 SLOPE_THRESHOLDS=(1e-4 1e-4 1e-4 1e-4 1e-4)  # H4, NA, EU, WWII, SMU
 PAIRWISE_IMP_THRESHOLDS=(1e-4 1e-4 1e-4 1e-4 1e-4)  # H4, NA, EU, WWII, SMU
+
 CACHE_SIZES=(1024 512 1000 1000 1000)  # H4, NA, EU, WWII, SMU
 
 # Adjust early stopping minimum epochs based on strategy
 strategy="${FINETUNE_STRATEGIES[$strategy_index]}"
 architecture="${MODEL_ARCHITECTURES[$architecture_index]}"
 
-initial_early_stopping_minimum_epochs="${INIT_EARLY_STOPPING_MIN_EPOCHS[$dataset_index]}"
+initial_early_stopping_minimum_epochs="${EARLY_STOPPING_INIT_MIN_EPOCHS[$dataset_index]}"
 case $strategy in
 	"full")
 		EARLY_STOPPING_MIN_EPOCHS=$((initial_early_stopping_minimum_epochs - 3))  # Lower for Full

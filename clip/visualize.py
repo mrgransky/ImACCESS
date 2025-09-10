@@ -891,16 +891,17 @@ def plot_phase_transition_analysis(
 		convergence_qualities = [m['convergence_quality'] for _, m in phase_data]  # How consistent
 		
 		# Main bars: trainable params
-		bars = ax4.bar(
+		ax4.bar(
 			range(len(trainable_params_per_phase)), 
 			trainable_params_per_phase,
 			color=[phase_colors[p] for p in phases_list], 
 			alpha=0.55,
+			label='Trainable Parameters (%)',
 		)
 		
 		# Twin axis: efficiency (more meaningful than raw improvement)
 		ax4_twin = ax4.twinx()
-		line = ax4_twin.plot(
+		ax4_twin.plot(
 			range(len(efficiencies)),
 			efficiencies,
 			linewidth=0.7,
@@ -925,21 +926,20 @@ def plot_phase_transition_analysis(
 			)
 
 	ax4.set_xlabel('Phase', fontsize=8, weight='bold')
-	ax4.set_ylabel(f'Trainable Parameters (%)\ntotal: {total_model_params:,}', fontsize=7, weight='bold')
+	ax4.set_ylabel(f'Trainable Parameters (%)\nTotal: {total_model_params:,}', fontsize=8, weight='bold')
 	ax4_twin.set_ylabel('Learning Efficiency (%/ep)', fontsize=8, color=loss_imp_color)
 	ax4.set_title('Phase Efficiency Analysis', fontsize=8, weight='bold')
 	
 	phase_labels = [f'{p}' for p in phases_list]
 	ax4.set_xticklabels(phase_labels)
 	ax4.set_xticks(range(len(phase_labels)))
-	# ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
 	ax4.grid(axis='y', alpha=0.25, color="#A3A3A3")
 
 	ax4.tick_params(axis='y', labelcolor=duration_color, labelsize=8)
 	ax4_twin.tick_params(axis='y', labelcolor=loss_imp_color, labelsize=8)
 
 	# Match spine colors with their labels
-	ax4.spines['left'].set_color(duration_color)
+	# ax4.spines['left'].set_color(duration_color)
 	ax4_twin.spines['right'].set_color(loss_imp_color)
 
 	ax4_twin.spines['top'].set_visible(False)
