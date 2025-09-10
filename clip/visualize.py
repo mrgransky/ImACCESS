@@ -28,7 +28,7 @@ best_model_color = "#C002A7"
 train_loss_color = "#0010F3"
 val_loss_color = "#C27E00"
 loss_imp_color = "#004214"
-duration_color = "#0104C9"
+trainable_param_color = "#0104C9"
 
 if USER == "farid":
 	from graphviz import Digraph
@@ -544,7 +544,7 @@ def plot_phase_transition_analysis_individual(
 
 	ax4.set_title("Phase Efficiency Analysis", fontsize=9, weight="bold")
 	ax4.set_xlabel("Phase", fontsize=7, weight="bold")
-	ax4.set_ylabel("Epochs", color=duration_color, fontsize=7, weight="bold")
+	ax4.set_ylabel("Epochs", color=trainable_param_color, fontsize=7, weight="bold")
 	ax4.set_xticks(range(len(phases_list)))
 	ax4.set_xticklabels([f"{p}" for p in phases_list])
 	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
@@ -552,16 +552,16 @@ def plot_phase_transition_analysis_individual(
 	ax4_twin.yaxis.set_tick_params(labelsize=8)
 
 	# Match spine colors with their labels
-	ax4.spines['left'].set_color(duration_color)
+	ax4.spines['left'].set_color(trainable_param_color)
 	ax4_twin.spines['right'].set_color(loss_imp_color)
 
 	# Hide the right and top spines for both axes
 	ax4.grid(axis='y', alpha=0.5)
-	ax4.tick_params(axis='y', labelcolor=duration_color)
+	ax4.tick_params(axis='y', labelcolor=trainable_param_color)
 	ax4_twin.tick_params(axis='y', labelcolor=loss_imp_color)
 
 	# Match spine colors with their labels
-	ax4.spines['left'].set_color(duration_color)
+	ax4.spines['left'].set_color(trainable_param_color)
 	ax4_twin.spines['right'].set_color(loss_imp_color)
 
 	ax4_twin.spines['top'].set_visible(False)
@@ -889,7 +889,7 @@ def plot_phase_transition_analysis(
 		efficiencies = [m['efficiency'] for _, m in phase_data]  # Improvement per epoch
 		convergence_qualities = [m['convergence_quality'] for _, m in phase_data]  # How consistent
 		
-		ax4.bar(
+		bars = ax4.bar(
 			range(len(trainable_params_per_phase)), 
 			trainable_params_per_phase,
 			color=[phase_colors[p] for p in phases_list], 
@@ -897,12 +897,12 @@ def plot_phase_transition_analysis(
 			label='Trainable Parameters (%)', 
 		)
 		ax4.bar_label(
-			ax4.patches,
+			bars,
 			fmt='{:.1f}%',
 			label_type='edge', 
 			fontsize=7,
 			padding=2,
-			color=duration_color,
+			color=trainable_param_color,
 		)
 		
 		# Twin axis: efficiency (more meaningful than raw improvement)
@@ -932,7 +932,7 @@ def plot_phase_transition_analysis(
 			)
 
 	ax4.set_xlabel('Phase', fontsize=8, weight='bold')
-	ax4.set_ylabel(f'Trainable Parameters (%)\nTotal: {total_model_params:,}', fontsize=8, weight='bold', color=duration_color)
+	ax4.set_ylabel(f'Trainable Parameters (%)\nTotal: {total_model_params:,}', fontsize=8, weight='bold', color=trainable_param_color)
 	ax4_twin.set_ylabel('Learning Efficiency (%/ep)', fontsize=8, color=loss_imp_color)
 	ax4.set_title('Phase Efficiency Analysis', fontsize=8, weight='bold')
 	
@@ -941,11 +941,11 @@ def plot_phase_transition_analysis(
 	ax4.set_xticks(range(len(phase_labels)))
 	ax4.grid(axis='y', alpha=0.25, color="#A3A3A3")
 
-	ax4.tick_params(axis='y', labelcolor=duration_color, labelsize=8)
+	ax4.tick_params(axis='y', labelcolor=trainable_param_color, labelsize=8)
 	ax4_twin.tick_params(axis='y', labelcolor=loss_imp_color, labelsize=8)
 
 	# Match spine colors with their labels
-	ax4.spines['left'].set_color(duration_color)
+	ax4.spines['left'].set_color(trainable_param_color)
 	ax4_twin.spines['right'].set_color(loss_imp_color)
 
 	ax4_twin.spines['top'].set_visible(False)
