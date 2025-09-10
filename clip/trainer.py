@@ -2102,12 +2102,12 @@ def progressive_finetune_single_label(
 	batches_per_epoch = len(train_loader)
 
 	train_start_time = time.time()
-	print(f"Training: {num_epochs} epochs, {total_num_phases} phases, {min_epochs_per_phase} min epochs per phase".center(170, "-"))
+	print(f"Training: {num_epochs} epochs | {total_num_phases} phases | {min_epochs_per_phase} minimum epochs per phase".center(170, "-"))
 
 	for epoch in range(num_epochs):
-		print(f"Epoch {epoch+1}/{num_epochs} Phase {current_phase}/{total_num_phases}")
+		print(f"Epoch [{epoch+1}/{num_epochs}]")
 		epoch_start_time = time.time()
-		torch.cuda.empty_cache()
+		# torch.cuda.empty_cache()
 
 		unfreeze_layers(
 			model=model,

@@ -266,7 +266,6 @@ def build_arch_flowchart(
 		# 5️⃣  Render the file
 		# --------------------------------------------------------------
 		out_path = graph.render(filename=filename, cleanup=True, view=view)
-		print(f"✅ Flow‑chart written to {out_path}")
 		return graph
 
 def plot_phase_transition_analysis_individual(
