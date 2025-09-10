@@ -642,6 +642,7 @@ def plot_phase_transition_analysis(
 	learning_rates = training_history['learning_rates']
 	weight_decays = training_history['weight_decays']
 	trainable_params_per_phase = training_history['trainable_params_per_phase']
+	total_model_params = training_history['total_model_params']
 	phases = training_history['phases']
 	transitions = training_history.get('phase_transitions', [])
 	early_stop_epoch = training_history.get('early_stop_epoch')
@@ -870,7 +871,7 @@ def plot_phase_transition_analysis(
 	# ax2_twin.set_xlim(left=0, right=max(epochs)+1)
 	
 	# ==========================================
-	# Phase Duration and Efficiency Analysis
+	# Phase Efficiency Analysis
 	# ==========================================
 	ax4 = fig.add_subplot(gs[1:, :1])
 	phase_data = []
@@ -924,7 +925,7 @@ def plot_phase_transition_analysis(
 			)
 
 	ax4.set_xlabel('Phase', fontsize=8, weight='bold')
-	ax4.set_ylabel('Trainable Parameters', fontsize=8, weight='bold', color=duration_color)
+	ax4.set_ylabel(f'Trainable Parameters [% of total: {total_model_params:,}]', fontsize=8, weight='bold', color=duration_color)
 	ax4_twin.set_ylabel('Learning Efficiency (%/ep)', fontsize=8, color=loss_imp_color)
 	ax4.set_title('Phase Efficiency Analysis', fontsize=8, weight='bold')
 	
@@ -1126,6 +1127,7 @@ def collect_progressive_training_history(
 		weight_decays: List[float],
 		phases: List[int],
 		trainable_params_per_phase: List[int],
+		total_model_params: int,
 		embedding_drifts: List[float],
 		phase_transitions: List[int],
 		early_stop_epoch: Optional[int] = None,
@@ -1143,6 +1145,7 @@ def collect_progressive_training_history(
 		'weight_decays': weight_decays,
 		'phases': phases,
 		'trainable_params_per_phase': trainable_params_per_phase,
+		'total_model_params': total_model_params,
 		'embedding_drifts': embedding_drifts,
 		'phase_transitions': phase_transitions,
 		'early_stop_epoch': early_stop_epoch,

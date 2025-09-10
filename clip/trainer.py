@@ -2141,7 +2141,8 @@ def progressive_finetune_single_label(
 			# 3. Estimate the number of training steps for the current phase
 			total_training_steps = estimated_epochs_per_phase * batches_per_epoch
 			trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-			trainable_params_per_phase.append(trainable_params)
+			trainable_params_percent = trainable_params/total_model_params*100
+			trainable_params_per_phase.append(trainable_params_percent)
 			scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 				optimizer=optimizer,
 				T_max=total_training_steps,
@@ -2422,6 +2423,7 @@ def progressive_finetune_single_label(
 		weight_decays=weight_decays_history,
 		phases=phases_history,
 		trainable_params_per_phase=trainable_params_per_phase,
+		total_model_params=total_model_params,
 		embedding_drifts=embedding_drift_history,
 		phase_transitions=phase_transitions_epochs,
 		early_stop_epoch=epoch+1 if early_stopping_triggered else None,
