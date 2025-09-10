@@ -98,6 +98,7 @@ def main():
 	# Progressive
 	parser.add_argument('--min_phases_before_stopping', '-mphbs', type=int, default=None, help='Minimum number of phases before stopping (used if finetune_strategy=progressive)')
 	parser.add_argument('--min_epochs_per_phase', '-mepph', type=int, default=None, help='Minimum number of epochs per phase (used if finetune_strategy=progressive)')
+	parser.add_argument('--total_num_phases', '-tnp', type=int, default=None, help='Total number of phases (used if finetune_strategy=progressive)')
 
 	# Linear probe
 	parser.add_argument('--probe_dropout', '-pdo', type=float, default=None, help='Linear probe dropout (used if finetune_strategy=linear_probe)')
@@ -257,6 +258,7 @@ def main():
 						{
 							'min_phases_before_stopping': args.min_phases_before_stopping,
 							'min_epochs_per_phase': args.min_epochs_per_phase,
+							'total_num_phases': args.total_num_phases,
 						} if args.finetune_strategy == 'progressive' else {}
 						),
 				**(

@@ -1930,6 +1930,7 @@ def progressive_finetune_single_label(
 		accuracy_plateau_threshold: float = 5e-4,		# For phase transition based on accuracy
 		topk_values: list[int]=None,
 		layer_groups_to_unfreeze: list[str]=None,
+		total_num_phases: int=None,
 		use_lamb: bool=False,
 		verbose: bool=False,
 	):
@@ -1938,12 +1939,13 @@ def progressive_finetune_single_label(
 	if topk_values is None:
 		topk_values = [1, 5, 10, 15, 20]
 
-	initial_learning_rate = learning_rate
-	initial_weight_decay = weight_decay
+	total_num_phases = min_phases_before_stopping + 5 if total_num_phases is None else total_num_phases
 	window_size = min_epochs_per_phase + 3
 	estimated_epochs_per_phase = min_epochs_per_phase * 3
-	total_num_phases = min_phases_before_stopping + 5
 	
+	initial_learning_rate = learning_rate
+	initial_weight_decay = weight_decay
+
 	early_stopping = EarlyStopping(
 		patience=patience,
 		min_delta=min_delta,
