@@ -925,7 +925,7 @@ def plot_phase_transition_analysis(
 			)
 
 	ax4.set_xlabel('Phase', fontsize=8, weight='bold')
-	ax4.set_ylabel(f'Trainable Parameters [% of total: {total_model_params:,}]', fontsize=8, weight='bold', color=duration_color)
+	ax4.set_ylabel(f'Trainable Parameters (%)\ntotal: {total_model_params:,}', fontsize=7, weight='bold')
 	ax4_twin.set_ylabel('Learning Efficiency (%/ep)', fontsize=8, color=loss_imp_color)
 	ax4.set_title('Phase Efficiency Analysis', fontsize=8, weight='bold')
 	
