@@ -271,8 +271,8 @@ def build_arch_flowchart(
 def plot_phase_transition_analysis_individual(
 		training_history: Dict,
 		file_path: str,
-		figsize: Tuple[int, int] = (13, 7),
-		nbins: int = 13,
+		figsize: Tuple[int, int] = (12, 7),
+		nbins: int = 15,
 	):
 	file_path = file_path.replace("_ph_anls.png", ".png")
 	# Extract data
