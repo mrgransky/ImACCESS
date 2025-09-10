@@ -2060,7 +2060,8 @@ def progressive_finetune_single_label(
 		f"st_{slope_threshold:.1e}_"
 		f"pit_{pairwise_imp_threshold:.1e}_"
 		f"mepph_{min_epochs_per_phase}_"
-		f"mphb4stp_{min_phases_before_stopping}"
+		f"mphb4stp_{min_phases_before_stopping}_"
+		f"tph_{total_num_phases}"
 		f".pth"
 	)
 
@@ -2378,6 +2379,7 @@ def progressive_finetune_single_label(
 		f"pat_{patience}_"
 		f"mdt_{min_delta:.1e}_"
 		f"cdt_{cumulative_delta:.1e}_"
+		f"tph_{total_num_phases}_"
 		f"fph_{current_phase}"
 	)
 
