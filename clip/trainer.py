@@ -2127,55 +2127,28 @@ def progressive_finetune_single_label(
 			# 2. Configure the main scheduler to take over *after* the warm-up
 			# minimum LR to be X% of what PLANNED LR is for this phase: planned_next_lr * X 
 			if current_phase >= 3:
-				eta_min = planned_next_lr * 1e-2   # Very conservative for final phases
-				cycle_description = "conservative"
+				MIN_LR_FACTORS = 1e-2
 			elif current_phase >= 2:
-				eta_min = planned_next_lr * 5e-2   # Moderate cycling for mid phases
-				cycle_description = "moderate" 
+				MIN_LR_FACTORS = 5e-2
 			else:
-				eta_min = planned_next_lr * 1e-1  # Aggressive cycling for early phases
-				cycle_description = "aggressive"
-			# eta_min = planned_next_lr * 0.10 # 10% of planned_next_lr
-			# cycle_description = "simple"
-			
-			# # 3. Adaptive cycle length based on remaining epochs and phase
-			# remaining_epochs = num_epochs - epoch
-			# if current_phase == 0: T_0 = 15  																	# Longer cycles for initial learning
-			# elif remaining_epochs < 20: T_0 = max(3, remaining_epochs // 2)  	# Shorter cycles for final phases
-			# else: T_0 = max(5, remaining_epochs // 3)													# Balanced cycles for mid phases
-			# T_0 = 10 # 10 steps
-			
-			################################## CosineAnnealingWarmRestarts ##################################
+				MIN_LR_FACTORS = 1e-1
+			eta_min = planned_next_lr * MIN_LR_FACTORS			
 
-			# # 4. Create phase-optimized scheduler
-			# scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-			# 	optimizer=optimizer,
-			# 	T_0=T_0,
-			# 	T_mult=1,
-			# 	eta_min=eta_min,
-			# 	last_epoch=-1
-			# )
-			
-			# print(f"Phase {current_phase} scheduler with {cycle_description} cycling")
-			# print(f"  ├─ T_0 = {T_0} epochs")
-			# print(f"  ├─ LR: eta_min: {eta_min} ====>>> PLANNED: {planned_next_lr}")
-			# print(f"  ├─ Amplitude ratio: {(planned_next_lr/eta_min)}x")
-			# print(f"  └─ Main scheduler ({scheduler.__class__.__name__}) configured.")
-			################################## CosineAnnealingWarmRestarts ##################################
-
-			################################## CosineAnnealingLR ##################################
-			estimated_epochs_in_phase = min_epochs_per_phase * 4 # 4x the minimum epochs
+			# 3. Estimate the number of training steps for the current phase
+			estimated_epochs_in_phase = min_epochs_per_phase * 5
 			total_training_steps = estimated_epochs_in_phase * batches_per_epoch
+
 			scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 				optimizer=optimizer,
 				T_max=total_training_steps,
 				eta_min=eta_min,
 				last_epoch=-1
 			)
-			print(f"Phase {current_phase} scheduler {cycle_description} cycling")
+			print(f"Phase {current_phase} scheduler with minimum LR factor of {MIN_LR_FACTORS}")
 			print(f"  ├─ T_max = {total_training_steps} steps [{estimated_epochs_in_phase} epochs x {batches_per_epoch} batches/epoch]")
 			print(f"  ├─ LR PLANNED: {planned_next_lr} annealing to eta_min: {eta_min}")
 			print(f"  ├─ Annealing ratio: {(eta_min/planned_next_lr)}x")
+			print(f"  ├─ Trainable params: {trainable_params}")
 			print(f"  └─ Main scheduler ({scheduler.__class__.__name__}) configured.")
 
 		model.train()
@@ -2314,7 +2287,7 @@ def progressive_finetune_single_label(
 			volatility_threshold=volatility_threshold,
 		)
 		if should_trans:
-			phase_transitions_epochs.append(epoch)
+			phase_transitions_epochs.append(epoch+1)
 			current_phase, planned_next_lr, planned_next_wd = handle_phase_transition(current_phase, optimizer)
 			print(f"Transition to Phase {current_phase} @ epoch {epoch+1}: New planned LR: {planned_next_lr}, New WD: {planned_next_wd}")
 			epochs_in_current_phase = 0 # Reset phase epoch counter
