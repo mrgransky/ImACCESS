@@ -2185,9 +2185,9 @@ def progressive_finetune_single_label(
 			epoch_train_loss += batch_loss_item
 
 			if bidx % print_every == 0:
-				print(f"\tBatch [{bidx+1}/{num_train_batches}] Loss: {batch_loss_item}")
+				print(f"Batch [{bidx+1}/{num_train_batches}] Loss: {batch_loss_item}")
 			elif bidx == num_train_batches - 1 and batch_loss_item > 0:
-				print(f"\tBatch [{bidx+1}/{num_train_batches}] Loss: {batch_loss_item}")
+				print(f"Batch [{bidx+1}/{num_train_batches}] Loss: {batch_loss_item}")
 			else:
 				pass
 

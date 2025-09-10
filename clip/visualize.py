@@ -898,7 +898,7 @@ def plot_phase_transition_analysis(
 		)
 		ax4.bar_label(
 			bars,
-			fmt='{:.1f}%',
+			fmt='{:.2f}%',
 			label_type='edge', 
 			fontsize=7,
 			padding=2,
