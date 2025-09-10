@@ -663,13 +663,6 @@ def plot_phase_transition_analysis(
 	# 1. Learning Curve with Phase Transitions
 	# ========================================
 	ax1 = fig.add_subplot(gs[0, :])
-	# Set y-axis limits with minimum of 0 and maximum with margin
-	# max_loss = max(max(train_losses), max(val_losses))
-	# min_loss = min(min(train_losses), min(val_losses))
-	# margin = max_loss * 0.25  # 25% margin
-	# ax1.set_ylim(min_loss - margin, max_loss + margin)
-	# ymin, ymax = ax1.get_ylim()
-	# y_middle = (ymin + ymax) / 2.0
 
 	unique_phases = sorted(set(phases))
 
@@ -699,7 +692,7 @@ def plot_phase_transition_analysis(
 		)
 
 	# Plot loss curves with enhanced styling
-	train_line = ax1.plot(
+	ax1.plot(
 		epochs, 
 		train_losses, 
 		color=train_loss_color,
@@ -710,7 +703,7 @@ def plot_phase_transition_analysis(
 		marker='o', 
 		markersize=2.5,
 	)
-	val_line = ax1.plot(
+	ax1.plot(
 		epochs, 
 		val_losses, 
 		color=val_loss_color,
@@ -794,6 +787,8 @@ def plot_phase_transition_analysis(
 	
 	ax1.set_xlabel('Epoch', fontsize=8)
 	ax1.set_ylabel('Loss', fontsize=8)
+	ax1.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
+
 	ax1.set_title(f'Learning [Loss] Curve with Phase Transitions', fontsize=8, weight='bold')
 	legend = ax1.legend(
 		loc='best',
@@ -824,8 +819,10 @@ def plot_phase_transition_analysis(
 			[x0, x1],
 			[y0, y1],
 			color=phase_color,
-			linewidth=1.1,
-			alpha=0.4,
+			linewidth=1.5,
+			marker='o',
+			markersize=2,
+			alpha=0.5,
 			linestyle='-'
 		)
 
@@ -857,17 +854,20 @@ def plot_phase_transition_analysis(
 				zorder=10
 			)
 
-	ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
+	ax2.set_title('Hyperparameter Adaptation Across Phases\nLearning Rate (—) Weight Decay (--)', fontsize=8, weight='bold')
 	ax2.set_ylabel('LR', fontsize=7, weight='bold')
 	ax2_twin.set_ylabel('WD', fontsize=7, weight='bold')
 	ax2.tick_params(axis='y', labelsize=7)
 	ax2_twin.tick_params(axis='y', labelsize=7)
-	ax2.set_title('Hyperparameter Adaptation Across Phases\nLearning Rate (—) Weight Decay (--)', fontsize=8, weight='bold')
 	ax2.grid(True, alpha=0.3, linestyle='-', color='#A3A3A3')
 	ax2_twin.grid(True, alpha=0.5, linestyle='--', color="#8A8A8A")
+	
 	ax2.set_xlim(left=0, right=max(epochs)+1)
-	ax2_twin.set_xlim(left=0, right=max(epochs)+1)
-
+	ax2.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
+	ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
+	
+	# ax2_twin.set_xlim(left=0, right=max(epochs)+1)
+	
 	# ==========================================
 	# Phase Duration and Efficiency Analysis
 	# ==========================================

@@ -2275,6 +2275,10 @@ def progressive_finetune_single_label(
 				print(f"Validation Cache Stats: {cache_stats}")
 			print(f"#"*100)
 
+
+		print(f"{len(validation_losses)} validation losses: {validation_losses}")
+		print(f"early stopping validation loss history: {len(early_stopping.value_history)}: {early_stopping.value_history}")
+
 		should_trans = should_transition_to_next_phase(
 			current_phase=current_phase,
 			losses=validation_losses,
