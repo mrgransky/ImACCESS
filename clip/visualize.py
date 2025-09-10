@@ -271,7 +271,8 @@ def build_arch_flowchart(
 def plot_phase_transition_analysis_individual(
 		training_history: Dict,
 		file_path: str,
-		figsize: Tuple[int, int] = (13, 7)
+		figsize: Tuple[int, int] = (13, 7),
+		nbins: int = 13,
 	):
 	file_path = file_path.replace("_ph_anls.png", ".png")
 	# Extract data
@@ -546,7 +547,7 @@ def plot_phase_transition_analysis_individual(
 	ax4.set_ylabel("Epochs", color=trainable_param_color, fontsize=7, weight="bold")
 	ax4.set_xticks(range(len(phases_list)))
 	ax4.set_xticklabels([f"{p}" for p in phases_list])
-	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
+	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=nbins))
 	ax4_twin.set_ylabel("Loss Improvement (%)", color=loss_imp_color, fontsize=7, weight="bold")
 	ax4_twin.yaxis.set_tick_params(labelsize=8)
 
@@ -631,7 +632,8 @@ def plot_phase_transition_analysis_individual(
 def plot_phase_transition_analysis(
 		training_history: Dict,
 		file_path: str,
-		figsize: Tuple[int, int] = (19, 12)
+		figsize: Tuple[int, int] = (21, 13),
+		nbins: int = 15,
 	):
 	# Extract data
 	epochs = training_history['epochs']
@@ -788,7 +790,7 @@ def plot_phase_transition_analysis(
 	
 	ax1.set_xlabel('Epoch', fontsize=8)
 	ax1.set_ylabel('Loss', fontsize=8)
-	ax1.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
+	ax1.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=nbins))
 
 	ax1.set_title(f'Learning [Loss] Curve with Phase Transitions', fontsize=8, weight='bold')
 	legend = ax1.legend(
@@ -864,10 +866,8 @@ def plot_phase_transition_analysis(
 	ax2_twin.grid(True, alpha=0.5, linestyle='--', color="#8A8A8A")
 	
 	ax2.set_xlim(left=0, right=max(epochs)+1)
-	ax2.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
+	ax2.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=nbins))
 	ax2.set_xlabel('Epoch', fontsize=8, weight='bold')
-	
-	# ax2_twin.set_xlim(left=0, right=max(epochs)+1)
 	
 	# ==========================================
 	# Phase Efficiency Analysis
