@@ -631,7 +631,7 @@ def plot_phase_transition_analysis_individual(
 def plot_phase_transition_analysis(
 		training_history: Dict,
 		file_path: str,
-		figsize: Tuple[int, int] = (20, 10)
+		figsize: Tuple[int, int] = (19, 12)
 	):
 	# Extract data
 	epochs = training_history['epochs']
@@ -900,7 +900,7 @@ def plot_phase_transition_analysis(
 			fmt='{:.2f}%',
 			label_type='edge', 
 			fontsize=7,
-			padding=2,
+			padding=1,
 			color=trainable_param_color,
 		)
 		
@@ -909,11 +909,11 @@ def plot_phase_transition_analysis(
 		ax4_twin.plot(
 			range(len(efficiencies)),
 			efficiencies,
-			linewidth=0.7,
+			linewidth=0.6,
 			linestyle='-',
 			marker='o',
-			markersize=2,
-			alpha=0.55,
+			markersize=2.5,
+			alpha=0.6,
 			color=loss_imp_color,
 			label='Efficiency (%/ep)',
 		)
@@ -922,10 +922,10 @@ def plot_phase_transition_analysis(
 		for i, (efficiency, convergence) in enumerate(zip(efficiencies, convergence_qualities)):
 			ax4_twin.text(
 				i, 
-				efficiency * 1.02 if efficiency > 0 else efficiency * 0.85,
+				efficiency * 1.05 if efficiency > 0 else efficiency * 0.8,
 				f'{efficiency:.3f} (R²: {convergence:.3f})',
 				ha='center', 
-				va='bottom' if efficiency > 0 else 'top',
+				va='bottom', #if efficiency > 0 else 'top',
 				fontsize=7,
 				color=loss_imp_color,
 			)
