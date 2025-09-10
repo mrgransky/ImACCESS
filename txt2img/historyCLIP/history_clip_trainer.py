@@ -59,7 +59,7 @@ from historical_dataset_loader import get_single_label_dataloaders, get_multi_la
 # $ for lr in $(python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=6))))"); do nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -e 150 -lr $lr -wd 1e-1 --print_every 50 -nw 50 -dv 'cuda:3' -m finetune -fts progressive -a 'ViT-B/32' -do 0.0 > /media/volume/ImACCESS/trash/smu_ft_progressive_lr_${lr}.txt & done
 
 # using one command:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 200 -bs 256 -lr 3e-4 -wd 1e-2 -nw 32 -dv "cuda:3" -fts progressive -mep 7 -pat 3 -mepph 5 -mphbs 3 -tnp 6 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 110 -bs 256 -lr 3e-4 -wd 1e-2 -nw 32 -dv "cuda:3" -fts progressive -mep 7 -pat 3 -mepph 5 -mphbs 3 -tnp 6 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 50 -nw 50 -dv "cuda:2" -m finetune -fts progressive -dt multi_label -a "ViT-B/32" -do 0.05 -mphbs 3 -mepph 5 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 32 -e 150 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 12 -dv "cuda:1" -m finetune -fts progressive -dt multi_label -a "ViT-B/32" -do 0.05 -mphbs 3 -mepph 5 --log_dir /media/volume/ImACCESS/trash &
 # $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 32 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 -dv "cuda:0" -m finetune -fts progressive -dt multi_label -a "ViT-L/14" -do 0.05 -mphbs 3 -mepph 5 --log_dir /media/volume/ImACCESS/trash &
@@ -159,9 +159,12 @@ def main():
 			if args.finetune_strategy == "lora":
 				log_file_base_name += f"_lor_{args.lora_rank}_loa_{args.lora_alpha}_lod_{args.lora_dropout}"
 			
+			if args.finetune_strategy == "progressive":
+				log_file_base_name += f"_mphbs_{args.min_phases_before_stopping}_mepph_{args.min_epochs_per_phase}_tnp_{args.total_num_phases}"
+
 			if args.use_lamb:
 				log_file_base_name += "_lamb"
-
+			
 			log_file_path = os.path.join(args.log_dir, f"{log_file_base_name}.txt")
 
 			log_file = open(log_file_path, 'w')
