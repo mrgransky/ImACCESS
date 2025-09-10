@@ -1528,14 +1528,14 @@ def get_status(
 	param_stats = [
 		["Phase #", f"{phase}"],
 		["Total Parameters", f"{total_params:,}"],
-		["Trainable Parameters", f"{trainable_params:,} ({trainable_params/total_params*100:.2f}%)"],
-		["Frozen Parameters", f"{frozen_params:,} ({frozen_params/total_params*100:.2f}%)"]
+		["Trainable Parameters", f"{trainable_params:,} ({trainable_params/total_params*100:.3f}%)"],
+		["Frozen Parameters", f"{frozen_params:,} ({frozen_params/total_params*100:.3f}%)"]
 	]
 	layer_stats = [
 		["Total Layers", total_layers],
-		["Frozen Layers", f"{frozen_layers} ({frozen_layers/total_layers*100:.2f}%)"]
+		["Frozen Layers", f"{frozen_layers} ({frozen_layers/total_layers*100:.3f}%)"]
 	]
-	category_stats = [[group, f"{frozen}/{total} ({frozen/total*100:.2f}%)"] for group, (frozen, total) in category_breakdown.items()]
+	category_stats = [[group, f"{frozen}/{total} ({frozen/total*100:.3f}%)"] for group, (frozen, total) in category_breakdown.items()]
 
 	print(tabulate.tabulate(param_stats, headers=headers, tablefmt="pretty", colalign=("left", "left")))
 	print("\nLayer Statistics:")
@@ -1969,6 +1969,8 @@ def progressive_finetune_single_label(
 
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
+	total_model_params = sum(p.numel() for p in model.parameters())
+
 	print(f"{mode} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
@@ -2091,6 +2093,7 @@ def progressive_finetune_single_label(
 	learning_rates_history = list()
 	weight_decays_history = list()
 	phases_history = list()
+	trainable_params_per_phase = list()
 	phase_transitions_epochs = list()
 	embedding_drift_history = list()
 	batches_per_epoch = len(train_loader)
@@ -2137,7 +2140,8 @@ def progressive_finetune_single_label(
 
 			# 3. Estimate the number of training steps for the current phase
 			total_training_steps = estimated_epochs_per_phase * batches_per_epoch
-
+			trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+			trainable_params_per_phase.append(trainable_params)
 			scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 				optimizer=optimizer,
 				T_max=total_training_steps,
@@ -2147,6 +2151,7 @@ def progressive_finetune_single_label(
 			print(f"Phase {current_phase} scheduler Annealing ratio: {ANNEALING_RATIO}")
 			print(f"  ├─ T_max = {total_training_steps} steps [{estimated_epochs_per_phase} epochs x {batches_per_epoch} batches/epoch]")
 			print(f"  ├─ LR PLANNED: {planned_next_lr} annealing to eta_min: {eta_min}")
+			print(f"  ├─ Trainable params: {trainable_params:,} / {total_model_params:,} ({trainable_params/total_model_params*100:.3f}%)")
 			print(f"  └─ Main scheduler ({scheduler.__class__.__name__}) configured.")
 
 		model.train()
@@ -2416,6 +2421,7 @@ def progressive_finetune_single_label(
 		learning_rates=learning_rates_history,
 		weight_decays=weight_decays_history,
 		phases=phases_history,
+		trainable_params_per_phase=trainable_params_per_phase,
 		embedding_drifts=embedding_drift_history,
 		phase_transitions=phase_transitions_epochs,
 		early_stop_epoch=epoch+1 if early_stopping_triggered else None,
@@ -4432,9 +4438,6 @@ def progressive_finetune_multi_label(
 				print(f"Phase transition triggered. Optimizer/Scheduler refresh pending after unfreeze.")
 				print(f"Current Phase: {current_phase}")
 
-		# --- Unfreeze Layers for Current Phase ---
-		print(f"Applying unfreeze strategy for Phase {current_phase}...")
-		# Ensure layers are correctly frozen/unfrozen *before* optimizer step
 		unfreeze_layers(
 			model=model,
 			strategy=unfreeze_schedule,

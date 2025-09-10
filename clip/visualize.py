@@ -641,6 +641,7 @@ def plot_phase_transition_analysis(
 	val_losses = training_history['val_losses']
 	learning_rates = training_history['learning_rates']
 	weight_decays = training_history['weight_decays']
+	trainable_params_per_phase = training_history['trainable_params_per_phase']
 	phases = training_history['phases']
 	transitions = training_history.get('phase_transitions', [])
 	early_stop_epoch = training_history.get('early_stop_epoch')
@@ -888,10 +889,10 @@ def plot_phase_transition_analysis(
 		efficiencies = [m['efficiency'] for _, m in phase_data]  # Improvement per epoch
 		convergence_qualities = [m['convergence_quality'] for _, m in phase_data]  # How consistent
 		
-		# Main bars: duration
+		# Main bars: trainable params
 		bars = ax4.bar(
-			range(len(durations)), 
-			durations, 
+			range(len(trainable_params_per_phase)), 
+			trainable_params_per_phase,
 			color=[phase_colors[p] for p in phases_list], 
 			alpha=0.55,
 		)
@@ -911,7 +912,7 @@ def plot_phase_transition_analysis(
 		)
 		
 		# Add convergence quality as scatter size or color intensity
-		for i, (duration, efficiency, convergence) in enumerate(zip(durations, efficiencies, convergence_qualities)):
+		for i, (efficiency, convergence) in enumerate(zip(efficiencies, convergence_qualities)):
 			ax4_twin.text(
 				i, 
 				efficiency * 1.02 if efficiency > 0 else efficiency * 0.85,
@@ -923,14 +924,14 @@ def plot_phase_transition_analysis(
 			)
 
 	ax4.set_xlabel('Phase', fontsize=8, weight='bold')
-	ax4.set_ylabel('Epochs', fontsize=8, weight='bold', color=duration_color)
+	ax4.set_ylabel('Trainable Parameters', fontsize=8, weight='bold', color=duration_color)
 	ax4_twin.set_ylabel('Learning Efficiency (%/ep)', fontsize=8, color=loss_imp_color)
 	ax4.set_title('Phase Efficiency Analysis', fontsize=8, weight='bold')
 	
 	phase_labels = [f'{p}' for p in phases_list]
 	ax4.set_xticklabels(phase_labels)
 	ax4.set_xticks(range(len(phase_labels)))
-	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
+	# ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=10))
 	ax4.grid(axis='y', alpha=0.25, color="#A3A3A3")
 
 	ax4.tick_params(axis='y', labelcolor=duration_color, labelsize=8)
@@ -1124,30 +1125,12 @@ def collect_progressive_training_history(
 		learning_rates: List[float],
 		weight_decays: List[float],
 		phases: List[int],
+		trainable_params_per_phase: List[int],
 		embedding_drifts: List[float],
 		phase_transitions: List[int],
 		early_stop_epoch: Optional[int] = None,
 		best_epoch: Optional[int] = None
 	) -> Dict:
-	"""
-	Collect training history data for progressive training visualization.
-	
-	This function should be called at the end of progressive training to gather
-	all the necessary data for visualization.
-	
-	Args:
-		training_losses: List of training losses per epoch
-		in_batch_metrics_all_epochs: List of validation metrics per epoch
-		learning_rates: List of learning rates per epoch
-		weight_decays: List of weight decays per epoch  
-		phases: List of phase numbers per epoch
-		phase_transitions: List of epochs where phase transitions occurred
-		early_stop_epoch: Epoch where early stopping occurred (if any)
-		best_epoch: Epoch with best validation performance
-	
-	Returns:
-		Dictionary containing all training history data
-	"""
 	
 	val_losses = [metrics.get('val_loss', 0.0) for metrics in in_batch_metrics_all_epochs]
 	epochs = list(range(len(training_losses)))
@@ -1159,6 +1142,7 @@ def collect_progressive_training_history(
 		'learning_rates': learning_rates,
 		'weight_decays': weight_decays,
 		'phases': phases,
+		'trainable_params_per_phase': trainable_params_per_phase,
 		'embedding_drifts': embedding_drifts,
 		'phase_transitions': phase_transitions,
 		'early_stop_epoch': early_stop_epoch,
