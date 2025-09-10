@@ -272,7 +272,7 @@ def build_arch_flowchart(
 def plot_phase_transition_analysis_individual(
 		training_history: Dict,
 		file_path: str,
-		figsize: Tuple[int, int] = (13, 6)
+		figsize: Tuple[int, int] = (13, 7)
 	):
 	file_path = file_path.replace("_ph_anls.png", ".png")
 	# Extract data
@@ -296,9 +296,9 @@ def plot_phase_transition_analysis_individual(
 		fig.savefig(f"{base}_{suffix}{ext}", dpi=200, bbox_inches='tight', facecolor='white')
 		plt.close(fig)
 	
-	# ============================================
+	# =============================================
 	# PLOT 1: Learning Curve with Phase Transitions
-	# ============================================
+	# =============================================
 	fig, ax1 = plt.subplots(figsize=figsize, facecolor='white')
 	max_loss = max(max(train_losses), max(val_losses))
 	min_loss = min(min(train_losses), min(val_losses))
@@ -381,7 +381,6 @@ def plot_phase_transition_analysis_individual(
 	ax1.grid(True, alpha=0.5)
 	save_fig(fig, "learning_curve")
 
-
 	# ===================================
 	# Hyperparameter Adaptation (LR + WD)
 	# ===================================
@@ -441,58 +440,57 @@ def plot_phase_transition_analysis_individual(
 	ax2_twin.set_xlim(left=0, right=max(epochs)+1)
 	save_fig(fig, "hyperparam_evol")
 
-	# ============================================
-	# PLOT 2: Learning Rate Adaptation
-	# ============================================
+	# ===============================
+	# Learning Rate Adaptation
+	# ===============================
 	fig, ax2 = plt.subplots(figsize=figsize, facecolor='white')
 	for i in range(len(epochs) - 1):
-		ax2.semilogy(
+		ax2.plot(
 			[epochs[i], epochs[i+1]], 
 			[learning_rates[i], learning_rates[i+1]],
-			color=phase_colors[phases[i]], 
-			linewidth=3, 
-			alpha=0.9
+			color=phase_colors[phases[i+1]], 
+			linewidth=2.0,
 		)
 	for t_epoch in transitions:
 		ax2.axvline(
 			x=t_epoch, 
 			color=transition_color, 
-			linestyle="--", 
+			linestyle=":",
 			linewidth=2,
 			alpha=0.8,
 			zorder=10,
 		)
 	ax2.set_title("Learning Rate Adaptation Across Phases", fontsize=10, weight="bold")
 	ax2.set_xlabel("Epoch")
-	ax2.set_ylabel("Learning Rate (log)")
-	ax2.grid(True, alpha=0.3)
+	ax2.set_ylabel("LR", fontsize=8, weight="bold")
+	ax2.grid(True, alpha=0.5, linestyle='--', color="#8A8A8A")
 	save_fig(fig, "lr_evol")
 
-	# ============================================
-	# PLOT 3: Weight Decay Adaptation
-	# ============================================
+	# ===============================
+	# Weight Decay Adaptation
+	# ===============================
 	fig, ax3 = plt.subplots(figsize=figsize, facecolor='white')
 	for i in range(len(epochs) - 1):
-		ax3.semilogy(
+		ax3.plot(
 			[epochs[i], epochs[i+1]], 
 			[weight_decays[i], weight_decays[i+1]],
-			color=phase_colors[phases[i]], 
-			linewidth=3, 
+			color=phase_colors[phases[i+1]], 
+			linewidth=2, 
 			alpha=0.8
 		)
 	for t_epoch in transitions:
 		ax3.axvline(
 			x=t_epoch, 
 			color=transition_color, 
-			linestyle="--", 
+			linestyle=":", 
 			linewidth=2,
 			alpha=0.8,
 			zorder=10,
 		)
 	ax3.set_title("Weight Decay Adaptation Across Phases", fontsize=10, weight="bold")
 	ax3.set_xlabel("Epoch")
-	ax3.set_ylabel("Weight Decay (log)", fontsize=7)
-	ax3.grid(True, alpha=0.3)
+	ax3.set_ylabel("WD", fontsize=8, weight="bold")
+	ax3.grid(True, alpha=0.5, linestyle='--', color="#8A8A8A")
 	save_fig(fig, "wd_evol")
 
 	# ============================================

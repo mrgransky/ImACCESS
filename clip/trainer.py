@@ -1905,7 +1905,7 @@ def handle_phase_transition(
 	) -> Tuple[int, float, float]:
 	next_phase = current_phase + 1
 	new_lr = optimizer.param_groups[0]['lr'] * 1.0  # 0% reduction
-	new_wd = optimizer.param_groups[0]['weight_decay'] * 1.1  # 10% increase
+	new_wd = optimizer.param_groups[0]['weight_decay'] * 1.05  # 5% increase
 	return next_phase, new_lr, new_wd
 
 def progressive_finetune_single_label(
@@ -1940,9 +1940,10 @@ def progressive_finetune_single_label(
 
 	initial_learning_rate = learning_rate
 	initial_weight_decay = weight_decay
-	window_size = min_epochs_per_phase + 5
+	window_size = min_epochs_per_phase + 3
+	estimated_epochs_per_phase = min_epochs_per_phase * 3
 	total_num_phases = min_phases_before_stopping + 5
-
+	
 	early_stopping = EarlyStopping(
 		patience=patience,
 		min_delta=min_delta,
@@ -2127,16 +2128,15 @@ def progressive_finetune_single_label(
 			# 2. Configure the main scheduler to take over *after* the warm-up
 			# minimum LR to be X% of what PLANNED LR is for this phase: planned_next_lr * X 
 			if current_phase >= 3:
-				MIN_LR_FACTORS = 1e-2
+				ANNEALING_RATIO = 1e-2
 			elif current_phase >= 2:
-				MIN_LR_FACTORS = 5e-2
+				ANNEALING_RATIO = 5e-2
 			else:
-				MIN_LR_FACTORS = 1e-1
-			eta_min = planned_next_lr * MIN_LR_FACTORS			
+				ANNEALING_RATIO = 1e-1
+			eta_min = planned_next_lr * ANNEALING_RATIO			
 
 			# 3. Estimate the number of training steps for the current phase
-			estimated_epochs_in_phase = min_epochs_per_phase * 5
-			total_training_steps = estimated_epochs_in_phase * batches_per_epoch
+			total_training_steps = estimated_epochs_per_phase * batches_per_epoch
 
 			scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 				optimizer=optimizer,
@@ -2144,11 +2144,9 @@ def progressive_finetune_single_label(
 				eta_min=eta_min,
 				last_epoch=-1
 			)
-			print(f"Phase {current_phase} scheduler with minimum LR factor of {MIN_LR_FACTORS}")
+			print(f"Phase {current_phase} scheduler Annealing ratio: {ANNEALING_RATIO}")
 			print(f"  ├─ T_max = {total_training_steps} steps [{estimated_epochs_in_phase} epochs x {batches_per_epoch} batches/epoch]")
 			print(f"  ├─ LR PLANNED: {planned_next_lr} annealing to eta_min: {eta_min}")
-			print(f"  ├─ Annealing ratio: {(eta_min/planned_next_lr)}x")
-			print(f"  ├─ Trainable params: {trainable_params}")
 			print(f"  └─ Main scheduler ({scheduler.__class__.__name__}) configured.")
 
 		model.train()
