@@ -122,6 +122,7 @@ def main():
 	if args.finetune_strategy == "progressive":
 		assert args.min_phases_before_stopping is not None, "min_phases_before_stopping must be specified for progressive finetuning (example: -mphbs 3)"
 		assert args.min_epochs_per_phase is not None, "min_epochs_per_phase must be specified for progressive finetuning (example: -mepph 5)"
+		assert args.total_num_phases is not None, "total_num_phases must be specified for progressive finetuning (example: -tnp 6)"
 
 	if args.finetune_strategy == "lora":
 		assert args.lora_rank is not None, "lora_rank must be specified for lora finetuning"
