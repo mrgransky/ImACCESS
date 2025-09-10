@@ -251,6 +251,7 @@ def compute_direct_in_batch_metrics(
 		topK_values: List[int],
 		max_samples: int = 384,
 		temperature: float = 0.07,
+		verbose: bool = False,
 	) -> Dict:
 
 	model.eval()
@@ -263,7 +264,8 @@ def compute_direct_in_batch_metrics(
 	is_multilabel = len(sample_batch) == 3 and len(sample_batch[2].shape) == 2
 	
 	if is_multilabel:
-		print("Multi-label dataset detected - skipping in-batch metrics computation")
+		if verbose:
+			print("Multi-label dataset detected - skipping in-batch metrics computation")
 		multi_label_in_batch_metrics = compute_multilabel_inbatch_metrics(
 			model=model,
 			validation_loader=validation_loader,
@@ -275,7 +277,8 @@ def compute_direct_in_batch_metrics(
 		)
 		return multi_label_in_batch_metrics
 
-	print("Single-label dataset detected - computing in-batch metrics")
+	if verbose:
+		print("Single-label dataset detected - computing in-batch metrics")
 	total_loss = 0.0
 	total_img2txt_correct = 0
 	total_txt2img_correct = 0
@@ -854,6 +857,7 @@ def get_validation_metrics(
 			topK_values=topK_values,
 			max_samples=max_in_batch_samples,
 			temperature=temperature,
+			verbose=verbose,
 		)
 	
 	# Step 2: Load or compute embeddings
@@ -1821,7 +1825,7 @@ def compute_embedding_drift(
 		new_embeds = F.normalize(new_embeds, dim=-1)
 		drift = F.cosine_similarity(new_embeds, pretrained_embeds[:new_embeds.size(0)].to(device), dim=-1)
 		mean_drift = 1 - drift.mean().item()
-	print(f"[DEBUG] Embedding Drift | Phase {phase} | Epoch {epoch}: {mean_drift}")
+	# print(f"[DEBUG] Embedding Drift | Phase {phase} | Epoch {epoch}: {mean_drift}")
 	return mean_drift
 
 def should_transition_to_next_phase(
@@ -1900,7 +1904,7 @@ def handle_phase_transition(
 		optimizer: torch.optim.Optimizer,
 	) -> Tuple[int, float, float]:
 	next_phase = current_phase + 1
-	new_lr = optimizer.param_groups[0]['lr'] * 0.95  # 5% reduction
+	new_lr = optimizer.param_groups[0]['lr'] * 1.0  # 0% reduction
 	new_wd = optimizer.param_groups[0]['weight_decay'] * 1.1  # 10% increase
 	return next_phase, new_lr, new_wd
 
@@ -2123,13 +2127,13 @@ def progressive_finetune_single_label(
 			# 2. Configure the main scheduler to take over *after* the warm-up
 			# minimum LR to be X% of what PLANNED LR is for this phase: planned_next_lr * X 
 			if current_phase >= 3:
-				eta_min = planned_next_lr * 0.01   # Very conservative for final phases
+				eta_min = planned_next_lr * 1e-2   # Very conservative for final phases
 				cycle_description = "conservative"
 			elif current_phase >= 2:
-				eta_min = planned_next_lr * 0.05   # Moderate cycling for mid phases
+				eta_min = planned_next_lr * 5e-2   # Moderate cycling for mid phases
 				cycle_description = "moderate" 
 			else:
-				eta_min = planned_next_lr * 0.10  # Aggressive cycling for early phases
+				eta_min = planned_next_lr * 1e-1  # Aggressive cycling for early phases
 				cycle_description = "aggressive"
 			# eta_min = planned_next_lr * 0.10 # 10% of planned_next_lr
 			# cycle_description = "simple"
