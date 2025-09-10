@@ -1899,8 +1899,8 @@ def handle_phase_transition(
 		current_phase: int, 
 		optimizer: torch.optim.Optimizer,
 	) -> Tuple[int, float, float]:
-	next_phase = current_phase + 1	
-	new_lr = optimizer.param_groups[0]['lr'] * 0.8  # 20% reduction
+	next_phase = current_phase + 1
+	new_lr = optimizer.param_groups[0]['lr'] * 0.95  # 5% reduction
 	new_wd = optimizer.param_groups[0]['weight_decay'] * 1.1  # 10% increase
 	return next_phase, new_lr, new_wd
 
@@ -2222,11 +2222,6 @@ def progressive_finetune_single_label(
 		weight_decays_history.append(current_wd)     # Record what was ACTUALLY used
 		phases_history.append(current_phase)         # Record current phase
 
-		print("="*100)
-		print(f"Epoch {epoch+1} current_phase: {current_phase} current_epochs_in_phase: {epochs_in_current_phase}")
-		print(f"[ACTUAL] current_lr: {current_lr} current_wd: {current_wd}")
-		print(f"[PLANNED] planned_next_lr: {planned_next_lr} planned_next_wd: {planned_next_wd}")
-		print("="*100)
 
 		drift_value = compute_embedding_drift(
 			model, 
@@ -2246,11 +2241,19 @@ def progressive_finetune_single_label(
 			topK_values=topk_values,
 			finetune_strategy=mode,
 			cache_dir=results_dir,
-			verbose=True,
+			verbose=False,
 			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 			is_training=True,
 			model_hash=get_model_hash(model),
 		)
+
+		if epoch == 0:
+			print("="*60)
+			print(f"DEBUG: After epoch 0, learning_rates length: {len(learning_rates_history)}")
+			print(f"DEBUG: After epoch 0, weight_decays length: {len(weight_decays_history)}")
+			print(f"DEBUG: LR: {learning_rates_history}")
+			print(f"DEBUG: WD: {weight_decays_history}")
+			print("="*60)
 
 		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
 		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
@@ -2267,18 +2270,23 @@ def progressive_finetune_single_label(
 		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
 		validation_losses.append(current_val_loss)
 
-		print(
-			f'\t[LOSS] Training: {avg_training_loss} Validation(in-batch): {current_val_loss}\n'
-			f'\tValidation Top-k Accuracy:\n'
-			f'\tIn-batch:\n'
-			f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-			f'\t\t[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
-			f'\tFull Validation Set:\n'
-			f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-			f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
-		)
-		print(f"Image-to-Text Retrieval:\n\t{retrieval_metrics_per_epoch['img2txt']}")
-		print(f"Text-to-Image Retrieval:\n\t{retrieval_metrics_per_epoch['txt2img']}")
+		print(f"\nEpoch {epoch+1:3d} Phase: {current_phase} current_epochs_in_phase: {epochs_in_current_phase}")
+		print(f'\t[LOSS] Train: {avg_training_loss} Val(in-batch): {current_val_loss}')
+		print(f"\t[Hyperparameters]")
+		print(f"\t\t[ACTUAL] current_lr: {current_lr} current_wd: {current_wd}")
+		print(f"\t\t[PLANNED] planned_next_lr: {planned_next_lr} planned_next_wd: {planned_next_wd}")
+		# print(
+		# 	f'\tValidation Top-k Accuracy:\n'
+		# 	f'\tIn-batch:\n'
+		# 	f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+		# 	f'\t\t[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
+		# 	f'\tFull Validation Set:\n'
+		# 	f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+		# 	f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+		# )
+
+		# print(f"Image-to-Text Retrieval:\n\t{retrieval_metrics_per_epoch['img2txt']}")
+		# print(f"Text-to-Image Retrieval:\n\t{retrieval_metrics_per_epoch['txt2img']}")
 
 		if hasattr(train_loader.dataset, 'get_cache_stats'):
 			print(f"#"*100)

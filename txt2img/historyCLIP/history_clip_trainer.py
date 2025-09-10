@@ -22,7 +22,7 @@ from historical_dataset_loader import get_single_label_dataloaders, get_multi_la
 # $ python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=10))))"
 
 # run in local:
-# $ python history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -m finetune -fts progressive -e 105 -mphbs 3 -mepph 3 -dt single_label -bs 128 -a "ViT-B/32"
+# $ python history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -m finetune -fts progressive -e 105 -mphbs 3 -mepph 3 -dt single_label -bs 128 -lr 1e-5 -wd 1e-2
 # $ nohup python -u history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -m finetune -fts progressive -a "ViT-B/32" > logs/europeana_ft_progressive.txt &
 
 # Pouta:
@@ -76,8 +76,8 @@ def main():
 	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--epochs', '-e', type=int, default=63, help='Number of epochs')
 	parser.add_argument('--batch_size', '-bs', type=int, default=8, help='Batch size for training')
-	parser.add_argument('--learning_rate', '-lr', type=float, default=5e-4, help='small learning rate for better convergence [def: 1e-3]')
-	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay [def: 5e-4]')
+	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='small learning rate for better convergence [def: 1e-3]')
+	parser.add_argument('--weight_decay', '-wd', type=float, default=5e-2, help='Weight decay [def: 5e-4]')
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout rate for the model')
 	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs [def: max cpus]')
 

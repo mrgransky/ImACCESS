@@ -7,6 +7,8 @@ sys.path.insert(0, CLIP_DIR)
 from utils import *
 from historical_dataset_loader import get_single_label_dataloaders, get_multi_label_dataloaders
 
+# $ python progressive_ft.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -dt single_label -m finetune -a "ViT-B/32" -ne 20 -lr 1e-4 -wd 1e-2 -np 4 -mep 5 -pf 1.5 -tt 1e-3
+
 def create_hyperparameter_evolution_plot(training_history, results_dir, model_arch):
 	epochs = range(len(training_history['train_losses']))
 	phases = training_history['phases']
@@ -15,7 +17,7 @@ def create_hyperparameter_evolution_plot(training_history, results_dir, model_ar
 	weight_decays = training_history.get('weight_decays', [])
 	
 	# Create figure with 2 subplots
-	fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
+	fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
 	
 	# Phase color mapping
 	max_phase = max(phases) if phases else 0
@@ -48,10 +50,9 @@ def create_hyperparameter_evolution_plot(training_history, results_dir, model_ar
 												 arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0'),
 												 fontsize=9)
 			
-			# Formatting
-			ax1.set_ylabel('Learning Rate', fontsize=12)
+			ax1.set_ylabel('LR', fontsize=12)
 			ax1.set_title('Learning Rate Evolution Across Phases', fontsize=14, fontweight='bold')
-			ax1.set_yscale('log')  # Log scale for better LR visualization
+			# ax1.set_yscale('log')  # Log scale for better LR visualization
 			ax1.grid(True, alpha=0.3)
 			
 			# Add phase labels at the top
@@ -99,7 +100,7 @@ def create_hyperparameter_evolution_plot(training_history, results_dir, model_ar
 			
 			# Formatting
 			ax2.set_xlabel('Epoch', fontsize=12)
-			ax2.set_ylabel('Weight Decay', fontsize=12)
+			ax2.set_ylabel('WD', fontsize=12)
 			ax2.set_title('Weight Decay Evolution Across Phases', fontsize=14, fontweight='bold')
 			ax2.grid(True, alpha=0.3)
 			
@@ -125,7 +126,7 @@ def create_hyperparameter_evolution_plot(training_history, results_dir, model_ar
 	
 	# Save the plot
 	plot_path = os.path.join(results_dir, f'hyperparameter_evolution_{model_arch}.png')
-	plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+	plt.savefig(plot_path, dpi=250, bbox_inches='tight')
 	plt.close()
 
 def simplified_progressive_finetune(
@@ -231,7 +232,6 @@ def simplified_progressive_finetune(
 		if optimizer is not None:
 			current_lr = optimizer.param_groups[0]['lr']
 			current_wd = optimizer.param_groups[0]['weight_decay']
-			print(f"DEBUG: Epoch {epoch+1} - LR: {current_lr}, WD: {current_wd}")
 		else:
 			current_lr = learning_rate
 			current_wd = weight_decay
@@ -246,28 +246,32 @@ def simplified_progressive_finetune(
 		training_history['metrics_per_epoch'].append(val_metrics)
 		training_history['learning_rates'].append(current_lr)
 		training_history['weight_decays'].append(current_wd)
-		training_history['optimizer_states'].append({
-			'epoch': epoch,
-			'phase': current_phase,
-			'lr': current_lr,
-			'weight_decay': current_wd,
-			'trainable_params': trainable_params
-		})
+		training_history['optimizer_states'].append(
+			{
+				'epoch': epoch,
+				'phase': current_phase,
+				'lr': current_lr,
+				'weight_decay': current_wd,
+				'trainable_params': trainable_params
+			}
+		)
 		
 		if epoch == 0:  # Debug first epoch
+			print("="*60)
 			print(f"DEBUG: After epoch 0, learning_rates length: {len(training_history['learning_rates'])}")
 			print(f"DEBUG: After epoch 0, weight_decays length: {len(training_history['weight_decays'])}")
 			print(f"DEBUG: Learning rates so far: {training_history['learning_rates']}")
 			print(f"DEBUG: Weight decays so far: {training_history['weight_decays']}")
+			print("="*60)
 		
 		epochs_in_phase += 1
 		
 		if verbose:
 			print(
 				f"Epoch {epoch+1:3d} | Phase {current_phase} | "
-				f"Train: {train_loss:<25}Val: {val_loss:<25} | "
-				f"LR: {current_lr:<25}WD: {current_wd:<25} | "
-				f"Params: {trainable_params:,} | "
+				f"Train: {train_loss:<30}Val: {val_loss:<30}"
+				f"LR: {current_lr:<30}WD: {current_wd:<15}"
+				f"Params: {trainable_params:,} "
 				f"Time: {time.time()-epoch_start:.1f}s"
 			)
 		
@@ -721,17 +725,17 @@ def main():
 	parser.add_argument('--dataset_type', '-dt', type=str, choices=['single_label', 'multi_label'], default='single_label', help='Dataset type (single_label/multi_label)')
 	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain'], default='finetune', help='Choose mode (train/finetune/pretrain)')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
-	parser.add_argument('--batch_size', '-bs', type=int, default=64, help='Batch size for training')
+	parser.add_argument('--batch_size', '-bs', type=int, default=128, help='Batch size for training')
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
-	parser.add_argument('--num_epochs', '-ne', type=int, default=25, help='Number of epochs for training')
+	parser.add_argument('--num_epochs', '-ne', type=int, default=30, help='Number of epochs for training')
 	parser.add_argument('--learning_rate', '-lr', type=float, default=1e-4, help='Learning rate for training')
 	parser.add_argument('--weight_decay', '-wd', type=float, default=1e-2, help='Weight decay for training')
-	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of workers for data loading')
+	parser.add_argument('--num_workers', '-nw', type=int, default=8, help='Number of workers for data loading')
 	parser.add_argument('--dropout', '-do', type=float, default=0.0, help='Dropout probability')
-	parser.add_argument('--num_phases', '-np', type=int, default=6, help='Number of phases for progressive fine-tuning')
-	parser.add_argument('--min_epochs_per_phase', '-mep', type=int, default=10, help='Minimum epochs per phase')
+	parser.add_argument('--num_phases', '-np', type=int, default=4, help='Number of phases for progressive fine-tuning')
+	parser.add_argument('--min_epochs_per_phase', '-mep', type=int, default=7, help='Minimum epochs per phase')
 	parser.add_argument('--patience_factor', '-pf', type=float, default=1.5, help='Patience factor for early stopping')
-	parser.add_argument('--transition_threshold', '-tt', type=float, default=0.001, help='Transition threshold for phase change')
+	parser.add_argument('--transition_threshold', '-tt', type=float, default=1e-3, help='Transition threshold for phase change')
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
 	args.dataset_dir = os.path.normpath(args.dataset_dir)
