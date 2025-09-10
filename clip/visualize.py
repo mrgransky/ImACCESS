@@ -793,7 +793,7 @@ def plot_phase_transition_analysis(
 
 	ax1.set_title(f'Learning [Loss] Curve with Phase Transitions', fontsize=8, weight='bold')
 	legend = ax1.legend(
-		loc='best',
+		loc='upper right',
 		fontsize=8,
 		frameon=False,
 		shadow=False,
@@ -886,17 +886,23 @@ def plot_phase_transition_analysis(
 		phases_list = [p for p, _ in phase_data]
 		
 		# Choose primary metrics to display
-		durations = [m['duration'] for _, m in phase_data]
 		efficiencies = [m['efficiency'] for _, m in phase_data]  # Improvement per epoch
 		convergence_qualities = [m['convergence_quality'] for _, m in phase_data]  # How consistent
 		
-		# Main bars: trainable params
 		ax4.bar(
 			range(len(trainable_params_per_phase)), 
 			trainable_params_per_phase,
 			color=[phase_colors[p] for p in phases_list], 
-			alpha=0.55,
-			label='Trainable Parameters (%)',
+			alpha=0.6,
+			label='Trainable Parameters (%)', 
+		)
+		ax4.bar_label(
+			ax4.patches,
+			fmt='{:.1f}%',
+			label_type='edge', 
+			fontsize=7,
+			padding=2,
+			color=duration_color,
 		)
 		
 		# Twin axis: efficiency (more meaningful than raw improvement)
@@ -926,7 +932,7 @@ def plot_phase_transition_analysis(
 			)
 
 	ax4.set_xlabel('Phase', fontsize=8, weight='bold')
-	ax4.set_ylabel(f'Trainable Parameters (%)\nTotal: {total_model_params:,}', fontsize=8, weight='bold')
+	ax4.set_ylabel(f'Trainable Parameters (%)\nTotal: {total_model_params:,}', fontsize=8, weight='bold', color=duration_color)
 	ax4_twin.set_ylabel('Learning Efficiency (%/ep)', fontsize=8, color=loss_imp_color)
 	ax4.set_title('Phase Efficiency Analysis', fontsize=8, weight='bold')
 	
@@ -939,7 +945,7 @@ def plot_phase_transition_analysis(
 	ax4_twin.tick_params(axis='y', labelcolor=loss_imp_color, labelsize=8)
 
 	# Match spine colors with their labels
-	# ax4.spines['left'].set_color(duration_color)
+	ax4.spines['left'].set_color(duration_color)
 	ax4_twin.spines['right'].set_color(loss_imp_color)
 
 	ax4_twin.spines['top'].set_visible(False)
