@@ -16,7 +16,7 @@ from trainer import (
 	lora_finetune_multi_label,
 	progressive_finetune_multi_label,
 )
-from visualize import visualize_samples, visualize_
+import visualize as viz
 from historical_dataset_loader import get_single_label_dataloaders, get_multi_label_dataloaders
 
 # $ python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=10))))"
@@ -214,8 +214,8 @@ def main():
 		)
 		print_loader_info(loader=train_loader, batch_size=args.batch_size)
 		print_loader_info(loader=validation_loader, batch_size=args.batch_size)
-		# visualize_(dataloader=validation_loader, batches=4, num_samples=7)
-		# visualize_samples(validation_loader, validation_loader.dataset, num_samples=5)
+		# viz.visualize_(dataloader=validation_loader, batches=4, num_samples=7)
+		# viz.visualize_samples(validation_loader, validation_loader.dataset, num_samples=5)
 		
 		finetune_functions = {
 			'single_label': {
@@ -331,7 +331,7 @@ def main():
 				all_txt2img_metrics[model_arch] = txt2img_metrics
 				del model  # Clean up memory
 				torch.cuda.empty_cache()
-			plot_all_pretrain_metrics(
+			viz.plot_all_pretrain_metrics(
 				dataset_name=validation_loader.name,
 				img2txt_metrics_dict=all_img2txt_metrics,
 				txt2img_metrics_dict=all_txt2img_metrics,
