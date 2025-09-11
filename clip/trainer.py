@@ -2579,7 +2579,8 @@ def full_finetune_single_label(
 
 	estimated_epochs = min(num_epochs, 15)
 	total_training_steps = estimated_epochs * len(train_loader)
-	eta_min = learning_rate * 1e-2 # 1% of initial LR
+	ANNEALING_RATIO = 1e-2 # 1% of initial LR
+	eta_min = learning_rate * ANNEALING_RATIO
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
 		T_max=total_training_steps,
@@ -2588,7 +2589,7 @@ def full_finetune_single_label(
 	)
 	print(f"{scheduler.__class__.__name__} scheduler configured")
 	print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
-	print(f"  └─ eta_min = {eta_min} (1% of initial LR)")
+	print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
 	criterion = torch.nn.CrossEntropyLoss()
 
@@ -2970,7 +2971,8 @@ def lora_finetune_single_label(
 
 	estimated_epochs = min(num_epochs, 15)
 	total_training_steps = estimated_epochs * len(train_loader)
-	eta_min = learning_rate * 1e-2 # 1% of initial LR
+	ANNEALING_RATIO = 1e-2 # 1% of initial LR
+	eta_min = learning_rate * ANNEALING_RATIO
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
 		T_max=total_training_steps,
@@ -2979,7 +2981,7 @@ def lora_finetune_single_label(
 	)
 	print(f"{scheduler.__class__.__name__} scheduler configured")
 	print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
-	print(f"  └─ eta_min = {eta_min} (1% of initial LR)")
+	print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
 
 	criterion = torch.nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(device=device)
