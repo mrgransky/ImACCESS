@@ -2579,10 +2579,11 @@ def full_finetune_single_label(
 
 	estimated_epochs = min(num_epochs, 15)
 	total_training_steps = estimated_epochs * len(train_loader)
+	eta_min = learning_rate * 1e-2 # 1% of initial LR
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
 		T_max=total_training_steps,
-		eta_min=learning_rate * 1e-2, # 1% of initial LR
+		eta_min=eta_min,
 	)
 	print(f"{scheduler.__class__.__name__} scheduler configured")
 	print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
@@ -2857,6 +2858,7 @@ def full_finetune_single_label(
 	)
 
 	plot_hyperparameter_evolution(
+		eta_min=eta_min,
 		learning_rates=learning_rates_history,
 		weight_decays=weight_decays_history,
 		fname=os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
@@ -2966,10 +2968,11 @@ def lora_finetune_single_label(
 
 	estimated_epochs = min(num_epochs, 15)
 	total_training_steps = estimated_epochs * len(train_loader)
+	eta_min = learning_rate * 1e-2 # 1% of initial LR
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
 		T_max=total_training_steps,
-		eta_min=learning_rate * 1e-2, # 1% of initial LR
+		eta_min=eta_min,
 	)
 	print(f"{scheduler.__class__.__name__} scheduler configured")
 	print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
@@ -3223,6 +3226,7 @@ def lora_finetune_single_label(
 	)
 
 	plot_hyperparameter_evolution(
+		eta_min=eta_min,
 		learning_rates=learning_rates_history,
 		weight_decays=weight_decays_history,
 		fname=os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),

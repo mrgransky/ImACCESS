@@ -34,20 +34,26 @@ if USER == "farid":
 	from graphviz import Digraph
 
 def plot_hyperparameter_evolution(
+		eta_min: float,
 		learning_rates: List[float],
 		weight_decays: List[float],
 		fname: str,
 	):
 	fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
 	epochs = range(len(learning_rates))
-	ax1.plot(epochs, learning_rates, color="#0010F3", linewidth=2.0, alpha=0.8)
-	ax2.plot(epochs, weight_decays, color="#DF4802", linewidth=2.0, alpha=0.8)
+	ax1.plot(epochs, learning_rates, color="#0010F3", linewidth=2.0, alpha=0.8, label="LR")
+	ax1.axhline(y=eta_min, color="#CE0045", linestyle="--", linewidth=1.0, alpha=0.8, label="eta_min")
+	ax1.legend(loc='upper right', frameon=True, fancybox=True, shadow=True, facecolor='white', edgecolor='black')
 	ax1.set_title("Learning Rate Evolution", fontsize=10, weight="bold")
+	ax1.grid(True, alpha=0.5, linestyle='--', color="#8A8A8A")
+
+	ax2.plot(epochs, weight_decays, color="#0C0B0B", linewidth=1.0, alpha=0.8, label="WD")
 	ax2.set_title("Weight Decay Evolution", fontsize=10, weight="bold")
 	ax1.set_xlabel("Epoch"); ax1.set_ylabel("LR")
 	ax2.set_xlabel("Epoch"); ax2.set_ylabel("WD")
-	ax1.grid(True, alpha=0.5, linestyle='--', color="#8A8A8A")
+	ax2.legend(loc='upper right', frameon=True, fancybox=True, shadow=True, facecolor='white', edgecolor='black')
 	ax2.grid(True, alpha=0.5, linestyle='--', color="#8A8A8A")
+
 	plt.tight_layout()
 	plt.savefig(fname, dpi=200, bbox_inches='tight', facecolor='white')
 

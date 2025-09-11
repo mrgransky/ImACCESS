@@ -1,17 +1,17 @@
 #!/bin/bash
 
 #SBATCH --account=project_2014707
-#SBATCH --job-name=h4_sgl_lbl_cosine_annealing
+#SBATCH --job-name=h4_sgl_lbl
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=64
-#SBATCH --mem=301G
+#SBATCH --mem=96G
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1
-#SBATCH --array=8
+#SBATCH --array=0,4,12
 #SBATCH --time=1-12:00:00
 
 set -euo pipefail
@@ -86,7 +86,7 @@ if [ $dataset_index -ge ${#DATASETS[@]} ] ||
 	exit 1
 fi
 
-INIT_LRS=(5.0e-04 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
+INIT_LRS=(1.0e-05 5.0e-06 5.0e-06 5.0e-06 5.0e-06)
 INIT_WDS=(1.0e-02 1.0e-02 1.0e-02 1.0e-02 1.0e-02)
 DROPOUTS=(0.0 0.1 0.05 0.05 0.05)
 EPOCHS=(100 100 150 150 150)
