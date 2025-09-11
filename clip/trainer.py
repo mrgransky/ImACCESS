@@ -11,6 +11,7 @@ from visualize import (
 	plot_multilabel_loss_breakdown,
 	collect_progressive_training_history,
 	plot_phase_transition_analysis,
+	plot_hyperparameter_evolution,
 	plot_phase_transition_analysis_individual
 )
 
@@ -2106,7 +2107,6 @@ def progressive_finetune_single_label(
 	for epoch in range(num_epochs):
 		print(f"Epoch [{epoch+1}/{num_epochs}]")
 		epoch_start_time = time.time()
-		# torch.cuda.empty_cache()
 
 		unfreeze_layers(
 			model=model,
@@ -2628,11 +2628,12 @@ def full_finetune_single_label(
 	txt2img_metrics_all_epochs = list()
 	in_batch_loss_acc_metrics_all_epochs = list()
 	full_val_loss_acc_metrics_all_epochs = list()
-	train_start_time = time.time()
-	best_val_loss = float('inf')
+	learning_rates_history = list()
+	weight_decays_history = list()
 	final_img2txt_metrics = None
 	final_txt2img_metrics = None
-
+	
+	train_start_time = time.time()
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
 		torch.cuda.empty_cache()
@@ -2655,7 +2656,7 @@ def full_finetune_single_label(
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)  # Stabilize training
 			scaler.step(optimizer)
 			scaler.update()
-			scheduler.step() # Update learning rate
+			scheduler.step()
 
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item()}")
@@ -2682,6 +2683,9 @@ def full_finetune_single_label(
 
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
+		
+		learning_rates_history.append(optimizer.param_groups[0]['lr'])
+		weight_decays_history.append(optimizer.param_groups[0]['weight_decay'])
 
 		# all metrics in one using caching mechanism:
 		validation_results = get_validation_metrics(
@@ -2711,7 +2715,7 @@ def full_finetune_single_label(
 		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
 
 		print(
-			f'Epoch {epoch + 1}:\n'
+			f'Epoch {epoch + 1:3d}:\n'
 			f'\t[LOSS] {mode}'
 			f'(Training): {avg_training_loss} '
 			f'Validation(in-batch): {in_batch_loss_acc_metrics_per_epoch["val_loss"]}\n'
@@ -2790,7 +2794,6 @@ def full_finetune_single_label(
 		# f"{scheduler.__class__.__name__}_"
 		# f"{criterion.__class__.__name__}_"
 		# f"{scaler.__class__.__name__}_"
-		# f"{model_name}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
@@ -2851,6 +2854,12 @@ def full_finetune_single_label(
 		image_to_text_metrics=final_img2txt_metrics,
 		text_to_image_metrics=final_txt2img_metrics,
 		fname=retrieval_metrics_best_model_fpth,
+	)
+
+	plot_hyperparameter_evolution(
+		learning_rates=learning_rates_history,
+		weight_decays=weight_decays_history,
+		fname=os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
 	)
 
 def lora_finetune_single_label(
