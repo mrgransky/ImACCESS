@@ -3249,7 +3249,6 @@ def probe_finetune_single_label(
 		probe_dropout: float,
 		device: str,
 		results_dir: str,
-		window_size: int,
 		print_every: int,
 		patience: int,
 		min_delta: float,
@@ -3262,20 +3261,8 @@ def probe_finetune_single_label(
 		probe_hidden_dim: int = None,  # Optional hidden layer for MLP probe
 		use_lamb: bool = False,
 	):
-	"""
-	Enhanced Linear Probing fine-tuning with robust ViT support.
-	
-	This method:
-	1. Automatically fixes ViT positional embedding mismatches
-	2. Freezes all CLIP parameters (vision and text encoders)
-	3. Extracts features from the frozen CLIP model
-	4. Trains a linear classifier (or shallow MLP) on top of these features
-	
-	The probe can be:
-	- Simple linear layer: CLIP features -> num_classes
-	- Two-layer MLP: CLIP features -> hidden_dim -> num_classes (if probe_hidden_dim is specified)
-	"""
 
+	window_size = minimum_epochs + 1
 	# Inspect the model for dropout layers
 	dropout_values = list()
 	for name, module in model.named_modules():

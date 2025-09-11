@@ -129,7 +129,7 @@ def main():
 		assert args.lora_alpha is not None, "lora_alpha must be specified for lora finetuning"
 		assert args.lora_dropout is not None, "lora_dropout must be specified for lora finetuning"
 
-	if args.finetune_strategy == "linear_probe":
+	if args.finetune_strategy == "probe":
 		assert args.probe_dropout is not None, "probe_dropout must be specified for linear probe finetuning (example: -pdo 0.1)"
 
 	try:
