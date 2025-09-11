@@ -3048,6 +3048,9 @@ def lora_finetune_single_label(
 		avg_training_loss = epoch_loss / len(train_loader)
 		training_losses.append(avg_training_loss)
 
+		learning_rates_history.append(optimizer.param_groups[0]['lr'])
+		weight_decays_history.append(optimizer.param_groups[0]['weight_decay'])
+
 		print(f">> Validating Epoch {epoch+1} ...")
 		# all metrics in one using caching mechanism:
 		validation_results = get_validation_metrics(
