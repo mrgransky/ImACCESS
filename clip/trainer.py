@@ -2586,7 +2586,7 @@ def full_finetune_single_label(
 		eta_min=learning_rate * 1e-2, # 1% of initial LR
 	)
 	print(f"{scheduler.__class__.__name__} scheduler configured")
-	print(f"  ├─ T_max = {tokenized_labels} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
+	print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
 	print(f"  └─ eta_min = {learning_rate * 1e-2} (1% of initial LR)")
 
 	criterion = torch.nn.CrossEntropyLoss()
