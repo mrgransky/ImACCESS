@@ -3007,9 +3007,10 @@ def lora_finetune_single_label(
 	img2txt_metrics_all_epochs = list()
 	txt2img_metrics_all_epochs = list()
 	train_start_time = time.time()
-	best_val_loss = float('inf')
 	final_img2txt_metrics = None
 	final_txt2img_metrics = None
+	learning_rates_history = list()
+	weight_decays_history = list()
 	in_batch_loss_acc_metrics_all_epochs = list()
 	full_val_loss_acc_metrics_all_epochs = list()
 
