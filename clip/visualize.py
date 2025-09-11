@@ -39,10 +39,10 @@ def plot_hyperparameter_evolution(
 		weight_decays: List[float],
 		fname: str,
 		nbins: int=15
-
 	):
 	fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 7))
-	epochs = range(len(learning_rates))
+	epochs = list(range(len(learning_rates)))
+
 	ax1.plot(epochs, learning_rates, color="#0010F3", linewidth=2.0, alpha=0.8, label="LR")
 	ax1.axhline(y=eta_min, xmin=epochs[0], xmax=epochs[-1], color="#CE0045", linestyle="--", linewidth=1.0, alpha=0.8, label="eta_min")
 	ax1.legend(loc='upper right', frameon=True, fancybox=True, shadow=True, facecolor='white', edgecolor='black')
