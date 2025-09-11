@@ -2584,10 +2584,11 @@ def full_finetune_single_label(
 		optimizer=optimizer,
 		T_max=total_training_steps,
 		eta_min=eta_min,
+		last_epoch=-1,
 	)
 	print(f"{scheduler.__class__.__name__} scheduler configured")
 	print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
-	print(f"  └─ eta_min = {learning_rate * 1e-2} (1% of initial LR)")
+	print(f"  └─ eta_min = {eta_min} (1% of initial LR)")
 
 	criterion = torch.nn.CrossEntropyLoss()
 
@@ -2791,6 +2792,7 @@ def full_finetune_single_label(
 	file_base_name = (
 		# f"{dataset_name}_"
 		f"{mode}_"
+		f"{CLUSTER}_"
 		# f"{optimizer.__class__.__name__}_"
 		# f"{scheduler.__class__.__name__}_"
 		# f"{criterion.__class__.__name__}_"
@@ -2973,10 +2975,11 @@ def lora_finetune_single_label(
 		optimizer=optimizer,
 		T_max=total_training_steps,
 		eta_min=eta_min,
+		last_epoch=-1,
 	)
 	print(f"{scheduler.__class__.__name__} scheduler configured")
 	print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
-	print(f"  └─ eta_min = {learning_rate * 1e-2} (1% of initial LR)")
+	print(f"  └─ eta_min = {eta_min} (1% of initial LR)")
 
 	criterion = torch.nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(device=device)
@@ -3161,6 +3164,7 @@ def lora_finetune_single_label(
 	file_base_name = (
 		# f"{dataset_name}_"
 		f"{mode}_"
+		f"{CLUSTER}_"
 		# f"{optimizer.__class__.__name__}_"
 		# f"{scheduler.__class__.__name__}_"
 		# f"{criterion.__class__.__name__}_"
@@ -3393,6 +3397,7 @@ def probe_finetune_single_label(
 		optimizer=optimizer,
 		T_max=num_epochs,
 		eta_min=learning_rate * 0.01, # 1% of initial LR
+		last_epoch=-1,
 	)
 	print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
 	
@@ -3681,6 +3686,7 @@ def probe_finetune_single_label(
 	file_base_name = (
 		# f"{dataset_name}_"
 		f"{mode}_{probe.probe_type}_"
+		f"{CLUSTER}_"
 		f"{optimizer.__class__.__name__}_"
 		f"{scheduler.__class__.__name__}_"
 		f"{criterion.__class__.__name__}_"
@@ -4151,6 +4157,7 @@ def full_finetune_multi_label(
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
+		f"{CLUSTER}_"
 		f"{optimizer.__class__.__name__}_"
 		f"{scheduler.__class__.__name__}_"
 		f"{criterion.__class__.__name__}_"
@@ -4726,6 +4733,7 @@ def progressive_finetune_multi_label(
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
+		f"{CLUSTER}_"
 		f"{optimizer.__class__.__name__}_"
 		f"{scheduler.__class__.__name__}_"
 		f"{criterion.__class__.__name__}_"
@@ -5248,6 +5256,7 @@ def lora_finetune_multi_label(
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
+		f"{CLUSTER}_"
 		f"{optimizer.__class__.__name__}_"
 		f"{scheduler.__class__.__name__}_"
 		f"{criterion.__class__.__name__}_"
@@ -5816,19 +5825,20 @@ def probe_finetune_multi_label(
 		actual_trained_epochs = len(training_losses)
 
 		file_base_name = (
-				f"{dataset_name}_"
-				f"{mode}_"
-				f"{optimizer.__class__.__name__}_"
-				f"{scheduler.__class__.__name__}_"
-				f"{criterion.__class__.__name__}_"
-				f"{scaler.__class__.__name__}_"
-				f"{model_name}_"
-				f"{model_arch}_"
-				f"ep_{actual_trained_epochs}_"
-				f"lr_{learning_rate:.1e}_"
-				f"wd_{weight_decay:.1e}_"
-				f"temp_{temperature}_"
-				f"bs_{train_loader.batch_size}"
+			f"{dataset_name}_"
+			f"{mode}_"
+			f"{CLUSTER}_"
+			f"{optimizer.__class__.__name__}_"
+			f"{scheduler.__class__.__name__}_"
+			f"{criterion.__class__.__name__}_"
+			f"{scaler.__class__.__name__}_"
+			f"{model_name}_"
+			f"{model_arch}_"
+			f"ep_{actual_trained_epochs}_"
+			f"lr_{learning_rate:.1e}_"
+			f"wd_{weight_decay:.1e}_"
+			f"temp_{temperature}_"
+			f"bs_{train_loader.batch_size}"
 		)
 		
 		# Update model path
@@ -6177,6 +6187,7 @@ def train(
 	file_base_name = (
 		f"{dataset_name}_"
 		f"{mode}_"
+		f"{CLUSTER}_"
 		f"{model_name}_"
 		f"{model_arch}_"
 		f"ep_{len(training_losses)}_"
