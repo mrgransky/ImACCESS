@@ -2493,7 +2493,6 @@ def full_finetune_single_label(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		# window_size: int,
 		patience: int,
 		min_delta: float,
 		cumulative_delta: float,
@@ -2504,7 +2503,7 @@ def full_finetune_single_label(
 		topk_values: List[int] = [1, 5, 10, 15, 20],
 		use_lamb: bool = False,
 	):
-	window_size = minimum_epochs + 4
+	window_size = minimum_epochs + 3
 	mode = inspect.stack()[0].function
 	mode = re.sub(r'_finetune_single_label', '', mode)
 
@@ -2519,14 +2518,12 @@ def full_finetune_single_label(
 		volatility_threshold=volatility_threshold,
 		slope_threshold=slope_threshold, # Positive slope is bad for loss
 		pairwise_imp_threshold=pairwise_imp_threshold,
-		# min_phases_before_stopping=1, # Not really needed for full finetune, but for consistency
 	)
 
 	try:
 		dataset_name = validation_loader.dataset.dataset.__class__.__name__  # CIFAR10, ImageNet, etc.
 	except AttributeError as e:
 		dataset_name = validation_loader.dataset.dataset_name
-
 
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
@@ -2575,19 +2572,22 @@ def full_finetune_single_label(
 		optimizer = torch.optim.AdamW(
 			params=[p for p in model.parameters() if p.requires_grad],
 			lr=learning_rate,
+			weight_decay=weight_decay,
 			betas=(0.9, 0.98),
 			eps=1e-6,
-			weight_decay=weight_decay,
 		)
 
-	scheduler = torch.optim.lr_scheduler.OneCycleLR(
+
+	estimated_epochs = min(num_epochs, 15)
+	total_training_steps = estimated_epochs * len(train_loader)
+	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
-		max_lr=learning_rate,
-		steps_per_epoch=len(train_loader),
-		epochs=num_epochs,
-		pct_start=0.1,
-		anneal_strategy='cos',
+		T_max=total_training_steps,
+		eta_min=learning_rate * 1e-2, # 1% of initial LR
 	)
+	print(f"{scheduler.__class__.__name__} scheduler configured")
+	print(f"  ├─ T_max = {tokenized_labels} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
+	print(f"  └─ eta_min = {learning_rate * 1e-2} (1% of initial LR)")
 
 	criterion = torch.nn.CrossEntropyLoss()
 
@@ -2864,7 +2864,6 @@ def lora_finetune_single_label(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		# window_size: int,
 		lora_rank: int,
 		lora_alpha: float,
 		lora_dropout: float,
@@ -2878,7 +2877,9 @@ def lora_finetune_single_label(
 		topk_values: List[int] = [1, 5, 10, 15, 20],
 		use_lamb: bool = False,
 	):
-	window_size = minimum_epochs + 4
+
+	window_size = minimum_epochs + 3
+
 	# Inspect the model for dropout layers
 	dropout_values = list()
 	for name, module in model.named_modules():
@@ -2957,14 +2958,16 @@ def lora_finetune_single_label(
 			weight_decay=weight_decay,
 		)
 
-	scheduler = torch.optim.lr_scheduler.OneCycleLR(
+	estimated_epochs = min(num_epochs, 15)
+	total_training_steps = estimated_epochs * len(train_loader)
+	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
-		max_lr=learning_rate,
-		steps_per_epoch=len(train_loader),
-		epochs=num_epochs,
-		pct_start=0.1,
-		anneal_strategy='cos',
+		T_max=total_training_steps,
+		eta_min=learning_rate * 1e-2, # 1% of initial LR
 	)
+	print(f"{scheduler.__class__.__name__} scheduler configured")
+	print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
+	print(f"  └─ eta_min = {learning_rate * 1e-2} (1% of initial LR)")
 
 	criterion = torch.nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(device=device)

@@ -276,17 +276,20 @@ def plot_phase_transition_analysis_individual(
 	):
 	file_path = file_path.replace("_ph_anls.png", ".png")
 	# Extract data
-	epochs = [e + 1 for e in training_history['epochs']]  # 1-based indexing
+	epochs = training_history['epochs']
+	epochs = list(map(lambda x: x + 1, epochs)) # convert to 1-based indexing
 	train_losses = training_history['train_losses']
 	val_losses = training_history['val_losses']
 	learning_rates = training_history['learning_rates']
 	weight_decays = training_history['weight_decays']
+	trainable_params_per_phase = training_history['trainable_params_per_phase']
+	total_model_params = training_history['total_model_params']
 	phases = training_history['phases']
-	embedding_drifts = training_history['embedding_drifts']
 	transitions = training_history.get('phase_transitions', [])
 	early_stop_epoch = training_history.get('early_stop_epoch')
 	best_epoch = training_history.get('best_epoch')
-	
+	embedding_drifts = training_history['embedding_drifts']
+
 	# Color scheme
 	phase_colors = plt.cm.tab10(np.linspace(0, 1, max(phases) + 1))
 
@@ -494,71 +497,78 @@ def plot_phase_transition_analysis_individual(
 	save_fig(fig, "wd_evol")
 
 	# ============================================
-	# PLOT 4: Phase Efficiency Analysis
+	# Phase Efficiency Analysis
 	# ============================================
 	fig, ax4 = plt.subplots(figsize=figsize, facecolor='white')
-
-	unique_phases = sorted(set(phases))
 	phase_data = []
 	for phase in unique_phases:
 		phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
-		duration = len(phase_epochs)
-		if phase_epochs:
-			s_idx, e_idx = phase_epochs[0] - 1, phase_epochs[-1] - 1 # 0-based indexing
-			if 0 <= s_idx < len(val_losses) and 0 <= e_idx < len(val_losses):
-				improvement = ((val_losses[s_idx] - val_losses[e_idx]) / val_losses[s_idx] * 100) if val_losses[s_idx] > 0 else 0
-			else:
-				improvement = 0
-		else:
-			improvement = 0
-		phase_data.append((phase, duration, improvement))
+		metrics = calculate_advanced_phase_metrics(phase_epochs, val_losses, phase)
+		if metrics:
+			phase_data.append((phase, metrics))
 
-	phases_list, durations, improvements = zip(*phase_data)
-
-	bars = ax4.bar(
-		range(len(durations)), 
-		durations, 
-		color=[phase_colors[p] for p in phases_list], 
-		alpha=0.8
-	)
-	ax4_twin = ax4.twinx()
-	ax4_twin.plot(
-		range(len(improvements)),
-		improvements,
-		linestyle='-',
-		marker='o',
-		linewidth=1.0,
-		markersize=2,
-		color=loss_imp_color,
+	# Create more informative visualization
+	if phase_data:
+		phases_list = [p for p, _ in phase_data]
+		
+		# Choose primary metrics to display
+		efficiencies = [m['efficiency'] for _, m in phase_data]  # Improvement per epoch
+		convergence_qualities = [m['convergence_quality'] for _, m in phase_data]  # How consistent
+		
+		bars = ax4.bar(
+			range(len(trainable_params_per_phase)), 
+			trainable_params_per_phase,
+			color=[phase_colors[p] for p in phases_list], 
+			alpha=0.6,
+			label='Trainable Parameters (%)', 
 		)
-	for i, (bar, imp) in enumerate(zip(bars, improvements)):
-		ax4_twin.text(
-			i,
-			1.02*imp if imp > 0 else 0.9*imp,
-			f"{imp:.2f}%",
-			ha="center",
-			fontsize=8,
+		ax4.bar_label(
+			bars,
+			fmt='{:.2f}%',
+			label_type='edge', 
+			fontsize=7,
+			padding=1,
+			color=trainable_param_color,
+		)
+		
+		# Twin axis: efficiency (more meaningful than raw improvement)
+		ax4_twin = ax4.twinx()
+		ax4_twin.plot(
+			range(len(efficiencies)),
+			efficiencies,
+			linewidth=0.6,
+			linestyle='-',
+			marker='o',
+			markersize=2.5,
+			alpha=0.6,
 			color=loss_imp_color,
-			fontweight="bold",
+			label='Efficiency (%/ep)',
 		)
+		
+		# Add convergence quality as scatter size or color intensity
+		for i, (efficiency, convergence) in enumerate(zip(efficiencies, convergence_qualities)):
+			ax4_twin.text(
+				i, 
+				efficiency * 1.05 if efficiency > 0 else efficiency * 0.8,
+				f'{efficiency:.3f} (R²: {convergence:.3f})',
+				ha='center', 
+				va='bottom', #if efficiency > 0 else 'top',
+				fontsize=7,
+				color=loss_imp_color,
+			)
 
-	ax4.set_title("Phase Efficiency Analysis", fontsize=9, weight="bold")
-	ax4.set_xlabel("Phase", fontsize=7, weight="bold")
-	ax4.set_ylabel("Epochs", color=trainable_param_color, fontsize=7, weight="bold")
-	ax4.set_xticks(range(len(phases_list)))
-	ax4.set_xticklabels([f"{p}" for p in phases_list])
-	ax4.yaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=nbins))
-	ax4_twin.set_ylabel("Loss Improvement (%)", color=loss_imp_color, fontsize=7, weight="bold")
-	ax4_twin.yaxis.set_tick_params(labelsize=8)
+	ax4.set_xlabel('Phase', fontsize=8, weight='bold')
+	ax4.set_ylabel(f'Trainable Parameters (%)\nTotal: {total_model_params:,}', fontsize=8, weight='bold', color=trainable_param_color)
+	ax4_twin.set_ylabel('Learning Efficiency (%/ep)', fontsize=8, color=loss_imp_color)
+	ax4.set_title('Phase Efficiency Analysis', fontsize=8, weight='bold')
+	
+	phase_labels = [f'{p}' for p in phases_list]
+	ax4.set_xticklabels(phase_labels)
+	ax4.set_xticks(range(len(phase_labels)))
+	ax4.grid(axis='y', alpha=0.25, color="#A3A3A3")
 
-	# Match spine colors with their labels
-	ax4.spines['left'].set_color(trainable_param_color)
-	ax4_twin.spines['right'].set_color(loss_imp_color)
-
-	# Hide the right and top spines for both axes
-	ax4.grid(axis='y', alpha=0.5)
-	ax4.tick_params(axis='y', labelcolor=trainable_param_color)
-	ax4_twin.tick_params(axis='y', labelcolor=loss_imp_color)
+	ax4.tick_params(axis='y', labelcolor=trainable_param_color, labelsize=8)
+	ax4_twin.tick_params(axis='y', labelcolor=loss_imp_color, labelsize=8)
 
 	# Match spine colors with their labels
 	ax4.spines['left'].set_color(trainable_param_color)
@@ -566,7 +576,6 @@ def plot_phase_transition_analysis_individual(
 
 	ax4_twin.spines['top'].set_visible(False)
 	ax4.spines['top'].set_visible(False)
-
 	save_fig(fig, "ph_eff")
 
 	# ============================================
