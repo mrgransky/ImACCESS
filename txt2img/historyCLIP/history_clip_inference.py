@@ -399,10 +399,10 @@ def main():
 	args.dataset_dir = os.path.normpath(args.dataset_dir)
 	print_args_table(args=args, parser=parser)
 	set_seeds(seed=42)
-	RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{args.dataset_type}")
-	CACHE_DIRECTORY = os.path.join(RESULT_DIRECTORY, "inference_cache")
+	RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{args.dataset_type}", f"inference")
+	CACHES_DIRECTORY = os.path.join(RESULT_DIRECTORY, "caches")
 	os.makedirs(RESULT_DIRECTORY, exist_ok=True)
-	os.makedirs(CACHE_DIRECTORY, exist_ok=True)
+	os.makedirs(CACHES_DIRECTORY, exist_ok=True)
 
 	if args.full_checkpoint is not None:
 		assert os.path.exists(args.full_checkpoint), f"full_checkpoint {args.full_checkpoint} does not exist!"
@@ -645,7 +645,7 @@ def main():
 			model=model,
 			loader=validation_loader,
 			device=args.device,
-			cache_dir=CACHE_DIRECTORY,
+			cache_dir=CACHES_DIRECTORY,
 			lora_rank=args.lora_rank if strategy == "lora" else None,
 			lora_alpha=args.lora_alpha if strategy == "lora" else None,
 			lora_dropout=args.lora_dropout if strategy == "lora" else None,
@@ -675,7 +675,7 @@ def main():
 				checkpoint_path=ft_path,
 				finetune_strategy=ft_name,
 				device=args.device,
-				cache_dir=CACHE_DIRECTORY,
+				cache_dir=CACHES_DIRECTORY,
 				topk_values=args.topK_values,
 				verbose=True,
 				clean_cache=False,
@@ -733,7 +733,7 @@ def main():
 			topk=args.topK,
 			device=args.device,
 			results_dir=RESULT_DIRECTORY,
-			cache_dir=CACHE_DIRECTORY,
+			cache_dir=CACHES_DIRECTORY,
 			embeddings_cache=embeddings_cache,
 		)
 		viz.plot_text_to_images_merged(
@@ -744,11 +744,10 @@ def main():
 			topk=args.topK,
 			device=args.device,
 			results_dir=RESULT_DIRECTORY,
-			cache_dir=CACHE_DIRECTORY,
+			cache_dir=CACHES_DIRECTORY,
 			embeddings_cache=embeddings_cache,
 		)
 	####################################### Qualitative Analysis #######################################
-
 
 	####################################### Quantitative Analysis #######################################
 	finetune_strategies = []
@@ -775,7 +774,7 @@ def main():
 			validation_loader=validation_loader,
 			device=args.device,
 			results_dir=RESULT_DIRECTORY,
-			cache_dir=CACHE_DIRECTORY,
+			cache_dir=CACHES_DIRECTORY,
 			topk_values=args.topK_values,
 			verbose=True,
 			max_samples=max_eval_samples,
@@ -788,7 +787,7 @@ def main():
 			model=pretrained_model,
 			validation_loader=validation_loader,
 			results_dir=RESULT_DIRECTORY,
-			cache_dir=CACHE_DIRECTORY,
+			cache_dir=CACHES_DIRECTORY,
 			device=args.device,
 			topk_values=args.topK_values,
 			verbose=False,
