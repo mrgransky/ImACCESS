@@ -533,10 +533,8 @@ def main():
 	print(f"Text embeddings norm: {text_embeds.norm(dim=-1)}")  # Should be ~1.0
 	print(f"Text similarity matrix:\n{torch.mm(text_embeds, text_embeds.T)}")  # Should show reasonable similarities
 
-	print("="*80 + "\n")
-
-
 	# Systematic selection of samples from validation set: Head, Torso, Tail
+	print("="*80 + "\n")
 	if args.query_image is None or args.query_label is None:
 		print("Selecting samples from validation set...")
 		if args.dataset_type == "multi_label":

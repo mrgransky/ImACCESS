@@ -2254,7 +2254,7 @@ def plot_text_to_images(
 				draw.text(
 					(gt_x, gt_y),
 					gt_label,
-					fill="#0205B3",  # Different color to distinguish from score
+					fill="#0205B3",
 					font=gt_font
 				)
 			
@@ -2269,8 +2269,9 @@ def plot_text_to_images(
 			f'Q_{re.sub(" ", "_", query_text)}_'
 			f'{strategy}_'
 			f'{model_arch}_'
-			f't2i.png'
-		)                
+			f'{modes[1]}_'
+			f'.png'
+		)
 		composite.save(file_name, dpi=(dpi, dpi))
 		print(f"Saved composite image to: {file_name}")
 
@@ -2286,14 +2287,8 @@ def plot_retrieval_metrics(
 		topK_values: list,
 		figure_size=(11, 10),
 		DPI: int = 250,
-		log_results: bool = True,
 	):
 	metrics = ["mP", "mAP", "Recall"]
-	# all_model_architectures = [
-	# 	'RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64',
-	# 	'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px',
-	# ]
-
 	if model_name not in finetuned_img2txt_dict.keys():
 		print(f"WARNING: {model_name} not found in finetuned_img2txt_dict. Skipping...")
 		print(json.dumps(finetuned_img2txt_dict, indent=4, ensure_ascii=False))
@@ -2544,12 +2539,12 @@ def plot_retrieval_metrics(
 			print(f"Pretrained {model_name}")
 			for k in k_values:
 				val = pretrained_dict[model_name][metric].get(str(k), float('nan'))
-				print(f"\tK={k}: {val:.3f}")
+				print(f"\t{metric}@{k}: {val:.3f}")
 			for strategy in finetune_strategies:
 				print(f"{strategy.upper()}")
 				for k in k_values:
 					val = finetuned_dict[model_name][strategy][metric].get(str(k), float('nan'))
-					print(f"\tK={k}: {val:.3f}")
+					print(f"\t{metric}@{k}: {val:.3f}")
 			print("".center(160, "-"))
 
 def plot_all_pretrain_metrics(
