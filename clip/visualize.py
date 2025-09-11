@@ -44,7 +44,7 @@ def plot_hyperparameter_evolution(
 	epochs = list(range(len(learning_rates)))
 
 	ax1.plot(epochs, learning_rates, color="#0010F3", linewidth=2.0, alpha=0.8, label="LR")
-	ax1.axhline(y=eta_min, xmin=epochs[0], xmax=epochs[-1], color="#CE0045", linestyle="--", linewidth=1.0, alpha=0.8, label="eta_min")
+	ax1.axhline(y=eta_min, color="#CE0045", linestyle="--", linewidth=1.0, alpha=0.8, label="eta_min")
 	ax1.legend(loc='upper right', frameon=True, fancybox=True, shadow=True, facecolor='white', edgecolor='black')
 	ax1.set_title("Learning Rate Evolution", fontsize=10, weight="bold")
 	ax1.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=nbins))
