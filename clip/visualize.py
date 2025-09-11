@@ -2286,16 +2286,19 @@ def plot_retrieval_metrics(
 		topK_values: list,
 		figure_size=(11, 10),
 		DPI: int = 250,
+		log_results: bool = True,
 	):
 	metrics = ["mP", "mAP", "Recall"]
-	all_model_architectures = [
-		'RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64',
-		'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px',
-	]
+	# all_model_architectures = [
+	# 	'RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64',
+	# 	'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px',
+	# ]
+
 	if model_name not in finetuned_img2txt_dict.keys():
 		print(f"WARNING: {model_name} not found in finetuned_img2txt_dict. Skipping...")
 		print(json.dumps(finetuned_img2txt_dict, indent=4, ensure_ascii=False))
 		return
+
 	if model_name not in finetuned_txt2img_dict.keys():
 		print(f"WARNING: {model_name} not found in finetuned_txt2img_dict. Skipping...")
 		print(json.dumps(finetuned_txt2img_dict, indent=4, ensure_ascii=False))
@@ -2307,14 +2310,16 @@ def plot_retrieval_metrics(
 	if not finetune_strategies:
 		print("WARNING: No valid finetune strategies provided. Skipping...")
 		return
-		
+
+	tex_table_values = {mode: {} for mode in modes}
 	for mode in modes:
 		pretrained_dict = pretrained_img2txt_dict if mode == "Image-to-Text" else pretrained_txt2img_dict
 		finetuned_dict = finetuned_img2txt_dict if mode == "Image-to-Text" else finetuned_txt2img_dict
+		
 		for metric in metrics:
 			# Create figure with slightly adjusted size for better annotation spacing
 			fig, ax = plt.subplots(figsize=figure_size, constrained_layout=True)
-			
+
 			# Create filename for the output
 			fname = (
 				f"{dataset_name}_"
@@ -2322,16 +2327,16 @@ def plot_retrieval_metrics(
 				f"finetuned_vs_pretrained_"
 				f"{re.sub(r'[/@]', '-', model_name)}_"
 				f"{mode.replace('-', '_')}_"
-				f"{metric}_"
-				f"comparison.png"
+				f"{metric}"
+				f".png"
 			)
 			file_path = os.path.join(results_dir, fname)
-			
+
 			# Check if metric exists in pretrained dictionary
 			if metric not in pretrained_dict.get(model_name, {}):
 				print(f"WARNING: Metric {metric} not found in pretrained_{mode.lower().replace('-', '_')}_dict for {model_name}")
 				continue
-					
+
 			# Get available k values across all dictionaries
 			k_values = sorted(k for k in topK_values if str(k) in pretrained_dict.get(model_name, {}).get(metric, {}))
 			
@@ -2342,11 +2347,11 @@ def plot_retrieval_metrics(
 					k_values = []  # Reset if any strategy is missing
 					break
 				k_values = sorted(set(k_values) & set(int(k) for k in finetuned_dict.get(model_name, {}).get(strategy, {}).get(metric, {}).keys()))
-					
+
 			if not k_values:
 				print(f"WARNING: No matching K values found for {metric}")
 				continue
-					
+
 			# Plot Pre-trained (dashed line)
 			pretrained_vals = [pretrained_dict[model_name][metric].get(str(k), float('nan')) for k in k_values]
 			ax.plot(
@@ -2360,7 +2365,7 @@ def plot_retrieval_metrics(
 				markersize=6.5,
 				alpha=0.98,
 			)
-			
+
 			# Plot each Fine-tuned strategy (solid lines, thicker, distinct markers)
 			for strategy in finetune_strategies:
 				finetuned_vals = [finetuned_dict[model_name][strategy][metric].get(str(k), float('nan')) for k in k_values]
@@ -2510,7 +2515,7 @@ def plot_retrieval_metrics(
 			y_max = max(max(pretrained_vals), max(finetuned_vals))
 			y_min = min(min(pretrained_vals), min(finetuned_vals))
 			padding = (y_max - y_min) * 0.2
-			print(f"{metric}@K y_min: {y_min}, y_max: {y_max} padding: {padding}")
+			# print(f"{metric}@K y_min: {y_min}, y_max: {y_max} padding: {padding}")
 			ax.set_ylim(min(0, y_min - padding), max(1, y_max + padding))
 			# ax.set_ylim(max(-0.02, y_min - padding), min(1.02, y_max + padding))
 			# ax.set_ylim(-0.01, 1.01)
@@ -2525,14 +2530,27 @@ def plot_retrieval_metrics(
 				ncol=len(finetune_strategies) + 1,
 			)
 			
-			# Set spine edge color to solid black
 			for spine in ax.spines.values():
 				spine.set_color('black')
 				spine.set_linewidth(0.7)
-					
+
 			plt.tight_layout()
 			plt.savefig(file_path, dpi=DPI, bbox_inches='tight')
 			plt.close(fig)
+
+			# Detailed logging of numerical values
+			print(f"{mode} | {model_name} | {metric}@K | {finetune_strategies} | K={k_values}".center(160, " "))
+			
+			print(f"Pretrained {model_name}")
+			for k in k_values:
+				val = pretrained_dict[model_name][metric].get(str(k), float('nan'))
+				print(f"\tK={k}: {val:.3f}")
+			for strategy in finetune_strategies:
+				print(f"{strategy.upper()}")
+				for k in k_values:
+					val = finetuned_dict[model_name][strategy][metric].get(str(k), float('nan'))
+					print(f"\tK={k}: {val:.3f}")
+			print("".center(160, "-"))
 
 def plot_all_pretrain_metrics(
 		dataset_name: str,

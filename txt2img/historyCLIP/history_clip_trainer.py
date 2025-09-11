@@ -16,7 +16,7 @@ from trainer import (
 	lora_finetune_multi_label,
 	progressive_finetune_multi_label,
 )
-from visualize import visualize_samples, visualize_, plot_all_pretrain_metrics, plot_comparison_metrics_merged, plot_comparison_metrics_split
+from visualize import visualize_samples, visualize_
 from historical_dataset_loader import get_single_label_dataloaders, get_multi_label_dataloaders
 
 # $ python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=10))))"
@@ -179,7 +179,7 @@ def main():
 		set_seeds(seed=42)
 		# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 		# print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
-		RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{args.dataset_type}")
+		RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{args.dataset_type}", f"inference_results")
 		os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 
 		print(f">> CLIP Model Architecture: {args.model_architecture}...")
