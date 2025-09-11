@@ -2152,7 +2152,7 @@ def progressive_finetune_single_label(
 				last_epoch=-1
 			)
 			print(f"Phase {current_phase} scheduler Annealing ratio: {ANNEALING_RATIO}")
-			print(f"  ├─ T_max = {total_training_steps} steps [{estimated_epochs_per_phase} epochs x {batches_per_epoch} batches/epoch]")
+			print(f"  ├─ T_max = {total_training_steps} steps [({(min_epochs_per_phase)} x 3) estimated epochs in phase x {batches_per_epoch} batches/epoch]")
 			print(f"  ├─ LR PLANNED: {planned_next_lr} annealing to eta_min: {eta_min}")
 			print(f"  ├─ Trainable params: {trainable_params:,} / {total_model_params:,} ({trainable_params/total_model_params*100:.3f}%)")
 			print(f"  └─ Main scheduler ({scheduler.__class__.__name__}) configured.")
