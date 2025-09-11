@@ -13,14 +13,7 @@ from historical_dataset_loader import (
 )
 from model import get_lora_clip, get_probe_clip
 from trainer import pretrain, evaluate_best_model
-from visualize import (
-	plot_image_to_texts_stacked_horizontal_bar, 
-	plot_text_to_images, 
-	plot_image_to_texts_pretrained, 
-	plot_retrieval_metrics,
-	plot_text_to_images_merged, 
-	plot_image_to_texts_separate_horizontal_bars
-)
+import visualize as viz
 
 # "https://pbs.twimg.com/media/GowwFwkbQAAaMs-?format=jpg"
 # "https://pbs.twimg.com/media/Gowu5zDaYAAZ2YK?format=jpg"
@@ -702,7 +695,7 @@ def main():
 	####################################### Qualitative Analysis #######################################
 	print(f"Qualitative Analysis".center(160, " "))
 	for query_image in QUERY_IMAGES:
-		plot_image_to_texts_pretrained(
+		viz.plot_image_to_texts_pretrained(
 			best_pretrained_model=pretrained_model,
 			validation_loader=validation_loader,
 			# preprocess=pretrained_preprocess, # customized_preprocess,
@@ -712,7 +705,7 @@ def main():
 			device=args.device,
 			results_dir=RESULT_DIRECTORY,
 		)
-		plot_image_to_texts_stacked_horizontal_bar(
+		viz.plot_image_to_texts_stacked_horizontal_bar(
 			models=models_to_plot,
 			validation_loader=validation_loader,
 			preprocess=customized_preprocess,
@@ -721,7 +714,7 @@ def main():
 			device=args.device,
 			results_dir=RESULT_DIRECTORY,
 		)
-		plot_image_to_texts_separate_horizontal_bars(
+		viz.plot_image_to_texts_separate_horizontal_bars(
 			models=models_to_plot,
 			validation_loader=validation_loader,
 			preprocess=customized_preprocess,
@@ -732,7 +725,7 @@ def main():
 		)
 
 	for query_label in QUERY_LABELS:
-		plot_text_to_images(
+		viz.plot_text_to_images(
 			models=models_to_plot,
 			validation_loader=validation_loader,
 			preprocess=customized_preprocess,
@@ -743,7 +736,7 @@ def main():
 			cache_dir=CACHE_DIRECTORY,
 			embeddings_cache=embeddings_cache,
 		)
-		plot_text_to_images_merged(
+		viz.plot_text_to_images_merged(
 			models=models_to_plot,
 			validation_loader=validation_loader,
 			preprocess=customized_preprocess,
@@ -805,7 +798,7 @@ def main():
 		pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
 	print(f">> Pretrained model metrics computed successfully. [for Quantitative Analysis]")
 
-	plot_retrieval_metrics(
+	viz.plot_retrieval_metrics(
 		dataset_name=validation_loader.name,
 		pretrained_img2txt_dict=pretrained_img2txt_dict,
 		pretrained_txt2img_dict=pretrained_txt2img_dict,
