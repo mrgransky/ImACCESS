@@ -2876,10 +2876,8 @@ def lora_finetune_single_label(
 		topk_values: List[int] = [1, 5, 10, 15, 20],
 		use_lamb: bool = False,
 	):
-
 	window_size = minimum_epochs + 1
 
-	# Inspect the model for dropout layers
 	dropout_values = list()
 	for name, module in model.named_modules():
 		if isinstance(module, torch.nn.Dropout):
