@@ -2577,7 +2577,6 @@ def full_finetune_single_label(
 			eps=1e-6,
 		)
 
-
 	estimated_epochs = min(num_epochs, 15)
 	total_training_steps = estimated_epochs * len(train_loader)
 	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
