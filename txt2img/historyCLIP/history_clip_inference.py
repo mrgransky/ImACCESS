@@ -381,13 +381,13 @@ def _compute_multilabel_t2i_correctness(
 
 @measure_execution_time
 def main():
-	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
+	parser = argparse.ArgumentParser(description="Evaluate CLIP for Historical Archives Dataset [Inference]")
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
 	parser.add_argument('--dataset_type', '-dt', type=str, choices=['single_label', 'multi_label'], default='single_label', help='Dataset type (single_label/multi_label)')
-	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
+	parser.add_argument('--model_architecture', '-a', type=str, required=True, help='CLIP architecture')
 	parser.add_argument('--batch_size', '-bs', type=int, default=16, help='Batch size for training')
 	parser.add_argument('--device', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
-	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs [def: max cpus]')
+	parser.add_argument('--num_workers', '-nw', type=int, default=4, help='Number of CPUs')
 
 	# Checkpoints
 	parser.add_argument('--full_checkpoint', '-fcp', type=str, default=None, help='Path to finetuned model checkpoint for comparison [full]')
@@ -407,7 +407,7 @@ def main():
 	args.dataset_dir = os.path.normpath(args.dataset_dir)
 	print_args_table(args=args, parser=parser)
 	set_seeds(seed=42)
-	RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"results_{args.dataset_type}")
+	RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{args.dataset_type}")
 	CACHE_DIRECTORY = os.path.join(RESULT_DIRECTORY, "inference_cache")
 	os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 	os.makedirs(CACHE_DIRECTORY, exist_ok=True)
