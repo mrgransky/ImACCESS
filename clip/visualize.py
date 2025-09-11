@@ -1723,26 +1723,22 @@ def plot_image_to_texts_pretrained(
 	# Hash image path for unique filename
 	img_hash = hashlib.sha256(img_path.encode()).hexdigest()[:8]
 	file_name = os.path.join(
-			results_dir,
-			f'{dataset_name}_'
-			f'Top{topk}_labels_'
-			f'image_{img_hash}_'
-			f"{re.sub(r'[/@]', '-', best_pretrained_model_arch)}_pretrained_"
-			f'bar_image_to_text.png'
+		results_dir,
+		f'{dataset_name}_'
+		f'Top{topk}_labels_'
+		f'image_{img_hash}_'
+		f"{re.sub(r'[/@]', '-', best_pretrained_model_arch)}_pretrained_"
+		f'bar_image_to_text.png'
 	)
-	# strategy_colors = {'full': '#0058a5', 'lora': '#f58320be', 'progressive': '#cc40df'}  # Blue, Orange, Green
-	# pretrained_colors = {'ViT-B/32': '#745555', 'ViT-B/16': '#9467bd', 'ViT-L/14': '#e377c2', 'ViT-L/14@336px': '#696969'}
 
-	# Plot
 	fig = plt.figure(figsize=figure_size, dpi=dpi)
 	gs = gridspec.GridSpec(1, 2, width_ratios=[1, 1.05], wspace=0.01)
-	# Subplot 1: Image
+
 	ax0 = plt.subplot(gs[0])
 	ax0.imshow(img)
 	ax0.axis('off')
 	ax0.set_title("Query Image", fontsize=12)
 
-	# Subplot 2: Horizontal bar plot
 	ax1 = plt.subplot(gs[1])
 	y_pos = range(topk)
 	ax1.barh(y_pos, sorted_probs, color=pretrained_colors.get(best_pretrained_model.name, '#000000'), edgecolor='white')
@@ -2025,8 +2021,8 @@ def plot_text_to_images(
 		results_dir, 
 		cache_dir=None, 
 		embeddings_cache=None, 
-		dpi=200,
-		scale_factor=10.0,
+		dpi=250,
+		scale_factor=7.0,
 	):
 	dataset_name = getattr(validation_loader, 'name', 'unknown_dataset')
 	img_hash = hashlib.sha256(query_text.encode()).hexdigest()[:8]
@@ -2156,7 +2152,6 @@ def plot_text_to_images(
 		# Update widths after resizing
 		widths = [img.width for img in topk_images]
 		
-		# Create a composite image
 		total_width = sum(widths)
 		print(f"Composite dimensions: {total_width} x {scaled_max_height + title_height}")
 		
@@ -2224,17 +2219,21 @@ def plot_text_to_images(
 				score_width, score_height_px = score_font.getsize(score_text)
 			
 			# Draw "Score: X.X" text centered at the top
-			score_y = int(5 * scale_factor)
+			score_y = int(25 * scale_factor)
 			draw.text(
 				(center_x - score_width//2, score_y),
 				score_text,
-				fill="black",
+				fill="#000000",
 				font=score_font
 			)
 			
 			# Draw GT labels - each on a separate line
-			gt_start_y = score_y + score_height_px + int(10 * scale_factor)
-			line_height = int(15 * scale_factor)  # Space between lines
+			gt_start_y = (
+				score_y 
+				+ score_height_px 
+				+ int(20 * scale_factor)
+			)
+			line_height = int(2 * scale_factor)  # Space between lines
 			
 			for j, gt_label in enumerate(gt_labels):
 				# Get dimensions for this GT label
@@ -2245,7 +2244,10 @@ def plot_text_to_images(
 					gt_width, _ = gt_font.getsize(gt_label)
 				
 				# Calculate y position for this line
-				gt_y = gt_start_y + j * line_height
+				gt_y = (
+					gt_start_y 
+					+ (j * line_height)
+				)
 				
 				# Center the text horizontally
 				gt_x = center_x - gt_width // 2
@@ -2253,14 +2255,13 @@ def plot_text_to_images(
 				# Draw the GT label
 				draw.text(
 					(gt_x, gt_y),
-					gt_label,
-					fill="#0205B3",
+					f"GT: {gt_label}",
+					fill="#0205B3",					
 					font=gt_font
 				)
 			
 			x_offset += img.width
 		
-		# Save the composite image
 		file_name = os.path.join(
 			results_dir,
 			f'{dataset_name}_'
@@ -2272,8 +2273,13 @@ def plot_text_to_images(
 			f'{modes[1]}'
 			f'.png'
 		)
-		composite.save(file_name, dpi=(dpi, dpi))
-		print(f"Saved composite image to: {file_name}")
+
+		composite.save(
+			file_name.replace(".png", ".jpg"), 
+			"JPEG", 
+			quality=100, 
+			dpi=(dpi, dpi)
+		)
 
 def plot_retrieval_metrics(
 		dataset_name: str,

@@ -567,9 +567,16 @@ def main():
 		QUERY_LABELS = [args.query_label]
 
 	print("QUERY IMAGES & LABELS".center(160, "-"))
-	print(len(QUERY_IMAGES), QUERY_IMAGES)
-	print(len(QUERY_LABELS), QUERY_LABELS)
-	print("QUERY IMAGES & LABELS".center(160, "-"))
+
+	print(f"{len(QUERY_IMAGES)} QUERY IMAGES:")
+	for i, v in enumerate(QUERY_IMAGES):
+		print(f"{i}. {v}")
+
+	print(f"{len(QUERY_LABELS)} QUERY LABELS:")
+	for i, v in enumerate(QUERY_LABELS):
+		print(f"{i}. {v}")
+
+	print("-"*160)
 
 	# for all finetuned models(+ pre-trained):
 	finetuned_checkpoint_paths = {
