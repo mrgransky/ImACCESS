@@ -2503,7 +2503,7 @@ def full_finetune_single_label(
 		topk_values: List[int] = [1, 5, 10, 15, 20],
 		use_lamb: bool = False,
 	):
-	window_size = minimum_epochs + 3
+	window_size = minimum_epochs + 1
 	mode = inspect.stack()[0].function
 	mode = re.sub(r'_finetune_single_label', '', mode)
 
@@ -2877,7 +2877,7 @@ def lora_finetune_single_label(
 		use_lamb: bool = False,
 	):
 
-	window_size = minimum_epochs + 3
+	window_size = minimum_epochs + 1
 
 	# Inspect the model for dropout layers
 	dropout_values = list()
