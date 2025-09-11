@@ -17,8 +17,7 @@ from visualize import (
 	plot_image_to_texts_stacked_horizontal_bar, 
 	plot_text_to_images, 
 	plot_image_to_texts_pretrained, 
-	plot_comparison_metrics_split, 
-	plot_comparison_metrics_merged, 
+	plot_retrieval_metrics,
 	plot_text_to_images_merged, 
 	plot_image_to_texts_separate_horizontal_bars
 )
@@ -806,7 +805,7 @@ def main():
 		pretrained_txt2img_dict[args.model_architecture] = pretrained_txt2img
 	print(f">> Pretrained model metrics computed successfully. [for Quantitative Analysis]")
 
-	plot_comparison_metrics_split(
+	plot_retrieval_metrics(
 		dataset_name=validation_loader.name,
 		pretrained_img2txt_dict=pretrained_img2txt_dict,
 		pretrained_txt2img_dict=pretrained_txt2img_dict,
@@ -818,18 +817,6 @@ def main():
 		results_dir=RESULT_DIRECTORY,
 	)
 
-	plot_comparison_metrics_merged(
-		dataset_name=validation_loader.name,
-		pretrained_img2txt_dict=pretrained_img2txt_dict,
-		pretrained_txt2img_dict=pretrained_txt2img_dict,
-		finetuned_img2txt_dict=finetuned_img2txt_dict,
-		finetuned_txt2img_dict=finetuned_txt2img_dict,
-		model_name=args.model_architecture,
-		finetune_strategies=finetune_strategies,
-		models_dict=models_to_plot,
-		topK_values=args.topK_values,
-		results_dir=RESULT_DIRECTORY,
-	)
 	####################################### Quantitative Analysis #######################################
 
 if __name__ == "__main__":
