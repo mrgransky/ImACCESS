@@ -37,7 +37,7 @@ import visualize as viz
 # $ nohup python -u history_clip_inference.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -nw 32 --device "cuda:2" -k 5 -bs 256 -fcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/full_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_23_dropout_0.1_lr_5.0e-06_wd_1.0e-02_bs_64_best_model.pth -pcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/progressive_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_84_dropout_0.1_ilr_5.0e-06_iwd_1.0e-02_bs_64_best_model_last_phase_3_flr_2.3e-06_fwd_0.012021761646381529.pth -lcp /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/results/lora_ViT-B-32_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_110_actual_eps_26_lr_5.0e-06_wd_1.0e-02_lor_64_loa_128.0_lod_0.05_bs_64_best_model.pth > /media/volume/ImACCESS/trash/history_clip_inference.txt &
 
 # Puhti:
-# $ python history_clip_inference.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -fcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/full_ViT-L-14-336px_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_100_aeps_9_do_0.2_lr_2.0e-05_wd_5.0e-02_bs_32_mep_4_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04.pth -lcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/lora_ViT-L-14-336px_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_100_aeps_13_lr_2.0e-05_wd_5.0e-02_lor_64_loa_128.0_lod_0.1_bs_32_mep_10_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04.pth -prgcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/progressive_ViT-L-14-336px_ieps_101_aeps_38_do_0.0_ilr_2.0e-05_iwd_5.0e-02_bs_32_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04_mepph_3_mphb4stp_3_fph_4_flr_1.3e-05_fwd_5.5e-02.pth -prbcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/linear_probe_ViT-L-14-336px_AdamW_CosineAnnealingLR_CrossEntropyLoss_GradScaler_ieps_100_aeps_60_lr_2.0e-05_wd_5.0e-02_bs_32_hdim_None_pdo_0.1_mep_3_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04.pth
+# $ python history_clip_inference.py -ddir /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4 -fcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/full_ViT-L-14-336px_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_100_aeps_9_do_0.2_lr_2.0e-05_wd_5.0e-02_bs_32_mep_4_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04.pth -lcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/lora_ViT-L-14-336px_AdamW_OneCycleLR_CrossEntropyLoss_GradScaler_ieps_100_aeps_13_lr_2.0e-05_wd_5.0e-02_lor_64_loa_128.0_lod_0.1_bs_32_mep_10_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04.pth -prgcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/progressive_ViT-L-14-336px_ieps_101_aeps_38_do_0.0_ilr_2.0e-05_iwd_5.0e-02_bs_32_mep_7_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04_mepph_3_mphb4stp_3_fph_4_flr_1.3e-05_fwd_5.5e-02.pth -prbcp /scratch/project_2004072/ImACCESS/WW_DATASETs/HISTORY_X4/single_label/linear_probe_ViT-L-14-336px_AdamW_CosineAnnealingLR_CrossEntropyLoss_GradScaler_ieps_100_aeps_60_lr_2.0e-05_wd_5.0e-02_bs_32_hdim_None_pdo_0.1_mep_3_pat_3_mdt_1.0e-04_cdt_5.0e-03_vt_15.0_st_1.0e-04_pit_1.0e-04.pth -a 'ViT-L/14@336px' -bs 512
 
 def _compute_similarities_chunked(
 		image_embeds: torch.Tensor,
@@ -734,17 +734,17 @@ def main():
 			cache_dir=CACHES_DIRECTORY,
 			embeddings_cache=embeddings_cache,
 		)
-		viz.plot_text_to_images_merged(
-			models=models_to_plot,
-			validation_loader=validation_loader,
-			preprocess=customized_preprocess,
-			query_text=query_label,
-			topk=args.topK,
-			device=args.device,
-			results_dir=RESULT_DIRECTORY,
-			cache_dir=CACHES_DIRECTORY,
-			embeddings_cache=embeddings_cache,
-		)
+		# viz.plot_text_to_images_merged(
+		# 	models=models_to_plot,
+		# 	validation_loader=validation_loader,
+		# 	preprocess=customized_preprocess,
+		# 	query_text=query_label,
+		# 	topk=args.topK,
+		# 	device=args.device,
+		# 	results_dir=RESULT_DIRECTORY,
+		# 	cache_dir=CACHES_DIRECTORY,
+		# 	embeddings_cache=embeddings_cache,
+		# )
 	####################################### Qualitative Analysis #######################################
 
 	####################################### Quantitative Analysis #######################################

@@ -2269,7 +2269,7 @@ def plot_text_to_images(
 			f'Q_{re.sub(" ", "_", query_text)}_'
 			f'{strategy}_'
 			f'{model_arch}_'
-			f'{modes[1]}_'
+			f'{modes[1]}'
 			f'.png'
 		)
 		composite.save(file_name, dpi=(dpi, dpi))
