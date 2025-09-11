@@ -3221,6 +3221,12 @@ def lora_finetune_single_label(
 		fname=plot_paths["retrieval_best"],
 	)
 
+	plot_hyperparameter_evolution(
+		learning_rates=learning_rates_history,
+		weight_decays=weight_decays_history,
+		fname=os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
+	)
+
 def probe_finetune_single_label(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
