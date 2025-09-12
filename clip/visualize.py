@@ -34,6 +34,170 @@ modes = ["Image-to-Text", "Text-to-Image"]
 if USER == "farid":
 	from graphviz import Digraph
 
+import matplotlib.patches as mpatches
+from matplotlib.colors import LinearSegmentedColormap
+
+def plot_unfreeze_heatmap(
+		unfreeze_schedule: dict,
+		layer_groups: dict,
+		max_phase: int,
+		fname: str = "unfreeze_heatmap.png",
+		auto_trim: bool = True,
+	):
+	group_names = list(layer_groups.keys())
+	n_groups = len(group_names)
+
+	# Detect last actually used phase
+	last_phase = max(unfreeze_schedule.keys()) if len(unfreeze_schedule) > 0 else 0
+
+	# If auto_trim is enabled, reduce max_phase
+	if auto_trim:
+		max_phase = min(max_phase, last_phase)
+
+	# heat-map matrix
+	heat = np.zeros((n_groups, max_phase + 1))
+	for ph in range(max_phase + 1):
+		if ph not in unfreeze_schedule:
+			continue
+		unfrozen_set = set(unfreeze_schedule[ph])
+		for g_idx, (g_name, g_layers) in enumerate(layer_groups.items()):
+			n_total = len(g_layers)
+			n_unfrozen = sum(1 for l in g_layers if any(u in l for u in unfrozen_set))
+			heat[g_idx, ph] = n_unfrozen / max(n_total, 1)
+
+	# Color Universal Design friendly colormap (light → mid → dark blue)
+	cmap = LinearSegmentedColormap.from_list(
+		"cud_safe_blue",
+		[
+			(0.00, "#f0f0f0"),  # light gray
+			(0.25, "#c6dbef"),  # pale blue
+			(0.50, "#6baed6"),  # medium blue
+			(0.75, "#2171b5"),  # rich blue
+			(1.00, "#08306b"),  # deep navy
+		],
+		N=256
+	)
+
+	fig, ax = plt.subplots(figsize=(12, 10), facecolor="white")
+	im = ax.imshow(heat, cmap=cmap, aspect="auto", vmin=0, vmax=1)
+
+	# Add vertical separators between phases
+	for p in range(1, max_phase + 1):
+		ax.axvline(p - 0.5, color="#EC663D", linewidth=1.1)
+
+	# Axes & labels
+	ax.set_xticks(np.arange(max_phase + 1))
+	ax.set_xticklabels([f"P{p}" for p in range(max_phase + 1)], fontsize=9)
+	ax.set_yticks(np.arange(n_groups))
+	ax.set_yticklabels([name.replace("_", "\n").title() for name in group_names], fontsize=9)
+	ax.set_xlabel("Phase", fontsize=10, weight="bold")
+	ax.set_ylabel("Layer Groups", fontsize=10, weight="bold")
+
+	# Title and unused-phase handling
+	legend_handles = []
+	if auto_trim:
+		ax.set_title(
+			f"Layer-Group Un-freezing Pattern (P0–P{last_phase})",
+			fontsize=14, weight="bold", pad=15
+		)
+	else:
+		ax.set_title(
+			f"Layer-Group Un-freezing Pattern (Planned P0–P{max_phase}, Used P0–P{last_phase})",
+			fontsize=14, weight="bold", pad=15
+		)
+		# Shade unused phases
+		if last_phase < max_phase:
+			for ph in range(last_phase + 1, max_phase + 1):
+				ax.axvspan(
+					ph - 0.5, ph + 0.5,
+					color="lightgray",
+					alpha=0.2,
+					zorder=-1,
+				)
+
+			# Gray out the tick labels for unused phases
+			for ph in range(last_phase + 1, max_phase + 1):
+				ax.get_xticklabels()[ph].set_color("gray")
+
+			# Add legend entry for unused phases
+			legend_handles.append(
+				mpatches.Patch(color="lightgray", alpha=0.4, label="Unused Phases")
+			)
+
+	# Colorbar
+	cbar = fig.colorbar(im, ax=ax, shrink=0.8)
+	cbar.set_label("Fraction Unfrozen", fontsize=10)
+	cbar.ax.tick_params(labelsize=8)
+
+	# Add legend if needed
+	if legend_handles:
+		ax.legend(
+			handles=legend_handles,
+			loc="upper right",
+			frameon=False,
+			fontsize=9
+		)
+
+	fig.savefig(fname, dpi=250, bbox_inches="tight")
+	plt.close(fig)
+
+
+def plot_unfreeze_heatmap_old(
+		unfreeze_schedule: dict,
+		layer_groups: dict,
+		max_phase: int,
+		fname: str="unfreeze_heatmap.png",
+	):
+	group_names = list(layer_groups.keys())
+	n_groups = len(group_names)
+
+	# heat-map matrix
+	heat = np.zeros((n_groups, max_phase + 1))
+	for ph in range(max_phase + 1):
+			if ph not in unfreeze_schedule:
+					continue
+			unfrozen_set = set(unfreeze_schedule[ph])
+			for g_idx, (g_name, g_layers) in enumerate(layer_groups.items()):
+					n_total = len(g_layers)
+					n_unfrozen = sum(1 for l in g_layers if any(u in l for u in unfrozen_set))
+					heat[g_idx, ph] = n_unfrozen / max(n_total, 1)
+
+	# Color Universal Design friendly colormap (light → mid → dark blue)
+	cmap = LinearSegmentedColormap.from_list(
+			"cud_safe_blue",
+			[
+					(0.00, "#f0f0f0"),  # light gray
+					(0.25, "#c6dbef"),  # pale blue
+					(0.50, "#6baed6"),  # medium blue
+					(0.75, "#2171b5"),  # rich blue
+					(1.00, "#08306b"),  # deep navy
+			],
+			N=256
+	)
+	fig, ax = plt.subplots(figsize=(12, 6), facecolor="white")
+	im = ax.imshow(heat, cmap=cmap, aspect="auto", vmin=0, vmax=1)
+	
+	# Add vertical separators between phases
+	for p in range(1, max_phase + 1):
+		ax.axvline(p - 0.5, color="white", linewidth=1.2)
+	
+	# Axes & labels
+	ax.set_xticks(np.arange(max_phase + 1))
+	ax.set_xticklabels([f"P{p}" for p in range(max_phase + 1)], fontsize=9)
+	ax.set_yticks(np.arange(n_groups))
+	ax.set_yticklabels([name.replace("_", "\n").title() for name in group_names], fontsize=9)
+	ax.set_xlabel("Phase", fontsize=10, weight="bold")
+	ax.set_ylabel("Layer groups", fontsize=10, weight="bold")
+	ax.set_title("Layer-Group Un-freezing Pattern", fontsize=14, weight="bold", pad=15)
+	
+	# Colorbar
+	cbar = fig.colorbar(im, ax=ax, shrink=0.8)
+	cbar.set_label("Fraction Unfrozen", fontsize=10)
+	cbar.ax.tick_params(labelsize=8)
+	
+	fig.savefig(fname, dpi=250, bbox_inches="tight")	
+	plt.close(fig)
+
 def plot_hyperparameter_evolution(
 		eta_min: float,
 		learning_rates: List[float],
@@ -330,7 +494,7 @@ def plot_phase_transition_analysis_individual(
 		plt.close(fig)
 	
 	# =============================================
-	# PLOT 1: Learning Curve with Phase Transitions
+	# Learning Curve with Phase Transitions
 	# =============================================
 	fig, ax1 = plt.subplots(figsize=figsize, facecolor='white')
 	max_loss = max(max(train_losses), max(val_losses))
@@ -609,7 +773,7 @@ def plot_phase_transition_analysis_individual(
 	save_fig(fig, "ph_eff")
 
 	# ============================================
-	# PLOT 5: Hyperparameter Correlations
+	# Hyperparameter Correlations
 	# ============================================
 	fig, ax5 = plt.subplots(figsize=figsize, facecolor='white')
 	lr_norm = np.array(learning_rates) / max(learning_rates)

@@ -12,7 +12,8 @@ from visualize import (
 	collect_progressive_training_history,
 	plot_phase_transition_analysis,
 	plot_hyperparameter_evolution,
-	plot_phase_transition_analysis_individual
+	plot_phase_transition_analysis_individual,
+	plot_unfreeze_heatmap
 )
 
 if USER == "farid":
@@ -1582,9 +1583,7 @@ def get_num_transformer_blocks(
 	# print(f">> {model.__class__.__name__} {model.name}: Visual Transformer blocks: {visual_blocks}, Text Transformer blocks: {text_blocks}")
 	return visual_blocks, text_blocks
 
-def get_layer_groups(
-		model: torch.nn.Module
-	) -> dict:
+def get_layer_groups(model: torch.nn.Module) -> dict:
 	vis_nblocks, txt_nblocks = get_num_transformer_blocks(model=model)
 
 	# Determine model type
@@ -2433,9 +2432,16 @@ def progressive_finetune_single_label(
 		best_epoch=early_stopping.best_epoch if hasattr(early_stopping, 'best_epoch') else None
 	)
 
-	analysis_results = plot_phase_transition_analysis(
+	plot_phase_transition_analysis(
 		training_history=training_history,
 		file_path=plot_paths["phase_analysis"],
+	)
+	
+	plot_unfreeze_heatmap(
+		unfreeze_schedule=unfreeze_schedule,
+		layer_groups=get_layer_groups(model),
+		max_phase=max(unfreeze_schedule.keys()),
+		fname=plot_paths["unfreeze_heatmap"],
 	)
 
 	analyzer = LossAnalyzer(
