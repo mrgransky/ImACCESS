@@ -34,169 +34,192 @@ modes = ["Image-to-Text", "Text-to-Image"]
 if USER == "farid":
 	from graphviz import Digraph
 
-import matplotlib.patches as mpatches
-from matplotlib.colors import LinearSegmentedColormap
-
 def plot_unfreeze_heatmap(
-		unfreeze_schedule: dict,
-		layer_groups: dict,
-		max_phase: int,
-		fname: str = "unfreeze_heatmap.png",
-		auto_trim: bool = True,
-	):
-	group_names = list(layer_groups.keys())
-	n_groups = len(group_names)
+				unfreeze_schedule: dict,
+				layer_groups: dict,
+				max_phase: int,
+				fname: str = "unfreeze_heatmap.png",
+				used_phases: int = None,
+		):
+		group_names = list(layer_groups.keys())
+		n_groups = len(group_names)
 
-	# Detect last actually used phase
-	last_phase = max(unfreeze_schedule.keys()) if len(unfreeze_schedule) > 0 else 0
+		# Detect last actually used phase
+		last_phase = max(unfreeze_schedule.keys()) if len(unfreeze_schedule) > 0 else 0
+		if used_phases is not None:
+				last_phase = used_phases
 
-	# If auto_trim is enabled, reduce max_phase
-	if auto_trim:
-		max_phase = min(max_phase, last_phase)
+		n_phases = max_phase  # planned number of phases, show all
 
-	# heat-map matrix
-	heat = np.zeros((n_groups, max_phase + 1))
-	for ph in range(max_phase + 1):
-		if ph not in unfreeze_schedule:
-			continue
-		unfrozen_set = set(unfreeze_schedule[ph])
-		for g_idx, (g_name, g_layers) in enumerate(layer_groups.items()):
-			n_total = len(g_layers)
-			n_unfrozen = sum(1 for l in g_layers if any(u in l for u in unfrozen_set))
-			heat[g_idx, ph] = n_unfrozen / max(n_total, 1)
+		# heat-map matrix
+		heat = np.zeros((n_groups, n_phases))
+		for ph in range(n_phases):
+				if ph not in unfreeze_schedule:
+						continue
+				unfrozen_set = set(unfreeze_schedule[ph])
+				for g_idx, (g_name, g_layers) in enumerate(layer_groups.items()):
+						n_total = len(g_layers)
+						n_unfrozen = sum(1 for l in g_layers if any(u in l for u in unfrozen_set))
+						heat[g_idx, ph] = n_unfrozen / max(n_total, 1)
 
-	# Color Universal Design friendly colormap (light → mid → dark blue)
-	cmap = LinearSegmentedColormap.from_list(
-		"cud_safe_blue",
-		[
-			(0.00, "#f0f0f0"),  # light gray
-			(0.25, "#c6dbef"),  # pale blue
-			(0.50, "#6baed6"),  # medium blue
-			(0.75, "#2171b5"),  # rich blue
-			(1.00, "#08306b"),  # deep navy
-		],
-		N=256
-	)
+		# ----- Custom cmap for "fraction unfrozen" -----
+		cmap = LinearSegmentedColormap.from_list(
+				"cud_safe_blue",
+				[
+						(0.00, "#f0f0f0"),  # light gray
+						(0.25, "#c6dbef"),  # pale blue
+						(0.50, "#6baed6"),  # medium blue
+						(0.75, "#2171b5"),  # rich blue
+						(1.00, "#08306b"),  # deep navy
+				],
+				N=256
+		)
 
-	fig, ax = plt.subplots(figsize=(12, 10), facecolor="white")
-	im = ax.imshow(heat, cmap=cmap, aspect="auto", vmin=0, vmax=1)
+		fig, ax = plt.subplots(figsize=(15, 10), facecolor="white")
 
-	# Add vertical separators between phases
-	for p in range(1, max_phase + 1):
-		ax.axvline(p - 0.5, color="#EC663D", linewidth=1.1)
+		# ----- Mask unused phases -----
+		mask = np.zeros_like(heat, dtype=bool)
+		if last_phase < (n_phases - 1):
+				mask[:, last_phase+1:] = True  # mark unused phases TRUE
 
-	# Axes & labels
-	ax.set_xticks(np.arange(max_phase + 1))
-	ax.set_xticklabels([f"P{p}" for p in range(max_phase + 1)], fontsize=9)
-	ax.set_yticks(np.arange(n_groups))
-	ax.set_yticklabels([name.replace("_", "\n").title() for name in group_names], fontsize=9)
-	ax.set_xlabel("Phase", fontsize=10, weight="bold")
-	ax.set_ylabel("Layer Groups", fontsize=10, weight="bold")
+		# plot "used" data
+		im = ax.imshow(np.ma.masked_array(heat, mask), cmap=cmap,
+									 aspect="auto", vmin=0, vmax=1)
 
-	# Title and unused-phase handling
-	legend_handles = []
-	if auto_trim:
+		# overlay the masked part (unused phases) with uniform gray
+		if mask.any():
+				im_unused = ax.imshow(np.ma.masked_where(~mask, heat),
+															cmap=plt.cm.Greys, aspect="auto",
+															vmin=0, vmax=1, alpha=0.4)
+
+		# ----- Draw gridlines and labels -----
+		for p in range(1, n_phases):
+				ax.axvline(p - 0.5, color="#B89B9B", linewidth=1.1)
+
+		ax.set_xticks(np.arange(n_phases))
+		ax.set_xticklabels([f"P{p}" for p in range(n_phases)], fontsize=9)
+		ax.set_yticks(np.arange(n_groups))
+		ax.set_yticklabels([name.replace("_", "\n").title() for name in group_names], fontsize=9)
+		ax.set_xlabel("Phase", fontsize=10, weight="bold")
+		ax.set_ylabel("Layer Groups", fontsize=10, weight="bold")
+
+		# Title & Legend
+		legend_handles = []
 		ax.set_title(
-			f"Layer-Group Un-freezing Pattern (P0–P{last_phase})",
-			fontsize=14, weight="bold", pad=15
+				f"Layer-Group Un-freezing Pattern (Planned P0–P{n_phases-1}, Used P0–P{last_phase})",
+				fontsize=14, weight="bold", pad=15
 		)
-	else:
-		ax.set_title(
-			f"Layer-Group Un-freezing Pattern (Planned P0–P{max_phase}, Used P0–P{last_phase})",
-			fontsize=14, weight="bold", pad=15
-		)
-		# Shade unused phases
-		if last_phase < max_phase:
-			for ph in range(last_phase + 1, max_phase + 1):
-				ax.axvspan(
-					ph - 0.5, ph + 0.5,
-					color="lightgray",
-					alpha=0.2,
-					zorder=-1,
-				)
+		if last_phase < (n_phases - 1):
+				for ph in range(last_phase + 1, n_phases):
+						ax.get_xticklabels()[ph].set_color("gray")
+				legend_handles.append(mpatches.Patch(color="lightgray", alpha=0.6, label="Unused Phases"))
 
-			# Gray out the tick labels for unused phases
-			for ph in range(last_phase + 1, max_phase + 1):
-				ax.get_xticklabels()[ph].set_color("gray")
+		# Colorbar
+		cbar = fig.colorbar(im, ax=ax, shrink=0.8)
+		cbar.set_label("Fraction Unfrozen", fontsize=10)
+		cbar.ax.tick_params(labelsize=8)
 
-			# Add legend entry for unused phases
-			legend_handles.append(
-				mpatches.Patch(color="lightgray", alpha=0.4, label="Unused Phases")
-			)
+		if legend_handles:
+				ax.legend(handles=legend_handles, loc="upper right", frameon=False, fontsize=9)
 
-	# Colorbar
-	cbar = fig.colorbar(im, ax=ax, shrink=0.8)
-	cbar.set_label("Fraction Unfrozen", fontsize=10)
-	cbar.ax.tick_params(labelsize=8)
-
-	# Add legend if needed
-	if legend_handles:
-		ax.legend(
-			handles=legend_handles,
-			loc="upper right",
-			frameon=False,
-			fontsize=9
-		)
-
-	fig.savefig(fname, dpi=250, bbox_inches="tight")
-	plt.close(fig)
-
+		fig.savefig(fname, dpi=250, bbox_inches="tight")
+		plt.close(fig)
 
 def plot_unfreeze_heatmap_old(
-		unfreeze_schedule: dict,
-		layer_groups: dict,
-		max_phase: int,
-		fname: str="unfreeze_heatmap.png",
-	):
-	group_names = list(layer_groups.keys())
-	n_groups = len(group_names)
+				unfreeze_schedule: dict,
+				layer_groups: dict,
+				max_phase: int,
+				fname: str = "unfreeze_heatmap.png",
+				used_phases: int = None,
+		):
+		group_names = list(layer_groups.keys())
+		n_groups = len(group_names)
 
-	# heat-map matrix
-	heat = np.zeros((n_groups, max_phase + 1))
-	for ph in range(max_phase + 1):
-			if ph not in unfreeze_schedule:
-					continue
-			unfrozen_set = set(unfreeze_schedule[ph])
-			for g_idx, (g_name, g_layers) in enumerate(layer_groups.items()):
-					n_total = len(g_layers)
-					n_unfrozen = sum(1 for l in g_layers if any(u in l for u in unfrozen_set))
-					heat[g_idx, ph] = n_unfrozen / max(n_total, 1)
+		print(f"{n_groups} Layer groups: {group_names}")
+		print(f"Unfreeze schedule: {unfreeze_schedule}")
+		print(f"Planned max phase (total planned phases): {max_phase}")
 
-	# Color Universal Design friendly colormap (light → mid → dark blue)
-	cmap = LinearSegmentedColormap.from_list(
-			"cud_safe_blue",
-			[
-					(0.00, "#f0f0f0"),  # light gray
-					(0.25, "#c6dbef"),  # pale blue
-					(0.50, "#6baed6"),  # medium blue
-					(0.75, "#2171b5"),  # rich blue
-					(1.00, "#08306b"),  # deep navy
-			],
-			N=256
-	)
-	fig, ax = plt.subplots(figsize=(12, 6), facecolor="white")
-	im = ax.imshow(heat, cmap=cmap, aspect="auto", vmin=0, vmax=1)
-	
-	# Add vertical separators between phases
-	for p in range(1, max_phase + 1):
-		ax.axvline(p - 0.5, color="white", linewidth=1.2)
-	
-	# Axes & labels
-	ax.set_xticks(np.arange(max_phase + 1))
-	ax.set_xticklabels([f"P{p}" for p in range(max_phase + 1)], fontsize=9)
-	ax.set_yticks(np.arange(n_groups))
-	ax.set_yticklabels([name.replace("_", "\n").title() for name in group_names], fontsize=9)
-	ax.set_xlabel("Phase", fontsize=10, weight="bold")
-	ax.set_ylabel("Layer groups", fontsize=10, weight="bold")
-	ax.set_title("Layer-Group Un-freezing Pattern", fontsize=14, weight="bold", pad=15)
-	
-	# Colorbar
-	cbar = fig.colorbar(im, ax=ax, shrink=0.8)
-	cbar.set_label("Fraction Unfrozen", fontsize=10)
-	cbar.ax.tick_params(labelsize=8)
-	
-	fig.savefig(fname, dpi=250, bbox_inches="tight")	
-	plt.close(fig)
+		# Detect last actually used phase
+		last_phase = max(unfreeze_schedule.keys()) if len(unfreeze_schedule) > 0 else 0
+		if used_phases is not None:
+				last_phase = used_phases
+		print(f"last_phase: {last_phase}")
+
+		# ✅ Correct bug: max_phase means number of phases, so phases run 0 … max_phase-1
+		n_phases = max_phase  
+
+		# heat-map matrix
+		heat = np.zeros((n_groups, n_phases))
+		for ph in range(n_phases):
+				if ph not in unfreeze_schedule:
+						continue
+				unfrozen_set = set(unfreeze_schedule[ph])
+				for g_idx, (g_name, g_layers) in enumerate(layer_groups.items()):
+						n_total = len(g_layers)
+						n_unfrozen = sum(1 for l in g_layers if any(u in l for u in unfrozen_set))
+						heat[g_idx, ph] = n_unfrozen / max(n_total, 1)
+
+		# Color map (grays → blues)
+		cmap = LinearSegmentedColormap.from_list(
+				"cud_safe_blue",
+				[
+						(0.00, "#f0f0f0"),  # light gray
+						(0.25, "#c6dbef"),  # pale blue
+						(0.50, "#6baed6"),  # medium blue
+						(0.75, "#2171b5"),  # rich blue
+						(1.00, "#08306b"),  # deep navy
+				],
+				N=256
+		)
+
+		fig, ax = plt.subplots(figsize=(15, 10), facecolor="white")
+		im = ax.imshow(heat, cmap=cmap, aspect="auto", vmin=0, vmax=1)
+
+		# Vertical separators between phases
+		for p in range(1, n_phases):
+				ax.axvline(p - 0.5, color="#B89B9B", linewidth=1.1)
+
+		# Axes & labels
+		ax.set_xticks(np.arange(n_phases))
+		ax.set_xticklabels([f"P{p}" for p in range(n_phases)], fontsize=9)
+		ax.set_yticks(np.arange(n_groups))
+		ax.set_yticklabels([name.replace("_", "\n").title() for name in group_names], fontsize=9)
+		ax.set_xlabel("Phase", fontsize=10, weight="bold")
+		ax.set_ylabel("Layer Groups", fontsize=10, weight="bold")
+
+		# Title and unused-phase shading
+		legend_handles = []
+		ax.set_title(
+				f"Layer-Group Un-freezing Pattern (Planned P0–P{n_phases-1}, Used P0–P{last_phase})",
+				fontsize=14, weight="bold", pad=15
+		)
+		if last_phase < (n_phases - 1):
+				for ph in range(last_phase + 1, n_phases):
+						ax.axvspan(
+								ph - 0.5, ph + 0.5,
+								color="#A3A3A3",
+								alpha=0.25,
+								zorder=-1,
+						)
+				# Gray out tick labels for unused phases
+				for ph in range(last_phase + 1, n_phases):
+						ax.get_xticklabels()[ph].set_color("gray")
+
+				# Add legend entry
+				legend_handles.append(
+						mpatches.Patch(color="#A3A3A3", alpha=0.4, label="Unused Phases")
+				)
+
+		# Colorbar
+		cbar = fig.colorbar(im, ax=ax, shrink=0.8)
+		cbar.set_label("Fraction Unfrozen", fontsize=10)
+		cbar.ax.tick_params(labelsize=8)
+
+		if legend_handles:
+				ax.legend(handles=legend_handles, loc="upper right", frameon=False, fontsize=9)
+
+		fig.savefig(fname, dpi=250, bbox_inches="tight")
+		plt.close(fig)
 
 def plot_hyperparameter_evolution(
 		eta_min: float,
@@ -486,6 +509,7 @@ def plot_phase_transition_analysis_individual(
 
 	# Color scheme
 	phase_colors = plt.cm.tab10(np.linspace(0, 1, max(phases) + 1))
+	unique_phases = sorted(set(phases))
 
 	# Helper to save figure with suffix
 	def save_fig(fig, suffix):
@@ -497,85 +521,228 @@ def plot_phase_transition_analysis_individual(
 	# Learning Curve with Phase Transitions
 	# =============================================
 	fig, ax1 = plt.subplots(figsize=figsize, facecolor='white')
-	max_loss = max(max(train_losses), max(val_losses))
-	min_loss = min(min(train_losses), min(val_losses))
-	margin = max_loss * 0.25
-	ax1.set_ylim(min_loss - margin, max_loss + margin)
+	
+	# max_loss = max(max(train_losses), max(val_losses))
+	# min_loss = min(min(train_losses), min(val_losses))
+	# margin = max_loss * 0.25
+	# ax1.set_ylim(min_loss - margin, max_loss + margin)
+	# ymin, ymax = ax1.get_ylim()
+	# y_middle = (ymin + ymax) / 2.0
+
+	# # Phase shading
+	# unique_phases = sorted(set(phases))
+	# for phase in set(phases):
+	# 	phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
+	# 	if phase_epochs:
+	# 		ax1.axvspan(min(phase_epochs), max(phase_epochs), alpha=0.39, color=phase_colors[phase], label=f'Phase {phase}')
+
+	# # Loss curves
+	# ax1.plot(epochs, train_losses, color="#0025FA", linewidth=2.5, alpha=0.9, label="Training Loss")
+	# ax1.plot(epochs, val_losses, color="#C77203", linewidth=2.5, alpha=0.9, label="Validation Loss")
+
+	# # Transitions
+	# for i, t_epoch in enumerate(transitions):
+	# 	ax1.axvline(
+	# 		x=t_epoch, 
+	# 		color=transition_color, 
+	# 		linestyle="--", 
+	# 		linewidth=1.5, 
+	# 		alpha=0.65,
+	# 		zorder=10,
+	# 	)
+	# 	if t_epoch < len(val_losses):
+	# 		prev_loss = val_losses[t_epoch - 1] if t_epoch > 0 else val_losses[t_epoch]
+	# 		change = ((prev_loss - val_losses[t_epoch]) / prev_loss) * 100 if prev_loss > 0 else 0
+	# 		ax1.text(
+	# 			t_epoch + 0.25,
+	# 			y_middle,
+	# 			f"T{i+1} ({change:+.2f}%)", 
+	# 			rotation=90,
+	# 			va="center", 
+	# 			ha="left", 
+	# 			color=transition_color, 
+	# 			fontsize=9,
+	# 		)
+
+	# if best_epoch is not None:
+	# 	ax1.scatter(
+	# 		[epochs[best_epoch]], 
+	# 		[val_losses[best_epoch]], 
+	# 		color=best_model_color, 
+	# 		marker="*", 
+	# 		s=150,
+	# 		linewidth=1.5, 
+	# 		zorder=15, 
+	# 		label="Best",
+	# 	)
+
+	# if early_stop_epoch:
+	# 	ax1.axvline(x=early_stop_epoch, color=early_stop_color, linestyle=":", linewidth=1.8, alpha=0.9)
+	# 	ax1.text(
+	# 		early_stop_epoch + 0.5, 
+	# 		y_middle, 
+	# 		"Early Stopping", 
+	# 		rotation=90, 
+	# 		va="center",
+	# 		ha="left", 
+	# 		color=early_stop_color, 
+	# 		fontsize=9
+	# 	)
+	# ax1.set_title("Learning Curve [Loss] with Phase Transitions", fontsize=10, weight="bold")
+	# ax1.set_xlabel("Epoch"); ax1.set_ylabel("Loss")
+	# ax1.legend(
+	# 	fontsize=8, 
+	# 	loc="best",
+	# 	ncol=len(unique_phases)+3,
+	# 	frameon=False, 
+	# 	shadow=False, 
+	# 	fancybox=False, 
+	# 	edgecolor="none", 
+	# 	facecolor="none",		
+	# )
+	# ax1.grid(True, alpha=0.5)
+	# ========================================
+	# Learning Curve with Phase Transitions
+	# ========================================
+
+	# Create phase segments using transition boundaries directly
+	phase_segments = []
+	for i, phase in enumerate(unique_phases):
+		if i == 0:
+			start_epoch = 1  # First epoch
+		else:
+			start_epoch = transitions[i-1]# + 1  # First epoch after previous transition
+		
+		if i < len(transitions):
+			end_epoch = transitions[i]  # This transition ends the current phase
+		else:
+			end_epoch = max(epochs)  # Last epoch for final phase
+		
+		phase_segments.append((start_epoch, end_epoch, phase))
+
+	for start_epoch, end_epoch, phase in phase_segments:
+		ax1.axvspan(
+			start_epoch,
+			end_epoch,
+			alpha=0.2,
+			color=phase_colors[phase],
+			label=f'Phase {phase}',
+			zorder=0,
+		)
+
+	# Plot loss curves with enhanced styling
+	ax1.plot(
+		epochs, 
+		train_losses, 
+		color=train_loss_color,
+		linestyle='-',
+		linewidth=2.5, 
+		label='Train',
+		alpha=0.9, 
+		marker='o', 
+		markersize=2.5,
+	)
+	ax1.plot(
+		epochs, 
+		val_losses, 
+		color=val_loss_color,
+		linestyle='-',
+		linewidth=2.5, 
+		label='Validation', 
+		alpha=0.9, 
+		marker='o',
+		markersize=2.5,
+	)
 	ymin, ymax = ax1.get_ylim()
 	y_middle = (ymin + ymax) / 2.0
 
-	# Phase shading
-	unique_phases = sorted(set(phases))
-	for phase in set(phases):
-		phase_epochs = [e for e, p in zip(epochs, phases) if p == phase]
-		if phase_epochs:
-			ax1.axvspan(min(phase_epochs), max(phase_epochs), alpha=0.39, color=phase_colors[phase], label=f'Phase {phase}')
-
-	# Loss curves
-	ax1.plot(epochs, train_losses, color="#0025FA", linewidth=2.5, alpha=0.9, label="Training Loss")
-	ax1.plot(epochs, val_losses, color="#C77203", linewidth=2.5, alpha=0.9, label="Validation Loss")
-
-	# Transitions
-	for i, t_epoch in enumerate(transitions):
+	for i, transition_epoch in enumerate(transitions):
 		ax1.axvline(
-			x=t_epoch, 
+			x=transition_epoch, 
 			color=transition_color, 
-			linestyle="--", 
-			linewidth=1.5, 
-			alpha=0.65,
+			linestyle=':',
+			linewidth=2.0,
+			alpha=0.6,
 			zorder=10,
 		)
-		if t_epoch < len(val_losses):
-			prev_loss = val_losses[t_epoch - 1] if t_epoch > 0 else val_losses[t_epoch]
-			change = ((prev_loss - val_losses[t_epoch]) / prev_loss) * 100 if prev_loss > 0 else 0
+		
+		if transition_epoch < len(val_losses):
+			transition_loss = val_losses[transition_epoch]
+			improvement_text = ""
+			if transition_epoch > 0:
+				prev_loss = val_losses[transition_epoch - 1]
+				change = ((prev_loss - transition_loss) / prev_loss) * 100
+				improvement_text = f" ({change:+.2f}%)"
+			
 			ax1.text(
-				t_epoch + 0.25,
+				transition_epoch + 0.2,
 				y_middle,
-				f"T{i+1} ({change:+.2f}%)", 
+				f'T{i+1}{improvement_text}',
 				rotation=90,
-				va="center", 
-				ha="left", 
-				color=transition_color, 
-				fontsize=9,
+				fontsize=8,
+				ha='left',
+				va='center',
+				color=transition_color,
+				bbox=dict(
+					boxstyle="round,pad=0.4",
+					edgecolor='none',
+					facecolor="#C5C5C5",
+					alpha=0.5,
+				)
 			)
 
-	if best_epoch is not None:
+	if best_epoch is not None and best_epoch < len(epochs):
+		best_loss = val_losses[best_epoch]
 		ax1.scatter(
 			[epochs[best_epoch]], 
-			[val_losses[best_epoch]], 
+			[best_loss], 
 			color=best_model_color, 
-			marker="*", 
 			s=150,
-			linewidth=1.5, 
+			marker='*', 
 			zorder=15, 
-			label="Best",
+			label='Best',
+			linewidth=1.5,
 		)
-
-	if early_stop_epoch:
-		ax1.axvline(x=early_stop_epoch, color=early_stop_color, linestyle=":", linewidth=1.8, alpha=0.9)
-		ax1.text(
-			early_stop_epoch + 0.5, 
-			y_middle, 
-			"Early Stopping", 
-			rotation=90, 
-			va="center",
-			ha="left", 
+	
+	if early_stop_epoch is not None:
+		ax1.axvline(
+			x=early_stop_epoch, 
 			color=early_stop_color, 
-			fontsize=9
+			linestyle=':',
+			linewidth=1.5,
+			alpha=0.95,
+			zorder=12
 		)
-	ax1.set_title("Learning Curve [Loss] with Phase Transitions", fontsize=10, weight="bold")
-	ax1.set_xlabel("Epoch"); ax1.set_ylabel("Loss")
-	ax1.legend(
-		fontsize=8, 
-		loc="best",
-		ncol=len(unique_phases)+3,
-		frameon=False, 
-		shadow=False, 
-		fancybox=False, 
-		edgecolor="none", 
-		facecolor="none",		
+		ax1.text(
+			early_stop_epoch + 0.25,
+			y_middle,
+			'Early Stopping', 
+			rotation=90, 
+			ha='left',
+			va='center',
+			fontsize=8,
+			color=early_stop_color, 
+		)
+	
+	ax1.set_xlabel('Epoch', fontsize=8)
+	ax1.set_ylabel('Loss', fontsize=8)
+	ax1.xaxis.set_major_locator(ticker.MaxNLocator(integer=True, nbins=nbins))
+
+	ax1.set_title(f'Learning [Loss] Curve with Phase Transitions', fontsize=8, weight='bold')
+	legend = ax1.legend(
+		loc='upper right',
+		fontsize=8,
+		frameon=False,
+		shadow=False,
+		fancybox=False,
+		edgecolor='none',
+		facecolor='#FFFFFF',
+		ncol=len(transitions)+5,
 	)
+	legend.set_zorder(20)
 	ax1.grid(True, alpha=0.5)
+	ax1.tick_params(axis='both', which='major', labelsize=8)
+	ax1.set_xlim(left=0, right=max(epochs)+2)
 	save_fig(fig, "learning_curve")
 
 	# ===================================
@@ -866,7 +1033,7 @@ def plot_phase_transition_analysis(
 	phase_colors = plt.cm.tab10(np.linspace(0, 1, max(phases) + 1))
 	
 	# ========================================
-	# 1. Learning Curve with Phase Transitions
+	# Learning Curve with Phase Transitions
 	# ========================================
 	ax1 = fig.add_subplot(gs[0, :])
 

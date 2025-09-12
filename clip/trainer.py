@@ -2436,12 +2436,15 @@ def progressive_finetune_single_label(
 		training_history=training_history,
 		file_path=plot_paths["phase_analysis"],
 	)
-	
+
+	print(phases_history, total_num_phases)
 	plot_unfreeze_heatmap(
 		unfreeze_schedule=unfreeze_schedule,
 		layer_groups=get_layer_groups(model),
-		max_phase=max(unfreeze_schedule.keys()),
+		max_phase=total_num_phases,
 		fname=plot_paths["unfreeze_heatmap"],
+		# auto_trim=False,
+		used_phases=max(phases_history),
 	)
 
 	analyzer = LossAnalyzer(
