@@ -201,7 +201,7 @@ def calculate_and_plot_long_tail_performance(
 		ax.set_title(f'Text-to-Image Recall@{top_k} by Class Frequency', fontsize=14, weight='bold')
 		ax.set_xlabel('Model', fontsize=12)
 		ax.set_ylabel(f'Recall@{top_k}', fontsize=12)
-		ax.legend(title='Class Category', fontsize=12, ncol=len(df_results.columns), loc='best')
+		ax.legend(fontsize=11, ncol=len(df_results.columns), loc='best', frameon=False, shadow=False, fancybox=False)
 		ax.grid(axis='y', linestyle='--', alpha=0.7)
 		
 		# Add value labels on top of bars
