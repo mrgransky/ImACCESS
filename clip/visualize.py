@@ -198,7 +198,7 @@ def calculate_and_plot_long_tail_performance(
 		print(f"colors_for_plot: {colors_for_plot}")
 		df_results.plot(kind='bar', ax=ax, color=colors_for_plot, rot=0)
 
-		ax.set_title(f'Text-to-Image Recall@{top_k} by Class Frequency', fontsize=14, weight='bold')
+		ax.set_title(f'Text-to-Image Recall@{top_k} by Label Frequency', fontsize=14, weight='bold')
 		ax.set_xlabel('Model', fontsize=12)
 		ax.set_ylabel(f'Recall@{top_k}', fontsize=12)
 		ax.legend(fontsize=11, ncol=len(df_results.columns), loc='best', frameon=False, shadow=False, fancybox=False)
