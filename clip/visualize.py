@@ -34,6 +34,173 @@ modes = ["Image-to-Text", "Text-to-Image"]
 if USER == "farid":
 	from graphviz import Digraph
 
+def _get_category_labels_and_indices(
+		metadata_path: str,
+		class_names: List[str],
+		head_threshold: int = 5000,
+		tail_threshold: int = 1000,
+) -> Dict[str, Dict[str, Any]]:
+		"""
+		Analyzes the full dataset metadata to define head, torso, and tail categories.
+
+		Returns:
+				A dictionary mapping category names to their string labels and integer indices.
+		"""
+		print("--- Defining Head, Torso, and Tail Categories ---")
+		df_full = pd.read_csv(metadata_path, low_memory=False)
+		label_counts_full = df_full['label'].value_counts()
+
+		head_labels_str = label_counts_full[label_counts_full > head_threshold].index.tolist()
+		tail_labels_str = label_counts_full[label_counts_full < tail_threshold].index.tolist()
+		torso_labels_str = label_counts_full[
+				(label_counts_full >= tail_threshold) & (label_counts_full <= head_threshold)
+		].index.tolist()
+
+		print(f"Head labels defined ({len(head_labels_str)}): {head_labels_str[:3]}...")
+		print(f"Torso labels defined ({len(torso_labels_str)}): {torso_labels_str[:3]}...")
+		print(f"Tail labels defined ({len(tail_labels_str)}): {tail_labels_str[:3]}...")
+
+		# Create a mapping from class name string to its integer index
+		label_to_idx = {label: i for i, label in enumerate(class_names)}
+
+		categories = {
+				"Head": {"labels": head_labels_str},
+				"Torso": {"labels": torso_labels_str},
+				"Tail": {"labels": tail_labels_str},
+		}
+
+		# Convert string labels to integer indices for each category
+		for category_name, data in categories.items():
+				indices = [label_to_idx[lbl] for lbl in data["labels"] if lbl in label_to_idx]
+				data["indices"] = torch.tensor(indices, dtype=torch.long)
+				print(f"{category_name}: Found {len(indices)}/{len(data['labels'])} labels in the validation set class list.")
+				
+		return categories
+
+def calculate_and_plot_long_tail_performance(
+		all_model_similarities: Dict[str, torch.Tensor],
+		validation_dataset: Any, # Your validation dataset object
+		metadata_path: str,
+		save_path: str,
+		top_k: int = 10,
+		head_threshold: int = 5000,
+		tail_threshold: int = 1000,
+):
+		"""
+		Calculates and plots T2I Recall@K disaggregated by head, torso, and tail categories.
+
+		Args:
+				all_model_similarities: Dict mapping model name to its T2I similarity matrix
+																[num_classes, num_images].
+				validation_dataset: The validation dataset object, must have attributes
+														`unique_labels` (or `classes`) and `labels_int`.
+				metadata_path: Path to the full metadata CSV for defining categories.
+				save_path: Path to save the output bar chart figure.
+				top_k: The value of K for Recall@K.
+				head_threshold: Frequency threshold for head classes.
+				tail_threshold: Frequency threshold for tail classes.
+		"""
+		device = list(all_model_similarities.values())[0].device
+		
+		# 1. Get class names and ground truth labels for all images
+		try:
+				class_names = validation_dataset.unique_labels
+		except AttributeError:
+				class_names = validation_dataset.classes
+		
+		all_image_labels = torch.tensor(validation_dataset.labels_int, device=device, dtype=torch.long)
+
+		# 2. Define Head/Torso/Tail categories and get their indices
+		categories = _get_category_labels_and_indices(
+				metadata_path=metadata_path,
+				class_names=class_names,
+				head_threshold=head_threshold,
+				tail_threshold=tail_threshold,
+		)
+
+		# 3. Calculate metrics for each model and each category
+		long_tail_results = {}
+		
+		for model_name, similarity_matrix in all_model_similarities.items():
+				print(f"\n--- Calculating long-tail performance for: {model_name} ---")
+				long_tail_results[model_name] = {}
+				
+				# Get top-K retrieved image indices for ALL class queries at once
+				top_k_retrieved_indices = torch.argsort(
+						similarity_matrix, dim=1, descending=True
+				)[:, :top_k]
+
+				# Iterate through the defined categories
+				for category_name, data in categories.items():
+						category_query_indices = data["indices"].to(device)
+						if len(category_query_indices) == 0:
+								print(f"Skipping {category_name} as no labels were found in validation set.")
+								continue
+
+						total_recalled_in_category = 0
+						
+						# For each query in the current category
+						for query_idx in category_query_indices:
+								# The query label is simply its index
+								query_label_int = query_idx.item()
+								
+								# Get the indices of the top-K images retrieved for this query
+								retrieved_image_indices = top_k_retrieved_indices[query_idx]
+								
+								# Get the ground truth labels of these retrieved images
+								retrieved_image_labels = all_image_labels[retrieved_image_indices]
+								
+								# Check if any of the retrieved images have the correct label
+								is_correct = (retrieved_image_labels == query_label_int).any()
+								
+								if is_correct:
+										total_recalled_in_category += 1
+						
+						# Calculate Recall@K for this category
+						num_queries_in_category = len(category_query_indices)
+						category_recall = total_recalled_in_category / num_queries_in_category if num_queries_in_category > 0 else 0.0
+						
+						long_tail_results[model_name][category_name] = category_recall
+						print(f"  {category_name} Recall@{top_k}: {category_recall:.4f}")
+
+		# 4. Plot the results as a grouped bar chart
+		df_results = pd.DataFrame(long_tail_results).T
+		desired_column_order = ["Head", "Torso", "Tail"]
+		existing_columns = [col for col in desired_column_order if col in df_results.columns]
+		df_results = df_results[existing_columns]
+
+		fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
+		
+		# Define colors to match your other plots
+		model_colors = {
+				'Pretrained': '#808080', # Grey
+				'Full-FT': '#1f77b4',     # Blue
+				'LoRA-FT': '#ff7f0e',     # Orange
+				'APFT (Ours)': '#d62728', # Red/Magenta
+				'Linear-Probe': '#2ca02c' # Green
+		}
+		
+		df_results.plot(kind='bar', ax=ax, color=[model_colors.get(c) for c in df_results.columns], rot=0)
+
+		ax.set_title(f'Text-to-Image Recall@{top_k} by Class Frequency', fontsize=14, weight='bold')
+		ax.set_xlabel('Model', fontsize=12)
+		ax.set_ylabel(f'Recall@{top_k}', fontsize=12)
+		ax.legend(title='Class Category')
+		ax.grid(axis='y', linestyle='--', alpha=0.7)
+		
+		# Add value labels on top of bars
+		for container in ax.containers:
+				ax.bar_label(container, fmt='%.3f', fontsize=8, padding=3)
+
+		ax.set_ylim(0, max(ax.get_ylim()) * 1.1) # Add some space at the top
+
+		plt.tight_layout()
+		plt.savefig(save_path)
+		print(f"\nSaved long-tail performance plot to: {save_path}")
+		plt.close()
+		
+		return long_tail_results
+
 def plot_unfreeze_heatmap(
 				unfreeze_schedule: dict,
 				layer_groups: dict,

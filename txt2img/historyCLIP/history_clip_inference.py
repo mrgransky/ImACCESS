@@ -485,7 +485,6 @@ def main():
 	print_loader_info(loader=train_loader, batch_size=args.batch_size)
 	print_loader_info(loader=validation_loader, batch_size=args.batch_size)
 
-
 	print("\n" + "="*80)
 	print("DEBUGGING: Multi-label Ground Truth Extraction")
 	print("="*80)
@@ -526,8 +525,8 @@ def main():
 	test_labels = ['railroad', 'cannon', 'mountain']
 	test_texts = clip.tokenize(test_labels).to(args.device)
 	with torch.no_grad():
-			text_embeds = pretrained_model.encode_text(test_texts)
-			text_embeds = F.normalize(text_embeds, dim=-1)
+		text_embeds = pretrained_model.encode_text(test_texts)
+		text_embeds = F.normalize(text_embeds, dim=-1)
 			
 	print(f"Text embeddings shape: {text_embeds.shape}")
 	print(f"Text embeddings norm: {text_embeds.norm(dim=-1)}")  # Should be ~1.0
@@ -816,6 +815,47 @@ def main():
 
 	####################################### Quantitative Analysis #######################################
 
+
+	####################################### Long-Tail Performance Analysis #######################################
+	print(f"Long-Tail Performance Analysis".center(160, " "))
+	
+	# This analysis is only for single-label datasets as designed
+	if args.dataset_type == 'single_label':
+		try:
+			# 1. Get the validation dataset object
+			validation_dataset = validation_loader.dataset
+			# 2. Get text embeddings once (they are the same for all models)
+			class_names = validation_dataset.unique_labels if hasattr(validation_dataset, 'unique_labels') else validation_dataset.classes
+			text_tokens = clip.tokenize(class_names).to(args.device)
+			with torch.no_grad():
+				text_embeds = models_to_plot['pretrained'].encode_text(text_tokens).float()
+				text_embeds = F.normalize(text_embeds, dim=-1)
+			# 3. Compute T2I similarity matrices for all models using the cached image embeddings
+			all_t2i_similarities = {}
+			for strategy, (image_embeds, _) in embeddings_cache.items():
+				print(f"Computing T2I similarities for {strategy}...")
+				# Ensure image embeddings are on the correct device
+				image_embeds = image_embeds.to(args.device).float()
+				
+				# Note: The similarity matrix shape is [num_classes, num_images] for T2I
+				t2i_similarity = torch.matmul(text_embeds, image_embeds.T)
+				all_t2i_similarities[strategy] = t2i_similarity
+			
+			# 4. Define save path for the plot
+			long_tail_plot_path = os.path.join(RESULT_DIRECTORY, f"{validation_loader.name}_long_tail_recall_comparison.png")
+			# 5. Call the analysis and plotting function
+			viz.calculate_and_plot_long_tail_performance(
+				all_model_similarities=all_t2i_similarities,
+				validation_dataset=validation_dataset,
+				metadata_path=os.path.join(args.dataset_dir, "metadata_single_label.csv"),
+				save_path=long_tail_plot_path,
+				top_k=10 # Corresponds to Recall@10
+			)
+		except Exception as e:
+			print(f"\nCould not perform long-tail analysis. Error: {e}")
+			import traceback
+			traceback.print_exc()
+	####################################### End Long-Tail Analysis #######################################
+
 if __name__ == "__main__":
-	# multiprocessing.set_start_method('spawn')
 	main()
