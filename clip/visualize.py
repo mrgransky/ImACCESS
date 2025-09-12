@@ -19,6 +19,28 @@ pretrained_colors = {
 	'ViT-L/14@336px': '#696969'
 }
 
+segment_specs = {
+	'Head': {
+		'color': "#009670e4",
+		'label': 'Head'.upper(),
+		'opacity': 0.2,
+		'fontsize': 16,
+	},
+	'Torso': {
+		'color': "#d4ae02",
+		'label': 'Torso'.upper(),
+		'opacity': 0.2,
+		'fontsize': 16,
+	},
+	'Tail': {
+		'color': "#ee4747",
+		'label': 'Tail'.upper(),
+		'opacity': 0.2,
+		'fontsize': 16,
+	},
+}
+
+
 positive_pct_col = "#357402ff"
 negative_pct_col = "#c0003aff"
 
@@ -169,28 +191,22 @@ def calculate_and_plot_long_tail_performance(
 		existing_columns = [col for col in desired_column_order if col in df_results.columns]
 		df_results = df_results[existing_columns]
 
-		fig, ax = plt.subplots(figsize=(10, 6), dpi=300)
+		fig, ax = plt.subplots(figsize=(12, 8), dpi=250)
 		
-		# Define colors to match your other plots
-		model_colors = {
-				'Pretrained': '#808080', # Grey
-				'Full-FT': '#1f77b4',     # Blue
-				'LoRA-FT': '#ff7f0e',     # Orange
-				'APFT (Ours)': '#d62728', # Red/Magenta
-				'Linear-Probe': '#2ca02c' # Green
-		}
-		
-		df_results.plot(kind='bar', ax=ax, color=[model_colors.get(c) for c in df_results.columns], rot=0)
+		print(f"df_results.columns: {df_results.columns}")
+		colors_for_plot = [segment_specs[col]['color'] for col in df_results.columns]
+		print(f"colors_for_plot: {colors_for_plot}")
+		df_results.plot(kind='bar', ax=ax, color=colors_for_plot, rot=0)
 
 		ax.set_title(f'Text-to-Image Recall@{top_k} by Class Frequency', fontsize=14, weight='bold')
 		ax.set_xlabel('Model', fontsize=12)
 		ax.set_ylabel(f'Recall@{top_k}', fontsize=12)
-		ax.legend(title='Class Category')
+		ax.legend(title='Class Category', fontsize=12, ncol=len(df_results.columns), loc='best')
 		ax.grid(axis='y', linestyle='--', alpha=0.7)
 		
 		# Add value labels on top of bars
 		for container in ax.containers:
-				ax.bar_label(container, fmt='%.3f', fontsize=8, padding=3)
+			ax.bar_label(container, fmt='%.3f', fontsize=8, padding=3)
 
 		ax.set_ylim(0, max(ax.get_ylim()) * 1.1) # Add some space at the top
 
