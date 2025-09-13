@@ -2204,7 +2204,6 @@ def progressive_finetune_single_label(
 		weight_decays_history.append(current_wd)     # Record what was ACTUALLY used
 		phases_history.append(current_phase)         # Record current phase
 
-
 		drift_value = compute_embedding_drift(
 			model, 
 			fixed_val_batch, # Pass the fixed batch
@@ -2281,7 +2280,6 @@ def progressive_finetune_single_label(
 			if cache_stats is not None:
 				print(f"Validation Cache Stats: {cache_stats}")
 			print(f"#"*100)
-
 
 		print(f"{len(validation_losses)} validation losses: {validation_losses}")
 		print(f"early stopping validation loss history: {len(early_stopping.value_history)}: {early_stopping.value_history}")
@@ -2614,10 +2612,10 @@ def full_finetune_single_label(
 		results_dir,
 		f"{mode}_"
 		f"{model_arch}_"
-		f"{optimizer.__class__.__name__}_"
-		f"{scheduler.__class__.__name__}_"
-		f"{criterion.__class__.__name__}_"
-		f"{scaler.__class__.__name__}_"
+		# f"{optimizer.__class__.__name__}_"
+		# f"{scheduler.__class__.__name__}_"
+		# f"{criterion.__class__.__name__}_"
+		# f"{scaler.__class__.__name__}_"
 		f"ieps_{num_epochs}_"
 		f"do_{dropout_val}_"
 		f"lr_{learning_rate:.1e}_"
@@ -2999,10 +2997,10 @@ def lora_finetune_single_label(
 		results_dir,
 		f"{mode}_"
 		f"{model_arch}_"
-		f"{optimizer.__class__.__name__}_"
-		f"{scheduler.__class__.__name__}_"
-		f"{criterion.__class__.__name__}_"
-		f"{scaler.__class__.__name__}_"
+		# f"{optimizer.__class__.__name__}_"
+		# f"{scheduler.__class__.__name__}_"
+		# f"{criterion.__class__.__name__}_"
+		# f"{scaler.__class__.__name__}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
@@ -3412,10 +3410,10 @@ def probe_finetune_single_label(
 		results_dir,
 		f"{probe.probe_type.lower()}_probe_"
 		f"{model_arch}_"
-		f"{optimizer.__class__.__name__}_"
-		f"{scheduler.__class__.__name__}_"
-		f"{criterion.__class__.__name__}_"
-		f"{scaler.__class__.__name__}_"
+		# f"{optimizer.__class__.__name__}_"
+		# f"{scheduler.__class__.__name__}_"
+		# f"{criterion.__class__.__name__}_"
+		# f"{scaler.__class__.__name__}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
