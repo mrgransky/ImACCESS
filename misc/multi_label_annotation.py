@@ -338,7 +338,7 @@ def get_textual_based_annotation(
 	f = r-a  # free inside reserved
 	if verbose:
 		print(f"Semi-Supervised textual-based annotation batch_size: {batch_size}".center(160, "-"))
-		print(f"GPU[{device}] Memory: Total: {t/1024**3:.2f} GB Reserved: {r/1024**3:.2f} GB Allocated: {a/1024**3:.2f} GB Free: {f/1024**3:.2f} GB".center(160, " "))
+		print(f"{device} Memory: Total: {t/1024**3:.2f} GB Reserved: {r/1024**3:.2f} GB Allocated: {a/1024**3:.2f} GB Free: {f/1024**3:.2f} GB".center(160, " "))
 	# device = 'cpu' if t/1024**3 < 6 else device
 	start_time = time.time()
 
@@ -349,7 +349,7 @@ def get_textual_based_annotation(
 
 	# Load model with memory optimizations
 	if verbose:
-		print(f"Loading sentence-transformer model: {st_model_name} in device: {device}...")
+		print(f"Loading sentence-transformer model: {st_model_name} in {device}")
 	torch.cuda.empty_cache()
 	sent_model = SentenceTransformer(
 		model_name_or_path=st_model_name,
@@ -507,8 +507,8 @@ def main():
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=4, help="Batch size for vision processing")
 	parser.add_argument("--text_relevance_threshold", '-trth', type=float, default=0.47, help="Relevance threshold for textual-based labels")
 	parser.add_argument("--vision_relevance_threshold", '-vrth', type=float, default=0.1, help="Relevance threshold for visual-based labels")
-	# parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-MiniLM-L12-v2", choices=["all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2", "jinaai/jina-embeddings-v3", "paraphrase-multilingual-MiniLM-L12-v2"], help="Sentence-transformer model name")
-	parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", help="Sentence-transformer model name")
+	parser.add_argument("--sentence_model_name", '-smn', type=str, default="Qwen/Qwen3-Embedding-8B", choices=["google/embeddinggemma-300m", "Qwen/Qwen3-Embedding-8B", "all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2", "jinaai/jina-embeddings-v3", "paraphrase-multilingual-MiniLM-L12-v2"], help="Sentence-transformer model name")
+	# parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", help="Sentence-transformer model name")
 	parser.add_argument("--vlm_model_name", '-vlm', type=str, default="google/siglip2-so400m-patch16-naflex", choices=["kakaobrain/align-base", "google/siglip2-so400m-patch16-naflex"], help="Vision-Language model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 
