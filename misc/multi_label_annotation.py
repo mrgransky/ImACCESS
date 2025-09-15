@@ -60,6 +60,15 @@ SEMANTIC_CATEGORIES = {
 	'weapon': ['gun', 'rifle', 'cannon', 'artillery', 'weapon', 'bomb', 'missile', 'ammunition'],
 }
 
+cache_directory = {
+	"farid": "/home/farid/datasets/WW_DATASETs/trash",
+	"alijanif": "/scratch/project_2004072/ImACCESS/models",
+	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/models",
+}
+
+USER = os.getenv("USER")
+
+
 def is_likely_english_term(term):
 	"""Check if a term is likely English or a proper noun"""
 	if not term or len(term) < 3:
@@ -331,7 +340,6 @@ def get_textual_based_annotation(
 		topk: int = 10,
 		verbose: bool = True,
 	):
-
 	t = torch.cuda.get_device_properties(device=device).total_memory
 	r = torch.cuda.memory_reserved(device=device)
 	a = torch.cuda.memory_allocated(device=device)
@@ -354,7 +362,8 @@ def get_textual_based_annotation(
 	sent_model = SentenceTransformer(
 		model_name_or_path=st_model_name,
 		device=device,
-		trust_remote_code=True
+		trust_remote_code=True,
+		cache_folder=cache_directory[USER],
 	)
 	sent_model.eval()
 		
