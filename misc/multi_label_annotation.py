@@ -61,13 +61,15 @@ SEMANTIC_CATEGORIES = {
 }
 
 cache_directory = {
-	"farid": "/home/farid/datasets/WW_DATASETs/trash",
+	"farid": "/home/farid/datasets/trash/models",
 	"alijanif": "/scratch/project_2004072/ImACCESS/models",
 	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/models",
 }
 
 USER = os.getenv("USER")
-
+hf_tk = os.getenv("HUGGINGFACE_TOKEN")
+print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
+huggingface_hub.login(token=hf_tk)
 
 def is_likely_english_term(term):
 	"""Check if a term is likely English or a proper noun"""
@@ -264,8 +266,9 @@ def get_visual_based_annotation(
 	processor = AutoProcessor.from_pretrained(vlm_model_name)
 	model = AutoModel.from_pretrained(
 			pretrained_model_name_or_path=vlm_model_name,
-			torch_dtype=torch.float16 if torch.cuda.mem_get_info()[0] / 1024**3 < 7 else torch.float32,
+			dtype=torch.float16 if torch.cuda.mem_get_info()[0] / 1024**3 < 7 else torch.float32,
 			device_map=device,
+			cache_dir=cache_directory[USER],
 	).eval()
 	model = torch.compile(model, mode="max-autotune")
 	# Precompute text embeddings
@@ -516,8 +519,8 @@ def main():
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=4, help="Batch size for vision processing")
 	parser.add_argument("--text_relevance_threshold", '-trth', type=float, default=0.47, help="Relevance threshold for textual-based labels")
 	parser.add_argument("--vision_relevance_threshold", '-vrth', type=float, default=0.1, help="Relevance threshold for visual-based labels")
-	parser.add_argument("--sentence_model_name", '-smn', type=str, default="Qwen/Qwen3-Embedding-8B", choices=["google/embeddinggemma-300m", "Qwen/Qwen3-Embedding-8B", "all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2", "jinaai/jina-embeddings-v3", "paraphrase-multilingual-MiniLM-L12-v2"], help="Sentence-transformer model name")
-	# parser.add_argument("--sentence_model_name", '-smn', type=str, default="all-mpnet-base-v2", help="Sentence-transformer model name")
+	# parser.add_argument("--sentence_model_name", '-smn', type=str, default="google/embeddinggemma-300m", choices=["google/embeddinggemma-300m", "Qwen/Qwen3-Embedding-8B", "all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2", "jinaai/jina-embeddings-v3", "paraphrase-multilingual-MiniLM-L12-v2"], help="Sentence-transformer model name")
+	parser.add_argument("--sentence_model_name", '-smn', type=str, default="Qwen/Qwen3-Embedding-0.6B", help="Sentence-transformer model name")
 	parser.add_argument("--vlm_model_name", '-vlm', type=str, default="google/siglip2-so400m-patch16-naflex", choices=["kakaobrain/align-base", "google/siglip2-so400m-patch16-naflex"], help="Vision-Language model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 
