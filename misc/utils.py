@@ -14,7 +14,8 @@ from collections import Counter, defaultdict
 from transformers import pipeline
 from transformers import AutoTokenizer, AutoModelForTokenClassification
 from transformers import CLIPProcessor, CLIPModel, AlignProcessor, AlignModel
-from transformers import AutoModel, AutoProcessor
+from transformers import AutoModel, AutoProcessor, AutoModelForCausalLM
+
 from sentence_transformers import SentenceTransformer, util
 from langdetect import detect, DetectorFactory
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
@@ -44,6 +45,7 @@ from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 import urllib3
 import huggingface_hub
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # from kneed import KneeLocator
