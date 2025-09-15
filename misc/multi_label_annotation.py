@@ -512,7 +512,7 @@ def main():
 	parser = argparse.ArgumentParser(description="Multi-label annotation for Historical Archives Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
-	parser.add_argument("--text_batch_size", '-tbs', type=int, default=256, help="Batch size for textual processing")
+	parser.add_argument("--text_batch_size", '-tbs', type=int, default=64, help="Batch size for textual processing")
 	parser.add_argument("--vision_batch_size", '-vbs', type=int, default=4, help="Batch size for vision processing")
 	parser.add_argument("--text_relevance_threshold", '-trth', type=float, default=0.47, help="Relevance threshold for textual-based labels")
 	parser.add_argument("--vision_relevance_threshold", '-vrth', type=float, default=0.1, help="Relevance threshold for visual-based labels")
