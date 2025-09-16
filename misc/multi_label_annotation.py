@@ -66,7 +66,7 @@ CATEGORIES_FILE = "categories.json"
 imagenet_1k_labels = "imagenet_1k_labels.txt"
 object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)
 candidate_labels = list(set(object_categories + scene_categories + activity_categories))
-# texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
+texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
 print(f"Number of candidate labels[from categories.json]: {len(candidate_labels)}: {candidate_labels[:10]}")
 
 with open(imagenet_1k_labels, 'r') as f:
