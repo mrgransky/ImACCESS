@@ -7,6 +7,7 @@ import io
 import re
 from typing import Dict, List, Tuple, Callable
 from dataclasses import dataclass
+import argparse
 
 @dataclass
 class TaskRule:
@@ -329,10 +330,9 @@ def run_inference(model, processor, config, image_url: str):
 		elif task == "classification":
 				outputs = model(**inputs)
 				if not hasattr(outputs, 'logits'):
-						raise AttributeError("Model output doesn't have logits for classification")
-				
+					raise AttributeError("Model output doesn't have logits for classification")
 				probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-				print(f"[INFO] Logits shape: {probs.shape}, dtype: {probs.dtype}")
+				print(f"[INFO] Logits {type(probs)} {probs.shape} {probs.dtype}")
 				
 				top_k = min(5, probs.shape[-1])  # Don't exceed available classes
 				top_probs, top_ids = torch.topk(probs, k=top_k, dim=-1)
@@ -438,26 +438,30 @@ def run_inference(model, processor, config, image_url: str):
 			print(f"[ERROR] Fallback also failed: {fallback_error}")
 			raise ValueError(f"Cannot run inference on this model: {e}")
 
-
 if __name__ == "__main__":
-	# captioning:
-	# model_id = "Salesforce/blip-image-captioning-large"
-	# model_id = "microsoft/git-large-coco"
-	model_id = "microsoft/Florence-2-large"
+	parser = argparse.ArgumentParser(description="OmniVision: A Universal Vision Model Inference Tool")
+	parser.add_argument("--model_id", '-m', type=str, required=True, help="HuggingFace model ID")
+	parser.add_argument("--image_url", '-i', type=str, required=True, help="Image URL to run inference on")
+	args = parser.parse_args()
+	print(args)
+	# url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/bud/188/default.jpg"
+	# # captioning:
+	# # model_id = "Salesforce/blip-image-captioning-large"
+	# # model_id = "microsoft/git-large-coco"
+	# # model_id = "microsoft/Florence-2-large"
 
-	# classification:
-	# model_id = "google/vit-large-patch16-384"
-	# model_id = "microsoft/swin-base-patch4-window7-224"
-	# model_id = "microsoft/beit-base-patch16-224-pt22k-ft22k"
-	# model_id = "facebook/deit-base-distilled-patch16-384"
-	model_id = "facebook/convnextv2-huge-22k-384"
+	# # classification:
+	# # model_id = "google/vit-large-patch16-384"
+	# # model_id = "microsoft/swin-base-patch4-window7-224"
+	# # model_id = "microsoft/beit-base-patch16-224-pt22k-ft22k"
+	# # model_id = "facebook/deit-base-distilled-patch16-384"
+	# model_id = "facebook/convnextv2-huge-22k-384"
 
-	# retrieval:
-	# model_id = "google/siglip2-so400m-patch16-naflex"
-	# model_id = "openai/clip-vit-base-patch32"
+	# # retrieval:
+	# # model_id = "google/siglip2-so400m-patch16-naflex"
+	# # model_id = "openai/clip-vit-base-patch32"
 
-	model, processor, config = load_model_and_processor(model_id)
+	model, processor, config = load_model_and_processor(model_id=args.model_id)
 
-	url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/318/default.jpg"
-	result = run_inference(model, processor, config, url)
+	result = run_inference(model, processor, config, image_url=args.image_url)
 	print("Result:", result)
