@@ -132,6 +132,13 @@ nltk.download(
 
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
+hf_tk: str = os.getenv("HUGGINGFACE_TOKEN")
+
+cache_directory = {
+	"farid": "/home/farid/datasets/trash/models",
+	"alijanif": "/scratch/project_2004072/ImACCESS/models",
+	"ubuntu": "/media/volume/models",
+}
 
 def parse_tuple(s):
 	try:

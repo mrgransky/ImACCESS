@@ -1,15 +1,8 @@
 from utils import *
 
-USER = os.getenv('USER') # echo $USER
-hf_tk = os.getenv("HUGGINGFACE_TOKEN")
+
 print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
-
-cache_directory = {
-	"farid": "/home/farid/datasets/trash/models",
-	"alijanif": "/scratch/project_2004072/ImACCESS/models",
-	"ubuntu": "/media/volume/models",
-}
 
 @dataclass
 class TaskRule:
@@ -184,7 +177,7 @@ def load_model_and_processor(model_id: str, device: str):
 					model_id, 
 					config=config, 
 					device_map=device,
-					dtype="auto",
+					# dtype="auto" if getattr(),
 					cache_dir=cache_directory[USER],
 				)
 		if model is None:
@@ -193,7 +186,7 @@ def load_model_and_processor(model_id: str, device: str):
 					model_id, 
 					config=config, 
 					device_map=device, 
-					dtype="auto",
+					# dtype="auto",
 					cache_dir=cache_directory[USER],
 				)
 			except Exception:
@@ -201,7 +194,7 @@ def load_model_and_processor(model_id: str, device: str):
 					model_id, 
 					config=config, 
 					device_map=device,
-					dtype="auto",
+					# dtype="auto",
 					cache_dir=cache_directory[USER],
 				)
 
