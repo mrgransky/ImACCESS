@@ -59,14 +59,6 @@ SEMANTIC_CATEGORIES = {
 	'weapon': ['gun', 'rifle', 'cannon', 'artillery', 'weapon', 'bomb', 'missile', 'ammunition'],
 }
 
-cache_directory = {
-	"farid": "/home/farid/datasets/trash/models",
-	"alijanif": "/scratch/project_2004072/ImACCESS/models",
-	"ubuntu": "/media/volume/models",
-}
-
-USER = os.getenv("USER")
-hf_tk = os.getenv("HUGGINGFACE_TOKEN")
 print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
