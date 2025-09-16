@@ -190,7 +190,8 @@ def load_model_and_processor(model_id: str):
 					model_id, 
 					config=config, 
 					device_map="auto", 
-					dtype="auto"
+					dtype="auto",
+					cache_dir=cache_directory[USER],
 				)
 		if model is None:
 			try:
@@ -198,7 +199,8 @@ def load_model_and_processor(model_id: str):
 					model_id, 
 					config=config, 
 					device_map="auto", 
-					dtype="auto"
+					dtype="auto",
+					cache_dir=cache_directory[USER],
 				)
 			except Exception:
 				model = tfs.AutoModelForImageClassification.from_pretrained(
