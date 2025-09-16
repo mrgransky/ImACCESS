@@ -3,11 +3,19 @@ import torch
 import requests
 from PIL import Image
 import io
+import os
 
 import re
 from typing import Dict, List, Tuple, Callable
 from dataclasses import dataclass
 import argparse
+
+USER = os.getenv('USER') # echo $USER
+cache_directory = {
+	"farid": "/home/farid/datasets/trash/models",
+	"alijanif": "/scratch/project_2004072/ImACCESS/models",
+	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/models",
+}
 
 @dataclass
 class TaskRule:
@@ -145,13 +153,7 @@ class TaskDetector:
 task_detector = TaskDetector()
 
 def detect_task_elegant(model, config) -> str:
-		"""
-		Elegant task detection using pattern matching and validation
-		
-		Usage:
-				task = detect_task_elegant(model, config)
-		"""
-		return task_detector.detect_task(model, config)
+	return task_detector.detect_task(model, config)
 
 # Easy way to extend for new models
 def register_new_model_pattern(task_name: str, patterns: List[str], priority: int = 5):
@@ -181,22 +183,31 @@ def load_model_and_processor(model_id: str):
 		# Dynamically resolve model class
 		model = None
 		if config.architectures:
-				cls_name = config.architectures[0]
-				if hasattr(tfs, cls_name):
-						model_cls = getattr(tfs, cls_name)
-						model = model_cls.from_pretrained(
-								model_id, config=config, device_map="auto", dtype="auto"
-						)
+			cls_name = config.architectures[0]
+			if hasattr(tfs, cls_name):
+				model_cls = getattr(tfs, cls_name)
+				model = model_cls.from_pretrained(
+					model_id, 
+					config=config, 
+					device_map="auto", 
+					dtype="auto"
+				)
 		if model is None:
-				# Fallbacks
-				try:
-						model = tfs.AutoModel.from_pretrained(
-								model_id, config=config, device_map="auto", dtype="auto"
-						)
-				except Exception:
-						model = tfs.AutoModelForImageClassification.from_pretrained(
-								model_id, config=config, device_map="auto", dtype="auto"
-						)
+			try:
+				model = tfs.AutoModel.from_pretrained(
+					model_id, 
+					config=config, 
+					device_map="auto", 
+					dtype="auto"
+				)
+			except Exception:
+				model = tfs.AutoModelForImageClassification.from_pretrained(
+					model_id, 
+					config=config, 
+					device_map="auto", 
+					dtype="auto",
+					cache_dir=cache_directory[USER],
+				)
 
 		model.eval()
 		device = next(model.parameters()).device
@@ -204,113 +215,7 @@ def load_model_and_processor(model_id: str):
 
 		return model, processor, config
 
-def run_inference_old(model, processor, config, image_url: str):
-	headers = {"User-Agent": "Mozilla/5.0"}
-	response = requests.get(image_url, headers=headers)
-	response.raise_for_status()
-	image = Image.open(io.BytesIO(response.content))
-	device = next(model.parameters()).device
-	inputs = processor(images=image, return_tensors="pt").to(device)
-	task = detect_task_elegant(model, config)
-	print(f"[INFO] Running task: {task}")
-	try:
-		if task == "captioning":
-			# Check if model has generate method
-			if not hasattr(model, 'generate'):
-				raise AttributeError("Model doesn't support generation")
-			generated_ids = model.generate(**inputs, max_length=50)
-			captions = processor.batch_decode(generated_ids, skip_special_tokens=True)
-			return captions[0]
-		elif task == "classification":
-				outputs = model(**inputs)
-				if not hasattr(outputs, 'logits'):
-						raise AttributeError("Model output doesn't have logits for classification")
-				
-				probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-				print(f"[INFO] Logits shape: {probs.shape}, dtype: {probs.dtype}")
-				
-				top_k = min(5, probs.shape[-1])  # Don't exceed available classes
-				top_probs, top_ids = torch.topk(probs, k=top_k, dim=-1)
-				
-				results = []
-				for prob, idx in zip(top_probs[0], top_ids[0]):
-					index = idx.item()
-					score = prob.item()
-					# Handle missing id2label mapping
-					if hasattr(config, "id2label") and config.id2label and str(index) in config.id2label:
-						label = config.id2label[str(index)]
-					elif hasattr(config, "id2label") and config.id2label and index in config.id2label:
-						label = config.id2label[index]
-					else:
-						label = f"class_{index}"
-					results.append((index, label, score))
-				return results
-		elif task == "retrieval":
-			with torch.no_grad():
-				# Try different methods for getting embeddings
-				if hasattr(model, 'get_image_features'):
-					image_embeds = model.get_image_features(**inputs)
-				elif hasattr(model, 'vision_model'):
-					# For models with separate vision components
-					image_embeds = model.vision_model(**inputs).last_hidden_state.mean(dim=1)
-				else:
-					# Fallback to model output
-					outputs = model(**inputs)
-					if hasattr(outputs, 'image_embeds'):
-						image_embeds = outputs.image_embeds
-					elif hasattr(outputs, 'last_hidden_state'):
-						image_embeds = outputs.last_hidden_state.mean(dim=1)
-					else:
-						raise AttributeError("Cannot extract image embeddings from model output")
-			print(f"[INFO] Extracted image embeddings {type(image_embeds)} {image_embeds.shape} {image_embeds.dtype}")
-			return image_embeds.cpu().numpy()
-		elif task == "feature_extraction":
-			with torch.no_grad():
-				outputs = model(**inputs)
-				# Handle different output types
-				if hasattr(outputs, 'last_hidden_state'):
-						# Standard transformer output
-						features = outputs.last_hidden_state
-						# Global average pooling for sequence outputs
-						if len(features.shape) == 3:  # [batch, seq_len, hidden_dim]
-								features = features.mean(dim=1)
-				elif hasattr(outputs, 'pooler_output'):
-						features = outputs.pooler_output
-				elif hasattr(outputs, 'prediction_logits'):
-						# For masked image modeling (like BEIT)
-						print("[INFO] Model outputs prediction logits (masked image modeling)")
-						features = outputs.prediction_logits
-						# You might want to process these differently depending on use case
-				elif torch.is_tensor(outputs):
-						features = outputs
-				else:
-						# Try to get the first tensor output
-						features = outputs[0] if isinstance(outputs, (tuple, list)) else outputs
-				
-				print(f"[INFO] Extracted features shape: {features.shape}")
-				return features.cpu().numpy()
-		else:
-			raise ValueError(f"Task '{task}' not supported.")
-	except Exception as e:
-		print(f"[ERROR] Failed to run {task}: {e}")
-		print("[INFO] Falling back to feature extraction...")
-		# Fallback: just run the model and return raw outputs
-		try:
-			with torch.no_grad():
-				outputs = model(**inputs)
-				if hasattr(outputs, 'last_hidden_state'):
-					features = outputs.last_hidden_state.mean(dim=1)
-				elif torch.is_tensor(outputs):
-					features = outputs
-				else:
-					features = outputs[0] if isinstance(outputs, (tuple, list)) else outputs
-				print(f"[INFO] Fallback extraction - features {type(features)}")
-				return features.cpu().numpy()
-		except Exception as fallback_error:
-			print(f"[ERROR] Fallback also failed: {fallback_error}")
-			raise ValueError(f"Cannot run inference on this model: {e}")
-
-def run_inference(model, processor, config, image_url: str):
+def run_inference(model, processor, config, image_url: str, th: float = 0.05):
 	headers = {"User-Agent": "Mozilla/5.0"}
 	response = requests.get(image_url, headers=headers)
 	response.raise_for_status()
@@ -339,7 +244,7 @@ def run_inference(model, processor, config, image_url: str):
 			print(f"[INFO] Probs {type(probs)} {probs.shape} {probs.dtype}")
 			
 			# Threshold-based filtering (default threshold = 0.1, configurable)
-			threshold = getattr(config, 'classification_threshold', 0.1)  # Use config value or default
+			threshold = getattr(config, 'classification_threshold', th)  # Use config value or default
 			print(f"[INFO] Using classification threshold: {threshold}")
 			
 			# Get all probabilities above threshold
@@ -503,6 +408,7 @@ if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="OmniVision: A Universal Vision Model Inference Tool")
 	parser.add_argument("--model_id", '-m', type=str, required=True, help="HuggingFace model ID")
 	parser.add_argument("--image_url", '-i', type=str, required=True, help="Image URL to run inference on")
+	parser.add_argument("--threshold", '-th', type=float, default=0.15, help="Threshold for classification")
 	args = parser.parse_args()
 	print(args)
 	# url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/bud/188/default.jpg"
@@ -524,5 +430,5 @@ if __name__ == "__main__":
 
 	model, processor, config = load_model_and_processor(model_id=args.model_id)
 
-	result = run_inference(model, processor, config, image_url=args.image_url)
+	result = run_inference(model, processor, config, image_url=args.image_url, th=args.threshold)
 	print("Result:", result)
