@@ -14,7 +14,7 @@ USER = os.getenv('USER') # echo $USER
 cache_directory = {
 	"farid": "/home/farid/datasets/trash/models",
 	"alijanif": "/scratch/project_2004072/ImACCESS/models",
-	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs/models",
+	"ubuntu": "/media/volume/models",
 }
 
 @dataclass
