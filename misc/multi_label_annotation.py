@@ -261,13 +261,14 @@ def get_visual_based_annotation(
 	object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)
 	candidate_labels = list(set(object_categories + scene_categories + activity_categories))
 	texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
+
 	# Load model and processor
-	processor = AutoProcessor.from_pretrained(vlm_model_name, use_fast=True)
-	model = AutoModel.from_pretrained(
-			pretrained_model_name_or_path=vlm_model_name,
-			dtype=torch.float16 if torch.cuda.mem_get_info()[0] / 1024**3 < 7 else torch.float32,
-			device_map=device,
-			cache_dir=cache_directory[USER],
+	processor = tfs.AutoProcessor.from_pretrained(vlm_model_name, use_fast=True)
+	model = tfs.AutoModel.from_pretrained(
+		pretrained_model_name_or_path=vlm_model_name,
+		torch_dtype=torch.float16 if torch.cuda.mem_get_info()[0] / 1024**3 < 7 else torch.float32,
+		device_map=device,
+		cache_dir=cache_directory[USER],
 	).eval()
 	model = torch.compile(model, mode="max-autotune")
 	# Precompute text embeddings
@@ -283,55 +284,271 @@ def get_visual_based_annotation(
 	# DataLoader setup
 	dataset = HistoricalArchives(img_paths)
 	dataloader = DataLoader(
-			dataset,
-			batch_size=batch_size,
-			num_workers=num_workers,
-			pin_memory=torch.cuda.is_available(),
-			persistent_workers=num_workers > 1,
-			prefetch_factor=2,
-			drop_last=False,
-			collate_fn=custom_collate_fn
+		dataset,
+		batch_size=batch_size,
+		num_workers=num_workers,
+		pin_memory=torch.cuda.is_available(),
+		persistent_workers=num_workers > 1,
+		prefetch_factor=2,
+		drop_last=False,
+		collate_fn=custom_collate_fn
 	)
 	print(f"Processing {len(img_paths)} images in {batch_size} batches...")
 	for batch_indices, images in tqdm(dataloader, desc="Processing images"):
-			if not images:
-					continue
-			try:
-					with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-							image_inputs = processor(
-									images=images,
-									padding="max_length",
-									max_num_patches=4096,
-									return_tensors="pt",
-							).to(device, non_blocking=True)
-							image_embeddings = model.get_image_features(**image_inputs)
-							image_embeddings = image_embeddings / image_embeddings.norm(dim=-1, keepdim=True)
-							similarities = image_embeddings @ text_embeddings.T
-							for idx_in_batch, global_idx in enumerate(batch_indices[:len(images)]):
-									topk_probs, topk_indices = similarities[idx_in_batch].topk(topk)
-									top_labels, top_scores = [], []
-									for score, label_idx in zip(topk_probs, topk_indices):
-											val = score.item()
-											if val >= threshold:
-													top_labels.append(candidate_labels[label_idx])
-													top_scores.append(round(val, 4))
-									visual_based_labels.append(top_labels if top_labels else None)
-									visual_based_scores.append(top_scores if top_scores else None)
-			except Exception as e:
-					print(f"ERROR: failed to process batch {batch_indices[0]}-{batch_indices[-1]}: {e}")
-					torch.cuda.empty_cache()
-					continue
+		if not images:
+			continue
+		try:
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				image_inputs = processor(
+					images=images,
+					padding="max_length",
+					max_num_patches=4096,
+					return_tensors="pt",
+				).to(device, non_blocking=True)
+				
+				image_embeddings = model.get_image_features(**image_inputs)
+				image_embeddings = image_embeddings / image_embeddings.norm(dim=-1, keepdim=True)
+				similarities = image_embeddings @ text_embeddings.T
+				
+				for idx_in_batch, global_idx in enumerate(batch_indices[:len(images)]):
+					topk_probs, topk_indices = similarities[idx_in_batch].topk(topk)
+					top_labels, top_scores = [], []
+					for score, label_idx in zip(topk_probs, topk_indices):
+						val = score.item()
+						if val >= threshold:
+							top_labels.append(candidate_labels[label_idx])
+							top_scores.append(round(val, 4))
+					visual_based_labels.append(top_labels if top_labels else None)
+					visual_based_scores.append(top_scores if top_scores else None)
+		except Exception as e:
+				print(f"ERROR: failed to process batch {batch_indices[0]}-{batch_indices[-1]}: {e}")
+				torch.cuda.empty_cache()
+				continue
 	df['visual_based_labels'] = visual_based_labels
 	df['visual_based_scores'] = visual_based_scores
 	# Save output
 	df.to_csv(metadata_fpth, index=False)
+	
 	try:
-			df.to_excel(metadata_fpth.replace('.csv', '.xlsx'), index=False)
+		df.to_excel(metadata_fpth.replace('.csv', '.xlsx'), index=False)
 	except Exception as e:
-			print(f"Excel export failed: {e}")
+		print(f"Excel export failed: {e}")
+	
 	print(f"Processed {len(img_paths)} images, generated {sum(1 for x in visual_based_labels if x)} valid results")
 	print(f"Visual-based annotation Elapsed time: {time.time() - start_time:.2f} sec".center(160, " "))
 	return visual_based_labels
+
+def get_captions(
+		csv_file: str, 
+		batch_size: int,
+		metadata_fpth: str,
+		device: str,
+		model_name: str,
+		verbose: bool = True,
+		max_length: int = 50,
+	):
+		t = torch.cuda.get_device_properties(device=device).total_memory
+		r = torch.cuda.memory_reserved(device=device)
+		a = torch.cuda.memory_allocated(device=device)
+		f = r - a
+		if verbose:
+			print(f"Generating captions for {csv_file} | batch_size={batch_size}".center(160, "-"))
+			print(
+				f"{device} Memory: Total: {t/1024**3:.2f} GB | Reserved: {r/1024**3:.2f} GB "
+				f"| Allocated: {a/1024**3:.2f} GB | Free: {f/1024**3:.2f} GB".center(160, " ")
+			)
+		start_time = time.time()
+
+		# ---- Load model and processor ----
+		if verbose:
+			print(f"Loading captioning model: {model_name} on {device}")
+		
+		processor = tfs.AutoProcessor.from_pretrained(model_name, use_fast=True)
+		model = tfs.AutoModelForCausalLM.from_pretrained(
+			model_name,
+			device_map=device,
+			cache_dir=cache_directory[USER],
+		).eval()
+
+		# ---- Load dataframe and dataset ----
+		df = pd.read_csv(csv_file, on_bad_lines="skip", dtype=dtypes)
+		img_paths = df["img_path"].tolist()
+		dataset = HistoricalArchives(img_paths)   # <- same dataset class you used before
+		dataloader = DataLoader(
+			dataset,
+			batch_size=batch_size,
+			shuffle=False,
+			num_workers=2,
+			pin_memory=torch.cuda.is_available(),
+			collate_fn=custom_collate_fn,
+		)
+
+		if verbose:
+			print(f"Processing {len(img_paths)} images in {len(dataloader)} batches...")
+
+		# ---- Inference loop ----
+		captions = []
+		for batch_indices, images in tqdm(dataloader, desc="Captioning images"):
+			if not images:
+				continue
+			try:
+				with torch.no_grad():
+					with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+						inputs = processor(images=images, return_tensors="pt", padding=True).to(device)
+						generated_ids = model.generate(**inputs, max_length=max_length)
+						batch_captions = processor.batch_decode(generated_ids, skip_special_tokens=True)
+						captions.extend(batch_captions)
+			except Exception as e:
+				print(f"ERROR: failed to process batch {batch_indices[0]}-{batch_indices[-1]}: {e}")
+				torch.cuda.empty_cache()
+				for _ in batch_indices:
+					captions.append(None)
+
+		# ---- Save results ----
+		df["caption"] = captions
+		df.to_csv(metadata_fpth, index=False)
+		try:
+				df.to_excel(metadata_fpth.replace(".csv", ".xlsx"), index=False)
+		except Exception as e:
+				print(f"Excel export failed: {e}")
+
+		print(f"Processed {len(img_paths)} images, generated {sum(1 for x in captions if x)} captions")
+		print(f"Captioning Elapsed time: {time.time() - start_time:.2f} sec".center(160, " "))
+
+		return captions
+
+def get_vision_captions_x_labels(
+		csv_file: str,
+		batch_size: int,
+		device: str,
+		metadata_fpth: str,
+		caption_model_name: str,
+		vlm_model_name: str,
+		num_workers: int = 2,
+		verbose: bool = True,
+		topk: int = 3,
+		threshold: float = 0.1,
+		max_caption_length: int = 50,
+	):
+	if torch.cuda.is_available():
+		t = torch.cuda.get_device_properties(device=device).total_memory
+		r = torch.cuda.memory_reserved(device=device)
+		a = torch.cuda.memory_allocated(device=device)
+		f = r - a
+		if verbose:
+			print(
+				f"GPU Memory: Total={t/1024**3:.2f}GB | Reserved={r/1024**3:.2f}GB | "
+				f"Allocated={a/1024**3:.2f}GB | Free={f/1024**3:.2f}GB"
+			)
+
+	start_time = time.time()
+	if verbose:
+		print(f"Loading captioning model: {caption_model_name}")
+		print(f"Loading VLM model: {vlm_model_name}")
+	
+	caption_processor = tfs.AutoProcessor.from_pretrained(caption_model_name, use_fast=True)
+	caption_model = tfs.AutoModelForCausalLM.from_pretrained(
+		caption_model_name,
+		device_map=device,
+		cache_dir=cache_directory[USER],
+	).eval()
+	caption_model = torch.compile(caption_model, mode="max-autotune")
+
+	vlm_processor = tfs.AutoProcessor.from_pretrained(vlm_model_name, use_fast=True)
+	vlm_model = tfs.AutoModel.from_pretrained(
+		pretrained_model_name_or_path=vlm_model_name,
+		torch_dtype=torch.float16 if torch.cuda.mem_get_info()[0] / 1024**3 < 7 else torch.float32,
+		device_map=device,
+		cache_dir=cache_directory[USER],
+	).eval()
+	vlm_model = torch.compile(vlm_model, mode="max-autotune")
+
+	CATEGORIES_FILE = "categories.json"
+	object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)
+	candidate_labels = list(set(object_categories + scene_categories + activity_categories))
+	texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
+
+	# Precompute text embeddings
+	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+		text_inputs = vlm_processor(text=texts, padding="max_length", max_length=64, return_tensors="pt").to(device)
+		text_embeddings = vlm_model.get_text_features(**text_inputs)
+		text_embeddings = text_embeddings / text_embeddings.norm(dim=-1, keepdim=True)
+
+	# ---------------- Load dataframe ----------------
+	df = pd.read_csv(csv_file, on_bad_lines="skip", dtype=dtypes, low_memory=False)
+	img_paths = df["img_path"].tolist()
+	dataset = HistoricalArchives(img_paths)
+	dataloader = DataLoader(
+		dataset,
+		batch_size=batch_size,
+		shuffle=False,
+		num_workers=num_workers,
+		pin_memory=torch.cuda.is_available(),
+		collate_fn=custom_collate_fn,
+		persistent_workers=num_workers > 1,
+	)
+	# ---------------- Inference loop ----------------
+	
+	captions, labels, scores = [], [], []
+	if verbose:
+		print(f"Processing {len(img_paths)} images in {len(dataloader)} batches...")
+	
+	for batch_indices, images in tqdm(dataloader, desc="Captions + Labels"):
+		if not images:
+			continue
+		try:
+			with torch.no_grad():
+				# -------- Captions --------
+				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+					caption_inputs = caption_processor(images=images, return_tensors="pt", padding=True).to(device)
+					generated_ids = caption_model.generate(**caption_inputs, max_length=max_caption_length)
+					batch_captions = caption_processor.batch_decode(generated_ids, skip_special_tokens=True)
+					captions.extend(batch_captions)
+				# -------- Visual labels --------
+				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+					vlm_inputs = vlm_processor(
+						images=images,
+						padding="max_length",
+						max_num_patches=4096,
+						return_tensors="pt",
+					).to(device, non_blocking=True)
+					
+					image_embeddings = vlm_model.get_image_features(**vlm_inputs)
+					image_embeddings = image_embeddings / image_embeddings.norm(dim=-1, keepdim=True)
+					similarities = image_embeddings @ text_embeddings.T
+				
+				for idx_in_batch in range(len(images)):
+					topk_probs, topk_indices = similarities[idx_in_batch].topk(topk)
+					top_labels, top_scores = [], []
+					for score, label_idx in zip(topk_probs, topk_indices):
+						val = score.item()
+						if val >= threshold:
+							top_labels.append(candidate_labels[label_idx])
+							top_scores.append(round(val, 4))
+					labels.append(top_labels if top_labels else None)
+					scores.append(top_scores if top_scores else None)
+		except Exception as e:
+			print(f"ERROR: failed to process batch {batch_indices[0]}-{batch_indices[-1]}: {e}")
+			torch.cuda.empty_cache()
+			for _ in batch_indices:
+				captions.append(None)
+				labels.append(None)
+				scores.append(None)
+	
+	df["caption"] = captions
+	df["vis_lbl"] = labels
+	df["vis_score"] = scores
+	
+	df.to_csv(metadata_fpth, index=False)
+	try:
+		df.to_excel(metadata_fpth.replace(".csv", ".xlsx"), index=False)
+	except Exception as e:
+		print(f"Excel export failed: {e}")
+	
+	print(f"Processed {len(img_paths)} images → Captions: {sum(1 for x in captions if x)} | Labels: {sum(1 for x in labels if x)}")
+	print(f"Elapsed time: {time.time() - start_time:.2f} sec".center(160, " "))
+	
+	return captions, labels
 
 def get_textual_based_annotation(
 		csv_file: str, 
@@ -510,85 +727,6 @@ def get_textual_based_annotation(
 	print(f"Textual-based annotation completed in {time.time() - start_time:.2f} seconds")
 	return df['textual_based_labels'].tolist()
 
-def get_captions(
-		csv_file: str, 
-		batch_size: int,
-		metadata_fpth: str,
-		device: str,
-		model_name: str,
-		verbose: bool = True,
-		max_length: int = 50,
-	):
-		t = torch.cuda.get_device_properties(device=device).total_memory
-		r = torch.cuda.memory_reserved(device=device)
-		a = torch.cuda.memory_allocated(device=device)
-		f = r - a
-		if verbose:
-			print(f"Generating captions for {csv_file} | batch_size={batch_size}".center(160, "-"))
-			print(
-				f"{device} Memory: Total: {t/1024**3:.2f} GB | Reserved: {r/1024**3:.2f} GB "
-				f"| Allocated: {a/1024**3:.2f} GB | Free: {f/1024**3:.2f} GB".center(160, " ")
-			)
-		start_time = time.time()
-
-		# ---- Load model and processor ----
-		if verbose:
-			print(f"Loading captioning model: {model_name} on {device}")
-		
-		processor = AutoProcessor.from_pretrained(model_name, use_fast=True)
-		model = AutoModelForCausalLM.from_pretrained(
-			model_name,
-			device_map=device,
-			cache_dir=cache_directory[USER],
-		).eval()
-
-		# ---- Load dataframe and dataset ----
-		df = pd.read_csv(csv_file, on_bad_lines="skip", dtype=dtypes)
-		img_paths = df["img_path"].tolist()
-		dataset = HistoricalArchives(img_paths)   # <- same dataset class you used before
-		dataloader = DataLoader(
-			dataset,
-			batch_size=batch_size,
-			shuffle=False,
-			num_workers=2,
-			pin_memory=torch.cuda.is_available(),
-			collate_fn=custom_collate_fn,
-		)
-
-		if verbose:
-			print(f"Processing {len(img_paths)} images in {len(dataloader)} batches...")
-
-		# ---- Inference loop ----
-		captions = []
-		for batch_indices, images in tqdm(dataloader, desc="Captioning images"):
-			if not images:
-				continue
-			try:
-				with torch.no_grad():
-					with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-						inputs = processor(images=images, return_tensors="pt", padding=True).to(device)
-						generated_ids = model.generate(**inputs, max_length=max_length)
-						batch_captions = processor.batch_decode(generated_ids, skip_special_tokens=True)
-						captions.extend(batch_captions)
-			except Exception as e:
-				print(f"ERROR: failed to process batch {batch_indices[0]}-{batch_indices[-1]}: {e}")
-				torch.cuda.empty_cache()
-				for _ in batch_indices:
-					captions.append(None)
-
-		# ---- Save results ----
-		df["caption"] = captions
-		df.to_csv(metadata_fpth, index=False)
-		try:
-				df.to_excel(metadata_fpth.replace(".csv", ".xlsx"), index=False)
-		except Exception as e:
-				print(f"Excel export failed: {e}")
-
-		print(f"Processed {len(img_paths)} images, generated {sum(1 for x in captions if x)} captions")
-		print(f"Captioning Elapsed time: {time.time() - start_time:.2f} sec".center(160, " "))
-
-		return captions
-
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="Multi-label annotation for Historical Archives Dataset")
@@ -600,6 +738,7 @@ def main():
 	parser.add_argument("--vision_relevance_threshold", '-vrth', type=float, default=0.1, help="Relevance threshold for visual-based labels")
 	# parser.add_argument("--sentence_model_name", '-smn', type=str, default="google/embeddinggemma-300m", choices=["google/embeddinggemma-300m", "Qwen/Qwen3-Embedding-8B", "all-mpnet-base-v2", "all-MiniLM-L6-v2", "all-MiniLM-L12-v2", "jinaai/jina-embeddings-v3", "paraphrase-multilingual-MiniLM-L12-v2"], help="Sentence-transformer model name")
 	parser.add_argument("--sentence_model_name", '-smn', type=str, default="Qwen/Qwen3-Embedding-0.6B", help="Sentence-transformer model name")
+	parser.add_argument("--caption_model_name", '-cmn', type=str, default="microsoft/git-large-coco", help="Captioning model name")
 	parser.add_argument("--vlm_model_name", '-vlm', type=str, default="google/siglip2-so400m-patch16-naflex", choices=["kakaobrain/align-base", "google/siglip2-so400m-patch16-naflex"], help="Vision-Language model name")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 
@@ -611,13 +750,8 @@ def main():
 	text_output_path = args.csv_file.replace('.csv', '_textual_based_labels.csv')
 	vision_output_path = args.csv_file.replace('.csv', '_visual_based_labels.csv')
 	combined_output_path = args.csv_file.replace('.csv', '_multimodal.csv')
-	dtypes = {
-		'doc_id': str, 'id': str, 'label': str, 'title': str,
-		'description': str, 'img_url': str, 'enriched_document_description': str,
-		'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
-		'img_path': str, 'doc_date': str, 'dataset': str, 'date': str, 'country': str,
-	}
-	
+	caption_output_path = args.csv_file.replace('.csv', '_captions.csv')
+
 	if os.path.exists(text_output_path):
 		print(f"Found existing textual-based labels at {text_output_path} Loading...")
 		t0 = time.time()
@@ -685,60 +819,7 @@ def main():
 		)
 	
 	assert len(textual_based_labels) == len(visual_based_labels), "Label lists must have same length"
-	
 
-
-	#####################
-
-	caption_output_path = args.csv_file.replace('.csv', '_captions.csv')
-
-	if os.path.exists(caption_output_path):
-		print(f"Found existing captions at {caption_output_path} Loading...")
-		t0 = time.time()
-		caption_df = pd.read_csv(
-			filepath_or_buffer=caption_output_path,
-			on_bad_lines='skip',
-			dtype=dtypes,
-			low_memory=False,
-		)
-		captions = []
-		for cap in caption_df['caption']:
-			if pd.isna(cap) or not cap:
-				captions.append(None)
-			else:
-				captions.append(cap.strip())
-		print(f"Loaded {len(captions)} captions in {time.time() - t0:.2f} sec")
-	else:
-		captions = get_captions(
-			csv_file=args.csv_file,
-			batch_size=args.vision_batch_size,  # reuse vision batch size
-			metadata_fpth=caption_output_path,
-			device=args.device,
-			model_name="microsoft/git-large-coco",  # or args.caption_model_name if you expose new arg
-			verbose=True,
-		)
-
-
-
-	######################
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-	
 	if os.path.exists(combined_output_path):
 		print(f"Found existing combined labels at {combined_output_path} Loading...")
 		print("Using existing combined labels.")
@@ -810,13 +891,53 @@ def main():
 		except Exception as e:
 			print(f"Failed to write Excel file: {e}")
 
-	perform_multilabel_eda(
-		data_path=combined_output_path, 
-		label_column='multimodal_labels',
+	##################################################################################
+	if os.path.exists(caption_output_path):
+		print(f"Found existing captions at {caption_output_path} Loading...")
+		t0 = time.time()
+		caption_df = pd.read_csv(
+			filepath_or_buffer=caption_output_path,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
+		captions = []
+		for cap in caption_df['caption']:
+			if pd.isna(cap) or not cap:
+				captions.append(None)
+			else:
+				captions.append(cap.strip())
+		print(f"Loaded {len(captions)} captions in {time.time() - t0:.2f} sec")
+	else:
+		captions = get_captions(
+			csv_file=args.csv_file,
+			batch_size=args.vision_batch_size,
+			metadata_fpth=caption_output_path,
+			device=args.device,
+			model_name=args.caption_model_name,
+			verbose=True,
+		)
+
+	visual_captions, visual_labels = get_vision_captions_x_labels(
+		csv_file=args.csv_file,
+		batch_size=args.vision_batch_size,
+		device=args.device,
+		metadata_fpth=combined_output_path,
+		caption_model_name=args.caption_model_name,
+		vlm_model_name=args.vlm_model_name,
+		num_workers=args.num_workers,
+		verbose=True,
 	)
+	print(f"{len(visual_captions)} captions, {len(visual_labels)} labels")
+	assert len(visual_captions) == len(visual_labels), "Caption and label lists must have same length"
+	##################################################################################
+
+
+	perform_multilabel_eda(data_path=combined_output_path, label_column='multimodal_labels')
 
 	train_df_fpth = combined_output_path.replace('.csv', '_train.csv')
 	val_df_fpth = combined_output_path.replace('.csv', '_val.csv')
+
 	try:
 		train_df = pd.read_csv(
 			filepath_or_buffer=train_df_fpth,

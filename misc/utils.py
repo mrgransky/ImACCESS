@@ -136,7 +136,7 @@ hf_tk: str = os.getenv("HUGGINGFACE_TOKEN")
 
 cache_directory = {
 	"farid": "/home/farid/datasets/trash/models",
-	"alijanif": "/scratch/project_2004072/ImACCESS/models",
+	"alijanif": "/scratch/project_2004072/models",
 	"ubuntu": "/media/volume/models",
 }
 

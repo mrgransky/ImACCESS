@@ -177,7 +177,6 @@ def load_model_and_processor(model_id: str, device: str):
 					model_id, 
 					config=config, 
 					device_map=device,
-					# dtype="auto" if getattr(),
 					cache_dir=cache_directory[USER],
 				)
 		if model is None:
@@ -186,7 +185,6 @@ def load_model_and_processor(model_id: str, device: str):
 					model_id, 
 					config=config, 
 					device_map=device, 
-					# dtype="auto",
 					cache_dir=cache_directory[USER],
 				)
 			except Exception:
@@ -194,7 +192,6 @@ def load_model_and_processor(model_id: str, device: str):
 					model_id, 
 					config=config, 
 					device_map=device,
-					# dtype="auto",
 					cache_dir=cache_directory[USER],
 				)
 
