@@ -59,6 +59,26 @@ SEMANTIC_CATEGORIES = {
 	'weapon': ['gun', 'rifle', 'cannon', 'artillery', 'weapon', 'bomb', 'missile', 'ammunition'],
 }
 
+
+	# Load categories
+
+CATEGORIES_FILE = "categories.json"
+imagenet_1k_labels = "imagenet_1k_labels.txt"
+object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)
+candidate_labels = list(set(object_categories + scene_categories + activity_categories))
+# texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
+print(f"Number of candidate labels[from categories.json]: {len(candidate_labels)}: {candidate_labels[:10]}")
+
+with open(imagenet_1k_labels, 'r') as f:
+	imagenet_1k_labels = f.read().splitlines()
+print(f"Number of ImageNet-1k labels: {len(imagenet_1k_labels)}: {imagenet_1k_labels[:10]}")
+
+candidate_labels += imagenet_1k_labels
+
+candidate_labels = list(set(candidate_labels))
+
+print(f"Number of candidate labels[+ ImageNet-1k]: {len(candidate_labels)}: {candidate_labels[:10]}")
+
 print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
@@ -248,12 +268,6 @@ def get_visual_based_annotation(
 	
 	start_time = time.time()
 	
-	# Load categories
-	CATEGORIES_FILE = "categories.json"
-	object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)
-	candidate_labels = list(set(object_categories + scene_categories + activity_categories))
-	texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
-
 	# Load model and processor
 	processor = tfs.AutoProcessor.from_pretrained(vlm_model_name, use_fast=True)
 	model = tfs.AutoModel.from_pretrained(
@@ -410,10 +424,9 @@ def get_captions(
 		return captions
 
 def get_vision_captions_x_labels(
-		csv_file: str,
+		metadata_fpth: str,
 		batch_size: int,
 		device: str,
-		metadata_fpth: str,
 		caption_model_name: str,
 		vlm_model_name: str,
 		num_workers: int = 2,
@@ -455,11 +468,6 @@ def get_vision_captions_x_labels(
 	).eval()
 	vlm_model = torch.compile(vlm_model, mode="max-autotune")
 
-	CATEGORIES_FILE = "categories.json"
-	object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)
-	candidate_labels = list(set(object_categories + scene_categories + activity_categories))
-	texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
-
 	# Precompute text embeddings
 	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 		text_inputs = vlm_processor(text=texts, padding="max_length", max_length=64, return_tensors="pt").to(device)
@@ -467,8 +475,14 @@ def get_vision_captions_x_labels(
 		text_embeddings = text_embeddings / text_embeddings.norm(dim=-1, keepdim=True)
 
 	# ---------------- Load dataframe ----------------
-	df = pd.read_csv(csv_file, on_bad_lines="skip", dtype=dtypes, low_memory=False)
+	df = pd.read_csv(
+		metadata_fpth, 
+		on_bad_lines="skip", 
+		dtype=dtypes, 
+		low_memory=False
+	)
 	img_paths = df["img_path"].tolist()
+
 	dataset = HistoricalArchives(img_paths)
 	dataloader = DataLoader(
 		dataset,
@@ -527,10 +541,14 @@ def get_vision_captions_x_labels(
 				labels.append(None)
 				scores.append(None)
 	
-	df["caption"] = captions
-	df["vis_lbl"] = labels
-	df["vis_score"] = scores
+	df["AI_caption"] = captions
+	df["AI_vis_lbl"] = labels
+	df["AI_vis_score"] = scores
 	
+	print(df.shape, list(df.columns))
+
+	print(df.head(10))
+	print(f"Saving results to {metadata_fpth}...")
 	df.to_csv(metadata_fpth, index=False)
 	try:
 		df.to_excel(metadata_fpth.replace(".csv", ".xlsx"), index=False)
@@ -561,11 +579,6 @@ def get_textual_based_annotation(
 		print(f"{device} Memory: Total: {t/1024**3:.2f} GB Reserved: {r/1024**3:.2f} GB Allocated: {a/1024**3:.2f} GB Free: {f/1024**3:.2f} GB".center(160, " "))
 	# device = 'cpu' if t/1024**3 < 6 else device
 	start_time = time.time()
-
-	# Load categories
-	CATEGORIES_FILE = "categories.json"
-	object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)
-	candidate_labels = list(set(object_categories + scene_categories + activity_categories))
 
 	# Load model with memory optimizations
 	if verbose:
@@ -742,6 +755,7 @@ def main():
 	text_output_path = args.csv_file.replace('.csv', '_textual_based_labels.csv')
 	vision_output_path = args.csv_file.replace('.csv', '_visual_based_labels.csv')
 	combined_output_path = args.csv_file.replace('.csv', '_multimodal.csv')
+	combined_temp_output_path = args.csv_file.replace('.csv', '_temp_multimodal.csv')
 	caption_output_path = args.csv_file.replace('.csv', '_captions.csv')
 
 	if os.path.exists(text_output_path):
@@ -911,10 +925,9 @@ def main():
 		)
 
 	visual_captions, visual_labels = get_vision_captions_x_labels(
-		csv_file=args.csv_file,
+		metadata_fpth=combined_output_path,
 		batch_size=args.vision_batch_size,
 		device=args.device,
-		metadata_fpth=combined_output_path,
 		caption_model_name=args.caption_model_name,
 		vlm_model_name=args.vlm_model_name,
 		num_workers=args.num_workers,
