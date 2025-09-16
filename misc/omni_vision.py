@@ -229,12 +229,38 @@ def run_inference(model, processor, config, image_url: str, th: float = 0.05):
 	print(f"[INFO] Running task: {task}")
 	try:
 		if task == "captioning":
-			# Check if model has generate method
 			if not hasattr(model, 'generate'):
 				raise AttributeError("Model doesn't support generation")
-			generated_ids = model.generate(**inputs, max_length=50)
-			captions = processor.batch_decode(generated_ids, skip_special_tokens=True)
-			return captions[0]
+
+			# Better generation parameters
+			generated_ids = model.generate(
+					**inputs, 
+					max_length=50,
+					num_beams=3,           # Beam search for better quality
+					early_stopping=True,   # Stop when EOS is generated
+					do_sample=False,       # Deterministic for consistency
+					temperature=1.0,
+			)
+			
+			# Handle different tokenizer formats
+			if hasattr(processor, 'batch_decode'):
+				captions = processor.batch_decode(generated_ids, skip_special_tokens=True)
+			else:
+				captions = processor.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+			
+			# Clean up caption (remove prompt if present)
+			caption = captions[0]
+			if caption.startswith("a photo of"):
+				caption = caption.replace("a photo of ", "", 1)
+			
+			return caption.strip()
+		# if task == "captioning":
+		# 	# Check if model has generate method
+		# 	if not hasattr(model, 'generate'):
+		# 		raise AttributeError("Model doesn't support generation")
+		# 	generated_ids = model.generate(**inputs, max_length=50)
+		# 	captions = processor.batch_decode(generated_ids, skip_special_tokens=True)
+		# 	return captions[0]
 		elif task == "classification":
 			outputs = model(**inputs)
 			if not hasattr(outputs, 'logits'):
@@ -293,31 +319,6 @@ def run_inference(model, processor, config, image_url: str, th: float = 0.05):
 					results.append((index, label, score))
 			
 			return results
-		# elif task == "classification":
-		# 		outputs = model(**inputs)
-		# 		if not hasattr(outputs, 'logits'):
-		# 			raise AttributeError("Model output doesn't have logits for classification")
-		# 		logits = outputs.logits
-		# 		print(f"[INFO] Logits {type(logits)} {logits.shape} {logits.dtype}")
-		# 		probs = torch.nn.functional.softmax(logits, dim=-1)
-		# 		print(f"[INFO] Probs {type(probs)} {probs.shape} {probs.dtype}")
-				
-		# 		top_k = min(5, probs.shape[-1])  # Don't exceed available classes
-		# 		top_probs, top_ids = torch.topk(probs, k=top_k, dim=-1)
-				
-		# 		results = []
-		# 		for prob, idx in zip(top_probs[0], top_ids[0]):
-		# 			index = idx.item()
-		# 			score = prob.item()
-		# 			# Handle missing id2label mapping
-		# 			if hasattr(config, "id2label") and config.id2label and str(index) in config.id2label:
-		# 				label = config.id2label[str(index)]
-		# 			elif hasattr(config, "id2label") and config.id2label and index in config.id2label:
-		# 				label = config.id2label[index]
-		# 			else:
-		# 				label = f"class_{index}"
-		# 			results.append((index, label, score))
-		# 		return results
 		elif task == "retrieval":
 			with torch.no_grad():
 				# Try different methods for getting embeddings
@@ -421,8 +422,8 @@ if __name__ == "__main__":
 
 	# # classification:
 	# # model_id = "google/vit-large-patch16-384"
-	# # model_id = "microsoft/swin-base-patch4-window7-224"
-	# # model_id = "microsoft/beit-base-patch16-224-pt22k-ft22k"
+	# # model_id = "microsoft/swinv2-large-patch4-window16-256"
+	# # model_id = "microsoft/beit-large-patch16-224-pt22k-ft22k"
 	# # model_id = "facebook/deit-base-distilled-patch16-384"
 	# model_id = "facebook/convnextv2-huge-22k-384"
 
@@ -433,4 +434,4 @@ if __name__ == "__main__":
 	model, processor, config = load_model_and_processor(model_id=args.model_id)
 
 	result = run_inference(model, processor, config, image_url=args.image_url, th=args.threshold)
-	print("Result:", result)
+	print(result)
