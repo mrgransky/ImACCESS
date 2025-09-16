@@ -419,6 +419,7 @@ if __name__ == "__main__":
 	# model_id = "facebook/convnextv2-huge-22k-384"
 	# # model_id = "google/vit-large-patch16-384"
 	# # model_id = "microsoft/swinv2-large-patch4-window16-256"
+	# model_id = "microsoft/swinv2-large-patch4-window12to16-192to256-22kto1k-ft"
 	# # model_id = "microsoft/beit-large-patch16-224-pt22k-ft22k"
 	# # model_id = "facebook/deit-base-distilled-patch16-384"
 
