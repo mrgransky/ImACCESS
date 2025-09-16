@@ -13,8 +13,7 @@ torch.set_grad_enabled(False)
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -d "cuda:0" -nw 24 -tbs 8 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_EUROPEANA.txt &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31/metadata_multi_label.csv -d "cuda:1" -nw 16 -tbs 256 -vbs 32 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_NA.txt &
 # $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02/metadata_multi_label.csv -d "cuda:2" -nw 20 -tbs 8 -vbs 32 -vth 0.3 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_WWII.txt &
-# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -d "cuda:3" -nw 8 -tbs 256 -vbs 16 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/multi_label_annotation_HISTORY_X4.txt &
-
+# $ nohup python -u multi_label_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -d "cuda:3" -nw 8 -tbs 256 -vbs 16 -vth 0.25 -rth 0.3 > /media/volume/ImACCESS/trash/HISTORY_X4_multi_label_annotation.txt &
 
 # Make language detection deterministic
 DetectorFactory.seed = 42
@@ -263,7 +262,7 @@ def get_visual_based_annotation(
 	candidate_labels = list(set(object_categories + scene_categories + activity_categories))
 	texts = [f"This is a photo of {lbl}." for lbl in candidate_labels]
 	# Load model and processor
-	processor = AutoProcessor.from_pretrained(vlm_model_name)
+	processor = AutoProcessor.from_pretrained(vlm_model_name, use_fast=True)
 	model = AutoModel.from_pretrained(
 			pretrained_model_name_or_path=vlm_model_name,
 			dtype=torch.float16 if torch.cuda.mem_get_info()[0] / 1024**3 < 7 else torch.float32,
