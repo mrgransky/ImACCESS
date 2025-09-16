@@ -169,7 +169,7 @@ def load_model_and_processor(model_id: str):
 		Dynamically picks the correct model class based on config.architectures.
 		Returns (model, processor, config).
 		"""
-		# Load config
+		print(f"[INFO] Loading model: {model_id}")
 		config = tfs.AutoConfig.from_pretrained(model_id)
 		print(f"[INFO] Model type: {config.model_type}")
 		print(f"[INFO] Architectures: {config.architectures}")
@@ -203,172 +203,261 @@ def load_model_and_processor(model_id: str):
 
 		return model, processor, config
 
-def run_inference(model, processor, config, image_url: str, task: str = None):
-		"""
-		Run a task-appropriate inference on a given image.
-
-		- Captioning (BLIP, GIT): model.generate
-		- Classification (ViT, etc.): model + processor.class_labels
-		- Embedding retrieval (CLIP): model.get_image_features
-		- Feature extraction: model outputs for downstream tasks
-		"""
-		# Fetch image
-		headers = {"User-Agent": "Mozilla/5.0"}
-		response = requests.get(image_url, headers=headers)
-		response.raise_for_status()
-		image = Image.open(io.BytesIO(response.content))
-
-		device = next(model.parameters()).device
-		inputs = processor(images=image, return_tensors="pt").to(device)
-
-		# Auto task detection with better coverage
-		if task is None:
-			task = detect_task_elegant(model, config)
-			# arch = config.architectures[0] if config.architectures else ""
-			# model_type = config.model_type.lower() if hasattr(config, 'model_type') else ""
-			
-			# # Captioning models
-			# if any(x in arch for x in ["ForConditionalGeneration", "ForCausalLM"]):
-			#     task = "captioning"
-			# # Classification models
-			# elif "ForImageClassification" in arch:
-			#     task = "classification"
-			# # CLIP-style models
-			# elif any(x in arch for x in ["CLIP", "ForZeroShotImageClassification"]) or "clip" in model_type:
-			#     task = "retrieval"
-			# # Self-supervised/pre-training models (BEIT, MAE, etc.)
-			# elif any(x in arch for x in ["ForMaskedImageModeling", "ForPreTraining"]) or any(x in model_type for x in ["beit", "mae", "deit"]):
-			#     task = "feature_extraction"
-			# # Vision Transformer variants
-			# elif any(x in arch for x in ["ViTModel", "DeiTModel", "BeitModel"]) or "vit" in model_type:
-			#     task = "feature_extraction"
-			# # SigLIP and similar
-			# elif "siglip" in model_type or "SiglipModel" in arch:
-			#     task = "retrieval"
-			# else:
-			#     print(f"[WARNING] Unknown architecture: {arch}, model_type: {model_type}")
-			#     print("[INFO] Attempting feature extraction as fallback...")
-			#     task = "feature_extraction"
-
-		print(f"[INFO] Running task: {task}")
-
-		try:
-				if task == "captioning":
-						# Check if model has generate method
-						if not hasattr(model, 'generate'):
-								raise AttributeError("Model doesn't support generation")
-						generated_ids = model.generate(**inputs, max_length=50)
-						captions = processor.batch_decode(generated_ids, skip_special_tokens=True)
-						return captions[0]
-
-				elif task == "classification":
-						outputs = model(**inputs)
-						if not hasattr(outputs, 'logits'):
-								raise AttributeError("Model output doesn't have logits for classification")
-						
-						probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-						print(f"[INFO] Logits shape: {probs.shape}, dtype: {probs.dtype}")
-						
-						top_k = min(5, probs.shape[-1])  # Don't exceed available classes
-						top_probs, top_ids = torch.topk(probs, k=top_k, dim=-1)
-						
-						results = []
-						for prob, idx in zip(top_probs[0], top_ids[0]):
-								index = idx.item()
-								score = prob.item()
-								# Handle missing id2label mapping
-								if hasattr(config, "id2label") and config.id2label and str(index) in config.id2label:
-										label = config.id2label[str(index)]
-								elif hasattr(config, "id2label") and config.id2label and index in config.id2label:
-										label = config.id2label[index]
-								else:
-										label = f"class_{index}"
-								results.append((index, label, score))
-						return results
-
-				elif task == "retrieval":
-						with torch.no_grad():
-								# Try different methods for getting embeddings
-								if hasattr(model, 'get_image_features'):
-										image_embeds = model.get_image_features(**inputs)
-								elif hasattr(model, 'vision_model'):
-										# For models with separate vision components
-										image_embeds = model.vision_model(**inputs).last_hidden_state.mean(dim=1)
-								else:
-										# Fallback to model output
-										outputs = model(**inputs)
-										if hasattr(outputs, 'image_embeds'):
-												image_embeds = outputs.image_embeds
-										elif hasattr(outputs, 'last_hidden_state'):
-												image_embeds = outputs.last_hidden_state.mean(dim=1)
-										else:
-												raise AttributeError("Cannot extract image embeddings from model output")
-						
-						return image_embeds.cpu().numpy()
-
-				elif task == "feature_extraction":
-						with torch.no_grad():
-								outputs = model(**inputs)
-								
-								# Handle different output types
-								if hasattr(outputs, 'last_hidden_state'):
-										# Standard transformer output
-										features = outputs.last_hidden_state
-										# Global average pooling for sequence outputs
-										if len(features.shape) == 3:  # [batch, seq_len, hidden_dim]
-												features = features.mean(dim=1)
-								elif hasattr(outputs, 'pooler_output'):
-										features = outputs.pooler_output
-								elif hasattr(outputs, 'prediction_logits'):
-										# For masked image modeling (like BEIT)
-										print("[INFO] Model outputs prediction logits (masked image modeling)")
-										features = outputs.prediction_logits
-										# You might want to process these differently depending on use case
-								elif torch.is_tensor(outputs):
-										features = outputs
-								else:
-										# Try to get the first tensor output
-										features = outputs[0] if isinstance(outputs, (tuple, list)) else outputs
-								
-								print(f"[INFO] Extracted features shape: {features.shape}")
-								return features.cpu().numpy()
-
-				else:
-						raise ValueError(f"Task '{task}' not supported.")
-						
-		except Exception as e:
-				print(f"[ERROR] Failed to run {task}: {e}")
-				print("[INFO] Falling back to feature extraction...")
+def run_inference_old(model, processor, config, image_url: str):
+	headers = {"User-Agent": "Mozilla/5.0"}
+	response = requests.get(image_url, headers=headers)
+	response.raise_for_status()
+	image = Image.open(io.BytesIO(response.content))
+	device = next(model.parameters()).device
+	inputs = processor(images=image, return_tensors="pt").to(device)
+	task = detect_task_elegant(model, config)
+	print(f"[INFO] Running task: {task}")
+	try:
+		if task == "captioning":
+			# Check if model has generate method
+			if not hasattr(model, 'generate'):
+				raise AttributeError("Model doesn't support generation")
+			generated_ids = model.generate(**inputs, max_length=50)
+			captions = processor.batch_decode(generated_ids, skip_special_tokens=True)
+			return captions[0]
+		elif task == "classification":
+				outputs = model(**inputs)
+				if not hasattr(outputs, 'logits'):
+						raise AttributeError("Model output doesn't have logits for classification")
 				
-				# Fallback: just run the model and return raw outputs
-				try:
-						with torch.no_grad():
-								outputs = model(**inputs)
-								if hasattr(outputs, 'last_hidden_state'):
-										features = outputs.last_hidden_state.mean(dim=1)
-								elif torch.is_tensor(outputs):
-										features = outputs
-								else:
-										features = outputs[0] if isinstance(outputs, (tuple, list)) else outputs
-								
-								print(f"[INFO] Fallback extraction - features shape: {features.shape}")
-								return features.cpu().numpy()
-				except Exception as fallback_error:
-						print(f"[ERROR] Fallback also failed: {fallback_error}")
-						raise ValueError(f"Cannot run inference on this model: {e}")
+				probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
+				print(f"[INFO] Logits shape: {probs.shape}, dtype: {probs.dtype}")
+				
+				top_k = min(5, probs.shape[-1])  # Don't exceed available classes
+				top_probs, top_ids = torch.topk(probs, k=top_k, dim=-1)
+				
+				results = []
+				for prob, idx in zip(top_probs[0], top_ids[0]):
+					index = idx.item()
+					score = prob.item()
+					# Handle missing id2label mapping
+					if hasattr(config, "id2label") and config.id2label and str(index) in config.id2label:
+						label = config.id2label[str(index)]
+					elif hasattr(config, "id2label") and config.id2label and index in config.id2label:
+						label = config.id2label[index]
+					else:
+						label = f"class_{index}"
+					results.append((index, label, score))
+				return results
+		elif task == "retrieval":
+			with torch.no_grad():
+				# Try different methods for getting embeddings
+				if hasattr(model, 'get_image_features'):
+					image_embeds = model.get_image_features(**inputs)
+				elif hasattr(model, 'vision_model'):
+					# For models with separate vision components
+					image_embeds = model.vision_model(**inputs).last_hidden_state.mean(dim=1)
+				else:
+					# Fallback to model output
+					outputs = model(**inputs)
+					if hasattr(outputs, 'image_embeds'):
+						image_embeds = outputs.image_embeds
+					elif hasattr(outputs, 'last_hidden_state'):
+						image_embeds = outputs.last_hidden_state.mean(dim=1)
+					else:
+						raise AttributeError("Cannot extract image embeddings from model output")
+			print(f"[INFO] Extracted image embeddings {type(image_embeds)} {image_embeds.shape} {image_embeds.dtype}")
+			return image_embeds.cpu().numpy()
+		elif task == "feature_extraction":
+			with torch.no_grad():
+				outputs = model(**inputs)
+				# Handle different output types
+				if hasattr(outputs, 'last_hidden_state'):
+						# Standard transformer output
+						features = outputs.last_hidden_state
+						# Global average pooling for sequence outputs
+						if len(features.shape) == 3:  # [batch, seq_len, hidden_dim]
+								features = features.mean(dim=1)
+				elif hasattr(outputs, 'pooler_output'):
+						features = outputs.pooler_output
+				elif hasattr(outputs, 'prediction_logits'):
+						# For masked image modeling (like BEIT)
+						print("[INFO] Model outputs prediction logits (masked image modeling)")
+						features = outputs.prediction_logits
+						# You might want to process these differently depending on use case
+				elif torch.is_tensor(outputs):
+						features = outputs
+				else:
+						# Try to get the first tensor output
+						features = outputs[0] if isinstance(outputs, (tuple, list)) else outputs
+				
+				print(f"[INFO] Extracted features shape: {features.shape}")
+				return features.cpu().numpy()
+		else:
+			raise ValueError(f"Task '{task}' not supported.")
+	except Exception as e:
+		print(f"[ERROR] Failed to run {task}: {e}")
+		print("[INFO] Falling back to feature extraction...")
+		# Fallback: just run the model and return raw outputs
+		try:
+			with torch.no_grad():
+				outputs = model(**inputs)
+				if hasattr(outputs, 'last_hidden_state'):
+					features = outputs.last_hidden_state.mean(dim=1)
+				elif torch.is_tensor(outputs):
+					features = outputs
+				else:
+					features = outputs[0] if isinstance(outputs, (tuple, list)) else outputs
+				print(f"[INFO] Fallback extraction - features {type(features)}")
+				return features.cpu().numpy()
+		except Exception as fallback_error:
+			print(f"[ERROR] Fallback also failed: {fallback_error}")
+			raise ValueError(f"Cannot run inference on this model: {e}")
 
-# ---------------- Example Usage ----------------
+def run_inference(model, processor, config, image_url: str):
+	headers = {"User-Agent": "Mozilla/5.0"}
+	response = requests.get(image_url, headers=headers)
+	response.raise_for_status()
+	image = Image.open(io.BytesIO(response.content))
+	device = next(model.parameters()).device
+	inputs = processor(images=image, return_tensors="pt").to(device)
+	task = detect_task_elegant(model, config)
+	print(f"[INFO] Running task: {task}")
+	try:
+		if task == "captioning":
+			# Check if model has generate method
+			if not hasattr(model, 'generate'):
+				raise AttributeError("Model doesn't support generation")
+			generated_ids = model.generate(**inputs, max_length=50)
+			captions = processor.batch_decode(generated_ids, skip_special_tokens=True)
+			return captions[0]
+		elif task == "classification":
+				outputs = model(**inputs)
+				if not hasattr(outputs, 'logits'):
+						raise AttributeError("Model output doesn't have logits for classification")
+				
+				probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
+				print(f"[INFO] Logits shape: {probs.shape}, dtype: {probs.dtype}")
+				
+				top_k = min(5, probs.shape[-1])  # Don't exceed available classes
+				top_probs, top_ids = torch.topk(probs, k=top_k, dim=-1)
+				
+				results = []
+				for prob, idx in zip(top_probs[0], top_ids[0]):
+					index = idx.item()
+					score = prob.item()
+					# Handle missing id2label mapping
+					if hasattr(config, "id2label") and config.id2label and str(index) in config.id2label:
+						label = config.id2label[str(index)]
+					elif hasattr(config, "id2label") and config.id2label and index in config.id2label:
+						label = config.id2label[index]
+					else:
+						label = f"class_{index}"
+					results.append((index, label, score))
+				return results
+		elif task == "retrieval":
+			with torch.no_grad():
+				# Try different methods for getting embeddings
+				if hasattr(model, 'get_image_features'):
+					image_embeds = model.get_image_features(**inputs)
+				elif hasattr(model, 'vision_model'):
+					# For models with separate vision components
+					image_embeds = model.vision_model(**inputs).last_hidden_state.mean(dim=1)
+				else:
+					# Fallback to model output
+					outputs = model(**inputs)
+					if hasattr(outputs, 'image_embeds'):
+						image_embeds = outputs.image_embeds
+					elif hasattr(outputs, 'last_hidden_state'):
+						image_embeds = outputs.last_hidden_state.mean(dim=1)
+					else:
+						raise AttributeError("Cannot extract image embeddings from model output")
+			print(f"[INFO] Extracted image embeddings {type(image_embeds)} {image_embeds.shape} {image_embeds.dtype}")
+			return image_embeds.cpu().numpy()
+		elif task == "feature_extraction":
+			with torch.no_grad():
+				outputs = model(**inputs)
+				# Handle different output types
+				if hasattr(outputs, 'last_hidden_state'):
+					# Standard transformer output
+					features = outputs.last_hidden_state
+					# Global average pooling for sequence outputs
+					if len(features.shape) == 3:  # [batch, seq_len, hidden_dim]
+						features = features.mean(dim=1)
+				elif hasattr(outputs, 'pooler_output'):
+					features = outputs.pooler_output
+				elif hasattr(outputs, 'prediction_logits'):
+					# For masked image modeling (like BEIT)
+					print("[INFO] Model outputs prediction logits (masked image modeling)")
+					features = outputs.prediction_logits
+					# You might want to process these differently depending on use case
+				elif hasattr(outputs, 'logits'):
+					# Handle MaskedLMOutput and similar objects
+					features = outputs.logits
+					print(f"[INFO] logit attribute as feature: {type(features)} {features.shape} {features.dtype}")
+					predicted_mask = features.argmax(1)#.squeeze(0)
+					print(f"[INFO] predicted_mask: {type(predicted_mask)} {predicted_mask.shape} {predicted_mask.dtype}")
+				elif torch.is_tensor(outputs):
+					features = outputs
+				else:
+					# Try to get the first tensor output
+					features = outputs[0] if isinstance(outputs, (tuple, list)) else outputs
+				print(f"[INFO] Extracted features {type(features)} {features.shape} {features.dtype}") # [batch, patches, vocab_size]
+				return features.cpu().numpy()
+		else:
+			raise ValueError(f"Task '{task}' not supported.")
+	except Exception as e:
+		print(f"[ERROR] Failed to run {task}: {e}")
+		print("[INFO] Falling back to feature extraction...")
+		# Fallback: just run the model and return raw outputs
+		try:
+			with torch.no_grad():
+				outputs = model(**inputs)
+				if hasattr(outputs, 'last_hidden_state'):
+					features = outputs.last_hidden_state.mean(dim=1)
+				elif hasattr(outputs, 'logits'):
+					# Handle MaskedLMOutput and similar objects in fallback
+					print("[INFO] Fallback: Using logits from model output")
+					features = outputs.logits
+				elif hasattr(outputs, 'prediction_logits'):
+					print("[INFO] Fallback: Using prediction_logits from model output")
+					features = outputs.prediction_logits
+				elif torch.is_tensor(outputs):
+					features = outputs
+				else:
+					# Try to extract tensor from complex output objects
+					if hasattr(outputs, '__dict__'):
+						# Look for tensor attributes in the output object
+						for attr_name, attr_value in outputs.__dict__.items():
+							if torch.is_tensor(attr_value):
+								print(f"[INFO] Fallback: Using tensor attribute '{attr_name}' from output")
+								features = attr_value
+								break
+						else:
+							features = outputs[0] if isinstance(outputs, (tuple, list)) else outputs
+					else:
+						features = outputs[0] if isinstance(outputs, (tuple, list)) else outputs
+				print(f"[INFO] Fallback extraction - features {type(features)} {features.shape} {features.dtype}") 
+				return features.cpu().numpy()
+		except Exception as fallback_error:
+			print(f"[ERROR] Fallback also failed: {fallback_error}")
+			raise ValueError(f"Cannot run inference on this model: {e}")
+
+
 if __name__ == "__main__":
-		# model_id = "Salesforce/blip-image-captioning-large"
-		# model_id = "microsoft/git-large-coco"
-		# model_id = "openai/clip-vit-base-patch32"
-		# model_id = "google/vit-large-patch16-384"
-		# model_id = "microsoft/beit-large-patch16-224-pt22k"
-		model_id = "google/siglip2-so400m-patch16-naflex"
+	# captioning:
+	# model_id = "Salesforce/blip-image-captioning-large"
+	# model_id = "microsoft/git-large-coco"
+	model_id = "microsoft/Florence-2-large"
 
-		model, processor, config = load_model_and_processor(model_id)
+	# classification:
+	# model_id = "google/vit-large-patch16-384"
+	# model_id = "microsoft/swin-base-patch4-window7-224"
+	# model_id = "microsoft/beit-base-patch16-224-pt22k-ft22k"
+	# model_id = "facebook/deit-base-distilled-patch16-384"
+	model_id = "facebook/convnextv2-huge-22k-384"
 
-		url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/318/default.jpg"
-		result = run_inference(model, processor, config, url)
+	# retrieval:
+	# model_id = "google/siglip2-so400m-patch16-naflex"
+	# model_id = "openai/clip-vit-base-patch32"
 
-		print("Result:", result)
+	model, processor, config = load_model_and_processor(model_id)
+
+	url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/mcs/318/default.jpg"
+	result = run_inference(model, processor, config, url)
+	print("Result:", result)
