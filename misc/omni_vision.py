@@ -1,16 +1,10 @@
-import transformers as tfs
-import torch
-import requests
-from PIL import Image
-import io
-import os
-
-import re
-from typing import Dict, List, Tuple, Callable
-from dataclasses import dataclass
-import argparse
+from utils import *
 
 USER = os.getenv('USER') # echo $USER
+hf_tk = os.getenv("HUGGINGFACE_TOKEN")
+print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
+huggingface_hub.login(token=hf_tk)
+
 cache_directory = {
 	"farid": "/home/farid/datasets/trash/models",
 	"alijanif": "/scratch/project_2004072/ImACCESS/models",
@@ -414,18 +408,19 @@ if __name__ == "__main__":
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	args = parser.parse_args()
 	print(args)
-	# url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/bud/188/default.jpg"
+
 	# # captioning:
 	# # model_id = "Salesforce/blip-image-captioning-large"
+	# # model_id = "Salesforce/blip2-flan-t5-xxl"
 	# # model_id = "microsoft/git-large-coco"
 	# # model_id = "microsoft/Florence-2-large"
 
 	# # classification:
+	# model_id = "facebook/convnextv2-huge-22k-384"
 	# # model_id = "google/vit-large-patch16-384"
 	# # model_id = "microsoft/swinv2-large-patch4-window16-256"
 	# # model_id = "microsoft/beit-large-patch16-224-pt22k-ft22k"
 	# # model_id = "facebook/deit-base-distilled-patch16-384"
-	# model_id = "facebook/convnextv2-huge-22k-384"
 
 	# # retrieval:
 	# # model_id = "google/siglip2-so400m-patch16-naflex"

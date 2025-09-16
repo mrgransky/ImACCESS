@@ -11,10 +11,11 @@ from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.cluster import KMeans
 from collections import Counter, defaultdict
 # import faiss
-from transformers import pipeline
-from transformers import AutoTokenizer, AutoModelForTokenClassification
-from transformers import CLIPProcessor, CLIPModel, AlignProcessor, AlignModel
-from transformers import AutoModel, AutoProcessor, AutoModelForCausalLM
+# from transformers import pipeline
+# from transformers import AutoTokenizer, AutoModelForTokenClassification
+# from transformers import CLIPProcessor, CLIPModel, AlignProcessor, AlignModel
+# from transformers import AutoModel, AutoProcessor, AutoModelForCausalLM
+import transformers as tfs
 
 from sentence_transformers import SentenceTransformer, util
 from langdetect import detect, DetectorFactory
@@ -45,6 +46,8 @@ from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 import urllib3
 import huggingface_hub
+from dataclasses import dataclass
+import io
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
