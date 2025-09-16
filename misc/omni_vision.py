@@ -316,6 +316,7 @@ def run_inference(model, processor, config, image_url: str):
 	response.raise_for_status()
 	image = Image.open(io.BytesIO(response.content))
 	device = next(model.parameters()).device
+	print(f"[INFO] Input image shape: {image.size}")
 	inputs = processor(images=image, return_tensors="pt").to(device)
 	task = detect_task_elegant(model, config)
 	print(f"[INFO] Running task: {task}")
@@ -328,28 +329,88 @@ def run_inference(model, processor, config, image_url: str):
 			captions = processor.batch_decode(generated_ids, skip_special_tokens=True)
 			return captions[0]
 		elif task == "classification":
-				outputs = model(**inputs)
-				if not hasattr(outputs, 'logits'):
-					raise AttributeError("Model output doesn't have logits for classification")
-				probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
-				print(f"[INFO] Logits {type(probs)} {probs.shape} {probs.dtype}")
+			outputs = model(**inputs)
+			if not hasattr(outputs, 'logits'):
+				raise AttributeError("Model output doesn't have logits for classification")
+			
+			logits = outputs.logits
+			print(f"[INFO] Logits {type(logits)} {logits.shape} {logits.dtype}")
+			probs = torch.nn.functional.softmax(logits, dim=-1)
+			print(f"[INFO] Probs {type(probs)} {probs.shape} {probs.dtype}")
+			
+			# Threshold-based filtering (default threshold = 0.1, configurable)
+			threshold = getattr(config, 'classification_threshold', 0.1)  # Use config value or default
+			print(f"[INFO] Using classification threshold: {threshold}")
+			
+			# Get all probabilities above threshold
+			batch_probs = probs[0]  # Assuming batch size = 1
+			above_threshold_mask = batch_probs >= threshold
+			above_threshold_indices = torch.where(above_threshold_mask)[0]
+			above_threshold_probs = batch_probs[above_threshold_indices]
+			
+			# Sort by probability (descending)
+			sorted_indices = torch.argsort(above_threshold_probs, descending=True)
+			
+			results = []
+			for sort_idx in sorted_indices:
+				original_idx = above_threshold_indices[sort_idx]
+				index = original_idx.item()
+				score = above_threshold_probs[sort_idx].item()
 				
-				top_k = min(5, probs.shape[-1])  # Don't exceed available classes
-				top_probs, top_ids = torch.topk(probs, k=top_k, dim=-1)
+				# Handle missing id2label mapping
+				if hasattr(config, "id2label") and config.id2label and str(index) in config.id2label:
+					label = config.id2label[str(index)]
+				elif hasattr(config, "id2label") and config.id2label and index in config.id2label:
+					label = config.id2label[index]
+				else:
+					label = f"class_{index}"
 				
-				results = []
-				for prob, idx in zip(top_probs[0], top_ids[0]):
-					index = idx.item()
-					score = prob.item()
-					# Handle missing id2label mapping
+				results.append((index, label, score))
+			
+			print(f"[INFO] Found {len(results)} classes above threshold {threshold}")
+			
+			# Optional: If no results above threshold, return top-1 as fallback
+			if not results:
+					print(f"[WARNING] No classes above threshold {threshold}, returning top-1 as fallback")
+					top_prob, top_idx = torch.max(batch_probs, dim=0)
+					index = top_idx.item()
+					score = top_prob.item()
+					
 					if hasattr(config, "id2label") and config.id2label and str(index) in config.id2label:
-						label = config.id2label[str(index)]
+							label = config.id2label[str(index)]
 					elif hasattr(config, "id2label") and config.id2label and index in config.id2label:
-						label = config.id2label[index]
+							label = config.id2label[index]
 					else:
-						label = f"class_{index}"
+							label = f"class_{index}"
+					
 					results.append((index, label, score))
-				return results
+			
+			return results
+		# elif task == "classification":
+		# 		outputs = model(**inputs)
+		# 		if not hasattr(outputs, 'logits'):
+		# 			raise AttributeError("Model output doesn't have logits for classification")
+		# 		logits = outputs.logits
+		# 		print(f"[INFO] Logits {type(logits)} {logits.shape} {logits.dtype}")
+		# 		probs = torch.nn.functional.softmax(logits, dim=-1)
+		# 		print(f"[INFO] Probs {type(probs)} {probs.shape} {probs.dtype}")
+				
+		# 		top_k = min(5, probs.shape[-1])  # Don't exceed available classes
+		# 		top_probs, top_ids = torch.topk(probs, k=top_k, dim=-1)
+				
+		# 		results = []
+		# 		for prob, idx in zip(top_probs[0], top_ids[0]):
+		# 			index = idx.item()
+		# 			score = prob.item()
+		# 			# Handle missing id2label mapping
+		# 			if hasattr(config, "id2label") and config.id2label and str(index) in config.id2label:
+		# 				label = config.id2label[str(index)]
+		# 			elif hasattr(config, "id2label") and config.id2label and index in config.id2label:
+		# 				label = config.id2label[index]
+		# 			else:
+		# 				label = f"class_{index}"
+		# 			results.append((index, label, score))
+		# 		return results
 		elif task == "retrieval":
 			with torch.no_grad():
 				# Try different methods for getting embeddings
