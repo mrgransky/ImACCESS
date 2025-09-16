@@ -166,13 +166,13 @@ def register_new_model_pattern(task_name: str, patterns: List[str], priority: in
 		rule = TaskRule(task_name, priority, patterns)
 		task_detector.add_rule(rule)
 
-def load_model_and_processor(model_id: str):
+def load_model_and_processor(model_id: str, device: str):
 		"""
 		Universal loader for Hugging Face vision-language models.
 		Dynamically picks the correct model class based on config.architectures.
 		Returns (model, processor, config).
 		"""
-		print(f"[INFO] Loading model: {model_id}")
+		print(f"[INFO] Loading model: {model_id} on {device}")
 		config = tfs.AutoConfig.from_pretrained(model_id)
 		print(f"[INFO] Model type: {config.model_type}")
 		print(f"[INFO] Architectures: {config.architectures}")
@@ -189,7 +189,7 @@ def load_model_and_processor(model_id: str):
 				model = model_cls.from_pretrained(
 					model_id, 
 					config=config, 
-					device_map="auto", 
+					device_map=device,
 					dtype="auto",
 					cache_dir=cache_directory[USER],
 				)
@@ -198,7 +198,7 @@ def load_model_and_processor(model_id: str):
 				model = tfs.AutoModel.from_pretrained(
 					model_id, 
 					config=config, 
-					device_map="auto", 
+					device_map=device, 
 					dtype="auto",
 					cache_dir=cache_directory[USER],
 				)
@@ -206,13 +206,12 @@ def load_model_and_processor(model_id: str):
 				model = tfs.AutoModelForImageClassification.from_pretrained(
 					model_id, 
 					config=config, 
-					device_map="auto", 
+					device_map=device,
 					dtype="auto",
 					cache_dir=cache_directory[USER],
 				)
 
 		model.eval()
-		device = next(model.parameters()).device
 		print(f"[INFO] Loaded {model.__class__.__name__} on {device}")
 
 		return model, processor, config
@@ -412,6 +411,7 @@ if __name__ == "__main__":
 	parser.add_argument("--model_id", '-m', type=str, required=True, help="HuggingFace model ID")
 	parser.add_argument("--image_url", '-i', type=str, required=True, help="Image URL to run inference on")
 	parser.add_argument("--threshold", '-th', type=float, default=0.15, help="Threshold for classification")
+	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	args = parser.parse_args()
 	print(args)
 	# url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/bud/188/default.jpg"
@@ -431,7 +431,7 @@ if __name__ == "__main__":
 	# # model_id = "google/siglip2-so400m-patch16-naflex"
 	# # model_id = "openai/clip-vit-base-patch32"
 
-	model, processor, config = load_model_and_processor(model_id=args.model_id)
+	model, processor, config = load_model_and_processor(model_id=args.model_id, device=args.device)
 
 	result = run_inference(model, processor, config, image_url=args.image_url, th=args.threshold)
 	print(result)
