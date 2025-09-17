@@ -146,6 +146,7 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 				return None, None
 		
 		prompt = PROMPT_TEMPLATE.format(description=text.strip())
+		print(f"text: {text}")
 
 		for attempt in range(MAX_RETRIES):
 				try:
