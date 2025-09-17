@@ -17,17 +17,21 @@ MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 
 PROMPT_TEMPLATE = """<s>[INST] 
-As an expert archivist, analyze this historical photo description and extract exactly 3 concrete and factual keywords with brief and concise rationales.
+As an expert archivist, analyze this historical photo description and extract up to 5 concrete, factual and distinct keywords with concise rationales.
 
 Description: {description}
 
-Respond with 3 labels and rationales in this format:
+Respond with up to 5 labels and rationales in this format:
 Label 1: keyword
 Rationale 1: reason
 Label 2: keyword  
 Rationale 2: reason
 Label 3: keyword
 Rationale 3: reason
+Label 4: keyword
+Rationale 4: reason
+Label 5: keyword
+Rationale 5: reason
 [/INST]"""
 
 def test_model_response(model, tokenizer, device):
