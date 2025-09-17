@@ -182,10 +182,38 @@ TOP_P = 0.9
 MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 
-# Much simpler prompt that works with smaller models
-PROMPT_TEMPLATE = """Text: {description}
+# # Much simpler prompt that works with smaller models
+# PROMPT_TEMPLATE = """Text: {description}
 
-Keywords: """
+# Keywords: """
+
+
+PROMPT_TEMPLATE = """
+You are an expert archivist and metadata curator specializing in historical era photographic collections (1900-1970).
+
+Given the following description, extract **exactly three (3)** concrete, specific,
+and semantically rich **keywords (labels)** that best represent the visual content,
+location, activity, or entity described.  
+For each label, write a short one‑sentence rationale explaining why it was chosen.
+
+**Guidelines**
+- Use concrete nouns only (objects, people, places, vehicles, units, activities).  
+- Avoid generic words like “soldier”, “photo”, “person” unless no more specific term exists.  
+- Prefer proper names when they appear (e.g., “Shamrock (hospital ship)”, “MAMAS”).  
+- Do **not** invent information – only use what is explicitly stated or strongly implied.
+
+**Response format (copy exactly, no extra whitespace):**
+Label 1: <label>
+Rationale 1: <rationale>
+Label 2: <label>
+Rationale 2: <rationale>
+Label 3: <label>
+Rationale 3: <rationale>
+
+---  
+Text to analyse:
+{description}
+"""
 
 def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
     if not isinstance(text, str) or not text.strip():
