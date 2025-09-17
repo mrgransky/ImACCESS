@@ -7,14 +7,6 @@ sys.path.insert(0, parent_dir)
 from misc.utils import *
 from sentence_transformers import SentenceTransformer, util
 
-dtypes = {
-	'doc_id': str, 'id': str, 'label': str, 'title': str,
-	'description': str, 'img_url': str, 'enriched_document_description': str,
-	'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
-	'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
-	'user_query': str,
-}
-
 CATEGORIES_FILE = "categories.json"
 object_categories, scene_categories, activity_categories = load_categories(file_path=CATEGORIES_FILE)
 candidate_labels = list(set(object_categories + scene_categories + activity_categories))

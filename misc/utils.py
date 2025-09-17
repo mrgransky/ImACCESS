@@ -141,6 +141,14 @@ cache_directory = {
 	"ubuntu": "/media/volume/models",
 }
 
+dtypes = {
+	'doc_id': str, 'id': str, 'label': str, 'title': str,
+	'description': str, 'img_url': str, 'enriched_document_description': str,
+	'raw_doc_date': str, 'doc_year': float, 'doc_url': str,
+	'img_path': str, 'doc_date': str, 'dataset': str, 'date': str,
+	'user_query': str,
+}
+
 def parse_tuple(s):
 	try:
 		# Convert the string to a tuple
