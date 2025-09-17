@@ -19,13 +19,13 @@ As an expert archivist, analyze this historical photo description and extract ex
 
 Description: {description}
 
-Respond with exactly 3 labels and rationales using this format:
-Label 1: [insert first keyword here]
-Rationale 1: [insert brief reason here]
-Label 2: [insert second keyword here]  
-Rationale 2: [insert brief reason here]
-Label 3: [insert third keyword here]
-Rationale 3: [insert brief reason here]
+Respond with 3 labels and rationales in this format:
+Label 1: keyword
+Rationale 1: reason
+Label 2: keyword  
+Rationale 2: reason
+Label 3: keyword
+Rationale 3: reason
 [/INST]"""
 
 def test_parsing():
@@ -200,118 +200,116 @@ def debug_parsing(response_text):
 		keywords = re.findall(r"\b(?:[A-Z][a-z]+(?:\s+[A-Za-z][a-z]*)*)\b", response_text)
 		print(f"Keywords: {keywords}")
 
-
 def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
-		if not isinstance(text, str) or not text.strip():
-				return None, None
-		
-		prompt = PROMPT_TEMPLATE.format(description=text.strip())
+    if not isinstance(text, str) or not text.strip():
+        return None, None
+    
+    prompt = PROMPT_TEMPLATE.format(description=text.strip())
 
-		for attempt in range(MAX_RETRIES):
-				try:
-						# Tokenize the prompt
-						inputs = tokenizer(
-								prompt, 
-								return_tensors="pt",
-								truncation=True,
-								max_length=2048,
-								padding=True,
-						)
-						
-						# Move to device
-						if device != 'cpu':
-								inputs = {k: v.to(device) for k, v in inputs.items()}
+    for attempt in range(MAX_RETRIES):
+        try:
+            # Tokenize the prompt
+            inputs = tokenizer(
+                prompt, 
+                return_tensors="pt",
+                truncation=True,
+                max_length=2048,
+                padding=True,
+            )
+            
+            # Move to device
+            if device != 'cpu':
+                inputs = {k: v.to(device) for k, v in inputs.items()}
 
-						# Generate response
-						with torch.no_grad():
-								outputs = model.generate(
-										**inputs,
-										max_new_tokens=MAX_NEW_TOKENS,
-										temperature=TEMPERATURE,
-										top_p=TOP_P,
-										do_sample=TEMPERATURE > 0.0,
-										pad_token_id=tokenizer.pad_token_id,
-										eos_token_id=tokenizer.eos_token_id,
-										repetition_penalty=1.4,
-										no_repeat_ngram_size=6,
-								)
+            # Generate response
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=MAX_NEW_TOKENS,
+                    temperature=TEMPERATURE,
+                    top_p=TOP_P,
+                    do_sample=TEMPERATURE > 0.0,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                    repetition_penalty=1.4,
+                    no_repeat_ngram_size=6,
+                )
 
-						# Decode the response
-						response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-						
-						# Extract only the part after the last [/INST]
-						if "[/INST]" in response_text:
-								response_text = response_text.split("[/INST]")[-1].strip()
-						
-						print(f"Raw response: {response_text[:200]}...")  # Debug output
-						debug_parsing(response_text)
+            # Decode the response
+            response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Extract only the part after the last [/INST]
+            if "[/INST]" in response_text:
+                response_text = response_text.split("[/INST]")[-1].strip()
+            
+            print(f"Raw response: {response_text[:200]}...")  # Debug output
 
-						# Try multiple parsing strategies in order of preference
-						
-						# Strategy 1: Structured format with Label/Rationale
-						label_pattern = r"Label\s*\d+\s*:\s*([^\n]+?)(?=\s*\n\s*Rationale\s*\d+|\s*\n\s*Label\s*\d+|\s*\n\s*$|\s*\n\s*Rationale\s*\d+\s*:)"
-						rationale_pattern = r"Rationale\s*\d+\s*:\s*([^\n]+)"
-						
-						labels = re.findall(label_pattern, response_text, flags=re.IGNORECASE)
-						rationales = re.findall(rationale_pattern, response_text, flags=re.IGNORECASE)
-						
-						# Clean the labels - extract just the first few words as keywords
-						cleaned_labels = []
-						for label in labels:
-								label = label.strip()
-								# Extract the first meaningful phrase (2-4 words)
-								words = label.split()
-								if len(words) > 0:
-										# Take first 2-4 words as the keyword
-										keyword = ' '.join(words[:min(4, len(words))])
-										# Remove any trailing punctuation or incomplete phrases
-										if ' - ' in keyword:
-												keyword = keyword.split(' - ')[0]
-										if ': ' in keyword:
-												keyword = keyword.split(': ')[0]
-										cleaned_labels.append(keyword.strip())
-						
-						if cleaned_labels and rationales and len(cleaned_labels) == len(rationales):
-								return cleaned_labels[:3], rationales[:3]
-						
-						# Strategy 2: Numbered list format
-						numbered_pattern = r"(?:\d+\.\s+|\-\s+)([^\n]+)"
-						numbered_items = re.findall(numbered_pattern, response_text)
-						if numbered_items and len(numbered_items) >= 2:
-								# Clean the numbered items
-								cleaned_items = []
-								for item in numbered_items:
-										item = item.strip()
-										# Extract first meaningful phrase
-										words = item.split()
-										if words:
-												keyword = ' '.join(words[:min(4, len(words))])
-												cleaned_items.append(keyword)
-								return cleaned_items[:3], ["Numbered list item"] * len(cleaned_items[:3])
-						
-						# Strategy 3: Extract capitalized phrases as keywords
-						keyword_pattern = r"\b(?:[A-Z][a-z]+(?:\s+[A-Za-z][a-z]*)*)\b"
-						potential_keywords = re.findall(keyword_pattern, response_text)
-						meaningful_keywords = [
-								kw for kw in potential_keywords 
-								if len(kw) > 3 and kw.lower() not in ["the", "and", "with", "this", "that", "photo", "image", "description", "label", "rationale", "insert"]
-						][:3]
-						
-						if meaningful_keywords:
-								return meaningful_keywords, ["Extracted from text"] * len(meaningful_keywords)
+            # Remove template placeholders from the response
+            response_text = re.sub(r'\[insert.*?here\]', '', response_text, flags=re.IGNORECASE)
 
-						if attempt == MAX_RETRIES - 1:
-								print("⚠️ Giving up. Returning fallback values.")
-								return None, None
-								
-				except Exception as e:
-						print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
-						if attempt == MAX_RETRIES - 1:
-								print("⚠️ Giving up. Returning fallback values.")
-								return None, None
-						time.sleep(2 ** attempt)
+            # Use regex to extract labels and rationales - ignore template content
+            label_pattern = r"Label\s*\d+\s*:\s*([^\n]+?)(?=\s*\n\s*Rationale\s*\d+|\s*\n\s*Label\s*\d+|\s*\n\s*$)"
+            rationale_pattern = r"Rationale\s*\d+\s*:\s*([^\n]+)"
 
-		return None, None
+            raw_labels = re.findall(label_pattern, response_text, flags=re.IGNORECASE)
+            raw_rationales = re.findall(rationale_pattern, response_text, flags=re.IGNORECASE)
+
+            # Filter out template content and empty strings
+            valid_labels = []
+            valid_rationales = []
+            
+            for label, rationale in zip(raw_labels, raw_rationales):
+                label = label.strip()
+                rationale = rationale.strip()
+                
+                # Skip if it contains template-like text or is too short
+                if (label and 
+                    not re.search(r'insert.*keyword|insert.*reason|\[.*\]', label, re.IGNORECASE) and
+                    len(label) > 2 and
+                    rationale and
+                    len(rationale) > 5):
+                    valid_labels.append(label)
+                    valid_rationales.append(rationale)
+
+            # If we found valid labels, return them
+            if valid_labels:
+                return valid_labels[:3], valid_rationales[:3]
+
+            # Fallback: try to extract content from the response more broadly
+            # Look for actual content lines that don't contain template markers
+            content_lines = []
+            for line in response_text.split('\n'):
+                line = line.strip()
+                if (line and 
+                    not re.search(r'insert|keyword|rationale|\[.*\]', line, re.IGNORECASE) and
+                    len(line) > 10 and
+                    not line.startswith(('Label', 'Rationale'))):
+                    content_lines.append(line)
+            
+            if content_lines:
+                # Extract the first few meaningful words from each content line
+                keywords = []
+                for line in content_lines[:3]:
+                    words = line.split()
+                    if words:
+                        # Take first 2-4 words as keyword
+                        keyword = ' '.join(words[:min(4, len(words))])
+                        keywords.append(keyword)
+                if keywords:
+                    return keywords, ["Extracted from content"] * len(keywords)
+
+            if attempt == MAX_RETRIES - 1:
+                print("⚠️ Giving up. Returning fallback values.")
+                return None, None
+                
+        except Exception as e:
+            print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
+            if attempt == MAX_RETRIES - 1:
+                print("⚠️ Giving up. Returning fallback values.")
+                return None, None
+            time.sleep(2 ** attempt)
+
+    return None, None
 
 def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) -> None:
 		output_csv = input_csv.replace('.csv', '_local_llm.csv')
