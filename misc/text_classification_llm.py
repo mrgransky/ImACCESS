@@ -15,25 +15,16 @@ MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 
 PROMPT_TEMPLATE = """<s>[INST] 
-You are an expert archivist and metadata curator specializing in historical era photographic collections (1900-1970).
+Return exactly 3 labels and rationales in this exact format:
 
-Given the following description, extract exactly three (3) concrete, specific, and semantically rich keywords (labels) that best represent the visual content, location, activity, or entity described.  
+Label 1: [concrete keyword]
+Rationale 1: [brief reason]
+Label 2: [concrete keyword] 
+Rationale 2: [brief reason]
+Label 3: [concrete keyword]
+Rationale 3: [brief reason]
 
-**Guidelines:**
-- Use concrete nouns only (objects, people, places, vehicles, units, activities)
-- Avoid stop words and generic words like "photo", "person" unless no alternative exists
-- Prefer proper names when available
-- Do not invent information - use only what's stated or strongly implied
-
-**Response format (copy exactly):**
-Label 1: <label>
-Rationale 1: <rationale>
-Label 2: <label>
-Rationale 2: <rationale>
-Label 3: <label>
-Rationale 3: <rationale>
-
-Text to analyze: {description}
+For this historical photo description: {description}
 [/INST]"""
 
 # Test with a simple generation first to see if the model works at all
@@ -86,6 +77,28 @@ def test_model_formats(model, tokenizer, device):
         
         response = tokenizer.decode(outputs[0], skip_special_tokens=True)
         print(f"Response: {response}")
+
+def test_final_format(model, tokenizer, device):
+    """Test our final prompt format"""
+    test_prompt = PROMPT_TEMPLATE.format(description="soldiers in trench")
+    
+    inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
+    if device != 'cpu':
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+    
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=100,
+            temperature=0.7,
+            do_sample=True,
+        )
+    
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    if "[/INST]" in response:
+        response = response.split("[/INST]")[-1].strip()
+    print(f"Final format test: {response}")
+
 
 # def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 # 		if not isinstance(text, str) or not text.strip():
@@ -328,6 +341,108 @@ def test_model_formats(model, tokenizer, device):
 
 #     print(f"Successfully processed {len(df)} rows.")
 
+def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
+    if not isinstance(text, str) or not text.strip():
+        return None, None
+    
+    prompt = PROMPT_TEMPLATE.format(description=text.strip())
+
+    for attempt in range(MAX_RETRIES):
+        try:
+            # Tokenize the prompt
+            inputs = tokenizer(
+                prompt, 
+                return_tensors="pt",
+                truncation=True,
+                max_length=2048,
+                padding=True,
+            )
+            
+            # Move to device
+            if device != 'cpu':
+                inputs = {k: v.to(device) for k, v in inputs.items()}
+
+            # Generate response
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=MAX_NEW_TOKENS,
+                    temperature=TEMPERATURE,
+                    top_p=TOP_P,
+                    do_sample=TEMPERATURE > 0.0,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                    repetition_penalty=1.1,
+                )
+
+            # Decode the response
+            response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Extract only the part after the last [/INST]
+            if "[/INST]" in response_text:
+                response_text = response_text.split("[/INST]")[-1].strip()
+            
+            print(f"Raw response: {response_text[:200]}...")  # Debug output
+
+            # Use regex to extract labels and rationales - handle both formats
+            label_patterns = [
+                r"Label\s*\d+\s*:\s*([^\n]+)",  # Label 1: keyword
+                r"Word\s*\d+\s*:\s*([^\n]+)",   # Word 1: keyword (fallback)
+            ]
+            
+            rationale_patterns = [
+                r"Rationale\s*\d+\s*:\s*([^\n]+)",  # Rationale 1: reason
+            ]
+
+            raw_labels = []
+            raw_rationales = []
+            
+            # Try each label pattern
+            for pattern in label_patterns:
+                raw_labels = re.findall(pattern, response_text, flags=re.IGNORECASE)
+                if raw_labels:
+                    break
+            
+            # Try rationale patterns
+            for pattern in rationale_patterns:
+                raw_rationales = re.findall(pattern, response_text, flags=re.IGNORECASE)
+                if raw_rationales:
+                    break
+
+            # If we found labels, return them (even if not exactly 3)
+            if raw_labels:
+                labels = [lbl.strip().strip('\'"') for lbl in raw_labels]
+                rationales = [rat.strip().strip('\'"') for rat in raw_rationales] if raw_rationales else ["No rationale"] * len(labels)
+                
+                # Ensure we have at least some rationales
+                if len(rationales) < len(labels):
+                    rationales.extend(["No rationale"] * (len(labels) - len(rationales)))
+                
+                return labels[:3], rationales[:3]  # Return up to 3
+
+            # Fallback: extract any capitalized phrases that look like keywords
+            keyword_pattern = r"\b(?:[A-Z][a-z]+(?:\s+[A-Za-z][a-z]*)*|WWI|WWII|D-Day)\b"
+            potential_keywords = re.findall(keyword_pattern, response_text)
+            meaningful_keywords = [
+                kw for kw in potential_keywords 
+                if len(kw) > 3 and kw.lower() not in ["the", "and", "with", "this", "that", "photo", "image", "word", "label", "rationale"]
+            ][:3]
+            
+            if meaningful_keywords:
+                return meaningful_keywords, ["Extracted from response"] * len(meaningful_keywords)
+
+            if attempt == MAX_RETRIES - 1:
+                print("⚠️ Giving up. Returning fallback values.")
+                return None, None
+                
+        except Exception as e:
+            print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
+            if attempt == MAX_RETRIES - 1:
+                print("⚠️ Giving up. Returning fallback values.")
+                return None, None
+            time.sleep(2 ** attempt)
+
+    return None, None
 
 def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) -> None:
 		output_csv = input_csv.replace('.csv', '_local_llm.csv')
@@ -398,6 +513,10 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 
 		print("Testing model formats...")
 		test_model_formats(model, tokenizer, device)
+
+		print("Testing final prompt format...")
+		test_final_format(model, tokenizer, device)
+
 
 		print(f"🔍 Processing rows with local LLM: {model_id}...")
 		labels_list = [None] * len(df)
