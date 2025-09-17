@@ -9,29 +9,26 @@ huggingface_hub.login(token=hf_tk)
 # MODEL_NAME = "microsoft/DialoGPT-large"  # Fallback if you can't run Hermes
 
 # $ python text_classification_llm.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -m "mistralai/Mistral-7B-Instruct-v0.3"
-
+# $ nohup python -u text_classification_llm.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -m "mistralai/Mistral-7B-Instruct-v0.3" > /media/volume/ImACCESS/trash/llm_output.txt &
 MAX_NEW_TOKENS = 300
 TEMPERATURE = 0.3
 TOP_P = 0.9
 MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
-
+TOP_K = 3
 PROMPT_TEMPLATE = """<s>[INST] 
-As an expert archivist, analyze this historical photo description and extract up to 5 concrete, factual and distinct keywords with concise rationales.
+As an expert archivist, analyze this historical photo description carefully and extract up to 3 concrete, factual and relevant keywords with concise rationales. 
+Duplicate keywords are not allowed. Keywords with numbers are not allowed.
 
 Description: {description}
 
-Respond with up to 5 labels and rationales in this format:
+Respond with up to 3 labels and rationales in this format:
 Label 1: keyword
 Rationale 1: reason
 Label 2: keyword  
 Rationale 2: reason
 Label 3: keyword
 Rationale 3: reason
-Label 4: keyword
-Rationale 4: reason
-Label 5: keyword
-Rationale 5: reason
 [/INST]"""
 
 def test_model_response(model, tokenizer, device):
@@ -169,113 +166,110 @@ def test_new_format(model, tokenizer, device):
 		print(f"New format test: {response}")
 
 def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
-		if not isinstance(text, str) or not text.strip():
-			return None, None		
-		prompt = PROMPT_TEMPLATE.format(description=text.strip())
-
-		for attempt in range(MAX_RETRIES):
-				try:
-						# Tokenize the prompt
-						inputs = tokenizer(
-								prompt, 
-								return_tensors="pt",
-								truncation=True,
-								max_length=2048,
-								padding=True,
-						)
-						
-						# Move to device
-						if device != 'cpu':
-								inputs = {k: v.to(device) for k, v in inputs.items()}
-
-						# Generate response
-						with torch.no_grad():
-								outputs = model.generate(
-										**inputs,
-										max_new_tokens=MAX_NEW_TOKENS,
-										temperature=TEMPERATURE,
-										top_p=TOP_P,
-										do_sample=TEMPERATURE > 0.0,
-										pad_token_id=tokenizer.pad_token_id,
-										eos_token_id=tokenizer.eos_token_id,
-										repetition_penalty=1.4,  # Increased further to reduce template copying
-										no_repeat_ngram_size=6,  # Prevent repeating larger phrases
-								)
-
-						# Decode the response
-						response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-						
-						# Extract only the part after the last [/INST]
-						if "[/INST]" in response_text:
-								response_text = response_text.split("[/INST]")[-1].strip()
-						
-						# print(f"Raw response: {response_text[:200]}...")  # Debug output
-
-						# Use regex to extract labels and rationales
-						label_pattern = r"Label\s*\d+\s*:\s*([^\n]+)"
-						rationale_pattern = r"Rationale\s*\d+\s*:\s*([^\n]+)"
-
-						raw_labels = re.findall(label_pattern, response_text, flags=re.IGNORECASE)
-						raw_rationales = re.findall(rationale_pattern, response_text, flags=re.IGNORECASE)
-
-						# Filter out template placeholders and invalid responses
-						valid_labels = []
-						valid_rationales = []
-						
-						for label, rationale in zip(raw_labels, raw_rationales):
-								label = label.strip()
-								rationale = rationale.strip()
-								
-								# Skip if it contains template-like text
-								if ("insert" not in label.lower() and 
-										"insert" not in rationale.lower() and
-										"keyword" not in label.lower() and
-										"[" not in label and "]" not in label and
-										len(label) > 2):  # Minimum length check
-										valid_labels.append(label)
-										valid_rationales.append(rationale)
-
-						# If we found valid labels, return them
-						if valid_labels:
-								return valid_labels[:3], valid_rationales[:3]
-
-						# Fallback: try to extract any meaningful content
-						if not valid_labels and raw_labels:
-								# Use the raw labels but clean them up
-								cleaned_labels = []
-								for lbl in raw_labels:
-										lbl = lbl.strip()
-										if ("insert" not in lbl.lower() and 
-												"keyword" not in lbl.lower() and
-												len(lbl) > 2):
-												cleaned_labels.append(lbl)
-								
-								if cleaned_labels:
-										return cleaned_labels[:3], ["Extracted from response"] * len(cleaned_labels[:3])
-
-						# Final fallback: extract meaningful phrases
-						keyword_pattern = r"\b(?:[A-Z][a-z]+(?:\s+[A-Za-z][a-z]*)*|WWI|WWII|D-Day|MAMAS)\b"
-						potential_keywords = re.findall(keyword_pattern, response_text)
-						meaningful_keywords = [
-								kw for kw in potential_keywords 
-								if len(kw) > 3 and kw.lower() not in ["the", "and", "with", "this", "that", "photo", "image", "description", "label", "rationale"]
-						][:3]
-						
-						if meaningful_keywords:
-								return meaningful_keywords, ["Extracted from response"] * len(meaningful_keywords)
-
-						if attempt == MAX_RETRIES - 1:
-								print("⚠️ Giving up. Returning fallback values.")
-								return None, None
-								
-				except Exception as e:
-						print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
-						if attempt == MAX_RETRIES - 1:
-								print("⚠️ Giving up. Returning fallback values.")
-								return None, None
-						time.sleep(2 ** attempt)
-
-		return None, None
+	if not isinstance(text, str) or not text.strip():
+		return None, None		
+	prompt = PROMPT_TEMPLATE.format(description=text.strip())
+	for attempt in range(MAX_RETRIES):
+		try:
+			inputs = tokenizer(
+				prompt, 
+				return_tensors="pt",
+				truncation=True,
+				max_length=2048,
+				padding=True,
+			)
+			
+			# Move to device
+			if device != 'cpu':
+				inputs = {k: v.to(device) for k, v in inputs.items()}
+			
+			# Generate response
+			with torch.no_grad():
+				outputs = model.generate(
+					**inputs,
+					max_new_tokens=MAX_NEW_TOKENS,
+					temperature=TEMPERATURE,
+					top_p=TOP_P,
+					do_sample=TEMPERATURE > 0.0,
+					pad_token_id=tokenizer.pad_token_id,
+					eos_token_id=tokenizer.eos_token_id,
+					repetition_penalty=1.4,  # Increased further to reduce template copying
+					no_repeat_ngram_size=6,  # Prevent repeating larger phrases
+				)
+			# Decode the response
+			response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+			
+			# Extract only the part after the last [/INST]
+			if "[/INST]" in response_text:
+				response_text = response_text.split("[/INST]")[-1].strip()
+			
+			# Use regex to extract labels and rationales
+			label_pattern = r"Label\s*\d+\s*:\s*([^\n]+)"
+			rationale_pattern = r"Rationale\s*\d+\s*:\s*([^\n]+)"
+			raw_labels = re.findall(label_pattern, response_text, flags=re.IGNORECASE)
+			raw_rationales = re.findall(rationale_pattern, response_text, flags=re.IGNORECASE)
+			# Filter out template placeholders and invalid responses
+			valid_labels = []
+			valid_rationales = []
+			
+			for label, rationale in zip(raw_labels, raw_rationales):
+				label = label.strip()
+				rationale = rationale.strip()
+				
+				# Skip if it contains template-like text
+				if (
+						"insert" not in label.lower()
+						and "insert" not in rationale.lower()
+						and "keyword" not in label.lower()
+						and "[" not in label 
+						and "]" not in label
+						and len(label) > 2
+					):
+						valid_labels.append(label)
+						valid_rationales.append(rationale)
+			
+			# If we found valid labels, return them
+			if valid_labels:
+				return valid_labels[:TOP_K], valid_rationales[:TOP_K]
+			
+			# Fallback: try to extract any meaningful content
+			if not valid_labels and raw_labels:
+				# Use the raw labels but clean them up
+				cleaned_labels = []
+				for lbl in raw_labels:
+					lbl = lbl.strip()
+					if (
+						"insert" not in lbl.lower()
+						and "keyword" not in lbl.lower()
+						and len(lbl) > 2
+					):
+						cleaned_labels.append(lbl)
+				
+				if cleaned_labels:
+					return cleaned_labels[:TOP_K], ["Extracted from response"] * len(cleaned_labels[:TOP_K])
+			
+			# Final fallback: extract meaningful phrases
+			keyword_pattern = r"\b(?:[A-Z][a-z]+(?:\s+[A-Za-z][a-z]*)*|WWI|WWII|D-Day|MAMAS)\b"
+			potential_keywords = re.findall(keyword_pattern, response_text)
+			
+			meaningful_keywords = [
+				kw 
+				for kw in potential_keywords 
+				if len(kw) > 3 and kw.lower() not in ["the", "and", "with", "this", "that", "photo", "image", "description", "label", "rationale"]
+			][:TOP_K]
+			
+			if meaningful_keywords:
+				return meaningful_keywords, ["Extracted from response"] * len(meaningful_keywords)
+			if attempt == MAX_RETRIES - 1:
+				print("⚠️ Giving up. Returning fallback values.")
+				return None, None
+		except Exception as e:
+			print(f"❌ Attempt {attempt + 1} failed for text snippet: {text}: {e}")
+			if attempt == MAX_RETRIES - 1:
+				print("⚠️ Giving up. Returning fallback values.")
+				return None, None
+			time.sleep(2 ** attempt)
+	return None, None
 
 def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) -> None:
 		output_csv = input_csv.replace('.csv', '_local_llm.csv')
@@ -341,23 +335,23 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 								print(f"❌ All loading methods failed: {e3}")
 								raise RuntimeError("Could not load model with any method")
 
-		print("Testing model response...")
-		test_model_response(model, tokenizer, device)
+		# print("Testing model response...")
+		# test_model_response(model, tokenizer, device)
 
-		print("Testing model formats...")
-		test_model_formats(model, tokenizer, device)
+		# print("Testing model formats...")
+		# test_model_formats(model, tokenizer, device)
 
-		print("Testing final prompt format...")
-		test_final_format(model, tokenizer, device)
+		# print("Testing final prompt format...")
+		# test_final_format(model, tokenizer, device)
 
-		print("Testing new prompt format...")
-		test_new_prompt(model, tokenizer, device)
+		# print("Testing new prompt format...")
+		# test_new_prompt(model, tokenizer, device)
 		
-		print("Testing fixed prompt format...")
-		test_fixed_prompt(model, tokenizer, device)
+		# print("Testing fixed prompt format...")
+		# test_fixed_prompt(model, tokenizer, device)
 
-		print("Testing new simplified format...")
-		test_new_format(model, tokenizer, device)
+		# print("Testing new simplified format...")
+		# test_new_format(model, tokenizer, device)
 
 		print(f"🔍 Processing rows with local LLM: {model_id}...")
 		labels_list = [None] * len(df)
