@@ -98,7 +98,7 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 
 		return None, None
 
-def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) -> None:
+def extract_labels_with_local_llm_old(model_id: str, input_csv: str, device: str) -> None:
 	output_csv = input_csv.replace('.csv', '_local_llm.csv')
 	df = pd.read_csv(input_csv)
 	if 'enriched_document_description' not in df.columns:
@@ -114,16 +114,6 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 	if tokenizer.pad_token is None:
 		tokenizer.pad_token = tokenizer.eos_token
 		tokenizer.pad_token_id = tokenizer.eos_token_id
-
-	# model = tfs.AutoModelForCausalLM.from_pretrained(
-	# 	model_id,
-	# 	device_map="auto",
-	# 	low_cpu_mem_usage=True,
-	# 	trust_remote_code=True,
-	# 	torch_dtype=torch.float16,
-	# 	quantization_config=quantization_config,
-	# 	cache_dir=cache_directory[USER],
-	# ).eval()
 
 	try:
 		import bitsandbytes
@@ -186,7 +176,111 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 
 	print(f"Successfully processed {len(df)} rows.")
 
+def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) -> None:
+    output_csv = input_csv.replace('.csv', '_local_llm.csv')
+    df = pd.read_csv(input_csv)
+    if 'enriched_document_description' not in df.columns:
+        raise ValueError("Input CSV must contain 'enriched_document_description' column.")
 
+    print(f"Loading tokenizer and model: {model_id} on {device} ")
+    if torch.cuda.is_available():
+        gpu_name = torch.cuda.get_device_name(device)
+        total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
+        print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+
+    # Load tokenizer first (critical for padding setup)
+    tokenizer = tfs.AutoTokenizer.from_pretrained(
+        model_id, 
+        use_fast=True, 
+        trust_remote_code=True,
+        padding_side="right"
+    )
+    
+    # Ensure proper padding tokens
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+    
+    # Check if bitsandbytes is available and compatible
+    try:
+        import bitsandbytes
+        print("✅ bitsandbytes is installed.")
+        
+        # Fix for "int too big to convert" error
+        # Use specific parameters for compatibility
+        quantization_config = tfs.BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_use_double_quant=True,
+        )
+        
+        # Critical fix: use dtype instead of torch_dtype (as per warning)
+        model = tfs.AutoModelForCausalLM.from_pretrained(
+            model_id,
+            device_map=device,  # Explicit device instead of "auto"
+            low_cpu_mem_usage=True,
+            trust_remote_code=True,
+            quantization_config=quantization_config,
+            cache_dir=cache_directory[USER],
+            attn_implementation="sdpa"  # Use SDPA attention for better compatibility
+        ).eval()
+        
+        print("✅ Successfully loaded model with 4-bit quantization")
+        
+    except (ImportError, Exception) as e:
+        print(f"⚠️ bitsandbytes not available or incompatible: {e}")
+        print("Falling back to non-quantized model (may require more VRAM)")
+        
+        # Fallback to non-quantized model with explicit dtype
+        model = tfs.AutoModelForCausalLM.from_pretrained(
+            model_id,
+            device_map=device,
+            low_cpu_mem_usage=True,
+            trust_remote_code=True,
+            torch_dtype=torch.float16,
+            cache_dir=cache_directory[USER],
+            attn_implementation="sdpa"
+        ).eval()
+
+    print(f"🔍 Processing rows with local LLM: {model_id}...")
+    labels_list = [None] * len(df)
+    rationales_list = [None] * len(df)
+    
+    # Memory management: clear cache before processing
+    torch.cuda.empty_cache()
+    gc.collect()
+    
+    for idx, desc in tqdm(enumerate(df['enriched_document_description']), total=len(df)):
+        if pd.isna(desc) or not isinstance(desc, str) or not desc.strip():
+            continue
+            
+        try:
+            # Memory management: clear cache periodically
+            if idx % 10 == 0:
+                torch.cuda.empty_cache()
+                gc.collect()
+                
+            labels, rationales = query_local_llm(model=model, tokenizer=tokenizer, text=desc, device=device)
+            if labels:
+                print(f"Row {idx+1}: {labels}")
+            labels_list[idx] = labels
+            rationales_list[idx] = rationales
+            
+        except Exception as e:
+            print(f"❌ Failed to process row {idx+1}: {e}")
+
+    df['textual_based_labels'] = labels_list
+    df['textual_based_labels_rationale'] = rationales_list
+    
+    # Save output
+    df.to_csv(output_csv, index=False, encoding='utf-8')
+    try:
+        df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+    except Exception as e:
+        print(f"Failed to write Excel file: {e}")
+
+    print(f"Successfully processed {len(df)} rows.")
 
 # def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 # 		if not isinstance(text, str) or not text.strip():
