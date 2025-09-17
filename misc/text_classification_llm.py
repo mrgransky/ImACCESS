@@ -382,7 +382,10 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 		for i, (idx, desc) in tqdm(enumerate(zip(valid_indices, valid_descriptions)), total=len(valid_indices)):
 				try:
 						labels, rationales = query_local_llm(model=model, tokenizer=tokenizer, text=desc, device=device)
-						print(f"Row {idx+1}: {labels}")
+						print(f"Row {idx+1}:")
+						print(f"labels: {labels}")
+						print(f"rationales: {rationales}")
+						print()
 						labels_list[idx] = labels
 						rationales_list[idx] = rationales
 				except Exception as e:
