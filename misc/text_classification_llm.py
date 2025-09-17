@@ -141,33 +141,28 @@ def test_fixed_prompt(model, tokenizer, device):
 				response = response.split("[/INST]")[-1].strip()
 		print(f"Fixed prompt test: {response}")
 
-def debug_parsing(response_text):
-		"""Debug the parsing of a response"""
-		print("=== DEBUG PARSING ===")
-		print(f"Full response: {response_text}")
+def test_new_format(model, tokenizer, device):
+		"""Test the new simplified format"""
+		test_prompt = PROMPT_TEMPLATE.format(description="soldiers in trench during World War I")
 		
-		# Test different patterns
-		patterns = [
-				r"Label\s*\d+\s*:\s*([^\n]+?)(?=\s*\n\s*Rationale\s*\d+)",
-				r"Label\s*\d+\s*:\s*([^\n]+)",
-				r"Rationale\s*\d+\s*:\s*([^\n]+)"
-		]
+		inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
+		if device != 'cpu':
+				inputs = {k: v.to(device) for k, v in inputs.items()}
 		
-		for i, pattern in enumerate(patterns):
-				matches = re.findall(pattern, response_text, flags=re.IGNORECASE)
-				print(f"Pattern {i}: {pattern}")
-				print(f"Matches: {matches}")
-				print()
+		with torch.no_grad():
+				outputs = model.generate(
+						**inputs,
+						max_new_tokens=100,
+						temperature=0.7,
+						do_sample=True,
+				)
 		
-		# Test numbered list pattern
-		numbered = re.findall(r"(?:\d+\.\s+|\-\s+)([^\n]+)", response_text)
-		print(f"Numbered items: {numbered}")
-		
-		# Test keyword extraction
-		keywords = re.findall(r"\b(?:[A-Z][a-z]+(?:\s+[A-Za-z][a-z]*)*)\b", response_text)
-		print(f"Keywords: {keywords}")
+		response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+		if "[/INST]" in response:
+				response = response.split("[/INST]")[-1].strip()
+		print(f"New format test: {response}")
 
-def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
+def query_local_llm_functional(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 		if not isinstance(text, str) or not text.strip():
 				return None, None
 		
@@ -278,6 +273,104 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 
 		return None, None
 
+
+def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
+		if not isinstance(text, str) or not text.strip():
+				return None, None
+		
+		prompt = PROMPT_TEMPLATE.format(description=text.strip())
+
+		for attempt in range(MAX_RETRIES):
+				try:
+						# Tokenize the prompt
+						inputs = tokenizer(
+								prompt, 
+								return_tensors="pt",
+								truncation=True,
+								max_length=2048,
+								padding=True,
+						)
+						
+						# Move to device
+						if device != 'cpu':
+								inputs = {k: v.to(device) for k, v in inputs.items()}
+
+						# Generate response
+						with torch.no_grad():
+								outputs = model.generate(
+										**inputs,
+										max_new_tokens=MAX_NEW_TOKENS,
+										temperature=TEMPERATURE,
+										top_p=TOP_P,
+										do_sample=TEMPERATURE > 0.0,
+										pad_token_id=tokenizer.pad_token_id,
+										eos_token_id=tokenizer.eos_token_id,
+										repetition_penalty=1.5,  # Increased to reduce template copying
+										no_repeat_ngram_size=8,  # Prevent repeating larger phrases
+								)
+
+						# Decode the response
+						response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+						
+						# Extract only the part after the last [/INST]
+						if "[/INST]" in response_text:
+								response_text = response_text.split("[/INST]")[-1].strip()
+						
+
+						# Remove any template-like text
+						response_text = re.sub(r'\b(keyword|reason|rationale|insert|here)\b', '', response_text, flags=re.IGNORECASE)
+						
+						# Method 1: Try numbered list format (1. keyword: explanation)
+						numbered_pattern = r"(?:\d+\.\s+|\-\s+)([^:]+):\s*([^\n]+)"
+						numbered_matches = re.findall(numbered_pattern, response_text)
+						
+						if numbered_matches and len(numbered_matches) >= 2:
+								labels = [match[0].strip() for match in numbered_matches]
+								rationales = [match[1].strip() for match in numbered_matches]
+								return labels[:3], rationales[:3]
+						
+						# Method 2: Try bullet points or other formats
+						bullet_pattern = r"(?:\*|\-)\s*([^:]+):?\s*([^\n]+)"
+						bullet_matches = re.findall(bullet_pattern, response_text)
+						
+						if bullet_matches and len(bullet_matches) >= 2:
+								labels = [match[0].strip() for match in bullet_matches]
+								rationales = [match[1].strip() for match in bullet_matches]
+								return labels[:3], rationales[:3]
+						
+						# Method 3: Extract any meaningful phrases that look like keyword: explanation
+						colon_pattern = r"([A-Z][^:]{3,}):\s*([^\n]{10,})"
+						colon_matches = re.findall(colon_pattern, response_text)
+						
+						if colon_matches and len(colon_matches) >= 2:
+								labels = [match[0].strip() for match in colon_matches]
+								rationales = [match[1].strip() for match in colon_matches]
+								return labels[:3], rationales[:3]
+						
+						# Method 4: Fallback - extract capitalized phrases as potential keywords
+						keyword_pattern = r"\b([A-Z][A-Za-z\s\-]{3,})\b"
+						potential_keywords = re.findall(keyword_pattern, response_text)
+						meaningful_keywords = [
+								kw for kw in potential_keywords 
+								if len(kw) > 3 and kw.lower() not in ["the", "and", "with", "this", "that", "photo", "image", "description"]
+						][:3]
+						
+						if meaningful_keywords:
+								return meaningful_keywords, ["Extracted from response"] * len(meaningful_keywords)
+
+						if attempt == MAX_RETRIES - 1:
+								print("⚠️ Giving up. Returning fallback values.")
+								return None, None
+								
+				except Exception as e:
+						print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
+						if attempt == MAX_RETRIES - 1:
+								print("⚠️ Giving up. Returning fallback values.")
+								return None, None
+						time.sleep(2 ** attempt)
+
+		return None, None
+
 def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) -> None:
 		output_csv = input_csv.replace('.csv', '_local_llm.csv')
 		df = pd.read_csv(input_csv)
@@ -357,6 +450,9 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 		print("Testing fixed prompt format...")
 		test_fixed_prompt(model, tokenizer, device)
 
+		print("Testing new simplified format...")
+		test_new_format(model, tokenizer, device)
+
 		print(f"🔍 Processing rows with local LLM: {model_id}...")
 		labels_list = [None] * len(df)
 		rationales_list = [None] * len(df)
@@ -370,6 +466,7 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 						valid_descriptions.append(desc.strip())
 		
 		for i, (idx, desc) in tqdm(enumerate(zip(valid_indices, valid_descriptions)), total=len(valid_indices)):
+				print(f"description: {desc}")
 				try:
 						labels, rationales = query_local_llm(model=model, tokenizer=tokenizer, text=desc, device=device)
 						print(f"Row {idx+1}:")
