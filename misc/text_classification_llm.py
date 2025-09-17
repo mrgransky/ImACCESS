@@ -28,39 +28,6 @@ Label 3: keyword
 Rationale 3: reason
 [/INST]"""
 
-def test_parsing():
-		"""Test the parsing logic with a sample problematic response"""
-		test_response = """
-Label 1: Agricultural Technology - The use of a camel as a power source for an irrigation system indicates that traditional agricultural technology was employed during this time period in Casablanca, Morocco.
-Rationale 1: This method allowed farmers to bring water from lower levels to higher ones without relying solely on human or mechanical labor.
-Label 2: Animal Labor - In this photograph, we see a camel performing manual work
-Rationale 2: This demonstrates reliance upon animals for daily tasks
-Label 3: Daily Routine/Livelihood - Based on information provided
-Rationale 3: Their shared duties likely formed part of their livelihood
-"""
-		
-		label_pattern = r"Label\s*\d+\s*:\s*([^\n\r]+?)(?=\s*\n\s*Rationale\s*\d+|\s*\n\s*Label\s*\d+|\s*\n\s*$)"
-		rationale_pattern = r"Rationale\s*\d+\s*:\s*([^\n]+)"
-		
-		labels = re.findall(label_pattern, test_response, flags=re.IGNORECASE)
-		rationales = re.findall(rationale_pattern, test_response, flags=re.IGNORECASE)
-		
-		print("Test parsing results:")
-		print("Labels:", labels)
-		print("Rationales:", rationales)
-		
-		# Clean the labels
-		cleaned_labels = []
-		for label in labels:
-				label = label.strip()
-				if " - " in label:
-						label = label.split(" - ")[0].strip()
-				if ":" in label and len(label.split(":")) > 1:
-						label = label.split(":")[0].strip()
-				cleaned_labels.append(label)
-		
-		print("Cleaned labels:", cleaned_labels)
-
 def test_model_response(model, tokenizer, device):
 		test_prompt = "<s>[INST] What are three keywords for a photo of soldiers in a trench? [/INST]"
 		
@@ -201,115 +168,115 @@ def debug_parsing(response_text):
 		print(f"Keywords: {keywords}")
 
 def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
-    if not isinstance(text, str) or not text.strip():
-        return None, None
-    
-    prompt = PROMPT_TEMPLATE.format(description=text.strip())
+		if not isinstance(text, str) or not text.strip():
+				return None, None
+		
+		prompt = PROMPT_TEMPLATE.format(description=text.strip())
 
-    for attempt in range(MAX_RETRIES):
-        try:
-            # Tokenize the prompt
-            inputs = tokenizer(
-                prompt, 
-                return_tensors="pt",
-                truncation=True,
-                max_length=2048,
-                padding=True,
-            )
-            
-            # Move to device
-            if device != 'cpu':
-                inputs = {k: v.to(device) for k, v in inputs.items()}
+		for attempt in range(MAX_RETRIES):
+				try:
+						# Tokenize the prompt
+						inputs = tokenizer(
+								prompt, 
+								return_tensors="pt",
+								truncation=True,
+								max_length=2048,
+								padding=True,
+						)
+						
+						# Move to device
+						if device != 'cpu':
+								inputs = {k: v.to(device) for k, v in inputs.items()}
 
-            # Generate response
-            with torch.no_grad():
-                outputs = model.generate(
-                    **inputs,
-                    max_new_tokens=MAX_NEW_TOKENS,
-                    temperature=TEMPERATURE,
-                    top_p=TOP_P,
-                    do_sample=TEMPERATURE > 0.0,
-                    pad_token_id=tokenizer.pad_token_id,
-                    eos_token_id=tokenizer.eos_token_id,
-                    repetition_penalty=1.4,
-                    no_repeat_ngram_size=6,
-                )
+						# Generate response
+						with torch.no_grad():
+								outputs = model.generate(
+										**inputs,
+										max_new_tokens=MAX_NEW_TOKENS,
+										temperature=TEMPERATURE,
+										top_p=TOP_P,
+										do_sample=TEMPERATURE > 0.0,
+										pad_token_id=tokenizer.pad_token_id,
+										eos_token_id=tokenizer.eos_token_id,
+										repetition_penalty=1.4,
+										no_repeat_ngram_size=6,
+								)
 
-            # Decode the response
-            response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
-            # Extract only the part after the last [/INST]
-            if "[/INST]" in response_text:
-                response_text = response_text.split("[/INST]")[-1].strip()
-            
-            print(f"Raw response: {response_text[:200]}...")  # Debug output
+						# Decode the response
+						response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+						
+						# Extract only the part after the last [/INST]
+						if "[/INST]" in response_text:
+								response_text = response_text.split("[/INST]")[-1].strip()
+						
+						print(f"Raw response: {response_text[:200]}...")  # Debug output
 
-            # Remove template placeholders from the response
-            response_text = re.sub(r'\[insert.*?here\]', '', response_text, flags=re.IGNORECASE)
+						# Remove template placeholders from the response
+						response_text = re.sub(r'\[insert.*?here\]', '', response_text, flags=re.IGNORECASE)
 
-            # Use regex to extract labels and rationales - ignore template content
-            label_pattern = r"Label\s*\d+\s*:\s*([^\n]+?)(?=\s*\n\s*Rationale\s*\d+|\s*\n\s*Label\s*\d+|\s*\n\s*$)"
-            rationale_pattern = r"Rationale\s*\d+\s*:\s*([^\n]+)"
+						# Use regex to extract labels and rationales - ignore template content
+						label_pattern = r"Label\s*\d+\s*:\s*([^\n]+?)(?=\s*\n\s*Rationale\s*\d+|\s*\n\s*Label\s*\d+|\s*\n\s*$)"
+						rationale_pattern = r"Rationale\s*\d+\s*:\s*([^\n]+)"
 
-            raw_labels = re.findall(label_pattern, response_text, flags=re.IGNORECASE)
-            raw_rationales = re.findall(rationale_pattern, response_text, flags=re.IGNORECASE)
+						raw_labels = re.findall(label_pattern, response_text, flags=re.IGNORECASE)
+						raw_rationales = re.findall(rationale_pattern, response_text, flags=re.IGNORECASE)
 
-            # Filter out template content and empty strings
-            valid_labels = []
-            valid_rationales = []
-            
-            for label, rationale in zip(raw_labels, raw_rationales):
-                label = label.strip()
-                rationale = rationale.strip()
-                
-                # Skip if it contains template-like text or is too short
-                if (label and 
-                    not re.search(r'insert.*keyword|insert.*reason|\[.*\]', label, re.IGNORECASE) and
-                    len(label) > 2 and
-                    rationale and
-                    len(rationale) > 5):
-                    valid_labels.append(label)
-                    valid_rationales.append(rationale)
+						# Filter out template content and empty strings
+						valid_labels = []
+						valid_rationales = []
+						
+						for label, rationale in zip(raw_labels, raw_rationales):
+								label = label.strip()
+								rationale = rationale.strip()
+								
+								# Skip if it contains template-like text or is too short
+								if (label and 
+										not re.search(r'insert.*keyword|insert.*reason|\[.*\]', label, re.IGNORECASE) and
+										len(label) > 2 and
+										rationale and
+										len(rationale) > 5):
+										valid_labels.append(label)
+										valid_rationales.append(rationale)
 
-            # If we found valid labels, return them
-            if valid_labels:
-                return valid_labels[:3], valid_rationales[:3]
+						# If we found valid labels, return them
+						if valid_labels:
+								return valid_labels[:3], valid_rationales[:3]
 
-            # Fallback: try to extract content from the response more broadly
-            # Look for actual content lines that don't contain template markers
-            content_lines = []
-            for line in response_text.split('\n'):
-                line = line.strip()
-                if (line and 
-                    not re.search(r'insert|keyword|rationale|\[.*\]', line, re.IGNORECASE) and
-                    len(line) > 10 and
-                    not line.startswith(('Label', 'Rationale'))):
-                    content_lines.append(line)
-            
-            if content_lines:
-                # Extract the first few meaningful words from each content line
-                keywords = []
-                for line in content_lines[:3]:
-                    words = line.split()
-                    if words:
-                        # Take first 2-4 words as keyword
-                        keyword = ' '.join(words[:min(4, len(words))])
-                        keywords.append(keyword)
-                if keywords:
-                    return keywords, ["Extracted from content"] * len(keywords)
+						# Fallback: try to extract content from the response more broadly
+						# Look for actual content lines that don't contain template markers
+						content_lines = []
+						for line in response_text.split('\n'):
+								line = line.strip()
+								if (line and 
+										not re.search(r'insert|keyword|rationale|\[.*\]', line, re.IGNORECASE) and
+										len(line) > 10 and
+										not line.startswith(('Label', 'Rationale'))):
+										content_lines.append(line)
+						
+						if content_lines:
+								# Extract the first few meaningful words from each content line
+								keywords = []
+								for line in content_lines[:3]:
+										words = line.split()
+										if words:
+												# Take first 2-4 words as keyword
+												keyword = ' '.join(words[:min(4, len(words))])
+												keywords.append(keyword)
+								if keywords:
+										return keywords, ["Extracted from content"] * len(keywords)
 
-            if attempt == MAX_RETRIES - 1:
-                print("⚠️ Giving up. Returning fallback values.")
-                return None, None
-                
-        except Exception as e:
-            print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
-            if attempt == MAX_RETRIES - 1:
-                print("⚠️ Giving up. Returning fallback values.")
-                return None, None
-            time.sleep(2 ** attempt)
+						if attempt == MAX_RETRIES - 1:
+								print("⚠️ Giving up. Returning fallback values.")
+								return None, None
+								
+				except Exception as e:
+						print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
+						if attempt == MAX_RETRIES - 1:
+								print("⚠️ Giving up. Returning fallback values.")
+								return None, None
+						time.sleep(2 ** attempt)
 
-    return None, None
+		return None, None
 
 def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) -> None:
 		output_csv = input_csv.replace('.csv', '_local_llm.csv')
@@ -389,9 +356,6 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 		
 		print("Testing fixed prompt format...")
 		test_fixed_prompt(model, tokenizer, device)
-
-		print("Testing parsing logic...")	
-		test_parsing()
 
 		print(f"🔍 Processing rows with local LLM: {model_id}...")
 		labels_list = [None] * len(df)
