@@ -86,12 +86,12 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 							return labels, rationales
 
 						# If we didn't get exactly 3 of each, try again
-						if attempt == max_retries - 1:
+						if attempt == MAX_RETRIES - 1:
 							print("⚠️ Giving up. Returning fallback values.")
 							return None, None
 				except Exception as e:
 						print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
-						if attempt == max_retries - 1:
+						if attempt == MAX_RETRIES - 1:
 								print("⚠️ Giving up. Returning fallback values.")
 								return None, None
 						time.sleep(2 ** attempt)  # Exponential backoff
