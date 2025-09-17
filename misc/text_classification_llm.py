@@ -592,145 +592,169 @@ print(f"🚀 Using model: {MODEL_NAME} on {DEVICE}")
 # Load tokenizer and model once (memory efficient)
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_fast=True)
 model = AutoModelForCausalLM.from_pretrained(
-    MODEL_NAME,
-    # torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32,
-    device_map="auto",  # Automatically uses GPU if available
-    low_cpu_mem_usage=True,
-    trust_remote_code=True
-)
-model.eval()
+	MODEL_NAME,
+	device_map="auto",  # Automatically uses GPU if available
+	low_cpu_mem_usage=True,
+	trust_remote_code=True
+).eval()
+
+def query_local_llm(text: str) -> Tuple[List[str], List[str]]:
+		"""Query local LLM with enhanced structured prompt and robust JSON parsing."""
+		if not isinstance(text, str) or not text.strip():
+			return ['', '', ''], ['', '', '']
+
+		# Enhanced prompt with STRONGER instructions for JSON-only output
+		prompt = (
+			f"""
+				You are an expert archivist and metadata curator specializing in historical WWII-era photographic collections. 
+				Given the following image description, extract exactly THREE (3) most relevant, specific, and semantically rich keywords (labels) that best represent the visual content, location, activity, or entity.
+				Then, for each label, write a concise one-sentence rationale explaining why it was selected.
+				RETURN ONLY A VALID JSON OBJECT WITH NO ADDITIONAL TEXT, EXPLANATIONS, OR MARKDOWN. DO NOT INCLUDE ANYTHING EXCEPT THE JSON.
+				The JSON must have this exact structure:
+				{
+					{
+						"labels": ["label1", "label2", "label3"],
+						"rationales": ["rationale for label1", "rationale for label2", "rationale for label3"]
+					}
+				}
+				Important rules:
+				- Labels must be concrete nouns: objects, people, places, vehicles, units, activities — NOT adjectives or vague terms.
+				- Avoid generic terms like "soldier", "image", "photo", "person" unless no better term exists.
+				- Prioritize specificity: e.g., use "LCVP" over "boat", "MAMAS" over "unit", "Leaning Tower of Pisa" over "tower".
+				- Include proper names when present: e.g., "Shamrock (hospital ship)", "San Gimignano", "Museum and Medical Arts Service".
+				- Do not invent information. Only use what's explicitly stated or strongly implied.
+				Text to analyze:
+				"{text}"
+			"""
+		)
+
+		for attempt in range(max_retries):
+				try:
+						# Generate text with the pipeline
+						outputs = generator(
+								prompt,
+								max_new_tokens=MAX_NEW_TOKENS,
+								temperature=TEMPERATURE,
+								top_p=TOP_P,
+								do_sample=True,
+								return_full_text=False
+						)
+						
+						response_text = outputs[0]['generated_text'].strip()
+						
+						# DEBUG: Log the actual response for troubleshooting
+						if attempt == 0:  # Only log first attempt to avoid clutter
+								print(f"LLM Raw Response for '{text[:30]}...':\n{response_text[:300]}...")
+						
+						# METHOD 1: Try to find JSON using multiple robust patterns
+						json_patterns = [
+								r'(\{[\s\S]*?\})',  # Standard JSON object
+								r'```json\s*(\{[\s\S]*?\})\s*```',  # JSON in code block
+								r'```(\{[\s\S]*?\})```',  # JSON in code block without language
+						]
+						
+						for pattern in json_patterns:
+								json_match = re.search(pattern, response_text)
+								if json_match:
+										json_str = json_match.group(1)
+										try:
+												parsed = json.loads(json_str)
+												labels = parsed.get("labels", [])
+												rationales = parsed.get("rationales", [])
+												
+												# Validate we have exactly 3 items of each
+												if len(labels) >= 3 and len(rationales) >= 3:
+														print(f"✅ Successfully parsed JSON from pattern {patterns.index(pattern)+1}")
+														return labels[:3], rationales[:3]
+												break  # Stop trying patterns if we found valid JSON
+										except json.JSONDecodeError:
+												continue
+						
+						# METHOD 2: Direct extraction with enhanced patterns
+						labels = []
+						rationales = []
+						
+						# More flexible pattern matching for labels
+						labels_match = re.search(r'"labels"\s*[:=]\s*\[\s*([^\]]+?)\s*\]', response_text)
+						if labels_match:
+								# Extract quoted strings, allowing escaped quotes
+								items = re.findall(r'"((?:\\.|[^"\\])*)"', labels_match.group(1))
+								labels = [item.replace('\\"', '"') for item in items[:3]]
+						
+						# More flexible pattern matching for rationales
+						rationales_match = re.search(r'"rationales"\s*[:=]\s*\[\s*([^\]]+?)\s*\]', response_text)
+						if rationales_match:
+								items = re.findall(r'"((?:\\.|[^"\\])*)"', rationales_match.group(1))
+								rationales = [item.replace('\\"', '"') for item in items[:3]]
+						
+						# METHOD 3: Fallback for partial responses
+						if not labels:
+								# Try to find individual label entries
+								label_matches = re.findall(r'"labels"\s*[:=]\s*"([^"]+)"', response_text)
+								if label_matches:
+										labels = label_matches[:3]
+						
+						if not rationales:
+								# Try to find individual rationale entries
+								rationale_matches = re.findall(r'"rationales"\s*[:=]\s*"([^"]+)"', response_text)
+								if rationale_matches:
+										rationales = rationale_matches[:3]
+						
+						# Ensure we have exactly 3 items of each
+						if len(labels) < 3:
+								labels = (labels + ['', '', ''])[:3]
+						if len(rationales) < 3:
+								rationales = (rationales + ['', '', ''])[:3]
+						
+						print(f"⚠️ Using fallback parsing for row. Labels: {labels}, Rationales: {rationales}")
+						return labels, rationales
+						
+				except Exception as e:
+						print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
+						if attempt == max_retries - 1:
+								print("⚠️ Giving up. Returning fallback values.")
+								return ['', '', ''], ['', '', '']
+						time.sleep(2 ** attempt)  # Exponential backoff
+
+		return ['', '', ''], ['', '', '']
 
 def extract_labels_with_local_llm(input_csv: str, output_csv: str, max_retries: int = MAX_RETRIES) -> None:
-    """
-    Use local Hermes-2-Pro-Llama-3-8B to extract top-3 textual labels and rationales
-    from 'enriched_document_description' using structured JSON generation.
-    Outputs two new columns: textual_based_labels and textual_based_labels_rationale.
-    """
-    # Load data
-    df = pd.read_csv(input_csv)
-    if 'enriched_document_description' not in df.columns:
-        raise ValueError("Input CSV must contain 'enriched_document_description' column.")
-
-    def query_local_llm(text: str) -> Tuple[List[str], List[str]]:
-        """Query local LLM with structured JSON prompt and retry on failure."""
-        if not isinstance(text, str) or not text.strip():
-            return ['', '', ''], ['', '', '']
-
-        prompt = f"""You are an expert archivist and metadata curator specializing in historical WWII-era photographic collections.
-Given the following image description, extract exactly THREE (3) most relevant, specific, and semantically rich keywords (labels) that best represent the visual content, location, activity, or entity.
-Then, for each label, write a concise one-sentence rationale explaining why it was selected.
-Return ONLY a valid JSON object with this exact structure:
-{{
-    "labels": ["label1", "label2", "label3"],
-    "rationales": ["rationale for label1", "rationale for label2", "rationale for label3"]
-}}
-Important rules:
-- Labels must be concrete nouns: objects, people, places, vehicles, units, activities — NOT adjectives or vague terms.
-- Avoid generic terms like "soldier", "image", "photo", "person" unless no better term exists.
-- Prioritize specificity: e.g., use "LCVP" over "boat", "MAMAS" over "unit", "Leaning Tower of Pisa" over "tower".
-- Include proper names when present: e.g., "Shamrock (hospital ship)", "San Gimignano", "Museum and Medical Arts Service".
-- Do not invent information. Only use what's explicitly stated or strongly implied.
-Text to analyze:
-"{text}"
-
-Respond with ONLY the JSON object, no additional text or explanation.
-"""
-
-        for attempt in range(max_retries):
-            try:
-                # Tokenize the prompt
-                inputs = tokenizer(prompt, return_tensors="pt").to(DEVICE)
-
-                # Generate response
-                with torch.no_grad():
-                    outputs = model.generate(
-                        **inputs,
-                        max_new_tokens=MAX_NEW_TOKENS,
-                        temperature=TEMPERATURE,
-                        top_p=TOP_P,
-                        do_sample=True,
-                        pad_token_id=tokenizer.eos_token_id
-                    )
-
-                # Decode the response
-                response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-                # Extract the JSON part (assuming it's the last JSON object in the response)
-                try:
-                    # Try to find the JSON object in the response
-                    json_start = response_text.rfind('{')
-                    json_end = response_text.rfind('}') + 1
-                    json_str = response_text[json_start:json_end]
-
-                    # Parse the JSON
-                    parsed = json.loads(json_str)
-                    labels = parsed.get("labels", [])
-                    rationales = parsed.get("rationales", [])
-
-                    # Validate the output
-                    if len(labels) != 3 or len(rationales) != 3:
-                        raise ValueError(f"LLM did not return exactly 3 labels and 3 rationales. Got {len(labels)} labels and {len(rationales)} rationales.")
-
-                    # Validate all items are strings
-                    if not all(isinstance(x, str) for x in labels + rationales):
-                        raise ValueError("All labels and rationales must be strings.")
-
-                    return labels, rationales
-                except json.JSONDecodeError as e:
-                    print(f"❌ Attempt {attempt + 1} failed: Invalid JSON format. Error: {e}")
-                    if attempt == max_retries - 1:
-                        print("⚠️ Giving up. Returning fallback values.")
-                        return ['', '', ''], ['', '', '']
-                except Exception as e:
-                    print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
-                    if attempt == max_retries - 1:
-                        print("⚠️ Giving up. Returning fallback values.")
-                        return ['', '', ''], ['', '', '']
-                time.sleep(2 ** attempt)  # Exponential backoff
-            except Exception as e:
-                print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
-                if attempt == max_retries - 1:
-                    print("⚠️ Giving up. Returning fallback values.")
-                    return ['', '', ''], ['', '', '']
-                time.sleep(2 ** attempt)  # Exponential backoff
-
-        return ['', '', ''], ['', '', '']
-
-    # Process each row
-    print("🔍 Processing rows with local LLM...")
-    labels_list = []
-    rationales_list = []
-
-    for idx, desc in enumerate(df['enriched_document_description']):
-        print(f"📄 Row {idx+1}/{len(df)}: {desc[:60]}...")
-        labels, rationales = query_local_llm(desc)
-        labels_list.append(labels)
-        rationales_list.append(rationales)
-
-        # Optional: Clear cache every 10 rows to avoid memory bloat
-        if (idx + 1) % 10 == 0:
-            torch.cuda.empty_cache()
-            gc.collect()
-
-    # Add to dataframe
-    df['textual_based_labels'] = [str(l) for l in labels_list]
-    df['textual_based_labels_rationale'] = [str(r) for r in rationales_list]
-
-    # Save output
-    df.to_csv(output_csv, index=False, encoding='utf-8')
-    print(f"\n✅ Successfully processed {len(df)} rows.")
-    print(f"💾 Output saved to: {output_csv}")
+	df = pd.read_csv(input_csv)
+	if 'enriched_document_description' not in df.columns:
+		raise ValueError("Input CSV must contain 'enriched_document_description' column.")
+	
+	# Process each row
+	print("🔍 Processing rows with local LLM...")
+	labels_list = []
+	rationales_list = []
+	for idx, desc in enumerate(df['enriched_document_description']):
+		print(f"📄 Row {idx+1}/{len(df)}: {desc[:60]}...")
+		labels, rationales = query_local_llm(desc)
+		labels_list.append(labels)
+		rationales_list.append(rationales)
+		# Optional: Clear cache every 10 rows to avoid memory bloat
+		if (idx + 1) % 10 == 0:
+			torch.cuda.empty_cache()
+			gc.collect()
+	# Add to dataframe
+	df['textual_based_labels'] = [str(l) for l in labels_list]
+	df['textual_based_labels_rationale'] = [str(r) for r in rationales_list]
+	
+	# Save output
+	df.to_csv(output_csv, index=False, encoding='utf-8')
+	print(f"\n✅ Successfully processed {len(df)} rows.")
+	print(f"💾 Output saved to: {output_csv}")
 
 # Example usage:
 if __name__ == "__main__":
-    import os
-    USER = os.getenv("USER")
+		import os
+		USER = os.getenv("USER")
 
-    if USER == "ubuntu":
-        csv_path = "/media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv"
-        output_path = "/media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/local_llm_results.csv"
-    else:
-        csv_path = "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv"
-        output_path = "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/local_llm_results.csv"
+		if USER == "ubuntu":
+				csv_path = "/media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv"
+				output_path = "/media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/local_llm_results.csv"
+		else:
+				csv_path = "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv"
+				output_path = "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/local_llm_results.csv"
 
-    extract_labels_with_local_llm(input_csv=csv_path, output_csv=output_path)
+		extract_labels_with_local_llm(input_csv=csv_path, output_csv=output_path)
