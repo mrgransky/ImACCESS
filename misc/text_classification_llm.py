@@ -1,6 +1,5 @@
 from utils import *
 
-USER = os.getenv('USER')
 print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
@@ -34,7 +33,8 @@ class LocalCapableLLMClassifier:
 												max_new_tokens=80,
 												do_sample=True,
 												temperature=0.1,
-												top_p=0.9
+												top_p=0.9,
+												cache_directory=cache_directory[USER],
 										)
 										self.model_name = model
 										print(f"Successfully loaded {model}")
