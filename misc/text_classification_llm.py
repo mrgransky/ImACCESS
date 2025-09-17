@@ -606,12 +606,12 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 						# Generate response
 						with torch.no_grad():
 								outputs = model.generate(
-										**inputs,
-										max_new_tokens=MAX_NEW_TOKENS,
-										temperature=TEMPERATURE,
-										top_p=TOP_P,
-										do_sample=True,
-										pad_token_id=tokenizer.eos_token_id
+									**inputs,
+									max_new_tokens=MAX_NEW_TOKENS,
+									temperature=TEMPERATURE,
+									top_p=TOP_P,
+									do_sample=True,
+									pad_token_id=tokenizer.eos_token_id
 								)
 
 						# Decode the response
@@ -663,7 +663,8 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 		model_id,
 		device_map=device,
 		low_cpu_mem_usage=True,
-		trust_remote_code=True
+		trust_remote_code=True,
+		cache_dir=cache_directory[USER],
 	).eval()
 
 	print(f"🔍 Processing rows with local LLM: {model_id}...")
