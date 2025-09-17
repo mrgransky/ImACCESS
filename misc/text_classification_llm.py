@@ -563,128 +563,117 @@ huggingface_hub.login(token=hf_tk)
 		
 # 	extract_labels_with_local_llm(input_csv=csv_path, output_csv=output_path)
 
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import json
-import torch
-import pandas as pd
-import time
-import gc
-import re
-from tqdm import tqdm
-from typing import List, Tuple
-
 # MODEL_NAME = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
 MODEL_NAME = "microsoft/DialoGPT-medium"  # Fallback if you can't run Hermes
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 MAX_NEW_TOKENS = 300
 TEMPERATURE = 0.1
 TOP_P = 0.9
 MAX_RETRIES = 3
-print(f"🚀 Using model: {MODEL_NAME} on {DEVICE}")
 
-# Load tokenizer and model once (memory efficient)
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_fast=True)
-model = AutoModelForCausalLM.from_pretrained(
-	MODEL_NAME,
-	device_map="auto",  # Automatically uses GPU if available
-	low_cpu_mem_usage=True,
-	trust_remote_code=True
-).eval()
+def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
+		if not isinstance(text, str) or not text.strip():
+				return ['', '', ''], ['', '', '']
 
-def query_local_llm(text: str, max_retries: int = MAX_RETRIES) -> Tuple[List[str], List[str]]:
-    if not isinstance(text, str) or not text.strip():
-        return ['', '', ''], ['', '', '']
+		prompt = f"""
+		You are an expert archivist and metadata curator specializing in historical WWII-era photographic collections.
+		Given the following image description, extract exactly THREE (3) most relevant, specific, and semantically rich keywords (labels) that best represent the visual content, location, activity, or entity.
+		Then, for each label, write a concise one-sentence rationale explaining why it was selected.
 
-    prompt = f"""
-    You are an expert archivist and metadata curator specializing in historical WWII-era photographic collections.
-    Given the following image description, extract exactly THREE (3) most relevant, specific, and semantically rich keywords (labels) that best represent the visual content, location, activity, or entity.
-    Then, for each label, write a concise one-sentence rationale explaining why it was selected.
+		Format your response EXACTLY as follows:
+		Label 1: [label]
+		Rationale 1: [rationale]
+		Label 2: [label]
+		Rationale 2: [rationale]
+		Label 3: [label]
+		Rationale 3: [rationale]
 
-    Format your response EXACTLY as follows:
-    Label 1: [label]
-    Rationale 1: [rationale]
-    Label 2: [label]
-    Rationale 2: [rationale]
-    Label 3: [label]
-    Rationale 3: [rationale]
+		Important rules:
+		- Labels must be concrete nouns: objects, people, places, vehicles, units, activities — NOT adjectives or vague terms.
+		- Avoid generic terms like "soldier", "image", "photo", "person" unless no better term exists.
+		- Prioritize specificity: e.g., use "LCVP" over "boat", "MAMAS" over "unit", "Leaning Tower of Pisa" over "tower".
+		- Include proper names when present: e.g., "Shamrock (hospital ship)", "San Gimignano", "Museum and Medical Arts Service".
+		- Do not invent information. Only use what's explicitly stated or strongly implied.
 
-    Important rules:
-    - Labels must be concrete nouns: objects, people, places, vehicles, units, activities — NOT adjectives or vague terms.
-    - Avoid generic terms like "soldier", "image", "photo", "person" unless no better term exists.
-    - Prioritize specificity: e.g., use "LCVP" over "boat", "MAMAS" over "unit", "Leaning Tower of Pisa" over "tower".
-    - Include proper names when present: e.g., "Shamrock (hospital ship)", "San Gimignano", "Museum and Medical Arts Service".
-    - Do not invent information. Only use what's explicitly stated or strongly implied.
+		Text to analyze:
+		"{text}"
+		"""
 
-    Text to analyze:
-    "{text}"
-    """
+		for attempt in range(MAX_RETRIES):
+				try:
+						# Tokenize the prompt
+						inputs = tokenizer(prompt, return_tensors="pt").to(device)
 
-    for attempt in range(max_retries):
-        try:
-            # Tokenize the prompt
-            inputs = tokenizer(prompt, return_tensors="pt").to(DEVICE)
+						# Generate response
+						with torch.no_grad():
+								outputs = model.generate(
+										**inputs,
+										max_new_tokens=MAX_NEW_TOKENS,
+										temperature=TEMPERATURE,
+										top_p=TOP_P,
+										do_sample=True,
+										pad_token_id=tokenizer.eos_token_id
+								)
 
-            # Generate response
-            with torch.no_grad():
-                outputs = model.generate(
-                    **inputs,
-                    max_new_tokens=MAX_NEW_TOKENS,
-                    temperature=TEMPERATURE,
-                    top_p=TOP_P,
-                    do_sample=True,
-                    pad_token_id=tokenizer.eos_token_id
-                )
+						# Decode the response
+						response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-            # Decode the response
-            response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+						# Parse the structured response
+						labels = []
+						rationales = []
 
-            # Parse the structured response
-            labels = []
-            rationales = []
+						# Use regex to extract labels and rationales
+						label_pattern = r'Label\s*\d+\s*:\s*(.*)'
+						rationale_pattern = r'Rationale\s*\d+\s*:\s*(.*)'
 
-            # Use regex to extract labels and rationales
-            label_pattern = r'Label\s*\d+\s*:\s*(.*)'
-            rationale_pattern = r'Rationale\s*\d+\s*:\s*(.*)'
+						label_matches = re.findall(label_pattern, response_text, re.IGNORECASE)
+						rationale_matches = re.findall(rationale_pattern, response_text, re.IGNORECASE)
 
-            label_matches = re.findall(label_pattern, response_text, re.IGNORECASE)
-            rationale_matches = re.findall(rationale_pattern, response_text, re.IGNORECASE)
+						# If we found exactly 3 labels and 3 rationales, return them
+						if len(label_matches) == 3 and len(rationale_matches) == 3:
+								# Clean up the matches
+								labels = [match.strip().strip('"').strip("'") for match in label_matches]
+								rationales = [match.strip().strip('"').strip("'") for match in rationale_matches]
+								return labels, rationales
 
-            # If we found exactly 3 labels and 3 rationales, return them
-            if len(label_matches) == 3 and len(rationale_matches) == 3:
-                # Clean up the matches
-                labels = [match.strip().strip('"').strip("'") for match in label_matches]
-                rationales = [match.strip().strip('"').strip("'") for match in rationale_matches]
-                return labels, rationales
+						# If we didn't get exactly 3 of each, try again
+						if attempt == max_retries - 1:
+								print("⚠️ Giving up. Returning fallback values.")
+								return ['', '', ''], ['', '', '']
 
-            # If we didn't get exactly 3 of each, try again
-            if attempt == max_retries - 1:
-                print("⚠️ Giving up. Returning fallback values.")
-                return ['', '', ''], ['', '', '']
+						time.sleep(2 ** attempt)  # Exponential backoff
 
-            time.sleep(2 ** attempt)  # Exponential backoff
+				except Exception as e:
+						print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
+						if attempt == max_retries - 1:
+								print("⚠️ Giving up. Returning fallback values.")
+								return ['', '', ''], ['', '', '']
+						time.sleep(2 ** attempt)  # Exponential backoff
 
-        except Exception as e:
-            print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
-            if attempt == max_retries - 1:
-                print("⚠️ Giving up. Returning fallback values.")
-                return ['', '', ''], ['', '', '']
-            time.sleep(2 ** attempt)  # Exponential backoff
+		return ['', '', ''], ['', '', '']
 
-    return ['', '', ''], ['', '', '']
-
-def extract_labels_with_local_llm(input_csv: str, output_csv: str, max_retries: int = MAX_RETRIES) -> None:
+def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) -> None:
+	output_csv = input_csv.replace('.csv', '_local_llm.csv')
 	df = pd.read_csv(input_csv)
 	if 'enriched_document_description' not in df.columns:
 		raise ValueError("Input CSV must contain 'enriched_document_description' column.")
-	
-	print(f"🔍 Processing rows with local LLM: {MODEL_NAME}...")
+
+	# Load tokenizer and model once (memory efficient)
+	tokenizer = tfs.AutoTokenizer.from_pretrained(model_id, use_fast=True)
+	model = tfs.AutoModelForCausalLM.from_pretrained(
+		model_id,
+		device_map=device,
+		low_cpu_mem_usage=True,
+		trust_remote_code=True
+	).eval()
+
+	print(f"🔍 Processing rows with local LLM: {model_id}...")
 	labels_list = [None] * len(df)
 	rationales_list = [None] * len(df)
 	for idx, desc in tqdm(enumerate(df['enriched_document_description']), total=len(df)):
 		if pd.isna(desc) or not isinstance(desc, str) or not desc.strip():
 			continue
 		try:
-			labels, rationales = query_local_llm(text=desc, max_retries=max_retries)
+			labels, rationales = query_local_llm(model=model, tokenizer=tokenizer, text=desc, device=device)
 			print(f"Row {idx+1}: {labels}")
 			labels_list[idx] = labels
 			rationales_list[idx] = rationales
@@ -703,13 +692,15 @@ def extract_labels_with_local_llm(input_csv: str, output_csv: str, max_retries: 
 
 	print(f"Successfully processed {len(df)} rows.")
 
+def main():
+	parser = argparse.ArgumentParser(description="Textual-label annotation for Historical Archives Dataset using local LLMs")
+	parser.add_argument("--model_id", '-m', type=str, required=True, help="HuggingFace model ID")
+	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
+	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
+	args = parser.parse_args()
+	print(args)
+	extract_labels_with_local_llm(model_id=args.model_id, input_csv=args.csv_file, device=args.device)
+
+
 if __name__ == "__main__":
-	import os
-	USER = os.getenv("USER")
-	if USER == "ubuntu":
-		csv_path = "/media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv"
-		output_path = "/media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/local_llm_results.csv"
-	else:
-		csv_path = "/home/farid/datasets/WW_DATASETs/WW_VEHICLES/metadata_multi_label_multimodal.csv"
-		output_path = "/home/farid/datasets/WW_DATASETs/WW_VEHICLES/local_llm_results.csv"
-	extract_labels_with_local_llm(input_csv=csv_path, output_csv=output_path)
+	main()
