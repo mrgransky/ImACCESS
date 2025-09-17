@@ -17,7 +17,7 @@ MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 
 PROMPT_TEMPLATE = """<s>[INST] 
-As an expert archivist, analyze this historical photo description and extract exactly 3 concrete keywords with brief and concise rationales.
+As an expert archivist, analyze this historical photo description and extract exactly 3 concrete and factual keywords with brief and concise rationales.
 
 Description: {description}
 
@@ -166,10 +166,8 @@ def test_new_format(model, tokenizer, device):
 
 def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 		if not isinstance(text, str) or not text.strip():
-				return None, None
-		
+			return None, None		
 		prompt = PROMPT_TEMPLATE.format(description=text.strip())
-		print(f"text: {text}")
 
 		for attempt in range(MAX_RETRIES):
 				try:
