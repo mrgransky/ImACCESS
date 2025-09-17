@@ -104,6 +104,7 @@ import psutil  # For memory usage monitoring
 import tabulate
 import ast
 import httpx
+import gc
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from natsort import natsorted
