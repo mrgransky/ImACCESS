@@ -15,18 +15,17 @@ MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 
 PROMPT_TEMPLATE = """<s>[INST] 
-You are an expert archivist analyzing historical photos. For the description below, extract exactly 3 concrete keywords and provide a brief rationale for each.
-
-Return your response in this exact format without any additional text:
-
-Label 1: concrete_keyword_here
-Rationale 1: brief_reason_here  
-Label 2: concrete_keyword_here
-Rationale 2: brief_reason_here
-Label 3: concrete_keyword_here
-Rationale 3: brief_reason_here
+As an expert archivist, analyze this historical photo description and extract exactly 3 concrete keywords with brief rationales.
 
 Description: {description}
+
+Respond with exactly 3 labels and rationales in this format:
+Label 1: keyword
+Rationale 1: reason
+Label 2: keyword  
+Rationale 2: reason
+Label 3: keyword
+Rationale 3: reason
 [/INST]"""
 
 def test_model_response(model, tokenizer, device):
@@ -152,8 +151,8 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
                     do_sample=TEMPERATURE > 0.0,
                     pad_token_id=tokenizer.pad_token_id,
                     eos_token_id=tokenizer.eos_token_id,
-                    repetition_penalty=1.2,  # Increased to reduce template repetition
-                    no_repeat_ngram_size=4,  # Prevent repeating phrases
+                    repetition_penalty=1.3,  # Increased to reduce prompt repetition
+                    no_repeat_ngram_size=5,  # Prevent repeating larger phrases
                 )
 
             # Decode the response
@@ -162,6 +161,11 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
             # Extract only the part after the last [/INST]
             if "[/INST]" in response_text:
                 response_text = response_text.split("[/INST]")[-1].strip()
+            
+            # Remove any prompt repetition
+            prompt_phrases = ["expert archivist", "analyze this historical", "extract exactly 3"]
+            for phrase in prompt_phrases:
+                response_text = response_text.replace(phrase, "")
             
             # print(f"Raw response: {response_text[:200]}...")  # Debug output
 
@@ -172,38 +176,29 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
             raw_labels = re.findall(label_pattern, response_text, flags=re.IGNORECASE)
             raw_rationales = re.findall(rationale_pattern, response_text, flags=re.IGNORECASE)
 
-            # Filter out template placeholders
-            filtered_labels = []
-            filtered_rationales = []
-            
-            for label, rationale in zip(raw_labels, raw_rationales):
-                label = label.strip()
-                rationale = rationale.strip()
+            # If we found labels, return them
+            if raw_labels:
+                labels = [lbl.strip() for lbl in raw_labels]
+                rationales = [rat.strip() for rat in raw_rationales] if raw_rationales else ["No rationale"] * len(labels)
                 
-                # Skip if it contains template-like text
-                if ("concrete_keyword" not in label.lower() and 
-                    "brief_reason" not in rationale.lower() and
-                    "[" not in label and "]" not in label):
-                    filtered_labels.append(label)
-                    filtered_rationales.append(rationale)
+                # Ensure we have rationales for all labels
+                if len(rationales) < len(labels):
+                    rationales.extend(["No rationale"] * (len(labels) - len(rationales)))
+                
+                return labels[:3], rationales[:3]
 
-            # If we found valid labels, return them
-            if filtered_labels:
-                return filtered_labels[:3], filtered_rationales[:3]
+            # Fallback: extract numbered items that might be labels
+            numbered_pattern = r"\d+\.\s+([^\n]+)"
+            numbered_items = re.findall(numbered_pattern, response_text)
+            if numbered_items and len(numbered_items) >= 2:
+                return numbered_items[:3], ["Extracted from numbered list"] * len(numbered_items[:3])
 
-            # Fallback: try to extract any meaningful content
-            if not filtered_labels and raw_labels:
-                # Use the raw labels but clean them up
-                cleaned_labels = [lbl.strip() for lbl in raw_labels if "concrete_keyword" not in lbl.lower()]
-                if cleaned_labels:
-                    return cleaned_labels[:3], ["Extracted from response"] * len(cleaned_labels[:3])
-
-            # Final fallback: extract any meaningful phrases
-            keyword_pattern = r"\b(?:[A-Z][a-z]+(?:\s+[A-Za-z][a-z]*)*|WWI|WWII|D-Day)\b"
+            # Final fallback: extract meaningful phrases
+            keyword_pattern = r"\b(?:[A-Z][a-z]+(?:\s+[A-Za-z][a-z]*)*|WWI|WWII|D-Day|MAMAS)\b"
             potential_keywords = re.findall(keyword_pattern, response_text)
             meaningful_keywords = [
                 kw for kw in potential_keywords 
-                if len(kw) > 3 and kw.lower() not in ["the", "and", "with", "this", "that", "photo", "image"]
+                if len(kw) > 3 and kw.lower() not in ["the", "and", "with", "this", "that", "photo", "image", "description"]
             ][:3]
             
             if meaningful_keywords:
