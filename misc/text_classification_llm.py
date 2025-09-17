@@ -21,7 +21,7 @@ class LocalCapableLLMClassifier:
         try:
             # Try to use a more capable model
             model_options = [
-                "mistralai/Mistral-7B-Instruct-v0.1",  # Best option if you have GPU
+                "mistralai/Mistral-7B-Instruct-v0.3",  # Best option if you have GPU
                 "microsoft/DialoGPT-large",              # Fallback option
                 "gpt2-xl"                                 # Last resort
             ]
