@@ -174,12 +174,38 @@ def test_fixed_prompt(model, tokenizer, device):
 				response = response.split("[/INST]")[-1].strip()
 		print(f"Fixed prompt test: {response}")
 
+def debug_parsing(response_text):
+		"""Debug the parsing of a response"""
+		print("=== DEBUG PARSING ===")
+		print(f"Full response: {response_text}")
+		
+		# Test different patterns
+		patterns = [
+				r"Label\s*\d+\s*:\s*([^\n]+?)(?=\s*\n\s*Rationale\s*\d+)",
+				r"Label\s*\d+\s*:\s*([^\n]+)",
+				r"Rationale\s*\d+\s*:\s*([^\n]+)"
+		]
+		
+		for i, pattern in enumerate(patterns):
+				matches = re.findall(pattern, response_text, flags=re.IGNORECASE)
+				print(f"Pattern {i}: {pattern}")
+				print(f"Matches: {matches}")
+				print()
+		
+		# Test numbered list pattern
+		numbered = re.findall(r"(?:\d+\.\s+|\-\s+)([^\n]+)", response_text)
+		print(f"Numbered items: {numbered}")
+		
+		# Test keyword extraction
+		keywords = re.findall(r"\b(?:[A-Z][a-z]+(?:\s+[A-Za-z][a-z]*)*)\b", response_text)
+		print(f"Keywords: {keywords}")
+
+
 def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 		if not isinstance(text, str) or not text.strip():
-			return None, None
+				return None, None
 		
 		prompt = PROMPT_TEMPLATE.format(description=text.strip())
-		print(f"text: {text}")
 
 		for attempt in range(MAX_RETRIES):
 				try:
@@ -217,60 +243,62 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 						if "[/INST]" in response_text:
 								response_text = response_text.split("[/INST]")[-1].strip()
 						
-						# Improved regex patterns to capture only the keyword part
-						# Match "Label X: keyword" (stop at newline or Rationale)
-						label_pattern = r"Label\s*\d+\s*:\s*([^\n\r]+?)(?=\s*\n\s*Rationale\s*\d+|\s*\n\s*Label\s*\d+|\s*\n\s*$)"
-						# Match "Rationale X: rationale text" 
-						rationale_pattern = r"Rationale\s*\d+\s*:\s*([^\n]+)"
+						print(f"Raw response: {response_text[:200]}...")  # Debug output
+						debug_parsing(response_text)
 
-						raw_labels = re.findall(label_pattern, response_text, flags=re.IGNORECASE)
-						raw_rationales = re.findall(rationale_pattern, response_text, flags=re.IGNORECASE)
-
-						# Clean and validate the extracted labels
-						valid_labels = []
-						valid_rationales = []
+						# Try multiple parsing strategies in order of preference
 						
-						for i, (label, rationale) in enumerate(zip(raw_labels, raw_rationales)):
+						# Strategy 1: Structured format with Label/Rationale
+						label_pattern = r"Label\s*\d+\s*:\s*([^\n]+?)(?=\s*\n\s*Rationale\s*\d+|\s*\n\s*Label\s*\d+|\s*\n\s*$|\s*\n\s*Rationale\s*\d+\s*:)"
+						rationale_pattern = r"Rationale\s*\d+\s*:\s*([^\n]+)"
+						
+						labels = re.findall(label_pattern, response_text, flags=re.IGNORECASE)
+						rationales = re.findall(rationale_pattern, response_text, flags=re.IGNORECASE)
+						
+						# Clean the labels - extract just the first few words as keywords
+						cleaned_labels = []
+						for label in labels:
 								label = label.strip()
-								rationale = rationale.strip()
-								
-								# Clean up the label - remove any rationale text that might have been captured
-								if " - " in label:
-										label = label.split(" - ")[0].strip()
-								if ":" in label and len(label.split(":")) > 1:
-										# Handle cases like "Agricultural Technology: description"
-										label = label.split(":")[0].strip()
-								
-								# Basic validation
-								if (len(label) > 2 and 
-										"insert" not in label.lower() and 
-										"rationale" not in label.lower() and
-										not label.startswith('[') and not label.endswith(']')):
-										valid_labels.append(label)
-										valid_rationales.append(rationale)
-
-						# If we found valid labels, return them
-						if valid_labels:
-								return valid_labels[:3], valid_rationales[:3]
-
-						# Fallback: try simpler extraction if the structured format failed
-						if not valid_labels:
-								# Look for lines that start with numbers or bullets
-								numbered_pattern = r"(?:\d+\.\s+|\-\s+)([^\n]+)"
-								numbered_items = re.findall(numbered_pattern, response_text)
-								if numbered_items:
-										return numbered_items[:3], ["Extracted from list"] * len(numbered_items[:3])
-
-						# Final fallback: extract meaningful phrases
-						keyword_pattern = r"\b(?:[A-Z][a-z]+(?:\s+[A-Za-z][a-z]*)*|WWI|WWII|D-Day|MAMAS)\b"
+								# Extract the first meaningful phrase (2-4 words)
+								words = label.split()
+								if len(words) > 0:
+										# Take first 2-4 words as the keyword
+										keyword = ' '.join(words[:min(4, len(words))])
+										# Remove any trailing punctuation or incomplete phrases
+										if ' - ' in keyword:
+												keyword = keyword.split(' - ')[0]
+										if ': ' in keyword:
+												keyword = keyword.split(': ')[0]
+										cleaned_labels.append(keyword.strip())
+						
+						if cleaned_labels and rationales and len(cleaned_labels) == len(rationales):
+								return cleaned_labels[:3], rationales[:3]
+						
+						# Strategy 2: Numbered list format
+						numbered_pattern = r"(?:\d+\.\s+|\-\s+)([^\n]+)"
+						numbered_items = re.findall(numbered_pattern, response_text)
+						if numbered_items and len(numbered_items) >= 2:
+								# Clean the numbered items
+								cleaned_items = []
+								for item in numbered_items:
+										item = item.strip()
+										# Extract first meaningful phrase
+										words = item.split()
+										if words:
+												keyword = ' '.join(words[:min(4, len(words))])
+												cleaned_items.append(keyword)
+								return cleaned_items[:3], ["Numbered list item"] * len(cleaned_items[:3])
+						
+						# Strategy 3: Extract capitalized phrases as keywords
+						keyword_pattern = r"\b(?:[A-Z][a-z]+(?:\s+[A-Za-z][a-z]*)*)\b"
 						potential_keywords = re.findall(keyword_pattern, response_text)
 						meaningful_keywords = [
 								kw for kw in potential_keywords 
-								if len(kw) > 3 and kw.lower() not in ["the", "and", "with", "this", "that", "photo", "image", "description", "label", "rationale"]
+								if len(kw) > 3 and kw.lower() not in ["the", "and", "with", "this", "that", "photo", "image", "description", "label", "rationale", "insert"]
 						][:3]
 						
 						if meaningful_keywords:
-								return meaningful_keywords, ["Extracted from response"] * len(meaningful_keywords)
+								return meaningful_keywords, ["Extracted from text"] * len(meaningful_keywords)
 
 						if attempt == MAX_RETRIES - 1:
 								print("⚠️ Giving up. Returning fallback values.")
