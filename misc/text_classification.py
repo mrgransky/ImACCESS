@@ -9,6 +9,7 @@ from tqdm import tqdm
 import time
 import os
 
+hf_tk: str = os.getenv("HUGGINGFACE_TOKEN")
 
 class ClaudeAPIClassifier:
     def __init__(self, api_key=None):

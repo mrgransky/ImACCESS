@@ -1,15 +1,8 @@
-import pandas as pd
-import numpy as np
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
-import torch
-import re
-import json
-import ast
-from collections import Counter
-from tqdm import tqdm
-from collections import defaultdict
-import os
+from utils import *
+
 USER = os.getenv('USER')
+print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
+huggingface_hub.login(token=hf_tk)
 
 class LocalCapableLLMClassifier:
 		def __init__(self, model_name="microsoft/DialoGPT-medium"):
@@ -33,11 +26,11 @@ class LocalCapableLLMClassifier:
 						for model in model_options:
 								try:
 										print(f"Trying to load {model}...")
-										self.generator = pipeline(
+										self.generator = tfs.pipeline(
 												"text-generation",
 												model=model,
 												device=0 if torch.cuda.is_available() else -1,
-												torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+												# torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
 												max_new_tokens=80,
 												do_sample=True,
 												temperature=0.1,
