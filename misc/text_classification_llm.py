@@ -36,24 +36,37 @@ Rationale 3: <rationale>
 Text to analyze: {description}
 [/INST]"""
 
-# Test with a simple generation first to see if the model works at all
-def test_model_response(model, tokenizer, device):
-		test_prompt = "<s>[INST] What are three keywords for a photo of soldiers in a trench? [/INST]"
-		
-		inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
-		if device != 'cpu':
-				inputs = {k: v.to(device) for k, v in inputs.items()}
-		
-		with torch.no_grad():
-				outputs = model.generate(
-						**inputs,
-						max_new_tokens=100,
-						temperature=0.7,
-						do_sample=True,
-				)
-		
-		response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-		print(f"Test response: {response}")
+def test_model_formats(model, tokenizer, device):
+    """Test different prompt formats to see which one works best"""
+    test_formats = [
+        # Format 1: Simple instruction
+        "<s>[INST] Extract 3 keywords: soldiers in trench [/INST]",
+        
+        # Format 2: Structured request
+        "<s>[INST] Return: Label 1: keyword1\nRationale 1: reason\nLabel 2: keyword2\nRationale 2: reason\nLabel 3: keyword3\nRationale 3: reason\nFor: soldiers in trench [/INST]",
+        
+        # Format 3: Role-playing
+        "<s>[INST] As an archivist, extract 3 keywords for: soldiers in trench. Use format: Label 1: word [/INST]"
+    ]
+    
+    for i, test_prompt in enumerate(test_formats, 1):
+        print(f"\n--- Testing Format {i} ---")
+        print(f"Prompt: {test_prompt}")
+        
+        inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
+        if device != 'cpu':
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+        
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=100,
+                temperature=0.7,
+                do_sample=True,
+            )
+        
+        response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        print(f"Response: {response}")
 
 # def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 # 		if not isinstance(text, str) or not text.strip():
