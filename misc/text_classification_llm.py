@@ -598,7 +598,7 @@ model = AutoModelForCausalLM.from_pretrained(
 	trust_remote_code=True
 ).eval()
 
-def query_local_llm(text: str) -> Tuple[List[str], List[str]]:
+def query_local_llm(text: str, max_retries: int = MAX_RETRIES) -> Tuple[List[str], List[str]]:
 		"""Query local LLM with enhanced structured prompt and robust JSON parsing."""
 		if not isinstance(text, str) or not text.strip():
 			return ['', '', ''], ['', '', '']
