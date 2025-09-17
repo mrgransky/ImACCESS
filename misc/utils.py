@@ -133,6 +133,8 @@ nltk.download(
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 hf_tk: str = os.getenv("HUGGINGFACE_TOKEN")
+anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY")
+
 
 cache_directory = {
 	"farid": "/home/farid/datasets/trash/models",
