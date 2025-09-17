@@ -14,21 +14,18 @@ TOP_P = 0.9
 MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 
-PROMPT_TEMPLATE = """
+PROMPT_TEMPLATE = """<s>[INST] 
 You are an expert archivist and metadata curator specializing in historical era photographic collections (1900-1970).
 
-Given the following description, extract **exactly three (3)** concrete, specific,
-and semantically rich **keywords (labels)** that best represent the visual content,
-location, activity, or entity described.  
-For each label, write a short one‑sentence rationale explaining why it was chosen.
+Given the following description, extract exactly three (3) concrete, specific, and semantically rich keywords (labels) that best represent the visual content, location, activity, or entity described.  
 
-**Guidelines**
-- Use concrete nouns only (objects, people, places, vehicles, units, activities).  
-- Avoid stop words and generic words such as “photo”, “person” unless no more specific term exists.  
-- Prefer proper names when they appear (e.g., “Shamrock (hospital ship)”, “MAMAS”).
-- Do **not** invent information – only use what is explicitly stated or strongly implied.
+**Guidelines:**
+- Use concrete nouns only (objects, people, places, vehicles, units, activities)
+- Avoid stop words and generic words like "photo", "person" unless no alternative exists
+- Prefer proper names when available
+- Do not invent information - use only what's stated or strongly implied
 
-**Response format (copy exactly, no extra whitespace):**
+**Response format (copy exactly):**
 Label 1: <label>
 Rationale 1: <rationale>
 Label 2: <label>
@@ -36,10 +33,27 @@ Rationale 2: <rationale>
 Label 3: <label>
 Rationale 3: <rationale>
 
----  
-Text to analyse:
-{description}
-"""
+Text to analyze: {description}
+[/INST]"""
+
+# Test with a simple generation first to see if the model works at all
+def test_model_response(model, tokenizer, device):
+		test_prompt = "<s>[INST] What are three keywords for a photo of soldiers in a trench? [/INST]"
+		
+		inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
+		if device != 'cpu':
+				inputs = {k: v.to(device) for k, v in inputs.items()}
+		
+		with torch.no_grad():
+				outputs = model.generate(
+						**inputs,
+						max_new_tokens=100,
+						temperature=0.7,
+						do_sample=True,
+				)
+		
+		response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+		print(f"Test response: {response}")
 
 # def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 # 		if not isinstance(text, str) or not text.strip():
@@ -195,17 +209,17 @@ Text to analyse:
 #         trust_remote_code=True,
 #         padding_side="right"
 #     )
-    
+		
 #     # Ensure proper padding tokens
 #     if tokenizer.pad_token is None:
 #         tokenizer.pad_token = tokenizer.eos_token
 #         tokenizer.pad_token_id = tokenizer.eos_token_id
-    
+		
 #     # Check if bitsandbytes is available and compatible
 #     try:
 #         import bitsandbytes
 #         print("✅ bitsandbytes is installed.")
-        
+				
 #         # Fix for "int too big to convert" error
 #         # Use specific parameters for compatibility
 #         quantization_config = tfs.BitsAndBytesConfig(
@@ -214,7 +228,7 @@ Text to analyse:
 #             bnb_4bit_compute_dtype=torch.float16,
 #             bnb_4bit_use_double_quant=True,
 #         )
-        
+				
 #         # Critical fix: use dtype instead of torch_dtype (as per warning)
 #         model = tfs.AutoModelForCausalLM.from_pretrained(
 #             model_id,
@@ -225,13 +239,13 @@ Text to analyse:
 #             cache_dir=cache_directory[USER],
 #             attn_implementation="sdpa"  # Use SDPA attention for better compatibility
 #         ).eval()
-        
+				
 #         print("✅ Successfully loaded model with 4-bit quantization")
-        
+				
 #     except (ImportError, Exception) as e:
 #         print(f"⚠️ bitsandbytes not available or incompatible: {e}")
 #         print("Falling back to non-quantized model (may require more VRAM)")
-        
+				
 #         # Fallback to non-quantized model with explicit dtype
 #         model = tfs.AutoModelForCausalLM.from_pretrained(
 #             model_id,
@@ -246,33 +260,33 @@ Text to analyse:
 #     print(f"🔍 Processing rows with local LLM: {model_id}...")
 #     labels_list = [None] * len(df)
 #     rationales_list = [None] * len(df)
-    
+		
 #     # Memory management: clear cache before processing
 #     torch.cuda.empty_cache()
 #     gc.collect()
-    
+		
 #     for idx, desc in tqdm(enumerate(df['enriched_document_description']), total=len(df)):
 #         if pd.isna(desc) or not isinstance(desc, str) or not desc.strip():
 #             continue
-            
+						
 #         try:
 #             # Memory management: clear cache periodically
 #             if idx % 10 == 0:
 #                 torch.cuda.empty_cache()
 #                 gc.collect()
-                
+								
 #             labels, rationales = query_local_llm(model=model, tokenizer=tokenizer, text=desc, device=device)
 #             if labels:
 #                 print(f"Row {idx+1}: {labels}")
 #             labels_list[idx] = labels
 #             rationales_list[idx] = rationales
-            
+						
 #         except Exception as e:
 #             print(f"❌ Failed to process row {idx+1}: {e}")
 
 #     df['textual_based_labels'] = labels_list
 #     df['textual_based_labels_rationale'] = rationales_list
-    
+		
 #     # Save output
 #     df.to_csv(output_csv, index=False, encoding='utf-8')
 #     try:
@@ -282,197 +296,108 @@ Text to analyse:
 
 #     print(f"Successfully processed {len(df)} rows.")
 
-def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
-    if not isinstance(text, str) or not text.strip():
-        return None, None
-    
-    prompt = PROMPT_TEMPLATE.format(description=text.strip())
-    
-    # Format for Mistral instruction models
-    formatted_prompt = f"[INST] {prompt} [/INST]"
-
-    for attempt in range(MAX_RETRIES):
-        try:
-            # Tokenize the prompt - handle quantization compatibility
-            inputs = tokenizer(
-                formatted_prompt, 
-                return_tensors="pt",
-                truncation=True,
-                max_length=2048,  # Fixed safe length instead of dynamic calculation
-                padding=True,
-            )
-            
-            # Move to device manually instead of using .to(device)
-            if device != 'cpu':
-                inputs = {k: v.to(device) for k, v in inputs.items()}
-            
-            # Ensure input_ids are the right type for quantized models
-            if inputs['input_ids'].dtype != torch.long:
-                inputs['input_ids'] = inputs['input_ids'].long()
-            if 'attention_mask' in inputs and inputs['attention_mask'].dtype != torch.long:
-                inputs['attention_mask'] = inputs['attention_mask'].long()
-
-            # Generate response
-            with torch.no_grad():
-                outputs = model.generate(
-                    **inputs,
-                    max_new_tokens=MAX_NEW_TOKENS,
-                    temperature=TEMPERATURE,
-                    top_p=TOP_P,
-                    do_sample=TEMPERATURE > 0.0,
-                    pad_token_id=tokenizer.pad_token_id,
-                    eos_token_id=tokenizer.eos_token_id,
-                    repetition_penalty=1.1,
-                )
-
-            # Decode the response
-            response_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
-            # Extract only the assistant's response
-            if "[/INST]" in response_text:
-                response_text = response_text.split("[/INST]")[-1].strip()
-            
-            print(f"Raw response: {response_text[:200]}...")  # Debug output
-
-            # Use regex to extract labels and rationales
-            label_pat = r"Label\s*\d+\s*:\s*(.+?)(?=\n|$)"
-            rationale_pat = r"Rationale\s*\d+\s*:\s*(.+?)(?=\n|$)"
-
-            raw_labels = re.findall(label_pat, response_text, flags=re.IGNORECASE)
-            raw_rationales = re.findall(rationale_pat, response_text, flags=re.IGNORECASE)
-
-            # If we found exactly 3 labels and 3 rationales, return them
-            if len(raw_labels) == 3 and len(raw_rationales) == 3:
-                labels = [lbl.strip().strip('\'"') for lbl in raw_labels]
-                rationales = [rat.strip().strip('\'"') for rat in raw_rationales]
-                
-                # Validate that labels aren't placeholders
-                if all(label and label != "<label>" for label in labels):
-                    return labels, rationales
-
-            # Fallback: try simpler extraction
-            if not raw_labels:
-                # Look for any meaningful content patterns
-                fallback_pattern = r"[A-Z][a-z]+(?:\s+[A-Za-z][a-z]*)+"
-                potential_labels = re.findall(fallback_pattern, response_text)
-                meaningful_labels = [
-                    lbl for lbl in potential_labels 
-                    if len(lbl) > 3 and lbl.lower() not in ["the", "and", "with", "this", "that", "photo", "image"]
-                ][:3]
-                if meaningful_labels:
-                    return meaningful_labels, ["Extracted from response"] * len(meaningful_labels)
-
-            if attempt == MAX_RETRIES - 1:
-                print("⚠️ Giving up. Returning fallback values.")
-                return None, None
-                
-        except Exception as e:
-            print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
-            if attempt == MAX_RETRIES - 1:
-                print("⚠️ Giving up. Returning fallback values.")
-                return None, None
-            time.sleep(2 ** attempt)  # Exponential backoff
-
-    return None, None
 
 def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) -> None:
-    output_csv = input_csv.replace('.csv', '_local_llm.csv')
-    df = pd.read_csv(input_csv)
-    if 'enriched_document_description' not in df.columns:
-        raise ValueError("Input CSV must contain 'enriched_document_description' column.")
+		output_csv = input_csv.replace('.csv', '_local_llm.csv')
+		df = pd.read_csv(input_csv)
+		if 'enriched_document_description' not in df.columns:
+				raise ValueError("Input CSV must contain 'enriched_document_description' column.")
 
-    print(f"Loading tokenizer and model: {model_id} on {device} ")
-    if torch.cuda.is_available():
-        gpu_name = torch.cuda.get_device_name(device)
-        total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-        print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+		print(f"Loading tokenizer and model: {model_id} on {device} ")
+		if torch.cuda.is_available():
+				gpu_name = torch.cuda.get_device_name(device)
+				total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+				print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-    tokenizer = tfs.AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-        tokenizer.pad_token_id = tokenizer.eos_token_id
+		tokenizer = tfs.AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
+		if tokenizer.pad_token is None:
+				tokenizer.pad_token = tokenizer.eos_token
+				tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    # Try different loading strategies
-    try:
-        # First try without quantization
-        print("Trying to load model without quantization...")
-        model = tfs.AutoModelForCausalLM.from_pretrained(
-            model_id,
-            device_map="auto",
-            torch_dtype=torch.float16,
-            low_cpu_mem_usage=True,
-            trust_remote_code=True,
-        ).eval()
-        print("✅ Model loaded without quantization")
-        
-    except Exception as e:
-        print(f"❌ Failed to load without quantization: {e}")
-        try:
-            # Fallback to CPU with float32
-            print("Trying to load on CPU with float32...")
-            model = tfs.AutoModelForCausalLM.from_pretrained(
-                model_id,
-                device_map="cpu",
-                torch_dtype=torch.float32,
-                low_cpu_mem_usage=True,
-                trust_remote_code=True,
-            ).eval()
-            device = 'cpu'  # Force CPU usage
-            print("✅ Model loaded on CPU")
-            
-        except Exception as e2:
-            print(f"❌ Failed to load on CPU: {e2}")
-            # Final fallback: try with 8-bit quantization
-            try:
-                print("Trying 8-bit quantization...")
-                quantization_config = tfs.BitsAndBytesConfig(load_in_8bit=True)
-                model = tfs.AutoModelForCausalLM.from_pretrained(
-                    model_id,
-                    device_map="auto",
-                    quantization_config=quantization_config,
-                    low_cpu_mem_usage=True,
-                    trust_remote_code=True,
-                ).eval()
-                print("✅ Model loaded with 8-bit quantization")
-                
-            except Exception as e3:
-                print(f"❌ All loading methods failed: {e3}")
-                raise RuntimeError("Could not load model with any method")
+		# Try different loading strategies
+		try:
+				# First try without quantization
+				print("Trying to load model without quantization...")
+				model = tfs.AutoModelForCausalLM.from_pretrained(
+						model_id,
+						device_map="auto",
+						torch_dtype=torch.float16,
+						low_cpu_mem_usage=True,
+						trust_remote_code=True,
+				).eval()
+				print("✅ Model loaded without quantization")
+				
+		except Exception as e:
+				print(f"❌ Failed to load without quantization: {e}")
+				try:
+						# Fallback to CPU with float32
+						print("Trying to load on CPU with float32...")
+						model = tfs.AutoModelForCausalLM.from_pretrained(
+								model_id,
+								device_map="cpu",
+								torch_dtype=torch.float32,
+								low_cpu_mem_usage=True,
+								trust_remote_code=True,
+						).eval()
+						device = 'cpu'  # Force CPU usage
+						print("✅ Model loaded on CPU")
+						
+				except Exception as e2:
+						print(f"❌ Failed to load on CPU: {e2}")
+						# Final fallback: try with 8-bit quantization
+						try:
+								print("Trying 8-bit quantization...")
+								quantization_config = tfs.BitsAndBytesConfig(load_in_8bit=True)
+								model = tfs.AutoModelForCausalLM.from_pretrained(
+										model_id,
+										device_map="auto",
+										quantization_config=quantization_config,
+										low_cpu_mem_usage=True,
+										trust_remote_code=True,
+								).eval()
+								print("✅ Model loaded with 8-bit quantization")
+								
+						except Exception as e3:
+								print(f"❌ All loading methods failed: {e3}")
+								raise RuntimeError("Could not load model with any method")
 
-    print(f"🔍 Processing rows with local LLM: {model_id}...")
-    labels_list = [None] * len(df)
-    rationales_list = [None] * len(df)
-    
-    # Process only non-empty descriptions
-    valid_indices = []
-    valid_descriptions = []
-    for idx, desc in enumerate(df['enriched_document_description']):
-        if pd.notna(desc) and isinstance(desc, str) and desc.strip():
-            valid_indices.append(idx)
-            valid_descriptions.append(desc.strip())
-    
-    for i, (idx, desc) in tqdm(enumerate(zip(valid_indices, valid_descriptions)), total=len(valid_indices)):
-        try:
-            labels, rationales = query_local_llm(model=model, tokenizer=tokenizer, text=desc, device=device)
-            print(f"Row {idx+1}: {labels}")
-            labels_list[idx] = labels
-            rationales_list[idx] = rationales
-        except Exception as e:
-            print(f"❌ Failed to process row {idx+1}: {e}")
-            labels_list[idx] = None
-            rationales_list[idx] = None
+		print("Testing model response...")
+		test_model_response(model, tokenizer, device)
 
-    df['textual_based_labels'] = labels_list
-    df['textual_based_labels_rationale'] = rationales_list
-    
-    # Save output
-    df.to_csv(output_csv, index=False, encoding='utf-8')
-    try:
-        df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-    except Exception as e:
-        print(f"Failed to write Excel file: {e}")
+		print(f"🔍 Processing rows with local LLM: {model_id}...")
+		labels_list = [None] * len(df)
+		rationales_list = [None] * len(df)
+		
+		# Process only non-empty descriptions
+		valid_indices = []
+		valid_descriptions = []
+		for idx, desc in enumerate(df['enriched_document_description']):
+				if pd.notna(desc) and isinstance(desc, str) and desc.strip():
+						valid_indices.append(idx)
+						valid_descriptions.append(desc.strip())
+		
+		for i, (idx, desc) in tqdm(enumerate(zip(valid_indices, valid_descriptions)), total=len(valid_indices)):
+				try:
+						labels, rationales = query_local_llm(model=model, tokenizer=tokenizer, text=desc, device=device)
+						print(f"Row {idx+1}: {labels}")
+						labels_list[idx] = labels
+						rationales_list[idx] = rationales
+				except Exception as e:
+						print(f"❌ Failed to process row {idx+1}: {e}")
+						labels_list[idx] = None
+						rationales_list[idx] = None
 
-    print(f"Successfully processed {len(valid_indices)} out of {len(df)} rows.")
+		df['textual_based_labels'] = labels_list
+		df['textual_based_labels_rationale'] = rationales_list
+		
+		# Save output
+		df.to_csv(output_csv, index=False, encoding='utf-8')
+		try:
+				df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+		except Exception as e:
+				print(f"Failed to write Excel file: {e}")
+
+		print(f"Successfully processed {len(valid_indices)} out of {len(df)} rows.")
 
 # def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 # 		if not isinstance(text, str) or not text.strip():
@@ -732,4 +657,4 @@ def main():
 	extract_labels_with_local_llm(model_id=args.model_id, input_csv=args.csv_file, device=args.device)
 
 if __name__ == "__main__":
-		main()
+	main()
