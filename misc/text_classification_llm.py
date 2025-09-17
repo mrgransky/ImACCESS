@@ -36,6 +36,25 @@ Rationale 3: <rationale>
 Text to analyze: {description}
 [/INST]"""
 
+# Test with a simple generation first to see if the model works at all
+def test_model_response(model, tokenizer, device):
+		test_prompt = "<s>[INST] What are three keywords for a photo of soldiers in a trench? [/INST]"
+		
+		inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
+		if device != 'cpu':
+				inputs = {k: v.to(device) for k, v in inputs.items()}
+		
+		with torch.no_grad():
+				outputs = model.generate(
+						**inputs,
+						max_new_tokens=100,
+						temperature=0.7,
+						do_sample=True,
+				)
+		
+		response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+		print(f"Test response: {response}")
+
 def test_model_formats(model, tokenizer, device):
     """Test different prompt formats to see which one works best"""
     test_formats = [
@@ -376,6 +395,9 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 
 		print("Testing model response...")
 		test_model_response(model, tokenizer, device)
+
+		print("Testing model formats...")
+		test_model_formats(model, tokenizer, device)
 
 		print(f"🔍 Processing rows with local LLM: {model_id}...")
 		labels_list = [None] * len(df)
