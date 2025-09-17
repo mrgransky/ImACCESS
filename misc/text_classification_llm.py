@@ -172,6 +172,7 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 				return None, None
 		
 		prompt = PROMPT_TEMPLATE.format(description=text.strip())
+		print(f"text: {text}")
 
 		for attempt in range(MAX_RETRIES):
 				try:
@@ -198,8 +199,8 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 										do_sample=TEMPERATURE > 0.0,
 										pad_token_id=tokenizer.pad_token_id,
 										eos_token_id=tokenizer.eos_token_id,
-										repetition_penalty=1.4,
-										no_repeat_ngram_size=6,
+										repetition_penalty=1.4,  # Increased further to reduce template copying
+										no_repeat_ngram_size=6,  # Prevent repeating larger phrases
 								)
 
 						# Decode the response
@@ -209,19 +210,16 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 						if "[/INST]" in response_text:
 								response_text = response_text.split("[/INST]")[-1].strip()
 						
-						print(f"Raw response: {response_text[:200]}...")  # Debug output
+						# print(f"Raw response: {response_text[:200]}...")  # Debug output
 
-						# Remove template placeholders from the response
-						response_text = re.sub(r'\[insert.*?here\]', '', response_text, flags=re.IGNORECASE)
-
-						# Use regex to extract labels and rationales - ignore template content
-						label_pattern = r"Label\s*\d+\s*:\s*([^\n]+?)(?=\s*\n\s*Rationale\s*\d+|\s*\n\s*Label\s*\d+|\s*\n\s*$)"
+						# Use regex to extract labels and rationales
+						label_pattern = r"Label\s*\d+\s*:\s*([^\n]+)"
 						rationale_pattern = r"Rationale\s*\d+\s*:\s*([^\n]+)"
 
 						raw_labels = re.findall(label_pattern, response_text, flags=re.IGNORECASE)
 						raw_rationales = re.findall(rationale_pattern, response_text, flags=re.IGNORECASE)
 
-						# Filter out template content and empty strings
+						# Filter out template placeholders and invalid responses
 						valid_labels = []
 						valid_rationales = []
 						
@@ -229,12 +227,12 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 								label = label.strip()
 								rationale = rationale.strip()
 								
-								# Skip if it contains template-like text or is too short
-								if (label and 
-										not re.search(r'insert.*keyword|insert.*reason|\[.*\]', label, re.IGNORECASE) and
-										len(label) > 2 and
-										rationale and
-										len(rationale) > 5):
+								# Skip if it contains template-like text
+								if ("insert" not in label.lower() and 
+										"insert" not in rationale.lower() and
+										"keyword" not in label.lower() and
+										"[" not in label and "]" not in label and
+										len(label) > 2):  # Minimum length check
 										valid_labels.append(label)
 										valid_rationales.append(rationale)
 
@@ -242,28 +240,30 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 						if valid_labels:
 								return valid_labels[:3], valid_rationales[:3]
 
-						# Fallback: try to extract content from the response more broadly
-						# Look for actual content lines that don't contain template markers
-						content_lines = []
-						for line in response_text.split('\n'):
-								line = line.strip()
-								if (line and 
-										not re.search(r'insert|keyword|rationale|\[.*\]', line, re.IGNORECASE) and
-										len(line) > 10 and
-										not line.startswith(('Label', 'Rationale'))):
-										content_lines.append(line)
+						# Fallback: try to extract any meaningful content
+						if not valid_labels and raw_labels:
+								# Use the raw labels but clean them up
+								cleaned_labels = []
+								for lbl in raw_labels:
+										lbl = lbl.strip()
+										if ("insert" not in lbl.lower() and 
+												"keyword" not in lbl.lower() and
+												len(lbl) > 2):
+												cleaned_labels.append(lbl)
+								
+								if cleaned_labels:
+										return cleaned_labels[:3], ["Extracted from response"] * len(cleaned_labels[:3])
+
+						# Final fallback: extract meaningful phrases
+						keyword_pattern = r"\b(?:[A-Z][a-z]+(?:\s+[A-Za-z][a-z]*)*|WWI|WWII|D-Day|MAMAS)\b"
+						potential_keywords = re.findall(keyword_pattern, response_text)
+						meaningful_keywords = [
+								kw for kw in potential_keywords 
+								if len(kw) > 3 and kw.lower() not in ["the", "and", "with", "this", "that", "photo", "image", "description", "label", "rationale"]
+						][:3]
 						
-						if content_lines:
-								# Extract the first few meaningful words from each content line
-								keywords = []
-								for line in content_lines[:3]:
-										words = line.split()
-										if words:
-												# Take first 2-4 words as keyword
-												keyword = ' '.join(words[:min(4, len(words))])
-												keywords.append(keyword)
-								if keywords:
-										return keywords, ["Extracted from content"] * len(keywords)
+						if meaningful_keywords:
+								return meaningful_keywords, ["Extracted from response"] * len(meaningful_keywords)
 
 						if attempt == MAX_RETRIES - 1:
 								print("⚠️ Giving up. Returning fallback values.")
