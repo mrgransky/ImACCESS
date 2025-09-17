@@ -163,7 +163,7 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
             if "[/INST]" in response_text:
                 response_text = response_text.split("[/INST]")[-1].strip()
             
-            print(f"Raw response: {response_text[:200]}...")  # Debug output
+            # print(f"Raw response: {response_text[:200]}...")  # Debug output
 
             # Use regex to extract labels and rationales
             label_pattern = r"Label\s*\d+\s*:\s*([^\n]+)"
@@ -286,14 +286,14 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 								print(f"❌ All loading methods failed: {e3}")
 								raise RuntimeError("Could not load model with any method")
 
-		print("Testing model response...")
-		test_model_response(model, tokenizer, device)
+		# print("Testing model response...")
+		# test_model_response(model, tokenizer, device)
 
-		print("Testing model formats...")
-		test_model_formats(model, tokenizer, device)
+		# print("Testing model formats...")
+		# test_model_formats(model, tokenizer, device)
 
-		print("Testing final prompt format...")
-		test_final_format(model, tokenizer, device)
+		# print("Testing final prompt format...")
+		# test_final_format(model, tokenizer, device)
 
 		print("Testing new prompt format...")
 		test_new_prompt(model, tokenizer, device)
