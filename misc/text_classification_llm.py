@@ -387,7 +387,7 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
         total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
         print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-    tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
+    tokenizer = tfs.AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
@@ -396,7 +396,7 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
     try:
         # First try without quantization
         print("Trying to load model without quantization...")
-        model = AutoModelForCausalLM.from_pretrained(
+        model = tfs.AutoModelForCausalLM.from_pretrained(
             model_id,
             device_map="auto",
             torch_dtype=torch.float16,
@@ -410,7 +410,7 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
         try:
             # Fallback to CPU with float32
             print("Trying to load on CPU with float32...")
-            model = AutoModelForCausalLM.from_pretrained(
+            model = tfs.AutoModelForCausalLM.from_pretrained(
                 model_id,
                 device_map="cpu",
                 torch_dtype=torch.float32,
@@ -424,10 +424,9 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
             print(f"❌ Failed to load on CPU: {e2}")
             # Final fallback: try with 8-bit quantization
             try:
-                from transformers import BitsAndBytesConfig
                 print("Trying 8-bit quantization...")
-                quantization_config = BitsAndBytesConfig(load_in_8bit=True)
-                model = AutoModelForCausalLM.from_pretrained(
+                quantization_config = tfs.BitsAndBytesConfig(load_in_8bit=True)
+                model = tfs.AutoModelForCausalLM.from_pretrained(
                     model_id,
                     device_map="auto",
                     quantization_config=quantization_config,
