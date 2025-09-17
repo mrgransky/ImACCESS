@@ -1,7 +1,7 @@
-# from utils import *
+from utils import *
 
-# print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
-# huggingface_hub.login(token=hf_tk)
+print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
+huggingface_hub.login(token=hf_tk)
 
 # class LocalCapableLLMClassifier:
 # 		def __init__(self, model_name="microsoft/DialoGPT-medium"):
@@ -412,12 +412,6 @@
 
 
 
-import os
-import pandas as pd
-import json
-import time
-from typing import List, Tuple
-import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 # Corrected import path for TransformerModel
 from outlines.models import TransformerModel
@@ -439,11 +433,11 @@ print(f"🚀 Using model: {MODEL_NAME} on {DEVICE}")
 # Load tokenizer and model once (memory efficient)
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_fast=True)
 model = AutoModelForCausalLM.from_pretrained(
-    MODEL_NAME,
-    torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32,
-    device_map="auto",  # Automatically uses GPU if available
-    low_cpu_mem_usage=True,
-    trust_remote_code=True
+		MODEL_NAME,
+		torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32,
+		device_map="auto",  # Automatically uses GPU if available
+		low_cpu_mem_usage=True,
+		trust_remote_code=True
 )
 
 # Wrap with outlines for guaranteed JSON output
@@ -451,50 +445,50 @@ structured_model = TransformerModel(model, tokenizer)
 
 # Define JSON schema for output
 json_schema = {
-    "type": "object",
-    "properties": {
-        "labels": {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 3,
-            "maxItems": 3
-        },
-        "rationales": {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 3,
-            "maxItems": 3
-        }
-    },
-    "required": ["labels", "rationales"]
+		"type": "object",
+		"properties": {
+				"labels": {
+						"type": "array",
+						"items": {"type": "string"},
+						"minItems": 3,
+						"maxItems": 3
+				},
+				"rationales": {
+						"type": "array",
+						"items": {"type": "string"},
+						"minItems": 3,
+						"maxItems": 3
+				}
+		},
+		"required": ["labels", "rationales"]
 }
 
 def extract_labels_with_local_llm(input_csv: str, output_csv: str, max_retries: int = MAX_RETRIES) -> None:
-    """
-    Use local Hermes-2-Pro-Llama-3-8B to extract top-3 textual labels and rationales
-    from 'enriched_document_description' using structured JSON generation.
-    Outputs two new columns: textual_based_labels and textual_based_labels_rationale.
-    """
+		"""
+		Use local Hermes-2-Pro-Llama-3-8B to extract top-3 textual labels and rationales
+		from 'enriched_document_description' using structured JSON generation.
+		Outputs two new columns: textual_based_labels and textual_based_labels_rationale.
+		"""
 
-    # Load data
-    df = pd.read_csv(input_csv)
-    if 'enriched_document_description' not in df.columns:
-        raise ValueError("Input CSV must contain 'enriched_document_description' column.")
+		# Load data
+		df = pd.read_csv(input_csv)
+		if 'enriched_document_description' not in df.columns:
+				raise ValueError("Input CSV must contain 'enriched_document_description' column.")
 
-    def query_local_llm(text: str) -> Tuple[List[str], List[str]]:
-        """Query local LLM with structured JSON prompt and retry on failure."""
-        if not isinstance(text, str) or not text.strip():
-            return ['', '', ''], ['', '', '']
+		def query_local_llm(text: str) -> Tuple[List[str], List[str]]:
+				"""Query local LLM with structured JSON prompt and retry on failure."""
+				if not isinstance(text, str) or not text.strip():
+						return ['', '', ''], ['', '', '']
 
-        prompt = f"""You are an expert archivist and metadata curator specializing in historical WWII-era photographic collections.
+				prompt = f"""You are an expert archivist and metadata curator specializing in historical WWII-era photographic collections.
 Given the following image description, extract exactly THREE (3) most relevant, specific, and semantically rich keywords (labels) that best represent the visual content, location, activity, or entity.
 
 Then, for each label, write a concise one-sentence rationale explaining why it was selected.
 
 Return ONLY a valid JSON object with this exact structure:
 {{
-  "labels": ["label1", "label2", "label3"],
-  "rationales": ["rationale for label1", "rationale for label2", "rationale for label3"]
+	"labels": ["label1", "label2", "label3"],
+	"rationales": ["rationale for label1", "rationale for label2", "rationale for label3"]
 }}
 
 Important rules:
@@ -508,65 +502,69 @@ Text to analyze:
 "{text}"
 """
 
-        for attempt in range(max_retries):
-            try:
-                # Generate structured JSON using outlines
-                generator = JSON(structured_model, json_schema)
-                response_text = generator(prompt, max_tokens=MAX_NEW_TOKENS, temperature=TEMPERATURE, top_p=TOP_P)
+				for attempt in range(max_retries):
+						try:
+								# Generate structured JSON using outlines
+								generator = JSON(structured_model, json_schema)
+								response_text = generator(prompt, max_tokens=MAX_NEW_TOKENS, temperature=TEMPERATURE, top_p=TOP_P)
 
-                # Parse the generated JSON
-                parsed = json.loads(response_text)
+								# Parse the generated JSON
+								parsed = json.loads(response_text)
 
-                labels = parsed.get("labels", [])
-                rationales = parsed.get("rationales", [])
+								labels = parsed.get("labels", [])
+								rationales = parsed.get("rationales", [])
 
-                if len(labels) != 3 or len(rationales) != 3:
-                    raise ValueError("LLM did not return exactly 3 labels and 3 rationales.")
+								if len(labels) != 3 or len(rationales) != 3:
+										raise ValueError("LLM did not return exactly 3 labels and 3 rationales.")
 
-                # Validate all items are strings
-                if not all(isinstance(x, str) for x in labels + rationales):
-                    raise ValueError("All labels and rationales must be strings.")
+								# Validate all items are strings
+								if not all(isinstance(x, str) for x in labels + rationales):
+										raise ValueError("All labels and rationales must be strings.")
 
-                return labels, rationales
+								return labels, rationales
 
-            except Exception as e:
-                print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
-                if attempt == max_retries - 1:
-                    print("⚠️ Giving up. Returning fallback values.")
-                    return ['', '', ''], ['', '', '']
-                time.sleep(2 ** attempt)  # Exponential backoff
+						except Exception as e:
+								print(f"❌ Attempt {attempt + 1} failed for text snippet: {text[:60]}... Error: {e}")
+								if attempt == max_retries - 1:
+										print("⚠️ Giving up. Returning fallback values.")
+										return ['', '', ''], ['', '', '']
+								time.sleep(2 ** attempt)  # Exponential backoff
 
-        return ['', '', ''], ['', '', '']
+				return ['', '', ''], ['', '', '']
 
-    # Process each row
-    print("🔍 Processing rows with local LLM...")
-    labels_list = []
-    rationales_list = []
+		# Process each row
+		print("🔍 Processing rows with local LLM...")
+		labels_list = []
+		rationales_list = []
 
-    for idx, desc in enumerate(df['enriched_document_description']):
-        print(f"📄 Row {idx+1}/{len(df)}: {desc[:60]}...")
-        labels, rationales = query_local_llm(desc)
-        labels_list.append(labels)
-        rationales_list.append(rationales)
+		for idx, desc in enumerate(df['enriched_document_description']):
+				print(f"📄 Row {idx+1}/{len(df)}: {desc[:60]}...")
+				labels, rationales = query_local_llm(desc)
+				labels_list.append(labels)
+				rationales_list.append(rationales)
 
-        # Optional: Clear cache every 10 rows to avoid memory bloat
-        if (idx + 1) % 10 == 0:
-            torch.cuda.empty_cache()
-            gc.collect()
+				# Optional: Clear cache every 10 rows to avoid memory bloat
+				if (idx + 1) % 10 == 0:
+						torch.cuda.empty_cache()
+						gc.collect()
 
-    # Add to dataframe
-    df['textual_based_labels'] = [str(l) for l in labels_list]
-    df['textual_based_labels_rationale'] = [str(r) for r in rationales_list]
+		# Add to dataframe
+		df['textual_based_labels'] = [str(l) for l in labels_list]
+		df['textual_based_labels_rationale'] = [str(r) for r in rationales_list]
 
-    # Save output
-    df.to_csv(output_csv, index=False, encoding='utf-8')
-    print(f"\n✅ Successfully processed {len(df)} rows.")
-    print(f"💾 Output saved to: {output_csv}")
+		# Save output
+		df.to_csv(output_csv, index=False, encoding='utf-8')
+		print(f"\n✅ Successfully processed {len(df)} rows.")
+		print(f"💾 Output saved to: {output_csv}")
 
 
 # Example usage:
 if __name__ == "__main__":
-    extract_labels_with_local_llm(
-        input_csv="/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv",
-        output_csv="/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_with_local_llm_labels.csv"
-    )
+	if USER == "ubuntu":
+		csv_path = "/media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv"
+		output_path = "/media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/local_llm_results.csv"
+	else:
+		csv_path = "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv"
+		output_path = "/home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/local_llm_results.csv"
+		
+	extract_labels_with_local_llm(input_csv=csv_path, output_csv=output_path)
