@@ -33,7 +33,7 @@ prompt = """<s>[INST]
 <s>[INST]
 As an expert historical archivist, analyze this historical description carefully and extract maximum of three (not more) concrete, factual and relevant keywords with concise rationales.
 Duplicate keywords are not allowed. Keywords with numbers, temporal context and time-related information are strongly discouraged.
-Description: Approaching San Gimignano, 1944 According to Shaffer: ''[This is] the city of San Gimignano, just north of Siena, was prominent for its many bell towers. Difficult to get too because of heavy land mining in the area, it was a romantic city and favorite getaway spot for American Military officers and their Red Cross girlfriends.''
+Description: 'As You Like It'' theatrical productions; SMU The first production of the Arden Club, ''As You Like It'' was performed at SMU's first commencement ceremony in 1916.
 
 Your entire output must be a single JSON object with two keys: "keywords" and "rationales". The value of each key is a list of strings. Do not include any other text, explanations, or markdown formatting (e.g., ```json```) in your response.
 [/INST]
