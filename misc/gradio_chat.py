@@ -23,8 +23,7 @@ MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 TOP_K = 3
 
-model_id = "tiiuae/Falcon3-7B-Base"
-# model_id = "Qwen/Qwen2.5-0.5B-Instruct"
+model_id = "Qwen/Qwen2.5-7B-Instruct"
 # model_id = "meta-llama/Llama-3.2-1B-Instruct"
 # model_id = "microsoft/Phi-4-mini-instruct"
 
@@ -67,7 +66,6 @@ Your entire output MUST be ONLY a single JSON object with two keys: "keywords" a
 [/INST]
 """
 
-# Generate a response
 inputs = tokenizer(
 	prompt,
 	return_tensors="pt", 
@@ -95,29 +93,26 @@ llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 print(llm_response)
 
-def extract_json_from_text(text):
-		"""
-		Extracts the JSON object from a string that may contain other text.
-		"""
-		try:
-				# Find the JSON part by looking for the curly braces
-				json_match = re.search(r'\{.*\}', text, re.DOTALL)
-				if json_match:
-						json_string = json_match.group(0)
-						return json.loads(json_string)
-		except (json.JSONDecodeError, AttributeError) as e:
-				print(f"Error decoding JSON: {e}")
-				return None
+def extract_json_from_text(text: str) -> dict:
+	try:
+		# Find the JSON part by looking for the curly braces
+		json_match = re.search(r'\{.*\}', text, re.DOTALL)
+		if json_match:
+			json_string = json_match.group(0)
+			return json.loads(json_string)
+	except (json.JSONDecodeError, AttributeError) as e:
+		print(f"Error decoding JSON: {e}")
+		return None
 
 # Extract the JSON data from the response string
 json_data = extract_json_from_text(llm_response)
+print(json_data)
 
-# Extract the lists if the JSON data was successfully parsed
 if json_data:
-		keywords = json_data.get("keywords", [])
-		rationales = json_data.get("rationales", [])
-
-		print(f"Extracted {len(keywords)} Keywords({type(keywords)}): {keywords}")
-		print(f"Extracted {len(rationales)} Rationales({type(rationales)}): {rationales}")
+	keywords = json_data.get("keywords", [])
+	rationales = json_data.get("rationales", [])
+	print(f"Extracted {len(keywords)} Keywords({type(keywords)}): {keywords}")
+	print(f"Extracted {len(rationales)} Rationales({type(rationales)}): {rationales}")
 else:
-		print("Could not extract JSON data from the response.")
+	print("Could not extract JSON data from the response.")
+
