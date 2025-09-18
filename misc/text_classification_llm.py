@@ -34,9 +34,6 @@ Label 3: keyword
 Rationale 3: reason
 [/INST]"""
 
-# --------------------------------------------------------------
-# 1️⃣  Helper: detect whether the model is instruction‑tuned
-# --------------------------------------------------------------
 def is_instruction_model(model):
 		"""
 		Heuristic: look for special tokens in the tokenizer or
@@ -55,9 +52,6 @@ def is_instruction_model(model):
 				return True
 		return False
 
-# --------------------------------------------------------------
-# 2️⃣  Core generation wrapper (model‑agnostic)
-# --------------------------------------------------------------
 def generate_response(
 		model,
 		tokenizer,
@@ -70,7 +64,7 @@ def generate_response(
 		repetition_penalty: float = 1.2,
 		no_repeat_ngram_size: int = 3,
 		stop_strings: Optional[List[str]] = None,
-		do_sample: bool = False,
+		do_sample: bool = True,
 ) -> str:
 		"""
 		Returns the *decoded* model answer **after** any stop‑string / EOS.
@@ -140,9 +134,6 @@ def generate_response(
 
 		return answer
 
-# --------------------------------------------------------------
-# 3️⃣  Debug printer – shows token‑level view
-# --------------------------------------------------------------
 def debug_print_io(prompt, response, tokenizer):
 		print("\n--- INPUT (first 30 token IDs) --------------------------------")
 		inp_ids = tokenizer(prompt, return_tensors="pt")["input_ids"][0][:30].tolist()
@@ -154,9 +145,6 @@ def debug_print_io(prompt, response, tokenizer):
 		print(response)
 		print("-" * 80)
 
-# --------------------------------------------------------------
-# 4️⃣  Example usage (replace `model`, `tokenizer`, `device` from your env)
-# --------------------------------------------------------------
 def run_all_debugs(model, tokenizer, device):
 		print(f"="*100)
 		print("Running all debugs...")
