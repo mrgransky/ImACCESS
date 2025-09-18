@@ -31,8 +31,7 @@ model_id = "mistralai/Mistral-7B-Instruct-v0.3"
 # model_id = "meta-llama/Llama-3.2-3B-Instruct"
 
 cfg = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True)
-print(cfg)
-print(cfg.model_type)
+print(f"cfg model_type: {cfg.model_type}")
 
 tokenizer = tfs.AutoTokenizer.from_pretrained(
 	model_id, 
