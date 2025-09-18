@@ -10,6 +10,12 @@ if not hasattr(tfs.utils, "LossKwargs"):
 		pass
 	tfs.utils.LossKwargs = LossKwargs
 
+if not hasattr(tfs.utils, "FlashAttentionKwargs"):
+	class FlashAttentionKwargs(TypedDict, total=False):
+		"""Stub TypedDict for models expecting FlashAttentionKwargs in transformers.utils"""
+		pass
+	tfs.utils.FlashAttentionKwargs = FlashAttentionKwargs
+
 MAX_NEW_TOKENS = 300
 TEMPERATURE = 0.3
 TOP_P = 0.9
@@ -17,10 +23,10 @@ MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 TOP_K = 3
 
-# model_id = "tiiuae/Falcon3-7B-Base"
+model_id = "tiiuae/Falcon3-7B-Base"
 # model_id = "Qwen/Qwen2.5-0.5B-Instruct"
 # model_id = "meta-llama/Llama-3.2-1B-Instruct"
-model_id = "microsoft/Phi-4-mini-instruct"
+# model_id = "microsoft/Phi-4-mini-instruct"
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 huggingface_hub.login(token=hf_tk)
@@ -52,12 +58,10 @@ print("\n=== Tokenizer Attributes ===")
 print(dir(tokenizer))
 print("="*100)
 
-
-
 prompt = """<s>[INST]
 As an expert historical archivist, analyze this historical description carefully and extract MAXIMUM of 3 concrete, factual and relevant keywords with concise rationales.
 Duplicate keywords are not allowed. Keywords with numbers, temporal context and time-related information are strongly discouraged.
-Description: 'As You Like It'' theatrical productions; SMU The first production of the Arden Club, ''As You Like It'' was performed at SMU's first commencement ceremony in 1916.
+Description: Gen'. Amer. Tank Storage, Houston oil; tanks; workers; General American Tank Storage Terminals
 
 Your entire output MUST be ONLY a single JSON object with two keys: "keywords" and "rationales". The value of each key is a list of strings. Do not include any other text, explanations, or markdown formatting (e.g., ```json```) in your response.
 [/INST]
