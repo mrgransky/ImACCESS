@@ -79,6 +79,9 @@ inputs = tokenizer(
 if device != 'cpu':
 	inputs = {k: v.to(device) for k, v in inputs.items()}
 
+if "token_type_ids" in inputs and not hasattr(model.config, "type_vocab_size"):
+	inputs.pop("token_type_ids")
+
 outputs = model.generate(
 	**inputs, 
 	max_new_tokens=MAX_NEW_TOKENS,
