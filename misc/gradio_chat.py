@@ -7,7 +7,9 @@ MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 TOP_K = 3
 
-model_id = "tiiuae/Falcon3-7B-Base"
+# model_id = "tiiuae/Falcon3-7B-Base"
+model_id = "Qwen/Qwen2.5-0.5B-Instruct"
+
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 huggingface_hub.login(token=hf_tk)
 
