@@ -23,7 +23,7 @@ MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 TOP_K = 3
 
-# model_id = "Qwen/Qwen2.5-7B-Instruct"
+# model_id = "Qwen/Qwen3-4B-Instruct-2507"
 # model_id = "meta-llama/Llama-3.2-1B-Instruct"
 model_id = "microsoft/Phi-4-mini-instruct"
 # model_id = "mistralai/Mistral-7B-Instruct-v0.3"
