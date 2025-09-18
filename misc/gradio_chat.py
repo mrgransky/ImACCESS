@@ -1,4 +1,5 @@
 from utils import *
+
 MAX_NEW_TOKENS = 300
 TEMPERATURE = 0.3
 TOP_P = 0.9
@@ -6,9 +7,7 @@ MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 TOP_K = 3
 
-# Load the model and tokenizer
-model_id = "mistralai/Mistral-7B-Instruct-v0.3"
-# model_id = "TheBloke/Mistral-7B-Instruct-v0.2-GGUF"
+model_id = "meta-llama/Llama-3.2-1B-Instruct"
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 huggingface_hub.login(token=hf_tk)
 
@@ -29,20 +28,13 @@ model = tfs.AutoModelForCausalLM.from_pretrained(
 	cache_dir=cache_directory[USER],
 ).eval()
 
-debug_llm_info(model, tokenizer, device)
-
-
-# prompt = """<s>[INST] You are a helpful assistant. Answer the following question concisely.
-# Question: Hello!! What is your background in Computer Science?
-# Answer: [/INST]
-# """
 prompt = """<s>[INST] 
+<s>[INST]
 As an expert historical archivist, analyze this historical description carefully and extract maximum of three (not more) concrete, factual and relevant keywords with concise rationales.
 Duplicate keywords are not allowed. Keywords with numbers, temporal context and time-related information are strongly discouraged.
 Description: American soldier tourists, Venice, Summer 1945 Museum and Medical Arts Service; MAMAS According to Shaffer: ''The Venetians were pleased to have American soldiers as visitors to their city, even this ad hoc group. They had been denied the benefits of tourism for several years. Many of the traditional Venetian craftsmen had worked during the war years and were well stocked with glassware and jewelry for sale to the soldiers.''
 
-Respond in the JSON format containing two keys: "keywords" and "rationales". The value of each key is a list of strings.
-Example: {"keywords": ["medicine", "salesman", "Algiers"], "rationales": ["medicine is mentioned in the description", "salesman is mentioned in the description", "Algiers is mentioned in the description"]}
+Your entire output must be a single JSON object with two keys: "keywords" and "rationales". The value of each key is a list of strings. Do not include any other text, explanations, or markdown formatting (e.g., ```json```) in your response.
 [/INST]
 """
 
@@ -70,3 +62,30 @@ outputs = model.generate(
 response = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
 print(response)
+
+def extract_json_from_text(text):
+    """
+    Extracts the JSON object from a string that may contain other text.
+    """
+    try:
+        # Find the JSON part by looking for the curly braces
+        json_match = re.search(r'\{.*\}', text, re.DOTALL)
+        if json_match:
+            json_string = json_match.group(0)
+            return json.loads(json_string)
+    except (json.JSONDecodeError, AttributeError) as e:
+        print(f"Error decoding JSON: {e}")
+        return None
+
+# Extract the JSON data from the response string
+json_data = extract_json_from_text(response)
+
+# Extract the lists if the JSON data was successfully parsed
+if json_data:
+    keywords = json_data.get("keywords", [])
+    rationales = json_data.get("rationales", [])
+
+    print(f"Extracted {len(keywords)} Keywords({type(keywords)}): {keywords}")
+    print(f"Extracted {len(rationales)} Rationales({type(rationales)}): {rationales}")
+else:
+    print("Could not extract JSON data from the response.")
