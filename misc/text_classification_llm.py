@@ -5,8 +5,8 @@ huggingface_hub.login(token=hf_tk)
 
 # # MODEL_NAME = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
 # MODEL_NAME = "mistralai/Mistral-7B-Instruct-v0.3"
-# MODEL_NAME = "meta-llama/Llama-3.2-1B"
-# MODEL_NAME = "meta-llama/Meta-Llama-3-8B-Instruct"
+# MODEL_NAME = "meta-llama/Llama-3.2-1B-Instruct"
+# MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
 # MODEL_NAME = "microsoft/DialoGPT-large"  # Fallback if you can't run Hermes
 # MODEL_NAME = "gpt2-xl"
 
@@ -527,7 +527,12 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
 		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-	tokenizer = tfs.AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
+	tokenizer = tfs.AutoTokenizer.from_pretrained(
+		model_id, 
+		use_fast=True, 
+		trust_remote_code=True,
+		cache_dir=cache_directory[USER],
+	)
 	if tokenizer.pad_token is None:
 		tokenizer.pad_token = tokenizer.eos_token
 		tokenizer.pad_token_id = tokenizer.eos_token_id
