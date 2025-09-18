@@ -6,10 +6,12 @@ huggingface_hub.login(token=hf_tk)
 # # MODEL_NAME = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
 # MODEL_NAME = "mistralai/Mistral-7B-Instruct-v0.3"
 # MODEL_NAME = "meta-llama/Llama-3.2-1B"
+# MODEL_NAME = "meta-llama/Meta-Llama-3-8B-Instruct"
 # MODEL_NAME = "microsoft/DialoGPT-large"  # Fallback if you can't run Hermes
 
 # $ python text_classification_llm.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -m "mistralai/Mistral-7B-Instruct-v0.3"
 # $ nohup python -u text_classification_llm.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -m "mistralai/Mistral-7B-Instruct-v0.3" > /media/volume/ImACCESS/trash/llm_output.txt &
+
 MAX_NEW_TOKENS = 300
 TEMPERATURE = 0.3
 TOP_P = 0.9
@@ -244,7 +246,6 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 						and len(lbl) > 2
 					):
 						cleaned_labels.append(lbl)
-				
 				if cleaned_labels:
 					return cleaned_labels[:TOP_K], ["Extracted from response"] * len(cleaned_labels[:TOP_K])
 			
@@ -272,125 +273,115 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 	return None, None
 
 def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) -> None:
-		output_csv = input_csv.replace('.csv', '_local_llm.csv')
-		df = pd.read_csv(input_csv)
-		if 'enriched_document_description' not in df.columns:
-				raise ValueError("Input CSV must contain 'enriched_document_description' column.")
+	output_csv = input_csv.replace('.csv', '_local_llm.csv')
 
-		print(f"Loading tokenizer and model: {model_id} on {device} ")
-		if torch.cuda.is_available():
-				gpu_name = torch.cuda.get_device_name(device)
-				total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-				print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+	df = pd.read_csv(input_csv, on_bad_lines='skip', dtype=dtypes, low_memory=False)
+	if 'enriched_document_description' not in df.columns:
+		raise ValueError("Input CSV must contain 'enriched_document_description' column.")
 
-		tokenizer = tfs.AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
-		if tokenizer.pad_token is None:
-				tokenizer.pad_token = tokenizer.eos_token
-				tokenizer.pad_token_id = tokenizer.eos_token_id
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-		# Try different loading strategies
+	tokenizer = tfs.AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
+	if tokenizer.pad_token is None:
+		tokenizer.pad_token = tokenizer.eos_token
+		tokenizer.pad_token_id = tokenizer.eos_token_id
+
+	try:
+		print(f"Trying to load {model_id} without quantization...")
+		model = tfs.AutoModelForCausalLM.from_pretrained(
+			model_id,
+			device_map="auto",
+			torch_dtype=torch.float16,
+			low_cpu_mem_usage=True,
+			trust_remote_code=True,
+		).eval()
+		print(f"{model_id} loaded WITHOUT Quantization!")
+	except Exception as e:
+		print(f"❌ Failed to load without quantization: {e}")
 		try:
-				# First try without quantization
-				print("Trying to load model without quantization...")
+			print("Trying to load on CPU with float32...")
+			model = tfs.AutoModelForCausalLM.from_pretrained(
+				model_id,
+				device_map="cpu",
+				torch_dtype=torch.float32,
+				low_cpu_mem_usage=True,
+				trust_remote_code=True,
+			).eval()
+			device = 'cpu'  # Force CPU usage
+			print(f"{model_id} loaded on CPU!")
+		except Exception as e2:
+			print(f"❌ Failed to load {model_id} even on CPU: {e2}")
+			try:
+				print("Trying 8-bit quantization...")
+				quantization_config = tfs.BitsAndBytesConfig(load_in_8bit=True)
 				model = tfs.AutoModelForCausalLM.from_pretrained(
-						model_id,
-						device_map="auto",
-						torch_dtype=torch.float16,
-						low_cpu_mem_usage=True,
-						trust_remote_code=True,
+					model_id,
+					device_map="auto",
+					quantization_config=quantization_config,
+					low_cpu_mem_usage=True,
+					trust_remote_code=True,
 				).eval()
-				print("✅ Model loaded without quantization")
-				
-		except Exception as e:
-				print(f"❌ Failed to load without quantization: {e}")
-				try:
-						# Fallback to CPU with float32
-						print("Trying to load on CPU with float32...")
-						model = tfs.AutoModelForCausalLM.from_pretrained(
-								model_id,
-								device_map="cpu",
-								torch_dtype=torch.float32,
-								low_cpu_mem_usage=True,
-								trust_remote_code=True,
-						).eval()
-						device = 'cpu'  # Force CPU usage
-						print("✅ Model loaded on CPU")
-						
-				except Exception as e2:
-						print(f"❌ Failed to load on CPU: {e2}")
-						# Final fallback: try with 8-bit quantization
-						try:
-								print("Trying 8-bit quantization...")
-								quantization_config = tfs.BitsAndBytesConfig(load_in_8bit=True)
-								model = tfs.AutoModelForCausalLM.from_pretrained(
-										model_id,
-										device_map="auto",
-										quantization_config=quantization_config,
-										low_cpu_mem_usage=True,
-										trust_remote_code=True,
-								).eval()
-								print("✅ Model loaded with 8-bit quantization")
-								
-						except Exception as e3:
-								print(f"❌ All loading methods failed: {e3}")
-								raise RuntimeError("Could not load model with any method")
+				print(f"{model_id} loaded with 8-bit quantization")	
+			except Exception as e3:
+				raise RuntimeError("Could not load model with any method!")
 
-		# print("Testing model response...")
-		# test_model_response(model, tokenizer, device)
+	print("Testing model response...")
+	test_model_response(model, tokenizer, device)
 
-		# print("Testing model formats...")
-		# test_model_formats(model, tokenizer, device)
+	print("Testing model formats...")
+	test_model_formats(model, tokenizer, device)
 
-		# print("Testing final prompt format...")
-		# test_final_format(model, tokenizer, device)
+	print("Testing final prompt format...")
+	test_final_format(model, tokenizer, device)
 
-		# print("Testing new prompt format...")
-		# test_new_prompt(model, tokenizer, device)
-		
-		# print("Testing fixed prompt format...")
-		# test_fixed_prompt(model, tokenizer, device)
+	print("Testing new prompt format...")
+	test_new_prompt(model, tokenizer, device)
+	
+	print("Testing fixed prompt format...")
+	test_fixed_prompt(model, tokenizer, device)
 
-		# print("Testing new simplified format...")
-		# test_new_format(model, tokenizer, device)
+	print("Testing new simplified format...")
+	test_new_format(model, tokenizer, device)
 
-		print(f"🔍 Processing rows with local LLM: {model_id}...")
-		labels_list = [None] * len(df)
-		rationales_list = [None] * len(df)
-		
-		# Process only non-empty descriptions
-		valid_indices = []
-		valid_descriptions = []
-		for idx, desc in enumerate(df['enriched_document_description']):
-				if pd.notna(desc) and isinstance(desc, str) and desc.strip():
-						valid_indices.append(idx)
-						valid_descriptions.append(desc.strip())
-		
-		for i, (idx, desc) in tqdm(enumerate(zip(valid_indices, valid_descriptions)), total=len(valid_indices)):
-				print(f"description: {desc}")
-				try:
-						labels, rationales = query_local_llm(model=model, tokenizer=tokenizer, text=desc, device=device)
-						print(f"Row {idx+1}:")
-						print(f"labels: {labels}")
-						print(f"rationales: {rationales}")
-						print()
-						labels_list[idx] = labels
-						rationales_list[idx] = rationales
-				except Exception as e:
-						print(f"❌ Failed to process row {idx+1}: {e}")
-						labels_list[idx] = None
-						rationales_list[idx] = None
-
-		df['textual_based_labels'] = labels_list
-		df['textual_based_labels_rationale'] = rationales_list
-		
-		# Save output
-		df.to_csv(output_csv, index=False, encoding='utf-8')
+	print(f"🔍 Processing {len(df)} rows with local LLM: {model_id}...")
+	labels_list = [None] * len(df)
+	rationales_list = [None] * len(df)
+	
+	# Process only non-empty descriptions
+	valid_indices = []
+	valid_descriptions = []
+	for idx, desc in enumerate(df['enriched_document_description']):
+		if pd.notna(desc) and isinstance(desc, str) and desc.strip():
+			valid_indices.append(idx)
+			valid_descriptions.append(desc.strip())
+	
+	for i, (idx, desc) in tqdm(enumerate(zip(valid_indices, valid_descriptions)), total=len(valid_indices)):
+		print(f"description: {desc}")
 		try:
-				df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+			labels, rationales = query_local_llm(model=model, tokenizer=tokenizer, text=desc, device=device)
+			print(f"Row {idx+1}:")
+			print(f"labels: {labels}")
+			print(f"rationales: {rationales}")
+			print()
+			labels_list[idx] = labels
+			rationales_list[idx] = rationales
 		except Exception as e:
-				print(f"Failed to write Excel file: {e}")
-
-		print(f"Successfully processed {len(valid_indices)} out of {len(df)} rows.")
+			print(f"❌ Failed to process row {idx+1}: {e}")
+			labels_list[idx] = None
+			rationales_list[idx] = None
+	df['textual_based_labels'] = labels_list
+	df['textual_based_labels_rationale'] = rationales_list
+	
+	# Save output
+	df.to_csv(output_csv, index=False, encoding='utf-8')
+	try:
+		df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
+	print(f"Successfully processed {len(valid_indices)} out of {len(df)} rows.")
 
 def main():
 	parser = argparse.ArgumentParser(description="Textual-label annotation for Historical Archives Dataset using local LLMs")
