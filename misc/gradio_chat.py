@@ -45,8 +45,8 @@ if tokenizer.pad_token is None:
 
 model = tfs.AutoModelForCausalLM.from_pretrained(
 	model_id,
-	# device_map=device,
-	# torch_dtype=torch.float16,
+	device_map=device,
+	torch_dtype=torch.float16,
 	trust_remote_code=True,
 	cache_dir=cache_directory[USER],
 ).eval()
