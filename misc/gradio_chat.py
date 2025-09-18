@@ -31,8 +31,6 @@ model_id = "microsoft/Phi-4-mini-instruct"
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 huggingface_hub.login(token=hf_tk)
 
-print(hasattr(tfs.utils, "LossKwargs"))
-
 tokenizer = tfs.AutoTokenizer.from_pretrained(
 	model_id, 
 	use_fast=True, 
@@ -50,6 +48,8 @@ model = tfs.AutoModelForCausalLM.from_pretrained(
 	trust_remote_code=True,
 	cache_dir=cache_directory[USER],
 ).eval()
+
+debug_llm_info(model, tokenizer, device)
 
 print("\n=== Model Attributes ===")
 print(dir(model))
