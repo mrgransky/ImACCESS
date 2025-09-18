@@ -26,6 +26,7 @@ TOP_K = 3
 model_id = "Qwen/Qwen2.5-7B-Instruct"
 # model_id = "meta-llama/Llama-3.2-1B-Instruct"
 # model_id = "microsoft/Phi-4-mini-instruct"
+# model_id = "mistralai/Mistral-7B-Instruct-v0.3"
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 huggingface_hub.login(token=hf_tk)
@@ -58,8 +59,8 @@ print(dir(tokenizer))
 print("="*100)
 
 prompt = """<s>[INST]
-As an expert historical archivist, analyze this historical description carefully and extract MAXIMUM of 3 concrete, factual and relevant keywords with concise rationales.
-Duplicate keywords are not allowed. Keywords with numbers, temporal context and time-related information are strongly discouraged.
+As an expert historical archivist, analyze this historical description carefully and extract a maximum of three concrete, factual and relevant keywords with concise rationales.
+Duplicate keywords are not allowed. Avoid keywords that contain numbers, temporal context, or time-related information.
 Description: Gen'. Amer. Tank Storage, Houston oil; tanks; workers; General American Tank Storage Terminals
 
 Your entire output MUST be ONLY a single JSON object with two keys: "keywords" and "rationales". The value of each key is a list of strings. Do not include any other text, explanations, or markdown formatting (e.g., ```json```) in your response.
