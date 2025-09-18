@@ -31,9 +31,9 @@ if USER == "farid":
 	model_id = "meta-llama/Llama-3.2-1B-Instruct" # for local
 else:
 	# model_id = "Qwen/Qwen3-4B-Instruct-2507"
-	model_id = "microsoft/Phi-4-mini-instruct"
+	# model_id = "microsoft/Phi-4-mini-instruct"
 	# model_id = "mistralai/Mistral-7B-Instruct-v0.3"
-	# model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"
+	model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"
 
 tokenizer = tfs.AutoTokenizer.from_pretrained(
 	model_id, 
