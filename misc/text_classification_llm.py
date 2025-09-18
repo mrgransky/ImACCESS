@@ -3,7 +3,8 @@ from utils import *
 english_stopwords = set(nltk.corpus.stopwords.words('english'))
 domain_specific_stopwords = {
 	"photo", "image", "description", "label", "rationale", 
-	"picture", "document", "text", "content", "item", "record"
+	"picture", "document", "text", "content", "item", "record",
+	"collection", "collections", "number", "abbreviation", "abbreviations",
 }
 all_stopwords = english_stopwords.union(domain_specific_stopwords)
 
@@ -32,14 +33,15 @@ Duplicate keywords are not allowed. Keywords with numbers, temporal context and 
 
 Description: {description}
 
-Respond with up to 3 labels and rationales in this format:
+Respond in the following format:
 Label 1: keyword
 Rationale 1: reason
 Label 2: keyword  
 Rationale 2: reason
 Label 3: keyword
 Rationale 3: reason
-[/INST]"""
+[/INST]
+"""
 
 def is_instruction_model(model):
 		"""
@@ -200,7 +202,7 @@ def run_all_debugs(model, tokenizer, device):
 		)
 		debug_print_io(plain_prompt, ans3, tokenizer)
 
-def print_debug_info(model, tokenizer, device):
+def debug_llm_info(model, tokenizer, device):
 		# ------------------------------------------------------------------
 		# 1️⃣ Runtime / environment
 		# ------------------------------------------------------------------
@@ -573,7 +575,7 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 			except Exception as e3:
 				raise RuntimeError("Could not load model with any method!")
 
-	print_debug_info(model, tokenizer, device)
+	debug_llm_info(model, tokenizer, device)
 
 	# test_model_response(model, tokenizer, device)
 

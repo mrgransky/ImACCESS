@@ -153,6 +153,102 @@ dtypes = {
 	'user_query': str,
 }
 
+
+def debug_llm_info(model, tokenizer, device):
+	# ------------------------------------------------------------------
+	# 1️⃣ Runtime / environment
+	# ------------------------------------------------------------------
+	print("\n=== Runtime / Environment ===")
+	print(f"Python version      : {sys.version.split()[0]}")
+	print(f"PyTorch version     : {torch.__version__}")
+	print(f"Transformers version: {tfs.__version__}")
+	print(f"CUDA available?    : {torch.cuda.is_available()}")
+	if torch.cuda.is_available():
+			print(f"CUDA device count  : {torch.cuda.device_count()}")
+			print(f"Current CUDA device: {torch.cuda.current_device()}")
+			print(f"CUDA device name   : {torch.cuda.get_device_name(0)}")
+			print(f"CUDA memory (total/alloc): "
+						f"{torch.cuda.get_device_properties(0).total_memory // (1024**2)} MB / "
+						f"{torch.cuda.memory_allocated(0) // (1024**2)} MB")
+	print(f"Requested device   : {device}")
+	# ------------------------------------------------------------------
+	# 2️⃣ Model overview
+	# ------------------------------------------------------------------
+	print("\n=== Model Overview ===")
+	print(f"Model class        : {model.__class__.__name__}")
+	# Config (pretty‑print all fields)
+	print("\n--- Config ---")
+	pprint.pprint(model.config.to_dict(), width=120, compact=True)
+	# Parameter statistics
+	total_params = sum(p.numel() for p in model.parameters())
+	trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+	print("\n--- Parameter stats ---")
+	print(f"Total parameters          : {total_params:,}")
+	print(f"Trainable parameters      : {trainable_params:,}")
+	print(f"Non‑trainable parameters  : {total_params - trainable_params:,}")
+	print(f"Model in training mode? : {model.training}")
+	# Device / dtype per top‑level sub‑module (helps catch mixed‑precision bugs)
+	print("\n--- Sub‑module device / dtype ---")
+	for name, module in model.named_children():
+			# Grab the first parameter of the sub‑module (if any) to infer its device/dtype
+			first_param = next(module.parameters(), None)
+			if first_param is not None:
+					dev = first_param.device
+					dt  = first_param.dtype
+					print(f"{name:30} → device: {dev}, dtype: {dt}")
+			else:
+					print(f"{name:30} → (no parameters)")
+	# ------------------------------------------------------------------
+	# 3️⃣ Tokenizer overview
+	# ------------------------------------------------------------------
+	print("\n=== Tokenizer Overview ===")
+	print(f"Tokenizer class    : {tokenizer.__class__.__name__}")
+	print(f"Fast tokenizer?   : {tokenizer.is_fast}")
+	# Basic config
+	print("\n--- Basic attributes ---")
+	print(f"Vocab size         : {tokenizer.vocab_size}")
+	print(f"Model max length   : {tokenizer.model_max_length}")
+	print(f"Pad token id       : {tokenizer.pad_token_id}")
+	print(f"EOS token id       : {tokenizer.eos_token_id}")
+	print(f"BOS token id       : {tokenizer.bos_token_id}")
+	print(f"UNK token id       : {tokenizer.unk_token_id}")
+	# Show the *string* for each special token (if defined)
+	specials = {
+			"pad_token": tokenizer.pad_token,
+			"eos_token": tokenizer.eos_token,
+			"bos_token": tokenizer.bos_token,
+			"unk_token": tokenizer.unk_token,
+			"cls_token": getattr(tokenizer, "cls_token", None),
+			"sep_token": getattr(tokenizer, "sep_token", None),
+	}
+	print("\n--- Special token strings ---")
+	for name, token in specials.items():
+			if token is not None:
+					print(f"{name:12}: '{token}' (id={tokenizer.convert_tokens_to_ids(token)})")
+			else:
+					print(f"{name:12}: <not set>")
+	# Small vocab preview (first & last 10 entries)
+	if hasattr(tokenizer, "get_vocab"):
+			vocab = tokenizer.get_vocab()
+			vocab_items = sorted(vocab.items(), key=lambda kv: kv[1])  # sort by id
+			print("\n--- Vocab preview (first & last 10) ---")
+			for token, idx in vocab_items[:10]:
+					print(f"{idx:5d}: {token}")
+			print(" ...")
+			for token, idx in vocab_items[-10:]:
+					print(f"{idx:5d}: {token}")
+
+	# ------------------------------------------------------------------
+	# 4️⃣ Model capabilities
+	# ------------------------------------------------------------------
+	print("="*100)
+	print(dir(tokenizer))
+	print("="*100)
+
+	print(dir(model))
+	print("="*100)
+
+
 def parse_tuple(s):
 	try:
 		# Convert the string to a tuple
