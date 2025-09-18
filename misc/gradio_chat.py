@@ -1,5 +1,15 @@
 from utils import *
 
+if not hasattr(tfs.utils, "LossKwargs"):
+	class LossKwargs(TypedDict, total=False):
+		"""
+		Compatibility shim for older Phi models 
+		expecting LossKwargs in transformers.utils.
+		Acts as a stub TypedDict with no required keys.
+		"""
+		pass
+	tfs.utils.LossKwargs = LossKwargs
+
 MAX_NEW_TOKENS = 300
 TEMPERATURE = 0.3
 TOP_P = 0.9
@@ -8,10 +18,14 @@ EXP_BACKOFF = 2	# seconds ** attempt
 TOP_K = 3
 
 # model_id = "tiiuae/Falcon3-7B-Base"
-model_id = "Qwen/Qwen2.5-0.5B-Instruct"
+# model_id = "Qwen/Qwen2.5-0.5B-Instruct"
+# model_id = "meta-llama/Llama-3.2-1B-Instruct"
+model_id = "microsoft/Phi-4-mini-instruct"
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 huggingface_hub.login(token=hf_tk)
+
+print(hasattr(tfs.utils, "LossKwargs"))
 
 tokenizer = tfs.AutoTokenizer.from_pretrained(
 	model_id, 
@@ -31,25 +45,23 @@ model = tfs.AutoModelForCausalLM.from_pretrained(
 	cache_dir=cache_directory[USER],
 ).eval()
 
+print("\n=== Model Attributes ===")
+print(dir(model))
+print("="*100)
+print("\n=== Tokenizer Attributes ===")
+print(dir(tokenizer))
+print("="*100)
+
+
+
 prompt = """<s>[INST]
-As an expert historical archivist, analyze this historical description carefully and extract maximum of three (not more) concrete, factual and relevant keywords with concise rationales.
+As an expert historical archivist, analyze this historical description carefully and extract MAXIMUM of 3 concrete, factual and relevant keywords with concise rationales.
 Duplicate keywords are not allowed. Keywords with numbers, temporal context and time-related information are strongly discouraged.
 Description: 'As You Like It'' theatrical productions; SMU The first production of the Arden Club, ''As You Like It'' was performed at SMU's first commencement ceremony in 1916.
 
-Your response MUST be ONLY a single JSON object. Do not include any other text, explanations, or markdown formatting (e.g., ```json```). The JSON object must have two keys: "keywords" and "rationales". The value of each key is a list of strings.
-
-Begin your JSON response now.
+Your entire output MUST be ONLY a single JSON object with two keys: "keywords" and "rationales". The value of each key is a list of strings. Do not include any other text, explanations, or markdown formatting (e.g., ```json```) in your response.
 [/INST]
 """
-
-# prompt = """<s>[INST]
-# As an expert historical archivist, analyze this historical description carefully and extract maximum of three (not more) concrete, factual and relevant keywords with concise rationales.
-# Duplicate keywords are not allowed. Keywords with numbers, temporal context and time-related information are strongly discouraged.
-# Description: 'As You Like It'' theatrical productions; SMU The first production of the Arden Club, ''As You Like It'' was performed at SMU's first commencement ceremony in 1916.
-
-# Your entire output must be a single JSON object with two keys: "keywords" and "rationales". The value of each key is a list of strings. Do not include any other text, explanations, or markdown formatting (e.g., ```json```) in your response.
-# [/INST]
-# """
 
 # Generate a response
 inputs = tokenizer(
@@ -72,9 +84,9 @@ outputs = model.generate(
 	pad_token_id=tokenizer.pad_token_id,
 	eos_token_id=tokenizer.eos_token_id,
 )
-response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-print(response)
+print(llm_response)
 
 def extract_json_from_text(text):
 		"""
@@ -91,7 +103,7 @@ def extract_json_from_text(text):
 				return None
 
 # Extract the JSON data from the response string
-json_data = extract_json_from_text(response)
+json_data = extract_json_from_text(llm_response)
 
 # Extract the lists if the JSON data was successfully parsed
 if json_data:

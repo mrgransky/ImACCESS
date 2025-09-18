@@ -35,7 +35,7 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import seaborn as sns
 from wordcloud import WordCloud
-from typing import Tuple, Union, List, Dict, Any, Optional, Callable
+from typing import Tuple, Union, List, Dict, Any, Optional, Callable, TypedDict
 import certifi
 import hdbscan
 import networkx as nx
