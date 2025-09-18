@@ -1,5 +1,12 @@
 from utils import *
 
+english_stopwords = set(nltk.corpus.stopwords.words('english'))
+domain_specific_stopwords = {
+	"photo", "image", "description", "label", "rationale", 
+	"picture", "document", "text", "content", "item", "record"
+}
+all_stopwords = english_stopwords.union(domain_specific_stopwords)
+
 print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
@@ -21,7 +28,7 @@ EXP_BACKOFF = 2	# seconds ** attempt
 TOP_K = 3
 PROMPT_TEMPLATE = """<s>[INST] 
 As an expert historical archivist, analyze this historical description carefully and extract maximum of 3 concrete, factual and relevant keywords with concise rationales. 
-Duplicate keywords are not allowed. Keywords with numbers, temporal context and time-related information are not allowed.
+Duplicate keywords are not allowed. Keywords with numbers, temporal context and time-related information are strongly discouraged.
 
 Description: {description}
 
@@ -487,7 +494,7 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 			meaningful_keywords = [
 				kw 
 				for kw in potential_keywords 
-				if len(kw) > 3 and kw.lower() not in ["the", "and", "with", "this", "that", "photo", "image", "description", "label", "rationale"]
+				if len(kw) > 3 and kw.lower() not in all_stopwords
 			][:TOP_K]
 			
 			if meaningful_keywords:
@@ -593,10 +600,10 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 			valid_descriptions.append(desc.strip())
 	
 	for i, (idx, desc) in tqdm(enumerate(zip(valid_indices, valid_descriptions)), total=len(valid_indices)):
-		print(f"description: {desc}")
 		try:
 			labels, rationales = query_local_llm(model=model, tokenizer=tokenizer, text=desc, device=device)
 			print(f"Row {idx+1}:")
+			print(f"description: {desc}")
 			print(f"labels: {labels}")
 			print(f"rationales: {rationales}")
 			print()
