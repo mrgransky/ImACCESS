@@ -23,12 +23,17 @@ MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 TOP_K = 3
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
-# model_id = "Qwen/Qwen3-4B-Instruct-2507"
-# model_id = "microsoft/Phi-4-mini-instruct"
-# model_id = "mistralai/Mistral-7B-Instruct-v0.3"
-model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"
+if USER == "farid":
+	model_id = "meta-llama/Llama-3.2-1B-Instruct" # for local
+else:
+	# model_id = "Qwen/Qwen3-4B-Instruct-2507"
+	model_id = "microsoft/Phi-4-mini-instruct"
+	# model_id = "mistralai/Mistral-7B-Instruct-v0.3"
+	# model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"
 
 tokenizer = tfs.AutoTokenizer.from_pretrained(
 	model_id, 
@@ -60,7 +65,7 @@ print("="*100)
 prompt = """<s>[INST]
 As an expert historical archivist, analyze this historical description carefully and extract a maximum of three concrete, factual and relevant keywords with concise rationales.
 Duplicate keywords are not allowed. Avoid keywords that contain numbers, temporal context, or time-related information.
-Description: Gen'. Amer. Tank Storage, Houston oil; tanks; workers; General American Tank Storage Terminals
+Description: [Close-up Aerial View of John Gillin's House, Designed by Frank Lloyd Wright, Dallas, TX] aerials; construction sites Oilman John A. Gillin commissioned Frank Lloyd Wright in 1950 to design a work of art that would also be suitable for living and entertaining. Completed in 1954, it's the only Frank Lloyd Wright residence in Dallas. The result is a house that has three wings built off a central hexagon. The roof is made of copper, and the outer walls are of understated sandstone. It is a magnificent example of the type of work Wright was doing later in his career. Source: USA Today http://usatoday30.usatoday.com/travel/destinations/cityguides/dallas/2003-10-20-spotlight-bighouses_x.htm
 
 Your entire output MUST be ONLY a single JSON object with two keys: "keywords" and "rationales". The value of each key is a list of strings. Do not include any other text, explanations, or markdown formatting (e.g., ```json```) in your response.
 [/INST]
