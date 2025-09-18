@@ -20,7 +20,7 @@ MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 TOP_K = 3
 PROMPT_TEMPLATE = """<s>[INST] 
-As an expert archivist, analyze this historical photo description carefully and extract up to 3 concrete, factual and relevant keywords with concise rationales. 
+As an expert archivist, analyze this historical photo description carefully and extract maximum of 3 concrete, factual and relevant keywords with concise rationales. 
 Duplicate keywords are not allowed. Keywords with numbers are not allowed.
 
 Description: {description}
@@ -33,6 +33,174 @@ Rationale 2: reason
 Label 3: keyword
 Rationale 3: reason
 [/INST]"""
+
+# --------------------------------------------------------------
+# 1️⃣  Helper: detect whether the model is instruction‑tuned
+# --------------------------------------------------------------
+def is_instruction_model(model):
+		"""
+		Heuristic: look for special tokens in the tokenizer or
+		for a config field that mentions 'instruction' or 'chat'.
+		"""
+		# Many chat models expose a `chat_template` or `eos_token_id` != pad_token_id
+		cfg = getattr(model, "config", None)
+		if cfg is None:
+				return False
+		# Llama‑2, Mistral, Mixtral, Gemma, etc. have `eos_token_id != pad_token_id`
+		if hasattr(cfg, "eos_token_id") and hasattr(cfg, "pad_token_id"):
+				if cfg.eos_token_id != cfg.pad_token_id:
+						return True
+		# Some HF models set `model_type` to "llama", "mistral", etc.
+		if getattr(cfg, "model_type", "").lower() in {"llama", "mistral", "mixtral", "gemma", "phi"}:
+				return True
+		return False
+
+# --------------------------------------------------------------
+# 2️⃣  Core generation wrapper (model‑agnostic)
+# --------------------------------------------------------------
+def generate_response(
+		model,
+		tokenizer,
+		prompt: str,
+		device: str = "cpu",
+		max_new_tokens: int = 150,
+		temperature: float = 0.0,
+		top_p: float = 0.9,
+		top_k: int = 50,
+		repetition_penalty: float = 1.2,
+		no_repeat_ngram_size: int = 3,
+		stop_strings: Optional[List[str]] = None,
+		do_sample: bool = False,
+) -> str:
+		"""
+		Returns the *decoded* model answer **after** any stop‑string / EOS.
+		"""
+		# 1️⃣  Detect instruction‑model & wrap if needed
+		if is_instruction_model(model):
+				# Most chat models expect a leading BOS token and a special chat format.
+				# We'll use the generic Llama‑2 style:
+				#   <s>[INST] USER PROMPT [/INST]
+				wrapped = f"<s>[INST] {prompt} [/INST]"
+		else:
+				# Plain LM – just feed the raw prompt.
+				wrapped = prompt
+
+		# 2️⃣  Tokenise
+		inputs = tokenizer(
+				wrapped,
+				return_tensors="pt",
+				truncation=True,
+				max_length=tokenizer.model_max_length - max_new_tokens,
+		)
+		inputs = {k: v.to(device) for k, v in inputs.items()}
+
+		# 3️⃣  Generation config (explicit, reproducible)
+		gen_cfg = tfs.GenerationConfig(
+				max_new_tokens=max_new_tokens,
+				temperature=temperature,
+				top_p=top_p,
+				top_k=top_k,
+				repetition_penalty=repetition_penalty,
+				no_repeat_ngram_size=no_repeat_ngram_size,
+				do_sample=do_sample,
+				pad_token_id=tokenizer.pad_token_id,
+				eos_token_id=tokenizer.eos_token_id,
+		)
+
+		# 4️⃣  Generate
+		with torch.no_grad():
+				output_ids = model.generate(**inputs, **gen_cfg.__dict__)
+
+		# 5️⃣  Decode *everything* first (helps debugging)
+		full_text = tokenizer.decode(output_ids[0], skip_special_tokens=False)
+
+		# 6️⃣  Cut off at the first EOS or any custom stop string
+		if tokenizer.eos_token:
+				eos_idx = full_text.find(tokenizer.eos_token)
+				if eos_idx != -1:
+						full_text = full_text[:eos_idx]
+
+		if stop_strings:
+				for stop in stop_strings:
+						idx = full_text.find(stop)
+						if idx != -1:
+								full_text = full_text[:idx]
+								break
+
+		# 7️⃣  Strip the prompt part (everything before the first occurrence of the prompt)
+		#    This works for both wrapped and raw prompts.
+		if wrapped in full_text:
+				answer = full_text.split(wrapped, 1)[1].strip()
+		else:
+				# fallback: drop the first line(s) that look like the prompt
+				answer = full_text.strip()
+
+		return answer
+
+# --------------------------------------------------------------
+# 3️⃣  Debug printer – shows token‑level view
+# --------------------------------------------------------------
+def debug_print_io(prompt, response, tokenizer):
+		print("\n--- INPUT (first 30 token IDs) --------------------------------")
+		inp_ids = tokenizer(prompt, return_tensors="pt")["input_ids"][0][:30].tolist()
+		print(inp_ids)
+		print("\n--- OUTPUT (first 30 token IDs) -------------------------------")
+		out_ids = tokenizer(response, return_tensors="pt")["input_ids"][0][:30].tolist()
+		print(out_ids)
+		print("\n--- RAW RESPONSE --------------------------------------------")
+		print(response)
+		print("-" * 80)
+
+# --------------------------------------------------------------
+# 4️⃣  Example usage (replace `model`, `tokenizer`, `device` from your env)
+# --------------------------------------------------------------
+def run_all_debugs(model, tokenizer, device):
+		print(f"="*100)
+		print("Running all debugs...")
+		print(f"Simple prompt...")
+		simple_prompt = "What are three keywords for a photo of soldiers in a trench?"
+		ans = generate_response(
+				model,
+				tokenizer,
+				simple_prompt,
+				device=device,
+				max_new_tokens=80,
+				temperature=0.0,
+				do_sample=False,
+				stop_strings=["\n", "</s>", "<|endoftext|>"],  # safe guards
+		)
+		debug_print_io(simple_prompt, ans, tokenizer)
+
+		print(f"Structured prompt...")
+		structured_prompt = PROMPT_TEMPLATE.format(description="soldiers in trench during World War I")
+		ans2 = generate_response(
+				model,
+				tokenizer,
+				structured_prompt,
+				device=device,
+				max_new_tokens=150,
+				temperature=0.2,
+				do_sample=True,
+				stop_strings=["\n\n", "</s>", "<|endoftext|>"],
+		)
+		debug_print_io(structured_prompt, ans2, tokenizer)
+
+		print(f"Plain prompt...")
+		plain_prompt = (
+				"Extract up to three factual keywords (no numbers) and a short reason for each from the following description:\n"
+				"soldiers in trench during World War I"
+		)
+		ans3 = generate_response(
+				model,
+				tokenizer,
+				plain_prompt,
+				device=device,
+				max_new_tokens=120,
+				temperature=0.2,
+				do_sample=True,
+				stop_strings=["\n\n", "</s>", "<|endoftext|>"],
+		)
+		debug_print_io(plain_prompt, ans3, tokenizer)
 
 def print_debug_info(model, tokenizer, device):
 		# ------------------------------------------------------------------
@@ -69,7 +237,7 @@ def print_debug_info(model, tokenizer, device):
 		print(f"Total parameters          : {total_params:,}")
 		print(f"Trainable parameters      : {trainable_params:,}")
 		print(f"Non‑trainable parameters  : {total_params - trainable_params:,}")
-		print(f"\nModel in training mode? : {model.training}")
+		print(f"Model in training mode? : {model.training}")
 
 		# Device / dtype per top‑level sub‑module (helps catch mixed‑precision bugs)
 		print("\n--- Sub‑module device / dtype ---")
@@ -116,15 +284,15 @@ def print_debug_info(model, tokenizer, device):
 				else:
 						print(f"{name:12}: <not set>")
 
-		# Small vocab preview (first / last 5 entries)
+		# Small vocab preview (first & last 10 entries)
 		if hasattr(tokenizer, "get_vocab"):
 				vocab = tokenizer.get_vocab()
 				vocab_items = sorted(vocab.items(), key=lambda kv: kv[1])  # sort by id
-				print("\n--- Vocab preview (first 5 / last 5) ---")
-				for token, idx in vocab_items[:5]:
+				print("\n--- Vocab preview (first & last 10) ---")
+				for token, idx in vocab_items[:10]:
 						print(f"{idx:5d}: {token}")
 				print(" ...")
-				for token, idx in vocab_items[-5:]:
+				for token, idx in vocab_items[-10:]:
 						print(f"{idx:5d}: {token}")
 
 def test_model_response(model, tokenizer, device):
@@ -152,135 +320,92 @@ def test_model_response(model, tokenizer, device):
 	print("="*100)
 
 def test_model_formats(model, tokenizer, device):
-		"""Test different prompt formats to see which one works best"""
-		print(f"="*100)
-		print("Testing model formats...")
-		test_formats = [
-				# Format 1: Simple instruction
-				"<s>[INST] Extract 3 keywords: soldiers in trench [/INST]",
-				
-				# Format 2: Structured request
-				"<s>[INST] Return: Label 1: keyword1\nRationale 1: reason\nLabel 2: keyword2\nRationale 2: reason\nLabel 3: keyword3\nRationale 3: reason\nFor: soldiers in trench [/INST]",
-				
-				# Format 3: Role-playing
-				"<s>[INST] As an archivist, extract 3 keywords for: soldiers in trench. Use format: Label 1: word [/INST]"
-		]
+	"""Test different prompt formats to see which one works best"""
+	print(f"="*100)
+	print("Testing model formats...")
+	test_formats = [
+		# Format 1: Simple instruction
+		"<s>[INST] Extract 3 keywords: soldiers in trench [/INST]",
 		
-		for i, test_prompt in enumerate(test_formats, 1):
-				print(f"\n--- Testing Format {i} ---")
-				print(f"Prompt: {test_prompt}")
-				
-				inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
-				if device != 'cpu':
-						inputs = {k: v.to(device) for k, v in inputs.items()}
-				
-				with torch.no_grad():
-						outputs = model.generate(
-								**inputs,
-								max_new_tokens=100,
-								temperature=0.7,
-								do_sample=True,
-						)
-				
-				response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-				print(f"Response: {response}")
-		print("="*100)
-
-def test_final_format(model, tokenizer, device):
-		"""Test our final prompt format"""
-		print(f"="*100)
-		print("Testing final prompt format...")
-		test_prompt = PROMPT_TEMPLATE.format(description="soldiers in trench")
+		# Format 2: Structured request
+		"<s>[INST] Return: Label 1: keyword1\nRationale 1: reason\nLabel 2: keyword2\nRationale 2: reason\nLabel 3: keyword3\nRationale 3: reason\nFor: soldiers in trench [/INST]",
+		
+		# Format 3: Role-playing
+		"<s>[INST] As an archivist, extract 3 keywords for: soldiers in trench. Use format: Label 1: word [/INST]"
+	]
+	
+	for i, test_prompt in enumerate(test_formats, 1):
+		print(f"\n--- Format {i} ---")
+		print(f"Prompt: {test_prompt}")
 		
 		inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
 		if device != 'cpu':
-				inputs = {k: v.to(device) for k, v in inputs.items()}
+			inputs = {k: v.to(device) for k, v in inputs.items()}
 		
 		with torch.no_grad():
-				outputs = model.generate(
-						**inputs,
-						max_new_tokens=100,
-						temperature=0.7,
-						do_sample=True,
-				)
-		
+			outputs = model.generate(
+				**inputs,
+				max_new_tokens=MAX_NEW_TOKENS,
+				temperature=TEMPERATURE,
+				do_sample=True,
+				pad_token_id=tokenizer.pad_token_id,
+				eos_token_id=tokenizer.eos_token_id,
+			)
 		response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-		if "[/INST]" in response:
-				response = response.split("[/INST]")[-1].strip()
-		print(f"Final format test: {response}")
-		print("="*100)
+		print(f"Response: {response}")
+	print("="*100)
 
-def test_new_prompt(model, tokenizer, device):
-		"""Test the new prompt format"""
-		print(f"="*100)
-		print("Testing new prompt format...")
-		test_prompt = PROMPT_TEMPLATE.format(description="soldiers in trench during World War I")
-		
-		inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
-		if device != 'cpu':
-				inputs = {k: v.to(device) for k, v in inputs.items()}
-		
-		with torch.no_grad():
-				outputs = model.generate(
-						**inputs,
-						max_new_tokens=100,
-						temperature=0.7,
-						do_sample=True,
-				)
-		
-		response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-		if "[/INST]" in response:
-				response = response.split("[/INST]")[-1].strip()
-		print(f"New prompt test: {response}")
-		print("="*100)
+def test_given_prompt_format(model, tokenizer, device):
+	"""Test the given prompt format"""
+	print(f"="*100)
+	print("Testing given prompt format...")
+	test_prompt = PROMPT_TEMPLATE.format(description="soldiers in trench")
+	print(f"Prompt:\n{test_prompt}\n")
+	inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
+	if device != 'cpu':
+		inputs = {k: v.to(device) for k, v in inputs.items()}
+	
+	with torch.no_grad():
+		outputs = model.generate(
+			**inputs,
+			max_new_tokens=MAX_NEW_TOKENS,
+			temperature=TEMPERATURE,
+			do_sample=True,
+			pad_token_id=tokenizer.pad_token_id,
+			eos_token_id=tokenizer.eos_token_id,
+		)
+	
+	response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+	if "[/INST]" in response:
+		response = response.split("[/INST]")[-1].strip()
+	print(f"Response:\n{response}\n")
+	print("="*100)
 
 def test_fixed_prompt(model, tokenizer, device):
-		"""Test the fixed prompt format"""
-		print(f"="*100)
-		print("Testing fixed prompt format...")
-		test_prompt = PROMPT_TEMPLATE.format(description="soldiers in trench during World War I")
-		
-		inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
-		if device != 'cpu':
-				inputs = {k: v.to(device) for k, v in inputs.items()}
-		
-		with torch.no_grad():
-				outputs = model.generate(
-						**inputs,
-						max_new_tokens=100,
-						temperature=0.7,
-						do_sample=True,
-				)
-		
-		response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-		if "[/INST]" in response:
-				response = response.split("[/INST]")[-1].strip()
-		print(f"Fixed prompt test: {response}")
-		print("="*100)
-
-def test_new_format(model, tokenizer, device):
-		"""Test the new simplified format"""
-		print(f"="*100)
-		print("Testing new simplified format...")
-		test_prompt = PROMPT_TEMPLATE.format(description="soldiers in trench during World War I")
-		
-		inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
-		if device != 'cpu':
-				inputs = {k: v.to(device) for k, v in inputs.items()}
-		
-		with torch.no_grad():
-				outputs = model.generate(
-						**inputs,
-						max_new_tokens=100,
-						temperature=0.7,
-						do_sample=True,
-				)
-		
-		response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-		if "[/INST]" in response:
-				response = response.split("[/INST]")[-1].strip()
-		print(f"New format test: {response}")
-		print("="*100)
+	"""Test the fixed prompt format"""
+	print(f"="*100)
+	print("Testing fixed prompt format...")
+	test_prompt = PROMPT_TEMPLATE.format(description="soldiers in trench during World War I")
+	
+	inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
+	if device != 'cpu':
+		inputs = {k: v.to(device) for k, v in inputs.items()}
+	
+	with torch.no_grad():
+		outputs = model.generate(
+			**inputs,
+			max_new_tokens=MAX_NEW_TOKENS,
+			temperature=TEMPERATURE,
+			do_sample=True,
+			pad_token_id=tokenizer.pad_token_id,
+			eos_token_id=tokenizer.eos_token_id,
+		)
+	
+	response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+	if "[/INST]" in response:
+		response = response.split("[/INST]")[-1].strip()
+	print(f"Fixed prompt test: {response}")
+	print("="*100)
 
 def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 	if not isinstance(text, str) or not text.strip():
@@ -447,17 +572,16 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 
 	print_debug_info(model, tokenizer, device)
 
-	test_model_response(model, tokenizer, device)
+	# test_model_response(model, tokenizer, device)
 
-	test_model_formats(model, tokenizer, device)
+	# test_model_formats(model, tokenizer, device)
 
-	test_final_format(model, tokenizer, device)
+	# test_given_prompt_format(model, tokenizer, device)
 
-	test_new_prompt(model, tokenizer, device)
-	
-	test_fixed_prompt(model, tokenizer, device)
+	# test_fixed_prompt(model, tokenizer, device)
 
-	test_new_format(model, tokenizer, device)
+	run_all_debugs(model, tokenizer, device)
+
 	return
 
 	print(f"🔍 Processing {len(df)} rows with local LLM: {model_id}...")

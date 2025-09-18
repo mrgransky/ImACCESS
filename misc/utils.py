@@ -17,6 +17,7 @@ from collections import Counter, defaultdict
 # from transformers import CLIPProcessor, CLIPModel, AlignProcessor, AlignModel
 # from transformers import AutoModel, AutoProcessor, AutoModelForCausalLM
 import transformers as tfs
+tfs.logging.set_verbosity_info()
 
 from sentence_transformers import SentenceTransformer, util
 from langdetect import detect, DetectorFactory
@@ -68,12 +69,13 @@ warnings.filterwarnings(
 	category=UserWarning,
 	module="transformers"
 )
-# Suppress logging warnings
-os.environ['TF_ENABLE_ONEDNN_OPTS']='0'
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ["GRPC_VERBOSITY"] = "ERROR"
-os.environ["GLOG_minloglevel"] = "2"
-os.environ["TRANSFORMERS_QUIET"] = "1"
+
+# # Suppress logging warnings
+# os.environ['TF_ENABLE_ONEDNN_OPTS']='0'
+# os.environ["TOKENIZERS_PARALLELISM"] = "false"
+# os.environ["GRPC_VERBOSITY"] = "ERROR"
+# os.environ["GLOG_minloglevel"] = "2"
+# os.environ["TRANSFORMERS_QUIET"] = "1"
 
 from skimage.filters.rank import entropy
 from skimage.morphology import disk
