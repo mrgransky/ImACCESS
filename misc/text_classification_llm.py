@@ -33,26 +33,127 @@ Label 3: keyword
 Rationale 3: reason
 [/INST]"""
 
+def print_debug_info(model, tokenizer, device):
+		# ------------------------------------------------------------------
+		# 1️⃣ Runtime / environment
+		# ------------------------------------------------------------------
+		print("\n=== Runtime / Environment ===")
+		print(f"Python version      : {sys.version.split()[0]}")
+		print(f"PyTorch version     : {torch.__version__}")
+		print(f"Transformers version: {tfs.__version__}")
+		print(f"CUDA available?    : {torch.cuda.is_available()}")
+		if torch.cuda.is_available():
+				print(f"CUDA device count  : {torch.cuda.device_count()}")
+				print(f"Current CUDA device: {torch.cuda.current_device()}")
+				print(f"CUDA device name   : {torch.cuda.get_device_name(0)}")
+				print(f"CUDA memory (total/alloc): "
+							f"{torch.cuda.get_device_properties(0).total_memory // (1024**2)} MB / "
+							f"{torch.cuda.memory_allocated(0) // (1024**2)} MB")
+		print(f"Requested device   : {device}")
+
+		# ------------------------------------------------------------------
+		# 2️⃣ Model overview
+		# ------------------------------------------------------------------
+		print("\n=== Model Overview ===")
+		print(f"Model class        : {model.__class__.__name__}")
+
+		# Config (pretty‑print all fields)
+		print("\n--- Config ---")
+		pprint.pprint(model.config.to_dict(), width=120, compact=True)
+
+		# Parameter statistics
+		total_params = sum(p.numel() for p in model.parameters())
+		trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+		print("\n--- Parameter stats ---")
+		print(f"Total parameters          : {total_params:,}")
+		print(f"Trainable parameters      : {trainable_params:,}")
+		print(f"Non‑trainable parameters  : {total_params - trainable_params:,}")
+		print(f"\nModel in training mode? : {model.training}")
+
+		# Device / dtype per top‑level sub‑module (helps catch mixed‑precision bugs)
+		print("\n--- Sub‑module device / dtype ---")
+		for name, module in model.named_children():
+				# Grab the first parameter of the sub‑module (if any) to infer its device/dtype
+				first_param = next(module.parameters(), None)
+				if first_param is not None:
+						dev = first_param.device
+						dt  = first_param.dtype
+						print(f"{name:30} → device: {dev}, dtype: {dt}")
+				else:
+						print(f"{name:30} → (no parameters)")
+
+
+		# ------------------------------------------------------------------
+		# 3️⃣ Tokenizer overview
+		# ------------------------------------------------------------------
+		print("\n=== Tokenizer Overview ===")
+		print(f"Tokenizer class    : {tokenizer.__class__.__name__}")
+		print(f"Fast tokenizer?   : {tokenizer.is_fast}")
+
+		# Basic config
+		print("\n--- Basic attributes ---")
+		print(f"Vocab size         : {tokenizer.vocab_size}")
+		print(f"Model max length   : {tokenizer.model_max_length}")
+		print(f"Pad token id       : {tokenizer.pad_token_id}")
+		print(f"EOS token id       : {tokenizer.eos_token_id}")
+		print(f"BOS token id       : {tokenizer.bos_token_id}")
+		print(f"UNK token id       : {tokenizer.unk_token_id}")
+
+		# Show the *string* for each special token (if defined)
+		specials = {
+				"pad_token": tokenizer.pad_token,
+				"eos_token": tokenizer.eos_token,
+				"bos_token": tokenizer.bos_token,
+				"unk_token": tokenizer.unk_token,
+				"cls_token": getattr(tokenizer, "cls_token", None),
+				"sep_token": getattr(tokenizer, "sep_token", None),
+		}
+		print("\n--- Special token strings ---")
+		for name, token in specials.items():
+				if token is not None:
+						print(f"{name:12}: '{token}' (id={tokenizer.convert_tokens_to_ids(token)})")
+				else:
+						print(f"{name:12}: <not set>")
+
+		# Small vocab preview (first / last 5 entries)
+		if hasattr(tokenizer, "get_vocab"):
+				vocab = tokenizer.get_vocab()
+				vocab_items = sorted(vocab.items(), key=lambda kv: kv[1])  # sort by id
+				print("\n--- Vocab preview (first 5 / last 5) ---")
+				for token, idx in vocab_items[:5]:
+						print(f"{idx:5d}: {token}")
+				print(" ...")
+				for token, idx in vocab_items[-5:]:
+						print(f"{idx:5d}: {token}")
+
 def test_model_response(model, tokenizer, device):
-		test_prompt = "<s>[INST] What are three keywords for a photo of soldiers in a trench? [/INST]"
-		
-		inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
-		if device != 'cpu':
-				inputs = {k: v.to(device) for k, v in inputs.items()}
-		
-		with torch.no_grad():
-				outputs = model.generate(
-						**inputs,
-						max_new_tokens=100,
-						temperature=0.7,
-						do_sample=True,
-				)
-		
-		response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-		print(f"Test response: {response}")
+	"""Test if the model responds to a simple prompt"""
+	print(f"="*100)
+	print("Testing model response...")
+	test_prompt = "<s>[INST] What are three keywords for a photo of soldiers in a trench? [/INST]"
+	
+	inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
+	if device != 'cpu':
+		inputs = {k: v.to(device) for k, v in inputs.items()}
+	
+	with torch.no_grad():
+		outputs = model.generate(
+			**inputs,
+			max_new_tokens=MAX_NEW_TOKENS,
+			temperature=TEMPERATURE,
+			do_sample=True,
+			pad_token_id=tokenizer.pad_token_id,
+			eos_token_id=tokenizer.eos_token_id,
+		)
+	
+	response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+	print(f">> Test model response: {response}")
+	print("="*100)
 
 def test_model_formats(model, tokenizer, device):
 		"""Test different prompt formats to see which one works best"""
+		print(f"="*100)
+		print("Testing model formats...")
 		test_formats = [
 				# Format 1: Simple instruction
 				"<s>[INST] Extract 3 keywords: soldiers in trench [/INST]",
@@ -82,9 +183,12 @@ def test_model_formats(model, tokenizer, device):
 				
 				response = tokenizer.decode(outputs[0], skip_special_tokens=True)
 				print(f"Response: {response}")
+		print("="*100)
 
 def test_final_format(model, tokenizer, device):
 		"""Test our final prompt format"""
+		print(f"="*100)
+		print("Testing final prompt format...")
 		test_prompt = PROMPT_TEMPLATE.format(description="soldiers in trench")
 		
 		inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
@@ -103,9 +207,12 @@ def test_final_format(model, tokenizer, device):
 		if "[/INST]" in response:
 				response = response.split("[/INST]")[-1].strip()
 		print(f"Final format test: {response}")
+		print("="*100)
 
 def test_new_prompt(model, tokenizer, device):
 		"""Test the new prompt format"""
+		print(f"="*100)
+		print("Testing new prompt format...")
 		test_prompt = PROMPT_TEMPLATE.format(description="soldiers in trench during World War I")
 		
 		inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
@@ -124,9 +231,12 @@ def test_new_prompt(model, tokenizer, device):
 		if "[/INST]" in response:
 				response = response.split("[/INST]")[-1].strip()
 		print(f"New prompt test: {response}")
+		print("="*100)
 
 def test_fixed_prompt(model, tokenizer, device):
 		"""Test the fixed prompt format"""
+		print(f"="*100)
+		print("Testing fixed prompt format...")
 		test_prompt = PROMPT_TEMPLATE.format(description="soldiers in trench during World War I")
 		
 		inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
@@ -145,9 +255,12 @@ def test_fixed_prompt(model, tokenizer, device):
 		if "[/INST]" in response:
 				response = response.split("[/INST]")[-1].strip()
 		print(f"Fixed prompt test: {response}")
+		print("="*100)
 
 def test_new_format(model, tokenizer, device):
 		"""Test the new simplified format"""
+		print(f"="*100)
+		print("Testing new simplified format...")
 		test_prompt = PROMPT_TEMPLATE.format(description="soldiers in trench during World War I")
 		
 		inputs = tokenizer(test_prompt, return_tensors="pt", truncation=True, max_length=512)
@@ -166,6 +279,7 @@ def test_new_format(model, tokenizer, device):
 		if "[/INST]" in response:
 				response = response.split("[/INST]")[-1].strip()
 		print(f"New format test: {response}")
+		print("="*100)
 
 def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 	if not isinstance(text, str) or not text.strip():
@@ -290,15 +404,14 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 		tokenizer.pad_token_id = tokenizer.eos_token_id
 
 	try:
-		print(f"Trying to load {model_id} without quantization...")
 		model = tfs.AutoModelForCausalLM.from_pretrained(
 			model_id,
-			device_map="auto",
+			device_map=device, #"auto",
 			torch_dtype=torch.float16,
 			low_cpu_mem_usage=True,
 			trust_remote_code=True,
 		).eval()
-		print(f"{model_id} loaded WITHOUT Quantization!")
+		print(f"{model_id} loaded on {device} WITHOUT Quantization!")
 	except Exception as e:
 		print(f"❌ Failed to load without quantization: {e}")
 		try:
@@ -328,23 +441,20 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 			except Exception as e3:
 				raise RuntimeError("Could not load model with any method!")
 
-	print("Testing model response...")
+	print_debug_info(model, tokenizer, device)
+
 	test_model_response(model, tokenizer, device)
 
-	print("Testing model formats...")
 	test_model_formats(model, tokenizer, device)
 
-	print("Testing final prompt format...")
 	test_final_format(model, tokenizer, device)
 
-	print("Testing new prompt format...")
 	test_new_prompt(model, tokenizer, device)
 	
-	print("Testing fixed prompt format...")
 	test_fixed_prompt(model, tokenizer, device)
 
-	print("Testing new simplified format...")
 	test_new_format(model, tokenizer, device)
+	return
 
 	print(f"🔍 Processing {len(df)} rows with local LLM: {model_id}...")
 	labels_list = [None] * len(df)
