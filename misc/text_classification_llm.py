@@ -85,12 +85,15 @@ def generate_response(
 				# Plain LM – just feed the raw prompt.
 				wrapped = prompt
 
-		# 2️⃣  Tokenise
+		# 2️⃣  Tokenise with safe max_length
+		model_max_length = getattr(tokenizer, 'model_max_length', 4096)
+		if model_max_length > 1000000:  # If it's unreasonably large
+				model_max_length = 4096
 		inputs = tokenizer(
 				wrapped,
 				return_tensors="pt",
 				truncation=True,
-				max_length=tokenizer.model_max_length - max_new_tokens,
+				max_length=min(model_max_length - max_new_tokens, 4096),  # Ensure it's reasonable
 		)
 		inputs = {k: v.to(device) for k, v in inputs.items()}
 
