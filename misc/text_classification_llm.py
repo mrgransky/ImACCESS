@@ -8,6 +8,7 @@ huggingface_hub.login(token=hf_tk)
 # MODEL_NAME = "meta-llama/Llama-3.2-1B"
 # MODEL_NAME = "meta-llama/Meta-Llama-3-8B-Instruct"
 # MODEL_NAME = "microsoft/DialoGPT-large"  # Fallback if you can't run Hermes
+# MODEL_NAME = "gpt2-xl"
 
 # $ python text_classification_llm.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -m "mistralai/Mistral-7B-Instruct-v0.3"
 # $ nohup python -u text_classification_llm.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label_multimodal.csv -m "mistralai/Mistral-7B-Instruct-v0.3" > /media/volume/ImACCESS/trash/llm_output.txt &
@@ -410,6 +411,7 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 			torch_dtype=torch.float16,
 			low_cpu_mem_usage=True,
 			trust_remote_code=True,
+			cache_dir=cache_directory[USER],
 		).eval()
 		print(f"{model_id} loaded on {device} WITHOUT Quantization!")
 	except Exception as e:
@@ -422,6 +424,7 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 				torch_dtype=torch.float32,
 				low_cpu_mem_usage=True,
 				trust_remote_code=True,
+				cache_dir=cache_directory[USER],
 			).eval()
 			device = 'cpu'  # Force CPU usage
 			print(f"{model_id} loaded on CPU!")
@@ -436,6 +439,7 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 					quantization_config=quantization_config,
 					low_cpu_mem_usage=True,
 					trust_remote_code=True,
+					cache_dir=cache_directory[USER],
 				).eval()
 				print(f"{model_id} loaded with 8-bit quantization")	
 			except Exception as e3:
