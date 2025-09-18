@@ -21,7 +21,7 @@ EXP_BACKOFF = 2	# seconds ** attempt
 TOP_K = 3
 PROMPT_TEMPLATE = """<s>[INST] 
 As an expert historical archivist, analyze this historical description carefully and extract maximum of 3 concrete, factual and relevant keywords with concise rationales. 
-Duplicate keywords are not allowed. Keywords with numbers are not allowed.
+Duplicate keywords are not allowed. Keywords with numbers, temporal context and time-related information are not allowed.
 
 Description: {description}
 
@@ -576,7 +576,7 @@ def extract_labels_with_local_llm(model_id: str, input_csv: str, device: str) ->
 
 	# test_fixed_prompt(model, tokenizer, device)
 
-	run_all_debugs(model, tokenizer, device)
+	# run_all_debugs(model, tokenizer, device)
 
 	# return
 
