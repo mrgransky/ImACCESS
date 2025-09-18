@@ -32,7 +32,6 @@ model = tfs.AutoModelForCausalLM.from_pretrained(
 ).eval()
 
 prompt = """<s>[INST] 
-<s>[INST]
 As an expert historical archivist, analyze this historical description carefully and extract maximum of three (not more) concrete, factual and relevant keywords with concise rationales.
 Duplicate keywords are not allowed. Keywords with numbers, temporal context and time-related information are strongly discouraged.
 Description: 'As You Like It'' theatrical productions; SMU The first production of the Arden Club, ''As You Like It'' was performed at SMU's first commencement ceremony in 1916.
