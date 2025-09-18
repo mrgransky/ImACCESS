@@ -26,9 +26,8 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 huggingface_hub.login(token=hf_tk)
 
 # model_id = "Qwen/Qwen3-4B-Instruct-2507"
-# model_id = "microsoft/Phi-4-mini-instruct"
+model_id = "microsoft/Phi-4-mini-instruct"
 # model_id = "mistralai/Mistral-7B-Instruct-v0.3"
-model_id = "meta-llama/Llama-3.2-3B-Instruct"
 
 tokenizer = tfs.AutoTokenizer.from_pretrained(
 	model_id, 
