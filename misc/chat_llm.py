@@ -31,7 +31,7 @@ if not hasattr(tfs.utils, "FlashAttentionKwargs"):
 		pass
 	tfs.utils.FlashAttentionKwargs = FlashAttentionKwargs
 
-MAX_NEW_TOKENS = 500
+MAX_NEW_TOKENS = 300
 TEMPERATURE = 1e-8
 TOP_P = 0.9
 MAX_RETRIES = 3
@@ -42,9 +42,14 @@ print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
 PROMPT_TEMPLATE = """<s>[INST]
-Extract exactly {k} keywords from this description. Output only the keywords separated by commas:
+You are a meticulous historical archivist.  
+Given the description below, extract **exactly {k}** concrete, factual, and *non‑numeric* keywords.
 
 {description}
+
+**Rule**:
+- Keywords separated by commas (desired formatting: keyword1, keyword2, keyword3). 
+- Avoid any additional text or explanations in your response.
 [/INST]
 """
 
@@ -70,6 +75,23 @@ class JsonStopCriteria(tfs.StoppingCriteria):
 		return False
 
 def get_llm_response(input_prompt: str, llm_response: str):
+	# 1. Clean the input prompt by removing special tokens
+	cleaned_prompt = input_prompt.replace("<s>", "").replace("</s>", "").replace("[INST]", "").replace("[/INST]", "").strip()
+	print(f"Cleaned prompt:\n{cleaned_prompt}\n")
+	# 2. Split the LLM response using the cleaned prompt
+	parts = llm_response.split(cleaned_prompt)
+	# 3. Check if the split was successful
+	if len(parts) < 2:
+			# Handle the error case gracefully instead of crashing
+			print("Error: The LLM response does not contain the full input prompt. Returning None.")
+			return None
+	
+	# 4. Extract the new string and perform final cleaning
+	new_string = parts[1].strip()
+	print(f"New string (must be cleaned answer):\n{new_string}\n")
+	return new_string
+
+def get_llm_response_old(input_prompt: str, llm_response: str):
 	# Split the output string by the common input string
 	parts = llm_response.split(input_prompt)
 
