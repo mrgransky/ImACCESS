@@ -115,13 +115,9 @@ def extract_json_from_llm_response_old(text: str) -> Optional[dict]:
 
 import re, json, ast
 
-def extract_json_from_llm_response(text: str) -> Optional[dict]:
-    """
-    Universal extractor across models: Handles JSON, Python dict style, quotes, multiline.
-    """
+def extract_json_from_llm_response(text: str):
     all_json_objects = []
 
-    # Gather all candidates between ```json fences and raw {...}
     fenced = re.findall(r"```json\s*([\s\S]*?)```", text, re.DOTALL)
     raw = re.findall(r"\{[\s\S]*?\}", text, re.DOTALL)
     candidates = fenced + raw
@@ -129,45 +125,40 @@ def extract_json_from_llm_response(text: str) -> Optional[dict]:
 
     for i, cand in enumerate(candidates, 1):
         cand = cand.strip()
-        preview = cand[:100].replace("\n"," ")
-        print(f"\nCandidate {i}: {preview}...")
+        print(f"\nCandidate {i}: {cand[:80]}...")
 
-        # Skip template examples
-        if "keyword1" in cand or "rationale1" in cand:
+        if "keyword1" in cand and "rationale1" in cand:
             print("  → Skipped template")
             continue
 
-        # --- Try strict JSON ---
+        # Try strict JSON
         try:
             data = json.loads(cand)
-            if valid(data): 
+            if valid(data):
                 print("  ✓ Parsed as strict JSON")
-                all_json_objects.append(data)
-                continue
+                all_json_objects.append(data); continue
         except Exception as e:
             print(f"  ✗ JSON failed: {e}")
 
-        # --- Normalize quotes and retry JSON ---
+        # Try normalized JSON (replace quotes)
         try:
-            normalized = cand.replace("'", '"')  # blanket replace
+            normalized = cand.replace("'", '"')
             data = json.loads(normalized)
-            if valid(data): 
+            if valid(data):
                 print("  ✓ Parsed after quote normalization")
-                all_json_objects.append(data)
-                continue
+                all_json_objects.append(data); continue
         except Exception as e:
             print(f"  ✗ Normalized JSON failed: {e}")
 
-        # --- Last resort: literal_eval after sanitization ---
+        # Try literal_eval — but clean string first
         try:
-            cleaned = cand.replace("\n", " ")
-            # fix trailing commas inside lists/objects
-            cleaned = re.sub(r",\s*([\]}])", r"\1", cleaned)
+            cleaned = cand.replace("\n", " ")                   # remove newlines
+            cleaned = re.sub(r",\s*([\]}])", r"\1", cleaned)    # remove trailing commas
+            cleaned = re.sub(r"\s+", " ", cleaned)              # squash whitespace
             data = ast.literal_eval(cleaned)
             if valid(data):
                 print("  ✓ Parsed with literal_eval fallback")
-                all_json_objects.append(data)
-                continue
+                all_json_objects.append(data); continue
         except Exception as e:
             print(f"  ✗ literal_eval failed: {e}")
 
