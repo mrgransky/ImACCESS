@@ -39,14 +39,31 @@ TOP_K = 3
 print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
-PROMPT_TEMPLATE = """<s>[INST]
-As an expert historical archivist, analyze this historical description carefully and extract a list of concrete, factual and relevant keywords with their corresponding concise rationales.
-Duplicate and identical keywords are not allowed. Avoid keywords that contain numbers, temporal context, or time-related information.
-Description: {description}
+# PROMPT_TEMPLATE = """<s>[INST]
+# As an expert historical archivist, analyze this historical description carefully and extract a list of concrete, factual and relevant keywords with their corresponding concise rationales.
+# Duplicate and identical keywords are not allowed. Avoid keywords that contain numbers, temporal context, or time-related information.
+# Description: {description}
 
-Your entire output MUST be ONLY a single JSON object with two keys: "keywords" and "rationales". The value of each key is a list of strings. Do not include any other text, explanations, or markdown formatting (e.g., ```json```) in your response.
+# Your entire output MUST be ONLY a single JSON object with two keys: "keywords" and "rationales". The value of each key is a list of strings. Do not include any other text, explanations, or markdown formatting (e.g., ```json```) in your response.
+# [/INST]
+# """
+
+PROMPT_TEMPLATE = """<s>[INST]
+You are a meticulous historical archivist.  
+Given the description below, **extract exactly three** concrete, factual, and *non‑numeric* keywords and give a short, one‑sentence rationale for each.
+
+**Rules**
+- Do NOT repeat or synonym‑duplicate keywords.
+- Do NOT include any numbers, dates, years, or temporal expressions.
+- Output MUST be **ONLY** a single JSON object with two keys: "keywords" and "rationales". 
+- The value of each key is a list of strings. 
+- Do not include any other text, explanations, or markdown formatting (e.g., ```json```) in the response.
+
+**Description**: {description}
+
 [/INST]
 """
+
 
 class JsonStopCriteria(tfs.StoppingCriteria):
 	def __init__(self, tokenizer):
