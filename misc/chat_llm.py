@@ -279,25 +279,24 @@ import ast
 def get_nousresearch_response(input_prompt: str, llm_response: str):
     """
     Extracts the Python list of keywords from the conversational and multi-turn output
-    of the NousResearch/Hermes-2-Pro-Llama-3-8B model by searching for the "Answer:" label.
+    of the NousResearch/Hermes-2-Pro-Llama-3-8B model by searching for the [OUT] tags.
     """
     print("Handling NousResearch Hermes response...")
 
-    # The model's response is a multi-turn conversation.
-    # The actual answer is within a specific [INST]...[/INST] block containing "Answer:".
-    
-    # Use a regex to find the specific block that contains "Answer:".
-    match = re.search(r"Answer:\s*(.*?)(?=\s*\[/INST])", llm_response, re.DOTALL)
+    # The model's response uses [OUT] tags to contain the answer
+    # Look for content between [OUT] and [/OUT] tags
+    match = re.search(r"\[OUT\](.*?)\[/OUT\]", llm_response, re.DOTALL)
     
     if not match:
-        print("Error: Could not find 'Answer:' in the response.")
+        print("Error: Could not find [OUT] tags in the response.")
+        print(f"Full response: {llm_response}")
         return None
         
     raw_list_str = match.group(1).strip()
     
     print(f"Found raw list string: {raw_list_str}")
     
-    # Now, find the actual list literal within the captured string.
+    # Now, find the actual list literal within the captured string
     list_match = re.search(r"(\[.*?\])", raw_list_str, re.DOTALL)
     
     if not list_match:
@@ -306,16 +305,19 @@ def get_nousresearch_response(input_prompt: str, llm_response: str):
         
     final_list_str = list_match.group(1)
     
-    # Use ast.literal_eval to safely parse the string into a Python list.
+    # Clean the string - replace smart quotes if any
+    cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+    
+    # Use ast.literal_eval to safely parse the string into a Python list
     try:
-        keywords_list = ast.literal_eval(final_list_str)
+        keywords_list = ast.literal_eval(cleaned_string)
         
-        # Post-processing to enforce the rules from the prompt.
+        # Post-processing to enforce the rules from the prompt
         if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
             print("Error: Extracted string is not a valid list of strings.")
             return None
         
-        # Remove numbers, special characters, and duplicates, then truncate to 3.
+        # Remove numbers, special characters, and duplicates, then truncate to 3
         processed_keywords = []
         for keyword in keywords_list:
             cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
@@ -336,6 +338,18 @@ def get_nousresearch_response(input_prompt: str, llm_response: str):
         
     except Exception as e:
         print(f"Error parsing the list: {e}")
+        print(f"Problematic string: {cleaned_string}")
+        
+        # Fallback: try to extract manually if literal_eval fails
+        try:
+            # Look for content between quotes
+            manual_matches = re.findall(r"['\"]([^'\"]+)['\"]", cleaned_string)
+            if manual_matches:
+                print(f"Using fallback extraction: {manual_matches}")
+                return manual_matches[:3]  # Return first 3 matches
+        except:
+            pass
+            
         return None
 
 def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str):
