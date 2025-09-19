@@ -121,139 +121,51 @@ def get_microsoft_response(input_prompt: str, llm_response: str):
 def get_mistral_response(input_prompt: str, llm_response: str):
     """
     Extracts the Python list of keywords from the Mistral-7B-Instruct model's
-    output, including a step to handle smart quotes and other non-standard characters.
-    Also validates that the extracted keywords follow the specified rules.
+    output, with better pattern matching for the actual model response.
     """
     print("Handling Mistral response...")
-
-    # 1. Use a more specific regular expression to find Python list structures with quotes
-    # This pattern looks for lists containing quoted strings
-    match = re.search(r"(\[(?:\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"])*\s*)?\])", llm_response.strip(), re.DOTALL)
     
-    # Fallback: if the above doesn't work, try a simpler pattern but look for the last occurrence
-    if not match:
-        # Find all bracket pairs and take the last one (most likely to be the actual list)
-        all_matches = re.findall(r"(\[.*?\])", llm_response.strip(), re.DOTALL)
-        if all_matches:
-            # Take the last match, which is more likely to be the actual Python list
-            final_list_str = all_matches[-1]
-        else:
-            print("Error: Could not find a list in the Mistral response.")
-            return None
-    else:
-        final_list_str = match.group(1)
-
-    # 2. Add a crucial pre-processing step to normalize the string
-    # Replace smart quotes with standard straight quotes
-    cleaned_string = final_list_str.replace(""", '"').replace(""", '"').replace("'", "'").replace("'", "'")
+    # Split the response by lines and look for the list pattern
+    lines = llm_response.strip().split('\n')
     
-    # Mistral also sometimes generates empty lists like []. If so, we should return an empty list
-    # instead of trying to parse.
-    if cleaned_string.strip() == "[]":
+    # Look for a line that starts with [ and ends with ] (the model's output)
+    list_line = None
+    for line in lines:
+        line = line.strip()
+        if line.startswith('[') and line.endswith(']'):
+            list_line = line
+            break
+    
+    if not list_line:
+        print("Error: Could not find a list in the Mistral response.")
+        return None
+        
+    print(f"Found list line: {list_line}")
+
+    # Clean the string
+    cleaned_string = list_line.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+    
+    if cleaned_string == "[]":
         print("Model returned an empty list.")
         return []
 
-    # 3. Use ast.literal_eval to safely parse the cleaned string as a Python list.
     try:
         keywords_list = ast.literal_eval(cleaned_string)
         
-        # 4. Validate that it's a list of strings
         if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
             print("Error: Extracted string is not a valid list of strings.")
             return None
             
-        # 5. Apply post-processing to enforce the rules
+        # Process keywords to remove numbers and enforce rules
         processed_keywords = []
         for keyword in keywords_list:
-            # For "non-numeric" rule, filter out keywords that are purely numeric or dates
-            # but keep keywords that contain some numbers as part of meaningful terms
+            # Remove numbers and special characters
+            cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
+            cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)  # Collapse spaces
             
-            # Skip if keyword is purely numeric or looks like a date/year
-            if re.match(r'^\d+
-        
-        # Ensure we have exactly 3 keywords (or fewer if not enough valid ones)
-        if len(processed_keywords) > 3:
-            processed_keywords = processed_keywords[:3]
-            
-        if not processed_keywords:
-            print("Error: No valid keywords found after processing.")
-            return None
-            
-        print(f"Successfully extracted {len(processed_keywords)} keywords from Mistral response.")
-        return processed_keywords
-        
-    except Exception as e:
-        print(f"Error parsing the list from Mistral response: {e}")
-        print(f"Problematic string: {cleaned_string}")
-        return None, keyword.strip()) or re.match(r'^\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}
-        
-        # Ensure we have exactly 3 keywords (or fewer if not enough valid ones)
-        if len(processed_keywords) > 3:
-            processed_keywords = processed_keywords[:3]
-            
-        if not processed_keywords:
-            print("Error: No valid keywords found after processing.")
-            return None
-            
-        print(f"Successfully extracted {len(processed_keywords)} keywords from Mistral response.")
-        return processed_keywords
-        
-    except Exception as e:
-        print(f"Error parsing the list from Mistral response: {e}")
-        print(f"Problematic string: {cleaned_string}")
-        return None, keyword.strip()) or re.match(r'^\d{4}
-        
-        # Ensure we have exactly 3 keywords (or fewer if not enough valid ones)
-        if len(processed_keywords) > 3:
-            processed_keywords = processed_keywords[:3]
-            
-        if not processed_keywords:
-            print("Error: No valid keywords found after processing.")
-            return None
-            
-        print(f"Successfully extracted {len(processed_keywords)} keywords from Mistral response.")
-        return processed_keywords
-        
-    except Exception as e:
-        print(f"Error parsing the list from Mistral response: {e}")
-        print(f"Problematic string: {cleaned_string}")
-        return None, keyword.strip()):
-                continue
-                
-            # Clean up the keyword but preserve meaningful parts
-            cleaned_keyword = keyword.strip()
-            
-            # Remove standalone hash-number patterns like #59, but keep meaningful content
-            cleaned_keyword = re.sub(r'#\d+', '', cleaned_keyword).strip()
-            
-            # Remove extra whitespace
-            cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword).strip()
-            
-            # Skip empty results or purely numeric results after cleaning
-            if not cleaned_keyword or re.match(r'^\d+
-        
-        # Ensure we have exactly 3 keywords (or fewer if not enough valid ones)
-        if len(processed_keywords) > 3:
-            processed_keywords = processed_keywords[:3]
-            
-        if not processed_keywords:
-            print("Error: No valid keywords found after processing.")
-            return None
-            
-        print(f"Successfully extracted {len(processed_keywords)} keywords from Mistral response.")
-        return processed_keywords
-        
-    except Exception as e:
-        print(f"Error parsing the list from Mistral response: {e}")
-        print(f"Problematic string: {cleaned_string}")
-        return None, cleaned_keyword):
-                continue
-                
-            # Only add if not a duplicate (case-insensitive check)
-            if cleaned_keyword and not any(existing.lower() == cleaned_keyword.lower() for existing in processed_keywords):
+            if cleaned_keyword and cleaned_keyword not in processed_keywords:
                 processed_keywords.append(cleaned_keyword)
         
-        # Ensure we have exactly 3 keywords (or fewer if not enough valid ones)
         if len(processed_keywords) > 3:
             processed_keywords = processed_keywords[:3]
             
@@ -261,12 +173,11 @@ def get_mistral_response(input_prompt: str, llm_response: str):
             print("Error: No valid keywords found after processing.")
             return None
             
-        print(f"Successfully extracted {len(processed_keywords)} keywords from Mistral response.")
+        print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
         return processed_keywords
         
     except Exception as e:
-        print(f"Error parsing the list from Mistral response: {e}")
-        print(f"Problematic string: {cleaned_string}")
+        print(f"Error parsing the list: {e}")
         return None
 
 def get_nousresearch_response(input_prompt: str, llm_response: str):
