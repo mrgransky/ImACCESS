@@ -94,9 +94,8 @@ def extract_json_from_llm_response(text: str) -> Optional[dict]:
     and printing the results of each attempt.
     """
     print("--- Starting JSON extraction process ---")
-    all_json_objects = []
-
-    # 1. Gather fenced ```json ... ``` and raw { ... }
+    
+    # 1. Find all potential JSON candidates
     fenced_candidates = re.findall(r"```json\s*([\s\S]*?)```", text, re.DOTALL)
     raw_candidates = re.findall(r"\{[\s\S]*?\}", text, re.DOTALL)
     
@@ -104,54 +103,72 @@ def extract_json_from_llm_response(text: str) -> Optional[dict]:
     candidates = (fenced_candidates + raw_candidates)[::-1]
     
     print(f"Found {len(fenced_candidates)} fenced blocks and {len(raw_candidates)} raw JSON candidates.")
-    print(f"Total candidates to check: {len(candidates)}")
+    print(f"Total candidates to check: {len(candidates)}\n")
 
     for i, candidate in enumerate(candidates, 1):
         cand = candidate.strip()
         preview = cand[:80].replace("\n", " ") + "..." if len(cand) > 80 else cand.replace("\n", " ")
-        print(f"\nProcessing candidate #{i} (Preview: '{preview}')")
+        print(f"--- Processing candidate #{i} (Preview: '{preview}') ---")
 
         # Skip example/template JSON
         if "keyword1" in cand and "rationale1" in cand:
-            print("  - ➡️ Skipped: This looks like the example/template JSON.")
+            print("  - ➡️ **Skipped:** This looks like the example/template JSON.")
             continue
 
-        # === Strategy 1: Strict JSON Parsing ===
-        print("  - 🔎 Attempting strict JSON parse...")
+        # === Strategy 1: Strict JSON Parse (for clean outputs) ===
+        print("  - 🔎 **Attempting Strict JSON Parse...**")
         try:
             data = json.loads(cand)
             if valid_json(data):
-                print("  ✅ SUCCESS: Parsed as strict JSON.")
-                all_json_objects.append(data)
-                break  # Stop at the first successful parse from the end
+                print("  ✅ **SUCCESS:** Parsed as strict JSON.")
+                print("--- Extraction complete. ---\n")
+                return data
             else:
-                print(f"  ❌ FAILED: Strict JSON parsed but keys are invalid. Data: {data}")
+                print(f"  ❌ **FAILED:** Strict JSON parsed but keys are invalid.")
         except json.JSONDecodeError as e:
-            print(f"  ❌ FAILED: JSONDecodeError. Reason: {e}")
+            print(f"  ❌ **FAILED:** JSONDecodeError. Reason: {e}")
         except Exception as e:
-            print(f"  ❌ FAILED: Unexpected error during strict parse. Reason: {e}")
+            print(f"  ❌ **FAILED:** Unexpected error. Reason: {e}")
 
-        # === Strategy 2: Python Literal Evaluation (handles single quotes) ===
-        print("  - 🔎 Attempting `ast.literal_eval`...")
+        # === Strategy 2: `ast.literal_eval` (for single-quoted JSON) ===
+        print("\n  - 🔎 **Attempting `ast.literal_eval` (for single quotes)...**")
         try:
             data = ast.literal_eval(cand)
             if valid_json(data):
-                print("  ✅ SUCCESS: Parsed with `ast.literal_eval`.")
-                all_json_objects.append(data)
-                break  # Stop at the first successful parse from the end
+                print("  ✅ **SUCCESS:** Parsed with `ast.literal_eval`.")
+                print("--- Extraction complete. ---\n")
+                return data
             else:
-                print(f"  ❌ FAILED: `literal_eval` parsed but keys are invalid. Data: {data}")
+                print(f"  ❌ **FAILED:** `literal_eval` parsed but keys are invalid.")
         except Exception as e:
-            print(f"  ❌ FAILED: `literal_eval` failed. Reason: {e}")
+            print(f"  ❌ **FAILED:** `literal_eval` failed. Reason: {e}")
             
-    # Return the first successful parse from the end of the candidates list.
-    if all_json_objects:
-        result = all_json_objects[0]
-        print(f"\n--- SUCCESS: Final extracted JSON ---")
-        return result
-    else:
-        print("\n--- FAILED: No valid JSON could be extracted from the response. ---")
-        return None
+        # === Strategy 3: Aggressive string cleaning and re-parsing ===
+        print("\n  - 🔎 **Attempting Aggressive Cleaning and Reparse...**")
+        try:
+            # Fix single quotes and potential unescaped characters
+            cleaned_cand = cand.replace("'", '"')
+            
+            # Remove any trailing commas that might cause a parse error
+            cleaned_cand = re.sub(r",\s*([\]}])", r"\1", cleaned_cand)
+            
+            print(f"  - **Cleaned Preview:** {cleaned_cand}...'")
+            
+            data = json.loads(cleaned_cand)
+            if valid_json(data):
+                print("  ✅ **SUCCESS:** Parsed after aggressive cleaning.")
+                print("--- Extraction complete. ---\n")
+                return data
+            else:
+                print(f"  ❌ **FAILED:** Reparsed but keys are invalid.")
+        except json.JSONDecodeError as e:
+            print(f"  ❌ **FAILED:** Aggressive cleaning failed. Reason: {e}")
+        except Exception as e:
+            print(f"  ❌ **FAILED:** Unexpected error after cleaning. Reason: {e}")
+            
+    # If no valid JSON was found after all attempts
+    print("\n--- **FAILED:** No valid JSON could be extracted from the response. ---")
+    return None
 
 def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 	if not isinstance(text, str) or not text.strip():
