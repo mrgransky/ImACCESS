@@ -113,65 +113,77 @@ def extract_json_from_llm_response_old(text: str) -> Optional[dict]:
 				return all_json_objects[-1]
 		return None
 
-import re, json, ast
+def valid_json(obj) -> bool:
+    """Helper function to validate the parsed JSON object."""
+    return isinstance(obj, dict) and "keywords" in obj and "rationales" in obj
 
-def extract_json_from_llm_response(text: str):
+def extract_json_from_llm_response(text: str) -> Optional[dict]:
+    """
+    Universal extractor for LLM JSON responses with detailed debugging.
+    
+    This function handles common LLM output formats by trying multiple parsing strategies
+    and printing the results of each attempt.
+    """
+    print("--- Starting JSON extraction process ---")
     all_json_objects = []
 
-    fenced = re.findall(r"```json\s*([\s\S]*?)```", text, re.DOTALL)
-    raw = re.findall(r"\{[\s\S]*?\}", text, re.DOTALL)
-    candidates = fenced + raw
-    print(f"Found {len(fenced)} fenced blocks, {len(raw)} raw blocks")
+    # 1. Gather fenced ```json ... ``` and raw { ... }
+    fenced_candidates = re.findall(r"```json\s*([\s\S]*?)```", text, re.DOTALL)
+    raw_candidates = re.findall(r"\{[\s\S]*?\}", text, re.DOTALL)
+    
+    # Process from the end of the list, as the last candidate is usually the desired output.
+    candidates = (fenced_candidates + raw_candidates)[::-1]
+    
+    print(f"Found {len(fenced_candidates)} fenced blocks and {len(raw_candidates)} raw JSON candidates.")
+    print(f"Total candidates to check: {len(candidates)}")
 
-    for i, cand in enumerate(candidates, 1):
-        cand = cand.strip()
-        print(f"\nCandidate {i}: {cand[:80]}...")
+    for i, candidate in enumerate(candidates, 1):
+        cand = candidate.strip()
+        preview = cand[:80].replace("\n", " ") + "..." if len(cand) > 80 else cand.replace("\n", " ")
+        print(f"\nProcessing candidate #{i} (Preview: '{preview}')")
 
+        # Skip example/template JSON
         if "keyword1" in cand and "rationale1" in cand:
-            print("  → Skipped template")
+            print("  - ➡️ Skipped: This looks like the example/template JSON.")
             continue
 
-        # Try strict JSON
+        # === Strategy 1: Strict JSON Parsing ===
+        print("  - 🔎 Attempting strict JSON parse...")
         try:
             data = json.loads(cand)
-            if valid(data):
-                print("  ✓ Parsed as strict JSON")
-                all_json_objects.append(data); continue
+            if valid_json(data):
+                print("  ✅ SUCCESS: Parsed as strict JSON.")
+                all_json_objects.append(data)
+                break  # Stop at the first successful parse from the end
+            else:
+                print(f"  ❌ FAILED: Strict JSON parsed but keys are invalid. Data: {data}")
+        except json.JSONDecodeError as e:
+            print(f"  ❌ FAILED: JSONDecodeError. Reason: {e}")
         except Exception as e:
-            print(f"  ✗ JSON failed: {e}")
+            print(f"  ❌ FAILED: Unexpected error during strict parse. Reason: {e}")
 
-        # Try normalized JSON (replace quotes)
+        # === Strategy 2: Python Literal Evaluation (handles single quotes) ===
+        print("  - 🔎 Attempting `ast.literal_eval`...")
         try:
-            normalized = cand.replace("'", '"')
-            data = json.loads(normalized)
-            if valid(data):
-                print("  ✓ Parsed after quote normalization")
-                all_json_objects.append(data); continue
+            data = ast.literal_eval(cand)
+            if valid_json(data):
+                print("  ✅ SUCCESS: Parsed with `ast.literal_eval`.")
+                all_json_objects.append(data)
+                break  # Stop at the first successful parse from the end
+            else:
+                print(f"  ❌ FAILED: `literal_eval` parsed but keys are invalid. Data: {data}")
         except Exception as e:
-            print(f"  ✗ Normalized JSON failed: {e}")
-
-        # Try literal_eval — but clean string first
-        try:
-            cleaned = cand.replace("\n", " ")                   # remove newlines
-            cleaned = re.sub(r",\s*([\]}])", r"\1", cleaned)    # remove trailing commas
-            cleaned = re.sub(r"\s+", " ", cleaned)              # squash whitespace
-            data = ast.literal_eval(cleaned)
-            if valid(data):
-                print("  ✓ Parsed with literal_eval fallback")
-                all_json_objects.append(data); continue
-        except Exception as e:
-            print(f"  ✗ literal_eval failed: {e}")
-
+            print(f"  ❌ FAILED: `literal_eval` failed. Reason: {e}")
+            
+    # Return the first successful parse from the end of the candidates list.
     if all_json_objects:
-        result = all_json_objects[-1]
-        print(f"\nSelected JSON: {result}")
+        result = all_json_objects[0]
+        print(f"\n--- SUCCESS: Final extracted JSON ---")
         return result
     else:
-        print("✗ No valid JSON extracted")
+        print("\n--- FAILED: No valid JSON could be extracted from the response. ---")
         return None
 
-def valid(obj):
-    return isinstance(obj, dict) and "keywords" in obj and "rationales" in obj
 
 def extract_json_from_llm_response_(text: str) -> Optional[dict]:
 	all_json_objects = []
