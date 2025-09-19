@@ -114,13 +114,13 @@ def get_qwen_response(input_prompt: str, llm_response: str):
 	print("Handling Qwen response...")
 	pass
 
+import json
 import re
-import ast
 
 def get_microsoft_response(input_prompt: str, llm_response: str):
     """
     Extracts the Python list of keywords from the clean output of the
-    Phi-4-mini-instruct model.
+    Phi-4-mini-instruct model using a more robust JSON-based approach.
     """
     print("Handling Microsoft Phi response...")
     
@@ -133,22 +133,30 @@ def get_microsoft_response(input_prompt: str, llm_response: str):
         
     final_list_str = match.group(1)
     
-    # The model sometimes includes spaces and other characters that need to be cleaned up.
-    cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+    # Crucial pre-processing to make the string JSON-compliant.
+    # Replace single quotes with double quotes.
+    cleaned_string = final_list_str.replace("'", '"')
     
+    # Replace smart quotes with standard straight quotes.
+    cleaned_string = cleaned_string.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+    
+    # Use re.sub to fix apostrophes inside keywords after converting single quotes to double quotes
+    cleaned_string = re.sub(r'(\w)\'(\w)', r'\1\2', cleaned_string)
+
     if cleaned_string == "[]":
         print("Model returned an empty list.")
         return []
 
     try:
-        keywords_list = ast.literal_eval(cleaned_string)
+        # Use json.loads instead of ast.literal_eval
+        keywords_list = json.loads(cleaned_string)
         
-        # Ensure the parsed result is a list of strings
+        # Ensure the parsed result is a list of strings.
         if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
             print("Error: Extracted string is not a valid list of strings.")
             return None
         
-        # Post-process to enforce rules (e.g., limit to 3, remove special chars)
+        # Post-process to enforce rules (e.g., limit to 3, remove special chars).
         processed_keywords = []
         for keyword in keywords_list:
             cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
@@ -167,8 +175,11 @@ def get_microsoft_response(input_prompt: str, llm_response: str):
         print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
         return processed_keywords
         
+    except json.JSONDecodeError as e:
+        print(f"Error parsing the list with JSON: {e}")
+        return None
     except Exception as e:
-        print(f"Error parsing the list: {e}")
+        print(f"An unexpected error occurred: {e}")
         return None
 
 def get_mistral_response(input_prompt: str, llm_response: str):
