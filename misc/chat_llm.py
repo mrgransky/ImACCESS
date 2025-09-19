@@ -279,40 +279,32 @@ import ast
 def get_nousresearch_response(input_prompt: str, llm_response: str):
     """
     Extracts the Python list of keywords from the conversational and multi-turn output
-    of the NousResearch/Hermes-2-Pro-Llama-3-8B model.
+    of the NousResearch/Hermes-2-Pro-Llama-3-8B model by searching for the "Answer:" label.
     """
     print("Handling NousResearch Hermes response...")
+
+    # The model's response is a multi-turn conversation.
+    # The actual answer is within a specific [INST]...[/INST] block containing "Answer:".
     
-    # Split the response by lines to process it turn by turn.
-    lines = llm_response.strip().split('\n')
+    # Use a regex to find the specific block that contains "Answer:".
+    match = re.search(r"Answer:\s*(.*?)(?=\s*\[/INST])", llm_response, re.DOTALL)
     
-    list_line = None
-    # Iterate through lines to find the one containing the answer.
-    for line in lines:
-        line = line.strip()
-        # The answer is a line inside an [INST] block, starting with 'Answer:'.
-        if line.startswith('[INST] Answer:'):
-            list_line = line
-            break
-            
-    if not list_line:
+    if not match:
         print("Error: Could not find 'Answer:' in the response.")
         return None
         
-    # The list starts after the 'Answer:' label.
-    raw_list_str = list_line.split('Answer:', 1)[1].strip()
+    raw_list_str = match.group(1).strip()
     
     print(f"Found raw list string: {raw_list_str}")
     
-    # We now have the string containing the list, but it may have
-    # extra tokens like '[/INST]' or '</s>'. We need to isolate the list itself.
-    match = re.search(r"(\[.*?\])", raw_list_str, re.DOTALL)
+    # Now, find the actual list literal within the captured string.
+    list_match = re.search(r"(\[.*?\])", raw_list_str, re.DOTALL)
     
-    if not match:
+    if not list_match:
         print("Error: Could not find a list in the extracted string.")
         return None
         
-    final_list_str = match.group(1)
+    final_list_str = list_match.group(1)
     
     # Use ast.literal_eval to safely parse the string into a Python list.
     try:
