@@ -68,46 +68,40 @@ log = logging.getLogger(__name__)
 
 
 def extract_json(text: str, *, first: bool = True) -> Optional[dict]:
-		"""
-		Extract *valid* JSON from an arbitrary string.
-
-		Parameters
-		----------
-		text : str
-				The raw output coming from an LLM or any other source.
-		first : bool, optional
-				If True (default) return only the first JSON object found.
-				If False, return a list of all parsed objects (or None if none parse).
-
-		Returns
-		-------
-		dict | None
-				Parsed JSON dict, or ``None`` when no parsable JSON was found.
-		"""
-		JSON_RE = re.compile(r'\{[\s\S]*?\}', re.MULTILINE)   # non‑greedy, matches first JSON block
-		if not isinstance(text, str):
-				log.debug("extract_json received a non‑string: %r", text)
-				return None
-
-		# Find *all* candidate JSON substrings (non‑greedy)
-		candidates = JSON_RE.findall(text)
-		if not candidates:
-				log.debug("No JSON bracket pattern found in text.")
-				return None
-
-		parsed = []
-		for cand in candidates:
-				try:
-						parsed.append(json.loads(cand))
-				except json.JSONDecodeError as exc:
-						# Fine‑grained debug; not noisy in production
-						log.debug("Failed to decode candidate JSON: %s | error=%s", cand, exc)
-
-		if not parsed:
-				return None
-
-		return parsed[0] if first else parsed
-
+	"""
+	Extract *valid* JSON from an arbitrary string.
+	Parameters
+	----------
+	text : str
+			The raw output coming from an LLM or any other source.
+	first : bool, optional
+			If True (default) return only the first JSON object found.
+			If False, return a list of all parsed objects (or None if none parse).
+	Returns
+	-------
+	dict | None
+			Parsed JSON dict, or ``None`` when no parsable JSON was found.
+	"""
+	JSON_RE = re.compile(r'\{[\s\S]*?\}', re.MULTILINE)   # non‑greedy, matches first JSON block
+	if not isinstance(text, str):
+		log.debug("extract_json received a non‑string: %r", text)
+		return None
+	# Find *all* candidate JSON substrings (non‑greedy)
+	candidates = JSON_RE.findall(text)
+	if not candidates:
+		log.debug("No JSON bracket pattern found in text.")
+		return None
+	parsed = []
+	for cand in candidates:
+		try:
+			parsed.append(json.loads(cand))
+		except json.JSONDecodeError as exc:
+			# Fine‑grained debug; not noisy in production
+			log.debug("Failed to decode candidate JSON: %s | error=%s", cand, exc)
+	if not parsed:
+		log.debug("No valid JSON found in text.")
+		return None
+	return parsed[0] if first else parsed
 
 def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 	if not isinstance(text, str) or not text.strip():
@@ -151,23 +145,42 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 	json_data = extract_json_from_text(llm_response)
 	print(json_data)
 
-	print(f"\n=== Extracted (Raw) JSON Data (NEW)===")
-	json_data_new = extract_json_from_text_new(llm_response)
-	print(json_data_new)
-
-	print(f"\n=== Extracted JSON Data (Gold Standard) ===")
-	json_payload = extract_json(raw_text)
-	print(json_payload)
-
 	print(f"\n=== Extracted Listed results from JSON Data ===")
 	if json_data:
-		keywords = json_data.get("keywords", [])
-		rationales = json_data.get("rationales", [])
+		keywords = json_data.get("keywords", None)
+		rationales = json_data.get("rationales", None)
 		print(f"Extracted {len(keywords)} Keywords({type(keywords)}): {keywords}")
 		print(f"Extracted {len(rationales)} Rationales({type(rationales)}): {rationales}")
 	else:
 		print("Could not extract JSON data from the response.")
 		return None, None
+
+
+	print(f"\n=== Extracted (Raw) JSON Data (NEW)===")
+	json_data_new = extract_json_from_text_new(llm_response)
+	print(json_data_new)
+
+	print(f"\n=== Extracted Listed results from JSON Data (NEW) ===")
+	if json_data_new:
+		keywords_new = json_data_new.get("keywords", None)
+		rationales_new = json_data_new.get("rationales", None)
+		print(f"Extracted {len(keywords_new)} Keywords({type(keywords_new)}): {keywords_new}")
+		print(f"Extracted {len(rationales_new)} Rationales({type(rationales_new)}): {rationales_new}")
+	else:
+		print("Could not extract JSON data from the response.")
+
+	print(f"\n=== Extracted JSON Data (Gold Standard) ===")
+	json_payload = extract_json(raw_text)
+	print(json_payload)
+
+	print(f"\n=== Extracted Listed results from JSON Data (Gold Standard) ===")
+	if json_payload:
+		keywords_gold = json_payload.get("keywords", None)
+		rationales_gold = json_payload.get("rationales", None)
+		print(f"Extracted {len(keywords_gold)} Keywords({type(keywords_gold)}): {keywords_gold}")
+		print(f"Extracted {len(rationales_gold)} Rationales({type(rationales_gold)}): {rationales_gold}")
+	else:
+		print("Could not extract JSON data from the response.")
 
 	return keywords, rationales
 
