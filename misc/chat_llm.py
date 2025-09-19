@@ -110,9 +110,57 @@ def get_llama_response(input_prompt: str, llm_response: str):
     print(f"Error parsing the final list from Llama response: {e}")
     return None
 
+import re
+import ast
+
 def get_qwen_response(input_prompt: str, llm_response: str):
-	print("Handling Qwen response...")
-	pass
+    """
+    Extracts the Python list of keywords from the conversational output of the
+    Qwen/Qwen3-4B-Instruct model. The model provides the list first, followed by an explanation.
+    """
+    print("Handling Qwen response...")
+    
+    # The list is at the very beginning of the model's response, before the explanation.
+    # We can use a non-greedy regex to find the first list-like structure.
+    match = re.search(r"(\[.*?\])", llm_response, re.DOTALL)
+    
+    if not match:
+        print("Error: Could not find a list in the Qwen response.")
+        return None
+        
+    final_list_str = match.group(1)
+    
+    # Use ast.literal_eval to safely parse the string into a Python list.
+    try:
+        keywords_list = ast.literal_eval(final_list_str)
+        
+        # Post-processing to enforce the rules from the prompt.
+        if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
+            print("Error: Extracted string is not a valid list of strings.")
+            return None
+        
+        # Remove numbers, special characters, and duplicates, then truncate to 3.
+        processed_keywords = []
+        for keyword in keywords_list:
+            cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
+            cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
+            
+            if cleaned_keyword and cleaned_keyword not in processed_keywords:
+                processed_keywords.append(cleaned_keyword)
+        
+        if len(processed_keywords) > 3:
+            processed_keywords = processed_keywords[:3]
+            
+        if not processed_keywords:
+            print("Error: No valid keywords found after processing.")
+            return None
+            
+        print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+        return processed_keywords
+        
+    except Exception as e:
+        print(f"Error parsing the list: {e}")
+        return None
 
 def get_microsoft_response(input_prompt: str, llm_response: str):
     """
@@ -272,9 +320,6 @@ def get_mistral_response(input_prompt: str, llm_response: str):
     except Exception as e:
         print(f"Error parsing the list: {e}")
         return None
-
-import re
-import ast
 
 def get_nousresearch_response(input_prompt: str, llm_response: str):
     """
