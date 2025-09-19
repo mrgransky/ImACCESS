@@ -88,32 +88,45 @@ class JsonStopCriteria(tfs.StoppingCriteria):
 		return False
 
 def extract_json_from_llm_response(text: str) -> Optional[dict]:
-    """
-    Extracts a JSON object from an LLM response,
-    handling common formatting like Markdown code blocks.
-    """
-    # 1. First, try to find a JSON block enclosed in markdown fences.
-    # This is a very common format for LLMs returning JSON.
-    markdown_match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', text, re.DOTALL)
-    if markdown_match:
-        json_string = markdown_match.group(1)
-        try:
-            return json.loads(json_string)
-        except json.JSONDecodeError:
-            pass  # Fall through to the next method
+		"""
+		Extracts a JSON object from a complex LLM response string.
+		
+		This function handles:
+		- JSON wrapped in Markdown fences (```json...```)
+		- Lone JSON objects with extraneous text before or after
+		- Multiple JSON objects in a single response, by taking the last one
+		- Extra characters/tokens before or after the JSON object
+		"""
+		all_json_objects = []
+		
+		# First, look for JSON objects wrapped in a markdown fence.
+		# This is a very common and preferred pattern.
+		markdown_matches = re.findall(r'```json\s*(\{[\s\S]*?\})\s*```', text, re.DOTALL)
+		for json_string in markdown_matches:
+				try:
+						data = json.loads(json_string)
+						all_json_objects.append(data)
+				except json.JSONDecodeError:
+						continue
 
-    # 2. If no markdown fence is found, try to find a lone JSON object.
-    # This regex is more specific than the previous ones,
-    # searching for an object that is likely at the end of the text.
-    json_match = re.search(r'(\{[\s\S]*\})', text)
-    if json_match:
-        json_string = json_match.group(1)
-        try:
-            return json.loads(json_string)
-        except json.JSONDecodeError:
-            pass  # Fall through
+		# If no markdown-wrapped JSON found, look for all standalone JSON objects.
+		if not all_json_objects:
+				# A non-greedy regex to find all bracket-enclosed objects
+				raw_json_matches = re.findall(r'\{[\s\S]*?\}', text, re.DOTALL)
+				for json_string in raw_json_matches:
+						try:
+								data = json.loads(json_string.strip())
+								# Add to list only if it's a valid JSON with "keywords" and "rationales"
+								if isinstance(data, dict) and "keywords" in data and "rationales" in data:
+										all_json_objects.append(data)
+						except json.JSONDecodeError:
+								continue
 
-    return None
+		# Return the last valid JSON object found, as it's most likely the final answer.
+		if all_json_objects:
+				return all_json_objects[-1]
+				
+		return None
 
 def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 	if not isinstance(text, str) or not text.strip():
