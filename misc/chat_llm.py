@@ -110,9 +110,6 @@ def get_llama_response(input_prompt: str, llm_response: str):
     print(f"Error parsing the final list from Llama response: {e}")
     return None
 
-import re
-import ast
-
 def get_qwen_response(input_prompt: str, llm_response: str):
     """
     Extracts the Python list of keywords from the conversational output of the
@@ -324,17 +321,21 @@ def get_mistral_response(input_prompt: str, llm_response: str):
 def get_nousresearch_response(input_prompt: str, llm_response: str):
     """
     Extracts the Python list of keywords from the conversational and multi-turn output
-    of the NousResearch/Hermes-2-Pro-Llama-3-8B model by searching for the last [OUT] tags.
+    of the NousResearch/Hermes-2-Pro-Llama-3-8B model by searching for the last <s>[OUT] tags.
     """
     print("Handling NousResearch Hermes response...")
 
     # The model's response contains multiple conversations, we need the last one
-    # Find all [OUT]...[/OUT] blocks and take the last one
-    matches = re.findall(r"\[OUT\](.*?)\[/OUT\]", llm_response, re.DOTALL)
+    # Find all <s>[OUT]...[/OUT] blocks and take the last one
+    matches = re.findall(r"<s>\[OUT\](.*?)\[/OUT\]", llm_response, re.DOTALL)
     
     if not matches:
-        print("Error: Could not find any [OUT] tags in the response.")
-        return None
+        print("Error: Could not find any <s>[OUT] tags in the response.")
+        # Try alternative pattern without <s> prefix
+        matches = re.findall(r"\[OUT\](.*?)\[/OUT\]", llm_response, re.DOTALL)
+        if not matches:
+            print("Error: Could not find any [OUT] tags in the response.")
+            return None
         
     # Get the last (most recent) response
     raw_list_str = matches[-1].strip()
