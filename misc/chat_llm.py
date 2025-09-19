@@ -49,7 +49,9 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 
 **Rule**:
 - Desired output: a python list ['keyword1', 'keyword2', 'keyword3'].
-- Using additional text or explanations in the response is strictly prohibited.
+- Do NOT include any additional text or explanations.
+- Do NOT include any numbers, dates, years, or temporal expressions.
+- Do NOT repeat or synonym‑duplicate keywords.
 [/INST]
 """
 
