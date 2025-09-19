@@ -124,23 +124,41 @@ def get_microsoft_response(input_prompt: str, llm_response: str):
     """
     print("Handling Microsoft Phi response...")
     
-    # The model provides a clean list as the final output. We can find it directly.
-    match = re.search(r"(\[.*?\])", llm_response.strip(), re.DOTALL)
+    # The model output is at the end after the [/INST] tag
+    # Split by lines and look for the content after the last [/INST]
+    lines = llm_response.strip().split('\n')
+    
+    # Find the content after the last [/INST] tag
+    model_output = None
+    for i, line in enumerate(lines):
+        if '[/INST]' in line:
+            # Get everything after this line
+            model_output = '\n'.join(lines[i+1:]).strip()
+            break
+    
+    if not model_output:
+        print("Error: Could not find model output after [/INST] tag.")
+        return None
+    
+    print(f"Model output: {model_output}")
+    
+    # Look for the list in the model output
+    match = re.search(r"(\[.*?\])", model_output, re.DOTALL)
     
     if not match:
         print("Error: Could not find a list in the Microsoft response.")
         return None
         
     final_list_str = match.group(1)
+    print(f"Found list string: {final_list_str}")
     
-    # Crucial pre-processing to make the string JSON-compliant.
-    # Replace single quotes with double quotes.
+    # Clean the string - replace single quotes with double quotes for JSON
     cleaned_string = final_list_str.replace("'", '"')
     
-    # Replace smart quotes with standard straight quotes.
+    # Replace smart quotes with standard straight quotes
     cleaned_string = cleaned_string.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
     
-    # Use re.sub to fix apostrophes inside keywords after converting single quotes to double quotes
+    # Remove any apostrophes inside words (like "don't" -> "dont")
     cleaned_string = re.sub(r'(\w)\'(\w)', r'\1\2', cleaned_string)
 
     if cleaned_string == "[]":
@@ -148,17 +166,18 @@ def get_microsoft_response(input_prompt: str, llm_response: str):
         return []
 
     try:
-        # Use json.loads instead of ast.literal_eval
+        # Use json.loads to parse the JSON-like string
         keywords_list = json.loads(cleaned_string)
         
-        # Ensure the parsed result is a list of strings.
+        # Ensure the parsed result is a list of strings
         if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
             print("Error: Extracted string is not a valid list of strings.")
             return None
         
-        # Post-process to enforce rules (e.g., limit to 3, remove special chars).
+        # Post-process to enforce rules
         processed_keywords = []
         for keyword in keywords_list:
+            # Remove numbers and special characters
             cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
             cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
             
@@ -177,7 +196,20 @@ def get_microsoft_response(input_prompt: str, llm_response: str):
         
     except json.JSONDecodeError as e:
         print(f"Error parsing the list with JSON: {e}")
+        print(f"Problematic string: {cleaned_string}")
+        
+        # Fallback: try ast.literal_eval if JSON fails
+        try:
+            import ast
+            keywords_list = ast.literal_eval(final_list_str)
+            if isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list):
+                print(f"Using ast fallback: {keywords_list}")
+                return keywords_list
+        except:
+            pass
+            
         return None
+        
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         return None
