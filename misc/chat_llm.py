@@ -137,7 +137,7 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 		return None, None		
 	keywords: Optional[List[str]] = None
 	rationales: Optional[List[str]] = None
-	prompt = PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip(), desired_json_output=json.dumps(JSON_OUTPUT_TEMPLATE, indent=2))
+	prompt = PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip(), desired_json_output=JSON_OUTPUT_TEMPLATE)
 	stop_criteria = tfs.StoppingCriteriaList([JsonStopCriteria(tokenizer)])
 
 	try:
