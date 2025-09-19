@@ -155,7 +155,7 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 	print(f"{raw_llm_response}")
 	print("="*150)
 
-	print(f"\n=== Extracted Listed results from JSON Data (Improved Logic) ===")
+	print(f"\n=== Extracted Listed results from JSON Data ===")
 	json_data_improved = extract_json_from_llm_response(raw_llm_response)
 	if json_data_improved:
 		keywords_improved = json_data_improved.get("keywords", None)
@@ -167,7 +167,7 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 	
 	return keywords, rationales
 
-def get_labels(model_id: str, device: str) -> None:
+def get_labels(model_id: str, device: str, test_description: str) -> None:
 	tokenizer = tfs.AutoTokenizer.from_pretrained(
 		model_id, 
 		use_fast=True, 
@@ -188,8 +188,6 @@ def get_labels(model_id: str, device: str) -> None:
 
 	debug_llm_info(model, tokenizer, device)
 
-	test_description = "[Lockheed 12A Electra Junior] Lockheed 12; L-12; Lockheed Model 12; Lockheed Model 12-A; C-40D; UC-40D; Kodachrome A Lockheed Model 12A Electra Junior, belonging to the Continental Oil Company, at William P. Hobby Airport in Houston, Texas."
-
 	query_local_llm(
 		model=model, 
 		tokenizer=tokenizer, 
@@ -201,9 +199,10 @@ def main():
 	parser = argparse.ArgumentParser(description="Textual-label annotation for Historical Archives Dataset using instruction-tuned LLMs")
 	parser.add_argument("--model_id", '-m', type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="HuggingFace model ID")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
+	parser.add_argument("--test_description", '-td', type=str, required=True, help="Test description")
 	args = parser.parse_args()
 	print(args)
-	get_labels(model_id=args.model_id, device=args.device)
+	get_labels(model_id=args.model_id, device=args.device, test_description=args.test_description)
 
 if __name__ == "__main__":
 	main()
