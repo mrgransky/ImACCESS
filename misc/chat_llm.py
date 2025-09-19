@@ -117,52 +117,77 @@ import re, json, ast
 from typing import Optional
 
 def extract_json_from_llm_response(text: str) -> Optional[dict]:
+    """
+    Robust extractor that works across Phi, Mistral, Llama, etc.
+    Handles:
+      - Fenced JSON blocks (```json ... ```)
+      - Inline JSON objects outside fences
+      - Python dict style with single quotes
+      - Multiple outputs: picks the last valid block
+    """
     all_json_objects = []
 
-    # Capture ALL fenced blocks between ```json ... ```
-    markdown_matches = re.findall(r"```json\s*([\s\S]*?)```", text, re.DOTALL)
-    print(f"Found {len(markdown_matches)} fenced JSON blocks")
+    # 1. Gather candidates from fenced blocks
+    fenced = re.findall(r"```json\s*([\s\S]*?)```", text, re.DOTALL)
+    print(f"Found {len(fenced)} fenced blocks")
+    
+    # 2. Fallback: raw { ... } candidates
+    raw_candidates = re.findall(r"\{[\s\S]*?\}", text, re.DOTALL)
+    print(f"Found {len(raw_candidates)} raw brace blocks")
 
-    # Fallback: curly-brace objects if nothing fenced
-    if not markdown_matches:
-        markdown_matches = re.findall(r"\{[\s\S]*?\}", text, re.DOTALL)
-        print(f"Found {len(markdown_matches)} raw JSON-like blocks")
+    candidates = fenced + raw_candidates
 
-    for i, candidate in enumerate(markdown_matches, 1):
+    for i, candidate in enumerate(candidates, 1):
         candidate = candidate.strip()
-        print(f"\nProcessing candidate {i}: {candidate[:80]}...")
+        preview = candidate[:80].replace("\n", " ")
+        print(f"\nProcessing candidate {i}: {preview}...")
 
-        # Skip template
+        # Skip templates with keyword1/rationale1
         if "keyword1" in candidate or "rationale1" in candidate:
-            print("  → Skipping template/example block")
+            print("  → Skipping template/example")
             continue
 
-        # Try parsing as strict JSON
+        # Try direct JSON first
         try:
-            data = json.loads(candidate.replace("'", '"'))  # quick fix for single quotes
-            if isinstance(data, dict) and "keywords" in data and "rationales" in data:
-                print("  ✓ Parsed successfully as JSON")
+            data = json.loads(candidate)
+            if valid_json(data):
+                print("  ✓ Parsed as strict JSON")
                 all_json_objects.append(data)
                 continue
         except Exception as e:
-            print(f"  ✗ JSON parse failed: {e}")
+            print(f"  ✗ JSON failed: {e}")
 
-        # Fallback: Python dict
+        # Try normalized string replacement
+        try:
+            normalized = candidate.replace("'", '"')
+            data = json.loads(normalized)
+            if valid_json(data):
+                print("  ✓ Parsed after normalization")
+                all_json_objects.append(data)
+                continue
+        except Exception as e:
+            print(f"  ✗ Normalized JSON failed: {e}")
+
+        # Last resort: Python dict
         try:
             data = ast.literal_eval(candidate)
-            if isinstance(data, dict) and "keywords" in data and "rationales" in data:
-                print("  ✓ Parsed successfully with literal_eval")
+            if valid_json(data):
+                print("  ✓ Parsed with literal_eval (Python dict style)")
                 all_json_objects.append(data)
         except Exception as e:
             print(f"  ✗ literal_eval failed: {e}")
 
     if all_json_objects:
-        result = all_json_objects[-1]  # pick LAST valid block (final answer)
-        print(f"\nSelected final result: {result}")
+        result = all_json_objects[-1]  # take last valid object
+        print(f"\nSelected final JSON: {result}")
         return result
 
-    print("✗ No valid JSON found")
+    print("✗ No valid JSON extracted")
     return None
+
+def valid_json(obj) -> bool:
+    """Check JSON dict has required keys"""
+    return isinstance(obj, dict) and "keywords" in obj and "rationales" in obj
 
 def extract_json_from_llm_response_(text: str) -> Optional[dict]:
 	all_json_objects = []
