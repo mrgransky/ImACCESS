@@ -157,7 +157,6 @@ dtypes = {
 	'user_query': str,
 }
 
-
 def debug_llm_info(model, tokenizer, device):
 	# ------------------------------------------------------------------
 	# 1️⃣ Runtime / environment
@@ -251,7 +250,6 @@ def debug_llm_info(model, tokenizer, device):
 
 	print(dir(model))
 	print("="*100)
-
 
 def parse_tuple(s):
 	try:
