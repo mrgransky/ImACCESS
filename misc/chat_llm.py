@@ -236,13 +236,6 @@ def get_labels(model_id: str, device: str) -> None:
 
 	debug_llm_info(model, tokenizer, device)
 
-	# print("\n=== Model Attributes ===")
-	# print(dir(model))
-	# print("="*100)
-	# print("\n=== Tokenizer Attributes ===")
-	# print(dir(tokenizer))
-	# print("="*100)
-
 	test_description = "Railroad station, Naples depots; train stations Image of the interior of the Stazione Napoli Centrale (Naples Central Station) showing the Stazione di Napoli Piazza Garibaldi (the Naples Garibaldi Piazza station) which was build under the original railway station. The station was demolished in 1960, and a larger station was built at this location. According to Shaffer: ''[This is the] railroad station, Naples.''"
 
 	query_local_llm(
