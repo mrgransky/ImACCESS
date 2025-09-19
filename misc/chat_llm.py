@@ -1,11 +1,12 @@
 from utils import *
 
+# model_id = "meta-llama/Llama-3.1-8B-Instruct"
 # model_id = "meta-llama/Llama-3.2-1B-Instruct" # default for local
 # model_id = "meta-llama/Llama-3.2-3B-Instruct"
-# model_id = "meta-llama/Llama-3.1-8B-Instruct"
 # model_id = "Qwen/Qwen3-4B-Instruct-2507"
-# model_id = "microsoft/Phi-4-mini-instruct"
 # model_id = "mistralai/Mistral-7B-Instruct-v0.3"
+
+# model_id = "microsoft/Phi-4-mini-instruct"
 # model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
 
 # not useful for instruction tuning:
@@ -36,7 +37,7 @@ TOP_P = 0.9
 MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 MAX_KEYWORDS = 3
-
+JSON_OUTPUT_TEMPLATE = {"keywords": ["keyword1", "keyword2", "keyword3"], "rationales": ["rationale1", "rationale2", "rationale3"]}
 print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
@@ -64,7 +65,7 @@ Given the description below, **extract exactly {k}** concrete, factual, and *non
 
 Adhere to the following example output format (no extra spaces, no extra characters, no extra lines):
 ```json
-{{"keywords": ["keyword1", "keyword2", "keyword3"], "rationales": ["rationale1", "rationale2", "rationale3"]}}
+{desired_json_output}
 ```
 [/INST]
 """
@@ -136,7 +137,7 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 		return None, None		
 	keywords: Optional[List[str]] = None
 	rationales: Optional[List[str]] = None
-	prompt = PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip())
+	prompt = PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip(), desired_json_output=json.dumps(JSON_OUTPUT_TEMPLATE, indent=2))
 	stop_criteria = tfs.StoppingCriteriaList([JsonStopCriteria(tokenizer)])
 
 	try:
