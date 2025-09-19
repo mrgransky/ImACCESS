@@ -1,5 +1,4 @@
 from utils import *
-log = logging.getLogger(__name__)
 
 # model_id = "meta-llama/Llama-3.2-1B-Instruct" # default for local
 # model_id = "meta-llama/Llama-3.2-3B-Instruct"
@@ -12,6 +11,8 @@ log = logging.getLogger(__name__)
 # not useful for instruction tuning:
 # model_id = "microsoft/DialoGPT-large"  # Fallback if you can't run Hermes
 # model_id = "gpt2-xl"
+
+# {{"keywords": ["keyword1", "keyword2", "keyword3"], "rationales": ["rationale1", "rationale2", "rationale3"]}}
 
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
@@ -30,7 +31,7 @@ if not hasattr(tfs.utils, "FlashAttentionKwargs"):
 	tfs.utils.FlashAttentionKwargs = FlashAttentionKwargs
 
 MAX_NEW_TOKENS = 500
-TEMPERATURE = 0.3
+TEMPERATURE = 1e-8
 TOP_P = 0.9
 MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
@@ -57,12 +58,14 @@ Given the description below, **extract exactly {k}** concrete, factual, and *non
 - Do NOT include any numbers, dates, years, or temporal expressions.
 - Output MUST be **ONLY** a single JSON object with two keys: "keywords" and "rationales". 
 - The value of each key is a list of strings. 
-- Do not include any other text, explanations, or markdown formatting in the response.
+- Do not include any other text or explanations in the response.
 
 **Description**: {description}
 
-Adhere to the following example output format: (no extra spaces, no extra characters, no extra lines)
+Adhere to the following example output format (no extra spaces, no extra characters, no extra lines):
+```json
 {{"keywords": ["keyword1", "keyword2", "keyword3"], "rationales": ["rationale1", "rationale2", "rationale3"]}}
+```
 [/INST]
 """
 
