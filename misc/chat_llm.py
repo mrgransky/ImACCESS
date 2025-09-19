@@ -113,37 +113,41 @@ def extract_json_from_llm_response_old(text: str) -> Optional[dict]:
 				return all_json_objects[-1]
 		return None
 
+import re, json, ast
+from typing import Optional
+
 def extract_json_from_llm_response(text: str) -> Optional[dict]:
     all_json_objects = []
 
-    # Capture ALL fenced json blocks
-    markdown_matches = re.findall(r"```json\s*(\{[\s\S]*?\})\s*```", text, re.DOTALL)
+    # Capture ALL fenced blocks between ```json ... ```
+    markdown_matches = re.findall(r"```json\s*([\s\S]*?)```", text, re.DOTALL)
     print(f"Found {len(markdown_matches)} fenced JSON blocks")
 
-    # Fallback: raw curly-brace objects if no fenced ones found
+    # Fallback: curly-brace objects if nothing fenced
     if not markdown_matches:
         markdown_matches = re.findall(r"\{[\s\S]*?\}", text, re.DOTALL)
         print(f"Found {len(markdown_matches)} raw JSON-like blocks")
 
     for i, candidate in enumerate(markdown_matches, 1):
-        print(f"\nProcessing candidate {i}: {candidate[:60]}...")
+        candidate = candidate.strip()
+        print(f"\nProcessing candidate {i}: {candidate[:80]}...")
 
-        # Skip obvious template sample blocks
+        # Skip template
         if "keyword1" in candidate or "rationale1" in candidate:
             print("  → Skipping template/example block")
             continue
 
-        # Try normal JSON first
+        # Try parsing as strict JSON
         try:
-            data = json.loads(candidate.replace("'", '"'))  # quick single-to-double quote fix
+            data = json.loads(candidate.replace("'", '"'))  # quick fix for single quotes
             if isinstance(data, dict) and "keywords" in data and "rationales" in data:
                 print("  ✓ Parsed successfully as JSON")
                 all_json_objects.append(data)
                 continue
-        except json.JSONDecodeError as e:
-            print(f"  ✗ JSON decode failed: {e}")
+        except Exception as e:
+            print(f"  ✗ JSON parse failed: {e}")
 
-        # Fallback: Python dict style
+        # Fallback: Python dict
         try:
             data = ast.literal_eval(candidate)
             if isinstance(data, dict) and "keywords" in data and "rationales" in data:
@@ -153,7 +157,7 @@ def extract_json_from_llm_response(text: str) -> Optional[dict]:
             print(f"  ✗ literal_eval failed: {e}")
 
     if all_json_objects:
-        result = all_json_objects[-1]  # take last valid answer
+        result = all_json_objects[-1]  # pick LAST valid block (final answer)
         print(f"\nSelected final result: {result}")
         return result
 
