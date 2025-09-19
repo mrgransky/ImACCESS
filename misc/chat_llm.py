@@ -57,9 +57,12 @@ Given the description below, **extract exactly {k}** concrete, factual, and *non
 - Do NOT include any numbers, dates, years, or temporal expressions.
 - Output MUST be **ONLY** a single JSON object with two keys: "keywords" and "rationales". 
 - The value of each key is a list of strings. 
-- Do not include any other text, explanations, or markdown formatting (e.g., ```json```) in the response.
+- Do not include any other text, explanations, or markdown formatting in the response.
 
 **Description**: {description}
+
+Adhere to the following example output format: (no extra spaces, no extra characters, no extra lines)
+{{"keywords": ["keyword1", "keyword2", "keyword3"], "rationales": ["rationale1", "rationale2", "rationale3"]}}
 [/INST]
 """
 
@@ -84,62 +87,33 @@ class JsonStopCriteria(tfs.StoppingCriteria):
 						return True
 		return False
 
-def extract_json_from_text(text: str) -> Optional[dict]:
-	try:
-		json_match = re.search(r'\{[\s\S]*\}', text)
-		if json_match:
-			json_string = json_match.group(0)
-			return json.loads(json_string)
-	except (json.JSONDecodeError, AttributeError, TypeError) as e:
-		pass
-	return None
+def extract_json_from_llm_response(text: str) -> Optional[dict]:
+    """
+    Extracts a JSON object from an LLM response,
+    handling common formatting like Markdown code blocks.
+    """
+    # 1. First, try to find a JSON block enclosed in markdown fences.
+    # This is a very common format for LLMs returning JSON.
+    markdown_match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', text, re.DOTALL)
+    if markdown_match:
+        json_string = markdown_match.group(1)
+        try:
+            return json.loads(json_string)
+        except json.JSONDecodeError:
+            pass  # Fall through to the next method
 
-def extract_json_from_text_new(text: str) -> Optional[dict]:
-	try:
-		# Find the JSON part by looking for the curly braces
-		json_match = re.search(r'\{.*\}', text, re.DOTALL)
-		if json_match:
-			json_string = json_match.group(0)
-			return json.loads(json_string)
-	except (json.JSONDecodeError, AttributeError) as e:
-		print(f"Error decoding JSON: {e}")
-		return None
+    # 2. If no markdown fence is found, try to find a lone JSON object.
+    # This regex is more specific than the previous ones,
+    # searching for an object that is likely at the end of the text.
+    json_match = re.search(r'(\{[\s\S]*\})', text)
+    if json_match:
+        json_string = json_match.group(1)
+        try:
+            return json.loads(json_string)
+        except json.JSONDecodeError:
+            pass  # Fall through
 
-def extract_json_gold_standard(text: str, *, first: bool = True) -> Optional[dict]:
-	"""
-	Extract *valid* JSON from an arbitrary string.
-	Parameters
-	----------
-	text : str
-			The raw output coming from an LLM or any other source.
-	first : bool, optional
-			If True (default) return only the first JSON object found.
-			If False, return a list of all parsed objects (or None if none parse).
-	Returns
-	-------
-	dict | None
-			Parsed JSON dict, or ``None`` when no parsable JSON was found.
-	"""
-	JSON_RE = re.compile(r'\{[\s\S]*?\}', re.MULTILINE)   # non‑greedy, matches first JSON block
-	if not isinstance(text, str):
-		log.debug("extract_json received a non‑string: %r", text)
-		return None
-	# Find *all* candidate JSON substrings (non‑greedy)
-	candidates = JSON_RE.findall(text)
-	if not candidates:
-		log.debug("No JSON bracket pattern found in text.")
-		return None
-	parsed = []
-	for cand in candidates:
-		try:
-			parsed.append(json.loads(cand))
-		except json.JSONDecodeError as exc:
-			# Fine‑grained debug; not noisy in production
-			log.debug("Failed to decode candidate JSON: %s | error=%s", cand, exc)
-	if not parsed:
-		log.debug("No valid JSON found in text.")
-		return None
-	return parsed[0] if first else parsed
+    return None
 
 def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 	if not isinstance(text, str) or not text.strip():
@@ -181,46 +155,16 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 	print(f"{raw_llm_response}")
 	print("="*150)
 
-	print(f"\n=== Extracted (Raw) JSON Data ===")
-	# Extract the JSON data from the response string
-	json_data = extract_json_from_text(raw_llm_response)
-	print(json_data)
-
-	print(f"\n=== Extracted Listed results from JSON Data ===")
-	if json_data:
-		keywords = json_data.get("keywords", None)
-		rationales = json_data.get("rationales", None)
-		print(f"Extracted {len(keywords)} Keywords({type(keywords)}): {keywords}")
-		print(f"Extracted {len(rationales)} Rationales({type(rationales)}): {rationales}")
+	print(f"\n=== Extracted Listed results from JSON Data (Improved Logic) ===")
+	json_data_improved = extract_json_from_llm_response(raw_llm_response)
+	if json_data_improved:
+		keywords_improved = json_data_improved.get("keywords", None)
+		rationales_improved = json_data_improved.get("rationales", None)
+		print(f"Extracted {len(keywords_improved)} Keywords({type(keywords_improved)}): {keywords_improved}")
+		print(f"Extracted {len(rationales_improved)} Rationales({type(rationales_improved)}): {rationales_improved}")
 	else:
 		print("Could not extract JSON data from the response.")
-
-	print(f"\n=== Extracted (Raw) JSON Data (NEW)===")
-	json_data_new = extract_json_from_text_new(raw_llm_response)
-	print(json_data_new)
-
-	print(f"\n=== Extracted Listed results from JSON Data (NEW) ===")
-	if json_data_new:
-		keywords_new = json_data_new.get("keywords", None)
-		rationales_new = json_data_new.get("rationales", None)
-		print(f"Extracted {len(keywords_new)} Keywords({type(keywords_new)}): {keywords_new}")
-		print(f"Extracted {len(rationales_new)} Rationales({type(rationales_new)}): {rationales_new}")
-	else:
-		print("Could not extract JSON data from the response.")
-
-	print(f"\n=== Extracted JSON Data (Gold Standard) ===")
-	json_payload = extract_json_gold_standard(raw_llm_response)
-	print(json_payload)
-
-	print(f"\n=== Extracted Listed results from JSON Data (Gold Standard) ===")
-	if json_payload:
-		keywords_gold = json_payload.get("keywords", None)
-		rationales_gold = json_payload.get("rationales", None)
-		print(f"Extracted {len(keywords_gold)} Keywords({type(keywords_gold)}): {keywords_gold}")
-		print(f"Extracted {len(rationales_gold)} Rationales({type(rationales_gold)}): {rationales_gold}")
-	else:
-		print("Could not extract JSON data from the response.")
-
+	
 	return keywords, rationales
 
 def get_labels(model_id: str, device: str) -> None:
@@ -244,7 +188,7 @@ def get_labels(model_id: str, device: str) -> None:
 
 	debug_llm_info(model, tokenizer, device)
 
-	test_description = "Bus trip from Algiers to Bou Saada, deep in the Sahara According to Shaffer: ''[This is] the bus from Algiers to Bou Saada and Biskra. Kay Shelby, the Red Cross girl to the left, enjoyed her job as hostess to soldiers on leave and operated this little tour for their benefit.''"
+	test_description = "[Lockheed 12A Electra Junior] Lockheed 12; L-12; Lockheed Model 12; Lockheed Model 12-A; C-40D; UC-40D; Kodachrome A Lockheed Model 12A Electra Junior, belonging to the Continental Oil Company, at William P. Hobby Airport in Houston, Texas."
 
 	query_local_llm(
 		model=model, 
