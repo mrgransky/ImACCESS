@@ -110,35 +110,6 @@ def get_llama_response(input_prompt: str, llm_response: str):
     print(f"Error parsing the final list from Llama response: {e}")
     return None
 
-def get_llama_response_(input_prompt: str, llm_response: str):
-	print("Handling Llama response...")
-
-	# 1. Use a regular expression to find all list-like structures in the response.
-	# The pattern r"\[.*?\]" non-greedily finds all content between square brackets.
-	list_candidates = re.findall(r"\[.*?\]", llm_response, re.DOTALL)
-
-	if not list_candidates:
-		print("Error: Could not find a list in the Llama response.")
-		return None
-
-
-	# 2. Select the most likely list (last one generated)
-	final_list_str = list_candidates[-1]
-
-	# 3. Use ast.literal_eval to safely parse the string as a Python list
-	try:
-		keywords_list = ast.literal_eval(final_list_str)
-		# Ensure the parsed result is a list of strings
-		if isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list):
-			print("Successfully extracted keywords from Llama response.")
-			return keywords_list
-		else:
-			print("Error: Extracted string is not a valid list of strings.")
-			return None
-	except Exception as e:
-		print(f"Error parsing the final list from Llama response: {e}")
-		return None	
-
 def get_qwen_response(input_prompt: str, llm_response: str):
 	print("Handling Qwen response...")
 	pass
@@ -155,22 +126,30 @@ def get_mistral_response(input_prompt: str, llm_response: str):
     """
     print("Handling Mistral response...")
 
-    # 1. Use a regular expression to find the list structure.
-    match = re.search(r"(\[.*?\])", llm_response.strip(), re.DOTALL)
+    # 1. Use a more specific regular expression to find Python list structures with quotes
+    # This pattern looks for lists containing quoted strings
+    match = re.search(r"(\[(?:\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"])*\s*)?\])", llm_response.strip(), re.DOTALL)
     
+    # Fallback: if the above doesn't work, try a simpler pattern but look for the last occurrence
     if not match:
-        print("Error: Could not find a list in the Mistral response.")
-        return None
-        
-    final_list_str = match.group(1)
+        # Find all bracket pairs and take the last one (most likely to be the actual list)
+        all_matches = re.findall(r"(\[.*?\])", llm_response.strip(), re.DOTALL)
+        if all_matches:
+            # Take the last match, which is more likely to be the actual Python list
+            final_list_str = all_matches[-1]
+        else:
+            print("Error: Could not find a list in the Mistral response.")
+            return None
+    else:
+        final_list_str = match.group(1)
 
     # 2. Add a crucial pre-processing step to normalize the string
     # Replace smart quotes with standard straight quotes
-    cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+    cleaned_string = final_list_str.replace(""", '"').replace(""", '"').replace("'", "'").replace("'", "'")
     
     # Mistral also sometimes generates empty lists like []. If so, we should return an empty list
     # instead of trying to parse.
-    if cleaned_string == "[]":
+    if cleaned_string.strip() == "[]":
         print("Model returned an empty list.")
         return []
 
@@ -213,7 +192,6 @@ def get_mistral_response(input_prompt: str, llm_response: str):
         print(f"Error parsing the list from Mistral response: {e}")
         print(f"Problematic string: {cleaned_string}")
         return None
-
 
 def get_nousresearch_response(input_prompt: str, llm_response: str):
 	print("Handling NousResearch response...")
