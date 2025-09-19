@@ -41,7 +41,7 @@ huggingface_hub.login(token=hf_tk)
 
 PROMPT_TEMPLATE = """<s>[INST]
 As an expert historical archivist, analyze this historical description carefully and extract a list of concrete, factual and relevant keywords with their corresponding concise rationales.
-Duplicate keywords are not allowed. Avoid keywords that contain numbers, temporal context, or time-related information.
+Duplicate and identical keywords are not allowed. Avoid keywords that contain numbers, temporal context, or time-related information.
 Description: {description}
 
 Your entire output MUST be ONLY a single JSON object with two keys: "keywords" and "rationales". The value of each key is a list of strings. Do not include any other text, explanations, or markdown formatting (e.g., ```json```) in your response.
