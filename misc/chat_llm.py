@@ -273,9 +273,78 @@ def get_mistral_response(input_prompt: str, llm_response: str):
         print(f"Error parsing the list: {e}")
         return None
 
+import re
+import ast
+
 def get_nousresearch_response(input_prompt: str, llm_response: str):
-	print("Handling NousResearch response...")
-	pass
+    """
+    Extracts the Python list of keywords from the conversational and multi-turn output
+    of the NousResearch/Hermes-2-Pro-Llama-3-8B model.
+    """
+    print("Handling NousResearch Hermes response...")
+    
+    # Split the response by lines to process it turn by turn.
+    lines = llm_response.strip().split('\n')
+    
+    list_line = None
+    # Iterate through lines to find the one containing the answer.
+    for line in lines:
+        line = line.strip()
+        # The answer is a line inside an [INST] block, starting with 'Answer:'.
+        if line.startswith('[INST] Answer:'):
+            list_line = line
+            break
+            
+    if not list_line:
+        print("Error: Could not find 'Answer:' in the response.")
+        return None
+        
+    # The list starts after the 'Answer:' label.
+    raw_list_str = list_line.split('Answer:', 1)[1].strip()
+    
+    print(f"Found raw list string: {raw_list_str}")
+    
+    # We now have the string containing the list, but it may have
+    # extra tokens like '[/INST]' or '</s>'. We need to isolate the list itself.
+    match = re.search(r"(\[.*?\])", raw_list_str, re.DOTALL)
+    
+    if not match:
+        print("Error: Could not find a list in the extracted string.")
+        return None
+        
+    final_list_str = match.group(1)
+    
+    # Use ast.literal_eval to safely parse the string into a Python list.
+    try:
+        keywords_list = ast.literal_eval(final_list_str)
+        
+        # Post-processing to enforce the rules from the prompt.
+        if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
+            print("Error: Extracted string is not a valid list of strings.")
+            return None
+        
+        # Remove numbers, special characters, and duplicates, then truncate to 3.
+        processed_keywords = []
+        for keyword in keywords_list:
+            cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
+            cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
+            
+            if cleaned_keyword and cleaned_keyword not in processed_keywords:
+                processed_keywords.append(cleaned_keyword)
+        
+        if len(processed_keywords) > 3:
+            processed_keywords = processed_keywords[:3]
+            
+        if not processed_keywords:
+            print("Error: No valid keywords found after processing.")
+            return None
+            
+        print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+        return processed_keywords
+        
+    except Exception as e:
+        print(f"Error parsing the list: {e}")
+        return None
 
 def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str):
 
