@@ -77,18 +77,82 @@ class JsonStopCriteria(tfs.StoppingCriteria):
 		return False
 
 def get_llama_response(input_prompt: str, llm_response: str):
-	pass
+  print("Handling Llama response...")
+
+  # 1. Use a regular expression to find all list-like structures in the response.
+  list_candidates = re.findall(r"\[.*?\]", llm_response, re.DOTALL)
+
+  if not list_candidates:
+    print("Error: Could not find a list in the Llama response.")
+    return None
+
+  # 2. Select the most likely list (last one generated)
+  final_list_str = list_candidates[-1]
+
+  # 3. Use ast.literal_eval to safely parse the string as a Python list
+  try:
+    keywords_list = ast.literal_eval(final_list_str)
+    
+    # 4. Post-processing step to ensure the list contains exactly 3 keywords
+    if isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list):
+      # Take only the first 3 keywords if the list is longer than 3
+      if len(keywords_list) > MAX_KEYWORDS:
+        print(f"Warning: Extracted more than 3 keywords ({len(keywords_list)}). Truncating to 3.")
+        keywords_list = keywords_list[:MAX_KEYWORDS]
+      
+      print("Successfully extracted and truncated keywords from Llama response.")
+      return keywords_list
+      
+    else:
+      print("Error: Extracted string is not a valid list of strings.")
+      return None
+  except Exception as e:
+    print(f"Error parsing the final list from Llama response: {e}")
+    return None
+
+def get_llama_response_(input_prompt: str, llm_response: str):
+	print("Handling Llama response...")
+
+	# 1. Use a regular expression to find all list-like structures in the response.
+	# The pattern r"\[.*?\]" non-greedily finds all content between square brackets.
+	list_candidates = re.findall(r"\[.*?\]", llm_response, re.DOTALL)
+
+	if not list_candidates:
+		print("Error: Could not find a list in the Llama response.")
+		return None
+
+
+	# 2. Select the most likely list (last one generated)
+	final_list_str = list_candidates[-1]
+
+	# 3. Use ast.literal_eval to safely parse the string as a Python list
+	try:
+		keywords_list = ast.literal_eval(final_list_str)
+		# Ensure the parsed result is a list of strings
+		if isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list):
+			print("Successfully extracted keywords from Llama response.")
+			return keywords_list
+		else:
+			print("Error: Extracted string is not a valid list of strings.")
+			return None
+	except Exception as e:
+		print(f"Error parsing the final list from Llama response: {e}")
+		return None	
 
 def get_qwen_response(input_prompt: str, llm_response: str):
+	print("Handling Qwen response...")
 	pass
 
 def get_microsoft_response(input_prompt: str, llm_response: str):
+	print("Handling Microsoft response...")
 	pass
 
 def get_mistral_response(input_prompt: str, llm_response: str):
+	print("Handling Mistral response...")
 	pass
 
 def get_nousresearch_response(input_prompt: str, llm_response: str):
+	print("Handling NousResearch response...")
 	pass
 
 def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str):
@@ -97,24 +161,14 @@ def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str):
 
 	# response differs significantly between models
 	if "meta-llama" in model_id:
-		# function to handle llama responses
-		print("Handling Llama response...")
 		llm_response = get_llama_response(input_prompt, raw_llm_response)
 	elif "Qwen" in model_id:
-		# function to handle Qwen responses
-		print("Handling Qwen response...")
 		llm_response = get_qwen_response(input_prompt, raw_llm_response)
 	elif "microsoft" in model_id:
-		# function to handle microsoft responses
-		print("Handling Microsoft response...")
 		llm_response = get_microsoft_response(input_prompt, raw_llm_response)
 	elif "mistralai" in model_id:
-		# function to handle mistral responses
-		print("Handling Mistral response...")
 		llm_response = get_mistral_response(input_prompt, raw_llm_response)
 	elif "NousResearch" in model_id:
-		# function to handle NousResearch responses
-		print("Handling NousResearch response...")
 		llm_response = get_nousresearch_response(input_prompt, raw_llm_response)
 	else:
 		# default function to handle other responses
@@ -127,7 +181,7 @@ def extract_kw(response: str) -> List[str]:
 	keywords = [kw.strip().strip('"\'') for kw in response.split(',')]
 	return [kw for kw in keywords if kw][:3]  # Take first 3
 
-def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
+def query_local_llm(model, tokenizer, text: str, device, model_id: str) -> Tuple[List[str], List[str]]:
 	if not isinstance(text, str) or not text.strip():
 		return None, None		
 	keywords: Optional[List[str]] = None
@@ -173,13 +227,7 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 
 	return None, None
 
-	llm_response = get_llm_response(input_prompt=prompt, llm_response=raw_llm_response)
-	print(f"=== Cleaned Output from LLM ===")
-	print(f"{llm_response}")
-	print("="*150)
-
-
-	keywords = extract_kw(llm_response)
+	keywords = get_llm_response(model_id=model_id, input_prompt=prompt, raw_llm_response=raw_llm_response)
 	print(f"Extracted {len(keywords)} keywords (type: {type(keywords)}): {keywords}")
 	return keywords, rationales
 
@@ -209,6 +257,7 @@ def get_labels(model_id: str, device: str, test_description: str) -> None:
 		tokenizer=tokenizer, 
 		text=test_description, 
 		device= device,
+		model_id=model_id,
 	)
 
 def main():
