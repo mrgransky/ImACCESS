@@ -244,11 +244,11 @@ def debug_llm_info(model, tokenizer, device):
 	# ------------------------------------------------------------------
 	# 4️⃣ Model capabilities
 	# ------------------------------------------------------------------
-	print("="*100)
-	print("=== Model Attributes ===")
+	print("Model Attributes".center(150, "-"))
 	print(dir(model))
 	print("="*100)
-	print("=== Tokenizer Attributes ===")
+
+	print("Tokenizer Attributes".center(150, "-"))
 	print(dir(tokenizer))
 	print("="*100)
 
