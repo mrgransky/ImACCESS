@@ -48,7 +48,7 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 {description}
 
 **Rule**:
-- Desired output: a python list ['keyword1', 'keyword2', 'keyword3'] without any additional text or markdown formatting.
+- Desired output: a python list ['keyword1', 'keyword2', 'keyword3'].
 - Using additional text or explanations in the response is strictly prohibited.
 [/INST]
 """
