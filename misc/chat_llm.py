@@ -165,16 +165,92 @@ def get_mistral_response(input_prompt: str, llm_response: str):
         # 5. Apply post-processing to enforce the rules
         processed_keywords = []
         for keyword in keywords_list:
-            # Remove numbers and numeric content (enforce "non-numeric" rule)
-            cleaned_keyword = re.sub(r'\d+', '', keyword).strip()
-            cleaned_keyword = re.sub(r'#\d+', '', cleaned_keyword).strip()  # Remove things like #59
+            # For "non-numeric" rule, filter out keywords that are purely numeric or dates
+            # but keep keywords that contain some numbers as part of meaningful terms
             
-            # Remove any remaining special characters and extra spaces
-            cleaned_keyword = re.sub(r'[^\w\s]', ' ', cleaned_keyword).strip()
-            cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)  # Collapse multiple spaces
+            # Skip if keyword is purely numeric or looks like a date/year
+            if re.match(r'^\d+
+        
+        # Ensure we have exactly 3 keywords (or fewer if not enough valid ones)
+        if len(processed_keywords) > 3:
+            processed_keywords = processed_keywords[:3]
             
-            # Only add if not empty and not a duplicate
-            if cleaned_keyword and cleaned_keyword not in processed_keywords:
+        if not processed_keywords:
+            print("Error: No valid keywords found after processing.")
+            return None
+            
+        print(f"Successfully extracted {len(processed_keywords)} keywords from Mistral response.")
+        return processed_keywords
+        
+    except Exception as e:
+        print(f"Error parsing the list from Mistral response: {e}")
+        print(f"Problematic string: {cleaned_string}")
+        return None, keyword.strip()) or re.match(r'^\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}
+        
+        # Ensure we have exactly 3 keywords (or fewer if not enough valid ones)
+        if len(processed_keywords) > 3:
+            processed_keywords = processed_keywords[:3]
+            
+        if not processed_keywords:
+            print("Error: No valid keywords found after processing.")
+            return None
+            
+        print(f"Successfully extracted {len(processed_keywords)} keywords from Mistral response.")
+        return processed_keywords
+        
+    except Exception as e:
+        print(f"Error parsing the list from Mistral response: {e}")
+        print(f"Problematic string: {cleaned_string}")
+        return None, keyword.strip()) or re.match(r'^\d{4}
+        
+        # Ensure we have exactly 3 keywords (or fewer if not enough valid ones)
+        if len(processed_keywords) > 3:
+            processed_keywords = processed_keywords[:3]
+            
+        if not processed_keywords:
+            print("Error: No valid keywords found after processing.")
+            return None
+            
+        print(f"Successfully extracted {len(processed_keywords)} keywords from Mistral response.")
+        return processed_keywords
+        
+    except Exception as e:
+        print(f"Error parsing the list from Mistral response: {e}")
+        print(f"Problematic string: {cleaned_string}")
+        return None, keyword.strip()):
+                continue
+                
+            # Clean up the keyword but preserve meaningful parts
+            cleaned_keyword = keyword.strip()
+            
+            # Remove standalone hash-number patterns like #59, but keep meaningful content
+            cleaned_keyword = re.sub(r'#\d+', '', cleaned_keyword).strip()
+            
+            # Remove extra whitespace
+            cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword).strip()
+            
+            # Skip empty results or purely numeric results after cleaning
+            if not cleaned_keyword or re.match(r'^\d+
+        
+        # Ensure we have exactly 3 keywords (or fewer if not enough valid ones)
+        if len(processed_keywords) > 3:
+            processed_keywords = processed_keywords[:3]
+            
+        if not processed_keywords:
+            print("Error: No valid keywords found after processing.")
+            return None
+            
+        print(f"Successfully extracted {len(processed_keywords)} keywords from Mistral response.")
+        return processed_keywords
+        
+    except Exception as e:
+        print(f"Error parsing the list from Mistral response: {e}")
+        print(f"Problematic string: {cleaned_string}")
+        return None, cleaned_keyword):
+                continue
+                
+            # Only add if not a duplicate (case-insensitive check)
+            if cleaned_keyword and not any(existing.lower() == cleaned_keyword.lower() for existing in processed_keywords):
                 processed_keywords.append(cleaned_keyword)
         
         # Ensure we have exactly 3 keywords (or fewer if not enough valid ones)
