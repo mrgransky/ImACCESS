@@ -115,54 +115,50 @@ def extract_json_from_llm_response_old(text: str) -> Optional[dict]:
 
 def extract_json_from_llm_response(text: str) -> Optional[dict]:
     all_json_objects = []
-    
-    # First, look for JSON objects wrapped in a markdown fence
-    markdown_matches = re.findall(r'```json\s*(\{[\s\S]*?\})\s*```', text, re.DOTALL)
-    
-    if markdown_matches:
-        # Process markdown blocks (prioritize these)
-        candidates = markdown_matches
-        print(f"Found {len(markdown_matches)} markdown JSON blocks")
-    else:
-        # Fallback to raw JSON objects
-        raw_matches = re.findall(r'\{[\s\S]*?\}', text, re.DOTALL)
-        candidates = raw_matches
-        print(f"Found {len(raw_matches)} raw JSON blocks")
-    
-    for i, candidate in enumerate(candidates):
-        print(f"Processing candidate {i+1}: {candidate[:50]}...")
-        
-        # Skip obvious template examples (contains 'keyword1', 'rationale1', etc.)
-        if 'keyword1' in candidate or 'rationale1' in candidate:
-            print(f"  Skipping template example")
+
+    # Capture ALL fenced json blocks
+    markdown_matches = re.findall(r"```json\s*(\{[\s\S]*?\})\s*```", text, re.DOTALL)
+    print(f"Found {len(markdown_matches)} fenced JSON blocks")
+
+    # Fallback: raw curly-brace objects if no fenced ones found
+    if not markdown_matches:
+        markdown_matches = re.findall(r"\{[\s\S]*?\}", text, re.DOTALL)
+        print(f"Found {len(markdown_matches)} raw JSON-like blocks")
+
+    for i, candidate in enumerate(markdown_matches, 1):
+        print(f"\nProcessing candidate {i}: {candidate[:60]}...")
+
+        # Skip obvious template sample blocks
+        if "keyword1" in candidate or "rationale1" in candidate:
+            print("  → Skipping template/example block")
             continue
-            
-        # Try normal JSON
+
+        # Try normal JSON first
         try:
-            data = json.loads(candidate)
+            data = json.loads(candidate.replace("'", '"'))  # quick single-to-double quote fix
             if isinstance(data, dict) and "keywords" in data and "rationales" in data:
-                print(f"  ✓ Valid JSON parsed successfully")
+                print("  ✓ Parsed successfully as JSON")
                 all_json_objects.append(data)
                 continue
         except json.JSONDecodeError as e:
-            print(f"  Failed to parse JSON (normal): {e}")
-        
-        # Fallback: Python dict style (single quotes)
+            print(f"  ✗ JSON decode failed: {e}")
+
+        # Fallback: Python dict style
         try:
             data = ast.literal_eval(candidate)
             if isinstance(data, dict) and "keywords" in data and "rationales" in data:
-                print(f"  ✓ Valid Python dict parsed successfully")
+                print("  ✓ Parsed successfully with literal_eval")
                 all_json_objects.append(data)
         except Exception as e:
-            print(f"  Failed to parse JSON (fallback): {e}")
-    
+            print(f"  ✗ literal_eval failed: {e}")
+
     if all_json_objects:
-        result = all_json_objects[-1]
-        print(f"Selected result: {result}")
+        result = all_json_objects[-1]  # take last valid answer
+        print(f"\nSelected final result: {result}")
         return result
-    else:
-        print("No valid JSON objects found")
-        return None
+
+    print("✗ No valid JSON found")
+    return None
 
 def extract_json_from_llm_response_(text: str) -> Optional[dict]:
 	all_json_objects = []
