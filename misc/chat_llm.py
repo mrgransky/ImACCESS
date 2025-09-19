@@ -217,7 +217,7 @@ def get_labels(model_id: str, input_csv: str, device: str, batch_size: int = 16)
 	print(dir(tokenizer))
 	print("="*100)
 
-	test_description = "[Close-up Aerial View of John Gillin's House, Designed by Frank Lloyd Wright, Dallas, TX] aerials; construction sites Oilman John A. Gillin commissioned Frank Lloyd Wright in 1950 to design a work of art that would also be suitable for living and entertaining. Completed in 1954, it's the only Frank Lloyd Wright residence in Dallas. The result is a house that has three wings built off a central hexagon. The roof is made of copper, and the outer walls are of understated sandstone. It is a magnificent example of the type of work Wright was doing later in his career. Source: USA Today http://usatoday30.usatoday.com/travel/destinations/cityguides/dallas/2003-10-20-spotlight-bighouses_x.htm"
+	test_description = "Railroad station, Naples depots; train stations Image of the interior of the Stazione Napoli Centrale (Naples Central Station) showing the Stazione di Napoli Piazza Garibaldi (the Naples Garibaldi Piazza station) which was build under the original railway station. The station was demolished in 1960, and a larger station was built at this location. According to Shaffer: ''[This is the] railroad station, Naples.''"
 
 	query_local_llm(
 		model=model, 
