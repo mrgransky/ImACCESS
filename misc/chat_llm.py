@@ -40,7 +40,7 @@ print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
 PROMPT_TEMPLATE = """<s>[INST]
-As an expert historical archivist, analyze this historical description carefully and extract a maximum of three concrete, factual and relevant keywords with concise rationales.
+As an expert historical archivist, analyze this historical description carefully and extract a list of concrete, factual and relevant keywords with their corresponding concise rationales.
 Duplicate keywords are not allowed. Avoid keywords that contain numbers, temporal context, or time-related information.
 Description: {description}
 
@@ -49,31 +49,25 @@ Your entire output MUST be ONLY a single JSON object with two keys: "keywords" a
 """
 
 class JsonStopCriteria(tfs.StoppingCriteria):
-    """
-    Stop as soon as a *balanced* '}' is generated.
-    Works even when the model has a huge max_new_tokens budget.
-    """
-    def __init__(self, tokenizer):
-        super().__init__()
-        self.tokenizer = tokenizer
-        self.brace_balance = 0
-        self.seen_open = False
-
-    def __call__(self, input_ids, scores, **kwargs):
-        # decode only the *new* token(s) added in the latest step
-        new_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=False)
-
-        # Update a simple brace counter
-        for ch in new_text[-1:]:               # look at the last generated char only
-            if ch == "{":
-                self.seen_open = True
-                self.brace_balance += 1
-            elif ch == "}":
-                if self.seen_open:
-                    self.brace_balance -= 1
-                    if self.brace_balance <= 0:   # we have closed everything we opened
-                        return True
-        return False
+	def __init__(self, tokenizer):
+		super().__init__()
+		self.tokenizer = tokenizer
+		self.brace_balance = 0
+		self.seen_open = False
+	def __call__(self, input_ids, scores, **kwargs):
+		# decode only the *new* token(s) added in the latest step
+		new_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=False)
+		# Update a simple brace counter
+		for ch in new_text[-1:]:               # look at the last generated char only
+			if ch == "{":
+				self.seen_open = True
+				self.brace_balance += 1
+			elif ch == "}":
+				if self.seen_open:
+					self.brace_balance -= 1
+					if self.brace_balance <= 0:   # we have closed everything we opened
+						return True
+		return False
 
 def extract_json_from_text(text: str) -> Optional[dict]:
 	try:
