@@ -77,8 +77,6 @@ def get_llm_response(input_prompt: str, llm_response: str):
 	# Use .strip() to remove any leading/trailing whitespace
 	new_string = parts[1].strip()
 	new_string = new_string.replace("Keywords: ", "")
-	print(new_string)
-	# Output: Keywords: aircraft, company, safety.
 	return new_string
 
 def extract_kw(response: str) -> List[str]:
@@ -131,6 +129,9 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 	print("="*150)
 
 	llm_response = get_llm_response(input_prompt=prompt, llm_response=raw_llm_response)
+	print(f"=== Cleaned Output from LLM ===")
+	print(f"{llm_response}")
+	print("="*150)
 
 	keywords = extract_kw(llm_response)
 	print(f"Extracted {len(keywords)} keywords (type: {type(keywords)}): {keywords}")
