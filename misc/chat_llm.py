@@ -42,22 +42,9 @@ print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
 PROMPT_TEMPLATE = """<s>[INST]
-You are a meticulous historical archivist.  
-Given the description below, **extract exactly {k}** concrete, factual, and *non‑numeric* keywords and give a short, one‑sentence rationale for each.
+Extract exactly {k} keywords from this description. Output only the keywords separated by commas:
 
-**Rules**
-- Do NOT repeat or synonym‑duplicate keywords.
-- Do NOT include any numbers, dates, years, or temporal expressions.
-- Output MUST be **ONLY** a single JSON object with two keys: "keywords" and "rationales". 
-- The value of each key is a list of strings. 
-- Do not include any other text or explanations in the response.
-
-**Description**: {description}
-
-Adhere to the following example output format (no extra spaces, no extra characters, no extra lines):
-```json
-{desired_json_output}
-```
+{description}
 [/INST]
 """
 
@@ -82,249 +69,29 @@ class JsonStopCriteria(tfs.StoppingCriteria):
 						return True
 		return False
 
-import json
-import ast
-import re
-from typing import Optional, Dict, List, Any
+def get_llm_response(input_prompt: str, llm_response: str):
+	# Split the output string by the common input string
+	parts = llm_response.split(input_prompt)
 
-def valid_json(obj) -> bool:
-		"""
-		Enhanced validation that checks for proper structure and content quality.
-		"""
-		if not isinstance(obj, dict):
-				return False
-		
-		if "keywords" not in obj or "rationales" not in obj:
-				return False
-		
-		keywords = obj.get("keywords", [])
-		rationales = obj.get("rationales", [])
-		
-		# Check if both are lists
-		if not isinstance(keywords, list) or not isinstance(rationales, list):
-				return False
-		
-		# Check if lengths match
-		if len(keywords) != len(rationales):
-				return False
-		
-		# Check if we have the expected number of items
-		if len(keywords) != 3:  # Expecting exactly 3
-				return False
-		
-		# Check if keywords are non-empty strings
-		if not all(isinstance(k, str) and k.strip() for k in keywords):
-				return False
-		
-		# Check if rationales are proper sentences (more than single words)
-		if not all(isinstance(r, str) and len(r.strip().split()) > 2 for r in rationales):
-				print(f"  ⚠️  WARNING: Rationales seem incomplete: {rationales}")
-				# Don't fail completely, but flag this
-		
-		return True
+	# The part you want will be the second element in the list (index 1)
+	# Use .strip() to remove any leading/trailing whitespace
+	new_string = parts[1].strip()
+	new_string = new_string.replace("Keywords: ", "")
+	print(new_string)
+	# Output: Keywords: aircraft, company, safety.
+	return new_string
 
-def fix_json_format(text: str) -> str:
-		"""
-		Fix common JSON formatting issues from LLM responses.
-		"""
-		# Replace single quotes with double quotes for JSON compatibility
-		# But be careful not to replace quotes inside strings
-		text = text.strip()
-		
-		# Method 1: Simple replacement for the most common case
-		if text.startswith("{'") and text.endswith("'}"):
-				# This is likely the single-quote JSON format
-				# Use ast.literal_eval first, then convert to proper JSON
-				try:
-						parsed = ast.literal_eval(text)
-						return json.dumps(parsed)
-				except:
-						pass
-		
-		# Method 2: Regex-based quote fixing
-		# Replace single quotes with double quotes, but avoid quotes inside strings
-		fixed_text = re.sub(r"'([^']*)':", r'"\1":', text)  # Fix keys
-		fixed_text = re.sub(r":\s*'([^']*)'", r': "\1"', fixed_text)  # Fix string values
-		fixed_text = re.sub(r",\s*'([^']*)'", r', "\1"', fixed_text)  # Fix array string values
-		fixed_text = re.sub(r"\[\s*'([^']*)'", r'["\1"', fixed_text)  # Fix first array element
-		
-		return fixed_text
+def extract_kw(response: str) -> List[str]:
 
-def extract_json_from_llm_response(text: str, model_name: str = "") -> Optional[Dict]:
-		"""
-		Universal extractor for LLM JSON responses with model-specific fixes.
-		"""
-		print("--- Starting JSON extraction process ---")
-		all_json_objects = []
+	keywords = [kw.strip().strip('"\'') for kw in response.split(',')]
+	return [kw for kw in keywords if kw][:3]  # Take first 3
 
-		# 1. Gather fenced ```json ... ``` and raw { ... }
-		fenced_candidates = re.findall(r"```json\s*([\s\S]*?)```", text, re.DOTALL)
-		raw_candidates = re.findall(r"\{[\s\S]*?\}", text, re.DOTALL)
-		
-		# Process from the end of the list, as the last candidate is usually the desired output.
-		candidates = (fenced_candidates + raw_candidates)[::-1]
-		
-		print(f"Found {len(fenced_candidates)} fenced blocks and {len(raw_candidates)} raw JSON candidates.")
-		print(f"Total candidates to check: {len(candidates)}")
-
-		for i, candidate in enumerate(candidates, 1):
-				cand = candidate.strip()
-				preview = cand[:80].replace("\n", " ") + "..." if len(cand) > 80 else cand.replace("\n", " ")
-				print(f"\nProcessing candidate #{i} (Preview: '{preview}')")
-
-				# Skip example/template JSON
-				if "keyword1" in cand and "rationale1" in cand:
-						print("  - ➡️ Skipped: This looks like the example/template JSON.")
-						continue
-
-				# === Strategy 1: Strict JSON Parsing ===
-				print("  - 🔎 Attempting strict JSON parse...")
-				try:
-						data = json.loads(cand)
-						if valid_json(data):
-								print("  ✅ SUCCESS: Parsed as strict JSON.")
-								all_json_objects.append(data)
-								break
-						else:
-								print(f"  ❌ FAILED: Strict JSON parsed but validation failed. Data: {data}")
-				except json.JSONDecodeError as e:
-						print(f"  ❌ FAILED: JSONDecodeError. Reason: {e}")
-				except Exception as e:
-						print(f"  ❌ FAILED: Unexpected error during strict parse. Reason: {e}")
-
-				# === Strategy 2: Python Literal Evaluation (handles single quotes) ===
-				print("  - 🔎 Attempting `ast.literal_eval`...")
-				try:
-						data = ast.literal_eval(cand)
-						if valid_json(data):
-								print("  ✅ SUCCESS: Parsed with `ast.literal_eval`.")
-								all_json_objects.append(data)
-								break
-						else:
-								print(f"  ❌ FAILED: `literal_eval` parsed but validation failed. Data: {data}")
-				except Exception as e:
-						print(f"  ❌ FAILED: `literal_eval` failed. Reason: {e}")
-
-				# === Strategy 3: Fix JSON format and retry ===
-				print("  - 🔎 Attempting JSON format fix...")
-				try:
-						fixed_json = fix_json_format(cand)
-						print(f"    Fixed JSON: {fixed_json[:100]}...")
-						
-						data = json.loads(fixed_json)
-						if valid_json(data):
-								print("  ✅ SUCCESS: Parsed after format fix.")
-								all_json_objects.append(data)
-								break
-						else:
-								print(f"  ❌ FAILED: Format fix parsed but validation failed. Data: {data}")
-				except Exception as e:
-						print(f"  ❌ FAILED: Format fix failed. Reason: {e}")
-						
-		# Return the first successful parse
-		if all_json_objects:
-				result = all_json_objects[0]
-				print(f"\n--- SUCCESS: Final extracted JSON ---")
-				
-				# Post-processing based on model type
-				if "llama" in model_name.lower() and result.get("rationales"):
-						# Check if rationales are too short (single words)
-						rationales = result["rationales"]
-						if all(len(r.strip().split()) <= 2 for r in rationales):
-								print(f"  ⚠️  Model-specific issue detected: {model_name} produced incomplete rationales")
-								print(f"  🔧 Attempting to enhance rationales...")
-								
-								# Try to create better rationales based on keywords and description context
-								enhanced_rationales = enhance_rationales(result["keywords"], text)
-								if enhanced_rationales:
-										result["rationales"] = enhanced_rationales
-										print(f"  ✅ Enhanced rationales: {enhanced_rationales}")
-				
-				return result
-		else:
-				print("\n--- FAILED: No valid JSON could be extracted from the response. ---")
-				return None
-
-def enhance_rationales(keywords: List[str], original_text: str) -> List[str]:
-		"""
-		Attempt to create better rationales when the model produces incomplete ones.
-		"""
-		enhanced = []
-		for keyword in keywords:
-				# Create a basic rationale explaining why this keyword is important
-				if any(word in keyword.lower() for word in ['company', 'corporation', 'inc']):
-						enhanced.append(f"'{keyword}' identifies the primary organization or company involved.")
-				elif any(word in keyword.lower() for word in ['engine', 'motor', 'aircraft', 'vehicle']):
-						enhanced.append(f"'{keyword}' represents important technical equipment or machinery mentioned.")
-				elif keyword.lower() in original_text.lower():
-						enhanced.append(f"'{keyword}' is a significant entity explicitly mentioned in the description.")
-				else:
-						enhanced.append(f"'{keyword}' represents a key concept extracted from the historical context.")
-		
-		return enhanced
-
-# Updated query function that passes model name
-def query_local_llm(model, tokenizer, text: str, device, model_id: str) -> Tuple[List[str], List[str]]:
-		if not isinstance(text, str) or not text.strip():
-				return None, None		
-		
-		keywords: Optional[List[str]] = None
-		rationales: Optional[List[str]] = None
-		prompt = PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip(), desired_json_output=JSON_OUTPUT_TEMPLATE)
-		stop_criteria = tfs.StoppingCriteriaList([JsonStopCriteria(tokenizer)])
-
-		try:
-				inputs = tokenizer(
-						prompt,
-						return_tensors="pt", 
-						truncation=True, 
-						max_length=4096, 
-						padding=True
-				)
-				if device != 'cpu':
-						inputs = {k: v.to(device) for k, v in inputs.items()}
-
-				if "token_type_ids" in inputs and not hasattr(model.config, "type_vocab_size"):
-						inputs.pop("token_type_ids")
-						
-				outputs = model.generate(
-						**inputs, 
-						max_new_tokens=MAX_NEW_TOKENS,
-						temperature=TEMPERATURE,
-						top_p=TOP_P,
-						do_sample=TEMPERATURE > 0.0,
-						pad_token_id=tokenizer.pad_token_id,
-						eos_token_id=tokenizer.eos_token_id,
-						# stopping_criteria=stop_criteria
-				)
-				raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-		except Exception as e:
-				print(f"<!> Error {e}")
-				return None, None
-
-		print(f"=== Raw Output from LLM ===")
-		print(f"{raw_llm_response}")
-		print("="*150)
-
-		print(f"\n=== Extracted Listed results from JSON Data ===")
-		# Pass model_id to the extraction function
-		json_data_improved = extract_json_from_llm_response(raw_llm_response, model_id)
-		if json_data_improved:
-				keywords_improved = json_data_improved.get("keywords", None)
-				rationales_improved = json_data_improved.get("rationales", None)
-				print(f"Extracted {len(keywords_improved)} Keywords({type(keywords_improved)}): {keywords_improved}")
-				print(f"Extracted {len(rationales_improved)} Rationales({type(rationales_improved)}): {rationales_improved}")
-				return keywords_improved, rationales_improved
-		else:
-				print("Could not extract JSON data from the response.")
-				return None, None
-
-def query_local_llm_old(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
+def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 	if not isinstance(text, str) or not text.strip():
 		return None, None		
 	keywords: Optional[List[str]] = None
 	rationales: Optional[List[str]] = None
-	prompt = PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip(), desired_json_output=JSON_OUTPUT_TEMPLATE)
+	prompt = PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip())
 	stop_criteria = tfs.StoppingCriteriaList([JsonStopCriteria(tokenizer)])
 
 	try:
@@ -355,20 +122,18 @@ def query_local_llm_old(model, tokenizer, text: str, device) -> Tuple[List[str],
 		print(f"<!> Error {e}")
 		return None, None
 
+	print(f"=== Input Prompt ===")
+	print(f"{prompt}")
+	print("="*150)
+
 	print(f"=== Raw Output from LLM ===")
 	print(f"{raw_llm_response}")
 	print("="*150)
 
-	print(f"\n=== Extracted Listed results from JSON Data ===")
-	json_data_improved = extract_json_from_llm_response(raw_llm_response)
-	if json_data_improved:
-		keywords_improved = json_data_improved.get("keywords", None)
-		rationales_improved = json_data_improved.get("rationales", None)
-		print(f"Extracted {len(keywords_improved)} Keywords({type(keywords_improved)}): {keywords_improved}")
-		print(f"Extracted {len(rationales_improved)} Rationales({type(rationales_improved)}): {rationales_improved}")
-	else:
-		print("Could not extract JSON data from the response.")
-	
+	llm_response = get_llm_response(input_prompt=prompt, llm_response=raw_llm_response)
+
+	keywords = extract_kw(llm_response)
+	print(f"Extracted {len(keywords)} keywords (type: {type(keywords)}): {keywords}")
 	return keywords, rationales
 
 def get_labels(model_id: str, device: str, test_description: str) -> None:
@@ -397,7 +162,6 @@ def get_labels(model_id: str, device: str, test_description: str) -> None:
 		tokenizer=tokenizer, 
 		text=test_description, 
 		device= device,
-		model_id=model_id,
 	)
 
 def main():
