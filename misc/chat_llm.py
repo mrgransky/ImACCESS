@@ -147,6 +147,9 @@ def get_microsoft_response(input_prompt: str, llm_response: str):
 	print("Handling Microsoft response...")
 	pass
 
+import re
+import ast
+
 def get_mistral_response(input_prompt: str, llm_response: str):
     """
     Extracts the Python list of keywords from the Mistral-7B-Instruct model's
@@ -167,6 +170,12 @@ def get_mistral_response(input_prompt: str, llm_response: str):
     # Replace smart quotes with standard straight quotes
     cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
     
+    # Mistral also sometimes generates empty lists like []. If so, we should return an empty list
+    # instead of trying to parse.
+    if cleaned_string == "[]":
+        print("Model returned an empty list.")
+        return []
+
     # 3. Use ast.literal_eval to safely parse the cleaned string as a Python list.
     try:
         keywords_list = ast.literal_eval(cleaned_string)
