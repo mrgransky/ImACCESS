@@ -48,8 +48,8 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 {description}
 
 **Rule**:
-- Keywords separated by commas (desired formatting: keyword1, keyword2, keyword3). 
-- Avoid any additional text or explanations in your response.
+- Desired output: a python list ['keyword1', 'keyword2', 'keyword3'].
+- Using additional text or explanations in the response is strictly prohibited.
 [/INST]
 """
 
@@ -74,22 +74,31 @@ class JsonStopCriteria(tfs.StoppingCriteria):
 						return True
 		return False
 
-def get_llm_response(input_prompt: str, llm_response: str):
-	# 1. Clean the input prompt by removing special tokens
-	cleaned_prompt = input_prompt.replace("<s>", "").replace("</s>", "").replace("[INST]", "").replace("[/INST]", "").strip()
-	print(f"Cleaned prompt:\n{cleaned_prompt}\n")
-	# 2. Split the LLM response using the cleaned prompt
-	parts = llm_response.split(cleaned_prompt)
-	# 3. Check if the split was successful
-	if len(parts) < 2:
-			# Handle the error case gracefully instead of crashing
-			print("Error: The LLM response does not contain the full input prompt. Returning None.")
-			return None
-	
-	# 4. Extract the new string and perform final cleaning
-	new_string = parts[1].strip()
-	print(f"New string (must be cleaned answer):\n{new_string}\n")
-	return new_string
+def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str):
+
+	llm_response: Optional[str] = None
+
+	# response differs significantly between models
+	if "meta-llama" in model_id:
+		# function to handle llama responses
+		print("Handling Llama response...")
+	elif "Qwen" in model_id:
+		# function to handle Qwen responses
+		print("Handling Qwen response...")
+	elif "microsoft" in model_id:
+		# function to handle microsoft responses
+		print("Handling Microsoft response...")
+	elif "mistralai" in model_id:
+		# function to handle mistral responses
+		print("Handling Mistral response...")
+	elif "NousResearch" in model_id:
+		# function to handle NousResearch responses
+		print("Handling NousResearch response...")
+	else:
+		# default function to handle other responses
+		raise NotImplementedError(f"Model {model_id} not implemented")
+
+	return llm_response
 
 def get_llm_response_old(input_prompt: str, llm_response: str):
 	# Split the output string by the common input string
@@ -150,10 +159,13 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 	print(f"{raw_llm_response}")
 	print("="*150)
 
+	return None, None
+
 	llm_response = get_llm_response(input_prompt=prompt, llm_response=raw_llm_response)
 	print(f"=== Cleaned Output from LLM ===")
 	print(f"{llm_response}")
 	print("="*150)
+
 
 	keywords = extract_kw(llm_response)
 	print(f"Extracted {len(keywords)} keywords (type: {type(keywords)}): {keywords}")
