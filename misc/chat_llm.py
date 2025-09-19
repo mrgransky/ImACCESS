@@ -1,6 +1,6 @@
 from utils import *
 
-# # model_id = "meta-llama/Llama-3.2-1B-Instruct" # for local
+# # model_id = "meta-llama/Llama-3.2-1B-Instruct" # default for local
 # # model_id = "Qwen/Qwen3-4B-Instruct-2507"
 # # model_id = "microsoft/Phi-4-mini-instruct"
 # # model_id = "mistralai/Mistral-7B-Instruct-v0.3"
@@ -62,6 +62,53 @@ def extract_json_from_text_new(text: str) -> Optional[dict]:
 		print(f"Error decoding JSON: {e}")
 		return None
 
+import logging
+
+log = logging.getLogger(__name__)
+
+
+def extract_json(text: str, *, first: bool = True) -> Optional[dict]:
+		"""
+		Extract *valid* JSON from an arbitrary string.
+
+		Parameters
+		----------
+		text : str
+				The raw output coming from an LLM or any other source.
+		first : bool, optional
+				If True (default) return only the first JSON object found.
+				If False, return a list of all parsed objects (or None if none parse).
+
+		Returns
+		-------
+		dict | None
+				Parsed JSON dict, or ``None`` when no parsable JSON was found.
+		"""
+		JSON_RE = re.compile(r'\{[\s\S]*?\}', re.MULTILINE)   # non‑greedy, matches first JSON block
+		if not isinstance(text, str):
+				log.debug("extract_json received a non‑string: %r", text)
+				return None
+
+		# Find *all* candidate JSON substrings (non‑greedy)
+		candidates = JSON_RE.findall(text)
+		if not candidates:
+				log.debug("No JSON bracket pattern found in text.")
+				return None
+
+		parsed = []
+		for cand in candidates:
+				try:
+						parsed.append(json.loads(cand))
+				except json.JSONDecodeError as exc:
+						# Fine‑grained debug; not noisy in production
+						log.debug("Failed to decode candidate JSON: %s | error=%s", cand, exc)
+
+		if not parsed:
+				return None
+
+		return parsed[0] if first else parsed
+
+
 def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 	if not isinstance(text, str) or not text.strip():
 		return None, None		
@@ -96,18 +143,23 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 		print(f"Failed for text snippet: {text}: {e}")
 		return None, None
 
-	print(llm_response)
+	raw_text = llm_response
+	print(f"Raw Text:\n{raw_text}")
 
-	print(f"\n=== Extracted JSON Data ===")
+	print(f"\n=== Extracted (Raw) JSON Data ===")
 	# Extract the JSON data from the response string
 	json_data = extract_json_from_text(llm_response)
 	print(json_data)
 
-	print(f"\n=== Extracted JSON Data (NEW)===")
+	print(f"\n=== Extracted (Raw) JSON Data (NEW)===")
 	json_data_new = extract_json_from_text_new(llm_response)
 	print(json_data_new)
 
-	print(f"\n=== Extracted JSON Data ===")
+	print(f"\n=== Extracted JSON Data (Gold Standard) ===")
+	json_payload = extract_json(raw_text)
+	print(json_payload)
+
+	print(f"\n=== Extracted Listed results from JSON Data ===")
 	if json_data:
 		keywords = json_data.get("keywords", [])
 		rationales = json_data.get("rationales", [])
