@@ -279,20 +279,20 @@ import ast
 def get_nousresearch_response(input_prompt: str, llm_response: str):
     """
     Extracts the Python list of keywords from the conversational and multi-turn output
-    of the NousResearch/Hermes-2-Pro-Llama-3-8B model by searching for the [OUT] tags.
+    of the NousResearch/Hermes-2-Pro-Llama-3-8B model by searching for the last [OUT] tags.
     """
     print("Handling NousResearch Hermes response...")
 
-    # The model's response uses [OUT] tags to contain the answer
-    # Look for content between [OUT] and [/OUT] tags
-    match = re.search(r"\[OUT\](.*?)\[/OUT\]", llm_response, re.DOTALL)
+    # The model's response contains multiple conversations, we need the last one
+    # Find all [OUT]...[/OUT] blocks and take the last one
+    matches = re.findall(r"\[OUT\](.*?)\[/OUT\]", llm_response, re.DOTALL)
     
-    if not match:
-        print("Error: Could not find [OUT] tags in the response.")
-        print(f"Full response: {llm_response}")
+    if not matches:
+        print("Error: Could not find any [OUT] tags in the response.")
         return None
         
-    raw_list_str = match.group(1).strip()
+    # Get the last (most recent) response
+    raw_list_str = matches[-1].strip()
     
     print(f"Found raw list string: {raw_list_str}")
     
