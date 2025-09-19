@@ -269,9 +269,6 @@ def get_mistral_response(input_prompt: str, llm_response: str):
         print(f"Error parsing the list: {e}")
         return None
 
-import re
-import ast
-
 def get_qwen_response(input_prompt: str, llm_response: str):
     """
     Extracts the Python list of keywords from the Qwen model's output by
@@ -331,41 +328,51 @@ def get_qwen_response(input_prompt: str, llm_response: str):
         print(f"Error parsing the list: {e}")
         return None
 
+import re
+import ast
+
 def get_nousresearch_response(input_prompt: str, llm_response: str):
     """
     Extracts the Python list of keywords from the conversational and multi-turn output
-    of the NousResearch/Hermes-2-Pro-Llama-3-8B model by searching for the last <s>[OUT] tags.
+    of the NousResearch/Hermes-2-Pro-Llama-3-8B model.
     """
     print("Handling NousResearch Hermes response...")
 
-    # The model's response contains multiple conversations, we need the last one
-    # Find all <s>[OUT]...[/OUT] blocks and take the last one
-    matches = re.findall(r"<s>\[OUT\](.*?)\[/OUT\]", llm_response, re.DOTALL)
+    # The pattern needs to account for the specific format with line breaks
+    # Format: [/INST] <s>[OUT]\n['keyword1', 'keyword2', 'keyword3']\n[/OUT]
+    matches = re.findall(r"\[/INST\]\s*<s>\[OUT\]\s*\n(.*?)\n\[/OUT\]", llm_response, re.DOTALL)
     
     if not matches:
-        print("Error: Could not find any <s>[OUT] tags in the response.")
-        # Try alternative pattern without <s> prefix
-        matches = re.findall(r"\[OUT\](.*?)\[/OUT\]", llm_response, re.DOTALL)
+        print("Error: Could not find any [OUT] blocks in the response.")
+        print("Trying alternative pattern...")
+        # Try a more flexible pattern
+        matches = re.findall(r"\[OUT\]\s*\n(.*?)\n\s*\[/OUT\]", llm_response, re.DOTALL)
         if not matches:
-            print("Error: Could not find any [OUT] tags in the response.")
+            print("Error: Could not find any [OUT] tags with alternative pattern.")
             return None
         
     # Get the last (most recent) response
     raw_list_str = matches[-1].strip()
     
-    print(f"Found raw list string: {raw_list_str}")
+    print(f"Found raw list string: '{raw_list_str}'")
     
     # Now, find the actual list literal within the captured string
     list_match = re.search(r"(\[.*?\])", raw_list_str, re.DOTALL)
     
     if not list_match:
         print("Error: Could not find a list in the extracted string.")
-        return None
-        
-    final_list_str = list_match.group(1)
+        # Maybe the string is already the list?
+        if raw_list_str.startswith('[') and raw_list_str.endswith(']'):
+            final_list_str = raw_list_str
+        else:
+            return None
+    else:
+        final_list_str = list_match.group(1)
     
     # Clean the string - replace smart quotes if any
     cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+    
+    print(f"Cleaned string: '{cleaned_string}'")
     
     # Use ast.literal_eval to safely parse the string into a Python list
     try:
@@ -397,7 +404,7 @@ def get_nousresearch_response(input_prompt: str, llm_response: str):
         
     except Exception as e:
         print(f"Error parsing the list: {e}")
-        print(f"Problematic string: {cleaned_string}")
+        print(f"Problematic string: '{cleaned_string}'")
         
         # Fallback: try to extract manually if literal_eval fails
         try:
