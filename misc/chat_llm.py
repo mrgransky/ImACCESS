@@ -114,86 +114,72 @@ def extract_json_from_llm_response_old(text: str) -> Optional[dict]:
 		return None
 
 import re, json, ast
-from typing import Optional
 
 def extract_json_from_llm_response(text: str) -> Optional[dict]:
     """
-    Universal extractor for LLM JSON responses across Mistral, Phi, Llama, etc.
+    Universal extractor across models: Handles JSON, Python dict style, quotes, multiline.
     """
     all_json_objects = []
 
-    # 1. Gather fenced ```json ... ```
+    # Gather all candidates between ```json fences and raw {...}
     fenced = re.findall(r"```json\s*([\s\S]*?)```", text, re.DOTALL)
-    # 2. Plus raw { ... }
-    raw_candidates = re.findall(r"\{[\s\S]*?\}", text, re.DOTALL)
-    candidates = fenced + raw_candidates
+    raw = re.findall(r"\{[\s\S]*?\}", text, re.DOTALL)
+    candidates = fenced + raw
+    print(f"Found {len(fenced)} fenced blocks, {len(raw)} raw blocks")
 
-    print(f"Found {len(fenced)} fenced blocks, {len(raw_candidates)} raw blocks")
-
-    for i, candidate in enumerate(candidates, 1):
-        cand = candidate.strip()
+    for i, cand in enumerate(candidates, 1):
+        cand = cand.strip()
         preview = cand[:100].replace("\n"," ")
-        print(f"\nProcessing candidate {i}: {preview}...")
+        print(f"\nCandidate {i}: {preview}...")
 
-        # Skip obvious templates
-        if "keyword1" in cand and "rationale1" in cand:
-            print("  → Skipping template/example")
+        # Skip template examples
+        if "keyword1" in cand or "rationale1" in cand:
+            print("  → Skipped template")
             continue
 
-        # === Strategy 1: Normal JSON ===
+        # --- Try strict JSON ---
         try:
             data = json.loads(cand)
-            if valid_json(data):
+            if valid(data): 
                 print("  ✓ Parsed as strict JSON")
                 all_json_objects.append(data)
                 continue
         except Exception as e:
             print(f"  ✗ JSON failed: {e}")
 
-        # === Strategy 2: Normalize single quotes → double quotes ===
+        # --- Normalize quotes and retry JSON ---
         try:
-            # Replace only at keys, not inside rationale sentences → regex safe
-            normalized = re.sub(r"'\s*:\s*'([^']*)'", lambda m: f'": "{m.group(1)}"', cand)
-            normalized = cand.replace("'", '"')
+            normalized = cand.replace("'", '"')  # blanket replace
             data = json.loads(normalized)
-            if valid_json(data):
-                print("  ✓ Parsed after normalization")
+            if valid(data): 
+                print("  ✓ Parsed after quote normalization")
                 all_json_objects.append(data)
                 continue
         except Exception as e:
             print(f"  ✗ Normalized JSON failed: {e}")
 
-        # === Strategy 3: Python dict style (literal_eval) ===
+        # --- Last resort: literal_eval after sanitization ---
         try:
-            data = ast.literal_eval(cand)
-            if valid_json(data):
-                print("  ✓ Parsed with literal_eval")
+            cleaned = cand.replace("\n", " ")
+            # fix trailing commas inside lists/objects
+            cleaned = re.sub(r",\s*([\]}])", r"\1", cleaned)
+            data = ast.literal_eval(cleaned)
+            if valid(data):
+                print("  ✓ Parsed with literal_eval fallback")
                 all_json_objects.append(data)
                 continue
         except Exception as e:
             print(f"  ✗ literal_eval failed: {e}")
 
-        # === Strategy 4: Last resort cleanup (replace smart quotes + fix commas) ===
-        try:
-            cleaned = cand.replace("’", "'").replace("“", '"').replace("”", '"')
-            cleaned = re.sub(r",\s*([\]}])", r"\1", cleaned)  # remove trailing commas
-            data = ast.literal_eval(cleaned)
-            if valid_json(data):
-                print("  ✓ Parsed after cleanup")
-                all_json_objects.append(data)
-        except Exception as e:
-            print(f"  ✗ Cleanup failed: {e}")
-
     if all_json_objects:
-        result = all_json_objects[-1]   # keep last valid → usually final answer
+        result = all_json_objects[-1]
         print(f"\nSelected JSON: {result}")
         return result
+    else:
+        print("✗ No valid JSON extracted")
+        return None
 
-    print("✗ No valid JSON extracted")
-    return None
-
-
-def valid_json(obj) -> bool:
+def valid(obj):
     return isinstance(obj, dict) and "keywords" in obj and "rationales" in obj
 
 def extract_json_from_llm_response_(text: str) -> Optional[dict]:
