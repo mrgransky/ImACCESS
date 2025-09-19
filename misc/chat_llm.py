@@ -48,7 +48,7 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 {description}
 
 **Rule**:
-- Desired output: a python list ['keyword1', 'keyword2', 'keyword3'].
+- Desired output: a python list ['keyword1', 'keyword2', 'keyword3'] without any additional text or markdown formatting.
 - Using additional text or explanations in the response is strictly prohibited.
 [/INST]
 """
@@ -74,6 +74,21 @@ class JsonStopCriteria(tfs.StoppingCriteria):
 						return True
 		return False
 
+def get_llama_response(input_prompt: str, llm_response: str):
+	pass
+
+def get_qwen_response(input_prompt: str, llm_response: str):
+	pass
+
+def get_microsoft_response(input_prompt: str, llm_response: str):
+	pass
+
+def get_mistral_response(input_prompt: str, llm_response: str):
+	pass
+
+def get_nousresearch_response(input_prompt: str, llm_response: str):
+	pass
+
 def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str):
 
 	llm_response: Optional[str] = None
@@ -82,33 +97,28 @@ def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str):
 	if "meta-llama" in model_id:
 		# function to handle llama responses
 		print("Handling Llama response...")
+		llm_response = get_llama_response(input_prompt, raw_llm_response)
 	elif "Qwen" in model_id:
 		# function to handle Qwen responses
 		print("Handling Qwen response...")
+		llm_response = get_qwen_response(input_prompt, raw_llm_response)
 	elif "microsoft" in model_id:
 		# function to handle microsoft responses
 		print("Handling Microsoft response...")
+		llm_response = get_microsoft_response(input_prompt, raw_llm_response)
 	elif "mistralai" in model_id:
 		# function to handle mistral responses
 		print("Handling Mistral response...")
+		llm_response = get_mistral_response(input_prompt, raw_llm_response)
 	elif "NousResearch" in model_id:
 		# function to handle NousResearch responses
 		print("Handling NousResearch response...")
+		llm_response = get_nousresearch_response(input_prompt, raw_llm_response)
 	else:
 		# default function to handle other responses
 		raise NotImplementedError(f"Model {model_id} not implemented")
 
 	return llm_response
-
-def get_llm_response_old(input_prompt: str, llm_response: str):
-	# Split the output string by the common input string
-	parts = llm_response.split(input_prompt)
-
-	# The part you want will be the second element in the list (index 1)
-	# Use .strip() to remove any leading/trailing whitespace
-	new_string = parts[1].strip()
-	new_string = new_string.replace("Keywords: ", "")
-	return new_string
 
 def extract_kw(response: str) -> List[str]:
 
@@ -190,7 +200,7 @@ def get_labels(model_id: str, device: str, test_description: str) -> None:
 		cache_dir=cache_directory[USER],
 	).eval()
 
-	debug_llm_info(model, tokenizer, device)
+	# debug_llm_info(model, tokenizer, device)
 
 	query_local_llm(
 		model=model, 
