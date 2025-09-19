@@ -41,15 +41,6 @@ JSON_OUTPUT_TEMPLATE = {"keywords": ["keyword1", "keyword2", "keyword3"], "ratio
 print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
-# PROMPT_TEMPLATE = """<s>[INST]
-# As an expert historical archivist, analyze this historical description carefully and extract a list of concrete, factual and relevant keywords with their corresponding concise rationales.
-# Duplicate and identical keywords are not allowed. Avoid keywords that contain numbers, temporal context, or time-related information.
-# Description: {description}
-
-# Your entire output MUST be ONLY a single JSON object with two keys: "keywords" and "rationales". The value of each key is a list of strings. Do not include any other text, explanations, or markdown formatting (e.g., ```json```) in your response.
-# [/INST]
-# """
-
 PROMPT_TEMPLATE = """<s>[INST]
 You are a meticulous historical archivist.  
 Given the description below, **extract exactly {k}** concrete, factual, and *non‑numeric* keywords and give a short, one‑sentence rationale for each.
@@ -91,7 +82,7 @@ class JsonStopCriteria(tfs.StoppingCriteria):
 						return True
 		return False
 
-def extract_json_from_llm_response(text: str) -> Optional[dict]:
+def extract_json_from_llm_response_old(text: str) -> Optional[dict]:
 		all_json_objects = []
 
 		# First, look for JSON objects wrapped in a markdown fence.
@@ -121,6 +112,84 @@ def extract_json_from_llm_response(text: str) -> Optional[dict]:
 		if all_json_objects:
 				return all_json_objects[-1]
 		return None
+
+def extract_json_from_llm_response(text: str) -> Optional[dict]:
+    all_json_objects = []
+    
+    # First, look for JSON objects wrapped in a markdown fence
+    markdown_matches = re.findall(r'```json\s*(\{[\s\S]*?\})\s*```', text, re.DOTALL)
+    
+    if markdown_matches:
+        # Process markdown blocks (prioritize these)
+        candidates = markdown_matches
+        print(f"Found {len(markdown_matches)} markdown JSON blocks")
+    else:
+        # Fallback to raw JSON objects
+        raw_matches = re.findall(r'\{[\s\S]*?\}', text, re.DOTALL)
+        candidates = raw_matches
+        print(f"Found {len(raw_matches)} raw JSON blocks")
+    
+    for i, candidate in enumerate(candidates):
+        print(f"Processing candidate {i+1}: {candidate[:50]}...")
+        
+        # Skip obvious template examples (contains 'keyword1', 'rationale1', etc.)
+        if 'keyword1' in candidate or 'rationale1' in candidate:
+            print(f"  Skipping template example")
+            continue
+            
+        # Try normal JSON
+        try:
+            data = json.loads(candidate)
+            if isinstance(data, dict) and "keywords" in data and "rationales" in data:
+                print(f"  ✓ Valid JSON parsed successfully")
+                all_json_objects.append(data)
+                continue
+        except json.JSONDecodeError as e:
+            print(f"  Failed to parse JSON (normal): {e}")
+        
+        # Fallback: Python dict style (single quotes)
+        try:
+            data = ast.literal_eval(candidate)
+            if isinstance(data, dict) and "keywords" in data and "rationales" in data:
+                print(f"  ✓ Valid Python dict parsed successfully")
+                all_json_objects.append(data)
+        except Exception as e:
+            print(f"  Failed to parse JSON (fallback): {e}")
+    
+    if all_json_objects:
+        result = all_json_objects[-1]
+        print(f"Selected result: {result}")
+        return result
+    else:
+        print("No valid JSON objects found")
+        return None
+
+def extract_json_from_llm_response_(text: str) -> Optional[dict]:
+	all_json_objects = []
+	# First, look for JSON objects wrapped in a markdown fence.
+	markdown_matches = re.findall(r'```json\s*(\{[\s\S]*?\})\s*```', text, re.DOTALL)
+	candidates = markdown_matches or re.findall(r'\{[\s\S]*?\}', text, re.DOTALL)
+	for candidate in candidates:
+		
+		# Try normal JSON
+		try:
+			data = json.loads(candidate)
+			if isinstance(data, dict) and "keywords" in data and "rationales" in data:
+				all_json_objects.append(data)
+				continue
+		except json.JSONDecodeError as e:
+			print(f"Failed to parse JSON (normal): {e}")
+			pass
+		
+		# Fallback: Python dict style (single quotes)
+		try:
+			data = ast.literal_eval(candidate)
+			if isinstance(data, dict) and "keywords" in data and "rationales" in data:
+				all_json_objects.append(data)
+		except Exception as e:
+			print(f"Failed to parse JSON (fallback): {e}")
+			continue
+	return all_json_objects[-1] if all_json_objects else None
 
 def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], List[str]]:
 	if not isinstance(text, str) or not text.strip():
