@@ -148,31 +148,39 @@ def get_microsoft_response(input_prompt: str, llm_response: str):
 	pass
 
 def get_mistral_response(input_prompt: str, llm_response: str):
-	print("Handling Mistral response...")
+    """
+    Extracts the Python list of keywords from the Mistral-7B-Instruct model's
+    output, including a step to handle smart quotes and other non-standard characters.
+    """
+    print("Handling Mistral response...")
 
-	# 1. Use a regular expression to find the list structure.
-	# The regex looks for any content between '[' and ']' at the very end of the string.
-	match = re.search(r"(\[.*?\])", llm_response.strip(), re.DOTALL)
-	if not match:
-		print("Error: Could not find a list in the Mistral response.")
-		return None
-	final_list_str = match.group(1)
+    # 1. Use a regular expression to find the list structure.
+    match = re.search(r"(\[.*?\])", llm_response.strip(), re.DOTALL)
+    
+    if not match:
+        print("Error: Could not find a list in the Mistral response.")
+        return None
+        
+    final_list_str = match.group(1)
 
-	# 2. Use ast.literal_eval to safely parse the string as a Python list.
-	try:
-			keywords_list = ast.literal_eval(final_list_str)
-			
-			# 3. Post-processing to ensure a valid list of strings.
-			if isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list):
-					print("Successfully extracted keywords from Mistral response.")
-					return keywords_list
-			else:
-					print("Error: Extracted string is not a valid list of strings.")
-					return None
-	except Exception as e:
-			print(f"Error parsing the list from Mistral response: {e}")
-			return None
-
+    # 2. Add a crucial pre-processing step to normalize the string
+    # Replace smart quotes with standard straight quotes
+    cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+    
+    # 3. Use ast.literal_eval to safely parse the cleaned string as a Python list.
+    try:
+        keywords_list = ast.literal_eval(cleaned_string)
+        
+        # 4. Post-processing to ensure a valid list of strings.
+        if isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list):
+            print("Successfully extracted keywords from Mistral response.")
+            return keywords_list
+        else:
+            print("Error: Extracted string is not a valid list of strings.")
+            return None
+    except Exception as e:
+        print(f"Error parsing the list from Mistral response: {e}")
+        return None
 
 def get_nousresearch_response(input_prompt: str, llm_response: str):
 	print("Handling NousResearch response...")
