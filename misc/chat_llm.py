@@ -34,7 +34,7 @@ TEMPERATURE = 0.3
 TOP_P = 0.9
 MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
-TOP_K = 3
+MAX_KEYWORDS = 3
 
 print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
@@ -50,7 +50,7 @@ huggingface_hub.login(token=hf_tk)
 
 PROMPT_TEMPLATE = """<s>[INST]
 You are a meticulous historical archivist.  
-Given the description below, **extract exactly three** concrete, factual, and *non‑numeric* keywords and give a short, one‑sentence rationale for each.
+Given the description below, **extract exactly {k}** concrete, factual, and *non‑numeric* keywords and give a short, one‑sentence rationale for each.
 
 **Rules**
 - Do NOT repeat or synonym‑duplicate keywords.
@@ -60,10 +60,8 @@ Given the description below, **extract exactly three** concrete, factual, and *n
 - Do not include any other text, explanations, or markdown formatting (e.g., ```json```) in the response.
 
 **Description**: {description}
-
 [/INST]
 """
-
 
 class JsonStopCriteria(tfs.StoppingCriteria):
 	def __init__(self, tokenizer):
@@ -148,7 +146,7 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 		return None, None		
 	keywords: Optional[List[str]] = None
 	rationales: Optional[List[str]] = None
-	prompt = PROMPT_TEMPLATE.format(description=text.strip())
+	prompt = PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip())
 	stop_criteria = tfs.StoppingCriteriaList([JsonStopCriteria(tokenizer)])
 
 	try:
@@ -174,19 +172,18 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 			eos_token_id=tokenizer.eos_token_id,
 			stopping_criteria=stop_criteria
 		)
-		llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+		raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
 	except Exception as e:
 		print(f"<!> Error {e}")
 		return None, None
 
-	raw_text = llm_response
-	print(f"=== Raw Text ===")
-	print(f"{raw_text}")
+	print(f"=== Raw Output from LLM ===")
+	print(f"{raw_llm_response}")
 	print("="*150)
 
 	print(f"\n=== Extracted (Raw) JSON Data ===")
 	# Extract the JSON data from the response string
-	json_data = extract_json_from_text(llm_response)
+	json_data = extract_json_from_text(raw_llm_response)
 	print(json_data)
 
 	print(f"\n=== Extracted Listed results from JSON Data ===")
@@ -199,7 +196,7 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 		print("Could not extract JSON data from the response.")
 
 	print(f"\n=== Extracted (Raw) JSON Data (NEW)===")
-	json_data_new = extract_json_from_text_new(llm_response)
+	json_data_new = extract_json_from_text_new(raw_llm_response)
 	print(json_data_new)
 
 	print(f"\n=== Extracted Listed results from JSON Data (NEW) ===")
@@ -212,7 +209,7 @@ def query_local_llm(model, tokenizer, text: str, device) -> Tuple[List[str], Lis
 		print("Could not extract JSON data from the response.")
 
 	print(f"\n=== Extracted JSON Data (Gold Standard) ===")
-	json_payload = extract_json_gold_standard(raw_text)
+	json_payload = extract_json_gold_standard(raw_llm_response)
 	print(json_payload)
 
 	print(f"\n=== Extracted Listed results from JSON Data (Gold Standard) ===")
@@ -247,7 +244,7 @@ def get_labels(model_id: str, device: str) -> None:
 
 	debug_llm_info(model, tokenizer, device)
 
-	test_description = "Railroad station, Naples depots; train stations Image of the interior of the Stazione Napoli Centrale (Naples Central Station) showing the Stazione di Napoli Piazza Garibaldi (the Naples Garibaldi Piazza station) which was build under the original railway station. The station was demolished in 1960, and a larger station was built at this location. According to Shaffer: ''[This is the] railroad station, Naples.''"
+	test_description = "Bus trip from Algiers to Bou Saada, deep in the Sahara According to Shaffer: ''[This is] the bus from Algiers to Bou Saada and Biskra. Kay Shelby, the Red Cross girl to the left, enjoyed her job as hostess to soldiers on leave and operated this little tour for their benefit.''"
 
 	query_local_llm(
 		model=model, 
