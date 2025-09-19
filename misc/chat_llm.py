@@ -147,13 +147,11 @@ def get_microsoft_response(input_prompt: str, llm_response: str):
 	print("Handling Microsoft response...")
 	pass
 
-import re
-import ast
-
 def get_mistral_response(input_prompt: str, llm_response: str):
     """
     Extracts the Python list of keywords from the Mistral-7B-Instruct model's
     output, including a step to handle smart quotes and other non-standard characters.
+    Also validates that the extracted keywords follow the specified rules.
     """
     print("Handling Mistral response...")
 
@@ -180,16 +178,42 @@ def get_mistral_response(input_prompt: str, llm_response: str):
     try:
         keywords_list = ast.literal_eval(cleaned_string)
         
-        # 4. Post-processing to ensure a valid list of strings.
-        if isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list):
-            print("Successfully extracted keywords from Mistral response.")
-            return keywords_list
-        else:
+        # 4. Validate that it's a list of strings
+        if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
             print("Error: Extracted string is not a valid list of strings.")
             return None
+            
+        # 5. Apply post-processing to enforce the rules
+        processed_keywords = []
+        for keyword in keywords_list:
+            # Remove numbers and numeric content (enforce "non-numeric" rule)
+            cleaned_keyword = re.sub(r'\d+', '', keyword).strip()
+            cleaned_keyword = re.sub(r'#\d+', '', cleaned_keyword).strip()  # Remove things like #59
+            
+            # Remove any remaining special characters and extra spaces
+            cleaned_keyword = re.sub(r'[^\w\s]', ' ', cleaned_keyword).strip()
+            cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)  # Collapse multiple spaces
+            
+            # Only add if not empty and not a duplicate
+            if cleaned_keyword and cleaned_keyword not in processed_keywords:
+                processed_keywords.append(cleaned_keyword)
+        
+        # Ensure we have exactly 3 keywords (or fewer if not enough valid ones)
+        if len(processed_keywords) > 3:
+            processed_keywords = processed_keywords[:3]
+            
+        if not processed_keywords:
+            print("Error: No valid keywords found after processing.")
+            return None
+            
+        print(f"Successfully extracted {len(processed_keywords)} keywords from Mistral response.")
+        return processed_keywords
+        
     except Exception as e:
         print(f"Error parsing the list from Mistral response: {e}")
+        print(f"Problematic string: {cleaned_string}")
         return None
+
 
 def get_nousresearch_response(input_prompt: str, llm_response: str):
 	print("Handling NousResearch response...")
