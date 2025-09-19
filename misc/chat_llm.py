@@ -114,9 +114,62 @@ def get_qwen_response(input_prompt: str, llm_response: str):
 	print("Handling Qwen response...")
 	pass
 
+import re
+import ast
+
 def get_microsoft_response(input_prompt: str, llm_response: str):
-	print("Handling Microsoft response...")
-	pass
+    """
+    Extracts the Python list of keywords from the clean output of the
+    Phi-4-mini-instruct model.
+    """
+    print("Handling Microsoft Phi response...")
+    
+    # The model provides a clean list as the final output. We can find it directly.
+    match = re.search(r"(\[.*?\])", llm_response.strip(), re.DOTALL)
+    
+    if not match:
+        print("Error: Could not find a list in the Microsoft response.")
+        return None
+        
+    final_list_str = match.group(1)
+    
+    # The model sometimes includes spaces and other characters that need to be cleaned up.
+    cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+    
+    if cleaned_string == "[]":
+        print("Model returned an empty list.")
+        return []
+
+    try:
+        keywords_list = ast.literal_eval(cleaned_string)
+        
+        # Ensure the parsed result is a list of strings
+        if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
+            print("Error: Extracted string is not a valid list of strings.")
+            return None
+        
+        # Post-process to enforce rules (e.g., limit to 3, remove special chars)
+        processed_keywords = []
+        for keyword in keywords_list:
+            cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
+            cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
+            
+            if cleaned_keyword and cleaned_keyword not in processed_keywords:
+                processed_keywords.append(cleaned_keyword)
+                
+        if len(processed_keywords) > 3:
+            processed_keywords = processed_keywords[:3]
+            
+        if not processed_keywords:
+            print("Error: No valid keywords found after processing.")
+            return None
+            
+        print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+        return processed_keywords
+        
+    except Exception as e:
+        print(f"Error parsing the list: {e}")
+        return None
 
 def get_mistral_response(input_prompt: str, llm_response: str):
     """
