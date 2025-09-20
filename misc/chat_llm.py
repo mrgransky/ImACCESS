@@ -5,7 +5,6 @@ from utils import *
 # model_id = "meta-llama/Llama-3.2-3B-Instruct"
 # model_id = "Qwen/Qwen3-4B-Instruct-2507"
 # model_id = "mistralai/Mistral-7B-Instruct-v0.3"
-
 # model_id = "microsoft/Phi-4-mini-instruct"
 # model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
 
@@ -35,7 +34,7 @@ TOP_P = 0.9
 MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 MAX_KEYWORDS = 3
-JSON_OUTPUT_TEMPLATE = {"keywords": ["keyword1", "keyword2", "keyword3"], "rationales": ["rationale1", "rationale2", "rationale3"]}
+
 print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
@@ -65,6 +64,7 @@ class ListStopCriteria(tfs.StoppingCriteria):
             print("ListStopCriteria: Already stopped, returning True")
             return True
         new_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=False)
+        print(f"ListStopCriteria: Full decoded text: {repr(new_text[-20:])}")
         print(f"ListStopCriteria: Last char: {repr(new_text[-1:])}")
         print(f"ListStopCriteria: Last 5 tokens: {input_ids[0][-5:]}")
         for ch in new_text[-1:]:
@@ -82,39 +82,100 @@ class ListStopCriteria(tfs.StoppingCriteria):
                         return True
         return False
 
-def get_llama_response(input_prompt: str, llm_response: str):
-	print("Handling Llama response...")
-
-	# 1. Use a regular expression to find all list-like structures in the response.
-	list_candidates = re.findall(r"\[.*?\]", llm_response, re.DOTALL)
-
-	if not list_candidates:
-		print("Error: Could not find a list in the Llama response.")
-		return None
-
-	# 2. Select the most likely list (last one generated)
-	final_list_str = list_candidates[-1]
-
-	# 3. Use ast.literal_eval to safely parse the string as a Python list
-	try:
-		keywords_list = ast.literal_eval(final_list_str)
+class ListStopCriteria_(tfs.StoppingCriteria):
+		def __init__(self, tokenizer):
+				super().__init__()
+				self.tokenizer = tokenizer
+				self.bracket_balance = 0
+				self.seen_open = False
+				self.list_completed = False
 		
-		# 4. Post-processing step to ensure the list contains exactly 3 keywords
-		if isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list):
-			# Take only the first 3 keywords if the list is longer than 3
-			if len(keywords_list) > MAX_KEYWORDS:
-				print(f"Warning: Extracted more than 3 keywords ({len(keywords_list)}). Truncating to 3.")
-				keywords_list = keywords_list[:MAX_KEYWORDS]
-			
-			print("Successfully extracted and truncated keywords from Llama response.")
-			return keywords_list
-			
-		else:
-			print("Error: Extracted string is not a valid list of strings.")
-			return None
-	except Exception as e:
-		print(f"Error parsing the final list from Llama response: {e}")
-		return None
+		def __call__(self, input_ids, scores, **kwargs):
+				if self.list_completed:
+						print("ListStopCriteria: Already stopped, returning True")
+						return True
+				new_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=False)
+				print(f"ListStopCriteria: Last char: {repr(new_text[-1:])}")
+				print(f"ListStopCriteria: Last 5 tokens: {input_ids[0][-5:]}")
+				for ch in new_text[-1:]:
+						if ch == "[":
+								self.seen_open = True
+								self.bracket_balance += 1
+								print(f"ListStopCriteria: Open bracket, balance: {self.bracket_balance}")
+						elif ch == "]":
+								if self.seen_open:
+										self.bracket_balance -= 1
+										print(f"ListStopCriteria: Close bracket, balance: {self.bracket_balance}")
+										if self.bracket_balance <= 0:
+												print("ListStopCriteria: Stopping generation")
+												self.list_completed = True
+												return True
+				return False
+
+def get_llama_response(input_prompt: str, llm_response: str):
+    """
+    Extracts the Python list of keywords from the output of Llama-based models.
+    """
+    print("Handling Llama response...")
+    print(f"Raw response (repr): {repr(llm_response)}")  # Debug hidden characters
+    
+    # Find all bracketed content for debugging
+    all_matches = re.findall(r"\[.*?\]", llm_response, re.DOTALL)
+    print(f"All bracketed matches: {all_matches}")
+    
+    # Look for a list with three quoted strings after [/INST]
+    list_match = re.search(
+        r"\[/INST\][\s\S]*?(\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\])",
+        llm_response, re.DOTALL
+    )
+    
+    if list_match:
+        final_list_str = list_match.group(1)
+        print(f"Found potential list: '{final_list_str}'")
+    else:
+        print("Error: Could not find a valid list after [/INST].")
+        # Fallback: try any list-like structure after [/INST]
+        list_match = re.search(r"\[/INST\][\s\S]*?(\[.*?\])", llm_response, re.DOTALL)
+        if list_match:
+            final_list_str = list_match.group(1)
+            print(f"Fallback list: '{final_list_str}'")
+        else:
+            print("Error: No list found in response.")
+            return None
+    
+    # Clean the string - replace smart quotes and normalize
+    cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+    print(f"Cleaned string: '{cleaned_string}'")
+    
+    # Use ast.literal_eval to parse the string into a Python list
+    try:
+        keywords_list = ast.literal_eval(cleaned_string)
+        # Validate: must be a list of strings
+        if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
+            print("Error: Extracted string is not a valid list of strings.")
+            return None
+        
+        # Post-process: remove numbers, special characters, and duplicates
+        processed_keywords = []
+        for keyword in keywords_list:
+            cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
+            cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
+            if cleaned_keyword and cleaned_keyword not in processed_keywords:
+                processed_keywords.append(cleaned_keyword)
+        
+        if len(processed_keywords) > 3:
+            processed_keywords = processed_keywords[:3]
+        if not processed_keywords:
+            print("Error: No valid keywords found after processing.")
+            return None
+        
+        print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+        return processed_keywords
+    
+    except Exception as e:
+        print(f"Error parsing the list: {e}")
+        print(f"Problematic string: '{cleaned_string}'")
+        return None
 
 def get_microsoft_response(input_prompt: str, llm_response: str):
 		"""
@@ -276,144 +337,144 @@ def get_mistral_response(input_prompt: str, llm_response: str):
 				return None
 
 def get_qwen_response(input_prompt: str, llm_response: str):
-    """
-    Extracts the Python list of keywords from the Qwen model's output by
-    specifically targeting the first list that appears after the prompt's end tag.
-    """
-    print("Handling Qwen response...")
-    print(f"Raw response (repr): {repr(llm_response)}")  # Debug hidden characters
-    
-    # Look for a list with three quoted strings after [/INST]
-    match = re.search(r"\[/INST\]\s*(\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\])", llm_response, re.DOTALL)
-    
-    if not match:
-        print("Error: Could not find a list after [/INST].")
-        # Fallback: try a simpler list pattern
-        match = re.search(r"\[/INST\]\s*(\[.*?\])", llm_response, re.DOTALL)
-        if match:
-            print(f"Fallback match: {match.group(1)}")
-        else:
-            print("Error: No list found in response.")
-            return None
-        final_list_str = match.group(1)
-    else:
-        final_list_str = match.group(1)
-        print(f"Found list: '{final_list_str}'")
-    
-    # Clean the string - replace smart quotes and normalize
-    cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
-    print(f"Cleaned string: '{cleaned_string}'")
-    
-    # Use ast.literal_eval to parse the string into a Python list
-    try:
-        keywords_list = ast.literal_eval(cleaned_string)
-        # Validate: must be a list of strings
-        if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
-            print("Error: Extracted string is not a valid list of strings.")
-            return None
-        
-        # Post-process: remove numbers, special characters, and duplicates
-        processed_keywords = []
-        for keyword in keywords_list:
-            cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
-            cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
-            if cleaned_keyword and cleaned_keyword not in processed_keywords:
-                processed_keywords.append(cleaned_keyword)
-        
-        if len(processed_keywords) > 3:
-            processed_keywords = processed_keywords[:3]
-        if not processed_keywords:
-            print("Error: No valid keywords found after processing.")
-            return None
-        
-        print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
-        return processed_keywords
-    
-    except Exception as e:
-        print(f"Error parsing the list: {e}")
-        print(f"Problematic string: '{cleaned_string}'")
-        return None
+		"""
+		Extracts the Python list of keywords from the Qwen model's output by
+		specifically targeting the first list that appears after the prompt's end tag.
+		"""
+		print("Handling Qwen response...")
+		print(f"Raw response (repr): {repr(llm_response)}")  # Debug hidden characters
+		
+		# Look for a list with three quoted strings after [/INST]
+		match = re.search(r"\[/INST\]\s*(\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\])", llm_response, re.DOTALL)
+		
+		if not match:
+				print("Error: Could not find a list after [/INST].")
+				# Fallback: try a simpler list pattern
+				match = re.search(r"\[/INST\]\s*(\[.*?\])", llm_response, re.DOTALL)
+				if match:
+						print(f"Fallback match: {match.group(1)}")
+				else:
+						print("Error: No list found in response.")
+						return None
+				final_list_str = match.group(1)
+		else:
+				final_list_str = match.group(1)
+				print(f"Found list: '{final_list_str}'")
+		
+		# Clean the string - replace smart quotes and normalize
+		cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+		print(f"Cleaned string: '{cleaned_string}'")
+		
+		# Use ast.literal_eval to parse the string into a Python list
+		try:
+				keywords_list = ast.literal_eval(cleaned_string)
+				# Validate: must be a list of strings
+				if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
+						print("Error: Extracted string is not a valid list of strings.")
+						return None
+				
+				# Post-process: remove numbers, special characters, and duplicates
+				processed_keywords = []
+				for keyword in keywords_list:
+						cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
+						cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
+						if cleaned_keyword and cleaned_keyword not in processed_keywords:
+								processed_keywords.append(cleaned_keyword)
+				
+				if len(processed_keywords) > 3:
+						processed_keywords = processed_keywords[:3]
+				if not processed_keywords:
+						print("Error: No valid keywords found after processing.")
+						return None
+				
+				print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+				return processed_keywords
+		
+		except Exception as e:
+				print(f"Error parsing the list: {e}")
+				print(f"Problematic string: '{cleaned_string}'")
+				return None
 
 def get_nousresearch_response(input_prompt: str, llm_response: str):
-    """
-    Extracts the Python list of keywords from the conversational and multi-turn output
-    of the NousResearch/Hermes-2-Pro-Llama-3-8B model.
-    """
-    print("Handling NousResearch Hermes response...")
-    print(f"Raw response (repr): {repr(llm_response)}")  # Debug hidden characters
-    
-    # Strip code block markers (```python
-    cleaned_response = re.sub(r'```python\n|```', '', llm_response)
-    print(f"Cleaned response (repr): {repr(cleaned_response)}")  # Debug
-    
-    # Look for a list with three quoted strings after [/INST]
-    list_match = re.search(
-        r"\[/INST\][\s\S]*?(\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\])",
-        cleaned_response, re.DOTALL
-    )
-    
-    if list_match:
-        potential_list = list_match.group(1)
-        print(f"Found potential list: '{potential_list}'")
-    else:
-        print("Error: Could not find any complete list patterns after [/INST].")
-        # Fallback: try any three-item list
-        list_match = re.search(
-            r"\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\]",
-            cleaned_response, re.DOTALL
-        )
-        if list_match:
-            potential_list = list_match.group(0)
-            print(f"Fallback list: '{potential_list}'")
-        else:
-            print("Error: No list found in response.")
-            # Debug all bracketed matches
-            matches = re.findall(r"\[.*?\]", cleaned_response, re.DOTALL)
-            print(f"All bracketed matches: {matches}")
-            return None
-    
-    # Clean the string - replace smart quotes and normalize
-    cleaned_string = potential_list.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
-    print(f"Cleaned string: '{cleaned_string}'")
-    
-    # Use ast.literal_eval to parse the string into a Python list
-    try:
-        keywords_list = ast.literal_eval(cleaned_string)
-        # Validate: must be a list of strings
-        if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
-            print("Error: Extracted string is not a valid list of strings.")
-            return None
-        
-        # Post-process: remove numbers, special characters, and duplicates
-        processed_keywords = []
-        for keyword in keywords_list:
-            cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
-            cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
-            if cleaned_keyword and cleaned_keyword not in processed_keywords:
-                processed_keywords.append(cleaned_keyword)
-        
-        if len(processed_keywords) > 3:
-            processed_keywords = processed_keywords[:3]
-        if not processed_keywords:
-            print("Error: No valid keywords found after processing.")
-            return None
-        
-        print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
-        return processed_keywords
-    
-    except Exception as e:
-        print(f"Error parsing the list: {e}")
-        print(f"Problematic string: '{cleaned_string}'")
-        # Fallback: extract quoted strings
-        try:
-            manual_matches = re.findall(r"['\"]([^'\"]+)['\"]", cleaned_string)
-            if manual_matches:
-                print(f"Using fallback extraction: {manual_matches}")
-                return manual_matches[:3]
-            return None
-        except Exception as e:
-            print(f"Fallback extraction failed: {e}")
-            return None
+		"""
+		Extracts the Python list of keywords from the conversational and multi-turn output
+		of the NousResearch/Hermes-2-Pro-Llama-3-8B model.
+		"""
+		print("Handling NousResearch Hermes response...")
+		print(f"Raw response (repr): {repr(llm_response)}")  # Debug hidden characters
+		
+		# Strip code block markers (```python
+		cleaned_response = re.sub(r'```python\n|```', '', llm_response)
+		print(f"Cleaned response (repr): {repr(cleaned_response)}")  # Debug
+		
+		# Look for a list with three quoted strings after [/INST]
+		list_match = re.search(
+				r"\[/INST\][\s\S]*?(\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\])",
+				cleaned_response, re.DOTALL
+		)
+		
+		if list_match:
+				potential_list = list_match.group(1)
+				print(f"Found potential list: '{potential_list}'")
+		else:
+				print("Error: Could not find any complete list patterns after [/INST].")
+				# Fallback: try any three-item list
+				list_match = re.search(
+						r"\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\]",
+						cleaned_response, re.DOTALL
+				)
+				if list_match:
+						potential_list = list_match.group(0)
+						print(f"Fallback list: '{potential_list}'")
+				else:
+						print("Error: No list found in response.")
+						# Debug all bracketed matches
+						matches = re.findall(r"\[.*?\]", cleaned_response, re.DOTALL)
+						print(f"All bracketed matches: {matches}")
+						return None
+		
+		# Clean the string - replace smart quotes and normalize
+		cleaned_string = potential_list.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+		print(f"Cleaned string: '{cleaned_string}'")
+		
+		# Use ast.literal_eval to parse the string into a Python list
+		try:
+				keywords_list = ast.literal_eval(cleaned_string)
+				# Validate: must be a list of strings
+				if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
+						print("Error: Extracted string is not a valid list of strings.")
+						return None
+				
+				# Post-process: remove numbers, special characters, and duplicates
+				processed_keywords = []
+				for keyword in keywords_list:
+						cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
+						cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
+						if cleaned_keyword and cleaned_keyword not in processed_keywords:
+								processed_keywords.append(cleaned_keyword)
+				
+				if len(processed_keywords) > 3:
+						processed_keywords = processed_keywords[:3]
+				if not processed_keywords:
+						print("Error: No valid keywords found after processing.")
+						return None
+				
+				print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+				return processed_keywords
+		
+		except Exception as e:
+				print(f"Error parsing the list: {e}")
+				print(f"Problematic string: '{cleaned_string}'")
+				# Fallback: extract quoted strings
+				try:
+						manual_matches = re.findall(r"['\"]([^'\"]+)['\"]", cleaned_string)
+						if manual_matches:
+								print(f"Using fallback extraction: {manual_matches}")
+								return manual_matches[:3]
+						return None
+				except Exception as e:
+						print(f"Fallback extraction failed: {e}")
+						return None
 
 def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str):
 
