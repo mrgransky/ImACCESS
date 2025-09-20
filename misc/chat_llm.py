@@ -13,8 +13,6 @@ from utils import *
 # model_id = "microsoft/DialoGPT-large"  # Fallback if you can't run Hermes
 # model_id = "gpt2-xl"
 
-# {{"keywords": ["keyword1", "keyword2", "keyword3"], "rationales": ["rationale1", "rationale2", "rationale3"]}}
-
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
 		"""
@@ -31,7 +29,7 @@ if not hasattr(tfs.utils, "FlashAttentionKwargs"):
 		pass
 	tfs.utils.FlashAttentionKwargs = FlashAttentionKwargs
 
-MAX_NEW_TOKENS = 300
+MAX_NEW_TOKENS = 200
 TEMPERATURE = 1e-8
 TOP_P = 0.9
 MAX_RETRIES = 3
@@ -54,18 +52,6 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 - Do NOT repeat or synonym‑duplicate keywords.
 [/INST]
 """
-
-# PROMPT_TEMPLATE = """<s>[INST]
-# You are a meticulous historical archivist.
-# Given the description below, extract **exactly {k}** concrete, factual, and *non‑numeric* keywords.
-# {description}
-# **Rule**:
-# - Output ONLY the Python list ['keyword1', 'keyword2', 'keyword3'] with no additional text, tags, or questions.
-# - Do NOT include any numbers, special characters, dates, years, or temporal expressions.
-# - Do NOT repeat or synonym‑duplicate keywords.
-# [/INST]
-# """
-
 class ListStopCriteria(tfs.StoppingCriteria):
     def __init__(self, tokenizer):
         super().__init__()
@@ -76,9 +62,11 @@ class ListStopCriteria(tfs.StoppingCriteria):
     
     def __call__(self, input_ids, scores, **kwargs):
         if self.list_completed:
+            print("ListStopCriteria: Already stopped, returning True")
             return True
         new_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=False)
-        print(f"ListStopCriteria: Last char: {repr(new_text[-1:])}")  # Debug
+        print(f"ListStopCriteria: Last char: {repr(new_text[-1:])}")
+        print(f"ListStopCriteria: Last 5 tokens: {input_ids[0][-5:]}")
         for ch in new_text[-1:]:
             if ch == "[":
                 self.seen_open = True
@@ -91,30 +79,6 @@ class ListStopCriteria(tfs.StoppingCriteria):
                     if self.bracket_balance <= 0:
                         print("ListStopCriteria: Stopping generation")
                         self.list_completed = True
-                        return True
-        return False
-
-class ListStopCriteria_old(tfs.StoppingCriteria):
-    def __init__(self, tokenizer):
-        super().__init__()
-        self.tokenizer = tokenizer
-        self.bracket_balance = 0
-        self.seen_open = False
-    
-    def __call__(self, input_ids, scores, **kwargs):
-        new_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=False)
-        print(f"ListStopCriteria: Last char: {repr(new_text[-1:])}")  # Debug
-        for ch in new_text[-1:]:
-            if ch == "[":
-                self.seen_open = True
-                self.bracket_balance += 1
-                print(f"ListStopCriteria: Open bracket, balance: {self.bracket_balance}")
-            elif ch == "]":
-                if self.seen_open:
-                    self.bracket_balance -= 1
-                    print(f"ListStopCriteria: Close bracket, balance: {self.bracket_balance}")
-                    if self.bracket_balance <= 0:
-                        print("ListStopCriteria: Stopping generation")
                         return True
         return False
 
