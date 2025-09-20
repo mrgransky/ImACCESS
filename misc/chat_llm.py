@@ -681,7 +681,7 @@ def query_local_llm(model, tokenizer, text: str, device, model_id: str) -> List[
 			do_sample=TEMPERATURE > 0.0,
 			pad_token_id=tokenizer.pad_token_id,
 			eos_token_id=tokenizer.eos_token_id,
-			stopping_criteria=stop_criteria
+			# stopping_criteria=stop_criteria
 		)
 		raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
 	except Exception as e:
