@@ -2,6 +2,7 @@ from pyexpat import model
 from utils import *
 # model_id = "google/gemma-1.1-2b-it"
 # model_id = "google/gemma-1.1-7b-it"
+# model_id = "google/flan-t5-xxl"
 # model_id = "meta-llama/Llama-3.1-8B-Instruct"
 # model_id = "meta-llama/Llama-3.1-405B-Instruct"
 # model_id = "meta-llama/Llama-3.1-70B"
@@ -715,13 +716,46 @@ def get_labels(model_id: str, device: str, test_description: str) -> None:
 		tokenizer.pad_token = tokenizer.eos_token
 		tokenizer.pad_token_id = tokenizer.eos_token_id
 
-	model = tfs.AutoModelForCausalLM.from_pretrained(
-		model_id,
-		device_map=device,
-		torch_dtype=torch.float16,
+	config = tfs.AutoConfig.from_pretrained(
+		model_id, 
 		trust_remote_code=True,
 		cache_dir=cache_directory[USER],
-	).eval()
+	)
+
+	# Pick the right class dynamically
+	if getattr(config, "is_encoder_decoder", False):
+		# T5, FLAN-T5, BART, Marian, mBART, etc.
+		model = tfs.AutoModelForSeq2SeqLM.from_pretrained(
+			model_id,
+			device_map=device,
+			torch_dtype=torch.float16,
+			trust_remote_code=True,
+			cache_dir=cache_directory[USER],
+		).eval()
+		print(f"[INFO] Loaded Seq2SeqLM model: {model.__class__.__name__}")
+	else:
+		# GPT-style, LLaMA, Falcon, Qwen, Mistral, etc.
+		model = tfs.AutoModelForCausalLM.from_pretrained(
+			model_id,
+			device_map=device,
+			torch_dtype=torch.float16,
+			trust_remote_code=True,
+			cache_dir=cache_directory[USER],
+		).eval()
+		print(f"[INFO] Loaded CausalLM model: {model.__class__.__name__}")
+
+
+
+
+
+
+	# model = tfs.AutoModelForCausalLM.from_pretrained(
+	# 	model_id,
+	# 	device_map=device,
+	# 	torch_dtype=torch.float16,
+	# 	trust_remote_code=True,
+	# 	cache_dir=cache_directory[USER],
+	# ).eval()
 
 	# debug_llm_info(model, tokenizer, device)
 
