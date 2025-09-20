@@ -51,6 +51,7 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 - Do NOT repeat or synonym‑duplicate keywords.
 [/INST]
 """
+
 class ListStopCriteria(tfs.StoppingCriteria):
     def __init__(self, tokenizer):
         super().__init__()
@@ -69,9 +70,10 @@ class ListStopCriteria(tfs.StoppingCriteria):
         print(f"ListStopCriteria: Last 5 tokens: {input_ids[0][-5:]}")
         for ch in new_text[-1:]:
             if ch == "[":
-                self.seen_open = True
-                self.bracket_balance += 1
-                print(f"ListStopCriteria: Open bracket, balance: {self.bracket_balance}")
+                if not self.list_completed:  # Only count first list
+                    self.seen_open = True
+                    self.bracket_balance += 1
+                    print(f"ListStopCriteria: Open bracket, balance: {self.bracket_balance}")
             elif ch == "]":
                 if self.seen_open:
                     self.bracket_balance -= 1
@@ -81,36 +83,6 @@ class ListStopCriteria(tfs.StoppingCriteria):
                         self.list_completed = True
                         return True
         return False
-
-class ListStopCriteria_(tfs.StoppingCriteria):
-		def __init__(self, tokenizer):
-				super().__init__()
-				self.tokenizer = tokenizer
-				self.bracket_balance = 0
-				self.seen_open = False
-				self.list_completed = False
-		
-		def __call__(self, input_ids, scores, **kwargs):
-				if self.list_completed:
-						print("ListStopCriteria: Already stopped, returning True")
-						return True
-				new_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=False)
-				print(f"ListStopCriteria: Last char: {repr(new_text[-1:])}")
-				print(f"ListStopCriteria: Last 5 tokens: {input_ids[0][-5:]}")
-				for ch in new_text[-1:]:
-						if ch == "[":
-								self.seen_open = True
-								self.bracket_balance += 1
-								print(f"ListStopCriteria: Open bracket, balance: {self.bracket_balance}")
-						elif ch == "]":
-								if self.seen_open:
-										self.bracket_balance -= 1
-										print(f"ListStopCriteria: Close bracket, balance: {self.bracket_balance}")
-										if self.bracket_balance <= 0:
-												print("ListStopCriteria: Stopping generation")
-												self.list_completed = True
-												return True
-				return False
 
 def get_llama_response(input_prompt: str, llm_response: str):
     """
@@ -134,14 +106,24 @@ def get_llama_response(input_prompt: str, llm_response: str):
         print(f"Found potential list: '{final_list_str}'")
     else:
         print("Error: Could not find a valid list after [/INST].")
-        # Fallback: try any list-like structure after [/INST]
-        list_match = re.search(r"\[/INST\][\s\S]*?(\[.*?\])", llm_response, re.DOTALL)
-        if list_match:
-            final_list_str = list_match.group(1)
-            print(f"Fallback list: '{final_list_str}'")
-        else:
-            print("Error: No list found in response.")
-            return None
+        # Fallback: handle comma-separated keywords (e.g., "Ford, River Rouge, ladle")
+        match = re.search(r"\[/INST\][\s\S]*?([\w\s\-]+(?:,\s*[\w\s\-]+){2,})", llm_response, re.DOTALL)
+        if match:
+            # Split comma-separated string and clean
+            keywords = [kw.strip() for kw in match.group(1).split(',')]
+            keywords = [re.sub(r'[\d#]', '', kw).strip() for kw in keywords if kw.strip()]
+            if len(keywords) >= 3:
+                processed_keywords = []
+                for kw in keywords[:3]:
+                    cleaned_keyword = re.sub(r'\s+', ' ', kw)
+                    if cleaned_keyword and cleaned_keyword not in processed_keywords:
+                        processed_keywords.append(cleaned_keyword)
+                if processed_keywords:
+                    print(f"Fallback extracted {len(processed_keywords)} keywords: {processed_keywords}")
+                    return processed_keywords[:3]
+            print("Fallback: Invalid or insufficient keywords.")
+        print("Error: No valid list or keywords found.")
+        return None
     
     # Clean the string - replace smart quotes and normalize
     cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
