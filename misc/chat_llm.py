@@ -43,9 +43,11 @@ print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
 PROMPT_TEMPLATE = """<s>[INST]
-You are a meticulous historical archivist.  
+You are a meticulous historical archivist.
 Given the description below, extract **exactly {k}** concrete, factual, and *non‑numeric* keywords.
+
 {description}
+
 **Rules**:
 - Output ONLY the Python list ['keyword1', 'keyword2', 'keyword3'].
 - Do NOT include any additional text, code blocks, comments, tags, questions or explanations before or after the list.
