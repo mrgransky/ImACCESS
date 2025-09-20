@@ -342,15 +342,35 @@ def get_nousresearch_response(input_prompt: str, llm_response: str):
     print("Handling NousResearch Hermes response...")
     print(f"Raw response (repr): {repr(llm_response)}")  # Debug hidden characters
     
-    # Look for a list after [/INST]</s> or [Answer]
-    list_match = re.search(r"(?:\[\/INST\]\s*<\/s>\s*(?:\[Answer\]\s*)?)\s*(\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\])", llm_response, re.DOTALL)
+    # Strip code block markers (```python
+    cleaned_response = re.sub(r'```python\n|```', '', llm_response)
+    print(f"Cleaned response (repr): {repr(cleaned_response)}")  # Debug
+    
+    # Look for a list with three quoted strings after [/INST]
+    list_match = re.search(
+        r"\[/INST\][\s\S]*?(\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\])",
+        cleaned_response, re.DOTALL
+    )
     
     if list_match:
         potential_list = list_match.group(1)
         print(f"Found potential list: '{potential_list}'")
     else:
-        print("Error: Could not find any complete list patterns after prompt.")
-        return None
+        print("Error: Could not find any complete list patterns after [/INST].")
+        # Fallback: try any three-item list
+        list_match = re.search(
+            r"\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\]",
+            cleaned_response, re.DOTALL
+        )
+        if list_match:
+            potential_list = list_match.group(0)
+            print(f"Fallback list: '{potential_list}'")
+        else:
+            print("Error: No list found in response.")
+            # Debug all bracketed matches
+            matches = re.findall(r"\[.*?\]", cleaned_response, re.DOTALL)
+            print(f"All bracketed matches: {matches}")
+            return None
     
     # Clean the string - replace smart quotes and normalize
     cleaned_string = potential_list.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
