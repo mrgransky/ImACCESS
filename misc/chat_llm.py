@@ -328,81 +328,64 @@ def get_qwen_response(input_prompt: str, llm_response: str):
         print(f"Error parsing the list: {e}")
         return None
 
-import re
-import ast
-
 def get_nousresearch_response(input_prompt: str, llm_response: str):
     """
     Extracts the Python list of keywords from the conversational and multi-turn output
     of the NousResearch/Hermes-2-Pro-Llama-3-8B model.
     """
     print("Handling NousResearch Hermes response...")
-
-    # Since the response might be truncated, look for the most recent complete list
-    # Reverse the string to find the last complete list pattern
-    reversed_response = llm_response[::-1]
-    
-    # Look for the first complete list pattern from the end
-    list_match = re.search(r"\](.*?)\[", reversed_response, re.DOTALL)
+    # Look for a Python-style list with string elements
+    list_match = re.search(r"\[([^\]]*?)\]", llm_response, re.DOTALL)
     
     if list_match:
-        # Reverse back to get the correct order
-        potential_list = list_match.group(1)[::-1]
-        potential_list = f"[{potential_list}]"
-        print(f"Found potential list from end: '{potential_list}'")
-        raw_list_str = potential_list
+        potential_list = f"[{list_match.group(1)}]"
+        print(f"Found potential list: '{potential_list}'")
     else:
         print("Error: Could not find any complete list patterns.")
         return None
     
-    # Clean the string - replace smart quotes if any
-    cleaned_string = raw_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
-    
+    # Clean the string - replace smart quotes and normalize
+    cleaned_string = potential_list.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
     print(f"Cleaned string: '{cleaned_string}'")
     
     # Use ast.literal_eval to safely parse the string into a Python list
     try:
         keywords_list = ast.literal_eval(cleaned_string)
-        
-        # Post-processing to enforce the rules from the prompt
+        # Validate: must be a list of strings
         if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
             print("Error: Extracted string is not a valid list of strings.")
             return None
         
-        # Remove numbers, special characters, and duplicates, then truncate to 3
+        # Post-process: remove numbers, special characters, and duplicates
         processed_keywords = []
         for keyword in keywords_list:
             cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
             cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
-            
             if cleaned_keyword and cleaned_keyword not in processed_keywords:
                 processed_keywords.append(cleaned_keyword)
         
         if len(processed_keywords) > 3:
             processed_keywords = processed_keywords[:3]
-            
         if not processed_keywords:
             print("Error: No valid keywords found after processing.")
             return None
-            
+        
         print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
         return processed_keywords
-        
+    
     except Exception as e:
         print(f"Error parsing the list: {e}")
         print(f"Problematic string: '{cleaned_string}'")
-        
-        # Fallback: try to extract manually if literal_eval fails
+        # Fallback: extract quoted strings
         try:
-            # Look for content between quotes
             manual_matches = re.findall(r"['\"]([^'\"]+)['\"]", cleaned_string)
             if manual_matches:
                 print(f"Using fallback extraction: {manual_matches}")
-                return manual_matches[:3]  # Return first 3 matches
-        except:
-            pass
-            
-        return None
+                return manual_matches[:3]
+            return None
+        except Exception as e:
+            print(f"Fallback extraction failed: {e}")
+            return None
 
 def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str):
 
