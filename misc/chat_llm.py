@@ -54,7 +54,6 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 - Do NOT include any additional text, code blocks, comments, tags, questions or explanations before or after the list.
 - Do NOT include any numbers, special characters, dates, years, or temporal expressions.
 - Avoid repeating or using synonym-duplicate keywords.
-- Example: ['Battle of the Bulge', 'Soviet Union', 'Treaty of Versailles']
 [/INST]
 """
 
