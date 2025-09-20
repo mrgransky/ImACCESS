@@ -47,7 +47,7 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 - Do NOT include any additional text, code blocks, comments, tags, questions or explanations before or after the list.
 - Do NOT include any numbers, special characters, dates, years, or temporal expressions.
 - Avoid repeating or using synonym-duplicate keywords.
-- Example: ['Ford', 'Rouge', 'locomotive']
+- Example: ['Glendale', 'SPRR', 'Merchandise']
 [/INST]
 """
 
@@ -92,6 +92,97 @@ class ListStopCriteria(tfs.StoppingCriteria):
         return False
 
 def get_llama_response(input_prompt: str, llm_response: str):
+    """
+    Extracts the Python list of keywords from the output of Llama-based models.
+    Handles both proper list format and comma-separated fallback.
+    """
+    print("Handling Llama response...")
+    print(f"Raw response (repr): {repr(llm_response)}")
+    
+    # First, try to find a proper Python list after [/INST]
+    list_match = re.search(
+        r"\[/INST\][\s\S]*?(\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){0,2}\s*\])",
+        llm_response, re.DOTALL
+    )
+    
+    if list_match:
+        final_list_str = list_match.group(1)
+        print(f"Found proper list format: '{final_list_str}'")
+        
+        # Clean the string
+        cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+        
+        try:
+            keywords_list = ast.literal_eval(cleaned_string)
+            if isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list):
+                # Process keywords
+                processed_keywords = []
+                for keyword in keywords_list:
+                    cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
+                    cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
+                    if cleaned_keyword and cleaned_keyword not in processed_keywords:
+                        processed_keywords.append(cleaned_keyword)
+                
+                if len(processed_keywords) >= 3:
+                    print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+                    return processed_keywords[:3]
+        except Exception as e:
+            print(f"Error parsing list: {e}")
+    
+    # Fallback: handle comma-separated output (what the model actually produced)
+    print("Trying fallback extraction for comma-separated output...")
+    
+    # Extract content after [/INST]
+    inst_match = re.search(r"\[/INST\](.*)$", llm_response, re.DOTALL)
+    if not inst_match:
+        print("Error: Could not find content after [/INST]")
+        return None
+    
+    content_after_inst = inst_match.group(1).strip()
+    print(f"Content after [/INST]: '{content_after_inst}'")
+    
+    # Remove any bracketed content like [No. 1]
+    cleaned_content = re.sub(r'\[.*?\]', '', content_after_inst)
+    cleaned_content = re.sub(r'\s+', ' ', cleaned_content).strip()
+    print(f"After removing brackets: '{cleaned_content}'")
+    
+    # Split by commas and clean
+    keywords = [kw.strip() for kw in cleaned_content.split(',') if kw.strip()]
+    
+    # Further clean each keyword
+    processed_keywords = []
+    for keyword in keywords:
+        # Remove numbers and special characters
+        cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
+        cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
+        if cleaned_keyword and cleaned_keyword not in processed_keywords:
+            processed_keywords.append(cleaned_keyword)
+    
+    # Ensure we have exactly 3 keywords
+    if len(processed_keywords) > 3:
+        processed_keywords = processed_keywords[:3]
+    
+    if len(processed_keywords) < 3:
+        print(f"Warning: Only found {len(processed_keywords)} valid keywords: {processed_keywords}")
+        # Try to extract more keywords from the original description as fallback
+        description_match = re.search(r"Given the description below[^.]*\.(.*?)\.", input_prompt, re.DOTALL)
+        if description_match:
+            description = description_match.group(1)
+            # Extract nouns or meaningful words from description
+            words = re.findall(r'\b[A-Za-z]{3,}\b', description)
+            unique_words = list(dict.fromkeys(words))  # Preserve order while removing duplicates
+            for word in unique_words:
+                if word.lower() not in [kw.lower() for kw in processed_keywords] and len(processed_keywords) < 3:
+                    processed_keywords.append(word)
+    
+    if not processed_keywords:
+        print("Error: No valid keywords found.")
+        return None
+    
+    print(f"Fallback extracted {len(processed_keywords)} keywords: {processed_keywords}")
+    return processed_keywords
+
+def get_llama_response_(input_prompt: str, llm_response: str):
     """
     Extracts the Python list of keywords from the output of Llama-based models.
     """
