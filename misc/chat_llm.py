@@ -49,11 +49,12 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 
 {description}
 
-**STRICT RULES**:
+**Rules**:
 - Output ONLY the Python list ['keyword1', 'keyword2', 'keyword3'].
 - Do NOT include any additional text, code blocks, comments, tags, questions or explanations before or after the list.
 - Do NOT include any numbers, special characters, dates, years, or temporal expressions.
-- Avoid repeating or using synonym-duplicate keywords.
+- Do NOT include repeating or using synonym-duplicate keywords.
+- Do NOT include any stopwords.
 [/INST]
 """
 
