@@ -338,39 +338,25 @@ def get_nousresearch_response(input_prompt: str, llm_response: str):
     """
     print("Handling NousResearch Hermes response...")
 
-    # The pattern needs to account for the specific format with line breaks
-    # Format: [/INST] <s>[OUT]\n['keyword1', 'keyword2', 'keyword3']\n[/OUT]
-    matches = re.findall(r"\[/INST\]\s*<s>\[OUT\]\s*\n(.*?)\n\[/OUT\]", llm_response, re.DOTALL)
+    # Since the response might be truncated, look for the most recent complete list
+    # Reverse the string to find the last complete list pattern
+    reversed_response = llm_response[::-1]
     
-    if not matches:
-        print("Error: Could not find any [OUT] blocks in the response.")
-        print("Trying alternative pattern...")
-        # Try a more flexible pattern
-        matches = re.findall(r"\[OUT\]\s*\n(.*?)\n\s*\[/OUT\]", llm_response, re.DOTALL)
-        if not matches:
-            print("Error: Could not find any [OUT] tags with alternative pattern.")
-            return None
-        
-    # Get the last (most recent) response
-    raw_list_str = matches[-1].strip()
+    # Look for the first complete list pattern from the end
+    list_match = re.search(r"\](.*?)\[", reversed_response, re.DOTALL)
     
-    print(f"Found raw list string: '{raw_list_str}'")
-    
-    # Now, find the actual list literal within the captured string
-    list_match = re.search(r"(\[.*?\])", raw_list_str, re.DOTALL)
-    
-    if not list_match:
-        print("Error: Could not find a list in the extracted string.")
-        # Maybe the string is already the list?
-        if raw_list_str.startswith('[') and raw_list_str.endswith(']'):
-            final_list_str = raw_list_str
-        else:
-            return None
+    if list_match:
+        # Reverse back to get the correct order
+        potential_list = list_match.group(1)[::-1]
+        potential_list = f"[{potential_list}]"
+        print(f"Found potential list from end: '{potential_list}'")
+        raw_list_str = potential_list
     else:
-        final_list_str = list_match.group(1)
+        print("Error: Could not find any complete list patterns.")
+        return None
     
     # Clean the string - replace smart quotes if any
-    cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+    cleaned_string = raw_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
     
     print(f"Cleaned string: '{cleaned_string}'")
     
