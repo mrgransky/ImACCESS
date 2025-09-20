@@ -2,7 +2,6 @@ from pyexpat import model
 from utils import *
 # model_id = "google/gemma-1.1-2b-it"
 # model_id = "google/gemma-1.1-7b-it"
-# model_id = "google/gemma-1.1-11b-it"
 # model_id = "meta-llama/Llama-3.1-8B-Instruct"
 # model_id = "meta-llama/Llama-3.1-405B-Instruct"
 # model_id = "meta-llama/Llama-3.1-70B"
@@ -55,7 +54,7 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 - Do NOT include any additional text, code blocks, comments, tags, questions or explanations before or after the list.
 - Do NOT include any numbers, special characters, dates, years, or temporal expressions.
 - Avoid repeating or using synonym-duplicate keywords.
-- Specific terms over generic ones are preferred. 
+- Prioritize specific terms over generic ones.
 - Example: ['Battle of the Bulge', 'Soviet Union', 'Treaty of Versailles']
 [/INST]
 """
