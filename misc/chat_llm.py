@@ -51,11 +51,10 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 {description}
 
 **Rules**:
-- Output ONLY the Python list ['keyword1', 'keyword2', 'keyword3'].
+- Output ONLY the Python list ['keyword1', 'keyword2', 'keyword3']. Example: ["Battle of France", "Soviet Union", "Truman Doctrine"].
 - Exclude additional text, code blocks, comments, tags, questions or explanations before or after the list.
-- Exclude numbers, special characters, dates, years, or temporal expressions.
+- Exclude numbers, special characters, dates, years, stopwords, or temporal expressions.
 - Exclude repeating or using synonym-duplicate keywords.
-- Exclude stopwords.
 [/INST]
 """
 
@@ -743,19 +742,6 @@ def get_labels(model_id: str, device: str, test_description: str) -> None:
 			cache_dir=cache_directory[USER],
 		).eval()
 		print(f"[INFO] Loaded CausalLM model: {model.__class__.__name__}")
-
-
-
-
-
-
-	# model = tfs.AutoModelForCausalLM.from_pretrained(
-	# 	model_id,
-	# 	device_map=device,
-	# 	torch_dtype=torch.float16,
-	# 	trust_remote_code=True,
-	# 	cache_dir=cache_directory[USER],
-	# ).eval()
 
 	# debug_llm_info(model, tokenizer, device)
 
