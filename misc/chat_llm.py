@@ -1,6 +1,8 @@
 from pyexpat import model
 from utils import *
-
+# model_id = "google/gemma-1.1-2b-it"
+# model_id = "google/gemma-1.1-7b-it"
+# model_id = "google/gemma-1.1-11b-it"
 # model_id = "meta-llama/Llama-3.1-8B-Instruct"
 # model_id = "meta-llama/Llama-3.1-405B-Instruct"
 # model_id = "meta-llama/Llama-3.1-70B"
@@ -32,7 +34,7 @@ if not hasattr(tfs.utils, "FlashAttentionKwargs"):
 		pass
 	tfs.utils.FlashAttentionKwargs = FlashAttentionKwargs
 
-MAX_NEW_TOKENS = 200
+MAX_NEW_TOKENS = 300
 TEMPERATURE = 1e-8
 TOP_P = 0.9
 MAX_RETRIES = 3
@@ -53,7 +55,7 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 - Do NOT include any additional text, code blocks, comments, tags, questions or explanations before or after the list.
 - Do NOT include any numbers, special characters, dates, years, or temporal expressions.
 - Avoid repeating or using synonym-duplicate keywords.
-- Example: ['Glendale', 'SPRR', 'Merchandise']
+- Example: ['Battle of the Bulge', 'Soviet Union', 'Treaty of Versailles']
 [/INST]
 """
 
