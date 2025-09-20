@@ -45,58 +45,45 @@ print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
 PROMPT_TEMPLATE = """<s>[INST]
-You are a meticulous historical archivist.
+You are a meticulous historical archivist specializing in 20th century documentation.
 Given the description below, extract **exactly {k}** concrete, factual, and *non‑numeric* keywords.
 
 {description}
 
-**Rules**:
+**STRICT RULES**:
 - Output ONLY the Python list ['keyword1', 'keyword2', 'keyword3'].
 - Do NOT include any additional text, code blocks, comments, tags, questions or explanations before or after the list.
 - Do NOT include any numbers, special characters, dates, years, or temporal expressions.
 - Avoid repeating or using synonym-duplicate keywords.
+- Specific terms over generic ones are preferred. 
 - Example: ['Battle of the Bulge', 'Soviet Union', 'Treaty of Versailles']
 [/INST]
 """
 
 def get_num_tokens(text: str, model_name: str = "bert-base-uncased") -> int:
-    """
-    Count tokens using HuggingFace transformers tokenizer and also count words.
-    
-    Args:
-        text (str): The input text to tokenize
-        model_name (str): HuggingFace model name
-    
-    Returns:
-        int: Number of tokens in the text
-    """
-    from transformers import AutoTokenizer
-    import re
-    
-    try:
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        tokens = tokenizer.encode(text, add_special_tokens=True)
-        num_tokens = len(tokens)
-        
-        # Count words using different methods
-        word_count_simple = len(text.split())
-        word_count_regex = len(re.findall(r'\b\w+\b', text))
-        
-        # Calculate tokens-to-words ratio
-        ratio = num_tokens / word_count_regex if word_count_regex > 0 else 0
-        
-        print(f"Text: '{text[:50]}{'...' if len(text) > 50 else ''}'")
-        print(f"Model: {model_name}")
-        print(f"Number of words (simple): {word_count_simple}")
-        print(f"Number of words (regex): {word_count_regex}")
-        print(f"Number of tokens: {num_tokens}")
-        print(f"Tokens-to-words ratio: {ratio:.2f}")
-        
-        return num_tokens
-    
-    except Exception as e:
-        print(f"Error loading tokenizer for {model_name}: {e}")
-        return 0
+		try:
+				tokenizer = tfs.AutoTokenizer.from_pretrained(model_name)
+				tokens = tokenizer.encode(text, add_special_tokens=True)
+				num_tokens = len(tokens)
+				
+				# Count words using different methods
+				word_count_simple = len(text.split())
+				word_count_regex = len(re.findall(r'\b\w+\b', text))
+				
+				# Calculate tokens-to-words ratio
+				ratio = num_tokens / word_count_regex if word_count_regex > 0 else 0
+				
+				print(f"Token count Model: {model_name}")
+				print(f"Number of words (simple): {word_count_simple}")
+				print(f"Number of words (regex): {word_count_regex}")
+				print(f"Number of tokens: {num_tokens}")
+				print(f"Tokens-to-words ratio: {ratio:.2f}")
+				
+				return num_tokens
+		
+		except Exception as e:
+				print(f"Error loading tokenizer for {model_name}: {e}")
+				return 0
 
 class ListStopCriteria(tfs.StoppingCriteria):
 		def __init__(self, tokenizer):
@@ -139,124 +126,124 @@ class ListStopCriteria(tfs.StoppingCriteria):
 				return False
 
 def get_llama_response(input_prompt: str, llm_response: str):
-    """
-    Extracts the Python list of keywords from the output of Llama-based models.
-    Handles both complete and incomplete list formats.
-    """
-    print("Handling Llama response...")
-    print(f"Raw response (repr): {repr(llm_response)}")
-    
-    # First, try to find a complete Python list after [/INST]
-    list_match = re.search(
-        r"\[/INST\][\s\S]*?(\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){0,2}\s*\])",
-        llm_response, re.DOTALL
-    )
-    
-    if list_match:
-        final_list_str = list_match.group(1)
-        print(f"Found complete list format: '{final_list_str}'")
-        
-        # Clean the string
-        cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
-        
-        try:
-            keywords_list = ast.literal_eval(cleaned_string)
-            if isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list):
-                # Process keywords
-                processed_keywords = []
-                for keyword in keywords_list:
-                    cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
-                    cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
-                    if cleaned_keyword and cleaned_keyword not in processed_keywords:
-                        processed_keywords.append(cleaned_keyword)
-                
-                if len(processed_keywords) >= 3:
-                    print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
-                    return processed_keywords[:3]
-        except Exception as e:
-            print(f"Error parsing list: {e}")
-    
-    # Fallback: handle incomplete list format (what the model actually produced)
-    print("Trying fallback extraction for incomplete list...")
-    
-    # Extract content after the last [/INST]
-    inst_match = re.search(r"\[/INST\](.*)$", llm_response, re.DOTALL)
-    if not inst_match:
-        print("Error: Could not find content after [/INST]")
-        return None
-    
-    content_after_inst = inst_match.group(1).strip()
-    print(f"Content after [/INST]: '{content_after_inst}'")
-    
-    # Look for incomplete list pattern like ['Ford', 'Rouge',
-    incomplete_match = re.search(r"(\[\s*['\"][^'\"]*['\"]\s*,\s*['\"][^'\"]*['\"]\s*,)", content_after_inst)
-    if incomplete_match:
-        incomplete_list = incomplete_match.group(1)
-        print(f"Found incomplete list: '{incomplete_list}'")
-        
-        # Extract the quoted strings from the incomplete list
-        quoted_matches = re.findall(r"['\"]([^'\"]*)['\"]", incomplete_list)
-        if quoted_matches and len(quoted_matches) >= 2:
-            # We have at least 2 keywords from the incomplete list
-            keywords = quoted_matches[:2]
-            
-            # Get the third keyword from the description
-            description_match = re.search(r"Given the description below[^.]*\.(.*?)\.", input_prompt, re.DOTALL)
-            if description_match:
-                description = description_match.group(1)
-                # Extract meaningful words from description (nouns, proper nouns)
-                words = re.findall(r'\b[A-Z][a-z]+\b', description)  # Capitalized words (proper nouns)
-                if not words:
-                    words = re.findall(r'\b[a-z]{4,}\b', description)  # Longer lowercase words
-                
-                # Find a suitable third keyword that's not already in the list
-                for word in words:
-                    if (word.lower() not in [kw.lower() for kw in keywords] and 
-                        len(word) > 3 and  # Avoid short words
-                        word not in ['Ford', 'Rouge']):  # Avoid duplicates
-                        keywords.append(word)
-                        break
-                
-                if len(keywords) >= 3:
-                    # Clean the keywords
-                    processed_keywords = []
-                    for keyword in keywords:
-                        cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
-                        cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
-                        if cleaned_keyword and cleaned_keyword not in processed_keywords:
-                            processed_keywords.append(cleaned_keyword)
-                    
-                    if len(processed_keywords) >= 3:
-                        print(f"Completed incomplete list: {processed_keywords[:3]}")
-                        return processed_keywords[:3]
-    
-    # Ultimate fallback: extract from description
-    print("Using ultimate fallback: extracting from description...")
-    description_match = re.search(r"Given the description below[^.]*\.(.*?)\.", input_prompt, re.DOTALL)
-    if description_match:
-        description = description_match.group(1)
-        # Extract meaningful keywords
-        keywords = []
-        
-        # First, look for proper nouns (capitalized words)
-        proper_nouns = re.findall(r'\b[A-Z][a-z]+\b', description)
-        for noun in proper_nouns:
-            if noun not in keywords and len(keywords) < 3:
-                keywords.append(noun)
-        
-        # Then look for other meaningful words
-        if len(keywords) < 3:
-            other_words = re.findall(r'\b[a-z]{4,}\b', description.lower())
-            for word in other_words:
-                if word not in [kw.lower() for kw in keywords] and len(keywords) < 3:
-                    keywords.append(word.capitalize())
-        
-        if keywords:
-            print(f"Extracted from description: {keywords}")
-            return keywords
-    
-    print("Error: Could not extract any keywords.")
-    return None
+		"""
+		Extracts the Python list of keywords from the output of Llama-based models.
+		Handles both complete and incomplete list formats.
+		"""
+		print("Handling Llama response...")
+		print(f"Raw response (repr): {repr(llm_response)}")
+		
+		# First, try to find a complete Python list after [/INST]
+		list_match = re.search(
+				r"\[/INST\][\s\S]*?(\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){0,2}\s*\])",
+				llm_response, re.DOTALL
+		)
+		
+		if list_match:
+				final_list_str = list_match.group(1)
+				print(f"Found complete list format: '{final_list_str}'")
+				
+				# Clean the string
+				cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+				
+				try:
+						keywords_list = ast.literal_eval(cleaned_string)
+						if isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list):
+								# Process keywords
+								processed_keywords = []
+								for keyword in keywords_list:
+										cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
+										cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
+										if cleaned_keyword and cleaned_keyword not in processed_keywords:
+												processed_keywords.append(cleaned_keyword)
+								
+								if len(processed_keywords) >= 3:
+										print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+										return processed_keywords[:3]
+				except Exception as e:
+						print(f"Error parsing list: {e}")
+		
+		# Fallback: handle incomplete list format (what the model actually produced)
+		print("Trying fallback extraction for incomplete list...")
+		
+		# Extract content after the last [/INST]
+		inst_match = re.search(r"\[/INST\](.*)$", llm_response, re.DOTALL)
+		if not inst_match:
+				print("Error: Could not find content after [/INST]")
+				return None
+		
+		content_after_inst = inst_match.group(1).strip()
+		print(f"Content after [/INST]: '{content_after_inst}'")
+		
+		# Look for incomplete list pattern like ['Ford', 'Rouge',
+		incomplete_match = re.search(r"(\[\s*['\"][^'\"]*['\"]\s*,\s*['\"][^'\"]*['\"]\s*,)", content_after_inst)
+		if incomplete_match:
+				incomplete_list = incomplete_match.group(1)
+				print(f"Found incomplete list: '{incomplete_list}'")
+				
+				# Extract the quoted strings from the incomplete list
+				quoted_matches = re.findall(r"['\"]([^'\"]*)['\"]", incomplete_list)
+				if quoted_matches and len(quoted_matches) >= 2:
+						# We have at least 2 keywords from the incomplete list
+						keywords = quoted_matches[:2]
+						
+						# Get the third keyword from the description
+						description_match = re.search(r"Given the description below[^.]*\.(.*?)\.", input_prompt, re.DOTALL)
+						if description_match:
+								description = description_match.group(1)
+								# Extract meaningful words from description (nouns, proper nouns)
+								words = re.findall(r'\b[A-Z][a-z]+\b', description)  # Capitalized words (proper nouns)
+								if not words:
+										words = re.findall(r'\b[a-z]{4,}\b', description)  # Longer lowercase words
+								
+								# Find a suitable third keyword that's not already in the list
+								for word in words:
+										if (word.lower() not in [kw.lower() for kw in keywords] and 
+												len(word) > 3 and  # Avoid short words
+												word not in ['Ford', 'Rouge']):  # Avoid duplicates
+												keywords.append(word)
+												break
+								
+								if len(keywords) >= 3:
+										# Clean the keywords
+										processed_keywords = []
+										for keyword in keywords:
+												cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
+												cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
+												if cleaned_keyword and cleaned_keyword not in processed_keywords:
+														processed_keywords.append(cleaned_keyword)
+										
+										if len(processed_keywords) >= 3:
+												print(f"Completed incomplete list: {processed_keywords[:3]}")
+												return processed_keywords[:3]
+		
+		# Ultimate fallback: extract from description
+		print("Using ultimate fallback: extracting from description...")
+		description_match = re.search(r"Given the description below[^.]*\.(.*?)\.", input_prompt, re.DOTALL)
+		if description_match:
+				description = description_match.group(1)
+				# Extract meaningful keywords
+				keywords = []
+				
+				# First, look for proper nouns (capitalized words)
+				proper_nouns = re.findall(r'\b[A-Z][a-z]+\b', description)
+				for noun in proper_nouns:
+						if noun not in keywords and len(keywords) < 3:
+								keywords.append(noun)
+				
+				# Then look for other meaningful words
+				if len(keywords) < 3:
+						other_words = re.findall(r'\b[a-z]{4,}\b', description.lower())
+						for word in other_words:
+								if word not in [kw.lower() for kw in keywords] and len(keywords) < 3:
+										keywords.append(word.capitalize())
+				
+				if keywords:
+						print(f"Extracted from description: {keywords}")
+						return keywords
+		
+		print("Error: Could not extract any keywords.")
+		return None
 
 def get_llama_response_(input_prompt: str, llm_response: str):
 		"""
