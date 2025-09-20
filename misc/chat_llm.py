@@ -54,75 +54,73 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 - Do NOT include any additional text, code blocks, comments, tags, questions or explanations before or after the list.
 - Do NOT include any numbers, special characters, dates, years, or temporal expressions.
 - Avoid repeating or using synonym-duplicate keywords.
-- Prioritize specific terms over generic ones.
 - Example: ['Battle of the Bulge', 'Soviet Union', 'Treaty of Versailles']
 [/INST]
 """
 
 def get_num_tokens(text: str, model_name: str = "bert-base-uncased") -> int:
-		try:
-				tokenizer = tfs.AutoTokenizer.from_pretrained(model_name)
-				tokens = tokenizer.encode(text, add_special_tokens=True)
-				num_tokens = len(tokens)
-				
-				# Count words using different methods
-				word_count_simple = len(text.split())
-				word_count_regex = len(re.findall(r'\b\w+\b', text))
-				
-				# Calculate tokens-to-words ratio
-				ratio = num_tokens / word_count_regex if word_count_regex > 0 else 0
-				
-				print(f"Token count Model: {model_name}")
-				print(f"Number of words (simple): {word_count_simple}")
-				print(f"Number of words (regex): {word_count_regex}")
-				print(f"Number of tokens: {num_tokens}")
-				print(f"Tokens-to-words ratio: {ratio:.2f}")
-				
-				return num_tokens
+	try:
+		tokenizer = tfs.AutoTokenizer.from_pretrained(model_name)
+		tokens = tokenizer.encode(text, add_special_tokens=True)
+		num_tokens = len(tokens)
 		
-		except Exception as e:
-				print(f"Error loading tokenizer for {model_name}: {e}")
-				return 0
+		# Count words using different methods
+		word_count_simple = len(text.split())
+		word_count_regex = len(re.findall(r'\b\w+\b', text))
+		
+		# Calculate tokens-to-words ratio
+		ratio = num_tokens / word_count_regex if word_count_regex > 0 else 0
+		
+		print(f"Token count Model: {model_name}")
+		print(f"Number of words (simple): {word_count_simple}")
+		print(f"Number of words (regex): {word_count_regex}")
+		print(f"Number of tokens: {num_tokens}")
+		print(f"Tokens-to-words ratio: {ratio:.2f}")
+		
+		return num_tokens
+	except Exception as e:
+		print(f"Error loading tokenizer for {model_name}: {e}")
+		return 0
 
 class ListStopCriteria(tfs.StoppingCriteria):
-		def __init__(self, tokenizer):
-				super().__init__()
-				self.tokenizer = tokenizer
-				self.bracket_balance = 0
-				self.seen_open = False
-				self.list_completed = False
-				self.comma_count = 0
-		
-		def __call__(self, input_ids, scores, **kwargs):
-				if self.list_completed:
-						print("ListStopCriteria: Already stopped, returning True")
+	def __init__(self, tokenizer):
+		super().__init__()
+		self.tokenizer = tokenizer
+		self.bracket_balance = 0
+		self.seen_open = False
+		self.list_completed = False
+		self.comma_count = 0
+	
+	def __call__(self, input_ids, scores, **kwargs):
+		if self.list_completed:
+			print("ListStopCriteria: Already stopped, returning True")
+			return True
+		new_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=False)
+		print(f"ListStopCriteria: Full decoded text: {repr(new_text[-20:])}")
+		print(f"ListStopCriteria: Last char: {repr(new_text[-1:])}")
+		print(f"ListStopCriteria: Last 5 tokens: {input_ids[0][-5:]}")
+		for ch in new_text[-1:]:
+			if ch == "[":
+				if not self.list_completed:
+					self.seen_open = True
+					self.bracket_balance += 1
+					print(f"ListStopCriteria: Open bracket, balance: {self.bracket_balance}")
+			elif ch == "]":
+				if self.seen_open:
+					self.bracket_balance -= 1
+					print(f"ListStopCriteria: Close bracket, balance: {self.bracket_balance}")
+					if self.bracket_balance <= 0:
+						print("ListStopCriteria: Stopping generation")
+						self.list_completed = True
 						return True
-				new_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=False)
-				print(f"ListStopCriteria: Full decoded text: {repr(new_text[-20:])}")
-				print(f"ListStopCriteria: Last char: {repr(new_text[-1:])}")
-				print(f"ListStopCriteria: Last 5 tokens: {input_ids[0][-5:]}")
-				for ch in new_text[-1:]:
-						if ch == "[":
-								if not self.list_completed:
-										self.seen_open = True
-										self.bracket_balance += 1
-										print(f"ListStopCriteria: Open bracket, balance: {self.bracket_balance}")
-						elif ch == "]":
-								if self.seen_open:
-										self.bracket_balance -= 1
-										print(f"ListStopCriteria: Close bracket, balance: {self.bracket_balance}")
-										if self.bracket_balance <= 0:
-												print("ListStopCriteria: Stopping generation")
-												self.list_completed = True
-												return True
-						elif ch == "," and not self.seen_open:
-								self.comma_count += 1
-								print(f"ListStopCriteria: Comma count: {self.comma_count}")
-								if self.comma_count >= 2:  # Stop after 2 commas for comma-separated lists
-										print("ListStopCriteria: Stopping after sufficient commas")
-										self.list_completed = True
-										return True
-				return False
+			elif ch == "," and not self.seen_open:
+				self.comma_count += 1
+				print(f"ListStopCriteria: Comma count: {self.comma_count}")
+				if self.comma_count >= 2:  # Stop after 2 commas for comma-separated lists
+					print("ListStopCriteria: Stopping after sufficient commas")
+					self.list_completed = True
+					return True
+		return False
 
 def get_llama_response(input_prompt: str, llm_response: str):
 		"""
