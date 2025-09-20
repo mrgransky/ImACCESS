@@ -327,17 +327,22 @@ def get_qwen_response(input_prompt: str, llm_response: str):
 				print(f"Error parsing the list: {e}")
 				return None
 
+import re
+import ast
+
 def get_nousresearch_response(input_prompt: str, llm_response: str):
     """
     Extracts the Python list of keywords from the conversational and multi-turn output
     of the NousResearch/Hermes-2-Pro-Llama-3-8B model.
     """
     print("Handling NousResearch Hermes response...")
-    # Look for a Python-style list with quoted strings after [Answer] or [/INST]
-    list_match = re.search(r"(?:\[Answer\]|\[/INST\])\s*(\[['\"][^\]]*?['\"](?:,\s*['\"][^\]]*?['\"]){2}\])", llm_response, re.DOTALL)
+    print(f"Raw response (repr): {repr(llm_response)}")  # Debug hidden characters
+    
+    # Look for a Python-style list with three quoted strings
+    list_match = re.search(r"\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\]", llm_response, re.DOTALL)
     
     if list_match:
-        potential_list = list_match.group(1)
+        potential_list = list_match.group(0)
         print(f"Found potential list: '{potential_list}'")
     else:
         print("Error: Could not find any complete list patterns.")
@@ -407,11 +412,10 @@ def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str):
 
 	return llm_response
 
-def query_local_llm(model, tokenizer, text: str, device, model_id: str) -> Tuple[List[str], List[str]]:
+def query_local_llm(model, tokenizer, text: str, device, model_id: str) -> List[str]:
 	if not isinstance(text, str) or not text.strip():
-		return None, None		
+		return None
 	keywords: Optional[List[str]] = None
-	rationales: Optional[List[str]] = None
 	prompt = PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip())
 	stop_criteria = tfs.StoppingCriteriaList([ListStopCriteria(tokenizer)])
 
@@ -441,7 +445,7 @@ def query_local_llm(model, tokenizer, text: str, device, model_id: str) -> Tuple
 		raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
 	except Exception as e:
 		print(f"<!> Error {e}")
-		return None, None
+		return None
 
 	print(f"=== Input Prompt ===")
 	print(f"{prompt}")
@@ -455,7 +459,7 @@ def query_local_llm(model, tokenizer, text: str, device, model_id: str) -> Tuple
 
 	keywords = get_llm_response(model_id=model_id, input_prompt=prompt, raw_llm_response=raw_llm_response)
 	print(f"Extracted {len(keywords)} keywords (type: {type(keywords)}): {keywords}")
-	return keywords, rationales
+	return keywords
 
 def get_labels(model_id: str, device: str, test_description: str) -> None:
 	tokenizer = tfs.AutoTokenizer.from_pretrained(
