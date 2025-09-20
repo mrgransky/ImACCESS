@@ -47,7 +47,7 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 
 **Rule**:
 - Output ONLY the Python list ['keyword1', 'keyword2', 'keyword3'].
-- Do NOT include any additional text, tags, questions or explanations before or after the list.
+- Do NOT include any additional text, code blocks, comments, tags, questions or explanations before or after the list.
 - Do NOT include any numbers, special characters, dates, years, or temporal expressions.
 - Do NOT repeat or synonym‑duplicate keywords.
 [/INST]
