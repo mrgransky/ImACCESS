@@ -413,7 +413,7 @@ def query_local_llm(model, tokenizer, text: str, device, model_id: str) -> Tuple
 	keywords: Optional[List[str]] = None
 	rationales: Optional[List[str]] = None
 	prompt = PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip())
-	stop_criteria = tfs.StoppingCriteriaList([JsonStopCriteria(tokenizer)])
+	stop_criteria = tfs.StoppingCriteriaList([ListStopCriteria(tokenizer)])
 
 	try:
 		inputs = tokenizer(
