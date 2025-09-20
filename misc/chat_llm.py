@@ -64,14 +64,18 @@ class ListStopCriteria(tfs.StoppingCriteria):
     
     def __call__(self, input_ids, scores, **kwargs):
         new_text = self.tokenizer.decode(input_ids[0], skip_special_tokens=False)
+        print(f"ListStopCriteria: Last char: {repr(new_text[-1:])}")  # Debug
         for ch in new_text[-1:]:
             if ch == "[":
                 self.seen_open = True
                 self.bracket_balance += 1
+                print(f"ListStopCriteria: Open bracket, balance: {self.bracket_balance}")
             elif ch == "]":
                 if self.seen_open:
                     self.bracket_balance -= 1
+                    print(f"ListStopCriteria: Close bracket, balance: {self.bracket_balance}")
                     if self.bracket_balance <= 0:
+                        print("ListStopCriteria: Stopping generation")
                         return True
         return False
 
@@ -327,9 +331,6 @@ def get_qwen_response(input_prompt: str, llm_response: str):
 				print(f"Error parsing the list: {e}")
 				return None
 
-import re
-import ast
-
 def get_nousresearch_response(input_prompt: str, llm_response: str):
     """
     Extracts the Python list of keywords from the conversational and multi-turn output
@@ -338,14 +339,14 @@ def get_nousresearch_response(input_prompt: str, llm_response: str):
     print("Handling NousResearch Hermes response...")
     print(f"Raw response (repr): {repr(llm_response)}")  # Debug hidden characters
     
-    # Look for a Python-style list with three quoted strings
-    list_match = re.search(r"\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\]", llm_response, re.DOTALL)
+    # Look for a list after [/INST]</s> or [Answer]
+    list_match = re.search(r"(?:\[\/INST\]\s*<\/s>\s*(?:\[Answer\]\s*)?)\s*(\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\])", llm_response, re.DOTALL)
     
     if list_match:
-        potential_list = list_match.group(0)
+        potential_list = list_match.group(1)
         print(f"Found potential list: '{potential_list}'")
     else:
-        print("Error: Could not find any complete list patterns.")
+        print("Error: Could not find any complete list patterns after prompt.")
         return None
     
     # Clean the string - replace smart quotes and normalize
