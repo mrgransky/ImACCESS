@@ -57,7 +57,8 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 **Rules**:
 - Output ONLY the Python list ['keyword1', 'keyword2', 'keyword3']. Example: ["Battle of Normandy", "Panzer tank", "Truman Doctrine"].
 - Exclude additional text, code blocks, comments, tags, questions, or explanations before or after the list.
-- Exclude temporal expressions, numbers, special characters, stopwords, or abbreviations.
+- **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "1950s", "weekend", "May 25th", "July 10").
+- Exclude numbers, special characters, stopwords, or abbreviations.
 - Exclude repeating or synonym-duplicate keywords.
 [/INST]
 """
