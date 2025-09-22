@@ -49,7 +49,7 @@ print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
 PROMPT_TEMPLATE = """<s>[INST]
-You are a meticulous historical archivist specializing in 20th century documentation.
+Act as a meticulous historical archivist specializing in 20th century documentation.
 Given the description below, extract **exactly {k}** concrete, factual, and *non-numeric* keywords.
 
 {description}
