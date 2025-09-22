@@ -242,12 +242,8 @@ def get_llama_response(model_id: str, input_prompt: str, llm_response: str):
 		print("Error: Could not extract any keywords.")
 		return None
 
-def get_microsoft_response(input_prompt: str, llm_response: str):
-		"""
-		Extracts the Python list of keywords from the clean output of the
-		Phi-4-mini-instruct model using a more robust JSON-based approach.
-		"""
-		print("Handling Microsoft Phi response...")
+def get_microsoft_response(model_id: str, input_prompt: str, llm_response: str):
+		print(f"Handling Microsoft Phi response...")
 		
 		# The model output is at the end after the [/INST] tag
 		# Split by lines and look for the content after the last [/INST]
@@ -339,7 +335,7 @@ def get_microsoft_response(input_prompt: str, llm_response: str):
 				print(f"An unexpected error occurred: {e}")
 				return None
 
-def get_mistral_response(input_prompt: str, llm_response: str):
+def get_mistral_response(model_id: str, input_prompt: str, llm_response: str):
 		"""
 		Extracts the Python list of keywords from the Mistral-7B-Instruct model's
 		output, with better pattern matching for the actual model response.
@@ -401,7 +397,7 @@ def get_mistral_response(input_prompt: str, llm_response: str):
 				print(f"Error parsing the list: {e}")
 				return None
 
-def get_qwen_response(input_prompt: str, llm_response: str):
+def get_qwen_response(model_id: str, input_prompt: str, llm_response: str):
 		"""
 		Extracts the Python list of keywords from the Qwen model's output by
 		specifically targeting the first list that appears after the prompt's end tag.
@@ -460,7 +456,7 @@ def get_qwen_response(input_prompt: str, llm_response: str):
 				print(f"Problematic string: '{cleaned_string}'")
 				return None
 
-def get_nousresearch_response(input_prompt: str, llm_response: str):
+def get_nousresearch_response(model_id: str, input_prompt: str, llm_response: str):
 		"""
 		Extracts the Python list of keywords from the conversational and multi-turn output
 		of the NousResearch/Hermes-2-Pro-Llama-3-8B model.
