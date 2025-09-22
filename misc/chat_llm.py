@@ -1,18 +1,22 @@
 from pyexpat import model
 from utils import *
+
+# basic models:
 # model_id = "google/gemma-1.1-2b-it"
 # model_id = "google/gemma-1.1-7b-it"
-# model_id = "google/flan-t5-xxl"
 # model_id = "meta-llama/Llama-3.1-8B-Instruct"
 # model_id = "meta-llama/Llama-3.1-405B-Instruct"
 # model_id = "meta-llama/Llama-3.1-70B"
 # model_id = "meta-llama/Llama-3.2-1B-Instruct" # default for local
 # model_id = "meta-llama/Llama-3.2-3B-Instruct"
 # model_id = "meta-llama/Llama-3.3-70b-instruct"
+
+# better models:
 # model_id = "Qwen/Qwen3-4B-Instruct-2507"
 # model_id = "mistralai/Mistral-7B-Instruct-v0.3"
 # model_id = "microsoft/Phi-4-mini-instruct"
 # model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
+# model_id = "google/flan-t5-xxl"
 
 # not useful for instruction tuning:
 # model_id = "microsoft/DialoGPT-large"  # Fallback if you can't run Hermes
@@ -312,7 +316,7 @@ def get_llama_response(model_id: str, input_prompt: str, llm_response: str):
 		return None
 
 def get_microsoft_response(model_id: str, input_prompt: str, llm_response: str):
-		print(f"Handling Microsoft Phi response...")
+		print(f"Handling Microsoft response model_id: {model_id}...")
 		
 		# The model output is at the end after the [/INST] tag
 		# Split by lines and look for the content after the last [/INST]
@@ -405,11 +409,7 @@ def get_microsoft_response(model_id: str, input_prompt: str, llm_response: str):
 				return None
 
 def get_mistral_response(model_id: str, input_prompt: str, llm_response: str):
-		"""
-		Extracts the Python list of keywords from the Mistral-7B-Instruct model's
-		output, with better pattern matching for the actual model response.
-		"""
-		print("Handling Mistral response...")
+		print(f"Handling Mistral response model_id: {model_id}...")
 		
 		# Split the response by lines and look for the list pattern
 		lines = llm_response.strip().split('\n')
@@ -467,11 +467,7 @@ def get_mistral_response(model_id: str, input_prompt: str, llm_response: str):
 				return None
 
 def get_qwen_response(model_id: str, input_prompt: str, llm_response: str):
-		"""
-		Extracts the Python list of keywords from the Qwen model's output by
-		specifically targeting the first list that appears after the prompt's end tag.
-		"""
-		print("Handling Qwen response...")
+		print(f"Handling Qwen response model_id: {model_id}...")
 		print(f"Raw response (repr): {repr(llm_response)}")  # Debug hidden characters
 		
 		# Look for a list with three quoted strings after [/INST]
@@ -526,11 +522,7 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str):
 				return None
 
 def get_nousresearch_response(model_id: str, input_prompt: str, llm_response: str):
-		"""
-		Extracts the Python list of keywords from the conversational and multi-turn output
-		of the NousResearch/Hermes-2-Pro-Llama-3-8B model.
-		"""
-		print("Handling NousResearch Hermes response...")
+		print(f"Handling NousResearch response model_id: {model_id}...")
 		print(f"Raw response (repr): {repr(llm_response)}")  # Debug hidden characters
 		
 		# Strip code block markers (```python
@@ -614,13 +606,13 @@ def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str):
 	if "meta-llama" in model_id:
 		llm_response = get_llama_response(model_id, input_prompt, raw_llm_response)
 	elif "Qwen" in model_id:
-		llm_response = get_qwen_response(input_prompt, raw_llm_response)
+		llm_response = get_qwen_response(model_id, input_prompt, raw_llm_response)
 	elif "microsoft" in model_id:
-		llm_response = get_microsoft_response(input_prompt, raw_llm_response)
+		llm_response = get_microsoft_response(model_id, input_prompt, raw_llm_response)
 	elif "mistralai" in model_id:
-		llm_response = get_mistral_response(input_prompt, raw_llm_response)
+		llm_response = get_mistral_response(model_id, input_prompt, raw_llm_response)
 	elif "NousResearch" in model_id:
-		llm_response = get_nousresearch_response(input_prompt, raw_llm_response)
+		llm_response = get_nousresearch_response(model_id, input_prompt, raw_llm_response)
 	elif "google" in model_id:
 		llm_response = get_google_response(model_id, input_prompt, raw_llm_response)
 	else:
@@ -676,7 +668,11 @@ def query_local_llm(model, tokenizer, text: str, device, model_id: str) -> List[
 	
 	# return None, None
 
-	keywords = get_llm_response(model_id=model_id, input_prompt=prompt, raw_llm_response=raw_llm_response)
+	keywords = get_llm_response(
+		model_id=model_id, 
+		input_prompt=prompt, 
+		raw_llm_response=raw_llm_response
+	)
 	print(f"Extracted {len(keywords)} keywords (type: {type(keywords)}): {keywords}")
 	return keywords
 
