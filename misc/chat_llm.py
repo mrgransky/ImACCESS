@@ -122,9 +122,86 @@ class ListStopCriteria(tfs.StoppingCriteria):
 					return True
 		return False
 
-def get_google_response(model_id: str, input_prompt: str, llm_response: str):
-	print(f"Handling Google response [model_id: {model_id}]...")
-	print(f"Raw response (repr): {repr(llm_response)}")
+import re
+import ast
+from typing import Optional, List
+
+def get_google_response(model_id: str, input_prompt: str, llm_response: str) -> Optional[List[str]]:
+    """
+    Extracts and processes a list of exactly 3 keywords from the output of Google-based models.
+    Ensures keywords are concrete, factual, non-numeric, and optionally free of abbreviations.
+    """
+    print(f"Handling Google response [model_id: {model_id}]...")
+    print(f"Raw response (repr): {repr(llm_response)}")
+    
+    # Find all potential list-like structures
+    list_matches = re.findall(r"\[.*?\]", llm_response, re.DOTALL)
+    print(f"All bracketed matches: {list_matches}")
+    
+    # Look for a list with three quoted strings
+    list_match = re.search(
+        r"\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\]",
+        llm_response, re.DOTALL
+    )
+    
+    if list_match:
+        final_list_str = list_match.group(0)
+        print(f"Found potential list: '{final_list_str}'")
+    else:
+        print("Error: Could not find a valid list in the response.")
+        # Fallback: attempt to extract comma-separated keywords
+        match = re.search(r"([\w\s\-]+(?:,\s*[\w\s\-]+){2,})", llm_response, re.DOTALL)
+        if match:
+            keywords = [kw.strip() for kw in match.group(1).split(',')]
+            keywords = [re.sub(r'[\d#]', '', kw).strip() for kw in keywords if kw.strip()]
+            processed_keywords = []
+            for kw in keywords[:3]:
+                cleaned_keyword = re.sub(r'\s+', ' ', kw)
+                if cleaned_keyword and cleaned_keyword not in processed_keywords:
+                    processed_keywords.append(cleaned_keyword)
+            if len(processed_keywords) >= 3:
+                print(f"Fallback extracted {len(processed_keywords)} keywords: {processed_keywords}")
+                return processed_keywords[:3]
+        print("Error: No valid list or keywords found.")
+        return None
+    
+    # Clean the string (handle smart quotes and normalize)
+    cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+    print(f"Cleaned string: '{cleaned_string}'")
+    
+    # Parse the string into a Python list
+    try:
+        keywords_list = ast.literal_eval(cleaned_string)
+        # Validate: must be a list of strings
+        if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
+            print("Error: Extracted string is not a valid list of strings.")
+            return None
+        
+        # Post-process: remove numbers, special characters, and duplicates
+        processed_keywords = []
+        for keyword in keywords_list:
+            # Remove numbers and special characters
+            cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
+            cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
+            # Optionally exclude abbreviations (e.g., single letters or common historical abbreviations)
+            if len(cleaned_keyword) > 2 or cleaned_keyword.lower() not in {'u.s.', 'wwii', 'raf', 'nato', 'mt.'}:
+                if cleaned_keyword and cleaned_keyword not in processed_keywords:
+                    processed_keywords.append(cleaned_keyword)
+        
+        # Ensure exactly 3 keywords
+        if len(processed_keywords) > 3:
+            processed_keywords = processed_keywords[:3]
+        elif len(processed_keywords) < 3:
+            print("Error: Fewer than 3 valid keywords after processing.")
+            return None
+        
+        print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+        return processed_keywords
+    
+    except Exception as e:
+        print(f"Error parsing the list: {e}")
+        print(f"Problematic string: '{cleaned_string}'")
+        return None
 
 def get_llama_response(model_id: str, input_prompt: str, llm_response: str):
 		print(f"Handling Llama response model_id: {model_id}...")
