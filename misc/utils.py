@@ -157,6 +157,23 @@ dtypes = {
 	'user_query': str,
 }
 
+def monitor_memory_usage():
+	"""Monitor memory usage and return True if memory is critical"""
+	if torch.cuda.is_available():
+		gpu_alloc = torch.cuda.memory_allocated() / 1024**3
+		gpu_cached = torch.cuda.memory_reserved() / 1024**3
+		gpu_percent = (gpu_alloc / (gpu_alloc + gpu_cached)) * 100 if (gpu_alloc + gpu_cached) > 0 else 0
+	else:
+		gpu_percent = 0
+	
+	cpu_mem = psutil.virtual_memory()
+	cpu_percent = cpu_mem.percent
+	
+	if cpu_percent > 90 or gpu_percent > 90:
+		print(f"Memory warning - CPU: {cpu_percent:.1f}%, GPU: {gpu_percent:.1f}%")
+		return True
+	return False
+
 def debug_llm_info(model, tokenizer, device):
 	# ------------------------------------------------------------------
 	# 1️⃣ Runtime / environment

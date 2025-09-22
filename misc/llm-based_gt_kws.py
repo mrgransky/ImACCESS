@@ -1,26 +1,5 @@
 from utils import *
 
-# basic models:
-# model_id = "google/gemma-1.1-2b-it"
-# model_id = "google/gemma-1.1-7b-it"
-# model_id = "meta-llama/Llama-3.1-8B-Instruct"
-# model_id = "meta-llama/Llama-3.1-405B-Instruct"
-# model_id = "meta-llama/Llama-3.1-70B"
-# model_id = "meta-llama/Llama-3.2-1B-Instruct" # default for local
-# model_id = "meta-llama/Llama-3.2-3B-Instruct"
-# model_id = "meta-llama/Llama-3.3-70b-instruct"
-
-# better models:
-# model_id = "Qwen/Qwen3-4B-Instruct-2507"
-# model_id = "mistralai/Mistral-7B-Instruct-v0.3"
-# model_id = "microsoft/Phi-4-mini-instruct"
-# model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
-# model_id = "google/flan-t5-xxl"
-
-# not useful for instruction tuning:
-# model_id = "microsoft/DialoGPT-large"  # Fallback if you can't run Hermes
-# model_id = "gpt2-xl"
-
 if not hasattr(tfs.utils, "LossKwargs"):
 	class LossKwargs(TypedDict, total=False):
 		"""
@@ -42,6 +21,7 @@ TEMPERATURE = 1e-8
 TOP_P = 0.9
 MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
+TOP_K = 3
 MAX_KEYWORDS = 3
 
 print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
@@ -581,117 +561,206 @@ def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str):
 
 	return llm_response
 
-def query_local_llm(model, tokenizer, text: str, device, model_id: str) -> List[str]:
-	if not isinstance(text, str) or not text.strip():
-		return None
-	keywords: Optional[List[str]] = None
-	prompt = PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip())
+def process_batch(model, tokenizer, texts: List[str], device: str, model_id: str) -> List[Optional[List[str]]]:
+		"""Process a batch of texts and return keywords for each"""
+		if not texts:
+				return []
+		
+		# Filter out invalid texts
+		valid_texts = []
+		valid_indices = []
+		for i, text in enumerate(texts):
+				if isinstance(text, str) and text.strip():
+						valid_texts.append(text.strip())
+						valid_indices.append(i)
+		
+		if not valid_texts:
+				return [None] * len(texts)
+		
+		# Create batch prompts
+		prompts = [PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text) for text in valid_texts]
+		
+		results = [None] * len(texts)
+		
+		for attempt in range(MAX_RETRIES):
+				try:
+						# Tokenize batch
+						inputs = tokenizer(
+								prompts,
+								return_tensors="pt", 
+								truncation=True, 
+								max_length=4096,
+								padding=True,
+								# pad_to_multiple_of=8
+						)
 
-	try:
-		inputs = tokenizer(
-			prompt,
-			return_tensors="pt", 
-			truncation=True, 
-			max_length=4096, 
-			padding=True
-		)
-		if device != 'cpu':
-			inputs = {k: v.to(device) for k, v in inputs.items()}
+						if device != 'cpu':
+								inputs = {k: v.to(device) for k, v in inputs.items()}
 
-		if "token_type_ids" in inputs and not hasattr(model.config, "type_vocab_size"):
-			inputs.pop("token_type_ids")
+						if "token_type_ids" in inputs and not hasattr(model.config, "type_vocab_size"):
+								inputs.pop("token_type_ids")
 
-		outputs = model.generate(
-			**inputs, 
-			max_new_tokens=MAX_NEW_TOKENS,
-			temperature=TEMPERATURE,
-			top_p=TOP_P,
-			do_sample=TEMPERATURE > 0.0,
-			pad_token_id=tokenizer.pad_token_id,
-			eos_token_id=tokenizer.eos_token_id,
-		)
-		raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-	except Exception as e:
-		print(f"<!> Error {e}")
-		return None
+						# Generate responses
+						with torch.no_grad():
+								outputs = model.generate(
+										**inputs, 
+										max_new_tokens=MAX_NEW_TOKENS,
+										temperature=TEMPERATURE,
+										top_p=TOP_P,
+										do_sample=TEMPERATURE > 0.0,
+										pad_token_id=tokenizer.pad_token_id,
+										eos_token_id=tokenizer.eos_token_id,
+										use_cache=True, # Enable KV caching for speed
+								)
+						
+						# Decode batch
+						responses = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+						
+						# Process each response
+						for idx, response in zip(valid_indices, responses):
+								keywords = get_llm_response(model_id, prompts[idx], response)
+								results[idx] = keywords
+						
+						break  # Success, break out of retry loop
+						
+				except Exception as e:
+						if attempt == MAX_RETRIES - 1:
+								print(f"Batch failed after {MAX_RETRIES} attempts: {e}")
+								# Mark failed items as None
+								for idx in valid_indices:
+										results[idx] = None
+						else:
+								sleep_time = EXP_BACKOFF ** attempt
+								print(f"Attempt {attempt + 1} failed, retrying in {sleep_time}s: {e}")
+								time.sleep(sleep_time)
+								torch.cuda.empty_cache()
+		
+		return results
 
-	print(f"=== Input Prompt ===")
-	print(f"{prompt}")
-	print("="*150)
-
-	print(f"=== Raw Output from LLM ===")
-	print(f"{raw_llm_response}")
-	print("-"*50)
-	get_num_tokens(raw_llm_response, model_id)
-	print("="*150)
+def process_large_dataset(
+		model_id: str,
+		input_csv: str, 
+		device: str, 
+		batch_size: int=32,
+		chunk_size: int=int(1e4),
+	) -> None:
+	output_csv = input_csv.replace('.csv', '_keywords.csv')
 	
-	# return None, None
-
-	keywords = get_llm_response(
-		model_id=model_id, 
-		input_prompt=prompt, 
-		raw_llm_response=raw_llm_response
-	)
-	print(f"Extracted {len(keywords)} keywords (type: {type(keywords)}): {keywords}")
-	return keywords
-
-def get_labels(model_id: str, device: str, test_description: str) -> None:
+	# Load model and tokenizer once
+	print("Loading model and tokenizer...")
 	tokenizer = tfs.AutoTokenizer.from_pretrained(
-		model_id, 
-		use_fast=True, 
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
+			model_id, 
+			use_fast=True, 
+			trust_remote_code=True,
+			cache_dir=cache_directory[USER],
 	)
 	if tokenizer.pad_token is None:
-		tokenizer.pad_token = tokenizer.eos_token
-		tokenizer.pad_token_id = tokenizer.eos_token_id
-
+			tokenizer.pad_token = tokenizer.eos_token
+			tokenizer.pad_token_id = tokenizer.eos_token_id
 	config = tfs.AutoConfig.from_pretrained(
-		model_id, 
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
+			model_id, 
+			trust_remote_code=True,
+			cache_dir=cache_directory[USER],
 	)
-
-	# Pick the right class dynamically
 	if getattr(config, "is_encoder_decoder", False):
-		# T5, FLAN-T5, BART, Marian, mBART, etc.
-		model = tfs.AutoModelForSeq2SeqLM.from_pretrained(
-			model_id,
-			device_map=device,
-			torch_dtype=torch.float16,
-			trust_remote_code=True,
-			cache_dir=cache_directory[USER],
-		).eval()
-		print(f"[INFO] Loaded Seq2SeqLM model: {model.__class__.__name__}")
+			model = tfs.AutoModelForSeq2SeqLM.from_pretrained(
+					model_id,
+					device_map=device,
+					torch_dtype=torch.float16,
+					trust_remote_code=True,
+					cache_dir=cache_directory[USER],
+			).eval()
 	else:
-		# GPT-style, LLaMA, Falcon, Qwen, Mistral, etc.
-		model = tfs.AutoModelForCausalLM.from_pretrained(
-			model_id,
-			device_map=device,
-			torch_dtype=torch.float16,
-			trust_remote_code=True,
-			cache_dir=cache_directory[USER],
-		).eval()
-		print(f"[INFO] Loaded CausalLM model: {model.__class__.__name__}")
-
-	# debug_llm_info(model, tokenizer, device)
-
-	query_local_llm(
-		model=model, 
-		tokenizer=tokenizer, 
-		text=test_description, 
-		device= device,
-		model_id=model_id,
+			model = tfs.AutoModelForCausalLM.from_pretrained(
+					model_id,
+					device_map=device,
+					torch_dtype=torch.float16,
+					trust_remote_code=True,
+					cache_dir=cache_directory[USER],
+			).eval()
+	
+	# Warm up model
+	print("Warming up model...")
+	warmup_texts = ["Test description for warmup."] * 2
+	process_batch(model, tokenizer, warmup_texts, device, model_id)
+	
+	# Process CSV in chunks
+	total_processed = 0
+	chunk_count = 0
+	chunked_df = pd.read_csv(
+		filepath_or_buffer=input_csv, 
+		chunksize=chunk_size, 
+		on_bad_lines='skip', 
+		dtype=dtypes, 
+		low_memory=False,
 	)
+	for df_chunk in chunked_df:
+			chunk_count += 1
+			print(f"\nProcessing chunk {chunk_count} with {len(df_chunk)} rows...")
+			
+			# Extract texts to process
+			texts = df_chunk['enriched_document_description'].fillna('').astype(str).tolist()
+			total_rows = len(texts)
+			
+			# Initialize results
+			all_keywords = []
+			
+			# Process in batches with progress bar
+			for i in tqdm(range(0, total_rows, batch_size), desc=f"Chunk {chunk_count}"):
+					batch_texts = texts[i:i + batch_size]
+					
+					# Check memory periodically
+					if i % (batch_size * 10) == 0 and monitor_memory_usage():
+							torch.cuda.empty_cache()
+							gc.collect()
+					
+					# Process batch
+					batch_keywords = process_batch(model, tokenizer, batch_texts, device, model_id)
+					all_keywords.extend(batch_keywords)
+					
+					# Clear memory after each batch
+					torch.cuda.empty_cache()
+			
+			# Add results to dataframe chunk
+			df_chunk['llm_keywords'] = all_keywords
+			
+			# Save chunk results immediately
+			if chunk_count == 1:
+					df_chunk.to_csv(output_csv, index=False)
+			else:
+					df_chunk.to_csv(output_csv, mode='a', header=False, index=False)
+			
+			total_processed += len(df_chunk)
+			print(f"Chunk {chunk_count} completed. Total processed: {total_processed}")
+			
+			# Clear memory between chunks
+			del df_chunk, texts, all_keywords
+			torch.cuda.empty_cache()
+			gc.collect()
+	
+	print(f"\nProcessing complete! Results saved to {output_csv}")
+	print(f"Total rows processed: {total_processed}")
 
 def main():
-	parser = argparse.ArgumentParser(description="Textual-label annotation for Historical Archives Dataset using instruction-tuned LLMs")
-	parser.add_argument("--model_id", '-m', type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="HuggingFace model ID")
-	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
-	parser.add_argument("--test_description", '-td', type=str, required=True, help="Test description")
-	args = parser.parse_args()
-	print(args)
-	get_labels(model_id=args.model_id, device=args.device, test_description=args.test_description)
+		parser = argparse.ArgumentParser(description="Batch process historical archives for keyword extraction")
+		parser.add_argument("--model_id", '-m', type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="HuggingFace model ID")
+		parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
+		parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on")
+		parser.add_argument("--batch_size", '-b', type=int, default=32, help="Batch size for processing")
+		args = parser.parse_args()
+		
+		print(f"Starting batch processing with:")
+		print(f"  Model: {args.model_id}")
+		print(f"  CSV: {args.csv_file}")
+		print(f"  Device: {args.device}")
+		print(f"  Batch size: {args.batch_size}")
+		
+		process_large_dataset(
+				model_id=args.model_id,
+				input_csv=args.csv_file,
+				device=args.device,
+				batch_size=args.batch_size
+		)
 
 if __name__ == "__main__":
-	main()
+		main()

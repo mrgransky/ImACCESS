@@ -9,13 +9,22 @@ domain_specific_stopwords = {
 }
 all_stopwords = english_stopwords.union(domain_specific_stopwords)
 
+# basic models:
+# model_id = "google/gemma-1.1-2b-it"
+# model_id = "google/gemma-1.1-7b-it"
+# model_id = "meta-llama/Llama-3.1-8B-Instruct"
+# model_id = "meta-llama/Llama-3.1-405B-Instruct"
+# model_id = "meta-llama/Llama-3.1-70B"
 # model_id = "meta-llama/Llama-3.2-1B-Instruct" # default for local
 # model_id = "meta-llama/Llama-3.2-3B-Instruct"
-# model_id = "meta-llama/Llama-3.1-8B-Instruct"
+# model_id = "meta-llama/Llama-3.3-70b-instruct"
+
+# better models:
 # model_id = "Qwen/Qwen3-4B-Instruct-2507"
-# model_id = "microsoft/Phi-4-mini-instruct"
 # model_id = "mistralai/Mistral-7B-Instruct-v0.3"
+# model_id = "microsoft/Phi-4-mini-instruct"
 # model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
+# model_id = "google/flan-t5-xxl"
 
 # not useful for instruction tuning:
 # model_id = "microsoft/DialoGPT-large"  # Fallback if you can't run Hermes
@@ -41,11 +50,12 @@ if not hasattr(tfs.utils, "FlashAttentionKwargs"):
 	tfs.utils.FlashAttentionKwargs = FlashAttentionKwargs
 
 MAX_NEW_TOKENS = 300
-TEMPERATURE = 0.3
+TEMPERATURE = 1e-8
 TOP_P = 0.9
 MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 TOP_K = 3
+MAX_KEYWORDS = 3
 
 print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
@@ -95,10 +105,17 @@ def extract_json(text: str, *, first: bool = True) -> Optional[dict]:
 		return None
 	return parsed[0] if first else parsed
 
-def query_local_llm_batch(model, tokenizer, texts: List[str], device: str) -> List[Tuple[List[str], List[str]]]:
+def query_local_llm_batch(
+		model: tfs.PreTrainedModel,
+		tokenizer: tfs.PreTrainedTokenizer,
+		texts: List[str],
+		device: str,
+	) -> List[Tuple[List[str], List[str]]]:
 	if not texts:
 		return None
-	
+
+	print(f"Querying local LLM with {len(texts)} texts...")
+
 	# Filter out invalid texts
 	valid_texts = []
 	valid_indices = []
@@ -118,9 +135,9 @@ def query_local_llm_batch(model, tokenizer, texts: List[str], device: str) -> Li
 			prompts,
 			return_tensors="pt", 
 			truncation=True, 
-			max_length=512, 
+			max_length=4096, 
 			padding=True,
-			pad_to_multiple_of=8  # Better for GPU efficiency
+			# pad_to_multiple_of=8  # Better for GPU efficiency
 		)
 		if device != 'cpu':
 			inputs = {k: v.to(device) for k, v in inputs.items()}
@@ -152,21 +169,21 @@ def query_local_llm_batch(model, tokenizer, texts: List[str], device: str) -> Li
 	for idx, response in zip(valid_indices, responses):
 		json_data = extract_json(text=response)
 		if json_data:
-			keywords = json_data.get("keywords", None)[:TOP_K]  # Limit to top K
-			rationales = json_data.get("rationales", None)[:TOP_K]
+			keywords = json_data.get("keywords", None)#[:TOP_K]  # Limit to top K
+			rationales = json_data.get("rationales", None)#[:TOP_K]
 			results[idx] = (keywords, rationales)
 	
 	return results
 
-def get_labels(model_id: str, input_csv: str, device: str, batch_size: int = 16) -> None:
-	"""Process all rows in the dataframe efficiently"""
+def get_labels(
+		model_id: str,
+		input_csv: str,
+		device: str,
+		batch_size: int=16,
+		chunk_size: int=int(1e4),
+	) -> None:
 	output_csv = input_csv.replace('.csv', '_local_llm.csv')
-	df = pd.read_csv(input_csv, on_bad_lines='skip', dtype=dtypes, low_memory=False)
-	
-	# Read CSV in chunks for memory efficiency
-	chunk_size = int(1e4) # Adjust based on available RAM
-	all_results = []
-	
+		
 	# Load tokenizer and model once
 	tokenizer = tfs.AutoTokenizer.from_pretrained(
 		model_id, 
@@ -189,7 +206,14 @@ def get_labels(model_id: str, input_csv: str, device: str, batch_size: int = 16)
 	print("Warming up model...")
 	warmup_text = "Test description for warmup."
 	query_local_llm_batch(model, tokenizer, [warmup_text], device)
-	chunked_df = pd.read_csv(input_csv, chunksize=chunk_size, on_bad_lines='skip', dtype=dtypes, low_memory=False)
+	chunked_df = pd.read_csv(
+		filepath_or_buffer=input_csv, 
+		chunksize=chunk_size, 
+		on_bad_lines='skip', 
+		dtype=dtypes, 
+		low_memory=False,
+	)
+
 	# Process CSV in chunks
 	for chunk_idx, df_chunk in enumerate(chunked_df):
 		print(f"Processing chunk {chunk_idx + 1} with {len(df_chunk)} rows...")
@@ -256,7 +280,7 @@ def main():
 	parser.add_argument("--model_id", '-m', type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="HuggingFace model ID")
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
-	parser.add_argument("--batch_size", '-bs', type=int, default=64, help="Batch size for processing (adjust based on GPU memory)")
+	parser.add_argument("--batch_size", '-bs', type=int, default=128, help="Batch size for processing (adjust based on GPU memory)")
 	args = parser.parse_args()
 	print(args)
 	get_labels(model_id=args.model_id, input_csv=args.csv_file, device=args.device, batch_size=args.batch_size)
