@@ -237,15 +237,19 @@ Expected dataset sizes (approximate):
 
 ## Citation
 
-If you use this dataset or code, please cite:
+If you use this dataset or code, please cite the following paper:
 
 ```bibtex
-@misc{imaccess2024,
-  title={HistoryCLIP: Historical Image-Text Dataset and Model},
-  author={ImACCESS Team},
-  year={2024},
-  institution={Tampere University},
-  url={https://github.com/your-org/ImACCESS}
+@InProceedings{historyCLIP,
+author="Alijani, Farid and Late, Elina and Kumpulainen, Sanna",
+title="HistoryCLIP: Adaptive Multi-modal Retrieval of Imbalanced Long-Tailed Archival Data",
+booktitle="Linking Theory and Practice of Digital Libraries",
+year="2026",
+publisher="Springer Nature Switzerland",
+address="Cham",
+pages="245--262",
+isbn="978-3-032-05409-8",
+doi="https://doi.org/10.1007/978-3-032-05409-8_15"
 }
 ```
 
@@ -253,7 +257,7 @@ If you use this dataset or code, please cite:
 
 ## License
 
-[Specify your license here]
+This work is licensed under a [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) license.
 
 ---
 
