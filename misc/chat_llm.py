@@ -8,6 +8,7 @@ from utils import *
 # model_id = "meta-llama/Llama-3.1-70B"
 # model_id = "meta-llama/Llama-3.2-1B-Instruct" # default for local
 # model_id = "meta-llama/Llama-3.2-3B-Instruct"
+# model_id = "meta-llama/Llama-3.3-8B-instruct"
 # model_id = "meta-llama/Llama-3.3-70b-instruct"
 
 # better models:
@@ -636,6 +637,12 @@ def query_local_llm(model, tokenizer, text: str, device, model_id: str) -> List[
 	return keywords
 
 def get_labels(model_id: str, device: str, test_description: str) -> None:
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
+		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+
+	print(f"Loading tokenizer for {model_id}...")
 	tokenizer = tfs.AutoTokenizer.from_pretrained(
 		model_id, 
 		use_fast=True, 
@@ -646,6 +653,7 @@ def get_labels(model_id: str, device: str, test_description: str) -> None:
 		tokenizer.pad_token = tokenizer.eos_token
 		tokenizer.pad_token_id = tokenizer.eos_token_id
 
+	print(f"Loading model for {model_id}...")
 	config = tfs.AutoConfig.from_pretrained(
 		model_id, 
 		trust_remote_code=True,

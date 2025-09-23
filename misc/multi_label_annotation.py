@@ -937,7 +937,6 @@ def main():
 	assert len(visual_captions) == len(visual_labels), "Caption and label lists must have same length"
 	##################################################################################
 
-
 	perform_multilabel_eda(data_path=combined_output_path, label_column='multimodal_labels')
 
 	train_df_fpth = combined_output_path.replace('.csv', '_train.csv')
