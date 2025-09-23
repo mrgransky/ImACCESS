@@ -1,9 +1,4 @@
-# ImACCESS (TAU)
-
-Github Repository for ImACCESS project at Tampere University, Finland.  
-**2024-2025**
-
-## HistoryCLIP
+# HistoryCLIP
 
 This repository contains the implementation and data collection pipeline for HistoryCLIP, a vision-language model trained on historical image datasets.
 
