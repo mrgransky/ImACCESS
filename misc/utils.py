@@ -108,6 +108,7 @@ import tabulate
 import ast
 import httpx
 import gc
+import joblib
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from natsort import natsorted
@@ -148,6 +149,8 @@ cache_directory = {
 os.environ["HF_HOME"] = cache_directory[USER]
 os.environ["TRANSFORMERS_CACHE"] = cache_directory[USER]
 os.environ["HF_HUB_CACHE"] = cache_directory[USER]
+# Set environment variable for memory optimization
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 dtypes = {
 	'doc_id': str, 'id': str, 'label': str, 'title': str,
@@ -173,6 +176,30 @@ def monitor_memory_usage():
 		print(f"Memory warning - CPU: {cpu_percent:.1f}%, GPU: {gpu_percent:.1f}%")
 		return True
 	return False
+
+def get_num_tokens(text: str, model_name: str = "bert-base-uncased") -> int:
+	try:
+		tokenizer = tfs.AutoTokenizer.from_pretrained(model_name)
+		tokens = tokenizer.encode(text, add_special_tokens=True)
+		num_tokens = len(tokens)
+		
+		# Count words using different methods
+		word_count_simple = len(text.split())
+		word_count_regex = len(re.findall(r'\b\w+\b', text))
+		
+		# Calculate tokens-to-words ratio
+		ratio = num_tokens / word_count_regex if word_count_regex > 0 else 0
+		
+		print(f"Token count Model: {model_name}")
+		print(f"Number of words (simple): {word_count_simple}")
+		print(f"Number of words (regex): {word_count_regex}")
+		print(f"Number of tokens: {num_tokens}")
+		print(f"Tokens-to-words ratio: {ratio:.2f}")
+		
+		return num_tokens
+	except Exception as e:
+		print(f"Error loading tokenizer for {model_name}: {e}")
+		return 0
 
 def debug_llm_info(model, tokenizer, device):
 	# ------------------------------------------------------------------

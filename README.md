@@ -16,7 +16,7 @@ The History-X4 dataset is a large-scale collection of historical images from mul
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.9+
 - Required Python packages (see `requirements.txt`)
 - At least 100GB of free disk space
 - Stable internet connection
@@ -26,7 +26,7 @@ The History-X4 dataset is a large-scale collection of historical images from mul
 #### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/ImACCESS.git
+git clone https://github.com/mrgransky/ImACCESS.git
 cd ImACCESS
 ```
 
