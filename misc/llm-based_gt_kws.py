@@ -922,7 +922,7 @@ def main():
 		batch_size=args.batch_size,
 		verbose=args.verbose,
 	)
-	print(f"Extracted keywords: {keywords}")
+	print(f"{len(keywords)} Extracted keywords: {keywords}")
 	if args.csv_file:
 		df['llm_keywords'] = keywords
 		df.to_csv(output_csv, index=False)
