@@ -620,8 +620,6 @@ def query_local_llm_(
 		get_num_tokens(raw_llm_response, model_id)
 		print("="*150)
 	
-	# return None, None
-
 	keywords = get_llm_response(
 		model_id=model_id, 
 		input_prompt=prompt, 
@@ -720,8 +718,8 @@ def get_labels(
 		device: str,
 		test_description: Union[str, List[str]],
 		batch_size: int = 64,
-		verbose: bool = False,
 		do_dedup: bool = True,
+		verbose: bool = False,
 ) -> List[Optional[List[str]]]:
 	
 	# Normalize to list
@@ -742,7 +740,8 @@ def get_labels(
 	if tokenizer.pad_token is None:
 		tokenizer.pad_token = tokenizer.eos_token
 		tokenizer.pad_token_id = tokenizer.eos_token_id
-	tokenizer.padding_side = "left"  # critical for decoder-only models
+
+	tokenizer.padding_side = "left" # critical for decoder-only models
 	
 	config = tfs.AutoConfig.from_pretrained(
 		model_id,
@@ -890,6 +889,9 @@ def main():
 	parser.add_argument("--model_id", '-m', type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="HuggingFace model ID")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	parser.add_argument("--description", '-desc', type=str, help="Description")
+	parser.add_argument("--batch_size", '-bs', type=int, default=128, help="Batch size for processing (adjust based on GPU memory)")
+	parser.add_argument("--do_dedup", '-dd', action='store_true', help="Deduplicate prompts")
+	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	args = parser.parse_args()
 	args.device = torch.device(args.device)
 
@@ -916,7 +918,8 @@ def main():
 		model_id=args.model_id, 
 		device=args.device, 
 		test_description=descriptions,
-		verbose=True,
+		batch_size=args.batch_size,
+		verbose=args.verbose,
 	)
 	print(f"Extracted keywords: {keywords}")
 	if args.csv_file:
