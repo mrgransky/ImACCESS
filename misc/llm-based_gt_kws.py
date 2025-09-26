@@ -52,13 +52,13 @@ huggingface_hub.login(token=hf_tk)
 
 PROMPT_TEMPLATE = """<s>[INST]
 Act as a meticulous historical archivist specializing in 20th century documentation.
-Given the description below, extract **exactly {k}** concrete, factual, and *non-numeric* keywords.
+Given the description below, extract **between 0 and {k}** concrete, factual, and *non-numeric* keywords (maximum {k}, minimum 0).
 
 {description}
 
 **Rules**:
-- Output ONLY Python list.
-- Exclude additional text, code blocks, terms containing numbers, comments, tags, questions, or explanations before or after the list.
+- Output ONLY Python list with 0 to {k} keywords maximum.
+- Exclude additional text, code blocks, terms containing numbers, comments, tags, questions, or explanations before or after the Python list.
 - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "1950s", "weekend", "May 25th", "July 10").
 - Exclude numerical words, special characters, stopwords, or abbreviations.
 - Exclude repeating or synonym-duplicate keywords.
@@ -447,135 +447,186 @@ def get_nousresearch_response(model_id: str, input_prompt: str, llm_response: st
 						print(f"Fallback extraction failed: {e}")
 						return None
 
-def get_llama_response(model_id: str, input_prompt: str, llm_response: str, verbose:bool=True):
-	if verbose:
-		print(f"Handling Llama response model_id: {model_id}...")
-		# print(f"Raw response (repr): {repr(llm_response)}")
-		print("="*100)
-		print(llm_response)
-		print("="*100)
-	
-	# First, try to find a complete Python list after [/INST]
-	list_match = re.search(
-		r"\[/INST\][\s\S]*?(\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){0,2}\s*\])",
-		llm_response, 
-		re.DOTALL
-	)
-	
-	if list_match:
-		final_list_str = list_match.group(1)
+def get_llama_response(model_id: str, description: str, llm_response: str, verbose: bool = True):
+		"""
+		Parse up to 3 meaningful keywords from an LLM response, anchored to the given description.
+		- No prompt blacklists.
+		- Accept only candidates that appear in the description (case/diacritics-insensitive).
+		- Exclude digits, punctuation-only, obvious stopwords, and likely abbreviations.
+		- Prefer a Python list after [/INST]; fallback to quoted strings or bullet-like lines.
+		- Return a list of up to 3 unique keywords or None if nothing valid.
+		"""
+
+		# ---------- Utilities ----------
+		def _normalize_text(s: str) -> str:
+				s = unicodedata.normalize("NFKD", s or "")
+				s = "".join(ch for ch in s if not unicodedata.combining(ch))
+				return s.lower()
+
+		def _token_clean(s: str) -> str:
+				return re.sub(r"\s+", " ", (s or "").strip())
+
+		def _has_letter(s: str) -> bool:
+				return bool(re.search(r"[A-Za-z]", s))
+
+		def _is_punct_only(s: str) -> bool:
+				return bool(s) and bool(re.fullmatch(r"[\W_]+", s))
+
+		def _looks_like_abbrev(s: str) -> bool:
+				# Heuristics to avoid abbreviations (e.g., SP, SPR, NWP, No.)
+				# - All caps and short (<=3)
+				# - Contains ampersand or periods
+				# - Single token with mostly uppercase
+				if re.search(r"[.&/]", s):
+						return True
+				if len(s) <= 3 and s.isalpha() and s.upper() == s:
+						return True
+				# All-caps token with at most one lowercase
+				letters = re.findall(r"[A-Za-z]", s)
+				if letters and sum(1 for ch in letters if ch.isupper()) >= max(1, int(0.8 * len(letters))):
+						return True
+				return False
+
+		STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids()))
+
+		def _is_valid_form(s: str) -> bool:
+				if not s:
+						return False
+				if len(s) < 2:
+						return False
+				if _is_punct_only(s):
+						return False
+				if re.search(r"\d", s):
+						return False
+				if not _has_letter(s):
+						return False
+				# Reject if every token is a stopword
+				tokens = [t for t in re.split(r"\s+", s) if t]
+				if tokens and all(_normalize_text(t) in STOPWORDS for t in tokens):
+						return False
+				# Reject likely abbreviations
+				if _looks_like_abbrev(s):
+						return False
+				return True
+
+		def _appears_in_description(candidate: str, description: str) -> bool:
+				if not description:
+						return False
+				cand = _normalize_text(candidate)
+				desc = _normalize_text(description)
+				return cand in desc
+
+		def _after_last_inst(text: str) -> str:
+				matches = list(re.finditer(r"\[/INST\]", text or ""))
+				if not matches:
+						return (text or "").strip()
+				return text[matches[-1].end():].strip()
+
+		def _strip_codeblocks(s: str) -> str:
+				# Remove fenced code blocks and inline backticks
+				s = re.sub(r"```.*?```", "", s, flags=re.DOTALL)
+				s = re.sub(r"`[^`]*`", "", s)
+				return s
+
+		def _parse_list_literals(s: str):
+				# Find Python-like list literals of strings
+				patterns = [
+						r"(\[\s*['\"][^'\"]*['\"]\s*(?:,\s*['\"][^'\"]*['\"]\s*)*\])",
+						r"(\[\s*['\"][^'\"]*['\"]\s*,\s*['\"][^'\"]*['\"]\s*,\s*['\"][^'\"]*['\"]\s*\])",
+				]
+				for pat in patterns:
+						for m in re.findall(pat, s, flags=re.DOTALL):
+								yield m
+
+		def _parse_quoted_strings(s: str):
+				for m in re.findall(r"[\"']([^\"']+)[\"']", s):
+						yield m
+
+		def _parse_bullets(s: str):
+				items = []
+				for line in (s or "").splitlines():
+						line = line.strip()
+						if not line:
+								continue
+						# Lines starting with bullets or numbers
+						if re.match(r"^[-*•]\s+", line) or re.match(r"^\d+\.\s+", line):
+								item = re.sub(r"^([-*•]|\d+\.)\s+", "", line).strip()
+								# Strip "Keywords:"-like labels
+								item = re.sub(r"(?i)^(keywords\s*:\s*)", "", item).strip()
+								if item:
+										items.append(item)
+				return items
+
+		def _postprocess(candidates, description: str):
+				out = []
+				seen = set()
+				for kw in candidates:
+						kw = _token_clean(kw)
+						if not _is_valid_form(kw):
+								continue
+						if not _appears_in_description(kw, description):
+								continue
+						key = _normalize_text(kw)
+						if key in seen:
+								continue
+						seen.add(key)
+						out.append(kw)
+						if len(out) >= 3:
+								break
+				return out
+
+		# ---------- Begin parsing ----------
 		if verbose:
-			print(f"Found complete list format: '{final_list_str}'")
-		
-		# Clean the string
-		cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
-		
-		try:
-			keywords_list = ast.literal_eval(cleaned_string)
-			if isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list):
-				# Process keywords
-				processed_keywords = []
-				for keyword in keywords_list:
-					# cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
-					cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
-					if cleaned_keyword and cleaned_keyword not in processed_keywords:
-						processed_keywords.append(cleaned_keyword)
-				
-				if len(processed_keywords) >= 3:
-					if verbose:
-						print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
-					return processed_keywords[:3]
-		except Exception as e:
-			print(f"Error parsing list: {e}")
-	
-	# Fallback: handle incomplete list format (what the model actually produced)
-	if verbose:
-		print("Trying fallback extraction for incomplete list...")
-	
-	# Extract content after the last [/INST]
-	inst_match = re.search(r"\[/INST\](.*)$", llm_response, re.DOTALL)
-	if not inst_match:
-			if verbose:
-				print("Error: Could not find content after [/INST]")
-			return None
-	
-	content_after_inst = inst_match.group(1).strip()
-	if verbose:
-		print(f"Content after [/INST]: '{content_after_inst}'")
-	
-	# Look for incomplete list pattern like ['Ford', 'Rouge',
-	incomplete_match = re.search(r"(\[\s*['\"][^'\"]*['\"]\s*,\s*['\"][^'\"]*['\"]\s*,)", content_after_inst)
-	if incomplete_match:
-			incomplete_list = incomplete_match.group(1)
-			if verbose:
-				print(f"Found incomplete list: '{incomplete_list}'")
-			
-			# Extract the quoted strings from the incomplete list
-			quoted_matches = re.findall(r"['\"]([^'\"]*)['\"]", incomplete_list)
-			if quoted_matches and len(quoted_matches) >= 2:
-					# We have at least 2 keywords from the incomplete list
-					keywords = quoted_matches[:2]
-					
-					# Get the third keyword from the description
-					description_match = re.search(r"Given the description below[^.]*\.(.*?)\.", input_prompt, re.DOTALL)
-					if description_match:
-							description = description_match.group(1)
-							# Extract meaningful words from description (nouns, proper nouns)
-							words = re.findall(r'\b[A-Z][a-z]+\b', description)  # Capitalized words (proper nouns)
-							if not words:
-									words = re.findall(r'\b[a-z]{4,}\b', description)  # Longer lowercase words
-							
-							# Find a suitable third keyword that's not already in the list
-							for word in words:
-									if (word.lower() not in [kw.lower() for kw in keywords] and 
-											len(word) > 3 and  # Avoid short words
-											word not in ['Ford', 'Rouge']):  # Avoid duplicates
-											keywords.append(word)
-											break
-							
-							if len(keywords) >= 3:
-									# Clean the keywords
-									processed_keywords = []
-									for keyword in keywords:
-											cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
-											cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
-											if cleaned_keyword and cleaned_keyword not in processed_keywords:
-													processed_keywords.append(cleaned_keyword)
-									
-									if len(processed_keywords) >= 3:
-											if verbose:
-												print(f"Completed incomplete list: {processed_keywords[:3]}")
-											return processed_keywords[:3]
-	
-	# Ultimate fallback: extract from description
-	if verbose:
-		print("Using ultimate fallback: extracting from description...")
-	description_match = re.search(r"Given the description below[^.]*\.(.*?)\.", input_prompt, re.DOTALL)
-	if description_match:
-		description = description_match.group(1)
-		# Extract meaningful keywords
-		keywords = []
-		
-		# First, look for proper nouns (capitalized words)
-		proper_nouns = re.findall(r'\b[A-Z][a-z]+\b', description)
-		for noun in proper_nouns:
-			if noun not in keywords and len(keywords) < 3:
-				keywords.append(noun)
-		
-		# Then look for other meaningful words
-		if len(keywords) < 3:
-			other_words = re.findall(r'\b[a-z]{4,}\b', description.lower())
-			for word in other_words:
-				if word not in [kw.lower() for kw in keywords] and len(keywords) < 3:
-					keywords.append(word.capitalize())
-		
-		if keywords:
-			if verbose:
-				print(f"Extracted from description: {keywords}")
-			return keywords
-	if verbose:	
-		print("Error: Could not extract any keywords.")
-	return None
+				print(f"Handling Llama response model_id: {model_id}...")
+				print(f"Raw response (repr): {repr(llm_response)}")
+				print("="*100)
+				print(llm_response)
+				print("="*100)
+				if description:
+						print(f"Description (head): {description[:180]}...")
+
+		# Work only with content after the last [/INST]
+		content = _after_last_inst(llm_response or "")
+		content = _strip_codeblocks(content)
+
+		# 1) Try explicit Python list literals
+		for list_str in _parse_list_literals(content):
+				try:
+						cleaned = (list_str
+											 .replace("“", '"').replace("”", '"')
+											 .replace("‘", "'").replace("’", "'"))
+						parsed = ast.literal_eval(cleaned)
+						if isinstance(parsed, list) and all(isinstance(x, str) for x in parsed):
+								result = _postprocess(parsed, description)
+								if result:
+										if verbose:
+												print(f"Extracted from list: {result}")
+										return result
+				except Exception as e:
+						if verbose:
+								print(f"List parse error: {e}")
+
+		# 2) Fallback: quoted strings anywhere
+		qs = list(_parse_quoted_strings(content))
+		if qs:
+				result = _postprocess(qs, description)
+				if result:
+						if verbose:
+								print(f"Extracted from quoted strings: {result}")
+						return result
+
+		# 3) Fallback: bullet-like lines
+		bullets = _parse_bullets(content)
+		if bullets:
+				result = _postprocess(bullets, description)
+				if result:
+						if verbose:
+								print(f"Extracted from bullets: {result}")
+						return result
+
+		if verbose:
+				print("No valid keywords extracted. Returning None.")
+		return None
 
 def query_local_llm_(
 		model: tfs.PreTrainedModel,
@@ -812,13 +863,20 @@ def get_labels(
 	# 🔧 NULL-SAFE PROMPT PREPARATION: Skip None values entirely
 	def make_prompt(desc: str) -> str:
 		return PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=desc.strip())
+
 	unique_prompts = []
+	unique_prompts_nTKs = []
 	for s in unique_inputs:
 		if s is None:
 			unique_prompts.append(None)  # Will be skipped in batching
+			unique_prompts_nTKs.append(None)
 		else:
 			unique_prompts.append(make_prompt(s))
-
+			unique_prompts_nTKs.append(get_num_tokens(text=s, model_name=model_id))
+	# if verbose:
+	# 	print(f"{len(unique_prompts)} unique_prompts: {unique_prompts}")
+	# 	print(f"{len(unique_prompts_nTKs)} unique_prompts_nTKs: {unique_prompts_nTKs}")
+		
 	# Will hold parsed results for unique inputs
 	unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
 	# 🔧 NULL-SAFE BATCHING: Only process non-None prompts
@@ -826,11 +884,14 @@ def get_labels(
 		batch_prompts = unique_prompts[batch_start:batch_start + batch_size]
 		batch_indices = list(range(batch_start, batch_start + len(batch_prompts)))
 		# Filter out None prompts (null descriptions)
+		# print(f"batch_indices: {batch_indices}\nbatch_prompts: {batch_prompts}")
 		valid_pairs = [(i, p) for i, p in zip(batch_indices, batch_prompts) if p is not None]
 		if not valid_pairs:
 			# All prompts in this batch were None - skip entirely
 			continue
 		valid_indices, valid_prompts = zip(*valid_pairs)
+		# print(f"valid_indices: {valid_indices}\nvalid_prompts: {valid_prompts}")
+		# print(f"<>"*100)
 		try:
 			# Tokenize batch
 			tokenized = tokenizer(
@@ -856,31 +917,33 @@ def get_labels(
 			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 				outputs = model.generate(**gen_kwargs)
 			decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+			print("*"*150)
+			print(f"From {type(outputs)} {outputs.shape} outputs ")
+			print(f"Generated {len(decoded)} decoded {type(decoded)}\n{decoded}\n")
+			print("*"*150)
+			# return
 			# parse each decoded string
 			for i, text_out in enumerate(decoded):
-					idx = valid_indices[i]
-					try:
-							parsed = get_llm_response(
-									model_id=model_id,
-									input_prompt=valid_prompts[i],
-									raw_llm_response=text_out,
-							)
-							unique_results[idx] = parsed
-					except Exception as e:
-							if verbose:
-									print(f"Parsing error for batch index {idx}: {e}")
-							unique_results[idx] = None
+				idx = valid_indices[i]
+				try:
+					parsed = get_llm_response(
+						model_id=model_id,
+						input_prompt=valid_prompts[i],
+						raw_llm_response=text_out,
+					)
+					unique_results[idx] = parsed
+				except Exception as e:
+					if verbose:
+						print(f"Parsing error for batch index {idx}: {e}")
+					unique_results[idx] = None
 			del tokenized, outputs, decoded
 		except Exception as e:
-				if verbose:
-						print(f"Batch generation failed for indices {valid_indices}: {e}")
-				for idx in valid_indices:
-						unique_results[idx] = None
-				try:
-						torch.cuda.empty_cache()
-				except:
-						pass
-				continue
+			if verbose:
+				print(f"Batch generation failed for indices {valid_indices}: {e}")
+			for idx in valid_indices:
+				unique_results[idx] = None
+			torch.cuda.empty_cache()
+			continue
 	# Map unique_results back to original order
 	results = [None] * len(inputs)
 	for orig_i, uniq_idx in enumerate(original_to_unique_idx):
