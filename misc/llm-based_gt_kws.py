@@ -476,7 +476,7 @@ def get_llama_response(model_id: str, input_prompt: str, llm_response: str, verb
 				# Process keywords
 				processed_keywords = []
 				for keyword in keywords_list:
-					cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
+					# cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
 					cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
 					if cleaned_keyword and cleaned_keyword not in processed_keywords:
 						processed_keywords.append(cleaned_keyword)
