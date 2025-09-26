@@ -58,9 +58,9 @@ Given the description below, extract **exactly {k}** concrete, factual, and *non
 
 **Rules**:
 - Output ONLY Python list.
-- Exclude additional text, code blocks, comments, tags, questions, or explanations before or after the list.
+- Exclude additional text, code blocks, terms containing numbers, comments, tags, questions, or explanations before or after the list.
 - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "1950s", "weekend", "May 25th", "July 10").
-- Exclude numbers, special characters, stopwords, or abbreviations.
+- Exclude numerical words, special characters, stopwords, or abbreviations.
 - Exclude repeating or synonym-duplicate keywords.
 [/INST]
 """
