@@ -55,5 +55,6 @@ python -u llm-based_gt_kws.py \
 	--model_id ${LLM_INSTRUCT_MODELS[0]} \
 
 done_txt="$user finished Slurm job: `date`"
+
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
 echo "${stars// /*}"

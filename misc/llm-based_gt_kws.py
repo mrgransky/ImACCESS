@@ -14,6 +14,7 @@ from utils import *
 # model_id = "mistralai/Mistral-7B-Instruct-v0.3"
 # model_id = "microsoft/Phi-4-mini-instruct"
 # model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
+# model_id = "NousResearch/Hermes-2-Pro-Mistral-7B"
 # model_id = "google/flan-t5-xxl"
 
 # not useful for instruction tuning:
