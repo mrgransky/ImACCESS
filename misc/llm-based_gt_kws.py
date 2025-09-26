@@ -5,11 +5,9 @@ from utils import *
 # model_id = "google/gemma-1.1-7b-it"
 # model_id = "meta-llama/Llama-3.1-8B-Instruct"
 # model_id = "meta-llama/Llama-3.1-405B-Instruct"
-# model_id = "meta-llama/Llama-3.1-70B"
 # model_id = "meta-llama/Llama-3.2-1B-Instruct" # default for local
 # model_id = "meta-llama/Llama-3.2-3B-Instruct"
-# model_id = "meta-llama/Llama-3.3-8B-instruct"
-# model_id = "meta-llama/Llama-3.3-70b-instruct"
+# model_id = "meta-llama/Llama-3.3-70B-Instruct"
 
 # better models:
 # model_id = "Qwen/Qwen3-4B-Instruct-2507"
