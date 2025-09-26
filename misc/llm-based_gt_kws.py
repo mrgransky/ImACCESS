@@ -1,4 +1,3 @@
-from tabnanny import verbose
 from utils import *
 
 # basic models:
@@ -47,8 +46,6 @@ MAX_KEYWORDS = 3
 
 print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
-
-# ['keyword1', 'keyword2', 'keyword3']. Example: ["Battle of Normandy", "Panzer tank", "Truman Doctrine"].
 
 PROMPT_TEMPLATE = """<s>[INST]
 Act as a meticulous historical archivist specializing in 20th century documentation.
@@ -447,188 +444,576 @@ def get_nousresearch_response(model_id: str, input_prompt: str, llm_response: st
 						print(f"Fallback extraction failed: {e}")
 						return None
 
+def get_llama_response_(model_id: str, description: str, llm_response: str, verbose: bool = True):
+    """
+    Robustly parse up to 3 meaningful keywords from an LLM response, anchored to the given description.
+
+    Key behaviors:
+    - Accept only candidates that appear in the description (case/diacritics-insensitive).
+    - Reject digits, punctuation-only, likely abbreviations, and all-stopword tokens.
+    - Parse even when the LLM wraps answers in code blocks or prints the list (e.g., print([...])).
+    - Works when caller accidentally passes the full prompt instead of plain description by
+      extracting the embedded description from llm_response (pre-[/INST]) as a fallback.
+    - Return a list of up to 3 unique keywords, or None if nothing valid.
+    """
+    import re
+    import ast
+    import unicodedata
+    import nltk
+    
+    # Download stopwords if not already present
+    try:
+        nltk.data.find('corpora/stopwords')
+    except LookupError:
+        nltk.download('stopwords', quiet=True)
+
+    # ---------- Utilities ----------
+    def _normalize_text(s: str) -> str:
+        s = unicodedata.normalize("NFKD", s or "")
+        s = "".join(ch for ch in s if not unicodedata.combining(ch))
+        return s.lower()
+
+    def _token_clean(s: str) -> str:
+        return re.sub(r"\s+", " ", (s or "").strip())
+
+    def _has_letter(s: str) -> bool:
+        return bool(re.search(r"[A-Za-z]", s or ""))
+
+    def _is_punct_only(s: str) -> bool:
+        return bool(s) and bool(re.fullmatch(r"[\W_]+", s))
+
+    def _looks_like_abbrev(s: str) -> bool:
+        # Heuristics to avoid abbreviations (e.g., SP, SPR, NWP, No.)
+        # - All caps and short (<=3)
+        # - Contains ampersand or periods or slashes
+        # - Mostly uppercase letters
+        if re.search(r"[.&/]", s):
+            return True
+        if len(s) <= 3 and s.isalpha() and s.upper() == s:
+            return True
+        letters = re.findall(r"[A-Za-z]", s)
+        if letters and sum(1 for ch in letters if ch.isupper()) >= max(1, int(0.8 * len(letters))):
+            return True
+        return False
+
+    def _is_valid_form(s: str) -> bool:
+        if not s:
+            return False
+        if len(s) < 2:
+            return False
+        if _is_punct_only(s):
+            return False
+        if re.search(r"\d", s):
+            return False
+        if not _has_letter(s):
+            return False
+        tokens = [t for t in re.split(r"\s+", s) if t]
+        if tokens and all(_normalize_text(t) in STOPWORDS for t in tokens):
+            return False
+        if _looks_like_abbrev(s):
+            return False
+        return True
+
+    def _appears_in_description(candidate: str, description_text: str) -> bool:
+        if not description_text:
+            return False
+        cand = _normalize_text(candidate)
+        desc = _normalize_text(description_text)
+        return cand in desc
+
+    def _after_last_inst(text: str) -> str:
+        matches = list(re.finditer(r"\[/INST\]", text or ""))
+        if not matches:
+            return (text or "").strip()
+        return text[matches[-1].end():].strip()
+
+    def _before_last_inst(text: str) -> str:
+        matches = list(re.finditer(r"\[/INST\]", text or ""))
+        if not matches:
+            return (text or "").strip()
+        return text[:matches[-1].start()].strip()
+
+    def _strip_codeblocks(s: str) -> str:
+        # Remove fenced code blocks and inline backticks
+        s = re.sub(r"```.*?```", "", s or "", flags=re.DOTALL)
+        s = re.sub(r"`[^`]*`", "", s)
+        return s
+
+    def _parse_list_literals(s: str):
+        # Find Python-like list literals of strings (greedy outer, safe inner)
+        # Example matches: ['a','b'], ["a", "b", "c"], [ 'x' ]
+        pattern = r"\[\s*(?:(['\"])(?:(?:(?!\1).)*)\1\s*(?:,\s*(['\"])(?:(?:(?!\2).)*)\2\s*)*)?\]"
+        for m in re.finditer(pattern, s or "", flags=re.DOTALL):
+            yield s[m.start():m.end()]
+
+    def _parse_quoted_strings(s: str):
+        for m in re.findall(r"[\"']([^\"']+)[\"']", s or ""):
+            yield m
+
+    def _parse_bullets(s: str):
+        items = []
+        for line in (s or "").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if re.match(r"^[-*•]\s+", line) or re.match(r"^\d+\.\s+", line):
+                item = re.sub(r"^([-*•]|\d+\.)\s+", "", line).strip()
+                item = re.sub(r"(?i)^(keywords?\s*:\s*)", "", item).strip()
+                if item:
+                    items.append(item)
+        return items
+
+    def _postprocess(candidates, description_text: str):
+        out = []
+        seen = set()
+        for kw in candidates:
+            kw = _token_clean(kw)
+            if not _is_valid_form(kw):
+                continue
+            if not _appears_in_description(kw, description_text):
+                continue
+            key = _normalize_text(kw)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(kw)
+            if len(out) >= 3:
+                break
+        return out
+
+    def _extract_description_from_promptish_text(promptish: str) -> str:
+        """
+        Try to extract the true description from a prompt that the model echoed inside llm_response.
+        We look in the region before [/INST] for a block between the "Given the description..." line
+        and the "**Rules**" section or the [/INST] tag.
+        """
+        pre = _before_last_inst(promptish or "")
+        # Try to find the paragraph after "Given the description below" (or similar) and before **Rules**
+        patterns = [
+            r"Given the description below[^:\n]*[:\n]\s*(.*?)\n\s*\*\*Rules",  # before Rules
+            r"Given the description below[^:\n]*[:\n]\s*(.*)",                # till end if no Rules
+        ]
+        for pat in patterns:
+            m = re.search(pat, pre, flags=re.DOTALL | re.IGNORECASE)
+            if m:
+                candidate = m.group(1).strip()
+                # Heuristic: choose a reasonably long non-boilerplate blob
+                if len(candidate) >= 15:
+                    return candidate
+        # Fallback: last non-empty paragraph before **Rules**
+        parts = re.split(r"\*\*Rules\*\*", pre, flags=re.IGNORECASE)
+        head = parts[0] if parts else pre
+        paras = [p.strip() for p in re.split(r"\n{2,}", head) if p.strip()]
+        if paras:
+            return paras[-1]
+        return ""
+
+    # ---------- Begin parsing ----------
+    if verbose:
+        print(f"Handling Llama response model_id: {model_id}...")
+        print(f"Raw response (repr): {repr(llm_response)}")
+        print("="*100)
+        print(llm_response)
+        print("="*100)
+
+    # If caller accidentally passed the whole prompt as `description`, recover the real description
+    desc_for_validation = description or ""
+    if (not desc_for_validation) or ("[INST]" in desc_for_validation) or ("**Rules**" in desc_for_validation):
+        extracted_desc = _extract_description_from_promptish_text(llm_response or "")
+        if extracted_desc:
+            desc_for_validation = extracted_desc
+            if verbose:
+                print("Recovered description from llm_response pre-[/INST].")
+        else:
+            # Fall back to whatever we have, but this may be overly strict
+            if verbose:
+                print("Could not recover clean description; using provided description as-is.")
+
+    if verbose and desc_for_validation:
+        print(f"Description (head): {desc_for_validation[:180]}...")
+
+    # Work with content after the last [/INST]
+    content_after = _after_last_inst(llm_response or "")
+
+    # PASS A: Try to find a Python list literal anywhere in the post-[/INST] content, including inside code blocks
+    # We deliberately DO NOT strip code blocks yet so we can capture e.g. printed lists within fenced code.
+    list_candidates = list(_parse_list_literals(content_after))
+    # Prefer the last list in case the model shows code then "Here is the output: [...]"
+    for list_str in reversed(list_candidates):
+        try:
+            cleaned = (list_str
+                       .replace(""", '"').replace(""", '"')
+                       .replace("'", "'").replace("'", "'"))
+            parsed = ast.literal_eval(cleaned)
+            if isinstance(parsed, list) and all(isinstance(x, str) for x in parsed):
+                result = _postprocess(parsed, desc_for_validation)
+                if result:
+                    if verbose:
+                        print(f"Extracted from list literal (post-[/INST], incl. code blocks): {result}")
+                    return result
+        except Exception as e:
+            if verbose:
+                print(f"List literal parse error: {e}")
+
+    # PASS B: Strip code blocks, then try list literals again (sometimes code blocks contain distractions)
+    content_clean = _strip_codeblocks(content_after)
+    list_candidates = list(_parse_list_literals(content_clean))
+    for list_str in reversed(list_candidates):
+        try:
+            cleaned = (list_str
+                       .replace(""", '"').replace(""", '"')
+                       .replace("'", "'").replace("'", "'"))
+            parsed = ast.literal_eval(cleaned)
+            if isinstance(parsed, list) and all(isinstance(x, str) for x in parsed):
+                result = _postprocess(parsed, desc_for_validation)
+                if result:
+                    if verbose:
+                        print(f"Extracted from list literal (post-[/INST], code stripped): {result}")
+                    return result
+        except Exception as e:
+            if verbose:
+                print(f"List literal parse error (stripped): {e}")
+
+    # PASS C: Fallback to quoted strings in cleaned content
+    qs = list(_parse_quoted_strings(content_clean))
+    if qs:
+        result = _postprocess(qs, desc_for_validation)
+        if result:
+            if verbose:
+                print(f"Extracted from quoted strings: {result}")
+            return result
+
+    # PASS D: Fallback to bullet-like lines
+    bullets = _parse_bullets(content_clean)
+    if bullets:
+        result = _postprocess(bullets, desc_for_validation)
+        if result:
+            if verbose:
+                print(f"Extracted from bullets: {result}")
+            return result
+
+    if verbose:
+        print("No valid keywords extracted. Returning None.")
+    return None
+
 def get_llama_response(model_id: str, description: str, llm_response: str, verbose: bool = True):
-		"""
-		Parse up to 3 meaningful keywords from an LLM response, anchored to the given description.
-		- No prompt blacklists.
-		- Accept only candidates that appear in the description (case/diacritics-insensitive).
-		- Exclude digits, punctuation-only, obvious stopwords, and likely abbreviations.
-		- Prefer a Python list after [/INST]; fallback to quoted strings or bullet-like lines.
-		- Return a list of up to 3 unique keywords or None if nothing valid.
-		"""
+    """
+    Robustly parse up to 3 meaningful keywords from an LLM response, anchored to the given description.
 
-		# ---------- Utilities ----------
-		def _normalize_text(s: str) -> str:
-				s = unicodedata.normalize("NFKD", s or "")
-				s = "".join(ch for ch in s if not unicodedata.combining(ch))
-				return s.lower()
+    Behavior:
+    - Accept only candidates that appear in the description (case/diacritics-insensitive).
+    - Reject digits, punctuation-only, likely abbreviations, and all-stopword tokens.
+    - Parse even when the LLM wraps answers in code blocks or prints things.
+    - If no valid list/strings/bullets are found in the response, FALL BACK to a deterministic,
+      prompt-free heuristic extractor directly from the description (still excluding temporal terms).
+    - Return a list of up to 3 unique keywords, or None if nothing valid.
+    """
+    import re
+    import ast
+    import unicodedata
+    import nltk
+    from collections import Counter
 
-		def _token_clean(s: str) -> str:
-				return re.sub(r"\s+", " ", (s or "").strip())
+    # Ensure NLTK stopwords are available
+    try:
+        nltk.data.find('corpora/stopwords')
+    except LookupError:
+        nltk.download('stopwords', quiet=True)
 
-		def _has_letter(s: str) -> bool:
-				return bool(re.search(r"[A-Za-z]", s))
+    # ---------- Utilities ----------
+    def _normalize_text(s: str) -> str:
+        s = unicodedata.normalize("NFKD", s or "")
+        s = "".join(ch for ch in s if not unicodedata.combining(ch))
+        return s.lower()
 
-		def _is_punct_only(s: str) -> bool:
-				return bool(s) and bool(re.fullmatch(r"[\W_]+", s))
+    def _token_clean(s: str) -> str:
+        return re.sub(r"\s+", " ", (s or "").strip())
 
-		def _looks_like_abbrev(s: str) -> bool:
-				# Heuristics to avoid abbreviations (e.g., SP, SPR, NWP, No.)
-				# - All caps and short (<=3)
-				# - Contains ampersand or periods
-				# - Single token with mostly uppercase
-				if re.search(r"[.&/]", s):
-						return True
-				if len(s) <= 3 and s.isalpha() and s.upper() == s:
-						return True
-				# All-caps token with at most one lowercase
-				letters = re.findall(r"[A-Za-z]", s)
-				if letters and sum(1 for ch in letters if ch.isupper()) >= max(1, int(0.8 * len(letters))):
-						return True
-				return False
+    def _has_letter(s: str) -> bool:
+        return bool(re.search(r"[A-Za-z]", s or ""))
 
-		STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids()))
+    def _is_punct_only(s: str) -> bool:
+        return bool(s) and bool(re.fullmatch(r"[\W_]+", s))
 
-		def _is_valid_form(s: str) -> bool:
-				if not s:
-						return False
-				if len(s) < 2:
-						return False
-				if _is_punct_only(s):
-						return False
-				if re.search(r"\d", s):
-						return False
-				if not _has_letter(s):
-						return False
-				# Reject if every token is a stopword
-				tokens = [t for t in re.split(r"\s+", s) if t]
-				if tokens and all(_normalize_text(t) in STOPWORDS for t in tokens):
-						return False
-				# Reject likely abbreviations
-				if _looks_like_abbrev(s):
-						return False
-				return True
+    def _looks_like_abbrev(s: str) -> bool:
+        # Heuristics to avoid abbreviations (e.g., SP, SPR, NWP, No.)
+        if re.search(r"[.&/]", s):
+            return True
+        if len(s) <= 3 and s.isalpha() and s.upper() == s:
+            return True
+        letters = re.findall(r"[A-Za-z]", s)
+        if letters and sum(1 for ch in letters if ch.isupper()) >= max(1, int(0.8 * len(letters))):
+            return True
+        return False
 
-		def _appears_in_description(candidate: str, description: str) -> bool:
-				if not description:
-						return False
-				cand = _normalize_text(candidate)
-				desc = _normalize_text(description)
-				return cand in desc
+    # Temporal words to exclude (non-exhaustive but practical)
+    TEMPORAL = {
+        "morning","evening","night","noon","midnight","today","yesterday","tomorrow",
+        "spring","summer","autumn","fall","winter","weekend","weekday",
+        "monday","tuesday","wednesday","thursday","friday","saturday","sunday",
+        "january","february","march","april","may","june","july","august","september","october","november","december",
+        "century","centuries","year","years","month","months","day","days","decade","decades","time","times"
+    }
 
-		def _after_last_inst(text: str) -> str:
-				matches = list(re.finditer(r"\[/INST\]", text or ""))
-				if not matches:
-						return (text or "").strip()
-				return text[matches[-1].end():].strip()
+    def _is_temporal_word(s: str) -> bool:
+        return _normalize_text(s) in TEMPORAL
 
-		def _strip_codeblocks(s: str) -> str:
-				# Remove fenced code blocks and inline backticks
-				s = re.sub(r"```.*?```", "", s, flags=re.DOTALL)
-				s = re.sub(r"`[^`]*`", "", s)
-				return s
+    def _is_valid_form(s: str) -> bool:
+        if not s:
+            return False
+        if len(s) < 2:
+            return False
+        if _is_punct_only(s):
+            return False
+        if re.search(r"\d", s):
+            return False
+        if not _has_letter(s):
+            return False
+        if _is_temporal_word(s):
+            return False
+        tokens = [t for t in re.split(r"\s+", s) if t]
+        if tokens and all(_normalize_text(t) in STOPWORDS for t in tokens):
+            return False
+        if _looks_like_abbrev(s):
+            return False
+        return True
 
-		def _parse_list_literals(s: str):
-				# Find Python-like list literals of strings
-				patterns = [
-						r"(\[\s*['\"][^'\"]*['\"]\s*(?:,\s*['\"][^'\"]*['\"]\s*)*\])",
-						r"(\[\s*['\"][^'\"]*['\"]\s*,\s*['\"][^'\"]*['\"]\s*,\s*['\"][^'\"]*['\"]\s*\])",
-				]
-				for pat in patterns:
-						for m in re.findall(pat, s, flags=re.DOTALL):
-								yield m
+    def _appears_in_description(candidate: str, description_text: str) -> bool:
+        if not description_text:
+            return False
+        cand = _normalize_text(candidate)
+        desc = _normalize_text(description_text)
+        return cand in desc
 
-		def _parse_quoted_strings(s: str):
-				for m in re.findall(r"[\"']([^\"']+)[\"']", s):
-						yield m
+    def _after_last_inst(text: str) -> str:
+        matches = list(re.finditer(r"\[/INST\]", text or ""))
+        if not matches:
+            return (text or "").strip()
+        return text[matches[-1].end():].strip()
 
-		def _parse_bullets(s: str):
-				items = []
-				for line in (s or "").splitlines():
-						line = line.strip()
-						if not line:
-								continue
-						# Lines starting with bullets or numbers
-						if re.match(r"^[-*•]\s+", line) or re.match(r"^\d+\.\s+", line):
-								item = re.sub(r"^([-*•]|\d+\.)\s+", "", line).strip()
-								# Strip "Keywords:"-like labels
-								item = re.sub(r"(?i)^(keywords\s*:\s*)", "", item).strip()
-								if item:
-										items.append(item)
-				return items
+    def _before_last_inst(text: str) -> str:
+        matches = list(re.finditer(r"\[/INST\]", text or ""))
+        if not matches:
+            return (text or "").strip()
+        return text[:matches[-1].start()].strip()
 
-		def _postprocess(candidates, description: str):
-				out = []
-				seen = set()
-				for kw in candidates:
-						kw = _token_clean(kw)
-						if not _is_valid_form(kw):
-								continue
-						if not _appears_in_description(kw, description):
-								continue
-						key = _normalize_text(kw)
-						if key in seen:
-								continue
-						seen.add(key)
-						out.append(kw)
-						if len(out) >= 3:
-								break
-				return out
+    def _strip_codeblocks(s: str) -> str:
+        # Remove fenced code blocks and inline backticks
+        s = re.sub(r"```.*?```", "", s or "", flags=re.DOTALL)
+        s = re.sub(r"`[^`]*`", "", s)
+        return s
 
-		# ---------- Begin parsing ----------
-		if verbose:
-				print(f"Handling Llama response model_id: {model_id}...")
-				print(f"Raw response (repr): {repr(llm_response)}")
-				print("="*100)
-				print(llm_response)
-				print("="*100)
-				if description:
-						print(f"Description (head): {description[:180]}...")
+    def _parse_list_literals(s: str):
+        # Find Python-like list literals of strings
+        pattern = r"\[\s*(?:(['\"])(?:(?:(?!\1).)*)\1\s*(?:,\s*(['\"])(?:(?:(?!\2).)*)\2\s*)*)?\]"
+        for m in re.finditer(pattern, s or "", flags=re.DOTALL):
+            yield s[m.start():m.end()]
 
-		# Work only with content after the last [/INST]
-		content = _after_last_inst(llm_response or "")
-		content = _strip_codeblocks(content)
+    def _parse_quoted_strings(s: str):
+        for m in re.findall(r"[\"']([^\"']+)[\"']", s or ""):
+            yield m
 
-		# 1) Try explicit Python list literals
-		for list_str in _parse_list_literals(content):
-				try:
-						cleaned = (list_str
-											 .replace("“", '"').replace("”", '"')
-											 .replace("‘", "'").replace("’", "'"))
-						parsed = ast.literal_eval(cleaned)
-						if isinstance(parsed, list) and all(isinstance(x, str) for x in parsed):
-								result = _postprocess(parsed, description)
-								if result:
-										if verbose:
-												print(f"Extracted from list: {result}")
-										return result
-				except Exception as e:
-						if verbose:
-								print(f"List parse error: {e}")
+    def _parse_bullets(s: str):
+        items = []
+        for line in (s or "").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if re.match(r"^[-*•]\s+", line) or re.match(r"^\d+\.\s+", line):
+                item = re.sub(r"^([-*•]|\d+\.)\s+", "", line).strip()
+                item = re.sub(r"(?i)^(keywords?\s*:\s*)", "", item).strip()
+                if item:
+                    items.append(item)
+        return items
 
-		# 2) Fallback: quoted strings anywhere
-		qs = list(_parse_quoted_strings(content))
-		if qs:
-				result = _postprocess(qs, description)
-				if result:
-						if verbose:
-								print(f"Extracted from quoted strings: {result}")
-						return result
+    def _postprocess(candidates, description_text: str):
+        out = []
+        seen = set()
+        for kw in candidates:
+            kw = _token_clean(kw)
+            if not _is_valid_form(kw):
+                continue
+            if not _appears_in_description(kw, description_text):
+                continue
+            key = _normalize_text(kw)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(kw)
+            if len(out) >= 3:
+                break
+        return out
 
-		# 3) Fallback: bullet-like lines
-		bullets = _parse_bullets(content)
-		if bullets:
-				result = _postprocess(bullets, description)
-				if result:
-						if verbose:
-								print(f"Extracted from bullets: {result}")
-						return result
+    def _extract_description_from_promptish_text(promptish: str) -> str:
+        pre = _before_last_inst(promptish or "")
+        patterns = [
+            r"Given the description below[^:\n]*[:\n]\s*(.*?)\n\s*\*\*Rules",
+            r"Given the description below[^:\n]*[:\n]\s*(.*)",
+        ]
+        for pat in patterns:
+            m = re.search(pat, pre, flags=re.DOTALL | re.IGNORECASE)
+            if m:
+                candidate = m.group(1).strip()
+                if len(candidate) >= 15:
+                    return candidate
+        parts = re.split(r"\*\*Rules\*\*", pre, flags=re.IGNORECASE)
+        head = parts[0] if parts else pre
+        paras = [p.strip() for p in re.split(r"\n{2,}", head) if p.strip()]
+        if paras:
+            return paras[-1]
+        return ""
 
-		if verbose:
-				print("No valid keywords extracted. Returning None.")
-		return None
+    # Deterministic fallback: derive up to 3 keywords directly from the description
+    def _fallback_from_description(desc: str):
+        if not desc:
+            return None
 
-def query_local_llm_(
+        # Keep original for case checks; normalize for membership tests
+        desc_norm = _normalize_text(desc)
+
+        # Remove bracketed/parenthetical chunks with numbers to avoid e.g. [No. 1]
+        cleaned = re.sub(r"\[[^\]]*\d+[^\]]*\]", " ", desc)
+        cleaned = re.sub(r"\([^\)]*\d+[^\)]*\)", " ", cleaned)
+
+        # Tokenize words (keep hyphens/apostrophes within words)
+        words = re.findall(r"[A-Za-z][A-Za-z\-']+", cleaned)
+
+        # Remove temporal words and stopwords; keep valid forms
+        candidates = [w for w in words if _is_valid_form(w) and _normalize_text(w) not in STOPWORDS and not _is_temporal_word(w)]
+
+        if not candidates:
+            return None
+
+        # Capture capitalized multi-word entities like "Salton Sea", "Glendale Station"
+        proper_spans = []
+        for m in re.finditer(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b", cleaned):
+            span = _token_clean(m.group(1))
+            if _is_valid_form(span) and _appears_in_description(span, desc):
+                proper_spans.append(span)
+
+        # Single proper nouns (capitalized words not at sentence start heuristic)
+        single_propers = []
+        for w in re.findall(r"\b[A-Z][a-z]+\b", cleaned):
+            if _is_valid_form(w) and _appears_in_description(w, desc):
+                single_propers.append(w)
+
+        # Frequency for lowercase/common content words
+        norm_tokens = [_normalize_text(w) for w in candidates]
+        freq = Counter(norm_tokens)
+
+        # Rank:
+        # 1) multi-word proper spans (longer first), 2) single proper nouns, 3) frequent content words (excluding stopwords/temporal)
+        ordered = []
+        ordered.extend(sorted(set(proper_spans), key=lambda s: (-len(s.split()), s)))
+        ordered.extend([w for w in single_propers if w not in ordered])
+
+        # Add frequent content words (prefer longer words, higher freq)
+        content_words = []
+        for t, c in sorted(freq.items(), key=lambda x: (-x[1], -len(x[0]), x[0])):
+            # skip tokens already represented inside a chosen phrase
+            if any(t in _normalize_text(ch) for ch in ordered):
+                continue
+            content_words.append(t)
+
+        # Merge and postprocess against description (ensures anchoring and final validation)
+        merged = ordered + content_words
+        result = _postprocess(merged, desc)
+        return result if result else None
+
+    # ---------- Begin parsing ----------
+    if verbose:
+        print(f"Handling Llama response model_id: {model_id}...")
+        print(f"Raw response (repr): {repr(llm_response)}")
+        print("="*100)
+        print(llm_response)
+        print("="*100)
+
+    # If caller accidentally passed the whole prompt as `description`, recover the real description
+    desc_for_validation = description or ""
+    if (not desc_for_validation) or ("[INST]" in desc_for_validation) or ("**Rules**" in desc_for_validation):
+        extracted_desc = _extract_description_from_promptish_text(llm_response or "")
+        if extracted_desc:
+            desc_for_validation = extracted_desc
+            if verbose:
+                print("Recovered description from llm_response pre-[/INST].")
+        else:
+            if verbose:
+                print("Could not recover clean description; using provided description as-is.")
+
+    if verbose and desc_for_validation:
+        print(f"Description (head): {desc_for_validation[:180]}...")
+
+    # Work with content after the last [/INST]
+    content_after = _after_last_inst(llm_response or "")
+
+    # PASS A: Try to find a Python list literal anywhere in the post-[/INST] content (including inside code blocks)
+    list_candidates = list(_parse_list_literals(content_after))
+    for list_str in reversed(list_candidates):
+        try:
+            cleaned = (list_str
+                       .replace("“", '"').replace("”", '"')
+                       .replace("‘", "'").replace("’", "'"))
+            parsed = ast.literal_eval(cleaned)
+            if isinstance(parsed, list) and all(isinstance(x, str) for x in parsed):
+                result = _postprocess(parsed, desc_for_validation)
+                if result:
+                    if verbose:
+                        print(f"Extracted from list literal (post-[/INST], incl. code blocks): {result}")
+                    return result
+        except Exception as e:
+            if verbose:
+                print(f"List literal parse error: {e}")
+
+    # PASS B: Strip code blocks, then retry list literals
+    content_clean = _strip_codeblocks(content_after)
+    list_candidates = list(_parse_list_literals(content_clean))
+    for list_str in reversed(list_candidates):
+        try:
+            cleaned = (list_str
+                       .replace("“", '"').replace("”", '"')
+                       .replace("‘", "'").replace("’", "'"))
+            parsed = ast.literal_eval(cleaned)
+            if isinstance(parsed, list) and all(isinstance(x, str) for x in parsed):
+                result = _postprocess(parsed, desc_for_validation)
+                if result:
+                    if verbose:
+                        print(f"Extracted from list literal (post-[/INST], code stripped): {result}")
+                    return result
+        except Exception as e:
+            if verbose:
+                print(f"List literal parse error (stripped): {e}")
+
+    # PASS C: Fallback to quoted strings
+    qs = list(_parse_quoted_strings(content_clean))
+    if qs:
+        result = _postprocess(qs, desc_for_validation)
+        if result:
+            if verbose:
+                print(f"Extracted from quoted strings: {result}")
+            return result
+
+    # PASS D: Fallback to bullet-like lines
+    bullets = _parse_bullets(content_clean)
+    if bullets:
+        result = _postprocess(bullets, desc_for_validation)
+        if result:
+            if verbose:
+                print(f"Extracted from bullets: {result}")
+            return result
+
+    # PASS E: Deterministic fallback from the description itself (no prompt contamination possible)
+    fallback = _fallback_from_description(desc_for_validation)
+    if fallback:
+        if verbose:
+            print(f"Fallback from description: {fallback}")
+        return fallback
+
+    if verbose:
+        print("No valid keywords extracted. Returning None.")
+    return None
+
+
+def query_local_llm(
 		model: tfs.PreTrainedModel,
 		tokenizer: tfs.PreTrainedTokenizer, 
 		text: str, 

@@ -70,7 +70,7 @@ warnings.filterwarnings(
 	category=UserWarning,
 	module="transformers"
 )
-
+STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids()))
 # # Suppress logging warnings
 # os.environ['TF_ENABLE_ONEDNN_OPTS']='0'
 # os.environ["TOKENIZERS_PARALLELISM"] = "false"
