@@ -70,7 +70,6 @@ warnings.filterwarnings(
 	category=UserWarning,
 	module="transformers"
 )
-STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids()))
 # # Suppress logging warnings
 # os.environ['TF_ENABLE_ONEDNN_OPTS']='0'
 # os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -128,13 +127,20 @@ nltk_modules = [
 	'omw-1.4',
 	'stopwords',
 ]
-nltk.download(
-	# 'all',
-	nltk_modules,
-	# 'stopwords',
-	quiet=True,
-	# raise_on_error=True,
-)
+
+try:
+	nltk.data.find('corpora/stopwords')
+except LookupError:
+	nltk.download(
+		'all',
+		# nltk_modules,
+		# 'stopwords',
+		quiet=True,
+		# raise_on_error=True,
+	)
+STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids()))
+print(f"Successfully loaded {len(STOPWORDS)} stopwords")
+
 HOME: str = os.getenv('HOME') # echo $HOME
 USER: str = os.getenv('USER') # echo $USER
 
