@@ -373,26 +373,38 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
         print(f"{repr(llm_response)}")  # Debug hidden characters
         print("="*150)
     
-    # Find the last occurrence of [/INST] and get content after it
-    inst_positions = [m.start() for m in re.finditer(r'$$/INST$$', llm_response)]
-    if not inst_positions:
-        if verbose:
-            print("Error: No [/INST] tag found in response.")
-        return None
-    
-    # Extract content after the last [/INST]
-    last_inst_pos = inst_positions[-1]
-    content_after_last_inst = llm_response[last_inst_pos + len('[/INST]'):].strip()
+    # Find all occurrences of [/INST] and [INST] tags
+    inst_tags = []
+    for match in re.finditer(r'($$/?INST$$)', llm_response):
+        inst_tags.append((match.group(1), match.start(), match.end()))
     
     if verbose:
-        print(f"Content after last [/INST]: {repr(content_after_last_inst)}")
+        print(f"Found INST tags: {inst_tags}")
     
-    # Try to find a list in the content after the last [/INST]
+    # Find the last closing [/INST] tag
+    last_closing_inst = None
+    for tag, start, end in reversed(inst_tags):
+        if tag == '[/INST]':
+            last_closing_inst = end
+            break
+    
+    if last_closing_inst is not None:
+        # Extract content after the last closing [/INST] tag
+        content_after_last_inst = llm_response[last_closing_inst:].strip()
+        if verbose:
+            print(f"Content after last closing [/INST]: {repr(content_after_last_inst)}")
+    else:
+        # No closing [/INST] found, use the entire response
+        content_after_last_inst = llm_response
+        if verbose:
+            print("No closing [/INST] tag found, using entire response")
+    
+    # Try to find a list in the content
     list_match = re.search(r"($$.*?$$)", content_after_last_inst, re.DOTALL)
     
     if not list_match:
         if verbose:
-            print("Error: Could not find a list after the last [/INST].")
+            print("No list found in content after last closing [/INST]. Trying entire response.")
         # Fallback: try to find any list in the entire response
         list_match = re.search(r"($$.*?$$)", llm_response, re.DOTALL)
         if not list_match:
