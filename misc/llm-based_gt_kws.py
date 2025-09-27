@@ -143,12 +143,8 @@ def get_google_response(model_id: str, input_prompt: str, llm_response: str, ver
 								if cleaned_keyword and cleaned_keyword not in processed_keywords:
 										processed_keywords.append(cleaned_keyword)
 				
-				# Ensure exactly 3 keywords
-				if len(processed_keywords) > 3:
-						processed_keywords = processed_keywords[:3]
-				elif len(processed_keywords) < 3:
-						print("Error: Fewer than 3 valid keywords after processing.")
-						return None
+				if len(processed_keywords) > MAX_KEYWORDS:
+					processed_keywords = processed_keywords[:MAX_KEYWORDS]
 				
 				print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
 				return processed_keywords
@@ -221,8 +217,8 @@ def get_microsoft_response(model_id: str, input_prompt: str, llm_response: str, 
 						if cleaned_keyword and cleaned_keyword not in processed_keywords:
 								processed_keywords.append(cleaned_keyword)
 								
-				if len(processed_keywords) > 3:
-						processed_keywords = processed_keywords[:3]
+				if len(processed_keywords) > MAX_KEYWORDS:
+						processed_keywords = processed_keywords[:MAX_KEYWORDS]
 						
 				if not processed_keywords:
 						print("Error: No valid keywords found after processing.")
@@ -295,8 +291,8 @@ def get_mistral_response(model_id: str, input_prompt: str, llm_response: str, ve
 						if cleaned_keyword and cleaned_keyword not in processed_keywords:
 								processed_keywords.append(cleaned_keyword)
 				
-				if len(processed_keywords) > 3:
-						processed_keywords = processed_keywords[:3]
+				if len(processed_keywords) > MAX_KEYWORDS:
+						processed_keywords = processed_keywords[:MAX_KEYWORDS]
 						
 				if not processed_keywords:
 						print("Error: No valid keywords found after processing.")
@@ -309,7 +305,7 @@ def get_mistral_response(model_id: str, input_prompt: str, llm_response: str, ve
 				print(f"Error parsing the list: {e}")
 				return None
 
-def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, vebose:bool=False):
+def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbose:bool=False):
 	if verbose:
 		print(f"Handling Qwen response model_id: {model_id}...")
 		print(f"Raw response (repr): {repr(llm_response)}")  # Debug hidden characters
@@ -352,8 +348,8 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, vebos
 			if cleaned_keyword and cleaned_keyword not in processed_keywords:
 				processed_keywords.append(cleaned_keyword)
 		
-		if len(processed_keywords) > 3:
-			processed_keywords = processed_keywords[:3]
+		if len(processed_keywords) > MAX_KEYWORDS:
+			processed_keywords = processed_keywords[:MAX_KEYWORDS]
 		if not processed_keywords:
 			if verbose:
 				print("Error: No valid keywords found after processing.")
@@ -421,13 +417,14 @@ def get_nousresearch_response(model_id: str, input_prompt: str, llm_response: st
 						if cleaned_keyword and cleaned_keyword not in processed_keywords:
 								processed_keywords.append(cleaned_keyword)
 				
-				if len(processed_keywords) > 3:
-						processed_keywords = processed_keywords[:3]
+				if len(processed_keywords) > MAX_KEYWORDS:
+					processed_keywords = processed_keywords[:MAX_KEYWORDS]
 				if not processed_keywords:
+					if verbose:
 						print("Error: No valid keywords found after processing.")
-						return None
-				
-				print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+					return None
+				if verbose:
+					print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
 				return processed_keywords
 		
 		except Exception as e:
