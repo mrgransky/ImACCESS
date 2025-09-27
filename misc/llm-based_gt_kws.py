@@ -305,23 +305,22 @@ def get_mistral_response(model_id: str, input_prompt: str, llm_response: str, ve
 				print(f"Error parsing the list: {e}")
 				return None
 
-def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False, MAX_KEYWORDS: int = 5) -> Optional[List[str]]:
+def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False) -> Optional[List[str]]:
 		def _fix_unquoted_list(s: str) -> str:
-				"""Fix unquoted list items by adding quotes around them."""
-				s = re.sub(r'\[/?INST\]', '', s).strip()
-				if not s.startswith('[') or not s.endswith(']'):
-						return s
-				content = s[1:-1].strip()
-				if not content:
-						return s
-				items = [item.strip() for item in content.split(',') if item.strip()]
-				quoted_items = []
-				for item in items:
-						item = item.strip()
-						if not (item.startswith('"') or item.startswith("'")):
-								item = f'"{item}"'
-						quoted_items.append(item)
-				return f"[{', '.join(quoted_items)}]"
+			s = re.sub(r'\[/?INST\]', '', s).strip()
+			if not s.startswith('[') or not s.endswith(']'):
+					return s
+			content = s[1:-1].strip()
+			if not content:
+					return s
+			items = [item.strip() for item in content.split(',') if item.strip()]
+			quoted_items = []
+			for item in items:
+					item = item.strip()
+					if not (item.startswith('"') or item.startswith("'")):
+							item = f'"{item}"'
+					quoted_items.append(item)
+			return f"[{', '.join(quoted_items)}]"
 
 		if verbose:
 				print("="*150)
@@ -464,38 +463,32 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
 		if verbose:
 				print(f"After cleaning: '{cleaned_string}'")
 
-		# Try to parse
 		try:
+			if verbose:
+				print("\n=== PARSING ATTEMPT ===")
+				print(f"Attempting to parse: '{cleaned_string}'")
+			keywords_list = ast.literal_eval(cleaned_string)
+			if verbose:
+				print(f"Successfully parsed as: {type(keywords_list)}")
+				print(f"Content: {keywords_list}")
+			if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
 				if verbose:
-						print("\n=== PARSING ATTEMPT ===")
-						print(f"Attempting to parse: '{cleaned_string}'")
-				keywords_list = ast.literal_eval(cleaned_string)
-				if verbose:
-						print(f"Successfully parsed as: {type(keywords_list)}")
-						print(f"Content: {keywords_list}")
-
-				# Validate and process
-				if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
-						if verbose:
-								print("Error: Extracted string is not a valid list of strings.")
-						return None
-
-				# Post-process keywords with prompt filtering
-				# processed_keywords = _postprocess(keywords_list, input_prompt)
-				processed_keywords = keywords_list
-				if not processed_keywords:
-						if verbose:
-								print("Error: No valid keywords found after processing.")
-						return None
-
-				if verbose:
-						print(f"\nSuccessfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
-				return processed_keywords
-
-		except Exception as e:
-				if verbose:
-						print(f"\nError parsing the list: {e}")
+					print("Error: Extracted string is not a valid list of strings.")
 				return None
+			# Post-process keywords with prompt filtering
+			# processed_keywords = _postprocess(keywords_list, input_prompt)
+			processed_keywords = keywords_list
+			if not processed_keywords:
+				if verbose:
+					print("Error: No valid keywords found after processing.")
+				return None
+			if verbose:
+				print(f"\nSuccessfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+			return processed_keywords
+		except Exception as e:
+			if verbose:
+				print(f"\nError parsing the list: {e}")
+			return None
 
 def get_nousresearch_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False):
 		print(f"Handling NousResearch response model_id: {model_id}...")
