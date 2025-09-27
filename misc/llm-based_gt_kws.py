@@ -480,6 +480,11 @@ def get_qwen_response_(model_id: str, input_prompt: str, llm_response: str, verb
 						print(f"\nError parsing the list: {e}")
 				return None
 
+import re
+import ast
+from typing import List, Optional
+import unicodedata
+
 def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False, MAX_KEYWORDS: int = 5) -> Optional[List[str]]:
     """
     Extract keywords from Qwen response, filtering out prompt terms.
@@ -551,17 +556,13 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
 
     def _fix_unquoted_list(s: str) -> str:
         """Fix unquoted list items by adding quotes around them."""
-        # Remove any extraneous tags
         s = re.sub(r'\[/?INST\]', '', s).strip()
         if not s.startswith('[') or not s.endswith(']'):
             return s
-        # Extract items between brackets
         content = s[1:-1].strip()
         if not content:
             return s
-        # Split on commas, handling potential spaces
         items = [item.strip() for item in content.split(',') if item.strip()]
-        # Add quotes around unquoted items
         quoted_items = []
         for item in items:
             item = item.strip()
@@ -616,7 +617,6 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
             # Prefer list after last [/INST] to avoid prompt contamination
             for match in reversed(list_matches):
                 candidate_list = match.group(1)
-                # Clean extraneous tags and fix unquoted items
                 cleaned_candidate = _fix_unquoted_list(candidate_list)
                 if verbose:
                     print(f"Evaluating candidate: '{cleaned_candidate}'")
@@ -646,8 +646,8 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
                 partial_list = list_start_match.group(1)
                 if verbose:
                     print(f"Found partial list start: '{partial_list}'")
-                list_items_pattern = r"'([^']*)'|\"([^\"]*)\"
-                list_items = [m for m in re.findall(list_items_pattern, partial_list) if m]
+                list_items_pattern = r"'([^']*)'|\"([^\"]*)\")"
+                list_items = [m[0] or m[1] for m in re.findall(list_items_pattern, partial_list)]
                 if verbose:
                     print(f"Extracted items from partial list: {list_items}")
                 if list_items:
@@ -676,7 +676,7 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
             print("\n=== FREQUENCY ANALYSIS ===")
         all_list_candidates = []
         for pattern in list_patterns:
-            matches = re.finditer(pattern, llm_response, re.DOTALL)
+            matches = list(re.finditer(pattern, llm_response, re.DOTALL))
             for match in matches:
                 candidate = match.group(1)
                 item_count = candidate.count("',") + candidate.count('",') + 1
