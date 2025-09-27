@@ -307,11 +307,14 @@ def get_mistral_response(model_id: str, input_prompt: str, llm_response: str, ve
 
 def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbose:bool=False):
 	if verbose:
+		print("="*150)
 		print(f"Handling Qwen response model_id: {model_id}...")
 		print(f"Raw response (repr): {repr(llm_response)}")  # Debug hidden characters
+		print("="*150)
 	
-	# Look for a list with three quoted strings after [/INST]
-	match = re.search(r"\[/INST\]\s*(\[\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){2}\s*\])", llm_response, re.DOTALL)
+	# Look for a list with MAX_KEYWORDS quoted strings after [/INST]
+	pattern = r"$$/INST$$\s*($$\s*['\"][^'\"]*['\"](?:\s*,\s*['\"][^'\"]*['\"]){%d}\s*$$)" % (MAX_KEYWORDS - 1)
+	match = re.search(pattern, llm_response, re.DOTALL)
 	
 	if not match:
 		print("Error: Could not find a list after [/INST].")
