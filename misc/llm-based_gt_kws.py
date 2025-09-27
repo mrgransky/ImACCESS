@@ -309,7 +309,7 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
 	if verbose:
 		print("="*150)
 		print(f"Handling Qwen response model_id: {model_id}...")
-		print(f"Raw response (repr): {repr(llm_response)}")  # Debug hidden characters
+		print(f"{repr(llm_response)}")  # Debug hidden characters
 		print("="*150)
 	
 	# Look for a list with MAX_KEYWORDS quoted strings after [/INST]
