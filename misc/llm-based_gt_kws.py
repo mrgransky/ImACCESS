@@ -305,7 +305,7 @@ def get_mistral_response(model_id: str, input_prompt: str, llm_response: str, ve
 				print(f"Error parsing the list: {e}")
 				return None
 
-def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbose:bool=False):
+def get_qwen_response_(model_id: str, input_prompt: str, llm_response: str, verbose:bool=False):
 	if verbose:
 		print("="*150)
 		print(f"Handling Qwen response model_id: {model_id}...")
@@ -365,6 +365,86 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
 			print(f"Error parsing the list: {e}")
 			print(f"Problematic string: '{cleaned_string}'")
 		return None
+
+def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False, MAX_KEYWORDS: int = 5):
+    if verbose:
+        print("="*150)
+        print(f"Handling Qwen response model_id: {model_id}...")
+        print(f"{repr(llm_response)}")  # Debug hidden characters
+        print("="*150)
+    
+    # Find the last occurrence of [/INST] and get content after it
+    inst_positions = [m.start() for m in re.finditer(r'$$/INST$$', llm_response)]
+    if not inst_positions:
+        if verbose:
+            print("Error: No [/INST] tag found in response.")
+        return None
+    
+    # Extract content after the last [/INST]
+    last_inst_pos = inst_positions[-1]
+    content_after_last_inst = llm_response[last_inst_pos + len('[/INST]'):].strip()
+    
+    if verbose:
+        print(f"Content after last [/INST]: {repr(content_after_last_inst)}")
+    
+    # Try to find a list in the content after the last [/INST]
+    list_match = re.search(r"($$.*?$$)", content_after_last_inst, re.DOTALL)
+    
+    if not list_match:
+        if verbose:
+            print("Error: Could not find a list after the last [/INST].")
+        # Fallback: try to find any list in the entire response
+        list_match = re.search(r"($$.*?$$)", llm_response, re.DOTALL)
+        if not list_match:
+            if verbose:
+                print("Error: No list found in the entire response.")
+            return None
+        if verbose:
+            print("Found list in entire response as fallback.")
+    
+    final_list_str = list_match.group(1)
+    if verbose:
+        print(f"Found list: '{final_list_str}'")
+    
+    # Clean the string - replace smart quotes and normalize
+    cleaned_string = final_list_str.replace("“", '"').replace("”", '"').replace("’", "'").replace("‘", "'")
+    if verbose:
+        print(f"Cleaned string: '{cleaned_string}'")
+    
+    # Use ast.literal_eval to parse the string into a Python list
+    try:
+        keywords_list = ast.literal_eval(cleaned_string)
+        # Validate: must be a list of strings
+        if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
+            if verbose:
+                print("Error: Extracted string is not a valid list of strings.")
+            return None
+        
+        # Post-process: remove numbers, special characters, and duplicates
+        processed_keywords = []
+        for keyword in keywords_list:
+            cleaned_keyword = re.sub(r'[\d#]', '', keyword).strip()
+            cleaned_keyword = re.sub(r'\s+', ' ', cleaned_keyword)
+            if cleaned_keyword and cleaned_keyword not in processed_keywords:
+                processed_keywords.append(cleaned_keyword)
+        
+        # Limit to MAX_KEYWORDS
+        if len(processed_keywords) > MAX_KEYWORDS:
+            processed_keywords = processed_keywords[:MAX_KEYWORDS]
+        if not processed_keywords:
+            if verbose:
+                print("Error: No valid keywords found after processing.")
+            return None
+        
+        if verbose:
+            print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+        return processed_keywords
+    except Exception as e:
+        if verbose:
+            print(f"Error parsing the list: {e}")
+            print(f"Problematic string: '{cleaned_string}'")
+        return None
+
 
 def get_nousresearch_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False):
 		print(f"Handling NousResearch response model_id: {model_id}...")
