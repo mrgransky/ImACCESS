@@ -480,269 +480,265 @@ def get_qwen_response_(model_id: str, input_prompt: str, llm_response: str, verb
 						print(f"\nError parsing the list: {e}")
 				return None
 
-import re
-import ast
-from typing import List, Optional
-import unicodedata
-
 def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False, MAX_KEYWORDS: int = 5) -> Optional[List[str]]:
-    """
-    Extract keywords from Qwen response, filtering out prompt terms.
-    
-    Args:
-        model_id: Identifier for the Qwen model.
-        input_prompt: Input prompt provided to Qwen.
-        llm_response: Raw response from Qwen.
-        verbose: Print debugging information.
-        MAX_KEYWORDS: Maximum number of keywords to return (default: 5).
-    
-    Returns:
-        List of extracted keywords or None if extraction fails.
-    """
-    def _normalize_text(s: str) -> str:
-        s = unicodedata.normalize("NFKD", s or "")
-        s = "".join(ch for ch in s if not unicodedata.combining(ch))
-        return s.lower().strip()
+		"""
+		Extract keywords from Qwen response, filtering out prompt terms.
+		
+		Args:
+				model_id: Identifier for the Qwen model.
+				input_prompt: Input prompt provided to Qwen.
+				llm_response: Raw response from Qwen.
+				verbose: Print debugging information.
+				MAX_KEYWORDS: Maximum number of keywords to return (default: 5).
+		
+		Returns:
+				List of extracted keywords or None if extraction fails.
+		"""
+		def _normalize_text(s: str) -> str:
+				s = unicodedata.normalize("NFKD", s or "")
+				s = "".join(ch for ch in s if not unicodedata.combining(ch))
+				return s.lower().strip()
 
-    def _token_clean(s: str) -> str:
-        return re.sub(r"\s+", " ", (s or "").strip())
+		def _token_clean(s: str) -> str:
+				return re.sub(r"\s+", " ", (s or "").strip())
 
-    def _is_valid_keyword(s: str) -> bool:
-        if not s or len(s) < 2:
-            return False
-        if re.search(r"\d", s):  # Exclude numbers
-            return False
-        if re.fullmatch(r"[\W_]+", s):  # Exclude punctuation-only
-            return False
-        if not re.search(r"[A-Za-z]", s):  # Must contain letters
-            return False
-        return True
+		def _is_valid_keyword(s: str) -> bool:
+				if not s or len(s) < 2:
+						return False
+				if re.search(r"\d", s):  # Exclude numbers
+						return False
+				if re.fullmatch(r"[\W_]+", s):  # Exclude punctuation-only
+						return False
+				if not re.search(r"[A-Za-z]", s):  # Must contain letters
+						return False
+				return True
 
-    def _postprocess(keywords: List[str], input_prompt: str) -> List[str]:
-        """
-        Post-process keywords, filtering out prompt terms and invalid entries.
-        
-        Args:
-            keywords: List of candidate keywords.
-            input_prompt: Input prompt to filter out keywords.
-        
-        Returns:
-            List of valid keywords.
-        """
-        processed = []
-        seen = set()
-        prompt_words = set(_normalize_text(w) for w in input_prompt.split() if _is_valid_keyword(w))
-        
-        for kw in keywords:
-            kw = _token_clean(kw)
-            if not _is_valid_keyword(kw):
-                if verbose:
-                    print(f"Keyword '{kw}' filtered out (invalid form)")
-                continue
-            key = _normalize_text(kw)
-            if key in seen:
-                if verbose:
-                    print(f"Keyword '{kw}' filtered out (duplicate)")
-                continue
-            if key in prompt_words:
-                if verbose:
-                    print(f"Keyword '{kw}' filtered out (present in prompt)")
-                continue
-            seen.add(key)
-            processed.append(kw)
-            if len(processed) >= MAX_KEYWORDS:
-                break
-        return processed
+		def _postprocess(keywords: List[str], input_prompt: str) -> List[str]:
+				"""
+				Post-process keywords, filtering out prompt terms and invalid entries.
+				
+				Args:
+						keywords: List of candidate keywords.
+						input_prompt: Input prompt to filter out keywords.
+				
+				Returns:
+						List of valid keywords.
+				"""
+				processed = []
+				seen = set()
+				prompt_words = set(_normalize_text(w) for w in input_prompt.split() if _is_valid_keyword(w))
+				
+				for kw in keywords:
+						kw = _token_clean(kw)
+						if not _is_valid_keyword(kw):
+								if verbose:
+										print(f"Keyword '{kw}' filtered out (invalid form)")
+								continue
+						key = _normalize_text(kw)
+						if key in seen:
+								if verbose:
+										print(f"Keyword '{kw}' filtered out (duplicate)")
+								continue
+						if key in prompt_words:
+								if verbose:
+										print(f"Keyword '{kw}' filtered out (present in prompt)")
+								continue
+						seen.add(key)
+						processed.append(kw)
+						if len(processed) >= MAX_KEYWORDS:
+								break
+				return processed
 
-    def _fix_unquoted_list(s: str) -> str:
-        """Fix unquoted list items by adding quotes around them."""
-        s = re.sub(r'\[/?INST\]', '', s).strip()
-        if not s.startswith('[') or not s.endswith(']'):
-            return s
-        content = s[1:-1].strip()
-        if not content:
-            return s
-        items = [item.strip() for item in content.split(',') if item.strip()]
-        quoted_items = []
-        for item in items:
-            item = item.strip()
-            if not (item.startswith('"') or item.startswith("'")):
-                item = f'"{item}"'
-            quoted_items.append(item)
-        return f"[{', '.join(quoted_items)}]"
+		def _fix_unquoted_list(s: str) -> str:
+				"""Fix unquoted list items by adding quotes around them."""
+				s = re.sub(r'\[/?INST\]', '', s).strip()
+				if not s.startswith('[') or not s.endswith(']'):
+						return s
+				content = s[1:-1].strip()
+				if not content:
+						return s
+				items = [item.strip() for item in content.split(',') if item.strip()]
+				quoted_items = []
+				for item in items:
+						item = item.strip()
+						if not (item.startswith('"') or item.startswith("'")):
+								item = f'"{item}"'
+						quoted_items.append(item)
+				return f"[{', '.join(quoted_items)}]"
 
-    if verbose:
-        print("="*150)
-        print(f"Handling Qwen response model_id: {model_id}...")
-        print(f"Raw response (repr): {repr(llm_response)}")
-        print("="*150)
-        print("\n=== TAG DETECTION ===")
+		if verbose:
+				print("="*150)
+				print(f"Handling Qwen response model_id: {model_id}...")
+				print(f"Raw response (repr): {repr(llm_response)}")
+				print("="*150)
+				print("\n=== TAG DETECTION ===")
 
-    # INST tag detection
-    all_inst_matches = list(re.finditer(r'\[/?INST\]', llm_response))
-    if verbose:
-        print(f"All potential INST matches found: {len(all_inst_matches)}")
-        for i, match in enumerate(all_inst_matches):
-            print(f" Match {i}: position {match.start()}-{match.end()}, text: '{match.group()}'")
-    
-    inst_tags = []
-    for match in re.finditer(r'\[\s*/?\s*INST\s*\]', llm_response):
-        inst_tags.append((match.group().strip(), match.start(), match.end()))
-    if verbose:
-        print(f"\nFound {len(inst_tags)} normalized INST tags:")
-        for tag, start, end in inst_tags:
-            print(f" Tag: '{tag}', position: {start}-{end}")
+		# INST tag detection
+		all_inst_matches = list(re.finditer(r'\[/?INST\]', llm_response))
+		if verbose:
+				print(f"All potential INST matches found: {len(all_inst_matches)}")
+				for i, match in enumerate(all_inst_matches):
+						print(f" Match {i}: position {match.start()}-{match.end()}, text: '{match.group()}'")
+		
+		inst_tags = []
+		for match in re.finditer(r'\[\s*/?\s*INST\s*\]', llm_response):
+				inst_tags.append((match.group().strip(), match.start(), match.end()))
+		if verbose:
+				print(f"\nFound {len(inst_tags)} normalized INST tags:")
+				for tag, start, end in inst_tags:
+						print(f" Tag: '{tag}', position: {start}-{end}")
 
-    # Look for list content
-    list_content = None
-    if verbose:
-        print("\n=== DIRECT LIST SEARCH ===")
-        print("Searching for complete lists in entire response...")
+		# Look for list content
+		list_content = None
+		if verbose:
+				print("\n=== DIRECT LIST SEARCH ===")
+				print("Searching for complete lists in entire response...")
 
-    # Improved list patterns
-    list_patterns = [
-        r"(\[[^\[\]]*['\"][^'\"]*['\"][^\[\]]*\])",  # List with quoted items
-        r"(\[[^\[\]]{10,}?[a-zA-Z][^\[\]]*?\])",    # List with minimum content
-        r"(\[.*?[a-zA-Z].*?\])",                    # Any list with letters
-    ]
+		# Improved list patterns
+		list_patterns = [
+				r"(\[[^\[\]]*['\"][^'\"]*['\"][^\[\]]*\])",  # List with quoted items
+				r"(\[[^\[\]]{10,}?[a-zA-Z][^\[\]]*?\])",    # List with minimum content
+				r"(\[.*?[a-zA-Z].*?\])",                    # Any list with letters
+		]
 
-    # Strategy 1: Find complete list
-    for i, pattern in enumerate(list_patterns):
-        if verbose:
-            print(f"\nTrying complete list pattern {i+1}: {pattern}")
-        list_matches = list(re.finditer(pattern, llm_response, re.DOTALL))
-        if list_matches:
-            if verbose:
-                print(f"Found {len(list_matches)} potential lists")
-            # Prefer list after last [/INST] to avoid prompt contamination
-            for match in reversed(list_matches):
-                candidate_list = match.group(1)
-                cleaned_candidate = _fix_unquoted_list(candidate_list)
-                if verbose:
-                    print(f"Evaluating candidate: '{cleaned_candidate}'")
-                if cleaned_candidate.count('[') == 1 and cleaned_candidate.count(']') == 1:
-                    list_content = cleaned_candidate
-                    if verbose:
-                        print(f"Selected list: '{list_content}'")
-                    break
-            if list_content:
-                break
+		# Strategy 1: Find complete list
+		for i, pattern in enumerate(list_patterns):
+				if verbose:
+						print(f"\nTrying complete list pattern {i+1}: {pattern}")
+				list_matches = list(re.finditer(pattern, llm_response, re.DOTALL))
+				if list_matches:
+						if verbose:
+								print(f"Found {len(list_matches)} potential lists")
+						# Prefer list after last [/INST] to avoid prompt contamination
+						for match in reversed(list_matches):
+								candidate_list = match.group(1)
+								cleaned_candidate = _fix_unquoted_list(candidate_list)
+								if verbose:
+										print(f"Evaluating candidate: '{cleaned_candidate}'")
+								if cleaned_candidate.count('[') == 1 and cleaned_candidate.count(']') == 1:
+										list_content = cleaned_candidate
+										if verbose:
+												print(f"Selected list: '{list_content}'")
+										break
+						if list_content:
+								break
 
-    # Strategy 2: Reconstruct from truncated content
-    if not list_content:
-        if verbose:
-            print("\n=== RECONSTRUCTION ATTEMPT ===")
-        last_closing_inst = None
-        for tag, start, end in reversed(inst_tags):
-            if tag == '[/INST]' or '/INST' in tag:
-                last_closing_inst = end
-                break
-        if last_closing_inst:
-            content_after_last_inst = llm_response[last_closing_inst:].strip()
-            if verbose:
-                print(f"Content after last [/INST]: '{content_after_last_inst}'")
-            list_start_match = re.search(r"(\[.*)", content_after_last_inst, re.DOTALL)
-            if list_start_match:
-                partial_list = list_start_match.group(1)
-                if verbose:
-                    print(f"Found partial list start: '{partial_list}'")
-                list_items_pattern = r"'([^']*)'|\"([^\"]*)\")"
-                list_items = [m[0] or m[1] for m in re.findall(list_items_pattern, partial_list)]
-                if verbose:
-                    print(f"Extracted items from partial list: {list_items}")
-                if list_items:
-                    for i, pattern in enumerate(list_patterns):
-                        complete_matches = list(re.finditer(pattern, llm_response, re.DOTALL))
-                        for match in complete_matches:
-                            candidate_list = match.group(1)
-                            if all(item in candidate_list for item in list_items if len(item) > 3):
-                                list_content = _fix_unquoted_list(candidate_list)
-                                if verbose:
-                                    print(f"Found complete list containing our items: '{list_content}'")
-                                break
-                        if list_content:
-                            break
-                    if not list_content and len(list_items) >= 2:
-                        repeated_pattern = r"(\[\s*" + r"\s*,\s*".join([re.escape(item) for item in list_items[:2]]) + r".*?\])"
-                        repeated_match = re.search(repeated_pattern, llm_response, re.DOTALL)
-                        if repeated_match:
-                            list_content = _fix_unquoted_list(repeated_match.group(1))
-                            if verbose:
-                                print(f"Found repeated list pattern: '{list_content}'")
+		# Strategy 2: Reconstruct from truncated content
+		if not list_content:
+				if verbose:
+						print("\n=== RECONSTRUCTION ATTEMPT ===")
+				last_closing_inst = None
+				for tag, start, end in reversed(inst_tags):
+						if tag == '[/INST]' or '/INST' in tag:
+								last_closing_inst = end
+								break
+				if last_closing_inst:
+						content_after_last_inst = llm_response[last_closing_inst:].strip()
+						if verbose:
+								print(f"Content after last [/INST]: '{content_after_last_inst}'")
+						list_start_match = re.search(r"(\[.*)", content_after_last_inst, re.DOTALL)
+						if list_start_match:
+								partial_list = list_start_match.group(1)
+								if verbose:
+										print(f"Found partial list start: '{partial_list}'")
+								list_items_pattern = r"'([^']*)'|\"([^\"]*)\")"
+								list_items = [m[0] or m[1] for m in re.findall(list_items_pattern, partial_list)]
+								if verbose:
+										print(f"Extracted items from partial list: {list_items}")
+								if list_items:
+										for i, pattern in enumerate(list_patterns):
+												complete_matches = list(re.finditer(pattern, llm_response, re.DOTALL))
+												for match in complete_matches:
+														candidate_list = match.group(1)
+														if all(item in candidate_list for item in list_items if len(item) > 3):
+																list_content = _fix_unquoted_list(candidate_list)
+																if verbose:
+																		print(f"Found complete list containing our items: '{list_content}'")
+																break
+												if list_content:
+														break
+										if not list_content and len(list_items) >= 2:
+												repeated_pattern = r"(\[\s*" + r"\s*,\s*".join([re.escape(item) for item in list_items[:2]]) + r".*?\])"
+												repeated_match = re.search(repeated_pattern, llm_response, re.DOTALL)
+												if repeated_match:
+														list_content = _fix_unquoted_list(repeated_match.group(1))
+														if verbose:
+																print(f"Found repeated list pattern: '{list_content}'")
 
-    # Strategy 3: Frequency analysis
-    if not list_content:
-        if verbose:
-            print("\n=== FREQUENCY ANALYSIS ===")
-        all_list_candidates = []
-        for pattern in list_patterns:
-            matches = list(re.finditer(pattern, llm_response, re.DOTALL))
-            for match in matches:
-                candidate = match.group(1)
-                item_count = candidate.count("',") + candidate.count('",') + 1
-                score = len(candidate) + (item_count * 10)
-                all_list_candidates.append((candidate, score))
-        if all_list_candidates:
-            best_candidate = max(all_list_candidates, key=lambda x: x[1])[0]
-            list_content = _fix_unquoted_list(best_candidate)
-            if verbose:
-                print(f"Selected best candidate by frequency: '{list_content}'")
+		# Strategy 3: Frequency analysis
+		if not list_content:
+				if verbose:
+						print("\n=== FREQUENCY ANALYSIS ===")
+				all_list_candidates = []
+				for pattern in list_patterns:
+						matches = list(re.finditer(pattern, llm_response, re.DOTALL))
+						for match in matches:
+								candidate = match.group(1)
+								item_count = candidate.count("',") + candidate.count('",') + 1
+								score = len(candidate) + (item_count * 10)
+								all_list_candidates.append((candidate, score))
+				if all_list_candidates:
+						best_candidate = max(all_list_candidates, key=lambda x: x[1])[0]
+						list_content = _fix_unquoted_list(best_candidate)
+						if verbose:
+								print(f"Selected best candidate by frequency: '{list_content}'")
 
-    if not list_content:
-        if verbose:
-            print("\nError: No valid list content found.")
-        return None
+		if not list_content:
+				if verbose:
+						print("\nError: No valid list content found.")
+				return None
 
-    # Clean and parse list content
-    if verbose:
-        print("\n=== STRING CLEANING ===")
-        print(f"Original list string: '{list_content}'")
-    
-    cleaned_string = list_content.replace("“", '"').replace("”", '"').replace("'", '"')
-    cleaned_string = re.sub(r'\[/?INST\]', '', cleaned_string).strip()
-    if not cleaned_string.startswith('['):
-        cleaned_string = '[' + cleaned_string
-    if not cleaned_string.endswith(']'):
-        last_bracket = cleaned_string.rfind(']')
-        if last_bracket != -1:
-            cleaned_string = cleaned_string[:last_bracket+1]
-        else:
-            cleaned_string = cleaned_string + ']'
-    
-    if verbose:
-        print(f"After cleaning: '{cleaned_string}'")
+		# Clean and parse list content
+		if verbose:
+				print("\n=== STRING CLEANING ===")
+				print(f"Original list string: '{list_content}'")
+		
+		cleaned_string = list_content.replace("“", '"').replace("”", '"').replace("'", '"')
+		cleaned_string = re.sub(r'\[/?INST\]', '', cleaned_string).strip()
+		if not cleaned_string.startswith('['):
+				cleaned_string = '[' + cleaned_string
+		if not cleaned_string.endswith(']'):
+				last_bracket = cleaned_string.rfind(']')
+				if last_bracket != -1:
+						cleaned_string = cleaned_string[:last_bracket+1]
+				else:
+						cleaned_string = cleaned_string + ']'
+		
+		if verbose:
+				print(f"After cleaning: '{cleaned_string}'")
 
-    # Try to parse
-    try:
-        if verbose:
-            print("\n=== PARSING ATTEMPT ===")
-            print(f"Attempting to parse: '{cleaned_string}'")
-        keywords_list = ast.literal_eval(cleaned_string)
-        if verbose:
-            print(f"Successfully parsed as: {type(keywords_list)}")
-            print(f"Content: {keywords_list}")
+		# Try to parse
+		try:
+				if verbose:
+						print("\n=== PARSING ATTEMPT ===")
+						print(f"Attempting to parse: '{cleaned_string}'")
+				keywords_list = ast.literal_eval(cleaned_string)
+				if verbose:
+						print(f"Successfully parsed as: {type(keywords_list)}")
+						print(f"Content: {keywords_list}")
 
-        # Validate and process
-        if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
-            if verbose:
-                print("Error: Extracted string is not a valid list of strings.")
-            return None
+				# Validate and process
+				if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
+						if verbose:
+								print("Error: Extracted string is not a valid list of strings.")
+						return None
 
-        # Post-process keywords with prompt filtering
-        processed_keywords = _postprocess(keywords_list, input_prompt)
-        if not processed_keywords:
-            if verbose:
-                print("Error: No valid keywords found after processing.")
-            return None
+				# Post-process keywords with prompt filtering
+				# processed_keywords = _postprocess(keywords_list, input_prompt)
+				processed_keywords = keywords_list
+				if not processed_keywords:
+						if verbose:
+								print("Error: No valid keywords found after processing.")
+						return None
 
-        if verbose:
-            print(f"\nSuccessfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
-        return processed_keywords
+				if verbose:
+						print(f"\nSuccessfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+				return processed_keywords
 
-    except Exception as e:
-        if verbose:
-            print(f"\nError parsing the list: {e}")
-        return None
+		except Exception as e:
+				if verbose:
+						print(f"\nError parsing the list: {e}")
+				return None
 
 def get_nousresearch_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False):
 		print(f"Handling NousResearch response model_id: {model_id}...")
