@@ -305,75 +305,7 @@ def get_mistral_response(model_id: str, input_prompt: str, llm_response: str, ve
 				print(f"Error parsing the list: {e}")
 				return None
 
-def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False, MAX_KEYWORDS: int = 5) -> Optional[List[str]]:
-		"""
-		Extract keywords from Qwen response, filtering out prompt terms.
-		
-		Args:
-				model_id: Identifier for the Qwen model.
-				input_prompt: Input prompt provided to Qwen.
-				llm_response: Raw response from Qwen.
-				verbose: Print debugging information.
-				MAX_KEYWORDS: Maximum number of keywords to return (default: 5).
-		
-		Returns:
-				List of extracted keywords or None if extraction fails.
-		"""
-		def _normalize_text(s: str) -> str:
-				s = s or ""
-				s = "".join(ch for ch in s if not unicodedata.combining(ch))
-				return s.lower().strip()
-
-		def _token_clean(s: str) -> str:
-				return re.sub(r"\s+", " ", (s or "").strip())
-
-		def _is_valid_keyword(s: str) -> bool:
-				if not s or len(s) < 2:
-						return False
-				if re.search(r"\d", s):  # Exclude numbers
-						return False
-				if re.fullmatch(r"[\W_]+", s):  # Exclude punctuation-only
-						return False
-				if not re.search(r"[A-Za-z]", s):  # Must contain letters
-						return False
-				return True
-
-		def _postprocess(keywords: List[str], input_prompt: str) -> List[str]:
-				"""
-				Post-process keywords, filtering out prompt terms and invalid entries.
-				
-				Args:
-						keywords: List of candidate keywords.
-						input_prompt: Input prompt to filter out keywords.
-				
-				Returns:
-						List of valid keywords.
-				"""
-				processed = []
-				seen = set()
-				prompt_words = set(_normalize_text(w) for w in input_prompt.split() if _is_valid_keyword(w))
-				
-				for kw in keywords:
-						kw = _token_clean(kw)
-						if not _is_valid_keyword(kw):
-								if verbose:
-										print(f"Keyword '{kw}' filtered out (invalid form)")
-								continue
-						key = _normalize_text(kw)
-						if key in seen:
-								if verbose:
-										print(f"Keyword '{kw}' filtered out (duplicate)")
-								continue
-						if key in prompt_words:
-								if verbose:
-										print(f"Keyword '{kw}' filtered out (present in prompt)")
-								continue
-						seen.add(key)
-						processed.append(kw)
-						if len(processed) >= MAX_KEYWORDS:
-								break
-				return processed
-
+def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False) -> Optional[List[str]]:
 		if verbose:
 				print("="*150)
 				print(f"Handling Qwen response model_id: {model_id}...")
@@ -533,7 +465,6 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
 						return None
 
 				# # Post-process keywords
-				# processed_keywords = _postprocess(keywords_list, input_prompt)
 				processed_keywords = keywords_list
 				if not processed_keywords:
 						if verbose:
