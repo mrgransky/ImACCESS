@@ -42,7 +42,7 @@ model_id = "llava-hf/llava-v1.6-mistral-7b-hf"
 # print(results)
 
 
-pipe = tfs.pipeline("image-text-to-text", model=model_id, cache_dir=cache_directory[USER])
+pipe = tfs.pipeline("image-text-to-text", model=model_id)
 messages = [
     {
       "role": "user",
