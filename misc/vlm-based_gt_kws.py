@@ -17,9 +17,9 @@ print(f"IMG: {type(img)} {img.size} {img.mode}")
 # Load processor and model
 processor = LlavaNextProcessor.from_pretrained(model_id)
 model = LlavaNextForConditionalGeneration.from_pretrained(
-    model_id,
-    torch_dtype=torch.float16,
-    low_cpu_mem_usage=True
+		model_id,
+		dtype=torch.float16,
+		low_cpu_mem_usage=True
 )
 model.to('cuda:0')
 
@@ -29,9 +29,9 @@ prompt = f"A chat between a curious user and an artificial intelligence assistan
 
 # Process inputs
 inputs = processor(
-    text=prompt,
-    images=img,
-    return_tensors="pt"
+		text=prompt,
+		images=img,
+		return_tensors="pt"
 ).to('cuda:0')
 
 # Generate output
