@@ -765,15 +765,11 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
 								not any(t in cleaned_lower for t in temporal_terms) and
 								not any(s in cleaned_lower for s in stopwords_set) and
 								cleaned_lower not in abbreviations):
-								if any(w in cleaned_lower for w in war_related) or len(processed_keywords) < 3:
+								if any(w in cleaned_lower for w in war_related) or len(processed_keywords) < MAX_KEYWORDS:
 										processed_keywords.append(cleaned)
 
-				if len(processed_keywords) > 3:
-						processed_keywords = processed_keywords[:3]
-				elif len(processed_keywords) < 3:
-						if verbose:
-								print("Error: Fewer than 3 valid keywords after processing.")
-						return None
+				if len(processed_keywords) > MAX_KEYWORDS:
+						processed_keywords = processed_keywords[:MAX_KEYWORDS]
 
 				if verbose:
 						print(f"\nSuccessfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
