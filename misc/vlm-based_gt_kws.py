@@ -26,7 +26,7 @@ model.to('cuda:0')
 # Prepare text prompt (LLaVA 1.5 uses a different prompt format)
 instruction = 'Describe the image in three words.'
 prompt = f"USER: <image>\n{instruction} ASSISTANT:"
-
+print(f"PROMPT: {prompt}")
 # Process inputs
 inputs = processor(
     text=prompt,
