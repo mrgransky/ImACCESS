@@ -41,7 +41,7 @@ model_id = "llava-hf/llava-v1.6-mistral-7b-hf"
 # print("Generated output:")
 # print(results)
 
-pipe = tfs.pipeline("image-text-to-text", model=model_id)
+pipe = tfs.pipeline(task="image-text-to-text", model=model_id, dtype="auto", num_workers=12)
 messages = [
 	{
 		"role": "user",
