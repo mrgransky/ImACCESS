@@ -3,15 +3,17 @@ from PIL import Image
 import requests
 import torch
 
-model_id = "tiiuae/falcon-11B-vlm"
+# model_id = "tiiuae/falcon-11B-vlm"
 # model_id = "utter-project/EuroVLM-1.7B-Preview"
-
+model_id = "llava-hf/llava-1.5-7b-hf"
+# model_id = "llava-hf/llava-1.5-13b-hf"
+# model_id = "OpenGVLab/InternVL-Chat-V1-2"
 processor = LlavaNextProcessor.from_pretrained(model_id, tokenizer_class='PreTrainedTokenizerFast', use_fast=True)
 model = LlavaNextForConditionalGeneration.from_pretrained(model_id, dtype=torch.bfloat16)
 
 url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/stn/989/default.jpg"
-cats_image = Image.open(requests.get(url, stream=True).raw)
-print(cats_image.size)
+img = Image.open(requests.get(url, stream=True).raw)
+print(type(img), img.size, img.mode)
 instruction = 'Describe the image in three words.'
 
 prompt = f"User: <image>\n{instruction} Assistant:"
