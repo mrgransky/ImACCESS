@@ -1,4 +1,4 @@
-from transformers import LlavaNextForConditionalGeneration, LlavaNextProcessor
+from transformers import LlavaForConditionalGeneration, LlavaProcessor
 from PIL import Image
 import requests
 import torch
