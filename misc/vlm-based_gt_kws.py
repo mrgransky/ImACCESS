@@ -2,10 +2,10 @@ from utils import *
 
 # # model_id = "tiiuae/falcon-11B-vlm"
 # # model_id = "utter-project/EuroVLM-1.7B-Preview"
-model_id = "llava-hf/llava-1.5-7b-hf"
+# model_id = "llava-hf/llava-1.5-7b-hf"
 # model_id = "llava-hf/llava-1.5-13b-hf"
 # # model_id = "OpenGVLab/InternVL-Chat-V1-2"
-# model_id = "llava-hf/llava-v1.6-mistral-7b-hf"
+model_id = "llava-hf/llava-v1.6-mistral-7b-hf"
 
 # Load and preprocess image
 url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/stn/989/default.jpg"
