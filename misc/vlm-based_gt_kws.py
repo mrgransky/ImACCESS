@@ -41,16 +41,21 @@ model_id = "llava-hf/llava-v1.6-mistral-7b-hf"
 # print("Generated output:")
 # print(results)
 
+# Verify environment variables
+print(f"HF_HOME: {os.environ['HF_HOME']}")
+print(f"TRANSFORMERS_CACHE: {os.environ['TRANSFORMERS_CACHE']}")
+print(f"HF_HUB_CACHE: {os.environ['HF_HUB_CACHE']}")
+print(f"HF_DATASETS_CACHE: {os.environ['HF_DATASETS_CACHE']}")
 
 pipe = tfs.pipeline("image-text-to-text", model=model_id)
 messages = [
-    {
-      "role": "user",
-      "content": [
-          {"type": "image", "url": "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/ai2d-demo.jpg"},
-          {"type": "text", "text": "What does the label 15 represent? (1) lava (2) core (3) tunnel (4) ash cloud"},
-        ],
-    },
+	{
+		"role": "user",
+		"content": [
+				{"type": "image", "url": "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/ai2d-demo.jpg"},
+				{"type": "text", "text": "What does the label 15 represent? (1) lava (2) core (3) tunnel (4) ash cloud"},
+			],
+	},
 ]
 
 out = pipe(text=messages, max_new_tokens=128)
