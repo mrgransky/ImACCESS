@@ -490,16 +490,9 @@ def get_qwen_response_(model_id: str, input_prompt: str, llm_response: str, verb
 				print(f"\nError parsing the list: {e}")
 			return None
 
-import re
-import ast
-import json
-from typing import Optional, List
-import nltk
-from nltk.corpus import stopwords
-
 def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False) -> Optional[List[str]]:
 		"""
-		Extracts exactly 3 keywords from Qwen model responses.
+		Extracts exactly MAX_KEYWORDS keywords from Qwen model responses.
 		Ensures keywords are concrete, factual, non-numeric, non-temporal, abbreviation-free, and war-related.
 		"""
 		def _fix_unquoted_list(s: str) -> str:
@@ -519,15 +512,6 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
 				print(f"Raw response (repr): {repr(llm_response)}")
 				print("="*150)
 				print("\n=== TAG DETECTION ===")
-
-		# Ensure NLTK stopwords are downloaded
-		try:
-				nltk.download('stopwords', quiet=False)
-				stopwords_set = set(stopwords.words('english'))
-		except LookupError as e:
-				if verbose:
-						print(f"Error downloading stopwords: {e}")
-				return None
 
 		# Define filtering sets
 		temporal_terms = {
@@ -758,21 +742,22 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
 				# Post-process keywords
 				processed_keywords = []
 				for keyword in keywords_list:
-						cleaned = re.sub(r'[\d#]', '', keyword).strip()
-						cleaned = re.sub(r'\s+', ' ', cleaned)
-						cleaned_lower = cleaned.lower()
-						if (cleaned and cleaned not in processed_keywords and
-								not any(t in cleaned_lower for t in temporal_terms) and
-								not any(s in cleaned_lower for s in stopwords_set) and
-								cleaned_lower not in abbreviations):
-								if any(w in cleaned_lower for w in war_related) or len(processed_keywords) < MAX_KEYWORDS:
-										processed_keywords.append(cleaned)
+					cleaned = re.sub(r'[\d#]', '', keyword).strip()
+					cleaned = re.sub(r'\s+', ' ', cleaned)
+					cleaned_lower = cleaned.lower()
+					if (
+							cleaned
+							and cleaned not in processed_keywords
+							and not any(s in cleaned_lower for s in STOPWORDS)
+						):
+						if any(w in cleaned_lower for w in war_related) or len(processed_keywords) < MAX_KEYWORDS:
+							processed_keywords.append(cleaned)
 
 				if len(processed_keywords) > MAX_KEYWORDS:
-						processed_keywords = processed_keywords[:MAX_KEYWORDS]
+					processed_keywords = processed_keywords[:MAX_KEYWORDS]
 
 				if verbose:
-						print(f"\nSuccessfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+					print(f"\nSuccessfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
 				return processed_keywords
 
 		except Exception as e:
