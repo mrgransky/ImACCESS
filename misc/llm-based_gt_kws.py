@@ -305,7 +305,7 @@ def get_mistral_response(model_id: str, input_prompt: str, llm_response: str, ve
 				print(f"Error parsing the list: {e}")
 				return None
 
-def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False) -> Optional[List[str]]:
+def get_qwen_response_(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False) -> Optional[List[str]]:
 		def _fix_unquoted_list(s: str) -> str:
 			s = re.sub(r'\[/?INST\]', '', s).strip()
 			if not s.startswith('[') or not s.endswith(']'):
@@ -489,6 +489,239 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
 			if verbose:
 				print(f"\nError parsing the list: {e}")
 			return None
+
+def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False) -> Optional[List[str]]:
+    def _fix_unquoted_list(s: str) -> str:
+        # Remove INST tags first
+        s = re.sub(r'\[/?INST\]', '', s).strip()
+        if not s.startswith('[') or not s.endswith(']'):
+            return s
+        
+        content = s[1:-1].strip()
+        if not content:
+            return s
+        
+        # Use a more robust parsing approach
+        items = []
+        current_item = ""
+        in_quotes = False
+        quote_char = None
+        escape_next = False
+        
+        for char in content:
+            if escape_next:
+                current_item += char
+                escape_next = False
+            elif char == '\\':
+                escape_next = True
+            elif char in ['"', "'"] and not in_quotes:
+                in_quotes = True
+                quote_char = char
+                current_item += char
+            elif char == quote_char and in_quotes:
+                in_quotes = False
+                current_item += char
+                items.append(current_item.strip())
+                current_item = ""
+            elif char == ',' and not in_quotes:
+                if current_item.strip():
+                    # Unquoted item - quote it
+                    unquoted_item = current_item.strip()
+                    if unquoted_item and not (unquoted_item.startswith('"') or unquoted_item.startswith("'")):
+                        items.append(f'"{unquoted_item}"')
+                    elif unquoted_item:
+                        items.append(unquoted_item)
+                current_item = ""
+            else:
+                current_item += char
+        
+        # Handle last item
+        if current_item.strip():
+            unquoted_item = current_item.strip()
+            if unquoted_item and not (unquoted_item.startswith('"') or unquoted_item.startswith("'")):
+                items.append(f'"{unquoted_item}"')
+            elif unquoted_item:
+                items.append(unquoted_item)
+        
+        return f"[{', '.join(items)}]"
+
+    if verbose:
+        print("="*150)
+        print(f"Handling Qwen response model_id: {model_id}...")
+        print(f"Raw response (repr): {repr(llm_response)}")
+        print("="*150)
+        print("\n=== TAG DETECTION ===")
+
+    # INST tag detection
+    all_inst_matches = list(re.finditer(r'\[/?INST\]', llm_response))
+    if verbose:
+        print(f"All potential INST matches found: {len(all_inst_matches)}")
+        for i, match in enumerate(all_inst_matches):
+            print(f" Match {i}: position {match.start()}-{match.end()}, text: '{match.group()}'")
+    
+    inst_tags = []
+    for match in re.finditer(r'\[\s*/?\s*INST\s*\]', llm_response):
+        inst_tags.append((match.group().strip(), match.start(), match.end()))
+    if verbose:
+        print(f"\nFound {len(inst_tags)} normalized INST tags:")
+        for tag, start, end in inst_tags:
+            print(f" Tag: '{tag}', position: {start}-{end}")
+
+    # Look for list content
+    list_content = None
+    if verbose:
+        print("\n=== DIRECT LIST SEARCH ===")
+        print("Searching for complete lists in entire response...")
+
+    # Improved list patterns
+    list_patterns = [
+        r"(\[[^\[\]]*['\"][^'\"]*['\"][^\[\]]*\])",  # List with quoted items
+        r"(\[[^\[\]]{10,}?[a-zA-Z][^\[\]]*?\])",    # List with minimum content
+        r"(\[.*?[a-zA-Z].*?\])",                    # Any list with letters
+    ]
+
+    # Strategy 1: Find complete list - prioritize lists after [/INST]
+    for i, pattern in enumerate(list_patterns):
+        if verbose:
+            print(f"\nTrying complete list pattern {i+1}: {pattern}")
+        list_matches = list(re.finditer(pattern, llm_response, re.DOTALL))
+        if list_matches:
+            if verbose:
+                print(f"Found {len(list_matches)} potential lists")
+            
+            # Sort matches by position (later in response is better)
+            list_matches.sort(key=lambda m: m.start())
+            
+            # Try to find the first list after the last [/INST]
+            last_inst_end = 0
+            for tag, start, end in inst_tags:
+                if tag == '[/INST]' or '/INST' in tag:
+                    last_inst_end = max(last_inst_end, end)
+            
+            # Prefer lists that come after the last [/INST]
+            best_match = None
+            for match in list_matches:
+                if match.start() > last_inst_end:
+                    best_match = match
+                    break
+            
+            # If no list after [/INST], take the last list
+            if not best_match and list_matches:
+                best_match = list_matches[-1]
+            
+            if best_match:
+                candidate_list = best_match.group(1)
+                cleaned_candidate = _fix_unquoted_list(candidate_list)
+                if verbose:
+                    print(f"Selected candidate: '{cleaned_candidate}'")
+                
+                # Validate it's a proper list structure
+                if (cleaned_candidate.count('[') == 1 and 
+                    cleaned_candidate.count(']') == 1 and
+                    cleaned_candidate.count('"') % 2 == 0):  # Even number of quotes
+                    list_content = cleaned_candidate
+                    break
+
+    # Strategy 2: Look for content right after last [/INST]
+    if not list_content:
+        if verbose:
+            print("\n=== CONTENT AFTER LAST INST ===")
+        last_closing_inst = None
+        for tag, start, end in reversed(inst_tags):
+            if tag == '[/INST]' or '/INST' in tag:
+                last_closing_inst = end
+                break
+        
+        if last_closing_inst:
+            content_after_last_inst = llm_response[last_closing_inst:].strip()
+            if verbose:
+                print(f"Content after last [/INST]: '{content_after_last_inst}'")
+            
+            # Look for the first list-like structure
+            for pattern in list_patterns:
+                list_match = re.search(pattern, content_after_last_inst, re.DOTALL)
+                if list_match:
+                    list_content = _fix_unquoted_list(list_match.group(1))
+                    if verbose:
+                        print(f"Found list in content after [/INST]: '{list_content}'")
+                    break
+
+    if not list_content:
+        if verbose:
+            print("\nError: No valid list content found.")
+        return None
+
+    # Clean and parse list content
+    if verbose:
+        print("\n=== STRING CLEANING ===")
+        print(f"Original list string: '{list_content}'")
+    
+    # More careful cleaning - don't convert all quotes
+    cleaned_string = list_content
+    # Remove any remaining INST tags
+    cleaned_string = re.sub(r'\[/?INST\]', '', cleaned_string).strip()
+    
+    # Ensure proper bracket structure
+    if not cleaned_string.startswith('['):
+        cleaned_string = '[' + cleaned_string
+    if not cleaned_string.endswith(']'):
+        last_bracket = cleaned_string.rfind(']')
+        if last_bracket != -1:
+            cleaned_string = cleaned_string[:last_bracket+1]
+        else:
+            cleaned_string = cleaned_string + ']'
+    
+    # Fix common quote issues without breaking valid quotes
+    cleaned_string = re.sub(r'[“”]', '"', cleaned_string)  # Smart quotes to standard
+    cleaned_string = re.sub(r'[‘’]', "'", cleaned_string)  # Smart single quotes
+    
+    if verbose:
+        print(f"After cleaning: '{cleaned_string}'")
+
+    try:
+        if verbose:
+            print("\n=== PARSING ATTEMPT ===")
+            print(f"Attempting to parse: '{cleaned_string}'")
+        
+        # Use json.loads as a fallback if ast.literal_eval fails
+        try:
+            keywords_list = ast.literal_eval(cleaned_string)
+        except:
+            # Try json.loads for better quote handling
+            keywords_list = json.loads(cleaned_string)
+        
+        if verbose:
+            print(f"Successfully parsed as: {type(keywords_list)}")
+            print(f"Content: {keywords_list}")
+        
+        if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
+            if verbose:
+                print("Error: Extracted string is not a valid list of strings.")
+            return None
+        
+        # Simple post-processing
+        processed_keywords = []
+        for keyword in keywords_list:
+            # Basic cleaning
+            cleaned = re.sub(r'[\d#]', '', keyword).strip()
+            cleaned = re.sub(r'\s+', ' ', cleaned)
+            if cleaned and len(cleaned) > 1 and cleaned not in processed_keywords:
+                processed_keywords.append(cleaned)
+        
+        if not processed_keywords:
+            if verbose:
+                print("Error: No valid keywords found after processing.")
+            return None
+        
+        if verbose:
+            print(f"\nSuccessfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
+        return processed_keywords
+        
+    except Exception as e:
+        if verbose:
+            print(f"\nError parsing the list: {e}")
+            print(f"Problematic string: '{cleaned_string}'")
+        return None
 
 def get_nousresearch_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False):
 		print(f"Handling NousResearch response model_id: {model_id}...")
