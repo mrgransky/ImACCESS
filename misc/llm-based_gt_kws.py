@@ -513,13 +513,6 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
 				print("="*150)
 				print("\n=== TAG DETECTION ===")
 
-		# Define filtering sets
-		temporal_terms = {
-				'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
-				'september', 'october', 'november', 'december', 'th', 'st', 'nd', 'rd',
-				'weekend', 'today', 'yesterday', 'tomorrow', 'early', 'late', 'evening', 'morning'
-		}
-		abbreviations = {'u.s.', 'wwii', 'wwi', 'raf', 'nato', 'mt.', 'sp', 'sprr', 'nwp', 'fl'}
 		war_related = {'battle', 'war', 'tank', 'aircraft', 'bomber', 'soldier', 'general', 'front', 'trench', 'navy', 'army', 'force', 'logistics', 'transport', 'uniform', 'supply'}
 
 		# INST tag detection
@@ -744,14 +737,8 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
 				for keyword in keywords_list:
 					cleaned = re.sub(r'[\d#]', '', keyword).strip()
 					cleaned = re.sub(r'\s+', ' ', cleaned)
-					cleaned_lower = cleaned.lower()
-					if (
-							cleaned
-							and cleaned not in processed_keywords
-							and not any(s in cleaned_lower for s in STOPWORDS)
-						):
-						if any(w in cleaned_lower for w in war_related) or len(processed_keywords) < MAX_KEYWORDS:
-							processed_keywords.append(cleaned)
+					if cleaned:
+						processed_keywords.append(cleaned)
 
 				if len(processed_keywords) > MAX_KEYWORDS:
 					processed_keywords = processed_keywords[:MAX_KEYWORDS]
