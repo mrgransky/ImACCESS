@@ -40,11 +40,9 @@ inputs = processor(images=image, text=prompt, return_tensors="pt").to("cuda:0")
 
 # autoregressively complete prompt
 output = model.generate(**inputs, max_new_tokens=100)
-
+print("Generated output:")
 print(processor.decode(output[0], skip_special_tokens=True))
-
-
-
+print("="*100)
 
 # Load and preprocess image
 url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/stn/989/default.jpg"
@@ -52,10 +50,15 @@ img = Image.open(requests.get(url, stream=True).raw).convert('RGB')
 print(f"IMG: {type(img)} {img.size} {img.mode}")
 
 # Load the CORRECT processor and model for LLaVA 1.5
-processor = tfs.LlavaProcessor.from_pretrained(model_id, use_fast=True, trust_remote_code=True, cache_dir=cache_directory[USER],)
+processor = tfs.LlavaProcessor.from_pretrained(
+  model_id, 
+  use_fast=True, 
+  trust_remote_code=True, 
+  cache_dir=cache_directory[USER],
+)
 model = tfs.LlavaForConditionalGeneration.from_pretrained(
 		model_id,
-		dtype=torch.float16,
+		torch_dtype=torch.float16,
 		low_cpu_mem_usage=True,
 		cache_dir=cache_directory[USER],
 )
