@@ -16,13 +16,7 @@ processor = tfs.LlavaNextProcessor.from_pretrained(model_id, use_fast=True, trus
 model = tfs.LlavaNextForConditionalGeneration.from_pretrained(model_id, torch_dtype=torch.float16, low_cpu_mem_usage=True, cache_dir=cache_directory[USER],)
 model.to("cuda:0")
 
-# Define a chat history and use `apply_chat_template` to get correctly formatted prompt
-# Each value in "content" has to be a list of dicts with types ("text", "image") 
-instruction = 'Describe the image in three keywords.'
-# Prepare text prompt (LLaVA 1.5 uses a different prompt format)
-prompt = f"USER: <image>\n{instruction} ASSISTANT:"
-print(f"PROMPT: {prompt}")
-
+instruction = 'Act as a meticulous historical archivist specializing in 20th century documentation. Describe the image in three keywords.'
 conversation = [
 	{
 		"role": "user",
@@ -32,11 +26,11 @@ conversation = [
 		],
 	},
 ]
-prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
-inputs = processor(images=img, text=prompt, return_tensors="pt").to("cuda:0")
+txt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+inputs = processor(images=img, text=txt, return_tensors="pt").to("cuda:0")
 
 # autoregressively complete prompt
-output = model.generate(**inputs, max_new_tokens=100)
+output = model.generate(**inputs, max_new_tokens=256)
 print("Generated output:")
 print(processor.decode(output[0], skip_special_tokens=True))
 print("="*100)
@@ -57,6 +51,8 @@ model = tfs.LlavaForConditionalGeneration.from_pretrained(
 )
 model.to('cuda:0')
 
+prompt = f"USER: <image>\n{instruction} ASSISTANT:"
+print(f"PROMPT: {prompt}")
 # Process inputs
 inputs = processor(
 		text=prompt,
