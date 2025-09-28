@@ -8,22 +8,35 @@ import torch
 model_id = "llava-hf/llava-1.5-7b-hf"
 # model_id = "llava-hf/llava-1.5-13b-hf"
 # model_id = "OpenGVLab/InternVL-Chat-V1-2"
-processor = LlavaNextProcessor.from_pretrained(model_id, tokenizer_class='PreTrainedTokenizerFast', use_fast=True)
-model = LlavaNextForConditionalGeneration.from_pretrained(model_id, dtype=torch.bfloat16)
 
-url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/stn/989/default.jpg"
-img = Image.open(requests.get(url, stream=True).raw)
-print(type(img), img.size, img.mode)
-instruction = 'Describe the image in three words.'
-
-prompt = f"User: <image>\n{instruction} Assistant:"
-inputs = processor(prompt, images=img, return_tensors="pt", padding=True).to('cuda:0')
-
+# Load processor and model
+processor = LlavaNextProcessor.from_pretrained(model_id)
+model = LlavaNextForConditionalGeneration.from_pretrained(
+    model_id,
+    torch_dtype=torch.float16,
+    low_cpu_mem_usage=True
+)
 model.to('cuda:0')
+
+# Load and preprocess image
+url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/stn/989/default.jpg"
+img = Image.open(requests.get(url, stream=True).raw).convert('RGB')
+
+# Prepare text prompt
+instruction = 'Describe the image in three words.'
+prompt = f"A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. USER: <image>\n{instruction} ASSISTANT:"
+
+# Process inputs
+inputs = processor(
+    text=prompt,
+    images=img,
+    return_tensors="pt"
+).to('cuda:0')
+
+# Generate output
 output = model.generate(**inputs, max_new_tokens=128)
 
-
-prompt_length = inputs['input_ids'].shape[1]
+# Decode output
 results = processor.decode(output[0], skip_special_tokens=True).strip()
-
+print("Generated output:")
 print(results)
