@@ -17,10 +17,10 @@ print(type(img), img.size, img.mode)
 instruction = 'Describe the image in three words.'
 
 prompt = f"User: <image>\n{instruction} Assistant:"
-inputs = processor(prompt, images=cats_image, return_tensors="pt", padding=True).to('cuda:0')
+inputs = processor(prompt, images=img, return_tensors="pt", padding=True).to('cuda:0')
 
 model.to('cuda:0')
-output = model.generate(**inputs, max_new_tokens=256)
+output = model.generate(**inputs, max_new_tokens=128)
 
 
 prompt_length = inputs['input_ids'].shape[1]
