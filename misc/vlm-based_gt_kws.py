@@ -18,13 +18,13 @@ print(f"IMG: {type(img)} {img.size} {img.mode}")
 processor = LlavaProcessor.from_pretrained(model_id)
 model = LlavaForConditionalGeneration.from_pretrained(
     model_id,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     low_cpu_mem_usage=True
 )
 model.to('cuda:0')
 
 # Prepare text prompt (LLaVA 1.5 uses a different prompt format)
-instruction = 'Describe the image in three words.'
+instruction = 'Describe the image in three keywords.'
 prompt = f"USER: <image>\n{instruction} ASSISTANT:"
 print(f"PROMPT: {prompt}")
 # Process inputs
