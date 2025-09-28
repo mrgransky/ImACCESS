@@ -9,6 +9,11 @@ model_id = "llava-hf/llava-1.5-7b-hf"
 # model_id = "llava-hf/llava-1.5-13b-hf"
 # model_id = "OpenGVLab/InternVL-Chat-V1-2"
 
+# Load and preprocess image
+url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/stn/989/default.jpg"
+img = Image.open(requests.get(url, stream=True).raw).convert('RGB')
+print(f"IMG: {type(img)} {img.size} {img.mode}")
+
 # Load processor and model
 processor = LlavaNextProcessor.from_pretrained(model_id)
 model = LlavaNextForConditionalGeneration.from_pretrained(
@@ -17,10 +22,6 @@ model = LlavaNextForConditionalGeneration.from_pretrained(
     low_cpu_mem_usage=True
 )
 model.to('cuda:0')
-
-# Load and preprocess image
-url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/stn/989/default.jpg"
-img = Image.open(requests.get(url, stream=True).raw).convert('RGB')
 
 # Prepare text prompt
 instruction = 'Describe the image in three words.'
