@@ -12,7 +12,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.cluster import KMeans
 from collections import Counter, defaultdict
 # import faiss
-tfs.logging.set_verbosity_info()
 
 from sentence_transformers import SentenceTransformer, util
 from langdetect import detect, DetectorFactory
@@ -161,6 +160,7 @@ print(f"HF_HUB_CACHE: {os.environ['HF_HUB_CACHE']}")
 print(f"HF_DATASETS_CACHE: {os.environ['HF_DATASETS_CACHE']}")
 
 import transformers as tfs
+tfs.logging.set_verbosity_info()
 
 dtypes = {
 	'doc_id': str, 'id': str, 'label': str, 'title': str,
