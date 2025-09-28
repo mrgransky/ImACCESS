@@ -14,24 +14,24 @@ url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/stn/989/d
 img = Image.open(requests.get(url, stream=True).raw).convert('RGB')
 print(f"IMG: {type(img)} {img.size} {img.mode}")
 
-# Load processor and model
-processor = LlavaNextProcessor.from_pretrained(model_id)
-model = LlavaNextForConditionalGeneration.from_pretrained(
-		model_id,
-		dtype=torch.float16,
-		low_cpu_mem_usage=True
+# Load the CORRECT processor and model for LLaVA 1.5
+processor = LlavaProcessor.from_pretrained(model_id)
+model = LlavaForConditionalGeneration.from_pretrained(
+    model_id,
+    torch_dtype=torch.float16,
+    low_cpu_mem_usage=True
 )
 model.to('cuda:0')
 
-# Prepare text prompt
+# Prepare text prompt (LLaVA 1.5 uses a different prompt format)
 instruction = 'Describe the image in three words.'
-prompt = f"A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. USER: <image>\n{instruction} ASSISTANT:"
+prompt = f"USER: <image>\n{instruction} ASSISTANT:"
 
 # Process inputs
 inputs = processor(
-		text=prompt,
-		images=img,
-		return_tensors="pt"
+    text=prompt,
+    images=img,
+    return_tensors="pt"
 ).to('cuda:0')
 
 # Generate output
