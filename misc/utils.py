@@ -159,6 +159,12 @@ os.environ["HF_HUB_CACHE"] = cache_directory[USER]
 os.environ["HF_DATASETS_CACHE"] = cache_directory[USER]
 # Set environment variable for memory optimization
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+# Verify environment variables
+print(f"HF_HOME: {os.environ['HF_HOME']}")
+print(f"TRANSFORMERS_CACHE: {os.environ['TRANSFORMERS_CACHE']}")
+print(f"HF_HUB_CACHE: {os.environ['HF_HUB_CACHE']}")
+print(f"HF_DATASETS_CACHE: {os.environ['HF_DATASETS_CACHE']}")
+
 
 dtypes = {
 	'doc_id': str, 'id': str, 'label': str, 'title': str,

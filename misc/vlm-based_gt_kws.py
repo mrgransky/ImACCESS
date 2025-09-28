@@ -41,12 +41,6 @@ model_id = "llava-hf/llava-v1.6-mistral-7b-hf"
 # print("Generated output:")
 # print(results)
 
-# Verify environment variables
-print(f"HF_HOME: {os.environ['HF_HOME']}")
-print(f"TRANSFORMERS_CACHE: {os.environ['TRANSFORMERS_CACHE']}")
-print(f"HF_HUB_CACHE: {os.environ['HF_HUB_CACHE']}")
-print(f"HF_DATASETS_CACHE: {os.environ['HF_DATASETS_CACHE']}")
-
 pipe = tfs.pipeline("image-text-to-text", model=model_id)
 messages = [
 	{
