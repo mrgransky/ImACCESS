@@ -912,14 +912,14 @@ def get_llama_response(model_id: str, input_prompt: str, llm_response: str, verb
 				return s
 
 		def _parse_list_literals(s: str):
-				# Find Python-like list literals of strings
-				pattern = r"\[\s*(?:(['\"])(?:(?:(?!\1).)*)\1\s*(?:,\s*(['\"])(?:(?:(?!\2).)*)\2\s*)*)?\]"
-				for m in re.finditer(pattern, s or "", flags=re.DOTALL):
-						yield s[m.start():m.end()]
+			# Find Python-like list literals of strings
+			pattern = r"\[\s*(?:(['\"])(?:(?:(?!\1).)*)\1\s*(?:,\s*(['\"])(?:(?:(?!\2).)*)\2\s*)*)?\]"
+			for m in re.finditer(pattern, s or "", flags=re.DOTALL):
+				yield s[m.start():m.end()]
 
 		def _parse_quoted_strings(s: str):
-				for m in re.findall(r"[\"']([^\"']+)[\"']", s or ""):
-						yield m
+			for m in re.findall(r"[\"']([^\"']+)[\"']", s or ""):
+				yield m
 
 		def _parse_bullets(s: str):
 				items = []
@@ -948,8 +948,8 @@ def get_llama_response(model_id: str, input_prompt: str, llm_response: str, verb
 					continue
 				seen.add(key)
 				out.append(kw)
-				# if len(out) >= MAX_KEYWORDS:
-				# 	break
+				if len(out) >= MAX_KEYWORDS:
+					break
 			return out
 
 		def _extract_description_from_promptish_text(promptish: str) -> str:
@@ -1257,195 +1257,268 @@ def get_labels_inefficient(
 		all_keywords.append(kws)
 	return all_keywords
 
-def chunked_iterable(iterable, size):
-	it = iter(iterable)
-	while True:
-			chunk = list(islice(it, size))
-			if not chunk:
-					break
-			yield chunk
-
 def get_labels_efficient(
-		model_id: str,
-		device: str,
-		test_description: Union[str, List[str]],
-		batch_size: int = 64,
-		do_dedup: bool = True,
-		verbose: bool = False,
+				model_id: str,
+				device: str,
+				test_description: Union[str, List[str]],
+				batch_size: int = 64,
+				do_dedup: bool = True,
+				max_retries: int = 2,
+				verbose: bool = False,
 ) -> List[Optional[List[str]]]:
-	
-	# Normalize to list
-	if isinstance(test_description, str):
-		inputs = [test_description]
-	else:
-		inputs = list(test_description)
-	
-	if len(inputs) == 0:
-		return []
-	
-	tokenizer = tfs.AutoTokenizer.from_pretrained(
-		model_id,
-		use_fast=True,
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
-	)
-	if tokenizer.pad_token is None:
-		tokenizer.pad_token = tokenizer.eos_token
-		tokenizer.pad_token_id = tokenizer.eos_token_id
-
-	tokenizer.padding_side = "left" # critical for decoder-only models
-	
-	config = tfs.AutoConfig.from_pretrained(
-		model_id,
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
-	)
-	if getattr(config, "is_encoder_decoder", False):
-		model = tfs.AutoModelForSeq2SeqLM.from_pretrained(
-			model_id,
-			device_map=device,
-			torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-			trust_remote_code=True,
-			cache_dir=cache_directory[USER],
-		)
-	else:
-		model = tfs.AutoModelForCausalLM.from_pretrained(
-			model_id,
-			device_map=device,
-			torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-			trust_remote_code=True,
-			cache_dir=cache_directory[USER],
-		)
-	model = model.eval()
-
-	# 🔧 NULL-SAFE DEDUPLICATION: Handle None/empty values properly
-	if do_dedup:
-		unique_map: Dict[str, int] = {}
-		unique_inputs = []
-		original_to_unique_idx = []
 		
-		for s in inputs:
-			# Check for None/empty/invalid values
-			if s is None or str(s).strip() in ("", "nan", "None"):
-				key = "__NULL__"  # Special marker for null values
-			else:
-				key = str(s).strip()
-			if key in unique_map:
-				original_to_unique_idx.append(unique_map[key])
-			else:
-				idx = len(unique_inputs)
-				unique_map[key] = idx
-				# Store the actual value (None for nulls, cleaned string for valid)
-				unique_inputs.append(None if key == "__NULL__" else key)
-				original_to_unique_idx.append(idx)
-	else:
-		unique_inputs = []
-		for s in inputs:
-			if s is None or str(s).strip() in ("", "nan", "None"):
-				unique_inputs.append(None)
-			else:
-				unique_inputs.append(str(s).strip())
-		original_to_unique_idx = list(range(len(unique_inputs)))
-	
-	if verbose:
-		valid_count = sum(1 for x in unique_inputs if x is not None)
-		null_count = len(unique_inputs) - valid_count
-		print(f"Input count: {len(inputs)} | Unique prompts: {valid_count} valid, {null_count} null | Batch size: {batch_size}")
-
-	# 🔧 NULL-SAFE PROMPT PREPARATION: Skip None values entirely
-	def make_prompt(desc: str) -> str:
-		return PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=desc.strip())
-
-	unique_prompts = []
-	unique_prompts_nTKs = []
-	for s in unique_inputs:
-		if s is None:
-			unique_prompts.append(None)  # Will be skipped in batching
-			unique_prompts_nTKs.append(None)
+		# Normalize to list
+		if isinstance(test_description, str):
+				inputs = [test_description]
 		else:
-			unique_prompts.append(make_prompt(s))
-			unique_prompts_nTKs.append(get_num_tokens(text=s, model_name=model_id))
-	# if verbose:
-	# 	print(f"{len(unique_prompts)} unique_prompts: {unique_prompts}")
-	# 	print(f"{len(unique_prompts_nTKs)} unique_prompts_nTKs: {unique_prompts_nTKs}")
+				inputs = list(test_description)
 		
-	# Will hold parsed results for unique inputs
-	unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
-	# 🔧 NULL-SAFE BATCHING: Only process non-None prompts
-	for batch_start in tqdm(range(0, len(unique_prompts), batch_size), desc="Processing batches"):
-		batch_prompts = unique_prompts[batch_start:batch_start + batch_size]
-		batch_indices = list(range(batch_start, batch_start + len(batch_prompts)))
-		# Filter out None prompts (null descriptions)
-		# print(f"batch_indices: {batch_indices}\nbatch_prompts: {batch_prompts}")
-		valid_pairs = [(i, p) for i, p in zip(batch_indices, batch_prompts) if p is not None]
-		if not valid_pairs:
-			# All prompts in this batch were None - skip entirely
-			continue
-		valid_indices, valid_prompts = zip(*valid_pairs)
-		# print(f"valid_indices: {valid_indices}\nvalid_prompts: {valid_prompts}")
-		# print(f"<>"*100)
-		try:
-			# Tokenize batch
-			tokenized = tokenizer(
-				list(valid_prompts),
-				return_tensors="pt",
-				padding=True,
-				truncation=True,
-				max_length=4096,
-			)
-			if device != 'cpu':
-				tokenized = {k: v.to(device) for k, v in tokenized.items()}
-			# Generation args
-			gen_kwargs = dict(
-				input_ids=tokenized.get("input_ids"),
-				attention_mask=tokenized["attention_mask"],
-				max_new_tokens=MAX_NEW_TOKENS,
-				do_sample=TEMPERATURE > 0.0,
-				temperature=TEMPERATURE,
-				top_p=TOP_P,
-				pad_token_id=tokenizer.pad_token_id,
-				eos_token_id=tokenizer.eos_token_id,
-			)
-			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-				outputs = model.generate(**gen_kwargs)
-			decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-			print("*"*150)
-			print(f"From {type(outputs)} {outputs.shape} outputs ")
-			print(f"Generated {len(decoded)} decoded {type(decoded)}\n{decoded}\n")
-			print("*"*150)
-			# return
-			# parse each decoded string
-			for i, text_out in enumerate(decoded):
-				idx = valid_indices[i]
+		if len(inputs) == 0:
+				return []
+		
+		if verbose:
+				print(f"🔄 Loading model and tokenizer for {model_id}...")
+		
+		# Load tokenizer and model
+		tokenizer = tfs.AutoTokenizer.from_pretrained(
+				model_id,
+				use_fast=True,
+				trust_remote_code=True,
+				cache_dir=cache_directory[USER],
+		)
+		if tokenizer.pad_token is None:
+				tokenizer.pad_token = tokenizer.eos_token
+				tokenizer.pad_token_id = tokenizer.eos_token_id
+
+		tokenizer.padding_side = "left"  # Critical for decoder-only models
+		
+		config = tfs.AutoConfig.from_pretrained(
+				model_id,
+				trust_remote_code=True,
+				cache_dir=cache_directory[USER],
+		)
+		
+		if getattr(config, "is_encoder_decoder", False):
+				model = tfs.AutoModelForSeq2SeqLM.from_pretrained(
+						model_id,
+						device_map=device,
+						torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+						trust_remote_code=True,
+						cache_dir=cache_directory[USER],
+				)
+		else:
+				model = tfs.AutoModelForCausalLM.from_pretrained(
+						model_id,
+						device_map=device,
+						torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+						trust_remote_code=True,
+						cache_dir=cache_directory[USER],
+				)
+		model = model.eval()
+
+		if verbose:
+				valid_count = sum(1 for x in inputs if x is not None and str(x).strip() not in ("", "nan", "None"))
+				null_count = len(inputs) - valid_count
+				print(f"📊 Input stats: {len(inputs)} total, {valid_count} valid, {null_count} null")
+
+		# 🔧 NULL-SAFE DEDUPLICATION
+		if do_dedup:
+				unique_map: Dict[str, int] = {}
+				unique_inputs = []
+				original_to_unique_idx = []
+				
+				for s in inputs:
+						if s is None or str(s).strip() in ("", "nan", "None"):
+								key = "__NULL__"
+						else:
+								key = str(s).strip()
+						if key in unique_map:
+								original_to_unique_idx.append(unique_map[key])
+						else:
+								idx = len(unique_inputs)
+								unique_map[key] = idx
+								unique_inputs.append(None if key == "__NULL__" else key)
+								original_to_unique_idx.append(idx)
+		else:
+				unique_inputs = []
+				for s in inputs:
+						if s is None or str(s).strip() in ("", "nan", "None"):
+								unique_inputs.append(None)
+						else:
+								unique_inputs.append(str(s).strip())
+				original_to_unique_idx = list(range(len(unique_inputs)))
+		
+		unique_prompts = []
+		for s in unique_inputs:
+			if s is None:
+				unique_prompts.append(None)
+			else:
+				unique_prompts.append(PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=s.strip()))
+
+		# Will hold parsed results for unique inputs
+		unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
+		
+		# 🔄 BATCH PROCESSING WITH RETRY LOGIC
+		valid_indices = [i for i, p in enumerate(unique_prompts) if p is not None]
+		
+		if valid_indices:
+				if verbose:
+						print(f"🔄 Processing {len(valid_indices)} unique prompts in batches of {batch_size}...")
+				
+				# Group valid indices into batches
+				batches = []
+				for i in range(0, len(valid_indices), batch_size):
+						batch_indices = valid_indices[i:i + batch_size]
+						batch_prompts = [unique_prompts[idx] for idx in batch_indices]
+						batches.append((batch_indices, batch_prompts))
+				
+				for batch_num, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing batches")):
+						if verbose:
+								print(f"📦 Batch {batch_num + 1}/{len(batches)} with {len(batch_prompts)} items")
+						
+						success = False
+						last_error = None
+						
+						# 🔄 RETRY LOGIC
+						for attempt in range(max_retries + 1):
+								try:
+										if attempt > 0 and verbose:
+												print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for batch {batch_num + 1}")
+										
+										# Tokenize batch
+										tokenized = tokenizer(
+												batch_prompts,
+												return_tensors="pt",
+												padding=True,
+												truncation=True,
+												max_length=4096,
+										)
+										if device != 'cpu':
+												tokenized = {k: v.to(device) for k, v in tokenized.items()}
+										
+										# Generation args
+										gen_kwargs = dict(
+												input_ids=tokenized.get("input_ids"),
+												attention_mask=tokenized["attention_mask"],
+												max_new_tokens=MAX_NEW_TOKENS,
+												do_sample=TEMPERATURE > 0.0,
+												temperature=TEMPERATURE,
+												top_p=TOP_P,
+												pad_token_id=tokenizer.pad_token_id,
+												eos_token_id=tokenizer.eos_token_id,
+										)
+										
+										with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+												outputs = model.generate(**gen_kwargs)
+										
+										decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+										
+										if verbose:
+												print(f"✅ Batch {batch_num + 1} generation successful")
+										
+										# Parse each response
+										for i, text_out in enumerate(decoded):
+												idx = batch_indices[i]
+												try:
+														parsed = get_llm_response(
+																model_id=model_id,
+																input_prompt=batch_prompts[i],
+																raw_llm_response=text_out,
+																verbose=verbose,  # 🔧 Propagate verbose flag
+														)
+														unique_results[idx] = parsed
+												except Exception as e:
+														if verbose:
+																print(f"⚠️ Parsing error for batch index {idx}: {e}")
+														unique_results[idx] = None
+										
+										success = True
+										break  # Break retry loop on success
+										
+								except Exception as e:
+										last_error = e
+										if verbose:
+												print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed: {e}")
+										
+										if attempt < max_retries:
+												# Exponential backoff
+												sleep_time = EXP_BACKOFF ** attempt
+												if verbose:
+														print(f"⏳ Waiting {sleep_time}s before retry...")
+												time.sleep(sleep_time)
+												torch.cuda.empty_cache() if torch.cuda.is_available() else None
+										else:
+												# Final attempt failed
+												if verbose:
+														print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
+												# Mark all items in this batch as failed
+												for idx in batch_indices:
+														unique_results[idx] = None
+						
+						# Clean up
+						if 'tokenized' in locals():
+								del tokenized
+						if 'outputs' in locals():
+								del outputs
+						if 'decoded' in locals():
+								del decoded
+						torch.cuda.empty_cache() if torch.cuda.is_available() else None
+
+		# 🔄 HYBRID FALLBACK: Retry failed items individually
+		failed_indices = [i for i, result in enumerate(unique_results) 
+										 if result is None and unique_inputs[i] is not None]
+		
+		if failed_indices and verbose:
+				print(f"🔄 Retrying {len(failed_indices)} failed items individually...")
+		
+		for idx in failed_indices:
+				desc = unique_inputs[idx]
+				if verbose:
+						print(f"🔄 Retrying individual item {idx}: {desc[:100]}...")
+				
 				try:
-					parsed = get_llm_response(
-						model_id=model_id,
-						input_prompt=valid_prompts[i],
-						raw_llm_response=text_out,
-					)
-					unique_results[idx] = parsed
+						# Use the same model/tokenizer for individual processing
+						individual_result = query_local_llm(
+								model=model,
+								tokenizer=tokenizer,
+								text=desc,
+								device=device,
+								model_id=model_id,
+								verbose=verbose,
+						)
+						unique_results[idx] = individual_result
+						
+						if verbose and individual_result:
+								print(f"✅ Individual retry successful: {individual_result}")
+						elif verbose:
+								print(f"❌ Individual retry failed for item {idx}")
+								
 				except Exception as e:
-					if verbose:
-						print(f"Parsing error for batch index {idx}: {e}")
-					unique_results[idx] = None
-			del tokenized, outputs, decoded
-		except Exception as e:
-			if verbose:
-				print(f"Batch generation failed for indices {valid_indices}: {e}")
-			for idx in valid_indices:
-				unique_results[idx] = None
-			torch.cuda.empty_cache()
-			continue
-	# Map unique_results back to original order
-	results = [None] * len(inputs)
-	for orig_i, uniq_idx in enumerate(original_to_unique_idx):
-			results[orig_i] = unique_results[uniq_idx]
-	if verbose:
-			n_ok = sum(1 for r in results if r)
-			n_null = sum(1 for i, inp in enumerate(inputs) if inp is None or str(inp).strip() in ("", "nan", "None"))
-			n_failed = len(results) - n_ok - n_null
-			print(f"Completed batched label extraction: {n_ok}/{len(results)} successful, {n_null} null inputs skipped, {n_failed} failed")
-	return results
+						if verbose:
+								print(f"💥 Individual retry error for item {idx}: {e}")
+						unique_results[idx] = None
+
+		# Map unique_results back to original order
+		results = []
+		for orig_i, uniq_idx in enumerate(original_to_unique_idx):
+				results.append(unique_results[uniq_idx])
+		
+		# Final statistics
+		if verbose:
+				n_ok = sum(1 for r in results if r is not None)
+				n_null = sum(1 for i, inp in enumerate(inputs) 
+										if inp is None or str(inp).strip() in ("", "nan", "None"))
+				n_failed = len(results) - n_ok - n_null
+				success_rate = (n_ok / (len(results) - n_null)) * 100 if (len(results) - n_null) > 0 else 0
+				
+				print(f"📊 Final results: {n_ok}/{len(results)-n_null} successful ({success_rate:.1f}%), "
+							f"{n_null} null inputs, {n_failed} failed")
+		
+		# Clean up model and tokenizer
+		del model, tokenizer
+		torch.cuda.empty_cache() if torch.cuda.is_available() else None
+		
+		return results
 
 def main():
 	parser = argparse.ArgumentParser(description="Textual-label annotation for Historical Archives Dataset using instruction-tuned LLMs")
@@ -1479,7 +1552,7 @@ def main():
 	else:
 		raise ValueError("Either --csv_file or --description must be provided")
 
-	keywords = get_labels_inefficient(
+	keywords = get_labels_efficient(
 		model_id=args.model_id, 
 		device=args.device, 
 		test_description=descriptions,
