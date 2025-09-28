@@ -490,21 +490,27 @@ def get_qwen_response_(model_id: str, input_prompt: str, llm_response: str, verb
 				print(f"\nError parsing the list: {e}")
 			return None
 
+import re
+import ast
+import json
+from typing import Optional, List
+import nltk
+from nltk.corpus import stopwords
+
 def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False) -> Optional[List[str]]:
+    """
+    Extracts exactly 3 keywords from Qwen model responses.
+    Ensures keywords are concrete, factual, non-numeric, non-temporal, abbreviation-free, and war-related.
+    """
     def _fix_unquoted_list(s: str) -> str:
-        # Remove INST tags first
+        """Converts a comma-separated string to a properly formatted Python list string."""
         s = re.sub(r'\[/?INST\]', '', s).strip()
-        
-        # If it's already a proper list, return as-is
         if s.startswith('[') and s.endswith(']'):
             return s
-        
-        # If it's a comma-separated string without brackets, convert to list
         if ',' in s and any(c.isalpha() for c in s):
             items = [item.strip() for item in s.split(',') if item.strip()]
             quoted_items = [f'"{item}"' for item in items if item]
             return f"[{', '.join(quoted_items)}]"
-        
         return s
 
     if verbose:
@@ -513,6 +519,24 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
         print(f"Raw response (repr): {repr(llm_response)}")
         print("="*150)
         print("\n=== TAG DETECTION ===")
+
+    # Ensure NLTK stopwords are downloaded
+    try:
+        nltk.download('stopwords', quiet=False)
+        stopwords_set = set(stopwords.words('english'))
+    except LookupError as e:
+        if verbose:
+            print(f"Error downloading stopwords: {e}")
+        return None
+
+    # Define filtering sets
+    temporal_terms = {
+        'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august',
+        'september', 'october', 'november', 'december', 'th', 'st', 'nd', 'rd',
+        'weekend', 'today', 'yesterday', 'tomorrow', 'early', 'late', 'evening', 'morning'
+    }
+    abbreviations = {'u.s.', 'wwii', 'wwi', 'raf', 'nato', 'mt.', 'sp', 'sprr', 'nwp', 'fl'}
+    war_related = {'battle', 'war', 'tank', 'aircraft', 'bomber', 'soldier', 'general', 'front', 'trench', 'navy', 'army', 'force', 'logistics', 'transport', 'uniform', 'supply'}
 
     # INST tag detection
     all_inst_matches = list(re.finditer(r'\[/?INST\]', llm_response))
@@ -535,20 +559,18 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
         print("\n=== DIRECT LIST SEARCH ===")
         print("Searching for complete lists in entire response...")
 
-    # Expanded list patterns including comma-separated strings
+    # List patterns
     list_patterns = [
         r"(\[[^\[\]]*['\"][^'\"]*['\"][^\[\]]*\])",  # List with quoted items
         r"(\[[^\[\]]{10,}?[a-zA-Z][^\[\]]*?\])",    # List with minimum content
         r"(\[.*?[a-zA-Z].*?\])",                    # Any list with letters
     ]
-    
-    # Patterns for comma-separated strings without brackets
     comma_patterns = [
-        r"((?:\b\w+\s*,?\s*){2,5}\b\w+)",  # 2-5 comma-separated words
-        r"((?:[^,\[\]]+\s*,?\s*){2,5}[^,\[\]]+)",  # 2-5 comma-separated phrases
+        r"((?:\b\w+\s*,?\s*){2,5}\b\w+)",           # 2-5 comma-separated words
+        r"((?:[^,\[\]]+\s*,?\s*){2,5}[^,\[\]]+)",   # 2-5 comma-separated phrases
     ]
 
-    # Strategy 1: Find complete list - prioritize lists after [/INST]
+    # Strategy 1: Find complete list
     for i, pattern in enumerate(list_patterns):
         if verbose:
             print(f"\nTrying list pattern {i+1}: {pattern}")
@@ -556,80 +578,60 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
         if list_matches:
             if verbose:
                 print(f"Found {len(list_matches)} potential lists")
-            
-            # Sort matches by position (later in response is better)
             list_matches.sort(key=lambda m: m.start())
-            
-            # Try to find the first list after the last [/INST]
             last_inst_end = 0
             for tag, start, end in inst_tags:
                 if tag == '[/INST]' or '/INST' in tag:
                     last_inst_end = max(last_inst_end, end)
-            
-            # Prefer lists that come after the last [/INST]
             best_match = None
             for match in list_matches:
                 if match.start() > last_inst_end:
                     best_match = match
                     break
-            
-            # If no list after [/INST], take the last list
             if not best_match and list_matches:
                 best_match = list_matches[-1]
-            
             if best_match:
                 candidate_list = best_match.group(1)
                 cleaned_candidate = _fix_unquoted_list(candidate_list)
                 if verbose:
                     print(f"Selected candidate: '{cleaned_candidate}'")
-                
-                # Validate it's a proper list structure
-                if (cleaned_candidate.startswith('[') and 
+                if (cleaned_candidate.startswith('[') and
                     cleaned_candidate.endswith(']') and
                     len(cleaned_candidate) > 2):
                     list_content = cleaned_candidate
                     break
 
-    # Strategy 2: Look for comma-separated strings without brackets
+    # Strategy 2: Comma-separated strings
     if not list_content:
         if verbose:
             print("\n=== COMMA-SEPARATED STRING SEARCH ===")
-        
-        # Find the content right after the first [/INST]
         first_inst_content = None
         for i, (tag, start, end) in enumerate(inst_tags):
             if tag == '[/INST]' or '/INST' in tag:
-                # Get content between this [/INST] and next tag or end
                 next_start = len(llm_response)
                 if i + 1 < len(inst_tags):
                     next_start = inst_tags[i + 1][1]
-                
                 content_after_inst = llm_response[end:next_start].strip()
                 if content_after_inst and len(content_after_inst) > 10:
                     first_inst_content = content_after_inst
                     if verbose:
                         print(f"Content after INST tag {i}: '{first_inst_content[:100]}...'")
                     break
-        
         if first_inst_content:
-            # Look for comma-separated strings in this content
             for i, pattern in enumerate(comma_patterns):
                 if verbose:
                     print(f"Trying comma pattern {i+1}: {pattern}")
-                
                 comma_match = re.search(pattern, first_inst_content)
                 if comma_match:
                     comma_string = comma_match.group(1).strip()
                     if verbose:
                         print(f"Found comma-separated string: '{comma_string}'")
-                    
-                    # Convert to list format
                     list_content = _fix_unquoted_list(comma_string)
                     if verbose:
                         print(f"Converted to list: '{list_content}'")
                     break
 
-    # Strategy 3: Look for content right after last [/INST]
+    # Strategy 3: Content after last [/INST]
     if not list_content:
         if verbose:
             print("\n=== CONTENT AFTER LAST INST ===")
@@ -638,13 +640,10 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
             if tag == '[/INST]' or '/INST' in tag:
                 last_closing_inst = end
                 break
-        
         if last_closing_inst:
             content_after_last_inst = llm_response[last_closing_inst:].strip()
             if verbose:
                 print(f"Content after last [/INST]: '{content_after_last_inst[:200]}...'")
-            
-            # Try both list patterns and comma patterns
             for pattern in list_patterns + comma_patterns:
                 list_match = re.search(pattern, content_after_last_inst, re.DOTALL)
                 if list_match:
@@ -654,36 +653,25 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
                         print(f"Found match: '{list_content}'")
                     break
 
-    # Strategy 4: Extract keywords from the analysis text
+    # Strategy 4: Extract keywords from analysis text
     if not list_content:
         if verbose:
             print("\n=== KEYWORD EXTRACTION FROM ANALYSIS ===")
-        
-        # Look for the analysis section and extract mentioned keywords
         analysis_keywords = []
-        
-        # Common patterns in analysis text
         keyword_indicators = [
-            r'"([^"]+)"\s*→\s*"([^"]+)"',  # "term" → "explanation"
-            r'-\s*"([^"]+)"',  # - "keyword"
-            r'→\s*"([^"]+)"',  # → "keyword"
+            r'"([^"]+)"\s*→\s*"([^"]+)"',
+            r'-\s*"([^"]+)"',
+            r'→\s*"([^"]+)"',
         ]
-        
         for pattern in keyword_indicators:
             matches = re.findall(pattern, llm_response)
             for match in matches:
-                if isinstance(match, tuple):
-                    keyword = match[1] if len(match) > 1 else match[0]
-                else:
-                    keyword = match
+                keyword = match[1] if isinstance(match, tuple) and len(match) > 1 else match
                 if keyword and len(keyword) > 2:
                     analysis_keywords.append(keyword)
-        
         if analysis_keywords:
-            # Remove duplicates and limit to 5
             unique_keywords = list(dict.fromkeys(analysis_keywords))[:5]
-            # FIXED LINE: Use chr(34) instead of backslash
-            list_content = f"[{', '.join([f'{chr(34)}{kw}{chr(34)}' for kw in unique_keywords])}]"
+            list_content = f"[{', '.join([f'\"{kw}\"' for kw in unique_keywords])}]"
             if verbose:
                 print(f"Extracted keywords from analysis: {list_content}")
 
@@ -697,12 +685,8 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
         print("\n=== STRING CLEANING ===")
         print(f"Original list string: '{list_content}'")
     
-    # More careful cleaning
     cleaned_string = list_content
-    # Remove any remaining INST tags
     cleaned_string = re.sub(r'\[/?INST\]', '', cleaned_string).strip()
-    
-    # Ensure proper bracket structure
     if not cleaned_string.startswith('['):
         cleaned_string = '[' + cleaned_string
     if not cleaned_string.endswith(']'):
@@ -711,11 +695,8 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
             cleaned_string = cleaned_string[:last_bracket+1]
         else:
             cleaned_string = cleaned_string + ']'
-    
-    # Fix common quote issues
-    cleaned_string = re.sub(r'[""]', '"', cleaned_string)
-    cleaned_string = re.sub(r'['']', "'", cleaned_string)
-    
+    cleaned_string = re.sub(r'[“”]', '"', cleaned_string)
+    cleaned_string = re.sub(r'[‘’]', "'", cleaned_string)
     if verbose:
         print(f"After cleaning: '{cleaned_string}'")
 
@@ -723,27 +704,21 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
         if verbose:
             print("\n=== PARSING ATTEMPT ===")
             print(f"Attempting to parse: '{cleaned_string}'")
-        
-        # Use json.loads as a fallback if ast.literal_eval fails
         try:
             keywords_list = ast.literal_eval(cleaned_string)
         except:
             try:
                 keywords_list = json.loads(cleaned_string)
             except:
-                # Final fallback: manual parsing
                 if verbose:
                     print("Both ast.literal_eval and json.loads failed, trying manual parsing")
-                # Extract content between brackets and split by commas
                 content_match = re.search(r'\[(.*)\]', cleaned_string, re.DOTALL)
                 if content_match:
                     content = content_match.group(1)
-                    # Split by commas, handling quotes
                     items = []
                     current = ""
                     in_quotes = False
                     quote_char = None
-                    
                     for char in content:
                         if char in ['"', "'"] and not in_quotes:
                             in_quotes = True
@@ -760,49 +735,50 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
                             current = ""
                         else:
                             current += char
-                    
                     if current.strip():
                         items.append(current.strip())
-                    
-                    # Clean up items
                     cleaned_items = []
                     for item in items:
                         item = item.strip()
-                        # Remove surrounding quotes if present
                         if (item.startswith('"') and item.endswith('"')) or (item.startswith("'") and item.endswith("'")):
                             item = item[1:-1]
                         if item:
                             cleaned_items.append(item)
-                    
                     keywords_list = cleaned_items
-    
+
         if verbose:
             print(f"Successfully parsed as: {type(keywords_list)}")
             print(f"Content: {keywords_list}")
-        
+
         if not (isinstance(keywords_list, list) and all(isinstance(item, str) for item in keywords_list)):
             if verbose:
                 print("Error: Extracted string is not a valid list of strings.")
             return None
-        
-        # Simple post-processing
+
+        # Post-process keywords
         processed_keywords = []
         for keyword in keywords_list:
-            # Basic cleaning
             cleaned = re.sub(r'[\d#]', '', keyword).strip()
             cleaned = re.sub(r'\s+', ' ', cleaned)
-            if cleaned and len(cleaned) > 1 and cleaned not in processed_keywords:
-                processed_keywords.append(cleaned)
-        
-        if not processed_keywords:
+            cleaned_lower = cleaned.lower()
+            if (cleaned and cleaned not in processed_keywords and
+                not any(t in cleaned_lower for t in temporal_terms) and
+                not any(s in cleaned_lower for s in stopwords_set) and
+                cleaned_lower not in abbreviations):
+                if any(w in cleaned_lower for w in war_related) or len(processed_keywords) < 3:
+                    processed_keywords.append(cleaned)
+
+        if len(processed_keywords) > 3:
+            processed_keywords = processed_keywords[:3]
+        elif len(processed_keywords) < 3:
             if verbose:
-                print("Error: No valid keywords found after processing.")
+                print("Error: Fewer than 3 valid keywords after processing.")
             return None
-        
+
         if verbose:
             print(f"\nSuccessfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
         return processed_keywords
-        
+
     except Exception as e:
         if verbose:
             print(f"\nError parsing the list: {e}")
