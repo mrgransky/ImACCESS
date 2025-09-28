@@ -12,11 +12,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.cluster import KMeans
 from collections import Counter, defaultdict
 # import faiss
-# from transformers import pipeline
-# from transformers import AutoTokenizer, AutoModelForTokenClassification
-# from transformers import CLIPProcessor, CLIPModel, AlignProcessor, AlignModel
-# from transformers import AutoModel, AutoProcessor, AutoModelForCausalLM
-import transformers as tfs
 tfs.logging.set_verbosity_info()
 
 from sentence_transformers import SentenceTransformer, util
@@ -165,6 +160,7 @@ print(f"TRANSFORMERS_CACHE: {os.environ['TRANSFORMERS_CACHE']}")
 print(f"HF_HUB_CACHE: {os.environ['HF_HUB_CACHE']}")
 print(f"HF_DATASETS_CACHE: {os.environ['HF_DATASETS_CACHE']}")
 
+import transformers as tfs
 
 dtypes = {
 	'doc_id': str, 'id': str, 'label': str, 'title': str,
