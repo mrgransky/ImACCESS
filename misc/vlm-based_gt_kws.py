@@ -1,5 +1,3 @@
-
-
 from utils import *
 
 # LLAVA 1.5x collection:
@@ -49,19 +47,21 @@ def process_image(model_id: str, img_path: str, device: str):
 	print(f"IMG: {type(img)} {img.size} {img.mode}")
 
 	processor, model = load_(model_id, device)
-	txt = get_prompt(model_id, processor)
-	# print("#"*100)
-	# print(f"Prompt:\n{txt}")
-	# print("#"*100)
+	txt = get_prompt(
+		model_id=model_id, 
+		processor=processor, 
+		img_path=img_path
+	)
 
 	inputs = processor(
 		images=img,
 		text=txt,
+		padding=True,
 		return_tensors="pt"
 	).to(device)
 
 	# autoregressively complete prompt
-	output = model.generate(**inputs, max_new_tokens=256)
+	output = model.generate(**inputs, max_new_tokens=128)
 	print("="*120)
 	print("Generated output:")
 	print(processor.decode(output[0], skip_special_tokens=True))
@@ -70,8 +70,7 @@ def process_image(model_id: str, img_path: str, device: str):
 def load_(model_id: str, device: str):
 	print(f"[INFO] Loading model: {model_id} on {device}")
 	config = tfs.AutoConfig.from_pretrained(model_id)
-	print(f"[INFO] Model type: {config.model_type}")
-	print(f"[INFO] Architectures: {config.architectures}")
+	print(f"[INFO] Model type: {config.model_type} Architectures: {config.architectures}")
 	if config.architectures:
 		cls_name = config.architectures[0]
 		if hasattr(tfs, cls_name):
@@ -97,20 +96,38 @@ def load_(model_id: str, device: str):
 	print(f"[INFO] Loaded {model.__class__.__name__} on {device}")
 	return processor, model
 
-def get_prompt(model_id: str, processor: tfs.AutoProcessor):
+def get_prompt(model_id: str, processor: tfs.AutoProcessor, img_path: str):
 	if "-v1.6-" or "-next-" in model_id:
 		conversation = [
 			{
 				"role": "user",
 				"content": [
 					{"type": "text", "text": INSTRUCTION_TEMPLATE},
-					{"type": "image"},
+					{"type": "image", "image": img_path},
 				],
 			},
 		]
-		txt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+		txt = processor.apply_chat_template(
+			conversation,
+			add_generation_prompt=True
+		)
 	elif "-1.5-" or "bakLlava" in model_id:
 		txt = f"USER: <image>\n{INSTRUCTION_TEMPLATE}\nASSISTANT:"
+	elif "Qwen" in model_id:
+		messages = [
+			{
+				"role": "user",
+				"content": [
+					{"type": "image", "image": img_path},
+					{"type": "text", "text": INSTRUCTION_TEMPLATE},
+				],
+			},
+		]	
+		txt = processor.apply_chat_template(
+			messages, 
+			tokenize=False, 
+			add_generation_prompt=True,
+		)
 	else:
 		raise ValueError(f"Unknown model ID: {model_id}")
 	return txt
