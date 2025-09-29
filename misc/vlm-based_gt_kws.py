@@ -60,9 +60,10 @@ def process_image(model_id: str, img_path: str, device: str):
 
 	# autoregressively complete prompt
 	output = model.generate(**inputs, max_new_tokens=256)
+	print("="*120)
 	print("Generated output:")
 	print(processor.decode(output[0], skip_special_tokens=True))
-	print("="*100)
+	print("="*120)
 
 def load_(model_id: str, device: str):
 	print(f"[INFO] Loading model: {model_id} on {device}")
