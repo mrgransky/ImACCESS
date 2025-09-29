@@ -53,6 +53,7 @@ def process_image(model_id: str, img_path: str, device: str):
 	results = processor.decode(output[0], skip_special_tokens=True).strip()
 	print("Generated output:")
 	print(results)
+	print("="*100)
 
 
 def main():
