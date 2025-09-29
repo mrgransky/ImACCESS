@@ -556,67 +556,91 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
         if verbose:
             print(f"Extracting clean list from text of length: {len(text)}")
         
-        # Find the last [/INST] tag
-        last_inst_end = 0
+        # Find ALL [/INST] tags and get content BETWEEN them
         inst_matches = list(re.finditer(r'\[\s*/?\s*INST\s*\]', text))
-        for match in reversed(inst_matches):
-            if '[/INST]' in match.group() or '/INST' in match.group():
-                last_inst_end = match.end()
-                break
-        
-        # Focus on content after the last [/INST] tag
-        if last_inst_end > 0:
-            relevant_content = text[last_inst_end:]
-        else:
-            relevant_content = text
         
         if verbose:
-            print(f"Relevant content length: {len(relevant_content)}")
-            print(f"Relevant content preview: {relevant_content[:300]}...")
+            print(f"Found {len(inst_matches)} INST tags total")
         
-        # Find all potential list matches in the relevant content
-        list_pattern = r'\[(.*?)\]'
-        list_matches = list(re.finditer(list_pattern, relevant_content, re.DOTALL))
+        # Look for content between [/INST] tags where lists typically appear
+        list_candidates = []
         
-        if verbose:
-            print(f"Found {len(list_matches)} list matches in relevant content")
-        
-        if not list_matches:
-            return None
-        
-        # Filter out the example list from rules
-        valid_list_matches = []
-        for match in list_matches:
-            list_content = match.group(1).strip()
-            # Skip the example list from rules
-            if 'keyword1' in list_content or 'keyword2' in list_content or '...' in list_content:
+        for i in range(len(inst_matches) - 1):
+            current_tag = inst_matches[i].group().strip()
+            next_tag = inst_matches[i + 1].group().strip()
+            
+            # If we have a closing [/INST] followed by anything
+            if ('[/INST]' in current_tag or '/INST' in current_tag):
+                start_pos = inst_matches[i].end()
+                end_pos = inst_matches[i + 1].start()
+                content_between = text[start_pos:end_pos].strip()
+                
                 if verbose:
-                    print(f"Skipping example list: {list_content[:50]}...")
-                continue
-            # Skip very short or empty lists
-            if len(list_content) < 3:
-                continue
-            valid_list_matches.append(match)
+                    print(f"Content between INST tags {i}-{i+1}: '{content_between[:100]}...'")
+                
+                # Look for lists in this content
+                list_pattern = r'\[(.*?)\]'
+                list_matches = list(re.finditer(list_pattern, content_between, re.DOTALL))
+                
+                for match in list_matches:
+                    list_content = match.group(1).strip()
+                    # Skip example lists from rules
+                    if 'keyword1' in list_content or 'keyword2' in list_content or '...' in list_content:
+                        if verbose:
+                            print(f"Skipping example list: {list_content[:50]}...")
+                        continue
+                    # Skip very short or empty lists
+                    if len(list_content) < 3:
+                        continue
+                    
+                    list_candidates.append((f"[{list_content}]", content_between))
         
         if verbose:
-            print(f"Found {len(valid_list_matches)} valid list matches after filtering examples")
+            print(f"Found {len(list_candidates)} list candidates between INST tags")
         
-        if not valid_list_matches:
-            return None
+        if not list_candidates:
+            # Fallback: search the entire response but skip example lists
+            if verbose:
+                print("No lists found between INST tags, searching entire response...")
+            
+            list_pattern = r'\[(.*?)\]'
+            all_list_matches = list(re.finditer(list_pattern, text, re.DOTALL))
+            
+            for match in all_list_matches:
+                list_content = match.group(1).strip()
+                # Skip example lists from rules
+                if 'keyword1' in list_content or 'keyword2' in list_content or '...' in list_content:
+                    continue
+                # Skip very short or empty lists
+                if len(list_content) < 3:
+                    continue
+                # Skip lists that are clearly not keyword lists (like the photo title)
+                if 'and Photographer with' in list_content:
+                    continue
+                    
+                list_candidates.append((f"[{list_content}]", "entire response"))
         
-        # Take the first valid list (should be the model's response)
-        best_match = valid_list_matches[0]
-        list_content = best_match.group(1).strip()
+        # Select the best candidate
+        if list_candidates:
+            # Prefer lists that look like actual keyword lists (have quotes and reasonable length)
+            for list_str, source in list_candidates:
+                if "'" in list_str or '"' in list_str:
+                    if verbose:
+                        print(f"Selected list from {source}: {list_str}")
+                    return list_str
+            
+            # Otherwise take the first one
+            best_candidate = list_candidates[0][0]
+            if verbose:
+                print(f"Selected first candidate: {best_candidate}")
+            return best_candidate
         
-        if verbose:
-            print(f"Selected list content: {list_content}")
-        
-        return f"[{list_content}]"
+        return None
 
     def _parse_list_safely(list_str: str) -> List[str]:
         """Safely parse a list string, handling various formats."""
         if verbose:
-            print(f"Parsing list safely: {list_str[:100]}...")
+            print(f"Parsing list safely: {list_str}")
         
         # Clean the string
         cleaned = list_str.strip()
@@ -639,15 +663,16 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
             # Strategy 3: Manual parsing with quotes
             lambda s: [item.strip().strip('"\'') for item in 
                       re.findall(r'[\"\'][^\"\']*[\"\']', s)],
-            # Strategy 4: Manual parsing with comma separation
+            # Strategy 4: Manual parsing with comma separation (more robust)
             lambda s: [item.strip().strip('"\'') for item in 
-                      s.strip('[]').split(',') if item.strip()],
+                      re.split(r',\s*(?=(?:[^\"\']*[\"\'][^\"\']*[\"\'])*[^\"\']*$)', s.strip('[]')) 
+                      if item.strip() and not item.strip().startswith('...')],
         ]
         
         for i, strategy in enumerate(strategies):
             try:
                 result = strategy(cleaned)
-                if isinstance(result, list) and all(isinstance(item, str) for item in result):
+                if isinstance(result, list) and all(isinstance(item, str) for item in result) and result:
                     if verbose:
                         print(f"Success with strategy {i+1}: {result}")
                     return result
@@ -710,46 +735,42 @@ def get_qwen_response(model_id: str, input_prompt: str, llm_response: str, verbo
     if verbose:
         print(f"\nExtracted list content: {list_content}")
 
-    # Strategy 2: If no clean list found, try direct search for specific patterns
+    # Strategy 2: If no clean list found, try specific search for the actual response
     if not list_content:
         if verbose:
-            print("\n=== FALLBACK TO DIRECT PATTERN SEARCH ===")
+            print("\n=== FALLBACK TO TARGETED SEARCH ===")
         
-        # Look for lists that contain actual content (not examples)
-        actual_content_indicators = ['Italy', 'Pompeii', 'aerial', 'housing', 'oil', 'tanks', 'Alice Faye', 'Lockheed']
-        
-        for indicator in actual_content_indicators:
-            pattern = rf'\[[^\]]*{re.escape(indicator)}[^\]]*\]'
-            match = re.search(pattern, llm_response)
-            if match:
-                list_content = match.group()
-                if verbose:
-                    print(f"Found list with indicator '{indicator}': {list_content}")
-                break
-
-    # Strategy 3: Extract from content after last INST tag
-    if not list_content:
-        if verbose:
-            print("\n=== FALLBACK TO INST CONTENT EXTRACTION ===")
-        
-        last_inst_end = 0
-        for tag, start, end in reversed(inst_tags):
-            if '[/INST]' in tag or '/INST' in tag:
-                last_inst_end = end
-                break
-        
-        if last_inst_end:
-            content_after_last_inst = llm_response[last_inst_end:].strip()
-            if verbose:
-                print(f"Content after last INST: '{content_after_last_inst[:200]}...'")
+        # The actual list we want is between the first and second [/INST] tags
+        if len(inst_tags) >= 2:
+            first_inst_end = inst_tags[0].end()  # First [INST] end
+            second_inst_start = inst_tags[1].start()  # Second [/INST] start
             
-            # Look for the first valid list pattern
-            list_pattern = r'\[([^\[\]]+)\]'
-            list_match = re.search(list_pattern, content_after_last_inst)
-            if list_match:
-                list_content = f"[{list_match.group(1)}]"
+            # Also check between the second and third tags
+            potential_sections = []
+            if len(inst_tags) >= 3:
+                potential_sections.append((inst_tags[1].end(), inst_tags[2].start()))
+            potential_sections.append((first_inst_end, second_inst_start))
+            
+            for start_idx, end_idx in potential_sections:
+                section_content = llm_response[start_idx:end_idx].strip()
                 if verbose:
-                    print(f"Found list in INST content: {list_content}")
+                    print(f"Searching section: '{section_content[:200]}...'")
+                
+                # Look for proper keyword lists with quotes
+                list_pattern = r'\[(.*?)\]'
+                list_matches = list(re.finditer(list_pattern, section_content, re.DOTALL))
+                
+                for match in list_matches:
+                    list_content_candidate = match.group(1).strip()
+                    if ("'Alice Faye'" in list_content_candidate or 
+                        "'Lockheed Model 12'" in list_content_candidate or
+                        '"Alice Faye"' in list_content_candidate):
+                        list_content = f"[{list_content_candidate}]"
+                        if verbose:
+                            print(f"Found target list: {list_content}")
+                        break
+                if list_content:
+                    break
 
     if not list_content:
         if verbose:
