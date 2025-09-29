@@ -5,7 +5,12 @@ from utils import *
 # model_id = "llava-hf/llava-1.5-7b-hf"
 model_id = "llava-hf/llava-1.5-13b-hf"
 # # model_id = "OpenGVLab/InternVL-Chat-V1-2"
-# Load the CORRECT processor and model for LLaVA 1.5
+
+# Load and preprocess image
+url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/stn/989/default.jpg"
+img = Image.open(requests.get(url, stream=True).raw)#.convert('RGB')
+print(f"IMG: {type(img)} {img.size} {img.mode}")
+
 processor = tfs.LlavaProcessor.from_pretrained(
 	model_id, 
 	use_fast=True, 
@@ -24,9 +29,9 @@ prompt = f"USER: <image>\n{instruction} ASSISTANT:"
 print(f"PROMPT: {prompt}")
 # Process inputs
 inputs = processor(
-		text=prompt,
-		images=img,
-		return_tensors="pt"
+	text=prompt,
+	images=img,
+	return_tensors="pt"
 ).to('cuda:0')
 
 # Generate output
