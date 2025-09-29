@@ -27,8 +27,9 @@ def process_image(model_id: str, img_path: str, device: str):
 	print(f"IMG: {type(img)} {img.size} {img.mode}")
 
 	processor = tfs.LlavaNextProcessor.from_pretrained(
-		model_id, use_fast=True, 
-		trust_remote_code=True, 
+		model_id, 
+		use_fast=True, 
+		trust_remote_code=True,
 		cache_dir=cache_directory[USER],
 	)
 	model = tfs.LlavaNextForConditionalGeneration.from_pretrained(
@@ -50,7 +51,11 @@ def process_image(model_id: str, img_path: str, device: str):
 		},
 	]
 	txt = processor.apply_chat_template(conversation, add_generation_prompt=True)
-	inputs = processor(images=img, text=txt, return_tensors="pt").to(device)
+	inputs = processor(
+		images=img, 
+		text=txt, 
+		return_tensors="pt"
+	).to(device)
 
 	# autoregressively complete prompt
 	output = model.generate(**inputs, max_new_tokens=256)
