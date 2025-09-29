@@ -11,16 +11,19 @@ from utils import *
 # model_id = "llava-hf/llava-v1.6-vicuna-13b-hf"
 # model_id = "llava-hf/llama3-llava-next-8b-hf"
 
+# Qwen 2.5x collection:
+# model_id = "Qwen/Qwen2.5-VL-7B-Instruct"
+
 # does not fit into VRAM:
 # model_id = "llava-hf/llava-v1.6-34b-hf"
 # model_id = "llava-hf/llava-next-72b-hf"
 # model_id = "llava-hf/llava-next-110b-hf"
+# model_id = "Qwen/Qwen2.5-VL-72B-Instruct"
 
 # debugging required:
 # # model_id = "tiiuae/falcon-11B-vlm"
 # # model_id = "utter-project/EuroVLM-1.7B-Preview"
 # # model_id = "OpenGVLab/InternVL-Chat-V1-2"
-# model_id = "Qwen/Qwen2.5-VL-7B-Instruct"
 
 
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")

@@ -17,6 +17,9 @@ from utils import *
 # model_id = "NousResearch/Hermes-2-Pro-Mistral-7B"
 # model_id = "google/flan-t5-xxl"
 
+# does not fit into VRAM:
+# model_id = "Qwen/Qwen3-30B-A3B-Instruct-2507"
+
 # not useful for instruction tuning:
 # model_id = "microsoft/DialoGPT-large"  # Fallback if you can't run Hermes
 # model_id = "gpt2-xl"
@@ -44,7 +47,7 @@ MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
 MAX_KEYWORDS = 5
 
-print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
+print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
 
 PROMPT_TEMPLATE = """<s>[INST]
@@ -1317,36 +1320,35 @@ def get_labels_efficient(
 		model = model.eval()
 
 		if verbose:
-				valid_count = sum(1 for x in inputs if x is not None and str(x).strip() not in ("", "nan", "None"))
-				null_count = len(inputs) - valid_count
-				print(f"📊 Input stats: {len(inputs)} total, {valid_count} valid, {null_count} null")
+			valid_count = sum(1 for x in inputs if x is not None and str(x).strip() not in ("", "nan", "None"))
+			null_count = len(inputs) - valid_count
+			print(f"📊 Input stats: {len(inputs)} total, {valid_count} valid, {null_count} null")
 
 		# 🔧 NULL-SAFE DEDUPLICATION
 		if do_dedup:
-				unique_map: Dict[str, int] = {}
-				unique_inputs = []
-				original_to_unique_idx = []
-				
-				for s in inputs:
-						if s is None or str(s).strip() in ("", "nan", "None"):
-								key = "__NULL__"
-						else:
-								key = str(s).strip()
-						if key in unique_map:
-								original_to_unique_idx.append(unique_map[key])
-						else:
-								idx = len(unique_inputs)
-								unique_map[key] = idx
-								unique_inputs.append(None if key == "__NULL__" else key)
-								original_to_unique_idx.append(idx)
+			unique_map: Dict[str, int] = {}
+			unique_inputs = []
+			original_to_unique_idx = []
+			for s in inputs:
+				if s is None or str(s).strip() in ("", "nan", "None"):
+					key = "__NULL__"
+				else:
+					key = str(s).strip()
+				if key in unique_map:
+					original_to_unique_idx.append(unique_map[key])
+				else:
+					idx = len(unique_inputs)
+					unique_map[key] = idx
+					unique_inputs.append(None if key == "__NULL__" else key)
+					original_to_unique_idx.append(idx)
 		else:
-				unique_inputs = []
-				for s in inputs:
-						if s is None or str(s).strip() in ("", "nan", "None"):
-								unique_inputs.append(None)
-						else:
-								unique_inputs.append(str(s).strip())
-				original_to_unique_idx = list(range(len(unique_inputs)))
+			unique_inputs = []
+			for s in inputs:
+				if s is None or str(s).strip() in ("", "nan", "None"):
+					unique_inputs.append(None)
+				else:
+					unique_inputs.append(str(s).strip())
+			original_to_unique_idx = list(range(len(unique_inputs)))
 		
 		unique_prompts = []
 		for s in unique_inputs:
@@ -1363,18 +1365,18 @@ def get_labels_efficient(
 		
 		if valid_indices:
 				if verbose:
-						print(f"🔄 Processing {len(valid_indices)} unique prompts in batches of {batch_size}...")
+					print(f"🔄 Processing {len(valid_indices)} unique prompts in batches of {batch_size}...")
 				
 				# Group valid indices into batches
 				batches = []
 				for i in range(0, len(valid_indices), batch_size):
-						batch_indices = valid_indices[i:i + batch_size]
-						batch_prompts = [unique_prompts[idx] for idx in batch_indices]
-						batches.append((batch_indices, batch_prompts))
+					batch_indices = valid_indices[i:i + batch_size]
+					batch_prompts = [unique_prompts[idx] for idx in batch_indices]
+					batches.append((batch_indices, batch_prompts))
 				
 				for batch_num, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing batches")):
 						if verbose:
-								print(f"📦 Batch {batch_num + 1}/{len(batches)} with {len(batch_prompts)} items")
+							print(f"📦 Batch {batch_num + 1}/{len(batches)} with {len(batch_prompts)} items")
 						
 						success = False
 						last_error = None
@@ -1409,110 +1411,115 @@ def get_labels_efficient(
 										)
 										
 										with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-												outputs = model.generate(**gen_kwargs)
+											outputs = model.generate(**gen_kwargs)
 										
 										decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 										
 										if verbose:
-												print(f"✅ Batch {batch_num + 1} generation successful")
+											print(f"✅ Batch {batch_num + 1} generation successful")
 										
 										# Parse each response
 										for i, text_out in enumerate(decoded):
-												idx = batch_indices[i]
-												try:
-														parsed = get_llm_response(
-																model_id=model_id,
-																input_prompt=batch_prompts[i],
-																raw_llm_response=text_out,
-																verbose=verbose,  # 🔧 Propagate verbose flag
-														)
-														unique_results[idx] = parsed
-												except Exception as e:
-														if verbose:
-																print(f"⚠️ Parsing error for batch index {idx}: {e}")
-														unique_results[idx] = None
+											idx = batch_indices[i]
+											try:
+												parsed = get_llm_response(
+													model_id=model_id,
+													input_prompt=batch_prompts[i],
+													raw_llm_response=text_out,
+													verbose=verbose,  # 🔧 Propagate verbose flag
+												)
+												unique_results[idx] = parsed
+											except Exception as e:
+												if verbose:
+													print(f"⚠️ Parsing error for batch index {idx}: {e}")
+												unique_results[idx] = None
 										
 										success = True
-										break  # Break retry loop on success
-										
+										break  # Break retry loop on success	
 								except Exception as e:
-										last_error = e
+									last_error = e
+									if verbose:
+										print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed: {e}")
+									
+									if attempt < max_retries:
+										# Exponential backoff
+										sleep_time = EXP_BACKOFF ** attempt
 										if verbose:
-												print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed: {e}")
-										
-										if attempt < max_retries:
-												# Exponential backoff
-												sleep_time = EXP_BACKOFF ** attempt
-												if verbose:
-														print(f"⏳ Waiting {sleep_time}s before retry...")
-												time.sleep(sleep_time)
-												torch.cuda.empty_cache() if torch.cuda.is_available() else None
-										else:
-												# Final attempt failed
-												if verbose:
-														print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
-												# Mark all items in this batch as failed
-												for idx in batch_indices:
-														unique_results[idx] = None
+											print(f"⏳ Waiting {sleep_time}s before retry...")
+										time.sleep(sleep_time)
+										torch.cuda.empty_cache() if torch.cuda.is_available() else None
+									else:
+										# Final attempt failed
+										if verbose:
+											print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
+										# Mark all items in this batch as failed
+										for idx in batch_indices:
+											unique_results[idx] = None
 						
 						# Clean up
 						if 'tokenized' in locals():
-								del tokenized
+							del tokenized
 						if 'outputs' in locals():
-								del outputs
+							del outputs
 						if 'decoded' in locals():
-								del decoded
+							del decoded
 						torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
 		# 🔄 HYBRID FALLBACK: Retry failed items individually
-		failed_indices = [i for i, result in enumerate(unique_results) 
-										 if result is None and unique_inputs[i] is not None]
+		failed_indices = [
+			i 
+			for i, result in enumerate(unique_results) 
+			if result is None and unique_inputs[i] is not None
+		]
 		
 		if failed_indices and verbose:
-				print(f"🔄 Retrying {len(failed_indices)} failed items individually...")
+			print(f"🔄 Retrying {len(failed_indices)} failed items individually...")
 		
 		for idx in failed_indices:
-				desc = unique_inputs[idx]
+			desc = unique_inputs[idx]
+			if verbose:
+				print(f"🔄 Retrying individual item {idx}:\n{desc}...")
+			
+			try:
+				# Use the same model/tokenizer for individual processing
+				individual_result = query_local_llm(
+					model=model,
+					tokenizer=tokenizer,
+					text=desc,
+					device=device,
+					model_id=model_id,
+					verbose=verbose,
+				)
+				unique_results[idx] = individual_result
+				if verbose and individual_result:
+					print(f"✅ Individual retry successful: {individual_result}")
+				elif verbose:
+					print(f"❌ Individual retry failed for item {idx}")		
+			except Exception as e:
 				if verbose:
-						print(f"🔄 Retrying individual item {idx}: {desc[:100]}...")
-				
-				try:
-						# Use the same model/tokenizer for individual processing
-						individual_result = query_local_llm(
-								model=model,
-								tokenizer=tokenizer,
-								text=desc,
-								device=device,
-								model_id=model_id,
-								verbose=verbose,
-						)
-						unique_results[idx] = individual_result
-						
-						if verbose and individual_result:
-								print(f"✅ Individual retry successful: {individual_result}")
-						elif verbose:
-								print(f"❌ Individual retry failed for item {idx}")
-								
-				except Exception as e:
-						if verbose:
-								print(f"💥 Individual retry error for item {idx}: {e}")
-						unique_results[idx] = None
+					print(f"💥 Individual retry error for item {idx}: {e}")
+				unique_results[idx] = None
 
 		# Map unique_results back to original order
 		results = []
 		for orig_i, uniq_idx in enumerate(original_to_unique_idx):
-				results.append(unique_results[uniq_idx])
+			results.append(unique_results[uniq_idx])
 		
 		# Final statistics
 		if verbose:
-				n_ok = sum(1 for r in results if r is not None)
-				n_null = sum(1 for i, inp in enumerate(inputs) 
-										if inp is None or str(inp).strip() in ("", "nan", "None"))
-				n_failed = len(results) - n_ok - n_null
-				success_rate = (n_ok / (len(results) - n_null)) * 100 if (len(results) - n_null) > 0 else 0
-				
-				print(f"📊 Final results: {n_ok}/{len(results)-n_null} successful ({success_rate:.1f}%), "
-							f"{n_null} null inputs, {n_failed} failed")
+			n_ok = sum(1 for r in results if r is not None)
+			n_null = sum(
+				1 
+				for i, inp in enumerate(inputs) 
+				if inp is None or str(inp).strip() in ("", "nan", "None")
+			)
+			n_failed = len(results) - n_ok - n_null
+			success_rate = (n_ok / (len(results) - n_null)) * 100 if (len(results) - n_null) > 0 else 0
+			
+			print(
+				f"📊 Final results: {n_ok}/{len(results)-n_null} successful ({success_rate:.1f}%), "
+				f"{n_null} null inputs, {n_failed} failed"
+			)
 		
 		# Clean up model and tokenizer
 		del model, tokenizer
