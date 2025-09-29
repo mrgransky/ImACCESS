@@ -40,7 +40,7 @@ def process_image(model_id: str, img_path: str, device: str):
 	)
 	model.to(device)
 
-	instruction = 'Act as a meticulous historical archivist specializing in 20th century documentation. Describe the image in three concrete, factual and literal keywords.'
+	instruction = 'Act as a meticulous historical archivist specializing in 20th century documentation. Describe the context of the image in three concrete, factual and literal keywords.'
 	conversation = [
 		{
 			"role": "user",
