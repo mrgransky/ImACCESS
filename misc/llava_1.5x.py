@@ -12,6 +12,10 @@ from utils import *
 print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
 huggingface_hub.login(token=hf_tk)
 
+INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
+Describe what is happening in the image using three factual and literal keywords that capture the main action or event, not the format or style of the photo.
+"""
+
 def process_image(model_id: str, img_path: str, device: str):
 	try:
 		img = Image.open(img_path)
@@ -39,8 +43,7 @@ def process_image(model_id: str, img_path: str, device: str):
 	)
 	model.to(device)
 
-	instruction = 'Act as a meticulous historical archivist specializing in 20th century documentation. Describe the context of the image in three concrete, factual and literal keywords.'
-	prompt = f"USER: <image>\n{instruction} ASSISTANT:"
+	prompt = f"USER: <image>\n{INSTRUCTION_TEMPLATE} ASSISTANT:"
 	# print(f"PROMPT: {prompt}")
 
 	# Process inputs
