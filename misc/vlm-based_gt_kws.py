@@ -103,7 +103,7 @@ def get_prompt(model_id: str, processor: tfs.AutoProcessor):
 			},
 		]
 		txt = processor.apply_chat_template(conversation, add_generation_prompt=True)
-	elif "-1.5-" in model_id:
+	elif "-1.5-" or "bakLlava" in model_id:
 		txt = f"USER: <image>\n{INSTRUCTION_TEMPLATE}\nASSISTANT:"
 	else:
 		raise ValueError(f"Unknown model ID: {model_id}")
