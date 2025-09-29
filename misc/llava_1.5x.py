@@ -25,8 +25,10 @@ model = tfs.LlavaForConditionalGeneration.from_pretrained(
 )
 model.to('cuda:0')
 
+instruction = 'Act as a meticulous historical archivist specializing in 20th century documentation. Describe the image in three keywords.'
 prompt = f"USER: <image>\n{instruction} ASSISTANT:"
 print(f"PROMPT: {prompt}")
+
 # Process inputs
 inputs = processor(
 	text=prompt,
