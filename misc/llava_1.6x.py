@@ -35,20 +35,11 @@ def process_image(model_id: str, img_path: str, device: str):
 	print(f"IMG: {type(img)} {img.size} {img.mode}")
 
 	processor, model = load_(model_id, device)
+	txt = get_prompt(model_id, processor)
 
-	conversation = [
-		{
-			"role": "user",
-			"content": [
-				{"type": "text", "text": INSTRUCTION_TEMPLATE},
-				{"type": "image"},
-			],
-		},
-	]
-	txt = processor.apply_chat_template(conversation, add_generation_prompt=True)
 	inputs = processor(
-		images=img, 
-		text=txt, 
+		images=img,
+		text=txt,
 		return_tensors="pt"
 	).to(device)
 
@@ -88,22 +79,23 @@ def load_(model_id: str, device: str):
 	print(f"[INFO] Loaded {model.__class__.__name__} on {device}")
 	return processor, model
 
-
-# def load_(model_id: str, device: str):
-# 	processor = tfs.LlavaNextProcessor.from_pretrained(
-# 		model_id, 
-# 		use_fast=True, 
-# 		trust_remote_code=True,
-# 		cache_dir=cache_directory[USER],
-# 	)
-# 	model = tfs.LlavaNextForConditionalGeneration.from_pretrained(
-# 		model_id, 
-# 		torch_dtype=torch.float16, 
-# 		low_cpu_mem_usage=True, 
-# 		cache_dir=cache_directory[USER],
-# 	)
-# 	model.to(device)
-# 	return processor, model
+def get_prompt(model_id: str, processor: tfs.AutoProcessor):
+	if "-v1.6-" or "-next-" in model_id:
+		conversation = [
+			{
+				"role": "user",
+				"content": [
+					{"type": "text", "text": INSTRUCTION_TEMPLATE},
+					{"type": "image"},
+				],
+			},
+		]
+		txt = processor.apply_chat_template(conversation, add_generation_prompt=True)
+	elif "-1.5-" in model_id:
+		txt = f"USER: <image>\n{INSTRUCTION_TEMPLATE}\nASSISTANT:"
+	else:
+		raise ValueError(f"Unknown model ID: {model_id}")
+	return txt
 
 def main():
 	parser = argparse.ArgumentParser(description="Generate Caption for Image")

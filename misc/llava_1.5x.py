@@ -33,13 +33,12 @@ def process_image(model_id: str, img_path: str, device: str):
 
 	processor, model = load_(model_id, device)
 
-	prompt = f"USER: <image>\n{INSTRUCTION_TEMPLATE}\nASSISTANT:"
-	# print(f"PROMPT: {prompt}")
+	txt = f"USER: <image>\n{INSTRUCTION_TEMPLATE}\nASSISTANT:"
 
 	# Process inputs
 	inputs = processor(
-		text=prompt,
 		images=img,
+		text=txt,
 		return_tensors="pt"
 	).to(device)
 
