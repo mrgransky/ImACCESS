@@ -61,6 +61,7 @@ def load_(model_id: str, device: str):
 		cls_name = config.architectures[0]
 		if hasattr(tfs, cls_name):
 			model_cls = getattr(tfs, cls_name)
+
 	processor = tfs.AutoProcessor.from_pretrained(
 		model_id, 
 		use_fast=True, 
@@ -80,23 +81,6 @@ def load_(model_id: str, device: str):
 	model.to(device)
 	print(f"[INFO] Loaded {model.__class__.__name__} on {device}")
 	return processor, model
-
-
-# def load_(model_id: str, device: str):
-# 	processor = tfs.LlavaProcessor.from_pretrained(
-# 		model_id, 
-# 		use_fast=True, 
-# 		trust_remote_code=True, 
-# 		cache_dir=cache_directory[USER],
-# 	)
-# 	model = tfs.LlavaForConditionalGeneration.from_pretrained(
-# 		model_id,
-# 		torch_dtype=torch.float16,
-# 		low_cpu_mem_usage=True,
-# 		cache_dir=cache_directory[USER],
-# 	)
-# 	model.to(device)
-# 	return processor, model
 
 def main():
 	parser = argparse.ArgumentParser(description="Generate Caption for Image")
