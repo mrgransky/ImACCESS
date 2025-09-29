@@ -13,7 +13,7 @@ def process_image(model_id: str, img_path: str, device: str):
 		try:
 			response = requests.get(img_path)
 			response.raise_for_status()
-			img = Image.open(BytesIO(response.content))
+			img = Image.open(io.BytesIO(response.content))
 		except requests.exceptions.RequestException as e:
 			print(f"ERROR: failed to load image from {img_path} => {e}")
 			return
