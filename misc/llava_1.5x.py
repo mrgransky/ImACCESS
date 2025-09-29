@@ -6,6 +6,9 @@ from utils import *
 # model_id = "llava-hf/llava-1.5-13b-hf"
 # # model_id = "OpenGVLab/InternVL-Chat-V1-2"
 
+print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
+huggingface_hub.login(token=hf_tk)
+
 def process_image(model_id: str, img_path: str, device: str):
 	try:
 		img = Image.open(img_path)
