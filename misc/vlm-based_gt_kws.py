@@ -48,9 +48,9 @@ def process_image(model_id: str, img_path: str, device: str):
 
 	processor, model = load_(model_id, device)
 	txt = get_prompt(model_id, processor)
-	print("#"*100)
-	print(f"Prompt:\n{txt}")
-	print("#"*100)
+	# print("#"*100)
+	# print(f"Prompt:\n{txt}")
+	# print("#"*100)
 
 	inputs = processor(
 		images=img,
