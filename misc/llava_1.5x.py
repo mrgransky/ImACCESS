@@ -31,19 +31,7 @@ def process_image(model_id: str, img_path: str, device: str):
 			return
 	print(f"IMG: {type(img)} {img.size} {img.mode}")
 
-	processor = tfs.LlavaProcessor.from_pretrained(
-		model_id, 
-		use_fast=True, 
-		trust_remote_code=True, 
-		cache_dir=cache_directory[USER],
-	)
-	model = tfs.LlavaForConditionalGeneration.from_pretrained(
-		model_id,
-		torch_dtype=torch.float16,
-		low_cpu_mem_usage=True,
-		cache_dir=cache_directory[USER],
-	)
-	model.to(device)
+	processor, model = load_(model_id, device)
 
 	prompt = f"USER: <image>\n{INSTRUCTION_TEMPLATE}\nASSISTANT:"
 	# print(f"PROMPT: {prompt}")
@@ -63,6 +51,40 @@ def process_image(model_id: str, img_path: str, device: str):
 	print("Generated output:")
 	print(results)
 	print("="*100)
+
+def load_(model_id: str, device: str):
+    processor = tfs.AutoProcessor.from_pretrained(
+        model_id, 
+        use_fast=True, 
+        trust_remote_code=True, 
+        cache_dir=cache_directory[USER]
+    )
+    model = tfs.AutoModelForConditionalGeneration.from_pretrained(
+        model_id,
+        torch_dtype=torch.float16,
+        low_cpu_mem_usage=True,
+        trust_remote_code=True,
+        cache_dir=cache_directory[USER]
+    )
+    model.to(device)
+    return processor, model
+
+
+# def load_(model_id: str, device: str):
+# 	processor = tfs.LlavaProcessor.from_pretrained(
+# 		model_id, 
+# 		use_fast=True, 
+# 		trust_remote_code=True, 
+# 		cache_dir=cache_directory[USER],
+# 	)
+# 	model = tfs.LlavaForConditionalGeneration.from_pretrained(
+# 		model_id,
+# 		torch_dtype=torch.float16,
+# 		low_cpu_mem_usage=True,
+# 		cache_dir=cache_directory[USER],
+# 	)
+# 	model.to(device)
+# 	return processor, model
 
 def main():
 	parser = argparse.ArgumentParser(description="Generate Caption for Image")

@@ -12,9 +12,7 @@ class TaskRule:
 		patterns: List[str]  # Regex patterns to match
 		validator: Callable = None  # Optional function to validate the model supports this task
 
-class TaskDetector:
-		"""Elegant, extensible task detection system"""
-		
+class TaskDetector:		
 		def __init__(self):
 				self.rules = [
 						# High priority - specific architectures
@@ -139,9 +137,6 @@ class TaskDetector:
 # Global detector instance
 task_detector = TaskDetector()
 
-def detect_task_elegant(model, config) -> str:
-	return task_detector.detect_task(model, config)
-
 # Easy way to extend for new models
 def register_new_model_pattern(task_name: str, patterns: List[str], priority: int = 5):
 		"""
@@ -208,7 +203,7 @@ def run_inference(model, processor, config, image_url: str, th: float = 0.05):
 	device = next(model.parameters()).device
 	print(f"[INFO] Input image shape: {image.size}")
 	inputs = processor(images=image, return_tensors="pt").to(device)
-	task = detect_task_elegant(model, config)
+	task =  task_detector.detect_task(model, config)
 	print(f"[INFO] Running task: {task}")
 	try:
 		if task == "captioning":

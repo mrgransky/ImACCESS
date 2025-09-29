@@ -4,8 +4,10 @@ from utils import *
 # model_id = "llava-hf/llava-v1.6-mistral-7b-hf"
 # model_id = "llava-hf/llava-v1.6-vicuna-7b-hf"
 # model_id = "llava-hf/llava-v1.6-vicuna-13b-hf"
-# model_id = "llava-hf/llava-v1.6-34b-hf"
 # model_id = "llava-hf/llama3-llava-next-8b-hf"
+
+# does not fit into VRAM:
+# model_id = "llava-hf/llava-v1.6-34b-hf"
 # model_id = "llava-hf/llava-next-72b-hf"
 # model_id = "llava-hf/llava-next-110b-hf"
 
@@ -32,19 +34,7 @@ def process_image(model_id: str, img_path: str, device: str):
 
 	print(f"IMG: {type(img)} {img.size} {img.mode}")
 
-	processor = tfs.LlavaNextProcessor.from_pretrained(
-		model_id, 
-		use_fast=True, 
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
-	)
-	model = tfs.LlavaNextForConditionalGeneration.from_pretrained(
-		model_id, 
-		torch_dtype=torch.float16, 
-		low_cpu_mem_usage=True, 
-		cache_dir=cache_directory[USER],
-	)
-	model.to(device)
+	processor, model = load_(model_id, device)
 
 	conversation = [
 		{
@@ -68,6 +58,39 @@ def process_image(model_id: str, img_path: str, device: str):
 	print(processor.decode(output[0], skip_special_tokens=True))
 	print("="*100)
 
+def load_(model_id: str, device: str):
+    processor = tfs.AutoProcessor.from_pretrained(
+        model_id, 
+        use_fast=True, 
+        trust_remote_code=True, 
+        cache_dir=cache_directory[USER]
+    )
+    model = tfs.AutoModelForConditionalGeneration.from_pretrained(
+        model_id,
+        torch_dtype=torch.float16,
+        low_cpu_mem_usage=True,
+        trust_remote_code=True,
+        cache_dir=cache_directory[USER]
+    )
+    model.to(device)
+    return processor, model
+
+
+# def load_(model_id: str, device: str):
+# 	processor = tfs.LlavaNextProcessor.from_pretrained(
+# 		model_id, 
+# 		use_fast=True, 
+# 		trust_remote_code=True,
+# 		cache_dir=cache_directory[USER],
+# 	)
+# 	model = tfs.LlavaNextForConditionalGeneration.from_pretrained(
+# 		model_id, 
+# 		torch_dtype=torch.float16, 
+# 		low_cpu_mem_usage=True, 
+# 		cache_dir=cache_directory[USER],
+# 	)
+# 	model.to(device)
+# 	return processor, model
 
 def main():
 	parser = argparse.ArgumentParser(description="Generate Caption for Image")
