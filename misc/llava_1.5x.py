@@ -53,21 +53,33 @@ def process_image(model_id: str, img_path: str, device: str):
 	print("="*100)
 
 def load_(model_id: str, device: str):
-		processor = tfs.AutoProcessor.from_pretrained(
-				model_id, 
-				use_fast=True, 
-				trust_remote_code=True, 
-				cache_dir=cache_directory[USER]
-		)
-		model = tfs.AutoModelForConditionalGeneration.from_pretrained(
-				model_id,
-				torch_dtype=torch.float16,
-				low_cpu_mem_usage=True,
-				trust_remote_code=True,
-				cache_dir=cache_directory[USER]
-		)
-		model.to(device)
-		return processor, model
+	print(f"[INFO] Loading model: {model_id} on {device}")
+	config = tfs.AutoConfig.from_pretrained(model_id)
+	print(f"[INFO] Model type: {config.model_type}")
+	print(f"[INFO] Architectures: {config.architectures}")
+	if config.architectures:
+		cls_name = config.architectures[0]
+		if hasattr(tfs, cls_name):
+			model_cls = getattr(tfs, cls_name)
+	processor = tfs.AutoProcessor.from_pretrained(
+		model_id, 
+		use_fast=True, 
+		trust_remote_code=True, 
+		cache_dir=cache_directory[USER]
+	)
+	print(type(processor))
+
+	model = model_cls.from_pretrained(
+		model_id,
+		torch_dtype=torch.float16,
+		low_cpu_mem_usage=True,
+		trust_remote_code=True,
+		cache_dir=cache_directory[USER]
+	)
+	print(type(model))
+	model.to(device)
+	print(f"[INFO] Loaded {model.__class__.__name__} on {device}")
+	return processor, model
 
 
 # def load_(model_id: str, device: str):
