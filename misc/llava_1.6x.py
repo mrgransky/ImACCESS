@@ -59,21 +59,21 @@ def process_image(model_id: str, img_path: str, device: str):
 	print("="*100)
 
 def load_(model_id: str, device: str):
-    processor = tfs.AutoProcessor.from_pretrained(
-        model_id, 
-        use_fast=True, 
-        trust_remote_code=True, 
-        cache_dir=cache_directory[USER]
-    )
-    model = tfs.AutoModelForConditionalGeneration.from_pretrained(
-        model_id,
-        torch_dtype=torch.float16,
-        low_cpu_mem_usage=True,
-        trust_remote_code=True,
-        cache_dir=cache_directory[USER]
-    )
-    model.to(device)
-    return processor, model
+		processor = tfs.AutoProcessor.from_pretrained(
+				model_id, 
+				use_fast=True, 
+				trust_remote_code=True, 
+				cache_dir=cache_directory[USER]
+		)
+		model = tfs.AutoModelForConditionalGeneration.from_pretrained(
+				model_id,
+				torch_dtype=torch.float16,
+				low_cpu_mem_usage=True,
+				trust_remote_code=True,
+				cache_dir=cache_directory[USER]
+		)
+		model.to(device)
+		return processor, model
 
 
 # def load_(model_id: str, device: str):
