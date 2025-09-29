@@ -22,6 +22,8 @@ from utils import *
 # # model_id = "tiiuae/falcon-11B-vlm"
 # # model_id = "utter-project/EuroVLM-1.7B-Preview"
 # # model_id = "OpenGVLab/InternVL-Chat-V1-2"
+# model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
+
 
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
