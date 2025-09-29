@@ -20,16 +20,16 @@ from utils import *
 # # model_id = "tiiuae/falcon-11B-vlm"
 # # model_id = "utter-project/EuroVLM-1.7B-Preview"
 # # model_id = "OpenGVLab/InternVL-Chat-V1-2"
-# model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
+# model_id = "Qwen/Qwen2.5-VL-7B-Instruct"
 
 
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
 
 INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
-Identify the three most prominent, factual and distinct **KEYWORDS** that capture the main action, object or event.
+Identify the five most prominent, factual and distinct **KEYWORDS** that capture the main action, object or event.
 Exclude any explanatory text, comments, questions, or words about image quality, style, or temporal era.
-**Return *only* these keywords as a clean, parseable Python list, e.g., ['keyword1', 'keyword2', 'keyword3'].**
+**Return *only* these keywords as a clean, parseable Python list, e.g., ['keyword1', 'keyword2', 'keyword3', 'keyword4', 'keyword5'].**
 """
 
 def process_image(model_id: str, img_path: str, device: str):
