@@ -1553,7 +1553,7 @@ def main():
 	else:
 		raise ValueError("Either --csv_file or --description must be provided")
 
-	keywords = get_labels_inefficient(
+	keywords = get_labels_efficient(
 		model_id=args.model_id, 
 		device=args.device, 
 		test_description=descriptions,
