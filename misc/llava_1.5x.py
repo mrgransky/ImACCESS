@@ -1,9 +1,12 @@
 from utils import *
 
-# # model_id = "tiiuae/falcon-11B-vlm"
-# # model_id = "utter-project/EuroVLM-1.7B-Preview"
+# LLAVA 1.5x collection:
 # model_id = "llava-hf/llava-1.5-7b-hf"
 # model_id = "llava-hf/llava-1.5-13b-hf"
+# model_id =  "llava-hf/bakLlava-v1-hf"
+
+# # model_id = "tiiuae/falcon-11B-vlm"
+# # model_id = "utter-project/EuroVLM-1.7B-Preview"
 # # model_id = "OpenGVLab/InternVL-Chat-V1-2"
 
 print(f"USER: {USER} | HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub...")
@@ -20,8 +23,6 @@ def process_image(model_id: str, img_path: str, device: str):
 		except requests.exceptions.RequestException as e:
 			print(f"ERROR: failed to load image from {img_path} => {e}")
 			return
-	# url = "https://digitalcollections.smu.edu/digital/api/singleitem/image/stn/989/default.jpg"
-	# img = Image.open(requests.get(url, stream=True).raw)
 	print(f"IMG: {type(img)} {img.size} {img.mode}")
 
 	processor = tfs.LlavaProcessor.from_pretrained(
@@ -47,7 +48,7 @@ def process_image(model_id: str, img_path: str, device: str):
 		text=prompt,
 		images=img,
 		return_tensors="pt"
-	).to('cuda:0')
+	).to(device)
 
 	# Generate output
 	output = model.generate(**inputs, max_new_tokens=128)
@@ -57,7 +58,6 @@ def process_image(model_id: str, img_path: str, device: str):
 	print("Generated output:")
 	print(results)
 	print("="*100)
-
 
 def main():
 	parser = argparse.ArgumentParser(description="Generate Caption for Image")
