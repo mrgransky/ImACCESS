@@ -64,7 +64,7 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	args = parser.parse_args()
 	print(args)
-	process_image(args.image_path)
+	process_image(args.model_id, args.image_path, args.device)
 
 if __name__ == "__main__":
 	main()
