@@ -42,8 +42,7 @@ def get_vlm_response(model_id: str, raw_vlm_response: str, verbose: bool=False):
 
 def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[list]:
 	if verbose:
-		print("="*60)
-		print("[DEBUG] Raw VLM output:\n", response)
+		print(f"\n[DEBUG] Raw VLM output:\n{response}")
 	if not isinstance(response, str):
 		if verbose: print("[ERROR] VLM output is not a string.")
 		return None
@@ -109,12 +108,15 @@ def query_local_vlm(
 		except requests.exceptions.RequestException as e:
 			print(f"ERROR: failed to load image from {img_path} => {e}")
 			return
+	img = img.convert("RGB")
+	# if verbose: print(f"IMG: {type(img)} {img.size} {img.mode}")
 
-	if verbose: print(f"IMG: {type(img)} {img.size} {img.mode}")
 	model_id = getattr(model.config, '_name_or_path', None)
 	if model_id is None:
 		model_id = getattr(model, 'name_or_path', 'unknown_model')
-	if verbose: print(f"Model ID: {model_id}")
+
+	# if verbose: print(f"Model ID: {model_id}")
+
 	inputs = processor(
 		images=img,
 		text=text,
