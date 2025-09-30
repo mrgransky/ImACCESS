@@ -472,8 +472,8 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, verb
 				return processed
 
 		if verbose:
-			print(f"Extracting listed response from model: {model_id}")
-			print(f"Raw response (repr):\n{repr(llm_response)}\n")
+			print(f"\n>> Extracting listed response from model: {model_id}")
+			print(f"LLM response (repr):\n{repr(llm_response)}\n")
 
 		# INST tag detection
 		inst_tags = []
@@ -1278,7 +1278,7 @@ def get_llm_based_labels_efficient(
 	for idx in failed_indices:
 		desc = unique_inputs[idx]
 		if verbose:
-			print(f"🔄 Retrying individual item {idx}:\n{desc}...")
+			print(f"🔄 Retrying individual item {idx}:\n{desc}")
 		
 		try:
 			# Use the same model/tokenizer for individual processing
