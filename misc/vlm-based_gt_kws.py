@@ -284,7 +284,7 @@ def main():
 	get_vlm_based_labels_inefficient(
 		model_id=args.model_id,
 		device=args.device,
-		image_path=args.image_path,
+		image_paths=img_paths,
 		batch_size=1,
 		verbose=True,
 	)
