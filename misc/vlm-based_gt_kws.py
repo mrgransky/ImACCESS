@@ -38,7 +38,7 @@ def get_vlm_response(model_id: str, raw_vlm_response: str, verbose: bool=False):
 	if "Qwen" in model_id:
 		return _qwen_vlm_(raw_vlm_response, verbose=verbose)
 	elif "llava" in model_id:
-		return _llava_vlm(raw_vlm_response, verbose=verbose)
+		return _llava_vlm_(raw_vlm_response, verbose=verbose)
 	else:
 		raise NotImplementedError(f"VLM response parsing not implemented for {model_id}")
 
@@ -92,13 +92,67 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[list]:
 
 	return None
 
-def _llava_vlm(response: str, verbose: bool=False) -> Optional[list]:
-	if verbose:
-		print(f"\n[DEBUG] Raw VLM output:\n{response}")
-	if not isinstance(response, str):
-		if verbose: print("[ERROR] VLM output is not a string.")
+def _llava_vlm_(response: str, verbose: bool = False) -> Optional[list]:
+		if verbose:
+				print(f"\n[DEBUG] Raw VLM output:\n{response}")
+		if not isinstance(response, str):
+				if verbose:
+						print("[ERROR] VLM output is not a string.")
+				return None
+
+		# --- Step 1: Try to locate 'ASSISTANT:' and extract the following Python list ---
+		assistant_split = response.split("ASSISTANT:")
+		if verbose:
+				print(f"[DEBUG] Split on 'ASSISTANT:': {len(assistant_split)} parts.")
+		
+		# If ASSISTANT: is found, focus parsing on the answer text after it
+		if len(assistant_split) > 1:
+				answer_part = assistant_split[-1].strip()
+				if verbose:
+						print(f"[DEBUG] Text after 'ASSISTANT:': {answer_part}")
+				# Try to find a list in the assistant's part
+				list_matches = re.findall(r"\[[^\[\]]+\]", answer_part)
+				if verbose:
+						print(f"[DEBUG] Found {len(list_matches)} python-like lists after ASSISTANT.")
+				if list_matches:
+						list_str = list_matches[0]  # In LLaVa, usually only one list follows
+						if verbose:
+								print(f"[DEBUG] Extracted list: {list_str}")
+						try:
+								keywords = ast.literal_eval(list_str)
+								if verbose:
+										print(f"[DEBUG] Parsed Python list: {keywords}")
+								if isinstance(keywords, list):
+										result = [str(k).strip() for k in keywords if isinstance(k, str)]
+										if verbose:
+												print(f"[INFO] Final parsed keywords: {result}")
+										return result
+						except Exception as e:
+								if verbose:
+										print("[ERROR] ast.literal_eval failed:", e)
+				# Fallback 1: extract quoted strings
+				candidates = re.findall(r"'([^']+)'", answer_part)
+				if verbose:
+						print(f"[DEBUG] Regex candidates:", candidates)
+				if candidates:
+						result = [str(x).strip() for x in candidates]
+						if verbose:
+								print("[INFO] Final parsed fallback (quotes) keywords: ", result)
+						return result
+				# Fallback 2: comma splitting
+				raw_split = [x.strip(" ,'\"]") for x in answer_part.split(",") if x.strip()]
+				if verbose:
+						print(f"[DEBUG] Comma split candidates:", raw_split)
+				if len(raw_split) > 1:
+						if verbose:
+								print("[INFO] Final last-resort (comma) keywords:", raw_split)
+						return raw_split
+		
+		# -- If parsing above fails --
+		if verbose:
+				print("[ERROR] Unable to parse any keywords from VLM output (LLaVa model).")
 		return None
-	
+
 def query_local_vlm(
 		model: tfs.PreTrainedModel, 
 		processor: tfs.AutoProcessor, 
@@ -119,7 +173,7 @@ def query_local_vlm(
 			print(f"ERROR: failed to load image from {img_path} => {e}")
 			return
 	img = img.convert("RGB")
-	# if verbose: print(f"IMG: {type(img)} {img.size} {img.mode}")
+	if verbose: print(f"IMG: {type(img)} {img.size} {img.mode}")
 
 	model_id = getattr(model.config, '_name_or_path', None)
 	if model_id is None:
