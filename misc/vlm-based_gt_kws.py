@@ -128,6 +128,8 @@ def query_local_vlm(
 
 	print(f"IMG: {type(img)} {img.size} {img.mode}")
 	model_id = getattr(model.config, '_name_or_path', None)
+	if model_id is None:
+		model_id = getattr(model, 'name_or_path', 'unknown_model')
 	print(f"Model ID: {model_id}")
 	inputs = processor(
 		images=img,
