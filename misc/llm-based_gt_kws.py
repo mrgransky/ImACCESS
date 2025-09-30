@@ -65,10 +65,12 @@ Given the description below, extract **between 0 and {k}** concrete, factual, pr
 [/INST]
 """
 
-def load_(model_id: str, device: str):
-	print(f"[INFO] Loading tokenizer for {model_id} on {device}")
+def load_(model_id: str, device: str, verbose: bool=False):
 	config = tfs.AutoConfig.from_pretrained(model_id)
-	print(f"[INFO] Model type: {config.model_type} Architectures: {config.architectures}")
+	if verbose:
+		print(f"[INFO] Loading tokenizer for {model_id} on {device}")
+		print(f"[INFO] Model type: {config.model_type} Architectures: {config.architectures}")
+
 	if config.architectures:
 		cls_name = config.architectures[0]
 		if hasattr(tfs, cls_name):
@@ -83,8 +85,9 @@ def load_(model_id: str, device: str):
 	if tokenizer.pad_token is None:
 		tokenizer.pad_token = tokenizer.eos_token
 		tokenizer.pad_token_id = tokenizer.eos_token_id
-
-	print(f"[INFO] Tokenizer: {tokenizer.__class__.__name__} {type(tokenizer)}")
+	
+	if verbose:
+		print(f"[INFO] Tokenizer: {tokenizer.__class__.__name__} {type(tokenizer)}")
 
 	model = model_cls.from_pretrained(
 		model_id,
@@ -96,7 +99,10 @@ def load_(model_id: str, device: str):
 	model.eval()
 	if hasattr(torch, 'compile'):
 		model = torch.compile(model, mode="reduce-overhead")
-	print(f"[INFO] Model: {model.__class__.__name__} {type(model)}")
+	
+	if verbose:
+		print(f"[INFO] Model: {model.__class__.__name__} {type(model)}")
+	
 	return tokenizer, model
 
 def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str, verbose: bool = False):
@@ -1057,7 +1063,7 @@ def query_local_llm(
 	
 	return keywords
 
-def get_llm_based_labels_inefficient(
+def get_llm_based_labels(
 		model_id: str, 
 		device: str, 
 		descriptions: Union[str, List[str]],  # Accept both str and list
@@ -1066,13 +1072,20 @@ def get_llm_based_labels_inefficient(
 		verbose: bool = False,
 	) -> List[List[str]]:
 
+	if verbose:
+		print(f"LLM-based approach [Inefficient approach]".center(160, "-"))
+
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
 		if verbose:
 			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-	tokenizer, model = load_(model_id, device)
+	tokenizer, model = load_(
+		model_id=model_id, 
+		device=device, 
+		verbose=verbose
+	)
 
 	if verbose:
 		debug_llm_info(model, tokenizer, device)
@@ -1111,51 +1124,15 @@ def get_llm_based_labels_efficient(
 		inputs = list(descriptions)
 	
 	if len(inputs) == 0:
-		return []
+		return None
 	
-	if verbose:
-		print(f"🔄 Loading model and tokenizer for {model_id}...")
-	
-	# Load tokenizer and model
-	tokenizer = tfs.AutoTokenizer.from_pretrained(
-		model_id,
-		use_fast=True,
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
-	)
-	if tokenizer.pad_token is None:
-		tokenizer.pad_token = tokenizer.eos_token
-		tokenizer.pad_token_id = tokenizer.eos_token_id
-	tokenizer.padding_side = "left"  # Critical for decoder-only models
-	
-	config = tfs.AutoConfig.from_pretrained(
-		model_id,
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
-	)
-	
-	if getattr(config, "is_encoder_decoder", False):
-		model = tfs.AutoModelForSeq2SeqLM.from_pretrained(
-			model_id,
-			device_map=device,
-			torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-			trust_remote_code=True,
-			cache_dir=cache_directory[USER],
-		)
-	else:
-		model = tfs.AutoModelForCausalLM.from_pretrained(
-			model_id,
-			device_map=device,
-			torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-			trust_remote_code=True,
-			cache_dir=cache_directory[USER],
-		)
-	model = model.eval()
+	tokenizer, model = load_(model_id, device)
 
 	if verbose:
 		valid_count = sum(1 for x in inputs if x is not None and str(x).strip() not in ("", "nan", "None"))
 		null_count = len(inputs) - valid_count
 		print(f"📊 Input stats: {len(inputs)} total, {valid_count} valid, {null_count} null")
+
 	# 🔧 NULL-SAFE DEDUPLICATION
 	if do_dedup:
 		unique_map: Dict[str, int] = {}
@@ -1389,7 +1366,8 @@ def main():
 	else:
 		raise ValueError("Either --csv_file or --description must be provided")
 
-	keywords = get_llm_based_labels_inefficient(
+	# inefficient approach:
+	keywords = get_llm_based_labels(
 		model_id=args.model_id, 
 		device=args.device, 
 		descriptions=descriptions,
