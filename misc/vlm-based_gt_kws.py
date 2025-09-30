@@ -36,71 +36,60 @@ Exclude any explanatory text, comments, questions, or words about image quality,
 
 def get_vlm_response(model_id: str, raw_vlm_response: str, verbose: bool = False):
 	if "Qwen" in model_id:
-		return _qwen_vlm_response(raw_vlm_response, verbose=verbose)
+		return _qwen_vlm_(raw_vlm_response, verbose=verbose)
 	else:
 		raise NotImplementedError(f"VLM response parsing not implemented for {model_id}")
 
-def _qwen_vlm_response(vlm_output: str, verbose: bool = True) -> list:
-		"""
-		Parse the actual keywords from the last Python list in VLM output.
-		"""
-		# Initial raw output
-		if verbose:
-				print("="*60)
-				print("[DEBUG] Raw VLM output:\n", vlm_output)
-		if not isinstance(vlm_output, str):
-				if verbose: print("[ERROR] VLM output is not a string.")
-				return []
-		
-		# Find all lists in the response (could be multiple!)
-		all_matches = re.findall(r"\[[^\[\]]+\]", vlm_output, re.DOTALL)
-		if verbose:
-				print(f"[DEBUG] Found {len(all_matches)} Python-like lists in output.")
-				for i, m in enumerate(all_matches): print(f"  [{i+1}] {m}")
-
-		# Choose the last match **as the answer**
-		if all_matches:
-				list_str = all_matches[-1]
-				if verbose: print("[DEBUG] Extracted last list:", list_str)
-				try:
-						keywords = ast.literal_eval(list_str)
-						if verbose: print("[DEBUG] Parsed Python list:", keywords)
-						if isinstance(keywords, list):
-								result = [str(k).strip() for k in keywords if isinstance(k, str)]
-								print("[INFO] Final parsed keywords:", result)
-								print("="*60)
-								return result
-						else:
-								if verbose:
-										print("[ERROR] Parsed output is not a list.")
-				except Exception as e:
-						if verbose:
-								print("[ERROR] ast.literal_eval failed:", e)
-
-		# Fallback: Try extracting single quoted items in assistant block (not recommended)
-		after_assistant = vlm_output.split("assistant")[-1].strip()
-		candidates = re.findall(r"'([^']+)'", after_assistant)
-		if verbose:
-				print("[DEBUG] Regex candidates:", candidates)
-		if candidates:
-				result = [str(x).strip() for x in candidates]
-				print("[INFO] Final parsed fallback keywords:", result)
+def _qwen_vlm_(response: str, verbose: bool = True) -> Optional[list]:
+	if verbose:
+		print("="*60)
+		print("[DEBUG] Raw VLM output:\n", response)
+	if not isinstance(response, str):
+		if verbose: print("[ERROR] VLM output is not a string.")
+		return None
+	
+	# Find all lists in the response (could be multiple!)
+	all_matches = re.findall(r"\[[^\[\]]+\]", response, re.DOTALL)
+	if verbose:
+		print(f"[DEBUG] Found {len(all_matches)} Python-like lists in output.")
+		for i, m in enumerate(all_matches): print(f"  [{i+1}] {m}")
+	# Choose the last match **as the answer**
+	if all_matches:
+		list_str = all_matches[-1]
+		if verbose: print("[DEBUG] Extracted last list:", list_str)
+		try:
+			keywords = ast.literal_eval(list_str)
+			if verbose: print("[DEBUG] Parsed Python list:", keywords)
+			if isinstance(keywords, list):
+				result = [str(k).strip() for k in keywords if isinstance(k, str)]
+				print("[INFO] Final parsed keywords:", result)
 				print("="*60)
 				return result
+			else:
+				if verbose: print("[ERROR] Parsed output is not a list.")
+		except Exception as e:
+			if verbose: print("[ERROR] ast.literal_eval failed:", e)
 
-		# Final fallback
-		raw_split = [x.strip(" ,'\"]") for x in after_assistant.split(",") if x.strip()]
-		if verbose:
-				print("[DEBUG] Comma split candidates:", raw_split)
-		if len(raw_split) > 1:
-				print("[INFO] Final last-resort keywords:", raw_split)
-				print("="*60)
-				return raw_split
-
-		if verbose:
-				print("[ERROR] Unable to parse any keywords from VLM output.")
-				print("="*60)
-		return []
+	# Fallback: Try extracting single quoted items in assistant block (not recommended)
+	after_assistant = response.split("assistant")[-1].strip()
+	candidates = re.findall(r"'([^']+)'", after_assistant)
+	if verbose: print("[DEBUG] Regex candidates:", candidates)
+	if candidates:
+		result = [str(x).strip() for x in candidates]
+		print("[INFO] Final parsed fallback keywords:", result)
+		print("="*60)
+		return result
+	# Final fallback
+	raw_split = [x.strip(" ,'\"]") for x in after_assistant.split(",") if x.strip()]
+	if verbose: print("[DEBUG] Comma split candidates:", raw_split)
+	if len(raw_split) > 1:
+		print("[INFO] Final last-resort keywords:", raw_split)
+		print("="*60)
+		return raw_split
+	if verbose:
+		print("[ERROR] Unable to parse any keywords from VLM output.")
+		print("="*60)
+	return None
 
 def query_local_vlm(
 		model: tfs.PreTrainedModel, 
