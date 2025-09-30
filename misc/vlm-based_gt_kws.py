@@ -64,10 +64,8 @@ def query_local_vlm(
 
 	# autoregressively complete prompt
 	output = model.generate(**inputs, max_new_tokens=128)
-	print("="*120)
-	print("Generated output:")
+	print("Output:")
 	print(processor.decode(output[0], skip_special_tokens=True))
-	print("="*120)
 
 def load_(model_id: str, device: str):
 	print(f"[INFO] Loading model: {model_id} on {device}")
@@ -167,7 +165,8 @@ def get_vlm_based_labels_efficient():
 	pass
 
 def main():
-	parser = argparse.ArgumentParser(description="Generate Caption for Image")
+	parser = argparse.ArgumentParser(description="VLLM-based keyword extraction for Historical Archives Dataset")
+	parser.add_argument("--csv_file", '-csv', type=str, help="Path to the metadata CSV file")
 	parser.add_argument('--image_path', '-i',type=str, required=True, help='img path [or URL]')
 	parser.add_argument("--model_id", '-m', type=str, default="Qwen/Qwen2.5-VL-3B-Instruct", help="HuggingFace model ID")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
@@ -175,6 +174,23 @@ def main():
 	args = parser.parse_args()
 	args.device = torch.device(args.device)
 	print(args)
+
+	if args.csv_file:
+		df = pd.read_csv(
+			filepath_or_buffer=args.csv_file, 
+			on_bad_lines='skip', 
+			dtype=dtypes, 
+			low_memory=False,
+		)
+		if 'img_path' not in df.columns:
+			raise ValueError("CSV file must have 'img_path' column")
+		img_paths = df['img_path'].tolist()
+		print(f"Loaded {len(img_paths)} images from {args.csv_file}")
+	elif args.image_path:
+		img_paths = [args.image_path]
+	else:
+		raise ValueError("Either --csv_file or --image_path must be provided")
+
 	get_vlm_based_labels_inefficient(
 		model_id=args.model_id,
 		device=args.device,

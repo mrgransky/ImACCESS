@@ -994,7 +994,7 @@ def query_local_llm(
 def get_llm_based_labels_inefficient(
 		model_id: str, 
 		device: str, 
-		test_description: Union[str, List[str]],  # Accept both str and list
+		descriptions: Union[str, List[str]],  # Accept both str and list
 		batch_size: int = 64,
 		verbose: bool = False,
 	) -> List[List[str]]:
@@ -1052,10 +1052,10 @@ def get_llm_based_labels_inefficient(
 		debug_llm_info(model, tokenizer, device)
 
 	# Convert single string to list for uniform processing
-	if isinstance(test_description, str):
-		test_description = [test_description]
+	if isinstance(descriptions, str):
+		descriptions = [descriptions]
 	all_keywords = list()
-	for i, desc in tqdm(enumerate(test_description), total=len(test_description), desc="Processing descriptions"):
+	for i, desc in tqdm(enumerate(descriptions), total=len(descriptions), desc="Processing descriptions"):
 		# if verbose: print(f"Processing description {i+1}: {desc}")
 		kws = query_local_llm(
 			model=model, 
@@ -1071,7 +1071,7 @@ def get_llm_based_labels_inefficient(
 def get_llm_based_labels_efficient(
 		model_id: str,
 		device: str,
-		test_description: Union[str, List[str]],
+		descriptions: Union[str, List[str]],
 		batch_size: int = 64,
 		do_dedup: bool = True,
 		max_retries: int = 2,
@@ -1079,10 +1079,10 @@ def get_llm_based_labels_efficient(
 	) -> List[Optional[List[str]]]:	
 	
 	# Normalize to list
-	if isinstance(test_description, str):
-		inputs = [test_description]
+	if isinstance(descriptions, str):
+		inputs = [descriptions]
 	else:
-		inputs = list(test_description)
+		inputs = list(descriptions)
 	
 	if len(inputs) == 0:
 		return []
@@ -1341,6 +1341,7 @@ def main():
 	parser.add_argument("--do_dedup", '-dd', action='store_true', help="Deduplicate prompts")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	args = parser.parse_args()
+
 	args.device = torch.device(args.device)
 	print(args)
 
@@ -1364,7 +1365,7 @@ def main():
 	keywords = get_llm_based_labels_efficient(
 		model_id=args.model_id, 
 		device=args.device, 
-		test_description=descriptions,
+		descriptions=descriptions,
 		batch_size=args.batch_size,
 		verbose=args.verbose,
 	)
