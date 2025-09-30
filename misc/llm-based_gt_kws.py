@@ -50,7 +50,7 @@ MAX_KEYWORDS = 5
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
 
-PROMPT_TEMPLATE = """<s>[INST]
+LLM_PROMPT_TEMPLATE = """<s>[INST]
 Act as a meticulous historical archivist specializing in 20th century documentation.
 Given the description below, extract **between 0 and {k}** concrete, factual, and *non-numeric* keywords (maximum {k}, minimum 0).
 
@@ -1173,7 +1173,7 @@ def query_local_llm(
 	if not isinstance(text, str) or not text.strip():
 		return None
 	keywords: Optional[List[str]] = None
-	prompt = PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip())
+	prompt = LLM_PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip())
 
 	try:
 		inputs = tokenizer(
@@ -1224,14 +1224,14 @@ def query_local_llm(
 		filtered_keywords = [
 			kw 
 			for kw in keywords 
-			if kw not in re.sub(r'[^\w\s]', '', PROMPT_TEMPLATE).split() # remove punctuation and split
+			if kw not in re.sub(r'[^\w\s]', '', LLM_PROMPT_TEMPLATE).split() # remove punctuation and split
 		]
 		if not filtered_keywords:
 			return None
 		keywords = filtered_keywords
 	return keywords
 
-def get_labels_inefficient(
+def get_llm_based_labels_inefficient(
 		model_id: str, 
 		device: str, 
 		test_description: Union[str, List[str]],  # Accept both str and list
@@ -1308,7 +1308,7 @@ def get_labels_inefficient(
 		all_keywords.append(kws)
 	return all_keywords
 
-def get_labels_efficient(
+def get_llm_based_labels_efficient(
 		model_id: str,
 		device: str,
 		test_description: Union[str, List[str]],
@@ -1401,7 +1401,7 @@ def get_labels_efficient(
 		if s is None:
 			unique_prompts.append(None)
 		else:
-			unique_prompts.append(PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=s.strip()))
+			unique_prompts.append(LLM_PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=s.strip()))
 	# Will hold parsed results for unique inputs
 	unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
 	
@@ -1577,7 +1577,7 @@ def main():
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	parser.add_argument("--description", '-desc', type=str, help="Description")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
-	parser.add_argument("--batch_size", '-bs', type=int, default=128, help="Batch size for processing (adjust based on GPU memory)")
+	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing (adjust based on GPU memory)")
 	parser.add_argument("--do_dedup", '-dd', action='store_true', help="Deduplicate prompts")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	args = parser.parse_args()
@@ -1601,7 +1601,7 @@ def main():
 	else:
 		raise ValueError("Either --csv_file or --description must be provided")
 
-	keywords = get_labels_efficient(
+	keywords = get_llm_based_labels_efficient(
 		model_id=args.model_id, 
 		device=args.device, 
 		test_description=descriptions,

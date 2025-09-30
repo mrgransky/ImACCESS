@@ -29,13 +29,19 @@ from utils import *
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
 
-INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
+VLM_INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
 Identify the five most prominent, factual and distinct **KEYWORDS** that capture the main action, object or event.
 Exclude any explanatory text, comments, questions, or words about image quality, style, or temporal era.
 **Return *only* these keywords as a clean, parseable Python list, e.g., ['keyword1', 'keyword2', 'keyword3', 'keyword4', 'keyword5'].**
 """
 
-def process_image(model_id: str, img_path: str, device: str):
+def query_local_vlm(
+		model: tfs.PreTrainedModel, 
+		processor: tfs.AutoProcessor, 
+		img_path: str,
+		text: str,
+		device: str
+	):
 	try:
 		img = Image.open(img_path)
 	except FileNotFoundError:
@@ -49,16 +55,9 @@ def process_image(model_id: str, img_path: str, device: str):
 
 	print(f"IMG: {type(img)} {img.size} {img.mode}")
 
-	processor, model = load_(model_id, device)
-	txt = get_prompt(
-		model_id=model_id, 
-		processor=processor, 
-		img_path=img_path
-	)
-
 	inputs = processor(
 		images=img,
-		text=txt,
+		text=text,
 		padding=True,
 		return_tensors="pt"
 	).to(device)
@@ -105,7 +104,7 @@ def get_prompt(model_id: str, processor: tfs.AutoProcessor, img_path: str):
 			{
 				"role": "user",
 				"content": [
-					{"type": "text", "text": INSTRUCTION_TEMPLATE},
+					{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE},
 					{"type": "image", "image": img_path},
 				],
 			},
@@ -115,14 +114,14 @@ def get_prompt(model_id: str, processor: tfs.AutoProcessor, img_path: str):
 			add_generation_prompt=True
 		)
 	elif "-1.5-" or "bakLlava" in model_id:
-		txt = f"USER: <image>\n{INSTRUCTION_TEMPLATE}\nASSISTANT:"
+		txt = f"USER: <image>\n{VLM_INSTRUCTION_TEMPLATE}\nASSISTANT:"
 	elif "Qwen" in model_id:
 		messages = [
 			{
 				"role": "user",
 				"content": [
 					{"type": "image", "image": img_path},
-					{"type": "text", "text": INSTRUCTION_TEMPLATE},
+					{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE},
 				],
 			},
 		]	
@@ -135,16 +134,47 @@ def get_prompt(model_id: str, processor: tfs.AutoProcessor, img_path: str):
 		raise ValueError(f"Unknown model ID: {model_id}")
 	return txt
 
+def get_vlm_based_labels_inefficient(
+		model_id: str,
+		device: str,
+		image_path: Union[str, List[str]],
+		batch_size: int = 64,
+		verbose: bool = False,
+	) -> List[List[str]]:
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(device)
+		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
+		if verbose:
+			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+
+	processor, model = load_(model_id, device)
+
+	text = get_prompt(
+		model_id=model_id, 
+		processor=processor,
+		img_path=image_path
+	)
+
+	query_local_vlm(
+		model=model, 
+		processor=processor,
+		img_path=image_path, 
+		text=text,
+		device=device
+	)
+
+def get_vlm_based_labels_efficient():
+	pass
+
 def main():
 	parser = argparse.ArgumentParser(description="Generate Caption for Image")
 	parser.add_argument('--image_path', '-i',type=str, required=True, help='img path [or URL]')
 	parser.add_argument("--model_id", '-m', type=str, default="Qwen/Qwen2.5-VL-3B-Instruct", help="HuggingFace model ID")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
-	parser.add_argument("--description", '-desc', type=str, help="Description")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	args = parser.parse_args()
 	print(args)
-	process_image(args.model_id, args.image_path, args.device)
+	get_vlm_based_labels_inefficient(args)
 
 if __name__ == "__main__":
 	main()
