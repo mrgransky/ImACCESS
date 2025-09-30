@@ -50,9 +50,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[list]:
 	
 	# Find all lists in the response (could be multiple!)
 	all_matches = re.findall(r"\[[^\[\]]+\]", response, re.DOTALL)
-	if verbose:
-		print(f"[DEBUG] Found {len(all_matches)} Python-like lists in output.")
-		for i, m in enumerate(all_matches): print(f"  [{i+1}] {m}")
+	if verbose: print(f"[DEBUG] Found {len(all_matches)} Python lists: {all_matches}")
 	# Choose the last match **as the answer**
 	if all_matches:
 		list_str = all_matches[-1]
@@ -62,8 +60,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[list]:
 			if verbose: print("[DEBUG] Parsed Python list:", keywords)
 			if isinstance(keywords, list):
 				result = [str(k).strip() for k in keywords if isinstance(k, str)]
-				print("[INFO] Final parsed keywords:", result)
-				print("="*60)
+				if verbose: print("[INFO] Final parsed keywords:", result)
 				return result
 			else:
 				if verbose: print("[ERROR] Parsed output is not a list.")
@@ -124,10 +121,7 @@ def query_local_vlm(
 
 	# autoregressively complete prompt
 	output = model.generate(**inputs, max_new_tokens=128)
-	print("Output:")
-	print(processor.decode(output[0], skip_special_tokens=True))
 	vlm_response = processor.decode(output[0], skip_special_tokens=True)
-	# vlm_response_parsed = _qwen_vlm_response(vlm_response, verbose=True)
 	vlm_response_parsed = get_vlm_response(
 		model_id=model_id, 
 		raw_vlm_response=vlm_response, 
@@ -282,7 +276,6 @@ def main():
 			df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
 		except Exception as e:
 			print(f"Failed to write Excel file: {e}")
-
 
 if __name__ == "__main__":
 	main()
