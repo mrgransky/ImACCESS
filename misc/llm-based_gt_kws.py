@@ -40,7 +40,7 @@ if not hasattr(tfs.utils, "FlashAttentionKwargs"):
 		pass
 	tfs.utils.FlashAttentionKwargs = FlashAttentionKwargs
 
-MAX_NEW_TOKENS = 100
+MAX_NEW_TOKENS = 64
 TEMPERATURE = 1e-8
 TOP_P = 0.9
 MAX_RETRIES = 3

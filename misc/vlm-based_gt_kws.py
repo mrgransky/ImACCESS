@@ -24,6 +24,7 @@ from utils import *
 # # model_id = "tiiuae/falcon-11B-vlm"
 # # model_id = "utter-project/EuroVLM-1.7B-Preview"
 # # model_id = "OpenGVLab/InternVL-Chat-V1-2"
+MAX_NEW_TOKENS = 64
 
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
@@ -123,9 +124,12 @@ def query_local_vlm(
 		padding=True,
 		return_tensors="pt"
 	).to(device)
-
-	# autoregressively complete prompt
-	output = model.generate(**inputs, max_new_tokens=128)
+	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+		output = model.generate(
+			**inputs, 
+			max_new_tokens=MAX_NEW_TOKENS,
+			use_cache=True,
+		)
 	vlm_response = processor.decode(output[0], skip_special_tokens=True)
 	vlm_response_parsed = get_vlm_response(
 		model_id=model_id, 
