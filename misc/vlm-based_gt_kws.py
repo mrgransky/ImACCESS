@@ -34,6 +34,12 @@ Exclude any explanatory text, comments, questions, or words about image quality,
 **Return *only* these keywords as a clean, parseable Python list, e.g., ['keyword1', 'keyword2', 'keyword3', 'keyword4', 'keyword5'].**
 """
 
+def get_vlm_response(model_id: str, raw_vlm_response: str, verbose: bool = False):
+	if "Qwen" in model_id:
+		return _qwen_vlm_response(raw_vlm_response, verbose=verbose)
+	else:
+		raise NotImplementedError(f"VLM response parsing not implemented for {model_id}")
+
 def _qwen_vlm_response(vlm_response: str, verbose: bool = True) -> list:
 	"""
 	Parse VLM response to get a clean Python list of keywords.
@@ -107,7 +113,7 @@ def query_local_vlm(
 		processor: tfs.AutoProcessor, 
 		img_path: str,
 		text: str,
-		device: str
+		device: str,
 	):
 	try:
 		img = Image.open(img_path)
@@ -121,7 +127,8 @@ def query_local_vlm(
 			return
 
 	print(f"IMG: {type(img)} {img.size} {img.mode}")
-
+	model_id = getattr(model.config, '_name_or_path', None)
+	print(f"Model ID: {model_id}")
 	inputs = processor(
 		images=img,
 		text=text,
@@ -134,7 +141,12 @@ def query_local_vlm(
 	print("Output:")
 	print(processor.decode(output[0], skip_special_tokens=True))
 	vlm_response = processor.decode(output[0], skip_special_tokens=True)
-	vlm_response_parsed = _qwen_vlm_response(vlm_response, verbose=True)
+	# vlm_response_parsed = _qwen_vlm_response(vlm_response, verbose=True)
+	vlm_response_parsed = get_vlm_response(
+		model_id=model_id, 
+		raw_vlm_response=vlm_response, 
+		verbose=True
+	)
 	return vlm_response_parsed
 
 def load_(model_id: str, device: str):
