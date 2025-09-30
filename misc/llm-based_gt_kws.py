@@ -57,11 +57,12 @@ Given the description below, extract **between 0 and {k}** concrete, factual, an
 {description}
 
 **Rules**:
-- Return *ONLY* these keywords as a clean, parseable Python list, e.g., ['keyword1', 'keyword2', 'keyword3', ..., 'keyword{k}'].
-- Exclude any additional explanatory text, code blocks, terms containing numbers, comments, tags, questions, or explanations before or after the Python list.
+- Return **ONLY** a clean Python list with exactly this format: ['keyword1', 'keyword2', ...].
+- **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the Python list.
 - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "1950s", "weekend", "May 25th", "July 10").
 - Exclude numerical words, special characters, stopwords, or abbreviations.
 - Exclude repeating or synonym-duplicate keywords.
+- The Python list must be the **VERY LAST THING** in your response.
 [/INST]
 """
 
