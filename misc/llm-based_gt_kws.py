@@ -52,7 +52,7 @@ huggingface_hub.login(token=hf_tk)
 
 LLM_PROMPT_TEMPLATE = """<s>[INST]
 Act as a meticulous historical archivist specializing in 20th century documentation.
-Given the description below, extract **between 0 and {k}** concrete, factual, and *non-numeric* keywords (maximum {k}, minimum 0).
+Given the description below, extract **between 0 and {k}** concrete, factual, prominent, and *non-numeric* keywords (maximum {k}, minimum 0).
 
 {description}
 
@@ -61,7 +61,7 @@ Given the description below, extract **between 0 and {k}** concrete, factual, an
 - **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the Python list.
 - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "1950s", "weekend", "May 25th", "July 10").
 - Exclude numerical words, special characters, stopwords, or abbreviations.
-- Exclude repeating or synonym-duplicate keywords.
+- Exclude meaningless, repeating or synonym-duplicate keywords.
 - The Python list must be the **VERY LAST THING** in your response.
 [/INST]
 """
@@ -443,34 +443,37 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, verb
 				return []
 
 		def _postprocess_keywords(keywords: List[str]) -> List[str]:
-				"""Post-process keywords to ensure quality and remove duplicates."""
-				processed = []
-				seen = set()
-				
-				for kw in keywords:
-						if not kw or len(kw) < 2:
-								continue
-								
-						# Clean the keyword - preserve original case but remove numbers and extra spaces
-						cleaned = re.sub(r'[\d#]', '', kw).strip()
-						cleaned = re.sub(r'\s+', ' ', cleaned)
+			"""Post-process keywords to ensure quality and remove duplicates."""
+			processed = []
+			seen = set()
+			
+			for kw in keywords:
+				if not kw or len(kw) < 2:
+					continue
 						
-						# Skip if too short after cleaning
-						if len(cleaned) < 2:
-								continue
-								
-						# Check for duplicates (case-insensitive)
-						normalized = cleaned.lower()
-						if normalized in seen:
-								continue
-								
-						seen.add(normalized)
-						processed.append(cleaned)
-						
-						if len(processed) >= MAX_KEYWORDS:
-								break
+				# Clean the keyword - preserve original case but remove extra spaces
+				cleaned = re.sub(r'\s+', ' ', kw.strip())
 				
-				return processed
+				# Skip if too short after cleaning
+				if len(cleaned) < 2:
+					continue
+				
+				# Check for standalone numbers or numeric-only words (exclude these)
+				if re.fullmatch(r'\d+', cleaned):
+					continue
+
+				# Check for duplicates (case-insensitive)
+				normalized = cleaned.lower()
+				if normalized in seen:
+					continue
+						
+				seen.add(normalized)
+				processed.append(cleaned)
+				
+				if len(processed) >= MAX_KEYWORDS:
+					break
+
+			return processed
 
 		if verbose:
 			print(f"\n>> Extracting listed response from model: {model_id}")
