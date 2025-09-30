@@ -40,7 +40,7 @@ if not hasattr(tfs.utils, "FlashAttentionKwargs"):
 		pass
 	tfs.utils.FlashAttentionKwargs = FlashAttentionKwargs
 
-MAX_NEW_TOKENS = 300
+MAX_NEW_TOKENS = 100
 TEMPERATURE = 1e-8
 TOP_P = 0.9
 MAX_RETRIES = 3
@@ -65,6 +65,40 @@ Given the description below, extract **between 0 and {k}** concrete, factual, pr
 - The Python list must be the **VERY LAST THING** in your response.
 [/INST]
 """
+
+def load_(model_id: str, device: str):
+	print(f"[INFO] Loading tokenizer for {model_id} on {device}")
+	config = tfs.AutoConfig.from_pretrained(model_id)
+	print(f"[INFO] Model type: {config.model_type} Architectures: {config.architectures}")
+	if config.architectures:
+		cls_name = config.architectures[0]
+		if hasattr(tfs, cls_name):
+			model_cls = getattr(tfs, cls_name)
+	
+	tokenizer = tfs.AutoTokenizer.from_pretrained(
+		model_id, 
+		use_fast=True, 
+		trust_remote_code=True,
+		cache_dir=cache_directory[USER],
+	)
+	if tokenizer.pad_token is None:
+		tokenizer.pad_token = tokenizer.eos_token
+		tokenizer.pad_token_id = tokenizer.eos_token_id
+
+	print(f"[INFO] Tokenizer: {tokenizer.__class__.__name__} {type(tokenizer)}")
+
+	model = model_cls.from_pretrained(
+		model_id,
+		device_map=device,
+		torch_dtype=torch.float16,
+		trust_remote_code=True,
+		cache_dir=cache_directory[USER],
+	)
+	model.eval()
+	if hasattr(torch, 'compile'):
+		model = torch.compile(model, mode="reduce-overhead")
+	print(f"[INFO] Model: {model.__class__.__name__} {type(model)}")
+	return tokenizer, model
 
 def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str, verbose: bool = False):
 
@@ -927,14 +961,23 @@ def query_local_llm(
 		tokenizer: tfs.PreTrainedTokenizer, 
 		text: str, 
 		device: str, 
-		model_id: str,
 		verbose: bool = False,
 	) -> List[str]:
+
+	start_time = time.time()
+	
 	if not isinstance(text, str) or not text.strip():
 		return None
 	keywords: Optional[List[str]] = None
 	prompt = LLM_PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip())
 
+	model_id = getattr(model.config, '_name_or_path', None)
+	if model_id is None:
+		model_id = getattr(model, 'name_or_path', 'unknown_model')
+	if verbose: print(f"Model ID: {model_id}")
+
+	# ⏱️ TOKENIZATION TIMING
+	tokenization_start = time.time()
 	try:
 		inputs = tokenizer(
 			prompt,
@@ -948,38 +991,54 @@ def query_local_llm(
 
 		if "token_type_ids" in inputs and not hasattr(model.config, "type_vocab_size"):
 			inputs.pop("token_type_ids")
+		
+		tokenization_time = time.time() - tokenization_start
+		if verbose: print(f"⏱️ Tokenization: {tokenization_time:.5f}s")
 
-		outputs = model.generate(
-			**inputs,
-			max_new_tokens=MAX_NEW_TOKENS,
-			temperature=TEMPERATURE,
-			top_p=TOP_P,
-			do_sample=TEMPERATURE > 0.0,
-			pad_token_id=tokenizer.pad_token_id,
-			eos_token_id=tokenizer.eos_token_id,
-		)
+		# ⏱️ MODEL GENERATION TIMING
+		generation_start = time.time()
+		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			outputs = model.generate(
+				**inputs,
+				max_new_tokens=MAX_NEW_TOKENS,
+				temperature=TEMPERATURE,
+				top_p=TOP_P,
+				do_sample=TEMPERATURE > 0.0,
+				pad_token_id=tokenizer.pad_token_id,
+				eos_token_id=tokenizer.eos_token_id,
+				use_cache=True,
+			)
+		generation_time = time.time() - generation_start
+		if verbose: print(f"⏱️ Model generation: {generation_time:.5f}s")
+
+		# ⏱️ DECODING TIMING
+		decoding_start = time.time()
 		raw_llm_response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+		decoding_time = time.time() - decoding_start
+		if verbose: print(f"⏱️ Decoding: {decoding_time:.5f}s")
+
 	except Exception as e:
 		print(f"<!> Error {e}")
 		return None
 
 	if verbose:
-		# print(f"=== Input Prompt ===")
-		# print(f"{prompt}")
-		# print("="*150)
-
-		print(f"Raw Output from LLM".center(150, "="))
-		print(f"{raw_llm_response}")
-		# print("-"*50)
+		print(f"\nLLM response:\n{raw_llm_response}")
 		output_tokens = get_num_tokens(raw_llm_response, model_id)
-		print(f">> Output tokens: {output_tokens}")
+		print(f"\n>> Output tokens: {output_tokens}")
 	
+	# ⏱️ RESPONSE PARSING TIMING
+	parsing_start = time.time()
 	keywords = get_llm_response(
 		model_id=model_id, 
 		input_prompt=prompt, 
 		raw_llm_response=raw_llm_response,
 		verbose=verbose,
 	)
+	parsing_time = time.time() - parsing_start
+	if verbose: print(f"⏱️ Response parsing: {parsing_time:.5f}s")
+
+	# ⏱️ FILTERING TIMING
+	filtering_start = time.time()
 	if keywords:
 		filtered_keywords = [
 			kw 
@@ -989,38 +1048,13 @@ def query_local_llm(
 		if not filtered_keywords:
 			return None
 		keywords = filtered_keywords
-	return keywords
+	filtering_time = time.time() - filtering_start
+	if verbose: print(f"⏱️ Keyword filtering: {filtering_time:.5f}s")
 
-def load_(model_id: str, device: str):
-	print(f"[INFO] Loading tokenizer for {model_id} on {device}")
-	config = tfs.AutoConfig.from_pretrained(model_id)
-	print(f"[INFO] Model type: {config.model_type} Architectures: {config.architectures}")
-	if config.architectures:
-		cls_name = config.architectures[0]
-		if hasattr(tfs, cls_name):
-			model_cls = getattr(tfs, cls_name)
+	total_time = time.time() - start_time
+	if verbose: print(f"⏱️ TOTAL query_local_llm time: {total_time:.2f}s")
 	
-	tokenizer = tfs.AutoTokenizer.from_pretrained(
-		model_id, 
-		use_fast=True, 
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
-	)
-	if tokenizer.pad_token is None:
-		tokenizer.pad_token = tokenizer.eos_token
-		tokenizer.pad_token_id = tokenizer.eos_token_id
-
-	print(f"[INFO] Tokenizer type: {tokenizer.__class__.__name__} {type(tokenizer)}")
-
-	model = model_cls.from_pretrained(
-		model_id,
-		device_map=device,
-		torch_dtype=torch.float16,
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
-	)
-	print(f"[INFO] Model type: {model.__class__.__name__} {type(model)}")
-	return tokenizer, model
+	return keywords
 
 def get_llm_based_labels_inefficient(
 		model_id: str, 
@@ -1097,7 +1131,6 @@ def get_llm_based_labels_inefficient(
 			tokenizer=tokenizer, 
 			text=desc,
 			device= device,
-			model_id=model_id,
 			verbose=verbose,
 		)
 		all_keywords.append(kws)
@@ -1326,7 +1359,6 @@ def get_llm_based_labels_efficient(
 				tokenizer=tokenizer,
 				text=desc,
 				device=device,
-				model_id=model_id,
 				verbose=verbose,
 			)
 			unique_results[idx] = individual_result
