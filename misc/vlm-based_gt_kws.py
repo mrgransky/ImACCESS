@@ -37,6 +37,8 @@ Exclude any explanatory text, comments, questions, or words about image quality,
 def get_vlm_response(model_id: str, raw_vlm_response: str, verbose: bool=False):
 	if "Qwen" in model_id:
 		return _qwen_vlm_(raw_vlm_response, verbose=verbose)
+	elif "llava" in model_id:
+		return _llava_vlm(raw_vlm_response, verbose=verbose)
 	else:
 		raise NotImplementedError(f"VLM response parsing not implemented for {model_id}")
 
@@ -93,8 +95,10 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[list]:
 def _llava_vlm(response: str, verbose: bool=False) -> Optional[list]:
 	if verbose:
 		print(f"\n[DEBUG] Raw VLM output:\n{response}")
+	if not isinstance(response, str):
+		if verbose: print("[ERROR] VLM output is not a string.")
+		return None
 	
-
 def query_local_vlm(
 		model: tfs.PreTrainedModel, 
 		processor: tfs.AutoProcessor, 
@@ -121,8 +125,6 @@ def query_local_vlm(
 	if model_id is None:
 		model_id = getattr(model, 'name_or_path', 'unknown_model')
 
-	# if verbose: print(f"Model ID: {model_id}")
-
 	inputs = processor(
 		images=img,
 		text=text,
@@ -136,6 +138,8 @@ def query_local_vlm(
 			use_cache=True,
 		)
 	vlm_response = processor.decode(output[0], skip_special_tokens=True)
+	if verbose:
+		print(f"\nVLM response:\n{vlm_response}")
 	vlm_response_parsed = get_vlm_response(
 		model_id=model_id, 
 		raw_vlm_response=vlm_response, 
