@@ -1071,51 +1071,6 @@ def get_llm_based_labels_inefficient(
 			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
 	tokenizer, model = load_(model_id, device)
-	# return
-
-	# if verbose:
-	# 	print(f"Loading tokenizer for {model_id}...")
-	# tokenizer = tfs.AutoTokenizer.from_pretrained(
-	# 	model_id, 
-	# 	use_fast=True, 
-	# 	trust_remote_code=True,
-	# 	cache_dir=cache_directory[USER],
-	# )
-	# if tokenizer.pad_token is None:
-	# 	tokenizer.pad_token = tokenizer.eos_token
-	# 	tokenizer.pad_token_id = tokenizer.eos_token_id
-
-	# if verbose:
-	# 	print(f"Loading model for {model_id}...")
-	# config = tfs.AutoConfig.from_pretrained(
-	# 	model_id, 
-	# 	trust_remote_code=True,
-	# 	cache_dir=cache_directory[USER],
-	# )
-
-	# # Pick the right class dynamically
-	# if getattr(config, "is_encoder_decoder", False):
-	# 	# T5, FLAN-T5, BART, Marian, mBART, etc.
-	# 	model = tfs.AutoModelForSeq2SeqLM.from_pretrained(
-	# 		model_id,
-	# 		device_map=device,
-	# 		torch_dtype=torch.float16,
-	# 		trust_remote_code=True,
-	# 		cache_dir=cache_directory[USER],
-	# 	).eval()
-	# 	if verbose:
-	# 		print(f"[INFO] Loaded Seq2SeqLM model: {model.__class__.__name__}")
-	# else:
-	# 	# GPT-style, LLaMA, Falcon, Qwen, Mistral, etc.
-	# 	model = tfs.AutoModelForCausalLM.from_pretrained(
-	# 		model_id,
-	# 		device_map=device,
-	# 		torch_dtype=torch.float16,
-	# 		trust_remote_code=True,
-	# 		cache_dir=cache_directory[USER],
-	# 	).eval()
-	# 	if verbose:
-	# 		print(f"[INFO] Loaded CausalLM model: {model.__class__.__name__}")
 
 	if verbose:
 		debug_llm_info(model, tokenizer, device)
@@ -1397,6 +1352,7 @@ def get_llm_based_labels_efficient(
 	
 	return results
 
+@measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="Textual-label annotation for Historical Archives Dataset using instruction-tuned LLMs")
 	parser.add_argument("--csv_file", '-csv', type=str, help="Path to the metadata CSV file")

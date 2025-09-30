@@ -237,6 +237,7 @@ def get_vlm_based_labels_inefficient(
 		all_keywords.append(keywords)
 	return all_keywords
 
+@measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="VLLM-based keyword extraction for Historical Archives Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, help="Path to the metadata CSV file")
