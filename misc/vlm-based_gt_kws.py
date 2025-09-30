@@ -220,16 +220,16 @@ def get_vlm_based_labels_inefficient(
 	# 	img_path=image_path
 	# )
 	all_keywords = []
-	for i, img_path in enumerate(image_paths):
+	for i, img_path in tqdm(enumerate(image_paths), total=len(image_paths), desc="Processing images"):
 		text = get_prompt(
 			model_id=model_id, 
 			processor=processor,
-			img_path=image_paths[i],
+			img_path=img_path,
 		)
 		keywords = query_local_vlm(
 			model=model, 
 			processor=processor,
-			img_path=image_paths[i], 
+			img_path=img_path, 
 			text=text,
 			device=device
 		)
