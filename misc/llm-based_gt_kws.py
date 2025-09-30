@@ -991,6 +991,37 @@ def query_local_llm(
 		keywords = filtered_keywords
 	return keywords
 
+def load_(model_id: str, device: str):
+	print(f"[INFO] Loading tokenizer for {model_id} on {device}")
+	config = tfs.AutoConfig.from_pretrained(model_id)
+	print(f"[INFO] Model type: {config.model_type} Architectures: {config.architectures}")
+	if config.architectures:
+		cls_name = config.architectures[0]
+		if hasattr(tfs, cls_name):
+			model_cls = getattr(tfs, cls_name)
+	
+	tokenizer = tfs.AutoTokenizer.from_pretrained(
+		model_id, 
+		use_fast=True, 
+		trust_remote_code=True,
+		cache_dir=cache_directory[USER],
+	)
+	if tokenizer.pad_token is None:
+		tokenizer.pad_token = tokenizer.eos_token
+		tokenizer.pad_token_id = tokenizer.eos_token_id
+
+	print(f"[INFO] Tokenizer type: {tokenizer.__class__.__name__} {type(tokenizer)}")
+
+	model = model_cls.from_pretrained(
+		model_id,
+		device_map=device,
+		torch_dtype=torch.float16,
+		trust_remote_code=True,
+		cache_dir=cache_directory[USER],
+	)
+	print(f"[INFO] Model type: {model.__class__.__name__} {type(model)}")
+	return tokenizer, model
+
 def get_llm_based_labels_inefficient(
 		model_id: str, 
 		device: str, 
@@ -1005,55 +1036,59 @@ def get_llm_based_labels_inefficient(
 		if verbose:
 			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-	if verbose:
-		print(f"Loading tokenizer for {model_id}...")
-	tokenizer = tfs.AutoTokenizer.from_pretrained(
-		model_id, 
-		use_fast=True, 
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
-	)
-	if tokenizer.pad_token is None:
-		tokenizer.pad_token = tokenizer.eos_token
-		tokenizer.pad_token_id = tokenizer.eos_token_id
-	if verbose:
-		print(f"Loading model for {model_id}...")
-	config = tfs.AutoConfig.from_pretrained(
-		model_id, 
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
-	)
+	tokenizer, model = load_(model_id, device)
+	# return
 
-	# Pick the right class dynamically
-	if getattr(config, "is_encoder_decoder", False):
-		# T5, FLAN-T5, BART, Marian, mBART, etc.
-		model = tfs.AutoModelForSeq2SeqLM.from_pretrained(
-			model_id,
-			device_map=device,
-			torch_dtype=torch.float16,
-			trust_remote_code=True,
-			cache_dir=cache_directory[USER],
-		).eval()
-		if verbose:
-			print(f"[INFO] Loaded Seq2SeqLM model: {model.__class__.__name__}")
-	else:
-		# GPT-style, LLaMA, Falcon, Qwen, Mistral, etc.
-		model = tfs.AutoModelForCausalLM.from_pretrained(
-			model_id,
-			device_map=device,
-			torch_dtype=torch.float16,
-			trust_remote_code=True,
-			cache_dir=cache_directory[USER],
-		).eval()
-		if verbose:
-			print(f"[INFO] Loaded CausalLM model: {model.__class__.__name__}")
+	# if verbose:
+	# 	print(f"Loading tokenizer for {model_id}...")
+	# tokenizer = tfs.AutoTokenizer.from_pretrained(
+	# 	model_id, 
+	# 	use_fast=True, 
+	# 	trust_remote_code=True,
+	# 	cache_dir=cache_directory[USER],
+	# )
+	# if tokenizer.pad_token is None:
+	# 	tokenizer.pad_token = tokenizer.eos_token
+	# 	tokenizer.pad_token_id = tokenizer.eos_token_id
+
+	# if verbose:
+	# 	print(f"Loading model for {model_id}...")
+	# config = tfs.AutoConfig.from_pretrained(
+	# 	model_id, 
+	# 	trust_remote_code=True,
+	# 	cache_dir=cache_directory[USER],
+	# )
+
+	# # Pick the right class dynamically
+	# if getattr(config, "is_encoder_decoder", False):
+	# 	# T5, FLAN-T5, BART, Marian, mBART, etc.
+	# 	model = tfs.AutoModelForSeq2SeqLM.from_pretrained(
+	# 		model_id,
+	# 		device_map=device,
+	# 		torch_dtype=torch.float16,
+	# 		trust_remote_code=True,
+	# 		cache_dir=cache_directory[USER],
+	# 	).eval()
+	# 	if verbose:
+	# 		print(f"[INFO] Loaded Seq2SeqLM model: {model.__class__.__name__}")
+	# else:
+	# 	# GPT-style, LLaMA, Falcon, Qwen, Mistral, etc.
+	# 	model = tfs.AutoModelForCausalLM.from_pretrained(
+	# 		model_id,
+	# 		device_map=device,
+	# 		torch_dtype=torch.float16,
+	# 		trust_remote_code=True,
+	# 		cache_dir=cache_directory[USER],
+	# 	).eval()
+	# 	if verbose:
+	# 		print(f"[INFO] Loaded CausalLM model: {model.__class__.__name__}")
 
 	if verbose:
 		debug_llm_info(model, tokenizer, device)
 
-	# Convert single string to list for uniform processing
 	if isinstance(descriptions, str):
 		descriptions = [descriptions]
+
 	all_keywords = list()
 	for i, desc in tqdm(enumerate(descriptions), total=len(descriptions), desc="Processing descriptions"):
 		# if verbose: print(f"Processing description {i+1}: {desc}")
@@ -1340,8 +1375,8 @@ def main():
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing (adjust based on GPU memory)")
 	parser.add_argument("--do_dedup", '-dd', action='store_true', help="Deduplicate prompts")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
-	args = parser.parse_args()
 
+	args = parser.parse_args()
 	args.device = torch.device(args.device)
 	print(args)
 
@@ -1362,7 +1397,7 @@ def main():
 	else:
 		raise ValueError("Either --csv_file or --description must be provided")
 
-	keywords = get_llm_based_labels_efficient(
+	keywords = get_llm_based_labels_inefficient(
 		model_id=args.model_id, 
 		device=args.device, 
 		descriptions=descriptions,
@@ -1370,6 +1405,7 @@ def main():
 		verbose=args.verbose,
 	)
 	print(f"{len(keywords)} Extracted keywords: {keywords}")
+
 	if args.csv_file:
 		df['llm_keywords'] = keywords
 		df.to_csv(output_csv, index=False)

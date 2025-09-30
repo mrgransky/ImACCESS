@@ -206,6 +206,7 @@ def get_vlm_based_labels_inefficient(
 		batch_size: int = 64,
 		verbose: bool = False,
 	) -> List[List[str]]:
+
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
@@ -231,9 +232,6 @@ def get_vlm_based_labels_inefficient(
 		)
 		all_keywords.append(keywords)
 	return all_keywords
-
-def get_vlm_based_labels_efficient():
-	pass
 
 def main():
 	parser = argparse.ArgumentParser(description="VLLM-based keyword extraction for Historical Archives Dataset")
@@ -274,6 +272,7 @@ def main():
 		verbose=args.verbose,
 	)
 	print(f"{len(keywords)} Extracted keywords: {keywords}")
+
 	if args.csv_file:
 		df['vlm_keywords'] = keywords
 		df.to_csv(output_csv, index=False)
