@@ -219,20 +219,22 @@ def get_vlm_based_labels_inefficient(
 	# 	processor=processor,
 	# 	img_path=image_path
 	# )
-
+	all_keywords = []
 	for i, img_path in enumerate(image_paths):
 		text = get_prompt(
 			model_id=model_id, 
 			processor=processor,
 			img_path=image_paths[i],
 		)
-		query_local_vlm(
+		keywords = query_local_vlm(
 			model=model, 
 			processor=processor,
 			img_path=image_paths[i], 
 			text=text,
 			device=device
 		)
+		all_keywords.append(keywords)
+	return all_keywords
 
 def get_vlm_based_labels_efficient():
 	pass
@@ -259,18 +261,28 @@ def main():
 			raise ValueError("CSV file must have 'img_path' column")
 		img_paths = df['img_path'].tolist()
 		print(f"Loaded {len(img_paths)} images from {args.csv_file}")
+		output_csv = args.csv_file.replace(".csv", "_vlm_keywords.csv")
 	elif args.image_path:
 		img_paths = [args.image_path]
 	else:
 		raise ValueError("Either --csv_file or --image_path must be provided")
 
-	get_vlm_based_labels_inefficient(
+	keywords = get_vlm_based_labels_inefficient(
 		model_id=args.model_id,
 		device=args.device,
 		image_paths=img_paths,
 		batch_size=1,
 		verbose=True,
 	)
+	print(f"{len(keywords)} Extracted keywords: {keywords}")
+	if args.csv_file:
+		df['vlm_keywords'] = keywords
+		df.to_csv(output_csv, index=False)
+		try:
+			df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+		except Exception as e:
+			print(f"Failed to write Excel file: {e}")
+
 
 if __name__ == "__main__":
 	main()
