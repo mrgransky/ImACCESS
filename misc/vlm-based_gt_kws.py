@@ -24,7 +24,6 @@ from utils import *
 # # model_id = "tiiuae/falcon-11B-vlm"
 # # model_id = "utter-project/EuroVLM-1.7B-Preview"
 # # model_id = "OpenGVLab/InternVL-Chat-V1-2"
-MAX_NEW_TOKENS = 64
 
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
@@ -97,6 +96,7 @@ def query_local_vlm(
 		img_path: str,
 		text: str,
 		device: str,
+		max_new_tokens: int,
 		verbose: bool=False,
 	):
 	try:
@@ -127,7 +127,7 @@ def query_local_vlm(
 	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 		output = model.generate(
 			**inputs, 
-			max_new_tokens=MAX_NEW_TOKENS,
+			max_new_tokens=max_new_tokens,
 			use_cache=True,
 		)
 	vlm_response = processor.decode(output[0], skip_special_tokens=True)
@@ -207,7 +207,8 @@ def get_vlm_based_labels_inefficient(
 		model_id: str,
 		device: str,
 		image_paths: Union[str, List[str]],
-		batch_size: int = 64,
+		batch_size: int,
+		max_new_tokens: int,
 		verbose: bool = False,
 	) -> List[List[str]]:
 
@@ -232,6 +233,7 @@ def get_vlm_based_labels_inefficient(
 			img_path=img_path, 
 			text=text,
 			device=device,
+			max_new_tokens=max_new_tokens,
 			verbose=verbose,
 		)
 		all_keywords.append(keywords)
@@ -246,6 +248,7 @@ def main():
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=16, help="Batch size for processing")
+	parser.add_argument("--max_new_tokens", '-mnt', type=int, default=64, help="Batch size for processing")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 
 	args = parser.parse_args()
@@ -274,6 +277,7 @@ def main():
 		device=args.device,
 		image_paths=img_paths,
 		batch_size=args.batch_size,
+		max_new_tokens=args.max_new_tokens,
 		verbose=args.verbose,
 	)
 	print(f"{len(keywords)} Extracted keywords: {keywords}")

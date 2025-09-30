@@ -40,7 +40,6 @@ if not hasattr(tfs.utils, "FlashAttentionKwargs"):
 		pass
 	tfs.utils.FlashAttentionKwargs = FlashAttentionKwargs
 
-MAX_NEW_TOKENS = 64
 TEMPERATURE = 1e-8
 TOP_P = 0.9
 MAX_RETRIES = 3
@@ -960,7 +959,8 @@ def query_local_llm(
 		model: tfs.PreTrainedModel,
 		tokenizer: tfs.PreTrainedTokenizer, 
 		text: str, 
-		device: str, 
+		device: str,
+		max_new_tokens: int,
 		verbose: bool = False,
 	) -> List[str]:
 
@@ -968,6 +968,7 @@ def query_local_llm(
 	
 	if not isinstance(text, str) or not text.strip():
 		return None
+
 	keywords: Optional[List[str]] = None
 	prompt = LLM_PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip())
 
@@ -1000,7 +1001,7 @@ def query_local_llm(
 		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 			outputs = model.generate(
 				**inputs,
-				max_new_tokens=MAX_NEW_TOKENS,
+				max_new_tokens=max_new_tokens,
 				temperature=TEMPERATURE,
 				top_p=TOP_P,
 				do_sample=TEMPERATURE > 0.0,
@@ -1060,7 +1061,8 @@ def get_llm_based_labels_inefficient(
 		model_id: str, 
 		device: str, 
 		descriptions: Union[str, List[str]],  # Accept both str and list
-		batch_size: int = 64,
+		batch_size: int,
+		max_new_tokens: int,
 		verbose: bool = False,
 	) -> List[List[str]]:
 
@@ -1080,12 +1082,12 @@ def get_llm_based_labels_inefficient(
 
 	all_keywords = list()
 	for i, desc in tqdm(enumerate(descriptions), total=len(descriptions), desc="Processing descriptions"):
-		# if verbose: print(f"Processing description {i+1}: {desc}")
 		kws = query_local_llm(
 			model=model, 
 			tokenizer=tokenizer, 
 			text=desc,
 			device= device,
+			max_new_tokens=max_new_tokens,
 			verbose=verbose,
 		)
 		all_keywords.append(kws)
@@ -1095,7 +1097,8 @@ def get_llm_based_labels_efficient(
 		model_id: str,
 		device: str,
 		descriptions: Union[str, List[str]],
-		batch_size: int = 64,
+		batch_size: int,
+		max_new_tokens: int,
 		do_dedup: bool = True,
 		max_retries: int = 2,
 		verbose: bool = False,
@@ -1230,7 +1233,7 @@ def get_llm_based_labels_efficient(
 									gen_kwargs = dict(
 											input_ids=tokenized.get("input_ids"),
 											attention_mask=tokenized["attention_mask"],
-											max_new_tokens=MAX_NEW_TOKENS,
+											max_new_tokens=max_new_tokens,
 											do_sample=TEMPERATURE > 0.0,
 											temperature=TEMPERATURE,
 											top_p=TOP_P,
@@ -1361,6 +1364,7 @@ def main():
 	parser.add_argument("--description", '-desc', type=str, help="Description")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing (adjust based on GPU memory)")
+	parser.add_argument("--max_new_tokens", '-mnt', type=int, default=64, help="Batch size for processing")
 	parser.add_argument("--do_dedup", '-dd', action='store_true', help="Deduplicate prompts")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 
@@ -1390,6 +1394,7 @@ def main():
 		device=args.device, 
 		descriptions=descriptions,
 		batch_size=args.batch_size,
+		max_new_tokens=args.max_new_tokens,
 		verbose=args.verbose,
 	)
 	print(f"{len(keywords)} Extracted keywords: {keywords}")
