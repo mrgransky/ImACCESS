@@ -107,7 +107,7 @@ def query_local_vlm(
 			print(f"ERROR: failed to load image from {img_path} => {e}")
 			return
 
-	print(f"IMG: {type(img)} {img.size} {img.mode}")
+	if verbose: print(f"IMG: {type(img)} {img.size} {img.mode}")
 	model_id = getattr(model.config, '_name_or_path', None)
 	if model_id is None:
 		model_id = getattr(model, 'name_or_path', 'unknown_model')
