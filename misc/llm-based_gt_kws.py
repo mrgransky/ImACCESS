@@ -49,7 +49,7 @@ MAX_KEYWORDS = 5
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
 
-LLM_PROMPT_TEMPLATE = """<s>[INST]
+LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 Act as a meticulous historical archivist specializing in 20th century documentation.
 Given the description below, extract **between 0 and {k}** concrete, factual, prominent, and *non-numeric* keywords (maximum {k}, minimum 0).
 
@@ -85,7 +85,7 @@ def load_(model_id: str, device: str, verbose: bool=False):
 	if tokenizer.pad_token is None:
 		tokenizer.pad_token = tokenizer.eos_token
 		tokenizer.pad_token_id = tokenizer.eos_token_id
-	
+
 	if verbose:
 		print(f"[INFO] Tokenizer: {tokenizer.__class__.__name__} {type(tokenizer)}")
 
@@ -976,7 +976,7 @@ def query_local_llm(
 		return None
 
 	keywords: Optional[List[str]] = None
-	prompt = LLM_PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip())
+	prompt = LLM_INSTRUCTION_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip())
 
 	model_id = getattr(model.config, '_name_or_path', None)
 	if model_id is None:
@@ -1050,7 +1050,7 @@ def query_local_llm(
 		filtered_keywords = [
 			kw 
 			for kw in keywords 
-			if kw not in re.sub(r'[^\w\s]', '', LLM_PROMPT_TEMPLATE).split() # remove punctuation and split
+			if kw not in re.sub(r'[^\w\s]', '', LLM_INSTRUCTION_TEMPLATE).split() # remove punctuation and split
 		]
 		if not filtered_keywords:
 			return None
@@ -1117,7 +1117,6 @@ def get_llm_based_labels_efficient(
 		verbose: bool = False,
 	) -> List[Optional[List[str]]]:	
 	
-	# Normalize to list
 	if isinstance(descriptions, str):
 		inputs = [descriptions]
 	else:
@@ -1127,6 +1126,7 @@ def get_llm_based_labels_efficient(
 		return None
 	
 	tokenizer, model = load_(model_id, device)
+	tokenizer.padding_side = "left" # critical for decoder-only models
 
 	if verbose:
 		valid_count = sum(1 for x in inputs if x is not None and str(x).strip() not in ("", "nan", "None"))
@@ -1164,7 +1164,7 @@ def get_llm_based_labels_efficient(
 		if s is None:
 			unique_prompts.append(None)
 		else:
-			unique_prompts.append(LLM_PROMPT_TEMPLATE.format(k=MAX_KEYWORDS, description=s.strip()))
+			unique_prompts.append(LLM_INSTRUCTION_TEMPLATE.format(k=MAX_KEYWORDS, description=s.strip()))
 	# Will hold parsed results for unique inputs
 	unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
 	
@@ -1172,106 +1172,97 @@ def get_llm_based_labels_efficient(
 	valid_indices = [i for i, p in enumerate(unique_prompts) if p is not None]
 	
 	if valid_indices:
+		if verbose:
+			print(f"🔄 Processing {len(valid_indices)} unique prompts in batches of {batch_size}...")
+		
+		# Group valid indices into batches
+		batches = []
+		for i in range(0, len(valid_indices), batch_size):
+			batch_indices = valid_indices[i:i + batch_size]
+			batch_prompts = [unique_prompts[idx] for idx in batch_indices]
+			batches.append((batch_indices, batch_prompts))
+		
+		for batch_num, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing batches")):
 			if verbose:
-				print(f"🔄 Processing {len(valid_indices)} unique prompts in batches of {batch_size}...")
-			
-			# Group valid indices into batches
-			batches = []
-			for i in range(0, len(valid_indices), batch_size):
-				batch_indices = valid_indices[i:i + batch_size]
-				batch_prompts = [unique_prompts[idx] for idx in batch_indices]
-				batches.append((batch_indices, batch_prompts))
-			
-			for batch_num, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing batches")):
+				print(f"📦 Batch {batch_num + 1}/{len(batches)} with {len(batch_prompts)} items")
+			success = False
+			last_error = None
+			# 🔄 RETRY LOGIC
+			for attempt in range(max_retries + 1):
+				try:
+					if attempt > 0 and verbose:
+						print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for batch {batch_num + 1}")
+					# Tokenize batch
+					tokenized = tokenizer(
+						batch_prompts,
+						return_tensors="pt",
+						padding=True,
+						truncation=True,
+						max_length=4096,
+					)
+					if device != 'cpu':
+						tokenized = {k: v.to(device) for k, v in tokenized.items()}
+					# Generation args
+					gen_kwargs = dict(
+						input_ids=tokenized.get("input_ids"),
+						attention_mask=tokenized["attention_mask"],
+						max_new_tokens=max_new_tokens,
+						do_sample=TEMPERATURE > 0.0,
+						temperature=TEMPERATURE,
+						top_p=TOP_P,
+						pad_token_id=tokenizer.pad_token_id,
+						eos_token_id=tokenizer.eos_token_id,
+					)
+					with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+						outputs = model.generate(**gen_kwargs)							
+					decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 					if verbose:
-						print(f"📦 Batch {batch_num + 1}/{len(batches)} with {len(batch_prompts)} items")
+						print(f"✅ Batch {batch_num + 1} generation successful")
+					# Parse each response
+					for i, text_out in enumerate(decoded):
+						idx = batch_indices[i]
+						try:
+							parsed = get_llm_response(
+								model_id=model_id,
+								input_prompt=batch_prompts[i],
+								raw_llm_response=text_out,
+								verbose=verbose,  # 🔧 Propagate verbose flag
+							)
+							unique_results[idx] = parsed
+						except Exception as e:
+							if verbose:
+								print(f"⚠️ Parsing error for batch index {idx}: {e}")
+							unique_results[idx] = None
+					success = True
+					break  # Break retry loop on success	
+				except Exception as e:
+					last_error = e
+					if verbose:
+						print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed: {e}")
 					
-					success = False
-					last_error = None
-					
-					# 🔄 RETRY LOGIC
-					for attempt in range(max_retries + 1):
-							try:
-									if attempt > 0 and verbose:
-											print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for batch {batch_num + 1}")
-									
-									# Tokenize batch
-									tokenized = tokenizer(
-											batch_prompts,
-											return_tensors="pt",
-											padding=True,
-											truncation=True,
-											max_length=4096,
-									)
-									if device != 'cpu':
-											tokenized = {k: v.to(device) for k, v in tokenized.items()}
-									
-									# Generation args
-									gen_kwargs = dict(
-											input_ids=tokenized.get("input_ids"),
-											attention_mask=tokenized["attention_mask"],
-											max_new_tokens=max_new_tokens,
-											do_sample=TEMPERATURE > 0.0,
-											temperature=TEMPERATURE,
-											top_p=TOP_P,
-											pad_token_id=tokenizer.pad_token_id,
-											eos_token_id=tokenizer.eos_token_id,
-									)
-									
-									with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-										outputs = model.generate(**gen_kwargs)
-									
-									decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-									
-									if verbose:
-										print(f"✅ Batch {batch_num + 1} generation successful")
-									
-									# Parse each response
-									for i, text_out in enumerate(decoded):
-										idx = batch_indices[i]
-										try:
-											parsed = get_llm_response(
-												model_id=model_id,
-												input_prompt=batch_prompts[i],
-												raw_llm_response=text_out,
-												verbose=verbose,  # 🔧 Propagate verbose flag
-											)
-											unique_results[idx] = parsed
-										except Exception as e:
-											if verbose:
-												print(f"⚠️ Parsing error for batch index {idx}: {e}")
-											unique_results[idx] = None
-									
-									success = True
-									break  # Break retry loop on success	
-							except Exception as e:
-								last_error = e
-								if verbose:
-									print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed: {e}")
-								
-								if attempt < max_retries:
-									# Exponential backoff
-									sleep_time = EXP_BACKOFF ** attempt
-									if verbose:
-										print(f"⏳ Waiting {sleep_time}s before retry...")
-									time.sleep(sleep_time)
-									torch.cuda.empty_cache() if torch.cuda.is_available() else None
-								else:
-									# Final attempt failed
-									if verbose:
-										print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
-									# Mark all items in this batch as failed
-									for idx in batch_indices:
-										unique_results[idx] = None
-					
-					# Clean up
-					if 'tokenized' in locals():
-						del tokenized
-					if 'outputs' in locals():
-						del outputs
-					if 'decoded' in locals():
-						del decoded
-					torch.cuda.empty_cache() if torch.cuda.is_available() else None
+					if attempt < max_retries:
+						# Exponential backoff
+						sleep_time = EXP_BACKOFF ** attempt
+						if verbose:
+							print(f"⏳ Waiting {sleep_time}s before retry...")
+						time.sleep(sleep_time)
+						torch.cuda.empty_cache() if torch.cuda.is_available() else None
+					else:
+						# Final attempt failed
+						if verbose:
+							print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
+						# Mark all items in this batch as failed
+						for idx in batch_indices:
+							unique_results[idx] = None
+			# Clean up
+			if 'tokenized' in locals():
+				del tokenized
+			if 'outputs' in locals():
+				del outputs
+			if 'decoded' in locals():
+				del decoded
+			torch.cuda.empty_cache() if torch.cuda.is_available() else None
+	
 	# 🔄 HYBRID FALLBACK: Retry failed items individually
 	failed_indices = [
 		i 
@@ -1294,6 +1285,7 @@ def get_llm_based_labels_efficient(
 				tokenizer=tokenizer,
 				text=desc,
 				device=device,
+				max_new_tokens=max_new_tokens,
 				verbose=verbose,
 			)
 			unique_results[idx] = individual_result
@@ -1367,7 +1359,7 @@ def main():
 		raise ValueError("Either --csv_file or --description must be provided")
 
 	# inefficient approach:
-	keywords = get_llm_based_labels(
+	keywords = get_llm_based_labels_efficient(
 		model_id=args.model_id, 
 		device=args.device, 
 		descriptions=descriptions,

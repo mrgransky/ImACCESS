@@ -90,6 +90,11 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[list]:
 
 	return None
 
+def _llava_vlm(response: str, verbose: bool=False) -> Optional[list]:
+	if verbose:
+		print(f"\n[DEBUG] Raw VLM output:\n{response}")
+	
+
 def query_local_vlm(
 		model: tfs.PreTrainedModel, 
 		processor: tfs.AutoProcessor, 
