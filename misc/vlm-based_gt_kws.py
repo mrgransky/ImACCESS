@@ -25,7 +25,6 @@ from utils import *
 # # model_id = "utter-project/EuroVLM-1.7B-Preview"
 # # model_id = "OpenGVLab/InternVL-Chat-V1-2"
 
-
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
 
@@ -34,6 +33,74 @@ Identify the five most prominent, factual and distinct **KEYWORDS** that capture
 Exclude any explanatory text, comments, questions, or words about image quality, style, or temporal era.
 **Return *only* these keywords as a clean, parseable Python list, e.g., ['keyword1', 'keyword2', 'keyword3', 'keyword4', 'keyword5'].**
 """
+
+def _qwen_vlm_response(vlm_response: str, verbose: bool = True) -> list:
+	"""
+	Parse VLM response to get a clean Python list of keywords.
+	Handles various formatting issues and provides verbose debugging output.
+	Args:
+			vlm_response (str): Raw response string from VLM API.
+			verbose (bool): If True, show all steps and warnings.
+	Returns:
+			list: List of parsed keywords.
+	"""
+	# Initial raw output
+	if verbose:
+			print("="*60)
+			print("[DEBUG] Raw VLM output:\n", vlm_response)
+	if not isinstance(vlm_response, str):
+			if verbose:
+					print("[ERROR] VLM output is not a string.")
+			return []
+	# Find the start of the keywords list
+	# 1. Try direct Python list string parsing
+	list_match = re.search(r"\[(.*?)\]", vlm_response, re.DOTALL)
+	if verbose:
+			print("[DEBUG] Regex match:", "Found" if list_match else "Not found")
+	if list_match:
+			list_str = list_match.group(0)  # the "[...]" part
+			if verbose:
+					print("[DEBUG] Extracted list portion:", list_str)
+			try:
+					parsed_keywords = ast.literal_eval(list_str)
+					if verbose:
+							print("[DEBUG] Parsed Python list:", parsed_keywords)
+					# Ensure it's a list of strings
+					if isinstance(parsed_keywords, list):
+							result = [str(x).strip() for x in parsed_keywords if isinstance(x, str)]
+							print("[INFO] Final parsed keywords:", result)
+							print("="*60)
+							return result
+					else:
+							if verbose:
+									print("[ERROR] Parsed output is not a list.")
+			except Exception as e:
+					if verbose:
+							print("[ERROR] ast.literal_eval failed:", e)
+	# 2. As fallback, try extracting keywords separated by commas or newline after "assistant"
+	if verbose:
+			print("[DEBUG] Trying fallback extraction.")
+	after_assistant = vlm_response.split("assistant")[-1].strip()
+	candidates = re.findall(r"'([^']+)'", after_assistant)
+	if verbose:
+			print("[DEBUG] Regex candidates:", candidates)
+	if candidates:
+			result = [str(x).strip() for x in candidates]
+			print("[INFO] Final parsed fallback keywords:", result)
+			print("="*60)
+			return result
+	# 3. Last fallback: split by commas and validate
+	raw_split = [x.strip(" ,'\"]") for x in after_assistant.split(",") if x.strip()]
+	if verbose:
+			print("[DEBUG] Comma split candidates:", raw_split)
+	if len(raw_split) > 1:
+			print("[INFO] Final last-resort keywords:", raw_split)
+			print("="*60)
+			return raw_split
+	if verbose:
+			print("[ERROR] Unable to parse any keywords from VLM output.")
+			print("="*60)
+	return None
 
 def query_local_vlm(
 		model: tfs.PreTrainedModel, 
@@ -66,6 +133,9 @@ def query_local_vlm(
 	output = model.generate(**inputs, max_new_tokens=128)
 	print("Output:")
 	print(processor.decode(output[0], skip_special_tokens=True))
+	vlm_response = processor.decode(output[0], skip_special_tokens=True)
+	vlm_response_parsed = _qwen_vlm_response(vlm_response, verbose=True)
+	return vlm_response_parsed
 
 def load_(model_id: str, device: str):
 	print(f"[INFO] Loading model: {model_id} on {device}")
@@ -135,7 +205,7 @@ def get_prompt(model_id: str, processor: tfs.AutoProcessor, img_path: str):
 def get_vlm_based_labels_inefficient(
 		model_id: str,
 		device: str,
-		image_path: Union[str, List[str]],
+		image_paths: Union[str, List[str]],
 		batch_size: int = 64,
 		verbose: bool = False,
 	) -> List[List[str]]:
@@ -147,19 +217,25 @@ def get_vlm_based_labels_inefficient(
 
 	processor, model = load_(model_id, device)
 
-	text = get_prompt(
-		model_id=model_id, 
-		processor=processor,
-		img_path=image_path
-	)
+	# text = get_prompt(
+	# 	model_id=model_id, 
+	# 	processor=processor,
+	# 	img_path=image_path
+	# )
 
-	query_local_vlm(
-		model=model, 
-		processor=processor,
-		img_path=image_path, 
-		text=text,
-		device=device
-	)
+	for i, img_path in enumerate(image_paths):
+		text = get_prompt(
+			model_id=model_id, 
+			processor=processor,
+			img_path=image_paths[i],
+		)
+		query_local_vlm(
+			model=model, 
+			processor=processor,
+			img_path=image_paths[i], 
+			text=text,
+			device=device
+		)
 
 def get_vlm_based_labels_efficient():
 	pass
