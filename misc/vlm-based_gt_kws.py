@@ -173,8 +173,15 @@ def main():
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	args = parser.parse_args()
+	args.device = torch.device(args.device)
 	print(args)
-	get_vlm_based_labels_inefficient(args)
+	get_vlm_based_labels_inefficient(
+		model_id=args.model_id,
+		device=args.device,
+		image_path=args.image_path,
+		batch_size=1,
+		verbose=True,
+	)
 
 if __name__ == "__main__":
 	main()
