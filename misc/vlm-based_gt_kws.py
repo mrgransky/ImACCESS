@@ -242,10 +242,13 @@ def get_vlm_based_labels_efficient():
 def main():
 	parser = argparse.ArgumentParser(description="VLLM-based keyword extraction for Historical Archives Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, help="Path to the metadata CSV file")
-	parser.add_argument('--image_path', '-i',type=str, required=True, help='img path [or URL]')
+	parser.add_argument("--image_path", '-i', type=str, help="img path [or URL]")
 	parser.add_argument("--model_id", '-m', type=str, default="Qwen/Qwen2.5-VL-3B-Instruct", help="HuggingFace model ID")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
+	parser.add_argument("--batch_size", '-bs', type=int, default=16, help="Batch size for processing")
+	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
+
 	args = parser.parse_args()
 	args.device = torch.device(args.device)
 	print(args)
@@ -271,8 +274,8 @@ def main():
 		model_id=args.model_id,
 		device=args.device,
 		image_paths=img_paths,
-		batch_size=1,
-		verbose=True,
+		batch_size=args.batch_size,
+		verbose=args.verbose,
 	)
 	print(f"{len(keywords)} Extracted keywords: {keywords}")
 	if args.csv_file:
