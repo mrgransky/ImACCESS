@@ -34,13 +34,13 @@ Exclude any explanatory text, comments, questions, or words about image quality,
 **Return *only* these keywords as a clean, parseable Python list, e.g., ['keyword1', 'keyword2', 'keyword3', 'keyword4', 'keyword5'].**
 """
 
-def get_vlm_response(model_id: str, raw_vlm_response: str, verbose: bool = False):
+def get_vlm_response(model_id: str, raw_vlm_response: str, verbose: bool=False):
 	if "Qwen" in model_id:
 		return _qwen_vlm_(raw_vlm_response, verbose=verbose)
 	else:
 		raise NotImplementedError(f"VLM response parsing not implemented for {model_id}")
 
-def _qwen_vlm_(response: str, verbose: bool = True) -> Optional[list]:
+def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[list]:
 	if verbose:
 		print("="*60)
 		print("[DEBUG] Raw VLM output:\n", response)
@@ -97,6 +97,7 @@ def query_local_vlm(
 		img_path: str,
 		text: str,
 		device: str,
+		verbose: bool=False,
 	):
 	try:
 		img = Image.open(img_path)
@@ -130,7 +131,7 @@ def query_local_vlm(
 	vlm_response_parsed = get_vlm_response(
 		model_id=model_id, 
 		raw_vlm_response=vlm_response, 
-		verbose=True
+		verbose=verbose,
 	)
 	return vlm_response_parsed
 
@@ -214,11 +215,6 @@ def get_vlm_based_labels_inefficient(
 
 	processor, model = load_(model_id, device)
 
-	# text = get_prompt(
-	# 	model_id=model_id, 
-	# 	processor=processor,
-	# 	img_path=image_path
-	# )
 	all_keywords = []
 	for i, img_path in tqdm(enumerate(image_paths), total=len(image_paths), desc="Processing images"):
 		text = get_prompt(
@@ -231,7 +227,8 @@ def get_vlm_based_labels_inefficient(
 			processor=processor,
 			img_path=img_path, 
 			text=text,
-			device=device
+			device=device,
+			verbose=verbose,
 		)
 		all_keywords.append(keywords)
 	return all_keywords
