@@ -1385,10 +1385,12 @@ def main():
 		max_kws=args.max_keywords,
 		verbose=args.verbose,
 	)
-	print(f"{len(keywords)} Extracted keywords:")
-	for i, kw in enumerate(keywords):
-		print(f"{i:03d} {kw}")
+	if args.verbose:
+		print(f"{len(keywords)} Extracted keywords")
+		for i, kw in enumerate(keywords):
+			print(f"{i:03d} {kw}")
 
+	print(f"Saving {len(keywords)} keywords to {output_csv} dataframe: {df.shape}")
 	if args.csv_file:
 		df['llm_keywords'] = keywords
 		df.to_csv(output_csv, index=False)
