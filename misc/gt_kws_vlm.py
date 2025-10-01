@@ -34,9 +34,8 @@ Identify the five most prominent, factual and distinct **KEYWORDS** that capture
 Exclude any explanatory text, comments, questions, or words about image quality, style, or temporal era.
 **Return *only* these keywords as a clean, parseable Python list, e.g., ['keyword1', 'keyword2', ...].**
 """
-# **Return *only* these keywords as a clean, parseable Python list, e.g., ['keyword1', 'keyword2', 'keyword3', 'keyword4', 'keyword5'].**
 
-def load_(model_id: str, device: str):
+def _load_vlm_(model_id: str, device: str):
 	print(f"[INFO] Loading model: {model_id} on {device}")
 	config = tfs.AutoConfig.from_pretrained(model_id)
 	print(f"[INFO] Model type: {config.model_type} Architectures: {config.architectures}")
@@ -230,7 +229,7 @@ def query_local_vlm(
 		img_path: str,
 		text: str,
 		device: str,
-		max_new_tokens: int,
+		max_generated_tks: int,
 		verbose: bool=False,
 	):
 	try:
@@ -259,7 +258,7 @@ def query_local_vlm(
 	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 		output = model.generate(
 			**inputs, 
-			max_new_tokens=max_new_tokens,
+			max_new_tokens=max_generated_tks,
 			use_cache=True,
 		)
 	vlm_response = processor.decode(output[0], skip_special_tokens=True)
@@ -272,12 +271,12 @@ def query_local_vlm(
 	)
 	return vlm_response_parsed
 
-def get_vlm_based_labels_inefficient(
+def get_vlm_based_labels(
 		model_id: str,
 		device: str,
 		image_paths: Union[str, List[str]],
 		batch_size: int,
-		max_new_tokens: int,
+		max_generated_tks: int,
 		verbose: bool = False,
 	) -> List[List[str]]:
 
@@ -287,7 +286,7 @@ def get_vlm_based_labels_inefficient(
 		if verbose:
 			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-	processor, model = load_(model_id, device)
+	processor, model = _load_vlm_(model_id, device)
 
 	all_keywords = []
 	for i, img_path in tqdm(enumerate(image_paths), total=len(image_paths), desc="Processing images"):
@@ -302,7 +301,7 @@ def get_vlm_based_labels_inefficient(
 			img_path=img_path, 
 			text=text,
 			device=device,
-			max_new_tokens=max_new_tokens,
+			max_generated_tks=max_generated_tks,
 			verbose=verbose,
 		)
 		all_keywords.append(keywords)
@@ -313,11 +312,11 @@ def main():
 	parser = argparse.ArgumentParser(description="VLLM-based keyword extraction for Historical Archives Dataset")
 	parser.add_argument("--csv_file", '-csv', type=str, help="Path to the metadata CSV file")
 	parser.add_argument("--image_path", '-i', type=str, help="img path [or URL]")
-	parser.add_argument("--model_id", '-m', type=str, default="Qwen/Qwen2-VL-2B-Instruct", help="HuggingFace model ID")
-	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
+	parser.add_argument("--model_id", '-m', type=str, default="Qwen/Qwen2-VL-2B-Instruct", help="HuggingFace Vision-Language model ID")
+	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device('cuda:0' or 'cpu')")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=16, help="Batch size for processing")
-	parser.add_argument("--max_new_tokens", '-mnt', type=int, default=64, help="Batch size for processing")
+	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Batch size for processing")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 
 	args = parser.parse_args()
@@ -341,12 +340,12 @@ def main():
 	else:
 		raise ValueError("Either --csv_file or --image_path must be provided")
 
-	keywords = get_vlm_based_labels_inefficient(
+	keywords = get_vlm_based_labels(
 		model_id=args.model_id,
 		device=args.device,
 		image_paths=img_paths,
 		batch_size=args.batch_size,
-		max_new_tokens=args.max_new_tokens,
+		max_generated_tks=args.max_generated_tks,
 		verbose=args.verbose,
 	)
 	print(f"{len(keywords)} Extracted keywords: {keywords}")

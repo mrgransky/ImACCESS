@@ -64,7 +64,7 @@ Given the description below, extract **between 0 and {k}** concrete, factual, pr
 [/INST]
 """
 
-def load_(model_id: str, device: str, verbose: bool=False):
+def _load_llm_(model_id: str, device: str, verbose: bool=False):
 	config = tfs.AutoConfig.from_pretrained(model_id)
 	if verbose:
 		print(f"[INFO] Loading tokenizer for {model_id} on {device}")
@@ -976,7 +976,7 @@ def query_local_llm(
 		tokenizer: tfs.PreTrainedTokenizer, 
 		text: str, 
 		device: str,
-		max_new_tokens: int,
+		max_generated_tks: int,
 		max_kws: int,
 		verbose: bool = False,
 	) -> List[str]:
@@ -1018,7 +1018,7 @@ def query_local_llm(
 		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 			outputs = model.generate(
 				**inputs,
-				max_new_tokens=max_new_tokens,
+				max_new_tokens=max_generated_tks,
 				temperature=TEMPERATURE,
 				top_p=TOP_P,
 				do_sample=TEMPERATURE > 0.0,
@@ -1075,12 +1075,12 @@ def query_local_llm(
 	
 	return keywords
 
-def get_llm_based_labels(
+def get_llm_based_labels_debug(
 		model_id: str, 
 		device: str, 
 		descriptions: Union[str, List[str]],  # Accept both str and list
 		batch_size: int,
-		max_new_tokens: int,
+		max_generated_tks: int,
 		max_kws: int,
 		verbose: bool = False,
 	) -> List[List[str]]:
@@ -1094,7 +1094,7 @@ def get_llm_based_labels(
 		if verbose:
 			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-	tokenizer, model = load_(
+	tokenizer, model = _load_llm_(
 		model_id=model_id, 
 		device=device, 
 		verbose=verbose
@@ -1113,19 +1113,19 @@ def get_llm_based_labels(
 			tokenizer=tokenizer, 
 			text=desc,
 			device= device,
-			max_new_tokens=max_new_tokens,
+			max_generated_tks=max_generated_tks,
 			max_kws=max_kws,
 			verbose=verbose,
 		)
 		all_keywords.append(kws)
 	return all_keywords
 
-def get_llm_based_labels_efficient(
+def get_llm_based_labels(
 		model_id: str,
 		device: str,
 		descriptions: Union[str, List[str]],
 		batch_size: int,
-		max_new_tokens: int,
+		max_generated_tks: int,
 		max_kws: int,
 		do_dedup: bool = True,
 		max_retries: int = 2,
@@ -1140,7 +1140,7 @@ def get_llm_based_labels_efficient(
 	if len(inputs) == 0:
 		return None
 	
-	tokenizer, model = load_(model_id, device)
+	tokenizer, model = _load_llm_(model_id, device)
 	tokenizer.padding_side = "left" # critical for decoder-only models
 
 	if verbose:
@@ -1221,7 +1221,7 @@ def get_llm_based_labels_efficient(
 					gen_kwargs = dict(
 						input_ids=tokenized.get("input_ids"),
 						attention_mask=tokenized["attention_mask"],
-						max_new_tokens=max_new_tokens,
+						max_new_tokens=max_generated_tks,
 						do_sample=TEMPERATURE > 0.0,
 						temperature=TEMPERATURE,
 						top_p=TOP_P,
@@ -1301,7 +1301,7 @@ def get_llm_based_labels_efficient(
 				tokenizer=tokenizer,
 				text=desc,
 				device=device,
-				max_new_tokens=max_new_tokens,
+				max_generated_tks=max_generated_tks,
 				verbose=verbose,
 			)
 			unique_results[idx] = individual_result
@@ -1349,7 +1349,7 @@ def main():
 	parser.add_argument("--description", '-desc', type=str, help="Description")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing (adjust based on GPU memory)")
-	parser.add_argument("--max_new_tokens", '-mnt', type=int, default=64, help="Batch size for processing")
+	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Batch size for processing")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Batch size for processing")
 	parser.add_argument("--do_dedup", '-dd', action='store_true', help="Deduplicate prompts")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
@@ -1376,12 +1376,12 @@ def main():
 		raise ValueError("Either --csv_file or --description must be provided")
 
 	# inefficient approach:
-	keywords = get_llm_based_labels_efficient(
+	keywords = get_llm_based_labels(
 		model_id=args.model_id, 
 		device=args.device, 
 		descriptions=descriptions,
 		batch_size=args.batch_size,
-		max_new_tokens=args.max_new_tokens,
+		max_generated_tks=args.max_generated_tks,
 		max_kws=args.max_keywords,
 		verbose=args.verbose,
 	)
@@ -1390,7 +1390,6 @@ def main():
 		for i, kw in enumerate(keywords):
 			print(f"{i:03d} {kw}")
 
-	print(f"Saving {len(keywords)} keywords to {output_csv} dataframe: {df.shape}")
 	if args.csv_file:
 		df['llm_keywords'] = keywords
 		df.to_csv(output_csv, index=False)
@@ -1398,6 +1397,9 @@ def main():
 			df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
 		except Exception as e:
 			print(f"Failed to write Excel file: {e}")
+		if args.verbose:
+			print(f"Saved {len(keywords)} keywords to {output_csv}")
+			print(f"Done! dataframe: {df.shape} {list(df.columns)}")
 
 if __name__ == "__main__":
 	main()
