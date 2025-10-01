@@ -44,7 +44,6 @@ TEMPERATURE = 1e-8
 TOP_P = 0.9
 MAX_RETRIES = 3
 EXP_BACKOFF = 2	# seconds ** attempt
-MAX_KEYWORDS = 5
 
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
@@ -105,30 +104,41 @@ def load_(model_id: str, device: str, verbose: bool=False):
 	
 	return tokenizer, model
 
-def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str, verbose: bool = False):
+def get_prompt(tokenizer: tfs.PreTrainedTokenizer, description: str, max_kws: int):
+	messages = [
+		{"role": "system", "content": "You are a helpful assistant."},
+		{"role": "user", "content": LLM_INSTRUCTION_TEMPLATE.format(k=max_kws, description=description.strip())},
+	]
+	text = tokenizer.apply_chat_template(
+		messages,
+		tokenize=False,
+		add_generation_prompt=True
+	)
+	return text
+
+def get_llm_response(model_id: str, input_prompt: str, raw_llm_response: str, max_kws: int, verbose: bool = False):
 
 	llm_response: Optional[str] = None
 
 	# response differs significantly between models
 	if "meta-llama" in model_id:
-		llm_response = _llama_llm_response(model_id, input_prompt, raw_llm_response, verbose)
+		llm_response = _llama_llm_response(model_id, input_prompt, raw_llm_response, max_kws, verbose)
 	elif "Qwen" in model_id:
-		llm_response = _qwen_llm_response(model_id, input_prompt, raw_llm_response, verbose)
+		llm_response = _qwen_llm_response(model_id, input_prompt, raw_llm_response, max_kws, verbose)
 	elif "microsoft" in model_id:
-		llm_response = _microsoft_llm_response(model_id, input_prompt, raw_llm_response, verbose)
+		llm_response = _microsoft_llm_response(model_id, input_prompt, raw_llm_response, max_kws, verbose)
 	elif "mistralai" in model_id:
-		llm_response = _mistral_llm_response(model_id, input_prompt, raw_llm_response, verbose)
+		llm_response = _mistral_llm_response(model_id, input_prompt, raw_llm_response, max_kws, verbose)
 	elif "NousResearch" in model_id:
-		llm_response = _nousresearch_llm_response(model_id, input_prompt, raw_llm_response, verbose)
+		llm_response = _nousresearch_llm_response(model_id, input_prompt, raw_llm_response, max_kws, verbose)
 	elif "google" in model_id:
 		llm_response = _google_llm_response(model_id, input_prompt, raw_llm_response, verbose)
 	else:
-		# default function to handle other responses
 		raise NotImplementedError(f"Model {model_id} not implemented")
 
 	return llm_response
 
-def _google_llm_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False) -> Optional[List[str]]:
+def _google_llm_response(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = False) -> Optional[List[str]]:
 		print(f"Handling Google response [model_id: {model_id}]...")
 		print(f"Raw response (repr): {repr(llm_response)}")
 		
@@ -186,8 +196,8 @@ def _google_llm_response(model_id: str, input_prompt: str, llm_response: str, ve
 								if cleaned_keyword and cleaned_keyword not in processed_keywords:
 										processed_keywords.append(cleaned_keyword)
 				
-				if len(processed_keywords) > MAX_KEYWORDS:
-					processed_keywords = processed_keywords[:MAX_KEYWORDS]
+				if len(processed_keywords) > max_kws:
+					processed_keywords = processed_keywords[:max_kws]
 				
 				print(f"Successfully extracted {len(processed_keywords)} keywords: {processed_keywords}")
 				return processed_keywords
@@ -197,7 +207,7 @@ def _google_llm_response(model_id: str, input_prompt: str, llm_response: str, ve
 				print(f"Problematic string: '{cleaned_string}'")
 				return None
 
-def _microsoft_llm_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False):
+def _microsoft_llm_response(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = False):
 		print(f"Handling Microsoft response model_id: {model_id}...")
 		
 		# The model output is at the end after the [/INST] tag
@@ -260,8 +270,8 @@ def _microsoft_llm_response(model_id: str, input_prompt: str, llm_response: str,
 						if cleaned_keyword and cleaned_keyword not in processed_keywords:
 								processed_keywords.append(cleaned_keyword)
 								
-				if len(processed_keywords) > MAX_KEYWORDS:
-						processed_keywords = processed_keywords[:MAX_KEYWORDS]
+				if len(processed_keywords) > max_kws:
+						processed_keywords = processed_keywords[:max_kws]
 						
 				if not processed_keywords:
 						print("Error: No valid keywords found after processing.")
@@ -290,7 +300,7 @@ def _microsoft_llm_response(model_id: str, input_prompt: str, llm_response: str,
 				print(f"An unexpected error occurred: {e}")
 				return None
 
-def _mistral_llm_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False):
+def _mistral_llm_response(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = False):
 		print(f"Handling Mistral response model_id: {model_id}...")
 		
 		# Split the response by lines and look for the list pattern
@@ -334,8 +344,8 @@ def _mistral_llm_response(model_id: str, input_prompt: str, llm_response: str, v
 						if cleaned_keyword and cleaned_keyword not in processed_keywords:
 								processed_keywords.append(cleaned_keyword)
 				
-				if len(processed_keywords) > MAX_KEYWORDS:
-						processed_keywords = processed_keywords[:MAX_KEYWORDS]
+				if len(processed_keywords) > max_kws:
+						processed_keywords = processed_keywords[:max_kws]
 						
 				if not processed_keywords:
 						print("Error: No valid keywords found after processing.")
@@ -348,7 +358,7 @@ def _mistral_llm_response(model_id: str, input_prompt: str, llm_response: str, v
 				print(f"Error parsing the list: {e}")
 				return None
 
-def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False) -> Optional[List[str]]:
+def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = False) -> Optional[List[str]]:
 		def _extract_clean_list_content(text: str) -> Optional[str]:
 				"""Extract and clean list content from text, handling duplicates and malformed structures."""
 				if verbose:
@@ -509,7 +519,7 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, verb
 				seen.add(normalized)
 				processed.append(cleaned)
 				
-				if len(processed) >= MAX_KEYWORDS:
+				if len(processed) >= max_kws:
 					break
 
 			return processed
@@ -599,7 +609,7 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, verb
 						print(f"Problematic string: '{list_content}'")
 				return None
 
-def _nousresearch_llm_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False):
+def _nousresearch_llm_response(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = False):
 		print(f"Handling NousResearch response model_id: {model_id}...")
 		print(f"Raw response (repr): {repr(llm_response)}")  # Debug hidden characters
 		
@@ -653,8 +663,8 @@ def _nousresearch_llm_response(model_id: str, input_prompt: str, llm_response: s
 						if cleaned_keyword and cleaned_keyword not in processed_keywords:
 								processed_keywords.append(cleaned_keyword)
 				
-				if len(processed_keywords) > MAX_KEYWORDS:
-					processed_keywords = processed_keywords[:MAX_KEYWORDS]
+				if len(processed_keywords) > max_kws:
+					processed_keywords = processed_keywords[:max_kws]
 				if not processed_keywords:
 					if verbose:
 						print("Error: No valid keywords found after processing.")
@@ -677,7 +687,7 @@ def _nousresearch_llm_response(model_id: str, input_prompt: str, llm_response: s
 						print(f"Fallback extraction failed: {e}")
 						return None
 
-def _llama_llm_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = True):
+def _llama_llm_response(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = True):
 		# ---------- Utilities ----------
 		def _normalize_text(s: str) -> str:
 				s = unicodedata.normalize("NFKD", s or "")
@@ -798,7 +808,7 @@ def _llama_llm_response(model_id: str, input_prompt: str, llm_response: str, ver
 					continue
 				seen.add(key)
 				out.append(kw)
-				if len(out) >= MAX_KEYWORDS:
+				if len(out) >= max_kws:
 					break
 			return out
 
@@ -967,6 +977,7 @@ def query_local_llm(
 		text: str, 
 		device: str,
 		max_new_tokens: int,
+		max_kws: int,
 		verbose: bool = False,
 	) -> List[str]:
 
@@ -976,7 +987,7 @@ def query_local_llm(
 		return None
 
 	keywords: Optional[List[str]] = None
-	prompt = LLM_INSTRUCTION_TEMPLATE.format(k=MAX_KEYWORDS, description=text.strip())
+	prompt = get_prompt(tokenizer=tokenizer, description=text, max_kws=max_kws)
 
 	model_id = getattr(model.config, '_name_or_path', None)
 	if model_id is None:
@@ -1039,6 +1050,7 @@ def query_local_llm(
 		model_id=model_id, 
 		input_prompt=prompt, 
 		raw_llm_response=raw_llm_response,
+		max_kws=max_kws,
 		verbose=verbose,
 	)
 	parsing_time = time.time() - parsing_start
@@ -1069,6 +1081,7 @@ def get_llm_based_labels(
 		descriptions: Union[str, List[str]],  # Accept both str and list
 		batch_size: int,
 		max_new_tokens: int,
+		max_kws: int,
 		verbose: bool = False,
 	) -> List[List[str]]:
 
@@ -1101,6 +1114,7 @@ def get_llm_based_labels(
 			text=desc,
 			device= device,
 			max_new_tokens=max_new_tokens,
+			max_kws=max_kws,
 			verbose=verbose,
 		)
 		all_keywords.append(kws)
@@ -1112,6 +1126,7 @@ def get_llm_based_labels_efficient(
 		descriptions: Union[str, List[str]],
 		batch_size: int,
 		max_new_tokens: int,
+		max_kws: int,
 		do_dedup: bool = True,
 		max_retries: int = 2,
 		verbose: bool = False,
@@ -1164,7 +1179,7 @@ def get_llm_based_labels_efficient(
 		if s is None:
 			unique_prompts.append(None)
 		else:
-			unique_prompts.append(LLM_INSTRUCTION_TEMPLATE.format(k=MAX_KEYWORDS, description=s.strip()))
+			unique_prompts.append(get_prompt(tokenizer=tokenizer, description=s, max_kws=max_kws))
 	# Will hold parsed results for unique inputs
 	unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
 	
@@ -1226,7 +1241,8 @@ def get_llm_based_labels_efficient(
 								model_id=model_id,
 								input_prompt=batch_prompts[i],
 								raw_llm_response=text_out,
-								verbose=verbose,  # 🔧 Propagate verbose flag
+								max_kws=max_kws,
+								verbose=verbose,
 							)
 							unique_results[idx] = parsed
 						except Exception as e:
@@ -1334,6 +1350,7 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing (adjust based on GPU memory)")
 	parser.add_argument("--max_new_tokens", '-mnt', type=int, default=64, help="Batch size for processing")
+	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Batch size for processing")
 	parser.add_argument("--do_dedup", '-dd', action='store_true', help="Deduplicate prompts")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 
@@ -1365,9 +1382,12 @@ def main():
 		descriptions=descriptions,
 		batch_size=args.batch_size,
 		max_new_tokens=args.max_new_tokens,
+		max_kws=args.max_keywords,
 		verbose=args.verbose,
 	)
-	print(f"{len(keywords)} Extracted keywords: {keywords}")
+	print(f"{len(keywords)} Extracted keywords:")
+	for i, kw in enumerate(keywords):
+		print(f"{i:03d} {kw}")
 
 	if args.csv_file:
 		df['llm_keywords'] = keywords
