@@ -12,8 +12,8 @@ from utils import *
 # model_id = "llava-hf/llama3-llava-next-8b-hf"
 
 # Qwen 2.5x collection:
-# model_id = "Qwen/Qwen2.5-VL-7B-Instruct"
 # model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
+# model_id = "Qwen/Qwen2.5-VL-7B-Instruct"
 
 # does not fit into VRAM:
 # model_id = "llava-hf/llava-v1.6-34b-hf"

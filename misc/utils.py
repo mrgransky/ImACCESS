@@ -517,13 +517,18 @@ def get_stratified_split(
 	return train_df, val_df
 
 def get_multi_label_stratified_split(
-		df: pd.DataFrame,
+		csv_file: str,
 		val_split_pct: float,
-		seed: int = 42,
 		label_col: str = 'multimodal_labels',
 	) -> Tuple[pd.DataFrame, pd.DataFrame]:
 	print(f"Stratified Splitting [Multi-label dataset]".center(150, "-"))
 	t_st = time.time()
+	df = pd.read_csv(
+		filepath_or_buffer=csv_file,
+		on_bad_lines='skip',
+		dtype=dtypes,
+		low_memory=False,
+	)
 	df_copy = df.copy()
 
 	# --- 1. Robust Label Parsing using ast.literal_eval ---
@@ -606,6 +611,11 @@ def get_multi_label_stratified_split(
 	print(val_label_df.head(20).to_string())
 	print(f"Stratified Splitting Elapsed Time: {time.time()-t_st:.3f} sec".center(160, "-"))
 	
+	# Save train/val splits
+	train_df.to_csv(csv_file.replace('.csv', '_train.csv'), index=False)
+	val_df.to_csv(csv_file.replace('.csv', '_val.csv'), index=False)
+
+
 	return train_df, val_df
 
 def _process_image_for_storage(

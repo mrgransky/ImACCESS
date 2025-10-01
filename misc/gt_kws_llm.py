@@ -1349,9 +1349,8 @@ def main():
 	parser.add_argument("--description", '-desc', type=str, help="Description")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing (adjust based on GPU memory)")
-	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Batch size for processing")
-	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Batch size for processing")
-	parser.add_argument("--do_dedup", '-dd', action='store_true', help="Deduplicate prompts")
+	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Max number of generated tokens")
+	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 
 	args = parser.parse_args()

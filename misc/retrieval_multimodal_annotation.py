@@ -938,37 +938,13 @@ def main():
 	##################################################################################
 
 	perform_multilabel_eda(data_path=combined_output_path, label_column='multimodal_labels')
-
-	train_df_fpth = combined_output_path.replace('.csv', '_train.csv')
-	val_df_fpth = combined_output_path.replace('.csv', '_val.csv')
-
-	try:
-		train_df = pd.read_csv(
-			filepath_or_buffer=train_df_fpth,
-			on_bad_lines='skip',
-			dtype=dtypes,
-			low_memory=False,
-		)
-		val_df = pd.read_csv(
-			filepath_or_buffer=val_df_fpth,
-			on_bad_lines='skip',
-			dtype=dtypes,
-			low_memory=False,
-		)
-	except Exception as e:
-		print(f"<!> {e}")
-		train_df, val_df = get_multi_label_stratified_split(
-			df=df,
-			val_split_pct=0.35,
-			seed=42,
-			label_col='multimodal_labels'
-		)
-		train_df.to_csv(train_df_fpth, index=False)
-		val_df.to_csv(val_df_fpth, index=False)
-
+	train_df, val_df = get_multi_label_stratified_split(
+		csv_file=combined_output_path,
+		val_split_pct=0.35,
+		label_col='multimodal_labels'
+	)
 	print("Multi-label Stratified Split Results:")
-	print(f"Train set shape: {train_df.shape}")
-	print(f"Validation set shape: {val_df.shape}")
+	print(f"Train: {train_df.shape} Validation: {val_df.shape}")
 
 if __name__ == "__main__":
 	multiprocessing.set_start_method('spawn', force=True)

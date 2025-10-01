@@ -2,6 +2,22 @@ from utils import *
 from gt_kws_vlm import get_vlm_based_labels
 from gt_kws_llm import get_llm_based_labels
 
+# LLM models:
+# model_id = "Qwen/Qwen3-4B-Instruct-2507"
+# model_id = "mistralai/Mistral-7B-Instruct-v0.3"
+# model_id = "microsoft/Phi-4-mini-instruct"
+# model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
+# model_id = "NousResearch/Hermes-2-Pro-Mistral-7B"
+# model_id = "google/flan-t5-xxl"
+
+# VLM models:
+# model_id = "llava-hf/llava-v1.6-vicuna-13b-hf"
+# model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
+# model_id = "Qwen/Qwen2.5-VL-7B-Instruct"
+
+# how to run:
+# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" > /media/volume/ImACCESS/trash/multimodal_annotation_SMU.txt &
+
 def merge_labels(
 		llm_based_labels: List[List[str]], 
 		vlm_based_labels: List[List[str]], 
@@ -28,6 +44,7 @@ def get_multimodal_annotation(
 		num_workers: int,
 		batch_size: int,
 		max_generated_tks: int,
+		max_keywords: int,
 		verbose: bool = False,
 	):
 	# Load dataframe
@@ -45,7 +62,8 @@ def get_multimodal_annotation(
 	if verbose:
 		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
 
-	output_csv = os.path.join(os.path.dirname(csv_file), f"multimodal_metadata.csv")
+	output_csv = csv_file.replace(".csv", "_multimodal.csv")
+	# output_csv = os.path.join(os.path.dirname(csv_file), f"multimodal_metadata.csv")
 
 	img_paths = df['img_path'].tolist()
 	descriptions = df['enriched_document_description'].tolist()
@@ -59,7 +77,7 @@ def get_multimodal_annotation(
 		descriptions=descriptions,
 		batch_size=batch_size,
 		max_generated_tks=max_generated_tks,
-		max_kws=10,
+		max_kws=max_keywords,
 		verbose=verbose,
 	)
 	if verbose:
@@ -107,6 +125,16 @@ def get_multimodal_annotation(
 		print(f"Failed to write Excel file: {e}")
 	if verbose:
 		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
+
+	perform_multilabel_eda(data_path=output_csv, label_column='multimodal_labels')
+	train_df, val_df = get_multi_label_stratified_split(
+		csv_file=output_csv,
+		val_split_pct=0.35,
+		label_col='multimodal_labels'
+	)
+	print("Multi-label Stratified Split Results:")
+	print(f"Train: {train_df.shape} Validation: {val_df.shape}")
+
 	return multimodal_labels
 
 @measure_execution_time
@@ -118,7 +146,8 @@ def main():
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=64, help="Batch size for processing")
-	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Batch size for processing")
+	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Max number of generated tokens")
+	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	args = parser.parse_args()
 	args.device = torch.device(args.device)
@@ -131,6 +160,7 @@ def main():
 		num_workers=args.num_workers,
 		batch_size=args.batch_size,
 		max_generated_tks=args.max_generated_tks,
+		max_keywords=args.max_keywords,
 		verbose=args.verbose,
 	)
 
