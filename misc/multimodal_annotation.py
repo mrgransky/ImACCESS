@@ -87,7 +87,10 @@ def get_multimodal_annotation(
 
 	if verbose:
 		print(f"Combining {len(llm_based_labels)} LLM- and {len(vlm_based_labels)} VLM-based labels...")
-	multimodal_labels = merge_labels(llm_based_labels, vlm_based_labels, verbose=verbose)
+	multimodal_labels = merge_labels(
+		llm_based_labels=llm_based_labels, 
+		vlm_based_labels=vlm_based_labels,
+	)
 	if verbose:
 		print(f"Combined {len(multimodal_labels)} multimodal labels")
 		for i, kw in enumerate(multimodal_labels):
