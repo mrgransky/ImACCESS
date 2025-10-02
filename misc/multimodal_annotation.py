@@ -13,10 +13,10 @@ from visualize import perform_multilabel_eda
 # VLM models:
 # model_id = "llava-hf/llava-v1.6-vicuna-13b-hf"
 # model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
-# model_id = "Qwen/Qwen2.5-VL-7B-Instruct"
+# model_id = "Qwen/Qwen2.5-VL-7B-Instruct" # only fits Puhti and Mahti
 
-# how to run:
-# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/test.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" > /media/volume/ImACCESS/trash/multimodal_annotation_SMU.txt &
+# how to run [Pouta]:
+# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" > /media/volume/ImACCESS/trash/multimodal_annotation_SMU.txt &
 
 def merge_labels(
 		llm_based_labels: List[List[str]], 
