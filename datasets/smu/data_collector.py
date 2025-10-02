@@ -452,7 +452,6 @@ def main():
 	# 		)
 	# 	print(f"IMAGE Mean: {img_rgb_mean} Std: {img_rgb_std}")
 
-
 	print("\n3. Creating SINGLE-LABEL version (from successfully downloaded images)...")
 	single_label_final_df = multi_label_final_df.copy()
 	single_label_columns_to_keep = [
