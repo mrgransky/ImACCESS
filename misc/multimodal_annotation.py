@@ -17,6 +17,7 @@ from visualize import perform_multilabel_eda
 
 # how to run [Pouta]:
 # $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" > /media/volume/ImACCESS/trash/multimodal_annotation_SMU.txt &
+# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" > /media/volume/ImACCESS/trash/multimodal_annotation_EU.txt &
 
 def merge_labels(
 		llm_based_labels: List[List[str]], 
