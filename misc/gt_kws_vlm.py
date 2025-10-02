@@ -449,13 +449,13 @@ def query_local_vlm(
 			img = Image.open(img_content)
 		except requests.exceptions.RequestException as e:
 			if verbose: print(f"ERROR: failed to load image from {img_path} => {e}")
-			return
+			return None
 	img = img.convert("RGB")
 	if verbose: print(f"IMG: {type(img)} {img.size} {img.mode}")
 
 	if img.size[0] == 0 or img.size[1] == 0:
 		if verbose: print(f"ERROR: image size is 0: {img.size} {img.mode}")
-		return
+		return None
 
 	model_id = getattr(model.config, '_name_or_path', None)
 	if model_id is None:
@@ -468,6 +468,10 @@ def query_local_vlm(
 		return_tensors="pt"
 	).to(device)
 
+	if 'pixel_values' not in inputs:
+		if verbose: print(f"ERROR: 'pixel_values' not in inputs: {inputs.keys()}")
+		return None
+
 	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 		try:
 			output = model.generate(
@@ -479,7 +483,7 @@ def query_local_vlm(
 			)
 		except Exception as e:
 			if verbose: print(f"ERROR: failed to generate from {model_id} => {e}")
-			return
+			return None
 
 	vlm_response = processor.decode(output[0], skip_special_tokens=True)
 
