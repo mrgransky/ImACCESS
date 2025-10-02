@@ -102,55 +102,247 @@ def get_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
 	else:
 		raise NotImplementedError(f"VLM response parsing not implemented for {model_id}")
 
-def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[list]:
-	if verbose:
-		print(f"\n[DEBUG] Raw VLM output:\n{response}")
-	if not isinstance(response, str):
-		if verbose: print("[ERROR] VLM output is not a string.")
-		return None
-	
-	# Find all lists in the response (could be multiple!)
-	all_matches = re.findall(r"\[[^\[\]]+\]", response, re.DOTALL)
+def _qwen_vlm_x(response: str, verbose: bool=False) -> Optional[List[str]]:
+    if verbose:
+        print(f"\n[DEBUG] Raw VLM output:\n{response}")
+    if not isinstance(response, str):
+        if verbose: print("[ERROR] VLM output is not a string.")
+        return None
 
-	if verbose: print(f"\n[DEBUG] Found {len(all_matches)} Python lists:\n{all_matches}")
-	# Choose the last match **as the answer**
-	if all_matches:
-		list_str = all_matches[-1]
-		if verbose: print(f"\n[DEBUG] Extracted last list: {list_str}")
-		try:
-			keywords = ast.literal_eval(list_str)
-			if verbose: print(f"\n[DEBUG] Parsed Python list:\n{keywords}")
-			if isinstance(keywords, list):
-				result = [str(k).strip() for k in keywords if isinstance(k, str)]
-				if verbose: print(f"\n[INFO] Final parsed keywords:\n{result}")
-				return result
-			else:
-				if verbose: print("[ERROR] Parsed output is not a list.")
-		except Exception as e:
-			if verbose: print("[ERROR] ast.literal_eval failed:", e)
+    # Find all bracketed segments (could be multiple, each possibly a single item)
+    all_matches = re.findall(r"\[[^\[\]]+\]", response, re.DOTALL)
+    if verbose: print(f"\n[DEBUG] Found {len(all_matches)} Python lists:\n{all_matches}")
 
-	# Fallback: Try extracting single quoted items in assistant block (not recommended)
-	after_assistant = response.split("assistant")[-1].strip()
-	candidates = re.findall(r"'([^']+)'", after_assistant)
+    def clean_item(s: str) -> str:
+        # Remove leading numbering like "1. " or "1) " etc.
+        s = re.sub(r"^\s*\d+\s*[\.\)]\s*", "", s)
+        # Remove markdown emphasis like **bold** or *italic*
+        s = re.sub(r"\*+", "", s)
+        # Normalize whitespace and strip quotes
+        s = s.strip().strip("\"'").strip()
+        # Collapse inner whitespace
+        s = re.sub(r"\s+", " ", s)
+        return s
 
-	if verbose: print(f"\n[DEBUG] Regex candidates:\n{candidates}")
-	if candidates:
-		result = [str(x).strip() for x in candidates]
-		if verbose: print(f"\n[INFO] Final parsed fallback keywords: {result}")
-		return result
+    def dedupe_preserve_order(items: List[str], limit: int = 5) -> List[str]:
+        seen = set()
+        out = []
+        for x in items:
+            if x and x not in seen:
+                out.append(x)
+                seen.add(x)
+            if len(out) >= limit:
+                break
+        return out
 
-	# Final fallback
-	raw_split = [x.strip(" ,'\"]") for x in after_assistant.split(",") if x.strip()]
+    # Case A: The model returns several one-item bracketed lists (your example)
+    # Detect if a majority of matches look like "[<number>.<space>...]" with only one item (no commas)
+    numbered_singletons = []
+    for m in all_matches:
+        inner = m[1:-1].strip()
+        if re.match(r"^\d+\s*[\.\)]\s*", inner) and "," not in inner:
+            numbered_singletons.append(inner)
 
-	if verbose: print(f"\n[DEBUG] Comma split candidates:\n{raw_split}")
-	if len(raw_split) > 1:
-		if verbose: print(f"\n[INFO] Final last-resort keywords:\n{raw_split}")
-		return raw_split
+    if verbose:
+        print(f"\n[DEBUG] Numbered singleton segments: {len(numbered_singletons)}")
 
-	if verbose:
-		print("[ERROR] Unable to parse any keywords from VLM output.")
+    if numbered_singletons and len(numbered_singletons) >= max(2, len(all_matches) // 2):
+        items = [clean_item(s) for s in numbered_singletons]
+        items = [i for i in items if i]
+        result = dedupe_preserve_order(items, limit=5)
+        if result:
+            if verbose: print(f"\n[INFO] Final parsed keywords (from numbered singletons):\n{result}")
+            return result
 
-	return None
+    # Case B: Choose the last bracketed list and process it (works for "[1. A, 2. B, ...]" case)
+    if all_matches:
+        list_str = all_matches[-1]
+        if verbose: print(f"\n[DEBUG] Extracted last list: {list_str}")
+
+        # If it looks like a numbered list inside one pair of brackets, convert to items
+        if re.search(r"\d+\s*[\.\)]\s*", list_str):
+            if verbose: print(f"\n[DEBUG] Detected numbered list format, cleaning...")
+            cleaned = re.sub(r"\[\s*|\s*\]", "", list_str)  # drop outer brackets
+            parts = [clean_item(p) for p in cleaned.split(",")]
+            parts = [p for p in parts if p]
+            result = dedupe_preserve_order(parts, limit=5)
+            if result:
+                if verbose: print(f"\n[INFO] Final parsed keywords (from numbered list):\n{result}")
+                return result
+
+        # Try literal_eval for proper Python list formats
+        try:
+            keywords = ast.literal_eval(list_str)
+            if verbose: print(f"\n[DEBUG] Parsed Python list via literal_eval:\n{keywords}")
+            if isinstance(keywords, list):
+                items = [clean_item(str(k)) for k in keywords if isinstance(k, (str, int, float))]
+                items = [i for i in items if i]
+                result = dedupe_preserve_order(items, limit=5)
+                if result:
+                    if verbose: print(f"\n[INFO] Final parsed keywords (from literal list):\n{result}")
+                    return result
+            else:
+                if verbose: print("[ERROR] Parsed output is not a list.")
+        except Exception as e:
+            if verbose: print("[ERROR] ast.literal_eval failed:", e)
+
+    # Fallback: Extract lines that look like "[n. item]" even if not captured by the bracket regex
+    lines = response.splitlines()
+    fallback_items = []
+    for ln in lines:
+        m = re.match(r"^\s*\[\s*\d+\s*[\.\)]\s*(.*?)\s*\]\s*$", ln.strip())
+        if m:
+            fallback_items.append(clean_item(m.group(1)))
+
+    if fallback_items:
+        result = dedupe_preserve_order(fallback_items, limit=5)
+        if result:
+            if verbose: print(f"\n[INFO] Final parsed fallback keywords (lines): {result}")
+            return result
+
+    # Final fallback: After 'assistant' block, comma-split
+    after_assistant = response.split("assistant")[-1].strip()
+    comma_parts = [clean_item(x) for x in after_assistant.split(",") if x.strip()]
+    if verbose: print(f"\n[DEBUG] Comma split candidates:\n{comma_parts}")
+    if len(comma_parts) > 1:
+        result = dedupe_preserve_order(comma_parts, limit=5)
+        if verbose: print(f"\n[INFO] Final last-resort keywords:\n{result}")
+        return result
+
+    if verbose:
+        print("[ERROR] Unable to parse any keywords from VLM output.")
+    return None
+
+from typing import Optional, List
+import re, ast
+
+def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
+    if verbose:
+        print(f"\n[DEBUG] Raw VLM output:\n{response}")
+    if not isinstance(response, str):
+        if verbose: print("[ERROR] VLM output is not a string.")
+        return None
+
+    # Find all bracketed segments
+    all_matches = re.findall(r"\[[^\[\]]+\]", response, re.DOTALL)
+    if verbose: print(f"\n[DEBUG] Found {len(all_matches)} Python lists:\n{all_matches}")
+
+    def clean_item(s: str) -> str:
+        s = re.sub(r"^\s*\d+\s*[\.\)]\s*", "", s)  # remove leading "1. " or "1)"
+        s = re.sub(r"\*+", "", s)                  # strip markdown emphasis
+        s = s.strip().strip("\"'").strip()         # strip quotes and spaces
+        s = re.sub(r"\s+", " ", s)
+        return s
+
+    def dedupe_preserve_order(items: List[str], limit: int = 5) -> List[str]:
+        seen, out = set(), []
+        for x in items:
+            if x and x not in seen:
+                out.append(x)
+                seen.add(x)
+            if len(out) >= limit:
+                break
+        return out
+
+    # Detect numbered singletons like: [1. **A**]\n[2. **B**]...
+    numbered_singletons = []
+    for m in all_matches:
+        inner = m[1:-1].strip()
+        if re.match(r"^\d+\s*[\.\)]\s*", inner) and "," not in inner:
+            numbered_singletons.append(inner)
+    if verbose:
+        print(f"\n[DEBUG] Numbered singleton segments: {len(numbered_singletons)}")
+    if numbered_singletons and len(numbered_singletons) >= max(2, len(all_matches) // 2):
+        items = [clean_item(s) for s in numbered_singletons]
+        items = [i for i in items if i]
+        result = dedupe_preserve_order(items, limit=5)
+        if result:
+            if verbose: print(f"\n[INFO] Final parsed keywords (from numbered singletons):\n{result}")
+            return result
+
+    # Helper: manual parsing for lists with unescaped apostrophes in single-quoted items
+    def parse_list_with_unescaped_apostrophes(list_str: str) -> List[str]:
+        content = list_str.strip()
+        if content.startswith("[") and content.endswith("]"):
+            content = content[1:-1]
+        # Split by top-level commas (we assume no commas inside items for keywords)
+        parts = [p.strip() for p in content.split(",")]
+        items = []
+        for p in parts:
+            # Remove any lingering brackets due to partial capture
+            p = p.strip().lstrip("[").rstrip("]")
+            # Remove wrapping single or double quotes if present
+            if (p.startswith("'") and p.endswith("'")) or (p.startswith('"') and p.endswith('"')):
+                p = p[1:-1]
+            items.append(clean_item(p))
+        # Filter empties
+        return [x for x in items if x]
+
+    # Choose the longest bracketed segment as primary (often the real list)
+    primary = None
+    if all_matches:
+        primary = max(all_matches, key=len)
+        if verbose: print(f"\n[DEBUG] Extracted primary list segment: {primary}")
+
+        # Case: numbered list in one bracket: [1. A, 2. B, ...]
+        if re.search(r"\d+\s*[\.\)]\s*", primary):
+            if verbose: print(f"\n[DEBUG] Detected numbered list format, cleaning...")
+            cleaned = re.sub(r"^\s*\[|\]\s*$", "", primary)
+            parts = [clean_item(p) for p in cleaned.split(",")]
+            parts = [p for p in parts if p]
+            result = dedupe_preserve_order(parts, limit=5)
+            if result:
+                if verbose: print(f"\n[INFO] Final parsed keywords (from numbered list):\n{result}")
+                return result
+
+        # Try literal_eval for proper Python list formats
+        try:
+            parsed = ast.literal_eval(primary)
+            if verbose: print(f"\n[DEBUG] Parsed via literal_eval:\n{parsed}")
+            if isinstance(parsed, list):
+                items = [clean_item(str(k)) for k in parsed if isinstance(k, (str, int, float))]
+                items = [i for i in items if i]
+                result = dedupe_preserve_order(items, limit=5)
+                if result:
+                    if verbose: print(f"\n[INFO] Final parsed keywords (from literal list):\n{result}")
+                    return result
+        except Exception as e:
+            if verbose: print("[ERROR] ast.literal_eval failed:", e)
+            # Fallback for unescaped apostrophes like: ['Ward's Furniture', ...]
+            items = parse_list_with_unescaped_apostrophes(primary)
+            result = dedupe_preserve_order(items, limit=5)
+            if result:
+                if verbose: print(f"\n[INFO] Final parsed keywords (fallback unescaped apostrophes):\n{result}")
+                return result
+
+    # Additional fallback: aggregate across all bracketed segments
+    aggregate = []
+    for seg in all_matches:
+        try:
+            parsed = ast.literal_eval(seg)
+            if isinstance(parsed, list):
+                aggregate.extend([clean_item(str(k)) for k in parsed if isinstance(k, (str, int, float))])
+            else:
+                aggregate.extend(parse_list_with_unescaped_apostrophes(seg))
+        except Exception:
+            aggregate.extend(parse_list_with_unescaped_apostrophes(seg))
+    aggregate = dedupe_preserve_order([x for x in aggregate if x], limit=5)
+    if aggregate:
+        if verbose: print(f"\n[INFO] Final parsed keywords (aggregate fallback): {aggregate}")
+        return aggregate
+
+    # Last resort: after 'assistant' block, comma-split
+    after_assistant = response.split("assistant")[-1].strip()
+    comma_parts = [clean_item(x) for x in after_assistant.split(",") if x.strip()]
+    if verbose: print(f"\n[DEBUG] Comma split candidates:\n{comma_parts}")
+    if len(comma_parts) > 1:
+        result = dedupe_preserve_order(comma_parts, limit=5)
+        if verbose: print(f"\n[INFO] Final last-resort keywords:\n{result}")
+        return result
+
+    if verbose:
+        print("[ERROR] Unable to parse any keywords from VLM output.")
+    return None
 
 def _llava_vlm_(response: str, verbose: bool = False) -> Optional[list]:
 		if verbose:
@@ -223,15 +415,16 @@ def query_local_vlm(
 		verbose: bool=False,
 	):
 	try:
-		img = Image.open(img_path).verify()
-	except (FileNotFoundError, Image.DecompressionBombError):
+		img = Image.open(img_path)#.verify()
+	except Exception as e:
+		if verbose: print(f"Failed to load image from {img_path} => {e}")
 		try:
 			response = requests.get(img_path)
 			response.raise_for_status()
 			img_content = io.BytesIO(response.content) # Convert response content to BytesIO object
-			img = Image.open(img_content).verify()
+			img = Image.open(img_content)#.verify()
 		except requests.exceptions.RequestException as e:
-			print(f"ERROR: failed to load image from {img_path} => {e}")
+			if verbose: print(f"ERROR: failed to load image from {img_path} => {e}")
 			return
 	img = img.convert("RGB")
 	if verbose: print(f"IMG: {type(img)} {img.size} {img.mode}")
@@ -381,7 +574,7 @@ def main():
 	if args.verbose:
 		print(f"{len(keywords)} Extracted keywords")
 		for i, kw in enumerate(keywords):
-			print(f"{i:03d} {kw}")
+			print(f"{i:06d}. {len(kw)} {kw}")
 
 if __name__ == "__main__":
 	main()
