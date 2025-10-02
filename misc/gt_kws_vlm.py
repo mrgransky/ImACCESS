@@ -271,7 +271,9 @@ def get_vlm_based_labels(
 		image_path: str=None,
 		verbose: bool = False,
 	) -> List[List[str]]:
-	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
+
+	if csv_file:
+		output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 
 	if csv_file and image_path:
 		raise ValueError("Only one of csv_file or image_path must be provided")
