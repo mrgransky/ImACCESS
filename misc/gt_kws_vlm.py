@@ -223,12 +223,13 @@ def query_local_vlm(
 		verbose: bool=False,
 	):
 	try:
-		img = Image.open(img_path)
-	except FileNotFoundError:
+		img = Image.open(img_path).verify()
+	except (FileNotFoundError, Image.DecompressionBombError):
 		try:
 			response = requests.get(img_path)
 			response.raise_for_status()
-			img = Image.open(io.BytesIO(response.content))
+			img_content = io.BytesIO(response.content) # Convert response content to BytesIO object
+			img = Image.open(img_content).verify()
 		except requests.exceptions.RequestException as e:
 			print(f"ERROR: failed to load image from {img_path} => {e}")
 			return
