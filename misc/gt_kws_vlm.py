@@ -453,6 +453,10 @@ def query_local_vlm(
 	img = img.convert("RGB")
 	if verbose: print(f"IMG: {type(img)} {img.size} {img.mode}")
 
+	if img.size[0] == 0 or img.size[1] == 0:
+		if verbose: print(f"ERROR: image size is 0: {img.size} {img.mode}")
+		return
+
 	model_id = getattr(model.config, '_name_or_path', None)
 	if model_id is None:
 		model_id = getattr(model, 'name_or_path', 'unknown_model')
@@ -465,19 +469,29 @@ def query_local_vlm(
 	).to(device)
 
 	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-		output = model.generate(
-			**inputs, 
-			max_new_tokens=max_generated_tks,
-			use_cache=True,
-		)
+		try:
+			output = model.generate(
+				**inputs, 
+				max_new_tokens=max_generated_tks,
+				use_cache=True,
+				pad_token_id=processor.tokenizer.eos_token_id,
+				eos_token_id=processor.tokenizer.eos_token_id,
+			)
+		except Exception as e:
+			if verbose: print(f"ERROR: failed to generate from {model_id} => {e}")
+			return
+
 	vlm_response = processor.decode(output[0], skip_special_tokens=True)
+
 	if verbose:
 		print(f"\nVLM response:\n{vlm_response}")
+
 	vlm_response_parsed = get_vlm_response(
 		model_id=model_id, 
 		raw_response=vlm_response, 
 		verbose=verbose,
 	)
+
 	return vlm_response_parsed
 
 def get_vlm_based_labels(
