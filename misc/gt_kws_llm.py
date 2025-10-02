@@ -609,7 +609,7 @@ def _qwen_llm_response_(model_id: str, input_prompt: str, llm_response: str, max
 						print(f"Problematic string: '{list_content}'")
 				return None
 
-def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False) -> Optional[List[str]]:
+def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = False) -> Optional[List[str]]:
 		def _extract_clean_list_content(text: str) -> Optional[str]:
 				"""Extract and clean list content from text, handling duplicates and malformed structures."""
 				if verbose:
@@ -775,7 +775,7 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, verb
 						seen.add(normalized)
 						processed.append(cleaned)
 						
-						if len(processed) >= MAX_KEYWORDS:
+						if len(processed) >= max_kws:
 								break
 
 				return processed
