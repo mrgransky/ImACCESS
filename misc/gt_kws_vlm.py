@@ -450,6 +450,7 @@ def query_local_vlm(
 		except requests.exceptions.RequestException as e:
 			if verbose: print(f"ERROR: failed to load image from {img_path} => {e}")
 			return None
+
 	img = img.convert("RGB")
 	if verbose: print(f"IMG: {type(img)} {img.size} {img.mode}")
 
@@ -486,6 +487,10 @@ def query_local_vlm(
 			return None
 
 	vlm_response = processor.decode(output[0], skip_special_tokens=True)
+
+	if torch.cuda.memory_allocated() > 0.9 * torch.cuda.get_device_properties(device).total_memory:
+		torch.cuda.empty_cache()
+		if verbose: print(f"WARNING: GPU memory > 90% => cleared cache")
 
 	if verbose:
 		print(f"\nVLM response:\n{vlm_response}")
