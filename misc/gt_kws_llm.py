@@ -610,250 +610,250 @@ def _qwen_llm_response_(model_id: str, input_prompt: str, llm_response: str, max
 				return None
 
 def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, verbose: bool = False) -> Optional[List[str]]:
-    def _extract_clean_list_content(text: str) -> Optional[str]:
-        """Extract and clean list content from text, handling duplicates and malformed structures."""
-        if verbose:
-            print(f"Extracting clean list from text of length: {len(text)}")
-        
-        # Find ALL [/INST] tags and get content BETWEEN them
-        inst_matches = list(re.finditer(r'\[\s*/?\s*INST\s*\]', text))
-        
-        if verbose:
-            print(f"Found {len(inst_matches)} INST tags total")
-        
-        # Look for content between [/INST] tags where lists typically appear
-        list_candidates = []
-        
-        for i in range(len(inst_matches) - 1):
-            current_tag = inst_matches[i].group().strip()
-            next_tag = inst_matches[i + 1].group().strip()
-            
-            # If we have a closing [/INST] followed by anything
-            if ('[/INST]' in current_tag or '/INST' in current_tag):
-                start_pos = inst_matches[i].end()
-                end_pos = inst_matches[i + 1].start()
-                content_between = text[start_pos:end_pos].strip()
-                
-                if verbose:
-                    print(f"Content between INST tags {i}-{i+1}: '{content_between[:100]}...'")
-                
-                # Look for Python-style lists with quotes (not photo titles)
-                python_list_patterns = [
-                    r"\[\s*'[^']*'(?:\s*,\s*'[^']*')*\s*\]",  # Single quotes
-                    r'\[\s*"[^"]*"(?:\s*,\s*"[^"]*")*\s*\]',  # Double quotes
-                ]
-                
-                for pattern in python_list_patterns:
-                    list_matches = list(re.finditer(pattern, content_between))
-                    for match in list_matches:
-                        list_content = match.group(0).strip()
-                        # Skip example lists from rules
-                        if 'keyword1' in list_content or 'keyword2' in list_content or '...' in list_content:
-                            if verbose:
-                                print(f"Skipping example list: {list_content[:50]}...")
-                            continue
-                        # Skip photo titles (they don't have proper Python list formatting)
-                        if "'s '" in list_content or "and Photographer with" in list_content:
-                            continue
-                        
-                        list_candidates.append((list_content, f"INST tags {i}-{i+1}"))
-        
-        if verbose:
-            print(f"Found {len(list_candidates)} list candidates between INST tags")
-        
-        if not list_candidates:
-            # Fallback: search the entire response but skip example lists and photo titles
-            if verbose:
-                print("No lists found between INST tags, searching entire response...")
-            
-            python_list_patterns = [
-                r"\[\s*'[^']*'(?:\s*,\s*'[^']*')*\s*\]",
-                r'\[\s*"[^"]*"(?:\s*,\s*"[^"]*")*\s*\]',
-            ]
-            
-            for pattern in python_list_patterns:
-                all_list_matches = list(re.finditer(pattern, text))
-                for match in all_list_matches:
-                    list_content = match.group(0).strip()
-                    # Skip example lists from rules
-                    if 'keyword1' in list_content or 'keyword2' in list_content or '...' in list_content:
-                        continue
-                    # Skip photo titles
-                    if "'s '" in list_content or "and Photographer with" in list_content:
-                        continue
-                        
-                    list_candidates.append((list_content, "entire response"))
-        
-        # Select the best candidate
-        if list_candidates:
-            # Prefer lists that come from between INST tags
-            for list_str, source in list_candidates:
-                if "INST tags" in source:
-                    if verbose:
-                        print(f"Selected list from {source}: {list_str}")
-                    return list_str
-            
-            # Otherwise take the first one
-            best_candidate = list_candidates[0][0]
-            if verbose:
-                print(f"Selected first candidate: {best_candidate}")
-            return best_candidate
-        
-        return None
+		def _extract_clean_list_content(text: str) -> Optional[str]:
+				"""Extract and clean list content from text, handling duplicates and malformed structures."""
+				if verbose:
+						print(f"Extracting clean list from text of length: {len(text)}")
+				
+				# Find ALL [/INST] tags and get content BETWEEN them
+				inst_matches = list(re.finditer(r'\[\s*/?\s*INST\s*\]', text))
+				
+				if verbose:
+						print(f"Found {len(inst_matches)} INST tags total")
+				
+				# Look for content between [/INST] tags where lists typically appear
+				list_candidates = []
+				
+				for i in range(len(inst_matches) - 1):
+						current_tag = inst_matches[i].group().strip()
+						next_tag = inst_matches[i + 1].group().strip()
+						
+						# If we have a closing [/INST] followed by anything
+						if ('[/INST]' in current_tag or '/INST' in current_tag):
+								start_pos = inst_matches[i].end()
+								end_pos = inst_matches[i + 1].start()
+								content_between = text[start_pos:end_pos].strip()
+								
+								if verbose:
+										print(f"Content between INST tags {i}-{i+1}: '{content_between[:100]}...'")
+								
+								# Look for Python-style lists with quotes (not photo titles)
+								python_list_patterns = [
+										r"\[\s*'[^']*'(?:\s*,\s*'[^']*')*\s*\]",  # Single quotes
+										r'\[\s*"[^"]*"(?:\s*,\s*"[^"]*")*\s*\]',  # Double quotes
+								]
+								
+								for pattern in python_list_patterns:
+										list_matches = list(re.finditer(pattern, content_between))
+										for match in list_matches:
+												list_content = match.group(0).strip()
+												# Skip example lists from rules
+												if 'keyword1' in list_content or 'keyword2' in list_content or '...' in list_content:
+														if verbose:
+																print(f"Skipping example list: {list_content[:50]}...")
+														continue
+												# Skip photo titles (they don't have proper Python list formatting)
+												if "'s '" in list_content or "and Photographer with" in list_content:
+														continue
+												
+												list_candidates.append((list_content, f"INST tags {i}-{i+1}"))
+				
+				if verbose:
+						print(f"Found {len(list_candidates)} list candidates between INST tags")
+				
+				if not list_candidates:
+						# Fallback: search the entire response but skip example lists and photo titles
+						if verbose:
+								print("No lists found between INST tags, searching entire response...")
+						
+						python_list_patterns = [
+								r"\[\s*'[^']*'(?:\s*,\s*'[^']*')*\s*\]",
+								r'\[\s*"[^"]*"(?:\s*,\s*"[^"]*")*\s*\]',
+						]
+						
+						for pattern in python_list_patterns:
+								all_list_matches = list(re.finditer(pattern, text))
+								for match in all_list_matches:
+										list_content = match.group(0).strip()
+										# Skip example lists from rules
+										if 'keyword1' in list_content or 'keyword2' in list_content or '...' in list_content:
+												continue
+										# Skip photo titles
+										if "'s '" in list_content or "and Photographer with" in list_content:
+												continue
+												
+										list_candidates.append((list_content, "entire response"))
+				
+				# Select the best candidate
+				if list_candidates:
+						# Prefer lists that come from between INST tags
+						for list_str, source in list_candidates:
+								if "INST tags" in source:
+										if verbose:
+												print(f"Selected list from {source}: {list_str}")
+										return list_str
+						
+						# Otherwise take the first one
+						best_candidate = list_candidates[0][0]
+						if verbose:
+								print(f"Selected first candidate: {best_candidate}")
+						return best_candidate
+				
+				return None
 
-    def _parse_list_safely(list_str: str) -> List[str]:
-        """Safely parse a list string, handling various formats."""
-        if verbose:
-            print(f"Parsing list safely: {list_str}")
-        
-        # Clean the string
-        cleaned = list_str.strip()
-        cleaned = re.sub(r'\[/?INST\]', '', cleaned)
-        cleaned = re.sub(r'[“”]', '"', cleaned)
-        cleaned = re.sub(r'[‘’]', "'", cleaned)
-        
-        # Remove any trailing garbage after the list
-        if cleaned.count('[') > cleaned.count(']'):
-            cleaned = cleaned[:cleaned.rfind(']') + 1] if ']' in cleaned else cleaned
-        if cleaned.count('[') < cleaned.count(']'):
-            cleaned = cleaned[cleaned.find('['):] if '[' in cleaned else cleaned
-        
-        # Try different parsing strategies
-        strategies = [
-            # Strategy 1: ast.literal_eval
-            lambda s: ast.literal_eval(s),
-            # Strategy 2: json.loads
-            lambda s: json.loads(s),
-            # Strategy 3: Manual parsing with quotes
-            lambda s: [item.strip().strip('"\'') for item in 
-                      re.findall(r'[\"\'][^\"\']*[\"\']', s)],
-            # Strategy 4: Manual parsing with comma separation (more robust)
-            lambda s: [item.strip().strip('"\'') for item in 
-                      re.split(r',\s*(?=(?:[^\"\']*[\"\'][^\"\']*[\"\'])*[^\"\']*$)', s.strip('[]')) 
-                      if item.strip() and not item.strip().startswith('...')],
-        ]
-        
-        for i, strategy in enumerate(strategies):
-            try:
-                result = strategy(cleaned)
-                if isinstance(result, list) and all(isinstance(item, str) for item in result) and result:
-                    if verbose:
-                        print(f"Success with strategy {i+1}: {result}")
-                    return result
-            except Exception as e:
-                if verbose:
-                    print(f"Strategy {i+1} failed: {e}")
-                continue
-        
-        return []
+		def _parse_list_safely(list_str: str) -> List[str]:
+				"""Safely parse a list string, handling various formats."""
+				if verbose:
+						print(f"Parsing list safely: {list_str}")
+				
+				# Clean the string
+				cleaned = list_str.strip()
+				cleaned = re.sub(r'\[/?INST\]', '', cleaned)
+				cleaned = re.sub(r'[“”]', '"', cleaned)
+				cleaned = re.sub(r'[‘’]', "'", cleaned)
+				
+				# Remove any trailing garbage after the list
+				if cleaned.count('[') > cleaned.count(']'):
+						cleaned = cleaned[:cleaned.rfind(']') + 1] if ']' in cleaned else cleaned
+				if cleaned.count('[') < cleaned.count(']'):
+						cleaned = cleaned[cleaned.find('['):] if '[' in cleaned else cleaned
+				
+				# Try different parsing strategies
+				strategies = [
+						# Strategy 1: ast.literal_eval
+						lambda s: ast.literal_eval(s),
+						# Strategy 2: json.loads
+						lambda s: json.loads(s),
+						# Strategy 3: Manual parsing with quotes
+						lambda s: [item.strip().strip('"\'') for item in 
+											re.findall(r'[\"\'][^\"\']*[\"\']', s)],
+						# Strategy 4: Manual parsing with comma separation (more robust)
+						lambda s: [item.strip().strip('"\'') for item in 
+											re.split(r',\s*(?=(?:[^\"\']*[\"\'][^\"\']*[\"\'])*[^\"\']*$)', s.strip('[]')) 
+											if item.strip() and not item.strip().startswith('...')],
+				]
+				
+				for i, strategy in enumerate(strategies):
+						try:
+								result = strategy(cleaned)
+								if isinstance(result, list) and all(isinstance(item, str) for item in result) and result:
+										if verbose:
+												print(f"Success with strategy {i+1}: {result}")
+										return result
+						except Exception as e:
+								if verbose:
+										print(f"Strategy {i+1} failed: {e}")
+								continue
+				
+				return []
 
-    def _postprocess_keywords(keywords: List[str]) -> List[str]:
-        """Post-process keywords to ensure quality and remove duplicates."""
-        processed = []
-        seen = set()
-        
-        for kw in keywords:
-            if not kw or len(kw) < 2:
-                continue
-                    
-            # Clean the keyword - preserve original case but remove extra spaces
-            cleaned = re.sub(r'\s+', ' ', kw.strip())
-            
-            # Skip if too short after cleaning
-            if len(cleaned) < 2:
-                continue
-            
-            # Check for standalone numbers or numeric-only words (exclude these)
-            if re.fullmatch(r'\d+', cleaned):
-                continue
+		def _postprocess_keywords(keywords: List[str]) -> List[str]:
+				"""Post-process keywords to ensure quality and remove duplicates."""
+				processed = []
+				seen = set()
+				
+				for kw in keywords:
+						if not kw or len(kw) < 2:
+								continue
+										
+						# Clean the keyword - preserve original case but remove extra spaces
+						cleaned = re.sub(r'\s+', ' ', kw.strip())
+						
+						# Skip if too short after cleaning
+						if len(cleaned) < 2:
+								continue
+						
+						# Check for standalone numbers or numeric-only words (exclude these)
+						if re.fullmatch(r'\d+', cleaned):
+								continue
 
-            # Check for duplicates (case-insensitive)
-            normalized = cleaned.lower()
-            if normalized in seen:
-                continue
-                    
-            seen.add(normalized)
-            processed.append(cleaned)
-            
-            if len(processed) >= MAX_KEYWORDS:
-                break
+						# Check for duplicates (case-insensitive)
+						normalized = cleaned.lower()
+						if normalized in seen:
+								continue
+										
+						seen.add(normalized)
+						processed.append(cleaned)
+						
+						if len(processed) >= MAX_KEYWORDS:
+								break
 
-        return processed
+				return processed
 
-    if verbose:
-        print(f"\n>> Extracting listed response from model: {model_id}")
-        print(f"LLM response (repr):\n{repr(llm_response)}\n")
+		if verbose:
+				print(f"\n>> Extracting listed response from model: {model_id}")
+				print(f"LLM response (repr):\n{repr(llm_response)}\n")
 
-    # INST tag detection
-    inst_tags = []
-    for match in re.finditer(r'\[\s*/?\s*INST\s*\]', llm_response):
-        inst_tags.append((match.group().strip(), match.start(), match.end()))
-    
-    if verbose:
-        print(f"Found {len(inst_tags)} normalized INST tags:")
-        for tag, start, end in inst_tags:
-            print(f" Tag: '{tag}', position: {start}-{end}")
+		# INST tag detection
+		inst_tags = []
+		for match in re.finditer(r'\[\s*/?\s*INST\s*\]', llm_response):
+				inst_tags.append((match.group().strip(), match.start(), match.end()))
+		
+		if verbose:
+				print(f"Found {len(inst_tags)} normalized INST tags:")
+				for tag, start, end in inst_tags:
+						print(f" Tag: '{tag}', position: {start}-{end}")
 
-    # Strategy 1: Extract clean list content (main approach)
-    list_content = _extract_clean_list_content(llm_response)
-    
-    if verbose:
-        print(f"\nExtracted list content: {list_content}")
+		# Strategy 1: Extract clean list content (main approach)
+		list_content = _extract_clean_list_content(llm_response)
+		
+		if verbose:
+				print(f"\nExtracted list content: {list_content}")
 
-    # Strategy 2: If no clean list found, try direct extraction from content after first [/INST]
-    if not list_content and inst_tags:
-        if verbose:
-            print("\n=== FALLBACK TO DIRECT EXTRACTION ===")
-        
-        # Get content after the first [/INST] tag
-        first_inst_end = inst_tags[0].end()
-        response_content = llm_response[first_inst_end:].strip()
-        
-        if verbose:
-            print(f"Content after first [/INST]: '{response_content[:300]}...'")
-        
-        # Look for the first proper Python list
-        python_list_patterns = [
-            r"\[\s*'[^']*'(?:\s*,\s*'[^']*')*\s*\]",
-            r'\[\s*"[^"]*"(?:\s*,\s*"[^"]*")*\s*\]',
-        ]
-        
-        for pattern in python_list_patterns:
-            match = re.search(pattern, response_content)
-            if match:
-                list_content = match.group(0)
-                if 'keyword1' not in list_content and 'keyword2' not in list_content:
-                    if verbose:
-                        print(f"Found list in response content: {list_content}")
-                    break
+		# Strategy 2: If no clean list found, try direct extraction from content after first [/INST]
+		if not list_content and inst_tags:
+				if verbose:
+						print("\n=== FALLBACK TO DIRECT EXTRACTION ===")
+				
+				# Get content after the first [/INST] tag
+				first_inst_end = inst_tags[0].end()
+				response_content = llm_response[first_inst_end:].strip()
+				
+				if verbose:
+						print(f"Content after first [/INST]: '{response_content[:300]}...'")
+				
+				# Look for the first proper Python list
+				python_list_patterns = [
+						r"\[\s*'[^']*'(?:\s*,\s*'[^']*')*\s*\]",
+						r'\[\s*"[^"]*"(?:\s*,\s*"[^"]*")*\s*\]',
+				]
+				
+				for pattern in python_list_patterns:
+						match = re.search(pattern, response_content)
+						if match:
+								list_content = match.group(0)
+								if 'keyword1' not in list_content and 'keyword2' not in list_content:
+										if verbose:
+												print(f"Found list in response content: {list_content}")
+										break
 
-    if not list_content:
-        if verbose:
-            print("\nError: No valid list content found.")
-        return None
+		if not list_content:
+				if verbose:
+						print("\nError: No valid list content found.")
+				return None
 
-    # Parse and post-process the list
-    try:
-        keywords_list = _parse_list_safely(list_content)
-        
-        if not keywords_list:
-            if verbose:
-                print("Error: No valid keywords found after parsing.")
-            return None
-        
-        # Post-process to remove duplicates and ensure quality
-        final_keywords = _postprocess_keywords(keywords_list)
-        
-        if verbose:
-            print(f"\nFinal processed keywords: {final_keywords}")
-        
-        return final_keywords if final_keywords else None
-        
-    except Exception as e:
-        if verbose:
-            print(f"\nError parsing the list: {e}")
-            print(f"Problematic string: '{list_content}'")
-        return None
+		# Parse and post-process the list
+		try:
+				keywords_list = _parse_list_safely(list_content)
+				
+				if not keywords_list:
+						if verbose:
+								print("Error: No valid keywords found after parsing.")
+						return None
+				
+				# Post-process to remove duplicates and ensure quality
+				final_keywords = _postprocess_keywords(keywords_list)
+				
+				if verbose:
+						print(f"\nFinal processed keywords: {final_keywords}")
+				
+				return final_keywords if final_keywords else None
+				
+		except Exception as e:
+				if verbose:
+						print(f"\nError parsing the list: {e}")
+						print(f"Problematic string: '{list_content}'")
+				return None
 
 def _nousresearch_llm_response(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = False):
 		print(f"Handling NousResearch response model_id: {model_id}...")
