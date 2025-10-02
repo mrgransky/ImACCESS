@@ -30,9 +30,9 @@ print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
 
 VLM_INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
-Identify {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object or event.
+Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object or event.
 Exclude any explanatory text, comments, questions, or words about image quality, style, or temporal era.
-**Return **ONLY** a clean Python list with exactly this format: ['keyword1', 'keyword2', ...].
+**Return **ONLY** a clean Python list of keywords.
 """
 
 def _load_vlm_(model_id: str, device: str, verbose: bool=False):
