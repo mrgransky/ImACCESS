@@ -1078,21 +1078,35 @@ def query_local_llm(
 def get_llm_based_labels_debug(
 		model_id: str, 
 		device: str, 
-		descriptions: Union[str, List[str]],  # Accept both str and list
 		batch_size: int,
 		max_generated_tks: int,
 		max_kws: int,
+		csv_file: str=None,
+		description: str=None,
 		verbose: bool = False,
 	) -> List[List[str]]:
 
-	if verbose:
-		print(f"LLM-based approach [Inefficient approach]".center(160, "-"))
+	if csv_file and description:
+		raise ValueError("Only one of csv_file or description must be provided")
 
-	if torch.cuda.is_available():
-		gpu_name = torch.cuda.get_device_name(device)
-		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)  # Convert to GB
+	if csv_file:
+		df = pd.read_csv(
+			filepath_or_buffer=csv_file, 
+			on_bad_lines='skip', 
+			dtype=dtypes, 
+			low_memory=False,
+		)
+		if 'enriched_document_description' not in df.columns:
+			raise ValueError("CSV file must have 'enriched_document_description' column")
+		descriptions = df['enriched_document_description'].tolist()
 		if verbose:
-			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+			print(f"Loaded {len(descriptions)} descriptions from {csv_file}")
+	elif description:
+		descriptions = [description]
+		if verbose:
+			print(f"Loaded 1 description")
+	else:
+		raise ValueError("Either csv_file or description must be provided")
 
 	tokenizer, model = _load_llm_(
 		model_id=model_id, 
@@ -1100,14 +1114,9 @@ def get_llm_based_labels_debug(
 		verbose=verbose
 	)
 
-	if verbose:
-		debug_llm_info(model, tokenizer, device)
-
-	if isinstance(descriptions, str):
-		descriptions = [descriptions]
-
 	all_keywords = list()
 	for i, desc in tqdm(enumerate(descriptions), total=len(descriptions), desc="Processing descriptions"):
+		if verbose: print(f"Processing description {i+1}/{len(descriptions)}: {desc}")
 		kws = query_local_llm(
 			model=model, 
 			tokenizer=tokenizer, 
@@ -1118,25 +1127,71 @@ def get_llm_based_labels_debug(
 			verbose=verbose,
 		)
 		all_keywords.append(kws)
+
+	if csv_file:
+		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
+		df['llm_keywords'] = all_keywords
+		df.to_csv(output_csv, index=False)
+		try:
+			df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+		except Exception as e:
+			print(f"Failed to write Excel file: {e}")
+		if verbose:
+			print(f"Saved {len(all_keywords)} keywords to {output_csv}")
+			print(f"Done! dataframe: {df.shape} {list(df.columns)}")
+
 	return all_keywords
 
 def get_llm_based_labels(
 		model_id: str,
 		device: str,
-		descriptions: Union[str, List[str]],
 		batch_size: int,
 		max_generated_tks: int,
 		max_kws: int,
+		csv_file: str=None,
+		description: str=None,
 		do_dedup: bool = True,
 		max_retries: int = 2,
 		verbose: bool = False,
 	) -> List[Optional[List[str]]]:	
-	
-	if isinstance(descriptions, str):
-		inputs = [descriptions]
+
+	if csv_file:
+		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
+
+	if csv_file and description:
+		raise ValueError("Only one of csv_file or description must be provided")
+
+	if csv_file and os.path.exists(output_csv):
+		df = pd.read_csv(
+			filepath_or_buffer=output_csv,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
+		if 'llm_keywords' in df.columns:
+			if verbose: print(f"Found existing LLM keywords in {output_csv}")
+			return df['llm_keywords'].tolist()
+
+	if csv_file:
+		df = pd.read_csv(
+			filepath_or_buffer=csv_file, 
+			on_bad_lines='skip', 
+			dtype=dtypes, 
+			low_memory=False,
+		)
+		if 'enriched_document_description' not in df.columns:
+			raise ValueError("CSV file must have 'enriched_document_description' column")
+		descriptions = df['enriched_document_description'].tolist()
+		if verbose:
+			print(f"Loaded {len(descriptions)} descriptions from {csv_file}")
+	elif description:
+		descriptions = [description]
+		if verbose:
+			print(f"Loaded 1 description")
 	else:
-		inputs = list(descriptions)
+		raise ValueError("Either csv_file or description must be provided")
 	
+	inputs = descriptions
 	if len(inputs) == 0:
 		return None
 	
@@ -1180,6 +1235,7 @@ def get_llm_based_labels(
 			unique_prompts.append(None)
 		else:
 			unique_prompts.append(get_prompt(tokenizer=tokenizer, description=s, max_kws=max_kws))
+
 	# Will hold parsed results for unique inputs
 	unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
 	
@@ -1337,7 +1393,20 @@ def get_llm_based_labels(
 	# Clean up model and tokenizer
 	del model, tokenizer
 	torch.cuda.empty_cache() if torch.cuda.is_available() else None
-	
+
+	# save results to csv_file
+	if csv_file:
+		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
+		df['llm_keywords'] = results
+		df.to_csv(output_csv, index=False)
+		try:
+			df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+		except Exception as e:
+			print(f"Failed to write Excel file: {e}")
+		if verbose:
+			print(f"Saved {len(results)} keywords to {output_csv}")
+			print(f"Done! dataframe: {df.shape} {list(df.columns)}")
+
 	return results
 
 @measure_execution_time
@@ -1357,31 +1426,20 @@ def main():
 	args.device = torch.device(args.device)
 	print(args)
 
-	if args.csv_file:
-		df = pd.read_csv(
-			filepath_or_buffer=args.csv_file, 
-			on_bad_lines='skip', 
-			dtype=dtypes, 
-			low_memory=False,
-		)
-		if 'enriched_document_description' not in df.columns:
-			raise ValueError("CSV file must have 'enriched_document_description' column")
-		descriptions = df['enriched_document_description'].tolist()
-		print(f"Loaded {len(descriptions)} descriptions from {args.csv_file}")
-		output_csv = args.csv_file.replace(".csv", "_llm_keywords.csv")
-	elif args.description:
-		descriptions = [args.description]
-	else:
-		raise ValueError("Either --csv_file or --description must be provided")
+	if torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(args.device)
+		total_mem = torch.cuda.get_device_properties(args.device).total_memory / (1024**3)  # Convert to GB
+		if args.verbose:
+			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-	# inefficient approach:
 	keywords = get_llm_based_labels(
 		model_id=args.model_id, 
 		device=args.device, 
-		descriptions=descriptions,
 		batch_size=args.batch_size,
 		max_generated_tks=args.max_generated_tks,
 		max_kws=args.max_keywords,
+		csv_file=args.csv_file,
+		description=args.description,
 		verbose=args.verbose,
 	)
 	if args.verbose:
@@ -1389,16 +1447,48 @@ def main():
 		for i, kw in enumerate(keywords):
 			print(f"{i:03d} {kw}")
 
-	if args.csv_file:
-		df['llm_keywords'] = keywords
-		df.to_csv(output_csv, index=False)
-		try:
-			df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-		except Exception as e:
-			print(f"Failed to write Excel file: {e}")
-		if args.verbose:
-			print(f"Saved {len(keywords)} keywords to {output_csv}")
-			print(f"Done! dataframe: {df.shape} {list(df.columns)}")
+	# if args.csv_file:
+	# 	df = pd.read_csv(
+	# 		filepath_or_buffer=args.csv_file, 
+	# 		on_bad_lines='skip', 
+	# 		dtype=dtypes, 
+	# 		low_memory=False,
+	# 	)
+	# 	if 'enriched_document_description' not in df.columns:
+	# 		raise ValueError("CSV file must have 'enriched_document_description' column")
+	# 	descriptions = df['enriched_document_description'].tolist()
+	# 	print(f"Loaded {len(descriptions)} descriptions from {args.csv_file}")
+	# 	output_csv = args.csv_file.replace(".csv", "_llm_keywords.csv")
+	# elif args.description:
+	# 	descriptions = [args.description]
+	# else:
+	# 	raise ValueError("Either --csv_file or --description must be provided")
+
+	# # inefficient approach:
+	# keywords = get_llm_based_labels(
+	# 	model_id=args.model_id, 
+	# 	device=args.device, 
+	# 	descriptions=descriptions,
+	# 	batch_size=args.batch_size,
+	# 	max_generated_tks=args.max_generated_tks,
+	# 	max_kws=args.max_keywords,
+	# 	verbose=args.verbose,
+	# )
+	# if args.verbose:
+	# 	print(f"{len(keywords)} Extracted keywords")
+	# 	for i, kw in enumerate(keywords):
+	# 		print(f"{i:03d} {kw}")
+
+	# if args.csv_file:
+	# 	df['llm_keywords'] = keywords
+	# 	df.to_csv(output_csv, index=False)
+	# 	try:
+	# 		df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+	# 	except Exception as e:
+	# 		print(f"Failed to write Excel file: {e}")
+	# 	if args.verbose:
+	# 		print(f"Saved {len(keywords)} keywords to {output_csv}")
+	# 		print(f"Done! dataframe: {df.shape} {list(df.columns)}")
 
 if __name__ == "__main__":
 	main()

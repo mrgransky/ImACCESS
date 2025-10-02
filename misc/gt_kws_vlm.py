@@ -30,15 +30,18 @@ print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
 
 VLM_INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
-Identify the five most prominent, factual and distinct **KEYWORDS** that capture the main action, object or event.
+Identify {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object or event.
 Exclude any explanatory text, comments, questions, or words about image quality, style, or temporal era.
-**Return *only* these keywords as a clean, parseable Python list, e.g., ['keyword1', 'keyword2', ...].**
+**Return **ONLY** a clean Python list with exactly this format: ['keyword1', 'keyword2', ...].
 """
 
-def _load_vlm_(model_id: str, device: str):
-	print(f"[INFO] Loading model: {model_id} on {device}")
+def _load_vlm_(model_id: str, device: str, verbose: bool=False):
+	if verbose:
+		print(f"[INFO] Loading model: {model_id} on {device}")
 	config = tfs.AutoConfig.from_pretrained(model_id)
-	print(f"[INFO] Model type: {config.model_type} Architectures: {config.architectures}")
+	if verbose:
+		print(f"[INFO] Model type: {config.model_type} Architectures: {config.architectures}")
+	
 	if config.architectures:
 		cls_name = config.architectures[0]
 		if hasattr(tfs, cls_name):
@@ -50,7 +53,6 @@ def _load_vlm_(model_id: str, device: str):
 		trust_remote_code=True, 
 		cache_dir=cache_directory[USER]
 	)
-	print(type(processor))
 
 	model = model_cls.from_pretrained(
 		model_id,
@@ -59,39 +61,29 @@ def _load_vlm_(model_id: str, device: str):
 		trust_remote_code=True,
 		cache_dir=cache_directory[USER]
 	)
-	print(type(model))
+
+	if verbose:
+		print(f"[INFO] Processor: {processor.__class__.__name__} {type(processor)}")
+		print(f"[INFO] Model: {model.__class__.__name__} {type(model)}")
+
 	model.to(device)
-	print(f"[INFO] Loaded {model.__class__.__name__} on {device}")
 	return processor, model
 
 def get_prompt(
 		model_id: str, 
 		processor: tfs.AutoProcessor, 
-		img_path: str
+		img_path: str,
+		max_kws: int,
 	):
-	if "-v1.6-" or "-next-" in model_id:
-		conversation = [
-			{
-				"role": "user",
-				"content": [
-					{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE},
-					{"type": "image", "image": img_path},
-				],
-			},
-		]
-		txt = processor.apply_chat_template(
-			conversation,
-			add_generation_prompt=True
-		)
-	elif "-1.5-" or "bakLlava" in model_id:
-		txt = f"USER: <image>\n{VLM_INSTRUCTION_TEMPLATE}\nASSISTANT:"
-	elif "Qwen" in model_id:
+	if "-1.5-" in model_id or "bakLlava" in model_id:
+		txt = f"USER: <image>\n{VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)}\nASSISTANT:"
+	else:
 		messages = [
 			{
 				"role": "user",
 				"content": [
+					{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)},
 					{"type": "image", "image": img_path},
-					{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE},
 				],
 			},
 		]	
@@ -100,8 +92,6 @@ def get_prompt(
 			tokenize=False, 
 			add_generation_prompt=True,
 		)
-	else:
-		raise ValueError(f"Unknown model ID: {model_id}")
 	return txt
 
 def get_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
@@ -122,17 +112,17 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[list]:
 	# Find all lists in the response (could be multiple!)
 	all_matches = re.findall(r"\[[^\[\]]+\]", response, re.DOTALL)
 
-	if verbose: print(f"[DEBUG] Found {len(all_matches)} Python lists: {all_matches}")
+	if verbose: print(f"\n[DEBUG] Found {len(all_matches)} Python lists:\n{all_matches}")
 	# Choose the last match **as the answer**
 	if all_matches:
 		list_str = all_matches[-1]
-		if verbose: print("[DEBUG] Extracted last list:", list_str)
+		if verbose: print(f"\n[DEBUG] Extracted last list: {list_str}")
 		try:
 			keywords = ast.literal_eval(list_str)
-			if verbose: print("[DEBUG] Parsed Python list:", keywords)
+			if verbose: print(f"\n[DEBUG] Parsed Python list:\n{keywords}")
 			if isinstance(keywords, list):
 				result = [str(k).strip() for k in keywords if isinstance(k, str)]
-				if verbose: print("[INFO] Final parsed keywords:", result)
+				if verbose: print(f"\n[INFO] Final parsed keywords:\n{result}")
 				return result
 			else:
 				if verbose: print("[ERROR] Parsed output is not a list.")
@@ -143,18 +133,18 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[list]:
 	after_assistant = response.split("assistant")[-1].strip()
 	candidates = re.findall(r"'([^']+)'", after_assistant)
 
-	if verbose: print("[DEBUG] Regex candidates:", candidates)
+	if verbose: print(f"\n[DEBUG] Regex candidates:\n{candidates}")
 	if candidates:
 		result = [str(x).strip() for x in candidates]
-		if verbose: print("[INFO] Final parsed fallback keywords: ", result)
+		if verbose: print(f"\n[INFO] Final parsed fallback keywords: {result}")
 		return result
 
 	# Final fallback
 	raw_split = [x.strip(" ,'\"]") for x in after_assistant.split(",") if x.strip()]
 
-	if verbose: print("[DEBUG] Comma split candidates:", raw_split)
+	if verbose: print(f"\n[DEBUG] Comma split candidates:\n{raw_split}")
 	if len(raw_split) > 1:
-		if verbose: print("[INFO] Final last-resort keywords:", raw_split)
+		if verbose: print(f"\n[INFO] Final last-resort keywords:\n{raw_split}")
 		return raw_split
 
 	if verbose:
@@ -274,11 +264,47 @@ def query_local_vlm(
 def get_vlm_based_labels(
 		model_id: str,
 		device: str,
-		image_paths: Union[str, List[str]],
 		batch_size: int,
+		max_kws: int,
 		max_generated_tks: int,
+		csv_file: str=None,
+		image_path: str=None,
 		verbose: bool = False,
 	) -> List[List[str]]:
+	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
+
+	if csv_file and image_path:
+		raise ValueError("Only one of csv_file or image_path must be provided")
+
+	if csv_file and os.path.exists(output_csv):
+		df = pd.read_csv(
+			filepath_or_buffer=output_csv,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
+		if 'vlm_keywords' in df.columns:
+			if verbose: print(f"Found existing VLM keywords in {output_csv}")
+			return df['vlm_keywords'].tolist()
+
+	if csv_file:
+		df = pd.read_csv(
+			filepath_or_buffer=csv_file,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
+		if 'img_path' not in df.columns:
+			raise ValueError("CSV file must have 'img_path' column")
+		image_paths = df['img_path'].tolist()
+		if verbose:
+			print(f"Loaded {len(image_paths)} images from {csv_file}")
+	elif image_path:
+		image_paths = [image_path]
+		if verbose:
+			print(f"Loaded 1 image from {image_path}")
+	else:
+		raise ValueError("Either csv_file or image_path must be provided")
 
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
@@ -286,15 +312,18 @@ def get_vlm_based_labels(
 		if verbose:
 			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-	processor, model = _load_vlm_(model_id, device)
+	processor, model = _load_vlm_(model_id, device, verbose=verbose)
 
 	all_keywords = []
 	for i, img_path in tqdm(enumerate(image_paths), total=len(image_paths), desc="Processing images"):
+		if verbose: print(f"Processing image {i+1}/{len(image_paths)}: {img_path}")
 		text = get_prompt(
 			model_id=model_id, 
 			processor=processor,
 			img_path=img_path,
+			max_kws=max_kws,
 		)
+		if verbose: print(f"Prompt:\n{text}")
 		keywords = query_local_vlm(
 			model=model, 
 			processor=processor,
@@ -305,17 +334,30 @@ def get_vlm_based_labels(
 			verbose=verbose,
 		)
 		all_keywords.append(keywords)
+
+	if csv_file:
+		df['vlm_keywords'] = all_keywords
+		df.to_csv(output_csv, index=False)
+		try:
+			df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+		except Exception as e:
+			print(f"Failed to write Excel file: {e}")
+		if verbose:
+			print(f"Saved {len(all_keywords)} keywords to {output_csv}")
+			print(f"Done! dataframe: {df.shape} {list(df.columns)}")
+
 	return all_keywords
 
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="VLLM-based keyword extraction for Historical Archives Dataset")
-	parser.add_argument("--csv_file", '-csv', type=str, help="Path to the metadata CSV file")
-	parser.add_argument("--image_path", '-i', type=str, help="img path [or URL]")
+	parser.add_argument("--csv_file", '-csv', type=str, default=None, help="Path to the metadata CSV file")
+	parser.add_argument("--image_path", '-i', type=str, default=None, help="img path [or URL]")
 	parser.add_argument("--model_id", '-m', type=str, default="Qwen/Qwen2-VL-2B-Instruct", help="HuggingFace Vision-Language model ID")
 	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device('cuda:0' or 'cpu')")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=16, help="Batch size for processing")
+	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Batch size for processing")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 
@@ -323,40 +365,20 @@ def main():
 	args.device = torch.device(args.device)
 	print(args)
 
-	if args.csv_file:
-		df = pd.read_csv(
-			filepath_or_buffer=args.csv_file, 
-			on_bad_lines='skip', 
-			dtype=dtypes, 
-			low_memory=False,
-		)
-		if 'img_path' not in df.columns:
-			raise ValueError("CSV file must have 'img_path' column")
-		img_paths = df['img_path'].tolist()
-		print(f"Loaded {len(img_paths)} images from {args.csv_file}")
-		output_csv = args.csv_file.replace(".csv", "_vlm_keywords.csv")
-	elif args.image_path:
-		img_paths = [args.image_path]
-	else:
-		raise ValueError("Either --csv_file or --image_path must be provided")
-
 	keywords = get_vlm_based_labels(
 		model_id=args.model_id,
 		device=args.device,
-		image_paths=img_paths,
+		csv_file=args.csv_file,
+		image_path=args.image_path,
 		batch_size=args.batch_size,
+		max_kws=args.max_keywords,
 		max_generated_tks=args.max_generated_tks,
 		verbose=args.verbose,
 	)
-	print(f"{len(keywords)} Extracted keywords: {keywords}")
-
-	if args.csv_file:
-		df['vlm_keywords'] = keywords
-		df.to_csv(output_csv, index=False)
-		try:
-			df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-		except Exception as e:
-			print(f"Failed to write Excel file: {e}")
+	if args.verbose:
+		print(f"{len(keywords)} Extracted keywords")
+		for i, kw in enumerate(keywords):
+			print(f"{i:03d} {kw}")
 
 if __name__ == "__main__":
 	main()

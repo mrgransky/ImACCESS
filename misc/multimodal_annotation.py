@@ -1,7 +1,7 @@
 from utils import *
 from gt_kws_vlm import get_vlm_based_labels
 from gt_kws_llm import get_llm_based_labels
-
+from visualize import perform_multilabel_eda
 # LLM models:
 # model_id = "Qwen/Qwen3-4B-Instruct-2507"
 # model_id = "mistralai/Mistral-7B-Instruct-v0.3"
@@ -26,9 +26,28 @@ def merge_labels(
 	assert len(llm_based_labels) == len(vlm_based_labels), "Label lists must have same length"
 	multimodal_labels = []
 	for llm_labels, vlm_labels in zip(llm_based_labels, vlm_based_labels):
-		# Handle None values
-		llm_labels = llm_labels or []
-		vlm_labels = vlm_labels or []
+		# Handle None, NaN, and non-list values
+		if not isinstance(llm_labels, list):
+			if pd.isna(llm_labels):
+				llm_labels = []
+			elif isinstance(llm_labels, str):
+				try:
+					llm_labels = eval(llm_labels)  # Parse string representation of list
+				except:
+					llm_labels = []
+			else:
+				llm_labels = []
+		
+		if not isinstance(vlm_labels, list):
+			if pd.isna(vlm_labels):
+				vlm_labels = []
+			elif isinstance(vlm_labels, str):
+				try:
+					vlm_labels = eval(vlm_labels)  # Parse string representation of list
+				except:
+					vlm_labels = []
+			else:
+				vlm_labels = []
 		
 		# Combine and deduplicate labels for this sample
 		combined = list(set(llm_labels + vlm_labels))
@@ -47,6 +66,7 @@ def get_multimodal_annotation(
 		max_keywords: int,
 		verbose: bool = False,
 	):
+
 	# Load dataframe
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
@@ -63,18 +83,12 @@ def get_multimodal_annotation(
 		print(f"FULL Dataset {type(df)} {df.shape}\n{list(df.columns)}")
 
 	output_csv = csv_file.replace(".csv", "_multimodal.csv")
-	# output_csv = os.path.join(os.path.dirname(csv_file), f"multimodal_metadata.csv")
-
-	img_paths = df['img_path'].tolist()
-	descriptions = df['enriched_document_description'].tolist()
-	if verbose:
-		print(f"Loaded {len(img_paths)} images and {len(descriptions)} descriptions")
 
 	# Textual-based annotation using LLMs
 	llm_based_labels = get_llm_based_labels(
 		model_id=llm_model_id,
 		device=device,
-		descriptions=descriptions,
+		csv_file=csv_file,
 		batch_size=batch_size,
 		max_generated_tks=max_generated_tks,
 		max_kws=max_keywords,
@@ -89,8 +103,9 @@ def get_multimodal_annotation(
 	vlm_based_labels = get_vlm_based_labels(
 		model_id=vlm_model_id,
 		device=device,
-		image_paths=img_paths,
+		csv_file=csv_file,
 		batch_size=batch_size,
+		max_kws=max_keywords,
 		max_generated_tks=max_generated_tks,
 		verbose=verbose,
 	)
@@ -104,19 +119,25 @@ def get_multimodal_annotation(
 		raise ValueError("LLM and VLM based labels must have same length")
 
 	if verbose:
-		print(f"Combining {len(llm_based_labels)} LLM- and {len(vlm_based_labels)} VLM-based labels...")
+		print(f"Combining {len(llm_based_labels)} {type(llm_based_labels)} LLM- and {len(vlm_based_labels)} {type(vlm_based_labels)} VLM-based labels...")
 	multimodal_labels = merge_labels(
 		llm_based_labels=llm_based_labels, 
 		vlm_based_labels=vlm_based_labels,
 	)
 	if verbose:
-		print(f"Combined {len(multimodal_labels)} multimodal labels")
+		print(f"Combined {len(multimodal_labels)} {type(multimodal_labels)} multimodal labels")
 		for i, kw in enumerate(multimodal_labels):
 			print(f"{i:03d} {kw}")
 
 	df['llm_based_labels'] = llm_based_labels
 	df['vlm_based_labels'] = vlm_based_labels
 	df['multimodal_labels'] = multimodal_labels
+
+
+	print(f"LLM-based labels: {llm_based_labels[0:5]}\n")
+	print(f"VLM-based labels: {vlm_based_labels[0:5]}\n")
+	print(f"Multimodal labels: {multimodal_labels[0:5]}\n")
+
 
 	df.to_csv(output_csv, index=False)
 	try:
