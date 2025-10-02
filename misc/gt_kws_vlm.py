@@ -103,245 +103,524 @@ def get_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
 		raise NotImplementedError(f"VLM response parsing not implemented for {model_id}")
 
 def _qwen_vlm_x(response: str, verbose: bool=False) -> Optional[List[str]]:
+    """Parse keywords from VLM response, handling various output formats."""
+    
+    # Temporal patterns to filter out
+    TEMPORAL_PATTERNS = [
+        r"\b\d{4}\b",              # 1900, 1944, 2020
+        r"\b\d{3,4}s\b",           # 1940s, 1800s
+        r"\bcentur(?:y|ies)\b",    # century, centuries
+        r"\bdecade(?:s)?\b",       # decade, decades
+        r"\bseason(?:s)?\b",       # season, seasons
+        r"\b(month|months|day|days|year|years)\b",  # explicit time units
+        r"\bworld war\s*[ivx]+\b",  # World War II, World War I (roman numerals)
+    ]
+    
+    def is_temporal(s: str) -> bool:
+        """Check if string contains temporal expressions."""
+        ss = s.lower()
+        for p in TEMPORAL_PATTERNS:
+            if re.search(p, ss):
+                if verbose:
+                    print(f"[DEBUG] Temporal filter matched '{s}' with pattern '{p}'")
+                return True
+        return False
+    
+    def clean_item_text(s: str) -> str:
+        """Clean individual item: remove numbering, markdown, quotes, brackets."""
+        original = s
+        # Remove leading numbering like "1. " or "1) "
+        s = re.sub(r"^\s*\d+\s*[\.\)]\s*", "", s)
+        # Strip markdown emphasis
+        s = re.sub(r"\*+", "", s)
+        # Remove leading bracket if leaked
+        s = s.lstrip("[")
+        # Strip wrapping quotes
+        if (len(s) >= 2) and ((s[0] == s[-1]) and s[0] in "'\""):
+            s = s[1:-1]
+        s = s.strip()
+        # Collapse whitespace
+        s = re.sub(r"\s+", " ", s)
+        if verbose and original != s:
+            print(f"[DEBUG] Cleaned item: '{original}' -> '{s}'")
+        return s
+    
+    def split_items_relaxed(list_like: str) -> List[str]:
+        """Split list-like string by commas, handling unbalanced brackets/quotes."""
+        if verbose:
+            print(f"[DEBUG] split_items_relaxed input: {repr(list_like)}")
+        
+        inner = list_like.strip()
+        if inner.startswith("["):
+            inner = inner[1:]
+            if verbose: print(f"[DEBUG] Removed leading '[', now: {repr(inner)}")
+        if inner.endswith("]"):
+            inner = inner[:-1]
+            if verbose: print(f"[DEBUG] Removed trailing ']', now: {repr(inner)}")
+        
+        parts = [p.strip() for p in inner.split(",")]
+        if verbose:
+            print(f"[DEBUG] Split by comma into {len(parts)} parts: {parts}")
+        
+        items = []
+        for idx, p in enumerate(parts):
+            if not p or p in {"'", '"'}:
+                if verbose: print(f"[DEBUG] Part {idx} is empty or just a quote, skipping: {repr(p)}")
+                continue
+            # Handle dangling quotes
+            if (p.startswith("'") and not p.endswith("'")) or (p.startswith('"') and not p.endswith('"')):
+                if verbose: print(f"[DEBUG] Part {idx} has dangling quote, stripping: {repr(p)}")
+                p = p.strip("'\"")
+            cleaned = clean_item_text(p)
+            if cleaned:
+                items.append(cleaned)
+                if verbose: print(f"[DEBUG] Part {idx} added: '{cleaned}'")
+            else:
+                if verbose: print(f"[DEBUG] Part {idx} cleaned to empty, skipping")
+        
+        if verbose:
+            print(f"[DEBUG] split_items_relaxed output: {items}")
+        return [x for x in items if x]
+    
+    def dedupe_preserve_order(items: List[str], limit: int = 5) -> List[str]:
+        """Remove duplicates while preserving order, cap at limit."""
+        if verbose:
+            print(f"[DEBUG] dedupe_preserve_order input ({len(items)} items): {items}")
+        
+        seen, out = set(), []
+        for idx, x in enumerate(items):
+            if x and x not in seen:
+                out.append(x)
+                seen.add(x)
+                if verbose: print(f"[DEBUG] Item {idx} '{x}' added (unique)")
+            elif x in seen:
+                if verbose: print(f"[DEBUG] Item {idx} '{x}' skipped (duplicate)")
+            if len(out) >= limit:
+                if verbose: print(f"[DEBUG] Reached limit of {limit}, stopping")
+                break
+        
+        if verbose:
+            print(f"[DEBUG] dedupe_preserve_order output ({len(out)} items): {out}")
+        return out
+    
+    # Main parsing logic
     if verbose:
-        print(f"\n[DEBUG] Raw VLM output:\n{response}")
+        print(f"\n{'='*80}")
+        print(f"[DEBUG] Raw VLM output ({len(response)} chars):\n{response}")
+        print(f"{'='*80}\n")
+    
     if not isinstance(response, str):
         if verbose: print("[ERROR] VLM output is not a string.")
         return None
 
-    # Find all bracketed segments (could be multiple, each possibly a single item)
+    # 1) Try to capture balanced lists
     all_matches = re.findall(r"\[[^\[\]]+\]", response, re.DOTALL)
-    if verbose: print(f"\n[DEBUG] Found {len(all_matches)} Python lists:\n{all_matches}")
+    if verbose:
+        print(f"[DEBUG] Regex r\"\\[[^\\[\\]]+\\]\" found {len(all_matches)} balanced lists")
+        for idx, m in enumerate(all_matches):
+            print(f"[DEBUG]   Match {idx}: {repr(m[:100])}{'...' if len(m) > 100 else ''}")
 
-    def clean_item(s: str) -> str:
-        # Remove leading numbering like "1. " or "1) " etc.
-        s = re.sub(r"^\s*\d+\s*[\.\)]\s*", "", s)
-        # Remove markdown emphasis like **bold** or *italic*
-        s = re.sub(r"\*+", "", s)
-        # Normalize whitespace and strip quotes
-        s = s.strip().strip("\"'").strip()
-        # Collapse inner whitespace
-        s = re.sub(r"\s+", " ", s)
-        return s
-
-    def dedupe_preserve_order(items: List[str], limit: int = 5) -> List[str]:
-        seen = set()
-        out = []
-        for x in items:
-            if x and x not in seen:
-                out.append(x)
-                seen.add(x)
-            if len(out) >= limit:
-                break
-        return out
-
-    # Case A: The model returns several one-item bracketed lists (your example)
-    # Detect if a majority of matches look like "[<number>.<space>...]" with only one item (no commas)
+    # Detect numbered singletons like [1. thing] repeated across lines
     numbered_singletons = []
-    for m in all_matches:
+    for idx, m in enumerate(all_matches):
         inner = m[1:-1].strip()
         if re.match(r"^\d+\s*[\.\)]\s*", inner) and "," not in inner:
             numbered_singletons.append(inner)
-
+            if verbose:
+                print(f"[DEBUG] Match {idx} is a numbered singleton: {repr(inner)}")
+    
     if verbose:
         print(f"\n[DEBUG] Numbered singleton segments: {len(numbered_singletons)}")
-
-    if numbered_singletons and len(numbered_singletons) >= max(2, len(all_matches) // 2):
-        items = [clean_item(s) for s in numbered_singletons]
-        items = [i for i in items if i]
+    
+    if numbered_singletons and len(numbered_singletons) >= max(2, len(all_matches)//2):
+        if verbose:
+            print(f"[DEBUG] Processing {len(numbered_singletons)} numbered singletons (threshold met)")
+        items = [clean_item_text(s) for s in numbered_singletons]
+        if verbose:
+            print(f"[DEBUG] After cleaning: {items}")
+        items = [i for i in items if i and not is_temporal(i)]
+        if verbose:
+            print(f"[DEBUG] After temporal filter: {items}")
         result = dedupe_preserve_order(items, limit=5)
         if result:
-            if verbose: print(f"\n[INFO] Final parsed keywords (from numbered singletons):\n{result}")
+            if verbose: print(f"\n[INFO] ✓ Final parsed keywords (from numbered singletons): {result}\n")
             return result
+        else:
+            if verbose: print(f"[DEBUG] No valid items after deduplication")
 
-    # Case B: Choose the last bracketed list and process it (works for "[1. A, 2. B, ...]" case)
+    primary = None
     if all_matches:
-        list_str = all_matches[-1]
-        if verbose: print(f"\n[DEBUG] Extracted last list: {list_str}")
+        # Pick the longest as primary
+        primary = max(all_matches, key=len)
+        if verbose:
+            print(f"\n[DEBUG] Selected primary list (longest, {len(primary)} chars): {repr(primary[:200])}{'...' if len(primary) > 200 else ''}")
 
-        # If it looks like a numbered list inside one pair of brackets, convert to items
-        if re.search(r"\d+\s*[\.\)]\s*", list_str):
-            if verbose: print(f"\n[DEBUG] Detected numbered list format, cleaning...")
-            cleaned = re.sub(r"\[\s*|\s*\]", "", list_str)  # drop outer brackets
-            parts = [clean_item(p) for p in cleaned.split(",")]
-            parts = [p for p in parts if p]
-            result = dedupe_preserve_order(parts, limit=5)
+        # If it's a numbered list inside a single pair of brackets
+        if re.search(r"\d+\s*[\.\)]\s*", primary):
+            if verbose: print(f"[DEBUG] Primary contains numbered format (e.g., '1. item')")
+            cleaned = re.sub(r"^\s*\[|\]\s*$", "", primary)
+            if verbose: print(f"[DEBUG] After removing outer brackets: {repr(cleaned[:200])}")
+            parts = [clean_item_text(p) for p in cleaned.split(",")]
+            if verbose: print(f"[DEBUG] Split into {len(parts)} parts: {parts}")
+            items = [p for p in parts if p and not is_temporal(p)]
+            if verbose: print(f"[DEBUG] After temporal filter: {items}")
+            result = dedupe_preserve_order(items, limit=5)
             if result:
-                if verbose: print(f"\n[INFO] Final parsed keywords (from numbered list):\n{result}")
+                if verbose: print(f"\n[INFO] ✓ Final parsed keywords (numbered list): {result}\n")
                 return result
+            else:
+                if verbose: print(f"[DEBUG] No valid items after deduplication")
 
-        # Try literal_eval for proper Python list formats
+        # Try literal_eval for proper lists (may fail if apostrophes unescaped)
+        if verbose: print(f"\n[DEBUG] Attempting ast.literal_eval on primary...")
         try:
-            keywords = ast.literal_eval(list_str)
-            if verbose: print(f"\n[DEBUG] Parsed Python list via literal_eval:\n{keywords}")
-            if isinstance(keywords, list):
-                items = [clean_item(str(k)) for k in keywords if isinstance(k, (str, int, float))]
-                items = [i for i in items if i]
+            parsed = ast.literal_eval(primary)
+            if verbose: print(f"[DEBUG] ✓ ast.literal_eval succeeded: {parsed}")
+            if isinstance(parsed, list):
+                if verbose: print(f"[DEBUG] Parsed result is a list with {len(parsed)} items")
+                items = [clean_item_text(str(k)) for k in parsed if isinstance(k, (str, int, float))]
+                if verbose: print(f"[DEBUG] After cleaning: {items}")
+                items = [i for i in items if i and not is_temporal(i)]
+                if verbose: print(f"[DEBUG] After temporal filter: {items}")
                 result = dedupe_preserve_order(items, limit=5)
                 if result:
-                    if verbose: print(f"\n[INFO] Final parsed keywords (from literal list):\n{result}")
+                    if verbose: print(f"\n[INFO] ✓ Final parsed keywords (literal list): {result}\n")
                     return result
+                else:
+                    if verbose: print(f"[DEBUG] No valid items after deduplication")
             else:
-                if verbose: print("[ERROR] Parsed output is not a list.")
+                if verbose: print(f"[DEBUG] Parsed result is not a list: {type(parsed)}")
         except Exception as e:
-            if verbose: print("[ERROR] ast.literal_eval failed:", e)
+            if verbose: print(f"[ERROR] ast.literal_eval failed: {type(e).__name__}: {e}")
+            if verbose: print(f"[DEBUG] Falling back to relaxed split...")
+            # Unescaped apostrophes or minor issues: relaxed split
+            items = split_items_relaxed(primary)
+            if verbose: print(f"[DEBUG] Relaxed split returned {len(items)} items: {items}")
+            items = [i for i in items if i and not is_temporal(i)]
+            if verbose: print(f"[DEBUG] After temporal filter: {items}")
+            result = dedupe_preserve_order(items, limit=5)
+            if result:
+                if verbose: print(f"\n[INFO] ✓ Final parsed keywords (relaxed primary): {result}\n")
+                return result
+            else:
+                if verbose: print(f"[DEBUG] No valid items after deduplication")
 
-    # Fallback: Extract lines that look like "[n. item]" even if not captured by the bracket regex
-    lines = response.splitlines()
-    fallback_items = []
-    for ln in lines:
-        m = re.match(r"^\s*\[\s*\d+\s*[\.\)]\s*(.*?)\s*\]\s*$", ln.strip())
-        if m:
-            fallback_items.append(clean_item(m.group(1)))
-
-    if fallback_items:
-        result = dedupe_preserve_order(fallback_items, limit=5)
-        if result:
-            if verbose: print(f"\n[INFO] Final parsed fallback keywords (lines): {result}")
-            return result
-
-    # Final fallback: After 'assistant' block, comma-split
+    # 2) If no balanced list found (truncated/unbalanced case): recover from 'assistant' block
+    if verbose: print(f"\n[DEBUG] Attempting recovery from 'assistant' block...")
     after_assistant = response.split("assistant")[-1].strip()
-    comma_parts = [clean_item(x) for x in after_assistant.split(",") if x.strip()]
-    if verbose: print(f"\n[DEBUG] Comma split candidates:\n{comma_parts}")
+    if verbose:
+        print(f"[DEBUG] Content after 'assistant' ({len(after_assistant)} chars): {repr(after_assistant[:200])}{'...' if len(after_assistant) > 200 else ''}")
+    
+    idx = after_assistant.find("[")
+    if idx != -1:
+        if verbose: print(f"[DEBUG] Found '[' at position {idx}")
+        blob = after_assistant[idx:]
+        open_count = blob.count("[")
+        close_count = blob.count("]")
+        if verbose: print(f"[DEBUG] Blob has {open_count} '[' and {close_count} ']'")
+        # If it looks truncated (e.g., ends with a quote), try to close it
+        if open_count > close_count:
+            if verbose: print(f"[DEBUG] Unbalanced brackets detected, adding ']'")
+            blob = blob + "]"
+        if verbose: print(f"[DEBUG] Recovered blob: {repr(blob[:200])}{'...' if len(blob) > 200 else ''}")
+        items = split_items_relaxed(blob)
+        if verbose: print(f"[DEBUG] Relaxed split returned {len(items)} items: {items}")
+        items = [i for i in items if i and not is_temporal(i)]
+        if verbose: print(f"[DEBUG] After temporal filter: {items}")
+        result = dedupe_preserve_order(items, limit=5)
+        if result:
+            if verbose: print(f"\n[INFO] ✓ Final parsed keywords (recovered blob): {result}\n")
+            return result
+        else:
+            if verbose: print(f"[DEBUG] No valid items after deduplication")
+    else:
+        if verbose: print(f"[DEBUG] No '[' found in content after 'assistant'")
+
+    # 3) Last resort: comma-split after assistant
+    if verbose: print(f"\n[DEBUG] Last resort: comma-splitting after 'assistant'...")
+    comma_parts = [clean_item_text(x) for x in after_assistant.split(",") if x.strip()]
+    if verbose: print(f"[DEBUG] Comma split produced {len(comma_parts)} parts: {comma_parts}")
+    comma_parts = [i for i in comma_parts if i and not is_temporal(i)]
+    if verbose: print(f"[DEBUG] After temporal filter: {comma_parts}")
+    
     if len(comma_parts) > 1:
         result = dedupe_preserve_order(comma_parts, limit=5)
-        if verbose: print(f"\n[INFO] Final last-resort keywords:\n{result}")
+        if verbose: print(f"\n[INFO] ✓ Final last-resort keywords: {result}\n")
         return result
+    else:
+        if verbose: print(f"[DEBUG] Not enough comma parts ({len(comma_parts)} <= 1)")
 
     if verbose:
-        print("[ERROR] Unable to parse any keywords from VLM output.")
+        print(f"\n[ERROR] ✗ Unable to parse any keywords from VLM output.\n")
     return None
 
 from typing import Optional, List
 import re, ast
 
 def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
+    """Parse keywords from VLM response, handling various output formats."""
+    
+    # Temporal patterns to filter out
+    TEMPORAL_PATTERNS = [
+        r"\b\d{4}\b",              # 1900, 1944, 2020
+        r"\b\d{3,4}s\b",           # 1940s, 1800s
+        r"\bcentur(?:y|ies)\b",    # century, centuries
+        r"\bdecade(?:s)?\b",       # decade, decades
+        r"\bseason(?:s)?\b",       # season, seasons
+        r"\b(month|months|day|days|year|years)\b",  # explicit time units
+        r"\bworld war\s*[ivx]+\b",  # World War II, World War I (roman numerals)
+    ]
+    
+    def is_temporal(s: str) -> bool:
+        """Check if string contains temporal expressions."""
+        ss = s.lower()
+        for p in TEMPORAL_PATTERNS:
+            if re.search(p, ss):
+                if verbose:
+                    print(f"[DEBUG] Temporal filter matched '{s}' with pattern '{p}'")
+                return True
+        return False
+    
+    def clean_item_text(s: str) -> str:
+        """Clean individual item: remove numbering, markdown, quotes, brackets."""
+        original = s
+        
+        # Remove leading numbering like "1. " or "1) "
+        s = re.sub(r"^\s*\d+\s*[\.\)]\s*", "", s)
+        
+        # Strip markdown emphasis
+        s = re.sub(r"\*+", "", s)
+        
+        # Normalize smart quotes/apostrophes to standard ASCII
+        s = s.replace("'", "'").replace("'", "'").replace(""", '"').replace(""", '"')
+        
+        # Remove leading bracket if leaked
+        s = s.lstrip("[")
+        
+        # Strip wrapping quotes
+        if (len(s) >= 2) and ((s[0] == s[-1]) and s[0] in "'\""):
+            s = s[1:-1]
+        
+        s = s.strip()
+        
+        # Optional: trim possessive 's (e.g., "Desmond's" -> "Desmond")
+        # Comment out the next line if you want to keep possessives
+        s = re.sub(r"(?<=\w)'s\b", "", s)
+        
+        # Collapse whitespace
+        s = re.sub(r"\s+", " ", s)
+        
+        if verbose and original != s:
+            print(f"[DEBUG] Cleaned item: '{original}' -> '{s}'")
+        return s
+    
+    def split_items_relaxed(list_like: str) -> List[str]:
+        """Split list-like string by commas, handling unbalanced brackets/quotes."""
+        if verbose:
+            print(f"[DEBUG] split_items_relaxed input: {repr(list_like)}")
+        
+        inner = list_like.strip()
+        if inner.startswith("["):
+            inner = inner[1:]
+            if verbose: print(f"[DEBUG] Removed leading '[', now: {repr(inner)}")
+        if inner.endswith("]"):
+            inner = inner[:-1]
+            if verbose: print(f"[DEBUG] Removed trailing ']', now: {repr(inner)}")
+        
+        parts = [p.strip() for p in inner.split(",")]
+        if verbose:
+            print(f"[DEBUG] Split by comma into {len(parts)} parts: {parts}")
+        
+        items = []
+        for idx, p in enumerate(parts):
+            if not p or p in {"'", '"'}:
+                if verbose: print(f"[DEBUG] Part {idx} is empty or just a quote, skipping: {repr(p)}")
+                continue
+            # Handle dangling quotes
+            if (p.startswith("'") and not p.endswith("'")) or (p.startswith('"') and not p.endswith('"')):
+                if verbose: print(f"[DEBUG] Part {idx} has dangling quote, stripping: {repr(p)}")
+                p = p.strip("'\"")
+            cleaned = clean_item_text(p)
+            if cleaned:
+                items.append(cleaned)
+                if verbose: print(f"[DEBUG] Part {idx} added: '{cleaned}'")
+            else:
+                if verbose: print(f"[DEBUG] Part {idx} cleaned to empty, skipping")
+        
+        if verbose:
+            print(f"[DEBUG] split_items_relaxed output: {items}")
+        return [x for x in items if x]
+    
+    def dedupe_preserve_order(items: List[str], limit: int = 5) -> List[str]:
+        """Remove duplicates while preserving order, cap at limit."""
+        if verbose:
+            print(f"[DEBUG] dedupe_preserve_order input ({len(items)} items): {items}")
+        
+        seen, out = set(), []
+        for idx, x in enumerate(items):
+            if x and x not in seen:
+                out.append(x)
+                seen.add(x)
+                if verbose: print(f"[DEBUG] Item {idx} '{x}' added (unique)")
+            elif x in seen:
+                if verbose: print(f"[DEBUG] Item {idx} '{x}' skipped (duplicate)")
+            if len(out) >= limit:
+                if verbose: print(f"[DEBUG] Reached limit of {limit}, stopping")
+                break
+        
+        if verbose:
+            print(f"[DEBUG] dedupe_preserve_order output ({len(out)} items): {out}")
+        return out
+    
+    # Main parsing logic
     if verbose:
-        print(f"\n[DEBUG] Raw VLM output:\n{response}")
+        print(f"\n{'='*80}")
+        print(f"[DEBUG] Raw VLM output ({len(response)} chars):\n{response}")
+        print(f"{'='*80}\n")
+    
     if not isinstance(response, str):
         if verbose: print("[ERROR] VLM output is not a string.")
         return None
 
-    # Find all bracketed segments
+    # 1) Try to capture balanced lists
     all_matches = re.findall(r"\[[^\[\]]+\]", response, re.DOTALL)
-    if verbose: print(f"\n[DEBUG] Found {len(all_matches)} Python lists:\n{all_matches}")
+    if verbose:
+        print(f"[DEBUG] Regex r\"\\[[^\\[\\]]+\\]\" found {len(all_matches)} balanced lists")
+        for idx, m in enumerate(all_matches):
+            print(f"[DEBUG]   Match {idx}: {repr(m[:100])}{'...' if len(m) > 100 else ''}")
 
-    def clean_item(s: str) -> str:
-        s = re.sub(r"^\s*\d+\s*[\.\)]\s*", "", s)  # remove leading "1. " or "1)"
-        s = re.sub(r"\*+", "", s)                  # strip markdown emphasis
-        s = s.strip().strip("\"'").strip()         # strip quotes and spaces
-        s = re.sub(r"\s+", " ", s)
-        return s
-
-    def dedupe_preserve_order(items: List[str], limit: int = 5) -> List[str]:
-        seen, out = set(), []
-        for x in items:
-            if x and x not in seen:
-                out.append(x)
-                seen.add(x)
-            if len(out) >= limit:
-                break
-        return out
-
-    # Detect numbered singletons like: [1. **A**]\n[2. **B**]...
+    # Detect numbered singletons like [1. thing] repeated across lines
     numbered_singletons = []
-    for m in all_matches:
+    for idx, m in enumerate(all_matches):
         inner = m[1:-1].strip()
         if re.match(r"^\d+\s*[\.\)]\s*", inner) and "," not in inner:
             numbered_singletons.append(inner)
+            if verbose:
+                print(f"[DEBUG] Match {idx} is a numbered singleton: {repr(inner)}")
+    
     if verbose:
         print(f"\n[DEBUG] Numbered singleton segments: {len(numbered_singletons)}")
-    if numbered_singletons and len(numbered_singletons) >= max(2, len(all_matches) // 2):
-        items = [clean_item(s) for s in numbered_singletons]
-        items = [i for i in items if i]
+    
+    if numbered_singletons and len(numbered_singletons) >= max(2, len(all_matches)//2):
+        if verbose:
+            print(f"[DEBUG] Processing {len(numbered_singletons)} numbered singletons (threshold met)")
+        items = [clean_item_text(s) for s in numbered_singletons]
+        if verbose:
+            print(f"[DEBUG] After cleaning: {items}")
+        items = [i for i in items if i and not is_temporal(i)]
+        if verbose:
+            print(f"[DEBUG] After temporal filter: {items}")
         result = dedupe_preserve_order(items, limit=5)
         if result:
-            if verbose: print(f"\n[INFO] Final parsed keywords (from numbered singletons):\n{result}")
+            if verbose: print(f"\n[INFO] ✓ Final parsed keywords (from numbered singletons): {result}\n")
             return result
+        else:
+            if verbose: print(f"[DEBUG] No valid items after deduplication")
 
-    # Helper: manual parsing for lists with unescaped apostrophes in single-quoted items
-    def parse_list_with_unescaped_apostrophes(list_str: str) -> List[str]:
-        content = list_str.strip()
-        if content.startswith("[") and content.endswith("]"):
-            content = content[1:-1]
-        # Split by top-level commas (we assume no commas inside items for keywords)
-        parts = [p.strip() for p in content.split(",")]
-        items = []
-        for p in parts:
-            # Remove any lingering brackets due to partial capture
-            p = p.strip().lstrip("[").rstrip("]")
-            # Remove wrapping single or double quotes if present
-            if (p.startswith("'") and p.endswith("'")) or (p.startswith('"') and p.endswith('"')):
-                p = p[1:-1]
-            items.append(clean_item(p))
-        # Filter empties
-        return [x for x in items if x]
-
-    # Choose the longest bracketed segment as primary (often the real list)
     primary = None
     if all_matches:
+        # Pick the longest as primary
         primary = max(all_matches, key=len)
-        if verbose: print(f"\n[DEBUG] Extracted primary list segment: {primary}")
+        if verbose:
+            print(f"\n[DEBUG] Selected primary list (longest, {len(primary)} chars): {repr(primary[:200])}{'...' if len(primary) > 200 else ''}")
 
-        # Case: numbered list in one bracket: [1. A, 2. B, ...]
+        # If it's a numbered list inside a single pair of brackets
         if re.search(r"\d+\s*[\.\)]\s*", primary):
-            if verbose: print(f"\n[DEBUG] Detected numbered list format, cleaning...")
+            if verbose: print(f"[DEBUG] Primary contains numbered format (e.g., '1. item')")
             cleaned = re.sub(r"^\s*\[|\]\s*$", "", primary)
-            parts = [clean_item(p) for p in cleaned.split(",")]
-            parts = [p for p in parts if p]
-            result = dedupe_preserve_order(parts, limit=5)
-            if result:
-                if verbose: print(f"\n[INFO] Final parsed keywords (from numbered list):\n{result}")
-                return result
-
-        # Try literal_eval for proper Python list formats
-        try:
-            parsed = ast.literal_eval(primary)
-            if verbose: print(f"\n[DEBUG] Parsed via literal_eval:\n{parsed}")
-            if isinstance(parsed, list):
-                items = [clean_item(str(k)) for k in parsed if isinstance(k, (str, int, float))]
-                items = [i for i in items if i]
-                result = dedupe_preserve_order(items, limit=5)
-                if result:
-                    if verbose: print(f"\n[INFO] Final parsed keywords (from literal list):\n{result}")
-                    return result
-        except Exception as e:
-            if verbose: print("[ERROR] ast.literal_eval failed:", e)
-            # Fallback for unescaped apostrophes like: ['Ward's Furniture', ...]
-            items = parse_list_with_unescaped_apostrophes(primary)
+            if verbose: print(f"[DEBUG] After removing outer brackets: {repr(cleaned[:200])}")
+            parts = [clean_item_text(p) for p in cleaned.split(",")]
+            if verbose: print(f"[DEBUG] Split into {len(parts)} parts: {parts}")
+            items = [p for p in parts if p and not is_temporal(p)]
+            if verbose: print(f"[DEBUG] After temporal filter: {items}")
             result = dedupe_preserve_order(items, limit=5)
             if result:
-                if verbose: print(f"\n[INFO] Final parsed keywords (fallback unescaped apostrophes):\n{result}")
+                if verbose: print(f"\n[INFO] ✓ Final parsed keywords (numbered list): {result}\n")
                 return result
-
-    # Additional fallback: aggregate across all bracketed segments
-    aggregate = []
-    for seg in all_matches:
-        try:
-            parsed = ast.literal_eval(seg)
-            if isinstance(parsed, list):
-                aggregate.extend([clean_item(str(k)) for k in parsed if isinstance(k, (str, int, float))])
             else:
-                aggregate.extend(parse_list_with_unescaped_apostrophes(seg))
-        except Exception:
-            aggregate.extend(parse_list_with_unescaped_apostrophes(seg))
-    aggregate = dedupe_preserve_order([x for x in aggregate if x], limit=5)
-    if aggregate:
-        if verbose: print(f"\n[INFO] Final parsed keywords (aggregate fallback): {aggregate}")
-        return aggregate
+                if verbose: print(f"[DEBUG] No valid items after deduplication")
 
-    # Last resort: after 'assistant' block, comma-split
+        # Try literal_eval for proper lists (may fail if apostrophes unescaped)
+        if verbose: print(f"\n[DEBUG] Attempting ast.literal_eval on primary...")
+        try:
+            parsed = ast.literal_eval(primary)
+            if verbose: print(f"[DEBUG] ✓ ast.literal_eval succeeded: {parsed}")
+            if isinstance(parsed, list):
+                if verbose: print(f"[DEBUG] Parsed result is a list with {len(parsed)} items")
+                items = [clean_item_text(str(k)) for k in parsed if isinstance(k, (str, int, float))]
+                if verbose: print(f"[DEBUG] After cleaning: {items}")
+                items = [i for i in items if i and not is_temporal(i)]
+                if verbose: print(f"[DEBUG] After temporal filter: {items}")
+                result = dedupe_preserve_order(items, limit=5)
+                if result:
+                    if verbose: print(f"\n[INFO] ✓ Final parsed keywords (literal list): {result}\n")
+                    return result
+                else:
+                    if verbose: print(f"[DEBUG] No valid items after deduplication")
+            else:
+                if verbose: print(f"[DEBUG] Parsed result is not a list: {type(parsed)}")
+        except Exception as e:
+            if verbose: print(f"[ERROR] ast.literal_eval failed: {type(e).__name__}: {e}")
+            if verbose: print(f"[DEBUG] Falling back to relaxed split...")
+            # Unescaped apostrophes or minor issues: relaxed split
+            items = split_items_relaxed(primary)
+            if verbose: print(f"[DEBUG] Relaxed split returned {len(items)} items: {items}")
+            items = [i for i in items if i and not is_temporal(i)]
+            if verbose: print(f"[DEBUG] After temporal filter: {items}")
+            result = dedupe_preserve_order(items, limit=5)
+            if result:
+                if verbose: print(f"\n[INFO] ✓ Final parsed keywords (relaxed primary): {result}\n")
+                return result
+            else:
+                if verbose: print(f"[DEBUG] No valid items after deduplication")
+
+    # 2) If no balanced list found (truncated/unbalanced case): recover from 'assistant' block
+    if verbose: print(f"\n[DEBUG] Attempting recovery from 'assistant' block...")
     after_assistant = response.split("assistant")[-1].strip()
-    comma_parts = [clean_item(x) for x in after_assistant.split(",") if x.strip()]
-    if verbose: print(f"\n[DEBUG] Comma split candidates:\n{comma_parts}")
+    if verbose:
+        print(f"[DEBUG] Content after 'assistant' ({len(after_assistant)} chars): {repr(after_assistant[:200])}{'...' if len(after_assistant) > 200 else ''}")
+    
+    idx = after_assistant.find("[")
+    if idx != -1:
+        if verbose: print(f"[DEBUG] Found '[' at position {idx}")
+        blob = after_assistant[idx:]
+        open_count = blob.count("[")
+        close_count = blob.count("]")
+        if verbose: print(f"[DEBUG] Blob has {open_count} '[' and {close_count} ']'")
+        # If it looks truncated (e.g., ends with a quote), try to close it
+        if open_count > close_count:
+            if verbose: print(f"[DEBUG] Unbalanced brackets detected, adding ']'")
+            blob = blob + "]"
+        if verbose: print(f"[DEBUG] Recovered blob: {repr(blob[:200])}{'...' if len(blob) > 200 else ''}")
+        items = split_items_relaxed(blob)
+        if verbose: print(f"[DEBUG] Relaxed split returned {len(items)} items: {items}")
+        items = [i for i in items if i and not is_temporal(i)]
+        if verbose: print(f"[DEBUG] After temporal filter: {items}")
+        result = dedupe_preserve_order(items, limit=5)
+        if result:
+            if verbose: print(f"\n[INFO] ✓ Final parsed keywords (recovered blob): {result}\n")
+            return result
+        else:
+            if verbose: print(f"[DEBUG] No valid items after deduplication")
+    else:
+        if verbose: print(f"[DEBUG] No '[' found in content after 'assistant'")
+
+    # 3) Last resort: comma-split after assistant
+    if verbose: print(f"\n[DEBUG] Last resort: comma-splitting after 'assistant'...")
+    comma_parts = [clean_item_text(x) for x in after_assistant.split(",") if x.strip()]
+    if verbose: print(f"[DEBUG] Comma split produced {len(comma_parts)} parts: {comma_parts}")
+    comma_parts = [i for i in comma_parts if i and not is_temporal(i)]
+    if verbose: print(f"[DEBUG] After temporal filter: {comma_parts}")
+    
     if len(comma_parts) > 1:
         result = dedupe_preserve_order(comma_parts, limit=5)
-        if verbose: print(f"\n[INFO] Final last-resort keywords:\n{result}")
+        if verbose: print(f"\n[INFO] ✓ Final last-resort keywords: {result}\n")
         return result
+    else:
+        if verbose: print(f"[DEBUG] Not enough comma parts ({len(comma_parts)} <= 1)")
 
     if verbose:
-        print("[ERROR] Unable to parse any keywords from VLM output.")
+        print(f"\n[ERROR] ✗ Unable to parse any keywords from VLM output.\n")
     return None
 
 def _llava_vlm_(response: str, verbose: bool = False) -> Optional[list]:
