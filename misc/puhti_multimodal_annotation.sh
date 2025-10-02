@@ -40,13 +40,14 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
-python -u multi_label_annotation.py \
+python -u multimodal_annotation.py \
   --csv_file ${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv \
   --num_workers $SLURM_CPUS_PER_TASK \
-  --text_batch_size 2048 \
-  --vision_batch_size 32 \
-  --relevance_threshold 0.25 \
-  --vision_threshold 0.20 \
+  --batch_size 64 \
+  --llm_model_id "Qwen/Qwen3-4B-Instruct-2507" \
+  --vlm_model_id "Qwen/Qwen2.5-VL-7B-Instruct" \
+  --max_generated_tks 64 \
+  --max_keywords 5
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
