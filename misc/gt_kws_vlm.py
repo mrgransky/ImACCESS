@@ -451,8 +451,13 @@ def query_local_vlm(
 			if verbose: print(f"ERROR: failed to load image from {img_path} => {e}")
 			return None
 
-	img = img.convert("RGB")
-	if verbose: print(f"IMG: {type(img)} {img.size} {img.mode}")
+	img = img.convert("RGB") # Convert to RGB if necessary (sometimes it's grayscale)
+	if verbose:
+		print(f"IMG: {type(img)} {img.size} {img.mode} {img.info}")
+		# Check for anomalies
+		img_array = np.array(img)
+		print(f"Min/Max values: {img_array.min()}/{img_array.max()}")
+		print(f"Has NaNs: {np.isnan(img_array).any()}, Infs: {np.isinf(img_array).any()}")
 
 	if img.size[0] == 0 or img.size[1] == 0:
 		if verbose: print(f"ERROR: image size is 0: {img.size} {img.mode}")

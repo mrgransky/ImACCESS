@@ -155,6 +155,7 @@ os.environ["HF_DATASETS_CACHE"] = cache_directory[USER]
 # Set environment variable for memory optimization
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+os.environ['TORCH_USE_CUDA_DSA'] = '1'  # Enables device-side assertions (as suggested in error)
 
 # Verify environment variables
 print(f"HF_HOME: {os.environ['HF_HOME']}")
