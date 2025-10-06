@@ -31,7 +31,8 @@ huggingface_hub.login(token=hf_tk)
 
 VLM_INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
 Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object or event.
-Exclude any explanatory text, comments, questions, or words about image quality, style, or temporal era.
+Exclude any explanatory text, comments, questions, or words about image type, quality, style, or temporal era. 
+Exclude any text that is not a keyword.
 **Return **ONLY** a clean Python list of keywords.
 """
 
@@ -429,7 +430,7 @@ def _llava_vlm_(response: str, verbose: bool = False) -> Optional[list]:
 				print("[ERROR] Unable to parse any keywords from VLM output (LLaVa model).")
 		return None
 
-def query_local_vlm(
+def query_local_vlm_(
 		model: tfs.PreTrainedModel, 
 		processor: tfs.AutoProcessor, 
 		img_path: str,
@@ -484,8 +485,8 @@ def query_local_vlm(
 				**inputs, 
 				max_new_tokens=max_generated_tks,
 				use_cache=True,
-				pad_token_id=processor.tokenizer.eos_token_id,
-				eos_token_id=processor.tokenizer.eos_token_id,
+				pad_token_id=getattr(model.generation_config, "pad_token_id", None),
+				eos_token_id=getattr(model.generation_config, "eos_token_id", None),
 			)
 		except Exception as e:
 			if verbose: print(f"ERROR: failed to generate from {model_id} => {e}")
@@ -505,6 +506,236 @@ def query_local_vlm(
 		raw_response=vlm_response, 
 		verbose=verbose,
 	)
+
+	return vlm_response_parsed
+
+def query_local_vlm(
+		model: tfs.PreTrainedModel, 
+		processor: tfs.AutoProcessor, 
+		img_path: str,
+		text: str,
+		device: str,
+		max_generated_tks: int,
+		verbose: bool=False,
+	):
+	
+	# ========== Memory snapshot at entry ==========
+	if verbose and torch.cuda.is_available():
+		mem_alloc = torch.cuda.memory_allocated(device) / (1024**3)
+		mem_reserved = torch.cuda.memory_reserved(device) / (1024**3)
+		mem_total = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+		print(f"\n{'='*80}")
+		print(f"[ENTRY] GPU Memory: {mem_alloc:.2f}GB allocated | {mem_reserved:.2f}GB reserved | {mem_total:.2f}GB total")
+		print(f"[ENTRY] Free: {mem_total - mem_alloc:.2f}GB")
+		print(f"{'='*80}")
+	
+	# ========== Image loading ==========
+	if verbose:
+		print(f"[LOAD] Loading image: {img_path}")
+	
+	try:
+		img = Image.open(img_path)
+	except Exception as e:
+		if verbose: print(f"[ERROR] Failed to load image from {img_path} => {e}")
+		try:
+			if verbose: print(f"[RETRY] Attempting URL fetch...")
+			response = requests.get(img_path, timeout=10)
+			response.raise_for_status()
+			img_content = io.BytesIO(response.content)
+			img = Image.open(img_content)
+			if verbose: print(f"[SUCCESS] Loaded from URL")
+		except requests.exceptions.RequestException as e:
+			if verbose: print(f"[ERROR] Failed to load from URL: {e}")
+			return None
+
+	img = img.convert("RGB")
+	
+	if verbose:
+		print(f"[IMAGE] Type: {type(img)} | Size: {img.size} | Mode: {img.mode}")
+		img_array = np.array(img)
+		print(f"[IMAGE] Shape: {img_array.shape} | Dtype: {img_array.dtype}")
+		print(f"[IMAGE] Min/Max: {img_array.min()}/{img_array.max()}")
+		print(f"[IMAGE] Has NaNs: {np.isnan(img_array).any()} | Has Infs: {np.isinf(img_array).any()}")
+		print(f"[IMAGE] Memory size: {img_array.nbytes / (1024**2):.2f} MB")
+
+	if img.size[0] == 0 or img.size[1] == 0:
+		if verbose: print(f"[ERROR] Invalid image dimensions: {img.size}")
+		return None
+
+	# ========== Model ID ==========
+	model_id = getattr(model.config, '_name_or_path', None)
+	if model_id is None:
+		model_id = getattr(model, 'name_or_path', 'unknown_model')
+	if verbose:
+		print(f"[MODEL] ID: {model_id}")
+
+	# ========== Preprocessing ==========
+	if verbose:
+		print(f"[PREPROCESS] Text length: {len(text)} chars")
+		print(f"[PREPROCESS] Text preview: {text[:200]}...")
+		if torch.cuda.is_available():
+			mem_before = torch.cuda.memory_allocated(device) / (1024**3)
+			print(f"[PREPROCESS] GPU memory before processor: {mem_before:.2f}GB")
+	
+	try:
+		inputs = processor(
+			images=img,
+			text=text,
+			padding=True,
+			return_tensors="pt"
+		)
+	except Exception as e:
+		if verbose: print(f"[ERROR] Processor failed: {e}")
+		return None
+	
+	if verbose:
+		print(f"[PREPROCESS] Input keys: {list(inputs.keys())}")
+		for k, v in inputs.items():
+			if isinstance(v, torch.Tensor):
+				print(f"[PREPROCESS]   {k}: shape={v.shape} dtype={v.dtype} device={v.device}")
+				if torch.is_floating_point(v):
+					print(f"[PREPROCESS]     min={v.min().item():.4f} max={v.max().item():.4f} "
+					      f"has_nan={torch.isnan(v).any().item()} has_inf={torch.isinf(v).any().item()}")
+	
+	if 'pixel_values' not in inputs:
+		if verbose: print(f"[ERROR] 'pixel_values' missing from inputs")
+		return None
+
+	# ========== Move to device ==========
+	if verbose and torch.cuda.is_available():
+		mem_before_move = torch.cuda.memory_allocated(device) / (1024**3)
+		print(f"[DEVICE] GPU memory before .to(device): {mem_before_move:.2f}GB")
+	
+	inputs = inputs.to(device)
+	
+	if verbose and torch.cuda.is_available():
+		mem_after_move = torch.cuda.memory_allocated(device) / (1024**3)
+		print(f"[DEVICE] GPU memory after .to(device): {mem_after_move:.2f}GB")
+		print(f"[DEVICE] Memory delta: {(mem_after_move - mem_before_move):.2f}GB")
+		
+		# Check inputs on device
+		for k, v in inputs.items():
+			if isinstance(v, torch.Tensor):
+				print(f"[DEVICE]   {k}: device={v.device} requires_grad={v.requires_grad}")
+
+	# ========== Generation config ==========
+	pad_token_id = getattr(model.generation_config, "pad_token_id", None)
+	eos_token_id = getattr(model.generation_config, "eos_token_id", None)
+	
+	if verbose:
+		print(f"[GENERATE] max_new_tokens={max_generated_tks}")
+		print(f"[GENERATE] pad_token_id={pad_token_id} eos_token_id={eos_token_id}")
+		print(f"[GENERATE] use_cache=True")
+		if torch.cuda.is_available():
+			mem_before_gen = torch.cuda.memory_allocated(device) / (1024**3)
+			print(f"[GENERATE] GPU memory before generation: {mem_before_gen:.2f}GB")
+
+	# ========== Generation ==========
+	try:
+		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			if verbose:
+				print(f"[GENERATE] Starting generation with autocast...")
+			
+			output = model.generate(
+				**inputs, 
+				max_new_tokens=max_generated_tks,
+				use_cache=True,
+				pad_token_id=pad_token_id,
+				eos_token_id=eos_token_id,
+			)
+			
+			if verbose:
+				print(f"[GENERATE] Generation complete")
+				print(f"[GENERATE] Output shape: {output.shape} dtype: {output.dtype}")
+	
+	except RuntimeError as e:
+		if verbose:
+			print(f"[ERROR] RuntimeError during generation: {e}")
+			if torch.cuda.is_available():
+				print(f"[ERROR] Attempting CUDA synchronize...")
+				try:
+					torch.cuda.synchronize(device)
+				except:
+					pass
+				mem_error = torch.cuda.memory_allocated(device) / (1024**3)
+				print(f"[ERROR] GPU memory at error: {mem_error:.2f}GB")
+		return None
+	
+	except Exception as e:
+		if verbose:
+			print(f"[ERROR] Unexpected error during generation: {type(e).__name__}: {e}")
+			if torch.cuda.is_available():
+				mem_error = torch.cuda.memory_allocated(device) / (1024**3)
+				print(f"[ERROR] GPU memory at error: {mem_error:.2f}GB")
+		return None
+
+	# ========== Memory after generation ==========
+	if verbose and torch.cuda.is_available():
+		mem_after_gen = torch.cuda.memory_allocated(device) / (1024**3)
+		mem_reserved_after = torch.cuda.memory_reserved(device) / (1024**3)
+		print(f"[GENERATE] GPU memory after generation: {mem_after_gen:.2f}GB allocated | {mem_reserved_after:.2f}GB reserved")
+		print(f"[GENERATE] Memory delta: {(mem_after_gen - mem_before_gen):.2f}GB")
+
+	# ========== Decoding ==========
+	if verbose:
+		print(f"[DECODE] Decoding output tokens...")
+	
+	try:
+		vlm_response = processor.decode(output[0], skip_special_tokens=True)
+		if verbose:
+			print(f"[DECODE] Response length: {len(vlm_response)} chars")
+	except Exception as e:
+		if verbose: print(f"[ERROR] Decode failed: {e}")
+		return None
+
+	# ========== Memory cleanup check ==========
+	if torch.cuda.is_available():
+		mem_current = torch.cuda.memory_allocated(device)
+		mem_total = torch.cuda.get_device_properties(device).total_memory
+		mem_usage_pct = (mem_current / mem_total) * 100
+		
+		if verbose:
+			print(f"[MEMORY] Current usage: {mem_usage_pct:.1f}%")
+		
+		if mem_usage_pct > 90:
+			if verbose: print(f"[MEMORY] WARNING: GPU memory > 90%, clearing cache...")
+			torch.cuda.empty_cache()
+			mem_after_clear = torch.cuda.memory_allocated(device) / (1024**3)
+			if verbose:
+				print(f"[MEMORY] After cache clear: {mem_after_clear:.2f}GB")
+
+	# ========== Response display ==========
+	if verbose:
+		print(f"\n{'='*80}")
+		print(f"[RESPONSE] VLM raw output:")
+		print(vlm_response)
+		print(f"{'='*80}\n")
+
+	# ========== Parsing ==========
+	if verbose:
+		print(f"[PARSE] Parsing response for model: {model_id}")
+	
+	try:
+		vlm_response_parsed = get_vlm_response(
+			model_id=model_id, 
+			raw_response=vlm_response, 
+			verbose=verbose,
+		)
+		if verbose:
+			print(f"[PARSE] Parsed keywords: {vlm_response_parsed}")
+	except Exception as e:
+		if verbose: print(f"[ERROR] Parsing failed: {e}")
+		return None
+
+	# ========== Exit memory snapshot ==========
+	if verbose and torch.cuda.is_available():
+		mem_alloc_exit = torch.cuda.memory_allocated(device) / (1024**3)
+		mem_reserved_exit = torch.cuda.memory_reserved(device) / (1024**3)
+		mem_total = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+		print(f"\n{'='*80}")
+		print(f"[EXIT] GPU Memory: {mem_alloc_exit:.2f}GB allocated | {mem_reserved_exit:.2f}GB reserved | {mem_total:.2f}GB total")
+		print(f"[EXIT] Free: {mem_total - mem_alloc_exit:.2f}GB")
+		print(f"{'='*80}\n")
 
 	return vlm_response_parsed
 
@@ -572,7 +803,7 @@ def get_vlm_based_labels(
 			img_path=img_path,
 			max_kws=max_kws,
 		)
-		if verbose: print(f"Prompt:\n{text}")
+		# if verbose: print(f"Prompt:\n{text}")
 		keywords = query_local_vlm(
 			model=model, 
 			processor=processor,
