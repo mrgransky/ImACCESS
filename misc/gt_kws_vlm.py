@@ -571,8 +571,6 @@ def query_local_vlm(
 
 	# ========== Preprocessing ==========
 	if verbose:
-		print(f"[PREPROCESS] Text length: {len(text)} chars")
-		print(f"[PREPROCESS] Text preview: {text[:200]}...")
 		if torch.cuda.is_available():
 			mem_before = torch.cuda.memory_allocated(device) / (1024**3)
 			print(f"[PREPROCESS] GPU memory before processor: {mem_before:.2f}GB")
