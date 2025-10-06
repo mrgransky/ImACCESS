@@ -430,120 +430,6 @@ def _llava_vlm_(response: str, verbose: bool = False) -> Optional[list]:
 				print("[ERROR] Unable to parse any keywords from VLM output (LLaVa model).")
 		return None
 
-def query_local_vlm_(
-		model: tfs.PreTrainedModel, 
-		processor: tfs.AutoProcessor, 
-		img_path: str,
-		text: str,
-		device: str,
-		max_generated_tks: int,
-		verbose: bool=False,
-	):
-	try:
-		img = Image.open(img_path)
-	except Exception as e:
-		if verbose: print(f"Failed to load image from {img_path} => {e}")
-		try:
-			response = requests.get(img_path)
-			response.raise_for_status()
-			img_content = io.BytesIO(response.content) # Convert response content to BytesIO object
-			img = Image.open(img_content)
-		except requests.exceptions.RequestException as e:
-			if verbose: print(f"ERROR: failed to load image from {img_path} => {e}")
-			return None
-
-	img = img.convert("RGB") # Convert to RGB if necessary (sometimes it's grayscale)
-	if verbose:
-		print(f"IMG: {type(img)} {img.size} {img.mode} {img.info}")
-		# Check for anomalies
-		img_array = np.array(img)
-		print(f"Min/Max values: {img_array.min()}/{img_array.max()}")
-		print(f"Has NaNs: {np.isnan(img_array).any()}, Infs: {np.isinf(img_array).any()}")
-
-	if img.size[0] == 0 or img.size[1] == 0:
-		if verbose: print(f"ERROR: image size is 0: {img.size} {img.mode}")
-		return None
-
-	model_id = getattr(model.config, '_name_or_path', None)
-	if model_id is None:
-		model_id = getattr(model, 'name_or_path', 'unknown_model')
-
-	inputs = processor(
-		images=img,
-		text=text,
-		padding=True,
-		return_tensors="pt"
-	).to(device)
-
-	if 'pixel_values' not in inputs:
-		if verbose: print(f"ERROR: 'pixel_values' not in inputs: {inputs.keys()}")
-		return None
-
-	# ========== Generate (with autocast) ==========
-	# with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-	# 	try:
-	# 		output = model.generate(
-	# 			**inputs, 
-	# 			max_new_tokens=max_generated_tks,
-	# 			use_cache=True,
-	# 			pad_token_id=getattr(model.generation_config, "pad_token_id", None),
-	# 			eos_token_id=getattr(model.generation_config, "eos_token_id", None),
-	# 		)
-	# 	except Exception as e:
-	# 		if verbose: print(f"ERROR: failed to generate from {model_id} => {e}")
-	# 		return None
-
-	# ========== Generate (no autocast) ==========
-	try:
-		with torch.inference_mode():
-			output = model.generate(
-				**inputs,
-				max_new_tokens=max_generated_tks,
-				pad_token_id=getattr(model.generation_config, "pad_token_id", pad_token_id),
-				eos_token_id=getattr(model.generation_config, "eos_token_id", eos_token_id),
-			)
-		if verbose:
-			print(f"[GENERATE] Done. Output shape={tuple(output.shape)} dtype={output.dtype}")
-	except RuntimeError as e:
-		if verbose:
-			print(f"[ERROR] RuntimeError in generate: {e}")
-			if "device-side assert" in str(e).lower():
-				print("[ERROR] CUDA device-side assert: context is now invalid; best to skip and continue in a fresh process.")
-			if torch.cuda.is_available():
-				try:
-					torch.cuda.synchronize(device)
-				except:
-					pass
-				print(f"[ERROR] GPU mem at error: {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
-		return None
-	except Exception as e:
-		if verbose: print(f"[ERROR] Unexpected error in generate: {type(e).__name__}: {e}")
-		return None
-
-	# ========== Decode ==========
-	try:
-		vlm_response = processor.decode(output[0], skip_special_tokens=True)
-		if verbose:
-			print(f"[DECODE] Len: {len(vlm_response)} chars")
-	except Exception as e:
-		if verbose: print(f"[ERROR] Decode failed: {e}")
-		return None
-
-	if torch.cuda.memory_allocated() > 0.9 * torch.cuda.get_device_properties(device).total_memory:
-		torch.cuda.empty_cache()
-		if verbose: print(f"WARNING: GPU memory > 90% => cleared cache")
-
-	if verbose:
-		print(f"\nVLM response:\n{vlm_response}")
-
-	vlm_response_parsed = get_vlm_response(
-		model_id=model_id, 
-		raw_response=vlm_response, 
-		verbose=verbose,
-	)
-
-	return vlm_response_parsed
-
 class SafeLogitsProcessor(tfs.LogitsProcessor):
 	def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
 		# Replace NaN/Inf with very negative number so softmax ~ 0
@@ -662,6 +548,7 @@ def query_local_vlm(
 		print(f"[GENERATE] pad_token_id={pad_token_id} eos_token_id={eos_token_id}")
 		if torch.cuda.is_available():
 			print(f"[GENERATE] GPU mem before: {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
+
 	logits_processors = tfs.LogitsProcessorList([SafeLogitsProcessor()])
 
 	# ========== Generate (no autocast) ==========
@@ -670,11 +557,6 @@ def query_local_vlm(
 			output = model.generate(
 				**inputs,
 				max_new_tokens=max_generated_tks,
-				# do_sample=False,          # critical: avoid multinomial sampling
-				# num_beams=1,
-				# temperature=1.0,
-				# top_k=None,
-				# top_p=None,
 				use_cache=True,
 				pad_token_id=getattr(model.generation_config, "pad_token_id", pad_token_id),
 				eos_token_id=getattr(model.generation_config, "eos_token_id", eos_token_id),
@@ -726,7 +608,7 @@ def query_local_vlm(
 	try:
 		parsed = get_vlm_response(model_id=model_id, raw_response=vlm_response, verbose=verbose)
 		if verbose:
-				print(f"[PARSE] {parsed}")
+			print(f"[PARSE] {parsed}")
 		return parsed
 	except Exception as e:
 		if verbose: print(f"[ERROR] Parsing failed: {e}")
@@ -796,7 +678,6 @@ def get_vlm_based_labels(
 			img_path=img_path,
 			max_kws=max_kws,
 		)
-		# if verbose: print(f"Prompt:\n{text}")
 		keywords = query_local_vlm(
 			model=model, 
 			processor=processor,
