@@ -479,20 +479,55 @@ def query_local_vlm_(
 		if verbose: print(f"ERROR: 'pixel_values' not in inputs: {inputs.keys()}")
 		return None
 
-	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-		try:
-			output = model.generate(
-				**inputs, 
-				max_new_tokens=max_generated_tks,
-				use_cache=True,
-				pad_token_id=getattr(model.generation_config, "pad_token_id", None),
-				eos_token_id=getattr(model.generation_config, "eos_token_id", None),
-			)
-		except Exception as e:
-			if verbose: print(f"ERROR: failed to generate from {model_id} => {e}")
-			return None
+	# ========== Generate (with autocast) ==========
+	# with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+	# 	try:
+	# 		output = model.generate(
+	# 			**inputs, 
+	# 			max_new_tokens=max_generated_tks,
+	# 			use_cache=True,
+	# 			pad_token_id=getattr(model.generation_config, "pad_token_id", None),
+	# 			eos_token_id=getattr(model.generation_config, "eos_token_id", None),
+	# 		)
+	# 	except Exception as e:
+	# 		if verbose: print(f"ERROR: failed to generate from {model_id} => {e}")
+	# 		return None
 
-	vlm_response = processor.decode(output[0], skip_special_tokens=True)
+	# ========== Generate (no autocast) ==========
+	try:
+		with torch.inference_mode():
+			output = model.generate(
+				**inputs,
+				max_new_tokens=max_generated_tks,
+				pad_token_id=getattr(model.generation_config, "pad_token_id", pad_token_id),
+				eos_token_id=getattr(model.generation_config, "eos_token_id", eos_token_id),
+			)
+		if verbose:
+			print(f"[GENERATE] Done. Output shape={tuple(output.shape)} dtype={output.dtype}")
+	except RuntimeError as e:
+		if verbose:
+			print(f"[ERROR] RuntimeError in generate: {e}")
+			if "device-side assert" in str(e).lower():
+				print("[ERROR] CUDA device-side assert: context is now invalid; best to skip and continue in a fresh process.")
+			if torch.cuda.is_available():
+				try:
+					torch.cuda.synchronize(device)
+				except:
+					pass
+				print(f"[ERROR] GPU mem at error: {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
+		return None
+	except Exception as e:
+		if verbose: print(f"[ERROR] Unexpected error in generate: {type(e).__name__}: {e}")
+		return None
+
+	# ========== Decode ==========
+	try:
+		vlm_response = processor.decode(output[0], skip_special_tokens=True)
+		if verbose:
+			print(f"[DECODE] Len: {len(vlm_response)} chars")
+	except Exception as e:
+		if verbose: print(f"[ERROR] Decode failed: {e}")
+		return None
 
 	if torch.cuda.memory_allocated() > 0.9 * torch.cuda.get_device_properties(device).total_memory:
 		torch.cuda.empty_cache()
