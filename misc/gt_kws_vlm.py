@@ -594,7 +594,6 @@ def query_local_vlm(
 		if verbose: print(f"[ERROR] Unexpected error in generate: {type(e).__name__}: {e}")
 		return None
 
-	# ========== Decode ==========
 	vlm_response = processor.decode(output[0], skip_special_tokens=True)
 
 	# ========== Memory post ==========

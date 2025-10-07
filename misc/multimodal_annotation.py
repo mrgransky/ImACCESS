@@ -16,8 +16,8 @@ from visualize import perform_multilabel_eda
 # model_id = "Qwen/Qwen2.5-VL-7B-Instruct" # only fits Puhti and Mahti
 
 # how to run [Pouta]:
-# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" -bs 32 -dv "cuda:3" -v > /media/volume/ImACCESS/trash/multimodal_annotation_SMU.txt &
-# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" -bs 32 -dv "cuda:0" -v > /media/volume/ImACCESS/trash/multimodal_annotation_EU.txt &
+# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" -bs 32 -dv "cuda:3" -v > /media/volume/ImACCESS/trash/multimodal_annotation_smu.txt &
+# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" -bs 32 -dv "cuda:0" -v > /media/volume/ImACCESS/trash/multimodal_annotation_eu.txt &
 
 def merge_labels(
 		llm_based_labels: List[List[str]], 
@@ -134,11 +134,9 @@ def get_multimodal_annotation(
 	df['vlm_based_labels'] = vlm_based_labels
 	df['multimodal_labels'] = multimodal_labels
 
-
 	print(f"LLM-based labels: {llm_based_labels[0:5]}\n")
 	print(f"VLM-based labels: {vlm_based_labels[0:5]}\n")
 	print(f"Multimodal labels: {multimodal_labels[0:5]}\n")
-
 
 	df.to_csv(output_csv, index=False)
 	try:
