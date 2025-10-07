@@ -732,7 +732,7 @@ def main():
 	if args.verbose:
 		print(f"{len(keywords)} Extracted keywords")
 		for i, kw in enumerate(keywords):
-			print(f"{i:06d}. {len(kw)} {kw}")
+			print(f"{i:06d}. {kw}")
 
 if __name__ == "__main__":
 	main()
