@@ -16,8 +16,8 @@ from visualize import perform_multilabel_eda
 # model_id = "Qwen/Qwen2.5-VL-7B-Instruct" # only fits Puhti and Mahti
 
 # how to run [Pouta]:
-# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" -v > /media/volume/ImACCESS/trash/multimodal_annotation_SMU.txt &
-# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" -v > /media/volume/ImACCESS/trash/multimodal_annotation_EU.txt &
+# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" -dv "cuda:3" -v > /media/volume/ImACCESS/trash/multimodal_annotation_SMU.txt &
+# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" -dv "cuda:0" -v > /media/volume/ImACCESS/trash/multimodal_annotation_EU.txt &
 
 def merge_labels(
 		llm_based_labels: List[List[str]], 
@@ -165,7 +165,7 @@ def main():
 	parser.add_argument("--csv_file", '-csv', type=str, required=True, help="Path to the metadata CSV file")
 	parser.add_argument("--llm_model_id", '-llm', type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="HuggingFace Text-Language model ID")
 	parser.add_argument("--vlm_model_id", '-vlm', type=str, default="Qwen/Qwen2-VL-2B-Instruct", help="HuggingFace Vision-Language model ID")
-	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
+	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=64, help="Batch size for processing")
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Max number of generated tokens")

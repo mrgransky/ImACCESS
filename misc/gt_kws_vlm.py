@@ -42,7 +42,6 @@ Identify up to {k} most prominent, factual and distinct **KEYWORDS** that captur
 - Exclude meaningless, repeating or synonym-duplicate keywords.
 - The Python list must be the **VERY LAST THING** in your response.
 """
-# - Exclude any explanatory text about image type, quality, or style.
 
 def _load_vlm_(model_id: str, device: str, verbose: bool=False):
 	if verbose:
