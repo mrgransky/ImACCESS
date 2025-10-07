@@ -595,13 +595,7 @@ def query_local_vlm(
 		return None
 
 	# ========== Decode ==========
-	try:
-		vlm_response = processor.decode(output[0], skip_special_tokens=True)
-		if verbose:
-			print(f"[DECODE] Len: {len(vlm_response)} chars")
-	except Exception as e:
-		if verbose: print(f"[ERROR] Decode failed: {e}")
-		return None
+	vlm_response = processor.decode(output[0], skip_special_tokens=True)
 
 	# ========== Memory post ==========
 	if torch.cuda.is_available():
@@ -613,10 +607,6 @@ def query_local_vlm(
 		if alloc / (total + 1e-6) > 0.9:
 			if verbose: print("[MEMORY] >90%, empty_cache()")
 			torch.cuda.empty_cache()
-	if verbose:
-		print("\n" + "="*80)
-		print("[RESPONSE]\n" + vlm_response)
-		print("="*80 + "\n")
 	
 	# ========== Parse ==========
 	try:
