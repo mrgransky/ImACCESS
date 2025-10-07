@@ -31,10 +31,16 @@ huggingface_hub.login(token=hf_tk)
 
 VLM_INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
 Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object or event.
-Exclude any explanatory text, comments, questions, or words about image type, quality, style, or temporal era. 
-Exclude any text that is not a keyword.
-**Return **ONLY** a clean Python list of keywords.
+
+**Rules**:
+- Return **ONLY** a clean Python list with exactly this format: ['keyword1', 'keyword2', ...].
+- **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the Python list.
+- **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "1950s", "weekend", "May 25th", "July 10").
+- Exclude numerical words, special characters, stopwords, or abbreviations.
+- Exclude meaningless, repeating or synonym-duplicate keywords.
+- The Python list must be the **VERY LAST THING** in your response.
 """
+# - Exclude any explanatory text about image type, quality, or style.
 
 def _load_vlm_(model_id: str, device: str, verbose: bool=False):
 	if verbose:
