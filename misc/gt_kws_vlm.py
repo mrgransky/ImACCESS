@@ -26,6 +26,8 @@ from utils import *
 # # model_id = "utter-project/EuroVLM-1.7B-Preview"
 # # model_id = "OpenGVLab/InternVL-Chat-V1-2"
 
+TEMPERATURE = 1e-8
+
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
 
@@ -541,6 +543,7 @@ def query_local_vlm(
 		if tok.pad_token_id is None and tok.eos_token_id is not None:
 			tok.pad_token_id = tok.eos_token_id
 			pad_token_id = tok.pad_token_id
+
 	if gen_cfg:
 		if gen_cfg.pad_token_id is None and pad_token_id is not None:
 			gen_cfg.pad_token_id = pad_token_id
@@ -549,6 +552,8 @@ def query_local_vlm(
 		# Force deterministic non-sampling
 		gen_cfg.do_sample = False
 		gen_cfg.num_beams = 1
+		gen_cfg.temperature = None  # Remove temperature to avoid warning
+
 	if verbose:
 		print(f"[GENERATE] max_new_tokens={max_generated_tks}")
 		print(f"[GENERATE] pad_token_id={pad_token_id} eos_token_id={eos_token_id}")
@@ -564,6 +569,10 @@ def query_local_vlm(
 				**inputs,
 				max_new_tokens=max_generated_tks,
 				use_cache=True,
+				do_sample=False,
+				temperature=None,
+				top_k=None,
+				top_p=None,
 				pad_token_id=getattr(model.generation_config, "pad_token_id", pad_token_id),
 				eos_token_id=getattr(model.generation_config, "eos_token_id", eos_token_id),
 				logits_processor=logits_processors,
