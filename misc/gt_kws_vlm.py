@@ -35,12 +35,12 @@ VLM_INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializ
 Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object or event.
 
 **Rules**:
-- Return **ONLY** a clean Python list with exactly this format: ['keyword1', 'keyword2', ...].
+- Return **ONLY** a clean, valid and parsable Python list.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the Python list.
 - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "1950s", "weekend", "May 25th", "July 10").
 - Exclude numerical words, special characters, stopwords, or abbreviations.
 - Exclude meaningless, repeating or synonym-duplicate keywords.
-- The Python list must be the **VERY LAST THING** in your response.
+- The clean Python list must be the **VERY LAST THING** in your response.
 """
 
 def _load_vlm_(model_id: str, device: str, verbose: bool=False):
@@ -722,7 +722,7 @@ def main():
 	parser.add_argument("--csv_file", '-csv', type=str, default=None, help="Path to the metadata CSV file")
 	parser.add_argument("--image_path", '-i', type=str, default=None, help="img path [or URL]")
 	parser.add_argument("--model_id", '-m', type=str, default="Qwen/Qwen2-VL-2B-Instruct", help="HuggingFace Vision-Language model ID")
-	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device('cuda:0' or 'cpu')")
+	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device('cuda:0' or 'cpu')")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=16, help="Batch size for processing")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")

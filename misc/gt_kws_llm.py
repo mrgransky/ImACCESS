@@ -1409,7 +1409,7 @@ def main():
 	parser = argparse.ArgumentParser(description="Textual-label annotation for Historical Archives Dataset using instruction-tuned LLMs")
 	parser.add_argument("--csv_file", '-csv', type=str, help="Path to the metadata CSV file")
 	parser.add_argument("--model_id", '-m', type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="HuggingFace model ID")
-	parser.add_argument("--device", '-d', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
+	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	parser.add_argument("--description", '-desc', type=str, help="Description")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing (adjust based on GPU memory)")
@@ -1441,49 +1441,6 @@ def main():
 		print(f"{len(keywords)} Extracted keywords")
 		for i, kw in enumerate(keywords):
 			print(f"{i:03d} {kw}")
-
-	# if args.csv_file:
-	# 	df = pd.read_csv(
-	# 		filepath_or_buffer=args.csv_file, 
-	# 		on_bad_lines='skip', 
-	# 		dtype=dtypes, 
-	# 		low_memory=False,
-	# 	)
-	# 	if 'enriched_document_description' not in df.columns:
-	# 		raise ValueError("CSV file must have 'enriched_document_description' column")
-	# 	descriptions = df['enriched_document_description'].tolist()
-	# 	print(f"Loaded {len(descriptions)} descriptions from {args.csv_file}")
-	# 	output_csv = args.csv_file.replace(".csv", "_llm_keywords.csv")
-	# elif args.description:
-	# 	descriptions = [args.description]
-	# else:
-	# 	raise ValueError("Either --csv_file or --description must be provided")
-
-	# # inefficient approach:
-	# keywords = get_llm_based_labels(
-	# 	model_id=args.model_id, 
-	# 	device=args.device, 
-	# 	descriptions=descriptions,
-	# 	batch_size=args.batch_size,
-	# 	max_generated_tks=args.max_generated_tks,
-	# 	max_kws=args.max_keywords,
-	# 	verbose=args.verbose,
-	# )
-	# if args.verbose:
-	# 	print(f"{len(keywords)} Extracted keywords")
-	# 	for i, kw in enumerate(keywords):
-	# 		print(f"{i:03d} {kw}")
-
-	# if args.csv_file:
-	# 	df['llm_keywords'] = keywords
-	# 	df.to_csv(output_csv, index=False)
-	# 	try:
-	# 		df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-	# 	except Exception as e:
-	# 		print(f"Failed to write Excel file: {e}")
-	# 	if args.verbose:
-	# 		print(f"Saved {len(keywords)} keywords to {output_csv}")
-	# 		print(f"Done! dataframe: {df.shape} {list(df.columns)}")
 
 if __name__ == "__main__":
 	main()
