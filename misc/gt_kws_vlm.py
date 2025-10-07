@@ -40,7 +40,7 @@ Identify up to {k} most prominent, factual and distinct **KEYWORDS** that captur
 - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "1950s", "weekend", "May 25th", "July 10").
 - Exclude numerical words, special characters, stopwords, or abbreviations.
 - Exclude meaningless, repeating or synonym-duplicate keywords.
-- The clean Python list must be the **VERY LAST THING** in your response.
+- The Python list must be the **VERY LAST THING** in your response.
 """
 
 def _load_vlm_(model_id: str, device: str, verbose: bool=False):
