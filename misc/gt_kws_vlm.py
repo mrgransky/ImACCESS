@@ -463,7 +463,7 @@ def query_local_vlm(
 		mem_reserved = torch.cuda.memory_reserved(device) / (1024**3)
 		mem_total = torch.cuda.get_device_properties(device).total_memory / (1024**3)
 		print("\n" + "="*80)
-		print(f"[ENTRY] GPU Memory: {mem_alloc:.2f}GB allocated | {mem_reserved:.2f}GB reserved | {mem_total:.2f}GB total")
+		print(f"[ENTRY] GPU {device} Memory: {mem_alloc:.2f}GB allocated | {mem_reserved:.2f}GB reserved | {mem_total:.2f}GB total")
 		print(f"[ENTRY] Free: {mem_total - mem_alloc:.2f}GB")
 		print("="*80)
 
@@ -497,7 +497,7 @@ def query_local_vlm(
 	# ========== Preprocess ==========
 	if verbose:
 		if torch.cuda.is_available():
-			print(f"[PREPROCESS] GPU mem before processor: {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
+			print(f"[PREPROCESS] GPU {device} mem before processor: {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
 	try:
 		inputs = processor(images=img, text=text, padding=True, return_tensors="pt")
 	except Exception as e:
@@ -518,7 +518,7 @@ def query_local_vlm(
 	
 	# ========== Move to device ==========
 	if verbose and torch.cuda.is_available():
-		print(f"[DEVICE] GPU mem before .to(): {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
+		print(f"[DEVICE] GPU {device} mem before .to(): {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
 	try:
 		inputs = inputs.to(device, non_blocking=True)
 	except Exception as e:
@@ -528,7 +528,7 @@ def query_local_vlm(
 				print("[ERROR] After device-side assert, CUDA context is invalid; need process restart.")
 		return None
 	if verbose and torch.cuda.is_available():
-		print(f"[DEVICE] GPU mem after .to(): {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
+		print(f"[DEVICE] GPU {device} mem after .to(): {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
 		for k, v in inputs.items():
 			if isinstance(v, torch.Tensor):
 				print(f"[DEVICE]   {k}: device={v.device}, contiguous={v.is_contiguous()}")
@@ -557,7 +557,7 @@ def query_local_vlm(
 		print(f"[GENERATE] max_new_tokens={max_generated_tks}")
 		print(f"[GENERATE] pad_token_id={pad_token_id} eos_token_id={eos_token_id}")
 		if torch.cuda.is_available():
-			print(f"[GENERATE] GPU mem before: {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
+			print(f"[GENERATE] GPU {device} mem before: {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
 
 	logits_processors = tfs.LogitsProcessorList([SafeLogitsProcessor()])
 
@@ -588,7 +588,7 @@ def query_local_vlm(
 					torch.cuda.synchronize(device)
 				except:
 					pass
-				print(f"[ERROR] GPU mem at error: {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
+				print(f"[ERROR] GPU {device} mem at error: {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
 		return None
 	except Exception as e:
 		if verbose: print(f"[ERROR] Unexpected error in generate: {type(e).__name__}: {e}")
