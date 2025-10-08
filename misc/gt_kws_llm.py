@@ -1137,7 +1137,7 @@ def get_llm_based_labels_debug(
 
 	return all_keywords
 
-def get_llm_based_labels(
+def get_llm_based_labels_opt(
 		model_id: str,
 		device: str,
 		batch_size: int,
@@ -1416,6 +1416,7 @@ def main():
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Max number of generated tokens")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
+	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
 
 	args = parser.parse_args()
 	args.device = torch.device(args.device)
@@ -1427,16 +1428,29 @@ def main():
 		if args.verbose:
 			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-	keywords = get_llm_based_labels(
-		model_id=args.model_id, 
-		device=args.device, 
-		batch_size=args.batch_size,
-		max_generated_tks=args.max_generated_tks,
-		max_kws=args.max_keywords,
-		csv_file=args.csv_file,
-		description=args.description,
-		verbose=args.verbose,
-	)
+	if args.debug:
+		keywords = get_llm_based_labels_debug(
+			model_id=args.model_id, 
+			device=args.device, 
+			batch_size=args.batch_size,
+			max_generated_tks=args.max_generated_tks,
+			max_kws=args.max_keywords,
+			csv_file=args.csv_file,
+			description=args.description,
+			verbose=args.verbose,
+		)
+	else:
+		keywords = get_llm_based_labels_opt(
+			model_id=args.model_id, 
+			device=args.device, 
+			batch_size=args.batch_size,
+			max_generated_tks=args.max_generated_tks,
+			max_kws=args.max_keywords,
+			csv_file=args.csv_file,
+			description=args.description,
+			verbose=args.verbose,
+		)
+
 	if args.verbose:
 		print(f"{len(keywords)} Extracted keywords")
 		for i, kw in enumerate(keywords):

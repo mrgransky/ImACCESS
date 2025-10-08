@@ -1,6 +1,6 @@
 from utils import *
 from gt_kws_vlm import get_vlm_based_labels_opt, get_vlm_based_labels_debug
-from gt_kws_llm import get_llm_based_labels
+from gt_kws_llm import get_llm_based_labels_opt, get_llm_based_labels_debug
 from visualize import perform_multilabel_eda
 # LLM models:
 # model_id = "Qwen/Qwen3-4B-Instruct-2507"
@@ -87,15 +87,27 @@ def get_multimodal_annotation(
 	output_csv = csv_file.replace(".csv", "_multimodal.csv")
 
 	# Textual-based annotation using LLMs
-	llm_based_labels = get_llm_based_labels(
-		model_id=llm_model_id,
-		device=device,
-		csv_file=csv_file,
-		batch_size=batch_size,
-		max_generated_tks=max_generated_tks,
-		max_kws=max_keywords,
-		verbose=verbose,
-	)
+	if debug:
+		llm_based_labels = get_llm_based_labels_debug(
+			model_id=llm_model_id,
+			device=device,
+			csv_file=csv_file,
+			batch_size=batch_size,
+			max_generated_tks=max_generated_tks,
+			max_kws=max_keywords,
+			verbose=verbose,
+		)
+	else:
+		llm_based_labels = get_llm_based_labels_opt(
+			model_id=llm_model_id,
+			device=device,
+			csv_file=csv_file,
+			batch_size=batch_size,
+			max_generated_tks=max_generated_tks,
+			max_kws=max_keywords,
+			verbose=verbose,
+		)
+
 	if verbose:
 		print(f"Extracted {len(llm_based_labels)} LLM-based labels")
 		for i, kw in enumerate(llm_based_labels):
