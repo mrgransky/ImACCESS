@@ -728,511 +728,660 @@ def get_vlm_based_labels_debug(
 
 	return all_keywords
 
+def get_vlm_based_labels_opt_(
+        model_id: str,
+        device: str,
+        batch_size: int,
+        max_generated_tks: int,
+        max_kws: int,
+        csv_file: str = None,
+        image_path: str = None,
+        do_dedup: bool = True,
+        max_retries: int = 2,
+        verbose: bool = False,
+    ) -> List[Optional[List[str]]]:
+    """
+    Optimized VLM-based keyword extraction with:
+    - Smart deduplication
+    - Batch processing with retry logic
+    - Hybrid fallback for failed items
+    - Proper decoding (only generated tokens, not input prompt)
+    """
+    
+    EXP_BACKOFF = 2  # Exponential backoff base (seconds)
+
+    if csv_file:
+        output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
+
+    if csv_file and image_path:
+        raise ValueError("Only one of csv_file or image_path must be provided")
+
+    # Check for existing results
+    if csv_file and os.path.exists(output_csv):
+        df = pd.read_csv(
+            filepath_or_buffer=output_csv,
+            on_bad_lines='skip',
+            dtype=dtypes,
+            low_memory=False,
+        )
+        if 'vlm_keywords' in df.columns:
+            if verbose: 
+                print(f"Found existing VLM keywords in {output_csv}")
+            return df['vlm_keywords'].tolist()
+
+    # Load data
+    if csv_file:
+        df = pd.read_csv(
+            filepath_or_buffer=csv_file,
+            on_bad_lines='skip',
+            dtype=dtypes,
+            low_memory=False,
+        )
+        if 'img_path' not in df.columns:
+            raise ValueError("CSV file must have 'img_path' column")
+        image_paths = df['img_path'].tolist()
+        if verbose:
+            print(f"Loaded {len(image_paths)} images from {csv_file}")
+    elif image_path:
+        image_paths = [image_path]
+        if verbose:
+            print(f"Loaded 1 image from {image_path}")
+    else:
+        raise ValueError("Either csv_file or image_path must be provided")
+
+    inputs = image_paths
+    if len(inputs) == 0:
+        return None
+
+    # Load model once
+    processor, model = _load_vlm_(model_id, device, verbose=verbose)
+    
+    # Set padding side for decoder-only models
+    tokenizer = getattr(processor, "tokenizer", None) or getattr(processor, "text_tokenizer", None)
+    if tokenizer is not None:
+        tokenizer.padding_side = 'left'
+        if verbose:
+            print(f"[MODEL] Set tokenizer padding_side to 'left'")
+
+    if verbose:
+        valid_count = sum(1 for x in inputs if x is not None and os.path.exists(str(x)))
+        null_count = len(inputs) - valid_count
+        print(f"📊 Input stats: {len(inputs)} total, {valid_count} valid, {null_count} null")
+
+    # 🔧 NULL-SAFE DEDUPLICATION
+    if do_dedup:
+        unique_map: Dict[str, int] = {}
+        unique_inputs = []
+        original_to_unique_idx = []
+        for img_path in inputs:
+            if img_path is None or not os.path.exists(str(img_path)):
+                key = "__NULL__"
+            else:
+                key = str(img_path)
+            if key in unique_map:
+                original_to_unique_idx.append(unique_map[key])
+            else:
+                idx = len(unique_inputs)
+                unique_map[key] = idx
+                unique_inputs.append(None if key == "__NULL__" else key)
+                original_to_unique_idx.append(idx)
+        
+        if verbose:
+            print(f"📊 Deduplication: {len(inputs)} -> {len(unique_inputs)} unique images")
+    else:
+        unique_inputs = []
+        for img_path in inputs:
+            if img_path is None or not os.path.exists(str(img_path)):
+                unique_inputs.append(None)
+            else:
+                unique_inputs.append(str(img_path))
+        original_to_unique_idx = list(range(len(unique_inputs)))
+
+    # Generate prompts for unique inputs
+    unique_prompts = []
+    unique_images = []
+    for img_path in unique_inputs:
+        if img_path is None:
+            unique_prompts.append(None)
+            unique_images.append(None)
+        else:
+            try:
+                img = Image.open(img_path).convert("RGB")
+                prompt = get_prompt(
+                    model_id=model_id, 
+                    processor=processor,
+                    img_path=img_path,
+                    max_kws=max_kws,
+                )
+                unique_prompts.append(prompt)
+                unique_images.append(img)
+            except Exception as e:
+                if verbose:
+                    print(f"❌ Failed to load image {img_path}: {e}")
+                unique_prompts.append(None)
+                unique_images.append(None)
+
+    # Will hold parsed results for unique inputs
+    unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
+    
+    # 🔄 BATCH PROCESSING WITH RETRY LOGIC
+    valid_indices = [i for i, (p, img) in enumerate(zip(unique_prompts, unique_images)) 
+                     if p is not None and img is not None]
+    
+    if valid_indices:
+        if verbose:
+            print(f"🔄 Processing {len(valid_indices)} unique images in batches of {batch_size}...")
+        
+        # Group valid indices into batches
+        batches = []
+        for i in range(0, len(valid_indices), batch_size):
+            batch_indices = valid_indices[i:i + batch_size]
+            batch_prompts = [unique_prompts[idx] for idx in batch_indices]
+            batch_images = [unique_images[idx] for idx in batch_indices]
+            batches.append((batch_indices, batch_prompts, batch_images))
+        
+        for batch_num, (batch_indices, batch_prompts, batch_images) in enumerate(tqdm(batches, desc="Processing batches")):
+            if verbose:
+                print(f"📦 Batch {batch_num + 1}/{len(batches)} with {len(batch_prompts)} items")
+            
+            success = False
+            
+            # 🔄 RETRY LOGIC
+            for attempt in range(max_retries + 1):
+                try:
+                    if attempt > 0 and verbose:
+                        print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for batch {batch_num + 1}")
+                    
+                    # Process batch
+                    batch_inputs = processor(
+                        images=batch_images,
+                        text=batch_prompts,
+                        padding=True,
+                        return_tensors="pt"
+                    ).to(device, non_blocking=True)
+                    
+                    # Generate responses
+                    gen_cfg = getattr(model, "generation_config", None)
+                    pad_token_id = getattr(gen_cfg, "pad_token_id", None) if gen_cfg else None
+                    eos_token_id = getattr(gen_cfg, "eos_token_id", None) if gen_cfg else None
+                    
+                    if tokenizer:
+                        if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
+                            tokenizer.pad_token_id = tokenizer.eos_token_id
+                        pad_token_id = tokenizer.pad_token_id
+                        if eos_token_id is None:
+                            eos_token_id = tokenizer.eos_token_id
+                    
+                    logits_processors = tfs.LogitsProcessorList([SafeLogitsProcessor()])
+                    
+                    with torch.inference_mode():
+                        outputs = model.generate(
+                            **batch_inputs,
+                            max_new_tokens=max_generated_tks,
+                            use_cache=True,
+                            do_sample=False,
+                            temperature=None,
+                            top_k=None,
+                            top_p=None,
+                            pad_token_id=pad_token_id,
+                            eos_token_id=eos_token_id,
+                            logits_processor=logits_processors,
+                        )
+                    
+                    # CRITICAL: Decode only the GENERATED tokens (exclude input prompt)
+                    responses = []
+                    input_ids = batch_inputs.get('input_ids')
+                    for i in range(outputs.shape[0]):
+                        # Get input length for this specific item
+                        if input_ids.dim() > 1:
+                            input_len = input_ids[i].shape[0]
+                        else:
+                            input_len = input_ids.shape[0]
+                        
+                        # Decode only generated part
+                        if outputs[i].shape[0] > input_len:
+                            generated_ids = outputs[i][input_len:]
+                            response = processor.decode(generated_ids, skip_special_tokens=True)
+                        else:
+                            # Fallback
+                            response = processor.decode(outputs[i], skip_special_tokens=True)
+                        
+                        responses.append(response)
+                    
+                    if verbose:
+                        print(f"✅ Batch {batch_num + 1} generation successful")
+                    
+                    # Parse each response
+                    for i, response in enumerate(responses):
+                        idx = batch_indices[i]
+                        try:
+                            parsed = get_vlm_response(
+                                model_id=model_id,
+                                raw_response=response,
+                                verbose=False,
+                            )
+                            unique_results[idx] = parsed
+                        except Exception as e:
+                            if verbose:
+                                print(f"⚠️ Parsing error for batch index {idx}: {e}")
+                            unique_results[idx] = None
+                    
+                    success = True
+                    break  # Break retry loop on success
+                    
+                except Exception as e:
+                    if verbose:
+                        print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed: {e}")
+                    
+                    if attempt < max_retries:
+                        # Exponential backoff
+                        sleep_time = EXP_BACKOFF ** attempt
+                        if verbose:
+                            print(f"⏳ Waiting {sleep_time}s before retry...")
+                        time.sleep(sleep_time)
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                    else:
+                        # Final attempt failed
+                        if verbose:
+                            print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
+                        # Mark all items in this batch as failed
+                        for idx in batch_indices:
+                            unique_results[idx] = None
+            
+            # Clean up
+            if 'batch_inputs' in locals():
+                del batch_inputs
+            if 'outputs' in locals():
+                del outputs
+            if 'responses' in locals():
+                del responses
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+    
+    # 🔄 HYBRID FALLBACK: Retry failed items individually
+    failed_indices = [
+        i 
+        for i, result in enumerate(unique_results) 
+        if result is None and unique_inputs[i] is not None
+    ]
+    
+    if failed_indices and verbose:
+        print(f"🔄 Retrying {len(failed_indices)} failed items individually...")
+    
+    for idx in tqdm(failed_indices, desc="Individual retries", disable=not verbose):
+        img_path = unique_inputs[idx]
+        if verbose and idx == failed_indices[0]:
+            print(f"🔄 Retrying individual item {idx}: {img_path}")
+        
+        try:
+            prompt = get_prompt(
+                model_id=model_id, 
+                processor=processor,
+                img_path=img_path,
+                max_kws=max_kws,
+            )
+            
+            individual_result = query_local_vlm(
+                model=model,
+                processor=processor,
+                img_path=img_path,
+                text=prompt,
+                device=device,
+                max_generated_tks=max_generated_tks,
+                verbose=False,
+            )
+            unique_results[idx] = individual_result
+            if verbose and individual_result and idx == failed_indices[0]:
+                print(f"✅ Individual retry successful: {individual_result}")
+            elif verbose and idx == failed_indices[0]:
+                print(f"❌ Individual retry failed for item {idx}")
+                
+        except Exception as e:
+            if verbose and idx == failed_indices[0]:
+                print(f"💥 Individual retry error for item {idx}: {e}")
+            unique_results[idx] = None
+    
+    # Map unique_results back to original order
+    results = []
+    for orig_i, uniq_idx in enumerate(original_to_unique_idx):
+        results.append(unique_results[uniq_idx])
+    
+    # Final statistics
+    if verbose:
+        n_ok = sum(1 for r in results if r is not None)
+        n_null = sum(
+            1 
+            for i, inp in enumerate(inputs) 
+            if inp is None or not os.path.exists(str(inp))
+        )
+        n_failed = len(results) - n_ok - n_null
+        success_rate = (n_ok / (len(results) - n_null)) * 100 if (len(results) - n_null) > 0 else 0
+        
+        print(
+            f"📊 Final results: {n_ok}/{len(results)-n_null} successful ({success_rate:.1f}%), "
+            f"{n_null} null inputs, {n_failed} failed"
+        )
+    
+    # Clean up model and processor
+    del model, processor
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    # Save results
+    if csv_file:
+        df['vlm_keywords'] = results
+        df.to_csv(output_csv, index=False)
+        try:
+            df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+        except Exception as e:
+            print(f"Failed to write Excel file: {e}")
+        if verbose:
+            print(f"Saved {len(results)} keywords to {output_csv}")
+            print(f"Done! dataframe: {df.shape} {list(df.columns)}")
+
+    return results
+
 def get_vlm_based_labels_opt(
-		model_id: str,
-		device: str,
-		batch_size: int,
-		max_kws: int,
-		max_generated_tks: int,
-		csv_file: str = None,
-		image_path: str = None,
-		do_dedup: bool = True,
-		checkpoint_interval: int = 1000,
-		max_retries: int = 2,
-		verbose: bool = False,
-	) -> List[Optional[List[str]]]:
-	"""
-	Optimized VLM-based keyword extraction adopting the LLM batch processing pattern:
-	- Smart deduplication of image paths
-	- True batch processing with retry logic
-	- Checkpoint/resume capability
-	- Hybrid fallback for failed batches
-	"""
-	
-	def _save_checkpoint(df, output_csv, temp_suffix="_checkpoint"):
-		"""Save intermediate results."""
-		checkpoint_path = output_csv.replace(".csv", f"{temp_suffix}.csv")
-		try:
-			df.to_csv(checkpoint_path, index=False)
-			if verbose:
-				print(f"[CHECKPOINT] Saved to {checkpoint_path}")
-			return True
-		except Exception as e:
-			if verbose:
-				print(f"[CHECKPOINT ERROR] {e}")
-			return False
-	
-	def _load_checkpoint(output_csv, temp_suffix="_checkpoint"):
-		"""Load checkpoint if exists."""
-		checkpoint_path = output_csv.replace(".csv", f"{temp_suffix}.csv")
-		if os.path.exists(checkpoint_path):
-			try:
-				df = pd.read_csv(checkpoint_path, on_bad_lines='skip', dtype=dtypes, low_memory=False)
-				if verbose:
-					print(f"[CHECKPOINT] Loaded from {checkpoint_path}")
-				return df
-			except Exception as e:
-				if verbose:
-					print(f"[CHECKPOINT ERROR] {e}")
-		return None
-	
-	def _load_single_image(img_path, verbose_inner=False):
-		"""Load a single image with error handling."""
-		try:
-			if img_path.startswith('http://') or img_path.startswith('https://'):
-				r = requests.get(img_path, timeout=10)
-				r.raise_for_status()
-				img = Image.open(io.BytesIO(r.content))
-			else:
-				img = Image.open(img_path)
-			
-			img = img.convert("RGB")
-			if img.size[0] > 0 and img.size[1] > 0:
-				return img
-			elif verbose_inner:
-				print(f"[LOAD] Invalid image size: {img_path}")
-		except Exception as e:
-			if verbose_inner:
-				print(f"[LOAD ERROR] {img_path}: {e}")
-		return None
-	
-	def _batch_process_images(model, processor, img_paths, prompts, device, max_new_tokens, verbose_inner=False):
-		"""Process a batch of images through VLM."""
-		if not img_paths:
-			return []
-		
-		try:
-			# Load all images for this batch
-			images = []
-			valid_indices = []
-			for idx, img_path in enumerate(img_paths):
-				img = _load_single_image(img_path, verbose_inner=verbose_inner)
-				if img is not None:
-					images.append(img)
-					valid_indices.append(idx)
-			
-			if not images:
-				if verbose_inner:
-					print(f"[BATCH] No valid images loaded")
-				return [None] * len(img_paths)
-			
-			# Get prompts for valid images
-			valid_prompts = [prompts[i] for i in valid_indices]
-			
-			if verbose_inner:
-				print(f"[BATCH] Processing {len(images)} images")
-			
-			# Batch preprocessing
-			if len(images) == 1:
-				inputs = processor(images=images[0], text=valid_prompts[0], padding=True, return_tensors="pt")
-			else:
-				inputs = processor(images=images, text=valid_prompts, padding=True, return_tensors="pt")
-			
-			inputs = inputs.to(device, non_blocking=True)
-			
-			# Generation config
-			gen_cfg = getattr(model, "generation_config", None)
-			tok = getattr(processor, "tokenizer", None) or getattr(processor, "text_tokenizer", None)
-			pad_token_id = None
-			eos_token_id = None
-			
-			if gen_cfg:
-				pad_token_id = getattr(gen_cfg, "pad_token_id", None)
-				eos_token_id = getattr(gen_cfg, "eos_token_id", None)
-			
-			if tok:
-				if tok.pad_token_id is None and tok.eos_token_id is not None:
-					tok.pad_token_id = tok.eos_token_id
-				pad_token_id = tok.pad_token_id
-				if eos_token_id is None:
-					eos_token_id = tok.eos_token_id
-			
-			logits_processors = tfs.LogitsProcessorList([SafeLogitsProcessor()])
-			
-			# Generate
-			with torch.inference_mode():
-				outputs = model.generate(
-					**inputs,
-					max_new_tokens=max_new_tokens,
-					use_cache=True,
-					do_sample=False,
-					temperature=None,
-					top_k=None,
-					top_p=None,
-					pad_token_id=pad_token_id,
-					eos_token_id=eos_token_id,
-					logits_processor=logits_processors,
-				)
-			
-			# Decode batch
-			responses = []
-			for i in range(outputs.shape[0]):
-				response = processor.decode(outputs[i], skip_special_tokens=True)
-				responses.append(response)
-			
-			# Map responses back to original batch order
-			batch_results = [None] * len(img_paths)
-			for local_idx, global_idx in enumerate(valid_indices):
-				batch_results[global_idx] = responses[local_idx]
-			
-			# Clear GPU memory
-			del inputs, outputs
-			if torch.cuda.is_available():
-				torch.cuda.empty_cache()
-			
-			return batch_results
-			
-		except RuntimeError as e:
-			if verbose_inner:
-				print(f"[BATCH ERROR] RuntimeError: {e}")
-				if "out of memory" in str(e).lower():
-					print("[BATCH] OOM detected")
-			if torch.cuda.is_available():
-				torch.cuda.empty_cache()
-			return None
-		except Exception as e:
-			if verbose_inner:
-				print(f"[BATCH ERROR] {type(e).__name__}: {e}")
-			if torch.cuda.is_available():
-				torch.cuda.empty_cache()
-			return None
-	
-	# ===== Main Function Logic =====
-	
-	if csv_file and image_path:
-		raise ValueError("Only one of csv_file or image_path must be provided")
-	
-	# Setup paths and check for existing results
-	if csv_file:
-		output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
-		
-		# Check if already processed
-		if os.path.exists(output_csv):
-			df = pd.read_csv(output_csv, on_bad_lines='skip', dtype=dtypes, low_memory=False)
-			if 'vlm_keywords' in df.columns:
-				if verbose:
-					print(f"[EXISTING] Found results in {output_csv}")
-				return df['vlm_keywords'].tolist()
-		
-		# Try to load checkpoint
-		checkpoint_df = _load_checkpoint(output_csv)
-		if checkpoint_df is not None and 'vlm_keywords' in checkpoint_df.columns:
-			df = checkpoint_df
-		else:
-			df = pd.read_csv(csv_file, on_bad_lines='skip', dtype=dtypes, low_memory=False)
-			df['vlm_keywords'] = None
-		
-		if 'img_path' not in df.columns:
-			raise ValueError("CSV file must have 'img_path' column")
-		
-		image_paths = df['img_path'].tolist()
-		
-		if verbose:
-			total = len(image_paths)
-			processed = df['vlm_keywords'].notna().sum() if 'vlm_keywords' in df.columns else 0
-			print(f"[SETUP] Total: {total} | Already processed: {processed}")
-	
-	elif image_path:
-		image_paths = [image_path]
-		df = None
-		output_csv = None
-		if verbose:
-			print(f"[SETUP] Single image: {image_path}")
-	else:
-		raise ValueError("Either csv_file or image_path must be provided")
-	
-	# GPU info
-	if torch.cuda.is_available() and verbose:
-		gpu_name = torch.cuda.get_device_name(device)
-		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-		print(f"[GPU] {gpu_name} | {total_mem:.2f}GB VRAM")
-	
-	# Load model
-	if verbose:
-		print(f"[MODEL] Loading {model_id}...")
-	processor, model = _load_vlm_(model_id, device, verbose=verbose)
-	
-	# Set padding side for decoder-only models
-	tokenizer = getattr(processor, "tokenizer", None) or getattr(processor, "text_tokenizer", None)
-	if tokenizer is not None:
-		tokenizer.padding_side = 'left'
-		if verbose:
-			print(f"[MODEL] Set tokenizer padding_side to 'left'")
-	
-	# Prepare inputs
-	inputs = image_paths
-	if len(inputs) == 0:
-		return None
-	
-	if verbose:
-		valid_count = sum(1 for x in inputs if x is not None and str(x).strip() not in ("", "nan", "None"))
-		null_count = len(inputs) - valid_count
-		print(f"📊 Input stats: {len(inputs)} total, {valid_count} valid, {null_count} null")
-	
-	# 🔧 NULL-SAFE DEDUPLICATION
-	if do_dedup:
-		unique_map: Dict[str, int] = {}
-		unique_inputs = []
-		original_to_unique_idx = []
-		
-		for img_path in inputs:
-			if img_path is None or str(img_path).strip() in ("", "nan", "None"):
-				key = "__NULL__"
-			else:
-				key = str(img_path).strip()
-			
-			if key in unique_map:
-				original_to_unique_idx.append(unique_map[key])
-			else:
-				idx = len(unique_inputs)
-				unique_map[key] = idx
-				unique_inputs.append(None if key == "__NULL__" else key)
-				original_to_unique_idx.append(idx)
-		
-		if verbose:
-			print(f"📊 Deduplication: {len(inputs)} -> {len(unique_inputs)} unique images")
-	else:
-		unique_inputs = []
-		for img_path in inputs:
-			if img_path is None or str(img_path).strip() in ("", "nan", "None"):
-				unique_inputs.append(None)
-			else:
-				unique_inputs.append(str(img_path).strip())
-		original_to_unique_idx = list(range(len(unique_inputs)))
-	
-	# Prepare prompts for unique inputs
-	unique_prompts = []
-	for img_path in unique_inputs:
-		if img_path is None:
-			unique_prompts.append(None)
-		else:
-			prompt = get_prompt(model_id=model_id, processor=processor, img_path=img_path, max_kws=max_kws)
-			unique_prompts.append(prompt)
-	
-	# Will hold parsed results for unique inputs
-	unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
-	
-	# 🔄 BATCH PROCESSING WITH RETRY LOGIC
-	valid_indices = [i for i, p in enumerate(unique_prompts) if p is not None]
-	
-	if valid_indices:
-		if verbose:
-			print(f"🔄 Processing {len(valid_indices)} unique images in batches of {batch_size}...")
-		
-		# Group valid indices into batches
-		batches = []
-		for i in range(0, len(valid_indices), batch_size):
-			batch_indices = valid_indices[i:i + batch_size]
-			batch_img_paths = [unique_inputs[idx] for idx in batch_indices]
-			batch_prompts = [unique_prompts[idx] for idx in batch_indices]
-			batches.append((batch_indices, batch_img_paths, batch_prompts))
-		
-		for batch_num, (batch_indices, batch_img_paths, batch_prompts) in enumerate(tqdm(batches, desc="Processing batches")):
-			if verbose:
-				print(f"📦 Batch {batch_num + 1}/{len(batches)} with {len(batch_img_paths)} items")
-			
-			success = False
-			
-			# 🔄 RETRY LOGIC
-			for attempt in range(max_retries + 1):
-				try:
-					if attempt > 0 and verbose:
-						print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for batch {batch_num + 1}")
-					
-					# Process batch
-					batch_responses = _batch_process_images(
-						model=model,
-						processor=processor,
-						img_paths=batch_img_paths,
-						prompts=batch_prompts,
-						device=device,
-						max_new_tokens=max_generated_tks,
-						verbose_inner=(verbose and attempt > 0)
-					)
-					
-					if batch_responses is None:
-						raise RuntimeError("Batch processing returned None (likely OOM)")
-					
-					if verbose:
-						print(f"✅ Batch {batch_num + 1} generation successful")
-					
-					# Parse each response
-					for i, response in enumerate(batch_responses):
-						idx = batch_indices[i]
-						if response is not None:
-							try:
-								parsed = get_vlm_response(model_id=model_id, raw_response=response, verbose=False)
-								unique_results[idx] = parsed
-							except Exception as e:
-								if verbose:
-									print(f"⚠️ Parsing error for batch index {idx}: {e}")
-								unique_results[idx] = None
-						else:
-							unique_results[idx] = None
-					
-					success = True
-					break  # Break retry loop on success
-				
-				except Exception as e:
-					if verbose:
-						print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed: {e}")
-					
-					if attempt < max_retries:
-						# Exponential backoff
-						sleep_time = 2 ** attempt
-						if verbose:
-							print(f"⏳ Waiting {sleep_time}s before retry...")
-						time.sleep(sleep_time)
-						if torch.cuda.is_available():
-							torch.cuda.empty_cache()
-					else:
-						# Final attempt failed
-						if verbose:
-							print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
-						# Mark all items in this batch as failed (will be retried individually)
-						for idx in batch_indices:
-							unique_results[idx] = None
-			
-			# Checkpoint saving
-			if df is not None and (batch_num + 1) % (checkpoint_interval // batch_size) == 0:
-				# Map unique_results back to original order for checkpoint
-				temp_results = [unique_results[original_to_unique_idx[i]] for i in range(len(inputs))]
-				if 'vlm_keywords' not in df.columns:
-					df['vlm_keywords'] = None
-				df['vlm_keywords'] = temp_results
-				_save_checkpoint(df, output_csv)
-			
-			# Clean up
-			if torch.cuda.is_available():
-				torch.cuda.empty_cache()
-	
-	# 🔄 HYBRID FALLBACK: Retry failed items individually
-	failed_indices = [
-		i 
-		for i, result in enumerate(unique_results) 
-		if result is None and unique_inputs[i] is not None
-	]
-	
-	if failed_indices and verbose:
-		print(f"🔄 Retrying {len(failed_indices)} failed items individually...")
-	
-	for idx in tqdm(failed_indices, desc="Individual retries", disable=not verbose):
-		img_path = unique_inputs[idx]
-		prompt = unique_prompts[idx]
-		
-		if verbose and idx == failed_indices[0]:
-			print(f"🔄 Retrying individual item {idx}: {img_path}")
-		
-		try:
-			# Load single image
-			img = _load_single_image(img_path, verbose_inner=False)
-			if img is None:
-				unique_results[idx] = None
-				continue
-			
-			# Process single image (same as query_local_vlm but inline)
-			inputs_single = processor(images=img, text=prompt, padding=True, return_tensors="pt")
-			inputs_single = inputs_single.to(device, non_blocking=True)
-			
-			gen_cfg = getattr(model, "generation_config", None)
-			tok = getattr(processor, "tokenizer", None) or getattr(processor, "text_tokenizer", None)
-			pad_token_id = None
-			eos_token_id = None
-			
-			if gen_cfg:
-				pad_token_id = getattr(gen_cfg, "pad_token_id", None)
-				eos_token_id = getattr(gen_cfg, "eos_token_id", None)
-			
-			if tok:
-				if tok.pad_token_id is None and tok.eos_token_id is not None:
-					tok.pad_token_id = tok.eos_token_id
-				pad_token_id = tok.pad_token_id
-				if eos_token_id is None:
-					eos_token_id = tok.eos_token_id
-			
-			logits_processors = tfs.LogitsProcessorList([SafeLogitsProcessor()])
-			
-			with torch.inference_mode():
-				output = model.generate(
-					**inputs_single,
-					max_new_tokens=max_generated_tks,
-					use_cache=True,
-					do_sample=False,
-					temperature=None,
-					top_k=None,
-					top_p=None,
-					pad_token_id=pad_token_id,
-					eos_token_id=eos_token_id,
-					logits_processor=logits_processors,
-				)
-			
-			response = processor.decode(output[0], skip_special_tokens=True)
-			
-			# Parse response
-			parsed = get_vlm_response(model_id=model_id, raw_response=response, verbose=False)
-			unique_results[idx] = parsed
-			
-			# Clear memory
-			del inputs_single, output
-			if torch.cuda.is_available():
-				torch.cuda.empty_cache()
-			
-			if verbose and parsed and idx == failed_indices[0]:
-				print(f"✅ Individual retry successful: {parsed}")
-		
-		except Exception as e:
-			if verbose and idx == failed_indices[0]:
-				print(f"💥 Individual retry error for item {idx}: {e}")
-			unique_results[idx] = None
-	
-	# Map unique_results back to original order
-	results = [unique_results[original_to_unique_idx[i]] for i in range(len(inputs))]
-	
-	# Final statistics
-	if verbose:
-		n_ok = sum(1 for r in results if r is not None)
-		n_null = sum(
-			1 
-			for i, inp in enumerate(inputs) 
-			if inp is None or str(inp).strip() in ("", "nan", "None")
-		)
-		n_failed = len(results) - n_ok - n_null
-		success_rate = (n_ok / (len(results) - n_null)) * 100 if (len(results) - n_null) > 0 else 0
-		
-		print(
-			f"📊 Final results: {n_ok}/{len(results)-n_null} successful ({success_rate:.1f}%), "
-			f"{n_null} null inputs, {n_failed} failed"
-		)
-	
-	# Clean up model and processor
-	del model, processor
-	if torch.cuda.is_available():
-		torch.cuda.empty_cache()
-	
-	# Save results
-	if df is not None:
-		try:
-			df['vlm_keywords'] = results
-			df.to_csv(output_csv, index=False)
-			if verbose:
-				print(f"[SAVE] Results saved to {output_csv}")
-			
-			try:
-				df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-			except:
-				pass
-			
-			# Clean up checkpoint
-			checkpoint_path = output_csv.replace(".csv", "_checkpoint.csv")
-			if os.path.exists(checkpoint_path):
-				os.remove(checkpoint_path)
-				if verbose:
-					print(f"[CLEANUP] Removed checkpoint file")
-		except Exception as e:
-			if verbose:
-				print(f"[SAVE ERROR] {e}")
-	
-	return results
+        model_id: str,
+        device: str,
+        batch_size: int,
+        max_generated_tks: int,
+        max_kws: int,
+        csv_file: str = None,
+        image_path: str = None,
+        do_dedup: bool = True,
+        max_retries: int = 2,
+        verbose: bool = False,
+    ) -> List[Optional[List[str]]]:
+
+    if csv_file:
+        output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
+
+    if csv_file and image_path:
+        raise ValueError("Only one of csv_file or image_path must be provided")
+
+    # Check for existing results
+    if csv_file and os.path.exists(output_csv):
+        df = pd.read_csv(
+            filepath_or_buffer=output_csv,
+            on_bad_lines='skip',
+            dtype=dtypes,
+            low_memory=False,
+        )
+        if 'vlm_keywords' in df.columns:
+            if verbose: 
+                print(f"Found existing VLM keywords in {output_csv}")
+            return df['vlm_keywords'].tolist()
+
+    # Load data
+    if csv_file:
+        df = pd.read_csv(
+            filepath_or_buffer=csv_file,
+            on_bad_lines='skip',
+            dtype=dtypes,
+            low_memory=False,
+        )
+        if 'img_path' not in df.columns:
+            raise ValueError("CSV file must have 'img_path' column")
+        image_paths = df['img_path'].tolist()
+        if verbose:
+            print(f"Loaded {len(image_paths)} images from {csv_file}")
+    elif image_path:
+        image_paths = [image_path]
+        if verbose:
+            print(f"Loaded 1 image from {image_path}")
+    else:
+        raise ValueError("Either csv_file or image_path must be provided")
+
+    # Store original inputs for later reference
+    original_inputs = image_paths
+    if len(original_inputs) == 0:
+        return None
+
+    # Load model once
+    processor, model = _load_vlm_(model_id, device, verbose=verbose)
+
+    if verbose:
+        valid_count = sum(1 for x in original_inputs if x is not None and os.path.exists(str(x)))
+        null_count = len(original_inputs) - valid_count
+        print(f"📊 Input stats: {len(original_inputs)} total, {valid_count} valid, {null_count} null")
+
+    # 🔧 NULL-SAFE DEDUPLICATION
+    if do_dedup:
+        unique_map: Dict[str, int] = {}
+        unique_inputs = []
+        original_to_unique_idx = []
+        for img_path in original_inputs:
+            if img_path is None or not os.path.exists(str(img_path)):
+                key = "__NULL__"
+            else:
+                key = str(img_path)
+            if key in unique_map:
+                original_to_unique_idx.append(unique_map[key])
+            else:
+                idx = len(unique_inputs)
+                unique_map[key] = idx
+                unique_inputs.append(None if key == "__NULL__" else key)
+                original_to_unique_idx.append(idx)
+    else:
+        unique_inputs = []
+        for img_path in original_inputs:
+            if img_path is None or not os.path.exists(str(img_path)):
+                unique_inputs.append(None)
+            else:
+                unique_inputs.append(str(img_path))
+        original_to_unique_idx = list(range(len(unique_inputs)))
+
+    # Generate prompts and load images for unique inputs
+    unique_prompts = []
+    unique_images = []
+    for img_path in unique_inputs:
+        if img_path is None:
+            unique_prompts.append(None)
+            unique_images.append(None)
+        else:
+            try:
+                img = Image.open(img_path).convert("RGB")
+                prompt = get_prompt(
+                    model_id=model_id, 
+                    processor=processor,
+                    img_path=img_path,
+                    max_kws=max_kws,
+                )
+                unique_prompts.append(prompt)
+                unique_images.append(img)
+            except Exception as e:
+                if verbose:
+                    print(f"❌ Failed to load image {img_path}: {e}")
+                unique_prompts.append(None)
+                unique_images.append(None)
+
+    # Will hold parsed results for unique inputs
+    unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
+    
+    # 🔄 SEQUENTIAL PROCESSING WITH BATCH-LIKE OPTIMIZATIONS
+    # For VLM models, sequential processing often gives better quality than batch processing
+    valid_indices = [i for i, (p, img) in enumerate(zip(unique_prompts, unique_images)) 
+                     if p is not None and img is not None]
+    
+    if valid_indices:
+        if verbose:
+            print(f"🔄 Processing {len(valid_indices)} unique images sequentially with optimizations...")
+        
+        for idx in tqdm(valid_indices, desc="Processing images"):
+            img_path = unique_inputs[idx]
+            prompt = unique_prompts[idx]
+            img = unique_images[idx]
+            
+            if verbose:
+                print(f"📦 Processing image {idx + 1}/{len(valid_indices)}: {os.path.basename(img_path)}")
+            
+            success = False
+            last_error = None
+            
+            # 🔄 RETRY LOGIC for individual images
+            for attempt in range(max_retries + 1):
+                try:
+                    if attempt > 0 and verbose:
+                        print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for image {idx + 1}")
+                    
+                    # Process single image (not batch)
+                    single_inputs = processor(
+                        images=img,
+                        text=prompt,
+                        padding=True,
+                        return_tensors="pt"
+                    ).to(device, non_blocking=True)
+                    
+                    # Generate response
+                    with torch.inference_mode():
+                        outputs = model.generate(
+                            **single_inputs,
+                            max_new_tokens=max_generated_tks,
+                            use_cache=True,
+                            do_sample=False,
+                            pad_token_id=getattr(model.generation_config, "pad_token_id", None),
+                            eos_token_id=getattr(model.generation_config, "eos_token_id", None),
+                        )
+                    
+                    # Decode and parse response
+                    response = processor.decode(outputs[0], skip_special_tokens=True)
+                    
+                    if verbose:
+                        print(f"✅ Image {idx + 1} generation successful")
+                    
+                    # Parse the response
+                    try:
+                        parsed = get_vlm_response(
+                            model_id=model_id,
+                            raw_response=response,
+                            verbose=verbose,
+                        )
+                        unique_results[idx] = parsed
+                        if verbose and parsed:
+                            print(f"✅ Parsed keywords: {parsed}")
+                    except Exception as e:
+                        if verbose:
+                            print(f"⚠️ Parsing error for image {idx + 1}: {e}")
+                        unique_results[idx] = None
+                    
+                    success = True
+                    break  # Break retry loop on success
+                    
+                except Exception as e:
+                    last_error = e
+                    if verbose:
+                        print(f"❌ Image {idx + 1} attempt {attempt + 1} failed: {e}")
+                    
+                    if attempt < max_retries:
+                        # Exponential backoff
+                        sleep_time = EXP_BACKOFF ** attempt
+                        if verbose:
+                            print(f"⏳ Waiting {sleep_time}s before retry...")
+                        time.sleep(sleep_time)
+                        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+                    else:
+                        # Final attempt failed
+                        if verbose:
+                            print(f"💥 Image {idx + 1} failed after {max_retries + 1} attempts")
+                        unique_results[idx] = None
+            
+            # Clean up after each image
+            if 'single_inputs' in locals():
+                del single_inputs
+            if 'outputs' in locals():
+                del outputs
+            if 'response' in locals():
+                del response
+            
+            # Memory management - clear cache every few images
+            if idx % 5 == 0 and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                gc.collect()
+    
+    # 🔄 HYBRID FALLBACK: Retry failed items with different approach
+    failed_indices = [
+        i 
+        for i, result in enumerate(unique_results) 
+        if result is None and unique_inputs[i] is not None
+    ]
+    
+    if failed_indices and verbose:
+        print(f"🔄 Retrying {len(failed_indices)} failed items with fallback approach...")
+    
+    for idx in failed_indices:
+        img_path = unique_inputs[idx]
+        if verbose:
+            print(f"🔄 Retrying failed item {idx}: {os.path.basename(img_path)}")
+        
+        try:
+            # Use the original query_local_vlm function as fallback
+            prompt = get_prompt(
+                model_id=model_id, 
+                processor=processor,
+                img_path=img_path,
+                max_kws=max_kws,
+            )
+            
+            individual_result = query_local_vlm(
+                model=model,
+                processor=processor,
+                img_path=img_path,
+                text=prompt,
+                device=device,
+                max_generated_tks=max_generated_tks,
+                verbose=verbose,
+            )
+            unique_results[idx] = individual_result
+            if verbose and individual_result:
+                print(f"✅ Fallback retry successful: {individual_result}")
+            elif verbose:
+                print(f"❌ Fallback retry failed for item {idx}")
+                
+        except Exception as e:
+            if verbose:
+                print(f"💥 Fallback retry error for item {idx}: {e}")
+            unique_results[idx] = None
+    
+    # Map unique_results back to original order
+    results = []
+    for orig_i, uniq_idx in enumerate(original_to_unique_idx):
+        results.append(unique_results[uniq_idx])
+    
+    # Final statistics
+    if verbose:
+        n_ok = sum(1 for r in results if r is not None)
+        n_null = sum(
+            1 
+            for i, inp in enumerate(original_inputs) 
+            if inp is None or not os.path.exists(str(inp))
+        )
+        n_failed = len(results) - n_ok - n_null
+        success_rate = (n_ok / (len(results) - n_null)) * 100 if (len(results) - n_null) > 0 else 0
+        
+        print(
+            f"📊 Final results: {n_ok}/{len(results)-n_null} successful ({success_rate:.1f}%), "
+            f"{n_null} null inputs, {n_failed} failed"
+        )
+    
+    # Clean up model and processor
+    del model, processor
+    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+
+    # Save results
+    if csv_file:
+        df['vlm_keywords'] = results
+        df.to_csv(output_csv, index=False)
+        try:
+            df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+        except Exception as e:
+            print(f"Failed to write Excel file: {e}")
+        if verbose:
+            print(f"Saved {len(results)} keywords to {output_csv}")
+            print(f"Done! dataframe: {df.shape} {list(df.columns)}")
+
+    return results
 
 @measure_execution_time
 def main():
