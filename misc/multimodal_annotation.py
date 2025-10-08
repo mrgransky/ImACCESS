@@ -1,5 +1,5 @@
 from utils import *
-from gt_kws_vlm import get_vlm_based_labels
+from gt_kws_vlm import get_vlm_based_labels_opt, get_vlm_based_labels_debug
 from gt_kws_llm import get_llm_based_labels
 from visualize import perform_multilabel_eda
 # LLM models:
@@ -66,6 +66,7 @@ def get_multimodal_annotation(
 		max_generated_tks: int,
 		max_keywords: int,
 		verbose: bool = False,
+		debug: bool = False,
 	):
 
 	# Load dataframe
@@ -101,15 +102,27 @@ def get_multimodal_annotation(
 			print(f"{i:03d} {kw}")
 
 	# Visual-based annotation using VLMs
-	vlm_based_labels = get_vlm_based_labels(
-		model_id=vlm_model_id,
-		device=device,
-		csv_file=csv_file,
-		batch_size=batch_size,
-		max_kws=max_keywords,
-		max_generated_tks=max_generated_tks,
-		verbose=verbose,
-	)
+	if debug:
+		vlm_based_labels = get_vlm_based_labels_debug(
+			model_id=vlm_model_id,
+			device=device,
+			csv_file=csv_file,
+			batch_size=batch_size,
+			max_kws=max_keywords,
+			max_generated_tks=max_generated_tks,
+			verbose=verbose,
+		)
+	else:
+		vlm_based_labels = get_vlm_based_labels_opt(
+			model_id=vlm_model_id,
+			device=device,
+			csv_file=csv_file,
+			batch_size=batch_size,
+			max_kws=max_keywords,
+			max_generated_tks=max_generated_tks,
+			verbose=verbose,
+		)
+
 	if verbose:
 		print(f"Extracted {len(vlm_based_labels)} VLM-based labels")
 		for i, kw in enumerate(vlm_based_labels):
@@ -169,6 +182,7 @@ def main():
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Max number of generated tokens")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
+	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
 	args = parser.parse_args()
 	args.device = torch.device(args.device)
 	print(args)
@@ -182,6 +196,7 @@ def main():
 		max_generated_tks=args.max_generated_tks,
 		max_keywords=args.max_keywords,
 		verbose=args.verbose,
+		debug=args.debug,
 	)
 
 if __name__ == "__main__":
