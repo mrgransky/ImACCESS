@@ -113,6 +113,9 @@ def get_multimodal_annotation(
 		for i, kw in enumerate(llm_based_labels):
 			print(f"{i:03d} {kw}")
 
+	# clear memory
+	torch.cuda.empty_cache()
+
 	# Visual-based annotation using VLMs
 	if debug:
 		vlm_based_labels = get_vlm_based_labels_debug(
@@ -140,6 +143,9 @@ def get_multimodal_annotation(
 		for i, kw in enumerate(vlm_based_labels):
 			print(f"{i:03d} {kw}")
 
+	# clear memory
+	torch.cuda.empty_cache()
+
 	# Combine textual and visual annotations
 	if len(llm_based_labels) != len(vlm_based_labels):
 		raise ValueError("LLM and VLM based labels must have same length")
@@ -154,6 +160,9 @@ def get_multimodal_annotation(
 		print(f"Combined {len(multimodal_labels)} {type(multimodal_labels)} multimodal labels")
 		for i, kw in enumerate(multimodal_labels):
 			print(f"{i:03d} {kw}")
+
+	# clear memory
+	torch.cuda.empty_cache()
 
 	df['llm_based_labels'] = llm_based_labels
 	df['vlm_based_labels'] = vlm_based_labels
