@@ -191,30 +191,29 @@ def monitor_memory_usage():
 		return True
 	return False
 
-def get_num_tokens(text: str, model_name: str = "bert-base-uncased", verbose:bool=False) -> int:
-	try:
-		tokenizer = tfs.AutoTokenizer.from_pretrained(model_name)
-		tokens = tokenizer.encode(text, add_special_tokens=True)
-		num_tokens = len(tokens)
-		
-		# Count words using different methods
-		word_count_simple = len(text.split())
-		word_count_regex = len(re.findall(r'\b\w+\b', text))
-		
-		# Calculate tokens-to-words ratio
-		ratio = num_tokens / word_count_regex if word_count_regex > 0 else 0
-		if verbose:
-			print(f"Token count Model: {model_name}")
-			print(f"Number of words (simple): {word_count_simple}")
-			print(f"Number of words (regex): {word_count_regex}")
-			print(f"Number of tokens: {num_tokens}")
-			print(f"Tokens-to-words ratio: {ratio:.2f}")
-		
-		return num_tokens
-	except Exception as e:
-		if verbose:
-			print(f"Error loading tokenizer for {model_name}: {e}")
-		return 0
+def get_conversation_token_breakdown(text: str, model_name: str = "bert-base-uncased") -> dict:
+	tokenizer = tfs.AutoTokenizer.from_pretrained(model_name)
+	
+	parts = {}
+	
+	# Count system tokens
+	if "system" in text.lower() and "user" in text.lower():
+		system_part = text.split("system")[-1].split("user")[0].strip()
+		parts['system'] = len(tokenizer.encode(system_part, add_special_tokens=False))
+	
+	# Count user tokens  
+	if "user" in text.lower() and "assistant" in text.lower():
+		user_part = text.split("user")[-1].split("assistant")[0].strip()
+		parts['user'] = len(tokenizer.encode(user_part, add_special_tokens=False))
+	
+	# Count assistant tokens
+	if "assistant" in text.lower():
+		assistant_part = text.split("assistant")[-1].strip()
+		parts['assistant'] = len(tokenizer.encode(assistant_part, add_special_tokens=False))
+	
+	parts['total'] = len(tokenizer.encode(text, add_special_tokens=True))
+	
+	return parts
 
 def debug_llm_info(model, tokenizer, device):
 	# ------------------------------------------------------------------

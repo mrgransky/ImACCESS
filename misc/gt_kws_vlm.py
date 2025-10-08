@@ -32,12 +32,15 @@ print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
 
 VLM_INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
-Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object or event.
+Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object, or event.
 
-**Rules**:
-- Return **ONLY** a clean, valid and parsable Python list.
+**CRITICAL RULES**:
+- Return **ONLY** a clean, valid and parsable Python list with a maximum of {k} keywords.
+- **ZERO HALLUCINATION POLICY**: Do NOT invent or assume details that cannot be confidently verified from the visual content. When in doubt, exclude rather than invent.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the Python list.
-- **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "May 25th", "July 10").
+- **STRICTLY EXCLUDE TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "night", "daytime", "morning", "20th century", ""1950s", "weekend", "May 25th", "July 10").
+- **STRICTLY EXCLUDE VAGUE CONTEXT WORDS**: No generic historical or contextual terms (e.g., "warzone", "war", "historical", "vintage", "archive", "wartime", "industrial").
+- **STRICTLY EXCLUDE GENERIC IMAGE DESCRIPTORS**: No terms describing the image type, format, or genre (e.g., "Black and White Photography", "Historical Document", "War Photography", "Photograph", "Image", "Photo", "Archive", "Documentation").
 - Exclude numerical words, special characters, stopwords, or abbreviations.
 - Exclude meaningless, repeating or synonym-duplicate keywords.
 - The Python list must be the **VERY LAST THING** in your response.
@@ -224,13 +227,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 				if verbose:
 						print(f"[DEBUG] dedupe_preserve_order output ({len(out)} items): {out}")
 				return out
-		
-		# Main parsing logic
-		if verbose:
-				print(f"\n{'='*80}")
-				print(f"[DEBUG] Raw VLM output ({len(response)} chars):\n{response}")
-				print(f"{'='*80}\n")
-		
+				
 		if not isinstance(response, str):
 				if verbose: print("[ERROR] VLM output is not a string.")
 				return None
@@ -490,6 +487,7 @@ def query_local_vlm(
 	if img.size[0] == 0 or img.size[1] == 0:
 		if verbose: print("[ERROR] Invalid image size")
 		return None
+
 	model_id = getattr(model.config, "_name_or_path", None) or getattr(model, "name_or_path", "unknown_model")
 	if verbose:
 		print(f"[MODEL] ID: {model_id}")
@@ -595,6 +593,12 @@ def query_local_vlm(
 		return None
 
 	vlm_response = processor.decode(output[0], skip_special_tokens=True)
+	if verbose:
+		tks_breakdown = get_conversation_token_breakdown(vlm_response, model_id)
+		print(f"\n")
+		print(f"[RESPONSE] Token Count Breakdown: {tks_breakdown}")
+		print(f"{vlm_response}")
+		print(f"\n")
 
 	# ========== Memory post ==========
 	if torch.cuda.is_available():
@@ -617,7 +621,7 @@ def query_local_vlm(
 		if verbose: print(f"[ERROR] Parsing failed: {e}")
 		return None
 
-def get_vlm_based_labels(
+def get_vlm_based_labels_debug(
 		model_id: str,
 		device: str,
 		batch_size: int,
@@ -692,7 +696,9 @@ def get_vlm_based_labels(
 		)
 		all_keywords.append(keywords)
 
-	if csv_file:
+	print(any(kw is not None for kw in all_keywords))
+
+	if csv_file and any(kw is not None for kw in all_keywords):
 		df['vlm_keywords'] = all_keywords
 		df.to_csv(output_csv, index=False)
 		try:
@@ -702,8 +708,23 @@ def get_vlm_based_labels(
 		if verbose:
 			print(f"Saved {len(all_keywords)} keywords to {output_csv}")
 			print(f"Done! dataframe: {df.shape} {list(df.columns)}")
+	elif csv_file:
+		if verbose:
+			print("Skipping file save: all VLM keywords are None")
 
 	return all_keywords
+
+def get_vlm_based_labels_opt(
+		model_id: str,
+		device: str,
+		batch_size: int,
+		max_kws: int,
+		max_generated_tks: int,
+		csv_file: str=None,
+		image_path: str=None,
+		verbose: bool = False,
+	):
+	pass
 
 @measure_execution_time
 def main():
@@ -713,25 +734,39 @@ def main():
 	parser.add_argument("--model_id", '-vlm', type=str, default="Qwen/Qwen2-VL-2B-Instruct", help="HuggingFace Vision-Language model ID")
 	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device('cuda:0' or 'cpu')")
 	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
-	parser.add_argument("--batch_size", '-bs', type=int, default=16, help="Batch size for processing")
+	parser.add_argument("--batch_size", '-bs', type=int, default=4, help="Batch size for processing")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Batch size for processing")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
+	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
 
 	args = parser.parse_args()
 	args.device = torch.device(args.device)
 	print(args)
 
-	keywords = get_vlm_based_labels(
-		model_id=args.model_id,
-		device=args.device,
-		csv_file=args.csv_file,
-		image_path=args.image_path,
-		batch_size=args.batch_size,
-		max_kws=args.max_keywords,
-		max_generated_tks=args.max_generated_tks,
-		verbose=args.verbose,
-	)
+	if args.debug:
+		keywords = get_vlm_based_labels_debug(
+			model_id=args.model_id,
+			device=args.device,
+			csv_file=args.csv_file,
+			image_path=args.image_path,
+			batch_size=args.batch_size,
+			max_kws=args.max_keywords,
+			max_generated_tks=args.max_generated_tks,
+			verbose=args.verbose,
+		)
+	else:
+		keywords = get_vlm_based_labels_opt(
+			model_id=args.model_id,
+			device=args.device,
+			csv_file=args.csv_file,
+			image_path=args.image_path,
+			batch_size=args.batch_size,
+			max_kws=args.max_keywords,
+			max_generated_tks=args.max_generated_tks,
+			verbose=args.verbose,
+		)
+
 	if args.verbose:
 		print(f"{len(keywords)} Extracted keywords")
 		for i, kw in enumerate(keywords):
