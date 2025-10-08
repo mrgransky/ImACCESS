@@ -113,6 +113,7 @@ def get_multimodal_annotation(
 		print(f"Extracted {len(llm_based_labels)} LLM-based labels")
 		for i, kw in enumerate(llm_based_labels):
 			print(f"{i:03d} {kw}")
+		print("="*120)
 
 	# clear memory
 	torch.cuda.empty_cache()
@@ -143,6 +144,7 @@ def get_multimodal_annotation(
 		print(f"Extracted {len(vlm_based_labels)} VLM-based labels")
 		for i, kw in enumerate(vlm_based_labels):
 			print(f"{i:03d} {kw}")
+		print("="*120)
 
 	# clear memory
 	torch.cuda.empty_cache()
