@@ -61,12 +61,11 @@ Identify up to {k} most prominent, factual and distinct **KEYWORDS** that captur
 - The Python list must be the **VERY LAST THING** in your response.
 
 **EXAMPLES OF WHAT TO EXCLUDE**:
-- ❌ "black and white photo", "historical document", "documentation", "historical photo"
+- ❌ "black and white photo", "historical document", "historical photo"
 - ❌ "early evening", "night", "daytime", "morning", "20th century", ""1950s", "weekend", "May 25th", "July 10"
-- ❌ "warzone", "war", "war photos", "wartime production" 
-- ❌ "Photograph", "Image", "Archive", "Document", "Photo"
-- ❌ "Historical", "Vintage", "Old", "Antique"
-- ❌ Generic terms like "Construction", "Industrial", "Production"
+- ❌ "warzone", "war", "war photos", "wartime production"
+- ❌ "photograph", "image", "archive", "document", "photo", "documentation",
+- ❌ "historical", "vintage", "old", "antique"
 - ❌ Hallucinated details not visible in the image
 """
 
