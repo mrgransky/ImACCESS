@@ -31,21 +31,6 @@ huggingface_hub.login(token=hf_tk)
 
 EXP_BACKOFF = 2  # seconds
 
-# VLM_INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
-# Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object, or event.
-
-# **CRITICAL RULES**:
-# - Return **ONLY** a clean, valid and parsable Python list with a maximum of {k} keywords.
-# - **ZERO HALLUCINATION POLICY**: Do NOT invent or assume details that cannot be confidently verified from the visual content. When in doubt, exclude rather than invent.
-# - **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the Python list.
-# - **STRICTLY EXCLUDE TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "night", "daytime", "morning", "20th century", ""1950s", "weekend", "May 25th", "July 10").
-# - **STRICTLY EXCLUDE VAGUE CONTEXT WORDS**: No generic historical or contextual terms (e.g., "warzone", "war", "historical", "vintage", "archive", "wartime", "industrial").
-# - **STRICTLY EXCLUDE GENERIC IMAGE DESCRIPTORS**: No terms describing the image type, format, or genre (e.g., "black and white photo", "historical document", "war photography", "photograph", "image", "photo", "archive", "documentation").
-# - Exclude numerical words, special characters, stopwords, or abbreviations.
-# - Exclude meaningless, repeating or synonym-duplicate keywords.
-# - The Python list must be the **VERY LAST THING** in your response.
-# """
-
 VLM_INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
 Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object, or event.
 
@@ -53,19 +38,12 @@ Identify up to {k} most prominent, factual and distinct **KEYWORDS** that captur
 - Return **ONLY** a clean, valid and parsable Python list with a maximum of {k} keywords.
 - **ZERO HALLUCINATION POLICY**: Do NOT invent or assume details that cannot be confidently verified from the visual content. When in doubt, exclude rather than invent.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the Python list.
-- **STRICTLY EXCLUDE TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases.
-- **STRICTLY EXCLUDE VAGUE CONTEXT WORDS**: No generic historical or contextual terms.
-- **STRICTLY EXCLUDE GENERIC IMAGE DESCRIPTORS**: No terms describing the image type, format, or genre.
+- **STRICTLY EXCLUDE TEMPORAL KEYWORDS** such as dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases.
+- **STRICTLY EXCLUDE** vague, generic, or historical keywords.
+- **STRICTLY EXCLUDE** image quality, type, format, or style as keywords.
 - Exclude numerical words, special characters, stopwords, or abbreviations.
 - Exclude meaningless, repeating or synonym-duplicate keywords.
 - The Python list must be the **VERY LAST THING** in your response.
-
-**EXAMPLES OF WHAT TO EXCLUDE**:
-- ❌ "black and white photo", "historical document", "historical photo"
-- ❌ "early evening", "night", "daytime", "morning", "20th century", "1950s", "weekend", "May 25th", "July 10"
-- ❌ "warzone", "war", "war photos", "wartime production"
-- ❌ "photograph", "image", "archive", "document", "photo", "documentation"
-- ❌ "historical", "vintage", "old", "antique", "ancient"
 """
 
 def _load_vlm_(model_id: str, device: str, verbose: bool=False):
@@ -745,14 +723,13 @@ def get_vlm_based_labels_debug(
 
 	return all_keywords
 
-def get_vlm_based_labels_opt_x1(
+def get_vlm_based_labels_opt(
 			model_id: str,
 			device: str,
 			batch_size: int,
 			max_generated_tks: int,
 			max_kws: int,
-			csv_file: str = None,
-			image_path: str = None,
+			csv_file: str,
 			do_dedup: bool = True,
 			max_retries: int = 2,
 			verbose: bool = False,
@@ -760,19 +737,17 @@ def get_vlm_based_labels_opt_x1(
 
 		if verbose:
 			print(f"\n{'='*100}")
-			print(f"Starting OPTIMIZED batch VLM processing")
-			print(f"Model: {model_id}")
-			print(f"Device: {device}")
+			print(f"[INIT] Starting OPTIMIZED batch VLM processing")
+			print(f"[INIT] Model: {model_id}")
+			print(f"[INIT] Batch size: {batch_size}")
+			print(f"[INIT] Device: {device}")
 			print(f"{'='*100}\n")
 		st_t = time.time()
-		if csv_file:
-			output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
-
-		if csv_file and image_path:
-			raise ValueError("Only one of csv_file or image_path must be provided")
+		
+		output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 
 		# Check for existing results
-		if csv_file and os.path.exists(output_csv):
+		if os.path.exists(output_csv):
 			df = pd.read_csv(
 				filepath_or_buffer=output_csv,
 				on_bad_lines='skip',
@@ -781,28 +756,21 @@ def get_vlm_based_labels_opt_x1(
 			)
 			if 'vlm_keywords' in df.columns:
 				if verbose: 
-					print(f"Found existing VLM keywords in {output_csv}")
+					print(f"[EXISTING] Found existing results in {output_csv}")
 				return df['vlm_keywords'].tolist()
 
 		# Load data
-		if csv_file:
-			df = pd.read_csv(
-				filepath_or_buffer=csv_file,
-				on_bad_lines='skip',
-				dtype=dtypes,
-				low_memory=False,
-			)
-			if 'img_path' not in df.columns:
-				raise ValueError("CSV file must have 'img_path' column")
-			image_paths = df['img_path'].tolist()
-			if verbose:
-				print(f"Loaded {len(image_paths)} images from {csv_file}")
-		elif image_path:
-			image_paths = [image_path]
-			if verbose:
-				print(f"Loaded 1 image from {image_path}")
-		else:
-			raise ValueError("Either csv_file or image_path must be provided")
+		df = pd.read_csv(
+			filepath_or_buffer=csv_file,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
+		if 'img_path' not in df.columns:
+			raise ValueError("CSV file must have 'img_path' column")
+		image_paths = df['img_path'].tolist()
+		if verbose:
+			print(f"[DATA] Loaded {len(image_paths)} image paths from CSV")
 
 		# Store original inputs for later reference
 		original_inputs = image_paths
@@ -1038,11 +1006,11 @@ def get_vlm_based_labels_opt_x1(
 			except Exception as e:
 				print(f"Failed to write Excel file: {e}")
 			if verbose:
-				print(f"Saved {len(results)} keywords to {output_csv}")
-				print(f"Done! dataframe: {df.shape} {list(df.columns)}")
+				print(f"[SAVE] Saved {len(results)} keywords to {output_csv}")
+				print(f"[SAVE] DataFrame: {df.shape}, columns: {list(df.columns)}")
 
 		if verbose:
-			print(f"Total time: {time.time() - st_t:.2f} sec")
+			print(f"[FINAL] Total time: {time.time() - st_t:.2f} sec")
 
 		return results
 
@@ -1574,7 +1542,6 @@ def main():
 			model_id=args.model_id,
 			device=args.device,
 			csv_file=args.csv_file,
-			image_path=args.image_path,
 			batch_size=args.batch_size,
 			max_kws=args.max_keywords,
 			max_generated_tks=args.max_generated_tks,
