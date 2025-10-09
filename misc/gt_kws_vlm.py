@@ -92,25 +92,6 @@ def get_prompt(
 		img_path: str,
 		max_kws: int,
 	):
-	# if "-1.5-" in model_id or "bakLlava" in model_id:
-	# 	txt = f"USER: <image>\n{VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)}\nASSISTANT:"
-	# else:
-	# 	messages = [
-	# 		{
-	# 			"role": "user",
-	# 			"content": [
-	# 				{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)},
-	# 				{"type": "image", "image": img_path},
-	# 			],
-	# 		},
-	# 	]	
-	# 	txt = processor.apply_chat_template(
-	# 		messages, 
-	# 		tokenize=False, 
-	# 		add_generation_prompt=True,
-	# 	)
-	# return txt
-	
 	messages = [
 		{
 			"role": "user",
