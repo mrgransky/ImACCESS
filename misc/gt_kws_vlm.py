@@ -728,7 +728,7 @@ def get_vlm_based_labels_debug(
 
 	return all_keywords
 
-def get_vlm_based_labels_opt_d(
+def get_vlm_based_labels_opt(
 			model_id: str,
 			device: str,
 			batch_size: int,
@@ -1031,7 +1031,7 @@ def get_vlm_based_labels_opt_d(
 
 		return results
 
-def get_vlm_based_labels_opt(
+def get_vlm_based_labels_opt_c(
 		model_id: str,
 		device: str,
 		batch_size: int,
