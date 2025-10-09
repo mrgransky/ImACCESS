@@ -59,6 +59,15 @@ Identify up to {k} most prominent, factual and distinct **KEYWORDS** that captur
 - Exclude numerical words, special characters, stopwords, or abbreviations.
 - Exclude meaningless, repeating or synonym-duplicate keywords.
 - The Python list must be the **VERY LAST THING** in your response.
+
+**EXAMPLES OF WHAT TO EXCLUDE**:
+- ❌ "black and white photo", "historical document", "documentation", "historical photo"
+- ❌ "early evening", "night", "daytime", "morning", "20th century", ""1950s", "weekend", "May 25th", "July 10"
+- ❌ "warzone", "war", "war photos", "wartime production" 
+- ❌ "Photograph", "Image", "Archive", "Document", "Photo"
+- ❌ "Historical", "Vintage", "Old", "Antique"
+- ❌ Generic terms like "Construction", "Industrial", "Production"
+- ❌ Hallucinated details not visible in the image
 """
 
 
