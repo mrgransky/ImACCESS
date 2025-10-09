@@ -87,7 +87,6 @@ def _load_vlm_(model_id: str, device: str, verbose: bool=False):
 	return processor, model
 
 def get_prompt(
-		model_id: str, 
 		processor: tfs.AutoProcessor, 
 		img_path: str,
 		max_kws: int,
@@ -691,7 +690,6 @@ def get_vlm_based_labels_debug(
 	for i, img_path in tqdm(enumerate(image_paths), total=len(image_paths), desc="Processing images"):
 		if verbose: print(f"Processing image {i+1}/{len(image_paths)}: {img_path}")
 		text = get_prompt(
-			model_id=model_id, 
 			processor=processor,
 			img_path=img_path,
 			max_kws=max_kws,
@@ -834,7 +832,6 @@ def get_vlm_based_labels_opt(
 				try:
 					img = Image.open(img_path).convert("RGB")
 					prompt = get_prompt(
-						model_id=model_id, 
 						processor=processor,
 						img_path=img_path,
 						max_kws=max_kws,
@@ -963,7 +960,6 @@ def get_vlm_based_labels_opt(
 			try:
 				# Use the original query_local_vlm function as fallback
 				prompt = get_prompt(
-					model_id=model_id, 
 					processor=processor,
 					img_path=img_path,
 					max_kws=max_kws,
@@ -1168,7 +1164,6 @@ def get_vlm_based_labels_opt_c(
 			try:
 				img = Image.open(img_path).convert("RGB")
 				prompt = get_prompt(
-					model_id=model_id, 
 					processor=processor,
 					img_path=img_path,
 					max_kws=max_kws,
@@ -1460,7 +1455,6 @@ def get_vlm_based_labels_opt_c(
 			img_path = unique_inputs[idx]
 			try:
 				prompt = get_prompt(
-					model_id=model_id, 
 					processor=processor,
 					img_path=img_path,
 					max_kws=max_kws,
