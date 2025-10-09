@@ -31,6 +31,21 @@ huggingface_hub.login(token=hf_tk)
 
 EXP_BACKOFF = 2  # seconds
 
+# VLM_INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
+# Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object, or event.
+
+# **CRITICAL RULES**:
+# - Return **ONLY** a clean, valid and parsable Python list with a maximum of {k} keywords.
+# - **ZERO HALLUCINATION POLICY**: Do NOT invent or assume details that cannot be confidently verified from the visual content. When in doubt, exclude rather than invent.
+# - **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the Python list.
+# - **STRICTLY EXCLUDE TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "night", "daytime", "morning", "20th century", ""1950s", "weekend", "May 25th", "July 10").
+# - **STRICTLY EXCLUDE VAGUE CONTEXT WORDS**: No generic historical or contextual terms (e.g., "warzone", "war", "historical", "vintage", "archive", "wartime", "industrial").
+# - **STRICTLY EXCLUDE GENERIC IMAGE DESCRIPTORS**: No terms describing the image type, format, or genre (e.g., "black and white photo", "historical document", "war photography", "photograph", "image", "photo", "archive", "documentation").
+# - Exclude numerical words, special characters, stopwords, or abbreviations.
+# - Exclude meaningless, repeating or synonym-duplicate keywords.
+# - The Python list must be the **VERY LAST THING** in your response.
+# """
+
 VLM_INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
 Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object, or event.
 
@@ -38,13 +53,14 @@ Identify up to {k} most prominent, factual and distinct **KEYWORDS** that captur
 - Return **ONLY** a clean, valid and parsable Python list with a maximum of {k} keywords.
 - **ZERO HALLUCINATION POLICY**: Do NOT invent or assume details that cannot be confidently verified from the visual content. When in doubt, exclude rather than invent.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the Python list.
-- **STRICTLY EXCLUDE TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "night", "daytime", "morning", "20th century", ""1950s", "weekend", "May 25th", "July 10").
-- **STRICTLY EXCLUDE VAGUE CONTEXT WORDS**: No generic historical or contextual terms (e.g., "warzone", "war", "historical", "vintage", "archive", "wartime", "industrial").
-- **STRICTLY EXCLUDE GENERIC IMAGE DESCRIPTORS**: No terms describing the image type, format, or genre (e.g., "black and white photo", "historical document", "war photography", "photograph", "image", "photo", "archive", "documentation").
+- **STRICTLY EXCLUDE TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases.
+- **STRICTLY EXCLUDE VAGUE CONTEXT WORDS**: No generic historical or contextual terms.
+- **STRICTLY EXCLUDE GENERIC IMAGE DESCRIPTORS**: No terms describing the image type, format, or genre.
 - Exclude numerical words, special characters, stopwords, or abbreviations.
 - Exclude meaningless, repeating or synonym-duplicate keywords.
 - The Python list must be the **VERY LAST THING** in your response.
 """
+
 
 def _load_vlm_(model_id: str, device: str, verbose: bool=False):
 	if verbose:
