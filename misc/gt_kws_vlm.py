@@ -62,12 +62,11 @@ Identify up to {k} most prominent, factual and distinct **KEYWORDS** that captur
 
 **EXAMPLES OF WHAT TO EXCLUDE**:
 - ❌ "black and white photo", "historical document", "historical photo"
-- ❌ "early evening", "night", "daytime", "morning", "20th century", ""1950s", "weekend", "May 25th", "July 10"
+- ❌ "early evening", "night", "daytime", "morning", "20th century", "1950s", "weekend", "May 25th", "July 10"
 - ❌ "warzone", "war", "war photos", "wartime production"
-- ❌ "photograph", "image", "archive", "document", "photo", "documentation",
-- ❌ "historical", "vintage", "old", "antique"
+- ❌ "photograph", "image", "archive", "document", "photo", "documentation"
+- ❌ "historical", "vintage", "old", "antique", "ancient"
 """
-
 
 def _load_vlm_(model_id: str, device: str, verbose: bool=False):
 	if verbose:
@@ -746,7 +745,7 @@ def get_vlm_based_labels_debug(
 
 	return all_keywords
 
-def get_vlm_based_labels_opt(
+def get_vlm_based_labels_opt_x1(
 			model_id: str,
 			device: str,
 			batch_size: int,
@@ -1047,7 +1046,7 @@ def get_vlm_based_labels_opt(
 
 		return results
 
-def get_vlm_based_labels_opt_c(
+def get_vlm_based_labels_opt_x2(
 		model_id: str,
 		device: str,
 		batch_size: int,
