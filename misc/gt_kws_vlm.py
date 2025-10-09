@@ -66,7 +66,6 @@ Identify up to {k} most prominent, factual and distinct **KEYWORDS** that captur
 - ❌ "warzone", "war", "war photos", "wartime production"
 - ❌ "photograph", "image", "archive", "document", "photo", "documentation",
 - ❌ "historical", "vintage", "old", "antique"
-- ❌ Hallucinated details not visible in the image
 """
 
 
