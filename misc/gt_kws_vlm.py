@@ -728,7 +728,7 @@ def get_vlm_based_labels_debug(
 
 	return all_keywords
 
-def get_vlm_based_labels_opt(
+def get_vlm_based_labels_opt_d(
 			model_id: str,
 			device: str,
 			batch_size: int,
@@ -741,6 +741,13 @@ def get_vlm_based_labels_opt(
 			verbose: bool = False,
 		) -> List[Optional[List[str]]]:
 
+		if verbose:
+			print(f"\n{'='*100}")
+			print(f"Starting OPTIMIZED batch VLM processing")
+			print(f"Model: {model_id}")
+			print(f"Device: {device}")
+			print(f"{'='*100}\n")
+		st_t = time.time()
 		if csv_file:
 			output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 
@@ -1019,9 +1026,12 @@ def get_vlm_based_labels_opt(
 				print(f"Saved {len(results)} keywords to {output_csv}")
 				print(f"Done! dataframe: {df.shape} {list(df.columns)}")
 
+		if verbose:
+			print(f"Total time: {time.time() - st_t:.2f} sec")
+
 		return results
 
-def get_vlm_based_labels_opt_(
+def get_vlm_based_labels_opt(
 		model_id: str,
 		device: str,
 		batch_size: int,
@@ -1041,7 +1051,6 @@ def get_vlm_based_labels_opt_(
 	- Retry logic with exponential backoff
 	- Fallback to single-image processing for failed batches
 	"""
-		
 	if verbose:
 		print(f"\n{'='*100}")
 		print(f"[INIT] Starting OPTIMIZED batch VLM processing")
@@ -1050,6 +1059,7 @@ def get_vlm_based_labels_opt_(
 		print(f"[INIT] Device: {device}")
 		print(f"{'='*100}\n")
 
+	st_t = time.time()
 	if csv_file:
 		output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 
@@ -1511,6 +1521,9 @@ def get_vlm_based_labels_opt_(
 		if verbose:
 			print(f"[SAVE] Saved to {output_csv}")
 			print(f"[SAVE] DataFrame: {df.shape}, columns: {list(df.columns)}")
+
+	if verbose:
+		print(f"[FINAL] Total time: {time.time() - st_t:.2f} sec")
 
 	return results
 

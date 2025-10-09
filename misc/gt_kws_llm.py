@@ -54,7 +54,7 @@ Given the description below, extract **between 0 and {k}** concrete, factual, pr
 
 {description}
 
-**Rules**:
+**CRITICAL RULES**:
 - Return **ONLY** a clean, valid and parsable Python list.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the Python list.
 - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "May 25th", "July 10").
@@ -1148,7 +1148,16 @@ def get_llm_based_labels_opt(
 		do_dedup: bool = True,
 		max_retries: int = 2,
 		verbose: bool = False,
-	) -> List[Optional[List[str]]]:	
+	) -> List[Optional[List[str]]]:
+
+	if verbose:
+		print(f"\n{'='*100}")
+		print(f"[INIT] Starting OPTIMIZED batch LLM processing")
+		print(f"[INIT] Model: {model_id}")
+		print(f"[INIT] Batch size: {batch_size}")
+		print(f"[INIT] Device: {device}")
+		print(f"{'='*100}\n")
+	st_t = time.time()
 
 	if csv_file:
 		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
@@ -1401,6 +1410,9 @@ def get_llm_based_labels_opt(
 		if verbose:
 			print(f"Saved {len(results)} keywords to {output_csv}")
 			print(f"Done! dataframe: {df.shape} {list(df.columns)}")
+
+	if verbose:
+		print(f"Total time: {time.time() - st_t:.2f} sec")
 
 	return results
 
