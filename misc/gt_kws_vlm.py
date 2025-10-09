@@ -29,6 +29,8 @@ from utils import *
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
 
+EXP_BACKOFF = 2  # seconds
+
 VLM_INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
 Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object, or event.
 
@@ -63,11 +65,11 @@ def _load_vlm_(model_id: str, device: str, verbose: bool=False):
 		cache_dir=cache_directory[USER]
 	)
 
-	tokenizer = getattr(processor, "tokenizer", None) or getattr(processor, "text_tokenizer", None)
-	if tokenizer is not None:
-		tokenizer.padding_side = 'left'
-		if verbose:
-			print(f"[INFO] Set tokenizer padding_side to 'left'")
+	# tokenizer = getattr(processor, "tokenizer", None) or getattr(processor, "text_tokenizer", None)
+	# if tokenizer is not None:
+	# 	tokenizer.padding_side = 'left'
+	# 	if verbose:
+	# 		print(f"[INFO] Set tokenizer padding_side to 'left'")
 
 	model = model_cls.from_pretrained(
 		model_id,
@@ -860,10 +862,7 @@ def get_vlm_based_labels_opt(
 				img_path = unique_inputs[idx]
 				prompt = unique_prompts[idx]
 				img = unique_images[idx]
-				
-				if verbose:
-					print(f"📦 Processing image {idx + 1}/{len(valid_indices)}: {os.path.basename(img_path)}")
-				
+								
 				success = False
 				last_error = None
 				
@@ -1021,6 +1020,499 @@ def get_vlm_based_labels_opt(
 				print(f"Done! dataframe: {df.shape} {list(df.columns)}")
 
 		return results
+
+def get_vlm_based_labels_opt_(
+		model_id: str,
+		device: str,
+		batch_size: int,
+		max_generated_tks: int,
+		max_kws: int,
+		csv_file: str = None,
+		image_path: str = None,
+		do_dedup: bool = True,
+		max_retries: int = 2,
+		verbose: bool = False,
+	) -> List[Optional[List[str]]]:
+	"""
+	TRULY OPTIMIZED VLM batch processing with:
+	- Real batch processing (processes multiple images simultaneously)
+	- Smart handling of variable-length outputs in batches
+	- Deduplication to avoid redundant processing
+	- Retry logic with exponential backoff
+	- Fallback to single-image processing for failed batches
+	"""
+		
+	if verbose:
+		print(f"\n{'='*100}")
+		print(f"[INIT] Starting OPTIMIZED batch VLM processing")
+		print(f"[INIT] Model: {model_id}")
+		print(f"[INIT] Batch size: {batch_size}")
+		print(f"[INIT] Device: {device}")
+		print(f"{'='*100}\n")
+
+	if csv_file:
+		output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
+
+	if csv_file and image_path:
+		raise ValueError("Only one of csv_file or image_path must be provided")
+
+	# Check for existing results
+	if csv_file and os.path.exists(output_csv):
+		df = pd.read_csv(
+			filepath_or_buffer=output_csv,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
+		if 'vlm_keywords' in df.columns:
+			if verbose: 
+				print(f"[EXISTING] Found existing results in {output_csv}")
+			return df['vlm_keywords'].tolist()
+
+	# Load data
+	if csv_file:
+		df = pd.read_csv(
+			filepath_or_buffer=csv_file,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
+		if 'img_path' not in df.columns:
+			raise ValueError("CSV file must have 'img_path' column")
+		image_paths = df['img_path'].tolist()
+		if verbose:
+			print(f"[DATA] Loaded {len(image_paths)} image paths from CSV")
+	elif image_path:
+		image_paths = [image_path]
+		if verbose:
+			print(f"[DATA] Single image mode: {image_path}")
+	else:
+		raise ValueError("Either csv_file or image_path must be provided")
+
+	original_inputs = image_paths
+	if len(original_inputs) == 0:
+		return None
+
+	# Load model
+	if verbose:
+		print(f"[MODEL] Loading VLM model and processor...")
+	processor, model = _load_vlm_(model_id, device, verbose=verbose)
+	
+	# Set padding for batch processing
+	tokenizer = getattr(processor, "tokenizer", None) or getattr(processor, "text_tokenizer", None)
+	if tokenizer is not None:
+		tokenizer.padding_side = 'left'
+		if verbose:
+			print(f"[MODEL] Set padding_side='left' for decoder-only model")
+	
+	# CRITICAL: Qwen2-VL has issues with batch processing due to left-padding
+	# Force batch_size=1 for Qwen models to ensure quality
+	if "Qwen" in model_id or "qwen" in model_id.lower():
+		if batch_size > 1:
+			if verbose:
+				print(f"[MODEL] ⚠️ Qwen models have known issues with batch processing")
+				print(f"[MODEL] Forcing batch_size=1 for quality (original: {batch_size})")
+			batch_size = 1
+
+	if verbose:
+		valid_count = sum(1 for x in original_inputs if x is not None and os.path.exists(str(x)))
+		print(f"[VALIDATION] {valid_count}/{len(original_inputs)} valid paths")
+
+	# 🔧 DEDUPLICATION
+	if do_dedup:
+		unique_map: Dict[str, int] = {}
+		unique_inputs = []
+		original_to_unique_idx = []
+		
+		for img_path in original_inputs:
+			if img_path is None or not os.path.exists(str(img_path)):
+				key = "__NULL__"
+			else:
+				key = str(img_path)
+			
+			if key in unique_map:
+				original_to_unique_idx.append(unique_map[key])
+			else:
+				idx = len(unique_inputs)
+				unique_map[key] = idx
+				unique_inputs.append(None if key == "__NULL__" else key)
+				original_to_unique_idx.append(idx)
+		
+		if verbose:
+			dedup_saved = len(original_inputs) - len(unique_inputs)
+			print(f"[DEDUP] {len(original_inputs)} → {len(unique_inputs)} unique ({dedup_saved} duplicates)")
+	else:
+		unique_inputs = [x if x is not None and os.path.exists(str(x)) else None for x in original_inputs]
+		original_to_unique_idx = list(range(len(unique_inputs)))
+
+	# Preload all images and prompts
+	if verbose:
+		print(f"[PRELOAD] Loading images and generating prompts...")
+	
+	unique_prompts = []
+	unique_images = []
+	load_failures = 0
+	
+	for img_path in unique_inputs:
+		if img_path is None:
+			unique_prompts.append(None)
+			unique_images.append(None)
+		else:
+			try:
+				img = Image.open(img_path).convert("RGB")
+				prompt = get_prompt(
+					model_id=model_id, 
+					processor=processor,
+					img_path=img_path,
+					max_kws=max_kws,
+				)
+				unique_prompts.append(prompt)
+				unique_images.append(img)
+			except Exception as e:
+				if verbose:
+					print(f"[PRELOAD] Failed to load {img_path}: {e}")
+				unique_prompts.append(None)
+				unique_images.append(None)
+				load_failures += 1
+	
+	if verbose:
+		valid_loaded = sum(1 for p, img in zip(unique_prompts, unique_images) if p is not None and img is not None)
+		print(f"[PRELOAD] Loaded {valid_loaded}/{len(unique_inputs)} images ({load_failures} failures)")
+
+	# Results storage
+	unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
+	
+	# 🔄 TRUE BATCH PROCESSING
+	valid_indices = [
+		i for i, (p, img) in enumerate(zip(unique_prompts, unique_images)) 
+		if p is not None and img is not None
+	]
+	
+	if valid_indices:
+		num_batches = (len(valid_indices) + batch_size - 1) // batch_size
+		if verbose:
+			print(f"\n[BATCH] Processing {len(valid_indices)} images in {num_batches} batches of {batch_size}")
+		
+		# Group into batches
+		batches = []
+		for i in range(0, len(valid_indices), batch_size):
+			batch_indices = valid_indices[i:i + batch_size]
+			batch_prompts = [unique_prompts[idx] for idx in batch_indices]
+			batch_images = [unique_images[idx] for idx in batch_indices]
+			batches.append((batch_indices, batch_prompts, batch_images))
+		
+		successful_batches = 0
+		failed_batches = 0
+		
+		for batch_num, (batch_indices, batch_prompts, batch_images) in enumerate(tqdm(batches, desc="Processing batches", disable=not verbose)):
+			if verbose:
+				print(f"\n[BATCH {batch_num+1}/{num_batches}] Processing {len(batch_indices)} images: {batch_indices}")
+			
+			batch_success = False
+			last_error = None
+			current_batch_size = len(batch_indices)
+			
+			# Try batch processing with adaptive size reduction on OOM
+			for attempt in range(max_retries + 1):
+				try:
+					if attempt > 0:
+						# On OOM retry, try reducing batch size
+						if last_error and "out of memory" in str(last_error).lower():
+							new_size = max(1, current_batch_size // 2)
+							if new_size < current_batch_size and new_size > 0:
+								if verbose:
+									print(f"[BATCH {batch_num+1}/{num_batches}] OOM detected, reducing batch size {current_batch_size} → {new_size}")
+								# Split this batch into smaller sub-batches
+								sub_batches = []
+								for j in range(0, len(batch_indices), new_size):
+									sub_indices = batch_indices[j:j+new_size]
+									sub_prompts = [unique_prompts[idx] for idx in sub_indices]
+									sub_images = [unique_images[idx] for idx in sub_indices]
+									sub_batches.append((sub_indices, sub_prompts, sub_images))
+								
+								# Process sub-batches
+								sub_success_count = 0
+								for sub_idx, (sub_indices, sub_prompts, sub_images) in enumerate(sub_batches):
+									try:
+										if verbose:
+											print(f"[BATCH {batch_num+1}/{num_batches}] Sub-batch {sub_idx+1}/{len(sub_batches)}: {len(sub_indices)} images")
+										
+										sub_inputs = processor(
+											images=sub_images,
+											text=sub_prompts,
+											padding=True,
+											return_tensors="pt"
+										).to(device, non_blocking=True)
+										
+										with torch.inference_mode():
+											sub_outputs = model.generate(
+												**sub_inputs,
+												max_new_tokens=max_generated_tks,
+												use_cache=True,
+												do_sample=False,
+												temperature=None,
+												top_k=None,
+												top_p=None,
+												pad_token_id=pad_token_id,
+												eos_token_id=eos_token_id,
+												logits_processor=logits_processors,
+											)
+										
+										# Decode sub-batch
+										sub_input_ids = sub_inputs.get('input_ids')
+										for i in range(len(sub_indices)):
+											if sub_input_ids.dim() > 1:
+												input_len = sub_input_ids[i].shape[0]
+											else:
+												input_len = sub_input_ids.shape[0]
+											
+											if sub_outputs[i].shape[0] > input_len:
+												generated_ids = sub_outputs[i][input_len:]
+												response = processor.decode(generated_ids, skip_special_tokens=True)
+											else:
+												response = processor.decode(sub_outputs[i], skip_special_tokens=True)
+											
+											idx = sub_indices[i]
+											try:
+												parsed = get_vlm_response(model_id=model_id, raw_response=response, verbose=False)
+												unique_results[idx] = parsed
+												if parsed is not None:
+													sub_success_count += 1
+											except Exception as e:
+												if verbose:
+													print(f"[BATCH {batch_num+1}/{num_batches}] Parse error: {e}")
+												unique_results[idx] = None
+										
+										# Cleanup sub-batch
+										del sub_inputs, sub_outputs
+										if torch.cuda.is_available():
+											torch.cuda.empty_cache()
+									
+									except Exception as sub_e:
+										if verbose:
+											print(f"[BATCH {batch_num+1}/{num_batches}] Sub-batch {sub_idx+1} failed: {sub_e}")
+										# Mark sub-batch as failed (will retry individually later)
+										for idx in sub_indices:
+											unique_results[idx] = None
+								
+								if sub_success_count > 0:
+									if verbose:
+										print(f"[BATCH {batch_num+1}/{num_batches}] ✓ Sub-batch processing: {sub_success_count}/{len(batch_indices)} successful")
+									successful_batches += 1
+									batch_success = True
+									break
+								else:
+									# Sub-batches failed, will fall through to regular retry
+									if verbose:
+										print(f"[BATCH {batch_num+1}/{num_batches}] Sub-batches all failed")
+						
+						if verbose and not batch_success:
+							print(f"[BATCH {batch_num+1}/{num_batches}] Retry {attempt+1}/{max_retries+1}")
+					
+					if batch_success:
+						break  # Already succeeded via sub-batching
+					
+					# Process batch - REAL BATCH PROCESSING HERE
+					batch_inputs = processor(
+						images=batch_images,
+						text=batch_prompts,
+						padding=True,
+						return_tensors="pt"
+					).to(device, non_blocking=True)
+					
+					if verbose:
+						input_shapes = {k: v.shape for k, v in batch_inputs.items() if isinstance(v, torch.Tensor)}
+						print(f"[BATCH {batch_num+1}/{num_batches}] Input shapes: {input_shapes}")
+					
+					# Generation config
+					gen_cfg = getattr(model, "generation_config", None)
+					pad_token_id = getattr(gen_cfg, "pad_token_id", None) if gen_cfg else None
+					eos_token_id = getattr(gen_cfg, "eos_token_id", None) if gen_cfg else None
+					
+					if tokenizer:
+						if tokenizer.pad_token_id is None and tokenizer.eos_token_id is not None:
+							tokenizer.pad_token_id = tokenizer.eos_token_id
+						pad_token_id = tokenizer.pad_token_id
+						if eos_token_id is None:
+							eos_token_id = tokenizer.eos_token_id
+					
+					logits_processors = tfs.LogitsProcessorList([SafeLogitsProcessor()])
+					
+					# Generate - THIS IS TRUE BATCH GENERATION
+					with torch.inference_mode():
+						outputs = model.generate(
+							**batch_inputs,
+							max_new_tokens=max_generated_tks,
+							use_cache=True,
+							do_sample=False,
+							temperature=None,
+							top_k=None,
+							top_p=None,
+							pad_token_id=pad_token_id,
+							eos_token_id=eos_token_id,
+							logits_processor=logits_processors,
+						)
+					
+					if verbose:
+						print(f"[BATCH {batch_num+1}/{num_batches}] Generated outputs: {outputs.shape}")
+					
+					# Decode each item in batch
+					input_ids = batch_inputs.get('input_ids')
+					batch_responses = []
+					
+					for i in range(len(batch_indices)):
+						# Get input length for this item
+						if input_ids.dim() > 1:
+							input_len = input_ids[i].shape[0]
+						else:
+							input_len = input_ids.shape[0]
+						
+						# Decode ONLY the generated tokens (critical for correct output)
+						if outputs[i].shape[0] > input_len:
+							generated_ids = outputs[i][input_len:]
+							response = processor.decode(generated_ids, skip_special_tokens=True)
+						else:
+							response = processor.decode(outputs[i], skip_special_tokens=True)
+						
+						batch_responses.append(response)
+						
+						if verbose and i == 0:  # Show first item as sample
+							print(f"[BATCH {batch_num+1}/{num_batches}] Sample decode: input_len={input_len}, output_len={outputs[i].shape[0]}")
+							print(f"[BATCH {batch_num+1}/{num_batches}] Sample response: {response[:150]}...")
+					
+					# Parse all responses
+					parse_success = 0
+					for i, response in enumerate(batch_responses):
+						idx = batch_indices[i]
+						try:
+							parsed = get_vlm_response(
+								model_id=model_id,
+								raw_response=response,
+								verbose=False,
+							)
+							unique_results[idx] = parsed
+							if parsed is not None:
+								parse_success += 1
+						except Exception as e:
+							if verbose:
+								print(f"[BATCH {batch_num+1}/{num_batches}] Parse error for item {i}: {e}")
+							unique_results[idx] = None
+					
+					if verbose:
+						print(f"[BATCH {batch_num+1}/{num_batches}] ✓ Success: {parse_success}/{len(batch_indices)} parsed")
+					
+					successful_batches += 1
+					batch_success = True
+					break  # Success, exit retry loop
+					
+				except Exception as e:
+					last_error = e
+					if verbose:
+						print(f"[BATCH {batch_num+1}/{num_batches}] ✗ Attempt {attempt+1} failed: {type(e).__name__}: {e}")
+					
+					if attempt < max_retries:
+						sleep_time = EXP_BACKOFF ** attempt
+						if verbose:
+							print(f"[BATCH {batch_num+1}/{num_batches}] Waiting {sleep_time}s...")
+						time.sleep(sleep_time)
+						if torch.cuda.is_available():
+							torch.cuda.empty_cache()
+			
+			# If batch failed after all retries, mark for individual retry
+			if not batch_success:
+				failed_batches += 1
+				if verbose:
+					print(f"[BATCH {batch_num+1}/{num_batches}] 💥 Failed after {max_retries+1} attempts")
+				for idx in batch_indices:
+					unique_results[idx] = None
+			
+			# Cleanup
+			if 'batch_inputs' in locals():
+				del batch_inputs
+			if 'outputs' in locals():
+				del outputs
+			if 'batch_responses' in locals():
+				del batch_responses
+			if torch.cuda.is_available():
+				torch.cuda.empty_cache()
+		
+		if verbose:
+			print(f"\n[BATCH] Completed: {successful_batches}/{num_batches} batches successful, {failed_batches} failed")
+	
+	# 🔄 FALLBACK: Individual retry for failed items
+	failed_indices = [
+		i for i, result in enumerate(unique_results) 
+		if result is None and unique_inputs[i] is not None
+	]
+	
+	if failed_indices:
+		if verbose:
+			print(f"\n[FALLBACK] Retrying {len(failed_indices)} failed items individually...")
+		
+		for idx in tqdm(failed_indices, desc="Individual retries", disable=not verbose):
+			img_path = unique_inputs[idx]
+			try:
+				prompt = get_prompt(
+					model_id=model_id, 
+					processor=processor,
+					img_path=img_path,
+					max_kws=max_kws,
+				)
+				
+				result = query_local_vlm(
+					model=model,
+					processor=processor,
+					img_path=img_path,
+					text=prompt,
+					device=device,
+					max_generated_tks=max_generated_tks,
+					verbose=False,
+				)
+				unique_results[idx] = result
+				
+			except Exception as e:
+				if verbose:
+					print(f"[FALLBACK] Item {idx} failed: {e}")
+				unique_results[idx] = None
+		
+		if verbose:
+			fallback_success = sum(1 for i in failed_indices if unique_results[i] is not None)
+			print(f"[FALLBACK] Recovered {fallback_success}/{len(failed_indices)} items")
+	
+	# Map back to original order
+	results = [unique_results[original_to_unique_idx[i]] for i in range(len(original_inputs))]
+	
+	# Statistics
+	if verbose:
+		n_ok = sum(1 for r in results if r is not None)
+		n_null = sum(1 for i, inp in enumerate(original_inputs) if inp is None or not os.path.exists(str(inp)))
+		n_failed = len(results) - n_ok - n_null
+		success_rate = (n_ok / (len(results) - n_null)) * 100 if (len(results) - n_null) > 0 else 0
+		
+		print(f"\n{'='*100}")
+		print(f"[FINAL] Results: {n_ok}/{len(results)-n_null} successful ({success_rate:.1f}%)")
+		print(f"[FINAL] Failed: {n_failed}, Null: {n_null}")
+		print(f"{'='*100}\n")
+	
+	# Cleanup
+	del model, processor
+	if torch.cuda.is_available():
+		torch.cuda.empty_cache()
+
+	# Save
+	if csv_file:
+		df['vlm_keywords'] = results
+		df.to_csv(output_csv, index=False)
+		try:
+			df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+		except Exception as e:
+			if verbose:
+				print(f"[SAVE] Excel save failed: {e}")
+		if verbose:
+			print(f"[SAVE] Saved to {output_csv}")
+			print(f"[SAVE] DataFrame: {df.shape}, columns: {list(df.columns)}")
+
+	return results
 
 @measure_execution_time
 def main():
