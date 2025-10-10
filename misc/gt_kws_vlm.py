@@ -132,7 +132,7 @@ def _load_vlm_(model_id: str, device: str, verbose: bool=False):
 
 	model = model_cls.from_pretrained(
 		model_id,
-		torch_dtype=dtype,
+		dtype=dtype,
 		attn_implementation=attn_implementation,
 		low_cpu_mem_usage=True,
 		trust_remote_code=True,

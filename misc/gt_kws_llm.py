@@ -91,7 +91,7 @@ def _load_llm_(model_id: str, device: str, verbose: bool=False):
 	model = model_cls.from_pretrained(
 		model_id,
 		device_map=device,
-		torch_dtype=torch.float16,
+		dtype=torch.float16,
 		trust_remote_code=True,
 		cache_dir=cache_directory[USER],
 	)
