@@ -1584,6 +1584,10 @@ def main():
 	args.device = torch.device(args.device)
 	print(args)
 
+	print(f"GPU: {torch.cuda.get_device_name(0)}")
+	print(f"Compute Capability: {torch.cuda.get_device_capability(0)}")
+	print(f"CUDA Version: {torch.version.cuda}")
+
 	if args.debug or args.image_path:
 		keywords = get_vlm_based_labels_debug(
 			model_id=args.model_id,

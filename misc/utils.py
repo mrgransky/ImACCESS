@@ -8,8 +8,6 @@ import time
 import torch
 import pickle
 import multiprocessing
-from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
-from sklearn.cluster import KMeans
 from collections import Counter, defaultdict
 # import faiss
 
