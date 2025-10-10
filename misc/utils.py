@@ -19,7 +19,6 @@ import nltk
 from tqdm import tqdm
 import warnings
 import urllib.request
-import fasttext
 import argparse
 import umap
 from sklearn.decomposition import PCA
@@ -44,13 +43,6 @@ import io
 import pprint
 import unicodedata
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# from kneed import KneeLocator
-# from keybert import KeyBERT
-# from rake_nltk import Rake
-# from bertopic import BERTopic
-# from bertopic.vectorizers import ClassTfidfTransformer
-# from bertopic.representation import KeyBERTInspired, MaximalMarginalRelevance, PartOfSpeech
 
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
