@@ -25,7 +25,7 @@ model = AutoModelForCausalLM.from_pretrained(
 		model_name,
 		quantization_config=bnb_config,
 		device_map="auto",
-		attn_implementation="flash_attention_2", # Use Flash Attention for efficiency
+		# attn_implementation="flash_attention_2", # Use Flash Attention for efficiency
 		trust_remote_code=True,
 		cache_dir=cache_directory[USER],
 )
