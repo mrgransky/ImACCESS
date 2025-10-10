@@ -55,12 +55,12 @@ Given the description below, extract **between 0 and {k}** concrete, factual, pr
 {description}
 
 **CRITICAL RULES**:
-- Return **ONLY** a clean, valid and parsable Python list.
+- Return **ONLY** a clean, valid and parsable **Python LIST**.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the Python list.
 - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "May 25th", "July 10").
 - Exclude numerical words, special characters, stopwords, or abbreviations.
 - Exclude meaningless, repeating or synonym-duplicate keywords.
-- The Python list must be the **VERY LAST THING** in your response.
+- The **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]
 """
 
