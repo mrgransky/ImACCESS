@@ -62,6 +62,63 @@ def _load_vlm_(model_id: str, device: str, verbose: bool=False):
 		if hasattr(tfs, cls_name):
 			model_cls = getattr(tfs, cls_name)
 
+	# Determine optimal dtype based on model architecture and device
+	def get_optimal_dtype(model_id: str, config, device: str) -> torch.dtype:
+		"""Select optimal dtype based on model architecture and hardware."""
+		
+		# Check if device supports bfloat16
+		supports_bf16 = (
+			torch.cuda.is_available() and 
+			torch.cuda.is_bf16_supported() and 
+			device != 'cpu'
+		)
+		
+		# Model-specific dtype preferences
+		if "Qwen" in model_id:
+			return torch.bfloat16 if supports_bf16 else torch.float16
+		elif "llava" in model_id.lower():
+			return torch.float16
+		elif "falcon" in model_id.lower():
+			return torch.bfloat16 if supports_bf16 else torch.float16
+		else:
+			return torch.bfloat16 if supports_bf16 else torch.float16
+
+	# Determine optimal attention implementation
+	def get_optimal_attn_implementation(model_id: str, device: str) -> str:
+		"""Select optimal attention implementation based on model and hardware."""
+		
+		# Check if flash_attention_2 is available
+		try:
+			import flash_attn
+			flash_available = True
+		except ImportError:
+			flash_available = False
+		
+		# Only use flash attention on CUDA devices
+		if not torch.cuda.is_available() or device == 'cpu':
+			return "eager"
+		
+		# Model-specific attention preferences
+		if "Qwen" in model_id and flash_available:
+			# Qwen strongly recommends flash_attention_2
+			return "flash_attention_2"
+		elif "llava" in model_id.lower() and flash_available:
+			# LLaVA can benefit from flash attention
+			return "flash_attention_2"
+		elif flash_available:
+			# Default to flash attention if available
+			return "flash_attention_2"
+		else:
+			# Fallback to eager attention
+			return "eager"
+
+	dtype = get_optimal_dtype(model_id, config, device)
+	attn_implementation = get_optimal_attn_implementation(model_id, device)
+	
+	if verbose:
+		print(f"[INFO] Selected dtype: {dtype}")
+		print(f"[INFO] Selected attention: {attn_implementation}")
+
 	processor = tfs.AutoProcessor.from_pretrained(
 		model_id, 
 		use_fast=True, 
@@ -69,15 +126,10 @@ def _load_vlm_(model_id: str, device: str, verbose: bool=False):
 		cache_dir=cache_directory[USER]
 	)
 
-	# tokenizer = getattr(processor, "tokenizer", None) or getattr(processor, "text_tokenizer", None)
-	# if tokenizer is not None:
-	# 	tokenizer.padding_side = 'left'
-	# 	if verbose:
-	# 		print(f"[INFO] Set tokenizer padding_side to 'left'")
-
 	model = model_cls.from_pretrained(
 		model_id,
-		torch_dtype=torch.float16,
+		torch_dtype=dtype,
+		attn_implementation=attn_implementation,
 		low_cpu_mem_usage=True,
 		trust_remote_code=True,
 		cache_dir=cache_directory[USER]
@@ -85,7 +137,7 @@ def _load_vlm_(model_id: str, device: str, verbose: bool=False):
 
 	if verbose:
 		print(f"[INFO] Processor: {processor.__class__.__name__} {type(processor)}")
-		print(f"[INFO] Model: {model.__class__.__name__} {type(model)}")
+		print(f"[INFO] Model: {model.__class__.__name__} {type(model)} dtype: {model.dtype}")
 
 	model.to(device)
 	return processor, model
