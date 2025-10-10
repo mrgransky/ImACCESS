@@ -1586,9 +1586,14 @@ def main():
 	args.device = torch.device(args.device)
 	print(args)
 
-	print(f"GPU: {torch.cuda.get_device_name(0)}")
-	print(f"Compute Capability: {torch.cuda.get_device_capability(0)}")
-	print(f"CUDA Version: {torch.version.cuda}")
+	if verbose and torch.cuda.is_available():
+		gpu_name = torch.cuda.get_device_name(args.device)
+		total_mem = torch.cuda.get_device_properties(args.device).total_memory / (1024**3)  # Convert to GB
+		print(f"Available GPU(s) = {torch.cuda.device_count()}")
+		print(f"GPU: {torch.cuda.get_device_name(args.device)}")
+		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+		print(f"Compute Capability: {torch.cuda.get_device_capability(0)}")
+		print(f"CUDA Version: {torch.version.cuda}")
 
 	if args.debug or args.image_path:
 		keywords = get_vlm_based_labels_debug(
