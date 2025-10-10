@@ -373,50 +373,6 @@ def load_categories(file_path: str):
 		print(f"Missing key in JSON: {e}")
 		return [], [], []  # Return empty lists instead of None	
 
-def is_english(
-		text: str, 
-		ft_model: fasttext.FastText._FastText,
-		verbose: bool=False,
-		min_length: int=5,
-	) -> bool:
-	if verbose:
-		print(f"text({len(text)}): {text}")
-	# Check for empty text
-	if not text or len(text) < min_length:
-		if verbose:
-			print(f"text({len(text)}) is too short")
-		return False
-	# Sanitize input
-	text = text.lower().replace("\n", " ").replace("\r", " ").strip()
-	# Remove patterns like C.d.Lupo, S.d.Roma, etc.
-	text = re.sub(r'\b[A-Z]\.d\.[A-Z][a-z]+\b', '', text)
-	# Remove repeated punctuation and excess whitespace
-	text = re.sub(r'\s+', ' ', text)
-	text = text.strip(" .\n\r\t")
-
-	# Short texts: rely on ASCII + stopword heuristics
-	if len(text) < 20:
-		ascii_chars = sum(c.isalpha() and ord(c) < 128 for c in text)
-		total_chars = sum(c.isalpha() for c in text)
-		if total_chars == 0 or ascii_chars / total_chars < 0.9:
-			if verbose:
-				print(f"text({len(text)}) is not English")
-			return False
-		common_words = {'the', 'and', 'of', 'to', 'in', 'is', 'was', 'for', 'with', 'on'}
-		words = text.split()
-		return any(word in common_words for word in words)
-	
-	# Long texts: fasttext is preferred
-	try:
-		prediction = ft_model.predict(text)[0][0]
-		if verbose:
-			print(f"Fasttext prediction: {prediction}")
-		return prediction == '__label__en'
-	except ValueError as e:
-		if verbose:
-			print(f"FastText error: {e}")
-		return False
-
 def print_args_table(args, parser):
 	args_dict = vars(args)
 	table_data = []
