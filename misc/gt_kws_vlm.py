@@ -92,6 +92,8 @@ def _load_vlm_(model_id: str, device: str, verbose: bool=False):
 			import flash_attn
 			flash_available = True
 		except ImportError:
+			if verbose:
+				print("[WARN] flash_attn not available. Falling back to eager attention.")
 			flash_available = False
 		
 		# Only use flash attention on CUDA devices
