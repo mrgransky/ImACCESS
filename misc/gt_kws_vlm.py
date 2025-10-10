@@ -1,5 +1,9 @@
 from utils import *
 
+# llama:
+# model_id = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
+
+
 # LLAVA 1.5x collection:
 # model_id = "llava-hf/llava-1.5-7b-hf"
 # model_id = "llava-hf/llava-1.5-13b-hf"
@@ -1526,7 +1530,7 @@ def main():
 	args.device = torch.device(args.device)
 	print(args)
 
-	if args.debug:
+	if args.debug or args.image_path:
 		keywords = get_vlm_based_labels_debug(
 			model_id=args.model_id,
 			device=args.device,
