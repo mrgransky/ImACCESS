@@ -86,19 +86,21 @@ def _load_vlm_(model_id: str, device: str, verbose: bool=False):
 	# Determine optimal attention implementation
 	def get_optimal_attn_implementation(model_id: str, device: str) -> str:
 		"""Select optimal attention implementation based on model and hardware."""
-		
-		# Check if flash_attention_2 is available
-		try:
-			import flash_attn
-			flash_available = True
-		except ImportError:
-			if verbose:
-				print("[WARN] flash_attn not available. Falling back to eager attention.")
-			flash_available = False
-		
 		# Only use flash attention on CUDA devices
 		if not torch.cuda.is_available() or device == 'cpu':
 			return "eager"
+
+		# Check if flash_attention_2 is available
+		compute_capability = torch.cuda.get_device_capability(0)[0]
+		flash_available = False
+		try:
+			import flash_attn
+			flash_available = compute_capability >= 8
+			if verbose and not flash_available:
+				print(f"[WARN] flash_attn available but compute capability(={compute_capability}) < 8. Falling back to eager attention.")
+		except ImportError:
+			if verbose:
+				print("[WARN] flash_attn not available. Falling back to eager attention.")
 		
 		# Model-specific attention preferences
 		if "Qwen" in model_id and flash_available:
