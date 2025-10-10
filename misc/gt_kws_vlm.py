@@ -35,15 +35,15 @@ VLM_INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializ
 Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object, or event.
 
 **CRITICAL RULES**:
-- Return **ONLY** a clean, valid and parsable Python list with a maximum of {k} keywords.
-- **ZERO HALLUCINATION POLICY**: Do NOT invent or assume details that cannot be confidently verified from the visual content. When in doubt, exclude rather than invent.
+- Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
+- **ZERO HALLUCINATION POLICY**: You should not invent or infer specifics that lack clear verification from the visual content. When in doubt, omit rather than fabricate.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the Python list.
 - **STRICTLY EXCLUDE TEMPORAL KEYWORDS** such as dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases.
 - **STRICTLY EXCLUDE** vague, generic, or historical keywords.
 - **STRICTLY EXCLUDE** image quality, type, format, or style as keywords.
 - Exclude numerical words, special characters, stopwords, or abbreviations.
 - Exclude meaningless, repeating or synonym-duplicate keywords.
-- The Python list must be the **VERY LAST THING** in your response.
+- The **Python LIST** must be the **VERY LAST THING** in your response.
 """
 
 def _load_vlm_(model_id: str, device: str, verbose: bool=False):
