@@ -1,3 +1,5 @@
+from numpy import dtype
+from torch import device
 from utils import *
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
@@ -6,28 +8,29 @@ import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 model_name = "Qwen/Qwen3-30B-A3B-Instruct-2507"
-
+device=torch.device("cuda:0")
 # --- 1. Configure 4-bit Quantization ---
 bnb_config = BitsAndBytesConfig(
-		load_in_4bit=True,
-		bnb_4bit_quant_type="nf4",
-		bnb_4bit_compute_dtype=torch.bfloat16,
-		bnb_4bit_use_double_quant=True,
+	load_in_4bit=True,
+	bnb_4bit_quant_type="nf4",
+	bnb_4bit_compute_dtype=torch.bfloat16,
+	bnb_4bit_use_double_quant=True,
 )
 
 # --- 2. Load the tokenizer and the model ---
 tokenizer = AutoTokenizer.from_pretrained(
-		model_name,
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
+	model_name,
+	trust_remote_code=True,
+	cache_dir=cache_directory[USER],
 )
 model = AutoModelForCausalLM.from_pretrained(
-		model_name,
-		quantization_config=bnb_config,
-		device_map="auto",
-		# attn_implementation="flash_attention_2", # Use Flash Attention for efficiency
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
+	model_name,
+	quantization_config=bnb_config,
+	device_map=device,
+	# attn_implementation="flash_attention_2", # Use Flash Attention for efficiency
+	trust_remote_code=True,
+  dtype=torch.bfloat16,
+	cache_dir=cache_directory[USER],
 )
 
 # prepare the model input
