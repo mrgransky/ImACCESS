@@ -132,8 +132,6 @@ def _load_vlm_(
 				load_in_8bit=True,
 				bnb_8bit_compute_dtype=torch.bfloat16,
 			)
-			if verbose:
-				print("[INFO] Using 8-bit quantization")
 		elif quantization_bits == 4:
 			quantization_config = BitsAndBytesConfig(
 				load_in_4bit=True,
@@ -141,10 +139,12 @@ def _load_vlm_(
 				bnb_4bit_compute_dtype=torch.bfloat16,
 				bnb_4bit_use_double_quant=True,
 			)
-			if verbose:
-				print("[INFO] Using 4-bit quantization")
 		else:
 			raise ValueError(f"Unsupported quantization_bits: {quantization_bits}. Use 4 or 8.")
+
+		if verbose:
+			print(f"[INFO] Using {quantization_bits}-bit quantization")
+			print(f"[INFO] Quantization config: {quantization_config}")
 
 	dtype = get_optimal_dtype(model_id, config, device)
 	attn_implementation = get_optimal_attn_implementation(model_id, device)
