@@ -53,7 +53,8 @@ Identify up to {k} most prominent, factual and distinct **KEYWORDS** that captur
 def _load_vlm_(
 		model_id: str, 
 		device: str, 
-		use_quantization: bool = False, 
+		use_quantization: bool = False,
+		quantization_bits: int = 4,  # 4 or 8
 		verbose: bool=False
 	):
 	if verbose:
@@ -125,14 +126,25 @@ def _load_vlm_(
 	quantization_config = None
 	if use_quantization:
 		from transformers import BitsAndBytesConfig
-		quantization_config = BitsAndBytesConfig(
-			load_in_4bit=True,
-			bnb_4bit_quant_type="nf4",
-			bnb_4bit_compute_dtype=torch.bfloat16,
-			bnb_4bit_use_double_quant=True,
-		)
-		if verbose:
-			print("[INFO] Using 4-bit quantization")
+		
+		if quantization_bits == 8:
+			quantization_config = BitsAndBytesConfig(
+				load_in_8bit=True,
+				bnb_8bit_compute_dtype=torch.bfloat16,
+			)
+			if verbose:
+				print("[INFO] Using 8-bit quantization")
+		elif quantization_bits == 4:
+			quantization_config = BitsAndBytesConfig(
+				load_in_4bit=True,
+				bnb_4bit_quant_type="nf4",
+				bnb_4bit_compute_dtype=torch.bfloat16,
+				bnb_4bit_use_double_quant=True,
+			)
+			if verbose:
+				print("[INFO] Using 4-bit quantization")
+		else:
+			raise ValueError(f"Unsupported quantization_bits: {quantization_bits}. Use 4 or 8.")
 
 	dtype = get_optimal_dtype(model_id, config, device)
 	attn_implementation = get_optimal_attn_implementation(model_id, device)
@@ -728,6 +740,7 @@ def get_vlm_based_labels_debug(
 		max_generated_tks: int,
 		csv_file: str=None,
 		image_path: str=None,
+		use_quantization: bool = False,
 		verbose: bool = False,
 	) -> List[List[str]]:
 
@@ -773,7 +786,12 @@ def get_vlm_based_labels_debug(
 		if verbose:
 			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-	processor, model = _load_vlm_(model_id, device, verbose=verbose)
+	processor, model = _load_vlm_(
+		model_id=model_id, 
+		device=device,
+		use_quantization=use_quantization,
+		verbose=verbose
+	)
 
 	all_keywords = []
 	for i, img_path in tqdm(enumerate(image_paths), total=len(image_paths), desc="Processing images"):
@@ -821,6 +839,7 @@ def get_vlm_based_labels_opt(
 			csv_file: str,
 			do_dedup: bool = True,
 			max_retries: int = 2,
+			use_quantization: bool = False,
 			verbose: bool = False,
 		) -> List[Optional[List[str]]]:
 
@@ -867,7 +886,12 @@ def get_vlm_based_labels_opt(
 			return None
 
 		# Load model once
-		processor, model = _load_vlm_(model_id, device, verbose=verbose)
+		processor, model = _load_vlm_(
+			model_id=model_id, 
+			device=device,
+			use_quantization=use_quantization,
+			verbose=verbose
+		)
 
 		if verbose:
 			valid_count = sum(1 for x in original_inputs if x is not None and os.path.exists(str(x)))
@@ -1608,6 +1632,7 @@ def main():
 	parser.add_argument("--batch_size", '-bs', type=int, default=64, help="Batch size for processing")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Batch size for processing")
+	parser.add_argument("--use_quantization", '-q', action='store_true', help="Use quantization")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
 
@@ -1615,7 +1640,7 @@ def main():
 	args.device = torch.device(args.device)
 	print(args)
 
-	if verbose and torch.cuda.is_available():
+	if args.verbose and torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(args.device)
 		total_mem = torch.cuda.get_device_properties(args.device).total_memory / (1024**3)  # Convert to GB
 		print(f"Available GPU(s) = {torch.cuda.device_count()}")
@@ -1633,6 +1658,7 @@ def main():
 			batch_size=args.batch_size,
 			max_kws=args.max_keywords,
 			max_generated_tks=args.max_generated_tks,
+			use_quantization=args.use_quantization,
 			verbose=args.verbose,
 		)
 	else:
@@ -1643,6 +1669,7 @@ def main():
 			batch_size=args.batch_size,
 			max_kws=args.max_keywords,
 			max_generated_tks=args.max_generated_tks,
+			use_quantization=args.use_quantization,
 			verbose=args.verbose,
 		)
 

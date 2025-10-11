@@ -7,8 +7,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
-# model_name = "Qwen/Qwen3-30B-A3B-Instruct-2507"
-model_name = "Qwen/Qwen3-235B-A22B-Instruct-2507-FP8"
+model_name = "Qwen/Qwen3-30B-A3B-Instruct-2507"
 
 device=torch.device("cuda:0")
 # --- 1. Configure 4-bit Quantization ---
@@ -27,7 +26,7 @@ tokenizer = AutoTokenizer.from_pretrained(
 )
 model = AutoModelForCausalLM.from_pretrained(
 	model_name,
-	# quantization_config=bnb_config,
+	quantization_config=bnb_config,
 	device_map=device,
 	# attn_implementation="flash_attention_2", # Use Flash Attention for efficiency
 	trust_remote_code=True,
