@@ -1184,6 +1184,7 @@ def get_llm_based_labels_opt(
 		description: str=None,
 		do_dedup: bool = True,
 		max_retries: int = 2,
+		use_quantization: bool = False,
 		verbose: bool = False,
 	) -> List[Optional[List[str]]]:
 
