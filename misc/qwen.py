@@ -27,7 +27,7 @@ tokenizer = AutoTokenizer.from_pretrained(
 )
 model = AutoModelForCausalLM.from_pretrained(
 	model_name,
-	quantization_config=bnb_config,
+	# quantization_config=bnb_config,
 	device_map=device,
 	# attn_implementation="flash_attention_2", # Use Flash Attention for efficiency
 	trust_remote_code=True,
