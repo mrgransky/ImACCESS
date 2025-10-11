@@ -54,7 +54,7 @@ def _load_vlm_(
 		model_id: str, 
 		device: str, 
 		use_quantization: bool = False,
-		quantization_bits: int = 4,  # 4 or 8
+		quantization_bits: int = 8,  # 4 or 8
 		verbose: bool=False
 	):
 	if verbose:
