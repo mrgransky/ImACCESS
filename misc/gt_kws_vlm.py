@@ -131,6 +131,7 @@ def _load_vlm_(
 			quantization_config = BitsAndBytesConfig(
 				load_in_8bit=True,
 				bnb_8bit_compute_dtype=torch.bfloat16,
+				llm_int8_enable_fp32_cpu_offload=True
 			)
 		elif quantization_bits == 4:
 			quantization_config = BitsAndBytesConfig(
