@@ -50,7 +50,12 @@ Identify up to {k} most prominent, factual and distinct **KEYWORDS** that captur
 - The **Python LIST** must be the **VERY LAST THING** in your response.
 """
 
-def _load_vlm_(model_id: str, device: str, verbose: bool=False):
+def _load_vlm_(
+		model_id: str, 
+		device: str, 
+		use_quantization: bool = False, 
+		verbose: bool=False
+	):
 	if verbose:
 		print(f"[INFO] Loading model: {model_id} on {device}")
 	config = tfs.AutoConfig.from_pretrained(model_id)
@@ -116,6 +121,19 @@ def _load_vlm_(model_id: str, device: str, verbose: bool=False):
 			# Fallback to eager attention
 			return "eager"
 
+	# Configure quantization if enabled
+	quantization_config = None
+	if use_quantization:
+		from transformers import BitsAndBytesConfig
+		quantization_config = BitsAndBytesConfig(
+			load_in_4bit=True,
+			bnb_4bit_quant_type="nf4",
+			bnb_4bit_compute_dtype=torch.bfloat16,
+			bnb_4bit_use_double_quant=True,
+		)
+		if verbose:
+			print("[INFO] Using 4-bit quantization")
+
 	dtype = get_optimal_dtype(model_id, config, device)
 	attn_implementation = get_optimal_attn_implementation(model_id, device)
 	
@@ -130,20 +148,31 @@ def _load_vlm_(model_id: str, device: str, verbose: bool=False):
 		cache_dir=cache_directory[USER]
 	)
 
-	model = model_cls.from_pretrained(
-		model_id,
-		dtype=dtype,
-		attn_implementation=attn_implementation,
-		low_cpu_mem_usage=True,
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER]
-	)
+	# Build model loading arguments
+	model_kwargs = {
+		"low_cpu_mem_usage": True,
+		"trust_remote_code": True,
+		"cache_dir": cache_directory[USER],
+		"attn_implementation": attn_implementation,
+	}
+	
+	# Add quantization or dtype (mutually exclusive)
+	if use_quantization:
+		model_kwargs["quantization_config"] = quantization_config
+		model_kwargs["device_map"] = "auto"  # Required for quantization
+	else:
+		model_kwargs["torch_dtype"] = dtype
+
+	model = model_cls.from_pretrained(model_id, **model_kwargs)
 
 	if verbose:
 		print(f"[INFO] Processor: {processor.__class__.__name__} {type(processor)}")
 		print(f"[INFO] Model: {model.__class__.__name__} {type(model)} dtype: {model.dtype}")
 
-	model.to(device)
+	# Only move to device if not using quantization (device_map handles it)
+	if not use_quantization:
+		model.to(device)
+	
 	return processor, model
 
 def get_prompt(
