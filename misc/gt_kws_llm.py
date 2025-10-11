@@ -90,7 +90,6 @@ def _load_llm_(
 	# Configure quantization if enabled
 	quantization_config = None
 	if use_quantization:
-		
 		if quantization_bits == 8:
 			quantization_config = tfs.BitsAndBytesConfig(
 				load_in_8bit=True,
@@ -106,7 +105,6 @@ def _load_llm_(
 			)
 		else:
 			raise ValueError(f"Unsupported quantization_bits: {quantization_bits}. Use 4 or 8.")
-
 		if verbose:
 			print(f"[INFO] Using {quantization_bits}-bit quantization")
 	
@@ -138,7 +136,7 @@ def _load_llm_(
 			"": device_obj.index if device_obj.type == 'cuda' else device_obj
 		}
 	else:
-		model_kwargs["torch_dtype"] = torch.float16
+		model_kwargs["dtype"] = torch.float16
 
 	model = model_cls.from_pretrained(model_id, **model_kwargs)
 	
