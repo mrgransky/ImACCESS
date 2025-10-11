@@ -1113,6 +1113,7 @@ def get_llm_based_labels_debug(
 		max_kws: int,
 		csv_file: str=None,
 		description: str=None,
+		use_quantization: bool = False,
 		verbose: bool = False,
 	) -> List[List[str]]:
 
@@ -1140,7 +1141,8 @@ def get_llm_based_labels_debug(
 
 	tokenizer, model = _load_llm_(
 		model_id=model_id, 
-		device=device, 
+		device=device,
+		use_quantization=use_quantization,
 		verbose=verbose
 	)
 
@@ -1234,7 +1236,12 @@ def get_llm_based_labels_opt(
 	if len(inputs) == 0:
 		return None
 	
-	tokenizer, model = _load_llm_(model_id, device)
+	tokenizer, model = _load_llm_(
+		model_id=model_id, 
+		device=device, 
+		use_quantization=use_quantization,
+		verbose=verbose,
+	)
 	tokenizer.padding_side = "left" # critical for decoder-only models
 
 	if verbose:
