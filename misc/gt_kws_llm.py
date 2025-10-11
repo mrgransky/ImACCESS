@@ -66,15 +66,22 @@ Given the description below, extract **between 0 and {k}** concrete, factual, pr
 
 def _load_llm_(
 		model_id: str, 
-		device: str, 
+		device: Union[str, torch.device], 
 		use_quantization: bool = False,
-		quantization_bits: int = 8,  # 4 or 8
+		quantization_bits: int = 4,
 		verbose: bool=False
 	):
+	# Parse device to get device index
+	if isinstance(device, str):
+		device_obj = torch.device(device)
+	else:
+		device_obj = device
+	
 	config = tfs.AutoConfig.from_pretrained(model_id)
 	if verbose:
-		print(f"[INFO] Loading tokenizer for {model_id} on {device}")
+		print(f"[INFO] Loading tokenizer for {model_id} on {device_obj}")
 		print(f"[INFO] Model type: {config.model_type} Architectures: {config.architectures}")
+
 	if config.architectures:
 		cls_name = config.architectures[0]
 		if hasattr(tfs, cls_name):
@@ -89,7 +96,6 @@ def _load_llm_(
 			quantization_config = BitsAndBytesConfig(
 				load_in_8bit=True,
 				bnb_8bit_compute_dtype=torch.float16,
-				llm_int8_enable_fp32_cpu_offload=True
 			)
 		elif quantization_bits == 4:
 			quantization_config = BitsAndBytesConfig(
@@ -100,10 +106,10 @@ def _load_llm_(
 			)
 		else:
 			raise ValueError(f"Unsupported quantization_bits: {quantization_bits}. Use 4 or 8.")
+
 		if verbose:
 			print(f"[INFO] Using {quantization_bits}-bit quantization")
-			print(f"[INFO] Quantization config: {quantization_config}")
-
+	
 	tokenizer = tfs.AutoTokenizer.from_pretrained(
 		model_id, 
 		use_fast=True, 
@@ -113,29 +119,42 @@ def _load_llm_(
 	if tokenizer.pad_token is None:
 		tokenizer.pad_token = tokenizer.eos_token
 		tokenizer.pad_token_id = tokenizer.eos_token_id
+
 	if verbose:
 		print(f"[INFO] Tokenizer: {tokenizer.__class__.__name__} {type(tokenizer)}")
+
 	# Build model loading arguments
 	model_kwargs = {
 		"trust_remote_code": True,
 		"cache_dir": cache_directory[USER],
+		"low_cpu_mem_usage": True,
 	}
 	
 	# Add quantization or dtype (mutually exclusive)
 	if use_quantization:
 		model_kwargs["quantization_config"] = quantization_config
-		model_kwargs["device_map"] = "auto"  # Required for quantization
+		# For quantization, use specific device mapping
+		model_kwargs["device_map"] = {
+			"": device_obj.index if device_obj.type == 'cuda' else device_obj
+		}
 	else:
-		model_kwargs["device_map"] = device
 		model_kwargs["torch_dtype"] = torch.float16
+
 	model = model_cls.from_pretrained(model_id, **model_kwargs)
+	
+	# Ensure model is on correct device if not using quantization
+	if not use_quantization:
+		model = model.to(device_obj)
+	
 	model.eval()
 	
-	if hasattr(torch, 'compile'):
+	if hasattr(torch, 'compile') and not use_quantization:
 		model = torch.compile(model, mode="reduce-overhead")
 	
 	if verbose:
 		print(f"[INFO] Model: {model.__class__.__name__} {type(model)} dtype: {model.dtype}")
+		if hasattr(model, 'hf_device_map'):
+			print(f"[INFO] Device map: {model.hf_device_map}")
 	
 	return tokenizer, model
 
@@ -1485,7 +1504,7 @@ def main():
 		if args.verbose:
 			print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 
-	if args.debug:
+	if args.debug or args.description:
 		keywords = get_llm_based_labels_debug(
 			model_id=args.model_id, 
 			device=args.device, 
