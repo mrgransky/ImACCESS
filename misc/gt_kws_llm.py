@@ -1405,6 +1405,7 @@ def get_llm_based_labels_opt(
 				text=desc,
 				device=device,
 				max_generated_tks=max_generated_tks,
+				max_kws=max_kws,
 				verbose=verbose,
 			)
 			unique_results[idx] = individual_result
