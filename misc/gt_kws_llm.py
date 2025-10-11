@@ -1090,7 +1090,7 @@ def query_local_llm(
 
 	if verbose:
 		print(f"\nLLM response:\n{raw_llm_response}")
-		output_tokens = get_num_tokens(raw_llm_response, model_id)
+		output_tokens = get_conversation_token_breakdown(raw_llm_response, model_id)
 		print(f"\n>> Output tokens: {output_tokens}")
 	
 	# ⏱️ RESPONSE PARSING TIMING
