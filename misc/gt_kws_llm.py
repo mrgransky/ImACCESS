@@ -90,16 +90,15 @@ def _load_llm_(
 	# Configure quantization if enabled
 	quantization_config = None
 	if use_quantization:
-		from transformers import BitsAndBytesConfig
 		
 		if quantization_bits == 8:
-			quantization_config = BitsAndBytesConfig(
+			quantization_config = tfs.BitsAndBytesConfig(
 				load_in_8bit=True,
 				bnb_8bit_compute_dtype=torch.float16,
 				llm_int8_enable_fp32_cpu_offload=True,
 			)
 		elif quantization_bits == 4:
-			quantization_config = BitsAndBytesConfig(
+			quantization_config = tfs.BitsAndBytesConfig(
 				load_in_4bit=True,
 				bnb_4bit_quant_type="nf4",
 				bnb_4bit_compute_dtype=torch.bfloat16,
