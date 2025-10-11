@@ -64,17 +64,46 @@ Given the description below, extract **between 0 and {k}** concrete, factual, pr
 [/INST]
 """
 
-def _load_llm_(model_id: str, device: str, verbose: bool=False):
+def _load_llm_(
+		model_id: str, 
+		device: str, 
+		use_quantization: bool = False,
+		quantization_bits: int = 8,  # 4 or 8
+		verbose: bool=False
+	):
 	config = tfs.AutoConfig.from_pretrained(model_id)
 	if verbose:
 		print(f"[INFO] Loading tokenizer for {model_id} on {device}")
 		print(f"[INFO] Model type: {config.model_type} Architectures: {config.architectures}")
-
 	if config.architectures:
 		cls_name = config.architectures[0]
 		if hasattr(tfs, cls_name):
 			model_cls = getattr(tfs, cls_name)
-	
+
+	# Configure quantization if enabled
+	quantization_config = None
+	if use_quantization:
+		from transformers import BitsAndBytesConfig
+		
+		if quantization_bits == 8:
+			quantization_config = BitsAndBytesConfig(
+				load_in_8bit=True,
+				bnb_8bit_compute_dtype=torch.float16,
+				llm_int8_enable_fp32_cpu_offload=True
+			)
+		elif quantization_bits == 4:
+			quantization_config = BitsAndBytesConfig(
+				load_in_4bit=True,
+				bnb_4bit_quant_type="nf4",
+				bnb_4bit_compute_dtype=torch.bfloat16,
+				bnb_4bit_use_double_quant=True,
+			)
+		else:
+			raise ValueError(f"Unsupported quantization_bits: {quantization_bits}. Use 4 or 8.")
+		if verbose:
+			print(f"[INFO] Using {quantization_bits}-bit quantization")
+			print(f"[INFO] Quantization config: {quantization_config}")
+
 	tokenizer = tfs.AutoTokenizer.from_pretrained(
 		model_id, 
 		use_fast=True, 
@@ -84,23 +113,29 @@ def _load_llm_(model_id: str, device: str, verbose: bool=False):
 	if tokenizer.pad_token is None:
 		tokenizer.pad_token = tokenizer.eos_token
 		tokenizer.pad_token_id = tokenizer.eos_token_id
-
 	if verbose:
 		print(f"[INFO] Tokenizer: {tokenizer.__class__.__name__} {type(tokenizer)}")
-
-	model = model_cls.from_pretrained(
-		model_id,
-		device_map=device,
-		dtype=torch.float16,
-		trust_remote_code=True,
-		cache_dir=cache_directory[USER],
-	)
+	# Build model loading arguments
+	model_kwargs = {
+		"trust_remote_code": True,
+		"cache_dir": cache_directory[USER],
+	}
+	
+	# Add quantization or dtype (mutually exclusive)
+	if use_quantization:
+		model_kwargs["quantization_config"] = quantization_config
+		model_kwargs["device_map"] = "auto"  # Required for quantization
+	else:
+		model_kwargs["device_map"] = device
+		model_kwargs["torch_dtype"] = torch.float16
+	model = model_cls.from_pretrained(model_id, **model_kwargs)
 	model.eval()
+	
 	if hasattr(torch, 'compile'):
 		model = torch.compile(model, mode="reduce-overhead")
 	
 	if verbose:
-		print(f"[INFO] Model: {model.__class__.__name__} {type(model)}")
+		print(f"[INFO] Model: {model.__class__.__name__} {type(model)} dtype: {model.dtype}")
 	
 	return tokenizer, model
 
