@@ -51,141 +51,239 @@ Identify up to {k} most prominent, factual and distinct **KEYWORDS** that captur
 """
 
 def _load_vlm_(
-		model_id: str, 
-		device: str, 
+		model_id: str,
+		device: str,
 		use_quantization: bool = False,
-		quantization_bits: int = 8,  # 4 or 8
-		verbose: bool=False
-	):
+		quantization_bits: int = 8,          # 4 or 8
+		verbose: bool = False,
+	) -> Tuple[tfs.PreTrainedTokenizerBase, torch.nn.Module]:
+	"""
+	Load a vision‑language model (VLM) with optional 4‑/8‑bit quantisation.
+	When ``verbose=True`` a detailed trace of every decision is printed.
+	Returns
+	-------
+	processor, model
+	"""
+	# ------------------------------------------------------------------
+	# 1️⃣  Hardware diagnostics (only printed when verbose)
+	# ------------------------------------------------------------------
 	if verbose:
-		print(f"[INFO] Loading model: {model_id} on {device}")
-	config = tfs.AutoConfig.from_pretrained(model_id)
+			print("\n[DEBUG] ------------------- HARDWARE INFO -------------------")
+			print(f"[DEBUG] torch version          : {torch.__version__}")
+			print(f"[DEBUG] CUDA available?       : {torch.cuda.is_available()}")
+			if torch.cuda.is_available():
+					cur = torch.cuda.current_device()
+					print(f"[DEBUG] Current CUDA device   : {cur} "
+								f"({torch.cuda.get_device_name(cur)})")
+					major, minor = torch.cuda.get_device_capability(cur)
+					print(f"[DEBUG] Compute capability    : {major}.{minor}")
+					print(f"[DEBUG] BF16 support?         : {torch.cuda.is_bf16_supported()}")
+					print(f"[DEBUG] CUDA memory allocated: "
+								f"{torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+					print(f"[DEBUG] CUDA memory reserved : "
+								f"{torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
+			else:
+					print("[DEBUG] Running on CPU only")
+			print("[DEBUG] ----------------------------------------------------\n")
+	# ------------------------------------------------------------------
+	# 2️⃣  Load model config (no weights yet)
+	# ------------------------------------------------------------------
 	if verbose:
-		print(f"[INFO] Model type: {config.model_type} Architectures: {config.architectures}")
-	
+			print(f"[INFO] Loading configuration for model_id='{model_id}'")
+	config = tfs.AutoConfig.from_pretrained(
+			model_id,
+			trust_remote_code=True,
+	)
+	if verbose:
+			print("[INFO] Config summary")
+			print(f"   • model_type        : {config.model_type}")
+			print(f"   • architectures     : {config.architectures}")
+			print(f"   • torch_dtype (if set) : {config.torch_dtype}")
+			print()
+	# ------------------------------------------------------------------
+	# 3️⃣  Resolve concrete model class (e.g. Qwen3ForCausalLM)
+	# ------------------------------------------------------------------
+	model_cls = None
 	if config.architectures:
-		cls_name = config.architectures[0]
-		if hasattr(tfs, cls_name):
-			model_cls = getattr(tfs, cls_name)
-
-	# Determine optimal dtype based on model architecture and device
-	def get_optimal_dtype(model_id: str, config, device: str) -> torch.dtype:
-		"""Select optimal dtype based on model architecture and hardware."""
-		
-		# Check if device supports bfloat16
-		supports_bf16 = (
-			torch.cuda.is_available() and 
-			torch.cuda.is_bf16_supported() and 
-			device != 'cpu'
-		)
-		
-		# Model-specific dtype preferences
-		if "Qwen" in model_id:
-			return torch.bfloat16 if supports_bf16 else torch.float16
-		elif "llava" in model_id.lower():
-			return torch.float16
-		elif "falcon" in model_id.lower():
-			return torch.bfloat16 if supports_bf16 else torch.float16
-		else:
-			return torch.bfloat16 if supports_bf16 else torch.float16
-
-	# Determine optimal attention implementation
-	def get_optimal_attn_implementation(model_id: str, device: str) -> str:
-		"""Select optimal attention implementation based on model and hardware."""
-		# Only use flash attention on CUDA devices
-		if not torch.cuda.is_available() or device == 'cpu':
+			cls_name = config.architectures[0]          # first architecture listed
+			if hasattr(tfs, cls_name):
+					model_cls = getattr(tfs, cls_name)
+	if model_cls is None:
+			raise ValueError(
+					f"Unable to locate model class for architecture(s): {config.architectures}"
+			)
+	if verbose:
+			print(f"[INFO] Resolved model class → {model_cls.__name__}\n")
+	# ------------------------------------------------------------------
+	# 4️⃣  Helper: optimal dtype for the *full‑precision* path
+	# ------------------------------------------------------------------
+	def _optimal_dtype(m_id: str, dev: str) -> torch.dtype:
+			bf16_ok = (
+					torch.cuda.is_available()
+					and torch.cuda.is_bf16_supported()
+					and dev != "cpu"
+			)
+			if "Qwen" in m_id:
+					return torch.bfloat16 if bf16_ok else torch.float16
+			if "llava" in m_id.lower():
+					return torch.float16
+			if "falcon" in m_id.lower():
+					return torch.bfloat16 if bf16_ok else torch.float16
+			# default fallback
+			return torch.bfloat16 if bf16_ok else torch.float16
+	dtype = _optimal_dtype(model_id, device)
+	if verbose:
+			print("[INFO] Dtype selection")
+			print(f"   • BF16 supported on this device? : {torch.cuda.is_bf16_supported()}")
+			print(f"   • Chosen torch dtype            : {dtype}\n")
+	# ------------------------------------------------------------------
+	# 5️⃣  Helper: attention implementation (flash vs eager)
+	# ------------------------------------------------------------------
+	def _optimal_attn_impl(m_id: str, dev: str) -> str:
+			if not torch.cuda.is_available() or dev == "cpu":
+					return "eager"
+			# try importing flash_attn and check compute capability
+			try:
+					import flash_attn  # noqa: F401
+					major, _ = torch.cuda.get_device_capability()
+					flash_ok = major >= 8               # SM80+ required
+			except Exception:
+					flash_ok = False
+			if flash_ok:
+					if "Qwen" in m_id:
+							return "flash_attention_2"
+					if "llava" in m_id.lower():
+							return "flash_attention_2"
+					return "flash_attention_2"
 			return "eager"
-
-		# Check if flash_attention_2 is available
-		compute_capability = torch.cuda.get_device_capability(0)[0]
-		flash_available = False
-		try:
-			import flash_attn
-			flash_available = compute_capability >= 8
-			if verbose and not flash_available:
-				print(f"[WARN] flash_attn available but compute capability(={compute_capability}) < 8. Falling back to eager attention.")
-		except ImportError:
-			if verbose:
-				print("[WARN] flash_attn not available. Falling back to eager attention.")
-		
-		# Model-specific attention preferences
-		if "Qwen" in model_id and flash_available:
-			# Qwen strongly recommends flash_attention_2
-			return "flash_attention_2"
-		elif "llava" in model_id.lower() and flash_available:
-			# LLaVA can benefit from flash attention
-			return "flash_attention_2"
-		elif flash_available:
-			# Default to flash attention if available
-			return "flash_attention_2"
-		else:
-			# Fallback to eager attention
-			return "eager"
-
-	# Configure quantization if enabled
+	attn_impl = _optimal_attn_impl(model_id, device)
+	if verbose:
+			print("[INFO] Attention implementation")
+			print(f"   • Selected implementation : {attn_impl}\n")
+	# ------------------------------------------------------------------
+	# 6️⃣  Quantisation configuration (Bits‑and‑Bytes)
+	# ------------------------------------------------------------------
 	quantization_config = None
 	if use_quantization:
-		from transformers import BitsAndBytesConfig
-		
-		if quantization_bits == 8:
-			quantization_config = BitsAndBytesConfig(
-				load_in_8bit=True,
-				bnb_8bit_compute_dtype=torch.bfloat16,
-				llm_int8_enable_fp32_cpu_offload=True
-			)
-		elif quantization_bits == 4:
-			quantization_config = BitsAndBytesConfig(
-				load_in_4bit=True,
-				bnb_4bit_quant_type="nf4",
-				bnb_4bit_compute_dtype=torch.bfloat16,
-				bnb_4bit_use_double_quant=True,
-			)
-		else:
-			raise ValueError(f"Unsupported quantization_bits: {quantization_bits}. Use 4 or 8.")
-
-		if verbose:
-			print(f"[INFO] Using {quantization_bits}-bit quantization")
-			print(f"[INFO] Quantization config: {quantization_config}")
-
-	dtype = get_optimal_dtype(model_id, config, device)
-	attn_implementation = get_optimal_attn_implementation(model_id, device)
-	
+			if quantization_bits == 8:
+					quantization_config = tfs.BitsAndBytesConfig(
+							load_in_8bit=True,
+							bnb_8bit_compute_dtype=torch.bfloat16,
+							llm_int8_enable_fp32_cpu_offload=True,
+					)
+			elif quantization_bits == 4:
+					quantization_config = tfs.BitsAndBytesConfig(
+							load_in_4bit=True,
+							bnb_4bit_quant_type="nf4",
+							bnb_4bit_compute_dtype=torch.bfloat16,
+							bnb_4bit_use_double_quant=True,
+					)
+			else:
+					raise ValueError("quantization_bits must be 4 or 8")
+			if verbose:
+					print("[INFO] Quantisation enabled")
+					print(f"   • Bits                : {quantization_bits}")
+					print(f"   • Config object type  : {type(quantization_config).__name__}")
+					print()
+	# ------------------------------------------------------------------
+	# 7️⃣  Load tokenizer / processor
+	# ------------------------------------------------------------------
 	if verbose:
-		print(f"[INFO] Selected dtype: {dtype}")
-		print(f"[INFO] Selected attention: {attn_implementation}")
-
+			print("[INFO] Loading processor / tokenizer …")
 	processor = tfs.AutoProcessor.from_pretrained(
-		model_id, 
-		use_fast=True, 
-		trust_remote_code=True, 
-		cache_dir=cache_directory[USER]
+			model_id,
+			use_fast=True,
+			trust_remote_code=True,
+			cache_dir=cache_directory[USER],
 	)
-
-	# Build model loading arguments
-	model_kwargs = {
-		"low_cpu_mem_usage": True,
-		"trust_remote_code": True,
-		"cache_dir": cache_directory[USER],
-		"attn_implementation": attn_implementation,
-	}
-	
-	# Add quantization or dtype (mutually exclusive)
-	if use_quantization:
-		model_kwargs["quantization_config"] = quantization_config
-		model_kwargs["device_map"] = "auto"  # Required for quantization
-	else:
-		model_kwargs["torch_dtype"] = dtype
-
-	model = model_cls.from_pretrained(model_id, **model_kwargs)
-
 	if verbose:
-		print(f"[INFO] Processor: {processor.__class__.__name__} {type(processor)}")
-		print(f"[INFO] Model: {model.__class__.__name__} {type(model)} dtype: {model.dtype}")
-
-	# Only move to device if not using quantization (device_map handles it)
+			print(f"[INFO] Processor class → {processor.__class__.__name__}\n")
+	# ------------------------------------------------------------------
+	# 8️⃣  Assemble ``from_pretrained`` kwargs
+	# ------------------------------------------------------------------
+	model_kwargs: Dict[str, Any] = {
+			"low_cpu_mem_usage": True,
+			"trust_remote_code": True,
+			"cache_dir": cache_directory[USER],
+			"attn_implementation": attn_impl,
+	}
+	if use_quantization:
+			# ✅ Mandatory for any Bits‑and‑Bytes loading
+			model_kwargs["quantization_config"] = quantization_config
+			model_kwargs["device_map"] = "auto"
+	else:
+			model_kwargs["torch_dtype"] = dtype
+	if verbose:
+			print("[INFO] Model loading kwargs")
+			for k, v in model_kwargs.items():
+					if k == "quantization_config":
+							print(f"   • {k}: {type(v).__name__}")
+					else:
+							print(f"   • {k}: {v}")
+			print()
+	# ------------------------------------------------------------------
+	# 9️⃣  Optional memory snapshot *before* the heavy load
+	# ------------------------------------------------------------------
+	if verbose and torch.cuda.is_available():
+			cur = torch.cuda.current_device()
+			print("[DEBUG] CUDA memory BEFORE model load")
+			print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+			print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
+	# ------------------------------------------------------------------
+	# 🔟  Load the model (weights are quantised / sharded here)
+	# ------------------------------------------------------------------
+	if verbose:
+			print("[INFO] Calling `from_pretrained` …")
+	model = model_cls.from_pretrained(model_id, **model_kwargs)
+	# ------------------------------------------------------------------
+	# 1️⃣1️⃣  Post‑load diagnostics
+	# ------------------------------------------------------------------
+	if verbose:
+			print("[INFO] Model loaded successfully")
+			print(f"   • Model class          : {model.__class__.__name__}")
+			# first parameter dtype gives a quick hint
+			first_param = next(model.parameters())
+			print(f"   • First parameter dtype: {first_param.dtype}")
+			# Parameter count + naive FP16 memory estimate
+			total_params = sum(p.numel() for p in model.parameters())
+			approx_fp16_gb = total_params * 2 / (1024 ** 3)   # 2 bytes per fp16 value
+			print(f"   • Total parameters    : {total_params:,}")
+			print(f"   • Approx. fp16 RAM    : {approx_fp16_gb:.2f} GiB (if stored as fp16)")
+			# Show the resolved device map (for both quantised & non‑quantised)
+			if hasattr(model, "hf_device_map"):
+					dm = model.hf_device_map   # type: ignore[attr-defined]
+					print("[INFO] Final device map (model.hf_device_map):")
+					# pretty‑print the dict
+					for k in sorted(dm):
+							print(f"   '{k}': {repr(dm[k])}")
+			else:
+					print("[INFO] No `hf_device_map` attribute – model resides on a single device")
+			print()
+	# ------------------------------------------------------------------
+	# 1️⃣2️⃣  Move model to target device (only needed for the full‑precision path)
+	# ------------------------------------------------------------------
 	if not use_quantization:
-		model.to(device)
-	
+			if verbose:
+					print(f"[INFO] Moving model to device '{device}' (full‑precision path)…")
+			model.to(device)
+			if verbose and torch.cuda.is_available():
+					cur = torch.cuda.current_device()
+					print("[DEBUG] CUDA memory AFTER model.to()")
+					print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+					print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
+	else:
+			if verbose:
+					print("[INFO] Quantisation path – placement handled by `device_map='auto'`")
+					if torch.cuda.is_available():
+							gpu_params = sum(1 for p in model.parameters() if p.device.type == "cuda")
+							cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
+							print(f"   • Parameters on GPU : {gpu_params}")
+							print(f"   • Parameters on CPU  : {cpu_params}\n")
+	# ------------------------------------------------------------------
+	# 1️⃣3️⃣  Return processor & model
+	# ------------------------------------------------------------------
+	if verbose:
+			print("[INFO] Loading finished – returning objects\n")
 	return processor, model
 
 def get_prompt(
