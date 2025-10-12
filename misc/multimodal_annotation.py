@@ -66,6 +66,7 @@ def get_multimodal_annotation(
 		batch_size: int,
 		max_generated_tks: int,
 		max_keywords: int,
+		use_quantization: bool = False,
 		verbose: bool = False,
 		debug: bool = False,
 	):
@@ -96,6 +97,7 @@ def get_multimodal_annotation(
 			batch_size=batch_size,
 			max_generated_tks=max_generated_tks,
 			max_kws=max_keywords,
+			use_quantization=use_quantization,
 			verbose=verbose,
 		)
 	else:
@@ -106,6 +108,7 @@ def get_multimodal_annotation(
 			batch_size=batch_size,
 			max_generated_tks=max_generated_tks,
 			max_kws=max_keywords,
+			use_quantization=use_quantization,
 			verbose=verbose,
 		)
 
@@ -127,6 +130,7 @@ def get_multimodal_annotation(
 			batch_size=batch_size,
 			max_kws=max_keywords,
 			max_generated_tks=max_generated_tks,
+			use_quantization=use_quantization,
 			verbose=verbose,
 		)
 	else:
@@ -137,6 +141,7 @@ def get_multimodal_annotation(
 			batch_size=batch_size,
 			max_kws=max_keywords,
 			max_generated_tks=max_generated_tks,
+			use_quantization=use_quantization,
 			verbose=verbose,
 		)
 
@@ -205,6 +210,7 @@ def main():
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing (adjust based on GPU memory)")
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Max number of generated tokens")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
+	parser.add_argument("--use_quantization", '-q', action='store_true', help="Use quantization")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
 	args = parser.parse_args()
@@ -219,6 +225,7 @@ def main():
 		batch_size=args.batch_size,
 		max_generated_tks=args.max_generated_tks,
 		max_keywords=args.max_keywords,
+		use_quantization=args.use_quantization,
 		verbose=args.verbose,
 		debug=args.debug,
 	)

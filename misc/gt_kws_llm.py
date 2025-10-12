@@ -11,7 +11,6 @@ from utils import *
 
 # better models:
 # model_id = "Qwen/Qwen3-4B-Instruct-2507"
-# model_id = "Qwen/Qwen3-30B-A3B-Instruct-2507"
 # model_id = "mistralai/Mistral-7B-Instruct-v0.3"
 # model_id = "microsoft/Phi-4-mini-instruct"
 # model_id = "NousResearch/Hermes-2-Pro-Llama-3-8B"  # Best for structured output
