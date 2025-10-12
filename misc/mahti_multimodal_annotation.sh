@@ -11,7 +11,7 @@
 #SBATCH --mem=476G
 #SBATCH --partition=gpusmall
 #SBATCH --time=01-12:00:00
-#SBATCH --array=0-1
+#SBATCH --array=0-4
 #SBATCH --gres=gpu:a100:1
 
 set -euo pipefail
@@ -45,7 +45,7 @@ python -u multimodal_annotation.py \
   --num_workers $SLURM_CPUS_PER_TASK \
   --batch_size 64 \
   --llm_model_id "Qwen/Qwen3-4B-Instruct-2507" \
-  --vlm_model_id "Qwen/Qwen2.5-VL-3B-Instruct" \
+  --vlm_model_id "Qwen/Qwen2.5-VL-7B-Instruct" \
   --max_generated_tks 64 \
   --max_keywords 5 \
   --use_quantization \
