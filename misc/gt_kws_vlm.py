@@ -966,9 +966,12 @@ def get_vlm_based_labels_opt(
 		print(f"[MODEL] Model loading: {time.time() - model_start:.2f}s")
 
 	if verbose:
+		print(f"[INPUT] Validating inputs...")
+		st_t = time.time()
 		valid_count = sum(1 for x in original_inputs if x is not None and os.path.exists(str(x)))
 		null_count = len(original_inputs) - valid_count
 		print(f"📊 Input stats: {len(original_inputs)} total, {valid_count} valid, {null_count} null")
+		print(f"[INPUT] Input validation: {time.time() - st_t:.2f}s")
 
 	# ========== Deduplication ==========
 	dedup_start = time.time()
@@ -1002,6 +1005,8 @@ def get_vlm_based_labels_opt(
 		print(f"[DEDUP] Deduplication: {time.time() - dedup_start:.2f}s ({len(original_inputs)} → {len(unique_inputs)} unique)")
 
 	# ========== Generate prompts and load images ==========
+	if verbose:
+		print(f"[PREP] Preparing prompts and images...")
 	prep_start = time.time()
 	unique_prompts = []
 	unique_images = []
@@ -1031,16 +1036,18 @@ def get_vlm_based_labels_opt(
 	unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
 	
 	# ========== Sequential processing ==========
+	if verbose:
+		print(f"[PROCESS] Generating valid indices for {len(unique_inputs)} unique images")
 	process_start = time.time()
 	valid_indices = [
 		i
 		for i, (p, img) in enumerate(zip(unique_prompts, unique_images)) 
 		if p is not None and img is not None
 	]
-	
 	if valid_indices:
 		if verbose:
-			print(f"🔄 Processing {len(valid_indices)} unique images sequentially with optimizations...")
+			print(f" ├─ Found {len(valid_indices)} Valid indices in {time.time() - process_start:.2f}s")
+			print(f" ├─ Sequential processing with optimizations...")
 		
 		generation_time = 0
 		parsing_time = 0
@@ -1049,10 +1056,7 @@ def get_vlm_based_labels_opt(
 			img_path = unique_inputs[idx]
 			prompt = unique_prompts[idx]
 			img = unique_images[idx]
-						
-			success = False
-			last_error = None
-			
+				
 			# 🔄 RETRY LOGIC for individual images
 			for attempt in range(max_retries + 1):
 				try:
