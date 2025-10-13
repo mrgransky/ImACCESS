@@ -253,40 +253,40 @@ def _load_vlm_(
 
 	return processor, model
 
-def prepare_prompts_and_images(unique_inputs, processor, max_kws, num_threads=8, verbose=False):
-    if verbose:
-        print(f"[PREP] Preparing prompts and verifying {len(unique_inputs)} images...")
-
-    prep_start = time.time()
-    process = psutil.Process()
-
-    base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
-    valid_paths, unique_prompts = [], []
-
-    def verify_path(img_path):
-        if img_path is None or not os.path.exists(str(img_path)):
-            return None
-        try:
-            with Image.open(img_path) as img:
-                img.verify()
-            return img_path
-        except Exception:
-            return None
-
-    # Parallel verification
-    with ThreadPoolExecutor(max_workers=num_threads) as ex:
-        verified = list(tqdm(ex.map(verify_path, unique_inputs), total=len(unique_inputs), desc="Verifying images"))
-
-    for v in verified:
-        valid_paths.append(v)
-        unique_prompts.append(base_prompt if v else None)
-
-    mem_gb = process.memory_info().rss / (1024 ** 3)
-    if verbose:
-        print(f"[PREP] Completed in {time.time() - prep_start:.2f}s | Memory: {mem_gb:.2f} GB | {sum(v is not None for v in valid_paths)} valid images")
-
-    gc.collect()
-    return valid_paths, unique_prompts
+def prepare_prompts_and_images(
+		unique_inputs, 
+		max_kws, 
+		num_threads, 
+		verbose=False
+	):
+	if verbose:
+		print(f"[PREP] Preparing prompts and verifying {len(unique_inputs)} images...")
+	prep_start = time.time()
+	process = psutil.Process()
+	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
+	valid_paths, unique_prompts = [], []
+	def verify_path(img_path):
+		if img_path is None or not os.path.exists(str(img_path)):
+			return None
+		try:
+			with Image.open(img_path) as img:
+				img.verify()
+			return img_path
+		except Exception:
+			return None
+	# Parallel verification
+	with ThreadPoolExecutor(max_workers=num_threads) as ex:
+		verified = list(tqdm(ex.map(verify_path, unique_inputs), total=len(unique_inputs), desc="Verifying images"))
+	for v in verified:
+		valid_paths.append(v)
+		unique_prompts.append(base_prompt if v else None)
+	mem_gb = process.memory_info().rss / (1024 ** 3)
+	if verbose:
+		print(f"[PREP] Completed in {time.time() - prep_start:.2f}s | Memory: {mem_gb:.2f} GB | {sum(v is not None for v in valid_paths)} valid images")
+	
+	gc.collect()
+	
+	return valid_paths, unique_prompts
 
 def get_prompt(
 		processor: tfs.AutoProcessor, 
@@ -999,7 +999,7 @@ def get_vlm_based_labels_opt(
 		verbose=verbose
 	)
 	if verbose:
-		print(f"[MODEL] Model loading: {time.time() - model_start:.2f}s")
+		print(f"[MODEL] model & processor loaded in {time.time() - model_start:.2f}s")
 
 	if verbose:
 		print(f"[INPUT] Validating inputs...")
@@ -1040,46 +1040,10 @@ def get_vlm_based_labels_opt(
 	if verbose:
 		print(f"[DEDUP] Deduplication: {time.time() - dedup_start:.2f}s ({len(original_inputs)} → {len(unique_inputs)} unique)")
 
-	# # ========== Generate prompts and load images ==========
-	# if verbose:
-	# 	print(f"[PREP] Preparing prompts and images for {len(unique_inputs)} unique images...")
-	# prep_start = time.time()
-	# unique_prompts = []
-	# unique_images = []
-	# pbar = tqdm(
-	# 	enumerate(unique_inputs), 
-	# 	total=len(unique_inputs), 
-	# 	desc="Preparing prompts and images"
-	# )
-	# process = psutil.Process()  # Get the current process
-	# for i, img_path in pbar:
-	# 	if img_path is None:
-	# 		unique_prompts.append(None)
-	# 		unique_images.append(None)
-	# 	else:
-	# 		try:
-	# 			img = Image.open(img_path).convert("RGB")
-	# 			prompt = get_prompt(
-	# 				processor=processor,
-	# 				img_path=img_path,
-	# 				max_kws=max_kws,
-	# 			)
-	# 			unique_prompts.append(prompt)
-	# 			unique_images.append(img)
-	# 		except Exception as e:
-	# 			if verbose:
-	# 				print(f"❌ Failed to load image {img_path}: {e}")
-	# 			unique_prompts.append(None)
-	# 			unique_images.append(None)
-	# 	mem_bytes = process.memory_info().rss  # Resident Set Size (bytes)
-	# 	mem_gb = mem_bytes / (1024 ** 3)  # Convert to GB
-	# 	pbar.set_postfix({"Memory": f"{mem_gb:.2f} GB"})
-	# if verbose:
-	# 	print(f"[PREP] Image/prompt preparation: {time.time() - prep_start:.2f}s")
+	# ========== Prepare prompts and images ==========
 	unique_images, unique_prompts = prepare_prompts_and_images(
-		unique_inputs, 
-		processor, 
-		max_kws, 
+		unique_inputs=unique_inputs,
+		max_kws=max_kws,
 		num_threads=num_workers,
 		verbose=verbose
 	)
@@ -1105,7 +1069,6 @@ def get_vlm_based_labels_opt(
 		
 		for idx in tqdm(valid_indices, desc="Processing images"):
 			img_path = unique_inputs[idx]
-			prompt = unique_prompts[idx]
 			img = unique_images[idx]
 				
 			# 🔄 RETRY LOGIC for individual images
@@ -1113,15 +1076,7 @@ def get_vlm_based_labels_opt(
 				try:
 					if attempt > 0 and verbose:
 						print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for image {idx + 1}")
-					
-					# # Process single image (not batch)
-					# single_inputs = processor(
-					# 	images=img,
-					# 	text=prompt,
-					# 	padding=True,
-					# 	return_tensors="pt"
-					# ).to(device, non_blocking=True)
-
+					# ========== Prepare inputs ==========
 					is_chat_model = hasattr(processor, "apply_chat_template")
 
 					if is_chat_model:
@@ -1152,11 +1107,6 @@ def get_vlm_based_labels_opt(
 									padding=True,
 									return_tensors="pt"
 							).to(device)
-
-
-
-
-
 
 					# ========== Generate response ==========
 					gen_start = time.time()
@@ -1196,10 +1146,8 @@ def get_vlm_based_labels_opt(
 						if verbose:
 							print(f"⚠️ Parsing error for image {idx + 1}: {e}")
 						unique_results[idx] = None
-					success = True
 					break  # Break retry loop on success	
 				except Exception as e:
-					last_error = e
 					if verbose:
 						print(f"❌ Image {idx + 1} attempt {attempt + 1} failed: {e}")
 					
