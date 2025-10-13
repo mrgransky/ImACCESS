@@ -148,16 +148,16 @@ def _load_vlm_(
 	if use_quantization:
 			if quantization_bits == 8:
 					quantization_config = tfs.BitsAndBytesConfig(
-							load_in_8bit=True,
-							bnb_8bit_compute_dtype=torch.bfloat16,
-							llm_int8_enable_fp32_cpu_offload=True,
+						load_in_8bit=True,
+						bnb_8bit_compute_dtype=torch.bfloat16,
+						llm_int8_enable_fp32_cpu_offload=True,
 					)
 			elif quantization_bits == 4:
 					quantization_config = tfs.BitsAndBytesConfig(
-							load_in_4bit=True,
-							bnb_4bit_quant_type="nf4",
-							bnb_4bit_compute_dtype=torch.bfloat16,
-							bnb_4bit_use_double_quant=True,
+						load_in_4bit=True,
+						bnb_4bit_quant_type="nf4",
+						bnb_4bit_compute_dtype=torch.bfloat16,
+						bnb_4bit_use_double_quant=True,
 					)
 			else:
 					raise ValueError("quantization_bits must be 4 or 8")
@@ -184,23 +184,21 @@ def _load_vlm_(
 		"trust_remote_code": True,
 		"cache_dir": cache_directory[USER],
 		"attn_implementation": attn_impl,
+		"dtype": dtype,
 	}
 
 	if use_quantization:
-		# ✅ Mandatory for any Bits‑and‑Bytes loading
 		model_kwargs["quantization_config"] = quantization_config
 		model_kwargs["device_map"] = "auto"
-	else:
-		model_kwargs["torch_dtype"] = dtype
 
 	if verbose:
-			print("[INFO] Model loading kwargs")
-			for k, v in model_kwargs.items():
-					if k == "quantization_config":
-							print(f"   • {k}: {type(v).__name__}")
-					else:
-							print(f"   • {k}: {v}")
-			print()
+		print("[INFO] Model loading kwargs")
+		for k, v in model_kwargs.items():
+			if k == "quantization_config":
+				print(f"   • {k}: {type(v).__name__}")
+			else:
+				print(f"   • {k}: {v}")
+		print()
 
 	if verbose and torch.cuda.is_available():
 			cur = torch.cuda.current_device()
