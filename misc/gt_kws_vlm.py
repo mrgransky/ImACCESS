@@ -1187,8 +1187,8 @@ def get_vlm_based_labels_opt(
 			if 'response' in locals():
 				del response
 			
-			# Memory management - clear cache every few images
-			if idx % 25 == 0 and torch.cuda.is_available():
+			# Memory management - clear cache
+			if idx % 100 == 0 and torch.cuda.is_available():
 				torch.cuda.synchronize()
 				torch.cuda.empty_cache()
 				gc.collect()
