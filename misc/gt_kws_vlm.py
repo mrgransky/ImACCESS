@@ -1069,131 +1069,124 @@ def get_vlm_based_labels_opt(
 	generation_time = 0
 	parsing_time = 0
 
-	if valid_indices:
-		if verbose:
-			print(f" ├─ Found {len(valid_indices)} Valid indices in {time.time() - process_start:.2f}s")
-			print(f" ├─ Sequential processing with optimizations...")
+	if not valid_indices:
+		if verbose: print(f" <!> No valid indices found after deduplication => exiting")
+		return None
 		
-		
-		for idx in tqdm(valid_indices, desc="Processing images"):
-			img_path = unique_images[idx]
+	for idx in tqdm(valid_indices, desc="Processing images"):
+		img_path = unique_images[idx]
+		for attempt in range(max_retries + 1):
+			try:
+				if attempt > 0 and verbose:
+					print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for image {idx + 1}")
+				# ========== Prepare inputs ==========
+				with Image.open(img_path).convert("RGB") as img_obj:
+					img = img_obj.copy()
+					img.thumbnail((IMG_MAX_RES, IMG_MAX_RES), Image.LANCZOS)
+				is_chat_model = hasattr(processor, "apply_chat_template")
+				if is_chat_model:
+					messages = [
+						{
+							"role": "user",
+							"content": [
+								{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)},
+								{"type": "image", "image": img},
+							],
+						}
+					]
+					chat_prompt = processor.apply_chat_template(
+						messages,
+						tokenize=False,
+						add_generation_prompt=True,
+					)
+					single_inputs = processor(
+						images=img,
+						text=chat_prompt,
+						padding=True,
+						truncation=True,
+						max_length=1024,
+						return_tensors="pt"
+					).to(device)
+				else:
+					single_inputs = processor(
+						images=img,
+						text=VLM_INSTRUCTION_TEMPLATE.format(k=max_kws),
+						padding=True,
+						return_tensors="pt"
+					).to(device)
+				if single_inputs.pixel_values.numel() == 0:
+					raise ValueError(f"Pixel values of {img_path} are empty: {single_inputs.pixel_values.shape}")
+				# ========== Generate response ==========
+				gen_start = time.time()
+				with torch.inference_mode():
+					outputs = model.generate(
+						**single_inputs,
+						max_new_tokens=max_generated_tks,
+						use_cache=True,
+						temperature=None,
+						top_k=None,
+						top_p=None,
+						do_sample=False,
+						pad_token_id=getattr(model.generation_config, "pad_token_id", None),
+						eos_token_id=getattr(model.generation_config, "eos_token_id", None),
+					)
+				generation_time += time.time() - gen_start
 				
-			# 🔄 RETRY LOGIC for individual images
-			for attempt in range(max_retries + 1):
-				try:
-					if attempt > 0 and verbose:
-						print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for image {idx + 1}")
-
-					# ========== Prepare inputs ==========
-					with Image.open(img_path).convert("RGB") as img_obj:
-						img = img_obj.copy()
-						img.thumbnail((IMG_MAX_RES, IMG_MAX_RES), Image.LANCZOS)
-					is_chat_model = hasattr(processor, "apply_chat_template")
-					if is_chat_model:
-						messages = [
-							{
-								"role": "user",
-								"content": [
-									{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)},
-									{"type": "image", "image": img},
-								],
-							}
-						]
-						chat_prompt = processor.apply_chat_template(
-							messages,
-							tokenize=False,
-							add_generation_prompt=True,
-						)
-						single_inputs = processor(
-							images=img,
-							text=chat_prompt,
-							padding=True,
-							truncation=True,
-							max_length=1024,
-							return_tensors="pt"
-						).to(device)
-					else:
-						single_inputs = processor(
-							images=img,
-							text=VLM_INSTRUCTION_TEMPLATE.format(k=max_kws),
-							padding=True,
-							return_tensors="pt"
-						).to(device)
-
-					if single_inputs.pixel_values.numel() == 0:
-						raise ValueError(f"Pixel values of {img_path} are empty: {single_inputs.pixel_values.shape}")
-
-					# ========== Generate response ==========
-					gen_start = time.time()
-					with torch.inference_mode():
-						outputs = model.generate(
-							**single_inputs,
-							max_new_tokens=max_generated_tks,
-							use_cache=True,
-							temperature=None,
-							top_k=None,
-							top_p=None,
-							do_sample=False,
-							pad_token_id=getattr(model.generation_config, "pad_token_id", None),
-							eos_token_id=getattr(model.generation_config, "eos_token_id", None),
-						)
-					generation_time += time.time() - gen_start
-					
-					# Decode response
-					response = processor.decode(outputs[0], skip_special_tokens=True)
-					if verbose:
-						print(f"✅ Image {idx + 1} generation successful")
-					
-					# ========== Parse the response ==========
-					parse_start = time.time()
-					try:
-						parsed = get_vlm_response(
-							model_id=model_id,
-							raw_response=response,
-							verbose=verbose,
-						)
-						unique_results[idx] = parsed
-						parsing_time += time.time() - parse_start
-						if verbose and parsed:
-							print(f"✅ Parsed keywords: {parsed}")
-					except Exception as e:
-						parsing_time += time.time() - parse_start
-						if verbose:
-							print(f"⚠️ Parsing error for image {idx + 1}: {e}")
-						unique_results[idx] = None
-					break  # Break retry loop on success	
-				except Exception as e:
-					if verbose:
-						print(f"❌ Image {idx + 1} {img_path} attempt {attempt + 1} failed:\n{e}\n")
-					
-					if attempt < max_retries:
-						# Exponential backoff
-						sleep_time = EXP_BACKOFF ** attempt
-						if verbose:
-							print(f"⏳ Waiting {sleep_time}s before retry...")
-						time.sleep(sleep_time)
-						torch.cuda.empty_cache() if torch.cuda.is_available() else None
-					else:
-						# Final attempt failed
-						if verbose:
-							print(f"💥 Image {idx + 1} failed after {max_retries + 1} attempts")
-						unique_results[idx] = None
-			
-			# Clean up after each image
-			if 'single_inputs' in locals():
-				del single_inputs
-			if 'outputs' in locals():
-				del outputs
-			if 'response' in locals():
-				del response
-			
-			# Memory management - clear cache
-			if idx % 100 == 0 and torch.cuda.is_available():
-				torch.cuda.synchronize()
-				torch.cuda.empty_cache()
-				gc.collect()
+				# Decode response
+				response = processor.decode(outputs[0], skip_special_tokens=True)
 				if verbose:
-					print(f"├─ Memory cleared after image {idx + 1}")
+					print(f"\n✅ Image {idx + 1} {img_path} generation successful ✅\n")
+				
+				# ========== Parse the response ==========
+				parse_start = time.time()
+				try:
+					parsed = get_vlm_response(
+						model_id=model_id,
+						raw_response=response,
+						verbose=verbose,
+					)
+					unique_results[idx] = parsed
+					parsing_time += time.time() - parse_start
+					if verbose and parsed:
+						print(f"✅ Parsed keywords: {parsed}")
+				except Exception as e:
+					parsing_time += time.time() - parse_start
+					if verbose:
+						print(f"⚠️ Parsing error for image {idx + 1}: {e}")
+					unique_results[idx] = None
+				break  # Break retry loop on success	
+			except Exception as e:
+				if verbose:
+					print(f"❌ Image {idx + 1} {img_path} attempt {attempt + 1} failed:\n{e}\n")
+				
+				if attempt < max_retries:
+					# Exponential backoff
+					sleep_time = EXP_BACKOFF ** attempt
+					if verbose:
+						print(f"⏳ Waiting {sleep_time}s before retry...")
+					time.sleep(sleep_time)
+					torch.cuda.empty_cache() if torch.cuda.is_available() else None
+				else:
+					# Final attempt failed
+					if verbose:
+						print(f"💥 Image {idx + 1} failed after {max_retries + 1} attempts")
+					unique_results[idx] = None
+		
+		# Clean up after each image
+		if 'single_inputs' in locals():
+			del single_inputs
+		if 'outputs' in locals():
+			del outputs
+		if 'response' in locals():
+			del response
+		
+		# Memory management - clear cache
+		if idx % 100 == 0 and torch.cuda.is_available():
+			torch.cuda.synchronize()
+			torch.cuda.empty_cache()
+			gc.collect()
+			if verbose:
+				print(f"├─ Memory cleared after image {idx + 1}")
 	
 	if verbose:
 		print(f"[PROCESS] Sequential processing: {time.time() - process_start:.2f}s")
@@ -1202,9 +1195,10 @@ def get_vlm_based_labels_opt(
 	
 	# ========== Map results back ==========
 	map_start = time.time()
-	results = []
-	for orig_i, uniq_idx in tqdm(enumerate(original_to_unique_idx), total=len(original_to_unique_idx), desc="Mapping results"):
-		results.append(unique_results[uniq_idx])
+	results = [
+		[el.lower() for el in unique_results[uniq_idx]] if unique_results[uniq_idx] else None
+		for uniq_idx in original_to_unique_idx
+	]
 	if verbose:
 		print(f"[MAP] Result mapping: {time.time() - map_start:.2f}s")
 	
@@ -1219,11 +1213,10 @@ def get_vlm_based_labels_opt(
 		)
 		n_failed = len(results) - n_ok - n_null
 		success_rate = (n_ok / (len(results) - n_null)) * 100 if (len(results) - n_null) > 0 else 0
-		
-		print(
-			f"📊 Final results: {n_ok}/{len(results)-n_null} successful ({success_rate:.1f}%), "
-			f"{n_null} null inputs, {n_failed} failed"
-		)
+
+		print(f"📊 Final results statistics")		
+		print(f"  ├─ {n_ok}/{len(results)-n_null} successful ({success_rate:.1f}%)")
+		print(f"  └─ {n_null} null inputs, {n_failed} failed")
 		print(f"[STATS] Statistics calculation: {time.time() - stats_start:.2f}s")
 	
 	# ========== Cleanup ==========
@@ -1247,7 +1240,7 @@ def get_vlm_based_labels_opt(
 			print(f"[SAVE] DataFrame: {df.shape}, columns: {list(df.columns)}")
 
 	if verbose:
-		print(f"[FINAL] Total time: {time.time() - st_t:.2f} sec")
+		print(f"[FINAL] Total VLM time: {time.time() - st_t:.2f} sec")
 		print(f"{'='*100}")
 
 	return results
