@@ -57,16 +57,7 @@ def _load_vlm_(
 		quantization_bits: int = 8,          # 4 or 8
 		verbose: bool = False,
 	) -> Tuple[tfs.PreTrainedTokenizerBase, torch.nn.Module]:
-	"""
-	Load a vision‑language model (VLM) with optional 4‑/8‑bit quantisation.
-	When ``verbose=True`` a detailed trace of every decision is printed.
-	Returns
-	-------
-	processor, model
-	"""
-	# ------------------------------------------------------------------
-	# 1️⃣  Hardware diagnostics (only printed when verbose)
-	# ------------------------------------------------------------------
+
 	if verbose:
 			print("\n[DEBUG] ------------------- HARDWARE INFO -------------------")
 			print(f"[DEBUG] torch version          : {torch.__version__}")
@@ -85,38 +76,31 @@ def _load_vlm_(
 			else:
 					print("[DEBUG] Running on CPU only")
 			print("[DEBUG] ----------------------------------------------------\n")
-	# ------------------------------------------------------------------
-	# 2️⃣  Load model config (no weights yet)
-	# ------------------------------------------------------------------
+
 	if verbose:
 			print(f"[INFO] Loading configuration for model_id='{model_id}'")
-	config = tfs.AutoConfig.from_pretrained(
-			model_id,
-			trust_remote_code=True,
-	)
+
+	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True,)
+
 	if verbose:
 			print("[INFO] Config summary")
 			print(f"   • model_type        : {config.model_type}")
 			print(f"   • architectures     : {config.architectures}")
 			print(f"   • torch_dtype (if set) : {config.torch_dtype}")
 			print()
-	# ------------------------------------------------------------------
-	# 3️⃣  Resolve concrete model class (e.g. Qwen3ForCausalLM)
-	# ------------------------------------------------------------------
+
 	model_cls = None
+
 	if config.architectures:
-			cls_name = config.architectures[0]          # first architecture listed
-			if hasattr(tfs, cls_name):
-					model_cls = getattr(tfs, cls_name)
+		cls_name = config.architectures[0]          # first architecture listed
+		if hasattr(tfs, cls_name):
+			model_cls = getattr(tfs, cls_name)
 	if model_cls is None:
-			raise ValueError(
-					f"Unable to locate model class for architecture(s): {config.architectures}"
-			)
+		raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
+
 	if verbose:
 			print(f"[INFO] Resolved model class → {model_cls.__name__}\n")
-	# ------------------------------------------------------------------
-	# 4️⃣  Helper: optimal dtype for the *full‑precision* path
-	# ------------------------------------------------------------------
+
 	def _optimal_dtype(m_id: str, dev: str) -> torch.dtype:
 			bf16_ok = (
 					torch.cuda.is_available()
@@ -132,13 +116,11 @@ def _load_vlm_(
 			# default fallback
 			return torch.bfloat16 if bf16_ok else torch.float16
 	dtype = _optimal_dtype(model_id, device)
+
 	if verbose:
 			print("[INFO] Dtype selection")
 			print(f"   • BF16 supported on this device? : {torch.cuda.is_bf16_supported()}")
 			print(f"   • Chosen torch dtype            : {dtype}\n")
-	# ------------------------------------------------------------------
-	# 5️⃣  Helper: attention implementation (flash vs eager)
-	# ------------------------------------------------------------------
 	def _optimal_attn_impl(m_id: str, dev: str) -> str:
 			if not torch.cuda.is_available() or dev == "cpu":
 					return "eager"
@@ -157,13 +139,12 @@ def _load_vlm_(
 					return "flash_attention_2"
 			return "eager"
 	attn_impl = _optimal_attn_impl(model_id, device)
+
 	if verbose:
 			print("[INFO] Attention implementation")
 			print(f"   • Selected implementation : {attn_impl}\n")
-	# ------------------------------------------------------------------
-	# 6️⃣  Quantisation configuration (Bits‑and‑Bytes)
-	# ------------------------------------------------------------------
 	quantization_config = None
+
 	if use_quantization:
 			if quantization_bits == 8:
 					quantization_config = tfs.BitsAndBytesConfig(
@@ -185,34 +166,33 @@ def _load_vlm_(
 					print(f"   • Bits                : {quantization_bits}")
 					print(f"   • Config object type  : {type(quantization_config).__name__}")
 					print()
-	# ------------------------------------------------------------------
-	# 7️⃣  Load tokenizer / processor
-	# ------------------------------------------------------------------
+
 	if verbose:
-			print("[INFO] Loading processor / tokenizer …")
+		print("[INFO] Loading processor / tokenizer …")
 	processor = tfs.AutoProcessor.from_pretrained(
-			model_id,
-			use_fast=True,
-			trust_remote_code=True,
-			cache_dir=cache_directory[USER],
+		model_id,
+		use_fast=True,
+		trust_remote_code=True,
+		cache_dir=cache_directory[USER],
 	)
+
 	if verbose:
-			print(f"[INFO] Processor class → {processor.__class__.__name__}\n")
-	# ------------------------------------------------------------------
-	# 8️⃣  Assemble ``from_pretrained`` kwargs
-	# ------------------------------------------------------------------
+		print(f"[INFO] Processor {processor.__class__.__name__} loaded")
+	
 	model_kwargs: Dict[str, Any] = {
-			"low_cpu_mem_usage": True,
-			"trust_remote_code": True,
-			"cache_dir": cache_directory[USER],
-			"attn_implementation": attn_impl,
+		"low_cpu_mem_usage": True,
+		"trust_remote_code": True,
+		"cache_dir": cache_directory[USER],
+		"attn_implementation": attn_impl,
 	}
+
 	if use_quantization:
-			# ✅ Mandatory for any Bits‑and‑Bytes loading
-			model_kwargs["quantization_config"] = quantization_config
-			model_kwargs["device_map"] = "auto"
+		# ✅ Mandatory for any Bits‑and‑Bytes loading
+		model_kwargs["quantization_config"] = quantization_config
+		model_kwargs["device_map"] = "auto"
 	else:
-			model_kwargs["torch_dtype"] = dtype
+		model_kwargs["torch_dtype"] = dtype
+
 	if verbose:
 			print("[INFO] Model loading kwargs")
 			for k, v in model_kwargs.items():
@@ -221,23 +201,18 @@ def _load_vlm_(
 					else:
 							print(f"   • {k}: {v}")
 			print()
-	# ------------------------------------------------------------------
-	# 9️⃣  Optional memory snapshot *before* the heavy load
-	# ------------------------------------------------------------------
+
 	if verbose and torch.cuda.is_available():
 			cur = torch.cuda.current_device()
 			print("[DEBUG] CUDA memory BEFORE model load")
 			print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
 			print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
-	# ------------------------------------------------------------------
-	# 🔟  Load the model (weights are quantised / sharded here)
-	# ------------------------------------------------------------------
+
 	if verbose:
 			print("[INFO] Calling `from_pretrained` …")
+
 	model = model_cls.from_pretrained(model_id, **model_kwargs)
-	# ------------------------------------------------------------------
-	# 1️⃣1️⃣  Post‑load diagnostics
-	# ------------------------------------------------------------------
+
 	if verbose:
 			print("[INFO] Model loaded successfully")
 			print(f"   • Model class          : {model.__class__.__name__}")
@@ -259,31 +234,25 @@ def _load_vlm_(
 			else:
 					print("[INFO] No `hf_device_map` attribute – model resides on a single device")
 			print()
-	# ------------------------------------------------------------------
-	# 1️⃣2️⃣  Move model to target device (only needed for the full‑precision path)
-	# ------------------------------------------------------------------
+
 	if not use_quantization:
-			if verbose:
-					print(f"[INFO] Moving model to device '{device}' (full‑precision path)…")
-			model.to(device)
-			if verbose and torch.cuda.is_available():
-					cur = torch.cuda.current_device()
-					print("[DEBUG] CUDA memory AFTER model.to()")
-					print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
-					print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
+		if verbose:
+			print(f"[INFO] Moving model to device '{device}' (full‑precision path)…")
+		model.to(device)
+		if verbose and torch.cuda.is_available():
+			cur = torch.cuda.current_device()
+			print("[DEBUG] CUDA memory AFTER model.to()")
+			print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+			print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
 	else:
-			if verbose:
-					print("[INFO] Quantisation path – placement handled by `device_map='auto'`")
-					if torch.cuda.is_available():
-							gpu_params = sum(1 for p in model.parameters() if p.device.type == "cuda")
-							cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
-							print(f"   • Parameters on GPU : {gpu_params}")
-							print(f"   • Parameters on CPU  : {cpu_params}\n")
-	# ------------------------------------------------------------------
-	# 1️⃣3️⃣  Return processor & model
-	# ------------------------------------------------------------------
-	if verbose:
-			print("[INFO] Loading finished – returning objects\n")
+		if verbose:
+			print("[INFO] Quantisation path – placement handled by `device_map='auto'`")
+			if torch.cuda.is_available():
+				gpu_params = sum(1 for p in model.parameters() if p.device.type == "cuda")
+				cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
+				print(f"   • Parameters on GPU : {gpu_params}")
+				print(f"   • Parameters on CPU  : {cpu_params}\n")
+
 	return processor, model
 
 def get_prompt(
@@ -930,301 +899,303 @@ def get_vlm_based_labels_debug(
 	return all_keywords
 
 def get_vlm_based_labels_opt(
-			model_id: str,
-			device: str,
-			batch_size: int,
-			max_generated_tks: int,
-			max_kws: int,
-			csv_file: str,
-			do_dedup: bool = True,
-			max_retries: int = 2,
-			use_quantization: bool = False,
-			verbose: bool = False,
-		) -> List[Optional[List[str]]]:
+		model_id: str,
+		device: str,
+		batch_size: int,
+		max_generated_tks: int,
+		max_kws: int,
+		csv_file: str,
+		do_dedup: bool = True,
+		max_retries: int = 2,
+		use_quantization: bool = False,
+		verbose: bool = False,
+	) -> List[Optional[List[str]]]:
 
-		if verbose:
-			print(f"\n{'='*100}")
-			print(f"[INIT] Starting OPTIMIZED batch VLM processing")
-			print(f"[INIT] Model: {model_id}")
-			print(f"[INIT] Batch size: {batch_size}")
-			print(f"[INIT] Device: {device}")
-			print(f"{'='*100}\n")
-		st_t = time.time()
-		
-		output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
-
-		# Check for existing results
-		if os.path.exists(output_csv):
-			df = pd.read_csv(
-				filepath_or_buffer=output_csv,
-				on_bad_lines='skip',
-				dtype=dtypes,
-				low_memory=False,
-			)
-			if 'vlm_keywords' in df.columns:
-				if verbose: 
-					print(f"[EXISTING] Found existing results in {output_csv}")
-				return df['vlm_keywords'].tolist()
-
-		# Load data
+	if verbose:
+		print(f"\n{'='*100}")
+		print(f"[INIT] Starting OPTIMIZED batch VLM processing")
+		print(f"[INIT] Model: {model_id}")
+		print(f"[INIT] Batch size: {batch_size}")
+		print(f"[INIT] Device: {device}")
+		print(f"{'='*100}\n")
+	st_t = time.time()
+	
+	# ========== Check existing results ==========
+	check_start = time.time()
+	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
+	if os.path.exists(output_csv):
 		df = pd.read_csv(
-			filepath_or_buffer=csv_file,
+			filepath_or_buffer=output_csv,
 			on_bad_lines='skip',
 			dtype=dtypes,
 			low_memory=False,
 		)
-		if 'img_path' not in df.columns:
-			raise ValueError("CSV file must have 'img_path' column")
-		image_paths = df['img_path'].tolist()
-		if verbose:
-			print(f"[DATA] Loaded {len(image_paths)} image paths from CSV")
+		if 'vlm_keywords' in df.columns:
+			if verbose: 
+				print(f"[EXISTING] Found existing results in {output_csv} ({time.time() - check_start:.2f}s)")
+			return df['vlm_keywords'].tolist()
+	if verbose:
+		print(f"[CHECK] Existing results check: {time.time() - check_start:.2f}s")
 
-		# Store original inputs for later reference
-		original_inputs = image_paths
-		if len(original_inputs) == 0:
-			return None
+	# ========== Load data ==========
+	load_start = time.time()
+	df = pd.read_csv(
+		filepath_or_buffer=csv_file,
+		on_bad_lines='skip',
+		dtype=dtypes,
+		low_memory=False,
+	)
+	if 'img_path' not in df.columns:
+		raise ValueError("CSV file must have 'img_path' column")
+	image_paths = df['img_path'].tolist()
+	if verbose:
+		print(f"[DATA] Loaded {len(image_paths)} image paths from CSV ({time.time() - load_start:.2f}s)")
 
-		# Load model once
-		processor, model = _load_vlm_(
-			model_id=model_id, 
-			device=device,
-			use_quantization=use_quantization,
-			verbose=verbose
-		)
+	# Store original inputs for later reference
+	original_inputs = image_paths
+	if len(original_inputs) == 0:
+		return None
 
-		if verbose:
-			valid_count = sum(1 for x in original_inputs if x is not None and os.path.exists(str(x)))
-			null_count = len(original_inputs) - valid_count
-			print(f"📊 Input stats: {len(original_inputs)} total, {valid_count} valid, {null_count} null")
+	# ========== Load model ==========
+	model_start = time.time()
+	processor, model = _load_vlm_(
+		model_id=model_id, 
+		device=device,
+		use_quantization=use_quantization,
+		verbose=verbose
+	)
+	if verbose:
+		print(f"[MODEL] Model loading: {time.time() - model_start:.2f}s")
 
-		# 🔧 NULL-SAFE DEDUPLICATION
-		if do_dedup:
-			unique_map: Dict[str, int] = {}
-			unique_inputs = []
-			original_to_unique_idx = []
-			for img_path in original_inputs:
-				if img_path is None or not os.path.exists(str(img_path)):
-					key = "__NULL__"
-				else:
-					key = str(img_path)
-				if key in unique_map:
-					original_to_unique_idx.append(unique_map[key])
-				else:
-					idx = len(unique_inputs)
-					unique_map[key] = idx
-					unique_inputs.append(None if key == "__NULL__" else key)
-					original_to_unique_idx.append(idx)
-		else:
-			unique_inputs = []
-			for img_path in original_inputs:
-				if img_path is None or not os.path.exists(str(img_path)):
-					unique_inputs.append(None)
-				else:
-					unique_inputs.append(str(img_path))
-			original_to_unique_idx = list(range(len(unique_inputs)))
+	if verbose:
+		valid_count = sum(1 for x in original_inputs if x is not None and os.path.exists(str(x)))
+		null_count = len(original_inputs) - valid_count
+		print(f"📊 Input stats: {len(original_inputs)} total, {valid_count} valid, {null_count} null")
 
-		# Generate prompts and load images for unique inputs
-		unique_prompts = []
-		unique_images = []
-		for img_path in unique_inputs:
-			if img_path is None:
-				unique_prompts.append(None)
-				unique_images.append(None)
+	# ========== Deduplication ==========
+	dedup_start = time.time()
+	if verbose:
+		print(f"[DEDUP] Deduplicating inputs...")
+	if do_dedup:
+		unique_map: Dict[str, int] = {}
+		unique_inputs = []
+		original_to_unique_idx = []
+		for img_path in original_inputs:
+			if img_path is None or not os.path.exists(str(img_path)):
+				key = "__NULL__"
 			else:
-				try:
-					img = Image.open(img_path).convert("RGB")
-					prompt = get_prompt(
-						processor=processor,
-						img_path=img_path,
-						max_kws=max_kws,
-					)
-					unique_prompts.append(prompt)
-					unique_images.append(img)
-				except Exception as e:
-					if verbose:
-						print(f"❌ Failed to load image {img_path}: {e}")
-					unique_prompts.append(None)
-					unique_images.append(None)
+				key = str(img_path)
+			if key in unique_map:
+				original_to_unique_idx.append(unique_map[key])
+			else:
+				idx = len(unique_inputs)
+				unique_map[key] = idx
+				unique_inputs.append(None if key == "__NULL__" else key)
+				original_to_unique_idx.append(idx)
+	else:
+		unique_inputs = []
+		for img_path in original_inputs:
+			if img_path is None or not os.path.exists(str(img_path)):
+				unique_inputs.append(None)
+			else:
+				unique_inputs.append(str(img_path))
+		original_to_unique_idx = list(range(len(unique_inputs)))
+	if verbose:
+		print(f"[DEDUP] Deduplication: {time.time() - dedup_start:.2f}s ({len(original_inputs)} → {len(unique_inputs)} unique)")
 
-		# Will hold parsed results for unique inputs
-		unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
-		
-		# 🔄 SEQUENTIAL PROCESSING WITH BATCH-LIKE OPTIMIZATIONS
-		# For VLM models, sequential processing often gives better quality than batch processing
-		valid_indices = [
-			i
-			for i, (p, img) in enumerate(zip(unique_prompts, unique_images)) 
-			if p is not None and img is not None
-		]
-		
-		if valid_indices:
-			if verbose:
-				print(f"🔄 Processing {len(valid_indices)} unique images sequentially with optimizations...")
-			
-			for idx in tqdm(valid_indices, desc="Processing images"):
-				img_path = unique_inputs[idx]
-				prompt = unique_prompts[idx]
-				img = unique_images[idx]
-								
-				success = False
-				last_error = None
-				
-				# 🔄 RETRY LOGIC for individual images
-				for attempt in range(max_retries + 1):
-					try:
-						if attempt > 0 and verbose:
-							print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for image {idx + 1}")
-						# Process single image (not batch)
-						single_inputs = processor(
-							images=img,
-							text=prompt,
-							padding=True,
-							return_tensors="pt"
-						).to(device, non_blocking=True)									
-						# Generate response
-						with torch.inference_mode():
-							outputs = model.generate(
-								**single_inputs,
-								max_new_tokens=max_generated_tks,
-								use_cache=True,
-								temperature=None,
-								top_k=None,
-								top_p=None,
-								do_sample=False,
-								pad_token_id=getattr(model.generation_config, "pad_token_id", None),
-								eos_token_id=getattr(model.generation_config, "eos_token_id", None),
-							)
-						# Decode and parse response
-						response = processor.decode(outputs[0], skip_special_tokens=True)
-						if verbose:
-							print(f"✅ Image {idx + 1} generation successful")									
-						# Parse the response
-						try:
-							parsed = get_vlm_response(
-								model_id=model_id,
-								raw_response=response,
-								verbose=verbose,
-							)
-							unique_results[idx] = parsed
-							if verbose and parsed:
-								print(f"✅ Parsed keywords: {parsed}")
-						except Exception as e:
-							if verbose:
-								print(f"⚠️ Parsing error for image {idx + 1}: {e}")
-							unique_results[idx] = None
-						success = True
-						break  # Break retry loop on success	
-					except Exception as e:
-						last_error = e
-						if verbose:
-							print(f"❌ Image {idx + 1} attempt {attempt + 1} failed: {e}")
-						
-						if attempt < max_retries:
-							# Exponential backoff
-							sleep_time = EXP_BACKOFF ** attempt
-							if verbose:
-								print(f"⏳ Waiting {sleep_time}s before retry...")
-							time.sleep(sleep_time)
-							torch.cuda.empty_cache() if torch.cuda.is_available() else None
-						else:
-							# Final attempt failed
-							if verbose:
-								print(f"💥 Image {idx + 1} failed after {max_retries + 1} attempts")
-							unique_results[idx] = None
-				
-				# Clean up after each image
-				if 'single_inputs' in locals():
-					del single_inputs
-				if 'outputs' in locals():
-					del outputs
-				if 'response' in locals():
-					del response
-				
-				# Memory management - clear cache every few images
-				if idx % 50 == 0 and torch.cuda.is_available():
-					torch.cuda.empty_cache()
-					gc.collect()
-		
-		# 🔄 HYBRID FALLBACK: Retry failed items with different approach
-		failed_indices = [
-			i
-			for i, result in enumerate(unique_results)
-			if result is None and unique_inputs[i] is not None
-		]
-		
-		if failed_indices and verbose:
-			print(f"🔄 Retrying {len(failed_indices)} failed items with fallback approach...")
-		
-		for idx in failed_indices:
-			img_path = unique_inputs[idx]
-			if verbose:
-				print(f"🔄 Retrying failed item {idx}: {os.path.basename(img_path)}")
+	# ========== Generate prompts and load images ==========
+	prep_start = time.time()
+	unique_prompts = []
+	unique_images = []
+	for img_path in unique_inputs:
+		if img_path is None:
+			unique_prompts.append(None)
+			unique_images.append(None)
+		else:
 			try:
-				# Use the original query_local_vlm function as fallback
+				img = Image.open(img_path).convert("RGB")
 				prompt = get_prompt(
 					processor=processor,
 					img_path=img_path,
 					max_kws=max_kws,
 				)
-				individual_result = query_local_vlm(
-					model=model,
-					processor=processor,
-					img_path=img_path,
-					text=prompt,
-					device=device,
-					max_generated_tks=max_generated_tks,
-					verbose=verbose,
-				)
-				unique_results[idx] = individual_result
-				if verbose and individual_result:
-					print(f"✅ Fallback retry successful: {individual_result}")
-				elif verbose:
-					print(f"❌ Fallback retry failed for item {idx}")
+				unique_prompts.append(prompt)
+				unique_images.append(img)
 			except Exception as e:
 				if verbose:
-					print(f"💥 Fallback retry error for item {idx}: {e}")
-				unique_results[idx] = None
-		
-		# Map unique_results back to original order
-		results = []
-		for orig_i, uniq_idx in enumerate(original_to_unique_idx):
-			results.append(unique_results[uniq_idx])
-		
-		# Final statistics
+					print(f"❌ Failed to load image {img_path}: {e}")
+				unique_prompts.append(None)
+				unique_images.append(None)
+	if verbose:
+		print(f"[PREP] Image/prompt preparation: {time.time() - prep_start:.2f}s")
+
+	# Will hold parsed results for unique inputs
+	unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
+	
+	# ========== Sequential processing ==========
+	process_start = time.time()
+	valid_indices = [
+		i
+		for i, (p, img) in enumerate(zip(unique_prompts, unique_images)) 
+		if p is not None and img is not None
+	]
+	
+	if valid_indices:
 		if verbose:
-			n_ok = sum(1 for r in results if r is not None)
-			n_null = sum(
-				1 
-				for i, inp in enumerate(original_inputs) 
-				if inp is None or not os.path.exists(str(inp))
-			)
-			n_failed = len(results) - n_ok - n_null
-			success_rate = (n_ok / (len(results) - n_null)) * 100 if (len(results) - n_null) > 0 else 0
+			print(f"🔄 Processing {len(valid_indices)} unique images sequentially with optimizations...")
+		
+		generation_time = 0
+		parsing_time = 0
+		
+		for idx in tqdm(valid_indices, desc="Processing images"):
+			img_path = unique_inputs[idx]
+			prompt = unique_prompts[idx]
+			img = unique_images[idx]
+						
+			success = False
+			last_error = None
 			
-			print(
-				f"📊 Final results: {n_ok}/{len(results)-n_null} successful ({success_rate:.1f}%), "
-				f"{n_null} null inputs, {n_failed} failed"
-			)
+			# 🔄 RETRY LOGIC for individual images
+			for attempt in range(max_retries + 1):
+				try:
+					if attempt > 0 and verbose:
+						print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for image {idx + 1}")
+					
+					# Process single image (not batch)
+					single_inputs = processor(
+						images=img,
+						text=prompt,
+						padding=True,
+						return_tensors="pt"
+					).to(device, non_blocking=True)
+					
+					# ========== Generate response ==========
+					gen_start = time.time()
+					with torch.inference_mode():
+						outputs = model.generate(
+							**single_inputs,
+							max_new_tokens=max_generated_tks,
+							use_cache=True,
+							temperature=None,
+							top_k=None,
+							top_p=None,
+							do_sample=False,
+							pad_token_id=getattr(model.generation_config, "pad_token_id", None),
+							eos_token_id=getattr(model.generation_config, "eos_token_id", None),
+						)
+					generation_time += time.time() - gen_start
+					
+					# Decode response
+					response = processor.decode(outputs[0], skip_special_tokens=True)
+					if verbose:
+						print(f"✅ Image {idx + 1} generation successful")
+					
+					# ========== Parse the response ==========
+					parse_start = time.time()
+					try:
+						parsed = get_vlm_response(
+							model_id=model_id,
+							raw_response=response,
+							verbose=verbose,
+						)
+						unique_results[idx] = parsed
+						parsing_time += time.time() - parse_start
+						if verbose and parsed:
+							print(f"✅ Parsed keywords: {parsed}")
+					except Exception as e:
+						parsing_time += time.time() - parse_start
+						if verbose:
+							print(f"⚠️ Parsing error for image {idx + 1}: {e}")
+						unique_results[idx] = None
+					success = True
+					break  # Break retry loop on success	
+				except Exception as e:
+					last_error = e
+					if verbose:
+						print(f"❌ Image {idx + 1} attempt {attempt + 1} failed: {e}")
+					
+					if attempt < max_retries:
+						# Exponential backoff
+						sleep_time = EXP_BACKOFF ** attempt
+						if verbose:
+							print(f"⏳ Waiting {sleep_time}s before retry...")
+						time.sleep(sleep_time)
+						torch.cuda.empty_cache() if torch.cuda.is_available() else None
+					else:
+						# Final attempt failed
+						if verbose:
+							print(f"💥 Image {idx + 1} failed after {max_retries + 1} attempts")
+						unique_results[idx] = None
+			
+			# Clean up after each image
+			if 'single_inputs' in locals():
+				del single_inputs
+			if 'outputs' in locals():
+				del outputs
+			if 'response' in locals():
+				del response
+			
+			# Memory management - clear cache every few images
+			if idx % 50 == 0 and torch.cuda.is_available():
+				torch.cuda.empty_cache()
+				gc.collect()
+	
+	if verbose:
+		print(f"[PROCESS] Sequential processing: {time.time() - process_start:.2f}s")
+		print(f"  ├─ Generation time: {generation_time:.2f}s ({generation_time/len(valid_indices):.3f}s/img)")
+		print(f"  └─ Parsing time: {parsing_time:.2f}s ({parsing_time/len(valid_indices):.3f}s/img)")
+	
+	# ========== Map results back ==========
+	map_start = time.time()
+	results = []
+	for orig_i, uniq_idx in enumerate(original_to_unique_idx):
+		results.append(unique_results[uniq_idx])
+	if verbose:
+		print(f"[MAP] Result mapping: {time.time() - map_start:.2f}s")
+	
+	# ========== Final statistics ==========
+	stats_start = time.time()
+	if verbose:
+		n_ok = sum(1 for r in results if r is not None)
+		n_null = sum(
+			1 
+			for i, inp in enumerate(original_inputs) 
+			if inp is None or not os.path.exists(str(inp))
+		)
+		n_failed = len(results) - n_ok - n_null
+		success_rate = (n_ok / (len(results) - n_null)) * 100 if (len(results) - n_null) > 0 else 0
 		
-		# Clean up model and processor
-		del model, processor
-		torch.cuda.empty_cache() if torch.cuda.is_available() else None
+		print(
+			f"📊 Final results: {n_ok}/{len(results)-n_null} successful ({success_rate:.1f}%), "
+			f"{n_null} null inputs, {n_failed} failed"
+		)
+		print(f"[STATS] Statistics calculation: {time.time() - stats_start:.2f}s")
+	
+	# ========== Cleanup ==========
+	cleanup_start = time.time()
+	del model, processor
+	torch.cuda.empty_cache() if torch.cuda.is_available() else None
+	if verbose:
+		print(f"[CLEANUP] Model cleanup: {time.time() - cleanup_start:.2f}s")
 
-		if csv_file:
-			df['vlm_keywords'] = results
-			df.to_csv(output_csv, index=False)
-			try:
-				df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-			except Exception as e:
-				print(f"Failed to write Excel file: {e}")
-			if verbose:
-				print(f"[SAVE] Saved {len(results)} keywords to {output_csv}")
-				print(f"[SAVE] DataFrame: {df.shape}, columns: {list(df.columns)}")
-
+	# ========== Save results ==========
+	save_start = time.time()
+	if csv_file:
+		df['vlm_keywords'] = results
+		df.to_csv(output_csv, index=False)
+		try:
+			df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
+		except Exception as e:
+			print(f"Failed to write Excel file: {e}")
 		if verbose:
-			print(f"[FINAL] Total time: {time.time() - st_t:.2f} sec")
+			print(f"[SAVE] Saved {len(results)} keywords to {output_csv} ({time.time() - save_start:.2f}s)")
+			print(f"[SAVE] DataFrame: {df.shape}, columns: {list(df.columns)}")
 
-		return results
+	if verbose:
+		print(f"[FINAL] Total time: {time.time() - st_t:.2f} sec")
+		print(f"{'='*100}")
+
+	return results
 
 def get_vlm_based_labels_opt_x2(
 		model_id: str,
