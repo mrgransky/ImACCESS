@@ -207,7 +207,7 @@ def main():
 	parser.add_argument("--llm_model_id", '-llm', type=str, default="meta-llama/Llama-3.2-1B-Instruct", help="HuggingFace Text-Language model ID")
 	parser.add_argument("--vlm_model_id", '-vlm', type=str, default="Qwen/Qwen2-VL-2B-Instruct", help="HuggingFace Vision-Language model ID")
 	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
-	parser.add_argument("--num_workers", '-nw', type=int, default=4, help="Number of workers for parallel processing")
+	parser.add_argument("--num_workers", '-nw', type=int, default=16, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing (adjust based on GPU memory)")
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Max number of generated tokens")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")

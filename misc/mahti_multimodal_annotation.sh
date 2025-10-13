@@ -7,7 +7,7 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=10
 #SBATCH --mem=476G
 #SBATCH --partition=gpusmall
 #SBATCH --time=01-12:00:00
@@ -48,8 +48,8 @@ python -u multimodal_annotation.py \
   --vlm_model_id "Qwen/Qwen2.5-VL-7B-Instruct" \
   --max_generated_tks 64 \
   --max_keywords 5 \
-  --use_quantization \
-  --verbose
+  --verbose \
+  # --use_quantization \
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"
