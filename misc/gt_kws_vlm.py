@@ -1120,6 +1120,9 @@ def get_vlm_based_labels_opt(
 							return_tensors="pt"
 						).to(device)
 
+					if single_inputs.pixel_values.numel() == 0:
+						raise ValueError("Pixel values are empty")
+
 					# ========== Generate response ==========
 					gen_start = time.time()
 					with torch.inference_mode():
@@ -1161,7 +1164,7 @@ def get_vlm_based_labels_opt(
 					break  # Break retry loop on success	
 				except Exception as e:
 					if verbose:
-						print(f"<!> ❌ Image {idx + 1} attempt {attempt + 1} failed: {e}")
+						print(f"❌ Image {idx + 1} {img_path} attempt {attempt + 1} failed:\n{e}\n")
 					
 					if attempt < max_retries:
 						# Exponential backoff
