@@ -323,9 +323,13 @@ def get_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
 	else:
 		raise NotImplementedError(f"VLM response parsing not implemented for {model_id}")
 
-def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
-		"""Parse keywords from VLM response, handling various output formats."""
-		
+def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:		
+		if verbose:
+			print(f"\n[DEBUG] Raw Qwen VLM response:")
+			print(f"{response}")
+			print(f"\n")
+
+
 		# Temporal patterns to filter out
 		TEMPORAL_PATTERNS = [
 				r"\b\d{4}\b",              # 1900, 1944, 2020
@@ -447,7 +451,7 @@ def _qwen_vlm_(response: str, verbose: bool=False) -> Optional[List[str]]:
 		if verbose:
 				print(f"[DEBUG] Regex r\"\\[[^\\[\\]]+\\]\" found {len(all_matches)} balanced lists")
 				for idx, m in enumerate(all_matches):
-						print(f"[DEBUG]   Match {idx}: {repr(m[:100])}{'...' if len(m) > 100 else ''}")
+						print(f"[DEBUG]   Match {idx}: {repr(m)}")
 
 		# Detect numbered singletons like [1. thing] repeated across lines
 		numbered_singletons = []
@@ -813,11 +817,8 @@ def query_local_vlm(
 	vlm_response = processor.decode(output[0], skip_special_tokens=True)
 	if verbose:
 		tks_breakdown = get_conversation_token_breakdown(vlm_response, model_id)
-		print(f"\n")
 		print(f"[RESPONSE] Token Count Breakdown: {tks_breakdown}")
-		print(f"{vlm_response}")
-		print(f"\n")
-
+	
 	# ========== Memory post ==========
 	if torch.cuda.is_available():
 		alloc = torch.cuda.memory_allocated(device) / (1024**3)
@@ -828,7 +829,7 @@ def query_local_vlm(
 		if alloc / (total + 1e-6) > 0.9:
 			if verbose: print("[MEMORY] >90%, empty_cache()")
 			torch.cuda.empty_cache()
-	
+
 	# ========== Parse ==========
 	try:
 		parsed = get_vlm_response(model_id=model_id, raw_response=vlm_response, verbose=verbose)
@@ -1252,7 +1253,7 @@ def main():
 	parser.add_argument("--model_id", '-vlm', type=str, default="Qwen/Qwen2-VL-2B-Instruct", help="HuggingFace Vision-Language model ID")
 	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device('cuda:0' or 'cpu')")
 	parser.add_argument("--num_workers", '-nw', type=int, default=12, help="Number of workers for parallel processing")
-	parser.add_argument("--batch_size", '-bs', type=int, default=64, help="Batch size for processing")
+	parser.add_argument("--batch_size", '-bs', type=int, default=48, help="Batch size for processing")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Batch size for processing")
 	parser.add_argument("--use_quantization", '-q', action='store_true', help="Use quantization")
