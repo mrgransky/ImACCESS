@@ -1121,7 +1121,7 @@ def get_vlm_based_labels_opt(
 						).to(device)
 
 					if single_inputs.pixel_values.numel() == 0:
-						raise ValueError("Pixel values are empty")
+						raise ValueError(f"Pixel values of {img_path} are empty: {single_inputs.pixel_values.shape}")
 
 					# ========== Generate response ==========
 					gen_start = time.time()
