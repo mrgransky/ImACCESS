@@ -1134,8 +1134,6 @@ def get_vlm_based_labels_opt(
 				
 				# Decode response
 				response = processor.decode(outputs[0], skip_special_tokens=True)
-				if verbose:
-					print(f"\n✅ Image {idx + 1} {img_path} generation successful ✅\n")
 				
 				# ========== Parse the response ==========
 				parse_start = time.time()
@@ -1186,7 +1184,7 @@ def get_vlm_based_labels_opt(
 			torch.cuda.empty_cache()
 			gc.collect()
 			if verbose:
-				print(f"├─ Memory cleared after image[{idx}] {img_path}")
+				print(f"\t>>> Memory cleared after image[{idx}] {img_path}")
 	
 	if verbose:
 		print(f"[PROCESS] Sequential processing: {time.time() - process_start:.2f}s")
