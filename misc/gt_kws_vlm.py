@@ -1006,11 +1006,11 @@ def get_vlm_based_labels_opt(
 
 	# ========== Generate prompts and load images ==========
 	if verbose:
-		print(f"[PREP] Preparing prompts and images...")
+		print(f"[PREP] Preparing prompts and images for {len(unique_inputs)} unique images...")
 	prep_start = time.time()
 	unique_prompts = []
 	unique_images = []
-	for img_path in unique_inputs:
+	for i, img_path in tqdm(enumerate(unique_inputs), total=len(unique_inputs), desc="Preparing prompts and images"):
 		if img_path is None:
 			unique_prompts.append(None)
 			unique_images.append(None)
