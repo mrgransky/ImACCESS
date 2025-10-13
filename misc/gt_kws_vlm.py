@@ -34,7 +34,7 @@ print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
 
 EXP_BACKOFF = 2  # seconds
-
+IMG_MAX_RES = 512
 VLM_INSTRUCTION_TEMPLATE = """Act as a meticulous historical archivist specializing in 20th century documentation.
 Identify up to {k} most prominent, factual and distinct **KEYWORDS** that capture the main action, object, or event.
 
@@ -115,6 +115,7 @@ def _load_vlm_(
 					return torch.bfloat16 if bf16_ok else torch.float16
 			# default fallback
 			return torch.bfloat16 if bf16_ok else torch.float16
+
 	dtype = _optimal_dtype(model_id, device)
 
 	if verbose:
@@ -201,13 +202,13 @@ def _load_vlm_(
 		print()
 
 	if verbose and torch.cuda.is_available():
-			cur = torch.cuda.current_device()
-			print("[DEBUG] CUDA memory BEFORE model load")
-			print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
-			print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
+		cur = torch.cuda.current_device()
+		print("[DEBUG] CUDA memory BEFORE model load")
+		print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+		print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
 
 	if verbose:
-			print("[INFO] Calling `from_pretrained` …")
+		print("[INFO] Calling `from_pretrained` …")
 
 	model = model_cls.from_pretrained(model_id, **model_kwargs)
 
@@ -265,6 +266,7 @@ def prepare_prompts_and_images(
 	process = psutil.Process()
 	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
 	valid_paths, unique_prompts = [], []
+
 	def verify_path(img_path):
 		if img_path is None or not os.path.exists(str(img_path)):
 			return None
@@ -274,13 +276,17 @@ def prepare_prompts_and_images(
 			return img_path
 		except Exception:
 			return None
+
 	# Parallel verification
 	with ThreadPoolExecutor(max_workers=num_threads) as ex:
 		verified = list(tqdm(ex.map(verify_path, unique_inputs), total=len(unique_inputs), desc="Verifying images"))
+
 	for v in verified:
 		valid_paths.append(v)
 		unique_prompts.append(base_prompt if v else None)
+
 	mem_gb = process.memory_info().rss / (1024 ** 3)
+
 	if verbose:
 		print(f"[PREP] Completed in {time.time() - prep_start:.2f}s | Memory: {mem_gb:.2f} GB | {sum(v is not None for v in valid_paths)} valid images")
 	
@@ -1059,54 +1065,60 @@ def get_vlm_based_labels_opt(
 		for i, (p, img) in enumerate(zip(unique_prompts, unique_images)) 
 		if p is not None and img is not None
 	]
+
+	generation_time = 0
+	parsing_time = 0
+
 	if valid_indices:
 		if verbose:
 			print(f" ├─ Found {len(valid_indices)} Valid indices in {time.time() - process_start:.2f}s")
 			print(f" ├─ Sequential processing with optimizations...")
 		
-		generation_time = 0
-		parsing_time = 0
 		
 		for idx in tqdm(valid_indices, desc="Processing images"):
-			img_path = unique_inputs[idx]
-			img = unique_images[idx]
+			img_path = unique_images[idx]
 				
 			# 🔄 RETRY LOGIC for individual images
 			for attempt in range(max_retries + 1):
 				try:
 					if attempt > 0 and verbose:
 						print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for image {idx + 1}")
-					# ========== Prepare inputs ==========
-					is_chat_model = hasattr(processor, "apply_chat_template")
 
+					# ========== Prepare inputs ==========
+					with Image.open(img_path).convert("RGB") as img_obj:
+						img = img_obj.copy()
+						img.thumbnail((IMG_MAX_RES, IMG_MAX_RES), Image.LANCZOS)
+					is_chat_model = hasattr(processor, "apply_chat_template")
 					if is_chat_model:
-							messages = [
-									{
-											"role": "user",
-											"content": [
-													{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)},
-													{"type": "image", "image": img},
-											],
-									}
-							]
-							chat_prompt = processor.apply_chat_template(
-									messages,
-									tokenize=False,
-									add_generation_prompt=True,
-							)
-							single_inputs = processor(
-									images=img,
-									text=chat_prompt,
-									padding=True,
-									return_tensors="pt"
-							).to(device)
+						messages = [
+							{
+								"role": "user",
+								"content": [
+									{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)},
+									{"type": "image", "image": img},
+								],
+							}
+						]
+						chat_prompt = processor.apply_chat_template(
+							messages,
+							tokenize=False,
+							add_generation_prompt=True,
+						)
+						single_inputs = processor(
+							images=img,
+							text=chat_prompt,
+							padding=True,
+							truncation=True,
+							max_length=1024,
+							return_tensors="pt"
+						).to(device)
 					else:
-							single_inputs = processor(
-									images=img,
-									text=VLM_INSTRUCTION_TEMPLATE.format(k=max_kws),
-									padding=True,
-									return_tensors="pt"
-							).to(device)
+						single_inputs = processor(
+							images=img,
+							text=VLM_INSTRUCTION_TEMPLATE.format(k=max_kws),
+							padding=True,
+							return_tensors="pt"
+						).to(device)
 
 					# ========== Generate response ==========
 					gen_start = time.time()
@@ -1149,7 +1161,7 @@ def get_vlm_based_labels_opt(
 					break  # Break retry loop on success	
 				except Exception as e:
 					if verbose:
-						print(f"❌ Image {idx + 1} attempt {attempt + 1} failed: {e}")
+						print(f"<!> ❌ Image {idx + 1} attempt {attempt + 1} failed: {e}")
 					
 					if attempt < max_retries:
 						# Exponential backoff
@@ -1173,9 +1185,12 @@ def get_vlm_based_labels_opt(
 				del response
 			
 			# Memory management - clear cache every few images
-			if idx % 50 == 0 and torch.cuda.is_available():
+			if idx % 25 == 0 and torch.cuda.is_available():
+				torch.cuda.synchronize()
 				torch.cuda.empty_cache()
 				gc.collect()
+				if verbose:
+					print(f"├─ Memory cleared after image {idx + 1}")
 	
 	if verbose:
 		print(f"[PROCESS] Sequential processing: {time.time() - process_start:.2f}s")
@@ -1185,7 +1200,7 @@ def get_vlm_based_labels_opt(
 	# ========== Map results back ==========
 	map_start = time.time()
 	results = []
-	for orig_i, uniq_idx in enumerate(original_to_unique_idx):
+	for orig_i, uniq_idx in tqdm(enumerate(original_to_unique_idx), total=len(original_to_unique_idx), desc="Mapping results"):
 		results.append(unique_results[uniq_idx])
 	if verbose:
 		print(f"[MAP] Result mapping: {time.time() - map_start:.2f}s")
