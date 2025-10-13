@@ -1181,12 +1181,12 @@ def get_vlm_based_labels_opt(
 			del response
 		
 		# Memory management - clear cache
-		if idx % 100 == 0 and torch.cuda.is_available():
+		if idx % 250 == 0 and torch.cuda.is_available():
 			torch.cuda.synchronize()
 			torch.cuda.empty_cache()
 			gc.collect()
 			if verbose:
-				print(f"├─ Memory cleared after image {idx + 1}")
+				print(f"├─ Memory cleared after image[{idx}] {img_path}")
 	
 	if verbose:
 		print(f"[PROCESS] Sequential processing: {time.time() - process_start:.2f}s")
@@ -1224,7 +1224,7 @@ def get_vlm_based_labels_opt(
 	del model, processor
 	torch.cuda.empty_cache() if torch.cuda.is_available() else None
 	if verbose:
-		print(f"[CLEANUP] Model cleanup: {time.time() - cleanup_start:.2f}s")
+		print(f"[CLEANUP] Model cleanup & cache cleanup: {time.time() - cleanup_start:.2f}s")
 
 	# ========== Save results ==========
 	save_start = time.time()
@@ -1237,7 +1237,8 @@ def get_vlm_based_labels_opt(
 			print(f"Failed to write Excel file: {e}")
 		if verbose:
 			print(f"[SAVE] Saved {len(results)} keywords to {output_csv} ({time.time() - save_start:.2f}s)")
-			print(f"[SAVE] DataFrame: {df.shape}, columns: {list(df.columns)}")
+			print(f"  ├─ {type(df)} {df.shape}")
+			print(f"  └─ {list(df.columns)}")
 
 	if verbose:
 		print(f"[FINAL] Total VLM time: {time.time() - st_t:.2f} sec")
