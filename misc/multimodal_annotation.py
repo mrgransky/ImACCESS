@@ -138,6 +138,7 @@ def get_multimodal_annotation(
 			model_id=vlm_model_id,
 			device=device,
 			csv_file=csv_file,
+			num_workers=num_workers,
 			batch_size=batch_size,
 			max_kws=max_keywords,
 			max_generated_tks=max_generated_tks,
