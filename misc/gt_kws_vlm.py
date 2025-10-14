@@ -1417,10 +1417,7 @@ def get_vlm_based_labels_opt(
 					return_tensors="pt",
 					padding=True,
 				).to(device)
-				gen_kwargs = dict(
-					max_new_tokens=max_generated_tks,
-					use_cache=True,
-				)
+				gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True,)
 				# Use model’s built-in defaults unless the user overrides
 				if hasattr(model, "generation_config"):
 					gen_config = model.generation_config
@@ -1431,9 +1428,15 @@ def get_vlm_based_labels_opt(
 				else:
 					gen_kwargs.update(dict(temperature=1e-6, top_p=1.0, top_k=50, do_sample=True))
 				if verbose:
-					print(f"\n[batch {b}] gen_kwargs: {gen_kwargs}\n")
+					print(f"\n[GEN CONFIG] Using generation parameters:")
+					for k, v in gen_kwargs.items():
+						print(f"   • {k}: {v}")
 
-				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.float16):
+				with torch.amp.autocast(
+					device_type=device.type, 
+					enabled=torch.cuda.is_available(), 
+					dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+				):
 					outputs = model.generate(**inputs, **gen_kwargs)
 					# outputs = model.generate(
 					# 	**inputs,
@@ -1526,7 +1529,7 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=12, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
-	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=32, help="Batch size for processing")
+	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Batch size for processing")
 	parser.add_argument("--use_quantization", '-q', action='store_true', help="Use quantization")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
