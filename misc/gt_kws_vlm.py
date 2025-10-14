@@ -1431,7 +1431,7 @@ def get_vlm_based_labels_opt(
 				decoded = processor.batch_decode(outputs, skip_special_tokens=True)
 				print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
 				for i, resp in enumerate(decoded):
-					print(f"{i}\n{resp}\n")
+					if verbose: print(f"{i}\n{resp}\n")
 					try:
 						parsed = get_vlm_response(model_id=model_id, raw_response=resp, verbose=verbose)
 						results[idxs[i]] = parsed
