@@ -1283,66 +1283,63 @@ def get_vlm_based_labels_opt(
 		# ========================== LOAD MODEL ==========================
 		model_start = time.time()
 		processor, model = _load_vlm_(
-				model_id=model_id,
-				device=device,
-				use_quantization=use_quantization,
-				verbose=verbose,
+			model_id=model_id,
+			device=device,
+			use_quantization=use_quantization,
+			verbose=verbose,
 		)
 		if verbose:
-				print(f"[MODEL] model & processor loaded in {time.time() - model_start:.2f}s")
+			print(f"[MODEL] model & processor loaded in {time.time() - model_start:.2f}s")
 
 		# ========================== DEDUPLICATE ==========================
 		if verbose:
-				print(f"[DEDUP] Deduplicating inputs...")
+			print(f"[DEDUP] Deduplicating inputs...")
 		dedup_start = time.time()
 
 		unique_map, unique_inputs, orig_to_unique_idx = {}, [], []
 		for path in image_paths:
-				key = None if (path is None or not os.path.exists(str(path))) else str(path)
-				if key in unique_map:
-						orig_to_unique_idx.append(unique_map[key])
-				else:
-						idx = len(unique_inputs)
-						unique_map[key] = idx
-						unique_inputs.append(key)
-						orig_to_unique_idx.append(idx)
+			key = None if (path is None or not os.path.exists(str(path))) else str(path)
+			if key in unique_map:
+				orig_to_unique_idx.append(unique_map[key])
+			else:
+				idx = len(unique_inputs)
+				unique_map[key] = idx
+				unique_inputs.append(key)
+				orig_to_unique_idx.append(idx)
 
 		if verbose:
-				print(f"[DEDUP] {len(image_paths)} -> {len(unique_inputs)} unique (time: {time.time()-dedup_start:.2f}s)")
+			print(f"[DEDUP] {len(image_paths)} -> {len(unique_inputs)} unique (time: {time.time()-dedup_start:.2f}s)")
 
 		# ========================== VERIFY IMAGES ==========================
 		def verify_path(p):
-				if p is None or not os.path.exists(str(p)):
-						return None
-				try:
-						with Image.open(p) as img:
-								img.verify()
-						return p
-				except Exception:
-						return None
+			if p is None or not os.path.exists(str(p)):
+				return None
+			try:
+				with Image.open(p) as img:
+					img.verify()
+				return p
+			except Exception:
+				return None
 
 		with ThreadPoolExecutor(max_workers=num_workers) as ex:
-				verified = list(tqdm(ex.map(verify_path, unique_inputs), total=len(unique_inputs), desc="Verifying images"))
+			verified = list(tqdm(ex.map(verify_path, unique_inputs), total=len(unique_inputs), desc="Verifying images"))
 
 		unique_prompts = [VLM_INSTRUCTION_TEMPLATE.format(k=max_kws) if v else None for v in verified]
 		unique_results = [None] * len(unique_inputs)
 		valid_indices = [i for i, v in enumerate(verified) if v]
 
 		if verbose:
-				mem_gb = process.memory_info().rss / (1024**3)
-				print(f"[PREP] {sum(v is not None for v in verified)} valid unique images to process")
-				print(f"[DEBUG] Memory after preparation: {mem_gb:.2f} GB")
+			mem_gb = process.memory_info().rss / (1024**3)
+			print(f"[PREP] {sum(v is not None for v in verified)} valid unique images to process")
+			print(f"[DEBUG] Memory after preparation: {mem_gb:.2f} GB")
 
 		# ========================== PROCESSING ==========================
 		if not valid_indices:
-				print("[WARN] No valid images found. Exiting early.")
-				return [None] * len(image_paths)
+			print("[WARN] No valid images found. Exiting early.")
+			return [None] * len(image_paths)
 
 		torch.cuda.empty_cache()
 		gc.collect()
-
-		if torch.cuda.is_available():
-				print(f"[CUDA] Using device 0: {torch.cuda.get_device_name(0)}")
 
 		total_batches = math.ceil(len(valid_indices) / batch_size)
 		print(f"[BATCH] {total_batches} batches of up to {batch_size} images")
@@ -1351,99 +1348,90 @@ def get_vlm_based_labels_opt(
 		parse_time_total = 0
 
 		for batch_id in tqdm(range(total_batches), desc="Processing batches", ncols=120):
-				b_start = time.time()
-				b_indices = valid_indices[batch_id * batch_size : (batch_id + 1) * batch_size]
-				imgs_for_proc = [verified[i] for i in b_indices]
-				prompts_for_proc = [unique_prompts[i] for i in b_indices]
-
-				batch_results = []
-
-				for local_i, (img_path, txt_prompt) in enumerate(zip(imgs_for_proc, prompts_for_proc)):
-						if not img_path or not os.path.exists(img_path):
-								batch_results.append(None)
-								continue
-
-						for attempt in range(max_retries + 1):
-								try:
-										with Image.open(img_path).convert("RGB") as img:
-												is_chat_model = hasattr(processor, "apply_chat_template")
-												if is_chat_model:
-														messages = [{
-																"role": "user",
-																"content": [
-																		{"type": "text", "text": txt_prompt},
-																		{"type": "image", "image": img},
-																],
-														}]
-														chat_prompt = processor.apply_chat_template(
-																messages, tokenize=False, add_generation_prompt=True
-														)
-														inputs = processor(
-																images=img,
-																text=chat_prompt,
-																padding=True,
-																truncation=False,
-																return_tensors="pt"
-														).to(device)
-												else:
-														inputs = processor(
-																images=img,
-																text=txt_prompt,
-																padding=True,
-																truncation=False,
-																return_tensors="pt"
-														).to(device)
-
-										# ---- Generate ----
-										gen_start = time.time()
-										with torch.inference_mode():
-												outputs = model.generate(
-														**inputs,
-														max_new_tokens=max_generated_tks,
-														do_sample=False,
-														use_cache=True,
-												)
-										gen_time_total += time.time() - gen_start
-
-										response = processor.decode(outputs[0], skip_special_tokens=True)
-
-										# ---- Parse ----
-										parse_start = time.time()
-										parsed = get_vlm_response(model_id=model_id, raw_response=response, verbose=verbose)
-										parse_time_total += time.time() - parse_start
-
-										batch_results.append(parsed)
-										if verbose:
-												print(f"✅ Image {b_indices[local_i]+1} generation successful")
-										break
-
-								except Exception as e:
-										if verbose:
-												print(f"[BATCH {batch_id+1}] ❌ Image {b_indices[local_i]+1} attempt {attempt+1} failed: {e}")
-										batch_results.append(None)
-										time.sleep(1.5 * attempt)
-										torch.cuda.empty_cache()
-										gc.collect()
-										continue
-
-				# Assign results back
-				for local_i, res in zip(b_indices, batch_results):
-						unique_results[local_i] = res
-
-				if verbose:
-						print(f"[BATCH {batch_id+1}/{total_batches}] Done in {time.time()-b_start:.2f}s")
-
-				# periodic checkpoint
-				if batch_id % 10 == 0:
-						tmp_path = csv_file.replace(".csv", f"_vlm_checkpoint_{batch_id}.csv")
-						df_tmp = df.copy()
-						df_tmp["vlm_keywords"] = [unique_results[i] for i in orig_to_unique_idx]
-						df_tmp.to_csv(tmp_path, index=False)
+			b_start = time.time()
+			b_indices = valid_indices[batch_id * batch_size : (batch_id + 1) * batch_size]
+			imgs_for_proc = [verified[i] for i in b_indices]
+			prompts_for_proc = [unique_prompts[i] for i in b_indices]
+			batch_results = []
+			for local_i, (img_path, txt_prompt) in enumerate(zip(imgs_for_proc, prompts_for_proc)):
+				if not img_path or not os.path.exists(img_path):
+					batch_results.append(None)
+					continue
+				for attempt in range(max_retries + 1):
+					try:
+						with Image.open(img_path).convert("RGB") as img:
+							is_chat_model = hasattr(processor, "apply_chat_template")
+							if is_chat_model:
+								messages = [{
+									"role": "user",
+									"content": [
+											{"type": "text", "text": txt_prompt},
+											{"type": "image", "image": img},
+									],
+								}]
+								chat_prompt = processor.apply_chat_template(
+									messages, tokenize=False, add_generation_prompt=True
+								)
+								inputs = processor(
+									images=img,
+									text=chat_prompt,
+									padding=True,
+									truncation=False,
+									return_tensors="pt"
+								).to(device)
+							else:
+								inputs = processor(
+									images=img,
+									text=txt_prompt,
+									padding=True,
+									truncation=False,
+									return_tensors="pt"
+								).to(device)
+						# ---- Generate ----
+						gen_start = time.time()
+						with torch.inference_mode():
+							outputs = model.generate(
+								**inputs,
+								max_new_tokens=max_generated_tks,
+								temperature=None,
+								top_k=None,
+								top_p=None,
+								do_sample=False,
+								use_cache=True,
+							)
+						gen_time_total += time.time() - gen_start
+						response = processor.decode(outputs[0], skip_special_tokens=True)
+						# ---- Parse ----
+						parse_start = time.time()
+						parsed = get_vlm_response(model_id=model_id, raw_response=response, verbose=verbose)
+						parse_time_total += time.time() - parse_start
+						batch_results.append(parsed)
 						if verbose:
-								print(f"[CHECKPOINT] Saved partial results → {tmp_path}")
-
-				torch.cuda.empty_cache()
-				gc.collect()
+							print(f"✅ Image {b_indices[local_i]+1} generation successful")
+						break
+					except Exception as e:
+						if verbose:
+							print(f"[BATCH {batch_id+1}] ❌ Image {b_indices[local_i]+1} attempt {attempt+1} failed: {e}")
+						batch_results.append(None)
+						time.sleep(EXP_BACKOFF ** attempt)
+						torch.cuda.empty_cache()
+						gc.collect()
+						continue
+			# Assign results back
+			for local_i, res in zip(b_indices, batch_results):
+				unique_results[local_i] = res
+			if verbose:
+				print(f"[BATCH {batch_id+1}/{total_batches}] Done in {time.time()-b_start:.2f}s")
+			# periodic checkpoint
+			if batch_id % 10 == 0:
+				tmp_path = csv_file.replace(".csv", f"_vlm_checkpoint_{batch_id}.csv")
+				df_tmp = df.copy()
+				df_tmp["vlm_keywords"] = [unique_results[i] for i in orig_to_unique_idx]
+				df_tmp.to_csv(tmp_path, index=False)
+				if verbose:
+					print(f"[CHECKPOINT] Saved partial results → {tmp_path}")
+			torch.cuda.empty_cache()
+			gc.collect()
 
 		# ========================== FINAL MAPPING ==========================
 		results = [unique_results[i] for i in orig_to_unique_idx]
@@ -1453,7 +1441,7 @@ def get_vlm_based_labels_opt(
 		df["vlm_keywords"] = results
 		df.to_csv(output_csv, index=False)
 		if verbose:
-				print(f"[SAVE] Saved results to {output_csv}")
+			print(f"[SAVE] Saved results to {output_csv}")
 
 		# ========================== FINAL STATS ==========================
 		total_time = time.time() - start_time
@@ -1473,7 +1461,7 @@ def main():
 	parser.add_argument("--model_id", '-vlm', type=str, default="Qwen/Qwen2-VL-2B-Instruct", help="HuggingFace Vision-Language model ID")
 	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device('cuda:0' or 'cpu')")
 	parser.add_argument("--num_workers", '-nw', type=int, default=12, help="Number of workers for parallel processing")
-	parser.add_argument("--batch_size", '-bs', type=int, default=8, help="Batch size for processing")
+	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=48, help="Batch size for processing")
 	parser.add_argument("--use_quantization", '-q', action='store_true', help="Use quantization")
