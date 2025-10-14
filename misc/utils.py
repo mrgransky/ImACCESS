@@ -153,7 +153,7 @@ print(f"HF_HUB_CACHE: {os.environ['HF_HUB_CACHE']}")
 print(f"HF_DATASETS_CACHE: {os.environ['HF_DATASETS_CACHE']}")
 
 import transformers as tfs
-tfs.logging.set_verbosity_info()
+# tfs.logging.set_verbosity_info()
 
 dtypes = {
 	'doc_id': str, 'id': str, 'label': str, 'title': str,
