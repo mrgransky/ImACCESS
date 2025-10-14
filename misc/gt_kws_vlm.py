@@ -190,7 +190,7 @@ def _load_vlm_(
 	else:
 		raise ValueError("Unable to locate tokenizer in processor")
 
-	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is None:
+	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
 		tokenizer.padding_side = "left"
 
 	if verbose:
