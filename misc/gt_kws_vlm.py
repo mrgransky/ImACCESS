@@ -1432,6 +1432,11 @@ def get_vlm_based_labels_opt(
 				print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
 				for i, resp in enumerate(decoded):
 					print(f"{i}\n{resp}\n")
+					try:
+						parsed = get_vlm_response(model_id=model_id, raw_response=resp, verbose=verbose)
+						results[idxs[i]] = parsed
+					except Exception:
+						results[idxs[i]] = None
 
 				# for (i, _), resp in zip(valid_pairs, decoded):
 				# 	try:
@@ -1439,6 +1444,7 @@ def get_vlm_based_labels_opt(
 				# 		results[i] = parsed
 				# 	except Exception:
 				# 		results[i] = None
+
 			except Exception as e_batch:
 				print(f"\n[BATCH {b}]: {e_batch}\n")
 				if verbose:
