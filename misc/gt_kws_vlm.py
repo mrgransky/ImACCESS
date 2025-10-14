@@ -1432,7 +1432,7 @@ def get_vlm_based_labels_opt(
 						decoded = processor.decode(out[0], skip_special_tokens=True)
 						results[i] = get_vlm_response(model_id=model_id, raw_response=decoded)
 					except Exception as e_fallback:
-							print(f"   [fallback ❌] image {i}: {e_fallback}")
+							print(f"\n[fallback ❌] image {i}:\n{e_fallback}\n")
 							results[i] = None
 			# torch.cuda.empty_cache()
 			# gc.collect()
