@@ -1423,9 +1423,9 @@ def get_vlm_based_labels_opt(
 						**inputs,
 						max_new_tokens=max_generated_tks,
 						use_cache=True,
-						temperature=1.0,
-						top_p=1.0,
-						top_k=0,
+						temperature=1e-6,
+						# top_p=None,
+						# top_k=None,
 						do_sample=False,
 					)
 				decoded = processor.batch_decode(outputs, skip_special_tokens=True)
