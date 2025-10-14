@@ -1422,18 +1422,9 @@ def get_vlm_based_labels_opt(
 				if hasattr(model, "generation_config"):
 					gen_config = model.generation_config
 					gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
-					# gen_kwargs["top_p"] = getattr(gen_config, "top_p", 1.0)
-					# gen_kwargs["top_k"] = getattr(gen_config, "top_k", 50)
 					gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
 				else:
-					gen_kwargs.update(
-						dict(
-							temperature=1e-6, 
-							# top_p=1.0, 
-							# top_k=50, 
-							do_sample=True
-						)
-					)
+					gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
 				if verbose:
 					print(f"\n[GEN CONFIG] Using generation parameters:")
 					for k, v in gen_kwargs.items():
