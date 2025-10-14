@@ -275,8 +275,8 @@ def _load_vlm_(
 		else:
 			print("[INFO] No `hf_device_map` attribute – model resides on a single device")
 
-	if hasattr(model, 'generation_config'):
-		print(f"[INFO] Generation config:\n{model.generation_config}")
+		if hasattr(model, 'generation_config'):
+			print(f"[INFO] Generation config:\n{model.generation_config}")
 
 	if not use_quantization:
 		if verbose:
