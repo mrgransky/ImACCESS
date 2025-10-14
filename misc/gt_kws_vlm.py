@@ -1502,11 +1502,11 @@ def get_vlm_based_labels_opt(
 		out_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 		df["vlm_keywords"] = final
 
-		# df.to_csv(out_csv, index=False)
-		# try:
-		# 	df.to_excel(out_csv.replace('.csv', '.xlsx'), index=False)
-		# except Exception as e:
-		# 	print(f"Failed to write Excel file: {e}")
+		df.to_csv(out_csv, index=False)
+		try:
+			df.to_excel(out_csv.replace('.csv', '.xlsx'), index=False)
+		except Exception as e:
+			print(f"Failed to write Excel file: {e}")
 
 		elapsed = time.time() - t0
 
