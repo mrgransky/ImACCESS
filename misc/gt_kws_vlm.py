@@ -1422,11 +1422,18 @@ def get_vlm_based_labels_opt(
 				if hasattr(model, "generation_config"):
 					gen_config = model.generation_config
 					gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
-					gen_kwargs["top_p"] = getattr(gen_config, "top_p", 1.0)
-					gen_kwargs["top_k"] = getattr(gen_config, "top_k", 50)
+					# gen_kwargs["top_p"] = getattr(gen_config, "top_p", 1.0)
+					# gen_kwargs["top_k"] = getattr(gen_config, "top_k", 50)
 					gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
 				else:
-					gen_kwargs.update(dict(temperature=1e-6, top_p=1.0, top_k=50, do_sample=True))
+					gen_kwargs.update(
+						dict(
+							temperature=1e-6, 
+							# top_p=1.0, 
+							# top_k=50, 
+							do_sample=True
+						)
+					)
 				if verbose:
 					print(f"\n[GEN CONFIG] Using generation parameters:")
 					for k, v in gen_kwargs.items():
@@ -1503,11 +1510,12 @@ def get_vlm_based_labels_opt(
 		final = [results[i] for i in orig_to_uniq]
 		out_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 		df["vlm_keywords"] = final
-		df.to_csv(out_csv, index=False)
-		try:
-			df.to_excel(out_csv.replace('.csv', '.xlsx'), index=False)
-		except Exception as e:
-			print(f"Failed to write Excel file: {e}")
+
+		# df.to_csv(out_csv, index=False)
+		# try:
+		# 	df.to_excel(out_csv.replace('.csv', '.xlsx'), index=False)
+		# except Exception as e:
+		# 	print(f"Failed to write Excel file: {e}")
 
 		elapsed = time.time() - t0
 
