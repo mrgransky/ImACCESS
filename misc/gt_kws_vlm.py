@@ -178,7 +178,8 @@ def _load_vlm_(
 	)
 
 	if verbose:
-		print(f"\n[INFO] Processor {processor.__class__.__name__} loaded {type(processor)}")
+		print(f"\n[INFO] {processor.__class__.__name__} {type(processor)}")
+		print(f"{processor.__call__.__code__.co_varnames}")
 		print(f"   • apply_chat_template: {hasattr(processor, 'apply_chat_template')}")
 		print(f"   • tokenizer          : {hasattr(processor, 'tokenizer')}")
 		print(f"   • text_tokenizer     : {hasattr(processor, 'text_tokenizer')}")
