@@ -1426,8 +1426,8 @@ def get_vlm_based_labels_opt(
 								top_k=None,
 								do_sample=False,
 								use_cache=True,
-								pad_token_id=getattr(model.generation_config, "pad_token_id", None),
-								eos_token_id=getattr(model.generation_config, "eos_token_id", None),
+								# pad_token_id=getattr(model.generation_config, "pad_token_id", None),
+								# eos_token_id=getattr(model.generation_config, "eos_token_id", None),
 							)
 						decoded = processor.decode(out[0], skip_special_tokens=True)
 						results[i] = get_vlm_response(model_id=model_id, raw_response=decoded)
