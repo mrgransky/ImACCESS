@@ -213,7 +213,6 @@ def _load_vlm_(
 		print(f"   • tokenizer mask token id: {tokenizer.mask_token_id}")
 		print(f"   • tokenizer padding side: {tokenizer.padding_side}")
 	
-
 	model_kwargs: Dict[str, Any] = {
 		"low_cpu_mem_usage": True,
 		"trust_remote_code": True,
@@ -1413,12 +1412,12 @@ def get_vlm_based_labels_opt(
 						**inputs,
 						max_new_tokens=max_generated_tks,
 						use_cache=True,
-						# temperature=None,
-						# top_p=None,
-						# top_k=None,
-						# do_sample=False,
-						# pad_token_id=getattr(model.generation_config, "pad_token_id", None),
-						# eos_token_id=getattr(model.generation_config, "eos_token_id", None),
+						temperature=None,
+						top_p=None,
+						top_k=None,
+						do_sample=False,
+						pad_token_id=getattr(model.generation_config, "pad_token_id", None),
+						eos_token_id=getattr(model.generation_config, "eos_token_id", None),
 					)
 				decoded = processor.batch_decode(outputs, skip_special_tokens=True)
 				print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
