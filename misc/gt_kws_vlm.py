@@ -59,7 +59,6 @@ def _load_vlm_(
 	) -> Tuple[tfs.PreTrainedTokenizerBase, torch.nn.Module]:
 
 	if verbose:
-			print("\n[DEBUG] ------------------- HARDWARE INFO -------------------")
 			print(f"[DEBUG] torch version          : {torch.__version__}")
 			print(f"[DEBUG] CUDA available?       : {torch.cuda.is_available()}")
 			if torch.cuda.is_available():
@@ -1436,15 +1435,6 @@ def get_vlm_based_labels_opt(
 					dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 				):
 					outputs = model.generate(**inputs, **gen_kwargs)
-					# outputs = model.generate(
-					# 	**inputs,
-					# 	max_new_tokens=max_generated_tks,
-					# 	use_cache=True,
-					# 	temperature=None,
-					# 	top_p=None,
-					# 	top_k=None,
-					# 	do_sample=False,
-					# )
 				decoded = processor.batch_decode(outputs, skip_special_tokens=True)
 				if verbose: print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
 				for i, resp in enumerate(decoded):
@@ -1541,8 +1531,7 @@ def main():
 		gpu_name = torch.cuda.get_device_name(args.device)
 		total_mem = torch.cuda.get_device_properties(args.device).total_memory / (1024**3)  # Convert to GB
 		print(f"Available GPU(s) = {torch.cuda.device_count()}")
-		print(f"GPU: {torch.cuda.get_device_name(args.device)}")
-		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+		print(f"GPU: {torch.cuda.get_device_name(args.device)} {total_mem:.2f}GB VRAM")
 		print(f"Compute Capability: {torch.cuda.get_device_capability(0)}")
 		print(f"CUDA Version: {torch.version.cuda}")
 
