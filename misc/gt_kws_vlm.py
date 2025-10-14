@@ -86,7 +86,7 @@ def _load_vlm_(
 			print("[INFO] Config summary")
 			print(f"   • model_type        : {config.model_type}")
 			print(f"   • architectures     : {config.architectures}")
-			print(f"   • torch_dtype (if set) : {config.torch_dtype}")
+			print(f"   • dtype (if set)    : {config.dtype}")
 			print()
 
 	model_cls = None
@@ -178,7 +178,8 @@ def _load_vlm_(
 	)
 
 	if verbose:
-		print(f"[INFO] Processor {processor.__class__.__name__} loaded")
+		print(f"\n[INFO] Processor {processor.__class__.__name__} loaded {type(processor)}")
+		print(f"   • apply_chat_template: {hasattr(processor, 'apply_chat_template')}")
 	
 	model_kwargs: Dict[str, Any] = {
 		"low_cpu_mem_usage": True,
@@ -1254,7 +1255,6 @@ def get_vlm_based_labels_opt(
 		max_kws: int,
 		csv_file: str,
 		do_dedup: bool = True,
-		max_retries: int = 2,
 		use_quantization: bool = False,
 		verbose: bool = False,
 ):
@@ -1265,22 +1265,27 @@ def get_vlm_based_labels_opt(
 		# -------------------------------------------------------
 		# Load data
 		# -------------------------------------------------------
+		load_start = time.time()
 		df = pd.read_csv(csv_file, on_bad_lines="skip", low_memory=False)
 		if "img_path" not in df.columns:
-				raise ValueError("CSV file must have 'img_path' column")
+			raise ValueError("CSV file must have 'img_path' column")
 		image_paths = [p if isinstance(p, str) and os.path.exists(p) else None for p in df["img_path"]]
 		n_total = len(image_paths)
+		if verbose:
+			print(f"[DATA] Loaded {len(image_paths)} image paths from CSV ({time.time() - load_start:.2f}s)")
 
 		# -------------------------------------------------------
 		# Load model and processor
 		# -------------------------------------------------------
 		processor, model = _load_vlm_(
-				model_id=model_id, device=device, use_quantization=use_quantization, verbose=verbose
+			model_id=model_id, 
+			device=device, 
+			use_quantization=use_quantization, 
+			verbose=verbose
 		)
 		model.eval()
-
 		if verbose:
-			print(f"[MODEL] Loaded model: {model_id} | Device: {device} | {torch.cuda.get_device_name(device)}")
+			print(f"[MODEL] Loaded {model_id} | {device} | {torch.cuda.get_device_name(device)}")
 
 		# -------------------------------------------------------
 		# Deduplication
@@ -1324,8 +1329,9 @@ def get_vlm_based_labels_opt(
 		# -------------------------------------------------------
 		# Batch inference
 		# -------------------------------------------------------
-		for b in tqdm(range(total_batches), desc="Processing batches", ncols=120):
+		for b in tqdm(range(total_batches), desc="Processing batches", ncols=100):
 			idxs = valid_indices[b * batch_size : (b + 1) * batch_size]
+
 			def load_img(p):
 				try:
 					with Image.open(p).convert("RGB") as im:
@@ -1333,35 +1339,42 @@ def get_vlm_based_labels_opt(
 						return im.copy()
 				except Exception:
 					return None
+
 			with ThreadPoolExecutor(max_workers=num_workers) as ex:
 				imgs = list(ex.map(load_img, [verified[i] for i in idxs]))
+
 			valid_pairs = [(i, img) for i, img in zip(idxs, imgs) if img]
+
 			if not valid_pairs:
+				if verbose:
+					print(f" [batch {b}]: No valid images in batch => skipping")
 				continue
+
 			# Build messages
 			messages = [
-				{
+				[{
 					"role": "user",
 					"content": [
 						{"type": "text", "text": base_prompt},
 						{"type": "image", "image": img},
 					],
-				}
+				}]
 				for _, img in valid_pairs
 			]
 			try:
-				# Create chat text templates
+				# Apply chat template for each message in the batch
 				chat_texts = [
 					processor.apply_chat_template(m, tokenize=False, add_generation_prompt=True)
 					for m in messages
 				]
-				# pass both text & images
+				# pass both texts [txt1, txt2, ...] & images [img1, img2, ...]
 				inputs = processor(
 					text=chat_texts,
 					images=[img for _, img in valid_pairs],
 					return_tensors="pt",
 					padding=True,
 				).to(device)
+
 				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.float16):
 					outputs = model.generate(
 						**inputs,
@@ -1371,27 +1384,34 @@ def get_vlm_based_labels_opt(
 						top_k=None,
 						do_sample=False,
 						use_cache=True,
+						pad_token_id=getattr(model.generation_config, "pad_token_id", None),
+						eos_token_id=getattr(model.generation_config, "eos_token_id", None),
 					)
 				decoded = processor.batch_decode(outputs, skip_special_tokens=True)
-				for (i, _), resp in zip(valid_pairs, decoded):
+				print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
+				for i, resp in enumerate(decoded):
+					print(f"{i}\n{resp}\n")
+				# for (i, _), resp in zip(valid_pairs, decoded):
+				# 	try:
+				# 		parsed = get_vlm_response(model_id=model_id, raw_response=resp, verbose=False)
+				# 		results[i] = parsed
+				# 	except Exception:
+				# 		results[i] = None
+			except Exception as e_batch:
+				print(f"\n[BATCH {b}]: {e_batch}\n")
+				if verbose:
+					print(f"\tFalling back to sequential processing for {len(valid_pairs)} images in this batch.")
+				# fallback: process each image sequentially
+				for i, img in tqdm(valid_pairs, desc="Processing batch images [sequential]", ncols=100):
 					try:
-						parsed = get_vlm_response(model_id=model_id, raw_response=resp, verbose=False)
-						results[i] = parsed
-					except Exception:
-						results[i] = None
-			except Exception as e:
-				print(f"[BATCH {b}] failed: {e}")
-				# Per-image fallback
-				for i, img in valid_pairs:
-					try:
-						msg = [{
+						single_message = [{
 							"role": "user",
 							"content": [
 								{"type": "text", "text": base_prompt},
 								{"type": "image", "image": img},
 							],
 						}]
-						chat = processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=True)
+						chat = processor.apply_chat_template(single_message, tokenize=False, add_generation_prompt=True)
 						single_inputs = processor(
 							text=[chat],
 							images=[img],
@@ -1400,12 +1420,19 @@ def get_vlm_based_labels_opt(
 						with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.float16):
 							out = model.generate(
 								**single_inputs, 
-								max_new_tokens=max_generated_tks
+								max_new_tokens=max_generated_tks,
+								temperature=None,
+								top_p=None,
+								top_k=None,
+								do_sample=False,
+								use_cache=True,
+								pad_token_id=getattr(model.generation_config, "pad_token_id", None),
+								eos_token_id=getattr(model.generation_config, "eos_token_id", None),
 							)
 						decoded = processor.decode(out[0], skip_special_tokens=True)
 						results[i] = get_vlm_response(model_id=model_id, raw_response=decoded)
-					except Exception as e2:
-							print(f"   [fallback ❌] image {i}: {e2}")
+					except Exception as e_fallback:
+							print(f"   [fallback ❌] image {i}: {e_fallback}")
 							results[i] = None
 			# torch.cuda.empty_cache()
 			# gc.collect()
@@ -1416,15 +1443,13 @@ def get_vlm_based_labels_opt(
 		final = [results[i] for i in orig_to_uniq]
 		out_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 		df["vlm_keywords"] = final
-		df.to_csv(out_csv, index=False)
+		# df.to_csv(out_csv, index=False)
 
 		elapsed = time.time() - t0
 		n_ok = sum(1 for r in final if r)
 		print(f"[STATS] ✅ Success {n_ok}/{len(final)} | Time {elapsed/3600:.2f}h | avg {len(final)/elapsed:.2f}/s")
 		print(f"[SAVE] Results written to: {out_csv}")
 		return final
-
-
 
 @measure_execution_time
 def main():
@@ -1436,7 +1461,7 @@ def main():
 	parser.add_argument("--num_workers", '-nw', type=int, default=12, help="Number of workers for parallel processing")
 	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
-	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=32, help="Batch size for processing")
+	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Batch size for processing")
 	parser.add_argument("--use_quantization", '-q', action='store_true', help="Use quantization")
 	parser.add_argument("--verbose", '-v', action='store_true', help="Verbose output")
 	parser.add_argument("--debug", '-d', action='store_true', help="Debug mode")
