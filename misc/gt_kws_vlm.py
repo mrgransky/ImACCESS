@@ -47,7 +47,7 @@ Identify up to {k} most prominent, factual and distinct **KEYWORDS** that captur
 - **STRICTLY EXCLUDE** image quality, type, format, or style as keywords.
 - Exclude numerical words, special characters, stopwords, or abbreviations.
 - Exclude meaningless, repeating or synonym-duplicate keywords.
-- The **Python LIST** must be the **VERY LAST THING** in your response.
+- The parsable **Python LIST** must be the **VERY LAST THING** in your response.
 """
 
 def _load_vlm_(
@@ -1423,9 +1423,9 @@ def get_vlm_based_labels_opt(
 						**inputs,
 						max_new_tokens=max_generated_tks,
 						use_cache=True,
-						temperature=1e-6,
-						# top_p=None,
-						# top_k=None,
+						temperature=None,
+						top_p=None,
+						top_k=None,
 						do_sample=False,
 					)
 				decoded = processor.batch_decode(outputs, skip_special_tokens=True)
