@@ -1429,7 +1429,7 @@ def get_vlm_based_labels_opt(
 						do_sample=False,
 					)
 				decoded = processor.batch_decode(outputs, skip_special_tokens=True)
-				print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
+				if verbose: print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
 				for i, resp in enumerate(decoded):
 					if verbose: print(f"{i}\n{resp}\n")
 					try:
