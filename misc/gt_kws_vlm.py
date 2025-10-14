@@ -1379,13 +1379,13 @@ def get_vlm_based_labels_opt(
 					outputs = model.generate(
 						**inputs,
 						max_new_tokens=max_generated_tks,
-						temperature=None,
-						top_p=None,
-						top_k=None,
-						do_sample=False,
 						use_cache=True,
-						pad_token_id=getattr(model.generation_config, "pad_token_id", None),
-						eos_token_id=getattr(model.generation_config, "eos_token_id", None),
+						# temperature=None,
+						# top_p=None,
+						# top_k=None,
+						# do_sample=False,
+						# pad_token_id=getattr(model.generation_config, "pad_token_id", None),
+						# eos_token_id=getattr(model.generation_config, "eos_token_id", None),
 					)
 				decoded = processor.batch_decode(outputs, skip_special_tokens=True)
 				print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
