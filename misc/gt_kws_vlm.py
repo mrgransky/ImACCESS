@@ -1417,17 +1417,33 @@ def get_vlm_based_labels_opt(
 					return_tensors="pt",
 					padding=True,
 				).to(device)
+				gen_kwargs = dict(
+					max_new_tokens=max_generated_tks,
+					use_cache=True,
+				)
+				# Use model’s built-in defaults unless the user overrides
+				if hasattr(model, "generation_config"):
+					gen_config = model.generation_config
+					gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
+					gen_kwargs["top_p"] = getattr(gen_config, "top_p", 1.0)
+					gen_kwargs["top_k"] = getattr(gen_config, "top_k", 50)
+					gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
+				else:
+					gen_kwargs.update(dict(temperature=1e-6, top_p=1.0, top_k=50, do_sample=True))
+				if verbose:
+					print(f"\n[batch {b}] gen_kwargs: {gen_kwargs}\n")
 
 				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.float16):
-					outputs = model.generate(
-						**inputs,
-						max_new_tokens=max_generated_tks,
-						use_cache=True,
-						temperature=None,
-						top_p=None,
-						top_k=None,
-						do_sample=False,
-					)
+					outputs = model.generate(**inputs, **gen_kwargs)
+					# outputs = model.generate(
+					# 	**inputs,
+					# 	max_new_tokens=max_generated_tks,
+					# 	use_cache=True,
+					# 	temperature=None,
+					# 	top_p=None,
+					# 	top_k=None,
+					# 	do_sample=False,
+					# )
 				decoded = processor.batch_decode(outputs, skip_special_tokens=True)
 				if verbose: print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
 				for i, resp in enumerate(decoded):
