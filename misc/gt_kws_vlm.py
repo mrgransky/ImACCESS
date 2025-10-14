@@ -189,6 +189,10 @@ def _load_vlm_(
 		tokenizer = processor.text_tokenizer
 	else:
 		raise ValueError("Unable to locate tokenizer in processor")
+
+	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is None:
+		tokenizer.padding_side = "left"
+
 	if verbose:
 		print(f"   • tokenizer type     : {type(tokenizer)}")
 		print(f"   • tokenizer vocab size: {tokenizer.vocab_size} (includes padding token)")
@@ -207,6 +211,7 @@ def _load_vlm_(
 		print(f"   • tokenizer cls token id: {tokenizer.cls_token_id}")
 		print(f"   • tokenizer mask token id: {tokenizer.mask_token_id}")
 		print(f"   • tokenizer padding side: {tokenizer.padding_side}")
+	
 
 	model_kwargs: Dict[str, Any] = {
 		"low_cpu_mem_usage": True,
