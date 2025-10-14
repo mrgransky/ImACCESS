@@ -83,11 +83,11 @@ def _load_vlm_(
 	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True,)
 
 	if verbose:
-			print("[INFO] Config summary")
-			print(f"   • model_type        : {config.model_type}")
-			print(f"   • architectures     : {config.architectures}")
-			print(f"   • dtype (if set)    : {config.dtype}")
-			print()
+		print("[INFO] Config summary")
+		print(f"   • model_type        : {config.model_type}")
+		print(f"   • architectures     : {config.architectures}")
+		print(f"   • dtype (if set)    : {config.dtype}")
+		print()
 
 	model_cls = None
 
@@ -180,7 +180,34 @@ def _load_vlm_(
 	if verbose:
 		print(f"\n[INFO] Processor {processor.__class__.__name__} loaded {type(processor)}")
 		print(f"   • apply_chat_template: {hasattr(processor, 'apply_chat_template')}")
+		print(f"   • tokenizer          : {hasattr(processor, 'tokenizer')}")
+		print(f"   • text_tokenizer     : {hasattr(processor, 'text_tokenizer')}")
 	
+	if hasattr(processor, "tokenizer"):
+		tokenizer = processor.tokenizer
+	elif hasattr(processor, "text_tokenizer"):
+		tokenizer = processor.text_tokenizer
+	else:
+		raise ValueError("Unable to locate tokenizer in processor")
+	if verbose:
+		print(f"   • tokenizer type     : {type(tokenizer)}")
+		print(f"   • tokenizer vocab size: {tokenizer.vocab_size} (includes padding token)")
+		print(f"   • tokenizer pad token: {tokenizer.pad_token}")
+		print(f"   • tokenizer eos token: {tokenizer.eos_token}")
+		print(f"   • tokenizer bos token: {tokenizer.bos_token}")
+		print(f"   • tokenizer unk token: {tokenizer.unk_token}")
+		print(f"   • tokenizer sep token: {tokenizer.sep_token}")
+		print(f"   • tokenizer cls token: {tokenizer.cls_token}")
+		print(f"   • tokenizer mask token: {tokenizer.mask_token}")
+		print(f"   • tokenizer pad token id: {tokenizer.pad_token_id}")
+		print(f"   • tokenizer eos token id: {tokenizer.eos_token_id}")
+		print(f"   • tokenizer bos token id: {tokenizer.bos_token_id}")
+		print(f"   • tokenizer unk token id: {tokenizer.unk_token_id}")
+		print(f"   • tokenizer sep token id: {tokenizer.sep_token_id}")
+		print(f"   • tokenizer cls token id: {tokenizer.cls_token_id}")
+		print(f"   • tokenizer mask token id: {tokenizer.mask_token_id}")
+		print(f"   • tokenizer padding side: {tokenizer.padding_side}")
+
 	model_kwargs: Dict[str, Any] = {
 		"low_cpu_mem_usage": True,
 		"trust_remote_code": True,
