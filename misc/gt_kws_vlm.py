@@ -246,26 +246,37 @@ def _load_vlm_(
 	model = model_cls.from_pretrained(model_id, **model_kwargs)
 
 	if verbose:
-			print("[INFO] Model loaded successfully")
-			print(f"   • Model class          : {model.__class__.__name__}")
-			# first parameter dtype gives a quick hint
-			first_param = next(model.parameters())
-			print(f"   • First parameter dtype: {first_param.dtype}")
-			# Parameter count + naive FP16 memory estimate
-			total_params = sum(p.numel() for p in model.parameters())
-			approx_fp16_gb = total_params * 2 / (1024 ** 3)   # 2 bytes per fp16 value
-			print(f"   • Total parameters    : {total_params:,}")
-			print(f"   • Approx. fp16 RAM    : {approx_fp16_gb:.2f} GiB (if stored as fp16)")
-			# Show the resolved device map (for both quantised & non‑quantised)
-			if hasattr(model, "hf_device_map"):
-					dm = model.hf_device_map   # type: ignore[attr-defined]
-					print("[INFO] Final device map (model.hf_device_map):")
-					# pretty‑print the dict
-					for k in sorted(dm):
-							print(f"   '{k}': {repr(dm[k])}")
-			else:
-					print("[INFO] No `hf_device_map` attribute – model resides on a single device")
-			print()
+		print(f"\n[INFO] {model.__class__.__name__} {type(model)}")
+		print(f"{model.__call__.__code__.co_varnames}")
+		print(f"   • generate: {hasattr(model, 'generate')}")
+		print(f"   • forward: {hasattr(model, 'forward')}")
+		print(f"   • __call__: {hasattr(model, '__call__')}")
+		print(f"   • parameters: {hasattr(model, 'parameters')}")
+		print(f"   • device: {hasattr(model, 'device')}")
+		print(f"   • dtype: {hasattr(model, 'dtype')}")
+		print(f"   • generation_config: {hasattr(model, 'generation_config')}")
+		print(f"   • config: {hasattr(model, 'config')}")
+
+		# first parameter dtype gives a quick hint
+		first_param = next(model.parameters())
+		print(f"   • First parameter dtype: {first_param.dtype}")
+		# Parameter count + naive FP16 memory estimate
+		total_params = sum(p.numel() for p in model.parameters())
+		approx_fp16_gb = total_params * 2 / (1024 ** 3)   # 2 bytes per fp16 value
+		print(f"   • Total parameters    : {total_params:,}")
+		print(f"   • Approx. fp16 RAM    : {approx_fp16_gb:.2f} GiB (if stored as fp16)")
+		# Show the resolved device map (for both quantised & non‑quantised)
+		if hasattr(model, "hf_device_map"):
+			dm = model.hf_device_map   # type: ignore[attr-defined]
+			print("[INFO] Final device map (model.hf_device_map):")
+			# pretty‑print the dict
+			for k in sorted(dm):
+				print(f"   '{k}': {repr(dm[k])}")
+		else:
+			print("[INFO] No `hf_device_map` attribute – model resides on a single device")
+
+	if hasattr(model, 'generation_config'):
+		print(f"[INFO] Generation config:\n{model.generation_config}")
 
 	if not use_quantization:
 		if verbose:
@@ -1412,12 +1423,12 @@ def get_vlm_based_labels_opt(
 						**inputs,
 						max_new_tokens=max_generated_tks,
 						use_cache=True,
-						temperature=None,
-						top_p=None,
-						top_k=None,
-						do_sample=False,
-						pad_token_id=getattr(model.generation_config, "pad_token_id", None),
-						eos_token_id=getattr(model.generation_config, "eos_token_id", None),
+						# temperature=None,
+						# top_p=None,
+						# top_k=None,
+						# do_sample=False,
+						# pad_token_id=getattr(model.generation_config, "pad_token_id", None),
+						# eos_token_id=getattr(model.generation_config, "eos_token_id", None),
 					)
 				decoded = processor.batch_decode(outputs, skip_special_tokens=True)
 				print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
