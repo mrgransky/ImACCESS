@@ -1438,13 +1438,6 @@ def get_vlm_based_labels_opt(
 					except Exception:
 						results[idxs[i]] = None
 
-				# for (i, _), resp in zip(valid_pairs, decoded):
-				# 	try:
-				# 		parsed = get_vlm_response(model_id=model_id, raw_response=resp, verbose=False)
-				# 		results[i] = parsed
-				# 	except Exception:
-				# 		results[i] = None
-
 			except Exception as e_batch:
 				print(f"\n[BATCH {b}]: {e_batch}\n")
 				if verbose:
@@ -1491,12 +1484,20 @@ def get_vlm_based_labels_opt(
 		final = [results[i] for i in orig_to_uniq]
 		out_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 		df["vlm_keywords"] = final
-		# df.to_csv(out_csv, index=False)
+		df.to_csv(out_csv, index=False)
+		try:
+			df.to_excel(out_csv.replace('.csv', '.xlsx'), index=False)
+		except Exception as e:
+			print(f"Failed to write Excel file: {e}")
 
 		elapsed = time.time() - t0
-		n_ok = sum(1 for r in final if r)
-		print(f"[STATS] ✅ Success {n_ok}/{len(final)} | Time {elapsed/3600:.2f}h | avg {len(final)/elapsed:.2f}/s")
-		print(f"[SAVE] Results written to: {out_csv}")
+
+		if verbose:
+			n_ok = sum(1 for r in final if r)
+			print(f"[STATS] ✅ Success {n_ok}/{len(final)}")
+			print(f"[TIME] {elapsed/3600:.2f}h | avg {len(final)/elapsed:.2f}/s")
+			print(f"[SAVE] Results written to: {out_csv}")
+
 		return final
 
 @measure_execution_time
