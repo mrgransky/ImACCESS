@@ -3,7 +3,6 @@ from utils import *
 # llama:
 # model_id = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
 
-
 # LLAVA 1.5x collection:
 # model_id = "llava-hf/llava-1.5-7b-hf"
 # model_id = "llava-hf/llava-1.5-13b-hf"
