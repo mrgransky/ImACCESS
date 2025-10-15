@@ -1121,6 +1121,21 @@ def get_vlm_based_labels_opt(
 	model.eval()
 	if verbose:
 		print(f"[MODEL] Loaded {model_id} | {device} | {torch.cuda.get_device_name(device)}")
+	
+	gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True,)
+	# Use model’s built-in defaults unless the user overrides
+	if hasattr(model, "generation_config"):
+		gen_config = model.generation_config
+		gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
+		gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
+	else:
+		gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
+	if verbose:
+		print(f"\n[GEN CONFIG] Using generation parameters:")
+		for k, v in gen_kwargs.items():
+			print(f"   • {k}: {v}")
+
+
 	if do_dedup:
 		uniq_map, uniq_inputs, orig_to_uniq = {}, [], []
 		for path in image_paths:
@@ -1149,6 +1164,7 @@ def get_vlm_based_labels_opt(
 	if verbose:
 		print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
 		print(f"[DEBUG] Memory: {process.memory_info().rss / (1024**3):.2f} GB")
+
 	for b in tqdm(range(total_batches), desc="Processing batches", ncols=100):
 		idxs = valid_indices[b * batch_size : (b + 1) * batch_size]
 		def load_img(p):
@@ -1189,26 +1205,18 @@ def get_vlm_based_labels_opt(
 				return_tensors="pt",
 				padding=True,
 			).to(device)
-			gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True,)
-			# Use model’s built-in defaults unless the user overrides
-			if hasattr(model, "generation_config"):
-				gen_config = model.generation_config
-				gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
-				gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
-			else:
-				gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
-			if verbose:
-				print(f"\n[GEN CONFIG] Using generation parameters:")
-				for k, v in gen_kwargs.items():
-					print(f"   • {k}: {v}")
+
 			with torch.amp.autocast(
 				device_type=device.type, 
 				enabled=torch.cuda.is_available(), 
 				dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
 			):
 				outputs = model.generate(**inputs, **gen_kwargs)
+
 			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
+
 			if verbose: print(f"\n[batch {b}] Decoded responses: {type(decoded)} {len(decoded)}\n")
+
 			for i, resp in enumerate(decoded):
 				if verbose: print(f"{i}\n{resp}\n")
 				try:
@@ -1230,39 +1238,53 @@ def get_vlm_based_labels_opt(
 							{"type": "image", "image": img},
 						],
 					}]
-					chat = processor.apply_chat_template(single_message, tokenize=False, add_generation_prompt=True)
+					chat = processor.apply_chat_template(
+						single_message, 
+						tokenize=False, 
+						add_generation_prompt=True
+					)
 					single_inputs = processor(
 						text=[chat],
 						images=[img],
 						return_tensors="pt",
 					).to(device)
-					with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.float16):
-						out = model.generate(
-							**single_inputs, 
-							max_new_tokens=max_generated_tks,
-							temperature=None,
-							top_p=None,
-							top_k=None,
-							do_sample=False,
-							use_cache=True,
-							# pad_token_id=getattr(model.generation_config, "pad_token_id", None),
-							# eos_token_id=getattr(model.generation_config, "eos_token_id", None),
-						)
+
+					if single_inputs.pixel_values.numel() == 0:
+						raise ValueError(f"Pixel values of {img} are empty: {single_inputs.pixel_values.shape}")
+					if verbose:
+						print(f"\n[INPUT] Pixel: {single_inputs.pixel_values.shape} {single_inputs.pixel_values.dtype} {single_inputs.pixel_values.device}")
+
+					with torch.amp.autocast(
+						device_type=device.type, 
+						enabled=torch.cuda.is_available(), 
+						dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+					):
+						out = model.generate(**single_inputs, **gen_kwargs)
+
 					decoded = processor.decode(out[0], skip_special_tokens=True)
 					results[i] = get_vlm_response(model_id=model_id, raw_response=decoded)
+
 				except Exception as e_fallback:
-						print(f"\n[fallback ❌] image {i}:\n{e_fallback}\n")
-						results[i] = None
-		# torch.cuda.empty_cache()
-		# gc.collect()
+					print(f"\n[fallback ❌] image {i}:\n{e_fallback}\n")
+					results[i] = None
+
+		if b % 10 == 0:
+			torch.cuda.empty_cache()
+			gc.collect()
+			if verbose:
+				print(f"\n[CLEANUP] Batch {b} cleanup & cache cleanup")
+
 	final = [results[i] for i in orig_to_uniq]
 	out_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 	df["vlm_keywords"] = final
+
+	# save results to csv_& xlsx file
 	df.to_csv(out_csv, index=False)
 	try:
 		df.to_excel(out_csv.replace('.csv', '.xlsx'), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
+
 	elapsed = time.time() - t0
 	if verbose:
 		n_ok = sum(1 for r in final if r)
