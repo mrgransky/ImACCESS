@@ -15,9 +15,13 @@ from utils import *
 # model_id = "llava-hf/llava-v1.6-vicuna-13b-hf"
 # model_id = "llava-hf/llama3-llava-next-8b-hf"
 
-# Qwen 2.5x collection:
+# Qwen 2.5x VL collection:
 # model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
 # model_id = "Qwen/Qwen2.5-VL-7B-Instruct" # only fits Puhti and Mahti
+
+# Qwen 3 VL collection:
+# Qwen/Qwen3-VL-4B-Instruct
+# Qwen/Qwen3-VL-8B-Instruct
 
 # does not fit into VRAM:
 # model_id = "llava-hf/llava-v1.6-34b-hf"
@@ -60,18 +64,18 @@ def _load_vlm_(
 
 	if verbose:
 		print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
-		print(f"[DEBUG] CUDA available?       : {torch.cuda.is_available()}")
+		print(f"[INFO] CUDA available?       : {torch.cuda.is_available()}")
 		if torch.cuda.is_available():
 			cur = torch.cuda.current_device()
-			print(f"[DEBUG] Current CUDA device   : {cur} ({torch.cuda.get_device_name(cur)})")
+			print(f"[INFO] Current CUDA device   : {cur} ({torch.cuda.get_device_name(cur)})")
 			major, minor = torch.cuda.get_device_capability(cur)
-			print(f"[DEBUG] Compute capability    : {major}.{minor}")
-			print(f"[DEBUG] BF16 support?         : {torch.cuda.is_bf16_supported()}")
-			print(f"[DEBUG] CUDA memory allocated: {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
-			print(f"[DEBUG] CUDA memory reserved : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
+			print(f"[INFO] Compute capability    : {major}.{minor}")
+			print(f"[INFO] BF16 support?         : {torch.cuda.is_bf16_supported()}")
+			print(f"[INFO] CUDA memory allocated: {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+			print(f"[INFO] CUDA memory reserved : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
 		else:
-			print("[DEBUG] Running on CPU only")
-		print("[DEBUG] ----------------------------------------------------\n")
+			print("[INFO] Running on CPU only")
+		print("[INFO] ----------------------------------------------------\n")
 
 	if verbose:
 			print(f"[INFO] Loading configuration for model_id='{model_id}'")
@@ -333,27 +337,6 @@ def prepare_prompts_and_images(
 	gc.collect()
 	
 	return valid_paths, unique_prompts
-
-def get_prompt(
-		processor: tfs.AutoProcessor, 
-		img_path: str,
-		max_kws: int,
-	):
-	messages = [
-		{
-			"role": "user",
-			"content": [
-				{"type": "text", "text": VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)},
-				{"type": "image", "image": img_path},
-			],
-		},
-	]	
-	txt = processor.apply_chat_template(
-		messages, 
-		tokenize=False, 
-		add_generation_prompt=True,
-	)
-	return txt
 
 def get_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
 	if "Qwen" in model_id:
@@ -688,290 +671,6 @@ def _llava_vlm_(response: str, verbose: bool = False) -> Optional[list]:
 				print("[ERROR] Unable to parse any keywords from VLM output (LLaVa model).")
 		return None
 
-class SafeLogitsProcessor(tfs.LogitsProcessor):
-	def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
-		# Replace NaN/Inf with very negative number so softmax ~ 0
-		mask_nonfinite = ~torch.isfinite(scores)
-		if mask_nonfinite.any():
-				scores = scores.clone()
-				scores[mask_nonfinite] = -1e9
-		# Optional clamp to avoid extreme magnitudes
-		scores = torch.clamp(scores, min=-1e4, max=1e4)
-		return scores
-
-def query_local_vlm(
-		model: tfs.PreTrainedModel, 
-		processor: tfs.AutoProcessor, 
-		img_path: str,
-		text: str,
-		device,
-		max_generated_tks: int,
-		verbose: bool=False,
-	):
-	# ========== Entry mem ==========
-	if verbose and torch.cuda.is_available():
-		mem_alloc = torch.cuda.memory_allocated(device) / (1024**3)
-		mem_reserved = torch.cuda.memory_reserved(device) / (1024**3)
-		mem_total = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-		print("\n" + "="*80)
-		print(f"[ENTRY] GPU {device} Memory: {mem_alloc:.2f}GB allocated | {mem_reserved:.2f}GB reserved | {mem_total:.2f}GB total")
-		print(f"[ENTRY] Free: {mem_total - mem_alloc:.2f}GB")
-		print("="*80)
-
-	# ========== Load image ==========
-	if verbose:
-		print(f"[LOAD] Loading image: {img_path}")
-	try:
-		img = Image.open(img_path)
-	except Exception as e:
-		if verbose: print(f"[ERROR] Failed local open => {e}, retry via URL")
-		try:
-			r = requests.get(img_path, timeout=10)
-			r.raise_for_status()
-			img = Image.open(io.BytesIO(r.content))
-		except Exception as e2:
-			if verbose: print(f"[ERROR] URL fetch failed => {e2}")
-			return None
-	img = img.convert("RGB")
-	if verbose:
-		arr = np.array(img)
-		print(f"[IMAGE] Type: {type(img)} Size: {img.size} Mode: {img.mode}")
-		print(f"[IMAGE] Shape: {arr.shape} Dtype: {arr.dtype} Min/Max: {arr.min()}/{arr.max()}")
-		print(f"[IMAGE] NaN: {np.isnan(arr).any()} Inf: {np.isinf(arr).any()} Size: {arr.nbytes/(1024**2):.2f}MB")
-	if img.size[0] == 0 or img.size[1] == 0:
-		if verbose: print("[ERROR] Invalid image size")
-		return None
-
-	model_id = getattr(model.config, "_name_or_path", None) or getattr(model, "name_or_path", "unknown_model")
-	if verbose:
-		print(f"[MODEL] ID: {model_id}")
-	
-	# ========== Preprocess ==========
-	if verbose:
-		if torch.cuda.is_available():
-			print(f"[PREPROCESS] GPU {device} mem before processor: {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
-
-	try:
-		inputs = processor(
-			images=img, 
-			text=text, 
-			padding=True, 
-			return_tensors="pt"
-		).to(device, non_blocking=True)
-	except Exception as e:
-		if verbose: print(f"[ERROR] Processor failed: {e}")
-		return None
-
-	if verbose:
-		print(f"[PREPROCESS] Keys: {list(inputs.keys())}")
-		for k, v in inputs.items():
-			if isinstance(v, torch.Tensor):
-				info = f"shape={tuple(v.shape)} dtype={v.dtype} device={v.device}"
-				extra = ""
-				if torch.is_floating_point(v):
-					extra = f" min={v.min().item():.4f} max={v.max().item():.4f} nan={torch.isnan(v).any().item()} inf={torch.isinf(v).any().item()}"
-				print(f"[PREPROCESS]   {k}: {info}{extra}")
-
-	if "pixel_values" not in inputs:
-		if verbose: print("[ERROR] 'pixel_values' missing")
-		return None
-	
-	# ========== Move to device ==========
-	if verbose and torch.cuda.is_available():
-		print(f"[DEVICE] GPU {device} mem before .to(): {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
-	try:
-		inputs = inputs.to(device, non_blocking=True)
-	except Exception as e:
-		if verbose:
-			print(f"[ERROR] inputs.to(device) failed: {e}")
-			if torch.cuda.is_available():
-				print("[ERROR] After device-side assert, CUDA context is invalid; need process restart.")
-		return None
-	if verbose and torch.cuda.is_available():
-		print(f"[DEVICE] GPU {device} mem after .to(): {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
-		for k, v in inputs.items():
-			if isinstance(v, torch.Tensor):
-				print(f"[DEVICE]   {k}: device={v.device}, contiguous={v.is_contiguous()}")
-	
-	# ========== Generation config & safety ==========
-	gen_cfg = getattr(model, "generation_config", None)
-	tok = getattr(processor, "tokenizer", None) or getattr(processor, "text_tokenizer", None)
-	pad_token_id = getattr(gen_cfg, "pad_token_id", None) if gen_cfg else None
-	eos_token_id = getattr(gen_cfg, "eos_token_id", None) if gen_cfg else None
-	if tok:
-		if tok.pad_token_id is None and tok.eos_token_id is not None:
-			tok.pad_token_id = tok.eos_token_id
-			pad_token_id = tok.pad_token_id
-
-	if gen_cfg:
-		if gen_cfg.pad_token_id is None and pad_token_id is not None:
-			gen_cfg.pad_token_id = pad_token_id
-		if gen_cfg.eos_token_id is None and tok and tok.eos_token_id is not None:
-			gen_cfg.eos_token_id = tok.eos_token_id
-		# Force deterministic non-sampling
-		gen_cfg.do_sample = False
-		gen_cfg.num_beams = 1
-		gen_cfg.temperature = None  # Remove temperature to avoid warning
-
-	if verbose:
-		print(f"[GENERATE] max_new_tokens={max_generated_tks}")
-		print(f"[GENERATE] pad_token_id={pad_token_id} eos_token_id={eos_token_id}")
-		if torch.cuda.is_available():
-			print(f"[GENERATE] GPU {device} mem before: {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
-
-	logits_processors = tfs.LogitsProcessorList([SafeLogitsProcessor()])
-
-	# ========== Generate (no autocast) ==========
-	try:
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.float16):
-			output = model.generate(
-				**inputs,
-				max_new_tokens=max_generated_tks,
-				use_cache=True,
-				do_sample=False,
-				temperature=None,
-				top_k=None,
-				top_p=None,
-				pad_token_id=getattr(model.generation_config, "pad_token_id", pad_token_id),
-				eos_token_id=getattr(model.generation_config, "eos_token_id", eos_token_id),
-				logits_processor=logits_processors,
-			)
-		if verbose:
-			print(f"[GENERATE] Done. Output shape={tuple(output.shape)} dtype={output.dtype}")
-	except RuntimeError as e:
-		if verbose:
-			print(f"[ERROR] RuntimeError in generate: {e}")
-			if "device-side assert" in str(e).lower():
-				print("[ERROR] CUDA device-side assert: context is now invalid; best to skip and continue in a fresh process.")
-			if torch.cuda.is_available():
-				try:
-					torch.cuda.synchronize(device)
-				except:
-					pass
-				print(f"[ERROR] GPU {device} mem at error: {torch.cuda.memory_allocated(device)/(1024**3):.2f}GB")
-		return None
-	except Exception as e:
-		if verbose: print(f"[ERROR] Unexpected error in generate: {type(e).__name__}: {e}")
-		return None
-
-	vlm_response = processor.decode(output[0], skip_special_tokens=True)
-	if verbose:
-		tks_breakdown = get_conversation_token_breakdown(vlm_response, model_id)
-		print(f"[RESPONSE] Token Count Breakdown: {tks_breakdown}")
-	
-	# ========== Memory post ==========
-	if torch.cuda.is_available():
-		alloc = torch.cuda.memory_allocated(device) / (1024**3)
-		resrv = torch.cuda.memory_reserved(device) / (1024**3)
-		total = torch.cuda.get_device_properties(device).total_memory / (1024**3)
-		if verbose:
-			print(f"[MEMORY] Post-gen: {alloc:.2f}GB allocated | {resrv:.2f}GB reserved | {total:.2f}GB total")
-		if alloc / (total + 1e-6) > 0.9:
-			if verbose: print("[MEMORY] >90%, empty_cache()")
-			torch.cuda.empty_cache()
-
-	# ========== Parse ==========
-	try:
-		parsed = get_vlm_response(model_id=model_id, raw_response=vlm_response, verbose=verbose)
-		if verbose:
-			print(f"[PARSE] {parsed}")
-		return parsed
-	except Exception as e:
-		if verbose: print(f"[ERROR] Parsing failed: {e}")
-		return None
-
-def get_vlm_based_labels_debug(
-		model_id: str,
-		device: str,
-		batch_size: int,
-		max_kws: int,
-		max_generated_tks: int,
-		csv_file: str=None,
-		image_path: str=None,
-		use_quantization: bool = False,
-		verbose: bool = False,
-	) -> List[List[str]]:
-
-	if csv_file:
-		output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
-
-	if csv_file and image_path:
-		raise ValueError("Only one of csv_file or image_path must be provided")
-
-	if csv_file and os.path.exists(output_csv):
-		df = pd.read_csv(
-			filepath_or_buffer=output_csv,
-			on_bad_lines='skip',
-			dtype=dtypes,
-			low_memory=False,
-		)
-		if 'vlm_keywords' in df.columns:
-			if verbose: print(f"Found existing VLM keywords in {output_csv}")
-			return df['vlm_keywords'].tolist()
-
-	if csv_file:
-		df = pd.read_csv(
-			filepath_or_buffer=csv_file,
-			on_bad_lines='skip',
-			dtype=dtypes,
-			low_memory=False,
-		)
-		if 'img_path' not in df.columns:
-			raise ValueError("CSV file must have 'img_path' column")
-		image_paths = df['img_path'].tolist()
-		if verbose:
-			print(f"Loaded {len(image_paths)} images from {csv_file}")
-	elif image_path:
-		image_paths = [image_path]
-		if verbose:
-			print(f"Loaded 1 image from {image_path}")
-	else:
-		raise ValueError("Either csv_file or image_path must be provided")
-
-	processor, model = _load_vlm_(
-		model_id=model_id, 
-		device=device,
-		use_quantization=use_quantization,
-		verbose=verbose
-	)
-
-	all_keywords = []
-	for i, img_path in tqdm(enumerate(image_paths), total=len(image_paths), desc="Processing images"):
-		if verbose: print(f"Processing image {i+1}/{len(image_paths)}: {img_path}")
-		text = get_prompt(
-			processor=processor,
-			img_path=img_path,
-			max_kws=max_kws,
-		)
-		keywords = query_local_vlm(
-			model=model, 
-			processor=processor,
-			img_path=img_path, 
-			text=text,
-			device=device,
-			max_generated_tks=max_generated_tks,
-			verbose=verbose,
-		)
-		all_keywords.append(keywords)
-
-	print(any(kw is not None for kw in all_keywords))
-
-	if csv_file and any(kw is not None for kw in all_keywords):
-		df['vlm_keywords'] = all_keywords
-		df.to_csv(output_csv, index=False)
-		try:
-			df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
-		except Exception as e:
-			print(f"Failed to write Excel file: {e}")
-		if verbose:
-			print(f"Saved {len(all_keywords)} keywords to {output_csv}")
-			print(f"Done! dataframe: {df.shape} {list(df.columns)}")
-	elif csv_file:
-		if verbose:
-			print("Skipping file save: all VLM keywords are None")
-
-	return all_keywords
-
 def get_vlm_based_labels_single(
 		model_id: str,
 		device: str,
@@ -1040,25 +739,32 @@ def get_vlm_based_labels_single(
 	).to(device)
 
 	if verbose:
-		print(f"[INPUT] Pixel values: {single_inputs.pixel_values.shape} {single_inputs.pixel_values.dtype} {single_inputs.pixel_values.device}")
+		print(f"[INPUT] Pixel: {single_inputs.pixel_values.shape} {single_inputs.pixel_values.dtype} {single_inputs.pixel_values.device}")
 
 	if single_inputs.pixel_values.numel() == 0:
 		raise ValueError(f"Pixel values of {image_path} are empty: {single_inputs.pixel_values.shape}")
-	
+
+	gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True,)
+	# Use model’s built-in defaults unless the user overrides
+	if hasattr(model, "generation_config"):
+		gen_config = model.generation_config
+		gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
+		gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
+	else:
+		gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
+	if verbose:
+		print(f"\n[GEN CONFIG] Using generation parameters:")
+		for k, v in gen_kwargs.items():
+			print(f"   • {k}: {v}")
+
 	# ========== Generate response ==========
-	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.float16):
-		outputs = model.generate(
-			**single_inputs,
-			max_new_tokens=max_generated_tks,
-			use_cache=True,
-			temperature=None,
-			do_sample=False,
-			# top_k=None,
-			# top_p=None,
-			# pad_token_id=getattr(model.generation_config, "pad_token_id", None),
-			# eos_token_id=getattr(model.generation_config, "eos_token_id", None),
-		)
-	
+	with torch.amp.autocast(
+		device_type=device.type, 
+		enabled=torch.cuda.is_available(), 
+		dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+	):
+		outputs = model.generate(**single_inputs, **gen_kwargs)	
+
 	# Decode response
 	response = processor.decode(outputs[0], skip_special_tokens=True)
 	
@@ -1076,12 +782,11 @@ def get_vlm_based_labels_single(
 			print(f"⚠️ Parsing error for image {image_path} {e}")
 			return None
 
-	return parsed
+	return [parsed]
 
-def get_vlm_based_labels_seq(
+def get_vlm_based_labels_debug(
 		model_id: str,
 		device: str,
-		batch_size: int,
 		num_workers: int,
 		max_generated_tks: int,
 		max_kws: int,
@@ -1094,9 +799,8 @@ def get_vlm_based_labels_seq(
 
 	if verbose:
 		print(f"\n{'='*100}")
-		print(f"[INIT] Starting OPTIMIZED batch VLM processing")
+		print(f"[INIT] VLM-based keyword generation [DEBUG MODE]")
 		print(f"[INIT] Model: {model_id}")
-		print(f"[INIT] Batch size: {batch_size}")
 		print(f"[INIT] Device: {device}")
 		print(f"{'='*100}\n")
 	st_t = time.time()
@@ -1248,32 +952,35 @@ def get_vlm_based_labels_seq(
 					images=img,
 					text=chat_prompt,
 					padding=True,
-					truncation=True,
-					max_length=1024,
 					return_tensors="pt"
 				).to(device)
 
 				if verbose:
-					print(f"[INPUT] Pixel values: {single_inputs.pixel_values.shape} {single_inputs.pixel_values.dtype} {single_inputs.pixel_values.device}")
+					print(f"[INPUT] Pixel: {single_inputs.pixel_values.shape} {single_inputs.pixel_values.dtype} {single_inputs.pixel_values.device}")
 
 				if single_inputs.pixel_values.numel() == 0:
 					raise ValueError(f"Pixel values of {img_path} are empty: {single_inputs.pixel_values.shape}")
 				
+				gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True,)
+				# Use model’s built-in defaults unless the user overrides
+				if hasattr(model, "generation_config"):
+					gen_config = model.generation_config
+					gen_kwargs["temperature"] = getattr(gen_config, "temperature", 1e-6)
+					gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
+				else:
+					gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
+				if verbose:
+					print(f"\n[GEN CONFIG] Using generation parameters:")
+					for k, v in gen_kwargs.items():
+						print(f"   • {k}: {v}")
+
 				# ========== Generate response ==========
-				gen_start = time.time()
-				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available(), dtype=torch.float16):
-					outputs = model.generate(
-						**single_inputs,
-						max_new_tokens=max_generated_tks,
-						use_cache=True,
-						temperature=None,
-						do_sample=False,
-						# top_k=None,
-						# top_p=None,
-						# pad_token_id=getattr(model.generation_config, "pad_token_id", None),
-						# eos_token_id=getattr(model.generation_config, "eos_token_id", None),
-					)
-				generation_time += time.time() - gen_start
+				with torch.amp.autocast(
+					device_type=device.type, 
+					enabled=torch.cuda.is_available(), 
+					dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+				):
+					outputs = model.generate(**single_inputs, **gen_kwargs)
 				
 				# Decode response
 				response = processor.decode(outputs[0], skip_special_tokens=True)
@@ -1403,9 +1110,6 @@ def get_vlm_based_labels_opt(
 		process = psutil.Process()
 		t0 = time.time()
 
-		# -------------------------------------------------------
-		# Load data
-		# -------------------------------------------------------
 		load_start = time.time()
 		df = pd.read_csv(csv_file, on_bad_lines="skip", low_memory=False)
 		if "img_path" not in df.columns:
@@ -1415,9 +1119,6 @@ def get_vlm_based_labels_opt(
 		if verbose:
 			print(f"[DATA] Loaded {len(image_paths)} image paths from CSV ({time.time() - load_start:.2f}s)")
 
-		# -------------------------------------------------------
-		# Load model and processor
-		# -------------------------------------------------------
 		processor, model = _load_vlm_(
 			model_id=model_id, 
 			device=device, 
@@ -1428,9 +1129,6 @@ def get_vlm_based_labels_opt(
 		if verbose:
 			print(f"[MODEL] Loaded {model_id} | {device} | {torch.cuda.get_device_name(device)}")
 
-		# -------------------------------------------------------
-		# Deduplication
-		# -------------------------------------------------------
 		if do_dedup:
 			uniq_map, uniq_inputs, orig_to_uniq = {}, [], []
 			for path in image_paths:
@@ -1442,9 +1140,6 @@ def get_vlm_based_labels_opt(
 		else:
 			uniq_inputs, orig_to_uniq = image_paths, list(range(n_total))
 
-		# -------------------------------------------------------
-		# Validate images
-		# -------------------------------------------------------
 		def verify(p):
 			if p is None or not os.path.exists(p):
 				return None
@@ -1467,9 +1162,6 @@ def get_vlm_based_labels_opt(
 			print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
 			print(f"[DEBUG] Memory: {process.memory_info().rss / (1024**3):.2f} GB")
 
-		# -------------------------------------------------------
-		# Batch inference
-		# -------------------------------------------------------
 		for b in tqdm(range(total_batches), desc="Processing batches", ncols=100):
 			idxs = valid_indices[b * batch_size : (b + 1) * batch_size]
 
@@ -1515,6 +1207,7 @@ def get_vlm_based_labels_opt(
 					return_tensors="pt",
 					padding=True,
 				).to(device)
+
 				gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True,)
 				# Use model’s built-in defaults unless the user overrides
 				if hasattr(model, "generation_config"):
@@ -1584,9 +1277,6 @@ def get_vlm_based_labels_opt(
 			# torch.cuda.empty_cache()
 			# gc.collect()
 
-		# -------------------------------------------------------
-		# Save
-		# -------------------------------------------------------
 		final = [results[i] for i in orig_to_uniq]
 		out_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 		df["vlm_keywords"] = final
@@ -1648,9 +1338,8 @@ def main():
 		keywords = get_vlm_based_labels_debug(
 			model_id=args.model_id,
 			device=args.device,
+			num_workers=args.num_workers,
 			csv_file=args.csv_file,
-			image_path=args.image_path,
-			batch_size=args.batch_size,
 			max_kws=args.max_keywords,
 			max_generated_tks=args.max_generated_tks,
 			use_quantization=args.use_quantization,
