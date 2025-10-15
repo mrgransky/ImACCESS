@@ -48,7 +48,7 @@ python -u multimodal_annotation.py \
   --vlm_model_id "Qwen/Qwen3-VL-8B-Instruct" \
   --max_generated_tks 64 \
   --max_keywords 5 \
-  --verbose \
+  # --verbose \
   # --use_quantization \
 
 done_txt="$user finished Slurm job: `date`"
