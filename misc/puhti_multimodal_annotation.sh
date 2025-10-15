@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
-#SBATCH --mem=373G
+#SBATCH --mem=128G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
 #SBATCH --array=0-4
@@ -45,7 +45,7 @@ python -u multimodal_annotation.py \
   --num_workers $SLURM_CPUS_PER_TASK \
   --batch_size 64 \
   --llm_model_id "Qwen/Qwen3-4B-Instruct-2507" \
-  --vlm_model_id "Qwen/Qwen2.5-VL-7B-Instruct" \
+  --vlm_model_id "Qwen/Qwen3-VL-8B-Instruct" \
   --max_generated_tks 64 \
   --max_keywords 5 \
   --verbose \

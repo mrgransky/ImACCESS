@@ -1151,7 +1151,7 @@ def get_vlm_based_labels_opt(
 				return None
 
 		with ThreadPoolExecutor(max_workers=num_workers) as ex:
-			verified = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc="Verifying images"))
+			verified = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc="Verifying images", ncols=100))
 
 		valid_indices = [i for i, v in enumerate(verified) if v is not None]
 		total_batches = math.ceil(len(valid_indices) / batch_size)
