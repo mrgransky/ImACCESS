@@ -801,7 +801,6 @@ def get_vlm_based_labels_debug(
 	st_t = time.time()
 	
 	# ========== Check existing results ==========
-	check_start = time.time()
 	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 	if os.path.exists(output_csv):
 		df = pd.read_csv(
@@ -812,10 +811,8 @@ def get_vlm_based_labels_debug(
 		)
 		if 'vlm_keywords' in df.columns:
 			if verbose: 
-				print(f"[EXISTING] Found existing results in {output_csv} ({time.time() - check_start:.2f}s)")
+				print(f"[EXISTING] Found existing results! {type(df)} {df.shape} {list(df.columns)}")
 			return df['vlm_keywords'].tolist()
-	if verbose:
-		print(f"[CHECK] Existing results check: {time.time() - check_start:.2f}s")
 
 	# ========== Load data ==========
 	load_start = time.time()
@@ -1104,6 +1101,22 @@ def get_vlm_based_labels_opt(
 
 	process = psutil.Process()
 	t0 = time.time()
+
+	# ========== Check existing results ==========
+	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
+	if os.path.exists(output_csv):
+		df = pd.read_csv(
+			filepath_or_buffer=output_csv,
+			on_bad_lines='skip',
+			dtype=dtypes,
+			low_memory=False,
+		)
+		if 'vlm_keywords' in df.columns:
+			if verbose: 
+				print(f"[EXISTING] Found existing results! {type(df)} {df.shape} {list(df.columns)}")
+			return df['vlm_keywords'].tolist()
+
+	# ========== Load data ==========
 	load_start = time.time()
 	df = pd.read_csv(csv_file, on_bad_lines="skip", low_memory=False)
 	if "img_path" not in df.columns:
@@ -1112,6 +1125,8 @@ def get_vlm_based_labels_opt(
 	n_total = len(image_paths)
 	if verbose:
 		print(f"[DATA] Loaded {len(image_paths)} image paths from CSV ({time.time() - load_start:.2f}s)")
+
+	# ========== Load model ==========
 	processor, model = _load_vlm_(
 		model_id=model_id, 
 		device=device, 
@@ -1122,6 +1137,7 @@ def get_vlm_based_labels_opt(
 	if verbose:
 		print(f"[MODEL] Loaded {model_id} | {device} | {torch.cuda.get_device_name(device)}")
 	
+	# ========== Prepare generation kwargs ==========
 	gen_kwargs = dict(max_new_tokens=max_generated_tks, use_cache=True,)
 	# Use model’s built-in defaults unless the user overrides
 	if hasattr(model, "generation_config"):
@@ -1135,7 +1151,7 @@ def get_vlm_based_labels_opt(
 		for k, v in gen_kwargs.items():
 			print(f"   • {k}: {v}")
 
-
+	# ========== Prepare inputs ==========
 	if do_dedup:
 		uniq_map, uniq_inputs, orig_to_uniq = {}, [], []
 		for path in image_paths:
@@ -1155,16 +1171,19 @@ def get_vlm_based_labels_opt(
 			return p
 		except Exception:
 			return None
+
 	with ThreadPoolExecutor(max_workers=num_workers) as ex:
 		verified = list(tqdm(ex.map(verify, uniq_inputs), total=len(uniq_inputs), desc="Verifying images", ncols=100))
+
 	valid_indices = [i for i, v in enumerate(verified) if v is not None]
 	total_batches = math.ceil(len(valid_indices) / batch_size)
 	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
 	results = [None] * len(uniq_inputs)
 	if verbose:
 		print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
-		print(f"[DEBUG] Memory: {process.memory_info().rss / (1024**3):.2f} GB")
+		print(f"[INFO] Memory: {process.memory_info().rss / (1024**3):.2f} GB")
 
+	# ========== Process batches ==========
 	for b in tqdm(range(total_batches), desc="Processing batches", ncols=100):
 		idxs = valid_indices[b * batch_size : (b + 1) * batch_size]
 		def load_img(p):
@@ -1226,6 +1245,8 @@ def get_vlm_based_labels_opt(
 					results[idxs[i]] = None
 		except Exception as e_batch:
 			print(f"\n[BATCH {b}]: {e_batch}\n")
+			torch.cuda.empty_cache()
+			gc.collect()
 			if verbose:
 				print(f"\tFalling back to sequential processing for {len(valid_pairs)} images in this batch.")
 			# fallback: process each image sequentially
@@ -1268,11 +1289,17 @@ def get_vlm_based_labels_opt(
 					print(f"\n[fallback ❌] image {i}:\n{e_fallback}\n")
 					results[i] = None
 
+		# Clean up batch tensors immediately after use
+		del inputs, outputs, decoded
+		
+		# Periodic memory cleanup (every 10 batches)
 		if b % 10 == 0:
 			torch.cuda.empty_cache()
 			gc.collect()
 			if verbose:
-				print(f"\n[CLEANUP] Batch {b} cleanup & cache cleanup")
+				mem_allocated = torch.cuda.memory_allocated() / (1024**3)
+				mem_reserved = torch.cuda.memory_reserved() / (1024**3)
+				print(f"[MEM] Batch {b}: {mem_allocated:.2f}GB allocated, {mem_reserved:.2f}GB reserved")
 
 	final = [results[i] for i in orig_to_uniq]
 	out_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
