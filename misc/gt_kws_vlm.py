@@ -78,7 +78,7 @@ def _load_vlm_(
 		print("[INFO] ----------------------------------------------------\n")
 
 	if verbose:
-			print(f"[INFO] Loading configuration for model_id='{model_id}'")
+		print(f"[INFO] Loading configuration for {model_id}")
 
 	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True,)
 
@@ -168,8 +168,6 @@ def _load_vlm_(
 					print(f"   • Config object type  : {type(quantization_config).__name__}")
 					print()
 
-	if verbose:
-		print("[INFO] Loading processor / tokenizer …")
 	processor = tfs.AutoProcessor.from_pretrained(
 		model_id,
 		use_fast=True,
@@ -733,8 +731,6 @@ def get_vlm_based_labels_single(
 		images=img,
 		text=chat_prompt,
 		padding=True,
-		# truncation=True,
-		# max_length=1024,
 		return_tensors="pt"
 	).to(device)
 
