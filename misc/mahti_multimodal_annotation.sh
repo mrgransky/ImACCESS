@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=10
-#SBATCH --mem=476G
+#SBATCH --mem=64G
 #SBATCH --partition=gpusmall
 #SBATCH --time=01-12:00:00
 #SBATCH --array=0-4
@@ -48,7 +48,7 @@ python -u multimodal_annotation.py \
   --vlm_model_id "Qwen/Qwen3-VL-8B-Instruct" \
   --max_generated_tks 64 \
   --max_keywords 5 \
-  --verbose \
+  # --verbose \
   # --use_quantization \
 
 done_txt="$user finished Slurm job: `date`"
