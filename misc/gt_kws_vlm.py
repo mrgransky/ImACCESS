@@ -177,9 +177,9 @@ def _load_vlm_(
 	if verbose:
 		print(f"\n[INFO] {processor.__class__.__name__} {type(processor)}")
 		print(f"{processor.__call__.__code__.co_varnames}")
-		print(f"   • apply_chat_template: {hasattr(processor, 'apply_chat_template')}")
-		print(f"   • tokenizer          : {hasattr(processor, 'tokenizer')}")
-		print(f"   • text_tokenizer     : {hasattr(processor, 'text_tokenizer')}")
+		print(f"\t• apply_chat_template: {hasattr(processor, 'apply_chat_template')}")
+		print(f"\t• tokenizer          : {hasattr(processor, 'tokenizer')}")
+		print(f"\t• text_tokenizer     : {hasattr(processor, 'text_tokenizer')}")
 	
 	if hasattr(processor, "tokenizer"):
 		tokenizer = processor.tokenizer
@@ -681,10 +681,11 @@ def get_vlm_based_labels_single(
 	# ========== Load image ==========
 	if verbose:
 		print(f"[LOAD] Loading image: {image_path}")
+
 	try:
 		img = Image.open(image_path)
 	except Exception as e:
-		if verbose: print(f"[ERROR] Failed local open => {e}, retry via URL")
+		if verbose: print(f"[ERROR] Failed local open: {e} retry via URL")
 		try:
 			r = requests.get(image_path, timeout=10)
 			r.raise_for_status()
@@ -692,12 +693,17 @@ def get_vlm_based_labels_single(
 		except Exception as e2:
 			if verbose: print(f"[ERROR] URL fetch failed => {e2}")
 			return None
+
 	img = img.convert("RGB")
+
 	if verbose:
 		arr = np.array(img)
 		print(f"[IMAGE] Type: {type(img)} Size: {img.size} Mode: {img.mode}")
 		print(f"[IMAGE] Shape: {arr.shape} Dtype: {arr.dtype} Min/Max: {arr.min()}/{arr.max()}")
 		print(f"[IMAGE] NaN: {np.isnan(arr).any()} Inf: {np.isinf(arr).any()} Size: {arr.nbytes/(1024**2):.2f}MB")
+		print(f"[IMAGE] {image_path}")
+		print()
+
 	if img.size[0] == 0 or img.size[1] == 0:
 		if verbose: print("[ERROR] Invalid image size")
 		return None
@@ -1345,11 +1351,10 @@ def main():
 
 	if args.verbose and torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(args.device)
-		total_mem = torch.cuda.get_device_properties(args.device).total_memory / (1024**3)  # Convert to GB
+		total_mem = torch.cuda.get_device_properties(args.device).total_memory / (1024**3) # GB
 		print(f"Available GPU(s) = {torch.cuda.device_count()}")
-		print(f"GPU: {torch.cuda.get_device_name(args.device)} {total_mem:.2f}GB VRAM")
-		print(f"Compute Capability: {torch.cuda.get_device_capability(0)}")
-		print(f"CUDA Version: {torch.version.cuda}")
+		print(f"GPU: {gpu_name} {total_mem:.2f} GB VRAM")
+		print(f"\t• CUDA: {torch.version.cuda} Compute Capability: {torch.cuda.get_device_capability(args.device)}")
 
 	if args.image_path:
 		keywords = get_vlm_based_labels_single(
