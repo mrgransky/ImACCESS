@@ -140,24 +140,19 @@ def _load_llm_(
 		tokenizer.pad_token = tokenizer.eos_token
 		tokenizer.pad_token_id = tokenizer.eos_token_id
 	
+	if hasattr(tokenizer, "padding_side") and tokenizer.padding_side is not None:
+		tokenizer.padding_side = "left"
+
 	if verbose:
 		print(f"[INFO] {tokenizer.__class__.__name__} {type(tokenizer)}")
-		print(f"   • vocab size		: {len(tokenizer)}")
-		print(f"   • pad token		: {tokenizer.pad_token}")
-		print(f"   • pad token id	: {tokenizer.pad_token_id}")
-		print(f"   • eos token		: {tokenizer.eos_token}")
-		print(f"   • eos token id	: {tokenizer.eos_token_id}")
-		print(f"   • bos token		: {tokenizer.bos_token}")
-		print(f"   • bos token id	: {tokenizer.bos_token_id}")
-		print(f"   • unk token		: {tokenizer.unk_token}")
-		print(f"   • unk token id	: {tokenizer.unk_token_id}")
-		print(f"   • sep token		: {tokenizer.sep_token}")
-		print(f"   • sep token id	: {tokenizer.sep_token_id}")
-		print(f"   • cls token		: {tokenizer.cls_token}")
-		print(f"   • cls token id	: {tokenizer.cls_token_id}")
-		print(f"   • mask token		: {tokenizer.mask_token}")
-		print(f"   • mask token id	: {tokenizer.mask_token_id}")
-		print(f"   • padding side	: {tokenizer.padding_side}")
+		print(f"\t• vocab size{len(tokenizer):>20}")
+		print(f"\t• pad token{tokenizer.pad_token:>20}")
+		print(f"\t• pad token id{tokenizer.pad_token_id:>20}")
+		print(f"\t• eos token{tokenizer.eos_token:>20}")
+		print(f"\t• eos token id{tokenizer.eos_token_id:>20}")
+		print(f"\t• bos token{tokenizer.bos_token:>20}")
+		print(f"\t• bos token id{tokenizer.bos_token_id:>20}")
+		print(f"\t• padding side{tokenizer.padding_side:>20}")
 	
 	model_kwargs: Dict[str, Any] = {
 		"trust_remote_code": True,
@@ -1309,6 +1304,7 @@ def get_llm_based_labels_opt(
 		raise ValueError("Only one of csv_file or description must be provided")
 
 	if csv_file and os.path.exists(output_csv):
+		if verbose: print(f"Found existing results at {output_csv}...")
 		df = pd.read_csv(
 			filepath_or_buffer=output_csv,
 			on_bad_lines='skip',
@@ -1316,7 +1312,7 @@ def get_llm_based_labels_opt(
 			low_memory=False,
 		)
 		if 'llm_keywords' in df.columns:
-			if verbose: print(f"Found existing LLM keywords in {output_csv}")
+			if verbose: print(f"[EXISTING] Found existing LLM keywords in {output_csv}")
 			return df['llm_keywords'].tolist()
 
 	if csv_file:
@@ -1348,12 +1344,11 @@ def get_llm_based_labels_opt(
 		use_quantization=use_quantization,
 		verbose=verbose,
 	)
-	tokenizer.padding_side = "left" # critical for decoder-only models
 
 	if verbose:
 		valid_count = sum(1 for x in inputs if x is not None and str(x).strip() not in ("", "nan", "None"))
 		null_count = len(inputs) - valid_count
-		print(f"📊 Input stats: {len(inputs)} total, {valid_count} valid, {null_count} null")
+		print(f"📊 Input stats: {type(inputs)} {len(inputs)} total, {valid_count} valid, {null_count} null")
 
 	# 🔧 NULL-SAFE DEDUPLICATION
 	if do_dedup:
@@ -1393,10 +1388,10 @@ def get_llm_based_labels_opt(
 	
 	# 🔄 BATCH PROCESSING WITH RETRY LOGIC
 	valid_indices = [i for i, p in enumerate(unique_prompts) if p is not None]
-	
+	total_batches = math.ceil(len(valid_indices) / batch_size)
 	if valid_indices:
 		if verbose:
-			print(f"🔄 Processing {len(valid_indices)} unique prompts in batches of {batch_size}...")
+			print(f"Processing {len(valid_indices)} unique prompts in batches of {batch_size} samples => {total_batches} batches")
 		
 		# Group valid indices into batches
 		batches = []
@@ -1405,9 +1400,7 @@ def get_llm_based_labels_opt(
 			batch_prompts = [unique_prompts[idx] for idx in batch_indices]
 			batches.append((batch_indices, batch_prompts))
 		
-		for batch_num, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing batches")):
-			if verbose:
-				print(f"📦 Batch {batch_num + 1}/{len(batches)} with {len(batch_prompts)} items")
+		for batch_num, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing batches", ncols=100)):
 			success = False
 			last_error = None
 			# 🔄 RETRY LOGIC

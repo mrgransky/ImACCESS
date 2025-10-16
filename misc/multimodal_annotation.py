@@ -21,6 +21,33 @@ from visualize import perform_multilabel_eda
 # $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" -bs 32 -dv "cuda:2" -nw 32 -v > /media/volume/ImACCESS/trash/multimodal_annotation_h4.txt &
 # $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" -bs 64 -dv "cuda:3" -v > /media/volume/ImACCESS/trash/multimodal_annotation_smu.txt &
 
+def convert_to_lowercase(labels_list):
+	if not labels_list:
+		return labels_list
+	
+	result = []
+	for labels in labels_list:
+		if labels is None:
+			result.append(None)
+		elif isinstance(labels, list):
+			# Convert each label to lowercase
+			lowercase_labels = [label.lower() if isinstance(label, str) else label for label in labels]
+			result.append(lowercase_labels)
+		elif isinstance(labels, str):
+			try:
+				# Parse string representation of list and convert to lowercase
+				parsed_labels = ast.literal_eval(labels)
+				if isinstance(parsed_labels, list):
+					lowercase_labels = [label.lower() if isinstance(label, str) else label for label in parsed_labels]
+					result.append(lowercase_labels)
+				else:
+					result.append(labels.lower())
+			except:
+				result.append(labels.lower())
+		else:
+			result.append(labels)
+	return result
+
 def merge_labels(
 		llm_based_labels: List[List[str]], 
 		vlm_based_labels: List[List[str]], 
@@ -174,13 +201,15 @@ def get_multimodal_annotation(
 	# clear memory
 	torch.cuda.empty_cache()
 
+	# Apply lowercase conversion
+	llm_based_labels = convert_to_lowercase(llm_based_labels)
+	vlm_based_labels = convert_to_lowercase(vlm_based_labels)
+	multimodal_labels = convert_to_lowercase(multimodal_labels)
+
 	df['llm_based_labels'] = llm_based_labels
 	df['vlm_based_labels'] = vlm_based_labels
 	df['multimodal_labels'] = multimodal_labels
 
-	print(f"LLM-based labels: {llm_based_labels[0:5]}\n")
-	print(f"VLM-based labels: {vlm_based_labels[0:5]}\n")
-	print(f"Multimodal labels: {multimodal_labels[0:5]}\n")
 
 	df.to_csv(output_csv, index=False)
 	try:

@@ -277,7 +277,7 @@ def _load_vlm_(
 
 	if not use_quantization:
 		if verbose:
-			print(f"[INFO] Moving model to device '{device}' (full‑precision path)…")
+			print(f"[INFO] Moving {model.__class__.__name__} to {device} (full‑precision path)")
 		model.to(device)
 		if verbose and torch.cuda.is_available():
 			cur = torch.cuda.current_device()
@@ -1111,6 +1111,7 @@ def get_vlm_based_labels_opt(
 	# ========== Check existing results ==========
 	output_csv = csv_file.replace(".csv", "_vlm_keywords.csv")
 	if os.path.exists(output_csv):
+		if verbose: print(f"[EXISTING] Found existing results at {output_csv}")
 		df = pd.read_csv(
 			filepath_or_buffer=output_csv,
 			on_bad_lines='skip',
