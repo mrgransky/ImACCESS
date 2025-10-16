@@ -50,17 +50,18 @@ huggingface_hub.login(token=hf_tk)
 
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 Act as a meticulous historical archivist specializing in 20th century documentation.
-Given the description below, extract **between 0 and {k}** concrete, factual, prominent, and *non-numeric* keywords (maximum {k}, minimum 0).
+Given the description below, extract up to {k} most prominent, factual and distinct **KEYWORDS**.
 
 {description}
 
 **CRITICAL RULES**:
-- Return **ONLY** a clean, valid and parsable **Python LIST**.
-- **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the Python list.
+- Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
+- **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
 - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "May 25th", "July 10").
+- **STRICTLY EXCLUDE** vague, generic, or historical keywords.
 - Exclude numerical words, special characters, stopwords, or abbreviations.
 - Exclude meaningless, repeating or synonym-duplicate keywords.
-- The **Python LIST** must be the **VERY LAST THING** in your response.
+- The parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]
 """
 
