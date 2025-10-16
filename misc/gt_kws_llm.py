@@ -1386,100 +1386,114 @@ def get_llm_based_labels_opt(
 	# Will hold parsed results for unique inputs
 	unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
 	
-	# 🔄 BATCH PROCESSING WITH RETRY LOGIC
 	valid_indices = [i for i, p in enumerate(unique_prompts) if p is not None]
-	total_batches = math.ceil(len(valid_indices) / batch_size)
-	if valid_indices:
+
+	if not valid_indices:
 		if verbose:
-			print(f"Processing {len(valid_indices)} unique prompts in batches of {batch_size} samples => {total_batches} batches")
-		
-		# Group valid indices into batches
-		batches = []
-		for i in range(0, len(valid_indices), batch_size):
-			batch_indices = valid_indices[i:i + batch_size]
-			batch_prompts = [unique_prompts[idx] for idx in batch_indices]
-			batches.append((batch_indices, batch_prompts))
-		
-		for batch_num, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing batches", ncols=100)):
-			success = False
-			last_error = None
-			# 🔄 RETRY LOGIC
-			for attempt in range(max_retries + 1):
-				try:
-					if attempt > 0 and verbose:
-						print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for batch {batch_num + 1}")
-					# Tokenize batch
-					tokenized = tokenizer(
-						batch_prompts,
-						return_tensors="pt",
-						padding=True,
-						truncation=True,
-						max_length=4096,
-					)
-					if device != 'cpu':
-						tokenized = {k: v.to(device) for k, v in tokenized.items()}
-					# Generation args
-					gen_kwargs = dict(
-						input_ids=tokenized.get("input_ids"),
-						attention_mask=tokenized["attention_mask"],
-						max_new_tokens=max_generated_tks,
-						do_sample=TEMPERATURE > 0.0,
-						temperature=TEMPERATURE,
-						top_p=TOP_P,
-						pad_token_id=tokenizer.pad_token_id,
-						eos_token_id=tokenizer.eos_token_id,
-					)
-					with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-						outputs = model.generate(**gen_kwargs)							
-					decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-					if verbose:
-						print(f"✅ Batch {batch_num + 1} generation successful")
-					# Parse each response
-					for i, text_out in enumerate(decoded):
-						idx = batch_indices[i]
-						try:
-							parsed = get_llm_response(
-								model_id=model_id,
-								input_prompt=batch_prompts[i],
-								raw_llm_response=text_out,
-								max_kws=max_kws,
-								verbose=verbose,
-							)
-							unique_results[idx] = parsed
-						except Exception as e:
-							if verbose:
-								print(f"⚠️ Parsing error for batch index {idx}: {e}")
-							unique_results[idx] = None
-					success = True
-					break  # Break retry loop on success	
-				except Exception as e:
-					last_error = e
-					if verbose:
-						print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed: {e}")
-					
-					if attempt < max_retries:
-						# Exponential backoff
-						sleep_time = EXP_BACKOFF ** attempt
-						if verbose:
-							print(f"⏳ Waiting {sleep_time}s before retry...")
-						time.sleep(sleep_time)
-						torch.cuda.empty_cache() if torch.cuda.is_available() else None
-					else:
-						# Final attempt failed
-						if verbose:
-							print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
-						# Mark all items in this batch as failed
-						for idx in batch_indices:
-							unique_results[idx] = None
-			# Clean up
-			if 'tokenized' in locals():
-				del tokenized
-			if 'outputs' in locals():
-				del outputs
-			if 'decoded' in locals():
-				del decoded
-			torch.cuda.empty_cache() if torch.cuda.is_available() else None
+			print(f" <!> No valid prompts found after deduplication => exiting")
+		return None
+
+	total_batches = math.ceil(len(valid_indices) / batch_size)
+
+	if verbose:
+		print(f"Processing {len(valid_indices)} unique prompts in batches of {batch_size} samples => {total_batches} batches")
 	
+	# Group valid indices into batches
+	batches = []
+	for i in range(0, len(valid_indices), batch_size):
+		batch_indices = valid_indices[i:i + batch_size]
+		batch_prompts = [unique_prompts[idx] for idx in batch_indices]
+		batches.append((batch_indices, batch_prompts))
+	
+	for batch_num, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing batches", ncols=100)):
+		# 🔄 BATCH PROCESSING WITH RETRY LOGIC
+		for attempt in range(max_retries + 1):
+			try:
+				if attempt > 0 and verbose:
+					print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for batch {batch_num + 1}")
+				# Tokenize batch
+				tokenized = tokenizer(
+					batch_prompts,
+					return_tensors="pt",
+					padding=True,
+					truncation=True,
+					max_length=4096,
+				)
+				if device != 'cpu':
+					tokenized = {k: v.to(device) for k, v in tokenized.items()}
+				# Generation args
+				gen_kwargs = dict(
+					input_ids=tokenized.get("input_ids"),
+					attention_mask=tokenized["attention_mask"],
+					max_new_tokens=max_generated_tks,
+					do_sample=TEMPERATURE > 0.0,
+					temperature=TEMPERATURE,
+					top_p=TOP_P,
+					pad_token_id=tokenizer.pad_token_id,
+					eos_token_id=tokenizer.eos_token_id,
+				)
+				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+					outputs = model.generate(**gen_kwargs)							
+				decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
+				if verbose:
+					print(f"✅ Batch {batch_num + 1} generation successful")
+				# Parse each response
+				for i, text_out in enumerate(decoded):
+					idx = batch_indices[i]
+					try:
+						parsed = get_llm_response(
+							model_id=model_id,
+							input_prompt=batch_prompts[i],
+							raw_llm_response=text_out,
+							max_kws=max_kws,
+							verbose=verbose,
+						)
+						unique_results[idx] = parsed
+					except Exception as e:
+						if verbose:
+							print(f"⚠️ Parsing error for batch index {idx}: {e}")
+						unique_results[idx] = None
+				success = True
+				break  # Break retry loop on success	
+			except Exception as e:
+				last_error = e
+				if verbose:
+					print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed: {e}")
+				
+				if attempt < max_retries:
+					# Exponential backoff
+					sleep_time = EXP_BACKOFF ** attempt
+					if verbose:
+						print(f"⏳ Waiting {sleep_time}s before retry...")
+					time.sleep(sleep_time)
+					torch.cuda.empty_cache() if torch.cuda.is_available() else None
+				else:
+					# Final attempt failed
+					if verbose:
+						print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
+					# Mark all items in this batch as failed
+					for idx in batch_indices:
+						unique_results[idx] = None
+
+		# Clean up batch tensors immediately after use
+		try:
+			del tokenized
+		except NameError:
+			pass
+		try:
+			del outputs  
+		except NameError:
+			pass
+		try:
+			del decoded
+		except NameError:
+			pass
+
+		# Memory management - clear cache every 10 batches
+		if batch_num % 10 == 0:
+			torch.cuda.empty_cache()
+			gc.collect()
+
 	# 🔄 HYBRID FALLBACK: Retry failed items individually
 	failed_indices = [
 		i 
