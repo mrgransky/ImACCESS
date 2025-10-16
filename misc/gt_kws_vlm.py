@@ -1181,7 +1181,7 @@ def get_vlm_based_labels_opt(
 	results = [None] * len(uniq_inputs)
 	if verbose:
 		print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
-		print(f"[INFO] Memory: {process.memory_info().rss / (1024**3):.2f} GB")
+		print(f"[INFO] Memory[in-use]: {process.memory_info().rss / (1024**3):.2f} GB")
 
 	# ========== Process batches ==========
 	for b in tqdm(range(total_batches), desc="Processing batches", ncols=100):
@@ -1291,6 +1291,10 @@ def get_vlm_based_labels_opt(
 
 		# Clean up batch tensors immediately after use
 		del inputs, outputs, decoded
+		if verbose:
+			print(f"[MEM] Batch {b}: {process.memory_info().rss / (1024**3):.2f}GB in-use")
+			print(f"[MEM] Batch {b}: {torch.cuda.memory_allocated() / (1024**3):.2f}GB allocated, {torch.cuda.memory_reserved() / (1024**3):.2f}GB reserved")
+			print(f"deleted inputs, outputs, decoded")
 		
 		# Periodic memory cleanup (every 10 batches)
 		if b % 10 == 0:
@@ -1381,7 +1385,7 @@ def main():
 			verbose=args.verbose,
 		)
 
-	if args.verbose:
+	if args.verbose and keywords:
 		print(f"{len(keywords)} Extracted keywords")
 		for i, kw in enumerate(keywords):
 			print(f"{i:06d}. {kw}")
