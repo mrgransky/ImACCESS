@@ -63,21 +63,18 @@ def _load_vlm_(
 
 	if verbose:
 		print(f"[VERSIONS] torch : {torch.__version__} transformers: {tfs.__version__}")
-		print(f"[INFO] CUDA available?       : {torch.cuda.is_available()}")
+		print(f"[INFO] CUDA available?					: {torch.cuda.is_available()}")
+
 		if torch.cuda.is_available():
 			cur = torch.cuda.current_device()
-			print(f"[INFO] Current CUDA device   : {cur} ({torch.cuda.get_device_name(cur)})")
+			print(f"[INFO] Current CUDA device		: {cur} ({torch.cuda.get_device_name(cur)})")
 			major, minor = torch.cuda.get_device_capability(cur)
-			print(f"[INFO] Compute capability    : {major}.{minor}")
-			print(f"[INFO] BF16 support?         : {torch.cuda.is_bf16_supported()}")
-			print(f"[INFO] CUDA memory allocated: {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
-			print(f"[INFO] CUDA memory reserved : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
+			print(f"[INFO] Compute capability			: {major}.{minor}")
+			print(f"[INFO] BF16 support?					: {torch.cuda.is_bf16_supported()}")
+			print(f"[INFO] CUDA memory allocated	: {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
+			print(f"[INFO] CUDA memory reserved		: {torch.cuda.memory_reserved(cur)//(1024**2)} MiB")
 		else:
 			print("[INFO] Running on CPU only")
-		print("[INFO] ----------------------------------------------------\n")
-
-	if verbose:
-		print(f"[INFO] Loading configuration for {model_id}")
 
 	config = tfs.AutoConfig.from_pretrained(model_id, trust_remote_code=True,)
 
@@ -91,81 +88,90 @@ def _load_vlm_(
 	model_cls = None
 
 	if config.architectures:
-		cls_name = config.architectures[0]          # first architecture listed
+		cls_name = config.architectures[0]
 		if hasattr(tfs, cls_name):
 			model_cls = getattr(tfs, cls_name)
+	
 	if model_cls is None:
 		raise ValueError(f"Unable to locate model class for architecture(s): {config.architectures}")
 
-	if verbose:
-			print(f"[INFO] Resolved model class → {model_cls.__name__}\n")
-
 	def _optimal_dtype(m_id: str, dev: str) -> torch.dtype:
-			bf16_ok = (
-					torch.cuda.is_available()
-					and torch.cuda.is_bf16_supported()
-					and dev != "cpu"
-			)
-			if "Qwen" in m_id:
-					return torch.bfloat16 if bf16_ok else torch.float16
-			if "llava" in m_id.lower():
-					return torch.float16
-			if "falcon" in m_id.lower():
-					return torch.bfloat16 if bf16_ok else torch.float16
-			# default fallback
+		bf16_ok = (
+			torch.cuda.is_available()
+			and torch.cuda.is_bf16_supported()
+			and dev != "cpu"
+		)
+		
+		if "Qwen" in m_id:
 			return torch.bfloat16 if bf16_ok else torch.float16
+		
+		if "llava" in m_id.lower():
+			return torch.float16
+		
+		if "falcon" in m_id.lower():
+			return torch.bfloat16 if bf16_ok else torch.float16
+		
+		return torch.bfloat16 if bf16_ok else torch.float16
 
 	dtype = _optimal_dtype(model_id, device)
 
 	if verbose:
-			print("[INFO] Dtype selection")
-			print(f"   • BF16 supported on this device? : {torch.cuda.is_bf16_supported()}")
-			print(f"   • Chosen torch dtype            : {dtype}\n")
+		print("[INFO] Dtype selection")
+		print(f"   • BF16 supported on this device?	: {torch.cuda.is_bf16_supported()}")
+		print(f"   • Chosen torch dtype            	: {dtype}")
+
 	def _optimal_attn_impl(m_id: str, dev: str) -> str:
-			if not torch.cuda.is_available() or dev == "cpu":
-					return "eager"
-			# try importing flash_attn and check compute capability
-			try:
-					import flash_attn  # noqa: F401
-					major, _ = torch.cuda.get_device_capability()
-					flash_ok = major >= 8               # SM80+ required
-			except Exception:
-					flash_ok = False
-			if flash_ok:
-					if "Qwen" in m_id:
-							return "flash_attention_2"
-					if "llava" in m_id.lower():
-							return "flash_attention_2"
-					return "flash_attention_2"
+		if not torch.cuda.is_available() or dev == "cpu":
 			return "eager"
+		
+		try:
+			import flash_attn
+			major, _ = torch.cuda.get_device_capability()
+			flash_ok = major >= 8
+		except Exception as e:
+			if verbose:
+				print(e)
+			flash_ok = False
+		
+		if flash_ok:
+			if "Qwen" in m_id:
+				return "flash_attention_2"
+			if "llava" in m_id.lower():
+				return "flash_attention_2"
+			return "flash_attention_2"
+
+		return "eager"
+	
 	attn_impl = _optimal_attn_impl(model_id, device)
 
 	if verbose:
-			print("[INFO] Attention implementation")
-			print(f"   • Selected implementation : {attn_impl}\n")
+		print("[INFO] Attention implementation")
+		print(f"   • Selected implementation : {attn_impl}\n")
+
 	quantization_config = None
 
 	if use_quantization:
-			if quantization_bits == 8:
-					quantization_config = tfs.BitsAndBytesConfig(
-						load_in_8bit=True,
-						bnb_8bit_compute_dtype=torch.bfloat16,
-						llm_int8_enable_fp32_cpu_offload=True,
-					)
-			elif quantization_bits == 4:
-					quantization_config = tfs.BitsAndBytesConfig(
-						load_in_4bit=True,
-						bnb_4bit_quant_type="nf4",
-						bnb_4bit_compute_dtype=torch.bfloat16,
-						bnb_4bit_use_double_quant=True,
-					)
-			else:
-					raise ValueError("quantization_bits must be 4 or 8")
-			if verbose:
-					print("[INFO] Quantisation enabled")
-					print(f"   • Bits                : {quantization_bits}")
-					print(f"   • Config object type  : {type(quantization_config).__name__}")
-					print()
+		if quantization_bits == 8:
+			quantization_config = tfs.BitsAndBytesConfig(
+				load_in_8bit=True,
+				bnb_8bit_compute_dtype=torch.bfloat16,
+				llm_int8_enable_fp32_cpu_offload=True,
+			)
+		elif quantization_bits == 4:
+			quantization_config = tfs.BitsAndBytesConfig(
+				load_in_4bit=True,
+				bnb_4bit_quant_type="nf4",
+				bnb_4bit_compute_dtype=torch.bfloat16,
+				bnb_4bit_use_double_quant=True,
+			)
+		else:
+			raise ValueError("quantization_bits must be 4 or 8")
+		
+		if verbose:
+			print("[INFO] Quantisation enabled")
+			print(f"   • Bits                : {quantization_bits}")
+			print(f"   • Config object type  : {type(quantization_config).__name__}")
+			print()
 
 	processor = tfs.AutoProcessor.from_pretrained(
 		model_id,
@@ -223,7 +229,7 @@ def _load_vlm_(
 		model_kwargs["device_map"] = "auto"
 
 	if verbose:
-		print("[INFO] Model loading kwargs")
+		print(f"[INFO] {model_cls.__name__} loading kwargs")
 		for k, v in model_kwargs.items():
 			if k == "quantization_config":
 				print(f"   • {k}: {type(v).__name__}")
@@ -238,7 +244,7 @@ def _load_vlm_(
 		print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
 
 	if verbose:
-		print("[INFO] Calling `from_pretrained` …")
+		print(f"[INFO] Calling pretrained {model_cls.__name__} {model_id}")
 
 	model = model_cls.from_pretrained(model_id, **model_kwargs)
 
@@ -263,22 +269,24 @@ def _load_vlm_(
 		print(f"   • Total parameters    : {total_params:,}")
 		print(f"   • Approx. fp16 RAM    : {approx_fp16_gb:.2f} GiB (if stored as fp16)")
 		# Show the resolved device map (for both quantised & non‑quantised)
+
 		if hasattr(model, "hf_device_map"):
 			dm = model.hf_device_map   # type: ignore[attr-defined]
-			print("[INFO] Final device map (model.hf_device_map):")
-			# pretty‑print the dict
-			for k in sorted(dm):
-				print(f"   '{k}': {repr(dm[k])}")
+			print(f"[INFO] device_map=({model_kwargs['device_map']}) (model.hf_device_map): {dm}")
 		else:
-			print("[INFO] No `hf_device_map` attribute – model resides on a single device")
+			print(f"[INFO] No `hf_device_map` attribute => model resides on a single device: {device}")
 
 		if hasattr(model, 'generation_config'):
-			print(f"[INFO] Generation config:\n{model.generation_config}")
+			print(f"{model.generation_config}")
 
 	if not use_quantization:
 		if verbose:
 			print(f"[INFO] Moving {model.__class__.__name__} to {device} (full‑precision path)")
-		model.to(device)
+		try:
+			model.to(device)
+		except Exception as e:
+			print(e)
+			sys.exit(1)
 		if verbose and torch.cuda.is_available():
 			cur = torch.cuda.current_device()
 			print("[DEBUG] CUDA memory AFTER model.to()")
@@ -286,11 +294,11 @@ def _load_vlm_(
 			print(f"   • reserved  : {torch.cuda.memory_reserved(cur)//(1024**2)} MiB\n")
 	else:
 		if verbose:
-			print("[INFO] Quantisation path – placement handled by `device_map='auto'`")
+			print(f"[INFO] Quantization: device_map={model_kwargs['device_map']}")
 			if torch.cuda.is_available():
 				gpu_params = sum(1 for p in model.parameters() if p.device.type == "cuda")
 				cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
-				print(f"   • Parameters on GPU : {gpu_params}")
+				print(f"   • Parameters on GPU  : {gpu_params}")
 				print(f"   • Parameters on CPU  : {cpu_params}\n")
 
 	return processor, model
@@ -335,7 +343,7 @@ def prepare_prompts_and_images(
 	
 	return valid_paths, unique_prompts
 
-def get_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
+def parse_vlm_response(model_id: str, raw_response: str, verbose: bool=False):
 	if "Qwen" in model_id:
 		return _qwen_vlm_(raw_response, verbose=verbose)
 	elif "llava" in model_id:
@@ -737,7 +745,7 @@ def get_vlm_based_labels_single(
 		text=chat_prompt,
 		padding=True,
 		return_tensors="pt"
-	).to(device)
+	).to(model.device)
 
 	if verbose:
 		print(f"[INPUT] Pixel: {single_inputs.pixel_values.shape} {single_inputs.pixel_values.dtype} {single_inputs.pixel_values.device}")
@@ -771,7 +779,7 @@ def get_vlm_based_labels_single(
 	
 	# ========== Parse the response ==========
 	try:
-		parsed = get_vlm_response(
+		parsed = parse_vlm_response(
 			model_id=model_id,
 			raw_response=response,
 			verbose=verbose,
@@ -951,7 +959,7 @@ def get_vlm_based_labels_debug(
 					text=chat_prompt,
 					padding=True,
 					return_tensors="pt"
-				).to(device)
+				).to(model.device)
 
 				if verbose:
 					print(f"[INPUT] Pixel: {single_inputs.pixel_values.shape} {single_inputs.pixel_values.dtype} {single_inputs.pixel_values.device}")
@@ -986,7 +994,7 @@ def get_vlm_based_labels_debug(
 				# ========== Parse the response ==========
 				parse_start = time.time()
 				try:
-					parsed = get_vlm_response(
+					parsed = parse_vlm_response(
 						model_id=model_id,
 						raw_response=response,
 						verbose=verbose,
@@ -1230,7 +1238,7 @@ def get_vlm_based_labels_opt(
 				images=[img for _, img in valid_pairs],
 				return_tensors="pt",
 				padding=True,
-			).to(device)
+			).to(model.device)
 
 			with torch.amp.autocast(
 				device_type=device.type, 
@@ -1246,7 +1254,7 @@ def get_vlm_based_labels_opt(
 			for i, resp in enumerate(decoded):
 				if verbose: print(f"{i}\n{resp}\n")
 				try:
-					parsed = get_vlm_response(model_id=model_id, raw_response=resp, verbose=verbose)
+					parsed = parse_vlm_response(model_id=model_id, raw_response=resp, verbose=verbose)
 					results[idxs[i]] = parsed
 				except Exception:
 					results[idxs[i]] = None
@@ -1275,7 +1283,7 @@ def get_vlm_based_labels_opt(
 						text=[chat],
 						images=[img],
 						return_tensors="pt",
-					).to(device)
+					).to(model.device)
 
 					if single_inputs.pixel_values.numel() == 0:
 						raise ValueError(f"Pixel values of {img} are empty: {single_inputs.pixel_values.shape}")
@@ -1290,7 +1298,7 @@ def get_vlm_based_labels_opt(
 						out = model.generate(**single_inputs, **gen_kwargs)
 
 					decoded = processor.decode(out[0], skip_special_tokens=True)
-					results[i] = get_vlm_response(model_id=model_id, raw_response=decoded)
+					results[i] = parse_vlm_response(model_id=model_id, raw_response=decoded)
 
 				except Exception as e_fallback:
 					print(f"\n[fallback ❌] image {i}:\n{e_fallback}\n")
