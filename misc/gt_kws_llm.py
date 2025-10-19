@@ -1691,7 +1691,7 @@ def get_llm_based_labels_opt(
 		batch_prompts = [unique_prompts[idx] for idx in batch_indices]
 		batches.append((batch_indices, batch_prompts))
 	
-	for batch_num, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing batches", ncols=100)):
+	for batch_num, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing (textual) batches", ncols=100)):
 		# 🔄 BATCH PROCESSING WITH RETRY LOGIC
 		for attempt in range(max_retries + 1):
 			try:

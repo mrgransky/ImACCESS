@@ -1199,7 +1199,7 @@ def get_vlm_based_labels_opt(
 		print(f"[INFO] Memory[in-use]: {process.memory_info().rss / (1024**3):.2f} GB")
 
 	# ========== Process batches ==========
-	for b in tqdm(range(total_batches), desc="Processing batches", ncols=100):
+	for b in tqdm(range(total_batches), desc="Processing visual batches", ncols=100):
 		idxs = valid_indices[b * batch_size : (b + 1) * batch_size]
 		def load_img(p):
 			try:

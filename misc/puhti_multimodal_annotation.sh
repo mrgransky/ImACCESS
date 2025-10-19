@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --account=project_2009043
+#SBATCH --account=project_2004072
 #SBATCH --job-name=multimodal_annotation
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
