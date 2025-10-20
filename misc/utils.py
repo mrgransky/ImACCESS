@@ -82,7 +82,7 @@ from PIL import Image, ImageDraw, ImageOps, ImageFilter
 from functools import cache, partial
 from urllib.parse import urlparse, unquote, quote_plus, urljoin
 from sklearn.model_selection import train_test_split
-from skmultilearn.model_selection import iterative_train_test_split
+from skmultilearn.model_selection import iterative_train_test_split, IterativeStratification
 from tqdm import tqdm
 from datetime import timedelta
 import glob
@@ -536,16 +536,36 @@ def get_multi_label_stratified_split(
 	# y is the binarized label matrix (sparse matrix)
 	X_indices = np.arange(len(df_filtered)).reshape(-1, 1)
 	print(f"X_indices: {type(X_indices)} {X_indices.shape}")
-	# iterative_train_test_split returns (X_train, y_train, X_val, y_val)
-	print(">> iterative_train_test_split...")
+
+	#################################################################################################
+	print(">> iterative_train_test_split (slow)...")
 	X_train_idx, y_train_labels, X_val_idx, y_val_labels = iterative_train_test_split(
 		X_indices, 
 		label_matrix, # sparse matrix
 		test_size=val_split_pct,
+		n_jobs=-1, # Use all available CPU cores
 	)
-	# Convert back to original DataFrame indices
+	print(">> Converting back to original DataFrame indices...")
 	train_original_indices = df_filtered.iloc[X_train_idx.flatten()].index.values
 	val_original_indices = df_filtered.iloc[X_val_idx.flatten()].index.values
+	print(f"train_original_indices: {type(train_original_indices)} {train_original_indices.shape}")
+	print(f"val_original_indices: {type(val_original_indices)} {val_original_indices.shape}")
+	#################################################################################################
+
+	# #################################################################################################
+	# print(">> Fast iterative stratification...")
+	# stratifier = IterativeStratification(
+	# 	n_splits=2,
+	# 	order=1,  # Lower order = faster (default is 2)
+	# 	sample_distribution_per_fold=[val_split_pct, 1-val_split_pct]
+	# )
+	# train_indices, val_indices = next(stratifier.split(X_indices, label_matrix))
+	# train_original_indices = df_filtered.iloc[train_indices].index.values
+	# val_original_indices = df_filtered.iloc[val_indices].index.values
+	# #################################################################################################
+
+
+
 	train_df = df_filtered.loc[train_original_indices].reset_index(drop=True)
 	val_df = df_filtered.loc[val_original_indices].reset_index(drop=True)
 	
