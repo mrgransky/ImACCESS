@@ -523,7 +523,7 @@ def get_multi_label_stratified_split(
 	print(">> Binarizing labels...")
 	mlb = MultiLabelBinarizer(sparse_output=True)
 	label_matrix = mlb.fit_transform(df_filtered[label_col])
-	print(f"Label matrix: {label_matrix.shape}, Sparse matrix: {label_matrix.data.nbytes / 1e9:.2f} GB")
+	print(f"Label matrix: {label_matrix.shape} {label_matrix.data.nbytes / 1e9:.2f} GB")
 
 	unique_labels = mlb.classes_
 	if len(unique_labels) == 0:
@@ -532,8 +532,6 @@ def get_multi_label_stratified_split(
 	
 	# --- 4. Perform Iterative Stratification ---
 	print(">> Multi-label stratification using Iterative Stratification")
-	# X is a dummy feature matrix (can be indices or just a range) (dense matrix)
-	# y is the binarized label matrix (sparse matrix)
 	X_indices = np.arange(len(df_filtered)).reshape(-1, 1)
 	print(f"X_indices: {type(X_indices)} {X_indices.shape}")
 
@@ -548,15 +546,13 @@ def get_multi_label_stratified_split(
 	# print(">> Converting back to original DataFrame indices...")
 	# train_original_indices = df_filtered.iloc[X_train_idx.flatten()].index.values
 	# val_original_indices = df_filtered.iloc[X_val_idx.flatten()].index.values
-	# print(f"train_original_indices: {type(train_original_indices)} {train_original_indices.shape}")
-	# print(f"val_original_indices: {type(val_original_indices)} {val_original_indices.shape}")
 	# #################################################################################################
 
 	#################################################################################################
 	print(">> Fast iterative stratification...")
 	stratifier = IterativeStratification(
 		n_splits=2,
-		order=1,  # Lower order = faster (default is 2)
+		order=2,  # Lower order = faster (default is 2)
 		sample_distribution_per_fold=[val_split_pct, 1-val_split_pct]
 	)
 	train_indices, val_indices = next(stratifier.split(X_indices, label_matrix))
@@ -564,6 +560,8 @@ def get_multi_label_stratified_split(
 	val_original_indices = df_filtered.iloc[val_indices].index.values
 	#################################################################################################
 
+	print(f"train_original_indices: {type(train_original_indices)} {train_original_indices.shape}")
+	print(f"val_original_indices: {type(val_original_indices)} {val_original_indices.shape}")
 
 
 	train_df = df_filtered.loc[train_original_indices].reset_index(drop=True)
