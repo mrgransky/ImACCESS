@@ -468,7 +468,6 @@ def get_multi_label_stratified_split(
 		csv_file: str,
 		val_split_pct: float,
 		label_col: str='multimodal_labels',
-		random_state: int=42,
 	) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
 	print(f"\n>> Stratified Splitting [Multi-label dataset]")
@@ -555,8 +554,6 @@ def get_multi_label_stratified_split(
 		n_splits=2,
 		order=1 if len(df_filtered) > int(1e5) else 2,  # Lower order = faster (default is 2)
 		sample_distribution_per_fold=[val_split_pct, 1-val_split_pct],
-		random_state=random_state, # For reproducibility
-		shuffle=True,
 	)
 	train_indices, val_indices = next(stratifier.split(X_indices, label_matrix))
 	train_original_indices = df_filtered.iloc[train_indices].index.values
