@@ -468,9 +468,10 @@ def get_multi_label_stratified_split(
 		csv_file: str,
 		val_split_pct: float,
 		label_col: str = 'multimodal_labels',
+		random_state: int = 42,
 	) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
-	print(f"Stratified Splitting [Multi-label dataset]".center(150, "-"))
+	print(f"\n>> Stratified Splitting [Multi-label dataset]")
 	t_st = time.time()
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
@@ -549,11 +550,12 @@ def get_multi_label_stratified_split(
 	# #################################################################################################
 
 	#################################################################################################
-	print(">> Fast iterative stratification...")
+	print(f">> IterativeStratification dataset: {df_filtered.shape}...")
 	stratifier = IterativeStratification(
 		n_splits=2,
-		order=2,  # Lower order = faster (default is 2)
-		sample_distribution_per_fold=[val_split_pct, 1-val_split_pct]
+		order=1 if len(df_filtered) > int(1e5) else 2,  # Lower order = faster (default is 2)
+		sample_distribution_per_fold=[val_split_pct, 1-val_split_pct],
+		random_state=random_state, # For reproducibility
 	)
 	train_indices, val_indices = next(stratifier.split(X_indices, label_matrix))
 	train_original_indices = df_filtered.iloc[train_indices].index.values
@@ -583,10 +585,11 @@ def get_multi_label_stratified_split(
 	print(f"Stratified Splitting Elapsed Time: {time.time()-t_st:.3f} sec".center(160, "-"))
 	
 	# Save train/val splits
-	train_df.to_csv(csv_file.replace('.csv', '_train.csv'), index=False)
-	val_df.to_csv(csv_file.replace('.csv', '_val.csv'), index=False)
-
-
+	train_path = csv_file.replace('.csv', '_train.csv')
+	val_path = csv_file.replace('.csv', '_val.csv')
+	train_df.to_csv(train_path, index=False)
+	val_df.to_csv(val_path, index=False)
+	print(f"Saved train/val splits to {train_path} and {val_path}")
 	return train_df, val_df
 
 def _process_image_for_storage(
