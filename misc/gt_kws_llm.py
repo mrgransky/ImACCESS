@@ -1290,15 +1290,6 @@ def get_llm_based_labels_opt(
 		verbose: bool=False,
 	) -> List[Optional[List[str]]]:
 
-	if verbose:
-		print(f"\n{'='*100}")
-		print(f"[INIT] Starting OPTIMIZED batch LLM processing")
-		print(f"[INIT] Model: {model_id}")
-		print(f"[INIT] Batch size: {batch_size}")
-		print(f"[INIT] Device: {device}")
-		print(f"{'='*100}\n")
-	st_t = time.time()
-
 	if csv_file:
 		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
 
@@ -1316,6 +1307,15 @@ def get_llm_based_labels_opt(
 		if 'llm_keywords' in df.columns:
 			if verbose: print(f"[EXISTING] Found existing LLM keywords in {output_csv}")
 			return df['llm_keywords'].tolist()
+
+	if verbose:
+		print(f"\n{'='*100}")
+		print(f"[INIT] Starting OPTIMIZED batch LLM processing")
+		print(f"[INIT] Model: {model_id}")
+		print(f"[INIT] Batch size: {batch_size}")
+		print(f"[INIT] Device: {device}")
+		print(f"{'='*100}\n")
+	st_t = time.time()
 
 	if csv_file:
 		df = pd.read_csv(
