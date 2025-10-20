@@ -2556,7 +2556,7 @@ def perform_multilabel_eda(
 					bbox_inches='tight',
 			)
 			plt.close()
-	print("="*100")
+	print("="*100)
 	
 	# --- 8. Label Correlation Matrix (Jaccard Similarity) ---
 	print(f"--- Label Correlation Matrix (Jaccard Similarity) for Top {n_top_labels_co_occurrence} Labels ---")
