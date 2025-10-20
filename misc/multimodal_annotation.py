@@ -216,10 +216,15 @@ def get_multimodal_annotation(
 		df.to_excel(output_csv.replace('.csv', '.xlsx'), index=False)
 	except Exception as e:
 		print(f"Failed to write Excel file: {e}")
+
 	if verbose:
 		print(f"Saved {type(df)} {df.shape} to {output_csv}\n{list(df.columns)}")
 
-	perform_multilabel_eda(data_path=output_csv, label_column='multimodal_labels')
+	perform_multilabel_eda(
+		data_path=output_csv, 
+		label_column='multimodal_labels'
+	)
+
 	train_df, val_df = get_multi_label_stratified_split(
 		csv_file=output_csv,
 		val_split_pct=0.35,
