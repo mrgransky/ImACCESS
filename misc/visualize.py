@@ -2556,7 +2556,7 @@ def perform_multilabel_eda(
 					bbox_inches='tight',
 			)
 			plt.close()
-	print("-" * 40 + "\n")
+	print("="*100")
 	
 	# --- 8. Label Correlation Matrix (Jaccard Similarity) ---
 	print(f"--- Label Correlation Matrix (Jaccard Similarity) for Top {n_top_labels_co_occurrence} Labels ---")
@@ -2568,44 +2568,61 @@ def perform_multilabel_eda(
 		n_top_labels_co_occurrence = len(unique_labels)
 	print(f"Top {n_top_labels_co_occurrence} labels for correlation matrix:\n{label_counts_df['Label'].head(n_top_labels_co_occurrence).tolist()}")
 	if n_top_labels_co_occurrence >= 2: # Correlation makes sense for at least 2 labels
-			print(f"Binarizing labels for correlation matrix (classes: {len(unique_labels)} sparse matrix) ...")
-			mlb = MultiLabelBinarizer(classes=unique_labels, sparse_output=True)
-			y_binarized = mlb.fit_transform(df[label_column])
-			labels_in_order = mlb.classes_
-			# Get indices of top N labels for the subset
-			top_labels_for_correlation = label_counts_df['Label'].head(n_top_labels_co_occurrence).tolist()
-			top_label_indices = [list(labels_in_order).index(lab) for lab in top_labels_for_correlation]
-			# Calculate Jaccard Similarity Matrix
-			jaccard_matrix = np.zeros((n_top_labels_co_occurrence, n_top_labels_co_occurrence))
-			for i, lab1_idx in enumerate(top_label_indices):
-					for j, lab2_idx in enumerate(top_label_indices):
-							# Self-similarity (diagonal)
-							if i == j:
-									jaccard_matrix[i, j] = 1.0
-							else:
-									intersection = np.sum(y_binarized[:, lab1_idx] & y_binarized[:, lab2_idx])
-									union = np.sum(y_binarized[:, lab1_idx] | y_binarized[:, lab2_idx])
-									jaccard_matrix[i, j] = intersection / union if union != 0 else 0.0
-			jaccard_df = pd.DataFrame(jaccard_matrix, index=top_labels_for_correlation, columns=top_labels_for_correlation)
-			plt.figure(figsize=(15, 12))
-			sns.heatmap(jaccard_df, annot=True, fmt=".2f", cmap='Blues', linewidths=.5, linecolor='gray',
-									cbar_kws={'label': 'Jaccard Similarity'})
-			plt.title(f'Jaccard Similarity Matrix of Top {n_top_labels_co_occurrence} Labels')
-			plt.xlabel('Labels')
-			plt.ylabel('Labels')
-			plt.tight_layout()
-			plt.savefig(
-					fname=os.path.join(output_dir, f"{label_column}_jaccard_similarity_matrix_top_{n_top_labels_co_occurrence}_labels.png"),
-					dpi=DPI,
-					bbox_inches='tight',
-			)
-			plt.close()
+		print(f"Binarizing labels for correlation matrix (classes: {len(unique_labels)} sparse matrix) ...")
+		mlb = MultiLabelBinarizer(classes=unique_labels, sparse_output=True)
+		y_binarized = mlb.fit_transform(df[label_column])
+		labels_in_order = mlb.classes_
+		# Get indices of top N labels for the subset
+		top_labels_for_correlation = label_counts_df['Label'].head(n_top_labels_co_occurrence).tolist()
+		top_label_indices = [list(labels_in_order).index(lab) for lab in top_labels_for_correlation]
+		
+		# Extract only the columns we need (convert to dense for easier computation with small subset)
+		y_subset = y_binarized[:, top_label_indices].toarray()  # Convert sparse subset to dense
+		
+		# Calculate Jaccard Similarity Matrix
+		jaccard_matrix = np.zeros((n_top_labels_co_occurrence, n_top_labels_co_occurrence))
+		for i in range(n_top_labels_co_occurrence):
+			for j in range(n_top_labels_co_occurrence):
+				# Self-similarity (diagonal)
+				if i == j:
+					jaccard_matrix[i, j] = 1.0
+				else:
+					col_i = y_subset[:, i]
+					col_j = y_subset[:, j]
+					intersection = np.sum(col_i & col_j)
+					union = np.sum(col_i | col_j)
+					jaccard_matrix[i, j] = intersection / union if union != 0 else 0.0
+		
+		jaccard_df = pd.DataFrame(jaccard_matrix, index=top_labels_for_correlation, columns=top_labels_for_correlation)
+		plt.figure(figsize=(15, 12))
+		sns.heatmap(
+			jaccard_df, 
+			annot=True, 
+			fmt=".2f", 
+			cmap='Blues', 
+			linewidths=.5, 
+			linecolor='gray',
+			cbar_kws={'label': 'Jaccard Similarity'}
+		)
+		plt.title(f'Jaccard Similarity Matrix of Top {n_top_labels_co_occurrence} Labels')
+		plt.xlabel('Labels')
+		plt.ylabel('Labels')
+		plt.tight_layout()
+		plt.savefig(
+			fname=os.path.join(output_dir, f"{label_column}_jaccard_similarity_matrix_top_{n_top_labels_co_occurrence}_labels.png"),
+			dpi=DPI,
+			bbox_inches='tight',
+		)
+		plt.close()
 	else:
-			print("Not enough unique labels to display Jaccard similarity matrix (need at least 2).")
-	print("-" * 40 + "\n")
-	
+		print("Not enough unique labels to display Jaccard similarity matrix (need at least 2).")
+	print("="*100)
+
+
+
+
 	# --- 9. Comparison of Label Sources ---
-	print("Label Sources Comparison: textual_based_labels vs. visual_based_labels vs. multimodal_labels".center(160, "-"))
+	print(">> Label Sources Comparison: textual_based_labels vs. visual_based_labels vs. multimodal_labels")
 	source_cols = {
 		'textual_based': 'textual_based_labels',
 		'visual_based': 'visual_based_labels',
