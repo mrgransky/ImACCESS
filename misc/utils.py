@@ -469,6 +469,7 @@ def get_multi_label_stratified_split(
 		val_split_pct: float,
 		label_col: str = 'multimodal_labels',
 	) -> Tuple[pd.DataFrame, pd.DataFrame]:
+
 	print(f"Stratified Splitting [Multi-label dataset]".center(150, "-"))
 	t_st = time.time()
 	df = pd.read_csv(
@@ -519,23 +520,25 @@ def get_multi_label_stratified_split(
 	print(f"DataFrame shape after filtering empty label lists: {df_filtered.shape}")
 
 	# --- 3. Binarize Labels ---
-	mlb = MultiLabelBinarizer()
+	mlb = MultiLabelBinarizer(sparse_output=True)
 	label_matrix = mlb.fit_transform(df_filtered[label_col])
+	print(f"Label matrix shape: {label_matrix.shape}, Sparse matrix size: {label_matrix.data.nbytes / 1e9:.2f} GB")
+
 	unique_labels = mlb.classes_
 	if len(unique_labels) == 0:
 		raise ValueError("No unique labels found after processing. Cannot perform stratification.")
-	print(f">> Found {len(unique_labels)} unique labels:\n{unique_labels.tolist()[:10]}...") # Show first 10
+	print(f">> Found {len(unique_labels)} unique labels:\n{unique_labels.tolist()[:25]}") # Show first 10
 	
 	# --- 4. Perform Iterative Stratification ---
-	print("Multi-label stratification using Iterative Stratification...")
-	# X is a dummy feature matrix (can be indices or just a range)
-	# y is the binarized label matrix
+	print(">> Multi-label stratification using Iterative Stratification")
+	# X is a dummy feature matrix (can be indices or just a range) (dense matrix)
+	# y is the binarized label matrix (sparse matrix)
 	X_indices = np.arange(len(df_filtered)).reshape(-1, 1)
 	
 	# iterative_train_test_split returns (X_train, y_train, X_val, y_val)
 	X_train_idx, y_train_labels, X_val_idx, y_val_labels = iterative_train_test_split(
 		X_indices, 
-		label_matrix, 
+		label_matrix, # sparse matrix
 		test_size=val_split_pct,
 	)
 	# Convert back to original DataFrame indices
