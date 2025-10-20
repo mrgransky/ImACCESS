@@ -537,32 +537,32 @@ def get_multi_label_stratified_split(
 	X_indices = np.arange(len(df_filtered)).reshape(-1, 1)
 	print(f"X_indices: {type(X_indices)} {X_indices.shape}")
 
-	#################################################################################################
-	print(">> iterative_train_test_split (slow)...")
-	X_train_idx, y_train_labels, X_val_idx, y_val_labels = iterative_train_test_split(
-		X_indices, 
-		label_matrix, # sparse matrix
-		test_size=val_split_pct,
-		n_jobs=-1, # Use all available CPU cores
-	)
-	print(">> Converting back to original DataFrame indices...")
-	train_original_indices = df_filtered.iloc[X_train_idx.flatten()].index.values
-	val_original_indices = df_filtered.iloc[X_val_idx.flatten()].index.values
-	print(f"train_original_indices: {type(train_original_indices)} {train_original_indices.shape}")
-	print(f"val_original_indices: {type(val_original_indices)} {val_original_indices.shape}")
-	#################################################################################################
-
 	# #################################################################################################
-	# print(">> Fast iterative stratification...")
-	# stratifier = IterativeStratification(
-	# 	n_splits=2,
-	# 	order=1,  # Lower order = faster (default is 2)
-	# 	sample_distribution_per_fold=[val_split_pct, 1-val_split_pct]
+	# print(">> iterative_train_test_split (slow)...")
+	# X_train_idx, y_train_labels, X_val_idx, y_val_labels = iterative_train_test_split(
+	# 	X_indices, 
+	# 	label_matrix, # sparse matrix
+	# 	test_size=val_split_pct,
+	# 	n_jobs=-1, # Use all available CPU cores
 	# )
-	# train_indices, val_indices = next(stratifier.split(X_indices, label_matrix))
-	# train_original_indices = df_filtered.iloc[train_indices].index.values
-	# val_original_indices = df_filtered.iloc[val_indices].index.values
+	# print(">> Converting back to original DataFrame indices...")
+	# train_original_indices = df_filtered.iloc[X_train_idx.flatten()].index.values
+	# val_original_indices = df_filtered.iloc[X_val_idx.flatten()].index.values
+	# print(f"train_original_indices: {type(train_original_indices)} {train_original_indices.shape}")
+	# print(f"val_original_indices: {type(val_original_indices)} {val_original_indices.shape}")
 	# #################################################################################################
+
+	#################################################################################################
+	print(">> Fast iterative stratification...")
+	stratifier = IterativeStratification(
+		n_splits=2,
+		order=1,  # Lower order = faster (default is 2)
+		sample_distribution_per_fold=[val_split_pct, 1-val_split_pct]
+	)
+	train_indices, val_indices = next(stratifier.split(X_indices, label_matrix))
+	train_original_indices = df_filtered.iloc[train_indices].index.values
+	val_original_indices = df_filtered.iloc[val_indices].index.values
+	#################################################################################################
 
 
 
