@@ -2566,9 +2566,10 @@ def perform_multilabel_eda(
 			f"the total unique labels ({len(unique_labels)}). Adjusting to total unique labels."
 		)
 		n_top_labels_co_occurrence = len(unique_labels)
-	
+	print(f"Top {n_top_labels_co_occurrence} labels for correlation matrix:\n{label_counts_df['Label'].head(n_top_labels_co_occurrence).tolist()}")
 	if n_top_labels_co_occurrence >= 2: # Correlation makes sense for at least 2 labels
-			mlb = MultiLabelBinarizer(classes=unique_labels)
+			print(f"Binarizing labels for correlation matrix (classes: {len(unique_labels)} sparse matrix) ...")
+			mlb = MultiLabelBinarizer(classes=unique_labels, sparse_output=True)
 			y_binarized = mlb.fit_transform(df[label_column])
 			labels_in_order = mlb.classes_
 			# Get indices of top N labels for the subset
