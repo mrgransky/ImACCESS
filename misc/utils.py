@@ -557,7 +557,6 @@ def get_multi_label_stratified_split(
 		sample_distribution_per_fold=[val_split_pct, 1-val_split_pct],
 		random_state=random_state, # For reproducibility
 		shuffle=True,
-		verbose=True,
 	)
 	train_indices, val_indices = next(stratifier.split(X_indices, label_matrix))
 	train_original_indices = df_filtered.iloc[train_indices].index.values
