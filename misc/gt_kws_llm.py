@@ -828,9 +828,6 @@ def _nousresearch_llm_response(model_id: str, input_prompt: str, llm_response: s
 						return None
 
 def _llama_llm_response(model_id: str, input_prompt: str, llm_response: str, max_kws: int, verbose: bool = True):
-    """Extract keywords from Llama model responses with robust parsing."""
-    
-    # ---------- Text Processing Utilities ----------
     def _normalize_text(s: str) -> str:
         """Normalize text for comparison (case folding, unicode normalization)."""
         s = unicodedata.normalize("NFKD", s or "")
@@ -1323,14 +1320,26 @@ def get_llm_based_labels_opt(
 	st_t = time.time()
 
 	if csv_file:
-		df = pd.read_csv(
-			filepath_or_buffer=csv_file, 
-			on_bad_lines='skip', 
-			dtype=dtypes, 
-			low_memory=False,
-		)
+		try:
+			df = pd.read_csv(
+				filepath_or_buffer=csv_file, 
+				on_bad_lines='skip',
+				dtype=dtypes, 
+				low_memory=False,
+			)
+		except pd.errors.ParserError as e:
+			if verbose: print(f"CSV parsing error, trying with python engine: {e}")
+			df = pd.read_csv(
+				filepath_or_buffer=csv_file, 
+				on_bad_lines='skip',
+				dtype=dtypes, 
+				# low_memory=False,
+				engine='python',
+			)
+
 		if 'enriched_document_description' not in df.columns:
 			raise ValueError("CSV file must have 'enriched_document_description' column")
+
 		descriptions = df['enriched_document_description'].tolist()
 		if verbose:
 			print(f"Loaded {len(descriptions)} descriptions from {csv_file}")

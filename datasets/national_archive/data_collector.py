@@ -27,16 +27,16 @@ args.dataset_dir = os.path.normpath(args.dataset_dir)
 print_args_table(args=args, parser=parser)
 
 # run in local laptop:
-# $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs --start_date 1933-01-01 --end_date 1933-01-10
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 4 --img_mean_std --enable_thumbnailing > logs/na_image_download.out &
 
-########################## --start_date 1933-01-01 --end_date 1933-01-02 ##########################
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs --start_date 1900-01-01 --end_date 1970-12-31 --num_workers 4 --img_mean_std --enable_thumbnailing > logs/na_image_download.out &
+########################## -sdt 1933-01-01 -edt 1933-01-02 ##########################
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 4 --img_mean_std --enable_thumbnailing > logs/na_image_download.out &
 
 # saving into external hard drive:
-# $ nohup python -u data_collector.py -ddir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1935-01-01 --end_date 1935-01-02 --num_workers 8 --enable_thumbnailing --img_mean_std > logs/na_image_download.out &
+# $ nohup python -u data_collector.py -ddir /media/farid/password_WD/ImACCESS/WW_DATASETs -sdt 1935-01-01 -edt 1935-01-02 -nw 8 --enable_thumbnailing --img_mean_std > logs/na_image_download.out &
 
-########################## --start_date 1914-01-01 --end_date 1946-12-31 ##########################
-# $ nohup python -u data_collector.py -ddir /media/farid/password_WD/ImACCESS/WW_DATASETs --start_date 1914-01-01 --end_date 1946-12-31 --num_workers 2 > logs/na_image_download.out &
+########################## -sdt 1914-01-01 -edt 1946-12-31 ##########################
+# $ nohup python -u data_collector.py -ddir /media/farid/password_WD/ImACCESS/WW_DATASETs -sdt 1914-01-01 -edt 1946-12-31 -nw 2 > logs/na_image_download.out &
 
 ##################################################################################################################
 # run in Pouta:
@@ -98,6 +98,30 @@ OUTPUT_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
 
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
+
+def basic_clean(txt):
+	# 0) Remove the specific placeholder strings (case-sensitive)
+	txt = txt.replace('[No caption entered]', '')
+	txt = txt.replace('History: [none entered]', '')
+	txt = txt.replace('[No title entered]', '') # haven't seen this one yet
+	txt = txt.replace('[No description entered]', '') # haven't seen this one yet
+
+	# 1) turn any kind of newline/tab into a single space
+	txt = txt.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ')
+
+	# 2) collapse multiple spaces -> single space
+	txt = " ".join(txt.split())
+
+	# 3) strip surrounding whitespace
+	txt = txt.strip()
+
+	# 4a) drop double‑quotes that were doubled in the CSV
+	txt = txt.replace('""', '"')
+
+	# 4b) remove all double quotes
+	txt = txt.replace('"', '')
+
+	return txt
 
 def get_doc_year(text, raw_doc_date):
 	if not pd.isna(raw_doc_date):  # Check if raw_doc_date is missing (None or NaN)
@@ -183,12 +207,14 @@ def is_desired(collections, useless_terms):
 	return True
 
 def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
+
 	qv_processed = re.sub(
 		pattern=" ", 
 		repl="_", 
 		string=query,
 	)
 	df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_{START_DATE}_{END_DATE}.gz")
+
 	if os.path.exists(df_fpth):
 		df = load_pickle(fpath=df_fpth)
 		return df	
@@ -254,13 +280,19 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 			pass # Valid entry; no action needed here
 		else:
 			first_digital_object_url = None
+
+		raw_enriched_document_description = " ".join(filter(None, [doc_title, doc_description])).strip()
+		print(f"\nraw_enriched_document_description:\n{raw_enriched_document_description}\n")
+		enriched_document_description = basic_clean(txt=raw_enriched_document_description)
+		print(f"\nenriched_document_description:\n{enriched_document_description}\n")
+
 		row = {
 			'id': na_identifier,
 			'user_query': query,
 			'title': doc_title,
 			'description': doc_description,
 			'img_url': first_digital_object_url,
-			'enriched_document_description': " ".join(filter(None, [doc_title, doc_description])).strip(),
+			'enriched_document_description': enriched_document_description,
 			'raw_doc_date': raw_doc_date,
 			'doc_url': f"https://catalog.archives.gov/id/{na_identifier}",
 			'img_path': f"{os.path.join(IMAGE_DIRECTORY, str(na_identifier) + '.jpg')}"
@@ -275,15 +307,20 @@ def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 	df = df[df['doc_date'].apply(lambda x: is_valid_date(date=x, start_date=START_DATE, end_date=END_DATE))]
 
 	print(f"DF: {df.shape} {type(df)} Elapsed time: {time.time()-df_st_time:.1f} sec")
+
 	if df.shape[0] == 0:
 		return
+
 	save_pickle(pkl=df, fname=df_fpth)
+
 	return df
 
 @measure_execution_time
 def main():
+
 	with open(os.path.join(project_dir, 'misc', 'query_labels.txt'), 'r') as file_:
 		all_label_tags = [line.strip() for line in file_]
+
 	print(type(all_label_tags), len(all_label_tags))
 
 	print(f"{len(all_label_tags)} lables are being processed...")
@@ -299,7 +336,7 @@ def main():
 		)
 		if label_all_hits:
 			df = get_dframe(
-				label=qv,
+				query=qv,
 				docs=label_all_hits,
 			)
 			if df is not None and df.shape[0]>1:
@@ -490,11 +527,10 @@ def main():
 			# Single-label visualization
 			plot_label_distribution_fname = os.path.join(
 				OUTPUT_DIRECTORY, 
-				f"{dataset_name}_{version_name}_label_distribution_{df.shape[0]}_x_{df.shape[1]}.png"
+				f"{dataset_name}_{version_name}_single_label_distribution_{df.shape[0]}_x_{df['label'].nunique()}.png"
 			)
 			plot_label_distribution(
 				df=df,
-				dname=f"{dataset_name}_{version_name}",
 				fpth=plot_label_distribution_fname,
 				FIGURE_SIZE=(14, 8),
 				DPI=DPI,
@@ -520,7 +556,6 @@ def main():
 				train_df=train_df,
 				val_df=val_df,
 				dataset_name=f"{dataset_name}_{version_name}",
-				OUTPUT_DIRECTORY=OUTPUT_DIRECTORY,
 				VAL_SPLIT_PCT=args.val_split_pct,
 				fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_{version_name}_stratified_label_distribution_train_val_{args.val_split_pct}_pct.png'),
 				FIGURE_SIZE=(14, 8),
@@ -579,7 +614,6 @@ def main():
 	for file in sorted(os.listdir(DATASET_DIRECTORY)):
 		if file.endswith(('.csv', '.xlsx')):
 			print(f"\t- {file}")
-
 
 if __name__ == "__main__":
 	print(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}".center(160, " "))

@@ -679,11 +679,12 @@ def main():
 		print(f"Saved {len(dfs)} dfs to {dfs_fname}")
 	print(f"Filtered {len(dfs)} dfs")
 
-	print(f"Concatinating {len(dfs)} dfs...")
+	print(f"Concatenating {len(dfs)} dfs...")
 	wwii_df = pd.concat(dfs, ignore_index=True)
 	print(f"{type(wwii_df)} {wwii_df.shape}, {list(wwii_df.columns)}")
 
 	# 1: multi label:
+	print(f"Saving multi-label dataset...")
 	dfname_multi_label = "metadata_multi_label.csv"
 	wwii_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_multi_label), index=False)
 	try:
@@ -696,6 +697,7 @@ def main():
 	wwii_df = wwii_df.dropna(subset=['label'])
 	print(f"Found {wwii_df['label'].isna().sum()} None labels / {wwii_df.shape[0]} total samples")
 	# b) save
+	print(f"Saving single-label dataset...")
 	dfname_single_label = "metadata_single_label.csv"
 	wwii_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_single_label), index=False)
 	try:
