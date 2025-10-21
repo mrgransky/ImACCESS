@@ -1212,7 +1212,6 @@ def query_local_llm(
 def get_llm_based_labels_debug(
 		model_id: str, 
 		device: str, 
-		batch_size: int,
 		max_generated_tks: int,
 		max_kws: int,
 		csv_file: str=None,
@@ -1259,7 +1258,7 @@ def get_llm_based_labels_debug(
 			text=desc,
 			device= device,
 			max_generated_tks=max_generated_tks,
-			max_kws=max_kws,
+			max_kws=min(max_kws, len(desc.split())),
 			verbose=verbose,
 		)
 		all_keywords.append(kws)
@@ -1618,8 +1617,7 @@ def main():
 	if args.debug or args.description:
 		keywords = get_llm_based_labels_debug(
 			model_id=args.model_id, 
-			device=args.device, 
-			batch_size=args.batch_size,
+			device=args.device,
 			max_generated_tks=args.max_generated_tks,
 			max_kws=args.max_keywords,
 			csv_file=args.csv_file,

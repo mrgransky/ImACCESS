@@ -103,6 +103,7 @@ def basic_clean(txt):
 	# 0) Remove the specific placeholder strings (case-sensitive)
 	txt = txt.replace('[No caption entered]', '')
 	txt = txt.replace('History: [none entered]', '')
+	txt = txt.replace('Original Caption:', '')
 	txt = txt.replace('[No title entered]', '') # haven't seen this one yet
 	txt = txt.replace('[No description entered]', '') # haven't seen this one yet
 
