@@ -1,16 +1,16 @@
 #!/bin/bash
 
-#SBATCH --account=project_2009043
+#SBATCH --account=project_2004072
 #SBATCH --job-name=wwii_dataset_collection
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=64
-#SBATCH --mem=64G
-#SBATCH --partition=small
-#SBATCH --time=3-00:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=8G
+#SBATCH --partition=interactive
+#SBATCH --time=03-00:00:00
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
