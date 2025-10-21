@@ -182,17 +182,17 @@ def is_desired(collections, useless_terms):
 				return False
 	return True
 
-def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
+def get_dframe(query: str, docs: List=[Dict]) -> pd.DataFrame:
 	qv_processed = re.sub(
 		pattern=" ", 
 		repl="_", 
-		string=label,
+		string=query,
 	)
 	df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_{START_DATE}_{END_DATE}.gz")
 	if os.path.exists(df_fpth):
 		df = load_pickle(fpath=df_fpth)
 		return df	
-	print(f"Analyzing {len(docs)} {type(docs)} document(s) for label: « {label} » might take a while...")
+	print(f"Analyzing {len(docs)} {type(docs)} document(s) for query: « {query} » might take a while...")
 	df_st_time = time.time()
 	data = []
 	for doc in docs:
@@ -205,7 +205,6 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 
 		# doc_title = clean_(text=record.get('title'), sw=STOPWORDS)
 		# doc_description = clean_(text=record.get('scopeAndContentNote'), sw=STOPWORDS) if record.get('scopeAndContentNote') else None
-
 
 		doc_title = record.get('title')
 		doc_description = record.get('scopeAndContentNote', None)
@@ -257,11 +256,11 @@ def get_dframe(label: str="label", docs: List=[Dict]) -> pd.DataFrame:
 			first_digital_object_url = None
 		row = {
 			'id': na_identifier,
-			'user_query': label,
+			'user_query': query,
 			'title': doc_title,
 			'description': doc_description,
 			'img_url': first_digital_object_url,
-			'enriched_document_description': label + " " + (doc_title or '') + " " + (doc_description or ''),
+			'enriched_document_description': " ".join(filter(None, [doc_title, doc_description])).strip(),
 			'raw_doc_date': raw_doc_date,
 			'doc_url': f"https://catalog.archives.gov/id/{na_identifier}",
 			'img_path': f"{os.path.join(IMAGE_DIRECTORY, str(na_identifier) + '.jpg')}"

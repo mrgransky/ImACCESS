@@ -641,6 +641,7 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 		
 		for kw in keywords:
 			if not kw or len(kw) < 2:
+				if verbose: print(f"Skipping short keyword: {kw} (len={len(kw)})")
 				continue
 							
 			# Clean the keyword - preserve original case but remove extra spaces
@@ -648,25 +649,30 @@ def _qwen_llm_response(model_id: str, input_prompt: str, llm_response: str, max_
 			
 			# Skip if too short after cleaning
 			if len(cleaned) < 2:
+				if verbose: print(f"Skipping short keyword: {cleaned} (len={len(cleaned)})")
 				continue
 			
 			# skip if stopword
 			if cleaned.lower() in STOPWORDS:
+				if verbose: print(f"Skipping stopword: {cleaned}")
 				continue
 
 			# Check for standalone numbers or numeric-only words (exclude these)
 			if re.fullmatch(r'\d+', cleaned):
+				if verbose: print(f"Skipping numeric keyword: {cleaned}")
 				continue
 			
 			# Check for duplicates (case-insensitive)
 			normalized = cleaned.lower()
 			if normalized in seen:
+				if verbose: print(f"Skipping duplicate keyword: {cleaned}")
 				continue
 							
 			seen.add(normalized)
 			processed.append(cleaned)
 			
 			if len(processed) >= max_kws:
+				if verbose: print(f"Reached max keywords: {processed}")
 				break
 		return processed
 	

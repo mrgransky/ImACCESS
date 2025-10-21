@@ -121,7 +121,10 @@ except LookupError:
 		quiet=True,
 		# raise_on_error=True,
 	)
-STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids()))
+
+# STOPWORDS = set(nltk.corpus.stopwords.words(nltk.corpus.stopwords.fileids())) # all languages
+STOPWORDS = set(nltk.corpus.stopwords.words('english')) # english only
+
 print(f"Successfully loaded {len(STOPWORDS)} stopwords")
 
 HOME: str = os.getenv('HOME') # echo $HOME

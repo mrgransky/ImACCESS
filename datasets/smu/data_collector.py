@@ -175,7 +175,7 @@ def check_url_status(url: str) -> bool:
 		print(f"Error accessing URL {url}: {e}")
 		return False
 
-def get_dframe(query: str="query", start_date:str="1900-01-01", end_date:str="1970-12-31", df_file_path: str="df_file.gz"):
+def get_dframe(query: str, start_date:str, end_date:str, df_file_path: str):
 	query_all_hits = get_data(
 		start_date=args.start_date,
 		end_date=args.end_date,

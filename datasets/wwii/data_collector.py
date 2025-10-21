@@ -65,7 +65,7 @@ def extract_year(text):
 	match = YEAR_PATTERN.search(str(text))
 	return match.group(1) if match else None
 
-def clean_description(text):
+def clean_(text):
 	seen = set()
 	words = re.findall(r'\b[a-zA-Z0-9][a-zA-Z0-9\-]*\b', text.lower())
 	return " ".join([w for w in words if len(w) > 1 and not (w in seen or seen.add(w))])
@@ -105,7 +105,7 @@ def get_dframe(
 		user_query: str,
 	) -> pd.DataFrame:
 
-	print(f">> Extracting DF for label[{doc_idx}]: « {user_query} » from {doc_url}")
+	print(f">> Extracting DF for user_query[{doc_idx}]: « {user_query} » from {doc_url}")
 
 	#################################################
 	#TODO: modification required for user_query
@@ -151,7 +151,7 @@ def get_dframe(
 
 	parts = [
 		header,
-		(doc_url_info.get("country") or "").strip(),
+		# (doc_url_info.get("country") or "").strip(),
 		(doc_url_info.get("main_label") or "").strip(),
 		(doc_url_info.get("type") or "").strip(),
 	]
@@ -215,11 +215,12 @@ def get_dframe(
 			except Exception as e:
 				print(f"Failed to download {img_url}: {e}")
 				continue
-		enriched_document_description = user_query + " " + (doc_title or '') + " " + (doc_description or '')
-		print(f"[before] enriched_document_description: {enriched_document_description}")
+		# enriched_document_description = user_query + " " + (doc_title or '') + " " + (doc_description or '')
+		enriched_document_description = " ".join(filter(None, [doc_title, doc_description])).strip()
+		# print(f"[before] enriched_document_description: {enriched_document_description}")
 		# enriched_document_description = " ".join(list(set(enriched_document_description.lower().split())))
-		enriched_document_description = clean_description(enriched_document_description)
-		print(f"[after] enriched_document_description: {enriched_document_description}")
+		# enriched_document_description = clean_(enriched_document_description)
+		print(f"enriched_document_description: {enriched_document_description}")
 		row = {
 			'id': filename,
 			'doc_url': specific_doc_url,
