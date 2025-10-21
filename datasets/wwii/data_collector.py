@@ -71,13 +71,6 @@ def clean_(text):
 	return " ".join([w for w in words if len(w) > 1 and not (w in seen or seen.add(w))])
 
 def extract_url_info(url:str)-> Dict:
-	"""
-	Extracts information from a given URL.
-	Args:
-		url (str): The URL to extract information from.
-	Returns:
-		Dict: A dictionary containing the extracted information.
-	"""
 	parsed_url = urlparse(url)
 	base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/gallery" # Extract the base URL
 	path_components = parsed_url.path.strip('/').split('/') # Split the path into components		
@@ -105,26 +98,30 @@ def get_dframe(
 		user_query: str,
 	) -> pd.DataFrame:
 
+	# ###########################
+	# # TODO: integrity changes with other datasets otherwise
+	# if user_query is None:
+	# 	return None
+	# ###########################
+
 	print(f">> Extracting DF for user_query[{doc_idx}]: « {user_query} » from {doc_url}")
+	
+	# qv_processed = re.sub(
+	# 	pattern=" ", 
+	# 	repl="_", 
+	# 	string=user_query,
+	# )
+	# url_processed = re.sub(
+	# 	pattern=r"/|:|\.",
+	# 	repl="_",
+	# 	string=doc_url,
+	# )
+	# df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_URL_{url_processed}_{START_DATE}_{END_DATE}.gz")
 
-	#################################################
-	#TODO: modification required for user_query
-	if len(user_query) < 3:
-		return None
-	#################################################
+	content_to_hash = f"{doc_url}_{START_DATE}_{END_DATE}"
+	hash_digest = hashlib.md5(content_to_hash.encode('utf-8')).hexdigest()
+	df_fpth = os.path.join(HITs_DIR, f"df_{hash_digest}.gz")
 
-	qv_processed = re.sub(
-		pattern=" ", 
-		repl="_", 
-		string=user_query,
-	)
-	url_processed = re.sub(
-		pattern=r"/|:|\.",
-		repl="_",
-		string=doc_url,
-	)
-	# check cache for df
-	df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_URL_{url_processed}_{START_DATE}_{END_DATE}.gz")
 	if os.path.exists(df_fpth):
 		df = load_pickle(fpath=df_fpth)
 		return df
@@ -229,9 +226,8 @@ def get_dframe(
 			'description': doc_description,
 			'enriched_document_description': enriched_document_description,
 			'country': doc_url_info.get("country"),
-			'label': user_query,
-			# 'user_query': [user_query] if user_query and len(user_query) > 0 else None,
-			# 'label': (doc_url_info.get("main_label") or "") + " " + (doc_url_info.get("type") or ""),
+			'user_query': [user_query] if user_query else None,
+			'label': user_query if user_query else None,
 			'date': extracted_year,
 			'img_path': os.path.join(IMAGE_DIR, filename),
 		}
@@ -246,127 +242,23 @@ def get_dframe(
 def main():
 	base_url = "https://www.worldwarphotos.info/gallery"
 	URLs = { # key: url : val: user_query
-		f"{base_url}/italy/spg2/75-18/" : "armored fighting vehicle", # https://en.wikipedia.org/wiki/Armoured_fighting_vehicle
-		f"{base_url}/italy/spg2/l40/" : "armored fighting vehicle", # https://en.wikipedia.org/wiki/Armoured_fighting_vehicle
-		f"{base_url}/france/tanks-france/" : "armored fighting vehicle", # French Tanks of World War II
-		f"{base_url}/france/normandy-1944/": "normandy invasion", # Invasion of Normandy 1944 photo gallery
-		f"{base_url}/japan/aircrafts/b7a/": "aircraft", #
-		f"{base_url}/japan/aircrafts/d3a/": "aircraft", #
-		f"{base_url}/japan/aircrafts/e13a/": "aircraft", #
-		f"{base_url}/japan/aircrafts/e16a": "aircraft", #
-		f"{base_url}/japan/aircrafts/m6a/": "aircraft", #
-		f"{base_url}/japan/aircrafts/h8k/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-100/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-45/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-48/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-60/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-61-hien/": "aircraft", #
-		f"{base_url}/japan/aircrafts/q1w/": "aircraft", #
-		f"{base_url}/japan/aircrafts/l2d/": "aircraft", #
-		f"{base_url}/japan/aircrafts/a5m/": "aircraft", #
-		f"{base_url}/japan/aircrafts/a6m-zero/": "aircraft", #
-		f"{base_url}/japan/aircrafts/g3m/": "aircraft", #
-		f"{base_url}/japan/aircrafts/g4m/": "aircraft", #
-		f"{base_url}/japan/aircrafts/j2m-raiden/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-21/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-46/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-57/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-67/": "aircraft", #
-		f"{base_url}/japan/aircrafts/a2n/": "aircraft", #
-		f"{base_url}/japan/aircrafts/b5n/": "aircraft", #
-		f"{base_url}/japan/aircrafts/b6n/": "aircraft", #
-		f"{base_url}/japan/aircrafts/c6n/": "aircraft", #
-		f"{base_url}/japan/aircrafts/g5n/": "aircraft", #
-		f"{base_url}/japan/aircrafts/g8n/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-115/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-43/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-44/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-84-hayate/": "aircraft", #
-		f"{base_url}/japan/aircrafts/ki-54/": "aircraft", #
-		f"{base_url}/japan/aircrafts/wrecks/": "wreck", #
-		f"{base_url}/japan/aircrafts/d4y/": "aircraft", #
-		f"{base_url}/japan/aircrafts/yokosuka_mxy7_ohka/": "aircraft", #
-		f"{base_url}/japan/aircrafts/p1y/": "aircraft",
-		f"{base_url}/japan/ijn/midget/": "naval forces",
-		f"{base_url}/japan/japanese-tanks/": "armored fighting vehicle",
-		f"{base_url}/uk/british-tanks/cruiser-mk-iii-a13-mk-i-cruiser-mk-iv-a13-mk-ii/": "armored fighting vehicle",
-		f"{base_url}/uk/british-tanks/challenger/": "armored fighting vehicle",
-		f"{base_url}/uk/british-tanks/churchill-a22/": "armored fighting vehicle",
-		f"{base_url}/uk/british-tanks/comet/": "armored fighting vehicle",
-		f"{base_url}/uk/british-tanks/covenanter/": "armored fighting vehicle",
-		f"{base_url}/uk/british-tanks/a9-tank/": "armored fighting vehicle",
-		f"{base_url}/uk/british-tanks/cruiser-mk-ii-a10/": "armored fighting vehicle",
-		f"{base_url}/uk/british-tanks/crusader-tank/": "armored fighting vehicle",
-		f"{base_url}/uk/british-tanks/vickers/": "armored fighting vehicle",
-		f"{base_url}/uk/british-tanks/matilda-i-a11-tank/": "armored fighting vehicle",
-		f"{base_url}/uk/british-tanks/matilda-ii-a12/": "armored fighting vehicle",
-		f"{base_url}/uk/british-tanks/matilda-a12/": "armored fighting vehicle",
-		f"{base_url}/uk/british-tanks/tetrarch/": "armored fighting vehicle",
-		f"{base_url}/uk/armoured-vehicles/aec_dorchester/": "armored fighting vehicle",
-		f"{base_url}/uk/armoured-vehicles/humber/": "armored fighting vehicle",
-		f"{base_url}/uk/armoured-vehicles/marmon_herrington_-armoured_car/": "armored fighting vehicle",
-		f"{base_url}/uk/armoured-vehicles/universal-carrier-bren-gun-carrier/": "armored fighting vehicle",
-		f"{base_url}/uk/raf/aw23/": "aircraft",
-		f"{base_url}/uk/raf/albacore/": "aircraft",
-		f"{base_url}/uk/raf/baltimore/": "aircraft",
-		f"{base_url}/uk/raf/barracuda/": "aircraft",
-		f"{base_url}/uk/raf/fairey-battle/": "aircraft",
-		f"{base_url}/uk/raf/beaufighter/": "aircraft",
-		f"{base_url}/uk/raf/beau/": "aircraft",
-		f"{base_url}/uk/raf/beaufort/": "aircraft",
-		f"{base_url}/uk/raf/blenheim1/": "aircraft",
-		f"{base_url}/uk/raf/blenheim/": "aircraft",
-		f"{base_url}/uk/raf/brigand/": "aircraft",
-		f"{base_url}/uk/raf/buckingham/": "aircraft",
-		f"{base_url}/uk/raf/buckmaster/": "aircraft",
-		f"{base_url}/uk/raf/defiant/": "aircraft",
-		f"{base_url}/uk/raf/firebrand/": "aircraft",
-		f"{base_url}/uk/raf/dh95/": "aircraft",
-		f"{base_url}/uk/raf/halifax/": "aircraft",
-		f"{base_url}/uk/raf/hamilcar/": "aircraft",
-		f"{base_url}/uk/raf/harrow/": "aircraft",
-		f"{base_url}/uk/raf/hudson/": "aircraft",
-		f"{base_url}/uk/raf/hurricane/": "aircraft",
-		f"{base_url}/uk/raf/hurricane2/": "aircraft",
-		f"{base_url}/uk/raf/hurricane1/": "aircraft",
-		f"{base_url}/uk/raf/lancaster/": "aircraft",
-		f"{base_url}/uk/raf/lanc/": "aircraft",
-		f"{base_url}/uk/raf/lincoln/": "aircraft",
-		f"{base_url}/uk/raf/london/": "water based aircraft",
-		f"{base_url}/uk/raf/lysander/": "aircraft",
-		f"{base_url}/uk/raf/manchester/": "aircraft",
-		f"{base_url}/uk/raf/maryland/": "aircraft",
-		f"{base_url}/uk/raf/monitor/": "aircraft",
-		f"{base_url}/uk/raf/mosquito/": "aircraft",
-		f"{base_url}/uk/raf/mosquito2/": "aircraft",
-		f"{base_url}/uk/raf/mossie/": "aircraft",
-		f"{base_url}/uk/raf/roc/": "aircraft", # remove 2 flying boat
-		f"{base_url}/uk/raf/seafang/": "aircraft",
-		f"{base_url}/uk/raf/seafire/": "aircraft",
-		f"{base_url}/uk/raf/shetland/": "aircraft",
-		f"{base_url}/uk/raf/singapore/": "water based aircraft",
-		f"{base_url}/uk/raf/skua/": "aircraft",
-		f"{base_url}/uk/raf/spiteful/": "aircraft",
-		f"{base_url}/uk/raf/spitfire/": "aircraft",
-		f"{base_url}/uk/raf/spitfire2/": "aircraft",
-		f"{base_url}/uk/raf/spitfire5/": "aircraft",
-		f"{base_url}/uk/raf/spitfire9/": "aircraft",
-		f"{base_url}/uk/raf/spit/": "aircraft",
-		f"{base_url}/uk/raf/short-stirling/": "aircraft",
-		f"{base_url}/uk/raf/stirling/": "aircraft",
-		f"{base_url}/uk/raf/sunderland/": "aircraft",
-		f"{base_url}/uk/raf/sund/": "aircraft",
-		f"{base_url}/uk/raf/swordfish/": "water based aircraft",
-		f"{base_url}/uk/raf/tempest/": "aircraft",
-		f"{base_url}/uk/raf/tornado/": "aircraft",
-		f"{base_url}/uk/raf/typhoon/": "aircraft",
-		f"{base_url}/uk/raf/vickers432/": "aircraft",
-		f"{base_url}/uk/raf/welkin/": "aircraft",
-		f"{base_url}/uk/raf/wellington/": "aircraft",
-		f"{base_url}/uk/raf/wellington1/": "aircraft",
-		f"{base_url}/uk/raf/whirlwind/": "aircraft",
-		f"{base_url}/uk/raf/whitley/": "aircraft",
-		f"{base_url}/uk/raf/windsor/": "aircraft",
+		f"{base_url}/usa/pacific/biak/": None,
+		f"{base_url}/usa/pacific/bougainville/": None,
+		f"{base_url}/usa/pacific/gloucester/": None,
+		f"{base_url}/usa/pacific/eniwetok/": None,
+		f"{base_url}/usa/pacific/guadalcanal/": None,
+		f"{base_url}/usa/pacific/guam/": None,
+		f"{base_url}/usa/pacific/iwo-jima/": None,
+		f"{base_url}/usa/pacific/iwo-jima2/": None,
+		f"{base_url}/usa/pacific/kwajalein/": None,
+		f"{base_url}/usa/pacific/makin/": None,
+		f"{base_url}/usa/pacific/new-guinea/": None,
+		f"{base_url}/usa/pacific/okinawa/": None,
+		f"{base_url}/usa/pacific/peleliu/": None,
+		f"{base_url}/usa/pacific/philippines/": None,
+		f"{base_url}/usa/pacific/saipan/": None,
+		f"{base_url}/usa/pacific/tarawa/": None,
+		f"{base_url}/usa/pacific/tinian/": None,
 		f"{base_url}/usa/aircrafts-2-3/a-17/": "aircraft",
 		f"{base_url}/usa/aircrafts-2-3/a-18/": "aircraft",
 		f"{base_url}/usa/aircrafts-2-3/a-19/": "aircraft",
@@ -519,23 +411,127 @@ def main():
 		f"{base_url}/usa/us-navy/": "naval forces",
 		f"{base_url}/usa/vehicles/g506/": "military vehicle",
 		f"{base_url}/usa/vehicles/m29/": "military vehicle",
-		f"{base_url}/usa/pacific/biak/": "",
-		f"{base_url}/usa/pacific/bougainville/": "",
-		f"{base_url}/usa/pacific/gloucester/": "",
-		f"{base_url}/usa/pacific/eniwetok/": "",
-		f"{base_url}/usa/pacific/guadalcanal/": "",
-		f"{base_url}/usa/pacific/guam/": "",
-		f"{base_url}/usa/pacific/iwo-jima/": "",
-		f"{base_url}/usa/pacific/iwo-jima2/": "",
-		f"{base_url}/usa/pacific/kwajalein/": "",
-		f"{base_url}/usa/pacific/makin/": "",
-		f"{base_url}/usa/pacific/new-guinea/": "",
-		f"{base_url}/usa/pacific/okinawa/": "",
-		f"{base_url}/usa/pacific/peleliu/": "",
-		f"{base_url}/usa/pacific/philippines/": "",
-		f"{base_url}/usa/pacific/saipan/": "",
-		f"{base_url}/usa/pacific/tarawa/": "",
-		f"{base_url}/usa/pacific/tinian/": "",
+		f"{base_url}/italy/spg2/75-18/" : "armored fighting vehicle", # https://en.wikipedia.org/wiki/Armoured_fighting_vehicle
+		f"{base_url}/italy/spg2/l40/" : "armored fighting vehicle", # https://en.wikipedia.org/wiki/Armoured_fighting_vehicle
+		f"{base_url}/france/tanks-france/" : "armored fighting vehicle", # French Tanks of World War II
+		f"{base_url}/france/normandy-1944/": "normandy invasion", # Invasion of Normandy 1944 photo gallery
+		f"{base_url}/japan/aircrafts/b7a/": "aircraft", #
+		f"{base_url}/japan/aircrafts/d3a/": "aircraft", #
+		f"{base_url}/japan/aircrafts/e13a/": "aircraft", #
+		f"{base_url}/japan/aircrafts/e16a": "aircraft", #
+		f"{base_url}/japan/aircrafts/m6a/": "aircraft", #
+		f"{base_url}/japan/aircrafts/h8k/": "aircraft", #
+		f"{base_url}/japan/aircrafts/ki-100/": "aircraft", #
+		f"{base_url}/japan/aircrafts/ki-45/": "aircraft", #
+		f"{base_url}/japan/aircrafts/ki-48/": "aircraft", #
+		f"{base_url}/japan/aircrafts/ki-60/": "aircraft", #
+		f"{base_url}/japan/aircrafts/ki-61-hien/": "aircraft", #
+		f"{base_url}/japan/aircrafts/q1w/": "aircraft", #
+		f"{base_url}/japan/aircrafts/l2d/": "aircraft", #
+		f"{base_url}/japan/aircrafts/a5m/": "aircraft", #
+		f"{base_url}/japan/aircrafts/a6m-zero/": "aircraft", #
+		f"{base_url}/japan/aircrafts/g3m/": "aircraft", #
+		f"{base_url}/japan/aircrafts/g4m/": "aircraft", #
+		f"{base_url}/japan/aircrafts/j2m-raiden/": "aircraft", #
+		f"{base_url}/japan/aircrafts/ki-21/": "aircraft", #
+		f"{base_url}/japan/aircrafts/ki-46/": "aircraft", #
+		f"{base_url}/japan/aircrafts/ki-57/": "aircraft", #
+		f"{base_url}/japan/aircrafts/ki-67/": "aircraft", #
+		f"{base_url}/japan/aircrafts/a2n/": "aircraft", #
+		f"{base_url}/japan/aircrafts/b5n/": "aircraft", #
+		f"{base_url}/japan/aircrafts/b6n/": "aircraft", #
+		f"{base_url}/japan/aircrafts/c6n/": "aircraft", #
+		f"{base_url}/japan/aircrafts/g5n/": "aircraft", #
+		f"{base_url}/japan/aircrafts/g8n/": "aircraft", #
+		f"{base_url}/japan/aircrafts/ki-115/": "aircraft", #
+		f"{base_url}/japan/aircrafts/ki-43/": "aircraft", #
+		f"{base_url}/japan/aircrafts/ki-44/": "aircraft", #
+		f"{base_url}/japan/aircrafts/ki-84-hayate/": "aircraft", #
+		f"{base_url}/japan/aircrafts/ki-54/": "aircraft", #
+		f"{base_url}/japan/aircrafts/wrecks/": "wreck", #
+		f"{base_url}/japan/aircrafts/d4y/": "aircraft", #
+		f"{base_url}/japan/aircrafts/yokosuka_mxy7_ohka/": "aircraft", #
+		f"{base_url}/japan/aircrafts/p1y/": "aircraft",
+		f"{base_url}/japan/ijn/midget/": "naval forces",
+		f"{base_url}/japan/japanese-tanks/": "armored fighting vehicle",
+		f"{base_url}/uk/british-tanks/cruiser-mk-iii-a13-mk-i-cruiser-mk-iv-a13-mk-ii/": "armored fighting vehicle",
+		f"{base_url}/uk/british-tanks/challenger/": "armored fighting vehicle",
+		f"{base_url}/uk/british-tanks/churchill-a22/": "armored fighting vehicle",
+		f"{base_url}/uk/british-tanks/comet/": "armored fighting vehicle",
+		f"{base_url}/uk/british-tanks/covenanter/": "armored fighting vehicle",
+		f"{base_url}/uk/british-tanks/a9-tank/": "armored fighting vehicle",
+		f"{base_url}/uk/british-tanks/cruiser-mk-ii-a10/": "armored fighting vehicle",
+		f"{base_url}/uk/british-tanks/crusader-tank/": "armored fighting vehicle",
+		f"{base_url}/uk/british-tanks/vickers/": "armored fighting vehicle",
+		f"{base_url}/uk/british-tanks/matilda-i-a11-tank/": "armored fighting vehicle",
+		f"{base_url}/uk/british-tanks/matilda-ii-a12/": "armored fighting vehicle",
+		f"{base_url}/uk/british-tanks/matilda-a12/": "armored fighting vehicle",
+		f"{base_url}/uk/british-tanks/tetrarch/": "armored fighting vehicle",
+		f"{base_url}/uk/armoured-vehicles/aec_dorchester/": "armored fighting vehicle",
+		f"{base_url}/uk/armoured-vehicles/humber/": "armored fighting vehicle",
+		f"{base_url}/uk/armoured-vehicles/marmon_herrington_-armoured_car/": "armored fighting vehicle",
+		f"{base_url}/uk/armoured-vehicles/universal-carrier-bren-gun-carrier/": "armored fighting vehicle",
+		f"{base_url}/uk/raf/aw23/": "aircraft",
+		f"{base_url}/uk/raf/albacore/": "aircraft",
+		f"{base_url}/uk/raf/baltimore/": "aircraft",
+		f"{base_url}/uk/raf/barracuda/": "aircraft",
+		f"{base_url}/uk/raf/fairey-battle/": "aircraft",
+		f"{base_url}/uk/raf/beaufighter/": "aircraft",
+		f"{base_url}/uk/raf/beau/": "aircraft",
+		f"{base_url}/uk/raf/beaufort/": "aircraft",
+		f"{base_url}/uk/raf/blenheim1/": "aircraft",
+		f"{base_url}/uk/raf/blenheim/": "aircraft",
+		f"{base_url}/uk/raf/brigand/": "aircraft",
+		f"{base_url}/uk/raf/buckingham/": "aircraft",
+		f"{base_url}/uk/raf/buckmaster/": "aircraft",
+		f"{base_url}/uk/raf/defiant/": "aircraft",
+		f"{base_url}/uk/raf/firebrand/": "aircraft",
+		f"{base_url}/uk/raf/dh95/": "aircraft",
+		f"{base_url}/uk/raf/halifax/": "aircraft",
+		f"{base_url}/uk/raf/hamilcar/": "aircraft",
+		f"{base_url}/uk/raf/harrow/": "aircraft",
+		f"{base_url}/uk/raf/hudson/": "aircraft",
+		f"{base_url}/uk/raf/hurricane/": "aircraft",
+		f"{base_url}/uk/raf/hurricane2/": "aircraft",
+		f"{base_url}/uk/raf/hurricane1/": "aircraft",
+		f"{base_url}/uk/raf/lancaster/": "aircraft",
+		f"{base_url}/uk/raf/lanc/": "aircraft",
+		f"{base_url}/uk/raf/lincoln/": "aircraft",
+		f"{base_url}/uk/raf/london/": "water based aircraft",
+		f"{base_url}/uk/raf/lysander/": "aircraft",
+		f"{base_url}/uk/raf/manchester/": "aircraft",
+		f"{base_url}/uk/raf/maryland/": "aircraft",
+		f"{base_url}/uk/raf/monitor/": "aircraft",
+		f"{base_url}/uk/raf/mosquito/": "aircraft",
+		f"{base_url}/uk/raf/mosquito2/": "aircraft",
+		f"{base_url}/uk/raf/mossie/": "aircraft",
+		f"{base_url}/uk/raf/roc/": "aircraft", # remove 2 flying boat
+		f"{base_url}/uk/raf/seafang/": "aircraft",
+		f"{base_url}/uk/raf/seafire/": "aircraft",
+		f"{base_url}/uk/raf/shetland/": "aircraft",
+		f"{base_url}/uk/raf/singapore/": "water based aircraft",
+		f"{base_url}/uk/raf/skua/": "aircraft",
+		f"{base_url}/uk/raf/spiteful/": "aircraft",
+		f"{base_url}/uk/raf/spitfire/": "aircraft",
+		f"{base_url}/uk/raf/spitfire2/": "aircraft",
+		f"{base_url}/uk/raf/spitfire5/": "aircraft",
+		f"{base_url}/uk/raf/spitfire9/": "aircraft",
+		f"{base_url}/uk/raf/spit/": "aircraft",
+		f"{base_url}/uk/raf/short-stirling/": "aircraft",
+		f"{base_url}/uk/raf/stirling/": "aircraft",
+		f"{base_url}/uk/raf/sunderland/": "aircraft",
+		f"{base_url}/uk/raf/sund/": "aircraft",
+		f"{base_url}/uk/raf/swordfish/": "water based aircraft",
+		f"{base_url}/uk/raf/tempest/": "aircraft",
+		f"{base_url}/uk/raf/tornado/": "aircraft",
+		f"{base_url}/uk/raf/typhoon/": "aircraft",
+		f"{base_url}/uk/raf/vickers432/": "aircraft",
+		f"{base_url}/uk/raf/welkin/": "aircraft",
+		f"{base_url}/uk/raf/wellington/": "aircraft",
+		f"{base_url}/uk/raf/wellington1/": "aircraft",
+		f"{base_url}/uk/raf/whirlwind/": "aircraft",
+		f"{base_url}/uk/raf/whitley/": "aircraft",
+		f"{base_url}/uk/raf/windsor/": "aircraft",
 		f"{base_url}/ussr/vvs/ar-2/": "aircraft",
 		f"{base_url}/ussr/vvs/i153/": "aircraft",
 		f"{base_url}/ussr/vvs/il2-sturmovik/": "aircraft",
@@ -676,7 +672,7 @@ def main():
 				doc_idx=i, 
 				doc_url=k, 
 				user_query=v,
-			) for i, (k, v) in enumerate(URLs.items()) # for i, (k, v) in enumerate(list(URLs.items())[:5])#
+			) for i, (k, v) in enumerate(URLs.items())
 		]
 		dfs = [df for df in dfs if df is not None]
 		save_pickle(pkl=dfs, fname=dfs_fname,)
@@ -685,26 +681,44 @@ def main():
 
 	print(f"Concatinating {len(dfs)} dfs...")
 	wwii_df = pd.concat(dfs, ignore_index=True)
-	print(f"WWII DF: {wwii_df.shape}, {list(wwii_df.columns)}")
-	print(wwii_df.head(10))
+	print(f"{type(wwii_df)} {wwii_df.shape}, {list(wwii_df.columns)}")
 
-	label_dirstribution_fname = os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_label_distribution_{wwii_df.shape[0]}_x_{wwii_df.shape[1]}.png")
+	# 1: multi label:
+	dfname_multi_label = "metadata_multi_label.csv"
+	wwii_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_multi_label), index=False)
+	try:
+		wwii_df.to_excel(os.path.join(DATASET_DIRECTORY, dfname_multi_label.replace('.csv', '.xlsx')), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
+
+	# 2: single label:
+	# a) drop None from labels:
+	wwii_df = wwii_df.dropna(subset=['label'])
+	print(f"Found {wwii_df['label'].isna().sum()} None labels / {wwii_df.shape[0]} total samples")
+	# b) save
+	dfname_single_label = "metadata_single_label.csv"
+	wwii_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_single_label), index=False)
+	try:
+		wwii_df.to_excel(os.path.join(DATASET_DIRECTORY, dfname_single_label.replace('.csv', '.xlsx')), index=False)
+	except Exception as e:
+		print(f"Failed to write Excel file: {e}")
+
+	unique_labels = wwii_df['label'].unique()
+	print(f"Unique labels:\n{unique_labels}")
+
+	print(wwii_df['label'].value_counts())
+
+	label_dirstribution_fname = os.path.join(
+		OUTPUT_DIRECTORY, 
+		f"{dataset_name}_single_label_distribution_{wwii_df.shape[0]}_x_{unique_labels.shape[0]}.png"
+	)
 	plot_label_distribution(
 		df=wwii_df,
-		dname=dataset_name,
 		fpth=label_dirstribution_fname,
 		FIGURE_SIZE=(14, 8),
 		DPI=260,
 		label_column='label',
 	)
-
-	wwii_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_single_label.csv"), index=False)
-	wwii_df.to_csv(os.path.join(DATASET_DIRECTORY, "metadata_multi_label.csv"), index=False)
-	try:
-		wwii_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_single_label.xlsx"), index=False)
-		wwii_df.to_excel(os.path.join(DATASET_DIRECTORY, "metadata_multi_label.xlsx"), index=False)
-	except Exception as e:
-		print(f"Failed to write Excel file: {e}")
 
 	# stratified splitting [single-label]:
 	train_df, val_df = get_stratified_split(
@@ -712,16 +726,18 @@ def main():
 		val_split_pct=args.val_split_pct,
 		label_col='label',
 	)
-	train_df.to_csv(os.path.join(DATASET_DIRECTORY, 'metadata_single_label_train.csv'), index=False)
-	val_df.to_csv(os.path.join(DATASET_DIRECTORY, 'metadata_single_label_val.csv'), index=False)
+	print(f"Train/val split for {dataset_name} dataset complete!")
+	print(f"Full dataset: {wwii_df.shape} => Train: {train_df.shape} Validation: {val_df.shape}")
+
+	train_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_single_label.replace('.csv', '_train.csv')), index=False)
+	val_df.to_csv(os.path.join(DATASET_DIRECTORY, dfname_single_label.replace('.csv', '_val.csv')), index=False)
 
 	plot_train_val_label_distribution(
 		train_df=train_df,
 		val_df=val_df,
 		dataset_name=dataset_name,
-		OUTPUT_DIRECTORY=OUTPUT_DIRECTORY,
 		VAL_SPLIT_PCT=args.val_split_pct,
-		fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_simple_random_split_stratified_label_distribution_train_val_{args.val_split_pct}_pct.png'),
+		fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_simple_random_split_stratified_single_label_distribution_train_val_{args.val_split_pct}_pct.png'),
 		FIGURE_SIZE=(14, 8),
 		DPI=DPI,
 		label_column='label',

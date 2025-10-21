@@ -2851,10 +2851,9 @@ def plot_train_val_label_distribution(
 		train_df: pd.DataFrame,
 		val_df: pd.DataFrame,
 		dataset_name: str,
-		OUTPUT_DIRECTORY: str,
-		DPI: int = 200,
+		VAL_SPLIT_PCT: float,
 		FIGURE_SIZE: tuple = (12, 8),
-		VAL_SPLIT_PCT: float = 0.2,
+		DPI: int = 200,
 		fname: str = "simple_random_split_stratified_label_distribution_train_val.png",
 		label_column: str = 'label',
 	):
@@ -3581,7 +3580,6 @@ def plot_single_labeled_head_torso_tail_samples(
 
 def plot_label_distribution(
 		df: pd.DataFrame,
-		dname: str,
 		fpth: str,
 		label_column: str,
 		FIGURE_SIZE: tuple,
@@ -3724,7 +3722,7 @@ def plot_label_distribution(
 
 	# Enhanced title and labels
 	plt.title(
-		f'Label Distribution (Total samples: {df.shape[0]} Unique Labels: {len(df["label"].unique())})', 
+		f'Label Distribution (Total samples: {df.shape[0]} Unique Labels: {len(df[label_column].unique())})', 
 		fontsize=15,
 		fontweight='bold',
 	)
