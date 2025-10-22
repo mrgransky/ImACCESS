@@ -29,20 +29,9 @@ print_args_table(args=args, parser=parser)
 # run in local laptop:
 # $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 4 --img_mean_std --enable_thumbnailing > logs/na_image_download.out &
 
-########################## -sdt 1933-01-01 -edt 1933-01-02 ##########################
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 4 --img_mean_std --enable_thumbnailing > logs/na_image_download.out &
-
-# saving into external hard drive:
-# $ nohup python -u data_collector.py -ddir /media/farid/password_WD/ImACCESS/WW_DATASETs -sdt 1935-01-01 -edt 1935-01-02 -nw 8 --enable_thumbnailing --img_mean_std > logs/na_image_download.out &
-
-########################## -sdt 1914-01-01 -edt 1946-12-31 ##########################
-# $ nohup python -u data_collector.py -ddir /media/farid/password_WD/ImACCESS/WW_DATASETs -sdt 1914-01-01 -edt 1946-12-31 -nw 2 > logs/na_image_download.out &
-
-##################################################################################################################
 # run in Pouta:
-
 # $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 12 --img_mean_std --enable_thumbnailing
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 12 --img_mean_std --enable_thumbnailing > /media/volume/ImACCESS/trash/na_dl.out &
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 40 --img_mean_std --enable_thumbnailing > /media/volume/ImACCESS/trash/na_dl.out &
 
 na_api_base_url: str = "https://catalog.archives.gov/proxy/records/search"
 START_DATE = args.start_date
