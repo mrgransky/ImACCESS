@@ -2897,9 +2897,6 @@ def plot_year_distribution(
 		FIGURE_SIZE: tuple = (18, 8),
 		DPI: int = 200,
 	):
-	# matplotlib.rcParams['font.family'] = ['Source Han Sans TW', 'sans-serif']
-	# print(natsorted(matplotlib.font_manager.get_font_names()))
-	# plt.rcParams["font.family"] = "DejaVu Math TeX Gyre"
 
 	# Convert 'doc_date' to datetime and handle invalid entries
 	df['doc_date'] = pd.to_datetime(df['doc_date'], errors='coerce')
