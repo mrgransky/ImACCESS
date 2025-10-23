@@ -410,7 +410,6 @@ def main():
 	# label_dirstribution_fname = os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_label_distribution_nIMGs_{smu_df.shape[0]}.png")
 	# plot_label_distribution(
 	# 	df=smu_df,
-	# 	dname=dataset_name,
 	# 	fpth=label_dirstribution_fname,
 	# )
 
@@ -510,7 +509,6 @@ def main():
 			)
 			plot_label_distribution(
 				df=df,
-				dname=f"{dataset_name}_{version_name}",
 				fpth=plot_label_distribution_fname,
 				FIGURE_SIZE=(14, 8),
 				DPI=DPI,
@@ -537,7 +535,6 @@ def main():
 				train_df=train_df,
 				val_df=val_df,
 				dataset_name=f"{dataset_name}_{version_name}",
-				OUTPUT_DIRECTORY=OUTPUT_DIRECTORY,
 				VAL_SPLIT_PCT=args.val_split_pct,
 				fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_{version_name}_stratified_label_distribution_train_val_{args.val_split_pct}_pct.png'),
 				FIGURE_SIZE=(14, 8),
