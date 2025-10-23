@@ -15,7 +15,7 @@ if language_detector not in os.listdir():
 	url = f"https://storage.googleapis.com/mediapipe-models/language_detector/language_detector/float32/1/{language_detector}"
 	urllib.request.urlretrieve(url, language_detector)
 
-input_text = "Golda Meir resigns as prime minister."
+input_text = "Vene 23. korpuse lennusalga piloodi Ostrovidovi maandumisel purunenud\n\t\t\t\t                     lennuk “Deperdussin"
 
 print("Running mediapipe Language Detector on CPU...")
 base_options = python.BaseOptions(model_asset_path=language_detector)
