@@ -2463,19 +2463,20 @@ def perform_multilabel_eda(
 			print(f"Main label column '{label_column}' could not be processed or is empty. Exiting EDA.")
 			return
 	df = processed_dfs[label_column].copy()
+
 	# --- 4. Multi-label Statistics (for main label_column) ---
 	all_individual_labels = [label for sublist in df[label_column] for label in sublist]
 	unique_labels = sorted(list(set(all_individual_labels)))
 	print(f"--- Multi-label Statistics (Main Column: {label_column}) ---")
 	print(f"Total number of samples with valid '{label_column}': {len(df)}")
 	print(f"Total number of unique labels across the dataset (from '{label_column}'): {len(unique_labels)}")
-	print(f"Example unique labels (first 10): {unique_labels[:10]}")
-	print("-" * 40 + "\n")
+	print(f"Example unique labels:\n{unique_labels[:50]}")
+
 	# --- 5. Label Cardinality (Number of labels per sample) ---
 	df['label_cardinality'] = df[label_column].apply(len)
 	print(f"--- Label Cardinality Statistics (Main Column: {label_column}) ---")
 	print(df['label_cardinality'].describe())
-	print("-" * 40 + "\n")
+
 	plt.figure(figsize=(10, 6))
 	sns.histplot(df['label_cardinality'], bins=range(1, int(df['label_cardinality'].max()) + 2), kde=False, color='skyblue')
 	plt.title(f'Distribution of Label Cardinality (Labels per Sample for "{label_column}")')

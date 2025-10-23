@@ -88,31 +88,6 @@ OUTPUT_DIRECTORY = os.path.join(DATASET_DIRECTORY, "outputs")
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
-def basic_clean(txt):
-	# 0) Remove the specific placeholder strings (case-sensitive)
-	txt = txt.replace('[No caption entered]', '')
-	txt = txt.replace('History: [none entered]', '')
-	txt = txt.replace('Original Caption:', '')
-	txt = txt.replace('Photograph of ', '')
-	txt = txt.replace('[No title entered]', '') # haven't seen this one yet
-	txt = txt.replace('[No description entered]', '') # haven't seen this one yet
-
-	# 1) turn any kind of newline/tab into a single space
-	txt = txt.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ')
-
-	# 2) collapse multiple spaces -> single space
-	txt = " ".join(txt.split())
-
-	# 3) strip surrounding whitespace
-	txt = txt.strip()
-
-	# 4a) drop double‑quotes that were doubled in the CSV
-	txt = txt.replace('""', '"')
-
-	# 4b) remove all double quotes
-	txt = txt.replace('"', '')
-
-	return txt
 
 def get_doc_year(text, raw_doc_date):
 	if not pd.isna(raw_doc_date):  # Check if raw_doc_date is missing (None or NaN)
