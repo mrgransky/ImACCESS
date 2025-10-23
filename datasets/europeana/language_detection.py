@@ -34,9 +34,11 @@ if language_classifier not in os.listdir():
 	url = f"https://storage.googleapis.com/mediapipe-models/text_classifier/bert_classifier/float32/1/{language_classifier}"
 	urllib.request.urlretrieve(url, language_classifier)
 
+
 print("\nRunning Text Classifier on CPU...")
 base_options = python.BaseOptions(model_asset_path=language_classifier)
 options = python.text.TextClassifierOptions(base_options=base_options)
+
 
 with python.text.TextClassifier.create_from_options(options) as classifier:
 	classification_result = classifier.classify(input_text)

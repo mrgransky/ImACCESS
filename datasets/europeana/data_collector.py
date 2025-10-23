@@ -112,8 +112,6 @@ img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 # 		print(f"Language detection error for text '{text}'\n{e}")
 # 		return False
 
-
-
 def is_english(text: str, detector_model, confidence_threshold: float = 0.3) -> bool:
 	""" using MediaPipe """
 	if not text or not text.strip():
