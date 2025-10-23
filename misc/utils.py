@@ -334,6 +334,9 @@ def basic_clean(txt):
 	# 4b) remove all double quotes
 	txt = txt.replace('"', '')
 
+	# 5) remove all hashtags
+	txt = txt.replace("#", "")
+
 	return txt
 
 def clean_(text:str, sw:list):
