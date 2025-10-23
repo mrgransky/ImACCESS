@@ -910,7 +910,7 @@ def get_mean_std_rgb_img_multiprocessing(
 	num_workers = min(num_workers, os.cpu_count(), max(1, int(available_memory // 2)))  # Rough heuristic
 	batch_size = min(batch_size, max_batch_size, total_images)
 
-	print(f"Processing {total_images} images with {num_workers} workers and batch_size={batch_size}")
+	print(f"Computing mean and std for {total_images} images using {num_workers} CPUs and {batch_size} batch size...")
 	# Use ThreadPoolExecutor for I/O-bound tasks (reading images from disk)
 	transform = T.Compose([T.ToTensor()])
 	sum_ = torch.zeros(3, dtype=torch.float64)
