@@ -36,7 +36,7 @@ python -u data_collector.py \
 	--dataset_dir $ddir \
 	--start_date  $st_dt \
 	--end_date  $end_dt \
-	--num_worker $SLURM_CPUS_PER_TASK \
+	--num_workers $SLURM_CPUS_PER_TASK \
 	--batch_size 256 \
 	--historgram_bin 60 \
 	--img_mean_std \
