@@ -7,10 +7,10 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
-#SBATCH --mem=8G
+#SBATCH --cpus-per-task=20
+#SBATCH --mem=32G
 #SBATCH --partition=small
-#SBATCH --time=01-00:00:00
+#SBATCH --time=3-00:00:00
 
 user="`whoami`"
 stars=$(printf '%*s' 100 '')
@@ -38,7 +38,7 @@ python -u data_collector.py \
 	--start_date  $st_dt \
 	--end_date  $end_dt \
 	--num_worker $num_workers \
-	--batch_size 512 \
+	--batch_size 256 \
 	--historgram_bin 60 \
 	--img_mean_std \
 	--enable_thumbnailing \
