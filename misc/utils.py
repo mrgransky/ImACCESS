@@ -54,12 +54,12 @@ warnings.filterwarnings(
 	category=UserWarning,
 	module="transformers"
 )
-# # Suppress logging warnings
-# os.environ['TF_ENABLE_ONEDNN_OPTS']='0'
-# os.environ["TOKENIZERS_PARALLELISM"] = "false"
-# os.environ["GRPC_VERBOSITY"] = "ERROR"
-# os.environ["GLOG_minloglevel"] = "2"
-# os.environ["TRANSFORMERS_QUIET"] = "1"
+warnings.filterwarnings(
+	'ignore', 
+	category=DeprecationWarning, 
+	message="invalid escape sequence"
+)
+
 
 from skimage.filters.rank import entropy
 from skimage.morphology import disk
@@ -98,9 +98,10 @@ from natsort import natsorted
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import warnings
-logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.INFO)
+
 Image.MAX_IMAGE_PIXELS = None  # Disable the limit completely [decompression bomb]
-warnings.filterwarnings('ignore', category=DeprecationWarning, message="invalid escape sequence")
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
 
 nltk_modules = [
 	'punkt',
@@ -143,12 +144,11 @@ os.environ["HF_HOME"] = cache_directory[USER]
 os.environ["TRANSFORMERS_CACHE"] = cache_directory[USER]
 os.environ["HF_HUB_CACHE"] = cache_directory[USER]
 os.environ["HF_DATASETS_CACHE"] = cache_directory[USER]
-
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 # Set environment variable for memory optimization
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 os.environ['TORCH_USE_CUDA_DSA'] = '1'  # Enables device-side assertions (as suggested in error)
-
 # Verify environment variables
 print(f"HF_HOME: {os.environ['HF_HOME']}")
 print(f"TRANSFORMERS_CACHE: {os.environ['TRANSFORMERS_CACHE']}")
@@ -316,6 +316,8 @@ def basic_clean(txt):
 	txt = txt.replace('Original Caption:', '')
 	txt = txt.replace('Photograph of ', '')
 	txt = txt.replace('Image of ', '')
+	txt = txt.replace('Portrait of ', '')
+	txt = txt.replace('The picture shows ', '')
 	txt = txt.replace('[No title entered]', '') # haven't seen this one yet
 	txt = txt.replace('[No description entered]', '') # haven't seen this one yet
 

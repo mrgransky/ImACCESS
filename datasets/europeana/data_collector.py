@@ -9,11 +9,23 @@ sys.path.insert(0, project_dir) # add project directory to sys.path
 from misc.utils import *
 from misc.visualize import *
 
-FastText_Language_Identification = "lid.176.bin"
-if FastText_Language_Identification not in os.listdir():
-	url = f"https://dl.fbaipublicfiles.com/fasttext/supervised-models/{FastText_Language_Identification}"
-	urllib.request.urlretrieve(url, FastText_Language_Identification)
-ft_model = fasttext.load_model(FastText_Language_Identification)
+# import fasttext
+# FastText_Language_Identification = "lid.176.bin"
+# if FastText_Language_Identification not in os.listdir():
+# 	url = f"https://dl.fbaipublicfiles.com/fasttext/supervised-models/{FastText_Language_Identification}"
+# 	urllib.request.urlretrieve(url, FastText_Language_Identification)
+# detector_model = fasttext.load_model(FastText_Language_Identification)
+
+from mediapipe.tasks import python
+language_detector = "language_detector.tflite"
+if language_detector not in os.listdir():
+	url = f"https://storage.googleapis.com/mediapipe-models/language_detector/language_detector/float32/1/{language_detector}"
+	urllib.request.urlretrieve(url, language_detector)
+print("Running mediapipe Language Detector on CPU...")
+base_options = python.BaseOptions(model_asset_path=language_detector)
+options = python.text.LanguageDetectorOptions(base_options=base_options)
+detector_model = python.text.LanguageDetector.create_from_options(options)
+
 dataset_name: str = "europeana".upper()
 
 parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colletion")
@@ -36,11 +48,10 @@ print_args_table(args=args, parser=parser)
 
 # run in local laptop:
 # $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 8 --img_mean_std --enable_thumbnailing > logs/europeana_img_dl.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 16 -bs 128 --img_mean_std --enable_thumbnailing > logs/europeana_img_dl.out &
 
 # run in Pouta:
-# $ python data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1960-12-31
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 40 --img_mean_std --enable_thumbnailing > /media/volume/ImACCESS/trash/europeana_dl.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -nw 40 -bs 128 --img_mean_std --enable_thumbnailing > /media/volume/ImACCESS/trash/europeana_dl.out &
 
 START_DATE = args.start_date
 END_DATE = args.end_date
@@ -79,6 +90,49 @@ os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 img_rgb_mean_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_mean.gz")
 img_rgb_std_fpth:str = os.path.join(DATASET_DIRECTORY, "img_rgb_std.gz")
 
+# def is_english(text: str, detector_model, confidence_threshold: float = 0.7) -> bool:
+# 	""" using fasttext """
+# 	if not text or not text.strip():
+# 		return False
+	
+# 	try:
+# 		# Clean text for better detection
+# 		cleaned_text = text.strip().replace('\n', ' ').replace('\r', ' ')
+		
+# 		# Predict language
+# 		predictions = detector_model.predict(cleaned_text, k=1)
+# 		detected_lang = predictions[0][0].replace('__label__', '')
+# 		confidence = predictions[1][0]
+		
+# 		# Check if English with sufficient confidence
+# 		is_en = detected_lang == 'en' and confidence >= confidence_threshold
+		
+# 		return is_en
+# 	except Exception as e:
+# 		print(f"Language detection error for text '{text}'\n{e}")
+# 		return False
+
+
+
+def is_english(text: str, detector_model, confidence_threshold: float = 0.3) -> bool:
+	""" using MediaPipe """
+	if not text or not text.strip():
+		return False
+	
+	try:
+		# Clean text for better detection
+		cleaned_text = text.strip().replace('\n', ' ').replace('\r', ' ')
+		
+		# Detect language
+		detection_result = detector_model.detect(cleaned_text)
+		top_detection = detection_result.detections[0]
+		is_en = (top_detection.language_code == 'en' and top_detection.probability >= confidence_threshold)
+		return is_en
+		
+	except Exception as e:
+		print(f"Language detection error: {text}\n{e}")
+		return False
+
 def get_europeana_date_or_year(doc_date, doc_year):
 	if doc_year is not None:
 		return doc_year
@@ -105,7 +159,7 @@ def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", label: st
 		label_all_hits = load_pickle(fpath=label_all_hits_fpth)
 	except Exception as e:
 		print(f"{e}")
-		print(f"Collecting all docs of National Archive for label: « {label} » ... it might take a while..")
+		print(f"Collecting all docs for label: « {label} » might take a while...")
 		params = {
 			'wskey': europeana_api_key,
 			'qf': [
@@ -171,21 +225,29 @@ def get_dframe(label: str="query", docs: List=[Dict]):
 		doc_year = doc.get("year")[0] if (doc.get("year") and doc.get("year")[0]) else None
 		doc_url = f"https://www.europeana.eu/en/item{europeana_id}" # doc.get("guid")
 		print(f"-"*50)
-		print(f'{doc.get("title")}: {[is_english(text=title, ft_model=ft_model) for title in doc.get("title") if title]}')
+		print(f'{doc.get("title")}: {[is_english(text=title, detector_model=detector_model) for title in doc.get("title") if title]}')
 		for title in doc.get("title"):
-			if title and is_english(text=title, ft_model=ft_model):
+			if title and is_english(text=title, detector_model=detector_model):
 				title_en = title
 				break
 			else:
 				title_en = None
 		print(f"title_en: {title_en}")
+
 		description_en = " ".join(doc.get("dcDescriptionLangAware", {}).get("en", [])) if doc.get("dcDescriptionLangAware", {}).get("en", []) else None
 		print(f"description_en: {description_en}")
-		enriched_document_description = (title_en or '') + " " + (description_en or '')
-		enriched_document_description = enriched_document_description.lstrip() if len(enriched_document_description) > 1 else None
-		print(f"enriched_document_description: {enriched_document_description}")
-		print(f"-"*50)
+
+		# enriched_document_description = (title_en or '') + " " + (description_en or '')
+		# enriched_document_description = enriched_document_description.lstrip() if len(enriched_document_description) > 1 else None
+		# print(f"enriched_document_description: {enriched_document_description}")
+		# print(f"-"*50)
 	
+		raw_enriched_document_description = " ".join(filter(None, [title_en, description_en])).strip()
+		print(f"\nraw_enriched_document_description:\n{raw_enriched_document_description}\n")
+		enriched_document_description = basic_clean(txt=raw_enriched_document_description)
+		print(f"\nenriched_document_description:\n{enriched_document_description}\n")
+
+
 		if (
 			image_url 
 			and (image_url.endswith('.jpg') or image_url.endswith('.jpeg'))
@@ -509,9 +571,9 @@ def test():
 				print(f"\nidx: {item_idx}: {list(item.keys())}")
 				print(item.get("id"))
 				print(f"-"*50)
-				print(f'{item.get("title")}: {[is_english(text=title, ft_model=ft_model) for title in item.get("title") if title]}')
+				print(f'{item.get("title")}: {[is_english(text=title, detector_model=detector_model) for title in item.get("title") if title]}')
 				for title in item.get("title"):
-					if title and is_english(text=title, ft_model=ft_model):
+					if title and is_english(text=title, detector_model=detector_model):
 						title_en = title
 						break
 					else:
