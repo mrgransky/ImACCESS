@@ -97,7 +97,6 @@ except Exception as e:
 
 plot_label_distribution(
 	df=merged_single_label_df,
-	dname=dataset_name,
 	fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_dataset_{num_unique_labels_single_label}_labels_distribution.png"),
 	FIGURE_SIZE=(15,8),
 	DPI=400,
@@ -137,7 +136,6 @@ plot_train_val_label_distribution(
 	train_df=single_label_train_df,
 	val_df=single_label_val_df,
 	dataset_name=dataset_name,
-	OUTPUT_DIRECTORY=OUTPUT_DIRECTORY,
 	VAL_SPLIT_PCT=VAL_SPLIT_PCT,
 	fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_simple_random_split_stratified_label_distribution_train_val.png'),
 	FIGURE_SIZE=(15,8),
@@ -173,8 +171,8 @@ all_image_paths = merged_single_label_df['img_path'].tolist()
 print(f">> Computing mean and std for {len(all_image_paths)} images...")
 mean, std = get_mean_std_rgb_img_multiprocessing(
 	source=all_image_paths,
-	num_workers=4,
-	batch_size=8,
+	num_workers=12,
+	batch_size=16,
 	img_rgb_mean_fpth=img_rgb_mean_fpth,
 	img_rgb_std_fpth=img_rgb_std_fpth,
 )
