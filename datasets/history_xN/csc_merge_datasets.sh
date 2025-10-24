@@ -30,7 +30,15 @@ echo "${stars// /*}"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
-python -u merge_datasets.py
+python -u merge_datasets.py \
+  --dataset_dir /scratch/project_2004072/ImACCESS/WW_DATASETs \
+  --head-threshold 5000 \
+  --tail-threshold 1000 \
+  --val-split-pct 0.35 \
+  --bins 60 \
+  --num-workers $SLURM_CPUS_PER_TASK \
+  --batch-size 64 \
+
 
 done_txt="$user finished Slurm job: `date`"
 echo -e "${done_txt//?/$ch}\n${done_txt}\n${done_txt//?/$ch}"

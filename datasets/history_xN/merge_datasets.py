@@ -1,187 +1,3 @@
-# import os
-# import sys
-# current_dir = os.path.dirname(os.path.abspath(__file__))
-# parent_dir = os.path.dirname(current_dir)
-# project_dir = os.path.dirname(parent_dir)
-# sys.path.insert(0, project_dir)
-
-# from misc.utils import *
-# from misc.visualize import *
-
-# # how to run:
-# # $ python merge_datasets.py
-# # $ nohup python -u merge_datasets.py > history_xN_merged_datasets.out &
-
-# # run in pouta:
-# # $ nohup python -u merge_datasets.py > /media/volume/ImACCESS/trash/history_xN_merged_datasets.out &
-
-# # run in puhti:
-# # $ nohup python -u merge_datasets.py > /scratch/project_2004072/ImACCESS/trash/history_xN_merged_datasets.out &
-
-# def merge_datasets(dataset_dir: str):
-# 	BINs = 60
-# 	VAL_SPLIT_PCT = 0.35
-# 	DATASET_DIRECTORY = {
-# 		"farid": "/home/farid/datasets/WW_DATASETs",
-# 		"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs",
-# 		"ubuntu": "/media/volume/ImACCESS/WW_DATASETs",
-# 		"alijani": "/lustre/sgn-data/ImACCESS/WW_DATASETs",
-# 	}
-
-# 	# Patterns to match dataset directories
-# 	DATASET_PATTERNS = [
-# 		"NATIONAL_ARCHIVE*",
-# 		"EUROPEANA*",
-# 		"SMU*",
-# 		"WWII*",
-# 	]
-
-# 	# Find all matching dataset directories
-# 	DATASETS = []
-# 	for pattern in DATASET_PATTERNS:
-# 		DATASETS.extend(glob.glob(os.path.join(DATASET_DIRECTORY.get(USER), pattern)))
-# 	print(len(DATASETS), DATASETS)
-
-# 	print("\nAVAILABLE DATASET SUMMARY")
-# 	print("-"*100)
-# 	for dataset in DATASETS:
-# 		print(f">> {dataset}")
-# 		for file in sorted(os.listdir(dataset)):
-# 			if file.endswith(('.csv')):
-# 				print(f"\t- {file}")
-
-# 	dataset_name = f"history_x{len(DATASETS)}".upper()
-# 	HISTORY_XN_DIRECTORY = os.path.join(DATASET_DIRECTORY.get(USER), dataset_name)
-# 	OUTPUT_DIRECTORY = os.path.join(HISTORY_XN_DIRECTORY, "outputs")
-# 	os.makedirs(HISTORY_XN_DIRECTORY, exist_ok=True)
-# 	os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
-
-# 	single_label_dfs = []
-# 	for i, dataset_path in enumerate(DATASETS):
-# 		print(f"Reading Dataset[{i}]: {dataset_path}")
-# 		try:
-# 			dataset = os.path.basename(dataset_path)
-# 			single_label_dataset_metadata_fpath = os.path.join(dataset_path, 'metadata_single_label.csv')
-# 			multi_label_dataset_metadata_fpath = os.path.join(dataset_path, 'metadata_multi_label.csv')
-# 			single_label_df = pd.read_csv(single_label_dataset_metadata_fpath)
-# 			single_label_df['dataset'] = dataset
-# 			single_label_dfs.append(single_label_df)
-# 		except Exception as e:
-# 			print(f"{e}")
-
-# 	print(f"merging {len(single_label_dfs)} [single-label] dataframe(s) to create {dataset_name} dataset...")
-# 	merged_single_label_df = pd.concat(single_label_dfs, ignore_index=True)
-# 	print(list(merged_single_label_df.columns), merged_single_label_df.shape)
-
-# 	num_unique_labels_single_label = merged_single_label_df['label'].nunique()
-# 	print(f"Total number of unique labels [single-label]: {num_unique_labels_single_label}")
-
-# 	print(f"Saving {len(single_label_dfs)} merged single-label dataset to {HISTORY_XN_DIRECTORY}")
-# 	merged_single_label_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'), index=False)
-# 	merged_multi_label_df = merged_single_label_df.copy()
-# 	merged_multi_label_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_multi_label.csv'), index=False)
-
-# 	try:
-# 		merged_single_label_df.to_excel(os.path.join(HISTORY_XN_DIRECTORY, "metadata_single_label.xlsx"), index=False)
-# 	except Exception as e:
-# 		print(f"Failed to write Excel file: {e}")
-
-# 	plot_label_distribution(
-# 		df=merged_single_label_df,
-# 		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_dataset_{num_unique_labels_single_label}_labels_distribution.png"),
-# 		FIGURE_SIZE=(15,8),
-# 		DPI=400,
-# 		label_column='label',
-# 	)
-
-# 	plot_label_distribution_pie_chart(
-# 		df=merged_single_label_df,
-# 		fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_{num_unique_labels_single_label}_labels_distribution_pie_chart_{merged_single_label_df.shape[0]}_samples.png'),
-# 		figure_size=(7, 11),
-# 		DPI=400,
-# 	)
-
-# 	plot_grouped_bar_chart(
-# 		merged_df=merged_single_label_df,
-# 		FIGURE_SIZE=(15,8),
-# 		DPI=400,
-# 		fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_dataset_labels_x_{num_unique_labels_single_label}_freq_x_{len(single_label_dfs)}_datasets_grouped_bar_chart.png")
-# 	)
-
-# 	print(f"Stratified Splitting".center(150, "-"))
-# 	single_label_train_df, single_label_val_df = train_test_split(
-# 		merged_single_label_df,
-# 		test_size=VAL_SPLIT_PCT,
-# 		shuffle=True,
-# 		stratify=merged_single_label_df['label'],
-# 		random_state=42
-# 	)
-
-# 	single_label_train_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'), index=False)
-# 	single_label_val_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'), index=False)
-
-# 	print(single_label_train_df.groupby('dataset')['label'].nunique())
-# 	print(single_label_val_df.groupby('dataset')['label'].nunique())
-
-# 	plot_train_val_label_distribution(
-# 		train_df=single_label_train_df,
-# 		val_df=single_label_val_df,
-# 		dataset_name=dataset_name,
-# 		VAL_SPLIT_PCT=VAL_SPLIT_PCT,
-# 		fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_simple_random_split_stratified_label_distribution_train_val.png'),
-# 		FIGURE_SIZE=(15,8),
-# 		DPI=400,
-# 	)
-
-# 	plot_year_distribution(
-# 		df=merged_single_label_df,
-# 		dname=dataset_name,
-# 		fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_year_distribution_{merged_single_label_df.shape[0]}_samples.png'),
-# 		BINs=BINs,
-# 	)
-
-# 	plot_long_tailed_distribution(
-# 		df=merged_single_label_df,
-# 		fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_{num_unique_labels_single_label}_labels_long_tailed_distribution.png'),
-# 		head_threshold=5000,
-# 		tail_threshold=1000,
-# 	)
-
-# 	plot_single_labeled_head_torso_tail_samples(
-# 		metadata_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'),
-# 		metadata_train_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'),
-# 		metadata_val_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'),
-# 		save_path=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_head_torso_tail_samples.png'),
-# 		head_threshold=5000,
-# 		tail_threshold=1000,
-# 	)
-
-# 	img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
-# 	img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
-# 	all_image_paths = merged_single_label_df['img_path'].tolist()
-# 	mean, std = get_mean_std_rgb_img_multiprocessing(
-# 		source=all_image_paths,
-# 		num_workers=min(16, multiprocessing.cpu_count()),
-# 		batch_size=64,
-# 		img_rgb_mean_fpth=img_rgb_mean_fpth,
-# 		img_rgb_std_fpth=img_rgb_std_fpth,
-# 	)
-# 	print(f"Mean: {mean}, Std: {std}")
-
-
-
-# def main():
-# 	argparser = argparse.ArgumentParser(description="Merge Datasets")
-# 	argparser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
-# 	args, unknown = argparser.parse_known_args()
-
-# 	print(args)
-# 	set_seeds(seed=42)
-# 	merge_datasets(args.dataset_dir)
-
-# if __name__ == "__main__":
-# 	main()
-
 import os
 import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -191,7 +7,6 @@ sys.path.insert(0, project_dir)
 
 from misc.utils import *
 from misc.visualize import *
-
 
 # how to run:
 # $ python merge_datasets.py
@@ -203,153 +18,190 @@ from misc.visualize import *
 # run in puhti:
 # $ nohup python -u merge_datasets.py > /scratch/project_2004072/ImACCESS/trash/history_xN_merged_datasets.out &
 
-set_seeds(seed=42)
-USER = os.getenv("USER")
-BINs = 60
-VAL_SPLIT_PCT = 0.35
-DATASET_DIRECTORY = {
-	"farid": "/home/farid/datasets/WW_DATASETs",
-	"alijanif": "/scratch/project_2004072/ImACCESS/WW_DATASETs",
-	"ubuntu": "/media/volume/ImACCESS/WW_DATASETs",
-	"alijani": "/lustre/sgn-data/ImACCESS/WW_DATASETs",
-}
+def get_dataset(ddir: str):
+	# Patterns to match dataset directories
+	DATASET_PATTERNS = [
+		"NATIONAL_ARCHIVE*",
+		"EUROPEANA*",
+		"SMU*",
+		"WWII*",
+	]
 
-# Patterns to match dataset directories
-DATASET_PATTERNS = [
-	"NATIONAL_ARCHIVE*",
-	"EUROPEANA*",
-	"SMU*",
-	"WWII*",
-]
+	datasets = []
+	for pattern in DATASET_PATTERNS:
+		matches = glob.glob(os.path.join(ddir, pattern))
+		datasets.extend(matches)
+	print(f"Found {len(datasets)} dataset(s):")
 
-# Find all matching dataset directories
-DATASETS = []
-for pattern in DATASET_PATTERNS:
-	DATASETS.extend(glob.glob(os.path.join(DATASET_DIRECTORY.get(USER), pattern)))
-print(len(DATASETS), DATASETS)
+	print("\nAVAILABLE DATASET SUMMARY")
+	print("-"*100)
+	for dataset in datasets:
+		print(f">> {dataset}")
+		for file in sorted(os.listdir(dataset)):
+			if file.endswith(('.csv')):
+				print(f"\t- {file}")
+	
+	return datasets
 
-print("\nAVAILABLE DATASET SUMMARY")
-print("-"*100)
-for dataset in DATASETS:
-	print(f">> {dataset}")
-	for file in sorted(os.listdir(dataset)):
-		if file.endswith(('.csv')):
-			print(f"\t- {file}")
+def merge_datasets(ddir: str, val_split_pct: float=0.35, seed: int=42, head_threshold: int=5000, tail_threshold: int=1000, bins: int=60, num_workers: int=16, batch_size: int=64,):
+	datasets = get_dataset(ddir=ddir)
 
-dataset_name = f"history_x{len(DATASETS)}".upper()
-HISTORY_XN_DIRECTORY = os.path.join(DATASET_DIRECTORY.get(USER), dataset_name)
-OUTPUT_DIRECTORY = os.path.join(HISTORY_XN_DIRECTORY, "outputs")
-os.makedirs(HISTORY_XN_DIRECTORY, exist_ok=True)
-os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
+	# Create output directories
+	dataset_name = f"history_x{len(datasets)}".upper()
+	HISTORY_XN_DIRECTORY = os.path.join(ddir, dataset_name)
+	OUTPUT_DIRECTORY = os.path.join(HISTORY_XN_DIRECTORY, "outputs")
+	os.makedirs(HISTORY_XN_DIRECTORY, exist_ok=True)
+	os.makedirs(OUTPUT_DIRECTORY, exist_ok=True)
 
-single_label_dfs = []
-for i, dataset_path in enumerate(DATASETS):
-	print(f"Reading Dataset[{i}]: {dataset_path}")
-	try:
+	# Load and merge single-label dataframes
+	single_label_dfs = []
+	for i, dataset_path in enumerate(datasets):
+		print(f"Reading Dataset[{i}]: {dataset_path}")
 		dataset = os.path.basename(dataset_path)
-		single_label_dataset_metadata_fpath = os.path.join(dataset_path, 'metadata_single_label.csv')
-		multi_label_dataset_metadata_fpath = os.path.join(dataset_path, 'metadata_multi_label.csv')
-		single_label_df = pd.read_csv(single_label_dataset_metadata_fpath)
-		single_label_df['dataset'] = dataset
-		single_label_dfs.append(single_label_df)
+		single_label_path = os.path.join(dataset_path, 'metadata_single_label.csv')
+		if not os.path.exists(single_label_path):
+			print(f"  Warning: {single_label_path} not found, skipping.")
+			continue
+		try:
+			df = pd.read_csv(single_label_path)
+			df['dataset'] = dataset
+			single_label_dfs.append(df)
+		except Exception as e:
+			print(f"  Error loading {single_label_path}: {e}")
+	if not single_label_dfs:
+		raise RuntimeError("No valid datasets found. Exiting.")
+	
+	print(f"Merging {len(single_label_dfs)} dataset(s) into '{dataset_name}'...")
+	merged_single_label_df = pd.concat(single_label_dfs, ignore_index=True)
+	print(f"Merged shape: {merged_single_label_df.shape}, Columns: {list(merged_single_label_df.columns)}")
+	num_unique_labels = merged_single_label_df['label'].nunique()
+	print(f"Unique labels in merged dataset: {num_unique_labels}")
+	
+	# Save merged CSVs
+	print(f"Saving merged single-label dataset to {HISTORY_XN_DIRECTORY} ...")
+	merged_single_label_df_fpath = os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv')
+	merged_single_label_df.to_csv(merged_single_label_df_fpath, index=False)
+
+	print(f"Saving merged multi-label dataset to {HISTORY_XN_DIRECTORY} ...")
+	merged_multi_label_df = merged_single_label_df.copy()
+	merged_multi_label_df_fpath = merged_single_label_df_fpath.replace('single', 'multi')
+	merged_multi_label_df.to_csv(merged_multi_label_df_fpath, index=False)
+	
+	try:
+		merged_single_label_df.to_excel(merged_single_label_df_fpath.replace('.csv', '.xlsx'), index=False)
+		merged_multi_label_df.to_excel(merged_multi_label_df_fpath.replace('.csv', '.xlsx'), index=False)
 	except Exception as e:
-		print(f"{e}")
+		print(f"Failed to write Excel file: {e}")
+	
+	print("Generating label distribution plots...")
+	plot_label_distribution(
+			df=merged_single_label_df,
+			fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_{num_unique_labels}_labels_dist.png"),
+			FIGURE_SIZE=(15, 8),
+			DPI=400,
+			label_column='label',
+	)
+	plot_label_distribution_pie_chart(
+			df=merged_single_label_df,
+			fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_pie_chart_{merged_single_label_df.shape[0]}_samples.png"),
+			figure_size=(7, 11),
+			DPI=400,
+	)
+	plot_grouped_bar_chart(
+			merged_df=merged_single_label_df,
+			FIGURE_SIZE=(15, 8),
+			DPI=400,
+			fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_grouped_bar_chart.png")
+	)
 
-print(f"merging {len(single_label_dfs)} [single-label] dataframe(s) to create {dataset_name} dataset...")
-merged_single_label_df = pd.concat(single_label_dfs, ignore_index=True)
-print(list(merged_single_label_df.columns), merged_single_label_df.shape)
+	# Stratified train/val split
+	print("Stratified Splitting".center(150, "-"))
+	single_label_train_df, single_label_val_df = train_test_split(
+			merged_single_label_df,
+			test_size=val_split_pct,
+			shuffle=True,
+			stratify=merged_single_label_df['label'],
+			random_state=seed
+	)
+	single_label_train_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'), index=False)
+	single_label_val_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'), index=False)
+	print("Labels per dataset in train split:")
+	print(single_label_train_df.groupby('dataset')['label'].nunique())
+	print("Labels per dataset in val split:")
+	print(single_label_val_df.groupby('dataset')['label'].nunique())
+	
+	plot_train_val_label_distribution(
+			train_df=single_label_train_df,
+			val_df=single_label_val_df,
+			dataset_name=dataset_name,
+			VAL_SPLIT_PCT=val_split_pct,
+			fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_train_val_label_dist.png"),
+			FIGURE_SIZE=(15, 8),
+			DPI=400,
+	)
+	plot_year_distribution(
+			df=merged_single_label_df,
+			dname=dataset_name,
+			fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_year_dist_{merged_single_label_df.shape[0]}_samples.png"),
+			BINs=bins,
+	)
+	plot_long_tailed_distribution(
+			df=merged_single_label_df,
+			fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_long_tailed_dist.png"),
+			head_threshold=head_threshold,
+			tail_threshold=tail_threshold,
+	)
+	plot_single_labeled_head_torso_tail_samples(
+			metadata_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'),
+			metadata_train_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'),
+			metadata_val_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'),
+			save_path=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_head_torso_tail_samples.png"),
+			head_threshold=head_threshold,
+			tail_threshold=tail_threshold,
+	)
 
-num_unique_labels_single_label = merged_single_label_df['label'].nunique()
-print(f"Total number of unique labels [single-label]: {num_unique_labels_single_label}")
+	print("Computing RGB mean and std across all images (this may take a while)...")
+	img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
+	img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
+	all_image_paths = merged_single_label_df['img_path'].tolist()
+	num_workers = min(num_workers, multiprocessing.cpu_count())
+	mean, std = get_mean_std_rgb_img_multiprocessing(
+		source=all_image_paths,
+		num_workers=num_workers,
+		batch_size=batch_size,
+		img_rgb_mean_fpth=img_rgb_mean_fpth,
+		img_rgb_std_fpth=img_rgb_std_fpth,
+	)
+	print(f"Image statistics computed: Mean={mean}, Std={std}")
+	print(f"✅ Dataset '{dataset_name}' successfully merged and saved to: {HISTORY_XN_DIRECTORY}")
 
-print(f"Saving {len(single_label_dfs)} merged single-label dataset to {HISTORY_XN_DIRECTORY}")
-merged_single_label_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'), index=False)
-merged_multi_label_df = merged_single_label_df.copy()
-merged_multi_label_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_multi_label.csv'), index=False)
+def main():
+	parser = argparse.ArgumentParser(description="Merge multiple WW datasets into a single consolidated dataset with train/val splits and visualizations.")
+	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset root directory')
+	parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility (default: 42)')
+	parser.add_argument('--bins', type=int, default=60, help='Number of bins for year distribution histogram (default: 60)')
+	parser.add_argument('--val-split-pct', type=float, default=0.35, help='Validation split percentage (default: 0.35)')
+	parser.add_argument('--dataset-dir', type=str, default=None, help='Override dataset root directory (if not using per-user mapping)')
+	parser.add_argument('--head-threshold', type=int, default=5000, help='Threshold for head class in long-tail analysis (default: 5000)')
+	parser.add_argument('--tail-threshold', type=int, default=1000, help='Threshold for tail class in long-tail analysis (default: 1000)')
+	parser.add_argument('--num_workers', type=int, default=16, help='Number of workers for image stats computation (default: min(16, cpu_count))')
+	parser.add_argument('--batch-size', type=int, default=64, help='Batch size for computing image statistics (default: 64)')
+	parser.add_argument('--no-plots', action='store_true', help='Skip generating visualization plots (speeds up execution)')
+	parser.add_argument('--no-stats', action='store_true', help='Skip computing RGB mean/std for images')
+	args = parser.parse_args()
+	print(args)
+	args.dataset_dir = os.path.normpath(args.dataset_dir)
+	set_seeds(seed=args.seed)
+	merge_datasets(
+		ddir=args.dataset_dir, 
+		val_split_pct=args.val_split_pct, 
+		seed=args.seed, 
+		head_threshold=args.head_threshold, 
+		tail_threshold=args.tail_threshold, 
+		bins=args.bins, 
+		num_workers=args.num_workers, 
+		batch_size=args.batch_size,
+	)
 
-try:
-	merged_single_label_df.to_excel(os.path.join(HISTORY_XN_DIRECTORY, "metadata_single_label.xlsx"), index=False)
-except Exception as e:
-	print(f"Failed to write Excel file: {e}")
-
-plot_label_distribution(
-	df=merged_single_label_df,
-	fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_dataset_{num_unique_labels_single_label}_labels_distribution.png"),
-	FIGURE_SIZE=(15,8),
-	DPI=400,
-	label_column='label',
-)
-
-plot_label_distribution_pie_chart(
-	df=merged_single_label_df,
-	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_{num_unique_labels_single_label}_labels_distribution_pie_chart_{merged_single_label_df.shape[0]}_samples.png'),
-	figure_size=(7, 11),
-	DPI=400,
-)
-
-plot_grouped_bar_chart(
-	merged_df=merged_single_label_df,
-	FIGURE_SIZE=(15,8),
-	DPI=400,
-	fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_single_label_dataset_labels_x_{num_unique_labels_single_label}_freq_x_{len(single_label_dfs)}_datasets_grouped_bar_chart.png")
-)
-
-print(f"Stratified Splitting".center(150, "-"))
-single_label_train_df, single_label_val_df = train_test_split(
-	merged_single_label_df,
-	test_size=VAL_SPLIT_PCT,
-	shuffle=True,
-	stratify=merged_single_label_df['label'],
-	random_state=42
-)
-
-single_label_train_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'), index=False)
-single_label_val_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'), index=False)
-
-print(single_label_train_df.groupby('dataset')['label'].nunique())
-print(single_label_val_df.groupby('dataset')['label'].nunique())
-
-plot_train_val_label_distribution(
-	train_df=single_label_train_df,
-	val_df=single_label_val_df,
-	dataset_name=dataset_name,
-	VAL_SPLIT_PCT=VAL_SPLIT_PCT,
-	fname=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_simple_random_split_stratified_label_distribution_train_val.png'),
-	FIGURE_SIZE=(15,8),
-	DPI=400,
-)
-
-plot_year_distribution(
-	df=merged_single_label_df,
-	dname=dataset_name,
-	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_year_distribution_{merged_single_label_df.shape[0]}_samples.png'),
-	BINs=BINs,
-)
-
-plot_long_tailed_distribution(
-	df=merged_single_label_df,
-	fpth=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_{num_unique_labels_single_label}_labels_long_tailed_distribution.png'),
-	head_threshold=5000,
-	tail_threshold=1000,
-)
-
-plot_single_labeled_head_torso_tail_samples(
-	metadata_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'),
-	metadata_train_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'),
-	metadata_val_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'),
-	save_path=os.path.join(OUTPUT_DIRECTORY, f'{dataset_name}_single_label_dataset_head_torso_tail_samples.png'),
-	head_threshold=5000,
-	tail_threshold=1000,
-)
-
-img_rgb_mean_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_mean.gz")
-img_rgb_std_fpth = os.path.join(HISTORY_XN_DIRECTORY, "img_rgb_std.gz")
-all_image_paths = merged_single_label_df['img_path'].tolist()
-mean, std = get_mean_std_rgb_img_multiprocessing(
-	source=all_image_paths,
-	num_workers=min(16, multiprocessing.cpu_count()),
-	batch_size=64,
-	img_rgb_mean_fpth=img_rgb_mean_fpth,
-	img_rgb_std_fpth=img_rgb_std_fpth,
-)
-print(f"Mean: {mean}, Std: {std}")
+if __name__ == "__main__":
+	main()
