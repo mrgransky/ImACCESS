@@ -7,8 +7,8 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=20
-#SBATCH --mem=128G
+#SBATCH --cpus-per-task=40
+#SBATCH --mem=256G
 #SBATCH --partition=small
 #SBATCH --time=1-00:00:00
 
@@ -39,7 +39,7 @@ python -u merge_datasets.py \
   --tail_threshold 1000 \
   --val_split_pct 0.35 \
   --bins 60 \
-  --batch_size 64 \
+  --batch_size 256 \
 
 
 done_txt="$user finished Slurm job: `date`"
