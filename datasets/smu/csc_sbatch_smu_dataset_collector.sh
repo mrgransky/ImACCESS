@@ -8,7 +8,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=16G
+#SBATCH --mem=10G
 #SBATCH --partition=interactive
 #SBATCH --time=1-00:00:00
 
@@ -38,7 +38,7 @@ python -u data_collector.py \
 	--start_date  $st_dt \
 	--end_date  $end_dt \
 	--num_worker $num_workers \
-	--batch_size 128 \
+	--batch_size 64 \
 	--historgram_bin 60 \
 	--img_mean_std \
 	--enable_thumbnailing \
