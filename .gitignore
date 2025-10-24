@@ -22,9 +22,10 @@
 *.tgz
 *.html
 *.tflite
-models/
 
+models/
 backups/
+
 # Django
 wgui/db.sqlite3
 wgui/staticfiles/

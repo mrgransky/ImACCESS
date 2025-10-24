@@ -1283,21 +1283,16 @@ def get_llm_based_labels_opt(
 		batch_size: int,
 		max_generated_tks: int,
 		max_kws: int,
-		csv_file: str=None,
-		description: str=None,
+		csv_file: str,
 		do_dedup: bool=True,
 		max_retries: int=2,
 		use_quantization: bool=False,
 		verbose: bool=False,
 	) -> List[Optional[List[str]]]:
 
-	if csv_file:
-		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
+	output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
 
-	if csv_file and description:
-		raise ValueError("Only one of csv_file or description must be provided")
-
-	if csv_file and os.path.exists(output_csv):
+	if os.path.exists(output_csv):
 		if verbose: print(f"Found existing results at {output_csv}...")
 		df = pd.read_csv(
 			filepath_or_buffer=output_csv,
@@ -1318,37 +1313,27 @@ def get_llm_based_labels_opt(
 		print(f"{'='*100}\n")
 	st_t = time.time()
 
-	if csv_file:
-		try:
-			df = pd.read_csv(
-				filepath_or_buffer=csv_file, 
-				on_bad_lines='skip',
-				dtype=dtypes, 
-				low_memory=False,
-			)
-		except pd.errors.ParserError as e:
-			if verbose: print(f"CSV parsing error, trying with python engine: {e}")
-			df = pd.read_csv(
-				filepath_or_buffer=csv_file, 
-				on_bad_lines='skip',
-				dtype=dtypes, 
-				# low_memory=False,
-				engine='python',
-			)
+	try:
+		df = pd.read_csv(
+			filepath_or_buffer=csv_file, 
+			on_bad_lines='skip',
+			dtype=dtypes, 
+			low_memory=False,
+		)
+	except pd.errors.ParserError as e:
+		if verbose: print(f"CSV parsing error, trying with python engine: {e}")
+		df = pd.read_csv(
+			filepath_or_buffer=csv_file, 
+			on_bad_lines='skip',
+			dtype=dtypes,
+			engine='python',
+		)
+	if 'enriched_document_description' not in df.columns:
+		raise ValueError("CSV file must have 'enriched_document_description' column")
 
-		if 'enriched_document_description' not in df.columns:
-			raise ValueError("CSV file must have 'enriched_document_description' column")
+	descriptions = df['enriched_document_description'].tolist()
+	if verbose: print(f"Loaded {len(descriptions)} descriptions")
 
-		descriptions = df['enriched_document_description'].tolist()
-		if verbose:
-			print(f"Loaded {len(descriptions)} descriptions from {csv_file}")
-	elif description:
-		descriptions = [description]
-		if verbose:
-			print(f"Loaded 1 description")
-	else:
-		raise ValueError("Either csv_file or description must be provided")
-	
 	inputs = descriptions
 	if len(inputs) == 0:
 		return None
@@ -1426,6 +1411,7 @@ def get_llm_based_labels_opt(
 			try:
 				if attempt > 0 and verbose:
 					print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for batch {batch_num + 1}")
+
 				# Tokenize batch
 				tokenized = tokenizer(
 					batch_prompts,
@@ -1436,6 +1422,7 @@ def get_llm_based_labels_opt(
 				)
 				if device != 'cpu':
 					tokenized = {k: v.to(device) for k, v in tokenized.items()}
+
 				# Generation args
 				gen_kwargs = dict(
 					input_ids=tokenized.get("input_ids"),
@@ -1448,13 +1435,16 @@ def get_llm_based_labels_opt(
 					eos_token_id=tokenizer.eos_token_id,
 				)
 
-				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				with torch.amp.autocast(
+					device_type=device.type, 
+					enabled=torch.cuda.is_available(),
+					dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+				):
 					outputs = model.generate(**gen_kwargs)							
 
 				decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
-				if verbose:
-					print(f"Batch[{batch_num}] decoded responses: {type(decoded)} {len(decoded)}")
+				if verbose: print(f"Batch[{batch_num}] decoded responses: {type(decoded)} {len(decoded)}")
 
 				# Parse each response
 				for i, text_out in enumerate(decoded):
@@ -1469,13 +1459,11 @@ def get_llm_based_labels_opt(
 						)
 						unique_results[idx] = parsed
 					except Exception as e:
-						if verbose:
-							print(f"⚠️ Parsing error for batch index {idx}: {e}")
+						if verbose: print(f"⚠️ Parsing error for batch index {idx}: {e}")
 						unique_results[idx] = None
 				break  # Break retry loop on success	
 			except Exception as e:
-				if verbose:
-					print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed: {e}")
+				if verbose: print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed: {e}")
 				
 				if attempt < max_retries:
 					# Exponential backoff
@@ -1486,8 +1474,7 @@ def get_llm_based_labels_opt(
 					torch.cuda.empty_cache() if torch.cuda.is_available() else None
 				else:
 					# Final attempt failed
-					if verbose:
-						print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
+					if verbose: print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
 					# Mark all items in this batch as failed
 					for idx in batch_indices:
 						unique_results[idx] = None
@@ -1507,7 +1494,7 @@ def get_llm_based_labels_opt(
 			pass
 
 		# Memory management - clear cache every 10 batches
-		if batch_num % 10 == 0:
+		if batch_num % 25 == 0:
 			torch.cuda.empty_cache()
 			gc.collect()
 
@@ -1519,13 +1506,11 @@ def get_llm_based_labels_opt(
 	]
 	
 	if failed_indices and verbose:
-		print(f"🔄 Retrying {len(failed_indices)} failed items individually...")
+		print(f"🔄 Retrying {len(failed_indices)} failed items individually using query_local_llm [sequential processing]...")
 	
 	for idx in failed_indices:
 		desc = unique_inputs[idx]
-		if verbose:
-			print(f"🔄 Retrying individual item {idx}:\n{desc}")
-		
+		if verbose: print(f"🔄 Retrying individual item {idx}:\n{desc}")
 		try:
 			# Use the same model/tokenizer for individual processing
 			individual_result = query_local_llm(
@@ -1534,21 +1519,19 @@ def get_llm_based_labels_opt(
 				text=desc,
 				device=device,
 				max_generated_tks=max_generated_tks,
-				max_kws=max_kws,
+				max_kws=min(max_kws, len(desc.split())),
 				verbose=verbose,
 			)
 			unique_results[idx] = individual_result
-			if verbose and individual_result:
-				print(f"✅ Individual retry successful: {individual_result}")
-			elif verbose:
-				print(f"❌ Individual retry failed for item {idx}")		
+			if verbose and individual_result: print(f"✅ Individual retry successful: {individual_result}")
+			elif verbose: print(f"❌ Individual retry failed for item {idx}")
 		except Exception as e:
-			if verbose:
-				print(f"💥 Individual retry error for item {idx}: {e}")
+			if verbose: print(f"💥 Individual retry error for item {idx}: {e}")
 			unique_results[idx] = None
+
 	# Map unique_results back to original order
 	results = []
-	for orig_i, uniq_idx in enumerate(original_to_unique_idx):
+	for orig_i, uniq_idx in tqdm(enumerate(original_to_unique_idx), desc="Mapping results", ncols=100):
 		results.append(unique_results[uniq_idx])
 	
 	# Final statistics
@@ -1584,8 +1567,7 @@ def get_llm_based_labels_opt(
 			print(f"Saved {len(results)} keywords to {output_csv}")
 			print(f"Done! dataframe: {df.shape} {list(df.columns)}")
 
-	if verbose:
-		print(f"Total time: {time.time() - st_t:.2f} sec")
+	if verbose: print(f"Total LLM-based keyword extraction time: {time.time() - st_t:.1f} sec")
 
 	return results
 
@@ -1633,7 +1615,6 @@ def main():
 			max_generated_tks=args.max_generated_tks,
 			max_kws=args.max_keywords,
 			csv_file=args.csv_file,
-			description=args.description,
 			use_quantization=args.use_quantization,
 			verbose=args.verbose,
 		)

@@ -43,7 +43,7 @@ DATASETS=(
 python -u multimodal_annotation.py \
   --csv_file ${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv \
   --num_workers $SLURM_CPUS_PER_TASK \
-  --batch_size 48 \
+  --batch_size 64 \
   --llm_model_id "Qwen/Qwen3-4B-Instruct-2507" \
   --vlm_model_id "Qwen/Qwen3-VL-8B-Instruct" \
   --max_generated_tks 64 \
