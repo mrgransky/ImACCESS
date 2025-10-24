@@ -16,10 +16,10 @@ from visualize import perform_multilabel_eda
 # model_id = "Qwen/Qwen2.5-VL-7B-Instruct" # only fits Puhti and Mahti
 
 # how to run [Pouta]:
-# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" -bs 64 -dv "cuda:1" -nw 32 -v > /media/volume/ImACCESS/trash/multimodal_annotation_na.txt &
-# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -bs 32 -dv "cuda:3" -nw 32 -v > /media/volume/ImACCESS/trash/multimodal_annotation_eu.txt &
-# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -bs 32 -dv "cuda:2" -nw 32 -v > /media/volume/ImACCESS/trash/multimodal_annotation_h4.txt &
-# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" -bs 64 -dv "cuda:3" -v > /media/volume/ImACCESS/trash/multimodal_annotation_smu.txt &
+# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" -vlm_bs 64 -llm_bs 16 -dv "cuda:1" -nw 32 -v > /media/volume/ImACCESS/trash/multimodal_annotation_na.txt &
+# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 32 -llm_bs 16 -dv "cuda:3" -nw 32 -v > /media/volume/ImACCESS/trash/multimodal_annotation_eu.txt &
+# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 32 -llm_bs 16 -dv "cuda:2" -nw 24 > /media/volume/ImACCESS/trash/multimodal_annotation_h4.txt &
+# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen2.5-VL-3B-Instruct" -vlm_bs 64 -llm_bs 16 -dv "cuda:3" -v > /media/volume/ImACCESS/trash/multimodal_annotation_smu.txt &
 
 def convert_to_lowercase(labels_list):
 	if not labels_list:
@@ -91,7 +91,8 @@ def get_multimodal_annotation(
 		vlm_model_id: str,
 		device: str,
 		num_workers: int,
-		batch_size: int,
+		llm_batch_size: int,
+		vlm_batch_size: int,
 		max_generated_tks: int,
 		max_keywords: int,
 		use_quantization: bool = False,
@@ -99,7 +100,6 @@ def get_multimodal_annotation(
 		debug: bool = False,
 	):
 
-	# Load dataframe
 	df = pd.read_csv(
 		filepath_or_buffer=csv_file,
 		on_bad_lines='skip',
@@ -122,7 +122,7 @@ def get_multimodal_annotation(
 			model_id=llm_model_id,
 			device=device,
 			csv_file=csv_file,
-			batch_size=batch_size,
+			batch_size=llm_batch_size,
 			max_generated_tks=max_generated_tks,
 			max_kws=max_keywords,
 			use_quantization=use_quantization,
@@ -133,7 +133,7 @@ def get_multimodal_annotation(
 			model_id=llm_model_id,
 			device=device,
 			csv_file=csv_file,
-			batch_size=batch_size,
+			batch_size=llm_batch_size,
 			max_generated_tks=max_generated_tks,
 			max_kws=max_keywords,
 			use_quantization=use_quantization,
@@ -155,7 +155,7 @@ def get_multimodal_annotation(
 			model_id=vlm_model_id,
 			device=device,
 			csv_file=csv_file,
-			batch_size=batch_size,
+			batch_size=vlm_batch_size,
 			max_kws=max_keywords,
 			max_generated_tks=max_generated_tks,
 			use_quantization=use_quantization,
@@ -167,7 +167,7 @@ def get_multimodal_annotation(
 			device=device,
 			csv_file=csv_file,
 			num_workers=num_workers,
-			batch_size=batch_size,
+			batch_size=vlm_batch_size,
 			max_kws=max_keywords,
 			max_generated_tks=max_generated_tks,
 			use_quantization=use_quantization,
@@ -243,7 +243,8 @@ def main():
 	parser.add_argument("--vlm_model_id", '-vlm', type=str, default="Qwen/Qwen2-VL-2B-Instruct", help="HuggingFace Vision-Language model ID")
 	parser.add_argument("--device", '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help="Device to run models on ('cuda:0' or 'cpu')")
 	parser.add_argument("--num_workers", '-nw', type=int, default=16, help="Number of workers for parallel processing")
-	parser.add_argument("--batch_size", '-bs', type=int, default=32, help="Batch size for processing (adjust based on GPU memory)")
+	parser.add_argument("--llm_batch_size", '-llm_bs', type=int, default=16, help="Batch size for textual processing using LLM (adjust based on GPU memory)")
+	parser.add_argument("--vlm_batch_size", '-vlm_bs', type=int, default=64, help="Batch size for visual processing using VLM (adjust based on GPU memory)")
 	parser.add_argument("--max_generated_tks", '-mgt', type=int, default=64, help="Max number of generated tokens")
 	parser.add_argument("--max_keywords", '-mkw', type=int, default=5, help="Max number of keywords to extract")
 	parser.add_argument("--use_quantization", '-q', action='store_true', help="Use quantization")
@@ -258,7 +259,8 @@ def main():
 		vlm_model_id=args.vlm_model_id,
 		device=args.device,
 		num_workers=args.num_workers,
-		batch_size=args.batch_size,
+		llm_batch_size=args.llm_batch_size,
+		vlm_batch_size=args.vlm_batch_size,
 		max_generated_tks=args.max_generated_tks,
 		max_keywords=args.max_keywords,
 		use_quantization=args.use_quantization,
