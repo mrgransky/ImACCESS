@@ -1381,22 +1381,20 @@ def get_llm_based_labels_opt(
 		if s is None:
 			unique_prompts.append(None)
 		else:
-			unique_prompts.append(get_prompt(tokenizer=tokenizer, description=s, max_kws=max_kws))
+			if verbose: print(f"Generating prompt for text with len={len(s.split()):<10}max_kws={min(max_kws, len(s.split()))}")
+			prompt = get_prompt(tokenizer=tokenizer, description=s, max_kws=min(max_kws, len(s.split())))
+			unique_prompts.append(prompt)
 
-	# Will hold parsed results for unique inputs
 	unique_results: List[Optional[List[str]]] = [None] * len(unique_prompts)
-	
 	valid_indices = [i for i, p in enumerate(unique_prompts) if p is not None]
 
 	if not valid_indices:
-		if verbose:
-			print(f" <!> No valid prompts found after deduplication => exiting")
+		if verbose: print(f" <!> No valid prompts found after deduplication => exiting")
 		return None
 
 	total_batches = math.ceil(len(valid_indices) / batch_size)
 
-	if verbose:
-		print(f"Processing {len(valid_indices)} unique prompts in batches of {batch_size} samples => {total_batches} batches")
+	if verbose: print(f"Processing {len(valid_indices)} unique prompts in batches of {batch_size} samples => {total_batches} batches")
 	
 	# Group valid indices into batches
 	batches = []
@@ -1406,13 +1404,11 @@ def get_llm_based_labels_opt(
 		batches.append((batch_indices, batch_prompts))
 	
 	for batch_num, (batch_indices, batch_prompts) in enumerate(tqdm(batches, desc="Processing (textual) batches", ncols=100)):
-		# 🔄 BATCH PROCESSING WITH RETRY LOGIC
 		for attempt in range(max_retries + 1):
 			try:
 				if attempt > 0 and verbose:
 					print(f"🔄 Retry attempt {attempt + 1}/{max_retries + 1} for batch {batch_num + 1}")
 
-				# Tokenize batch
 				tokenized = tokenizer(
 					batch_prompts,
 					return_tensors="pt",
@@ -1423,7 +1419,6 @@ def get_llm_based_labels_opt(
 				if device != 'cpu':
 					tokenized = {k: v.to(device) for k, v in tokenized.items()}
 
-				# Generation args
 				gen_kwargs = dict(
 					input_ids=tokenized.get("input_ids"),
 					attention_mask=tokenized["attention_mask"],
@@ -1443,7 +1438,6 @@ def get_llm_based_labels_opt(
 					outputs = model.generate(**gen_kwargs)							
 
 				decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-
 				if verbose: print(f"Batch[{batch_num}] decoded responses: {type(decoded)} {len(decoded)}")
 
 				# Parse each response
@@ -1463,18 +1457,16 @@ def get_llm_based_labels_opt(
 						unique_results[idx] = None
 				break  # Break retry loop on success	
 			except Exception as e:
-				if verbose: print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed: {e}")
+				print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed: {e}")
 				
 				if attempt < max_retries:
-					# Exponential backoff
 					sleep_time = EXP_BACKOFF ** attempt
-					if verbose:
-						print(f"⏳ Waiting {sleep_time}s before retry...")
+					print(f"⏳ Waiting {sleep_time}s before retry...")
 					time.sleep(sleep_time)
 					torch.cuda.empty_cache() if torch.cuda.is_available() else None
 				else:
 					# Final attempt failed
-					if verbose: print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
+					print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
 					# Mark all items in this batch as failed
 					for idx in batch_indices:
 						unique_results[idx] = None

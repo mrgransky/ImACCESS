@@ -27,8 +27,11 @@ options = python.text.LanguageDetectorOptions(base_options=base_options)
 detector_model = python.text.LanguageDetector.create_from_options(options)
 
 dataset_name: str = "europeana".upper()
+# europeana_api_key: str = "api2demo"
+# europeana_api_key: str = "nLbaXYaiH"
 
 parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colletion")
+parser.add_argument('--api_key', '-ak', type=str, required=True, choices=["api2demo", "nLbaXYaiH"], help='Europeana API Key (choose from valid options)')
 parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset DIR')
 parser.add_argument('--start_date', '-sdt', type=str, default="1900-01-01", help='Dataset DIR')
 parser.add_argument('--end_date', '-edt', type=str, default="1970-12-31", help='Dataset DIR')
@@ -47,11 +50,11 @@ args.dataset_dir = os.path.normpath(args.dataset_dir)
 print_args_table(args=args, parser=parser)
 
 # run in local laptop:
-# $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 16 -bs 128 --img_mean_std --enable_thumbnailing > logs/europeana_img_dl.out &
+# $ python data_collector.py -ddir $HOME/datasets/WW_DATASETs -ak api2demo
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -ak api2demo -nw 16 -bs 128 --img_mean_std --enable_thumbnailing > logs/europeana_img_dl.out &
 
 # run in Pouta:
-# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -nw 40 -bs 128 --img_mean_std --enable_thumbnailing > /media/volume/ImACCESS/trash/europeana_dl.out &
+# $ nohup python -u data_collector.py --dataset_dir /media/volume/ImACCESS/WW_DATASETs -ak api2demo -nw 40 -bs 128 --img_mean_std --enable_thumbnailing > /media/volume/ImACCESS/trash/europeana_dl.out &
 
 START_DATE = args.start_date
 END_DATE = args.end_date
@@ -67,8 +70,6 @@ STOPWORDS.extend(customized_meaningless_words)
 STOPWORDS = set(STOPWORDS)
 # print(STOPWORDS, type(STOPWORDS))
 europeana_api_base_url: str = "https://api.europeana.eu/record/v2/search.json"
-# europeana_api_key: str = "api2demo"
-europeana_api_key: str = "nLbaXYaiH"
 headers = {
 	'Content-type': 'application/json',
 	'Accept': 'application/json; text/plain; */*',
