@@ -317,6 +317,7 @@ def basic_clean(txt):
 	txt = txt.replace('Photograph of ', '')
 	txt = txt.replace('Image of ', '')
 	txt = txt.replace('Portrait of ', '')
+	txt = txt.replace('File Record', '')
 	txt = txt.replace('The picture shows ', '')
 	txt = txt.replace('[No title entered]', '') # haven't seen this one yet
 	txt = txt.replace('[No description entered]', '') # haven't seen this one yet
