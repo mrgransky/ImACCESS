@@ -180,18 +180,17 @@ def main():
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset root directory')
 	parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility (default: 42)')
 	parser.add_argument('--bins', type=int, default=60, help='Number of bins for year distribution histogram (default: 60)')
-	parser.add_argument('--val-split-pct', type=float, default=0.35, help='Validation split percentage (default: 0.35)')
-	parser.add_argument('--dataset-dir', type=str, default=None, help='Override dataset root directory (if not using per-user mapping)')
-	parser.add_argument('--head-threshold', type=int, default=5000, help='Threshold for head class in long-tail analysis (default: 5000)')
-	parser.add_argument('--tail-threshold', type=int, default=1000, help='Threshold for tail class in long-tail analysis (default: 1000)')
+	parser.add_argument('--val_split_pct', type=float, default=0.35, help='Validation split percentage (default: 0.35)')
+	parser.add_argument('--head_threshold', type=int, default=5000, help='Threshold for head class in long-tail analysis (default: 5000)')
+	parser.add_argument('--tail_threshold', type=int, default=1000, help='Threshold for tail class in long-tail analysis (default: 1000)')
 	parser.add_argument('--num_workers', type=int, default=16, help='Number of workers for image stats computation (default: min(16, cpu_count))')
-	parser.add_argument('--batch-size', type=int, default=64, help='Batch size for computing image statistics (default: 64)')
-	parser.add_argument('--no-plots', action='store_true', help='Skip generating visualization plots (speeds up execution)')
-	parser.add_argument('--no-stats', action='store_true', help='Skip computing RGB mean/std for images')
+	parser.add_argument('--batch_size', type=int, default=64, help='Batch size for computing image statistics (default: 64)')
 	args = parser.parse_args()
 	print(args)
+	
 	args.dataset_dir = os.path.normpath(args.dataset_dir)
 	set_seeds(seed=args.seed)
+
 	merge_datasets(
 		ddir=args.dataset_dir, 
 		val_split_pct=args.val_split_pct, 

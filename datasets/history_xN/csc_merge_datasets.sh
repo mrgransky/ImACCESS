@@ -34,12 +34,12 @@ dataset_dir="/scratch/project_2004072/ImACCESS/WW_DATASETs"
 
 python -u merge_datasets.py \
   --dataset_dir $dataset_dir \
-  --num-workers $SLURM_CPUS_PER_TASK \
-  --head-threshold 5000 \
-  --tail-threshold 1000 \
-  --val-split-pct 0.35 \
+  --num_workers $SLURM_CPUS_PER_TASK \
+  --head_threshold 5000 \
+  --tail_threshold 1000 \
+  --val_split_pct 0.35 \
   --bins 60 \
-  --batch-size 64 \
+  --batch_size 64 \
 
 
 done_txt="$user finished Slurm job: `date`"
