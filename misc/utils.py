@@ -316,7 +316,6 @@ def basic_clean(txt):
 	txt = txt.replace('Original Caption:', '')
 	txt = txt.replace('Photograph of ', '')
 	txt = txt.replace('Photograph: ', '')
-	txt = txt.replace('Image of ', '')
 	txt = txt.replace('Portrait of ', '')
 	txt = txt.replace('File Record', '')
 	txt = txt.replace('The picture shows ', '')
