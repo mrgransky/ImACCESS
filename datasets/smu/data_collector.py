@@ -13,7 +13,7 @@ from misc.visualize import *
 # $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 16 -bs 128 --img_mean_std --enable_thumbnailing > logs/smu_dataset_collection.out &
 
 # run in Pouta:
-# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 32 --img_mean_std --enable_thumbnailing > /media/volume/ImACCESS/trash/smu_data_collection.out &
+# $ nohup python -u data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 40 -bs 256 --img_mean_std --enable_thumbnailing > /media/volume/ImACCESS/trash/smu_data_collection.out &
 
 dataset_name = "smu".upper()
 parser = argparse.ArgumentParser(description=f"{dataset_name} ARCHIVE data colletion")
