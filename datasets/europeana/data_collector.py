@@ -149,7 +149,7 @@ def get_europeana_date_or_year(doc_date, doc_year):
 				return year_match.group(0)
 	return None
 
-def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", label: str="world war"):
+def get_data(europeana_api_key: str, start_date: str, end_date: str, label: str):
 	t0 = time.time()
 	label_processed = re.sub(" ", "_", label)
 	label_all_hits_fpth = os.path.join(HITs_DIR, f"results_query_{label_processed}_{start_date}_{end_date}.gz")
@@ -293,6 +293,7 @@ def main():
 		print(f"\nQ[{qi+1}/{len(all_label_tags)}]: {qv}")
 		qv = clean_(text=qv, sw=STOPWORDS)
 		label_all_hits = get_data(
+			europeana_api_key=args.api_key,
 			start_date=START_DATE,
 			end_date=END_DATE,
 			label=qv,
