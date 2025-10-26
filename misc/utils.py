@@ -561,7 +561,7 @@ def get_multi_label_stratified_split(
 	print(">> Binarizing labels...")
 	mlb = MultiLabelBinarizer(sparse_output=True)
 	label_matrix = mlb.fit_transform(df_filtered[label_col])
-	print(f"Label matrix: {label_matrix.shape} {label_matrix.data.nbytes / 1e9:.2f} GB")
+	print(f"Label matrix: {label_matrix.shape} {label_matrix.data.nbytes / 1e6:.1f} MB")
 
 	unique_labels = mlb.classes_
 	if len(unique_labels) == 0:

@@ -1437,9 +1437,9 @@ def get_llm_based_labels_opt(
 				tokenized = tokenizer(
 					batch_prompts,
 					return_tensors="pt",
-					padding=True,
 					truncation=True,
 					max_length=4096,
+					padding=True,
 				)
 				if device != 'cpu':
 					tokenized = {k: v.to(device) for k, v in tokenized.items()}
@@ -1490,9 +1490,7 @@ def get_llm_based_labels_opt(
 					time.sleep(sleep_time)
 					torch.cuda.empty_cache() if torch.cuda.is_available() else None
 				else:
-					# Final attempt failed
 					print(f"💥 Batch {batch_num + 1} failed after {max_retries + 1} attempts")
-					# Mark all items in this batch as failed
 					for idx in batch_indices:
 						unique_results[idx] = None
 
@@ -1551,28 +1549,50 @@ def get_llm_based_labels_opt(
 	for orig_i, uniq_idx in tqdm(enumerate(original_to_unique_idx), desc="Mapping results", ncols=100):
 		results.append(unique_results[uniq_idx])
 	
-	# Final statistics
+	# if verbose:
+	# 	n_ok = sum(1 for r in results if r is not None)
+	# 	n_null = sum(
+	# 		1 
+	# 		for i, inp in enumerate(inputs) 
+	# 		if inp is None or str(inp).strip() in ("", "nan", "None")
+	# 	)
+	# 	n_failed = len(results) - n_ok - n_null
+	# 	success_rate = (n_ok / (len(results) - n_null)) * 100 if (len(results) - n_null) > 0 else 0
+		
+	# 	print(
+	# 		f"📊 Final results: {n_ok}/{len(results)-n_null} successful ({success_rate:.1f}%), "
+	# 		f"{n_null} null inputs, {n_failed} failed"
+	# 	)
+
 	if verbose:
-		n_ok = sum(1 for r in results if r is not None)
-		n_null = sum(
-			1 
-			for i, inp in enumerate(inputs) 
-			if inp is None or str(inp).strip() in ("", "nan", "None")
-		)
-		n_failed = len(results) - n_ok - n_null
-		success_rate = (n_ok / (len(results) - n_null)) * 100 if (len(results) - n_null) > 0 else 0
+		stats_start = time.time()
+		n_ok = 0
+		n_null = 0
+		
+		for inp, res in zip(inputs, results):
+			if res is not None:
+				n_ok += 1
+			if inp is None or str(inp).strip() in ("", "nan", "None"):
+				n_null += 1
+		
+		total_results = len(results)
+		valid_inputs_count = total_results - n_null
+		n_failed = valid_inputs_count - n_ok
+		success_rate = (n_ok / valid_inputs_count) * 100 if valid_inputs_count > 0 else 0
 		
 		print(
-			f"📊 Final results: {n_ok}/{len(results)-n_null} successful ({success_rate:.1f}%), "
-			f"{n_null} null inputs, {n_failed} failed"
+			f"[STATS] {n_ok}/{valid_inputs_count} successful ({success_rate:.1f}%) "
+			f"{n_null} null inputs {n_failed} failed "
+			f"Elapsed_t: {time.time() - stats_start:.2f}s"
 		)
-	
-	# Clean up model and tokenizer
+
+	if verbose: print(f"Cleaning up model and tokenizer...")
 	del model, tokenizer
 	torch.cuda.empty_cache() if torch.cuda.is_available() else None
 
-	# save results to csv_file
+	# save results to csv_& xlsx file
 	if csv_file:
+		if verbose: print(f"Saving results to {csv_file}...")
 		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
 		df['llm_keywords'] = results
 		df.to_csv(output_csv, index=False)
@@ -1581,8 +1601,7 @@ def get_llm_based_labels_opt(
 		except Exception as e:
 			print(f"Failed to write Excel file: {e}")
 		if verbose:
-			print(f"Saved {len(results)} keywords to {output_csv}")
-			print(f"Done! dataframe: {df.shape} {list(df.columns)}")
+			print(f"Saved {len(results)} keywords to {output_csv} {df.shape} {list(df.columns)}")
 
 	if verbose: print(f"Total LLM-based keyword extraction time: {time.time() - st_t:.1f} sec")
 
