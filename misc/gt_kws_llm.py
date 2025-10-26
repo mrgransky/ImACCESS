@@ -48,40 +48,47 @@ EXP_BACKOFF = 2	# seconds ** attempt
 print(f"{USER} HUGGINGFACE_TOKEN: {hf_tk} Login to HuggingFace Hub")
 huggingface_hub.login(token=hf_tk)
 
-# LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
-# Act as a meticulous historical archivist specializing in 20th century documentation.
-# Given the description below, extract up to {k} most prominent, factual and distinct **KEYWORDS**.
-
-# {description}
-
-# **CRITICAL RULES**:
-# - Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
-# - **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
-# - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "May 25th", "July 10").
-# - **STRICTLY EXCLUDE** vague, generic, or historical keywords.
-# - **STRICTLY EXCLUDE** special characters, stopwords, meaningless, repeating or synonym-duplicate keywords.
-# - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
-# [/INST]
-# """
-
 LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
 Act as a meticulous historical archivist specializing in 20th century documentation.
-Given the description below, extract the most prominent, factual and distinct **KEYWORDS** that appear in the text.
+Given the description below, extract up to {k} most prominent, factual and distinct **KEYWORDS** that appear in the text.
 
 {description}
 
 **CRITICAL RULES**:
 - Extract **ONLY keywords that actually appear** in the description above.
 - Return **AT MOST {k} keywords** - fewer is acceptable if the description is short or lacks distinct concepts.
-- Return **ONLY** a clean, valid and parsable **Python LIST**.
+- Return **ONLY** a clean, valid and parsable **Python LIST** with a maximum of {k} keywords.
 - **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
 - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "May 25th", "July 10").
-- **STRICTLY EXCLUDE** vague, generic, or historical keywords not present in the description.
+- **STRICTLY EXCLUDE** vague, generic, or historical keywords.
 - **STRICTLY EXCLUDE** special characters, stopwords, meaningless, repeating or synonym-duplicate keywords.
-- **DO NOT invent or infer keywords** that are not explicitly mentioned in the description.
 - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
 [/INST]
 """
+
+# LLM_INSTRUCTION_TEMPLATE = """<s>[INST]
+# Act as a meticulous historical archivist specializing in 20th century documentation.
+# Given the description below, extract the most prominent, factual and distinct **KEYWORDS** that appear in the text.
+
+# {description}
+
+# **CRITICAL RULES**:
+# - Extract **ONLY keywords that actually appear** in the description above.
+# - Return **AT MOST {k} keywords** - fewer is acceptable if the description is short or lacks distinct concepts.
+# - **OUTPUT FORMAT IS CRITICAL**: return **ONLY** a clean, valid and parsable **Python LIST**.
+# - **ABSOLUTELY NO** additional explanatory text, code blocks, terms containing numbers, comments, tags, thoughts, questions, or explanations before or after the **Python LIST**.
+# - **STRICTLY EXCLUDE ALL TEMPORAL EXPRESSIONS**: No dates, times, time periods, seasons, months, days, years, decades, centuries, or any time-related phrases (e.g., "early evening", "morning", "20th century", "1950s", "weekend", "May 25th", "July 10").
+# - **STRICTLY EXCLUDE** vague, generic, or historical keywords not present in the description.
+# - **STRICTLY EXCLUDE** special characters, stopwords, meaningless, repeating or synonym-duplicate keywords.
+# - **DO NOT invent or infer keywords** that are not explicitly mentioned in the description.
+# - The parsable **Python LIST** must be the **VERY LAST THING** in your response.
+
+# **INVALID EXAMPLES**:
+# - ❌ Airplane, Mechanic, Lockheed, Airport, Dallas
+# - ❌ 1. Airplane 2. Mechanic 3. Lockheed
+# - ❌ - Airplane - Mechanic - Lockheed
+# [/INST]
+# """
 
 def _load_llm_(
 		model_id: str,
@@ -1197,7 +1204,6 @@ def query_local_llm(
 		output_tokens = get_conversation_token_breakdown(raw_llm_response, model_id)
 		print(f"\n>> Output tokens: {output_tokens}")
 	
-	# ⏱️ RESPONSE PARSING TIMING
 	parsing_start = time.time()
 	keywords = parse_llm_response(
 		model_id=model_id, 

@@ -27,7 +27,7 @@ args.dataset_dir = os.path.normpath(args.dataset_dir)
 print_args_table(args=args, parser=parser)
 
 # run in local laptop:
-# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -sdt 1900-01-01 -edt 1970-12-31 -nw 8 --img_mean_std --enable_thumbnailing > logs/na_image_download.out &
+# $ nohup python -u data_collector.py -ddir $HOME/datasets/WW_DATASETs -nw 16 --img_mean_std --enable_thumbnailing > logs/na_image_download.out &
 
 # run in Pouta:
 # $ python data_collector.py -ddir /media/volume/ImACCESS/WW_DATASETs -nw 12 --img_mean_std --enable_thumbnailing
@@ -151,7 +151,7 @@ def get_data(start_date: str="1914-01-01", end_date: str="1914-01-02", label: st
 				# print(json.dumps(hits[0], indent=2, ensure_ascii=False))
 				label_all_hits.extend(hits)
 				total_hits = data.get('body').get("hits").get('total').get('value')
-				print(f"Page: {page}:\tFound: {len(hits)} {type(hits)}\t{len(label_all_hits)}/{total_hits}\tin: {time.time()-loop_st:.1f} sec")
+				print(f"Page: {page}:\tFound: {len(hits)} {type(hits)}\t{len(label_all_hits)}/{total_hits}\t{time.time()-loop_st:.1f} sec")
 				if len(label_all_hits) >= total_hits:
 					break
 				page += 1

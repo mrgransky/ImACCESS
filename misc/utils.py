@@ -314,6 +314,8 @@ def basic_clean(txt):
 	txt = txt.replace('[No caption entered]', '')
 	txt = txt.replace('History: [none entered]', '')
 	txt = txt.replace('Original Caption:', '')
+	txt = txt.replace('Original caption: ', '')
+	txt = txt.replace('Original caption on envelope: ', '')
 	txt = txt.replace('Photograph of ', '')
 	txt = txt.replace('Photograph: ', '')
 	txt = txt.replace('Portrait of ', '')

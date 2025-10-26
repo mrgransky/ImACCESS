@@ -7,7 +7,7 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=10
+#SBATCH --cpus-per-task=20
 #SBATCH --mem=96G
 #SBATCH --partition=gpu
 #SBATCH --time=03-00:00:00
@@ -43,8 +43,8 @@ DATASETS=(
 python -u multimodal_annotation.py \
   --csv_file ${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv \
   --num_workers $SLURM_CPUS_PER_TASK \
+  --llm_batch_size 24 \
   --vlm_batch_size 48 \
-  --llm_batch_size 16 \
   --llm_model_id "Qwen/Qwen3-4B-Instruct-2507" \
   --vlm_model_id "Qwen/Qwen3-VL-8B-Instruct" \
   --max_generated_tks 64 \

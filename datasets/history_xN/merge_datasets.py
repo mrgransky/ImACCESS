@@ -9,8 +9,8 @@ from misc.utils import *
 from misc.visualize import *
 
 # how to run:
-# $ python merge_datasets.py
-# $ nohup python -u merge_datasets.py > history_xN_merged_datasets.out &
+# $ python merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs
+# $ nohup python -u merge_datasets.py -ddir /home/farid/datasets/WW_DATASETs > logs/history_xN_merged_datasets.out &
 
 # run in pouta:
 # $ nohup python -u merge_datasets.py > /media/volume/ImACCESS/trash/history_xN_merged_datasets.out &
@@ -117,47 +117,48 @@ def merge_datasets(ddir: str, val_split_pct: float=0.35, seed: int=42, head_thre
 	# Stratified train/val split
 	print("Stratified Splitting".center(150, "-"))
 	single_label_train_df, single_label_val_df = train_test_split(
-			merged_single_label_df,
-			test_size=val_split_pct,
-			shuffle=True,
-			stratify=merged_single_label_df['label'],
-			random_state=seed
+		merged_single_label_df,
+		test_size=val_split_pct,
+		shuffle=True,
+		stratify=merged_single_label_df['label'],
+		random_state=seed
 	)
 	single_label_train_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'), index=False)
 	single_label_val_df.to_csv(os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'), index=False)
+	
 	print("Labels per dataset in train split:")
 	print(single_label_train_df.groupby('dataset')['label'].nunique())
 	print("Labels per dataset in val split:")
 	print(single_label_val_df.groupby('dataset')['label'].nunique())
 	
 	plot_train_val_label_distribution(
-			train_df=single_label_train_df,
-			val_df=single_label_val_df,
-			dataset_name=dataset_name,
-			VAL_SPLIT_PCT=val_split_pct,
-			fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_train_val_label_dist.png"),
-			FIGURE_SIZE=(15, 8),
-			DPI=400,
+		train_df=single_label_train_df,
+		val_df=single_label_val_df,
+		dataset_name=dataset_name,
+		VAL_SPLIT_PCT=val_split_pct,
+		fname=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_train_val_label_dist.png"),
+		FIGURE_SIZE=(15, 8),
+		DPI=400,
 	)
 	plot_year_distribution(
-			df=merged_single_label_df,
-			dname=dataset_name,
-			fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_year_dist_{merged_single_label_df.shape[0]}_samples.png"),
-			BINs=bins,
+		df=merged_single_label_df,
+		dname=dataset_name,
+		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_year_dist_{merged_single_label_df.shape[0]}_samples.png"),
+		BINs=bins,
 	)
 	plot_long_tailed_distribution(
-			df=merged_single_label_df,
-			fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_long_tailed_dist.png"),
-			head_threshold=head_threshold,
-			tail_threshold=tail_threshold,
+		df=merged_single_label_df,
+		fpth=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_long_tailed_dist.png"),
+		head_threshold=head_threshold,
+		tail_threshold=tail_threshold,
 	)
 	plot_single_labeled_head_torso_tail_samples(
-			metadata_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'),
-			metadata_train_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'),
-			metadata_val_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'),
-			save_path=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_head_torso_tail_samples.png"),
-			head_threshold=head_threshold,
-			tail_threshold=tail_threshold,
+		metadata_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label.csv'),
+		metadata_train_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_train.csv'),
+		metadata_val_path=os.path.join(HISTORY_XN_DIRECTORY, 'metadata_single_label_val.csv'),
+		save_path=os.path.join(OUTPUT_DIRECTORY, f"{dataset_name}_head_torso_tail_samples.png"),
+		head_threshold=head_threshold,
+		tail_threshold=tail_threshold,
 	)
 
 	print("Computing RGB mean and std across all images (this may take a while)...")
@@ -173,8 +174,9 @@ def merge_datasets(ddir: str, val_split_pct: float=0.35, seed: int=42, head_thre
 		img_rgb_std_fpth=img_rgb_std_fpth,
 	)
 	print(f"Image statistics computed: Mean={mean}, Std={std}")
-	print(f"✅ Dataset '{dataset_name}' successfully merged and saved to: {HISTORY_XN_DIRECTORY}")
+	print(f"{dataset_name} successfully merged and saved to: {HISTORY_XN_DIRECTORY}")
 
+@measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="Merge multiple WW datasets into a single consolidated dataset with train/val splits and visualizations.")
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='Dataset root directory')
