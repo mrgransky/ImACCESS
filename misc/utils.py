@@ -352,6 +352,9 @@ def basic_clean(txt):
 	# 6) remove all double quotes
 	txt = txt.replace("''", "")
 
+	# 7) remove more multiple space
+	txt = re.sub("\s\s+" , " ", txt)
+
 	return txt
 
 def clean_(text:str, sw:list):

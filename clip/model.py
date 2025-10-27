@@ -1686,7 +1686,6 @@ def get_lora_clip(
 	if quantized:
 		if quantization_bits not in [4, 8]:
 			raise ValueError(f"quantization_bits must be 4 or 8, got {quantization_bits}")
-		
 		if verbose:
 			print(f"├─ QLoRA")
 			print(f"   ├─ Quantization: {quantization_bits}-bit")
