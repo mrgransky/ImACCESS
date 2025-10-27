@@ -2896,8 +2896,10 @@ def lora_finetune_single_label(
 		slope_threshold: float,
 		pairwise_imp_threshold: float,
 		topk_values: List[int] = [1, 5, 10, 15, 20],
-		use_lamb: bool = False,
-		verbose: bool = True,
+		quantization_bits: int=8,
+		quantized: bool=False,
+		use_lamb: bool=False,
+		verbose: bool=True,
 	):
 	window_size = minimum_epochs + 1
 
@@ -2945,7 +2947,9 @@ def lora_finetune_single_label(
 	model_name = model.__class__.__name__
 
 	if verbose:
-		print(f"{mode} | Rank: {lora_rank} | Alpha: {lora_alpha} | Dropout: {lora_dropout} | {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
+		print(f"{mode.upper()} Rank: {lora_rank} Alpha: {lora_alpha} Dropout: {lora_dropout} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}")
+		if quantized:
+			print(f"\t├─ Using Quantization: {quantization_bits}-bit")
 
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
@@ -2958,6 +2962,8 @@ def lora_finetune_single_label(
 		lora_rank=lora_rank,
 		lora_alpha=lora_alpha,
 		lora_dropout=lora_dropout,
+		quantization_bits=quantization_bits,
+		quantized=quantized,
 		verbose=verbose,
 	)
 	model.to(device)

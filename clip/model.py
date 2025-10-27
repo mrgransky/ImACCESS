@@ -1655,7 +1655,7 @@ def get_lora_clip(
 		target_text_modules: List[str] = ["in_proj", "out_proj", "c_fc", "c_proj"],
 		target_vision_modules: List[str] = ["in_proj", "out_proj", "q_proj", "k_proj", "v_proj", "c_fc", "c_proj"],
 		quantized: bool = False,
-		quantization_bits: int = 4,
+		quantization_bits: int=8,
 		compute_dtype: torch.dtype = torch.float16,
 		verbose: bool = False,
 	):
@@ -1795,7 +1795,6 @@ def get_lora_clip(
 			parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
 			parent = model.visual if parent_name == "" else model.visual.get_submodule(parent_name)
 			replace_linear(parent, child_name, module, "Vision", "vision")
-		
 		elif isinstance(module, nn.MultiheadAttention) and "in_proj" in target_vision_modules:
 			lora_layer = LoRALinear(
 				in_features=module.embed_dim,
@@ -1837,140 +1836,143 @@ def get_lora_clip(
 	
 	# Text projection
 	if hasattr(model, "text_projection") and isinstance(model.text_projection, nn.Parameter):
-			in_dim = model.text_projection.size(0)
-			out_dim = model.text_projection.size(1)
-			lora_text_proj = LoRALinear(
-					in_features=in_dim,
-					out_features=out_dim,
-					rank=lora_rank,
-					alpha=lora_alpha,
-					dropout=lora_dropout,
-					bias=False,
-					quantized=quantized,
-					quantization_bits=quantization_bits,
-					compute_dtype=compute_dtype,
+		in_dim = model.text_projection.size(0)
+		out_dim = model.text_projection.size(1)
+		lora_text_proj = LoRALinear(
+			in_features=in_dim,
+			out_features=out_dim,
+			rank=lora_rank,
+			alpha=lora_alpha,
+			dropout=lora_dropout,
+			bias=False,
+			quantized=quantized,
+			quantization_bits=quantization_bits,
+			compute_dtype=compute_dtype,
+		)
+		
+		with torch.no_grad():
+			if not quantized:
+				lora_text_proj.linear.weight.data.copy_(model.text_projection.t().data)
+			else:
+				lora_text_proj.linear.weight.data = model.text_projection.t().data.clone()
+		
+		model.lora_text_projection = lora_text_proj
+		
+		def encode_text(self, text):
+			x = self.token_embedding(text).type(self.dtype)
+			x = x + self.positional_embedding.type(self.dtype)
+			x = x.permute(1, 0, 2)
+			x = self.transformer(x)
+			x = x.permute(1, 0, 2)
+			x = self.ln_final(x)
+			x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)]
+			return self.lora_text_projection(x)
+		
+		model.encode_text = encode_text.__get__(model, type(model))
+		replaced_modules.add("Text: text_projection")
+		
+		mem_info = lora_text_proj.get_memory_footprint()
+		memory_stats['text_encoder']['base_mb'] += mem_info['base_memory_mb']
+		memory_stats['text_encoder']['lora_mb'] += mem_info['lora_memory_mb']
+		
+		if verbose:
+			print(
+				f"Wrapped text_projection "
+				f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
+				f"LoRA: {mem_info['lora_memory_mb']:.2f}MB]"
 			)
-			
-			with torch.no_grad():
-					if not quantized:
-							lora_text_proj.linear.weight.data.copy_(model.text_projection.t().data)
-					else:
-							lora_text_proj.linear.weight.data = model.text_projection.t().data.clone()
-			
-			model.lora_text_projection = lora_text_proj
-			
-			def encode_text(self, text):
-					x = self.token_embedding(text).type(self.dtype)
-					x = x + self.positional_embedding.type(self.dtype)
-					x = x.permute(1, 0, 2)
-					x = self.transformer(x)
-					x = x.permute(1, 0, 2)
-					x = self.ln_final(x)
-					x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)]
-					return self.lora_text_projection(x)
-			
-			model.encode_text = encode_text.__get__(model, type(model))
-			replaced_modules.add("Text: text_projection")
-			
-			mem_info = lora_text_proj.get_memory_footprint()
-			memory_stats['text_encoder']['base_mb'] += mem_info['base_memory_mb']
-			memory_stats['text_encoder']['lora_mb'] += mem_info['lora_memory_mb']
-			
-			if verbose:
-					print(f"Wrapped text_projection "
-								f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
-								f"LoRA: {mem_info['lora_memory_mb']:.2f}MB]")
 	
 	# Visual projection (ViT)
 	if hasattr(model.visual, "proj") and isinstance(model.visual.proj, nn.Parameter):
-			in_dim = model.visual.proj.size(0)
-			out_dim = model.visual.proj.size(1)
-			lora_visual_proj = LoRALinear(
-					in_features=in_dim,
-					out_features=out_dim,
-					rank=lora_rank,
-					alpha=lora_alpha,
-					dropout=lora_dropout,
-					bias=False,
-					quantized=quantized,
-					quantization_bits=quantization_bits,
-					compute_dtype=compute_dtype,
+		in_dim = model.visual.proj.size(0)
+		out_dim = model.visual.proj.size(1)
+		lora_visual_proj = LoRALinear(
+			in_features=in_dim,
+			out_features=out_dim,
+			rank=lora_rank,
+			alpha=lora_alpha,
+			dropout=lora_dropout,
+			bias=False,
+			quantized=quantized,
+			quantization_bits=quantization_bits,
+			compute_dtype=compute_dtype,
+		)
+		
+		with torch.no_grad():
+			if not quantized:
+				lora_visual_proj.linear.weight.data.copy_(model.visual.proj.t().data)
+			else:
+				lora_visual_proj.linear.weight.data = model.visual.proj.t().data.clone()
+		
+		model.visual.lora_proj = lora_visual_proj
+		
+		def vit_forward(self, x: torch.Tensor):
+			x = self.conv1(x)
+			x = x.reshape(x.shape[0], x.shape[1], -1)
+			x = x.permute(0, 2, 1)
+			cls = self.class_embedding.to(x.dtype) + torch.zeros(
+				x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device
 			)
-			
-			with torch.no_grad():
-					if not quantized:
-							lora_visual_proj.linear.weight.data.copy_(model.visual.proj.t().data)
-					else:
-							lora_visual_proj.linear.weight.data = model.visual.proj.t().data.clone()
-			
-			model.visual.lora_proj = lora_visual_proj
-			
-			def vit_forward(self, x: torch.Tensor):
-					x = self.conv1(x)
-					x = x.reshape(x.shape[0], x.shape[1], -1)
-					x = x.permute(0, 2, 1)
-					cls = self.class_embedding.to(x.dtype) + torch.zeros(
-							x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device
-					)
-					x = torch.cat([cls, x], dim=1)
-					x = x + self.positional_embedding.to(x.dtype)
-					x = self.dropout(x)
-					x = self.ln_pre(x)
-					x = x.permute(1, 0, 2)
-					x = self.transformer(x)
-					x = x.permute(1, 0, 2)
-					x = self.ln_post(x[:, 0, :])
-					x = self.lora_proj(x)
-					return x
-			
-			model.visual.forward = vit_forward.__get__(model.visual, type(model.visual))
-			replaced_modules.add("Vision: transformer.proj")
-			
-			mem_info = lora_visual_proj.get_memory_footprint()
-			memory_stats['vision_encoder']['base_mb'] += mem_info['base_memory_mb']
-			memory_stats['vision_encoder']['lora_mb'] += mem_info['lora_memory_mb']
-			
-			if verbose:
-					print(f"Wrapped visual.proj "
-								f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
-								f"LoRA: {mem_info['lora_memory_mb']:.2f}MB]")
-	
+			x = torch.cat([cls, x], dim=1)
+			x = x + self.positional_embedding.to(x.dtype)
+			x = self.dropout(x)
+			x = self.ln_pre(x)
+			x = x.permute(1, 0, 2)
+			x = self.transformer(x)
+			x = x.permute(1, 0, 2)
+			x = self.ln_post(x[:, 0, :])
+			x = self.lora_proj(x)
+			return x
+		
+		model.visual.forward = vit_forward.__get__(model.visual, type(model.visual))
+		replaced_modules.add("Vision: transformer.proj")
+		
+		mem_info = lora_visual_proj.get_memory_footprint()
+		memory_stats['vision_encoder']['base_mb'] += mem_info['base_memory_mb']
+		memory_stats['vision_encoder']['lora_mb'] += mem_info['lora_memory_mb']
+		
+		if verbose:
+			print(
+				f"Wrapped visual.proj "
+				f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
+				f"LoRA: {mem_info['lora_memory_mb']:.2f}MB]"
+			)
 	############################################################################################################
 	
 	if verbose:
-			print("\n" + "="*80)
-			print("Applied LoRA to the following modules:")
-			for module in sorted(replaced_modules):
-					print(f" - {module}")
+		print("\n" + "="*80)
+		print("Applied LoRA to the following modules:")
+		for module in sorted(replaced_modules):
+			print(f" - {module}")
+		
+		print("\n" + "="*80)
+		print("Memory Footprint Summary:")
+		print(f"{'Encoder':<20} {'Base (MB)':<15} {'LoRA (MB)':<15} {'Total (MB)':<15}")
+		print("-"*80)
+		
+		for encoder, stats in memory_stats.items():
+			total = stats['base_mb'] + stats['lora_mb']
+			print(f"{encoder:<20} {stats['base_mb']:<15.2f} {stats['lora_mb']:<15.2f} {total:<15.2f}")
+		
+		overall_base = sum(s['base_mb'] for s in memory_stats.values())
+		overall_lora = sum(s['lora_mb'] for s in memory_stats.values())
+		overall_total = overall_base + overall_lora
+		
+		print("-"*80)
+		print(f"{'TOTAL':<20} {overall_base:<15.2f} {overall_lora:<15.2f} {overall_total:<15.2f}")
+		
+		if quantized:
+			# Calculate memory savings
+			full_precision_base = overall_base * (32 / quantization_bits)
+			savings = full_precision_base - overall_base
+			savings_pct = (savings / full_precision_base) * 100
 			
 			print("\n" + "="*80)
-			print("Memory Footprint Summary:")
-			print(f"{'Encoder':<20} {'Base (MB)':<15} {'LoRA (MB)':<15} {'Total (MB)':<15}")
-			print("-"*80)
-			
-			for encoder, stats in memory_stats.items():
-					total = stats['base_mb'] + stats['lora_mb']
-					print(f"{encoder:<20} {stats['base_mb']:<15.2f} {stats['lora_mb']:<15.2f} {total:<15.2f}")
-			
-			overall_base = sum(s['base_mb'] for s in memory_stats.values())
-			overall_lora = sum(s['lora_mb'] for s in memory_stats.values())
-			overall_total = overall_base + overall_lora
-			
-			print("-"*80)
-			print(f"{'TOTAL':<20} {overall_base:<15.2f} {overall_lora:<15.2f} {overall_total:<15.2f}")
-			
-			if quantized:
-					# Calculate memory savings
-					full_precision_base = overall_base * (32 / quantization_bits)
-					savings = full_precision_base - overall_base
-					savings_pct = (savings / full_precision_base) * 100
-					
-					print("\n" + "="*80)
-					print("Quantization Savings:")
-					print(f"  Full precision base: {full_precision_base:.2f} MB")
-					print(f"  Quantized base: {overall_base:.2f} MB")
-					print(f"  Memory saved: {savings:.2f} MB ({savings_pct:.1f}%)")
-			print("="*80)
+			print("Quantization Savings:")
+			print(f"  Full precision base: {full_precision_base:.2f} MB")
+			print(f"  Quantized base: {overall_base:.2f} MB")
+			print(f"  Memory saved: {savings:.2f} MB ({savings_pct:.1f}%)")
+		print("="*80)
 	
 	# Freeze all non-LoRA parameters
 	for name, param in model.named_parameters():
