@@ -3007,6 +3007,7 @@ def lora_finetune_single_label(
 	mdl_fpth = os.path.join(
 		results_dir,
 		f"{mode}_"
+		f"quantized_{quantization_bits}bit_" if quantized else "",
 		f"{model_arch}_"
 		# f"{optimizer.__class__.__name__}_"
 		# f"{scheduler.__class__.__name__}_"
