@@ -2897,6 +2897,7 @@ def lora_finetune_single_label(
 		pairwise_imp_threshold: float,
 		topk_values: List[int] = [1, 5, 10, 15, 20],
 		use_lamb: bool = False,
+		verbose: bool = True,
 	):
 	window_size = minimum_epochs + 1
 
@@ -2929,7 +2930,6 @@ def lora_finetune_single_label(
 		slope_threshold=slope_threshold, # Positive slope is bad for loss
 		pairwise_imp_threshold=pairwise_imp_threshold,
 		# min_phases_before_stopping=1, # Not really needed for LoRA finetune, but for consistency
-		verbose=True,
 	)
 
 	# Dataset and directory setup (same as finetune())
@@ -2958,7 +2958,7 @@ def lora_finetune_single_label(
 		lora_rank=lora_rank,
 		lora_alpha=lora_alpha,
 		lora_dropout=lora_dropout,
-		verbose=True,
+		verbose=verbose,
 	)
 	model.to(device)
 	get_parameters_info(model=model, mode=mode)

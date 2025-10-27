@@ -17,52 +17,45 @@ def exponential_moving_average(
 		return ema
 
 class EarlyStopping:
-		"""
-		Enhanced early stopping with EMA smoothing and adaptive thresholds.
-		Works safely with Full, LoRA, and Progressive fine-tuning methods.
-		"""
-
 		def __init__(
-				self,
-				patience: int = 5,
-				min_delta: float = 1e-3,
-				cumulative_delta: float = 0.01,
-				window_size: int = 5,
-				mode: str = "min",
-				min_epochs: int = 5,
-				restore_best_weights: bool = True,
-				volatility_threshold: float = 10.0,
-				slope_threshold: float = 0.001,  # Small positive default instead of 0.0
-				pairwise_imp_threshold: float = 5e-3,
-				min_phases_before_stopping: Optional[int] = None,
-				ema_window: int = 10,
-				ema_threshold: float = 1e-3,
-				adaptation_factor: float = 0.5,
-				max_patience: int = 30,  # Hard ceiling to prevent runaway patience
+			self,
+			patience: int = 5,
+			min_delta: float = 1e-3,
+			cumulative_delta: float = 0.01,
+			window_size: int = 5,
+			mode: str = "min",
+			min_epochs: int = 5,
+			restore_best_weights: bool = True,
+			volatility_threshold: float = 10.0,
+			slope_threshold: float = 0.001,  # Small positive default instead of 0.0
+			pairwise_imp_threshold: float = 5e-3,
+			min_phases_before_stopping: Optional[int] = None,
+			ema_window: int = 10,
+			ema_threshold: float = 1e-3,
+			adaptation_factor: float = 0.5,
+			max_patience: int = 30,  # Hard ceiling to prevent runaway patience
 		):
-				# Core parameters
-				self.patience = patience
-				self.min_delta = min_delta
-				self.cumulative_delta = cumulative_delta
-				self.window_size = window_size
-				self.mode = mode
-				self.min_epochs = min_epochs
-				self.restore_best_weights = restore_best_weights
-				self.volatility_threshold = volatility_threshold
-				self.slope_threshold = slope_threshold
-				self.pairwise_imp_threshold = pairwise_imp_threshold
-				self.min_phases_before_stopping = min_phases_before_stopping
-				self.adaptation_factor = adaptation_factor
-				self.ema_window = ema_window
-				self.ema_threshold = ema_threshold
-				self.max_patience = max_patience
-
-				# Internal setup
-				self.sign = 1 if mode == "min" else -1
-				self.ema_alpha = 2.0 / (ema_window + 1)
-
-				self.reset()
-				self._log_config()
+			# Core parameters
+			self.patience = patience
+			self.min_delta = min_delta
+			self.cumulative_delta = cumulative_delta
+			self.window_size = window_size
+			self.mode = mode
+			self.min_epochs = min_epochs
+			self.restore_best_weights = restore_best_weights
+			self.volatility_threshold = volatility_threshold
+			self.slope_threshold = slope_threshold
+			self.pairwise_imp_threshold = pairwise_imp_threshold
+			self.min_phases_before_stopping = min_phases_before_stopping
+			self.adaptation_factor = adaptation_factor
+			self.ema_window = ema_window
+			self.ema_threshold = ema_threshold
+			self.max_patience = max_patience
+			# Internal setup
+			self.sign = 1 if mode == "min" else -1
+			self.ema_alpha = 2.0 / (ema_window + 1)
+			self.reset()
+			self._log_config()
 
 		def _log_config(self) -> None:
 			config_summary = f"""

@@ -110,6 +110,7 @@ def main():
 	parser.add_argument('--use_lamb', '-lamb', action='store_true', help='Use LAMB optimizer instead of AdamW')
 	parser.add_argument('--sampling', '-s', type=str, default="stratified_random", choices=["stratified_random", "kfold_stratified"], help='Sampling method')
 	parser.add_argument('--print_every', type=int, default=100, help='Print loss')
+	parser.add_argument('--verbose', '-v', action='store_true', help='Verbose mode')
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
