@@ -2951,10 +2951,11 @@ def lora_finetune_single_label(
 		if quantized:
 			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
 
-	if torch.cuda.is_available():
-		gpu_name = torch.cuda.get_device_name(device)
-		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3) # GB
-		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
+		if torch.cuda.is_available():
+			gpu_name = torch.cuda.get_device_name(device)
+			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3) # GB
+			cuda_capability = torch.cuda.get_device_capability()
+			print(f"   ├─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
 
 	# Apply LoRA to the model
 	model = get_lora_clip(
