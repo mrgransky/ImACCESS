@@ -1679,7 +1679,7 @@ def get_lora_clip(
 	"""
 	capability = torch.cuda.get_device_capability()
 	if capability[0] < 8 and quantized:
-		print(f"QLoRA requires CUDA device with compute capability >= 8.0, got {capability} => Falling back to LoRA")
+		print(f"   └─ QLoRA requires CUDA device with compute capability >= 8.0, got {capability} => Falling back to LoRA")
 		quantized = False
 
 	# Validate quantization settings

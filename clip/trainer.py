@@ -2998,7 +2998,7 @@ def lora_finetune_single_label(
 		last_epoch=-1,
 	)
 	if verbose:
-		print(f"{scheduler.__class__.__name__} scheduler configured")
+		print(f"  ├─ {scheduler.__class__.__name__} scheduler configured")
 		print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
 
