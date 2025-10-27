@@ -2949,7 +2949,7 @@ def lora_finetune_single_label(
 	if verbose:
 		print(f"{mode.upper()} Rank: {lora_rank} Alpha: {lora_alpha} Dropout: {lora_dropout} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}")
 		if quantized:
-			print(f"\t├─ Using Quantization: {quantization_bits}-bit")
+			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
 
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)

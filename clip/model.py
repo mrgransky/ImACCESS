@@ -1685,9 +1685,9 @@ def get_lora_clip(
 		
 		if verbose:
 			print(f"QLoRA")
-			print(f"\t├─ Quantization: {quantization_bits}-bit")
-			print(f"\t├─ Compute dtype: {compute_dtype}")
-			print(f"\t└─ Memory savings: ~{32/quantization_bits:.1f}x for base weights")
+			print(f"  ├─ Quantization: {quantization_bits}-bit")
+			print(f"  ├─ Compute dtype: {compute_dtype}")
+			print(f"  └─ Memory savings: ~{32/quantization_bits:.1f}x for base weights")
 	
 	model = copy.deepcopy(clip_model)
 	replaced_modules = set()
