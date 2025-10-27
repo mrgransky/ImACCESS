@@ -1677,17 +1677,21 @@ def get_lora_clip(
 	Returns:
 			Modified CLIP model with LoRA/QLoRA applied
 	"""
-	
+	capability = torch.cuda.get_device_capability()
+	if capability[0] < 8 and quantized:
+		print(f"QLoRA requires CUDA device with compute capability >= 8.0, got {capability} => Falling back to LoRA")
+		quantized = False
+
 	# Validate quantization settings
 	if quantized:
 		if quantization_bits not in [4, 8]:
 			raise ValueError(f"quantization_bits must be 4 or 8, got {quantization_bits}")
 		
 		if verbose:
-			print(f"QLoRA")
-			print(f"  ├─ Quantization: {quantization_bits}-bit")
-			print(f"  ├─ Compute dtype: {compute_dtype}")
-			print(f"  └─ Memory savings: ~{32/quantization_bits:.1f}x for base weights")
+			print(f"├─ QLoRA")
+			print(f"   ├─ Quantization: {quantization_bits}-bit")
+			print(f"   ├─ Compute dtype: {compute_dtype}")
+			print(f"   └─ Memory savings: ~{32/quantization_bits:.1f}x for base weights")
 	
 	model = copy.deepcopy(clip_model)
 	replaced_modules = set()
