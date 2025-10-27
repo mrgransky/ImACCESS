@@ -21,7 +21,7 @@ from visualize import perform_multilabel_eda
 # how to run [Pouta]:
 # $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 64 -llm_bs 12 -dv "cuda:1" -nw 32 -v > /media/volume/ImACCESS/trash/multimodal_annotation_na.txt &
 # $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 32 -llm_bs 16 -dv "cuda:3" -nw 32 -v > /media/volume/ImACCESS/trash/multimodal_annotation_eu.txt &
-# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 32 -llm_bs 16 -dv "cuda:2" -nw 24 > /media/volume/ImACCESS/trash/multimodal_annotation_h4.txt &
+# $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 32 -llm_bs 12 -dv "cuda:2" -nw 40 > /media/volume/ImACCESS/trash/multimodal_annotation_h4.txt &
 # $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 64 -llm_bs 12 -dv "cuda:3" > /media/volume/ImACCESS/trash/multimodal_annotation_smu.txt &
 
 def convert_to_lowercase(labels_list):

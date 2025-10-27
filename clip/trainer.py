@@ -2897,7 +2897,7 @@ def lora_finetune_single_label(
 		pairwise_imp_threshold: float,
 		topk_values: List[int] = [1, 5, 10, 15, 20],
 		quantization_bits: int=8,
-		quantized: bool=True,
+		quantized: bool=False,
 		use_lamb: bool=False,
 		verbose: bool=True,
 	):
