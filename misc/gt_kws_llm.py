@@ -1482,8 +1482,7 @@ def get_llm_based_labels_opt(
 						unique_results[idx] = None
 				break  # Break retry loop on success	
 			except Exception as e:
-				print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed: {e}")
-				
+				print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed:\n{e}\n")
 				if attempt < max_retries:
 					sleep_time = EXP_BACKOFF ** attempt
 					print(f"⏳ Waiting {sleep_time}s before retry...")
@@ -1546,7 +1545,7 @@ def get_llm_based_labels_opt(
 
 	# Map unique_results back to original order
 	results = []
-	for orig_i, uniq_idx in tqdm(enumerate(original_to_unique_idx), desc="Mapping results", ncols=100):
+	for orig_i, uniq_idx in tqdm(enumerate(original_to_unique_idx), desc="Mapping results", ncols=150):
 		results.append(unique_results[uniq_idx])
 	
 	# if verbose:
@@ -1592,8 +1591,8 @@ def get_llm_based_labels_opt(
 
 	# save results to csv_& xlsx file
 	if csv_file:
-		if verbose: print(f"Saving results to {csv_file}...")
 		output_csv = csv_file.replace(".csv", "_llm_keywords.csv")
+		if verbose: print(f"Saving results to {output_csv}...")
 		df['llm_keywords'] = results
 		df.to_csv(output_csv, index=False)
 		try:

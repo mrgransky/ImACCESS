@@ -316,11 +316,18 @@ def basic_clean(txt):
 	txt = txt.replace('Original Caption:', '')
 	txt = txt.replace('Original caption: ', '')
 	txt = txt.replace('Original caption on envelope: ', '')
+	txt = txt.replace("The photographer's notes indicate", "")
+	txt = txt.replace("This photograph shows", "")
+	txt = txt.replace("This image shows", "")
 	txt = txt.replace('Photograph of ', '')
-	txt = txt.replace('Photograph: ', '')
+	txt = txt.replace('Image of ', '')
 	txt = txt.replace('Portrait of ', '')
+	txt = txt.replace('Photograph: ', '')
+	txt = txt.replace('Image: ', '')
 	txt = txt.replace('File Record', '')
-	txt = txt.replace('The picture shows ', '')
+	txt = txt.replace('The picture shows', '')
+	txt = txt.replace('The photograph shows', '')
+	txt = txt.replace('The image shows', '')
 	txt = txt.replace('[No title entered]', '') # haven't seen this one yet
 	txt = txt.replace('[No description entered]', '') # haven't seen this one yet
 
@@ -341,6 +348,9 @@ def basic_clean(txt):
 
 	# 5) remove all hashtags
 	txt = txt.replace("#", "")
+
+	# 6) remove all double quotes
+	txt = txt.replace("''", "")
 
 	return txt
 
