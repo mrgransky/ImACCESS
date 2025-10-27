@@ -7,6 +7,132 @@ import copy
 import torch.nn.functional as F
 from torch import nn
 from torch.utils.data import DataLoader
+import bitsandbytes as bnb
+
+class LoRALinear(nn.Module):
+		def __init__(
+				self,
+				in_features: int,
+				out_features: int,
+				rank: int,
+				alpha: float,
+				dropout: float,
+				bias: bool,
+				quantized: bool = False,
+				quantization_bits: int = 4,  # 4-bit or 8-bit
+				compute_dtype: torch.dtype = torch.float16,
+		):
+				super(LoRALinear, self).__init__()
+				
+				self.in_features = in_features
+				self.out_features = out_features
+				self.rank = rank
+				self.quantized = quantized
+				self.quantization_bits = quantization_bits
+				self.compute_dtype = compute_dtype
+				
+				# Create base linear layer based on quantization setting
+				if quantized:
+						# Use quantized linear layer from bitsandbytes
+						if quantization_bits == 4:
+								self.linear = bnb.nn.Linear4bit(
+										in_features,
+										out_features,
+										bias=bias,
+										compute_dtype=compute_dtype,
+										compress_statistics=True,
+										quant_type='nf4'  # NormalFloat4 quantization
+								)
+						elif quantization_bits == 8:
+								self.linear = bnb.nn.Linear8bitLt(
+										in_features,
+										out_features,
+										bias=bias,
+										has_fp16_weights=False,
+										threshold=6.0
+								)
+						else:
+								raise ValueError(f"Unsupported quantization bits: {quantization_bits}. Use 4 or 8.")
+				else:
+						# Standard full-precision linear layer
+						self.linear = nn.Linear(in_features, out_features, bias=bias)
+				
+				# Store references for convenience
+				self.weight = self.linear.weight
+				self.bias = self.linear.bias if bias else None
+				
+				# Low-rank adaptation layers (always in full precision)
+				self.lora_A = nn.Linear(in_features, rank, bias=False)
+				self.lora_B = nn.Linear(rank, out_features, bias=False)
+				
+				self.dropout = nn.Dropout(p=dropout)
+				self.scale = alpha / rank
+				
+				# Initialize LoRA weights
+				nn.init.normal_(self.lora_A.weight, mean=0.0, std=1/rank)
+				nn.init.zeros_(self.lora_B.weight)
+				
+				# Freeze base weights
+				self.linear.weight.requires_grad = False
+				if bias and self.linear.bias is not None:
+						self.linear.bias.requires_grad = False
+		
+		def forward(self, x: torch.Tensor) -> torch.Tensor:
+				# Base output (dequantized automatically if quantized)
+				original_output = self.linear(x)
+				
+				# LoRA path (always full precision)
+				lora_output = self.lora_B(self.dropout(self.lora_A(x)))
+				
+				# Combine
+				return original_output + self.scale * lora_output
+		
+		def merge_weights(self) -> None:
+				"""
+				Merge LoRA weights into base weights for inference.
+				WARNING: This will dequantize the base layer if quantized.
+				"""
+				if self.quantized:
+						raise NotImplementedError(
+								"Weight merging for quantized layers is not recommended as it "
+								"would dequantize the base weights, losing the memory benefit. "
+								"Keep LoRA separate during inference for quantized models."
+						)
+				
+				with torch.no_grad():
+						# Compute LoRA delta: B @ A
+						lora_delta = self.scale * (self.lora_B.weight @ self.lora_A.weight)
+						# Add to base weights
+						self.linear.weight.data += lora_delta
+						# Zero out LoRA to disable it
+						self.lora_A.weight.data.zero_()
+						self.lora_B.weight.data.zero_()
+		
+		def get_memory_footprint(self) -> dict:
+				"""Return memory usage statistics."""
+				base_params = self.in_features * self.out_features
+				lora_params = (self.in_features * self.rank) + (self.rank * self.out_features)
+				
+				if self.quantized:
+						# Quantized weights use less memory
+						bytes_per_param = self.quantization_bits / 8
+						base_memory_mb = (base_params * bytes_per_param) / (1024 ** 2)
+				else:
+						# Full precision (fp32 = 4 bytes)
+						base_memory_mb = (base_params * 4) / (1024 ** 2)
+				
+				# LoRA always in fp32
+				lora_memory_mb = (lora_params * 4) / (1024 ** 2)
+				
+				return {
+						'base_params': base_params,
+						'lora_params': lora_params,
+						'base_memory_mb': base_memory_mb,
+						'lora_memory_mb': lora_memory_mb,
+						'total_memory_mb': base_memory_mb + lora_memory_mb,
+						'quantized': self.quantized,
+						'bits': self.quantization_bits if self.quantized else 32
+				}
 
 class SingleLabelLinearProbe(torch.nn.Module):
 		def __init__(
@@ -1025,42 +1151,6 @@ class LAMB(torch.optim.Optimizer):
 						
 				return False
 
-class LoRALinear(torch.nn.Module):
-	def __init__(
-			self,
-			in_features: int,
-			out_features: int,
-			rank: int,
-			alpha: float,
-			dropout: float,
-			bias: bool,
-		):
-		super(LoRALinear, self).__init__()
-		# Original frozen pretrained linear layer from CLIP model
-		self.linear = nn.Linear(in_features, out_features, bias=bias)
-		self.weight = self.linear.weight
-		self.bias = self.linear.bias if bias else None
-
-		# Low-rank adaptation layers to update the original weights 
-		self.lora_A = nn.Linear(in_features, rank, bias=False) # Maps input to a low-rank space
-		self.lora_B = nn.Linear(rank, out_features, bias=False) # Maps low-rank space to output dimension
-
-		self.dropout = nn.Dropout(p=dropout) # regularization to prevent overfitting
-		self.scale = alpha / rank # magnitude of LoRA update
-
-		nn.init.normal_(self.lora_A.weight, mean=0.0, std=1/rank) # Gaussian initialization 
-		nn.init.zeros_(self.lora_B.weight)
-
-		self.linear.weight.requires_grad = False # Freeze original weights
-		if bias:
-			self.linear.bias.requires_grad = False # Freeze original bias
-
-	def forward(self, x: torch.Tensor) -> torch.Tensor:
-		original_output = self.linear(x) # Original frozen pretrained CLIP output
-		lora_output = self.lora_B(self.dropout(self.lora_A(x))) # LoRA update with dropout regularization
-		lora_combined = original_output + self.scale * lora_output
-		return lora_combined
-
 class Bottleneck(torch.nn.Module):
 		expansion = 4
 		def __init__(self, inplanes, planes, stride=1):
@@ -1564,18 +1654,56 @@ def get_lora_clip(
 		lora_dropout: float,
 		target_text_modules: List[str] = ["in_proj", "out_proj", "c_fc", "c_proj"],
 		target_vision_modules: List[str] = ["in_proj", "out_proj", "q_proj", "k_proj", "v_proj", "c_fc", "c_proj"],
+		quantized: bool = False,
+		quantization_bits: int = 4,
+		compute_dtype: torch.dtype = torch.float16,
 		verbose: bool = False,
 	):
+	"""
+	Apply LoRA or QLoRA to a CLIP model.
+	
+	Args:
+			clip_model: Pre-trained CLIP model
+			lora_rank: Rank of LoRA matrices
+			lora_alpha: Scaling factor for LoRA updates
+			lora_dropout: Dropout rate for LoRA layers
+			target_text_modules: Text encoder modules to adapt
+			target_vision_modules: Vision encoder modules to adapt
+			quantized: If True, use QLoRA (quantized base weights)
+			quantization_bits: Bits for quantization (4 or 8)
+			compute_dtype: Computation dtype for quantized operations
+			verbose: Print detailed information
+	
+	Returns:
+			Modified CLIP model with LoRA/QLoRA applied
+	"""
+	
+	# Validate quantization settings
+	if quantized:
+		if quantization_bits not in [4, 8]:
+			raise ValueError(f"quantization_bits must be 4 or 8, got {quantization_bits}")
+		
+		if verbose:
+			print(f"🔧 QLoRA Mode Enabled:")
+			print(f"   Quantization: {quantization_bits}-bit")
+			print(f"   Compute dtype: {compute_dtype}")
+			print(f"   Memory savings: ~{32/quantization_bits:.1f}x for base weights")
+	
 	model = copy.deepcopy(clip_model)
 	replaced_modules = set()
+	memory_stats = {
+		'text_encoder': {'base_mb': 0, 'lora_mb': 0},
+		'vision_encoder': {'base_mb': 0, 'lora_mb': 0}
+	}
 	
-	# Helper function to replace a linear layer
 	def replace_linear(
-		parent: torch.nn.Module, 
-		child_name: str, 
-		module: torch.nn.Linear, 
+		parent: torch.nn.Module,
+		child_name: str,
+		module: torch.nn.Linear,
 		name_prefix: str,
+		encoder_type: str  # 'text' or 'vision'
 	):
+		"""Replace linear layer with LoRA/QLoRA version."""
 		lora_layer = LoRALinear(
 			in_features=module.in_features,
 			out_features=module.out_features,
@@ -1583,25 +1711,48 @@ def get_lora_clip(
 			alpha=lora_alpha,
 			dropout=lora_dropout,
 			bias=module.bias is not None,
+			quantized=quantized,
+			quantization_bits=quantization_bits,
+			compute_dtype=compute_dtype,
 		)
-		lora_layer.linear.weight.data.copy_(module.weight.data)
-		if module.bias is not None:
-			lora_layer.linear.bias.data.copy_(module.bias.data)
+		
+		# Copy original weights
+		if not quantized:
+			# For non-quantized, direct copy
+			lora_layer.linear.weight.data.copy_(module.weight.data)
+			if module.bias is not None:
+				lora_layer.linear.bias.data.copy_(module.bias.data)
+		else:
+			# For quantized, need to set weights before quantization happens
+			with torch.no_grad():
+				lora_layer.linear.weight.data = module.weight.data.clone()
+				if module.bias is not None:
+					lora_layer.linear.bias.data = module.bias.data.clone()
+		
 		setattr(parent, child_name, lora_layer)
 		replaced_modules.add(f"{name_prefix}: {child_name}")
+		
+		# Track memory usage
+		mem_info = lora_layer.get_memory_footprint()
+		encoder_key = 'text_encoder' if encoder_type == 'text' else 'vision_encoder'
+		memory_stats[encoder_key]['base_mb'] += mem_info['base_memory_mb']
+		memory_stats[encoder_key]['lora_mb'] += mem_info['lora_memory_mb']
+		
 		if verbose:
-			print(f"Replaced {name_prefix}: {child_name}")
+			print(
+				f"Replaced {name_prefix}: {child_name} "
+				f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
+				f"LoRA: {mem_info['lora_memory_mb']:.2f}MB]"
+			)
+	
 	################################################ Encoders ###############################################
-	################ process raw inputs into features, need adaptation for feature extraction ################
-
+	
 	# Text encoder
 	for name, module in model.transformer.named_modules():
-		# Pure Linear layers
 		if isinstance(module, nn.Linear) and any(t in name.split(".")[-1] for t in target_text_modules):
 			parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
 			parent = model.transformer if parent_name == "" else model.transformer.get_submodule(parent_name)
-			replace_linear(parent, child_name, module, "Text")
-		# packed Q‑K‑V of MultiheadAttention
+			replace_linear(parent, child_name, module, "Text", "text")
 		elif isinstance(module, nn.MultiheadAttention) and "in_proj" in target_text_modules:
 			lora_layer = LoRALinear(
 				in_features=module.embed_dim,
@@ -1610,34 +1761,41 @@ def get_lora_clip(
 				alpha=lora_alpha,
 				dropout=lora_dropout,
 				bias=True,
+				quantized=quantized,
+				quantization_bits=quantization_bits,
+				compute_dtype=compute_dtype,
 			)
-			if lora_layer.linear.weight.shape != module.in_proj_weight.shape:
-				print(f"Shape mismatch for Text QKV: expected {module.in_proj_weight.shape}, got {lora_layer.linear.weight.shape}")
-				raise ValueError(f"LoRA rank {lora_rank} does not match module in_proj_weight shape {module.in_proj_weight.shape}")
-			
 			with torch.no_grad():
-				lora_layer.linear.weight.data.copy_(module.in_proj_weight.data)
-				lora_layer.linear.bias.data.copy_(module.in_proj_bias.data)
-
-			# Replace the original in_proj_weight and in_proj_bias with LoRA layers
+				if not quantized:
+					lora_layer.linear.weight.data.copy_(module.in_proj_weight.data)
+					lora_layer.linear.bias.data.copy_(module.in_proj_bias.data)
+				else:
+					lora_layer.linear.weight.data = module.in_proj_weight.data.clone()
+					lora_layer.linear.bias.data = module.in_proj_bias.data.clone()
+			
 			module.in_proj_weight = lora_layer.linear.weight
 			module.in_proj_bias = lora_layer.linear.bias
 			module.register_module("lora_in_proj", lora_layer)
 			replaced_modules.add(f"Text: {name}.in_proj")
+			
+			mem_info = lora_layer.get_memory_footprint()
+			memory_stats['text_encoder']['base_mb'] += mem_info['base_memory_mb']
+			memory_stats['text_encoder']['lora_mb'] += mem_info['lora_memory_mb']
+			
 			if verbose:
 				print(
-					f"Replaced Text: {name}.in_proj: {module.in_proj_weight.shape} --> "
-					f"Wrapped Text MultiheadAttention.{name}.in_proj with LoRA"
+					f"Wrapped Text MultiheadAttention.{name}.in_proj "
+					f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
+					f"LoRA: {mem_info['lora_memory_mb']:.2f}MB]"
 				)
-
+	
 	# Vision encoder
 	for name, module in model.visual.named_modules():
-		# Linear layers
 		if isinstance(module, nn.Linear) and any(t in name.split(".")[-1] for t in target_vision_modules):
 			parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
 			parent = model.visual if parent_name == "" else model.visual.get_submodule(parent_name)
-			replace_linear(parent, child_name, module, "Vision")
-		# Packed QKV of MultiheadAttention
+			replace_linear(parent, child_name, module, "Vision", "vision")
+		
 		elif isinstance(module, nn.MultiheadAttention) and "in_proj" in target_vision_modules:
 			lora_layer = LoRALinear(
 				in_features=module.embed_dim,
@@ -1646,117 +1804,178 @@ def get_lora_clip(
 				alpha=lora_alpha,
 				dropout=lora_dropout,
 				bias=True,
+				quantized=quantized,
+				quantization_bits=quantization_bits,
+				compute_dtype=compute_dtype,
 			)
-			if lora_layer.linear.weight.shape != module.in_proj_weight.shape:
-				print(f"Shape mismatch for Vision QKV: expected {module.in_proj_weight.shape}, got {lora_layer.linear.weight.shape}")
-				raise ValueError(f"LoRA rank {lora_rank} does not match module in_proj_weight shape {module.in_proj_weight.shape}")
-
+			
 			with torch.no_grad():
-				lora_layer.linear.weight.data.copy_(module.in_proj_weight.data)
-				lora_layer.linear.bias.data.copy_(module.in_proj_bias.data)
-
+				if not quantized:
+					lora_layer.linear.weight.data.copy_(module.in_proj_weight.data)
+					lora_layer.linear.bias.data.copy_(module.in_proj_bias.data)
+				else:
+					lora_layer.linear.weight.data = module.in_proj_weight.data.clone()
+					lora_layer.linear.bias.data = module.in_proj_bias.data.clone()
+			
 			module.in_proj_weight = lora_layer.linear.weight
 			module.in_proj_bias = lora_layer.linear.bias
 			module.register_module("lora_in_proj", lora_layer)
 			replaced_modules.add(f"Vision: {name}.in_proj")
+			
+			mem_info = lora_layer.get_memory_footprint()
+			memory_stats['vision_encoder']['base_mb'] += mem_info['base_memory_mb']
+			memory_stats['vision_encoder']['lora_mb'] += mem_info['lora_memory_mb']
+			
 			if verbose:
 				print(
-					f"Replaced Vision: {name}.in_proj: {module.in_proj_weight.shape} --> "
-					f"Wrapped Vision MultiheadAttention.{name}.in_proj with LoRA"
+					f"Wrapped Vision MultiheadAttention.{name}.in_proj "
+					f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
+					f"LoRA: {mem_info['lora_memory_mb']:.2f}MB]"
 				)
-	################################################ Encoders ###############################################
-
+	
 	############################################## Projections ##############################################
-	################## align features into a shared space (need adaptation for alignment) ##################
+	
 	# Text projection
 	if hasattr(model, "text_projection") and isinstance(model.text_projection, nn.Parameter):
-		in_dim = model.text_projection.size(0)
-		out_dim = model.text_projection.size(1)
-		lora_text_proj = LoRALinear(
-			in_features=in_dim,
-			out_features=out_dim,
-			rank=lora_rank,
-			alpha=lora_alpha,
-			dropout=lora_dropout,
-			bias=False,
-		)
-		if lora_text_proj.linear.weight.shape != (out_dim, in_dim):
-			print(f"Shape mismatch for Text projection: expected {(out_dim, in_dim)}, got {lora_text_proj.linear.weight.shape}")
-			raise ValueError(f"LoRA rank {lora_rank} does not match module text_projection shape {model.text_projection.shape}")
+			in_dim = model.text_projection.size(0)
+			out_dim = model.text_projection.size(1)
+			lora_text_proj = LoRALinear(
+					in_features=in_dim,
+					out_features=out_dim,
+					rank=lora_rank,
+					alpha=lora_alpha,
+					dropout=lora_dropout,
+					bias=False,
+					quantized=quantized,
+					quantization_bits=quantization_bits,
+					compute_dtype=compute_dtype,
+			)
+			
+			with torch.no_grad():
+					if not quantized:
+							lora_text_proj.linear.weight.data.copy_(model.text_projection.t().data)
+					else:
+							lora_text_proj.linear.weight.data = model.text_projection.t().data.clone()
+			
+			model.lora_text_projection = lora_text_proj
+			
+			def encode_text(self, text):
+					x = self.token_embedding(text).type(self.dtype)
+					x = x + self.positional_embedding.type(self.dtype)
+					x = x.permute(1, 0, 2)
+					x = self.transformer(x)
+					x = x.permute(1, 0, 2)
+					x = self.ln_final(x)
+					x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)]
+					return self.lora_text_projection(x)
+			
+			model.encode_text = encode_text.__get__(model, type(model))
+			replaced_modules.add("Text: text_projection")
+			
+			mem_info = lora_text_proj.get_memory_footprint()
+			memory_stats['text_encoder']['base_mb'] += mem_info['base_memory_mb']
+			memory_stats['text_encoder']['lora_mb'] += mem_info['lora_memory_mb']
+			
+			if verbose:
+					print(f"Wrapped text_projection "
+								f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
+								f"LoRA: {mem_info['lora_memory_mb']:.2f}MB]")
 	
-		with torch.no_grad():
-			lora_text_proj.linear.weight.data.copy_(model.text_projection.t().data)
-	
-		model.lora_text_projection = lora_text_proj
-	
-		def encode_text(self, text):
-			x = self.token_embedding(text).type(self.dtype)
-			x = x + self.positional_embedding.type(self.dtype)
-			x = x.permute(1, 0, 2)
-			x = self.transformer(x)
-			x = x.permute(1, 0, 2)
-			x = self.ln_final(x)
-			x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)]
-			return self.lora_text_projection(x)
-
-		model.encode_text = encode_text.__get__(model, type(model))
-		replaced_modules.add("Text: text_projection")
-		if verbose:
-			print(f"Wrapped text_projection with LoRA")
-
 	# Visual projection (ViT)
 	if hasattr(model.visual, "proj") and isinstance(model.visual.proj, nn.Parameter):
-		in_dim = model.visual.proj.size(0)
-		out_dim = model.visual.proj.size(1)
-		lora_visual_proj = LoRALinear(
-			in_features=in_dim,
-			out_features=out_dim,
-			rank=lora_rank,
-			alpha=lora_alpha,
-			dropout=lora_dropout,
-			bias=False,
-		)
-		if lora_visual_proj.linear.weight.shape != (out_dim, in_dim):
-			print(f"Shape mismatch for Vision projection: expected {(out_dim, in_dim)}, got {lora_visual_proj.linear.weight.shape}")
-			raise ValueError(f"LoRA rank {lora_rank} does not match module visual.proj shape {model.visual.proj.shape}")
-		with torch.no_grad():
-			lora_visual_proj.linear.weight.data.copy_(model.visual.proj.t().data)
-
-		model.visual.lora_proj = lora_visual_proj
+			in_dim = model.visual.proj.size(0)
+			out_dim = model.visual.proj.size(1)
+			lora_visual_proj = LoRALinear(
+					in_features=in_dim,
+					out_features=out_dim,
+					rank=lora_rank,
+					alpha=lora_alpha,
+					dropout=lora_dropout,
+					bias=False,
+					quantized=quantized,
+					quantization_bits=quantization_bits,
+					compute_dtype=compute_dtype,
+			)
+			
+			with torch.no_grad():
+					if not quantized:
+							lora_visual_proj.linear.weight.data.copy_(model.visual.proj.t().data)
+					else:
+							lora_visual_proj.linear.weight.data = model.visual.proj.t().data.clone()
+			
+			model.visual.lora_proj = lora_visual_proj
+			
+			def vit_forward(self, x: torch.Tensor):
+					x = self.conv1(x)
+					x = x.reshape(x.shape[0], x.shape[1], -1)
+					x = x.permute(0, 2, 1)
+					cls = self.class_embedding.to(x.dtype) + torch.zeros(
+							x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device
+					)
+					x = torch.cat([cls, x], dim=1)
+					x = x + self.positional_embedding.to(x.dtype)
+					x = self.dropout(x)
+					x = self.ln_pre(x)
+					x = x.permute(1, 0, 2)
+					x = self.transformer(x)
+					x = x.permute(1, 0, 2)
+					x = self.ln_post(x[:, 0, :])
+					x = self.lora_proj(x)
+					return x
+			
+			model.visual.forward = vit_forward.__get__(model.visual, type(model.visual))
+			replaced_modules.add("Vision: transformer.proj")
+			
+			mem_info = lora_visual_proj.get_memory_footprint()
+			memory_stats['vision_encoder']['base_mb'] += mem_info['base_memory_mb']
+			memory_stats['vision_encoder']['lora_mb'] += mem_info['lora_memory_mb']
+			
+			if verbose:
+					print(f"Wrapped visual.proj "
+								f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
+								f"LoRA: {mem_info['lora_memory_mb']:.2f}MB]")
 	
-		def vit_forward(self, x: torch.Tensor):
-			x = self.conv1(x)
-			x = x.reshape(x.shape[0], x.shape[1], -1)
-			x = x.permute(0, 2, 1) # B, N, C
-			cls = self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device)
-			x = torch.cat([cls, x], dim=1)
-			x = x + self.positional_embedding.to(x.dtype)
-			x = self.dropout(x)
-			x = self.ln_pre(x)
-			x = x.permute(1, 0, 2) # N, B, C
-			x = self.transformer(x)
-			x = x.permute(1, 0, 2) # B, N, C
-			x = self.ln_post(x[:, 0, :]) # CLS token
-			x = self.lora_proj(x) # LoRA projection Head
-			return x
-
-		model.visual.forward = vit_forward.__get__(model.visual, type(model.visual))
-		replaced_modules.add("Vision: transformer.proj")
-
-		if verbose:
-			print(f"Wrapped visual.proj with LoRA")
-	############################################## Projections ##############################################
-
+	############################################################################################################
+	
 	if verbose:
-		print("\n><>< Applied LoRA to the following modules:")
-		for module in sorted(replaced_modules):
-			print(f" - {module}")
-
-	# Freeze all non-LoRA parameters:
-	# base model’s weights (and their associated dropout layers) are frozen
+			print("\n" + "="*80)
+			print("Applied LoRA to the following modules:")
+			for module in sorted(replaced_modules):
+					print(f" - {module}")
+			
+			print("\n" + "="*80)
+			print("Memory Footprint Summary:")
+			print(f"{'Encoder':<20} {'Base (MB)':<15} {'LoRA (MB)':<15} {'Total (MB)':<15}")
+			print("-"*80)
+			
+			for encoder, stats in memory_stats.items():
+					total = stats['base_mb'] + stats['lora_mb']
+					print(f"{encoder:<20} {stats['base_mb']:<15.2f} {stats['lora_mb']:<15.2f} {total:<15.2f}")
+			
+			overall_base = sum(s['base_mb'] for s in memory_stats.values())
+			overall_lora = sum(s['lora_mb'] for s in memory_stats.values())
+			overall_total = overall_base + overall_lora
+			
+			print("-"*80)
+			print(f"{'TOTAL':<20} {overall_base:<15.2f} {overall_lora:<15.2f} {overall_total:<15.2f}")
+			
+			if quantized:
+					# Calculate memory savings
+					full_precision_base = overall_base * (32 / quantization_bits)
+					savings = full_precision_base - overall_base
+					savings_pct = (savings / full_precision_base) * 100
+					
+					print("\n" + "="*80)
+					print("Quantization Savings:")
+					print(f"  Full precision base: {full_precision_base:.2f} MB")
+					print(f"  Quantized base: {overall_base:.2f} MB")
+					print(f"  Memory saved: {savings:.2f} MB ({savings_pct:.1f}%)")
+			print("="*80)
+	
+	# Freeze all non-LoRA parameters
 	for name, param in model.named_parameters():
 		param.requires_grad = "lora_A" in name or "lora_B" in name
-
+	
 	return model
 
 def get_probe_clip(

@@ -1,3 +1,4 @@
+from tabnanny import verbose
 from utils import *
 from model import get_lora_clip, LAMB, SingleLabelLinearProbe, MultiLabelProbe, get_probe_clip
 from early_stopper import EarlyStopping
@@ -2928,6 +2929,7 @@ def lora_finetune_single_label(
 		slope_threshold=slope_threshold, # Positive slope is bad for loss
 		pairwise_imp_threshold=pairwise_imp_threshold,
 		# min_phases_before_stopping=1, # Not really needed for LoRA finetune, but for consistency
+		verbose=True,
 	)
 
 	# Dataset and directory setup (same as finetune())
@@ -2942,7 +2944,9 @@ def lora_finetune_single_label(
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
 
-	print(f"{mode} | Rank: {lora_rank} | Alpha: {lora_alpha} | Dropout: {lora_dropout} | {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
+	if verbose:
+		print(f"{mode} | Rank: {lora_rank} | Alpha: {lora_alpha} | Dropout: {lora_dropout} | {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}".center(160, "-"))
+
 	if torch.cuda.is_available():
 		gpu_name = torch.cuda.get_device_name(device)
 		total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3) # GB
@@ -2986,9 +2990,10 @@ def lora_finetune_single_label(
 		eta_min=eta_min,
 		last_epoch=-1,
 	)
-	print(f"{scheduler.__class__.__name__} scheduler configured")
-	print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
-	print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
+	if verbose:
+		print(f"{scheduler.__class__.__name__} scheduler configured")
+		print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
+		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
 
 	criterion = torch.nn.CrossEntropyLoss()
 	scaler = torch.amp.GradScaler(device=device)
