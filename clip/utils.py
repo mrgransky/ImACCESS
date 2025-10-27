@@ -76,6 +76,9 @@ USER = os.getenv('USER')
 CLUSTER = os.environ.get('SLURM_CLUSTER_NAME', "local")
 HOST = platform.node()
 
+os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+os.environ['BITSANDBYTES_NOWELCOME'] = '1'
+
 def compute_slope(window: List[float]) -> float:
 	if len(window) < 2:
 		return 0.0
