@@ -1099,7 +1099,7 @@ def get_adapted_clip(
 	# Freeze all non-adapter parameters
 	for name, param in model.named_parameters():
 		if method == "vera":
-			param.requires_grad = "vera_d" in name or "vera_b" in name
+			param.requires_grad = "lambda_d" in name or "lambda_b" in name
 		elif method == "dora":
 			param.requires_grad = "lora_A" in name or "lora_B" in name or "magnitude" in name
 		else:  # lora
