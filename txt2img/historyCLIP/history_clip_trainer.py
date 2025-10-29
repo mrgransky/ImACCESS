@@ -11,11 +11,13 @@ from trainer import (
 	probe_finetune_single_label,
 	lora_finetune_single_label, 
 	dora_finetune_single_label,
+	vera_finetune_single_label,
 	progressive_finetune_single_label, 
 	full_finetune_multi_label,
 	probe_finetune_multi_label,
 	lora_finetune_multi_label,
 	dora_finetune_multi_label,
+	vera_finetune_multi_label,
 	progressive_finetune_multi_label,
 )
 import visualize as viz
@@ -73,7 +75,7 @@ def main():
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
 	parser.add_argument('--dataset_type', '-dt', type=str, choices=['single_label', 'multi_label'], default='single_label', help='Dataset type (single_label/multi_label)')
 	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain'], default='finetune', help='Choose mode (train/finetune/pretrain)')
-	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'probe', 'lora', 'dora', 'progressive'], default=None, help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
+	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'probe', 'lora', 'dora', 'vera', 'progressive'], default=None, help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--epochs', '-e', type=int, default=63, help='Number of epochs')
@@ -226,6 +228,7 @@ def main():
 				'probe': probe_finetune_single_label,
 				'lora': lora_finetune_single_label,
 				'dora': dora_finetune_single_label,
+				'vera': vera_finetune_single_label,
 				'progressive': progressive_finetune_single_label,
 			},
 			'multi_label': {
@@ -233,6 +236,7 @@ def main():
 				'probe': probe_finetune_multi_label,
 				'lora': lora_finetune_multi_label,
 				'dora': dora_finetune_multi_label,
+				'vera': vera_finetune_multi_label,
 				'progressive': progressive_finetune_multi_label,
 			}
 		}
@@ -261,7 +265,7 @@ def main():
 							'lora_rank': args.lora_rank,
 							'lora_alpha': args.lora_alpha,
 							'lora_dropout': args.lora_dropout
-						} if args.finetune_strategy == 'lora' or args.finetune_strategy == 'dora' else {}
+						} if args.finetune_strategy == 'lora' or args.finetune_strategy == 'dora' or args.finetune_strategy == 'vera' else {}
 					),
 				**(
 						{
