@@ -493,7 +493,7 @@ def get_adapted_clip(
 			statement = (
 				f"Replaced {name_prefix}: {child_name} "
 				f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
-				f"LoRA: {mem_info['lora_memory_mb']:.2f}MB"
+				f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB"
 			)
 			if method == "dora":
 				statement += f", Magnitude: {mem_info['magnitude_memory_mb']:.2f}MB]"
