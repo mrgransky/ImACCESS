@@ -74,17 +74,21 @@ def extract_url_info(url:str)-> Dict:
 	parsed_url = urlparse(url)
 	base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/gallery" # Extract the base URL
 	path_components = parsed_url.path.strip('/').split('/') # Split the path into components		
+
 	# Extract country, main_label, and type
 	country = path_components[1] if len(path_components) > 1 else None
 	main_label = path_components[2] if len(path_components) > 2 else None
 	type_ = path_components[3] if len(path_components) > 3 else None
+
 	# Decode URL-encoded characters (if any)
 	if main_label:
 		main_label = unquote(main_label)
 		main_label = re.sub(r'[^a-zA-Z\s]', ' ', main_label) # Remove special characters and digits
 		main_label = re.sub(r'\s+', ' ', main_label)  # Remove extra whitespace
+
 	if type_:
 		type_ = unquote(type_)
+
 	return {
 		"base_url": base_url,
 		"country": country,
@@ -98,26 +102,8 @@ def get_dframe(
 		user_query: str,
 	) -> pd.DataFrame:
 
-	# ###########################
-	# # TODO: integrity changes with other datasets otherwise
-	# if user_query is None:
-	# 	return None
-	# ###########################
-
 	print(f">> Extracting DF for user_query[{doc_idx}]: « {user_query} » from {doc_url}")
 	
-	# qv_processed = re.sub(
-	# 	pattern=" ", 
-	# 	repl="_", 
-	# 	string=user_query,
-	# )
-	# url_processed = re.sub(
-	# 	pattern=r"/|:|\.",
-	# 	repl="_",
-	# 	string=doc_url,
-	# )
-	# df_fpth = os.path.join(HITs_DIR, f"df_query_{qv_processed}_URL_{url_processed}_{START_DATE}_{END_DATE}.gz")
-
 	content_to_hash = f"{doc_url}_{START_DATE}_{END_DATE}"
 	hash_digest = hashlib.md5(content_to_hash.encode('utf-8')).hexdigest()
 	df_fpth = os.path.join(HITs_DIR, f"df_{hash_digest}.gz")
@@ -179,7 +165,7 @@ def get_dframe(
 		parent_a = img_tag.find_parent('a')
 		doc_title = img_tag.get("alt")
 		doc_title = doc_title if doc_title != "Folder Icon" else None
-		img_url = img_url.replace("_cache/", "") # Remove "_cache/" from the URL
+		img_url = img_url.replace("_cache/", "")
 		img_url = re.sub(r'-\d+x\d+\.jpg$', '.jpg', img_url) # Remove the thumbnail size from the end of the URL
 		filename = os.path.basename(img_url)
 		img_fpath = os.path.join(IMAGE_DIR, filename)
@@ -212,24 +198,22 @@ def get_dframe(
 			except Exception as e:
 				print(f"Failed to download {img_url}: {e}")
 				continue
-		# enriched_document_description = user_query + " " + (doc_title or '') + " " + (doc_description or '')
+
 		enriched_document_description = " ".join(filter(None, [doc_title, doc_description])).strip()
-		# print(f"[before] enriched_document_description: {enriched_document_description}")
-		# enriched_document_description = " ".join(list(set(enriched_document_description.lower().split())))
-		# enriched_document_description = clean_(enriched_document_description)
 		print(f"enriched_document_description: {enriched_document_description}")
+
 		row = {
 			'id': filename,
+			'date': extracted_year,
 			'doc_url': specific_doc_url,
 			'img_url': img_url,
 			'title': doc_title,
 			'description': doc_description,
-			'enriched_document_description': enriched_document_description,
 			'country': doc_url_info.get("country"),
 			'user_query': [user_query] if user_query else None,
 			'label': user_query if user_query else None,
-			'date': extracted_year,
-			'img_path': os.path.join(IMAGE_DIR, filename),
+			'img_path': img_fpath,
+			'enriched_document_description': enriched_document_description,
 		}
 		data.append(row)
 

@@ -10,10 +10,12 @@ from trainer import (
 	full_finetune_single_label, 
 	probe_finetune_single_label,
 	lora_finetune_single_label, 
+	dora_finetune_single_label,
 	progressive_finetune_single_label, 
 	full_finetune_multi_label,
 	probe_finetune_multi_label,
 	lora_finetune_multi_label,
+	dora_finetune_multi_label,
 	progressive_finetune_multi_label,
 )
 import visualize as viz
@@ -71,7 +73,7 @@ def main():
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
 	parser.add_argument('--dataset_type', '-dt', type=str, choices=['single_label', 'multi_label'], default='single_label', help='Dataset type (single_label/multi_label)')
 	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain'], default='finetune', help='Choose mode (train/finetune/pretrain)')
-	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'probe', 'lora', 'progressive'], default=None, help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
+	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'probe', 'lora', 'dora', 'progressive'], default=None, help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--epochs', '-e', type=int, default=63, help='Number of epochs')
@@ -125,7 +127,7 @@ def main():
 		assert args.min_epochs_per_phase is not None, "min_epochs_per_phase must be specified for progressive finetuning (example: -mepph 5)"
 		assert args.total_num_phases is not None, "total_num_phases must be specified for progressive finetuning (example: -tnp 6)"
 
-	if args.finetune_strategy == "lora":
+	if args.finetune_strategy == "lora" or args.finetune_strategy == "dora":
 		assert args.lora_rank is not None, "lora_rank must be specified for lora finetuning"
 		assert args.lora_alpha is not None, "lora_alpha must be specified for lora finetuning"
 		assert args.lora_dropout is not None, "lora_dropout must be specified for lora finetuning"
@@ -158,7 +160,7 @@ def main():
 			if args.finetune_strategy == "pretrain":
 				log_file_base_name = f"_{dataset_name}_{args.dataset_type}_{args.mode}_{arch_name}"
 
-			if args.finetune_strategy == "lora":
+			if args.finetune_strategy == "lora" or args.finetune_strategy == "dora":
 				log_file_base_name += f"_lor_{args.lora_rank}_loa_{args.lora_alpha}_lod_{args.lora_dropout}"
 			
 			if args.finetune_strategy == "progressive":
@@ -223,12 +225,14 @@ def main():
 				'full': full_finetune_single_label,
 				'probe': probe_finetune_single_label,
 				'lora': lora_finetune_single_label,
+				'dora': dora_finetune_single_label,
 				'progressive': progressive_finetune_single_label,
 			},
 			'multi_label': {
 				'full': full_finetune_multi_label,
 				'probe': probe_finetune_multi_label,
 				'lora': lora_finetune_multi_label,
+				'dora': dora_finetune_multi_label,
 				'progressive': progressive_finetune_multi_label,
 			}
 		}
@@ -257,7 +261,7 @@ def main():
 							'lora_rank': args.lora_rank,
 							'lora_alpha': args.lora_alpha,
 							'lora_dropout': args.lora_dropout
-						} if args.finetune_strategy == 'lora' else {}
+						} if args.finetune_strategy == 'lora' or args.finetune_strategy == 'dora' else {}
 					),
 				**(
 						{
