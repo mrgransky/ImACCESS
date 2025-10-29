@@ -537,10 +537,6 @@ class VeRALinear(torch.nn.Module):
 		return base_output + vera_output
 	
 	def merge_weights(self) -> None:
-		"""
-		Merge VeRA weights into base weights for inference.
-		WARNING: This will dequantize the base layer if quantized.
-		"""
 		if self.quantized:
 			raise NotImplementedError(
 				"Weight merging for quantized VeRA layers is not recommended as it "
@@ -721,7 +717,7 @@ def get_adapted_clip(
 				f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
 			)
 			if method == "vera":
-				statement += f"{method_name}: {mem_info['vera_memory_mb']:.2f}MB (trainable only)]"
+				statement += f"{method_name}: {mem_info['vera_memory_mb']:.4f}MB (trainable only)]"
 			elif method == "dora":
 				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB, Magnitude: {mem_info['magnitude_memory_mb']:.2f}MB]"
 			else:
@@ -779,7 +775,7 @@ def get_adapted_clip(
 					f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
 				)
 				if method == "vera":
-					statement += f"{method_name}: {mem_info['vera_memory_mb']:.2f}MB (trainable only)]"
+					statement += f"{method_name}: {mem_info['vera_memory_mb']:.4f}MB (trainable only)]"
 				elif method == "dora":
 					statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB, Magnitude: {mem_info['magnitude_memory_mb']:.2f}MB]"
 				else:
@@ -835,7 +831,7 @@ def get_adapted_clip(
 					f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
 				)
 				if method == "vera":
-					statement += f"{method_name}: {mem_info['vera_memory_mb']:.2f}MB (trainable only)]"
+					statement += f"{method_name}: {mem_info['vera_memory_mb']:.4f}MB (trainable only)]"
 				elif method == "dora":
 					statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB, Magnitude: {mem_info['magnitude_memory_mb']:.2f}MB]"
 				else:
@@ -914,7 +910,7 @@ def get_adapted_clip(
 				f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
 			)
 			if method == "vera":
-				statement += f"{method_name}: {mem_info['vera_memory_mb']:.2f}MB (trainable only)]"
+				statement += f"{method_name}: {mem_info['vera_memory_mb']:.4f}MB (trainable only)]"
 			elif method == "dora":
 				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB, Magnitude: {mem_info['magnitude_memory_mb']:.2f}MB]"
 			else:
@@ -999,7 +995,7 @@ def get_adapted_clip(
 				f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
 			)
 			if method == "vera":
-				statement += f"{method_name}: {mem_info['vera_memory_mb']:.2f}MB (trainable only)]"
+				statement += f"{method_name}: {mem_info['vera_memory_mb']:.4f}MB (trainable only)]"
 			elif method == "dora":
 				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB, Magnitude: {mem_info['magnitude_memory_mb']:.2f}MB]"
 			else:
@@ -1085,10 +1081,10 @@ def get_adapted_clip(
 		# Method-specific statistics
 		print(f"\n{method_name} Statistics:")
 		if method == "vera":
-			print(f"\tShared frozen matrices: {memory_stats['shared_matrices_mb']:.2f} MB")
-			print(f"\tTrainable scaling vectors: {overall_adapter:.2f} MB")
-			print(f"\tTotal trainable: {overall_adapter:.2f} MB")
-			print(f"\tFrozen base weights: {overall_base:.2f} MB")
+			print(f"\tShared frozen matrices: {memory_stats['shared_matrices_mb']} MB")
+			print(f"\tTrainable scaling vectors: {overall_adapter:.4f} MB")
+			print(f"\tTotal trainable: {overall_adapter:.4f} MB")
+			print(f"\tFrozen base weights: {overall_base:.3f} MB")
 			print(f"\tParameter reduction vs LoRA: ~{(1 - overall_adapter/(overall_adapter + overall_base))*100:.1f}%")
 		elif method == "dora":
 			print(f"\tTrainable magnitude parameters: {overall_magnitude:.2f} MB")
