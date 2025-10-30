@@ -3263,7 +3263,130 @@ def vera_finetune_single_label(
 		fname=os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
 	)
 
+def adalora_finetune_single_label(
+		model: torch.nn.Module,
+		train_loader: DataLoader,
+		validation_loader: DataLoader,
+		num_epochs: int,
+		print_every: int,
+		learning_rate: float,
+		weight_decay: float,
+		device: str,
+		results_dir: str,
+		lora_rank: int,
+		lora_alpha: float,
+		lora_dropout: float,
+		patience: int,
+		min_delta: float,
+		cumulative_delta: float,
+		minimum_epochs: int,
+		volatility_threshold: float,
+		slope_threshold: float,
+		pairwise_imp_threshold: float,
+		topk_values: List[int] = [1, 5, 10, 15, 20],
+		quantization_bits: int = 8,
+		quantized: bool = False,
+		use_lamb: bool = False,
+		verbose: bool = True,
+		# === AdaLoRA-specific hyperparameters ===
+		adalora_init_rank: int = 32,
+		adalora_target_rank: int = 8,
+		adalora_delta_T: int = 100,
+		adalora_total_steps: Optional[int] = None,
+		adalora_warmup_steps: int = 200,
+		adalora_ortho_reg_gamma: float = 0.1,
+):
+		# ... [all your existing setup: early stopping, model loading, etc.] ...
 
+		# Apply AdaLoRA
+		model = get_adapted_clip(
+				clip_model=model,
+				method="adalora",
+				rank=adalora_init_rank,  # over-provisioned
+				alpha=lora_alpha,
+				dropout=lora_dropout,
+				quantization_bits=quantization_bits,
+				quantized=quantized,
+				verbose=verbose,
+		).to(device)
+
+		# Count total AdaLoRA layers for budget
+		adalora_layers = [m for m in model.modules() if isinstance(m, AdaLoRALinear)]
+		num_adalora_layers = len(adalora_layers)
+		init_budget = adalora_init_rank * num_adalora_layers
+		target_budget = adalora_target_rank * num_adalora_layers
+
+		total_training_steps = (adalora_total_steps or min(num_epochs, 15) * len(train_loader))
+
+		# ... [optimizer, scheduler, scaler, etc.] ...
+
+		global_step = 0
+		for epoch in range(num_epochs):
+				model.train()
+				epoch_loss = 0.0
+
+				for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
+						global_step += 1
+						optimizer.zero_grad(set_to_none=True)
+						images = images.to(device, non_blocking=True)
+						tokenized_labels = tokenized_labels.to(device, non_blocking=True)
+
+						with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+								logits_per_image, logits_per_text = model(images, tokenized_labels)
+								ground_truth = torch.arange(len(images), device=device)
+								loss = 0.5 * (criterion(logits_per_image, ground_truth) + criterion(logits_per_text, ground_truth))
+
+						scaler.scale(loss).backward()
+
+						# === [1] UPDATE IMPORTANCE (EMA) ===
+						for m in adalora_layers:
+								m.update_importance()
+
+						# === [2] ORTHOGONALITY REGULARIZER ===
+						ortho_loss = sum(m.get_ortho_regularizer(gamma=adalora_ortho_reg_gamma)
+														 for m in adalora_layers)
+						if ortho_loss > 0:
+								scaler.scale(ortho_loss).backward()
+
+						torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+						scaler.step(optimizer)
+						scaler.update()
+						scheduler.step()
+
+						# === [3] GLOBAL PRUNING EVERY ΔT STEPS ===
+						if (global_step % adalora_delta_T == 0 and 
+								global_step > adalora_warmup_steps):
+
+								current_budget = get_budget(
+										step=global_step,
+										total_steps=total_training_steps,
+										init_budget=init_budget,
+										final_budget=target_budget,
+										warmup_steps=adalora_warmup_steps
+								)
+
+								scores, layers = [], []
+								for m in adalora_layers:
+										S = m.get_importance_scores()  # (r,)
+										scores.append(S)
+										layers.append(m)
+
+								keep_masks = global_pruning(
+										model=model,
+										budget=int(current_budget),
+										scores=scores,
+										layers=layers
+								)
+
+								active_rank = 0
+								for m, mask in zip(layers, keep_masks):
+										m.prune(mask)
+										active_rank += mask.sum().item()
+
+								if verbose and global_step % (adalora_delta_T * 5) == 0:
+										print(f"Pruned | Budget: {int(current_budget)} | Active rank: {active_rank}")
+
+						# ... [rest of your logging, validation, early stopping] ...
 
 def dora_finetune_single_label(
 		model: torch.nn.Module,
