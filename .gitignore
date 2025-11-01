@@ -23,6 +23,7 @@
 *.html
 *.tflite
 
+logs/
 models/
 backups/
 

@@ -1295,7 +1295,19 @@ def get_vlm_based_labels_opt(
 					results[i] = None
 
 		# Clean up batch tensors immediately after use
-		del inputs, outputs, decoded
+		try:
+			del inputs
+		except NameError:
+			pass
+		try:
+			del outputs  
+		except NameError:
+			pass
+		try:
+			del decoded
+		except NameError:
+			pass
+
 		if verbose:
 			print(f"[MEM] Batch {b}: {process.memory_info().rss / (1024**3):.2f}GB in-use")
 			print(f"[MEM] Batch {b}: {torch.cuda.memory_allocated() / (1024**3):.2f}GB allocated, {torch.cuda.memory_reserved() / (1024**3):.2f}GB reserved")

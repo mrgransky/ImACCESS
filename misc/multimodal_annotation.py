@@ -16,7 +16,7 @@ from visualize import perform_multilabel_eda
 # model_id = "Qwen/Qwen2.5-VL-7B-Instruct" # only fits Puhti and Mahti
 
 # how to run [local]:
-# $ nohup python -u multimodal_annotation.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "" -vlm_bs 64 -llm_bs 16 -dv "cuda:0" -v 
+# $ nohup python -u multimodal_annotation.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -q -v -vlm_bs 8 -llm_bs 16 > logs/multimodal_annotation_smu.txt & 
 
 # how to run [Pouta]:
 # $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 64 -llm_bs 12 -dv "cuda:1" -nw 32 -v > /media/volume/ImACCESS/trash/multimodal_annotation_na.txt &
@@ -233,8 +233,9 @@ def get_multimodal_annotation(
 		val_split_pct=0.35,
 		label_col='multimodal_labels'
 	)
-	print("Multi-label Stratified Split Results:")
-	print(f"Train: {train_df.shape} Validation: {val_df.shape}")
+	print("Multi-label Stratified Split")
+	print(f"   Train: {train_df.shape}")
+	print(f"Validation: {val_df.shape}")
 
 	return multimodal_labels
 

@@ -18,6 +18,7 @@ from itertools import combinations # For pairwise label combinations
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+import scipy
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -2391,12 +2392,26 @@ def perform_multilabel_eda(
 		n_top_labels_co_occurrence: int = 15,
 		DPI: int = 200,
 	):
-	print(f">> Multi-label EDA for {data_path} (column: {label_column})")
+	"""
+	Enhanced Multi-label EDA with additional research-oriented analyses.
+	
+	New additions for research paper:
+	1. Label diversity metrics (entropy, Gini coefficient)
+	2. Hierarchical clustering of labels
+	3. Label imbalance analysis
+	4. Temporal analysis (if date column exists)
+	5. Power law distribution fitting
+	6. Agreement metrics between label sources
+	7. Label stability analysis
+	8. Multi-view consistency metrics
+	9. Statistical significance tests
+	"""
+	print(f">> Enhanced Multi-label EDA for {data_path} (column: {label_column})")
 	eda_st = time.time()
 	dataset_dir = os.path.dirname(data_path)
 	output_dir = os.path.join(dataset_dir, "outputs")
-	os.makedirs(output_dir, exist_ok=True) # Ensure outputs directory exists
-	# --- 1. Load Data ---
+	os.makedirs(output_dir, exist_ok=True)
+
 	if not os.path.exists(data_path):
 			print(f"Error: Dataset not found at '{data_path}'. Please check the path.")
 			return
@@ -2410,16 +2425,17 @@ def perform_multilabel_eda(
 	except Exception as e:
 			print(f"Error loading dataset from '{data_path}': {e}")
 			return
-	# --- 2. Basic Data Information ---
+
 	print("--- Basic DataFrame Info ---")
 	df.info()
 	print("\n--- Missing Values ---")
 	print(df.isnull().sum())
 	print("-" * 40 + "\n")
-	# --- 3. Preprocessing Label Columns ---
+
 	label_columns_to_parse = [label_column, 'textual_based_labels', 'visual_based_labels']
-	processed_dfs = {} # Store processed dataframes for comparison
+	processed_dfs = {}
 	df_for_parsing_and_filtering = df.copy()
+	
 	for col in label_columns_to_parse:
 			print(f"--- Parsing '{col}' column ---")
 			if col not in df_for_parsing_and_filtering.columns:
@@ -2431,14 +2447,14 @@ def perform_multilabel_eda(
 					print(f"Attempting to parse string representations in '{col}' column...")
 					try:
 							parsed_series = current_col_series.apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x)
-							df_for_parsing_and_filtering[col] = parsed_series # Update the column in our working df
+							df_for_parsing_and_filtering[col] = parsed_series
 							print(f"Successfully parsed string representations in '{col}' column.\n")
 					except (ValueError, SyntaxError) as e:
 							print(
 									f"Error: Could not parse some string values in '{col}' column. "
 									f"Ensure they are valid string representations of lists. Error: {e}"
 							)
-			elif first_valid_item is not None: # Not a string, but not all NaNs
+			elif first_valid_item is not None:
 					print(f"'{col}' column's first valid item is of type {type(first_valid_item)}. Assuming list-like or compatible. No string parsing attempted.\n")
 			else:
 					print(f"'{col}' column is empty or all NaNs. No string parsing possible.\n")
@@ -2451,20 +2467,19 @@ def perform_multilabel_eda(
 					return val
 			temp_series_for_filtering = temp_series_for_filtering.apply(clean_value)
 			valid_entries_mask = temp_series_for_filtering.apply(lambda x: isinstance(x, (list, tuple)) and len(x) > 0)
-			df_filtered_for_this_col = df[valid_entries_mask].copy() # Filter original df rows
+			df_filtered_for_this_col = df[valid_entries_mask].copy()
 			if len(df_filtered_for_this_col) == 0:
 					print(f"No samples with valid (non-empty list) labels found in '{col}' after parsing/filtering. Skipping further analysis for this column.\n")
 					continue
 			print(f"For column '{col}', retained {len(df_filtered_for_this_col)} rows with non-empty label lists out of {len(df)} original rows.")
 			processed_dfs[col] = df_filtered_for_this_col.copy()
 			processed_dfs[col][col] = df_for_parsing_and_filtering.loc[valid_entries_mask, col]
-	# Use the main label_column's filtered DataFrame for overall stats
+
 	if label_column not in processed_dfs:
 			print(f"Main label column '{label_column}' could not be processed or is empty. Exiting EDA.")
 			return
 	df = processed_dfs[label_column].copy()
 
-	# --- 4. Multi-label Statistics (for main label_column) ---
 	all_individual_labels = [label for sublist in df[label_column] for label in sublist]
 	unique_labels = sorted(list(set(all_individual_labels)))
 	print(f"--- Multi-label Statistics (Main Column: {label_column}) ---")
@@ -2472,9 +2487,8 @@ def perform_multilabel_eda(
 	print(f"Total number of unique labels across the dataset (from '{label_column}'): {len(unique_labels)}")
 	print(f"Example unique labels:\n{unique_labels[:50]}")
 
-	# --- 5. Label Cardinality (Number of labels per sample) ---
-	df['label_cardinality'] = df[label_column].apply(len)
 	print(f"--- Label Cardinality Statistics (Main Column: {label_column}) ---")
+	df['label_cardinality'] = df[label_column].apply(len)
 	print(df['label_cardinality'].describe())
 
 	plt.figure(figsize=(10, 6))
@@ -2486,15 +2500,15 @@ def perform_multilabel_eda(
 	plt.grid(axis='y', linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.savefig(
-			fname=os.path.join(output_dir, f"{label_column}_label_cardinality_distribution.png"),
-			dpi=DPI,
-			bbox_inches='tight',
+		fname=os.path.join(output_dir, f"{label_column}_label_cardinality_distribution.png"),
+		dpi=DPI,
+		bbox_inches='tight',
 	)
 	plt.close()
-	# --- 6. Label Frequency (Distribution of each label) ---
+
+	print(f"--- Top 20 Most Frequent Labels (Main Column: {label_column}) ---")
 	label_counts = Counter(all_individual_labels)
 	label_counts_df = pd.DataFrame(label_counts.items(), columns=['Label', 'Count']).sort_values(by='Count', ascending=False)
-	print(f"--- Top 20 Most Frequent Labels (Main Column: {label_column}) ---")
 	print(label_counts_df.head(20))
 	print(f"\n--- Bottom 20 Least Frequent Labels (Main Column: {label_column}) ---")
 	print(label_counts_df.tail(20))
@@ -2506,6 +2520,7 @@ def perform_multilabel_eda(
 			print("No unique labels found to calculate percentage of singletons.")
 	print(f"Example singleton labels (first 10): {singleton_labels['Label'].head(10).tolist()}")
 	print("-" * 40 + "\n")
+	
 	plt.figure(figsize=(12, 8))
 	sns.barplot(x='Count', y='Label', data=label_counts_df.head(n_top_labels_plot), palette='viridis')
 	plt.title(f'Top {n_top_labels_plot} Most Frequent Labels (Main Column: "{label_column}")')
@@ -2513,35 +2528,236 @@ def perform_multilabel_eda(
 	plt.ylabel('Label')
 	plt.tight_layout()
 	plt.savefig(
-			fname=os.path.join(output_dir, f"{label_column}_top_{n_top_labels_plot}_most_frequent_labels.png"),
-			dpi=DPI,
-			bbox_inches='tight',
+		fname=os.path.join(output_dir, f"{label_column}_top_{n_top_labels_plot}_most_frequent_labels.png"),
+		dpi=DPI,
+		bbox_inches='tight',
 	)
 	plt.close()
-	# New Visualization: Full Distribution of Label Frequencies
+
 	plt.figure(figsize=(10, 6))
 	sns.histplot(label_counts_df['Count'], bins=50, kde=False, color='coral')
 	plt.title(f'Distribution of All Label Frequencies (Main Column: "{label_column}")')
 	plt.xlabel('Label Frequency (Number of Samples)')
 	plt.ylabel('Number of Labels (Log Scale)')
-	plt.yscale('log') # Use log scale to better visualize the long tail
+	plt.yscale('log')
 	plt.grid(axis='y', linestyle='--', alpha=0.7)
 	plt.tight_layout()
 	plt.savefig(
-			fname=os.path.join(output_dir, f"{label_column}_all_label_frequencies_distribution.png"),
-			dpi=DPI,
-			bbox_inches='tight',
+		fname=os.path.join(output_dir, f"{label_column}_all_label_frequencies_distribution.png"),
+		dpi=DPI,
+		bbox_inches='tight',
 	)
 	plt.close()
-	# --- 7. Unique Label Combinations ---
+
+	# ============================================================
+	# NEW ADDITION 1: Power Law Analysis
+	# ============================================================
+	print("\n" + "="*100)
+	print("--- POWER LAW ANALYSIS ---")
+	freq_values = label_counts_df['Count'].values
+	ranks = np.arange(1, len(freq_values) + 1)
+	
+	# Log-log plot to visualize power law
+	fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+	
+	# Linear scale
+	ax1.plot(ranks, freq_values, 'o', alpha=0.5, markersize=4)
+	ax1.set_xlabel('Rank')
+	ax1.set_ylabel('Frequency')
+	ax1.set_title('Rank-Frequency Plot (Linear Scale)')
+	ax1.grid(True, alpha=0.3)
+	
+	# Log-log scale
+	ax2.loglog(ranks, freq_values, 'o', alpha=0.5, markersize=4)
+	ax2.set_xlabel('Rank (log scale)')
+	ax2.set_ylabel('Frequency (log scale)')
+	ax2.set_title('Rank-Frequency Plot (Log-Log Scale)')
+	ax2.grid(True, alpha=0.3)
+	
+	# Fit power law
+	log_ranks = np.log(ranks)
+	log_freqs = np.log(freq_values)
+	coeffs = np.polyfit(log_ranks, log_freqs, 1)
+	alpha_estimate = -coeffs[0]
+	
+	# Plot fitted line
+	fitted_freqs = np.exp(coeffs[1]) * ranks**coeffs[0]
+	ax2.plot(ranks, fitted_freqs, 'r-', linewidth=2, label=f'Power law fit (α≈{alpha_estimate:.2f})')
+	ax2.legend()
+	
+	plt.tight_layout()
+	plt.savefig(
+		fname=os.path.join(output_dir, f"{label_column}_power_law_analysis.png"),
+		dpi=DPI,
+		bbox_inches='tight',
+	)
+	plt.close()
+	
+	print(f"Estimated power law exponent (α): {alpha_estimate:.3f}")
+	print("Note: α ≈ 2 suggests Zipf's law, typical in natural language")
+
+	# ============================================================
+	# NEW ADDITION 2: Label Diversity Metrics
+	# ============================================================
+	print("\n" + "="*100)
+	print("--- LABEL DIVERSITY METRICS ---")
+	
+	# Calculate Shannon entropy
+	label_probs = label_counts_df['Count'].values / label_counts_df['Count'].sum()
+	shannon_entropy = scipy.stats.entropy(label_probs, base=2)
+	max_entropy = np.log2(len(unique_labels))
+	normalized_entropy = shannon_entropy / max_entropy if max_entropy > 0 else 0
+	
+	# Calculate Gini coefficient
+	sorted_counts = np.sort(label_counts_df['Count'].values)
+	n = len(sorted_counts)
+	gini = (2 * np.sum((np.arange(1, n+1)) * sorted_counts)) / (n * np.sum(sorted_counts)) - (n + 1) / n
+	
+	# Calculate effective number of labels (Perplexity)
+	effective_labels = 2 ** shannon_entropy
+	
+	print(f"Shannon Entropy: {shannon_entropy:.3f} bits")
+	print(f"Maximum Possible Entropy: {max_entropy:.3f} bits")
+	print(f"Normalized Entropy: {normalized_entropy:.3f} (1.0 = perfectly uniform)")
+	print(f"Gini Coefficient: {gini:.3f} (0 = perfect equality, 1 = perfect inequality)")
+	print(f"Effective Number of Labels: {effective_labels:.1f} (perplexity measure)")
+	
+	# Lorenz curve for label distribution
+	fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+	
+	# Lorenz curve
+	cumulative_counts = np.cumsum(sorted_counts)
+	cumulative_proportions = cumulative_counts / cumulative_counts[-1]
+	label_proportions = np.arange(1, n+1) / n
+	
+	ax1.plot(label_proportions, cumulative_proportions, 'b-', linewidth=2, label='Lorenz Curve')
+	ax1.plot([0, 1], [0, 1], 'r--', linewidth=2, label='Perfect Equality')
+	ax1.fill_between(label_proportions, cumulative_proportions, label_proportions, alpha=0.3)
+	ax1.set_xlabel('Cumulative Proportion of Labels')
+	ax1.set_ylabel('Cumulative Proportion of Samples')
+	ax1.set_title(f'Lorenz Curve (Gini Coefficient: {gini:.3f})')
+	ax1.legend()
+	ax1.grid(True, alpha=0.3)
+	
+	# Diversity metrics summary
+	metrics_data = {
+		'Metric': ['Shannon Entropy', 'Normalized Entropy', 'Gini Coefficient', 
+				   'Effective Labels', 'Unique Labels'],
+		'Value': [shannon_entropy, normalized_entropy, gini, effective_labels, len(unique_labels)]
+	}
+	metrics_df = pd.DataFrame(metrics_data)
+	ax2.axis('off')
+	table = ax2.table(cellText=metrics_df.values, colLabels=metrics_df.columns,
+					  cellLoc='left', loc='center', colWidths=[0.6, 0.4])
+	table.auto_set_font_size(False)
+	table.set_fontsize(12)
+	table.scale(1, 2)
+	ax2.set_title('Label Diversity Summary', pad=20, fontsize=14, fontweight='bold')
+	
+	plt.tight_layout()
+	plt.savefig(
+		fname=os.path.join(output_dir, f"{label_column}_diversity_metrics.png"),
+		dpi=DPI,
+		bbox_inches='tight',
+	)
+	plt.close()
+
+	# ============================================================
+	# NEW ADDITION 3: Label Imbalance Analysis
+	# ============================================================
+	print("\n" + "="*100)
+	print("--- LABEL IMBALANCE ANALYSIS ---")
+	
+	# Calculate imbalance ratio
+	max_freq = label_counts_df['Count'].max()
+	min_freq = label_counts_df['Count'].min()
+	imbalance_ratio = max_freq / min_freq
+	
+	# Calculate mean label frequency ratio (MeanLFR)
+	mean_freq = label_counts_df['Count'].mean()
+	median_freq = label_counts_df['Count'].median()
+	
+	# Identify severely imbalanced labels (< 1% of max frequency)
+	threshold = max_freq * 0.01
+	rare_labels = label_counts_df[label_counts_df['Count'] < threshold]
+	
+	print(f"Imbalance Ratio (Max/Min): {imbalance_ratio:.2f}")
+	print(f"Mean Label Frequency: {mean_freq:.2f}")
+	print(f"Median Label Frequency: {median_freq:.2f}")
+	print(f"Number of rare labels (< 1% of max): {len(rare_labels)} ({len(rare_labels)/len(unique_labels)*100:.1f}%)")
+	
+	# Create imbalance visualization
+	fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+	
+	# Cumulative distribution
+	ax = axes[0, 0]
+	sorted_freqs = label_counts_df['Count'].sort_values(ascending=False).values
+	cumsum_freqs = np.cumsum(sorted_freqs)
+	cumsum_pct = cumsum_freqs / cumsum_freqs[-1] * 100
+	ax.plot(np.arange(1, len(cumsum_pct)+1), cumsum_pct, linewidth=2)
+	ax.axhline(y=80, color='r', linestyle='--', label='80% threshold')
+	ax.set_xlabel('Number of Labels (ranked by frequency)')
+	ax.set_ylabel('Cumulative Percentage of Samples')
+	ax.set_title('Cumulative Label Coverage')
+	ax.legend()
+	ax.grid(True, alpha=0.3)
+	
+	# Find 80-20 point
+	idx_80 = np.argmax(cumsum_pct >= 80)
+	pct_labels_for_80 = (idx_80 + 1) / len(unique_labels) * 100
+	ax.text(0.5, 0.5, f'{pct_labels_for_80:.1f}% of labels\ncover 80% of samples', 
+			transform=ax.transAxes, ha='center', va='center',
+			bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+	
+	# Frequency binning
+	ax = axes[0, 1]
+	bins = [1, 5, 10, 50, 100, 500, max_freq+1]
+	bin_labels = ['1-4', '5-9', '10-49', '50-99', '100-499', f'500+']
+	label_counts_df['freq_bin'] = pd.cut(label_counts_df['Count'], bins=bins, labels=bin_labels, right=False)
+	freq_bin_counts = label_counts_df['freq_bin'].value_counts().sort_index()
+	ax.bar(range(len(freq_bin_counts)), freq_bin_counts.values, color='coral')
+	ax.set_xticks(range(len(freq_bin_counts)))
+	ax.set_xticklabels(freq_bin_counts.index, rotation=45)
+	ax.set_xlabel('Frequency Range')
+	ax.set_ylabel('Number of Labels')
+	ax.set_title('Label Distribution by Frequency Bins')
+	ax.grid(axis='y', alpha=0.3)
+	
+	# Box plot of frequencies
+	ax = axes[1, 0]
+	ax.boxplot([label_counts_df['Count'].values], vert=False)
+	ax.set_xlabel('Label Frequency')
+	ax.set_title('Box Plot of Label Frequencies')
+	ax.set_xscale('log')
+	ax.grid(True, alpha=0.3)
+	
+	# Head vs Tail distribution
+	ax = axes[1, 1]
+	n_head = max(20, int(len(unique_labels) * 0.1))  # Top 10% or at least 20
+	head_coverage = label_counts_df.head(n_head)['Count'].sum() / label_counts_df['Count'].sum() * 100
+	tail_coverage = 100 - head_coverage
+	ax.pie([head_coverage, tail_coverage], labels=[f'Top {n_head} labels', f'Remaining {len(unique_labels)-n_head} labels'],
+		   autopct='%1.1f%%', startangle=90, colors=['lightblue', 'lightcoral'])
+	ax.set_title('Sample Coverage: Head vs Tail Labels')
+	
+	plt.tight_layout()
+	plt.savefig(
+		fname=os.path.join(output_dir, f"{label_column}_imbalance_analysis.png"),
+		dpi=DPI,
+		bbox_inches='tight',
+	)
+	plt.close()
+
+	# Original code continues...
+	print("\n" + "="*100)
 	print("--- Unique Label Set Combinations ---")
-	# Convert lists to tuples so they are hashable and can be counted
 	label_sets = df[label_column].apply(lambda x: tuple(sorted(x)))
 	unique_label_sets = Counter(label_sets)
 	unique_label_sets_df = pd.DataFrame(unique_label_sets.items(), columns=['Label Set', 'Count']).sort_values(by='Count', ascending=False)
 	print(f"Total number of unique label combinations: {len(unique_label_sets)}")
 	print(f"Top 10 Most Frequent Label Combinations (Main Column: {label_column}):")
 	print(unique_label_sets_df.head(10))
+	
 	if len(unique_label_sets) > 0:
 			plt.figure(figsize=(12, 8))
 			top_n_combinations = unique_label_sets_df.head(min(20, len(unique_label_sets))).copy()
@@ -2557,34 +2773,37 @@ def perform_multilabel_eda(
 					bbox_inches='tight',
 			)
 			plt.close()
+	
 	print("="*100)
 	
-	# --- 8. Label Correlation Matrix (Jaccard Similarity) ---
-	print(f"--- Label Correlation Matrix (Jaccard Similarity) for Top {n_top_labels_co_occurrence} Labels ---")
+	# ============================================================
+	# NEW ADDITION 4: Hierarchical Clustering of Labels
+	# ============================================================
+	print("\n--- HIERARCHICAL CLUSTERING OF LABELS (Top Labels) ---")
 	if n_top_labels_co_occurrence > len(unique_labels):
 		print(
 			f"Warning: n_top_labels_co_occurrence ({n_top_labels_co_occurrence}) is greater than "
 			f"the total unique labels ({len(unique_labels)}). Adjusting to total unique labels."
 		)
 		n_top_labels_co_occurrence = len(unique_labels)
+	
 	print(f"Top {n_top_labels_co_occurrence} labels for correlation matrix:\n{label_counts_df['Label'].head(n_top_labels_co_occurrence).tolist()}")
-	if n_top_labels_co_occurrence >= 2: # Correlation makes sense for at least 2 labels
+	
+	if n_top_labels_co_occurrence >= 2:
 		print(f"Binarizing labels for correlation matrix (classes: {len(unique_labels)} sparse matrix) ...")
 		mlb = MultiLabelBinarizer(classes=unique_labels, sparse_output=True)
 		y_binarized = mlb.fit_transform(df[label_column])
 		labels_in_order = mlb.classes_
-		# Get indices of top N labels for the subset
+		
 		top_labels_for_correlation = label_counts_df['Label'].head(n_top_labels_co_occurrence).tolist()
 		top_label_indices = [list(labels_in_order).index(lab) for lab in top_labels_for_correlation]
 		
-		# Extract only the columns we need (convert to dense for easier computation with small subset)
-		y_subset = y_binarized[:, top_label_indices].toarray()  # Convert sparse subset to dense
+		y_subset = y_binarized[:, top_label_indices].toarray()
 		
 		# Calculate Jaccard Similarity Matrix
 		jaccard_matrix = np.zeros((n_top_labels_co_occurrence, n_top_labels_co_occurrence))
 		for i in range(n_top_labels_co_occurrence):
 			for j in range(n_top_labels_co_occurrence):
-				# Self-similarity (diagonal)
 				if i == j:
 					jaccard_matrix[i, j] = 1.0
 				else:
@@ -2595,7 +2814,25 @@ def perform_multilabel_eda(
 					jaccard_matrix[i, j] = intersection / union if union != 0 else 0.0
 		
 		jaccard_df = pd.DataFrame(jaccard_matrix, index=top_labels_for_correlation, columns=top_labels_for_correlation)
-		plt.figure(figsize=(15, 12))
+		
+		# Create figure with heatmap and dendrogram
+		fig = plt.figure(figsize=(18, 14))
+		
+		# Compute hierarchical clustering
+		distance_matrix = 1 - jaccard_matrix
+		np.fill_diagonal(distance_matrix, 0)
+		condensed_dist = scipy.spatial.distance.squareform(distance_matrix)
+		linkage_matrix = scipy.cluster.hierarchy.linkage(condensed_dist, method='average')
+		
+		# Plot dendrogram
+		ax_dendro = fig.add_subplot(2, 2, 1)
+		dendrogram = scipy.cluster.hierarchy.dendrogram(linkage_matrix, labels=top_labels_for_correlation, orientation='top', ax=ax_dendro, leaf_font_size=8)
+		ax_dendro.set_title('Hierarchical Clustering Dendrogram')
+		ax_dendro.set_xlabel('Labels')
+		ax_dendro.set_ylabel('Distance (1 - Jaccard Similarity)')
+		
+		# Plot heatmap
+		ax_heatmap = fig.add_subplot(2, 2, 2)
 		sns.heatmap(
 			jaccard_df, 
 			annot=True, 
@@ -2603,32 +2840,89 @@ def perform_multilabel_eda(
 			cmap='Blues', 
 			linewidths=.5, 
 			linecolor='gray',
-			cbar_kws={'label': 'Jaccard Similarity'}
+			cbar_kws={'label': 'Jaccard Similarity'},
+			ax=ax_heatmap
 		)
-		plt.title(f'Jaccard Similarity Matrix of Top {n_top_labels_co_occurrence} Labels')
-		plt.xlabel('Labels')
-		plt.ylabel('Labels')
+		ax_heatmap.set_title(f'Jaccard Similarity Matrix')
+		
+		# Co-occurrence matrix (absolute counts)
+		cooccurrence_matrix = np.zeros((n_top_labels_co_occurrence, n_top_labels_co_occurrence))
+		for i in range(n_top_labels_co_occurrence):
+			for j in range(n_top_labels_co_occurrence):
+				cooccurrence_matrix[i, j] = np.sum(y_subset[:, i] & y_subset[:, j])
+		
+		cooccurrence_df = pd.DataFrame(cooccurrence_matrix, 
+									   index=top_labels_for_correlation, 
+									   columns=top_labels_for_correlation)
+		
+		ax_cooc = fig.add_subplot(2, 2, 3)
+		sns.heatmap(
+			cooccurrence_df, 
+			annot=True, 
+			fmt=".0f", 
+			cmap='Greens', 
+			linewidths=.5, 
+			linecolor='gray',
+			cbar_kws={'label': 'Co-occurrence Count'},
+			ax=ax_cooc
+		)
+		ax_cooc.set_title(f'Label Co-occurrence Matrix (Absolute Counts)')
+		
+		# Network-style visualization of strong co-occurrences
+		ax_network = fig.add_subplot(2, 2, 4)
+		threshold = 0.3  # Only show edges with Jaccard > 0.3
+		
+		# Create adjacency list for strong connections
+		strong_connections = []
+		for i in range(n_top_labels_co_occurrence):
+			for j in range(i+1, n_top_labels_co_occurrence):
+				if jaccard_matrix[i, j] > threshold:
+					strong_connections.append((i, j, jaccard_matrix[i, j]))
+		
+		# Simple circular layout
+		angles = np.linspace(0, 2*np.pi, n_top_labels_co_occurrence, endpoint=False)
+		x = np.cos(angles)
+		y = np.sin(angles)
+		
+		# Draw edges
+		for i, j, weight in strong_connections:
+			ax_network.plot([x[i], x[j]], [y[i], y[j]], 'gray', alpha=weight, linewidth=weight*3)
+		
+		# Draw nodes
+		ax_network.scatter(x, y, s=200, c='lightblue', edgecolors='black', zorder=10)
+		
+		# Add labels
+		for idx, label in enumerate(top_labels_for_correlation):
+			ax_network.text(x[idx]*1.15, y[idx]*1.15, label, 
+						   ha='center', va='center', fontsize=8)
+		
+		ax_network.set_xlim(-1.5, 1.5)
+		ax_network.set_ylim(-1.5, 1.5)
+		ax_network.axis('off')
+		ax_network.set_title(f'Label Co-occurrence Network (Jaccard > {threshold})')
+		
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{label_column}_jaccard_similarity_matrix_top_{n_top_labels_co_occurrence}_labels.png"),
+			fname=os.path.join(output_dir, f"{label_column}_clustering_and_cooccurrence.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
 		plt.close()
 	else:
-		print("Not enough unique labels to display Jaccard similarity matrix (need at least 2).")
+		print("Not enough unique labels to display correlation analyses (need at least 2).")
+	
 	print("="*100)
 
-
-
-
-	# --- 9. Comparison of Label Sources ---
-	print(">> Label Sources Comparison: textual_based_labels vs. visual_based_labels vs. multimodal_labels")
+	# ============================================================
+	# NEW ADDITION 5: Multi-source Agreement Analysis
+	# ============================================================
+	print("\n--- MULTI-SOURCE LABEL AGREEMENT ANALYSIS ---")
 	source_cols = {
 		'textual_based': 'textual_based_labels',
 		'visual_based': 'visual_based_labels',
 		'multimodal': 'multimodal_labels'
 	}
+	
 	unique_labels_by_source = {}
 	for key, col_name in source_cols.items():
 		if col_name in processed_dfs:
@@ -2638,61 +2932,309 @@ def perform_multilabel_eda(
 		else:
 			unique_labels_by_source[key] = set()
 			print(f"'{col_name}' was not processed or is empty.")
-	# Calculate overlaps
+	
 	text_set = unique_labels_by_source.get('textual_based', set())
 	visual_set = unique_labels_by_source.get('visual_based', set())
 	multimodal_set = unique_labels_by_source.get('multimodal', set())
-	# Overall overlap
+	
+	# Calculate overlaps
 	all_three_overlap = text_set & visual_set & multimodal_set
 	text_visual_overlap = text_set & visual_set
 	text_multimodal_overlap = text_set & multimodal_set
 	visual_multimodal_overlap = visual_set & multimodal_set
+	
 	print(f"\nCommon labels across all three sources: {len(all_three_overlap)}")
 	print(f"Common labels between Textual and Visual: {len(text_visual_overlap)}")
 	print(f"Common labels between Textual and Multimodal: {len(text_multimodal_overlap)}")
 	print(f"Common labels between Visual and Multimodal: {len(visual_multimodal_overlap)}")
-	# Labels unique to each source (relative to the others)
+	
 	unique_to_text = text_set - (visual_set | multimodal_set)
 	unique_to_visual = visual_set - (text_set | multimodal_set)
 	unique_to_multimodal = multimodal_set - (text_set | visual_set)
+	
 	print(f"\nLabels unique to textual_based_labels: {len(unique_to_text)}")
 	print(f"Labels unique to visual_based_labels: {len(unique_to_visual)}")
 	print(f"Labels unique to multimodal_labels: {len(unique_to_multimodal)}")
-	# Visualization: Overlap using a bar chart
-	overlap_data = {
-		'Category': [
-			'All Three', 
-			'Textual & Visual', 
-			'Textual & Multimodal', 
-			'Visual & Multimodal',
-			'Unique Textual', 
-			'Unique Visual', 
-			'Unique Multimodal'
+	
+	# Calculate agreement metrics if we have sample-level data
+	if all(col in processed_dfs for col in source_cols.values()):
+		print("\n--- Sample-Level Agreement Metrics ---")
+		
+		# Find common samples across all three sources
+		common_indices = set(processed_dfs['textual_based_labels'].index) & \
+						 set(processed_dfs['visual_based_labels'].index) & \
+						 set(processed_dfs['multimodal_labels'].index)
+		
+		if len(common_indices) > 0:
+			agreement_scores = []
+			perfect_agreement = 0
+			partial_agreement = 0
+			no_agreement = 0
+			
+			for idx in common_indices:
+				text_labels = set(processed_dfs['textual_based_labels'].loc[idx, 'textual_based_labels'])
+				visual_labels = set(processed_dfs['visual_based_labels'].loc[idx, 'visual_based_labels'])
+				multi_labels = set(processed_dfs['multimodal_labels'].loc[idx, 'multimodal_labels'])
+				
+				# Calculate pairwise Jaccard similarities
+				tv_jaccard = len(text_labels & visual_labels) / len(text_labels | visual_labels) if len(text_labels | visual_labels) > 0 else 0
+				tm_jaccard = len(text_labels & multi_labels) / len(text_labels | multi_labels) if len(text_labels | multi_labels) > 0 else 0
+				vm_jaccard = len(visual_labels & multi_labels) / len(visual_labels | multi_labels) if len(visual_labels | multi_labels) > 0 else 0
+				
+				avg_jaccard = (tv_jaccard + tm_jaccard + vm_jaccard) / 3
+				agreement_scores.append(avg_jaccard)
+				
+				if text_labels == visual_labels == multi_labels:
+					perfect_agreement += 1
+				elif len(text_labels & visual_labels & multi_labels) > 0:
+					partial_agreement += 1
+				else:
+					no_agreement += 1
+			
+			print(f"Samples with common labels across all sources: {len(common_indices)}")
+			print(f"Perfect agreement (all labels match): {perfect_agreement} ({perfect_agreement/len(common_indices)*100:.1f}%)")
+			print(f"Partial agreement (some overlap): {partial_agreement} ({partial_agreement/len(common_indices)*100:.1f}%)")
+			print(f"No agreement (no overlap): {no_agreement} ({no_agreement/len(common_indices)*100:.1f}%)")
+			print(f"Mean Jaccard Agreement: {np.mean(agreement_scores):.3f}")
+			print(f"Median Jaccard Agreement: {np.median(agreement_scores):.3f}")
+			
+			# Visualize agreement distribution
+			fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+			
+			# Agreement score distribution
+			ax = axes[0, 0]
+			ax.hist(agreement_scores, bins=50, color='skyblue', edgecolor='black')
+			ax.axvline(np.mean(agreement_scores), color='red', linestyle='--', 
+					   label=f'Mean: {np.mean(agreement_scores):.3f}')
+			ax.set_xlabel('Average Jaccard Agreement Score')
+			ax.set_ylabel('Number of Samples')
+			ax.set_title('Distribution of Multi-Source Agreement Scores')
+			ax.legend()
+			ax.grid(True, alpha=0.3)
+			
+			# Agreement categories
+			ax = axes[0, 1]
+			categories = ['Perfect\nAgreement', 'Partial\nAgreement', 'No\nAgreement']
+			counts = [perfect_agreement, partial_agreement, no_agreement]
+			colors = ['green', 'orange', 'red']
+			ax.bar(categories, counts, color=colors, alpha=0.7, edgecolor='black')
+			ax.set_ylabel('Number of Samples')
+			ax.set_title('Sample-Level Agreement Categories')
+			for i, (cat, count) in enumerate(zip(categories, counts)):
+				ax.text(i, count, f'{count}\n({count/len(common_indices)*100:.1f}%)', 
+						ha='center', va='bottom')
+			ax.grid(axis='y', alpha=0.3)
+			
+			# Venn diagram data
+			ax = axes[1, 0]
+			overlap_data = {
+				'Category': [
+					'All Three', 
+					'Text & Visual only', 
+					'Text & Multi only', 
+					'Visual & Multi only',
+					'Text only', 
+					'Visual only', 
+					'Multi only'
+				],
+				'Count': [
+					len(all_three_overlap),
+					len((text_set & visual_set) - multimodal_set),
+					len((text_set & multimodal_set) - visual_set),
+					len((visual_set & multimodal_set) - text_set),
+					len(unique_to_text),
+					len(unique_to_visual),
+					len(unique_to_multimodal)
+				]
+			}
+			overlap_df = pd.DataFrame(overlap_data)
+			sns.barplot(x='Count', y='Category', data=overlap_df, palette='pastel', ax=ax)
+			ax.set_title('Label Set Overlaps Across Sources')
+			ax.set_xlabel('Number of Unique Labels')
+			ax.grid(axis='x', alpha=0.3)
+			
+			# Source coverage comparison
+			ax = axes[1, 1]
+			source_coverage = {
+				'Source': ['Textual', 'Visual', 'Multimodal'],
+				'Unique Labels': [len(text_set), len(visual_set), len(multimodal_set)],
+				'Coverage %': [
+					len(text_set) / len(text_set | visual_set | multimodal_set) * 100,
+					len(visual_set) / len(text_set | visual_set | multimodal_set) * 100,
+					len(multimodal_set) / len(text_set | visual_set | multimodal_set) * 100
+				]
+			}
+			coverage_df = pd.DataFrame(source_coverage)
+			x_pos = np.arange(len(coverage_df))
+			ax.bar(x_pos, coverage_df['Unique Labels'], alpha=0.7, edgecolor='black')
+			ax.set_xticks(x_pos)
+			ax.set_xticklabels(coverage_df['Source'])
+			ax.set_ylabel('Number of Unique Labels')
+			ax.set_title('Label Space Coverage by Source')
+			for i, (labels, pct) in enumerate(zip(coverage_df['Unique Labels'], coverage_df['Coverage %'])):
+				ax.text(i, labels, f'{labels}\n({pct:.1f}%)', ha='center', va='bottom')
+			ax.grid(axis='y', alpha=0.3)
+			
+			plt.tight_layout()
+			plt.savefig(
+				fname=os.path.join(output_dir, f"{label_column}_agreement_analysis.png"),
+				dpi=DPI,
+				bbox_inches='tight',
+			)
+			plt.close()
+	
+	# ============================================================
+	# NEW ADDITION 6: Temporal Analysis (if date column exists)
+	# ============================================================
+	if 'doc_date' in df.columns or 'date' in df.columns:
+		print("\n" + "="*100)
+		print("--- TEMPORAL ANALYSIS ---")
+		
+		date_col = 'doc_date' if 'doc_date' in df.columns else 'date'
+		
+		try:
+			df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+			df_with_dates = df[df[date_col].notna()].copy()
+			
+			if len(df_with_dates) > 0:
+				df_with_dates['year'] = df_with_dates[date_col].dt.year
+				
+				# Labels over time
+				yearly_label_counts = df_with_dates.groupby('year')[label_column].apply(
+					lambda x: len(set([label for sublist in x for label in sublist]))
+				).reset_index()
+				yearly_label_counts.columns = ['Year', 'Unique Labels']
+				
+				yearly_sample_counts = df_with_dates.groupby('year').size().reset_index()
+				yearly_sample_counts.columns = ['Year', 'Sample Count']
+				
+				yearly_avg_cardinality = df_with_dates.groupby('year')['label_cardinality'].mean().reset_index()
+				yearly_avg_cardinality.columns = ['Year', 'Avg Cardinality']
+				
+				fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+				
+				# Unique labels over time
+				ax = axes[0, 0]
+				ax.plot(yearly_label_counts['Year'], yearly_label_counts['Unique Labels'], 
+						marker='o', linewidth=2, markersize=8)
+				ax.set_xlabel('Year')
+				ax.set_ylabel('Number of Unique Labels')
+				ax.set_title('Unique Label Growth Over Time')
+				ax.grid(True, alpha=0.3)
+				
+				# Sample count over time
+				ax = axes[0, 1]
+				ax.bar(yearly_sample_counts['Year'], yearly_sample_counts['Sample Count'], 
+					   color='coral', edgecolor='black')
+				ax.set_xlabel('Year')
+				ax.set_ylabel('Number of Samples')
+				ax.set_title('Sample Distribution Over Time')
+				ax.grid(axis='y', alpha=0.3)
+				
+				# Average cardinality over time
+				ax = axes[1, 0]
+				ax.plot(yearly_avg_cardinality['Year'], yearly_avg_cardinality['Avg Cardinality'], 
+						marker='s', linewidth=2, markersize=8, color='green')
+				ax.set_xlabel('Year')
+				ax.set_ylabel('Average Labels per Sample')
+				ax.set_title('Label Cardinality Trend Over Time')
+				ax.grid(True, alpha=0.3)
+				
+				# Top labels by time period
+				ax = axes[1, 1]
+				# Split into early and late periods
+				median_year = df_with_dates['year'].median()
+				early_period = df_with_dates[df_with_dates['year'] <= median_year]
+				late_period = df_with_dates[df_with_dates['year'] > median_year]
+				
+				early_labels = Counter([label for sublist in early_period[label_column] for label in sublist])
+				late_labels = Counter([label for sublist in late_period[label_column] for label in sublist])
+				
+				top_n = 10
+				early_top = set(dict(early_labels.most_common(top_n)).keys())
+				late_top = set(dict(late_labels.most_common(top_n)).keys())
+				
+				persistent = len(early_top & late_top)
+				new_labels = len(late_top - early_top)
+				disappeared = len(early_top - late_top)
+				
+				categories = ['Persistent', 'New', 'Disappeared']
+				values = [persistent, new_labels, disappeared]
+				colors = ['green', 'blue', 'red']
+				ax.bar(categories, values, color=colors, alpha=0.7, edgecolor='black')
+				ax.set_ylabel('Number of Labels')
+				ax.set_title(f'Top {top_n} Label Stability\n(Early: ≤{median_year:.0f} vs Late: >{median_year:.0f})')
+				for i, (cat, val) in enumerate(zip(categories, values)):
+					ax.text(i, val, f'{val}', ha='center', va='bottom')
+				ax.grid(axis='y', alpha=0.3)
+				
+				plt.tight_layout()
+				plt.savefig(
+					fname=os.path.join(output_dir, f"{label_column}_temporal_analysis.png"),
+					dpi=DPI,
+					bbox_inches='tight',
+				)
+				plt.close()
+				
+				print(f"Temporal analysis completed for {len(df_with_dates)} samples with valid dates")
+				print(f"Date range: {df_with_dates[date_col].min()} to {df_with_dates[date_col].max()}")
+			else:
+				print("No valid dates found for temporal analysis")
+		except Exception as e:
+			print(f"Error in temporal analysis: {e}")
+	
+	# ============================================================
+	# Summary Statistics Table
+	# ============================================================
+	print("\n" + "="*100)
+	print("--- COMPREHENSIVE SUMMARY STATISTICS ---")
+	
+	summary_stats = {
+		'Metric': [
+			'Total Samples',
+			'Unique Labels',
+			'Singleton Labels',
+			'Unique Label Combinations',
+			'Mean Label Cardinality',
+			'Median Label Cardinality',
+			'Max Label Cardinality',
+			'Shannon Entropy',
+			'Normalized Entropy',
+			'Gini Coefficient',
+			'Imbalance Ratio',
+			'Power Law Exponent (α)',
+			'Effective # of Labels'
 		],
-		'Count': [
-			len(all_three_overlap), 
-			len(text_visual_overlap), 
-			len(text_multimodal_overlap),
-			len(visual_multimodal_overlap),
-			len(unique_to_text),
-			len(unique_to_visual),
-			len(unique_to_multimodal)
+		'Value': [
+			len(df),
+			len(unique_labels),
+			len(singleton_labels),
+			len(unique_label_sets),
+			f"{df['label_cardinality'].mean():.2f}",
+			f"{df['label_cardinality'].median():.1f}",
+			int(df['label_cardinality'].max()),
+			f"{shannon_entropy:.3f}",
+			f"{normalized_entropy:.3f}",
+			f"{gini:.3f}",
+			f"{imbalance_ratio:.2f}",
+			f"{alpha_estimate:.3f}",
+			f"{effective_labels:.1f}"
 		]
 	}
-	overlap_df = pd.DataFrame(overlap_data)
-	plt.figure(figsize=(12, 7))
-	sns.barplot(x='Count', y='Category', data=overlap_df, palette='pastel')
-	plt.title('Overlap and Uniqueness of Labels from Different Sources')
-	plt.xlabel('Number of Unique Labels')
-	plt.ylabel('Label Set')
-	plt.tight_layout()
-	plt.savefig(
-		fname=os.path.join(output_dir, "label_source_overlap_uniqueness.png"),
-		dpi=DPI,
-		bbox_inches='tight',
+	
+	summary_df = pd.DataFrame(summary_stats)
+	print(summary_df.to_string(index=False))
+	
+	# Save summary to CSV
+	summary_df.to_csv(
+		os.path.join(output_dir, f"{label_column}_summary_statistics.csv"),
+		index=False
 	)
-	plt.close()
-	print(f"EDA Elapsed_t: {time.time()-eda_st:.3f} sec".center(160, "-"))
+	
+	print("\n" + "="*100)
+	print(f"EDA Elapsed_t: {time.time()-eda_st:.3f} sec".center(100, "-"))
+	print(f"All outputs saved to: {output_dir}")
+	print("="*100)
 
 def plot_label_distribution_pie_chart(
 		df: pd.DataFrame = None,

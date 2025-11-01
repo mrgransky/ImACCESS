@@ -1,8 +1,139 @@
-from optax import scale
 import bitsandbytes as bnb
 import torch
 import copy
 from typing import Tuple, Union, List, Optional, Dict
+
+class IA3Linear(torch.nn.Module):
+		"""
+		(IA)^3: Infused Adapter by Inhibiting and Amplifying Inner Activations
+		Reference: Liu et al., NeurIPS 2022
+		- Learns a single scaling vector per layer: h' = h ⊙ s
+		- s ∈ R^d (same dimension as output of linear layer)
+		- Only s is trainable; base weights are frozen.
+		- Extremely parameter-efficient: 1 vector per layer.
+
+		Args:
+				in_features: Input dimension
+				out_features: Output dimension
+				device: Device to place parameters
+				rank: Initial rank (for compatibility)
+				alpha: Scaling factor (for compatibility)
+				dropout: Dropout rate (for compatibility)
+				bias: Whether base linear has bias
+				quantized: Whether to use quantized base weights
+				quantization_bits: 4 or 8
+				compute_dtype: dtype for quantized compute
+				verbose: Enable debug prints
+		"""
+		def __init__(
+				self,
+				in_features: int,
+				out_features: int,
+				device: Union[str, torch.device],
+				bias: bool,
+				rank: Optional[int]=None,
+				alpha: Optional[float]=None,
+				dropout: Optional[float]=None,
+				quantized: bool = False,
+				quantization_bits: int = 8,
+				compute_dtype: torch.dtype = torch.float16,
+				verbose: bool = True,
+		):
+				super(IA3Linear, self).__init__()
+				self.in_features = in_features
+				self.out_features = out_features
+				self.device = device
+				self.quantized = quantized
+				self.quantization_bits = quantization_bits
+				self.compute_dtype = compute_dtype
+				self.verbose = verbose
+
+				if self.verbose:
+						print(f"[IA³] Initializing IA3Linear")
+						print(f"    ├─ in_features={in_features}, out_features={out_features}")
+						print(f"    ├─ Quantized: {quantized}")
+						if quantized:
+								print(f"    ├─ Quantization bits: {quantization_bits}")
+								print(f"    └─ Compute dtype: {compute_dtype}")
+
+				# Create base linear layer
+				if quantized:
+						if quantization_bits == 4:
+								self.linear = bnb.nn.Linear4bit(
+										in_features, out_features, bias=bias,
+										compute_dtype=compute_dtype, compress_statistics=True, quant_type='nf4'
+								)
+						elif quantization_bits == 8:
+								self.linear = bnb.nn.Linear8bitLt(
+										in_features, out_features, bias=bias,
+										has_fp16_weights=False, threshold=6.0
+								)
+						else:
+								raise ValueError(f"Unsupported quantization bits: {quantization_bits}. Use 4 or 8.")
+				else:
+						self.linear = torch.nn.Linear(in_features, out_features, bias=bias).to(device)
+
+				self.weight = self.linear.weight
+				self.bias = self.linear.bias if bias else None
+
+				# IA³ scaling vector: shape = [out_features]
+				self.ia3_scale = torch.nn.Parameter(torch.ones(out_features, device=device))
+				if self.verbose:
+						print(f"    └─ IA³ scale vector: {self.ia3_scale.shape}, init: ones")
+
+				# Freeze base weights
+				self.linear.weight.requires_grad = False
+				if bias and self.linear.bias is not None:
+						self.linear.bias.requires_grad = False
+
+		def forward(self, x: torch.Tensor) -> torch.Tensor:
+				"""
+				Forward: h = (W x + b) ⊙ s
+				"""
+				base_output = self.linear(x)  # [B, out_features]
+				scaled_output = base_output * self.ia3_scale  # element-wise
+				return scaled_output
+
+		def merge_weights(self) -> None:
+				"""
+				Merge IA³ scale into base weight: W' = diag(s) @ W
+				Only supported for non-quantized layers.
+				"""
+				if self.quantized:
+						raise NotImplementedError(
+								"Weight merging for quantized IA³ layers is not recommended. "
+								"Keep IA³ separate during inference."
+						)
+				with torch.no_grad():
+						# Scale rows of weight matrix by ia3_scale
+						self.linear.weight.data = self.ia3_scale.unsqueeze(1) * self.linear.weight.data
+						# If bias exists, scale it too
+						if self.linear.bias is not None:
+								self.linear.bias.data = self.ia3_scale * self.linear.bias.data
+						# Zero out scale to disable
+						self.ia3_scale.data.fill_(1.0)
+
+		def get_memory_footprint(self) -> dict:
+				base_params = self.in_features * self.out_features
+				ia3_params = self.out_features  # only the scaling vector
+
+				if self.quantized:
+						bytes_per_param = self.quantization_bits / 8
+						base_memory_mb = (base_params * bytes_per_param) / (1024 ** 2)
+				else:
+						base_memory_mb = (base_params * 4) / (1024 ** 2)
+
+				ia3_memory_mb = (ia3_params * 4) / (1024 ** 2)  # FP32
+
+				return {
+						'base_params': base_params,
+						'ia3_params': ia3_params,
+						'base_memory_mb': base_memory_mb,
+						'ia3_memory_mb': ia3_memory_mb,
+						'total_memory_mb': base_memory_mb + ia3_memory_mb,
+						'quantized': self.quantized,
+						'bits': self.quantization_bits if self.quantized else 32
+				}
 
 class LoRALinear(torch.nn.Module):
 	def __init__(
@@ -17,6 +148,7 @@ class LoRALinear(torch.nn.Module):
 		quantized: bool = False,
 		quantization_bits: int = 4,  # 4-bit or 8-bit
 		compute_dtype: torch.dtype = torch.float16,
+		verbose: bool=True,
 	):
 		super(LoRALinear, self).__init__()
 		
@@ -27,7 +159,18 @@ class LoRALinear(torch.nn.Module):
 		self.quantized = quantized
 		self.quantization_bits = quantization_bits
 		self.compute_dtype = compute_dtype
+		self.verbose = verbose
 		
+		if self.verbose:
+			print(f"Layer Initialization")
+			print(f"\tLayer config: in_features={in_features}, out_features={out_features}, rank={rank}")
+			print(f"\tEmbedding dimension ratio: {max(in_features, out_features) / rank:.2f}")
+			print(f"\tQuantized: {quantized}")
+			if quantized:
+				print(f"\tQuantization bits: {quantization_bits}")
+				print(f"\tCompute dtype: {compute_dtype}")
+
+
 		# Create base linear layer based on quantization setting
 		if quantized:
 			# Use quantized linear layer from bitsandbytes
@@ -69,6 +212,12 @@ class LoRALinear(torch.nn.Module):
 		torch.nn.init.normal_(self.lora_A.weight, mean=0.0, std=1/rank)
 		torch.nn.init.zeros_(self.lora_B.weight)
 		
+		if self.verbose:
+			print(f"Initialized weights:")
+			print(f"\tlora_A: {self.lora_A.weight.shape} init: N(0, {1/rank})")
+			print(f"\tlora_B: {self.lora_B.weight.shape} init: 0.0 | All zeros: {torch.all(self.lora_B.weight == 0.0)}")
+			print(f"\tscaling factor: {self.scale}")
+
 		# Freeze base weights
 		self.linear.weight.requires_grad = False
 		if bias and self.linear.bias is not None:
@@ -787,31 +936,33 @@ def get_adapted_clip(
 	quantized: bool=False,
 	quantization_bits: int=8,
 	compute_dtype: torch.dtype=torch.float16,
+	lora_plus_lambda: Optional[float]=None,
 	verbose: bool=False,
 ):
 	"""
-	Apply LoRA, DoRA, or VeRA to a CLIP model.
+	Apply LoRA, LoRA+, DoRA, or VeRA to a CLIP model.
 	
 	Args:
 		clip_model: Pre-trained CLIP model
-		method: Adaptation method - "lora", "dora", or "vera"
+		method: Adaptation method - "lora", "lora_plus", "dora", or "vera"
 		rank: Rank of adaptation matrices
 		alpha: Scaling factor for updates (not used for VeRA)
 		dropout: Dropout rate for adaptation layers
 		target_text_modules: Text encoder modules to adapt
 		target_vision_modules: Vision encoder modules to adapt
-		quantized: If True, use quantized base weights (QLoRA/QDoRA/QVeRA)
+		quantized: If True, use quantized base weights (QLoRA/QLoRA+/QDoRA/QVeRA)
 		quantization_bits: Bits for quantization (4 or 8)
 		compute_dtype: Computation dtype for quantized operations
+		lora_plus_r: Multiplier λ for LoRA+ learning rates (default: 16)
 		verbose: Print detailed information
 	
 	Returns:
-		Modified CLIP model with LoRA/DoRA/VeRA applied
+		Modified CLIP model with LoRA/LoRA+/DoRA/VeRA applied
 	"""
 	
 	# Validate method
-	if method not in ["lora", "dora", "vera"]:
-		raise ValueError(f"method must be 'lora', 'dora', or 'vera', got '{method}'")
+	if method not in ["lora", "lora_plus", "dora", "vera", "ia3"]:
+		raise ValueError(f"method must be 'lora', 'lora_plus', 'dora', 'vera', or 'ia3', got '{method}'")
 	
 	# Select adapter class
 	if method == "dora":
@@ -820,18 +971,29 @@ def get_adapted_clip(
 	elif method == "vera":
 		AdapterClass = VeRALinear
 		method_name = "VeRA"
+	elif method == "ia3":
+		AdapterClass = IA3Linear
+		method_name = "(IA)³"
 	else:
 		AdapterClass = LoRALinear
 		method_name = "LoRA"
+		if lora_plus_lambda:
+			method_name = "LoRA+"
 	
 	if verbose:
-		print(f"\n[1] PEFT")
+		print(f"\n[PEFT CONFIGURATION]")
+		print(f"{'='*100}")
+		print(f"[1] METHOD SELECTION")
 		print(f"    ├─ Selected Method: {method_name}")
 		print(f"    ├─ Adapter Class: {AdapterClass.__name__}")
 		print(f"    ├─ Rank: {rank}")
 		print(f"    ├─ Alpha: {alpha}")
 		print(f"    ├─ Dropout: {dropout}")
-		print(f"    └─ Scaling Factor: {alpha/rank if method != 'vera' else 'N/A (VeRA uses trainable vectors)'}")
+		if lora_plus_lambda:
+			print(f"    ├─ {method_name} Learning Rate Multiplier (λ): {lora_plus_lambda}")
+			print(f"    └─ Scaling Factor: {alpha/rank}")
+		else:
+			print(f"    └─ Scaling Factor: {alpha/rank if method != 'vera' else 'N/A (VeRA uses trainable vectors)'}")
 
 	# Check CUDA capability for quantization
 	capability = torch.cuda.get_device_capability()
@@ -844,23 +1006,28 @@ def get_adapted_clip(
 		if quantization_bits not in [4, 8]:
 			raise ValueError(f"quantization_bits must be 4 or 8, got {quantization_bits}")
 		if verbose:
+			print(f"\n[2] QUANTIZATION")
 			print(f"├─ Q{method_name}")
-			print(f"   ├─ Quantization: {quantization_bits}-bit")
-			print(f"   ├─ Compute dtype: {compute_dtype}")
-			print(f"   └─ Memory savings: ~{32/quantization_bits:.1f}x for base weights")
+			print(f"├─ Quantization: {quantization_bits}-bit")
+			print(f"├─ Compute dtype: {compute_dtype}")
+			print(f"└─ Memory savings: ~{32/quantization_bits:.1f}x for base weights")
+	else:
+		if verbose:
+			print(f"\n[2] FULL PRECISION (No Quantization)")
+	
+	device = next(clip_model.parameters()).device
 	
 	# Analyze model architecture
 	if verbose:
-		print(f"\n[4] MODEL ARCHITECTURE ANALYSIS")
+		print(f"\n[3] MODEL ARCHITECTURE ANALYSIS")
 		
 		# Count total parameters
 		total_params = sum(p.numel() for p in clip_model.parameters())
 		total_trainable = sum(p.numel() for p in clip_model.parameters() if p.requires_grad)
-		device = next(clip_model.parameters()).device
 		print(f"    ├─ Total Parameters: {total_params:,}")
 		print(f"    ├─ Currently Trainable: {total_trainable:,}")
-		print(f"    ├─ {device}")
-		print(f"    └─ {type(clip_model).__name__}")
+		print(f"    ├─ Device: {device}")
+		print(f"    └─ Model Type: {type(clip_model).__name__}")
 		
 		# Analyze text encoder
 		text_linear_count = 0
@@ -875,7 +1042,7 @@ def get_adapted_clip(
 				if "in_proj" in target_text_modules:
 					text_mha_count += 1
 		
-		print(f"\n    [TEXT ENCODER]")
+		print(f"\n[TEXT ENCODER]")
 		print(f"    ├─ Target modules: {target_text_modules}")
 		print(f"    ├─ Linear layers to adapt: {text_linear_count}")
 		print(f"    ├─ MultiheadAttention layers to adapt: {text_mha_count}")
@@ -883,7 +1050,9 @@ def get_adapted_clip(
 		if text_dims:
 			print(f"    ├─ Dimension ranges:")
 			for in_f, out_f in sorted(text_dims):
-				print(f"    │   └─ ({in_f} → {out_f})")
+				max_dim = max(in_f, out_f)
+				embedding_ratio = max_dim / rank if rank > 0 else 0
+				print(f"    │   ├─ ({in_f} → {out_f}), embedding ratio d/r: {embedding_ratio:.2f}")
 		
 		# Analyze vision encoder
 		vision_linear_count = 0
@@ -898,7 +1067,7 @@ def get_adapted_clip(
 				if "in_proj" in target_vision_modules:
 					vision_mha_count += 1
 		
-		print(f"\n    [VISION ENCODER]")
+		print(f"\n[VISION ENCODER]")
 		print(f"    ├─ Target modules: {target_vision_modules}")
 		print(f"    ├─ Linear layers to adapt: {vision_linear_count}")
 		print(f"    ├─ MultiheadAttention layers to adapt: {vision_mha_count}")
@@ -906,10 +1075,12 @@ def get_adapted_clip(
 		if vision_dims:
 			print(f"    ├─ Dimension ranges:")
 			for in_f, out_f in sorted(vision_dims):
-				print(f"    │   └─ ({in_f} → {out_f})")
+				max_dim = max(in_f, out_f)
+				embedding_ratio = max_dim / rank if rank > 0 else 0
+				print(f"    │   ├─ ({in_f} → {out_f}), embedding ratio d/r: {embedding_ratio:.2f}")
 		
 		# Projection layers
-		print(f"\n    [PROJECTION LAYERS]")
+		print(f"\n[PROJECTION LAYERS]")
 		has_text_proj = hasattr(clip_model, "text_projection") and isinstance(clip_model.text_projection, torch.nn.Parameter)
 		has_vision_proj = hasattr(clip_model.visual, "proj") and isinstance(clip_model.visual.proj, torch.nn.Parameter)
 		
@@ -925,7 +1096,7 @@ def get_adapted_clip(
 		else:
 			print(f"    └─ Vision projection: Not found")
 		
-		print(f"{'='*100}\n")
+		print(f"\n{'='*100}\n")
 
 	model = copy.deepcopy(clip_model)
 	replaced_modules = set()
@@ -943,18 +1114,20 @@ def get_adapted_clip(
 		encoder_type: str  # 'text' or 'vision'
 	):
 		"""Replace linear layer with adapter version."""
-		adapter_layer = AdapterClass(
-			in_features=module.in_features,
-			out_features=module.out_features,
-			device=device,
-			rank=rank,
-			alpha=alpha,
-			dropout=dropout,
-			bias=module.bias is not None,
-			quantized=quantized,
-			quantization_bits=quantization_bits,
-			compute_dtype=compute_dtype,
-		)
+		kwargs = {
+			'in_features': module.in_features,
+			'out_features': module.out_features,
+			'device': device,
+			'rank': rank,
+			'alpha': alpha,
+			'dropout': dropout,
+			'bias': module.bias is not None,
+			'quantized': quantized,
+			'quantization_bits': quantization_bits,
+			'compute_dtype': compute_dtype,
+		}
+				
+		adapter_layer = AdapterClass(**kwargs)
 		
 		# Copy original weights
 		if not quantized:
@@ -982,44 +1155,49 @@ def get_adapted_clip(
 		elif method == "dora":
 			memory_stats[encoder_key]['adapter_mb'] += mem_info['lora_memory_mb']
 			memory_stats[encoder_key]['magnitude_mb'] += mem_info['magnitude_memory_mb']
-		else:  # lora
+		elif method == "ia3":
+			memory_stats[encoder_key]['adapter_mb'] += mem_info['ia3_memory_mb']
+		else:  # lora or lora_plus
 			memory_stats[encoder_key]['adapter_mb'] += mem_info['lora_memory_mb']
 		
 		if verbose:
 			statement = (
-				f"Replaced {name_prefix}: {child_name} "
-				f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
+				f"Replaced {name_prefix}: {child_name:<100s}"
+				f"[Memory] base: {mem_info['base_memory_mb']:.2f} MB @ {mem_info['bits']}bit, "
 			)
 			if method == "vera":
-				statement += f"{method_name}: {mem_info['vera_memory_mb']:.4f}MB (trainable only)]"
+				statement += f"{method_name}: {mem_info['vera_memory_mb']:.4f} MB (trainable only)"
 			elif method == "dora":
-				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB, Magnitude: {mem_info['magnitude_memory_mb']:.2f}MB]"
+				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f} MB, Magnitude: {mem_info['magnitude_memory_mb']:.2f} MB"
+			elif method == "ia3":
+				statement += f"{method_name}: {mem_info['ia3_memory_mb']:.2f} MB"
 			else:
-				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB]"
-			print(statement)
+				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f} MB"
+			print(f"{statement}\n")
 	
 	################################################ Encoders ###############################################
-	
 	# Text encoder
-	if verbose: print("\n[TEXT ENCODER]")
+	if verbose: print("\n[TEXT ENCODER ADAPTATION]")
 	for name, module in model.transformer.named_modules():
 		if isinstance(module, torch.nn.Linear) and any(t in name.split(".")[-1] for t in target_text_modules):
 			parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
 			parent = model.transformer if parent_name == "" else model.transformer.get_submodule(parent_name)
 			replace_linear(parent, child_name, module, "Text", "text")
 		elif isinstance(module, torch.nn.MultiheadAttention) and "in_proj" in target_text_modules:
-			adapter_layer = AdapterClass(
-				in_features=module.embed_dim,
-				out_features=module.embed_dim * 3,
-				device=device,
-				rank=rank,
-				alpha=alpha,
-				dropout=dropout,
-				bias=True,
-				quantized=quantized,
-				quantization_bits=quantization_bits,
-				compute_dtype=compute_dtype,
-			)
+			kwargs = {
+				'in_features': module.embed_dim,
+				'out_features': module.embed_dim * 3,
+				'device': device,
+				'rank': rank,
+				'alpha': alpha,
+				'dropout': dropout,
+				'bias': True,
+				'quantized': quantized,
+				'quantization_bits': quantization_bits,
+				'compute_dtype': compute_dtype,
+			}
+						
+			adapter_layer = AdapterClass(**kwargs)
 			
 			with torch.no_grad():
 				if not quantized:
@@ -1041,42 +1219,48 @@ def get_adapted_clip(
 			elif method == "dora":
 				memory_stats['text_encoder']['adapter_mb'] += mem_info['lora_memory_mb']
 				memory_stats['text_encoder']['magnitude_mb'] += mem_info['magnitude_memory_mb']
+			elif method == "ia3":
+				memory_stats['text_encoder']['adapter_mb'] += mem_info['ia3_memory_mb']
 			else:
 				memory_stats['text_encoder']['adapter_mb'] += mem_info['lora_memory_mb']
 			
 			if verbose:
 				statement = (
 					f"Wrapped Text MultiheadAttention.{name}.in_proj "
-					f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
+					f"[Memory] base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
 				)
 				if method == "vera":
 					statement += f"{method_name}: {mem_info['vera_memory_mb']:.4f}MB (trainable only)]"
 				elif method == "dora":
-					statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB, Magnitude: {mem_info['magnitude_memory_mb']:.2f}MB]"
+					statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB, Magnitude: {mem_info['magnitude_memory_mb']:.2f} MB"
+				elif method == "ia3":
+					statement += f"{method_name}: {mem_info['ia3_memory_mb']:.2f} MB"
 				else:
-					statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB]"
-				print(statement)
+					statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f} MB"
+				print(f"{statement}\n")
 	
 	# Vision encoder
-	if verbose: print("\n[VISION ENCODER]")
+	if verbose: print("\n[VISION ENCODER ADAPTATION]")
 	for name, module in model.visual.named_modules():
 		if isinstance(module, torch.nn.Linear) and any(t in name.split(".")[-1] for t in target_vision_modules):
 			parent_name, child_name = name.rsplit(".", 1) if "." in name else ("", name)
 			parent = model.visual if parent_name == "" else model.visual.get_submodule(parent_name)
 			replace_linear(parent, child_name, module, "Vision", "vision")
 		elif isinstance(module, torch.nn.MultiheadAttention) and "in_proj" in target_vision_modules:
-			adapter_layer = AdapterClass(
-				in_features=module.embed_dim,
-				out_features=module.embed_dim * 3,
-				device=device,
-				rank=rank,
-				alpha=alpha,
-				dropout=dropout,
-				bias=True,
-				quantized=quantized,
-				quantization_bits=quantization_bits,
-				compute_dtype=compute_dtype,
-			)
+			kwargs = {
+				'in_features': module.embed_dim,
+				'out_features': module.embed_dim * 3,
+				'device': device,
+				'rank': rank,
+				'alpha': alpha,
+				'dropout': dropout,
+				'bias': True,
+				'quantized': quantized,
+				'quantization_bits': quantization_bits,
+				'compute_dtype': compute_dtype,
+			}
+						
+			adapter_layer = AdapterClass(**kwargs)
 			
 			with torch.no_grad():
 				if not quantized:
@@ -1098,41 +1282,49 @@ def get_adapted_clip(
 			elif method == "dora":
 				memory_stats['vision_encoder']['adapter_mb'] += mem_info['lora_memory_mb']
 				memory_stats['vision_encoder']['magnitude_mb'] += mem_info['magnitude_memory_mb']
+			elif method == "ia3":
+				memory_stats['vision_encoder']['adapter_mb'] += mem_info['ia3_memory_mb']
 			else:
 				memory_stats['vision_encoder']['adapter_mb'] += mem_info['lora_memory_mb']
 			
 			if verbose:
 				statement = (
 					f"Wrapped Vision MultiheadAttention.{name}.in_proj "
-					f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
+					f"[Memory] base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
 				)
 				if method == "vera":
 					statement += f"{method_name}: {mem_info['vera_memory_mb']:.4f}MB (trainable only)]"
 				elif method == "dora":
-					statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB, Magnitude: {mem_info['magnitude_memory_mb']:.2f}MB]"
+					statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB, Magnitude: {mem_info['magnitude_memory_mb']:.2f} MB"
+				elif method == "ia3":
+					statement += f"{method_name}: {mem_info['ia3_memory_mb']:.2f} MB"
 				else:
-					statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB]"
-				print(statement)
-	
-	############################################## Projections ##############################################
-	
+					statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f} MB"
+				print(f"{statement}\n")
+	################################################ Encoders ###############################################
+
+	############################################## Projections ##############################################	
+	if verbose: print("\n[PROJECTIONS ADAPTATION]")
 	# Text projection
-	if verbose: print("\n[TEXT PROJ]")
+	if verbose: print("\n[TEXTUAL]")
 	if hasattr(model, "text_projection") and isinstance(model.text_projection, torch.nn.Parameter):
 		in_dim = model.text_projection.size(0)
 		out_dim = model.text_projection.size(1)
-		adapter_text_proj = AdapterClass(
-			in_features=in_dim,
-			out_features=out_dim,
-			device=device,
-			rank=rank,
-			alpha=alpha,
-			dropout=dropout,
-			bias=False,
-			quantized=quantized,
-			quantization_bits=quantization_bits,
-			compute_dtype=compute_dtype,
-		)
+		
+		kwargs = {
+			'in_features': in_dim,
+			'out_features': out_dim,
+			'device': device,
+			'rank': rank,
+			'alpha': alpha,
+			'dropout': dropout,
+			'bias': False,
+			'quantized': quantized,
+			'quantization_bits': quantization_bits,
+			'compute_dtype': compute_dtype,
+		}
+				
+		adapter_text_proj = AdapterClass(**kwargs)
 		
 		with torch.no_grad():
 			if not quantized:
@@ -1162,39 +1354,46 @@ def get_adapted_clip(
 		elif method == "dora":
 			memory_stats['text_encoder']['adapter_mb'] += mem_info['lora_memory_mb']
 			memory_stats['text_encoder']['magnitude_mb'] += mem_info['magnitude_memory_mb']
+		elif method == "ia3":
+			memory_stats['text_encoder']['adapter_mb'] += mem_info['ia3_memory_mb']
 		else:
 			memory_stats['text_encoder']['adapter_mb'] += mem_info['lora_memory_mb']
 		
 		if verbose:
 			statement = (
 				f"Wrapped text_projection "
-				f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
+				f"[Memory] base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
 			)
 			if method == "vera":
 				statement += f"{method_name}: {mem_info['vera_memory_mb']:.4f}MB (trainable only)]"
 			elif method == "dora":
-				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB, Magnitude: {mem_info['magnitude_memory_mb']:.2f}MB]"
+				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB, Magnitude: {mem_info['magnitude_memory_mb']:.2f} MB"
+			elif method == "ia3":
+				statement += f"{method_name}: {mem_info['ia3_memory_mb']:.2f} MB"
 			else:
-				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB]"
-			print(statement)
+				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f} MB"
+			print(f"{statement}\n")
 	
 	# Visual projection (ViT)
-	if verbose: print("\n[VISION PROJ]")
+	if verbose: print("\n[VISUAL]")
 	if hasattr(model.visual, "proj") and isinstance(model.visual.proj, torch.nn.Parameter):
 		in_dim = model.visual.proj.size(0)
 		out_dim = model.visual.proj.size(1)
-		adapter_visual_proj = AdapterClass(
-			in_features=in_dim,
-			out_features=out_dim,
-			device=device,
-			rank=rank,
-			alpha=alpha,
-			dropout=dropout,
-			bias=False,
-			quantized=quantized,
-			quantization_bits=quantization_bits,
-			compute_dtype=compute_dtype,
-		)
+		
+		kwargs = {
+			'in_features': in_dim,
+			'out_features': out_dim,
+			'device': device,
+			'rank': rank,
+			'alpha': alpha,
+			'dropout': dropout,
+			'bias': False,
+			'quantized': quantized,
+			'quantization_bits': quantization_bits,
+			'compute_dtype': compute_dtype,
+		}
+				
+		adapter_visual_proj = AdapterClass(**kwargs)
 		
 		with torch.no_grad():
 			if not quantized:
@@ -1232,28 +1431,30 @@ def get_adapted_clip(
 		elif method == "dora":
 			memory_stats['vision_encoder']['adapter_mb'] += mem_info['lora_memory_mb']
 			memory_stats['vision_encoder']['magnitude_mb'] += mem_info['magnitude_memory_mb']
+		elif method == "ia3":
+			memory_stats['vision_encoder']['adapter_mb'] += mem_info['ia3_memory_mb']
 		else:
 			memory_stats['vision_encoder']['adapter_mb'] += mem_info['lora_memory_mb']
 		
 		if verbose:
 			statement = (
 				f"Wrapped visual.proj "
-				f"[base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
+				f"[Memory] base: {mem_info['base_memory_mb']:.2f}MB @ {mem_info['bits']}bit, "
 			)
 			if method == "vera":
 				statement += f"{method_name}: {mem_info['vera_memory_mb']:.4f}MB (trainable only)]"
 			elif method == "dora":
-				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB, Magnitude: {mem_info['magnitude_memory_mb']:.2f}MB]"
+				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB, Magnitude: {mem_info['magnitude_memory_mb']:.2f} MB"
+			elif method == "ia3":
+				statement += f"{method_name}: {mem_info['ia3_memory_mb']:.2f} MB"
 			else:
-				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f}MB]"
-			print(statement)
-	
-	############################################################################################################
+				statement += f"{method_name}: {mem_info['lora_memory_mb']:.2f} MB"
+			print(f"{statement}\n")
+	############################################## Projections ##############################################	
 
 	# Calculate shared matrix memory for VeRA (counted only once, not per-layer)
 	if method == "vera":
 		# Get actual max_dim from shared matrices
-		device = next(model.parameters()).device
 		key = (rank, device)
 		if key in VeRALinear._shared_matrices:
 			_, _, max_dim = VeRALinear._shared_matrices[key]
@@ -1326,8 +1527,14 @@ def get_adapted_clip(
 		
 		# Method-specific statistics
 		print(f"\n{method_name} Statistics:")
-		if method == "vera":
-			print(f"\tShared frozen matrices: {memory_stats['shared_matrices_mb']} MB")
+		if lora_plus_lambda:
+			print(f"\tLearning rate multiplier (λ): {lora_plus_lambda}")
+			print(f"\tTrainable LoRA A learning rate: 1.0x (base)")
+			print(f"\tTrainable LoRA B learning rate: {lora_plus_lambda}x (accelerated)")
+			print(f"\tBenefit: Faster convergence for large embedding dimensions")
+			print(f"\tRecommendation: Use differential learning rate optimizer")
+		elif method == "vera":
+			print(f"\tShared frozen matrices: {memory_stats['shared_matrices_mb']:.2f} MB")
 			print(f"\tTrainable scaling vectors: {overall_adapter:.4f} MB")
 			print(f"\tTotal trainable: {overall_adapter:.4f} MB")
 			print(f"\tFrozen base weights: {overall_base:.3f} MB")
@@ -1337,6 +1544,11 @@ def get_adapted_clip(
 			print(f"\tTrainable LoRA parameters: {overall_adapter:.4f} MB")
 			print(f"\tTotal trainable: {overall_adapter + overall_magnitude:.4f} MB")
 			print(f"\tFrozen directional base: {overall_base:.3f} MB")
+		elif method == "ia3":
+			print(f"\tTrainable scaling vectors: {overall_adapter:.4f} MB")
+			print(f"\tTotal trainable: {overall_adapter:.4f} MB")
+			print(f"\tFrozen base weights: {overall_base:.3f} MB")
+			print(f"\tParameter count: ~{sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
 
 	# Freeze all non-adapter parameters
 	for name, param in model.named_parameters():
@@ -1344,7 +1556,9 @@ def get_adapted_clip(
 			param.requires_grad = "lambda_d" in name or "lambda_b" in name
 		elif method == "dora":
 			param.requires_grad = "lora_A" in name or "lora_B" in name or "magnitude" in name
-		else:  # lora
+		elif method == "ia3":
+			param.requires_grad = "ia3_scale" in name
+		else:  # lora or lora_plus
 			param.requires_grad = "lora_A" in name or "lora_B" in name
 	
 	return model
