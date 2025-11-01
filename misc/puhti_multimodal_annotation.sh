@@ -41,7 +41,7 @@ DATASETS=(
 )
 
 LLM_BATCH_SIZES=(24 24 24 24 24)
-VLN_BATCH_SIZES=(64 64 128 128 128)
+VLN_BATCH_SIZES=(64 64 64 64 64)
 
 python -u multimodal_annotation.py \
   --csv_file ${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv \
