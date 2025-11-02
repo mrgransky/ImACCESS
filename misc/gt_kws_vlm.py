@@ -254,6 +254,7 @@ def _load_vlm_(
 			print(f"Error loading model: {e}")
 		raise e
 
+	if verbose: print("[INFO] Compilation")
 	model = torch.compile(
 		model,
 		mode="reduce-overhead", # reducing Python overhead and CUDA kernel launch latency
