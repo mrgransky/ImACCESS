@@ -1181,17 +1181,22 @@ def query_local_llm(
 
 		# ⏱️ MODEL GENERATION TIMING
 		generation_start = time.time()
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			outputs = model.generate(
-				**inputs,
-				max_new_tokens=max_generated_tks,
-				temperature=TEMPERATURE,
-				top_p=TOP_P,
-				do_sample=TEMPERATURE > 0.0,
-				pad_token_id=tokenizer.pad_token_id,
-				eos_token_id=tokenizer.eos_token_id,
-				use_cache=True,
-			)
+		with torch.no_grad():
+			with torch.amp.autocast(
+				device_type=device.type, 
+				enabled=torch.cuda.is_available(),
+				dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+			):
+				outputs = model.generate(
+					**inputs,
+					max_new_tokens=max_generated_tks,
+					temperature=TEMPERATURE,
+					top_p=TOP_P,
+					do_sample=TEMPERATURE > 0.0,
+					pad_token_id=tokenizer.pad_token_id,
+					eos_token_id=tokenizer.eos_token_id,
+					use_cache=True,
+				)
 		generation_time = time.time() - generation_start
 		if verbose: print(f"⏱️ Model generation: {generation_time:.5f}s")
 
@@ -1460,13 +1465,16 @@ def get_llm_based_labels_opt(
 					pad_token_id=tokenizer.pad_token_id,
 					eos_token_id=tokenizer.eos_token_id,
 				)
+				if verbose: print(f"Batch[{batch_num}] gen kwargs: {gen_kwargs}")
 
-				with torch.amp.autocast(
-					device_type=device.type, 
-					enabled=torch.cuda.is_available(),
-					dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-				):
-					outputs = model.generate(**gen_kwargs)							
+				# Generate response
+				with torch.no_grad():
+					with torch.amp.autocast(
+						device_type=device.type, 
+						enabled=torch.cuda.is_available(),
+						dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+					):
+						outputs = model.generate(**gen_kwargs)
 
 				decoded = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 				if verbose: print(f"Batch[{batch_num}] decoded responses: {type(decoded)} {len(decoded)}")

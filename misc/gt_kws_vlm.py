@@ -19,6 +19,7 @@ from utils import *
 # model_id = "Qwen/Qwen2.5-VL-7B-Instruct" # only fits Puhti and Mahti
 
 # Qwen 3 VL collection:
+# Qwen/Qwen3-VL-2B-Instruct
 # Qwen/Qwen3-VL-4B-Instruct
 # Qwen/Qwen3-VL-8B-Instruct # only fits Puhti and Mahti
 
@@ -56,9 +57,9 @@ Identify up to {k} most prominent, factual and distinct **KEYWORDS** that captur
 def _load_vlm_(
 		model_id: str,
 		device: str,
-		use_quantization: bool = False,
-		quantization_bits: int = 8,          # 4 or 8
-		verbose: bool = False,
+		use_quantization: bool=False,
+		quantization_bits: int=8,
+		verbose: bool=False,
 	) -> Tuple[tfs.PreTrainedTokenizerBase, torch.nn.Module]:
 
 	if verbose:
@@ -246,7 +247,13 @@ def _load_vlm_(
 	if verbose:
 		print(f"[INFO] Calling pretrained {model_cls.__name__} {model_id}")
 
-	model = model_cls.from_pretrained(model_id, **model_kwargs)
+	try:
+		model = model_cls.from_pretrained(model_id, **model_kwargs)
+	except Exception as e:
+		if verbose:
+			print(f"Error loading model: {e}")
+		raise e
+
 	model = torch.compile(
 		model,
 		mode="reduce-overhead", # reducing Python overhead and CUDA kernel launch latency
@@ -764,12 +771,13 @@ def get_vlm_based_labels_single(
 			print(f"   • {k}: {v}")
 
 	# ========== Generate response ==========
-	with torch.amp.autocast(
-		device_type=device.type, 
-		enabled=torch.cuda.is_available(), 
-		dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-	):
-		outputs = model.generate(**single_inputs, **gen_kwargs)	
+	with torch.no_grad():
+		with torch.amp.autocast(
+			device_type=device.type, 
+			enabled=torch.cuda.is_available(), 
+			dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+		):
+			outputs = model.generate(**single_inputs, **gen_kwargs)	
 
 	# Decode response
 	response = processor.decode(outputs[0], skip_special_tokens=True)
@@ -978,12 +986,13 @@ def get_vlm_based_labels_debug(
 						print(f"   • {k}: {v}")
 
 				# ========== Generate response ==========
-				with torch.amp.autocast(
-					device_type=device.type, 
-					enabled=torch.cuda.is_available(), 
-					dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-				):
-					outputs = model.generate(**single_inputs, **gen_kwargs)
+				with torch.no_grad():
+					with torch.amp.autocast(
+						device_type=device.type, 
+						enabled=torch.cuda.is_available(), 
+						dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+					):
+						outputs = model.generate(**single_inputs, **gen_kwargs)
 				
 				# Decode response
 				response = processor.decode(outputs[0], skip_special_tokens=True)
@@ -1190,6 +1199,7 @@ def get_vlm_based_labels_opt(
 	total_batches = math.ceil(len(valid_indices) / batch_size)
 	base_prompt = VLM_INSTRUCTION_TEMPLATE.format(k=max_kws)
 	results = [None] * len(uniq_inputs)
+
 	if verbose:
 		print(f"[INFO] {len(valid_indices)} valid unique images → {total_batches} batches of {batch_size}")
 		print(f"[INFO] Memory[in-use]: {process.memory_info().rss / (1024**3):.2f} GB")
@@ -1213,13 +1223,15 @@ def get_vlm_based_labels_opt(
 			continue
 		# Build messages
 		messages = [
-			[{
-				"role": "user",
-				"content": [
-					{"type": "text", "text": base_prompt},
-					{"type": "image", "image": img},
-				],
-			}]
+			[
+				{
+					"role": "user",
+					"content": [
+						{"type": "text", "text": base_prompt},
+						{"type": "image", "image": img},
+					],
+				}
+			]
 			for _, img in valid_pairs
 		]
 		try:
@@ -1236,12 +1248,14 @@ def get_vlm_based_labels_opt(
 				padding=True,
 			).to(model.device)
 
-			with torch.amp.autocast(
-				device_type=device.type, 
-				enabled=torch.cuda.is_available(), 
-				dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-			):
-				outputs = model.generate(**inputs, **gen_kwargs)
+			# Generate response
+			with torch.no_grad():
+				with torch.amp.autocast(
+					device_type=device.type, 
+					enabled=torch.cuda.is_available(), 
+					dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+				):
+					outputs = model.generate(**inputs, **gen_kwargs)
 
 			decoded = processor.batch_decode(outputs, skip_special_tokens=True)
 
