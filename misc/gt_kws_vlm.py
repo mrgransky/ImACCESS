@@ -22,6 +22,7 @@ from utils import *
 # Qwen/Qwen3-VL-2B-Instruct
 # Qwen/Qwen3-VL-4B-Instruct
 # Qwen/Qwen3-VL-8B-Instruct # only fits Puhti and Mahti
+# Qwen/Qwen3-VL-32B-Instruct
 
 # does not fit into VRAM:
 # model_id = "llava-hf/llava-v1.6-34b-hf"
@@ -766,10 +767,10 @@ def get_vlm_based_labels_single(
 		gen_kwargs["do_sample"] = getattr(gen_config, "do_sample", True)
 	else:
 		gen_kwargs.update(dict(temperature=1e-6, do_sample=True))
+
 	if verbose:
-		print(f"\n[GEN CONFIG] Using generation parameters:")
-		for k, v in gen_kwargs.items():
-			print(f"   • {k}: {v}")
+		print(f"[GEN CONFIG] Using generation parameters:")
+		print(json.dumps(gen_kwargs, indent=2, ensure_ascii=False))
 
 	# ========== Generate response ==========
 	with torch.no_grad():
