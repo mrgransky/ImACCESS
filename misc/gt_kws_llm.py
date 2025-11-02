@@ -212,6 +212,12 @@ def _load_llm_(
 	if verbose:
 		print(f"[INFO] Calling pretrained {model_cls.__name__} {model_id} ...")
 	model = model_cls.from_pretrained(model_id, **model_kwargs)
+	model = torch.compile(
+		model,
+		mode="reduce-overhead", # reducing Python overhead and CUDA kernel launch latency
+		fullgraph=True, # compile the entire model into a single graph
+	)
+
 
 	if verbose:
 		print(f"\n[INFO] {model.__class__.__name__} {type(model)}")

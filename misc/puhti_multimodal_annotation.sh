@@ -40,8 +40,8 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
 )
 
-LLM_BATCH_SIZES=(24 24 24 24 24)
 VLN_BATCH_SIZES=(64 48 48 48 96)
+LLM_BATCH_SIZES=(24 24 24 24 24)
 
 python -u multimodal_annotation.py \
   --csv_file ${DATASETS[$SLURM_ARRAY_TASK_ID]}/metadata_multi_label.csv \

@@ -247,6 +247,12 @@ def _load_vlm_(
 		print(f"[INFO] Calling pretrained {model_cls.__name__} {model_id}")
 
 	model = model_cls.from_pretrained(model_id, **model_kwargs)
+	model = torch.compile(
+		model,
+		mode="reduce-overhead", # reducing Python overhead and CUDA kernel launch latency
+		fullgraph=True, # compile the entire model into a single graph
+	)
+	model.eval()
 
 	if verbose:
 		print(f"\n[INFO] {model.__class__.__name__} {type(model)}")
@@ -259,6 +265,7 @@ def _load_vlm_(
 		print(f"   • dtype: {hasattr(model, 'dtype')}")
 		print(f"   • generation_config: {hasattr(model, 'generation_config')}")
 		print(f"   • config: {hasattr(model, 'config')}")
+		print(f"   • training mode: {model.training}")  # True = train, False = eval
 
 		# first parameter dtype gives a quick hint
 		first_param = next(model.parameters())
@@ -1138,7 +1145,6 @@ def get_vlm_based_labels_opt(
 		use_quantization=use_quantization, 
 		verbose=verbose
 	)
-	model.eval()
 	if verbose:
 		print(f"[MODEL] Loaded {model_id} | {device} | {torch.cuda.get_device_name(device)}")
 	
@@ -1257,13 +1263,15 @@ def get_vlm_based_labels_opt(
 			# fallback: process each image sequentially
 			for i, img in tqdm(valid_pairs, desc="Processing batch images [sequential]", ncols=100):
 				try:
-					single_message = [{
-						"role": "user",
-						"content": [
-							{"type": "text", "text": base_prompt},
-							{"type": "image", "image": img},
-						],
-					}]
+					single_message = [
+						{
+							"role": "user",
+							"content": [
+								{"type": "text", "text": base_prompt},
+								{"type": "image", "image": img},
+							],
+						}
+					]
 					chat = processor.apply_chat_template(
 						single_message, 
 						tokenize=False, 
@@ -1280,12 +1288,14 @@ def get_vlm_based_labels_opt(
 					if verbose:
 						print(f"\n[INPUT] Pixel: {single_inputs.pixel_values.shape} {single_inputs.pixel_values.dtype} {single_inputs.pixel_values.device}")
 
-					with torch.amp.autocast(
-						device_type=device.type, 
-						enabled=torch.cuda.is_available(), 
-						dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
-					):
-						out = model.generate(**single_inputs, **gen_kwargs)
+					# Generate response
+					with torch.no_grad():
+						with torch.amp.autocast(
+							device_type=device.type, 
+							enabled=torch.cuda.is_available(), 
+							dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+						):
+							out = model.generate(**single_inputs, **gen_kwargs)
 
 					decoded = processor.decode(out[0], skip_special_tokens=True)
 					results[i] = parse_vlm_response(model_id=model_id, raw_response=decoded)
