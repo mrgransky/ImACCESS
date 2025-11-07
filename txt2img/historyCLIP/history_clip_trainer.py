@@ -4,26 +4,13 @@ HOME, USER = os.getenv('HOME'), os.getenv('USER')
 IMACCESS_PROJECT_WORKSPACE = os.path.join(HOME, "WS_Farid", "ImACCESS")
 CLIP_DIR = os.path.join(IMACCESS_PROJECT_WORKSPACE, "clip")
 sys.path.insert(0, CLIP_DIR)
+
 from utils import *
-from trainer import (
-	train, pretrain, 
-	full_finetune_single_label, 
-	probe_finetune_single_label,
-	lora_finetune_single_label, 
-	lora_plus_finetune_single_label,
-	ia3_finetune_single_label,
-	dora_finetune_single_label,
-	vera_finetune_single_label,
-	progressive_finetune_single_label, 
-	full_finetune_multi_label,
-	probe_finetune_multi_label,
-	lora_finetune_multi_label,
-	lora_plus_finetune_multi_label,
-	ia3_finetune_multi_label,
-	dora_finetune_multi_label,
-	vera_finetune_multi_label,
-	progressive_finetune_multi_label,
-)
+from single_label_trainer import *
+from multi_label_trainer import *
+from pretrain import pretrain, pretrain_multilabel
+from pure_train import train
+
 import visualize as viz
 from historical_dataset_loader import get_single_label_dataloaders, get_multi_label_dataloaders
 

@@ -76,7 +76,7 @@ def _transform(n_px: int):
 	return Compose(
 		[
 			Resize(n_px, interpolation=BICUBIC),
-			CenterCrop(n_px),
+			CenterCrop(n_px), # TODO: Historical images may have important contextual information at the edges
 			_convert_image_to_rgb,
 			ToTensor(),
 			Normalize(
