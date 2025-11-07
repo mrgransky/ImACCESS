@@ -18,7 +18,7 @@ from historical_dataset_loader import get_single_label_dataloaders, get_multi_la
 
 # run in local:
 # $ python history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fts progressive -e 105 -mphbs 3 -mepph 5 -bs 128 -lr 3e-4 -wd 1e-2 -tnp 8
-# $ nohup python -u history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -m finetune -fts progressive -a "ViT-B/32" > logs/europeana_ft_progressive.txt &
+# $ nohup python -u history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -m finetune -fts progressive -a "ViT-B/32" -mphbs 3 -mepph 5 -tnp 8 > logs/europeana_ft_progressive.txt &
 
 # Pouta:
 # pretrain:
