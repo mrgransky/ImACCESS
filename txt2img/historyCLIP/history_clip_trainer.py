@@ -101,6 +101,9 @@ def main():
 	# Linear probe
 	parser.add_argument('--probe_dropout', '-pdo', type=float, default=None, help='Linear probe dropout (used if finetune_strategy=linear_probe)')
 
+	# CLIP-Adapter
+	parser.add_argument('--clip_adapter_method', '-cam', type=str, choices=['clip_adapter_v', 'clip_adapter_t', 'clip_adapter_vt'], default=None, help='CLIP-Adapter method (used if finetune_strategy=clip_adapter)')
+
 	# Common
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 	parser.add_argument('--cache_size', '-cs', type=int, default=None, help='Cache size for dataloader (in number of samples)')
@@ -133,6 +136,9 @@ def main():
 
 	if args.finetune_strategy == "lora_plus":
 		assert args.lora_plus_lambda is not None, "lora_plus_lambda must be specified for lora_plus finetuning (example: -lmbd 32.0)"
+
+	if args.finetune_strategy == "clip_adapter":
+		assert args.clip_adapter_method is not None, "clip_adapter_method must be specified for clip_adapter finetuning (example: -cam clip_adapter_v)"
 
 	try:
 		if args.log_dir:
@@ -229,6 +235,7 @@ def main():
 				'dora': dora_finetune_single_label,
 				'vera': vera_finetune_single_label,
 				'progressive': progressive_finetune_single_label,
+				'clip_adapter': clip_adapter_finetune_single_label,
 			},
 			'multi_label': {
 				'full': full_finetune_multi_label,
@@ -284,6 +291,12 @@ def main():
 						{
 							'lora_plus_lambda': args.lora_plus_lambda,
 						} if args.finetune_strategy == 'lora_plus' else {}
+					),
+				**(
+						{
+							'clip_adapter_method': args.clip_adapter_method,
+							# 'bottleneck_dim': args.bottleneck_dim,
+						} if args.finetune_strategy == 'clip_adapter' else {}
 					)
 			)
 		elif args.mode == "train":

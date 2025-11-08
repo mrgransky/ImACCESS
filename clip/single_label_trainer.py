@@ -2951,7 +2951,7 @@ def clip_adapter_finetune_single_label(
 		device: str,
 		results_dir: str,
 		clip_adapter_method: str, # "clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"
-		bottleneck_dim: int,
+		bottleneck_dim: int=256,
 		activation: str = "relu",
 		patience: int = 7,
 		min_delta: float = 1e-4,
@@ -3055,6 +3055,38 @@ def clip_adapter_finetune_single_label(
 		)
 
 		model.to(device)
+
+		# DEBUG: Check which parameters are trainable
+		if verbose:
+			trainable_params = []
+			frozen_params = []
+			for name, param in model.named_parameters():
+				if param.requires_grad:
+					trainable_params.append((name, param.numel()))
+				else:
+					frozen_params.append((name, param.numel()))
+			
+			print(f"DEBUG - Trainable parameters: {len(trainable_params)}")
+			print(f"DEBUG - Frozen parameters: {len(frozen_params)}")
+			
+			if trainable_params:
+				print("Trainable parameters:")
+				for name, numel in trainable_params[:10]:  # Show first 10
+					print(f"  {name}: {numel} params")
+				if len(trainable_params) > 10:
+					print(f"  ... and {len(trainable_params) - 10} more")
+			else:
+				print("WARNING: No trainable parameters found!")
+					
+			total_trainable = sum(numel for _, numel in trainable_params)
+			total_frozen = sum(numel for _, numel in frozen_params)
+			print(f"Total trainable parameters: {total_trainable:,}")
+			print(f"Total frozen parameters: {total_frozen:,}")
+
+		trainable_parameters = [p for p in model.parameters() if p.requires_grad]
+		if not trainable_parameters:
+			raise ValueError("No trainable parameters found in the model. Check your setup.")
+
 		# Assuming get_parameters_info can handle CLIP-Adapter models too
 		get_parameters_info(model=model, mode=mode)
 
