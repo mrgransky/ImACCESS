@@ -3201,12 +3201,6 @@ def clip_adapter_finetune_single_label(
 						finetune_strategy=mode,
 						cache_dir=results_dir,
 						verbose=True,
-						# Pass CLIP-Adapter specific parameters for logging/debugging
-						clip_adapter_params={
-								"method": clip_adapter_method,
-								"bottleneck_dim": bottleneck_dim,
-								"activation": activation,
-						},
 						max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 						is_training=True,
 						model_hash=get_model_hash(model),
@@ -3280,12 +3274,6 @@ def clip_adapter_finetune_single_label(
 				cache_dir=results_dir,
 				topk_values=topk_values,
 				verbose=True,
-				# Pass CLIP-Adapter specific parameters for logging/debugging in evaluation
-				clip_adapter_params={
-						"method": clip_adapter_method,
-						"bottleneck_dim": bottleneck_dim,
-						"activation": activation,
-				},
 				max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 		)
 

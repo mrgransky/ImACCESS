@@ -1316,89 +1316,6 @@ class CLIPAdapterBottleneck(torch.nn.Module):
 						'memory_mb': memory_mb,
 				}
 
-class CLIPAdapterVisual(torch.nn.Module):
-		"""
-		CLIP-Adapter for visual encoder.
-		
-		CORRECTIONS:
-		1. Uses forward hooks instead of monkey-patching (CRITICAL FIX)
-		2. Proper module registration
-		3. Clean integration without rewriting forward pass
-		
-		Args:
-				clip_visual_model: CLIP visual encoder
-				bottleneck_dim: Bottleneck dimension
-				device: Device
-				activation: Activation function
-				residual_ratio: Scaling for adapter residual
-				trainable_ratio: Whether ratio is trainable
-				verbose: Debug prints
-		"""
-		
-		def __init__(
-				self,
-				clip_visual_model: torch.nn.Module,
-				bottleneck_dim: int,
-				device: Union[str, torch.device],
-				activation: str = "relu",
-				residual_ratio: float = 0.2,
-				trainable_ratio: bool = True,
-				verbose: bool = True,
-		):
-				super(CLIPAdapterVisual, self).__init__()
-				self.visual_encoder = clip_visual_model
-				self.bottleneck_dim = bottleneck_dim
-				self.device = device
-				self.verbose = verbose
-				
-				if self.verbose:
-						print(f"[CLIP-Adapter-Visual] Initializing")
-				
-				# Get feature dimension from ln_post
-				if hasattr(clip_visual_model, 'ln_post'):
-						in_features = clip_visual_model.ln_post.weight.size(0)
-				else:
-						raise ValueError("Visual encoder must have 'ln_post' layer")
-				
-				# Create adapter
-				self.adapter = CLIPAdapterBottleneck(
-						in_features=in_features,
-						bottleneck_dim=bottleneck_dim,
-						device=device,
-						activation=activation,
-						residual_ratio=residual_ratio,
-						trainable_ratio=trainable_ratio,
-						verbose=verbose,
-				)
-				
-				# Register forward hook (CRITICAL FIX)
-				self.hook_handle = clip_visual_model.ln_post.register_forward_hook(
-						self._adapter_hook
-				)
-				
-				if self.verbose:
-						print(f"[CLIP-Adapter-Visual] Hook registered on ln_post")
-						print(f"[CLIP-Adapter-Visual] Adapter input/output dim: {in_features}")
-		
-		def _adapter_hook(self, module, input, output):
-				"""
-				Hook applied after ln_post.
-				Takes the [CLS] token output and applies the adapter.
-				"""
-				# output shape: [batch, seq_len, dim] or [batch, dim] depending on context
-				# For CLIP, ln_post is applied to the [CLS] token only, so output is [batch, dim]
-				return self.adapter(output)
-		
-		def remove_adapter(self):
-				"""Remove the hook to restore original behavior."""
-				if hasattr(self, 'hook_handle'):
-						self.hook_handle.remove()
-						if self.verbose:
-								print("[CLIP-Adapter-Visual] Adapter hook removed")
-		
-		def get_memory_footprint(self) -> dict:
-				return self.adapter.get_memory_footprint()
-
 class CLIPAdapterText(torch.nn.Module):
     """
     CLIP-Adapter for text encoder.
@@ -1514,6 +1431,105 @@ class CLIPAdapterText(torch.nn.Module):
         """Return memory usage of the adapter."""
         return self.adapter.get_memory_footprint()
 
+class CLIPAdapterVisual(torch.nn.Module):
+    """
+    CLIP-Adapter for visual encoder.
+    
+    CORRECTIONS:
+    1. Uses forward hooks instead of monkey-patching (CRITICAL FIX)
+    2. Proper module registration
+    3. Clean integration without rewriting forward pass
+    4. Preserves access to original encoder attributes (conv1, etc.)
+    
+    Args:
+        clip_visual_model: CLIP visual encoder
+        bottleneck_dim: Bottleneck dimension
+        device: Device
+        activation: Activation function
+        residual_ratio: Scaling for adapter residual
+        trainable_ratio: Whether ratio is trainable
+        verbose: Debug prints
+    """
+    
+    def __init__(
+        self,
+        clip_visual_model: torch.nn.Module,
+        bottleneck_dim: int,
+        device: Union[str, torch.device],
+        activation: str = "relu",
+        residual_ratio: float = 0.2,
+        trainable_ratio: bool = True,
+        verbose: bool = True,
+    ):
+        super(CLIPAdapterVisual, self).__init__()
+        self.visual_encoder = clip_visual_model
+        self.bottleneck_dim = bottleneck_dim
+        self.device = device
+        self.verbose = verbose
+        
+        if self.verbose:
+            print(f"[CLIP-Adapter-Visual] Initializing")
+        
+        # Get feature dimension from ln_post
+        if hasattr(clip_visual_model, 'ln_post'):
+            in_features = clip_visual_model.ln_post.weight.size(0)
+        else:
+            raise ValueError("Visual encoder must have 'ln_post' layer")
+        
+        # Create adapter
+        self.adapter = CLIPAdapterBottleneck(
+            in_features=in_features,
+            bottleneck_dim=bottleneck_dim,
+            device=device,
+            activation=activation,
+            residual_ratio=residual_ratio,
+            trainable_ratio=trainable_ratio,
+            verbose=verbose,
+        )
+        
+        # Register forward hook (CRITICAL FIX)
+        self.hook_handle = clip_visual_model.ln_post.register_forward_hook(
+            self._adapter_hook
+        )
+        
+        if self.verbose:
+            print(f"[CLIP-Adapter-Visual] Hook registered on ln_post")
+            print(f"[CLIP-Adapter-Visual] Adapter input/output dim: {in_features}")
+    
+    def _adapter_hook(self, module, input, output):
+        """
+        Hook applied after ln_post.
+        Takes the [CLS] token output and applies the adapter.
+        """
+        return self.adapter(output)
+    
+    def forward(self, x):
+        """Forward pass through the original visual encoder."""
+        return self.visual_encoder(x)
+    
+    def __getattr__(self, name):
+        """
+        Delegate attribute access to the wrapped visual encoder.
+        This allows the CLIP model to access attributes like conv1, transformer, etc.
+        """
+        # First try to get from self
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            # If not found, try the wrapped visual encoder
+            if name != 'visual_encoder' and hasattr(self, 'visual_encoder'):
+                return getattr(self.visual_encoder, name)
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+    
+    def remove_adapter(self):
+        """Remove the hook to restore original behavior."""
+        if hasattr(self, 'hook_handle'):
+            self.hook_handle.remove()
+            if self.verbose:
+                print("[CLIP-Adapter-Visual] Adapter hook removed")
+    
+    def get_memory_footprint(self) -> dict:
+        return self.adapter.get_memory_footprint()
 
 def get_adapter_peft_clip(
     clip_model: torch.nn.Module,
