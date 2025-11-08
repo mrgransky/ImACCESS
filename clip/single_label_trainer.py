@@ -1835,7 +1835,7 @@ def lora_plus_finetune_single_label(
 			print(f"   ├─ Total Memory: {gpu_total_mem:.2f}GB")
 			print(f"   └─ CUDA Capability: {cuda_capability}")
 
-	model = get_adapted_clip(
+	model = get_injected_peft_clip(
 		clip_model=model,
 		method=mode,
 		rank=lora_rank,
