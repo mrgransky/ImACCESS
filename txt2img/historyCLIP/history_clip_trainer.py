@@ -66,7 +66,7 @@ def main():
 	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
 	parser.add_argument('--dataset_type', '-dt', type=str, choices=['single_label', 'multi_label'], default='single_label', help='Dataset type (single_label/multi_label)')
 	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain'], default='finetune', help='Choose mode (train/finetune/pretrain)')
-	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'probe', 'lora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive'], default=None, help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
+	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'probe', 'lora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'clip_adapter', 'tip_adapter', 'tip_adapter_f'], default=None, help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--epochs', '-e', type=int, default=63, help='Number of epochs')
