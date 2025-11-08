@@ -5,7 +5,7 @@ from peft import get_injected_peft_clip, get_adapter_peft_clip
 from evals import *
 from apft import *
 import visualize as viz
-from model import LAMB, SingleLabelLinearProbe, get_probe_clip
+from model import LAMB
 
 def progressive_finetune_single_label(
 		model: torch.nn.Module,
