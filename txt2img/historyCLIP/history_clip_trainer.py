@@ -104,6 +104,9 @@ def main():
 	# CLIP-Adapter
 	parser.add_argument('--clip_adapter_method', '-cam', type=str, choices=['clip_adapter_v', 'clip_adapter_t', 'clip_adapter_vt'], default=None, help='CLIP-Adapter method (used if finetune_strategy=clip_adapter)')
 
+	# Tip-Adapter
+	parser.add_argument('--tip_adapter_method', '-tam', type=str, choices=['tip_adapter', 'tip_adapter_f'], default=None, help='Tip-Adapter method (used if finetune_strategy=tip_adapter)')
+
 	# Common
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
 	parser.add_argument('--cache_size', '-cs', type=int, default=None, help='Cache size for dataloader (in number of samples)')
@@ -236,6 +239,7 @@ def main():
 				'vera': vera_finetune_single_label,
 				'progressive': progressive_finetune_single_label,
 				'clip_adapter': clip_adapter_finetune_single_label,
+				'tip_adapter': tip_adapter_finetune_single_label,
 			},
 			'multi_label': {
 				'full': full_finetune_multi_label,
@@ -297,7 +301,12 @@ def main():
 							'clip_adapter_method': args.clip_adapter_method,
 							# 'bottleneck_dim': args.bottleneck_dim,
 						} if args.finetune_strategy == 'clip_adapter' else {}
-					)
+					),
+				**(
+						{
+							'tip_adapter_method': args.tip_adapter_method,
+						} if args.finetune_strategy == 'tip_adapter' else {}
+					),
 			)
 		elif args.mode == "train":
 			train(

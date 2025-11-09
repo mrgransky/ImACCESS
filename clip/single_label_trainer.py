@@ -177,7 +177,7 @@ def progressive_finetune_single_label(
 		initial_images, _, _ = fixed_val_batch
 		initial_images = initial_images.to(device)
 		pretrained_embeds = model.encode_image(initial_images)
-		pretrained_embeds = F.normalize(pretrained_embeds, dim=-1)
+		pretrained_embeds = torch.nn.functional.normalize(pretrained_embeds, dim=-1)
 	
 	current_phase = 0
 	epochs_in_current_phase = 0
@@ -3373,6 +3373,592 @@ def clip_adapter_finetune_single_label(
 				fname=os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
 		)
 
+def tip_adapter_finetune_single_label(
+		model: torch.nn.Module,
+		train_loader: DataLoader,
+		validation_loader: DataLoader,
+		num_epochs: int,
+		print_every: int,
+		learning_rate: float,
+		weight_decay: float,
+		device: str,
+		results_dir: str,
+		tip_adapter_method: str,  # "tip_adapter" or "tip_adapter_f"
+		initial_beta: float = 1.0,
+		initial_alpha: float = 1.0,
+		patience: int = 7,
+		min_delta: float = 1e-4,
+		cumulative_delta: float = 1e-3,
+		minimum_epochs: int = 10,
+		volatility_threshold: float = 0.02,
+		slope_threshold: float = 1e-3,
+		pairwise_imp_threshold: float = 0.01,
+		topk_values: List[int] = [1, 5, 10, 15, 20],
+		support_shots: int = 16,  # Number of support samples per class
+		use_lamb: bool = False,
+		verbose: bool = True,
+):
+	"""
+	Fine-tunes a CLIP model using Tip-Adapter or Tip-Adapter-F technique.
+	
+	Tip-Adapter creates a cache from support set and adapts at test time.
+	Tip-Adapter-F additionally trains a linear projection layer.
+	
+	Args:
+		model: Pre-trained CLIP model.
+		train_loader: DataLoader for training data.
+		validation_loader: DataLoader for validation data.
+		num_epochs: Number of training epochs.
+		print_every: Print training stats every N batches.
+		learning_rate: Learning rate for the optimizer.
+		weight_decay: Weight decay for the optimizer.
+		device: Device to run the model on.
+		results_dir: Directory to save results and checkpoints.
+		tip_adapter_method: "tip_adapter" (training-free) or "tip_adapter_f" (with training).
+		initial_beta: Initial temperature parameter for softmax.
+		initial_alpha: Initial scaling factor for cache adaptation.
+		patience: Patience for early stopping.
+		min_delta: Minimum change to qualify as an improvement.
+		cumulative_delta: Cumulative change threshold for early stopping.
+		minimum_epochs: Minimum epochs before early stopping.
+		volatility_threshold: Threshold for validation loss volatility.
+		slope_threshold: Threshold for validation loss slope.
+		pairwise_imp_threshold: Threshold for pairwise improvement.
+		topk_values: List of k values for Top-K accuracy.
+		support_shots: Number of support samples per class for cache.
+		use_lamb: Use LAMB optimizer instead of AdamW.
+		verbose: Enable detailed logging.
+	"""
+	
+	window_size = minimum_epochs + 1
+	
+	# Check for non-zero dropout in the base model
+	dropout_values = []
+	for name, module in model.named_modules():
+		if isinstance(module, torch.nn.Dropout):
+			dropout_values.append((name, module.p))
+	
+	non_zero_dropouts = [(name, p) for name, p in dropout_values if p > 0]
+	if verbose and non_zero_dropouts:
+		dropout_info = ", ".join([f"{name}: p={p}" for name, p in non_zero_dropouts])
+		print(
+			f"[Tip-Adapter] WARNING: Non-zero dropout detected in base model: {dropout_info}. "
+			f"This might affect the frozen base model's behavior during adaptation."
+		)
+	
+	early_stopping = EarlyStopping(
+		patience=patience,
+		min_delta=min_delta,
+		cumulative_delta=cumulative_delta,
+		window_size=window_size,
+		mode='min',
+		min_epochs=minimum_epochs,
+		restore_best_weights=True,
+		volatility_threshold=volatility_threshold,
+		slope_threshold=slope_threshold,
+		pairwise_imp_threshold=pairwise_imp_threshold,
+	)
+	
+	# Dataset and directory setup
+	try:
+		dataset_name = validation_loader.dataset.dataset.__class__.__name__
+	except AttributeError:
+		dataset_name = validation_loader.dataset.dataset_name
+	
+	mode = inspect.stack()[0].function
+	mode = re.sub(r'_finetune_single_label', '', mode)
+	
+	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
+	model_name = model.__class__.__name__
+	
+	if verbose:
+		print(f"{mode.upper()} Method: {tip_adapter_method} Beta: {initial_beta} Alpha: {initial_alpha} "
+		      f"{model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} "
+		      f"{type(device)} {device}")
+		if torch.cuda.is_available():
+			gpu_name = torch.cuda.get_device_name(device)
+			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3)
+			cuda_capability = torch.cuda.get_device_capability()
+			print(f"   ├─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
+	
+	# === GET TEXT EMBEDDING DIMENSION ===
+	# IMPORTANT: Do this BEFORE modifying the model
+	try:
+		dummy_text = clip.tokenize(["a photo of a cat"]).to(device)
+		with torch.no_grad():
+			model.eval()
+			text_features = model.encode_text(dummy_text)
+			cache_dim = text_features.shape[-1]
+	except Exception as e:
+		print(f"Warning: Could not automatically detect embedding dimension. Using default 512. Error: {e}")
+		cache_dim = 512
+	
+	if verbose:
+		print(f"Detected text embedding dimension: {cache_dim}")
+	
+	# === SUPPORT SET CONSTRUCTION ===
+	# IMPORTANT: Do this BEFORE applying Tip-Adapter to avoid modified forward pass
+	if verbose:
+		print(f"\n[Tip-Adapter] Constructing support set with {support_shots} shots per class...")
+	
+	# Get class information
+	try:
+		class_names = train_loader.dataset.dataset.classes
+		num_classes = len(class_names)
+	except AttributeError:
+		try:
+			class_names = train_loader.dataset.unique_labels
+			num_classes = len(class_names)
+		except:
+			# Fallback: count unique labels in dataset
+			all_labels = []
+			for _, _, labels in train_loader:
+				all_labels.extend(labels.tolist())
+			class_names = sorted(list(set(all_labels)))
+			num_classes = len(class_names)
+	
+	if verbose:
+		print(f"Number of classes: {num_classes}")
+	
+	# Sample support set: support_shots examples per class
+	support_images = []
+	support_labels = []
+	
+	# Create a mapping of class to samples
+	class_to_samples = {i: [] for i in range(num_classes)}
+	
+	# Collect samples per class
+	for images, _, labels in train_loader:
+		for img, label in zip(images, labels):
+			label_idx = label.item() if isinstance(label, torch.Tensor) else label
+			if len(class_to_samples[label_idx]) < support_shots:
+				class_to_samples[label_idx].append((img, label_idx))
+		
+		# Check if we have enough samples for all classes
+		if all(len(samples) >= support_shots for samples in class_to_samples.values()):
+			break
+	
+	# Flatten the support set
+	for class_idx in range(num_classes):
+		for img, label in class_to_samples[class_idx][:support_shots]:
+			support_images.append(img)
+			support_labels.append(label)
+	
+	if verbose:
+		print(f"Support set size: {len(support_images)} samples")
+		print(f"Support set breakdown by class:")
+		from collections import Counter
+		label_counts = Counter(support_labels)
+		for class_idx in sorted(label_counts.keys()):
+			print(f"  Class {class_idx}: {label_counts[class_idx]} samples")
+	
+	# Convert to tensors
+	support_images = torch.stack(support_images).to(device)
+	support_labels = torch.tensor(support_labels, dtype=torch.long).to(device)
+	
+	# === EXTRACT FEATURES BEFORE MODIFYING MODEL ===
+	if verbose:
+		print("\n[Tip-Adapter] Extracting support features from original CLIP model...")
+	
+	with torch.no_grad():
+		model.eval()
+		# Use the ORIGINAL encode_image before Tip-Adapter modifies it
+		support_features = model.encode_image(support_images)
+		support_features = torch.nn.functional.normalize(support_features, dim=-1)
+	
+	if verbose:
+		print(f"Support features shape: {support_features.shape}")
+	
+	# Get text features for all classes
+	if verbose:
+		print("Extracting text features for all classes...")
+	
+	# Create text prompts
+	text_prompts = [f"a photo of a {class_name}" for class_name in class_names]
+	tokenized_prompts = clip.tokenize(text_prompts).to(device)
+	
+	with torch.no_grad():
+		model.eval()
+		text_features = model.encode_text(tokenized_prompts)
+		text_features = torch.nn.functional.normalize(text_features, dim=-1)
+	
+	if verbose:
+		print(f"Text features shape: {text_features.shape}")
+	
+	# === NOW APPLY TIP-ADAPTER ===
+	if verbose:
+		print("\n[Tip-Adapter] Applying Tip-Adapter to model...")
+	
+	model = get_adapter_peft_clip(
+		clip_model=model,
+		method=tip_adapter_method,
+		cache_dim=cache_dim,
+		bottleneck_dim=None,  # Not used for Tip-Adapter
+		activation=None,  # Not used for Tip-Adapter
+		verbose=verbose,
+	)
+	
+	model.to(device)
+	
+	# === SET CACHE IN THE ADAPTER MODULE ===
+	if verbose:
+		print("\n[Tip-Adapter] Setting cache in adapter module...")
+	
+	# Access the adapter module from the visual encoder
+	adapter_module = getattr(model.visual, f"{tip_adapter_method.replace('-', '_')}_proj", None)
+	
+	if adapter_module is None:
+		raise ValueError(
+			f"Could not find Tip-Adapter module in model.visual. "
+		  f"Expected attribute: {tip_adapter_method.replace('-', '_')}_proj"
+		)
+	
+	adapter_module.set_cache(
+		support_features=support_features,
+		support_labels=support_labels,
+		text_features=text_features
+	)
+	
+	if verbose:
+		print("Cache successfully set in Tip-Adapter module")
+		cache_stats = adapter_module.get_memory_footprint()
+		print(f"Cache statistics:")
+		print(f"  ├─ Cache size: {cache_stats.get('cache_size', 0)} samples")
+		print(f"  ├─ Cache memory: {cache_stats.get('cache_memory_mb', 0):.4f} MB")
+		print(f"  └─ Total memory: {cache_stats.get('total_memory_mb', 0):.4f} MB")
+	
+	# DEBUG: Check which parameters are trainable
+	if verbose:
+		trainable_params = []
+		frozen_params = []
+		for name, param in model.named_parameters():
+			if param.requires_grad:
+				trainable_params.append((name, param.numel()))
+			else:
+				frozen_params.append((name, param.numel()))
+		
+		print(f"\nDEBUG - Trainable parameters: {len(trainable_params)}")
+		print(f"DEBUG - Frozen parameters: {len(frozen_params)}")
+		
+		if trainable_params:
+			print("Trainable parameters:")
+			for name, numel in trainable_params[:10]:
+				print(f"  {name}: {numel} params")
+			if len(trainable_params) > 10:
+				print(f"  ... and {len(trainable_params) - 10} more")
+		
+		total_trainable = sum(numel for _, numel in trainable_params)
+		total_frozen = sum(numel for _, numel in frozen_params)
+		print(f"Total trainable parameters: {total_trainable:,}")
+		print(f"Total frozen parameters: {total_frozen:,}")
+	
+	get_parameters_info(model=model, mode=mode)
+	
+	# For training-free Tip-Adapter, we may only optimize beta and alpha
+	# For Tip-Adapter-F, we also optimize the linear projection
+	trainable_parameters = [p for p in model.parameters() if p.requires_grad]
+	
+	if not trainable_parameters:
+		if tip_adapter_method == "tip_adapter":
+			# Training-free version - no training needed
+			if verbose:
+				print("[Tip-Adapter] Training-free mode - skipping optimization setup")
+			num_epochs = 0  # No training epochs needed
+		else:
+			raise ValueError("No trainable parameters found in the model. Check your setup.")
+	
+	# Setup optimizer only if we have trainable parameters
+	if trainable_parameters and num_epochs > 0:
+		if use_lamb:
+			optimizer = LAMB(
+				params=trainable_parameters,
+				lr=learning_rate,
+				betas=(0.9, 0.98),
+				eps=1e-6,
+				weight_decay=weight_decay,
+			)
+		else:
+			optimizer = torch.optim.AdamW(
+				params=trainable_parameters,
+				lr=learning_rate,
+				betas=(0.9, 0.98),
+				eps=1e-6,
+				weight_decay=weight_decay,
+			)
+		
+		estimated_epochs = min(num_epochs, 15)
+		total_training_steps = estimated_epochs * len(train_loader)
+		ANNEALING_RATIO = 1e-2
+		eta_min = learning_rate * ANNEALING_RATIO
+		scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+			optimizer=optimizer,
+			T_max=total_training_steps,
+			eta_min=eta_min,
+			last_epoch=-1,
+		)
+		if verbose:
+			print(f"\n{scheduler.__class__.__name__} scheduler")
+			print(f"  ├─ T_max = {total_training_steps} steps")
+			print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
+	else:
+		optimizer = None
+		scheduler = None
+		if verbose:
+			print("\n[Tip-Adapter] No optimizer needed (training-free mode)")
+	
+	criterion = torch.nn.CrossEntropyLoss()
+	scaler = torch.amp.GradScaler(device=device)
+	
+	mdl_fpth = os.path.join(
+		results_dir,
+		f"{mode}_"
+		f"{model_arch}_"
+		f"ieps_{num_epochs}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"bs_{train_loader.batch_size}_"
+		f"tad_{tip_adapter_method}_"
+		f"beta_{initial_beta}_"
+		f"alpha_{initial_alpha}_"
+		f"shots_{support_shots}_"
+		f"mep_{minimum_epochs}_"
+		f"pat_{patience}_"
+		f"mdt_{min_delta:.1e}_"
+		f"cdt_{cumulative_delta:.1e}_"
+		f"vt_{volatility_threshold}_"
+		f"st_{slope_threshold:.1e}_"
+		f"pit_{pairwise_imp_threshold:.1e}"
+		f".pth"
+	)
+	
+	training_losses = []
+	img2txt_metrics_all_epochs = []
+	txt2img_metrics_all_epochs = []
+	train_start_time = time.time()
+	final_img2txt_metrics = None
+	final_txt2img_metrics = None
+	learning_rates_history = []
+	weight_decays_history = []
+	in_batch_loss_acc_metrics_all_epochs = []
+	full_val_loss_acc_metrics_all_epochs = []
+	
+	# If training-free, skip training loop
+	if num_epochs == 0 or not trainable_parameters:
+		if verbose:
+			print("\n[Tip-Adapter] Training-free mode - proceeding directly to evaluation")
+	else:
+		# Training loop (for Tip-Adapter-F or trainable beta/alpha)
+		for epoch in range(num_epochs):
+			train_and_val_st_time = time.time()
+			torch.cuda.empty_cache()
+			model.train()
+			print(f"Epoch [{epoch + 1}/{num_epochs}]")
+			epoch_loss = 0.0
+			
+			for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
+				optimizer.zero_grad(set_to_none=True)
+				images = images.to(device, non_blocking=True)
+				tokenized_labels = tokenized_labels.to(device, non_blocking=True)
+				
+				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+					logits_per_image, logits_per_text = model(images, tokenized_labels)
+					ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
+					loss_img = criterion(logits_per_image, ground_truth)
+					loss_txt = criterion(logits_per_text, ground_truth)
+					total_loss = 0.5 * (loss_img + loss_txt)
+				
+				scaler.scale(total_loss).backward()
+				torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+				scaler.step(optimizer)
+				scaler.update()
+				scheduler.step()
+				
+				if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+					print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
+				epoch_loss += total_loss.item()
+			
+			avg_training_loss = epoch_loss / len(train_loader)
+			training_losses.append(avg_training_loss)
+			
+			learning_rates_history.append(optimizer.param_groups[0]['lr'])
+			weight_decays_history.append(optimizer.param_groups[0]['weight_decay'])
+			
+			print(f">> Validating Epoch {epoch+1} ...")
+			validation_results = get_validation_metrics(
+				model=model,
+				validation_loader=validation_loader,
+				criterion=criterion,
+				device=device,
+				topK_values=topk_values,
+				finetune_strategy=mode,
+				cache_dir=results_dir,
+				verbose=True,
+				max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+				is_training=True,
+				model_hash=get_model_hash(model),
+			)
+			
+			in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
+			full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
+			retrieval_metrics_per_epoch = {
+				"img2txt": validation_results["img2txt_metrics"],
+				"txt2img": validation_results["txt2img_metrics"]
+			}
+			
+			in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
+			full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
+			img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
+			txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
+			current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
+			
+			print(
+				f'Epoch {epoch + 1}:\n'
+				f'\t[LOSS] {mode} (Training): {avg_training_loss} '
+				f'Validation(in-batch): {current_val_loss}\n'
+				f'\tValidation Top-k Accuracy:\n'
+				f'\tIn-batch:\n'
+				f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+				f'\t\t[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
+				f'\tFull Validation Set:\n'
+				f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+				f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+			)
+			print(f"Image-to-Text Retrieval:\n\t{retrieval_metrics_per_epoch['img2txt']}")
+			print(f"Text-to-Image Retrieval:\n\t{retrieval_metrics_per_epoch['txt2img']}")
+			
+			if hasattr(train_loader.dataset, 'get_cache_stats'):
+				print(f"#"*100)
+				cache_stats = train_loader.dataset.get_cache_stats()
+				if cache_stats is not None:
+					print(f"Train Cache Stats: {cache_stats}")
+			
+			if hasattr(validation_loader.dataset, 'get_cache_stats'):
+				cache_stats = validation_loader.dataset.get_cache_stats()
+				if cache_stats is not None:
+					print(f"Validation Cache Stats: {cache_stats}")
+				print(f"#"*100)
+			
+			if early_stopping.should_stop(
+				current_value=current_val_loss,
+				model=model,
+				epoch=epoch,
+				optimizer=optimizer,
+				scheduler=scheduler,
+				checkpoint_path=mdl_fpth,
+			):
+				print(
+					f"\nEarly stopping triggered at epoch {epoch + 1} "
+					f"with best loss: {early_stopping.get_best_score()} "
+					f"obtained in epoch {early_stopping.get_best_epoch()+1}")
+				break
+			
+			print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(150, "="))
+	
+	print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+	
+	# Evaluation
+	evaluation_results = evaluate_best_model(
+		model=model,
+		validation_loader=validation_loader,
+		criterion=criterion,
+		early_stopping=early_stopping,
+		checkpoint_path=mdl_fpth if num_epochs > 0 else None,
+		finetune_strategy=mode,
+		device=device,
+		cache_dir=results_dir,
+		topk_values=topk_values,
+		verbose=True,
+		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+	)
+	
+	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
+	final_metrics_full = evaluation_results["full_metrics"]
+	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
+	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
+	model_source = evaluation_results["model_loaded_from"]
+	
+	print(f"Final evaluation used model weights from: {model_source}")
+	print("--- Final Metrics [In-batch Validation] ---")
+	print(json.dumps(final_metrics_in_batch, indent=2, ensure_ascii=False))
+	print("--- Final Metrics [Full Validation Set] ---")
+	print(json.dumps(final_metrics_full, indent=2, ensure_ascii=False))
+	print("--- Image-to-Text Retrieval ---")
+	print(json.dumps(final_img2txt_metrics, indent=2, ensure_ascii=False))
+	print("--- Text-to-Image Retrieval ---")
+	print(json.dumps(final_txt2img_metrics, indent=2, ensure_ascii=False))
+	
+	# Generate plots
+	print("\nGenerating result plots...")
+	actual_trained_epochs = len(training_losses) if training_losses else 0
+	
+	file_base_name = (
+		f"{mode}_"
+		f"{CLUSTER}_"
+		f"{model_arch}_"
+		f"ep_{actual_trained_epochs}_"
+		f"lr_{learning_rate:.1e}_"
+		f"wd_{weight_decay:.1e}_"
+		f"bs_{train_loader.batch_size}_"
+		f"tad_{tip_adapter_method}_"
+		f"beta_{initial_beta}_"
+		f"alpha_{initial_alpha}_"
+		f"shots_{support_shots}"
+	)
+	
+	if num_epochs > 0:
+		mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
+		print(f"Best model will be renamed to: {mdl_fpth}")
+	
+	plot_paths = {
+		"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+		"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+		"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+		"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+		"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+	}
+	
+	if actual_trained_epochs > 0:
+		viz.plot_loss_accuracy_metrics(
+			dataset_name=dataset_name,
+			train_losses=training_losses,
+			val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+			in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+			in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+			full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+			full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+			losses_file_path=plot_paths["losses"],
+			in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
+			in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
+			full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
+			full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
+		)
+		
+		viz.plot_retrieval_metrics_per_epoch(
+			dataset_name=dataset_name,
+			image_to_text_metrics_list=img2txt_metrics_all_epochs,
+			text_to_image_metrics_list=txt2img_metrics_all_epochs,
+			fname=plot_paths["retrieval_per_epoch"],
+		)
+		
+		if learning_rates_history and weight_decays_history:
+			viz.plot_hyperparameter_evolution(
+				eta_min=eta_min,
+				learning_rates=learning_rates_history,
+				weight_decays=weight_decays_history,
+				fname=os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
+			)
+	
+	viz.plot_retrieval_metrics_best_model(
+		dataset_name=dataset_name,
+		image_to_text_metrics=final_img2txt_metrics,
+		text_to_image_metrics=final_txt2img_metrics,
+		fname=plot_paths["retrieval_best"],
+	)
+	
+	return in_batch_loss_acc_metrics_all_epochs
+
 def probe_finetune_single_label(
 		model: torch.nn.Module,
 		train_loader: DataLoader,
@@ -3574,7 +4160,7 @@ def probe_finetune_single_label(
 							images = images.to(device, non_blocking=True)
 							# Extract CLIP features
 							image_features = model.encode_image(images)
-							image_features = F.normalize(image_features, dim=-1)
+							image_features = torch.nn.functional.normalize(image_features, dim=-1)
 							
 							features.append(image_features.cpu())
 							labels.append(label_indices.cpu())
@@ -3748,7 +4334,7 @@ def probe_finetune_single_label(
 			def forward(self, images, texts):
 					# For compatibility with evaluation code
 					image_features = self.clip.encode_image(images)
-					image_features = F.normalize(image_features, dim=-1)
+					image_features = torch.nn.functional.normalize(image_features, dim=-1)
 					
 					# Get logits from probe
 					logits = self.probe(image_features)
