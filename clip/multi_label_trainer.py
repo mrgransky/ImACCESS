@@ -1070,7 +1070,6 @@ def lora_finetune_multi_label(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		window_size: int,
 		lora_rank: int,
 		lora_alpha: float,
 		lora_dropout: float,
@@ -1121,7 +1120,9 @@ def lora_finetune_multi_label(
 			temperature: Temperature scaling for similarities
 			label_smoothing: Label smoothing factor (0.0 = no smoothing)
 	"""
-	
+	# Adaptive window size based on minimum epochs
+	window_size = minimum_epochs + 1
+
 	# Set default loss weights
 	if loss_weights is None:
 		loss_weights = {"i2t": 0.5, "t2i": 0.5}
@@ -1601,7 +1602,6 @@ def probe_finetune_multi_label(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		window_size: int,
 		verbose: bool = True,
 		patience: int = 10,
 		min_delta: float = 1e-4,
@@ -1623,6 +1623,8 @@ def probe_finetune_multi_label(
 		Enhanced Linear probing fine-tuning for multi-label CLIP classification with robust ViT support.
 		Automatically handles different ViT architectures and fixes positional embedding issues.
 		"""
+
+		window_size = minimum_epochs + 1
 		# Set default loss weights
 		if loss_weights is None:
 				loss_weights = {"i2t": 0.5, "t2i": 0.5}
