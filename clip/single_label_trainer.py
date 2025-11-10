@@ -1819,7 +1819,7 @@ def lora_plus_finetune_single_label(
 	model_name = model.__class__.__name__
 
 	if verbose:
-		print(f"{mode.upper()}")
+		print(f"{mode.upper()} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}")
 		print(f"   ├─ Rank: {lora_rank}")
 		print(f"   ├─ Alpha: {lora_alpha}")
 		print(f"   ├─ Dropout: {lora_dropout}")
