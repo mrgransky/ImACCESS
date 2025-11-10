@@ -1185,7 +1185,6 @@ def lora_finetune_multi_label(
 		class_names = validation_loader.dataset.unique_labels
 	except AttributeError:
 		class_names = validation_loader.dataset.dataset.classes
-
 	num_classes = len(class_names)
 
 	if verbose:
@@ -1223,10 +1222,6 @@ def lora_finetune_multi_label(
 	else:
 		criterion = torch.nn.BCEWithLogitsLoss()
 	print(f"Using {criterion.__class__.__name__} for multi-label classification")
-
-	# Pre-encode all class texts (for efficiency)
-	all_class_texts = clip.tokenize(class_names).to(device)
-	print(f"all_class_texts: {type(all_class_texts)} {all_class_texts.shape} {all_class_texts.dtype} {all_class_texts.device}")
 
 	all_class_embeds = []
 	model.eval()  # Ensure model is in eval mode
