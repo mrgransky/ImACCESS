@@ -1426,14 +1426,11 @@ def evaluate_best_model(
 				print(f"Error loading weights from early stopping: {e}")
 				print("Proceeding with current model weights.")
 
-	param_count = sum(p.numel() for p in model.parameters())
 	if verbose:
+		param_count = sum(p.numel() for p in model.parameters())
 		print(f"Model ready for evaluation. Parameters: {param_count:,}")
 	
-	model.eval()
-	
-	if verbose:
-		print("Performing final evaluation on the best model...")
+	# model.eval()
 	
 	validation_results = get_validation_metrics(
 		model=model,
@@ -1449,6 +1446,7 @@ def evaluate_best_model(
 		lora_params=lora_params,
 		is_training=False,  # Use cache for final evaluation/inference
 		model_hash=get_model_hash(model),
+		temperature=temperature,
 	)
 	in_batch_metrics = validation_results["in_batch_metrics"]
 	full_metrics = validation_results["full_metrics"]
