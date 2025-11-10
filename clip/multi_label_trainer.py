@@ -123,24 +123,37 @@ def full_finetune_multi_label(
 
 	get_parameters_info(model=model, mode=mode)
 
-	# NEW: Use BCEWithLogitsLoss for multi-label classification
+	# Use BCEWithLogitsLoss for multi-label classification
 	if label_smoothing > 0:
-		print(f"Using label smoothing: {label_smoothing}")
+		if verbose:
+			print(f"Using label smoothing: {label_smoothing}")
 		criterion = LabelSmoothingBCELoss(smoothing=label_smoothing)
 	else:
 		criterion = torch.nn.BCEWithLogitsLoss()
-	print(f"Using {criterion.__class__.__name__} for multi-label classification")
+	if verbose:
+		print(f"Using {criterion.__class__.__name__} for multi-label classification")
 
-	# Pre-encode all class texts (for efficiency)
-	print(f"Pre-encoding {num_classes} class texts...")
-	all_class_texts = clip.tokenize(class_names).to(device)
-	print(f"all_class_texts: {type(all_class_texts)} {all_class_texts.shape} {all_class_texts.dtype} {all_class_texts.device}")
-
-	model.eval()
+	all_class_embeds = []
+	model.eval()  # Ensure model is in eval mode
+	text_batch_size = validation_loader.batch_size
+	print(f"Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
 		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			all_class_embeds = model.encode_text(all_class_texts)
-			all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding class texts"):
+				end_idx = min(i + text_batch_size, num_classes)
+				batch_class_names = class_names[i:end_idx]
+
+				batch_class_texts = clip.tokenize(batch_class_names).to(device)
+				batch_embeds = model.encode_text(batch_class_texts)
+				batch_embeds = F.normalize(batch_embeds, dim=-1)
+				all_class_embeds.append(batch_embeds.cpu())  # Move to CPU immediately to save GPU memory
+				
+				# Clean up
+				del batch_class_texts, batch_embeds
+				if torch.cuda.is_available():
+						torch.cuda.empty_cache()
+	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
+	print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
 
 	if use_lamb:
 		optimizer = LAMB(
@@ -1217,11 +1230,13 @@ def lora_finetune_multi_label(
 
 	# Use BCEWithLogitsLoss for multi-label classification
 	if label_smoothing > 0:
-		print(f"Using label smoothing: {label_smoothing}")
+		if verbose:
+			print(f"Using label smoothing: {label_smoothing}")
 		criterion = LabelSmoothingBCELoss(smoothing=label_smoothing)
 	else:
 		criterion = torch.nn.BCEWithLogitsLoss()
-	print(f"Using {criterion.__class__.__name__} for multi-label classification")
+	if verbose:
+		print(f"Using {criterion.__class__.__name__} for multi-label classification")
 
 	all_class_embeds = []
 	model.eval()  # Ensure model is in eval mode
@@ -1244,14 +1259,6 @@ def lora_finetune_multi_label(
 						torch.cuda.empty_cache()
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
 	print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
-	# model.eval()
-	# with torch.no_grad():
-	# 	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-	# 		all_class_embeds = model.encode_text(all_class_texts)
-	# 		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
-
-
-
 
 	if use_lamb:
 		optimizer = LAMB(
