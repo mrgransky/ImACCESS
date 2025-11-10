@@ -2857,28 +2857,40 @@ def compute_multilabel_contrastive_loss(
 	# Compute similarity matrix: [batch_size, num_classes]
 	i2t_similarities = torch.matmul(image_embeds, all_class_embeds.T) / temperature
 	
+	if verbose:
+		print(f"i2t_similarities: {i2t_similarities.shape} {i2t_similarities.dtype} {i2t_similarities.device}")
+
 	# I2T targets: label_vectors directly [batch_size, num_classes]
 	i2t_targets = label_vectors.float()
 	
 	# Compute I2T loss
 	loss_i2t = criterion(i2t_similarities, i2t_targets)
+	if verbose:
+		print(f"loss_i2t: {loss_i2t.item()}")
 	
 	# ================================
 	# Text-to-Image Loss  
 	# ================================
 	# Compute similarity matrix: [num_classes, batch_size]
 	t2i_similarities = torch.matmul(all_class_embeds, image_embeds.T) / temperature
+
+	if verbose:
+		print(f"t2i_similarities: {t2i_similarities.shape} {t2i_similarities.dtype} {t2i_similarities.device}")
 	
 	# T2I targets: transpose of label_vectors [num_classes, batch_size]
 	t2i_targets = label_vectors.T.float()
 	
 	# Compute T2I loss
 	loss_t2i = criterion(t2i_similarities, t2i_targets)
+	if verbose:
+		print(f"loss_t2i: {loss_t2i.item()}")
 	
 	# ================================
 	# Combine losses
 	# ================================
 	total_loss = loss_weights["i2t"] * loss_i2t + loss_weights["t2i"] * loss_t2i
+	if verbose:
+		print(f"total_loss: {total_loss.item()}")
 	
 	return total_loss, loss_i2t, loss_t2i
 
