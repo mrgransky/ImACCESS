@@ -135,11 +135,12 @@ def full_finetune_multi_label(
 	print(f"Pre-encoding {num_classes} class texts...")
 	all_class_texts = clip.tokenize(class_names).to(device)
 	print(f"all_class_texts: {type(all_class_texts)} {all_class_texts.shape} {all_class_texts.dtype} {all_class_texts.device}")
+
+	model.eval()
 	with torch.no_grad():
-		model.eval()
-		all_class_embeds = model.encode_text(all_class_texts)
-		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
-	model.train()
+		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			all_class_embeds = model.encode_text(all_class_texts)
+			all_class_embeds = F.normalize(all_class_embeds, dim=-1)
 
 	if use_lamb:
 		optimizer = LAMB(
@@ -207,176 +208,168 @@ def full_finetune_multi_label(
 	best_val_loss = float('inf')
 	final_img2txt_metrics = None
 	final_txt2img_metrics = None
+	# model.train()
 	for epoch in range(num_epochs):
-			train_and_val_st_time = time.time()
-			torch.cuda.empty_cache()
-			model.train()
-			print(f"Epoch [{epoch + 1}/{num_epochs}]")
+		train_and_val_st_time = time.time()
+		torch.cuda.empty_cache()
+		model.train()
+		print(f"Epoch [{epoch + 1}/{num_epochs}]")
+		
+		epoch_loss_total = 0.0
+		epoch_loss_i2t = 0.0
+		epoch_loss_t2i = 0.0
+		num_batches = 0
+		for bidx, batch_data in enumerate(train_loader):
+			if len(batch_data) == 3:
+				images, _, label_vectors = batch_data  # Ignore tokenized_labels, use pre-encoded
+			else:
+				raise ValueError(f"Expected 3 items from DataLoader, got {len(batch_data)}")
+			batch_size = images.size(0)
+			images = images.to(device, non_blocking=True)
+			label_vectors = label_vectors.to(device, non_blocking=True).float()
+			# Validate label_vectors shape
+			if label_vectors.shape != (batch_size, num_classes):
+				raise ValueError(f"Label vectors shape {label_vectors.shape} doesn't match expected ({batch_size}, {num_classes})")
+			optimizer.zero_grad(set_to_none=True)
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				# ================================
+				# CRITICAL CHANGE: Multi-label loss computation
+				# ================================
+				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
+					model=model,
+					images=images,
+					all_class_embeds=all_class_embeds,
+					label_vectors=label_vectors,
+					criterion=criterion,
+					temperature=temperature,
+					loss_weights=loss_weights
+				)
+			# Check for NaN loss
+			if torch.isnan(total_loss):
+				print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
+				continue
+			scaler.scale(total_loss).backward()
+			scaler.unscale_(optimizer)
+			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			scaler.step(optimizer)
+			scaler.update()
+			scheduler.step()
+			# Track losses
+			batch_loss_total = total_loss.item()
+			batch_loss_i2t = loss_i2t.item()
+			batch_loss_t2i = loss_t2i.item()
 			
-			epoch_loss_total = 0.0
-			epoch_loss_i2t = 0.0
-			epoch_loss_t2i = 0.0
-			num_batches = 0
-			for bidx, batch_data in enumerate(train_loader):
-				if len(batch_data) == 3:
-					images, _, label_vectors = batch_data  # Ignore tokenized_labels, use pre-encoded
-				else:
-					raise ValueError(f"Expected 3 items from DataLoader, got {len(batch_data)}")
-				batch_size = images.size(0)
-				images = images.to(device, non_blocking=True)
-				label_vectors = label_vectors.to(device, non_blocking=True).float()
-				# Validate label_vectors shape
-				if label_vectors.shape != (batch_size, num_classes):
-					raise ValueError(f"Label vectors shape {label_vectors.shape} doesn't match expected ({batch_size}, {num_classes})")
-				optimizer.zero_grad(set_to_none=True)
-				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-					# ================================
-					# CRITICAL CHANGE: Multi-label loss computation
-					# ================================
-					total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
-						model=model,
-						images=images,
-						all_class_embeds=all_class_embeds,
-						label_vectors=label_vectors,
-						criterion=criterion,
-						temperature=temperature,
-						loss_weights=loss_weights
-					)
-				# Check for NaN loss
-				if torch.isnan(total_loss):
-					print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
-					continue
-				scaler.scale(total_loss).backward()
-				scaler.unscale_(optimizer)
-				torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-				scaler.step(optimizer)
-				scaler.update()
-				scheduler.step()
-
-				# Track losses
-				batch_loss_total = total_loss.item()
-				batch_loss_i2t = loss_i2t.item()
-				batch_loss_t2i = loss_t2i.item()
-				
-				epoch_loss_total += batch_loss_total
-				epoch_loss_i2t += batch_loss_i2t
-				epoch_loss_t2i += batch_loss_t2i
-				num_batches += 1
-				if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-					print(
-						f"\t\tBatch [{bidx + 1}/{len(train_loader)}] "
-						f"Total Loss: {batch_loss_total:.6f} "
-						f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
-					)
-
-			avg_total_loss = epoch_loss_total / num_batches if num_batches > 0 else 0.0
-			avg_i2t_loss = epoch_loss_i2t / num_batches if num_batches > 0 else 0.0
-			avg_t2i_loss = epoch_loss_t2i / num_batches if num_batches > 0 else 0.0
-
-			training_losses.append(avg_total_loss)
-			training_losses_breakdown["total"].append(avg_total_loss)
-			training_losses_breakdown["i2t"].append(avg_i2t_loss)
-			training_losses_breakdown["t2i"].append(avg_t2i_loss)
-
-			print(f">> Training completed in {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1}")
-
-			# clear cache before validation
-			torch.cuda.empty_cache()
-
-			current_val_loss = compute_multilabel_validation_loss(
-				model=model,
-				validation_loader=validation_loader,
-				criterion=criterion,
-				device=device,
-				all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
-				temperature=temperature,
-				max_batches=10
-			)
-			
-			validation_results = get_validation_metrics(
-				model=model,
-				validation_loader=validation_loader,
-				criterion=criterion,  # Now uses BCEWithLogitsLoss
-				device=device,
-				topK_values=topk_values,
-				finetune_strategy=mode,
-				cache_dir=results_dir,
-				verbose=True,
-				max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
-				is_training=True,
-				model_hash=get_model_hash(model),
-				temperature=temperature,
-			)
-			
-			in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
-			in_batch_loss_acc_metrics_per_epoch["val_loss"] = current_val_loss
-			full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
-			retrieval_metrics_per_epoch = {
-				"img2txt": validation_results["img2txt_metrics"],
-				"txt2img": validation_results["txt2img_metrics"]
-			}
-			in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
-			full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
-			img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
-			txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
-			current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
-			print(
-				f'@ Epoch {epoch + 1}:\n'
-				f'\t[LOSS] {mode}:\n'
-				f'\t\tTraining - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f})\n'
-				f'\t\tValidation: {current_val_loss:.6f}\n'
-				f'\tMulti-label Validation Metrics:\n'
-				f'\t\tIn-batch Top-K Accuracy:\n'
-				f'\t\t\t[Image→Text]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-				f'\t\t\t[Text→Image]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
-				f'\t\tFull Validation Set:\n'
-				f'\t\t\t[Image→Text]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-				f'\t\t\t[Text→Image]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
-			)
-
-			if full_val_loss_acc_metrics_per_epoch.get("hamming_loss") is not None:
-				print(f'\tMulti-label Metrics:')
-				print(f'\t\tHamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
-				print(f'\t\tPartial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
-				print(f'\t\tF1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
-			
-			print(f"\tRetrieval Metrics:")
-			print(
-				f"\t\tImage-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A')}, "
-				f"Recall@10={retrieval_metrics_per_epoch['img2txt'].get('Recall', {}).get('10', 'N/A')}"
-			)
-			print(
-				f"\t\tText-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A')}, "
-				f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A')}"
-			)
-
-			if hasattr(train_loader.dataset, 'get_cache_stats'):
-				print(f"#"*100)
-				cache_stats = train_loader.dataset.get_cache_stats()
-				if cache_stats is not None:
-					print(f"Train Cache Stats: {cache_stats}")
-
-			if hasattr(validation_loader.dataset, 'get_cache_stats'):
-				cache_stats = validation_loader.dataset.get_cache_stats()
-				if cache_stats is not None:
-					print(f"Validation Cache Stats: {cache_stats}")
-				print(f"#"*100)
-
-			if early_stopping.should_stop(
-				current_value=current_val_loss,
-				model=model,
-				epoch=epoch,
-				optimizer=optimizer,
-				scheduler=scheduler,
-				checkpoint_path=mdl_fpth,
-			):
+			epoch_loss_total += batch_loss_total
+			epoch_loss_i2t += batch_loss_i2t
+			epoch_loss_t2i += batch_loss_t2i
+			num_batches += 1
+			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(
-					f"\nEarly stopping at epoch {epoch + 1} "
-					f"with best loss: {early_stopping.get_best_score()} "
-					f"obtained in epoch {early_stopping.get_best_epoch()+1}")
-				break
-			print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f}s".center(150, "="))
-	print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+					f"\t\tBatch [{bidx + 1}/{len(train_loader)}] "
+					f"Total Loss: {batch_loss_total:.6f} "
+					f"(I2T: {batch_loss_i2t:.6f}, T2I: {batch_loss_t2i:.6f})"
+				)
+		avg_total_loss = epoch_loss_total / num_batches if num_batches > 0 else 0.0
+		avg_i2t_loss = epoch_loss_i2t / num_batches if num_batches > 0 else 0.0
+		avg_t2i_loss = epoch_loss_t2i / num_batches if num_batches > 0 else 0.0
+		training_losses.append(avg_total_loss)
+		training_losses_breakdown["total"].append(avg_total_loss)
+		training_losses_breakdown["i2t"].append(avg_i2t_loss)
+		training_losses_breakdown["t2i"].append(avg_t2i_loss)
+		print(f">> Training completed in {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1}")
+		# clear cache before validation
+		torch.cuda.empty_cache()
+		current_val_loss = compute_multilabel_validation_loss(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			device=device,
+			all_class_embeds=all_class_embeds,  # Reuse pre-encoded embeddings
+			temperature=temperature,
+			max_batches=10
+		)
+		
+		validation_results = get_validation_metrics(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,  # Now uses BCEWithLogitsLoss
+			device=device,
+			topK_values=topk_values,
+			finetune_strategy=mode,
+			cache_dir=results_dir,
+			verbose=True,
+			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+			is_training=True,
+			model_hash=get_model_hash(model),
+			temperature=temperature,
+		)
+		
+		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
+		in_batch_loss_acc_metrics_per_epoch["val_loss"] = current_val_loss
+		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
+		retrieval_metrics_per_epoch = {
+			"img2txt": validation_results["img2txt_metrics"],
+			"txt2img": validation_results["txt2img_metrics"]
+		}
+		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
+		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
+		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
+		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
+		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
+		print(
+			f'@ Epoch {epoch + 1}:\n'
+			f'\t[LOSS] {mode}:\n'
+			f'\t\tTraining - Total: {avg_total_loss:.6f} (I2T: {avg_i2t_loss:.6f}, T2I: {avg_t2i_loss:.6f})\n'
+			f'\t\tValidation: {current_val_loss:.6f}\n'
+			f'\tMulti-label Validation Metrics:\n'
+			f'\t\tIn-batch Top-K Accuracy:\n'
+			f'\t\t\t[Image→Text]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t\t\t[Text→Image]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
+			f'\t\tFull Validation Set:\n'
+			f'\t\t\t[Image→Text]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t\t\t[Text→Image]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+		)
+		if full_val_loss_acc_metrics_per_epoch.get("hamming_loss") is not None:
+			print(f'\tMulti-label Metrics:')
+			print(f'\t\tHamming Loss: {full_val_loss_acc_metrics_per_epoch.get("hamming_loss", "N/A"):.4f}')
+			print(f'\t\tPartial Accuracy: {full_val_loss_acc_metrics_per_epoch.get("partial_acc", "N/A"):.4f}')
+			print(f'\t\tF1 Score: {full_val_loss_acc_metrics_per_epoch.get("f1_score", "N/A"):.4f}')
+		
+		print(f"\tRetrieval Metrics:")
+		print(
+			f"\t\tImage-to-Text: mAP@10={retrieval_metrics_per_epoch['img2txt'].get('mAP', {}).get('10', 'N/A')}, "
+			f"Recall@10={retrieval_metrics_per_epoch['img2txt'].get('Recall', {}).get('10', 'N/A')}"
+		)
+		print(
+			f"\t\tText-to-Image: mAP@10={retrieval_metrics_per_epoch['txt2img'].get('mAP', {}).get('10', 'N/A')}, "
+			f"Recall@10={retrieval_metrics_per_epoch['txt2img'].get('Recall', {}).get('10', 'N/A')}"
+		)
+		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			print(f"#"*100)
+			cache_stats = train_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Train Cache Stats: {cache_stats}")
+		if hasattr(validation_loader.dataset, 'get_cache_stats'):
+			cache_stats = validation_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Validation Cache Stats: {cache_stats}")
+			print(f"#"*100)
+		if early_stopping.should_stop(
+			current_value=current_val_loss,
+			model=model,
+			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
+		):
+			print(
+				f"\nEarly stopping at epoch {epoch + 1} "
+				f"with best loss: {early_stopping.get_best_score()} "
+				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
+			break
+		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f}s".center(150, "="))
+
+	print(f"[{mode}] Total Training  Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
 	# ================================
 	# FINAL EVALUATION
@@ -588,12 +581,13 @@ def progressive_finetune_multi_label(
 	print(f"Using {criterion.__class__.__name__} for multi-label classification")
 
 	# Pre-encode all class texts (for efficiency)
+	model.eval()
 	print(f"Pre-encoding {num_classes} class texts...")
 	all_class_texts = clip.tokenize(class_names).to(device)
 	with torch.no_grad():
-		model.eval()
-		all_class_embeds = model.encode_text(all_class_texts)
-		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			all_class_embeds = model.encode_text(all_class_texts)
+			all_class_embeds = F.normalize(all_class_embeds, dim=-1)
 
 	model.train()
 	if use_lamb:
@@ -1188,12 +1182,11 @@ def lora_finetune_multi_label(
 
 	# Get dataset information
 	try:
-		num_classes = len(validation_loader.dataset.unique_labels)
 		class_names = validation_loader.dataset.unique_labels
 	except AttributeError:
-		num_classes = len(validation_loader.dataset.dataset.classes)
 		class_names = validation_loader.dataset.dataset.classes
 
+	num_classes = len(class_names)
 
 	if verbose:
 		print(f"{mode.upper()} Rank: {lora_rank} Alpha: {lora_alpha} Dropout: {lora_dropout} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}")
@@ -1232,13 +1225,38 @@ def lora_finetune_multi_label(
 	print(f"Using {criterion.__class__.__name__} for multi-label classification")
 
 	# Pre-encode all class texts (for efficiency)
-	print(f"Pre-encoding {num_classes} class texts...")
 	all_class_texts = clip.tokenize(class_names).to(device)
+	print(f"all_class_texts: {type(all_class_texts)} {all_class_texts.shape} {all_class_texts.dtype} {all_class_texts.device}")
+
+	all_class_embeds = []
+	model.eval()  # Ensure model is in eval mode
+	text_batch_size = validation_loader.batch_size
+	print(f"Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
-		model.eval()
-		all_class_embeds = model.encode_text(all_class_texts)
-		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
-	model.train()
+		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding class texts"):
+				end_idx = min(i + text_batch_size, num_classes)
+				batch_class_names = class_names[i:end_idx]
+
+				batch_class_texts = clip.tokenize(batch_class_names).to(device)
+				batch_embeds = model.encode_text(batch_class_texts)
+				batch_embeds = F.normalize(batch_embeds, dim=-1)
+				all_class_embeds.append(batch_embeds.cpu())  # Move to CPU immediately to save GPU memory
+				
+				# Clean up
+				del batch_class_texts, batch_embeds
+				if torch.cuda.is_available():
+						torch.cuda.empty_cache()
+	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
+	print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
+	# model.eval()
+	# with torch.no_grad():
+	# 	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+	# 		all_class_embeds = model.encode_text(all_class_texts)
+	# 		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+
+
+
 
 	if use_lamb:
 		optimizer = LAMB(
@@ -1730,10 +1748,13 @@ def probe_finetune_multi_label(
 		# Pre-encode all class texts (for evaluation)
 		print(f"Pre-encoding {num_classes} class texts...")
 		all_class_texts = clip.tokenize(class_names).to(device)
+		print(f"all_class_texts: {type(all_class_texts)} {all_class_texts.shape} {all_class_texts.dtype} {all_class_texts.device}")
+		model.eval()
 		with torch.no_grad():
-				model.eval()
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 				all_class_embeds = model.encode_text(all_class_texts)
 				all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
 
 		# Optimizer setup
 		if use_lamb:
@@ -1793,43 +1814,42 @@ def probe_finetune_multi_label(
 		
 		if cache_features:
 				print("Pre-extracting features for efficient training...")
-				
 				# Extract training features
 				train_features = list()
 				train_labels = list()
 				model.eval()
-				with torch.no_grad():
-						for batch_data in tqdm(train_loader, desc="Extracting train features"):
-								if len(batch_data) == 3:
-										images, _, label_vectors = batch_data
-								else:
-										raise ValueError(f"Expected 3 items, got {len(batch_data)}")
-								
-								images = images.to(device, non_blocking=True)
-								image_embeds = model.encode_image(images)
-								image_embeds = F.normalize(image_embeds, dim=-1)
-								
-								train_features.append(image_embeds.cpu())
-								train_labels.append(label_vectors.cpu())
+				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+					for batch_data in tqdm(train_loader, desc="Extracting train features"):
+						if len(batch_data) == 3:
+							images, _, label_vectors = batch_data
+						else:
+							raise ValueError(f"Expected 3 items, got {len(batch_data)}")
+						
+						images = images.to(device, non_blocking=True)
+						image_embeds = model.encode_image(images)
+						image_embeds = F.normalize(image_embeds, dim=-1)
+						
+						train_features.append(image_embeds.cpu())
+						train_labels.append(label_vectors.cpu())
 				
 				train_features_cache = (torch.cat(train_features, dim=0), torch.cat(train_labels, dim=0))
 				
 				# Extract validation features
 				val_features = list()
 				val_labels = list()
-				with torch.no_grad():
-						for batch_data in tqdm(validation_loader, desc="Extracting val features"):
-								if len(batch_data) == 3:
-										images, _, label_vectors = batch_data
-								else:
-										raise ValueError(f"Expected 3 items, got {len(batch_data)}")
-								
-								images = images.to(device, non_blocking=True)
-								image_embeds = model.encode_image(images)
-								image_embeds = F.normalize(image_embeds, dim=-1)
-								
-								val_features.append(image_embeds.cpu())
-								val_labels.append(label_vectors.cpu())
+				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+					for batch_data in tqdm(validation_loader, desc="Extracting val features"):
+						if len(batch_data) == 3:
+							images, _, label_vectors = batch_data
+						else:
+							raise ValueError(f"Expected 3 items, got {len(batch_data)}")
+						
+						images = images.to(device, non_blocking=True)
+						image_embeds = model.encode_image(images)
+						image_embeds = F.normalize(image_embeds, dim=-1)
+						
+						val_features.append(image_embeds.cpu())
+						val_labels.append(label_vectors.cpu())
 				
 				val_features_cache = (torch.cat(val_features, dim=0), torch.cat(val_labels, dim=0))
 				

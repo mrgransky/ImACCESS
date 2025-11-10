@@ -76,22 +76,47 @@ def compute_multilabel_inbatch_metrics(
 		temperature: float = 0.07,
 		verbose: bool = False,
 	) -> Dict:
-	model.eval()
 	
+	# Get dataset information
 	try:
 		class_names = validation_loader.dataset.unique_labels
-	except:
-		try:
-			class_names = validation_loader.dataset.dataset.classes
-		except:
-			raise ValueError("Could not extract class names from validation loader")
+	except AttributeError:
+		class_names = validation_loader.dataset.dataset.classes
+
+	num_classes = len(class_names)
 	
-	all_class_texts = clip.tokenize(class_names).to(device)
+	text_batch_size = validation_loader.batch_size
 	if verbose:
-		print(f"Pre-encoding {len(class_names)} classes => {type(all_class_texts)} {all_class_texts.shape} {all_class_texts.dtype} {all_class_texts.device}")
-	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-		all_class_embeds = model.encode_text(all_class_texts)
-		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+		print(f"Pre-encoding {len(class_names)} classes in batch_size: {text_batch_size} => {type(all_class_texts)} {all_class_texts.shape} {all_class_texts.dtype} {all_class_texts.device}")
+	all_class_embeds = []
+	model.eval()  # Ensure model is in eval mode
+	with torch.no_grad():
+		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding class texts"):
+				end_idx = min(i + text_batch_size, num_classes)
+				batch_class_names = class_names[i:end_idx]
+				
+				# if verbose and (i // text_batch_size) % 5 == 0:
+				# 		print(f"  Batch {i//text_batch_size + 1}/{(num_classes + text_batch_size - 1)//text_batch_size}: {i}-{end_idx}")
+				
+				batch_class_texts = clip.tokenize(batch_class_names).to(device)
+				batch_embeds = model.encode_text(batch_class_texts)
+				batch_embeds = F.normalize(batch_embeds, dim=-1)
+				all_class_embeds.append(batch_embeds.cpu())  # Move to CPU immediately to save GPU memory
+				
+				# Clean up
+				del batch_class_texts, batch_embeds
+				if torch.cuda.is_available():
+						torch.cuda.empty_cache()
+	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
+	if verbose:
+		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
+
+
+	# with torch.no_grad():
+	# 	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+	# 		all_class_embeds = model.encode_text(all_class_texts)
+	# 		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
 	
 	total_loss = 0.0
 	processed_batches = 0
