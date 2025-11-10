@@ -88,8 +88,8 @@ def compute_multilabel_inbatch_metrics(
 	
 	all_class_texts = clip.tokenize(class_names).to(device)
 	if verbose:
-		print(f"Pre-encoding {len(class_names)} classes => {type(all_class_texts)} {all_class_texts.shape} {all_class_texts.dtype}")
-	with torch.no_grad():
+		print(f"Pre-encoding {len(class_names)} classes => {type(all_class_texts)} {all_class_texts.shape} {all_class_texts.dtype} {all_class_texts.device}")
+	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 		all_class_embeds = model.encode_text(all_class_texts)
 		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
 	

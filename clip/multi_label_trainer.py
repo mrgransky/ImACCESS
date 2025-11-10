@@ -130,13 +130,15 @@ def full_finetune_multi_label(
 	else:
 		criterion = torch.nn.BCEWithLogitsLoss()
 	print(f"Using {criterion.__class__.__name__} for multi-label classification")
+
 	# Pre-encode all class texts (for efficiency)
 	print(f"Pre-encoding {num_classes} class texts...")
 	all_class_texts = clip.tokenize(class_names).to(device)
+	print(f"all_class_texts: {type(all_class_texts)} {all_class_texts.shape} {all_class_texts.dtype} {all_class_texts.device}")
 	with torch.no_grad():
-			model.eval()
-			all_class_embeds = model.encode_text(all_class_texts)
-			all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+		model.eval()
+		all_class_embeds = model.encode_text(all_class_texts)
+		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
 	model.train()
 
 	if use_lamb:
