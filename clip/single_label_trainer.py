@@ -1864,6 +1864,7 @@ def lora_plus_finetune_single_label(
 			else:
 				# Should not happen in pure LoRA+, but safe fallback
 				lora_a_params.append(param)
+
 	if verbose:
 		print(f"LoRA+ Parameter Groups:")
 		print(f"  ├─ lora_A params: {len(lora_a_params)} tensors: {lora_a_params[0].shape}")
@@ -2052,7 +2053,8 @@ def lora_plus_finetune_single_label(
 			break
 
 		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(150, "="))
-	print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+	
+	print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec")
 
 	evaluation_results = evaluate_best_model(
 		model=model,
@@ -2356,12 +2358,14 @@ def lora_finetune_single_label(
 			scaler.step(optimizer)
 			scaler.update()
 			scheduler.step()
+
 			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 				print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
+
 			epoch_loss += total_loss.item()
 		avg_training_loss = epoch_loss / len(train_loader)
-		training_losses.append(avg_training_loss)
 
+		training_losses.append(avg_training_loss)
 		learning_rates_history.append(optimizer.param_groups[0]['lr'])
 		weight_decays_history.append(optimizer.param_groups[0]['weight_decay'])
 
@@ -2441,7 +2445,8 @@ def lora_finetune_single_label(
 			break
 
 		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(150, "="))
-	print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
+
+	print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec")
 
 	evaluation_results = evaluate_best_model(
 		model=model,
