@@ -1,6 +1,8 @@
 from utils import *
 from early_stopper import EarlyStopping
 from evals import *
+import visualize as viz
+
 
 def full_finetune_multi_label(
 		model: torch.nn.Module,
@@ -437,12 +439,12 @@ def full_finetune_multi_label(
 		"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 	}
-	# Plot training loss breakdown
-	plot_multilabel_loss_breakdown(
+	
+	viz.plot_multilabel_loss_breakdown(
 			training_losses_breakdown=training_losses_breakdown,
 			filepath=plot_paths["losses_breakdown"]
 	)
-	plot_loss_accuracy_metrics(
+	viz.plot_loss_accuracy_metrics(
 			dataset_name=dataset_name,
 			train_losses=training_losses,
 			val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
@@ -456,13 +458,13 @@ def full_finetune_multi_label(
 			full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
 			full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
 	)
-	plot_retrieval_metrics_per_epoch(
+	viz.plot_retrieval_metrics_per_epoch(
 			dataset_name=dataset_name,
 			image_to_text_metrics_list=img2txt_metrics_all_epochs,
 			text_to_image_metrics_list=txt2img_metrics_all_epochs,
 			fname=plot_paths["retrieval_per_epoch"],
 	)
-	plot_retrieval_metrics_best_model(
+	viz.plot_retrieval_metrics_best_model(
 			dataset_name=dataset_name,
 			image_to_text_metrics=final_img2txt_metrics,
 			text_to_image_metrics=final_txt2img_metrics,
@@ -1022,13 +1024,12 @@ def progressive_finetune_multi_label(
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 	}
 
-	# Plot training loss breakdown (specific to multi-label)
-	plot_multilabel_loss_breakdown(
+	viz.plot_multilabel_loss_breakdown(
 		training_losses_breakdown=training_losses_breakdown,
 		filepath=plot_paths["losses_breakdown"]
 	)
 
-	plot_loss_accuracy_metrics(
+	viz.plot_loss_accuracy_metrics(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
 		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
@@ -1043,14 +1044,14 @@ def progressive_finetune_multi_label(
 		full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
 	)
 
-	plot_retrieval_metrics_per_epoch(
+	viz.plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
 		image_to_text_metrics_list=img2txt_metrics_all_epochs,
 		text_to_image_metrics_list=txt2img_metrics_all_epochs,
 		fname=plot_paths["retrieval_per_epoch"],
 	)
 
-	plot_retrieval_metrics_best_model(
+	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
 		image_to_text_metrics=final_img2txt_metrics,
 		text_to_image_metrics=final_txt2img_metrics,
@@ -1536,12 +1537,12 @@ def lora_finetune_multi_label(
 		"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 	}
 
-	plot_multilabel_loss_breakdown(
+	viz.plot_multilabel_loss_breakdown(
 		training_losses_breakdown=training_losses_breakdown,
 		filepath=plot_paths["losses_breakdown"]
 	)
 
-	plot_loss_accuracy_metrics(
+	viz.plot_loss_accuracy_metrics(
 		dataset_name=dataset_name,
 		train_losses=training_losses,
 		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
@@ -1556,14 +1557,14 @@ def lora_finetune_multi_label(
 		full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
 	)
 
-	plot_retrieval_metrics_per_epoch(
+	viz.plot_retrieval_metrics_per_epoch(
 		dataset_name=dataset_name,
 		image_to_text_metrics_list=img2txt_metrics_all_epochs,
 		text_to_image_metrics_list=txt2img_metrics_all_epochs,
 		fname=plot_paths["retrieval_per_epoch"],
 	)
 
-	plot_retrieval_metrics_best_model(
+	viz.plot_retrieval_metrics_best_model(
 		dataset_name=dataset_name,
 		image_to_text_metrics=final_img2txt_metrics,
 		text_to_image_metrics=final_txt2img_metrics,
@@ -2124,12 +2125,12 @@ def probe_finetune_multi_label(
 				"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 		}
 
-		plot_multilabel_loss_breakdown(
+		viz.plot_multilabel_loss_breakdown(
 				training_losses_breakdown=training_losses_breakdown,
 				filepath=plot_paths["losses_breakdown"]
 		)
 
-		plot_loss_accuracy_metrics(
+		viz.plot_loss_accuracy_metrics(
 				dataset_name=dataset_name,
 				train_losses=training_losses,
 				val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
@@ -2144,14 +2145,14 @@ def probe_finetune_multi_label(
 				full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
 		)
 
-		plot_retrieval_metrics_per_epoch(
+		viz.plot_retrieval_metrics_per_epoch(
 				dataset_name=dataset_name,
 				image_to_text_metrics_list=img2txt_metrics_all_epochs,
 				text_to_image_metrics_list=txt2img_metrics_all_epochs,
 				fname=plot_paths["retrieval_per_epoch"],
 		)
 
-		plot_retrieval_metrics_best_model(
+		viz.plot_retrieval_metrics_best_model(
 				dataset_name=dataset_name,
 				image_to_text_metrics=final_img2txt_metrics,
 				text_to_image_metrics=final_txt2img_metrics,
