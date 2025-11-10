@@ -73,7 +73,8 @@ def compute_multilabel_inbatch_metrics(
 		device: str,
 		topK_values: List[int],
 		max_samples: int = 384,
-		temperature: float = 0.07
+		temperature: float = 0.07,
+		verbose: bool = False,
 	) -> Dict:
 	model.eval()
 	
@@ -86,9 +87,11 @@ def compute_multilabel_inbatch_metrics(
 			raise ValueError("Could not extract class names from validation loader")
 	
 	all_class_texts = clip.tokenize(class_names).to(device)
+	if verbose:
+		print(f"Pre-encoding class {len(class_names)} texts => {type(all_class_texts)} {all_class_texts.shape}")
 	with torch.no_grad():
-			all_class_embeds = model.encode_text(all_class_texts)
-			all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+		all_class_embeds = model.encode_text(all_class_texts)
+		all_class_embeds = F.normalize(all_class_embeds, dim=-1)
 	
 	total_loss = 0.0
 	processed_batches = 0
@@ -259,7 +262,8 @@ def compute_direct_in_batch_metrics(
 			device=device,
 			topK_values=topK_values,
 			max_samples=max_samples,
-			temperature=temperature
+			temperature=temperature,
+			verbose=verbose,
 		)
 		return multi_label_in_batch_metrics
 
