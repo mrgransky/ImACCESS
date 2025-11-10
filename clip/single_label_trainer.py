@@ -2575,10 +2575,10 @@ def ia3_finetune_single_label(
 		volatility_threshold: float,
 		slope_threshold: float,
 		pairwise_imp_threshold: float,
-		lora_rank: int=1000,
-		lora_alpha: float=26.3,
-		lora_dropout: float=0.056,
-		topk_values: List[int] = [1, 5, 10, 15, 20],
+		lora_rank: int=1000, # for compatibility with other methods
+		lora_alpha: float=26.3, # for compatibility with other methods
+		lora_dropout: float=0.056, # for compatibility with other methods
+		topk_values: List[int]=[1, 5, 10, 15, 20],
 		quantization_bits: int=8,
 		quantized: bool=False,
 		use_lamb: bool=False,
