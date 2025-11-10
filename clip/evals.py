@@ -251,7 +251,8 @@ def compute_direct_in_batch_metrics(
 	# Check if this is multi-label by inspecting the dataset
 	sample_batch = next(iter(validation_loader))
 	is_multilabel = len(sample_batch) == 3 and len(sample_batch[2].shape) == 2
-	
+	torch.cuda.empty_cache()
+
 	if is_multilabel:
 		if verbose:
 			print("Multi-label dataset detected - skipping in-batch metrics computation")
