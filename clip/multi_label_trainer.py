@@ -14,18 +14,19 @@ def full_finetune_multi_label(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		patience: int = 10,
-		min_delta: float = 1e-4,
-		cumulative_delta: float = 5e-3,
-		minimum_epochs: int = 20,
+		patience: int,
+		min_delta: float,
+		cumulative_delta: float,
+		minimum_epochs: int,
+		volatility_threshold: float,
+		slope_threshold: float,
+		pairwise_imp_threshold: float,
 		topk_values: List[int] = [1, 5, 10, 15, 20],
 		loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
 		temperature: float = 0.07,  # Temperature for contrastive learning
 		label_smoothing: float = 0.0,  # Label smoothing for multi-label
-		volatility_threshold: float = 15.0,
-		slope_threshold: float = 1e-4, 
-		pairwise_imp_threshold: float = 1e-4,
 		use_lamb: bool = False,
+		verbose: bool=True,
 	):
 	"""
 	Full fine-tuning for multi-label CLIP classification.
@@ -95,12 +96,10 @@ def full_finetune_multi_label(
 		print(f"{gpu_name} | {total_mem:.2f}GB VRAM".center(160, " "))
 	
 	try:
-		num_classes = len(validation_loader.dataset.unique_labels)
 		class_names = validation_loader.dataset.unique_labels
 	except AttributeError:
-		num_classes = len(validation_loader.dataset.dataset.classes)
 		class_names = validation_loader.dataset.dataset.classes
-	print(f"Multi-label dataset: {num_classes} classes")
+	num_classes = len(class_names)
 	
 	dropout_val = 0.0
 	for name, module in model.named_modules():
@@ -131,12 +130,13 @@ def full_finetune_multi_label(
 	else:
 		criterion = torch.nn.BCEWithLogitsLoss()
 	if verbose:
-		print(f"Using {criterion.__class__.__name__} for multi-label classification")
+		print(f"Using {criterion.__class__.__name__} for multi-label classification with {num_classes} classes")
 
 	all_class_embeds = []
 	model.eval()  # Ensure model is in eval mode
 	text_batch_size = validation_loader.batch_size
-	print(f"Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
+	if verbose:
+		print(f"Pre-encoding {num_classes} class texts in batch_size: {text_batch_size}")
 	with torch.no_grad():
 		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 			for i in tqdm(range(0, num_classes, text_batch_size), desc="Pre-encoding class texts"):
@@ -150,10 +150,11 @@ def full_finetune_multi_label(
 				
 				# Clean up
 				del batch_class_texts, batch_embeds
-				if torch.cuda.is_available():
-						torch.cuda.empty_cache()
+				torch.cuda.empty_cache()
+	
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
-	print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
+	if verbose:
+		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
 
 	if use_lamb:
 		optimizer = LAMB(
