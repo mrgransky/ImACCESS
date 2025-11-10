@@ -1,8 +1,8 @@
 from utils import *
 from early_stopper import EarlyStopping
+from peft import get_injected_peft_clip, get_adapter_peft_clip
 from evals import *
 import visualize as viz
-
 
 def full_finetune_multi_label(
 		model: torch.nn.Module,
@@ -1073,19 +1073,21 @@ def lora_finetune_multi_label(
 		lora_rank: int,
 		lora_alpha: float,
 		lora_dropout: float,
-		verbose: bool = True,
-		patience: int = 10,
-		min_delta: float = 1e-4,
-		cumulative_delta: float = 5e-3,
-		minimum_epochs: int = 20,
+		patience: int,
+		min_delta: float,
+		cumulative_delta: float,
+		minimum_epochs: int,
+		volatility_threshold: float,
+		slope_threshold: float,
+		pairwise_imp_threshold: float,
 		topk_values: List[int] = [1, 5, 10, 15, 20],
 		loss_weights: Dict[str, float] = None,  # For balancing I2T and T2I losses
 		temperature: float = 0.07,  # Temperature for contrastive learning
 		label_smoothing: float = 0.0,  # Label smoothing for multi-label
-		volatility_threshold: float = 15.0,
-		slope_threshold: float = 1e-4, 
-		pairwise_imp_threshold: float = 1e-4,
 		use_lamb: bool = False,
+		quantization_bits: int = 8,
+		quantized: bool = False,
+		verbose: bool = True,
 	):
 	"""
 	LoRA fine-tuning for multi-label CLIP classification.
@@ -1183,16 +1185,33 @@ def lora_finetune_multi_label(
 	except AttributeError:
 		num_classes = len(validation_loader.dataset.dataset.classes)
 		class_names = validation_loader.dataset.dataset.classes
-	print(f"Multi-label LoRA fine-tuning: {num_classes} classes")
-	# print(f"Class names sample: {class_names[:5]}...")
 
-	# Apply LoRA to the model
-	model = get_lora_clip(
+
+	if verbose:
+		print(f"{mode.upper()} Rank: {lora_rank} Alpha: {lora_alpha} Dropout: {lora_dropout} {model_name} {model_arch} {dataset_name} batch_size: {train_loader.batch_size} {type(device)} {device}")
+
+		if quantized:
+			print(f"   ├─ Using Quantization: {quantization_bits}-bit")
+
+		if torch.cuda.is_available():
+			gpu_name = torch.cuda.get_device_name(device)
+			gpu_total_mem = torch.cuda.get_device_properties(device).total_memory / (1024**3) # GB
+			cuda_capability = torch.cuda.get_device_capability()
+			print(f"   ├─ {gpu_name} | {gpu_total_mem:.2f}GB VRAM | cuda capability: {cuda_capability}")
+
+		print(f"Multi-label LoRA fine-tuning: {num_classes} classes")
+
+	model = get_injected_peft_clip(
 		clip_model=model,
-		lora_rank=lora_rank,
-		lora_alpha=lora_alpha,
-		lora_dropout=lora_dropout
+		method=mode,
+		rank=lora_rank,
+		alpha=lora_alpha,
+		dropout=lora_dropout,
+		quantization_bits=quantization_bits,
+		quantized=quantized,
+		verbose=verbose,
 	)
+	
 	model.to(device)
 	get_parameters_info(model=model, mode=mode)
 
