@@ -56,8 +56,8 @@ def get_preprocess(dataset_dir: str, input_resolution: int) -> T.Compose:
 	
 	return preprocess
 
-def get_single_label_datasets(ddir: str):
-	metadata_fpth = os.path.join(ddir, "metadata_single_label.csv")
+def get_single_label_datasets(metadata_fpth: str):
+	ddir = os.path.dirname(metadata_fpth)
 	print(f"Loading single-label dataset: {metadata_fpth}")
 	############################################################################
 	# debugging types of columns
@@ -111,18 +111,19 @@ def get_single_label_datasets(ddir: str):
 	return df_train, df_val
 
 def get_single_label_dataloaders(
-		dataset_dir: str,
+		metadata_fpth: str,
 		batch_size: int,
 		num_workers: int,
 		input_resolution: int,
 		memory_threshold_gib: float = 500.0,  # Minimum available memory (GiB) to preload images
 	)-> Tuple[DataLoader, DataLoader]:
-	dataset_name = os.path.basename(dataset_dir)
+	ddir = os.path.dirname(metadata_fpth)
+	dataset_name = os.path.basename(ddir)
 
-	print(f"Creating single-label dataloaders for {dataset_name}...")
-	train_dataset, val_dataset = get_single_label_datasets(ddir=dataset_dir)
+	print(f"Creating single-label dataloaders for {dataset_name} from {metadata_fpth}...")
+	train_dataset, val_dataset = get_single_label_datasets(metadata_fpth=metadata_fpth)
 
-	preprocess = get_preprocess(dataset_dir=dataset_dir, input_resolution=input_resolution)
+	preprocess = get_preprocess(dataset_dir=ddir, input_resolution=input_resolution)
 	
 	train_dataset = HistoricalArchivesSingleLabelDataset(
 		dataset_name=dataset_name,
@@ -252,8 +253,8 @@ class HistoricalArchivesSingleLabelDataset(Dataset):
 		tokenized_label_tensor = clip.tokenize(texts=doc_label).squeeze(0)
 		return image_tensor, tokenized_label_tensor, doc_label_int
 
-def get_multi_label_datasets(ddir: str):
-	metadata_fpth = os.path.join(ddir, "metadata_multi_label_multimodal.csv")
+def get_multi_label_datasets(metadata_fpth: str):
+	ddir = os.path.dirname(metadata_fpth)
 	print(f"Loading multi-label dataset: {metadata_fpth}")
 	df = pd.read_csv(
 		filepath_or_buffer=metadata_fpth, 
@@ -262,9 +263,7 @@ def get_multi_label_datasets(ddir: str):
 		low_memory=False,
 	)
 	print(f"FULL Multi-label Dataset {type(df)} {df.shape}")
-	
-	# metadata_train_fpth = os.path.join(ddir, "metadata_multimodal_train.csv")
-	# metadata_val_fpth = os.path.join(ddir, "metadata_multimodal_val.csv")
+	print(f"Columns: {list(df.columns)}")
 
 	metadata_train_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_train.csv'))
 	metadata_val_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_val.csv'))
@@ -648,17 +647,18 @@ class HistoricalArchivesMultiLabelDataset(Dataset):
 				)
 
 def get_multi_label_dataloaders(
-		dataset_dir: str,
+		metadata_fpth: str,
 		batch_size: int,
 		num_workers: int,
 		input_resolution: int,
 		cache_size: int = None,
 	) -> Tuple[DataLoader, DataLoader]:
-	dataset_name = os.path.basename(dataset_dir)
-	print(f"Creating multi-label dataloaders for {dataset_name}...")
+	ddir = os.path.dirname(metadata_fpth)
+	dataset_name = os.path.basename(ddir)
+	print(f"Creating multi-label dataloaders for {dataset_name} from {metadata_fpth}...")
 	
-	train_dataset, val_dataset, label_dict = get_multi_label_datasets(ddir=dataset_dir)
-	preprocess = get_preprocess(dataset_dir=dataset_dir, input_resolution=input_resolution)
+	train_dataset, val_dataset, label_dict = get_multi_label_datasets(metadata_fpth=metadata_fpth)
+	preprocess = get_preprocess(dataset_dir=ddir, input_resolution=input_resolution)
 	total_samples = len(train_dataset) + len(val_dataset)
 
 	# Estimate memory per image

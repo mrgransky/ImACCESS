@@ -63,8 +63,7 @@ from historyXN_dataset_loader import get_single_label_dataloaders, get_multi_lab
 @measure_execution_time
 def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
-	parser.add_argument('--dataset_dir', '-ddir', type=str, required=True, help='DATASET directory')
-	parser.add_argument('--dataset_type', '-dt', type=str, choices=['single_label', 'multi_label'], default='single_label', help='Dataset type (single_label/multi_label)')
+	parser.add_argument('--metadata_csv', '-csv', type=str, required=True, help='Metadata CSV file')
 	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain'], default='finetune', help='Choose mode (train/finetune/pretrain)')
 	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'probe', 'lora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'clip_adapter', 'tip_adapter', 'tip_adapter_f'], default=None, help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
@@ -118,7 +117,11 @@ def main():
 
 	args, unknown = parser.parse_known_args()
 	args.device = torch.device(args.device)
-	args.dataset_dir = os.path.normpath(args.dataset_dir)
+	print(args)
+
+	DATASET_DIRECTORY = os.path.dirname(args.metadata_csv)
+	dataset_name = os.path.basename(DATASET_DIRECTORY)
+	dataset_type = "single_label" if "single_label" in args.metadata_csv else "multi_label"
 	# Original stdout/stderr
 	original_stdout = sys.stdout
 	original_stderr = sys.stderr
@@ -146,10 +149,10 @@ def main():
 	try:
 		if args.log_dir:
 			os.makedirs(args.log_dir, exist_ok=True)
-			dataset_name = os.path.basename(args.dataset_dir)
+			
 			arch_name = args.model_architecture.replace('/', '').replace('@', '_')
 			log_file_base_name = (
-				f"{dataset_name}_{args.dataset_type}_"
+				f"{dataset_name}_{dataset_type}_"
 				f"{args.mode}_"
 				f"{args.finetune_strategy}_"
 				f"{arch_name}_"
@@ -166,7 +169,7 @@ def main():
 			)
 
 			if args.finetune_strategy == "pretrain":
-				log_file_base_name = f"_{dataset_name}_{args.dataset_type}_{args.mode}_{arch_name}"
+				log_file_base_name = f"_{dataset_name}_{dataset_type}_{args.mode}_{arch_name}"
 
 			if args.finetune_strategy == "lora" or args.finetune_strategy == "dora":
 				log_file_base_name += f"_lor_{args.lora_rank}_loa_{args.lora_alpha}_lod_{args.lora_dropout}"
@@ -190,7 +193,7 @@ def main():
 		set_seeds(seed=42)
 		# ['RN50', 'RN101', 'RN50x4', 'RN50x16', 'RN50x64', 'ViT-B/32', 'ViT-B/16', 'ViT-L/14', 'ViT-L/14@336px']
 		# print(clip.available_models()) # ViT-[size]/[patch_size][@resolution] or RN[depth]x[width_multiplier]
-		RESULT_DIRECTORY = os.path.join(args.dataset_dir, f"{args.dataset_type}")
+		RESULT_DIRECTORY = os.path.join(DATASET_DIRECTORY, f"{dataset_type}")
 		os.makedirs(RESULT_DIRECTORY, exist_ok=True)
 
 		print(f">> CLIP Model Architecture: {args.model_architecture}...")
@@ -206,7 +209,7 @@ def main():
 			jit=False, # training or finetuning => jit=False
 			random_weights=True if args.mode == 'train' else False, 
 			dropout=args.dropout,
-			download_root=get_model_directory(path=args.dataset_dir),
+			download_root=get_model_directory(path=DATASET_DIRECTORY),
 		)
 		model = model.float() # Convert model parameters to FP32
 		model.name = args.model_architecture  # Custom attribute to store model name
@@ -216,8 +219,8 @@ def main():
 			'single_label': get_single_label_dataloaders,
 			'multi_label': get_multi_label_dataloaders
 		}
-		train_loader, validation_loader = dataset_functions[args.dataset_type](
-			dataset_dir=args.dataset_dir,
+		train_loader, validation_loader = dataset_functions[dataset_type](
+			metadata_fpth=args.metadata_csv,
 			batch_size=args.batch_size,
 			num_workers=args.num_workers,
 			input_resolution=model_config["image_resolution"],
@@ -253,7 +256,7 @@ def main():
 			}
 		}
 		if args.mode == "finetune":
-			finetune_functions[args.dataset_type][args.finetune_strategy](
+			finetune_functions[dataset_type][args.finetune_strategy](
 				model=model,
 				train_loader=train_loader,
 				validation_loader=validation_loader,
@@ -340,14 +343,14 @@ def main():
 					name=model_arch,
 					device=args.device,
 					random_weights=False,
-					download_root=get_model_directory(path=args.dataset_dir),
+					download_root=get_model_directory(path=DATASET_DIRECTORY),
 					dropout=args.dropout,
 				)
 				model = model.float()
 				model.name = model_arch  # Custom attribute to store model name
 				print(f"Model: {model.__class__.__name__} loaded with {model.name} architecture on {args.device} device")
 				train_loader, validation_loader = get_dataloaders(
-					dataset_dir=args.dataset_dir,
+					dataset_dir=DATASET_DIRECTORY,
 					sampling=args.sampling,
 					batch_size=args.batch_size,
 					num_workers=args.num_workers,
