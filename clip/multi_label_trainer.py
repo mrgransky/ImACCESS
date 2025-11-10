@@ -1,4 +1,6 @@
 from utils import *
+from early_stopper import EarlyStopping
+from evals import *
 
 def full_finetune_multi_label(
 		model: torch.nn.Module,
@@ -10,7 +12,6 @@ def full_finetune_multi_label(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		window_size: int,
 		patience: int = 10,
 		min_delta: float = 1e-4,
 		cumulative_delta: float = 5e-3,
@@ -53,6 +54,10 @@ def full_finetune_multi_label(
 			temperature: Temperature scaling for similarities
 			label_smoothing: Label smoothing factor (0.0 = no smoothing)
 	"""
+
+	window_size = minimum_epochs + 1
+	mode = inspect.stack()[0].function
+	mode = re.sub(r'_finetune_multi_label', '', mode)
 	
 	# Set default loss weights
 	if loss_weights is None:
@@ -77,8 +82,6 @@ def full_finetune_multi_label(
 	except AttributeError:
 		dataset_name = validation_loader.dataset.dataset_name
 
-	mode = inspect.stack()[0].function
-	mode = re.sub(r'_finetune_multi_label', '', mode)
 
 	model_arch = re.sub(r'[/@]', '-', model.name) if hasattr(model, 'name') else 'unknown_arch'
 	model_name = model.__class__.__name__
@@ -1579,6 +1582,12 @@ def dora_finetune_multi_label():
 	pass
 
 def vera_finetune_multi_label():
+	pass
+
+def clip_adapter_finetune_multi_label():
+	pass
+
+def tip_adapter_finetune_multi_label():
 	pass
 
 def probe_finetune_multi_label(

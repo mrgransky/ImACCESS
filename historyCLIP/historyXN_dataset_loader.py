@@ -21,7 +21,6 @@ dtypes={
 	'multimodal_labels': str,
 }
 
-
 def _convert_image_to_rgb(image: Image) -> Image:
 	return image.convert("RGB")
 
@@ -57,7 +56,7 @@ def get_preprocess(dataset_dir: str, input_resolution: int) -> T.Compose:
 	
 	return preprocess
 
-def get_single_label_datasets(ddir: str, seed:int=42,):
+def get_single_label_datasets(ddir: str):
 	metadata_fpth = os.path.join(ddir, "metadata_single_label.csv")
 	print(f"Loading single-label dataset: {metadata_fpth}")
 	############################################################################
@@ -253,7 +252,7 @@ class HistoricalArchivesSingleLabelDataset(Dataset):
 		tokenized_label_tensor = clip.tokenize(texts=doc_label).squeeze(0)
 		return image_tensor, tokenized_label_tensor, doc_label_int
 
-def get_multi_label_datasets(ddir: str, seed: int = 42):
+def get_multi_label_datasets(ddir: str):
 	metadata_fpth = os.path.join(ddir, "metadata_multi_label_multimodal.csv")
 	print(f"Loading multi-label dataset: {metadata_fpth}")
 	df = pd.read_csv(
