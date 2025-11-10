@@ -3711,13 +3711,12 @@ def tip_adapter_finetune_single_label(
 	
 	mdl_fpth = os.path.join(
 		results_dir,
-		f"{mode}_"
+		f"{tip_adapter_method}_"
 		f"{model_arch}_"
 		f"ieps_{num_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
-		f"tad_{tip_adapter_method}_"
 		f"beta_{initial_beta}_"
 		f"alpha_{initial_alpha}_"
 		f"shots_{support_shots}_"
@@ -3746,113 +3745,115 @@ def tip_adapter_finetune_single_label(
 	if num_epochs == 0 or not trainable_parameters:
 		if verbose:
 			print("\n[Tip-Adapter] Training-free mode - proceeding directly to evaluation")
-	else:
-		# Training loop (for Tip-Adapter-F or trainable beta/alpha)
-		for epoch in range(num_epochs):
-			train_and_val_st_time = time.time()
-			torch.cuda.empty_cache()
-			model.train()
-			print(f"Epoch [{epoch + 1}/{num_epochs}]")
-			epoch_loss = 0.0
+		return
+
+
+	# Training loop (for Tip-Adapter-F or trainable beta/alpha)
+	for epoch in range(num_epochs):
+		train_and_val_st_time = time.time()
+		torch.cuda.empty_cache()
+		model.train()
+		print(f"Epoch [{epoch + 1}/{num_epochs}]")
+		epoch_loss = 0.0
+		
+		for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
+			optimizer.zero_grad(set_to_none=True)
+			images = images.to(device, non_blocking=True)
+			tokenized_labels = tokenized_labels.to(device, non_blocking=True)
 			
-			for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
-				optimizer.zero_grad(set_to_none=True)
-				images = images.to(device, non_blocking=True)
-				tokenized_labels = tokenized_labels.to(device, non_blocking=True)
-				
-				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-					logits_per_image, logits_per_text = model(images, tokenized_labels)
-					ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
-					loss_img = criterion(logits_per_image, ground_truth)
-					loss_txt = criterion(logits_per_text, ground_truth)
-					total_loss = 0.5 * (loss_img + loss_txt)
-				
-				scaler.scale(total_loss).backward()
-				torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-				scaler.step(optimizer)
-				scaler.update()
-				scheduler.step()
-				
-				if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-					print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
-				epoch_loss += total_loss.item()
+			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+				logits_per_image, logits_per_text = model(images, tokenized_labels)
+				ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
+				loss_img = criterion(logits_per_image, ground_truth)
+				loss_txt = criterion(logits_per_text, ground_truth)
+				total_loss = 0.5 * (loss_img + loss_txt)
 			
-			avg_training_loss = epoch_loss / len(train_loader)
-			training_losses.append(avg_training_loss)
+			scaler.scale(total_loss).backward()
+			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+			scaler.step(optimizer)
+			scaler.update()
+			scheduler.step()
 			
-			learning_rates_history.append(optimizer.param_groups[0]['lr'])
-			weight_decays_history.append(optimizer.param_groups[0]['weight_decay'])
-			
-			print(f">> Validating Epoch {epoch+1} ...")
-			validation_results = get_validation_metrics(
-				model=model,
-				validation_loader=validation_loader,
-				criterion=criterion,
-				device=device,
-				topK_values=topk_values,
-				finetune_strategy=mode,
-				cache_dir=results_dir,
-				verbose=True,
-				max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
-				is_training=True,
-				model_hash=get_model_hash(model),
-			)
-			
-			in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
-			full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
-			retrieval_metrics_per_epoch = {
-				"img2txt": validation_results["img2txt_metrics"],
-				"txt2img": validation_results["txt2img_metrics"]
-			}
-			
-			in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
-			full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
-			img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
-			txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
-			current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
-			
+			if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+				print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
+			epoch_loss += total_loss.item()
+		
+		avg_training_loss = epoch_loss / len(train_loader)
+		training_losses.append(avg_training_loss)
+		
+		learning_rates_history.append(optimizer.param_groups[0]['lr'])
+		weight_decays_history.append(optimizer.param_groups[0]['weight_decay'])
+		
+		print(f">> Validating Epoch {epoch+1} ...")
+		validation_results = get_validation_metrics(
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			device=device,
+			topK_values=topk_values,
+			finetune_strategy=mode,
+			cache_dir=results_dir,
+			verbose=True,
+			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+			is_training=True,
+			model_hash=get_model_hash(model),
+		)
+		
+		in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
+		full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
+		retrieval_metrics_per_epoch = {
+			"img2txt": validation_results["img2txt_metrics"],
+			"txt2img": validation_results["txt2img_metrics"]
+		}
+		
+		in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
+		full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
+		img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
+		txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
+		current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
+		
+		print(
+			f'Epoch {epoch + 1}:\n'
+			f'\t[LOSS] {mode} (Training): {avg_training_loss} '
+			f'Validation(in-batch): {current_val_loss}\n'
+			f'\tValidation Top-k Accuracy:\n'
+			f'\tIn-batch:\n'
+			f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t\t[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
+			f'\tFull Validation Set:\n'
+			f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+			f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+		)
+		print(f"Image-to-Text Retrieval:\n\t{retrieval_metrics_per_epoch['img2txt']}")
+		print(f"Text-to-Image Retrieval:\n\t{retrieval_metrics_per_epoch['txt2img']}")
+		
+		if hasattr(train_loader.dataset, 'get_cache_stats'):
+			print(f"#"*100)
+			cache_stats = train_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Train Cache Stats: {cache_stats}")
+		
+		if hasattr(validation_loader.dataset, 'get_cache_stats'):
+			cache_stats = validation_loader.dataset.get_cache_stats()
+			if cache_stats is not None:
+				print(f"Validation Cache Stats: {cache_stats}")
+			print(f"#"*100)
+		print(f"Current α: {adapter_module.alpha.item():.4f}, Current β: {adapter_module.beta.item():.4f}")
+		if early_stopping.should_stop(
+			current_value=current_val_loss,
+			model=model,
+			epoch=epoch,
+			optimizer=optimizer,
+			scheduler=scheduler,
+			checkpoint_path=mdl_fpth,
+		):
 			print(
-				f'Epoch {epoch + 1}:\n'
-				f'\t[LOSS] {mode} (Training): {avg_training_loss} '
-				f'Validation(in-batch): {current_val_loss}\n'
-				f'\tValidation Top-k Accuracy:\n'
-				f'\tIn-batch:\n'
-				f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-				f'\t\t[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
-				f'\tFull Validation Set:\n'
-				f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-				f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
-			)
-			print(f"Image-to-Text Retrieval:\n\t{retrieval_metrics_per_epoch['img2txt']}")
-			print(f"Text-to-Image Retrieval:\n\t{retrieval_metrics_per_epoch['txt2img']}")
-			
-			if hasattr(train_loader.dataset, 'get_cache_stats'):
-				print(f"#"*100)
-				cache_stats = train_loader.dataset.get_cache_stats()
-				if cache_stats is not None:
-					print(f"Train Cache Stats: {cache_stats}")
-			
-			if hasattr(validation_loader.dataset, 'get_cache_stats'):
-				cache_stats = validation_loader.dataset.get_cache_stats()
-				if cache_stats is not None:
-					print(f"Validation Cache Stats: {cache_stats}")
-				print(f"#"*100)
-			
-			if early_stopping.should_stop(
-				current_value=current_val_loss,
-				model=model,
-				epoch=epoch,
-				optimizer=optimizer,
-				scheduler=scheduler,
-				checkpoint_path=mdl_fpth,
-			):
-				print(
-					f"\nEarly stopping triggered at epoch {epoch + 1} "
-					f"with best loss: {early_stopping.get_best_score()} "
-					f"obtained in epoch {early_stopping.get_best_epoch()+1}")
-				break
-			
-			print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(150, "="))
+				f"\nEarly stopping triggered at epoch {epoch + 1} "
+				f"with best loss: {early_stopping.get_best_score()} "
+				f"obtained in epoch {early_stopping.get_best_epoch()+1}")
+			break
+		
+		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(150, "="))
 	
 	print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 	
@@ -3892,14 +3893,13 @@ def tip_adapter_finetune_single_label(
 	actual_trained_epochs = len(training_losses) if training_losses else 0
 	
 	file_base_name = (
-		f"{mode}_"
+		f"{tip_adapter_method}_"
 		f"{CLUSTER}_"
 		f"{model_arch}_"
 		f"ep_{actual_trained_epochs}_"
 		f"lr_{learning_rate:.1e}_"
 		f"wd_{weight_decay:.1e}_"
 		f"bs_{train_loader.batch_size}_"
-		f"tad_{tip_adapter_method}_"
 		f"beta_{initial_beta}_"
 		f"alpha_{initial_alpha}_"
 		f"shots_{support_shots}"
