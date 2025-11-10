@@ -247,11 +247,11 @@ def compute_direct_in_batch_metrics(
 	total_loss = 0.0
 	processed_batches = 0
 	total_samples = 0
+	torch.cuda.empty_cache()
 	
 	# Check if this is multi-label by inspecting the dataset
 	sample_batch = next(iter(validation_loader))
 	is_multilabel = len(sample_batch) == 3 and len(sample_batch[2].shape) == 2
-	torch.cuda.empty_cache()
 
 	if is_multilabel:
 		if verbose:

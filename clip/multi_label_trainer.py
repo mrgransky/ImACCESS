@@ -278,6 +278,9 @@ def full_finetune_multi_label(
 
 			print(f">> Training completed in {time.time() - train_and_val_st_time:.2f} sec. Validating Epoch {epoch+1}")
 
+			# clear cache before validation
+			torch.cuda.empty_cache()
+
 			current_val_loss = compute_multilabel_validation_loss(
 				model=model,
 				validation_loader=validation_loader,
@@ -287,6 +290,7 @@ def full_finetune_multi_label(
 				temperature=temperature,
 				max_batches=10
 			)
+			
 			validation_results = get_validation_metrics(
 				model=model,
 				validation_loader=validation_loader,
@@ -839,6 +843,9 @@ def progressive_finetune_multi_label(
 		# --- Validation ---
 		print(f">> Training Completed in {time.time() - epoch_start_time:.2f} sec. Validating Epoch: {epoch+1}")
 
+		# clear cache before validation
+		torch.cuda.empty_cache()
+
 		# Compute validation loss using the same multi-label loss function
 		current_val_loss = compute_multilabel_validation_loss(
 			model=model,
@@ -850,7 +857,6 @@ def progressive_finetune_multi_label(
 			max_batches=10
 		)
 
-		# Get comprehensive validation metrics
 		validation_results = get_validation_metrics(
 			model=model,
 			validation_loader=validation_loader,
@@ -1388,7 +1394,6 @@ def lora_finetune_multi_label(
 			max_batches=10
 		)
 
-		# Get comprehensive validation metrics
 		validation_results = get_validation_metrics(
 			model=model,
 			validation_loader=validation_loader,
