@@ -1520,7 +1520,13 @@ def lora_plus_finetune_single_label(
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
 
 	criterion = torch.nn.CrossEntropyLoss()
-	scaler = torch.amp.GradScaler(device=device)
+	scaler = torch.amp.GradScaler(
+		device=device,
+		init_scale=2**16,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
+	)
 
 	mdl_fpth = os.path.join(
 		results_dir,

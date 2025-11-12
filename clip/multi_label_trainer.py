@@ -1880,12 +1880,21 @@ def lora_plus_finetune_multi_label(
 		eta_min=eta_min,
 		last_epoch=-1,
 	)
-	
 	if verbose:
 		print(f"{scheduler.__class__.__name__} scheduler")
 		print(f"  ├─ T_max = {total_training_steps} steps")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
-	
+
+	scaler = torch.amp.GradScaler(
+		device=device,
+		init_scale=2**16,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
+	)
+	if verbose:
+		print(f"Using {scaler.__class__.__name__} for automatic mixed precision training")
+
 	# Use BCEWithLogitsLoss for multi-label classification
 	if label_smoothing > 0:
 		if verbose:
@@ -1960,7 +1969,6 @@ def lora_plus_finetune_multi_label(
 	
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
-		torch.cuda.empty_cache()
 		model.train()
 		print(f"Epoch [{epoch + 1}/{num_epochs}]")
 		
