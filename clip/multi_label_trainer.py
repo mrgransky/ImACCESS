@@ -146,7 +146,7 @@ def full_finetune_multi_label(
 
 				batch_class_texts = clip.tokenize(batch_class_names).to(device)
 				batch_embeds = model.encode_text(batch_class_texts)
-				batch_embeds = F.normalize(batch_embeds, dim=-1)
+				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
 				all_class_embeds.append(batch_embeds.cpu())  # Move to CPU immediately to save GPU memory
 				
 				# Clean up
@@ -608,7 +608,7 @@ def progressive_finetune_multi_label(
 	with torch.no_grad():
 		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 			all_class_embeds = model.encode_text(all_class_texts)
-			all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+			all_class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
 
 	model.train()
 	if use_lamb:
@@ -1271,7 +1271,7 @@ def lora_finetune_multi_label(
 
 				batch_class_texts = clip.tokenize(batch_class_names).to(device)
 				batch_embeds = model.encode_text(batch_class_texts)
-				batch_embeds = F.normalize(batch_embeds, dim=-1)
+				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
 				all_class_embeds.append(batch_embeds.cpu())  # Move to CPU immediately to save GPU memory
 				
 				# Clean up
@@ -1912,7 +1912,7 @@ def lora_plus_finetune_multi_label(
 				
 				batch_class_texts = clip.tokenize(batch_class_names).to(device)
 				batch_embeds = model.encode_text(batch_class_texts)
-				batch_embeds = F.normalize(batch_embeds, dim=-1)
+				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
 				all_class_embeds.append(batch_embeds.cpu())
 				
 				del batch_class_texts, batch_embeds
@@ -2427,7 +2427,7 @@ def ia3_finetune_multi_label(
 
 				batch_class_texts = clip.tokenize(batch_class_names).to(device)
 				batch_embeds = model.encode_text(batch_class_texts)
-				batch_embeds = F.normalize(batch_embeds, dim=-1)
+				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
 				all_class_embeds.append(batch_embeds.cpu())  # Move to CPU immediately to save GPU memory
 				
 				# Clean up
@@ -2984,7 +2984,7 @@ def vera_finetune_multi_label(
 
 				batch_class_texts = clip.tokenize(batch_class_names).to(device)
 				batch_embeds = model.encode_text(batch_class_texts)
-				batch_embeds = F.normalize(batch_embeds, dim=-1)
+				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
 				all_class_embeds.append(batch_embeds.cpu())  # Move to CPU immediately to save GPU memory
 				
 				# Clean up
@@ -3575,7 +3575,7 @@ def dora_finetune_multi_label(
 				batch_class_names = class_names[i:end_idx]
 				batch_class_texts = clip.tokenize(batch_class_names).to(device)
 				batch_embeds = model.encode_text(batch_class_texts)
-				batch_embeds = F.normalize(batch_embeds, dim=-1)
+				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
 				all_class_embeds.append(batch_embeds.cpu())
 				del batch_class_texts, batch_embeds
 				torch.cuda.empty_cache()
@@ -4106,7 +4106,7 @@ def clip_adapter_finetune_multi_label(
 	# 			batch_class_names = class_names[i:end_idx]
 	# 			batch_class_texts = clip.tokenize(batch_class_names).to(device)
 	# 			batch_embeds = model.encode_text(batch_class_texts)
-	# 			batch_embeds = F.normalize(batch_embeds, dim=-1)
+	# 			batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
 	# 			all_class_embeds.append(batch_embeds.cpu())
 	# 			del batch_class_texts, batch_embeds
 	# 			torch.cuda.empty_cache()
@@ -4640,7 +4640,7 @@ def tip_adapter_finetune_multi_label(
 				batch_class_names = class_names[i:end_idx]
 				batch_class_texts = clip.tokenize(batch_class_names).to(device)
 				batch_embeds = model.encode_text(batch_class_texts)
-				batch_embeds = F.normalize(batch_embeds, dim=-1)
+				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
 				all_class_embeds.append(batch_embeds.cpu())
 				del batch_class_texts, batch_embeds
 				torch.cuda.empty_cache()
@@ -5244,7 +5244,7 @@ def probe_finetune_multi_label(
 		with torch.no_grad():
 			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
 				all_class_embeds = model.encode_text(all_class_texts)
-				all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+				all_class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
 		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
 
 		# Optimizer setup
@@ -5332,7 +5332,7 @@ def probe_finetune_multi_label(
 						
 						images = images.to(device, non_blocking=True)
 						image_embeds = model.encode_image(images)
-						image_embeds = F.normalize(image_embeds, dim=-1)
+						image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
 						
 						train_features.append(image_embeds.cpu())
 						train_labels.append(label_vectors.cpu())
@@ -5351,7 +5351,7 @@ def probe_finetune_multi_label(
 						
 						images = images.to(device, non_blocking=True)
 						image_embeds = model.encode_image(images)
-						image_embeds = F.normalize(image_embeds, dim=-1)
+						image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
 						
 						val_features.append(image_embeds.cpu())
 						val_labels.append(label_vectors.cpu())
@@ -5418,7 +5418,7 @@ def probe_finetune_multi_label(
 								# Extract image embeddings (frozen)
 								with torch.no_grad():
 										image_embeds = model.encode_image(images)
-										image_embeds = F.normalize(image_embeds, dim=-1)
+										image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
 						
 						optimizer.zero_grad(set_to_none=True)
 						
@@ -5481,7 +5481,7 @@ def probe_finetune_multi_label(
 										
 										# Extract features
 										image_embeds = model.encode_image(images)
-										image_embeds = F.normalize(image_embeds, dim=-1)
+										image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
 								
 								# Get predictions from probe
 								logits = probe(image_embeds)
@@ -5569,7 +5569,7 @@ def probe_finetune_multi_label(
 								label_vectors = label_vectors.to(device, non_blocking=True).float()
 								
 								image_embeds = model.encode_image(images)
-								image_embeds = F.normalize(image_embeds, dim=-1)
+								image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
 						
 						logits = probe(image_embeds)
 						probs = torch.sigmoid(logits)
