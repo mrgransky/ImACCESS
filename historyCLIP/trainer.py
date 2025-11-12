@@ -65,7 +65,7 @@ def main():
 	parser = argparse.ArgumentParser(description="FineTune CLIP for Historical Archives Dataset")
 	parser.add_argument('--metadata_csv', '-csv', type=str, required=True, help='Metadata CSV file')
 	parser.add_argument('--mode', '-m', type=str, choices=['train', 'finetune', 'pretrain'], default='finetune', help='Choose mode (train/finetune/pretrain)')
-	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'probe', 'lora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'clip_adapter', 'tip_adapter', 'tip_adapter_f'], default=None, help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
+	parser.add_argument('--finetune_strategy', '-fts', type=str, choices=['full', 'probe', 'lora', 'lora_plus', 'dora', 'vera', 'ia3', 'progressive', 'adapter'], default=None, help='Fine-tuning strategy (full/lora/progressive) when mode is finetune')
 	parser.add_argument('--model_architecture', '-a', type=str, default="ViT-B/32", help='CLIP model name')
 	parser.add_argument('--device', '-dv', type=str, default="cuda:0" if torch.cuda.is_available() else "cpu", help='Device (cuda or cpu)')
 	parser.add_argument('--epochs', '-e', type=int, default=63, help='Number of epochs')
@@ -100,11 +100,8 @@ def main():
 	# Linear probe
 	parser.add_argument('--probe_dropout', '-pdo', type=float, default=None, help='Linear probe dropout (used if finetune_strategy=linear_probe)')
 
-	# CLIP-Adapter
-	parser.add_argument('--clip_adapter_method', '-cam', type=str, choices=['clip_adapter_v', 'clip_adapter_t', 'clip_adapter_vt'], default=None, help='CLIP-Adapter method (used if finetune_strategy=clip_adapter)')
-
-	# Tip-Adapter
-	parser.add_argument('--tip_adapter_method', '-tam', type=str, choices=['tip_adapter', 'tip_adapter_f'], default=None, help='Tip-Adapter method (used if finetune_strategy=tip_adapter)')
+	# Adapter-based FT
+	parser.add_argument('--adapter_method', '-am', type=str, choices=['clip_adapter_v', 'clip_adapter_t', 'clip_adapter_vt', 'tip_adapter', 'tip_adapter_f'], default=None, help='Adapter method (used if finetune_strategy=adapter)')
 
 	# Common
 	parser.add_argument('--topK_values', '-k', type=int, nargs='+', default=[1, 3, 5, 10, 15, 20], help='Top K values for retrieval metrics')
@@ -143,8 +140,8 @@ def main():
 	if args.finetune_strategy == "lora_plus":
 		assert args.lora_plus_lambda is not None, "lora_plus_lambda must be specified for lora_plus finetuning (example: -lmbd 32.0)"
 
-	if args.finetune_strategy == "clip_adapter":
-		assert args.clip_adapter_method is not None, "clip_adapter_method must be specified for clip_adapter finetuning (example: -cam clip_adapter_v)"
+	if args.finetune_strategy == "adapter":
+		assert args.adapter_method is not None, "adapter_method must be specified for adapter-based finetuning (example: -am clip_adapter_v)"
 
 	try:
 		if args.log_dir:
@@ -241,8 +238,7 @@ def main():
 				'dora': dora_finetune_single_label,
 				'vera': vera_finetune_single_label,
 				'progressive': progressive_finetune_single_label,
-				'clip_adapter': clip_adapter_finetune_single_label,
-				'tip_adapter': tip_adapter_finetune_single_label,
+				'adapter': clip_adapter_finetune_single_label if args.adapter_method.startswith('clip_adapter') else tip_adapter_finetune_single_label,
 			},
 			'multi_label': {
 				'full': full_finetune_multi_label,
@@ -253,6 +249,7 @@ def main():
 				'dora': dora_finetune_multi_label,
 				'vera': vera_finetune_multi_label,
 				'progressive': progressive_finetune_multi_label,
+				'adapter': clip_adapter_finetune_multi_label if args.adapter_method.startswith('clip_adapter') else tip_adapter_finetune_multi_label,
 			}
 		}
 		if args.mode == "finetune":
@@ -301,14 +298,18 @@ def main():
 					),
 				**(
 						{
-							'clip_adapter_method': args.clip_adapter_method,
-							# 'bottleneck_dim': args.bottleneck_dim,
-						} if args.finetune_strategy == 'clip_adapter' else {}
+							'clip_adapter_method': args.adapter_method,
+							'bottleneck_dim': 256,
+							'activation': 'relu',
+						} if args.finetune_strategy == 'adapter' and args.adapter_method.startswith('clip_adapter') else {}
 					),
 				**(
 						{
-							'tip_adapter_method': args.tip_adapter_method,
-						} if args.finetune_strategy == 'tip_adapter' else {}
+							'tip_adapter_method': args.adapter_method,
+							'initial_beta': 1.0,
+							'initial_alpha': 1.0,
+							'support_shots': 16,
+						} if args.finetune_strategy == 'adapter' and args.adapter_method.startswith('tip_adapter') else {}
 					),
 			)
 		elif args.mode == "train":
@@ -361,11 +362,11 @@ def main():
 				print_loader_info(loader=validation_loader, batch_size=args.batch_size)
 
 				img2txt_metrics, txt2img_metrics = pretrain(
-						model=model,
-						validation_loader=validation_loader,
-						results_dir=RESULT_DIRECTORY,
-						device=args.device,
-						topk_values=args.topK_values,
+					model=model,
+					validation_loader=validation_loader,
+					results_dir=RESULT_DIRECTORY,
+					device=args.device,
+					topk_values=args.topK_values,
 				)
 				all_img2txt_metrics[model_arch] = img2txt_metrics
 				all_txt2img_metrics[model_arch] = txt2img_metrics

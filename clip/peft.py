@@ -1532,338 +1532,337 @@ class CLIPAdapterVisual(torch.nn.Module):
 				return self.adapter.get_memory_footprint()
 
 def get_adapter_peft_clip(
-		clip_model: torch.nn.Module,
-		method: str,
-		cache_dim: int,  # For Tip-Adapter compatibility
-		bottleneck_dim: Optional[int] = 256,  # For CLIP-Adapter
-		activation: str = "relu",  # For CLIP-Adapter
-		verbose: bool = True,
+	clip_model: torch.nn.Module,
+	method: str,
+	cache_dim: int,  # For Tip-Adapter compatibility
+	bottleneck_dim: Optional[int] = 256,  # For CLIP-Adapter
+	activation: str = "relu",  # For CLIP-Adapter
+	verbose: bool = True,
 ):
-		"""
-		Apply adapter-based fine-tuning techniques (Tip-Adapter, CLIP-Adapter) to a CLIP model.
-		
-		Args:
-				clip_model: Pre-trained CLIP model.
-				method: Adaptation method - "tip_adapter", "tip_adapter_f", "clip_adapter_v", "clip_adapter_t", "clip_adapter_vt".
-				cache_dim: Dimension of the cached features (for Tip-Adapter compatibility).
-				bottleneck_dim: Dimension of the CLIP-Adapter bottleneck layer.
-				activation: Activation function for CLIP-Adapter ("relu" or "gelu").
-				verbose: Print detailed information.
-		
-		Returns:
-				Modified CLIP model with the specified adapter applied.
-		"""
-		# Validate method
-		valid_methods = ["tip_adapter", "tip_adapter_f", "clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"]
-		if method not in valid_methods:
-				raise ValueError(f"method must be one of {valid_methods}, got '{method}'")
-
-		# --- CLIP-ADAPTER LOGIC ---
-		if method.startswith("clip_adapter"):
-				if bottleneck_dim is None:
-						raise ValueError("bottleneck_dim must be specified for CLIP-Adapter methods.")
-				if activation not in ["relu", "gelu"]:
-						raise ValueError("activation for CLIP-Adapter must be 'relu' or 'gelu'.")
-				
-				device = next(clip_model.parameters()).device
-				model = copy.deepcopy(clip_model)
-				
-				if verbose:
-						print(f"\n[CLIP-ADAPTER CONFIGURATION]")
-						print(f"{'='*100}")
-						print(f"[1] METHOD SELECTION")
-						print(f"    ├─ Selected Method: {method}")
-						print(f"    ├─ Bottleneck Dimension: {bottleneck_dim}")
-						print(f"    └─ Activation Function: {activation}")
-						total_params = sum(p.numel() for p in model.parameters())
-						total_trainable_before = sum(p.numel() for p in model.parameters() if p.requires_grad)
-						print(f"\n[2] MODEL ANALYSIS")
-						print(f"    ├─ Total Parameters: {total_params:,}")
-						print(f"    └─ Trainable Parameters (before): {total_trainable_before:,}")
-				
-				# --- Apply CLIP-Adapter ---
-				adapter_memory_info = {}
-				
-				# Visual Adapter
-				if method in ["clip_adapter_v", "clip_adapter_vt"]:
-						if verbose:
-								print(f"\n[3] APPLYING CLIP-ADAPTER (VISUAL)")
-						
-						visual_adapter = CLIPAdapterVisual(
-								clip_visual_model=model.visual,
-								bottleneck_dim=bottleneck_dim,
-								device=device,
-								activation=activation,
-								verbose=verbose
-						)
-						
-						# Replace visual encoder with wrapper
-						model.visual = visual_adapter
-						adapter_memory_info['visual'] = visual_adapter.get_memory_footprint()
-						
-						if verbose:
-								print(f"    └─ Visual Adapter Memory: {adapter_memory_info['visual']['memory_mb']:.4f} MB")
-				
-				# Text Adapter
-				if method in ["clip_adapter_t", "clip_adapter_vt"]:
-						if verbose:
-								print(f"\n[4] APPLYING CLIP-ADAPTER (TEXT)")
-						
-						# Create text adapter (stores components, not whole model)
-						text_adapter = CLIPAdapterText(
-								clip_text_model=model,
-								bottleneck_dim=bottleneck_dim,
-								device=device,
-								activation=activation,
-								verbose=verbose
-						)
-						
-						# Register the adapter as a submodule for parameter tracking
-						# Use add_module to properly register it in the module hierarchy
-						model.add_module('_text_adapter', text_adapter)
-						
-						# Replace encode_text method to use the adapter
-						def encode_text_with_adapter(text):
-								"""Wrapper that calls the text adapter's forward method."""
-								return model._text_adapter(text)
-						
-						# Monkey-patch the encode_text method
-						model.encode_text = encode_text_with_adapter
-						
-						adapter_memory_info['text'] = text_adapter.get_memory_footprint()
-						
-						if verbose:
-								print(f"    └─ Text Adapter Memory: {adapter_memory_info['text']['memory_mb']:.4f} MB")
-				
-				# --- FREEZE BASE MODEL PARAMETERS ---
-				if verbose:
-						print(f"\n[5] FREEZING BASE MODEL PARAMETERS")
-				
-				for name, param in model.named_parameters():
-						# Only adapter parameters should be trainable
-						is_adapter_param = any([
-								'adapter.down_proj' in name,
-								'adapter.up_proj' in name,
-								'adapter.ratio' in name,
-								'_text_adapter.adapter' in name,
-								'visual.adapter' in name,  # For visual adapter in CLIPAdapterVisual
-						])
-						param.requires_grad = is_adapter_param
-				
-				total_trainable_after = sum(p.numel() for p in model.parameters() if p.requires_grad)
-				
-				if verbose:
-						print(f"    └─ Trainable Parameters (after): {total_trainable_after:,}")
-						
-						# Debug: Print trainable parameters
-						if total_trainable_after > 0:
-								print("\n    Trainable parameters:")
-								for name, param in model.named_parameters():
-										if param.requires_grad:
-												print(f"      - {name}: {param.numel():,} parameters")
-						else:
-								print("\n    WARNING: No trainable parameters found!")
-				
-				# --- MEMORY SUMMARY ---
-				if verbose:
-						print(f"\n[6] MEMORY FOOTPRINT SUMMARY - CLIP-ADAPTER")
-						total_adapter_memory = 0.0
-						for enc_type, mem_info in adapter_memory_info.items():
-								print(f"    ├─ {enc_type.upper()} Adapter: {mem_info['params']:,} params, {mem_info['memory_mb']:.4f} MB")
-								total_adapter_memory += mem_info['memory_mb']
-						print(f"    └─ Total Adapter Memory: {total_adapter_memory:.4f} MB")
-				
-				return model
-
-		# --- TIP-ADAPTER LOGIC ---
-		# Validate method for Tip-Adapter
-		if method not in ["tip_adapter", "tip_adapter_f"]:
-				raise ValueError(f"method must be 'tip_adapter' or 'tip_adapter_f', got '{method}'")
-		
-		# Select adapter class based on method
-		if method == "tip_adapter":
-				AdapterClass = TipAdapterLinear
-				method_name = "Tip-Adapter"
-		elif method == "tip_adapter_f":
-				AdapterClass = TipAdapterFLinear
-				method_name = "Tip-Adapter-F"
-		else:
-				raise ValueError(f"Unsupported adapter method: {method}")
-		
-		if verbose:
-				print(f"\n[TIP-ADAPTER CONFIGURATION]")
-				print(f"{'='*100}")
-				print(f"[1] METHOD SELECTION")
-				print(f"    ├─ Selected Method: {method_name}")
-				print(f"    ├─ Adapter Class: {AdapterClass.__name__}")
-				print(f"    └─ Cache Features Dimension: {cache_dim}")
+	"""
+	Apply adapter-based fine-tuning techniques (Tip-Adapter, CLIP-Adapter) to a CLIP model.
+	
+	Args:
+		clip_model: Pre-trained CLIP model.
+		method: Adaptation method - "tip_adapter", "tip_adapter_f", "clip_adapter_v", "clip_adapter_t", "clip_adapter_vt".
+		cache_dim: Dimension of the cached features (for Tip-Adapter compatibility).
+		bottleneck_dim: Dimension of the CLIP-Adapter bottleneck layer.
+		activation: Activation function for CLIP-Adapter ("relu" or "gelu").
+		verbose: Print detailed information.
+	
+	Returns:
+		Modified CLIP model with the specified adapter applied.
+	"""
+	# Validate method
+	valid_methods = ["tip_adapter", "tip_adapter_f", "clip_adapter_v", "clip_adapter_t", "clip_adapter_vt"]
+	if method not in valid_methods:
+		raise ValueError(f"method must be one of {valid_methods}, got '{method}'")
+	
+	# --- CLIP-ADAPTER LOGIC ---
+	if method.startswith("clip_adapter"):
+		if bottleneck_dim is None:
+			raise ValueError("bottleneck_dim must be specified for CLIP-Adapter methods.")
+		if activation not in ["relu", "gelu"]:
+			raise ValueError("activation for CLIP-Adapter must be 'relu' or 'gelu'.")
 		
 		device = next(clip_model.parameters()).device
-		
-		# Analyze model architecture (relevant for Tip-Adapter-F)
-		if verbose:
-				print(f"\n[2] MODEL ARCHITECTURE ANALYSIS")
-				total_params = sum(p.numel() for p in clip_model.parameters())
-				total_trainable = sum(p.numel() for p in clip_model.parameters() if p.requires_grad)
-				print(f"    ├─ Total Parameters: {total_params:,}")
-				print(f"    ├─ Currently Trainable: {total_trainable:,}")
-				print(f"    ├─ Device: {device}")
-				print(f"    └─ Model Type: {type(clip_model).__name__}")
-		
-		# --- MAIN LOGIC: Modify Visual Encoder ---
-		if verbose:
-				print(f"\n[3] VISUAL ENCODER MODIFICATION")
-		
-		# Deep copy model to avoid modifying the original
 		model = copy.deepcopy(clip_model)
 		
-		# Check for the final projection layer
-		if not hasattr(model.visual, "proj") or not isinstance(model.visual.proj, torch.nn.Parameter):
-				raise ValueError(f"CLIP model's visual encoder must have a final projection parameter named 'proj'.")
+		if verbose:
+			print(f"\n[CLIP-ADAPTER CONFIGURATION]")
+			print(f"{'='*100}")
+			print(f"[1] METHOD SELECTION")
+			print(f"    ├─ Selected Method: {method}")
+			print(f"    ├─ Bottleneck Dimension: {bottleneck_dim}")
+			print(f"    └─ Activation Function: {activation}")
+			total_params = sum(p.numel() for p in model.parameters())
+			total_trainable_before = sum(p.numel() for p in model.parameters() if p.requires_grad)
+			print(f"\n[2] MODEL ANALYSIS")
+			print(f"    ├─ Total Parameters: {total_params:,}")
+			print(f"    └─ Trainable Parameters (before): {total_trainable_before:,}")
 		
-		# Get dimensions from the original projection
-		original_proj_in_dim = model.visual.proj.size(0)  # e.g., 768 (ViT output)
-		original_proj_out_dim = model.visual.proj.size(1)  # e.g., 512 (text embedding dim)
+		# --- Apply CLIP-Adapter ---
+		adapter_memory_info = {}
+		
+		# Visual Adapter
+		if method in ["clip_adapter_v", "clip_adapter_vt"]:
+			if verbose:
+				print(f"\n[3] APPLYING CLIP-ADAPTER (VISUAL)")
+			
+			visual_adapter = CLIPAdapterVisual(
+				clip_visual_model=model.visual,
+				bottleneck_dim=bottleneck_dim,
+				device=device,
+				activation=activation,
+				verbose=verbose
+			)
+			
+			# Replace visual encoder with wrapper
+			model.visual = visual_adapter
+			adapter_memory_info['visual'] = visual_adapter.get_memory_footprint()
+			
+			if verbose:
+				print(f"    └─ Visual Adapter Memory: {adapter_memory_info['visual']['memory_mb']:.4f} MB")
+		
+		# Text Adapter
+		if method in ["clip_adapter_t", "clip_adapter_vt"]:
+			if verbose:
+					print(f"\n[4] APPLYING CLIP-ADAPTER (TEXT)")
+			
+			# Create text adapter (stores components, not whole model)
+			text_adapter = CLIPAdapterText(
+				clip_text_model=model,
+				bottleneck_dim=bottleneck_dim,
+				device=device,
+				activation=activation,
+				verbose=verbose
+			)
+			
+			# Register the adapter as a submodule for parameter tracking
+			# Use add_module to properly register it in the module hierarchy
+			model.add_module('_text_adapter', text_adapter)
+			
+			# Replace encode_text method to use the adapter
+			def encode_text_with_adapter(text):
+				"""Wrapper that calls the text adapter's forward method."""
+				return model._text_adapter(text)
+			
+			# Monkey-patch the encode_text method
+			model.encode_text = encode_text_with_adapter
+			
+			adapter_memory_info['text'] = text_adapter.get_memory_footprint()
+			
+			if verbose:
+				print(f"    └─ Text Adapter Memory: {adapter_memory_info['text']['memory_mb']:.4f} MB")
+		
+		# --- FREEZE BASE MODEL PARAMETERS ---
+		if verbose:
+			print(f"\n[5] FREEZING BASE MODEL PARAMETERS")
+		
+		for name, param in model.named_parameters():
+			# Only adapter parameters should be trainable
+			is_adapter_param = any([
+				'adapter.down_proj' in name,
+				'adapter.up_proj' in name,
+				'adapter.ratio' in name,
+				'_text_adapter.adapter' in name,
+				'visual.adapter' in name,  # For visual adapter in CLIPAdapterVisual
+			])
+			param.requires_grad = is_adapter_param
+		
+		total_trainable_after = sum(p.numel() for p in model.parameters() if p.requires_grad)
 		
 		if verbose:
-				print(f"    ├─ Found original visual projection: {original_proj_in_dim} -> {original_proj_out_dim}")
-				print(f"    ├─ Expected cache_dim ({cache_dim}) should match text embedding dim ({original_proj_out_dim}).")
+			print(f"    └─ Trainable Parameters (after): {total_trainable_after:,}")
+			
+			# Debug: Print trainable parameters
+			if total_trainable_after > 0:
+				print("\n    Trainable parameters:")
+				for name, param in model.named_parameters():
+					if param.requires_grad:
+						print(f"      - {name}: {param.numel():,} parameters")
+			else:
+				print("\n    WARNING: No trainable parameters found!")
 		
-		# --- Apply the specific adapter ---
-		if method == "tip_adapter":
-				# Tip-Adapter assumes the input to the adapter is the output of the original projection.
-				if original_proj_out_dim != cache_dim:
-						raise ValueError(f"For {method_name}, the original projection output dim ({original_proj_out_dim}) must match the cache_dim ({cache_dim}).")
-				
-				# Create the Tip-Adapter module
-				adapter_visual_proj = AdapterClass(
-						cache_features_dim=original_proj_out_dim,
-						device=device,
-						verbose=verbose
-				)
-				
-				# Store the adapter module as an attribute of the visual encoder
-				setattr(model.visual, f"{method.replace('-', '_')}_proj", adapter_visual_proj)
-				
-				# --- Monkey-patch the visual encoder's forward pass ---
-				original_proj_weight = model.visual.proj.clone().detach()
-				def vit_forward_with_adapter(self, x: torch.Tensor):
-						# Standard ViT forward until the final projection
-						x = self.conv1(x)
-						x = x.reshape(x.shape[0], x.shape[1], -1)
-						x = x.permute(0, 2, 1)
-						cls = self.class_embedding.to(x.dtype) + torch.zeros(
-							x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device
-						)
-						x = torch.cat([cls, x], dim=1)
-						x = x + self.positional_embedding.to(x.dtype)
-						x = self.dropout(x)
-						x = self.ln_pre(x)
-						x = x.permute(1, 0, 2)
-						x = self.transformer(x)
-						x = x.permute(1, 0, 2)
-						x = self.ln_post(x[:, 0, :])  # x is now [batch, original_proj_in_dim]
-						
-						# Apply the original projection to get into the cache space
-						x = x @ original_proj_weight  # x is now [batch, original_proj_out_dim]
-						# Apply the Tip-Adapter
-						x = getattr(self, f"{method.replace('-', '_')}_proj")(x)
-						return x
-				
-				model.visual.forward = vit_forward_with_adapter.__get__(model.visual, type(model.visual))
-				
-				if verbose:
-						print(f"    ├─ Replaced final projection logic with {AdapterClass.__name__}")
-						print(f"    ├─ Input to adapter: {original_proj_out_dim}, Output from adapter: {original_proj_out_dim}")
-						print(f"    └─ Model's visual.forward has been updated.")
-		
-		elif method == "tip_adapter_f":
-				# Tip-Adapter-F replaces the original projection entirely
-				if original_proj_out_dim != cache_dim:
-						raise ValueError(f"For {method_name}, the original projection output dim ({original_proj_out_dim}) must match the cache_dim ({cache_dim}).")
-				
-				# Create the Tip-Adapter-F module
-				adapter_visual_proj = AdapterClass(
-						in_features=original_proj_in_dim,
-						out_features=original_proj_out_dim,
-						device=device,
-						verbose=verbose
-				)
-
-				# Copy the original projection weight for initialization
-				with torch.no_grad():
-						adapter_visual_proj.linear.weight.data.copy_(model.visual.proj.t().data)
-				
-				# Store the adapter module
-				setattr(model.visual, f"{method.replace('-', '_')}_proj", adapter_visual_proj)
-				
-				# --- Monkey-patch the visual encoder's forward pass ---
-				def vit_forward_with_adapter_f(self, x: torch.Tensor):
-						# Standard ViT forward until the final projection
-						x = self.conv1(x)
-						x = x.reshape(x.shape[0], x.shape[1], -1)
-						x = x.permute(0, 2, 1)
-						cls = self.class_embedding.to(x.dtype) + torch.zeros(
-								x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device
-						)
-						x = torch.cat([cls, x], dim=1)
-						x = x + self.positional_embedding.to(x.dtype)
-						x = self.dropout(x)
-						x = self.ln_pre(x)
-						x = x.permute(1, 0, 2)
-						x = self.transformer(x)
-						x = x.permute(1, 0, 2)
-						x = self.ln_post(x[:, 0, :])  # x is now [batch, original_proj_in_dim]
-						
-						# Apply the Tip-Adapter-F linear layer + cache logic
-						x = getattr(self, f"{method.replace('-', '_')}_proj")(x)
-						return x
-				
-				model.visual.forward = vit_forward_with_adapter_f.__get__(model.visual, type(model.visual))
-				
-				if verbose:
-						print(f"    ├─ Replaced final projection layer with {AdapterClass.__name__}")
-						print(f"    ├─ Input to adapter: {original_proj_in_dim}, Output from adapter: {original_proj_out_dim}")
-						print(f"    ├─ Cache feature dim: {original_proj_out_dim}")
-						print(f"    └─ Model's visual.forward has been updated.")
-		
-		# --- Memory Footprint for Tip-Adapter ---
-		mem_info = adapter_visual_proj.get_memory_footprint()
+		# --- MEMORY SUMMARY ---
 		if verbose:
-				print(f"\n[4] MEMORY FOOTPRINT - {method_name}")
-				if method == "tip_adapter_f":
-						print(f"    ├─ Linear Layer Parameters: {mem_info.get('linear_params', 0):,}")
-						print(f"    ├─ Linear Layer Memory: {mem_info.get('linear_memory_mb', 0):.4f} MB")
-				print(f"    ├─ Cache Memory (depends on cache size): {mem_info['cache_memory_mb']:.4f} MB")
-				print(f"    ├─ Parameter Memory (β, α): {mem_info['param_memory_mb']:.4f} MB")
-				print(f"    └─ Total Estimated: {mem_info['total_memory_mb']:.4f} MB")
-				if 'cache_size' in mem_info:
-						print(f"    └─ Cache Size (samples): {mem_info['cache_size']}")
-		
-		# --- FREEZE NON-ADAPTER PARAMETERS ---
-		if method == "tip_adapter_f":
-				# For Tip-Adapter-F, only the linear layer's weight/bias and beta/alpha are trainable
-				for name, param in model.named_parameters():
-						param.requires_grad = "linear.weight" in name or "linear.bias" in name or "beta" in name or "alpha" in name
-				
-				if verbose:
-						trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-						print(f"\n[5] PARAMETER FREEZING - {method_name}")
-						print(f"    ├─ Total Parameters: {sum(p.numel() for p in model.parameters()):,}")
-						print(f"    └─ Trainable Parameters: {trainable_params:,}")
-		
-		elif method == "tip_adapter":
-				# For training-free Tip-Adapter, only beta and alpha are trainable
-				for name, param in model.named_parameters():
-						param.requires_grad = "beta" in name or "alpha" in name
-				
-				if verbose:
-						trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-						print(f"\n[5] PARAMETER FREEZING - {method_name} (Training-Free)")
-						print(f"    ├─ Total Parameters: {sum(p.numel() for p in model.parameters()):,}")
-						print(f"    └─ Trainable Parameters (β, α): {trainable_params:,}")
+			print(f"\n[6] MEMORY FOOTPRINT SUMMARY - CLIP-ADAPTER")
+			total_adapter_memory = 0.0
+			for enc_type, mem_info in adapter_memory_info.items():
+				print(f"    ├─ {enc_type.upper()} Adapter: {mem_info['params']:,} params, {mem_info['memory_mb']:.4f} MB")
+				total_adapter_memory += mem_info['memory_mb']
+			print(f"    └─ Total Adapter Memory: {total_adapter_memory:.4f} MB")
 		
 		return model
+	
+	# --- TIP-ADAPTER LOGIC ---
+	# Validate method for Tip-Adapter
+	if method not in ["tip_adapter", "tip_adapter_f"]:
+		raise ValueError(f"method must be 'tip_adapter' or 'tip_adapter_f', got '{method}'")
+	
+	# Select adapter class based on method
+	if method == "tip_adapter":
+		AdapterClass = TipAdapterLinear
+		method_name = "Tip-Adapter"
+	elif method == "tip_adapter_f":
+		AdapterClass = TipAdapterFLinear
+		method_name = "Tip-Adapter-F"
+	else:
+		raise ValueError(f"Unsupported adapter method: {method}")
+	
+	if verbose:
+		print(f"\n[TIP-ADAPTER CONFIGURATION]")
+		print(f"{'='*100}")
+		print(f"[1] METHOD SELECTION")
+		print(f"    ├─ Selected Method: {method_name}")
+		print(f"    ├─ Adapter Class: {AdapterClass.__name__}")
+		print(f"    └─ Cache Features Dimension: {cache_dim}")
+	
+	device = next(clip_model.parameters()).device
+	
+	# Analyze model architecture (relevant for Tip-Adapter-F)
+	if verbose:
+		print(f"\n[2] MODEL ARCHITECTURE ANALYSIS")
+		total_params = sum(p.numel() for p in clip_model.parameters())
+		total_trainable = sum(p.numel() for p in clip_model.parameters() if p.requires_grad)
+		print(f"    ├─ Total Parameters: {total_params:,}")
+		print(f"    ├─ Currently Trainable: {total_trainable:,}")
+		print(f"    ├─ Device: {device}")
+		print(f"    └─ Model Type: {type(clip_model).__name__}")
+	
+	# --- MAIN LOGIC: Modify Visual Encoder ---
+	if verbose:
+		print(f"\n[3] VISUAL ENCODER MODIFICATION")
+	
+	# Deep copy model to avoid modifying the original
+	model = copy.deepcopy(clip_model)
+	
+	# Check for the final projection layer
+	if not hasattr(model.visual, "proj") or not isinstance(model.visual.proj, torch.nn.Parameter):
+		raise ValueError(f"CLIP model's visual encoder must have a final projection parameter named 'proj'.")
+	
+	# Get dimensions from the original projection
+	original_proj_in_dim = model.visual.proj.size(0)  # e.g., 768 (ViT output)
+	original_proj_out_dim = model.visual.proj.size(1)  # e.g., 512 (text embedding dim)
+	
+	if verbose:
+		print(f"    ├─ Found original visual projection: {original_proj_in_dim} -> {original_proj_out_dim}")
+		print(f"    ├─ Expected cache_dim ({cache_dim}) should match text embedding dim ({original_proj_out_dim}).")
+	
+	# --- Apply the specific adapter ---
+	if method == "tip_adapter":
+		# Tip-Adapter assumes the input to the adapter is the output of the original projection.
+		if original_proj_out_dim != cache_dim:
+			raise ValueError(f"For {method_name}, the original projection output dim ({original_proj_out_dim}) must match the cache_dim ({cache_dim}).")
+		
+		# Create the Tip-Adapter module
+		adapter_visual_proj = AdapterClass(
+			cache_features_dim=original_proj_out_dim,
+			device=device,
+			verbose=verbose
+		)
+		
+		# Store the adapter module as an attribute of the visual encoder
+		setattr(model.visual, f"{method.replace('-', '_')}_proj", adapter_visual_proj)
+		
+		# --- Monkey-patch the visual encoder's forward pass ---
+		original_proj_weight = model.visual.proj.clone().detach()
+		def vit_forward_with_adapter(self, x: torch.Tensor):
+			# Standard ViT forward until the final projection
+			x = self.conv1(x)
+			x = x.reshape(x.shape[0], x.shape[1], -1)
+			x = x.permute(0, 2, 1)
+			cls = self.class_embedding.to(x.dtype) + torch.zeros(
+				x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device
+			)
+			x = torch.cat([cls, x], dim=1)
+			x = x + self.positional_embedding.to(x.dtype)
+			x = self.dropout(x)
+			x = self.ln_pre(x)
+			x = x.permute(1, 0, 2)
+			x = self.transformer(x)
+			x = x.permute(1, 0, 2)
+			x = self.ln_post(x[:, 0, :])  # x is now [batch, original_proj_in_dim]
+			
+			# Apply the original projection to get into the cache space
+			x = x @ original_proj_weight  # x is now [batch, original_proj_out_dim]
+			# Apply the Tip-Adapter
+			x = getattr(self, f"{method.replace('-', '_')}_proj")(x)
+			return x
+		
+		model.visual.forward = vit_forward_with_adapter.__get__(model.visual, type(model.visual))
+		
+		if verbose:
+			print(f"    ├─ Replaced final projection logic with {AdapterClass.__name__}")
+			print(f"    ├─ Input to adapter: {original_proj_out_dim}, Output from adapter: {original_proj_out_dim}")
+			print(f"    └─ Model's visual.forward has been updated.")
+	
+	elif method == "tip_adapter_f":
+		# Tip-Adapter-F replaces the original projection entirely
+		if original_proj_out_dim != cache_dim:
+			raise ValueError(f"For {method_name}, the original projection output dim ({original_proj_out_dim}) must match the cache_dim ({cache_dim}).")
+		
+		# Create the Tip-Adapter-F module
+		adapter_visual_proj = AdapterClass(
+			in_features=original_proj_in_dim,
+			out_features=original_proj_out_dim,
+			device=device,
+			verbose=verbose
+		)
+		# Copy the original projection weight for initialization
+		with torch.no_grad():
+				adapter_visual_proj.linear.weight.data.copy_(model.visual.proj.t().data)
+		
+		# Store the adapter module
+		setattr(model.visual, f"{method.replace('-', '_')}_proj", adapter_visual_proj)
+		
+		# --- Monkey-patch the visual encoder's forward pass ---
+		def vit_forward_with_adapter_f(self, x: torch.Tensor):
+			# Standard ViT forward until the final projection
+			x = self.conv1(x)
+			x = x.reshape(x.shape[0], x.shape[1], -1)
+			x = x.permute(0, 2, 1)
+			cls = self.class_embedding.to(x.dtype) + torch.zeros(
+				x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device
+			)
+			x = torch.cat([cls, x], dim=1)
+			x = x + self.positional_embedding.to(x.dtype)
+			x = self.dropout(x)
+			x = self.ln_pre(x)
+			x = x.permute(1, 0, 2)
+			x = self.transformer(x)
+			x = x.permute(1, 0, 2)
+			x = self.ln_post(x[:, 0, :])  # x is now [batch, original_proj_in_dim]
+			
+			# Apply the Tip-Adapter-F linear layer + cache logic
+			x = getattr(self, f"{method.replace('-', '_')}_proj")(x)
+			return x
+		
+		model.visual.forward = vit_forward_with_adapter_f.__get__(model.visual, type(model.visual))
+		
+		if verbose:
+			print(f"    ├─ Replaced final projection layer with {AdapterClass.__name__}")
+			print(f"    ├─ Input to adapter: {original_proj_in_dim}, Output from adapter: {original_proj_out_dim}")
+			print(f"    ├─ Cache feature dim: {original_proj_out_dim}")
+			print(f"    └─ Model's visual.forward has been updated.")
+	
+	# --- Memory Footprint for Tip-Adapter ---
+	mem_info = adapter_visual_proj.get_memory_footprint()
+	if verbose:
+		print(f"\n[4] MEMORY FOOTPRINT - {method_name}")
+		if method == "tip_adapter_f":
+			print(f"    ├─ Linear Layer Parameters: {mem_info.get('linear_params', 0):,}")
+			print(f"    ├─ Linear Layer Memory: {mem_info.get('linear_memory_mb', 0):.4f} MB")
+		print(f"    ├─ Cache Memory (depends on cache size): {mem_info['cache_memory_mb']:.4f} MB")
+		print(f"    ├─ Parameter Memory (β, α): {mem_info['param_memory_mb']:.4f} MB")
+		print(f"    └─ Total Estimated: {mem_info['total_memory_mb']:.4f} MB")
+		if 'cache_size' in mem_info:
+			print(f"    └─ Cache Size (samples): {mem_info['cache_size']}")
+	
+	# --- FREEZE NON-ADAPTER PARAMETERS ---
+	if method == "tip_adapter_f":
+		# For Tip-Adapter-F, only the linear layer's weight/bias and beta/alpha are trainable
+		for name, param in model.named_parameters():
+			param.requires_grad = "linear.weight" in name or "linear.bias" in name or "beta" in name or "alpha" in name
+		
+		if verbose:
+			trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+			print(f"\n[5] PARAMETER FREEZING - {method_name}")
+			print(f"    ├─ Total Parameters: {sum(p.numel() for p in model.parameters()):,}")
+			print(f"    └─ Trainable Parameters: {trainable_params:,}")
+	
+	elif method == "tip_adapter":
+		# For training-free Tip-Adapter, only beta and alpha are trainable
+		for name, param in model.named_parameters():
+			param.requires_grad = "beta" in name or "alpha" in name
+		
+		if verbose:
+			trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+			print(f"\n[5] PARAMETER FREEZING - {method_name} (Training-Free)")
+			print(f"    ├─ Total Parameters: {sum(p.numel() for p in model.parameters()):,}")
+			print(f"    └─ Trainable Parameters (β, α): {trainable_params:,}")
+	
+	return model
 
 def get_injected_peft_clip(
 	clip_model: torch.nn.Module,

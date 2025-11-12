@@ -3388,20 +3388,20 @@ def tip_adapter_finetune_single_label(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		tip_adapter_method: str,  # "tip_adapter" or "tip_adapter_f"
-		initial_beta: float = 1.0,
-		initial_alpha: float = 1.0,
-		patience: int = 7,
-		min_delta: float = 1e-4,
-		cumulative_delta: float = 1e-3,
-		minimum_epochs: int = 10,
-		volatility_threshold: float = 0.02,
-		slope_threshold: float = 1e-3,
-		pairwise_imp_threshold: float = 0.01,
-		topk_values: List[int] = [1, 5, 10, 15, 20],
-		support_shots: int = 16,  # Number of support samples per class
-		use_lamb: bool = False,
-		verbose: bool = True,
+		tip_adapter_method: str, # "tip_adapter" or "tip_adapter_f"
+		patience: int,
+		min_delta: float,
+		cumulative_delta: float,
+		minimum_epochs: int,
+		volatility_threshold: float,
+		slope_threshold: float,
+		pairwise_imp_threshold: float,
+		topk_values: List[int]=[1, 5, 10, 15, 20],
+		initial_beta: float=1.0,
+		initial_alpha: float=1.0,
+		support_shots: int=16,  # Number of support samples per class
+		use_lamb: bool=False,
+		verbose: bool=True,
 ):
 	"""
 	Fine-tunes a CLIP model using Tip-Adapter or Tip-Adapter-F technique.
