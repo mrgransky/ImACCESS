@@ -238,7 +238,7 @@ def main():
 				'dora': dora_finetune_single_label,
 				'vera': vera_finetune_single_label,
 				'progressive': progressive_finetune_single_label,
-				'adapter': clip_adapter_finetune_single_label if args.adapter_method.startswith('clip_adapter') else tip_adapter_finetune_single_label,
+				'adapter': clip_adapter_finetune_single_label if args.adapter_method and args.adapter_method.startswith('clip_adapter') else tip_adapter_finetune_single_label,
 			},
 			'multi_label': {
 				'full': full_finetune_multi_label,
@@ -249,7 +249,7 @@ def main():
 				'dora': dora_finetune_multi_label,
 				'vera': vera_finetune_multi_label,
 				'progressive': progressive_finetune_multi_label,
-				'adapter': clip_adapter_finetune_multi_label if args.adapter_method.startswith('clip_adapter') else tip_adapter_finetune_multi_label,
+				'adapter': clip_adapter_finetune_multi_label if args.adapter_method and args.adapter_method.startswith('clip_adapter') else tip_adapter_finetune_multi_label,
 			}
 		}
 		if args.mode == "finetune":
@@ -301,7 +301,7 @@ def main():
 							'clip_adapter_method': args.adapter_method,
 							'bottleneck_dim': 256,
 							'activation': 'relu',
-						} if args.finetune_strategy == 'adapter' and args.adapter_method.startswith('clip_adapter') else {}
+						} if args.finetune_strategy == 'adapter' and args.adapter_method and args.adapter_method.startswith('clip_adapter') else {}
 					),
 				**(
 						{
@@ -309,7 +309,7 @@ def main():
 							'initial_beta': 1.0,
 							'initial_alpha': 1.0,
 							'support_shots': 16,
-						} if args.finetune_strategy == 'adapter' and args.adapter_method.startswith('tip_adapter') else {}
+						} if args.finetune_strategy == 'adapter' and args.adapter_method and args.adapter_method.startswith('tip_adapter') else {}
 					),
 			)
 		elif args.mode == "train":
