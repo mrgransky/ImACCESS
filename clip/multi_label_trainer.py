@@ -172,14 +172,19 @@ def full_finetune_multi_label(
 			weight_decay=weight_decay,
 		)
 
-	scheduler = torch.optim.lr_scheduler.OneCycleLR(
+	estimated_epochs = min(num_epochs, 15)
+	total_training_steps = estimated_epochs * len(train_loader)
+	ANNEALING_RATIO = 1e-2 # 1% of initial LR
+	eta_min = learning_rate * ANNEALING_RATIO
+	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
-		max_lr=learning_rate,
-		steps_per_epoch=len(train_loader),
-		epochs=num_epochs,
-		pct_start=0.1,
-		anneal_strategy='cos',
+		T_max=total_training_steps,
+		eta_min=eta_min,
+		last_epoch=-1,
 	)
+	print(f"{scheduler.__class__.__name__} scheduler configured")
+	print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
+	print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
 	scaler = torch.amp.GradScaler(
 		device=device,
@@ -188,6 +193,7 @@ def full_finetune_multi_label(
 		backoff_factor=0.5,
 		growth_interval=2000,
 	)
+	print(f"Using {scaler.__class__.__name__} for automatic mixed precision training")
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -623,19 +629,30 @@ def progressive_finetune_multi_label(
 			weight_decay=initial_weight_decay,
 		)
 
-	scheduler = torch.optim.lr_scheduler.OneCycleLR(
+	estimated_epochs = min(num_epochs, 15)
+	total_training_steps = estimated_epochs * len(train_loader)
+	ANNEALING_RATIO = 1e-2 # 1% of initial LR
+	eta_min = learning_rate * ANNEALING_RATIO
+	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
-		max_lr=initial_learning_rate,
-		steps_per_epoch=len(train_loader),
-		epochs=num_epochs,
-		pct_start=0.1,  # Standard pct_start
-		anneal_strategy='cos'  # Cosine annealing
+		T_max=total_training_steps,
+		eta_min=eta_min,
+		last_epoch=-1,
 	)
+	print(f"{scheduler.__class__.__name__} scheduler configured")
+	print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
+	print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
 	print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
 	print(f"Using {criterion.__class__.__name__} as the loss function")
 
-	scaler = torch.amp.GradScaler(device=device) # automatic mixed precision
+	scaler = torch.amp.GradScaler(
+		device=device,
+		init_scale=2**16,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
+	) # automatic mixed precision
 	print(f"Using {scaler.__class__.__name__} for automatic mixed precision training")
 
 	mdl_fpth = os.path.join(
@@ -1281,16 +1298,32 @@ def lora_finetune_multi_label(
 			weight_decay=weight_decay,
 		)
 
-	scheduler = torch.optim.lr_scheduler.OneCycleLR(
+	estimated_epochs = min(num_epochs, 15)
+	total_training_steps = estimated_epochs * len(train_loader)
+	ANNEALING_RATIO = 1e-2 # 1% of initial LR
+	eta_min = learning_rate * ANNEALING_RATIO
+	scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
 		optimizer=optimizer,
-		max_lr=learning_rate,
-		steps_per_epoch=len(train_loader),
-		epochs=num_epochs,
-		pct_start=0.1,
-		anneal_strategy='cos',
+		T_max=total_training_steps,
+		eta_min=eta_min,
+		last_epoch=-1,
 	)
+	print(f"{scheduler.__class__.__name__} scheduler configured")
+	print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
+	print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100}% of initial LR)")
 
-	scaler = torch.amp.GradScaler(device=device)
+	print(f"Using {scheduler.__class__.__name__} for learning rate scheduling")
+	print(f"Using {criterion.__class__.__name__} as the loss function")
+
+	scaler = torch.amp.GradScaler(
+		device=device,
+		init_scale=2**16,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
+	) # automatic mixed precision
+	print(f"Using {scaler.__class__.__name__} for automatic mixed precision training")
+
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -1366,7 +1399,7 @@ def lora_finetune_multi_label(
 					criterion=criterion,
 					temperature=temperature,
 					loss_weights=loss_weights,
-					verbose=verbose,
+					verbose=False,
 				)
 			
 			# Check for NaN loss
@@ -1890,8 +1923,6 @@ def lora_plus_finetune_multi_label(
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
 	if verbose:
 		print(f"all_class_embeds: {type(all_class_embeds)} {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
-	
-	scaler = torch.amp.GradScaler(device=device)
 	
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -2439,7 +2470,15 @@ def ia3_finetune_multi_label(
 		print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
 		print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
 
-	scaler = torch.amp.GradScaler(device=device)
+	scaler = torch.amp.GradScaler(
+		device=device,
+		init_scale=2**16,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
+	) # automatic mixed precision
+	if verbose:
+		print(f"Using {scaler.__class__.__name__} for automatic mixed precision training")
 
 	mdl_fpth = os.path.join(
 		results_dir,
@@ -2785,7 +2824,6 @@ def probe_finetune_multi_label(
 		weight_decay: float,
 		device: str,
 		results_dir: str,
-		verbose: bool = True,
 		patience: int = 10,
 		min_delta: float = 1e-4,
 		cumulative_delta: float = 5e-3,
@@ -2801,6 +2839,7 @@ def probe_finetune_multi_label(
 		probe_hidden_dim: int = None,  # Optional: add hidden layer
 		probe_dropout: float = 0.1,
 		cache_features: bool = True,  # Optional: cache features for efficiency
+		verbose: bool = True,
 ):
 		"""
 		Enhanced Linear probing fine-tuning for multi-label CLIP classification with robust ViT support.
@@ -2913,16 +2952,30 @@ def probe_finetune_multi_label(
 						weight_decay=weight_decay,
 				)
 
-		scheduler = torch.optim.lr_scheduler.OneCycleLR(
-				optimizer=optimizer,
-				max_lr=learning_rate,
-				steps_per_epoch=len(train_loader),
-				epochs=num_epochs,
-				pct_start=0.1,
-				anneal_strategy='cos',
+		estimated_epochs = min(num_epochs, 15)
+		total_training_steps = estimated_epochs * len(train_loader)
+		ANNEALING_RATIO = 1e-2 # 1% of initial LR
+		eta_min = learning_rate * ANNEALING_RATIO
+		scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+			optimizer=optimizer,
+			T_max=total_training_steps,
+			eta_min=eta_min,
+			last_epoch=-1,
 		)
+		if verbose:
+			print(f"{scheduler.__class__.__name__} scheduler")
+			print(f"  ├─ T_max = {total_training_steps} steps [({min(num_epochs, 15)} estimated epochs x {len(train_loader)} batches/epoch)]")
+			print(f"  └─ eta_min = {eta_min} ({ANNEALING_RATIO*100:.1f}% of initial LR)")
 
-		scaler = torch.amp.GradScaler(device=device)
+		scaler = torch.amp.GradScaler(
+			device=device,
+			init_scale=2**16,
+			growth_factor=2.0,
+			backoff_factor=0.5,
+			growth_interval=2000,
+		)
+		if verbose:
+			print(f"Using {scaler.__class__.__name__} for automatic mixed precision training")
 
 		mdl_fpth = os.path.join(
 				results_dir,
