@@ -248,6 +248,7 @@ def compute_multilabel_contrastive_loss(
 	if verbose:
 		print(f"requires_grad total_loss: {total_loss.requires_grad} loss_i2t: {loss_i2t.requires_grad} loss_t2i: {loss_t2i.requires_grad}")
 		print(f"total_loss: {total_loss.item()}")
+		print("-"*150)
 	
 	return total_loss, loss_i2t, loss_t2i
 
