@@ -40,7 +40,7 @@ from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import torchvision.transforms as T
-import torch.nn.functional as F
+# import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import matplotlib.ticker as ticker

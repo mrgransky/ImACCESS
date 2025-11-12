@@ -220,8 +220,6 @@ def compute_multilabel_contrastive_loss(
 	
 	# Compute I2T loss
 	loss_i2t = criterion(i2t_similarities, i2t_targets)
-	if verbose:
-		print(f"loss_i2t: {loss_i2t.item()}")
 	
 	# ================================
 	# Text-to-Image Loss  
@@ -237,18 +235,13 @@ def compute_multilabel_contrastive_loss(
 	
 	# Compute T2I loss
 	loss_t2i = criterion(t2i_similarities, t2i_targets)
-	if verbose:
-		print(f"loss_t2i: {loss_t2i.item()}")
-	
-	# ================================
-	# Combine losses
-	# ================================
-	total_loss = loss_weights["i2t"] * loss_i2t + loss_weights["t2i"] * loss_t2i
+
+	total_loss = (loss_weights["i2t"] * loss_i2t) + (loss_weights["t2i"] * loss_t2i)
 
 	if verbose:
-		print(f"total_loss: {total_loss.item()}")
+		print(f"loss_i2t: {loss_i2t.item()} loss_t2i: {loss_t2i.item()} total_loss: {total_loss.item()}")
 		print(f"requires_grad total_loss: {total_loss.requires_grad} loss_i2t: {loss_i2t.requires_grad} loss_t2i: {loss_t2i.requires_grad}")
-		print("-"*150)
+		print("-"*60)
 	
 	return total_loss, loss_i2t, loss_t2i
 
