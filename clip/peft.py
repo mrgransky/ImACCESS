@@ -1155,7 +1155,7 @@ class TipAdapterFLinear(torch.nn.Module):
 			assert text_features.shape[1] == self.out_features
 			
 			# Normalize support features (keys)
-			cache_keys = F.normalize(support_features, p=2, dim=-1)
+			cache_keys = torch.nn.functional.normalize(support_features, p=2, dim=-1)
 			
 			# Handle single-label or multi-label
 			if support_labels.dim() == 1:
@@ -1171,7 +1171,7 @@ class TipAdapterFLinear(torch.nn.Module):
 				cache_values = cache_values / class_counts
 			
 			# Normalize cache values
-			cache_values = F.normalize(cache_values, p=2, dim=-1)
+			cache_values = torch.nn.functional.normalize(cache_values, p=2, dim=-1)
 			
 			self.cache_keys = cache_keys.to(self.device)
 			self.cache_values = cache_values.to(self.device)
