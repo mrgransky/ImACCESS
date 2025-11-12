@@ -1,5 +1,6 @@
 from utils import *
 from early_stopper import EarlyStopping
+from loss import compute_multilabel_contrastive_loss, LabelSmoothingBCELoss
 from peft import get_injected_peft_clip, get_adapter_peft_clip
 from evals import *
 import visualize as viz
@@ -2762,10 +2763,10 @@ def ia3_finetune_multi_label(
 
 	return final_metrics_in_batch, final_metrics_full, final_img2txt_metrics, final_txt2img_metrics
 
-def dora_finetune_multi_label():
+def vera_finetune_multi_label():
 	pass
 
-def vera_finetune_multi_label():
+def dora_finetune_multi_label():
 	pass
 
 def clip_adapter_finetune_multi_label():
@@ -3346,108 +3347,3 @@ def probe_finetune_multi_label(
 		)
 
 		return in_batch_loss_acc_metrics_all_epochs
-
-def compute_multilabel_contrastive_loss(
-		model: torch.nn.Module,
-		images: torch.Tensor,
-		all_class_embeds: torch.Tensor,
-		label_vectors: torch.Tensor,
-		criterion: torch.nn.Module,
-		temperature: float,
-		loss_weights: Dict[str, float] = None,
-		verbose: bool = False,
-	) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-	"""
-	Compute bidirectional multi-label contrastive loss.
-	
-	Args:
-		model: CLIP model
-		images: [batch_size, 3, 224, 224]
-		all_class_embeds: [num_classes, embed_dim] - pre-computed text embeddings
-		label_vectors: [batch_size, num_classes] - binary label matrix
-		criterion: Loss function (BCEWithLogitsLoss)
-		temperature: Temperature scaling for similarities
-		loss_weights: Weights for I2T and T2I losses
-		verbose: Print debug info
-	Returns:
-		Tuple of (total_loss, i2t_loss, t2i_loss)
-	"""
-	if loss_weights is None:
-		loss_weights = {"i2t": 0.5, "t2i": 0.5}
-	
-	batch_size, num_classes = label_vectors.shape
-	if verbose:
-		print(f"batch_size: {batch_size}, num_classes: {num_classes}")
-
-	# Encode images
-	image_embeds = model.encode_image(images)  # [batch_size, embed_dim]
-	image_embeds = F.normalize(image_embeds, dim=-1)
-	if verbose:
-		print(f"image_embeds: {image_embeds.shape} {image_embeds.dtype} {image_embeds.device}")
-	
-	all_class_embeds = F.normalize(all_class_embeds, dim=-1)
-	if verbose:
-		print(f"all_class_embeds: {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
-
-	# ================================
-	# Image-to-Text Loss
-	# ================================
-	# Compute similarity matrix: [batch_size, num_classes]
-	i2t_similarities = torch.matmul(image_embeds, all_class_embeds.T) / temperature
-	
-	if verbose:
-		print(f"i2t_similarities: {i2t_similarities.shape} {i2t_similarities.dtype} {i2t_similarities.device}")
-
-	# I2T targets: label_vectors directly [batch_size, num_classes]
-	i2t_targets = label_vectors.float()
-	
-	# Compute I2T loss
-	loss_i2t = criterion(i2t_similarities, i2t_targets)
-	if verbose:
-		print(f"loss_i2t: {loss_i2t.item()}")
-	
-	# ================================
-	# Text-to-Image Loss  
-	# ================================
-	# Compute similarity matrix: [num_classes, batch_size]
-	t2i_similarities = torch.matmul(all_class_embeds, image_embeds.T) / temperature
-
-	if verbose:
-		print(f"t2i_similarities: {t2i_similarities.shape} {t2i_similarities.dtype} {t2i_similarities.device}")
-	
-	# T2I targets: transpose of label_vectors [num_classes, batch_size]
-	t2i_targets = label_vectors.T.float()
-	
-	# Compute T2I loss
-	loss_t2i = criterion(t2i_similarities, t2i_targets)
-	if verbose:
-		print(f"loss_t2i: {loss_t2i.item()}")
-	
-	# ================================
-	# Combine losses
-	# ================================
-	total_loss = loss_weights["i2t"] * loss_i2t + loss_weights["t2i"] * loss_t2i
-	if verbose:
-		print(f"total_loss: {total_loss.item()}")
-	
-	return total_loss, loss_i2t, loss_t2i
-
-class LabelSmoothingBCELoss(torch.nn.Module):
-	def __init__(self, smoothing: float = 0.1):
-		super().__init__()
-		self.smoothing = smoothing
-			
-	def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-		"""
-		Args:
-			logits: [batch_size, num_classes] - raw logits
-			targets: [batch_size, num_classes] - binary targets (0 or 1)
-		"""
-		# Apply label smoothing
-		# Positive labels: 1 -> (1 - smoothing)
-		# Negative labels: 0 -> smoothing
-		smooth_targets = targets * (1 - self.smoothing) + (1 - targets) * self.smoothing
-		
-		# Apply BCE loss with logits
-		loss = F.binary_cross_entropy_with_logits(logits, smooth_targets)
-		return loss

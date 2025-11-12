@@ -1,6 +1,6 @@
 from utils import *
 from early_stopper import EarlyStopping
-from loss_analyzer import LossAnalyzer
+from loss import LossAnalyzer
 from peft import get_injected_peft_clip, get_adapter_peft_clip
 from evals import *
 from apft import *
