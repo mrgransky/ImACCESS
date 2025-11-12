@@ -927,198 +927,160 @@ class VeRALinear(torch.nn.Module):
 		}
 
 class TipAdapterLinear(torch.nn.Module):
+	"""
+	Tip-Adapter: Training-free Adaption of CLIP for Few-shot Classification (ECCV 2022)
+	
+	CORRECTIONS:
+	1. Added L2 normalization before similarity computation (CRITICAL)
+	2. Proper cache-based retrieval mechanism
+	3. Configurable beta and alpha scaling
+	
+	Forward: 
+		1. Normalize query features: q = x / ||x||
+		2. Normalize cache keys: k = cache_keys / ||cache_keys||
+		3. Compute similarity: S = q @ k.T
+		4. Compute weights: w = exp(β * S) / Σ exp(β * S)
+		5. Retrieve values: v = w @ cache_values
+		6. Output: x + α * v (or just α * v for classification)
+	
+	Args:
+		cache_features_dim: Dimension of cached features (text embedding dim)
+		device: Device to place parameters
+		initial_beta: Initial temperature parameter (default: 1.0, tuned via validation)
+		initial_alpha: Initial scaling for retrieved features (default: 1.0)
+		trainable_params: If True, beta and alpha are trainable (for fine-tuning)
+		verbose: Enable debug prints
+	"""
+	
+	def __init__(
+		self,
+		cache_features_dim: int,
+		device: Union[str, torch.device],
+		initial_beta: float = 1.0,
+		initial_alpha: float = 1.0,
+		trainable_params: bool = False,
+		verbose: bool = True,
+	):
+		super(TipAdapterLinear, self).__init__()
+		
+		self.cache_features_dim = cache_features_dim
+		self.device = device
+		self.verbose = verbose
+		
+		if self.verbose:
+			print(f"[Tip-Adapter] Initializing TipAdapterLinear")
+			print(f"    ├─ Cache feature dim: {cache_features_dim}")
+			print(f"    ├─ Initial β (temperature): {initial_beta}")
+			print(f"    ├─ Initial α (scaling): {initial_alpha}")
+			print(f"    └─ Trainable params: {trainable_params}")
+		
+		# Cache buffers (will be filled via set_cache)
+		self.register_buffer('cache_keys', torch.empty(0, cache_features_dim, device=device))
+		self.register_buffer('cache_values', torch.empty(0, cache_features_dim, device=device))
+		
+		# Scaling parameters
+		self.beta = torch.nn.Parameter(torch.tensor(initial_beta, device=device))
+		self.alpha = torch.nn.Parameter(torch.tensor(initial_alpha, device=device))
+		
+		# Set trainability
+		self.beta.requires_grad = trainable_params
+		self.alpha.requires_grad = trainable_params
+
+	def set_cache(
+		self, 
+		support_features: torch.Tensor, 
+		support_labels: torch.Tensor,
+		text_features: torch.Tensor
+	):
 		"""
-		Tip-Adapter: Training-free Adaption of CLIP for Few-shot Classification (ECCV 2022)
+		Set the cache for Tip-Adapter.
+		Works for both single-label [N] and multi-label [N, C] inputs.
+		"""
+		assert support_features.shape[1] == self.cache_features_dim
+		assert text_features.shape[1] == self.cache_features_dim
+		# Normalize support features (keys)
+		cache_keys = torch.nn.functional.normalize(support_features, p=2, dim=-1)
+		# Handle single-label or multi-label
+		if support_labels.dim() == 1:
+			# Single-label: index each sample's class text embedding
+			cache_values = text_features[support_labels]
+		else:
+			# Multi-label: support_labels is [N, num_classes] with 0-1 entries
+			# Compute weighted sum of text embeddings for active labels
+			label_weights = support_labels.float()
+			cache_values = label_weights @ text_features  # [N, D]
+			# Normalize by number of active labels to avoid magnitude issues
+			class_counts = label_weights.sum(dim=-1, keepdim=True).clamp(min=1.0)
+			cache_values = cache_values / class_counts
+		cache_values = torch.nn.functional.normalize(cache_values, p=2, dim=-1)
 		
-		CORRECTIONS:
-		1. Added L2 normalization before similarity computation (CRITICAL)
-		2. Proper cache-based retrieval mechanism
-		3. Configurable beta and alpha scaling
+		# Register buffers on correct device
+		self.cache_keys = cache_keys.to(self.device)
+		self.cache_values = cache_values.to(self.device)
 		
-		Forward: 
-				1. Normalize query features: q = x / ||x||
-				2. Normalize cache keys: k = cache_keys / ||cache_keys||
-				3. Compute similarity: S = q @ k.T
-				4. Compute weights: w = exp(β * S) / Σ exp(β * S)
-				5. Retrieve values: v = w @ cache_values
-				6. Output: x + α * v (or just α * v for classification)
+		if self.verbose:
+			n_support = self.cache_keys.shape[0]
+			print(f"[Tip-Adapter] Cache set: {n_support} support samples")
+			print(f"    ├─ Keys: {self.cache_keys.shape}")
+			print(f"    ├─ Values: {self.cache_values.shape}")
+			print(f"    ├─ Keys normalized: {torch.allclose(self.cache_keys.norm(dim=-1), torch.ones(1, device=self.device))}")
+			print(f"    └─ Values normalized: {torch.allclose(self.cache_values.norm(dim=-1), torch.ones(1, device=self.device))}")
+	
+	def forward(self, x: torch.Tensor, return_similarity: bool = False) -> torch.Tensor:
+		"""
+		Forward pass with cache-based adaptation.
 		
 		Args:
-				cache_features_dim: Dimension of cached features (text embedding dim)
-				device: Device to place parameters
-				initial_beta: Initial temperature parameter (default: 1.0, tuned via validation)
-				initial_alpha: Initial scaling for retrieved features (default: 1.0)
-				trainable_params: If True, beta and alpha are trainable (for fine-tuning)
-				verbose: Enable debug prints
+			x: Query features [batch_size, cache_features_dim]
+			return_similarity: If True, also return the similarity matrix
+		
+		Returns:
+			Adapted features [batch_size, cache_features_dim]
 		"""
-		
-		def __init__(
-				self,
-				cache_features_dim: int,
-				device: Union[str, torch.device],
-				initial_beta: float = 1.0,
-				initial_alpha: float = 1.0,
-				trainable_params: bool = False,
-				verbose: bool = True,
-		):
-				super(TipAdapterLinear, self).__init__()
-				self.cache_features_dim = cache_features_dim
-				self.device = device
-				self.verbose = verbose
-				
-				if self.verbose:
-						print(f"[Tip-Adapter] Initializing TipAdapterLinear")
-						print(f"    ├─ Cache feature dim: {cache_features_dim}")
-						print(f"    ├─ Initial β (temperature): {initial_beta}")
-						print(f"    ├─ Initial α (scaling): {initial_alpha}")
-						print(f"    └─ Trainable params: {trainable_params}")
-				
-				# Cache buffers (will be filled via set_cache)
-				self.register_buffer('cache_keys', torch.empty(0, cache_features_dim, device=device))
-				self.register_buffer('cache_values', torch.empty(0, cache_features_dim, device=device))
-				
-				# Scaling parameters
-				self.beta = torch.nn.Parameter(torch.tensor(initial_beta, device=device))
-				self.alpha = torch.nn.Parameter(torch.tensor(initial_alpha, device=device))
-				
-				# Set trainability
-				self.beta.requires_grad = trainable_params
-				self.alpha.requires_grad = trainable_params
-
-		def set_cache(
-			self, 
-			support_features: torch.Tensor, 
-			support_labels: torch.Tensor,
-			text_features: torch.Tensor
-		):
-			"""
-			Set the cache for Tip-Adapter.
-			Works for both single-label [N] and multi-label [N, C] inputs.
-			"""
-			assert support_features.shape[1] == self.cache_features_dim
-			assert text_features.shape[1] == self.cache_features_dim
-
-			# Normalize support features (keys)
-			cache_keys = torch.nn.functional.normalize(support_features, p=2, dim=-1)
-			# Handle single-label or multi-label
-			if support_labels.dim() == 1:
-				# Single-label: index each sample's class text embedding
-				cache_values = text_features[support_labels]
-			else:
-				# Multi-label: support_labels is [N, num_classes] with 0-1 entries
-				# Compute weighted sum of text embeddings for active labels
-				label_weights = support_labels.float()
-				cache_values = label_weights @ text_features  # [N, D]
-				# Normalize by number of active labels to avoid magnitude issues
-				class_counts = label_weights.sum(dim=-1, keepdim=True).clamp(min=1.0)
-				cache_values = cache_values / class_counts
-			cache_values = torch.nn.functional.normalize(cache_values, p=2, dim=-1)
-			
-			# Register buffers on correct device
-			self.cache_keys = cache_keys.to(self.device)
-			self.cache_values = cache_values.to(self.device)
-			
+		if self.cache_keys.shape[0] == 0:
 			if self.verbose:
-				n_support = self.cache_keys.shape[0]
-				print(f"[Tip-Adapter] Cache set: {n_support} support samples")
-				print(f"    ├─ Keys: {self.cache_keys.shape}")
-				print(f"    ├─ Values: {self.cache_values.shape}")
-				print(f"    ├─ Keys normalized: {torch.allclose(self.cache_keys.norm(dim=-1), torch.ones(1, device=self.device))}")
-				print(f"    └─ Values normalized: {torch.allclose(self.cache_values.norm(dim=-1), torch.ones(1, device=self.device))}")
-
-		# def set_cache(
-		# 	self, 
-		# 	support_features: torch.Tensor, 
-		# 	support_labels: torch.Tensor,
-		# 	text_features: torch.Tensor
-		# ):
-		# 	"""
-		# 	Set the cache using support set.
-			
-		# 	Args:
-		# 			support_features: Visual features from support images [N_support, D]
-		# 			support_labels: Labels for support images [N_support]
-		# 			text_features: Text embeddings for all classes [N_classes, D]
-			
-		# 	The cache stores:
-		# 			- keys: Normalized support image features
-		# 			- values: Corresponding text embeddings for their labels
-		# 	"""
-		# 	assert support_features.shape[1] == self.cache_features_dim
-		# 	assert text_features.shape[1] == self.cache_features_dim
-			
-		# 	# Normalize support features (keys)
-		# 	cache_keys = torch.nn.functional.normalize(support_features, p=2, dim=-1)
-			
-		# 	# Get corresponding text features for each support sample
-		# 	cache_values = text_features[support_labels]  # [N_support, D]
-		# 	cache_values = torch.nn.functional.normalize(cache_values, p=2, dim=-1)
-			
-		# 	self.cache_keys = cache_keys.to(self.device)
-		# 	self.cache_values = cache_values.to(self.device)
-			
-		# 	if self.verbose:
-		# 			print(f"[Tip-Adapter] Cache set: {self.cache_keys.shape[0]} support samples")
-		# 			print(f"    ├─ Keys (support features): {self.cache_keys.shape}")
-		# 			print(f"    ├─ Values (text features): {self.cache_values.shape}")
-		# 			print(f"    ├─ Keys normalized: {torch.allclose(self.cache_keys.norm(dim=-1), torch.ones(1, device=self.device))}")
-		# 			print(f"    └─ Values normalized: {torch.allclose(self.cache_values.norm(dim=-1), torch.ones(1, device=self.device))}")
+				print("[Tip-Adapter] Warning: Cache is empty, returning input unchanged")
+			return x
 		
-		def forward(self, x: torch.Tensor, return_similarity: bool = False) -> torch.Tensor:
-				"""
-				Forward pass with cache-based adaptation.
-				
-				Args:
-						x: Query features [batch_size, cache_features_dim]
-						return_similarity: If True, also return the similarity matrix
-				
-				Returns:
-						Adapted features [batch_size, cache_features_dim]
-				"""
-				if self.cache_keys.shape[0] == 0:
-						if self.verbose:
-								print("[Tip-Adapter] Warning: Cache is empty, returning input unchanged")
-						return x
-				
-				# CRITICAL: Normalize query features
-				x_norm = torch.nn.functional.normalize(x, p=2, dim=-1)
-				
-				# Compute cosine similarity with cache keys
-				# Shape: [batch_size, N_support]
-				similarity = x_norm @ self.cache_keys.T
-				
-				# Apply softmax with temperature (beta)
-				# Shape: [batch_size, N_support]
-				weights = torch.nn.functional.softmax(self.beta * similarity, dim=-1)
-				
-				# Retrieve corresponding cache values (text features)
-				# Shape: [batch_size, cache_features_dim]
-				retrieved = weights @ self.cache_values
-				
-				# Combine with original features
-				# For classification: output = x + alpha * retrieved
-				# The alpha controls the influence of the cache
-				output = x + self.alpha * retrieved
-				
-				if return_similarity:
-						return output, similarity
-				return output
+		# CRITICAL: Normalize query features
+		x_norm = torch.nn.functional.normalize(x, p=2, dim=-1)
 		
-		def get_memory_footprint(self) -> dict:
-				cache_memory_mb = 0.0
-				if self.cache_keys.numel() > 0:
-						cache_memory_mb += (self.cache_keys.numel() * 4) / (1024 ** 2)
-				if self.cache_values.numel() > 0:
-						cache_memory_mb += (self.cache_values.numel() * 4) / (1024 ** 2)
-				
-				param_memory_mb = (self.beta.numel() + self.alpha.numel()) * 4 / (1024 ** 2)
-				
-				return {
-						'cache_memory_mb': cache_memory_mb,
-						'param_memory_mb': param_memory_mb,
-						'total_memory_mb': cache_memory_mb + param_memory_mb,
-						'cache_size': self.cache_keys.shape[0],
-				}
+		# Compute cosine similarity with cache keys
+		# Shape: [batch_size, N_support]
+		similarity = x_norm @ self.cache_keys.T
+		
+		# Apply softmax with temperature (beta)
+		# Shape: [batch_size, N_support]
+		weights = torch.nn.functional.softmax(self.beta * similarity, dim=-1)
+		
+		# Retrieve corresponding cache values (text features)
+		# Shape: [batch_size, cache_features_dim]
+		retrieved = weights @ self.cache_values
+		
+		# Combine with original features
+		# For classification: output = x + alpha * retrieved
+		# The alpha controls the influence of the cache
+		output = x + self.alpha * retrieved
+		
+		if return_similarity:
+			return output, similarity
+		return output
+	
+	def get_memory_footprint(self) -> dict:
+		cache_memory_mb = 0.0
+		if self.cache_keys.numel() > 0:
+			cache_memory_mb += (self.cache_keys.numel() * 4) / (1024 ** 2)
+		if self.cache_values.numel() > 0:
+			cache_memory_mb += (self.cache_values.numel() * 4) / (1024 ** 2)
+		
+		param_memory_mb = (self.beta.numel() + self.alpha.numel()) * 4 / (1024 ** 2)
+		
+		return {
+			'cache_memory_mb': cache_memory_mb,
+			'param_memory_mb': param_memory_mb,
+			'total_memory_mb': cache_memory_mb + param_memory_mb,
+			'cache_size': self.cache_keys.shape[0],
+		}
 
 class TipAdapterFLinear(torch.nn.Module):
 		"""
