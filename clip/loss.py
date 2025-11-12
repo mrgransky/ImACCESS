@@ -198,11 +198,11 @@ def compute_multilabel_contrastive_loss(
 
 	# Encode images
 	image_embeds = model.encode_image(images)  # [batch_size, embed_dim]
-	image_embeds = F.normalize(image_embeds, dim=-1)
+	image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
 	if verbose:
 		print(f"image_embeds: {image_embeds.shape} {image_embeds.dtype} {image_embeds.device}")
 	
-	all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+	all_class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
 	if verbose:
 		print(f"all_class_embeds: {all_class_embeds.shape} {all_class_embeds.dtype} {all_class_embeds.device}")
 

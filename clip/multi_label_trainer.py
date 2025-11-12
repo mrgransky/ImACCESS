@@ -229,7 +229,7 @@ def full_finetune_multi_label(
 	best_val_loss = float('inf')
 	final_img2txt_metrics = None
 	final_txt2img_metrics = None
-	# model.train()
+
 	for epoch in range(num_epochs):
 		train_and_val_st_time = time.time()
 		torch.cuda.empty_cache()
