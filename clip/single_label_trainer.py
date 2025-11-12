@@ -3169,26 +3169,36 @@ def clip_adapter_finetune_single_label(
 				print(f"Epoch [{epoch + 1}/{num_epochs}]")
 				epoch_loss = 0.0
 				for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
-						optimizer.zero_grad(set_to_none=True)
-						images = images.to(device, non_blocking=True)
-						tokenized_labels = tokenized_labels.to(device, non_blocking=True)
-
-						with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-								logits_per_image, logits_per_text = model(images, tokenized_labels)
-								ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
-								loss_img = criterion(logits_per_image, ground_truth)
-								loss_txt = criterion(logits_per_text, ground_truth)
-								total_loss = 0.5 * (loss_img + loss_txt)
-						scaler.scale(total_loss).backward()
-						# CLIP-Adapter typically has fewer parameters, gradient clipping might be less critical,
-						# but keeping it for consistency and stability.
-						torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-						scaler.step(optimizer)
-						scaler.update()
-						scheduler.step()
-						if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-								print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
-						epoch_loss += total_loss.item()
+					optimizer.zero_grad(set_to_none=True)
+					images = images.to(device, non_blocking=True)
+					tokenized_labels = tokenized_labels.to(device, non_blocking=True)
+					
+					with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+						logits_per_image, logits_per_text = model(images, tokenized_labels)
+						ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
+						loss_img = criterion(logits_per_image, ground_truth)
+						loss_txt = criterion(logits_per_text, ground_truth)
+						total_loss = 0.5 * (loss_img + loss_txt)
+					
+					print(f"loss_img: {loss_img.item()} loss_txt: {loss_txt.item()} total_loss: {total_loss.item()}")
+					print(f"requires_grad total_loss: {total_loss.requires_grad} loss_img: {loss_img.requires_grad} loss_txt: {loss_txt.requires_grad}")
+					# Check for NaN loss
+					if torch.isnan(total_loss):
+						print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
+						continue
+					
+					scaler.scale(total_loss).backward()
+					# CLIP-Adapter typically has fewer parameters, gradient clipping might be less critical,
+					# but keeping it for consistency and stability.
+					torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+					scaler.step(optimizer)
+					scaler.update()
+					scheduler.step()
+					
+					if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+						print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
+					epoch_loss += total_loss.item()
+				
 				avg_training_loss = epoch_loss / len(train_loader)
 				training_losses.append(avg_training_loss)
 
@@ -3266,6 +3276,7 @@ def clip_adapter_finetune_single_label(
 						break
 
 				print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(150, "="))
+
 		print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
 		evaluation_results = evaluate_best_model(

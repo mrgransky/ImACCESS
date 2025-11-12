@@ -208,7 +208,7 @@ def compute_multilabel_inbatch_metrics(
 					# Average similarity to all true classes
 					img_embed = image_embeds[img_idx]
 					class_embeds = all_class_embeds[true_classes]
-					similarities = F.cosine_similarity(img_embed.unsqueeze(0), class_embeds, dim=1)
+					similarities = torch.nn.functional.cosine_similarity(img_embed.unsqueeze(0), class_embeds, dim=1)
 					cosine_similarities.append(similarities.mean().item())
 			
 			processed_batches += 1
@@ -375,7 +375,7 @@ def compute_direct_in_batch_metrics(
 				text_embeds = torch.nn.functional.normalize(text_embeds, dim=-1)
 				
 				# Cosine similarity (diagonal elements = matched pairs)
-				cos_sim = F.cosine_similarity(image_embeds, text_embeds, dim=-1).cpu().numpy()
+				cos_sim = torch.nn.functional.cosine_similarity(image_embeds, text_embeds, dim=-1).cpu().numpy()
 				cosine_similarities.extend(cos_sim.tolist())
 				
 				processed_batches += 1
@@ -1358,7 +1358,7 @@ def _compute_matched_cosine_similarity(image_embeds, text_embeds, labels, is_mul
 				# For single-label, direct indexing
 				matched_text_embeds = text_embeds[labels]
 		
-		cos_sim = F.cosine_similarity(image_embeds, matched_text_embeds, dim=1)
+		cos_sim = torch.nn.functional.cosine_similarity(image_embeds, matched_text_embeds, dim=1)
 		return cos_sim.mean().item()
 
 def evaluate_best_model(
