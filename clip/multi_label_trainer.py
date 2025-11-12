@@ -4154,7 +4154,7 @@ def clip_adapter_finetune_multi_label(
 					loss_weights=loss_weights,
 					verbose=False,
 				)
-			print(f"Loss requires_grad: {total_loss.requires_grad}")
+			print(f"requires_grad total_loss: {total_loss.requires_grad} loss_i2t: {loss_i2t.requires_grad} loss_t2i: {loss_t2i.requires_grad}")
 			scaler.scale(total_loss).backward()
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			scaler.step(optimizer)
