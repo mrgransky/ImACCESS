@@ -263,7 +263,6 @@ def full_finetune_multi_label(
 					loss_weights=loss_weights,
 					verbose=verbose,
 				)
-				print(f"requires_grad total_loss: {total_loss.requires_grad} loss_i2t: {loss_i2t.requires_grad} loss_t2i: {loss_t2i.requires_grad}")
 
 			# Check for NaN loss
 			if torch.isnan(total_loss):
@@ -825,7 +824,6 @@ def progressive_finetune_multi_label(
 						loss_weights=loss_weights,
 						verbose=verbose,
 					)
-					print(f"requires_grad total_loss: {total_loss.requires_grad} loss_i2t: {loss_i2t.requires_grad} loss_t2i: {loss_t2i.requires_grad}")
 
 				# Check for NaN loss
 				if torch.isnan(total_loss):
@@ -1402,7 +1400,6 @@ def lora_finetune_multi_label(
 					loss_weights=loss_weights,
 					verbose=False,
 				)
-				print(f"requires_grad total_loss: {total_loss.requires_grad} loss_i2t: {loss_i2t.requires_grad} loss_t2i: {loss_t2i.requires_grad}")
 			
 			# Check for NaN loss
 			if torch.isnan(total_loss):
@@ -2000,7 +1997,6 @@ def lora_plus_finetune_multi_label(
 					loss_weights=loss_weights,
 					verbose=verbose,
 				)
-				print(f"requires_grad total_loss: {total_loss.requires_grad} loss_i2t: {loss_i2t.requires_grad} loss_t2i: {loss_t2i.requires_grad}")
 			
 			# Check for NaN loss
 			if torch.isnan(total_loss):
@@ -2556,7 +2552,6 @@ def ia3_finetune_multi_label(
 					loss_weights=loss_weights,
 					verbose=verbose,
 				)
-				print(f"requires_grad total_loss: {total_loss.requires_grad} loss_i2t: {loss_i2t.requires_grad} loss_t2i: {loss_t2i.requires_grad}")
 			
 			# Check for NaN loss
 			if torch.isnan(total_loss):
@@ -3115,7 +3110,6 @@ def vera_finetune_multi_label(
 					loss_weights=loss_weights,
 					verbose=False,
 				)
-				print(f"requires_grad total_loss: {total_loss.requires_grad} loss_i2t: {loss_i2t.requires_grad} loss_t2i: {loss_t2i.requires_grad}")
 			
 			# Check for NaN loss
 			if torch.isnan(total_loss):
@@ -3632,7 +3626,6 @@ def dora_finetune_multi_label(
 					loss_weights=loss_weights,
 					verbose=False,
 				)
-				print(f"requires_grad total_loss: {total_loss.requires_grad} loss_i2t: {loss_i2t.requires_grad} loss_t2i: {loss_t2i.requires_grad}")
 
 			# Check for NaN loss
 			if torch.isnan(total_loss):
@@ -4181,7 +4174,6 @@ def clip_adapter_finetune_multi_label(
 					verbose=verbose,
 				)
 				
-
 			# Check for NaN loss
 			if torch.isnan(total_loss):
 				print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
@@ -4910,7 +4902,6 @@ def tip_adapter_finetune_multi_label(
 					loss_weights=loss_weights,
 					verbose=False,
 				)
-				print(f"requires_grad total_loss: {total_loss.requires_grad} loss_i2t: {loss_i2t.requires_grad} loss_t2i: {loss_t2i.requires_grad}")
 
 			# Check for NaN loss
 			if torch.isnan(total_loss):
