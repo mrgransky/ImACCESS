@@ -253,9 +253,6 @@ def full_finetune_multi_label(
 				raise ValueError(f"Label vectors shape {label_vectors.shape} doesn't match expected ({batch_size}, {num_classes})")
 			optimizer.zero_grad(set_to_none=True)
 			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-				# ================================
-				# CRITICAL CHANGE: Multi-label loss computation
-				# ================================
 				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
 					model=model,
 					images=images,
@@ -4105,27 +4102,38 @@ def clip_adapter_finetune_multi_label(
 		class_names = validation_loader.dataset.dataset.classes
 	
 	num_classes = len(class_names)
+
+	# if verbose:
+	# 	print(f"Pre-encoding {num_classes} class embeddings...")
+	# # Pre-encode in batches
+	# text_batch_size = train_loader.batch_size
+	# all_class_embeds = []
+	# model.eval()
+	# with torch.no_grad():
+	# 	with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+	# 		for i in range(0, num_classes, text_batch_size):
+	# 			end_idx = min(i + text_batch_size, num_classes)
+	# 			batch_class_names = class_names[i:end_idx]
+	# 			batch_class_texts = clip.tokenize(batch_class_names).to(device)
+	# 			batch_embeds = model.encode_text(batch_class_texts)
+	# 			batch_embeds = F.normalize(batch_embeds, dim=-1)
+	# 			all_class_embeds.append(batch_embeds.cpu())
+	# 			del batch_class_texts, batch_embeds
+	# 			torch.cuda.empty_cache()
+	# all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
+	# if verbose:
+	# 	print(f"Class embeddings shape: {all_class_embeds.shape}")
+
+	# Pre-tokenize text (cheap), but encode during training (keeps gradients)
 	if verbose:
-		print(f"Pre-encoding {num_classes} class embeddings...")
-	
-	# Pre-encode in batches
-	text_batch_size = train_loader.batch_size
-	all_class_embeds = []
-	model.eval()
-	with torch.no_grad():
-		with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-			for i in range(0, num_classes, text_batch_size):
-				end_idx = min(i + text_batch_size, num_classes)
-				batch_class_names = class_names[i:end_idx]
-				batch_class_texts = clip.tokenize(batch_class_names).to(device)
-				batch_embeds = model.encode_text(batch_class_texts)
-				batch_embeds = F.normalize(batch_embeds, dim=-1)
-				all_class_embeds.append(batch_embeds.cpu())
-				del batch_class_texts, batch_embeds
-				torch.cuda.empty_cache()
-	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
+		print(f"Pre-tokenizing {num_classes} class texts...")
+
+	# Tokenize all class names once (this is cheap and doesn't need gradients)
+	all_class_texts = clip.tokenize(class_names).to(device)
+
 	if verbose:
-		print(f"Class embeddings shape: {all_class_embeds.shape}")
+		print(f"Tokenized texts shape: {type(all_class_texts)} {all_class_texts.shape} {all_class_texts.dtype} {all_class_texts.device}")
+		print(f"Text features will be encoded fresh each batch to preserve gradients for text adapter")
 
 	# Training metrics storage
 	training_losses = list()
@@ -4158,7 +4166,10 @@ def clip_adapter_finetune_multi_label(
 			label_vectors = label_vectors.to(device, non_blocking=True)
 
 			with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-				# Compute multi-label contrastive loss
+				# Encode text features on-the-fly to preserve gradients for text adapter
+				all_class_embeds = model.encode_text(all_class_texts)
+				all_class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
+
 				total_loss, loss_i2t, loss_t2i = compute_multilabel_contrastive_loss(
 					model=model,
 					images=images,
@@ -4167,9 +4178,9 @@ def clip_adapter_finetune_multi_label(
 					criterion=criterion,
 					temperature=temperature,
 					loss_weights=loss_weights,
-					verbose=False,
+					verbose=verbose,
 				)
-				print(f"requires_grad total_loss: {total_loss.requires_grad} loss_i2t: {loss_i2t.requires_grad} loss_t2i: {loss_t2i.requires_grad}")
+				
 
 			# Check for NaN loss
 			if torch.isnan(total_loss):
