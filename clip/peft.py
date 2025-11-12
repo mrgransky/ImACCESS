@@ -986,53 +986,45 @@ class TipAdapterLinear(torch.nn.Module):
 				self.alpha.requires_grad = trainable_params
 
 		def set_cache(
-				self, 
-				support_features: torch.Tensor, 
-				support_labels: torch.Tensor,
-				text_features: torch.Tensor
+			self, 
+			support_features: torch.Tensor, 
+			support_labels: torch.Tensor,
+			text_features: torch.Tensor
 		):
-				"""
-				Set the cache for Tip-Adapter.
-				Works for both single-label [N] and multi-label [N, C] inputs.
-				"""
+			"""
+			Set the cache for Tip-Adapter.
+			Works for both single-label [N] and multi-label [N, C] inputs.
+			"""
+			assert support_features.shape[1] == self.cache_features_dim
+			assert text_features.shape[1] == self.cache_features_dim
 
-				assert support_features.shape[1] == self.cache_features_dim
-				assert text_features.shape[1] == self.cache_features_dim
-
-				# Normalize support features (keys)
-				cache_keys = F.normalize(support_features, p=2, dim=-1)
-
-				# Handle single-label or multi-label
-				if support_labels.dim() == 1:
-						# Single-label: index each sample's class text embedding
-						cache_values = text_features[support_labels]
-				else:
-						# Multi-label: support_labels is [N, num_classes] with 0-1 entries
-						# Compute weighted sum of text embeddings for active labels
-						label_weights = support_labels.float()
-						cache_values = label_weights @ text_features  # [N, D]
-
-						# Normalize by number of active labels to avoid magnitude issues
-						class_counts = label_weights.sum(dim=-1, keepdim=True).clamp(min=1.0)
-						cache_values = cache_values / class_counts
-
-				cache_values = F.normalize(cache_values, p=2, dim=-1)
-
-				# Register buffers on correct device
-				self.cache_keys = cache_keys.to(self.device)
-				self.cache_values = cache_values.to(self.device)
-
-				if self.verbose:
-						n_support = self.cache_keys.shape[0]
-						print(f"[Tip-Adapter] Cache set: {n_support} support samples")
-						print(f"    ├─ Keys: {self.cache_keys.shape}")
-						print(f"    ├─ Values: {self.cache_values.shape}")
-						print(
-								f"    ├─ Keys normalized: {torch.allclose(self.cache_keys.norm(dim=-1), torch.ones(1, device=self.device))}"
-						)
-						print(
-								f"    └─ Values normalized: {torch.allclose(self.cache_values.norm(dim=-1), torch.ones(1, device=self.device))}"
-						)
+			# Normalize support features (keys)
+			cache_keys = torch.nn.functional.normalize(support_features, p=2, dim=-1)
+			# Handle single-label or multi-label
+			if support_labels.dim() == 1:
+				# Single-label: index each sample's class text embedding
+				cache_values = text_features[support_labels]
+			else:
+				# Multi-label: support_labels is [N, num_classes] with 0-1 entries
+				# Compute weighted sum of text embeddings for active labels
+				label_weights = support_labels.float()
+				cache_values = label_weights @ text_features  # [N, D]
+				# Normalize by number of active labels to avoid magnitude issues
+				class_counts = label_weights.sum(dim=-1, keepdim=True).clamp(min=1.0)
+				cache_values = cache_values / class_counts
+			cache_values = torch.nn.functional.normalize(cache_values, p=2, dim=-1)
+			
+			# Register buffers on correct device
+			self.cache_keys = cache_keys.to(self.device)
+			self.cache_values = cache_values.to(self.device)
+			
+			if self.verbose:
+				n_support = self.cache_keys.shape[0]
+				print(f"[Tip-Adapter] Cache set: {n_support} support samples")
+				print(f"    ├─ Keys: {self.cache_keys.shape}")
+				print(f"    ├─ Values: {self.cache_values.shape}")
+				print(f"    ├─ Keys normalized: {torch.allclose(self.cache_keys.norm(dim=-1), torch.ones(1, device=self.device))}")
+				print(f"    └─ Values normalized: {torch.allclose(self.cache_values.norm(dim=-1), torch.ones(1, device=self.device))}")
 
 		# def set_cache(
 		# 	self, 
