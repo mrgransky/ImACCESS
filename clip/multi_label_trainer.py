@@ -3984,7 +3984,6 @@ def clip_adapter_finetune_multi_label(
 
 	model.to(device)
 
-	# DEBUG: Check trainable parameters
 	if verbose:
 		trainable_params = []
 		frozen_params = []
@@ -3994,8 +3993,7 @@ def clip_adapter_finetune_multi_label(
 			else:
 				frozen_params.append((name, param.numel()))
 		
-		print(f"DEBUG - Trainable parameters: {len(trainable_params)}")
-		print(f"DEBUG - Frozen parameters: {len(frozen_params)}")
+		print(f"DEBUG - Trainable: {len(trainable_params)} | Frozen: {len(frozen_params)}")
 		
 		if trainable_params:
 			print("Trainable parameters:")

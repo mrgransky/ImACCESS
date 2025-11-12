@@ -3163,134 +3163,128 @@ def clip_adapter_finetune_single_label(
 		full_val_loss_acc_metrics_all_epochs = list()
 
 		for epoch in range(num_epochs):
-				train_and_val_st_time = time.time()
-				torch.cuda.empty_cache()
-				model.train()
-				print(f"Epoch [{epoch + 1}/{num_epochs}]")
-				epoch_loss = 0.0
-				for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
-					optimizer.zero_grad(set_to_none=True)
-					images = images.to(device, non_blocking=True)
-					tokenized_labels = tokenized_labels.to(device, non_blocking=True)
-					
-					with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
-						logits_per_image, logits_per_text = model(images, tokenized_labels)
-						ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
-						loss_img = criterion(logits_per_image, ground_truth)
-						loss_txt = criterion(logits_per_text, ground_truth)
-						total_loss = 0.5 * (loss_img + loss_txt)
-					
-					print(f"loss_img: {loss_img.item()} loss_txt: {loss_txt.item()} total_loss: {total_loss.item()}")
-					print(f"requires_grad total_loss: {total_loss.requires_grad} loss_img: {loss_img.requires_grad} loss_txt: {loss_txt.requires_grad}")
-					# Check for NaN loss
-					if torch.isnan(total_loss):
-						print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
-						continue
-					
-					scaler.scale(total_loss).backward()
-					# CLIP-Adapter typically has fewer parameters, gradient clipping might be less critical,
-					# but keeping it for consistency and stability.
-					torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-					scaler.step(optimizer)
-					scaler.update()
-					scheduler.step()
-					
-					if bidx % print_every == 0 or bidx + 1 == len(train_loader):
-						print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
-					epoch_loss += total_loss.item()
+			train_and_val_st_time = time.time()
+			torch.cuda.empty_cache()
+			model.train()
+			print(f"Epoch [{epoch + 1}/{num_epochs}]")
+			epoch_loss = 0.0
+			for bidx, (images, tokenized_labels, labels_indices) in enumerate(train_loader):
+				optimizer.zero_grad(set_to_none=True)
+				images = images.to(device, non_blocking=True)
+				tokenized_labels = tokenized_labels.to(device, non_blocking=True)
 				
-				avg_training_loss = epoch_loss / len(train_loader)
-				training_losses.append(avg_training_loss)
-
-				learning_rates_history.append(optimizer.param_groups[0]['lr'])
-				weight_decays_history.append(optimizer.param_groups[0]['weight_decay'])
-
-				print(f">> Validating Epoch {epoch+1} ...")
-				# all metrics in one using caching mechanism:
-				validation_results = get_validation_metrics(
-						model=model,
-						validation_loader=validation_loader,
-						criterion=criterion,
-						device=device,
-						topK_values=topk_values,
-						finetune_strategy=mode,
-						cache_dir=results_dir,
-						verbose=True,
-						max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
-						is_training=True,
-						model_hash=get_model_hash(model),
-				)
-				in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
-				full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
-				retrieval_metrics_per_epoch = {
-						"img2txt": validation_results["img2txt_metrics"],
-						"txt2img": validation_results["txt2img_metrics"]
-				}
-
-				in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
-				full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
-				img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
-				txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
-				current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
-
+				with torch.amp.autocast(device_type=device.type, enabled=torch.cuda.is_available()):
+					logits_per_image, logits_per_text = model(images, tokenized_labels)
+					ground_truth = torch.arange(start=0, end=len(images), dtype=torch.long, device=device)
+					loss_img = criterion(logits_per_image, ground_truth)
+					loss_txt = criterion(logits_per_text, ground_truth)
+					total_loss = 0.5 * (loss_img + loss_txt)
+				
+				print(f"loss_img: {loss_img.item()} loss_txt: {loss_txt.item()} total_loss: {total_loss.item()}")
+				print(f"requires_grad total_loss: {total_loss.requires_grad} loss_img: {loss_img.requires_grad} loss_txt: {loss_txt.requires_grad}")
+				# Check for NaN loss
+				if torch.isnan(total_loss):
+					print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
+					continue
+				
+				scaler.scale(total_loss).backward()
+				# CLIP-Adapter typically has fewer parameters, gradient clipping might be less critical,
+				# but keeping it for consistency and stability.
+				torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+				scaler.step(optimizer)
+				scaler.update()
+				scheduler.step()
+				
+				if bidx % print_every == 0 or bidx + 1 == len(train_loader):
+					print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
+				epoch_loss += total_loss.item()
+			
+			avg_training_loss = epoch_loss / len(train_loader)
+			training_losses.append(avg_training_loss)
+			learning_rates_history.append(optimizer.param_groups[0]['lr'])
+			weight_decays_history.append(optimizer.param_groups[0]['weight_decay'])
+			
+			print(f">> Validating Epoch {epoch+1} ...")
+			validation_results = get_validation_metrics(
+				model=model,
+				validation_loader=validation_loader,
+				criterion=criterion,
+				device=device,
+				topK_values=topk_values,
+				finetune_strategy=mode,
+				cache_dir=results_dir,
+				verbose=True,
+				max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+				is_training=True,
+				model_hash=get_model_hash(model),
+			)
+			in_batch_loss_acc_metrics_per_epoch = validation_results["in_batch_metrics"]
+			full_val_loss_acc_metrics_per_epoch = validation_results["full_metrics"]
+			retrieval_metrics_per_epoch = {
+				"img2txt": validation_results["img2txt_metrics"],
+				"txt2img": validation_results["txt2img_metrics"]
+			}
+			in_batch_loss_acc_metrics_all_epochs.append(in_batch_loss_acc_metrics_per_epoch)
+			full_val_loss_acc_metrics_all_epochs.append(full_val_loss_acc_metrics_per_epoch)
+			img2txt_metrics_all_epochs.append(retrieval_metrics_per_epoch["img2txt"])
+			txt2img_metrics_all_epochs.append(retrieval_metrics_per_epoch["txt2img"])
+			current_val_loss = in_batch_loss_acc_metrics_per_epoch["val_loss"]
+			print(
+				f'Epoch {epoch + 1}:\n'
+				f'\t[LOSS] {mode}'
+				f'(Training): {avg_training_loss} '
+				f'Validation(in-batch): {current_val_loss}\n'
+				f'\tValidation Top-k Accuracy:\n'
+				f'\tIn-batch:\n'
+				f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+				f'\t\t[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
+				f'\tFull Validation Set:\n'
+				f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
+				f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
+			)
+			print(f"Image-to-Text Retrieval:\n\t{retrieval_metrics_per_epoch['img2txt']}")
+			print(f"Text-to-Image Retrieval:\n\t{retrieval_metrics_per_epoch['txt2img']}")
+			if hasattr(train_loader.dataset, 'get_cache_stats'):
+				print(f"#"*100)
+				cache_stats = train_loader.dataset.get_cache_stats()
+				if cache_stats is not None:
+					print(f"Train Cache Stats: {cache_stats}")
+			if hasattr(validation_loader.dataset, 'get_cache_stats'):
+				cache_stats = validation_loader.dataset.get_cache_stats()
+				if cache_stats is not None:
+					print(f"Validation Cache Stats: {cache_stats}")
+				print(f"#"*100)
+			
+			if early_stopping.should_stop(
+				current_value=current_val_loss,
+				model=model,
+				epoch=epoch,
+				optimizer=optimizer,
+				scheduler=scheduler,
+				checkpoint_path=mdl_fpth,
+			):
 				print(
-						f'Epoch {epoch + 1}:\n'
-						f'\t[LOSS] {mode}'
-						f'(Training): {avg_training_loss} '
-						f'Validation(in-batch): {current_val_loss}\n'
-						f'\tValidation Top-k Accuracy:\n'
-						f'\tIn-batch:\n'
-						f'\t\t[text retrieval per image]: {in_batch_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-						f'\t\t[image retrieval per text]: {in_batch_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}\n'
-						f'\tFull Validation Set:\n'
-						f'\t\t[text retrieval per image]: {full_val_loss_acc_metrics_per_epoch.get("img2txt_topk_acc")}\n'
-						f'\t\t[image retrieval per text]: {full_val_loss_acc_metrics_per_epoch.get("txt2img_topk_acc")}'
-				)
-				print(f"Image-to-Text Retrieval:\n\t{retrieval_metrics_per_epoch['img2txt']}")
-				print(f"Text-to-Image Retrieval:\n\t{retrieval_metrics_per_epoch['txt2img']}")
+					f"\nEarly stopping triggered at epoch {epoch + 1} "
+					f"with best loss: {early_stopping.get_best_score()} "
+					f"obtained in epoch {early_stopping.get_best_epoch()+1}")
+				break
 
-				if hasattr(train_loader.dataset, 'get_cache_stats'):
-						print(f"#"*100)
-						cache_stats = train_loader.dataset.get_cache_stats()
-						if cache_stats is not None:
-								print(f"Train Cache Stats: {cache_stats}")
-
-				if hasattr(validation_loader.dataset, 'get_cache_stats'):
-						cache_stats = validation_loader.dataset.get_cache_stats()
-						if cache_stats is not None:
-								print(f"Validation Cache Stats: {cache_stats}")
-						print(f"#"*100)
-
-				if early_stopping.should_stop(
-						current_value=current_val_loss,
-						model=model,
-						epoch=epoch,
-						optimizer=optimizer,
-						scheduler=scheduler,
-						checkpoint_path=mdl_fpth,
-				):
-						print(
-								f"\nEarly stopping triggered at epoch {epoch + 1} "
-								f"with best loss: {early_stopping.get_best_score()} "
-								f"obtained in epoch {early_stopping.get_best_epoch()+1}")
-						break
-
-				print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(150, "="))
+			print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(150, "="))
 
 		print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec".center(170, "-"))
 
 		evaluation_results = evaluate_best_model(
-				model=model,
-				validation_loader=validation_loader,
-				criterion=criterion,
-				early_stopping=early_stopping,
-				checkpoint_path=mdl_fpth,
-				finetune_strategy=mode,
-				device=device,
-				cache_dir=results_dir,
-				topk_values=topk_values,
-				verbose=True,
-				max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
+			model=model,
+			validation_loader=validation_loader,
+			criterion=criterion,
+			early_stopping=early_stopping,
+			checkpoint_path=mdl_fpth,
+			finetune_strategy=mode,
+			device=device,
+			cache_dir=results_dir,
+			topk_values=topk_values,
+			verbose=True,
+			max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 		)
 
 		# Access individual metrics as needed
@@ -3315,22 +3309,22 @@ def clip_adapter_finetune_single_label(
 		actual_trained_epochs = len(training_losses)
 
 		file_base_name = (
-				# f"{dataset_name}_"
-				f"{mode}_"
-				f"{CLUSTER}_"
-				# f"{optimizer.__class__.__name__}_"
-				# f"{scheduler.__class__.__name__}_"
-				# f"{criterion.__class__.__name__}_"
-				# f"{scaler.__class__.__name__}_"
-				# f"{model_name}_"
-				f"{model_arch}_"
-				f"ep_{actual_trained_epochs}_"
-				f"lr_{learning_rate:.1e}_"
-				f"wd_{weight_decay:.1e}_"
-				f"bs_{train_loader.batch_size}_"
-				f"cad_{clip_adapter_method}_"
-				f"cbd_{bottleneck_dim}_"
-				f"act_{activation}"
+			# f"{dataset_name}_"
+			f"{mode}_"
+			f"{CLUSTER}_"
+			# f"{optimizer.__class__.__name__}_"
+			# f"{scheduler.__class__.__name__}_"
+			# f"{criterion.__class__.__name__}_"
+			# f"{scaler.__class__.__name__}_"
+			# f"{model_name}_"
+			f"{model_arch}_"
+			f"ep_{actual_trained_epochs}_"
+			f"lr_{learning_rate:.1e}_"
+			f"wd_{weight_decay:.1e}_"
+			f"bs_{train_loader.batch_size}_"
+			f"cad_{clip_adapter_method}_"
+			f"cbd_{bottleneck_dim}_"
+			f"act_{activation}"
 		)
 		
 		mdl_fpth = get_updated_model_name(original_path=mdl_fpth, actual_epochs=actual_trained_epochs)
@@ -3338,55 +3332,55 @@ def clip_adapter_finetune_single_label(
 		print(f"Best model will be renamed to: {mdl_fpth}")
 
 		plot_paths = {
-				"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
-				"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
-				"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
-				"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
-				"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
-				"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
-				"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
-				"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
-				"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
+			"losses": os.path.join(results_dir, f"{file_base_name}_losses.png"),
+			"in_batch_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_batch_topk_i2t_acc.png"),
+			"in_batch_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_batch_topk_t2i_acc.png"),
+			"full_val_topk_i2t": os.path.join(results_dir, f"{file_base_name}_full_topk_i2t_acc.png"),
+			"full_val_topk_t2i": os.path.join(results_dir, f"{file_base_name}_full_topk_t2i_acc.png"),
+			"mrr": os.path.join(results_dir, f"{file_base_name}_mrr.png"),
+			"cs": os.path.join(results_dir, f"{file_base_name}_cos_sim.png"),
+			"retrieval_per_epoch": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_per_epoch.png"),
+			"retrieval_best": os.path.join(results_dir, f"{file_base_name}_retrieval_metrics_best_model_per_k.png"),
 		}
 
 		viz.plot_loss_accuracy_metrics(
-				dataset_name=dataset_name,
-				train_losses=training_losses,
-				val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-				in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-				in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
-				full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
-				full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
-				# mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-				# cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-				losses_file_path=plot_paths["losses"],
-				in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
-				in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
-				full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
-				full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
-				# mean_reciprocal_rank_file_path=plot_paths["mrr"],
-				# cosine_similarity_file_path=plot_paths["cs"],
+			dataset_name=dataset_name,
+			train_losses=training_losses,
+			val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+			in_batch_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+			in_batch_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in in_batch_loss_acc_metrics_all_epochs],
+			full_topk_val_accuracy_i2t_list=[m.get("img2txt_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+			full_topk_val_accuracy_t2i_list=[m.get("txt2img_topk_acc", {}) for m in full_val_loss_acc_metrics_all_epochs],
+			# mean_reciprocal_rank_list=[m.get("mean_reciprocal_rank", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+			# cosine_similarity_list=[m.get("cosine_similarity", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
+			losses_file_path=plot_paths["losses"],
+			in_batch_topk_val_acc_i2t_fpth=plot_paths["in_batch_val_topk_i2t"],
+			in_batch_topk_val_acc_t2i_fpth=plot_paths["in_batch_val_topk_t2i"],
+			full_topk_val_acc_i2t_fpth=plot_paths["full_val_topk_i2t"],
+			full_topk_val_acc_t2i_fpth=plot_paths["full_val_topk_t2i"],
+			# mean_reciprocal_rank_file_path=plot_paths["mrr"],
+			# cosine_similarity_file_path=plot_paths["cs"],
 		)
 
 		viz.plot_retrieval_metrics_per_epoch(
-				dataset_name=dataset_name,
-				image_to_text_metrics_list=img2txt_metrics_all_epochs,
-				text_to_image_metrics_list=txt2img_metrics_all_epochs,
-				fname=plot_paths["retrieval_per_epoch"],
+			dataset_name=dataset_name,
+			image_to_text_metrics_list=img2txt_metrics_all_epochs,
+			text_to_image_metrics_list=txt2img_metrics_all_epochs,
+			fname=plot_paths["retrieval_per_epoch"],
 		)
 
 		viz.plot_retrieval_metrics_best_model(
-				dataset_name=dataset_name,
-				image_to_text_metrics=final_img2txt_metrics,
-				text_to_image_metrics=final_txt2img_metrics,
-				fname=plot_paths["retrieval_best"],
+			dataset_name=dataset_name,
+			image_to_text_metrics=final_img2txt_metrics,
+			text_to_image_metrics=final_txt2img_metrics,
+			fname=plot_paths["retrieval_best"],
 		)
 
 		viz.plot_hyperparameter_evolution(
-				eta_min=eta_min,
-				learning_rates=learning_rates_history,
-				weight_decays=weight_decays_history,
-				fname=os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
+			eta_min=eta_min,
+			learning_rates=learning_rates_history,
+			weight_decays=weight_decays_history,
+			fname=os.path.join(results_dir, f"{file_base_name}_hp_evol.png"),
 		)
 
 def tip_adapter_finetune_single_label(

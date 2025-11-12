@@ -1344,22 +1344,22 @@ def _compute_singlelabel_mrr(i2t_similarity, labels):
 		return (1.0 / rr_indices.float()).mean().item()
 
 def _compute_matched_cosine_similarity(image_embeds, text_embeds, labels, is_multi_label):
-		"""Compute cosine similarity between matched image-text pairs."""
-		if is_multi_label:
-				# For multi-label, average text embeddings of true classes
-				matched_text_embeds = torch.zeros_like(image_embeds)
-				for i in range(len(labels)):
-						positive_indices = torch.where(labels[i] == 1)[0]
-						if positive_indices.numel() > 0:
-								matched_text_embeds[i] = text_embeds[positive_indices].mean(dim=0)
-						else:
-								matched_text_embeds[i] = text_embeds.mean(dim=0)
-		else:
-				# For single-label, direct indexing
-				matched_text_embeds = text_embeds[labels]
-		
-		cos_sim = torch.nn.functional.cosine_similarity(image_embeds, matched_text_embeds, dim=1)
-		return cos_sim.mean().item()
+	"""Compute cosine similarity between matched image-text pairs."""
+	if is_multi_label:
+		# For multi-label, average text embeddings of true classes
+		matched_text_embeds = torch.zeros_like(image_embeds)
+		for i in range(len(labels)):
+			positive_indices = torch.where(labels[i] == 1)[0]
+			if positive_indices.numel() > 0:
+				matched_text_embeds[i] = text_embeds[positive_indices].mean(dim=0)
+			else:
+				matched_text_embeds[i] = text_embeds.mean(dim=0)
+	else:
+		# For single-label, direct indexing
+		matched_text_embeds = text_embeds[labels]
+	
+	cos_sim = torch.nn.functional.cosine_similarity(image_embeds, matched_text_embeds, dim=1)
+	return cos_sim.mean().item()
 
 def evaluate_best_model(
 		model,
@@ -1443,9 +1443,7 @@ def evaluate_best_model(
 	if verbose:
 		param_count = sum(p.numel() for p in model.parameters())
 		print(f"Model ready for evaluation. Parameters: {param_count:,}")
-	
-	# model.eval()
-	
+		
 	validation_results = get_validation_metrics(
 		model=model,
 		validation_loader=validation_loader,
