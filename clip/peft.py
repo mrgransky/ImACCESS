@@ -1136,32 +1136,53 @@ class TipAdapterFLinear(torch.nn.Module):
 				# Scaling parameters (trainable)
 				self.beta = torch.nn.Parameter(torch.tensor(initial_beta, device=device))
 				self.alpha = torch.nn.Parameter(torch.tensor(initial_alpha, device=device))
-		
+
 		def set_cache(
-				self, 
-				support_features: torch.Tensor, 
-				support_labels: torch.Tensor,
-				text_features: torch.Tensor
+			self, 
+			support_features: torch.Tensor, 
+			support_labels: torch.Tensor,
+			text_features: torch.Tensor
 		):
-				"""
-				Set cache using support set.
+			"""
+			Set cache using support set.
+			
+			IMPORTANT: support_features should be AFTER the linear projection
+			to ensure they're in the same space as text_features.
+			
+			Supports both single-label [N] and multi-label [N, C] formats.
+			"""
+			assert support_features.shape[1] == self.out_features
+			assert text_features.shape[1] == self.out_features
+			
+			# Normalize support features (keys)
+			cache_keys = F.normalize(support_features, p=2, dim=-1)
+			
+			# Handle single-label or multi-label
+			if support_labels.dim() == 1:
+				# Single-label: direct indexing
+				cache_values = text_features[support_labels]
+			else:
+				# Multi-label: weighted average of text embeddings
+				label_weights = support_labels.float()
+				cache_values = label_weights @ text_features  # [N, out_features]
 				
-				IMPORTANT: support_features should be AFTER the linear projection
-				to ensure they're in the same space as text_features.
-				"""
-				assert support_features.shape[1] == self.out_features
-				assert text_features.shape[1] == self.out_features
-				
-				# Normalize
-				cache_keys = torch.nn.functional.normalize(support_features, p=2, dim=-1)
-				cache_values = torch.nn.functional.normalize(text_features[support_labels], p=2, dim=-1)
-				
-				self.cache_keys = cache_keys.to(self.device)
-				self.cache_values = cache_values.to(self.device)
-				
-				if self.verbose:
-						print(f"[Tip-Adapter-F] Cache set: {self.cache_keys.shape[0]} support samples")
-		
+				# Normalize by number of active labels
+				class_counts = label_weights.sum(dim=-1, keepdim=True).clamp(min=1.0)
+				cache_values = cache_values / class_counts
+			
+			# Normalize cache values
+			cache_values = F.normalize(cache_values, p=2, dim=-1)
+			
+			self.cache_keys = cache_keys.to(self.device)
+			self.cache_values = cache_values.to(self.device)
+			
+			if self.verbose:
+				print(f"[Tip-Adapter-F] Cache set: {self.cache_keys.shape[0]} support samples")
+				print(f"    ├─ Keys: {self.cache_keys.shape}")
+				print(f"    ├─ Values: {self.cache_values.shape}")
+				print(f"    ├─ Keys normalized: {torch.allclose(self.cache_keys.norm(dim=-1), torch.ones(1, device=self.device))}")
+				print(f"    └─ Values normalized: {torch.allclose(self.cache_values.norm(dim=-1), torch.ones(1, device=self.device))}")
+
 		def forward(self, x: torch.Tensor) -> torch.Tensor:
 				"""
 				Forward pass: Linear projection + normalization + cache adaptation
