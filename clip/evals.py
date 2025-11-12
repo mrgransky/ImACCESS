@@ -29,7 +29,7 @@ def compute_multilabel_validation_loss(
 		all_class_texts = clip.tokenize(class_names).to(device, non_blocking=True)
 		with torch.no_grad():
 			all_class_embeds = model.encode_text(all_class_texts)
-			all_class_embeds = F.normalize(all_class_embeds, dim=-1)
+			all_class_embeds = torch.nn.functional.normalize(all_class_embeds, dim=-1)
 	
 	with torch.no_grad():
 		for batch_idx, (images, _, label_vectors) in enumerate(validation_loader):
@@ -45,7 +45,7 @@ def compute_multilabel_validation_loss(
 			
 			# Encode images
 			image_embeds = model.encode_image(images)
-			image_embeds = F.normalize(image_embeds, dim=-1)
+			image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
 			
 			# Compute similarities
 			i2t_similarities = torch.matmul(image_embeds, all_class_embeds.T) / temperature
@@ -96,7 +96,7 @@ def compute_multilabel_inbatch_metrics(
 								
 				batch_class_texts = clip.tokenize(batch_class_names).to(device)
 				batch_embeds = model.encode_text(batch_class_texts)
-				batch_embeds = F.normalize(batch_embeds, dim=-1)
+				batch_embeds = torch.nn.functional.normalize(batch_embeds, dim=-1)
 				all_class_embeds.append(batch_embeds.cpu())  # Move to CPU immediately to save GPU memory
 				
 				del batch_class_texts, batch_embeds
@@ -136,7 +136,7 @@ def compute_multilabel_inbatch_metrics(
 			
 			# Encode images
 			image_embeds = model.encode_image(images)
-			image_embeds = F.normalize(image_embeds, dim=-1)
+			image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
 			
 			# Compute similarities
 			i2t_similarities = torch.matmul(image_embeds, all_class_embeds.T) / temperature
@@ -371,8 +371,8 @@ def compute_direct_in_batch_metrics(
 					image_embeds = model.encode_image(images)
 					text_embeds = model.encode_text(tokenized_labels)
 				
-				image_embeds = F.normalize(image_embeds, dim=-1)
-				text_embeds = F.normalize(text_embeds, dim=-1)
+				image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
+				text_embeds = torch.nn.functional.normalize(text_embeds, dim=-1)
 				
 				# Cosine similarity (diagonal elements = matched pairs)
 				cos_sim = F.cosine_similarity(image_embeds, text_embeds, dim=-1).cpu().numpy()
@@ -937,7 +937,7 @@ def get_validation_metrics(
 	text_inputs = clip.tokenize(class_names).to(device)
 	with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
 		class_text_embeds = model.encode_text(text_inputs)
-	class_text_embeds = F.normalize(class_text_embeds.float(), dim=-1)
+	class_text_embeds = torch.nn.functional.normalize(class_text_embeds.float(), dim=-1)
 	
 	# Move to device and ensure proper types
 	device_image_embeds = all_image_embeds.to(device).float()
@@ -1257,7 +1257,7 @@ def _compute_image_embeddings(
 				image_embeds = model.encode_image(images)
 
 			# Normalize and offload to CPU
-			image_embeds = F.normalize(image_embeds, dim=-1).cpu()
+			image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1).cpu()
 			all_image_embeds.append(image_embeds)
 			all_labels.append(labels_indices.cpu())
 
