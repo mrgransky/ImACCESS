@@ -1948,7 +1948,7 @@ def lora_plus_finetune_multi_label(
 		f".pth"
 	)
 	
-	training_losses = []
+	training_losses = list()
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
 	img2txt_metrics_all_epochs = []
 	txt2img_metrics_all_epochs = []
@@ -3587,8 +3587,6 @@ def dora_finetune_multi_label(
 	# Training metrics storage
 	training_losses = list()
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
-	training_i2t_losses = list()
-	training_t2i_losses = list()
 	img2txt_metrics_all_epochs = list()
 	txt2img_metrics_all_epochs = list()
 	in_batch_loss_acc_metrics_all_epochs = list()
@@ -4112,8 +4110,6 @@ def clip_adapter_finetune_multi_label(
 	# Training metrics storage
 	training_losses = list()
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
-	training_i2t_losses = list()
-	training_t2i_losses = list()
 	img2txt_metrics_all_epochs = list()
 	txt2img_metrics_all_epochs = list()
 	in_batch_loss_acc_metrics_all_epochs = list()
@@ -4779,10 +4775,8 @@ def tip_adapter_finetune_multi_label(
 		f".pth"
 	)
 	
-	training_losses = []
+	training_losses = list()
 	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
-	training_i2t_losses = []
-	training_t2i_losses = []
 	img2txt_metrics_all_epochs = []
 	txt2img_metrics_all_epochs = []
 	in_batch_loss_acc_metrics_all_epochs = []
