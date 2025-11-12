@@ -4052,7 +4052,13 @@ def clip_adapter_finetune_multi_label(
 	else:
 		criterion = torch.nn.BCEWithLogitsLoss()
 	
-	scaler = torch.amp.GradScaler(device=device)
+	scaler = torch.amp.GradScaler(
+		device=device,
+		init_scale=2**16,
+		growth_factor=2.0,
+		backoff_factor=0.5,
+		growth_interval=2000,
+	)
 
 	# Model checkpoint path
 	mdl_fpth = os.path.join(
@@ -4102,7 +4108,6 @@ def clip_adapter_finetune_multi_label(
 				all_class_embeds.append(batch_embeds.cpu())
 				del batch_class_texts, batch_embeds
 				torch.cuda.empty_cache()
-	
 	all_class_embeds = torch.cat(all_class_embeds, dim=0).to(device)
 	if verbose:
 		print(f"Class embeddings shape: {all_class_embeds.shape}")
@@ -4149,7 +4154,7 @@ def clip_adapter_finetune_multi_label(
 					loss_weights=loss_weights,
 					verbose=False,
 				)
-			
+			print(f"Loss requires_grad: {total_loss.requires_grad}")
 			scaler.scale(total_loss).backward()
 			torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 			scaler.step(optimizer)
