@@ -462,8 +462,8 @@ def full_finetune_multi_label(
 	}
 	
 	viz.plot_multilabel_loss_breakdown(
-			training_losses_breakdown=training_losses_breakdown,
-			filepath=plot_paths["losses_breakdown"]
+		training_losses_breakdown=training_losses_breakdown,
+		filepath=plot_paths["losses_breakdown"]
 	)
 	viz.plot_loss_accuracy_metrics(
 			dataset_name=dataset_name,
@@ -3586,6 +3586,7 @@ def dora_finetune_multi_label(
 
 	# Training metrics storage
 	training_losses = list()
+	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
 	training_i2t_losses = list()
 	training_t2i_losses = list()
 	img2txt_metrics_all_epochs = list()
@@ -3646,8 +3647,10 @@ def dora_finetune_multi_label(
 		avg_t2i_loss = epoch_t2i_loss / len(train_loader)
 		
 		training_losses.append(avg_training_loss)
-		training_i2t_losses.append(avg_i2t_loss)
-		training_t2i_losses.append(avg_t2i_loss)
+
+		training_losses_breakdown["total"].append(avg_training_loss)
+		training_losses_breakdown["i2t"].append(avg_i2t_loss)
+		training_losses_breakdown["t2i"].append(avg_t2i_loss)
 
 		learning_rates_history.append(optimizer.param_groups[0]['lr'])
 		weight_decays_history.append(optimizer.param_groups[0]['weight_decay'])
@@ -3802,12 +3805,8 @@ def dora_finetune_multi_label(
 
 	# Plot loss breakdown (I2T vs T2I)
 	viz.plot_multilabel_loss_breakdown(
-		dataset_name=dataset_name,
-		train_losses=training_losses,
-		train_i2t_losses=training_i2t_losses,
-		train_t2i_losses=training_t2i_losses,
-		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-		fname=plot_paths["loss_breakdown"],
+		training_losses_breakdown=training_losses_breakdown,
+		filepath=plot_paths["loss_breakdown"],
 	)
 
 	viz.plot_loss_accuracy_metrics(
@@ -4112,6 +4111,7 @@ def clip_adapter_finetune_multi_label(
 
 	# Training metrics storage
 	training_losses = list()
+	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
 	training_i2t_losses = list()
 	training_t2i_losses = list()
 	img2txt_metrics_all_epochs = list()
@@ -4172,8 +4172,9 @@ def clip_adapter_finetune_multi_label(
 		avg_t2i_loss = epoch_t2i_loss / len(train_loader)
 		
 		training_losses.append(avg_training_loss)
-		training_i2t_losses.append(avg_i2t_loss)
-		training_t2i_losses.append(avg_t2i_loss)
+		training_losses_breakdown["total"].append(avg_training_loss)
+		training_losses_breakdown["i2t"].append(avg_i2t_loss)
+		training_losses_breakdown["t2i"].append(avg_t2i_loss)
 
 		learning_rates_history.append(optimizer.param_groups[0]['lr'])
 		weight_decays_history.append(optimizer.param_groups[0]['weight_decay'])
@@ -4323,12 +4324,8 @@ def clip_adapter_finetune_multi_label(
 
 	# Plot loss breakdown (I2T vs T2I)
 	viz.plot_multilabel_loss_breakdown(
-		dataset_name=dataset_name,
-		train_losses=training_losses,
-		train_i2t_losses=training_i2t_losses,
-		train_t2i_losses=training_t2i_losses,
-		val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-		fname=plot_paths["loss_breakdown"],
+		training_losses_breakdown=training_losses_breakdown,
+		filepath=plot_paths["loss_breakdown"],
 	)
 
 	viz.plot_loss_accuracy_metrics(
@@ -4783,6 +4780,7 @@ def tip_adapter_finetune_multi_label(
 	)
 	
 	training_losses = []
+	training_losses_breakdown = {"i2t": [], "t2i": [], "total": []}
 	training_i2t_losses = []
 	training_t2i_losses = []
 	img2txt_metrics_all_epochs = []
@@ -4900,8 +4898,9 @@ def tip_adapter_finetune_multi_label(
 		avg_t2i_loss = epoch_t2i_loss / len(train_loader)
 		
 		training_losses.append(avg_training_loss)
-		training_i2t_losses.append(avg_i2t_loss)
-		training_t2i_losses.append(avg_t2i_loss)
+		training_losses_breakdown["total"].append(avg_training_loss)
+		training_losses_breakdown["i2t"].append(avg_i2t_loss)
+		training_losses_breakdown["t2i"].append(avg_t2i_loss)
 		
 		learning_rates_history.append(optimizer.param_groups[0]['lr'])
 		weight_decays_history.append(optimizer.param_groups[0]['weight_decay'])
@@ -5054,12 +5053,8 @@ def tip_adapter_finetune_multi_label(
 	if actual_trained_epochs > 0:
 		# Plot loss breakdown (I2T vs T2I)
 		viz.plot_multilabel_loss_breakdown(
-			dataset_name=dataset_name,
-			train_losses=training_losses,
-			train_i2t_losses=training_i2t_losses,
-			train_t2i_losses=training_t2i_losses,
-			val_losses=[m.get("val_loss", float('nan')) for m in in_batch_loss_acc_metrics_all_epochs],
-			fname=plot_paths["loss_breakdown"],
+			training_losses_breakdown=training_losses_breakdown,
+			filepath=plot_paths["loss_breakdown"],
 		)
 		
 		viz.plot_loss_accuracy_metrics(
