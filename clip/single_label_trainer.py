@@ -993,7 +993,7 @@ def lora_finetune_single_label(
 		volatility_threshold: float,
 		slope_threshold: float,
 		pairwise_imp_threshold: float,
-		topk_values: List[int] = [1, 5, 10, 15, 20],
+		topk_values: List[int]=[1, 5, 10, 15, 20],
 		quantization_bits: int=8,
 		quantized: bool=False,
 		use_lamb: bool=False,
@@ -1251,7 +1251,7 @@ def lora_finetune_single_label(
 
 		print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(150, "="))
 
-	print(f"[{mode}] Total Elapsed_t: {time.time() - train_start_time:.1f} sec")
+	print(f"[{mode}] Total Training Elapsed_t: {time.time() - train_start_time:.1f} sec")
 
 	evaluation_results = evaluate_best_model(
 		model=model,
@@ -1267,13 +1267,12 @@ def lora_finetune_single_label(
 		max_in_batch_samples=get_max_samples(batch_size=validation_loader.batch_size, N=10, device=device),
 	)
 
-	# Access individual metrics as needed
 	final_metrics_in_batch = evaluation_results["in_batch_metrics"]
 	final_metrics_full = evaluation_results["full_metrics"]
-
 	final_img2txt_metrics = evaluation_results["img2txt_metrics"]
 	final_txt2img_metrics = evaluation_results["txt2img_metrics"]
 	model_source = evaluation_results["model_loaded_from"]
+
 	print(f"Final evaluation used model weights from: {model_source}")
 	
 	print("--- Final Metrics [In-batch Validation] ---")
@@ -1376,6 +1375,7 @@ def lora_plus_finetune_single_label(
 		lora_rank: int,
 		lora_alpha: float,
 		lora_dropout: float,
+		lora_plus_lambda: float,
 		patience: int,
 		min_delta: float,
 		cumulative_delta: float,
@@ -1385,7 +1385,6 @@ def lora_plus_finetune_single_label(
 		pairwise_imp_threshold: float,
 		topk_values: List[int]=[1, 5, 10, 15, 20],
 		quantization_bits: int=8,
-		lora_plus_lambda: float=32.0,
 		quantized: bool=False,
 		use_lamb: bool=False,
 		verbose: bool=True,
@@ -3061,7 +3060,6 @@ def clip_adapter_finetune_single_label(
 
 		model.to(device)
 
-		# DEBUG: Check which parameters are trainable
 		if verbose:
 			trainable_params = []
 			frozen_params = []
@@ -3071,8 +3069,7 @@ def clip_adapter_finetune_single_label(
 				else:
 					frozen_params.append((name, param.numel()))
 			
-			print(f"DEBUG - Trainable parameters: {len(trainable_params)}")
-			print(f"DEBUG - Frozen parameters: {len(frozen_params)}")
+			print(f"DEBUG - Trainable: {len(trainable_params)} | Frozen: {len(frozen_params)}")
 			
 			if trainable_params:
 				print("Trainable parameters:")
@@ -3085,8 +3082,7 @@ def clip_adapter_finetune_single_label(
 					
 			total_trainable = sum(numel for _, numel in trainable_params)
 			total_frozen = sum(numel for _, numel in frozen_params)
-			print(f"Total trainable parameters: {total_trainable:,}")
-			print(f"Total frozen parameters: {total_frozen:,}")
+			print(f"Total trainable parameters: {total_trainable:,} Total frozen parameters: {total_frozen:,}")
 
 		trainable_parameters = [p for p in model.parameters() if p.requires_grad]
 		if not trainable_parameters:
@@ -3164,7 +3160,6 @@ def clip_adapter_finetune_single_label(
 
 		for epoch in range(num_epochs):
 			train_and_val_st_time = time.time()
-			torch.cuda.empty_cache()
 			model.train()
 			print(f"Epoch [{epoch + 1}/{num_epochs}]")
 			epoch_loss = 0.0
@@ -3180,16 +3175,15 @@ def clip_adapter_finetune_single_label(
 					loss_txt = criterion(logits_per_text, ground_truth)
 					total_loss = 0.5 * (loss_img + loss_txt)
 				
-				print(f"loss_img: {loss_img.item()} loss_txt: {loss_txt.item()} total_loss: {total_loss.item()}")
-				print(f"requires_grad total_loss: {total_loss.requires_grad} loss_img: {loss_img.requires_grad} loss_txt: {loss_txt.requires_grad}")
+				# print(f"loss_img: {loss_img.item()} loss_txt: {loss_txt.item()} total_loss: {total_loss.item()}")
+				# print(f"requires_grad total_loss: {total_loss.requires_grad} loss_img: {loss_img.requires_grad} loss_txt: {loss_txt.requires_grad}")
+
 				# Check for NaN loss
 				if torch.isnan(total_loss):
 					print(f"Warning: NaN loss detected at epoch {epoch+1}, batch {bidx+1}. Skipping batch.")
 					continue
 				
 				scaler.scale(total_loss).backward()
-				# CLIP-Adapter typically has fewer parameters, gradient clipping might be less critical,
-				# but keeping it for consistency and stability.
 				torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 				scaler.step(optimizer)
 				scaler.update()
@@ -3197,6 +3191,7 @@ def clip_adapter_finetune_single_label(
 				
 				if bidx % print_every == 0 or bidx + 1 == len(train_loader):
 					print(f"\t\tBatch [{bidx + 1}/{len(train_loader)}] Loss: {total_loss.item():.7f}")
+				
 				epoch_loss += total_loss.item()
 			
 			avg_training_loss = epoch_loss / len(train_loader)
@@ -3266,7 +3261,8 @@ def clip_adapter_finetune_single_label(
 				print(
 					f"\nEarly stopping triggered at epoch {epoch + 1} "
 					f"with best loss: {early_stopping.get_best_score()} "
-					f"obtained in epoch {early_stopping.get_best_epoch()+1}")
+					f"obtained in epoch {early_stopping.get_best_epoch()+1}"
+				)
 				break
 
 			print(f"Epoch {epoch+1} Duration [Train + Validation]: {time.time() - train_and_val_st_time:.2f} sec".center(150, "="))

@@ -1670,6 +1670,7 @@ def lora_plus_finetune_multi_label(
 		lora_rank: int,
 		lora_alpha: float,
 		lora_dropout: float,
+		lora_plus_lambda: float,
 		patience: int,
 		min_delta: float,
 		cumulative_delta: float,
@@ -1677,15 +1678,14 @@ def lora_plus_finetune_multi_label(
 		volatility_threshold: float,
 		slope_threshold: float,
 		pairwise_imp_threshold: float,
-		topk_values: List[int] = [1, 5, 10, 15, 20],
-		quantization_bits: int = 8,
-		lora_plus_lambda: float = 32.0,
-		quantized: bool = False,
-		use_lamb: bool = False,
-		loss_weights: Dict[str, float] = None,
-		temperature: float = 0.07,
-		label_smoothing: float = 0.0,
-		verbose: bool = True,
+		topk_values: List[int]=[1, 5, 10, 15, 20],
+		quantization_bits: int=8,
+		quantized: bool=False,
+		use_lamb: bool=False,
+		loss_weights: Dict[str, float]=None,
+		temperature: float=0.07,
+		label_smoothing: float=0.0,
+		verbose: bool=True,
 	):
 	"""
 	LoRA+ fine-tuning for multi-label CLIP classification.
@@ -4015,7 +4015,6 @@ def clip_adapter_finetune_multi_label(
 
 	get_parameters_info(model=model, mode=mode)
 
-	# Optimizer setup
 	if use_lamb:
 		optimizer = LAMB(
 			params=[p for p in model.parameters() if p.requires_grad],
