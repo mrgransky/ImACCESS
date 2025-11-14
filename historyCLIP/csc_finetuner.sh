@@ -10,7 +10,7 @@ if [[ "$HOSTNAME" == *"mahti"* ]]; then
 	CLUSTER="mahti"
 	DEFAULT_PARTITION="gpusmall"
 	DEFAULT_GRES="gpu:a100:1"
-	DEFAULT_CPUS=128
+	DEFAULT_CPUS=40
 	DEFAULT_MEM="300G"
 elif [[ "$HOSTNAME" == *"puhti"* ]]; then
 	CLUSTER="puhti"
@@ -36,7 +36,7 @@ MEM="${SLURM_MEM:-$DEFAULT_MEM}"
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=128
+#SBATCH --cpus-per-task=40
 #SBATCH --mem=300G
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1
