@@ -6,14 +6,14 @@
 # =============================================================================
 
 #SBATCH --account=project_2014707
-#SBATCH --job-name=h4_multi_label_dataset_x_
+#SBATCH --job-name=finetune_dataset_x
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=64
-#SBATCH --mem=164G
+#SBATCH --cpus-per-task=40
+#SBATCH --mem=300G
 #SBATCH --partition=${SLURM_PARTITION:-gpusmall}
 #SBATCH --gres=${SLURM_GRES:-gpu:a100:1}
 #SBATCH --array=4
