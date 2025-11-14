@@ -311,11 +311,10 @@ def _load_vlm_(
 	else:
 		if verbose:
 			print(f"[INFO] Quantization: device_map={model_kwargs['device_map']}")
-			if torch.cuda.is_available():
-				gpu_params = sum(1 for p in model.parameters() if p.device.type == "cuda")
-				cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
-				print(f"   • Parameters on GPU  : {gpu_params}")
-				print(f"   • Parameters on CPU  : {cpu_params}\n")
+			gpu_params = sum(1 for p in model.parameters() if p.device.type == "cuda")
+			cpu_params = sum(1 for p in model.parameters() if p.device.type == "cpu")
+			print(f"   • Parameters on GPU  : {gpu_params}")
+			print(f"   • Parameters on CPU  : {cpu_params}\n")
 
 	return processor, model
 
