@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2014707
-#SBATCH --job-name=h4_multi_label_dataset_
+#SBATCH --job-name=h4_multi_label_dataset
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
