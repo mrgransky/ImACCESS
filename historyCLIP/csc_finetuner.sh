@@ -40,7 +40,7 @@ MEM="${SLURM_MEM:-$DEFAULT_MEM}"
 #SBATCH --mem=300G
 #SBATCH --partition=gpusmall
 #SBATCH --gres=gpu:a100:1
-#SBATCH --array=0,4,8,12
+#SBATCH --array=4
 #SBATCH --time=1-12:00:00
 
 set -euo pipefail
