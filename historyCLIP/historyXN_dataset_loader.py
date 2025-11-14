@@ -262,8 +262,7 @@ def get_multi_label_datasets(metadata_fpth: str):
 		dtype=dtypes, 
 		low_memory=False,
 	)
-	print(f"FULL Multi-label Dataset {type(df)} {df.shape}")
-	print(f"Columns: {list(df.columns)}")
+	print(f"FULL Multi-label {type(df)} {df.shape} {list(df.columns)}")
 
 	metadata_train_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_train.csv'))
 	metadata_val_fpth = os.path.join(ddir, metadata_fpth.replace('.csv', '_val.csv'))
