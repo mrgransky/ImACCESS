@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --account=project_2014707
-#SBATCH --job-name=h4_sgl_lbl
+#SBATCH --job-name=h4_multi_label
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
@@ -42,11 +42,6 @@ DATASETS=(
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02
 	/scratch/project_2004072/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31
-)
-
-DATASET_TYPE=(
-	"single_label"
-	"multi_label"
 )
 
 FINETUNE_STRATEGIES=(
@@ -170,10 +165,9 @@ echo "DROPOUT: ${DROPOUT}"
 echo "EARLY_STOPPING_MIN_EPOCHS: ${EARLY_STOPPING_MIN_EPOCHS}"
 echo "BATCH SIZE: [DEFAULT]: ${BATCH_SIZES[$dataset_index]} [ADJUSTED]: ${ADJUSTED_BATCH_SIZE}"
 
-echo ">> Starting history_clip_trainer.py for (${DATASET_TYPE[0]}) dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$dataset_index]}"
-python -u history_clip_trainer.py \
+echo ">> Starting trainer.py for dataset[$SLURM_ARRAY_TASK_ID]: ${DATASETS[$dataset_index]}"
+python -u trainer.py \
 	--dataset_dir "${DATASETS[$dataset_index]}" \
-	--dataset_type "${DATASET_TYPE[0]}" \
 	--model_architecture "${MODEL_ARCHITECTURES[$architecture_index]}" \
 	--mode "finetune" \
 	--finetune_strategy "${FINETUNE_STRATEGIES[$strategy_index]}" \
