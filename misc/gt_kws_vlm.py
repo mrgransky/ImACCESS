@@ -296,14 +296,13 @@ def _load_vlm_(
 			print(f"{model.generation_config}")
 
 	if not use_quantization:
-		if verbose:
-			print(f"[INFO] Moving {model.__class__.__name__} to {device} (full‑precision path)")
+		if verbose: print(f"[INFO] Moving {model.__class__.__name__} to {device} (full‑precision path)")
 		try:
 			model.to(device)
 		except Exception as e:
 			print(e)
 			sys.exit(1)
-		if verbose and torch.cuda.is_available():
+		if verbose:
 			cur = torch.cuda.current_device()
 			print("[DEBUG] CUDA memory AFTER model.to()")
 			print(f"   • allocated : {torch.cuda.memory_allocated(cur)//(1024**2)} MiB")
