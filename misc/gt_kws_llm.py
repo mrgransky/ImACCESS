@@ -263,15 +263,16 @@ def _load_llm_(
 				print(f"   • Parameters on CPU	: {cpu_params}")
 
 	model.eval()
-	if hasattr(torch, "compile") and not use_quantization:
-		if verbose:
-			print("[INFO] Compiling model with torch.compile(mode='reduce-overhead')")
-		model = torch.compile(model, mode="reduce-overhead")
-		if verbose:
-			print("[INFO] Compilation finished\n")
-	else:
-		if verbose and use_quantization:
-			print("[INFO] Skipping torch.compile because the model is quantized\n")
+
+	# if hasattr(torch, "compile") and not use_quantization:
+	# 	if verbose:
+	# 		print("[INFO] Compiling model with torch.compile(mode='reduce-overhead')")
+	# 	model = torch.compile(model, mode="reduce-overhead")
+	# 	if verbose:
+	# 		print("[INFO] Compilation finished\n")
+	# else:
+	# 	if verbose and use_quantization:
+	# 		print("[INFO] Skipping torch.compile because the model is quantized\n")
 		
 	return tokenizer, model
 
@@ -1492,7 +1493,7 @@ def get_llm_based_labels_opt(
 						)
 						unique_results[idx] = parsed
 					except Exception as e:
-						if verbose: print(f"⚠️ Parsing error for batch index {idx}: {e}")
+						print(f"⚠️ Parsing error for batch index {idx}: {e}")
 						unique_results[idx] = None
 				break  # Break retry loop on success	
 			except Exception as e:
