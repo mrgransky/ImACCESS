@@ -12,7 +12,7 @@
 #SBATCH --partition=gputest
 #SBATCH --gres=gpu:a100:1
 #SBATCH --array=252
-#SBATCH --time=1-12:00:00
+#SBATCH --time=0-00:15:00
 
 set -euo pipefail
 
