@@ -2642,13 +2642,13 @@ def perform_multilabel_eda(
 	# Diversity metrics summary
 	metrics_data = {
 		'Metric': ['Shannon Entropy', 'Normalized Entropy', 'Gini Coefficient', 
-				   'Effective Labels', 'Unique Labels'],
+					 'Effective Labels', 'Unique Labels'],
 		'Value': [shannon_entropy, normalized_entropy, gini, effective_labels, len(unique_labels)]
 	}
 	metrics_df = pd.DataFrame(metrics_data)
 	ax2.axis('off')
 	table = ax2.table(cellText=metrics_df.values, colLabels=metrics_df.columns,
-					  cellLoc='left', loc='center', colWidths=[0.6, 0.4])
+						cellLoc='left', loc='center', colWidths=[0.6, 0.4])
 	table.auto_set_font_size(False)
 	table.set_fontsize(12)
 	table.scale(1, 2)
@@ -2760,7 +2760,7 @@ def perform_multilabel_eda(
 	head_coverage = label_counts_df.head(n_head)['Count'].sum() / label_counts_df['Count'].sum() * 100
 	tail_coverage = 100 - head_coverage
 	ax.pie([head_coverage, tail_coverage], labels=[f'Top {n_head} labels', f'Remaining {len(unique_labels)-n_head} labels'],
-		   autopct='%1.1f%%', startangle=90, colors=['lightblue', 'lightcoral'])
+			 autopct='%1.1f%%', startangle=90, colors=['lightblue', 'lightcoral'])
 	ax.set_title('Sample Coverage: Head vs Tail Labels')
 	
 	plt.tight_layout()
@@ -2823,6 +2823,17 @@ def perform_multilabel_eda(
 		
 		y_subset = y_binarized[:, top_label_indices].toarray()
 		
+		# Calculate co-occurrence matrix
+		cooccurrence_matrix = np.zeros((n_top_labels_co_occurrence, n_top_labels_co_occurrence))
+		for i in range(n_top_labels_co_occurrence):
+			for j in range(n_top_labels_co_occurrence):
+				if i == j:
+					cooccurrence_matrix[i, j] = np.sum(y_subset[:, i])  # Count of label i
+				else:
+					cooccurrence_matrix[i, j] = np.sum(y_subset[:, i] & y_subset[:, j])  # Co-occurrence count
+		
+		cooccurrence_df = pd.DataFrame(cooccurrence_matrix, index=top_labels_for_correlation, columns=top_labels_for_correlation)
+		
 		# Calculate Jaccard Similarity Matrix
 		jaccard_matrix = np.zeros((n_top_labels_co_occurrence, n_top_labels_co_occurrence))
 		for i in range(n_top_labels_co_occurrence):
@@ -2836,19 +2847,22 @@ def perform_multilabel_eda(
 					union = np.sum(col_i | col_j)
 					jaccard_matrix[i, j] = intersection / union if union != 0 else 0.0
 		
+		# Compute distance matrix (1 - Jaccard similarity)
+		distance_matrix = 1 - jaccard_matrix
+		
+		# Compute linkage matrix for hierarchical clustering
+		# Convert to condensed distance matrix format required by linkage
+		from scipy.spatial.distance import squareform
+		condensed_distances = squareform(distance_matrix)
+		linkage_matrix = scipy.cluster.hierarchy.linkage(condensed_distances, method='average')
+		
 		jaccard_df = pd.DataFrame(jaccard_matrix, index=top_labels_for_correlation, columns=top_labels_for_correlation)
 		
-		# Create figure with heatmap and dendrogram
-		fig = plt.figure(figsize=(24, 19))
-		
-		# Compute hierarchical clustering
-		distance_matrix = 1 - jaccard_matrix
-		np.fill_diagonal(distance_matrix, 0)
-		condensed_dist = scipy.spatial.distance.squareform(distance_matrix)
-		linkage_matrix = scipy.cluster.hierarchy.linkage(condensed_dist, method='average')
-		
-		# Plot dendrogram
-		ax_dendro = fig.add_subplot(2, 2, 1)
+		# Create separate figures for each visualization
+				
+		# 1. Dendrogram
+		fig_dendro = plt.figure(figsize=(22, 11))
+		ax_dendro = fig_dendro.add_subplot(1, 1, 1)
 		dendrogram = scipy.cluster.hierarchy.dendrogram(
 			linkage_matrix, 
 			labels=top_labels_for_correlation, 
@@ -2860,9 +2874,17 @@ def perform_multilabel_eda(
 		ax_dendro.set_xlabel('Labels')
 		ax_dendro.set_ylabel('Distance (1 - Jaccard Similarity)')
 		ax_dendro.tick_params(axis='x', rotation=90)
+		plt.tight_layout()
+		plt.savefig(
+			fname=os.path.join(output_dir, f"{label_column}_dendrogram.png"),
+			dpi=DPI,
+			bbox_inches='tight',
+		)
+		plt.close()
 		
-		# Plot heatmap
-		ax_heatmap = fig.add_subplot(2, 2, 2)
+		# 2. Jaccard Similarity Heatmap
+		fig_heatmap = plt.figure(figsize=(10, 8))
+		ax_heatmap = fig_heatmap.add_subplot(1, 1, 1)
 		sns.heatmap(
 			jaccard_df, 
 			annot=True, 
@@ -2874,18 +2896,17 @@ def perform_multilabel_eda(
 			ax=ax_heatmap
 		)
 		ax_heatmap.set_title(f'Jaccard Similarity Matrix')
+		plt.tight_layout()
+		plt.savefig(
+			fname=os.path.join(output_dir, f"{label_column}_jaccard_similarity.png"),
+			dpi=DPI,
+			bbox_inches='tight',
+		)
+		plt.close()
 		
-		# Co-occurrence matrix (absolute counts)
-		cooccurrence_matrix = np.zeros((n_top_labels_co_occurrence, n_top_labels_co_occurrence))
-		for i in range(n_top_labels_co_occurrence):
-			for j in range(n_top_labels_co_occurrence):
-				cooccurrence_matrix[i, j] = np.sum(y_subset[:, i] & y_subset[:, j])
-		
-		cooccurrence_df = pd.DataFrame(cooccurrence_matrix, 
-									   index=top_labels_for_correlation, 
-									   columns=top_labels_for_correlation)
-		
-		ax_cooc = fig.add_subplot(2, 2, 3)
+		# 3. Co-occurrence Matrix
+		fig_cooc = plt.figure(figsize=(10, 8))
+		ax_cooc = fig_cooc.add_subplot(1, 1, 1)
 		sns.heatmap(
 			cooccurrence_df, 
 			annot=True, 
@@ -2897,9 +2918,17 @@ def perform_multilabel_eda(
 			ax=ax_cooc
 		)
 		ax_cooc.set_title(f'Label Co-occurrence Matrix (Absolute Counts)')
+		plt.tight_layout()
+		plt.savefig(
+			fname=os.path.join(output_dir, f"{label_column}_cooccurrence_matrix.png"),
+			dpi=DPI,
+			bbox_inches='tight',
+		)
+		plt.close()
 		
-		# Network-style visualization of strong co-occurrences
-		ax_network = fig.add_subplot(2, 2, 4)
+		# 4. Network Visualization
+		fig_network = plt.figure(figsize=(10, 10))
+		ax_network = fig_network.add_subplot(1, 1, 1)
 		threshold = 0.3  # Only show edges with Jaccard > 0.3
 		
 		# Create adjacency list for strong connections
@@ -2924,16 +2953,15 @@ def perform_multilabel_eda(
 		# Add labels
 		for idx, label in enumerate(top_labels_for_correlation):
 			ax_network.text(x[idx]*1.15, y[idx]*1.15, label, 
-						   ha='center', va='center', fontsize=8)
+							 ha='center', va='center', fontsize=8)
 		
 		ax_network.set_xlim(-1.5, 1.5)
 		ax_network.set_ylim(-1.5, 1.5)
 		ax_network.axis('off')
 		ax_network.set_title(f'Label Co-occurrence Network (Jaccard > {threshold})')
-		
 		plt.tight_layout()
 		plt.savefig(
-			fname=os.path.join(output_dir, f"{label_column}_clustering_and_cooccurrence.png"),
+			fname=os.path.join(output_dir, f"{label_column}_network_visualization.png"),
 			dpi=DPI,
 			bbox_inches='tight',
 		)
@@ -3035,7 +3063,7 @@ def perform_multilabel_eda(
 			ax = axes[0, 0]
 			ax.hist(agreement_scores, bins=50, color='skyblue', edgecolor='black')
 			ax.axvline(np.mean(agreement_scores), color='red', linestyle='--', 
-					   label=f'Mean: {np.mean(agreement_scores):.3f}')
+						 label=f'Mean: {np.mean(agreement_scores):.3f}')
 			ax.set_xlabel('Average Jaccard Agreement Score')
 			ax.set_ylabel('Number of Samples')
 			ax.set_title('Distribution of Multi-Source Agreement Scores')
@@ -3155,7 +3183,7 @@ def perform_multilabel_eda(
 				# Sample count over time
 				ax = axes[0, 1]
 				ax.bar(yearly_sample_counts['Year'], yearly_sample_counts['Sample Count'], 
-					   color='coral', edgecolor='black')
+						 color='coral', edgecolor='black')
 				ax.set_xlabel('Year')
 				ax.set_ylabel('Number of Samples')
 				ax.set_title('Sample Distribution Over Time')
