@@ -1465,7 +1465,7 @@ def get_llm_based_labels_opt(
 					pad_token_id=tokenizer.pad_token_id,
 					eos_token_id=tokenizer.eos_token_id,
 				)
-				if verbose: print(f"Batch[{batch_num}] gen kwargs: {gen_kwargs}")
+				if verbose: print(f"Batch[{batch_num}]")
 
 				# Generate response
 				with torch.no_grad():
@@ -1496,7 +1496,7 @@ def get_llm_based_labels_opt(
 						unique_results[idx] = None
 				break  # Break retry loop on success	
 			except Exception as e:
-				print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed:\n{e}\n")
+				print(f"❌ Batch {batch_num + 1} attempt {attempt + 1} failed:\n{e}")
 				if attempt < max_retries:
 					sleep_time = EXP_BACKOFF ** attempt
 					print(f"⏳ Waiting {sleep_time}s before retry...")
