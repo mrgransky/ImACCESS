@@ -5,43 +5,36 @@
 # Compatible with both Mahti and Puhti clusters
 # =============================================================================
 
-# Detect cluster and set appropriate defaults
-if [[ "$HOSTNAME" == *"mahti"* ]]; then
-	CLUSTER="mahti"
-	DEFAULT_PARTITION="gpusmall"
-	DEFAULT_GRES="gpu:a100:1"
-	DEFAULT_CPUS=40
-	DEFAULT_MEM="300G"
-elif [[ "$HOSTNAME" == *"puhti"* ]]; then
-	CLUSTER="puhti"
-	DEFAULT_PARTITION="gpu"
-	DEFAULT_GRES="gpu:v100:1"
-	DEFAULT_CPUS=20
-	DEFAULT_MEM="256G"
-else
-	echo "Error: Unknown cluster. This script supports Mahti and Puhti only." >&2
-	exit 1
-fi
-
-# Allow override via environment variables
-PARTITION="${SLURM_PARTITION:-$DEFAULT_PARTITION}"
-GRES="${SLURM_GRES:-$DEFAULT_GRES}"
-CPUS="${SLURM_CPUS_PER_TASK:-$DEFAULT_CPUS}"
-MEM="${SLURM_MEM:-$DEFAULT_MEM}"
-
 #SBATCH --account=project_2014707
-#SBATCH --job-name=finetune_dataset_x
+#SBATCH --job-name=h4_multi_label_dataset_x_
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
 #SBATCH --mail-user=farid.alijani@gmail.com
 #SBATCH --mail-type=END,FAIL
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=40
-#SBATCH --mem=300G
-#SBATCH --partition=gpusmall
-#SBATCH --gres=gpu:a100:1
+#SBATCH --cpus-per-task=64
+#SBATCH --mem=164G
+#SBATCH --partition=${SLURM_PARTITION:-gpusmall}
+#SBATCH --gres=${SLURM_GRES:-gpu:a100:1}
 #SBATCH --array=4
-#SBATCH --time=1-12:00:00
+#SBATCH --time=${SLURM_TIME:-1-12:00:00}
+
+# Detect cluster and set appropriate parameters
+if [[ "$HOSTNAME" == *"mahti"* ]]; then
+    export SLURM_PARTITION="${SLURM_PARTITION:-gpusmall}"
+    export SLURM_GRES="${SLURM_GRES:-gpu:a100:1}"
+    export SLURM_TIME="${SLURM_TIME:-1-12:00:00}"
+    CLUSTER="mahti"
+elif [[ "$HOSTNAME" == *"puhti"* ]]; then
+    export SLURM_PARTITION="${SLURM_PARTITION:-gpu}"
+    export SLURM_GRES="${SLURM_GRES:-gpu:v100:1}"
+    export SLURM_TIME="${SLURM_TIME:-3-00:00:00}"
+    CLUSTER="puhti"
+else
+    echo "Error: Unknown cluster. This script supports Mahti and Puhti only." >&2
+    exit 1
+fi
+
 
 set -euo pipefail
 
@@ -59,6 +52,7 @@ echo "nNODES: $SLURM_NNODES, NODELIST: $SLURM_JOB_NODELIST, NODE_ID: $SLURM_NODE
 echo "nTASKS: $SLURM_NTASKS, TASKS/NODE: $SLURM_TASKS_PER_NODE, nPROCS: $SLURM_NPROCS"
 echo "CPUS_ON_NODE: $SLURM_CPUS_ON_NODE, CPUS/TASK: $SLURM_CPUS_PER_TASK"
 echo "GRES: $SLURM_GRES"
+echo "Using max time limit: $SLURM_TIME"
 echo "$SLURM_SUBMIT_HOST conda virtual env from tykky module..."
 echo "${stars// /*}"
 
