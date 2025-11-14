@@ -905,13 +905,13 @@ def get_validation_metrics(
 	
 	if not cache_loaded:
 		if verbose:
-			print("Computing embeddings from scratch [takes a while]", end="...")
+			print("Computing embeddings from scratch [takes a while]")
 		t0 = time.time()
 		all_image_embeds, all_labels = _compute_image_embeddings(
 			model=model, 
 			validation_loader=validation_loader, 
 			device=device,
-			# verbose=verbose, # too much verbosity
+			verbose=verbose, # too much verbosity
 		)
 		if verbose:
 			print(f"Elapsed: {time.time() - t0:.1f} s")
@@ -933,16 +933,23 @@ def get_validation_metrics(
 	# Step 3: Compute text embeddings
 	if verbose:
 		print("Computing text embeddings...")
-	
 	text_inputs = clip.tokenize(class_names).to(device)
-	with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
+	with torch.autocast(
+		device_type=device.type,
+		enabled=torch.cuda.is_available(),
+	):
 		class_text_embeds = model.encode_text(text_inputs)
-	class_text_embeds = torch.nn.functional.normalize(class_text_embeds.float(), dim=-1)
-	
+		class_text_embeds = torch.nn.functional.normalize(class_text_embeds.float(), dim=-1)
+
+	if verbose:
+		print(f"Text embeddings: {type(class_text_embeds)} {class_text_embeds.shape} {class_text_embeds.dtype} {class_text_embeds.device}")
+
 	# Move to device and ensure proper types
 	device_image_embeds = all_image_embeds.to(device).float()
 	device_class_text_embeds = class_text_embeds.to(device).float()
 	device_labels = all_labels.to(device)
+	if verbose:
+		print(f"Device image embeds: {type(device_image_embeds)} {device_image_embeds.shape} {device_image_embeds.dtype} {device_image_embeds.device}")
 	
 	# Step 4: Compute similarity matrices (chunked for memory efficiency)
 	if verbose:
@@ -960,11 +967,12 @@ def get_validation_metrics(
 		chunk_size=chunk_size,
 		temperature=temperature
 	)
-	
+	if verbose:
+		print(f"Similarity matrices: I2T {i2t_similarity.shape}, T2I {t2i_similarity.shape}")
+
 	# Step 5: Compute full-set metrics
 	if verbose:
 		print("Computing full-set metrics...")
-	
 	full_metrics = compute_full_set_metrics_from_cache(
 		i2t_similarity=i2t_similarity,
 		t2i_similarity=t2i_similarity,
@@ -976,6 +984,8 @@ def get_validation_metrics(
 		device_class_text_embeds=device_class_text_embeds,
 		chunk_size=chunk_size
 	)
+	if verbose:
+		print(f"Full-set metrics: {full_metrics}")
 	
 	# Step 6: Compute retrieval metrics
 	if verbose:
@@ -1016,9 +1026,9 @@ def get_validation_metrics(
 		verbose=verbose,
 		chunk_size=chunk_size,
 	)
-	
+
 	if verbose:
-		print(f">> Validation completed in {time.time() - start_time:.2f}s")
+		print(f"Validation elapsed_t: {time.time() - start_time:.1f}s")
 	
 	return {
 		"in_batch_metrics": in_batch_metrics,
@@ -1251,13 +1261,15 @@ def _compute_image_embeddings(
 
 			images = images.to(device, non_blocking=True)
 			if device.type == "cuda":
-				images = images.half()
+				images = images.half() # 
 
 			with torch.autocast(device_type=device.type, dtype=torch.float16 if device.type == 'cuda' else torch.float32):
 				image_embeds = model.encode_image(images)
+				image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1)
 
-			# Normalize and offload to CPU
-			image_embeds = torch.nn.functional.normalize(image_embeds, dim=-1).cpu()
+			# offload to CPU
+			image_embeds = image_embeds.cpu()
+
 			all_image_embeds.append(image_embeds)
 			all_labels.append(labels_indices.cpu())
 
