@@ -17,48 +17,41 @@ from historyXN_dataset_loader import get_single_label_dataloaders, get_multi_lab
 # $ python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=10))))"
 
 # run in local:
-# $ python history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fts progressive -e 105 -mphbs 3 -mepph 5 -bs 128 -lr 3e-4 -wd 1e-2 -tnp 8
-# $ nohup python -u history_clip_trainer.py -ddir /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -m finetune -fts progressive -a "ViT-B/32" -mphbs 3 -mepph 5 -tnp 8 > logs/europeana_ft_progressive.txt &
+# $ python trainer.py -csv /home/farid/datasets/WW_DATASETs/SMU_1900-01-01_1970-12-31 -fts progressive -e 105 -mphbs 3 -mepph 5 -bs 128 -lr 3e-4 -wd 1e-2 -tnp 8
+# $ nohup python -u trainer.py -csv /home/farid/datasets/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 100 -lr 1e-5 -wd 1e-1 --print_every 200 -nw 12 -fts progressive -a "ViT-B/32" -mphbs 3 -mepph 5 -tnp 8 > logs/europeana_ft_progressive.txt &
 
 # Pouta:
 # pretrain:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -dv "cuda:0" --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 64 -dv "cuda:1" --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -dv "cuda:2" --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 64 -dv "cuda:1" --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 16 -dv "cuda:0" --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -dv "cuda:0" --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 64 -dv "cuda:1" --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -dv "cuda:2" --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 64 -dv "cuda:1" --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 16 -dv "cuda:0" --log_dir /media/volume/ImACCESS/trash &
 
 # finetune [full]:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 256 -e 200 -lr 5e-6 -wd 1e-2 --print_every 10 -nw 32 -dv "cuda:0" -m finetune -fts full -dt single_label -a "ViT-B/32" -do 0.0 -mep 7 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-6 -wd 1e-2 --print_every 200 -nw 12 -dv "cuda:0" -m finetune -fts full -dt multi_label -a "ViT-B/32" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 64 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 12 -dv "cuda:2" -m finetune -fts full -dt multi_label -a "ViT-B/32" -do 0.0 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 64 -e 100 -lr 5e-6 -wd 1e-2 --print_every 100 -nw 32 -dv "cuda:3" -m finetune -fts full -dt multi_label  -a "ViT-B/32" -do 0.0 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 256 -e 150 -lr 5e-4 -wd 1e-2 --print_every 750 -nw 50 -dv "cuda:1" -m finetune -fts full -dt single_label -a "ViT-B/32" -do 0.1 --log_dir /media/volume/ImACCESS/trash &
-
-# finetune [linear_probe]:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 256 -e 200 -lr 1e-5 -wd 1e-2 --print_every 10 -nw 32 -dv "cuda:0" -m finetune -fts linear_probe -dt single_label -a "ViT-B/32" -pdo 0.1 -mep 10 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-6 -wd 1e-2 --print_every 200 -nw 12 -dv "cuda:0" -m finetune -fts linear_probe -dt single_label -a "ViT-B/32" -pdo 0.1 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 64 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 12 -dv "cuda:2" -m finetune -fts linear_probe -dt multi_label -a "ViT-B/32" -pdo 0.1 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 64 -e 100 -lr 5e-6 -wd 1e-2 --print_every 100 -nw 32 -dv "cuda:3" -m finetune -fts linear_probe -dt multi_label  -a "ViT-B/32" -pdo 0.1 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 256 -e 150 -lr 5e-4 -wd 1e-2 --print_every 750 -nw 50 -dv "cuda:1" -m finetune -fts linear_probe -dt single_label -a "ViT-B/32" -pdo 0.1 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 256 -e 200 -lr 5e-6 -wd 1e-2 --print_every 10 -nw 32 -dv "cuda:0" -fts full -dt single_label -a "ViT-B/32" -do 0.0 -mep 7 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-6 -wd 1e-2 --print_every 200 -nw 12 -dv "cuda:0" -fts full -a "ViT-B/32" -do 0.05 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 64 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 12 -dv "cuda:2" -fts full -a "ViT-B/32" -do 0.0 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 64 -e 100 -lr 5e-6 -wd 1e-2 --print_every 100 -nw 32 -dv "cuda:3" -fts full  -a "ViT-B/32" -do 0.0 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 256 -e 150 -lr 5e-4 -wd 1e-2 --print_every 750 -nw 50 -dv "cuda:1" -fts full -dt single_label -a "ViT-B/32" -do 0.1 --log_dir /media/volume/ImACCESS/trash &
 
 # finetune [lora]: alpha = 2x rank
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 256 -e 200 -lr 1e-6 -wd 1e-2 -nw 32 -dv "cuda:1" -m finetune -fts lora -lor 32 -loa 64.0 -lod 0.1 -dt single_label -a "ViT-B/32" -mep 7 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 200 -nw 50 -dv "cuda:1" -m finetune -fts lora -lor 4 -loa 32.0 -lod 0.05 -dt multi_label -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 64 -e 150 -lr 1e-4 -wd 1e-1 --print_every 100 -nw 12 -dv "cuda:0" -m finetune -fts lora -lor 8 -loa 32.0 -lod 0.05 -dt multi_label -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 -dv "cuda:1" -m finetune  -fts lora -lor 4 -loa 32.0 -lod 0.0 -dt multi_label -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 64 -e 150 -lr 5e-6 -wd 1e-2 --print_every 750 -nw 40 -dv "cuda:2" -m finetune -fts lora -lor 64 -loa 128.0 -lod 0.05 -dt multi_label -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 256 -e 200 -lr 1e-6 -wd 1e-2 -nw 32 -dv "cuda:1" -fts lora -lor 32 -loa 64.0 -lod 0.1 -dt single_label -a "ViT-B/32" -mep 7 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 200 -nw 50 -dv "cuda:1" -fts lora -lor 4 -loa 32.0 -lod 0.05 -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 64 -e 150 -lr 1e-4 -wd 1e-1 --print_every 100 -nw 12 -dv "cuda:0" -fts lora -lor 8 -loa 32.0 -lod 0.05 -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 -dv "cuda:1"  -fts lora -lor 4 -loa 32.0 -lod 0.0 -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label_multimodal.csv -bs 64 -e 150 -lr 5e-6 -wd 1e-2 --print_every 750 -nw 40 -dv "cuda:2" -fts lora -lor 64 -loa 128.0 -lod 0.05 -a "ViT-B/32" --log_dir /media/volume/ImACCESS/trash &
 
 # finetune [progressive unfreezing]:
 # using for loop:
-# $ for lr in $(python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=6))))"); do nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -e 150 -lr $lr -wd 1e-1 --print_every 50 -nw 50 -dv 'cuda:3' -m finetune -fts progressive -a 'ViT-B/32' -do 0.0 > /media/volume/ImACCESS/trash/smu_ft_progressive_lr_${lr}.txt & done
+# $ for lr in $(python -c "import numpy as np; print(' '.join(map(str, np.logspace(-6, -4, num=6))))"); do nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -bs 64 -e 150 -lr $lr -wd 1e-1 --print_every 50 -nw 50 -dv 'cuda:3' -fts progressive -a 'ViT-B/32' -do 0.0 > /media/volume/ImACCESS/trash/smu_ft_progressive_lr_${lr}.txt & done
 
 # using one command:
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 110 -bs 256 -lr 3e-4 -wd 1e-2 -nw 32 -dv "cuda:3" -fts progressive -mep 7 -pat 3 -mepph 5 -mphbs 3 -tnp 8 -a "ViT-L/14@336px" --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 50 -nw 50 -dv "cuda:2" -m finetune -fts progressive -dt multi_label -a "ViT-B/32" -do 0.05 -mphbs 3 -mepph 5 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 32 -e 150 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 12 -dv "cuda:1" -m finetune -fts progressive -dt multi_label -a "ViT-B/32" -do 0.05 -mphbs 3 -mepph 5 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 32 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 -dv "cuda:0" -m finetune -fts progressive -dt multi_label -a "ViT-L/14" -do 0.05 -mphbs 3 -mepph 5 --log_dir /media/volume/ImACCESS/trash &
-# $ nohup python -u history_clip_trainer.py -ddir /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 128 -e 100 -mep 7 -pat 3 -lr 5e-4 -wd 1e-2 -nw 32 -dv "cuda:3" -fts progressive -mphbs 3 -mepph 5 -tnp 8 --print_every 2500 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31 -e 110 -bs 256 -lr 3e-4 -wd 1e-2 -nw 32 -dv "cuda:3" -fts progressive -mep 7 -pat 3 -mepph 5 -mphbs 3 -tnp 8 -a "ViT-L/14@336px" --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/EUROPEANA_1900-01-01_1970-12-31 -bs 64 -e 150 -lr 1e-5 -wd 1e-2 --print_every 50 -nw 50 -dv "cuda:2" -fts progressive -a "ViT-B/32" -do 0.05 -mphbs 3 -mepph 5 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/WWII_1939-09-01_1945-09-02 -bs 32 -e 150 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 12 -dv "cuda:1" -fts progressive -a "ViT-B/32" -do 0.05 -mphbs 3 -mepph 5 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/NATIONAL_ARCHIVE_1930-01-01_1955-12-31 -bs 32 -e 100 -lr 1e-5 -wd 1e-2 --print_every 100 -nw 50 -dv "cuda:0" -fts progressive -a "ViT-L/14" -do 0.05 -mphbs 3 -mepph 5 --log_dir /media/volume/ImACCESS/trash &
+# $ nohup python -u trainer.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4 -bs 128 -e 100 -mep 7 -pat 3 -lr 5e-4 -wd 1e-2 -nw 32 -dv "cuda:3" -fts progressive -mphbs 3 -mepph 5 -tnp 8 --print_every 2500 --log_dir /media/volume/ImACCESS/trash &
 
 @measure_execution_time
 def main():

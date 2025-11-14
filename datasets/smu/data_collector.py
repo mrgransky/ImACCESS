@@ -584,8 +584,7 @@ def main():
 	print(single_label_final_df['label'].value_counts().sort_values(ascending=False))
 	print("-"*100)
 
-	print(f"Multi-label dataset: {multi_label_final_df.shape}")
-	print(list(multi_label_final_df.columns))
+	print(f"Multi-label dataset: {multi_label_final_df.shape} {list(multi_label_final_df.columns)}")
 	print("-"*100)
 
 	print(f"Unique images downloaded: {len(os.listdir(IMAGE_DIRECTORY))} files")
