@@ -2839,7 +2839,7 @@ def perform_multilabel_eda(
 		jaccard_df = pd.DataFrame(jaccard_matrix, index=top_labels_for_correlation, columns=top_labels_for_correlation)
 		
 		# Create figure with heatmap and dendrogram
-		fig = plt.figure(figsize=(22, 14))
+		fig = plt.figure(figsize=(24, 19))
 		
 		# Compute hierarchical clustering
 		distance_matrix = 1 - jaccard_matrix
