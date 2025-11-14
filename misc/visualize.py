@@ -2711,10 +2711,33 @@ def perform_multilabel_eda(
 	
 	# Frequency binning
 	ax = axes[0, 1]
-	bins = [1, 5, 10, 50, 100, 500, max_freq+1]
-	bin_labels = ['1-4', '5-9', '10-49', '50-99', '100-499', f'500+']
-	label_counts_df['freq_bin'] = pd.cut(label_counts_df['Count'], bins=bins, labels=bin_labels, right=False)
+
+	# Define the potential bin edges
+	base_bins = [1, 5, 10, 50, 100, 500]
+
+	# Filter the bins to be strictly less than max_freq to ensure monotonicity
+	dynamic_bins = [b for b in base_bins if b < max_freq]
+	# Add the final bin edge to include the maximum frequency value
+	dynamic_bins.append(max_freq + 1)
+
+	# Handle the edge case where max_freq is 1
+	if not dynamic_bins:
+			dynamic_bins = [1, 2]
+
+	# Create corresponding labels dynamically
+	dynamic_labels = []
+	for i in range(len(dynamic_bins) - 1):
+			start = dynamic_bins[i]
+			end = dynamic_bins[i+1] - 1
+			if i == len(dynamic_bins) - 2: # This is the last bin
+					label = f'{start}+'
+			else:
+					label = f'{start}-{end}'
+			dynamic_labels.append(label)
+
+	label_counts_df['freq_bin'] = pd.cut(label_counts_df['Count'], bins=dynamic_bins, labels=dynamic_labels, right=False)
 	freq_bin_counts = label_counts_df['freq_bin'].value_counts().sort_index()
+
 	ax.bar(range(len(freq_bin_counts)), freq_bin_counts.values, color='coral')
 	ax.set_xticks(range(len(freq_bin_counts)))
 	ax.set_xticklabels(freq_bin_counts.index, rotation=45)
