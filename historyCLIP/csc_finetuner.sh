@@ -1,10 +1,21 @@
 #!/bin/bash
 
-# =============================================================================
-# CSC UNIFIED FINETUNER SCRIPT
-# Compatible with both Mahti and Puhti clusters
-# =============================================================================
+if [[ "$HOSTNAME" == *"mahti"* ]]; then
+		SLURM_PARTITION="gpusmall"
+		SLURM_GRES="gpu:a100:1"
+		SLURM_TIME="1-12:00:00"
+		CLUSTER="mahti"
+elif [[ "$HOSTNAME" == *"puhti"* ]]; then
+		SLURM_PARTITION="gpu"
+		SLURM_GRES="gpu:v100:1"
+		SLURM_TIME="3-00:00:00"
+		CLUSTER="puhti"
+else
+		echo "Error: Unknown cluster. This script supports Mahti and Puhti only." >&2
+		exit 1
+fi
 
+# Now set the SBATCH directives with the determined values
 #SBATCH --account=project_2014707
 #SBATCH --job-name=finetune_dataset_x
 #SBATCH --output=/scratch/project_2004072/ImACCESS/trash/logs/%x_%a_%N_%j_%A.out
@@ -14,27 +25,10 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=40
 #SBATCH --mem=300G
-#SBATCH --partition=${SLURM_PARTITION:-gpusmall}
-#SBATCH --gres=${SLURM_GRES:-gpu:a100:1}
+#SBATCH --partition=${SLURM_PARTITION}
+#SBATCH --gres=${SLURM_GRES}
 #SBATCH --array=4
-#SBATCH --time=${SLURM_TIME:-1-12:00:00}
-
-# Detect cluster and set appropriate parameters
-if [[ "$HOSTNAME" == *"mahti"* ]]; then
-    export SLURM_PARTITION="${SLURM_PARTITION:-gpusmall}"
-    export SLURM_GRES="${SLURM_GRES:-gpu:a100:1}"
-    export SLURM_TIME="${SLURM_TIME:-1-12:00:00}"
-    CLUSTER="mahti"
-elif [[ "$HOSTNAME" == *"puhti"* ]]; then
-    export SLURM_PARTITION="${SLURM_PARTITION:-gpu}"
-    export SLURM_GRES="${SLURM_GRES:-gpu:v100:1}"
-    export SLURM_TIME="${SLURM_TIME:-3-00:00:00}"
-    CLUSTER="puhti"
-else
-    echo "Error: Unknown cluster. This script supports Mahti and Puhti only." >&2
-    exit 1
-fi
-
+#SBATCH --time=${SLURM_TIME}
 
 set -euo pipefail
 
