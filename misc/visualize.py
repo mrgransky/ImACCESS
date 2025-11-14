@@ -2722,18 +2722,18 @@ def perform_multilabel_eda(
 
 	# Handle the edge case where max_freq is 1
 	if not dynamic_bins:
-			dynamic_bins = [1, 2]
+		dynamic_bins = [1, 2]
 
 	# Create corresponding labels dynamically
 	dynamic_labels = []
 	for i in range(len(dynamic_bins) - 1):
-			start = dynamic_bins[i]
-			end = dynamic_bins[i+1] - 1
-			if i == len(dynamic_bins) - 2: # This is the last bin
-					label = f'{start}+'
-			else:
-					label = f'{start}-{end}'
-			dynamic_labels.append(label)
+		start = dynamic_bins[i]
+		end = dynamic_bins[i+1] - 1
+		if i == len(dynamic_bins) - 2: # This is the last bin
+			label = f'{start}+'
+		else:
+			label = f'{start}-{end}'
+		dynamic_labels.append(label)
 
 	label_counts_df['freq_bin'] = pd.cut(label_counts_df['Count'], bins=dynamic_bins, labels=dynamic_labels, right=False)
 	freq_bin_counts = label_counts_df['freq_bin'].value_counts().sort_index()
@@ -2839,7 +2839,7 @@ def perform_multilabel_eda(
 		jaccard_df = pd.DataFrame(jaccard_matrix, index=top_labels_for_correlation, columns=top_labels_for_correlation)
 		
 		# Create figure with heatmap and dendrogram
-		fig = plt.figure(figsize=(18, 14))
+		fig = plt.figure(figsize=(22, 14))
 		
 		# Compute hierarchical clustering
 		distance_matrix = 1 - jaccard_matrix
@@ -2849,10 +2849,17 @@ def perform_multilabel_eda(
 		
 		# Plot dendrogram
 		ax_dendro = fig.add_subplot(2, 2, 1)
-		dendrogram = scipy.cluster.hierarchy.dendrogram(linkage_matrix, labels=top_labels_for_correlation, orientation='top', ax=ax_dendro, leaf_font_size=8)
+		dendrogram = scipy.cluster.hierarchy.dendrogram(
+			linkage_matrix, 
+			labels=top_labels_for_correlation, 
+			orientation='top', 
+			ax=ax_dendro, 
+			leaf_font_size=10
+		)
 		ax_dendro.set_title('Hierarchical Clustering Dendrogram')
 		ax_dendro.set_xlabel('Labels')
 		ax_dendro.set_ylabel('Distance (1 - Jaccard Similarity)')
+		ax_dendro.tick_params(axis='x', rotation=90)
 		
 		# Plot heatmap
 		ax_heatmap = fig.add_subplot(2, 2, 2)
