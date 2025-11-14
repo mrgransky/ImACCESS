@@ -198,9 +198,9 @@ case $strategy in
     ;;
   "probe"|"ia3"|"adapter")
     case $architecture in
-      "ViT-L/14@336px") ADJUSTED_BATCH_SIZE=256 ;;
-      "ViT-L/14")       ADJUSTED_BATCH_SIZE=512 ;;
-      "ViT-B/32"|"ViT-B/16") ADJUSTED_BATCH_SIZE=1024 ;;
+      "ViT-L/14@336px") ADJUSTED_BATCH_SIZE=128 ;;
+      "ViT-L/14")       ADJUSTED_BATCH_SIZE=256 ;;
+      "ViT-B/32"|"ViT-B/16") ADJUSTED_BATCH_SIZE=512 ;;
     esac
     ;;
 esac
