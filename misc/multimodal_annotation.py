@@ -24,126 +24,126 @@ from visualize import perform_multilabel_eda
 # $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/HISTORY_X4/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 32 -llm_bs 12 -dv "cuda:2" -nw 40 > /media/volume/ImACCESS/trash/multimodal_annotation_h4.txt &
 # $ nohup python -u multimodal_annotation.py -csv /media/volume/ImACCESS/WW_DATASETs/SMU_1900-01-01_1970-12-31/metadata_multi_label.csv -llm "Qwen/Qwen3-4B-Instruct-2507" -vlm "Qwen/Qwen3-VL-4B-Instruct" -vlm_bs 64 -llm_bs 12 -dv "cuda:3" > /media/volume/ImACCESS/trash/multimodal_annotation_smu.txt &
 
-def post_process(labels: Sequence[Union[List[Any], str, None]]) -> List[List[str]]:
-		"""
-		Clean a collection of label data.
+# def post_process(labels: Sequence[Union[List[Any], str, None]]) -> List[List[str]]:
+# 		"""
+# 		Clean a collection of label data.
 
-		* Guarantees a return type of ``List[List[str]]`` (never ``None`` or plain
-			strings).
-		* Every inner list contains lower‑cased strings **without** surrounding
-			single‑ or double‑quotes.
-		* Accepts a mixture of:
-				- already‑parsed lists,
-				- stringified Python list literals (e.g. '["a","b"]'),
-				- plain strings (treated as a one‑element list),
-				- ``None`` (converted to an empty list).
+# 		* Guarantees a return type of ``List[List[str]]`` (never ``None`` or plain
+# 			strings).
+# 		* Every inner list contains lower‑cased strings **without** surrounding
+# 			single‑ or double‑quotes.
+# 		* Accepts a mixture of:
+# 				- already‑parsed lists,
+# 				- stringified Python list literals (e.g. '["a","b"]'),
+# 				- plain strings (treated as a one‑element list),
+# 				- ``None`` (converted to an empty list).
 
-		Parameters
-		----------
-		labels :
-				An iterable where each element can be a list, a string, or ``None``.
+# 		Parameters
+# 		----------
+# 		labels :
+# 				An iterable where each element can be a list, a string, or ``None``.
 
-		Returns
-		-------
-		List[List[str]]
-				Normalised, quote‑free, lower‑cased label groups.
-		"""
+# 		Returns
+# 		-------
+# 		List[List[str]]
+# 				Normalised, quote‑free, lower‑cased label groups.
+# 		"""
 
-		# -----------------------------------------------------------------
-		# Helper: remove surrounding quotes (both single and double) and
-		# any surrounding whitespace.
-		# -----------------------------------------------------------------
-		def _strip_quotes(s: str) -> str:
-				s = s.strip()                     # strip spaces, newlines, tabs …
-				if len(s) >= 2 and s[0] == s[-1] and s[0] in {"'", '"'}:
-						return s[1:-1]                # remove the matching pair of quotes
-				return s
+# 		# -----------------------------------------------------------------
+# 		# Helper: remove surrounding quotes (both single and double) and
+# 		# any surrounding whitespace.
+# 		# -----------------------------------------------------------------
+# 		def _strip_quotes(s: str) -> str:
+# 				s = s.strip()                     # strip spaces, newlines, tabs …
+# 				if len(s) >= 2 and s[0] == s[-1] and s[0] in {"'", '"'}:
+# 						return s[1:-1]                # remove the matching pair of quotes
+# 				return s
 
-		# -----------------------------------------------------------------
-		# Helper: turn whatever we received into a *list* of raw items.
-		# -----------------------------------------------------------------
-		def _as_list(item: Any) -> List[Any]:
-				# Already a list → use it directly
-				if isinstance(item, list):
-						return item
+# 		# -----------------------------------------------------------------
+# 		# Helper: turn whatever we received into a *list* of raw items.
+# 		# -----------------------------------------------------------------
+# 		def _as_list(item: Any) -> List[Any]:
+# 				# Already a list → use it directly
+# 				if isinstance(item, list):
+# 						return item
 
-				# String that *looks* like a list literal → try to evaluate it
-				if isinstance(item, str):
-						stripped = item.strip()
-						if stripped.startswith("[") and stripped.endswith("]"):
-								try:
-										parsed = ast.literal_eval(stripped)
-										if isinstance(parsed, list):
-												return parsed
-								except (SyntaxError, ValueError):
-										# Not a valid literal → fall through to the plain string case
-										pass
-						# Plain string (or malformed list literal) → treat as a single element
-						return [item]
+# 				# String that *looks* like a list literal → try to evaluate it
+# 				if isinstance(item, str):
+# 						stripped = item.strip()
+# 						if stripped.startswith("[") and stripped.endswith("]"):
+# 								try:
+# 										parsed = ast.literal_eval(stripped)
+# 										if isinstance(parsed, list):
+# 												return parsed
+# 								except (SyntaxError, ValueError):
+# 										# Not a valid literal → fall through to the plain string case
+# 										pass
+# 						# Plain string (or malformed list literal) → treat as a single element
+# 						return [item]
 
-				# Anything else (None, numbers, dicts, …) → wrap in a list
-				return [item]
+# 				# Anything else (None, numbers, dicts, …) → wrap in a list
+# 				return [item]
 
-		# -----------------------------------------------------------------
-		# Main processing loop
-		# -----------------------------------------------------------------
-		cleaned: List[List[str]] = []
+# 		# -----------------------------------------------------------------
+# 		# Main processing loop
+# 		# -----------------------------------------------------------------
+# 		cleaned: List[List[str]] = []
 
-		for entry in labels:
-				raw_items = _as_list(entry)
+# 		for entry in labels:
+# 				raw_items = _as_list(entry)
 
-				processed: List[str] = []
-				for element in raw_items:
-						# Ensure we are dealing with a string
-						if not isinstance(element, str):
-								element = str(element)
+# 				processed: List[str] = []
+# 				for element in raw_items:
+# 						# Ensure we are dealing with a string
+# 						if not isinstance(element, str):
+# 								element = str(element)
 
-						# Strip quotes + whitespace, then lower‑case
-						processed.append(_strip_quotes(element).lower())
+# 						# Strip quotes + whitespace, then lower‑case
+# 						processed.append(_strip_quotes(element).lower())
 
-				cleaned.append(processed)
+# 				cleaned.append(processed)
 
-		return cleaned
+# 		return cleaned
 
-# def post_process(labels_list: List[List[str]]) -> List[List[str]]:
-# 	if not labels_list:
-# 		return labels_list
+def post_process(labels_list: List[List[str]]) -> List[List[str]]:
+	if not labels_list:
+		return labels_list
 
-# 	result = []
-# 	for labels in labels_list:
-# 		if labels is None:
-# 			result.append(None)
-# 		elif isinstance(labels, list):
-# 			# Convert each label to lowercase
-# 			lowercase_labels = [label.lower() if isinstance(label, str) else label for label in labels]
-# 			result.append(lowercase_labels)
-# 		elif isinstance(labels, str):
-# 			try:
-# 				# Parse string representation of list and convert to lowercase
-# 				parsed_labels = ast.literal_eval(labels)
-# 				if isinstance(parsed_labels, list):
-# 					lowercase_labels = [label.lower() if isinstance(label, str) else label for label in parsed_labels]
-# 					result.append(lowercase_labels)
-# 				else:
-# 					result.append(labels.lower())
-# 			except:
-# 				result.append(labels.lower())
-# 		else:
-# 			result.append(labels)
+	result = []
+	for labels in labels_list:
+		if labels is None:
+			result.append(None)
+		elif isinstance(labels, list):
+			# Convert each label to lowercase
+			lowercase_labels = [label.lower() if isinstance(label, str) else label for label in labels]
+			result.append(lowercase_labels)
+		elif isinstance(labels, str):
+			try:
+				# Parse string representation of list and convert to lowercase
+				parsed_labels = ast.literal_eval(labels)
+				if isinstance(parsed_labels, list):
+					lowercase_labels = [label.lower() if isinstance(label, str) else label for label in parsed_labels]
+					result.append(lowercase_labels)
+				else:
+					result.append(labels.lower())
+			except:
+				result.append(labels.lower())
+		else:
+			result.append(labels)
 
-# 	# Remove quotes only from string items, not from lists
-# 	processed_result = []
-# 	for item in result:
-# 		if isinstance(item, str):
-# 			processed_result.append(item.strip('"').strip("'"))
-# 		elif isinstance(item, list):
-# 			# Apply strip to each string element in the list
-# 			processed_item = [elem.strip('"').strip("'") if isinstance(elem, str) else elem for elem in item]
-# 			processed_result.append(processed_item)
-# 		else:
-# 			processed_result.append(item)
+	# Remove quotes only from string items, not from lists
+	processed_result = []
+	for item in result:
+		if isinstance(item, str):
+			processed_result.append(item.strip('"').strip("'"))
+		elif isinstance(item, list):
+			# Apply strip to each string element in the list
+			processed_item = [elem.strip('"').strip("'") if isinstance(elem, str) else elem for elem in item]
+			processed_result.append(processed_item)
+		else:
+			processed_result.append(item)
 	
-# 	return processed_result
+	return processed_result
 
 def merge_labels(
 		llm_based_labels: List[List[str]], 
